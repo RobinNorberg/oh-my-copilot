@@ -323,7 +323,7 @@ describe('git-guardrails hook', () => {
       hooks: {
         PreToolUse: Array<{
           matcher: string;
-          hooks: Array<{ type: string; command: string; timeout: number }>;
+          hooks: Array<{ type: string; command: string; args?: string[]; timeout: number }>;
         }>;
       };
     };
@@ -336,7 +336,8 @@ describe('git-guardrails hook', () => {
       expect.arrayContaining([
         expect.objectContaining({
           type: 'command',
-          command: expect.stringContaining('/scripts/git-guardrails.mjs'),
+          command: 'node',
+          args: expect.arrayContaining(['${CLAUDE_PLUGIN_ROOT}/scripts/git-guardrails.mjs']),
           timeout: 5,
         }),
       ]),

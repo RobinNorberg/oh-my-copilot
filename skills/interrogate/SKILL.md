@@ -40,18 +40,22 @@ attack those first.
 
 Spawn three reviewers in one message, in the background, each read-only:
 
-- prefer different models, and where available different provider families
-  (Claude + Codex + Gemini via
+- seat the panel as a diverse-model panel — different provider families
+  find different defect classes, and agreement across them is high-signal.
+  Read `team.roleRouting` from the
+  project config (`.copilot/omg.jsonc`) or the user config
+  (`claude-omc/config.jsonc`; `omg config` prints the effective values) and
+  collect up to three distinct provider families in canonical role order,
+  filling any remaining seats from the default families — copilot, codex,
+  gemini — not already seated, and say which family each seat got. When no
+  routing config exists, fall back to
   `OMC_TEAM_WORKTREE_MODE=detached omg team --no-decompose 1:copilot,1:codex,1:gemini "<the framed target, the invariants, and one lens per seat>"`,
   or in-session `Task` dispatches to `oh-my-copilot:code-reviewer` and
-  `oh-my-copilot:security-reviewer` on different models) — the team
+  `oh-my-copilot:security-reviewer` on different models — the team
   command needs the task text; pass target, invariants, and lens allocation
   as that task
 - each reviewer gets the same target by path, the invariants, and one lens:
   correctness, security and trust boundaries, or edge cases and failure modes
-- **wait for every reviewer to reach a terminal state and collect its output
-  before Phase 3** — the team route starts workers asynchronously, and
-  merging before they finish reports an empty panel; a worker that stalls
 - **wait for every reviewer to reach a terminal state and collect its output
   before Phase 3** — the team route starts workers asynchronously, and
   merging before they finish reports an empty panel; a worker that stalls

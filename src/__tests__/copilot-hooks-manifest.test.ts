@@ -30,7 +30,7 @@ type CopilotHookEntry = {
   [key: string]: unknown;
 };
 type CopilotHooksFile = { version: number; hooks: Record<string, CopilotHookEntry[]> };
-type ClaudeHook = { type: string; command: string; timeout?: number; async?: boolean };
+type ClaudeHook = { type: string; command: string; args?: string[]; timeout?: number; async?: boolean };
 type ClaudeHooksFile = { hooks: Record<string, Array<{ matcher?: string; hooks: ClaudeHook[] }>> };
 type Generator = {
   ADAPTER_ARG: string;
@@ -115,6 +115,13 @@ describe('copilot/hooks.json generation', () => {
           : event === 'PermissionRequest' ? withCopilotToolNames(group.matcher) : group.matcher,
         timeoutSec: group.hooks.reduce((sum, hook) => sum + (hook.timeout ?? 0), 0),
         hooks: group.hooks.map(hook => {
+          // Upstream ships the exec form (`command: node` + `args`); fork-owned
+          // groups may still use the shell string.
+          if (Array.isArray(hook.args)) {
+            expect(hook.command).toBe('node');
+            expect(hook.args[0]).toBe(`${ROOT_TOKEN}/scripts/run.cjs`);
+            return { script: hook.args[1], args: hook.args.slice(2) };
+          }
           const match = pattern.exec(hook.command);
           expect(match, hook.command).not.toBeNull();
           return { script: `${ROOT_TOKEN}/scripts/${match![1]}`, args: match![2].split(' ').filter(Boolean) };
@@ -207,7 +214,13 @@ describe('copilot/hooks.json generation', () => {
     const wrap = (hook: Record<string, unknown>) => ({ hooks: { Stop: [{ matcher: '*', hooks: [hook] }] } });
     const valid = { type: 'command', command: `node "${ROOT_TOKEN}"/scripts/run.cjs "${ROOT_TOKEN}"/scripts/x.mjs`, timeout: 5 };
     expect(() => buildCopilotHooks(wrap(valid))).not.toThrow();
+    const exec = { type: 'command', command: 'node', args: [`${ROOT_TOKEN}/scripts/run.cjs`, `${ROOT_TOKEN}/scripts/x.mjs`, 'turn'], timeout: 5 };
+    expect(buildCopilotHooks(wrap(exec)).hooks.Stop[0].args.slice(-2)).toEqual([`${ROOT_TOKEN}/scripts/x.mjs`, 'turn']);
     for (const foreign of [
+      { ...exec, command: 'bash' },
+      { ...exec, args: [`${ROOT_TOKEN}/scripts/x.mjs`] },
+      { ...exec, args: [`${ROOT_TOKEN}/scripts/run.cjs`, `${ROOT_TOKEN}/scripts/x.mjs`, 'a b'] },
+      { ...exec, args: [`${ROOT_TOKEN}/scripts/run.cjs`, `${ROOT_TOKEN}/scripts/x.mjs`, '--'] },
       { ...valid, command: `node "${ROOT_TOKEN}/scripts/run.cjs" "${ROOT_TOKEN}/scripts/x.mjs"` },
       { ...valid, command: `node "${ROOT_TOKEN}"/scripts/x.mjs` },
       { ...valid, command: `bash "${ROOT_TOKEN}"/scripts/run.cjs "${ROOT_TOKEN}"/scripts/x.mjs` },
@@ -311,7 +324,8 @@ describe('why the Claude command form must never reach Copilot', () => {
     );
 
     const upstreamForm = `node "${ROOT_TOKEN}"/scripts/run.cjs "${ROOT_TOKEN}"/scripts/x.mjs`;
-    expect(source.hooks.Stop[0].hooks[0].command.startsWith('node "${CLAUDE_PLUGIN_ROOT}"/scripts/run.cjs ')).toBe(true);
+    // Upstream now ships the exec form for this reason; the shell string is still accepted on input.
+    expect(source.hooks.Stop[0].hooks[0].command).toBe('node');
     const split = runPwsh(upstreamForm.split(ROOT_TOKEN).join(root));
     expect(split.stdout).not.toContain('PROBE_REACHED');
 

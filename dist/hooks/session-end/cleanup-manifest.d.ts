@@ -120,6 +120,8 @@ export declare function reapStaleSessionEndOwner(directory: string, sessionId: s
  * otherwise its claimant nonce strands it and no later worker can run it.
  */
 export declare function releaseSessionEndJob(directory: string, sessionId: string, nonce: string, generation: number, reason?: string): SessionEndJobV1 | null;
+/** Evidence for a worker that exits still owning its job: it cannot be written to the manifest it failed to release (#4844). */
+export declare function recordSessionEndWorkerExit(directory: string, entry: Record<string, unknown>): void;
 export declare function updateSessionEndJob(directory: string, sessionId: string, expectedOwner: string, mutate: (job: SessionEndJobV1) => void): SessionEndJobV1 | null;
 export declare function claimSessionEndAction(directory: string, sessionId: string, ownerNonce: string, name: SessionEndActionName, deadlineAt: number): SessionEndJobV1 | null;
 /**

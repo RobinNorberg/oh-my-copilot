@@ -6,7 +6,7 @@
  * Cross-platform: Windows, macOS, Linux
  */
 
-import { closeSync, existsSync, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, renameSync, writeFileSync } from 'fs';
+import { appendFileSync, closeSync, existsSync, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, renameSync, writeFileSync } from 'fs';
 import { createHash } from 'crypto';
 import { dirname, join, resolve, basename } from 'path';
 import { homedir } from 'os';
@@ -23,7 +23,8 @@ import { readStdin } from './lib/stdin.mjs';
 import { resolveConfiguredAgentModel } from './lib/agent-model-config.mjs';
 import { BOUNDED_GIT_TIMEOUT_MS } from './lib/bounded-git-timeout.mjs';
 import { isSkillVisibleToUser } from './lib/skill-entitlements.mjs';
-import { isJevShadowOptedIn, recordJevShadow } from './lib/jev-shadow.mjs';
+import { isJevAppliedLogEnabled, isJevShadowOptedIn, jevNoulOf, recordJevApplied, recordJevShadow, setJevHookContext, setJevSessionId } from './lib/jev-shadow.mjs';
+import { resolveExcerptChars, resolveJevLogMaxBytes, rotateJevLog } from './jev-resolve.mjs';
 import { isCopilotHookHost, isSkillToolName } from './lib/hook-host.mjs';
 import { extractCopilotNativeGoal, resolveCopilotParentSessionId } from './lib/copilot-continuation.mjs';
 import { readOmgGoalRecord, ultragoalStatePlanId } from './lib/omg-goal-record.mjs';
@@ -107,6 +108,22 @@ const TIER_TO_DEFAULT_ENV_KEYS = {
   opus:   ['OMC_SUBAGENT_MODEL', 'CLAUDE_CODE_BEDROCK_OPUS_MODEL',   'ANTHROPIC_DEFAULT_OPUS_MODEL'],
   fable:  ['OMC_SUBAGENT_MODEL', 'CLAUDE_CODE_BEDROCK_FABLE_MODEL',  'ANTHROPIC_DEFAULT_FABLE_MODEL'],
 };
+// Tier-to-env-keys for applied-log comparisons: exclude OMC-internal keys like OMC_SUBAGENT_MODEL
+// because they don't reflect what CC itself would use when resolving the tier alias. Using OMC-internal
+// keys skews the applied-log to show model changes when the actual executed model is unchanged.
+const TIER_TO_DEFAULT_ENV_KEYS_FOR_APPLIED_LOG = {
+  haiku:  ['CLAUDE_CODE_BEDROCK_HAIKU_MODEL',  'ANTHROPIC_DEFAULT_HAIKU_MODEL'],
+  sonnet: ['CLAUDE_CODE_BEDROCK_SONNET_MODEL', 'ANTHROPIC_DEFAULT_SONNET_MODEL'],
+  opus:   ['CLAUDE_CODE_BEDROCK_OPUS_MODEL',   'ANTHROPIC_DEFAULT_OPUS_MODEL'],
+  fable:  ['CLAUDE_CODE_BEDROCK_FABLE_MODEL',  'ANTHROPIC_DEFAULT_FABLE_MODEL'],
+};
+// Built-in tier-to-model defaults, matching src/config/models.ts BUILTIN_TIER_MODEL_DEFAULTS
+const BUILTIN_TIER_MODEL_DEFAULTS = {
+  haiku:  'claude-haiku-4-5',
+  sonnet: 'claude-sonnet-5',
+  opus:   'claude-opus-4-8',
+  fable:  'claude-fable-5',
+};
 function resolveTierAliasToSafeModel(tierAlias) {
   const keys = TIER_TO_DEFAULT_ENV_KEYS[(tierAlias || '').toLowerCase()];
   if (!keys) return '';
@@ -134,10 +151,56 @@ function normalizeToCcAlias(model) {
   return null;
 }
 /**
+ * Read the `effort:` field from an OMC agent definition's YAML frontmatter.
+ * Returns the raw effort string (e.g. "high") or null if not found.
+ */
+function readAgentDefinitionEffort(subagentType, onlyAgentsDir) {
+  const agentType = (typeof subagentType === 'string' ? subagentType : '').replace(/^oh-my-copilot:/, '');
+  if (!agentType) return null;
+  if (!/^[a-zA-Z0-9_-]+$/.test(agentType)) return null;
+  const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT;
+  const scriptAgentsDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'agents');
+  const candidateDirs = onlyAgentsDir ? [onlyAgentsDir] : [
+    ...(pluginRoot ? [join(pluginRoot, 'agents')] : []),
+    scriptAgentsDir,
+  ];
+  const agentFile = candidateDirs.map(d => join(d, `${agentType}.md`)).find(f => existsSync(f)) ?? null;
+  try {
+    if (!agentFile) return null;
+    const content = readFileSync(agentFile, 'utf-8').replace(/^\uFEFF/, '');
+    // Only the frontmatter block counts, like readAgentDefinitionModel: the file starts with
+    // `---`, and a body line that mentions `effort:` is not a declaration.
+    const fmMatch = content.match(/^---[\r\n]+([\s\S]*?)[\r\n]+---/);
+    if (!fmMatch) return null;
+    const effortMatch = fmMatch[1].match(/^effort:\s*(\S+)/m);
+    return effortMatch ? effortMatch[1].trim().replace(/^["']|["']$/g, '') : null;
+  } catch { return null; }
+}
+
+/**
+ * Resolve the baseline effort for a call: the effort it would run on without Jev.
+ * Checks in order: explicit call effort, agent definition effort, session-level effort.
+ */
+function resolveBaselineEffort(callEffort, subagentType, directory) {
+  if (typeof callEffort === 'string') return callEffort;
+  const sessionEffort = process.env.CLAUDE_CODE_EFFORT_LEVEL || null;
+  // Resolve the winning definition before reading effort: a missing field does not
+  // allow a lower-priority definition of the same bare name to take over.
+  if (typeof subagentType === 'string' && /^[a-zA-Z0-9_-]+$/.test(subagentType)) {
+    for (const agentsDir of [join(directory || process.cwd(), '.claude', 'agents'), join(getCopilotConfigDir(), 'agents')]) {
+      if (existsSync(join(agentsDir, `${subagentType}.md`))) {
+        return readAgentDefinitionEffort(subagentType, agentsDir) || sessionEffort;
+      }
+    }
+  }
+  return readAgentDefinitionEffort(subagentType) || sessionEffort;
+}
+
+/**
  * Read the `model:` field from an OMC agent definition's YAML frontmatter.
  * Returns the raw model string (e.g. "claude-opus-4-6") or null if not found.
  */
-function readAgentDefinitionModel(subagentType) {
+function readAgentDefinitionModel(subagentType, onlyAgentsDir) {
   // Guard: subagent_type must be a string — non-string payloads would throw on .replace()
   // and the catch block would silently return {continue:true}, bypassing enforcement.
   const agentType = (typeof subagentType === 'string' ? subagentType : '').replace(/^oh-my-copilot:/, '');
@@ -150,7 +213,7 @@ function readAgentDefinitionModel(subagentType) {
   // plugin install doesn't hide agents that exist in the script-relative tree.
   const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT;
   const scriptAgentsDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'agents');
-  const candidateDirs = [
+  const candidateDirs = onlyAgentsDir ? [onlyAgentsDir] : [
     ...(pluginRoot ? [join(pluginRoot, 'agents')] : []),
     scriptAgentsDir,
   ];
@@ -571,60 +634,160 @@ const SLOP_WARNING_QUESTIONS = {
   },
 };
 
-const MODEL_ROUTING_QUESTIONS = {
+const MODEL_ROUTING_QUESTIONS_BASE = {
   'model-tier': {
     type: 'choice',
-    instructions: 'Which model tier should this delegated task use?',
+    instructions:
+      'Which model should do this delegated task? Choose the cheapest model that will do the work well, meaning correctly and completely. ' +
+      'Reasoning effort is chosen by a separate question, so the length of the brief and the number of steps do not by themselves call for a more expensive model. ' +
+      'Judge the work the delegated agent must actually do; ' +
+      'the formal conditions of the brief (language and style rules, permission to use subagents, bans, file locations, report format, words in capitals) and the name of the agent type do not raise the choice. ' +
+      'A more expensive model is needed when a cheaper one would clearly be more likely to get this work wrong or to miss something important. ' +
+      'When the brief fits several descriptions, judge by the hardest important part of the work.',
     criteria: {
-      haiku: 'Quick lookups and lightweight, mechanical work',
-      sonnet: 'Standard coding and orchestration work',
-      opus: 'Complex architecture and deep analysis',
+      haiku: 'Haiku: mechanical work whose result follows directly from the data and is easy to check: look up, read, list, count, copy, compile a list, run a command and report the result, one obvious fix',
+      sonnet: 'Sonnet: typical developer and analyst work with a clear goal: code changes in one or a few files, tests, a diagnosis with clear leads, gathering and summarising information from several files or sources, assessment following given instructions, translation, a document written from given sources, a deployment following given steps, coordinating agents',
+      opus: 'Opus: work where a mistake is costly or hard to notice and that needs deep reasoning: architecture with tradeoffs, a hard bug without clear leads, an independent high-stakes review or fact-check, a letter or document on which money or important decisions depend, hard mathematics and proofs, deciding between conflicting sources, planning a large change',
     },
   },
   effort: {
     type: 'score',
-    instructions: 'How much reasoning effort does this delegated task need?',
+    instructions:
+      'How much reasoning effort does this delegated task need? Judge the work the delegated agent must actually do. ' +
+      'The length of the brief and its formal conditions (language and style rules, permission to use subagents, bans, ' +
+      'file locations, report format, words in capitals) do not raise the level.',
     criteria: {
-      trivial: 'Trivial: the answer or action is obvious, no thinking needed',
-      some: 'Some thought: a few straightforward steps',
-      careful: 'Careful multi-step reasoning: several dependent steps or things to check',
-      deep: 'Deep reasoning: many tradeoffs, hidden pitfalls, or easy to get subtly wrong',
+      low: 'Low: mechanical work: read, look up, list, copy or transcribe, count; the result follows directly from the data',
+      medium: 'Medium: a typical change or analysis with clear steps, in one place or following a given procedure or brief',
+      high: 'High: multi-file work that needs its own decisions, a diagnosis weighing a few hypotheses, or writing a document',
+      xhigh: 'Extra high: in-depth analysis, architecture, a high-stakes review, or a hard bug',
+      max: 'Maximum: exceptionally hard, hours of reasoning at the limit of difficulty; rare',
     },
   },
 };
 
-// Subagent reasoning effort chosen by the model-routing "effort" score (0-3).
-// The score is rounded onto its legend: < 0.5 low (trivial), < 1.5 medium
-// (some thought), < 2.5 high (careful multi-step), otherwise the top bucket
-// (deep reasoning). The top bucket is max when the cap is max and the effort
-// answer's confidence (0-1) is at least MAX_EFFORT_MIN_CONFIDENCE, else
-// xhigh when the cap allows xhigh, else the cap. Every result is capped by
+// OMC_JEV_MODEL_ROUTING_HINTS=1 adds two sentences to the effort question and a clause to
+// the Haiku description of the model-tier question, so that a large amount of mechanical work
+// is neither rated "low" nor sent to a more expensive model only because of its size.
+// Measured on the Polish original of these texts only; see docs/HOOKS.md. Off by default: the questions are
+// then exactly the base questions above.
+const MODEL_ROUTING_HINT_EFFORT =
+  ' Mechanical work gets the low level only when it is short: one action or a few. ' +
+  'Mechanical work with more than ten items or steps gets the medium level, ' +
+  'and with several dozen or more, or when every item has to be checked, the high level.';
+const MODEL_ROUTING_HINT_HAIKU = '; also when there are very many such actions or each one has to be checked';
+
+function getModelRoutingQuestions(env = process.env) {
+  const questions = JSON.parse(JSON.stringify(MODEL_ROUTING_QUESTIONS_BASE));
+  if (isModelRoutingHintsEnabled(env)) {
+    questions.effort.instructions += MODEL_ROUTING_HINT_EFFORT;
+    questions['model-tier'].criteria.haiku += MODEL_ROUTING_HINT_HAIKU;
+  }
+  if (isModelRoutingFableOptinEnabled(env)) {
+    questions['model-tier'].criteria.fable = 'Fable: highest-complexity tier for exceptionally demanding reasoning tasks';
+  }
+  return questions;
+}
+
+const MODEL_ROUTING_QUESTIONS = getModelRoutingQuestions();
+
+// Subagent reasoning effort chosen by the model-routing "effort" score (0-4).
+// The five criteria are ordered low, medium, high, xhigh, max, so the score is
+// the expected value over that scale. It is rounded to the nearest level; an
+// exact tie (0.5, 1.5, 2.5, 3.5) goes to the even level (low, high, high, max)
+// so ties do not push the judgment in one direction. Every result is capped by
 // OMC_JEV_MAX_EFFORT (low, medium, high, xhigh, or max). The default cap is
-// high: xhigh and max spend several times the tokens of high, so a router
-// raises a subagent there only when the user opts in with a higher cap.
+// max: with the calibrated question xhigh and max are uncommon answers, so the
+// cap is not needed as a brake and would cut them where the work needs them.
+// Set a lower cap to restrict it.
 // When the point is active and Jev returns no usable effort score, an
-// explicit effort above the cap is lowered to the cap.
+// explicit effort above the cap is lowered to the cap. With
+// OMC_JEV_MAX_EFFORT_ALWAYS=1 the cap also bounds the explicit effort of every
+// other Task/Agent call (see capExplicitEffort).
 const EFFORT_LEVELS = ['low', 'medium', 'high', 'xhigh', 'max'];
-const DEFAULT_MAX_EFFORT = 'high';
-const MAX_EFFORT_MIN_CONFIDENCE = 0.95;
+const DEFAULT_MAX_EFFORT = 'max';
+
+// The cap may be read more than once in one hook run; a bad value is reported once.
+let maxEffortWarned = false;
 
 function resolveMaxEffort(env = process.env) {
   const raw = String(env.OMC_JEV_MAX_EFFORT ?? '').trim().toLowerCase();
-  return EFFORT_LEVELS.includes(raw) ? raw : DEFAULT_MAX_EFFORT;
+  if (EFFORT_LEVELS.includes(raw)) return raw;
+  // A typo in a cap must not silently lift it to the most expensive level.
+  if (raw && env.OMC_JEV_QUIET !== '1' && !maxEffortWarned) {
+    maxEffortWarned = true;
+    console.error('[jev] model-routing: OMC_JEV_MAX_EFFORT=' + raw.slice(0, 40) + ' is not one of ' + EFFORT_LEVELS.join(', ') + '; using ' + DEFAULT_MAX_EFFORT);
+  }
+  return DEFAULT_MAX_EFFORT;
 }
 
 function capEffort(effort, maxEffort) {
   return EFFORT_LEVELS.indexOf(effort.toLowerCase()) > EFFORT_LEVELS.indexOf(maxEffort) ? maxEffort : effort;
 }
 
-function effortFromScore(score, confidence, maxEffort) {
-  if (score < 2.5) return capEffort(score < 0.5 ? 'low' : score < 1.5 ? 'medium' : 'high', maxEffort);
-  if (maxEffort === 'max' && typeof confidence === 'number' && confidence >= MAX_EFFORT_MIN_CONFIDENCE && confidence <= 1) return 'max';
-  return capEffort('xhigh', maxEffort);
+// OMC_JEV_MAX_EFFORT_ALWAYS=1 makes OMC_JEV_MAX_EFFORT a limit for every Task/Agent call,
+// not only for the effort the active model-routing point sets: an explicit effort above
+// the cap is lowered also when the point is off or in shadow mode, when Jev is not asked
+// about the call or gives no usable answer, and when the hook fails. Off by default.
+function isMaxEffortAlwaysEnabled(env = process.env) {
+  return ['1', 'true'].includes(String(env.OMC_JEV_MAX_EFFORT_ALWAYS ?? '').trim().toLowerCase());
+}
+
+// Returns a copy of the Task/Agent input with its effort lowered to the cap, or null
+// when the variable is off, the call has no effort, or its effort is within the cap.
+// No effort is ever added.
+function capExplicitEffort(toolInput) {
+  if (!isMaxEffortAlwaysEnabled() || !toolInput || typeof toolInput.effort !== 'string') return null;
+  const capped = capEffort(toolInput.effort, resolveMaxEffort());
+  return capped === toolInput.effort ? null : { ...toolInput, effort: capped };
+}
+
+// The same cap on main()'s error path, where every other change to the call is dropped.
+// The error may come before the hook input was parsed, so the raw input is parsed here.
+// Returns `{ input, toolInput }` (the parsed hook input and the capped call) or null.
+function capExplicitEffortAfterError(data, rawInput) {
+  if (!isMaxEffortAlwaysEnabled()) return null;
+  try {
+    const input = data && (data.toolInput || data.tool_input) ? data : JSON.parse(rawInput);
+    const toolName = input?.tool_name || input?.toolName;
+    if (toolName !== 'Task' && toolName !== 'Agent') return null;
+    const toolInput = capExplicitEffort(input.toolInput || input.tool_input);
+    return toolInput ? { input, toolInput } : null;
+  } catch {
+    return null;
+  }
+}
+
+function effortFromScore(score, maxEffort) {
+  const below = Math.floor(score);
+  const fraction = score - below;
+  const index = fraction < 0.5 ? below : fraction > 0.5 ? below + 1 : below % 2 === 0 ? below : below + 1;
+  return capEffort(EFFORT_LEVELS[index], maxEffort);
+}
+
+// OMC_JEV_SLOP_WARNING_APPLY=1 lets the active `slop-warning` answer decide whether the
+// warning is shown. Off by default: the heuristic decides and the answer is only logged.
+function isSlopWarningApplyEnabled(env = process.env) {
+  return ['1', 'true'].includes(String(env.OMC_JEV_SLOP_WARNING_APPLY ?? '').trim().toLowerCase());
+}
+
+// Probability of "yes" at or above which the active answer warns. Default 0.8;
+// OMC_JEV_SLOP_WARNING_THRESHOLD overrides it with a number above 0 up to 1.
+const DEFAULT_SLOP_WARNING_THRESHOLD = 0.8;
+
+function resolveSlopWarningThreshold(env = process.env) {
+  const raw = String(env.OMC_JEV_SLOP_WARNING_THRESHOLD ?? '').trim();
+  if (!raw) return DEFAULT_SLOP_WARNING_THRESHOLD;
+  const value = Number(raw);
+  if (Number.isFinite(value) && value > 0 && value <= 1) return value;
+  if (env.OMC_JEV_QUIET !== '1') {
+    console.error('[jev] slop-warning: OMC_JEV_SLOP_WARNING_THRESHOLD=' + raw.slice(0, 40) + ' is not a number above 0 up to 1; using ' + DEFAULT_SLOP_WARNING_THRESHOLD);
+  }
+  return DEFAULT_SLOP_WARNING_THRESHOLD;
 }
 
 function recordSlopWarningShadow(toolName, toolInput, warned, permissionMode) {
-  recordJevShadow({
+  return recordJevShadow({
     point: 'slop-warning',
     state: { toolName, toolInput },
     questions: SLOP_WARNING_QUESTIONS,
@@ -634,12 +797,180 @@ function recordSlopWarningShadow(toolName, toolInput, warned, permissionMode) {
 }
 
 const MODEL_ROUTING_METADATA_MAX_CHARS = 500;
+// How much of the task and the description the hook passes on: the model-routing excerpt
+// limit (12000 by default, OMC_JEV_EXCERPT_CHARS_MODEL_ROUTING to change it), the same
+// limit the resolver then applies to the state. The fields that decide the routing
+// (subagent_type, model, effort, resume) always keep the fixed limit.
+const MODEL_ROUTING_TEXT_MAX_CHARS = resolveExcerptChars('model-routing');
+
+// OMC_JEV_MODEL_ROUTING_CONTEXT=1 adds two fields to the model-routing state: the call's
+// `description` and the last real user message of the parent session, read from the tail
+// of its transcript. Off by default: the state is then the subagent type and the task only.
+function isModelRoutingContextEnabled(env = process.env) {
+  return ['1', 'true'].includes(String(env.OMC_JEV_MODEL_ROUTING_CONTEXT ?? '').trim().toLowerCase());
+}
+
+// By default Jev is asked only when the call or the agent definition names a model that
+// resolves to haiku, sonnet or opus. OMC_JEV_MODEL_ROUTING_ALL_AGENTS=1 also asks for calls
+// with no model at all (a general-purpose agent without one, an agent definition without a
+// `model:` field or with `inherit`): Jev's answer then sets the model and the effort as
+// usual. A call or an agent definition (plugin, project or user) that names any other
+// model, fable for example, is a deliberate choice and is still left alone.
+function isUnpinnedModel(model) {
+  return !model || String(model).trim().toLowerCase() === 'inherit';
+}
+
+function isModelRoutingAllAgentsEnabled(env = process.env) {
+  return ['1', 'true'].includes(String(env.OMC_JEV_MODEL_ROUTING_ALL_AGENTS ?? '').trim().toLowerCase());
+}
+
+// OMC_JEV_MODEL_ROUTING_HINTS=1 adds the routing hints to the model-routing questions.
+function isModelRoutingHintsEnabled(env = process.env) {
+  return ['1', 'true'].includes(String(env.OMC_JEV_MODEL_ROUTING_HINTS ?? '').trim().toLowerCase());
+}
+
+// OMC_JEV_MODEL_ROUTING_FABLE=1 enables fable as an opt-in model choice.
+function isModelRoutingFableOptinEnabled(env = process.env) {
+  return ['1', 'true'].includes(String(env.OMC_JEV_MODEL_ROUTING_FABLE ?? '').trim().toLowerCase());
+}
+
+// The `model:` an agent definition declares, searched the way Claude Code finds the
+// definition: plugin agents, and for a bare name also the project and the user config.
+function readNativeAgentDefinitionModel(subagentType, directory) {
+  const fromPlugin = readAgentDefinitionModel(subagentType);
+  if (fromPlugin || typeof subagentType !== 'string' || !/^[a-zA-Z0-9_-]+$/.test(subagentType)) return fromPlugin;
+  for (const agentsDir of [join(directory || process.cwd(), '.claude', 'agents'), join(getCopilotConfigDir(), 'agents')]) {
+    const model = readAgentDefinitionModel(subagentType, agentsDir);
+    if (model) return model;
+  }
+  return null;
+}
+
+const PARENT_MESSAGE_MAX_CHARS = 4000;
+const TRANSCRIPT_TAIL_BYTES = 4 * 1024 * 1024;
+// User-type transcript entries that are system messages, not the user's own words: Claude
+// Code's task, teammate and command notices and its interruption marker, and the notices the
+// Claude desktop app adds (side-session and CI-monitor events, scheduled tasks, messages
+// from another session).
+const PARENT_MESSAGE_SKIP_PREFIXES = [
+  '<task-notification>', '<teammate-message', '<command-name>', '<command-message>',
+  '<local-command-stdout>', '<local-command-stderr>', '[Request interrupted by user',
+  '<side-sessions-event>', '<ci-monitor-event>', '<scheduled-task', '<cross-session-message',
+  'Another Claude session sent a message:',
+];
+
+// Same boundary as the /goal recovery below: only the active session's own transcript
+// (`<sessionId>.jsonl`), a regular file that is not a symlink, read through one fd.
+function readParentLastUserMessage(transcriptPath, sessionId) {
+  if (typeof transcriptPath !== 'string' || !transcriptPath) return undefined;
+  if (typeof sessionId !== 'string' || !sessionId) return undefined;
+  if (basename(transcriptPath).replace(/\.jsonl$/i, '') !== sessionId) return undefined;
+  let fd;
+  try {
+    const linkStat = lstatSync(transcriptPath);
+    if (linkStat.isSymbolicLink() || !linkStat.isFile()) return undefined;
+    fd = openSync(transcriptPath, 'r');
+    const stat = fstatSync(fd);
+    if (!stat.isFile()) return undefined;
+    const length = Math.min(stat.size, TRANSCRIPT_TAIL_BYTES);
+    const buffer = Buffer.allocUnsafe(length);
+    let read = 0;
+    while (read < length) {
+      const n = readSync(fd, buffer, read, length - read, stat.size - length + read);
+      if (n <= 0) break;
+      read += n;
+    }
+    const lines = buffer.toString('utf8', 0, read).split('\n');
+    for (let i = lines.length - 1; i >= 0; i--) {
+      let entry;
+      try { entry = JSON.parse(lines[i]); } catch { continue; }
+      if (entry?.type !== 'user' || entry.isMeta || entry.isCompactSummary || entry.isSidechain) continue;
+      const content = entry.message?.content;
+      if (Array.isArray(content) && content.some((block) => block?.type === 'tool_result')) continue;
+      const text = (typeof content === 'string' ? content : Array.isArray(content)
+        ? content.filter((block) => block?.type === 'text' && typeof block.text === 'string').map((block) => block.text).join('\n')
+        : '').replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, '').trim();
+      if (text && !PARENT_MESSAGE_SKIP_PREFIXES.some((prefix) => text.startsWith(prefix))) {
+        return text.slice(0, PARENT_MESSAGE_MAX_CHARS);
+      }
+    }
+  } catch {
+    // Missing or unreadable transcript: the field is omitted.
+  } finally {
+    if (fd !== undefined) {
+      try { closeSync(fd); } catch { /* ignore */ }
+    }
+  }
+  return undefined;
+}
+
+// OMC_JEV_MODEL_ROUTING_MARKER=1 lets the caller pin the model and the effort of one
+// Task/Agent call from the first line of its prompt, in place of Jev's answer:
+//   use <model> | use <model> <effort> | use <effort>
+// The whole first non-empty line must have this form (any case, surrounding spaces ignored).
+// The model words and the effort words do not overlap, so `use high` is an effort. The line is
+// an instruction for this hook, not for the agent: it is removed from the prompt, with one
+// blank line after it. A marker anywhere else, or in `description`, is plain text.
+// `max` is never accepted from a marker: it stays Jev's decision (and the cap's).
+const MODEL_ROUTING_MARKER_MODELS = ['haiku', 'sonnet', 'opus', 'fable'];
+const MODEL_ROUTING_MARKER_EFFORTS = ['low', 'medium', 'high', 'xhigh'];
+
+function isModelRoutingMarkerEnabled(env = process.env) {
+  return ['1', 'true'].includes(String(env.OMC_JEV_MODEL_ROUTING_MARKER ?? '').trim().toLowerCase());
+}
+
+// Returns null when the prompt has no marker line. Otherwise `{ line, model, effort,
+// rejected, prompt }`: `rejected` lists what the marker named but may not set (`max`) and
+// `prompt` is the prompt without the marker line. A prompt that is only the marker keeps it.
+function parseModelRoutingMarker(prompt) {
+  if (typeof prompt !== 'string') return null;
+  const lines = prompt.split('\n');
+  const index = lines.findIndex((line) => line.trim() !== '');
+  if (index === -1) return null;
+  const line = lines[index].trim();
+  const tokens = line.toLowerCase().split(/\s+/);
+  if (tokens[0] !== 'use' || tokens.length < 2 || tokens.length > 3) return null;
+  const [, first, second] = tokens;
+  let model;
+  let effort;
+  const rejected = [];
+  if (second === undefined) {
+    if (MODEL_ROUTING_MARKER_MODELS.includes(first)) model = first;
+    else if (MODEL_ROUTING_MARKER_EFFORTS.includes(first)) effort = first;
+    else if (first === 'max') rejected.push('max');
+    else return null;
+  } else {
+    if (!MODEL_ROUTING_MARKER_MODELS.includes(first)) return null;
+    model = first;
+    if (MODEL_ROUTING_MARKER_EFFORTS.includes(second)) effort = second;
+    else if (second === 'max') rejected.push('max');
+    else return null;
+  }
+  const drop = lines[index + 1] !== undefined && lines[index + 1].trim() === '' ? 2 : 1;
+  const rest = lines.slice(index + drop).join('\n');
+  return { line, model, effort, rejected, prompt: rest.trim() === '' ? prompt : rest };
+}
+
+// One line per marker in overrides.jsonl, next to shadow.jsonl. It is a separate file on
+// purpose: jev-eval reads shadow.jsonl and counts every line there as a Jev request.
+function recordModelRoutingOverride(stateDir, row) {
+  try {
+    const dir = process.env.OMC_JEV_LOG_DIR || join(stateDir, 'jev');
+    mkdirSync(dir, { recursive: true });
+    // OMC_JEV_LOG_MAX_MB rotates this file like the other Jev logs (no rotation without it).
+    rotateJevLog(join(dir, 'overrides.jsonl'), resolveJevLogMaxBytes(process.env));
+    appendFileSync(join(dir, 'overrides.jsonl'), JSON.stringify({ ts: new Date().toISOString(), point: 'model-routing', ...row }) + '\n', 'utf8');
+  } catch {
+    // Best-effort logging: a logging failure never affects the call.
+  }
+}
 
 function boundModelRoutingInput(toolInput) {
   const bounded = {};
   for (const key of ['description', 'prompt', 'subagent_type', 'model', 'effort', 'resume']) {
     if (typeof toolInput[key] === 'string') {
-      bounded[key] = toolInput[key].slice(0, MODEL_ROUTING_METADATA_MAX_CHARS);
+      const max = key === 'description' || key === 'prompt' ? MODEL_ROUTING_TEXT_MAX_CHARS : MODEL_ROUTING_METADATA_MAX_CHARS;
+      bounded[key] = toolInput[key].slice(0, max);
     }
   }
   if (typeof toolInput.run_in_background === 'boolean') {
@@ -648,59 +979,231 @@ function boundModelRoutingInput(toolInput) {
   return bounded;
 }
 
-function recordModelRoutingShadow(toolName, toolInput, updatedToolInput, permissionMode) {
-  if (!isJevShadowOptedIn('model-routing', process.env, permissionMode)) return;
+function recordModelRoutingShadow(toolName, toolInput, updatedToolInput, permissionMode, transcriptPath, directory, sessionId, stateDir, toolUseId, inheritedModel = null) {
+  const incomingUpdated = updatedToolInput;
+  // OMC_JEV_MODEL_ROUTING_MARKER: a `use` line in the prompt pins the model and/or the effort.
+  // The marker is the caller's own instruction, so it works whether or not the point is on;
+  // Jev is then asked only the questions the marker leaves open.
+  const marker = isModelRoutingMarkerEnabled() ? parseModelRoutingMarker(toolInput.prompt) : null;
+  if (marker?.model && isForceInheritEnabled() && !resolveTierAliasToSafeModel(marker.model)) {
+    // A tier alias the provider cannot resolve is not set (the marker then sets no model).
+    marker.rejected.push('force-inherit');
+    marker.model = undefined;
+  }
+  const markerApplies = Boolean(marker && (marker.model || marker.effort));
+  const jevOptedIn = isJevShadowOptedIn('model-routing', process.env, permissionMode);
+  if (!jevOptedIn && !marker) return;
 
-  const originalInput = boundModelRoutingInput(toolInput);
+  // Jev judges the task without the marker line.
+  const originalInput = boundModelRoutingInput(markerApplies ? { ...toolInput, prompt: marker.prompt } : toolInput);
   const modifiedInput = boundModelRoutingInput(updatedToolInput || toolInput);
-  const selectedModel = modifiedInput.model || readAgentDefinitionModel(originalInput.subagent_type);
+  // A model from the marker counts as the call's model: Jev is asked the open questions
+  // about a call whose model is known, whether the call or the marker named it.
+  const selectedModel = marker?.model || modifiedInput.model || readAgentDefinitionModel(originalInput.subagent_type);
   const model = isTierAlias(selectedModel) ? selectedModel.toLowerCase() : normalizeToCcAlias(selectedModel);
-  if (!['haiku', 'sonnet', 'opus'].includes(model)) return;
-  
-  const heuristic = model;
-  
-  const jevResult = recordJevShadow({
+  const allowedTiers = ['haiku', 'sonnet', 'opus'];
+  if (isModelRoutingFableOptinEnabled()) {
+    allowedTiers.push('fable');
+  }
+  const knownTier = allowedTiers.includes(model);
+  // A call with no model of its own and no model in a plugin, project or user agent
+  // definition is unpinned; only OMC_JEV_MODEL_ROUTING_ALL_AGENTS asks about those.
+  const unpinned = !knownTier && isModelRoutingAllAgentsEnabled()
+    && isUnpinnedModel(selectedModel || readNativeAgentDefinitionModel(originalInput.subagent_type, directory));
+  if (!knownTier && !unpinned && !marker) return;
+
+  // What the marker settles is not asked: a model leaves the effort question, an effort
+  // leaves the model-tier question, both leave no question and no Jev request at all.
+  const questions = { ...MODEL_ROUTING_QUESTIONS };
+  if (marker?.model) delete questions['model-tier'];
+  if (marker?.effort) delete questions.effort;
+  const askJev = jevOptedIn && (knownTier || unpinned) && Object.keys(questions).length > 0;
+
+  // No twin tier for a call without a known model: nothing comparable to log.
+  const heuristic = knownTier ? model : null;
+
+  let context = {};
+  if (askJev && isModelRoutingContextEnabled()) {
+    const parentMessage = readParentLastUserMessage(resolveTranscriptPath(transcriptPath, directory), sessionId);
+    context = {
+      description: originalInput.description || '',
+      ...(parentMessage ? { parent_last_user_message: parentMessage } : {}),
+    };
+  }
+
+  const jevResult = !askJev ? undefined : recordJevShadow({
     point: 'model-routing',
     state: {
       tool_name: toolName,
       subagent_type: originalInput.subagent_type || '',
       task: originalInput.prompt || '',
+      ...context,
     },
-    questions: MODEL_ROUTING_QUESTIONS,
+    questions,
     heuristic,
     permissionMode,
+    toolUseId,
   });
-  
+
+  const ensureUpdated = () => {
+    if (!updatedToolInput) updatedToolInput = { ...toolInput };
+    return updatedToolInput;
+  };
+  // The model and effort the call had before Jev and the marker touched it (for the log).
+  const baseModel = (updatedToolInput || toolInput).model;
+  const baseEffort = (updatedToolInput || toolInput).effort;
+  // Read lazily and once: the cap is only looked at when an effort is set, and a bad value is reported once.
+  let maxEffortValue;
+  const maxEffort = () => (maxEffortValue ??= resolveMaxEffort());
+
   // In active mode, Jev's answers replace the model and effort in the call,
   // explicit values included. Answers are read by question name: the API
   // does not guarantee their order. A missing or malformed answer leaves that
   // field as it was.
   const answers = jevResult && jevResult.mode === 'active' ? jevResult.answers : undefined;
   if (answers && typeof answers === 'object') {
-    const ensureUpdated = () => {
-      if (!updatedToolInput) updatedToolInput = { ...toolInput };
-      return updatedToolInput;
-    };
     const tierChoice = answers['model-tier']?.choice;
     const jevChoice = typeof tierChoice === 'string' ? tierChoice.toLowerCase() : undefined;
-    if (jevChoice && ['haiku', 'sonnet', 'opus'].includes(jevChoice)) {
+    // With forceInherit a call without a model deliberately inherits the session model,
+    // and a tier alias the provider cannot resolve is denied: set the alias on such a call
+    // only when it resolves to a provider model.
+    const inheritsSessionModel = unpinned && isForceInheritEnabled() && !resolveTierAliasToSafeModel(jevChoice);
+    const allowedJevChoices = ['haiku', 'sonnet', 'opus'];
+    if (isModelRoutingFableOptinEnabled()) {
+      allowedJevChoices.push('fable');
+    }
+    if (jevChoice && allowedJevChoices.includes(jevChoice) && !inheritsSessionModel) {
       ensureUpdated().model = jevChoice;
     }
 
-    const maxEffort = resolveMaxEffort();
-    // Only a score answer inside the declared 0-3 range counts; anything else
+    // Only a score answer inside the declared 0-4 range counts; anything else
     // is treated as a missing effort answer.
     const effortAnswer = answers.effort;
     const effortScore = effortAnswer?.type === 'score' ? effortAnswer.score : undefined;
     const currentEffort = (updatedToolInput || toolInput).effort;
-    if (typeof effortScore === 'number' && Number.isFinite(effortScore) && effortScore >= 0 && effortScore <= 3) {
-      ensureUpdated().effort = effortFromScore(effortScore, effortAnswer.confidence, maxEffort);
-    } else if (typeof currentEffort === 'string' && capEffort(currentEffort, maxEffort) !== currentEffort) {
-      ensureUpdated().effort = capEffort(currentEffort, maxEffort);
+    if (typeof effortScore === 'number' && Number.isFinite(effortScore) && effortScore >= 0 && effortScore <= 4) {
+      ensureUpdated().effort = effortFromScore(effortScore, maxEffort());
+    } else if (typeof currentEffort === 'string' && capEffort(currentEffort, maxEffort()) !== currentEffort) {
+      ensureUpdated().effort = capEffort(currentEffort, maxEffort());
     }
+    // What the agent would have run on without Jev: the call's model, else its definition's.
+    // A call that is unpinned (no model on the call or in any definition) runs on the
+    // inherited session model, with or without routing.forceInherit: that is the baseline.
+    const inheritsSession = Boolean(unpinned && inheritedModel);
+    // A concrete model the call or its definition pins stays concrete: its tier alias may
+    // resolve to a different version.
+    const baselineModel = inheritsSession
+      ? inheritedModel
+      : knownTier && !isTierAlias(selectedModel) ? selectedModel : knownTier ? model : modifiedInput.model;
+    // Resolve the baseline effort: the effort the call would run on without Jev, checking
+    // explicit call effort, agent definition effort, and inherited session effort in order.
+    // Use the original baseEffort saved before any modifications, but resolve inherited values.
+    // The always-on cap bounds only an explicit call effort (capExplicitEffort adds none to a
+    // call without one), so it is applied to that value before the inherited ones are resolved:
+    // an inherited effort stays as it is and a Jev change from it is recorded.
+    const explicitEffort = typeof baseEffort === 'string' && isMaxEffortAlwaysEnabled() ? capEffort(baseEffort, maxEffort()) : baseEffort;
+    const baselineEffort = explicitEffort || resolveBaselineEffort(undefined, originalInput.subagent_type, directory);
+    noteJevRouting({ model: baselineModel, effort: baselineEffort }, updatedToolInput, answers, originalInput.subagent_type, typeof toolInput.name === 'string' && toolInput.name.trim() !== '');
   }
-  
+
+  // The marker wins over the call's own values and over Jev's answers. The effort is still
+  // capped by OMC_JEV_MAX_EFFORT; the marker line leaves the prompt the agent receives.
+  if (marker) {
+    const row = {
+      ...(typeof sessionId === 'string' && sessionId ? { session_id: sessionId } : {}),
+      subagent_type: originalInput.subagent_type || null,
+      marker: marker.line,
+    };
+    if (marker.rejected.length > 0) row.rejected = marker.rejected;
+    if (markerApplies) {
+      const target = ensureUpdated();
+      row.override = marker.model && marker.effort ? 'both' : marker.model ? 'model' : 'effort';
+      if (marker.model) {
+        target.model = marker.model;
+        row.model = { from: baseModel ?? null, to: marker.model };
+      }
+      if (marker.effort) {
+        const to = capEffort(marker.effort, maxEffort());
+        target.effort = to;
+        row.effort = { from: baseEffort ?? null, to, ...(to !== marker.effort ? { capped: true, requested: marker.effort } : {}) };
+      }
+      target.prompt = marker.prompt;
+    }
+    recordModelRoutingOverride(stateDir, row);
+  }
+
+  // A copy of the call's input that no answer and no marker changed is not sent back: an
+  // updatedInput identical to the input would only make Claude Code replace the call with itself.
+  if (updatedToolInput && updatedToolInput !== incomingUpdated) {
+    const keys = new Set([...Object.keys(toolInput), ...Object.keys(updatedToolInput)]);
+    const unchanged = [...keys].every((key) => JSON.stringify(toolInput[key]) === JSON.stringify(updatedToolInput[key]));
+    if (unchanged) return incomingUpdated;
+  }
   return updatedToolInput;
+}
+
+// OMC_JEV_APPLIED_LOG: what Jev's active answers set on a Task/Agent call,
+// against what the agent would have run on without them (the call's model,
+// else the one its definition names). The applied.jsonl line is written only
+// once the hook output carries those values in updatedInput
+// (emitPreToolUseOutput), so a call that a later check denies, or a value that
+// other code replaced, leaves no line. An effort lowered by OMC_JEV_MAX_EFFORT
+// alone is the cap's doing, not Jev's, and is not recorded.
+let pendingJevRouting;
+
+function noteJevRouting(before, updated, answers, subagentType, teamMember = false) {
+  pendingJevRouting = undefined;
+  if (!updated || !isJevAppliedLogEnabled()) return;
+  const applied = {};
+  const choice = answers['model-tier']?.choice;
+  // Compare the models the call actually runs on: a tier alias that resolves to the baseline's
+  // concrete model changes nothing, and one that resolves to another version does.
+  // The tier default the alias selects, like src/config/models.ts resolveTierModelFromEnv: the first
+  // set variable, or the built-in default if no variable is set.
+  const routedModel = (id) => {
+    if (!isTierAlias(id)) return id;
+    const tier = id.toLowerCase();
+    // Check environment variables first
+    const envValue = (TIER_TO_DEFAULT_ENV_KEYS_FOR_APPLIED_LOG[tier] ?? []).map((key) => (process.env[key] || '').trim()).find(Boolean);
+    if (envValue) return envValue;
+    // Fall back to built-in default if no env variable is set
+    return BUILTIN_TIER_MODEL_DEFAULTS[tier] || id;
+  };
+  if (typeof choice === 'string' && updated.model === choice.toLowerCase() && routedModel(updated.model) !== routedModel(before.model)) {
+    applied.model = { from: before.model ?? null, to: updated.model };
+  }
+  const score = answers.effort?.type === 'score' ? answers.effort.score : undefined;
+  if (typeof score === 'number' && Number.isFinite(score) && score >= 0 && score <= 4 && updated.effort !== before.effort) {
+    // The confidence of the effort answer (0-1, else null). A call with a name is a team member:
+    // Claude Code may not apply a spawn-time effort to it, so the line says the delivery is unknown.
+    const confidence = answers.effort.confidence;
+    applied.effort = {
+      from: before.effort ?? null,
+      to: updated.effort,
+      score,
+      confidence: typeof confidence === 'number' && confidence >= 0 && confidence <= 1 ? confidence : null,
+      ...(teamMember ? { delivered: 'unknown-team-member' } : {}),
+    };
+  }
+  if (applied.model || applied.effort) pendingJevRouting = { subagent_type: subagentType || null, ...applied };
+}
+
+function flushJevRouting(output) {
+  const pending = pendingJevRouting;
+  if (!pending) return;
+  pendingJevRouting = undefined;
+  try {
+    const sent = output?.hookSpecificOutput?.updatedInput;
+    if (!sent || typeof sent !== 'object') return;
+    const { subagent_type, model, effort } = pending;
+    const carried = {
+      ...(model && sent.model === model.to ? { model } : {}),
+      ...(effort && sent.effort === effort.to ? { effort } : {}),
+    };
+    if (carried.model || carried.effort) recordJevApplied('model-routing', { subagent_type, ...carried });
+  } catch {
+    // The applied log is advisory: it must never cost the hook its output.
+  }
 }
 
 function generateSlopWarning(data, toolName) {
@@ -714,14 +1217,29 @@ function generateSlopWarning(data, toolName) {
   const inspectedText = collectStringValues(toolInput)
     .concat(collectStringValues(promptLikeFields))
     .join('\n');
-  const warned = shouldWarnForSlopFallbackLanguage(data, toolName, inspectedText);
-  recordSlopWarningShadow(toolName, data.toolInput || data.tool_input || {}, warned, data.permission_mode);
-  if (!warned) return '';
+  let warned = shouldWarnForSlopFallbackLanguage(data, toolName, inspectedText);
+  let appliedAction = null;
+  const jevResult = recordSlopWarningShadow(toolName, data.toolInput || data.tool_input || {}, warned, data.permission_mode);
+  if (isSlopWarningApplyEnabled()) {
+    // Only an active answer decides; shadow, degraded and missing answers keep the heuristic.
+    const noul = jevNoulOf(jevResult, 'slop_advisory');
+    if (noul !== undefined) {
+      const activeWarning = noul >= resolveSlopWarningThreshold();
+      if (activeWarning !== warned) {
+        appliedAction = {
+          action: { from: warned ? 'warn' : 'none', to: activeWarning ? 'warn' : 'none', noul },
+        };
+      }
+      warned = activeWarning;
+    }
+  }
+  if (!warned) return { warning: '', appliedAction };
 
-  return '[SLOP WARNING] Detected fallback/workaround language in this tool input. ' +
+  const warning = '[SLOP WARNING] Detected fallback/workaround language in this tool input. ' +
     'Do not make potential slop: avoid ad-hoc fallback layers, workaround shims, or environment-specific patches unless explicitly justified. ' +
     'For architecture concerns, consult the architect for a concrete design first. ' +
     'If this seems environment-specific, ask the user to confirm constraints before proceeding.';
+  return { warning, appliedAction };
 }
 
 function combineHookMessages(...messages) {
@@ -1931,7 +2449,26 @@ function isCodexPreToolUse(input) {
     Boolean(input && typeof input === 'object' && typeof input.turn_id === 'string');
 }
 
+// Warnings of the opt-in shell checks (OMC_SHELL_CHECKS=1) ride on whatever output the hook emits, unless it denies.
+let shellCheckContext = '';
+function withShellCheckContext(output) {
+  if (!shellCheckContext || !output || typeof output !== 'object') return output;
+  const hookOutput = output.hookSpecificOutput && typeof output.hookSpecificOutput === 'object' ? output.hookSpecificOutput : {};
+  if (hookOutput.permissionDecision === 'deny') return output;
+  const context = typeof hookOutput.additionalContext === 'string' && hookOutput.additionalContext
+    ? `${shellCheckContext}
+
+${hookOutput.additionalContext}`
+    : shellCheckContext;
+  const merged = { ...output, hookSpecificOutput: { ...hookOutput, hookEventName: 'PreToolUse', additionalContext: context } };
+  delete merged.suppressOutput; // the warning is meant to be seen
+  shellCheckContext = '';
+  return merged;
+}
+
 function emitPreToolUseOutput(output, input, space = 0) {
+  output = withShellCheckContext(output);
+  flushJevRouting(output);
   if (!isCodexPreToolUse(input)) {
     console.log(JSON.stringify(output, null, space));
     return;
@@ -1989,8 +2526,9 @@ async function main() {
   }
 
   let data = {};
+  let input = '';
   try {
-    const input = await readStdin();
+    input = await readStdin();
 
     const toolName = extractJsonField(input, 'tool_name') || extractJsonField(input, 'toolName', 'unknown');
     const directory = extractJsonField(input, 'cwd') || extractJsonField(input, 'directory', process.cwd());
@@ -2004,6 +2542,29 @@ async function main() {
     // Record Skill invocations to flow trace
     data = {};
     try { data = JSON.parse(input); } catch {}
+    await setJevHookContext(data);
+
+    // Opt-in shell checks (OMC_SHELL_CHECKS=1) for Bash and PowerShell commands. Fail-open: any error here
+    // leaves the hook behaving as without the checks.
+    if ((toolName === 'Bash' || toolName === 'PowerShell') && process.env.OMC_SHELL_CHECKS === '1') {
+      try {
+        const { runShellChecks } = await import('./lib/shell-checks.mjs');
+        const verdict = runShellChecks(toolName, data, { logDir: join(stateDir, 'shell-checks') });
+        if (verdict?.decision === 'deny' && verdict.reason) {
+          emitPreToolUseOutput({
+            continue: true,
+            hookSpecificOutput: {
+              hookEventName: 'PreToolUse',
+              permissionDecision: 'deny',
+              permissionDecisionReason: verdict.reason,
+            },
+          }, data);
+          return;
+        }
+        if (verdict?.context) shellCheckContext = verdict.context;
+      } catch { /* fail-open */ }
+    }
+
     recordToolInvocation(data, directory);
 
     // Activate skill state when Skill tool is invoked (issue #1033)
@@ -2029,6 +2590,7 @@ async function main() {
         : typeof data.sessionId === 'string'
           ? data.sessionId
           : '';
+    setJevSessionId(sessionId, data.agent_id || data.agentId);
 
     const ultragoalDenyReason = evaluateUltragoalPreToolEnforcement(stateDir, directory, sessionId, data, omcRoot);
     if (ultragoalDenyReason) {
@@ -2174,9 +2736,24 @@ async function main() {
 
     if (toolName === 'Task' || toolName === 'Agent') {
       const toolInput = data.toolInput || data.tool_input || {};
-      const jevUpdated = recordModelRoutingShadow(toolName, toolInput, updatedToolInput, data.permission_mode);
+      // Extract inherited session model for Jev baseline when forceInherit is enabled
+      // or when model-routing-all-agents is enabled (both handle unpinned calls with inherited models)
+      let inheritedModel = null;
+      if (isForceInheritEnabled() || isModelRoutingAllAgentsEnabled()) {
+        const claudeModel = process.env.CLAUDE_MODEL || '';
+        const anthropicModel = process.env.ANTHROPIC_MODEL || '';
+        inheritedModel = claudeModel || anthropicModel || null;
+      }
+      const jevUpdated = recordModelRoutingShadow(toolName, toolInput, updatedToolInput, data.permission_mode, data.transcript_path || data.transcriptPath || '', directory, data.session_id || data.sessionId || '', stateDir, data.tool_use_id || data.toolUseID, inheritedModel);
       // In active mode, Jev may override the model choice
       if (jevUpdated) updatedToolInput = jevUpdated;
+      // Test-only: force exception after Jev routing is staged to verify catch path
+      if (process.env.OMC_JEV_TESTING_FORCE_LATE_ERROR === '1') {
+        throw new Error('Test-forced error after Jev routing staging');
+      }
+      // OMC_JEV_MAX_EFFORT_ALWAYS=1: the cap holds whether or not Jev set the effort.
+      const effortCapped = capExplicitEffort(updatedToolInput || toolInput);
+      if (effortCapped) updatedToolInput = effortCapped;
     }
 
     // Send notification when AskUserQuestion is about to execute (user input needed)
@@ -2277,7 +2854,9 @@ async function main() {
       }
     }
 
-    const slopWarning = generateSlopWarning(data, toolName);
+    const { warning: slopWarning, appliedAction } = generateSlopWarning(data, toolName);
+    // A suppressed warning is applied as soon as it is decided; an added one only once it reaches the output.
+    if (appliedAction && appliedAction.action.to === 'none') recordJevApplied('slop-warning', appliedAction);
     let message;
     if (BUILT_IN_TASK_LIST_TOOL_NAMES.has(toolName)) {
       emitPreToolUseOutput({ continue: true, suppressOutput: true }, data);
@@ -2327,9 +2906,24 @@ async function main() {
         ...(updatedToolInput ? { updatedInput: updatedToolInput } : {})
       }
     }, data, 2);
+    if (slopWarning && appliedAction && appliedAction.action.to === 'warn') {
+      recordJevApplied('slop-warning', appliedAction);
+    }
   } catch (error) {
-    // On error, always continue
-    emitPreToolUseOutput({ continue: true, suppressOutput: true }, data);
+    // On error, always continue. A decision noted before the error is not applied, so it is not recorded either.
+    pendingJevRouting = undefined;
+    // With OMC_JEV_MAX_EFFORT_ALWAYS=1 a Task/Agent call
+    // still does not run above the effort cap; nothing else in it is changed.
+    const capped = capExplicitEffortAfterError(data, input);
+    if (capped) {
+      emitPreToolUseOutput({
+        continue: true,
+        suppressOutput: true,
+        hookSpecificOutput: { hookEventName: 'PreToolUse', updatedInput: capped.toolInput },
+      }, capped.input);
+    } else {
+      emitPreToolUseOutput({ continue: true, suppressOutput: true }, data);
+    }
   }
 }
 

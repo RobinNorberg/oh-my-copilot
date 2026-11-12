@@ -97,10 +97,10 @@ describe('alias-retirement registry', () => {
     // shipped as real skill directories (upstream c5b71636e); additions, not
     // retirements.
     const all = createBuiltinSkills();
-    expect(all).toHaveLength(100);
+    expect(all).toHaveLength(101);
     const canonical = all.filter((s) => !s.aliasOf);
     const aliases = all.filter((s) => !!s.aliasOf);
-    expect(canonical).toHaveLength(98);
+    expect(canonical).toHaveLength(99);
     expect(aliases).toHaveLength(2);
     expect(aliases.map((s) => s.name).sort()).toEqual(['cancel-ralph', 'psm'].sort());
   });

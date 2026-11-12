@@ -11538,6 +11538,33 @@ function ensureDirSync(dir) {
     throw err;
   }
 }
+function shouldRetryRename(error2) {
+  if (process.platform !== "win32") {
+    return false;
+  }
+  const err = error2;
+  return err?.code === "EPERM" || err?.code === "EBUSY" || err?.code === "EACCES";
+}
+async function renameWithRetry(tempPath, filePath, maxAttempts = 10, delayMs = 3) {
+  let lastError = null;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      await fs2.rename(tempPath, filePath);
+      return;
+    } catch (error2) {
+      if (!shouldRetryRename(error2)) {
+        throw error2;
+      }
+      lastError = error2;
+      if (attempt < maxAttempts - 1) {
+        await new Promise((resolve63) => setTimeout(resolve63, delayMs));
+      }
+    }
+  }
+  if (lastError) {
+    throw lastError;
+  }
+}
 function writeAllSync(fd, content, label) {
   const bytes = Buffer.from(content, "utf-8");
   let offset = 0;
@@ -11690,7 +11717,7 @@ async function atomicWriteJson(filePath, data, hooks) {
       verifyPrivateTempFile(fd.fd, tempPath, "atomic JSON write");
       backupPath = preservePriorTarget(filePath);
       hooks?.beforeRename?.();
-      await fs2.rename(tempPath, filePath);
+      await renameWithRetry(tempPath, filePath);
       let publishedIdentity = null;
       try {
         verifyPublishedFile(fd.fd, filePath, "atomic JSON write");
@@ -12949,12 +12976,12 @@ function containerUriToHostUri(uri, context) {
   if (!context || !uri.startsWith("file://")) {
     return uri;
   }
-  const url = new URL(uri);
-  if (url.host !== "" || /%2f/i.test(url.pathname)) {
-    throw new TypeError(`Invalid container file URI: ${uri}`);
+  const containerPath = containerFileUriToPath(uri);
+  if (containerPath === null) {
+    return uri;
   }
-  const containerPath = decodeURIComponent(url.pathname);
-  return (0, import_url2.pathToFileURL)(containerPathToHostPath(containerPath, context)).href;
+  const hostPath = containerPathToHostPath(containerPath, context);
+  return hostPath === containerPath ? uri : (0, import_url2.pathToFileURL)(hostPath).href;
 }
 function resolveDevContainerConfigPath(workspaceRoot) {
   let dir = workspaceRoot;
@@ -13090,14 +13117,14 @@ function scoreContainerMatch(inspect, hostWorkspaceRoot, configFilePath) {
   let hasDevContainerLabelMatch = false;
   const expectedLocalFolder = configFilePath ? deriveHostDevContainerRoot(configFilePath) : (0, import_path10.resolve)(hostWorkspaceRoot);
   for (const label of DEVCONTAINER_LOCAL_FOLDER_LABELS) {
-    if (labels[label] && (0, import_path10.resolve)(labels[label]) === expectedLocalFolder) {
+    if (labels[label] && isSameHostPath(labels[label], expectedLocalFolder)) {
       score += 4;
       hasDevContainerLabelMatch = true;
     }
   }
   if (configFilePath) {
     for (const label of DEVCONTAINER_CONFIG_FILE_LABELS) {
-      if (labels[label] && (0, import_path10.resolve)(labels[label]) === configFilePath) {
+      if (labels[label] && isSameHostPath(labels[label], configFilePath)) {
         score += 3;
         hasDevContainerLabelMatch = true;
       }
@@ -13109,6 +13136,9 @@ function scoreContainerMatch(inspect, hostWorkspaceRoot, configFilePath) {
   }
   return score;
 }
+function isSameHostPath(left, right) {
+  return (0, import_path10.relative)((0, import_path10.resolve)(left), (0, import_path10.resolve)(right)) === "";
+}
 function normalizeContainerPath(filePath) {
   return import_path11.posix.normalize(filePath.replace(/\\/g, "/"));
 }
@@ -13116,6 +13146,14 @@ function containerPathToFileUri(filePath) {
   const normalizedPath = normalizeContainerPath(filePath);
   const encodedPath = normalizedPath.split("/").map((segment) => encodeURIComponent(segment)).join("/");
   return `file://${encodedPath.startsWith("/") ? encodedPath : `/${encodedPath}`}`;
+}
+function containerFileUriToPath(uri) {
+  try {
+    const { pathname } = new URL(uri);
+    return /%2f/i.test(pathname) ? null : normalizeContainerPath(decodeURIComponent(pathname));
+  } catch {
+    return null;
+  }
 }
 function runDocker(args) {
   const result = (0, import_child_process5.spawnSync)("docker", args, {
@@ -29117,10 +29155,13 @@ var init_types8 = __esm({
 });
 
 // src/hooks/jev/config.ts
+var BYTES_PER_MB, MAX_LOG_MB;
 var init_config = __esm({
   "src/hooks/jev/config.ts"() {
     "use strict";
     init_worktree_paths();
+    BYTES_PER_MB = 1024 * 1024;
+    MAX_LOG_MB = Math.floor(Number.MAX_SAFE_INTEGER / BYTES_PER_MB);
   }
 });
 
@@ -29148,11 +29189,41 @@ var init_task_size_detector = __esm({
 });
 
 // src/hooks/keyword-detector/index.ts
-var KEYWORD_PRIORITY, CANONICAL_WORKFLOW_SLASH_SKILLS, WORKFLOW_SLASH_PATTERN, PATH_SEGMENT_CHARS, FILE_PATH_PATTERN;
+var AUTOPILOT_ALIAS_PATTERN, AUTOPILOT_OTHER_PATTERN, KEYWORD_PATTERNS, KEYWORD_PRIORITY, CANONICAL_WORKFLOW_SLASH_SKILLS, WORKFLOW_SLASH_PATTERN, PATH_SEGMENT_CHARS, FILE_PATH_PATTERN, AUTOPILOT_COMMAND_VERBS, AUTOPILOT_HYPHENATED_VERB, AUTOPILOT_COMMAND_WORD, AUTOPILOT_STATUS_CONTINUATION, AUTOPILOT_NOT_A_COMMAND_AFTER, AUTOPILOT_NON_COMMAND_WORDS, AUTOPILOT_LEADING_STATUS, AUTOPILOT_COMMAND_AFTER, AUTOPILOT_COLON_VERB, AUTOPILOT_NON_ENGLISH_LINE;
 var init_keyword_detector = __esm({
   "src/hooks/keyword-detector/index.ts"() {
     "use strict";
     init_task_size_detector();
+    AUTOPILOT_ALIAS_PATTERN = /\b(autopilot|auto[\s-]?pilot|fullsend|full\s+auto)\b/i;
+    AUTOPILOT_OTHER_PATTERN = /\b(?:build|create|make)\s+me\s+(?:an?\s+)?(?:app|feature|project|tool|plugin|website|api|server|cli|script|system|service|dashboard|bot|extension)\b|\bi\s+want\s+an?\s+(?:app|feature|project|tool|plugin|website|api|server|cli|script|system|service|dashboard|bot|extension)\b|(오토파일럿)|(オートパイロット)/i;
+    KEYWORD_PATTERNS = {
+      cancel: /\b(cancelomc|stopomc)\b/i,
+      ralph: /\b(ralph)\b(?!-)|(랄프)(?!로렌)|(ラルフ)(?!・?ローレン)/i,
+      autopilot: new RegExp(`${AUTOPILOT_ALIAS_PATTERN.source}|${AUTOPILOT_OTHER_PATTERN.source}`, "i"),
+      // Team keyword detection disabled — team mode is now explicit-only via /team skill.
+      // This prevents infinite spawning when Claude workers receive prompts containing "team".
+      team: /(?!x)x/,
+      // never-match placeholder (type system requires the key)
+      ralplan: /\b(ralplan)\b|(랄플랜)|(ラルプラン)/i,
+      tdd: /\b(tdd)\b|\btest\s+first\b|(테스트\s?퍼스트)|(テスト\s?ファースト)/i,
+      "code-review": /\b(code\s+review|review\s+code)\b|(코드\s?리뷰)(?!어)|(コード\s?レビュー)(?!ア)/i,
+      "security-review": /\b(security\s+review|review\s+security)\b|(보안\s?리뷰)(?!어)|(セキュリティ[ー]?\s?レビュー)(?!ア)/i,
+      ultrathink: /\b(ultrathink)\b|(울트라씽크)|(ウルトラシンク)/i,
+      deepsearch: /\b(deepsearch)\b|\bsearch\s+the\s+codebase\b|\bfind\s+in\s+(the\s+)?codebase\b|(딥\s?서치)|(ディープ\s?サーチ)/i,
+      analyze: /\b(deep[\s-]?analyze|deepanalyze)\b|(딥\s?분석)|(ディープ\s?アナライズ)/i,
+      "deep-interview": /\b(deep[\s-]interview|ouroboros)\b|(딥인터뷰)|(ディープインタビュー)/i,
+      // Script-only triggers: never-match placeholders (script detects them, TypeScript doesn't)
+      ultragoal: /(?!x)x/,
+      // Script-only detection
+      "ai-slop-cleaner": /(?!x)x/,
+      // Script-only detection
+      wiki: /(?!x)x/,
+      // Script-only detection
+      codex: /\b(ask|use|delegate\s+to)\s+(codex|gpt)\b/i,
+      gemini: /\b(ask|use|delegate\s+to)\s+gemini\b/i,
+      cursor: /\b(ask|use|delegate\s+to)\s+cursor\b/i,
+      antigravity: /\b(ask|use|delegate\s+to)\s+(antigravity|agy)\b/i
+    };
     KEYWORD_PRIORITY = [
       "cancel",
       "ralph",
@@ -29191,6 +29262,16 @@ var init_keyword_detector = __esm({
       "(^|[\\s\"'`(])(?:\\/)?(?:" + PATH_SEGMENT_CHARS + "+\\/)+(?:" + PATH_SEGMENT_CHARS + "*\\.\\w+|[\\w.\\-]+)",
       "gm"
     );
+    AUTOPILOT_COMMAND_VERBS = "fix|debug|investigate|resolve|handle|patch|address|implement|build|create|make|run|start|enable|activate|invoke|trigger|launch|plan|add|write|refactor|update|remove|migrate|finish|continue|do|go|test|review|check|verify|audit|analy[sz]e|inspect|deploy|install|configure|document|explain|find|search|generate|convert|ship|release|merge|prepare|design|draft|upgrade|rename|clean|optimi[sz]e|rewrite|summari[sz]e|compare|bring|ping|seed";
+    AUTOPILOT_HYPHENATED_VERB = "(?:re-(?:run|test|check|build|deploy|install|implement|review|verify|try|apply|start|launch|write|format|generate|create)|double-check|cross-check|un-install)";
+    AUTOPILOT_COMMAND_WORD = `(?:(?:${AUTOPILOT_COMMAND_VERBS})|${AUTOPILOT_HYPHENATED_VERB})`;
+    AUTOPILOT_STATUS_CONTINUATION = "\\s+(?:fails|was|were|is|are|has|had|looks|takes|keeps|hangs|hung|timed\\s+out|succeeds|passes|completes|finishes|works)(?![\\p{L}\\d])|\\s+(?:failed|crashed|errored|ok|okay|done|green|succeeded|passed|completed|finished|worked)(?![\\p{L}\\d])(?=[ \\t]*(?:[.,;:!?)]|\\r?\\n|$)|[ \\t]+(?:on|at|in|with|after|during|for|because|again|twice|and|but|so|before|when|while|since|until|due|once|yesterday|today|overnight|too|earlier|already)(?![\\p{L}\\d]))|\\s+(?:step|phase|exit|status|log|suite|mode|output|report|results?|summary)\\s+(?:\\d+|is|are|was|were|has|had|failed|fails|passed|passes|succeeded|looks|takes|keeps|crashed|errored|ok|okay|red|green)(?![\\p{L}\\d])";
+    AUTOPILOT_NOT_A_COMMAND_AFTER = `(?!${AUTOPILOT_STATUS_CONTINUATION})`;
+    AUTOPILOT_NON_COMMAND_WORDS = "a|an|the|this|that|these|those|my|our|your|his|her|its|their|i|we|you|he|she|it|they|me|us|them|is|are|was|were|be|been|am|has|have|had|do|does|did|will|would|can|could|should|may|might|must|shall|not|no|nor|and|or|but|so|if|then|than|as|at|in|on|of|to|for|from|with|by|about|into|onto|over|under|after|before|during|until|while|when|where|which|who|whom|what|why|how|also|just|only|still|already|always|never|now|currently|ready|idle|off|none|nothing|active|inactive|enabled|disabled|available|unavailable|busy|pending|offline|online|yes|here|there|too|very|really|actually|maybe|perhaps|however|hung|hangs|stuck|ran|went|got|took|broke|broken|froze|frozen|became|seems|seemed|remains|lost|left|hit|began|saw|said|gave|found|kept|knew|thought|told|wrote|made|built|sent|spent|stood|held|fell|drew|drove|chose|came|won|threw|grew|met|paid|rose|sold|taught|understood|wore|sat|slept|spoke|swept|sank";
+    AUTOPILOT_LEADING_STATUS = new RegExp(`^(?:[ \\t]*[:\\uFF1A][ \\t]*(?:(?:${AUTOPILOT_NON_COMMAND_WORDS})|(?!(?:bring|ping|seed|feed|embed|proceed|succeed|speed|need|shred|string|swing|sing|ring|fling|sling|sting|wring|spring|cling)(?![\\p{L}\\d]))\\p{L}*(?:ing|ed))(?![\\p{L}\\d])|[ \\t]+(?:${AUTOPILOT_COMMAND_VERBS})(?![\\p{L}\\d])(?:${AUTOPILOT_STATUS_CONTINUATION}))`, "iu");
+    AUTOPILOT_COMMAND_AFTER = new RegExp(`^(?:[ \\t]*[,;!\\u2014\\u2013][ \\t]*|[ \\t]+-[ \\t]+|[ \\t]+)${AUTOPILOT_COMMAND_WORD}(?![\\p{L}\\d])${AUTOPILOT_NOT_A_COMMAND_AFTER}`, "iu");
+    AUTOPILOT_COLON_VERB = new RegExp(`^[ \\t]*[:\\uFF1A][ \\t]*${AUTOPILOT_COMMAND_WORD}(?![\\p{L}\\d])${AUTOPILOT_NOT_A_COMMAND_AFTER}`, "iu");
+    AUTOPILOT_NON_ENGLISH_LINE = new RegExp("[\\p{Script=Hangul}\\p{Script=Hiragana}\\p{Script=Katakana}\\p{Script=Han}\\p{Script=Thai}]|(?![A-Za-z])\\p{L}", "u");
   }
 });
 
@@ -29220,7 +29301,7 @@ function defineJudgmentPoint(definition) {
     blocking: definition.blocking
   };
 }
-var INTENT_QUESTIONS, NOUL_QUESTIONS, SCORE_QUESTIONS, MODEL_ROUTING_QUESTIONS, STALENESS_QUESTIONS, VERDICT_QUESTIONS, TASK_SIZE_QUESTIONS, LEARNER_EXTRACTION_QUESTIONS, SLOP_WARNING_QUESTIONS, SIMPLIFIER_TRIGGER_QUESTIONS, JUDGMENT_POINTS;
+var INTENT_QUESTIONS, NOUL_QUESTIONS, SCORE_QUESTIONS, MODEL_ROUTING_QUESTIONS, STALENESS_QUESTIONS, VERDICT_QUESTIONS, TASK_SIZE_QUESTIONS, LEARNER_EXTRACTION_QUESTIONS, SLOP_WARNING_QUESTIONS, SIMPLIFIER_TRIGGER_QUESTIONS, COMPACTION_QUESTIONS, JUDGMENT_POINTS;
 var init_points = __esm({
   "src/hooks/jev/points.ts"() {
     "use strict";
@@ -29258,21 +29339,22 @@ var init_points = __esm({
     MODEL_ROUTING_QUESTIONS = {
       "model-tier": {
         type: "choice",
-        instructions: "Which model tier should this delegated task use?",
+        instructions: "Which model should do this delegated task? Choose the cheapest model that will do the work well, meaning correctly and completely. Reasoning effort is chosen by a separate question, so the length of the brief and the number of steps do not by themselves call for a more expensive model. Judge the work the delegated agent must actually do; the formal conditions of the brief (language and style rules, permission to use subagents, bans, file locations, report format, words in capitals) and the name of the agent type do not raise the choice. A more expensive model is needed when a cheaper one would clearly be more likely to get this work wrong or to miss something important. When the brief fits several descriptions, judge by the hardest important part of the work.",
         criteria: {
-          haiku: "Quick lookups and lightweight, mechanical work",
-          sonnet: "Standard coding and orchestration work",
-          opus: "Complex architecture and deep analysis"
+          haiku: "Haiku: mechanical work whose result follows directly from the data and is easy to check: look up, read, list, count, copy, compile a list, run a command and report the result, one obvious fix",
+          sonnet: "Sonnet: typical developer and analyst work with a clear goal: code changes in one or a few files, tests, a diagnosis with clear leads, gathering and summarising information from several files or sources, assessment following given instructions, translation, a document written from given sources, a deployment following given steps, coordinating agents",
+          opus: "Opus: work where a mistake is costly or hard to notice and that needs deep reasoning: architecture with tradeoffs, a hard bug without clear leads, an independent high-stakes review or fact-check, a letter or document on which money or important decisions depend, hard mathematics and proofs, deciding between conflicting sources, planning a large change"
         }
       },
       effort: {
         type: "score",
-        instructions: "How much reasoning effort does this delegated task need?",
+        instructions: "How much reasoning effort does this delegated task need? Judge the work the delegated agent must actually do. The length of the brief and its formal conditions (language and style rules, permission to use subagents, bans, file locations, report format, words in capitals) do not raise the level.",
         criteria: {
-          trivial: "Trivial: the answer or action is obvious, no thinking needed",
-          some: "Some thought: a few straightforward steps",
-          careful: "Careful multi-step reasoning: several dependent steps or things to check",
-          deep: "Deep reasoning: many tradeoffs, hidden pitfalls, or easy to get subtly wrong"
+          low: "Low: mechanical work: read, look up, list, copy or transcribe, count; the result follows directly from the data",
+          medium: "Medium: a typical change or analysis with clear steps, in one place or following a given procedure or brief",
+          high: "High: multi-file work that needs its own decisions, a diagnosis weighing a few hypotheses, or writing a document",
+          xhigh: "Extra high: in-depth analysis, architecture, a high-stakes review, or a hard bug",
+          max: "Maximum: exceptionally hard, hours of reasoning at the limit of difficulty; rare"
         }
       }
     };
@@ -29339,6 +29421,18 @@ var init_points = __esm({
         }
       }
     };
+    COMPACTION_QUESTIONS = {
+      "result-need": {
+        type: "score",
+        instructions: "How much will the tool result described under this question's name in state.results still be needed for further work on the user's task (state.task)? Judge whether further work will use it, not whether it was needed before.",
+        criteria: {
+          not_needed: "Not needed: the work it served is finished, or the result is easy to reproduce (a file listing, repository status, a write confirmation, a result repeated later).",
+          probably_not_needed: "Probably not needed: background from which further work needs at most a conclusion already written in the conversation.",
+          may_be_useful: "May be useful: details that further work may come back to.",
+          needed: "Needed: data that further work relies on and that is nowhere else in the conversation (file contents before an edit, numbers for later calculations, findings, an error to fix)."
+        }
+      }
+    };
     JUDGMENT_POINTS = {
       intent: defineJudgmentPoint({ name: "intent", questions: INTENT_QUESTIONS, blocking: false }),
       "loop-continuation": defineJudgmentPoint({
@@ -29361,7 +29455,8 @@ var init_points = __esm({
         name: "simplifier-trigger",
         questions: SIMPLIFIER_TRIGGER_QUESTIONS,
         blocking: false
-      })
+      }),
+      compaction: defineJudgmentPoint({ name: "compaction", questions: COMPACTION_QUESTIONS, blocking: true })
     };
   }
 });
@@ -31965,11 +32060,11 @@ function evaluateSdkSandbox(probe) {
   if (probe.applyError) return { id, ok: false, detail: `supported, capabilities ${caps}; the review policy was not applied: ${probe.applyError}` };
   const enf = probe.enforcement;
   if (enf === void 0 || typeof enf === "string") return { id, ok: false, detail: `supported, capabilities ${caps}; review policy applied; enforcement unread: ${enf ?? "not asked"}` };
-  const spawn8 = probe.spawn ?? { ok: false, detail: "not run" };
+  const spawn9 = probe.spawn ?? { ok: false, detail: "not run" };
   return {
     id,
-    ok: !enf.blocked && spawn8.ok,
-    detail: `supported, capabilities ${caps}; review policy applied (options.update), enforcement required=${enf.required} blocked=${enf.blocked}${enf.reason ? ` (${enf.reason})` : ""}; spawn canary: ${spawn8.detail}`
+    ok: !enf.blocked && spawn9.ok,
+    detail: `supported, capabilities ${caps}; review policy applied (options.update), enforcement required=${enf.required} blocked=${enf.blocked}${enf.reason ? ` (${enf.reason})` : ""}; spawn canary: ${spawn9.detail}`
   };
 }
 function sliceLogByTime(text3, starts) {
@@ -33382,8 +33477,8 @@ function rpcMethod(root, path15, name) {
     return null;
   }
 }
-function bwrapTrialLaunchError(spawn8 = defaultTrialSpawner, timeoutMs = 1e4) {
-  const r = spawn8("bwrap", BWRAP_TRIAL_ARGS, timeoutMs);
+function bwrapTrialLaunchError(spawn9 = defaultTrialSpawner, timeoutMs = 1e4) {
+  const r = spawn9("bwrap", BWRAP_TRIAL_ARGS, timeoutMs);
   if (r.error?.code === "ENOENT") return "bwrap (bubblewrap) is not on PATH, and the Linux sandbox runs every shell under it: install bubblewrap";
   if (r.error) return `a trial bwrap launch failed: ${errText(r.error)}`;
   if (r.status === 0) return null;
@@ -41489,6 +41584,17 @@ var init_worktree_cleanup_safety = __esm({
   }
 });
 
+// src/team/herdr-session.ts
+var import_node_child_process3, import_node_util, execFileAsync4;
+var init_herdr_session = __esm({
+  "src/team/herdr-session.ts"() {
+    "use strict";
+    import_node_child_process3 = require("node:child_process");
+    import_node_util = require("node:util");
+    execFileAsync4 = (0, import_node_util.promisify)(import_node_child_process3.execFile);
+  }
+});
+
 // src/team/types.ts
 var init_types9 = __esm({
   "src/team/types.ts"() {
@@ -41624,14 +41730,18 @@ var init_runtime_owner_client = __esm({
 function sanitizeName(name) {
   const sanitized = name.replace(/[^a-zA-Z0-9-]/g, "");
   if (sanitized.length === 0) {
-    throw new Error(`Invalid name: "${name}" contains no valid characters (alphanumeric or hyphen)`);
+    throw new Error(
+      `Invalid name: "${name}" contains no valid characters (alphanumeric or hyphen)`
+    );
   }
   if (sanitized.length < 2) {
-    throw new Error(`Invalid name: "${name}" too short after sanitization (minimum 2 characters)`);
+    throw new Error(
+      `Invalid name: "${name}" too short after sanitization (minimum 2 characters)`
+    );
   }
   return sanitized.slice(0, 50);
 }
-var import_fs66, import_crypto19, import_child_process20, import_util10, import_path83, import_os13, execFileAsync4;
+var import_fs66, import_crypto19, import_child_process20, import_util10, import_path83, import_os13, execFileAsync5;
 var init_tmux_session = __esm({
   "src/team/tmux-session.ts"() {
     "use strict";
@@ -41641,7 +41751,9 @@ var init_tmux_session = __esm({
     import_util10 = require("util");
     import_path83 = require("path");
     import_os13 = require("os");
+    init_loader();
     init_team_name();
+    init_herdr_session();
     init_tmux_utils();
     init_types9();
     init_team_owner_epoch();
@@ -41650,7 +41762,7 @@ var init_tmux_session = __esm({
     init_worker_launch_ack();
     init_runtime_owner_client();
     init_psmux_adapter();
-    execFileAsync4 = (0, import_util10.promisify)(import_child_process20.execFile);
+    execFileAsync5 = (0, import_util10.promisify)(import_child_process20.execFile);
   }
 });
 
@@ -41713,7 +41825,7 @@ function hostGitEnv(args, base = process.env) {
 function hostGitDriverOverrides(cwd, env2, timeout) {
   let out;
   try {
-    out = (0, import_node_child_process3.execFileSync)(hostGitExe(), [...hostGitHardeningArgs(), "config", "--null", "--show-scope", "--name-only", "--get-regexp", "^(filter|diff)\\."], { cwd, env: env2, encoding: "utf8", stdio: "pipe", windowsHide: true, timeout });
+    out = (0, import_node_child_process4.execFileSync)(hostGitExe(), [...hostGitHardeningArgs(), "config", "--null", "--show-scope", "--name-only", "--get-regexp", "^(filter|diff)\\."], { cwd, env: env2, encoding: "utf8", stdio: "pipe", windowsHide: true, timeout });
   } catch (err) {
     return err.status === 1 ? [] : null;
   }
@@ -41745,11 +41857,11 @@ function hostGitExe() {
 }
 function runHostGit(cwd, args, timeout, baseEnv = process.env, input) {
   const { argv, env: env2 } = hostGitCommand(cwd, args, timeout, baseEnv);
-  return (0, import_node_child_process3.execFileSync)(hostGitExe(), argv, { cwd, env: env2, encoding: "utf-8", stdio: "pipe", windowsHide: true, timeout, maxBuffer: HOST_GIT_MAX_BUFFER, ...input !== void 0 ? { input } : {} });
+  return (0, import_node_child_process4.execFileSync)(hostGitExe(), argv, { cwd, env: env2, encoding: "utf-8", stdio: "pipe", windowsHide: true, timeout, maxBuffer: HOST_GIT_MAX_BUFFER, ...input !== void 0 ? { input } : {} });
 }
 function runHostGitBuffer(cwd, args, timeout, baseEnv = process.env, input) {
   const { argv, env: env2 } = hostGitCommand(cwd, args, timeout, baseEnv);
-  return (0, import_node_child_process3.execFileSync)(hostGitExe(), argv, { cwd, env: env2, stdio: "pipe", windowsHide: true, timeout, maxBuffer: 512 * 1024 * 1024, ...input !== void 0 ? { input } : {} });
+  return (0, import_node_child_process4.execFileSync)(hostGitExe(), argv, { cwd, env: env2, stdio: "pipe", windowsHide: true, timeout, maxBuffer: 512 * 1024 * 1024, ...input !== void 0 ? { input } : {} });
 }
 function hostGitCommand(cwd, args, timeout, baseEnv) {
   const env2 = hostGitEnv(args, baseEnv);
@@ -41777,7 +41889,7 @@ function hostGitAttrSourceProblem(version2) {
   if (version2 === void 0) {
     if (hostGitVersionCache === void 0) {
       try {
-        hostGitVersionCache = (0, import_node_child_process3.execFileSync)(hostGitExe(), ["--version"], { encoding: "utf-8", stdio: "pipe", windowsHide: true }).trim();
+        hostGitVersionCache = (0, import_node_child_process4.execFileSync)(hostGitExe(), ["--version"], { encoding: "utf-8", stdio: "pipe", windowsHide: true }).trim();
       } catch {
         hostGitVersionCache = null;
       }
@@ -41838,7 +41950,7 @@ function recordWorktreeGitLinks(wtPath, links) {
     throw new Error(`sandbox-escaped: other git links are already recorded for ${wtPath}; the record is never replaced`);
   }
   const args = ["--git-dir", links.adminDir, "--work-tree", wtPath];
-  const format2 = (0, import_node_child_process3.execFileSync)(hostGitExe(), [...hostGitHardeningArgs(), ...args, "rev-parse", "--show-object-format"], { cwd: wtPath, env: hostGitEnv(args), encoding: "utf-8", stdio: "pipe", windowsHide: true }).trim();
+  const format2 = (0, import_node_child_process4.execFileSync)(hostGitExe(), [...hostGitHardeningArgs(), ...args, "rev-parse", "--show-object-format"], { cwd: wtPath, env: hostGitEnv(args), encoding: "utf-8", stdio: "pipe", windowsHide: true }).trim();
   const emptyTree = EMPTY_TREE[format2];
   if (!emptyTree) throw new Error(`host git: unknown object format ${JSON.stringify(format2)} in ${wtPath}`);
   recordedGitDirs.set((0, import_node_path10.resolve)(links.adminDir), { wtPath, links, emptyTree });
@@ -42311,7 +42423,7 @@ function ensureWorkerWorktree(teamName, workerName, repoRoot, options = {}) {
   const wtDir = (0, import_node_path10.join)(getOmcRoot(repoRoot), "team", sanitizeName(teamName), "worktrees");
   ensureDirWithMode(wtDir);
   const args = mode === "named" ? ["worktree", "add", "-b", branch2, wtPath, options.baseRef ?? "HEAD"] : ["worktree", "add", "--detach", wtPath, options.baseRef ?? "HEAD"];
-  (0, import_node_child_process3.execFileSync)(hostGitExe(), args, { cwd: repoRoot, stdio: "pipe", windowsHide: true });
+  (0, import_node_child_process4.execFileSync)(hostGitExe(), args, { cwd: repoRoot, stdio: "pipe", windowsHide: true });
   const baseCommit = gitOrNull(["rev-parse", "HEAD"], wtPath);
   const info = {
     ...baseCommit ? { baseCommit } : {},
@@ -42574,14 +42686,14 @@ function removeTamperedWorktree(repoRoot, teamName, workerName, wtPath, links, c
   forgetMetadataUnlocked(repoRoot, teamName, workerName);
   return `the git links of ${wtPath} (its .git file, or its admin dir's gitdir, commondir or config.worktree) changed or are gone, so no git ran in it; the worktree and its admin dir were removed by path and branch ${getBranchName(teamName, workerName)} was kept for inspection`;
 }
-var import_node_fs9, import_node_os4, import_node_path10, import_node_child_process3, import_node_crypto2, emptyHooksDir, EXEC_KEY_OVERRIDES, emptyAttributesFile, WORK_TREE_SUBCOMMANDS, GLOBAL_OPTIONS_WITH_VALUE, HOST_GIT_MAX_BUFFER, LANE_SUBMODULE_OVERRIDES, IGNORE_SUBMODULES_SUBCOMMANDS, EMPTY_TREE, HOST_GIT_ATTR_SOURCE_MIN, hostGitVersionCache, recordedGitDirs, pathKey, UNTRACKED_OMC_STATE, WORKTREE_RUNTIME_STATE_DIRS, RUNTIME_LEFTOVER_RETRY_MS;
+var import_node_fs9, import_node_os4, import_node_path10, import_node_child_process4, import_node_crypto2, emptyHooksDir, EXEC_KEY_OVERRIDES, emptyAttributesFile, WORK_TREE_SUBCOMMANDS, GLOBAL_OPTIONS_WITH_VALUE, HOST_GIT_MAX_BUFFER, LANE_SUBMODULE_OVERRIDES, IGNORE_SUBMODULES_SUBCOMMANDS, EMPTY_TREE, HOST_GIT_ATTR_SOURCE_MIN, hostGitVersionCache, recordedGitDirs, pathKey, UNTRACKED_OMC_STATE, WORKTREE_RUNTIME_STATE_DIRS, RUNTIME_LEFTOVER_RETRY_MS;
 var init_git_worktree = __esm({
   "src/team/git-worktree.ts"() {
     "use strict";
     import_node_fs9 = require("node:fs");
     import_node_os4 = require("node:os");
     import_node_path10 = require("node:path");
-    import_node_child_process3 = require("node:child_process");
+    import_node_child_process4 = require("node:child_process");
     import_node_crypto2 = require("node:crypto");
     init_windows_search();
     init_fs_utils();
@@ -46125,7 +46237,7 @@ function defaultCopilotRunDeps(env2 = process.env) {
   return {
     env: env2,
     platform: process.platform,
-    loadSdk: () => loadCopilotSdk(env2, import_node_child_process4.spawnSync),
+    loadSdk: () => loadCopilotSdk(env2, import_node_child_process5.spawnSync),
     resolveBin: () => resolveCopilotBinary(void 0, env2).bin,
     pluginRoot: () => resolveDefaultPluginRoot(env2),
     userConfigDir: () => getCopilotConfigDir(),
@@ -46137,15 +46249,15 @@ function defaultCopilotRunDeps(env2 = process.env) {
         return err.code === "EPERM";
       }
     },
-    killTree: (pid) => killProcessTree(pid, import_node_child_process4.spawnSync)
+    killTree: (pid) => killProcessTree(pid, import_node_child_process5.spawnSync)
   };
 }
-var import_node_child_process4, import_node_crypto4, import_node_fs12, import_node_os6, import_node_path13, DEFAULT_TIMEOUT_MS, MAX_TIMEOUT_MS, DEFAULT_MAX_CREDITS, MAX_RUNNING_JOBS, MAX_PROMPT_CHARS, WORKTREE_TEAM, MCP_SERVER, START_TIMEOUT_MS2, RPC_TIMEOUT_MS2, ABORT_GRACE_MS2, SHUTDOWN_GRACE_MS2, STOP_TIMEOUT_MS2, SERVER_EXIT_GRACE_MS, GIT_TIMEOUT_MS2, DENIED_LOG_MAX, JOB_ID, MAX_START_REF_CHARS, STOP_CONTINUATION_SKIP_TOKEN, PROJECT_MEMORY_SKIP_TOKEN, CopilotRunError, REVIEW_SHELL_DENY_PATTERNS, IDENTITY_TIMEOUT_MS, sleep5, isTerminal2, git2, lines, JOB_REF_PREFIX, PLAIN_REF, CopilotRunManager;
+var import_node_child_process5, import_node_crypto4, import_node_fs12, import_node_os6, import_node_path13, DEFAULT_TIMEOUT_MS, MAX_TIMEOUT_MS, DEFAULT_MAX_CREDITS, MAX_RUNNING_JOBS, MAX_PROMPT_CHARS, WORKTREE_TEAM, MCP_SERVER, START_TIMEOUT_MS2, RPC_TIMEOUT_MS2, ABORT_GRACE_MS2, SHUTDOWN_GRACE_MS2, STOP_TIMEOUT_MS2, SERVER_EXIT_GRACE_MS, GIT_TIMEOUT_MS2, DENIED_LOG_MAX, JOB_ID, MAX_START_REF_CHARS, STOP_CONTINUATION_SKIP_TOKEN, PROJECT_MEMORY_SKIP_TOKEN, CopilotRunError, REVIEW_SHELL_DENY_PATTERNS, IDENTITY_TIMEOUT_MS, sleep5, isTerminal2, git2, lines, JOB_REF_PREFIX, PLAIN_REF, CopilotRunManager;
 var init_job = __esm({
   "src/copilot-run/job.ts"() {
     "use strict";
     init_windows_search();
-    import_node_child_process4 = require("node:child_process");
+    import_node_child_process5 = require("node:child_process");
     import_node_crypto4 = require("node:crypto");
     import_node_fs12 = require("node:fs");
     import_node_os6 = require("node:os");
@@ -49752,7 +49864,7 @@ function readGateProcs(path15) {
 async function listWindowsChildren(rootPid) {
   const exe = (0, import_path102.join)(process.env.SystemRoot || "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
   const script = `Get-CimInstance Win32_Process -Filter "ParentProcessId = ${rootPid}" | ForEach-Object { "$($_.ProcessId) " + ([DateTime]$_.CreationDate).ToUniversalTime().Ticks }`;
-  const { stdout } = await execFileAsync5(exe, ["-NoProfile", "-NonInteractive", "-Command", script], { timeout: STEP_DEADLINE_MS, windowsHide: true });
+  const { stdout } = await execFileAsync6(exe, ["-NoProfile", "-NonInteractive", "-Command", script], { timeout: STEP_DEADLINE_MS, windowsHide: true });
   const out = [];
   for (const line of stdout.split(/\r?\n/)) {
     const m = /^(\d+) (\d+)$/.exec(line.trim());
@@ -49867,7 +49979,7 @@ async function sweepGateProcs(dir, deps = defaultGateProcDeps()) {
     if (/^[0-9a-f]{40}\.json$/.test(name)) await reapGateProcs((0, import_path102.join)(dir, name), deps).catch(() => void 0);
   }
 }
-var import_child_process21, import_child_process22, import_fs85, import_path102, import_util11, execFileAsync5, STEP_DEADLINE_MS, HEX4011, GateProcsUnreadableError, gateProcsPath, isProc, TICKS_AT_EPOCH, ticksOfMs, sameMicrosecond, defaultGateProcDeps, swept;
+var import_child_process21, import_child_process22, import_fs85, import_path102, import_util11, execFileAsync6, STEP_DEADLINE_MS, HEX4011, GateProcsUnreadableError, gateProcsPath, isProc, TICKS_AT_EPOCH, ticksOfMs, sameMicrosecond, defaultGateProcDeps, swept;
 var init_gate_procs = __esm({
   "src/factory/run/gate-procs.ts"() {
     "use strict";
@@ -49879,7 +49991,7 @@ var init_gate_procs = __esm({
     init_mirror();
     init_store();
     init_process_utils();
-    execFileAsync5 = (0, import_util11.promisify)(import_child_process21.execFile);
+    execFileAsync6 = (0, import_util11.promisify)(import_child_process21.execFile);
     STEP_DEADLINE_MS = 15e3;
     HEX4011 = /^[0-9a-f]{40}$/;
     GateProcsUnreadableError = class extends Error {
@@ -52243,11 +52355,11 @@ function applyCopyBack(checkout, tar, platform) {
   }
   return null;
 }
-var import_node_child_process5, import_node_crypto6, import_node_fs14, import_node_path15, GATE_CONTAINER_UNAVAILABLE_GATE, CONTAINER_INCOMPATIBLE_ADVICE, CONTAINER_NAME_PREFIX, RUN_LABEL2, GATE_LABEL, CACHE_LABEL, CONTAINER_PATH, CONTAINER_USER, WORK, SRC, NPM_REGISTRY, REGISTRY_PREFIXES, PROBE_TIMEOUT_MS, PULL_TIMEOUT_MS, COPY_TIMEOUT_MS, KILL_TIMEOUT_MS, IN_CONTAINER_GRACE_S, DISK_WATCH_MS, OUTPUT_TAIL_BYTES, COPY_BACK_MAX_BYTES, COPY_BACK_MAX_ENTRIES, SCAN_MAX_ENTRIES, LOCKFILE_MAX_BYTES, defaultContainerExec, isNodeExe, GIT_VIEW_MOUNT, copyLines, NPMRC_HELD, HOLD_NPMRC, RESTORE_NPMRC, NPM_FETCH_ENV, SCRIPTS_SCRIPT, tail2, firstLine, lastLines, IGNORABLE, dropIgnorable, foldsCase;
+var import_node_child_process6, import_node_crypto6, import_node_fs14, import_node_path15, GATE_CONTAINER_UNAVAILABLE_GATE, CONTAINER_INCOMPATIBLE_ADVICE, CONTAINER_NAME_PREFIX, RUN_LABEL2, GATE_LABEL, CACHE_LABEL, CONTAINER_PATH, CONTAINER_USER, WORK, SRC, NPM_REGISTRY, REGISTRY_PREFIXES, PROBE_TIMEOUT_MS, PULL_TIMEOUT_MS, COPY_TIMEOUT_MS, KILL_TIMEOUT_MS, IN_CONTAINER_GRACE_S, DISK_WATCH_MS, OUTPUT_TAIL_BYTES, COPY_BACK_MAX_BYTES, COPY_BACK_MAX_ENTRIES, SCAN_MAX_ENTRIES, LOCKFILE_MAX_BYTES, defaultContainerExec, isNodeExe, GIT_VIEW_MOUNT, copyLines, NPMRC_HELD, HOLD_NPMRC, RESTORE_NPMRC, NPM_FETCH_ENV, SCRIPTS_SCRIPT, tail2, firstLine, lastLines, IGNORABLE, dropIgnorable, foldsCase;
 var init_container_gate = __esm({
   "src/factory/run/container-gate.ts"() {
     "use strict";
-    import_node_child_process5 = require("node:child_process");
+    import_node_child_process6 = require("node:child_process");
     import_node_crypto6 = require("node:crypto");
     import_node_fs14 = require("node:fs");
     import_node_path15 = require("node:path");
@@ -52297,7 +52409,7 @@ var init_container_gate = __esm({
       let hardKill;
       let child;
       try {
-        child = (0, import_node_child_process5.spawn)(bin, [...args], { stdio: ["ignore", "pipe", "pipe"], windowsHide: true, shell: false });
+        child = (0, import_node_child_process6.spawn)(bin, [...args], { stdio: ["ignore", "pipe", "pipe"], windowsHide: true, shell: false });
       } catch (error2) {
         done({ status: null, tail: "", overflow: false, timedOut: false, spawnError: error2 instanceof Error ? error2.message : String(error2) });
         return;
@@ -56466,16 +56578,16 @@ function listLinux() {
   }
   return rows;
 }
-var import_node_child_process6, import_node_fs16, import_node_path17, import_node_util, execFileAsync6, LANE_PROCS_QUERY_TIMEOUT_MS, KILL_DEADLINE_MS2, under3, WIN_QUERY, defaultLaneProcsDeps;
+var import_node_child_process7, import_node_fs16, import_node_path17, import_node_util2, execFileAsync7, LANE_PROCS_QUERY_TIMEOUT_MS, KILL_DEADLINE_MS2, under3, WIN_QUERY, defaultLaneProcsDeps;
 var init_lane_procs = __esm({
   "src/factory/run/lane-procs.ts"() {
     "use strict";
-    import_node_child_process6 = require("node:child_process");
+    import_node_child_process7 = require("node:child_process");
     import_node_fs16 = require("node:fs");
     import_node_path17 = require("node:path");
-    import_node_util = require("node:util");
+    import_node_util2 = require("node:util");
     init_process_utils();
-    execFileAsync6 = (0, import_node_util.promisify)(import_node_child_process6.execFile);
+    execFileAsync7 = (0, import_node_util2.promisify)(import_node_child_process7.execFile);
     LANE_PROCS_QUERY_TIMEOUT_MS = 1e4;
     KILL_DEADLINE_MS2 = 1e4;
     under3 = (dir, path15) => {
@@ -56489,10 +56601,10 @@ var init_lane_procs = __esm({
       list: async () => {
         if (process.platform === "linux") return listLinux();
         if (process.platform === "win32") {
-          const { stdout: stdout2 } = await execFileAsync6("powershell", ["-NoProfile", "-NonInteractive", "-Command", WIN_QUERY], { timeout: LANE_PROCS_QUERY_TIMEOUT_MS, windowsHide: true, maxBuffer: 16 * 1024 * 1024 });
+          const { stdout: stdout2 } = await execFileAsync7("powershell", ["-NoProfile", "-NonInteractive", "-Command", WIN_QUERY], { timeout: LANE_PROCS_QUERY_TIMEOUT_MS, windowsHide: true, maxBuffer: 16 * 1024 * 1024 });
           return parseWindowsRows(stdout2);
         }
-        const { stdout } = await execFileAsync6("ps", ["-A", "-o", "pid=,ppid=,lstart="], { timeout: LANE_PROCS_QUERY_TIMEOUT_MS, env: { ...process.env, LC_ALL: "C" }, maxBuffer: 16 * 1024 * 1024 });
+        const { stdout } = await execFileAsync7("ps", ["-A", "-o", "pid=,ppid=,lstart="], { timeout: LANE_PROCS_QUERY_TIMEOUT_MS, env: { ...process.env, LC_ALL: "C" }, maxBuffer: 16 * 1024 * 1024 });
         return parsePsRows(stdout);
       },
       identity: (pid) => getProcessStartIdentity(pid, Date.now() + KILL_DEADLINE_MS2),

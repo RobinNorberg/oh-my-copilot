@@ -30,7 +30,27 @@ export interface UnifiedMcpRegistryStatus {
     codexMismatched: string[];
 }
 export declare function getUnifiedMcpRegistryPath(): string;
-export declare function getClaudeMcpConfigPath(): string;
+/**
+ * Whether a resolved config dir is a default one: Claude Code's ~/.claude or
+ * (fork) the default Copilot home ~/.copilot. Both keep ~/.claude.json, the file
+ * next to them; `omg launch` unsets COPILOT_HOME for the default dir.
+ */
+export declare function isDefaultClaudeConfigDirPath(configDir: string): boolean;
+/**
+ * The .claude.json that holds Claude Code's user-scoped MCP servers for a config
+ * dir. Claude Code reads join(COPILOT_HOME || homedir(), '.claude.json'), so
+ * a profile keeps its own file. A default dir keeps ~/.claude.json even
+ * when COPILOT_HOME names it, because `omg launch` unsets the variable for
+ * that dir and its sessions read ~/.claude.json.
+ */
+export declare function getClaudeJsonPathForConfigDir(configDir: string): string;
+/**
+ * The Claude MCP config for a config dir: CLAUDE_MCP_CONFIG_PATH when it is set,
+ * otherwise the .claude.json Claude Code reads for that dir. `omg setup` syncs
+ * the registry into it, `omg doctor conflicts` checks it, and `omg launch` seeds
+ * its runtime mcpServers from it.
+ */
+export declare function getClaudeMcpConfigPath(configDir?: string): string;
 export declare function getCodexConfigPath(): string;
 export declare function extractClaudeMcpRegistry(settings: Record<string, unknown>): UnifiedMcpRegistry;
 export declare function stripRetiredTeamMcpServers<T extends Record<string, unknown>>(settings: T): {

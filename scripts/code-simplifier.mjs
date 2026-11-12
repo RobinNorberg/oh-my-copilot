@@ -25,7 +25,7 @@ import { execFileSync } from 'child_process';
 import { readStdin } from './lib/stdin.mjs';
 import { resolveOmcStateRoot } from './lib/state-root.mjs';
 import { BOUNDED_GIT_TIMEOUT_MS } from './lib/bounded-git-timeout.mjs';
-import { recordJevShadow } from './lib/jev-shadow.mjs';
+import { jevNoulOf, jevStateIds, recordJevApplied, recordJevShadow, setJevHookContext, setJevSessionId } from './lib/jev-shadow.mjs';
 import { isCopilotStopChainCapped } from './lib/copilot-continuation.mjs';
 import { isCopilotHookHost } from './lib/hook-host.mjs';
 
@@ -42,6 +42,14 @@ const SIMPLIFIER_TRIGGER_QUESTIONS = {
     },
   },
 };
+
+// OMC_JEV_SIMPLIFIER_APPLY=1 lets an active `simplifier-trigger` answer skip the reminder
+// when the probability of "yes" is below this value. Off by default.
+const SIMPLIFIER_SKIP_BELOW = 0.5;
+
+function isSimplifierApplyEnabled(env = process.env) {
+  return ['1', 'true'].includes(String(env.OMC_JEV_SIMPLIFIER_APPLY ?? '').trim().toLowerCase());
+}
 
 function readJsonFile(filePath) {
   try {
@@ -129,8 +137,10 @@ async function main() {
       process.stdout.write(JSON.stringify({ continue: true }) + '\n');
       return;
     }
+    setJevSessionId(data.session_id || data.sessionId, data.agent_id || data.agentId);
 
     const cwd = data.cwd || data.directory || process.cwd();
+    await setJevHookContext(data);
     const stateDir = join(await resolveOmcStateRoot(cwd), 'state');
     const config = readOmcConfig();
 
@@ -168,13 +178,26 @@ async function main() {
       return;
     }
 
-    recordJevShadow({
+    const jevResult = recordJevShadow({
       point: 'simplifier-trigger',
-      state: { cwd, files, source: 'code-simplifier-stop' },
+      state: { ...jevStateIds({ cwd }), files, source: 'code-simplifier-stop' },
       questions: SIMPLIFIER_TRIGGER_QUESTIONS,
       heuristic: true,
       permissionMode: data.permission_mode,
     });
+
+    // OMC_JEV_SIMPLIFIER_APPLY=1: an active answer below SIMPLIFIER_SKIP_BELOW skips the reminder.
+    // No trigger marker is written, so the next Stop asks again while the files stay modified.
+    if (isSimplifierApplyEnabled()) {
+      const noul = jevNoulOf(jevResult, 'simplification_worthy');
+      if (noul !== undefined && noul < SIMPLIFIER_SKIP_BELOW) {
+        recordJevApplied('simplifier-trigger', {
+          action: { from: 'remind', to: 'skip', noul },
+        });
+        process.stdout.write(JSON.stringify({ continue: true }) + '\n');
+        return;
+      }
+    }
 
     // Write trigger marker to prevent re-triggering within this turn cycle
     try {

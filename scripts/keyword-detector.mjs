@@ -31,7 +31,7 @@ import { atomicWriteFileSync, getStateFileLockFailureMessage, recoverEmergencySt
 import { readStdin } from './lib/stdin.mjs';
 import { resolveOmcStateRoot, resolveSessionStatePathsForHook } from './lib/state-root.mjs';
 import { parseWorkflowInvocation, selectWorkflowProfile, createWorkflowState, isValidWorkflowTrackingState, isWorkflowRuntimeSupported, resolveWorkflowStagePrompt, takeWorkflowTranscriptFailure } from './lib/workflow-profile-runtime.mjs';
-import { isJevShadowOptedIn, recordJevShadow } from './lib/jev-shadow.mjs';
+import { isJevShadowOptedIn, jevNoulOf, recordJevApplied, recordJevShadow, setJevHookContext, setJevSessionId } from './lib/jev-shadow.mjs';
 import { initializeRalphStateForSkill, createPrdScaffold } from './lib/ralph-startup.mjs';
 import { isCopilotHookHost } from './lib/hook-host.mjs';
 import { skillSlash } from './lib/skill-slash.mjs';
@@ -211,6 +211,10 @@ function isExplicitRalplanSlashInvocation(prompt) {
   return /^\s*\/(?:oh-my-copilot:)?ralplan(?:\s|$)/i.test(prompt);
 }
 
+function isExplicitRalphSlashInvocation(prompt) {
+  return /^\s*\/(?:oh-my-copilot:)?ralph(?:\s|$|:)/i.test(prompt);
+}
+
 function isExplicitAskSlashInvocation(prompt) {
   return /^\s*\/(?:oh-my-copilot:)?ask\s+(?:claude|codex|gemini|antigravity|agy|grok|cursor|muse)\b/i.test(prompt);
 }
@@ -224,10 +228,18 @@ const ANTI_SLOP_EXPLICIT_PATTERN = /\b(ai[\s-]?slop|anti[\s-]?slop|deslop|de[\s-
 const ANTI_SLOP_ACTION_PATTERN = /\b(clean(?:\s*up)?|cleanup|refactor|simplify|dedupe|de-duplicate|prune)\b/i;
 const ANTI_SLOP_SMELL_PATTERN = /\b(slop|duplicate(?:d|s)?|duplication|dead\s+code|unused\s+code|over[\s-]?abstract(?:ion|ed)?|wrapper\s+layers?|boundary\s+violations?|needless\s+abstractions?|unnecessary\s+abstractions?|ai[\s-]?generated|generated\s+code|tech\s+debt)\b/i;
 
+// Action + smell must share one sentence: a long review prompt can say
+// "duplicate execution" in one place and "simplify the architecture" far later.
+// Explicit "ai-slop"/"deslop" still goes through the informational-mention filter.
 function isAntiSlopCleanupRequest(text) {
-  return ANTI_SLOP_EXPLICIT_PATTERN.test(text) ||
-    (ANTI_SLOP_ACTION_PATTERN.test(text) && ANTI_SLOP_SMELL_PATTERN.test(text));
+  if (hasActionableKeyword(text, ANTI_SLOP_EXPLICIT_PATTERN)) return true;
+  return text.split(/[.!?;\n]+/).some((sentence) =>
+    ANTI_SLOP_ACTION_PATTERN.test(sentence) && ANTI_SLOP_SMELL_PATTERN.test(sentence));
 }
+
+// Skills that edit code; never auto-routed when the prompt forbids implementation.
+const CODE_EDITING_SKILLS = new Set(['ai-slop-cleaner', 'autopilot', 'ralph', 'ultragoal', 'tdd']);
+const NO_IMPLEMENT_PATTERN = /\b(?:do\s+not|don'?t|never|without)\s+(?:begin\s+|start\s+)?implement(?:ing|ation)?\b|\bno\s+(?:code\s+)?(?:changes|edits)\b|\bread[\s-]only\s+(?:review|audit|investigation)\b/i;
 
 /** Review-outcome labels that appear together in seeded review instruction text. */
 const REVIEW_SEED_OUTCOME_RES = [
@@ -1060,6 +1072,162 @@ function hasActionableRalphKeyword(text, pattern) {
   return false;
 }
 
+// The Latin autopilot aliases (autopilot, auto pilot, auto-pilot, full auto, fullsend) start the mode only as an
+// explicit command, like ralph and ralplan. Without this, a foreign sentence pasted into a prompt
+// ("Add tests (autopilot at cap; ...)") armed the mode, because the generic hasActionableKeyword treats every
+// mention outside quotes and help questions as a command. The grammar is deliberately small. A sentence is a
+// command when all of these hold:
+//  1. It is not a question: it does not end in "?" and does not start with a question or auxiliary word
+//     (did, does, is, can, what, how, ...), except the request "can/could/would/will you ...".
+//  2. It is not negated (don't, can't, never, without, ...) and not a reference label line ("Docs: ...").
+//  3. The alias is the first word of the command, followed by a command verb from a closed list (also re-run,
+//     double-check), by ":" plus such a verb, or by nothing; at the very start of the prompt any continuation that is
+//     not a status line counts. Or an activation phrase stands directly before it: use, run, start, ...
+//     (also after please, let's, I want) with an optional the/a/my/our/your, or turn/switch autopilot on.
+// "full auto" and "fullsend" are ordinary hardware phrases: only an activation phrase, a line-leading command verb
+// or ":" plus a verb count. A line with a non-ASCII letter is not English and keeps the generic check.
+//  4. Anything else that passes rules 1 and 2 and is not a status line keeps the generic activation-verb check (an
+//     activation verb elsewhere in the clause: "Run in autopilot mode", "fix issue with autopilot in parser module").
+// Phrasings beyond this grammar (an open verb list, other languages) are out of scope.
+const AUTOPILOT_COMMAND_VERBS = 'fix|debug|investigate|resolve|handle|patch|address|implement|build|create|make|run|start|enable|activate|invoke|trigger|launch|plan|add|write|refactor|update|remove|migrate|finish|continue|do|go|test|review|check|verify|audit|analy[sz]e|inspect|deploy|install|configure|document|explain|find|search|generate|convert|ship|release|merge|prepare|design|draft|upgrade|rename|clean|optimi[sz]e|rewrite|summari[sz]e|compare|bring|ping|seed';
+const AUTOPILOT_HYPHENATED_VERB = '(?:re-(?:run|test|check|build|deploy|install|implement|review|verify|try|apply|start|launch|write|format|generate|create)|double-check|cross-check|un-install)';
+const AUTOPILOT_COMMAND_WORD = `(?:(?:${AUTOPILOT_COMMAND_VERBS})|${AUTOPILOT_HYPHENATED_VERB})`;
+const AUTOPILOT_STATUS_CONTINUATION = '\\s+(?:fails|was|were|is|are|has|had|looks|takes|keeps|hangs|hung|timed\\s+out|succeeds|passes|completes|finishes|works)(?![\\p{L}\\d])|\\s+(?:failed|crashed|errored|ok|okay|done|green|succeeded|passed|completed|finished|worked)(?![\\p{L}\\d])(?=[ \\t]*(?:[.,;:!?)]|\\r?\\n|$)|[ \\t]+(?:on|at|in|with|after|during|for|because|again|twice|and|but|so|before|when|while|since|until|due|once|yesterday|today|overnight|too|earlier|already)(?![\\p{L}\\d]))|\\s+(?:step|phase|exit|status|log|suite|mode|output|report|results?|summary)\\s+(?:\\d+|is|are|was|were|has|had|failed|fails|passed|passes|succeeded|looks|takes|keeps|crashed|errored|ok|okay|red|green)(?![\\p{L}\\d])';
+const AUTOPILOT_NOT_A_COMMAND_AFTER = `(?!${AUTOPILOT_STATUS_CONTINUATION})`;
+// Words that open a status line after a colon, not a command: articles, pronouns, auxiliaries, prepositions,
+// conjunctions, adverbs and status words.
+const AUTOPILOT_NON_COMMAND_WORDS = 'a|an|the|this|that|these|those|my|our|your|his|her|its|their|i|we|you|he|she|it|they|me|us|them|is|are|was|were|be|been|am|has|have|had|do|does|did|will|would|can|could|should|may|might|must|shall|not|no|nor|and|or|but|so|if|then|than|as|at|in|on|of|to|for|from|with|by|about|into|onto|over|under|after|before|during|until|while|when|where|which|who|whom|what|why|how|also|just|only|still|already|always|never|now|currently|ready|idle|off|none|nothing|active|inactive|enabled|disabled|available|unavailable|busy|pending|offline|online|yes|here|there|too|very|really|actually|maybe|perhaps|however|hung|hangs|stuck|ran|went|got|took|broke|broken|froze|frozen|became|seems|seemed|remains|lost|left|hit|began|saw|said|gave|found|kept|knew|thought|told|wrote|made|built|sent|spent|stood|held|fell|drew|drove|chose|came|won|threw|grew|met|paid|rose|sold|taught|understood|wore|sat|slept|spoke|swept|sank';
+// A plain alias that opens the prompt counts as a command unless it reads as a status line:
+// a command verb followed by a result ("autopilot run failed"), or a colon plus a status word or gerund.
+const AUTOPILOT_LEADING_STATUS = new RegExp(`^(?:[ \\t]*[:\\uFF1A][ \\t]*(?:(?:${AUTOPILOT_NON_COMMAND_WORDS})|(?!(?:bring|ping|seed|feed|embed|proceed|succeed|speed|need|shred|string|swing|sing|ring|fling|sling|sting|wring|spring|cling)(?![\\p{L}\\d]))\\p{L}*(?:ing|ed))(?![\\p{L}\\d])|[ \\t]+(?:${AUTOPILOT_COMMAND_VERBS})(?![\\p{L}\\d])(?:${AUTOPILOT_STATUS_CONTINUATION}))`, 'iu');
+const AUTOPILOT_COMMAND_AFTER = new RegExp(`^(?:[ \\t]*[,;!\\u2014\\u2013][ \\t]*|[ \\t]+-[ \\t]+|[ \\t]+)${AUTOPILOT_COMMAND_WORD}(?![\\p{L}\\d])${AUTOPILOT_NOT_A_COMMAND_AFTER}`, 'iu');
+const AUTOPILOT_COLON_VERB = new RegExp(`^[ \\t]*[:\\uFF1A][ \\t]*${AUTOPILOT_COMMAND_WORD}(?![\\p{L}\\d])${AUTOPILOT_NOT_A_COMMAND_AFTER}`, 'iu');
+const AUTOPILOT_ALONE_ON_LINE = /^[ \t]*[.!]?[ \t]*(?:\r?\n|$)/;
+const AUTOPILOT_NEGATION_BEFORE = /(?<![\p{L}\d])(?:(?:don|doesn|didn|shouldn|couldn|wouldn|can|won|mustn|isn|aren|shan|needn)['’]?t|cannot|do\s+not|never|not|without)\s+(?!(?:just|only|simply|merely|also|solely|stop|quit|forget|fail|hesitat\w*|delay\w*|wait\w*|paus\w*|ask\w*)(?![\p{L}\d]))(?:(?!(?:so|but|and|then|instead|because|now|mind)(?![\p{L}]))[\p{L}'’]+\s+){0,4}$/iu;
+// Quotes, emphasis marks and brackets right before the alias do not change what a negation governs.
+const AUTOPILOT_OPENING_DELIMITERS_AT_END = /["'“”‘’`*_([{<]+$/;
+// A sentence that starts with a question or auxiliary word asks; "can/could/would/will you ..." is a request.
+const AUTOPILOT_QUESTION_START = /^[ \t]*(?:[-*+>#]+[ \t]+|\d+[.)][ \t]+|\[[ xX]\][ \t]+|["'“‘([*_`])*(?!(?:can|could|would|will)\s+you(?![\p{L}\d]))(?!do\s+not(?![\p{L}\d]))(?:did|does|do|is|are|was|were|has|have|had|can|could|should|would|will|may|might|must|shall|what|why|how|when|where|who|which)(?![\p{L}\d])/iu;
+// The polite request "can/could/would/will you ..." keeps its question mark without being a question.
+const AUTOPILOT_REQUEST_START = /^[ \t]*(?:[-*+>#]+[ \t]+|\d+[.)][ \t]+|\[[ xX]\][ \t]+|["'“‘([*_`])*(?:please[ ,]+)?(?:can|could|would|will)\s+you(?![\p{L}\d])/iu;
+const AUTOPILOT_SENTENCE_END = /(?<=\S)[.!?][)\]}"'*_\u201D\u2019]*(?=\s|$)/g;
+// Markdown emphasis and heading marks around a label ("**Docs:**") do not hide it.
+const AUTOPILOT_MARKDOWN_MARKS = /[*_`#>]+/g;
+const AUTOPILOT_LIST_PREFIX = /^[\s\-+]*(?:\d+[.)]\s+)?/;
+const AUTOPILOT_REFERENCE_LABEL_LINE = /^[ \t]*(?:docs?|documentation|summary|status|logs?|release\s+notes|changelog|readme|examples?|output|result|results|description|title|commit|trigger|triggers|keywords?)[ \t]*:/i;
+// A heading line that is only the label ("## Documentation") also marks what follows as reference text.
+const AUTOPILOT_REFERENCE_HEADING = /^[ \t]*(?:docs?|documentation|summary|status|logs?|release\s+notes|changelog|readme|examples?|output|result|results|description|title|commit|trigger|triggers|keywords?)[ \t]*:?[ \t]*$/i;
+const AUTOPILOT_NOUN_USE_BEFORE = /(?<![\p{L}\d])(?:the|a|an|this|that|these|those|last|previous|our|my|its|your|their)\s+$/iu;
+const AUTOPILOT_COMMIT_LINE_BEFORE = /(?<![\p{L}\d])[0-9a-f]{7,40}\s+$/iu;
+// A line with any non-ASCII letter (Hangul, kana, Han, Thai, Cyrillic, Arabic, Polish diacritics, ...) is not
+// English prose, so the English command grammar cannot judge it and the generic check applies.
+const AUTOPILOT_NON_ENGLISH_LINE = /[\p{Script=Hangul}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}\p{Script=Thai}]|(?![A-Za-z])\p{L}/u;
+// Imperative "use / start" in the common ASCII-only languages (Spanish, French, German, Italian, Portuguese).
+const AUTOPILOT_FOREIGN_VERB_BEFORE = /(?<![\p{L}\d])(?:usa|usar|utiliza|utilizar|activa|activar|ejecuta|ejecutar|inicia|iniciar|lanza|utilise|utiliser|active|lance|lancer|nutze|nutzen|benutze|verwende|starte|aktiviere|attiva|avvia|ative|inicie|execute)\s+(?:(?:el|la|le|il|der|die|das)\s+)?$/iu;
+// The activation phrase directly before the alias: an activation verb, or please / let's / I want, optionally
+// followed by a verb, then an optional the/a/my/our/your.
+const AUTOPILOT_ACTIVATION_BEFORE = /(?<![\p{L}\d])(?:(?:please|let['’]?s|i\s+(?:want|need|would\s+like)(?:\s+to)?)\s+(?:(?:use|run|start|enable|activate|invoke|trigger|launch|engage|initiate|begin|kick\s+off|fire\s+up|spin\s+up|turn\s+on|switch\s+to|go(?:\s+with|\s+for)?|set)\s+)?|(?:use|run|start|enable|activate|invoke|trigger|launch|engage|initiate|begin|kick\s+off|fire\s+up|spin\s+up|turn\s+on|switch\s+to|go(?:\s+with|\s+for)?|set)\s+)(?:(?:the|a|my|our|your)\s+)?$/iu;
+// "do not stop using autopilot" asks to keep it running, so the negation does not cancel it.
+const AUTOPILOT_KEEP_USING_BEFORE = /(?<![\p{L}\d])(?:don['’]?t|do\s+not|never)\s+(?:ever\s+)?(?:stop|quit)\s+using\s+$/iu;
+// The separable form "turn autopilot on" / "switch autopilot on": "turn" or "switch" before the alias and "on" right after it.
+const AUTOPILOT_TURN_BEFORE = /(?<![\p{L}\d])(?:turn|switch)\s+(?:the\s+|a\s+|my\s+|our\s+|your\s+)?$/iu;
+const AUTOPILOT_ON_AFTER = /^[ \t]+on(?![\p{L}\d])/iu;
+const AUTOPILOT_NAMESPACE_PREFIX = /^\s*\/?(?:oh-my-(?:claudecode|codex|copilot)|omc|omg):\s*$/i;
+const AUTOPILOT_MAX_MATCHES = 1000;
+// The costly informational check sees this many characters on each side of a mention, so its cost does not grow
+// with the prompt length.
+const AUTOPILOT_CONTEXT_WINDOW = 2000;
+
+function hasExplicitAutopilotInvocationContext(text, position, keywordLength, keywordText) {
+  if (AUTOPILOT_NAMESPACE_PREFIX.test(text.slice(getLineBounds(text, position).start, position))) return true;
+  // $, !, / and force: are explicit invocation syntax.
+  const leadingPrefix = hasDirectInvocationPrefix(text, position);
+  if (leadingPrefix && /[$/!:]/.test(text.slice(0, position))) return true;
+  const { start: lineStart, end: lineEnd } = getLineBounds(text, position);
+  // $, ! and slash directly before the alias on its line is explicit invocation syntax, also on a later line.
+  if (/^[ \t]*[$/!]$/.test(text.slice(lineStart, position))) return true;
+  const headStart = Math.max(lineStart, position - 80);
+  const tail = text.slice(headStart, position);
+  const afterKeyword = text.slice(position + keywordLength, position + keywordLength + 60);
+  const lineHead = text.slice(lineStart, Math.min(position, lineStart + 80));
+  // A question never starts the mode: it starts with a question word, or the sentence ends in "?".
+  const sentenceHead = /(?:^|[.!?;]\s+)([^.!?;]*)$/.exec(text.slice(Math.max(lineStart, position - 200), position));
+  // The clause after a label or an introductory phrase ("Question: Must I ...", "Out of curiosity, should I ...") is what gets classified.
+  const clauseHead = (sentenceHead ? sentenceHead[1] : tail).replace(/^.*[,:\u2014\u2013]\s*/, '');
+  if (AUTOPILOT_QUESTION_START.test(sentenceHead ? sentenceHead[1] : tail) || AUTOPILOT_QUESTION_START.test(clauseHead)) return false;
+  AUTOPILOT_SENTENCE_END.lastIndex = position + keywordLength;
+  const sentenceEnd = AUTOPILOT_SENTENCE_END.exec(text);
+  // "?" inside a quotation or parenthesis that the sentence continues after ("... from "Ready?" to "Go.") is not terminal.
+  // A bare "?" followed by a lowercase word ("rename Ready? to Go.") is a literal, not the end of a question.
+  const afterEnd = sentenceEnd === null ? '' : text.slice(sentenceEnd.index + sentenceEnd[0].length, lineEnd);
+  const nestedQuestion = sentenceEnd !== null
+    && ((sentenceEnd[0].length > 1 && !/^[ \t]*$/.test(afterEnd)) || /^[ \t]+\p{Ll}/u.test(afterEnd));
+  if (sentenceEnd && sentenceEnd.index < lineEnd && sentenceEnd[0][0] === '?' && !nestedQuestion && !AUTOPILOT_REQUEST_START.test(clauseHead)) return false;
+  if (AUTOPILOT_NEGATION_BEFORE.test(tail) || AUTOPILOT_NEGATION_BEFORE.test(tail.replace(AUTOPILOT_OPENING_DELIMITERS_AT_END, ''))) return false;
+  if (AUTOPILOT_REFERENCE_LABEL_LINE.test(lineHead.replace(AUTOPILOT_MARKDOWN_MARKS, '').replace(AUTOPILOT_LIST_PREFIX, '').replace(/\s+$/, ''))) return false;
+  if (AUTOPILOT_NON_ENGLISH_LINE.test(text.slice(lineStart, Math.min(lineEnd, lineStart + 400)))) return true;
+  const isHardwareAlias = /^(?:full\s*auto|fullsend)$/i.test((keywordText || '').trim());
+  if (leadingPrefix) {
+    // A plain alias that opens the prompt counts unless it reads as a status line ("autopilot run failed").
+    if (isHardwareAlias) {
+      return AUTOPILOT_ALONE_ON_LINE.test(afterKeyword)
+        || AUTOPILOT_COLON_VERB.test(afterKeyword)
+        || AUTOPILOT_COMMAND_AFTER.test(afterKeyword)
+        || /^[ \t]+(?:this|these|that|it|my|our|everything)(?![\p{L}\d])/iu.test(afterKeyword);
+    }
+    return !AUTOPILOT_LEADING_STATUS.test(afterKeyword);
+  }
+  if (AUTOPILOT_TURN_BEFORE.test(tail) && AUTOPILOT_ON_AFTER.test(afterKeyword)) return true;
+  if (AUTOPILOT_KEEP_USING_BEFORE.test(tail)) return true;
+  const atLineStart = /^[ \t]*(?:[$/!][ \t]*)?$/.test(lineHead);
+  if (atLineStart && (/[$/!]/.test(lineHead) || AUTOPILOT_ALONE_ON_LINE.test(afterKeyword))) return true;
+  if (AUTOPILOT_ACTIVATION_BEFORE.test(tail) || AUTOPILOT_FOREIGN_VERB_BEFORE.test(tail)) return true;
+  if (AUTOPILOT_COLON_VERB.test(afterKeyword)) return true;
+  if (isHardwareAlias) {
+    return (atLineStart && AUTOPILOT_COMMAND_AFTER.test(afterKeyword))
+      || hasConversationalInvocationNearKeyword(text, position, keywordLength, keywordText);
+  }
+  if (AUTOPILOT_NOUN_USE_BEFORE.test(tail) || AUTOPILOT_COMMIT_LINE_BEFORE.test(tail) || AUTOPILOT_LEADING_STATUS.test(afterKeyword)) return false;
+  if (AUTOPILOT_COMMAND_AFTER.test(afterKeyword)) return true;
+  if (hasConversationalInvocationNearKeyword(text, position, keywordLength, keywordText)) return true;
+  return hasActivationIntentNearKeyword(text.slice(Math.max(lineStart, position - INFORMATIONAL_CONTEXT_WINDOW), Math.min(lineEnd, position + keywordLength + INFORMATIONAL_CONTEXT_WINDOW)), keywordText);
+}
+
+function hasActionableAutopilotKeyword(text, pattern) {
+  const searchText = looksLikeSystemEcho(text)
+    ? stripSystemEchoes(text)
+    : text;
+  const flags = pattern.flags.includes('g') ? pattern.flags : `${pattern.flags}g`;
+  const globalPattern = new RegExp(pattern.source, flags);
+  let scanned = 0;
+  for (const match of searchText.matchAll(globalPattern)) {
+    if (match.index === undefined) continue;
+    if (++scanned > AUTOPILOT_MAX_MATCHES) break;
+    if (!hasExplicitAutopilotInvocationContext(searchText, match.index, match[0].length, match[0])) continue;
+    // A namespaced or $ / ! / slash-prefixed command is unambiguous, whatever surrounds it.
+    const linePrefix = searchText.slice(getLineBounds(searchText, match.index).start, match.index);
+    if (AUTOPILOT_NAMESPACE_PREFIX.test(linePrefix) || /^[ \t]*[$/!]$/.test(linePrefix)) return true;
+    // A command that opens its line with a command verb is judged on its own line, so a help question on an
+    // earlier line does not veto it; every other mention is judged on a bounded window around it.
+    const { start: lineStart, end: lineEnd } = getLineBounds(searchText, match.index);
+    let previousLine = '';
+    for (let end = lineStart - 1; end > 0 && !previousLine.trim();) {
+      const start = searchText.lastIndexOf('\n', end - 1) + 1;
+      previousLine = searchText.slice(start, end);
+      end = start - 1;
+    }
+    const afterAlias = searchText.slice(match.index + match[0].length, match.index + match[0].length + 60);
+    const ownLine = /^[ \t]*$/.test(linePrefix)
+      && !AUTOPILOT_REFERENCE_HEADING.test(previousLine.replace(AUTOPILOT_MARKDOWN_MARKS, '').replace(AUTOPILOT_LIST_PREFIX, '').replace(/\s+$/, ''))
+      && (AUTOPILOT_COMMAND_AFTER.test(afterAlias) || AUTOPILOT_COLON_VERB.test(afterAlias));
+    const from = ownLine ? lineStart : Math.max(0, match.index - AUTOPILOT_CONTEXT_WINDOW);
+    const to = ownLine ? lineEnd : match.index + match[0].length + AUTOPILOT_CONTEXT_WINDOW;
+    if (isInformationalKeywordContext(searchText.slice(from, to), match.index - from, match[0].length, match[0])) continue;
+    return true;
+  }
+  return false;
+}
+
 function hasActionableRalplanKeyword(text, pattern) {
   // Same echo guard as hasActionableKeyword.
   const searchText = looksLikeSystemEcho(text)
@@ -1105,7 +1273,7 @@ function hasValidWorkflowDescriptor(state, sessionId) {
 
 
 // Create state file for a mode
-async function activateState(directory, prompt, stateName, sessionId) {
+async function activateState(directory, prompt, stateName, sessionId, options = {}) {
   const now = new Date().toISOString();
   // Sanitize prompt BEFORE writing to state: prevents pasted system echoes
   // and oversized blobs from being persisted and re-emitted by Stop hook.
@@ -1122,11 +1290,23 @@ async function activateState(directory, prompt, stateName, sessionId) {
       prompt: safePrompt,
       session_id: sessionId || undefined,
       project_path: directory,
-      awaiting_confirmation: true,
-      awaiting_confirmation_set_at: now,
       last_checked_at: now,
       prd_mode: true, // CRITICAL: Enable PRD mode for ralph (issue #4363)
     };
+    // A typed `/oh-my-copilot:ralph` IS the confirmation. Arming the
+    // awaiting_confirmation flag here would suppress the Stop hook for
+    // AWAITING_CONFIRMATION_TTL_MS, and the only clearer
+    // (confirmSkillModeStates on a Skill tool call) never runs on the slash
+    // path — [CC] expands the skill body without a Skill tool use. A short
+    // first turn therefore ended the loop silently. Prose activation
+    // ("use ralph for this") keeps the flag so an accidental mention cannot
+    // hijack the session.
+    if (options.confirmedBySlash === true) {
+      state.invocation_source = 'slash';
+    } else {
+      state.awaiting_confirmation = true;
+      state.awaiting_confirmation_set_at = now;
+    }
   } else if (stateName === 'ralplan') {
     // Ralplan needs active + session_id for stop-hook enforcement
     state = {
@@ -1725,9 +1905,65 @@ function loadTaskSizeDetectionConfig(directory) {
       result.suppressHeavyModesForSmallTasks =
         taskSizeDetection.suppressHeavyModesForSmallTasks !== false;
     }
+    // Word limits of the classifier, read like the bridge reads them. Only
+    // OMC_JEV_TASK_SIZE_NOTICE=1 passes them on (isTaskSizeNoticeEnabled).
+    for (const limit of ['smallWordLimit', 'largeWordLimit']) {
+      if (typeof taskSizeDetection[limit] === 'number' && Number.isFinite(taskSizeDetection[limit])) {
+        result[limit] = taskSizeDetection[limit];
+      }
+    }
   }
 
   return result;
+}
+
+// OMC_JEV_TASK_SIZE_NOTICE=1 makes the task-size step of this script report
+// what it did. Suppressed heavy modes are announced with the reason, as the
+// TypeScript bridge (src/hooks/bridge.ts) does; heavy modes kept although Jev
+// rated the task small are named with the reason (script only: the bridge
+// drops them on any small answer). The classifier agreement check also uses
+// the taskSizeDetection word limits, which the bridge reads too. Off by
+// default: suppression is then silent and the check uses the default limits.
+function isTaskSizeNoticeEnabled(env = process.env) {
+  return ['1', 'true'].includes(String(env.OMC_JEV_TASK_SIZE_NOTICE ?? '').trim().toLowerCase());
+}
+
+// OMC_JEV_TASK_SIZE_PREFIX_WINS=1: a size prefix of the classifier (quick:,
+// simple:, tiny:, minor:, small:, just:, only:, which classifyTaskSize always
+// rates small) makes the active task-size point drop heavy modes whatever size
+// Jev answers. Off by default: Jev must answer small with confidence >= 0.9.
+function isTaskSizePrefixWinsEnabled(env = process.env) {
+  return ['1', 'true'].includes(String(env.OMC_JEV_TASK_SIZE_PREFIX_WINS ?? '').trim().toLowerCase());
+}
+
+// OMC_JEV_TASK_SIZE_SLASH_ANYWHERE=1: a heavy mode typed as a slash command
+// anywhere in the prompt, also as /omc:<mode>, is never dropped by the active
+// task-size point. Off by default: only a slash command at the start of the
+// prompt keeps its mode.
+function isTaskSizeSlashAnywhereEnabled(env = process.env) {
+  return ['1', 'true'].includes(String(env.OMC_JEV_TASK_SIZE_SLASH_ANYWHERE ?? '').trim().toLowerCase());
+}
+
+// OMC_JEV_INTENT_APPLY=1 lets the active `intent` answer decide whether the
+// intent skill is invoked. Off by default: the heuristic (slash pattern) decides
+// and the answer is only logged.
+function isIntentApplyEnabled(env = process.env) {
+  return ['1', 'true'].includes(String(env.OMC_JEV_INTENT_APPLY ?? '').trim().toLowerCase());
+}
+
+// A slash command starts the prompt or follows whitespace, an opening parenthesis or
+// a quote, and ends at whitespace, the end, a closing parenthesis or square bracket, a quote, or
+// punctuation; a dot only when no word character or letter follows (/ralph.md and /ralph.é are files).
+const HEAVY_MODE_SLASH_ANYWHERE_PATTERN = /(?:^|[\s("'])\/(?:oh-my-copilot:|omc:)?(ralph|autopilot|team|ralplan)(?=\s|$|[?!,;:)\]"']|\.(?![\w\p{L}]))/gui;
+
+/**
+ * Heavy modes typed as a slash command anywhere in the sanitized prompt
+ * (/ralph, /oh-my-copilot:ralph, /omc:ralph). Pass cleanPrompt: code
+ * blocks, quotes and pasted payloads are already removed there, while bare
+ * slash commands are kept by sanitizeForKeywordDetection.
+ */
+function heavyModeSlashInvocations(prompt) {
+  return new Set([...String(prompt ?? '').matchAll(HEAVY_MODE_SLASH_ANYWHERE_PATTERN)].map((match) => match[1].toLowerCase()));
 }
 
 /**
@@ -1884,6 +2120,41 @@ const TASK_SIZE_QUESTIONS = {
 
 const INTENT_SLASH_PATTERN = /^\s*\/(?:oh-my-copilot:|omc:|omg:)?intent(?=\s|$|[?!.,;:])/i;
 
+/**
+ * Jev delivery guard (scripts/lib/jev-delivery-guard.mjs). Loaded only when OMC_JEV_GUARD is 1 or
+ * true. A message for the user joins the single JSON this hook prints, as systemMessage
+ * (suppressOutput would hide it, so it is dropped from that output); it counts as shown only once
+ * printed. Any failure leaves the hook unchanged.
+ */
+async function attachJevDeliveryGuardMessage(data, omcRoot) {
+  if (!['1', 'true'].includes(String(process.env.OMC_JEV_GUARD ?? '').trim().toLowerCase())) return;
+  try {
+    const { promptCheck } = await import('./lib/jev-delivery-guard.mjs');
+    let pending = promptCheck(data, { logDir: process.env.OMC_JEV_LOG_DIR || join(omcRoot, 'state', 'jev') });
+    if (!pending) return;
+    const print = console.log.bind(console);
+    console.log = (...args) => {
+      let shown = null;
+      if (pending && typeof args[0] === 'string') {
+        try {
+          const output = JSON.parse(args[0]);
+          if (output && typeof output === 'object' && !Array.isArray(output)) {
+            output.systemMessage = [output.systemMessage, pending.text].filter(Boolean).join('\n');
+            delete output.suppressOutput;
+            args[0] = JSON.stringify(output);
+            shown = pending;
+            pending = null;
+          }
+        } catch { /* not JSON: printed as it is */ }
+      }
+      print(...args);
+      if (shown) {
+        try { shown.confirm(); } catch { /* the guard never breaks the hook */ }
+      }
+    };
+  } catch { /* the guard never breaks the hook */ }
+}
+
 // Main
 async function main() {
   // Skip guard: check OMC_SKIP_HOOKS env var (see issue #838)
@@ -1913,9 +2184,12 @@ async function main() {
 
     let data = {};
     try { data = JSON.parse(input); } catch {}
+    await setJevHookContext(data);
     const directory = data.cwd || data.directory || process.cwd();
     const sessionId = data.session_id || data.sessionId || '';
+    setJevSessionId(sessionId, data.agent_id || data.agentId);
     const omcRoot = await resolveOmcStateRoot(directory);
+    await attachJevDeliveryGuardMessage(data, omcRoot);
 
     const prompt = extractPrompt(input);
     if (!prompt) {
@@ -2023,7 +2297,8 @@ async function main() {
     // research prose (e.g. "autonomous driving", "autonomous agent") to be a
     // reliable trigger. Aligns with src/hooks/keyword-detector/index.ts and
     // templates/hooks/keyword-detector.mjs, which already exclude it.
-    if (hasActionableKeyword(cleanPrompt, /\b(autopilot|auto pilot|auto-pilot|full auto|fullsend)\b|(오토파일럿)|(オートパイロット)/i) ||
+    if (hasActionableAutopilotKeyword(cleanPrompt, /\b(autopilot|auto pilot|auto-pilot|full auto|fullsend)\b/i) ||
+        hasActionableKeyword(cleanPrompt, /(오토파일럿)|(オートパイロット)/i) ||
         hasActionableKeyword(cleanPrompt, /\b(build|create|make)\s+me\s+(an?\s+)?(app|feature|project|tool|plugin|website|api|server|cli|script|system|service|dashboard|bot|extension)\b/i) ||
         hasActionableKeyword(cleanPrompt, /\bi\s+want\s+a\s+(app|feature|project|tool|plugin|website|api|server|cli|script|system|service|dashboard|bot|extension)\b/i) ||
         hasActionableKeyword(cleanPrompt, /\bi\s+want\s+an\s+(app|feature|project|tool|plugin|website|api|server|cli|script|system|service|dashboard|bot|extension)\b/i) ||
@@ -2115,7 +2390,11 @@ async function main() {
     }
 
     // Resolve conflicts
+    let pendingSkillTriggerApplied;
     let resolved = resolveConflicts(uniqueMatches);
+    if (NO_IMPLEMENT_PATTERN.test(cleanPrompt) && !/^\s*\//.test(prompt)) {
+      resolved = resolved.filter((m) => !CODE_EDITING_SKILLS.has(m.name));
+    }
 
     const permissionMode = data.permission_mode;
     if (isJevShadowOptedIn('skill-trigger', process.env, permissionMode)) {
@@ -2131,6 +2410,7 @@ async function main() {
       // In active mode, use Jev's skill choice
       if (jevResult && jevResult.mode === 'active' && jevResult.answer) {
         const jevChoice = jevResult.answer.choice?.toLowerCase();
+        const keywordsBefore = resolved.map((match) => match.name);
         if (jevChoice && jevChoice !== 'none') {
           // Override with Jev's chosen skill
           const matchedKeyword = uniqueMatches.find((m) => m.name === jevChoice);
@@ -2138,6 +2418,11 @@ async function main() {
         } else if (jevChoice === 'none') {
           // Jev says no trigger
           resolved = [];
+        }
+        const keywordsAfter = resolved.map((match) => match.name);
+        if (keywordsAfter.join(',') !== keywordsBefore.join(',')) {
+          // Staged: the follow-up routing below can end the hook without using the keywords.
+          pendingSkillTriggerApplied = { keywords: { from: keywordsBefore, to: keywordsAfter }, choice: jevChoice };
         }
       }
     }
@@ -2149,20 +2434,52 @@ async function main() {
         heuristic: INTENT_SLASH_PATTERN.test(cleanPrompt),
         permissionMode,
       });
-      // In active mode, intent Jev answer could be used here if needed
-      // Currently logging-only: resolved keywords come from skill-trigger
+      // In active mode with opt-in, intent Jev answer decides whether to invoke the skill
+      // The keywordDetector.disabled opt-out still wins, and intent is added at most once.
+      if (
+        isIntentApplyEnabled() &&
+        !disabledKeywords.has('intent') &&
+        !resolved.some((match) => match.name === 'intent')
+      ) {
+        const noul = jevNoulOf(jevResult, 'intent');
+        if (noul !== undefined && noul >= 0.5) {
+          resolved.push({ name: 'intent', args: '' });
+        }
+      }
     }
 
     // Apply task-size filtering: suppress heavy keywords for small tasks (issue #4805)
     // Heavy keywords are: ralph, autopilot, team, ralplan
     const HEAVY_KEYWORDS = new Set(['ralph', 'autopilot', 'team', 'ralplan']);
-    
+    const taskSizeDetectionConfig = loadTaskSizeDetectionConfig(directory);
+    const taskSizeNotice = isTaskSizeNoticeEnabled();
+    const taskSizeNotes = [];
+
+    // Slash invocations the task-size filter never suppresses. Start-of-prompt slash
+    // commands always count; a slash command anywhere is added below only when an
+    // active task-size decision applies.
+    const slashInvokedByAnyRule = new Set();
+    if (isExplicitRalplanSlashInvocation(cleanPrompt)) slashInvokedByAnyRule.add('ralplan');
+    if (isExplicitRalphSlashInvocation(cleanPrompt)) slashInvokedByAnyRule.add('ralph');
+    if (/^\s*\/(?:oh-my-copilot:)?autopilot(?:\s|$|:)/i.test(cleanPrompt)) slashInvokedByAnyRule.add('autopilot');
+    if (/^\s*\/(?:oh-my-copilot:)?team(?:\s|$|:)/i.test(cleanPrompt)) slashInvokedByAnyRule.add('team');
+
     let jevTaskSizeResult = null;
     let heuristicTaskSize = null;
+    let gateTaskSize = null;
     if (isJevShadowOptedIn('task-size', process.env, permissionMode)) {
       try {
         const { classifyTaskSize } = await import('../dist/hooks/task-size-detector/index.js');
         heuristicTaskSize = classifyTaskSize(cleanPrompt);
+        // With OMC_JEV_TASK_SIZE_NOTICE=1 the classifier agreement check below uses the
+        // taskSizeDetection word limits, which the bridge reads too. The logged heuristic
+        // keeps the default limits, as the bridge's twin (recordTaskSizeShadow) does.
+        if (taskSizeNotice) {
+          gateTaskSize = classifyTaskSize(cleanPrompt, {
+            smallWordLimit: taskSizeDetectionConfig.smallWordLimit ?? 50,
+            largeWordLimit: taskSizeDetectionConfig.largeWordLimit ?? 200,
+          });
+        }
         const jevResult = recordJevShadow({
           point: 'task-size',
           state: { prompt: cleanPrompt, source: 'user-prompt-submit' },
@@ -2186,44 +2503,112 @@ async function main() {
       }
     }
 
+    // OMC_JEV_TASK_SIZE_SLASH_ANYWHERE=1 is a task-size rule: a slash command
+    // anywhere counts as the user's confirmation only when an active task-size
+    // decision applies. In shadow mode or with Jev off, a mid-prompt slash
+    // command keeps the awaiting-confirmation window, as without the variable.
+    const slashAnywhereKeywords = jevTaskSizeResult && isTaskSizeSlashAnywhereEnabled()
+      ? heavyModeSlashInvocations(cleanPrompt)
+      : new Set();
+    for (const name of slashAnywhereKeywords) slashInvokedByAnyRule.add(name);
+
     // Filter heavy keywords if task-size is 'small' (issue #4805)
     // Only suppress when enabled, confidence >= 0.9, and the heuristic says
-    // small or the prompt has an explicit size prefix.
-    // - NEVER suppress slash-invoked modes
-    const taskSizeDetectionConfig = loadTaskSizeDetectionConfig(directory);
+    // small or the prompt has an explicit size prefix (with
+    // OMC_JEV_TASK_SIZE_PREFIX_WINS=1 a classifier prefix alone is enough).
+    // - NEVER suppress slash-invoked modes (with OMC_JEV_TASK_SIZE_SLASH_ANYWHERE=1
+    //   a slash command anywhere in the prompt counts)
+    // With OMC_JEV_TASK_SIZE_NOTICE=1 the outcome is reported in additionalContext:
+    // the suppressed modes with the reason, and the heavy modes kept although Jev
+    // rated the task small, each with the reason it was kept.
+    const suppressedHeavy = [];
+    const keptHeavy = [];
+    let suppressionReason = '';
+    const jevSizeConfidence = jevTaskSizeResult?.confidence === undefined || jevTaskSizeResult?.confidence === null
+      ? null
+      : String(jevTaskSizeResult.confidence);
+    const sizeTwin = gateTaskSize ?? heuristicTaskSize;
+    const heavyInResolved = () => resolved.filter((keyword) => HEAVY_KEYWORDS.has(keyword.name)).map((keyword) => keyword.name);
+    // OMC_JEV_TASK_SIZE_PREFIX_WINS=1: a classifier size prefix drops heavy modes
+    // whatever size Jev answers.
+    const classifierSizePrefix = isTaskSizePrefixWinsEnabled() && heuristicTaskSize?.hasEscapeHatch === true;
+    const taskSizeSlashAnywhere = isTaskSizeSlashAnywhereEnabled();
     if (
       taskSizeDetectionConfig.enabled &&
       taskSizeDetectionConfig.suppressHeavyModesForSmallTasks &&
       jevTaskSizeResult &&
-      jevTaskSizeResult.size === 'small' &&
-      jevTaskSizeResult.confidence >= 0.9
+      ((jevTaskSizeResult.size === 'small' &&
+        jevTaskSizeResult.confidence >= 0.9) ||
+        classifierSizePrefix)
     ) {
       // Check if prompt has a size prefix like "quick:"
       const hasSizePrefix = /^\s*(?:quick|small|tiny|minimal|fast|speed|urgent):/i.test(cleanPrompt);
       // Check if heuristic classifyTaskSize also says small
-      const heuristicSaysSmall = heuristicTaskSize && (heuristicTaskSize.size === 'small' || heuristicTaskSize.size === 'quick');
+      const heuristicSaysSmall = sizeTwin && (sizeTwin.size === 'small' || sizeTwin.size === 'quick');
       
       // Only suppress if BOTH conditions are true: confidence >= 0.9 AND (heuristic small OR size prefix)
+      // (a classifier prefix under OMC_JEV_TASK_SIZE_PREFIX_WINS makes the heuristic say small)
       const shouldSuppressForSize = (heuristicSaysSmall || hasSizePrefix);
       
       if (shouldSuppressForSize) {
-        // Check for slash invocations: never suppress slash-invoked modes
-        const slashInvokedKeywords = new Set();
-        if (isExplicitRalplanSlashInvocation(cleanPrompt)) slashInvokedKeywords.add('ralplan');
-        // Check for other slash modes: /oh-my-copilot:ralph, /oh-my-copilot:autopilot, etc.
-        if (/^\s*\/(?:oh-my-copilot:)?ralph(?:\s|$|:)/i.test(cleanPrompt)) slashInvokedKeywords.add('ralph');
-        if (/^\s*\/(?:oh-my-copilot:)?autopilot(?:\s|$|:)/i.test(cleanPrompt)) slashInvokedKeywords.add('autopilot');
-        if (/^\s*\/(?:oh-my-copilot:)?team(?:\s|$|:)/i.test(cleanPrompt)) slashInvokedKeywords.add('team');
-        
         // Filter out non-slash-invoked heavy keywords
+        const keywordsBeforeSize = resolved.map((match) => match.name);
+        // (slash invocations already collected in slashInvokedByAnyRule)
         resolved = resolved.filter(keyword => {
           if (!HEAVY_KEYWORDS.has(keyword.name)) {
             return true; // Keep non-heavy keywords
           }
           // For heavy keywords, suppress only if NOT slash-invoked
-          return slashInvokedKeywords.has(keyword.name);
+          if (slashInvokedByAnyRule.has(keyword.name)) {
+            keptHeavy.push(`${keyword.name} (slash command)`);
+            return true;
+          }
+          suppressedHeavy.push(keyword.name);
+          return false;
         });
+        const prefixWon = classifierSizePrefix &&
+          !(jevTaskSizeResult.size === 'small' && jevTaskSizeResult.confidence >= 0.9);
+        // A size prefix that won over another answer (OMC_JEV_TASK_SIZE_PREFIX_WINS) dropped the
+        // modes, not Jev's small answer: no applied line.
+        const suppressedForSize = keywordsBeforeSize.filter((name) => !resolved.some((match) => match.name === name));
+        if (suppressedForSize.length > 0 && !prefixWon) {
+          recordJevApplied('task-size', { size: jevTaskSizeResult.size, confidence: jevTaskSizeResult.confidence, suppressed: suppressedForSize });
+        }
+        suppressionReason = prefixWon
+          ? `size prefix "${heuristicTaskSize.escapePrefixUsed}" (Jev active-mode classification: ${jevTaskSizeResult.size}, confidence ${jevSizeConfidence ?? 'not given'})`
+          : heuristicSaysSmall
+            ? `Jev active-mode classification: small (confidence ${jevSizeConfidence}); heuristic: ${sizeTwin.reason}`
+            : `Jev active-mode classification: small (confidence ${jevSizeConfidence}); size prefix in the prompt`;
+      } else if (taskSizeNotice) {
+        const heuristicSize = sizeTwin?.size ?? 'unknown';
+        keptHeavy.push(...heavyInResolved().map((name) => `${name} (the heuristic rates the task ${heuristicSize} and the prompt has no size prefix)`));
       }
+    } else if (
+      taskSizeNotice &&
+      taskSizeDetectionConfig.enabled &&
+      taskSizeDetectionConfig.suppressHeavyModesForSmallTasks &&
+      jevTaskSizeResult &&
+      jevTaskSizeResult.size === 'small'
+    ) {
+      const keptReason = jevSizeConfidence === null ? 'Jev gave no confidence' : `Jev confidence ${jevSizeConfidence} is below 0.9`;
+      keptHeavy.push(...heavyInResolved().map((name) => `${name} (${keptReason})`));
+    }
+    if (taskSizeNotice && suppressedHeavy.length > 0) {
+      taskSizeNotes.push(
+        `[TASK-SIZE: SMALL] Heavy orchestration mode(s) suppressed: ${suppressedHeavy.join(', ')}.\n` +
+          `Reason: ${suppressionReason}\n` +
+          'Running directly without heavy agent stacking. ' +
+          (taskSizeSlashAnywhere
+            ? `To run a suppressed mode anyway, type its slash command anywhere in the prompt (for example \`/oh-my-copilot:${suppressedHeavy[0]}\`); ` +
+              'slash commands are never suppressed.\n\n'
+            : `To run a suppressed mode anyway, start the prompt with its slash command (for example \`/oh-my-copilot:${suppressedHeavy[0]}\`); ` +
+              'slash commands at the start of the prompt are never suppressed.\n\n'),
+      );
+    }
+    if (taskSizeNotice && keptHeavy.length > 0) {
+      // A mode can also be kept by a slash command after a size prefix won over a larger Jev answer.
+      const keptHeader = jevTaskSizeResult?.size === 'small' ? 'kept although Jev rated this task small' : 'kept';
+      taskSizeNotes.push(`[TASK-SIZE] Heavy mode(s) ${keptHeader}: ${keptHeavy.join(', ')}.\n\n`);
     }
 
     // Import flow tracer once (best-effort)
@@ -2294,12 +2679,17 @@ async function main() {
       }
     }
 
+    // The keywords reach the rest of the hook: now the skill-trigger application counts.
+    if (pendingSkillTriggerApplied) recordJevApplied('skill-trigger', pendingSkillTriggerApplied);
+
     // Nothing left to act on (no keywords, or all opted out) - pass through.
     // Keep this after approved follow-up handling so short post-ralplan
     // prompts like "team" can launch the approved execution path even
     // though generic team keyword auto-detection is disabled.
     if (resolved.length === 0) {
-      console.log(JSON.stringify({ continue: true, suppressOutput: true }));
+      console.log(JSON.stringify(taskSizeNotes.length > 0
+        ? createHookOutput(taskSizeNotes.join(''))
+        : { continue: true, suppressOutput: true }));
       return;
     }
 
@@ -2325,14 +2715,22 @@ async function main() {
       ? []
       : resolved.filter(m => ['ralph', 'ultragoal', 'autopilot', 'ralplan'].includes(m.name));
     for (const mode of stateModes) {
-      const activationError = await activateState(directory, prompt, mode.name, sessionId);
+      const activationError = await activateState(directory, prompt, mode.name, sessionId, {
+        // Only a slash command at the start of the raw prompt counts as the user's
+        // confirmation; the sanitized prompt is not used, which would make a command
+        // that follows inline code look leading. A slash command anywhere counts too when
+        // OMC_JEV_TASK_SIZE_SLASH_ANYWHERE=1 and an active task-size decision applies.
+        // A mention inside prose keeps the awaiting-confirmation window.
+        confirmedBySlash: mode.name === 'ralph' &&
+          (isExplicitRalphSlashInvocation(prompt) || slashAnywhereKeywords.has('ralph')),
+      });
       if (activationError === 'workflow_descriptor_integrity_failed') {
         console.log(JSON.stringify(createHookOutput('workflow_descriptor_integrity_failed')));
         return;
       }
       if (activationError) {
         console.log(JSON.stringify(createHookOutput(
-          `[OMC STATE ERROR] ${activationError} No ${mode.name} state was activated.`,
+          taskSizeNotes.join('') + `[OMC STATE ERROR] ${activationError} No ${mode.name} state was activated.`,
         )));
         return;
       }
@@ -2345,7 +2743,7 @@ async function main() {
       }
     }
 
-    const additionalContextParts = [];
+    const additionalContextParts = [...taskSizeNotes];
     for (const [keywordName, message] of MODE_MESSAGE_KEYWORDS) {
       const index = resolved.findIndex(m => m.name === keywordName);
       if (index !== -1) {

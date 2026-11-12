@@ -1605,6 +1605,36 @@ async function checkHudInstallation(retryCount = 0) {
   return { installed: true };
 }
 
+/**
+ * Jev compaction bookkeeping (scripts/lib/jev-compaction-state.mjs). Loaded only when OMC_JEV
+ * mentions the opt-in point `compaction`; any failure leaves session start unchanged.
+ * Returns {context?, systemMessage?}.
+ */
+async function jevCompactionAfterSessionStart(data, logDirOf) {
+  if (!(process.env.OMC_JEV || '').includes('compaction')) return {};
+  try {
+    const { afterSessionStart } = await import(pathToFileURL(join(__dirname, 'lib', 'jev-compaction-state.mjs')).href);
+    return afterSessionStart(data, { logDir: process.env.OMC_JEV_LOG_DIR || logDirOf() }) || {};
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Jev delivery guard (scripts/lib/jev-delivery-guard.mjs). Loaded only when OMC_JEV_GUARD is 1 or
+ * true; records the session's baseline and returns a message when the pre-tool-enforcer timeout is
+ * too short for Jev. Any failure leaves session start unchanged.
+ */
+async function jevDeliveryGuardAtSessionStart(data) {
+  if (!['1', 'true'].includes(String(process.env.OMC_JEV_GUARD ?? '').trim().toLowerCase())) return null;
+  try {
+    const { startSession } = await import(pathToFileURL(join(__dirname, 'lib', 'jev-delivery-guard.mjs')).href);
+    return startSession(data);
+  } catch {
+    return null;
+  }
+}
+
 // Main
 async function main() {
   const sessionStartDeadline = Date.now() + SESSION_START_HOOK_TIMEOUT_MS;
@@ -1632,6 +1662,22 @@ async function main() {
         // Legacy-state cleanup is best-effort on the no-workspace fast path.
       }
       refreshUpdateCacheInBackground();
+      // Jev compaction needs no workspace: a session outside a repository compacts too.
+      const compaction = await jevCompactionAfterSessionStart(data, () => join(
+        process.env.OMC_STATE_DIR ? resolve(process.env.OMC_STATE_DIR, 'non-git') : join(homedir(), '.omg'),
+        'state',
+        'jev',
+      ));
+      const guardMessage = await jevDeliveryGuardAtSessionStart(data);
+      const noWorkspaceMessage = [compaction.systemMessage, guardMessage].filter(Boolean).join('\n');
+      if (compaction.context || noWorkspaceMessage) {
+        console.log(JSON.stringify({
+          continue: true,
+          ...(noWorkspaceMessage ? { systemMessage: noWorkspaceMessage } : {}),
+          ...(compaction.context ? { hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: compaction.context } } : {}),
+        }));
+        return;
+      }
       console.log(JSON.stringify({ continue: true }));
       return;
     }
@@ -1675,6 +1721,14 @@ async function main() {
         // Restore is advisory: never break session start on a checkpoint error.
       }
     }
+
+    // Jev compaction (opt-in point `compaction`): move the hooks module's records to
+    // compaction.jsonl; after a compaction that used the built-in summary, add the work-state registry.
+    const compaction = await jevCompactionAfterSessionStart(data, () => join(omcRoot, 'state', 'jev'));
+    if (compaction.context) messages.push(`<session-restore>\n\n${compaction.context}\n\n</session-restore>\n\n---\n`);
+    if (compaction.systemMessage) userMessages.push(compaction.systemMessage);
+    const guardMessage = await jevDeliveryGuardAtSessionStart(data);
+    if (guardMessage) userMessages.push(guardMessage);
 
     // Fire sibling-retrofit warning once per session (lifted off getOmcRoot hot path)
     try {

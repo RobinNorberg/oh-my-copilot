@@ -6,12 +6,33 @@
  * Throws JevClientError on any failure; the resolver catches and degrades.
  */
 
-import type { JevQuestionDef, JevQuestions, JevResponse } from './types.js';
+import type { JevAnswer, JevQuestionDef, JevQuestions, JevResponse } from './types.js';
+
+/** What a failed request tells about the endpoint (read by the opt-in shared breaker). */
+export interface JevFailureDetails {
+  /** HTTP status of a non-2xx response. */
+  status?: number;
+  /** Retry-After header of that response. */
+  retryAfter?: string;
+  /** Start of the body of a 429 response, read only when JevClientOptions.bodyForRetry asked for it. */
+  body?: string;
+  /** No HTTP response arrived at all: timeout or network error. */
+  noResponse?: boolean;
+}
 
 export class JevClientError extends Error {
-  constructor(message: string) {
+  readonly status?: number;
+  readonly retryAfter?: string;
+  readonly body?: string;
+  readonly noResponse?: boolean;
+
+  constructor(message: string, details: JevFailureDetails = {}) {
     super(message);
     this.name = 'JevClientError';
+    this.status = details.status;
+    this.retryAfter = details.retryAfter;
+    this.body = details.body;
+    this.noResponse = details.noResponse;
   }
 }
 
@@ -19,6 +40,12 @@ export interface JevClientOptions {
   endpoint: string;
   apiKey: string;
   timeoutMs: number;
+  /**
+   * Opt-in shared breaker: for a 429, called with the Retry-After header; when it
+   * returns { maxChars }, that many characters of the response body are read
+   * (the breaker takes a retry time from them). Without it no body is read.
+   */
+  bodyForRetry?: (retryAfter: string | undefined) => { maxChars: number } | undefined;
   /** Test hook: injected transport. Defaults to globalThis.fetch. */
   fetchFn?: typeof fetch;
 }
@@ -31,10 +58,11 @@ export async function queryJev(
   const fetchFn = options.fetchFn ?? fetch;
   const controller = new AbortController();
   let timer: NodeJS.Timeout | undefined;
+  let responded = false;
   const timeoutPromise = new Promise<never>((_resolve, reject) => {
     timer = setTimeout(() => {
       controller.abort();
-      reject(new JevClientError(`jev request timed out after ${options.timeoutMs}ms`));
+      reject(new JevClientError(`jev request timed out after ${options.timeoutMs}ms`, { noResponse: !responded }));
     }, options.timeoutMs);
   });
   try {
@@ -47,18 +75,65 @@ export async function queryJev(
       body: JSON.stringify({ state, questions: serializeQuestions(questions), model: JEV_MODEL }),
       signal: controller.signal,
     }), timeoutPromise]);
+    responded = true;
     if (!response.ok) {
-      throw new JevClientError(`jev request failed: HTTP ${response.status}`);
+      const retryAfter = response.headers?.get?.('retry-after') ?? undefined;
+      const wanted = response.status === 429 ? options.bodyForRetry?.(retryAfter) : undefined;
+      throw new JevClientError(`jev request failed: HTTP ${response.status}`, {
+        status: response.status,
+        retryAfter,
+        ...(wanted ? { body: await readErrorBody(response, wanted.maxChars) } : {}),
+      });
     }
     const body: unknown = await response.json();
     return validateJevResponse(body);
   } catch (error) {
     if (controller.signal.aborted && !(error instanceof JevClientError)) {
-      throw new JevClientError(`jev request timed out after ${options.timeoutMs}ms`);
+      throw new JevClientError(`jev request timed out after ${options.timeoutMs}ms`, { noResponse: !responded });
     }
-    throw error instanceof JevClientError ? error : new JevClientError(error instanceof Error ? error.message : String(error));
+    throw error instanceof JevClientError
+      ? error
+      : new JevClientError(error instanceof Error ? error.message : String(error), { noResponse: !responded });
   } finally {
     if (timer) clearTimeout(timer);
+  }
+}
+
+/**
+ * The first `maxChars` characters of a failed response's body, or undefined when it cannot be read within a
+ * second. The stream is read only as far as needed and then cancelled. Never throws.
+ */
+async function readErrorBody(response: Response, maxChars: number): Promise<string | undefined> {
+  let timer: NodeJS.Timeout | undefined;
+  let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+  try {
+    const read = async (): Promise<string> => {
+      if (typeof response.body?.getReader !== 'function') return String(await response.text()).slice(0, maxChars);
+      reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let text = '';
+      while (text.length < maxChars) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        text += decoder.decode(value, { stream: true });
+      }
+      return text.slice(0, maxChars);
+    };
+    return await Promise.race([
+      read(),
+      new Promise<undefined>((resolve) => {
+        timer = setTimeout(() => resolve(undefined), 1000);
+      }),
+    ]);
+  } catch {
+    return undefined;
+  } finally {
+    if (timer) clearTimeout(timer);
+    try {
+      await reader?.cancel();
+    } catch {
+      // The body is not needed any more.
+    }
   }
 }
 
@@ -106,4 +181,19 @@ export function validateJevResponse(body: unknown): JevResponse {
     }
   }
   return body as JevResponse;
+}
+
+/** A Noul probability at or above this value reads as "yes". */
+export const NOUL_YES_THRESHOLD = 0.5;
+
+/**
+ * Read a Noul answer as yes/no. The API returns `noul` as the probability of
+ * "yes" (0-1), not as a boolean, so `noul === true` never matches a real
+ * answer. A boolean is still accepted; a missing or non-finite value reads as
+ * "no". Same rule as jevSaysTaskComplete() in scripts/persistent-mode.mjs.
+ */
+export function noulAnswerIsYes(answer: JevAnswer | undefined): boolean {
+  const noul = answer?.noul;
+  if (typeof noul === 'boolean') return noul;
+  return typeof noul === 'number' && Number.isFinite(noul) && noul >= NOUL_YES_THRESHOLD;
 }

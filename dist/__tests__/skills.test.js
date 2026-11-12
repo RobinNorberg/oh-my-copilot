@@ -73,13 +73,13 @@ describe('Builtin Skills', () => {
         clearSkillsCache();
     });
     describe('createBuiltinSkills()', () => {
-        it('should return correct number of skills (98 canonical + 2 aliases)', () => {
+        it('should return correct number of skills (99 canonical + 2 aliases)', () => {
             const skills = createBuiltinSkills();
-            // 100 entries: 98 canonical skills (upstream's 83, incl. the pstack-derived
-            // series through c5b71636e, plus the fork's 15 exclusive skills: critique,
+            // 101 entries: 99 canonical skills (upstream's 84, incl. the pstack-derived
+            // series and sdd, plus the fork's 15 exclusive skills: critique,
             // deep-review, discover, ralph-experiment, ship, omc-ado-*, omc-gh-*)
             // + 2 aliases (cancel-ralph, psm)
-            expect(skills).toHaveLength(100);
+            expect(skills).toHaveLength(101);
         });
         it('should return an array of BuiltinSkill objects', () => {
             const skills = createBuiltinSkills();
@@ -203,6 +203,7 @@ describe('Builtin Skills', () => {
                 'release',
                 'remember',
                 'research',
+                'sdd',
                 'self-improve',
                 'session-flow',
                 'sharpen',
@@ -791,10 +792,10 @@ describe('Builtin Skills', () => {
     describe('listBuiltinSkillNames()', () => {
         it('should return canonical skill names by default', () => {
             const names = listBuiltinSkillNames();
-            // 98 canonical skills: upstream's 83 (incl. the pstack-derived series
-            // through c5b71636e) plus the fork's 15 exclusive skills (critique,
+            // 99 canonical skills: upstream's 84 (incl. the pstack-derived series
+            // and sdd) plus the fork's 15 exclusive skills (critique,
             // deep-review, discover, ralph-experiment, ship, omc-ado-*, omc-gh-*)
-            expect(names).toHaveLength(98);
+            expect(names).toHaveLength(99);
             expect(names).toContain('ship');
             expect(names).toContain('ai-slop-cleaner');
             expect(names).toContain('minimal-code-discipline');
@@ -833,8 +834,8 @@ describe('Builtin Skills', () => {
         });
         it('should include aliases when explicitly requested', () => {
             const names = listBuiltinSkillNames({ includeAliases: true });
-            // swarm alias removed in #1131; learner retired in 5.0.0; cancel-ralph and psm remain
-            expect(names).toHaveLength(100);
+            // swarm alias removed in #1131; learner retired in 5.0.0; cancel-ralph and psm remain; sdd added in #4703
+            expect(names).toHaveLength(101);
             expect(names).toContain('ai-slop-cleaner');
             expect(names).toContain('autoresearch');
             expect(names).toContain('self-improve');
