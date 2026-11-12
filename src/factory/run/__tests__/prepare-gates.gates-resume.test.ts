@@ -61,6 +61,7 @@ describe('gates loop', () => {
     const { done } = run([commitFile('a.ts'), review('approve')], { limits: limits({ gatesTimeoutMs: 20 * 60_000 }) });
     const out = await done;
     expect(out.gate?.name).toBe('gates-timeout');
+    expect(out.message).toMatch(/; rerun .+ to wait again, or .*cancel/);
     expect(readFactoryState(h.root, ISSUE)!.phase).toBe('gates');
   });
 });
