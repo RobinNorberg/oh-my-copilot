@@ -44,6 +44,8 @@ import { getGlobalOmcStatePath } from '../../utils/paths.js';
 import { removeRunDir, type PrivateRunLayout } from './private-store.js';
 import { expectedPrivateLayout, withImportLock } from './private-run.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
+import { resolveGateIsolation, type GateContainerSettings } from '../../copilot-run/sandbox.js';
+import { cleanRunContainers, CONTAINER_NAME_PREFIX, containerRunLabel, type ContainerExecSync } from './container-gate.js';
 
 const HEX40 = /^[0-9a-f]{40}$/;
 
@@ -93,6 +95,8 @@ export interface FactoryCleanOptions {
   localGateStateDir?: string;
   /** The repository import lock the caller already holds (tryScanLock's importLock): the seed removal runs inside it. */
   importLock?: HeldOwner;
+  /** The container runtime CLI for isolation "container" (default container-gate.ts defaultContainerExecSync); tests pass a fake. */
+  containerExecSync?: ContainerExecSync;
 }
 
 export type LaneProcessRecord = NonNullable<FactoryRunState['lanes'][number]['process']>;
@@ -388,5 +392,26 @@ export function cleanHeldFactoryRun(o: FactoryCleanOptions, state: FactoryRunSta
       result.kept.push({ worktree: path, reason: error instanceof Error ? error.message : String(error) });
     }
   }
+  cleanGateContainers(o, result);
   return result;
+}
+
+/**
+ * factory.run.sandbox.isolation "container" (user config): the gate
+ * containers and volumes a killed engine left for this run, by the run's
+ * label and name prefix only (container-gate.ts cleanRunContainers). Without
+ * container isolation the runtime is never called.
+ */
+function cleanGateContainers(o: FactoryCleanOptions, result: FactoryCleanResult): void {
+  let user = o.runUserConfig;
+  if (user === undefined) {
+    try { user = userConfigLayers().trustedUser; } catch { user = null; }
+  }
+  let container: GateContainerSettings | undefined;
+  try { container = resolveGateIsolation({ user, base: undefined }).container; } catch { container = undefined; }
+  if (!container) return;
+  const label = containerRunLabel(o.root, o.issue);
+  const r = cleanRunContainers(container.runtime, label, o.containerExecSync);
+  result.removed.push(...r.removed.map((n) => `${container.runtime} ${n}`));
+  if (r.problem) result.kept.push({ worktree: `${container.runtime} ${CONTAINER_NAME_PREFIX}${label}-*`, reason: r.problem });
 }

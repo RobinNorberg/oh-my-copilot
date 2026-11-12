@@ -43,6 +43,8 @@ import { isReviewFeedbackArgs } from '../../forge/github/graphql.js';
 import { isRequiredChecksArgs } from '../../forge/github/checks.js';
 import { FactoryBusyError, factoryStateDir, READ_SCAN_WAIT_MS, readFactoryState, tryScanLock, type OwnerDeps } from '../run/state.js';
 import { gateDefinitionSources } from '../run/local-gate.js';
+import { resolveGateIsolation, type GateContainerSettings } from '../../copilot-run/sandbox.js';
+import { probeContainerRuntime } from '../run/container-gate.js';
 import { BUCKET_ORDER, checkItems, plainText, type CheckEnv, type CheckResult } from './score.js';
 
 export const EXIT_CHECK_FAILED = 1;
@@ -196,6 +198,8 @@ export interface FactoryCheckDeps {
   err: (line: string) => void;
   /** This process as an engine-lock contender (default defaultOwnerDeps; tests inject one). */
   owner?: OwnerDeps;
+  /** The container runtime probe for isolation "container" (default container-gate.ts probeContainerRuntime); tests inject one. */
+  containerProbe?: (s: GateContainerSettings) => { version: string | null; image: boolean };
 }
 
 export interface FactoryCheckOptions {
@@ -221,6 +225,8 @@ export interface CheckJson {
   prepareChecksSkipped?: string[];
   /** The local forge's gate definition status (`ok`, `unresolved (<why>)` or `not set`); absent on GitHub and Azure DevOps. */
   gate?: string;
+  /** factory.run.sandbox.isolation "container" only: the runtime's server version (null = not answering) and whether the image is there. */
+  gateIsolation?: { kind: 'container'; runtime: string; image: string; version: string | null; imagePresent: boolean };
   repo: string;
   source: Record<string, unknown> | null;
   counts: Record<string, number>;
@@ -568,6 +574,18 @@ export async function runFactoryCheck(o: FactoryCheckOptions, deps: FactoryCheck
     const unresolved = argv && argv.length > 0 ? gateDefinitionSources(argv).unresolved : undefined;
     gate = !argv || argv.length === 0 ? 'not set' : unresolved ? `unresolved (${unresolved})` : 'ok';
   }
+  // factory.run.sandbox.isolation "container" (user config): whether the runtime answers and the image is there.
+  let isolation: { kind: 'container'; runtime: string; image: string; version: string | null; imagePresent: boolean } | undefined;
+  try {
+    const container = resolveGateIsolation({ user: deps.trustedUser(), base: undefined }).container;
+    if (container) {
+      const p = (deps.containerProbe ?? probeContainerRuntime)(container);
+      isolation = { kind: 'container', runtime: container.runtime, image: container.image, version: p.version, imagePresent: p.image };
+      if (p.version === null) warnings.push(`omg factory check: factory.run.sandbox.isolation is "container" but ${container.runtime} does not answer: every prepare check and local gate parks at gate-container-unavailable until it does (start it, or set isolation "copilot")`);
+    }
+  } catch (error) {
+    warnings.push(`omg factory check: factory.run.sandbox: ${error instanceof Error ? error.message : String(error)}`);
+  }
   if (o.json) {
     const json: CheckJson = {
       schemaVersion: CHECK_JSON_SCHEMA_VERSION,
@@ -577,6 +595,7 @@ export async function runFactoryCheck(o: FactoryCheckOptions, deps: FactoryCheck
       prepareChecks,
       ...(prepareSkipped.length > 0 ? { prepareChecksSkipped: prepareSkipped } : {}),
       ...(gate ? { gate } : {}),
+      ...(isolation ? { gateIsolation: isolation } : {}),
       repo: config.repo.url,
       source: ids.length > 0 || parent !== undefined || !source ? null : { ...source },
       counts: Object.fromEntries(BUCKET_ORDER.map((b) => [b, items.filter((r) => r.bucket === b).length])),
@@ -591,6 +610,10 @@ export async function runFactoryCheck(o: FactoryCheckOptions, deps: FactoryCheck
     deps.out(chalk.gray(`prepare checks: ${prepareChecks.length > 0 ? prepareChecks.join('; ') : 'none'}`));
     for (const why of prepareSkipped) deps.out(chalk.yellow(`prepare check skipped: ${why}`));
     if (gate) deps.out((gate.startsWith('unresolved') ? chalk.yellow : chalk.gray)(`gate: ${plainText(gate)}`));
+    if (isolation) {
+      const state = isolation.version === null ? 'not available' : `${isolation.runtime} ${isolation.version}, image ${isolation.imagePresent ? 'present' : 'not pulled yet (pulled at the first gate, announced)'}`;
+      deps.out((isolation.version === null ? chalk.yellow : chalk.gray)(`gate isolation: container (${isolation.runtime}, ${isolation.image}): ${plainText(state)}`));
+    }
     deps.out(renderCheckTable(items));
     if (o.mark) {
       if (m.marked.length > 0) deps.out(chalk.green(`marked ${m.marker}: ${m.marked.map((id) => `#${id}`).join(', ')}`));

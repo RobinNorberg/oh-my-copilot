@@ -26,6 +26,7 @@ import { unsupportedForge } from '../run/forge-roots.js';
 import { type Exec } from '../../ship/exec.js';
 import { type AdoGuardContext } from '../../forge/ado/guard.js';
 import { type OwnerDeps } from '../run/state.js';
+import { type GateContainerSettings } from '../../copilot-run/sandbox.js';
 import { type CheckEnv, type CheckResult } from './score.js';
 export declare const EXIT_CHECK_FAILED = 1;
 export declare const EXIT_CHECK_USAGE = 2;
@@ -72,6 +73,11 @@ export interface FactoryCheckDeps {
     err: (line: string) => void;
     /** This process as an engine-lock contender (default defaultOwnerDeps; tests inject one). */
     owner?: OwnerDeps;
+    /** The container runtime probe for isolation "container" (default container-gate.ts probeContainerRuntime); tests inject one. */
+    containerProbe?: (s: GateContainerSettings) => {
+        version: string | null;
+        image: boolean;
+    };
 }
 export interface FactoryCheckOptions {
     ids: string[];
@@ -95,6 +101,14 @@ export interface CheckJson {
     prepareChecksSkipped?: string[];
     /** The local forge's gate definition status (`ok`, `unresolved (<why>)` or `not set`); absent on GitHub and Azure DevOps. */
     gate?: string;
+    /** factory.run.sandbox.isolation "container" only: the runtime's server version (null = not answering) and whether the image is there. */
+    gateIsolation?: {
+        kind: 'container';
+        runtime: string;
+        image: string;
+        version: string | null;
+        imagePresent: boolean;
+    };
     repo: string;
     source: Record<string, unknown> | null;
     counts: Record<string, number>;

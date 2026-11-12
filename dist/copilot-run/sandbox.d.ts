@@ -125,6 +125,39 @@ export declare function resolveRequireDeniedPaths(layers: Pick<GatesSandboxLayer
     require: boolean;
     source: string;
 };
+/** `factory.run.sandbox.isolation`: where a sandboxed gate runs (the Copilot OS sandbox, or a local container). */
+export type GateIsolation = 'copilot' | 'container';
+/** `factory.run.sandbox.container`: the container the gate runs in with isolation "container". */
+export interface GateContainerSettings {
+    runtime: 'docker' | 'podman';
+    /** An image reference; default `node:<host major>-bookworm-slim`. A digest pin (`name@sha256:...`) is kept as given. */
+    image: string;
+    /** `--memory` (e.g. "4g"). */
+    memory: string;
+    /** `--cpus`. */
+    cpus: number;
+    /** `--pids-limit`. */
+    pidsLimit: number;
+    /** How long each dependency install step (`npm ci`, then its scripts) may run. */
+    installTimeoutMinutes: number;
+    /** The most a command's work volume may hold (e.g. "10g"); over it, a watchdog kills that command's container. */
+    diskLimit: string;
+}
+/** The default gate image: the host Node major on Debian bookworm slim. */
+export declare const defaultGateImage: (nodeVersion?: string) => string;
+/**
+ * `factory.run.sandbox.isolation` and `factory.run.sandbox.container` from
+ * the USER config only: the PR's repository must never choose where its own
+ * code runs or with what limits, so a value committed in the base's
+ * `.copilot/omg.jsonc` is ignored (`ignoredBase` names it for a notice). A
+ * malformed user value throws. The image may not start with `-` (it is one
+ * argv word after the runtime's options) and holds only reference characters.
+ */
+export declare function resolveGateIsolation(layers: Pick<GatesSandboxLayers, 'user' | 'base'>, nodeVersion?: string): {
+    isolation: GateIsolation;
+    container?: GateContainerSettings;
+    ignoredBase: string[];
+};
 /** The SDK's SandboxConfig (rpc.d.ts), the fields this module sets. */
 export interface SandboxConfig {
     enabled: boolean;
