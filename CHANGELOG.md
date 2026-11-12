@@ -4,6 +4,15 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **`omg factory dashboard`.** One self-contained HTML page of all factory runs, from local state only: status, park reasons, time per phase, credits and requests, bench results. `--out`, `--json`, `--since`.
+- **Opt-in auto-merge by trust tier (`factory.merge.auto`).** User config only, per repository; tiers `docs`, `tests`, `small`; `docsDenied` and `securityCritical` globs. The default is unchanged: a human merges. See the Auto-merge section of docs/REFERENCE.md for the conditions and the known limits.
+- **Container isolation for gates (`factory.run.sandbox.isolation: "container"`).** User config only. Prepare checks, the local gate and the same checks on the base branch for comparison run in a Docker or Podman container with no credentials and no network while the command runs. New park `gate-container-unavailable`. `omg factory check` shows the runtime. Docker is tested; Podman is not.
+- **Monorepo and workspace gates.** npm, pnpm and yarn (node-modules linker) workspaces get a per-package gate `node_modules` tree. The workspace list comes from the base branch. Yarn Plug'n'Play and nested git repositories are not supported; when the gate then fails, the run parks at `gate-sandbox-incompatible` with the reason.
+- **`omg factory bench`.** A seeded local-forge benchmark: 12 graded issues with 4 traps and hidden acceptance tests. `--fake` costs nothing; `--live` needs `--max-requests`. Versioned JSON results with a markdown summary, plus `compare`, `--issues` and `--allow-multiplier`.
+- **`omg factory run --max-requests <n>`.** Stops starting lanes once the run's lanes used n premium requests (the lane in flight finishes, so the run can end a little above n).
+
 # oh-my-copilot v5.25.2
 
 ## [5.25.2] - 2026-11-11
