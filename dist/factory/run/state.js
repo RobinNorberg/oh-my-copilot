@@ -310,6 +310,8 @@ function humanReviewShapeProblem(s) {
         return 'sandboxedPrepareHead';
     if (s.sandboxedGateHead !== undefined && (!isStr(s.sandboxedGateHead) || !HEX40.test(s.sandboxedGateHead)))
         return 'sandboxedGateHead';
+    if (s.gitTransportPlainHead !== undefined && (!isStr(s.gitTransportPlainHead) || !HEX40.test(s.gitTransportPlainHead)))
+        return 'gitTransportPlainHead';
     // One admin dir name under <common>/worktrees (git makes it from the checkout's base name): no separator, nothing else.
     if (s.checkoutAdmin !== undefined && (!isStr(s.checkoutAdmin) || !/^[A-Za-z0-9._-]+$/.test(s.checkoutAdmin) || s.checkoutAdmin === '.' || s.checkoutAdmin === '..'))
         return 'checkoutAdmin';

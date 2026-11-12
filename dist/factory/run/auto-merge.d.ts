@@ -207,6 +207,8 @@ export interface AutoMergeRunFacts {
     unsandboxedGatesAck?: string;
     gateChangeApproved?: string;
     secretAck?: readonly unknown[];
+    /** A check ran WITHOUT any sandbox through the Windows git-transport fallback (the head it ran on). */
+    gitTransportPlainHead?: string;
 }
 export interface AutoMergeInput {
     head: string;

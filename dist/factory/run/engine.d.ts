@@ -54,6 +54,7 @@
  */
 import { type Exec } from '../../ship/exec.js';
 import { type PrepareCheckRun } from '../../ship/prepare.js';
+import { type GateContainerSettings } from '../../copilot-run/sandbox.js';
 import { type SandboxRunner } from './sandbox-exec.js';
 import { type AzEntry } from '../../forge/ado/az-binary.js';
 import type { ForgeOptions, ResolvedForgeConfig } from '../../forge/types.js';
@@ -162,6 +163,13 @@ export interface FactoryEngineOptions {
         platform: NodeJS.Platform;
         shell: () => string | null;
     };
+    /**
+     * The gate image's id now (container-gate.ts inspectGateImageId, no pull),
+     * read before the Windows git-transport fallback's first container run so
+     * a stored container calibration is found by it; omitted = learnt from the
+     * first container run (the CLI passes it).
+     */
+    gateImageId?: (c: GateContainerSettings) => Promise<string | undefined>;
     /** The trusted user config factory.merge.auto is read from (default: userConfigLayers().trustedUser); tests pass one. */
     autoMergeUserConfig?: unknown;
     now?: () => number;

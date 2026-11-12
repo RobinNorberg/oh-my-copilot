@@ -256,6 +256,8 @@ export interface FactoryRunState {
     sandboxedPrepareHead?: string;
     /** The head the local gate last ran on in the OS sandbox (the command was handed over): a later gate start failure on it parks at gate-no-verdict. Optional: older state files lack it. */
     sandboxedGateHead?: string;
+    /** The head a check last ran on WITHOUT any sandbox through the Windows git-transport fallback: such a run is never auto-merged. */
+    gitTransportPlainHead?: string;
     /**
      * The name of the prepare checkout's admin dir under `<common>/worktrees/`,
      * as `worktree add` made it: a later invocation reads the checkout only
