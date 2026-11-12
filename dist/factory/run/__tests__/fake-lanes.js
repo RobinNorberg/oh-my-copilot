@@ -221,6 +221,8 @@ export function withTestSandbox(o, over = {}) {
     return {
         ...o,
         ...('gateSandboxUserConfig' in over ? {} : { gateSandboxUserConfig: null }),
+        // The developer's own factory.merge.auto never reaches the tests.
+        ...('autoMergeUserConfig' in over ? {} : { autoMergeUserConfig: null }),
         // The developer's own factory.run.layout never reaches the tests.
         ...('runUserConfig' in over || 'runUserConfig' in o ? {} : { runUserConfig: null }),
         ...('gateSandbox' in over ? {} : { gateSandbox: attestedSandbox(() => o.exec, () => o.localGate) }),

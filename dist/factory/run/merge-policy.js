@@ -1,11 +1,17 @@
 /**
  * Merge policy for `omg factory run` (owner override of design §8): merge is
- * ALWAYS human. There is no `factory.merge` key and no auto mode, and nothing
- * here runs a merge (the factory guard refuses `gh pr merge` outright). After
- * green gates the engine asks ship's decideMerge for the verdict on the
- * current head, prints the exact admin merge command, comments it on the PR
- * and parks at `awaiting-human: merge`. A later run reads `gh pr view` and
- * finishes as `merged` once the human merged.
+ * a human step by DEFAULT. After green gates the engine asks ship's
+ * decideMerge for the verdict on the current head, prints the exact admin
+ * merge command, comments it on the PR and parks at `awaiting-human: merge`.
+ * A later run reads `gh pr view` and finishes as `merged` once the human merged.
+ *
+ * Opt-in (auto-merge.ts): `factory.merge.auto` in the USER config, per
+ * repository, lets the engine itself merge a low-risk PR (tiers docs, tests,
+ * small) when every condition holds on the exact head; a committed value is
+ * ignored with a notice. Nothing in this file runs a merge. Only the engine
+ * merges: the factory guard still refuses `gh pr merge`, and admits the
+ * head-pinned GitHub REST merge only inside the engine's auto-merge step.
+ * Azure DevOps always stays human.
  */
 import { DEFAULT_SHIP_CONFIG } from '../../ship/config.js';
 import { evaluateGates, NO_CI_CHECKS_NOTE } from '../../ship/gates.js';
@@ -28,7 +34,7 @@ export { MERGE_VIEW_FIELDS, parseMergeView } from '../../forge/github/reviews.js
 export function mergeDecision(exec, root, ship, view, config, known, forge, reads) {
     // Ship phase ready: the gates loop already waited out the settle window for this head, so this read has that history.
     const gate = evaluateGates(exec, view.number, config, known, root, view.headRefOid, forge, ship.phase === 'ready' ? 0 : undefined, Date.now, reads);
-    const noChecks = gate.noChecks ? { noChecks: true } : {};
+    const noChecks = { ...(gate.noChecks ? { noChecks: true } : {}), checks: gate.checks.filter((c) => c.class === 'pass').map((c) => c.name) };
     const reviewed = latestVerdict(ship)?.sha;
     const commits = readCommitsSinceReview(exec, root, reviewed, view.headRefOid, view.baseRefOid, ship.housekeepingCommits);
     const extraProtected = [
