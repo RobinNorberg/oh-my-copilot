@@ -71,7 +71,7 @@ import { ghCheckRunApps, ghCheckSuites, ghCommitCheckNames, ghRequiredCheckRules
 import { ciFixPrompt, conflictFixPrompt, fenceFor, fenced, fixPrompt, implementPrompt, oneLine, reviewPrompt } from './prompts.js';
 import { decisionsViolation, loadTeamContext, pathsInDiff, pathsInText, type ReadAt, type TeamContext } from '../team/context.js';
 import { mergeComment, mergeDecision, type FactoryMergeDecision, type MergeView } from './merge-policy.js';
-import { addedPatchLines, autoMergeComment, autoMergeVerdict, baseInstallFiles, baseTestSetup as baseTestSetupOf, classifyChanges, committedMergeConfig, FRONTMATTER_CANDIDATE, hasFrontmatter, parseChangedEntries, resolveAutoMergeConfig, TEST_CONFIG_NAME, type ChangedEntry } from './auto-merge.js';
+import { autoMergeComment, autoMergeVerdict, baseInstallFiles, baseTestSetup as baseTestSetupOf, classifyChanges, committedMergeConfig, hasFrontmatter, isFrontmatterCandidate, parseChangedEntries, patchLines, resolveAutoMergeConfig, TEST_CONFIG_NAME, type ChangedEntry, type PatchLine } from './auto-merge.js';
 import { githubAutoMergeArgs, githubCommitReadArgs } from '../../forge/github/merge.js';
 import { resolveAzEntry, type AzEntry } from '../../forge/ado/az-binary.js';
 import { adoGuardContext, defaultAzBinaryDeps, type AzureDevOpsForgeOptions } from '../../forge/ado/index.js';
@@ -4155,7 +4155,7 @@ class FactoryEngine {
         const [scope, ...rest] = line.split('\t');
         const value = rest.join('\t').trim();
         if (!value || scope === 'command') continue;
-        // Normalised first: `scripts/../h2` is h2 (review-498b INFO).
+        // Normalised first: `scripts/../h2` is h2 (review-498b INFO). `.` (the root) is covered by deniedPaths' root hook names (review-498c L-e).
         const rel = posix.normalize((isAbsolute(value) ? relative(this.o.root, value) : value).replace(/\\/g, '/'));
         if (rel && rel !== '.' && !rel.startsWith('..') && !isAbsolute(rel)) extra.push(`${rel.replace(/\/+$/, '')}/`);
       }
@@ -4164,17 +4164,22 @@ class FactoryEngine {
     const testSetup = tiers.some((t) => t !== 'docs') ? this.baseTestSetup(view.baseRefOid) : undefined;
     const frontmatter = tiers.some((t) => t !== 'tests') && entries ? this.frontmatterPaths(entries, view.baseRefOid, head) : undefined;
     let installFiles: { paths: string[]; problem?: string };
-    try { installFiles = baseInstallFiles(readBaseFile(this.exec, this.o.root, view.baseRefOid, 'package.json')); } catch (error) {
+    // The base's root names (binding.gyp, pnpm-workspace.yaml make install run code the engine does not read: review-498c L-b).
+    const rootList = this.exec('git', ['ls-tree', '-z', '--name-only', view.baseRefOid], { cwd: this.o.root, env: TRUSTED_READ_ENV });
+    try {
+      if (rootList.status !== 0) throw new Error(`the base's root files could not be listed (exit ${rootList.status})`);
+      installFiles = baseInstallFiles(readBaseFile(this.exec, this.o.root, view.baseRefOid, 'package.json'), rootList.stdout.split('\0').filter(Boolean));
+    } catch (error) {
       // Unreadable: nothing extra is denied, so the small tier is off; docs and tests cannot touch a script anyway.
       installFiles = { paths: [], problem: `the base package.json could not be read (${oneLine(error instanceof Error ? error.message : String(error), 120)})` };
     }
-    let addedLines: string[] | null | undefined;
+    let patch: PatchLine[] | null | undefined;
     if (tiers.some((t) => t !== 'docs')) {
-      const patch = this.exec('git', ['diff', '--no-ext-diff', '--no-textconv', `${view.baseRefOid}...${head}`], { cwd: this.o.root, env: TRUSTED_READ_ENV });
-      addedLines = patch.status === 0 ? addedPatchLines(patch.stdout) : null;
+      const diffText = this.exec('git', ['diff', '--no-ext-diff', '--no-textconv', `${view.baseRefOid}...${head}`], { cwd: this.o.root, env: TRUSTED_READ_ENV });
+      patch = diffText.status === 0 ? patchLines(diffText.stdout) : null;
     }
     const changes = protectedProblem ? { reasons: [`the configured protected paths could not be read (${protectedProblem})`], evidence: [] } : classifyChanges(entries, resolved.config, {
-      extraDenied: extra, installFiles, ...(testSetup ? { testSetup } : {}), ...(frontmatter ? { frontmatter } : {}), ...(addedLines !== undefined ? { addedLines } : {}),
+      extraDenied: extra, installFiles, ...(testSetup ? { testSetup } : {}), ...(frontmatter ? { frontmatter } : {}), ...(patch !== undefined ? { patch } : {}),
     });
     const pending = this.state.pendingCommit;
     const verdict = autoMergeVerdict({
@@ -4259,7 +4264,7 @@ class FactoryEngine {
   }
 
   /**
-   * The Markdown-like changed files (FRONTMATTER_CANDIDATE) whose BASE blob
+   * The Markdown-like changed files (isFrontmatterCandidate) whose BASE blob
    * (not added) or HEAD blob (not deleted) starts with frontmatter (review-498b
    * N1): a skill, command, agent or mission contract a tool parses. Read with
    * ship's exact `git show <sha>:<path>`; a read that fails (or a path that
@@ -4267,7 +4272,7 @@ class FactoryEngine {
    * docs and small tiers off.
    */
   private frontmatterPaths(entries: readonly ChangedEntry[], baseSha: string, head: string): { paths: string[]; problem?: string } {
-    const candidates = entries.filter((e) => FRONTMATTER_CANDIDATE.test(e.path));
+    const candidates = entries.filter((e) => isFrontmatterCandidate(e.path));
     if (candidates.length > 200) return { paths: [], problem: `${candidates.length} Markdown-like files changed; the engine reads at most 200 for frontmatter` };
     const paths: string[] = [];
     for (const e of candidates) {
