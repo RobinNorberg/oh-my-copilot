@@ -26,7 +26,9 @@
  *       (`omg-gate-<run>-<id>-net`, labelled, inter-container traffic off),
  *       no credential: no user profile, no env but the fixed allowlist, no
  *       GH_TOKEN, no ssh agent, no runtime socket; read-only root fs,
- *       non-root user. The npm cache is a volume per lockfile hash
+ *       non-root user. The checkout's `.npmrc` is held aside (the copy step
+ *       moves it, 2b puts it back first) and npm's registry, proxy and TLS
+ *       settings are forced by env (NPM_FETCH_ENV). The npm cache is a volume per lockfile hash
  *       (`omg-gate-cache-<hash>`) only when every locked package comes from
  *       the npm registry with an `integrity`; a lockfile with an entry
  *       without one uses a fresh cache inside the command's own volume, and
@@ -57,7 +59,7 @@
  */
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
-import { chmodSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, realpathSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { redactGateOutput, SANDBOX_OUTPUT_TAIL_CHARS } from './sandbox-exec.js';
 import { runSlug } from './state.js';
@@ -75,7 +77,7 @@ export const CONTAINER_PATH = '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin
 const CONTAINER_USER = '1000:1000';
 const WORK = '/work';
 const SRC = `${WORK}/src`;
-/** The only registry the install talks to (forced over a committed .npmrc), and the hosts a locked package may come from. */
+/** The only registry the install talks to (the checkout's .npmrc is held aside), and the hosts a locked package may come from. */
 const NPM_REGISTRY = 'https://registry.npmjs.org/';
 const REGISTRY_PREFIXES = [NPM_REGISTRY, 'https://registry.yarnpkg.com/'];
 const PROBE_TIMEOUT_MS = 20_000;
@@ -167,6 +169,8 @@ export function mountArg(fields) {
 export function hardeningArgs(s) {
     return [
         '--rm', '--init', '--pull', 'never',
+        // No container log on the runtime's disk, outside the watched volume (review-499b N1): output comes through the attached CLI only.
+        '--log-driver', 'none',
         '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges',
         '--pids-limit', String(s.pidsLimit), '--memory', s.memory, '--cpus', String(s.cpus),
     ];
@@ -329,6 +333,30 @@ const COPY_SCRIPT = [
     'if [ -d /cache ]; then mkdir -p /cache/npm; [ "$(stat -c %u /cache/npm)" = 1000 ] || chown -R 1000:1000 /cache; fi',
 ].join('; ');
 /**
+ * The checkout's own `.npmrc` (scoped registries, proxies, strict-ssl) steers
+ * npm itself, so it is held outside the project while npm ci fetches and put
+ * back before any of the PR's code runs (review-499b N2). Fixed text.
+ */
+const NPMRC_HELD = `${WORK}/npmrc.held`;
+const HOLD_NPMRC = `if [ -e ${SRC}/.npmrc ] || [ -L ${SRC}/.npmrc ]; then mv ${SRC}/.npmrc ${NPMRC_HELD}; fi`;
+const RESTORE_NPMRC = `if [ -e ${NPMRC_HELD} ] || [ -L ${NPMRC_HELD} ]; then rm -rf ${SRC}/.npmrc; mv ${NPMRC_HELD} ${SRC}/.npmrc; fi`;
+/** The copy step's script for a plan: the npm ci plan also holds the checkout's .npmrc aside. */
+export function copyScript(npmCi) {
+    return npmCi ? `${COPY_SCRIPT}; ${HOLD_NPMRC}` : COPY_SCRIPT;
+}
+/**
+ * npm's own settings in the fetch step, over anything npm would read (no
+ * .npmrc is in the project then; these beat the image's global one): the npm
+ * registry only, no proxy, TLS checked, and lockfile URLs fetched from it.
+ */
+export const NPM_FETCH_ENV = {
+    npm_config_registry: NPM_REGISTRY,
+    npm_config_proxy: 'null',
+    npm_config_https_proxy: 'null',
+    npm_config_strict_ssl: 'true',
+    npm_config_replace_registry_host: 'npmjs',
+};
+/**
  * The install scripts npm ci would have run, without network (fixed text):
  * the dependencies' (npm rebuild), then the root's lifecycle scripts in npm
  * ci's order, each alone (`--ignore-scripts` keeps npm run from adding the
@@ -336,6 +364,7 @@ const COPY_SCRIPT = [
  */
 const SCRIPTS_SCRIPT = [
     'set -e',
+    RESTORE_NPMRC,
     'npm rebuild --foreground-scripts',
     'for s in preinstall install postinstall prepublish preprepare prepare postprepare; do npm run --if-present --ignore-scripts "$s"; done',
 ].join('; ');
@@ -364,6 +393,9 @@ export function checkoutCopyProblem(checkout) {
             const path = join(dir, name);
             const st = lstatSync(path);
             if (st.isSymbolicLink()) {
+                const lexical = linkTargetProblem(readlinkSync(path), relative(root, dir).split(sep).filter(Boolean).length);
+                if (lexical)
+                    return lexical;
                 let target;
                 try {
                     target = realpathSync.native(path);
@@ -391,6 +423,34 @@ export function checkoutCopyProblem(checkout) {
     catch {
         return 'the checkout could not be listed';
     }
+}
+/**
+ * A link target as the container's Linux kernel will follow it, checked
+ * without the host (review-499b N5): no absolute target (POSIX or Windows
+ * form, a junction's included), and `..` only as a leading run that stays
+ * inside the checkout from the link's own directory (`depth` names below the
+ * root). Once a name was walked, a later `..` would step back through what
+ * may be another link, which the host resolved by its own rules. Both `/` and
+ * `\` split, so neither side's reading slips through. A problem, or null.
+ */
+export function linkTargetProblem(target, depth) {
+    if (target === '' || target.startsWith('/') || target.startsWith('\\') || /^[A-Za-z]:/.test(target))
+        return 'the checkout has a link with an absolute target';
+    let up = 0;
+    let walked = false;
+    for (const part of target.split(/[\\/]+/)) {
+        if (part === '' || part === '.')
+            continue;
+        if (part !== '..') {
+            walked = true;
+            continue;
+        }
+        if (walked)
+            return 'the checkout has a link whose target steps back (..) after a name';
+        if (++up > depth)
+            return 'the checkout has a link (a symbolic link or junction) that points outside it';
+    }
+    return null;
 }
 /** `p` is `root` or under it (case-insensitively on win32, where realpath can differ in case only). */
 function samePathOrUnder(p, root) {
@@ -438,6 +498,8 @@ export async function runContainerGate(req, s, runLabel, deps) {
         image = await inspectImage();
     }
     const imageId = /^(sha256:[0-9a-f]{64})$/m.exec(image.tail.trim())?.[1];
+    // Every container runs the exact image inspected above, never what the tag names later (review-499b N4).
+    const ref = imageId ?? s.image;
     const plan = installPlan(req.cwd);
     if (plan.kind === 'unsupported')
         return unavailable(`${plan.reason}; ${switchBack}`);
@@ -467,7 +529,7 @@ export async function runContainerGate(req, s, runLabel, deps) {
     /** One step container: its argv under the in-container limit, killed by name at the engine's timeout. */
     const step = (container, opts, argv, timeoutMs, full) => {
         started.push(container);
-        return deps.exec(bin, ['run', '--name', container, ...opts, s.image, ...inContainerLimit(timeoutMs, argv)], {
+        return deps.exec(bin, ['run', '--name', container, ...opts, ref, ...inContainerLimit(timeoutMs, argv)], {
             timeoutMs,
             ...(full !== undefined ? { full } : {}),
             onTimeout: async () => {
@@ -476,28 +538,45 @@ export async function runContainerGate(req, s, runLabel, deps) {
             },
         });
     };
-    /** The disk watchdog around one step: `du` of the work volume from a read-only container; over the limit kills only `container`. */
+    /**
+     * The disk watchdog around one step: `du` of the work volume from a
+     * read-only container; over the limit kills only `container`. Fail-closed
+     * (review-499b N1): du's total counts even when du exits 1 (entries that
+     * vanished mid-walk), and two checks in a row without a total kill too.
+     */
+    let duCount = 0;
     const watched = async (container, run) => {
         let stopped = false;
-        let over = false;
+        let over;
+        let misses = 0;
         let timer;
         let inflight = Promise.resolve();
         const tick = () => {
             inflight = (async () => {
                 if (stopped)
                     return;
-                const duName = `${container}-du`;
-                if (!started.includes(duName))
-                    started.push(duName);
+                // A fresh name per check: a leftover du container never blocks the next one.
+                const duName = `${container}-du-${++duCount}`;
+                started.push(duName);
                 const du = await deps.exec(bin, [
                     'run', '--name', duName, ...labels, ...harden, '--network', 'none',
                     // root without DAC override: only DAC_READ_SEARCH, so a dir the PR made unreadable is still counted.
                     '--user', '0:0', '--cap-add', 'DAC_READ_SEARCH', '--read-only', ...workRo,
-                    s.image, ...inContainerLimit(PROBE_TIMEOUT_MS, ['du', '-sxk', WORK]),
+                    ref, ...inContainerLimit(PROBE_TIMEOUT_MS, ['du', '-sxk', WORK]),
                 ], { timeoutMs: PROBE_TIMEOUT_MS + 2 * IN_CONTAINER_GRACE_S * 1000 }).catch(() => null);
-                const kb = du?.status === 0 ? Number(/^(\d+)\s+\/work\s*$/m.exec(du.tail)?.[1]) : NaN;
-                if (!stopped && Number.isFinite(kb) && kb * 1024 > diskLimit) {
-                    over = true;
+                // --rm removed a du that ended normally (0, or 1 with a total); any other end is removed by name now.
+                if (du !== null && (du.status === 0 || du.status === 1) && !du.timedOut)
+                    started.splice(started.indexOf(duName), 1);
+                else
+                    await deps.exec(bin, ['rm', '-f', duName], { timeoutMs: KILL_TIMEOUT_MS }).catch(() => null);
+                const m = du ? /^(\d+)\s+\/work\s*$/m.exec(du.tail) : null;
+                const kb = m ? Number(m[1]) : NaN;
+                if (stopped)
+                    return;
+                const measured = Number.isFinite(kb);
+                misses = measured ? 0 : misses + 1;
+                if ((measured && kb * 1024 > diskLimit) || misses >= 2) {
+                    over = measured ? 'over' : 'unmeasured';
                     await deps.exec(bin, ['kill', container], { timeoutMs: KILL_TIMEOUT_MS }).catch(() => null);
                     await deps.exec(bin, ['rm', '-f', container], { timeoutMs: KILL_TIMEOUT_MS }).catch(() => null);
                     return;
@@ -509,7 +588,7 @@ export async function runContainerGate(req, s, runLabel, deps) {
         timer = setTimeout(tick, deps.diskWatchMs ?? DISK_WATCH_MS);
         try {
             const r = await run();
-            return over ? { ...r, overDisk: true } : r;
+            return over ? { ...r, overDisk: over } : r;
         }
         finally {
             stopped = true;
@@ -517,7 +596,11 @@ export async function runContainerGate(req, s, runLabel, deps) {
             await inflight;
         }
     };
-    const overDisk = (what, r) => ran({ status: 1, output: tail(`${r.tail.trim()}\n${what} in the gate container used more than factory.run.sandbox.container.diskLimit (${s.diskLimit}) and was stopped`), timedOut: false });
+    const overDisk = (what, r) => ran({
+        status: 1,
+        output: tail(`${r.tail.trim()}\n${what} in the gate container ${r.overDisk === 'unmeasured' ? `was stopped: its disk use could not be measured twice in a row, so factory.run.sandbox.container.diskLimit (${s.diskLimit}) could not be checked` : `used more than factory.run.sandbox.container.diskLimit (${s.diskLimit}) and was stopped`}`),
+        timedOut: false,
+    });
     try {
         const made = await deps.exec(bin, ['volume', 'create', ...labels, volume], { timeoutMs: PROBE_TIMEOUT_MS });
         if (made.status !== 0)
@@ -534,7 +617,7 @@ export async function runContainerGate(req, s, runLabel, deps) {
             ...labels, ...harden, '--network', 'none',
             '--user', '0:0', '--cap-add', 'CHOWN', '--cap-add', 'DAC_OVERRIDE', '--cap-add', 'FOWNER',
             '--read-only', '--mount', mountArg(['type=bind', `source=${resolve(req.cwd)}`, 'target=/in', 'readonly']), ...work, ...cacheMount,
-        ], ['sh', '-c', COPY_SCRIPT], COPY_TIMEOUT_MS);
+        ], ['sh', '-c', copyScript(plan.kind === 'npm-ci')], COPY_TIMEOUT_MS);
         if (copy.status !== 0)
             return noVerdict(`copying the checkout into the gate container failed (exit ${copy.status ?? 'none'}${copy.timedOut ? ', timed out' : ''}); nothing is counted`);
         const runBase = [...labels, ...harden, '--user', CONTAINER_USER, '--read-only', '--tmpfs', '/tmp:rw,exec,nosuid,nodev,size=1g', ...work, '-w', SRC];
@@ -549,7 +632,7 @@ export async function runContainerGate(req, s, runLabel, deps) {
             const fetchName = `${name}-install`;
             const inst = await watched(fetchName, () => step(fetchName, [
                 ...runBase, '--network', network, ...cacheMount,
-                ...containerEnvArgs({ ...(cache ? { npm_config_cache: '/cache/npm' } : ownCache), npm_config_registry: NPM_REGISTRY }),
+                ...containerEnvArgs({ ...(cache ? { npm_config_cache: '/cache/npm' } : ownCache), ...NPM_FETCH_ENV }),
             ], ['npm', 'ci', '--ignore-scripts'], timeoutMs));
             await removeNetwork();
             if (inst.overDisk)
@@ -560,7 +643,7 @@ export async function runContainerGate(req, s, runLabel, deps) {
                 return noVerdict(`the container runtime failed while the dependency install ran (exit ${inst.status ?? 'none'}); nothing is counted`);
             if (inst.status !== 0)
                 return ran({ status: inst.status, output: tail(`${inst.tail.trim()}\nthe dependency install (npm ci) in the gate container failed (exit ${inst.status})`), timedOut: false });
-            // 2b. the install scripts (the PR's code and its dependencies'): no network, no shared cache.
+            // 2b. the install scripts (the PR's code and its dependencies'): no network, no shared cache; the .npmrc is back first.
             const scriptsName = `${name}-scripts`;
             const scripts = await watched(scriptsName, () => step(scriptsName, [...runBase, '--network', 'none', ...containerEnvArgs(ownCache)], ['sh', '-c', SCRIPTS_SCRIPT], timeoutMs));
             if (scripts.overDisk)
@@ -760,7 +843,7 @@ export function safeRelPath(raw, platform) {
     if (parts.some((s) => isName(s, '.git', platform) || isName(s, 'node_modules', platform)))
         return null;
     // win32: reserved characters and device names, a trailing dot or space, and any 8.3 short-name shape (`NODE_M~1`).
-    if (platform === 'win32' && parts.some((s) => /[<>:"|?*\x00-\x1f]/.test(s) || /[. ]$/.test(s) || /~\d/.test(s) || /^(?:con|prn|aux|nul|com\d|lpt\d|conin\$|conout\$)(?:\..*)?$/i.test(s)))
+    if (platform === 'win32' && parts.some((s) => /[<>:"|?*\x00-\x1f]/.test(s) || /[. ]$/.test(s) || /~\d/.test(s) || /^(?:con|prn|aux|nul|com[\d¹²³]|lpt[\d¹²³]|conin\$|conout\$)(?:\..*)?$/i.test(s)))
         return null;
     return p;
 }
@@ -802,8 +885,11 @@ function onDiskProblem(checkout, realRoot, rel, leaf) {
         try {
             st = lstatSync(path);
         }
-        catch {
-            break;
+        catch (error) {
+            // Only a missing component ends the walk (the rest is made); any other error is unchecked, never fine (review-499b N6).
+            if (error.code === 'ENOENT')
+                break;
+            return 'a path could not be checked';
         }
         if (st.isSymbolicLink())
             return 'a file would be written through a host link';

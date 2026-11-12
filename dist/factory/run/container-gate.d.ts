@@ -26,7 +26,9 @@
  *       (`omg-gate-<run>-<id>-net`, labelled, inter-container traffic off),
  *       no credential: no user profile, no env but the fixed allowlist, no
  *       GH_TOKEN, no ssh agent, no runtime socket; read-only root fs,
- *       non-root user. The npm cache is a volume per lockfile hash
+ *       non-root user. The checkout's `.npmrc` is held aside (the copy step
+ *       moves it, 2b puts it back first) and npm's registry, proxy and TLS
+ *       settings are forced by env (NPM_FETCH_ENV). The npm cache is a volume per lockfile hash
  *       (`omg-gate-cache-<hash>`) only when every locked package comes from
  *       the npm registry with an `integrity`; a lockfile with an entry
  *       without one uses a fresh cache inside the command's own volume, and
@@ -150,6 +152,14 @@ export declare function installPlan(checkout: string): InstallPlan;
  * word that is a host path inside the checkout is mapped into /work/src.
  */
 export declare function containerArgv(req: Pick<SandboxRunRequest, 'argv' | 'exe' | 'args' | 'cwd'>): string[];
+/** The copy step's script for a plan: the npm ci plan also holds the checkout's .npmrc aside. */
+export declare function copyScript(npmCi: boolean): string;
+/**
+ * npm's own settings in the fetch step, over anything npm would read (no
+ * .npmrc is in the project then; these beat the image's global one): the npm
+ * registry only, no proxy, TLS checked, and lockfile URLs fetched from it.
+ */
+export declare const NPM_FETCH_ENV: Readonly<Record<string, string>>;
 /**
  * The scan before the copy (fixed-text problem, never a name: the names are
  * the PR's): a link that resolves outside the checkout or not at all, or a
@@ -157,6 +167,16 @@ export declare function containerArgv(req: Pick<SandboxRunRequest, 'argv' | 'exe
  * `node_modules` names tar leaves out. Null when the checkout may be bound.
  */
 export declare function checkoutCopyProblem(checkout: string): string | null;
+/**
+ * A link target as the container's Linux kernel will follow it, checked
+ * without the host (review-499b N5): no absolute target (POSIX or Windows
+ * form, a junction's included), and `..` only as a leading run that stays
+ * inside the checkout from the link's own directory (`depth` names below the
+ * root). Once a name was walked, a later `..` would step back through what
+ * may be another link, which the host resolved by its own rules. Both `/` and
+ * `\` split, so neither side's reading slips through. A problem, or null.
+ */
+export declare function linkTargetProblem(target: string, depth: number): string | null;
 /**
  * Run one request in a container. Never throws. `unavailable`: nothing of the
  * PR ran and the container path cannot run it (no runtime, daemon or image,

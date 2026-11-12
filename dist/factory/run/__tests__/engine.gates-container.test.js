@@ -8,18 +8,32 @@
  */
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { resolveShipConfig } from '../../../ship/config.js';
 import { defaultGateImage } from '../../../copilot-run/sandbox.js';
 import { EXIT_AWAITING_HUMAN, GATE_SANDBOX_INCOMPATIBLE_GATE, runFactoryEngine } from '../engine.js';
 import { CONTAINER_INCOMPATIBLE_ADVICE, containerRunLabel, GATE_CONTAINER_UNAVAILABLE_GATE } from '../container-gate.js';
 import { cleanFactoryRun } from '../clean.js';
+import { checkoutPath } from '../prepare.js';
 import { readFactoryState, requestFactoryCancel } from '../state.js';
 import { BASE, lanesFor, LOCAL_ISSUE, localOpts, localWorld } from './engine-local-harness.js';
 import { commitFile, gitIn, review } from './fake-lanes.js';
+/** N3: when set, removing the engine's node_modules link from the prepare checkout throws (a busy file on win32). */
+const removal = vi.hoisted(() => ({ fail: false }));
+vi.mock('../prepare.js', async (importOriginal) => {
+    const real = await importOriginal();
+    return {
+        ...real,
+        unlinkNodeModules: (root, checkout) => {
+            if (removal.fail)
+                throw Object.assign(new Error(`EBUSY: resource busy or locked, rmdir '${checkout}'`), { code: 'EBUSY' });
+            return real.unlinkNodeModules(root, checkout);
+        },
+    };
+});
 const MULTI_RUN_MS = 300_000;
 let w;
-afterEach(() => rmSync(w.dir, { recursive: true, force: true }));
+afterEach(() => { removal.fail = false; rmSync(w.dir, { recursive: true, force: true }); });
 const greet = () => commitFile('src/greet.js', 'export const greet = () => "hi";\n');
 const PREPARE_CHECK = ['node', 'check.js'];
 const gateConfig = (trustedBase = false) => () => ({
@@ -156,6 +170,25 @@ describe('isolation "container"', () => {
         const p = sandbox((req) => { plain.push(existsSync(join(req.cwd, 'node_modules'))); return { ran: true, status: 0, output: '', timedOut: false }; });
         await runFactoryEngine(opts(lanesFor(w, [greet(), review('approve')]), { gateSandbox: p.run, gateSandboxUserConfig: {} }));
         expect(plain[0]).toBe(true);
+    }, MULTI_RUN_MS);
+    it('N3: a fresh engine whose discard of the prepare checkout fails never links your node_modules into it', async () => {
+        w = localWorld();
+        writeFileSync(join(w.root, '.gitignore'), '.omg/\nnode_modules/\n');
+        gitIn(w.root, 'add', '.gitignore');
+        gitIn(w.root, 'commit', '-q', '-m', 'ignore node_modules');
+        mkdirSync(join(w.root, 'node_modules', 'vitest'), { recursive: true });
+        // Run 1: the prepare check fails on the head (passes on the base), so a ci-fix lane is due; no script for it here.
+        let prepares = 0;
+        const s = sandbox((req) => ({ ran: true, status: req.purpose === 'prepare' && prepares++ === 0 ? 1 : 0, output: '', timedOut: false }));
+        const first = await runFactoryEngine(opts(lanesFor(w, [greet(), review('approve')]), { gateSandbox: s.run, gateSandboxUserConfig: userContainer }));
+        expect(first.message).toMatch(/ci-fix-failed: .*no script for lane/);
+        const checkout = checkoutPath(w.root, LOCAL_ISSUE);
+        expect(existsSync(checkout)).toBe(true);
+        // Run 2, a fresh engine: the ci-fix lane commits, it is reviewed, prepare discards the old checkout and the removal fails.
+        removal.fail = true;
+        const again = await runFactoryEngine(opts(lanesFor(w, [commitFile('src/fix.js', 'export const fix = 1;\n'), review('approve')]), { gateSandbox: sandbox().run, gateSandboxUserConfig: userContainer }));
+        expect(again.message, readFactoryState(w.root, LOCAL_ISSUE).history.map((h) => `${h.to}: ${h.note}`).join('\n')).toMatch(/could not discard the engine's prepare checkout/);
+        expect(existsSync(join(checkout, 'node_modules'))).toBe(false);
     }, MULTI_RUN_MS);
     it('L3: gates "ack" with isolation "container" runs in the container, never plainly after an ack', async () => {
         w = localWorld();

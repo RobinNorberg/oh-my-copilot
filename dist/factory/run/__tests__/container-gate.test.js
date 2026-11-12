@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { defaultGateImage, resolveGateIsolation } from '../../../copilot-run/sandbox.js';
-import { applyCopyBack, checkoutCopyProblem, cleanRunContainers, lockfileCachePolicy, sizeBytes, containerArgv, containerRunLabel, defaultContainerExec, installPlan, mountArg, readTar, runContainerGate, safeRelPath, } from '../container-gate.js';
+import { applyCopyBack, checkoutCopyProblem, cleanRunContainers, copyScript, linkTargetProblem, lockfileCachePolicy, NPM_FETCH_ENV, sizeBytes, containerArgv, containerRunLabel, defaultContainerExec, installPlan, mountArg, readTar, runContainerGate, safeRelPath, } from '../container-gate.js';
 let dir;
 beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'omg-container-gate-')); });
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
@@ -145,8 +145,11 @@ describe('runContainerGate argv', () => {
             // No -v, no socket, no privileged, no host env passthrough, no credential anywhere.
             expect(a).not.toContain('-v');
             expect(a).not.toContain('--privileged');
-            expect(a.join(' ')).not.toMatch(/docker\.sock|\.ssh|\.npmrc|\.gitconfig|SSH_AUTH|GH_TOKEN|GITHUB_TOKEN|gho_/);
-            expect(values(a, '-e').map((e) => e.split('=')[0]).filter((k) => !['PATH', 'HOME', 'CI', 'npm_config_update_notifier', 'npm_config_fund', 'npm_config_audit', 'npm_config_cache', 'npm_config_registry'].includes(k))).toEqual([]);
+            expect(a.join(' ')).not.toMatch(/docker\.sock|\.ssh|\.gitconfig|SSH_AUTH|GH_TOKEN|GITHUB_TOKEN|gho_/);
+            // .npmrc is named only by the fixed copy/scripts text (held aside, put back), never mounted or passed.
+            expect([...values(a, '--mount'), ...values(a, '-e')].join(' ')).not.toMatch(/\.npmrc/);
+            expect(values(a, '--log-driver')).toEqual(['none']);
+            expect(values(a, '-e').map((e) => e.split('=')[0]).filter((k) => !['PATH', 'HOME', 'CI', 'npm_config_update_notifier', 'npm_config_fund', 'npm_config_audit', 'npm_config_cache', ...Object.keys(NPM_FETCH_ENV)].includes(k))).toEqual([]);
             expect(values(a, '--env')).toEqual([]);
             // The container ends itself after its time even when the runtime's kill does not get through (M1).
             expect(a.slice(a.indexOf(settings().image) + 1, a.indexOf(settings().image) + 4)).toEqual(['timeout', '-s', 'KILL']);
@@ -158,6 +161,9 @@ describe('runContainerGate argv', () => {
         expect(values(copy, '--network')).toEqual(['none']);
         expect(copy.slice(-3, -1)).toEqual(['sh', '-c']);
         expect(copy.at(-1)).not.toContain(dir);
+        // review-499b N2: the checkout's .npmrc is held outside the project while npm fetches.
+        expect(copy.at(-1)).toBe(copyScript(true));
+        expect(copy.at(-1)).toMatch(/; if \[ -e \/work\/src\/\.npmrc \] \|\| \[ -L \/work\/src\/\.npmrc \]; then mv \/work\/src\/\.npmrc \/work\/npmrc\.held; fi$/);
         // npm itself: network (our bridge), the shared cache, no install script (H1/H2).
         const install = f.step('-install').args;
         expect(values(install, '--network')).toEqual([`${name}-net`]);
@@ -165,13 +171,14 @@ describe('runContainerGate argv', () => {
         expect(install.slice(-3)).toEqual(['npm', 'ci', '--ignore-scripts']);
         expect(values(install, '--mount').filter((m) => m.includes('target=/cache'))).toHaveLength(1);
         expect(values(install, '-e')).toContain('npm_config_cache=/cache/npm');
+        expect(values(install, '-e')).toEqual(expect.arrayContaining(['npm_config_registry=https://registry.npmjs.org/', 'npm_config_proxy=null', 'npm_config_https_proxy=null', 'npm_config_strict_ssl=true', 'npm_config_replace_registry_host=npmjs']));
         // The install scripts (the PR's code): no network, no shared cache.
         const scripts = f.step('-scripts').args;
         expect(values(scripts, '--network')).toEqual(['none']);
         expect(values(scripts, '--mount').some((m) => m.includes('cache'))).toBe(false);
         expect(values(scripts, '-e')).toContain('npm_config_cache=/work/home/.npm');
         expect(scripts.slice(-2)[0]).toBe('-c');
-        expect(scripts.at(-1)).toBe('set -e; npm rebuild --foreground-scripts; for s in preinstall install postinstall prepublish preprepare prepare postprepare; do npm run --if-present --ignore-scripts "$s"; done');
+        expect(scripts.at(-1)).toBe('set -e; if [ -e /work/npmrc.held ] || [ -L /work/npmrc.held ]; then rm -rf /work/src/.npmrc; mv /work/npmrc.held /work/src/.npmrc; fi; npm rebuild --foreground-scripts; for s in preinstall install postinstall prepublish preprepare prepare postprepare; do npm run --if-present --ignore-scripts "$s"; done');
         const run = f.step('-1234abcd').args;
         expect(values(run, '--network')).toEqual(['none']);
         expect(values(run, '--user')).toEqual(['1000:1000']);
@@ -401,7 +408,7 @@ describe('review-499 hardening', () => {
                 expect(existsSync(join(outside, 'evil'))).toBe(false);
             }
             // And the scan before the copy refuses the checkout: a link that points outside it.
-            expect(checkoutCopyProblem(dir)).toMatch(/points outside/);
+            expect(checkoutCopyProblem(dir)).toMatch(/absolute target|points outside/);
         }
         finally {
             unlinkSync(join(dir, 'docs'));
@@ -434,11 +441,20 @@ describe('review-499 hardening', () => {
             expect(checkoutCopyProblem(dir)).toBeNull();
             if (linkOrSkip(outside, join(dir, 'node_modules')))
                 expect(checkoutCopyProblem(dir)).toBeNull();
-            if (linkOrSkip(join(dir, 'src'), join(dir, 'src-link')))
+            // A relative link inside passes; a junction (always an absolute target) does not, even to inside (review-499b N5).
+            let rel = false;
+            try {
+                symlinkSync('src', join(dir, 'src-rel'), 'dir');
+                rel = true;
+            }
+            catch { /* no symlink privilege on this host */ }
+            if (rel)
                 expect(checkoutCopyProblem(dir)).toBeNull();
+            if (linkOrSkip(join(dir, 'src'), join(dir, 'src-link')))
+                expect(checkoutCopyProblem(dir)).toBe('the checkout has a link with an absolute target');
         }
         finally {
-            for (const l of ['node_modules', 'src-link'])
+            for (const l of ['node_modules', 'src-link', 'src-rel'])
                 try {
                     unlinkSync(join(dir, l));
                 }
@@ -452,7 +468,7 @@ describe('review-499 hardening', () => {
             if (!linkOrSkip(outside, join(dir, 'Node_Modules2')))
                 return;
             const f = fake();
-            expect(await runContainerGate(request(), settings(), LABEL, { exec: f.exec })).toMatchObject({ ran: false, started: true, reason: expect.stringContaining('points outside') });
+            expect(await runContainerGate(request(), settings(), LABEL, { exec: f.exec })).toMatchObject({ ran: false, started: true, reason: expect.stringMatching(/absolute target|points outside/) });
             expect(f.runs()).toEqual([]);
             expect(f.calls.some((c) => c.args[0] === 'volume')).toBe(false);
         }
@@ -520,7 +536,7 @@ describe('review-499 hardening', () => {
         const name = `omg-gate-${LABEL}-d15c0001`;
         let release;
         const f = fake((args) => {
-            if (args[0] === 'run' && nameOf([...args]) === `${name}-du`)
+            if (args[0] === 'run' && nameOf([...args]) === `${name}-du-1`)
                 return ok({ tail: `${2 * 1024 * 1024}\t/work\n` });
             if (args[0] === 'run' && nameOf([...args]) === name)
                 return new Promise((done) => { release = () => done(ok({ status: 137 })); });
@@ -532,11 +548,116 @@ describe('review-499 hardening', () => {
         expect(r).toMatchObject({ ran: true, status: 1, timedOut: false });
         expect(r.ran && r.output).toContain('diskLimit (1g)');
         expect(f.calls.filter((c) => c.args[0] === 'kill').map((c) => c.args)).toEqual([['kill', name]]);
-        const du = f.step('-du').args;
+        const du = f.step('-du-1').args;
         expect(values(du, '--mount')[0]).toMatch(/,readonly$/);
         expect(values(du, '--network')).toEqual(['none']);
         expect(values(du, '--cap-add')).toEqual(['DAC_READ_SEARCH']);
+        expect(values(du, '--log-driver')).toEqual(['none']);
         expect(sizeBytes('10g')).toBe(10 * 1024 ** 3);
+    });
+    /** A run step that ends only when it is killed, and the du answers in order (the last repeats). */
+    const watchdog = async (duAnswers) => {
+        const name = `omg-gate-${LABEL}-d15c0002`;
+        let release;
+        let n = 0;
+        const f = fake((args) => {
+            if (args[0] === 'run' && nameOf([...args]).startsWith(`${name}-du-`))
+                return duAnswers[Math.min(n++, duAnswers.length - 1)];
+            if (args[0] === 'run' && nameOf([...args]) === name)
+                return new Promise((done) => { release = () => done(ok({ status: 137 })); });
+            if (args[0] === 'kill')
+                release?.();
+            return ok();
+        });
+        const r = await runContainerGate(request(), settings({ diskLimit: '1g' }), LABEL, { exec: f.exec, id: () => 'd15c0002', diskWatchMs: 5 });
+        return { r, f, name };
+    };
+    it('N1: du that exits 1 (entries vanished mid-walk) still counts its total: over the limit is killed', async () => {
+        const { r, f, name } = await watchdog([ok({ status: 1, tail: `du: cannot access '/work/src/t/x1': No such file or directory\n${2 * 1024 * 1024}\t/work\n` })]);
+        expect(r).toMatchObject({ ran: true, status: 1, timedOut: false });
+        expect(r.ran && r.output).toContain('used more than factory.run.sandbox.container.diskLimit (1g)');
+        expect(f.calls.filter((c) => c.args[0] === 'kill').map((c) => c.args)).toEqual([['kill', name]]);
+    });
+    it('N1: two checks in a row without a total kill the step (fail-closed); every du has its own name', async () => {
+        const { r, f, name } = await watchdog([ok({ status: 137, tail: '' }), ok({ status: 125, tail: 'Conflict. The container name is already in use' })]);
+        expect(r).toMatchObject({ ran: true, status: 1, timedOut: false });
+        expect(r.ran && r.output).toContain('could not be measured twice in a row');
+        expect(f.calls.filter((c) => c.args[0] === 'kill').map((c) => c.args)).toEqual([['kill', name]]);
+        const duNames = f.runs().map((c) => nameOf(c.args)).filter((n) => n.includes('-du-'));
+        expect(duNames).toEqual([`${name}-du-1`, `${name}-du-2`]);
+        // A du that did not end normally is removed by its own name right away.
+        expect(f.calls.filter((c) => c.args[0] === 'rm').map((c) => c.args[2])).toEqual(expect.arrayContaining([`${name}-du-1`, `${name}-du-2`]));
+    });
+    it('N1: one miss between totals under the limit does not kill', async () => {
+        const under = ok({ tail: `1024\t/work\n` });
+        const name = `omg-gate-${LABEL}-d15c0003`;
+        let n = 0;
+        const answers = [under, ok({ status: 137 }), under, ok({ status: 137 }), under];
+        const f = fake(async (args) => {
+            if (args[0] === 'run' && nameOf([...args]).startsWith(`${name}-du-`))
+                return answers[Math.min(n++, answers.length - 1)];
+            if (args[0] === 'run' && nameOf([...args]) === name) {
+                while (n < answers.length)
+                    await new Promise((t) => setTimeout(t, 2));
+                return ok({ tail: 'done' });
+            }
+            return ok();
+        });
+        const r = await runContainerGate(request(), settings({ diskLimit: '1g' }), LABEL, { exec: f.exec, id: () => 'd15c0003', diskWatchMs: 1 });
+        expect(r).toMatchObject({ ran: true, status: 0, output: 'done' });
+        expect(f.calls.some((c) => c.args[0] === 'kill')).toBe(false);
+    });
+    it('N4: every container runs the inspected image id, not the tag', async () => {
+        npmProject();
+        const id = `sha256:${'b'.repeat(64)}`;
+        const f = fake((args) => (args[0] === 'image' ? ok({ tail: `${id}\n` }) : ok()));
+        await runContainerGate(request(), settings(), LABEL, { exec: f.exec });
+        expect(f.runs().length).toBeGreaterThan(0);
+        for (const c of f.runs()) {
+            expect(c.args).toContain(id);
+            expect(c.args).not.toContain(settings().image);
+        }
+    });
+    it('N5: link targets are checked as the container follows them: no absolute target, `..` only leading and inside', () => {
+        expect(linkTargetProblem('src', 0)).toBeNull();
+        expect(linkTargetProblem('./a/b', 0)).toBeNull();
+        expect(linkTargetProblem('../../..', 3)).toBeNull();
+        expect(linkTargetProblem('../README.md', 1)).toBeNull();
+        expect(linkTargetProblem('../x', 0)).toMatch(/points outside/);
+        expect(linkTargetProblem('..\\..\\x', 1)).toMatch(/points outside/);
+        // The review's chain: q -> e/f/g/p/../../../cache, where p -> ../../.. (the host resolves p by its own rules).
+        expect(linkTargetProblem('e/f/g/p/../../../cache', 0)).toMatch(/steps back/);
+        expect(linkTargetProblem('a\\..\\b', 0)).toMatch(/steps back/);
+        for (const abs of ['/etc/passwd', '\\\\?\\C:\\x', 'C:\\Users\\x', 'c:x', ''])
+            expect(linkTargetProblem(abs, 5), abs).toMatch(/absolute target/);
+    });
+    it('N5: the scan refuses a checkout link that steps back after a name', () => {
+        mkdirSync(join(dir, 'e'));
+        try {
+            symlinkSync('e/../e', join(dir, 'q'), 'dir');
+        }
+        catch {
+            return; /* no symlink privilege on this host */
+        }
+        try {
+            expect(checkoutCopyProblem(dir)).toBe('the checkout has a link whose target steps back (..) after a name');
+        }
+        finally {
+            unlinkSync(join(dir, 'q'));
+        }
+    });
+    it('N6: superscript COM/LPT device names are refused on win32', () => {
+        for (const p of ['a/COM\u00b9', 'lpt\u00b2.txt', 'com\u00b3.log'])
+            expect(safeRelPath(p, 'win32'), p).toBeNull();
+        expect(safeRelPath('a/COM\u00b9', 'linux')).toBe('a/COM\u00b9');
+    });
+    it('N6: a path component that cannot be checked (not missing) refuses the copy back; nothing is written', () => {
+        const long = 'a'.repeat(300);
+        const problem = applyCopyBack(dir, tarOf([{ path: `${long}/x.txt`, data: 'x' }]), process.platform);
+        expect(problem).not.toBeNull();
+        if (process.platform === 'linux')
+            expect(problem).toBe('a path could not be checked');
+        expect(readdirSync(dir)).toEqual([]);
     });
     it('L2: a ran result carries the image id', async () => {
         const id = `sha256:${'a'.repeat(64)}`;
