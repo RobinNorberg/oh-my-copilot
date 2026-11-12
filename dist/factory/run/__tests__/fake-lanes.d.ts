@@ -57,6 +57,8 @@ export declare class FakeLanes implements LaneBackend {
     wait(remoteId: string, _timeoutMs: number): Promise<LaneResult>;
     /** cancel() throws a plain error (the backend cannot tell whether the job stopped). */
     cancelFails: boolean;
+    /** 'completed': the job finished before cancel() reached it (its script runs; the terminal snapshot is completed). */
+    cancelFinds: 'completed' | undefined;
     cancel(remoteId: string): Promise<{
         supported: boolean;
         result: LaneResult;

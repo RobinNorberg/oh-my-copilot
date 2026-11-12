@@ -111,6 +111,8 @@ export class FakeLanes {
     }
     /** cancel() throws a plain error (the backend cannot tell whether the job stopped). */
     cancelFails = false;
+    /** 'completed': the job finished before cancel() reached it (its script runs; the terminal snapshot is completed). */
+    cancelFinds = undefined;
     async cancel(remoteId) {
         this.cancelled.push(remoteId);
         if (this.cancelFails)
@@ -119,6 +121,11 @@ export class FakeLanes {
         // Like copilot_run after a restart: a job the backend does not know (or lost) is LaneLostError.
         if (!job || job.outcome?.lost)
             throw new LaneLostError(remoteId, `unknown job ${remoteId}`);
+        if (this.cancelFinds === 'completed') {
+            if (!job.outcome)
+                job.outcome = job.script(job.ctx) ?? {};
+            return { supported: true, result: this.result(job, remoteId, 'completed') };
+        }
         job.outcome = { ...(job.outcome ?? {}), state: 'cancelled' };
         return { supported: true, result: this.result(job, remoteId, 'cancelled') };
     }

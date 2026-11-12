@@ -108,9 +108,9 @@ export function resolveFactoryRunLimits(trustedUser, project) {
     if (limits.laneTimeoutMs <= 0 || limits.laneTimeoutMs > MAX_TIMEOUT_MS) {
         throw new Error(`factory.run.laneTimeoutMinutes must be above 0 and at most ${MAX_TIMEOUT_MS / 60_000}`);
     }
-    // 0 would end every lane at its first poll; there is no "off" (a quiet lane past laneTimeoutMinutes ends anyway).
-    if (limits.laneIdleMs <= 0)
-        throw new Error('factory.run.laneIdleMinutes must be above 0');
+    // Below a minute would end lanes between polls; there is no "off" (a quiet lane past laneTimeoutMinutes ends anyway).
+    if (limits.laneIdleMs < 60_000)
+        throw new Error(`factory.run.laneIdleMinutes must be at least 1 (got ${limits.laneIdleMs / 60_000})`);
     assertLaneCreditCap(limits);
     // Every run needs at least two lanes (implement, then review): the first may spend a whole lane cap, and the next
     // lane cannot start with less than the runtime floor left, so a smaller run cap can park before review (dogfood F44).
