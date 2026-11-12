@@ -95,26 +95,43 @@ export declare function deniedPaths(paths: readonly string[], extra?: readonly s
 export declare function isDocsPath(path: string): boolean;
 /** Files whose text may carry frontmatter that a tool parses as config (skills, commands, agents, mission contracts): their blobs are read. */
 export declare const FRONTMATTER_CANDIDATE: RegExp;
+/**
+ * Whether the engine reads a changed file's blobs for frontmatter: Markdown-like
+ * by its raw name or by its folded name (`README.md.`, `README.md `, fullwidth
+ * or zero-width spellings), and every docs-tier path (review-498c L-a).
+ */
+export declare const isFrontmatterCandidate: (path: string) => boolean;
 /** A blob that starts with YAML (`---`) or TOML (`+++`) frontmatter, after an optional BOM and blank space. */
 export declare const hasFrontmatter: (text: string) => boolean;
 /**
  * The files the BASE package.json runs for every user of the package
- * (review-498b N3): every path-like word of its install and publish lifecycle
- * scripts (and of the scripts they run with `npm run <name>`) and its "bin"
- * targets. A script with a variable, a substitution or a glob, or a "bin"
- * that is not strings, is a `problem` (the engine then keeps the small tier
- * off). Absent package.json (`text` null): nothing.
+ * (review-498b N3, review-498c L-b): every path-like word of its install and
+ * publish lifecycle scripts (and of the scripts they run with `npm run
+ * <name>`) and its "bin" targets, all denied in every tier. The small tier
+ * also needs a `problem`-free result, and anything the engine cannot follow is
+ * a problem: a lifecycle that runs a repository file or an interpreter (what
+ * it imports is not followed), a runner with flags or an unknown subcommand,
+ * a script orchestrator or package executor, a variable, substitution or
+ * glob, "gypfile", "workspaces", and (`rootNames`, the base's root file names)
+ * a binding.gyp or pnpm-workspace.yaml. Absent package.json (`text` null):
+ * only the root-file problems.
  */
-export declare function baseInstallFiles(text: string | null): {
+export declare function baseInstallFiles(text: string | null, rootNames?: readonly string[]): {
     paths: string[];
     problem?: string;
 };
+/** One added (`+`) or deleted (`-`) line of a patch and the file it is in (the `+++`/`---` header name, prefix included). */
+export interface PatchLine {
+    path: string;
+    sign: '+' | '-';
+    text: string;
+}
 /**
- * The added lines of a plain `git diff` patch (lines starting with `+` inside
- * a hunk); null when the text has an ANSI escape (a colour setting: the
- * engine cannot read it, so it fails closed).
+ * The added and deleted lines of a plain `git diff` patch, each with its
+ * file; null when the text has an ANSI escape (a colour setting: the engine
+ * cannot read it, so it fails closed).
  */
-export declare function addedPatchLines(patch: string): string[] | null;
+export declare function patchLines(patch: string): PatchLine[] | null;
 /** tests: a test file by name, or a source / snapshot / fixture-data file under a root test directory or any `__tests__`. */
 export declare function isTestPath(path: string): boolean;
 export interface TierResult {
@@ -142,8 +159,8 @@ export interface ClassifyOptions {
         paths: readonly string[];
         problem?: string;
     };
-    /** The patch's added lines (addedPatchLines); null = unreadable, which keeps the tests and small tiers off. Undefined = not read. */
-    addedLines?: readonly string[] | null;
+    /** The patch's added and deleted lines (patchLines); null = unreadable, which keeps the tests and small tiers off. Undefined = not read. */
+    patch?: readonly PatchLine[] | null;
 }
 /**
  * The first enabled tier (docs, tests, small, in that order) every changed

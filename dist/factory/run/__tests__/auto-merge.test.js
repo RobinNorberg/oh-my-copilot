@@ -6,7 +6,7 @@
 import { describe, expect, it } from 'vitest';
 import { githubAutoMergeArgs, githubCommitReadArgs, isGithubAutoMergeArgs } from '../../../forge/github/merge.js';
 import { assertFactoryCommand, FactorySafetyError } from '../exec.js';
-import { addedPatchLines, autoMergeComment, autoMergeVerdict, baseInstallFiles, baseTestSetup, hasFrontmatter, classifyChanges, committedMergeConfig, deniedPaths, isDocsPath, isTestPath, MANUAL_MERGE_LABEL, parseChangedEntries, resolveAutoMergeConfig, } from '../auto-merge.js';
+import { autoMergeComment, autoMergeVerdict, baseInstallFiles, baseTestSetup, hasFrontmatter, classifyChanges, committedMergeConfig, deniedPaths, isDocsPath, isFrontmatterCandidate, isTestPath, MANUAL_MERGE_LABEL, parseChangedEntries, patchLines, resolveAutoMergeConfig, } from '../auto-merge.js';
 const HEAD = 'a'.repeat(40);
 const OTHER = 'b'.repeat(40);
 const URL = 'https://github.com/o/r';
@@ -251,15 +251,18 @@ describe('review-498b adversarial paths', () => {
             bin: { omg: 'bin/omg.js' },
         });
         const installFiles = baseInstallFiles(pkg);
-        expect(installFiles).toEqual({ paths: ['scripts/postinstall-contained-fs.mjs', 'tools/gen-hooks.js', 'bin/omg.js'] });
+        expect(installFiles.paths).toEqual(['scripts/postinstall-contained-fs.mjs', 'tools/gen-hooks.js', 'bin/omg.js']);
         for (const p of ['scripts/postinstall-contained-fs.mjs', 'bin/omg.js', 'tools/gen-hooks.js']) {
             expect(classifyChanges([file(p, 1, 1)], all, { installFiles }).reasons[0], p).toMatch(/always need a human/);
         }
         for (const p of ['bridge/cli.cjs', 'dist/index.js', 'dist/README.md'])
             expect(classifyChanges([file(p)], all).reasons[0], p).toMatch(/always need a human/);
-        expect(classifyChanges([file('scripts/other.mjs')], smallOnly, { installFiles }).tier).toBe('small');
+        // review-498c L-b: a lifecycle that runs a repository file (whose imports are not followed) keeps the small tier off.
+        expect(installFiles.problem).toMatch(/postinstall" runs node scripts\/postinstall-contained-fs\.mjs/);
+        expect(classifyChanges([file('scripts/other.mjs')], smallOnly, { installFiles }).tier).toBeUndefined();
+        expect(classifyChanges([file('scripts/other.mjs')], smallOnly, { installFiles: baseInstallFiles(JSON.stringify({ scripts: { prepare: 'husky' }, bin: 'cli.js' })) }).tier).toBe('small');
         expect(baseInstallFiles(JSON.stringify({ bin: 'cli.js' }))).toEqual({ paths: ['cli.js'] });
-        expect(baseInstallFiles(JSON.stringify({ scripts: { prepare: 'yarn gen', gen: 'node tools/gen.js', prepublishOnly: 'sh ./release.sh' } }))).toEqual({ paths: ['tools/gen.js', 'release.sh'] });
+        expect(baseInstallFiles(JSON.stringify({ scripts: { prepare: 'yarn gen', gen: 'node tools/gen.js', prepublishOnly: 'sh ./release.sh' } })).paths).toEqual(['tools/gen.js', 'release.sh']);
         expect(baseInstallFiles(null)).toEqual({ paths: [] });
     });
     it('N3: a lifecycle script the engine cannot read as literal words keeps the small tier off (docs still works)', () => {
@@ -295,19 +298,127 @@ describe('review-498b adversarial paths', () => {
     });
     it('N5: a gutted test (more lines deleted than added) or an added skip, focus or empty assertion fits no tests or small tier', () => {
         expect(classifyChanges([file('src/a.test.ts', 1, 200)], all).tier).toBeUndefined();
-        expect(classifyChanges([file('src/a.test.ts', 1, 200)], all).reasons[0]).toMatch(/tests: src\/a\.test\.ts lose\(s\) more lines than it gains/);
+        expect(classifyChanges([file('src/a.test.ts', 1, 200)], all).reasons[0]).toMatch(/tests: src\/a\.test\.ts lose\(s\) more lines \(or assertion lines\) than it gains/);
         for (const line of ["  it.skip('checks auth', () => {", "describe.only('x', () => {", 'xit("x", () => {', "  it.todo('later')", '  expect(true).toBe(true);', 'test.skipIf(process.env.CI)("x", () => {']) {
-            const addedLines = addedPatchLines(`diff --git a/src/a.test.ts b/src/a.test.ts\n--- a/src/a.test.ts\n+++ b/src/a.test.ts\n@@ -1,1 +1,2 @@\n ctx\n+${line}\n`);
-            expect(addedLines).toEqual([line]);
-            const r = classifyChanges([file('src/a.test.ts', 1, 0)], { enabled: true, tiers: ['tests', 'small'] }, { addedLines });
+            const patch = patchLines(`diff --git a/src/a.test.ts b/src/a.test.ts\n--- a/src/a.test.ts\n+++ b/src/a.test.ts\n@@ -1,1 +1,2 @@\n ctx\n+${line}\n`);
+            expect(patch).toEqual([{ path: 'b/src/a.test.ts', sign: '+', text: line }]);
+            const r = classifyChanges([file('src/a.test.ts', 1, 0)], { enabled: true, tiers: ['tests', 'small'] }, { patch });
             expect(r.tier, line).toBeUndefined();
             expect(r.reasons[0], line).toMatch(/tests: an added line skips, focuses or empties a test/);
         }
-        expect(classifyChanges([file('src/a.test.ts', 3, 0)], testsOnly, { addedLines: ["  it('works', () => expect(sum(1, 2)).toBe(3));"] }).tier).toBe('tests');
+        expect(classifyChanges([file('src/a.test.ts', 3, 0)], testsOnly, { patch: [{ path: 'b/src/a.test.ts', sign: '+', text: "  it('works', () => expect(sum(1, 2)).toBe(3));" }] }).tier).toBe('tests');
         // An unreadable patch (or a coloured one) keeps the tests and small tiers off; docs never reads it.
-        expect(addedPatchLines('\u001b[32m+x\u001b[m')).toBeNull();
-        expect(classifyChanges([file('src/a.test.ts')], testsOnly, { addedLines: null }).reasons[0]).toMatch(/patch could not be read/);
-        expect(classifyChanges([file('docs/a.md')], docsOnly, { addedLines: null }).tier).toBe('docs');
+        expect(patchLines('\u001b[32m+x\u001b[m')).toBeNull();
+        expect(classifyChanges([file('src/a.test.ts')], testsOnly, { patch: null }).reasons[0]).toMatch(/patch could not be read/);
+        expect(classifyChanges([file('docs/a.md')], docsOnly, { patch: null }).tier).toBe('docs');
+    });
+});
+describe('review-498c follow-ups (fail closed)', () => {
+    const docsOnly = { enabled: true, tiers: ['docs'] };
+    const testsOnly = { enabled: true, tiers: ['tests'] };
+    const smallOnly = { enabled: true, tiers: ['small'] };
+    const testsSmall = { enabled: true, tiers: ['tests', 'small'] };
+    it('L-a: a docs path in a non-canonical spelling is read for frontmatter and never fits the docs tier', () => {
+        for (const p of ['README.md.', 'README.md ', 'README.ｍｄ', 'READ‍ME.md', 'docs/x.md.', 'docs/x.ｍｄ', 'docs/x.m‍d', 'Docs./x.md', 'ｄocs/x.md']) {
+            expect(isFrontmatterCandidate(p), p).toBe(true);
+            expect(classifyChanges([file(p)], docsOnly).tier, p).toBeUndefined();
+        }
+        // A small-tier file spelled to dodge the Markdown test is read for frontmatter too.
+        expect(isFrontmatterCandidate('src/notes.ｍｄ')).toBe(true);
+        expect(isFrontmatterCandidate('src/x.ts')).toBe(false);
+        for (const p of ['README.md', 'readme.MD', 'docs/guide.md', 'CHANGELOG.rst'])
+            expect(classifyChanges([file(p)], docsOnly).tier, p).toBe('docs');
+    });
+    it('L-b: install scripts the engine cannot follow keep the small tier off', () => {
+        const tools = { setup: 'node tools/setup.js' };
+        for (const pkg of [
+            { scripts: { postinstall: 'node .' } },
+            { scripts: { postinstall: 'node lib' } },
+            { scripts: { postinstall: 'node scripts/postinstall' } },
+            { scripts: { postinstall: "node -e \"require('./lib/install')\"" } },
+            { scripts: { postinstall: 'npm run -s setup', ...tools } },
+            { scripts: { postinstall: 'npm --silent run setup', ...tools } },
+            { scripts: { postinstall: 'pnpm -s setup', ...tools } },
+            { scripts: { postinstall: 'run-s setup', ...tools } },
+            { scripts: { postinstall: 'npm-run-all setup', ...tools } },
+            { scripts: { postinstall: 'concurrently "npm:setup"', ...tools } },
+            { scripts: { postinstall: 'npx --yes ./tools/x' } },
+            { scripts: { postinstall: 'npm run setup -w pkg-a', setup: 'husky' } },
+            { scripts: { install: 'node-gyp rebuild' } },
+            { scripts: { dependencies: 'husky && tsx tools/dep.ts' } },
+            { scripts: { preprepare: 'node tools/pp.js' } },
+            { scripts: { postprepare: 'node tools/pq.js' } },
+            { scripts: { postinstall: 'yarn workspace a build' } },
+            { scripts: { prepare: 'bun tools/x.ts' } },
+            { gypfile: true },
+            { workspaces: ['packages/*'] },
+        ]) {
+            const installFiles = baseInstallFiles(JSON.stringify(pkg));
+            expect(installFiles.problem, JSON.stringify(pkg)).toBeTruthy();
+            expect(classifyChanges([file('src/greet.ts')], smallOnly, { installFiles }).tier, JSON.stringify(pkg)).toBeUndefined();
+        }
+        for (const root of [['binding.gyp'], ['pnpm-workspace.yaml'], ['Binding.GYP']]) {
+            expect(baseInstallFiles(null, root).problem, root[0]).toBeTruthy();
+            expect(baseInstallFiles(JSON.stringify({ scripts: { prepare: 'husky' } }), root).problem, root[0]).toBeTruthy();
+        }
+        // Commands that run no repository file stay fine: the small tier still works.
+        for (const pkg of [{ scripts: { prepare: 'husky' } }, { scripts: { prepare: 'npm run hooks', hooks: 'husky' } }, { scripts: { postinstall: 'yarn && husky' } }, { scripts: { test: 'node scripts/t.js' } }]) {
+            const installFiles = baseInstallFiles(JSON.stringify(pkg), ['package.json', 'src']);
+            expect(installFiles.problem, JSON.stringify(pkg)).toBeUndefined();
+            expect(classifyChanges([file('src/greet.ts')], smallOnly, { installFiles }).tier, JSON.stringify(pkg)).toBe('small');
+        }
+    });
+    it('L-c: more skip and empty-assertion spellings, and assertion loss hidden by padding, keep the tests and small tiers off', () => {
+        const one = (line, path = 'tests/a.test.ts') => classifyChanges([file(path, 1, 1)], testsSmall, { patch: [{ path: `b/${path}`, sign: '+', text: line }] });
+        for (const line of ["it['skip']('x', () => {})", 'it[`skip`]("x")', "if (false) it('x', f)", 'expect(x).toBe(x)', 'expect(!0).toBe(true)', 'expect.assertions(0)', "it.each([])('x')", 'return; // early', "self.skipTest('x')", "pytest.skip('x')", "describe.concurrent.skip('x')"]) {
+            expect(one(line).tier, line).toBeUndefined();
+            expect(one(line).reasons[0], line).toMatch(/an added line skips, focuses or empties a test/);
+        }
+        // Test-file-only patterns do not fire in source: an early return is ordinary code.
+        expect(one('  return;', 'src/greet.ts').tier).toBe('small');
+        expect(one("  it('adds', () => expect(sum(1, 2)).toBe(3));").tier).toBe('tests');
+        // +200/-200 with the assertions swapped for padding: still gutted.
+        const padded = [
+            ...Array.from({ length: 3 }, (_, n) => ({ path: 'b/tests/a.test.ts', sign: '-', text: `  expect(auth(${n})).toBe(false);` })),
+            ...Array.from({ length: 3 }, () => ({ path: 'b/tests/a.test.ts', sign: '+', text: '  // pad' })),
+        ];
+        const r = classifyChanges([file('tests/a.test.ts', 200, 200)], testsSmall, { patch: padded });
+        expect(r.tier).toBeUndefined();
+        expect(r.reasons[0]).toMatch(/lose\(s\) more lines \(or assertion lines\)/);
+        // A rewritten assertion (one out, one in) is fine.
+        expect(classifyChanges([file('tests/a.test.ts', 1, 1)], testsOnly, { patch: [{ ...padded[0] }, { path: 'b/tests/a.test.ts', sign: '+', text: '  expect(auth(0)).toBe(true);' }] }).tier).toBe('tests');
+        // The patch parser keeps each line's file, deletions included.
+        expect(patchLines('diff --git a/x.ts b/x.ts\n--- a/x.ts\n+++ b/x.ts\n@@ -1 +1 @@\n-old\n+new\ndiff --git a/t.test.ts b/t.test.ts\n--- a/t.test.ts\n+++ /dev/null\n@@ -1 +0,0 @@\n---- a/y\n'))
+            .toEqual([{ path: 'b/x.ts', sign: '-', text: 'old' }, { path: 'b/x.ts', sign: '+', text: 'new' }, { path: 'a/t.test.ts', sign: '-', text: '--- a/y' }]);
+    });
+    it('L-d: projects, workspace, extends, foreign imports, computed loads and more runner keys keep the tests and small tiers off', () => {
+        for (const [text, path] of [
+            ["import base from '@repo/vitest-config'; export default defineConfig({ ...base })", 'vitest.config.ts'],
+            ["export default defineConfig({ test: { projects: ['packages/*'] } })", 'vitest.config.ts'],
+            ["export default defineConfig({ test: { workspace: ['packages/*'] } })", 'vitest.config.ts'],
+            ["export default { test: { extends: './vitest.base.ts' } }", 'vitest.config.ts'],
+            ["import base from 'src/vitest.base'; export default base", 'vitest.config.ts'],
+            ["import base from '/abs/vitest.base'; export default base", 'vitest.config.ts'],
+            ['const r = require(`${__dirname}/base`); module.exports = r', 'jest.config.js'],
+            ["module.exports = require(path.join(__dirname, 'base'))", 'jest.config.js'],
+            [JSON.stringify({ jest: { projects: ['<rootDir>/packages/*'], setupFiles: ['./s.js'] } }), 'package.json'],
+        ]) {
+            const s = baseTestSetup([{ path, text }]);
+            expect(s.problem, text).toBeTruthy();
+            expect(classifyChanges([file('tests/a.test.ts')], testsSmall, { testSetup: s }).tier, text).toBeUndefined();
+        }
+        expect(baseTestSetup([{ path: 'vitest.config.ts', text: "export default { test: { setupFiles: ['./a.ts'], pool: './tools/p.ts', typecheck: { checker: './tools/tc.ts' }, coverage: { provider: 'custom', customProviderModule: './tools/cov.ts' } } }" }]))
+            .toEqual({ paths: ['./a.ts', './tools/p.ts', './tools/tc.ts', './tools/cov.ts'] });
+        // vitest, vite and node builtins (and a JSDoc type import) stay readable.
+        expect(baseTestSetup([{ path: 'vitest.config.ts', text: "import { defineConfig } from 'vitest/config';\nimport { resolve } from 'node:path';\n/** @type {import('vitest').UserConfig} */\nexport default defineConfig({ test: { setupFiles: ['./tests/setup.ts'] } })" }]))
+            .toEqual({ paths: ['./tests/setup.ts'] });
+    });
+    it('L-e: git hook names at the repository root (core.hooksPath ".") fit no tier', () => {
+        for (const p of ['post-merge', 'post-checkout', 'pre-commit', 'POST-MERGE', 'post-merge.', 'post-merge.exe', 'reference-transaction']) {
+            expect(deniedPaths([p]), p).toEqual([p]);
+            expect(classifyChanges([added(p)], all).tier, p).toBeUndefined();
+        }
+        expect(deniedPaths(['src/post-merge.ts', 'docs/pre-commit.md'])).toEqual([]);
     });
 });
 describe('autoMergeVerdict', () => {
