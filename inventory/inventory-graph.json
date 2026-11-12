@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "586e554b8b0ab95ec19155b267a0a5f379ecd7a3",
-    "sourceSha256": "52fa7b88f73113424a11f2c1c79fe7eb19ff22d7b1b25ac60658d2e4ae20a27e",
+    "head": "a9f48b6818a0163fdbb04b7db7efb97cbf992782",
+    "sourceSha256": "c41b50b03de4a936acb90b1af690d6bf211e1c9b677c0db83cdf61ded7773e69",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "586e554b8b0ab95ec19155b267a0a5f379ecd7a3",
-  "sourceSha256": "52fa7b88f73113424a11f2c1c79fe7eb19ff22d7b1b25ac60658d2e4ae20a27e",
+  "head": "a9f48b6818a0163fdbb04b7db7efb97cbf992782",
+  "sourceSha256": "c41b50b03de4a936acb90b1af690d6bf211e1c9b677c0db83cdf61ded7773e69",
   "counts": {
     "public": {
       "skills": 98,
@@ -3226,14 +3226,6 @@
       "dist/factory/bench/fixture.d.ts.map",
       "dist/factory/bench/fixture.js",
       "dist/factory/bench/fixture.js.map",
-      "dist/factory/bench/fixtures/issues.d.ts",
-      "dist/factory/bench/fixtures/issues.d.ts.map",
-      "dist/factory/bench/fixtures/issues.js",
-      "dist/factory/bench/fixtures/issues.js.map",
-      "dist/factory/bench/fixtures/project.d.ts",
-      "dist/factory/bench/fixtures/project.d.ts.map",
-      "dist/factory/bench/fixtures/project.js",
-      "dist/factory/bench/fixtures/project.js.map",
       "dist/factory/bench/runner.d.ts",
       "dist/factory/bench/runner.d.ts.map",
       "dist/factory/bench/runner.js",
@@ -3242,6 +3234,14 @@
       "dist/factory/bench/score.d.ts.map",
       "dist/factory/bench/score.js",
       "dist/factory/bench/score.js.map",
+      "dist/factory/bench/seed/issues.d.ts",
+      "dist/factory/bench/seed/issues.d.ts.map",
+      "dist/factory/bench/seed/issues.js",
+      "dist/factory/bench/seed/issues.js.map",
+      "dist/factory/bench/seed/project.d.ts",
+      "dist/factory/bench/seed/project.d.ts.map",
+      "dist/factory/bench/seed/project.js",
+      "dist/factory/bench/seed/project.js.map",
       "dist/factory/board/__tests__/board-ado.test.d.ts",
       "dist/factory/board/__tests__/board-ado.test.d.ts.map",
       "dist/factory/board/__tests__/board-ado.test.js",
@@ -21341,46 +21341,6 @@
         "path": "dist/factory/bench/fixture.js.map"
       },
       {
-        "id": "dist/factory/bench/fixtures/issues.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/factory/bench/fixtures/issues.d.ts"
-      },
-      {
-        "id": "dist/factory/bench/fixtures/issues.d.ts.map",
-        "kind": "generated-dist",
-        "path": "dist/factory/bench/fixtures/issues.d.ts.map"
-      },
-      {
-        "id": "dist/factory/bench/fixtures/issues.js",
-        "kind": "generated-dist",
-        "path": "dist/factory/bench/fixtures/issues.js"
-      },
-      {
-        "id": "dist/factory/bench/fixtures/issues.js.map",
-        "kind": "generated-dist",
-        "path": "dist/factory/bench/fixtures/issues.js.map"
-      },
-      {
-        "id": "dist/factory/bench/fixtures/project.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/factory/bench/fixtures/project.d.ts"
-      },
-      {
-        "id": "dist/factory/bench/fixtures/project.d.ts.map",
-        "kind": "generated-dist",
-        "path": "dist/factory/bench/fixtures/project.d.ts.map"
-      },
-      {
-        "id": "dist/factory/bench/fixtures/project.js",
-        "kind": "generated-dist",
-        "path": "dist/factory/bench/fixtures/project.js"
-      },
-      {
-        "id": "dist/factory/bench/fixtures/project.js.map",
-        "kind": "generated-dist",
-        "path": "dist/factory/bench/fixtures/project.js.map"
-      },
-      {
         "id": "dist/factory/bench/runner.d.ts",
         "kind": "generated-dist",
         "path": "dist/factory/bench/runner.d.ts"
@@ -21419,6 +21379,46 @@
         "id": "dist/factory/bench/score.js.map",
         "kind": "generated-dist",
         "path": "dist/factory/bench/score.js.map"
+      },
+      {
+        "id": "dist/factory/bench/seed/issues.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/bench/seed/issues.d.ts"
+      },
+      {
+        "id": "dist/factory/bench/seed/issues.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/bench/seed/issues.d.ts.map"
+      },
+      {
+        "id": "dist/factory/bench/seed/issues.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/bench/seed/issues.js"
+      },
+      {
+        "id": "dist/factory/bench/seed/issues.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/bench/seed/issues.js.map"
+      },
+      {
+        "id": "dist/factory/bench/seed/project.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/bench/seed/project.d.ts"
+      },
+      {
+        "id": "dist/factory/bench/seed/project.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/bench/seed/project.d.ts.map"
+      },
+      {
+        "id": "dist/factory/bench/seed/project.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/bench/seed/project.js"
+      },
+      {
+        "id": "dist/factory/bench/seed/project.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/bench/seed/project.js.map"
       },
       {
         "id": "dist/factory/board/__tests__/board-ado.test.d.ts",
@@ -56296,16 +56296,6 @@
         "path": "src/factory/bench/fixture.ts"
       },
       {
-        "id": "src/factory/bench/fixtures/issues.ts",
-        "kind": "src",
-        "path": "src/factory/bench/fixtures/issues.ts"
-      },
-      {
-        "id": "src/factory/bench/fixtures/project.ts",
-        "kind": "src",
-        "path": "src/factory/bench/fixtures/project.ts"
-      },
-      {
         "id": "src/factory/bench/runner.ts",
         "kind": "src",
         "path": "src/factory/bench/runner.ts"
@@ -56314,6 +56304,16 @@
         "id": "src/factory/bench/score.ts",
         "kind": "src",
         "path": "src/factory/bench/score.ts"
+      },
+      {
+        "id": "src/factory/bench/seed/issues.ts",
+        "kind": "src",
+        "path": "src/factory/bench/seed/issues.ts"
+      },
+      {
+        "id": "src/factory/bench/seed/project.ts",
+        "kind": "src",
+        "path": "src/factory/bench/seed/project.ts"
       },
       {
         "id": "src/factory/board/__tests__/board-ado.test.ts",
@@ -86169,11 +86169,6 @@
       },
       {
         "from": "src/factory/bench/__tests__/bench.fake.test.ts",
-        "to": "src/factory/bench/fixtures/issues.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/bench/__tests__/bench.fake.test.ts",
         "to": "src/factory/bench/runner.ts",
         "kind": "imports"
       },
@@ -86185,6 +86180,11 @@
       {
         "from": "src/factory/bench/__tests__/bench.fake.test.ts",
         "to": "src/factory/bench/score.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/__tests__/bench.fake.test.ts",
+        "to": "src/factory/bench/seed/issues.ts",
         "kind": "imports"
       },
       {
@@ -86224,16 +86224,6 @@
       },
       {
         "from": "src/factory/bench/__tests__/bench.units.test.ts",
-        "to": "src/factory/bench/fixtures/issues.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/bench/__tests__/bench.units.test.ts",
-        "to": "src/factory/bench/fixtures/project.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/bench/__tests__/bench.units.test.ts",
         "to": "src/factory/bench/runner.ts",
         "kind": "imports"
       },
@@ -86246,6 +86236,16 @@
         "from": "src/factory/bench/__tests__/bench.units.test.ts",
         "to": "src/factory/bench/score.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/bench/__tests__/bench.units.test.ts",
+        "to": "src/factory/bench/seed/issues.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/__tests__/bench.units.test.ts",
+        "to": "src/factory/bench/seed/project.ts",
+        "kind": "imports"
       },
       {
         "from": "src/factory/bench/__tests__/bench.units.test.ts",
@@ -86284,7 +86284,7 @@
       },
       {
         "from": "src/factory/bench/fake-lanes.ts",
-        "to": "src/factory/bench/fixtures/issues.ts",
+        "to": "src/factory/bench/seed/issues.ts",
         "kind": "type-imports"
       },
       {
@@ -86301,6 +86301,11 @@
         "from": "src/factory/bench/fake-lanes.ts",
         "to": "src/factory/run/lane.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/bench/fake-lanes.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
       },
       {
         "from": "src/factory/bench/fake-lanes.ts",
@@ -86329,17 +86334,17 @@
       },
       {
         "from": "src/factory/bench/fixture.ts",
-        "to": "src/factory/bench/fixtures/issues.ts",
+        "to": "src/factory/bench/seed/issues.ts",
         "kind": "imports"
       },
       {
         "from": "src/factory/bench/fixture.ts",
-        "to": "src/factory/bench/fixtures/issues.ts",
+        "to": "src/factory/bench/seed/issues.ts",
         "kind": "type-imports"
       },
       {
         "from": "src/factory/bench/fixture.ts",
-        "to": "src/factory/bench/fixtures/project.ts",
+        "to": "src/factory/bench/seed/project.ts",
         "kind": "imports"
       },
       {
@@ -86350,11 +86355,6 @@
       {
         "from": "src/factory/bench/fixture.ts",
         "to": "src/ship/exec.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/bench/fixtures/issues.ts",
-        "to": "src/factory/run/state.ts",
         "kind": "type-imports"
       },
       {
@@ -86389,21 +86389,6 @@
       },
       {
         "from": "src/factory/bench/runner.ts",
-        "to": "src/factory/bench/fixtures/issues.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/bench/runner.ts",
-        "to": "src/factory/bench/fixtures/issues.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/bench/runner.ts",
-        "to": "src/factory/bench/fixtures/project.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/bench/runner.ts",
         "to": "src/factory/bench/score.ts",
         "kind": "imports"
       },
@@ -86411,6 +86396,21 @@
         "from": "src/factory/bench/runner.ts",
         "to": "src/factory/bench/score.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/bench/runner.ts",
+        "to": "src/factory/bench/seed/issues.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/runner.ts",
+        "to": "src/factory/bench/seed/issues.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/bench/runner.ts",
+        "to": "src/factory/bench/seed/project.ts",
+        "kind": "imports"
       },
       {
         "from": "src/factory/bench/runner.ts",
@@ -86554,7 +86554,7 @@
       },
       {
         "from": "src/factory/bench/score.ts",
-        "to": "src/factory/bench/fixtures/issues.ts",
+        "to": "src/factory/bench/seed/issues.ts",
         "kind": "type-imports"
       },
       {
@@ -86585,6 +86585,11 @@
       {
         "from": "src/factory/bench/score.ts",
         "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/bench/seed/issues.ts",
+        "to": "src/factory/run/state.ts",
         "kind": "type-imports"
       },
       {
@@ -132470,11 +132475,11 @@
     ],
     "stats": {
       "nodeCount": 11005,
-      "edgeCount": 13620,
-      "importEdgeCount": 11191,
+      "edgeCount": 13621,
+      "importEdgeCount": 11192,
       "registerEdgeCount": 119
     }
   },
-  "inventorySha256": "f4b51f4fe0f95d8fa2150de01c2462989afac32c783aedadee9a6772455ce87b",
-  "manifestSha256": "978c17c75993a740771133725ec8876f183f7672be38865d79267937adfb16c2"
+  "inventorySha256": "b08f46e521f8c9f73299267a2ca4477e9a6217827ba695d2c3921a63f6e78fc4",
+  "manifestSha256": "b62c1487e29da31ff93e07ececffeae0cbce47a3a130c4daa2eeb872061989ae"
 }
