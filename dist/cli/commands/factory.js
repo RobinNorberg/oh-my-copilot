@@ -55,6 +55,7 @@ import { defaultLedgerDir, emptyHooksDir } from '../../factory/run/ledger.js';
 import { listenForgeRefusal } from '../../factory/setup/detect.js';
 import { factorySetupCommand } from './factory-setup.js';
 import { factoryBoardCommand } from './factory-board.js';
+import { factoryDashboardCommand } from './factory-dashboard.js';
 import { factoryPrCommand } from './factory-pr.js';
 import { factoryPollCommand } from './factory-poll.js';
 import { defaultPollAutoStart, defaultPollHealScan } from '../../factory/poll.js';
@@ -1010,6 +1011,7 @@ export function factoryCommand() {
     cmd.addCommand(factoryEnqueueCommand(defaultFactoryCheckDeps(defaultFactoryRunDeps.base)));
     cmd.addCommand(factoryTriageCommand(defaultFactoryCheckDeps(defaultFactoryRunDeps.base)));
     cmd.addCommand(factoryBoardCommand(defaultFactoryCheckDeps(defaultFactoryRunDeps.base)));
+    cmd.addCommand(factoryDashboardCommand());
     cmd.addCommand(factoryPrCommand(defaultFactoryCheckDeps(defaultFactoryRunDeps.base)));
     cmd.addCommand(factoryPollCommand({
         ...defaultFactoryCheckDeps(defaultFactoryRunDeps.base),
