@@ -49,7 +49,7 @@ describe('factory run on the local forge: opt-in auto-merge', () => {
     expect(gitIn(w.root, 'status', '--porcelain', '--untracked-files=no')).toBe('');
     const note = state.history.find((h) => h.note.startsWith('auto-merged by tier docs'))?.note ?? '';
     expect(note).toMatch(/factory review approved/);
-    expect(note).toMatch(/CI green at [0-9a-f]{12}: local-gate/);
+    expect(note).toMatch(/CI green at [0-9a-f]{12}: `local-gate`/);
     expect(note).toMatch(/every file fits tier docs/);
     expect(state.history.at(-1)?.note).toMatch(/merged on .* by the factory \(auto-merge tier docs\)/);
     // The engine's merge ran without hooks and only as ship's exact shape.
