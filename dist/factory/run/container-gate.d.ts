@@ -19,7 +19,9 @@
  *    outside the checkout, however the runtime's file sharing treats links.
  * 1. copy: the checkout, bind-mounted READ-ONLY at /in, is copied with tar
  *    into the volume (`.git` and every `node_modules` left out; links stay
- *    links). No network, no PR code runs. The only step with a host path.
+ *    links), then the engine's one-commit git view (git-view.ts), bound
+ *    read-only at /in-git, as the copy's `.git`. No network, no PR code
+ *    runs. The only step with host paths.
  * 2. install (a package.json with a package-lock.json): only npm itself
  *    gets network, never the PR's code:
  *    a. `npm ci --ignore-scripts` on a per-command bridge network
@@ -63,7 +65,7 @@ import { type FactoryRunKey } from './state.js';
 /** The park when the container runtime, its daemon or the image is not there, or the project cannot be installed in it. */
 export declare const GATE_CONTAINER_UNAVAILABLE_GATE = "gate-container-unavailable";
 /** What the gate-sandbox-incompatible park of a base calibration in the container tells the human to do. */
-export declare const CONTAINER_INCOMPATIBLE_ADVICE = "Your gate fails in the gate container on the base: there it runs with no network, no git dir, as a non-root user on a read-only root (only /tmp, the checkout and HOME writable), with the dependencies npm ci installs from your lockfile and their install scripts run without network. Make the gate work there (or pick another factory.run.sandbox.container.image), or set factory.run.sandbox.isolation \"copilot\" in your user config";
+export declare const CONTAINER_INCOMPATIBLE_ADVICE = "Your gate fails in the gate container on the base: there it runs with no network, a git repository of only the checked commit (git itself must be in the image), as a non-root user on a read-only root (only /tmp, the checkout and HOME writable), with the dependencies npm ci installs from your lockfile and their install scripts run without network. Make the gate work there (or pick another factory.run.sandbox.container.image), or set factory.run.sandbox.isolation \"copilot\" in your user config";
 /** Prefix of every container, network and volume this module makes; nothing else is ever removed. */
 export declare const CONTAINER_NAME_PREFIX = "omg-gate-";
 export declare const RUN_LABEL = "omg.run";
@@ -152,8 +154,8 @@ export declare function installPlan(checkout: string): InstallPlan;
  * word that is a host path inside the checkout is mapped into /work/src.
  */
 export declare function containerArgv(req: Pick<SandboxRunRequest, 'argv' | 'exe' | 'args' | 'cwd'>): string[];
-/** The copy step's script for a plan: the npm ci plan also holds the checkout's .npmrc aside. */
-export declare function copyScript(npmCi: boolean): string;
+/** The copy step's script for a plan: the npm ci plan also holds the checkout's .npmrc aside; a git view is copied in as `.git`. */
+export declare function copyScript(npmCi: boolean, gitView?: boolean): string;
 /**
  * npm's own settings in the fetch step, over anything npm would read (no
  * .npmrc is in the project then; these beat the image's global one): the npm
