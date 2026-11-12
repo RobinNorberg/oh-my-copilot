@@ -735,6 +735,11 @@ export function autoMergeVerdict(i) {
     const v = i.verdict;
     check(!!v && v.verdict === 'approve' && v.sha === i.head, `factory review approved ${at}${v ? ` (${v.reviewer})` : ''}`, `the factory review did not approve this exact head (latest: ${v ? `${v.verdict} at ${v.sha.slice(0, 12)}` : 'none'})`);
     // Only a check that ran and succeeded counts: SKIPPED, NEUTRAL and known-flaky failures pass the gate but never auto-merge.
+    // Every non-advisory check must have SUCCEEDED (SKIPPED / NEUTRAL only when required checks are set), whatever the gate verdict:
+    // a known-flaky FAILURE, ERROR, CANCELLED, TIMED_OUT, ACTION_REQUIRED, STARTUP_FAILURE or a pending check keeps the merge human.
+    const blocking = i.decision.blocking;
+    check(blocking !== undefined && blocking.length === 0, 'every check on this head succeeded, skipped or was neutral (advisory checks aside)', blocking === undefined ? 'the check states on this head were not read'
+        : `checks did not succeed on this head: ${blocking.slice(0, 8).join(', ')}${blocking.length > 8 ? ', ...' : ''}; a known-flaky or failed check always leaves the merge to a human`);
     const checks = i.decision.checks ?? [];
     const required = i.requiredChecks ?? [];
     const succeeded = required.length > 0 ? checks.filter((c) => required.includes(c)) : checks;

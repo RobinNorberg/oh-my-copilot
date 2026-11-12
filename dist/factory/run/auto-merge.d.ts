@@ -212,13 +212,17 @@ export interface AutoMergeInput {
     head: string;
     config: AutoMergeConfig;
     run: AutoMergeRunFacts;
-    /** decideMerge (+ forge policies) on this head; `checks` = the checks that ran and SUCCEEDED (not skipped or neutral). */
+    /**
+     * decideMerge (+ forge policies) on this head; `checks` = the checks that ran and SUCCEEDED (not skipped or neutral);
+     * `blocking` = every non-advisory check whose raw state is not SUCCESS, SKIPPED or NEUTRAL (undefined = not read: fail closed).
+     */
     decision: {
         ok: boolean;
         reasons: readonly string[];
         noChecks?: true;
         checks?: readonly string[];
         unsettled?: readonly string[];
+        blocking?: readonly string[];
     };
     /** ship.requiredChecks (config or branch protection): when set, one of them must be among the succeeded checks. */
     requiredChecks?: readonly string[];
