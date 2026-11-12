@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "468dbb1d9f90c08f1c39023172fe831c8f77a6db",
-    "sourceSha256": "6ef6fbe8fa8c660f905aa8d1202001c38e5531d1aae4f511603cd5283c79a048",
+    "head": "13138472e01a6a73c8e49d42b49a914499b4e499",
+    "sourceSha256": "07522533962d917b9cd25350bde9fc7da4af2ec11479e741ce199710bd2bba64",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "468dbb1d9f90c08f1c39023172fe831c8f77a6db",
-  "sourceSha256": "6ef6fbe8fa8c660f905aa8d1202001c38e5531d1aae4f511603cd5283c79a048",
+  "head": "13138472e01a6a73c8e49d42b49a914499b4e499",
+  "sourceSha256": "07522533962d917b9cd25350bde9fc7da4af2ec11479e741ce199710bd2bba64",
   "counts": {
     "public": {
       "skills": 98,
@@ -28,13 +28,13 @@
       "toolFiles": 68,
       "libFiles": 55,
       "templateHooks": 25,
-      "srcFiles": 2064,
-      "total": 2089
+      "srcFiles": 2067,
+      "total": 2092
     },
     "generated": {
-      "distFiles": 7624,
+      "distFiles": 7636,
       "bridgeFiles": 8,
-      "total": 7632
+      "total": 7644
     },
     "prompt": {
       "promptLikeFiles": 72
@@ -3378,6 +3378,10 @@
       "dist/factory/run/__tests__/coding-agent-lane.test.d.ts.map",
       "dist/factory/run/__tests__/coding-agent-lane.test.js",
       "dist/factory/run/__tests__/coding-agent-lane.test.js.map",
+      "dist/factory/run/__tests__/container-gate.test.d.ts",
+      "dist/factory/run/__tests__/container-gate.test.d.ts.map",
+      "dist/factory/run/__tests__/container-gate.test.js",
+      "dist/factory/run/__tests__/container-gate.test.js.map",
       "dist/factory/run/__tests__/engine-ado-harness.d.ts",
       "dist/factory/run/__tests__/engine-ado-harness.d.ts.map",
       "dist/factory/run/__tests__/engine-ado-harness.js",
@@ -3422,6 +3426,10 @@
       "dist/factory/run/__tests__/engine.commit-hardening.test.d.ts.map",
       "dist/factory/run/__tests__/engine.commit-hardening.test.js",
       "dist/factory/run/__tests__/engine.commit-hardening.test.js.map",
+      "dist/factory/run/__tests__/engine.gates-container.test.d.ts",
+      "dist/factory/run/__tests__/engine.gates-container.test.d.ts.map",
+      "dist/factory/run/__tests__/engine.gates-container.test.js",
+      "dist/factory/run/__tests__/engine.gates-container.test.js.map",
       "dist/factory/run/__tests__/engine.gates-sandbox.builtin.test.d.ts",
       "dist/factory/run/__tests__/engine.gates-sandbox.builtin.test.d.ts.map",
       "dist/factory/run/__tests__/engine.gates-sandbox.builtin.test.js",
@@ -3662,6 +3670,10 @@
       "dist/factory/run/coding-agent-lane.d.ts.map",
       "dist/factory/run/coding-agent-lane.js",
       "dist/factory/run/coding-agent-lane.js.map",
+      "dist/factory/run/container-gate.d.ts",
+      "dist/factory/run/container-gate.d.ts.map",
+      "dist/factory/run/container-gate.js",
+      "dist/factory/run/container-gate.js.map",
       "dist/factory/run/engine.d.ts",
       "dist/factory/run/engine.d.ts.map",
       "dist/factory/run/engine.js",
@@ -22049,6 +22061,26 @@
         "path": "dist/factory/run/__tests__/coding-agent-lane.test.js.map"
       },
       {
+        "id": "dist/factory/run/__tests__/container-gate.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/container-gate.test.d.ts"
+      },
+      {
+        "id": "dist/factory/run/__tests__/container-gate.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/container-gate.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/container-gate.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/container-gate.test.js"
+      },
+      {
+        "id": "dist/factory/run/__tests__/container-gate.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/container-gate.test.js.map"
+      },
+      {
         "id": "dist/factory/run/__tests__/engine-ado-harness.d.ts",
         "kind": "generated-dist",
         "path": "dist/factory/run/__tests__/engine-ado-harness.d.ts"
@@ -22267,6 +22299,26 @@
         "id": "dist/factory/run/__tests__/engine.commit-hardening.test.js.map",
         "kind": "generated-dist",
         "path": "dist/factory/run/__tests__/engine.commit-hardening.test.js.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.gates-container.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.gates-container.test.d.ts"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.gates-container.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.gates-container.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.gates-container.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.gates-container.test.js"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.gates-container.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.gates-container.test.js.map"
       },
       {
         "id": "dist/factory/run/__tests__/engine.gates-sandbox.builtin.test.d.ts",
@@ -23467,6 +23519,26 @@
         "id": "dist/factory/run/coding-agent-lane.js.map",
         "kind": "generated-dist",
         "path": "dist/factory/run/coding-agent-lane.js.map"
+      },
+      {
+        "id": "dist/factory/run/container-gate.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/container-gate.d.ts"
+      },
+      {
+        "id": "dist/factory/run/container-gate.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/container-gate.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/container-gate.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/container-gate.js"
+      },
+      {
+        "id": "dist/factory/run/container-gate.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/container-gate.js.map"
       },
       {
         "id": "dist/factory/run/engine.d.ts",
@@ -56284,6 +56356,11 @@
         "path": "src/factory/run/__tests__/coding-agent-lane.test.ts"
       },
       {
+        "id": "src/factory/run/__tests__/container-gate.test.ts",
+        "kind": "src",
+        "path": "src/factory/run/__tests__/container-gate.test.ts"
+      },
+      {
         "id": "src/factory/run/__tests__/engine-ado-harness.ts",
         "kind": "src",
         "path": "src/factory/run/__tests__/engine-ado-harness.ts"
@@ -56337,6 +56414,11 @@
         "id": "src/factory/run/__tests__/engine.commit-hardening.test.ts",
         "kind": "src",
         "path": "src/factory/run/__tests__/engine.commit-hardening.test.ts"
+      },
+      {
+        "id": "src/factory/run/__tests__/engine.gates-container.test.ts",
+        "kind": "src",
+        "path": "src/factory/run/__tests__/engine.gates-container.test.ts"
       },
       {
         "id": "src/factory/run/__tests__/engine.gates-sandbox.builtin.test.ts",
@@ -56642,6 +56724,11 @@
         "id": "src/factory/run/coding-agent-lane.ts",
         "kind": "src",
         "path": "src/factory/run/coding-agent-lane.ts"
+      },
+      {
+        "id": "src/factory/run/container-gate.ts",
+        "kind": "src",
+        "path": "src/factory/run/container-gate.ts"
       },
       {
         "id": "src/factory/run/engine.ts",
@@ -86457,6 +86544,16 @@
       },
       {
         "from": "src/factory/check/cli.ts",
+        "to": "src/copilot-run/sandbox.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/check/cli.ts",
+        "to": "src/copilot-run/sandbox.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/check/cli.ts",
         "to": "src/factory/check/score.ts",
         "kind": "imports"
       },
@@ -86464,6 +86561,11 @@
         "from": "src/factory/check/cli.ts",
         "to": "src/factory/check/score.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/check/cli.ts",
+        "to": "src/factory/run/container-gate.ts",
+        "kind": "imports"
       },
       {
         "from": "src/factory/check/cli.ts",
@@ -88521,6 +88623,51 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/factory/run/__tests__/container-gate.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/container-gate.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/container-gate.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/container-gate.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/container-gate.test.ts",
+        "to": "src/copilot-run/sandbox.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/container-gate.test.ts",
+        "to": "src/copilot-run/sandbox.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/container-gate.test.ts",
+        "to": "src/factory/run/container-gate.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/container-gate.test.ts",
+        "to": "src/factory/run/container-gate.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/container-gate.test.ts",
+        "to": "src/factory/run/sandbox-exec.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/factory/run/__tests__/engine-ado-harness.ts",
         "to": "external:node:fs",
         "kind": "imports"
@@ -89183,6 +89330,86 @@
       {
         "from": "src/factory/run/__tests__/engine.commit-hardening.test.ts",
         "to": "src/factory/run/tamper-quarantine.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.gates-container.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.gates-container.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.gates-container.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.gates-container.test.ts",
+        "to": "src/copilot-run/sandbox.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.gates-container.test.ts",
+        "to": "src/factory/run/__tests__/engine-local-harness.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.gates-container.test.ts",
+        "to": "src/factory/run/__tests__/engine-local-harness.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.gates-container.test.ts",
+        "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.gates-container.test.ts",
+        "to": "src/factory/run/clean.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.gates-container.test.ts",
+        "to": "src/factory/run/container-gate.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.gates-container.test.ts",
+        "to": "src/factory/run/container-gate.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.gates-container.test.ts",
+        "to": "src/factory/run/engine.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.gates-container.test.ts",
+        "to": "src/factory/run/engine.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.gates-container.test.ts",
+        "to": "src/factory/run/prepare.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.gates-container.test.ts",
+        "to": "src/factory/run/sandbox-exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.gates-container.test.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.gates-container.test.ts",
+        "to": "src/ship/config.ts",
         "kind": "imports"
       },
       {
@@ -92277,8 +92504,28 @@
       },
       {
         "from": "src/factory/run/clean.ts",
+        "to": "src/copilot-run/sandbox.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/clean.ts",
+        "to": "src/copilot-run/sandbox.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/clean.ts",
         "to": "src/factory/run/claims.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/clean.ts",
+        "to": "src/factory/run/container-gate.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/clean.ts",
+        "to": "src/factory/run/container-gate.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/factory/run/clean.ts",
@@ -92421,6 +92668,51 @@
         "kind": "imports"
       },
       {
+        "from": "src/factory/run/container-gate.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/container-gate.ts",
+        "to": "external:node:crypto",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/container-gate.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/container-gate.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/container-gate.ts",
+        "to": "src/copilot-run/sandbox.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/container-gate.ts",
+        "to": "src/factory/run/sandbox-exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/container-gate.ts",
+        "to": "src/factory/run/sandbox-exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/container-gate.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/container-gate.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/factory/run/engine.ts",
         "to": "external:crypto",
         "kind": "imports"
@@ -92499,6 +92791,11 @@
         "from": "src/factory/run/engine.ts",
         "to": "src/factory/run/coding-agent-lane.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/engine.ts",
+        "to": "src/factory/run/container-gate.ts",
+        "kind": "imports"
       },
       {
         "from": "src/factory/run/engine.ts",
@@ -93843,6 +94140,11 @@
       {
         "from": "src/factory/run/sandbox-exec.ts",
         "to": "src/factory/heal/sanitize.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/sandbox-exec.ts",
+        "to": "src/factory/run/container-gate.ts",
         "kind": "imports"
       },
       {
@@ -131472,12 +131774,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 10940,
-      "edgeCount": 13496,
-      "importEdgeCount": 11094,
+      "nodeCount": 10955,
+      "edgeCount": 13539,
+      "importEdgeCount": 11123,
       "registerEdgeCount": 119
     }
   },
-  "inventorySha256": "8d53bf93f3bd28334c1cde6db289377dd7d91f05736f7a84a05438f8c424cf4f",
-  "manifestSha256": "982c8369bc383bcc3384f7e62cd9199aeae22db71081fe4eacf392215b05ba59"
+  "inventorySha256": "c67fe9964ad240a683a169c9b4b8724b357c8491885b56aea67524d0be24b610",
+  "manifestSha256": "d57335e7df51163c6b9fb41f0226b8387a360bb858a76f798c0f1a7cee1e78ae"
 }
