@@ -450,9 +450,16 @@ describe('decideMerge', () => {
         const forged = { ...s, verdicts: [{ ...s.verdicts[0], reviewer: 'EXECUTOR-1' }] };
         expect(decideMerge({ state: forged, pr, gate: green, changedFiles: [], commitsSinceReview: HK, baseHistory: NONE, housekeepingContent: CLEAN }).reasons.join()).toMatch(/self-approval/);
     });
+    it('sanitises check names in the gate reason and keeps the raw names in the gate', () => {
+        const evil = 'Test` [x](https://evil.example) @owner | cell\nline2‮';
+        const failed = evaluateChecks(9, [{ name: evil, state: 'FAILURE' }], config);
+        const reason = decideMerge({ state: approved(), pr, gate: failed, changedFiles: [], commitsSinceReview: HK, baseHistory: NONE, housekeepingContent: CLEAN }).reasons.find((r) => r.startsWith('gates are'));
+        expect(reason).toMatch(/^gates are \w+ \(failed: `Test' \[x\]\(https:\/\/evil\.example\) ＠owner ¦ cell line2`[;)]/);
+        expect(failed.failed).toEqual([evil]);
+    });
     it('refuses on pending / failed gates, drafts, closed PRs and a base mismatch', () => {
         const pending = evaluateChecks(9, [{ name: 'Test', state: 'IN_PROGRESS' }], config);
-        expect(decideMerge({ state: approved(), pr, gate: pending, changedFiles: [], commitsSinceReview: HK, baseHistory: NONE, housekeepingContent: CLEAN }).reasons.join()).toMatch(/gates are pending \(pending: Test\)/);
+        expect(decideMerge({ state: approved(), pr, gate: pending, changedFiles: [], commitsSinceReview: HK, baseHistory: NONE, housekeepingContent: CLEAN }).reasons.join()).toMatch(/gates are pending \(pending: `Test`\)/);
         const reasons = decideMerge({ state: approved(), pr: { ...pr, isDraft: true, state: 'CLOSED', baseRefName: 'main' }, gate: green, changedFiles: [], commitsSinceReview: HK, baseHistory: NONE, housekeepingContent: CLEAN }).reasons;
         expect(reasons).toEqual(expect.arrayContaining([expect.stringMatching(/draft/), expect.stringMatching(/CLOSED/), expect.stringMatching(/base is main/)]));
     });

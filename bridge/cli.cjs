@@ -60687,7 +60687,11 @@ function unixShellCommand(script, extra = []) {
   const tail6 = extra.length > 0 ? ` ${extra.join(" ")}` : "";
   return `${UNIX_HOOK_PREFIX}"\${CLAUDE_PLUGIN_ROOT}"/scripts/${script}${tail6}`;
 }
-function normalizeHooksDataForPlatform(data, platform = process.platform) {
+function hookPrefixForPlatform(platform = process.platform, { nodeOnPath = false } = {}) {
+  return platform === "win32" || nodeOnPath ? "node" : UNIX_HOOK_PREFIX;
+}
+function normalizeHooksDataForPlatform(data, platform = process.platform, { nodeOnPath = false } = {}) {
+  const execForm = hookPrefixForPlatform(platform, { nodeOnPath }) === "node";
   let patched = false;
   for (const groups of Object.values(data?.hooks ?? {})) {
     if (!Array.isArray(groups)) continue;
@@ -60696,7 +60700,7 @@ function normalizeHooksDataForPlatform(data, platform = process.platform) {
       for (const hook of group.hooks) {
         const parsed2 = parseHookInvocation(hook);
         if (!parsed2) continue;
-        if (platform === "win32") {
+        if (execForm) {
           const nextArgs = windowsExecArgs(parsed2.script, parsed2.extra);
           if (hook.command === "node" && sameArgs(hook.args, nextArgs)) continue;
           hook.command = "node";
@@ -124363,6 +124367,16 @@ var init_sanitize = __esm({
   }
 });
 
+// src/ship/check-name.ts
+var checkText, checkName;
+var init_check_name = __esm({
+  "src/ship/check-name.ts"() {
+    "use strict";
+    checkText = (s, max) => Array.from(s.replace(new RegExp("\\p{Cf}", "gu"), "").replace(/`/g, "'").replace(/@/g, "\uFF20").replace(/\|/g, "\xA6").replace(/[\p{Cc}\p{Zl}\p{Zp}]+/gu, " ").replace(/\s+/g, " ").trim()).slice(0, max).join("") || "(unnamed)";
+    checkName = (s) => `\`${checkText(s, 80)}\``;
+  }
+});
+
 // src/forge/github/merge.ts
 function ghMergeCommand(pr, headSha) {
   return ["gh", "pr", "merge", String(pr), "--admin", "--merge", "--match-head-commit", headSha];
@@ -124692,7 +124706,7 @@ function decideMerge({ state, pr, gate, commitsSinceReview, baseHistory, houseke
   if (pr.isDraft) reasons.push("PR is a draft (gh pr ready first)");
   if (pr.baseRefName !== state.base) reasons.push(`PR base is ${pr.baseRefName}, ship run expects ${state.base}`);
   if (gate.verdict !== "green") {
-    const detail = [...gate.failed.map((n) => `failed: ${n}`), ...gate.pending.map((n) => `pending: ${n}`)].join("; ");
+    const detail = [...gate.failed.map((n) => `failed: ${checkName(n)}`), ...gate.pending.map((n) => `pending: ${checkName(n)}`)].join("; ");
     reasons.push(`gates are ${gate.verdict}${detail ? ` (${detail})` : ""}`);
   }
   const verdict = latestVerdict(state);
@@ -124715,6 +124729,7 @@ var HOUSEKEEPING_DIR, PROTECTED_PATHS;
 var init_merge2 = __esm({
   "src/ship/merge.ts"() {
     "use strict";
+    init_check_name();
     init_exec();
     init_merge();
     init_state5();
@@ -127612,7 +127627,7 @@ function checkSegment(tokens, role, ctx) {
   }
   return null;
 }
-function checkText(text5, ctx, raw) {
+function checkText2(text5, ctx, raw) {
   const segments2 = text5.split("|");
   if (segments2.length > MAX_SEGMENTS) return `more than ${MAX_SEGMENTS} pipeline segments`;
   const names = [];
@@ -127651,9 +127666,9 @@ function reviewShellAllowlist(req, ctx) {
   if (wide) return deny(`non-ASCII character U+${wide[0].codePointAt(0).toString(16).toUpperCase().padStart(4, "0")}`);
   const bad = FORBIDDEN_CHARS.exec(raw);
   if (bad) return deny(`forbidden character ${JSON.stringify(bad[0])}`);
-  const parsed2 = checkText(raw, ctx, true);
+  const parsed2 = checkText2(raw, ctx, true);
   if (typeof parsed2 === "string") return deny(parsed2);
-  const normalized2 = checkText(normalizeShellCommand(raw), ctx, false);
+  const normalized2 = checkText2(normalizeShellCommand(raw), ctx, false);
   if (typeof normalized2 === "string") return deny(`${normalized2} (after quote normalization)`);
   const seen = /* @__PURE__ */ new Set([...parsed2, ...normalized2]);
   const unknown2 = runtimeIdentifiers(req).find((id) => !seen.has(id));
@@ -136668,7 +136683,7 @@ function mergeDecision(exec3, root2, ship, view2, config2, known, forge, reads) 
     ...gate.noChecks ? { noChecks: true } : {},
     checks: counted.filter((c) => c.class === "pass" && c.state.toUpperCase() === "SUCCESS").map((c) => c.name),
     unsettled: counted.filter((c) => ["SKIPPED", "NEUTRAL"].includes(c.state.toUpperCase())).map((c) => c.name),
-    blocking: counted.filter((c) => !["SUCCESS", "SKIPPED", "NEUTRAL"].includes(c.state.toUpperCase())).map((c) => `${checkName(c.name)} (${checkText2(c.state.toUpperCase(), 24)}${flaky.has(c.name) ? ", known-flaky" : ""})`)
+    blocking: counted.filter((c) => !["SUCCESS", "SKIPPED", "NEUTRAL"].includes(c.state.toUpperCase())).map((c) => `${checkName(c.name)} (${checkText(c.state.toUpperCase(), 24)}${flaky.has(c.name) ? ", known-flaky" : ""})`)
   };
   const reviewed = latestVerdict(ship)?.sha;
   const commits = readCommitsSinceReview(exec3, root2, reviewed, view2.headRefOid, view2.baseRefOid, ship.housekeepingCommits, config2.prepareBuild?.outputs);
@@ -136687,7 +136702,7 @@ function mergeDecision(exec3, root2, ship, view2, config2, known, forge, reads) 
     extraProtected
   });
   if (!forge) return { ...decision, ...noChecks };
-  const reasons = [...decision.reasons, ...forge.merge.blockingPolicies(view2.number, view2.headRefOid).map((r) => `Azure DevOps branch policy: ${r}`)];
+  const reasons = [...decision.reasons, ...forge.merge.blockingPolicies(view2.number, view2.headRefOid).map((r) => `Azure DevOps branch policy: \`${checkText(r, 160)}\``)];
   const human = forge.merge.humanMerge?.(view2.number, view2.headRefOid);
   return {
     ok: reasons.length === 0,
@@ -136723,20 +136738,19 @@ function mergeComment(issue2, decision, resume = `omg factory run ${issue2}`) {
     ""
   ].join("\n");
 }
-var checkText2, checkName, bodyLines;
+var bodyLines;
 var init_merge_policy = __esm({
   "src/factory/run/merge-policy.ts"() {
     "use strict";
+    init_check_name();
     init_config4();
     init_gates();
     init_merge2();
     init_state5();
     init_lane_commit();
-    init_prompts2();
     init_state6();
     init_reviews3();
-    checkText2 = (s, max) => oneLine(s.replace(new RegExp("\\p{Cf}", "gu"), "").replace(/`/g, "'").replace(/@/g, "\uFF20").replace(/\|/g, "\xA6"), max) || "(unnamed)";
-    checkName = (s) => `\`${checkText2(s, 80)}\``;
+    init_check_name();
     bodyLines = (decision) => decision.body ? ["", `The command reads its body from \`${decision.body.file}\` (SHA-256 \`${decision.body.sha256}\`); check that file before running it.`] : [];
   }
 });
@@ -141244,6 +141258,7 @@ var init_engine = __esm({
     import_path204 = require("path");
     init_config4();
     init_exec();
+    init_check_name();
     init_merge2();
     init_prepare2();
     init_jsonc();
@@ -144567,13 +144582,13 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
             return;
           }
           case "flaky":
-            this.gate("ci-flaky", `known-flaky failures at ${at} are out of rerun budget (${out.report.failed.join(", ")}); rerun the failed jobs by hand`);
+            this.gate("ci-flaky", `known-flaky failures at ${at} are out of rerun budget (${out.report.failed.map(checkName).join(", ")}); rerun the failed jobs by hand`);
             return;
           case "no-workflows":
             this.gate("no-workflows", `${out.report.noHeadChecks ? `${noHeadChecksText(out.report.noHeadChecks)} (head ${at})` : `no checks and no workflow runs exist for ${at}`}; push the branch with a token that triggers workflows (or enable Actions), or close and reopen PR #${pr}${out.report.noHeadChecks ? `; to stop instead: ${cancelCommand(this.key)}` : ""}`);
             return;
           case "timeout":
-            this.gate("gates-timeout", `gates did not settle within factory.run.gatesTimeoutMinutes ${Math.round(this.o.limits.gatesTimeoutMs / 6e4)} at ${at}${out.report ? ` (pending: ${out.report.pending.join(", ") || "none"})` : ""}; rerun ${this.resume} to wait again, or ${cancelCommand(this.key)}`);
+            this.gate("gates-timeout", `gates did not settle within factory.run.gatesTimeoutMinutes ${Math.round(this.o.limits.gatesTimeoutMs / 6e4)} at ${at}${out.report ? ` (pending: ${out.report.pending.map(checkName).join(", ") || "none"})` : ""}; rerun ${this.resume} to wait again, or ${cancelCommand(this.key)}`);
             return;
           case "head-moved":
             this.gate("head-moved-externally", `PR #${pr} head is ${out.headRefOid.slice(0, 12)}, the engine pushed ${at}`);
@@ -186192,7 +186207,7 @@ async function runClaudeInHerdrWorkspace(cwd2, args) {
   try {
     launch = buildTmuxClaudeLaunch(args, { useExec: false, preflight: "" });
   } catch (error2) {
-    console.error(`[omg] Error: unable to prepare Claude launch: ${error2 instanceof Error ? error2.message : error2}`);
+    console.error(`[omg] Error: unable to prepare ${getHostCliBinary()} launch: ${error2 instanceof Error ? error2.message : error2}`);
     throw error2;
   }
   let allocatedWorkspaceId;
@@ -186203,7 +186218,7 @@ async function runClaudeInHerdrWorkspace(cwd2, args) {
     const tab = await herdrCreateWorkerTab(allocatedWorkspaceId, cwd2, "claude");
     allocatedPaneId = tab.paneId;
     await herdrRunPaneCommand(tab.paneId, launch.command);
-    console.log(`[omg] Claude launched in Herdr workspace "${label2}" (pane ${tab.paneId}).`);
+    console.log(`[omg] ${getHostCliBinary()} launched in Herdr workspace "${label2}" (pane ${tab.paneId}).`);
     console.log("[omg] Attach with the Herdr TUI: run `herdr` and open the workspace.");
   } catch (error2) {
     if (allocatedPaneId) {
@@ -188036,6 +188051,7 @@ var import_url26 = require("url");
 init_atomic_write();
 init_config4();
 init_exec();
+init_check_name();
 init_gates();
 
 // src/release/checks.ts
@@ -189332,7 +189348,7 @@ ${rr.stderr}`) });
     return log3.status === 0 ? parseFailingTests(log3.stdout).map((t) => t.title ? `${t.file} > ${t.title}` : t.file) : [];
   }
   gateDetails(report3) {
-    const details = report3.failed.map((name) => `failed: ${name}`);
+    const details = report3.failed.map((name) => `failed: ${checkName(name)}`);
     for (const check2 of report3.checks) {
       if (check2.class !== "failed" || !check2.jobId) continue;
       for (const t of this.failingTestsOfJob(check2.jobId)) details.push(`  ${check2.name}: ${t}`);

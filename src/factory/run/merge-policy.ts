@@ -14,6 +14,7 @@
  * Azure DevOps always stays human.
  */
 
+import { checkName, checkText } from '../../ship/check-name.js';
 import { DEFAULT_SHIP_CONFIG, type KnownFlakyTest, type ShipConfig } from '../../ship/config.js';
 import type { Exec } from '../../ship/exec.js';
 import { evaluateGates, NO_CI_CHECKS_NOTE, type GateHeadReads } from '../../ship/gates.js';
@@ -22,7 +23,6 @@ import { latestVerdict, type ShipState } from '../../ship/state.js';
 import type { MergeView } from '../../forge/github/reviews.js';
 import type { Forge } from '../../forge/types.js';
 import { ADO_PIPELINE_PATHS, CI_DEFINITION_PATHS } from './lane-commit.js';
-import { oneLine } from './prompts.js';
 import { runLabel, type FactoryRunKey } from './state.js';
 
 // The merge view is the GitHub forge's `gh pr view --json MERGE_VIEW_FIELDS` read.
@@ -45,15 +45,8 @@ export interface FactoryMergeDecision extends MergeDecision {
   blocking?: string[];
 }
 
-/**
- * A forge-reported check name or state in a park reason (it may reach a PR
- * comment or progress sync): one line, no format characters (bidi,
- * zero-width), no backticks, no '@' that could mention someone (a full-width
- * '＠' instead), no '|' that could split a table cell ('¦'), capped.
- */
-const checkText = (s: string, max: number): string => oneLine(s.replace(/\p{Cf}/gu, '').replace(/`/g, "'").replace(/@/g, '＠').replace(/\|/g, '¦'), max) || '(unnamed)';
-/** A check name in a code span, so markdown links, HTML and `owner/repo#1` cross-references stay literal text. */
-export const checkName = (s: string): string => `\`${checkText(s, 80)}\``;
+// The sanitiser lives in ship (src/ship/check-name.ts) so ship's own merge reasons use it too.
+export { checkName } from '../../ship/check-name.js';
 
 /**
  * ship's decideMerge on a fresh one-shot gate read for the head (no watch,
@@ -89,7 +82,7 @@ export function mergeDecision(exec: Exec, root: string, ship: ShipState, view: M
     extraProtected,
   });
   if (!forge) return { ...decision, ...noChecks };
-  const reasons = [...decision.reasons, ...forge.merge.blockingPolicies(view.number, view.headRefOid).map((r) => `Azure DevOps branch policy: ${r}`)];
+  const reasons = [...decision.reasons, ...forge.merge.blockingPolicies(view.number, view.headRefOid).map((r) => `Azure DevOps branch policy: \`${checkText(r, 160)}\``)]; // 160: a policy reason ends with its status, which the 80-char checkName cap would cut
   const human = forge.merge.humanMerge?.(view.number, view.headRefOid);
   return {
     ok: reasons.length === 0,

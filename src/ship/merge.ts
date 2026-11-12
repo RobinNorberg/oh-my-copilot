@@ -6,6 +6,7 @@
  * this module says yes or no and why.
  */
 
+import { checkName } from './check-name.js';
 import { TRUSTED_READ_ENV, type Exec } from './exec.js';
 import { ghMergeCommand } from '../forge/github/merge.js';
 import type { GateReport } from './gates.js';
@@ -295,7 +296,7 @@ export function decideMerge({ state, pr, gate, commitsSinceReview, baseHistory, 
   if (pr.isDraft) reasons.push('PR is a draft (gh pr ready first)');
   if (pr.baseRefName !== state.base) reasons.push(`PR base is ${pr.baseRefName}, ship run expects ${state.base}`);
   if (gate.verdict !== 'green') {
-    const detail = [...gate.failed.map((n) => `failed: ${n}`), ...gate.pending.map((n) => `pending: ${n}`)].join('; ');
+    const detail = [...gate.failed.map((n) => `failed: ${checkName(n)}`), ...gate.pending.map((n) => `pending: ${checkName(n)}`)].join('; ');
     reasons.push(`gates are ${gate.verdict}${detail ? ` (${detail})` : ''}`);
   }
   const verdict = latestVerdict(state);

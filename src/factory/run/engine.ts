@@ -59,6 +59,7 @@ import { tmpdir } from 'os';
 import { basename, dirname, isAbsolute, join, posix, relative, resolve } from 'path';
 import { BASE_CONFIG_PATH, configuredProtectedPaths, DEFAULT_SHIP_CONFIG, isPlainBranchName, isRepoPath, loadBaseKnownFlaky, loadTrustedShipConfig, omgRepositoryFallback, readBaseFile, remoteRepoMismatch, resolveTrustedBases, userConfigLayers } from '../../ship/config.js';
 import { scrubShipEnv, TRUSTED_READ_ENV, type Exec } from '../../ship/exec.js';
+import { checkName } from '../../ship/check-name.js';
 import { listChangedFiles, protectedChanges } from '../../ship/merge.js';
 import { ESLINT_SCRIPT, PREPARE_CONFIG_STEP, PREPARE_DETECT_STEP, PREPARE_SANDBOX_STEP, runPrepareAsync, VITEST_SCRIPT, type PrepareCheckResult, type PrepareCheckRun } from '../../ship/prepare.js';
 import { parseJsonc } from '../../utils/jsonc.js';
@@ -4194,13 +4195,13 @@ class FactoryEngine {
         return;
       }
       case 'flaky':
-        this.gate('ci-flaky', `known-flaky failures at ${at} are out of rerun budget (${out.report.failed.join(', ')}); rerun the failed jobs by hand`);
+        this.gate('ci-flaky', `known-flaky failures at ${at} are out of rerun budget (${out.report.failed.map(checkName).join(', ')}); rerun the failed jobs by hand`);
         return;
       case 'no-workflows':
         this.gate('no-workflows', `${out.report.noHeadChecks ? `${noHeadChecksText(out.report.noHeadChecks)} (head ${at})` : `no checks and no workflow runs exist for ${at}`}; push the branch with a token that triggers workflows (or enable Actions), or close and reopen PR #${pr}${out.report.noHeadChecks ? `; to stop instead: ${cancelCommand(this.key)}` : ''}`);
         return;
       case 'timeout':
-        this.gate('gates-timeout', `gates did not settle within factory.run.gatesTimeoutMinutes ${Math.round(this.o.limits.gatesTimeoutMs / 60_000)} at ${at}${out.report ? ` (pending: ${out.report.pending.join(', ') || 'none'})` : ''}; rerun ${this.resume} to wait again, or ${cancelCommand(this.key)}`);
+        this.gate('gates-timeout', `gates did not settle within factory.run.gatesTimeoutMinutes ${Math.round(this.o.limits.gatesTimeoutMs / 60_000)} at ${at}${out.report ? ` (pending: ${out.report.pending.map(checkName).join(', ') || 'none'})` : ''}; rerun ${this.resume} to wait again, or ${cancelCommand(this.key)}`);
         return;
       case 'head-moved':
         this.gate('head-moved-externally', `PR #${pr} head is ${out.headRefOid.slice(0, 12)}, the engine pushed ${at}`);

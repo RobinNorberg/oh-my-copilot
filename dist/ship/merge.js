@@ -5,6 +5,7 @@
  * with their parents (readCommitsSinceReview);
  * this module says yes or no and why.
  */
+import { checkName } from './check-name.js';
 import { TRUSTED_READ_ENV } from './exec.js';
 import { ghMergeCommand } from '../forge/github/merge.js';
 import { latestVerdict, verifyShipIntegrity } from './state.js';
@@ -254,7 +255,7 @@ export function decideMerge({ state, pr, gate, commitsSinceReview, baseHistory, 
     if (pr.baseRefName !== state.base)
         reasons.push(`PR base is ${pr.baseRefName}, ship run expects ${state.base}`);
     if (gate.verdict !== 'green') {
-        const detail = [...gate.failed.map((n) => `failed: ${n}`), ...gate.pending.map((n) => `pending: ${n}`)].join('; ');
+        const detail = [...gate.failed.map((n) => `failed: ${checkName(n)}`), ...gate.pending.map((n) => `pending: ${checkName(n)}`)].join('; ');
         reasons.push(`gates are ${gate.verdict}${detail ? ` (${detail})` : ''}`);
     }
     const verdict = latestVerdict(state);

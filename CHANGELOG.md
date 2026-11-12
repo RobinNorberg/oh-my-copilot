@@ -8,6 +8,12 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 - **`ship.prepare.build`: prepare rebuilds committed build output.** Set a build command and its output directories (for example `npm run build` with `dist` and `bridge`) in the user config or the base's `.copilot/omg.jsonc`. Prepare runs it after the base merge, in the same sandbox as its checks, and commits only those directories as a housekeeping commit. A build that writes anywhere else fails prepare, and so does a checkout with untracked files or with ignored files already in an output. Outputs under `.git`, `.github`, `.copilot`, `.omg` or `node_modules` are refused, and `omg factory run` seals the build per run. `omg ship merge` accepts that commit when it touches only the trusted outputs. This repository now uses it, so a maintainer no longer has to rebuild and commit `dist/` and `bridge/` by hand.
 
+### Fixed
+
+- **Plugin hooks keep working in a config folder shared with WSL or macOS.** Setup on Linux or macOS keeps the `node` plus arguments hook form when `node` is in a standard system folder (`/usr/local/bin`, `/usr/bin`, `/bin`, Homebrew or MacPorts). A `node` that only nvm, fnm, volta or a login shell puts on PATH gets the `find-node.sh` form, because a host started from a desktop launcher may not see it. Native Windows no longer needs a repair afterwards.
+- **Check names are made safe in merge reasons.** `omg ship merge`, the factory's Azure DevOps branch policy reason, its `ci-flaky` and `gates-timeout` park reasons, and the release CI failure details show each name in a code span. Backticks, `@` mentions, table pipes and line breaks are removed from the text. Long names are cut without splitting an emoji, and a branch policy reason keeps up to 160 characters so its status stays visible.
+- **The Herdr launch message names the host CLI.** It says `copilot launched in Herdr workspace` instead of `Claude launched`.
+
 ### Tests
 
 - **Loosened the jev-compaction linear-time bound.** The 1M-slash test now allows 250 ms instead of 50 ms, because shared CI runners measured about 51 ms. A quadratic regression would still take seconds.
