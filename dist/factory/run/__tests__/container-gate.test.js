@@ -186,6 +186,21 @@ describe('runContainerGate argv', () => {
         expect(run.slice(-7)).toEqual([settings().image, 'timeout', '-s', 'KILL', '90s', 'npm', 'test']);
         expect(values(run, '-w')).toEqual(['/work/src']);
     });
+    it('a git view is bound read-only for the copy step only and copied in as the copy\'s .git', async () => {
+        const f = fake();
+        const view = join(dir, 'view-git');
+        const r = await runContainerGate(request({ argv: ['node', '--test'], exe: process.execPath, args: ['--test'], gitView: view }), settings(), LABEL, { exec: f.exec, id: () => 'eeeeeeee' });
+        expect(r.ran).toBe(true);
+        const binds = f.runs().map((c) => values(c.args, '--mount').filter((m) => m.includes('type=bind')));
+        expect(binds).toEqual([[`type=bind,source=${dir},target=/in,readonly`, `type=bind,source=${view},target=/in-git,readonly`], []]);
+        const script = f.step('-copy').args.at(-1);
+        expect(script).toBe(copyScript(false, true));
+        expect(script).not.toContain(view);
+        expect(script).toContain('tar -C /in --exclude=.git --exclude=node_modules -cf /work/in.tar .');
+        expect(script).toContain('mkdir /work/src/.git; tar -C /in-git -cf /work/git.tar .; tar -C /work/src/.git -xf /work/git.tar; rm -f /work/git.tar; chown -R 1000:1000 /work');
+        // Without a view: no second bind and no .git in the copy (as before).
+        expect(copyScript(false)).not.toContain('/in-git');
+    });
     it('no package.json: no install, no cache volume; podman is called as podman', async () => {
         const f = fake();
         const r = await runContainerGate(request({ argv: ['node', '--test'], exe: process.execPath, args: ['--test'] }), settings({ runtime: 'podman' }), LABEL, { exec: f.exec, id: () => 'ffffffff' });

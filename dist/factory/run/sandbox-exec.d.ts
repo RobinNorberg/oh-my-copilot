@@ -73,6 +73,12 @@ export interface SandboxRunRequest {
     container?: GateContainerSettings;
     /** The run's container label (container-gate.ts containerRunLabel); needed with `container`. */
     runLabel?: string;
+    /**
+     * The engine-made one-commit git view of what `cwd` holds (git-view.ts), as its git dir on the host. With
+     * `container` it becomes the copy's `.git` (the checkout's own `.git` never enters the container). The OS
+     * sandbox reads no field: a base calibration's view is `<cwd>/.git` there, a prepare checkout uses its own link.
+     */
+    gitView?: string;
 }
 /** The gate record and PR note line for a sandboxed run on a host without denied_paths. */
 export declare const CREDENTIAL_FILES_READABLE_NOTE = "sandboxed; credential files readable on this host";
