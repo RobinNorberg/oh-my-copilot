@@ -309,7 +309,7 @@ export function parseRunNextOutcome(stdout) {
  * to the engine process (its lanes are not reached).
  */
 export function defaultPollAutoStart(entry = process.argv[1], o = {}) {
-    return ({ root, parallel, args }) => new Promise((resolve) => {
+    return ({ root, parallel, issue, args }) => new Promise((resolve) => {
         if (!entry) {
             resolve({ exitCode: 1, parsed: false, next: null, message: 'cannot locate the omg CLI entry to start omg factory run --next' });
             return;
@@ -334,7 +334,7 @@ export function defaultPollAutoStart(entry = process.argv[1], o = {}) {
         const notStarted = (error) => settle({ exitCode: 1, parsed: false, next: null, message: `omg factory run --next did not start: ${message(error)}` });
         let child;
         try {
-            child = spawn(process.execPath, [entry, 'factory', 'run', '--next', '--json', ...(parallel !== undefined ? ['--parallel', String(parallel)] : []), ...(args ?? [])], { cwd: root, stdio: ['ignore', 'pipe', 'inherit'], windowsHide: true, detached: process.platform !== 'win32' });
+            child = spawn(process.execPath, [entry, 'factory', 'run', ...(issue !== undefined ? [String(issue)] : ['--next']), '--json', ...(parallel !== undefined ? ['--parallel', String(parallel)] : []), ...(args ?? [])], { cwd: root, stdio: ['ignore', 'pipe', 'inherit'], windowsHide: true, detached: process.platform !== 'win32' });
         }
         catch (error) {
             notStarted(error);

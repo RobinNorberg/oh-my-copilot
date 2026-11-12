@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "904c3d2150def8ebde31e8b5e5466f75d6672c33",
-    "sourceSha256": "a58b988d4eba18c59879ff5eabda5ed0df592b37ceace7743b9da93683cfa790",
+    "head": "a63c2a2310b52e7daa9f95013ff2655913daa3b8",
+    "sourceSha256": "05eeda54029f7198cb2da22336f01624e44718adc672109de2c73a19c8427e2b",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "904c3d2150def8ebde31e8b5e5466f75d6672c33",
-  "sourceSha256": "a58b988d4eba18c59879ff5eabda5ed0df592b37ceace7743b9da93683cfa790",
+  "head": "a63c2a2310b52e7daa9f95013ff2655913daa3b8",
+  "sourceSha256": "05eeda54029f7198cb2da22336f01624e44718adc672109de2c73a19c8427e2b",
   "counts": {
     "public": {
       "skills": 98,
@@ -28,13 +28,13 @@
       "toolFiles": 68,
       "libFiles": 55,
       "templateHooks": 25,
-      "srcFiles": 2078,
-      "total": 2103
+      "srcFiles": 2089,
+      "total": 2114
     },
     "generated": {
-      "distFiles": 7680,
+      "distFiles": 7724,
       "bridgeFiles": 8,
-      "total": 7688
+      "total": 7732
     },
     "prompt": {
       "promptLikeFiles": 72
@@ -2872,6 +2872,10 @@
       "dist/cli/commands/doctor-team-routing.d.ts.map",
       "dist/cli/commands/doctor-team-routing.js",
       "dist/cli/commands/doctor-team-routing.js.map",
+      "dist/cli/commands/factory-bench.d.ts",
+      "dist/cli/commands/factory-bench.d.ts.map",
+      "dist/cli/commands/factory-bench.js",
+      "dist/cli/commands/factory-bench.js.map",
       "dist/cli/commands/factory-board.d.ts",
       "dist/cli/commands/factory-board.d.ts.map",
       "dist/cli/commands/factory-board.js",
@@ -3206,6 +3210,46 @@
       "dist/factory/__tests__/workflow-run.test.d.ts.map",
       "dist/factory/__tests__/workflow-run.test.js",
       "dist/factory/__tests__/workflow-run.test.js.map",
+      "dist/factory/bench/__tests__/bench.fake.test.d.ts",
+      "dist/factory/bench/__tests__/bench.fake.test.d.ts.map",
+      "dist/factory/bench/__tests__/bench.fake.test.js",
+      "dist/factory/bench/__tests__/bench.fake.test.js.map",
+      "dist/factory/bench/__tests__/bench.smoke.test.d.ts",
+      "dist/factory/bench/__tests__/bench.smoke.test.d.ts.map",
+      "dist/factory/bench/__tests__/bench.smoke.test.js",
+      "dist/factory/bench/__tests__/bench.smoke.test.js.map",
+      "dist/factory/bench/__tests__/bench.units.test.d.ts",
+      "dist/factory/bench/__tests__/bench.units.test.d.ts.map",
+      "dist/factory/bench/__tests__/bench.units.test.js",
+      "dist/factory/bench/__tests__/bench.units.test.js.map",
+      "dist/factory/bench/fake-lanes.d.ts",
+      "dist/factory/bench/fake-lanes.d.ts.map",
+      "dist/factory/bench/fake-lanes.js",
+      "dist/factory/bench/fake-lanes.js.map",
+      "dist/factory/bench/fixture.d.ts",
+      "dist/factory/bench/fixture.d.ts.map",
+      "dist/factory/bench/fixture.js",
+      "dist/factory/bench/fixture.js.map",
+      "dist/factory/bench/model-probe.d.ts",
+      "dist/factory/bench/model-probe.d.ts.map",
+      "dist/factory/bench/model-probe.js",
+      "dist/factory/bench/model-probe.js.map",
+      "dist/factory/bench/runner.d.ts",
+      "dist/factory/bench/runner.d.ts.map",
+      "dist/factory/bench/runner.js",
+      "dist/factory/bench/runner.js.map",
+      "dist/factory/bench/score.d.ts",
+      "dist/factory/bench/score.d.ts.map",
+      "dist/factory/bench/score.js",
+      "dist/factory/bench/score.js.map",
+      "dist/factory/bench/seed/issues.d.ts",
+      "dist/factory/bench/seed/issues.d.ts.map",
+      "dist/factory/bench/seed/issues.js",
+      "dist/factory/bench/seed/issues.js.map",
+      "dist/factory/bench/seed/project.d.ts",
+      "dist/factory/bench/seed/project.d.ts.map",
+      "dist/factory/bench/seed/project.js",
+      "dist/factory/bench/seed/project.js.map",
       "dist/factory/board/__tests__/board-ado.test.d.ts",
       "dist/factory/board/__tests__/board-ado.test.d.ts.map",
       "dist/factory/board/__tests__/board-ado.test.js",
@@ -19575,6 +19619,26 @@
         "path": "dist/cli/commands/doctor-team-routing.js.map"
       },
       {
+        "id": "dist/cli/commands/factory-bench.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/factory-bench.d.ts"
+      },
+      {
+        "id": "dist/cli/commands/factory-bench.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/factory-bench.d.ts.map"
+      },
+      {
+        "id": "dist/cli/commands/factory-bench.js",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/factory-bench.js"
+      },
+      {
+        "id": "dist/cli/commands/factory-bench.js.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/factory-bench.js.map"
+      },
+      {
         "id": "dist/cli/commands/factory-board.d.ts",
         "kind": "generated-dist",
         "path": "dist/cli/commands/factory-board.d.ts"
@@ -21243,6 +21307,206 @@
         "id": "dist/factory/__tests__/workflow-run.test.js.map",
         "kind": "generated-dist",
         "path": "dist/factory/__tests__/workflow-run.test.js.map"
+      },
+      {
+        "id": "dist/factory/bench/__tests__/bench.fake.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/bench/__tests__/bench.fake.test.d.ts"
+      },
+      {
+        "id": "dist/factory/bench/__tests__/bench.fake.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/bench/__tests__/bench.fake.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/bench/__tests__/bench.fake.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/bench/__tests__/bench.fake.test.js"
+      },
+      {
+        "id": "dist/factory/bench/__tests__/bench.fake.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/bench/__tests__/bench.fake.test.js.map"
+      },
+      {
+        "id": "dist/factory/bench/__tests__/bench.smoke.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/bench/__tests__/bench.smoke.test.d.ts"
+      },
+      {
+        "id": "dist/factory/bench/__tests__/bench.smoke.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/bench/__tests__/bench.smoke.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/bench/__tests__/bench.smoke.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/bench/__tests__/bench.smoke.test.js"
+      },
+      {
+        "id": "dist/factory/bench/__tests__/bench.smoke.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/bench/__tests__/bench.smoke.test.js.map"
+      },
+      {
+        "id": "dist/factory/bench/__tests__/bench.units.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/bench/__tests__/bench.units.test.d.ts"
+      },
+      {
+        "id": "dist/factory/bench/__tests__/bench.units.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/bench/__tests__/bench.units.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/bench/__tests__/bench.units.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/bench/__tests__/bench.units.test.js"
+      },
+      {
+        "id": "dist/factory/bench/__tests__/bench.units.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/bench/__tests__/bench.units.test.js.map"
+      },
+      {
+        "id": "dist/factory/bench/fake-lanes.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/bench/fake-lanes.d.ts"
+      },
+      {
+        "id": "dist/factory/bench/fake-lanes.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/bench/fake-lanes.d.ts.map"
+      },
+      {
+        "id": "dist/factory/bench/fake-lanes.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/bench/fake-lanes.js"
+      },
+      {
+        "id": "dist/factory/bench/fake-lanes.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/bench/fake-lanes.js.map"
+      },
+      {
+        "id": "dist/factory/bench/fixture.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/bench/fixture.d.ts"
+      },
+      {
+        "id": "dist/factory/bench/fixture.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/bench/fixture.d.ts.map"
+      },
+      {
+        "id": "dist/factory/bench/fixture.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/bench/fixture.js"
+      },
+      {
+        "id": "dist/factory/bench/fixture.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/bench/fixture.js.map"
+      },
+      {
+        "id": "dist/factory/bench/model-probe.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/bench/model-probe.d.ts"
+      },
+      {
+        "id": "dist/factory/bench/model-probe.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/bench/model-probe.d.ts.map"
+      },
+      {
+        "id": "dist/factory/bench/model-probe.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/bench/model-probe.js"
+      },
+      {
+        "id": "dist/factory/bench/model-probe.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/bench/model-probe.js.map"
+      },
+      {
+        "id": "dist/factory/bench/runner.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/bench/runner.d.ts"
+      },
+      {
+        "id": "dist/factory/bench/runner.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/bench/runner.d.ts.map"
+      },
+      {
+        "id": "dist/factory/bench/runner.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/bench/runner.js"
+      },
+      {
+        "id": "dist/factory/bench/runner.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/bench/runner.js.map"
+      },
+      {
+        "id": "dist/factory/bench/score.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/bench/score.d.ts"
+      },
+      {
+        "id": "dist/factory/bench/score.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/bench/score.d.ts.map"
+      },
+      {
+        "id": "dist/factory/bench/score.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/bench/score.js"
+      },
+      {
+        "id": "dist/factory/bench/score.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/bench/score.js.map"
+      },
+      {
+        "id": "dist/factory/bench/seed/issues.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/bench/seed/issues.d.ts"
+      },
+      {
+        "id": "dist/factory/bench/seed/issues.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/bench/seed/issues.d.ts.map"
+      },
+      {
+        "id": "dist/factory/bench/seed/issues.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/bench/seed/issues.js"
+      },
+      {
+        "id": "dist/factory/bench/seed/issues.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/bench/seed/issues.js.map"
+      },
+      {
+        "id": "dist/factory/bench/seed/project.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/bench/seed/project.d.ts"
+      },
+      {
+        "id": "dist/factory/bench/seed/project.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/bench/seed/project.d.ts.map"
+      },
+      {
+        "id": "dist/factory/bench/seed/project.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/bench/seed/project.js"
+      },
+      {
+        "id": "dist/factory/bench/seed/project.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/bench/seed/project.js.map"
       },
       {
         "id": "dist/factory/board/__tests__/board-ado.test.d.ts",
@@ -55870,6 +56134,11 @@
         "path": "src/cli/commands/doctor-team-routing.ts"
       },
       {
+        "id": "src/cli/commands/factory-bench.ts",
+        "kind": "src",
+        "path": "src/cli/commands/factory-bench.ts"
+      },
+      {
         "id": "src/cli/commands/factory-board.ts",
         "kind": "src",
         "path": "src/cli/commands/factory-board.ts"
@@ -56293,6 +56562,56 @@
         "id": "src/factory/__tests__/workflow-run.test.ts",
         "kind": "src",
         "path": "src/factory/__tests__/workflow-run.test.ts"
+      },
+      {
+        "id": "src/factory/bench/__tests__/bench.fake.test.ts",
+        "kind": "src",
+        "path": "src/factory/bench/__tests__/bench.fake.test.ts"
+      },
+      {
+        "id": "src/factory/bench/__tests__/bench.smoke.test.ts",
+        "kind": "src",
+        "path": "src/factory/bench/__tests__/bench.smoke.test.ts"
+      },
+      {
+        "id": "src/factory/bench/__tests__/bench.units.test.ts",
+        "kind": "src",
+        "path": "src/factory/bench/__tests__/bench.units.test.ts"
+      },
+      {
+        "id": "src/factory/bench/fake-lanes.ts",
+        "kind": "src",
+        "path": "src/factory/bench/fake-lanes.ts"
+      },
+      {
+        "id": "src/factory/bench/fixture.ts",
+        "kind": "src",
+        "path": "src/factory/bench/fixture.ts"
+      },
+      {
+        "id": "src/factory/bench/model-probe.ts",
+        "kind": "src",
+        "path": "src/factory/bench/model-probe.ts"
+      },
+      {
+        "id": "src/factory/bench/runner.ts",
+        "kind": "src",
+        "path": "src/factory/bench/runner.ts"
+      },
+      {
+        "id": "src/factory/bench/score.ts",
+        "kind": "src",
+        "path": "src/factory/bench/score.ts"
+      },
+      {
+        "id": "src/factory/bench/seed/issues.ts",
+        "kind": "src",
+        "path": "src/factory/bench/seed/issues.ts"
+      },
+      {
+        "id": "src/factory/bench/seed/project.ts",
+        "kind": "src",
+        "path": "src/factory/bench/seed/project.ts"
       },
       {
         "id": "src/factory/board/__tests__/board-ado.test.ts",
@@ -81812,6 +82131,41 @@
         "kind": "imports"
       },
       {
+        "from": "src/cli/commands/factory-bench.ts",
+        "to": "external:chalk",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-bench.ts",
+        "to": "external:commander",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-bench.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-bench.ts",
+        "to": "src/cli/utils/integer-option.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-bench.ts",
+        "to": "src/factory/bench/fixture.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-bench.ts",
+        "to": "src/factory/bench/runner.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-bench.ts",
+        "to": "src/factory/bench/score.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/cli/commands/factory-board.ts",
         "to": "external:chalk",
         "kind": "imports"
@@ -82359,6 +82713,11 @@
       {
         "from": "src/cli/commands/factory.ts",
         "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory.ts",
+        "to": "src/cli/commands/factory-bench.ts",
         "kind": "imports"
       },
       {
@@ -86124,6 +86483,616 @@
       {
         "from": "src/factory/__tests__/workflow-run.test.ts",
         "to": "src/factory/listener.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/bench/__tests__/bench.fake.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/__tests__/bench.fake.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/__tests__/bench.fake.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/__tests__/bench.fake.test.ts",
+        "to": "external:node:url",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/__tests__/bench.fake.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/__tests__/bench.fake.test.ts",
+        "to": "src/factory/bench/fixture.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/__tests__/bench.fake.test.ts",
+        "to": "src/factory/bench/runner.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/__tests__/bench.fake.test.ts",
+        "to": "src/factory/bench/runner.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/bench/__tests__/bench.fake.test.ts",
+        "to": "src/factory/bench/score.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/__tests__/bench.fake.test.ts",
+        "to": "src/factory/bench/seed/issues.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/__tests__/bench.smoke.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/__tests__/bench.smoke.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/__tests__/bench.smoke.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/__tests__/bench.smoke.test.ts",
+        "to": "external:node:url",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/__tests__/bench.smoke.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/__tests__/bench.smoke.test.ts",
+        "to": "src/factory/bench/fixture.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/__tests__/bench.smoke.test.ts",
+        "to": "src/factory/bench/runner.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/__tests__/bench.units.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/__tests__/bench.units.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/__tests__/bench.units.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/__tests__/bench.units.test.ts",
+        "to": "external:node:url",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/__tests__/bench.units.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/__tests__/bench.units.test.ts",
+        "to": "src/cli/commands/factory-bench.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/__tests__/bench.units.test.ts",
+        "to": "src/factory/bench/fixture.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/__tests__/bench.units.test.ts",
+        "to": "src/factory/bench/fixture.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/bench/__tests__/bench.units.test.ts",
+        "to": "src/factory/bench/model-probe.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/__tests__/bench.units.test.ts",
+        "to": "src/factory/bench/model-probe.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/bench/__tests__/bench.units.test.ts",
+        "to": "src/factory/bench/runner.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/__tests__/bench.units.test.ts",
+        "to": "src/factory/bench/score.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/__tests__/bench.units.test.ts",
+        "to": "src/factory/bench/score.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/bench/__tests__/bench.units.test.ts",
+        "to": "src/factory/bench/seed/issues.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/__tests__/bench.units.test.ts",
+        "to": "src/factory/bench/seed/project.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/__tests__/bench.units.test.ts",
+        "to": "src/factory/run/budget.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/__tests__/bench.units.test.ts",
+        "to": "src/factory/run/sandbox-exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/bench/__tests__/bench.units.test.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/__tests__/bench.units.test.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/bench/__tests__/bench.units.test.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/__tests__/bench.units.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/fake-lanes.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/fake-lanes.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/fake-lanes.ts",
+        "to": "src/copilot-run/job.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/fake-lanes.ts",
+        "to": "src/copilot-run/sandbox.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/bench/fake-lanes.ts",
+        "to": "src/factory/bench/seed/issues.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/bench/fake-lanes.ts",
+        "to": "src/factory/run/engine.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/bench/fake-lanes.ts",
+        "to": "src/factory/run/lane.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/fake-lanes.ts",
+        "to": "src/factory/run/lane.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/bench/fake-lanes.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/fake-lanes.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/fake-lanes.ts",
+        "to": "src/team/git-worktree.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/fixture.ts",
+        "to": "external:node:crypto",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/fixture.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/fixture.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/fixture.ts",
+        "to": "src/factory/bench/seed/issues.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/fixture.ts",
+        "to": "src/factory/bench/seed/issues.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/bench/fixture.ts",
+        "to": "src/factory/bench/seed/project.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/fixture.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/fixture.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/bench/model-probe.ts",
+        "to": "external:node:crypto",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/model-probe.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/model-probe.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/model-probe.ts",
+        "to": "src/copilot-run/job.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/model-probe.ts",
+        "to": "src/copilot-run/job.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/bench/model-probe.ts",
+        "to": "src/copilot-run/sandbox.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/model-probe.ts",
+        "to": "src/copilot-run/timeout.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/model-probe.ts",
+        "to": "src/smoke/copilot-sdk-driver.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/model-probe.ts",
+        "to": "src/smoke/copilot-sdk-driver.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/bench/model-probe.ts",
+        "to": "src/smoke/copilot-sdk-scenarios.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/model-probe.ts",
+        "to": "src/smoke/copilot-session-env.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/model-probe.ts",
+        "to": "src/smoke/process-utils.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/model-probe.ts",
+        "to": "src/utils/windows-search.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/runner.ts",
+        "to": "external:node:crypto",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/runner.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/runner.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/runner.ts",
+        "to": "src/budget/ledger.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/runner.ts",
+        "to": "src/copilot-run/sandbox.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/runner.ts",
+        "to": "src/factory/bench/fake-lanes.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/runner.ts",
+        "to": "src/factory/bench/fixture.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/runner.ts",
+        "to": "src/factory/bench/fixture.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/bench/runner.ts",
+        "to": "src/factory/bench/model-probe.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/runner.ts",
+        "to": "src/factory/bench/model-probe.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/bench/runner.ts",
+        "to": "src/factory/bench/score.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/runner.ts",
+        "to": "src/factory/bench/score.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/bench/runner.ts",
+        "to": "src/factory/bench/seed/issues.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/runner.ts",
+        "to": "src/factory/bench/seed/issues.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/bench/runner.ts",
+        "to": "src/factory/bench/seed/project.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/runner.ts",
+        "to": "src/factory/check/cli.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/runner.ts",
+        "to": "src/factory/check/score.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/runner.ts",
+        "to": "src/factory/check/score.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/bench/runner.ts",
+        "to": "src/factory/poll.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/runner.ts",
+        "to": "src/factory/poll.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/bench/runner.ts",
+        "to": "src/factory/run/budget.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/runner.ts",
+        "to": "src/factory/run/engine.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/runner.ts",
+        "to": "src/factory/run/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/runner.ts",
+        "to": "src/factory/run/forge-roots.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/runner.ts",
+        "to": "src/factory/run/ledger.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/runner.ts",
+        "to": "src/factory/run/local-gate.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/runner.ts",
+        "to": "src/factory/run/prepare.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/runner.ts",
+        "to": "src/factory/run/prepare.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/bench/runner.ts",
+        "to": "src/factory/run/sandbox-exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/runner.ts",
+        "to": "src/factory/run/sandbox-exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/bench/runner.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/runner.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/bench/runner.ts",
+        "to": "src/forge/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/runner.ts",
+        "to": "src/forge/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/runner.ts",
+        "to": "src/forge/local/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/runner.ts",
+        "to": "src/forge/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/bench/runner.ts",
+        "to": "src/lib/version.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/runner.ts",
+        "to": "src/ship/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/runner.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/runner.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/bench/runner.ts",
+        "to": "src/utils/jsonc.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/score.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/score.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/score.ts",
+        "to": "src/factory/bench/fixture.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/bench/score.ts",
+        "to": "src/factory/bench/seed/issues.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/bench/score.ts",
+        "to": "src/factory/heal/sanitize.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/score.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/score.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/bench/score.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/score.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/score.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/bench/seed/issues.ts",
+        "to": "src/factory/run/state.ts",
         "kind": "type-imports"
       },
       {
@@ -132478,12 +133447,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 11010,
-      "edgeCount": 13616,
-      "importEdgeCount": 11190,
+      "nodeCount": 11065,
+      "edgeCount": 13746,
+      "importEdgeCount": 11290,
       "registerEdgeCount": 119
     }
   },
-  "inventorySha256": "a8b2150151464ab5a258d182f2e7902cb12130f1ede09f47b43e58a8540dd31a",
-  "manifestSha256": "92b01fddc772a85fe609d2439f8e2711b620536bd20f9fbae5e4543aa67e5dfd"
+  "inventorySha256": "92eb8b2f5095063bde0c45c52c12e637a46ca989f525247e4a156eaecd06b654",
+  "manifestSha256": "cf1f1a6ef41324427b00d9acbf5c604c78afce666d14062da4a110e9a674b66c"
 }
