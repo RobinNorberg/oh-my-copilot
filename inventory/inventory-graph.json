@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "468dbb1d9f90c08f1c39023172fe831c8f77a6db",
-    "sourceSha256": "6ef6fbe8fa8c660f905aa8d1202001c38e5531d1aae4f511603cd5283c79a048",
+    "head": "cfa68af29dbf3913dadb813bb490f7dcbd99721d",
+    "sourceSha256": "6e9f02ff5b6a5188fcff0f5092048829cd22dbcefeb19fae6a6b7673865a33dd",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "468dbb1d9f90c08f1c39023172fe831c8f77a6db",
-  "sourceSha256": "6ef6fbe8fa8c660f905aa8d1202001c38e5531d1aae4f511603cd5283c79a048",
+  "head": "cfa68af29dbf3913dadb813bb490f7dcbd99721d",
+  "sourceSha256": "6e9f02ff5b6a5188fcff0f5092048829cd22dbcefeb19fae6a6b7673865a33dd",
   "counts": {
     "public": {
       "skills": 98,
@@ -28,13 +28,13 @@
       "toolFiles": 68,
       "libFiles": 55,
       "templateHooks": 25,
-      "srcFiles": 2064,
-      "total": 2089
+      "srcFiles": 2067,
+      "total": 2092
     },
     "generated": {
-      "distFiles": 7624,
+      "distFiles": 7636,
       "bridgeFiles": 8,
-      "total": 7632
+      "total": 7644
     },
     "prompt": {
       "promptLikeFiles": 72
@@ -3430,6 +3430,10 @@
       "dist/factory/run/__tests__/engine.gates-sandbox.test.d.ts.map",
       "dist/factory/run/__tests__/engine.gates-sandbox.test.js",
       "dist/factory/run/__tests__/engine.gates-sandbox.test.js.map",
+      "dist/factory/run/__tests__/engine.gates-workspace.test.d.ts",
+      "dist/factory/run/__tests__/engine.gates-workspace.test.d.ts.map",
+      "dist/factory/run/__tests__/engine.gates-workspace.test.js",
+      "dist/factory/run/__tests__/engine.gates-workspace.test.js.map",
       "dist/factory/run/__tests__/engine.git-hardening.test.d.ts",
       "dist/factory/run/__tests__/engine.git-hardening.test.d.ts.map",
       "dist/factory/run/__tests__/engine.git-hardening.test.js",
@@ -3646,6 +3650,10 @@
       "dist/factory/run/__tests__/units.test.d.ts.map",
       "dist/factory/run/__tests__/units.test.js",
       "dist/factory/run/__tests__/units.test.js.map",
+      "dist/factory/run/__tests__/workspace-tree.test.d.ts",
+      "dist/factory/run/__tests__/workspace-tree.test.d.ts.map",
+      "dist/factory/run/__tests__/workspace-tree.test.js",
+      "dist/factory/run/__tests__/workspace-tree.test.js.map",
       "dist/factory/run/budget.d.ts",
       "dist/factory/run/budget.d.ts.map",
       "dist/factory/run/budget.js",
@@ -3762,6 +3770,10 @@
       "dist/factory/run/tamper-quarantine.d.ts.map",
       "dist/factory/run/tamper-quarantine.js",
       "dist/factory/run/tamper-quarantine.js.map",
+      "dist/factory/run/workspace-tree.d.ts",
+      "dist/factory/run/workspace-tree.d.ts.map",
+      "dist/factory/run/workspace-tree.js",
+      "dist/factory/run/workspace-tree.js.map",
       "dist/factory/setup/__tests__/e2e.test.d.ts",
       "dist/factory/setup/__tests__/e2e.test.d.ts.map",
       "dist/factory/setup/__tests__/e2e.test.js",
@@ -22309,6 +22321,26 @@
         "path": "dist/factory/run/__tests__/engine.gates-sandbox.test.js.map"
       },
       {
+        "id": "dist/factory/run/__tests__/engine.gates-workspace.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.gates-workspace.test.d.ts"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.gates-workspace.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.gates-workspace.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.gates-workspace.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.gates-workspace.test.js"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.gates-workspace.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.gates-workspace.test.js.map"
+      },
+      {
         "id": "dist/factory/run/__tests__/engine.git-hardening.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/factory/run/__tests__/engine.git-hardening.test.d.ts"
@@ -23389,6 +23421,26 @@
         "path": "dist/factory/run/__tests__/units.test.js.map"
       },
       {
+        "id": "dist/factory/run/__tests__/workspace-tree.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/workspace-tree.test.d.ts"
+      },
+      {
+        "id": "dist/factory/run/__tests__/workspace-tree.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/workspace-tree.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/workspace-tree.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/workspace-tree.test.js"
+      },
+      {
+        "id": "dist/factory/run/__tests__/workspace-tree.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/workspace-tree.test.js.map"
+      },
+      {
         "id": "dist/factory/run/budget.d.ts",
         "kind": "generated-dist",
         "path": "dist/factory/run/budget.d.ts"
@@ -23967,6 +24019,26 @@
         "id": "dist/factory/run/tamper-quarantine.js.map",
         "kind": "generated-dist",
         "path": "dist/factory/run/tamper-quarantine.js.map"
+      },
+      {
+        "id": "dist/factory/run/workspace-tree.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/workspace-tree.d.ts"
+      },
+      {
+        "id": "dist/factory/run/workspace-tree.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/workspace-tree.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/workspace-tree.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/workspace-tree.js"
+      },
+      {
+        "id": "dist/factory/run/workspace-tree.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/workspace-tree.js.map"
       },
       {
         "id": "dist/factory/setup/__tests__/e2e.test.d.ts",
@@ -56349,6 +56421,11 @@
         "path": "src/factory/run/__tests__/engine.gates-sandbox.test.ts"
       },
       {
+        "id": "src/factory/run/__tests__/engine.gates-workspace.test.ts",
+        "kind": "src",
+        "path": "src/factory/run/__tests__/engine.gates-workspace.test.ts"
+      },
+      {
         "id": "src/factory/run/__tests__/engine.git-hardening.test.ts",
         "kind": "src",
         "path": "src/factory/run/__tests__/engine.git-hardening.test.ts"
@@ -56624,6 +56701,11 @@
         "path": "src/factory/run/__tests__/units.test.ts"
       },
       {
+        "id": "src/factory/run/__tests__/workspace-tree.test.ts",
+        "kind": "src",
+        "path": "src/factory/run/__tests__/workspace-tree.test.ts"
+      },
+      {
         "id": "src/factory/run/budget.ts",
         "kind": "src",
         "path": "src/factory/run/budget.ts"
@@ -56767,6 +56849,11 @@
         "id": "src/factory/run/tamper-quarantine.ts",
         "kind": "src",
         "path": "src/factory/run/tamper-quarantine.ts"
+      },
+      {
+        "id": "src/factory/run/workspace-tree.ts",
+        "kind": "src",
+        "path": "src/factory/run/workspace-tree.ts"
       },
       {
         "id": "src/factory/setup/__tests__/e2e.test.ts",
@@ -89361,6 +89448,61 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/factory/run/__tests__/engine.gates-workspace.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.gates-workspace.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.gates-workspace.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.gates-workspace.test.ts",
+        "to": "src/copilot-run/sandbox.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.gates-workspace.test.ts",
+        "to": "src/factory/run/__tests__/engine-local-harness.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.gates-workspace.test.ts",
+        "to": "src/factory/run/__tests__/engine-local-harness.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.gates-workspace.test.ts",
+        "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.gates-workspace.test.ts",
+        "to": "src/factory/run/budget.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.gates-workspace.test.ts",
+        "to": "src/factory/run/engine.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.gates-workspace.test.ts",
+        "to": "src/factory/run/sandbox-exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.gates-workspace.test.ts",
+        "to": "src/ship/prepare.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/factory/run/__tests__/engine.git-hardening.test.ts",
         "to": "external:node:child_process",
         "kind": "imports"
@@ -92186,6 +92328,36 @@
         "kind": "imports"
       },
       {
+        "from": "src/factory/run/__tests__/workspace-tree.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/workspace-tree.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/workspace-tree.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/workspace-tree.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/workspace-tree.test.ts",
+        "to": "src/factory/run/prepare.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/workspace-tree.test.ts",
+        "to": "src/factory/run/workspace-tree.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/factory/run/budget.ts",
         "to": "src/copilot-run/job.ts",
         "kind": "imports"
@@ -92698,6 +92870,11 @@
       {
         "from": "src/factory/run/engine.ts",
         "to": "src/factory/run/tamper-quarantine.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/engine.ts",
+        "to": "src/factory/run/workspace-tree.ts",
         "kind": "imports"
       },
       {
@@ -93467,6 +93644,11 @@
       },
       {
         "from": "src/factory/run/prepare.ts",
+        "to": "src/factory/run/workspace-tree.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/prepare.ts",
         "to": "src/ship/config.ts",
         "kind": "imports"
       },
@@ -93998,6 +94180,16 @@
       {
         "from": "src/factory/run/tamper-quarantine.ts",
         "to": "src/team/git-worktree.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/workspace-tree.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/workspace-tree.ts",
+        "to": "external:path",
         "kind": "imports"
       },
       {
@@ -131472,12 +131664,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 10940,
-      "edgeCount": 13496,
-      "importEdgeCount": 11094,
+      "nodeCount": 10955,
+      "edgeCount": 13517,
+      "importEdgeCount": 11113,
       "registerEdgeCount": 119
     }
   },
-  "inventorySha256": "8d53bf93f3bd28334c1cde6db289377dd7d91f05736f7a84a05438f8c424cf4f",
-  "manifestSha256": "982c8369bc383bcc3384f7e62cd9199aeae22db71081fe4eacf392215b05ba59"
+  "inventorySha256": "636b9a09237236a0be4a0aad679cecdfba9f074c6c7d0361b0d949d0109a0318",
+  "manifestSha256": "31b0e625e1f49068bbaaa645e568dd2371d09653479b3416e449401a8e4c74f6"
 }
