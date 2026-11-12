@@ -4,6 +4,12 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Plugin hooks keep working in a config folder shared with WSL or macOS.** Setup on Linux or macOS keeps the `node` plus arguments hook form when `node` is on PATH. It switches to the `find-node.sh` form only when `node` is missing, so native Windows no longer needs a repair afterwards.
+- **Check names are made safe in merge reasons.** `omg ship merge` and the factory's Azure DevOps branch policy reason show each name in a code span. Backticks, `@` mentions, table pipes and line breaks are removed from the text.
+- **The Herdr launch message names the host CLI.** It says `copilot launched in Herdr workspace` instead of `Claude launched`.
+
 # oh-my-copilot v5.27.0
 
 ## [5.27.0] - 2026-11-12
