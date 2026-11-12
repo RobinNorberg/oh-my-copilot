@@ -487,7 +487,7 @@ describe('autoMergeVerdict', () => {
   it('all conditions hold: ok with the tier and one evidence line per condition', () => {
     const v = autoMergeVerdict(ok);
     expect(v).toMatchObject({ ok: true, tier: 'docs', reasons: [] });
-    expect(v.evidence.join('\n')).toMatch(/CI green at aaaaaaaaaaaa: Test, Lint/);
+    expect(v.evidence.join('\n')).toMatch(/CI green at aaaaaaaaaaaa: `Test`, `Lint`/);
     expect(v.evidence.join('\n')).toMatch(/every file fits tier docs/);
     expect(autoMergeComment('issue #3', 'docs', HEAD, v.evidence, 'the factory')).toMatch(/^Factory run for issue #3: auto-merged by tier docs at aaaaaaaaaaaa/);
   });
@@ -497,6 +497,17 @@ describe('autoMergeVerdict', () => {
     expect(autoMergeVerdict({ ...ok, run: { ...ok.run, history }, requiredChecks: ['Test'] })).toMatchObject({ ok: true, tier: 'docs' });
     // N6: with required checks set, a skipped non-required check (a docs-only path filter) does not block.
     expect(autoMergeVerdict({ ...ok, decision: { ok: true, reasons: [], checks: ['Test'], unsettled: ['Docs preview'], blocking: [] }, requiredChecks: ['Test'] })).toMatchObject({ ok: true });
+  });
+
+  it('forge-reported check names reach the park text and evidence only as sanitised code spans', () => {
+    const evil = '[click](http://x.test) owner/repo#1 @user\nline2 | cell `tick`';
+    const park = autoMergeVerdict({ ...ok, decision: { ok: true, reasons: [], checks: ['labeler'], unsettled: [evil], blocking: [] } }).reasons.join('\n');
+    expect(park).toContain('`[click](http://x.test) owner/repo#1 ＠user line2 ¦ cell \'tick\'`');
+    expect(park).not.toMatch(/[@|]|\n.*line2/);
+    const good = autoMergeVerdict({ ...ok, decision: { ok: true, reasons: [], checks: [evil], blocking: [] } });
+    expect(good.evidence.join('\n')).toContain('`[click](http://x.test) owner/repo#1 ＠user line2 ¦ cell \'tick\'` succeeded');
+    // Decisions still use the raw names: the required check matches by its raw name.
+    expect(autoMergeVerdict({ ...ok, decision: { ok: true, reasons: [], checks: [evil], blocking: [] }, requiredChecks: [evil] }).ok).toBe(true);
   });
 
   const fails: Array<[string, Partial<AutoMergeInput>, RegExp]> = [
@@ -511,8 +522,8 @@ describe('autoMergeVerdict', () => {
     // M1: every check SKIPPED (paths-ignore on a docs PR): mergeDecision passes no succeeded check, so nothing counts.
     ['all checks skipped', { decision: { ok: true, reasons: [], checks: [] } }, /skipped, neutral or no checks never auto-merge/],
     // N6: no required checks and a labeler SUCCESS while the tests were SKIPPED: every check must succeed.
-    ['labeler-only SUCCESS with skipped tests', { decision: { ok: true, reasons: [], checks: ['labeler'], unsettled: ['Test'] } }, /checks skipped or neutral on this head \(Test\); without required checks every check must succeed/],
-    ['required check did not run', { decision: { ok: true, reasons: [], checks: ['Lint'] }, requiredChecks: ['Test'] }, /no required check \(Test\) succeeded/],
+    ['labeler-only SUCCESS with skipped tests', { decision: { ok: true, reasons: [], checks: ['labeler'], unsettled: ['Test'] } }, /checks skipped or neutral on this head \(`Test`\); without required checks every check must succeed/],
+    ['required check did not run', { decision: { ok: true, reasons: [], checks: ['Lint'] }, requiredChecks: ['Test'] }, /no required check \(`Test`\) succeeded/],
     // INFO: the history check is an allowlist: an unknown park keeps the merge human.
     ['unknown park in history', { run: { ...ok.run, history: [{ note: 'awaiting-human: some-future-park: why' }] } }, /parked at some-future-park/],
     ['human review off', { human: undefined }, /factory\.review\.human is "off"/],

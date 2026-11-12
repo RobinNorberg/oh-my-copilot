@@ -53,7 +53,7 @@ export interface FactoryMergeDecision extends MergeDecision {
  */
 const checkText = (s: string, max: number): string => oneLine(s.replace(/\p{Cf}/gu, '').replace(/`/g, "'").replace(/@/g, '＠').replace(/\|/g, '¦'), max) || '(unnamed)';
 /** A check name in a code span, so markdown links, HTML and `owner/repo#1` cross-references stay literal text. */
-const checkName = (s: string): string => `\`${checkText(s, 80)}\``;
+export const checkName = (s: string): string => `\`${checkText(s, 80)}\``;
 
 /**
  * ship's decideMerge on a fresh one-shot gate read for the head (no watch,
