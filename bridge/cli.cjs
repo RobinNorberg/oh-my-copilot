@@ -136222,7 +136222,8 @@ function nodeModulesWriteDenied(tail6) {
   }
   return void 0;
 }
-function sandboxIncompatibleAdvice(tail6) {
+function sandboxIncompatibleAdvice(tail6, platform = process.platform) {
+  if (platform === "win32" && tail6?.includes("Could not read from remote repository")) return GIT_TRANSPORT_SANDBOX_ADVICE;
   const denied = tail6 ? nodeModulesWriteDenied(tail6) : void 0;
   if (!denied || GATE_CACHE_DIRS.includes(denied.slice("node_modules/".length))) return 'Your gate fails in the sandbox on the base: set factory.run.sandbox.writeNetwork "registry" if it needs the npm registry';
   return `Your gate cannot write ${denied} in the sandbox: node_modules is read-only there except the fresh per-run dirs ${GATE_CACHE_DIRS.join(", ")}. Move that tool's output or cache out of node_modules (for tsc a tsBuildInfoFile outside it, for vite a cacheDir outside it), or report ${denied} to oh-my-copilot so it can become a per-run dir`;
@@ -136565,7 +136566,7 @@ async function runFactoryEngine(o) {
 function sharedLayoutSealed(s) {
   return s.layout !== 2 && (s.lanes.length > 0 || s.codingAgent !== void 0);
 }
-var import_crypto55, import_fs174, import_os39, import_path203, EXIT_AWAITING_HUMAN, PREPARE_ENGINE_STEPS, MAX_CONFLICT_FIX_ROUNDS, MAX_MERGE_BOUNCES, DEFAULT_POLL_MS, LANE_GRACE_MS, REMOTE_HEAD_FETCH_FLAGS, LS_REMOTE_TIMEOUT_MS, ADO_HEAD_LAG_POLLS, localGateConfigLoader, PROCESS_DEADLINE_MS, defaultLaneProcessOps, FactoryStepError, StateTamperedError, LocalGateDue, MirrorBaseMovedError, HEX4018, PARK_TAIL_LINES, PARK_TAIL_LINE_CHARS, PARK_TAIL_CHARS, localDetailNote, isHumanReadGate, CALIBRATION_NO_TEST_FILTER, BUILT_IN_FILE_NAME_TOO_LONG, USER_REPO_PREFIX, isUserRepoProblem, quarantineRefs, cancelCommand, resumeCommand, HEAL_ACCEPTANCE, usageOf, capUsage, FactoryEngine, HUMAN_REVIEW_GATE, REVIEW_REQUESTED_GATE, UNSANDBOXED_LANES_REASON, GATES_UNSANDBOXED_GATE, SECRET_SHAPES_GATE, GATE_SANDBOX_INCOMPATIBLE_GATE, GATE_NO_VERDICT_GATE, ACK_WARNING, PREPARE_CHECK_TIMEOUT_MS;
+var import_crypto55, import_fs174, import_os39, import_path203, EXIT_AWAITING_HUMAN, PREPARE_ENGINE_STEPS, MAX_CONFLICT_FIX_ROUNDS, MAX_MERGE_BOUNCES, DEFAULT_POLL_MS, LANE_GRACE_MS, REMOTE_HEAD_FETCH_FLAGS, LS_REMOTE_TIMEOUT_MS, ADO_HEAD_LAG_POLLS, localGateConfigLoader, PROCESS_DEADLINE_MS, defaultLaneProcessOps, FactoryStepError, StateTamperedError, LocalGateDue, MirrorBaseMovedError, HEX4018, PARK_TAIL_LINES, PARK_TAIL_LINE_CHARS, PARK_TAIL_CHARS, GIT_TRANSPORT_SANDBOX_ADVICE, localDetailNote, isHumanReadGate, CALIBRATION_NO_TEST_FILTER, BUILT_IN_FILE_NAME_TOO_LONG, USER_REPO_PREFIX, isUserRepoProblem, quarantineRefs, cancelCommand, resumeCommand, HEAL_ACCEPTANCE, usageOf, capUsage, FactoryEngine, HUMAN_REVIEW_GATE, REVIEW_REQUESTED_GATE, UNSANDBOXED_LANES_REASON, GATES_UNSANDBOXED_GATE, SECRET_SHAPES_GATE, GATE_SANDBOX_INCOMPATIBLE_GATE, GATE_NO_VERDICT_GATE, ACK_WARNING, PREPARE_CHECK_TIMEOUT_MS;
 var init_engine = __esm({
   "src/factory/run/engine.ts"() {
     "use strict";
@@ -136702,6 +136703,7 @@ var init_engine = __esm({
     PARK_TAIL_LINES = 12;
     PARK_TAIL_LINE_CHARS = 200;
     PARK_TAIL_CHARS = 1500;
+    GIT_TRANSPORT_SANDBOX_ADVICE = `Your gate runs git clone, fetch or push (also to a local path or a temp repository), which cannot run in the OS sandbox on Windows: git starts that transport through Git for Windows' sh.exe, and no MSYS2 program starts in the sandbox; the sandbox has no network either. Read-only git (rev-parse, ls-files, log) and git init, add and commit work. Make those tests skip the transport, run them outside prepare, or set factory.run.sandbox.isolation "container" (with an image that has git) in your user config`;
     localDetailNote = (key, what) => `; ${what} is shown on this host only (omg factory run status ${key}), never posted`;
     isHumanReadGate = (name) => name === HUMAN_REVIEW_GATE || name === "merge" || name === "fix-rounds-spent" || name === "head-moved-externally";
     CALIBRATION_NO_TEST_FILTER = "omg-calibration-matches-no-test-file";
