@@ -3264,6 +3264,16 @@ class FactoryEngine {
         }
         if (s.prepareChecks === undefined)
             this.save((x) => ({ ...x, prepareChecks: checksNow }));
+        // ship.prepare.build is sealed the same way: what runs, and the outputs the merge rule accepts, never change mid-run.
+        const pb = this.gateConfig(view).config.prepareBuild;
+        const buildNow = pb ? { command: [...pb.command], outputs: [...pb.outputs] } : 'none';
+        const buildText = (b) => (b === 'none' ? 'unset' : JSON.stringify(b));
+        if (s.prepareBuild !== undefined && JSON.stringify(s.prepareBuild) !== JSON.stringify(buildNow)) {
+            this.gate('prepare-checks', `ship.prepare.build is now ${buildText(buildNow)}, but this run recorded ${buildText(s.prepareBuild)}; restore it, or cancel the run (omg factory run cancel) and start a new one`);
+            return;
+        }
+        if (s.prepareBuild === undefined)
+            this.save((x) => ({ ...x, prepareBuild: buildNow }));
         if (await this.recheckFailed('before prepare'))
             return;
         this.discardCheckout();
@@ -3337,12 +3347,14 @@ class FactoryEngine {
             throw new FactoryStepError(`the new prepare checkout ${path} names the git dir ${gitLink.gitDir}, not the admin dir ${recorded.adminDir} its git links were recorded with`);
         // Configured checks are resolved without a shell (never a .cmd/.bat); every check runs per factory.run.sandbox.gates (prepareCheck).
         const commands = configured?.map((argv) => ({ argv, ...resolveLocalGateArgv(argv, { cwd: path, subject: 'the prepare check', configKey: 'ship.prepare.checks' }) }));
+        // ship.prepare.build (sealed above): the same trusted block, run like a configured check; only its outputs are committed.
+        const build = buildNow === 'none' ? undefined : { argv: buildNow.command, outputs: buildNow.outputs, ...resolveLocalGateArgv(buildNow.command, { cwd: path, subject: 'the prepare build', configKey: 'ship.prepare.build' }) };
         const gates = this.gatesSandbox(this.gateConfig(view));
         const ran = { modes: new Set(), acked: false, park: undefined };
         let result;
         let checkoutHead;
         try {
-            result = await runPrepareAsync({ exec: priv ? priv.exec() : this.exec, cwd: path, base: s.base, branch, reviewedSha: head, baseSha: view.baseRefOid, repoUrl: s.repoUrl, remote: runRemote(s), push: false, commands, ...(priv ? { prefetchedBase: true } : {}) }, (c) => this.prepareCheck(c, { head, path, commonGitDir: common, baseSha: view.baseRefOid, gates, ran, gitLink: { hash: gitLink.hash, gitDir: gitLink.gitDir } }));
+            result = await runPrepareAsync({ exec: priv ? priv.exec() : this.exec, cwd: path, base: s.base, branch, reviewedSha: head, baseSha: view.baseRefOid, repoUrl: s.repoUrl, remote: runRemote(s), push: false, commands, ...(build ? { build } : {}), ...(priv ? { prefetchedBase: true } : {}) }, (c) => this.prepareCheck(c, { head, path, commonGitDir: common, baseSha: view.baseRefOid, gates, ran, gitLink: { hash: gitLink.hash, gitDir: gitLink.gitDir } }));
             // A changed gitfile parks before any further engine git reads the checkout.
             if (ran.park?.name === 'lane-tampered') {
                 this.gate(ran.park.name, ran.park.reason, ran.park.detail);
@@ -3527,6 +3539,8 @@ class FactoryEngine {
     prepareCheckLabel(c) {
         if (c.kind === 'configured')
             return `the prepare check \`${c.argv.join(' ')}\``;
+        if (c.kind === 'build')
+            return `the prepare build \`${c.argv.join(' ')}\``;
         return c.kind === 'inventory' ? 'the inventory generator' : `the built-in prepare check ${c.step}`;
     }
     /** gates "unsandboxed": a warning every time and one PR note per head. */
@@ -3651,7 +3665,7 @@ class FactoryEngine {
             // An earlier check of this head already ran the PR's code in the sandbox: a start failure now may be its doing.
             // Only a configured command (trusted config) refused for its own shape or length keeps the ack offer; a
             // built-in's argv holds the PR's file names, so its refusal parks here too.
-            const ownShape = r.refused === true && c.kind === 'configured';
+            const ownShape = r.refused === true && (c.kind === 'configured' || c.kind === 'build');
             // This invocation's checks, or an earlier invocation's prepare or gate on this head (sealed state), ran its code.
             const codeRan = ran.modes.has('enforced') || ran.modes.has('enforced-readable') || this.state.sandboxedPrepareHead === head || this.state.sandboxedGateHead === head;
             if (!ownShape && codeRan && !this.gatesAccepted(head)) {
@@ -4326,7 +4340,10 @@ class FactoryEngine {
             throw new FactoryStepError(`ship state for PR #${pr} is ${ship.phase}, not ready`);
         if (this.humanReviewParked(pr, head, ship))
             return;
-        const { config, known } = this.gateConfig(view);
+        const { config: loaded, known } = this.gateConfig(view);
+        // The merge rule accepts the build outputs this run sealed at prepare, not whatever the base says now.
+        const sealedBuild = this.state.prepareBuild;
+        const config = { ...loaded, prepareBuild: sealedBuild && sealedBuild !== 'none' ? sealedBuild : undefined };
         const decision = mergeDecision(this.exec, this.o.root, ship, view, config, known, this.forge, this.gateReads(view));
         if (!decision.ok && decision.reasons.some((r) => r.startsWith('gates are '))) {
             // The merge rule's one-shot read and watchGates can disagree (a check flapping); bounded per run, across reruns.

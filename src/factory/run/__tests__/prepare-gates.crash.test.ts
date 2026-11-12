@@ -151,4 +151,25 @@ describe('prepare: crash window, PR code and failing checks', () => {
     expect(h.calls).not.toContain('node tools/check.mjs');
     expect(tsc).toBe(1);
   });
+
+  it('review-529 L3: a ship.prepare.build changed mid-run parks the next prepare at prepare-checks; the new build never runs', async () => {
+    let firstBase: string | undefined;
+    // The base moves during the first prepare; its config now sets ship.prepare.build, which the run did not start with.
+    const gateConfig: typeof testGateConfig = (i) => {
+      firstBase ??= i.baseSha;
+      const loaded = testGateConfig(i);
+      return i.baseSha === firstBase ? loaded : { ...loaded, config: { ...loaded.config, prepareBuild: { command: ['node', 'tools/build.mjs'], outputs: ['src'] } } };
+    };
+    let tsc = 0;
+    h.node = (args) => {
+      if (!isTsc(args) || ++tsc !== 1) return okRun;
+      moveBase('docs/other.md', 'base moved\n');
+      return { status: 1, stdout: 'src/greet.ts(1,1): error TS1005: expected', stderr: '' };
+    };
+    const out = await run([commitFile('src/greet.ts', 'x\n'), review('approve'), commitFile('src/greet.ts', 'fixed\n'), review('approve')], { gateConfig }).done;
+    expect(out.gate?.name, out.message).toBe('prepare-checks');
+    expect(out.gate?.reason).toContain('ship.prepare.build is now {"command":["node","tools/build.mjs"],"outputs":["src"]}, but this run recorded unset');
+    expect(readFactoryState(h.root, ISSUE)!.prepareBuild).toBe('none');
+    expect(h.calls).not.toContain('node tools/build.mjs');
+  });
 });

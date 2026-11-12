@@ -18,11 +18,12 @@
  * of every engine commit anyway (readCommitsSinceReview).
  */
 
-import { existsSync } from 'fs';
+import { existsSync, lstatSync, type Stats } from 'fs';
 import { isAbsolute, join, posix } from 'path';
 import { visibleLine } from '../forge/review-feedback.js';
 import { isPlainBranchName, readBaseFile, remoteRepoMismatch } from './config.js';
-import type { Exec, ExecResult } from './exec.js';
+import { BUILD_COMMIT_MESSAGE, type Exec, type ExecResult } from './exec.js';
+import { buildCommitProblem } from './merge.js';
 
 export type StepStatus = 'ok' | 'skipped' | 'failed';
 
@@ -61,7 +62,14 @@ export interface PrepareOptions {
    * base has (detectPrepareChecks). The inventory step is separate.
    */
   commands?: readonly PrepareCommand[];
-  /** Runs `commands`: the caller's raw Exec (the ship and factory guards allow only the built-in shapes). Default: exec. */
+  /**
+   * ship.prepare.build, its argv resolved by the caller like `commands`: run
+   * after the base merge and before the checks (through commandExec, or
+   * runCheck as kind `build`); only changes under `outputs` are committed
+   * (BUILD_COMMIT_MESSAGE), any other change fails prepare. Undefined = no build.
+   */
+  build?: PrepareCommand & { outputs: readonly string[] };
+  /** Runs `commands` and `build`: the caller's raw Exec (the ship and factory guards allow only the built-in shapes). Default: exec. */
   commandExec?: Exec;
   push?: boolean;
   /** Node binary for repo scripts (default process.execPath). */
@@ -83,6 +91,9 @@ export interface PrepareResult {
 export const INVENTORY_DIR = 'inventory';
 export const INVENTORY_SCRIPT = 'scripts/generate-inventory-graph.mjs';
 export const INVENTORY_COMMIT_MESSAGE = 'chore(inventory): regenerate inventory graph baseline';
+export { BUILD_COMMIT_MESSAGE };
+/** The step a ship.prepare.build that fails, or changes files outside its outputs, fails. */
+export const PREPARE_BUILD_STEP = 'build';
 
 /** A ship.prepare.checks argv, resolved to what runs or why it cannot start. */
 export type PrepareCommand = { argv: readonly string[] } & ({ exe: string; args: string[] } | { missing: string });
@@ -214,6 +225,14 @@ export function selectGeneratorChecks(changed: readonly string[]): string[][] {
   return out;
 }
 
+function lstatOrNull(p: string): Stats | null {
+  try {
+    return lstatSync(p);
+  } catch {
+    return null;
+  }
+}
+
 function lines(text: string): string[] {
   return text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
 }
@@ -230,8 +249,8 @@ function tail(text: string, n = 20): string {
 export interface PrepareCheckRun {
   /** The step it belongs to (a check's name, or `inventory`). */
   step: string;
-  /** configured: ship.prepare.checks (the caller's commandExec); built-in / inventory: `node <script>` (exec). */
-  kind: 'configured' | 'built-in' | 'inventory';
+  /** configured / build: ship.prepare.checks / ship.prepare.build (the caller's commandExec); built-in / inventory: `node <script>` (exec). */
+  kind: 'configured' | 'built-in' | 'inventory' | 'build';
   /** The configured argv, or the built-in's `node <script> ...` argv. */
   argv: readonly string[];
   exe: string;
@@ -251,7 +270,7 @@ export function runPrepare(opts: PrepareOptions): PrepareResult {
   let next = steps.next();
   while (!next.done) {
     const c = next.value;
-    next = steps.next((c.kind === 'configured' ? commandExec : opts.exec)(c.exe, c.args, { cwd: opts.cwd }));
+    next = steps.next((c.kind === 'configured' || c.kind === 'build' ? commandExec : opts.exec)(c.exe, c.args, { cwd: opts.cwd }));
   }
   return next.value;
 }
@@ -351,6 +370,86 @@ function* prepareSteps(opts: PrepareOptions): Generator<PrepareCheckRun, Prepare
       steps.push({ name: 'merge-base', status: 'ok', detail: `merged ${base} ${baseSha.slice(0, 12)}` });
     }
     housekeepingCommits.push(head());
+  }
+
+  // 3b. ship.prepare.build (trusted config): rebuild the committed build output; only its declared outputs may change
+  if (opts.build) {
+    const build = opts.build;
+    if ('missing' in build) return fail(PREPARE_CONFIG_STEP, `ship.prepare.build ${JSON.stringify(build.argv)}: ${build.missing}`);
+    // -z, no renames: one verbatim `XY path` entry per changed or untracked (not ignored) file.
+    const status = (): string[] | null => {
+      const r = git('status', '--porcelain=v1', '-z', '--untracked-files=all', '--no-renames');
+      return r.status === 0 ? r.stdout.split('\0').filter(Boolean) : null;
+    };
+    const inOutputs = (p: string) => build.outputs.some((o) => p === o || p.startsWith(`${o}/`));
+    const shown = (paths: string[]) => paths.slice(0, 10).map((p) => visibleLine(p)).join(', ');
+    // The build compiles what is in the checkout, and `git add -f` takes every file in the outputs: an untracked
+    // source file, or an ignored file already in an output, would ship unreviewed. Only a clean checkout is built.
+    const before = status();
+    if (before === null) return fail(PREPARE_BUILD_STEP, 'git status failed before the build');
+    if (before.length > 0) {
+      return fail(PREPARE_BUILD_STEP, `the checkout has untracked or changed files, which the build could compile into its output; nothing is built (fail closed). Remove or commit them: ${shown(before.map((e) => e.slice(3)))}`);
+    }
+    for (const o of build.outputs) {
+      // An output is a real directory (or absent until the build makes it), never a file or a link.
+      const st = lstatOrNull(join(cwd, o));
+      if (st && (st.isSymbolicLink() || !st.isDirectory())) return fail(PREPARE_BUILD_STEP, `ship.prepare.build output ${o} is not a directory`);
+    }
+    const preIgnored = git('ls-files', '-z', '-o', '-i', '--exclude-standard', '--', ...build.outputs);
+    if (preIgnored.status !== 0) return fail(PREPARE_BUILD_STEP, 'git ls-files failed before the build');
+    const stray = preIgnored.stdout.split('\0').filter(Boolean);
+    if (stray.length > 0) {
+      return fail(PREPARE_BUILD_STEP, `ignored files are already in ship.prepare.build.outputs, and git add -f would commit them; nothing is built (fail closed). Remove them: ${shown(stray)}`);
+    }
+    // git status hides ignored files and files git is told not to look at. Anything ignored outside the dependency
+    // and runtime dirs (a self-ignoring .gitignore, .git/info/exclude) could be compiled in unseen; refuse it.
+    const ignored = git('ls-files', '-z', '-o', '-i', '--exclude-standard', '--directory');
+    if (ignored.status !== 0) return fail(PREPARE_BUILD_STEP, 'git ls-files failed before the build');
+    const hidden = ignored.stdout.split('\0').filter((p) => p && !/^(?:node_modules|\.omg|\.omc)\//.test(p));
+    if (hidden.length > 0) {
+      return fail(PREPARE_BUILD_STEP, `the checkout has ignored files outside node_modules/, .omg/ and .omc/, which the build could compile into its output; nothing is built (fail closed). Remove these ignored files before the build: ${shown(hidden)}`);
+    }
+    // A tracked file marked assume-unchanged (lowercase tag) or skip-worktree (S) can differ from HEAD while status is empty.
+    const tracked = git('ls-files', '-z', '-v');
+    if (tracked.status !== 0) return fail(PREPARE_BUILD_STEP, 'git ls-files -v failed before the build');
+    const flagged = tracked.stdout.split('\0').filter((e) => e && !e.startsWith('H '));
+    if (flagged.length > 0) {
+      return fail(PREPARE_BUILD_STEP, `tracked files are marked assume-unchanged or skip-worktree, so git status cannot show their edits; nothing is built (fail closed). Clear the flags (git update-index --no-assume-unchanged / --no-skip-worktree): ${shown(flagged.map((e) => e.slice(2)))}`);
+    }
+    const headBefore = head();
+    const r = yield { step: PREPARE_BUILD_STEP, kind: 'build', argv: build.argv, exe: build.exe, args: build.args };
+    if (r.notStarted !== undefined) return fail(PREPARE_SANDBOX_STEP, `${PREPARE_BUILD_STEP}: ${r.notStarted}`);
+    if (r.status !== 0) return fail(PREPARE_BUILD_STEP, tail(`${r.stdout}\n${r.stderr}`));
+    if (head() !== headBefore) return fail(PREPARE_BUILD_STEP, 'the build moved HEAD (it made or reset a commit); the build only writes files, prepare commits them');
+    const after = status();
+    if (after === null) return fail(PREPARE_BUILD_STEP, 'git status failed after the build');
+    const outside = after.filter((e) => !inOutputs(e.slice(3)));
+    if (outside.length > 0) {
+      // The names are the build's (the PR's code): shown, never raw.
+      return fail(PREPARE_BUILD_STEP, `the build changed files outside ship.prepare.build.outputs (${build.outputs.join(', ')}), so nothing is committed (fail closed): ${outside.slice(0, 10).map((e) => visibleLine(e.slice(3))).join(', ')}`);
+    }
+    // An output the build never made (absent and nothing of it changed) is no pathspec: git add would refuse it.
+    const outputs = build.outputs.filter((o) => exists(o) || after.some((e) => e.slice(3) === o || e.slice(3).startsWith(`${o}/`)));
+    // -f: build output directories are often git-ignored (dist/) yet committed.
+    const added = outputs.length > 0 ? git('add', '-f', '-A', '--', ...outputs) : undefined;
+    if (added && added.status !== 0) return fail(PREPARE_BUILD_STEP, `git add -f -A -- ${outputs.join(' ')}: ${tail(added.stderr || added.stdout)}`);
+    if (outputs.length > 0 && git('diff', '--cached', '--quiet', '--', ...outputs).status !== 0) {
+      // Only the outputs: a file a concurrent lane staged meanwhile is not swept into the engine's commit.
+      const committed = git('commit', '--no-verify', '-m', BUILD_COMMIT_MESSAGE, '--', ...outputs);
+      if (committed.status !== 0) return fail(PREPARE_BUILD_STEP, tail(committed.stderr || committed.stdout));
+      // Recorded only when it is what merge accepts: one parent, the pre-build HEAD, and only the outputs (no link).
+      const built = head();
+      const parents = git('rev-list', '--first-parent', '--parents', `${headBefore}..${built}`);
+      if (parents.status !== 0 || parents.stdout.trim() !== `${built} ${headBefore}`) {
+        return fail(PREPARE_BUILD_STEP, `the build commit ${built.slice(0, 12)} is not one commit on ${headBefore.slice(0, 12)}; not recorded (fail closed)`);
+      }
+      const problem = buildCommitProblem(exec, cwd, built, headBefore, build.outputs);
+      if (problem) return fail(PREPARE_BUILD_STEP, `the build commit ${built.slice(0, 12)} is not housekeeping: ${visibleLine(problem)}; not recorded (fail closed)`);
+      housekeepingCommits.push(built);
+      steps.push({ name: PREPARE_BUILD_STEP, status: 'ok', detail: `committed ${outputs.join(', ')}` });
+    } else {
+      steps.push({ name: PREPARE_BUILD_STEP, status: 'skipped', detail: 'build output is current' });
+    }
   }
 
   // 4. checks: the configured commands, else the built-ins the trusted base has, chosen from the diff against the base
