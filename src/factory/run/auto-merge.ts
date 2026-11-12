@@ -156,7 +156,7 @@ const DENIED_NAMES = new Set([
   'jsconfig.json', '.babelrc', '.editorconfig', '.gitattributes', '.gitmodules', '.gitignore', '.mailmap',
   'dockerfile', 'compose.yaml', 'compose.yml', 'makefile', 'justfile', 'taskfile.yml', 'codeowners',
   'agents.md', 'claude.md', 'gemini.md', 'copilot-instructions.md', 'omg.jsonc', 'omc.jsonc', 'config.jsonc', '.mcp.json',
-  'known-flaky-tests.json', 'renovate.json', 'dependabot.yml', 'lefthook.yml', '.pre-commit-config.yaml', 'jenkinsfile',
+  'renovate.json', 'dependabot.yml', 'lefthook.yml', '.pre-commit-config.yaml', 'jenkinsfile',
   '.gitlab-ci.yml', '.travis.yml', 'appveyor.yml', '.appveyor.yml', '.drone.yml', 'bitbucket-pipelines.yml', '.woodpecker.yml',
   'azure-pipelines.yml', 'azure-pipelines.yaml',
 ]);

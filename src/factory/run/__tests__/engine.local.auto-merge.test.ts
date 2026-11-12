@@ -33,6 +33,10 @@ describe('factory run on the local forge: opt-in auto-merge', () => {
 
   it('on for this repository in the user config: the engine merges the exact head and the run finishes merged', async () => {
     w = localWorld();
+    // The merge commit is yours: the repository needs a committer identity (CI runners have none globally).
+    gitIn(w.root, 'config', 'user.name', 't');
+    gitIn(w.root, 'config', 'user.email', 't@example.invalid');
+    gitIn(w.root, 'config', 'commit.gpgsign', 'false');
     const before = gitIn(w.root, 'rev-parse', BASE);
     const out = await runFactoryEngine(localOpts(w, lanesFor(w, [docs(), review('approve')]), { autoMergeUserConfig: auto(w.root) }));
 
