@@ -43,10 +43,13 @@ export function parseCommitParents(stdout: string): CommitParents[] | null {
 
 const HOUSEKEEPING_DIR = 'inventory/';
 
-/** `git diff --name-only --no-renames -z <from> <to>` paths outside inventory/; null when the diff fails. */
-function outsideInventory(exec: Exec, cwd: string, from: string, to: string): string[] | null {
+/**
+ * `git diff --name-only --no-renames -z <from> <to>` paths outside inventory/
+ * and the trusted ship.prepare.build outputs; null when the diff fails.
+ */
+function outsideHousekeeping(exec: Exec, cwd: string, from: string, to: string, dirs: readonly string[]): string[] | null {
   const res = exec('git', ['diff', '--name-only', '--no-renames', '-z', from, to], { cwd, env: TRUSTED_READ_ENV });
-  return res.status === 0 ? res.stdout.split('\0').filter((f) => f.length > 0 && !f.startsWith(HOUSEKEEPING_DIR)) : null;
+  return res.status === 0 ? res.stdout.split('\0').filter((f) => f.length > 0 && !dirs.some((d) => f.startsWith(d))) : null;
 }
 
 /**
@@ -60,7 +63,7 @@ function outsideInventory(exec: Exec, cwd: string, from: string, to: string): st
  * both the engine's merge and merge-tree's, so a merge made while one is
  * configured is refused. Any git failure is a reason (fail closed).
  */
-function housekeepingContentProblem(exec: Exec, cwd: string, c: CommitParents, drivers: () => string | null): string | null {
+function housekeepingContentProblem(exec: Exec, cwd: string, c: CommitParents, drivers: () => string | null, buildOutputs: readonly string[]): string | null {
   const short = (s: string) => s.slice(0, 12);
   let expected = c.parents[0];
   if (c.parents.length === 2) {
@@ -74,9 +77,11 @@ function housekeepingContentProblem(exec: Exec, cwd: string, c: CommitParents, d
     }
     expected = first;
   }
-  const outside = outsideInventory(exec, cwd, expected, c.sha);
+  // A one-parent commit may also be prepare's build commit: the trusted ship.prepare.build outputs. A merge stays inventory-only.
+  const dirs = [HOUSEKEEPING_DIR, ...(c.parents.length === 1 ? buildOutputs.map((o) => `${o}/`) : [])];
+  const outside = outsideHousekeeping(exec, cwd, expected, c.sha, dirs);
   if (outside === null) return `could not diff it against ${c.parents.length === 2 ? 'the rebuilt merge' : `its parent ${short(expected)}`}`;
-  return outside.length > 0 ? `it changes files outside ${HOUSEKEEPING_DIR}: ${outside.join(', ')}` : null;
+  return outside.length > 0 ? `it changes files outside ${dirs.join(', ')}: ${outside.join(', ')}` : null;
 }
 
 /**
@@ -88,9 +93,11 @@ function housekeepingContentProblem(exec: Exec, cwd: string, c: CommitParents, d
  * recorded one- or two-parent housekeeping commit (housekeepingContentProblem).
  * `baseSha` must be in the object store (fetched and checked against
  * GitHub); an unknown one puts nothing in baseHistory (fail closed).
+ * `buildOutputs` is the TRUSTED ship.prepare.build outputs (user config or
+ * the base, never the head): a one-parent housekeeping commit may change them.
  */
 export function readCommitsSinceReview(
-  exec: Exec, cwd: string, reviewed: string | undefined, head: string, baseSha: string, housekeeping: readonly string[],
+  exec: Exec, cwd: string, reviewed: string | undefined, head: string, baseSha: string, housekeeping: readonly string[], buildOutputs: readonly string[] = [],
 ): { commitsSinceReview: CommitParents[] | null; baseHistory: Set<string>; housekeepingContent: Map<string, string | null> } {
   const baseHistory = new Set<string>();
   const housekeepingContent = new Map<string, string | null>();
@@ -113,7 +120,7 @@ export function readCommitsSinceReview(
     if (c.parents.length === 2 && exec('git', ['merge-base', '--is-ancestor', second, baseSha], { cwd }).status === 0) {
       baseHistory.add(second);
     }
-    if (c.parents.length === 1 || c.parents.length === 2) housekeepingContent.set(c.sha, housekeepingContentProblem(exec, cwd, c, readDrivers));
+    if (c.parents.length === 1 || c.parents.length === 2) housekeepingContent.set(c.sha, housekeepingContentProblem(exec, cwd, c, readDrivers, buildOutputs));
   }
   return { commitsSinceReview, baseHistory, housekeepingContent };
 }
@@ -143,7 +150,8 @@ export interface MergeInput {
   baseHistory: ReadonlySet<string>;
   /**
    * Content check of each recorded one- or two-parent housekeeping commit in
-   * commitsSinceReview: null when it changes only inventory/, else why not.
+   * commitsSinceReview: null when it changes only inventory/ (a one-parent
+   * commit: or the trusted ship.prepare.build outputs), else why not.
    * A housekeeping commit missing from the map is refused (fail closed).
    */
   housekeepingContent: ReadonlyMap<string, string | null>;
@@ -205,7 +213,8 @@ export function mergeCommand(pr: number, headSha: string): string[] { return ghM
  * recorded merge has exactly two parents and brings in a commit in GitHub's
  * current base history (so a merge of a forged `origin/<base>` is not
  * housekeeping, even when the engine recorded it), and every recorded commit
- * changes nothing outside inventory/ beyond what its parents give (so a hook,
+ * changes nothing outside inventory/ (a one-parent commit: or the trusted
+ * ship.prepare.build outputs) beyond what its parents give (so a hook,
  * a merge driver or a file staged by another lane cannot ride along).
  */
 function unreviewedReasons(
