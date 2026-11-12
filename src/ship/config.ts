@@ -19,7 +19,7 @@ import { parseJsonc } from '../utils/jsonc.js';
 import { getConfigPaths, loadJsoncFile } from '../config/loader.js';
 import { LEGACY_PROJECT_CONFIG_FILE, resolveProjectConfigPath } from '../config/project-config-path.js';
 import { parseAzureDevOpsRepoUrl, urlHostAgrees } from '../providers/remote-url.js';
-import { TRUSTED_READ_ENV, type Exec } from './exec.js';
+import { isBuildOutputDir, TRUSTED_READ_ENV, type Exec } from './exec.js';
 
 export interface ShipConfig {
   /** Integration branch PRs target and `prepare` merges in. */
@@ -201,11 +201,11 @@ export function resolveShipConfig(input: unknown): ShipConfig {
     }
     const build = (raw.prepare as Record<string, unknown>).build;
     if (build !== undefined) {
-      const want = '{ "command": ["npm", "run", "build"], "outputs": ["dist"] }: an argv and one or more repo-relative directories (not ., .git or inventory)';
+      const want = '{ "command": ["npm", "run", "build"], "outputs": ["dist"] }: an argv and one or more repo-relative directories (no . or .. segment; not in inventory, .git, .github, .copilot, .omg, .omc or node_modules)';
       const b = build as Record<string, unknown> | null;
       if (!b || typeof b !== 'object' || Array.isArray(b) || !argv(b.command) || !Array.isArray(b.outputs) || b.outputs.length === 0) bad('prepare.build', want);
       const outputs = (b!.outputs as unknown[]).map((o) => (typeof o === 'string' ? o.replace(/\/+$/, '') : o));
-      const okOutput = (o: unknown): o is string => isRepoPath(o) && o !== '.' && o.split('/')[0].toLowerCase() !== '.git' && o.split('/')[0] !== 'inventory';
+      const okOutput = (o: unknown): o is string => typeof o === 'string' && isBuildOutputDir(o);
       if (!outputs.every(okOutput)) bad('prepare.build', want);
       config.prepareBuild = { command: [...(b!.command as string[])], outputs: [...new Set(outputs as string[])] };
     }

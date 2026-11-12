@@ -18,11 +18,12 @@
  * of every engine commit anyway (readCommitsSinceReview).
  */
 
-import { existsSync } from 'fs';
+import { existsSync, lstatSync, type Stats } from 'fs';
 import { isAbsolute, join, posix } from 'path';
 import { visibleLine } from '../forge/review-feedback.js';
 import { isPlainBranchName, readBaseFile, remoteRepoMismatch } from './config.js';
 import { BUILD_COMMIT_MESSAGE, type Exec, type ExecResult } from './exec.js';
+import { buildCommitProblem } from './merge.js';
 
 export type StepStatus = 'ok' | 'skipped' | 'failed';
 
@@ -224,6 +225,14 @@ export function selectGeneratorChecks(changed: readonly string[]): string[][] {
   return out;
 }
 
+function lstatOrNull(p: string): Stats | null {
+  try {
+    return lstatSync(p);
+  } catch {
+    return null;
+  }
+}
+
 function lines(text: string): string[] {
   return text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
 }
@@ -373,16 +382,33 @@ function* prepareSteps(opts: PrepareOptions): Generator<PrepareCheckRun, Prepare
       return r.status === 0 ? r.stdout.split('\0').filter(Boolean) : null;
     };
     const inOutputs = (p: string) => build.outputs.some((o) => p === o || p.startsWith(`${o}/`));
+    const shown = (paths: string[]) => paths.slice(0, 10).map((p) => visibleLine(p)).join(', ');
+    // The build compiles what is in the checkout, and `git add -f` takes every file in the outputs: an untracked
+    // source file, or an ignored file already in an output, would ship unreviewed. Only a clean checkout is built.
     const before = status();
-    const headBefore = head();
     if (before === null) return fail(PREPARE_BUILD_STEP, 'git status failed before the build');
+    if (before.length > 0) {
+      return fail(PREPARE_BUILD_STEP, `the checkout has untracked or changed files, which the build could compile into its output; nothing is built (fail closed). Remove or commit them: ${shown(before.map((e) => e.slice(3)))}`);
+    }
+    for (const o of build.outputs) {
+      // An output is a real directory (or absent until the build makes it), never a file or a link.
+      const st = lstatOrNull(join(cwd, o));
+      if (st && (st.isSymbolicLink() || !st.isDirectory())) return fail(PREPARE_BUILD_STEP, `ship.prepare.build output ${o} is not a directory`);
+    }
+    const preIgnored = git('ls-files', '-z', '-o', '-i', '--exclude-standard', '--', ...build.outputs);
+    if (preIgnored.status !== 0) return fail(PREPARE_BUILD_STEP, 'git ls-files failed before the build');
+    const stray = preIgnored.stdout.split('\0').filter(Boolean);
+    if (stray.length > 0) {
+      return fail(PREPARE_BUILD_STEP, `ignored files are already in ship.prepare.build.outputs, and git add -f would commit them; nothing is built (fail closed). Remove them: ${shown(stray)}`);
+    }
+    const headBefore = head();
     const r = yield { step: PREPARE_BUILD_STEP, kind: 'build', argv: build.argv, exe: build.exe, args: build.args };
     if (r.notStarted !== undefined) return fail(PREPARE_SANDBOX_STEP, `${PREPARE_BUILD_STEP}: ${r.notStarted}`);
     if (r.status !== 0) return fail(PREPARE_BUILD_STEP, tail(`${r.stdout}\n${r.stderr}`));
     if (head() !== headBefore) return fail(PREPARE_BUILD_STEP, 'the build moved HEAD (it made or reset a commit); the build only writes files, prepare commits them');
     const after = status();
     if (after === null) return fail(PREPARE_BUILD_STEP, 'git status failed after the build');
-    const outside = after.filter((e) => !before.includes(e) && !inOutputs(e.slice(3)));
+    const outside = after.filter((e) => !inOutputs(e.slice(3)));
     if (outside.length > 0) {
       // The names are the build's (the PR's code): shown, never raw.
       return fail(PREPARE_BUILD_STEP, `the build changed files outside ship.prepare.build.outputs (${build.outputs.join(', ')}), so nothing is committed (fail closed): ${outside.slice(0, 10).map((e) => visibleLine(e.slice(3))).join(', ')}`);
@@ -396,7 +422,15 @@ function* prepareSteps(opts: PrepareOptions): Generator<PrepareCheckRun, Prepare
       // Only the outputs: a file a concurrent lane staged meanwhile is not swept into the engine's commit.
       const committed = git('commit', '--no-verify', '-m', BUILD_COMMIT_MESSAGE, '--', ...outputs);
       if (committed.status !== 0) return fail(PREPARE_BUILD_STEP, tail(committed.stderr || committed.stdout));
-      housekeepingCommits.push(head());
+      // Recorded only when it is what merge accepts: one parent, the pre-build HEAD, and only the outputs (no link).
+      const built = head();
+      const parents = git('rev-list', '--first-parent', '--parents', `${headBefore}..${built}`);
+      if (parents.status !== 0 || parents.stdout.trim() !== `${built} ${headBefore}`) {
+        return fail(PREPARE_BUILD_STEP, `the build commit ${built.slice(0, 12)} is not one commit on ${headBefore.slice(0, 12)}; not recorded (fail closed)`);
+      }
+      const problem = buildCommitProblem(exec, cwd, built, headBefore, build.outputs);
+      if (problem) return fail(PREPARE_BUILD_STEP, `the build commit ${built.slice(0, 12)} is not housekeeping: ${visibleLine(problem)}; not recorded (fail closed)`);
+      housekeepingCommits.push(built);
       steps.push({ name: PREPARE_BUILD_STEP, status: 'ok', detail: `committed ${outputs.join(', ')}` });
     } else {
       steps.push({ name: PREPARE_BUILD_STEP, status: 'skipped', detail: 'build output is current' });

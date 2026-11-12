@@ -6,7 +6,7 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ### Added
 
-- **`ship.prepare.build`: prepare rebuilds committed build output.** Set a build command and its output directories (for example `npm run build` with `dist` and `bridge`) in the user config or the base's `.copilot/omg.jsonc`. Prepare runs it after the base merge, in the same sandbox as its checks, and commits only those directories as a housekeeping commit. A build that writes anywhere else fails prepare. `omg ship merge` accepts that commit when it touches only the trusted outputs. This repository now uses it, so a maintainer no longer has to rebuild and commit `dist/` and `bridge/` by hand.
+- **`ship.prepare.build`: prepare rebuilds committed build output.** Set a build command and its output directories (for example `npm run build` with `dist` and `bridge`) in the user config or the base's `.copilot/omg.jsonc`. Prepare runs it after the base merge, in the same sandbox as its checks, and commits only those directories as a housekeeping commit. A build that writes anywhere else fails prepare, and so does a checkout with untracked files or with ignored files already in an output. Outputs under `.git`, `.github`, `.copilot`, `.omg` or `node_modules` are refused, and `omg factory run` seals the build per run. `omg ship merge` accepts that commit when it touches only the trusted outputs. This repository now uses it, so a maintainer no longer has to rebuild and commit `dist/` and `bridge/` by hand.
 
 ### Docs
 

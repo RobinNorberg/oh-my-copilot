@@ -5,7 +5,7 @@ import { join } from 'path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { assertSafeCommand, defaultExec, guardExec, type Exec } from '../exec.js';
 import { loadTrustedShipConfig, resolveShipConfig, trustedPrepareBuild } from '../config.js';
-import { readCommitsSinceReview } from '../merge.js';
+import { buildCommitProblem, readCommitsSinceReview } from '../merge.js';
 import { BUILD_COMMIT_MESSAGE, PREPARE_BUILD_STEP, PREPARE_CONFIG_STEP, runPrepare } from '../prepare.js';
 
 const dirs: string[] = [];
@@ -132,6 +132,71 @@ describe('ship.prepare.build in prepare', () => {
     expect(result.blockedReason).toMatch(/moved HEAD/);
   });
 
+  it('review-529 M1a: an untracked source file fails the build step before the build runs; nothing is committed', () => {
+    const r = repo();
+    writeFileSync(join(r.dir, 'src', 'evil.ts'), 'evil\n');
+    const headBefore = git(r.dir, 'rev-parse', 'HEAD');
+    const { result, ran } = prepare(r, (cwd) => {
+      writeFileSync(join(cwd, 'dist', 'evil.js'), 'compiled evil\n');
+      return 0;
+    });
+    expect(result.ok).toBe(false);
+    expect(ran).toEqual([]);
+    expect(result.steps.at(-1)).toMatchObject({ name: PREPARE_BUILD_STEP, status: 'failed' });
+    expect(result.blockedReason).toMatch(/untracked or changed files.*src\/evil\.ts/);
+    // Only the base merge was made (and is recorded); no build commit.
+    expect(result.housekeepingCommits).toHaveLength(1);
+    expect(git(r.dir, 'rev-list', '--count', `${headBefore}..HEAD`)).toBe('2');
+    expect(git(r.dir, 'log', '-1', '--format=%s')).not.toBe(BUILD_COMMIT_MESSAGE);
+  });
+
+  it('review-529 M1b: an ignored file already in an output fails the build step before the build runs', () => {
+    const r = repo();
+    writeFileSync(join(r.dir, 'dist', 'evil.js'), 'pre-placed\n');
+    const { result, ran } = prepare(r, () => 0);
+    expect(result.ok).toBe(false);
+    expect(ran).toEqual([]);
+    expect(result.blockedReason).toMatch(/ignored files are already in ship\.prepare\.build\.outputs.*dist\/evil\.js/);
+    expect(git(r.dir, 'log', '-1', '--format=%s')).not.toBe(BUILD_COMMIT_MESSAGE);
+    expect(git(r.dir, 'ls-files', 'dist')).toBe('dist/a.js');
+  });
+
+  it('review-529 L2: an output that is a file, not a directory, fails the build step', () => {
+    const r = repo();
+    const { result, ran } = prepare(r, () => 0, { build: { ...BUILD, outputs: ['.gitignore'] } });
+    expect(result.ok).toBe(false);
+    expect(ran).toEqual([]);
+    expect(result.blockedReason).toMatch(/output \.gitignore is not a directory/);
+  });
+
+  it('review-529 L1: a build commit whose parent is not the pre-build HEAD is not recorded', () => {
+    const r = repo();
+    const real = guardExec(defaultExec);
+    const lying: Exec = (cmd, args, o) => {
+      const res = real(cmd, args, o);
+      return args[0] === 'rev-list' ? { ...res, stdout: `${res.stdout.trim().split(' ')[0]} ${'e'.repeat(40)}\n` } : res;
+    };
+    const { result } = prepare(r, (cwd) => { writeFileSync(join(cwd, 'dist', 'x.js'), 'x\n'); return 0; }, { exec: lying });
+    expect(result.ok).toBe(false);
+    expect(result.blockedReason).toMatch(/is not one commit on .*not recorded/);
+    expect(result.housekeepingCommits).toHaveLength(1);
+  });
+
+  it('review-529 N1: the merge rule and prepare\'s own check refuse a symlink or gitlink in the build output', () => {
+    for (const mode of ['120000', '160000']) {
+      const r = repo();
+      const parent = git(r.dir, 'rev-parse', 'HEAD');
+      // Index entries by mode (no real symlink needed, so this runs on Windows too).
+      const target = mode === '120000' ? execFileSync('git', ['hash-object', '-w', '--stdin'], { cwd: r.dir, input: '../../etc\n', encoding: 'utf8' }).trim() : parent;
+      git(r.dir, 'update-index', '--add', '--cacheinfo', `${mode},${target},dist/link`);
+      git(r.dir, 'commit', '-q', '--no-verify', '-m', BUILD_COMMIT_MESSAGE);
+      const head = git(r.dir, 'rev-parse', 'HEAD');
+      expect(buildCommitProblem(guardExec(defaultExec), r.dir, head, parent, ['dist']), mode).toMatch(/adds a symlink or submodule: dist\/link/);
+      const since = readCommitsSinceReview(guardExec(defaultExec), r.dir, r.reviewed, head, r.baseSha, [head], ['dist']);
+      expect(since.housekeepingContent.get(head), mode).toMatch(/symlink or submodule/);
+    }
+  });
+
   it('the merge rule refuses a one-parent housekeeping commit with non-output content', () => {
     const r = repo();
     writeFileSync(join(r.dir, 'dist', 'x.js'), 'x\n');
@@ -153,6 +218,10 @@ describe('ship.prepare.build config', () => {
       'npm run build', { command: ['npm'] }, { command: [], outputs: ['dist'] }, { command: ['npm'], outputs: [] },
       { command: ['npm'], outputs: ['.'] }, { command: ['npm'], outputs: ['../x'] }, { command: ['npm'], outputs: ['.git'] },
       { command: ['npm'], outputs: ['.GIT/hooks'] }, { command: ['npm'], outputs: ['inventory'] }, { command: ['npm'], outputs: ['/abs'] }, { command: ['npm'], outputs: ['-f'] },
+      // review-529 L2: no `.` segment anywhere, no trust root (or anything under one).
+      { command: ['npm'], outputs: ['./dist'] }, { command: ['npm'], outputs: ['dist/.'] }, { command: ['npm'], outputs: ['dist/./x'] },
+      { command: ['npm'], outputs: ['.github'] }, { command: ['npm'], outputs: ['.github/workflows'] }, { command: ['npm'], outputs: ['.copilot'] },
+      { command: ['npm'], outputs: ['.omg'] }, { command: ['npm'], outputs: ['.OMC'] }, { command: ['npm'], outputs: ['node_modules'] }, { command: ['npm'], outputs: ['packages/a/node_modules'] },
     ]) {
       expect(() => resolveShipConfig({ prepare: { build: bad } }), JSON.stringify(bad)).toThrow(/ship\.prepare\.build must be/);
     }
@@ -178,7 +247,9 @@ describe('ship.prepare.build config', () => {
     expect(() => assertSafeCommand('git', ['commit', '--no-verify', '-m', BUILD_COMMIT_MESSAGE, '--', 'dist'])).not.toThrow();
     expect(() => assertSafeCommand('git', ['diff', '--cached', '--quiet', '--', 'dist', 'bridge'])).not.toThrow();
     expect(() => assertSafeCommand('git', ['status', '--porcelain=v1', '-z', '--untracked-files=all', '--no-renames'])).not.toThrow();
-    for (const bad of [['add', '-f', '-A', '--', '.'], ['add', '-f', '-A', '--', '.git'], ['add', '-f', '-A', '--', '../x'], ['add', '-f', '-A', '--'], ['commit', '--no-verify', '-m', BUILD_COMMIT_MESSAGE, '--', ':/'], ['commit', '--no-verify', '-m', 'x', '--', 'dist'], ['add', '-f', '-A', '--', '*']]) {
+    expect(() => assertSafeCommand('git', ['ls-files', '-z', '-o', '-i', '--exclude-standard', '--', 'dist', 'bridge'])).not.toThrow();
+    expect(() => assertSafeCommand('git', ['diff', '--raw', '--no-renames', '-z', '--no-abbrev', 'a'.repeat(40), 'b'.repeat(40)])).not.toThrow();
+    for (const bad of [['ls-files', '-z', '-o', '-i', '--exclude-standard', '--', '.'], ['ls-files', '-z', '-o', '-i', '--exclude-standard', '--', 'node_modules'], ['add', '-f', '-A', '--', '.github'], ['add', '-f', '-A', '--', './dist'], ['add', '-f', '-A', '--', '.'],['add', '-f', '-A', '--', '.git'], ['add', '-f', '-A', '--', '../x'], ['add', '-f', '-A', '--'], ['commit', '--no-verify', '-m', BUILD_COMMIT_MESSAGE, '--', ':/'], ['commit', '--no-verify', '-m', 'x', '--', 'dist'], ['add', '-f', '-A', '--', '*']]) {
       expect(() => assertSafeCommand('git', bad), bad.join(' ')).toThrow();
     }
   });

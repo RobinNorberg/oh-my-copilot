@@ -335,7 +335,7 @@ export function shipCommand(execImpl: Exec = defaultExec, loadShipConfig: ShipCo
   cmd
     .command('prepare <pr>')
     .description('Merge origin/<base> in (never rebase), run ship.prepare.checks or the tsc/lint/targeted tests the repository has, regenerate the inventory as the last commit')
-    .option('--no-checks', 'Skip the checks (merge + inventory only)')
+    .option('--no-checks', 'Skip the checks (merge + inventory only); a configured ship.prepare.build still runs, which runs the PR\'s build scripts unsandboxed')
     .option('--push', 'Plain push of the branch afterwards (never forced)')
     .option('--json', 'JSON output')
     .action((prRaw: string, o: { checks?: boolean; push?: boolean; json?: boolean }) =>
