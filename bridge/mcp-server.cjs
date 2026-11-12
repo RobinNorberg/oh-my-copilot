@@ -60844,7 +60844,6 @@ var init_collect2 = __esm({
     import_path127 = require("path");
     init_score();
     init_collect();
-    init_budget();
     init_state5();
   }
 });

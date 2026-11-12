@@ -81,10 +81,13 @@ export interface DashboardData {
 }
 /** Milliseconds per phase: each transition runs until the next one; the last runs to updatedAt (nothing once terminal). Park notes are not transitions. */
 export declare function phaseDurations(s: Pick<FactoryRunState, 'history' | 'updatedAt'>): Record<string, number>;
-export declare function summarizeRun(s: FactoryRunState): DashboardRun;
+export declare function summarizeRun(s: FactoryRunState, o?: {
+    sinceMs?: number | null;
+    warnings?: string[];
+}): DashboardRun;
 /** Read `bench-results/*.json`: a file counts when it parses and carries a numeric `schemaVersion`; anything else is skipped with a warning. */
 export declare function readBenchResults(root: string, warnings: string[]): DashboardBench[];
-/** Parse `--since`: a date (`2026-11-01`) or an ISO timestamp. */
+/** Parse `--since`: a date (`2026-11-01`, local midnight) or an ISO timestamp. */
 export declare function parseSince(value: string): number;
 export declare function collectDashboard(root: string, o?: {
     since?: string;

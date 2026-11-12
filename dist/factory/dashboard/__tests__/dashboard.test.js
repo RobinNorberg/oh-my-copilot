@@ -67,6 +67,36 @@ describe('collectDashboard', () => {
         expect(d.bench[0]).toMatchObject({ file: 'a.json', mode: 'fake', totals: { passRate: 0.9 }, issues: [{ id: 'i1', outcome: 'pass', expect: 'merged-park' }] });
         expect(d.warnings.filter((w) => w.startsWith('bench-results/'))).toHaveLength(2);
     });
+    it('a null history entry is a warning and the page is still written', () => {
+        run(1, 'Good', (x) => ({ ...x, lanes: [lane('l1', 'implement', 1, '2026-11-11T12:00:00.000Z')] }));
+        run(2, 'Bad', (x) => ({ ...x, history: [...x.history, null] }));
+        const d = collectDashboard(root);
+        expect(d.runs.map((r) => r.key)).toEqual(['#1']);
+        expect(d.warnings.join('\n')).toMatch(/#2|run 2/);
+        expect(renderDashboardHtml(d)).toContain('Factory dashboard');
+    });
+    it('string usage counts as 0 with a warning', () => {
+        run(1, 'S', (x) => ({ ...x, lanes: [lane('l1', 'implement', 2, '2026-11-11T12:00:00.000Z'), lane('l2', 'review', '3', '2026-11-11T12:00:00.000Z')] }));
+        const d = collectDashboard(root);
+        expect(d.totals.credits).toBe(2);
+        expect(d.byDay[0].credits).toBe(2);
+        expect(d.warnings.join('\n')).toMatch(/l2.*not numeric/);
+    });
+    it('a lane kind of __proto__ does not pollute', () => {
+        run(1, 'P', (x) => ({ ...x, lanes: [lane('l1', '__proto__', 1, '2026-11-11T12:00:00.000Z')] }));
+        const d = collectDashboard(root);
+        expect({}.credits).toBeUndefined();
+        expect(Object.keys(d.runs[0].roles)).toEqual(['__proto__']);
+    });
+    it('--since filters lanes in totals and per day alike, in local time', () => {
+        const since = new Date(2026, 10, 5, 0, 0).getTime();
+        const at = (h) => new Date(since + h * 3_600_000).toISOString();
+        run(1, 'Mixed', (x) => ({ ...x, updatedAt: at(48), lanes: [lane('l1', 'implement', 2, at(-5)), lane('l2', 'review', 3, at(1))] }));
+        const d = collectDashboard(root, { since: '2026-11-05' });
+        expect(d.totals.credits).toBe(3);
+        expect(d.byDay.reduce((a, b) => a + b.credits, 0)).toBe(3);
+        expect(d.byDay[0].day).toBe('2026-11-05');
+    });
     it('an unreadable run state is a warning, not a crash', () => {
         mkdirSync(join(root, '.omg', 'state', 'factory'), { recursive: true });
         writeFileSync(join(root, '.omg', 'state', 'factory', 'run-9.json'), 'nope');
@@ -78,7 +108,7 @@ describe('collectDashboard', () => {
 describe('renderDashboardHtml', () => {
     it('escapes untrusted titles, park text and bench rows and carries no script or external URL', () => {
         const evil = '<script>alert(1)</script><img src=x onerror=alert(2)>';
-        run(1, evil, (s) => setGate(s, 'x', evil, '2026-11-10T10:05:00.000Z'));
+        run(1, evil, (s) => ({ ...setGate(s, 'x', evil, '2026-11-10T10:05:00.000Z'), lanes: [lane('l1', evil, 1, '2026-11-10T10:06:00.000Z')] }));
         mkdirSync(join(root, 'bench-results'));
         writeFileSync(join(root, 'bench-results', 'a.json'), JSON.stringify({ schemaVersion: 1, mode: evil, issues: [{ id: evil, outcome: evil }] }));
         const html = renderDashboardHtml(collectDashboard(root));

@@ -17,7 +17,7 @@ export function factoryDashboardCommand(deps = defaultDashboardDeps) {
         .description('One static HTML page of all factory runs, parks, time per phase, credits per role and day, and bench results (local state only)')
         .option('--out <file>', 'write the HTML page to this file (default: print it)')
         .option('--json', 'emit the same data as JSON (schemaVersion 1)')
-        .option('--since <date>', 'only runs updated on or after this date (2026-11-01)')
+        .option('--since <date>', 'only runs and lanes on or after this date (2026-11-01 means local midnight; days are in local time)')
         .action((o) => {
         let root;
         try {

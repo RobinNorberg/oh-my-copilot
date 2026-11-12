@@ -116709,7 +116709,7 @@ function fetchUsageFromApi(accessToken, clientVersion) {
   });
 }
 function rateLimitHeadersToUsage(headers) {
-  const num6 = (name) => {
+  const num7 = (name) => {
     const raw = headers[name];
     const value = Array.isArray(raw) ? raw[0] : raw;
     if (value == null) return void 0;
@@ -116717,12 +116717,12 @@ function rateLimitHeadersToUsage(headers) {
     return isFinite(parsed2) ? parsed2 : void 0;
   };
   const iso2 = (name) => {
-    const secs = num6(name);
+    const secs = num7(name);
     if (secs == null) return void 0;
     return new Date(secs * 1e3).toISOString();
   };
-  const fiveHour = num6("anthropic-ratelimit-unified-5h-utilization");
-  const sevenDay = num6("anthropic-ratelimit-unified-7d-utilization");
+  const fiveHour = num7("anthropic-ratelimit-unified-5h-utilization");
+  const sevenDay = num7("anthropic-ratelimit-unified-7d-utilization");
   if (fiveHour == null && sevenDay == null) return null;
   const usage = {};
   if (fiveHour != null) {
@@ -144024,6 +144024,12 @@ function add(into, credits, premiumRequests) {
   into.premiumRequests += premiumRequests;
   into.lanes += 1;
 }
+function laneUsage(lane, warnings) {
+  const credits = lane.usage?.credits === void 0 ? 0 : num4(lane.usage.credits);
+  const requests = lane.usage?.premiumRequests === void 0 ? 0 : num4(lane.usage.premiumRequests);
+  if (credits === null || requests === null) warnings.push(`lane ${text4(lane.id, 40)}: usage is not numeric, counted as 0`);
+  return { credits: credits ?? 0, requests: requests ?? 0 };
+}
 function phaseDurations(s) {
   const out = {};
   const moves = s.history.filter((h) => !isParkNote(h));
@@ -144037,17 +144043,20 @@ function phaseDurations(s) {
   }
   return out;
 }
-function summarizeRun(s) {
-  const roles = {};
+function summarizeRun(s, o = {}) {
+  const roles = /* @__PURE__ */ Object.create(null);
   const total = emptyUsage();
+  const warnings = o.warnings ?? [];
   for (const lane of s.lanes) {
+    if (o.sinceMs != null) {
+      const t = laneTime(lane);
+      if (!Number.isFinite(t) || t < o.sinceMs) continue;
+    }
     const role = lane.role ?? lane.kind;
-    const credits = lane.usage?.credits ?? 0;
-    const requests = lane.usage?.premiumRequests ?? 0;
-    add(roles[role] ??= emptyUsage(), credits, requests);
+    const { credits, requests } = laneUsage(lane, warnings);
+    add(roles[text4(role, 40)] ??= emptyUsage(), credits, requests);
     add(total, credits, requests);
   }
-  total.credits = round(runCredits(s));
   const parks = s.history.flatMap((h) => GATE_NOTE2.exec(h.note)?.[1] ?? []).map((n) => text4(n, 60));
   return {
     key: runLabel(runKeyOf(s)),
@@ -144060,7 +144069,7 @@ function summarizeRun(s) {
     updatedAt: text4(s.updatedAt, 40),
     elapsedMs: Number.isFinite(s.elapsedMs) ? s.elapsedMs : 0,
     phaseMs: phaseDurations(s),
-    roles,
+    roles: { ...roles },
     parks,
     ...total
   };
@@ -144115,8 +144124,10 @@ function readBenchResults(root2, warnings) {
   return out;
 }
 function parseSince(value) {
-  const t = Date.parse(value.trim());
-  if (!/^\d{4}-\d{2}-\d{2}/.test(value.trim()) || !Number.isFinite(t)) throw new Error(`--since must be a date like 2026-11-01, got ${JSON.stringify(value)}`);
+  const v = value.trim();
+  const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v);
+  const t = dateOnly ? new Date(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3])).getTime() : Date.parse(v);
+  if (!/^\d{4}-\d{2}-\d{2}/.test(v) || !Number.isFinite(t)) throw new Error(`--since must be a date like 2026-11-01, got ${JSON.stringify(value)}`);
   return t;
 }
 function collectDashboard(root2, o = {}) {
@@ -144124,7 +144135,15 @@ function collectDashboard(root2, o = {}) {
   const sinceMs = o.since === void 0 ? null : parseSince(o.since);
   const { runs: states } = readRuns(root2, warnings);
   const inRange = [...states.values()].filter((s) => sinceMs === null || !(ms(s.updatedAt) < sinceMs));
-  const runs = inRange.map(summarizeRun).sort((a, b) => a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : a.key.localeCompare(b.key));
+  const summarized = [];
+  for (const s of inRange) {
+    try {
+      summarized.push({ s, r: summarizeRun(s, { sinceMs, warnings }) });
+    } catch (error2) {
+      warnings.push(`run ${text4(s.issue, 40)}: skipped (${text4(error2 instanceof Error ? error2.message : error2, 120)})`);
+    }
+  }
+  const runs = summarized.map((x) => x.r).sort((a, b) => a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : a.key.localeCompare(b.key));
   const totals = { ...emptyUsage(), runs: runs.length, elapsedMs: 0 };
   const statuses = /* @__PURE__ */ new Map();
   const parks = /* @__PURE__ */ new Map();
@@ -144148,13 +144167,14 @@ function collectDashboard(root2, o = {}) {
       roles.set(role, into);
     }
   }
-  for (const s of inRange) {
+  for (const { s } of summarized) {
     for (const lane of s.lanes) {
-      const t = ms(lane.endedAt ?? lane.startedAt);
+      const t = laneTime(lane);
       if (!Number.isFinite(t) || sinceMs !== null && t < sinceMs) continue;
-      const day = new Date(t).toISOString().slice(0, 10);
+      const day = localDay(t);
       const into = days.get(day) ?? emptyUsage();
-      add(into, lane.usage?.credits ?? 0, lane.usage?.premiumRequests ?? 0);
+      const u = laneUsage(lane, []);
+      add(into, u.credits, u.requests);
       days.set(day, into);
     }
   }
@@ -144177,7 +144197,7 @@ function collectDashboard(root2, o = {}) {
     warnings
   };
 }
-var import_fs185, import_path213, DASHBOARD_SCHEMA_VERSION, GATE_NOTE2, MAX_BENCH_FILES, MAX_BENCH_BYTES, MAX_BENCH_ISSUES, text4, emptyUsage, round, ms, isParkNote;
+var import_fs185, import_path213, DASHBOARD_SCHEMA_VERSION, GATE_NOTE2, MAX_BENCH_FILES, MAX_BENCH_BYTES, MAX_BENCH_ISSUES, text4, emptyUsage, round, ms, num4, laneTime, pad2, localDay, isParkNote;
 var init_collect2 = __esm({
   "src/factory/dashboard/collect.ts"() {
     "use strict";
@@ -144185,7 +144205,6 @@ var init_collect2 = __esm({
     import_path213 = require("path");
     init_score();
     init_collect();
-    init_budget();
     init_state6();
     DASHBOARD_SCHEMA_VERSION = 1;
     GATE_NOTE2 = /^awaiting-human: ([^:]+):/;
@@ -144196,6 +144215,13 @@ var init_collect2 = __esm({
     emptyUsage = () => ({ credits: 0, premiumRequests: 0, lanes: 0 });
     round = (n) => Math.round(n * 1e3) / 1e3;
     ms = (iso2) => Date.parse(iso2);
+    num4 = (v) => typeof v === "number" && Number.isFinite(v) ? v : null;
+    laneTime = (lane) => ms(lane.endedAt ?? lane.startedAt);
+    pad2 = (n) => String(n).padStart(2, "0");
+    localDay = (t) => {
+      const d = new Date(t);
+      return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+    };
     isParkNote = (h) => h.from !== null && h.from === h.to;
   }
 });
@@ -144229,13 +144255,13 @@ function renderDashboardHtml(d) {
   const tiles = [
     ["Runs", String(t.runs)],
     ["Lanes", String(t.lanes)],
-    ["AI credits", num4(t.credits)],
+    ["AI credits", num5(t.credits)],
     ["Premium requests", String(t.premiumRequests)],
     ["Engine time", fmtDuration(t.elapsedMs)]
   ].map(([k, v]) => `<div class="tile"><span class="muted">${esc2(k)}</span><b>${esc2(v)}</b></div>`).join("");
   const runs = table(
     ["Run", "Title", "Status", "PR", "Lanes", "Credits", "Req", "Time", "Updated"],
-    d.runs.map((r) => [r.key, r.title, r.gate ? `awaiting-human: ${r.gate.name} - ${r.gate.reason}` : r.phase, r.pr === null ? "" : `#${r.pr}`, String(r.lanes), num4(r.credits), String(r.premiumRequests), fmtDuration(r.elapsedMs), r.updatedAt])
+    d.runs.map((r) => [r.key, r.title, r.gate ? `awaiting-human: ${r.gate.name} - ${r.gate.reason}` : r.phase, r.pr === null ? "" : `#${r.pr}`, String(r.lanes), num5(r.credits), String(r.premiumRequests), fmtDuration(r.elapsedMs), r.updatedAt])
   );
   const bench = d.bench.length === 0 ? '<p class="muted">No bench-results/*.json found.</p>' : d.bench.map((b) => `
     <h3>${esc2(b.file)} <span class="muted">schema ${esc2(b.schemaVersion)}${b.mode ? `, ${esc2(b.mode)}` : ""}${b.createdAt ? `, ${esc2(b.createdAt)}` : ""}</span></h3>
@@ -144261,13 +144287,13 @@ ${warnings}
 </main></body></html>
 `;
 }
-var esc2, num4, usageText, CSS;
+var esc2, num5, usageText, CSS;
 var init_render2 = __esm({
   "src/factory/dashboard/render.ts"() {
     "use strict";
     esc2 = (v) => String(v).replace(/[&<>"'`]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;", "`": "&#96;" })[c]);
-    num4 = (n) => Number.isInteger(n) ? String(n) : n.toFixed(2);
-    usageText = (u) => `${num4(u.credits)} cr, ${u.premiumRequests} req`;
+    num5 = (n) => Number.isInteger(n) ? String(n) : n.toFixed(2);
+    usageText = (u) => `${num5(u.credits)} cr, ${u.premiumRequests} req`;
     CSS = `:root{--bg:#fafafa;--fg:#1b1f24;--muted:#5b6570;--card:#fff;--line:#d8dde3;--accent:#2b6cb0}
 @media (prefers-color-scheme:dark){:root{--bg:#14171a;--fg:#e6e9ec;--muted:#98a2ad;--card:#1d2125;--line:#323940;--accent:#63a4e8}}
 *{box-sizing:border-box}body{margin:0;padding:16px;background:var(--bg);color:var(--fg);font:14px/1.45 system-ui,sans-serif}
@@ -144282,7 +144308,7 @@ svg{max-width:100%}.bar{fill:var(--accent)}.lbl,.val{fill:var(--fg);font-size:12
 
 // src/cli/commands/factory-dashboard.ts
 function factoryDashboardCommand(deps = defaultDashboardDeps) {
-  return new Command("dashboard").description("One static HTML page of all factory runs, parks, time per phase, credits per role and day, and bench results (local state only)").option("--out <file>", "write the HTML page to this file (default: print it)").option("--json", "emit the same data as JSON (schemaVersion 1)").option("--since <date>", "only runs updated on or after this date (2026-11-01)").action((o) => {
+  return new Command("dashboard").description("One static HTML page of all factory runs, parks, time per phase, credits per role and day, and bench results (local state only)").option("--out <file>", "write the HTML page to this file (default: print it)").option("--json", "emit the same data as JSON (schemaVersion 1)").option("--since <date>", "only runs and lanes on or after this date (2026-11-01 means local midnight; days are in local time)").action((o) => {
     let root2;
     try {
       root2 = deps.root();
@@ -147372,7 +147398,7 @@ function samePathKey2(p) {
   const slashed = p.replace(/\\/g, "/").replace(/\/+$/, "");
   return process.platform === "win32" ? slashed.toLowerCase() : slashed;
 }
-function num5(v) {
+function num6(v) {
   return typeof v === "number" && Number.isFinite(v) ? v : 0;
 }
 function parseLaunchMs(stderr) {
@@ -147399,8 +147425,8 @@ function workerList(status) {
 }
 function tasksSettled(status) {
   const t = status?.tasks ?? {};
-  const total = num5(t.total);
-  return total > 0 && num5(t.completed) + num5(t.failed) === total;
+  const total = num6(t.total);
+  return total > 0 && num6(t.completed) + num6(t.failed) === total;
 }
 function leftoverReservations(projectDir, teamName) {
   const base = (0, import_path224.join)(getOmcRoot(projectDir), "state", "team-recovery", "team-instances");
@@ -147418,8 +147444,8 @@ function sessionUsage(stateRoot2, worker) {
   if (!usage) return null;
   const finalPremium = usage.shutdown_premium_requests;
   return {
-    premium: typeof finalPremium === "number" ? finalPremium : num5(usage.premium_requests),
-    credits: typeof usage.shutdown_credits === "number" ? usage.shutdown_credits : num5(usage.credits),
+    premium: typeof finalPremium === "number" ? finalPremium : num6(usage.premium_requests),
+    credits: typeof usage.shutdown_credits === "number" ? usage.shutdown_credits : num6(usage.credits),
     final: typeof usage.shutdown_credits === "number" || typeof finalPremium === "number"
   };
 }
@@ -147526,7 +147552,7 @@ async function runTeamScenario(input) {
     } catch {
     }
   }
-  const pids = sdkWorkers(evidence.status).flatMap((w) => [num5(w.host_pid), num5(w.runtime_pid)]).filter((p) => p > 0);
+  const pids = sdkWorkers(evidence.status).flatMap((w) => [num6(w.host_pid), num6(w.runtime_pid)]).filter((p) => p > 0);
   const usage = /* @__PURE__ */ new Map();
   const readUsage = () => {
     for (const worker of workers) {

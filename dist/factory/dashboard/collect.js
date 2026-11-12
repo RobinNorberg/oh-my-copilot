@@ -11,7 +11,6 @@ import { existsSync, readdirSync, readFileSync, statSync } from 'fs';
 import { join } from 'path';
 import { plainText } from '../check/score.js';
 import { readRuns } from '../board/collect.js';
-import { runCredits } from '../run/budget.js';
 import { FACTORY_PHASES, runKeyOf, runLabel } from '../run/state.js';
 export const DASHBOARD_SCHEMA_VERSION = 1;
 const GATE_NOTE = /^awaiting-human: ([^:]+):/;
@@ -27,6 +26,22 @@ function add(into, credits, premiumRequests) {
     into.lanes += 1;
 }
 const ms = (iso) => Date.parse(iso);
+const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+const laneTime = (lane) => ms(lane.endedAt ?? lane.startedAt);
+const pad2 = (n) => String(n).padStart(2, '0');
+/** Local calendar day (YYYY-MM-DD) of a timestamp. */
+const localDay = (t) => {
+    const d = new Date(t);
+    return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+};
+/** A lane's usage as numbers; a value that is not a finite number counts as 0 and adds a warning. */
+function laneUsage(lane, warnings) {
+    const credits = lane.usage?.credits === undefined ? 0 : num(lane.usage.credits);
+    const requests = lane.usage?.premiumRequests === undefined ? 0 : num(lane.usage.premiumRequests);
+    if (credits === null || requests === null)
+        warnings.push(`lane ${text(lane.id, 40)}: usage is not numeric, counted as 0`);
+    return { credits: credits ?? 0, requests: requests ?? 0 };
+}
 const isParkNote = (h) => h.from !== null && h.from === h.to;
 /** Milliseconds per phase: each transition runs until the next one; the last runs to updatedAt (nothing once terminal). Park notes are not transitions. */
 export function phaseDurations(s) {
@@ -44,17 +59,21 @@ export function phaseDurations(s) {
     }
     return out;
 }
-export function summarizeRun(s) {
-    const roles = {};
+export function summarizeRun(s, o = {}) {
+    const roles = Object.create(null);
     const total = emptyUsage();
+    const warnings = o.warnings ?? [];
     for (const lane of s.lanes) {
+        if (o.sinceMs != null) {
+            const t = laneTime(lane);
+            if (!Number.isFinite(t) || t < o.sinceMs)
+                continue;
+        }
         const role = lane.role ?? lane.kind;
-        const credits = lane.usage?.credits ?? 0;
-        const requests = lane.usage?.premiumRequests ?? 0;
-        add((roles[role] ??= emptyUsage()), credits, requests);
+        const { credits, requests } = laneUsage(lane, warnings);
+        add((roles[text(role, 40)] ??= emptyUsage()), credits, requests);
         add(total, credits, requests);
     }
-    total.credits = round(runCredits(s));
     const parks = s.history.flatMap((h) => GATE_NOTE.exec(h.note)?.[1] ?? []).map((n) => text(n, 60));
     return {
         key: runLabel(runKeyOf(s)),
@@ -67,7 +86,7 @@ export function summarizeRun(s) {
         updatedAt: text(s.updatedAt, 40),
         elapsedMs: Number.isFinite(s.elapsedMs) ? s.elapsedMs : 0,
         phaseMs: phaseDurations(s),
-        roles,
+        roles: { ...roles },
         parks,
         ...total,
     };
@@ -132,10 +151,12 @@ export function readBenchResults(root, warnings) {
     }
     return out;
 }
-/** Parse `--since`: a date (`2026-11-01`) or an ISO timestamp. */
+/** Parse `--since`: a date (`2026-11-01`, local midnight) or an ISO timestamp. */
 export function parseSince(value) {
-    const t = Date.parse(value.trim());
-    if (!/^\d{4}-\d{2}-\d{2}/.test(value.trim()) || !Number.isFinite(t))
+    const v = value.trim();
+    const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v);
+    const t = dateOnly ? new Date(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3])).getTime() : Date.parse(v);
+    if (!/^\d{4}-\d{2}-\d{2}/.test(v) || !Number.isFinite(t))
         throw new Error(`--since must be a date like 2026-11-01, got ${JSON.stringify(value)}`);
     return t;
 }
@@ -144,8 +165,17 @@ export function collectDashboard(root, o = {}) {
     const sinceMs = o.since === undefined ? null : parseSince(o.since);
     const { runs: states } = readRuns(root, warnings);
     const inRange = [...states.values()].filter((s) => sinceMs === null || !(ms(s.updatedAt) < sinceMs));
-    const runs = inRange
-        .map(summarizeRun)
+    const summarized = [];
+    for (const s of inRange) {
+        try {
+            summarized.push({ s, r: summarizeRun(s, { sinceMs, warnings }) });
+        }
+        catch (error) {
+            warnings.push(`run ${text(s.issue, 40)}: skipped (${text(error instanceof Error ? error.message : error, 120)})`);
+        }
+    }
+    const runs = summarized
+        .map((x) => x.r)
         .sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : a.key.localeCompare(b.key)));
     const totals = { ...emptyUsage(), runs: runs.length, elapsedMs: 0 };
     const statuses = new Map();
@@ -173,14 +203,15 @@ export function collectDashboard(root, o = {}) {
         }
     }
     // Per day: by the lane's end (else start) time.
-    for (const s of inRange) {
+    for (const { s } of summarized) {
         for (const lane of s.lanes) {
-            const t = ms(lane.endedAt ?? lane.startedAt);
+            const t = laneTime(lane);
             if (!Number.isFinite(t) || (sinceMs !== null && t < sinceMs))
                 continue;
-            const day = new Date(t).toISOString().slice(0, 10);
+            const day = localDay(t);
             const into = days.get(day) ?? emptyUsage();
-            add(into, lane.usage?.credits ?? 0, lane.usage?.premiumRequests ?? 0);
+            const u = laneUsage(lane, []);
+            add(into, u.credits, u.requests);
             days.set(day, into);
         }
     }
