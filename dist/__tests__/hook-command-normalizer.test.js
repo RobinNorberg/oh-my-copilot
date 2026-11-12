@@ -1,16 +1,15 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { delimiter, dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 /**
  * The shipped hooks manifest uses the exec form (`command: "node"` plus
  * `args`): the host spawns node with no shell, so a plugin root that contains
- * spaces stays one argument on Windows. POSIX installs are rewritten to the
- * find-node bootstrap unconditionally: find-node.sh resolves `node` from PATH
- * when it is there and from the nvm/fnm/volta locations when it is not. These
- * tests pin that the choice is made from the platform alone — an earlier
- * version probed the setup process's PATH, which is not the PATH hooks are
- * later spawned with.
+ * spaces stays one argument on Windows. POSIX keeps that exec form when the
+ * caller reports that `node` resolves on the hook PATH, so a config dir shared
+ * with native Windows keeps working; otherwise it is rewritten to the
+ * find-node bootstrap, which also resolves nvm/fnm/volta installs. The probe
+ * refuses to trust an npm lifecycle PATH and the default is the bootstrap.
  */
 const REPO_ROOT = join(__dirname, '..', '..');
 const MODULE_PATH = join(REPO_ROOT, 'scripts', 'lib', 'hook-command-normalizer.mjs');
@@ -29,13 +28,45 @@ describe('hook prefix selection', () => {
         }
         expect(normalizer.UNIX_HOOK_PREFIX).toContain('find-node.sh');
     });
-    it('does not consult PATH when choosing the POSIX prefix', () => {
-        // The regression this guards: probing whether `node` resolves samples the
-        // setup process's environment, not the one the host CLI spawns hooks with.
-        const source = readFileSync(MODULE_PATH, 'utf-8');
-        expect(source).not.toContain('spawnSync');
-        expect(source).not.toContain('nodeResolvesOnHookPath');
-        expect(source).not.toMatch(/\benv\.PATH\b/);
+    it('keeps the exec form on POSIX only when the caller says node resolves', () => {
+        for (const platform of ['linux', 'darwin']) {
+            expect(normalizer.hookPrefixForPlatform(platform, { nodeOnPath: true }), platform).toBe('node');
+            expect(normalizer.hookPrefixForPlatform(platform, { nodeOnPath: false }), platform).toBe(normalizer.UNIX_HOOK_PREFIX);
+        }
+        expect(normalizer.hookPrefixForPlatform('win32', { nodeOnPath: false })).toBe('node');
+    });
+});
+describe('nodeResolvesOnHookPath', () => {
+    it('reports false under an npm lifecycle script, whose PATH is not the hook PATH', () => {
+        expect(normalizer.nodeResolvesOnHookPath({ ...process.env, npm_lifecycle_event: 'postinstall' })).toBe(false);
+        expect(normalizer.nodeResolvesOnHookPath({ ...process.env, npm_execpath: '/usr/lib/npm-cli.js' })).toBe(false);
+    });
+    it('reports false when the system dirs have no node', () => {
+        expect(normalizer.nodeResolvesOnHookPath({}, [join(REPO_ROOT, 'no-such-dir')])).toBe(false);
+    });
+    it('reports true when a system dir holds the running node', () => {
+        expect(normalizer.nodeResolvesOnHookPath({}, [dirname(process.execPath)])).toBe(true);
+    });
+    it('ignores the setup PATH: a node reachable only there (nvm/fnm/volta) yields find-node', () => {
+        const env = { PATH: dirname(process.execPath), NVM_DIR: '/home/u/.nvm' };
+        const nodeOnPath = normalizer.nodeResolvesOnHookPath(env, [join(REPO_ROOT, 'no-such-dir')]);
+        expect(nodeOnPath).toBe(false);
+        const data = freshManifest();
+        normalizer.normalizeHooksDataForPlatform(data, 'linux', { nodeOnPath });
+        for (const hook of allHooks(data).filter(h => normalizer.parseHookInvocation(h))) {
+            expect(hook.command).toContain(normalizer.UNIX_HOOK_PREFIX);
+            expect(hook.args).toBeUndefined();
+        }
+    });
+    it('probes with PATH limited to the given dirs and only HOME kept', () => {
+        const env = { PATH: '/home/u/.nvm/versions/node/v22/bin', HOME: '/home/u', NVM_DIR: '/home/u/.nvm', NODE_OPTIONS: '--require x' };
+        expect(normalizer.minimalHookEnv(env, ['/usr/bin', '/bin'])).toEqual({ PATH: ['/usr/bin', '/bin'].join(delimiter), HOME: '/home/u' });
+        expect(normalizer.minimalHookEnv({}, ['/bin'])).toEqual({ PATH: '/bin' });
+    });
+    it('uses the standard system dirs, plus Homebrew and MacPorts only when they exist', () => {
+        expect(normalizer.systemPathDirs(() => false)).toEqual(['/usr/local/bin', '/usr/bin', '/bin']);
+        expect(normalizer.systemPathDirs((dir) => dir === '/opt/homebrew/bin')).toEqual(['/usr/local/bin', '/usr/bin', '/bin', '/opt/homebrew/bin']);
+        expect(normalizer.systemPathDirs(() => true)).toEqual(['/usr/local/bin', '/usr/bin', '/bin', '/opt/homebrew/bin', '/opt/local/bin']);
     });
 });
 describe('command rewriting', () => {
@@ -71,7 +102,22 @@ describe('shipped hooks manifest', () => {
         expect(shared).toEqual(freshManifest());
         expect(normalizer.normalizeHooksDataForPlatform(shared, 'win32')).toBe(false);
     });
-    it('needs no patch on Windows and is rewritten to the bootstrap on POSIX', () => {
+    it('stays unchanged on POSIX when node resolves, so a shared config dir keeps working on Windows', () => {
+        for (const platform of ['linux', 'darwin']) {
+            const data = freshManifest();
+            expect(normalizer.normalizeHooksDataForPlatform(data, platform, { nodeOnPath: true }), platform).toBe(false);
+            expect(data, platform).toEqual(freshManifest());
+            // And Windows has nothing to repair afterwards.
+            expect(normalizer.normalizeHooksDataForPlatform(data, 'win32'), platform).toBe(false);
+        }
+    });
+    it('restores the exec form on POSIX with node on PATH after an earlier find-node rewrite', () => {
+        const data = freshManifest();
+        expect(normalizer.normalizeHooksDataForPlatform(data, 'linux')).toBe(true);
+        expect(normalizer.normalizeHooksDataForPlatform(data, 'linux', { nodeOnPath: true })).toBe(true);
+        expect(data).toEqual(freshManifest());
+    });
+    it('needs no patch on Windows and is rewritten to the bootstrap on POSIX without node', () => {
         expect(normalizer.normalizeHooksDataForPlatform(freshManifest(), 'win32')).toBe(false);
         for (const platform of ['linux', 'darwin']) {
             const data = freshManifest();

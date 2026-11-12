@@ -23,6 +23,7 @@ export { RUNTIME_MIN_MAX_CREDITS };
 export const DEFAULT_FACTORY_RUN_LIMITS = Object.freeze({
     laneMaxCredits: RUNTIME_MIN_MAX_CREDITS,
     laneTimeoutMs: 30 * 60_000,
+    laneIdleMs: 15 * 60_000,
     maxRunWallTimeMs: 4 * 60 * 60_000,
     maxRetries: 1,
     maxLostRespawns: 1,
@@ -35,6 +36,7 @@ const KEYS = {
     laneMaxCredits: { field: 'laneMaxCredits', scale: 1, integer: false },
     maxRunCredits: { field: 'maxRunCredits', scale: 1, integer: false },
     laneTimeoutMinutes: { field: 'laneTimeoutMs', scale: 60_000, integer: false },
+    laneIdleMinutes: { field: 'laneIdleMs', scale: 60_000, integer: false },
     maxRunWallTimeMinutes: { field: 'maxRunWallTimeMs', scale: 60_000, integer: false },
     maxRetries: { field: 'maxRetries', scale: 1, integer: true },
     maxFixRounds: { field: 'maxFixRounds', scale: 1, integer: true },
@@ -106,6 +108,9 @@ export function resolveFactoryRunLimits(trustedUser, project) {
     if (limits.laneTimeoutMs <= 0 || limits.laneTimeoutMs > MAX_TIMEOUT_MS) {
         throw new Error(`factory.run.laneTimeoutMinutes must be above 0 and at most ${MAX_TIMEOUT_MS / 60_000}`);
     }
+    // Below a minute would end lanes between polls; there is no "off" (a quiet lane past laneTimeoutMinutes ends anyway).
+    if (limits.laneIdleMs < 60_000)
+        throw new Error(`factory.run.laneIdleMinutes must be at least 1 (got ${limits.laneIdleMs / 60_000})`);
     assertLaneCreditCap(limits);
     // Every run needs at least two lanes (implement, then review): the first may spend a whole lane cap, and the next
     // lane cannot start with less than the runtime floor left, so a smaller run cap can park before review (dogfood F44).

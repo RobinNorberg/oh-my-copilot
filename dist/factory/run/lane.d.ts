@@ -115,6 +115,8 @@ export interface LaneResult {
     sandbox?: CopilotRunSandboxState;
     /** The model the local session ran on (copilot_run snapshot.model); absent when unknown or remote. */
     model?: string;
+    /** When the lane's session last emitted an event (ISO); null before the first, absent when the backend cannot tell. The engine's no-progress timeout reads it. */
+    lastEventAt?: string | null;
 }
 /** A lane's local child process: the engine checks it is gone before it trusts a lost lane's end. */
 export interface LaneProcess {

@@ -1622,6 +1622,20 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
             expect(calls.some((c) => c.startsWith('gh pr merge'))).toBe(false);
             expect(resumePoint(readReleaseState(stateRoot, V))).toBe('pr');
         });
+        it('review-528 M2: the CI failure details sanitise forge check names (newline, @mention, backticks, ANSI)', async () => {
+            suiteDone();
+            const evil = 'Build`\n@team \u001b[31mred';
+            checksJson = JSON.stringify([
+                { name: 'Test', state: 'FAILURE', link: 'https://github.com/o/r/actions/runs/77/job/88' },
+                { name: evil, state: 'FAILURE', link: 'https://github.com/o/r/actions/runs/77/job/89' },
+            ]);
+            handlers.unshift((key) => (key.startsWith('gh run list --commit') ? ok('[{"databaseId":77,"status":"completed","conclusion":"failure","workflowName":"CI"}]') : undefined));
+            const result = await run({ from: 'suite', suite: 'full', to: 'pr', allowSkippedSmoke: true });
+            const details = result.phases[2].details ?? [];
+            expect(details).toContain('failed: `Test`');
+            expect(details).toContain("failed: `Build' ＠team [31mred`");
+            expect(details.filter((d) => d.startsWith('failed: ')).join()).not.toMatch(/[\n\u001b@]/);
+        });
         it('--to suite and --to smoke prepare without pushing anything', async () => {
             suiteDone();
             expect((await run({ from: 'suite', suite: 'full', to: 'suite' })).ok).toBe(true);
