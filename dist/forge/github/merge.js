@@ -31,6 +31,25 @@ export function githubAutoMergeArgs(step) {
         return undefined;
     return ['api', '--hostname', parts[0], '--method', 'PUT', `repos/${parts[1]}/${parts[2]}/pulls/${step.pr}/merge`, '-f', `sha=${step.head}`, '-f', 'merge_method=merge'];
 }
+/**
+ * The gh argv that reads one commit of the run's repository (GET
+ * `repos/O/N/commits/<sha>`): after its auto-merge the engine checks the
+ * merge commit's first parent is the base the gates checked.
+ */
+export function githubCommitReadArgs(repo, sha) {
+    const parts = repo.split('/');
+    if (parts.length !== 3 || !HOST.test(parts[0]) || !NAME.test(parts[1]) || !NAME.test(parts[2]) || /^\.+$/.test(parts[1]) || /^\.+$/.test(parts[2]))
+        return undefined;
+    if (!/^[0-9a-f]{40}$/.test(sha))
+        return undefined;
+    return ['api', '--hostname', parts[0], `repos/${parts[1]}/${parts[2]}/commits/${sha}`];
+}
+/** The factory guard's test for that read: exactly githubCommitReadArgs of the run's repository and some full sha. */
+export function isGithubCommitReadArgs(args, repo) {
+    const sha = args.length === 4 ? /\/commits\/([0-9a-f]{40})$/.exec(args[3])?.[1] : undefined;
+    const want = repo && sha ? githubCommitReadArgs(repo, sha) : undefined;
+    return want !== undefined && want.every((v, i) => args[i] === v);
+}
 /** The factory guard's test: exactly githubAutoMergeArgs of the engine's current step; no step = refused. */
 export function isGithubAutoMergeArgs(args, step) {
     const want = step ? githubAutoMergeArgs(step) : undefined;

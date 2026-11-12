@@ -119679,6 +119679,17 @@ function githubAutoMergeArgs(step) {
   if (!Number.isSafeInteger(step.pr) || step.pr < 1 || !/^[0-9a-f]{40}$/.test(step.head)) return void 0;
   return ["api", "--hostname", parts[0], "--method", "PUT", `repos/${parts[1]}/${parts[2]}/pulls/${step.pr}/merge`, "-f", `sha=${step.head}`, "-f", "merge_method=merge"];
 }
+function githubCommitReadArgs(repo, sha3) {
+  const parts = repo.split("/");
+  if (parts.length !== 3 || !HOST2.test(parts[0]) || !NAME2.test(parts[1]) || !NAME2.test(parts[2]) || /^\.+$/.test(parts[1]) || /^\.+$/.test(parts[2])) return void 0;
+  if (!/^[0-9a-f]{40}$/.test(sha3)) return void 0;
+  return ["api", "--hostname", parts[0], `repos/${parts[1]}/${parts[2]}/commits/${sha3}`];
+}
+function isGithubCommitReadArgs(args, repo) {
+  const sha3 = args.length === 4 ? /\/commits\/([0-9a-f]{40})$/.exec(args[3])?.[1] : void 0;
+  const want = repo && sha3 ? githubCommitReadArgs(repo, sha3) : void 0;
+  return want !== void 0 && want.every((v, i) => args[i] === v);
+}
 function isGithubAutoMergeArgs(args, step) {
   const want = step ? githubAutoMergeArgs(step) : void 0;
   return want !== void 0 && args.length === want.length && want.every((v, i) => args[i] === v);
@@ -122013,6 +122024,7 @@ function factoryGit(a, protectedBranches, extraProtected = [], local, agent) {
       return null;
     case "config":
       if (same2(a, [...LOCAL_REMOTE_REFUSED_CONFIG_ARGS]) || same2(a, [...URL_REWRITE_CONFIG_ARGS]) || same2(a, [...REMOTE_CONFIG_ARGS])) return true;
+      if (same2(r, ["--show-scope", "--get-all", "core.hooksPath"])) return true;
       return same2(r, ["--get", "core.excludesFile"]) ? true : null;
     case "for-each-ref":
       return same2(r, [FOR_EACH_REF_FORMAT]);
@@ -122029,6 +122041,7 @@ function factoryGit(a, protectedBranches, extraProtected = [], local, agent) {
       if (r.length === 5 && same2(r.slice(0, 2), ["-z", "--name-only"]) && /^[0-9a-f]{40}$/.test(r[2]) && r[3] === "--" && r[4].endsWith("/")) {
         return isPlainRepoPath(r[4].slice(0, -1));
       }
+      if (r.length === 3 && r[0] === "-z" && r[1] === "--name-only" && /^[0-9a-f]{40}$/.test(r[2])) return true;
       if (r.length === 4 && r[0] === "-z" && /^[0-9a-f]{40}$/.test(r[1]) && r[2] === "--") return isPlainRepoPath(r[3]);
       return null;
     case "rev-list":
@@ -122053,7 +122066,7 @@ function factoryGh(a, writes, github, agent) {
   const [group, sub, ...r] = a;
   if (group === "api") {
     const step = github?.autoMerge ? { repo: github.repo, ...github.autoMerge } : void 0;
-    return isReviewFeedbackArgs(a, github?.repo) || isRequiredChecksArgs(a, github?.repo) || isGateReadArgs(a, github?.repo) || isGithubAutoMergeArgs(a, step) ? true : null;
+    return isReviewFeedbackArgs(a, github?.repo) || isRequiredChecksArgs(a, github?.repo) || isGateReadArgs(a, github?.repo) || isGithubAutoMergeArgs(a, step) || isGithubCommitReadArgs(a, github?.repo) ? true : null;
   }
   if (group === "issue") {
     if (sub === "view") return r.length === 3 && NUMBER5.test(r[0]) && r[1] === "--json" && JSON_FIELDS2.test(r[2]);
@@ -122266,7 +122279,7 @@ var init_exec2 = __esm({
       "remote.origin.uploadpack=git-upload-pack",
       "remote.origin.receivepack=git-receive-pack"
     ];
-    LOCAL_ONLY_GIT_PINS = ["commit.gpgSign=false", "tag.gpgSign=false", "filter.lfs.smudge=", "filter.lfs.process=", "filter.lfs.required=false"];
+    LOCAL_ONLY_GIT_PINS = ["commit.gpgSign=false", "tag.gpgSign=false", "filter.lfs.smudge=", "filter.lfs.process=", "filter.lfs.required=false", "merge.renormalize=false"];
     TRANSPORT_SUBCOMMANDS = /* @__PURE__ */ new Set(["push", "fetch", "ls-remote", "pull", "clone"]);
     MIRROR_UPLOAD_PACK_ARG = "--upload-pack=git -c core.alternateRefsCommand=true upload-pack";
     MIRROR_REDIRECT_NAMES = [".git", "commondir", "gitdir", "config.worktree"];
@@ -130597,7 +130610,7 @@ var init_context = __esm({
 // src/factory/run/merge-policy.ts
 function mergeDecision(exec3, root2, ship, view2, config2, known, forge, reads) {
   const gate = evaluateGates(exec3, view2.number, config2, known, root2, view2.headRefOid, forge, ship.phase === "ready" ? 0 : void 0, Date.now, reads);
-  const noChecks = { ...gate.noChecks ? { noChecks: true } : {}, checks: gate.checks.filter((c) => c.class === "pass").map((c) => c.name) };
+  const noChecks = { ...gate.noChecks ? { noChecks: true } : {}, checks: gate.checks.filter((c) => c.class === "pass" && c.state.toUpperCase() === "SUCCESS").map((c) => c.name) };
   const reviewed = latestVerdict(ship)?.sha;
   const commits = readCommitsSinceReview(exec3, root2, reviewed, view2.headRefOid, view2.baseRefOid, ship.housekeepingCommits);
   const extraProtected = [
@@ -130685,7 +130698,7 @@ function resolveAutoMergeConfig(user, repo) {
   const v = auto[key];
   if (!v || typeof v !== "object" || Array.isArray(v)) return { key, error: `factory.merge.auto["${key}"] must be an object` };
   const o = v;
-  const unknownKeys = Object.keys(o).filter((k) => !["enabled", "tiers", "maxChangedLines", "maxFiles"].includes(k));
+  const unknownKeys = Object.keys(o).filter((k) => !["enabled", "tiers", "maxChangedLines", "maxFiles", ...GLOB_KEYS].includes(k));
   if (unknownKeys.length > 0) return { key, error: `factory.merge.auto["${key}"] has unknown keys: ${unknownKeys.join(", ")}` };
   if (typeof o.enabled !== "boolean") return { key, error: `factory.merge.auto["${key}"].enabled must be a boolean` };
   if (!Array.isArray(o.tiers) || o.tiers.length === 0 || !o.tiers.every((t) => AUTO_MERGE_TIERS.includes(t))) {
@@ -130700,6 +130713,15 @@ function resolveAutoMergeConfig(user, repo) {
   const files = cap("maxFiles");
   if (typeof lines4 === "string") return { key, error: lines4 };
   if (typeof files === "string") return { key, error: files };
+  const globs = {};
+  for (const name of GLOB_KEYS) {
+    const g = o[name];
+    if (g === void 0) continue;
+    if (!Array.isArray(g) || g.length > MAX_GLOBS || !g.every((x) => typeof x === "string" && x.trim() !== "" && x.length <= 500 && !/[\0\r\n]/.test(x))) {
+      return { key, error: `factory.merge.auto["${key}"].${name} must be a list of at most ${MAX_GLOBS} path globs` };
+    }
+    globs[name] = [...g];
+  }
   if (!o.enabled) return { key };
   return {
     key,
@@ -130707,7 +130729,8 @@ function resolveAutoMergeConfig(user, repo) {
       enabled: true,
       tiers: [...new Set(o.tiers)],
       ...lines4 !== void 0 ? { maxChangedLines: lines4 } : {},
-      ...files !== void 0 ? { maxFiles: files } : {}
+      ...files !== void 0 ? { maxFiles: files } : {},
+      ...globs
     }
   };
 }
@@ -130724,7 +130747,7 @@ function parseChangedEntries(rawZ, numstatZ) {
     const m = /^:([0-7]{6}) ([0-7]{6}) [0-9a-f]{40,64} [0-9a-f]{40,64} ([ADMT])$/.exec(head);
     const path30 = raw[i + 1];
     if (!m || path30 === void 0 || path30 === "" || modes.has(path30)) return null;
-    modes.set(path30, { oldMode: m[1], newMode: m[2] });
+    modes.set(path30, { status: m[3], oldMode: m[1], newMode: m[2] });
     i++;
   }
   const out = [];
@@ -130738,29 +130761,42 @@ function parseChangedEntries(rawZ, numstatZ) {
   }
   return out.length === modes.size ? out : null;
 }
-function deniedPaths(paths, extra = []) {
-  const anchored = new Set(protectedChanges(paths, [...LANE_PROTECTED_PATHS, ...CI_TREE_PATHS, ...PROTECTED_PATHS, ".omg/", ".omc/", ...extra]));
+function globMatcher(glob) {
+  let g = rootRelative(fold3(glob));
+  if (g.endsWith("/")) g += "**";
+  const anyDepth = !g.includes("/");
+  const body = g.split("/").map((seg) => seg === "**" ? "\0" : seg.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, "[^/]*").replace(/\?/g, "[^/]")).join("/").replace(/\u0000\//g, "(?:[^/]+/)*").replace(/\/\u0000/g, "(?:/[^/]+)*").replace(/\u0000/g, ".*");
+  const re = new RegExp(`^${anyDepth ? "(?:[^/]+/)*" : ""}${body}$`);
+  return (path30) => re.test(segments(path30).join("/"));
+}
+function deniedPaths(paths, extra = [], globs = []) {
+  const anchored = new Set(protectedChanges(paths, [...LANE_PROTECTED_PATHS, ...CI_TREE_PATHS, ...PROTECTED_PATHS, ".omg/", ".omc/", ...HOOK_DIRS, ...extra.map(rootRelative).filter(Boolean)]));
+  const user = globs.map(globMatcher);
   return paths.filter((p) => {
     if (anchored.has(p)) return true;
     const segs = segments(p);
     if (segs.length === 0) return true;
     if (segs.slice(0, -1).some((s) => DENIED_DIRS.has(s))) return true;
+    if (user.some((m) => m(p))) return true;
     const name = segs[segs.length - 1];
     return DENIED_DIRS.has(name) || DENIED_NAMES.has(name) || DENIED_NAME_PATTERNS.some((r) => r.test(name));
   });
 }
 function isDocsPath(path30) {
   const segs = segments(path30);
-  return segs.length > 0 && (segs[segs.length - 1].endsWith(".md") || segs[0] === "docs" && segs.length > 1);
+  if (segs.length === 0) return false;
+  const name = segs[segs.length - 1];
+  return /\.(?:md|rst)$/.test(name) || segs[0] === "docs" && segs.length > 1 && name.endsWith(".txt");
 }
 function isTestPath(path30) {
   const segs = segments(path30);
   if (segs.length === 0) return false;
   const name = segs[segs.length - 1];
   if (TEST_NAME.some((r) => r.test(name))) return true;
-  return segs.slice(0, -1).some((s) => TEST_DIRS.has(s)) && TEST_DIR_FILE.test(name);
+  const dirs = segs.slice(0, -1);
+  return (ROOT_TEST_DIRS.has(dirs[0] ?? "") || dirs.some((s) => ANY_DEPTH_TEST_DIRS.has(s))) && TEST_DIR_FILE.test(name);
 }
-function classifyChanges(entries, config2, extraDenied = []) {
+function classifyChanges(entries, config2, opts = {}) {
   if (entries === null) return { reasons: ["the changed files could not be read (git diff --raw/--numstat base...head); auto-merge fails closed"], evidence: [] };
   if (entries.length === 0) return { reasons: ["the PR changes no file"], evidence: [] };
   const reasons = [];
@@ -130769,20 +130805,31 @@ function classifyChanges(entries, config2, extraDenied = []) {
   if (odd.length > 0) reasons.push(`non-plain file modes (symlink, gitlink, executable or mode change): ${list3(odd.map((e) => `${e.path} ${e.oldMode}->${e.newMode}`))}`);
   const binary = entries.filter((e) => e.added === null || e.deleted === null);
   if (binary.length > 0) reasons.push(`binary changes: ${list3(binary.map((e) => e.path))}`);
-  const denied = deniedPaths(entries.map((e) => e.path), extraDenied);
-  if (denied.length > 0) reasons.push(`touches paths that always need a human (CI, config, manifests, lockfiles, agent or factory files): ${list3(denied)}`);
+  const denied = deniedPaths(entries.map((e) => e.path), opts.extraDenied ?? [], config2.securityCritical ?? []);
+  if (denied.length > 0) reasons.push(`touches paths that always need a human (CI, config, manifests, lockfiles, hooks, agent prompts, factory or security-critical files): ${list3(denied)}`);
+  const isSetup = setupMatcher(opts.testSetup?.paths ?? []);
+  const setup2 = entries.filter((e) => isSetup(e.path));
+  if (setup2.length > 0) reasons.push(`touches files the base test config runs around every test run (setupFiles, globalSetup): ${list3(setup2.map((e) => e.path))}`);
+  const deletedTests = entries.filter((e) => e.status === "D" && looksLikeTest(e.path));
+  if (deletedTests.length > 0) reasons.push(`deletes test files (a deleted test needs a human): ${list3(deletedTests.map((e) => e.path))}`);
   const lines4 = entries.reduce((n, e) => n + (e.added ?? 0) + (e.deleted ?? 0), 0);
   const files = entries.length;
-  const evidence = [`${files} file(s), ${lines4} changed line(s), plain file modes, no binary, no denied path`];
+  const evidence = [`${files} file(s), ${lines4} changed line(s), plain file modes, no binary, no denied path, no deleted test`];
   if (reasons.length > 0) return { reasons, evidence: [] };
+  const docsDenied = (config2.docsDenied ?? []).map(globMatcher);
   const misses = [];
   for (const tier of AUTO_MERGE_TIERS) {
     if (!config2.tiers.includes(tier)) continue;
     const maxLines = config2.maxChangedLines ?? (tier === "small" ? DEFAULT_SMALL_MAX_CHANGED_LINES : void 0);
     const maxFiles = config2.maxFiles ?? (tier === "small" ? DEFAULT_SMALL_MAX_FILES : void 0);
-    const outside = tier === "docs" ? entries.filter((e) => !isDocsPath(e.path)) : tier === "tests" ? entries.filter((e) => !isTestPath(e.path)) : [];
+    if (tier !== "docs" && opts.testSetup?.problem) {
+      misses.push(`${tier}: ${opts.testSetup.problem}`);
+      continue;
+    }
+    const outside = tier === "docs" ? entries.filter((e) => !isDocsPath(e.path) || docsDenied.some((m) => m(e.path))) : tier === "tests" ? entries.filter((e) => !isTestPath(e.path) || e.status === "D" || segments(e.path).some((s) => TEST_RUNNER_CODE.test(s))) : entries.filter((e) => protectedChanges([e.path], SMALL_TIER_DENIED).length > 0);
     if (outside.length > 0) {
-      misses.push(`${tier}: ${list3(outside.map((e) => e.path))} ${outside.length === 1 ? "is" : "are"} not ${tier === "docs" ? "docs" : "test files"}`);
+      const what = tier === "docs" ? "docs" : tier === "tests" ? "test files (setup, teardown, benchmarks and deletions are not)" : `small-tier files (never under ${SMALL_TIER_DENIED.join(", ")})`;
+      misses.push(`${tier}: ${list3(outside.map((e) => e.path))} ${outside.length === 1 ? "is" : "are"} not ${what}`);
       continue;
     }
     if (maxLines !== void 0 && lines4 > maxLines) {
@@ -130797,6 +130844,55 @@ function classifyChanges(entries, config2, extraDenied = []) {
   }
   return { reasons: [`no enabled tier fits (${misses.join("; ")})`], evidence: [] };
 }
+function baseTestSetup(files) {
+  const paths = [];
+  for (const { path: path30, text: text4 } of files) {
+    if (/^package\.json$/i.test(path30)) {
+      let jest;
+      try {
+        jest = JSON.parse(text4).jest;
+      } catch {
+        return { paths, problem: "the base package.json could not be parsed" };
+      }
+      if (jest === void 0) continue;
+      if (!jest || typeof jest !== "object") return { paths, problem: 'the base package.json "jest" is not an object' };
+      for (const k of ["setupFiles", "setupFilesAfterEnv", "globalSetup", "globalTeardown"]) {
+        const v = jest[k];
+        if (v === void 0) continue;
+        const vs = Array.isArray(v) ? v : [v];
+        if (!vs.every((x) => typeof x === "string")) return { paths, problem: `the base package.json jest.${k} is not a string list` };
+        paths.push(...vs);
+      }
+      continue;
+    }
+    for (const m of text4.matchAll(SETUP_KEYS)) {
+      let i = m.index + m[0].length;
+      const literal3 = () => {
+        STRING.lastIndex = i;
+        const s = STRING.exec(text4);
+        if (!s || s[1] === "`" && s[2].includes("${")) return void 0;
+        i = STRING.lastIndex;
+        return s[2];
+      };
+      const skip = () => {
+        while (i < text4.length && /[\s,]/.test(text4[i])) i++;
+      };
+      if (text4[i] === "[") {
+        i++;
+        for (skip(); text4[i] !== "]"; skip()) {
+          const s = literal3();
+          if (s === void 0) return { paths, problem: `${path30}: ${m[1]} is not a list of string literals, so its files are unknown` };
+          paths.push(s);
+        }
+      } else {
+        const s = literal3();
+        if (s === void 0) return { paths, problem: `${path30}: ${m[1]} is not a string literal, so its file is unknown` };
+        paths.push(s);
+      }
+    }
+  }
+  return { paths };
+}
 function autoMergeVerdict(i) {
   const reasons = [];
   const evidence = [];
@@ -130808,11 +130904,17 @@ function autoMergeVerdict(i) {
   const v = i.verdict;
   check2(!!v && v.verdict === "approve" && v.sha === i.head, `factory review approved ${at}${v ? ` (${v.reviewer})` : ""}`, `the factory review did not approve this exact head (latest: ${v ? `${v.verdict} at ${v.sha.slice(0, 12)}` : "none"})`);
   const checks = i.decision.checks ?? [];
-  check2(!i.decision.noChecks && checks.length > 0, `CI green at ${at}: ${checks.slice(0, 8).join(", ")}${checks.length > 8 ? ", ..." : ""}`, "no CI check reported for this head (a green gate with no checks never auto-merges)");
+  const required2 = i.requiredChecks ?? [];
+  const succeeded = required2.length > 0 ? checks.filter((c) => required2.includes(c)) : checks;
+  check2(
+    !i.decision.noChecks && succeeded.length > 0,
+    `CI green at ${at}: ${succeeded.slice(0, 8).join(", ")}${succeeded.length > 8 ? ", ..." : ""} succeeded${required2.length > 0 ? " (required)" : ""}`,
+    required2.length > 0 ? `no required check (${required2.slice(0, 8).join(", ")}) succeeded on this head (skipped or neutral checks do not count)` : "no CI check succeeded on this head (skipped, neutral or no checks never auto-merge)"
+  );
   check2(i.human !== void 0, "human review read: no open thread or change request", 'factory.review.human is "off", so human review threads are not read');
   if (i.human) check2(i.human.commentOnly === 0, "no comment-only human review at this head", `${i.human.commentOnly} comment-only human review(s) at this head`);
   check2(i.labels !== null && !i.labels.some((l) => l.toLowerCase() === MANUAL_MERGE_LABEL), `no ${MANUAL_MERGE_LABEL} label`, i.labels === null ? "the issue or PR labels could not be read" : `the issue or PR carries ${MANUAL_MERGE_LABEL}`);
-  const flagged = i.run.history.map((h) => HISTORY_DENY.exec(h.note)?.[1]).filter((n) => !!n);
+  const flagged = i.run.history.map((h) => PARK_NOTE.exec(h.note)?.[1] ?? (/^awaiting-human:/.test(h.note) ? "(unparsed park)" : void 0)).filter((n) => !!n && !BENIGN_PARKS.has(n));
   const tamper = i.run.history.some((h) => /tamper|quarantin/i.test(h.note));
   const acks = [
     ...i.run.unsandboxedAck ? ["--allow-unsandboxed-lanes"] : [],
@@ -130839,7 +130941,7 @@ function autoMergeComment(label2, tier, head, evidence, by) {
     ""
   ].join("\n");
 }
-var import_path193, AUTO_MERGE_TIERS, MANUAL_MERGE_LABEL, DEFAULT_SMALL_MAX_CHANGED_LINES, DEFAULT_SMALL_MAX_FILES, MAX_CAP, fold3, segments, DENIED_DIRS, DENIED_NAMES, DENIED_NAME_PATTERNS, TEST_NAME, TEST_DIRS, TEST_DIR_FILE, plainMode, HISTORY_DENY;
+var import_path193, AUTO_MERGE_TIERS, MANUAL_MERGE_LABEL, DEFAULT_SMALL_MAX_CHANGED_LINES, DEFAULT_SMALL_MAX_FILES, MAX_CAP, GLOB_KEYS, MAX_GLOBS, fold3, segments, DENIED_DIRS, HOOK_DIRS, DENIED_NAMES, DENIED_NAME_PATTERNS, rootRelative, TEST_NAME, ROOT_TEST_DIRS, ANY_DEPTH_TEST_DIRS, TEST_DIR_FILE, TEST_RUNNER_CODE, looksLikeTest, plainMode, SMALL_TIER_DENIED, setupMatcher, TEST_CONFIG_NAME, SETUP_KEYS, STRING, BENIGN_PARKS, PARK_NOTE;
 var init_auto_merge = __esm({
   "src/factory/run/auto-merge.ts"() {
     "use strict";
@@ -130852,9 +130954,53 @@ var init_auto_merge = __esm({
     DEFAULT_SMALL_MAX_CHANGED_LINES = 80;
     DEFAULT_SMALL_MAX_FILES = 10;
     MAX_CAP = 1e5;
+    GLOB_KEYS = ["docsDenied", "securityCritical"];
+    MAX_GLOBS = 200;
     fold3 = (s) => s.normalize("NFKC").replace(new RegExp("\\p{Default_Ignorable_Code_Point}", "gu"), "").toUpperCase().toLowerCase().normalize("NFKC");
     segments = (path30) => fold3(path30.replace(/\\/g, "/").trim()).split("/").map((s) => s.replace(/[. ]+$/, "")).filter((s) => s.length > 0);
-    DENIED_DIRS = /* @__PURE__ */ new Set([".github", ".copilot", ".omg", ".omc", ".claude", ".vscode", ".husky", ".devcontainer", ".circleci", ".buildkite", ".woodpecker", ".azure-pipelines", ".azuredevops", ".pipelines", ".gitlab", ".idea", ".cargo", ".yarn", "node_modules"]);
+    DENIED_DIRS = /* @__PURE__ */ new Set([
+      ".github",
+      ".copilot",
+      ".omg",
+      ".omc",
+      ".claude",
+      ".vscode",
+      ".husky",
+      ".devcontainer",
+      ".circleci",
+      ".buildkite",
+      ".woodpecker",
+      ".azure-pipelines",
+      ".azuredevops",
+      ".pipelines",
+      ".gitlab",
+      ".idea",
+      ".cargo",
+      ".yarn",
+      "node_modules",
+      "skills",
+      "agents",
+      "commands",
+      "templates",
+      "prompts",
+      "instructions",
+      ".cursor",
+      ".gemini",
+      ".codex",
+      ".agents",
+      ".windsurf",
+      ".roo",
+      ".continue",
+      ".kiro",
+      ".clinerules",
+      ".aider",
+      ".vitepress",
+      ".docusaurus",
+      ".githooks",
+      "githooks",
+      "__mocks__"
+    ]);
+    HOOK_DIRS = ["hooks/", "scripts/hooks/", "tools/hooks/", "git-hooks/", ".config/"];
     DENIED_NAMES = /* @__PURE__ */ new Set([
       "package.json",
       "package-lock.json",
@@ -130919,14 +131065,24 @@ var init_auto_merge = __esm({
       "justfile",
       "taskfile.yml",
       "codeowners",
+      "cmakelists.txt",
+      "constraints.txt",
       "agents.md",
+      "agent.md",
       "claude.md",
       "gemini.md",
       "copilot-instructions.md",
+      "skill.md",
       "omg.jsonc",
       "omc.jsonc",
       "config.jsonc",
       ".mcp.json",
+      ".cursorrules",
+      ".windsurfrules",
+      ".clinerules",
+      ".roorules",
+      ".goosehints",
+      ".aider.conf.yml",
       "renovate.json",
       "dependabot.yml",
       "lefthook.yml",
@@ -130951,16 +131107,50 @@ var init_auto_merge = __esm({
       /^\.prettierrc/,
       /^prettier\.config\./,
       /^\.stylelintrc/,
-      /\.config\.[cm]?[jt]s$/,
+      /(?:^|\.)config\.[cm]?[jt]sx?$/,
+      /^vitest\.(?:workspace|projects)\./,
       /^\.env(?:\..*)?$/,
       /^docker-compose.*\.ya?ml$/,
-      /^\.?dockerfile\./
+      /^\.?dockerfile\./,
+      /\.(?:prompt|instructions|chatmode|agent)\.md$/,
+      /\.mdc$/
     ];
-    TEST_NAME = [/\.(?:test|spec)\.[cm]?[jt]sx?$/, /_test\.go$/, /^test_[^/]+\.py$/, /_test\.py$/, /(?:test|spec)\.rb$/];
-    TEST_DIRS = /* @__PURE__ */ new Set(["__tests__", "__snapshots__", "test", "tests", "spec"]);
+    rootRelative = (p) => p.replace(/\\/g, "/").trim().replace(/^(?:\.\/|\/)+/, "");
+    TEST_NAME = [/\.(?:test|spec)\.[cm]?[jt]sx?$/, /_test\.go$/, /^test_[^/]+\.py$/, /_test\.py$/, /(?:^|_)(?:test|spec)\.rb$/];
+    ROOT_TEST_DIRS = /* @__PURE__ */ new Set(["__tests__", "__snapshots__", "test", "tests", "spec"]);
+    ANY_DEPTH_TEST_DIRS = /* @__PURE__ */ new Set(["__tests__", "__snapshots__"]);
     TEST_DIR_FILE = /\.(?:[cm]?[jt]sx?|py|go|rb|snap|json|txt|md)$/;
+    TEST_RUNNER_CODE = /setup|teardown|bench/;
+    looksLikeTest = (path30) => isTestPath(path30) || segments(path30).some((s) => /(?:^|[._-])(?:tests?|specs?)(?:$|[._-])|__tests__/.test(s));
     plainMode = (mode) => mode === "100644" || mode === "000000";
-    HISTORY_DENY = /^awaiting-human: (lane-tampered|review-tampered|state-tampered|sandbox-escaped|secret-shaped-content|gates-unsandboxed|gate-definition-changed|gate-definition-unknown|protected-paths|decisions-rewritten|review-identity|lane-unconfirmed|head-moved-externally|repo-guard-changed|import-refused):/;
+    SMALL_TIER_DENIED = ["src/factory/", "src/ship/", "src/copilot-run/", "src/forge/"];
+    setupMatcher = (paths) => {
+      const want = new Set(paths.map((p) => segments(rootRelative(p.replace(/^<rootdir>\//i, ""))).join("/")).filter(Boolean));
+      return (path30) => {
+        const f = segments(path30).join("/");
+        return want.has(f) || want.has(f.replace(/\.[^./]+$/, ""));
+      };
+    };
+    TEST_CONFIG_NAME = /^(?:(?:vitest|vite|jest)(?:\.[\w-]+)*\.config\.(?:[cm]?[jt]s|json)|vitest\.(?:workspace|projects)\.(?:[cm]?[jt]s|json)|package\.json)$/i;
+    SETUP_KEYS = /(?<![\w$])["']?(setupFiles|setupFilesAfterEnv|globalSetup|globalTeardown)["']?\s*:\s*/g;
+    STRING = /(['"`])((?:\\.|(?!\1)[^\\\n])*)\1/y;
+    BENIGN_PARKS = /* @__PURE__ */ new Set([
+      "merge",
+      "merge-conflicts",
+      "human-review",
+      "budget",
+      "wall-time",
+      "needs-plan",
+      "blocked-by",
+      "ci-failed",
+      "ci-flaky",
+      "gates",
+      "gates-timeout",
+      "fix-rounds-spent",
+      "base-changed",
+      "prepare-checks"
+    ]);
+    PARK_NOTE = /^awaiting-human: ([^:\s]+):/;
   }
 });
 
@@ -137974,7 +138164,19 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
         extra.push(...configuredProtectedPaths(this.o.root, (source, error2) => {
           protectedProblem = `${source}: ${error2}`;
         }));
-        const changes = protectedProblem ? { reasons: [`the configured protected paths could not be read (${protectedProblem})`], evidence: [] } : classifyChanges(entries, resolved.config, extra);
+        const hooks = this.exec("git", ["config", "--show-scope", "--get-all", "core.hooksPath"], { cwd: this.o.root, env: TRUSTED_READ_ENV });
+        if (hooks.status > 1) protectedProblem ??= `git config core.hooksPath could not be read (exit ${hooks.status})`;
+        else {
+          for (const line2 of hooks.stdout.split("\n")) {
+            const [scope, ...rest] = line2.split("	");
+            const value = rest.join("	").trim();
+            if (!value || scope === "command") continue;
+            const rel = (0, import_path202.isAbsolute)(value) ? (0, import_path202.relative)(this.o.root, value) : value;
+            if (rel && !rel.startsWith("..") && !(0, import_path202.isAbsolute)(rel)) extra.push(`${rel.replace(/\\/g, "/").replace(/\/+$/, "")}/`);
+          }
+        }
+        const testSetup = resolved.config.tiers.some((t) => t !== "docs") ? this.baseTestSetup(view2.baseRefOid) : void 0;
+        const changes = protectedProblem ? { reasons: [`the configured protected paths could not be read (${protectedProblem})`], evidence: [] } : classifyChanges(entries, resolved.config, { extraDenied: extra, ...testSetup ? { testSetup } : {} });
         const pending = this.state.pendingCommit;
         const verdict = autoMergeVerdict({
           head,
@@ -137989,6 +138191,7 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
             ...pending?.secretAck ? { secretAck: pending.secretAck } : {}
           },
           decision,
+          requiredChecks: config2.requiredChecks,
           ...latestVerdict(ship) ? { verdict: latestVerdict(ship) } : {},
           ...this.humanClear?.head === head ? { human: { commentOnly: this.humanClear.commentOnly } } : {},
           labels,
@@ -138000,11 +138203,22 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
         if (again.state !== "OPEN" || again.isDraft || again.headRefOid !== head || again.baseRefOid !== view2.baseRefOid || again.baseRefName !== view2.baseRefName) {
           return `the PR changed between the check and the merge (now ${again.state.toLowerCase()}, head ${String(again.headRefOid).slice(0, 12)}, base ${String(again.baseRefOid).slice(0, 12)})`;
         }
-        const merged = local ? this.localAutoMerge(head, view2.baseRefOid) : this.githubAutoMerge(pr, head);
+        const added = (entries ?? []).filter((e) => e.status === "A").map((e) => e.path);
+        const merged = local ? this.localAutoMerge(head, view2.baseRefOid, added) : this.githubAutoMerge(pr, head);
         if (typeof merged === "string") return merged;
         const by = `the factory (auto-merge tier ${verdict.tier})`;
         this.save((x) => ({ ...x, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `auto-merged by tier ${verdict.tier} at ${head.slice(0, 12)}: ${verdict.evidence.join("; ")}` }] }));
         this.commentOnce("pr", `auto-merge@${head.slice(0, 12)}`, "merge", autoMergeComment(runLabel(this.key), verdict.tier, head, verdict.evidence, by));
+        if (!local) {
+          const moved = this.githubMergeBaseProblem(merged.mergeSha, view2.baseRefOid);
+          if (moved) {
+            const text4 = `WARNING: auto-merge of ${head.slice(0, 12)}: ${moved}. The merged result was not checked by the gates; check ${this.state.base} now. Turn on "Require branches to be up to date before merging" in branch protection to prevent this.`;
+            this.save((x) => ({ ...x, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: text4 }] }));
+            this.commentOnce("pr", `auto-merge-base@${head.slice(0, 12)}`, "merge", `Factory run for ${runLabel(this.key)}: ${text4}
+`);
+            this.o.warn?.(`omg factory run: ${text4}`);
+          }
+        }
         this.finishMerged(pr, by, merged.base);
         return true;
       }
@@ -138024,20 +138238,67 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
             out = {};
           }
           if (out.merged !== true) return `GitHub did not confirm the merge: ${oneLine(res.stdout, 200)}`;
-          return {};
+          return typeof out.sha === "string" && HEX4017.test(out.sha) ? { mergeSha: out.sha } : {};
         } finally {
           this.autoMergeStep = void 0;
         }
+      }
+      /** After the GitHub merge: why its merge commit's first parent is not the base the gates checked (undefined = it is). */
+      githubMergeBaseProblem(mergeSha, baseSha) {
+        const repo = this.githubReadContext()?.repo;
+        const args = repo && mergeSha ? githubCommitReadArgs(repo, mergeSha) : void 0;
+        if (!args) return `GitHub did not return the merge commit, so its first parent could not be checked against ${this.state.base} ${baseSha.slice(0, 12)}`;
+        let parents;
+        try {
+          const res = this.exec("gh", args, { cwd: this.o.root });
+          parents = res.status === 0 ? JSON.parse(res.stdout).parents : void 0;
+        } catch {
+          parents = void 0;
+        }
+        const first = Array.isArray(parents) ? parents[0]?.sha : void 0;
+        if (typeof first !== "string") return `the merge commit ${mergeSha.slice(0, 12)} could not be read, so its first parent could not be checked against ${this.state.base} ${baseSha.slice(0, 12)}`;
+        return first === baseSha ? void 0 : `GitHub merged into ${this.state.base} ${first.slice(0, 12)}, not ${baseSha.slice(0, 12)} the gates checked (the base moved before the merge)`;
+      }
+      /**
+       * The setup files of the BASE commit's root test configs (baseTestSetup),
+       * never the head's: the PR cannot hide its own setup file. A listing or
+       * read that fails is a problem, which keeps the tests and small tiers off.
+       */
+      baseTestSetup(baseSha) {
+        const list3 = this.exec("git", ["ls-tree", "-z", "--name-only", baseSha], { cwd: this.o.root, env: TRUSTED_READ_ENV });
+        if (list3.status !== 0) return { paths: [], problem: `the base's root files could not be listed (exit ${list3.status})` };
+        const files = [];
+        for (const name of list3.stdout.split("\0").filter((n) => TEST_CONFIG_NAME.test(n))) {
+          try {
+            const text4 = readBaseFile(this.exec, this.o.root, baseSha, name);
+            if (text4 !== null) files.push({ path: name, text: text4 });
+          } catch (error2) {
+            return { paths: [], problem: `the base test config ${name} could not be read (${oneLine(error2 instanceof Error ? error2.message : String(error2), 120)})` };
+          }
+        }
+        return baseTestSetup(files);
       }
       /**
        * The local forge: `git merge --no-ff --no-edit --no-verify <head>` in your
        * repository, only with your base checked out there, no tracked change, the
        * base still at the commit the run synced, and the head already containing
-       * it (so the merge takes the head's tree as is: no merge driver runs). A
-       * failed merge is aborted. Returns the base's new commit.
+       * it (so the merge takes the head's tree as is: no merge driver runs), and
+       * no path the PR adds already in your checkout. Like every engine git
+       * command it runs under hardenedGitExec: core.hooksPath is the engine's
+       * empty dir (no post-merge from .git/hooks or a tracked hooks dir) and
+       * merge.renormalize is off. A failed merge is aborted. Returns the base's new commit.
        */
-      localAutoMerge(head, baseSha) {
+      localAutoMerge(head, baseSha, added) {
         const git8 = (args) => this.exec("git", args, { cwd: this.o.root, env: TRUSTED_READ_ENV });
+        const inTheWay = added.filter((p) => {
+          try {
+            (0, import_fs173.lstatSync)((0, import_path202.join)(this.o.root, p));
+            return true;
+          } catch {
+            return false;
+          }
+        });
+        if (inTheWay.length > 0) return `the PR adds ${inTheWay.slice(0, 3).join(", ")}${inTheWay.length > 3 ? ` and ${inTheWay.length - 3} more` : ""}, which already exist in your checkout (an ignored or untracked file the merge would overwrite)`;
         const branch2 = git8(["rev-parse", "--symbolic-full-name", "HEAD"]);
         if (branch2.status !== 0 || branch2.stdout.trim() !== `refs/heads/${this.state.base}`) return `your repository does not have ${this.state.base} checked out (the local merge runs there)`;
         const dirty = git8(["status", "--porcelain", "--untracked-files=no"]);

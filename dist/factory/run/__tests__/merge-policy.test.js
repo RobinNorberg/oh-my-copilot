@@ -32,6 +32,13 @@ describe('mergeDecision on Azure DevOps', () => {
         expect(ownerHit(['.azuredevops/x.md', '.pipelines/build.yaml', 'azure-pipelines.yaml'])).toBe('.azuredevops/x.md, .pipelines/build.yaml, azure-pipelines.yaml');
         expect(ownerHit(['src/a.ts', 'docs/azure-pipelines.yml'])).toBeUndefined();
     });
+    it('review-498 M1: only checks that ran and SUCCEEDED are listed for auto-merge (SKIPPED and NEUTRAL pass the gate, not this list)', () => {
+        const states = (list) => ({ ...forge, checks: { ...forge.checks, checks: () => list.map(([name, state]) => ({ name, state })) } });
+        const skipped = mergeDecision(diffExec(['docs/a.md']), '/repo', ship, view, DEFAULT_SHIP_CONFIG, [], states([['Docs', 'SKIPPED'], ['Lint', 'NEUTRAL']]));
+        expect(skipped.checks).toEqual([]);
+        const ran = mergeDecision(diffExec(['docs/a.md']), '/repo', ship, view, DEFAULT_SHIP_CONFIG, [], states([['Docs', 'SKIPPED'], ['Test', 'SUCCESS']]));
+        expect(ran.checks).toEqual(['Test']);
+    });
     it('ship\'s PROTECTED_PATHS stay as they are: the Azure Pipelines paths are not in them', () => {
         expect(protectedChanges(['azure-pipelines.yml', '.pipelines/x.yml'])).toEqual([]);
         expect(protectedChanges(['azure-pipelines.yml'], ADO_PIPELINE_PATHS)).toEqual(['azure-pipelines.yml']);

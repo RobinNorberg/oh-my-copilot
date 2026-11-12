@@ -6,7 +6,7 @@
  * a dirty checkout or a head that moves between the check and the merge
  * falls back to the human park.
  */
-import { writeFileSync, rmSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { resolveShipConfig } from '../../../ship/config.js';
@@ -77,6 +77,55 @@ describe('factory run on the local forge: opt-in auto-merge', () => {
         const out = await runFactoryEngine(localOpts(w, lanesFor(w, []), { autoMergeUserConfig: auto(w.root) }));
         expect(out.gate?.name, out.message).toBe('merge');
         expect(out.gate?.reason).toMatch(/not taken: your repository has uncommitted changes to tracked files/);
+        expect(w.calls.some((c) => c.startsWith('git merge '))).toBe(false);
+    });
+    it('review-498 M3: no hook runs on the engine merge: neither a planted .git/hooks/post-merge nor one in your core.hooksPath', async () => {
+        w = localWorld();
+        gitIn(w.root, 'config', 'user.name', 't');
+        gitIn(w.root, 'config', 'user.email', 't@example.invalid');
+        gitIn(w.root, 'config', 'commit.gpgsign', 'false');
+        const planted = join(w.dir, 'planted-ran');
+        const configured = join(w.dir, 'configured-ran');
+        const hook = (marker) => `#!/bin/sh\necho ran > "${marker.replace(/\\/g, '/')}"\n`;
+        mkdirSync(join(w.root, '.git', 'hooks'), { recursive: true });
+        writeFileSync(join(w.root, '.git', 'hooks', 'post-merge'), hook(planted));
+        chmodSync(join(w.root, '.git', 'hooks', 'post-merge'), 0o755);
+        const userHooks = join(w.dir, 'userhooks');
+        mkdirSync(userHooks);
+        writeFileSync(join(userHooks, 'post-merge'), hook(configured));
+        chmodSync(join(userHooks, 'post-merge'), 0o755);
+        gitIn(w.root, 'config', 'core.hooksPath', userHooks);
+        const out = await runFactoryEngine(localOpts(w, lanesFor(w, [docs(), review('approve')]), { autoMergeUserConfig: auto(w.root) }));
+        expect(out.exitCode, out.message).toBe(0);
+        expect(readFactoryState(w.root, LOCAL_ISSUE).phase).toBe('merged');
+        expect(existsSync(planted)).toBe(false);
+        expect(existsSync(configured)).toBe(false);
+        // The engine's merge carried the empty hooks dir and merge.renormalize=false.
+        const raw = w.raw.find((c) => c.cmd === 'git' && c.args.includes('merge') && c.args.includes('--no-ff')).args;
+        expect(raw.some((a) => a.startsWith('core.hooksPath=') && !a.includes('userhooks'))).toBe(true);
+        expect(raw).toContain('merge.renormalize=false');
+    });
+    it('review-498 M3: a PR adding a file under your configured core.hooksPath (or .githooks) never auto-merges', async () => {
+        w = localWorld();
+        gitIn(w.root, 'config', 'core.hooksPath', 'myhooks');
+        const small = { enabled: true, tiers: ['small'] };
+        const out = await runFactoryEngine(localOpts(w, lanesFor(w, [commitFile('myhooks/post-merge', 'echo hi\n'), review('approve')]), { autoMergeUserConfig: auto(w.root, small) }));
+        expect(out.gate?.name, out.message).toBe('merge');
+        expect(out.gate?.reason).toMatch(/not taken: touches paths that always need a human.*myhooks\/post-merge/);
+        expect(w.calls.some((c) => c.startsWith('git merge '))).toBe(false);
+    });
+    it('review-498 L1: a PR adding a path you have as an ignored local file keeps the merge human and leaves your file alone', async () => {
+        w = localWorld();
+        const first = await runFactoryEngine(localOpts(w, lanesFor(w, [docs(), review('approve')])));
+        expect(first.gate?.name, first.message).toBe('merge');
+        // Parked at the human merge, you have docs/guide.md as an ignored local file, then turn auto-merge on.
+        mkdirSync(join(w.root, 'docs'), { recursive: true });
+        writeFileSync(join(w.root, 'docs', 'guide.md'), 'my local notes\n');
+        writeFileSync(join(w.root, '.git', 'info', 'exclude'), 'docs/guide.md\n');
+        const out = await runFactoryEngine(localOpts(w, lanesFor(w, []), { autoMergeUserConfig: auto(w.root) }));
+        expect(out.gate?.name, out.message).toBe('merge');
+        expect(out.gate?.reason).toMatch(/not taken: the PR adds docs\/guide\.md, which already exist in your checkout/);
+        expect(readFileSync(join(w.root, 'docs', 'guide.md'), 'utf-8')).toBe('my local notes\n');
         expect(w.calls.some((c) => c.startsWith('git merge '))).toBe(false);
     });
     it('a head that moves between the check and the merge keeps the merge human', async () => {

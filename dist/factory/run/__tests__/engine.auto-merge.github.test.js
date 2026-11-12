@@ -14,9 +14,15 @@ useEngineHarness();
 const docs = () => commitFile('docs/guide.md', '# Guide\n\nHow to greet.\n');
 const user = { factory: { merge: { auto: { [REPO_URL]: { enabled: true, tiers: ['docs'] } } } } };
 const PUT = `gh api --hostname github.com --method PUT repos/o/r/pulls/${PR}/merge -f sha=`;
-/** Answers the REST merge (and optionally the PR's labels); everything else goes to the harness. */
-function scriptMerge(answer, prLabels = []) {
+const MERGE_SHA = 'c'.repeat(40);
+/**
+ * Answers the REST merge, the merge commit read (its first parent: the base
+ * the PR view reported, or `firstParent`), and optionally the PR's labels;
+ * everything else goes to the harness.
+ */
+function scriptMerge(answer, prLabels = [], firstParent) {
     const inner = h.exec;
+    let base = '';
     h.exec = (cmd, args, opts) => {
         if (cmd === 'gh' && args[0] === 'api' && args[4] === 'PUT') {
             h.calls.push(`gh ${args.join(' ')}`);
@@ -25,15 +31,28 @@ function scriptMerge(answer, prLabels = []) {
                 h.gh.merged = true;
             return res;
         }
+        if (cmd === 'gh' && args.join(' ') === `api --hostname github.com repos/o/r/commits/${MERGE_SHA}`) {
+            h.calls.push(`gh ${args.join(' ')}`);
+            return { status: 0, stdout: JSON.stringify({ sha: MERGE_SHA, parents: [{ sha: firstParent ?? base }, { sha: 'd'.repeat(40) }] }), stderr: '' };
+        }
         if (cmd === 'gh' && args.join(' ') === `pr view ${PR} --json labels`)
             return { status: 0, stdout: JSON.stringify({ labels: prLabels.map((name) => ({ name })) }), stderr: '' };
-        return inner(cmd, args, opts);
+        const res = inner(cmd, args, opts);
+        if (cmd === 'gh' && args[0] === 'pr' && args[1] === 'view' && res.status === 0) {
+            try {
+                base = JSON.parse(res.stdout).baseRefOid ?? base;
+            }
+            catch { /* not a view */ }
+        }
+        return res;
     };
 }
+const merged = () => ({ status: 0, stdout: JSON.stringify({ sha: MERGE_SHA, merged: true, message: 'Pull Request successfully merged' }), stderr: '' });
 describe('factory run on GitHub: opt-in auto-merge', () => {
     it('a docs-only PR with every condition met merges through the head-pinned REST merge and the run finishes merged', async () => {
-        scriptMerge(() => ({ status: 0, stdout: JSON.stringify({ sha: 'c'.repeat(40), merged: true, message: 'Pull Request successfully merged' }), stderr: '' }));
-        const { done } = run([docs(), review('approve')], { autoMergeUserConfig: user });
+        scriptMerge(merged);
+        const warnings = [];
+        const { done } = run([docs(), review('approve')], { autoMergeUserConfig: user, warn: (m) => warnings.push(m) });
         const out = await done;
         expect(out.exitCode, out.message).toBe(0);
         const state = readFactoryState(h.root, ISSUE);
@@ -43,6 +62,27 @@ describe('factory run on GitHub: opt-in auto-merge', () => {
         expect(readShipState(h.root, PR).phase).toBe('merged');
         expect(state.history.some((x) => /^auto-merged by tier docs at [0-9a-f]{12}: .*CI green/.test(x.note))).toBe(true);
         expect(h.calls.filter((c) => c.startsWith(`gh pr comment ${PR}`)).length).toBeGreaterThan(0);
+        // The merge commit's first parent is the base the gates checked: no warning.
+        expect(h.calls).toContain(`gh api --hostname github.com repos/o/r/commits/${MERGE_SHA}`);
+        expect(state.history.some((x) => x.note.startsWith('WARNING: auto-merge'))).toBe(false);
+        expect(warnings.join('\n')).not.toMatch(/WARNING: auto-merge/);
+    });
+    it('review-498 L2: the base moved before the PUT: the run still finishes merged, with a loud history note, a PR comment and a warning', async () => {
+        scriptMerge(merged, [], 'e'.repeat(40));
+        const warnings = [];
+        const { done } = run([docs(), review('approve')], { autoMergeUserConfig: user, warn: (m) => warnings.push(m) });
+        const out = await done;
+        expect(out.exitCode, out.message).toBe(0);
+        const state = readFactoryState(h.root, ISSUE);
+        expect(state.phase).toBe('merged');
+        const note = state.history.find((x) => x.note.startsWith('WARNING: auto-merge'))?.note ?? '';
+        expect(note).toMatch(/GitHub merged into dev eeeeeeeeeeee, not [0-9a-f]{12} the gates checked/);
+        expect(note).toMatch(/Require branches to be up to date before merging/);
+        expect(warnings.join('\n')).toMatch(/WARNING: auto-merge/);
+        // The warning comment is posted after the merge commit was read.
+        const read = h.calls.indexOf(`gh api --hostname github.com repos/o/r/commits/${MERGE_SHA}`);
+        expect(read).toBeGreaterThan(-1);
+        expect(h.calls.slice(read).some((c) => c.startsWith(`gh pr comment ${PR}`))).toBe(true);
     });
     it('GitHub refuses the merge (the head moved: 409): the run parks at the human merge and says why', async () => {
         scriptMerge(() => ({ status: 1, stdout: '', stderr: 'gh: Head branch was modified. Review and try the merge again. (HTTP 409)' }));

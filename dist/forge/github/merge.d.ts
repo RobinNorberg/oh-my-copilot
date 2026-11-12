@@ -25,6 +25,14 @@ export interface GithubAutoMergeStep {
  * and a merge commit. Undefined for anything not exactly well-formed.
  */
 export declare function githubAutoMergeArgs(step: GithubAutoMergeStep): string[] | undefined;
+/**
+ * The gh argv that reads one commit of the run's repository (GET
+ * `repos/O/N/commits/<sha>`): after its auto-merge the engine checks the
+ * merge commit's first parent is the base the gates checked.
+ */
+export declare function githubCommitReadArgs(repo: string, sha: string): string[] | undefined;
+/** The factory guard's test for that read: exactly githubCommitReadArgs of the run's repository and some full sha. */
+export declare function isGithubCommitReadArgs(args: readonly string[], repo: string | undefined): boolean;
 /** The factory guard's test: exactly githubAutoMergeArgs of the engine's current step; no step = refused. */
 export declare function isGithubAutoMergeArgs(args: readonly string[], step: GithubAutoMergeStep | undefined): boolean;
 //# sourceMappingURL=merge.d.ts.map

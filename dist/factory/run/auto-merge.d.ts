@@ -31,6 +31,10 @@ export interface AutoMergeConfig {
     /** Explicit caps apply to every tier; "small" falls back to the defaults above. */
     maxChangedLines?: number;
     maxFiles?: number;
+    /** User globs the docs tier never admits, on top of the built-in deny list. */
+    docsDenied?: string[];
+    /** User globs no tier admits (guards, sandboxes, gates: your security-critical code). */
+    securityCritical?: string[];
 }
 /**
  * The repository's `factory.merge.auto` entry from the trusted user config.
@@ -48,9 +52,11 @@ export declare function resolveAutoMergeConfig(user: unknown, repo: {
 };
 /** A committed config (the base's `.copilot/omg.jsonc`) that sets `factory.merge`: the engine ignores it and says so. */
 export declare function committedMergeConfig(base: unknown): boolean;
-/** One changed path of `git diff --raw` + `--numstat` (no renames): modes and line counts. */
+/** One changed path of `git diff --raw` + `--numstat` (no renames): status, modes and line counts. */
 export interface ChangedEntry {
     path: string;
+    /** git's raw status letter: Added, Deleted, Modified, Type change. */
+    status: 'A' | 'D' | 'M' | 'T';
     oldMode: string;
     newMode: string;
     /** null: binary (numstat `-`). */
@@ -63,29 +69,70 @@ export interface ChangedEntry {
  * malformed or they disagree (the caller fails closed).
  */
 export declare function parseChangedEntries(rawZ: string, numstatZ: string): ChangedEntry[] | null;
+/** A user glob as a test on a folded path: `**` any depth, `*` and `?` inside one segment, a trailing `/` a whole directory; a glob without `/` matches the file name at any depth. */
+export declare function globMatcher(glob: string): (path: string) => boolean;
 /**
  * The changed paths no tier may auto-merge: the factory's and ship's
- * protected paths, every CI definition, `extra` (the configured protected
- * paths and known-flaky file), the denied directories anywhere in the path,
- * manifests, lockfiles and config by file name, and any path Windows could
- * resolve elsewhere (protectedChanges' raw `:`/`~`/`..` rule).
+ * protected paths, every CI definition, the usual git hook directories,
+ * `extra` (the configured protected paths, known-flaky file and core.hooksPath,
+ * root-relative), `globs` (the user's securityCritical list), the denied
+ * directories anywhere in the path, manifests, lockfiles, config and agent
+ * prompt files by name, and any path Windows could resolve elsewhere
+ * (protectedChanges' raw `:`/`~`/`..` rule).
  */
-export declare function deniedPaths(paths: readonly string[], extra?: readonly string[]): string[];
-/** docs: Markdown anywhere, or anything under the root `docs/` (manifests and config there are still denied). */
+export declare function deniedPaths(paths: readonly string[], extra?: readonly string[], globs?: readonly string[]): string[];
+/** docs: Markdown or reStructuredText anywhere, plain text under the root `docs/`. Never .mdx, HTML, scripts, site code or images. */
 export declare function isDocsPath(path: string): boolean;
-/** tests: a test file by name, or a source / snapshot / fixture-data file under a test directory. */
+/** tests: a test file by name, or a source / snapshot / fixture-data file under a root test directory or any `__tests__`. */
 export declare function isTestPath(path: string): boolean;
 export interface TierResult {
     tier?: AutoMergeTier;
     reasons: string[];
     evidence: string[];
 }
+/** Root-anchored source trees the small tier never touches by default: the factory, ship, the Copilot runner and the forge adapters. */
+export declare const SMALL_TIER_DENIED: string[];
+export interface ClassifyOptions {
+    /** Root-relative protected paths: the configured protected paths, the known-flaky file, the configured core.hooksPath. */
+    extraDenied?: readonly string[];
+    /** The files the BASE test config runs before or around tests (setupFiles, globalSetup, ...); `problem` = they could not be read. */
+    testSetup?: {
+        paths: readonly string[];
+        problem?: string;
+    };
+}
 /**
  * The first enabled tier (docs, tests, small, in that order) every changed
  * file fits, after the checks every tier shares: at least one change, plain
- * file modes, no binary, no denied path, and the caps.
+ * file modes, no binary, no denied path (built-in, configured, the user's
+ * securityCritical globs, the base test config's setup files), no deleted
+ * test, and the caps.
  */
-export declare function classifyChanges(entries: readonly ChangedEntry[] | null, config: AutoMergeConfig, extraDenied?: readonly string[]): TierResult;
+export declare function classifyChanges(entries: readonly ChangedEntry[] | null, config: AutoMergeConfig, opts?: ClassifyOptions): TierResult;
+/** Root config files whose setupFiles / globalSetup the engine reads at the BASE commit (never the head). */
+export declare const TEST_CONFIG_NAME: RegExp;
+/**
+ * The setup files the base's root test configs name (vitest / vite / jest
+ * configs and package.json's `jest`), read as text: each setupFiles,
+ * setupFilesAfterEnv, globalSetup or globalTeardown value must be a string
+ * literal or an array of them. Anything else (a variable, a call, a template
+ * with `${}`) is a `problem`, and the engine then keeps the tests and small
+ * tiers off: it cannot know which file runs.
+ */
+export declare function baseTestSetup(files: ReadonlyArray<{
+    path: string;
+    text: string;
+}>): {
+    paths: string[];
+    problem?: string;
+};
+/**
+ * The parks a run may have had and still auto-merge: waits and ordinary
+ * failures a later round fixed. Any other `awaiting-human:` park in the run's
+ * history (tamper, secrets, sandbox, protected paths, a park added later)
+ * keeps the merge human: an allowlist, so a new park fails closed.
+ */
+export declare const BENIGN_PARKS: ReadonlySet<string>;
 export interface AutoMergeRunFacts {
     /** The run is a ci-heal run (no issue): never auto-merged. */
     ciHeal: boolean;
@@ -102,13 +149,15 @@ export interface AutoMergeInput {
     head: string;
     config: AutoMergeConfig;
     run: AutoMergeRunFacts;
-    /** decideMerge (+ forge policies) on this head. */
+    /** decideMerge (+ forge policies) on this head; `checks` = the checks that ran and SUCCEEDED (not skipped or neutral). */
     decision: {
         ok: boolean;
         reasons: readonly string[];
         noChecks?: true;
         checks?: readonly string[];
     };
+    /** ship.requiredChecks (config or branch protection): when set, one of them must be among the succeeded checks. */
+    requiredChecks?: readonly string[];
     /** ship's latest verifier verdict. */
     verdict?: {
         sha: string;

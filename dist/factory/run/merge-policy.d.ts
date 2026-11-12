@@ -30,7 +30,7 @@ export interface FactoryMergeDecision extends MergeDecision {
     };
     /** The gate read was green with no check at all (NO_CI_CHECKS_NOTE): said in the park and the PR comment. */
     noChecks?: true;
-    /** The checks the gate read counted as passed on this head (auto-merge needs at least one). */
+    /** The checks that ran and SUCCEEDED on this head (auto-merge needs at least one); SKIPPED, NEUTRAL and known-flaky failures are not here. */
     checks?: string[];
 }
 /**
