@@ -151386,6 +151386,9 @@ function scriptedFactoryGh(bare) {
         baseRefOid: bareRef(bare, `refs/heads/${FACTORY_RUN_BASE}`)
       }));
     }
+    if (/^gh api --hostname [^ ]+ --method GET repos\/[^/ ]+\/[^/ ]+\/branches\//.test(key) && key.endsWith(`/branches/${FACTORY_RUN_BASE}`)) {
+      return ok(JSON.stringify({ name: FACTORY_RUN_BASE, commit: { sha: bareRef(bare, `refs/heads/${FACTORY_RUN_BASE}`) } }));
+    }
     if (key === `gh pr ready ${FACTORY_RUN_PR}`) {
       record3.ready = true;
       return ok("");
