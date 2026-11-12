@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "a9f48b6818a0163fdbb04b7db7efb97cbf992782",
-    "sourceSha256": "c41b50b03de4a936acb90b1af690d6bf211e1c9b677c0db83cdf61ded7773e69",
+    "head": "053e3afba2948b9e2c17237b500e024c5bd25544",
+    "sourceSha256": "8749a8dc32e8c52c757cc4c24ee421036e2126a5326260d67f84cc4a53cb91d1",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "a9f48b6818a0163fdbb04b7db7efb97cbf992782",
-  "sourceSha256": "c41b50b03de4a936acb90b1af690d6bf211e1c9b677c0db83cdf61ded7773e69",
+  "head": "053e3afba2948b9e2c17237b500e024c5bd25544",
+  "sourceSha256": "8749a8dc32e8c52c757cc4c24ee421036e2126a5326260d67f84cc4a53cb91d1",
   "counts": {
     "public": {
       "skills": 98,
@@ -28,13 +28,13 @@
       "toolFiles": 68,
       "libFiles": 55,
       "templateHooks": 25,
-      "srcFiles": 2077,
-      "total": 2102
+      "srcFiles": 2078,
+      "total": 2103
     },
     "generated": {
-      "distFiles": 7676,
+      "distFiles": 7680,
       "bridgeFiles": 8,
-      "total": 7684
+      "total": 7688
     },
     "prompt": {
       "promptLikeFiles": 72
@@ -3214,6 +3214,10 @@
       "dist/factory/bench/__tests__/bench.fake.test.d.ts.map",
       "dist/factory/bench/__tests__/bench.fake.test.js",
       "dist/factory/bench/__tests__/bench.fake.test.js.map",
+      "dist/factory/bench/__tests__/bench.smoke.test.d.ts",
+      "dist/factory/bench/__tests__/bench.smoke.test.d.ts.map",
+      "dist/factory/bench/__tests__/bench.smoke.test.js",
+      "dist/factory/bench/__tests__/bench.smoke.test.js.map",
       "dist/factory/bench/__tests__/bench.units.test.d.ts",
       "dist/factory/bench/__tests__/bench.units.test.d.ts.map",
       "dist/factory/bench/__tests__/bench.units.test.js",
@@ -21279,6 +21283,26 @@
         "id": "dist/factory/bench/__tests__/bench.fake.test.js.map",
         "kind": "generated-dist",
         "path": "dist/factory/bench/__tests__/bench.fake.test.js.map"
+      },
+      {
+        "id": "dist/factory/bench/__tests__/bench.smoke.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/bench/__tests__/bench.smoke.test.d.ts"
+      },
+      {
+        "id": "dist/factory/bench/__tests__/bench.smoke.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/bench/__tests__/bench.smoke.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/bench/__tests__/bench.smoke.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/bench/__tests__/bench.smoke.test.js"
+      },
+      {
+        "id": "dist/factory/bench/__tests__/bench.smoke.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/bench/__tests__/bench.smoke.test.js.map"
       },
       {
         "id": "dist/factory/bench/__tests__/bench.units.test.d.ts",
@@ -56281,6 +56305,11 @@
         "path": "src/factory/bench/__tests__/bench.fake.test.ts"
       },
       {
+        "id": "src/factory/bench/__tests__/bench.smoke.test.ts",
+        "kind": "src",
+        "path": "src/factory/bench/__tests__/bench.smoke.test.ts"
+      },
+      {
         "id": "src/factory/bench/__tests__/bench.units.test.ts",
         "kind": "src",
         "path": "src/factory/bench/__tests__/bench.units.test.ts"
@@ -86188,6 +86217,41 @@
         "kind": "imports"
       },
       {
+        "from": "src/factory/bench/__tests__/bench.smoke.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/__tests__/bench.smoke.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/__tests__/bench.smoke.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/__tests__/bench.smoke.test.ts",
+        "to": "external:node:url",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/__tests__/bench.smoke.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/__tests__/bench.smoke.test.ts",
+        "to": "src/factory/bench/fixture.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/__tests__/bench.smoke.test.ts",
+        "to": "src/factory/bench/runner.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/factory/bench/__tests__/bench.units.test.ts",
         "to": "external:node:fs",
         "kind": "imports"
@@ -86224,6 +86288,11 @@
       },
       {
         "from": "src/factory/bench/__tests__/bench.units.test.ts",
+        "to": "src/factory/bench/fixture.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/bench/__tests__/bench.units.test.ts",
         "to": "src/factory/bench/runner.ts",
         "kind": "imports"
       },
@@ -86245,6 +86314,21 @@
       {
         "from": "src/factory/bench/__tests__/bench.units.test.ts",
         "to": "src/factory/bench/seed/project.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/__tests__/bench.units.test.ts",
+        "to": "src/factory/run/budget.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/__tests__/bench.units.test.ts",
+        "to": "src/factory/run/sandbox-exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/bench/__tests__/bench.units.test.ts",
+        "to": "src/factory/run/state.ts",
         "kind": "imports"
       },
       {
@@ -86359,6 +86443,11 @@
       },
       {
         "from": "src/factory/bench/runner.ts",
+        "to": "external:node:crypto",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/runner.ts",
         "to": "external:node:fs",
         "kind": "imports"
       },
@@ -86370,6 +86459,11 @@
       {
         "from": "src/factory/bench/runner.ts",
         "to": "src/budget/ledger.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/runner.ts",
+        "to": "src/copilot-run/sandbox.ts",
         "kind": "imports"
       },
       {
@@ -86455,6 +86549,11 @@
       {
         "from": "src/factory/bench/runner.ts",
         "to": "src/factory/run/forge-roots.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/runner.ts",
+        "to": "src/factory/run/ledger.ts",
         "kind": "imports"
       },
       {
@@ -132474,12 +132573,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 11005,
-      "edgeCount": 13621,
-      "importEdgeCount": 11192,
+      "nodeCount": 11010,
+      "edgeCount": 13635,
+      "importEdgeCount": 11204,
       "registerEdgeCount": 119
     }
   },
-  "inventorySha256": "b08f46e521f8c9f73299267a2ca4477e9a6217827ba695d2c3921a63f6e78fc4",
-  "manifestSha256": "b62c1487e29da31ff93e07ececffeae0cbce47a3a130c4daa2eeb872061989ae"
+  "inventorySha256": "230e10374b64b578e4e82156bd682dd563b423371a63e87034d379d78b5efb26",
+  "manifestSha256": "5397163923170c4366633a02d95a2c593289005c4ddf0de965ee9ca4d2064b76"
 }
