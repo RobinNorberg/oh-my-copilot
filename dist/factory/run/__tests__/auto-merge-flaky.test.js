@@ -94,5 +94,24 @@ describe('auto-merge and checks that did not succeed', () => {
         expect(line.length).toBeLessThan(260);
         expect(line).toContain('Evil');
     });
+    it('duplicate check names (one SUCCESS, one FAILURE, same name) leave the merge to a human, in either order', () => {
+        for (const list of [[{ name: 'Test', state: 'SUCCESS' }, { name: 'Test', state: 'FAILURE' }], [{ name: 'Test', state: 'FAILURE' }, { name: 'Test', state: 'SUCCESS' }]]) {
+            expect(verdict(decide(list)).ok, JSON.stringify(list)).toBe(false);
+            const d = decide(list, { requiredChecks: ['Test'] });
+            expect(verdict(d, ['Test']).ok, JSON.stringify(list)).toBe(false);
+            // Even when the merge rule allowed the head, the FAILURE entry blocks.
+            const v = verdict({ ...d, ok: true, reasons: [] }, ['Test']);
+            expect(v.ok).toBe(false);
+            expect(v.reasons.join('\n')).toContain('Test (FAILURE');
+        }
+    });
+    it('a check name loses format characters (bidi, zero-width) and its "@" cannot mention anyone', () => {
+        const name = ['Te', String.fromCharCode(0x202e), 'st', String.fromCharCode(0x200b), ' @org/team ', String.fromCharCode(0x2066), 'x', String.fromCharCode(0x2069)].join('');
+        const d = decide([{ name: 'Lint', state: 'SUCCESS' }, { name, state: 'CANCELLED' }], { requiredChecks: ['Lint'] });
+        const line = verdict({ ...d, ok: true, reasons: [] }, ['Lint']).reasons.find((r) => r.includes('did not succeed'));
+        expect(line).not.toMatch(/\p{Cf}/u);
+        expect(line).not.toContain('@');
+        expect(line).toContain('Test ＠org/team x (CANCELLED)');
+    });
 });
 //# sourceMappingURL=auto-merge-flaky.test.js.map

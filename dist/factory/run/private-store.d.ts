@@ -101,6 +101,8 @@ export interface PrivateGitTools {
 }
 /** Make (or reuse) the tools under `dir` (the engine's ledger dir: its `empty-hooks` is the engine's own, emptyHooksDir). */
 export declare function privateGitTools(dir: string): PrivateGitTools;
+/** Fixed text when the hooks dir is not empty or the global config is not an empty file (checked before every command here). */
+export declare function toolsProblem(t: PrivateGitTools): string | null;
 export interface PrivateStoreContext {
     tools: PrivateGitTools;
     /** Default defaultExec (scrubShipEnv environment). Not the engine's guarded exec: these shapes are not on its allowlist. */

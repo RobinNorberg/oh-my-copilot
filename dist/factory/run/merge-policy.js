@@ -22,8 +22,13 @@ import { oneLine } from './prompts.js';
 import { runLabel } from './state.js';
 // The merge view is the GitHub forge's `gh pr view --json MERGE_VIEW_FIELDS` read.
 export { MERGE_VIEW_FIELDS, parseMergeView } from '../../forge/github/reviews.js';
-/** A forge-reported check name or state in a park reason: one line, no backticks, capped. */
-const checkText = (s, max) => oneLine(s.replace(/`/g, "'"), max) || '(unnamed)';
+/**
+ * A forge-reported check name or state in a park reason (it may reach a PR
+ * comment or progress sync): one line, no format characters (bidi,
+ * zero-width), no backticks, no '@' that could mention someone (a full-width
+ * '＠' instead), capped.
+ */
+const checkText = (s, max) => oneLine(s.replace(/\p{Cf}/gu, '').replace(/`/g, "'").replace(/@/g, '＠'), max) || '(unnamed)';
 /**
  * ship's decideMerge on a fresh one-shot gate read for the head (no watch,
  * no rerun) and the commits since the reviewed sha. `view.baseRefOid` must be

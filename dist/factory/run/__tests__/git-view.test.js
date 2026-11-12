@@ -95,5 +95,18 @@ describe('buildGitView', () => {
         buildGitView(plain, sha, source(repo), viewGit);
         expect(inView(plain, 'status', '--porcelain').out).toBe('');
     });
+    it('refuses a commit whose objects sum above the byte cap before any pack is made, and an object size git cannot read', () => {
+        const sha = g(repo, 'rev-parse', 'HEAD');
+        const seen = [];
+        const watched = (args, input) => { seen.push(args[0]); return source(repo)(args, input); };
+        // The commit, its tree and a.txt ("one\n", 4 bytes) sum to more than 4 bytes.
+        expect(() => buildGitView(join(dir, 'big'), sha, watched, viewGit, 4)).toThrow(/bytes of objects, above the 4 a git view holds/);
+        expect(seen).not.toContain('pack-objects');
+        expect(existsSync(join(dir, 'big'))).toBe(false);
+        const missing = (args, input) => (args[0] === 'cat-file' && args[1].startsWith('--batch-check') ? Buffer.from(`${'0'.repeat(40)} missing\n`) : source(repo)(args, input));
+        expect(() => buildGitView(join(dir, 'gone'), sha, missing, viewGit)).toThrow(/could not be read/);
+        // Under the default cap the same commit builds.
+        expect(buildGitView(join(dir, 'ok'), sha, source(repo), viewGit)).toBe(join(dir, 'ok', '.git'));
+    });
 });
 //# sourceMappingURL=git-view.test.js.map

@@ -113,7 +113,7 @@ import { createFactoryProgress } from './progress.js';
 import { acquireFactoryClaim, claimBusyMessage, factoryClaimHolder, factoryClaimRepo, isShallowClaimRepo, localFactoryClaimRepo, shallowClaimWarning, settleFactoryClaim, trustedFactoryClaimRepo, trustedLocalFactoryClaimRepo } from './claims.js';
 import { compareSnapshots, replaceObjectsProblem, samePath, snapshotRepo, verifyReviewWorktree } from './review-guard.js';
 import { GATE_INSTALL_GATE, IMPORT_REFUSED_GATE, LAYOUT_UNSUPPORTED_GATE, PRIVATE_STORE_GATE, PrivateRun, REPO_GUARD_GATE, resolveGateInstall, resolveRunLayout } from './private-run.js';
-import { lockfileUnchanged, PrivateRepoTampered, PrivateStoreError, userRepoGuardSnapshot } from './private-store.js';
+import { lockfileUnchanged, PRIVATE_GIT_TIMEOUT_MS, PrivateRepoTampered, PrivateStoreError, userRepoGuardSnapshot } from './private-store.js';
 import { parseReviewOutput, reviewComment, verdictNotes } from './review-output.js';
 import { findPlanLink, hasAcceptanceCriteria, issueAuthorTrusted } from './plan-rules.js';
 import { acquireFactoryOwner, acquireFactoryRepoOwner, createFactoryState, defaultOwnerDeps, EXIT_BUSY, factoryCancelRequested, forgeResumeProblem, factoryOwnerPath, factoryRepoOwnerPath, factoryStateDir, factoryStatePath, HEAL_APPROVE_GATE, HEAL_DIAGNOSIS_GATE, healRunKey, moveTo, overwriteFactoryState, ownerHolding, parseFactoryState, readFactoryState, reviewerName, runLabel, runSlug, setGate, GATE_DETAIL_MAX_CHARS, shipVerdictHash, TERMINAL_FACTORY_PHASES, factoryBranch, trackerStageOf, updateFactoryState, runRemote, verifyFactoryIntegrity, unreadableOwnerMessage, describeOwner, FactoryBusyError, FactoryTamperHoldError, ownerRecord, acquireRunSlot, claimOwner, factorySlotPath, withRepoImportLock, withRepoImportLockAsync, } from './state.js';
@@ -1058,24 +1058,34 @@ class FactoryEngine {
     /** git-view.ts's source in your repository (the base, a shared-layout checkout's commits): hardened host git, GIT_* scrubbed. */
     hostViewSource() {
         const env = scrubShipEnv(process.env);
-        return (args, input) => runHostGitBuffer(this.o.root, args, undefined, env, input);
+        return (args, input) => runHostGitBuffer(this.o.root, args, PRIVATE_GIT_TIMEOUT_MS, env, input);
+    }
+    /** buildGitView with timed host git on the new view; a failure removes what was made and throws. */
+    buildViewOrClean(dir, sha, source) {
+        const env = scrubShipEnv(process.env);
+        try {
+            return buildGitView(dir, sha, source, (cwd, args, input) => runHostGit(cwd, args, PRIVATE_GIT_TIMEOUT_MS, env, input));
+        }
+        catch (error) {
+            try {
+                rmSync(join(dir, '.git'), { recursive: true, force: true });
+            }
+            catch { /* best effort */ }
+            throw error;
+        }
     }
     /**
      * A one-commit git view of `sha` at `<dir>/.git` (git-view.ts), or none:
      * a failure only warns and removes what was made, and the command runs
      * without git as before (a check that needs git then fails on its own).
+     * The base calibration only; a container gate gets no verdict instead.
      */
     makeGitView(dir, sha, source, what) {
-        const env = scrubShipEnv(process.env);
         try {
-            return buildGitView(dir, sha, source, (cwd, args, input) => runHostGit(cwd, args, undefined, env, input));
+            return this.buildViewOrClean(dir, sha, source);
         }
         catch (error) {
             this.o.warn?.(`omg factory run: ${what} at ${sha.slice(0, 12)} runs without a git view (${oneLine(errText(error), 300)}); a check there that runs git fails`);
-            try {
-                rmSync(join(dir, '.git'), { recursive: true, force: true });
-            }
-            catch { /* best effort */ }
             return undefined;
         }
     }
@@ -1083,8 +1093,10 @@ class FactoryEngine {
      * isolation "container": `run` with a one-commit git view of the commit
      * `sha()` reads (engine git, before the container starts), made in a fresh
      * dir under the gate job root and removed after; the checkout's own `.git`
-     * names a host git dir the container never sees. The OS sandbox: `run` as
-     * it is (the prepare checkout's link to its git dir works there, read-only).
+     * names a host git dir the container never sees. A view that cannot be
+     * built runs nothing: no verdict (gate-no-verdict), never a run without
+     * git. The OS sandbox: `run` as it is (the prepare checkout's link to its
+     * git dir works there, read-only).
      */
     async withGitView(sha, what, run) {
         if (!this.gatesModeCache?.container)
@@ -1093,16 +1105,16 @@ class FactoryEngine {
         mkdirSync(jobRoot, { recursive: true });
         const dir = mkdtempSync(join(jobRoot, 'gitview-'));
         try {
-            let at;
+            let gitView;
             try {
-                at = sha().trim();
+                const at = sha().trim();
+                const priv = this.privateRun();
+                gitView = this.buildViewOrClean(dir, at, priv ? priv.viewSource() : this.hostViewSource());
             }
             catch (error) {
-                this.o.warn?.(`omg factory run: ${what} runs without a git view: its commit could not be read (${oneLine(errText(error), 300)})`);
+                return { ran: false, started: true, reason: `the git view of ${what} could not be built (${oneLine(errText(error), 300)}); nothing ran` };
             }
-            const priv = this.privateRun();
-            const gitView = at ? this.makeGitView(dir, at, priv ? priv.viewSource() : this.hostViewSource(), what) : undefined;
-            return await run(gitView ? { gitView } : {});
+            return await run({ gitView });
         }
         finally {
             try {
@@ -1146,6 +1158,21 @@ class FactoryEngine {
         const problem = linkNodeModules(this.o.root, path, this.o.warn, this.baseWorkspaces(baseSha));
         if (problem)
             this.o.warn?.(`omg factory run: ${problem}; a gate that fails in the sandbox parks at ${GATE_SANDBOX_INCOMPATIBLE_GATE}`);
+    }
+    /**
+     * A checkout kept after a failed discard gets its node_modules tree back
+     * (the local gate runs in it). A failure only warns: the discard's own
+     * error is the one reported (review-501b INFO).
+     */
+    relinkKeptCheckout(path) {
+        if (this.containerIsolated())
+            return;
+        try {
+            this.linkGateTree(path);
+        }
+        catch (error) {
+            this.o.warn?.(`omg factory run: could not link the node_modules tree of the kept prepare checkout ${path} again (${oneLine(errText(error), 300)})`);
+        }
     }
     /** The engine's prepare and local-gate checkout: `<run>/w/prep` in the private layout. */
     checkoutDir() {
@@ -2994,8 +3021,7 @@ class FactoryEngine {
         }
         catch (error) {
             // A kept checkout keeps its tooling (the local gate runs in it); with isolation "container" it never had the link.
-            if (!this.containerIsolated())
-                this.linkGateTree(path);
+            this.relinkKeptCheckout(path);
             throw new FactoryStepError(`could not discard the engine's prepare checkout ${path}: ${errText(error)}`);
         }
         this.save((x) => {
@@ -3047,8 +3073,7 @@ class FactoryEngine {
             removeWorkerWorktree(FACTORY_CHECKOUT_TEAM, checkoutWorker(this.key), this.o.root, { contained: [...new Set(contained)] });
         }
         catch (error) {
-            if (!this.containerIsolated())
-                this.linkGateTree(path);
+            this.relinkKeptCheckout(path);
             throw new FactoryStepError(`could not discard the engine's prepare checkout ${path}, which an older release made: ${errText(error)}. ${this.freshCheckoutRecovery()}`);
         }
         this.save((x) => {
