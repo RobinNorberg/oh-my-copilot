@@ -4,6 +4,10 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ## [Unreleased]
 
+# oh-my-copilot v5.26.0
+
+## [5.26.0] - 2026-11-12
+
 ### Added
 
 - **`omg factory dashboard`.** One self-contained HTML page of all factory runs, from local state only: status, park reasons, time per phase, credits and requests, bench results. `--out`, `--json`, `--since`.
