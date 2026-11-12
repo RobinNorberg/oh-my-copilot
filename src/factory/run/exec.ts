@@ -58,6 +58,7 @@ import { isCodingAgentAssignArgs, isCodingAgentCloseArgs, isCodingAgentStatusArg
 import { CODING_AGENT_LINK_BODY_ARG, codingAgentLinkBodyProblem, isCodingAgentGitArgs, isCodingAgentLinkCommentArgs, type CodingAgentStepContext } from './coding-agent-lane.js';
 import { isReviewFeedbackArgs } from '../../forge/github/graphql.js';
 import { isGateReadArgs, isRequiredChecksArgs } from '../../forge/github/checks.js';
+import { isGithubAutoMergeArgs } from '../../forge/github/merge.js';
 import { LOCAL_REMOTE, STATE_CHANGE_LOG_FLAGS } from '../../forge/local/mirror.js';
 import { assertSafeCommand, isTrustedFetch, PROTECTED_BRANCHES, ShipSafetyError, TRUSTED_READ_ENV, type Exec } from '../../ship/exec.js';
 import { triageWriteGh } from '../triage/guard.js';
@@ -364,6 +365,8 @@ function factoryGit(a: string[], protectedBranches: readonly string[], extraProt
         && /^[0-9a-f]{40}$/.test(r[STATE_CHANGE_LOG_FLAGS.length]) && r[STATE_CHANGE_LOG_FLAGS.length + 1] === '--'
         && isPlainRepoPath(r[STATE_CHANGE_LOG_FLAGS.length + 2]) ? true : null;
     case 'diff':
+      // The auto-merge tier read (auto-merge.ts): modes and line counts of base...head, no renames, no diff or textconv program.
+      if (r.length === 7 && r[0] === '--no-ext-diff' && r[1] === '--no-textconv' && (same(r.slice(2, 6), ['--raw', '-z', '--no-renames', '--no-abbrev']) || same(r.slice(2, 6), ['--numstat', '-z', '--no-renames', '--no-abbrev'])) && /^[0-9a-f]{40}\.\.\.[0-9a-f]{40}$/.test(r[6])) return true;
       return r.length === 3 && r[0] === '--no-ext-diff' && r[1] === '--no-textconv' && /^[0-9a-f]{40}\.\.\.[0-9a-f]{40}$/.test(r[2]) ? true : null;
     case 'ls-tree':
       // Two-axis review: the standards files on the base commit.
@@ -396,6 +399,8 @@ function factoryGit(a: string[], protectedBranches: readonly string[], extraProt
 /** The GitHub repository a run reads review feedback from: gh's `HOST/OWNER/NAME` (ghRepoArg). */
 export interface GithubReadContext {
   repo: string;
+  /** Set by the engine only inside its opt-in auto-merge step (auto-merge.ts): the one head-pinned REST merge it may run. */
+  autoMerge?: { pr: number; head: string };
 }
 
 function factoryGh(a: string[], writes?: TrackerWriteContext, github?: GithubReadContext, agent?: CodingAgentContext): boolean | null {
@@ -417,7 +422,11 @@ function factoryGh(a: string[], writes?: TrackerWriteContext, github?: GithubRea
   // run's own repository (fixed query); ship refuses every other.
   // And the two GETs of the base's required checks (gates without ship.requiredChecks), exact shape, same repository.
   // And the gates' commit reads at a full sha (isGateReadArgs: the base's check names, the head's check suites and check runs).
-  if (group === 'api') return isReviewFeedbackArgs(a, github?.repo) || isRequiredChecksArgs(a, github?.repo) || isGateReadArgs(a, github?.repo) ? true : null;
+  // And, only inside the engine's auto-merge step, its head-pinned REST merge of exactly that PR and sha (never `gh pr merge`).
+  if (group === 'api') {
+    const step = github?.autoMerge ? { repo: github.repo, ...github.autoMerge } : undefined;
+    return isReviewFeedbackArgs(a, github?.repo) || isRequiredChecksArgs(a, github?.repo) || isGateReadArgs(a, github?.repo) || isGithubAutoMergeArgs(a, step) ? true : null;
+  }
   if (group === 'issue') {
     if (sub === 'view') return r.length === 3 && NUMBER.test(r[0]) && r[1] === '--json' && JSON_FIELDS.test(r[2]);
     if (sub === 'comment') return r.length === 3 && NUMBER.test(r[0]) && r[1] === '--body-file' && isFile(r[2]);
