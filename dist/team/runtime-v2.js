@@ -35,7 +35,7 @@ import { composeInitialInbox, ensureWorkerStateDir, writeWorkerOverlay, generate
 import { queueInboxInstruction } from './mcp-comm.js';
 import { startSdkLaunchProgress } from './sdk-launch-progress.js';
 import { readLeaderInbox } from './mailbox-outstanding.js';
-import { cleanupTeamWorktrees, inspectTeamWorktreeCleanupSafety, ensureWorkerWorktree, installWorktreeRootAgents, normalizeTeamWorktreeMode, writePreservedWorktreesRecord, } from './git-worktree.js';
+import { cleanupTeamWorktrees, inspectTeamWorktreeCleanupSafety, ensureWorkerWorktree, HOST_GIT_MAX_BUFFER, installWorktreeRootAgents, normalizeTeamWorktreeMode, writePreservedWorktreesRecord, } from './git-worktree.js';
 import { formatOmcCliInvocation } from '../utils/omc-cli-rendering.js';
 import { createSwallowedErrorLogger } from '../lib/swallowed-error.js';
 import { CANONICAL_TEAM_ROLES } from '../shared/types.js';
@@ -1123,7 +1123,7 @@ export async function runBoundedLaunches(jobs, concurrency, launch, record) {
  */
 function inspectLeaderCheckoutForWorktrees(cwd) {
     const run = (args) => execFileSync('git', args, {
-        cwd, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true,
+        cwd, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true, maxBuffer: HOST_GIT_MAX_BUFFER,
     });
     try {
         run(['rev-parse', '--verify', 'HEAD']);

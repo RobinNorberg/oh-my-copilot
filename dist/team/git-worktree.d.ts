@@ -125,6 +125,12 @@ export declare function hostGitEnv(args: readonly string[], base?: NodeJS.Proces
  */
 export declare function hostGitDriverOverrides(cwd: string, env?: NodeJS.ProcessEnv, timeout?: number): string[] | null;
 /**
+ * Output cap for runHostGit (and the other git spawns whose output scales
+ * with the repository: ls-tree -r, ls-files, diff --name-only, status). Node's
+ * 1 MiB default fails `ls-tree -r` on a repository of about 10k files.
+ */
+export declare const HOST_GIT_MAX_BUFFER: number;
+/**
  * Run one host git command, hardened: hostGitHardeningArgs on every command;
  * on a command that touches work-tree files (WORK_TREE_SUBCOMMANDS) also an
  * empty core.attributesFile and hostGitDriverOverrides; and the git dir,
@@ -142,7 +148,8 @@ export declare function hostGitDriverOverrides(cwd: string, env?: NodeJS.Process
  * what execFileSync throws, when the drivers cannot be listed, or
  * `sandbox-escaped:` when the recorded links changed. `baseEnv` (default
  * process.env) is the environment the pins are set over (the factory
- * engine's commit identity).
+ * engine's commit identity). Output beyond HOST_GIT_MAX_BUFFER throws
+ * (ENOBUFS), so a caller that maps a throw to "git failed" stays fail-closed.
  */
 export declare function runHostGit(cwd: string, args: readonly string[], timeout?: number, baseEnv?: NodeJS.ProcessEnv, input?: string | Buffer): string;
 /** runHostGit with raw stdout bytes (`cat-file --batch` of binary blobs). */

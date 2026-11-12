@@ -61,7 +61,7 @@ import { atomicWriteJson, ensureDirWithMode, validateResolvedPath } from './fs-u
 import { getOmcRoot } from '../lib/worktree-paths.js';
 import { isRuntimeV2Enabled } from './runtime-flags.js';
 import { sanitizeName } from './tmux-session.js';
-import { listTeamWorktrees, getWorktreePath, getBranchName } from './git-worktree.js';
+import { HOST_GIT_MAX_BUFFER, listTeamWorktrees, getWorktreePath, getBranchName } from './git-worktree.js';
 import { checkMergeConflicts, mergeWorkerBranch, validateBranchName, configureHarnessMergeAttributes } from './merge-coordinator.js';
 import { appendToInbox } from './worker-bootstrap.js';
 import { appendToLeaderInbox, ensureLeaderInbox } from './leader-inbox.js';
@@ -328,6 +328,7 @@ export async function startMergeOrchestrator(config) {
                         encoding: 'utf-8',
                         stdio: 'pipe',
                         windowsHide: true,
+                        maxBuffer: HOST_GIT_MAX_BUFFER,
                     });
                     conflictingFiles = parseUUFiles(status);
                 }
@@ -543,6 +544,7 @@ export async function startMergeOrchestrator(config) {
                 encoding: 'utf-8',
                 stdio: 'pipe',
                 windowsHide: true,
+                maxBuffer: HOST_GIT_MAX_BUFFER,
             }).trim();
             if (status.length > 0) {
                 const dirtyFiles = status
