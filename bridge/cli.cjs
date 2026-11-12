@@ -147158,9 +147158,13 @@ function modelMultiplier(models, model) {
   return typeof m === "number" && Number.isFinite(m) && m >= 0 ? m : null;
 }
 function multiplierRefusal(info, allow) {
-  if (info.multiplier === null || info.multiplier <= 1) return null;
+  if (info.multiplier === null) {
+    if (allow !== void 0) return null;
+    return `the lanes' default Copilot model ${info.model ?? "(unknown)"} has no known premium multiplier (${info.detail}); check the default Copilot model by hand (/model in an interactive copilot), then rerun with --allow-multiplier <its multiplier, rounded up>`;
+  }
+  if (info.multiplier <= 1) return null;
   if (allow !== void 0 && allow >= info.multiplier) return null;
-  return `the lanes' default Copilot model ${info.model ?? "(unnamed)"} bills ${info.multiplier}x premium requests per call; rerun with --allow-multiplier ${info.multiplier} to accept it, or pick a cheaper default model in Copilot`;
+  return `the lanes' default Copilot model ${info.model ?? "(unnamed)"} bills ${info.multiplier}x premium requests per call; rerun with --allow-multiplier ${Math.ceil(info.multiplier)} to accept it, or pick a cheaper default model in Copilot`;
 }
 async function probeLaneModel(jobRoot, deps = defaultCopilotRunDeps()) {
   const none = (detail) => ({ model: null, multiplier: null, detail });
@@ -147227,7 +147231,6 @@ async function probeLaneModel(jobRoot, deps = defaultCopilotRunDeps()) {
       }
     }
     if (client) {
-      const pid = runtimePid(client);
       try {
         await withTimeout3(client.stop(), RPC_TIMEOUT_MS4, "client.stop()");
       } catch {
@@ -147235,14 +147238,22 @@ async function probeLaneModel(jobRoot, deps = defaultCopilotRunDeps()) {
           await withTimeout3(client.forceStop?.() ?? Promise.resolve(), RPC_TIMEOUT_MS4, "client.forceStop()");
         } catch {
         }
-        if (pid) try {
-          process.kill(pid);
+      }
+      const proc = client.cliProcess;
+      const pid = runtimePid(client);
+      if (proc && pid && !hasExited(proc)) {
+        try {
+          deps.killTree(pid);
         } catch {
         }
       }
     }
     try {
       (0, import_node_fs36.rmSync)(jobHome, { recursive: true, force: true });
+    } catch {
+    }
+    try {
+      (0, import_node_fs36.rmdirSync)(jobRoot);
     } catch {
     }
   }
@@ -147260,6 +147271,7 @@ var init_model_probe = __esm({
     init_copilot_sdk_driver();
     init_copilot_sdk_scenarios();
     init_copilot_session_env();
+    init_process_utils2();
     init_windows_search();
     START_TIMEOUT_MS4 = 6e4;
     RPC_TIMEOUT_MS4 = 3e4;
@@ -148147,7 +148159,7 @@ function factoryBenchCommand() {
       fail4(error2);
     }
   });
-  bench.command("run").argument("<dir>", "the fixture directory (omg factory bench init)").option("--fake", "scripted lanes, no Copilot and no cost: proves the harness, scoring and trap expectations").option("--live", 'real Copilot lanes through omg factory run <id> in the fixture repository; needs --max-requests and the gate sandbox enforced (factory.run.sandbox.gates "enforced", or isolation "container")').option("--max-requests <n>", `the premium-request cap: ${LIVE_CAP_BOUND}`, integerOption(1, 1e4)).option("--max-credits <n>", "--live: no run starts once this many AI credits are recorded (a soft stop: runs in flight finish)", integerOption(1, 1e6)).option("--max-minutes <n>", `no run starts after this many minutes (default ${DEFAULT_BENCH_MAX_MINUTES})`, integerOption(1, 24 * 60)).option("--parallel <n>", '--live: up to n runs at once (needs factory.run.maxConcurrent above 1 and layout "private" in your user config)', integerOption(1, 16)).option("--allow-multiplier <n>", "--live: accept a default Copilot model that bills up to n premium requests per call (refused above 1 without it)", integerOption(1, 1e3)).option("--issues <ids>", "run only these issues (comma-separated ids, e.g. 2,6,9,10); the results record the subset").option("--out <dir>", "results directory (default ./bench-results)").option("--json", "print the results JSON instead of the summary").description("Run the factory over the fixture until every issue is parked, finished or not runnable, then score it").action(async (dir, o) => {
+  bench.command("run").argument("<dir>", "the fixture directory (omg factory bench init)").option("--fake", "scripted lanes, no Copilot and no cost: proves the harness, scoring and trap expectations").option("--live", 'real Copilot lanes through omg factory run <id> in the fixture repository; needs --max-requests and the gate sandbox enforced (factory.run.sandbox.gates "enforced", or isolation "container")').option("--max-requests <n>", `the premium-request cap: ${LIVE_CAP_BOUND}`, integerOption(1, 1e4)).option("--max-credits <n>", "--live: no run starts once this many AI credits are recorded (a soft stop: runs in flight finish)", integerOption(1, 1e6)).option("--max-minutes <n>", `no run starts after this many minutes (default ${DEFAULT_BENCH_MAX_MINUTES})`, integerOption(1, 24 * 60)).option("--parallel <n>", '--live: up to n runs at once (needs factory.run.maxConcurrent above 1 and layout "private" in your user config)', integerOption(1, 16)).option("--allow-multiplier <n>", "--live: accept a default Copilot model that bills up to n premium requests per call (without it: refused above 1, or when Copilot does not report the model or multiplier)", integerOption(1, 1e3)).option("--issues <ids>", "run only these issues (comma-separated ids, e.g. 2,6,9,10); the results record the subset").option("--out <dir>", "results directory (default ./bench-results)").option("--json", "print the results JSON instead of the summary").description("Run the factory over the fixture until every issue is parked, finished or not runnable, then score it").action(async (dir, o) => {
     if (Boolean(o.fake) === Boolean(o.live)) return fail4(new Error("pass exactly one of --fake and --live"), true);
     let issues;
     try {

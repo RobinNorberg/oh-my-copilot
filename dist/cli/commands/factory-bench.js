@@ -43,7 +43,7 @@ export function factoryBenchCommand() {
         .option('--max-credits <n>', '--live: no run starts once this many AI credits are recorded (a soft stop: runs in flight finish)', integerOption(1, 1_000_000))
         .option('--max-minutes <n>', `no run starts after this many minutes (default ${DEFAULT_BENCH_MAX_MINUTES})`, integerOption(1, 24 * 60))
         .option('--parallel <n>', '--live: up to n runs at once (needs factory.run.maxConcurrent above 1 and layout "private" in your user config)', integerOption(1, 16))
-        .option('--allow-multiplier <n>', '--live: accept a default Copilot model that bills up to n premium requests per call (refused above 1 without it)', integerOption(1, 1_000))
+        .option('--allow-multiplier <n>', '--live: accept a default Copilot model that bills up to n premium requests per call (without it: refused above 1, or when Copilot does not report the model or multiplier)', integerOption(1, 1_000))
         .option('--issues <ids>', 'run only these issues (comma-separated ids, e.g. 2,6,9,10); the results record the subset')
         .option('--out <dir>', 'results directory (default ./bench-results)')
         .option('--json', 'print the results JSON instead of the summary')

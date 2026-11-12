@@ -63155,6 +63155,7 @@ var init_model_probe = __esm({
     init_copilot_sdk_driver();
     init_copilot_sdk_scenarios();
     init_copilot_session_env();
+    init_process_utils2();
     init_windows_search();
   }
 });

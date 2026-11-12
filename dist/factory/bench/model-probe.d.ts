@@ -26,11 +26,12 @@ type ModelEntry = {
 /** The multiplier of `model` in a listModels() answer; null when absent or not a finite number >= 0. */
 export declare function modelMultiplier(models: readonly ModelEntry[], model: string): number | null;
 /**
- * Null when the run may start, else why not: a known multiplier above 1
+ * Null when the run may start, else why not. A known multiplier above 1
  * needs `--allow-multiplier` at or above it (one lane then costs that many
- * premium requests).
+ * premium requests). An unknown model or multiplier fails closed: it needs
+ * `--allow-multiplier`, given after checking the default model by hand.
  */
 export declare function multiplierRefusal(info: BenchModelInfo, allow: number | undefined): string | null;
-export declare function probeLaneModel(jobRoot: string, deps?: Pick<CopilotRunDeps, 'env' | 'platform' | 'loadSdk' | 'resolveBin' | 'userConfigDir'>): Promise<BenchModelInfo>;
+export declare function probeLaneModel(jobRoot: string, deps?: Pick<CopilotRunDeps, 'env' | 'platform' | 'loadSdk' | 'resolveBin' | 'userConfigDir' | 'killTree'>): Promise<BenchModelInfo>;
 export {};
 //# sourceMappingURL=model-probe.d.ts.map

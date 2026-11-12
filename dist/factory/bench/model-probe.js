@@ -8,7 +8,7 @@
  * model turn runs. Never throws: what it could not read is `null` with why.
  */
 import { randomBytes } from 'node:crypto';
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, rmdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { defaultCopilotRunDeps } from '../../copilot-run/job.js';
 import { allowlistSessionEnv, sessionGitHubToken } from '../../copilot-run/sandbox.js';
@@ -16,6 +16,7 @@ import { errText, withTimeout } from '../../copilot-run/timeout.js';
 import { resolveShimTarget, runtimePid } from '../../smoke/copilot-sdk-driver.js';
 import { RUNTIME_MIN_MAX_CREDITS } from '../../smoke/copilot-sdk-scenarios.js';
 import { buildSessionEnv, loginIdentity } from '../../smoke/copilot-session-env.js';
+import { hasExited } from '../../smoke/process-utils.js';
 import { childEnv } from '../../utils/windows-search.js';
 const START_TIMEOUT_MS = 60_000;
 const RPC_TIMEOUT_MS = 30_000;
@@ -25,16 +26,22 @@ export function modelMultiplier(models, model) {
     return typeof m === 'number' && Number.isFinite(m) && m >= 0 ? m : null;
 }
 /**
- * Null when the run may start, else why not: a known multiplier above 1
+ * Null when the run may start, else why not. A known multiplier above 1
  * needs `--allow-multiplier` at or above it (one lane then costs that many
- * premium requests).
+ * premium requests). An unknown model or multiplier fails closed: it needs
+ * `--allow-multiplier`, given after checking the default model by hand.
  */
 export function multiplierRefusal(info, allow) {
-    if (info.multiplier === null || info.multiplier <= 1)
+    if (info.multiplier === null) {
+        if (allow !== undefined)
+            return null;
+        return `the lanes' default Copilot model ${info.model ?? '(unknown)'} has no known premium multiplier (${info.detail}); check the default Copilot model by hand (/model in an interactive copilot), then rerun with --allow-multiplier <its multiplier, rounded up>`;
+    }
+    if (info.multiplier <= 1)
         return null;
     if (allow !== undefined && allow >= info.multiplier)
         return null;
-    return `the lanes' default Copilot model ${info.model ?? '(unnamed)'} bills ${info.multiplier}x premium requests per call; rerun with --allow-multiplier ${info.multiplier} to accept it, or pick a cheaper default model in Copilot`;
+    return `the lanes' default Copilot model ${info.model ?? '(unnamed)'} bills ${info.multiplier}x premium requests per call; rerun with --allow-multiplier ${Math.ceil(info.multiplier)} to accept it, or pick a cheaper default model in Copilot`;
 }
 export async function probeLaneModel(jobRoot, deps = defaultCopilotRunDeps()) {
     const none = (detail) => ({ model: null, multiplier: null, detail });
@@ -107,7 +114,6 @@ export async function probeLaneModel(jobRoot, deps = defaultCopilotRunDeps()) {
             catch { /* best effort */ }
         }
         if (client) {
-            const pid = runtimePid(client);
             try {
                 await withTimeout(client.stop(), RPC_TIMEOUT_MS, 'client.stop()');
             }
@@ -116,17 +122,27 @@ export async function probeLaneModel(jobRoot, deps = defaultCopilotRunDeps()) {
                     await withTimeout(client.forceStop?.() ?? Promise.resolve(), RPC_TIMEOUT_MS, 'client.forceStop()');
                 }
                 catch { /* gone */ }
-                if (pid)
-                    try {
-                        process.kill(pid);
-                    }
-                    catch { /* gone */ }
+            }
+            // The runtime this probe's client spawned, through the SDK's own child handle (set at spawn, also when
+            // start() then hung or timed out): if it still runs, end its tree. The handle's exit state guards against
+            // a recycled pid. No handle means start() hung before spawning, so nothing of ours is running.
+            const proc = client.cliProcess;
+            const pid = runtimePid(client);
+            if (proc && pid && !hasExited(proc)) {
+                try {
+                    deps.killTree(pid);
+                }
+                catch { /* gone */ }
             }
         }
         try {
             rmSync(jobHome, { recursive: true, force: true });
         }
         catch { /* best effort */ }
+        try {
+            rmdirSync(jobRoot);
+        }
+        catch { /* not empty, or gone */ }
     }
 }
 //# sourceMappingURL=model-probe.js.map
