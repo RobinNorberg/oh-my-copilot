@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "cfa68af29dbf3913dadb813bb490f7dcbd99721d",
-    "sourceSha256": "6e9f02ff5b6a5188fcff0f5092048829cd22dbcefeb19fae6a6b7673865a33dd",
+    "head": "dba017d7b683ed8175c18803bbdd2af1fa04d49d",
+    "sourceSha256": "319f6ef24f1fff321a2d19413b61c756f0317cc8ac3d031389c4f9ffd4981236",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "cfa68af29dbf3913dadb813bb490f7dcbd99721d",
-  "sourceSha256": "6e9f02ff5b6a5188fcff0f5092048829cd22dbcefeb19fae6a6b7673865a33dd",
+  "head": "dba017d7b683ed8175c18803bbdd2af1fa04d49d",
+  "sourceSha256": "319f6ef24f1fff321a2d19413b61c756f0317cc8ac3d031389c4f9ffd4981236",
   "counts": {
     "public": {
       "skills": 98,
@@ -28,13 +28,13 @@
       "toolFiles": 68,
       "libFiles": 55,
       "templateHooks": 25,
-      "srcFiles": 2067,
-      "total": 2092
+      "srcFiles": 2068,
+      "total": 2093
     },
     "generated": {
-      "distFiles": 7636,
+      "distFiles": 7640,
       "bridgeFiles": 8,
-      "total": 7644
+      "total": 7648
     },
     "prompt": {
       "promptLikeFiles": 72
@@ -2880,6 +2880,10 @@
       "dist/cli/commands/factory-check.d.ts.map",
       "dist/cli/commands/factory-check.js",
       "dist/cli/commands/factory-check.js.map",
+      "dist/cli/commands/factory-dashboard.d.ts",
+      "dist/cli/commands/factory-dashboard.d.ts.map",
+      "dist/cli/commands/factory-dashboard.js",
+      "dist/cli/commands/factory-dashboard.js.map",
       "dist/cli/commands/factory-poll.d.ts",
       "dist/cli/commands/factory-poll.d.ts.map",
       "dist/cli/commands/factory-poll.js",
@@ -3266,6 +3270,18 @@
       "dist/factory/check/score.d.ts.map",
       "dist/factory/check/score.js",
       "dist/factory/check/score.js.map",
+      "dist/factory/dashboard/__tests__/dashboard.test.d.ts",
+      "dist/factory/dashboard/__tests__/dashboard.test.d.ts.map",
+      "dist/factory/dashboard/__tests__/dashboard.test.js",
+      "dist/factory/dashboard/__tests__/dashboard.test.js.map",
+      "dist/factory/dashboard/collect.d.ts",
+      "dist/factory/dashboard/collect.d.ts.map",
+      "dist/factory/dashboard/collect.js",
+      "dist/factory/dashboard/collect.js.map",
+      "dist/factory/dashboard/render.d.ts",
+      "dist/factory/dashboard/render.d.ts.map",
+      "dist/factory/dashboard/render.js",
+      "dist/factory/dashboard/render.js.map",
       "dist/factory/enqueue.d.ts",
       "dist/factory/enqueue.d.ts.map",
       "dist/factory/enqueue.js",
@@ -3430,10 +3446,6 @@
       "dist/factory/run/__tests__/engine.gates-sandbox.test.d.ts.map",
       "dist/factory/run/__tests__/engine.gates-sandbox.test.js",
       "dist/factory/run/__tests__/engine.gates-sandbox.test.js.map",
-      "dist/factory/run/__tests__/engine.gates-workspace.test.d.ts",
-      "dist/factory/run/__tests__/engine.gates-workspace.test.d.ts.map",
-      "dist/factory/run/__tests__/engine.gates-workspace.test.js",
-      "dist/factory/run/__tests__/engine.gates-workspace.test.js.map",
       "dist/factory/run/__tests__/engine.git-hardening.test.d.ts",
       "dist/factory/run/__tests__/engine.git-hardening.test.d.ts.map",
       "dist/factory/run/__tests__/engine.git-hardening.test.js",
@@ -3650,10 +3662,6 @@
       "dist/factory/run/__tests__/units.test.d.ts.map",
       "dist/factory/run/__tests__/units.test.js",
       "dist/factory/run/__tests__/units.test.js.map",
-      "dist/factory/run/__tests__/workspace-tree.test.d.ts",
-      "dist/factory/run/__tests__/workspace-tree.test.d.ts.map",
-      "dist/factory/run/__tests__/workspace-tree.test.js",
-      "dist/factory/run/__tests__/workspace-tree.test.js.map",
       "dist/factory/run/budget.d.ts",
       "dist/factory/run/budget.d.ts.map",
       "dist/factory/run/budget.js",
@@ -3770,10 +3778,6 @@
       "dist/factory/run/tamper-quarantine.d.ts.map",
       "dist/factory/run/tamper-quarantine.js",
       "dist/factory/run/tamper-quarantine.js.map",
-      "dist/factory/run/workspace-tree.d.ts",
-      "dist/factory/run/workspace-tree.d.ts.map",
-      "dist/factory/run/workspace-tree.js",
-      "dist/factory/run/workspace-tree.js.map",
       "dist/factory/setup/__tests__/e2e.test.d.ts",
       "dist/factory/setup/__tests__/e2e.test.d.ts.map",
       "dist/factory/setup/__tests__/e2e.test.js",
@@ -19571,6 +19575,26 @@
         "path": "dist/cli/commands/factory-check.js.map"
       },
       {
+        "id": "dist/cli/commands/factory-dashboard.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/factory-dashboard.d.ts"
+      },
+      {
+        "id": "dist/cli/commands/factory-dashboard.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/factory-dashboard.d.ts.map"
+      },
+      {
+        "id": "dist/cli/commands/factory-dashboard.js",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/factory-dashboard.js"
+      },
+      {
+        "id": "dist/cli/commands/factory-dashboard.js.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/factory-dashboard.js.map"
+      },
+      {
         "id": "dist/cli/commands/factory-poll.d.ts",
         "kind": "generated-dist",
         "path": "dist/cli/commands/factory-poll.d.ts"
@@ -21501,6 +21525,66 @@
         "path": "dist/factory/check/score.js.map"
       },
       {
+        "id": "dist/factory/dashboard/__tests__/dashboard.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/dashboard/__tests__/dashboard.test.d.ts"
+      },
+      {
+        "id": "dist/factory/dashboard/__tests__/dashboard.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/dashboard/__tests__/dashboard.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/dashboard/__tests__/dashboard.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/dashboard/__tests__/dashboard.test.js"
+      },
+      {
+        "id": "dist/factory/dashboard/__tests__/dashboard.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/dashboard/__tests__/dashboard.test.js.map"
+      },
+      {
+        "id": "dist/factory/dashboard/collect.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/dashboard/collect.d.ts"
+      },
+      {
+        "id": "dist/factory/dashboard/collect.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/dashboard/collect.d.ts.map"
+      },
+      {
+        "id": "dist/factory/dashboard/collect.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/dashboard/collect.js"
+      },
+      {
+        "id": "dist/factory/dashboard/collect.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/dashboard/collect.js.map"
+      },
+      {
+        "id": "dist/factory/dashboard/render.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/dashboard/render.d.ts"
+      },
+      {
+        "id": "dist/factory/dashboard/render.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/dashboard/render.d.ts.map"
+      },
+      {
+        "id": "dist/factory/dashboard/render.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/dashboard/render.js"
+      },
+      {
+        "id": "dist/factory/dashboard/render.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/dashboard/render.js.map"
+      },
+      {
         "id": "dist/factory/enqueue.d.ts",
         "kind": "generated-dist",
         "path": "dist/factory/enqueue.d.ts"
@@ -22319,26 +22403,6 @@
         "id": "dist/factory/run/__tests__/engine.gates-sandbox.test.js.map",
         "kind": "generated-dist",
         "path": "dist/factory/run/__tests__/engine.gates-sandbox.test.js.map"
-      },
-      {
-        "id": "dist/factory/run/__tests__/engine.gates-workspace.test.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/factory/run/__tests__/engine.gates-workspace.test.d.ts"
-      },
-      {
-        "id": "dist/factory/run/__tests__/engine.gates-workspace.test.d.ts.map",
-        "kind": "generated-dist",
-        "path": "dist/factory/run/__tests__/engine.gates-workspace.test.d.ts.map"
-      },
-      {
-        "id": "dist/factory/run/__tests__/engine.gates-workspace.test.js",
-        "kind": "generated-dist",
-        "path": "dist/factory/run/__tests__/engine.gates-workspace.test.js"
-      },
-      {
-        "id": "dist/factory/run/__tests__/engine.gates-workspace.test.js.map",
-        "kind": "generated-dist",
-        "path": "dist/factory/run/__tests__/engine.gates-workspace.test.js.map"
       },
       {
         "id": "dist/factory/run/__tests__/engine.git-hardening.test.d.ts",
@@ -23421,26 +23485,6 @@
         "path": "dist/factory/run/__tests__/units.test.js.map"
       },
       {
-        "id": "dist/factory/run/__tests__/workspace-tree.test.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/factory/run/__tests__/workspace-tree.test.d.ts"
-      },
-      {
-        "id": "dist/factory/run/__tests__/workspace-tree.test.d.ts.map",
-        "kind": "generated-dist",
-        "path": "dist/factory/run/__tests__/workspace-tree.test.d.ts.map"
-      },
-      {
-        "id": "dist/factory/run/__tests__/workspace-tree.test.js",
-        "kind": "generated-dist",
-        "path": "dist/factory/run/__tests__/workspace-tree.test.js"
-      },
-      {
-        "id": "dist/factory/run/__tests__/workspace-tree.test.js.map",
-        "kind": "generated-dist",
-        "path": "dist/factory/run/__tests__/workspace-tree.test.js.map"
-      },
-      {
         "id": "dist/factory/run/budget.d.ts",
         "kind": "generated-dist",
         "path": "dist/factory/run/budget.d.ts"
@@ -24019,26 +24063,6 @@
         "id": "dist/factory/run/tamper-quarantine.js.map",
         "kind": "generated-dist",
         "path": "dist/factory/run/tamper-quarantine.js.map"
-      },
-      {
-        "id": "dist/factory/run/workspace-tree.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/factory/run/workspace-tree.d.ts"
-      },
-      {
-        "id": "dist/factory/run/workspace-tree.d.ts.map",
-        "kind": "generated-dist",
-        "path": "dist/factory/run/workspace-tree.d.ts.map"
-      },
-      {
-        "id": "dist/factory/run/workspace-tree.js",
-        "kind": "generated-dist",
-        "path": "dist/factory/run/workspace-tree.js"
-      },
-      {
-        "id": "dist/factory/run/workspace-tree.js.map",
-        "kind": "generated-dist",
-        "path": "dist/factory/run/workspace-tree.js.map"
       },
       {
         "id": "dist/factory/setup/__tests__/e2e.test.d.ts",
@@ -55616,6 +55640,11 @@
         "path": "src/cli/commands/factory-check.ts"
       },
       {
+        "id": "src/cli/commands/factory-dashboard.ts",
+        "kind": "src",
+        "path": "src/cli/commands/factory-dashboard.ts"
+      },
+      {
         "id": "src/cli/commands/factory-poll.ts",
         "kind": "src",
         "path": "src/cli/commands/factory-poll.ts"
@@ -56196,6 +56225,21 @@
         "path": "src/factory/check/score.ts"
       },
       {
+        "id": "src/factory/dashboard/__tests__/dashboard.test.ts",
+        "kind": "src",
+        "path": "src/factory/dashboard/__tests__/dashboard.test.ts"
+      },
+      {
+        "id": "src/factory/dashboard/collect.ts",
+        "kind": "src",
+        "path": "src/factory/dashboard/collect.ts"
+      },
+      {
+        "id": "src/factory/dashboard/render.ts",
+        "kind": "src",
+        "path": "src/factory/dashboard/render.ts"
+      },
+      {
         "id": "src/factory/enqueue.ts",
         "kind": "src",
         "path": "src/factory/enqueue.ts"
@@ -56419,11 +56463,6 @@
         "id": "src/factory/run/__tests__/engine.gates-sandbox.test.ts",
         "kind": "src",
         "path": "src/factory/run/__tests__/engine.gates-sandbox.test.ts"
-      },
-      {
-        "id": "src/factory/run/__tests__/engine.gates-workspace.test.ts",
-        "kind": "src",
-        "path": "src/factory/run/__tests__/engine.gates-workspace.test.ts"
       },
       {
         "id": "src/factory/run/__tests__/engine.git-hardening.test.ts",
@@ -56701,11 +56740,6 @@
         "path": "src/factory/run/__tests__/units.test.ts"
       },
       {
-        "id": "src/factory/run/__tests__/workspace-tree.test.ts",
-        "kind": "src",
-        "path": "src/factory/run/__tests__/workspace-tree.test.ts"
-      },
-      {
         "id": "src/factory/run/budget.ts",
         "kind": "src",
         "path": "src/factory/run/budget.ts"
@@ -56849,11 +56883,6 @@
         "id": "src/factory/run/tamper-quarantine.ts",
         "kind": "src",
         "path": "src/factory/run/tamper-quarantine.ts"
-      },
-      {
-        "id": "src/factory/run/workspace-tree.ts",
-        "kind": "src",
-        "path": "src/factory/run/workspace-tree.ts"
       },
       {
         "id": "src/factory/setup/__tests__/e2e.test.ts",
@@ -81603,6 +81632,46 @@
         "kind": "imports"
       },
       {
+        "from": "src/cli/commands/factory-dashboard.ts",
+        "to": "external:chalk",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-dashboard.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-dashboard.ts",
+        "to": "external:commander",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-dashboard.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-dashboard.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-dashboard.ts",
+        "to": "src/factory/check/cli.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-dashboard.ts",
+        "to": "src/factory/dashboard/collect.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-dashboard.ts",
+        "to": "src/factory/dashboard/render.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/cli/commands/factory-poll.ts",
         "to": "external:chalk",
         "kind": "imports"
@@ -82010,6 +82079,11 @@
       {
         "from": "src/cli/commands/factory.ts",
         "to": "src/cli/commands/factory-check.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory.ts",
+        "to": "src/cli/commands/factory-dashboard.ts",
         "kind": "imports"
       },
       {
@@ -86738,6 +86812,91 @@
         "kind": "imports"
       },
       {
+        "from": "src/factory/dashboard/__tests__/dashboard.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/dashboard/__tests__/dashboard.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/dashboard/__tests__/dashboard.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/dashboard/__tests__/dashboard.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/dashboard/__tests__/dashboard.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/dashboard/__tests__/dashboard.test.ts",
+        "to": "src/cli/commands/factory-dashboard.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/dashboard/__tests__/dashboard.test.ts",
+        "to": "src/factory/dashboard/collect.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/dashboard/__tests__/dashboard.test.ts",
+        "to": "src/factory/dashboard/render.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/dashboard/__tests__/dashboard.test.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/dashboard/__tests__/dashboard.test.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/dashboard/collect.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/dashboard/collect.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/dashboard/collect.ts",
+        "to": "src/factory/board/collect.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/dashboard/collect.ts",
+        "to": "src/factory/check/score.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/dashboard/collect.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/dashboard/collect.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/dashboard/render.ts",
+        "to": "src/factory/dashboard/collect.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/factory/enqueue.ts",
         "to": "external:chalk",
         "kind": "imports"
@@ -89448,61 +89607,6 @@
         "kind": "type-imports"
       },
       {
-        "from": "src/factory/run/__tests__/engine.gates-workspace.test.ts",
-        "to": "external:node:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.gates-workspace.test.ts",
-        "to": "external:node:path",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.gates-workspace.test.ts",
-        "to": "external:vitest",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.gates-workspace.test.ts",
-        "to": "src/copilot-run/sandbox.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.gates-workspace.test.ts",
-        "to": "src/factory/run/__tests__/engine-local-harness.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.gates-workspace.test.ts",
-        "to": "src/factory/run/__tests__/engine-local-harness.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.gates-workspace.test.ts",
-        "to": "src/factory/run/__tests__/fake-lanes.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.gates-workspace.test.ts",
-        "to": "src/factory/run/budget.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.gates-workspace.test.ts",
-        "to": "src/factory/run/engine.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.gates-workspace.test.ts",
-        "to": "src/factory/run/sandbox-exec.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.gates-workspace.test.ts",
-        "to": "src/ship/prepare.ts",
-        "kind": "imports"
-      },
-      {
         "from": "src/factory/run/__tests__/engine.git-hardening.test.ts",
         "to": "external:node:child_process",
         "kind": "imports"
@@ -92328,36 +92432,6 @@
         "kind": "imports"
       },
       {
-        "from": "src/factory/run/__tests__/workspace-tree.test.ts",
-        "to": "external:node:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/workspace-tree.test.ts",
-        "to": "external:node:os",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/workspace-tree.test.ts",
-        "to": "external:node:path",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/workspace-tree.test.ts",
-        "to": "external:vitest",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/workspace-tree.test.ts",
-        "to": "src/factory/run/prepare.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/workspace-tree.test.ts",
-        "to": "src/factory/run/workspace-tree.ts",
-        "kind": "imports"
-      },
-      {
         "from": "src/factory/run/budget.ts",
         "to": "src/copilot-run/job.ts",
         "kind": "imports"
@@ -92870,11 +92944,6 @@
       {
         "from": "src/factory/run/engine.ts",
         "to": "src/factory/run/tamper-quarantine.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/engine.ts",
-        "to": "src/factory/run/workspace-tree.ts",
         "kind": "imports"
       },
       {
@@ -93644,11 +93713,6 @@
       },
       {
         "from": "src/factory/run/prepare.ts",
-        "to": "src/factory/run/workspace-tree.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/prepare.ts",
         "to": "src/ship/config.ts",
         "kind": "imports"
       },
@@ -94180,16 +94244,6 @@
       {
         "from": "src/factory/run/tamper-quarantine.ts",
         "to": "src/team/git-worktree.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/workspace-tree.ts",
-        "to": "external:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/workspace-tree.ts",
-        "to": "external:path",
         "kind": "imports"
       },
       {
@@ -131664,12 +131718,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 10955,
-      "edgeCount": 13517,
-      "importEdgeCount": 11113,
+      "nodeCount": 10960,
+      "edgeCount": 13522,
+      "importEdgeCount": 11117,
       "registerEdgeCount": 119
     }
   },
-  "inventorySha256": "636b9a09237236a0be4a0aad679cecdfba9f074c6c7d0361b0d949d0109a0318",
-  "manifestSha256": "31b0e625e1f49068bbaaa645e568dd2371d09653479b3416e449401a8e4c74f6"
+  "inventorySha256": "c677b03806cae90fba88c8b6dad72ec4b3f169a9ad59b97b384a91548f71982c",
+  "manifestSha256": "e4aed7584737db35735e5a4fa6207b976474dff3c45b7b1a77c7ccea7f0ef930"
 }
