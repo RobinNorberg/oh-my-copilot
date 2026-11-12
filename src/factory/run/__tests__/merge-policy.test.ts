@@ -47,6 +47,9 @@ describe('mergeDecision on Azure DevOps', () => {
     expect(skipped.checks).toEqual([]);
     const ran = mergeDecision(diffExec(['docs/a.md']), '/repo', ship, view, DEFAULT_SHIP_CONFIG, [], states([['Docs', 'SKIPPED'], ['Test', 'SUCCESS']]));
     expect(ran.checks).toEqual(['Test']);
+    // review-498b N6: the SKIPPED and NEUTRAL checks are listed too, so auto-merge without required checks can refuse them.
+    expect(skipped.unsettled).toEqual(['Docs', 'Lint']);
+    expect(ran.unsettled).toEqual(['Docs']);
   });
 
   it('ship\'s PROTECTED_PATHS stay as they are: the Azure Pipelines paths are not in them', () => {

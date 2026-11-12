@@ -34,6 +34,8 @@ export interface FactoryMergeDecision extends MergeDecision {
   noChecks?: true;
   /** The checks that ran and SUCCEEDED on this head (auto-merge needs at least one); SKIPPED, NEUTRAL and known-flaky failures are not here. */
   checks?: string[];
+  /** The checks on this head that were SKIPPED or NEUTRAL: without required checks auto-merge needs none (review-498b N6). */
+  unsettled?: string[];
 }
 
 /**
@@ -49,7 +51,8 @@ export interface FactoryMergeDecision extends MergeDecision {
 export function mergeDecision(exec: Exec, root: string, ship: ShipState, view: MergeView, config: ShipConfig, known: readonly KnownFlakyTest[], forge?: Pick<Forge, 'checks' | 'reviews' | 'merge'>, reads?: GateHeadReads): FactoryMergeDecision {
   // Ship phase ready: the gates loop already waited out the settle window for this head, so this read has that history.
   const gate = evaluateGates(exec, view.number, config, known, root, view.headRefOid, forge, ship.phase === 'ready' ? 0 : undefined, Date.now, reads);
-  const noChecks = { ...(gate.noChecks ? { noChecks: true as const } : {}), checks: gate.checks.filter((c) => c.class === 'pass' && c.state.toUpperCase() === 'SUCCESS').map((c) => c.name) };
+  const noChecks = { ...(gate.noChecks ? { noChecks: true as const } : {}), checks: gate.checks.filter((c) => c.class === 'pass' && c.state.toUpperCase() === 'SUCCESS').map((c) => c.name),
+    unsettled: gate.checks.filter((c) => ['SKIPPED', 'NEUTRAL'].includes(c.state.toUpperCase())).map((c) => c.name) };
   const reviewed = latestVerdict(ship)?.sha;
   const commits = readCommitsSinceReview(exec, root, reviewed, view.headRefOid, view.baseRefOid, ship.housekeepingCommits);
   const extraProtected = [

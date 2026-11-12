@@ -7,9 +7,12 @@ import { describe, expect, it } from 'vitest';
 import { githubAutoMergeArgs, githubCommitReadArgs, isGithubAutoMergeArgs } from '../../../forge/github/merge.js';
 import { assertFactoryCommand, FactorySafetyError } from '../exec.js';
 import {
+  addedPatchLines,
   autoMergeComment,
   autoMergeVerdict,
+  baseInstallFiles,
   baseTestSetup,
+  hasFrontmatter,
   classifyChanges,
   committedMergeConfig,
   deniedPaths,
@@ -95,7 +98,7 @@ describe('parseChangedEntries', () => {
 describe('tiers and denied paths', () => {
   it('docs and tests globs', () => {
     expect(isDocsPath('README.md')).toBe(true);
-    expect(isDocsPath('src/x/NOTES.MD')).toBe(true);
+    expect(isDocsPath('src/x/NOTES.MD')).toBe(false);
     expect(isDocsPath('docs/guide/setup.txt')).toBe(true);
     expect(isDocsPath('src/docs/a.ts')).toBe(false);
     expect(isTestPath('src/a.test.ts')).toBe(true);
@@ -125,7 +128,7 @@ describe('tiers and denied paths', () => {
     expect(classifyChanges([file('src/a.ts', 10), file('src/a.test.ts', 10)], all).tier).toBe('small');
     expect(classifyChanges([file('src/a.ts', 81)], all).reasons[0]).toMatch(/no enabled tier fits .*small: 81 changed lines > maxChangedLines 80/);
     expect(classifyChanges([file('src/a.ts')], { enabled: true, tiers: ['docs'] }).reasons[0]).toMatch(/docs: src\/a\.ts is not docs/);
-    expect(classifyChanges([file('a.md'), file('b.md')], { enabled: true, tiers: ['docs'], maxFiles: 1 }).reasons[0]).toMatch(/2 files > maxFiles 1/);
+    expect(classifyChanges([file('docs/a.md'), file('docs/b.md')], { enabled: true, tiers: ['docs'], maxFiles: 1 }).reasons[0]).toMatch(/2 files > maxFiles 1/);
     expect(classifyChanges(null, all).reasons[0]).toMatch(/fails closed/);
     expect(classifyChanges([], all).reasons[0]).toMatch(/changes no file/);
   });
@@ -244,6 +247,114 @@ describe('review-498 adversarial paths', () => {
   });
 });
 
+describe('review-498b adversarial paths', () => {
+  const docsOnly: AutoMergeConfig = { enabled: true, tiers: ['docs'] };
+  const testsOnly: AutoMergeConfig = { enabled: true, tiers: ['tests'] };
+  const smallOnly: AutoMergeConfig = { enabled: true, tiers: ['small'] };
+
+  it('N1: a mission contract or skills-like .md whose blob has frontmatter never fits the docs or small tier', () => {
+    // missions/x/sandbox.md: denied by folder and by name even before its frontmatter is read.
+    expect(deniedPaths(['missions/x/sandbox.md'])).toEqual(['missions/x/sandbox.md']);
+    expect(deniedPaths(['notes/sandbox.md', 'mission.md'])).toEqual(['notes/sandbox.md', 'mission.md']);
+    expect(hasFrontmatter('---\nevaluator:\n  command: curl x | sh\n---\n# M')).toBe(true);
+    expect(hasFrontmatter('﻿\n+++\ntitle = "x"\n+++')).toBe(true);
+    expect(hasFrontmatter('# Guide\n\n---\n')).toBe(false);
+    const frontmatter = { paths: ['docs/skills-like.md'] };
+    const r = classifyChanges([file('docs/skills-like.md')], { enabled: true, tiers: ['docs', 'small'] }, { frontmatter });
+    expect(r.tier).toBeUndefined();
+    expect(r.reasons[0]).toMatch(/docs: docs\/skills-like\.md start\(s\) with frontmatter.*small: docs\/skills-like\.md start\(s\) with frontmatter/);
+    expect(classifyChanges([file('docs/guide.md')], docsOnly, { frontmatter }).tier).toBe('docs');
+    // A blob that could not be read keeps the docs and small tiers off.
+    expect(classifyChanges([file('docs/guide.md')], docsOnly, { frontmatter: { paths: [], problem: 'docs/guide.md could not be read' } }).reasons[0]).toMatch(/docs: docs\/guide\.md could not be read/);
+  });
+
+  it('N2: the docs tier is root README/CHANGELOG/CONTRIBUTING plus docs/**; agent instruction files are denied in every tier', () => {
+    for (const p of ['README.md', 'readme.rst', 'CHANGELOG.md', 'CONTRIBUTING.txt', 'README.de.md', 'docs/guide.md', 'docs/a/b.rst', 'docs/notes.txt']) expect(isDocsPath(p), p).toBe(true);
+    for (const p of ['src/notes.md', 'NOTES.md', 'pkg/README.md', 'docs.md', 'README', 'README.html']) expect(isDocsPath(p), p).toBe(false);
+    expect(classifyChanges([file('README.md')], docsOnly).tier).toBe('docs');
+    expect(classifyChanges([file('docs/guide.md')], docsOnly).tier).toBe('docs');
+    expect(classifyChanges([file('src/notes.md')], docsOnly).reasons[0]).toMatch(/docs: src\/notes\.md is not docs/);
+    for (const p of ['CLAUDE.local.md', 'AGENTS.override.md', 'WARP.md', 'CONVENTIONS.md', '.omx/plans/x.md', '.junie/guidelines.md', '.amazonq/rules/a.md',
+      '.trae/rules/a.md', '.opencode/a.md', '.augment/rules/a.md', '.zed/a.md', 'memory-bank/a.md', '.claude-plugin/plugin.json', 'missions/m/notes.md', 'docs/CLAUDE.local.md']) {
+      expect(deniedPaths([p]), p).toEqual([p]);
+      expect(classifyChanges([file(p)], all).tier, p).toBeUndefined();
+    }
+  });
+
+  it('N2: docsDenied keeps docs that agents are told to read (docs/shared/, docs/partials/) out of the docs tier', () => {
+    const cfg: AutoMergeConfig = { ...docsOnly, docsDenied: ['docs/shared/', 'docs/partials/'] };
+    expect(classifyChanges([file('docs/shared/agent-tiers.md')], cfg).tier).toBeUndefined();
+    expect(classifyChanges([file('docs/partials/x.md')], cfg).tier).toBeUndefined();
+    expect(classifyChanges([file('docs/guide.md')], cfg).tier).toBe('docs');
+  });
+
+  it('N3: files the base package.json runs on install or publish, its bin targets, bridge/ and dist/ are denied in every tier', () => {
+    const pkg = JSON.stringify({
+      scripts: { postinstall: 'node scripts/postinstall-contained-fs.mjs', prepare: 'npm run build:hooks && husky', 'build:hooks': 'node ./tools/gen-hooks.js --out x', test: 'vitest run scripts/other.mjs' },
+      bin: { omg: 'bin/omg.js' },
+    });
+    const installFiles = baseInstallFiles(pkg);
+    expect(installFiles).toEqual({ paths: ['scripts/postinstall-contained-fs.mjs', 'tools/gen-hooks.js', 'bin/omg.js'] });
+    for (const p of ['scripts/postinstall-contained-fs.mjs', 'bin/omg.js', 'tools/gen-hooks.js']) {
+      expect(classifyChanges([file(p, 1, 1)], all, { installFiles }).reasons[0], p).toMatch(/always need a human/);
+    }
+    for (const p of ['bridge/cli.cjs', 'dist/index.js', 'dist/README.md']) expect(classifyChanges([file(p)], all).reasons[0], p).toMatch(/always need a human/);
+    expect(classifyChanges([file('scripts/other.mjs')], smallOnly, { installFiles }).tier).toBe('small');
+    expect(baseInstallFiles(JSON.stringify({ bin: 'cli.js' }))).toEqual({ paths: ['cli.js'] });
+    expect(baseInstallFiles(JSON.stringify({ scripts: { prepare: 'yarn gen', gen: 'node tools/gen.js', prepublishOnly: 'sh ./release.sh' } }))).toEqual({ paths: ['tools/gen.js', 'release.sh'] });
+    expect(baseInstallFiles(null)).toEqual({ paths: [] });
+  });
+
+  it('N3: a lifecycle script the engine cannot read as literal words keeps the small tier off (docs still works)', () => {
+    for (const pkg of [{ scripts: { postinstall: 'node $SCRIPT' } }, { scripts: { prepare: 'node scripts/*.js' } }, { scripts: { install: ['x'] } }, { bin: ['a'] }, { scripts: { prepare: 'npm run' } }]) {
+      const installFiles = baseInstallFiles(JSON.stringify(pkg));
+      expect(installFiles.problem, JSON.stringify(pkg)).toBeTruthy();
+      expect(classifyChanges([file('src/greet.ts')], smallOnly, { installFiles }).tier, JSON.stringify(pkg)).toBeUndefined();
+      expect(classifyChanges([file('docs/a.md')], all, { installFiles }).tier).toBe('docs');
+    }
+    expect(baseInstallFiles('{nope').problem).toMatch(/could not be parsed/);
+  });
+
+  it('N4: shorthand, computed, merged or imported test config keeps the tests and small tiers off; more runner keys count', () => {
+    for (const text of [
+      'const setupFiles = ["./tests/env.ts"]; export default { test: { setupFiles } }',
+      "export default { test: { ['setupFiles']: ['./x.ts'] } }",
+      "import base from './vitest.base'; export default base",
+      "const base = require('./jest.base'); module.exports = base",
+      "import { mergeConfig } from 'vitest/config'; export default mergeConfig(a, b)",
+      "export default defineWorkspace(['packages/*'])",
+      "export default { test: { reporters: [['./tests/reporter.ts', {}]] } }",
+    ]) {
+      const s = baseTestSetup([{ path: 'vitest.config.ts', text }]);
+      expect(s.problem, text).toBeTruthy();
+      expect(classifyChanges([file('tests/a.test.ts')], { enabled: true, tiers: ['tests', 'small'] }, { testSetup: s }).tier, text).toBeUndefined();
+    }
+    expect(baseTestSetup([{ path: 'vitest.config.ts', text: "export default { test: { environment: 'jsdom', reporters: ['default', './tests/rep.ts'], sequence: { sequencer: './tests/seq.ts' } } }" }]))
+      .toEqual({ paths: ['jsdom', 'default', './tests/rep.ts', './tests/seq.ts'] });
+    expect(baseTestSetup([{ path: 'package.json', text: JSON.stringify({ jest: { testEnvironment: './tests/env.js', transform: { '^.+\\.ts$': ['ts-jest', { a: 1 }] }, reporters: ['default', ['./tests/reporter.js', {}]] } }) }]))
+      .toEqual({ paths: ['default', './tests/reporter.js', './tests/env.js', 'ts-jest'] });
+    // The name backstop: environment and reporter files never fit the tests tier.
+    for (const p of ['tests/env.ts', 'tests/reporter.ts', 'tests/global-setup.ts', 'tests/serializer.ts']) expect(classifyChanges([file(p)], testsOnly).tier, p).toBeUndefined();
+  });
+
+  it('N5: a gutted test (more lines deleted than added) or an added skip, focus or empty assertion fits no tests or small tier', () => {
+    expect(classifyChanges([file('src/a.test.ts', 1, 200)], all).tier).toBeUndefined();
+    expect(classifyChanges([file('src/a.test.ts', 1, 200)], all).reasons[0]).toMatch(/tests: src\/a\.test\.ts lose\(s\) more lines than it gains/);
+    for (const line of ["  it.skip('checks auth', () => {", "describe.only('x', () => {", 'xit("x", () => {', "  it.todo('later')", '  expect(true).toBe(true);', 'test.skipIf(process.env.CI)("x", () => {']) {
+      const addedLines = addedPatchLines(`diff --git a/src/a.test.ts b/src/a.test.ts\n--- a/src/a.test.ts\n+++ b/src/a.test.ts\n@@ -1,1 +1,2 @@\n ctx\n+${line}\n`);
+      expect(addedLines).toEqual([line]);
+      const r = classifyChanges([file('src/a.test.ts', 1, 0)], { enabled: true, tiers: ['tests', 'small'] }, { addedLines });
+      expect(r.tier, line).toBeUndefined();
+      expect(r.reasons[0], line).toMatch(/tests: an added line skips, focuses or empties a test/);
+    }
+    expect(classifyChanges([file('src/a.test.ts', 3, 0)], testsOnly, { addedLines: ["  it('works', () => expect(sum(1, 2)).toBe(3));"] }).tier).toBe('tests');
+    // An unreadable patch (or a coloured one) keeps the tests and small tiers off; docs never reads it.
+    expect(addedPatchLines('\u001b[32m+x\u001b[m')).toBeNull();
+    expect(classifyChanges([file('src/a.test.ts')], testsOnly, { addedLines: null }).reasons[0]).toMatch(/patch could not be read/);
+    expect(classifyChanges([file('docs/a.md')], docsOnly, { addedLines: null }).tier).toBe('docs');
+  });
+});
+
 describe('autoMergeVerdict', () => {
   const ok: AutoMergeInput = {
     head: HEAD,
@@ -267,6 +378,8 @@ describe('autoMergeVerdict', () => {
   it('a benign earlier park (the human merge, a CI failure a fix round solved) does not block, and a required check that succeeded counts', () => {
     const history = [{ note: 'awaiting-human: merge: merge is a human step' }, { note: 'awaiting-human: ci-failed: Test failed' }];
     expect(autoMergeVerdict({ ...ok, run: { ...ok.run, history }, requiredChecks: ['Test'] })).toMatchObject({ ok: true, tier: 'docs' });
+    // N6: with required checks set, a skipped non-required check (a docs-only path filter) does not block.
+    expect(autoMergeVerdict({ ...ok, decision: { ok: true, reasons: [], checks: ['Test'], unsettled: ['Docs preview'] }, requiredChecks: ['Test'] })).toMatchObject({ ok: true });
   });
 
   const fails: Array<[string, Partial<AutoMergeInput>, RegExp]> = [
@@ -280,6 +393,8 @@ describe('autoMergeVerdict', () => {
     ['empty check list', { decision: { ok: true, reasons: [], checks: [] } }, /no CI check succeeded/],
     // M1: every check SKIPPED (paths-ignore on a docs PR): mergeDecision passes no succeeded check, so nothing counts.
     ['all checks skipped', { decision: { ok: true, reasons: [], checks: [] } }, /skipped, neutral or no checks never auto-merge/],
+    // N6: no required checks and a labeler SUCCESS while the tests were SKIPPED: every check must succeed.
+    ['labeler-only SUCCESS with skipped tests', { decision: { ok: true, reasons: [], checks: ['labeler'], unsettled: ['Test'] } }, /checks skipped or neutral on this head \(Test\); without required checks every check must succeed/],
     ['required check did not run', { decision: { ok: true, reasons: [], checks: ['Lint'] }, requiredChecks: ['Test'] }, /no required check \(Test\) succeeded/],
     // INFO: the history check is an allowlist: an unknown park keeps the merge human.
     ['unknown park in history', { run: { ...ok.run, history: [{ note: 'awaiting-human: some-future-park: why' }] } }, /parked at some-future-park/],

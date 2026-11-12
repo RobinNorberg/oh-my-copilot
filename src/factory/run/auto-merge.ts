@@ -174,10 +174,13 @@ const DENIED_DIRS = new Set([
   'skills', 'agents', 'commands', 'templates', 'prompts', 'instructions',
   '.cursor', '.gemini', '.codex', '.agents', '.windsurf', '.roo', '.continue', '.kiro', '.clinerules', '.aider', '.vitepress', '.docusaurus',
   '.githooks', 'githooks', '__mocks__',
+  '.omx', '.junie', '.amazonq', '.trae', '.opencode', '.augment', '.zed', 'memory-bank', '.claude-plugin', 'missions',
 ]);
 
 /** Root-anchored directories that usually hold git hooks (core.hooksPath); the configured core.hooksPath is added by the engine. */
 const HOOK_DIRS = ['hooks/', 'scripts/hooks/', 'tools/hooks/', 'git-hooks/', '.config/'];
+/** Root-anchored directories of built or shipped code (installed by every user of the package): no tier takes them. */
+const SHIPPED_DIRS = ['bridge/', 'dist/'];
 
 /** File names (folded) that are package manifests, lockfiles, tool or agent config: denied in every directory. */
 const DENIED_NAMES = new Set([
@@ -189,7 +192,8 @@ const DENIED_NAMES = new Set([
   'directory.packages.props', 'directory.build.props', 'directory.build.targets', 'nuget.config', 'packages.lock.json', 'global.json',
   'jsconfig.json', '.babelrc', '.editorconfig', '.gitattributes', '.gitmodules', '.gitignore', '.mailmap',
   'dockerfile', 'compose.yaml', 'compose.yml', 'makefile', 'justfile', 'taskfile.yml', 'codeowners', 'cmakelists.txt', 'constraints.txt',
-  'agents.md', 'agent.md', 'claude.md', 'gemini.md', 'copilot-instructions.md', 'skill.md', 'omg.jsonc', 'omc.jsonc', 'config.jsonc', '.mcp.json',
+  'agents.md', 'agent.md', 'claude.md', 'gemini.md', 'copilot-instructions.md', 'skill.md', 'omg.jsonc',
+  'claude.local.md', 'agents.override.md', 'warp.md', 'conventions.md', 'sandbox.md', 'mission.md', 'omc.jsonc', 'config.jsonc', '.mcp.json',
   '.cursorrules', '.windsurfrules', '.clinerules', '.roorules', '.goosehints', '.aider.conf.yml',
   'renovate.json', 'dependabot.yml', 'lefthook.yml', '.pre-commit-config.yaml', 'jenkinsfile',
   '.gitlab-ci.yml', '.travis.yml', 'appveyor.yml', '.appveyor.yml', '.drone.yml', 'bitbucket-pipelines.yml', '.woodpecker.yml',
@@ -207,7 +211,12 @@ const DENIED_NAME_PATTERNS: readonly RegExp[] = [
 /** A changed-path spelling of a configured path: `/` separators, no leading `./` or `/` (the protected-path rules are root-relative). */
 const rootRelative = (p: string): string => p.replace(/\\/g, '/').trim().replace(/^(?:\.\/|\/)+/, '');
 
-/** A user glob as a test on a folded path: `**` any depth, `*` and `?` inside one segment, a trailing `/` a whole directory; a glob without `/` matches the file name at any depth. */
+/**
+ * A user glob as a test on a folded path: `**` any depth, `*` and `?` inside
+ * one segment, a trailing `/` a whole directory; a glob without `/` matches
+ * the file name at any depth. Braces `{a,b}` and classes `[ab]` are not glob
+ * syntax here: they match literally (write one glob per alternative).
+ */
 export function globMatcher(glob: string): (path: string) => boolean {
   let g = rootRelative(fold(glob));
   if (g.endsWith('/')) g += '**';
@@ -228,7 +237,7 @@ export function globMatcher(glob: string): (path: string) => boolean {
  * (protectedChanges' raw `:`/`~`/`..` rule).
  */
 export function deniedPaths(paths: readonly string[], extra: readonly string[] = [], globs: readonly string[] = []): string[] {
-  const anchored = new Set(protectedChanges(paths, [...LANE_PROTECTED_PATHS, ...CI_TREE_PATHS, ...PROTECTED_PATHS, '.omg/', '.omc/', ...HOOK_DIRS, ...extra.map(rootRelative).filter(Boolean)]));
+  const anchored = new Set(protectedChanges(paths, [...LANE_PROTECTED_PATHS, ...CI_TREE_PATHS, ...PROTECTED_PATHS, '.omg/', '.omc/', ...HOOK_DIRS, ...SHIPPED_DIRS, ...extra.map(rootRelative).filter(Boolean)]));
   const user = globs.map(globMatcher);
   return paths.filter((p) => {
     if (anchored.has(p)) return true;
@@ -241,12 +250,105 @@ export function deniedPaths(paths: readonly string[], extra: readonly string[] =
   });
 }
 
-/** docs: Markdown or reStructuredText anywhere, plain text under the root `docs/`. Never .mdx, HTML, scripts, site code or images. */
+/** The root docs files the docs tier takes: README, CHANGELOG and CONTRIBUTING (any suffix such as `README.de.md`). */
+const ROOT_DOCS = /^(?:readme|changelog|contributing)(?:[._-][^/]*)?\.(?:md|rst|txt)$/;
+const DOCS_EXT = /\.(?:md|rst|txt)$/;
+
+/**
+ * docs: an allowlist (review-498b N2): root README*, CHANGELOG* and
+ * CONTRIBUTING* (.md, .rst, .txt) and `.md`, `.rst`, `.txt` files under the
+ * root `docs/`. Nothing else is docs: Markdown elsewhere (src/notes.md, a
+ * mission contract, an agent's rules file) may be read by tools or agents.
+ */
 export function isDocsPath(path: string): boolean {
   const segs = segments(path);
   if (segs.length === 0) return false;
   const name = segs[segs.length - 1];
-  return /\.(?:md|rst)$/.test(name) || (segs[0] === 'docs' && segs.length > 1 && name.endsWith('.txt'));
+  if (segs.length === 1) return ROOT_DOCS.test(name);
+  return segs[0] === 'docs' && DOCS_EXT.test(name);
+}
+
+/** Files whose text may carry frontmatter that a tool parses as config (skills, commands, agents, mission contracts): their blobs are read. */
+export const FRONTMATTER_CANDIDATE = /\.(?:md|markdown|mdx|rst|mdc)$/i;
+/** A blob that starts with YAML (`---`) or TOML (`+++`) frontmatter, after an optional BOM and blank space. */
+export const hasFrontmatter = (text: string): boolean => /^\uFEFF?\s*(?:---|\+\+\+)/.test(text);
+
+/** package.json lifecycle scripts that run on install or publish (every user of the package runs them). */
+const LIFECYCLE_SCRIPT = /^(?:preinstall|install|postinstall|prepare|prepublish\w*|prepack|postpack)$/;
+const SCRIPT_RUNNER = /^(?:npm|pnpm|yarn|bun)$/;
+
+/**
+ * The files the BASE package.json runs for every user of the package
+ * (review-498b N3): every path-like word of its install and publish lifecycle
+ * scripts (and of the scripts they run with `npm run <name>`) and its "bin"
+ * targets. A script with a variable, a substitution or a glob, or a "bin"
+ * that is not strings, is a `problem` (the engine then keeps the small tier
+ * off). Absent package.json (`text` null): nothing.
+ */
+export function baseInstallFiles(text: string | null): { paths: string[]; problem?: string } {
+  if (text === null) return { paths: [] };
+  let pkg: { scripts?: unknown; bin?: unknown };
+  try { pkg = JSON.parse(text) as typeof pkg; } catch { return { paths: [], problem: 'the base package.json could not be parsed' }; }
+  if (!pkg || typeof pkg !== 'object' || Array.isArray(pkg)) return { paths: [], problem: 'the base package.json is not an object' };
+  const paths: string[] = [];
+  const scripts = pkg.scripts === undefined ? {} : pkg.scripts;
+  if (!scripts || typeof scripts !== 'object' || Array.isArray(scripts)) return { paths, problem: 'the base package.json "scripts" is not an object' };
+  const table = scripts as Record<string, unknown>;
+  const seen = new Set<string>();
+  const visit = (name: string, depth: number): string | undefined => {
+    if (seen.has(name)) return undefined;
+    seen.add(name);
+    const body = table[name];
+    if (body === undefined) return undefined;
+    if (typeof body !== 'string') return `the base package.json script "${name}" is not a string`;
+    if (/[$`%*?{}[\]]/.test(body)) return `the base package.json script "${name}" has a variable, substitution or glob, so the files it runs are unknown`;
+    const words = body.split(/[\s;&|()<>]+/).map((w) => w.replace(/^['"]+|['"]+$/g, '')).filter(Boolean);
+    for (let i = 0; i < words.length; i++) {
+      const w = words[i];
+      // `npm run x`, `yarn x`, `pnpm x`, `npm test`: follow the script it names.
+      if (SCRIPT_RUNNER.test(w) && words[i + 1] !== undefined && (words[i + 1] === 'run' || words[i + 1] === 'run-script' || Object.hasOwn(table, words[i + 1]))) {
+        const explicit = words[i + 1] === 'run' || words[i + 1] === 'run-script';
+        const next = explicit ? words[i + 2] : words[i + 1];
+        if (next === undefined || depth >= 5) return `the base package.json script "${name}" runs another script the engine cannot follow`;
+        const why = visit(next, depth + 1);
+        if (why) return why;
+        i += explicit ? 2 : 1;
+        continue;
+      }      if (w.startsWith('-')) continue;
+      if (w.includes('/') || w.includes('\\') || /\.[A-Za-z0-9]{1,5}$/.test(w)) paths.push(w);
+    }
+    return undefined;
+  };
+  for (const name of Object.keys(table).filter((n) => LIFECYCLE_SCRIPT.test(n))) {
+    const why = visit(name, 0);
+    if (why) return { paths, problem: why };
+  }
+  if (pkg.bin !== undefined) {
+    const bins = typeof pkg.bin === 'string' ? [pkg.bin] : pkg.bin && typeof pkg.bin === 'object' && !Array.isArray(pkg.bin) ? Object.values(pkg.bin as Record<string, unknown>) : [undefined];
+    if (!bins.every((b) => typeof b === 'string')) return { paths, problem: 'the base package.json "bin" is not a string or an object of strings' };
+    paths.push(...(bins as string[]));
+  }
+  return { paths: paths.map(rootRelative).filter(Boolean) };
+}
+
+/** Added diff lines that skip or focus tests, or assert nothing (review-498b N5): a gutted test needs a human. */
+const TEST_SKIP = /\.(?:skip|todo|only|skipIf|runIf|fails)\b|\bx(?:it|describe|test)\s*\(|\bf(?:it|describe)\s*\(|\bexpect\(\s*(?:true|1)\s*\)|pytest\.mark\.(?:skip|xfail)|unittest\.skip|\bt\.Skip(?:Now|f)?\(/;
+
+/**
+ * The added lines of a plain `git diff` patch (lines starting with `+` inside
+ * a hunk); null when the text has an ANSI escape (a colour setting: the
+ * engine cannot read it, so it fails closed).
+ */
+export function addedPatchLines(patch: string): string[] | null {
+  if (patch.includes('\u001b')) return null;
+  const out: string[] = [];
+  let hunk = false;
+  for (const line of patch.split('\n')) {
+    if (line.startsWith('diff --git ')) hunk = false;
+    else if (line.startsWith('@@')) hunk = true;
+    else if (hunk && line.startsWith('+')) out.push(line.slice(1));
+  }
+  return out;
 }
 
 const TEST_NAME = [/\.(?:test|spec)\.[cm]?[jt]sx?$/, /_test\.go$/, /^test_[^/]+\.py$/, /_test\.py$/, /(?:^|_)(?:test|spec)\.rb$/];
@@ -255,7 +357,7 @@ const ROOT_TEST_DIRS = new Set(['__tests__', '__snapshots__', 'test', 'tests', '
 const ANY_DEPTH_TEST_DIRS = new Set(['__tests__', '__snapshots__']);
 const TEST_DIR_FILE = /\.(?:[cm]?[jt]sx?|py|go|rb|snap|json|txt|md)$/;
 /** Test-tier files that run outside the PR's own test run (setup, teardown, benchmarks): the tests tier never takes them. */
-const TEST_RUNNER_CODE = /setup|teardown|bench/;
+const TEST_RUNNER_CODE = /setup|teardown|bench|env|report|sequenc|serial|resolv|transform|global|runner|preset/;
 
 /** tests: a test file by name, or a source / snapshot / fixture-data file under a root test directory or any `__tests__`. */
 export function isTestPath(path: string): boolean {
@@ -287,6 +389,12 @@ export interface ClassifyOptions {
   extraDenied?: readonly string[];
   /** The files the BASE test config runs before or around tests (setupFiles, globalSetup, ...); `problem` = they could not be read. */
   testSetup?: { paths: readonly string[]; problem?: string };
+  /** The .md/.rst/.mdc paths whose BASE or HEAD blob starts with frontmatter (hasFrontmatter); `problem` = a blob could not be read. */
+  frontmatter?: { paths: readonly string[]; problem?: string };
+  /** The files the BASE package.json runs on install or publish (baseInstallFiles): denied in every tier; `problem` keeps the small tier off. */
+  installFiles?: { paths: readonly string[]; problem?: string };
+  /** The patch's added lines (addedPatchLines); null = unreadable, which keeps the tests and small tiers off. Undefined = not read. */
+  addedLines?: readonly string[] | null;
 }
 
 /** Whether a changed path is one of the base test config's setup files (written with or without an extension). */
@@ -314,7 +422,7 @@ export function classifyChanges(entries: readonly ChangedEntry[] | null, config:
   if (odd.length > 0) reasons.push(`non-plain file modes (symlink, gitlink, executable or mode change): ${list(odd.map((e) => `${e.path} ${e.oldMode}->${e.newMode}`))}`);
   const binary = entries.filter((e) => e.added === null || e.deleted === null);
   if (binary.length > 0) reasons.push(`binary changes: ${list(binary.map((e) => e.path))}`);
-  const denied = deniedPaths(entries.map((e) => e.path), opts.extraDenied ?? [], config.securityCritical ?? []);
+  const denied = deniedPaths(entries.map((e) => e.path), [...(opts.extraDenied ?? []), ...(opts.installFiles?.paths ?? [])], config.securityCritical ?? []);
   if (denied.length > 0) reasons.push(`touches paths that always need a human (CI, config, manifests, lockfiles, hooks, agent prompts, factory or security-critical files): ${list(denied)}`);
   const isSetup = setupMatcher(opts.testSetup?.paths ?? []);
   const setup = entries.filter((e) => isSetup(e.path));
@@ -326,16 +434,30 @@ export function classifyChanges(entries: readonly ChangedEntry[] | null, config:
   const evidence = [`${files} file(s), ${lines} changed line(s), plain file modes, no binary, no denied path, no deleted test`];
   if (reasons.length > 0) return { reasons, evidence: [] };
   const docsDenied = (config.docsDenied ?? []).map(globMatcher);
+  const frontmatter = new Set((opts.frontmatter?.paths ?? []).map((p) => segments(p).join('/')));
+  const withFrontmatter = (e: ChangedEntry) => frontmatter.has(segments(e.path).join('/'));
+  // N5: a modified test that loses more lines than it gains, or an added skip / focus / empty assertion, is a gutted test.
+  const gutted = entries.filter((e) => e.status === 'M' && looksLikeTest(e.path) && (e.deleted ?? 0) > (e.added ?? 0)).map((e) => e.path);
+  const skipLine = opts.addedLines?.find((l) => TEST_SKIP.test(l));
   const misses: string[] = [];
   for (const tier of AUTO_MERGE_TIERS) {
     if (!config.tiers.includes(tier)) continue;
     const maxLines = config.maxChangedLines ?? (tier === 'small' ? DEFAULT_SMALL_MAX_CHANGED_LINES : undefined);
     const maxFiles = config.maxFiles ?? (tier === 'small' ? DEFAULT_SMALL_MAX_FILES : undefined);
     if (tier !== 'docs' && opts.testSetup?.problem) { misses.push(`${tier}: ${opts.testSetup.problem}`); continue; }
-    const outside = tier === 'docs' ? entries.filter((e) => !isDocsPath(e.path) || docsDenied.some((m) => m(e.path)))
+    if (tier !== 'tests' && opts.frontmatter?.problem) { misses.push(`${tier}: ${opts.frontmatter.problem}`); continue; }
+    if (tier === 'small' && opts.installFiles?.problem) { misses.push(`${tier}: ${opts.installFiles.problem}`); continue; }
+    if (tier !== 'docs') {
+      if (opts.addedLines === null) { misses.push(`${tier}: the PR's patch could not be read, so a skipped or emptied test cannot be ruled out`); continue; }
+      if (gutted.length > 0) { misses.push(`${tier}: ${list(gutted)} lose(s) more lines than it gains (a gutted test needs a human)`); continue; }
+      if (skipLine !== undefined) { misses.push(`${tier}: an added line skips, focuses or empties a test (${oneLineOf(skipLine)})`); continue; }
+    }
+    const outside = tier === 'docs' ? entries.filter((e) => !isDocsPath(e.path) || docsDenied.some((m) => m(e.path)) || withFrontmatter(e))
       : tier === 'tests' ? entries.filter((e) => !isTestPath(e.path) || e.status === 'D' || segments(e.path).some((s) => TEST_RUNNER_CODE.test(s)))
-        : entries.filter((e) => protectedChanges([e.path], SMALL_TIER_DENIED).length > 0);
+        : entries.filter((e) => protectedChanges([e.path], SMALL_TIER_DENIED).length > 0 || withFrontmatter(e));
     if (outside.length > 0) {
+      const fm = outside.filter(withFrontmatter);
+      if (fm.length > 0 && tier !== 'tests') { misses.push(`${tier}: ${list(fm.map((e) => e.path))} start(s) with frontmatter, which a tool may run as config`); continue; }
       const what = tier === 'docs' ? 'docs' : tier === 'tests' ? 'test files (setup, teardown, benchmarks and deletions are not)' : `small-tier files (never under ${SMALL_TIER_DENIED.join(', ')})`;
       misses.push(`${tier}: ${list(outside.map((e) => e.path))} ${outside.length === 1 ? 'is' : 'are'} not ${what}`);
       continue;
@@ -347,19 +469,31 @@ export function classifyChanges(entries: readonly ChangedEntry[] | null, config:
   return { reasons: [`no enabled tier fits (${misses.join('; ')})`], evidence: [] };
 }
 
+const oneLineOf = (s: string): string => { const t = s.trim().replace(/\s+/g, ' '); return t.length > 80 ? `${t.slice(0, 80)}...` : t; };
+
 /** Root config files whose setupFiles / globalSetup the engine reads at the BASE commit (never the head). */
 export const TEST_CONFIG_NAME = /^(?:(?:vitest|vite|jest)(?:\.[\w-]+)*\.config\.(?:[cm]?[jt]s|json)|vitest\.(?:workspace|projects)\.(?:[cm]?[jt]s|json)|package\.json)$/i;
 
-const SETUP_KEYS = /(?<![\w$])["']?(setupFiles|setupFilesAfterEnv|globalSetup|globalTeardown)["']?\s*:\s*/g;
+/** Config keys whose value names code the test runner loads around the tests (review-498b N4 added the reporter, environment, runner and transform keys). */
+const SETUP_KEY_NAMES = ['setupFiles', 'setupFilesAfterEnv', 'globalSetup', 'globalTeardown', 'reporters', 'environment', 'testEnvironment', 'runner', 'testRunner',
+  'sequencer', 'testSequencer', 'snapshotSerializers', 'resolveSnapshotPath', 'snapshotResolver', 'transform', 'watchPlugins', 'preset'] as const;
+const KEY_ALT = SETUP_KEY_NAMES.join('|');
+const SETUP_KEYS = new RegExp(`(?<![\\w$])["']?(${KEY_ALT})["']?\\s*:\\s*`, 'g');
+/** Any mention of one of those names: one that is not a plain `key: value` (shorthand, computed key, spread) is a problem. */
+const SETUP_KEY_WORD = new RegExp(`(?<![\\w$])(${KEY_ALT})(?![\\w$])`, 'g');
+/** Config text that loads more config the engine does not read: a relative import or require, mergeConfig, a workspace or project definition. */
+const LOADS_MORE = /\b(?:import|require)\s*\(?\s*['"`]\.{1,2}[\/\\]|\bfrom\s*['"`]\.{1,2}[\/\\]|\b(?:mergeConfig|defineWorkspace|defineProject)\b/;
 const STRING = /(['"`])((?:\\.|(?!\1)[^\\\n])*)\1/y;
 
 /**
  * The setup files the base's root test configs name (vitest / vite / jest
- * configs and package.json's `jest`), read as text: each setupFiles,
- * setupFilesAfterEnv, globalSetup or globalTeardown value must be a string
- * literal or an array of them. Anything else (a variable, a call, a template
- * with `${}`) is a `problem`, and the engine then keeps the tests and small
- * tiers off: it cannot know which file runs.
+ * configs and package.json's `jest`), read as text: each SETUP_KEY_NAMES
+ * value (setup, teardown, reporters, environment, runner, sequencer,
+ * serializers, transform...) must be a string literal or an array of them.
+ * Anything else (a variable, a call, a template with `${}`, a shorthand or
+ * computed key, a relative import or require, mergeConfig, defineWorkspace,
+ * defineProject) is a `problem`, and the engine then keeps the tests and
+ * small tiers off: it cannot know which file runs.
  */
 export function baseTestSetup(files: ReadonlyArray<{ path: string; text: string }>): { paths: string[]; problem?: string } {
   const paths: string[] = [];
@@ -369,15 +503,18 @@ export function baseTestSetup(files: ReadonlyArray<{ path: string; text: string 
       try { jest = (JSON.parse(text) as { jest?: unknown }).jest; } catch { return { paths, problem: 'the base package.json could not be parsed' }; }
       if (jest === undefined) continue;
       if (!jest || typeof jest !== 'object') return { paths, problem: 'the base package.json "jest" is not an object' };
-      for (const k of ['setupFiles', 'setupFilesAfterEnv', 'globalSetup', 'globalTeardown']) {
-        const v = (jest as Record<string, unknown>)[k];
-        if (v === undefined) continue;
-        const vs = Array.isArray(v) ? v : [v];
-        if (!vs.every((x) => typeof x === 'string')) return { paths, problem: `the base package.json jest.${k} is not a string list` };
-        paths.push(...(vs as string[]));
-      }
+      // JSON is exact: every string under these keys (module names and paths, in lists, tuples or transform maps) counts.
+      const leaves = (v: unknown, depth: number): void => {
+        if (typeof v === 'string') paths.push(v);
+        else if (depth < 6 && v && typeof v === 'object') for (const x of Array.isArray(v) ? v : Object.values(v as Record<string, unknown>)) leaves(x, depth + 1);
+      };
+      for (const k of SETUP_KEY_NAMES) leaves((jest as Record<string, unknown>)[k], 0);
       continue;
     }
+    if (LOADS_MORE.test(text)) return { paths, problem: `${path} imports a relative file, or uses mergeConfig, defineWorkspace or defineProject, so the setup files it runs are unknown` };
+    const keyed = new Set([...text.matchAll(SETUP_KEYS)].map((m) => m.index! + (/^["']/.test(m[0]) ? 1 : 0)));
+    const loose = [...text.matchAll(SETUP_KEY_WORD)].find((m) => !keyed.has(m.index!));
+    if (loose) return { paths, problem: `${path}: ${loose[1]} is not written as a plain key: value (shorthand, computed key or spread), so its files are unknown` };
     for (const m of text.matchAll(SETUP_KEYS)) {
       let i = m.index! + m[0].length;
       const literal = (): string | undefined => {
@@ -433,7 +570,7 @@ export interface AutoMergeInput {
   config: AutoMergeConfig;
   run: AutoMergeRunFacts;
   /** decideMerge (+ forge policies) on this head; `checks` = the checks that ran and SUCCEEDED (not skipped or neutral). */
-  decision: { ok: boolean; reasons: readonly string[]; noChecks?: true; checks?: readonly string[] };
+  decision: { ok: boolean; reasons: readonly string[]; noChecks?: true; checks?: readonly string[]; unsettled?: readonly string[] };
   /** ship.requiredChecks (config or branch protection): when set, one of them must be among the succeeded checks. */
   requiredChecks?: readonly string[];
   /** ship's latest verifier verdict. */
@@ -469,6 +606,9 @@ export function autoMergeVerdict(i: AutoMergeInput): AutoMergeVerdict {
   const checks = i.decision.checks ?? [];
   const required = i.requiredChecks ?? [];
   const succeeded = required.length > 0 ? checks.filter((c) => required.includes(c)) : checks;
+  // N6: without required checks one trivial success (a labeler) is not enough: no check on the head may be SKIPPED or NEUTRAL either.
+  const unsettled = required.length > 0 ? [] : (i.decision.unsettled ?? []);
+  check(unsettled.length === 0, 'no check skipped or neutral on this head', `checks skipped or neutral on this head (${unsettled.slice(0, 8).join(', ')}${unsettled.length > 8 ? ', ...' : ''}); without required checks every check must succeed (set ship.requiredChecks or branch protection to name the ones that matter)`);
   check(!i.decision.noChecks && succeeded.length > 0,
     `CI green at ${at}: ${succeeded.slice(0, 8).join(', ')}${succeeded.length > 8 ? ', ...' : ''} succeeded${required.length > 0 ? ' (required)' : ''}`,
     required.length > 0 ? `no required check (${required.slice(0, 8).join(', ')}) succeeded on this head (skipped or neutral checks do not count)` : 'no CI check succeeded on this head (skipped, neutral or no checks never auto-merge)');
