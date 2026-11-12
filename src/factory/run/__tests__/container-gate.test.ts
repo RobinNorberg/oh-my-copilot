@@ -375,9 +375,10 @@ describe('review-499 hardening', () => {
     try {
       if (!linkOrSkip(userModules, join(dir, 'node_modules'))) return;
       // Probed on the disk itself, whatever the platform argument says: case on a folding file system, links always.
+      const diskFolds = existsSync(join(dir, 'Node_Modules'));
       for (const platform of ['win32', 'linux'] as const) {
         const problem = applyCopyBack(dir, tarOf([{ path: './Node_Modules/vitest/vitest.mjs', data: 'pwn' }]), platform);
-        if (platform === 'linux' && !existsSync(join(dir, 'Node_Modules'))) {
+        if (platform === 'linux' && !diskFolds) {
           // A case-sensitive disk: Node_Modules was a new real dir, never the junction.
           expect(problem).toBeNull();
           rmSync(join(dir, 'Node_Modules'), { recursive: true, force: true });
@@ -394,8 +395,14 @@ describe('review-499 hardening', () => {
     const outside = mkdtempSync(join(tmpdir(), 'omg-outside-'));
     try {
       if (!linkOrSkip(outside, join(dir, 'docs'))) return;
+      const diskFolds = existsSync(join(dir, 'DOCS'));
       for (const platform of ['win32', 'darwin', 'linux'] as const) {
-        expect(applyCopyBack(dir, tarOf([{ path: './docs', type: '2', link: outside }, { path: './DOCS/evil', data: 'p' }]), platform), platform).not.toBeNull();
+        const problem = applyCopyBack(dir, tarOf([{ path: './docs', type: '2', link: outside }, { path: './DOCS/evil', data: 'p' }]), platform);
+        // A case-sensitive disk told "linux": DOCS is a new real dir next to the docs link, never through it.
+        if (platform === 'linux' && !diskFolds) {
+          expect(problem).toBeNull();
+          expect(readFileSync(join(dir, 'DOCS', 'evil'), 'utf8')).toBe('p');
+        } else expect(problem, platform).not.toBeNull();
         expect(existsSync(join(outside, 'evil'))).toBe(false);
       }
       // And the scan before the copy refuses the checkout: a link that points outside it.
