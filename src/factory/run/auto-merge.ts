@@ -24,6 +24,7 @@ import { normalize, resolve } from 'path';
 import { repoIdentity, sameRepo } from '../../ship/config.js';
 import { PROTECTED_PATHS, protectedChanges } from '../../ship/merge.js';
 import { CI_TREE_PATHS, LANE_PROTECTED_PATHS } from './lane-commit.js';
+import { checkName } from './merge-policy.js';
 
 export const AUTO_MERGE_TIERS = ['docs', 'tests', 'small'] as const;
 export type AutoMergeTier = (typeof AUTO_MERGE_TIERS)[number];
@@ -740,10 +741,10 @@ export function autoMergeVerdict(i: AutoMergeInput): AutoMergeVerdict {
   const succeeded = required.length > 0 ? checks.filter((c) => required.includes(c)) : checks;
   // N6: without required checks one trivial success (a labeler) is not enough: no check on the head may be SKIPPED or NEUTRAL either.
   const unsettled = required.length > 0 ? [] : (i.decision.unsettled ?? []);
-  check(unsettled.length === 0, 'no check skipped or neutral on this head', `checks skipped or neutral on this head (${unsettled.slice(0, 8).join(', ')}${unsettled.length > 8 ? ', ...' : ''}); without required checks every check must succeed (set ship.requiredChecks or branch protection to name the ones that matter)`);
+  check(unsettled.length === 0, 'no check skipped or neutral on this head', `checks skipped or neutral on this head (${unsettled.slice(0, 8).map(checkName).join(', ')}${unsettled.length > 8 ? ', ...' : ''}); without required checks every check must succeed (set ship.requiredChecks or branch protection to name the ones that matter)`);
   check(!i.decision.noChecks && succeeded.length > 0,
-    `CI green at ${at}: ${succeeded.slice(0, 8).join(', ')}${succeeded.length > 8 ? ', ...' : ''} succeeded${required.length > 0 ? ' (required)' : ''}`,
-    required.length > 0 ? `no required check (${required.slice(0, 8).join(', ')}) succeeded on this head (skipped or neutral checks do not count)` : 'no CI check succeeded on this head (skipped, neutral or no checks never auto-merge)');
+    `CI green at ${at}: ${succeeded.slice(0, 8).map(checkName).join(', ')}${succeeded.length > 8 ? ', ...' : ''} succeeded${required.length > 0 ? ' (required)' : ''}`,
+    required.length > 0 ? `no required check (${required.slice(0, 8).map(checkName).join(', ')}) succeeded on this head (skipped or neutral checks do not count)` : 'no CI check succeeded on this head (skipped, neutral or no checks never auto-merge)');
   check(i.human !== undefined, 'human review read: no open thread or change request', 'factory.review.human is "off", so human review threads are not read');
   if (i.human) check(i.human.commentOnly === 0, 'no comment-only human review at this head', `${i.human.commentOnly} comment-only human review(s) at this head`);
   check(i.labels !== null && !i.labels.some((l) => l.toLowerCase() === MANUAL_MERGE_LABEL), `no ${MANUAL_MERGE_LABEL} label`, i.labels === null ? 'the issue or PR labels could not be read' : `the issue or PR carries ${MANUAL_MERGE_LABEL}`);

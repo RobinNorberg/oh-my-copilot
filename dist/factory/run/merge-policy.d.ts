@@ -41,6 +41,8 @@ export interface FactoryMergeDecision extends MergeDecision {
      */
     blocking?: string[];
 }
+/** A check name in a code span, so markdown links, HTML and `owner/repo#1` cross-references stay literal text. */
+export declare const checkName: (s: string) => string;
 /**
  * ship's decideMerge on a fresh one-shot gate read for the head (no watch,
  * no rerun) and the commits since the reviewed sha. `view.baseRefOid` must be

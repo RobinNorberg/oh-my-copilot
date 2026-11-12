@@ -132510,11 +132510,11 @@ function autoMergeVerdict(i) {
   const required2 = i.requiredChecks ?? [];
   const succeeded = required2.length > 0 ? checks.filter((c) => required2.includes(c)) : checks;
   const unsettled = required2.length > 0 ? [] : i.decision.unsettled ?? [];
-  check2(unsettled.length === 0, "no check skipped or neutral on this head", `checks skipped or neutral on this head (${unsettled.slice(0, 8).join(", ")}${unsettled.length > 8 ? ", ..." : ""}); without required checks every check must succeed (set ship.requiredChecks or branch protection to name the ones that matter)`);
+  check2(unsettled.length === 0, "no check skipped or neutral on this head", `checks skipped or neutral on this head (${unsettled.slice(0, 8).map(checkName).join(", ")}${unsettled.length > 8 ? ", ..." : ""}); without required checks every check must succeed (set ship.requiredChecks or branch protection to name the ones that matter)`);
   check2(
     !i.decision.noChecks && succeeded.length > 0,
-    `CI green at ${at}: ${succeeded.slice(0, 8).join(", ")}${succeeded.length > 8 ? ", ..." : ""} succeeded${required2.length > 0 ? " (required)" : ""}`,
-    required2.length > 0 ? `no required check (${required2.slice(0, 8).join(", ")}) succeeded on this head (skipped or neutral checks do not count)` : "no CI check succeeded on this head (skipped, neutral or no checks never auto-merge)"
+    `CI green at ${at}: ${succeeded.slice(0, 8).map(checkName).join(", ")}${succeeded.length > 8 ? ", ..." : ""} succeeded${required2.length > 0 ? " (required)" : ""}`,
+    required2.length > 0 ? `no required check (${required2.slice(0, 8).map(checkName).join(", ")}) succeeded on this head (skipped or neutral checks do not count)` : "no CI check succeeded on this head (skipped, neutral or no checks never auto-merge)"
   );
   check2(i.human !== void 0, "human review read: no open thread or change request", 'factory.review.human is "off", so human review threads are not read');
   if (i.human) check2(i.human.commentOnly === 0, "no comment-only human review at this head", `${i.human.commentOnly} comment-only human review(s) at this head`);
@@ -132554,6 +132554,7 @@ var init_auto_merge = __esm({
     init_config4();
     init_merge2();
     init_lane_commit();
+    init_merge_policy();
     AUTO_MERGE_TIERS = ["docs", "tests", "small"];
     MANUAL_MERGE_LABEL = "factory:manual-merge";
     DEFAULT_SMALL_MAX_CHANGED_LINES = 80;
