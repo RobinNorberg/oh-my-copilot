@@ -290,7 +290,8 @@ export function defaultPollHealScan(exec: Exec, config: (root: string) => { conf
  * JSON documents); `next` is then null and means nothing. Otherwise `next` is
  * the item it took (null: none). Never rejects.
  */
-export type PollAutoStart = (o: { root: string; parallel?: number; args?: readonly string[] }) => Promise<{ exitCode: number; parsed: boolean; next: number | null; message: string }>;
+/** `issue`: run that item (`omg factory run <issue>`) instead of `--next` (omg factory bench picks its own items). */
+export type PollAutoStart = (o: { root: string; parallel?: number; issue?: number; args?: readonly string[] }) => Promise<{ exitCode: number; parsed: boolean; next: number | null; message: string }>;
 
 /** Null when there is budget headroom for one more run; otherwise why not. */
 export type PollBudget = (root: string) => string | null;
@@ -358,7 +359,7 @@ export interface PollAutoStartOptions {
  * to the engine process (its lanes are not reached).
  */
 export function defaultPollAutoStart(entry: string | undefined = process.argv[1], o: PollAutoStartOptions = {}): PollAutoStart {
-  return ({ root, parallel, args }) => new Promise((resolve) => {
+  return ({ root, parallel, issue, args }) => new Promise((resolve) => {
     if (!entry) {
       resolve({ exitCode: 1, parsed: false, next: null, message: 'cannot locate the omg CLI entry to start omg factory run --next' });
       return;
@@ -382,7 +383,7 @@ export function defaultPollAutoStart(entry: string | undefined = process.argv[1]
     const notStarted = (error: unknown) => settle({ exitCode: 1, parsed: false, next: null, message: `omg factory run --next did not start: ${message(error)}` });
     let child: ReturnType<typeof spawn>;
     try {
-      child = spawn(process.execPath, [entry, 'factory', 'run', '--next', '--json', ...(parallel !== undefined ? ['--parallel', String(parallel)] : []), ...(args ?? [])], { cwd: root, stdio: ['ignore', 'pipe', 'inherit'], windowsHide: true, detached: process.platform !== 'win32' });
+      child = spawn(process.execPath, [entry, 'factory', 'run', ...(issue !== undefined ? [String(issue)] : ['--next']), '--json', ...(parallel !== undefined ? ['--parallel', String(parallel)] : []), ...(args ?? [])], { cwd: root, stdio: ['ignore', 'pipe', 'inherit'], windowsHide: true, detached: process.platform !== 'win32' });
     } catch (error) {
       notStarted(error);
       return;

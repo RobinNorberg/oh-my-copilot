@@ -10,7 +10,7 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 import { writeFileSync } from 'node:fs';
 import { createBenchFixture } from '../../factory/bench/fixture.js';
-import { BenchUsageError, DEFAULT_BENCH_MAX_MINUTES, runBench } from '../../factory/bench/runner.js';
+import { BenchUsageError, DEFAULT_BENCH_MAX_MINUTES, LIVE_CAP_BOUND, parseIssueList, runBench } from '../../factory/bench/runner.js';
 import { compareResults, readBenchResults } from '../../factory/bench/score.js';
 import { integerOption } from '../utils/integer-option.js';
 
@@ -41,16 +41,23 @@ export function factoryBenchCommand(): Command {
     .command('run')
     .argument('<dir>', 'the fixture directory (omg factory bench init)')
     .option('--fake', 'scripted lanes, no Copilot and no cost: proves the harness, scoring and trap expectations')
-    .option('--live', 'real Copilot lanes through omg factory run --next in the fixture repository; needs --max-requests')
-    .option('--max-requests <n>', '--live: no run starts once the premium requests recorded in the fixture budget ledger since the start leave no room for one more run', integerOption(1, 10_000))
-    .option('--max-credits <n>', '--live: no run starts once this many AI credits are recorded', integerOption(1, 1_000_000))
+    .option('--live', 'real Copilot lanes through omg factory run <id> in the fixture repository; needs --max-requests and the gate sandbox enforced (factory.run.sandbox.gates "enforced", or isolation "container")')
+    .option('--max-requests <n>', `the premium-request cap: ${LIVE_CAP_BOUND}`, integerOption(1, 10_000))
+    .option('--max-credits <n>', '--live: no run starts once this many AI credits are recorded (a soft stop: runs in flight finish)', integerOption(1, 1_000_000))
     .option('--max-minutes <n>', `no run starts after this many minutes (default ${DEFAULT_BENCH_MAX_MINUTES})`, integerOption(1, 24 * 60))
     .option('--parallel <n>', '--live: up to n runs at once (needs factory.run.maxConcurrent above 1 and layout "private" in your user config)', integerOption(1, 16))
+    .option('--issues <ids>', 'run only these issues (comma-separated ids, e.g. 2,6,9,10); the results record the subset')
     .option('--out <dir>', 'results directory (default ./bench-results)')
     .option('--json', 'print the results JSON instead of the summary')
     .description('Run the factory over the fixture until every issue is parked, finished or not runnable, then score it')
-    .action(async (dir: string, o: { fake?: boolean; live?: boolean; maxRequests?: number; maxCredits?: number; maxMinutes?: number; parallel?: number; out?: string; json?: boolean }) => {
+    .action(async (dir: string, o: { fake?: boolean; live?: boolean; maxRequests?: number; maxCredits?: number; maxMinutes?: number; parallel?: number; issues?: string; out?: string; json?: boolean }) => {
       if (Boolean(o.fake) === Boolean(o.live)) return fail(new Error('pass exactly one of --fake and --live'), true);
+      let issues: number[] | undefined;
+      try {
+        issues = o.issues === undefined ? undefined : parseIssueList(o.issues);
+      } catch (error) {
+        return fail(error, true);
+      }
       let interrupted = false;
       const forwards = new Set<(signal: NodeJS.Signals) => void>();
       const onSignal = () => {
@@ -64,7 +71,7 @@ export function factoryBenchCommand(): Command {
         const out = await runBench({
           dir, mode: o.fake ? 'fake' : 'live', ...(o.maxRequests !== undefined ? { maxRequests: o.maxRequests } : {}),
           ...(o.maxCredits !== undefined ? { maxCredits: o.maxCredits } : {}), ...(o.maxMinutes !== undefined ? { maxMinutes: o.maxMinutes } : {}),
-          ...(o.parallel !== undefined ? { parallel: o.parallel } : {}), ...(o.out ? { outDir: o.out } : {}),
+          ...(o.parallel !== undefined ? { parallel: o.parallel } : {}), ...(o.out ? { outDir: o.out } : {}), ...(issues ? { issues } : {}),
           log: (m) => { if (!o.json) console.error(chalk.gray(m)); },
           interrupted: () => interrupted,
           signals: (forward) => { forwards.add(forward); return () => { forwards.delete(forward); }; },
@@ -89,10 +96,11 @@ export function factoryBenchCommand(): Command {
     .argument('<a>', 'a results JSON (bench-results/*.json)')
     .argument('<b>', 'another results JSON')
     .option('--out <file>', 'also write the markdown diff to this file')
+    .option('--allow-subset-diff', 'compare results that cover different issues (--issues); the totals are then not like for like')
     .description('Diff two bench results: totals side by side and every issue whose outcome or pass verdict changed')
-    .action((a: string, b: string, o: { out?: string }) => {
+    .action((a: string, b: string, o: { out?: string; allowSubsetDiff?: boolean }) => {
       try {
-        const text = compareResults(readBenchResults(a), readBenchResults(b), [a, b]);
+        const text = compareResults(readBenchResults(a), readBenchResults(b), [a, b], { allowSubsetDiff: Boolean(o.allowSubsetDiff) });
         if (o.out) writeFileSync(o.out, text);
         console.log(text);
       } catch (error) {

@@ -18,18 +18,11 @@ export const BENCH_BASE = 'main';
 /** The backlog label every bench item carries (factory.intake.source). */
 export const BENCH_LABEL = 'bench';
 
-/** The local gate (factory.forge.local.gate) and the acceptance command: the repository's own `npm test`. */
+/** The local gate (factory.forge.local.gate): the repository's own `npm test`. */
 export const BENCH_GATE: readonly string[] = ['npm', 'test'];
 
 /** Where the harness puts an issue's hidden acceptance test in its scratch checkout (inside the tsconfig and vitest globs). */
 export const ACCEPTANCE_TEST_PATH = 'test/bench-acceptance.test.ts';
-
-/**
- * The acceptance command: vitest on the hidden test alone. It runs only on a
- * head that parked at the merge gate, so the full gate (lint, tsc, every
- * test) already passed on exactly that head.
- */
-export const ACCEPTANCE_ARGV: readonly string[] = ['node', 'node_modules/vitest/vitest.mjs', 'run', ACCEPTANCE_TEST_PATH];
 
 const json = (value: unknown): string => `${JSON.stringify(value, null, 2)}\n`;
 
