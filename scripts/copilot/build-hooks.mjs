@@ -49,7 +49,27 @@ export const DISPATCH_ARG = `${PLUGIN_ROOT_TOKEN}/scripts/copilot/dispatch.cjs`;
 // Must match HOOK_SEPARATOR in scripts/copilot/dispatch.cjs.
 export const HOOK_SEPARATOR = '--';
 const COMMAND_PATTERN = /^node "\$\{CLAUDE_PLUGIN_ROOT\}"\/scripts\/run\.cjs "\$\{CLAUDE_PLUGIN_ROOT\}"\/scripts\/(\S+)((?: \S+)*)$/;
-const KNOWN_HOOK_FIELDS = new Set(['type', 'command', 'timeout', 'async']);
+const KNOWN_HOOK_FIELDS = new Set(['type', 'command', 'args', 'timeout', 'async']);
+const RUN_CJS_ARG = `${PLUGIN_ROOT_TOKEN}/scripts/run.cjs`;
+const SCRIPT_ARG_PATTERN = /^\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/(\S+)$/;
+
+/**
+ * The script and its extra args from either upstream hook form: the shell
+ * string `node "${CLAUDE_PLUGIN_ROOT}"/scripts/run.cjs ...`, or the exec form
+ * `command: "node"` plus `args: [run.cjs, script, ...extra]`. Null otherwise.
+ */
+function parseHookInvocation(hook) {
+  if (hook.args === undefined) {
+    const match = typeof hook.command === 'string' ? COMMAND_PATTERN.exec(hook.command) : null;
+    return match ? { script: match[1], extraArgs: match[2].split(' ').filter(Boolean) } : null;
+  }
+  const { args } = hook;
+  if (hook.command !== 'node' || !Array.isArray(args) || args.length < 2) return null;
+  if (!args.every(arg => typeof arg === 'string' && arg.length > 0 && !/\s/.test(arg))) return null;
+  if (args[0] !== RUN_CJS_ARG) return null;
+  const match = SCRIPT_ARG_PATTERN.exec(args[1]);
+  return match ? { script: match[1], extraArgs: args.slice(2) } : null;
+}
 const KNOWN_GROUP_FIELDS = new Set(['matcher', 'hooks']);
 const { CLAUDE_TOOL_NAMES } = createRequire(import.meta.url)('../lib/copilot-payload.cjs');
 
@@ -104,12 +124,9 @@ export function buildCopilotHooks(source, { preload = true, forkHooks = FORK_HOO
         for (const key of Object.keys(hook ?? {})) {
           if (!KNOWN_HOOK_FIELDS.has(key)) throw new Error(`hooks/hooks.json ${event}: unknown hook field "${key}"`);
         }
-        const match = hook.type === 'command' && typeof hook.command === 'string'
-          ? COMMAND_PATTERN.exec(hook.command)
-          : null;
-        if (!match) throw new Error(`hooks/hooks.json ${event}: unsupported hook command form: ${JSON.stringify(hook)}`);
-        const [, script, extra] = match;
-        const extraArgs = extra.split(' ').filter(Boolean);
+        const parsed = hook.type === 'command' ? parseHookInvocation(hook) : null;
+        if (!parsed) throw new Error(`hooks/hooks.json ${event}: unsupported hook command form: ${JSON.stringify(hook)}`);
+        const { script, extraArgs } = parsed;
         if (extraArgs.includes(HOOK_SEPARATOR)) {
           throw new Error(`hooks/hooks.json ${event}: hook arg "${HOOK_SEPARATOR}" cannot be dispatched: ${hook.command}`);
         }

@@ -16,7 +16,7 @@ For v5.12.1, the plugin ships 20 agents, 98 skills, 21 command files, and one co
 - [Legacy MCP Team Runtime Tools (Deprecated)](#legacy-mcp-team-runtime-tools-deprecated-opt-in-only)
 - [Agents (20 Total)](#agents-20-total)
 - [Goal Workflow UX: `/goal`, Ralph, Team, Ultragoal](#goal-workflow-ux-goal-ralph-team-ultragoal)
-- [Skills (98 Total)](#skills-98-total)
+- [Skills (99 Total)](#skills-99-total)
 - [Slash Commands](#slash-commands)
 - [Shipyard Methodology](./shipyard.md) — governed delivery & shared harness map
 - [Claude Code `/goal` Adapter Design](#claude-code-goal-adapter-design)
@@ -2494,7 +2494,7 @@ Autopilot continues to own cancel, resume, cleanup, state inspection, HUD, and S
 
 V1 deliberately defers `stageModels` and all model/provider/role routing, inline/no-spawn execution, dynamic commands/modes/state files, arbitrary stages/prompts/plugins and control-flow extensions, and the separate custom-skill inline-array frontmatter parser mismatch. See [ADR 03487](./adr/03487-named-autopilot-stage-profiles.md) for the decision record.
 
-## Skills (98 Total)
+## Skills (99 Total)
 
 Includes bundled workflow, utility, domain, and compatibility skills. Runtime truth comes from the builtin skill loader scanning `skills/*/SKILL.md` and expanding aliases declared in frontmatter.
 
@@ -2746,14 +2746,14 @@ OMC registers 21 hook scripts across 11 Claude Code lifecycle events. For detail
 | ---------------------- | ----------------------------------------------------------------------------------------------------------------- | -------------------------------------------- |
 | **UserPromptSubmit**   | `keyword-detector.mjs`, `skill-injector.mjs`, `premium-budget.mjs submit`                                        | 30s outer fuse per command; 8s, 12s trusted Worker limits (5s for `premium-budget.mjs submit`) |
 | **SessionStart**       | `session-start.mjs`, `project-memory-session.mjs`, `premium-budget.mjs start`, `setup-init.mjs` (init), `setup-maintenance.mjs` (maintenance) | 5s, 5s, 5s, 30s, 60s |
-| **PreToolUse**         | `pre-tool-enforcer.mjs`                                                                                           | 5s trusted Worker |
+| **PreToolUse**         | `pre-tool-enforcer.mjs`                                                                                           | 60s trusted Worker |
 | **PermissionRequest**  | `permission-handler.mjs` (Bash only)                                                                              | 5s               |
-| **PostToolUse**        | `post-tool-verifier.mjs`, `project-memory-posttool.mjs`, `post-tool-rules-injector.mjs`, `post-tool-directory-context-injector.mjs` | 5s, 3s, 3s, 3s trusted Workers |
+| **PostToolUse**        | `post-tool-verifier.mjs`, `project-memory-posttool.mjs`, `post-tool-rules-injector.mjs`, `post-tool-directory-context-injector.mjs` | 10s, 3s, 3s, 3s trusted Workers |
 | **PostToolUseFailure** | `post-tool-use-failure.mjs`                                                                                       | 3s               |
 | **SubagentStart**      | `subagent-tracker.mjs start`                                                                                      | 3s               |
 | **SubagentStop**       | `subagent-tracker.mjs stop`, `verify-deliverables.mjs`                                                            | 5s, 5s           |
 | **PreCompact**         | `pre-compact.mjs`, `project-memory-precompact.mjs`                                                                | 10s, 5s          |
-| **Stop**               | `context-guard-stop.mjs`, `workflow-drift-guard.mjs`, `persistent-mode.mjs`, `premium-budget.mjs turn`, `code-simplifier.mjs` | 5s, 3s, 10s, 5s, 5s |
+| **Stop**               | `context-guard-stop.mjs`, `workflow-drift-guard.mjs`, `persistent-mode.mjs`, `premium-budget.mjs turn`, `code-simplifier.mjs` | 5s, 3s, 20s, 5s, 10s |
 | **SessionEnd**         | `session-end.mjs`                                                                                                 | 30s              |
 
 For each UserPromptSubmit command, 30s is the outer host fuse, including any launcher delay before `run.cjs`. Exact canonical targets use the trusted Worker branch only when their manifest event matches: the prompt hooks receive the 8s keyword-detector or 12s skill-injector execution caps, while the PreToolUse and PostToolUse hooks retain their manifest-derived inner budgets. Generic targets, untrusted paths, event mismatches, and invocations with extra arguments retain the isolated child-process path. A command that never starts the runner can take the entire 30s per-command fuse, and host scheduling does not imply an aggregate latency.
@@ -2813,9 +2813,11 @@ explicitly enabled via the global OMC config file:
 
 Use these trigger phrases in natural language prompts to activate enhanced modes:
 
+The autopilot aliases (`autopilot`, `auto-pilot`, `full auto`, `fullsend`) start the mode only as a command (for example `autopilot test the API` or `use autopilot`); a bare mention such as `the autopilot run failed` does not, and a question (`Did autopilot run the tests?`) never does. The command verb list is closed and a later-line `autopilot solve this issue` is not covered; the full grammar is in [HOOKS.md](HOOKS.md).
+
 | Keyword                                                                        | Effect                                                                                        |
 | ------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------- |
-| `autopilot`, `build me`, `I want a`, `handle it all`, `end to end`, `e2e this` | Full autonomous execution                                                                     |
+| `autopilot <command>`, `build me`, `I want a`, `handle it all`, `end to end`, `e2e this` | Full autonomous execution                                                                     |
 | `deslop`, `anti-slop`, cleanup/refactor + slop smells                          | Anti-slop cleanup workflow (`ai-slop-cleaner`)                                                |
 | `ralph`, `don't stop`, `must complete`, `until done`                           | Persistence until verified complete                                                           |
 | `ralplan`                                                                      | Iterative planning consensus with structured deliberation (`--deliberate` for high-risk mode) |

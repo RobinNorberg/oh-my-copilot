@@ -282,6 +282,29 @@ describe('keyword-detector.mjs mode-message dispatch', () => {
     expect(context).not.toContain('name: ralplan');
   });
 
+  it('routes ai-slop-cleaner only when cleanup action and smell share a sentence, never on no-implement prompts', () => {
+    const slop = (p: string) => runKeywordDetector(p).hookSpecificOutput?.additionalContext ?? '';
+    // Long review prompt: smell and action words far apart, implementation forbidden.
+    const review = [
+      'INDEPENDENT ARCHITECTURE CHALLENGE',
+      'Failure modes to cover:',
+      '* Duplicate execution',
+      ...Array(40).fill('* Another requirement line'),
+      'Identify opportunities to simplify the architecture.',
+      'Do not implement anything until the architecture review is complete.',
+    ].join('\n');
+    expect(slop(review)).not.toContain('AI-SLOP-CLEANER');
+    expect(slop('Clean up the duplicated code in utils. Do not implement anything new.')).not.toContain('AI-SLOP-CLEANER');
+    expect(slop('clean up the duplicated code in utils')).toContain('[MAGIC KEYWORD: AI-SLOP-CLEANER]');
+    expect(slop('deslop this file')).toContain('[MAGIC KEYWORD: AI-SLOP-CLEANER]');
+  });
+
+  it('drops code-editing modes when the prompt forbids implementation, unless it is a slash command', () => {
+    const ctx = (p: string) => runKeywordDetector(p).hookSpecificOutput?.additionalContext ?? '';
+    expect(ctx('ralph: review the auth module. Read-only review, no code changes.')).not.toContain('RALPH');
+    expect(ctx('/oh-my-copilot:ralph review auth, no code changes')).toContain('RALPH');
+  });
+
   it.each([
     ['ralph: fix the cron.\nRead the workflow docs first.', 'RALPH'],
     ['/oh-my-copilot:ralph fix the cron.\nRead the workflow docs first.', 'RALPH'],
@@ -294,6 +317,48 @@ describe('keyword-detector.mjs mode-message dispatch', () => {
       const context = output.hookSpecificOutput?.additionalContext ?? '';
 
       expect(context).toContain(`[MAGIC KEYWORD: ${keyword}]`);
+    }
+  });
+
+  it.each([
+    'Fix the cron first.\nautopilot test the API',
+    'Fix the cron first.\nautopilot review the patch',
+    'Fix the cron first.\nautopilot: bring the db up',
+    'Fix the cron first.\nautopilot: ping the server',
+    'Fix the cron first.\nautopilot: seed the database',
+    'Please use the full auto on this task',
+    'Please use the fullsend on this task',
+  ])('activates autopilot for the command "%s" in both shipped hooks', (prompt) => {
+    for (const detectorPath of [SCRIPT_PATH, TEMPLATE_PATH]) {
+      const output = runKeywordDetector(prompt, process.cwd(), 'session-5007-positive', {}, detectorPath);
+      expect(output.hookSpecificOutput?.additionalContext ?? '').toContain('[MAGIC KEYWORD: AUTOPILOT]');
+    }
+  });
+
+  it.each([
+    'Fix the cron first.\nautopilot, fix the parser',
+    'Fix the cron first.\nautopilot; fix the parser',
+    'Fix the cron first.\nautopilot \u2014 fix the parser',
+    'Fix the cron first.\nautopilot - fix the parser',
+    `${'please autopilot? what is it?\n'.repeat(25)}Then do the work.\n/autopilot fix the bug`,
+  ])('activates autopilot for the separator or late slash command "%s" in both shipped hooks', (prompt) => {
+    for (const detectorPath of [SCRIPT_PATH, TEMPLATE_PATH]) {
+      const output = runKeywordDetector(prompt, process.cwd(), 'session-5007-separator', {}, detectorPath);
+      expect(output.hookSpecificOutput?.additionalContext ?? '').toContain('[MAGIC KEYWORD: AUTOPILOT]');
+    }
+  });
+
+  it.each([
+    'Fix the cron first.\nautopilot: waiting for a task',
+    'Fix the cron first.\nautopilot: complete',
+    'Fix the cron first.\nautopilot test suite is red',
+    'Fix the cron first.\nautopilot review is done',
+    'Fix the cron first.\nautopilot, which is nice',
+    'The full auto mode is neat',
+  ])('does not activate autopilot for the status or prose line "%s" in both shipped hooks', (prompt) => {
+    for (const detectorPath of [SCRIPT_PATH, TEMPLATE_PATH]) {
+      const output = runKeywordDetector(prompt, process.cwd(), 'session-5007-negative', {}, detectorPath);
+      expect(output.hookSpecificOutput?.additionalContext ?? '').not.toContain('[MAGIC KEYWORD: AUTOPILOT]');
     }
   });
 
@@ -1545,5 +1610,159 @@ describe('keyword-detector.mjs #4551 regression tests', () => {
     const result3 = runKeywordDetector('autopilot: คืออะไร ใช้งานยังไง', process.cwd(), 'test-4551-th');
     expect(result3.continue).toBe(true);
     expect(result3.hookSpecificOutput).toBeUndefined();
+  });
+
+  describe('ralph activation confirmation', () => {
+    function readRalphState(cwd: string, sessionId: string): Record<string, unknown> | null {
+      const statePath = join(cwd, '.omg', 'state', 'sessions', sessionId, 'ralph-state.json');
+      return existsSync(statePath) ? JSON.parse(readFileSync(statePath, 'utf-8')) : null;
+    }
+
+    it('treats a typed /ralph invocation as confirmed so the Stop hook keeps enforcing the loop', () => {
+      const cwd = mkdtempSync(join(tmpdir(), 'keyword-detector-ralph-slash-'));
+      const sessionId = 'session-ralph-slash-confirmed';
+      try {
+        execFileSync('git', ['init', '--quiet'], { cwd, stdio: 'pipe' });
+
+        const output = runKeywordDetector(
+          '/oh-my-copilot:ralph 按 REQUIREMENTS.md 完成第 4 阶段',
+          cwd,
+          sessionId,
+        );
+
+        expect(output.hookSpecificOutput?.additionalContext).toContain('[MAGIC KEYWORD: RALPH]');
+        const state = readRalphState(cwd, sessionId);
+        expect(state).not.toBeNull();
+        expect(state!.active).toBe(true);
+        expect(state!.awaiting_confirmation).toBeUndefined();
+        expect(state!.invocation_source).toBe('slash');
+      } finally {
+        rmSync(cwd, { recursive: true, force: true });
+      }
+    });
+
+    it('keeps prose activation awaiting confirmation', () => {
+      // An accidental mention ("use ralph for this") must not commit the
+      // session to a blocking loop on the strength of one word.
+      const cwd = mkdtempSync(join(tmpdir(), 'keyword-detector-ralph-prose-'));
+      const sessionId = 'session-ralph-prose-confirmation';
+      try {
+        execFileSync('git', ['init', '--quiet'], { cwd, stdio: 'pipe' });
+
+        runKeywordDetector('ralph this task', cwd, sessionId);
+
+        const state = readRalphState(cwd, sessionId);
+        expect(state).not.toBeNull();
+        expect(state!.awaiting_confirmation).toBe(true);
+      } finally {
+        rmSync(cwd, { recursive: true, force: true });
+      }
+    });
+  });
+});
+
+describe.each([
+  ['script', SCRIPT_PATH],
+  ['template', TEMPLATE_PATH],
+])('%s keyword-detector: autopilot needs a command, not a mention', (_label, detectorPath) => {
+  function autopilotActivated(prompt: string): boolean {
+    const cwd = mkdtempSync(join(tmpdir(), 'keyword-detector-autopilot-command-'));
+    const sessionId = 'session-autopilot-command';
+    try {
+      runKeywordDetector(prompt, cwd, sessionId, {}, detectorPath);
+      return existsSync(join(cwd, '.omg', 'state', 'sessions', sessionId, 'autopilot-state.json'));
+    } finally {
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  }
+
+  it.each([
+    // A question the English help-question guard does not recognise, followed by pasted agent text.
+    'a co to jest?\n\nAdd tests (autopilot at cap; ralph at cap) for the state reader.',
+    'a co to jest?\n\nSummary: the fix keeps autopilot at the cap and reuses the existing guard.',
+    'Status:\nautopilot: complete',
+    'Log:\nAutopilot: waiting for child task',
+    'Log:\nautopilot: build failed on step 2',
+    'Docs: use autopilot to run long tasks',
+    'Release notes: autopilot fix for state reader',
+    "don't use autopilot for this one",
+    'never run autopilot on the production branch',
+    'The pump ran in full auto overnight.',
+    'Last night autopilot hung on step 3 of the migration.',
+    'The last autopilot run failed with exit 1',
+    'the autopilot plan looks wrong to me',
+    'CI said autopilot build failed on step 2',
+    'git log:\nabc1234 autopilot fix cap overflow',
+    'the autopilot status page is down',
+  ])('does not activate autopilot from a mention: %j', (prompt) => {
+    expect(autopilotActivated(prompt)).toBe(false);
+  });
+
+  it.each([
+    'autopilot fix the parser',
+    'autopilot: build a todo CLI',
+    '/autopilot fix the parser',
+    '/omc:autopilot add logging',
+    '$autopilot',
+    'turn on autopilot for this repo',
+    'please use autopilot to fix the parser',
+    'use autopilot to fix the parser',
+    'I want autopilot on this task',
+    'hey autopilot fix the parser',
+    'ok, autopilot add a login page',
+    'first a question\nautopilot: build a todo CLI',
+    'Here is the spec: a todo CLI with tests.\n\nautopilot',
+    'Here is the spec: a todo CLI with tests.\n\n$autopilot',
+    'Here is the spec: a todo CLI with tests.\n\n/autopilot add tests',
+    'Here is the spec: a todo CLI with tests.\n\nautopilot: do it',
+    'Here is the spec: a todo CLI with tests.\n\nfullsend',
+    'Tests are not passing yet so please run autopilot to fix them',
+    'that did not work so run autopilot instead',
+    'never mind, autopilot fix the parser',
+    'Task: please use autopilot to fix the parser',
+    'Goal: use autopilot to build a todo CLI',
+    'use full auto on this task',
+    "let's go full auto on this",
+    'please fullsend this',
+    '이거 autopilot 으로 해줘',
+    'このバグをautopilotで直して',
+    '请用autopilot修复这个bug',
+    // Activation phrases with an article, explicit colon with any verb, namespaced command on a later line.
+    'please use the autopilot to fix the parser',
+    'turn on the autopilot',
+    'go with the autopilot',
+    'Here is the task:\nautopilot: test the API',
+    'Here is the task:\nautopilot: deploy the app',
+    'Here is the spec: a todo CLI with tests.\n\n/oh-my-copilot:autopilot',
+    'Here is the spec: a todo CLI with tests.\n\n/omc:autopilot add tests',
+  ])('still activates autopilot for a command: %j', (prompt) => {
+    expect(autopilotActivated(prompt)).toBe(true);
+  });
+
+  it('still activates autopilot for a command that follows many pasted mentions', () => {
+    const logs = Array.from({ length: 60 }, (_, i) => `step ${i} autopilot ok`).join('\n');
+    expect(autopilotActivated(`${logs}\nplease use autopilot to fix this`)).toBe(true);
+  });
+
+  it('arms no heavy mode from pasted text that mentions several of them', () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'keyword-detector-autopilot-others-'));
+    try {
+      const pasted = 'a co to jest?\n\nAdd tests (autopilot at cap; ralph at cap; ralplan at cap) for the state reader.';
+      const context = runKeywordDetector(pasted, cwd, 'session-autopilot-others', {}, detectorPath).hookSpecificOutput?.additionalContext ?? '';
+      for (const mode of ['AUTOPILOT', 'RALPH', 'RALPLAN']) {
+        expect(context).not.toContain(`[MAGIC KEYWORD: ${mode}]`);
+      }
+    } finally {
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it('stays fast when thousands of commands are all help questions', () => {
+    // Every mention passes the cheap command check, so only the cap on the
+    // linear informational check keeps this prompt from taking seconds.
+    const prompt = 'what is use autopilot? '.repeat(10000);
+    const started = Date.now();
+    expect(autopilotActivated(prompt)).toBe(false);
+    expect(Date.now() - started).toBeLessThan(3000);
   });
 });

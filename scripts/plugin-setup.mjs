@@ -13,7 +13,7 @@ import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { getCopilotConfigDir } from './lib/config-dir.mjs';
 import { buildHudWrapper } from './lib/hud-wrapper-template.mjs';
-import { hookPrefixForPlatform, normalizeHooksDataForPlatform } from './lib/hook-command-normalizer.mjs';
+import { normalizeHooksDataForPlatform } from './lib/hook-command-normalizer.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -95,26 +95,29 @@ try {
   console.log('[OMC] Warning: Could not configure settings.json:', e.message);
 }
 
-// Keep the cached plugin manifest executable by the host that will actually run
-// the hooks. Claude Code's plugin loader reads hooks/hooks.json directly, and
-// the shipped manifest is the platform-neutral `node -> run.cjs` form, which
-// both cmd.exe and POSIX sh resolve identically. The manifest is rewritten only
-// when this host genuinely cannot use it: a POSIX box whose non-interactive hook
-// PATH has no node (nvm/fnm) gets the find-node.sh bootstrap instead. Leaving
-// the neutral form in place everywhere else is what keeps a marketplace update
-// — or a config directory shared between WSL/macOS and native Windows — from
-// silently killing the whole hook pipeline.
+// Patch packaged plugin-cache hooks.json to keep plugin-provided hook commands
+// safe for the platform that is installing the plugin cache. Claude Code's
+// plugin loader reads hooks/hooks.json directly, so the source manifest remains
+// native Windows-spawnable (direct node -> run.cjs, no sh/find-node). During
+// setup from a published plugin cache on Unix/macOS, repair the cached manifest
+// back to the find-node.sh bootstrap so nvm/fnm users whose non-interactive hook
+// PATH lacks node keep working.
 //
-// Commands are emitted with the braced "${CLAUDE_PLUGIN_ROOT}" placeholder,
-// which the host CLI substitutes itself. The bare "$CLAUDE_PLUGIN_ROOT" spelling
-// only expands where a POSIX shell runs the command, so it cannot work behind
-// the direct-node Windows prefix (#4042).
+// Keep stale cache self-healing for older manifests that used sh/find-node, an
+// accidentally baked absolute node path, or the Windows-safe direct node form.
 //
-// Stale manifests still self-heal, whichever form they are in (both the bare
-// and braced spellings are accepted on input):
+// Commands use the braced `${CLAUDE_PLUGIN_ROOT}` placeholder. On Windows the
+// published form is exec (`command: node` plus `args`): the host substitutes
+// each arg and spawns node with no shell, so a root that contains spaces stays
+// one argument (#4042). On Unix the cache rewrite is a find-node.sh shell
+// command and `args` is deleted. A host that sees `args` would otherwise spawn
+// that whole shell string as the executable. The bare `$CLAUDE_PLUGIN_ROOT`
+// spelling only expands where a POSIX shell runs the command.
+//
+// Patterns handled (both the bare and braced spellings are accepted on input):
 //  1. find-node.sh format – sh "${CLAUDE_PLUGIN_ROOT}"/scripts/find-node.sh ...
 //  2. Legacy find-node.sh format – sh "${CLAUDE_PLUGIN_ROOT}/scripts/find-node.sh" ...
-//  3. Direct run.cjs format from the neutral shipped manifest
+//  3. Direct run.cjs format from the Windows-safe shipped manifest
 //  4. Absolute run.cjs format from older setup patches/publish mistakes
 //
 // Fixes issues #909, #899, #892, #869, #3121, #4042.
@@ -122,15 +125,12 @@ try {
   const hooksJsonPath = isPublishedPluginCache ? join(__dirname, '..', 'hooks', 'hooks.json') : null;
   if (hooksJsonPath && existsSync(hooksJsonPath)) {
     const data = JSON.parse(readFileSync(hooksJsonPath, 'utf-8'));
-    const prefix = hookPrefixForPlatform();
-    const patched = normalizeHooksDataForPlatform(data, process.platform, prefix);
+    const patched = normalizeHooksDataForPlatform(data);
 
     if (patched) {
       writeFileSync(hooksJsonPath, JSON.stringify(data, null, 2) + '\n');
-      const platformLabel = prefix.startsWith('node ') ? 'portable node run.cjs' : 'find-node.sh run.cjs';
+      const platformLabel = process.platform === 'win32' ? 'direct node exec' : 'find-node.sh run.cjs';
       console.log(`[OMC] Patched hooks.json to use ${platformLabel} hook commands`);
-    } else {
-      console.log('[OMC] hooks.json already uses hook commands this host can run');
     }
   }
 } catch (e) {

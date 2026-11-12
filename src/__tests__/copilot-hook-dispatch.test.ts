@@ -704,9 +704,13 @@ describe('kill-switch outer timer cap', () => {
  */
 describe('stdout parity with the per-hook path (real hooks)', () => {
   const source = JSON.parse(readFileSync(join(REPO_ROOT, 'hooks', 'hooks.json'), 'utf8')) as {
-    hooks: Record<string, Array<{ matcher?: string; hooks: Array<{ command: string }> }>>;
+    hooks: Record<string, Array<{ matcher?: string; hooks: Array<{ command: string; args?: string[] }> }>>;
   };
-  const scriptsOf = (event: string) => source.hooks[event][0].hooks.map(({ command }) => {
+  const scriptsOf = (event: string) => source.hooks[event][0].hooks.map(({ command, args }) => {
+    // Exec form (`command: node` + `args: [run.cjs, script, ...extra]`).
+    if (Array.isArray(args)) {
+      return [join(REPO_ROOT, 'scripts', args[1].replace(/^\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\//, '')), ...args.slice(2)];
+    }
     const match = /\/scripts\/run\.cjs \S+\/scripts\/(\S+)((?: \S+)*)$/.exec(command.replace(/"/g, ''));
     return [join(REPO_ROOT, 'scripts', match![1]), ...match![2].split(' ').filter(Boolean)];
   });

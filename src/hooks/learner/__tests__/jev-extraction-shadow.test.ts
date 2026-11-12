@@ -16,6 +16,7 @@ const ENV_KEYS = [
   'OMC_JEV',
   'OMC_JEV_TIMEOUT_MS',
   'OMC_JEV_EXCERPT_CHARS',
+  'OMC_JEV_EXCERPT_CHARS_LEARNER_EXTRACTION',
   'OMC_JEV_LOG_DIR',
   'OMC_JEV_ENDPOINT',
 ] as const;
@@ -42,7 +43,7 @@ afterEach(() => {
   rmSync(logDir, { recursive: true, force: true });
 });
 
-function stubFetch(noul = false): { fetchFn: typeof fetch; calls: Array<{ body: string }> } {
+function stubFetch(noul: boolean | number = false): { fetchFn: typeof fetch; calls: Array<{ body: string }> } {
   const calls: Array<{ body: string }> = [];
   const fetchFn = (async (_url: unknown, init?: unknown) => {
     const body = (init as RequestInit | undefined)?.body as string;
@@ -149,7 +150,7 @@ describe('learner-extraction shadow judgment point', () => {
   it('bounds the message excerpt in the logged state', async () => {
     process.env.TYPESAFE_API_KEY = TEST_KEY;
     process.env.OMC_JEV = 'learner-extraction';
-    process.env.OMC_JEV_EXCERPT_CHARS = '40';
+    process.env.OMC_JEV_EXCERPT_CHARS_LEARNER_EXTRACTION = '40';
     const { fetchFn } = stubFetch();
 
     await recordLearnerExtractionShadow(EXTRACTABLE, undefined, fetchFn);
@@ -176,5 +177,26 @@ describe('learner-extraction shadow judgment point', () => {
     expect(entry.mode).toBe('degraded');
     expect(entry.heuristic).toBe(detectExtractableMoment(EXTRACTABLE).detected);
     expect(entry.jev).toBeNull();
+  });
+});
+
+describe('learner-extraction point in active mode', () => {
+  // The API returns noul as the probability of "yes". Each message is picked
+  // so that the twin says the opposite of Jev, which shows that Jev decided.
+  it.each([
+    { noul: 0.92, message: ROUTINE, expected: true },
+    { noul: 0.08, message: EXTRACTABLE, expected: false },
+  ])('reads a noul probability of $noul as detected: $expected', async ({ noul, message, expected }) => {
+    process.env.TYPESAFE_API_KEY = TEST_KEY;
+    process.env.OMC_JEV = 'learner-extraction:active';
+    expect(detectExtractableMoment(message).detected).toBe(!expected);
+    const { fetchFn, calls } = stubFetch(noul);
+
+    const result = await recordLearnerExtractionShadow(message, undefined, fetchFn);
+
+    expect(result.mode).toBe('active');
+    expect(result.source).toBe('jev');
+    expect(result.answer.detected).toBe(expected);
+    expect(calls).toHaveLength(1);
   });
 });

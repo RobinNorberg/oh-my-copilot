@@ -530,6 +530,7 @@ const WORKER_MODEL_ENV_ALLOWLIST = [
     // deniedUrls) and model so pane Copilot workers share them.
     'COPILOT_HOME',
     'COPILOT_MODEL',
+    'HERDR_BIN_PATH',
 ];
 const CLAUDE_WORKER_ENV_ALLOWLIST = [
     'CLAUDE_CONFIG_DIR',

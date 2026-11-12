@@ -78,6 +78,11 @@ when: <one sentence naming the requests this playbook serves>
 ---
 ```
 
+A personal playbook that should apply in every repository can live at
+`<config-home>/omc/playbooks/<name>.md` instead (`<config-home>` is
+COPILOT_HOME if set, else `~/.claude`) — the checker validates both scopes
+and prefixes user-dir problems with `user/`.
+
 Anchor every modification of a bundled step with `**After** "<quoted step
 text>"` / `**Before**` / `**Replace**` / `**In**`, quoting the bundled skill
 verbatim. Then run `node "<plugin-root>/scripts/check-omc-playbooks.mjs" .` to validate.

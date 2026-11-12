@@ -74,11 +74,15 @@ describe('devcontainer LSP helpers', () => {
     expect(mod.containerPathToHostPath('/workspaces/app/src/index.ts', context)).toBe(hostFile);
     expect(mod.hostUriToContainerUri(pathToFileURL(hostFile).href, context)).toBe('file:///workspaces/app/src/index.ts');
     expect(mod.containerUriToHostUri('file:///workspaces/app/src/index.ts', context)).toBe(pathToFileURL(hostFile).href);
-    expect(mod.containerUriToHostUri('file:///workspaces/app/src/my%20file.ts', context))
-      .toBe(pathToFileURL(join(workspaceRoot, 'src', 'my file.ts')).href);
-    expect(() => mod.containerUriToHostUri('file://remote/workspaces/app/src/index.ts', context)).toThrow();
-    expect(() => mod.containerUriToHostUri('file:///workspaces/app/src%2Findex.ts', context)).toThrow();
-    expect(() => mod.containerUriToHostUri('file:///workspaces/app/src%2findex.ts', context)).toThrow();
+    expect(mod.containerUriToHostUri('file:///workspaces/app/src/my%20file.ts', context)).toBe(pathToFileURL(join(workspaceRoot, 'src', 'my file.ts')).href);
+
+    for (const unmapped of [
+      'file:///usr/lib/node_modules/typescript/lib/lib.es5.d.ts',
+      'file:///workspaces/app/a%2Fb.ts',
+      'file:///workspaces/app/%E0.ts'
+    ]) {
+      expect(mod.containerUriToHostUri(unmapped, context)).toBe(unmapped);
+    }
   });
 
   it('matches running devcontainer by labels and nested mount', async () => {
@@ -117,6 +121,43 @@ describe('devcontainer LSP helpers', () => {
     expect(context?.containerId).toBe('abc123');
     expect(context?.containerWorkspaceRoot).toBe(`/workspaces/${basename(workspaceRoot)}`);
     expect(context?.configFilePath).toBe(configFilePath);
+  });
+
+  it('matches labels whose drive letter case differs from the workspace root', async () => {
+    const configFilePath = writeDevContainerConfig(workspaceRoot, '.devcontainer/devcontainer.json');
+    const lowerDrive = (path: string) => path.replace(/^[A-Z]:/, drive => drive.toLowerCase());
+
+    mockSpawnSync.mockImplementation((command: string, args: ReadonlyArray<string> | undefined) => {
+      expect(command).toBe('docker');
+      if (args?.[0] === 'ps') {
+        return { status: 0, stdout: 'abc123\n' } as ReturnType<typeof spawnSync>;
+      }
+
+      if (args?.[0] === 'inspect') {
+        return {
+          status: 0,
+          stdout: dockerInspectResult({
+            Id: 'abc123',
+            State: { Running: true },
+            Config: {
+              Labels: {
+                'devcontainer.local_folder': lowerDrive(workspaceRoot),
+                'devcontainer.config_file': lowerDrive(configFilePath)
+              }
+            },
+            Mounts: []
+          })
+        } as ReturnType<typeof spawnSync>;
+      }
+
+      throw new Error(`Unexpected docker args: ${args}`);
+    });
+
+    const mod = await import('../devcontainer.js');
+    const context = mod.resolveDevContainerContext(workspaceRoot);
+
+    expect(context?.containerId).toBe('abc123');
+    expect(context?.containerWorkspaceRoot).toBe(DEFAULT_WORKSPACE_FOLDER);
   });
 
   it('finds ancestor devcontainer config for nested workspace roots', async () => {

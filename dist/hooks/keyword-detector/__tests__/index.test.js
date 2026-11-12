@@ -947,7 +947,7 @@ This article argues that fake popularity signals damage trust in open source.`;
                 expect(ralphMatch).toBeDefined();
             });
             it('should still detect autopilot when quoted for emphasis alongside an execution directive', () => {
-                const result = detectKeywordsWithType('"autopilot" implement the login page');
+                const result = detectKeywordsWithType('use "autopilot" to implement the login page');
                 const autopilotMatch = result.find((r) => r.type === 'autopilot');
                 expect(autopilotMatch).toBeDefined();
             });
@@ -1127,6 +1127,11 @@ This article argues that fake popularity signals damage trust in open source.`;
     describe('getAllKeywords', () => {
         it('should return single keyword in array', () => {
             expect(getAllKeywords('autopilot this')).toEqual(['autopilot']);
+        });
+        it('drops code-editing modes when the prompt forbids implementation', () => {
+            expect(getAllKeywords('autopilot review this. Do not implement anything.')).toEqual([]);
+            expect(getAllKeywords('ralph audit auth, read-only review')).toEqual([]);
+            expect(getAllKeywords('/autopilot build it, no code changes yet')).toContain('autopilot');
         });
         it('should return multiple non-conflicting keywords in priority order', () => {
             expect(getAllKeywords('ulw ralph fix errors')).toEqual(['ralph']);
