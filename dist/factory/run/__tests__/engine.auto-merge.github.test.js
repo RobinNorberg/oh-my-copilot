@@ -5,10 +5,13 @@
  * refused merge (GitHub's 409 for a moved head) or a manual-merge label keeps
  * the human park.
  */
+import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { loadTrustedShipConfig } from '../../../ship/config.js';
 import { readShipState } from '../../../ship/state.js';
 import { readFactoryState } from '../state.js';
-import { commitFile, ISSUE, PR, REPO_URL, review } from './fake-lanes.js';
+import { commitFile, gitIn, ISSUE, PR, REPO_URL, review } from './fake-lanes.js';
 import { h, run, useEngineHarness } from './engine-harness.js';
 useEngineHarness();
 const docs = () => commitFile('docs/guide.md', '# Guide\n\nHow to greet.\n');
@@ -98,6 +101,35 @@ describe('factory run on GitHub: opt-in auto-merge', () => {
         const out = await done;
         expect(out.gate?.name, out.message).toBe('merge');
         expect(out.gate?.reason).toMatch(/not taken: the issue or PR carries factory:manual-merge/);
+        expect(h.calls.some((c) => c.includes('PUT'))).toBe(false);
+    });
+    it('review-518 L2: dev moved after prepare (the head does not contain the live tip): the merge stays human, no merge call', async () => {
+        scriptMerge(() => { throw new Error('must not merge'); });
+        let moved = '';
+        h.onCall = (call) => {
+            // The gates' first checks read: prepare is done, the merge phase's view will read the moved tip.
+            if (moved || !call.startsWith(`gh pr checks ${PR} --json`))
+                return;
+            const other = join(h.dir, 'other-l2');
+            gitIn(h.dir, 'clone', '-q', '-b', 'dev', h.bare, other);
+            writeFileSync(join(other, 'later.md'), 'another PR merged\n');
+            gitIn(other, 'add', '--', 'later.md');
+            gitIn(other, 'commit', '-q', '-m', 'base: later');
+            gitIn(other, 'push', '-q', 'origin', 'dev');
+            moved = gitIn(other, 'rev-parse', 'HEAD');
+        };
+        // The real strict trusted load: in the merge phase it fetches dev and checks it against the live tip (as a real run does).
+        const trustedLoad = (i) => {
+            const config = loadTrustedShipConfig({ exec: i.exec, root: i.root, base: i.base, baseSha: i.baseSha, repoUrl: i.repoUrl, strict: true, user: {}, trustedUser: {}, project: {}, warn: () => { } });
+            return { config: { ...config, requiredChecks: ['Test'], advisoryChecks: [] }, known: [] };
+        };
+        const { done } = run([docs(), review('approve')], { autoMergeUserConfig: user, gateConfig: trustedLoad });
+        const out = await done;
+        expect(moved).toMatch(/^[0-9a-f]{40}$/);
+        expect(out.gate?.name, out.message).toBe('merge');
+        const head = readFactoryState(h.root, ISSUE).head;
+        expect(out.gate?.reason).toContain(`not taken: dev moved after prepare (head ${head.slice(0, 12)} does not contain dev ${moved.slice(0, 12)}); rerun omg factory run`);
+        expect(out.gate?.reason).toContain('to merge the new base');
         expect(h.calls.some((c) => c.includes('PUT'))).toBe(false);
     });
     it('off by default (no user config): the same PR parks at the human merge with no merge call', async () => {

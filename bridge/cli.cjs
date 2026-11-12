@@ -138833,7 +138833,7 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
         if (view2.state !== "OPEN" || view2.baseRefName !== this.state.base) return view2;
         const repo = this.githubReadContext()?.repo;
         if (!repo) throw new FactoryStepError(`the run's GitHub repository is not known, so the live tip of ${this.state.base} cannot be read for PR #${view2.number}; refusing (fail closed)`);
-        return { ...view2, baseRefOid: this.gh((exec3, cwd2) => ghBranchTip(exec3, repo, view2.baseRefName, cwd2)) };
+        return { ...view2, recordedBaseRefOid: view2.baseRefOid, baseRefOid: this.gh((exec3, cwd2) => ghBranchTip(exec3, repo, view2.baseRefName, cwd2)) };
       }
       /** The PR is not open, or targets another base: true when the run moved (merged) or parked. */
       prGone(view2) {
@@ -140122,7 +140122,7 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
           return `the PR changed between the check and the merge (now ${again.state.toLowerCase()}, head ${String(again.headRefOid).slice(0, 12)}, base ${String(again.baseRefOid).slice(0, 12)})`;
         }
         const added = (entries ?? []).filter((e) => e.status === "A").map((e) => e.path);
-        const merged = local ? this.localAutoMerge(head, view2.baseRefOid, added) : this.githubAutoMerge(pr, head);
+        const merged = local ? this.localAutoMerge(head, view2.baseRefOid, added) : this.githubAutoMerge(pr, head, view2.baseRefOid);
         if (typeof merged === "string") return merged;
         const by = `the factory (auto-merge tier ${verdict.tier})`;
         this.save((x) => ({ ...x, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `auto-merged by tier ${verdict.tier} at ${head.slice(0, 12)}: ${verdict.evidence.join("; ")}` }] }));
@@ -140140,8 +140140,13 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
         this.finishMerged(pr, by, merged.base);
         return true;
       }
-      /** GitHub: the head-pinned REST merge (GitHub refuses a moved head with 409), admitted by the guard for this step only. */
-      githubAutoMerge(pr, head) {
+      /**
+       * GitHub: the head-pinned REST merge (GitHub refuses a moved head with 409), admitted by the guard for this step only.
+       * The head must already contain `base`, the live tip (liveBase), as localAutoMerge requires (review-518 L2): a base that
+       * moved after prepare would be merged with a tree the gates never checked. A tip missing from the object store = not contained.
+       */
+      githubAutoMerge(pr, head, base) {
+        if (!this.isAncestor(base, head)) return `${this.state.base} moved after prepare (head ${head.slice(0, 12)} does not contain ${this.state.base} ${base.slice(0, 12)}); rerun ${this.resume} to merge the new base`;
         const repo = this.githubReadContext()?.repo;
         const args = repo ? githubAutoMergeArgs({ repo, pr, head }) : void 0;
         if (!args) return "the run's GitHub repository is not known, so there is no head-pinned merge to run";
@@ -140973,12 +140978,15 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
        * The gates' GitHub reads (GateHeadReads) on a GitHub run, through the run
        * guard's exact shapes on the run's repository: the base commit's checks
        * (read once per base sha), the head's check suites and check-run apps.
-       * None on the local forge and Azure DevOps.
+       * None on the local forge and Azure DevOps. The base is the PR's RECORDED
+       * baseRefOid (review-518 L1), not liveBase's tip: a tip that just landed
+       * has no settled CI yet, so "the base reported no check" and "this app is
+       * idle on the base" would hold for it while its runs are still queued.
        */
       gateReads(view2) {
         const repo = this.githubReadContext()?.repo;
         if (!repo || this.forge?.kind === "local" || this.forge?.kind === "azure-devops") return void 0;
-        const base = view2.baseRefOid;
+        const base = view2.recordedBaseRefOid ?? view2.baseRefOid;
         let baseChecks;
         let ciDefinitions;
         let baseSuites;
