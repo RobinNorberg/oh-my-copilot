@@ -8,6 +8,16 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 - **Windows: checks that use git clone, fetch or push no longer park the factory.** In the Copilot OS sandbox on Windows these cannot run (Git for Windows' `sh.exe` exits `0xC0000142` there). When a check fails on the base for that reason, the engine confirms the cause, then runs the check in the gate container (an image with git), or without a sandbox when no container runtime works. Each such run warns and leaves a history note and a PR note. Set `factory.run.sandbox.windowsGitTransport: "strict"` in your user config to keep the old park. See "Known gap: git transport in the Windows sandbox" in docs/REFERENCE.md.
 
+### Fixed
+
+- **Plugin hooks keep working in a config folder shared with WSL or macOS.** Setup on Linux or macOS keeps the `node` plus arguments hook form when `node` is in a standard system folder (`/usr/local/bin`, `/usr/bin`, `/bin`, Homebrew or MacPorts). A `node` that only nvm, fnm, volta or a login shell puts on PATH gets the `find-node.sh` form, because a host started from a desktop launcher may not see it. Native Windows no longer needs a repair afterwards.
+- **Check names are made safe in merge reasons.** `omg ship merge`, the factory's Azure DevOps branch policy reason, its `ci-flaky` and `gates-timeout` park reasons, and the release CI failure details show each name in a code span. Backticks, `@` mentions, table pipes and line breaks are removed from the text. Long names are cut without splitting an emoji, and a branch policy reason keeps up to 160 characters so its status stays visible.
+- **The Herdr launch message names the host CLI.** It says `copilot launched in Herdr workspace` instead of `Claude launched`.
+
+### Tests
+
+- **Loosened the jev-compaction linear-time bound.** The 1M-slash test now allows 250 ms instead of 50 ms, because shared CI runners measured about 51 ms. A quadratic regression would still take seconds.
+
 ### Docs
 
 - **Inventory baseline needs no regeneration after a merge.** Checked locally: two branches that change different `src` files and each run `--write` leave `inventory/inventory-graph.json` unchanged, merge without conflict, and pass `--verify` with no regeneration. Explained in `docs/FIELD-TESTING.md`.

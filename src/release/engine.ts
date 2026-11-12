@@ -52,6 +52,7 @@ import { pathToFileURL } from 'url';
 import { atomicWriteJsonSync } from '../lib/atomic-write.js';
 import { loadBaseKnownFlaky, OMG_REPOSITORY_REQUIRED_CHECKS, prRepoUrl, type LoadedShipConfig } from '../ship/config.js';
 import { scrubShipEnv, type Exec, type ExecOptions, type ExecResult } from '../ship/exec.js';
+import { checkName } from '../ship/check-name.js';
 import { parseFailingTests, TRANSIENT_GH_ERROR, watchGates, type GateReport } from '../ship/gates.js';
 import {
   classifyTriage,
@@ -1395,7 +1396,7 @@ class Release {
   }
 
   private gateDetails(report: GateReport): string[] {
-    const details = report.failed.map((name) => `failed: ${name}`);
+    const details = report.failed.map((name) => `failed: ${checkName(name)}`);
     for (const check of report.checks) {
       if (check.class !== 'failed' || !check.jobId) continue;
       for (const t of this.failingTestsOfJob(check.jobId)) details.push(`  ${check.name}: ${t}`);

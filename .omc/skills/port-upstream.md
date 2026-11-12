@@ -95,7 +95,10 @@ For each non-skipped commit:
 3. Run full test suite: `npm test`
 4. Run type check: `npx tsc --noEmit`
 5. Verify no upstream references leaked: `grep -r "oh-my-claudecode" src/ agents/ skills/ | grep -v node_modules`
-6. Verify bridge bundles are clean: `grep -c "oh-my-claudecode" bridge/cli.cjs` (must be 0)
+6. Verify bridge bundles are clean: every `grep -n "oh-my-claudecode" bridge/cli.cjs` hit must be one of these allowed references (26 hits at v5.27.0); anything else is a leak to rename:
+   - `openingLine`/`finalLine` in the bundled `src/installer/legacy-claude-md-corpus.ts` (24): content-addressed, see DO NOT Rename.
+   - The `SDK_SHELL_DENY_PATTERNS` team-control regex from `src/team/sdk-policy.ts` (1): it denies the upstream CLI name too, so a worker cannot reach team control through an upstream install.
+   - The `leak sweep` blocker message from `src/port/engine.ts` (1): it names the upstream string the sweep looks for.
 7. Live check before the PR: `omg smoke copilot --tier 1`. It runs one real Copilot session with the prompt on stdin and costs one prompt in AI credits (about 0.4 to 0.9 measured). It reuses your `copilot /login` identity and drops `GH_TOKEN`/`GITHUB_TOKEN` from the session, so do not export a token for it; `--model` is optional because Copilot auto-selects. It proves the hooks fire, run without `[omg-hook]` errors, and write `.omg/` state.
 8. Update `.github/upstream-port.json` in the port commit: `upstream_sha` = the full upstream sha you ported to, `ported_at` = today, `fork_version` = the release that will ship it. The drift bot and `node scripts/port/upstream-drift.mjs --check` read it as the last ported sha. `--apply` performs the range diff below with the exclusions and the mechanical rename map (docs/DEVELOPERS.md, "Upstream drift bot").
 9. Create PR to dev: `gh pr create --base dev`
