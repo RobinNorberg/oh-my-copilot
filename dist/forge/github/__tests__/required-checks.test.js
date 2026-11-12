@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { commitChecksArgs, gateReadArgs, ghCheckRunApps, ghCheckSuites, ghCommitCheckNames, ghRequiredCheckRules, ghRequiredChecks, isGateReadArgs, isRequiredChecksArgs, requiredChecksArgs } from '../checks.js';
+import { commitChecksArgs, gateReadArgs, ghBranchTip, ghCheckRunApps, ghCheckSuites, ghCommitCheckNames, ghRequiredCheckRules, ghRequiredChecks, isGateReadArgs, isRequiredChecksArgs, requiredChecksArgs } from '../checks.js';
 import { gateRequirement } from '../../../factory/setup/required-checks.js';
 import { assertFactoryCommand } from '../../../factory/run/exec.js';
 const REPO = 'github.com/o/r';
@@ -16,6 +16,27 @@ function api(answers) {
     };
     return { exec, calls };
 }
+describe('ghBranchTip: the base branch\'s live tip (a PR\'s baseRefOid lags a moved base)', () => {
+    const SHA = 'a'.repeat(40);
+    it('reads exactly the branch GET the run guard admits and returns its commit sha', () => {
+        const { exec, calls } = api({ 'repos/o/r/branches/dev': ok({ name: 'dev', commit: { sha: SHA }, protection: {} }) });
+        expect(ghBranchTip(exec, REPO, 'dev', '/x')).toBe(SHA);
+        expect(calls).toEqual([['gh', ...requiredChecksArgs(REPO, 'dev')[0]]]);
+        expect(isRequiredChecksArgs(requiredChecksArgs(REPO, 'dev')[0], REPO)).toBe(true);
+    });
+    it('a failed read, another branch name, or a missing / short / upper-case sha throws (fail closed)', () => {
+        const tip = (body) => () => ghBranchTip(api({ 'repos/o/r/branches/dev': ok(body) }).exec, REPO, 'dev');
+        expect(() => ghBranchTip(api({}).exec, REPO, 'dev')).toThrow(/gh api repos\/o\/r\/branches\/dev did not return dev's tip \(exit 1: gh: Not Found \(HTTP 404\)\); refusing \(fail closed\)/);
+        expect(tip({ name: 'main', commit: { sha: SHA } })).toThrow(/no branch of that name with a commit sha/);
+        expect(tip({ name: 'dev' })).toThrow(/no branch of that name/);
+        expect(tip({ name: 'dev', commit: null })).toThrow(/no branch of that name/);
+        expect(tip({ name: 'dev', commit: { sha: SHA.slice(1) } })).toThrow(/no branch of that name/);
+        expect(tip({ name: 'dev', commit: { sha: SHA.toUpperCase() } })).toThrow(/no branch of that name/);
+        expect(tip([{ name: 'dev', commit: { sha: SHA } }])).toThrow(/no branch of that name/);
+        expect(() => ghBranchTip(api({ 'repos/o/r/branches/dev': { status: 0, stdout: 'not json', stderr: '' } }).exec, REPO, 'dev')).toThrow(/no branch of that name/);
+        expect(() => ghBranchTip(api({}).exec, 'not-a-repo', 'dev')).toThrow(/not a GitHub repository argument/);
+    });
+});
 describe('M1: the GitHub required checks of the base (branch protection + rulesets)', () => {
     it('reads exactly the two GETs and joins both sources', () => {
         const { exec, calls } = api({

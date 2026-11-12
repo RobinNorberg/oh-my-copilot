@@ -35,6 +35,15 @@ export declare function githubChecks(exec: Exec, cwd?: string): ForgeChecks;
  * apply to it (rulesets' `required_status_checks`).
  */
 export declare function requiredChecksArgs(repoArg: string, base: string): string[][];
+/**
+ * The live tip of `base` on `repoArg`: the branch GET of requiredChecksArgs
+ * (the same exact shape the run guard admits). A pull request's baseRefOid
+ * is the base when the PR was last updated, not the branch now: it stays
+ * behind after another merge into the base. Throws GhCommandError on a
+ * failed read, on another branch name (a renamed branch redirects) and on
+ * anything but a full commit sha.
+ */
+export declare function ghBranchTip(exec: Exec, repoArg: string, base: string, cwd?: string): string;
 /** Pages read of a paginated list (rules, check suites, check runs); a longer list counts as unreadable. */
 export declare const MAX_API_PAGES = 10;
 /**
