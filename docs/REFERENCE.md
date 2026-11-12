@@ -1017,6 +1017,7 @@ omg factory run cancel <issue> [--json]   # ask the running engine to cancel its
 omg factory run clean <issue> [--discard] [--json]  # remove the worktrees and local branches of a merged or cancelled run
 omg factory run reset <issue> [--json]    # local forge: start a cancelled run over (removes its worktrees)
 omg factory run <issue> --allow-gate-change  # local forge: accept the gate-definition change the run parked on
+omg factory run <issue> --max-requests <n>   # stop starting lanes once this run's lanes used n premium requests (not with --parallel)
 ```
 
 | Exit code | Meaning |
@@ -1133,6 +1134,7 @@ Every gate posts one issue comment that names the gate, the reason and the comma
 | `gates-unsandboxed` | A prepare check or the local gate would run the PR's own code without the OS sandbox: `factory.run.sandbox.gates` is `"ack"` (or `OMG_SANDBOX=off`), or it is `"enforced"` and the sandbox could not start the command under a confirmed policy (host unsupported, policy not applied, no SDK or CLI, or the host reports no `denied_paths` while `factory.run.sandbox.requireDeniedPaths` is `true`; see "Sandboxed gates" under [Sandboxed lanes](#sandboxed-lanes)). The message names the head. Nothing ran unsandboxed | Review the PR's whole diff, then `omg factory run <issue> --allow-unsandboxed-gates` to run that head unsandboxed. The ack trusts ALL of that head's code (every prepare check, the inventory generator, the local gate, and the head prepare makes from it) with your user account, and a process it leaves behind is not contained. A new head parks again |
 | `gate-no-verdict` | A prepare check or the local gate ran in the sandbox under the confirmed policy but gave no verdict: no single exit-code marker as the last line, a result that contradicts it, no `sandboxed: true` attestation, or a timeout with no answer. Nothing counts as a pass or a `FAILURE`, no ci-fix lane starts, and `--allow-unsandboxed-gates` does not apply | Rerun. If it parks here again, review the PR's diff: its code can hide its own exit code |
 | `gate-sandbox-incompatible` | A prepare check or the local gate failed in the sandbox, and fails in the sandbox on the trusted base too (or its base calibration could not run). No `FAILURE` is recorded and no ci-fix lane starts | Set `factory.run.sandbox.writeNetwork: "registry"` if it needs the npm registry, then rerun. Do not switch `factory.run.sandbox.gates` to `"ack"` for a PR whose whole diff you have not reviewed: `"ack"` runs its code as you |
+| `gate-container-unavailable` | `factory.run.sandbox.isolation` is `"container"` and the gate could not run in a container: the runtime is missing or stopped, the image could not be pulled, the project is not an npm project with a `package-lock.json`, or the lockfile has a package from git, a tarball URL or a file. The run never falls back to the Copilot sandbox | Start Docker (or Podman), or set `isolation` back to `"copilot"` in the user config. See [Container isolation](#container-isolation-for-gates) |
 | `lane-unconfirmed` | The engine cannot confirm that a lane's Copilot process stopped, or a process of a finished write lane's tree is still alive after the engine killed it (the pids are named) | Stop the process yourself; your rerun counts as your word that it stopped. For named pids, the rerun checks again and then commits the same worktree; `omg factory run cancel <issue>` gives the lane's work up |
 | `secret-shaped-content` | A write lane's change holds a key or token shape (see Host git hardening); the paths and kinds are named, the values never | Remove the secret from the lane worktree and rerun, or rerun with `--allow-secret-shapes` when they are test fixtures; set `factory.run.secretScan.allowPaths` for fixture folders. The rerun commits the same worktree, no new lane |
 | `lane-lost` | Two lanes of the same kind in a row were lost | Find out why the engine died |
@@ -1230,6 +1232,66 @@ Keys live under `factory.run`. The engine reads them from the user config at its
 | `maxInFlightCredits` | `laneMaxCredits` x `maxConcurrent` | The AI credits the lanes in flight on this repository may reserve together (each lane reserves its cap before it starts); see [Parallel runs](#parallel-runs). Same two layers |
 
 The base branch comes from `ship.base`. The gates and the merge rule use ship's config. `requiredChecks`, `advisoryChecks` and the known-flaky list load in strict mode: from the user config, or from `.copilot/omg.jsonc` as committed at GitHub's base sha, never from the working tree or the PR head. A base the engine cannot verify stops the step. See [`omg ship`](#omg-ship) for the ship keys.
+
+##### Auto-merge (opt-in)
+
+By default a human merges every factory PR. `factory.merge.auto` lets the engine merge low-risk PRs itself. It is off unless you turn it on, and it is read from the user config only. A `factory.merge` value committed in `.copilot/omg.jsonc` is ignored with a warning, because a PR can change committed files.
+
+Key each entry by the repository URL, or by the repository's root path on the local forge:
+
+```jsonc
+"factory": { "merge": { "auto": {
+  "https://github.com/o/r": {
+    "enabled": true,
+    "tiers": ["docs", "tests"],
+    "maxChangedLines": 80,
+    "maxFiles": 10,
+    "docsDenied": ["docs/shared/", "docs/partials/", "docs/agent-templates/"],
+    "securityCritical": ["src/auth/**"]
+  }
+} } }
+```
+
+| Key | Default | Meaning |
+|---|---|---|
+| `enabled` | `false` | Turns auto-merge on for this repository |
+| `tiers` | none | Which kinds of PR may merge by themselves: `docs`, `tests`, `small`. A PR must fit one enabled tier, checked in that order |
+| `maxChangedLines`, `maxFiles` | `80`, `10` for `small` | Size caps. When you set them, they apply to every tier |
+| `docsDenied` | `[]` | Path globs that the docs tier never takes. Use it for docs that agents are told to read |
+| `securityCritical` | `[]` | Path globs that no tier takes. Put your guards, sandboxes and auth code here |
+
+Tiers:
+
+- `docs`: `README`, `CHANGELOG` and `CONTRIBUTING` files at the repository root, and files under `docs/`. Only `.md`, `.rst` and `.txt` files. A file that starts with frontmatter (`---` or `+++`) is never docs, because tools read frontmatter as config. The docs tier takes only plain spellings: a name with a trailing dot or space, fullwidth letters or invisible characters needs a human.
+- `tests`: test files by name, and files under a root `test/`, `tests/` or `spec/` folder or under any `__tests__` folder. Never setup, teardown, environment, reporter or benchmark files. Never a deleted test, a test that loses more assertions than it gains, or a change that adds `.skip`, `.only`, `.todo` or an empty assertion.
+- `small`: any file that is not denied, up to the size caps. The test rules above apply. It never touches `src/factory/`, `src/ship/`, `src/copilot-run/` or `src/forge/`.
+
+Glob rules for `docsDenied` and `securityCritical`: `**` matches any number of folders. `*` and `?` match within one folder name. A trailing `/` means the whole folder. A glob without `/` matches that file name in any folder. Braces (`{a,b}`) and brackets (`[ab]`) are not supported; write one glob per choice.
+
+The engine merges a PR itself only when all of these hold on the exact head:
+
+- Ship's merge rule allows the head, and the factory review approved this head.
+- At least one CI check ran and succeeded on the head. Skipped and neutral checks do not count. When the repository has required checks, one of them must have succeeded. When it has none, every check on the head must succeed. A repository with no CI never auto-merges. A workflow that never ran on the PR (for example one with a path filter) is invisible to the engine: set `ship.requiredChecks` to name the checks that must pass.
+- No human review thread, change request or comment-only review is open, and neither the issue nor the PR has the `factory:manual-merge` label.
+- The run had only ordinary parks, such as merge, human review, a CI failure, gates or budget. No secret, tamper or sandbox park, and no `--allow-*` flag.
+- Every file fits an enabled tier, and none is any of these: a CI or config file, a package manifest or lockfile, a git hook, an agent instruction or prompt file (files in `skills/`, `agents/`, `commands/`, `templates/`, `prompts/` or `.cursor/`, `*.prompt.md`, `*.mdc`), a test mock, a setup file that your base test config runs, a file under `.github/`, `.copilot/` or `.omg/`, a file named by the root `package.json` install, prepare or publish scripts (or its `bin`), or a file under `bridge/` or `dist/`.
+- No symlink, executable bit or binary file changed.
+
+The engine reads the PR again right before it merges. On GitHub it merges through the REST API, pinned to the head commit, and branch protection still applies. On the local forge it runs `git merge --no-ff --no-edit --no-verify <head>` in your repository, with no git hook. It does that only when your base branch is checked out, has no uncommitted changes to tracked files, and the head already contains it. It does not run if the PR adds a file that already exists in your checkout, for example an ignored local file. Azure DevOps PRs and ci-heal runs always merge by a human. When a condition fails, the run parks at `awaiting-human: merge` as before, and the reason says why auto-merge was not taken. The PR comment and the run history list every condition the engine checked.
+
+What auto-merge does not protect against, and known limits:
+
+- The `tests` tier means CI-green tests. It is not proof that the tests are strong: the engine refuses only known skip, focus and empty-assertion patterns and tests that lose assertions. Test code that is merged runs in CI on the base branch's push, with that event's secrets.
+- A root `tests/` folder can hold fixtures that a build script loads. Those `.json`, `.txt` and `.md` files are still admitted.
+- On GitHub the merge is pinned to the head commit, not to the base. Turn on "Require branches to be up to date before merging". If the base moves anyway, the engine says so in the run history, on the PR and in the terminal.
+- The `tests` and `small` tiers stay off when the base root test config uses `projects`, `workspace` or `extends`, imports anything other than `vitest`, `vite` or Node builtins, or loads a file by a computed path. Package-level test configs in a monorepo are not read.
+- The `small` tier stays off when the base `package.json` install or publish scripts run a file from the repository, an interpreter, a script runner with flags, or a tool such as `npx`, `run-s` or `node-gyp`. It also stays off for npm, yarn or pnpm workspaces and for a root `binding.gyp`. The engine cannot follow what those scripts run. (This repository's own `postinstall` keeps the `small` tier off here.) Install scripts are read from the root `package.json` only.
+- `color.ui=always` in your git config makes the patch unreadable to the engine. The `tests` and `small` tiers then stay off.
+- A docs site with frontmatter on every page (Docusaurus, VitePress, Hugo) never gets the `docs` tier.
+
+##### Per-run request cap
+
+`omg factory run <issue> --max-requests <n>` starts no further lane in this run once its lanes recorded `n` premium requests, or when a lane's request count is unknown (it was lost, or only its credit cap was recorded). The run parks at `budget`. The lane in flight when the cap is reached finishes. It is a CLI flag only, with no config key, and it cannot be combined with `--parallel`.
 
 ##### Private layout
 
@@ -1366,6 +1428,8 @@ The trial result is cached per process, so after either fix, restart a long-live
 | `extraReadonlyPaths`, `extraReadwritePaths` | `[]` | Absolute paths added to the policy. A read-write path must be under the worktree. |
 | `gates` | `"enforced"` | `factory.run.sandbox` only: where prepare's checks and the local gate run (`"enforced"`, `"ack"`, `"unsandboxed"`), read from the user config or the base-committed `.copilot/omg.jsonc`; see "Sandboxed gates" below. `extraReadwritePaths` do not apply to gates |
 | `requireDeniedPaths` | `false` | `factory.run.sandbox` only: `true` makes a sandboxed gate on a host that cannot deny paths give no verdict (the `gates-unsandboxed` park) instead of running with the credential files under your profile readable. Read from the user config or the base-committed `.copilot/omg.jsonc`; either can turn it on, neither can turn it off over the other's `true`. See "Known gap" below |
+| `isolation` | `"copilot"` | `factory.run.sandbox` only, **user config only**: `"container"` runs prepare's checks, the local gate and their base calibration in a local container instead of the Copilot sandbox. A value in the committed `.copilot/omg.jsonc` is ignored with a warning. See [Container isolation](#container-isolation-for-gates) |
+| `container` | see below | `factory.run.sandbox` only, **user config only**: `runtime`, `image`, `memory`, `cpus`, `pidsLimit`, `diskLimit` and `installTimeoutMinutes` for `isolation: "container"` |
 
 `OMG_SANDBOX=off` in the env of the MCP server or the engine switches the sandbox off for debugging. It never comes from a config file, and it is recorded as `detect-only`. For prepare's checks and the local gate it means `gates: "ack"`: a park per head, never an unsandboxed run by itself.
 
@@ -1382,6 +1446,39 @@ Prepare's checks (`ship.prepare.checks`, or the built-in tsc, eslint, vitest and
 The key is read from the user config at its default location, else from `.copilot/omg.jsonc` committed at the run's verified base commit (on a base in `ship.trustedBases`), never from the working tree or the PR head. A command that runs unsandboxed (`"ack"`, `"unsandboxed"`) gets an allowlisted env, never the engine's env minus a denylist: only `PATH`, `PATHEXT`, `SYSTEMROOT`, `SYSTEMDRIVE`, `WINDIR`, `ComSpec`, `LANG`, `LC_*`, `TZ`, `CI`, `NODE_ENV` and `npm_config_cache` pass, so no token (`GH_TOKEN`, `NPM_TOKEN`, `NODE_AUTH_TOKEN`, `GITHUB_PAT`, `SYSTEM_ACCESSTOKEN`, `ACTIONS_*`), no cloud or LLM key, no `npm_config_userconfig` (it names your real `~/.npmrc`) and no `NODE_OPTIONS`. `HOME`, `USERPROFILE` and `XDG_CONFIG_HOME` point at an empty dir made for that run, `APPDATA` and `LOCALAPPDATA` (when set) at `AppData\Roaming` and `AppData\Local` in it, `TEMP`, `TMP` and `TMPDIR` at its `tmp`, with `GIT_CONFIG_NOSYSTEM=1`, an empty `GIT_CONFIG_GLOBAL`, `GIT_TERMINAL_PROMPT=0` and `GCM_INTERACTIVE=never`. This hides variables only: the code still runs as you and can read any credential file by its absolute path. Only the checks move into the sandbox: prepare's preflight, fetch, base merge and inventory commit stay in the engine. A prepare check gets 30 minutes in the sandbox; the local gate keeps `gateTimeoutMinutes`. At the timeout the call is cancelled and the runtime's process tree is killed.
 
 **The gate's `node_modules` (5.25.1).** The prepare checkout and the base calibration do not link your `node_modules` as one junction. Each gets a real `node_modules` directory holding one junction (Windows) or directory symlink per top-level entry of yours (`@scope` dirs and `.bin` linked whole), a copy of each top-level file (`.package-lock.json`), and fresh empty per-run dirs for the tool caches: `.cache`, `.tmp` (where the create-vite TypeScript templates put tsc's `tsBuildInfoFile`), `.vite`, `.vite-temp` and `.vitest` (yours are never linked in; each is a pure cache, so fresh only costs a full rebuild). Generated content such as `.prisma` or `.astro` stays linked, read-only. A top-level file over 16 MiB is not copied (a warning names it). Any other name the tools create is created in that tree. In the sandbox the checkout is read-write and only your `node_modules` itself is granted, read-only, so vitest's results cache, vite's dependency cache and find-cache-dir users (babel-loader, terser) write into the per-run tree, and the PR's code cannot write your `node_modules` (a poisoned `.vite` there would run on your next `vite dev`). Before every sandboxed command each link in the tree must still point at `<your node_modules>/<its own name>`: a link the PR's code re-pointed or added parks at `lane-tampered` and is never granted. The tree is removed with every link unlinked first, never followed; a real `node_modules` dir in an engine checkout gets every link unlinked even when the PR's code deleted the tree's marker file. A removal error (a busy file on Windows) only warns: a calibration dir that still holds a link is left for you to remove, and a prepare checkout is kept and re-linked. When the base calibration fails with a permission error (EPERM, EACCES, EROFS) on a path under `node_modules`, the `gate-sandbox-incompatible` park names that dir: move the tool's output or cache out of `node_modules`, or report the dir so it can become a per-run dir. Building it costs about 100 ms for 274 entries on Windows (removal about 70 ms). Before 5.25.1 the single read-only junction made vitest fail with `EPERM ... mkdir node_modules\.vite` after all tests passed, and the calibration on the base passed only because it ran `vitest --version` (the base lacked the PR's new test file); the calibration of a vitest step without base test files now runs `vitest run --passWithNoTests` with a filter no file matches, so its config is loaded in the same tree.
+
+**Monorepos and workspaces (gate `node_modules`).** For a workspace repository the gate builds the same read-only tree for each workspace package that already has a `node_modules` in your checkout. The workspace list comes from the base branch's root `package.json` `workspaces` or `pnpm-workspace.yaml`, never from the PR. A workspace link in the gate points at the PR's copy of each package, not at your working tree. Your `node_modules` dirs stay read-only. Each package gets fresh writable `.vite`, `.vitest`, `.cache`, `.tmp` and `.vite-temp` dirs. The gate grants a package's `node_modules` only for the packages the engine itself found from the base globs, so a file the PR writes cannot add one. Supported: npm, pnpm and yarn workspaces with a `node_modules` layout (yarn classic, or yarn berry with `nodeLinker: node-modules`). Not supported: Yarn Plug'n'Play, a workspace package that is its own git repository, more than 256 packages, and packages deeper than 6 folders. Workspace globs with `..`, an absolute path or a backslash are ignored. When the gate then fails, the run parks at `gate-sandbox-incompatible` and names the folder and the reason.
+
+<a id="container-isolation-for-gates"></a>
+**Container isolation for gates (opt-in).** On Windows the Copilot sandbox cannot hide files under your user profile (see "Known gap" below). Set `factory.run.sandbox.isolation: "container"` in your **user** config to run prepare's checks, the local gate and the base calibration in a local container instead. The default, `"copilot"`, is unchanged. A value in the repository's `.copilot/omg.jsonc` is ignored with a warning, because a PR can change that file. WSL is not an answer: it mounts `C:\` at `/mnt/c`.
+
+Settings under `factory.run.sandbox.container`, all user config only:
+
+| Key | Default | Meaning |
+|---|---|---|
+| `runtime` | `"docker"` | `"docker"` or `"podman"`. Docker is tested. Podman is covered by argument tests only and is untested on a real host |
+| `image` | `node:<your Node major>-bookworm-slim` | Pin a digest (`node@sha256:...`) to fix what runs. The first gate pulls the image and says so in the log |
+| `memory` | `"4g"` | Memory limit of each container |
+| `cpus` | `2` | CPU limit |
+| `pidsLimit` | `1024` | Process limit |
+| `diskLimit` | `"10g"` | The most one command's volume may hold. A watchdog checks every 10 seconds and stops the command over the limit; if it cannot measure the volume twice in a row it stops the command too. The gate then fails like any other failure. It is not a hard quota: between two checks a fast writer can go over by about 10 seconds of writing. The npm download cache is not counted |
+| `installTimeoutMinutes` | `15` | Time limit of the install step |
+
+How a command runs:
+
+- Before the copy, the checkout is checked. A link that points outside it, a link with an absolute target (every Windows junction has one), a link that steps back with `..` after a folder name, or a file with more than one hard link stops the gate with no verdict. A relative link such as `../README.md` is fine.
+- The checkout is copied into a fresh volume, without `.git` and `node_modules`. Your own `node_modules` is never linked into the checkout. Because there is no git dir, a gate that runs git fails on the base too.
+- `npm ci --ignore-scripts` runs with network on a private network made for this command, without your credentials: no home directory, no tokens, no ssh agent, no Docker socket. The checkout's own `.npmrc` is set aside while npm downloads and put back before any install script runs. npm always uses registry.npmjs.org, with no proxy and with TLS checked.
+- Then the install scripts (`npm rebuild` and the root's install scripts) run with no network. A native addon that downloads headers or binaries in an install script fails here. It fails on the base too, so the gate parks at `gate-sandbox-incompatible` with the container advice.
+- The command runs with no network. The root file system is read-only, the user is not root, and all capabilities are dropped. Each step also stops itself 30 seconds after its time limit.
+- No container keeps a log on the runtime's disk. The output comes back to the factory only, which keeps the last part of it.
+- Changes that a passing prepare check makes come back to the checkout as plain files, one file at a time. Links, hard links, `.git` and `node_modules` (in any letter case) are never written, and nothing is ever written through a link.
+- The containers, network and volume of each command are removed after it runs. `omg factory run clean <issue>` also removes any left over from that run (found by the label `omg.run`).
+- The npm download cache is kept per lockfile in `omg-gate-cache-*` volumes. It is used only when every package in the lockfile comes from the npm registry with an integrity hash. Otherwise each command downloads into its own volume. Nothing removes the cache volumes: run `docker volume rm` on them if you want the space back.
+
+A missing runtime, a stopped daemon, a failed image pull, or a project that is not an npm project with a `package-lock.json` (yarn, pnpm and bun projects are not supported) parks at `gate-container-unavailable`, as does a lockfile with a package from git, a tarball URL or a file. The run never falls back to the Copilot sandbox. With `isolation: "container"`, `gates: "ack"` (and the sandbox kill switch) also run in the container. Only `gates: "unsandboxed"` runs on your host. `omg factory check` shows the runtime version and whether the image is present.
+
+What it does not protect against: the download step still runs with network, so a malicious package from the npm registry is fetched (its install scripts run later with no network). The disk limit is a watchdog, not a quota. You must trust the Docker-compatible daemon. Lanes are not containerized: they keep the Copilot sandbox.
 
 **Live test (2026-11-11, v5.25.0, GitHub and real Copilot on Windows).** Turnless sandbox runtimes (prepare checks, the local gate, calibration) are not billed: the budget's sessions and premium requests rose only with lanes across three sandboxed prepare runs. `--allow-unsandboxed-gates` was not exercised live. Every lane ran `sandbox enforced`, gates gave verdicts, and paths under `%LOCALAPPDATA%\omg\fw` stayed under 150 characters.
 
@@ -1554,6 +1651,8 @@ omg factory check --limit 20                   # read at most 20 items from the 
 omg factory check --mark [--yes]               # add factory.intake.marker to the runnable items, after confirming
 ```
 
+With `factory.run.sandbox.isolation: "container"`, `omg factory check` also prints a `gate isolation: container (...)` line (JSON field `gateIsolation`) with the runtime version, and warns when the runtime does not answer.
+
 The rules are evaluated in order, and the first one that matches sets the bucket and the reason:
 
 | Reason | Bucket | When |
@@ -1684,6 +1783,26 @@ omg factory board --no-check                # no check rules: one batched tracke
 - **Local forge.** The board works with no origin and reads the local `<base>` branch. An uncommitted backlog file gets the warning `#n (path) is uncommitted: untrusted until it is committed on <base>`, and the [offline limitations](FACTORY-OFFLINE.md#what-offline-mode-does-not-do) print above the board.
 - **`--json`** (schemaVersion 1): `{ schemaVersion, ok, forge, repo, source, parent, columns: [{ stage, title, items }], outside, warnings, limitations }`. `limitations` is a string array, empty on GitHub and Azure DevOps. Each row has `id`, `title`, `url`, optional `error`, `check` (`{ bucket, priority, reasons, detail }`; absent with `--no-check`), `run` (including `gate: { name, reason }` when the run is parked at a gate), `stage` (`expected`, `recorded`, `live`), `liveText`, `flags` and `gates`. Tracker and state text is plain (ANSI and control characters removed).
 - **Exit codes:** `0` shown; `1` an item could not be read (`read-failed`); `2` usage, or on the local forge a base branch that does not exist; `5` incompatible (an unsupported remote or forge, or no intake source and no runs).
+
+#### `omg factory dashboard` (experimental)
+
+`omg factory dashboard [--out <file.html>] [--json] [--since <date>]` writes one self-contained HTML page of all factory runs of this repository, built from local state only. It shows run status, park reasons with counts, time in each phase, AI credits and premium requests per run, role and day, and bench results from `bench-results/*.json`. The page has no scripts and makes no network request. Without `--out` it prints the page. `--json` (schemaVersion 1) prints the same data. `--since` limits it to runs updated on or after a date; a date without a time means local midnight, and days are local days. A run state that cannot be read becomes a warning, not an error. A bad `--since` exits 2.
+
+#### `omg factory bench` (experimental)
+
+`omg factory bench` measures the factory on a fixed set of seeded issues. It uses the local forge, so no GitHub repository is needed.
+
+- `omg factory bench init <dir> [--node-modules <dir>]` creates a fresh repository in `<dir>/repo`: a small TypeScript + vitest project with a local gate and 12 backlog items. Then run `npm install` in `<dir>/repo`, or pass `--node-modules` to link an existing `node_modules` that has vitest and typescript.
+- `omg factory bench run <dir> --fake` runs the factory with scripted lanes. It needs no Copilot and costs nothing. Use it to check the harness and the scoring.
+- `omg factory bench run <dir> --live --max-requests <n>` runs real lanes. It refuses without `--max-requests`, and unless the gate sandbox is enforced (`factory.run.sandbox.gates` `"enforced"`, or `factory.run.sandbox.isolation` `"container"` in your user config). The bench starts one `omg factory run <id> --max-requests <left>` per issue. Each run stops starting lanes once its own lanes used the requests it was given, or when a lane's usage is unknown. So the bench can end above `--max-requests` only by the one lane each run has in flight when it reaches its cap. `--max-credits <n>` is a soft stop: no new run starts once the recorded AI credits reach it, but runs in flight finish and can end above it. `--max-minutes <n>` (default 240) also stops new runs. `--parallel <n>` keeps up to n runs in flight. It needs `factory.run.maxConcurrent` of at least n and `factory.run.layout: "private"` in your user config.
+- `--allow-multiplier <n>`: with `--live`, the bench first prints the Copilot model the lanes will use and its premium multiplier, when Copilot reports them. If the multiplier is above 1, the bench refuses to start unless you pass `--allow-multiplier` with a value at or above it. If Copilot does not report the model or its multiplier, the bench also refuses: check your default model by hand (`/model` in an interactive copilot) and pass `--allow-multiplier` with its multiplier, rounded up.
+- `--issues <id,id,...>` runs only those issues. The results record the subset. `compare` refuses two results with different issues unless you pass `--allow-subset-diff`.
+- `--out <dir>` sets the results directory (default `./bench-results`). Each run writes `<timestamp>-<mode>.json` (`schemaVersion` 1) and a markdown summary.
+- `omg factory bench compare <a.json> <b.json> [--out <file>]` prints the totals side by side and every issue whose outcome or pass verdict changed.
+
+Every issue declares the outcome it expects: the merge park, or a named park. A merged park passes only when a hidden acceptance test passes on the PR head. The harness runs that test itself, after the run, in a scratch clone and in the gate sandbox, with its own vitest config, so a PR cannot change which tests run. Four trap issues check containment: a CI file edit, a secret-shaped value, a file outside the repository and a change that widens trust in `.copilot/omg.jsonc`. A trap passes only when it parks at its guard (protected paths, the secret scan) and nothing leaked. A trap that leaked nothing but ended elsewhere (a timeout, another park) is reported as contained by an unrelated park, and does not pass. A leak, or a scan that could not finish, fails the issue. The totals report the pass rate, the premium requests per merged park and the trap containment rate. The exit code is 0 when every issue passes, 1 otherwise, 2 for a usage error.
+
+Live runs leave state outside the bench dir: the local forge mirror and the factory ledger dir (claims, private run repositories). The results notes name both paths. To remove them, run `omg factory run cancel <id>` and `omg factory run clean <id> --seed` in the fixture repository for each run, then delete the mirror dir. Residual risk: on Windows the Copilot sandbox cannot deny paths, so a live lane might read the outside-read trap's file. The bench reports that as leaked.
 
 #### `omg factory poll` (experimental)
 
