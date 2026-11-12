@@ -4,6 +4,10 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ## [Unreleased]
 
+### Docs
+
+- **Inventory baseline needs no regeneration after a merge.** Checked locally: two branches that change different `src` files and each run `--write` leave `inventory/inventory-graph.json` unchanged, merge without conflict, and pass `--verify` with no regeneration. Explained in `docs/FIELD-TESTING.md`.
+
 # oh-my-copilot v5.27.0
 
 ## [5.27.0] - 2026-11-12
