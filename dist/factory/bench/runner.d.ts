@@ -102,7 +102,9 @@ export declare function parseIssueList(raw: string): number[];
  * `--live` runs the lanes' code in prepare checks, the local gate and the
  * acceptance: it needs the gate sandbox enforced (factory.run.sandbox.gates,
  * the user config then the fixture's base), or the container isolation of
- * the user config. Null when allowed, else why not.
+ * the user config with gates not "unsandboxed" (the engine moves only "ack"
+ * into the container; "unsandboxed" still runs gate commands on the host).
+ * Either setting that does not resolve refuses. Null when allowed, else why not.
  */
 export declare function liveSandboxRefusal(trustedUser: unknown, base: unknown): string | null;
 /** The number of `it(` / `test(` calls at a line start of a hidden test: the passes the acceptance must report. */
@@ -144,11 +146,14 @@ export interface LedgerSnapshot {
     }>;
     epoch?: string;
 }
+export declare const defaultLedger: (root: string) => LedgerSnapshot;
 /**
  * The bench's ledger usage since `start`: per record the highest value seen
  * (a 0x shutdown correction keeps the counted calls: never under), summed
  * and minus the start. Throws on anything else that went down: a reset, a
- * record removed, a drop that is not estimated -> measured.
+ * record removed, a drop that is not estimated -> measured. A start without
+ * a ledger file (no epoch) adopts the first epoch it sees and requires it
+ * from then on; a file that was seen and then disappears throws.
  */
 export declare function ledgerTracker(start: LedgerSnapshot): (now: LedgerSnapshot) => {
     premiumRequests: number;

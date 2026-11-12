@@ -30,7 +30,7 @@ import { randomBytes } from 'node:crypto';
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve, sep } from 'node:path';
 import { ledgerPath, ledgerTotals, parseLedger } from '../../budget/ledger.js';
-import { resolveGatesSandboxMode } from '../../copilot-run/sandbox.js';
+import { resolveGateIsolation, resolveGatesSandboxMode } from '../../copilot-run/sandbox.js';
 import { createForge } from '../../forge/index.js';
 import { resolveForgeConfig } from '../../forge/config.js';
 import { LOCAL_REMOTE, readMirrorRef } from '../../forge/local/index.js';
@@ -181,19 +181,22 @@ export function parseIssueList(raw: string): number[] {
  * `--live` runs the lanes' code in prepare checks, the local gate and the
  * acceptance: it needs the gate sandbox enforced (factory.run.sandbox.gates,
  * the user config then the fixture's base), or the container isolation of
- * the user config. Null when allowed, else why not.
+ * the user config with gates not "unsandboxed" (the engine moves only "ack"
+ * into the container; "unsandboxed" still runs gate commands on the host).
+ * Either setting that does not resolve refuses. Null when allowed, else why not.
  */
 export function liveSandboxRefusal(trustedUser: unknown, base: unknown): string | null {
-  const isolation = (trustedUser as { factory?: { run?: { sandbox?: { isolation?: unknown } } } } | null | undefined)?.factory?.run?.sandbox?.isolation;
-  if (isolation === 'container') return null;
   let mode: ReturnType<typeof resolveGatesSandboxMode>;
+  let container: boolean;
   try {
     mode = resolveGatesSandboxMode({ user: trustedUser, base, env: process.env });
+    container = resolveGateIsolation({ user: trustedUser, base }).container !== undefined;
   } catch (error) {
     return `the gate sandbox setting does not resolve (${error instanceof Error ? error.message : String(error)})`;
   }
   if (mode.mode === 'enforced') return null;
-  return `--live runs the lanes' code in prepare checks, the local gate and the acceptance test, so it needs factory.run.sandbox.gates "enforced" (it is "${mode.mode}" from ${mode.source}) or factory.run.sandbox.isolation "container" in your user config`;
+  if (container && mode.mode !== 'unsandboxed') return null;
+  return `--live runs the lanes' code in prepare checks, the local gate and the acceptance test, so it needs factory.run.sandbox.gates "enforced", or factory.run.sandbox.isolation "container" in your user config with gates not "unsandboxed" (gates is "${mode.mode}" from ${mode.source}; isolation is ${container ? '"container"' : 'not "container"'})`;
 }
 
 /** The number of `it(` / `test(` calls at a line start of a hidden test: the passes the acceptance must report. */
@@ -307,8 +310,12 @@ export interface LedgerSnapshot {
   epoch?: string;
 }
 
-const defaultLedger = (root: string): LedgerSnapshot => {
+export const defaultLedger = (root: string): LedgerSnapshot => {
   const path = ledgerPath(root);
+  // No file yet (a fresh repository): nothing counted and no epoch. parseLedger's
+  // default ledger carries since = now, a new value on every read, which would
+  // look like a reset; ledgerTracker adopts the first real file's epoch instead.
+  if (!existsSync(path)) return { premiumRequests: 0, credits: 0, records: {} };
   const { ledger, invalid } = parseLedger(path);
   if (invalid) throw new Error(`the budget ledger ${path} is unreadable; the bench cannot enforce --max-requests without it`);
   const t = ledgerTotals(ledger);
@@ -325,19 +332,24 @@ const defaultLedger = (root: string): LedgerSnapshot => {
  * The bench's ledger usage since `start`: per record the highest value seen
  * (a 0x shutdown correction keeps the counted calls: never under), summed
  * and minus the start. Throws on anything else that went down: a reset, a
- * record removed, a drop that is not estimated -> measured.
+ * record removed, a drop that is not estimated -> measured. A start without
+ * a ledger file (no epoch) adopts the first epoch it sees and requires it
+ * from then on; a file that was seen and then disappears throws.
  */
 export function ledgerTracker(start: LedgerSnapshot): (now: LedgerSnapshot) => { premiumRequests: number; credits: number } {
   const last = new Map(Object.entries(start.records ?? {}));
   const high = new Map(last);
   const base = { premiumRequests: start.premiumRequests, credits: start.credits };
+  let epoch = start.epoch;
   return (now) => {
     if (!start.records || !now.records) {
       const delta = { premiumRequests: now.premiumRequests - base.premiumRequests, credits: now.credits - base.credits };
       if (!(delta.premiumRequests >= 0) || !(delta.credits >= 0)) throw new Error(`the budget ledger went down since the bench started (${delta.premiumRequests} requests, ${delta.credits} credits); it cannot be trusted`);
       return delta;
     }
-    if (now.epoch !== start.epoch) throw new Error('the budget ledger was reset since the bench started; it cannot be trusted');
+    if (epoch !== undefined && now.epoch === undefined) throw new Error('the budget ledger file disappeared since the bench started; it cannot be trusted');
+    if (epoch === undefined && now.epoch !== undefined) epoch = now.epoch;
+    if (now.epoch !== epoch) throw new Error('the budget ledger was reset since the bench started; it cannot be trusted');
     for (const [key, was] of last) {
       const is = now.records[key];
       if (!is) throw new Error(`the budget ledger record ${key} disappeared since the bench started; it cannot be trusted`);
