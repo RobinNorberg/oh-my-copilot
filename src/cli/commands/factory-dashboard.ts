@@ -19,7 +19,7 @@ export interface FactoryDashboardDeps {
   now?: () => Date;
 }
 
-const defaultRoot = (): string => execFileSync('git', ['rev-parse', '--show-toplevel'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+const defaultRoot = (): string => execFileSync('git', ['rev-parse', '--show-toplevel'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true }).trim();
 
 export const defaultDashboardDeps: FactoryDashboardDeps = { root: defaultRoot, out: (l) => console.log(l), err: (l) => console.error(l) };
 
