@@ -48,8 +48,17 @@ export declare const GATE_TREE_FILE_MAX_BYTES: number;
  * per-run tree, never into yours. A single junction from an older release
  * is replaced; anything else already there is left alone. Every link is
  * unlinked (never followed) by unlinkNodeModules before the dir goes.
+ *
+ * Workspaces: `workspaces` are the TRUSTED BASE's globs (never the PR
+ * head's). Each matched package dir whose node_modules exists in your
+ * checkout gets the same kind of tree in that package dir of the gate
+ * checkout, and a workspace self-link (`node_modules/@scope/pkg ->
+ * packages/pkg`) resolves to the gate checkout's package, never your
+ * working tree. Returns why the layout is not supported (Yarn PnP, a nested
+ * git repository, over the bounds; the folder named), else null; the trees
+ * that can be built still are.
  */
-export declare function linkNodeModules(root: string, checkout: string, warn?: (message: string) => void): void;
+export declare function linkNodeModules(root: string, checkout: string, warn?: (message: string) => void, workspaces?: readonly string[]): string | null;
 /**
  * Remove what linkNodeModules made before the checkout is discarded: on
  * POSIX a symlink named node_modules is untracked for a `node_modules/`
@@ -68,6 +77,13 @@ export declare function unlinkNodeModules(root: string, checkout: string): void;
  * through a link into your node_modules. False when it is absent or link-free.
  */
 export declare function gateTreeHasLinks(checkout: string): boolean;
+/**
+ * The nested workspace trees of `checkout` that are there as real dirs: the
+ * ones linkNodeModules built in this process and the ones the root tree's
+ * marker lists (PR-writable, so every line must be an exact relative path
+ * whose every segment is a plain dir in the checkout; another is ignored).
+ */
+export declare function nestedTreeDirs(checkout: string): string[];
 export interface GateConfig {
     config: ShipConfig;
     known: KnownFlakyTest[];

@@ -206,10 +206,21 @@ export declare const REGISTRY_HOSTS: readonly string[];
  * re-pointed or added (to your home, your checkout, a git dir) is refused,
  * never granted. Plain dirs and files in it are the checkout's own
  * (read-write anyway). `linked`: the tree uses `target` at all.
+ *
+ * Workspaces (factory/run/workspace-tree.ts): a link may also point into
+ * the worktree itself, lexically and by realpath (a workspace self-link to
+ * the gate checkout's package; it grants nothing the worktree does not
+ * have), and the links in a real `@scope` dir are checked the same way. The
+ * tree's marker lists nested trees (`<rel>/node_modules`); each line of the
+ * exact relative shape, through plain dirs only, is checked with
+ * `<dirname(target)>/<rel>/node_modules` as its target, and that dir (a
+ * real dir, never a link) is returned in `nested` for a read-only grant. A
+ * line of another shape is ignored: it grants nothing.
  */
 export declare function nodeModulesTreeProblem(worktree: string, target: string, platform?: NodeJS.Platform): {
     problem: string | null;
     linked: boolean;
+    nested?: string[];
 };
 /**
  * The read-write carve-outs of the read-only common git dir for a write
