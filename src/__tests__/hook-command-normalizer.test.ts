@@ -67,7 +67,7 @@ describe('nodeResolvesOnHookPath', () => {
   });
 
   it('reports true when PATH holds the running node', () => {
-    const env = { ...process.env, PATH: dirname(process.execPath) };
+    const env: NodeJS.ProcessEnv = { ...process.env, PATH: dirname(process.execPath) };
     delete env.npm_lifecycle_event;
     delete env.npm_execpath;
     expect(normalizer.nodeResolvesOnHookPath(env)).toBe(true);
