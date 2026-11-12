@@ -156,6 +156,10 @@ export function scriptedFactoryGh(bare: string): { exec: Exec; record: ScriptedG
         baseRefOid: bareRef(bare, `refs/heads/${FACTORY_RUN_BASE}`),
       }));
     }
+    // The base branch's live tip (the engine's liveBase; a PR's baseRefOid lags a moved base).
+    if (/^gh api --hostname [^ ]+ --method GET repos\/[^/ ]+\/[^/ ]+\/branches\//.test(key) && key.endsWith(`/branches/${FACTORY_RUN_BASE}`)) {
+      return ok(JSON.stringify({ name: FACTORY_RUN_BASE, commit: { sha: bareRef(bare, `refs/heads/${FACTORY_RUN_BASE}`) } }));
+    }
     if (key === `gh pr ready ${FACTORY_RUN_PR}`) {
       record.ready = true;
       return ok('');
