@@ -30,7 +30,7 @@ export { MERGE_VIEW_FIELDS, parseMergeView } from '../../forge/github/reviews.js
  */
 const checkText = (s, max) => oneLine(s.replace(/\p{Cf}/gu, '').replace(/`/g, "'").replace(/@/g, '＠').replace(/\|/g, '¦'), max) || '(unnamed)';
 /** A check name in a code span, so markdown links, HTML and `owner/repo#1` cross-references stay literal text. */
-const checkName = (s) => `\`${checkText(s, 80)}\``;
+export const checkName = (s) => `\`${checkText(s, 80)}\``;
 /**
  * ship's decideMerge on a fresh one-shot gate read for the head (no watch,
  * no rerun) and the commits since the reviewed sha. `view.baseRefOid` must be
