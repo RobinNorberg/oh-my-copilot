@@ -74,7 +74,43 @@ function housekeepingContentProblem(exec, cwd, c, drivers, buildOutputs) {
     const outside = outsideHousekeeping(exec, cwd, expected, c.sha, dirs);
     if (outside === null)
         return `could not diff it against ${c.parents.length === 2 ? 'the rebuilt merge' : `its parent ${short(expected)}`}`;
-    return outside.length > 0 ? `it changes files outside ${dirs.join(', ')}: ${outside.join(', ')}` : null;
+    if (outside.length > 0)
+        return `it changes files outside ${dirs.join(', ')}: ${outside.join(', ')}`;
+    if (c.parents.length === 1 && buildOutputs.length > 0) {
+        // Build output is regular files: a symlink (120000) or a gitlink (160000) could point the shipped tree anywhere.
+        const links = linkEntries(exec, cwd, expected, c.sha);
+        if (links === null)
+            return `could not read the file modes against its parent ${short(expected)}`;
+        if (links.length > 0)
+            return `it adds a symlink or submodule: ${links.join(', ')}`;
+    }
+    return null;
+}
+/** Paths `git diff --raw` gives a symlink or gitlink mode on the `to` side; null when the diff fails. */
+function linkEntries(exec, cwd, from, to) {
+    const res = exec('git', ['diff', '--raw', '--no-renames', '-z', '--no-abbrev', from, to], { cwd, env: TRUSTED_READ_ENV });
+    if (res.status !== 0)
+        return null;
+    // -z: `:<old mode> <new mode> <old sha> <new sha> <status>` NUL `<path>` NUL, per entry.
+    const fields = res.stdout.split('\0');
+    const links = [];
+    for (let i = 0; i + 1 < fields.length; i += 2) {
+        const meta = fields[i].replace(/^\n/, '');
+        if (!meta.startsWith(':'))
+            return null;
+        const newMode = meta.slice(1).split(' ')[1];
+        if (newMode === '120000' || newMode === '160000')
+            links.push(fields[i + 1]);
+    }
+    return links;
+}
+/**
+ * prepare's check of its own ship.prepare.build commit before recording it:
+ * the same content rule `omg ship merge` applies to a one-parent housekeeping
+ * commit (only inventory/ and `outputs`, no symlink or gitlink). null = ok.
+ */
+export function buildCommitProblem(exec, cwd, sha, parent, outputs) {
+    return housekeepingContentProblem(exec, cwd, { sha, parents: [parent] }, () => null, outputs);
 }
 /**
  * The decideMerge inputs about the commits after the reviewed sha:

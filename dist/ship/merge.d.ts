@@ -24,6 +24,12 @@ export interface CommitParents {
 /** `git rev-list --parents` output (`<sha> <parent>...` per line); null on a malformed line. */
 export declare function parseCommitParents(stdout: string): CommitParents[] | null;
 /**
+ * prepare's check of its own ship.prepare.build commit before recording it:
+ * the same content rule `omg ship merge` applies to a one-parent housekeeping
+ * commit (only inventory/ and `outputs`, no symlink or gitlink). null = ok.
+ */
+export declare function buildCommitProblem(exec: Exec, cwd: string, sha: string, parent: string, outputs: readonly string[]): string | null;
+/**
  * The decideMerge inputs about the commits after the reviewed sha:
  * `git rev-list --first-parent --parents <reviewed>..<head>` (null when the
  * reviewed sha is not an ancestor of the head or the list fails), the

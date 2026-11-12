@@ -98488,7 +98488,9 @@ function gitAllowed(a, protectedBranches) {
     case "config":
       return same(r, ["--get-regexp", "^merge\\..*\\.driver$"]);
     case "diff":
-      return same(r, ["--name-only", "--diff-filter=U"]) || same(r, ["--cached", "--quiet"]) || same(r, ["--cached", "--quiet", "--", "inventory"]) || r.length > 3 && same(r.slice(0, 3), ["--cached", "--quiet", "--"]) && isOutputDirs(r.slice(3)) || r.length === 3 && r[0] === "--name-only" && r[1] === "-z" && /^[0-9a-f]{40}\.\.\.HEAD$/.test(r[2]) || r.length === 4 && r[0] === "--name-only" && r[1] === "--no-renames" && r[2] === "-z" && /^[0-9a-f]{40}\.\.\.[0-9a-f]{40}$/.test(r[3]) || r.length === 5 && r[0] === "--name-only" && r[1] === "--no-renames" && r[2] === "-z" && HEX40.test(r[3]) && HEX40.test(r[4]);
+      return same(r, ["--name-only", "--diff-filter=U"]) || same(r, ["--cached", "--quiet"]) || same(r, ["--cached", "--quiet", "--", "inventory"]) || r.length > 3 && same(r.slice(0, 3), ["--cached", "--quiet", "--"]) && isOutputDirs(r.slice(3)) || r.length === 3 && r[0] === "--name-only" && r[1] === "-z" && /^[0-9a-f]{40}\.\.\.HEAD$/.test(r[2]) || r.length === 4 && r[0] === "--name-only" && r[1] === "--no-renames" && r[2] === "-z" && /^[0-9a-f]{40}\.\.\.[0-9a-f]{40}$/.test(r[3]) || r.length === 5 && r[0] === "--name-only" && r[1] === "--no-renames" && r[2] === "-z" && HEX40.test(r[3]) && HEX40.test(r[4]) || r.length === 6 && same(r.slice(0, 4), ["--raw", "--no-renames", "-z", "--no-abbrev"]) && HEX40.test(r[4]) && HEX40.test(r[5]);
+    case "ls-files":
+      return r.length > 5 && same(r.slice(0, 5), ["-z", "-o", "-i", "--exclude-standard", "--"]) && isOutputDirs(r.slice(5));
     case "checkout":
       return same(r, ["--theirs", "--", "inventory"]);
     case "add":
@@ -98560,7 +98562,7 @@ function guardExec(exec3, extraProtected = () => [], ado = () => void 0) {
     return exec3(cmd, args, opts);
   };
 }
-var import_child_process29, ShipSafetyError, TRUSTED_READ_ENV, TRUSTED_FETCH_ENV, KEPT_GIT_VARS, DROPPED_GH_VARS, isDroppedAdoVar, defaultExec, OPERAND, REMOTE, BRANCH, HEX40, ABBREV_SHA, NUMBER, JSON_FIELDS, isOperand, isBranch, isPath, isRemoteRef, same, BUILD_COMMIT_MESSAGE, isOutputDirs, MERGE_STATE_REFS, GIT_PATH_MARKERS, LOG_SAFE_FLAG, PROTECTED_BRANCHES, NODE_SCRIPTS, ALLOWED;
+var import_child_process29, ShipSafetyError, TRUSTED_READ_ENV, TRUSTED_FETCH_ENV, KEPT_GIT_VARS, DROPPED_GH_VARS, isDroppedAdoVar, defaultExec, OPERAND, REMOTE, BRANCH, HEX40, ABBREV_SHA, NUMBER, JSON_FIELDS, isOperand, isBranch, isPath, isRemoteRef, same, BUILD_COMMIT_MESSAGE, OUTPUT_REFUSED_SEGMENTS, isBuildOutputDir, isOutputDirs, MERGE_STATE_REFS, GIT_PATH_MARKERS, LOG_SAFE_FLAG, PROTECTED_BRANCHES, NODE_SCRIPTS, ALLOWED;
 var init_exec = __esm({
   "src/ship/exec.ts"() {
     "use strict";
@@ -98621,7 +98623,9 @@ var init_exec = __esm({
     };
     same = (args, shape) => args.length === shape.length && shape.every((v, i) => args[i] === v);
     BUILD_COMMIT_MESSAGE = "chore(build): rebuild committed build output";
-    isOutputDirs = (dirs) => dirs.length > 0 && dirs.every((d) => /^[\w.][\w.-]*(?:\/[\w.][\w.-]*)*$/.test(d) && d !== "." && !d.split("/").includes("..") && d.split("/")[0].toLowerCase() !== ".git");
+    OUTPUT_REFUSED_SEGMENTS = /* @__PURE__ */ new Set([".git", ".github", ".copilot", ".omg", ".omc", "node_modules"]);
+    isBuildOutputDir = (d) => /^[\w.][\w.-]*(?:\/[\w.][\w.-]*)*$/.test(d) && d.split("/").every((seg) => seg !== "." && seg !== ".." && !OUTPUT_REFUSED_SEGMENTS.has(seg.toLowerCase())) && d.split("/")[0].toLowerCase() !== "inventory";
+    isOutputDirs = (dirs) => dirs.length > 0 && dirs.every(isBuildOutputDir);
     MERGE_STATE_REFS = /* @__PURE__ */ new Set(["MERGE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD"]);
     GIT_PATH_MARKERS = /* @__PURE__ */ new Set(["rebase-merge", "rebase-apply"]);
     LOG_SAFE_FLAG = /^--(?:oneline|first-parent|no-merges|format=[\w%()<>:,. -]*|max-count=\d+|stat|name-only)$/;
@@ -98690,11 +98694,11 @@ function resolveShipConfig(input) {
     }
     const build = raw.prepare.build;
     if (build !== void 0) {
-      const want = '{ "command": ["npm", "run", "build"], "outputs": ["dist"] }: an argv and one or more repo-relative directories (not ., .git or inventory)';
+      const want = '{ "command": ["npm", "run", "build"], "outputs": ["dist"] }: an argv and one or more repo-relative directories (no . or .. segment; not in inventory, .git, .github, .copilot, .omg, .omc or node_modules)';
       const b = build;
       if (!b || typeof b !== "object" || Array.isArray(b) || !argv(b.command) || !Array.isArray(b.outputs) || b.outputs.length === 0) bad("prepare.build", want);
       const outputs = b.outputs.map((o) => typeof o === "string" ? o.replace(/\/+$/, "") : o);
-      const okOutput = (o) => isRepoPath(o) && o !== "." && o.split("/")[0].toLowerCase() !== ".git" && o.split("/")[0] !== "inventory";
+      const okOutput = (o) => typeof o === "string" && isBuildOutputDir(o);
       if (!outputs.every(okOutput)) bad("prepare.build", want);
       config2.prepareBuild = { command: [...b.command], outputs: [...new Set(outputs)] };
     }
@@ -124585,7 +124589,29 @@ function housekeepingContentProblem(exec3, cwd2, c, drivers, buildOutputs) {
   const dirs = [HOUSEKEEPING_DIR, ...c.parents.length === 1 ? buildOutputs.map((o) => `${o}/`) : []];
   const outside = outsideHousekeeping(exec3, cwd2, expected, c.sha, dirs);
   if (outside === null) return `could not diff it against ${c.parents.length === 2 ? "the rebuilt merge" : `its parent ${short2(expected)}`}`;
-  return outside.length > 0 ? `it changes files outside ${dirs.join(", ")}: ${outside.join(", ")}` : null;
+  if (outside.length > 0) return `it changes files outside ${dirs.join(", ")}: ${outside.join(", ")}`;
+  if (c.parents.length === 1 && buildOutputs.length > 0) {
+    const links = linkEntries(exec3, cwd2, expected, c.sha);
+    if (links === null) return `could not read the file modes against its parent ${short2(expected)}`;
+    if (links.length > 0) return `it adds a symlink or submodule: ${links.join(", ")}`;
+  }
+  return null;
+}
+function linkEntries(exec3, cwd2, from, to) {
+  const res = exec3("git", ["diff", "--raw", "--no-renames", "-z", "--no-abbrev", from, to], { cwd: cwd2, env: TRUSTED_READ_ENV });
+  if (res.status !== 0) return null;
+  const fields = res.stdout.split("\0");
+  const links = [];
+  for (let i = 0; i + 1 < fields.length; i += 2) {
+    const meta = fields[i].replace(/^\n/, "");
+    if (!meta.startsWith(":")) return null;
+    const newMode = meta.slice(1).split(" ")[1];
+    if (newMode === "120000" || newMode === "160000") links.push(fields[i + 1]);
+  }
+  return links;
+}
+function buildCommitProblem(exec3, cwd2, sha3, parent, outputs) {
+  return housekeepingContentProblem(exec3, cwd2, { sha: sha3, parents: [parent] }, () => null, outputs);
 }
 function readCommitsSinceReview(exec3, cwd2, reviewed, head, baseSha, housekeeping, buildOutputs = []) {
   const baseHistory = /* @__PURE__ */ new Set();
@@ -125773,7 +125799,7 @@ function codingAgentLinkBodyProblem(body, ctx) {
   const { ownPr, branch: branch2, head } = ctx.link;
   return body === codingAgentLinkBody({ issue: ctx.issue, ownPr, branch: branch2, head }) ? null : "the body is not the factory's link comment for this context";
 }
-function linkEntries(baseTree, headTree) {
+function linkEntries2(baseTree, headTree) {
   const of = (out, mode) => new Set(out.split("\0").filter((e) => e.startsWith(`${mode} `)).map((e) => {
     const tab = e.indexOf("	");
     return `${e.slice(0, tab).split(" ")[2]}	${e.slice(tab + 1)}`;
@@ -131112,6 +131138,11 @@ function shapeProblem2(s) {
   const gateDetail = s.gate?.detail;
   if (gateDetail !== void 0 && (!isStr2(gateDetail) || gateDetail.length > GATE_DETAIL_MAX_CHARS)) return "gate.detail";
   if (s.prepareChecks !== void 0 && s.prepareChecks !== "auto" && !(Array.isArray(s.prepareChecks) && s.prepareChecks.every((a) => Array.isArray(a) && a.length > 0 && a.every(isStr2)))) return "prepareChecks";
+  if (s.prepareBuild !== void 0 && s.prepareBuild !== "none") {
+    const b = s.prepareBuild;
+    const strs = (v) => Array.isArray(v) && v.length > 0 && v.every(isStr2);
+    if (typeof b !== "object" || b === null || !strs(b.command) || !strs(b.outputs) || !b.outputs.every(isBuildOutputDir)) return "prepareBuild";
+  }
   if (s.trackerStage !== void 0 && !PROGRESS_STAGES.includes(s.trackerStage)) return "trackerStage";
   if (s.codingAgent !== void 0 && (s.kind === "ci-heal" || codingAgentRecordProblem(s.codingAgent) !== null)) return "codingAgent";
   if (s.layout !== void 0 || s.privateDir !== void 0 || s.privateStore !== void 0) {
@@ -131495,6 +131526,7 @@ var init_state6 = __esm({
     init_process_utils();
     init_string_width();
     init_config4();
+    init_exec();
     init_types11();
     init_mirror();
     init_coding_agent_lane();
@@ -135614,6 +135646,13 @@ function selectGeneratorChecks(changed) {
   if (touches(["hooks/"])) out.push(["scripts/copilot/build-hooks.mjs", "--verify"]);
   return out;
 }
+function lstatOrNull2(p) {
+  try {
+    return (0, import_fs166.lstatSync)(p);
+  } catch {
+    return null;
+  }
+}
 function lines2(text5) {
   return text5.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
 }
@@ -135720,9 +135759,23 @@ ${dirty}`);
       return r2.status === 0 ? r2.stdout.split("\0").filter(Boolean) : null;
     };
     const inOutputs = (p) => build.outputs.some((o) => p === o || p.startsWith(`${o}/`));
+    const shown = (paths) => paths.slice(0, 10).map((p) => visibleLine(p)).join(", ");
     const before = status();
-    const headBefore = head();
     if (before === null) return fail10(PREPARE_BUILD_STEP, "git status failed before the build");
+    if (before.length > 0) {
+      return fail10(PREPARE_BUILD_STEP, `the checkout has untracked or changed files, which the build could compile into its output; nothing is built (fail closed). Remove or commit them: ${shown(before.map((e) => e.slice(3)))}`);
+    }
+    for (const o of build.outputs) {
+      const st = lstatOrNull2((0, import_path194.join)(cwd2, o));
+      if (st && (st.isSymbolicLink() || !st.isDirectory())) return fail10(PREPARE_BUILD_STEP, `ship.prepare.build output ${o} is not a directory`);
+    }
+    const preIgnored = git10("ls-files", "-z", "-o", "-i", "--exclude-standard", "--", ...build.outputs);
+    if (preIgnored.status !== 0) return fail10(PREPARE_BUILD_STEP, "git ls-files failed before the build");
+    const stray = preIgnored.stdout.split("\0").filter(Boolean);
+    if (stray.length > 0) {
+      return fail10(PREPARE_BUILD_STEP, `ignored files are already in ship.prepare.build.outputs, and git add -f would commit them; nothing is built (fail closed). Remove them: ${shown(stray)}`);
+    }
+    const headBefore = head();
     const r = yield { step: PREPARE_BUILD_STEP, kind: "build", argv: build.argv, exe: build.exe, args: build.args };
     if (r.notStarted !== void 0) return fail10(PREPARE_SANDBOX_STEP, `${PREPARE_BUILD_STEP}: ${r.notStarted}`);
     if (r.status !== 0) return fail10(PREPARE_BUILD_STEP, tail3(`${r.stdout}
@@ -135730,7 +135783,7 @@ ${r.stderr}`));
     if (head() !== headBefore) return fail10(PREPARE_BUILD_STEP, "the build moved HEAD (it made or reset a commit); the build only writes files, prepare commits them");
     const after = status();
     if (after === null) return fail10(PREPARE_BUILD_STEP, "git status failed after the build");
-    const outside = after.filter((e) => !before.includes(e) && !inOutputs(e.slice(3)));
+    const outside = after.filter((e) => !inOutputs(e.slice(3)));
     if (outside.length > 0) {
       return fail10(PREPARE_BUILD_STEP, `the build changed files outside ship.prepare.build.outputs (${build.outputs.join(", ")}), so nothing is committed (fail closed): ${outside.slice(0, 10).map((e) => visibleLine(e.slice(3))).join(", ")}`);
     }
@@ -135740,7 +135793,14 @@ ${r.stderr}`));
     if (outputs.length > 0 && git10("diff", "--cached", "--quiet", "--", ...outputs).status !== 0) {
       const committed = git10("commit", "--no-verify", "-m", BUILD_COMMIT_MESSAGE, "--", ...outputs);
       if (committed.status !== 0) return fail10(PREPARE_BUILD_STEP, tail3(committed.stderr || committed.stdout));
-      housekeepingCommits.push(head());
+      const built = head();
+      const parents = git10("rev-list", "--first-parent", "--parents", `${headBefore}..${built}`);
+      if (parents.status !== 0 || parents.stdout.trim() !== `${built} ${headBefore}`) {
+        return fail10(PREPARE_BUILD_STEP, `the build commit ${built.slice(0, 12)} is not one commit on ${headBefore.slice(0, 12)}; not recorded (fail closed)`);
+      }
+      const problem = buildCommitProblem(exec3, cwd2, built, headBefore, build.outputs);
+      if (problem) return fail10(PREPARE_BUILD_STEP, `the build commit ${built.slice(0, 12)} is not housekeeping: ${visibleLine(problem)}; not recorded (fail closed)`);
+      housekeepingCommits.push(built);
       steps.push({ name: PREPARE_BUILD_STEP, status: "ok", detail: `committed ${outputs.join(", ")}` });
     } else {
       steps.push({ name: PREPARE_BUILD_STEP, status: "skipped", detail: "build output is current" });
@@ -135832,6 +135892,7 @@ var init_prepare2 = __esm({
     init_review_feedback();
     init_config4();
     init_exec();
+    init_merge2();
     INVENTORY_DIR = "inventory";
     INVENTORY_SCRIPT = "scripts/generate-inventory-graph.mjs";
     INVENTORY_COMMIT_MESSAGE = "chore(inventory): regenerate inventory graph baseline";
@@ -143653,6 +143714,14 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
           return;
         }
         if (s.prepareChecks === void 0) this.save((x) => ({ ...x, prepareChecks: checksNow }));
+        const pb = this.gateConfig(view2).config.prepareBuild;
+        const buildNow = pb ? { command: [...pb.command], outputs: [...pb.outputs] } : "none";
+        const buildText = (b) => b === "none" ? "unset" : JSON.stringify(b);
+        if (s.prepareBuild !== void 0 && JSON.stringify(s.prepareBuild) !== JSON.stringify(buildNow)) {
+          this.gate("prepare-checks", `ship.prepare.build is now ${buildText(buildNow)}, but this run recorded ${buildText(s.prepareBuild)}; restore it, or cancel the run (omg factory run cancel) and start a new one`);
+          return;
+        }
+        if (s.prepareBuild === void 0) this.save((x) => ({ ...x, prepareBuild: buildNow }));
         if (await this.recheckFailed("before prepare")) return;
         this.discardCheckout();
         const path30 = this.checkoutDir();
@@ -143703,8 +143772,7 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
         if (!gitLink.gitDir) throw new FactoryStepError(`the new prepare checkout ${path30} has no gitfile naming its git dir (${gitLink.hash})`);
         if (!samePath2(gitLink.gitDir, recorded.adminDir)) throw new FactoryStepError(`the new prepare checkout ${path30} names the git dir ${gitLink.gitDir}, not the admin dir ${recorded.adminDir} its git links were recorded with`);
         const commands = configured?.map((argv) => ({ argv, ...resolveLocalGateArgv(argv, { cwd: path30, subject: "the prepare check", configKey: "ship.prepare.checks" }) }));
-        const pb = this.gateConfig(view2).config.prepareBuild;
-        const build = pb && { argv: pb.command, outputs: pb.outputs, ...resolveLocalGateArgv(pb.command, { cwd: path30, subject: "the prepare build", configKey: "ship.prepare.build" }) };
+        const build = buildNow === "none" ? void 0 : { argv: buildNow.command, outputs: buildNow.outputs, ...resolveLocalGateArgv(buildNow.command, { cwd: path30, subject: "the prepare build", configKey: "ship.prepare.build" }) };
         const gates = this.gatesSandbox(this.gateConfig(view2));
         const ran = { modes: /* @__PURE__ */ new Set(), acked: false, park: void 0 };
         let result;
@@ -144535,7 +144603,9 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
         if (!ship) throw new FactoryStepError(`no ship state for PR #${pr}`);
         if (ship.phase !== "ready") throw new FactoryStepError(`ship state for PR #${pr} is ${ship.phase}, not ready`);
         if (this.humanReviewParked(pr, head, ship)) return;
-        const { config: config2, known } = this.gateConfig(view2);
+        const { config: loaded2, known } = this.gateConfig(view2);
+        const sealedBuild = this.state.prepareBuild;
+        const config2 = { ...loaded2, prepareBuild: sealedBuild && sealedBuild !== "none" ? sealedBuild : void 0 };
         const decision = mergeDecision(this.exec, this.o.root, ship, view2, config2, known, this.forge, this.gateReads(view2));
         if (!decision.ok && decision.reasons.some((r) => r.startsWith("gates are "))) {
           const bounces = (this.state.mergeBounces ?? 0) + 1;
@@ -145905,7 +145975,7 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
         const extraProtected = this.protectedExtras().paths;
         const hit2 = protectedChanges(files, [...LANE_PROTECTED_PATHS, ...extraProtected]);
         if (hit2.length > 0) return this.gate("protected-paths", `the coding agent's pull request #${check2.pr} changes merge-rule or lane-protected paths: ${hit2.join(", ")}; nothing was adopted or pushed`);
-        const links = linkEntries(this.run(codingAgentTreeArgs(from), "git", TRUSTED_READ_ENV), this.run(codingAgentTreeArgs(check2.head), "git", TRUSTED_READ_ENV));
+        const links = linkEntries2(this.run(codingAgentTreeArgs(from), "git", TRUSTED_READ_ENV), this.run(codingAgentTreeArgs(check2.head), "git", TRUSTED_READ_ENV));
         if (links.gitlinks.length > 0 || links.symlinks.length > 0) {
           const what = [...links.gitlinks.map((p) => `gitlink ${p}`), ...links.symlinks.map((p) => `symlink ${p}`)].slice(0, 5).join(", ");
           return this.gate(CODING_AGENT_ADOPT_GATE, `the coding agent's pull request #${check2.pr} adds nested repositories or symlinks (${what}), which the factory does not review; nothing was adopted; ${this.codingAgentRestart()}`);
@@ -189994,7 +190064,7 @@ function shipCommand(execImpl = defaultExec, loadShipConfig = shipConfig, drive 
     emit(Boolean(o.json), { ok: true, state }, () => printState(state));
     return state.phase === "blocked" ? 1 : 0;
   }));
-  cmd.command("prepare <pr>").description("Merge origin/<base> in (never rebase), run ship.prepare.checks or the tsc/lint/targeted tests the repository has, regenerate the inventory as the last commit").option("--no-checks", "Skip the checks (merge + inventory only)").option("--push", "Plain push of the branch afterwards (never forced)").option("--json", "JSON output").action((prRaw, o) => guarded3(Boolean(o.json), () => {
+  cmd.command("prepare <pr>").description("Merge origin/<base> in (never rebase), run ship.prepare.checks or the tsc/lint/targeted tests the repository has, regenerate the inventory as the last commit").option("--no-checks", "Skip the checks (merge + inventory only); a configured ship.prepare.build still runs, which runs the PR's build scripts unsandboxed").option("--push", "Plain push of the branch afterwards (never forced)").option("--json", "JSON output").action((prRaw, o) => guarded3(Boolean(o.json), () => {
     const pr = parsePr(prRaw);
     const root2 = repoRoot2(exec3);
     const state = requireState(root2, pr);

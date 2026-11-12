@@ -126,9 +126,17 @@ const isRemoteRef = (s) => {
 const same = (args, shape) => args.length === shape.length && shape.every((v, i) => args[i] === v);
 /** prepare's ship.prepare.build commit: the only message the guard admits a commit of build output directories with. */
 export const BUILD_COMMIT_MESSAGE = 'chore(build): rebuild committed build output';
-/** ship.prepare.build outputs as pathspecs: plain repo directories (config.ts validates them), never `.`, `..` or `.git`. */
-const isOutputDirs = (dirs) => dirs.length > 0 && dirs.every((d) => /^[\w.][\w.-]*(?:\/[\w.][\w.-]*)*$/.test(d)
-    && d !== '.' && !d.split('/').includes('..') && d.split('/')[0].toLowerCase() !== '.git');
+/** Directories a build output may never be or sit in: git's own, CI, the trusted config, runtime state, dependencies. */
+const OUTPUT_REFUSED_SEGMENTS = new Set(['.git', '.github', '.copilot', '.omg', '.omc', 'node_modules']);
+/**
+ * One ship.prepare.build output (config.ts and the guard): a plain repo path
+ * with no trailing slash, no `.`/`..` segment, not under `inventory/` and no
+ * segment in OUTPUT_REFUSED_SEGMENTS (any case).
+ */
+export const isBuildOutputDir = (d) => /^[\w.][\w.-]*(?:\/[\w.][\w.-]*)*$/.test(d)
+    && d.split('/').every((seg) => seg !== '.' && seg !== '..' && !OUTPUT_REFUSED_SEGMENTS.has(seg.toLowerCase()))
+    && d.split('/')[0].toLowerCase() !== 'inventory';
+const isOutputDirs = (dirs) => dirs.length > 0 && dirs.every(isBuildOutputDir);
 const MERGE_STATE_REFS = new Set(['MERGE_HEAD', 'CHERRY_PICK_HEAD', 'REVERT_HEAD']);
 const GIT_PATH_MARKERS = new Set(['rebase-merge', 'rebase-apply']);
 const LOG_SAFE_FLAG = /^--(?:oneline|first-parent|no-merges|format=[\w%()<>:,. -]*|max-count=\d+|stat|name-only)$/;
@@ -181,7 +189,12 @@ function gitAllowed(a, protectedBranches) {
                 // The merge's changed-file list: GitHub's base and head commits, renames split into delete + add.
                 || (r.length === 4 && r[0] === '--name-only' && r[1] === '--no-renames' && r[2] === '-z' && /^[0-9a-f]{40}\.\.\.[0-9a-f]{40}$/.test(r[3]))
                 // A housekeeping commit's content: its parent (or the expected merge tree) against the commit.
-                || (r.length === 5 && r[0] === '--name-only' && r[1] === '--no-renames' && r[2] === '-z' && HEX40.test(r[3]) && HEX40.test(r[4]));
+                || (r.length === 5 && r[0] === '--name-only' && r[1] === '--no-renames' && r[2] === '-z' && HEX40.test(r[3]) && HEX40.test(r[4]))
+                // A build commit's file modes (no symlink or gitlink in the output).
+                || (r.length === 6 && same(r.slice(0, 4), ['--raw', '--no-renames', '-z', '--no-abbrev']) && HEX40.test(r[4]) && HEX40.test(r[5]));
+        case 'ls-files':
+            // prepare's build precheck: ignored, untracked files already in the outputs (git add -f would commit them).
+            return r.length > 5 && same(r.slice(0, 5), ['-z', '-o', '-i', '--exclude-standard', '--']) && isOutputDirs(r.slice(5));
         case 'checkout':
             return same(r, ['--theirs', '--', 'inventory']);
         case 'add':

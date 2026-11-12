@@ -18,7 +18,7 @@ import { parseJsonc } from '../utils/jsonc.js';
 import { getConfigPaths, loadJsoncFile } from '../config/loader.js';
 import { LEGACY_PROJECT_CONFIG_FILE, resolveProjectConfigPath } from '../config/project-config-path.js';
 import { parseAzureDevOpsRepoUrl, urlHostAgrees } from '../providers/remote-url.js';
-import { TRUSTED_READ_ENV } from './exec.js';
+import { isBuildOutputDir, TRUSTED_READ_ENV } from './exec.js';
 /**
  * Every check oh-my-copilot's own CI reports on a PR to dev or main (ci.yml,
  * pr-check.yml); the jobs that consume the Build output start late (`needs:
@@ -141,12 +141,12 @@ export function resolveShipConfig(input) {
         }
         const build = raw.prepare.build;
         if (build !== undefined) {
-            const want = '{ "command": ["npm", "run", "build"], "outputs": ["dist"] }: an argv and one or more repo-relative directories (not ., .git or inventory)';
+            const want = '{ "command": ["npm", "run", "build"], "outputs": ["dist"] }: an argv and one or more repo-relative directories (no . or .. segment; not in inventory, .git, .github, .copilot, .omg, .omc or node_modules)';
             const b = build;
             if (!b || typeof b !== 'object' || Array.isArray(b) || !argv(b.command) || !Array.isArray(b.outputs) || b.outputs.length === 0)
                 bad('prepare.build', want);
             const outputs = b.outputs.map((o) => (typeof o === 'string' ? o.replace(/\/+$/, '') : o));
-            const okOutput = (o) => isRepoPath(o) && o !== '.' && o.split('/')[0].toLowerCase() !== '.git' && o.split('/')[0] !== 'inventory';
+            const okOutput = (o) => typeof o === 'string' && isBuildOutputDir(o);
             if (!outputs.every(okOutput))
                 bad('prepare.build', want);
             config.prepareBuild = { command: [...b.command], outputs: [...new Set(outputs)] };
