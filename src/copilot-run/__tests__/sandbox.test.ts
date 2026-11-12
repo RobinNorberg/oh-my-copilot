@@ -10,6 +10,7 @@ import {
   allowlistSessionEnv,
   bwrapTrialLaunchError,
   buildSandboxConfig,
+  nodeModulesTreeProblem,
   findOnPath,
   gitForWindowsShell,
   laneGitWritePaths,
@@ -366,6 +367,52 @@ describe('buildSandboxConfig', () => {
       expect(() => buildSandboxConfig('write', c, host({ shell: true, denied_paths: true }))).toThrow(/it is not granted/);
       // Without nodeModulesTarget (lanes): the link's target as it is, today's rule.
       expect(buildSandboxConfig('write', { ...c, nodeModulesTarget: undefined }, host()).userPolicy.filesystem.readonlyPaths).toContain(realpathSync.native(elsewhere));
+    } finally {
+      rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+  it('workspaces: a self-link into the worktree is accepted, a nested tree the marker lists is checked and its target granted read-only; a re-point or a link out of the worktree is refused', () => {
+    const base = mkdtempSync(join(tmpdir(), 'omg-sbx-ws-'));
+    const lt = process.platform === 'win32' ? 'junction' : 'dir';
+    const relink = (p: string, to: string) => { try { unlinkSync(p); } catch { rmdirSync(p); } symlinkSync(to, p, lt); };
+    try {
+      const user = join(base, 'user');
+      const worktree = join(base, 'wt');
+      const yours = join(user, 'node_modules');
+      const yoursA = join(user, 'packages', 'a', 'node_modules');
+      const secret = join(base, 'secret');
+      for (const d of [join(yours, 'typescript'), join(yoursA, 'left-pad'), join(worktree, 'packages', 'a'), join(worktree, 'packages', 'b'), secret]) mkdirSync(d, { recursive: true });
+      const tree = join(worktree, 'node_modules');
+      mkdirSync(join(tree, '@scope'), { recursive: true });
+      writeFileSync(join(tree, '.omg-gate-tree'), 'packages/a\n../escape\n');
+      symlinkSync(join(yours, 'typescript'), join(tree, 'typescript'), lt);
+      symlinkSync(join(worktree, 'packages', 'b'), join(tree, '@scope', 'b'), lt);
+      const nested = join(worktree, 'packages', 'a', 'node_modules');
+      mkdirSync(join(nested, '.vite'), { recursive: true });
+      symlinkSync(join(yoursA, 'left-pad'), join(nested, 'left-pad'), lt);
+      symlinkSync(join(worktree, 'packages', 'b'), join(nested, 'b'), lt);
+      expect(nodeModulesTreeProblem(worktree, yours)).toEqual({ problem: null, linked: true, nested: [realpathSync.native(yoursA)] });
+      const c = { ...ctx, worktree, platform: process.platform, nodeModulesTarget: yours };
+      const ro = buildSandboxConfig('write', c, host()).userPolicy.filesystem.readonlyPaths;
+      expect(ro).toContain(realpathSync.native(yours));
+      expect(ro).toContain(realpathSync.native(yoursA));
+      // A nested link re-pointed to a secret dir, and a scoped link to the worktree's parent: refused, never granted.
+      relink(join(nested, 'left-pad'), secret);
+      expect(nodeModulesTreeProblem(worktree, yours).problem).toMatch(/left-pad points to .*secret, not .*left-pad the engine linked/);
+      expect(() => buildSandboxConfig('write', c, host())).toThrow(/it is not granted/);
+      relink(join(nested, 'left-pad'), join(yoursA, 'left-pad'));
+      relink(join(tree, '@scope', 'b'), base);
+      expect(nodeModulesTreeProblem(worktree, yours).problem).toMatch(/b points to/);
+      relink(join(tree, '@scope', 'b'), worktree);
+      expect(nodeModulesTreeProblem(worktree, yours).problem).toMatch(/b points to/);
+      relink(join(tree, '@scope', 'b'), join(worktree, 'packages', 'b'));
+      // An unlisted nested tree is not checked and grants nothing; a listed one reached through a link is skipped.
+      writeFileSync(join(tree, '.omg-gate-tree'), '');
+      expect(nodeModulesTreeProblem(worktree, yours)).toEqual({ problem: null, linked: true });
+      symlinkSync(join(worktree, 'packages'), join(worktree, 'via'), lt);
+      writeFileSync(join(tree, '.omg-gate-tree'), 'via/a\n');
+      expect(nodeModulesTreeProblem(worktree, yours)).toEqual({ problem: null, linked: true });
     } finally {
       rmSync(base, { recursive: true, force: true });
     }
