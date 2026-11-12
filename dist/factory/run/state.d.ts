@@ -216,6 +216,15 @@ export interface FactoryRunState {
      * same value; a change mid-run parks at prepare-checks. Absent until then.
      */
     prepareChecks?: string[][] | 'auto';
+    /**
+     * The trusted ship.prepare.build this run first prepared with (`none` =
+     * unset), sealed like prepareChecks: a change mid-run parks at
+     * prepare-checks, and the merge rule accepts only these outputs.
+     */
+    prepareBuild?: {
+        command: string[];
+        outputs: string[];
+    } | 'none';
     repoUrl: string;
     base: string;
     branch: string;

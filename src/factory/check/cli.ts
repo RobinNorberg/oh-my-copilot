@@ -31,7 +31,7 @@ import { adoGuardContext, defaultAzBinaryDeps, type AzureDevOpsForgeOptions } fr
 import { factoryForgeOptions, unsupportedForge } from '../run/forge-roots.js';
 import { existsSync } from 'fs';
 import { join } from 'path';
-import { BASE_CONFIG_PATH, isPlainBranchName, readBaseFile, resolveShipConfig, trustedPrepareChecks, trustedRequiredChecks } from '../../ship/config.js';
+import { BASE_CONFIG_PATH, isPlainBranchName, readBaseFile, resolveShipConfig, trustedPrepareBuild, trustedPrepareChecks, trustedRequiredChecks } from '../../ship/config.js';
 import { gateRequirement } from '../setup/required-checks.js';
 import { baseFileExists, describePrepareChecks, skippedPrepareChecks } from '../../ship/prepare.js';
 import { TRUSTED_FETCH_ENV, TRUSTED_READ_ENV, type Exec } from '../../ship/exec.js';
@@ -521,7 +521,11 @@ export async function runFactoryCheck(o: FactoryCheckOptions, deps: FactoryCheck
     if (config.kind === 'github' && required.length > 0) {
       warnings.push(...gateRequirement(exec, ghRepoArg(config.repo), base, required, `the user config or ${base}:${BASE_CONFIG_PATH}`, root).warnings.map((w) => `omg factory check: ${w}`));
     }
-    prepareChecks = describePrepareChecks(configured, baseHas, (p) => existsSync(join(root, p)));
+    const build = trustedPrepareBuild(deps.trustedUser(), baseConfig);
+    prepareChecks = [
+      ...(build ? [`${build.command.join(' ')} (ship.prepare.build: changes under ${build.outputs.join(', ')} committed)`] : []),
+      ...describePrepareChecks(configured, baseHas, (p) => existsSync(join(root, p))),
+    ];
     // L3: why a built-in check is not run, and what to do.
     prepareSkipped = [
       ...(!baseSha && !configured ? [`the base ${base} is not available here (fetch origin), so its markers (tsconfig.json, eslint config) cannot be read`] : []),

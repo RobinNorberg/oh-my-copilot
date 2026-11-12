@@ -153,6 +153,19 @@ const isRemoteRef = (s: string): boolean => {
   return Boolean(m) && REMOTE.test(m![1]) && isBranch(m![2]);
 };
 const same = (args: string[], shape: string[]) => args.length === shape.length && shape.every((v, i) => args[i] === v);
+/** prepare's ship.prepare.build commit: the only message the guard admits a commit of build output directories with. */
+export const BUILD_COMMIT_MESSAGE = 'chore(build): rebuild committed build output';
+/** Directories a build output may never be or sit in: git's own, CI, the trusted config, runtime state, dependencies. */
+const OUTPUT_REFUSED_SEGMENTS = new Set(['.git', '.github', '.copilot', '.omg', '.omc', 'node_modules']);
+/**
+ * One ship.prepare.build output (config.ts and the guard): a plain repo path
+ * with no trailing slash, no `.`/`..` segment, not under `inventory/` and no
+ * segment in OUTPUT_REFUSED_SEGMENTS (any case).
+ */
+export const isBuildOutputDir = (d: string): boolean => /^[\w.][\w.-]*(?:\/[\w.][\w.-]*)*$/.test(d)
+  && d.split('/').every((seg) => seg !== '.' && seg !== '..' && !OUTPUT_REFUSED_SEGMENTS.has(seg.toLowerCase()))
+  && d.split('/')[0].toLowerCase() !== 'inventory';
+const isOutputDirs = (dirs: string[]): boolean => dirs.length > 0 && dirs.every(isBuildOutputDir);
 
 const MERGE_STATE_REFS = new Set(['MERGE_HEAD', 'CHERRY_PICK_HEAD', 'REVERT_HEAD']);
 const GIT_PATH_MARKERS = new Set(['rebase-merge', 'rebase-apply']);
@@ -177,7 +190,9 @@ function gitAllowed(a: string[], protectedBranches: readonly string[]): boolean 
     case 'check-ref-format':
       return r.length === 2 && r[0] === '--branch' && isBranch(r[1]);
     case 'status':
-      return same(r, ['--porcelain', '--untracked-files=no']);
+      return same(r, ['--porcelain', '--untracked-files=no'])
+        // prepare's build step: every changed or untracked file, verbatim, before and after the build.
+        || same(r, ['--porcelain=v1', '-z', '--untracked-files=all', '--no-renames']);
     case 'fetch':
       return r.length === 2 && REMOTE.test(r[0]) && isBranch(r[1]);
     case 'merge-base':
@@ -200,20 +215,33 @@ function gitAllowed(a: string[], protectedBranches: readonly string[]): boolean 
       return same(r, ['--name-only', '--diff-filter=U'])
         || same(r, ['--cached', '--quiet'])
         || same(r, ['--cached', '--quiet', '--', 'inventory'])
+        || (r.length > 3 && same(r.slice(0, 3), ['--cached', '--quiet', '--']) && isOutputDirs(r.slice(3)))
         // prepare's changed files for the built-in checks, NUL-separated (names verbatim whatever core.quotePath says).
         || (r.length === 3 && r[0] === '--name-only' && r[1] === '-z' && /^[0-9a-f]{40}\.\.\.HEAD$/.test(r[2]))
         // The merge's changed-file list: GitHub's base and head commits, renames split into delete + add.
         || (r.length === 4 && r[0] === '--name-only' && r[1] === '--no-renames' && r[2] === '-z' && /^[0-9a-f]{40}\.\.\.[0-9a-f]{40}$/.test(r[3]))
         // A housekeeping commit's content: its parent (or the expected merge tree) against the commit.
-        || (r.length === 5 && r[0] === '--name-only' && r[1] === '--no-renames' && r[2] === '-z' && HEX40.test(r[3]) && HEX40.test(r[4]));
+        || (r.length === 5 && r[0] === '--name-only' && r[1] === '--no-renames' && r[2] === '-z' && HEX40.test(r[3]) && HEX40.test(r[4]))
+        // A build commit's file modes (no symlink or gitlink in the output).
+        || (r.length === 6 && same(r.slice(0, 4), ['--raw', '--no-renames', '-z', '--no-abbrev']) && HEX40.test(r[4]) && HEX40.test(r[5]));
+    case 'ls-files':
+      // prepare's build precheck: ignored, untracked files already in the outputs (git add -f would commit them).
+      return (r.length > 5 && same(r.slice(0, 5), ['-z', '-o', '-i', '--exclude-standard', '--']) && isOutputDirs(r.slice(5)))
+        // prepare's build precheck: every ignored entry (a dir collapsed), and every tracked file's tag (assume-unchanged, skip-worktree).
+        || same(r, ['-z', '-o', '-i', '--exclude-standard', '--directory'])
+        || same(r, ['-z', '-v']);
     case 'checkout':
       return same(r, ['--theirs', '--', 'inventory']);
     case 'add':
-      return same(r, ['--', 'inventory']);
+      return same(r, ['--', 'inventory'])
+        // prepare's build output (ignored dirs such as dist/ are committed too).
+        || (r.length > 3 && same(r.slice(0, 3), ['-f', '-A', '--']) && isOutputDirs(r.slice(3)));
     case 'commit':
-      // Hooks never shape an engine commit; the inventory commit takes only inventory/ (an unrelated staged file stays out).
+      // Hooks never shape an engine commit; the inventory commit takes only inventory/ (an unrelated staged file stays out),
+      // the build commit only the build outputs.
       return same(r, ['--no-edit', '--no-verify'])
-        || (r.length === 5 && r[0] === '--no-verify' && r[1] === '-m' && isPath(r[2]) && r[3] === '--' && r[4] === 'inventory');
+        || (r.length === 5 && r[0] === '--no-verify' && r[1] === '-m' && isPath(r[2]) && r[3] === '--' && r[4] === 'inventory')
+        || (r.length > 4 && r[0] === '--no-verify' && r[1] === '-m' && r[2] === BUILD_COMMIT_MESSAGE && r[3] === '--' && isOutputDirs(r.slice(4)));
     case 'push': {
       const m = r.length === 2 ? /^HEAD:refs\/heads\/(.+)$/.exec(r[1]) : null;
       return Boolean(m) && REMOTE.test(r[0]) && isBranch(m![1])
