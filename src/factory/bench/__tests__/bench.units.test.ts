@@ -604,11 +604,22 @@ describe('live runner caps (injected run child and ledger, no Copilot)', () => {
     const ok = await runBench({ ...base, modelProbe: tenX, allowMultiplier: 10 });
     expect(start).toHaveBeenCalledTimes(1);
     expect(ok.results.notes[0]).toContain('big-model; premium multiplier: 10');
-    // Unknown: allowed, with a note; 1x or below: allowed.
-    const unknown = await runBench({ ...base, modelProbe: async () => ({ model: null, multiplier: null, detail: 'the runtime names no current model for a new session' }) });
+    // LOW-A: unknown fails closed (no child starts) unless --allow-multiplier is given; then allowed with a note.
+    const unknownProbe: BenchModelProbe = async () => ({ model: null, multiplier: null, detail: 'the runtime names no current model for a new session' });
+    await expect(runBench({ ...base, modelProbe: unknownProbe })).rejects.toThrow(/no known premium multiplier .*check the default Copilot model by hand.*--allow-multiplier/);
+    expect(start).toHaveBeenCalledTimes(1);
+    const unknown = await runBench({ ...base, modelProbe: unknownProbe, allowMultiplier: 1 });
+    expect(start).toHaveBeenCalledTimes(2);
     expect(unknown.results.notes.join('\n')).toContain('the multiplier is unknown');
+    expect(multiplierRefusal({ model: 'named', multiplier: null, detail: 'no billing' }, undefined)).toMatch(/model named has no known premium multiplier \(no billing\)/);
+    expect(multiplierRefusal({ model: 'named', multiplier: null, detail: '' }, 1)).toBeNull();
+    // 1x or below: allowed.
     expect(multiplierRefusal({ model: 'm', multiplier: 0.33, detail: '' }, undefined)).toBeNull();
+    expect(multiplierRefusal({ model: 'm', multiplier: 1, detail: '' }, undefined)).toBeNull();
     expect(multiplierRefusal({ model: 'm', multiplier: 1.5, detail: '' }, 2)).toBeNull();
+    // LOW-B: a fractional multiplier suggests an integer the CLI accepts.
+    expect(multiplierRefusal({ model: 'm', multiplier: 1.5, detail: '' }, undefined)).toContain('--allow-multiplier 2 ');
+    expect(multiplierRefusal({ model: 'm', multiplier: 1.5, detail: '' }, 1)).not.toBeNull();
     expect(modelMultiplier([{ id: 'a', billing: { multiplier: 3 } }, { id: 'b' }], 'a')).toBe(3);
     expect(modelMultiplier([{ id: 'a', billing: { multiplier: 3 } }, { id: 'b' }], 'b')).toBeNull();
     expect(modelMultiplier([{ id: 'a', billing: { multiplier: Number.NaN } }], 'a')).toBeNull();
@@ -632,13 +643,27 @@ describe('live runner caps (injected run child and ledger, no Copilot)', () => {
       async getStatus() { return {}; }
     }
     const loaded = { module: { CopilotClient: FakeClient, RuntimeConnection: { forStdio: () => ({}) } }, version: '1.0.16', from: 'test' };
-    const deps = { env: { PATH: process.env.PATH }, platform: 'linux' as const, loadSdk: async () => loaded as never, resolveBin: () => '/bin/copilot', userConfigDir: () => join(dir, 'no-user') };
+    const deps = { env: { PATH: process.env.PATH }, platform: 'linux' as const, loadSdk: async () => loaded as never, resolveBin: () => '/bin/copilot', userConfigDir: () => join(dir, 'no-user'), killTree: () => { throw new Error('unexpected tree kill'); } };
     const info = await probeLaneModel(join(dir, 'probe'), deps);
     expect(info).toEqual({ model: 'big-model', multiplier: 10, detail: 'listModels() billing.multiplier of big-model' });
     expect(session.send).not.toHaveBeenCalled();
     expect(calls).toEqual(['start', 'createSession', 'disconnect', 'deleteSession', 'stop']);
-    expect(readdirSync(join(dir, 'probe'))).toEqual([]);
+    expect(existsSync(join(dir, 'probe'))).toBe(false);
     expect(await probeLaneModel(join(dir, 'probe'), { ...deps, loadSdk: async () => null })).toMatchObject({ model: null, multiplier: null, detail: expect.stringContaining('not installed') });
+    // LOW-C: start() fails (a hang ends in its timeout) after the SDK spawned the runtime: its tree is killed by
+    // the SDK's own child handle; an exited handle (pid may be recycled) or no handle is left alone.
+    const killed: number[] = [];
+    const hung = (proc: { pid: number; exitCode: number | null } | null) => class extends FakeClient {
+      cliProcess = proc;
+      override async start() { calls.push('start'); throw new Error('client.start() timed out'); }
+    };
+    const withClient = (C: unknown) => ({ ...deps, loadSdk: async () => ({ ...loaded, module: { ...loaded.module, CopilotClient: C } }) as never, killTree: (p: number) => { killed.push(p); } });
+    expect(await probeLaneModel(join(dir, 'probe'), withClient(hung({ pid: 4242, exitCode: null })))).toMatchObject({ model: null, detail: expect.stringContaining('timed out') });
+    expect(killed).toEqual([4242]);
+    await probeLaneModel(join(dir, 'probe'), withClient(hung({ pid: 4243, exitCode: 1 })));
+    await probeLaneModel(join(dir, 'probe'), withClient(hung(null)));
+    expect(killed).toEqual([4242]);
+    expect(existsSync(join(dir, 'probe'))).toBe(false);
   });
 
   it('--parallel keeps up to n children in flight and splits the requests left; --max-credits stops', async () => {

@@ -182,7 +182,7 @@ export function laneRequestsUnknown(lane: Pick<FactoryRunState['lanes'][number],
   return lane.usage.source === 'estimated' && lane.usage.premiumRequests === 0 && lane.kind !== 'coding-agent';
 }
 
-export type LaneCapDecision ={ ok: true; cap: number } | { ok: false; reason: string };
+export type LaneCapDecision = { ok: true; cap: number } | { ok: false; reason: string };
 
 /**
  * The cap for the next lane: laneMaxCredits, lowered to what maxRunCredits
