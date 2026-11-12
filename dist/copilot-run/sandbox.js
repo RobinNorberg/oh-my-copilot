@@ -183,6 +183,48 @@ export function resolveRequireDeniedPaths(layers) {
         return { require: true, source: 'the base .copilot/omg.jsonc' };
     return { require: false, source: user === false || base === false ? 'config' : 'default' };
 }
+const CONTAINER_KEYS = ['runtime', 'image', 'memory', 'cpus', 'pidsLimit', 'installTimeoutMinutes'];
+/** The default gate image: the host Node major on Debian bookworm slim. */
+export const defaultGateImage = (nodeVersion = process.versions.node) => `node:${nodeVersion.split('.')[0]}-bookworm-slim`;
+/**
+ * `factory.run.sandbox.isolation` and `factory.run.sandbox.container` from
+ * the USER config only: the PR's repository must never choose where its own
+ * code runs or with what limits, so a value committed in the base's
+ * `.copilot/omg.jsonc` is ignored (`ignoredBase` names it for a notice). A
+ * malformed user value throws. The image may not start with `-` (it is one
+ * argv word after the runtime's options) and holds only reference characters.
+ */
+export function resolveGateIsolation(layers, nodeVersion = process.versions.node) {
+    const block = (config) => {
+        const raw = config?.factory?.run?.sandbox;
+        return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+    };
+    const base = block(layers.base);
+    const ignoredBase = ['isolation', 'container'].filter((k) => base[k] !== undefined).map((k) => `factory.run.sandbox.${k}`);
+    const user = block(layers.user);
+    const bad = (key, want) => { throw new Error(`user config: factory.run.sandbox.${key} must be ${want}`); };
+    const isolation = user.isolation === undefined ? 'copilot' : user.isolation === 'copilot' || user.isolation === 'container' ? user.isolation : bad('isolation', '"copilot" or "container"');
+    const raw = user.container ?? {};
+    if (typeof raw !== 'object' || raw === null || Array.isArray(raw))
+        bad('container', 'an object');
+    const c = raw;
+    const unknown = Object.keys(c).filter((k) => !CONTAINER_KEYS.includes(k));
+    if (unknown.length > 0)
+        bad('container', `an object with only ${CONTAINER_KEYS.join(', ')} (got ${unknown.join(', ')})`);
+    const int = (key, min, max, fallback) => {
+        const v = c[key];
+        if (v === undefined)
+            return fallback;
+        return typeof v === 'number' && Number.isInteger(v) && v >= min && v <= max ? v : bad(`container.${key}`, `an integer from ${min} to ${max}`);
+    };
+    const runtime = c.runtime === undefined ? 'docker' : c.runtime === 'docker' || c.runtime === 'podman' ? c.runtime : bad('container.runtime', '"docker" or "podman"');
+    const image = c.image === undefined ? defaultGateImage(nodeVersion)
+        : typeof c.image === 'string' && /^[A-Za-z0-9][A-Za-z0-9._/:@-]{0,254}$/.test(c.image) ? c.image : bad('container.image', 'an image reference (letters, digits and . _ / : @ -, not starting with -)');
+    const memory = c.memory === undefined ? '4g' : typeof c.memory === 'string' && /^[1-9]\d{0,5}[kmg]$/i.test(c.memory) ? c.memory : bad('container.memory', 'a size such as "4g" or "512m"');
+    const cpus = c.cpus === undefined ? 2 : typeof c.cpus === 'number' && c.cpus > 0 && c.cpus <= 64 ? c.cpus : bad('container.cpus', 'a number above 0 and at most 64');
+    const container = { runtime, image, memory, cpus, pidsLimit: int('pidsLimit', 64, 65_536, 1_024), installTimeoutMinutes: int('installTimeoutMinutes', 1, 120, 15) };
+    return { isolation, ...(isolation === 'container' ? { container } : {}), ignoredBase };
+}
 export const REGISTRY_HOSTS = ['registry.npmjs.org', '*.npmjs.org'];
 /** `real` (a realpath) is the realpath of `want`; false when `want` cannot be resolved. Case-folded on win32. */
 function sameRealPath(real, want, platform) {

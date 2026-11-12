@@ -40,6 +40,8 @@ import { getGlobalOmcStatePath } from '../../utils/paths.js';
 import { removeRunDir } from './private-store.js';
 import { expectedPrivateLayout, withImportLock } from './private-run.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
+import { resolveGateIsolation } from '../../copilot-run/sandbox.js';
+import { cleanRunContainers, CONTAINER_NAME_PREFIX, containerRunLabel } from './container-gate.js';
 const HEX40 = /^[0-9a-f]{40}$/;
 const UNCONFIRMED_NOTE = /not confirmed|cancel failed|may still run/;
 const TAMPER_NOTE = /\btampered: |tamper check: /;
@@ -371,6 +373,38 @@ export function cleanHeldFactoryRun(o, state) {
             result.kept.push({ worktree: path, reason: error instanceof Error ? error.message : String(error) });
         }
     }
+    cleanGateContainers(o, result);
     return result;
+}
+/**
+ * factory.run.sandbox.isolation "container" (user config): the gate
+ * containers and volumes a killed engine left for this run, by the run's
+ * label and name prefix only (container-gate.ts cleanRunContainers). Without
+ * container isolation the runtime is never called.
+ */
+function cleanGateContainers(o, result) {
+    let user = o.runUserConfig;
+    if (user === undefined) {
+        try {
+            user = userConfigLayers().trustedUser;
+        }
+        catch {
+            user = null;
+        }
+    }
+    let container;
+    try {
+        container = resolveGateIsolation({ user, base: undefined }).container;
+    }
+    catch {
+        container = undefined;
+    }
+    if (!container)
+        return;
+    const label = containerRunLabel(o.root, o.issue);
+    const r = cleanRunContainers(container.runtime, label, o.containerExecSync);
+    result.removed.push(...r.removed.map((n) => `${container.runtime} ${n}`));
+    if (r.problem)
+        result.kept.push({ worktree: `${container.runtime} ${CONTAINER_NAME_PREFIX}${label}-*`, reason: r.problem });
 }
 //# sourceMappingURL=clean.js.map

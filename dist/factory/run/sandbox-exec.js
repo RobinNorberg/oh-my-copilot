@@ -42,6 +42,7 @@ import { userInfo } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { defaultCopilotRunDeps } from '../../copilot-run/job.js';
 import { allowlistSessionEnv, loadSandboxSettings, laneToolPaths, missingSandboxEnv, proxyCaEnv, sessionGitHubToken, } from '../../copilot-run/sandbox.js';
+import { defaultContainerExec, runContainerGate } from './container-gate.js';
 import { SessionSandboxController } from '../../copilot-run/sandbox-session.js';
 import { errText, withTimeout } from '../../copilot-run/timeout.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
@@ -409,6 +410,12 @@ export const sandboxJobRoot = (root) => join(getOmcRoot(root), 'state', 'factory
  */
 export function createSandboxRunner(root, deps = defaultCopilotRunDeps(), layers) {
     return async (req) => {
+        // isolation "container": resolved by the engine from the user config; the Copilot sandbox is never tried instead.
+        if (req.container) {
+            if (!req.runLabel)
+                return { ran: false, reason: 'the gate container request has no run label', unavailable: true };
+            return runContainerGate(req, req.container, req.runLabel, { exec: defaultContainerExec, platform: deps.platform });
+        }
         let settings;
         try {
             settings = (layers ? loadSandboxSettings(root, 'factory', layers) : loadSandboxSettings(root, 'factory')).settings;

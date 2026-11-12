@@ -13838,7 +13838,7 @@ var init_sdk = __esm({
         const schOrFunc = root2.refs[ref];
         if (schOrFunc)
           return schOrFunc;
-        let _sch = resolve88.call(this, root2, ref);
+        let _sch = resolve89.call(this, root2, ref);
         if (_sch === void 0) {
           const schema = (_a = root2.localRefs) === null || _a === void 0 ? void 0 : _a[ref];
           const { schemaId } = this.opts;
@@ -13865,7 +13865,7 @@ var init_sdk = __esm({
       function sameSchemaEnv(s1, s2) {
         return s1.schema === s2.schema && s1.root === s2.root && s1.baseId === s2.baseId;
       }
-      function resolve88(root2, ref) {
+      function resolve89(root2, ref) {
         let sch;
         while (typeof (sch = this.refs[ref]) == "string")
           ref = sch;
@@ -14363,54 +14363,54 @@ var init_sdk = __esm({
         }
         return uri;
       }
-      function resolve88(baseURI, relativeURI, options) {
+      function resolve89(baseURI, relativeURI, options) {
         const schemelessOptions = Object.assign({ scheme: "null" }, options);
         const resolved = resolveComponents(parse62(baseURI, schemelessOptions), parse62(relativeURI, schemelessOptions), schemelessOptions, true);
         return serialize(resolved, { ...schemelessOptions, skipEscape: true });
       }
-      function resolveComponents(base, relative45, options, skipNormalization) {
+      function resolveComponents(base, relative46, options, skipNormalization) {
         const target = {};
         if (!skipNormalization) {
           base = parse62(serialize(base, options), options);
-          relative45 = parse62(serialize(relative45, options), options);
+          relative46 = parse62(serialize(relative46, options), options);
         }
         options = options || {};
-        if (!options.tolerant && relative45.scheme) {
-          target.scheme = relative45.scheme;
-          target.userinfo = relative45.userinfo;
-          target.host = relative45.host;
-          target.port = relative45.port;
-          target.path = removeDotSegments(relative45.path || "");
-          target.query = relative45.query;
+        if (!options.tolerant && relative46.scheme) {
+          target.scheme = relative46.scheme;
+          target.userinfo = relative46.userinfo;
+          target.host = relative46.host;
+          target.port = relative46.port;
+          target.path = removeDotSegments(relative46.path || "");
+          target.query = relative46.query;
         } else {
-          if (relative45.userinfo !== void 0 || relative45.host !== void 0 || relative45.port !== void 0) {
-            target.userinfo = relative45.userinfo;
-            target.host = relative45.host;
-            target.port = relative45.port;
-            target.path = removeDotSegments(relative45.path || "");
-            target.query = relative45.query;
+          if (relative46.userinfo !== void 0 || relative46.host !== void 0 || relative46.port !== void 0) {
+            target.userinfo = relative46.userinfo;
+            target.host = relative46.host;
+            target.port = relative46.port;
+            target.path = removeDotSegments(relative46.path || "");
+            target.query = relative46.query;
           } else {
-            if (!relative45.path) {
+            if (!relative46.path) {
               target.path = base.path;
-              if (relative45.query !== void 0) {
-                target.query = relative45.query;
+              if (relative46.query !== void 0) {
+                target.query = relative46.query;
               } else {
                 target.query = base.query;
               }
             } else {
-              if (relative45.path.charAt(0) === "/") {
-                target.path = removeDotSegments(relative45.path);
+              if (relative46.path.charAt(0) === "/") {
+                target.path = removeDotSegments(relative46.path);
               } else {
                 if ((base.userinfo !== void 0 || base.host !== void 0 || base.port !== void 0) && !base.path) {
-                  target.path = "/" + relative45.path;
+                  target.path = "/" + relative46.path;
                 } else if (!base.path) {
-                  target.path = relative45.path;
+                  target.path = relative46.path;
                 } else {
-                  target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative45.path;
+                  target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative46.path;
                 }
                 target.path = removeDotSegments(target.path);
               }
-              target.query = relative45.query;
+              target.query = relative46.query;
             }
             target.userinfo = base.userinfo;
             target.host = base.host;
@@ -14418,7 +14418,7 @@ var init_sdk = __esm({
           }
           target.scheme = base.scheme;
         }
-        target.fragment = relative45.fragment;
+        target.fragment = relative46.fragment;
         return target;
       }
       function equal(uriA, uriB, options) {
@@ -14596,7 +14596,7 @@ var init_sdk = __esm({
       var fastUri = {
         SCHEMES,
         normalize: normalize14,
-        resolve: resolve88,
+        resolve: resolve89,
         resolveComponents,
         equal,
         serialize,
@@ -18010,7 +18010,7 @@ var init_sdk = __esm({
           }
           return;
         }
-        return new Promise((resolve88, reject2) => {
+        return new Promise((resolve89, reject2) => {
           const exitHandler = (code, signal) => {
             if (this.abortController.signal.aborted) {
               reject2(new AbortError("Operation aborted"));
@@ -18020,7 +18020,7 @@ var init_sdk = __esm({
             if (error2) {
               reject2(error2);
             } else {
-              resolve88();
+              resolve89();
             }
           };
           this.process.once("exit", exitHandler);
@@ -18066,17 +18066,17 @@ var init_sdk = __esm({
         if (this.hasError) {
           return Promise.reject(this.hasError);
         }
-        return new Promise((resolve88, reject2) => {
-          this.readResolve = resolve88;
+        return new Promise((resolve89, reject2) => {
+          this.readResolve = resolve89;
           this.readReject = reject2;
         });
       }
       enqueue(value) {
         if (this.readResolve) {
-          const resolve88 = this.readResolve;
+          const resolve89 = this.readResolve;
           this.readResolve = void 0;
           this.readReject = void 0;
-          resolve88({ done: false, value });
+          resolve89({ done: false, value });
         } else {
           this.queue.push(value);
         }
@@ -18084,10 +18084,10 @@ var init_sdk = __esm({
       done() {
         this.isDone = true;
         if (this.readResolve) {
-          const resolve88 = this.readResolve;
+          const resolve89 = this.readResolve;
           this.readResolve = void 0;
           this.readReject = void 0;
-          resolve88({ done: true, value: void 0 });
+          resolve89({ done: true, value: void 0 });
         }
       }
       error(error2) {
@@ -18420,10 +18420,10 @@ var init_sdk = __esm({
           type: "control_request",
           request
         };
-        return new Promise((resolve88, reject2) => {
+        return new Promise((resolve89, reject2) => {
           this.pendingControlResponses.set(requestId, (response) => {
             if (response.subtype === "success") {
-              resolve88(response);
+              resolve89(response);
             } else {
               reject2(new Error(response.error));
               if (response.pending_permission_requests) {
@@ -18513,15 +18513,15 @@ var init_sdk = __esm({
           logForDebugging(`[Query.waitForFirstResult] Result already received, returning immediately`);
           return Promise.resolve();
         }
-        return new Promise((resolve88) => {
+        return new Promise((resolve89) => {
           if (this.abortController?.signal.aborted) {
-            resolve88();
+            resolve89();
             return;
           }
-          this.abortController?.signal.addEventListener("abort", () => resolve88(), {
+          this.abortController?.signal.addEventListener("abort", () => resolve89(), {
             once: true
           });
-          this.firstResultReceivedResolve = resolve88;
+          this.firstResultReceivedResolve = resolve89;
         });
       }
       handleHookCallbacks(callbackId, input, toolUseID, abortSignal) {
@@ -18572,13 +18572,13 @@ var init_sdk = __esm({
       handleMcpControlRequest(serverName, mcpRequest, transport) {
         const messageId = "id" in mcpRequest.message ? mcpRequest.message.id : null;
         const key = `${serverName}:${messageId}`;
-        return new Promise((resolve88, reject2) => {
+        return new Promise((resolve89, reject2) => {
           const cleanup = () => {
             this.pendingMcpResponses.delete(key);
           };
           const resolveAndCleanup = (response) => {
             cleanup();
-            resolve88(response);
+            resolve89(response);
           };
           const rejectAndCleanup = (error2) => {
             cleanup();
@@ -26815,7 +26815,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
               return;
             }
             const pollInterval = (_c = (_a = task2.pollInterval) !== null && _a !== void 0 ? _a : (_b = this._options) === null || _b === void 0 ? void 0 : _b.defaultTaskPollInterval) !== null && _c !== void 0 ? _c : 1e3;
-            await new Promise((resolve88) => setTimeout(resolve88, pollInterval));
+            await new Promise((resolve89) => setTimeout(resolve89, pollInterval));
             (_d = options === null || options === void 0 ? void 0 : options.signal) === null || _d === void 0 || _d.throwIfAborted();
           }
         } catch (error2) {
@@ -26827,7 +26827,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
       }
       request(request, resultSchema, options) {
         const { relatedRequestId, resumptionToken, onresumptiontoken, task, relatedTask } = options !== null && options !== void 0 ? options : {};
-        return new Promise((resolve88, reject2) => {
+        return new Promise((resolve89, reject2) => {
           var _a, _b, _c, _d, _e, _f, _g;
           const earlyReject = (error2) => {
             reject2(error2);
@@ -26908,7 +26908,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
               if (!parseResult.success) {
                 reject2(parseResult.error);
               } else {
-                resolve88(parseResult.data);
+                resolve89(parseResult.data);
               }
             } catch (error2) {
               reject2(error2);
@@ -27105,12 +27105,12 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
           }
         } catch (_d) {
         }
-        return new Promise((resolve88, reject2) => {
+        return new Promise((resolve89, reject2) => {
           if (signal.aborted) {
             reject2(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
             return;
           }
-          const timeoutId = setTimeout(resolve88, interval);
+          const timeoutId = setTimeout(resolve89, interval);
           signal.addEventListener("abort", () => {
             clearTimeout(timeoutId);
             reject2(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
@@ -27781,7 +27781,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
         let task = createTaskResult.task;
         const pollInterval = (_a = task.pollInterval) !== null && _a !== void 0 ? _a : 5e3;
         while (task.status !== "completed" && task.status !== "failed" && task.status !== "cancelled") {
-          await new Promise((resolve88) => setTimeout(resolve88, pollInterval));
+          await new Promise((resolve89) => setTimeout(resolve89, pollInterval));
           const updatedTask = await extra.taskStore.getTask(taskId);
           if (!updatedTask) {
             throw new McpError(ErrorCode.InternalError, `Task ${taskId} not found during polling`);
@@ -32746,11 +32746,11 @@ function runBatchCommand(resolvedPath, args, timeoutMs) {
   const comspec = validatedComspec();
   if (!comspec) return void 0;
   if (!args.every((arg) => SAFE_BATCH_ARG.test(arg))) return void 0;
-  const tail5 = [`"${resolvedPath}"`, ...args].join(" ");
+  const tail6 = [`"${resolvedPath}"`, ...args].join(" ");
   try {
     return (0, import_child_process3.spawnSync)(
       comspec,
-      ["/d", "/v:off", "/s", "/c", `"${tail5}"`],
+      ["/d", "/v:off", "/s", "/c", `"${tail6}"`],
       {
         timeout: timeoutMs,
         encoding: "utf8",
@@ -33254,7 +33254,7 @@ var init_client = __esm({
 Install with: ${this.serverConfig.installHint}`
           );
         }
-        return new Promise((resolve88, reject2) => {
+        return new Promise((resolve89, reject2) => {
           const command = this.devContainerContext ? "docker" : this.serverConfig.command;
           const args = this.devContainerContext ? ["exec", "-i", "-w", this.devContainerContext.containerWorkspaceRoot, this.devContainerContext.containerId, this.serverConfig.command, ...this.serverConfig.args] : this.serverConfig.args;
           this.process = (0, import_child_process4.spawn)(command, args, {
@@ -33302,7 +33302,7 @@ Install with: ${this.serverConfig.installHint}`
               return;
             }
             this.initialized = true;
-            resolve88();
+            resolve89();
           }).catch((error2) => {
             if (this.process === child && this.connectionGeneration === connectionGeneration) {
               this.forceKill();
@@ -33561,13 +33561,13 @@ ${content2}`;
         const message4 = `Content-Length: ${Buffer.byteLength(content2)}\r
 \r
 ${content2}`;
-        return new Promise((resolve88, reject2) => {
+        return new Promise((resolve89, reject2) => {
           const timeoutHandle = setTimeout(() => {
             this.pendingRequests.delete(id);
             reject2(new Error(`LSP request '${method}' timed out after ${effectiveTimeout}ms`));
           }, effectiveTimeout);
           this.pendingRequests.set(id, {
-            resolve: resolve88,
+            resolve: resolve89,
             reject: reject2,
             timeout: timeoutHandle
           });
@@ -33747,7 +33747,7 @@ ${content2}`;
         });
         this.assertCurrentConnection(child, connectionGeneration);
         this.openDocuments.add(hostUri);
-        await new Promise((resolve88) => setTimeout(resolve88, 100));
+        await new Promise((resolve89) => setTimeout(resolve89, 100));
         this.assertCurrentConnection(child, connectionGeneration);
         this.throwIfTerminal();
       }
@@ -33804,8 +33804,8 @@ ${content2}`;
         const current = new Promise((resolveCurrent) => {
           release = resolveCurrent;
         });
-        const tail5 = previous.catch(() => void 0).then(() => current);
-        this.documentOperationTails.set(hostUri, tail5);
+        const tail6 = previous.catch(() => void 0).then(() => current);
+        this.documentOperationTails.set(hostUri, tail6);
         const predecessorCompleted = await Promise.race([
           previous.then(() => true, () => true),
           cancellation.then(() => false)
@@ -33818,7 +33818,7 @@ ${content2}`;
           return await operation();
         } finally {
           release();
-          if (this.documentOperationTails.get(hostUri) === tail5) {
+          if (this.documentOperationTails.get(hostUri) === tail6) {
             this.documentOperationTails.delete(hostUri);
           }
         }
@@ -33979,7 +33979,7 @@ ${content2}`;
         if (this.diagnostics.has(key)) {
           return Promise.resolve();
         }
-        return new Promise((resolve88, reject2) => {
+        return new Promise((resolve89, reject2) => {
           let resolved = false;
           const removeWaiter = (waiter2) => {
             const waiters = this.diagnosticWaiters.get(key);
@@ -33998,7 +33998,7 @@ ${content2}`;
               if (error2) {
                 reject2(error2);
               } else {
-                resolve88();
+                resolve89();
               }
             }
           };
@@ -34006,7 +34006,7 @@ ${content2}`;
             if (!resolved) {
               resolved = true;
               removeWaiter(waiter);
-              resolve88();
+              resolve89();
             }
           }, timeoutMs);
           const existing = this.diagnosticWaiters.get(key) || [];
@@ -38575,7 +38575,7 @@ async function canBreakLock(lockInfo) {
   return !alive;
 }
 function sleep(ms) {
-  return new Promise((resolve88) => setTimeout(resolve88, ms));
+  return new Promise((resolve89) => setTimeout(resolve89, ms));
 }
 var fs4, fsSync2, path5, os3, crypto4, import_child_process8, import_util5, execFileAsync2, STALE_LOCK_AGE_MS, DEFAULT_ACQUIRE_TIMEOUT_MS, LOCK_RETRY_INTERVAL_MS, REMOTE_LOCK_STALE_AGE_MS, LockTimeoutError, LockError, SessionLock;
 var init_session_lock = __esm({
@@ -38767,7 +38767,7 @@ var init_session_lock = __esm({
 
 // src/tools/python-repl/socket-client.ts
 async function sendSocketRequest(socketPath, method, params, timeout = 6e4) {
-  return new Promise((resolve88, reject2) => {
+  return new Promise((resolve89, reject2) => {
     const id = (0, import_crypto6.randomUUID)();
     const request = {
       jsonrpc: "2.0",
@@ -38857,7 +38857,7 @@ async function sendSocketRequest(socketPath, method, params, timeout = 6e4) {
           }
           if (!settled) {
             settled = true;
-            resolve88(response.result);
+            resolve89(response.result);
           }
         } catch (e) {
           if (!settled) {
@@ -39376,7 +39376,7 @@ async function removeFileIfExists(filePath) {
   }
 }
 function sleep2(ms) {
-  return new Promise((resolve88) => setTimeout(resolve88, ms));
+  return new Promise((resolve89) => setTimeout(resolve89, ms));
 }
 var import_child_process9, fs5, fsPromises2, path6, import_url7, import_child_process10, import_util6, execFileAsync3, BRIDGE_SPAWN_TIMEOUT_MS, DEFAULT_GRACE_PERIOD_MS, SIGTERM_GRACE_MS, ownedBridgeSessionIds, runPythonProbe, systemPythonCache, USE_TCP_FALLBACK;
 var init_bridge_manager = __esm({
@@ -48016,7 +48016,7 @@ async function withProcessIdentityFileLock(lockPath2, fn, timeoutMs = 1e4) {
           continue;
         }
         if (Date.now() >= deadline) throw new Error("process_identity_lock_timeout");
-        await new Promise((resolve88) => setTimeout(resolve88, 25));
+        await new Promise((resolve89) => setTimeout(resolve89, 25));
         continue;
       }
       try {
@@ -48037,7 +48037,7 @@ async function withProcessIdentityFileLock(lockPath2, fn, timeoutMs = 1e4) {
           }
         }
         if (Date.now() >= deadline) throw new Error("process_identity_lock_timeout");
-        await new Promise((resolve88) => setTimeout(resolve88, 25));
+        await new Promise((resolve89) => setTimeout(resolve89, 25));
       }
     }
     return await fn();
@@ -50236,7 +50236,7 @@ function withFileLockSync(lockPath2, fn, opts) {
   }
 }
 function sleep3(ms) {
-  return new Promise((resolve88) => setTimeout(resolve88, ms));
+  return new Promise((resolve89) => setTimeout(resolve89, ms));
 }
 async function acquireFileLock(lockPath2, opts) {
   const staleLockMs = opts?.staleLockMs ?? DEFAULT_STALE_LOCK_MS;
@@ -51126,13 +51126,13 @@ var init_directive_detector = __esm({
 function withMutex(projectRoot, fn) {
   const prev = writeMutexes.get(projectRoot) ?? Promise.resolve();
   const next = prev.then(() => fn()).catch(() => fn());
-  const tail5 = next.then(
+  const tail6 = next.then(
     () => {
     },
     () => {
     }
   );
-  writeMutexes.set(projectRoot, tail5);
+  writeMutexes.set(projectRoot, tail6);
   return next;
 }
 async function addCustomNote(projectRoot, category, content2) {
@@ -51278,7 +51278,7 @@ function mergeArrays(fieldName, base, incoming) {
       return mergeScalarArray(base, incoming);
   }
 }
-function mergeByKey(base, incoming, keyFn, resolve88) {
+function mergeByKey(base, incoming, keyFn, resolve89) {
   const seen = /* @__PURE__ */ new Map();
   for (const item of base) {
     seen.set(keyFn(item), item);
@@ -51287,7 +51287,7 @@ function mergeByKey(base, incoming, keyFn, resolve88) {
     const key = keyFn(item);
     const existing = seen.get(key);
     if (existing) {
-      seen.set(key, resolve88(existing, item));
+      seen.set(key, resolve89(existing, item));
     } else {
       seen.set(key, item);
     }
@@ -59069,9 +59069,9 @@ function getTrustedPrefixes() {
 function isTrustedPrefix(resolvedPath) {
   const flavor = pathFlavor();
   return getTrustedPrefixes().some((prefix) => {
-    const relative45 = flavor.relative(prefix, resolvedPath);
-    if (relative45 === "") return true;
-    return !relative45.startsWith("..") && !flavor.isAbsolute(relative45);
+    const relative46 = flavor.relative(prefix, resolvedPath);
+    if (relative46 === "") return true;
+    return !relative46.startsWith("..") && !flavor.isAbsolute(relative46);
   });
 }
 function assertBinaryName(binary) {
@@ -67013,8 +67013,8 @@ function isSensitiveRepoRelativePath(repoRelativePath) {
   if (!normalized2 || normalized2 === ".") {
     return false;
   }
-  const basename64 = normalized2.slice(normalized2.lastIndexOf("/") + 1);
-  if (SENSITIVE_REPO_BASENAMES.has(basename64) || SENSITIVE_REPO_EXTENSIONS.some((extension) => basename64.endsWith(extension))) {
+  const basename65 = normalized2.slice(normalized2.lastIndexOf("/") + 1);
+  if (SENSITIVE_REPO_BASENAMES.has(basename65) || SENSITIVE_REPO_EXTENSIONS.some((extension) => basename65.endsWith(extension))) {
     return true;
   }
   return normalized2 === ".git" || normalized2.startsWith(".git/") || normalized2.includes("/.git/") || normalized2 === ".ssh" || normalized2.startsWith(".ssh/") || normalized2.includes("/.ssh/") || normalized2 === "secrets" || normalized2.startsWith("secrets/") || normalized2.includes("/secrets/") || normalized2 === ".env" || normalized2.startsWith(".env.") || normalized2.includes("/.env") || normalized2.includes("/.env.") || normalized2 === "node_modules/.cache" || normalized2.startsWith("node_modules/.cache/") || normalized2.includes("/node_modules/.cache/");
@@ -72000,24 +72000,24 @@ async function runSessionEndAction(context, _execute) {
     let settled = false;
     let exitCode = null;
     let settleChild = () => void 0;
-    const childExit = new Promise((resolve88) => {
+    const childExit = new Promise((resolve89) => {
       settleChild = (code2) => {
         if (settled) return;
         settled = true;
         exitCode = code2;
-        resolve88(code2);
+        resolve89(code2);
       };
       child.once("exit", settleChild);
       child.once("error", () => settleChild(null));
     });
     let deadlineTermination;
     let resolveTermination;
-    const terminationFinished = new Promise((resolve88) => {
-      resolveTermination = resolve88;
+    const terminationFinished = new Promise((resolve89) => {
+      resolveTermination = resolve89;
     });
     const terminate = async () => {
-      const postKillWait = new Promise((resolve88) => {
-        const timer = setTimeout(resolve88, Math.max(1, context.deadlineAt + POST_KILL_SETTLE_MS - Date.now()));
+      const postKillWait = new Promise((resolve89) => {
+        const timer = setTimeout(resolve89, Math.max(1, context.deadlineAt + POST_KILL_SETTLE_MS - Date.now()));
         timer.unref();
       });
       if (identity && child.pid) {
@@ -72031,7 +72031,7 @@ async function runSessionEndAction(context, _execute) {
       await Promise.race([childExit, postKillWait]);
     };
     if (!identity || !child.pid) {
-      await Promise.race([childExit, new Promise((resolve88) => setTimeout(resolve88, POST_KILL_SETTLE_MS))]);
+      await Promise.race([childExit, new Promise((resolve89) => setTimeout(resolve89, POST_KILL_SETTLE_MS))]);
       return { code: "runner-identity-unavailable", completed: false };
     }
     const timeout = setTimeout(() => {
@@ -72082,7 +72082,7 @@ async function runActionRunnerEntrypoint() {
       } catch {
       }
       if (armed) break;
-      await new Promise((resolve88) => setTimeout(resolve88, 10));
+      await new Promise((resolve89) => setTimeout(resolve89, 10));
     }
     if (Date.now() >= input.deadlineAt) throw new Error("runner-arm-deadline");
     const deadlineTimer = setTimeout(() => {
@@ -74343,7 +74343,7 @@ async function sendTelegram(config2, payload) {
       text: payload.message,
       parse_mode: config2.parseMode || "Markdown"
     });
-    const result = await new Promise((resolve88) => {
+    const result = await new Promise((resolve89) => {
       const req = (0, import_https.request)(
         telegramRequestOptions(Buffer.byteLength(body), config2.botToken),
         (res) => {
@@ -74359,9 +74359,9 @@ async function sendTelegram(config2, payload) {
                 }
               } catch {
               }
-              resolve88({ platform: "telegram", success: true, messageId });
+              resolve89({ platform: "telegram", success: true, messageId });
             } else {
-              resolve88({
+              resolve89({
                 platform: "telegram",
                 success: false,
                 error: `HTTP ${res.statusCode}`
@@ -74371,11 +74371,11 @@ async function sendTelegram(config2, payload) {
         }
       );
       req.on("error", (e) => {
-        resolve88({ platform: "telegram", success: false, error: e.message });
+        resolve89({ platform: "telegram", success: false, error: e.message });
       });
       req.on("timeout", () => {
         req.destroy();
-        resolve88({
+        resolve89({
           platform: "telegram",
           success: false,
           error: "Request timeout"
@@ -74666,9 +74666,9 @@ async function dispatchNotifications(config2, event, payload, platformMessages) 
           }
         )
       ),
-      new Promise((resolve88) => {
+      new Promise((resolve89) => {
         timer = setTimeout(
-          () => resolve88([
+          () => resolve89([
             {
               platform: "unknown",
               success: false,
@@ -75298,8 +75298,8 @@ function redactTokens(input) {
     (_m, head, _q, vq, quoted, bare) => vq !== void 0 ? `${head}${vq}${(quoted ?? "").includes("****") ? quoted : "****"}${vq}` : `${head}${bare?.includes("****") ? bare : "****"}`
   ).replace(
     /\b((?:Proxy-)?Authorization|Cookie|X-[A-Za-z0-9-]*(?:Key|Token|Secret|Auth|Signature)[A-Za-z0-9-]*)(\s*:\s*)((?:Bearer|Basic|Bot|Token|Digest|Negotiate)\s+)?([^"'\\\r\n]+)/gi,
-    (_m, name, sep25, scheme, value) => `${name}${sep25}${scheme ?? ""}${value.includes("****") ? value : "****"}`
-  ).replace(new RegExp(String.raw`(\b${SECRET_NAME})(\s*=\s*)${QUOTED_OR_BARE}`, "gi"), (_m, name, sep25, value) => maskValue(name, sep25, value)).replace(new RegExp(String.raw`(--?${FLAG_NAME})(=|\s+)(?!--)${QUOTED_OR_BARE}`, "gi"), (_m, name, sep25, value) => maskValue(name, sep25, value)).replace(/(\b[a-z][a-z0-9+.-]*:\/\/)[^\s/:@]*:[^\s/@]+@/gi, "$1****@").replace(/(\s(?:-u|--user)(?:=|\s+)["']?[^\s:"']*:)((?!\/)[^\s"']+)/g, (_m, head, value) => `${head}${value.includes("****") ? value : "****"}`).replace(/(\b(?:mysql|mysqldump|mysqladmin|mariadb|mariadb-dump)\b[^\n|;&]*?\s-p)([^\s-][^\s]*)/g, "$1****").replace(/(\blogin\b[^\n|;&]*?\s-p\s+)("[^"]*"|'[^']*'|\S+)/g, "$1****").replace(/(hooks\.slack\.com\/(?:services|workflows|triggers)\/)[^\s"']+/gi, "$1****").replace(/(discord(?:app)?\.com\/api\/webhooks\/\d+\/)[^\s"'/?]+/gi, "$1****").replace(/(?<![A-Za-z0-9+/=*])[A-Za-z0-9+/]{16,}={1,2}(?![A-Za-z0-9+/=])/g, "****");
+    (_m, name, sep26, scheme, value) => `${name}${sep26}${scheme ?? ""}${value.includes("****") ? value : "****"}`
+  ).replace(new RegExp(String.raw`(\b${SECRET_NAME})(\s*=\s*)${QUOTED_OR_BARE}`, "gi"), (_m, name, sep26, value) => maskValue(name, sep26, value)).replace(new RegExp(String.raw`(--?${FLAG_NAME})(=|\s+)(?!--)${QUOTED_OR_BARE}`, "gi"), (_m, name, sep26, value) => maskValue(name, sep26, value)).replace(/(\b[a-z][a-z0-9+.-]*:\/\/)[^\s/:@]*:[^\s/@]+@/gi, "$1****@").replace(/(\s(?:-u|--user)(?:=|\s+)["']?[^\s:"']*:)((?!\/)[^\s"']+)/g, (_m, head, value) => `${head}${value.includes("****") ? value : "****"}`).replace(/(\b(?:mysql|mysqldump|mysqladmin|mariadb|mariadb-dump)\b[^\n|;&]*?\s-p)([^\s-][^\s]*)/g, "$1****").replace(/(\blogin\b[^\n|;&]*?\s-p\s+)("[^"]*"|'[^']*'|\S+)/g, "$1****").replace(/(hooks\.slack\.com\/(?:services|workflows|triggers)\/)[^\s"']+/gi, "$1****").replace(/(discord(?:app)?\.com\/api\/webhooks\/\d+\/)[^\s"'/?]+/gi, "$1****").replace(/(?<![A-Za-z0-9+/=*])[A-Za-z0-9+/]{16,}={1,2}(?![A-Za-z0-9+/=])/g, "****");
 }
 var SECRET_NAME, FLAG_NAME, QUOTED_OR_BARE, maskValue;
 var init_redact = __esm({
@@ -75308,7 +75308,7 @@ var init_redact = __esm({
     SECRET_NAME = String.raw`[A-Za-z0-9_]*(?:TOKEN|SECRET|PASSWORD|PASSWD|API[-_]?KEY|ACCESS[-_]?KEY|PRIVATE[-_]?KEY|CREDENTIALS?|WEBHOOK|_KEY\b)[A-Za-z0-9_-]*`;
     FLAG_NAME = String.raw`(?:${SECRET_NAME}|(?:auth|pass|pw|passphrase|key)(?![A-Za-z0-9_-]))`;
     QUOTED_OR_BARE = String.raw`("[^"]*"|'[^']*'|[^\s"']+)`;
-    maskValue = (name, sep25, value) => `${name}${sep25}${value.includes("****") ? value : "****"}`;
+    maskValue = (name, sep26, value) => `${name}${sep26}${value.includes("****") ? value : "****"}`;
   }
 });
 
@@ -77897,10 +77897,10 @@ async function runWithinDeadline(deadlineAt, run3) {
   const controller = new AbortController();
   let timer;
   try {
-    return await Promise.race([run3(controller.signal), new Promise((resolve88) => {
+    return await Promise.race([run3(controller.signal), new Promise((resolve89) => {
       timer = setTimeout(() => {
         controller.abort();
-        resolve88(void 0);
+        resolve89(void 0);
       }, remaining);
     })]);
   } finally {
@@ -81685,7 +81685,7 @@ async function writeAtomic3(path30, data) {
         const delay = WIN32_RENAME_RETRY_DELAYS_MS[attempt];
         const code = error2.code ?? "";
         if (process.platform !== "win32" || delay === void 0 || !WIN32_RENAME_RETRY_CODES.has(code)) throw error2;
-        await new Promise((resolve88) => setTimeout(resolve88, delay));
+        await new Promise((resolve89) => setTimeout(resolve89, delay));
       }
     }
   } finally {
@@ -81805,7 +81805,7 @@ async function withMailboxLock(teamName, workerName, cwd2, fn) {
   while (Date.now() < deadline) {
     const result = await withLock2(lockDir, fn);
     if (result.ok) return result.value;
-    await new Promise((resolve88) => setTimeout(resolve88, delayMs));
+    await new Promise((resolve89) => setTimeout(resolve89, delayMs));
     delayMs = Math.min(delayMs * 2, 200);
   }
   throw new Error(`Failed to acquire mailbox lock for ${workerName} after ${timeoutMs}ms`);
@@ -81968,7 +81968,7 @@ async function teamCreateTask(teamName, task, cwd2) {
       return taskLock.value;
     });
     if (result.ok) return result.value;
-    await new Promise((resolve88) => setTimeout(resolve88, delayMs));
+    await new Promise((resolve89) => setTimeout(resolve89, delayMs));
     delayMs = Math.min(delayMs * 2, 200);
   }
   throw new Error(`Failed to acquire task creation lock for team ${teamName} after ${timeoutMs}ms`);
@@ -82034,7 +82034,7 @@ async function teamUpdateTask(teamName, taskId, updates, cwd2) {
       return normalized2;
     });
     if (result.ok) return result.value;
-    await new Promise((resolve88) => setTimeout(resolve88, delayMs));
+    await new Promise((resolve89) => setTimeout(resolve89, delayMs));
     delayMs = Math.min(delayMs * 2, 200);
   }
   throw new Error(`Failed to acquire task update lock for task ${taskId} in team ${teamName} after ${timeoutMs}ms`);
@@ -83930,11 +83930,11 @@ function evaluateSdkSandbox(probe) {
   if (probe.applyError) return { id, ok: false, detail: `supported, capabilities ${caps}; the review policy was not applied: ${probe.applyError}` };
   const enf = probe.enforcement;
   if (enf === void 0 || typeof enf === "string") return { id, ok: false, detail: `supported, capabilities ${caps}; review policy applied; enforcement unread: ${enf ?? "not asked"}` };
-  const spawn20 = probe.spawn ?? { ok: false, detail: "not run" };
+  const spawn21 = probe.spawn ?? { ok: false, detail: "not run" };
   return {
     id,
-    ok: !enf.blocked && spawn20.ok,
-    detail: `supported, capabilities ${caps}; review policy applied (options.update), enforcement required=${enf.required} blocked=${enf.blocked}${enf.reason ? ` (${enf.reason})` : ""}; spawn canary: ${spawn20.detail}`
+    ok: !enf.blocked && spawn21.ok,
+    detail: `supported, capabilities ${caps}; review policy applied (options.update), enforcement required=${enf.required} blocked=${enf.blocked}${enf.reason ? ` (${enf.reason})` : ""}; spawn canary: ${spawn21.detail}`
   };
 }
 function sliceLogByTime(text4, starts) {
@@ -84705,7 +84705,7 @@ function canonicalAuthorityDigest(input) {
   return (0, import_node_crypto8.createHash)("sha256").update(payload, "utf8").digest("hex");
 }
 function sleep4(ms) {
-  return new Promise((resolve88) => setTimeout(resolve88, ms));
+  return new Promise((resolve89) => setTimeout(resolve89, ms));
 }
 function isExactText(value) {
   return typeof value === "string" && value.length > 0 && value === value.trim();
@@ -86650,7 +86650,7 @@ async function bootstrapPersistentOwner(input, priorEpoch) {
       return true;
     }
     if (owner && (owner.epoch > expectedEpoch || owner.epoch === expectedEpoch && owner.pid !== childPid)) return false;
-    await new Promise((resolve88) => setTimeout(resolve88, 25));
+    await new Promise((resolve89) => setTimeout(resolve89, 25));
   }
   return false;
 }
@@ -86813,7 +86813,7 @@ function createRecoveryOwnerClient(dispatch, timing = {}) {
           teamName: normalized2.teamName,
           workerName: normalized2.workerName
         })) return outcome.result;
-        await new Promise((resolve88) => setTimeout(resolve88, timing.pollIntervalMs ?? 250));
+        await new Promise((resolve89) => setTimeout(resolve89, timing.pollIntervalMs ?? 250));
       }
       return timeoutResult(normalized2, canonical4.recovery_id);
     }
@@ -89357,7 +89357,7 @@ async function killOwnedWorkerPane(ownership) {
 }
 function detectPaneTrustPromptKind(captured, provider) {
   const lines4 = captured.split("\n").map((l) => l.replace(/\r/g, "").trim()).filter((l) => l.length > 0);
-  const tail5 = lines4.slice(-12);
+  const tail6 = lines4.slice(-12);
   const lastCodexPromptIndex = lines4.findLastIndex((line2) => paneLineLooksLikeIdlePrompt(line2, "codex"));
   const activeCodexPrompt = lastCodexPromptIndex >= 0 ? lines4[lastCodexPromptIndex].replace(/^\s*(?:[│┃║▌▐▏▕╎┆┊]\s*)?[›>❯]\s*/, "") : "";
   const lastCodexTrustQuestionIndex = lines4.findLastIndex(
@@ -89372,31 +89372,31 @@ function detectPaneTrustPromptKind(captured, provider) {
   if ((provider === void 0 || provider === "codex") && codexTrustQuestionIsActive) {
     return "codex_directory";
   }
-  const hasCursorTrustBanner = tail5.some((l) => /Workspace Trust Required/i.test(l));
-  const hasCursorTrustHint = tail5.some((l) => /Pass\s+--trust,\s*--yolo,\s*or\s+-f/i.test(l));
-  if ((provider === void 0 || provider === "cursor") && hasCursorTrustBanner && (hasCursorTrustHint || tail5.some((l) => /Do you trust the contents of this directory\?/i.test(l)))) {
+  const hasCursorTrustBanner = tail6.some((l) => /Workspace Trust Required/i.test(l));
+  const hasCursorTrustHint = tail6.some((l) => /Pass\s+--trust,\s*--yolo,\s*or\s+-f/i.test(l));
+  if ((provider === void 0 || provider === "cursor") && hasCursorTrustBanner && (hasCursorTrustHint || tail6.some((l) => /Do you trust the contents of this directory\?/i.test(l)))) {
     return "cursor_workspace_trust";
   }
   const claudeQuestionLines = lines4.slice(-20);
   const hasClaudeDirectoryQuestion = claudeQuestionLines.some(
     (_, index) => /(?:Do you trust the files in this folder|Quick safety check:\s*Is this a project you created or one you trust)\?/i.test(claudeQuestionLines.slice(index, index + 3).join(" "))
   );
-  const hasClaudeDirectoryNoChoice = tail5.some((l) => /\bNo,\s*exit\b/i.test(l));
-  const hasClaudeDirectoryYesChoice = tail5.some((l) => /\bYes,\s*(?:proceed|I trust this folder)\b/i.test(l));
+  const hasClaudeDirectoryNoChoice = tail6.some((l) => /\bNo,\s*exit\b/i.test(l));
+  const hasClaudeDirectoryYesChoice = tail6.some((l) => /\bYes,\s*(?:proceed|I trust this folder)\b/i.test(l));
   if ((provider === void 0 || provider === "claude") && hasClaudeDirectoryQuestion && hasClaudeDirectoryNoChoice && hasClaudeDirectoryYesChoice) {
     return "claude_directory";
   }
-  const hasCopilotYesChoice = tail5.some((l) => /\b1\.\s*Yes\s*(?:│|$)/.test(l));
-  const hasCopilotNoChoice = tail5.some((l) => /\b3\.\s*No\s*\(Esc\)/i.test(l));
+  const hasCopilotYesChoice = tail6.some((l) => /\b1\.\s*Yes\s*(?:│|$)/.test(l));
+  const hasCopilotNoChoice = tail6.some((l) => /\b3\.\s*No\s*\(Esc\)/i.test(l));
   if (provider === "copilot" && hasClaudeDirectoryQuestion && hasCopilotYesChoice && hasCopilotNoChoice) {
     return "copilot_folder";
   }
-  const hasDirectoryQuestion = tail5.some((l) => /Do you trust the contents of this directory\?/i.test(l));
-  const hasDirectoryChoices = tail5.some((l) => /Yes,\s*continue|No,\s*quit|Press enter to continue/i.test(l));
+  const hasDirectoryQuestion = tail6.some((l) => /Do you trust the contents of this directory\?/i.test(l));
+  const hasDirectoryChoices = tail6.some((l) => /Yes,\s*continue|No,\s*quit|Press enter to continue/i.test(l));
   if (hasDirectoryQuestion && hasDirectoryChoices) return "directory";
-  const hasHookReview = tail5.some((l) => /Hooks need review/i.test(l));
-  const hasHookTrustChoice = tail5.some((l) => /Continue without trusting/i.test(l));
-  const hasHookConfirm = tail5.some((l) => /Press enter to confirm or esc to go back/i.test(l));
+  const hasHookReview = tail6.some((l) => /Hooks need review/i.test(l));
+  const hasHookTrustChoice = tail6.some((l) => /Continue without trusting/i.test(l));
+  const hasHookConfirm = tail6.some((l) => /Press enter to confirm or esc to go back/i.test(l));
   if (hasHookReview && hasHookTrustChoice && hasHookConfirm) return "codex_hooks";
   return null;
 }
@@ -89421,13 +89421,13 @@ function paneIsBootstrapping(captured, provider) {
 }
 function paneHasActiveTask(captured, provider) {
   const lines4 = captured.split("\n").map((l) => l.replace(/\r/g, "").trim()).filter((l) => l.length > 0);
-  const tail5 = lines4.slice(-40);
-  if (provider === "cursor" && tail5.some((l) => /ctrl\+c\s+to\s+stop/i.test(l))) return true;
-  if (provider === "copilot" && tail5.some((l) => /^\S?\s*Working\b.*\besc\b/u.test(l))) return true;
-  if (tail5.some((l) => /\b\d+\s+background terminal running\b/i.test(l))) return true;
-  if (tail5.some((l) => /esc to interrupt/i.test(l))) return true;
-  if (tail5.some((l) => /\bbackground terminal running\b/i.test(l))) return true;
-  if (tail5.some((l) => /^[·✻✢✳✶✽✺✹✸✷*]\s+[A-Za-z][A-Za-z0-9''-]*(?:\s+[A-Za-z][A-Za-z0-9''-]*){0,3}(?:…|\.{3})(?:\s*\(.*\))?$/u.test(l))) return true;
+  const tail6 = lines4.slice(-40);
+  if (provider === "cursor" && tail6.some((l) => /ctrl\+c\s+to\s+stop/i.test(l))) return true;
+  if (provider === "copilot" && tail6.some((l) => /^\S?\s*Working\b.*\besc\b/u.test(l))) return true;
+  if (tail6.some((l) => /\b\d+\s+background terminal running\b/i.test(l))) return true;
+  if (tail6.some((l) => /esc to interrupt/i.test(l))) return true;
+  if (tail6.some((l) => /\bbackground terminal running\b/i.test(l))) return true;
+  if (tail6.some((l) => /^[·✻✢✳✶✽✺✹✸✷*]\s+[A-Za-z][A-Za-z0-9''-]*(?:\s+[A-Za-z][A-Za-z0-9''-]*){0,3}(?:…|\.{3})(?:\s*\(.*\))?$/u.test(l))) return true;
   return false;
 }
 function paneLooksReady(captured, provider) {
@@ -90811,7 +90811,7 @@ async function withDispatchLock(teamName, cwd2, fn) {
         );
       }
       const jitter = 0.5 + Math.random() * 0.5;
-      await new Promise((resolve88) => setTimeout(resolve88, Math.floor(pollMs * jitter)));
+      await new Promise((resolve89) => setTimeout(resolve89, Math.floor(pollMs * jitter)));
       pollMs = Math.min(pollMs * 2, DISPATCH_LOCK_MAX_POLL_MS);
     }
   }
@@ -94637,8 +94637,8 @@ async function startMergeOrchestrator(config2) {
   let persisted = { lastShas: {} };
   if ((0, import_node_fs21.existsSync)(persistedPath)) {
     try {
-      const { readFileSync: readFileSync196 } = await import("node:fs");
-      persisted = JSON.parse(readFileSync196(persistedPath, "utf-8"));
+      const { readFileSync: readFileSync197 } = await import("node:fs");
+      persisted = JSON.parse(readFileSync197(persistedPath, "utf-8"));
     } catch {
       persisted = { lastShas: {} };
     }
@@ -95020,8 +95020,8 @@ ${dirtyFiles.map((f) => `- \`${f}\``).join("\n")}`;
               return false;
             }
           })(),
-          new Promise((resolve88) => {
-            const t = setTimeout(() => resolve88(false), remaining);
+          new Promise((resolve89) => {
+            const t = setTimeout(() => resolve89(false), remaining);
             if (typeof t.unref === "function") t.unref();
           })
         ]);
@@ -95083,8 +95083,8 @@ async function recoverFromRestart(config2) {
   let persistedShasLoaded = 0;
   if ((0, import_node_fs21.existsSync)(persistedPath)) {
     try {
-      const { readFileSync: readFileSync196 } = await import("node:fs");
-      const persisted = JSON.parse(readFileSync196(persistedPath, "utf-8"));
+      const { readFileSync: readFileSync197 } = await import("node:fs");
+      const persisted = JSON.parse(readFileSync197(persistedPath, "utf-8"));
       persistedShasLoaded = Object.keys(persisted.lastShas ?? {}).length;
     } catch {
       persistedShasLoaded = 0;
@@ -95291,7 +95291,7 @@ async function waitForRecoveryGateRecord(path30, expected, timeoutMs, pollInterv
       if (value.recovery_id === expected.recovery_id && value.worker_name === expected.worker_name && value.replacement_generation === expected.replacement_generation && value.pane_attempt_id === expected.pane_attempt_id && value.launch_attempt_id === expected.launch_attempt_id && value.launch_nonce === expected.launch_nonce) return true;
     } catch {
     }
-    await new Promise((resolve88) => setTimeout(resolve88, pollIntervalMs));
+    await new Promise((resolve89) => setTimeout(resolve89, pollIntervalMs));
   }
   return false;
 }
@@ -96438,10 +96438,10 @@ var init_config4 = __esm({
 });
 
 // src/team/sdk-policy.ts
-function gitSubcommandDeny(tail5, reason) {
+function gitSubcommandDeny(tail6, reason) {
   return [
-    { re: new RegExp(String.raw`(?:^|[\s;&|("'/\\])git(?:\.exe)?["']?${GIT_GLOBAL_OPTIONS}\s+${tail5}`, "i"), reason },
-    { re: new RegExp(String.raw`\bgit\b[\s\S]*\$\{?\w+\}?${GIT_GLOBAL_OPTIONS}\s+${tail5}`, "i"), reason }
+    { re: new RegExp(String.raw`(?:^|[\s;&|("'/\\])git(?:\.exe)?["']?${GIT_GLOBAL_OPTIONS}\s+${tail6}`, "i"), reason },
+    { re: new RegExp(String.raw`\bgit\b[\s\S]*\$\{?\w+\}?${GIT_GLOBAL_OPTIONS}\s+${tail6}`, "i"), reason }
   ];
 }
 function normalizeShellCommand(command) {
@@ -96813,6 +96813,35 @@ function resolveRequireDeniedPaths(layers) {
   if (base) return { require: true, source: "the base .copilot/omg.jsonc" };
   return { require: false, source: user === false || base === false ? "config" : "default" };
 }
+function resolveGateIsolation(layers, nodeVersion = process.versions.node) {
+  const block2 = (config2) => {
+    const raw2 = config2?.factory?.run?.sandbox;
+    return raw2 && typeof raw2 === "object" && !Array.isArray(raw2) ? raw2 : {};
+  };
+  const base = block2(layers.base);
+  const ignoredBase = ["isolation", "container"].filter((k) => base[k] !== void 0).map((k) => `factory.run.sandbox.${k}`);
+  const user = block2(layers.user);
+  const bad = (key, want) => {
+    throw new Error(`user config: factory.run.sandbox.${key} must be ${want}`);
+  };
+  const isolation = user.isolation === void 0 ? "copilot" : user.isolation === "copilot" || user.isolation === "container" ? user.isolation : bad("isolation", '"copilot" or "container"');
+  const raw = user.container ?? {};
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) bad("container", "an object");
+  const c = raw;
+  const unknown2 = Object.keys(c).filter((k) => !CONTAINER_KEYS.includes(k));
+  if (unknown2.length > 0) bad("container", `an object with only ${CONTAINER_KEYS.join(", ")} (got ${unknown2.join(", ")})`);
+  const int2 = (key, min, max, fallback) => {
+    const v = c[key];
+    if (v === void 0) return fallback;
+    return typeof v === "number" && Number.isInteger(v) && v >= min && v <= max ? v : bad(`container.${key}`, `an integer from ${min} to ${max}`);
+  };
+  const runtime2 = c.runtime === void 0 ? "docker" : c.runtime === "docker" || c.runtime === "podman" ? c.runtime : bad("container.runtime", '"docker" or "podman"');
+  const image = c.image === void 0 ? defaultGateImage(nodeVersion) : typeof c.image === "string" && /^[A-Za-z0-9][A-Za-z0-9._/:@-]{0,254}$/.test(c.image) ? c.image : bad("container.image", "an image reference (letters, digits and . _ / : @ -, not starting with -)");
+  const memory = c.memory === void 0 ? "4g" : typeof c.memory === "string" && /^[1-9]\d{0,5}[kmg]$/i.test(c.memory) ? c.memory : bad("container.memory", 'a size such as "4g" or "512m"');
+  const cpus2 = c.cpus === void 0 ? 2 : typeof c.cpus === "number" && c.cpus > 0 && c.cpus <= 64 ? c.cpus : bad("container.cpus", "a number above 0 and at most 64");
+  const container = { runtime: runtime2, image, memory, cpus: cpus2, pidsLimit: int2("pidsLimit", 64, 65536, 1024), installTimeoutMinutes: int2("installTimeoutMinutes", 1, 120, 15) };
+  return { isolation, ...isolation === "container" ? { container } : {}, ignoredBase };
+}
 function sameRealPath(real2, want, platform) {
   let w;
   try {
@@ -97096,8 +97125,8 @@ function rpcMethod(root2, path30, name) {
     return null;
   }
 }
-function bwrapTrialLaunchError(spawn20 = defaultTrialSpawner, timeoutMs = 1e4) {
-  const r = spawn20("bwrap", BWRAP_TRIAL_ARGS, timeoutMs);
+function bwrapTrialLaunchError(spawn21 = defaultTrialSpawner, timeoutMs = 1e4) {
+  const r = spawn21("bwrap", BWRAP_TRIAL_ARGS, timeoutMs);
   if (r.error?.code === "ENOENT") return "bwrap (bubblewrap) is not on PATH, and the Linux sandbox runs every shell under it: install bubblewrap";
   if (r.error) return `a trial bwrap launch failed: ${errText(r.error)}`;
   if (r.status === 0) return null;
@@ -97255,7 +97284,7 @@ function allowlistSessionEnv(env2, jobHome) {
   }
   return { ...out, ...relocatedProfileEnv(jobHome) };
 }
-var import_node_child_process14, import_node_fs23, import_node_path27, SANDBOX_SHELL_TOOLS, REVIEW_READ_TOOLS, REVIEW_SHELL_TOOLS, DEFAULT_SANDBOX_SETTINGS, SANDBOX_KILL_ENV, isStringArray4, GATES_SANDBOX_MODES, REGISTRY_HOSTS, errText, BWRAP_TRIAL_ARGS, defaultTrialSpawner, cachedBwrapTrial, SESSION_ENV_ALLOWLIST, MXC_REQUIRED_ENV, TOKEN_PATTERN;
+var import_node_child_process14, import_node_fs23, import_node_path27, SANDBOX_SHELL_TOOLS, REVIEW_READ_TOOLS, REVIEW_SHELL_TOOLS, DEFAULT_SANDBOX_SETTINGS, SANDBOX_KILL_ENV, isStringArray4, GATES_SANDBOX_MODES, CONTAINER_KEYS, defaultGateImage, REGISTRY_HOSTS, errText, BWRAP_TRIAL_ARGS, defaultTrialSpawner, cachedBwrapTrial, SESSION_ENV_ALLOWLIST, MXC_REQUIRED_ENV, TOKEN_PATTERN;
 var init_sandbox2 = __esm({
   "src/copilot-run/sandbox.ts"() {
     "use strict";
@@ -97285,6 +97314,8 @@ var init_sandbox2 = __esm({
     SANDBOX_KILL_ENV = "OMG_SANDBOX";
     isStringArray4 = (v) => Array.isArray(v) && v.every((x) => typeof x === "string");
     GATES_SANDBOX_MODES = ["enforced", "ack", "unsandboxed"];
+    CONTAINER_KEYS = ["runtime", "image", "memory", "cpus", "pidsLimit", "installTimeoutMinutes"];
+    defaultGateImage = (nodeVersion = process.versions.node) => `node:${nodeVersion.split(".")[0]}-bookworm-slim`;
     REGISTRY_HOSTS = ["registry.npmjs.org", "*.npmjs.org"];
     errText = (err) => err instanceof Error ? err.message : String(err);
     BWRAP_TRIAL_ARGS = ["--ro-bind", "/", "/", "--dev", "/dev", "--unshare-all", "--die-with-parent", "--", "true"];
@@ -97371,7 +97402,7 @@ function hasExited(child) {
 function runAsync(spawnFn, spawnSyncFn, command, args, opts) {
   const started = Date.now();
   const maxOutput = opts.maxOutput ?? DEFAULT_MAX_OUTPUT;
-  return new Promise((resolve88) => {
+  return new Promise((resolve89) => {
     let stdout = "";
     let stderr = "";
     let timedOut = false;
@@ -97380,7 +97411,7 @@ function runAsync(spawnFn, spawnSyncFn, command, args, opts) {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      resolve88({ ...result, stdout, stderr, timedOut, durationMs: Date.now() - started });
+      resolve89({ ...result, stdout, stderr, timedOut, durationMs: Date.now() - started });
     };
     let child;
     try {
@@ -97393,7 +97424,7 @@ function runAsync(spawnFn, spawnSyncFn, command, args, opts) {
         detached: useProcessGroup()
       });
     } catch (err) {
-      resolve88({ code: null, signal: null, stdout, stderr, timedOut, error: err.message, durationMs: Date.now() - started });
+      resolve89({ code: null, signal: null, stdout, stderr, timedOut, error: err.message, durationMs: Date.now() - started });
       return;
     }
     const timer = setTimeout(() => {
@@ -97585,11 +97616,11 @@ function pathMatchers(dirs) {
       spellings.set(jsonEscape(back), String.raw`\\\\`);
       spellings.set(jsonEscape(jsonEscape(back)), String.raw`\\\\\\\\`);
     }
-    for (const [spelling, sep25] of spellings) {
+    for (const [spelling, sep26] of spellings) {
       out.push({
         name,
         headLength: spelling.length,
-        pattern: new RegExp(`${escapeRegExp3(spelling)}(?!${SEGMENT_CHAR})(?:(?:${sep25}|/)${SEGMENT_CHAR}+)*`, win ? "gi" : "g")
+        pattern: new RegExp(`${escapeRegExp3(spelling)}(?!${SEGMENT_CHAR})(?:(?:${sep26}|/)${SEGMENT_CHAR}+)*`, win ? "gi" : "g")
       });
     }
   }
@@ -97610,11 +97641,11 @@ function substitutePaths(text4, dirs, onHit) {
 }
 function restorePlaceholders(text4, dirs, options = {}) {
   const depth = options.jsonDepth ?? 0;
-  return text4.replace(/\$\{(PROJECT|HOME|ROOT|REMOTE|TMP|USERHOME)\}((?:\/[^\\/\s"'<>|:*?]+)*)/g, (match, name, tail5) => {
+  return text4.replace(/\$\{(PROJECT|HOME|ROOT|REMOTE|TMP|USERHOME)\}((?:\/[^\\/\s"'<>|:*?]+)*)/g, (match, name, tail6) => {
     const dir = dirs[name]?.replace(/[\\/]+$/, "");
     if (!dir) return match;
     const nativeBack = options.separator === "native" && isWindowsPath2(dir);
-    let path30 = nativeBack ? `${dir.replace(/\//g, "\\")}${tail5.replace(/\//g, "\\")}` : `${dir.replace(/\\/g, "/")}${tail5}`;
+    let path30 = nativeBack ? `${dir.replace(/\//g, "\\")}${tail6.replace(/\//g, "\\")}` : `${dir.replace(/\\/g, "/")}${tail6}`;
     for (let i = 0; i < depth; i++) path30 = jsonEscape(path30);
     return path30;
   });
@@ -97751,7 +97782,7 @@ var init_redact2 = __esm({
     PCT_SEG = String.raw`(?:[^\\/\s"'<>|:*?%]|%(?!5C|2F)[0-9A-F]{2})+`;
     POSIX_SEG = String.raw`[^/\s"'\\<>|:*?]+`;
     PCT_SEP = String.raw`(?:%5C|%2F|\/)`;
-    spaced = (seg, sep25) => `(?:${seg}(?: ${seg})+(?=${sep25})|${seg})`;
+    spaced = (seg, sep26) => `(?:${seg}(?: ${seg})+(?=${sep26})|${seg})`;
     USER_HOME_PATHS = userHomePatterns(spaced(WIN_SEG, String.raw`[\\/]`), PCT_SEG, spaced(POSIX_SEG, "/"), "g");
     jsonEscape = (s) => JSON.stringify(s).slice(1, -1);
     KEY_ENV = /HMAC|_KEY$/i;
@@ -98402,11 +98433,11 @@ function readJsonl(file) {
     throw err;
   }
   const lines4 = text4.split("\n");
-  const tail5 = lines4.pop() ?? "";
+  const tail6 = lines4.pop() ?? "";
   const out = lines4.filter((line2) => line2.trim() !== "").map((line2) => JSON.parse(line2));
-  if (tail5.trim() !== "") {
+  if (tail6.trim() !== "") {
     try {
-      out.push(JSON.parse(tail5));
+      out.push(JSON.parse(tail6));
     } catch {
     }
   }
@@ -98894,11 +98925,11 @@ function addRecordingDenyLiterals(values) {
   for (const v of values) if (v) extraDenyLiterals.add(v);
 }
 function deferred() {
-  let resolve88;
+  let resolve89;
   const promise = new Promise((r) => {
-    resolve88 = r;
+    resolve89 = r;
   });
-  return { promise, resolve: resolve88 };
+  return { promise, resolve: resolve89 };
 }
 function createRecordingHandler(Base, recorderOf) {
   class RecordingHandler extends Base {
@@ -99568,8 +99599,8 @@ function exportPath(target, condition) {
   if (typeof cond === "string") return cond;
   return typeof cond?.default === "string" ? cond.default : void 0;
 }
-function npmRootG(env2, spawnSync22) {
-  const res = process.platform === "win32" ? spawnSync22("npm root -g", { env: env2, encoding: "utf8", timeout: 15e3, windowsHide: true, shell: true }) : spawnSync22("npm", ["root", "-g"], { env: env2, encoding: "utf8", timeout: 15e3 });
+function npmRootG(env2, spawnSync23) {
+  const res = process.platform === "win32" ? spawnSync23("npm root -g", { env: env2, encoding: "utf8", timeout: 15e3, windowsHide: true, shell: true }) : spawnSync23("npm", ["root", "-g"], { env: env2, encoding: "utf8", timeout: 15e3 });
   const out = String(res.stdout ?? "").trim();
   return res.status === 0 && out ? out : null;
 }
@@ -99609,11 +99640,11 @@ function resolveShimTarget(shim, read = (p) => (0, import_fs103.readFileSync)(p,
   }
   return null;
 }
-async function loadCopilotSdk(env2 = process.env, spawnSync22 = import_child_process30.spawnSync) {
-  const found = await findCopilotSdk(env2, spawnSync22);
+async function loadCopilotSdk(env2 = process.env, spawnSync23 = import_child_process30.spawnSync) {
+  const found = await findCopilotSdk(env2, spawnSync23);
   return found ? withCassette(found, env2) : null;
 }
-async function findCopilotSdk(env2, spawnSync22) {
+async function findCopilotSdk(env2, spawnSync23) {
   const spec = SDK_PACKAGE;
   try {
     const mod = await import(spec);
@@ -99636,7 +99667,7 @@ async function findCopilotSdk(env2, spawnSync22) {
     const hit2 = await tryRoot(root2);
     if (hit2) return hit2;
   }
-  return tryRoot(npmRootG(env2, spawnSync22));
+  return tryRoot(npmRootG(env2, spawnSync23));
 }
 function withTimeout2(promise, ms, label2) {
   let timer;
@@ -99685,8 +99716,8 @@ function pidAlive(pid) {
     return err.code === "EPERM";
   }
 }
-function prepareSdkProject(spawnSync22, projectDir, remoteDir, env2) {
-  const git8 = (args, cwd2) => spawnSync22("git", args, { cwd: cwd2, env: env2, encoding: "utf8", timeout: 3e4, windowsHide: true });
+function prepareSdkProject(spawnSync23, projectDir, remoteDir, env2) {
+  const git8 = (args, cwd2) => spawnSync23("git", args, { cwd: cwd2, env: env2, encoding: "utf8", timeout: 3e4, windowsHide: true });
   (0, import_fs103.mkdirSync)(projectDir, { recursive: true });
   (0, import_fs103.writeFileSync)((0, import_path125.join)(projectDir, "hello.txt"), "omg smoke fixture\n");
   const steps = [
@@ -99767,8 +99798,8 @@ function collectFiletools(projectDir, probe) {
     created: read(FILETOOLS_FILES.created) !== null
   };
 }
-function remoteRefs(spawnSync22, remoteDir, env2) {
-  const res = spawnSync22("git", ["--git-dir", remoteDir, "for-each-ref"], { env: env2, encoding: "utf8", timeout: 3e4, windowsHide: true });
+function remoteRefs(spawnSync23, remoteDir, env2) {
+  const res = spawnSync23("git", ["--git-dir", remoteDir, "for-each-ref"], { env: env2, encoding: "utf8", timeout: 3e4, windowsHide: true });
   return res.status === 0 ? String(res.stdout ?? "") : null;
 }
 function scenarioPlaceholderDirs(input, name) {
@@ -99894,7 +99925,7 @@ async function runSdkTier(input) {
       }
       const path30 = (0, import_path125.join)(input.home, `events-${name}.jsonl`);
       events[name] = path30;
-      if (entries.length > 0) await new Promise((resolve88) => setTimeout(resolve88, 2));
+      if (entries.length > 0) await new Promise((resolve89) => setTimeout(resolve89, 2));
       const start = Date.now();
       const { wedged: stuck, ...run3 } = name === "chain" ? await input.runChain({
         bin,
@@ -101021,7 +101052,7 @@ async function waitForStartupEvidenceBudget(hasEvidence, budgetMs, delayMs = WOR
     if (await hasEvidence()) return true;
     const remainingMs = deadline - Date.now();
     if (remainingMs <= 0) return false;
-    await new Promise((resolve88) => setTimeout(resolve88, Math.min(delayMs, remainingMs)));
+    await new Promise((resolve89) => setTimeout(resolve89, Math.min(delayMs, remainingMs)));
   }
 }
 async function waitForWorkerStartupEvidence(teamName, workerName, taskId, cwd2, baseline, launchAttemptId, budgetMs, delayMs = WORKER_STARTUP_EVIDENCE_POLL_INTERVAL_MS) {
@@ -102008,14 +102039,14 @@ async function readOrCreateRecoveryAttempt(input, recoveryId, replacementGenerat
   }
 }
 function waitForBootstrapRecoveryEvidence(delayMs, signal) {
-  return new Promise((resolve88, reject2) => {
+  return new Promise((resolve89, reject2) => {
     if (signal?.aborted) {
       reject2(signal.reason ?? new Error("bootstrap_recovery_evidence_aborted"));
       return;
     }
     const timer = setTimeout(() => {
       signal?.removeEventListener("abort", onAbort);
-      resolve88();
+      resolve89();
     }, delayMs);
     const onAbort = () => {
       clearTimeout(timer);
@@ -104256,7 +104287,7 @@ async function processCliWorkerVerdictsUnderLock(teamName, cwd2, expectedInstanc
     ).catch(logCursorTransitionMarkerFailure);
   };
   const { rename: rename9 } = await import("fs/promises");
-  const { renameSync: renameSync26, readFileSync: readFileSync196, existsSync: fsExistsSync } = await import("fs");
+  const { renameSync: renameSync26, readFileSync: readFileSync197, existsSync: fsExistsSync } = await import("fs");
   const { withFileLockSync: withFileLockSync2 } = await Promise.resolve().then(() => (init_file_lock(), file_lock_exports));
   const quarantineNonCursorVerdict = async (outputFile, artifactFingerprint, workerName, taskId, taskVersion, reason) => {
     const stalePath = nonCursorVerdictStalePath(outputFile, artifactFingerprint);
@@ -104337,7 +104368,7 @@ async function processCliWorkerVerdictsUnderLock(teamName, cwd2, expectedInstanc
               return;
             }
           }
-          const raw = readFileSync196(outputFile, "utf-8");
+          const raw = readFileSync197(outputFile, "utf-8");
           parseCliWorkerVerdict(raw);
           renameSync26(outputFile, processingOutputFile);
           verdictFile = processingOutputFile;
@@ -106517,7 +106548,7 @@ function createRemoteApprovalGate(options) {
   const pollIntervalMs = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS3;
   const timeoutPolicy = options.timeoutPolicy ?? DEFAULT_TIMEOUT_POLICY;
   const now2 = options.now ?? (() => Date.now());
-  const sleep13 = options.sleep ?? ((ms) => new Promise((resolve88) => setTimeout(resolve88, ms)));
+  const sleep13 = options.sleep ?? ((ms) => new Promise((resolve89) => setTimeout(resolve89, ms)));
   return {
     async prompt(request) {
       const runDir = resolveRunDirHandle(options.runsRoot, options.runId);
@@ -107000,7 +107031,7 @@ async function pollTelegram(config2, state, rateLimiter) {
   try {
     const offset = state.telegramLastUpdateId ? state.telegramLastUpdateId + 1 : 0;
     const path30 = `/bot${config2.telegramBotToken}/getUpdates?offset=${offset}&timeout=0`;
-    const updates = await new Promise((resolve88, reject2) => {
+    const updates = await new Promise((resolve89, reject2) => {
       const req = (0, import_https2.request)(
         {
           hostname: "api.telegram.org",
@@ -107017,7 +107048,7 @@ async function pollTelegram(config2, state, rateLimiter) {
             try {
               const body = JSON.parse(Buffer.concat(chunks2).toString("utf-8"));
               if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
-                resolve88(body.result || []);
+                resolve89(body.result || []);
               } else {
                 reject2(new Error(`HTTP ${res.statusCode}`));
               }
@@ -107068,7 +107099,7 @@ async function pollTelegram(config2, state, rateLimiter) {
               text: `Approval recorded: ${decision}`,
               reply_to_message_id: msg.message_id
             });
-            await new Promise((resolve88) => {
+            await new Promise((resolve89) => {
               const confirmReq = (0, import_https2.request)(
                 {
                   hostname: "api.telegram.org",
@@ -107083,13 +107114,13 @@ async function pollTelegram(config2, state, rateLimiter) {
                 },
                 (res) => {
                   res.resume();
-                  resolve88();
+                  resolve89();
                 }
               );
-              confirmReq.on("error", () => resolve88());
+              confirmReq.on("error", () => resolve89());
               confirmReq.on("timeout", () => {
                 confirmReq.destroy();
-                resolve88();
+                resolve89();
               });
               confirmReq.write(confirmBody);
               confirmReq.end();
@@ -107126,7 +107157,7 @@ async function pollTelegram(config2, state, rateLimiter) {
             text: "Injected into Claude Code session.",
             reply_to_message_id: msg.message_id
           });
-          await new Promise((resolve88) => {
+          await new Promise((resolve89) => {
             const replyReq = (0, import_https2.request)(
               {
                 hostname: "api.telegram.org",
@@ -107141,13 +107172,13 @@ async function pollTelegram(config2, state, rateLimiter) {
               },
               (res) => {
                 res.resume();
-                resolve88();
+                resolve89();
               }
             );
-            replyReq.on("error", () => resolve88());
+            replyReq.on("error", () => resolve89());
             replyReq.on("timeout", () => {
               replyReq.destroy();
-              resolve88();
+              resolve89();
             });
             replyReq.write(replyBody);
             replyReq.end();
@@ -107299,13 +107330,13 @@ async function pollLoop() {
         }
       }
       writeDaemonState(state);
-      await new Promise((resolve88) => setTimeout(resolve88, config2.pollIntervalMs));
+      await new Promise((resolve89) => setTimeout(resolve89, config2.pollIntervalMs));
     } catch (error2) {
       state.errors++;
       state.lastError = redactTokens(error2 instanceof Error ? error2.message : String(error2));
       log(`Poll error: ${state.lastError}`);
       writeDaemonState(state);
-      await new Promise((resolve88) => setTimeout(resolve88, config2.pollIntervalMs * 2));
+      await new Promise((resolve89) => setTimeout(resolve89, config2.pollIntervalMs * 2));
     }
   }
   log("Poll loop ended");
@@ -116600,7 +116631,7 @@ function validateCredentials(creds) {
   return !isCredentialExpired(creds);
 }
 function refreshAccessToken(refreshToken) {
-  return new Promise((resolve88) => {
+  return new Promise((resolve89) => {
     const clientId = process.env.CLAUDE_CODE_OAUTH_CLIENT_ID || DEFAULT_OAUTH_CLIENT_ID;
     const body = new URLSearchParams({
       grant_type: "refresh_token",
@@ -116628,7 +116659,7 @@ function refreshAccessToken(refreshToken) {
             try {
               const parsed2 = JSON.parse(data);
               if (parsed2.access_token) {
-                resolve88({
+                resolve89({
                   accessToken: parsed2.access_token,
                   refreshToken: parsed2.refresh_token || refreshToken,
                   expiresAt: parsed2.expires_in ? Date.now() + parsed2.expires_in * 1e3 : parsed2.expires_at
@@ -116641,14 +116672,14 @@ function refreshAccessToken(refreshToken) {
           if (process.env.OMC_DEBUG) {
             console.error(`[usage-api] Token refresh failed: HTTP ${res.statusCode}`);
           }
-          resolve88(null);
+          resolve89(null);
         });
       }
     );
-    req.on("error", () => resolve88(null));
+    req.on("error", () => resolve89(null));
     req.on("timeout", () => {
       req.destroy();
-      resolve88(null);
+      resolve89(null);
     });
     req.end(body);
   });
@@ -116661,7 +116692,7 @@ function buildUserAgent(clientVersion) {
 }
 function fetchUsageFromApi(accessToken, clientVersion) {
   const userAgent = buildUserAgent(clientVersion);
-  return new Promise((resolve88) => {
+  return new Promise((resolve89) => {
     const req = import_https3.default.request(
       {
         hostname: "api.anthropic.com",
@@ -116683,27 +116714,27 @@ function fetchUsageFromApi(accessToken, clientVersion) {
         res.on("end", () => {
           if (res.statusCode === 200) {
             try {
-              resolve88({ data: JSON.parse(data) });
+              resolve89({ data: JSON.parse(data) });
             } catch {
-              resolve88({ data: null });
+              resolve89({ data: null });
             }
           } else if (res.statusCode === 429) {
             if (process.env.OMC_DEBUG) {
               console.error(`[usage-api] Anthropic API returned 429 (rate limited)`);
             }
-            resolve88({ data: null, rateLimited: true });
+            resolve89({ data: null, rateLimited: true });
           } else if (res.statusCode === 403) {
-            fetchUsageViaRateLimitHeaders(accessToken, clientVersion).then(resolve88);
+            fetchUsageViaRateLimitHeaders(accessToken, clientVersion).then(resolve89);
           } else {
-            resolve88({ data: null });
+            resolve89({ data: null });
           }
         });
       }
     );
-    req.on("error", () => resolve88({ data: null }));
+    req.on("error", () => resolve89({ data: null }));
     req.on("timeout", () => {
       req.destroy();
-      resolve88({ data: null });
+      resolve89({ data: null });
     });
     req.end();
   });
@@ -116746,7 +116777,7 @@ function fetchUsageViaRateLimitHeaders(accessToken, clientVersion) {
     max_tokens: 1,
     messages: [{ role: "user", content: "." }]
   });
-  return new Promise((resolve88) => {
+  return new Promise((resolve89) => {
     const req = import_https3.default.request(
       {
         hostname: "api.anthropic.com",
@@ -116767,34 +116798,34 @@ function fetchUsageViaRateLimitHeaders(accessToken, clientVersion) {
         });
         res.on("end", () => {
           if (res.statusCode === 200) {
-            resolve88({ data: rateLimitHeadersToUsage(res.headers) });
+            resolve89({ data: rateLimitHeadersToUsage(res.headers) });
           } else {
-            resolve88({ data: null, rateLimited: res.statusCode === 429 });
+            resolve89({ data: null, rateLimited: res.statusCode === 429 });
           }
         });
       }
     );
-    req.on("error", () => resolve88({ data: null }));
+    req.on("error", () => resolve89({ data: null }));
     req.on("timeout", () => {
       req.destroy();
-      resolve88({ data: null });
+      resolve89({ data: null });
     });
     req.write(body);
     req.end();
   });
 }
 function fetchUsageFromZai() {
-  return new Promise((resolve88) => {
+  return new Promise((resolve89) => {
     const baseUrl = process.env.ANTHROPIC_BASE_URL;
     const authToken = process.env.ANTHROPIC_AUTH_TOKEN;
     if (!baseUrl || !authToken) {
-      resolve88({ data: null });
+      resolve89({ data: null });
       return;
     }
     const validation = validateAnthropicBaseUrl(baseUrl);
     if (!validation.allowed) {
       console.error(`[SSRF Guard] Blocking usage API call: ${validation.reason}`);
-      resolve88({ data: null });
+      resolve89({ data: null });
       return;
     }
     try {
@@ -116822,29 +116853,29 @@ function fetchUsageFromZai() {
           res.on("end", () => {
             if (res.statusCode === 200) {
               try {
-                resolve88({ data: JSON.parse(data) });
+                resolve89({ data: JSON.parse(data) });
               } catch {
-                resolve88({ data: null });
+                resolve89({ data: null });
               }
             } else if (res.statusCode === 429) {
               if (process.env.OMC_DEBUG) {
                 console.error(`[usage-api] z.ai API returned 429 (rate limited)`);
               }
-              resolve88({ data: null, rateLimited: true });
+              resolve89({ data: null, rateLimited: true });
             } else {
-              resolve88({ data: null });
+              resolve89({ data: null });
             }
           });
         }
       );
-      req.on("error", () => resolve88({ data: null }));
+      req.on("error", () => resolve89({ data: null }));
       req.on("timeout", () => {
         req.destroy();
-        resolve88({ data: null });
+        resolve89({ data: null });
       });
       req.end();
     } catch {
-      resolve88({ data: null });
+      resolve89({ data: null });
     }
   });
 }
@@ -117110,16 +117141,16 @@ function parseZaiResponse(response) {
   return result;
 }
 function fetchUsageFromMinimax(apiKey) {
-  return new Promise((resolve88) => {
+  return new Promise((resolve89) => {
     const baseUrl = process.env.ANTHROPIC_BASE_URL;
     if (!baseUrl) {
-      resolve88({ data: null });
+      resolve89({ data: null });
       return;
     }
     const validation = validateAnthropicBaseUrl(baseUrl);
     if (!validation.allowed) {
       console.error(`[SSRF Guard] Blocking usage API call: ${validation.reason}`);
-      resolve88({ data: null });
+      resolve89({ data: null });
       return;
     }
     try {
@@ -117146,29 +117177,29 @@ function fetchUsageFromMinimax(apiKey) {
           res.on("end", () => {
             if (res.statusCode === 200) {
               try {
-                resolve88({ data: JSON.parse(data) });
+                resolve89({ data: JSON.parse(data) });
               } catch {
-                resolve88({ data: null });
+                resolve89({ data: null });
               }
             } else if (res.statusCode === 429) {
               if (process.env.OMC_DEBUG) {
                 console.error(`[usage-api] MiniMax API returned 429 (rate limited)`);
               }
-              resolve88({ data: null, rateLimited: true });
+              resolve89({ data: null, rateLimited: true });
             } else {
-              resolve88({ data: null });
+              resolve89({ data: null });
             }
           });
         }
       );
-      req.on("error", () => resolve88({ data: null }));
+      req.on("error", () => resolve89({ data: null }));
       req.on("timeout", () => {
         req.destroy();
-        resolve88({ data: null });
+        resolve89({ data: null });
       });
       req.end();
     } catch {
-      resolve88({ data: null });
+      resolve89({ data: null });
     }
   });
 }
@@ -117208,16 +117239,16 @@ function parseMinimaxResponse(response) {
   };
 }
 function fetchUsageFromKimi(apiKey) {
-  return new Promise((resolve88) => {
+  return new Promise((resolve89) => {
     const baseUrl = process.env.ANTHROPIC_BASE_URL;
     if (!baseUrl) {
-      resolve88({ data: null });
+      resolve89({ data: null });
       return;
     }
     const validation = validateAnthropicBaseUrl(baseUrl);
     if (!validation.allowed) {
       console.error(`[SSRF Guard] Blocking usage API call: ${validation.reason}`);
-      resolve88({ data: null });
+      resolve89({ data: null });
       return;
     }
     try {
@@ -117228,7 +117259,7 @@ function fetchUsageFromKimi(apiKey) {
             `[usage-api] Refusing to send Kimi credentials to non-canonical host '${hostname7}'`
           );
         }
-        resolve88({ data: null });
+        resolve89({ data: null });
         return;
       }
       const req = import_https3.default.request(
@@ -117244,37 +117275,37 @@ function fetchUsageFromKimi(apiKey) {
         },
         (res) => {
           let data = "";
-          res.on("error", () => resolve88({ data: null }));
-          res.on("aborted", () => resolve88({ data: null }));
+          res.on("error", () => resolve89({ data: null }));
+          res.on("aborted", () => resolve89({ data: null }));
           res.on("data", (chunk) => {
             data += chunk;
           });
           res.on("end", () => {
             if (res.statusCode === 200) {
               try {
-                resolve88({ data: JSON.parse(data) });
+                resolve89({ data: JSON.parse(data) });
               } catch {
-                resolve88({ data: null });
+                resolve89({ data: null });
               }
             } else if (res.statusCode === 429) {
               if (process.env.OMC_DEBUG) {
                 console.error(`[usage-api] Kimi API returned 429 (rate limited)`);
               }
-              resolve88({ data: null, rateLimited: true });
+              resolve89({ data: null, rateLimited: true });
             } else {
-              resolve88({ data: null });
+              resolve89({ data: null });
             }
           });
         }
       );
-      req.on("error", () => resolve88({ data: null }));
+      req.on("error", () => resolve89({ data: null }));
       req.on("timeout", () => {
         req.destroy();
-        resolve88({ data: null });
+        resolve89({ data: null });
       });
       req.end();
     } catch {
-      resolve88({ data: null });
+      resolve89({ data: null });
     }
   });
 }
@@ -118071,15 +118102,15 @@ var init_governor = __esm({
 // src/smoke/copilot-binary.ts
 function resolveCopilotBinary(override, env2, deps = {}) {
   const exists = deps.existsSync ?? import_fs138.existsSync;
-  const resolve88 = deps.resolveExecutable ?? ((name) => resolveExecutable(name));
+  const resolve89 = deps.resolveExecutable ?? ((name) => resolveExecutable(name));
   const list3 = deps.readdirSync ?? ((p) => (0, import_fs138.readdirSync)(p));
   const platform = deps.platform ?? process.platform;
   if (override) {
     if (exists(override)) return { bin: override, source: "override" };
-    const found = resolve88(override);
+    const found = resolve89(override);
     return found ? { bin: found, source: "override" } : { bin: null, source: null };
   }
-  const onPath = resolve88("copilot");
+  const onPath = resolve89("copilot");
   if (onPath) return { bin: onPath, source: "path" };
   const envPath = env2.COPILOT_CLI_PATH?.trim();
   if (envPath && exists(envPath)) return { bin: envPath, source: "COPILOT_CLI_PATH" };
@@ -118579,23 +118610,23 @@ function startListener(config2, deps = {}) {
   }
   const startedAt = (/* @__PURE__ */ new Date()).toISOString();
   const host = config2.host || "127.0.0.1";
-  let tail5 = Promise.resolve();
+  let tail6 = Promise.resolve();
   const server = (0, import_http.createServer)((req, res) => {
-    tail5 = tail5.then(() => handleRequest(req, res, config2, deps, startedAt)).catch(() => {
+    tail6 = tail6.then(() => handleRequest(req, res, config2, deps, startedAt)).catch(() => {
       try {
         res.writeHead(500).end();
       } catch {
       }
     });
   });
-  return new Promise((resolve88) => {
+  return new Promise((resolve89) => {
     server.listen(config2.port, host, () => {
       (0, import_fs140.mkdirSync)((0, import_path166.join)(pidFilePath(config2.cwd), ".."), { recursive: true });
       const addr = server.address();
       const portForLog = addr && typeof addr !== "string" ? addr.port : config2.port;
       const hostForLog = addr && typeof addr !== "string" ? addr.address : host;
       (0, import_fs140.writeFileSync)(pidFilePath(config2.cwd), JSON.stringify({ pid: process.pid, port: portForLog, host: hostForLog, startedAt }, null, 2));
-      resolve88(server);
+      resolve89(server);
     });
   });
 }
@@ -121245,12 +121276,12 @@ var init_coding_agent_lane = __esm({
 
 // src/forge/review-feedback.ts
 function truncationMessage(pr, what) {
-  const tail5 = "so human feedback cannot be read completely.";
-  if (what === "reviewThreads") return `PR #${pr}: more than 100 review threads (resolved and outdated ones count), ${tail5} Delete the spam threads or lock the conversation on the forge, then rerun.`;
-  if (what === "latestReviews") return `PR #${pr}: more than 50 latest reviews, ${tail5} Dismiss or delete the surplus reviews on the forge, then rerun.`;
-  if (what === "reviewRequests") return `PR #${pr}: more than 20 pending review requests, ${tail5} Remove the surplus review requests on the forge, then rerun.`;
-  if (what.startsWith("comments of thread")) return `PR #${pr}: ${visibleLine(what)} has more than 20 comments, ${tail5} Resolve the thread or trim its comments on the forge, then rerun.`;
-  return `PR #${pr}: ${visibleLine(what)} has more entries than one read returns, ${tail5} Reduce it on the forge, then rerun.`;
+  const tail6 = "so human feedback cannot be read completely.";
+  if (what === "reviewThreads") return `PR #${pr}: more than 100 review threads (resolved and outdated ones count), ${tail6} Delete the spam threads or lock the conversation on the forge, then rerun.`;
+  if (what === "latestReviews") return `PR #${pr}: more than 50 latest reviews, ${tail6} Dismiss or delete the surplus reviews on the forge, then rerun.`;
+  if (what === "reviewRequests") return `PR #${pr}: more than 20 pending review requests, ${tail6} Remove the surplus review requests on the forge, then rerun.`;
+  if (what.startsWith("comments of thread")) return `PR #${pr}: ${visibleLine(what)} has more than 20 comments, ${tail6} Resolve the thread or trim its comments on the forge, then rerun.`;
+  return `PR #${pr}: ${visibleLine(what)} has more entries than one read returns, ${tail6} Reduce it on the forge, then rerun.`;
 }
 function assertReviewHead(pr, head, actual) {
   if (!REVIEW_HEAD.test(head)) throw new ReviewFeedbackError(`review feedback of PR ${pr}: ${JSON.stringify(head.slice(0, 60))} is not a full commit sha`);
@@ -122793,15 +122824,15 @@ function tokenize2(segment) {
   return tokens;
 }
 function realExistingPrefix(p) {
-  const tail5 = [];
+  const tail6 = [];
   let cur = (0, import_node_path34.resolve)(p);
   for (; ; ) {
     try {
-      return (0, import_node_path34.join)(import_node_fs28.realpathSync.native(cur), ...tail5.reverse());
+      return (0, import_node_path34.join)(import_node_fs28.realpathSync.native(cur), ...tail6.reverse());
     } catch {
       const parent = (0, import_node_path34.dirname)(cur);
       if (parent === cur) return (0, import_node_path34.resolve)(p);
-      tail5.push((0, import_node_path34.basename)(cur));
+      tail6.push((0, import_node_path34.basename)(cur));
       cur = parent;
     }
   }
@@ -127528,16 +127559,16 @@ var init_gate_procs = __esm({
 // src/factory/run/private-store.ts
 function canonicalExisting(p) {
   let head = (0, import_path188.resolve)(p);
-  const tail5 = [];
+  const tail6 = [];
   for (; ; ) {
     try {
-      return (0, import_path188.join)(import_fs161.realpathSync.native(head), ...tail5);
+      return (0, import_path188.join)(import_fs161.realpathSync.native(head), ...tail6);
     } catch (err) {
       if (err.code !== "ENOENT") throw new PrivateStoreError(`the path ${(0, import_path188.resolve)(p)} cannot be resolved`, String(err.message));
       if (lexists2(head)) throw new PrivateStoreError(`the path ${(0, import_path188.resolve)(p)} holds a dangling link at ${head}`);
       const up = (0, import_path188.dirname)(head);
       if (up === head) return (0, import_path188.resolve)(p);
-      tail5.unshift((0, import_path188.basename)(head));
+      tail6.unshift((0, import_path188.basename)(head));
       head = up;
     }
   }
@@ -128813,6 +128844,862 @@ var init_private_run = __esm({
   }
 });
 
+// src/factory/run/sandbox-exec.ts
+function sandboxShellCommand(platform, argv, cwd2, marker) {
+  if (argv.length === 0 || !/^[A-Za-z0-9-]+$/.test(marker) || [cwd2, ...argv].some((a) => a.includes("\0"))) return null;
+  if (platform === "win32") {
+    if (argv.some((a) => a === "" || a.includes('"'))) return null;
+    const payload2 = Buffer.from([cwd2, ...argv].join("\0"), "utf8").toString("base64");
+    return [
+      `$omgV = @([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${payload2}')).Split([char]0))`,
+      `if ($omgV.Count -eq ${argv.length + 1}) { Set-Location -LiteralPath $omgV[0] -ErrorAction Stop; $ErrorActionPreference = 'Continue'; $omgE = $omgV[1]; $omgR = @($omgV | Select-Object -Skip 2);$global:LASTEXITCODE = $null; & $omgE @omgR 2>&1 | ForEach-Object { $omgL = "$_"; if ($omgL.Length -gt ${SHELL_LINE_CHARS}) { $omgL.Substring(0, ${SHELL_LINE_CHARS}) } else { $omgL } } | Select-Object -Last ${SHELL_OUTPUT_LINES}; "${marker} $LASTEXITCODE" }`
+    ].join("; ");
+  }
+  const payload = Buffer.from([cwd2, ...argv].map((w) => `${w}\0`).join(""), "utf8").toString("base64");
+  return `omg_a=(); while IFS= read -r -d '' omg_w; do omg_a+=("$omg_w"); done < <(printf '%s' '${payload}' | base64 -d); if [ "\${#omg_a[@]}" -eq ${argv.length + 1} ] && omg_o=$(mktemp) && cd -- "\${omg_a[0]}"; then "\${omg_a[@]:1}" > "$omg_o" 2>&1; omg_s=$?; tail -c ${SHELL_OUTPUT_BYTES} -- "$omg_o"; rm -f -- "$omg_o"; printf '\\n%s %s\\n' '${marker}' "$omg_s"; fi`;
+}
+function sandboxCommandTooLong(platform, argv, cwd2) {
+  const command = sandboxShellCommand(platform, argv, cwd2, SIZING_MARKER);
+  return command !== null && command.length > sandboxCommandMaxChars(platform);
+}
+function splitFileListArgs(platform, exe, args, fixed, cwd2) {
+  if (!sandboxCommandTooLong(platform, [exe, ...args], cwd2) || args.length <= fixed + 1) return [[...args]];
+  const head = args.slice(0, fixed);
+  const parts = [];
+  let chunk = [];
+  for (const file of args.slice(fixed)) {
+    if (chunk.length > 0 && sandboxCommandTooLong(platform, [exe, ...head, ...chunk, file], cwd2)) {
+      parts.push([...head, ...chunk]);
+      chunk = [];
+    }
+    chunk.push(file);
+  }
+  parts.push([...head, ...chunk]);
+  return parts;
+}
+function readMarker(output, marker) {
+  const none = { code: null, output };
+  const count3 = (s) => output.split(s).length - 1;
+  if (count3(marker) !== 1 || count3(MARKER_PREFIX) !== (marker.includes(MARKER_PREFIX) ? 1 : 0)) return none;
+  const lines4 = output.split("\n");
+  let i = lines4.length - 1;
+  while (i >= 0 && lines4[i].trim() === "") i--;
+  const m = i >= 0 ? /^(\S+) (-?\d+)\r?$/.exec(lines4[i]) : null;
+  if (!m || m[1] !== marker) return none;
+  return { code: Number(m[2]), output: lines4.slice(0, i).join("\n") };
+}
+function redactGateOutput(text4) {
+  return redactSecrets(text4).replace(/(?:[A-Za-z0-9+/=]{40,}\r?\n)+-----END [A-Z0-9 ]*KEY-----/g, "[redacted]");
+}
+async function runSandboxed(argv, o, deps) {
+  const notStarted = (reason) => ({ ran: false, reason });
+  const refuse2 = (reason) => ({ ran: false, reason, refused: true });
+  const noVerdict = (reason) => ({ ran: false, reason, started: true });
+  const sleep13 = deps.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
+  const marker = `${MARKER_PREFIX}${(0, import_node_crypto17.randomBytes)(8).toString("hex")}`;
+  const command = sandboxShellCommand(deps.platform, argv, o.cwd, marker);
+  if (command === null) return refuse2("the command cannot be passed to the sandbox shell unchanged (a NUL, or on Windows an empty argument or a double quote)");
+  const max = sandboxCommandMaxChars(deps.platform);
+  if (command.length > max) {
+    return refuse2(`the command is too long for the sandbox shell: it encodes to ${command.length} characters, above the ${max} that ${deps.platform === "win32" ? "a Windows command line" : "one shell argument"} can safely carry; shorten the configured command`);
+  }
+  const jobHome = (0, import_node_path36.join)(o.jobRoot, `gate-${Date.now().toString(36)}-${(0, import_node_crypto17.randomBytes)(4).toString("hex")}`);
+  const workDir = (0, import_node_path36.join)(jobHome, "work");
+  let client = null;
+  let session = null;
+  let pid;
+  let started = false;
+  try {
+    (0, import_node_fs30.mkdirSync)(workDir, { recursive: true });
+    const loaded2 = await deps.loadSdk().catch(() => null);
+    if (!loaded2) return notStarted("@github/copilot-sdk is not installed or could not be loaded, so the sandbox cannot start");
+    const found = deps.resolveBin();
+    const bin = found && deps.platform === "win32" && /\.(cmd|bat|ps1)$/i.test(found) ? resolveShimTarget(found) : found;
+    if (!bin) return notStarted(found ? `copilot shim ${found} names no .js/.exe target` : "copilot CLI not found (PATH, COPILOT_CLI_PATH, WinGet), so the sandbox cannot start");
+    const ident = loginIdentity(deps.userConfigDir());
+    (0, import_node_fs30.writeFileSync)((0, import_node_path36.join)(jobHome, "config.json"), `${JSON.stringify({ ...ident, trustedFolders: [workDir] }, null, 2)}
+`);
+    const env2 = childEnv(allowlistSessionEnv(buildSessionEnv(deps.env, jobHome, { session: false, hasLogin: ident.loggedInUsers !== void 0 }), jobHome));
+    const missing = missingSandboxEnv(env2, deps.platform);
+    if (missing.length) return notStarted(`the sandbox env lacks ${missing.join(", ")}, which the Windows sandbox needs to launch any process`);
+    (0, import_node_fs30.mkdirSync)(env2.XDG_CONFIG_HOME, { recursive: true });
+    (0, import_node_fs30.mkdirSync)((0, import_node_path36.dirname)(env2.GIT_CONFIG_GLOBAL), { recursive: true });
+    (0, import_node_fs30.mkdirSync)(env2.TEMP, { recursive: true });
+    (0, import_node_fs30.writeFileSync)(env2.GIT_CONFIG_GLOBAL, "[credential]\n	helper =\n");
+    Object.assign(env2, { GIT_TERMINAL_PROMPT: "0", GCM_INTERACTIVE: "never", COPILOT_ALLOW_ALL: "false", GIT_CEILING_DIRECTORIES: (0, import_node_path36.resolve)(o.jobRoot) });
+    const gitHubToken = sessionGitHubToken(deps.env);
+    const { CopilotClient, RuntimeConnection } = loaded2.module;
+    const c = new CopilotClient({
+      connection: RuntimeConnection.forStdio({ path: bin, args: ["--max-ai-credits", String(RUNTIME_MIN_MAX_CREDITS)], env: env2 }),
+      baseDirectory: jobHome,
+      workingDirectory: workDir
+    });
+    client = c;
+    await withTimeout3(c.start(), START_TIMEOUT_MS3, "client.start()");
+    pid = runtimePid(c);
+    const pluginRoot = deps.pluginRoot();
+    const realHome = (deps.realHome ?? (() => (0, import_node_os10.userInfo)().homedir))();
+    const settings = { ...o.settings, enabled: true, writeUnsandboxed: "refuse", writeNetwork: o.network, extraReadwritePaths: [] };
+    const notes = [];
+    const sandbox = new SessionSandboxController({
+      profile: "write",
+      settings,
+      env: deps.env,
+      platform: deps.platform,
+      rpcTimeoutMs: RPC_TIMEOUT_MS3,
+      ...deps.sandboxTrialLaunch ? { trialLaunch: deps.sandboxTrialLaunch } : {},
+      policyContext: () => {
+        const proxy = proxyCaEnv(deps.env, deps.platform, realHome);
+        return {
+          worktree: (0, import_node_path36.resolve)(o.cwd),
+          commonGitDir: (0, import_node_path36.resolve)(o.commonGitDir),
+          pluginRoot,
+          jobHome,
+          jobDir: jobHome,
+          realHome,
+          platform: deps.platform,
+          settings,
+          hostCommits: true,
+          toolPaths: (deps.toolPaths ?? laneToolPaths)(deps.env, deps.platform),
+          extraReadonly: proxy.caPaths,
+          ...o.mainRoot ? { mainRoot: (0, import_node_path36.resolve)(o.mainRoot) } : {},
+          ...o.nodeModulesTarget ? { nodeModulesTarget: (0, import_node_path36.resolve)(o.nodeModulesTarget) } : {}
+        };
+      },
+      note: (text4) => {
+        notes.push(text4);
+      }
+    });
+    const config2 = await sandbox.decide(c, loaded2);
+    if (!config2) return notStarted(`the sandbox is not available: ${sandbox.state?.reason ?? "unknown reason"}`);
+    const readable = !config2.userPolicy.filesystem.deniedPaths?.length;
+    if (readable && o.requireDeniedPaths) {
+      return notStarted("the sandbox host does not report denied_paths, so it cannot hide your credential files from the PR's code, and factory.run.sandbox.requireDeniedPaths is true");
+    }
+    const attested = /* @__PURE__ */ new Map();
+    const onPermissionRequest = () => ({ kind: "reject", feedback: "omg factory run: a gate session grants nothing" });
+    const atCreate = sandbox.atCreate(loaded2, config2);
+    session = await withTimeout3(c.createSession({
+      onPermissionRequest,
+      onEvent: (e) => {
+        const data = e.data ?? {};
+        if (e.type === "tool.execution_start") sandbox.toolStarted(data);
+        if (e.type === "tool.execution_complete") {
+          attested.set(String(data.toolCallId ?? ""), data.sandboxed);
+          sandbox.toolCompleted(data);
+        }
+      },
+      // No plugin: its hooks would run in the runtime, outside the sandbox.
+      pluginDirectories: [],
+      workingDirectory: workDir,
+      disabledMcpServers: ["github-mcp-server"],
+      excludedTools: [],
+      ...gitHubToken ? { gitHubToken } : {},
+      ...atCreate ? { sandboxConfig: config2 } : {}
+    }), RPC_TIMEOUT_MS3, "createSession()");
+    await sandbox.confirm(session, config2, atCreate);
+    if (sandbox.state?.mode !== "enforced") return notStarted(`the sandbox policy was not confirmed: ${sandbox.state?.reason ?? "unknown reason"}`);
+    const shell = session.rpc.shell;
+    if (typeof shell?.executeUserRequested !== "function") return notStarted("the SDK has no shell.executeUserRequested RPC, so the command cannot run in the sandbox");
+    const requestId = (0, import_node_crypto17.randomUUID)();
+    let timer;
+    started = true;
+    const call = shell.executeUserRequested.call(shell, { requestId, command }).then((value) => ({ value }), (error2) => ({ error: error2 }));
+    const timedOut = new Promise((r2) => {
+      timer = setTimeout(() => r2("timeout"), o.timeoutMs);
+    });
+    let answer = await Promise.race([call, timedOut]);
+    clearTimeout(timer);
+    let timeout = false;
+    if (answer === "timeout") {
+      timeout = true;
+      try {
+        await withTimeout3(shell.cancelUserRequested?.call(shell, { requestId }) ?? Promise.resolve(), RPC_TIMEOUT_MS3, "cancelUserRequested()");
+      } catch {
+      }
+      let grace;
+      answer = await Promise.race([call, new Promise((r2) => {
+        grace = setTimeout(() => r2("timeout"), CANCEL_GRACE_MS);
+      })]);
+      clearTimeout(grace);
+    }
+    const r = answer !== "timeout" && "value" in answer ? answer.value : null;
+    const id = typeof r?.toolCallId === "string" ? r.toolCallId : "";
+    for (let waited = 0; id && !attested.has(id) && waited < ATTEST_WAIT_MS; waited += 100) await sleep13(100);
+    const escapes = sandbox.state?.unsandboxedCalls ?? 0;
+    if (escapes > 0) return noVerdict(`${escapes} call(s) of the gate session were not attested sandboxed: true; nothing is counted`);
+    if (!id || attested.get(id) !== true) {
+      const why = !r ? answer !== "timeout" && "error" in answer ? "the shell call failed" : "the shell call gave no answer" : `its completion was ${attested.get(id) === false ? "attested sandboxed: false" : "not attested sandboxed"}`;
+      return noVerdict(`${timeout ? `timed out after ${o.timeoutMs} ms and ` : ""}${why}; the command is not counted as run in the sandbox`);
+    }
+    const raw = typeof r?.output === "string" ? r.output : "";
+    const read = readMarker(raw, marker);
+    const marked = readable ? { credentialFilesReadable: true } : {};
+    if (timeout) return { ran: true, status: 124, output: tail(`${read.output.trim()}
+timed out after ${o.timeoutMs} ms`), timedOut: true, ...marked };
+    if (typeof r?.success !== "boolean") return noVerdict("the sandbox shell call reported no success field");
+    if (read.code === null) return noVerdict("the output did not end with the one exit-code marker line the sandbox shell prints after the command");
+    const exitOk = r.exitCode === void 0 || r.exitCode === null || r.exitCode === 0 || r.exitCode === read.code;
+    const successOk = r.success === true || read.code !== 0;
+    if (!exitOk || !successOk) return noVerdict("the sandbox shell's own result contradicts the exit code the command printed");
+    return { ran: true, status: read.code, output: tail(read.output.trim()), timedOut: false, ...marked };
+  } catch (err) {
+    if (started) return noVerdict("the sandbox runtime failed while the command ran");
+    return notStarted(`the sandbox runtime failed: ${errText4(err).slice(0, 300)}`);
+  } finally {
+    if (session) {
+      try {
+        await withTimeout3(session.disconnect(), RPC_TIMEOUT_MS3, "disconnect()");
+      } catch {
+      }
+      try {
+        await withTimeout3(client.deleteSession(session.sessionId), RPC_TIMEOUT_MS3, "deleteSession()");
+      } catch {
+      }
+    }
+    if (client) {
+      pid ??= runtimePid(client);
+      if (session && pid && deps.isAlive(pid)) {
+        try {
+          deps.killTree(pid);
+        } catch {
+        }
+      }
+      let stopped = false;
+      try {
+        await withTimeout3(client.stop(), STOP_TIMEOUT_MS3, "client.stop()");
+        stopped = true;
+      } catch {
+      }
+      if (!stopped) {
+        if (pid && deps.isAlive(pid)) {
+          try {
+            deps.killTree(pid);
+          } catch {
+          }
+        }
+        try {
+          await withTimeout3(client.forceStop?.() ?? Promise.resolve(), STOP_TIMEOUT_MS3, "client.forceStop()");
+        } catch {
+        }
+      }
+      if (pid && deps.isAlive(pid)) {
+        try {
+          deps.killTree(pid);
+        } catch {
+        }
+      }
+    }
+    try {
+      (0, import_node_fs30.rmSync)(jobHome, { recursive: true, force: true });
+    } catch {
+    }
+  }
+}
+function createSandboxRunner(root2, deps = defaultCopilotRunDeps(), layers) {
+  return async (req) => {
+    if (req.container) {
+      if (!req.runLabel) return { ran: false, reason: "the gate container request has no run label", unavailable: true };
+      return runContainerGate(req, req.container, req.runLabel, { exec: defaultContainerExec, platform: deps.platform });
+    }
+    let settings;
+    try {
+      settings = (layers ? loadSandboxSettings(root2, "factory", layers) : loadSandboxSettings(root2, "factory")).settings;
+    } catch (err) {
+      return { ran: false, reason: `the sandbox settings could not be read: ${errText4(err)}` };
+    }
+    return runSandboxed([req.exe, ...req.args], {
+      cwd: req.cwd,
+      commonGitDir: req.commonGitDir,
+      timeoutMs: req.timeoutMs,
+      network: req.network ?? settings.writeNetwork,
+      settings,
+      jobRoot: req.jobRoot ?? sandboxJobRoot(root2),
+      ...req.requireDeniedPaths ? { requireDeniedPaths: true } : {},
+      ...req.mainRoot ? { mainRoot: req.mainRoot } : {},
+      ...req.nodeModulesTarget ? { nodeModulesTarget: req.nodeModulesTarget } : {}
+    }, deps);
+  };
+}
+function gateEnv(env2, home) {
+  const kept = new Set(GATE_ENV_KEPT);
+  const has3 = (name) => Object.keys(env2).some((k) => k.toUpperCase() === name);
+  const out = {};
+  for (const [key, value] of Object.entries(env2)) {
+    const upper = key.toUpperCase();
+    if (value !== void 0 && (kept.has(upper) || upper.startsWith("LC_"))) out[key] = value;
+  }
+  const tmp = (0, import_node_path36.join)(home, "tmp");
+  (0, import_node_fs30.mkdirSync)(tmp, { recursive: true });
+  const gitConfig = (0, import_node_path36.join)(home, ".gitconfig-empty");
+  (0, import_node_fs30.writeFileSync)(gitConfig, "");
+  return {
+    ...out,
+    ...TRUSTED_READ_ENV,
+    HOME: home,
+    USERPROFILE: home,
+    XDG_CONFIG_HOME: (0, import_node_path36.join)(home, ".config"),
+    ...has3("APPDATA") ? { APPDATA: (0, import_node_path36.join)(home, "AppData", "Roaming") } : {},
+    ...has3("LOCALAPPDATA") ? { LOCALAPPDATA: (0, import_node_path36.join)(home, "AppData", "Local") } : {},
+    TEMP: tmp,
+    TMP: tmp,
+    TMPDIR: tmp,
+    GIT_CONFIG_NOSYSTEM: "1",
+    GIT_CONFIG_GLOBAL: gitConfig,
+    GIT_TERMINAL_PROMPT: "0",
+    GCM_INTERACTIVE: "never"
+  };
+}
+var import_node_crypto17, import_node_fs30, import_node_os10, import_node_path36, SANDBOX_OUTPUT_TAIL_CHARS, START_TIMEOUT_MS3, RPC_TIMEOUT_MS3, STOP_TIMEOUT_MS3, CANCEL_GRACE_MS, ATTEST_WAIT_MS, CREDENTIAL_FILES_READABLE_NOTE, MARKER_PREFIX, SHELL_OUTPUT_BYTES, SHELL_OUTPUT_LINES, SHELL_LINE_CHARS, sandboxCommandMaxChars, SIZING_MARKER, tail, sandboxJobRoot, GATE_ENV_KEPT;
+var init_sandbox_exec = __esm({
+  "src/factory/run/sandbox-exec.ts"() {
+    "use strict";
+    import_node_crypto17 = require("node:crypto");
+    import_node_fs30 = require("node:fs");
+    import_node_os10 = require("node:os");
+    import_node_path36 = require("node:path");
+    init_job();
+    init_sandbox2();
+    init_container_gate();
+    init_sandbox_session();
+    init_timeout();
+    init_worktree_paths();
+    init_exec();
+    init_sanitize();
+    init_copilot_sdk_driver();
+    init_copilot_sdk_scenarios();
+    init_copilot_session_env();
+    init_windows_search();
+    SANDBOX_OUTPUT_TAIL_CHARS = 8e3;
+    START_TIMEOUT_MS3 = 6e4;
+    RPC_TIMEOUT_MS3 = 3e4;
+    STOP_TIMEOUT_MS3 = 15e3;
+    CANCEL_GRACE_MS = 5e3;
+    ATTEST_WAIT_MS = 2e3;
+    CREDENTIAL_FILES_READABLE_NOTE = "sandboxed; credential files readable on this host";
+    MARKER_PREFIX = "omg-gate-exit-";
+    SHELL_OUTPUT_BYTES = 64 * 1024;
+    SHELL_OUTPUT_LINES = 400;
+    SHELL_LINE_CHARS = 2e3;
+    sandboxCommandMaxChars = (platform) => platform === "win32" ? 28e3 : 12e4;
+    SIZING_MARKER = `${MARKER_PREFIX}${"0".repeat(16)}`;
+    tail = (text4) => {
+      const clean = redactGateOutput(text4);
+      return clean.length > SANDBOX_OUTPUT_TAIL_CHARS ? clean.slice(-SANDBOX_OUTPUT_TAIL_CHARS) : clean;
+    };
+    sandboxJobRoot = (root2) => (0, import_node_path36.join)(getOmcRoot(root2), "state", "factory-gates");
+    GATE_ENV_KEPT = [
+      "PATH",
+      "PATHEXT",
+      "SYSTEMROOT",
+      "SYSTEMDRIVE",
+      "WINDIR",
+      "COMSPEC",
+      "LANG",
+      "TZ",
+      "CI",
+      "NODE_ENV",
+      "NPM_CONFIG_CACHE"
+    ];
+  }
+});
+
+// src/factory/run/container-gate.ts
+function containerRunLabel(root2, key) {
+  const repo = (0, import_node_crypto18.createHash)("sha256").update((0, import_node_path37.resolve)(root2)).digest("hex").slice(0, 10);
+  return `${repo}-${runSlug(key).toLowerCase().replace(/[^a-z0-9-]/g, "-").slice(0, 40)}`;
+}
+function mountArg(fields) {
+  return fields.map((f) => /[",\n\r]/.test(f) ? `"${f.replace(/"/g, '""')}"` : f).join(",");
+}
+function hardeningArgs(s) {
+  return [
+    "--rm",
+    "--init",
+    "--pull",
+    "never",
+    "--cap-drop",
+    "ALL",
+    "--security-opt",
+    "no-new-privileges",
+    "--pids-limit",
+    String(s.pidsLimit),
+    "--memory",
+    s.memory,
+    "--cpus",
+    String(s.cpus)
+  ];
+}
+function containerEnvArgs(extra = {}) {
+  const env2 = {
+    PATH: CONTAINER_PATH,
+    HOME: `${WORK}/home`,
+    CI: "1",
+    npm_config_update_notifier: "false",
+    npm_config_fund: "false",
+    npm_config_audit: "false",
+    ...extra
+  };
+  return Object.entries(env2).flatMap(([k, v]) => ["-e", `${k}=${v}`]);
+}
+function installPlan(checkout) {
+  const regular = (name) => {
+    try {
+      return (0, import_node_fs31.lstatSync)((0, import_node_path37.join)(checkout, name)).isFile();
+    } catch {
+      return false;
+    }
+  };
+  if (!regular("package.json")) return { kind: "none" };
+  for (const lock of ["npm-shrinkwrap.json", "package-lock.json"]) {
+    if (regular(lock)) return { kind: "npm-ci", lockHash: (0, import_node_crypto18.createHash)("sha256").update((0, import_node_fs31.readFileSync)((0, import_node_path37.join)(checkout, lock))).digest("hex").slice(0, 16) };
+  }
+  let pkg = {};
+  try {
+    pkg = JSON.parse((0, import_node_fs31.readFileSync)((0, import_node_path37.join)(checkout, "package.json"), "utf8"));
+  } catch {
+  }
+  const deps = ["dependencies", "devDependencies", "optionalDependencies"].some((k) => {
+    const v = pkg?.[k];
+    return v && typeof v === "object" && Object.keys(v).length > 0;
+  });
+  if (!deps) return { kind: "none" };
+  const other = ["pnpm-lock.yaml", "yarn.lock", "bun.lockb", "bun.lock"].find(regular);
+  return { kind: "unsupported", reason: other ? `the project uses ${other}; the gate container installs npm projects (package-lock.json or npm-shrinkwrap.json) only` : "the project has dependencies but no package-lock.json; the gate container installs with npm ci only" };
+}
+function containerArgv(req) {
+  const words = isNodeExe(req.exe) && req.args.length > 0 && !(0, import_node_path37.isAbsolute)(req.args[0]) ? ["node", ...req.args] : [...req.argv];
+  const root2 = (0, import_node_path37.resolve)(req.cwd);
+  return words.map((w, i) => {
+    if (i === 0 && isNodeExe(w)) return "node";
+    if (!(0, import_node_path37.isAbsolute)(w)) return w;
+    const rel = (0, import_node_path37.relative)(root2, (0, import_node_path37.resolve)(w));
+    if (rel === "") return SRC;
+    if (rel.startsWith("..") || (0, import_node_path37.isAbsolute)(rel)) return w;
+    return `${SRC}/${rel.split(import_node_path37.sep).join("/")}`;
+  });
+}
+async function runContainerGate(req, s, runLabel2, deps) {
+  const unavailable = (reason) => ({ ran: false, reason, unavailable: true });
+  const noVerdict = (reason) => ({ ran: false, reason, started: true });
+  const log3 = deps.log ?? ((line2) => {
+    process.stderr.write(`${line2}
+`);
+  });
+  const bin = s.runtime;
+  const switchBack = 'or set factory.run.sandbox.isolation "copilot" in your user config';
+  if (req.purpose === "install") {
+    return { ran: true, status: 0, output: "gate container: dependencies are installed in the container per command", timedOut: false };
+  }
+  if (!/^[a-z0-9-]{1,60}$/.test(runLabel2)) return unavailable(`the run label ${JSON.stringify(runLabel2)} is not [a-z0-9-]`);
+  const probe = await deps.exec(bin, ["version", "--format", "{{.Server.Version}}"], { timeoutMs: PROBE_TIMEOUT_MS2 });
+  if (probe.spawnError !== void 0) return unavailable(`the container runtime ${bin} is not installed or not on PATH (${probe.spawnError}); install it, ${switchBack}`);
+  if (probe.status !== 0) return unavailable(`the container runtime ${bin} does not answer (${firstLine(probe.tail) || `exit ${probe.status}`}); start ${bin === "docker" ? "Docker Desktop or the docker daemon" : "the podman machine or service"}, ${switchBack}`);
+  const image = await deps.exec(bin, ["image", "inspect", "--format", "{{.Id}}", s.image], { timeoutMs: PROBE_TIMEOUT_MS2 });
+  if (image.status !== 0) {
+    log3(`omg factory run: pulling the gate image ${s.image} with ${bin} (factory.run.sandbox.container.image); pin a digest there to fix what runs`);
+    const pulled = await deps.exec(bin, ["pull", s.image], { timeoutMs: PULL_TIMEOUT_MS });
+    if (pulled.status !== 0) return unavailable(`the gate image ${s.image} is not present and ${bin} pull failed (${firstLine(lastLines(pulled.tail)) || `exit ${pulled.status}`}); pull it yourself, set factory.run.sandbox.container.image, ${switchBack}`);
+  }
+  const plan = installPlan(req.cwd);
+  if (plan.kind === "unsupported") return unavailable(`${plan.reason}; ${switchBack}`);
+  const id = (deps.id ?? (() => (0, import_node_crypto18.randomBytes)(4).toString("hex")))();
+  const name = `${CONTAINER_NAME_PREFIX}${runLabel2}-${id}`;
+  const volume = name;
+  const cache2 = plan.kind === "npm-ci" ? `${CONTAINER_NAME_PREFIX}cache-${plan.lockHash}` : void 0;
+  const labels = ["--label", `${RUN_LABEL2}=${runLabel2}`, "--label", `${GATE_LABEL}=1`];
+  const harden = hardeningArgs(s);
+  const work = ["--mount", mountArg(["type=volume", `source=${volume}`, `target=${WORK}`])];
+  const kill = (container) => async () => {
+    await deps.exec(bin, ["kill", container], { timeoutMs: KILL_TIMEOUT_MS });
+  };
+  let volumeMade = false;
+  try {
+    const made = await deps.exec(bin, ["volume", "create", ...labels, volume], { timeoutMs: PROBE_TIMEOUT_MS2 });
+    if (made.status !== 0) return unavailable(`${bin} could not create the gate volume (${firstLine(made.tail) || `exit ${made.status}`}); check the runtime's disk, ${switchBack}`);
+    volumeMade = true;
+    if (cache2) {
+      const c = await deps.exec(bin, ["volume", "create", "--label", `${GATE_LABEL}=1`, "--label", "omg.cache=npm", cache2], { timeoutMs: PROBE_TIMEOUT_MS2 });
+      if (c.status !== 0) return unavailable(`${bin} could not create the npm cache volume (${firstLine(c.tail) || `exit ${c.status}`}); ${switchBack}`);
+    }
+    const cacheMount = cache2 ? ["--mount", mountArg(["type=volume", `source=${cache2}`, `target=/cache`])] : [];
+    const copy = await deps.exec(bin, [
+      "run",
+      "--name",
+      `${name}-copy`,
+      ...labels,
+      ...harden,
+      "--network",
+      "none",
+      "--user",
+      "0:0",
+      "--cap-add",
+      "CHOWN",
+      "--cap-add",
+      "DAC_OVERRIDE",
+      "--cap-add",
+      "FOWNER",
+      "--read-only",
+      "--mount",
+      mountArg(["type=bind", `source=${(0, import_node_path37.resolve)(req.cwd)}`, "target=/in", "readonly"]),
+      ...work,
+      ...cacheMount,
+      s.image,
+      "sh",
+      "-c",
+      COPY_SCRIPT
+    ], { timeoutMs: COPY_TIMEOUT_MS, onTimeout: kill(`${name}-copy`) });
+    if (copy.status !== 0) return noVerdict(`copying the checkout into the gate container failed (exit ${copy.status ?? "none"}${copy.timedOut ? ", timed out" : ""}); nothing is counted`);
+    const runBase = [...labels, ...harden, "--user", CONTAINER_USER, "--read-only", "--tmpfs", "/tmp:rw,exec,nosuid,nodev,size=1g", ...work, "-w", SRC];
+    if (cache2) {
+      const timeoutMs = s.installTimeoutMinutes * 6e4;
+      const inst = await deps.exec(bin, [
+        "run",
+        "--name",
+        `${name}-install`,
+        ...runBase,
+        ...cacheMount,
+        ...containerEnvArgs({ npm_config_cache: "/cache/npm" }),
+        s.image,
+        "npm",
+        "ci"
+      ], { timeoutMs, onTimeout: kill(`${name}-install`) });
+      if (inst.timedOut) return { ran: true, status: 124, output: tail2(`${inst.tail.trim()}
+the dependency install (npm ci) in the gate container timed out after ${s.installTimeoutMinutes} min`), timedOut: true };
+      if (inst.status === null || inst.status === 125) return noVerdict(`the container runtime failed while the dependency install ran (exit ${inst.status ?? "none"}); nothing is counted`);
+      if (inst.status !== 0) return { ran: true, status: inst.status, output: tail2(`${inst.tail.trim()}
+the dependency install (npm ci) in the gate container failed (exit ${inst.status})`), timedOut: false };
+    }
+    const argv = containerArgv(req);
+    const r = await deps.exec(bin, [
+      "run",
+      "--name",
+      name,
+      ...runBase,
+      "--network",
+      "none",
+      ...containerEnvArgs({ npm_config_cache: `${WORK}/home/.npm` }),
+      s.image,
+      ...argv
+    ], { timeoutMs: req.timeoutMs, onTimeout: kill(name) });
+    if (r.timedOut) return { ran: true, status: 124, output: tail2(`${r.tail.trim()}
+timed out after ${req.timeoutMs} ms`), timedOut: true };
+    if (r.spawnError !== void 0 || r.status === null || r.status === 125) return noVerdict(`the container runtime failed while the command ran (exit ${r.status ?? "none"}); nothing is counted`);
+    const result = { ran: true, status: r.status, output: tail2(r.tail.trim()), timedOut: false };
+    if (req.purpose !== "prepare" || r.status !== 0) return result;
+    const back = await deps.exec(bin, [
+      "run",
+      "--name",
+      `${name}-export`,
+      ...labels,
+      ...harden,
+      "--network",
+      "none",
+      "--user",
+      CONTAINER_USER,
+      "--read-only",
+      "--mount",
+      mountArg(["type=volume", `source=${volume}`, `target=${WORK}`, "readonly"]),
+      s.image,
+      "tar",
+      "-C",
+      SRC,
+      "--exclude=.git",
+      "--exclude=node_modules",
+      "--format=posix",
+      "-cf",
+      "-",
+      "."
+    ], { timeoutMs: COPY_TIMEOUT_MS, full: COPY_BACK_MAX_BYTES, onTimeout: kill(`${name}-export`) });
+    if (back.status !== 0 || !back.stdout) return noVerdict(`reading the prepare check's changes back from the gate container failed (${back.overflow ? "over the size bound" : `exit ${back.status ?? "none"}`}); nothing is counted`);
+    const problem = applyCopyBack(req.cwd, back.stdout, deps.platform ?? process.platform);
+    if (problem) return noVerdict(`the prepare check's changes cannot be copied back safely (${problem}); nothing is counted`);
+    return result;
+  } catch {
+    return noVerdict("the gate container failed unexpectedly; nothing is counted");
+  } finally {
+    if (volumeMade) {
+      for (let i = 0; i < 3; i++) {
+        const rm11 = await deps.exec(bin, ["volume", "rm", "-f", volume], { timeoutMs: PROBE_TIMEOUT_MS2 }).catch(() => null);
+        if (rm11?.status === 0) break;
+        await new Promise((r) => setTimeout(r, 500));
+      }
+    }
+  }
+}
+function readTar(buf, maxEntries = COPY_BACK_MAX_ENTRIES) {
+  const entries = [];
+  let off = 0;
+  let pax = {};
+  let longName;
+  let longLink;
+  const str10 = (b) => {
+    const z = b.indexOf(0);
+    return (z === -1 ? b : b.subarray(0, z)).toString("utf8");
+  };
+  const octal = (b) => {
+    if (b[0] & 128) throw new Error("base-256 size");
+    const t = str10(b).trim();
+    if (t === "") return 0;
+    if (!/^[0-7]+$/.test(t)) throw new Error("bad octal field");
+    return parseInt(t, 8);
+  };
+  while (off + 512 <= buf.length) {
+    const h = buf.subarray(off, off + 512);
+    if (h.every((x) => x === 0)) return entries;
+    const sum = octal(h.subarray(148, 156));
+    let calc = 0;
+    for (let i = 0; i < 512; i++) calc += i >= 148 && i < 156 ? 32 : h[i];
+    if (calc !== sum) throw new Error("bad header checksum");
+    const flag = String.fromCharCode(h[156] || 48);
+    let size = octal(h.subarray(124, 136));
+    if (pax.size !== void 0) size = Number(pax.size);
+    if (!Number.isSafeInteger(size) || size < 0) throw new Error("bad size");
+    const start = off + 512;
+    const end = start + size;
+    if (end > buf.length) throw new Error("truncated");
+    const data = buf.subarray(start, end);
+    off = start + Math.ceil(size / 512) * 512;
+    if (flag === "x") {
+      pax = { ...pax, ...parsePax(data) };
+      continue;
+    }
+    if (flag === "g") continue;
+    if (flag === "L") {
+      longName = str10(data);
+      continue;
+    }
+    if (flag === "K") {
+      longLink = str10(data);
+      continue;
+    }
+    const prefix = str10(h.subarray(345, 500));
+    const path30 = pax.path ?? longName ?? (prefix ? `${prefix}/${str10(h.subarray(0, 100))}` : str10(h.subarray(0, 100)));
+    const linkTarget = pax.linkpath ?? longLink ?? str10(h.subarray(157, 257));
+    const type = flag === "0" || flag === "7" ? "file" : flag === "5" ? "dir" : flag === "2" ? "symlink" : flag === "1" ? "hardlink" : "other";
+    entries.push({ path: path30, type, mode: octal(h.subarray(100, 108)), ...type === "file" ? { data: Buffer.from(data) } : {}, ...type === "symlink" || type === "hardlink" ? { linkTarget } : {} });
+    if (entries.length > maxEntries) throw new Error("too many entries");
+    pax = {};
+    longName = void 0;
+    longLink = void 0;
+  }
+  throw new Error("no end-of-archive marker");
+}
+function parsePax(data) {
+  const out = {};
+  let i = 0;
+  while (i < data.length) {
+    const space = data.indexOf(32, i);
+    if (space === -1) throw new Error("bad pax record");
+    const len = Number(data.subarray(i, space).toString("ascii"));
+    if (!Number.isSafeInteger(len) || len <= space - i || i + len > data.length) throw new Error("bad pax record");
+    const rec = data.subarray(space + 1, i + len - 1).toString("utf8");
+    const eq2 = rec.indexOf("=");
+    if (eq2 > 0) out[rec.slice(0, eq2)] = rec.slice(eq2 + 1);
+    i += len;
+  }
+  return out;
+}
+function safeRelPath(raw, platform) {
+  const p = raw.replace(/^(?:\.\/)+/, "").replace(/\/+$/, "");
+  if (p === "" || p === ".") return "";
+  if (p.startsWith("/") || p.includes("\0") || p.includes("\\")) return null;
+  const parts = p.split("/");
+  if (parts.some((s) => s === "" || s === "." || s === "..")) return null;
+  if (parts.some((s) => s === ".git" || s === "node_modules")) return null;
+  if (platform === "win32" && parts.some((s) => /[<>:"|?*\x00-\x1f]/.test(s) || /[. ]$/.test(s) || /^(?:con|prn|aux|nul|com\d|lpt\d)(?:\..*)?$/i.test(s))) return null;
+  return p;
+}
+function hostTree(root2) {
+  const out = /* @__PURE__ */ new Map();
+  const walk = (dir, rel) => {
+    for (const name of (0, import_node_fs31.readdirSync)(dir)) {
+      if (name === ".git" || name === "node_modules") continue;
+      const r = rel ? `${rel}/${name}` : name;
+      const st = (0, import_node_fs31.lstatSync)((0, import_node_path37.join)(dir, name));
+      const kind = st.isSymbolicLink() ? "symlink" : st.isDirectory() ? "dir" : st.isFile() ? "file" : "other";
+      out.set(r, kind);
+      if (kind === "dir") walk((0, import_node_path37.join)(dir, name), r);
+    }
+  };
+  walk(root2, "");
+  return out;
+}
+function applyCopyBack(checkout, tar, platform) {
+  let entries;
+  try {
+    entries = readTar(tar);
+  } catch {
+    return "the tar stream is malformed or too large";
+  }
+  let host;
+  try {
+    host = hostTree(checkout);
+  } catch {
+    return "the checkout could not be listed";
+  }
+  const want = /* @__PURE__ */ new Map();
+  for (const e of entries) {
+    const rel = safeRelPath(e.path, platform);
+    if (rel === null) return "an entry has a path that cannot be written here";
+    if (rel === "") continue;
+    want.set(rel, e);
+  }
+  const writes = [];
+  for (const [rel, e] of want) {
+    const kind = host.get(rel);
+    if (e.type === "dir") {
+      if (kind !== void 0 && kind !== "dir") return "a directory replaces a host file or link";
+      continue;
+    }
+    if (e.type === "symlink") {
+      if (kind !== "symlink") return "the check created a symbolic link";
+      continue;
+    }
+    if (e.type !== "file") return "the check created a hardlink, device or other special file";
+    if (kind !== void 0 && kind !== "file") return "a file replaces a host directory or link";
+    const parts = rel.split("/");
+    for (let i = 1; i < parts.length; i++) {
+      const parent = host.get(parts.slice(0, i).join("/"));
+      if (parent !== void 0 && parent !== "dir") return "a file would be written through a host link";
+      const w = want.get(parts.slice(0, i).join("/"));
+      if (parent === void 0 && w && w.type !== "dir") return "a file would be written under a non-directory";
+    }
+    if (kind === "file") {
+      const cur = (0, import_node_fs31.readFileSync)((0, import_node_path37.join)(checkout, ...parts));
+      if (cur.equals(e.data)) continue;
+    }
+    writes.push({ rel, data: e.data, mode: e.mode });
+  }
+  const removals = [...host].filter(([rel, kind]) => (kind === "file" || kind === "symlink") && !want.has(rel)).map(([rel]) => rel);
+  for (const { rel, data, mode } of writes) {
+    const path30 = (0, import_node_path37.join)(checkout, ...rel.split("/"));
+    (0, import_node_fs31.mkdirSync)((0, import_node_path37.join)(checkout, ...rel.split("/").slice(0, -1)), { recursive: true });
+    (0, import_node_fs31.writeFileSync)(path30, data);
+    if (platform !== "win32") (0, import_node_fs31.chmodSync)(path30, mode & 73 ? 493 : 420);
+  }
+  for (const rel of removals) (0, import_node_fs31.unlinkSync)((0, import_node_path37.join)(checkout, ...rel.split("/")));
+  return null;
+}
+function probeContainerRuntime(s, execSync5 = defaultContainerExecSync) {
+  const v = execSync5(s.runtime, ["version", "--format", "{{.Server.Version}}"]);
+  const version3 = v.status === 0 ? v.stdout.trim().split("\n")[0] || "unknown" : null;
+  const image = version3 !== null && execSync5(s.runtime, ["image", "inspect", "--format", "{{.Id}}", s.image]).status === 0;
+  return { version: version3, image };
+}
+function cleanRunContainers(runtime2, runLabel2, execSync5 = defaultContainerExecSync) {
+  const filter = ["--filter", `label=${RUN_LABEL2}=${runLabel2}`];
+  const ours = (out) => out.split(/\r?\n/).map((l) => l.trim()).filter((n) => n.startsWith(`${CONTAINER_NAME_PREFIX}${runLabel2}-`) && /^[a-z0-9-]+$/.test(n));
+  const ps = execSync5(runtime2, ["ps", "-a", "--format", "{{.Names}}", ...filter]);
+  if (ps.status !== 0) return { removed: [], problem: `${runtime2} did not answer; this run's gate containers and volumes (label ${RUN_LABEL2}=${runLabel2}) were not checked` };
+  const removed = [];
+  for (const n of ours(ps.stdout)) if (execSync5(runtime2, ["rm", "-f", n]).status === 0) removed.push(n);
+  const vols = execSync5(runtime2, ["volume", "ls", "--format", "{{.Name}}", ...filter]);
+  for (const n of vols.status === 0 ? ours(vols.stdout) : []) if (execSync5(runtime2, ["volume", "rm", "-f", n]).status === 0) removed.push(n);
+  return { removed };
+}
+var import_node_child_process17, import_node_crypto18, import_node_fs31, import_node_path37, GATE_CONTAINER_UNAVAILABLE_GATE, CONTAINER_INCOMPATIBLE_ADVICE, CONTAINER_NAME_PREFIX, RUN_LABEL2, GATE_LABEL, CONTAINER_PATH, CONTAINER_USER, WORK, SRC, PROBE_TIMEOUT_MS2, PULL_TIMEOUT_MS, COPY_TIMEOUT_MS, KILL_TIMEOUT_MS, OUTPUT_TAIL_BYTES, COPY_BACK_MAX_BYTES, COPY_BACK_MAX_ENTRIES, defaultContainerExec, defaultContainerExecSync, isNodeExe, COPY_SCRIPT, tail2, firstLine, lastLines;
+var init_container_gate = __esm({
+  "src/factory/run/container-gate.ts"() {
+    "use strict";
+    import_node_child_process17 = require("node:child_process");
+    import_node_crypto18 = require("node:crypto");
+    import_node_fs31 = require("node:fs");
+    import_node_path37 = require("node:path");
+    init_sandbox_exec();
+    init_state6();
+    GATE_CONTAINER_UNAVAILABLE_GATE = "gate-container-unavailable";
+    CONTAINER_INCOMPATIBLE_ADVICE = 'Your gate fails in the gate container on the base: there it runs with no network, no git dir, as a non-root user on a read-only root (only /tmp, the checkout and HOME writable), with the dependencies npm ci installs from your lockfile. Make the gate work there (or pick another factory.run.sandbox.container.image), or set factory.run.sandbox.isolation "copilot" in your user config';
+    CONTAINER_NAME_PREFIX = "omg-gate-";
+    RUN_LABEL2 = "omg.run";
+    GATE_LABEL = "omg.gate";
+    CONTAINER_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin";
+    CONTAINER_USER = "1000:1000";
+    WORK = "/work";
+    SRC = `${WORK}/src`;
+    PROBE_TIMEOUT_MS2 = 2e4;
+    PULL_TIMEOUT_MS = 15 * 6e4;
+    COPY_TIMEOUT_MS = 10 * 6e4;
+    KILL_TIMEOUT_MS = 3e4;
+    OUTPUT_TAIL_BYTES = 64 * 1024;
+    COPY_BACK_MAX_BYTES = 256 * 1024 * 1024;
+    COPY_BACK_MAX_ENTRIES = 1e5;
+    defaultContainerExec = (bin, args, o) => new Promise((done) => {
+      let tail6 = Buffer.alloc(0);
+      const out = [];
+      let outBytes = 0;
+      let overflow = false;
+      let timedOut = false;
+      let settled = false;
+      const keep = (chunk) => {
+        tail6 = Buffer.concat([tail6, chunk]);
+        if (tail6.length > OUTPUT_TAIL_BYTES) tail6 = tail6.subarray(tail6.length - OUTPUT_TAIL_BYTES);
+      };
+      const finish2 = (r) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        clearTimeout(hardKill);
+        done({ ...r, tail: tail6.toString("utf8"), overflow, timedOut, ...o.full !== void 0 && !overflow ? { stdout: Buffer.concat(out) } : {} });
+      };
+      let hardKill;
+      let child;
+      try {
+        child = (0, import_node_child_process17.spawn)(bin, [...args], { stdio: ["ignore", "pipe", "pipe"], windowsHide: true, shell: false });
+      } catch (error2) {
+        done({ status: null, tail: "", overflow: false, timedOut: false, spawnError: error2 instanceof Error ? error2.message : String(error2) });
+        return;
+      }
+      const timer = setTimeout(() => {
+        timedOut = true;
+        void Promise.resolve(o.onTimeout?.()).catch(() => void 0).finally(() => {
+          hardKill = setTimeout(() => {
+            try {
+              child.kill("SIGKILL");
+            } catch {
+            }
+          }, 1e4);
+        });
+      }, o.timeoutMs);
+      child.stdout.on("data", (chunk) => {
+        if (o.full !== void 0) {
+          if (!overflow && outBytes + chunk.length <= o.full) {
+            out.push(chunk);
+            outBytes += chunk.length;
+          } else {
+            overflow = true;
+            out.length = 0;
+          }
+        } else keep(chunk);
+      });
+      child.stderr.on("data", (chunk) => keep(chunk));
+      child.on("error", (error2) => finish2({ status: null, spawnError: error2.message }));
+      child.on("close", (code) => finish2({ status: code }));
+    });
+    defaultContainerExecSync = (bin, args) => {
+      const r = (0, import_node_child_process17.spawnSync)(bin, [...args], { encoding: "utf8", windowsHide: true, shell: false, timeout: 6e4 });
+      return { status: r.error ? null : r.status, stdout: r.stdout ?? "" };
+    };
+    isNodeExe = (p) => /^node(?:\.exe)?$/i.test((0, import_node_path37.basename)(p));
+    COPY_SCRIPT = [
+      "set -e",
+      `mkdir -p ${SRC} ${WORK}/home`,
+      // Through a file, not a pipe: sh has no pipefail, and a partial copy must fail the step (copy back removes what is missing).
+      `tar -C /in --exclude=.git --exclude=node_modules -cf ${WORK}/in.tar .`,
+      `tar -C ${SRC} -xf ${WORK}/in.tar`,
+      `rm -f ${WORK}/in.tar`,
+      `chown -R ${CONTAINER_USER} ${WORK}`,
+      'if [ -d /cache ]; then mkdir -p /cache/npm; [ "$(stat -c %u /cache/npm)" = 1000 ] || chown -R 1000:1000 /cache; fi'
+    ].join("; ");
+    tail2 = (text4) => {
+      const clean = redactGateOutput(text4);
+      return clean.length > SANDBOX_OUTPUT_TAIL_CHARS ? clean.slice(-SANDBOX_OUTPUT_TAIL_CHARS) : clean;
+    };
+    firstLine = (text4) => text4.trim().split("\n")[0]?.trim().slice(0, 300) ?? "";
+    lastLines = (text4) => text4.trim().split("\n").slice(-1).join("\n");
+  }
+});
+
 // src/factory/run/clean.ts
 function laneProcessState(p) {
   if (!isProcessAlive(p.pid)) return "dead";
@@ -129049,7 +129936,29 @@ function cleanHeldFactoryRun(o, state) {
       result.kept.push({ worktree: path30, reason: error2 instanceof Error ? error2.message : String(error2) });
     }
   }
+  cleanGateContainers(o, result);
   return result;
+}
+function cleanGateContainers(o, result) {
+  let user = o.runUserConfig;
+  if (user === void 0) {
+    try {
+      user = userConfigLayers().trustedUser;
+    } catch {
+      user = null;
+    }
+  }
+  let container;
+  try {
+    container = resolveGateIsolation({ user, base: void 0 }).container;
+  } catch {
+    container = void 0;
+  }
+  if (!container) return;
+  const label2 = containerRunLabel(o.root, o.issue);
+  const r = cleanRunContainers(container.runtime, label2, o.containerExecSync);
+  result.removed.push(...r.removed.map((n) => `${container.runtime} ${n}`));
+  if (r.problem) result.kept.push({ worktree: `${container.runtime} ${CONTAINER_NAME_PREFIX}${label2}-*`, reason: r.problem });
 }
 var import_fs163, import_path190, HEX4012, UNCONFIRMED_NOTE, TAMPER_NOTE;
 var init_clean = __esm({
@@ -129074,6 +129983,8 @@ var init_clean = __esm({
     init_private_store();
     init_private_run();
     init_worktree_paths();
+    init_sandbox2();
+    init_container_gate();
     HEX4012 = /^[0-9a-f]{40}$/;
     UNCONFIRMED_NOTE = /not confirmed|cancel failed|may still run/;
     TAMPER_NOTE = /\btampered: |tamper check: /;
@@ -129322,7 +130233,7 @@ function selectGeneratorChecks(changed) {
 function lines2(text4) {
   return text4.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
 }
-function tail(text4, n = 20) {
+function tail3(text4, n = 20) {
   return lines2(text4).slice(-n).join("\n");
 }
 function runPrepare(opts) {
@@ -129390,7 +130301,7 @@ ${dirty}`);
     const mismatch2 = remoteRepoMismatch(exec3, cwd2, remote, opts.repoUrl);
     if (mismatch2) return fail9("remote", `${mismatch2}; refusing to fetch (fail closed)`);
     const fetched = git8("fetch", remote, base);
-    if (fetched.status !== 0) return fail9("fetch", tail(fetched.stderr));
+    if (fetched.status !== 0) return fail9("fetch", tail3(fetched.stderr));
     const local = git8("rev-parse", "--verify", upstream);
     if (local.status !== 0 || local.stdout.trim() !== baseSha) {
       return fail9("fetch", `${upstream} is ${local.stdout.trim() || "missing"}, but GitHub reports ${base} at ${baseSha}; refusing (fail closed; re-run if ${base} just moved)`);
@@ -129405,11 +130316,11 @@ ${dirty}`);
       const conflicts = lines2(git8("diff", "--name-only", "--diff-filter=U").stdout);
       const inventoryOnly = conflicts.length > 0 && conflicts.every((f) => f.startsWith(`${INVENTORY_DIR}/`));
       if (!inventoryOnly) {
-        return fail9("merge-base", conflicts.length > 0 ? `conflicts outside ${INVENTORY_DIR}/ need a human or a fix lane: ${conflicts.join(", ")} (resolve and commit, or git merge --abort)` : tail(merged.stderr || merged.stdout), { conflicts });
+        return fail9("merge-base", conflicts.length > 0 ? `conflicts outside ${INVENTORY_DIR}/ need a human or a fix lane: ${conflicts.join(", ")} (resolve and commit, or git merge --abort)` : tail3(merged.stderr || merged.stdout), { conflicts });
       }
       for (const args of [["checkout", "--theirs", "--", INVENTORY_DIR], ["add", "--", INVENTORY_DIR], ["commit", "--no-edit", "--no-verify"]]) {
         const r = git8(...args);
-        if (r.status !== 0) return fail9("merge-base", `git ${args.join(" ")}: ${tail(r.stderr || r.stdout)}`, { conflicts });
+        if (r.status !== 0) return fail9("merge-base", `git ${args.join(" ")}: ${tail3(r.stderr || r.stdout)}`, { conflicts });
       }
       steps.push({ name: "merge-base", status: "ok", detail: `merged ${base} ${baseSha.slice(0, 12)}; inventory conflict resolved with --theirs` });
     } else {
@@ -129434,7 +130345,7 @@ ${dirty}`);
       const name = c.argv.join(" ").slice(0, 80);
       const r = yield { step: name, kind: "configured", argv: c.argv, exe: c.exe, args: c.args };
       if (r.notStarted !== void 0) return fail9(PREPARE_SANDBOX_STEP, `${name}: ${r.notStarted}`);
-      if (r.status !== 0) return fail9(name, tail(`${r.stdout}
+      if (r.status !== 0) return fail9(name, tail3(`${r.stdout}
 ${r.stderr}`));
       steps.push({ name, status: "ok" });
     }
@@ -129457,7 +130368,7 @@ ${r.stderr}`));
       }
       const r = yield { step: name, kind: "built-in", argv: [node, ...args], exe: node, args };
       if (r.notStarted !== void 0) return fail9(PREPARE_SANDBOX_STEP, `${name}: ${r.notStarted}`);
-      if (r.status !== 0) return fail9(name, tail(`${r.stdout}
+      if (r.status !== 0) return fail9(name, tail3(`${r.stdout}
 ${r.stderr}`));
       steps.push({ name, status: "ok", detail: args.slice(1).map(visibleLine).join(" ").slice(0, 300) });
     }
@@ -129473,23 +130384,23 @@ ${r.stderr}`));
   } else {
     const written = yield inventory("--write");
     if (written.notStarted !== void 0) return fail9(PREPARE_SANDBOX_STEP, `inventory: ${written.notStarted}`);
-    if (written.status !== 0) return fail9("inventory", tail(written.stderr || written.stdout));
+    if (written.status !== 0) return fail9("inventory", tail3(written.stderr || written.stdout));
     const added = git8("add", "--", INVENTORY_DIR);
-    if (added.status !== 0) return fail9("inventory", `git add -- ${INVENTORY_DIR}: ${tail(added.stderr || added.stdout)}`);
+    if (added.status !== 0) return fail9("inventory", `git add -- ${INVENTORY_DIR}: ${tail3(added.stderr || added.stdout)}`);
     if (git8("diff", "--cached", "--quiet", "--", INVENTORY_DIR).status !== 0) {
       const committed = git8("commit", "--no-verify", "-m", INVENTORY_COMMIT_MESSAGE, "--", INVENTORY_DIR);
-      if (committed.status !== 0) return fail9("inventory", tail(committed.stderr || committed.stdout));
+      if (committed.status !== 0) return fail9("inventory", tail3(committed.stderr || committed.stdout));
       housekeepingCommits.push(head());
     }
     const verified = yield inventory("--verify");
     if (verified.notStarted !== void 0) return fail9(PREPARE_SANDBOX_STEP, `inventory: ${verified.notStarted}`);
     if (verified.status !== 0) return fail9("inventory", `regenerated baseline still fails --verify:
-${tail(verified.stderr || verified.stdout)}`);
+${tail3(verified.stderr || verified.stdout)}`);
     steps.push({ name: "inventory", status: "ok", detail: "regenerated as the last commit" });
   }
   if (opts.push) {
     const pushed = git8("push", remote, `HEAD:refs/heads/${opts.branch}`);
-    if (pushed.status !== 0) return fail9("push", tail(pushed.stderr));
+    if (pushed.status !== 0) return fail9("push", tail3(pushed.stderr));
     steps.push({ name: "push", status: "ok", detail: `${remote} ${opts.branch}` });
   }
   return { ok: true, steps, housekeepingCommits };
@@ -129526,361 +130437,6 @@ var init_prepare2 = __esm({
     ];
     TEST_FILE = /\.(?:test|spec)\.[cm]?[jt]sx?$/;
     PREPARE_SANDBOX_STEP = "checks-sandbox";
-  }
-});
-
-// src/factory/run/sandbox-exec.ts
-function sandboxShellCommand(platform, argv, cwd2, marker) {
-  if (argv.length === 0 || !/^[A-Za-z0-9-]+$/.test(marker) || [cwd2, ...argv].some((a) => a.includes("\0"))) return null;
-  if (platform === "win32") {
-    if (argv.some((a) => a === "" || a.includes('"'))) return null;
-    const payload2 = Buffer.from([cwd2, ...argv].join("\0"), "utf8").toString("base64");
-    return [
-      `$omgV = @([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${payload2}')).Split([char]0))`,
-      `if ($omgV.Count -eq ${argv.length + 1}) { Set-Location -LiteralPath $omgV[0] -ErrorAction Stop; $ErrorActionPreference = 'Continue'; $omgE = $omgV[1]; $omgR = @($omgV | Select-Object -Skip 2);$global:LASTEXITCODE = $null; & $omgE @omgR 2>&1 | ForEach-Object { $omgL = "$_"; if ($omgL.Length -gt ${SHELL_LINE_CHARS}) { $omgL.Substring(0, ${SHELL_LINE_CHARS}) } else { $omgL } } | Select-Object -Last ${SHELL_OUTPUT_LINES}; "${marker} $LASTEXITCODE" }`
-    ].join("; ");
-  }
-  const payload = Buffer.from([cwd2, ...argv].map((w) => `${w}\0`).join(""), "utf8").toString("base64");
-  return `omg_a=(); while IFS= read -r -d '' omg_w; do omg_a+=("$omg_w"); done < <(printf '%s' '${payload}' | base64 -d); if [ "\${#omg_a[@]}" -eq ${argv.length + 1} ] && omg_o=$(mktemp) && cd -- "\${omg_a[0]}"; then "\${omg_a[@]:1}" > "$omg_o" 2>&1; omg_s=$?; tail -c ${SHELL_OUTPUT_BYTES} -- "$omg_o"; rm -f -- "$omg_o"; printf '\\n%s %s\\n' '${marker}' "$omg_s"; fi`;
-}
-function sandboxCommandTooLong(platform, argv, cwd2) {
-  const command = sandboxShellCommand(platform, argv, cwd2, SIZING_MARKER);
-  return command !== null && command.length > sandboxCommandMaxChars(platform);
-}
-function splitFileListArgs(platform, exe, args, fixed, cwd2) {
-  if (!sandboxCommandTooLong(platform, [exe, ...args], cwd2) || args.length <= fixed + 1) return [[...args]];
-  const head = args.slice(0, fixed);
-  const parts = [];
-  let chunk = [];
-  for (const file of args.slice(fixed)) {
-    if (chunk.length > 0 && sandboxCommandTooLong(platform, [exe, ...head, ...chunk, file], cwd2)) {
-      parts.push([...head, ...chunk]);
-      chunk = [];
-    }
-    chunk.push(file);
-  }
-  parts.push([...head, ...chunk]);
-  return parts;
-}
-function readMarker(output, marker) {
-  const none = { code: null, output };
-  const count3 = (s) => output.split(s).length - 1;
-  if (count3(marker) !== 1 || count3(MARKER_PREFIX) !== (marker.includes(MARKER_PREFIX) ? 1 : 0)) return none;
-  const lines4 = output.split("\n");
-  let i = lines4.length - 1;
-  while (i >= 0 && lines4[i].trim() === "") i--;
-  const m = i >= 0 ? /^(\S+) (-?\d+)\r?$/.exec(lines4[i]) : null;
-  if (!m || m[1] !== marker) return none;
-  return { code: Number(m[2]), output: lines4.slice(0, i).join("\n") };
-}
-function redactGateOutput(text4) {
-  return redactSecrets(text4).replace(/(?:[A-Za-z0-9+/=]{40,}\r?\n)+-----END [A-Z0-9 ]*KEY-----/g, "[redacted]");
-}
-async function runSandboxed(argv, o, deps) {
-  const notStarted = (reason) => ({ ran: false, reason });
-  const refuse2 = (reason) => ({ ran: false, reason, refused: true });
-  const noVerdict = (reason) => ({ ran: false, reason, started: true });
-  const sleep13 = deps.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
-  const marker = `${MARKER_PREFIX}${(0, import_node_crypto17.randomBytes)(8).toString("hex")}`;
-  const command = sandboxShellCommand(deps.platform, argv, o.cwd, marker);
-  if (command === null) return refuse2("the command cannot be passed to the sandbox shell unchanged (a NUL, or on Windows an empty argument or a double quote)");
-  const max = sandboxCommandMaxChars(deps.platform);
-  if (command.length > max) {
-    return refuse2(`the command is too long for the sandbox shell: it encodes to ${command.length} characters, above the ${max} that ${deps.platform === "win32" ? "a Windows command line" : "one shell argument"} can safely carry; shorten the configured command`);
-  }
-  const jobHome = (0, import_node_path36.join)(o.jobRoot, `gate-${Date.now().toString(36)}-${(0, import_node_crypto17.randomBytes)(4).toString("hex")}`);
-  const workDir = (0, import_node_path36.join)(jobHome, "work");
-  let client = null;
-  let session = null;
-  let pid;
-  let started = false;
-  try {
-    (0, import_node_fs30.mkdirSync)(workDir, { recursive: true });
-    const loaded2 = await deps.loadSdk().catch(() => null);
-    if (!loaded2) return notStarted("@github/copilot-sdk is not installed or could not be loaded, so the sandbox cannot start");
-    const found = deps.resolveBin();
-    const bin = found && deps.platform === "win32" && /\.(cmd|bat|ps1)$/i.test(found) ? resolveShimTarget(found) : found;
-    if (!bin) return notStarted(found ? `copilot shim ${found} names no .js/.exe target` : "copilot CLI not found (PATH, COPILOT_CLI_PATH, WinGet), so the sandbox cannot start");
-    const ident = loginIdentity(deps.userConfigDir());
-    (0, import_node_fs30.writeFileSync)((0, import_node_path36.join)(jobHome, "config.json"), `${JSON.stringify({ ...ident, trustedFolders: [workDir] }, null, 2)}
-`);
-    const env2 = childEnv(allowlistSessionEnv(buildSessionEnv(deps.env, jobHome, { session: false, hasLogin: ident.loggedInUsers !== void 0 }), jobHome));
-    const missing = missingSandboxEnv(env2, deps.platform);
-    if (missing.length) return notStarted(`the sandbox env lacks ${missing.join(", ")}, which the Windows sandbox needs to launch any process`);
-    (0, import_node_fs30.mkdirSync)(env2.XDG_CONFIG_HOME, { recursive: true });
-    (0, import_node_fs30.mkdirSync)((0, import_node_path36.dirname)(env2.GIT_CONFIG_GLOBAL), { recursive: true });
-    (0, import_node_fs30.mkdirSync)(env2.TEMP, { recursive: true });
-    (0, import_node_fs30.writeFileSync)(env2.GIT_CONFIG_GLOBAL, "[credential]\n	helper =\n");
-    Object.assign(env2, { GIT_TERMINAL_PROMPT: "0", GCM_INTERACTIVE: "never", COPILOT_ALLOW_ALL: "false", GIT_CEILING_DIRECTORIES: (0, import_node_path36.resolve)(o.jobRoot) });
-    const gitHubToken = sessionGitHubToken(deps.env);
-    const { CopilotClient, RuntimeConnection } = loaded2.module;
-    const c = new CopilotClient({
-      connection: RuntimeConnection.forStdio({ path: bin, args: ["--max-ai-credits", String(RUNTIME_MIN_MAX_CREDITS)], env: env2 }),
-      baseDirectory: jobHome,
-      workingDirectory: workDir
-    });
-    client = c;
-    await withTimeout3(c.start(), START_TIMEOUT_MS3, "client.start()");
-    pid = runtimePid(c);
-    const pluginRoot = deps.pluginRoot();
-    const realHome = (deps.realHome ?? (() => (0, import_node_os10.userInfo)().homedir))();
-    const settings = { ...o.settings, enabled: true, writeUnsandboxed: "refuse", writeNetwork: o.network, extraReadwritePaths: [] };
-    const notes = [];
-    const sandbox = new SessionSandboxController({
-      profile: "write",
-      settings,
-      env: deps.env,
-      platform: deps.platform,
-      rpcTimeoutMs: RPC_TIMEOUT_MS3,
-      ...deps.sandboxTrialLaunch ? { trialLaunch: deps.sandboxTrialLaunch } : {},
-      policyContext: () => {
-        const proxy = proxyCaEnv(deps.env, deps.platform, realHome);
-        return {
-          worktree: (0, import_node_path36.resolve)(o.cwd),
-          commonGitDir: (0, import_node_path36.resolve)(o.commonGitDir),
-          pluginRoot,
-          jobHome,
-          jobDir: jobHome,
-          realHome,
-          platform: deps.platform,
-          settings,
-          hostCommits: true,
-          toolPaths: (deps.toolPaths ?? laneToolPaths)(deps.env, deps.platform),
-          extraReadonly: proxy.caPaths,
-          ...o.mainRoot ? { mainRoot: (0, import_node_path36.resolve)(o.mainRoot) } : {},
-          ...o.nodeModulesTarget ? { nodeModulesTarget: (0, import_node_path36.resolve)(o.nodeModulesTarget) } : {}
-        };
-      },
-      note: (text4) => {
-        notes.push(text4);
-      }
-    });
-    const config2 = await sandbox.decide(c, loaded2);
-    if (!config2) return notStarted(`the sandbox is not available: ${sandbox.state?.reason ?? "unknown reason"}`);
-    const readable = !config2.userPolicy.filesystem.deniedPaths?.length;
-    if (readable && o.requireDeniedPaths) {
-      return notStarted("the sandbox host does not report denied_paths, so it cannot hide your credential files from the PR's code, and factory.run.sandbox.requireDeniedPaths is true");
-    }
-    const attested = /* @__PURE__ */ new Map();
-    const onPermissionRequest = () => ({ kind: "reject", feedback: "omg factory run: a gate session grants nothing" });
-    const atCreate = sandbox.atCreate(loaded2, config2);
-    session = await withTimeout3(c.createSession({
-      onPermissionRequest,
-      onEvent: (e) => {
-        const data = e.data ?? {};
-        if (e.type === "tool.execution_start") sandbox.toolStarted(data);
-        if (e.type === "tool.execution_complete") {
-          attested.set(String(data.toolCallId ?? ""), data.sandboxed);
-          sandbox.toolCompleted(data);
-        }
-      },
-      // No plugin: its hooks would run in the runtime, outside the sandbox.
-      pluginDirectories: [],
-      workingDirectory: workDir,
-      disabledMcpServers: ["github-mcp-server"],
-      excludedTools: [],
-      ...gitHubToken ? { gitHubToken } : {},
-      ...atCreate ? { sandboxConfig: config2 } : {}
-    }), RPC_TIMEOUT_MS3, "createSession()");
-    await sandbox.confirm(session, config2, atCreate);
-    if (sandbox.state?.mode !== "enforced") return notStarted(`the sandbox policy was not confirmed: ${sandbox.state?.reason ?? "unknown reason"}`);
-    const shell = session.rpc.shell;
-    if (typeof shell?.executeUserRequested !== "function") return notStarted("the SDK has no shell.executeUserRequested RPC, so the command cannot run in the sandbox");
-    const requestId = (0, import_node_crypto17.randomUUID)();
-    let timer;
-    started = true;
-    const call = shell.executeUserRequested.call(shell, { requestId, command }).then((value) => ({ value }), (error2) => ({ error: error2 }));
-    const timedOut = new Promise((r2) => {
-      timer = setTimeout(() => r2("timeout"), o.timeoutMs);
-    });
-    let answer = await Promise.race([call, timedOut]);
-    clearTimeout(timer);
-    let timeout = false;
-    if (answer === "timeout") {
-      timeout = true;
-      try {
-        await withTimeout3(shell.cancelUserRequested?.call(shell, { requestId }) ?? Promise.resolve(), RPC_TIMEOUT_MS3, "cancelUserRequested()");
-      } catch {
-      }
-      let grace;
-      answer = await Promise.race([call, new Promise((r2) => {
-        grace = setTimeout(() => r2("timeout"), CANCEL_GRACE_MS);
-      })]);
-      clearTimeout(grace);
-    }
-    const r = answer !== "timeout" && "value" in answer ? answer.value : null;
-    const id = typeof r?.toolCallId === "string" ? r.toolCallId : "";
-    for (let waited = 0; id && !attested.has(id) && waited < ATTEST_WAIT_MS; waited += 100) await sleep13(100);
-    const escapes = sandbox.state?.unsandboxedCalls ?? 0;
-    if (escapes > 0) return noVerdict(`${escapes} call(s) of the gate session were not attested sandboxed: true; nothing is counted`);
-    if (!id || attested.get(id) !== true) {
-      const why = !r ? answer !== "timeout" && "error" in answer ? "the shell call failed" : "the shell call gave no answer" : `its completion was ${attested.get(id) === false ? "attested sandboxed: false" : "not attested sandboxed"}`;
-      return noVerdict(`${timeout ? `timed out after ${o.timeoutMs} ms and ` : ""}${why}; the command is not counted as run in the sandbox`);
-    }
-    const raw = typeof r?.output === "string" ? r.output : "";
-    const read = readMarker(raw, marker);
-    const marked = readable ? { credentialFilesReadable: true } : {};
-    if (timeout) return { ran: true, status: 124, output: tail2(`${read.output.trim()}
-timed out after ${o.timeoutMs} ms`), timedOut: true, ...marked };
-    if (typeof r?.success !== "boolean") return noVerdict("the sandbox shell call reported no success field");
-    if (read.code === null) return noVerdict("the output did not end with the one exit-code marker line the sandbox shell prints after the command");
-    const exitOk = r.exitCode === void 0 || r.exitCode === null || r.exitCode === 0 || r.exitCode === read.code;
-    const successOk = r.success === true || read.code !== 0;
-    if (!exitOk || !successOk) return noVerdict("the sandbox shell's own result contradicts the exit code the command printed");
-    return { ran: true, status: read.code, output: tail2(read.output.trim()), timedOut: false, ...marked };
-  } catch (err) {
-    if (started) return noVerdict("the sandbox runtime failed while the command ran");
-    return notStarted(`the sandbox runtime failed: ${errText4(err).slice(0, 300)}`);
-  } finally {
-    if (session) {
-      try {
-        await withTimeout3(session.disconnect(), RPC_TIMEOUT_MS3, "disconnect()");
-      } catch {
-      }
-      try {
-        await withTimeout3(client.deleteSession(session.sessionId), RPC_TIMEOUT_MS3, "deleteSession()");
-      } catch {
-      }
-    }
-    if (client) {
-      pid ??= runtimePid(client);
-      if (session && pid && deps.isAlive(pid)) {
-        try {
-          deps.killTree(pid);
-        } catch {
-        }
-      }
-      let stopped = false;
-      try {
-        await withTimeout3(client.stop(), STOP_TIMEOUT_MS3, "client.stop()");
-        stopped = true;
-      } catch {
-      }
-      if (!stopped) {
-        if (pid && deps.isAlive(pid)) {
-          try {
-            deps.killTree(pid);
-          } catch {
-          }
-        }
-        try {
-          await withTimeout3(client.forceStop?.() ?? Promise.resolve(), STOP_TIMEOUT_MS3, "client.forceStop()");
-        } catch {
-        }
-      }
-      if (pid && deps.isAlive(pid)) {
-        try {
-          deps.killTree(pid);
-        } catch {
-        }
-      }
-    }
-    try {
-      (0, import_node_fs30.rmSync)(jobHome, { recursive: true, force: true });
-    } catch {
-    }
-  }
-}
-function createSandboxRunner(root2, deps = defaultCopilotRunDeps(), layers) {
-  return async (req) => {
-    let settings;
-    try {
-      settings = (layers ? loadSandboxSettings(root2, "factory", layers) : loadSandboxSettings(root2, "factory")).settings;
-    } catch (err) {
-      return { ran: false, reason: `the sandbox settings could not be read: ${errText4(err)}` };
-    }
-    return runSandboxed([req.exe, ...req.args], {
-      cwd: req.cwd,
-      commonGitDir: req.commonGitDir,
-      timeoutMs: req.timeoutMs,
-      network: req.network ?? settings.writeNetwork,
-      settings,
-      jobRoot: req.jobRoot ?? sandboxJobRoot(root2),
-      ...req.requireDeniedPaths ? { requireDeniedPaths: true } : {},
-      ...req.mainRoot ? { mainRoot: req.mainRoot } : {},
-      ...req.nodeModulesTarget ? { nodeModulesTarget: req.nodeModulesTarget } : {}
-    }, deps);
-  };
-}
-function gateEnv(env2, home) {
-  const kept = new Set(GATE_ENV_KEPT);
-  const has3 = (name) => Object.keys(env2).some((k) => k.toUpperCase() === name);
-  const out = {};
-  for (const [key, value] of Object.entries(env2)) {
-    const upper = key.toUpperCase();
-    if (value !== void 0 && (kept.has(upper) || upper.startsWith("LC_"))) out[key] = value;
-  }
-  const tmp = (0, import_node_path36.join)(home, "tmp");
-  (0, import_node_fs30.mkdirSync)(tmp, { recursive: true });
-  const gitConfig = (0, import_node_path36.join)(home, ".gitconfig-empty");
-  (0, import_node_fs30.writeFileSync)(gitConfig, "");
-  return {
-    ...out,
-    ...TRUSTED_READ_ENV,
-    HOME: home,
-    USERPROFILE: home,
-    XDG_CONFIG_HOME: (0, import_node_path36.join)(home, ".config"),
-    ...has3("APPDATA") ? { APPDATA: (0, import_node_path36.join)(home, "AppData", "Roaming") } : {},
-    ...has3("LOCALAPPDATA") ? { LOCALAPPDATA: (0, import_node_path36.join)(home, "AppData", "Local") } : {},
-    TEMP: tmp,
-    TMP: tmp,
-    TMPDIR: tmp,
-    GIT_CONFIG_NOSYSTEM: "1",
-    GIT_CONFIG_GLOBAL: gitConfig,
-    GIT_TERMINAL_PROMPT: "0",
-    GCM_INTERACTIVE: "never"
-  };
-}
-var import_node_crypto17, import_node_fs30, import_node_os10, import_node_path36, SANDBOX_OUTPUT_TAIL_CHARS, START_TIMEOUT_MS3, RPC_TIMEOUT_MS3, STOP_TIMEOUT_MS3, CANCEL_GRACE_MS, ATTEST_WAIT_MS, CREDENTIAL_FILES_READABLE_NOTE, MARKER_PREFIX, SHELL_OUTPUT_BYTES, SHELL_OUTPUT_LINES, SHELL_LINE_CHARS, sandboxCommandMaxChars, SIZING_MARKER, tail2, sandboxJobRoot, GATE_ENV_KEPT;
-var init_sandbox_exec = __esm({
-  "src/factory/run/sandbox-exec.ts"() {
-    "use strict";
-    import_node_crypto17 = require("node:crypto");
-    import_node_fs30 = require("node:fs");
-    import_node_os10 = require("node:os");
-    import_node_path36 = require("node:path");
-    init_job();
-    init_sandbox2();
-    init_sandbox_session();
-    init_timeout();
-    init_worktree_paths();
-    init_exec();
-    init_sanitize();
-    init_copilot_sdk_driver();
-    init_copilot_sdk_scenarios();
-    init_copilot_session_env();
-    init_windows_search();
-    SANDBOX_OUTPUT_TAIL_CHARS = 8e3;
-    START_TIMEOUT_MS3 = 6e4;
-    RPC_TIMEOUT_MS3 = 3e4;
-    STOP_TIMEOUT_MS3 = 15e3;
-    CANCEL_GRACE_MS = 5e3;
-    ATTEST_WAIT_MS = 2e3;
-    CREDENTIAL_FILES_READABLE_NOTE = "sandboxed; credential files readable on this host";
-    MARKER_PREFIX = "omg-gate-exit-";
-    SHELL_OUTPUT_BYTES = 64 * 1024;
-    SHELL_OUTPUT_LINES = 400;
-    SHELL_LINE_CHARS = 2e3;
-    sandboxCommandMaxChars = (platform) => platform === "win32" ? 28e3 : 12e4;
-    SIZING_MARKER = `${MARKER_PREFIX}${"0".repeat(16)}`;
-    tail2 = (text4) => {
-      const clean = redactGateOutput(text4);
-      return clean.length > SANDBOX_OUTPUT_TAIL_CHARS ? clean.slice(-SANDBOX_OUTPUT_TAIL_CHARS) : clean;
-    };
-    sandboxJobRoot = (root2) => (0, import_node_path36.join)(getOmcRoot(root2), "state", "factory-gates");
-    GATE_ENV_KEPT = [
-      "PATH",
-      "PATHEXT",
-      "SYSTEMROOT",
-      "SYSTEMDRIVE",
-      "WINDIR",
-      "COMSPEC",
-      "LANG",
-      "TZ",
-      "CI",
-      "NODE_ENV",
-      "NPM_CONFIG_CACHE"
-    ];
   }
 });
 
@@ -132556,7 +133112,7 @@ async function runSandboxedGate(i, base, now2) {
   }
   if (!r.ran) {
     drop();
-    return { started: false, reason: r.reason, sandbox: true, ...r.started ? { noVerdict: true } : {}, ...r.refused ? { refused: true } : {} };
+    return { started: false, reason: r.reason, sandbox: true, ...r.started ? { noVerdict: true } : {}, ...r.refused ? { refused: true } : {}, ...r.unavailable ? { unavailable: true } : {} };
   }
   const output = `${r.output}${r.timedOut ? `
 local gate timed out after ${i.timeoutMinutes} min` : ""}`;
@@ -132960,39 +133516,39 @@ function parseProcStat(stat2) {
 }
 function listLinux() {
   const rows = [];
-  for (const name of (0, import_node_fs31.readdirSync)("/proc")) {
+  for (const name of (0, import_node_fs32.readdirSync)("/proc")) {
     if (!/^\d+$/.test(name)) continue;
     let stat2 = null;
     try {
-      stat2 = parseProcStat((0, import_node_fs31.readFileSync)(`/proc/${name}/stat`, "utf8"));
+      stat2 = parseProcStat((0, import_node_fs32.readFileSync)(`/proc/${name}/stat`, "utf8"));
     } catch {
       continue;
     }
     if (!stat2) continue;
     let cwd2 = null;
     try {
-      cwd2 = (0, import_node_fs31.readlinkSync)(`/proc/${name}/cwd`);
+      cwd2 = (0, import_node_fs32.readlinkSync)(`/proc/${name}/cwd`);
     } catch {
     }
     rows.push({ pid: Number(name), ...stat2, cwd: cwd2 });
   }
   return rows;
 }
-var import_node_child_process17, import_node_fs31, import_node_path37, import_node_util, execFileAsync7, LANE_PROCS_QUERY_TIMEOUT_MS, KILL_DEADLINE_MS2, under3, WIN_QUERY, defaultLaneProcsDeps;
+var import_node_child_process18, import_node_fs32, import_node_path38, import_node_util, execFileAsync7, LANE_PROCS_QUERY_TIMEOUT_MS, KILL_DEADLINE_MS2, under3, WIN_QUERY, defaultLaneProcsDeps;
 var init_lane_procs = __esm({
   "src/factory/run/lane-procs.ts"() {
     "use strict";
-    import_node_child_process17 = require("node:child_process");
-    import_node_fs31 = require("node:fs");
-    import_node_path37 = require("node:path");
+    import_node_child_process18 = require("node:child_process");
+    import_node_fs32 = require("node:fs");
+    import_node_path38 = require("node:path");
     import_node_util = require("node:util");
     init_process_utils();
-    execFileAsync7 = (0, import_node_util.promisify)(import_node_child_process17.execFile);
+    execFileAsync7 = (0, import_node_util.promisify)(import_node_child_process18.execFile);
     LANE_PROCS_QUERY_TIMEOUT_MS = 1e4;
     KILL_DEADLINE_MS2 = 1e4;
     under3 = (dir, path30) => {
-      const r = (0, import_node_path37.relative)((0, import_node_path37.resolve)(dir), (0, import_node_path37.resolve)(path30));
-      return r === "" || !r.startsWith("..") && !(0, import_node_path37.isAbsolute)(r);
+      const r = (0, import_node_path38.relative)((0, import_node_path38.resolve)(dir), (0, import_node_path38.resolve)(path30));
+      return r === "" || !r.startsWith("..") && !(0, import_node_path38.isAbsolute)(r);
     };
     WIN_QUERY = `Get-CimInstance Win32_Process -Property ProcessId,ParentProcessId,CreationDate -ErrorAction Stop | ForEach-Object { $c = if ($_.CreationDate) { ([DateTime]$_.CreationDate).ToUniversalTime().Ticks } else { '-' }; "$($_.ProcessId) $($_.ParentProcessId) $c" }`;
     defaultLaneProcsDeps = {
@@ -133035,8 +133591,8 @@ function benignChange(key, was, now2) {
 }
 function configEntries(bytes, tmp) {
   if (bytes === null) return [];
-  const file = (0, import_node_path38.join)(tmp, `cfg-${Math.random().toString(36).slice(2)}`);
-  (0, import_node_fs32.writeFileSync)(file, bytes);
+  const file = (0, import_node_path39.join)(tmp, `cfg-${Math.random().toString(36).slice(2)}`);
+  (0, import_node_fs33.writeFileSync)(file, bytes);
   try {
     const out = runHostGit(tmp, ["config", "--file", file, "--null", "--list"], 3e4);
     return out.split("\0").filter(Boolean).map((e) => {
@@ -133047,7 +133603,7 @@ function configEntries(bytes, tmp) {
     return null;
   } finally {
     try {
-      (0, import_node_fs32.unlinkSync)(file);
+      (0, import_node_fs33.unlinkSync)(file);
     } catch {
     }
   }
@@ -133064,8 +133620,8 @@ function changedKeys(before, after, tmp) {
 function putKeysBack(current, old, keys, tmp) {
   const entries = configEntries(old, tmp);
   if (!entries) return null;
-  const file = (0, import_node_path38.join)(tmp, `merge-${Math.random().toString(36).slice(2)}`);
-  (0, import_node_fs32.writeFileSync)(file, current);
+  const file = (0, import_node_path39.join)(tmp, `merge-${Math.random().toString(36).slice(2)}`);
+  (0, import_node_fs33.writeFileSync)(file, current);
   try {
     for (const key of keys) {
       const values = entries.filter(([k]) => k === key).map(([, v]) => v);
@@ -133077,12 +133633,12 @@ function putKeysBack(current, old, keys, tmp) {
       }
       for (const v of values) runHostGit(tmp, ["config", "--file", file, "--add", key, v], 3e4);
     }
-    return (0, import_node_fs32.readFileSync)(file);
+    return (0, import_node_fs33.readFileSync)(file);
   } catch {
     return null;
   } finally {
     try {
-      (0, import_node_fs32.unlinkSync)(file);
+      (0, import_node_fs33.unlinkSync)(file);
     } catch {
     }
   }
@@ -133096,12 +133652,12 @@ function assertParentsReal(common, rel) {
   const segs = rel.split("/").slice(0, -1);
   let dir = common;
   for (const s of segs) {
-    dir = (0, import_node_path38.join)(dir, s);
+    dir = (0, import_node_path39.join)(dir, s);
     let st;
     try {
-      st = (0, import_node_fs32.lstatSync)(dir);
+      st = (0, import_node_fs33.lstatSync)(dir);
     } catch {
-      (0, import_node_fs32.mkdirSync)(dir);
+      (0, import_node_fs33.mkdirSync)(dir);
       continue;
     }
     if (st.isSymbolicLink() || !st.isDirectory()) throw new Error(`${dir} is not a real directory`);
@@ -133111,7 +133667,7 @@ function restoreConfigLocked(abs, compute) {
   const lock = `${abs}.lock`;
   let fd;
   try {
-    fd = (0, import_node_fs32.openSync)(lock, "wx", 420);
+    fd = (0, import_node_fs33.openSync)(lock, "wx", 420);
   } catch (error2) {
     if (error2.code === "EEXIST") throw new Error(CONFIG_LOCKED);
     throw error2;
@@ -133119,55 +133675,55 @@ function restoreConfigLocked(abs, compute) {
   try {
     let locked = null;
     try {
-      locked = (0, import_node_fs32.readFileSync)(abs);
+      locked = (0, import_node_fs33.readFileSync)(abs);
     } catch (error2) {
       if (error2.code !== "ENOENT") throw error2;
     }
     const out = compute(locked);
     if (out === null) {
-      (0, import_node_fs32.closeSync)(fd);
+      (0, import_node_fs33.closeSync)(fd);
       fd = void 0;
-      if (locked !== null) (0, import_node_fs32.unlinkSync)(abs);
-      (0, import_node_fs32.unlinkSync)(lock);
+      if (locked !== null) (0, import_node_fs33.unlinkSync)(abs);
+      (0, import_node_fs33.unlinkSync)(lock);
       return;
     }
-    (0, import_node_fs32.writeSync)(fd, out);
-    (0, import_node_fs32.fsyncSync)(fd);
-    (0, import_node_fs32.closeSync)(fd);
+    (0, import_node_fs33.writeSync)(fd, out);
+    (0, import_node_fs33.fsyncSync)(fd);
+    (0, import_node_fs33.closeSync)(fd);
     fd = void 0;
-    (0, import_node_fs32.renameSync)(lock, abs);
+    (0, import_node_fs33.renameSync)(lock, abs);
   } catch (error2) {
     if (fd !== void 0) {
       try {
-        (0, import_node_fs32.closeSync)(fd);
+        (0, import_node_fs33.closeSync)(fd);
       } catch {
       }
     }
     try {
-      (0, import_node_fs32.unlinkSync)(lock);
+      (0, import_node_fs33.unlinkSync)(lock);
     } catch {
     }
     throw error2;
   }
 }
 function atomicRestore(abs, bytes, exec3) {
-  if ((0, import_node_fs32.existsSync)(`${abs}.lock`)) throw new Error(`${(0, import_node_path38.basename)(abs)}.lock exists (a git command is writing it), so it was not restored`);
+  if ((0, import_node_fs33.existsSync)(`${abs}.lock`)) throw new Error(`${(0, import_node_path39.basename)(abs)}.lock exists (a git command is writing it), so it was not restored`);
   let st;
   try {
-    st = (0, import_node_fs32.lstatSync)(abs);
+    st = (0, import_node_fs33.lstatSync)(abs);
   } catch {
     st = void 0;
   }
-  if (st?.isDirectory()) (0, import_node_fs32.rmdirSync)(abs);
+  if (st?.isDirectory()) (0, import_node_fs33.rmdirSync)(abs);
   else if (st?.isSymbolicLink()) removeEntry(abs);
   const tmp = `${abs}.omg-restore-${Math.random().toString(36).slice(2)}`;
-  (0, import_node_fs32.writeFileSync)(tmp, bytes, { mode: exec3 ? 493 : 420, flag: "wx" });
+  (0, import_node_fs33.writeFileSync)(tmp, bytes, { mode: exec3 ? 493 : 420, flag: "wx" });
   try {
-    if (exec3) (0, import_node_fs32.chmodSync)(tmp, 493);
-    (0, import_node_fs32.renameSync)(tmp, abs);
+    if (exec3) (0, import_node_fs33.chmodSync)(tmp, 493);
+    (0, import_node_fs33.renameSync)(tmp, abs);
   } catch (error2) {
     try {
-      (0, import_node_fs32.unlinkSync)(tmp);
+      (0, import_node_fs33.unlinkSync)(tmp);
     } catch {
     }
     throw error2;
@@ -133175,17 +133731,17 @@ function atomicRestore(abs, bytes, exec3) {
 }
 function removeEntry(abs) {
   try {
-    (0, import_node_fs32.unlinkSync)(abs);
+    (0, import_node_fs33.unlinkSync)(abs);
   } catch (error2) {
     const code = error2.code;
-    if (code !== "EPERM" && code !== "EISDIR" || !(0, import_node_fs32.lstatSync)(abs).isSymbolicLink()) throw error2;
-    (0, import_node_fs32.rmdirSync)(abs);
+    if (code !== "EPERM" && code !== "EISDIR" || !(0, import_node_fs33.lstatSync)(abs).isSymbolicLink()) throw error2;
+    (0, import_node_fs33.rmdirSync)(abs);
   }
 }
 function asideName(abs) {
   for (let n = 0; ; n++) {
     const p = `${abs}.omg-quarantined${n ? `-${n}` : ""}`;
-    if (!(0, import_node_fs32.existsSync)(p)) return p;
+    if (!(0, import_node_fs33.existsSync)(p)) return p;
   }
 }
 function problemStatus(p, touched, before, after) {
@@ -133202,7 +133758,7 @@ function problemStatus(p, touched, before, after) {
   m = /^submodule git dir (modules\/.+) was removed$/.exec(p);
   if (m) return "ok";
   m = /^submodule git dir (modules\/.+) was added$/.exec(p) ?? /^(modules\/.+) changed \(config, hooks, info or alternates\)$/.exec(p);
-  if (m) return touched(`${m[1]}/`) && !(0, import_node_fs32.existsSync)((0, import_node_path38.join)(before.commonDir, ...m[1].split("/"), "objects", "info", "alternates")) ? "ok" : "unhandled";
+  if (m) return touched(`${m[1]}/`) && !(0, import_node_fs33.existsSync)((0, import_node_path39.join)(before.commonDir, ...m[1].split("/"), "objects", "info", "alternates")) ? "ok" : "unhandled";
   m = /^worktree entry worktrees\/([^/]+) was added$/.exec(p);
   if (m) return after?.worktrees?.[m[1]]?.commondir === "../.." ? "ok" : "unhandled";
   if (/^worktree entry worktrees\/[^/]+ was removed or is no longer a directory$/.test(p)) return "ok";
@@ -133222,15 +133778,15 @@ function advice(p, common) {
   return `inspect it in ${common} and remove what you did not add`;
 }
 function quarantineTamper(i) {
-  const hold = { root: (0, import_node_path38.resolve)(i.root), at: i.at, run: i.run, gate: i.gate, moved: [], restored: [], notRestored: [], refs: [], kept: [], active: [], undo: [] };
+  const hold = { root: (0, import_node_path39.resolve)(i.root), at: i.at, run: i.run, gate: i.gate, moved: [], restored: [], notRestored: [], refs: [], kept: [], active: [], undo: [] };
   const common = i.before.commonDir;
   const kept = i.before.restore;
   const touchedRels = [];
   const failedRels = /* @__PURE__ */ new Set();
-  const dir = (0, import_node_path38.join)(i.ledgerDir, "quarantine", repoKey(i.root), `${i.at.replace(/[:.]/g, "-")}${i.label ? `-${i.label.replace(/[^A-Za-z0-9._-]/g, "_")}` : ""}`);
+  const dir = (0, import_node_path39.join)(i.ledgerDir, "quarantine", repoKey(i.root), `${i.at.replace(/[:.]/g, "-")}${i.label ? `-${i.label.replace(/[^A-Za-z0-9._-]/g, "_")}` : ""}`);
   const quarantine = () => {
     if (!hold.quarantine) {
-      (0, import_node_fs32.mkdirSync)(dir, { recursive: true, mode: 448 });
+      (0, import_node_fs33.mkdirSync)(dir, { recursive: true, mode: 448 });
       hold.quarantine = dir;
     }
     return dir;
@@ -133246,9 +133802,9 @@ function quarantineTamper(i) {
     }
     if (now2) {
       let handleItem2 = function(rel, was, is) {
-        const abs = (0, import_node_path38.join)(common, ...rel.split("/"));
+        const abs = (0, import_node_path39.join)(common, ...rel.split("/"));
         const owner = ownerOf2(rel);
-        if (owner && !realDir((0, import_node_path38.join)(common, ...owner.split("/")))) {
+        if (owner && !realDir((0, import_node_path39.join)(common, ...owner.split("/")))) {
           hold.kept.push(`${rel} (its git dir ${owner} is gone; nothing was recreated)`);
           return false;
         }
@@ -133256,7 +133812,7 @@ function quarantineTamper(i) {
         if (isConfigRel(rel) && (was === void 0 || old !== null) && (is?.startsWith("b64") ?? false)) {
           const current = decode2(is);
           quarantine();
-          (0, import_node_fs32.mkdirSync)(tmp, { recursive: true });
+          (0, import_node_fs33.mkdirSync)(tmp, { recursive: true });
           const diff = changedKeys(old, current, tmp);
           if (diff !== null) {
             const { keys, held: program3 } = diff;
@@ -133276,7 +133832,7 @@ function quarantineTamper(i) {
             let exact = false;
             restoreConfigLocked(abs, (locked) => {
               if (locked === null) return old;
-              if (!locked.equals(current)) (0, import_node_fs32.writeFileSync)(to, locked);
+              if (!locked.equals(current)) (0, import_node_fs33.writeFileSync)(to, locked);
               const keysNow = changedKeys(old, locked, tmp);
               if (keysNow !== null) {
                 putBack = keysNow.held;
@@ -133318,7 +133874,7 @@ function quarantineTamper(i) {
         if (was.startsWith("link:")) {
           try {
             assertParentsReal(common, rel);
-            (0, import_node_fs32.symlinkSync)(was.slice(5), abs);
+            (0, import_node_fs33.symlinkSync)(was.slice(5), abs);
             hold.restored.push(rel);
           } catch (error2) {
             hold.notRestored.push(`${rel} (a link to ${was.slice(5)} before the run; it could not be made again: ${errText5(error2)})`);
@@ -133328,38 +133884,38 @@ function quarantineTamper(i) {
         }
         return renamed;
       }, saveBytes2 = function(rel, bytes) {
-        const to = (0, import_node_path38.join)(quarantine(), ...rel.split("/"));
-        (0, import_node_fs32.mkdirSync)((0, import_node_path38.dirname)(to), { recursive: true });
-        (0, import_node_fs32.writeFileSync)(to, bytes);
+        const to = (0, import_node_path39.join)(quarantine(), ...rel.split("/"));
+        (0, import_node_fs33.mkdirSync)((0, import_node_path39.dirname)(to), { recursive: true });
+        (0, import_node_fs33.writeFileSync)(to, bytes);
         return to;
       }, saveCurrent2 = function(rel, abs, is) {
         if (is.startsWith("link:")) {
-          const to2 = (0, import_node_path38.join)(quarantine(), LINKS_DIR, ...rel.split("/"));
-          (0, import_node_fs32.mkdirSync)((0, import_node_path38.dirname)(to2), { recursive: true });
-          (0, import_node_fs32.writeFileSync)(to2, is.slice(5));
+          const to2 = (0, import_node_path39.join)(quarantine(), LINKS_DIR, ...rel.split("/"));
+          (0, import_node_fs33.mkdirSync)((0, import_node_path39.dirname)(to2), { recursive: true });
+          (0, import_node_fs33.writeFileSync)(to2, is.slice(5));
           return { at: to2, renamed: false };
         }
         const bytes = decode2(is);
         if (bytes) {
           const to2 = saveBytes2(rel, bytes);
-          if (is.startsWith("b64x:")) (0, import_node_fs32.chmodSync)(to2, 493);
+          if (is.startsWith("b64x:")) (0, import_node_fs33.chmodSync)(to2, 493);
           return { at: to2, renamed: false };
         }
-        const to = (0, import_node_path38.join)(quarantine(), ...rel.split("/"));
-        (0, import_node_fs32.mkdirSync)((0, import_node_path38.dirname)(to), { recursive: true });
+        const to = (0, import_node_path39.join)(quarantine(), ...rel.split("/"));
+        (0, import_node_fs33.mkdirSync)((0, import_node_path39.dirname)(to), { recursive: true });
         try {
-          (0, import_node_fs32.copyFileSync)(abs, to);
+          (0, import_node_fs33.copyFileSync)(abs, to);
           return { at: to, renamed: false };
         } catch {
         }
         try {
-          (0, import_node_fs32.renameSync)(abs, to);
+          (0, import_node_fs33.renameSync)(abs, to);
           return { at: to, renamed: true };
         } catch (error2) {
           if (error2.code !== "EXDEV") throw error2;
         }
         const aside = asideName(abs);
-        (0, import_node_fs32.renameSync)(abs, aside);
+        (0, import_node_fs33.renameSync)(abs, aside);
         return { at: aside, renamed: true };
       };
       var handleItem = handleItem2, saveBytes = saveBytes2, saveCurrent = saveCurrent2;
@@ -133370,7 +133926,7 @@ function quarantineTamper(i) {
       };
       const changed = [.../* @__PURE__ */ new Set([...Object.keys(kept), ...Object.keys(now2)])].filter((rel) => rel !== RESTORE_SCOPE_KEY && kept[rel] !== now2[rel] && inScope(rel)).sort();
       touchedRels.push(...changed);
-      const tmp = (0, import_node_path38.join)(dir, ".tmp");
+      const tmp = (0, import_node_path39.join)(dir, ".tmp");
       const movedAway = [];
       const added = changed.filter((rel) => kept[rel] === void 0).reverse();
       for (const rel of [...added, ...changed.filter((rel2) => kept[rel2] !== void 0)]) {
@@ -133383,7 +133939,7 @@ function quarantineTamper(i) {
           hold.active.push(`${rel}: ${STILL_ACTIVE}: it could not be moved or restored (${errText5(error2)}); remove or fix it by hand in ${common}`);
         }
       }
-      (0, import_node_fs32.rmSync)(tmp, { recursive: true, force: true });
+      (0, import_node_fs33.rmSync)(tmp, { recursive: true, force: true });
     }
   }
   try {
@@ -133397,13 +133953,13 @@ function quarantineTamper(i) {
   }
   if (hold.quarantine && hold.undo.length > 0) {
     try {
-      (0, import_node_fs32.writeFileSync)((0, import_node_path38.join)(hold.quarantine, "undo.txt"), `${hold.undo.join("\n")}
+      (0, import_node_fs33.writeFileSync)((0, import_node_path39.join)(hold.quarantine, "undo.txt"), `${hold.undo.join("\n")}
 `);
     } catch {
     }
   }
   if (!hold.failed && hold.moved.length + hold.restored.length + hold.notRestored.length + hold.refs.length + hold.kept.length + hold.active.length === 0) {
-    if (hold.quarantine) (0, import_node_fs32.rmSync)(hold.quarantine, { recursive: true, force: true });
+    if (hold.quarantine) (0, import_node_fs33.rmSync)(hold.quarantine, { recursive: true, force: true });
     delete hold.quarantine;
     return hold;
   }
@@ -133429,7 +133985,7 @@ function refChanges(before, now2, common, quarantine, only) {
     if (was === is) continue;
     if (was === void 0 && name.startsWith("refs/replace/")) {
       saved.push(`${name} ${is}`);
-      (0, import_node_fs32.writeFileSync)((0, import_node_path38.join)(quarantine(), "refs.txt"), `${saved.join("\n")}
+      (0, import_node_fs33.writeFileSync)((0, import_node_path39.join)(quarantine(), "refs.txt"), `${saved.join("\n")}
 `);
       runHostGit(common, ["--git-dir", common, "update-ref", "-d", name, is], 3e4);
       out.push(`${name} was created at ${is.slice(0, 12)}: deleted (saved in refs.txt)`);
@@ -133437,21 +133993,21 @@ function refChanges(before, now2, common, quarantine, only) {
     else if (is === void 0) out.push(`${name} was deleted (was ${was.slice(0, 12)}); to put it back: git update-ref ${name} ${was}`);
     else out.push(`${name} moved ${was.slice(0, 12)} -> ${is.slice(0, 12)}; if you did not move it: git update-ref ${name} ${was} ${is}`);
   }
-  if (out.length > 0) (0, import_node_fs32.writeFileSync)((0, import_node_path38.join)(quarantine(), "refs.txt"), `${[...saved, ...out].join("\n")}
+  if (out.length > 0) (0, import_node_fs33.writeFileSync)((0, import_node_path39.join)(quarantine(), "refs.txt"), `${[...saved, ...out].join("\n")}
 `);
   return out;
 }
 function writeTamperHold(ledgerDir, root2, hold) {
   const path30 = tamperHoldPath(ledgerDir, root2);
-  (0, import_node_fs32.mkdirSync)((0, import_node_path38.dirname)(path30), { recursive: true, mode: 448 });
+  (0, import_node_fs33.mkdirSync)((0, import_node_path39.dirname)(path30), { recursive: true, mode: 448 });
   atomicWriteFileSync(path30, `${JSON.stringify(hold, null, 2)}
 `);
 }
 function readTamperHold(ledgerDir, root2) {
   const path30 = tamperHoldPath(ledgerDir, root2);
-  if (!(0, import_node_fs32.existsSync)(path30)) return null;
+  if (!(0, import_node_fs33.existsSync)(path30)) return null;
   try {
-    const h = JSON.parse((0, import_node_fs32.readFileSync)(path30, "utf8"));
+    const h = JSON.parse((0, import_node_fs33.readFileSync)(path30, "utf8"));
     return typeof h === "object" && h !== null && typeof h.gate === "string" ? h : "unreadable";
   } catch {
     return "unreadable";
@@ -133482,27 +134038,27 @@ function releaseTamperHold(ledgerDir, root2) {
     for (const a of hold.active ?? []) lines4.push(`still active: ${a}`);
     for (const u of hold.undo ?? []) lines4.push(`undo: ${u}`);
     if (hold.failed) lines4.push(`problem: ${hold.failed}`);
-    if (hold.quarantine && (0, import_node_fs32.existsSync)(hold.quarantine)) {
-      const walk = (d, rel) => (0, import_node_fs32.readdirSync)(d, { withFileTypes: true }).flatMap((e) => e.isDirectory() ? walk((0, import_node_path38.join)(d, e.name), `${rel}${e.name}/`) : [`${rel}${e.name}`]);
+    if (hold.quarantine && (0, import_node_fs33.existsSync)(hold.quarantine)) {
+      const walk = (d, rel) => (0, import_node_fs33.readdirSync)(d, { withFileTypes: true }).flatMap((e) => e.isDirectory() ? walk((0, import_node_path39.join)(d, e.name), `${rel}${e.name}/`) : [`${rel}${e.name}`]);
       lines4.push(`quarantined files: ${walk(hold.quarantine, "").join(", ") || "(none)"}`);
     }
   }
-  (0, import_node_fs32.unlinkSync)(path30);
+  (0, import_node_fs33.unlinkSync)(path30);
   lines4.push("hold cleared: factory runs start again in this checkout");
   return lines4;
 }
-var import_node_fs32, import_node_path38, repoKey, tamperHoldPath, RELEASE_TAMPER_COMMAND, STILL_ACTIVE, BENIGN_KEYS, benignKey, BRANCH_UPSTREAM, HEADS_REF, sameValues, valuesByKey, decode2, isConfigRel, realDir, errText5, CONFIG_LOCKED, LINKS_DIR;
+var import_node_fs33, import_node_path39, repoKey, tamperHoldPath, RELEASE_TAMPER_COMMAND, STILL_ACTIVE, BENIGN_KEYS, benignKey, BRANCH_UPSTREAM, HEADS_REF, sameValues, valuesByKey, decode2, isConfigRel, realDir, errText5, CONFIG_LOCKED, LINKS_DIR;
 var init_tamper_quarantine = __esm({
   "src/factory/run/tamper-quarantine.ts"() {
     "use strict";
-    import_node_fs32 = require("node:fs");
-    import_node_path38 = require("node:path");
+    import_node_fs33 = require("node:fs");
+    import_node_path39 = require("node:path");
     init_atomic_write();
     init_git_worktree();
     init_ledger2();
     init_review_guard();
-    repoKey = (root2) => sha2562((0, import_node_path38.resolve)(root2).toLowerCase()).slice(0, 16);
-    tamperHoldPath = (ledgerDir, root2) => (0, import_node_path38.join)(ledgerDir, "holds", `${repoKey(root2)}.json`);
+    repoKey = (root2) => sha2562((0, import_node_path39.resolve)(root2).toLowerCase()).slice(0, 16);
+    tamperHoldPath = (ledgerDir, root2) => (0, import_node_path39.join)(ledgerDir, "holds", `${repoKey(root2)}.json`);
     RELEASE_TAMPER_COMMAND = "omg factory run release --tamper";
     STILL_ACTIVE = "STILL ACTIVE (it can run on your next git command)";
     BENIGN_KEYS = [
@@ -133529,7 +134085,7 @@ var init_tamper_quarantine = __esm({
     isConfigRel = (rel) => /^(?:config|config\.worktree|worktrees\/[^/]+\/config\.worktree|modules\/.+\/(?:config|config\.worktree))$/.test(rel) && !/\/(?:hooks|info)\//.test(`/${rel}`);
     realDir = (path30) => {
       try {
-        const st = (0, import_node_fs32.lstatSync)(path30);
+        const st = (0, import_node_fs33.lstatSync)(path30);
         return st.isDirectory() && !st.isSymbolicLink();
       } catch {
         return false;
@@ -133939,8 +134495,8 @@ async function runParallelSupervisor(o) {
         });
       }
       if (active === 0) break;
-      await new Promise((resolve88) => {
-        wake = resolve88;
+      await new Promise((resolve89) => {
+        wake = resolve89;
       });
     }
   } finally {
@@ -134027,25 +134583,25 @@ function parseStatusPaths(raw) {
 }
 function parkTail(text4) {
   const lines4 = redactGateOutput(text4).split(/\r?\n/).map((l) => l.trim()).filter(Boolean).slice(-PARK_TAIL_LINES);
-  const tail5 = lines4.map((l) => oneLine(visibleLine(l), PARK_TAIL_LINE_CHARS)).join(" | ");
-  return tail5.length > PARK_TAIL_CHARS ? `...${tail5.slice(-PARK_TAIL_CHARS)}` : tail5;
+  const tail6 = lines4.map((l) => oneLine(visibleLine(l), PARK_TAIL_LINE_CHARS)).join(" | ");
+  return tail6.length > PARK_TAIL_CHARS ? `...${tail6.slice(-PARK_TAIL_CHARS)}` : tail6;
 }
 function ciFailureTail(failure4) {
   const where = failure4.source === "prepare" ? "; the failure is from the prepare checks on this host (the OS sandbox when gates are enforced), not from the forge CI" : "";
   const tests = failure4.tests.length > 0 ? `failing tests: ${failure4.tests.slice(0, 5).map((t) => oneLine(visibleLine(t), PARK_TAIL_LINE_CHARS)).join(", ")}${failure4.tests.length > 5 ? ` and ${failure4.tests.length - 5} more` : ""}` : "";
-  const tail5 = failure4.detail ? parkTail(failure4.detail) : "";
-  return { where, detail: [tests, tail5 ? `output tail: ${tail5}` : ""].filter(Boolean).join("; ") };
+  const tail6 = failure4.detail ? parkTail(failure4.detail) : "";
+  return { where, detail: [tests, tail6 ? `output tail: ${tail6}` : ""].filter(Boolean).join("; ") };
 }
-function nodeModulesWriteDenied(tail5) {
-  for (const line2 of tail5.split(/\r?\n/)) {
+function nodeModulesWriteDenied(tail6) {
+  for (const line2 of tail6.split(/\r?\n/)) {
     if (!/\b(?:EPERM|EACCES|EROFS)\b/.test(line2)) continue;
     const m = /node_modules[\x5c/]+(@[\w.-]+[\x5c/]+[\w.-]+|[\w.@-]+)/.exec(line2);
     if (m) return `node_modules/${m[1].replace(/[\x5c/]+/g, "/")}`;
   }
   return void 0;
 }
-function sandboxIncompatibleAdvice(tail5) {
-  const denied = tail5 ? nodeModulesWriteDenied(tail5) : void 0;
+function sandboxIncompatibleAdvice(tail6) {
+  const denied = tail6 ? nodeModulesWriteDenied(tail6) : void 0;
   if (!denied || GATE_CACHE_DIRS.includes(denied.slice("node_modules/".length))) return 'Your gate fails in the sandbox on the base: set factory.run.sandbox.writeNetwork "registry" if it needs the npm registry';
   return `Your gate cannot write ${denied} in the sandbox: node_modules is read-only there except the fresh per-run dirs ${GATE_CACHE_DIRS.join(", ")}. Move that tool's output or cache out of node_modules (for tsc a tsBuildInfoFile outside it, for vite a cacheDir outside it), or report ${denied} to oh-my-copilot so it can become a per-run dir`;
 }
@@ -134401,6 +134957,7 @@ var init_engine = __esm({
     init_prepare2();
     init_jsonc();
     init_sandbox2();
+    init_container_gate();
     init_sandbox_exec();
     init_git_worktree();
     init_gates_driver();
@@ -134868,7 +135425,7 @@ var init_engine = __esm({
             said = true;
             this.o.warn?.(`omg factory run: lane ${id} waits for credits in flight: ${d.reason}`);
           }
-          await (this.o.sleep ?? ((ms) => new Promise((resolve88) => setTimeout(resolve88, ms))))(pollMs);
+          await (this.o.sleep ?? ((ms) => new Promise((resolve89) => setTimeout(resolve89, ms))))(pollMs);
           if (this.cancelWanted(this.reload())) return null;
         }
       }
@@ -134961,7 +135518,8 @@ var init_engine = __esm({
        */
       sandboxRun(req) {
         const p = this.privateRun();
-        return this.o.gateSandbox({ ...req, nodeModulesTarget: (0, import_path201.join)(this.o.root, "node_modules"), ...p ? { mainRoot: this.o.root, jobRoot: this.gateJobRoot() } : {} });
+        const container = this.gatesModeCache?.container;
+        return this.o.gateSandbox({ ...req, nodeModulesTarget: (0, import_path201.join)(this.o.root, "node_modules"), ...p ? { mainRoot: this.o.root, jobRoot: this.gateJobRoot() } : {}, ...container ? { container, runLabel: containerRunLabel(this.o.root, this.key) } : {} });
       }
       /**
        * Why `<checkout>/node_modules` must not be granted: a link in the
@@ -135145,6 +135703,7 @@ var init_engine = __esm({
        * sandbox with the registry reachable. Null when the checkout is ready.
        */
       async privateNodeModules(p, path30, baseSha, head, loaded2) {
+        if (this.gatesSandbox(loaded2).container) return null;
         const rule = lockfileUnchanged(p.repo, baseSha, head, p.ctx);
         if (rule.policy === "junction") {
           linkNodeModules(this.o.root, path30, this.o.warn);
@@ -136863,7 +137422,9 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
         try {
           const text4 = commit ? readBaseFile(this.exec, this.o.root, commit, BASE_CONFIG_PATH) : null;
           const base = text4 && text4.trim() ? parseJsonc(text4) : void 0;
-          resolved = { ...resolveGatesSandboxMode({ user, base, env: process.env }), requireDeniedPaths: resolveRequireDeniedPaths({ user, base }).require };
+          const isolation = resolveGateIsolation({ user, base });
+          if (isolation.ignoredBase.length > 0) this.o.warn?.(`omg factory run: ignoring ${isolation.ignoredBase.join(" and ")} in the base .copilot/omg.jsonc: where the PR's code runs is set in your user config only`);
+          resolved = { ...resolveGatesSandboxMode({ user, base, env: process.env }), requireDeniedPaths: resolveRequireDeniedPaths({ user, base }).require, ...isolation.container ? { container: isolation.container } : {} };
         } catch (error2) {
           throw new FactoryStepError(`factory.run.sandbox: ${errText6(error2)}`);
         }
@@ -136903,6 +137464,14 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
       gateNoStartAfterCodeReason(head, what, why) {
         const at = head.slice(0, 12);
         return `${what} on ${at} could not start in the OS sandbox (${why}) after the PR's code of this head already ran in it (an earlier prepare check), so the PR's code may be the cause. The head is not judged: no pass, no FAILURE, no ci-fix lane, and --allow-unsandboxed-gates does not apply here. Rerun ${this.resume} to try again; if it parks here again, review the PR's diff and fix the cause`;
+      }
+      /** The park when isolation "container" cannot run `what` (container-gate.ts): nothing ran, no ack offer, no fallback. */
+      gateContainerUnavailableReason(head, what, why) {
+        return `${what} on ${head.slice(0, 12)} did not run: factory.run.sandbox.isolation is "container" and the gate container is not available (${why}). The head is not judged: no pass, no FAILURE, no ci-fix lane, and it never falls back to the Copilot sandbox. Fix that, then rerun ${this.resume}`;
+      }
+      /** Where a sandboxed command runs, for parks and notes: the gate container (isolation "container") or the OS sandbox. */
+      sandboxName() {
+        return this.gatesModeCache?.container ? `the gate container (${this.gatesModeCache.container.runtime} ${this.gatesModeCache.container.image})` : "the OS sandbox";
       }
       /** The park after the command ran in the sandbox without a verdict: no ack offer, no pass, no failure. `why` is fixed text (sandbox-exec.ts). */
       gateNoVerdictReason(head, what, why) {
@@ -137000,6 +137569,7 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
             return { status: r.timedOut ? 124 : r.status, stdout: redactGateOutput(r.output), stderr: "" };
           }
           if (r.started) return stop({ name: GATE_NO_VERDICT_GATE, reason: this.gateNoVerdictReason(head, label2, r.reason) });
+          if (r.unavailable) return stop({ name: GATE_CONTAINER_UNAVAILABLE_GATE, reason: this.gateContainerUnavailableReason(head, label2, r.reason) });
           const ownShape = r.refused === true && c.kind === "configured";
           const codeRan = ran.modes.has("enforced") || ran.modes.has("enforced-readable") || this.state.sandboxedPrepareHead === head || this.state.sandboxedGateHead === head;
           if (!ownShape && codeRan && !this.gatesAccepted(head)) {
@@ -137020,21 +137590,22 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
        * on the base itself, or its calibration could not run.
        */
       async calibrateGate(c, baseSha, commonGitDir, timeoutMs, what, head) {
-        const key = (0, import_crypto55.createHash)("sha256").update(`${baseSha}\0${JSON.stringify(c.argv)}`).digest("hex");
+        const container = this.gatesModeCache?.container;
+        const key = (0, import_crypto55.createHash)("sha256").update(`${baseSha}\0${JSON.stringify(c.argv)}${container ? `\0container\0${container.runtime}\0${container.image}` : ""}`).digest("hex");
         let cal = this.state.gateCalibration?.[key];
         if (!cal || !cal.ok && !this.recalibrated.has(key)) {
           this.recalibrated.add(key);
           const out = await this.runOnBase(c, baseSha, commonGitDir, timeoutMs);
           if ("notStarted" in out) {
-            return { name: GATE_SANDBOX_INCOMPATIBLE_GATE, reason: `${what} failed in the OS sandbox on ${head.slice(0, 12)}, and its calibration on the base ${baseSha.slice(0, 12)} could not run (${out.notStarted}); the failure is not counted (no ci-fix lane). Fix the cause, then rerun ${this.resume}. ${ACK_WARNING}` };
+            return { name: GATE_SANDBOX_INCOMPATIBLE_GATE, reason: `${what} failed in ${this.sandboxName()} on ${head.slice(0, 12)}, and its calibration on the base ${baseSha.slice(0, 12)} could not run (${out.notStarted}); the failure is not counted (no ci-fix lane). Fix the cause, then rerun ${this.resume}. ${ACK_WARNING}` };
           }
           cal = out;
-          this.save((x) => ({ ...x, gateCalibration: { ...x.gateCalibration ?? {}, [key]: out }, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `calibrated ${what.slice(0, 120)} in the OS sandbox on the base ${baseSha.slice(0, 12)}: ${out.ok ? "passes" : "fails"}` }] }));
+          this.save((x) => ({ ...x, gateCalibration: { ...x.gateCalibration ?? {}, [key]: out }, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `calibrated ${what.slice(0, 120)} in ${this.sandboxName()} on the base ${baseSha.slice(0, 12)}: ${out.ok ? "passes" : "fails"}` }] }));
         }
         if (cal.ok) return null;
         return {
           name: GATE_SANDBOX_INCOMPATIBLE_GATE,
-          reason: `${what} fails in the OS sandbox on the base ${baseSha.slice(0, 12)} itself, so its failure on ${head.slice(0, 12)} is not counted (no ci-fix lane). ${sandboxIncompatibleAdvice(cal.tail)}, then rerun ${this.resume}. ${ACK_WARNING}${cal.tail ? `; base output tail: ${cal.tail.slice(-1500)}` : ""}`
+          reason: `${what} fails in ${this.sandboxName()} on the base ${baseSha.slice(0, 12)} itself, so its failure on ${head.slice(0, 12)} is not counted (no ci-fix lane). ${this.gatesModeCache?.container ? CONTAINER_INCOMPATIBLE_ADVICE : sandboxIncompatibleAdvice(cal.tail)}, then rerun ${this.resume}. ${ACK_WARNING}${cal.tail ? `; base output tail: ${cal.tail.slice(-1500)}` : ""}`
         };
       }
       /**
@@ -137057,8 +137628,8 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
           linkNodeModules(this.o.root, dir, this.o.warn);
           const r = await this.sandboxRun({ purpose: "calibrate", argv: c.argv, exe: c.exe, args: calibrationArgs(c, dir), cwd: dir, commonGitDir, timeoutMs, ...this.gatesModeCache?.requireDeniedPaths ? { requireDeniedPaths: true } : {} });
           if (!r.ran) return { notStarted: r.reason };
-          const tail5 = r.output.trim().slice(-2e3);
-          return { ok: r.status === 0 && !r.timedOut, ...tail5 ? { tail: tail5 } : {} };
+          const tail6 = r.output.trim().slice(-2e3);
+          return { ok: r.status === 0 && !r.timedOut, ...tail6 ? { tail: tail6 } : {} };
         } catch (error2) {
           return { notStarted: errText6(error2).slice(0, 300) };
         } finally {
@@ -137374,6 +137945,10 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
             if (!out.started && out.noVerdict) {
               if (checkoutGitLink(checkout).hash !== linkBefore) return this.gateTamperedByGate(head, checkout, stateDir);
               this.gate(GATE_NO_VERDICT_GATE, this.gateNoVerdictReason(head, `the local gate \`${gate.join(" ")}\``, out.reason));
+              return false;
+            }
+            if (!out.started && out.unavailable) {
+              this.gate(GATE_CONTAINER_UNAVAILABLE_GATE, this.gateContainerUnavailableReason(head, `the local gate \`${gate.join(" ")}\``, out.reason));
               return false;
             }
             unavailable = !out.started && out.sandbox === true;
@@ -139353,6 +139928,17 @@ async function runFactoryCheck(o, deps) {
     const unresolved = argv && argv.length > 0 ? gateDefinitionSources(argv).unresolved : void 0;
     gate = !argv || argv.length === 0 ? "not set" : unresolved ? `unresolved (${unresolved})` : "ok";
   }
+  let isolation;
+  try {
+    const container = resolveGateIsolation({ user: deps.trustedUser(), base: void 0 }).container;
+    if (container) {
+      const p = (deps.containerProbe ?? probeContainerRuntime)(container);
+      isolation = { kind: "container", runtime: container.runtime, image: container.image, version: p.version, imagePresent: p.image };
+      if (p.version === null) warnings.push(`omg factory check: factory.run.sandbox.isolation is "container" but ${container.runtime} does not answer: every prepare check and local gate parks at gate-container-unavailable until it does (start it, or set isolation "copilot")`);
+    }
+  } catch (error2) {
+    warnings.push(`omg factory check: factory.run.sandbox: ${error2 instanceof Error ? error2.message : String(error2)}`);
+  }
   if (o.json) {
     const json = {
       schemaVersion: CHECK_JSON_SCHEMA_VERSION,
@@ -139362,6 +139948,7 @@ async function runFactoryCheck(o, deps) {
       prepareChecks,
       ...prepareSkipped.length > 0 ? { prepareChecksSkipped: prepareSkipped } : {},
       ...gate ? { gate } : {},
+      ...isolation ? { gateIsolation: isolation } : {},
       repo: config2.repo.url,
       source: ids2.length > 0 || parent !== void 0 || !source ? null : { ...source },
       counts: Object.fromEntries(BUCKET_ORDER.map((b) => [b, items.filter((r) => r.bucket === b).length])),
@@ -139376,6 +139963,10 @@ async function runFactoryCheck(o, deps) {
     deps.out(source_default.gray(`prepare checks: ${prepareChecks.length > 0 ? prepareChecks.join("; ") : "none"}`));
     for (const why of prepareSkipped) deps.out(source_default.yellow(`prepare check skipped: ${why}`));
     if (gate) deps.out((gate.startsWith("unresolved") ? source_default.yellow : source_default.gray)(`gate: ${plainText(gate)}`));
+    if (isolation) {
+      const state = isolation.version === null ? "not available" : `${isolation.runtime} ${isolation.version}, image ${isolation.imagePresent ? "present" : "not pulled yet (pulled at the first gate, announced)"}`;
+      deps.out((isolation.version === null ? source_default.yellow : source_default.gray)(`gate isolation: container (${isolation.runtime}, ${isolation.image}): ${plainText(state)}`));
+    }
     deps.out(renderCheckTable(items));
     if (o.mark) {
       if (m.marked.length > 0) deps.out(source_default.green(`marked ${m.marker}: ${m.marked.map((id) => `#${id}`).join(", ")}`));
@@ -139412,6 +140003,8 @@ var init_cli = __esm({
     init_checks();
     init_state6();
     init_local_gate();
+    init_sandbox2();
+    init_container_gate();
     init_score();
     EXIT_CHECK_FAILED = 1;
     EXIT_CHECK_USAGE = 2;
@@ -139954,10 +140547,10 @@ function buildEvidence2(input) {
   }
   let t = 0;
   for (const r of input.red) {
-    for (const tail5 of stepTails(r.log, r.job.failedSteps)) {
+    for (const tail6 of stepTails(r.log, r.job.failedSteps)) {
       if (t >= EVIDENCE_LIMITS.tailFiles) break;
       t += 1;
-      files.push([`tails/${t}.log`, textFile(tail5.lines, `job ${r.job.name}: last lines of a failed step`, counter)]);
+      files.push([`tails/${t}.log`, textFile(tail6.lines, `job ${r.job.name}: last lines of a failed step`, counter)]);
     }
   }
   const kept = {};
@@ -141997,8 +142590,8 @@ var init_factory_triage = __esm({
 function readOmpConfig(dir) {
   try {
     const configPath = resolveOmcPath("config.json", dir);
-    if (!(0, import_node_fs33.existsSync)(configPath)) return null;
-    const raw = (0, import_node_fs33.readFileSync)(configPath, "utf-8");
+    if (!(0, import_node_fs34.existsSync)(configPath)) return null;
+    const raw = (0, import_node_fs34.readFileSync)(configPath, "utf-8");
     return JSON.parse(raw);
   } catch {
     return null;
@@ -142008,11 +142601,11 @@ function getAdoConfig(dir) {
   const config2 = readOmpConfig(dir);
   return config2?.ado ?? {};
 }
-var import_node_fs33;
+var import_node_fs34;
 var init_ado_config = __esm({
   "src/config/ado-config.ts"() {
     "use strict";
-    import_node_fs33 = require("node:fs");
+    import_node_fs34 = require("node:fs");
     init_worktree_paths();
   }
 });
@@ -144380,9 +144973,9 @@ function parseRunNextOutcome(stdout) {
   return { parsed: true, next: Number.isSafeInteger(o.next) && o.next > 0 ? o.next : null, message: text4 };
 }
 function defaultPollAutoStart(entry2 = process.argv[1], o = {}) {
-  return ({ root: root2, parallel, args }) => new Promise((resolve88) => {
+  return ({ root: root2, parallel, args }) => new Promise((resolve89) => {
     if (!entry2) {
-      resolve88({ exitCode: 1, parsed: false, next: null, message: "cannot locate the omg CLI entry to start omg factory run --next" });
+      resolve89({ exitCode: 1, parsed: false, next: null, message: "cannot locate the omg CLI entry to start omg factory run --next" });
       return;
     }
     const timeoutMs = o.timeoutMs?.(root2) ?? autoStartTimeoutMs(DEFAULT_FACTORY_RUN_LIMITS);
@@ -144400,7 +144993,7 @@ function defaultPollAutoStart(entry2 = process.argv[1], o = {}) {
       clearTimeout(timer);
       clearTimeout(killer);
       unsubscribe();
-      resolve88(r);
+      resolve89(r);
     };
     const notStarted = (error2) => settle({ exitCode: 1, parsed: false, next: null, message: `omg factory run --next did not start: ${message3(error2)}` });
     let child;
@@ -144834,15 +145427,15 @@ var init_poll = __esm({
     resumeHint = (key) => typeof key === "number" ? `omg factory run ${key}` : `omg factory heal approve ${key.slice("heal-".length)}`;
     cancelHint = (key) => typeof key === "number" ? `omg factory run cancel ${key}` : `omg factory heal cancel ${key.slice("heal-".length)}`;
     reminderHint = (key, gate) => gate === "decisions-rewritten" ? cancelHint(key) : resumeHint(key);
-    defaultSleep = (ms, wake) => new Promise((resolve88) => {
+    defaultSleep = (ms, wake) => new Promise((resolve89) => {
       if (wake.aborted) {
-        resolve88();
+        resolve89();
         return;
       }
-      const timer = setTimeout(resolve88, ms);
+      const timer = setTimeout(resolve89, ms);
       wake.addEventListener("abort", () => {
         clearTimeout(timer);
-        resolve88();
+        resolve89();
       }, { once: true });
     });
     defaultOnStop = (handler) => {
@@ -148364,8 +148957,8 @@ function identityOf2(a) {
   };
 }
 async function writeExclusive(path30, value) {
-  await (0, import_promises31.mkdir)((0, import_node_path40.dirname)(path30), { recursive: true });
-  const candidate = `${path30}.candidate.${process.pid}.${(0, import_node_crypto18.randomUUID)()}`;
+  await (0, import_promises31.mkdir)((0, import_node_path41.dirname)(path30), { recursive: true });
+  const candidate = `${path30}.candidate.${process.pid}.${(0, import_node_crypto19.randomUUID)()}`;
   const handle = await (0, import_promises31.open)(candidate, "wx", 384);
   try {
     await handle.writeFile(JSON.stringify(value), "utf8");
@@ -148404,7 +148997,7 @@ async function waitForDecision(attempt, timeoutMs) {
 function readDoorbell(path30, offset) {
   let buf;
   try {
-    buf = (0, import_node_fs35.readFileSync)(path30);
+    buf = (0, import_node_fs36.readFileSync)(path30);
   } catch {
     return { entries: [], offset };
   }
@@ -148427,12 +149020,12 @@ function readDoorbell(path30, offset) {
 }
 function prependPath(env2, dir, platform) {
   const key = platform === "win32" ? Object.keys(env2).find((k) => k.toUpperCase() === "PATH") ?? "Path" : "PATH";
-  const sep25 = platform === "win32" ? ";" : ":";
-  env2[key] = env2[key] ? `${dir}${sep25}${env2[key]}` : dir;
+  const sep26 = platform === "win32" ? ";" : ":";
+  env2[key] = env2[key] ? `${dir}${sep26}${env2[key]}` : dir;
 }
 function urlScopedExtraHeaderKeys(cwd2, env2) {
   try {
-    const out = (0, import_node_child_process18.execFileSync)("git", [...hostGitHardeningArgs(), "config", "--null", "--name-only", "--get-regexp", String.raw`^http\..+\.extraheader$`], {
+    const out = (0, import_node_child_process19.execFileSync)("git", [...hostGitHardeningArgs(), "config", "--null", "--name-only", "--get-regexp", String.raw`^http\..+\.extraheader$`], {
       cwd: cwd2,
       env: env2,
       encoding: "utf8",
@@ -148450,7 +149043,7 @@ function scrubWorkerCredentials(env2, emptyDir, cwd2) {
   for (const key of Object.keys(env2)) {
     if (isCredentialEnvKey(key) || reset.has(key.toUpperCase())) delete env2[key];
   }
-  (0, import_node_fs35.mkdirSync)(emptyDir, { recursive: true });
+  (0, import_node_fs36.mkdirSync)(emptyDir, { recursive: true });
   const gitConfig = [...WORKER_GIT_CONFIG, ...urlScopedExtraHeaderKeys(cwd2, env2).map((key) => [key, ""])];
   Object.assign(env2, {
     GH_CONFIG_DIR: emptyDir,
@@ -148466,7 +149059,7 @@ function scrubWorkerCredentials(env2, emptyDir, cwd2) {
 }
 function readHostCredentials(stream, timeoutMs) {
   if (stream.isTTY) return Promise.resolve({});
-  return new Promise((resolve88) => {
+  return new Promise((resolve89) => {
     let data = "";
     let done = false;
     const finish2 = () => {
@@ -148481,7 +149074,7 @@ function readHostCredentials(stream, timeoutMs) {
         for (const name of HOST_CREDENTIAL_ENV) if (typeof parsed2?.[name] === "string" && parsed2[name]) out[name] = parsed2[name];
       } catch {
       }
-      resolve88(out);
+      resolve89(out);
     };
     const onData = (chunk) => {
       data += chunk.toString();
@@ -148514,14 +149107,14 @@ function adoptSessionEnv(target, env2) {
   }
 }
 function writeOmgShims(binDir, cliPath, nodePath) {
-  (0, import_node_fs35.mkdirSync)(binDir, { recursive: true });
-  (0, import_node_fs35.writeFileSync)((0, import_node_path40.join)(binDir, "omg.cmd"), `@echo off\r
+  (0, import_node_fs36.mkdirSync)(binDir, { recursive: true });
+  (0, import_node_fs36.writeFileSync)((0, import_node_path41.join)(binDir, "omg.cmd"), `@echo off\r
 "${nodePath}" "${cliPath}" %*\r
 `);
-  (0, import_node_fs35.writeFileSync)((0, import_node_path40.join)(binDir, "omg.ps1"), `& "${nodePath}" "${cliPath}" @args\r
+  (0, import_node_fs36.writeFileSync)((0, import_node_path41.join)(binDir, "omg.ps1"), `& "${nodePath}" "${cliPath}" @args\r
 exit $LASTEXITCODE\r
 `);
-  (0, import_node_fs35.writeFileSync)((0, import_node_path40.join)(binDir, "omg"), `#!/bin/sh
+  (0, import_node_fs36.writeFileSync)((0, import_node_path41.join)(binDir, "omg"), `#!/bin/sh
 exec "${nodePath}" "${cliPath}" "$@"
 `, { mode: 493 });
 }
@@ -148671,7 +149264,7 @@ async function runSdkHost(spec, deps) {
     } catch (err) {
       log3(`terminal write failed: ${errText8(err)}`);
     }
-    if (cleanupVerified && (0, import_node_fs35.existsSync)(`${attempt.startedPath}.termination-request`)) {
+    if (cleanupVerified && (0, import_node_fs36.existsSync)(`${attempt.startedPath}.termination-request`)) {
       await writeExclusive(`${attempt.startedPath}.termination-complete`, {
         ...identity,
         kind: "worker_launch_termination_complete",
@@ -148717,11 +149310,11 @@ async function runSdkHost(spec, deps) {
     return fail9("sdk_missing", `loading @github/copilot-sdk failed: ${errText8(err)}`);
   }
   if (!loaded2) return fail9("sdk_missing", "@github/copilot-sdk is not installed (npm i -g @github/copilot-sdk --omit=optional --ignore-scripts)");
-  (0, import_node_fs35.mkdirSync)(files.home, { recursive: true });
-  const homeConfig = (0, import_node_path40.join)(files.home, "config.json");
+  (0, import_node_fs36.mkdirSync)(files.home, { recursive: true });
+  const homeConfig = (0, import_node_path41.join)(files.home, "config.json");
   const ident = loginIdentity(spec.user_config_dir);
-  if (!(0, import_node_fs35.existsSync)(homeConfig)) {
-    (0, import_node_fs35.writeFileSync)(homeConfig, `${JSON.stringify({ ...ident, trustedFolders: [spec.worker_cwd, spec.leader_cwd] }, null, 2)}
+  if (!(0, import_node_fs36.existsSync)(homeConfig)) {
+    (0, import_node_fs36.writeFileSync)(homeConfig, `${JSON.stringify({ ...ident, trustedFolders: [spec.worker_cwd, spec.leader_cwd] }, null, 2)}
 `);
   }
   const hasLogin = ident.loggedInUsers !== void 0;
@@ -148734,7 +149327,7 @@ async function runSdkHost(spec, deps) {
   Object.assign(env2, spec.worker_env, { OMC_GIT_GUARDRAILS: "1", COPILOT_ALLOW_ALL: "false", OMC_BUDGET_HOST_LEDGER: "1" });
   env2.COPILOT_HOME = files.home;
   delete env2.COPILOT_MODEL;
-  scrubWorkerCredentials(env2, (0, import_node_path40.join)(files.home, "no-credentials"), spec.worker_cwd);
+  scrubWorkerCredentials(env2, (0, import_node_path41.join)(files.home, "no-credentials"), spec.worker_cwd);
   prependPath(env2, files.bin, deps.platform);
   const policy = {
     cwd: spec.worker_cwd,
@@ -148772,7 +149365,7 @@ async function runSdkHost(spec, deps) {
   const onEvent = (event) => {
     const at = (/* @__PURE__ */ new Date()).toISOString();
     try {
-      (0, import_node_fs35.appendFileSync)(files.events, `${JSON.stringify({ at, ...event })}
+      (0, import_node_fs36.appendFileSync)(files.events, `${JSON.stringify({ at, ...event })}
 `);
     } catch {
     }
@@ -148969,11 +149562,11 @@ async function runSdkHost(spec, deps) {
       stop = "hard";
       outcome = "terminated";
     }
-    if (!stop && (0, import_node_fs35.existsSync)(`${attempt.startedPath}.termination-request`)) {
+    if (!stop && (0, import_node_fs36.existsSync)(`${attempt.startedPath}.termination-request`)) {
       stop = "hard";
       outcome = "terminated";
     }
-    if (!stop && !(0, import_node_fs35.existsSync)(spec.state_root)) {
+    if (!stop && !(0, import_node_fs36.existsSync)(spec.state_root)) {
       stop = "hard";
       outcome = "team_gone";
     }
@@ -149061,7 +149654,7 @@ async function runSdkHost(spec, deps) {
   return outcome;
 }
 async function runSdkHostMain(specPath, loadInProcessTools) {
-  const { spawnSync: spawnSync22 } = await import("node:child_process");
+  const { spawnSync: spawnSync23 } = await import("node:child_process");
   const { loadCopilotSdk: loadCopilotSdk2 } = await Promise.resolve().then(() => (init_copilot_sdk_driver(), copilot_sdk_driver_exports));
   const { killProcessTree: killProcessTree3 } = await Promise.resolve().then(() => (init_process_utils2(), process_utils_exports2));
   const { getProcessStartIdentitySync: getProcessStartIdentitySync2, isProcessAlive: isProcessAlive3 } = await Promise.resolve().then(() => (init_process_utils(), process_utils_exports));
@@ -149073,15 +149666,15 @@ async function runSdkHostMain(specPath, loadInProcessTools) {
   try {
     const credentials = await readHostCredentials(process.stdin, CREDENTIAL_READ_TIMEOUT_MS);
     (await Promise.resolve().then(() => (init_handler(), handler_exports))).addRecordingDenyLiterals(Object.values(credentials));
-    const spec = JSON.parse((0, import_node_fs35.readFileSync)(specPath, "utf8"));
+    const spec = JSON.parse((0, import_node_fs36.readFileSync)(specPath, "utf8"));
     if (spec?.schema_version !== 1 || !spec.worker_name || !spec.state_root) throw new Error("invalid sdk host spec");
     log3(`start team=${spec.team_name} worker=${spec.worker_name} attempt=${spec.attempt_id}`);
     const outcome = await runSdkHost(spec, {
-      loadSdk: () => loadCopilotSdk2(process.env, spawnSync22),
+      loadSdk: () => loadCopilotSdk2(process.env, spawnSync23),
       pid: process.pid,
       startIdentity: (pid) => getProcessStartIdentitySync2(pid),
       isAlive: (pid) => isProcessAlive3(pid),
-      killTree: (pid) => killProcessTree3(pid, spawnSync22),
+      killTree: (pid) => killProcessTree3(pid, spawnSync23),
       platform: process.platform,
       pollMs: 250,
       env: process.env,
@@ -149096,15 +149689,15 @@ async function runSdkHostMain(specPath, loadInProcessTools) {
   }
   process.exit(code);
 }
-var import_node_fs35, import_promises31, import_node_crypto18, import_node_child_process18, import_node_path40, DECISION_TIMEOUT_MS, START_TIMEOUT_MS4, RPC_TIMEOUT_MS4, ABORT_GRACE_MS3, SHUTDOWN_GRACE_MS3, STOP_TIMEOUT_MS4, TOOL_CLEANUP_TIMEOUT_MS, PERMISSION_LOG_MAX, CREDENTIAL_READ_TIMEOUT_MS, STOP_SIGNALS, TURN_USAGE_MAX, tokenCount, TimeoutError2, sleep11, errText8, WORKER_CREDENTIAL_RESET, WORKER_GIT_CONFIG;
+var import_node_fs36, import_promises31, import_node_crypto19, import_node_child_process19, import_node_path41, DECISION_TIMEOUT_MS, START_TIMEOUT_MS4, RPC_TIMEOUT_MS4, ABORT_GRACE_MS3, SHUTDOWN_GRACE_MS3, STOP_TIMEOUT_MS4, TOOL_CLEANUP_TIMEOUT_MS, PERMISSION_LOG_MAX, CREDENTIAL_READ_TIMEOUT_MS, STOP_SIGNALS, TURN_USAGE_MAX, tokenCount, TimeoutError2, sleep11, errText8, WORKER_CREDENTIAL_RESET, WORKER_GIT_CONFIG;
 var init_sdk_host = __esm({
   "src/team/sdk-host.ts"() {
     "use strict";
-    import_node_fs35 = require("node:fs");
+    import_node_fs36 = require("node:fs");
     import_promises31 = require("node:fs/promises");
-    import_node_crypto18 = require("node:crypto");
-    import_node_child_process18 = require("node:child_process");
-    import_node_path40 = require("node:path");
+    import_node_crypto19 = require("node:crypto");
+    import_node_child_process19 = require("node:child_process");
+    import_node_path41 = require("node:path");
     init_atomic_write();
     init_ledger();
     init_copilot_sdk_scenarios();
@@ -149232,8 +149825,8 @@ async function readClaudeGoalSnapshotInput(raw, cwd2 = process.cwd()) {
   try {
     return parseClaudeGoalSnapshot(JSON.parse(trimmed));
   } catch {
-    const path30 = (0, import_node_path42.resolve)(cwd2, trimmed);
-    if (!(0, import_node_fs37.existsSync)(path30)) {
+    const path30 = (0, import_node_path43.resolve)(cwd2, trimmed);
+    if (!(0, import_node_fs38.existsSync)(path30)) {
       throw new ClaudeGoalSnapshotError(`Claude goal snapshot is neither valid JSON nor a readable path: ${trimmed}`);
     }
     try {
@@ -149274,13 +149867,13 @@ function formatClaudeGoalReconciliation(reconciliation) {
   const parts = [...reconciliation.errors, ...reconciliation.warnings];
   return parts.join(" ");
 }
-var import_node_fs37, import_promises32, import_node_path42, ClaudeGoalSnapshotError;
+var import_node_fs38, import_promises32, import_node_path43, ClaudeGoalSnapshotError;
 var init_claude_goal_snapshot = __esm({
   "src/goal-workflows/claude-goal-snapshot.ts"() {
     "use strict";
-    import_node_fs37 = require("node:fs");
+    import_node_fs38 = require("node:fs");
     import_promises32 = require("node:fs/promises");
-    import_node_path42 = require("node:path");
+    import_node_path43 = require("node:path");
     ClaudeGoalSnapshotError = class extends Error {
     };
   }
@@ -149292,20 +149885,20 @@ function iso(now2 = /* @__PURE__ */ new Date()) {
 }
 function ultragoalDir(cwd2, planId) {
   const omcRoot = getOmcRoot(cwd2);
-  if (planId) return (0, import_node_path43.join)(omcRoot, "ultragoal", ULTRAGOAL_PLANS_SUBDIR, planId);
-  return (0, import_node_path43.join)(omcRoot, "ultragoal");
+  if (planId) return (0, import_node_path44.join)(omcRoot, "ultragoal", ULTRAGOAL_PLANS_SUBDIR, planId);
+  return (0, import_node_path44.join)(omcRoot, "ultragoal");
 }
 function ultragoalBriefPath(cwd2, planId) {
-  return (0, import_node_path43.join)(ultragoalDir(cwd2, planId), ULTRAGOAL_BRIEF);
+  return (0, import_node_path44.join)(ultragoalDir(cwd2, planId), ULTRAGOAL_BRIEF);
 }
 function ultragoalGoalsPath(cwd2, planId) {
-  return (0, import_node_path43.join)(ultragoalDir(cwd2, planId), ULTRAGOAL_GOALS);
+  return (0, import_node_path44.join)(ultragoalDir(cwd2, planId), ULTRAGOAL_GOALS);
 }
 function ultragoalLedgerPath(cwd2, planId) {
-  return (0, import_node_path43.join)(ultragoalDir(cwd2, planId), ULTRAGOAL_LEDGER);
+  return (0, import_node_path44.join)(ultragoalDir(cwd2, planId), ULTRAGOAL_LEDGER);
 }
 async function listUltragoalPlanIds(cwd2) {
-  const dir = (0, import_node_path43.join)(getOmcRoot(cwd2), "ultragoal", ULTRAGOAL_PLANS_SUBDIR);
+  const dir = (0, import_node_path44.join)(getOmcRoot(cwd2), "ultragoal", ULTRAGOAL_PLANS_SUBDIR);
   try {
     const entries = await (0, import_promises33.readdir)(dir, { withFileTypes: true });
     return entries.filter((entry2) => entry2.isDirectory()).filter((entry2) => /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(entry2.name)).map((entry2) => entry2.name).sort();
@@ -149320,7 +149913,7 @@ async function resolveActivePlanId(cwd2, explicitPlanId) {
     }
     return explicitPlanId;
   }
-  if ((0, import_node_fs38.existsSync)((0, import_node_path43.join)(getOmcRoot(cwd2), "ultragoal", ULTRAGOAL_GOALS))) return void 0;
+  if ((0, import_node_fs39.existsSync)((0, import_node_path44.join)(getOmcRoot(cwd2), "ultragoal", ULTRAGOAL_GOALS))) return void 0;
   const plans = await listUltragoalPlanIds(cwd2);
   if (plans.length === 1) return plans[0];
   if (plans.length === 0) return void 0;
@@ -149330,12 +149923,12 @@ async function resolveActivePlanId(cwd2, explicitPlanId) {
 }
 function makePlanId(brief, now2) {
   const ts = now2.getTime();
-  const firstLine = brief.split(/\r?\n/).map((line2) => line2.trim()).find(Boolean) ?? "plan";
-  const slug = firstLine.toLowerCase().replace(/^\s*(?:[-*+]\s+|\d+[.)]\s+)/, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40).replace(/-+$/g, "") || "plan";
+  const firstLine2 = brief.split(/\r?\n/).map((line2) => line2.trim()).find(Boolean) ?? "plan";
+  const slug = firstLine2.toLowerCase().replace(/^\s*(?:[-*+]\s+|\d+[.)]\s+)/, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40).replace(/-+$/g, "") || "plan";
   return `${ts}-${slug}`;
 }
 function repoRelative(cwd2, path30) {
-  return (0, import_node_path43.relative)(cwd2, path30).split("\\").join("/");
+  return (0, import_node_path44.relative)(cwd2, path30).split("\\").join("/");
 }
 function cleanLine2(line2) {
   return line2.replace(/^\s*(?:[-*+]\s+|\d+[.)]\s+)/, "").trim();
@@ -149422,8 +150015,8 @@ function isUltragoalDone(plan) {
   return latestNonReviewBlocked?.status === "complete";
 }
 function titleFromObjective(objective, fallback) {
-  const firstLine = objective.split(/\r?\n/).map((line2) => line2.trim()).find(Boolean) ?? fallback;
-  return firstLine.length > 72 ? `${firstLine.slice(0, 69).trimEnd()}...` : firstLine;
+  const firstLine2 = objective.split(/\r?\n/).map((line2) => line2.trim()).find(Boolean) ?? fallback;
+  return firstLine2.length > 72 ? `${firstLine2.slice(0, 69).trimEnd()}...` : firstLine2;
 }
 function deriveGoalCandidates(brief) {
   const lines4 = brief.split(/\r?\n/);
@@ -149476,7 +150069,7 @@ async function createUltragoalPlan(cwd2, options) {
   if (planId && !/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(planId)) {
     throw new UltragoalError(`Invalid plan id: ${planId}. Allowed chars: a-z, 0-9, dot, underscore, hyphen.`);
   }
-  if (!options.force && (0, import_node_fs38.existsSync)(ultragoalGoalsPath(cwd2, planId))) {
+  if (!options.force && (0, import_node_fs39.existsSync)(ultragoalGoalsPath(cwd2, planId))) {
     const label2 = planId ? `${ULTRAGOAL_DIR}/${ULTRAGOAL_PLANS_SUBDIR}/${planId}/${ULTRAGOAL_GOALS}` : `${ULTRAGOAL_DIR}/${ULTRAGOAL_GOALS}`;
     throw new UltragoalError(`Refusing to overwrite existing ${label2}; pass --force to recreate it.`);
   }
@@ -149505,7 +150098,7 @@ async function createUltragoalPlan(cwd2, options) {
   };
   if (plan.claudeGoalMode === "aggregate") plan.claudeObjective = aggregateClaudeObjective(candidates, planId);
   await (0, import_promises33.mkdir)(ultragoalDir(cwd2, planId), { recursive: true });
-  await (0, import_promises33.rm)((0, import_node_path43.join)(ultragoalDir(cwd2, planId), "omg-goal.json"), { force: true });
+  await (0, import_promises33.rm)((0, import_node_path44.join)(ultragoalDir(cwd2, planId), "omg-goal.json"), { force: true });
   await (0, import_promises33.writeFile)(ultragoalBriefPath(cwd2, planId), options.brief.endsWith("\n") ? options.brief : `${options.brief}
 `);
   await writePlan(cwd2, plan);
@@ -149523,12 +150116,12 @@ async function readActiveUltragoalState(path30) {
   }
 }
 async function recordUltragoalStatePlanId(cwd2, planId, env2 = process.env) {
-  const stateDir = (0, import_node_path43.join)(getOmcRoot(cwd2), "state");
-  const legacy = (0, import_node_path43.join)(stateDir, "ultragoal-state.json");
+  const stateDir = (0, import_node_path44.join)(getOmcRoot(cwd2), "state");
+  const legacy = (0, import_node_path44.join)(stateDir, "ultragoal-state.json");
   const sessionId = [env2.OMC_SESSION_ID, env2.COPILOT_AGENT_SESSION_ID].map((value) => value?.trim()).find((value) => Boolean(value && STATE_SESSION_ID_PATTERN.test(value)));
   let target;
   if (sessionId) {
-    const sessionPath = (0, import_node_path43.join)(stateDir, "sessions", sessionId, "ultragoal-state.json");
+    const sessionPath = (0, import_node_path44.join)(stateDir, "sessions", sessionId, "ultragoal-state.json");
     const sessionState = await readActiveUltragoalState(sessionPath);
     const legacyState = sessionState ? null : await readActiveUltragoalState(legacy);
     if (sessionState) target = { path: sessionPath, state: sessionState };
@@ -149539,7 +150132,7 @@ async function recordUltragoalStatePlanId(cwd2, planId, env2 = process.env) {
     else {
       let sessions = [];
       try {
-        sessions = (await (0, import_promises33.readdir)((0, import_node_path43.join)(stateDir, "sessions"), { withFileTypes: true })).filter((entry2) => entry2.isDirectory() && STATE_SESSION_ID_PATTERN.test(entry2.name)).map((entry2) => (0, import_node_path43.join)(stateDir, "sessions", entry2.name, "ultragoal-state.json"));
+        sessions = (await (0, import_promises33.readdir)((0, import_node_path44.join)(stateDir, "sessions"), { withFileTypes: true })).filter((entry2) => entry2.isDirectory() && STATE_SESSION_ID_PATTERN.test(entry2.name)).map((entry2) => (0, import_node_path44.join)(stateDir, "sessions", entry2.name, "ultragoal-state.json"));
       } catch {
       }
       const active = [];
@@ -149934,13 +150527,13 @@ function buildAggregateClaudeGoalInstruction(goal, plan) {
     goal.objective
   ].filter((line2) => line2 !== null).join("\n");
 }
-var import_node_fs38, import_promises33, import_node_path43, ULTRAGOAL_DIR, ULTRAGOAL_BRIEF, ULTRAGOAL_GOALS, ULTRAGOAL_LEDGER, ULTRAGOAL_PLANS_SUBDIR, UltragoalError, STATE_SESSION_ID_PATTERN;
+var import_node_fs39, import_promises33, import_node_path44, ULTRAGOAL_DIR, ULTRAGOAL_BRIEF, ULTRAGOAL_GOALS, ULTRAGOAL_LEDGER, ULTRAGOAL_PLANS_SUBDIR, UltragoalError, STATE_SESSION_ID_PATTERN;
 var init_artifacts = __esm({
   "src/ultragoal/artifacts.ts"() {
     "use strict";
-    import_node_fs38 = require("node:fs");
+    import_node_fs39 = require("node:fs");
     import_promises33 = require("node:fs/promises");
-    import_node_path43 = require("node:path");
+    import_node_path44 = require("node:path");
     init_claude_goal_snapshot();
     init_atomic_write();
     init_worktree_paths();
@@ -150135,7 +150728,7 @@ function descriptorHashPayload(input) {
   };
 }
 function computeDescriptorHash(input) {
-  return (0, import_node_crypto19.createHash)("sha256").update(canonicalJson2(descriptorHashPayload(input))).digest("hex");
+  return (0, import_node_crypto20.createHash)("sha256").update(canonicalJson2(descriptorHashPayload(input))).digest("hex");
 }
 function deepFreeze(value) {
   if (value !== null && typeof value === "object") {
@@ -150651,11 +151244,11 @@ function parseSealedGraphDescriptor(input) {
   };
   return deepFreeze(sealed);
 }
-var import_node_crypto19, DESCRIPTOR_HASH_PATTERN, GraphDescriptorValidationError;
+var import_node_crypto20, DESCRIPTOR_HASH_PATTERN, GraphDescriptorValidationError;
 var init_descriptor = __esm({
   "src/graph/descriptor.ts"() {
     "use strict";
-    import_node_crypto19 = require("node:crypto");
+    import_node_crypto20 = require("node:crypto");
     init_schema();
     DESCRIPTOR_HASH_PATTERN = /^[a-f0-9]{64}$/;
     GraphDescriptorValidationError = class extends Error {
@@ -150918,7 +151511,7 @@ function toFingerprintJson(value, seen) {
   return value;
 }
 function requestFingerprint(kind, descriptorHash, request) {
-  return (0, import_node_crypto20.createHash)("sha256").update(
+  return (0, import_node_crypto21.createHash)("sha256").update(
     canonicalJson2(
       toFingerprintJson(
         {
@@ -151788,11 +152381,11 @@ function isGraphSucceeded(descriptor, projection) {
   if (!allCompleted) return false;
   return Object.values(projection.cohorts).every((cohort) => cohort.consumed);
 }
-var import_node_crypto20, GraphSchedulerError;
+var import_node_crypto21, GraphSchedulerError;
 var init_scheduler = __esm({
   "src/graph/scheduler.ts"() {
     "use strict";
-    import_node_crypto20 = require("node:crypto");
+    import_node_crypto21 = require("node:crypto");
     init_descriptor();
     init_schema();
     GraphSchedulerError = class extends Error {
@@ -153755,7 +154348,7 @@ function processEntry(entry2, agentMap, latestTodos, result, maxAgentMapSize = 5
       if (block2.name === "Task" || block2.name === "proxy_Task" || block2.name === "Agent" || block2.name === "proxy_Agent") {
         result.agentCallCount++;
         const input = block2.input;
-        const spawn20 = classifyAgentSpawn({
+        const spawn21 = classifyAgentSpawn({
           hasName: Boolean(input?.name),
           sessionId: entry2.sessionId
         });
@@ -153767,8 +154360,8 @@ function processEntry(entry2, agentMap, latestTodos, result, maxAgentMapSize = 5
           description: input?.description,
           status: "running",
           startTime: timestamp2,
-          kind: spawn20.kind,
-          spawnedBy: spawn20.spawnedBy
+          kind: spawn21.kind,
+          spawnedBy: spawn21.spawnedBy
         };
         if (agentMap.size >= maxAgentMapSize) {
           let oldestCompleted = null;
@@ -154463,7 +155056,7 @@ function isCacheValid2(cache2) {
   return Date.now() - cache2.timestamp < CACHE_TTL_MS2;
 }
 function spawnWithTimeout(cmd, timeoutMs) {
-  return new Promise((resolve88, reject2) => {
+  return new Promise((resolve89, reject2) => {
     const [executable, ...args] = Array.isArray(cmd) ? cmd : ["sh", "-c", cmd];
     const child = (0, import_child_process62.spawn)(executable, args, {
       stdio: ["ignore", "pipe", "pipe"],
@@ -154501,7 +155094,7 @@ function spawnWithTimeout(cmd, timeoutMs) {
       if (!timedOut && escalationTimer) clearTimeout(escalationTimer);
       if (!timedOut) {
         if (code === 0) {
-          resolve88(stdout);
+          resolve89(stdout);
         } else {
           reject2(new Error(`Command exited with code ${code}`));
         }
@@ -154540,7 +155133,7 @@ function parseOutput(raw, periods) {
   return buckets;
 }
 async function executeCustomProvider(config2) {
-  const identity = (0, import_node_crypto21.createHash)("sha256").update(JSON.stringify({
+  const identity = (0, import_node_crypto22.createHash)("sha256").update(JSON.stringify({
     command: config2.command,
     periods: [...new Set(config2.periods ?? [])].sort()
   })).digest("hex");
@@ -154573,12 +155166,12 @@ async function executeCustomProvider(config2) {
     return { buckets: [], stale: false, error: "command failed" };
   }
 }
-var import_child_process62, import_node_crypto21, import_fs216, import_path249, CACHE_TTL_MS2, DEFAULT_TIMEOUT_MS4;
+var import_child_process62, import_node_crypto22, import_fs216, import_path249, CACHE_TTL_MS2, DEFAULT_TIMEOUT_MS4;
 var init_custom_rate_provider = __esm({
   "src/hud/custom-rate-provider.ts"() {
     "use strict";
     import_child_process62 = require("child_process");
-    import_node_crypto21 = require("node:crypto");
+    import_node_crypto22 = require("node:crypto");
     import_fs216 = require("fs");
     import_path249 = require("path");
     init_config_dir();
@@ -155887,9 +156480,9 @@ function pathToFileUrl(absPath2) {
     const segments = absPath2.replace(/\\/g, "/").split("/");
     return `file:///${segments.map((segment, index) => index === 0 ? segment : encodeURIComponent(segment)).join("/")}`;
   }
-  const normalized2 = (0, import_node_path49.resolve)(absPath2);
-  if (normalized2.endsWith(import_node_path49.sep)) return (0, import_node_url4.pathToFileURL)(normalized2).href;
-  const url = (0, import_node_url4.pathToFileURL)(`${normalized2}${import_node_path49.sep}`).href;
+  const normalized2 = (0, import_node_path50.resolve)(absPath2);
+  if (normalized2.endsWith(import_node_path50.sep)) return (0, import_node_url4.pathToFileURL)(normalized2).href;
+  const url = (0, import_node_url4.pathToFileURL)(`${normalized2}${import_node_path50.sep}`).href;
   return url.slice(0, -1);
 }
 function renderCwd(cwd2, format = "relative", useHyperlinks = false) {
@@ -155912,8 +156505,8 @@ function renderCwd(cwd2, format = "relative", useHyperlinks = false) {
       displayPath = cwd2;
       break;
     case "folder": {
-      const parent = (0, import_node_path49.basename)((0, import_node_path49.dirname)(cwd2));
-      const folder = (0, import_node_path49.basename)(cwd2);
+      const parent = (0, import_node_path50.basename)((0, import_node_path50.dirname)(cwd2));
+      const folder = (0, import_node_path50.basename)(cwd2);
       displayPath = parent ? `${parent}/${folder}` : folder;
       break;
     }
@@ -155931,12 +156524,12 @@ function renderCwd(cwd2, format = "relative", useHyperlinks = false) {
   }
   return rendered;
 }
-var import_node_os11, import_node_path49, import_node_url4;
+var import_node_os11, import_node_path50, import_node_url4;
 var init_cwd = __esm({
   "src/hud/elements/cwd.ts"() {
     "use strict";
     import_node_os11 = require("node:os");
-    import_node_path49 = require("node:path");
+    import_node_path50 = require("node:path");
     import_node_url4 = require("node:url");
     init_colors();
   }
@@ -156195,7 +156788,7 @@ var init_account = __esm({
 
 // src/hud/elements/git.ts
 function git7(args, cwd2) {
-  return (0, import_node_child_process20.execFileSync)("git", args, {
+  return (0, import_node_child_process21.execFileSync)("git", args, {
     cwd: cwd2,
     encoding: "utf-8",
     timeout: 1e3,
@@ -156204,7 +156797,7 @@ function git7(args, cwd2) {
   }).trim();
 }
 function getGitRepoName(cwd2) {
-  const key = cwd2 ? (0, import_node_path50.resolve)(cwd2) : process.cwd();
+  const key = cwd2 ? (0, import_node_path51.resolve)(cwd2) : process.cwd();
   const cached2 = repoCache.get(key);
   if (cached2 && Date.now() < cached2.expiresAt) {
     return cached2.value;
@@ -156226,7 +156819,7 @@ function getGitRepoName(cwd2) {
   return result;
 }
 function getGitBranch(cwd2) {
-  const key = cwd2 ? (0, import_node_path50.resolve)(cwd2) : process.cwd();
+  const key = cwd2 ? (0, import_node_path51.resolve)(cwd2) : process.cwd();
   const cached2 = branchCache.get(key);
   if (cached2 && Date.now() < cached2.expiresAt) {
     return cached2.value;
@@ -156242,7 +156835,7 @@ function getGitBranch(cwd2) {
   return result;
 }
 function getWorktreeInfo(cwd2) {
-  const key = cwd2 ? (0, import_node_path50.resolve)(cwd2) : process.cwd();
+  const key = cwd2 ? (0, import_node_path51.resolve)(cwd2) : process.cwd();
   const cached2 = worktreeCache.get(key);
   if (cached2 && Date.now() < cached2.expiresAt) {
     return cached2.value;
@@ -156251,18 +156844,18 @@ function getWorktreeInfo(cwd2) {
   try {
     const gitDir = git7(["rev-parse", "--git-dir"], cwd2);
     const gitCommonDir = git7(["rev-parse", "--git-common-dir"], cwd2);
-    let resolvedGitDir = (0, import_node_path50.resolve)(key, gitDir);
-    let resolvedCommonDir = (0, import_node_path50.resolve)(key, gitCommonDir);
+    let resolvedGitDir = (0, import_node_path51.resolve)(key, gitDir);
+    let resolvedCommonDir = (0, import_node_path51.resolve)(key, gitCommonDir);
     try {
-      resolvedGitDir = (0, import_node_fs43.realpathSync)(resolvedGitDir);
+      resolvedGitDir = (0, import_node_fs44.realpathSync)(resolvedGitDir);
     } catch {
     }
     try {
-      resolvedCommonDir = (0, import_node_fs43.realpathSync)(resolvedCommonDir);
+      resolvedCommonDir = (0, import_node_fs44.realpathSync)(resolvedCommonDir);
     } catch {
     }
     if (resolvedGitDir !== resolvedCommonDir) {
-      result = { isWorktree: true, worktreeName: (0, import_node_path50.basename)(resolvedGitDir) };
+      result = { isWorktree: true, worktreeName: (0, import_node_path51.basename)(resolvedGitDir) };
     }
   } catch {
   }
@@ -156284,7 +156877,7 @@ function renderGitBranch(cwd2) {
   return `${dim("branch:")}${cyan(branch2)}`;
 }
 function getGitStatusCounts(cwd2) {
-  const key = cwd2 ? (0, import_node_path50.resolve)(cwd2) : process.cwd();
+  const key = cwd2 ? (0, import_node_path51.resolve)(cwd2) : process.cwd();
   const cached2 = statusCache.get(key);
   if (cached2 && Date.now() < cached2.expiresAt) {
     return cached2.value;
@@ -156335,13 +156928,13 @@ function renderGitStatus(cwd2, labels = DEFAULT_HUD_LABELS) {
   if (behind > 0) parts.push(`${red(labels.behind)}${behind}`);
   return parts.join(" ");
 }
-var import_node_child_process20, import_node_fs43, import_node_path50, CACHE_TTL_MS3, repoCache, branchCache, worktreeCache, statusCache;
+var import_node_child_process21, import_node_fs44, import_node_path51, CACHE_TTL_MS3, repoCache, branchCache, worktreeCache, statusCache;
 var init_git = __esm({
   "src/hud/elements/git.ts"() {
     "use strict";
-    import_node_child_process20 = require("node:child_process");
-    import_node_fs43 = require("node:fs");
-    import_node_path50 = require("node:path");
+    import_node_child_process21 = require("node:child_process");
+    import_node_fs44 = require("node:fs");
+    import_node_path51 = require("node:path");
     init_colors();
     init_types9();
     init_url();
@@ -156356,7 +156949,7 @@ var init_git = __esm({
 // src/hud/elements/multi-repo.ts
 function isGitRepo(dir) {
   try {
-    (0, import_node_child_process21.execFileSync)("git", ["rev-parse", "--show-toplevel"], {
+    (0, import_node_child_process22.execFileSync)("git", ["rev-parse", "--show-toplevel"], {
       cwd: dir,
       encoding: "utf-8",
       timeout: 1e3,
@@ -156369,27 +156962,27 @@ function isGitRepo(dir) {
   }
 }
 function looksLikeRepo(entryPath) {
-  return (0, import_node_fs44.existsSync)((0, import_node_path51.join)(entryPath, ".git"));
+  return (0, import_node_fs45.existsSync)((0, import_node_path52.join)(entryPath, ".git"));
 }
 function countActiveSessions(cwd2) {
-  const sessionsDir = (0, import_node_path51.join)(getOmcRoot(cwd2), "state", "sessions");
-  if (!(0, import_node_fs44.existsSync)(sessionsDir)) return 0;
+  const sessionsDir = (0, import_node_path52.join)(getOmcRoot(cwd2), "state", "sessions");
+  if (!(0, import_node_fs45.existsSync)(sessionsDir)) return 0;
   const now2 = Date.now();
   let active = 0;
   try {
-    const entries = (0, import_node_fs44.readdirSync)(sessionsDir, { withFileTypes: true });
+    const entries = (0, import_node_fs45.readdirSync)(sessionsDir, { withFileTypes: true });
     for (const entry2 of entries) {
       if (!entry2.isDirectory()) continue;
       if (!SESSION_ID_PATTERN.test(entry2.name)) continue;
-      const dirPath = (0, import_node_path51.join)(sessionsDir, entry2.name);
+      const dirPath = (0, import_node_path52.join)(sessionsDir, entry2.name);
       let fresh = false;
       try {
-        if (now2 - (0, import_node_fs44.statSync)(dirPath).mtimeMs < ACTIVITY_WINDOW_MS) {
+        if (now2 - (0, import_node_fs45.statSync)(dirPath).mtimeMs < ACTIVITY_WINDOW_MS) {
           fresh = true;
         } else {
-          for (const f of (0, import_node_fs44.readdirSync)(dirPath)) {
+          for (const f of (0, import_node_fs45.readdirSync)(dirPath)) {
             try {
-              if (now2 - (0, import_node_fs44.statSync)((0, import_node_path51.join)(dirPath, f)).mtimeMs < ACTIVITY_WINDOW_MS) {
+              if (now2 - (0, import_node_fs45.statSync)((0, import_node_path52.join)(dirPath, f)).mtimeMs < ACTIVITY_WINDOW_MS) {
                 fresh = true;
                 break;
               }
@@ -156407,7 +157000,7 @@ function countActiveSessions(cwd2) {
   return active;
 }
 function detectMultiRepo(cwd2) {
-  const key = cwd2 ? (0, import_node_path51.resolve)(cwd2) : process.cwd();
+  const key = cwd2 ? (0, import_node_path52.resolve)(cwd2) : process.cwd();
   const cached2 = multiRepoCache.get(key);
   if (cached2 && Date.now() < cached2.expiresAt) {
     return cached2.value;
@@ -156420,11 +157013,11 @@ function detectMultiRepo(cwd2) {
     }
     let subrepoCount = 0;
     try {
-      const entries = (0, import_node_fs44.readdirSync)(key, { withFileTypes: true });
+      const entries = (0, import_node_fs45.readdirSync)(key, { withFileTypes: true });
       for (const entry2 of entries) {
         if (!entry2.isDirectory()) continue;
         if (entry2.name.startsWith(".")) continue;
-        if (looksLikeRepo((0, import_node_path51.join)(key, entry2.name))) subrepoCount++;
+        if (looksLikeRepo((0, import_node_path52.join)(key, entry2.name))) subrepoCount++;
       }
     } catch {
     }
@@ -156432,12 +157025,12 @@ function detectMultiRepo(cwd2) {
       multiRepoCache.set(key, { value: null, expiresAt: Date.now() + CACHE_TTL_MS4 });
       return null;
     }
-    const hasMarker = (0, import_node_fs44.existsSync)((0, import_node_path51.join)(key, ".omc-workspace"));
+    const hasMarker = (0, import_node_fs45.existsSync)((0, import_node_path52.join)(key, ".omc-workspace"));
     const activeSessions = hasMarker ? countActiveSessions(key) : 0;
     result = {
       isMultiRepo: true,
       hasMarker,
-      parentName: (0, import_node_path51.basename)(key),
+      parentName: (0, import_node_path52.basename)(key),
       subrepoCount,
       activeSessions
     };
@@ -156456,13 +157049,13 @@ function renderMultiRepo(cwd2) {
   const sessionsPart = info.activeSessions > 0 ? ` ${dim("sessions:~")}${green(String(info.activeSessions))}` : ` ${dim("sessions:~")}${dim("0")}`;
   return `${dim("mr:")}${cyan(info.parentName)} ${dim("repos:")}${cyan(String(info.subrepoCount))}` + sessionsPart;
 }
-var import_node_child_process21, import_node_fs44, import_node_path51, ACTIVITY_WINDOW_MS, SESSION_ID_PATTERN, CACHE_TTL_MS4, multiRepoCache;
+var import_node_child_process22, import_node_fs45, import_node_path52, ACTIVITY_WINDOW_MS, SESSION_ID_PATTERN, CACHE_TTL_MS4, multiRepoCache;
 var init_multi_repo = __esm({
   "src/hud/elements/multi-repo.ts"() {
     "use strict";
-    import_node_child_process21 = require("node:child_process");
-    import_node_fs44 = require("node:fs");
-    import_node_path51 = require("node:path");
+    import_node_child_process22 = require("node:child_process");
+    import_node_fs45 = require("node:fs");
+    import_node_path52 = require("node:path");
     init_colors();
     init_worktree_paths();
     ACTIVITY_WINDOW_MS = 5 * 60 * 1e3;
@@ -162928,8 +163521,8 @@ function isConsecutiveCanonicalShareMet(history, threshold = RETIREMENT_POLICY.m
       reason: `insufficient releases: have ${history.length}, need ${requiredConsecutive}`
     };
   }
-  const tail5 = history.slice(-requiredConsecutive);
-  const evaluated = tail5.map((h) => {
+  const tail6 = history.slice(-requiredConsecutive);
+  const evaluated = tail6.map((h) => {
     const r = isCanonicalShareMet(h.aliasCount, h.canonicalCount, threshold);
     return { share: r.share, met: r.met };
   });
@@ -163126,8 +163719,8 @@ var ENTRYPOINT_RE = /scripts\/([A-Za-z0-9._-]+\.mjs)((?:"|\s)[^"]*)?$/;
 function parseEntrypointCommand(command) {
   const m = ENTRYPOINT_RE.exec(command);
   if (!m) return null;
-  const tail5 = (m[2] ?? "").trim();
-  const args = tail5.length > 0 ? tail5.split(/\s+/) : [];
+  const tail6 = (m[2] ?? "").trim();
+  const args = tail6.length > 0 ? tail6.split(/\s+/) : [];
   return { entrypoint: m[1], args };
 }
 function riskClassForEntrypoint(entrypoint) {
@@ -163351,7 +163944,7 @@ async function runShadowObservation(hookType, legacyOutput, legacyDurationMs) {
       const dispatchResult = await Promise.race([
         dispatcher.dispatch(event, {}),
         new Promise(
-          (resolve88) => setTimeout(() => resolve88(null), SHADOW_OBSERVATION_BUDGET_MS)
+          (resolve89) => setTimeout(() => resolve89(null), SHADOW_OBSERVATION_BUDGET_MS)
         )
       ]);
       shadowDurationMs = performance.now() - started;
@@ -168401,7 +168994,7 @@ async function pollLoop2(config2) {
             log2("Claude usage profile became unavailable during quota check; discarding quota sample", config2);
           }
           writeDaemonState2(state, config2);
-          await new Promise((resolve88) => setTimeout(resolve88, config2.pollIntervalMs));
+          await new Promise((resolve89) => setTimeout(resolve89, config2.pollIntervalMs));
           continue;
         }
       }
@@ -168487,7 +169080,7 @@ async function pollLoop2(config2) {
       log2(`Poll error: ${state.lastError}`, config2);
       writeDaemonState2(state, config2);
     }
-    await new Promise((resolve88) => setTimeout(resolve88, config2.pollIntervalMs));
+    await new Promise((resolve89) => setTimeout(resolve89, config2.pollIntervalMs));
   }
 }
 function startDaemon(config2) {
@@ -170877,8 +171470,8 @@ function doctorPayloads(project, sessionId, now2 = /* @__PURE__ */ new Date()) {
     Notification: [{ payload: { hook_event_name: "Notification", sessionId, timestamp: now2.getTime(), cwd: project, title: "Shell completed", message: "omg hooks doctor", notification_type: "shell_completed" } }]
   };
 }
-function checkNode(spawnSync22, env2) {
-  const res = spawnSync22("node", ["--version"], { env: env2, encoding: "utf8", timeout: 15e3, windowsHide: true });
+function checkNode(spawnSync23, env2) {
+  const res = spawnSync23("node", ["--version"], { env: env2, encoding: "utf8", timeout: 15e3, windowsHide: true });
   const version3 = String(res.stdout ?? "").trim();
   if (res.status === 0 && /^v\d+/.test(version3)) return { id: "node.path", status: "ok", detail: `node ${version3} on PATH` };
   return {
@@ -170887,12 +171480,12 @@ function checkNode(spawnSync22, env2) {
     detail: `\`node\` is not runnable from PATH (${res.error?.message ?? `exit ${String(res.status)}`}); every copilot/hooks.json entry execs node, so no hook runs`
   };
 }
-function checkCopilotVersion(env2, deps, spawnSync22) {
+function checkCopilotVersion(env2, deps, spawnSync23) {
   const id = "copilot.version";
   const { bin, source } = resolveCopilotBinary(void 0, env2, deps);
   if (!bin) return { id, status: "warn", detail: `copilot not found (PATH, COPILOT_CLI_PATH, WinGet); the fork targets ${TARGET_COPILOT_VERSION}` };
   const plan = buildHostBinarySpawn(bin, ["--version"]);
-  const res = spawnSync22(plan.command, plan.args, { env: env2, encoding: "utf8", timeout: 3e4, windowsHide: true, windowsVerbatimArguments: plan.windowsVerbatimArguments });
+  const res = spawnSync23(plan.command, plan.args, { env: env2, encoding: "utf8", timeout: 3e4, windowsHide: true, windowsVerbatimArguments: plan.windowsVerbatimArguments });
   const version3 = parseCopilotVersion(String(res.stdout ?? ""));
   if (!version3) return { id, status: "warn", detail: `${bin} (${source}) --version gave no version`, evidence: clip(`${res.stdout ?? ""}${res.stderr ?? ""}`) };
   const cmp = compareCopilotVersions(version3, TARGET_COPILOT_VERSION);
@@ -170973,7 +171566,7 @@ function dispatchCheck(event, entry2, result) {
   if (result.durationMs > budgetMs * SLOW_FRACTION) return { id, status: "warn", detail: `exit 0 in ${timing}, ${out}; used over ${SLOW_FRACTION * 100}% of the timeout` };
   return { id, status: "ok", detail: `exit 0 in ${timing}, ${out}` };
 }
-function dispatchChecks(manifest, root2, env2, spawnSync22, deps, only) {
+function dispatchChecks(manifest, root2, env2, spawnSync23, deps, only) {
   const events = Object.keys(manifest.hooks).filter((e) => !only || e === only);
   if (only && events.length === 0) return [{ id: `dispatch.${only}`, status: "fail", detail: `${COPILOT_HOOKS_PATH} registers no ${only} (events: ${Object.keys(manifest.hooks).join(", ")})` }];
   const parent = (0, import_fs197.mkdtempSync)((0, import_path226.join)((0, import_os45.tmpdir)(), "omg-hooks-doctor-"));
@@ -170983,7 +171576,7 @@ function dispatchChecks(manifest, root2, env2, spawnSync22, deps, only) {
     const project = (0, import_path226.join)(parent, "project");
     (0, import_fs197.mkdirSync)(home);
     (0, import_fs197.mkdirSync)(project);
-    spawnSync22("git", ["init", "-q"], { cwd: project, encoding: "utf8", timeout: 3e4, windowsHide: true });
+    spawnSync23("git", ["init", "-q"], { cwd: project, encoding: "utf8", timeout: 3e4, windowsHide: true });
     (0, import_fs197.writeFileSync)((0, import_path226.join)(project, "README.md"), "# omg hooks doctor\n");
     const sandboxEnv = { ...buildSessionEnv(env2, (0, import_path226.join)(home, ".copilot")), HOME: home, USERPROFILE: home };
     const payloads = doctorPayloads(project, `omg-hooks-doctor-${(deps.randomUUID ?? import_crypto64.randomUUID)()}`);
@@ -170995,7 +171588,7 @@ function dispatchChecks(manifest, root2, env2, spawnSync22, deps, only) {
           checks.push({ id: `dispatch.${event}`, status: "warn", detail: "no recorded payload for this event; not dispatched" });
           continue;
         }
-        checks.push(dispatchCheck(event, entry2, dispatchHookEntry(event, entry2, root2, variant.payload, { cwd: project, env: sandboxEnv, spawnSync: spawnSync22 })));
+        checks.push(dispatchCheck(event, entry2, dispatchHookEntry(event, entry2, root2, variant.payload, { cwd: project, env: sandboxEnv, spawnSync: spawnSync23 })));
       }
     }
     return checks;
@@ -171019,12 +171612,12 @@ function dispatchChecks(manifest, root2, env2, spawnSync22, deps, only) {
 async function runHooksDoctor(opts = {}) {
   const env2 = opts.env ?? process.env;
   const deps = opts.deps ?? {};
-  const spawnSync22 = deps.spawnSync ?? import_child_process54.spawnSync;
+  const spawnSync23 = deps.spawnSync ?? import_child_process54.spawnSync;
   const root2 = (0, import_path226.resolve)(opts.pluginRoot ?? resolveDefaultPluginRoot(env2));
   const checks = [];
-  const node = checkNode(spawnSync22, env2);
+  const node = checkNode(spawnSync23, env2);
   checks.push(node);
-  checks.push(checkCopilotVersion(env2, deps, spawnSync22));
+  checks.push(checkCopilotVersion(env2, deps, spawnSync23));
   checks.push(await checkManifestSync(root2, deps));
   let manifest = null;
   try {
@@ -171036,7 +171629,7 @@ async function runHooksDoctor(opts = {}) {
     checks.push(checkScripts(manifest, root2));
     if (opts.dispatch !== false) {
       if (node.status === "fail") checks.push({ id: "dispatch", status: "fail", detail: "skipped: node is not on PATH" });
-      else checks.push(...dispatchChecks(manifest, root2, env2, spawnSync22, deps, opts.event));
+      else checks.push(...dispatchChecks(manifest, root2, env2, spawnSync23, deps, opts.event));
     }
   }
   return { ok: checks.every((c) => c.status !== "fail"), pluginRoot: root2, checks };
@@ -171586,8 +172179,8 @@ async function sessionFrictionReportCommand(options, logger = console) {
 }
 
 // src/config/quality-gates.ts
-var import_node_fs34 = require("node:fs");
-var import_node_path39 = require("node:path");
+var import_node_fs35 = require("node:fs");
+var import_node_path40 = require("node:path");
 init_loader();
 init_config_dir();
 init_worktree_paths();
@@ -171769,22 +172362,22 @@ function getSkillRoots(options) {
   const bundledSkillsDir = options.bundledSkillsDir ?? getSkillsDir();
   const pluginRoot = options.pluginRoot === void 0 ? process.env.PLUGIN_ROOT || process.env.CLAUDE_PLUGIN_ROOT || process.env.OMC_PLUGIN_ROOT || null : options.pluginRoot;
   return [
-    (0, import_node_path39.join)(cwd2, ".copilot", "skills"),
-    (0, import_node_path39.join)(cwd2, ".claude", "skills"),
-    (0, import_node_path39.join)(omcRoot, "skills"),
-    (0, import_node_path39.join)(cwd2, ".agents", "skills"),
-    (0, import_node_path39.join)(userConfigDir, "skills"),
-    ...pluginRoot ? [(0, import_node_path39.join)(pluginRoot, "skills")] : [],
+    (0, import_node_path40.join)(cwd2, ".copilot", "skills"),
+    (0, import_node_path40.join)(cwd2, ".claude", "skills"),
+    (0, import_node_path40.join)(omcRoot, "skills"),
+    (0, import_node_path40.join)(cwd2, ".agents", "skills"),
+    (0, import_node_path40.join)(userConfigDir, "skills"),
+    ...pluginRoot ? [(0, import_node_path40.join)(pluginRoot, "skills")] : [],
     bundledSkillsDir,
-    (0, import_node_path39.join)(cwd2, "skills")
+    (0, import_node_path40.join)(cwd2, "skills")
   ];
 }
 function resolveQualityGateSkillPath(skillName, options = {}) {
   const skill = skillName.startsWith("$") ? skillName.slice(1) : skillName;
   const roots = getSkillRoots(options);
   for (const root2 of roots) {
-    const skillPath = (0, import_node_path39.join)(root2, skill, "SKILL.md");
-    if ((0, import_node_fs34.existsSync)(skillPath)) return skillPath;
+    const skillPath = (0, import_node_path40.join)(root2, skill, "SKILL.md");
+    if ((0, import_node_fs35.existsSync)(skillPath)) return skillPath;
   }
   if (options.bundledSkillsDir === void 0) {
     return getBuiltinSkillPath(skill) ?? null;
@@ -171874,8 +172467,8 @@ function inferDelegationPlanForTeamTask(text4) {
 // src/cli/commands/team.ts
 init_types10();
 init_loader();
-var import_node_fs36 = require("node:fs");
-var import_node_path41 = require("node:path");
+var import_node_fs37 = require("node:fs");
+var import_node_path42 = require("node:path");
 init_tmux_utils();
 init_worktree_paths();
 init_host_detection();
@@ -172079,13 +172672,13 @@ function slugifyTask(task) {
 }
 function resolveAvailableTeamName(baseName3, cwd2) {
   const sanitizedBase = slugifyTask(baseName3);
-  const stateRoot2 = (0, import_node_path41.join)(getOmcRoot(cwd2), "state", "team");
-  const teamDir3 = (name) => (0, import_node_path41.join)(stateRoot2, name);
-  if (!(0, import_node_fs36.existsSync)(teamDir3(sanitizedBase))) return sanitizedBase;
+  const stateRoot2 = (0, import_node_path42.join)(getOmcRoot(cwd2), "state", "team");
+  const teamDir3 = (name) => (0, import_node_path42.join)(stateRoot2, name);
+  if (!(0, import_node_fs37.existsSync)(teamDir3(sanitizedBase))) return sanitizedBase;
   for (let suffix = 2; suffix <= 99; suffix++) {
     const suffixText = `-${suffix}`;
     const candidate = `${sanitizedBase.slice(0, 30 - suffixText.length).replace(/-$/g, "")}${suffixText}`;
-    if (!(0, import_node_fs36.existsSync)(teamDir3(candidate))) return candidate;
+    if (!(0, import_node_fs37.existsSync)(teamDir3(candidate))) return candidate;
   }
   throw new Error(`Unable to allocate a fresh team name for ${sanitizedBase}; remove stale .omg/state/team entries or choose a more specific launch task.`);
 }
@@ -172103,7 +172696,7 @@ async function isTeamStateLive(config2, teamName, cwd2) {
       if (worker.launch_attempt_id && session.attempt_id !== worker.launch_attempt_id) continue;
       const started = (() => {
         try {
-          return JSON.parse((0, import_node_fs36.readFileSync)(absPath2(cwd2, TeamPaths2.workerLaunchStarted(teamName, worker.name, session.attempt_id)), "utf8"));
+          return JSON.parse((0, import_node_fs37.readFileSync)(absPath2(cwd2, TeamPaths2.workerLaunchStarted(teamName, worker.name, session.attempt_id)), "utf8"));
         } catch {
           return null;
         }
@@ -172601,7 +173194,7 @@ async function startupCleanupIncompleteMessage(teamName, cwd2) {
   const config2 = await readJson7(absPath2(cwd2, TeamPaths2.config(name)));
   if (config2?.lifecycle_state !== "starting") return null;
   const teamRoot = absPath2(cwd2, TeamPaths2.root(name));
-  const failure4 = await readJson7((0, import_node_path41.join)(teamRoot, "startup-failure.json"));
+  const failure4 = await readJson7((0, import_node_path42.join)(teamRoot, "startup-failure.json"));
   const evidence = failure4?.creation_evidence;
   const partial2 = failure4?.partial_session;
   const socketPath = [evidence?.socketPath, evidence?.tmuxServerIdentity?.socket_path, partial2?.tmuxServerIdentity?.socket_path].find((value) => typeof value === "string" && value.length > 0);
@@ -173881,7 +174474,7 @@ async function ralphthonCommand(args) {
   console.log(source_default.gray("Orchestrator running. Press Ctrl+C to stop."));
 }
 function sleep12(ms) {
-  return new Promise((resolve88) => setTimeout(resolve88, ms));
+  return new Promise((resolve89) => setTimeout(resolve89, ms));
 }
 
 // src/cli/commands/ultragoal.ts
@@ -173891,13 +174484,13 @@ init_artifacts();
 
 // src/ultragoal/goal-record.ts
 var import_promises34 = require("node:fs/promises");
-var import_node_path44 = require("node:path");
+var import_node_path45 = require("node:path");
 init_atomic_write();
 init_artifacts();
 init_skill_slash();
 var OMG_GOAL_RECORD = "omg-goal.json";
 function omgGoalRecordPath(cwd2, planId) {
-  return (0, import_node_path44.join)(ultragoalDir(cwd2, planId), OMG_GOAL_RECORD);
+  return (0, import_node_path45.join)(ultragoalDir(cwd2, planId), OMG_GOAL_RECORD);
 }
 async function readOmgGoalRecord(cwd2, planId) {
   let raw;
@@ -174330,8 +174923,8 @@ ${ULTRAGOAL_HELP}`);
 }
 
 // src/cli/commands/alias-retirement.ts
-var import_node_fs41 = require("node:fs");
-var import_node_path47 = require("node:path");
+var import_node_fs42 = require("node:fs");
+var import_node_path48 = require("node:path");
 
 // src/alias-retirement/registry.ts
 var ALIAS_RETIREMENT_SCHEMA_VERSION = 1;
@@ -174383,8 +174976,8 @@ function assertAliasRegistryIntegrity() {
 }
 
 // src/alias-retirement/verifier.ts
-var import_node_fs39 = require("node:fs");
-var import_node_path45 = require("node:path");
+var import_node_fs40 = require("node:fs");
+var import_node_path46 = require("node:path");
 var import_node_url3 = require("node:url");
 function evaluateAlias(input) {
   const { record: record3, currentVersion, now: now2, usageHistory, criticalIntegrations } = input;
@@ -174441,14 +175034,14 @@ function evaluateAlias(input) {
 }
 function getPackageVersionFallback() {
   try {
-    let dir = (0, import_node_path45.dirname)((0, import_node_url3.fileURLToPath)(importMetaUrl));
+    let dir = (0, import_node_path46.dirname)((0, import_node_url3.fileURLToPath)(importMetaUrl));
     for (let i = 0; i < 6; i++) {
       try {
-        const pkg = JSON.parse((0, import_node_fs39.readFileSync)((0, import_node_path45.join)(dir, "package.json"), "utf-8"));
+        const pkg = JSON.parse((0, import_node_fs40.readFileSync)((0, import_node_path46.join)(dir, "package.json"), "utf-8"));
         if (pkg.version) return pkg.version;
       } catch {
       }
-      const parent = (0, import_node_path45.dirname)(dir);
+      const parent = (0, import_node_path46.dirname)(dir);
       if (parent === dir) break;
       dir = parent;
     }
@@ -174486,11 +175079,11 @@ function summarizeReceipts(receipts) {
 }
 
 // src/alias-retirement/closure.ts
-var import_node_fs40 = require("node:fs");
-var import_node_path46 = require("node:path");
+var import_node_fs41 = require("node:fs");
+var import_node_path47 = require("node:path");
 function buildClosureReport(receipts, options = {}) {
   const cwd2 = options.cwd ?? process.cwd();
-  const exists = options.exists ?? ((p) => (0, import_node_fs40.existsSync)((0, import_node_path46.join)(cwd2, p)));
+  const exists = options.exists ?? ((p) => (0, import_node_fs41.existsSync)((0, import_node_path47.join)(cwd2, p)));
   const byAlias = new Map(receipts.map((r) => [r.alias.toLowerCase(), r]));
   const entries = receipts.flatMap(
     (r) => r.generatedArtifacts.map((p) => {
@@ -174583,7 +175176,7 @@ function readJsonMaybePath(raw) {
   const looksLikePath = raw.endsWith(".json") || raw.includes("/") || raw.includes("\\") || /^[\w.-]+\.json$/.test(raw);
   if (looksLikePath) {
     try {
-      const text4 = (0, import_node_fs41.readFileSync)(raw, "utf-8");
+      const text4 = (0, import_node_fs42.readFileSync)(raw, "utf-8");
       return JSON.parse(text4);
     } catch {
     }
@@ -174683,8 +175276,8 @@ async function aliasRetirementCommand(args) {
     };
     const text4 = JSON.stringify(payload, null, 2);
     if (outPath) {
-      (0, import_node_fs41.mkdirSync)((0, import_node_path47.dirname)((0, import_node_path47.join)(process.cwd(), outPath)), { recursive: true });
-      (0, import_node_fs41.writeFileSync)((0, import_node_path47.join)(process.cwd(), outPath), `${text4}
+      (0, import_node_fs42.mkdirSync)((0, import_node_path48.dirname)((0, import_node_path48.join)(process.cwd(), outPath)), { recursive: true });
+      (0, import_node_fs42.writeFileSync)((0, import_node_path48.join)(process.cwd(), outPath), `${text4}
 `);
       console.log(`wrote ${outPath}`);
     }
@@ -176750,8 +177343,8 @@ ${parsed2.prompt}`;
 // src/cli/graph.ts
 init_esm();
 init_source();
-var import_node_fs42 = require("node:fs");
-var import_node_path48 = require("node:path");
+var import_node_fs43 = require("node:fs");
+var import_node_path49 = require("node:path");
 init_descriptor();
 init_types12();
 
@@ -177016,7 +177609,7 @@ function failed2(context, summary) {
 
 // src/graph/runtime/executors/command.ts
 init_windows_search();
-var import_node_child_process19 = require("node:child_process");
+var import_node_child_process20 = require("node:child_process");
 var STREAM_TAIL_CHARS = 2e3;
 var KILL_ESCALATION_MS = 5e3;
 var StreamTail = class {
@@ -177038,7 +177631,7 @@ function terminateProcessTree(child, signal) {
       return;
     }
     try {
-      (0, import_node_child_process19.spawn)("taskkill", ["/F", "/T", "/PID", String(child.pid)], { stdio: "ignore" });
+      (0, import_node_child_process20.spawn)("taskkill", ["/F", "/T", "/PID", String(child.pid)], { stdio: "ignore" });
     } catch {
     }
     return;
@@ -177056,10 +177649,10 @@ function terminateProcessTree(child, signal) {
   }
 }
 function runShellCommand(command, timeoutMs, stdoutTail, stderrTail, idempotencyKey) {
-  return new Promise((resolve88) => {
+  return new Promise((resolve89) => {
     let child;
     try {
-      child = (0, import_node_child_process19.spawn)(command, {
+      child = (0, import_node_child_process20.spawn)(command, {
         shell: true,
         windowsHide: true,
         cwd: process.cwd(),
@@ -177070,7 +177663,7 @@ function runShellCommand(command, timeoutMs, stdoutTail, stderrTail, idempotency
         ...process.platform === "win32" ? {} : { detached: true }
       });
     } catch (error2) {
-      resolve88({ timed_out: false, exit_code: null, infra_error: describeError2(error2) });
+      resolve89({ timed_out: false, exit_code: null, infra_error: describeError2(error2) });
       return;
     }
     let settled = false;
@@ -177085,7 +177678,7 @@ function runShellCommand(command, timeoutMs, stdoutTail, stderrTail, idempotency
       settled = true;
       if (timeoutTimer !== void 0) clearTimeout(timeoutTimer);
       if (escalationTimer !== void 0) clearTimeout(escalationTimer);
-      resolve88({ timed_out: timedOut, exit_code: exitCode, infra_error: infraError });
+      resolve89({ timed_out: timedOut, exit_code: exitCode, infra_error: infraError });
     };
     if (child.stdout) {
       child.stdout.setEncoding("utf8");
@@ -177238,8 +177831,8 @@ function createStdinApprovalGate(input) {
       return Promise.resolve(queued);
     }
     getInterface();
-    return new Promise((resolve88) => {
-      waitingReader = resolve88;
+    return new Promise((resolve89) => {
+      waitingReader = resolve89;
     });
   }
   return {
@@ -177329,12 +177922,12 @@ async function loadSealedDescriptor(descriptorPath, runsRoot) {
   let runDirHandle;
   try {
     runDirHandle = resolveRunDirHandle(runsRoot, fresh.run_id);
-    storedPath = (0, import_node_path48.join)(runDirHandle.path, "descriptor.json");
+    storedPath = (0, import_node_path49.join)(runDirHandle.path, "descriptor.json");
   } catch (error2) {
     fail5(`invalid run directory for run "${fresh.run_id}": ${errorMessage2(error2)}`, 1);
     return null;
   }
-  if (!(0, import_node_fs42.existsSync)(storedPath)) {
+  if (!(0, import_node_fs43.existsSync)(storedPath)) {
     return fresh;
   }
   let stored;
@@ -178076,7 +178669,7 @@ function readReleaseState(stateRoot2, version3) {
   }
   return { ...parsed2, reruns: parsed2.reruns ?? {} };
 }
-function tail3(text4, lines4 = 30) {
+function tail4(text4, lines4 = 30) {
   return text4.trim().split(/\r?\n/).slice(-lines4);
 }
 var FULL_SHA3 = /^[0-9a-f]{40}$/;
@@ -178201,7 +178794,7 @@ var Release = class {
   must(cmd, args, what, opts) {
     const r = this.run(cmd, args, opts);
     if (r.status !== 0) {
-      const outcome = { status: "fail", note: `${what ?? `${cmd} ${args.join(" ")}`} failed (exit ${r.status})`, details: tail3(`${r.stdout}
+      const outcome = { status: "fail", note: `${what ?? `${cmd} ${args.join(" ")}`} failed (exit ${r.status})`, details: tail4(`${r.stdout}
 ${r.stderr}`) };
       const mutating = cmd === "gh" && /^(pr (create|merge)|run rerun)$/.test(args.slice(0, 2).join(" "));
       if (cmd === "gh" && !mutating && TRANSIENT_GH_ERROR.test(`${r.stdout}
@@ -178282,7 +178875,7 @@ ${r.stderr}`)) throw new PendingError(outcome);
     if (latest2.status === 0) {
       const published = latest2.stdout.trim();
       if (published && compareVersions4(v, published) <= 0) problems.push(`${v} is not above npm latest ${published}`);
-    } else if (!/E404/.test(latest2.stderr)) problems.push(`npm view ${this.pkgName} failed: ${tail3(latest2.stderr, 1).join("")}`);
+    } else if (!/E404/.test(latest2.stderr)) problems.push(`npm view ${this.pkgName} failed: ${tail4(latest2.stderr, 1).join("")}`);
     if (this.run("gh", ["auth", "status"]).status !== 0) problems.push("gh is not authenticated (gh auth login)");
     const lockRel = this.git("rev-parse", "--git-path", "index.lock");
     const lock = (0, import_path238.isAbsolute)(lockRel) ? lockRel : (0, import_path238.join)(this.deps.root, lockRel);
@@ -178290,7 +178883,7 @@ ${r.stderr}`)) throw new PendingError(outcome);
       problems.push(`${lock} exists; another git process may hold it (not deleted; remove it only when no git process runs): ${this.gitProcesses()}`);
     }
     const remoteTag = this.run("git", ["ls-remote", "--tags", "origin", `refs/tags/v${v}`]);
-    if (remoteTag.status !== 0) problems.push(`git ls-remote --tags origin failed: ${tail3(remoteTag.stderr, 1).join("")}`);
+    if (remoteTag.status !== 0) problems.push(`git ls-remote --tags origin failed: ${tail4(remoteTag.stderr, 1).join("")}`);
     else if (remoteTag.stdout.trim()) problems.push(`tag v${v} already exists on origin`);
     if (problems.length > 0) fail8(`${problems.length} preflight problem(s)`, problems);
     this.save({ branch: branch2, headSha: void 0, suiteSha: void 0, suiteRan: void 0, suiteTriage: void 0, devPr: void 0, devMergeSha: void 0, mainPr: void 0, mainMergeSha: void 0, tagRunId: void 0 });
@@ -178333,13 +178926,13 @@ ${r.stderr}`)) throw new PendingError(outcome);
     if (untracked) fail8("untracked files under dist/ or bridge/ after git add -f", untracked.split(/\r?\n/));
     const probes = [];
     const importProbe = this.run(this.deps.node, ["--input-type=module", "-e", "await import(process.argv[1])", (0, import_url26.pathToFileURL)((0, import_path238.join)(this.deps.root, "dist", "index.js")).href]);
-    if (importProbe.status !== 0) probes.push(`import dist/index.js failed: ${tail3(importProbe.stderr, 3).join(" ")}`);
+    if (importProbe.status !== 0) probes.push(`import dist/index.js failed: ${tail4(importProbe.stderr, 3).join(" ")}`);
     for (const entry2 of ["dist/cli/index.js", "bridge/cli.cjs"]) {
       const r = this.run(this.deps.node, [entry2, "--version"]);
       if (r.status !== 0 || r.stdout.trim() !== v) probes.push(`${entry2} --version printed ${JSON.stringify(r.stdout.trim())} (exit ${r.status}), expected ${v}`);
     }
     const mcp = this.run(this.deps.node, ["dist/mcp/standalone-server.js"], { timeoutMs: 3e4 });
-    if (mcp.status !== 0) probes.push(`dist/mcp/standalone-server.js did not start and exit cleanly (exit ${mcp.status}): ${tail3(mcp.stderr, 3).join(" ")}`);
+    if (mcp.status !== 0) probes.push(`dist/mcp/standalone-server.js did not start and exit cleanly (exit ${mcp.status}): ${tail4(mcp.stderr, 3).join(" ")}`);
     if (probes.length > 0) fail8("build probes failed", probes);
     return { status: "ok", note: `built and staged${orphans.length > 0 ? `; removed ${orphans.length} orphan(s)` : ""}` };
   }
@@ -178438,13 +179031,13 @@ ${r.stderr}`.trim().split(/\r?\n/);
     }
     if (suite === "targeted") {
       const tag = this.run("git", ["describe", "--tags", "--abbrev=0", "--match", "v[0-9]*", "HEAD"]);
-      if (tag.status !== 0) fail8("no v* tag reachable from HEAD for --suite targeted", tail3(tag.stderr, 2));
+      if (tag.status !== 0) fail8("no v* tag reachable from HEAD for --suite targeted", tail4(tag.stderr, 2));
       const changed = this.git("diff", "--name-only", `${tag.stdout.trim()}...HEAD`, "--", "src").split(/\r?\n/).filter((f) => /\.(?:ts|tsx|mts)$/.test(f) && !f.endsWith(".d.ts") && (0, import_fs207.existsSync)((0, import_path238.join)(this.deps.root, f)));
       if (changed.length === 0) return { status: "ok", note: `suite: no src changes since ${tag.stdout.trim()} for the targeted suite` };
       const args = ["node_modules/vitest/vitest.mjs", "related", "--run", "--exclude", "tests/perf/**", ...changed];
       this.deps.log(`  node ${args.join(" ")}`);
       const r = await this.runSuite(args);
-      if (r.status !== 0) fail8(`node ${args.join(" ")} failed (exit ${r.status})`, tail3(`${r.stdout}
+      if (r.status !== 0) fail8(`node ${args.join(" ")} failed (exit ${r.status})`, tail4(`${r.stdout}
 ${r.stderr}`));
       this.requireClean("targeted suite");
       return { status: "ok", note: `targeted suite over ${changed.length} changed src file(s)` };
@@ -178456,7 +179049,7 @@ ${r.stderr}`));
       (0, import_fs207.rmSync)(flakyCandidatesPath(this.deps.stateRoot, this.v), { force: true });
       this.deps.log(`  node node_modules/vitest/vitest.mjs run --reporter=json --outputFile=${out}`);
       const r = await this.runSuite(["node_modules/vitest/vitest.mjs", "run", "--exclude", "tests/perf/**", "--reporter=json", `--outputFile=${out}`], { env: { OMC_TEST_LPT: "1" } });
-      if (!(0, import_fs207.existsSync)(out)) fail8(`vitest wrote no JSON report (exit ${r.status})`, tail3(r.stderr));
+      if (!(0, import_fs207.existsSync)(out)) fail8(`vitest wrote no JSON report (exit ${r.status})`, tail4(r.stderr));
       const failing = failingTitlesFromVitestJson((0, import_fs207.readFileSync)(out, "utf8"));
       const baseline = this.opts.baseline ? parseBaselineTitles((0, import_fs207.readFileSync)(this.opts.baseline, "utf8")) : [];
       const fresh = newFailures(failing, baseline);
@@ -178880,7 +179473,7 @@ ${r.stderr}`));
     if (r.status !== 0) {
       const output = `${r.stdout}
 ${r.stderr}`;
-      const outcome = { status: "fail", note: `gh pr create failed (exit ${r.status})`, details: tail3(output) };
+      const outcome = { status: "fail", note: `gh pr create failed (exit ${r.status})`, details: tail4(output) };
       if (!TRANSIENT_GH_ERROR.test(output)) throw new PhaseStop(outcome);
       const open9 = this.findPr(head, base, "open");
       if (open9 !== void 0) return open9;
@@ -178938,7 +179531,7 @@ ${r.stderr}`;
     if (this.state.devPr === void 0 || this.viewPr(this.state.devPr).state !== "MERGED") {
       const push = this.run("git", ["push", "origin", `HEAD:refs/heads/${branch2}`]);
       if (push.status !== 0) {
-        blocked(`git push origin HEAD:refs/heads/${branch2} was refused; never force: git fetch origin ${branch2} && git merge origin/${branch2}, then re-run omg release ${this.v} --from pr`, tail3(push.stderr, 5));
+        blocked(`git push origin HEAD:refs/heads/${branch2} was refused; never force: git fetch origin ${branch2} && git merge origin/${branch2}, then re-run omg release ${this.v} --from pr`, tail4(push.stderr, 5));
       }
       if (this.state.devPr === void 0) {
         const pr = this.findPr(branch2, "dev", "all") ?? this.createPr("dev", branch2, `chore(release): v${this.v}`);
@@ -178987,7 +179580,7 @@ ${r.stderr}`;
       const rr = this.run("gh", ["run", "rerun", id, "--failed"]);
       if (rr.status !== 0 && !(TRANSIENT_GH_ERROR.test(`${rr.stdout}
 ${rr.stderr}`) && this.runAttempt(id) > before)) {
-        throw new PhaseStop({ status: "fail", note: `gh run rerun ${id} --failed failed (exit ${rr.status})`, details: tail3(`${rr.stdout}
+        throw new PhaseStop({ status: "fail", note: `gh run rerun ${id} --failed failed (exit ${rr.status})`, details: tail4(`${rr.stdout}
 ${rr.stderr}`) });
       }
       for (let polls = 0; this.runAttempt(id) <= before; polls++) {
@@ -179124,7 +179717,7 @@ ${rr.stderr}`) });
 ${r.stderr}`;
       const transient = TRANSIENT_GH_ERROR.test(output);
       if (attempt >= MERGE_RETRY_BACKOFF_MS.length || !transient) {
-        const outcome = { status: "fail", note: `gh ${command.join(" ")} failed (exit ${r.status})`, details: tail3(output) };
+        const outcome = { status: "fail", note: `gh ${command.join(" ")} failed (exit ${r.status})`, details: tail4(output) };
         throw transient ? new PendingError(outcome) : new PhaseStop(outcome);
       }
       this.deps.log(`  transient GitHub error; retrying gh pr merge in ${MERGE_RETRY_BACKOFF_MS[attempt] / 1e3} s`);
@@ -179540,7 +180133,7 @@ async function withDriveLock(path30, argv, proc, log3, fn) {
     releaseDriveLock(path30);
   }
 }
-function lastLines(path30, n) {
+function lastLines2(path30, n) {
   if (!(0, import_fs208.existsSync)(path30)) return [];
   return (0, import_fs208.readFileSync)(path30, "utf8").split(/\r?\n/).filter(Boolean).slice(-n);
 }
@@ -179662,7 +180255,7 @@ function gateExit(report3, timedOut = false) {
   return report3.verdict === "pending" || timedOut && report3.verdict === "flaky" ? EXIT_PENDING : 1;
 }
 var defaultShipDrive = {
-  sleep: (ms) => new Promise((resolve88) => setTimeout(resolve88, ms)),
+  sleep: (ms) => new Promise((resolve89) => setTimeout(resolve89, ms)),
   now: () => Date.now(),
   proc: defaultDriveProcess
 };
@@ -179784,7 +180377,7 @@ function shipCommand(execImpl = defaultExec, loadShipConfig = shipConfig, drive 
     if (o.status) {
       const lock = readDriveLock(lockPath2);
       const liveness = lock ? await drive.proc.liveness(lock) : void 0;
-      const events = lastLines(progressFile, 5);
+      const events = lastLines2(progressFile, 5);
       emit(Boolean(o.json), { lock, liveness, lockPath: lockPath2, logPath, progressFile, events }, () => {
         console.log(lock ? `driver: pid ${lock.pid} on ${lock.host} since ${lock.startedAt} (${liveness}); log ${logPath}` : `driver: none (no ${lockPath2})`);
         console.log(lock && liveness === "live" ? `wake on it: ${monitor}` : `drive: omg ship gates ${pr} --drive --detach`);
@@ -180187,7 +180780,7 @@ function releaseCommand(overrides = {}) {
           if (!json) console.error(line2);
         }),
         confirm: overrides.confirm ?? ttyConfirm2,
-        sleep: overrides.sleep ?? ((ms) => new Promise((resolve88) => setTimeout(resolve88, ms))),
+        sleep: overrides.sleep ?? ((ms) => new Promise((resolve89) => setTimeout(resolve89, ms))),
         now: overrides.now ?? (() => Date.now())
       };
       const proc = overrides.driveProcess ?? defaultDriveProcess;
@@ -180199,7 +180792,7 @@ function releaseCommand(overrides = {}) {
         const lock = readDriveLock(lockPath2);
         const liveness = lock ? await proc.liveness(lock) : void 0;
         const state = readReleaseState(stateRoot2, version3);
-        const events = lastLines(progressFile, 5);
+        const events = lastLines2(progressFile, 5);
         if (json) {
           console.log(JSON.stringify({ lock, liveness, lockPath: lockPath2, logPath, progressFile, events, phases: state?.phases ?? {} }, null, 2));
         } else {
@@ -180488,7 +181081,7 @@ var PortStop = class extends Error {
     this.next = next;
   }
 };
-var tail4 = (text4, n = 15) => text4.split(/\r?\n/).map((l) => l.trimEnd()).filter(Boolean).slice(-n).join("\n");
+var tail5 = (text4, n = 15) => text4.split(/\r?\n/).map((l) => l.trimEnd()).filter(Boolean).slice(-n).join("\n");
 var lines3 = (text4) => text4.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
 var short = (sha3) => sha3.slice(0, 9);
 var listed = (paths, n = 10) => `${paths.slice(0, n).join(", ")}${paths.length > n ? ` and ${paths.length - n} more` : ""}`;
@@ -180576,7 +181169,7 @@ async function runPortDrive(opts) {
   };
   const gitOk2 = (args, what = `git ${args.join(" ")}`) => {
     const r = git8(...args);
-    if (r.status !== 0) throw new PortStop("fail", phase, `${what} failed: ${tail4(r.stderr || r.stdout, 5)}`);
+    if (r.status !== 0) throw new PortStop("fail", phase, `${what} failed: ${tail5(r.stderr || r.stdout, 5)}`);
     return r.stdout;
   };
   try {
@@ -180621,10 +181214,10 @@ ${dirty}`);
       begin("apply", short(head));
       if (!opts.resume) {
         const applied = repoScript(DRIFT_SCRIPT, "--apply", "--head", head, "--date", date3);
-        if (applied.status !== 0 && applied.status !== 1) throw new PortStop("fail", phase, `${DRIFT_SCRIPT} --apply failed (exit ${applied.status}): ${tail4(applied.stderr || applied.stdout, 5)}`);
+        if (applied.status !== 0 && applied.status !== 1) throw new PortStop("fail", phase, `${DRIFT_SCRIPT} --apply failed (exit ${applied.status}): ${tail5(applied.stderr || applied.stdout, 5)}`);
       }
       const reported = repoScript(DRIFT_SCRIPT, "--report", "--head", head);
-      if (reported.status !== 0) throw new PortStop("fail", phase, `${DRIFT_SCRIPT} --report failed: ${tail4(reported.stderr, 5)}`);
+      if (reported.status !== 0) throw new PortStop("fail", phase, `${DRIFT_SCRIPT} --report failed: ${tail5(reported.stderr, 5)}`);
       const report3 = JSON.parse(reported.stdout);
       rangeBase = report3.base;
       ok2(`${short(rangeBase)}..${short(head)}: ${report3.commits.length} commits, ${report3.conflicts.length} conflicts${opts.resume ? " (resumed, apply skipped)" : ""}`);
@@ -180640,7 +181233,7 @@ ${dirty}`);
         ok2("ran before; skipped on --continue (the human handled it)");
       } else {
         const d = repoScript(DRIFT_SCRIPT, "--package-delta", "--head", head, "--json");
-        if (d.status !== 0 && d.status !== 1) throw new PortStop("fail", phase, `${DRIFT_SCRIPT} --package-delta failed: ${tail4(d.stderr, 5)}`);
+        if (d.status !== 0 && d.status !== 1) throw new PortStop("fail", phase, `${DRIFT_SCRIPT} --package-delta failed: ${tail5(d.stderr, 5)}`);
         result.packageDelta = JSON.parse(d.stdout).changes;
         const human = result.packageDelta.filter((c) => c.action === "human");
         (0, import_fs211.mkdirSync)(portDir, { recursive: true });
@@ -180729,7 +181322,7 @@ ${dirty}`);
 ${r.stderr}`;
           const errors = name === "eslint" ? lines3(out).filter((l) => /^\d+:\d+\s+error\b/.test(l)).slice(0, 10) : [];
           throw new PortStop("fail", phase, `${name} failed (exit ${r.status}):
-${[...errors, tail4(out, 10)].join("\n")}`, `fix, stage, then ${resumeCmd}`);
+${[...errors, tail5(out, 10)].join("\n")}`, `fix, stage, then ${resumeCmd}`);
         }
         result.gates.push(name);
       }
@@ -180750,14 +181343,14 @@ ${[...errors, tail4(out, 10)].join("\n")}`, `fix, stage, then ${resumeCmd}`);
     }
     if (repoScript(INVENTORY_SCRIPT, "--verify").status !== 0) {
       const written = repoScript(INVENTORY_SCRIPT, "--write");
-      if (written.status !== 0) throw new PortStop("fail", phase, `inventory --write failed: ${tail4(written.stderr || written.stdout, 5)}`, resumeCmd);
+      if (written.status !== 0) throw new PortStop("fail", phase, `inventory --write failed: ${tail5(written.stderr || written.stdout, 5)}`, resumeCmd);
       gitOk2(["add", "--", INVENTORY_DIR]);
       if (git8("diff", "--cached", "--quiet", "--", INVENTORY_DIR).status !== 0) {
         gitOk2(["commit", "--no-verify", "-q", "-m", INVENTORY_COMMIT_MESSAGE, "--", INVENTORY_DIR]);
         result.commits.push(gitOk2(["rev-parse", "HEAD"]).trim());
       }
       const verified = repoScript(INVENTORY_SCRIPT, "--verify");
-      if (verified.status !== 0) throw new PortStop("fail", phase, `inventory still fails --verify: ${tail4(verified.stderr || verified.stdout, 5)}`, resumeCmd);
+      if (verified.status !== 0) throw new PortStop("fail", phase, `inventory still fails --verify: ${tail5(verified.stderr || verified.stdout, 5)}`, resumeCmd);
     }
     ok2(`${result.commits.length} commit(s), inventory last`);
     begin("pr", push ? `${remote} ${branch2}` : "push skipped");
@@ -180766,7 +181359,7 @@ ${[...errors, tail4(out, 10)].join("\n")}`, `fix, stage, then ${resumeCmd}`);
       return finish(result, "done", `port ${short(rangeBase)}..${short(head)} committed on ${branch2} (not pushed)`, `git push ${remote} HEAD:refs/heads/${branch2}`, opts);
     }
     const pushed = git8("push", remote, `HEAD:refs/heads/${branch2}`);
-    if (pushed.status !== 0) throw new PortStop("fail", phase, `git push ${remote} ${branch2} failed: ${tail4(pushed.stderr || pushed.stdout, 5)}`, resumeCmd);
+    if (pushed.status !== 0) throw new PortStop("fail", phase, `git push ${remote} ${branch2} failed: ${tail5(pushed.stderr || pushed.stdout, 5)}`, resumeCmd);
     const md = repoScript(DRIFT_SCRIPT, "--report", "--base", rangeBase, "--head", head, "--markdown");
     (0, import_fs211.mkdirSync)(portDir, { recursive: true });
     const bodyFile = (0, import_path243.join)(portDir, "pr-body.md");
@@ -180782,7 +181375,7 @@ ${[...errors, tail4(out, 10)].join("\n")}`, `fix, stage, then ${resumeCmd}`);
 `);
     const title = `port: upstream ${short(rangeBase)}..${short(head)}`;
     const pr = exec3("gh", ["pr", "create", "--draft", "--base", prBase, "--head", branch2, "--title", title, "--body-file", bodyFile], { cwd: cwd2 });
-    if (pr.status !== 0) throw new PortStop("fail", phase, `gh pr create failed: ${tail4(pr.stderr || pr.stdout, 5)}`, resumeCmd);
+    if (pr.status !== 0) throw new PortStop("fail", phase, `gh pr create failed: ${tail5(pr.stderr || pr.stdout, 5)}`, resumeCmd);
     result.pr = lines3(pr.stdout).pop() ?? null;
     ok2(`draft PR ${result.pr}`);
     return finish(result, "done", `draft PR ${result.pr}; a human merges it`, `omg ship gates ${result.pr ?? ""} --drive`.trim(), opts);
@@ -181031,7 +181624,7 @@ var UsageError3 = class extends Error {
 };
 var defaultDeps = {
   now: () => /* @__PURE__ */ new Date(),
-  sleep: (ms) => new Promise((resolve88) => setTimeout(resolve88, ms)),
+  sleep: (ms) => new Promise((resolve89) => setTimeout(resolve89, ms)),
   out: (line2) => process.stdout.write(`${line2}
 `),
   err: (line2) => process.stderr.write(`${line2}
@@ -181097,41 +181690,41 @@ function tryStat(path30) {
     return null;
   }
 }
-function readNewLines(path30, tail5, flush) {
+function readNewLines(path30, tail6, flush) {
   const st = tryStat(path30);
   if (!st) return [];
   const lines4 = [];
-  const known = tail5.ino !== 0 || tail5.birthtimeMs !== 0;
-  const replaced = known && (tail5.ino !== 0 && st.ino !== 0 ? st.ino !== tail5.ino : st.birthtimeMs !== tail5.birthtimeMs);
-  if (replaced || st.size < tail5.offset) {
+  const known = tail6.ino !== 0 || tail6.birthtimeMs !== 0;
+  const replaced = known && (tail6.ino !== 0 && st.ino !== 0 ? st.ino !== tail6.ino : st.birthtimeMs !== tail6.birthtimeMs);
+  if (replaced || st.size < tail6.offset) {
     const old = tryStat(`${path30}.1`);
-    const isOldFile = old !== null && (known ? replaced && (tail5.ino !== 0 ? old.ino === tail5.ino : old.birthtimeMs === tail5.birthtimeMs) : old.size >= tail5.offset);
+    const isOldFile = old !== null && (known ? replaced && (tail6.ino !== 0 ? old.ino === tail6.ino : old.birthtimeMs === tail6.birthtimeMs) : old.size >= tail6.offset);
     if (isOldFile) {
       try {
-        lines4.push(...Buffer.concat([tail5.rest, readFrom(`${path30}.1`, tail5.offset, old.size)]).toString("utf8").split("\n"));
+        lines4.push(...Buffer.concat([tail6.rest, readFrom(`${path30}.1`, tail6.offset, old.size)]).toString("utf8").split("\n"));
       } catch {
       }
     }
-    tail5.offset = 0;
-    tail5.rest = Buffer.alloc(0);
+    tail6.offset = 0;
+    tail6.rest = Buffer.alloc(0);
   }
-  tail5.ino = st.ino;
-  tail5.birthtimeMs = st.birthtimeMs;
+  tail6.ino = st.ino;
+  tail6.birthtimeMs = st.birthtimeMs;
   let chunk;
   try {
-    chunk = readFrom(path30, tail5.offset, st.size);
+    chunk = readFrom(path30, tail6.offset, st.size);
   } catch {
     return lines4;
   }
-  tail5.offset += chunk.length;
-  const data = Buffer.concat([tail5.rest, chunk]);
+  tail6.offset += chunk.length;
+  const data = Buffer.concat([tail6.rest, chunk]);
   const lastNewline = data.lastIndexOf(10);
   const complete = lastNewline === -1 ? Buffer.alloc(0) : data.subarray(0, lastNewline);
-  tail5.rest = lastNewline === -1 ? data : data.subarray(lastNewline + 1);
+  tail6.rest = lastNewline === -1 ? data : data.subarray(lastNewline + 1);
   if (lastNewline !== -1) lines4.push(...complete.toString("utf8").split("\n"));
-  if (flush && tail5.rest.length > 0) {
-    lines4.push(tail5.rest.toString("utf8"));
-    tail5.rest = Buffer.alloc(0);
+  if (flush && tail6.rest.length > 0) {
+    lines4.push(tail6.rest.toString("utf8"));
+    tail6.rest = Buffer.alloc(0);
   }
   return lines4;
 }
@@ -181174,13 +181767,13 @@ async function watchProgress(o, deps) {
   for (; ; ) {
     const paths = listSources(sources);
     for (const path30 of paths) {
-      let tail5 = tails.get(path30);
-      if (!tail5) {
+      let tail6 = tails.get(path30);
+      if (!tail6) {
         if (!(0, import_fs212.existsSync)(path30)) continue;
-        tail5 = newTail();
-        tails.set(path30, tail5);
+        tail6 = newTail();
+        tails.set(path30, tail6);
       }
-      for (const line2 of readNewLines(path30, tail5, o.once)) {
+      for (const line2 of readNewLines(path30, tail6, o.once)) {
         const parsed2 = parseProgressLine(line2);
         if (!parsed2 || parsed2.status === "stalled") continue;
         const event = withAgent(parsed2, path30);
@@ -181443,15 +182036,15 @@ async function runHudWatchLoop(options) {
     if (shouldStop) {
       break;
     }
-    await new Promise((resolve88) => {
+    await new Promise((resolve89) => {
       const timer = setTimeout(() => {
         wakeSleep = null;
-        resolve88();
+        resolve89();
       }, options.intervalMs);
       wakeSleep = () => {
         clearTimeout(timer);
         wakeSleep = null;
-        resolve88();
+        resolve89();
       };
     });
   }

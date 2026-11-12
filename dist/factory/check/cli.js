@@ -41,6 +41,8 @@ import { isReviewFeedbackArgs } from '../../forge/github/graphql.js';
 import { isRequiredChecksArgs } from '../../forge/github/checks.js';
 import { FactoryBusyError, factoryStateDir, READ_SCAN_WAIT_MS, readFactoryState, tryScanLock } from '../run/state.js';
 import { gateDefinitionSources } from '../run/local-gate.js';
+import { resolveGateIsolation } from '../../copilot-run/sandbox.js';
+import { probeContainerRuntime } from '../run/container-gate.js';
 import { BUCKET_ORDER, checkItems, plainText } from './score.js';
 export const EXIT_CHECK_FAILED = 1;
 export const EXIT_CHECK_USAGE = 2;
@@ -529,6 +531,20 @@ export async function runFactoryCheck(o, deps) {
         const unresolved = argv && argv.length > 0 ? gateDefinitionSources(argv).unresolved : undefined;
         gate = !argv || argv.length === 0 ? 'not set' : unresolved ? `unresolved (${unresolved})` : 'ok';
     }
+    // factory.run.sandbox.isolation "container" (user config): whether the runtime answers and the image is there.
+    let isolation;
+    try {
+        const container = resolveGateIsolation({ user: deps.trustedUser(), base: undefined }).container;
+        if (container) {
+            const p = (deps.containerProbe ?? probeContainerRuntime)(container);
+            isolation = { kind: 'container', runtime: container.runtime, image: container.image, version: p.version, imagePresent: p.image };
+            if (p.version === null)
+                warnings.push(`omg factory check: factory.run.sandbox.isolation is "container" but ${container.runtime} does not answer: every prepare check and local gate parks at gate-container-unavailable until it does (start it, or set isolation "copilot")`);
+        }
+    }
+    catch (error) {
+        warnings.push(`omg factory check: factory.run.sandbox: ${error instanceof Error ? error.message : String(error)}`);
+    }
     if (o.json) {
         const json = {
             schemaVersion: CHECK_JSON_SCHEMA_VERSION,
@@ -538,6 +554,7 @@ export async function runFactoryCheck(o, deps) {
             prepareChecks,
             ...(prepareSkipped.length > 0 ? { prepareChecksSkipped: prepareSkipped } : {}),
             ...(gate ? { gate } : {}),
+            ...(isolation ? { gateIsolation: isolation } : {}),
             repo: config.repo.url,
             source: ids.length > 0 || parent !== undefined || !source ? null : { ...source },
             counts: Object.fromEntries(BUCKET_ORDER.map((b) => [b, items.filter((r) => r.bucket === b).length])),
@@ -557,6 +574,10 @@ export async function runFactoryCheck(o, deps) {
             deps.out(chalk.yellow(`prepare check skipped: ${why}`));
         if (gate)
             deps.out((gate.startsWith('unresolved') ? chalk.yellow : chalk.gray)(`gate: ${plainText(gate)}`));
+        if (isolation) {
+            const state = isolation.version === null ? 'not available' : `${isolation.runtime} ${isolation.version}, image ${isolation.imagePresent ? 'present' : 'not pulled yet (pulled at the first gate, announced)'}`;
+            deps.out((isolation.version === null ? chalk.yellow : chalk.gray)(`gate isolation: container (${isolation.runtime}, ${isolation.image}): ${plainText(state)}`));
+        }
         deps.out(renderCheckTable(items));
         if (o.mark) {
             if (m.marked.length > 0)
