@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { parseProgressLog } from '../../../lib/agent-progress.js';
 import { assertLaneCreditCap, DEFAULT_FACTORY_RUN_LIMITS, nextLaneCap, resolveFactoryRunLimits, runCreditsExceeded } from '../budget.js';
-import { ciFailureTail, nodeModulesWriteDenied, sandboxIncompatibleAdvice, ciFixPrompt, conflictFixPrompt, fenceFor, findPlanLink, fixPrompt, hasAcceptanceCriteria, implementPrompt, issueAuthorTrusted, oneLine, reviewPrompt } from '../engine.js';
+import { ciFailureTail, GIT_TRANSPORT_SANDBOX_ADVICE, nodeModulesWriteDenied, sandboxIncompatibleAdvice, ciFixPrompt, conflictFixPrompt, fenceFor, findPlanLink, fixPrompt, hasAcceptanceCriteria, implementPrompt, issueAuthorTrusted, oneLine, reviewPrompt } from '../engine.js';
 import { ghRepoArg } from '../../../forge/github/gh.js';
 import { shipyardKeySearch } from '../../../forge/types.js';
 import { assertFactoryCommand, factoryGuardExec, FactorySafetyError, hardenedGitExec } from '../exec.js';
@@ -938,6 +938,13 @@ describe('the prepare checkout\'s node_modules link', () => {
         expect(advice).toContain('.tmp');
         expect(advice).not.toContain('writeNetwork');
         expect(sandboxIncompatibleAdvice(undefined)).toContain('writeNetwork "registry"');
+    });
+    it('a base tail where git\'s transport failed on Windows names the sandbox limit, not the registry (run 506)', () => {
+        const tail = 'Error: Command failed: git -c user.name=t push -q origin dev\nfatal: Could not read from remote repository.\n\nPlease make sure you have the correct access rights';
+        expect(sandboxIncompatibleAdvice(tail, 'win32')).toBe(GIT_TRANSPORT_SANDBOX_ADVICE);
+        expect(GIT_TRANSPORT_SANDBOX_ADVICE).toContain('no MSYS2 program starts in the sandbox');
+        expect(GIT_TRANSPORT_SANDBOX_ADVICE).not.toContain('"ack"');
+        expect(sandboxIncompatibleAdvice(tail, 'linux')).toContain('writeNetwork "registry"');
     });
 });
 //# sourceMappingURL=units.test.js.map

@@ -263,7 +263,11 @@ export function summarizeChanges(cwd, base, extraProtected = [], gitDirArgs = []
         return null;
     const newGitlinks = [...new Set([...indexLinks, ...headLinks])].filter((p) => !baseLinks.includes(p));
     const changedFiles = [...new Set([...lines(names), ...newGitlinks])];
-    const untrackedFiles = lines(git(top, [...gitDirArgs, 'ls-files', '--others', '--exclude-standard']));
+    const untracked = git(top, [...gitDirArgs, 'ls-files', '--others', '--exclude-standard']);
+    // A failed read is not "no untracked files": an untracked protected file would pass unseen.
+    if (untracked === null)
+        return null;
+    const untrackedFiles = lines(untracked);
     let ignored = [];
     if (ignoredUnderProtected) {
         const specs = [...PROTECTED_PATHS, ...extraProtected].map((rule) => `:(icase,literal)${rule}`);
@@ -856,8 +860,15 @@ export class CopilotRunManager {
             workCwd = sub && existsSync(join(info.path, sub)) ? join(info.path, sub) : info.path;
             worktree = { path: info.path, branch: info.branch, repoRoot: ledgerCwd };
             baseCommit = info.baseCommit ?? startSha ?? baseCommit;
-            if (!startSha && lines(git(ledgerCwd, ['status', '--porcelain', '--untracked-files=no'])).length > 0) {
-                notes.push(`${ledgerCwd} has uncommitted changes; the worktree starts from HEAD ${baseCommit?.slice(0, 12) ?? '?'} without them.`);
+            if (!startSha) {
+                // A failed status counts as dirty: the caller is told the worktree may lack uncommitted edits.
+                const status = git(ledgerCwd, ['status', '--porcelain', '--untracked-files=no']);
+                if (status === null) {
+                    notes.push(`git status failed in ${ledgerCwd}, so it may have uncommitted changes; the worktree starts from HEAD ${baseCommit?.slice(0, 12) ?? '?'} without them.`);
+                }
+                else if (lines(status).length > 0) {
+                    notes.push(`${ledgerCwd} has uncommitted changes; the worktree starts from HEAD ${baseCommit?.slice(0, 12) ?? '?'} without them.`);
+                }
             }
         }
         else if (repoRoot) {

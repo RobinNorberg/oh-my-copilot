@@ -238,6 +238,8 @@ export interface Harness {
     branch: string;
     /** Override what `gh pr view` reports as the head (default: the bare remote's factory branch). */
     headOverride?: string;
+    /** The PR's recorded baseRefOid `gh pr view` reports (default: the bare remote's dev); the branch read reports the live tip. */
+    baseRefOid?: string;
     /** Heads `gh pr view` reports first, one per call (GitHub still showing an older push). */
     headSequence: string[];
     openPrs: number[];
@@ -383,7 +385,7 @@ export function harness(prefix = 'omg-factory-run-'): Harness {
       const remote = bareRef(bare, `refs/heads/${h.gh.branch}`);
       const base = bareRef(bare, 'refs/heads/dev');
       const headRefOid = h.gh.headSequence.shift() ?? h.gh.headOverride ?? remote;
-      return ok(JSON.stringify({ number: PR, headRefOid, state: h.gh.merged ? 'MERGED' : 'OPEN', isDraft: !h.gh.ready, baseRefName: 'dev', baseRefOid: base }));
+      return ok(JSON.stringify({ number: PR, headRefOid, state: h.gh.merged ? 'MERGED' : 'OPEN', isDraft: !h.gh.ready, baseRefName: 'dev', baseRefOid: h.gh.baseRefOid ?? base }));
     }
     if (key === `gh pr ready ${PR}`) {
       h.gh.ready = true;
@@ -415,6 +417,8 @@ export function harness(prefix = 'omg-factory-run-'): Harness {
     }
     const read = cmd === 'gh' && args[0] === 'api' && args[3] === '--method' && args[4] === 'GET' ? h.gh.api?.(args[5]) : undefined;
     if (read) return read;
+    // The base branch's live tip (ghBranchTip): the bare remote's dev.
+    if (key === 'gh api --hostname github.com --method GET repos/o/r/branches/dev') return ok(JSON.stringify({ name: 'dev', commit: { sha: bareRef(bare, 'refs/heads/dev') } }));
     return { status: 1, stdout: '', stderr: `unscripted: ${key}` };
   };
   return h;

@@ -57,17 +57,18 @@ import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSy
 import { tmpdir } from 'os';
 import { basename, dirname, isAbsolute, join, posix, relative, resolve } from 'path';
 import { BASE_CONFIG_PATH, configuredProtectedPaths, DEFAULT_SHIP_CONFIG, isPlainBranchName, isRepoPath, loadBaseKnownFlaky, loadTrustedShipConfig, omgRepositoryFallback, readBaseFile, remoteRepoMismatch, resolveTrustedBases, userConfigLayers } from '../../ship/config.js';
-import { TRUSTED_READ_ENV } from '../../ship/exec.js';
+import { scrubShipEnv, TRUSTED_READ_ENV } from '../../ship/exec.js';
 import { listChangedFiles, protectedChanges } from '../../ship/merge.js';
 import { ESLINT_SCRIPT, PREPARE_CONFIG_STEP, PREPARE_DETECT_STEP, PREPARE_SANDBOX_STEP, runPrepareAsync, VITEST_SCRIPT } from '../../ship/prepare.js';
 import { parseJsonc } from '../../utils/jsonc.js';
 import { nodeModulesTreeProblem, resolveGateIsolation, resolveGatesSandboxMode, resolveRequireDeniedPaths } from '../../copilot-run/sandbox.js';
 import { CONTAINER_INCOMPATIBLE_ADVICE, containerRunLabel, GATE_CONTAINER_UNAVAILABLE_GATE } from './container-gate.js';
 import { CREDENTIAL_FILES_READABLE_NOTE, redactGateOutput, sandboxCommandTooLong, sandboxJobRoot, splitFileListArgs } from './sandbox-exec.js';
-import { forgetWorktreeGitLinks, readWorktreeGitLinks, recordedWorktreeGitLinks, recordWorktreeGitLinks, removeStaleWorktreeEntry, removeWorkerWorktree, runHostGit, worktreeGitDirArgs, worktreeGitLinksIntact } from '../../team/git-worktree.js';
+import { forgetWorktreeGitLinks, readWorktreeGitLinks, recordedWorktreeGitLinks, recordWorktreeGitLinks, removeStaleWorktreeEntry, removeWorkerWorktree, runHostGit, runHostGitBuffer, worktreeGitDirArgs, worktreeGitLinksIntact } from '../../team/git-worktree.js';
+import { buildGitView } from './git-view.js';
 import { driveGates } from './gates-driver.js';
 import { missingCheckHint, NO_CI_CHECKS_NOTE, noHeadChecksText } from '../../ship/gates.js';
-import { ghCheckRunApps, ghCheckSuites, ghCommitCheckNames, ghRequiredCheckRules } from '../../forge/github/checks.js';
+import { ghBranchTip, ghCheckRunApps, ghCheckSuites, ghCommitCheckNames, ghRequiredCheckRules } from '../../forge/github/checks.js';
 import { ciFixPrompt, conflictFixPrompt, fenceFor, fenced, fixPrompt, implementPrompt, oneLine, reviewPrompt } from './prompts.js';
 import { decisionsViolation, loadTeamContext, pathsInDiff, pathsInText } from '../team/context.js';
 import { mergeComment, mergeDecision } from './merge-policy.js';
@@ -326,8 +327,14 @@ export function nodeModulesWriteDenied(tail) {
     }
     return undefined;
 }
+/** The advice when the base's gate runs git's own transport, which cannot run in the Copilot sandbox on Windows. */
+export const GIT_TRANSPORT_SANDBOX_ADVICE = 'Your gate runs git clone, fetch or push (also to a local path or a temp repository), which cannot run in the OS sandbox on Windows: git starts that transport through Git for Windows\' sh.exe, and no MSYS2 program starts in the sandbox; the sandbox has no network either. Read-only git (rev-parse, ls-files, log) and git init, add and commit work. Make those tests skip the transport, run them outside prepare, or set factory.run.sandbox.isolation "container" (with an image that has git) in your user config';
 /** What the gate-sandbox-incompatible park of a failing base calibration tells the human to do. */
-export function sandboxIncompatibleAdvice(tail) {
+export function sandboxIncompatibleAdvice(tail, platform = process.platform) {
+    // git clone, fetch and push to a local path start git-upload-pack / git-receive-pack through Git for Windows' sh.exe,
+    // and no MSYS2 program starts in the Copilot sandbox on Windows (exit 0xC0000142, live 2026-11-12); no network either.
+    if (platform === 'win32' && tail?.includes('Could not read from remote repository'))
+        return GIT_TRANSPORT_SANDBOX_ADVICE;
     const denied = tail ? nodeModulesWriteDenied(tail) : undefined;
     // A per-run dir is writable in the tree already: a denial there is not this case.
     if (!denied || GATE_CACHE_DIRS.includes(denied.slice('node_modules/'.length)))
@@ -1047,6 +1054,62 @@ class FactoryEngine {
                 this.containerImageId = out.imageId;
             return out;
         });
+    }
+    /** git-view.ts's source in your repository (the base, a shared-layout checkout's commits): hardened host git, GIT_* scrubbed. */
+    hostViewSource() {
+        const env = scrubShipEnv(process.env);
+        return (args, input) => runHostGitBuffer(this.o.root, args, undefined, env, input);
+    }
+    /**
+     * A one-commit git view of `sha` at `<dir>/.git` (git-view.ts), or none:
+     * a failure only warns and removes what was made, and the command runs
+     * without git as before (a check that needs git then fails on its own).
+     */
+    makeGitView(dir, sha, source, what) {
+        const env = scrubShipEnv(process.env);
+        try {
+            return buildGitView(dir, sha, source, (cwd, args, input) => runHostGit(cwd, args, undefined, env, input));
+        }
+        catch (error) {
+            this.o.warn?.(`omg factory run: ${what} at ${sha.slice(0, 12)} runs without a git view (${oneLine(errText(error), 300)}); a check there that runs git fails`);
+            try {
+                rmSync(join(dir, '.git'), { recursive: true, force: true });
+            }
+            catch { /* best effort */ }
+            return undefined;
+        }
+    }
+    /**
+     * isolation "container": `run` with a one-commit git view of the commit
+     * `sha()` reads (engine git, before the container starts), made in a fresh
+     * dir under the gate job root and removed after; the checkout's own `.git`
+     * names a host git dir the container never sees. The OS sandbox: `run` as
+     * it is (the prepare checkout's link to its git dir works there, read-only).
+     */
+    async withGitView(sha, what, run) {
+        if (!this.gatesModeCache?.container)
+            return run({});
+        const jobRoot = this.gateJobRoot();
+        mkdirSync(jobRoot, { recursive: true });
+        const dir = mkdtempSync(join(jobRoot, 'gitview-'));
+        try {
+            let at;
+            try {
+                at = sha().trim();
+            }
+            catch (error) {
+                this.o.warn?.(`omg factory run: ${what} runs without a git view: its commit could not be read (${oneLine(errText(error), 300)})`);
+            }
+            const priv = this.privateRun();
+            const gitView = at ? this.makeGitView(dir, at, priv ? priv.viewSource() : this.hostViewSource(), what) : undefined;
+            return await run(gitView ? { gitView } : {});
+        }
+        finally {
+            try {
+                rmSync(dir, { recursive: true, force: true });
+            }
+            catch { /* best effort */ }
+        }
     }
     /**
      * Why `<checkout>/node_modules` must not be granted: a link in the
@@ -2774,7 +2837,7 @@ class FactoryEngine {
     }
     prView(pr) {
         if (!this.forge)
-            return this.gh((exec, cwd) => ghMergeView(exec, pr, cwd));
+            return this.liveBase(this.gh((exec, cwd) => ghMergeView(exec, pr, cwd)));
         // The local forge: the human merged on the local base, so sync it to the mirror first (fast-forward only); the PR then reads MERGED.
         if (this.forge.kind !== 'local') {
             const v = this.forge.reviews.viewPr(pr);
@@ -2799,6 +2862,21 @@ class FactoryEngine {
             throw new MirrorBaseMovedError(`the local forge mirror's ${this.state.base} moved to ${v.baseRefOid.slice(0, 12)} while the PR was read; the engine synced ${sealed.slice(0, 12)}. Check what wrote the mirror ${this.o.forge.config.repo.url}, then rerun ${this.resume}`);
         return { number: v.number, state: v.state, isDraft: v.isDraft, baseRefName: v.baseRefName, baseRefOid: sealed, headRefOid: v.headRefOid };
     }
+    /**
+     * GitHub: an open PR's base sha is its base branch's live tip (ghBranchTip), not the PR's baseRefOid, which
+     * stays at the base of the PR's last update after another merge into the base. Prepare merges this tip, the
+     * trusted config is read at it after the fetched ref is checked against it, and the merge rule's diffs and
+     * housekeeping checks see the base the head contains. A failed read fails closed; a closed, merged or
+     * retargeted PR keeps its view (prGone stops or parks before any base is used).
+     */
+    liveBase(view) {
+        if (view.state !== 'OPEN' || view.baseRefName !== this.state.base)
+            return view;
+        const repo = this.githubReadContext()?.repo;
+        if (!repo)
+            throw new FactoryStepError(`the run's GitHub repository is not known, so the live tip of ${this.state.base} cannot be read for PR #${view.number}; refusing (fail closed)`);
+        return { ...view, baseRefOid: this.gh((exec, cwd) => ghBranchTip(exec, repo, view.baseRefName, cwd)) };
+    }
     /** The PR is not open, or targets another base: true when the run moved (merged) or parked. */
     prGone(view) {
         if (view.state === 'MERGED') {
@@ -2816,7 +2894,7 @@ class FactoryEngine {
         return false;
     }
     /**
-     * Ship's gate config at GitHub's base sha, loaded once per base sha. When
+     * Ship's gate config at the view's base sha (on GitHub the base branch's live tip, liveBase), loaded once per base sha. When
      * its fetch moved origin/<base>, the recheck baseline follows.
      */
     gateConfig(view) {
@@ -3208,7 +3286,7 @@ class FactoryEngine {
             this.checkoutGitPin = undefined;
         }
         const fetched = result.steps.some((st) => st.name === 'fetch' && st.status === 'ok');
-        // From here the PR's diff (review, protected paths) is against the base GitHub reports.
+        // From here the PR's diff (review, protected paths) is against the base prepare merged (on GitHub its live tip, liveBase).
         const sandboxNote = ran.modes.size > 0 ? [{ at: this.iso(), from: s.phase, to: s.phase, note: `prepare checks on ${head.slice(0, 12)} ran ${[...ran.modes].map((m) => (m === 'enforced' ? 'in the OS sandbox' : m === 'enforced-readable' ? `in the OS sandbox (${CREDENTIAL_FILES_READABLE_NOTE})` : `unsandboxed (${m})`)).join(' and ')}` }] : [];
         const sandboxed = ran.modes.has('enforced') || ran.modes.has('enforced-readable');
         this.save((x) => ({ ...x, checkoutHead, ...(sandboxed ? { sandboxedPrepareHead: checkoutHead } : {}), ...(fetched ? { baseSha: view.baseRefOid } : {}), history: [...x.history, ...sandboxNote] }));
@@ -3457,8 +3535,11 @@ class FactoryEngine {
             // H1: the problem names a link target the PR's code chose: local detail only.
             if (repointed)
                 return stop({ name: 'lane-tampered', reason: `${label} on ${head.slice(0, 12)} did not run: ${join(path, 'node_modules')} (or a link in it) is not as the engine made it, so the PR's code changed it${localDetailNote(this.key, 'which link')}; nothing of this prepare is trusted and nothing is pushed; inspect and remove ${path} by hand`, detail: oneLine(visibleLine(repointed), PARK_TAIL_CHARS) });
+            // Still inside checkoutGitPin: engine git reads the checkout's HEAD (prepare's merge or inventory commit) through its recorded git dir.
+            const priv = this.privateRun();
+            const checkedOut = () => (priv ? priv.gitOk(['rev-parse', 'HEAD'], 'reading the prepare checkout', path) : this.run(['rev-parse', 'HEAD'], 'git', undefined, path));
             const r = this.o.gateSandbox
-                ? await this.sandboxRun({ purpose: 'prepare', argv: c.argv, exe: c.exe, args: c.args, cwd: path, commonGitDir: at.commonGitDir, timeoutMs: PREPARE_CHECK_TIMEOUT_MS, ...(at.gates.requireDeniedPaths ? { requireDeniedPaths: true } : {}) })
+                ? await this.withGitView(checkedOut, label, (view) => this.sandboxRun({ purpose: 'prepare', argv: c.argv, exe: c.exe, args: c.args, cwd: path, commonGitDir: at.commonGitDir, timeoutMs: PREPARE_CHECK_TIMEOUT_MS, ...(at.gates.requireDeniedPaths ? { requireDeniedPaths: true } : {}), ...view }))
                 : { ran: false, reason: 'no OS sandbox runner was given to the engine' };
             const t = tampered();
             if (t)
@@ -3548,6 +3629,8 @@ class FactoryEngine {
             const env = { ...process.env, GIT_INDEX_FILE: index, GIT_NO_REPLACE_OBJECTS: '1' };
             runHostGit(this.o.root, ['read-tree', baseSha], undefined, env);
             runHostGit(this.o.root, ['checkout-index', '-a', '-f', `--prefix=${dir.replace(/\\/g, '/')}/`], undefined, env);
+            // The export has no git: a one-commit view of the base at <dir>/.git, removed with the dir (git-view.ts).
+            const gitView = this.makeGitView(dir, baseSha, this.hostViewSource(), 'the base calibration');
             // isolation "container": the container installs its own; your node_modules is never linked in (C1, review-499).
             if (!this.gatesModeCache?.container) {
                 // A workspace layout the gate does not support (Yarn PnP, a nested git repository, over the bounds) parks here, named.
@@ -3555,7 +3638,7 @@ class FactoryEngine {
                 if (layout)
                     return { notStarted: visibleLine(layout) };
             }
-            const r = await this.sandboxRun({ purpose: 'calibrate', argv: c.argv, exe: c.exe, args: calibrationArgs(c, dir), cwd: dir, commonGitDir, timeoutMs, ...(this.gatesModeCache?.requireDeniedPaths ? { requireDeniedPaths: true } : {}) });
+            const r = await this.sandboxRun({ purpose: 'calibrate', argv: c.argv, exe: c.exe, args: calibrationArgs(c, dir), cwd: dir, commonGitDir, timeoutMs, ...(this.gatesModeCache?.requireDeniedPaths ? { requireDeniedPaths: true } : {}), ...(gitView ? { gitView } : {}) });
             if (!r.ran)
                 return { notStarted: r.reason };
             const tail = r.output.trim().slice(-2_000);
@@ -3934,7 +4017,7 @@ class FactoryEngine {
                     return false;
                 }
                 out = this.o.gateSandbox
-                    ? await runLocalGate({ ...input, mode: 'enforced', sandbox: { run: (req) => this.sandboxRun(req), commonGitDir: common, requireDeniedPaths: gates.requireDeniedPaths } })
+                    ? await runLocalGate({ ...input, mode: 'enforced', sandbox: { run: (req) => this.withGitView(() => head, 'the local gate', (view) => this.sandboxRun({ ...req, ...view })), commonGitDir: common, requireDeniedPaths: gates.requireDeniedPaths } })
                     : { started: false, reason: 'no OS sandbox runner was given to the engine', sandbox: true };
                 // The gate handed the PR's code of this head to the sandbox (a verdict or not): a later start failure on a
                 // rerun of the gate for this head may be that code's doing.
