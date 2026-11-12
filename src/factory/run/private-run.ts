@@ -44,7 +44,7 @@ import { unlinkNodeModules } from './prepare.js';
 import {
   assertPrivateRepo, createPrivateRepo, dropImportRef, dropStaleImportRef, ensureSeed, fetchIntoPrivate, gitVersionProblem, importFromPrivate,
   longPathProblem, privateExec, privateGit, privateGitEnv, privateGitOk, privateGitPins, privateGitTools, privateHasCommit, PRIVATE_GIT_TIMEOUT_MS, privateRepoProblem, privateRunLayout, privateWorkRoot,
-  privateWorktreePath, removeRunDir, rerecordConfigHash, resolveUserGitDir, staleImportRefs, userRepoGuardChanges, userRepoGuardSnapshot, compareUserRepoGuard,
+  privateWorktreePath, removeRunDir, rerecordConfigHash, resolveUserGitDir, staleImportRefs, toolsProblem, userRepoGuardChanges, userRepoGuardSnapshot, compareUserRepoGuard,
   PrivateStoreError, type ImportRefusalCode, type PrivateGitOptions, type PrivateRepo, type PrivateRunLayout, type PrivateStoreContext, type UserGuardDetail, type UserRepoGuard,
 } from './private-store.js';
 import { IMPORT_LOCK_WAIT_MS, withRepoImportLock, type FactoryRunState, type HeldOwner } from './state.js';
@@ -335,6 +335,9 @@ export class PrivateRun {
   viewSource(): GitViewSource {
     return (args, input) => {
       this.assert();
+      // The same tools check as the store's own git (hooks dir empty, global config empty).
+      const problem = toolsProblem(this.ctx.tools);
+      if (problem) throw new PrivateStoreError(problem);
       hardenWindowsExeSearch();
       const exe = resolveBareExe('git');
       if (!exe) throw new PrivateStoreError('git is not on PATH');
@@ -410,7 +413,7 @@ export class PrivateRun {
   removeWorktree(path: string): void {
     if (existsSync(path)) {
       // M2 (review-490): a removal error is not fatal here: removeRunDir unlinks every link itself, never following one.
-      try { unlinkNodeModules(this.root, path); } catch { /* removeRunDir below */ }
+      try { unlinkNodeModules(this.root, path); } catch (e) { this.warn(`omg factory run: the node_modules links in ${path} could not be unlinked: ${e instanceof Error ? e.message : String(e)}`); }
       removeRunDir(path, this.layout.work);
     }
     const admin = join(this.repo.gitDir, 'worktrees');

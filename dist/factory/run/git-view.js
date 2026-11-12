@@ -26,13 +26,15 @@ import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 /** The most objects (commit, trees, blobs) a view holds; a larger commit gets no view. */
 export const GIT_VIEW_MAX_OBJECTS = 500_000;
+/** The most bytes (sum of the objects' sizes) a view holds; a larger commit gets no view, and no pack is made. */
+export const GIT_VIEW_MAX_BYTES = 256 * 1024 * 1024;
 const HEX40 = /^[0-9a-f]{40}$/;
 /**
  * Build the view of `sha` at `<dir>/.git` (`dir` is made if missing; a
  * `<dir>/.git` that already exists is refused) and return that git dir.
  * Throws on any failure; the caller removes `dir` (or its `.git`).
  */
-export function buildGitView(dir, sha, source, git) {
+export function buildGitView(dir, sha, source, git, maxBytes = GIT_VIEW_MAX_BYTES) {
     if (!HEX40.test(sha))
         throw new Error(`the git view needs a full commit id, not ${JSON.stringify(sha)}`);
     const type = source(['cat-file', '-t', sha]).toString('utf8').trim();
@@ -42,6 +44,20 @@ export function buildGitView(dir, sha, source, git) {
     const count = list.toString('utf8').split('\n').filter((l) => l.trim()).length;
     if (count > GIT_VIEW_MAX_OBJECTS)
         throw new Error(`${sha.slice(0, 12)} has ${count} objects, above the ${GIT_VIEW_MAX_OBJECTS} a git view holds`);
+    // The objects' total size before any pack is made; a size git cannot report (a missing object) refuses too.
+    const ids = list.toString('utf8').split('\n').map((l) => l.trim().split(' ')[0]).filter(Boolean);
+    let bytes = 0;
+    const sizes = source(['cat-file', '--batch-check=%(objectsize)'], Buffer.from(`${ids.join('\n')}\n`)).toString('utf8').split('\n').filter((l) => l.trim());
+    // One size per object: a short answer must not sum to a small total.
+    if (sizes.length !== ids.length)
+        throw new Error(`git reported ${sizes.length} object sizes for the ${ids.length} objects of ${sha.slice(0, 12)}`);
+    for (const line of sizes) {
+        if (!/^\d+$/.test(line.trim()))
+            throw new Error(`the size of an object of ${sha.slice(0, 12)} could not be read (${line.trim().slice(0, 80)})`);
+        bytes += Number(line.trim());
+    }
+    if (bytes > maxBytes)
+        throw new Error(`${sha.slice(0, 12)} holds ${bytes} bytes of objects, above the ${maxBytes} a git view holds`);
     const pack = source(['pack-objects', '--stdout', '-q'], list);
     mkdirSync(dir, { recursive: true });
     const gitDir = join(dir, '.git');

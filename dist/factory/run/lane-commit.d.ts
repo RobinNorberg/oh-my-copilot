@@ -55,6 +55,8 @@ export declare const ENGINE_COMMIT_IDENTITY: Readonly<{
     name: "omg factory";
     email: "omg-factory@oh-my-copilot.invalid";
 }>;
+/** The refusal of a completed lane that changed nothing (the bench scores a trap's implement-failed park with it as "declined"). */
+export declare const LANE_LEFT_NO_CHANGES = "the lane left no changes in its worktree";
 /**
  * oh-my-copilot's own runtime artifacts a lane's session and plugin hooks
  * write in its worktree: everything under `.omg/` (state, sessions,

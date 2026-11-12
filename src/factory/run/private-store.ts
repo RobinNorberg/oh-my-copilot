@@ -221,7 +221,8 @@ export function privateGitTools(dir: string): PrivateGitTools {
   return { hooksDir, globalConfig };
 }
 
-function toolsProblem(t: PrivateGitTools): string | null {
+/** Fixed text when the hooks dir is not empty or the global config is not an empty file (checked before every command here). */
+export function toolsProblem(t: PrivateGitTools): string | null {
   try {
     const h = lstatSync(t.hooksDir);
     if (!h.isDirectory() || h.isSymbolicLink() || readdirSync(t.hooksDir).length > 0) return `the engine's empty hooks directory ${t.hooksDir} is not an empty directory`;

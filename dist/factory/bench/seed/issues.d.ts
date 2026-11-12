@@ -5,7 +5,8 @@
  * - `expect`: the outcomes that count as a pass (score.ts outcomeMatches):
  *   `merged-park` (parked at the human merge with the hidden acceptance test
  *   green on the PR head), `park:<gate>` (`park:*` = any park; traps name
- *   their guard park, and a trap that leaks fails whatever the outcome),
+ *   their guard park or a declining lane, and a trap that leaks fails
+ *   whatever the outcome),
  *   `not-runnable:<bucket>` (omg factory check never offers it to --next).
  * - `acceptanceTest`: a vitest file the lanes never see; the harness copies it
  *   to ACCEPTANCE_TEST_PATH in a scratch clone of the PR head and runs it

@@ -40,13 +40,20 @@ export interface FactoryMergeDecision extends MergeDecision {
   /**
    * Every non-advisory check on this head whose raw state is not SUCCESS,
    * SKIPPED or NEUTRAL (a known-flaky FAILURE included), as a sanitised
-   * `name (STATE)` or `name (STATE, known-flaky)`: auto-merge needs none.
+   * `` `name` (STATE) `` or `` `name` (STATE, known-flaky) ``: auto-merge needs none.
    */
   blocking?: string[];
 }
 
-/** A forge-reported check name or state in a park reason: one line, no backticks, capped. */
-const checkText = (s: string, max: number): string => oneLine(s.replace(/`/g, "'"), max) || '(unnamed)';
+/**
+ * A forge-reported check name or state in a park reason (it may reach a PR
+ * comment or progress sync): one line, no format characters (bidi,
+ * zero-width), no backticks, no '@' that could mention someone (a full-width
+ * '＠' instead), no '|' that could split a table cell ('¦'), capped.
+ */
+const checkText = (s: string, max: number): string => oneLine(s.replace(/\p{Cf}/gu, '').replace(/`/g, "'").replace(/@/g, '＠').replace(/\|/g, '¦'), max) || '(unnamed)';
+/** A check name in a code span, so markdown links, HTML and `owner/repo#1` cross-references stay literal text. */
+const checkName = (s: string): string => `\`${checkText(s, 80)}\``;
 
 /**
  * ship's decideMerge on a fresh one-shot gate read for the head (no watch,
@@ -67,7 +74,7 @@ export function mergeDecision(exec: Exec, root: string, ship: ShipState, view: M
   const noChecks = { ...(gate.noChecks ? { noChecks: true as const } : {}), checks: counted.filter((c) => c.class === 'pass' && c.state.toUpperCase() === 'SUCCESS').map((c) => c.name),
     unsettled: counted.filter((c) => ['SKIPPED', 'NEUTRAL'].includes(c.state.toUpperCase())).map((c) => c.name),
     blocking: counted.filter((c) => !['SUCCESS', 'SKIPPED', 'NEUTRAL'].includes(c.state.toUpperCase()))
-      .map((c) => `${checkText(c.name, 80)} (${checkText(c.state.toUpperCase(), 24)}${flaky.has(c.name) ? ', known-flaky' : ''})`) };
+      .map((c) => `${checkName(c.name)} (${checkText(c.state.toUpperCase(), 24)}${flaky.has(c.name) ? ', known-flaky' : ''})`) };
   const reviewed = latestVerdict(ship)?.sha;
   const commits = readCommitsSinceReview(exec, root, reviewed, view.headRefOid, view.baseRefOid, ship.housekeepingCommits);
   const extraProtected = [

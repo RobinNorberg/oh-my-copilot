@@ -1,14 +1,19 @@
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { GATE_TREE_MARKER, gateTreeHasLinks, linkNodeModules, trustedNestedRels, unlinkNodeModules } from '../prepare.js';
 import { expandWorkspaceDirs, parseWorkspacePatterns, plainDirUnder, validWorkspaceRel, WORKSPACE_MAX_PACKAGES } from '../workspace-tree.js';
 // L3 (review-501): a hook run right after plainDirUnder answers, to swap a dir for a junction in that window.
-const swap = vi.hoisted(() => ({ after: null }));
+// review-501b L3 residual: `during` runs before each entry the tree builder places (workspaceLinkTarget), mid-build.
+const swap = vi.hoisted(() => ({ after: null, during: null }));
 vi.mock('../workspace-tree.js', async (orig) => {
     const m = await orig();
-    return { ...m, plainDirUnder: (base, rel) => { const out = m.plainDirUnder(base, rel); swap.after?.(base, rel, out); return out; } };
+    return {
+        ...m,
+        plainDirUnder: (base, rel) => { const out = m.plainDirUnder(base, rel); swap.after?.(base, rel, out); return out; },
+        workspaceLinkTarget: (entry, root, checkout) => { swap.during?.(entry); return m.workspaceLinkTarget(entry, root, checkout); },
+    };
 });
 const linkType = process.platform === 'win32' ? 'junction' : 'dir';
 const real = (p) => realpathSync.native(p);
@@ -279,6 +284,29 @@ describe('the gate node_modules tree in a workspace', () => {
         expect(existsSync(join(checkout, 'node_modules'))).toBe(false);
         expect(existsSync(join(root, 'packages', 'a', 'node_modules', 'dep', 'package.json'))).toBe(true);
         // The swapped-in link is left for the caller's link-safe removal (never walked).
+        expect(lstatSync(join(checkout, 'packages', 'a')).isSymbolicLink()).toBe(true);
+    });
+    it('review-501b L3 residual: a package dir swapped for a junction during the nested build fails the re-check after the last write; your tree is untouched', () => {
+        const { dir, root, checkout } = monorepo();
+        file(join(root, 'packages', 'a', 'node_modules', 'dep', 'package.json'));
+        const moved = join(dir, 'moved-a');
+        swap.during = (entry) => {
+            if (!entry.startsWith(join(root, 'packages', 'a', 'node_modules')))
+                return;
+            swap.during = null;
+            // The PR's process moves the gate package dir away and leaves a junction to it: later writes land outside.
+            renameSync(join(checkout, 'packages', 'a'), moved);
+            symlinkSync(moved, join(checkout, 'packages', 'a'), linkType);
+        };
+        try {
+            expect(() => linkNodeModules(root, checkout, undefined, ['packages/*'])).toThrow(/resolves to .*moved-a.*a dir on its way was replaced by a link/);
+        }
+        finally {
+            swap.during = null;
+        }
+        // The root tree is removed; nothing in your checkout is touched; the junction is left for the link-safe removal.
+        expect(existsSync(join(checkout, 'node_modules'))).toBe(false);
+        expect(existsSync(join(root, 'packages', 'a', 'node_modules', 'dep', 'package.json'))).toBe(true);
         expect(lstatSync(join(checkout, 'packages', 'a')).isSymbolicLink()).toBe(true);
     });
     it('Yarn PnP returns the problem naming the file; no workspaces keeps the single-tree behaviour', () => {

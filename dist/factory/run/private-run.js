@@ -38,7 +38,7 @@ import { childEnv, hardenWindowsExeSearch, resolveBareExe } from '../../utils/wi
 import { claimRepoKey } from './claims.js';
 import { ENGINE_COMMIT_IDENTITY } from './lane-commit.js';
 import { unlinkNodeModules } from './prepare.js';
-import { assertPrivateRepo, createPrivateRepo, dropImportRef, dropStaleImportRef, ensureSeed, fetchIntoPrivate, gitVersionProblem, importFromPrivate, longPathProblem, privateExec, privateGit, privateGitEnv, privateGitOk, privateGitPins, privateGitTools, privateHasCommit, PRIVATE_GIT_TIMEOUT_MS, privateRepoProblem, privateRunLayout, privateWorkRoot, privateWorktreePath, removeRunDir, rerecordConfigHash, resolveUserGitDir, staleImportRefs, userRepoGuardChanges, userRepoGuardSnapshot, compareUserRepoGuard, PrivateStoreError, } from './private-store.js';
+import { assertPrivateRepo, createPrivateRepo, dropImportRef, dropStaleImportRef, ensureSeed, fetchIntoPrivate, gitVersionProblem, importFromPrivate, longPathProblem, privateExec, privateGit, privateGitEnv, privateGitOk, privateGitPins, privateGitTools, privateHasCommit, PRIVATE_GIT_TIMEOUT_MS, privateRepoProblem, privateRunLayout, privateWorkRoot, privateWorktreePath, removeRunDir, rerecordConfigHash, resolveUserGitDir, staleImportRefs, toolsProblem, userRepoGuardChanges, userRepoGuardSnapshot, compareUserRepoGuard, PrivateStoreError, } from './private-store.js';
 import { IMPORT_LOCK_WAIT_MS, withRepoImportLock } from './state.js';
 /** The park when the private layout cannot run this part yet (an actionable command to continue is in the reason). */
 export const LAYOUT_UNSUPPORTED_GATE = 'layout-unsupported';
@@ -287,6 +287,10 @@ export class PrivateRun {
     viewSource() {
         return (args, input) => {
             this.assert();
+            // The same tools check as the store's own git (hooks dir empty, global config empty).
+            const problem = toolsProblem(this.ctx.tools);
+            if (problem)
+                throw new PrivateStoreError(problem);
             hardenWindowsExeSearch();
             const exe = resolveBareExe('git');
             if (!exe)
@@ -365,7 +369,9 @@ export class PrivateRun {
             try {
                 unlinkNodeModules(this.root, path);
             }
-            catch { /* removeRunDir below */ }
+            catch (e) {
+                this.warn(`omg factory run: the node_modules links in ${path} could not be unlinked: ${e instanceof Error ? e.message : String(e)}`);
+            }
             removeRunDir(path, this.layout.work);
         }
         const admin = join(this.repo.gitDir, 'worktrees');

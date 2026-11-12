@@ -15,6 +15,7 @@ beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'omg-container-gate-')); });
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 const settings = (over = {}) => ({ ...resolveGateIsolation({ user: { factory: { run: { sandbox: { isolation: 'container' } } } }, base: undefined }).container, ...over });
 const ok = (over = {}) => ({ status: 0, tail: '', overflow: false, timedOut: false, ...over });
+const IMAGE_ID = `sha256:${'c'.repeat(64)}`;
 /** A fake runtime: `answer` per call (by the first argv words), every call recorded. */
 function fake(answer = () => ok(), inspectAnswered = false) {
     const calls = [];
@@ -23,7 +24,9 @@ function fake(answer = () => ok(), inspectAnswered = false) {
         // No cache volume yet unless a test answers the inspect itself.
         if (args[0] === 'volume' && args[1] === 'inspect' && !inspectAnswered)
             return ok({ status: 1, tail: 'no such volume' });
-        return answer(args, o);
+        const r = await answer(args, o);
+        // A present image reports its id unless the test answers the inspect itself (an empty answer is "present").
+        return args[0] === 'image' && args[1] === 'inspect' && r.status === 0 && r.tail === '' ? { ...r, tail: `${IMAGE_ID}\n` } : r;
     };
     const runs = () => calls.filter((c) => c.args[0] === 'run');
     const step = (suffix) => runs().find((c) => c.args[c.args.indexOf('--name') + 1].endsWith(suffix));
@@ -116,7 +119,7 @@ describe('runContainerGate argv', () => {
         finally {
             process.env = env;
         }
-        expect(r).toEqual({ ran: true, status: 0, output: 'tests passed', timedOut: false });
+        expect(r).toEqual({ ran: true, status: 0, output: 'tests passed', timedOut: false, imageId: IMAGE_ID });
         const name = `omg-gate-${LABEL}-1234abcd`;
         expect(f.calls.map((c) => c.args.slice(0, 2).join(' '))).toEqual([
             'version --format', 'image inspect', 'volume create', 'volume inspect', 'volume create', 'run --name',
@@ -152,7 +155,7 @@ describe('runContainerGate argv', () => {
             expect(values(a, '-e').map((e) => e.split('=')[0]).filter((k) => !['PATH', 'HOME', 'CI', 'npm_config_update_notifier', 'npm_config_fund', 'npm_config_audit', 'npm_config_cache', ...Object.keys(NPM_FETCH_ENV)].includes(k))).toEqual([]);
             expect(values(a, '--env')).toEqual([]);
             // The container ends itself after its time even when the runtime's kill does not get through (M1).
-            expect(a.slice(a.indexOf(settings().image) + 1, a.indexOf(settings().image) + 4)).toEqual(['timeout', '-s', 'KILL']);
+            expect(a.slice(a.indexOf(IMAGE_ID) + 1, a.indexOf(IMAGE_ID) + 4)).toEqual(['timeout', '-s', 'KILL']);
         }
         // The only host path mounted is the checkout, read-only, in the copy step (no PR code runs there).
         const binds = f.runs().flatMap((c) => values(c.args, '--mount').filter((m) => m.includes('type=bind')));
@@ -183,7 +186,7 @@ describe('runContainerGate argv', () => {
         expect(values(run, '--network')).toEqual(['none']);
         expect(values(run, '--user')).toEqual(['1000:1000']);
         expect(values(run, '--mount').some((m) => m.includes('cache'))).toBe(false);
-        expect(run.slice(-7)).toEqual([settings().image, 'timeout', '-s', 'KILL', '90s', 'npm', 'test']);
+        expect(run.slice(-7)).toEqual([IMAGE_ID, 'timeout', '-s', 'KILL', '90s', 'npm', 'test']);
         expect(values(run, '-w')).toEqual(['/work/src']);
     });
     it('a git view is bound read-only for the copy step only and copied in as the copy\'s .git', async () => {
@@ -250,7 +253,7 @@ describe('runContainerGate argv', () => {
             });
             return { r: await runContainerGate(request(), settings(), LABEL, { exec: f.exec, id: () => '00000001' }), f };
         };
-        expect((await at(ok({ status: 1, tail: 'FAIL greet' }))).r).toEqual({ ran: true, status: 1, output: 'FAIL greet', timedOut: false });
+        expect((await at(ok({ status: 1, tail: 'FAIL greet' }))).r).toEqual({ ran: true, status: 1, output: 'FAIL greet', timedOut: false, imageId: IMAGE_ID });
         const t = await at(ok({ status: 137, timedOut: true, tail: 'running' }));
         expect(t.r).toMatchObject({ ran: true, status: 124, timedOut: true });
         expect(t.f.calls.filter((c) => c.args[0] === 'kill').map((c) => c.args)).toEqual([['kill', `omg-gate-${LABEL}-00000001`]]);
@@ -678,6 +681,16 @@ describe('review-499 hardening', () => {
         const id = `sha256:${'a'.repeat(64)}`;
         const f = fake((args) => (args[0] === 'image' ? ok({ tail: `${id}\n` }) : ok()));
         expect(await runContainerGate(request(), settings(), LABEL, { exec: f.exec })).toMatchObject({ ran: true, imageId: id });
+    });
+    it('review-499c: an inspect without a sha256:<64 hex> id is unavailable; no container runs the tag', async () => {
+        npmProject();
+        for (const tail of ['node:22-bookworm-slim\n', 'sha256:abc\n', `sha256:${'A'.repeat(64)}\n`]) {
+            const f = fake((args) => (args[0] === 'image' ? ok({ tail }) : ok()));
+            const r = await runContainerGate(request(), settings(), LABEL, { exec: f.exec });
+            expect(r, tail).toMatchObject({ ran: false, unavailable: true });
+            expect(!r.ran && r.reason).toMatch(/could not read the image id of .* pin a digest/);
+            expect(f.runs()).toEqual([]);
+        }
     });
 });
 describe('helpers', () => {
