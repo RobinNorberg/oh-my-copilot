@@ -13,8 +13,9 @@
  * listed under `outside`.
  *
  * Everything goes through openReadForge: check's read guard with no marker,
- * so no tracker or forge write passes; the board writes nothing, not even
- * local state. `--no-check` skips the rules and reads the live stages with
+ * so no tracker or forge write passes. The one local write: a stopped run
+ * (cancelled, failed, parked) whose PR a human merged is recorded as merged
+ * first (src/factory/run/human-merged.ts; runFactoryBoard only). `--no-check` skips the rules and reads the live stages with
  * one batched `tracker.peekItems` (Azure DevOps), or viewItem per item.
  *
  * Exit codes: 0 shown; 1 an item could not be read; 2 usage; 5 incompatible
@@ -118,6 +119,8 @@ export interface FactoryBoardOptions {
 /** check's deps plus the clock (stale). */
 export type FactoryBoardDeps = Pick<FactoryCheckDeps, 'exec' | 'base' | 'trustedUser' | 'projectConfig' | 'createForge' | 'resolveAz' | 'out' | 'err'> & {
     now?: () => number;
+    /** Engine ledger directory (default defaultLedgerDir()): a human merge is recorded only on a state that is the engine's last write. */
+    ledgerDir?: string;
 };
 /** Every run state on disk; an unreadable one is a warning (and, for an item in the source, a `seal` flag). */
 export declare function readRuns(root: string, warnings: string[]): {

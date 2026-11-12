@@ -15,7 +15,8 @@ import { createForge } from '../../../forge/index.js';
 import { createShipState, recordVerdict, shipStatePath } from '../../../ship/state.js';
 import { CheckIncompatibleError } from '../../check/cli.js';
 import { FactorySafetyError } from '../../run/exec.js';
-import { computeFactoryIntegrity, createFactoryState, factoryOwnerPath, factoryStateDir, factoryStatePath, moveTo, runKeyOf, setGate, } from '../../run/state.js';
+import { computeFactoryIntegrity, createFactoryState, factoryOwnerPath, factoryStateDir, factoryStatePath, moveTo, readFactoryState, runKeyOf, setGate, updateFactoryState, } from '../../run/state.js';
+import { EngineLedger } from '../../run/ledger.js';
 import { BOARD_JSON_SCHEMA_VERSION, liveStage, runFactoryBoard } from '../collect.js';
 const SHA = 'a'.repeat(40);
 const HEAD = 'b'.repeat(40);
@@ -212,6 +213,32 @@ describe('omg factory board on GitHub', () => {
         out = [];
         expect(await board(scripted(ISSUES).exec, { source: 'label:factory' })).toBe(0);
         expect(out.join('\n')).toMatch(/#3 +implement {2}live pid \d+ on \S+ {2}lane impl-3 running/);
+    });
+    it('a cancelled run whose PR a human merged is recorded merged first (the engine\'s own state only); a failed read changes nothing', async () => {
+        const ledgerDir = join(root, '..', `${root.split(/[\\/]/).pop()}-ledger`);
+        try {
+            const l = EngineLedger.open(ledgerDir, root, 3);
+            const cancelledRun = { ...moveTo(issueRun(3, 'building'), 'cancelled', 'cancel requested', T1), pr: 12, head: HEAD };
+            updateFactoryState(root, 3, () => cancelledRun, { onWrite: (p, c) => l.record(p, c) });
+            const w = scripted(ISSUES);
+            let state = 'MERGED';
+            const exec = (cmd, args, o) => (cmd === 'gh' && args.join(' ') === 'pr view 12 --json headRefOid,state'
+                ? (state === 'fail' ? { status: 1, stdout: '', stderr: 'HTTP 502' } : ok(JSON.stringify({ headRefOid: HEAD, state })))
+                : w.exec(cmd, args, o));
+            state = 'fail';
+            expect(await board(exec, { source: 'label:factory', json: true }, { ledgerDir })).toBe(0);
+            expect(json().warnings).toEqual(['omg factory board: run #3: not checked for a human merge: PR #12 could not be read: gh pr view 12 did not return a head sha and state (exit 1): HTTP 502']);
+            expect(readFactoryState(root, 3).phase).toBe('cancelled');
+            state = 'MERGED';
+            out = [];
+            expect(await board(exec, { source: 'label:factory', json: true }, { ledgerDir })).toBe(0);
+            expect(json().warnings).toEqual(['omg factory board: run #3: PR #12 was merged by a human after cancelled; recorded the run as merged']);
+            expect(readFactoryState(root, 3)).toMatchObject({ phase: 'merged' });
+            expect(EngineLedger.open(ledgerDir, root, 3).mismatches()).toEqual([]);
+        }
+        finally {
+            rmSync(ledgerDir, { recursive: true, force: true });
+        }
     });
     it('prints sections with titles, gates, verdicts and flags', async () => {
         seedRuns();
