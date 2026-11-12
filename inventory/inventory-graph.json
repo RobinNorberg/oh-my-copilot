@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "aa929fd05af82587590d06591907e8cc38b9cc80",
-    "sourceSha256": "661935f10543a4624d1ff74e21d7bcdc9dcd1e8b8d257f5b9dda37567a3d75a6",
+    "head": "66f7e1ff29f2448c24cb02d71e688ea784194a91",
+    "sourceSha256": "a9902c9446de64f19b938268553924d89b8484bc2d1c085a2d6e9f1536e33572",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "aa929fd05af82587590d06591907e8cc38b9cc80",
-  "sourceSha256": "661935f10543a4624d1ff74e21d7bcdc9dcd1e8b8d257f5b9dda37567a3d75a6",
+  "head": "66f7e1ff29f2448c24cb02d71e688ea784194a91",
+  "sourceSha256": "a9902c9446de64f19b938268553924d89b8484bc2d1c085a2d6e9f1536e33572",
   "counts": {
     "public": {
       "skills": 98,
@@ -28,13 +28,13 @@
       "toolFiles": 68,
       "libFiles": 55,
       "templateHooks": 25,
-      "srcFiles": 2089,
-      "total": 2114
+      "srcFiles": 2090,
+      "total": 2115
     },
     "generated": {
-      "distFiles": 7724,
+      "distFiles": 7728,
       "bridgeFiles": 8,
-      "total": 7732
+      "total": 7736
     },
     "prompt": {
       "promptLikeFiles": 72
@@ -3426,6 +3426,10 @@
       "dist/factory/poll.d.ts.map",
       "dist/factory/poll.js",
       "dist/factory/poll.js.map",
+      "dist/factory/run/__tests__/auto-merge-flaky.test.d.ts",
+      "dist/factory/run/__tests__/auto-merge-flaky.test.d.ts.map",
+      "dist/factory/run/__tests__/auto-merge-flaky.test.js",
+      "dist/factory/run/__tests__/auto-merge-flaky.test.js.map",
       "dist/factory/run/__tests__/auto-merge.test.d.ts",
       "dist/factory/run/__tests__/auto-merge.test.d.ts.map",
       "dist/factory/run/__tests__/auto-merge.test.js",
@@ -22387,6 +22391,26 @@
         "id": "dist/factory/poll.js.map",
         "kind": "generated-dist",
         "path": "dist/factory/poll.js.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/auto-merge-flaky.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/auto-merge-flaky.test.d.ts"
+      },
+      {
+        "id": "dist/factory/run/__tests__/auto-merge-flaky.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/auto-merge-flaky.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/auto-merge-flaky.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/auto-merge-flaky.test.js"
+      },
+      {
+        "id": "dist/factory/run/__tests__/auto-merge-flaky.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/auto-merge-flaky.test.js.map"
       },
       {
         "id": "dist/factory/run/__tests__/auto-merge.test.d.ts",
@@ -56944,6 +56968,11 @@
         "path": "src/factory/poll.ts"
       },
       {
+        "id": "src/factory/run/__tests__/auto-merge-flaky.test.ts",
+        "kind": "src",
+        "path": "src/factory/run/__tests__/auto-merge-flaky.test.ts"
+      },
+      {
         "id": "src/factory/run/__tests__/auto-merge.test.ts",
         "kind": "src",
         "path": "src/factory/run/__tests__/auto-merge.test.ts"
@@ -86597,6 +86626,11 @@
       },
       {
         "from": "src/factory/bench/__tests__/bench.units.test.ts",
+        "to": "src/budget/ledger.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/bench/__tests__/bench.units.test.ts",
         "to": "src/cli/commands/factory-bench.ts",
         "kind": "imports"
       },
@@ -89783,6 +89817,56 @@
       {
         "from": "src/factory/poll.ts",
         "to": "src/smoke/process-utils.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/auto-merge-flaky.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/auto-merge-flaky.test.ts",
+        "to": "src/factory/run/auto-merge.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/auto-merge-flaky.test.ts",
+        "to": "src/factory/run/auto-merge.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/auto-merge-flaky.test.ts",
+        "to": "src/factory/run/merge-policy.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/auto-merge-flaky.test.ts",
+        "to": "src/factory/run/merge-policy.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/auto-merge-flaky.test.ts",
+        "to": "src/forge/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/auto-merge-flaky.test.ts",
+        "to": "src/ship/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/auto-merge-flaky.test.ts",
+        "to": "src/ship/config.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/auto-merge-flaky.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/auto-merge-flaky.test.ts",
+        "to": "src/ship/state.ts",
         "kind": "imports"
       },
       {
@@ -95258,6 +95342,11 @@
       {
         "from": "src/factory/run/merge-policy.ts",
         "to": "src/factory/run/lane-commit.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/merge-policy.ts",
+        "to": "src/factory/run/prompts.ts",
         "kind": "imports"
       },
       {
@@ -133447,12 +133536,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 11065,
-      "edgeCount": 13746,
-      "importEdgeCount": 11290,
+      "nodeCount": 11070,
+      "edgeCount": 13758,
+      "importEdgeCount": 11297,
       "registerEdgeCount": 119
     }
   },
-  "inventorySha256": "92eb8b2f5095063bde0c45c52c12e637a46ca989f525247e4a156eaecd06b654",
-  "manifestSha256": "4cf7c1325540f82fb3724130c786005e5a6cb076394efbb08c0041b4111cc103"
+  "inventorySha256": "78b729378ba3e7f0fbaf39a7360f0217656f1fd8644ec0123e3ef025190427fb",
+  "manifestSha256": "f3009484f8a564ebc1dacf34ee118f2ab00045ae455835fadca8d7496052d0e2"
 }
