@@ -488,6 +488,16 @@ list below wins and the difference is called out):
    bridge` is required; CONTRIBUTING.md §6 describes the upstream policy.
    Never `git add -A -f`: it would add ignored files such as `node_modules/`
    and `.omg/`. `git status` must show neither.
+
+   The committed `inventory/inventory-graph.json` holds only three fixed
+   values: `provenance.base`, `provenance.planningHead` and `provenance.generator`.
+   It has no counts, no hashes and no head sha. So `--write` on a branch that
+   changes other files leaves it byte-identical, and two pull requests never
+   conflict on it. After merging `origin/dev` there is nothing to regenerate:
+   `--verify` passes on the plain merge result. `--verify` fails if the file
+   differs from what `--write` would produce (for example an edited anchor, or
+   an old-format file with a `head` field). If a merge ever does conflict on it,
+   take dev's copy: `git checkout --theirs -- inventory`.
 8. Commit with a conventional message (`fix(factory): …`), then push:
    `git push -u origin field/<issue#>-<slug>`.
 9. Open a draft PR to `dev`:
