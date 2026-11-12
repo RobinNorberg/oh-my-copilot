@@ -59,6 +59,17 @@ describe('mergeDecision on Azure DevOps', () => {
     expect(reasons).toContain("Azure DevOps branch policy: `Build') [x](https://evil.example) ＠team ¦ cell line2: rejected`");
   });
 
+  it('review-528 L2: a long Azure DevOps policy reason keeps its trailing status (160 cap, not 80)', () => {
+    const reason = `${'Required reviewers for the platform and release teams on main '.repeat(2)}: rejected`;
+    expect(reason.length).toBeGreaterThan(80);
+    expect(reason.length).toBeLessThanOrEqual(160);
+    const policies = { ...forge, merge: { ...forge.merge, blockingPolicies: () => [reason] } } as unknown as Pick<Forge, 'checks' | 'reviews' | 'merge'>;
+    const reasons = mergeDecision(diffExec(['docs/a.md']), '/repo', ship, view, DEFAULT_SHIP_CONFIG, [], policies).reasons;
+    expect(reasons).toContain(`Azure DevOps branch policy: \`${reason.replace(/\s+/g, ' ')}\``);
+    const huge = mergeDecision(diffExec(['docs/a.md']), '/repo', ship, view, DEFAULT_SHIP_CONFIG, [], { ...policies, merge: { ...policies.merge, blockingPolicies: () => ['x'.repeat(400)] } }).reasons;
+    expect(huge).toContain(`Azure DevOps branch policy: \`${'x'.repeat(160)}\``);
+  });
+
   it('ship\'s PROTECTED_PATHS stay as they are: the Azure Pipelines paths are not in them', () => {
     expect(protectedChanges(['azure-pipelines.yml', '.pipelines/x.yml'])).toEqual([]);
     expect(protectedChanges(['azure-pipelines.yml'], ADO_PIPELINE_PATHS)).toEqual(['azure-pipelines.yml']);

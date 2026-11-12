@@ -82,7 +82,7 @@ export function mergeDecision(exec: Exec, root: string, ship: ShipState, view: M
     extraProtected,
   });
   if (!forge) return { ...decision, ...noChecks };
-  const reasons = [...decision.reasons, ...forge.merge.blockingPolicies(view.number, view.headRefOid).map((r) => `Azure DevOps branch policy: ${checkName(r)}`)];
+  const reasons = [...decision.reasons, ...forge.merge.blockingPolicies(view.number, view.headRefOid).map((r) => `Azure DevOps branch policy: \`${checkText(r, 160)}\``)]; // 160: a policy reason ends with its status, which the 80-char checkName cap would cut
   const human = forge.merge.humanMerge?.(view.number, view.headRefOid);
   return {
     ok: reasons.length === 0,
