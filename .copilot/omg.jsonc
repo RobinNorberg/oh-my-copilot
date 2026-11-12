@@ -25,7 +25,8 @@
       "Draft PR Check",
       "omg update + session-start hook",
       "Statechart suite (Node 24)"
-    ]
+    ],
+    "base": "dev"
   },
   "factory": {
     "run": {
@@ -49,6 +50,45 @@
           "dist/notifications/__tests__/redact.test.js",
           "dist/smoke/replay/__tests__/redact.test.js"
         ]
+      }
+    },
+    "forge": {
+      "kind": "github",
+      "github": {
+        "repo": "RobinNorberg/oh-my-copilot",
+        "host": "github.com"
+      }
+    },
+    "intake": {
+      "source": {
+        "type": "label",
+        "label": "factory"
+      }
+    },
+    "progress": {
+      "enabled": true,
+      "stages": {
+        "queued": {
+          "label": "factory:queued"
+        },
+        "building": {
+          "label": "factory:building"
+        },
+        "reviewing": {
+          "label": "factory:reviewing"
+        },
+        "verifying": {
+          "label": "factory:verifying"
+        },
+        "ready-to-merge": {
+          "label": "factory:ready-to-merge"
+        },
+        "done": {
+          "label": "factory:done"
+        },
+        "blocked": {
+          "label": "factory:blocked"
+        }
       }
     }
   }
