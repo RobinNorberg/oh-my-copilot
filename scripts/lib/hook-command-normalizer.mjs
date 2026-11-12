@@ -11,13 +11,16 @@
 //
 // The shipped exec form is platform-neutral: Windows and POSIX hosts both
 // spawn `node` with no shell. A Unix published cache is rewritten to the
-// find-node.sh bootstrap only when `node` does not resolve on the hook PATH
-// (nvm/fnm often leave it off in non-interactive shells). Keeping the exec form
+// find-node.sh bootstrap unless `node` resolves from the standard system dirs
+// alone (nvm/fnm/volta installs are not there, and a host launched from a GUI or
+// non-login shell may not put them on the hook PATH). Keeping the exec form
 // everywhere else means a config directory shared between WSL/macOS and native
 // Windows keeps working without a Windows-side repair. A git checkout does not
 // rewrite the manifest (plugin-setup.mjs).
 
 import { spawnSync } from 'node:child_process';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { delimiter } from 'node:path';
 
 export const UNIX_HOOK_PREFIX = 'sh "${CLAUDE_PLUGIN_ROOT}"/scripts/find-node.sh "${CLAUDE_PLUGIN_ROOT}"/scripts/run.cjs ';
 
@@ -83,16 +86,33 @@ export function unixShellCommand(script, extra = []) {
   return `${UNIX_HOOK_PREFIX}"\${CLAUDE_PLUGIN_ROOT}"/scripts/${script}${tail}`;
 }
 
+/** Always on the minimal hook PATH; the Homebrew and MacPorts dirs join when they exist. */
+export const SYSTEM_PATH_DIRS = ['/usr/local/bin', '/usr/bin', '/bin'];
+const OPTIONAL_SYSTEM_PATH_DIRS = ['/opt/homebrew/bin', '/opt/local/bin'];
+
+export function systemPathDirs(exists = existsSync) {
+  return [...SYSTEM_PATH_DIRS, ...OPTIONAL_SYSTEM_PATH_DIRS.filter((dir) => exists(dir))];
+}
+
 /**
- * True when a bare `node` resolves from `env`. Under an npm lifecycle script
- * npm prepends its own Node directory to PATH, so the probe cannot see the
- * real hook PATH and reports false. That keeps the find-node bootstrap, which
- * works either way.
+ * The environment a host launched from a GUI or non-login shell may give its
+ * hooks: PATH holds only `pathDirs`, HOME stays, every other variable is dropped.
  */
-export function nodeResolvesOnHookPath(env = process.env) {
+export function minimalHookEnv(env = process.env, pathDirs = systemPathDirs()) {
+  return { PATH: pathDirs.join(delimiter), ...(env.HOME ? { HOME: env.HOME } : {}) };
+}
+
+/**
+ * True when a bare `node` resolves from `pathDirs` (the standard system dirs)
+ * alone, never from this process's PATH: a node that only nvm/fnm/volta or a
+ * login shell puts on PATH reports false, so the cache keeps the find-node
+ * bootstrap, which also finds those installs. Under an npm lifecycle script the
+ * probe reports false too.
+ */
+export function nodeResolvesOnHookPath(env = process.env, pathDirs = systemPathDirs()) {
   if (env.npm_lifecycle_event || env.npm_execpath) return false;
   try {
-    return spawnSync('node', ['-v'], { env, timeout: 5000, windowsHide: true, stdio: 'ignore' }).status === 0;
+    return spawnSync('node', ['-v'], { env: minimalHookEnv(env, pathDirs), timeout: 5000, windowsHide: true, stdio: 'ignore' }).status === 0;
   } catch {
     return false;
   }
@@ -150,4 +170,18 @@ export function normalizeHooksDataForPlatform(data, platform = process.platform,
   }
 
   return patched;
+}
+
+/**
+ * Plugin setup's manifest step: normalize the hooks.json at `path` for
+ * `platform`, running `probe` on POSIX only. Returns the form label when the
+ * file was rewritten, otherwise null.
+ */
+export function patchHooksManifestFile(path, platform = process.platform, probe = nodeResolvesOnHookPath) {
+  if (!existsSync(path)) return null;
+  const data = JSON.parse(readFileSync(path, 'utf-8'));
+  const nodeOnPath = platform !== 'win32' && probe();
+  if (!normalizeHooksDataForPlatform(data, platform, { nodeOnPath })) return null;
+  writeFileSync(path, JSON.stringify(data, null, 2) + '\n');
+  return platform === 'win32' || nodeOnPath ? 'direct node exec' : 'find-node.sh run.cjs';
 }

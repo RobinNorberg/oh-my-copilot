@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { delimiter, dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 /**
@@ -21,7 +21,10 @@ type Manifest = { hooks: Record<string, Array<{ hooks: Hook[] }>> };
 type Normalizer = {
   UNIX_HOOK_PREFIX: string;
   hookPrefixForPlatform: (platform?: string, options?: { nodeOnPath?: boolean }) => string;
-  nodeResolvesOnHookPath: (env?: NodeJS.ProcessEnv) => boolean;
+  nodeResolvesOnHookPath: (env?: NodeJS.ProcessEnv, pathDirs?: string[]) => boolean;
+  minimalHookEnv: (env?: NodeJS.ProcessEnv, pathDirs?: string[]) => Record<string, string>;
+  systemPathDirs: (exists?: (dir: string) => boolean) => string[];
+  parseHookInvocation: (hook: unknown) => unknown;
   normalizeHookCommand: (command: string, prefix?: string) => string;
   normalizeHooksDataForPlatform: (data: unknown, platform?: string, options?: { nodeOnPath?: boolean }) => boolean;
 };
@@ -60,17 +63,36 @@ describe('nodeResolvesOnHookPath', () => {
     expect(normalizer.nodeResolvesOnHookPath({ ...process.env, npm_execpath: '/usr/lib/npm-cli.js' })).toBe(false);
   });
 
-  it('reports false when PATH has no node', () => {
-    const env: NodeJS.ProcessEnv = { PATH: join(REPO_ROOT, 'no-such-dir') };
-    if (process.platform === 'win32') env.SystemRoot = process.env.SystemRoot;
-    expect(normalizer.nodeResolvesOnHookPath(env)).toBe(false);
+  it('reports false when the system dirs have no node', () => {
+    expect(normalizer.nodeResolvesOnHookPath({}, [join(REPO_ROOT, 'no-such-dir')])).toBe(false);
   });
 
-  it('reports true when PATH holds the running node', () => {
-    const env: NodeJS.ProcessEnv = { ...process.env, PATH: dirname(process.execPath) };
-    delete env.npm_lifecycle_event;
-    delete env.npm_execpath;
-    expect(normalizer.nodeResolvesOnHookPath(env)).toBe(true);
+  it('reports true when a system dir holds the running node', () => {
+    expect(normalizer.nodeResolvesOnHookPath({}, [dirname(process.execPath)])).toBe(true);
+  });
+
+  it('ignores the setup PATH: a node reachable only there (nvm/fnm/volta) yields find-node', () => {
+    const env: NodeJS.ProcessEnv = { PATH: dirname(process.execPath), NVM_DIR: '/home/u/.nvm' };
+    const nodeOnPath = normalizer.nodeResolvesOnHookPath(env, [join(REPO_ROOT, 'no-such-dir')]);
+    expect(nodeOnPath).toBe(false);
+    const data = freshManifest();
+    normalizer.normalizeHooksDataForPlatform(data, 'linux', { nodeOnPath });
+    for (const hook of allHooks(data).filter(h => normalizer.parseHookInvocation(h))) {
+      expect(hook.command).toContain(normalizer.UNIX_HOOK_PREFIX);
+      expect(hook.args).toBeUndefined();
+    }
+  });
+
+  it('probes with PATH limited to the given dirs and only HOME kept', () => {
+    const env = { PATH: '/home/u/.nvm/versions/node/v22/bin', HOME: '/home/u', NVM_DIR: '/home/u/.nvm', NODE_OPTIONS: '--require x' };
+    expect(normalizer.minimalHookEnv(env, ['/usr/bin', '/bin'])).toEqual({ PATH: ['/usr/bin', '/bin'].join(delimiter), HOME: '/home/u' });
+    expect(normalizer.minimalHookEnv({}, ['/bin'])).toEqual({ PATH: '/bin' });
+  });
+
+  it('uses the standard system dirs, plus Homebrew and MacPorts only when they exist', () => {
+    expect(normalizer.systemPathDirs(() => false)).toEqual(['/usr/local/bin', '/usr/bin', '/bin']);
+    expect(normalizer.systemPathDirs((dir) => dir === '/opt/homebrew/bin')).toEqual(['/usr/local/bin', '/usr/bin', '/bin', '/opt/homebrew/bin']);
+    expect(normalizer.systemPathDirs(() => true)).toEqual(['/usr/local/bin', '/usr/bin', '/bin', '/opt/homebrew/bin', '/opt/local/bin']);
   });
 });
 

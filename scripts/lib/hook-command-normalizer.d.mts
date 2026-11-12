@@ -16,7 +16,15 @@ export interface HookPlatformOptions {
   nodeOnPath?: boolean;
 }
 
-export function nodeResolvesOnHookPath(env?: NodeJS.ProcessEnv): boolean;
+export const SYSTEM_PATH_DIRS: string[];
+
+export function systemPathDirs(exists?: (dir: string) => boolean): string[];
+
+export function minimalHookEnv(env?: NodeJS.ProcessEnv, pathDirs?: string[]): { PATH: string; HOME?: string };
+
+export function nodeResolvesOnHookPath(env?: NodeJS.ProcessEnv, pathDirs?: string[]): boolean;
+
+export function patchHooksManifestFile(path: string, platform?: string, probe?: () => boolean): string | null;
 
 export function hookPrefixForPlatform(platform?: string, options?: HookPlatformOptions): string;
 
