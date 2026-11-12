@@ -83,9 +83,6 @@ function scanDir(dir, needle, max = { files: 5_000, bytes: 64 * 1024 * 1024 }) {
         if (st.isSymbolicLink())
             return;
         if (st.isDirectory()) {
-            // Lane and prepare worktrees are not the forge: what matters is what the engine records and publishes.
-            if (p.endsWith(join('.omg', 'team')))
-                return;
             for (const name of readdirSync(p))
                 walk(join(p, name));
             return;

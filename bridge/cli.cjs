@@ -143600,10 +143600,10 @@ var init_factory_setup = __esm({
   }
 });
 
-// src/factory/bench/fixtures/project.ts
+// src/factory/bench/seed/project.ts
 var BENCH_FIXTURE_VERSION, BENCH_BASE, BENCH_LABEL, BENCH_GATE, ACCEPTANCE_TEST_PATH, ACCEPTANCE_ARGV, json, BENCH_OMG_JSONC, LINT_MJS, BENCH_PROJECT_FILES;
 var init_project = __esm({
-  "src/factory/bench/fixtures/project.ts"() {
+  "src/factory/bench/seed/project.ts"() {
     "use strict";
     BENCH_FIXTURE_VERSION = 1;
     BENCH_BASE = "main";
@@ -143808,10 +143808,10 @@ it('labels many items', () => expect(legacyLabel('pens', 3)).toBe('pens: 3 items
   }
 });
 
-// src/factory/bench/fixtures/issues.ts
+// src/factory/bench/seed/issues.ts
 var approve, STRINGS_FIXED, CART_WITH_CODE, DISCOUNT, BENCH_ISSUES;
 var init_issues = __esm({
-  "src/factory/bench/fixtures/issues.ts"() {
+  "src/factory/bench/seed/issues.ts"() {
     "use strict";
     approve = { kind: "review", verdict: "approve" };
     STRINGS_FIXED = `/** A URL slug: lower case, words joined by single dashes. */
@@ -145520,6 +145520,7 @@ var init_fake_lanes = __esm({
     import_node_fs35 = require("node:fs");
     import_node_path40 = require("node:path");
     init_job();
+    init_worktree_paths();
     init_exec();
     init_git_worktree();
     init_lane();
@@ -145550,7 +145551,7 @@ var init_fake_lanes = __esm({
           baseSha = git7(worktree, ["rev-parse", "HEAD"]);
         } else {
           branch2 = `omc-team/copilot-run/${remoteId}`;
-          worktree = (0, import_node_path40.join)(this.root, ".omg", "team", "copilot-run", "worktrees", remoteId);
+          worktree = (0, import_node_path40.join)(getOmcRoot(this.root), "team", "copilot-run", "worktrees", remoteId);
           (0, import_node_fs35.mkdirSync)((0, import_node_path40.dirname)(worktree), { recursive: true });
           baseSha = git7(this.root, ["rev-parse", "--verify", `${input.baseRef}^{commit}`]);
           git7(this.root, ["worktree", "add", "-q", "-b", branch2, worktree, baseSha]);
@@ -145679,7 +145680,6 @@ function scanDir(dir, needle, max = { files: 5e3, bytes: 64 * 1024 * 1024 }) {
     }
     if (st.isSymbolicLink()) return;
     if (st.isDirectory()) {
-      if (p.endsWith((0, import_node_path41.join)(".omg", "team"))) return;
       for (const name of (0, import_node_fs36.readdirSync)(p)) walk((0, import_node_path41.join)(p, name));
       return;
     }

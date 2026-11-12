@@ -9,7 +9,7 @@
 import type { Exec } from '../../ship/exec.js';
 import { type FactoryRunState } from '../run/state.js';
 import type { BenchFixtureMeta } from './fixture.js';
-import type { BenchIssue, TrapKind } from './fixtures/issues.js';
+import type { BenchIssue, TrapKind } from './seed/issues.js';
 export declare const BENCH_RESULTS_SCHEMA_VERSION = 1;
 export declare const BENCH_RESULTS_KIND = "omg-factory-bench";
 /** The gate name of the human merge park (engine: awaiting-human: merge). */

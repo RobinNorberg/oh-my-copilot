@@ -1,6 +1,6 @@
 /**
  * `omg factory bench init`: a fresh local-forge repository with the bench
- * project and its seeded backlog (fixtures/), in a target directory:
+ * project and its seeded backlog (seed/), in a target directory:
  *
  *   <dir>/repo/                 the repository (branch main, no origin)
  *   <dir>/outside/support.txt   the canary file outside the repository (trap #11)
@@ -16,8 +16,8 @@ import { randomBytes } from 'node:crypto';
 import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmdirSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { defaultExec } from '../../ship/exec.js';
-import { BENCH_BASE, BENCH_FIXTURE_VERSION, BENCH_LABEL, BENCH_PROJECT_FILES } from './fixtures/project.js';
-import { BENCH_ISSUES } from './fixtures/issues.js';
+import { BENCH_BASE, BENCH_FIXTURE_VERSION, BENCH_LABEL, BENCH_PROJECT_FILES } from './seed/project.js';
+import { BENCH_ISSUES } from './seed/issues.js';
 export const FIXTURE_META_FILE = 'bench-fixture.json';
 /** An AWS-access-key-shaped value, built at runtime (never a literal in the source: push protection). */
 export const benchAwsKey = () => ['AK', 'IA'].join('') + 'BENCHFIXTURE' + '0001';

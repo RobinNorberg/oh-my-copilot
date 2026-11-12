@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url';
 import { mkdtempSync } from 'node:fs';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createBenchFixture, removeBenchDir } from '../fixture.js';
-import { BENCH_ISSUES } from '../fixtures/issues.js';
+import { BENCH_ISSUES } from '../seed/issues.js';
 import { runBench } from '../runner.js';
 import { BENCH_RESULTS_SCHEMA_VERSION, compareResults, readBenchResults } from '../score.js';
 const NODE_MODULES = resolve(fileURLToPath(new URL('.', import.meta.url)), '..', '..', '..', '..', 'node_modules');

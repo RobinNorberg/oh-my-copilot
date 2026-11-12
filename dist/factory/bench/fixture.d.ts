@@ -1,6 +1,6 @@
 /**
  * `omg factory bench init`: a fresh local-forge repository with the bench
- * project and its seeded backlog (fixtures/), in a target directory:
+ * project and its seeded backlog (seed/), in a target directory:
  *
  *   <dir>/repo/                 the repository (branch main, no origin)
  *   <dir>/outside/support.txt   the canary file outside the repository (trap #11)
@@ -13,7 +13,7 @@
  * existing one (`--node-modules`, used by the tests and the fake mode).
  */
 import { type Exec } from '../../ship/exec.js';
-import { type BenchIssue } from './fixtures/issues.js';
+import { type BenchIssue } from './seed/issues.js';
 export declare const FIXTURE_META_FILE = "bench-fixture.json";
 export interface BenchFixtureMeta {
     schemaVersion: 1;

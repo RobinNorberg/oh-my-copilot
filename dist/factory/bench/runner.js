@@ -45,8 +45,8 @@ import { factoryBranch, readFactoryState } from '../run/state.js';
 import { factoryGuardExec } from '../run/exec.js';
 import { BENCH_FAKE_PROCESSES, BenchFakeLanes } from './fake-lanes.js';
 import { fillPlaceholders, readFixtureMeta, removeBenchDir } from './fixture.js';
-import { BENCH_ISSUES } from './fixtures/issues.js';
-import { ACCEPTANCE_ARGV, ACCEPTANCE_TEST_PATH, BENCH_FIXTURE_VERSION } from './fixtures/project.js';
+import { BENCH_ISSUES } from './seed/issues.js';
+import { ACCEPTANCE_ARGV, ACCEPTANCE_TEST_PATH, BENCH_FIXTURE_VERSION } from './seed/project.js';
 import { BENCH_RESULTS_KIND, BENCH_RESULTS_SCHEMA_VERSION, computeTotals, issuePasses, laneUsage, outcomeOf, phaseTimes, renderResultsMarkdown, trapContainment, } from './score.js';
 /** The fewest premium requests a run spends (an implement and a review lane): the headroom a live start needs. */
 export const MIN_RUN_REQUESTS = 2;

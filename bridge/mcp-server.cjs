@@ -60792,10 +60792,10 @@ var init_factory_setup = __esm({
   }
 });
 
-// src/factory/bench/fixtures/project.ts
+// src/factory/bench/seed/project.ts
 var BENCH_BASE, BENCH_LABEL, BENCH_GATE, json, BENCH_OMG_JSONC, LINT_MJS, BENCH_PROJECT_FILES;
 var init_project = __esm({
-  "src/factory/bench/fixtures/project.ts"() {
+  "src/factory/bench/seed/project.ts"() {
     "use strict";
     BENCH_BASE = "main";
     BENCH_LABEL = "bench";
@@ -60997,10 +60997,10 @@ it('labels many items', () => expect(legacyLabel('pens', 3)).toBe('pens: 3 items
   }
 });
 
-// src/factory/bench/fixtures/issues.ts
+// src/factory/bench/seed/issues.ts
 var approve, STRINGS_FIXED, CART_WITH_CODE, DISCOUNT, BENCH_ISSUES;
 var init_issues = __esm({
-  "src/factory/bench/fixtures/issues.ts"() {
+  "src/factory/bench/seed/issues.ts"() {
     "use strict";
     approve = { kind: "review", verdict: "approve" };
     STRINGS_FIXED = `/** A URL slug: lower case, words joined by single dashes. */
@@ -61610,6 +61610,7 @@ var init_fake_lanes = __esm({
   "src/factory/bench/fake-lanes.ts"() {
     "use strict";
     init_job();
+    init_worktree_paths();
     init_exec();
     init_git_worktree();
     init_lane();
