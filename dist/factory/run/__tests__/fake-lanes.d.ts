@@ -42,6 +42,8 @@ export declare class FakeLanes implements LaneBackend {
     readonly cancelled: string[];
     /** Called on every wait() that still reports `running`. */
     onRunningPoll: (remoteId: string) => void;
+    /** The result's lastEventAt (the session's last event); undefined = the backend cannot tell (no idle check). */
+    lastEventAt: (remoteId: string) => string | null | undefined;
     private readonly jobs;
     /** `scripts` is consumed in start order; `runningPolls[i]` makes lane i report `running` that many times first. */
     /** '' for the first backend on a repository, then `-g2`, `-g3`, ... */

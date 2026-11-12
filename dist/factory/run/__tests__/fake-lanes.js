@@ -28,6 +28,8 @@ export class FakeLanes {
     cancelled = [];
     /** Called on every wait() that still reports `running`. */
     onRunningPoll = () => { };
+    /** The result's lastEventAt (the session's last event); undefined = the backend cannot tell (no idle check). */
+    lastEventAt = () => undefined;
     jobs = new Map();
     /** `scripts` is consumed in start order; `runningPolls[i]` makes lane i report `running` that many times first. */
     /** '' for the first backend on a repository, then `-g2`, `-g3`, ... */
@@ -69,7 +71,9 @@ export class FakeLanes {
     result(job, remoteId, state) {
         const terminal = state !== 'running';
         const o = job.outcome ?? {};
+        const lastEventAt = this.lastEventAt(remoteId);
         return {
+            ...(lastEventAt !== undefined ? { lastEventAt } : {}),
             state,
             branch: job.ctx.branch || null,
             pr: null,

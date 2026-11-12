@@ -947,6 +947,7 @@ export class CopilotRunManager {
             pidIdentity: null,
             startedAt: new Date().toISOString(),
             endedAt: null,
+            lastEventAt: null,
             sessionId: null,
             finalText: null,
             error: null,
@@ -1344,6 +1345,7 @@ export class CopilotRunManager {
         const shutdown = new Promise((r) => { onShutdown = r; });
         let eventsFd = null;
         const onEvent = (event) => {
+            job.lastEventAt = new Date().toISOString();
             if (eventsFd !== null) {
                 try {
                     writeSync(eventsFd, `${scrubTokens(JSON.stringify({ at: new Date().toISOString(), ...event }), job.secrets)}\n`);
@@ -1590,6 +1592,7 @@ export class CopilotRunManager {
             ...(job.denied.length ? { deniedPermissions: job.denied.map((d) => ({ kind: d.kind, reason: scrub(d.reason) })) } : {}),
             ...(notes.length ? { notes: notes.map(scrub) } : {}),
             eventsPath: job.eventsPath,
+            lastEventAt: job.lastEventAt,
             ...(job.pid ? { runtime: { pid: job.pid, identity: job.pidIdentity } } : {}),
             ...(job.sandbox ? { sandbox: { ...job.sandbox, host: { ...job.sandbox.host, capabilities: { ...job.sandbox.host.capabilities } } } } : {}),
         };

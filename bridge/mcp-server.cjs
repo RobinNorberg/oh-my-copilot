@@ -46570,6 +46570,7 @@ var init_job = __esm({
           pidIdentity: null,
           startedAt: (/* @__PURE__ */ new Date()).toISOString(),
           endedAt: null,
+          lastEventAt: null,
           sessionId: null,
           finalText: null,
           error: null,
@@ -46920,6 +46921,7 @@ var init_job = __esm({
         });
         let eventsFd = null;
         const onEvent = (event) => {
+          job.lastEventAt = (/* @__PURE__ */ new Date()).toISOString();
           if (eventsFd !== null) {
             try {
               (0, import_node_fs12.writeSync)(eventsFd, `${scrubTokens(JSON.stringify({ at: (/* @__PURE__ */ new Date()).toISOString(), ...event }), job.secrets)}
@@ -47128,6 +47130,7 @@ var init_job = __esm({
           ...job.denied.length ? { deniedPermissions: job.denied.map((d) => ({ kind: d.kind, reason: scrub(d.reason) })) } : {},
           ...notes.length ? { notes: notes.map(scrub) } : {},
           eventsPath: job.eventsPath,
+          lastEventAt: job.lastEventAt,
           ...job.pid ? { runtime: { pid: job.pid, identity: job.pidIdentity } } : {},
           ...job.sandbox ? { sandbox: { ...job.sandbox, host: { ...job.sandbox.host, capabilities: { ...job.sandbox.host.capabilities } } } } : {}
         };
@@ -47190,6 +47193,7 @@ var init_budget = __esm({
     DEFAULT_FACTORY_RUN_LIMITS = Object.freeze({
       laneMaxCredits: RUNTIME_MIN_MAX_CREDITS,
       laneTimeoutMs: 30 * 6e4,
+      laneIdleMs: 15 * 6e4,
       maxRunWallTimeMs: 4 * 60 * 6e4,
       maxRetries: 1,
       maxLostRespawns: 1,
@@ -56447,7 +56451,8 @@ var init_lane = __esm({
           notes: snap.notes ?? [],
           process: snap.runtime ? { pid: snap.runtime.pid, identity: snap.runtime.identity } : null,
           ...snap.sandbox ? { sandbox: snap.sandbox } : {},
-          ...snap.model ? { model: snap.model } : {}
+          ...snap.model ? { model: snap.model } : {},
+          ...snap.lastEventAt !== void 0 ? { lastEventAt: snap.lastEventAt } : {}
         };
       }
     };
@@ -62044,6 +62049,17 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
         this.updateLane(id, { jobId: remoteId });
         this.progress.emit(`lane-${kind}`, "start", `lane ${id} cap ${cap.cap} AI credits`, { ...this.fields(), lane: id, job: remoteId });
         const begun = this.clock();
+        let progressAt = begun;
+        let lastEventAt = null;
+        let stalled = false;
+        const stopLane = async () => {
+          try {
+            const c = await this.o.lanes.cancel(remoteId);
+            return isTerminalLaneState(c.result.state) ? c.result : null;
+          } catch {
+            return null;
+          }
+        };
         let result;
         for (; ; ) {
           const s = this.reload();
@@ -62059,13 +62075,26 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
           const known = this.state.lanes.find((l) => l.id === id)?.process;
           if (proc && (known?.pid !== proc.pid || known.identity !== proc.identity)) this.updateLane(id, { process: { pid: proc.pid, identity: proc.identity } });
           if (isTerminalLaneState(result.state)) break;
-          if (this.clock() - begun > this.o.limits.laneTimeoutMs + LANE_GRACE_MS) {
-            let confirmed = null;
-            try {
-              const c = await this.o.lanes.cancel(remoteId);
-              if (isTerminalLaneState(c.result.state)) confirmed = c.result;
-            } catch {
+          if (result.lastEventAt && result.lastEventAt !== lastEventAt) {
+            lastEventAt = result.lastEventAt;
+            progressAt = this.clock();
+            const stored = this.state.lanes.find((l) => l.id === id)?.lastEventAt;
+            if (!stored || Date.parse(lastEventAt) - Date.parse(stored) >= HEARTBEAT_MIN_MS) this.updateLane(id, { lastEventAt });
+          }
+          if (result.lastEventAt !== void 0 && this.clock() - progressAt > this.o.limits.laneIdleMs) {
+            const quiet = `no session event (tool call, message or usage) for ${Math.round(this.o.limits.laneIdleMs / 6e4)} min (last event ${lastEventAt ?? `none since its start at ${startedAt}`})`;
+            const confirmed = await stopLane();
+            if (!confirmed) {
+              this.updateLane(id, { note: `stalled: ${quiet}; its cancel was not confirmed` });
+              this.gate("lane-unconfirmed", `lane ${id} (${remoteId}) stalled: ${quiet}, and its cancel was not confirmed; it may still run, so its tamper check cannot be trusted yet. Stop the job, then rerun ${this.resume}`);
+              return { kind: "stopped" };
             }
+            result = { ...confirmed, state: "failed", error: `stalled: ${quiet}` };
+            stalled = true;
+            break;
+          }
+          if (this.clock() - begun > this.o.limits.laneTimeoutMs + LANE_GRACE_MS) {
+            const confirmed = await stopLane();
             if (!confirmed) {
               this.updateLane(id, { note: "engine wall-time limit passed; its cancel was not confirmed" });
               this.gate("lane-unconfirmed", `lane ${id} (${remoteId}) passed the engine wall-time limit and its cancel was not confirmed; it may still run, so its tamper check cannot be trusted yet. Stop the job, then rerun ${this.resume}`);
@@ -62074,11 +62103,11 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
             result = { ...confirmed, state: "timeout", error: `engine wall-time limit ${Math.round(this.o.limits.laneTimeoutMs / 6e4)} min passed` };
             break;
           }
-          this.progress.heartbeat(`lane-${kind}`, `lane ${id} ${result.state}`, { ...this.fields(), lane: id, job: remoteId });
+          this.progress.heartbeat(`lane-${kind}`, `lane ${id} ${result.state}${result.lastEventAt !== void 0 ? `, last event ${lastEventAt ?? "none yet"}` : ""}`, { ...this.fields(), lane: id, job: remoteId });
         }
         const usage = usageOf(result);
         settleHeal(usage.credits);
-        const status = result.state === "completed" ? "completed" : result.state === "cancelled" ? "cancelled" : "failed";
+        const status = stalled ? "stalled" : result.state === "completed" ? "completed" : result.state === "cancelled" ? "cancelled" : "failed";
         this.updateLane(id, {
           status,
           usage,
@@ -62090,7 +62119,7 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
           ...result.sandbox ? { sandbox: result.sandbox } : {}
         });
         if (status === "completed") this.save((x) => ({ ...x, lostStreak: { ...x.lostStreak, [kind]: 0 } }));
-        this.progress.emit(`lane-${kind}`, status === "completed" ? "ok" : "fail", `lane ${id} ${result.state}, ${usage.credits.toFixed(2)} AI credits`, { ...this.fields(), lane: id, job: remoteId });
+        this.progress.emit(`lane-${kind}`, status === "completed" ? "ok" : "fail", `lane ${id} ${stalled ? "stalled" : result.state}, ${usage.credits.toFixed(2)} AI credits`, { ...this.fields(), lane: id, job: remoteId });
         let checked;
         try {
           checked = await this.importReady(() => this.laneProblems(kind, before, result, startRef, id), !laneSandboxEnforced(result.sandbox));
