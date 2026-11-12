@@ -8,6 +8,14 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 - **A run whose PR a human merged after it stopped is recorded as merged.** Before, a `cancelled`, `failed` or parked run kept that state after a human merged its PR, and rerunning `omg factory run <n>` on a parked run resumed lanes and spent requests. Now `omg factory run <n>` reads the PR before it resumes anything: merged records the run as `merged` ("PR #n merged by a human after <previous state>") and starts no lane; closed without merging stops a parked run with a message. `omg factory run status [<n>]`, `omg factory board` and `omg factory dashboard` record the merge too. A failed read never counts as merged. On the local forge, only your base branch containing the pushed head counts.
 
+### Tests
+
+- **Loosened the jev-compaction linear-time bound.** The 1M-slash test now allows 250 ms instead of 50 ms, because shared CI runners measured about 51 ms. A quadratic regression would still take seconds.
+
+### Docs
+
+- **Inventory baseline needs no regeneration after a merge.** Checked locally: two branches that change different `src` files and each run `--write` leave `inventory/inventory-graph.json` unchanged, merge without conflict, and pass `--verify` with no regeneration. Explained in `docs/FIELD-TESTING.md`.
+
 # oh-my-copilot v5.27.0
 
 ## [5.27.0] - 2026-11-12
