@@ -12,13 +12,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { factoryBenchCommand } from '../../../cli/commands/factory-bench.js';
 import { defaultExec } from '../../../ship/exec.js';
 import { getOmcRoot } from '../../../lib/worktree-paths.js';
+import { ledgerPath } from '../../../budget/ledger.js';
 import { DEFAULT_FACTORY_RUN_LIMITS, laneRequestsUnknown, nextLaneCap, resolveFactoryRunLimits } from '../../run/budget.js';
 import { createFactoryState, overwriteFactoryState } from '../../run/state.js';
 import { benchAwsKey, createBenchFixture, readFixtureMeta, removeBenchDir } from '../fixture.js';
 import { BENCH_ISSUES } from '../seed/issues.js';
 import { BENCH_OMG_JSONC } from '../seed/project.js';
 import { modelMultiplier, multiplierRefusal, probeLaneModel } from '../model-probe.js';
-import { benchSubset, BUSY_BACKOFF_MS, BenchUsageError, ledgerTracker, liveSandboxRefusal, MAX_BUSY_STREAK, MIN_RUN_REQUESTS, plainGateRunner, runAcceptance, runBench, } from '../runner.js';
+import { benchSubset, BUSY_BACKOFF_MS, BenchUsageError, defaultLedger, ledgerTracker, liveSandboxRefusal, MAX_BUSY_STREAK, MIN_RUN_REQUESTS, plainGateRunner, runAcceptance, runBench, } from '../runner.js';
 import { BENCH_RESULTS_KIND, BENCH_RESULTS_SCHEMA_VERSION, compareResults, computeTotals, issuePasses, MAX_RESULTS_BYTES, outcomeMatches, outcomeOf, phaseTimes, readBenchResults, renderResultsMarkdown, SCAN_LIMITS, scanDir, trapContainment, trapVerdict, trustConfigPath, } from '../score.js';
 const NODE_MODULES = resolve(fileURLToPath(new URL('.', import.meta.url)), '..', '..', '..', '..', 'node_modules');
 /** The parallel opt-in of a user config (factory.run.maxConcurrent 3, layout private). */
@@ -546,6 +547,40 @@ describe('live runner caps (injected run child and ledger, no Copilot)', () => {
         const e = ledgerTracker({ premiumRequests: 5, credits: 5, records: { a: rec(5, 'estimated') }, epoch: 'e' });
         expect(() => e({ premiumRequests: 1, credits: 1, records: { a: rec(1, 'estimated') }, epoch: 'e' })).toThrow(/went down/);
         expect(() => e({ premiumRequests: 5, credits: 5, records: { a: rec(5, 'estimated') }, epoch: 'reset' })).toThrow(/was reset/);
+    });
+    it('a ledger file missing at the start is no reset: the first file is adopted, a later reset or removal still throws', () => {
+        const rec = (premiumRequests) => ({ premiumRequests, credits: premiumRequests, source: 'measured' });
+        // The real reader: a missing file is stable (no epoch, nothing counted), not a fresh "since now" on every read.
+        const root = join(dir, 'repo');
+        mkdirSync(root, { recursive: true });
+        git(root, 'init', '-q'); // anchors .omg/ in the temp repo, never the home dir
+        const path = ledgerPath(root);
+        expect(existsSync(path)).toBe(false);
+        const none = defaultLedger(root);
+        expect(none).toEqual({ premiumRequests: 0, credits: 0, records: {} });
+        expect(ledgerTracker(none)(defaultLedger(root))).toEqual({ premiumRequests: 0, credits: 0 });
+        mkdirSync(join(path, '..'), { recursive: true });
+        writeFileSync(path, JSON.stringify({ version: 1, since: '2026-11-12T00:00:00.000Z', sessions: { s1: { premiumRequests: 2, credits: 2, source: 'measured' } }, teams: {}, notified: {} }));
+        const real = defaultLedger(root);
+        expect(real).toMatchObject({ premiumRequests: 2, credits: 2, records: { 's:s1': rec(2) }, epoch: '2026-11-12T00:00:00.000Z|' });
+        // (a) start missing, the file appears with records: counted, no throw.
+        const a = ledgerTracker(none);
+        expect(a(real)).toEqual({ premiumRequests: 2, credits: 2 });
+        // (b) start missing, still missing: zero.
+        const b = ledgerTracker(none);
+        expect(b(none)).toEqual({ premiumRequests: 0, credits: 0 });
+        expect(b(none)).toEqual({ premiumRequests: 0, credits: 0 });
+        // (c) start present, the file removed: throws.
+        const c = ledgerTracker(real);
+        expect(c(real)).toEqual({ premiumRequests: 0, credits: 0 });
+        expect(() => c(none)).toThrow(/file disappeared/);
+        // (d) start missing, the file appears, then its epoch changes: throws; so does a later removal.
+        const d = ledgerTracker(none);
+        expect(d(real)).toEqual({ premiumRequests: 2, credits: 2 });
+        expect(() => d({ ...real, epoch: '2026-11-12T01:00:00.000Z|2026-11-12T01:00:00.000Z' })).toThrow(/was reset/);
+        const d2 = ledgerTracker(none);
+        d2(real);
+        expect(() => d2(none)).toThrow(/file disappeared/);
     });
     it('prints the lanes\' default model and multiplier first; a known multiplier above 1 needs --allow-multiplier', async () => {
         const bench = liveFixture();

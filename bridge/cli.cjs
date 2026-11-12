@@ -148658,13 +148658,16 @@ function ledgerTracker(start) {
   const last = new Map(Object.entries(start.records ?? {}));
   const high = new Map(last);
   const base = { premiumRequests: start.premiumRequests, credits: start.credits };
+  let epoch = start.epoch;
   return (now2) => {
     if (!start.records || !now2.records) {
       const delta2 = { premiumRequests: now2.premiumRequests - base.premiumRequests, credits: now2.credits - base.credits };
       if (!(delta2.premiumRequests >= 0) || !(delta2.credits >= 0)) throw new Error(`the budget ledger went down since the bench started (${delta2.premiumRequests} requests, ${delta2.credits} credits); it cannot be trusted`);
       return delta2;
     }
-    if (now2.epoch !== start.epoch) throw new Error("the budget ledger was reset since the bench started; it cannot be trusted");
+    if (epoch !== void 0 && now2.epoch === void 0) throw new Error("the budget ledger file disappeared since the bench started; it cannot be trusted");
+    if (epoch === void 0 && now2.epoch !== void 0) epoch = now2.epoch;
+    if (now2.epoch !== epoch) throw new Error("the budget ledger was reset since the bench started; it cannot be trusted");
     for (const [key, was] of last) {
       const is = now2.records[key];
       if (!is) throw new Error(`the budget ledger record ${key} disappeared since the bench started; it cannot be trusted`);
@@ -149071,6 +149074,7 @@ ${r.stderr}` : ""}`, timedOut: r.timedOut };
     refused = (detail) => ({ ran: false, passed: false, status: null, detail: `refused: ${detail}` });
     defaultLedger = (root2) => {
       const path30 = ledgerPath2(root2);
+      if (!(0, import_node_fs39.existsSync)(path30)) return { premiumRequests: 0, credits: 0, records: {} };
       const { ledger, invalid } = parseLedger(path30);
       if (invalid) throw new Error(`the budget ledger ${path30} is unreadable; the bench cannot enforce --max-requests without it`);
       const t = ledgerTotals(ledger);
