@@ -18,6 +18,8 @@ export const MERGE_VIEW_FIELDS = 'number,state,isDraft,baseRefName,baseRefOid,he
 
 export interface MergeView extends PrView {
   baseRefOid: string;
+  /** Set by the factory engine's live-tip view (liveBase): the PR's own recorded baseRefOid, for reads that need a base with settled CI. */
+  recordedBaseRefOid?: string;
 }
 
 const HEX40 = /^[0-9a-f]{40}$/;
