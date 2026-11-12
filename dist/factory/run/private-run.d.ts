@@ -29,6 +29,7 @@
  * out of the user repository are serialised by withImportLock.
  */
 import { type Exec, type ExecResult } from '../../ship/exec.js';
+import type { GitViewSource } from './git-view.js';
 import { type ImportRefusalCode, type PrivateRepo, type PrivateRunLayout, type PrivateStoreContext, type UserGuardDetail, type UserRepoGuard } from './private-store.js';
 import { type FactoryRunState, type HeldOwner } from './state.js';
 export type RunLayoutChoice = 'shared' | 'private';
@@ -161,6 +162,12 @@ export declare class PrivateRun {
     gitOk(args: readonly string[], what: string, workTree?: string): string;
     /** gitOk without the exit check (the caller reads the status). */
     git(args: readonly string[], workTree?: string): ExecResult;
+    /**
+     * git-view.ts's source in the private repository (a gate container's view
+     * of a commit made here): privateRepoProblem before every command, the
+     * store's pins and env, the private git dir named, stdout as bytes.
+     */
+    viewSource(): GitViewSource;
     private gitOptions;
     /** The admin dir recorded for `workTree` at its creation (recordWorktreeGitLinks), or null. */
     recordedGitDir(workTree: string): string | null;
