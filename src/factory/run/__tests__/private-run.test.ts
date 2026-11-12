@@ -177,6 +177,17 @@ describe('PrivateRun', () => {
     expect(existsSync(marker)).toBe(true);
   }, T);
 
+  it('viewSource runs the store\'s tools check: a file in the engine\'s empty hooks dir or a non-empty global config refuses before git runs', () => {
+    const p = create();
+    expect(p.viewSource()(['cat-file', '-t', base]).toString('utf8').trim()).toBe('commit');
+    const hook = join(dir, 'ledger', 'empty-hooks', 'post-checkout');
+    writeFileSync(hook, '#!/bin/sh\n');
+    expect(() => p.viewSource()(['cat-file', '-t', base])).toThrow(/empty hooks directory .* is not an empty directory/);
+    rmSync(hook);
+    writeFileSync(join(dir, 'ledger', 'empty-gitconfig'), '[core]\n');
+    expect(() => p.viewSource()(['cat-file', '-t', base])).toThrow(/empty git config .* is not an empty file/);
+  }, T);
+
   it('a guard change before the import parks with the kind and path; a hook names it and says check it before rerunning (review-483b L-b), other items say a rerun continues', () => {
     const p = create();
     const first = publish(p, mkCommit(p.repo.gitDir, [base], [{ path: 'y', content: 'y\n' }]), [base], base);
