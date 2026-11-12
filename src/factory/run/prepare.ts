@@ -280,7 +280,7 @@ export function gateTreeHasLinks(checkout: string): boolean {
  * marker lists (PR-writable, so every line must be an exact relative path
  * whose every segment is a plain dir in the checkout; another is ignored).
  */
-function nestedTreeDirs(checkout: string): string[] {
+export function nestedTreeDirs(checkout: string): string[] {
   const rels = new Set(nestedTrees.get(checkout) ?? []);
   const marker = join(checkout, 'node_modules', GATE_TREE_MARKER);
   try {
