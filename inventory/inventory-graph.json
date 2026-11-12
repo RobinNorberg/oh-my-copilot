@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "34afe5d7efb2bf14b6ce1aa283541a067ae07015",
-    "sourceSha256": "73ece0f69e3d6f4d6e0571a412fcb3090253dbc428ece7d89f4adb1530a496ae",
+    "head": "93d48d89080e5a18d909478ea504e252c56ba393",
+    "sourceSha256": "f7b7d72e9bad8e2d317afcd7cf1e02eaf83aaca42a96b0d1f63b93e975ce01d9",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "34afe5d7efb2bf14b6ce1aa283541a067ae07015",
-  "sourceSha256": "73ece0f69e3d6f4d6e0571a412fcb3090253dbc428ece7d89f4adb1530a496ae",
+  "head": "93d48d89080e5a18d909478ea504e252c56ba393",
+  "sourceSha256": "f7b7d72e9bad8e2d317afcd7cf1e02eaf83aaca42a96b0d1f63b93e975ce01d9",
   "counts": {
     "public": {
       "skills": 98,
@@ -28,13 +28,13 @@
       "toolFiles": 68,
       "libFiles": 55,
       "templateHooks": 25,
-      "srcFiles": 2094,
-      "total": 2119
+      "srcFiles": 2092,
+      "total": 2117
     },
     "generated": {
-      "distFiles": 7744,
+      "distFiles": 7736,
       "bridgeFiles": 8,
-      "total": 7752
+      "total": 7744
     },
     "prompt": {
       "promptLikeFiles": 72
@@ -3094,6 +3094,10 @@
       "dist/copilot-run/__tests__/fake-sdk.d.ts.map",
       "dist/copilot-run/__tests__/fake-sdk.js",
       "dist/copilot-run/__tests__/fake-sdk.js.map",
+      "dist/copilot-run/__tests__/job.fail-closed.test.d.ts",
+      "dist/copilot-run/__tests__/job.fail-closed.test.d.ts.map",
+      "dist/copilot-run/__tests__/job.fail-closed.test.js",
+      "dist/copilot-run/__tests__/job.fail-closed.test.js.map",
       "dist/copilot-run/__tests__/job.large-tree.test.d.ts",
       "dist/copilot-run/__tests__/job.large-tree.test.d.ts.map",
       "dist/copilot-run/__tests__/job.large-tree.test.js",
@@ -3506,10 +3510,6 @@
       "dist/factory/run/__tests__/engine.gates-container.test.d.ts.map",
       "dist/factory/run/__tests__/engine.gates-container.test.js",
       "dist/factory/run/__tests__/engine.gates-container.test.js.map",
-      "dist/factory/run/__tests__/engine.gates-git-view.test.d.ts",
-      "dist/factory/run/__tests__/engine.gates-git-view.test.d.ts.map",
-      "dist/factory/run/__tests__/engine.gates-git-view.test.js",
-      "dist/factory/run/__tests__/engine.gates-git-view.test.js.map",
       "dist/factory/run/__tests__/engine.gates-sandbox.builtin.test.d.ts",
       "dist/factory/run/__tests__/engine.gates-sandbox.builtin.test.d.ts.map",
       "dist/factory/run/__tests__/engine.gates-sandbox.builtin.test.js",
@@ -3646,10 +3646,6 @@
       "dist/factory/run/__tests__/git-hardening.test.d.ts.map",
       "dist/factory/run/__tests__/git-hardening.test.js",
       "dist/factory/run/__tests__/git-hardening.test.js.map",
-      "dist/factory/run/__tests__/git-view.test.d.ts",
-      "dist/factory/run/__tests__/git-view.test.d.ts.map",
-      "dist/factory/run/__tests__/git-view.test.js",
-      "dist/factory/run/__tests__/git-view.test.js.map",
       "dist/factory/run/__tests__/lane-commit.staging.test.d.ts",
       "dist/factory/run/__tests__/lane-commit.staging.test.d.ts.map",
       "dist/factory/run/__tests__/lane-commit.staging.test.js",
@@ -3794,10 +3790,6 @@
       "dist/factory/run/gates-driver.d.ts.map",
       "dist/factory/run/gates-driver.js",
       "dist/factory/run/gates-driver.js.map",
-      "dist/factory/run/git-view.d.ts",
-      "dist/factory/run/git-view.d.ts.map",
-      "dist/factory/run/git-view.js",
-      "dist/factory/run/git-view.js.map",
       "dist/factory/run/lane-commit.d.ts",
       "dist/factory/run/lane-commit.d.ts.map",
       "dist/factory/run/lane-commit.js",
@@ -20749,6 +20741,26 @@
         "path": "dist/copilot-run/__tests__/fake-sdk.js.map"
       },
       {
+        "id": "dist/copilot-run/__tests__/job.fail-closed.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/copilot-run/__tests__/job.fail-closed.test.d.ts"
+      },
+      {
+        "id": "dist/copilot-run/__tests__/job.fail-closed.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/copilot-run/__tests__/job.fail-closed.test.d.ts.map"
+      },
+      {
+        "id": "dist/copilot-run/__tests__/job.fail-closed.test.js",
+        "kind": "generated-dist",
+        "path": "dist/copilot-run/__tests__/job.fail-closed.test.js"
+      },
+      {
+        "id": "dist/copilot-run/__tests__/job.fail-closed.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/copilot-run/__tests__/job.fail-closed.test.js.map"
+      },
+      {
         "id": "dist/copilot-run/__tests__/job.large-tree.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/copilot-run/__tests__/job.large-tree.test.d.ts"
@@ -22809,26 +22821,6 @@
         "path": "dist/factory/run/__tests__/engine.gates-container.test.js.map"
       },
       {
-        "id": "dist/factory/run/__tests__/engine.gates-git-view.test.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/factory/run/__tests__/engine.gates-git-view.test.d.ts"
-      },
-      {
-        "id": "dist/factory/run/__tests__/engine.gates-git-view.test.d.ts.map",
-        "kind": "generated-dist",
-        "path": "dist/factory/run/__tests__/engine.gates-git-view.test.d.ts.map"
-      },
-      {
-        "id": "dist/factory/run/__tests__/engine.gates-git-view.test.js",
-        "kind": "generated-dist",
-        "path": "dist/factory/run/__tests__/engine.gates-git-view.test.js"
-      },
-      {
-        "id": "dist/factory/run/__tests__/engine.gates-git-view.test.js.map",
-        "kind": "generated-dist",
-        "path": "dist/factory/run/__tests__/engine.gates-git-view.test.js.map"
-      },
-      {
         "id": "dist/factory/run/__tests__/engine.gates-sandbox.builtin.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/factory/run/__tests__/engine.gates-sandbox.builtin.test.d.ts"
@@ -23507,26 +23499,6 @@
         "id": "dist/factory/run/__tests__/git-hardening.test.js.map",
         "kind": "generated-dist",
         "path": "dist/factory/run/__tests__/git-hardening.test.js.map"
-      },
-      {
-        "id": "dist/factory/run/__tests__/git-view.test.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/factory/run/__tests__/git-view.test.d.ts"
-      },
-      {
-        "id": "dist/factory/run/__tests__/git-view.test.d.ts.map",
-        "kind": "generated-dist",
-        "path": "dist/factory/run/__tests__/git-view.test.d.ts.map"
-      },
-      {
-        "id": "dist/factory/run/__tests__/git-view.test.js",
-        "kind": "generated-dist",
-        "path": "dist/factory/run/__tests__/git-view.test.js"
-      },
-      {
-        "id": "dist/factory/run/__tests__/git-view.test.js.map",
-        "kind": "generated-dist",
-        "path": "dist/factory/run/__tests__/git-view.test.js.map"
       },
       {
         "id": "dist/factory/run/__tests__/lane-commit.staging.test.d.ts",
@@ -24247,26 +24219,6 @@
         "id": "dist/factory/run/gates-driver.js.map",
         "kind": "generated-dist",
         "path": "dist/factory/run/gates-driver.js.map"
-      },
-      {
-        "id": "dist/factory/run/git-view.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/factory/run/git-view.d.ts"
-      },
-      {
-        "id": "dist/factory/run/git-view.d.ts.map",
-        "kind": "generated-dist",
-        "path": "dist/factory/run/git-view.d.ts.map"
-      },
-      {
-        "id": "dist/factory/run/git-view.js",
-        "kind": "generated-dist",
-        "path": "dist/factory/run/git-view.js"
-      },
-      {
-        "id": "dist/factory/run/git-view.js.map",
-        "kind": "generated-dist",
-        "path": "dist/factory/run/git-view.js.map"
       },
       {
         "id": "dist/factory/run/lane-commit.d.ts",
@@ -56539,6 +56491,11 @@
         "path": "src/copilot-run/__tests__/fake-sdk.ts"
       },
       {
+        "id": "src/copilot-run/__tests__/job.fail-closed.test.ts",
+        "kind": "src",
+        "path": "src/copilot-run/__tests__/job.fail-closed.test.ts"
+      },
+      {
         "id": "src/copilot-run/__tests__/job.large-tree.test.ts",
         "kind": "src",
         "path": "src/copilot-run/__tests__/job.large-tree.test.ts"
@@ -57164,11 +57121,6 @@
         "path": "src/factory/run/__tests__/engine.gates-container.test.ts"
       },
       {
-        "id": "src/factory/run/__tests__/engine.gates-git-view.test.ts",
-        "kind": "src",
-        "path": "src/factory/run/__tests__/engine.gates-git-view.test.ts"
-      },
-      {
         "id": "src/factory/run/__tests__/engine.gates-sandbox.builtin.test.ts",
         "kind": "src",
         "path": "src/factory/run/__tests__/engine.gates-sandbox.builtin.test.ts"
@@ -57337,11 +57289,6 @@
         "id": "src/factory/run/__tests__/git-hardening.test.ts",
         "kind": "src",
         "path": "src/factory/run/__tests__/git-hardening.test.ts"
-      },
-      {
-        "id": "src/factory/run/__tests__/git-view.test.ts",
-        "kind": "src",
-        "path": "src/factory/run/__tests__/git-view.test.ts"
       },
       {
         "id": "src/factory/run/__tests__/lane-commit.staging.test.ts",
@@ -57527,11 +57474,6 @@
         "id": "src/factory/run/gates-driver.ts",
         "kind": "src",
         "path": "src/factory/run/gates-driver.ts"
-      },
-      {
-        "id": "src/factory/run/git-view.ts",
-        "kind": "src",
-        "path": "src/factory/run/git-view.ts"
       },
       {
         "id": "src/factory/run/lane-commit.ts",
@@ -84951,6 +84893,36 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/copilot-run/__tests__/job.fail-closed.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/copilot-run/__tests__/job.fail-closed.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/copilot-run/__tests__/job.fail-closed.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/copilot-run/__tests__/job.fail-closed.test.ts",
+        "to": "src/copilot-run/__tests__/fake-sdk.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/copilot-run/__tests__/job.fail-closed.test.ts",
+        "to": "src/copilot-run/__tests__/fake-sdk.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/copilot-run/__tests__/job.fail-closed.test.ts",
+        "to": "src/copilot-run/job.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/copilot-run/__tests__/job.large-tree.test.ts",
         "to": "external:node:child_process",
         "kind": "imports"
@@ -91126,66 +91098,6 @@
         "kind": "imports"
       },
       {
-        "from": "src/factory/run/__tests__/engine.gates-git-view.test.ts",
-        "to": "external:node:child_process",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.gates-git-view.test.ts",
-        "to": "external:node:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.gates-git-view.test.ts",
-        "to": "external:node:os",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.gates-git-view.test.ts",
-        "to": "external:node:path",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.gates-git-view.test.ts",
-        "to": "external:vitest",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.gates-git-view.test.ts",
-        "to": "src/factory/run/__tests__/engine-local-harness.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.gates-git-view.test.ts",
-        "to": "src/factory/run/__tests__/engine-local-harness.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.gates-git-view.test.ts",
-        "to": "src/factory/run/__tests__/fake-lanes.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.gates-git-view.test.ts",
-        "to": "src/factory/run/engine.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.gates-git-view.test.ts",
-        "to": "src/factory/run/prepare.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.gates-git-view.test.ts",
-        "to": "src/factory/run/sandbox-exec.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.gates-git-view.test.ts",
-        "to": "src/ship/config.ts",
-        "kind": "imports"
-      },
-      {
         "from": "src/factory/run/__tests__/engine.gates-sandbox.builtin.test.ts",
         "to": "external:node:fs",
         "kind": "imports"
@@ -93186,51 +93098,6 @@
         "kind": "imports"
       },
       {
-        "from": "src/factory/run/__tests__/git-view.test.ts",
-        "to": "external:node:child_process",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/git-view.test.ts",
-        "to": "external:node:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/git-view.test.ts",
-        "to": "external:node:os",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/git-view.test.ts",
-        "to": "external:node:path",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/git-view.test.ts",
-        "to": "external:vitest",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/git-view.test.ts",
-        "to": "src/factory/run/git-view.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/git-view.test.ts",
-        "to": "src/factory/run/git-view.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/git-view.test.ts",
-        "to": "src/ship/exec.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/git-view.test.ts",
-        "to": "src/team/git-worktree.ts",
-        "kind": "imports"
-      },
-      {
         "from": "src/factory/run/__tests__/lane-commit.staging.test.ts",
         "to": "external:node:child_process",
         "kind": "imports"
@@ -94807,16 +94674,6 @@
       },
       {
         "from": "src/factory/run/engine.ts",
-        "to": "src/factory/run/git-view.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/engine.ts",
-        "to": "src/factory/run/git-view.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/engine.ts",
         "to": "src/factory/run/lane-commit.ts",
         "kind": "imports"
       },
@@ -95401,16 +95258,6 @@
         "kind": "type-imports"
       },
       {
-        "from": "src/factory/run/git-view.ts",
-        "to": "external:node:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/git-view.ts",
-        "to": "external:node:path",
-        "kind": "imports"
-      },
-      {
         "from": "src/factory/run/lane-commit.ts",
         "to": "external:node:crypto",
         "kind": "imports"
@@ -95812,11 +95659,6 @@
       },
       {
         "from": "src/factory/run/private-run.ts",
-        "to": "external:child_process",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/private-run.ts",
         "to": "external:fs",
         "kind": "imports"
       },
@@ -95829,11 +95671,6 @@
         "from": "src/factory/run/private-run.ts",
         "to": "src/factory/run/claims.ts",
         "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/private-run.ts",
-        "to": "src/factory/run/git-view.ts",
-        "kind": "type-imports"
       },
       {
         "from": "src/factory/run/private-run.ts",
@@ -95883,11 +95720,6 @@
       {
         "from": "src/factory/run/private-run.ts",
         "to": "src/team/git-worktree.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/private-run.ts",
-        "to": "src/utils/windows-search.ts",
         "kind": "imports"
       },
       {
@@ -133827,12 +133659,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 11090,
-      "edgeCount": 13793,
-      "importEdgeCount": 11326,
+      "nodeCount": 11080,
+      "edgeCount": 13771,
+      "importEdgeCount": 11309,
       "registerEdgeCount": 119
     }
   },
-  "inventorySha256": "862c7b04b169c307136eb422b27657e6e0039a17e42420376f6e393c19c88f39",
-  "manifestSha256": "a8c1d0d26962bb65bfdf3f1c80c004f9a0bd6159a6855323fa5633fb38faa566"
+  "inventorySha256": "cb72bfcd0a3c9d572bf14977218d11363c5fc854e2e015e0050b169769daedda",
+  "manifestSha256": "0082d51d6bc44909c8df43ec2dfbe481ede504e00a2d9ec42c05d1498b842c9f"
 }
