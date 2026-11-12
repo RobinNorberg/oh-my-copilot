@@ -8,7 +8,7 @@ import { spawnSync } from 'node:child_process';
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { defaultExec, type Exec } from '../../../ship/exec.js';
 import type { FactoryRunState } from '../state.js';
@@ -16,6 +16,18 @@ import { gitVersionProblem, printableKey, type UserRepoGuard } from '../private-
 import { guardChangedReason, IMPORT_REFUSED_GATE, PrivateRun, REPO_GUARD_GATE, resolveGateInstall, resolveRunLayout } from '../private-run.js';
 
 const T = 240_000;
+
+let unlinkFailure: Error | undefined;
+vi.mock('../prepare.js', async (importOriginal) => {
+  const real = await importOriginal<typeof import('../prepare.js')>();
+  return {
+    ...real,
+    unlinkNodeModules: (r: string, checkout: string) => {
+      if (unlinkFailure) throw unlinkFailure;
+      return real.unlinkNodeModules(r, checkout);
+    },
+  };
+});
 
 let dir: string;
 let emptyGlobal: string;
@@ -69,6 +81,7 @@ function publish(p: PrivateRun, sha: string, parents: string[], start: string, o
 const importRefs = () => g(root, ['for-each-ref', '--format=%(refname)', 'refs/omg-import/']);
 
 beforeEach(() => {
+  unlinkFailure = undefined;
   dir = mkdtempSync(join(tmpdir(), 'omg-private-run-'));
   emptyGlobal = join(dir, 'global.gitconfig');
   writeFileSync(emptyGlobal, '');
@@ -280,5 +293,19 @@ describe('PrivateRun', () => {
     p.resumeSweep('issue-7');
     expect(importRefs()).toBe('refs/omg-import/issue-8/1');
     expect(existsSync(join(p.layout.repoDir, '.trash-0123456789abcdef'))).toBe(false);
+  }, T);
+
+  it('warns once when the node_modules unlink fails and still removes the worktree', () => {
+    const warnings: string[] = [];
+    const p = PrivateRun.create({ root, omcRoot: join(root, '.omg'), slug: 'issue-7', repoUrl: 'https://github.com/o/r', userConfig: { factory: { run: { workDir: work } } }, ledgerDir: join(dir, 'ledger'), warn: (m) => warnings.push(m) }, base).run;
+    const wt = join(p.layout.runDir, 'wt-busy');
+    mkdirSync(wt, { recursive: true });
+    writeFileSync(join(wt, 'f.txt'), 'x');
+    unlinkFailure = Object.assign(new Error('EBUSY: resource busy or locked'), { code: 'EBUSY' });
+    p.removeWorktree(wt);
+    expect(existsSync(wt)).toBe(false);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain(wt);
+    expect(warnings[0]).toContain('EBUSY: resource busy or locked');
   }, T);
 });

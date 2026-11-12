@@ -384,7 +384,7 @@ export class PrivateRun {
   removeWorktree(path: string): void {
     if (existsSync(path)) {
       // M2 (review-490): a removal error is not fatal here: removeRunDir unlinks every link itself, never following one.
-      try { unlinkNodeModules(this.root, path); } catch { /* removeRunDir below */ }
+      try { unlinkNodeModules(this.root, path); } catch (e) { this.warn(`omg factory run: the node_modules links in ${path} could not be unlinked: ${e instanceof Error ? e.message : String(e)}`); }
       removeRunDir(path, this.layout.work);
     }
     const admin = join(this.repo.gitDir, 'worktrees');
