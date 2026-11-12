@@ -29,6 +29,7 @@ import { getProcessStartIdentitySync, isProcessAlive } from '../../platform/proc
 import { stripAnsi } from '../../utils/string-width.js';
 import type { CopilotRunSandboxState } from '../../copilot-run/sandbox.js';
 import { sameRepo } from '../../ship/config.js';
+import { isBuildOutputDir } from '../../ship/exec.js';
 import type { ShipVerdict } from '../../ship/state.js';
 import { PROGRESS_STAGES, type ForgeKind, type ProgressStage } from '../../forge/types.js';
 import { LOCAL_REMOTE } from '../../forge/local/mirror.js';
@@ -216,6 +217,12 @@ export interface FactoryRunState {
    * same value; a change mid-run parks at prepare-checks. Absent until then.
    */
   prepareChecks?: string[][] | 'auto';
+  /**
+   * The trusted ship.prepare.build this run first prepared with (`none` =
+   * unset), sealed like prepareChecks: a change mid-run parks at
+   * prepare-checks, and the merge rule accepts only these outputs.
+   */
+  prepareBuild?: { command: string[]; outputs: string[] } | 'none';
   repoUrl: string;
   base: string;
   branch: string;
@@ -553,6 +560,11 @@ function shapeProblem(s: Record<string, unknown>): string | null {
   const gateDetail = (s.gate as { detail?: unknown } | undefined)?.detail;
   if (gateDetail !== undefined && (!isStr(gateDetail) || gateDetail.length > GATE_DETAIL_MAX_CHARS)) return 'gate.detail';
   if (s.prepareChecks !== undefined && s.prepareChecks !== 'auto' && !(Array.isArray(s.prepareChecks) && s.prepareChecks.every((a) => Array.isArray(a) && a.length > 0 && a.every(isStr)))) return 'prepareChecks';
+  if (s.prepareBuild !== undefined && s.prepareBuild !== 'none') {
+    const b = s.prepareBuild as { command?: unknown; outputs?: unknown };
+    const strs = (v: unknown) => Array.isArray(v) && v.length > 0 && v.every(isStr);
+    if (typeof b !== 'object' || b === null || !strs(b.command) || !strs(b.outputs) || !(b.outputs as string[]).every(isBuildOutputDir)) return 'prepareBuild';
+  }
   if (s.trackerStage !== undefined && !(PROGRESS_STAGES as readonly unknown[]).includes(s.trackerStage)) return 'trackerStage';
   if (s.codingAgent !== undefined && (s.kind === 'ci-heal' || codingAgentRecordProblem(s.codingAgent) !== null)) return 'codingAgent';
   // The private layout comes whole: layout 2, its run dir and the engine's record, or none of them.

@@ -17,7 +17,7 @@
  * during the checks stays out of it. `omg ship merge` re-checks the content
  * of every engine commit anyway (readCommitsSinceReview).
  */
-import type { Exec, ExecResult } from './exec.js';
+import { BUILD_COMMIT_MESSAGE, type Exec, type ExecResult } from './exec.js';
 export type StepStatus = 'ok' | 'skipped' | 'failed';
 export interface PrepareStep {
     name: string;
@@ -53,7 +53,16 @@ export interface PrepareOptions {
      * base has (detectPrepareChecks). The inventory step is separate.
      */
     commands?: readonly PrepareCommand[];
-    /** Runs `commands`: the caller's raw Exec (the ship and factory guards allow only the built-in shapes). Default: exec. */
+    /**
+     * ship.prepare.build, its argv resolved by the caller like `commands`: run
+     * after the base merge and before the checks (through commandExec, or
+     * runCheck as kind `build`); only changes under `outputs` are committed
+     * (BUILD_COMMIT_MESSAGE), any other change fails prepare. Undefined = no build.
+     */
+    build?: PrepareCommand & {
+        outputs: readonly string[];
+    };
+    /** Runs `commands` and `build`: the caller's raw Exec (the ship and factory guards allow only the built-in shapes). Default: exec. */
     commandExec?: Exec;
     push?: boolean;
     /** Node binary for repo scripts (default process.execPath). */
@@ -73,6 +82,9 @@ export interface PrepareResult {
 export declare const INVENTORY_DIR = "inventory";
 export declare const INVENTORY_SCRIPT = "scripts/generate-inventory-graph.mjs";
 export declare const INVENTORY_COMMIT_MESSAGE = "chore(inventory): regenerate inventory graph baseline";
+export { BUILD_COMMIT_MESSAGE };
+/** The step a ship.prepare.build that fails, or changes files outside its outputs, fails. */
+export declare const PREPARE_BUILD_STEP = "build";
 /** A ship.prepare.checks argv, resolved to what runs or why it cannot start. */
 export type PrepareCommand = {
     argv: readonly string[];
@@ -142,8 +154,8 @@ export declare function selectGeneratorChecks(changed: readonly string[]): strin
 export interface PrepareCheckRun {
     /** The step it belongs to (a check's name, or `inventory`). */
     step: string;
-    /** configured: ship.prepare.checks (the caller's commandExec); built-in / inventory: `node <script>` (exec). */
-    kind: 'configured' | 'built-in' | 'inventory';
+    /** configured / build: ship.prepare.checks / ship.prepare.build (the caller's commandExec); built-in / inventory: `node <script>` (exec). */
+    kind: 'configured' | 'built-in' | 'inventory' | 'build';
     /** The configured argv, or the built-in's `node <script> ...` argv. */
     argv: readonly string[];
     exe: string;

@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 
+import { BUILD_COMMIT_MESSAGE } from '../../../ship/prepare.js';
 import { readShipState } from '../../../ship/state.js';
 import { cleanFactoryRun } from '../clean.js';
 import { checkoutPath } from '../prepare.js';
@@ -45,6 +46,45 @@ describe('prepare in the engine-owned checkout', () => {
     expect(h.calls.some((c) => c.includes('typescript/bin/tsc') || c.includes('eslint/bin/eslint.js'))).toBe(false);
     const ran = h.raw.find((r) => r.args.join(' ') === 'tools/check.mjs --strict')!;
     expect(ran.cmd).not.toMatch(/\.(cmd|bat)$/i);
+  });
+
+  it('ship.prepare.build runs before the checks; its dist output is a pushed housekeeping commit and merge still allows the head', async () => {
+    const gateConfig = () => ({ ...testGateConfig(undefined as never), config: { ...testGateConfig(undefined as never).config, prepareBuild: { command: ['node', 'tools/build.mjs'], outputs: ['dist'] } } });
+    h.node = (args) => {
+      if (args[0] === 'tools/build.mjs') {
+        mkdirSync(join(checkoutPath(h.root, ISSUE), 'dist'), { recursive: true });
+        writeFileSync(join(checkoutPath(h.root, ISSUE), 'dist', 'x.js'), 'export const x = 1;\n');
+      }
+      return { status: 0, stdout: '', stderr: '' };
+    };
+    const { done } = run([commitFile('src/greet.ts', 'export const greet = () => "hi";\n'), review('approve')], { gateConfig });
+    const out = await done;
+    expect(out.gate?.name, out.message).toBe('merge');
+    expect(h.calls.indexOf('node tools/build.mjs')).toBeLessThan(h.calls.indexOf('node node_modules/typescript/bin/tsc --noEmit'));
+    const state = readFactoryState(h.root, ISSUE)!;
+    const ship = readShipState(h.root, PR)!;
+    expect(state.head).toBe(remoteHead(h));
+    expect(ship.housekeepingCommits).toEqual([state.head]);
+    expect(gitIn(h.root, 'log', '-1', '--format=%s', state.head!)).toBe(BUILD_COMMIT_MESSAGE);
+    expect(gitIn(h.root, 'show', '--name-only', '--format=', state.head!)).toBe('dist/x.js');
+    expect(state.lanes.map((l) => l.kind)).toEqual(['implement', 'review']);
+    expect(out.mergeCommand).toBe(`gh pr merge ${PR} --admin --merge --match-head-commit ${state.head}`);
+  });
+
+  it('a ship.prepare.build that writes outside its outputs fails prepare: nothing is committed or pushed', async () => {
+    const gateConfig = () => ({ ...testGateConfig(undefined as never), config: { ...testGateConfig(undefined as never).config, prepareBuild: { command: ['node', 'tools/build.mjs'], outputs: ['dist'] } } });
+    h.node = (args) => {
+      if (args[0] === 'tools/build.mjs') writeFileSync(join(checkoutPath(h.root, ISSUE), 'src', 'greet.ts'), 'tampered\n');
+      return { status: 0, stdout: '', stderr: '' };
+    };
+    const { done } = run([commitFile('src/greet.ts', 'export const greet = () => "hi";\n'), review('approve')], { gateConfig });
+    const out = await done;
+    // A failed prepare step is the PR's: a ci-fix lane is due (no script for it here).
+    expect(out.message).toMatch(/ci-fix-failed: .*no script for lane/);
+    const state = readFactoryState(h.root, ISSUE)!;
+    expect(remoteHead(h)).toBe(state.lanes[0].endSha);
+    expect(readShipState(h.root, PR)!.housekeepingCommits).toEqual([]);
+    expect(h.calls.some((c) => c.includes('typescript/bin/tsc'))).toBe(false);
   });
 
   it('a checkout branch rewritten as a symref to main is refused before `worktree add -B`; main does not move', async () => {

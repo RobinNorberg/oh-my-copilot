@@ -27,6 +27,7 @@ import { getOmcRoot } from '../../lib/worktree-paths.js';
 import { getProcessStartIdentitySync, isProcessAlive } from '../../platform/process-utils.js';
 import { stripAnsi } from '../../utils/string-width.js';
 import { sameRepo } from '../../ship/config.js';
+import { isBuildOutputDir } from '../../ship/exec.js';
 import { PROGRESS_STAGES } from '../../forge/types.js';
 import { LOCAL_REMOTE } from '../../forge/local/mirror.js';
 import { codingAgentRecordProblem } from './coding-agent-lane.js';
@@ -232,6 +233,12 @@ function shapeProblem(s) {
         return 'gate.detail';
     if (s.prepareChecks !== undefined && s.prepareChecks !== 'auto' && !(Array.isArray(s.prepareChecks) && s.prepareChecks.every((a) => Array.isArray(a) && a.length > 0 && a.every(isStr))))
         return 'prepareChecks';
+    if (s.prepareBuild !== undefined && s.prepareBuild !== 'none') {
+        const b = s.prepareBuild;
+        const strs = (v) => Array.isArray(v) && v.length > 0 && v.every(isStr);
+        if (typeof b !== 'object' || b === null || !strs(b.command) || !strs(b.outputs) || !b.outputs.every(isBuildOutputDir))
+            return 'prepareBuild';
+    }
     if (s.trackerStage !== undefined && !PROGRESS_STAGES.includes(s.trackerStage))
         return 'trackerStage';
     if (s.codingAgent !== undefined && (s.kind === 'ci-heal' || codingAgentRecordProblem(s.codingAgent) !== null))
