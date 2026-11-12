@@ -68,6 +68,8 @@ export class FakeLanes implements LaneBackend {
   readonly cancelled: string[] = [];
   /** Called on every wait() that still reports `running`. */
   onRunningPoll: (remoteId: string) => void = () => {};
+  /** The result's lastEventAt (the session's last event); undefined = the backend cannot tell (no idle check). */
+  lastEventAt: (remoteId: string) => string | null | undefined = () => undefined;
   private readonly jobs = new Map<string, FakeJob>();
 
   /** `scripts` is consumed in start order; `runningPolls[i]` makes lane i report `running` that many times first. */
@@ -108,7 +110,9 @@ export class FakeLanes implements LaneBackend {
   private result(job: FakeJob, remoteId: string, state: LaneState): LaneResult {
     const terminal = state !== 'running';
     const o = job.outcome ?? {};
+    const lastEventAt = this.lastEventAt(remoteId);
     return {
+      ...(lastEventAt !== undefined ? { lastEventAt } : {}),
       state,
       branch: job.ctx.branch || null,
       pr: null,

@@ -37,6 +37,12 @@ export interface FactoryRunLimits {
   maxRunRequests?: number;
   /** Wall time of one lane (copilot_run timeoutMs; at most MAX_TIMEOUT_MS). */
   laneTimeoutMs: number;
+  /**
+   * No-progress timeout of one lane (factory.run.laneIdleMinutes): a running
+   * lane whose session emitted no event (tool call, message, usage) for this
+   * long is cancelled and ends `stalled`, a lane failure with the normal fresh retry.
+   */
+  laneIdleMs: number;
   /** Engine wall time across all invocations of one run. */
   maxRunWallTimeMs: number;
   /** Fresh retries of a failed lane per phase. */
@@ -54,6 +60,7 @@ export interface FactoryRunLimits {
 export const DEFAULT_FACTORY_RUN_LIMITS: Readonly<FactoryRunLimits> = Object.freeze({
   laneMaxCredits: RUNTIME_MIN_MAX_CREDITS,
   laneTimeoutMs: 30 * 60_000,
+  laneIdleMs: 15 * 60_000,
   maxRunWallTimeMs: 4 * 60 * 60_000,
   maxRetries: 1,
   maxLostRespawns: 1,
@@ -67,6 +74,7 @@ const KEYS = {
   laneMaxCredits: { field: 'laneMaxCredits', scale: 1, integer: false },
   maxRunCredits: { field: 'maxRunCredits', scale: 1, integer: false },
   laneTimeoutMinutes: { field: 'laneTimeoutMs', scale: 60_000, integer: false },
+  laneIdleMinutes: { field: 'laneIdleMs', scale: 60_000, integer: false },
   maxRunWallTimeMinutes: { field: 'maxRunWallTimeMs', scale: 60_000, integer: false },
   maxRetries: { field: 'maxRetries', scale: 1, integer: true },
   maxFixRounds: { field: 'maxFixRounds', scale: 1, integer: true },
@@ -138,6 +146,8 @@ export function resolveFactoryRunLimits(trustedUser: unknown, project: unknown):
   if (limits.laneTimeoutMs <= 0 || limits.laneTimeoutMs > MAX_TIMEOUT_MS) {
     throw new Error(`factory.run.laneTimeoutMinutes must be above 0 and at most ${MAX_TIMEOUT_MS / 60_000}`);
   }
+  // 0 would end every lane at its first poll; there is no "off" (a quiet lane past laneTimeoutMinutes ends anyway).
+  if (limits.laneIdleMs <= 0) throw new Error('factory.run.laneIdleMinutes must be above 0');
   assertLaneCreditCap(limits);
   // Every run needs at least two lanes (implement, then review): the first may spend a whole lane cap, and the next
   // lane cannot start with less than the runtime floor left, so a smaller run cap can park before review (dogfood F44).
