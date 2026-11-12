@@ -873,6 +873,8 @@ class FactoryEngine {
   private gatesAllowed?: string;
   /** factory.run.sandbox.gates, resolved once per trusted base commit. */
   private gatesModeCache?: { commit: string | undefined; mode: GatesSandboxMode; source: string; requireDeniedPaths: boolean; container?: GateContainerSettings };
+  /** The gate image's id (`sha256:...`) the last container run reported: base calibrations are keyed on it, not on the tag (L2, review-499). */
+  private containerImageId?: string;
   /** The one-per-run warning that the sandbox on this host cannot deny paths was given. */
   private warnedCredentialFilesReadable = false;
   /** Calibrations re-run in this invocation (a failing one is retried once per invocation). */
@@ -1284,7 +1286,12 @@ class FactoryEngine {
     const p = this.privateRun();
     // isolation "container" (gatesSandbox, user config): the runner uses the container, labelled with this run.
     const container = this.gatesModeCache?.container;
-    return this.o.gateSandbox!({ ...req, nodeModulesTarget: join(this.o.root, 'node_modules'), ...(p ? { mainRoot: this.o.root, jobRoot: this.gateJobRoot() } : {}), ...(container ? { container, runLabel: containerRunLabel(this.o.root, this.key) } : {}) });
+    const r = this.o.gateSandbox!({ ...req, nodeModulesTarget: join(this.o.root, 'node_modules'), ...(p ? { mainRoot: this.o.root, jobRoot: this.gateJobRoot() } : {}), ...(container ? { container, runLabel: containerRunLabel(this.o.root, this.key) } : {}) });
+    if (!container) return r;
+    return r.then((out) => {
+      if (out.ran && out.imageId) this.containerImageId = out.imageId;
+      return out;
+    });
   }
 
   /**
@@ -2957,8 +2964,8 @@ class FactoryEngine {
       removeWorkerWorktree(FACTORY_CHECKOUT_TEAM, checkoutWorker(this.key), this.o.root, { contained: [head], ...(gitLinks ? { gitLinks } : {}) });
       forgetWorktreeGitLinks(path);
     } catch (error) {
-      // A kept checkout keeps its tooling (the local gate runs in it).
-      linkNodeModules(this.o.root, path, this.o.warn);
+      // A kept checkout keeps its tooling (the local gate runs in it); with isolation "container" it never had the link.
+      if (!this.gatesModeCache?.container) linkNodeModules(this.o.root, path, this.o.warn);
       throw new FactoryStepError(`could not discard the engine's prepare checkout ${path}: ${errText(error)}`);
     }
     this.save((x) => {
@@ -3008,7 +3015,7 @@ class FactoryEngine {
       unlinkNodeModules(this.o.root, path);
       removeWorkerWorktree(FACTORY_CHECKOUT_TEAM, checkoutWorker(this.key), this.o.root, { contained: [...new Set(contained)] });
     } catch (error) {
-      linkNodeModules(this.o.root, path, this.o.warn);
+      if (!this.gatesModeCache?.container) linkNodeModules(this.o.root, path, this.o.warn);
       throw new FactoryStepError(`could not discard the engine's prepare checkout ${path}, which an older release made: ${errText(error)}. ${this.freshCheckoutRecovery()}`);
     }
     this.save((x) => {
@@ -3170,7 +3177,10 @@ class FactoryEngine {
         this.gate(install.name, install.reason, install.detail);
         return;
       }
-    } else linkNodeModules(this.o.root, path, this.o.warn);
+    } else if (!this.gatesSandbox(this.gateConfig(view)).container) {
+      // isolation "container" (C1, review-499): no link to your node_modules in a checkout the container's writes come back to.
+      linkNodeModules(this.o.root, path, this.o.warn);
+    }
     // The checkout's gitfile before any PR code ran: compared after each check, and its git dir named to engine git from then on.
     const gitLink = checkoutGitLink(path);
     if (!gitLink.gitDir) throw new FactoryStepError(`the new prepare checkout ${path} has no gitfile naming its git dir (${gitLink.hash})`);
@@ -3267,6 +3277,9 @@ class FactoryEngine {
       const isolation = resolveGateIsolation({ user, base });
       if (isolation.ignoredBase.length > 0) this.o.warn?.(`omg factory run: ignoring ${isolation.ignoredBase.join(' and ')} in the base .copilot/omg.jsonc: where the PR's code runs is set in your user config only`);
       resolved = { ...resolveGatesSandboxMode({ user, base, env: process.env }), requireDeniedPaths: resolveRequireDeniedPaths({ user, base }).require, ...(isolation.container ? { container: isolation.container } : {}) };
+      // L3 (review-499): "ack" (or the kill switch) means the OS sandbox is not used; with the container the PR's code
+      // still runs there, never plainly on your host after an ack.
+      if (resolved.container && resolved.mode === 'ack') resolved = { ...resolved, mode: 'enforced', source: `${resolved.source}; isolation "container" runs it in the gate container` };
     } catch (error) {
       throw new FactoryStepError(`factory.run.sandbox: ${errText(error)}`);
     }
@@ -3460,9 +3473,10 @@ class FactoryEngine {
    * on the base itself, or its calibration could not run.
    */
   private async calibrateGate(c: { argv: readonly string[]; exe: string; args: readonly string[]; kind?: PrepareCheckRun['kind'] }, baseSha: string, commonGitDir: string, timeoutMs: number, what: string, head: string): Promise<{ name: string; reason: string } | null> {
-    // A calibration holds for the isolation it ran in: the gate container's (and its image) is keyed apart from the OS sandbox's.
+    // A calibration holds for the isolation it ran in: the gate container's (and its image, by id once a run reported it)
+    // is keyed apart from the OS sandbox's.
     const container = this.gatesModeCache?.container;
-    const key = createHash('sha256').update(`${baseSha}\0${JSON.stringify(c.argv)}${container ? `\0container\0${container.runtime}\0${container.image}` : ''}`).digest('hex');
+    const key = createHash('sha256').update(`${baseSha}\0${JSON.stringify(c.argv)}${container ? `\0container\0${container.runtime}\0${this.containerImageId ?? container.image}` : ''}`).digest('hex');
     let cal = this.state.gateCalibration?.[key];
     if (!cal || (!cal.ok && !this.recalibrated.has(key))) {
       this.recalibrated.add(key);
@@ -3497,7 +3511,8 @@ class FactoryEngine {
       const env = { ...process.env, GIT_INDEX_FILE: index, GIT_NO_REPLACE_OBJECTS: '1' };
       runHostGit(this.o.root, ['read-tree', baseSha], undefined, env);
       runHostGit(this.o.root, ['checkout-index', '-a', '-f', `--prefix=${dir.replace(/\\/g, '/')}/`], undefined, env);
-      linkNodeModules(this.o.root, dir, this.o.warn);
+      // isolation "container": the container installs its own; your node_modules is never linked in (C1, review-499).
+      if (!this.gatesModeCache?.container) linkNodeModules(this.o.root, dir, this.o.warn);
       const r = await this.sandboxRun({ purpose: 'calibrate', argv: c.argv, exe: c.exe, args: calibrationArgs(c, dir), cwd: dir, commonGitDir, timeoutMs, ...(this.gatesModeCache?.requireDeniedPaths ? { requireDeniedPaths: true } : {}) });
       if (!r.ran) return { notStarted: r.reason };
       const tail = r.output.trim().slice(-2_000);

@@ -6,7 +6,7 @@
  * gate-container-unavailable, never the weaker sandbox and never the
  * --allow-unsandboxed-gates offer. A recording fake runner: no runtime.
  */
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -141,6 +141,57 @@ describe('isolation "container"', () => {
     const cleaned = cleanFactoryRun({ root: w.root, issue: LOCAL_ISSUE, exec: w.exec, ledgerDir: w.ledgerDir, owner, runUserConfig: userContainer, containerExecSync: execSync });
     expect(cleaned.removed.filter((r) => r.startsWith('docker '))).toEqual([`docker omg-gate-${label}-01234567`, `docker omg-gate-${label}-01234567`]);
     expect(calls.filter((c) => c.includes('rm')).map((c) => c.slice(1))).toEqual([['rm', '-f', `omg-gate-${label}-01234567`], ['volume', 'rm', '-f', `omg-gate-${label}-01234567`]]);
+  }, MULTI_RUN_MS);
+
+  it('C1: no link or tree of your node_modules in the checkout the container copies (prepare and base calibration); the default still links it', async () => {
+    w = localWorld();
+    writeFileSync(join(w.root, '.gitignore'), '.omg/\nnode_modules/\n');
+    gitIn(w.root, 'add', '.gitignore');
+    gitIn(w.root, 'commit', '-q', '-m', 'ignore node_modules');
+    mkdirSync(join(w.root, 'node_modules', 'vitest'), { recursive: true });
+    writeFileSync(join(w.root, 'node_modules', 'vitest', 'vitest.mjs'), 'real\n');
+    const seen: Array<{ purpose: string; nodeModules: boolean }> = [];
+    const s = sandbox((req) => {
+      seen.push({ purpose: req.purpose, nodeModules: existsSync(join(req.cwd, 'node_modules')) });
+      return req.purpose === 'gate' ? { ran: true, status: 1, output: 'FAIL', timedOut: false } : { ran: true, status: 0, output: '', timedOut: false };
+    });
+    await runFactoryEngine(opts(lanesFor(w, [greet(), review('approve')]), { gateSandbox: s.run, gateSandboxUserConfig: userContainer }));
+    expect(seen.map((x) => x.purpose)).toEqual(['prepare', 'gate', 'calibrate']);
+    expect(seen.every((x) => !x.nodeModules), JSON.stringify(seen)).toBe(true);
+    rmSync(w.dir, { recursive: true, force: true });
+    // Control: without container isolation the same world links it (the assertion above is not vacuous).
+    w = localWorld();
+    writeFileSync(join(w.root, '.gitignore'), '.omg/\nnode_modules/\n');
+    gitIn(w.root, 'add', '.gitignore');
+    gitIn(w.root, 'commit', '-q', '-m', 'ignore node_modules');
+    mkdirSync(join(w.root, 'node_modules', 'vitest'), { recursive: true });
+    const plain: boolean[] = [];
+    const p = sandbox((req) => { plain.push(existsSync(join(req.cwd, 'node_modules'))); return { ran: true, status: 0, output: '', timedOut: false }; });
+    await runFactoryEngine(opts(lanesFor(w, [greet(), review('approve')]), { gateSandbox: p.run, gateSandboxUserConfig: {} }));
+    expect(plain[0]).toBe(true);
+  }, MULTI_RUN_MS);
+
+  it('L3: gates "ack" with isolation "container" runs in the container, never plainly after an ack', async () => {
+    w = localWorld();
+    const s = sandbox();
+    const ack = { factory: { run: { sandbox: { isolation: 'container', gates: 'ack' } } } };
+    const out = await runFactoryEngine(opts(lanesFor(w, [greet(), review('approve')]), { gateSandbox: s.run, gateSandboxUserConfig: ack }));
+    expect(out.gate?.name, out.message).toBe('merge');
+    expect(s.reqs.map((r) => r.purpose)).toEqual(['prepare', 'gate']);
+    expect(s.reqs.every((r) => r.container !== undefined)).toBe(true);
+    expect(w.gateRuns).toEqual([]);
+  }, MULTI_RUN_MS);
+
+  it('L2: a base calibration is keyed on the image id the container reported, not on the tag', async () => {
+    w = localWorld();
+    let id = `sha256:${'a'.repeat(64)}`;
+    const s = sandbox((req) => (req.purpose === 'prepare' ? { ran: true, status: 0, output: '', timedOut: false, imageId: id } : { ran: true, status: 1, output: 'FAIL', timedOut: false, imageId: id }));
+    const first = await runFactoryEngine(opts(lanesFor(w, [greet(), review('approve')]), { gateSandbox: s.run, gateSandboxUserConfig: userContainer }));
+    expect(first.gate?.name, first.message).toBe(GATE_SANDBOX_INCOMPATIBLE_GATE);
+    expect(Object.keys(readFactoryState(w.root, LOCAL_ISSUE)!.gateCalibration ?? {})).toHaveLength(1);
+    id = `sha256:${'b'.repeat(64)}`;
+    await runFactoryEngine(opts(lanesFor(w, []), { gateSandbox: s.run, gateSandboxUserConfig: userContainer }));
+    expect(Object.keys(readFactoryState(w.root, LOCAL_ISSUE)!.gateCalibration ?? {})).toHaveLength(2);
   }, MULTI_RUN_MS);
 
   it('a malformed user value stops the step before anything runs', async () => {

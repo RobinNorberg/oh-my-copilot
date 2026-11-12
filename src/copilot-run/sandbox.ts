@@ -253,11 +253,13 @@ export interface GateContainerSettings {
   cpus: number;
   /** `--pids-limit`. */
   pidsLimit: number;
-  /** How long the dependency install (`npm ci`, with network) may run. */
+  /** How long each dependency install step (`npm ci`, then its scripts) may run. */
   installTimeoutMinutes: number;
+  /** The most a command's work volume may hold (e.g. "10g"); over it, a watchdog kills that command's container. */
+  diskLimit: string;
 }
 
-const CONTAINER_KEYS = ['runtime', 'image', 'memory', 'cpus', 'pidsLimit', 'installTimeoutMinutes'] as const;
+const CONTAINER_KEYS = ['runtime', 'image', 'memory', 'cpus', 'pidsLimit', 'installTimeoutMinutes', 'diskLimit'] as const;
 
 /** The default gate image: the host Node major on Debian bookworm slim. */
 export const defaultGateImage = (nodeVersion: string = process.versions.node): string => `node:${nodeVersion.split('.')[0]}-bookworm-slim`;
@@ -295,7 +297,8 @@ export function resolveGateIsolation(layers: Pick<GatesSandboxLayers, 'user' | '
     : typeof c.image === 'string' && /^[A-Za-z0-9][A-Za-z0-9._/:@-]{0,254}$/.test(c.image) ? c.image : bad('container.image', 'an image reference (letters, digits and . _ / : @ -, not starting with -)');
   const memory = c.memory === undefined ? '4g' : typeof c.memory === 'string' && /^[1-9]\d{0,5}[kmg]$/i.test(c.memory) ? c.memory : bad('container.memory', 'a size such as "4g" or "512m"');
   const cpus = c.cpus === undefined ? 2 : typeof c.cpus === 'number' && c.cpus > 0 && c.cpus <= 64 ? c.cpus : bad('container.cpus', 'a number above 0 and at most 64');
-  const container: GateContainerSettings = { runtime, image, memory, cpus, pidsLimit: int('pidsLimit', 64, 65_536, 1_024), installTimeoutMinutes: int('installTimeoutMinutes', 1, 120, 15) };
+  const diskLimit = c.diskLimit === undefined ? '10g' : typeof c.diskLimit === 'string' && /^[1-9]\d{0,5}[mg]$/i.test(c.diskLimit) ? c.diskLimit : bad('container.diskLimit', 'a size such as "10g" or "800m"');
+  const container: GateContainerSettings = { runtime, image, memory, cpus, pidsLimit: int('pidsLimit', 64, 65_536, 1_024), installTimeoutMinutes: int('installTimeoutMinutes', 1, 120, 15), diskLimit };
   return { isolation, ...(isolation === 'container' ? { container } : {}), ignoredBase };
 }
 

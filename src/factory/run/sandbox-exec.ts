@@ -124,7 +124,7 @@ export const CREDENTIAL_FILES_READABLE_NOTE = 'sandboxed; credential files reada
  * nothing of the PR's ran (the engine's gate-container-unavailable park).
  */
 export type SandboxRunResult =
-  | { ran: true; status: number; output: string; timedOut: boolean; credentialFilesReadable?: true }
+  | { ran: true; status: number; output: string; timedOut: boolean; credentialFilesReadable?: true; imageId?: string }
   | { ran: false; reason: string; started?: true; refused?: true; unavailable?: true };
 
 export type SandboxRunner = (req: SandboxRunRequest) => Promise<SandboxRunResult>;

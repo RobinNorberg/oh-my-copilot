@@ -5,47 +5,61 @@
  * Windows cannot deny paths under the user profile. Opt-in, user config
  * only (copilot-run/sandbox.ts resolveGateIsolation).
  *
- * One command is three or four containers on one named volume
+ * One command is a few containers on one named volume
  * (`omg-gate-<run>-<id>`, label `omg.run=<run>`), every one `--rm`, named
  * `omg-gate-<run>-<id>[-step]`, with `--cap-drop ALL`, `no-new-privileges`,
- * `--pids-limit`, `--memory`, `--cpus`, `--init` and `--pull never`:
+ * `--pids-limit`, `--memory`, `--cpus`, `--init`, `--pull never`, and its
+ * argv under `timeout -s KILL` (the container ends itself even when the
+ * runtime's kill does not get through):
  *
+ * 0. scan (host, before any container): the checkout may hold no link that
+ *    resolves outside it (or not at all) and no file with more than one
+ *    hard link, outside the exact `.git` and `node_modules` names the copy
+ *    leaves out. So the read-only bind below never presents anything from
+ *    outside the checkout, however the runtime's file sharing treats links.
  * 1. copy: the checkout, bind-mounted READ-ONLY at /in, is copied with tar
  *    into the volume (`.git` and every `node_modules` left out; links stay
- *    links, so one pointing outside the checkout dangles in the container).
- *    No network, no PR code runs. The only step with a host path mounted.
- * 2. install (when the checkout has a package.json that needs one):
- *    `npm ci` WITH network but without any credential: no user profile, no
- *    env but the fixed allowlist (PATH, HOME=/work/home, CI=1, the npm cache
- *    dir), no GH_TOKEN, no ssh agent, no runtime socket; read-only root fs,
- *    non-root user. The npm cache is a volume per lockfile hash
- *    (`omg-gate-cache-<hash>`): npm's cache is content-addressed and checked
- *    against the lockfile's integrity on read, so an install script that
- *    writes into it cannot change what a later install gets. Node modules
- *    themselves are never shared between commands.
+ *    links). No network, no PR code runs. The only step with a host path.
+ * 2. install (a package.json with a package-lock.json): only npm itself
+ *    gets network, never the PR's code:
+ *    a. `npm ci --ignore-scripts` on a per-command bridge network
+ *       (`omg-gate-<run>-<id>-net`, labelled, inter-container traffic off),
+ *       no credential: no user profile, no env but the fixed allowlist, no
+ *       GH_TOKEN, no ssh agent, no runtime socket; read-only root fs,
+ *       non-root user. The npm cache is a volume per lockfile hash
+ *       (`omg-gate-cache-<hash>`) only when every locked package comes from
+ *       the npm registry with an `integrity`; a lockfile with an entry
+ *       without one uses a fresh cache inside the command's own volume, and
+ *       one resolved from anywhere else (git, a tarball URL, a file) is
+ *       unavailable. No code of the PR runs while the shared cache is
+ *       mounted, so it holds only what npm verified.
+ *    b. the install scripts (`npm rebuild`, then the root's lifecycle
+ *       scripts in npm ci's order) with `--network none` and no cache.
+ *    Node modules themselves are never shared between commands.
  * 3. run: the command with `--network none`, same hardening, in /work/src.
  *    Its merged output keeps only a bounded tail; exit codes map as the OS
  *    sandbox's: 0 pass, other failure, a timeout kills only this container
  *    (status 124, timedOut). The runtime's own error (125) or a signal is
- *    no verdict, never a pass.
+ *    no verdict, never a pass. While 2 and 3 run, a watchdog measures the
+ *    work volume (`du`, from a separate read-only container) and kills the
+ *    step's container when it holds more than container.diskLimit.
  * 4. copy back (a prepare check that passed): the volume's tree comes back
  *    as a tar stream and only regular files are written into the checkout,
- *    after every path was checked (no `..`, no absolute path, no write
- *    through a host link, no link, hardlink or device from the container);
- *    one problem and nothing is written (no verdict).
+ *    after every path was checked (applyCopyBack); one problem and nothing
+ *    is written (no verdict).
  *
- * The volume is removed after the command; `omg factory run clean` removes
- * what a killed engine left (containers and volumes by this run's label
- * only). A missing runtime, daemon or image, or a project the container
- * cannot install (no npm lockfile), is `unavailable`: the engine parks at
- * gate-container-unavailable naming the fix, never falls back to the weaker
- * sandbox. Image pulls are announced before they start.
+ * The step containers, the network and the volume are removed after the
+ * command; `omg factory run clean` removes what a killed engine left (by
+ * this run's label and name prefix only). A missing runtime, daemon or
+ * image, or a project the container cannot install, is `unavailable`: the
+ * engine parks at gate-container-unavailable naming the fix, never falls
+ * back to the weaker sandbox. Image pulls are announced before they start.
  */
 
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
-import { chmodSync, lstatSync, mkdirSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
-import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { chmodSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import type { GateContainerSettings } from '../../copilot-run/sandbox.js';
 import { redactGateOutput, SANDBOX_OUTPUT_TAIL_CHARS, type SandboxRunRequest, type SandboxRunResult } from './sandbox-exec.js';
 import { runSlug, type FactoryRunKey } from './state.js';
@@ -54,28 +68,39 @@ import { runSlug, type FactoryRunKey } from './state.js';
 export const GATE_CONTAINER_UNAVAILABLE_GATE = 'gate-container-unavailable';
 
 /** What the gate-sandbox-incompatible park of a base calibration in the container tells the human to do. */
-export const CONTAINER_INCOMPATIBLE_ADVICE = 'Your gate fails in the gate container on the base: there it runs with no network, no git dir, as a non-root user on a read-only root (only /tmp, the checkout and HOME writable), with the dependencies npm ci installs from your lockfile. Make the gate work there (or pick another factory.run.sandbox.container.image), or set factory.run.sandbox.isolation "copilot" in your user config';
+export const CONTAINER_INCOMPATIBLE_ADVICE = 'Your gate fails in the gate container on the base: there it runs with no network, no git dir, as a non-root user on a read-only root (only /tmp, the checkout and HOME writable), with the dependencies npm ci installs from your lockfile and their install scripts run without network. Make the gate work there (or pick another factory.run.sandbox.container.image), or set factory.run.sandbox.isolation "copilot" in your user config';
 
-/** Prefix of every container and volume this module makes; nothing else is ever removed. */
+/** Prefix of every container, network and volume this module makes; nothing else is ever removed. */
 export const CONTAINER_NAME_PREFIX = 'omg-gate-';
 export const RUN_LABEL = 'omg.run';
 const GATE_LABEL = 'omg.gate';
+const CACHE_LABEL = 'omg.cache';
 
 /** The fixed environment of the install and run containers: nothing of the engine's env passes. */
 export const CONTAINER_PATH = '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin';
 const CONTAINER_USER = '1000:1000';
 const WORK = '/work';
 const SRC = `${WORK}/src`;
+/** The only registry the install talks to (forced over a committed .npmrc), and the hosts a locked package may come from. */
+const NPM_REGISTRY = 'https://registry.npmjs.org/';
+const REGISTRY_PREFIXES = [NPM_REGISTRY, 'https://registry.yarnpkg.com/'];
 
 const PROBE_TIMEOUT_MS = 20_000;
 const PULL_TIMEOUT_MS = 15 * 60_000;
 const COPY_TIMEOUT_MS = 10 * 60_000;
 const KILL_TIMEOUT_MS = 30_000;
+/** The in-container `timeout -s KILL` fires this long after the engine's own timer (which kills by name first). */
+const IN_CONTAINER_GRACE_S = 30;
+/** How often the disk watchdog measures the work volume. */
+const DISK_WATCH_MS = 10_000;
 /** The combined output tail kept of any runtime call. */
 const OUTPUT_TAIL_BYTES = 64 * 1024;
 /** Copy back: the largest tar stream, and the most entries, read from the volume. */
 export const COPY_BACK_MAX_BYTES = 256 * 1024 * 1024;
 export const COPY_BACK_MAX_ENTRIES = 100_000;
+/** The scan before the copy: the most entries it walks. */
+const SCAN_MAX_ENTRIES = 200_000;
+const LOCKFILE_MAX_BYTES = 64 * 1024 * 1024;
 
 export interface ContainerExecResult {
   /** The runtime CLI's exit code; null on a signal or when it did not start. */
@@ -112,6 +137,8 @@ export interface ContainerGateDeps {
   platform?: NodeJS.Platform;
   /** The command's unique part of the names (default 8 random hex). */
   id?: () => string;
+  /** The disk watchdog's interval (default DISK_WATCH_MS). */
+  diskWatchMs?: number;
 }
 
 export const defaultContainerExec: ContainerExec = (bin, args, o) => new Promise((done) => {
@@ -196,7 +223,62 @@ export function containerEnvArgs(extra: Readonly<Record<string, string>> = {}): 
   return Object.entries(env).flatMap(([k, v]) => ['-e', `${k}=${v}`]);
 }
 
-export type InstallPlan = { kind: 'none' } | { kind: 'npm-ci'; lockHash: string } | { kind: 'unsupported'; reason: string };
+/** `argv` under coreutils `timeout -s KILL`: the container ends itself `IN_CONTAINER_GRACE_S` after the engine's timer. */
+export function inContainerLimit(timeoutMs: number, argv: readonly string[]): string[] {
+  return ['timeout', '-s', 'KILL', `${Math.ceil(timeoutMs / 1000) + IN_CONTAINER_GRACE_S}s`, ...argv];
+}
+
+/** A size as container.diskLimit gives it ("10g", "800m") in bytes. */
+export function sizeBytes(size: string): number {
+  const m = /^(\d+)([mg])$/i.exec(size);
+  if (!m) throw new Error(`not a size: ${size}`);
+  return Number(m[1]) * (m[2].toLowerCase() === 'g' ? 1024 ** 3 : 1024 ** 2);
+}
+
+export type InstallPlan = { kind: 'none' } | { kind: 'npm-ci'; lockHash: string; sharedCache: boolean } | { kind: 'unsupported'; reason: string };
+
+/**
+ * Whether the lockfile's packages may share the npm cache: every locked
+ * package from the npm registry with an `integrity` ('shared'); one without
+ * an integrity ('private': a fresh cache in the command's volume); one
+ * resolved from anywhere else (git, a tarball URL, a file) refuses (its
+ * fetch is not checked by an integrity and git is not in the image).
+ */
+export function lockfileCachePolicy(lock: unknown): 'shared' | 'private' | { refuse: string } {
+  if (!lock || typeof lock !== 'object' || Array.isArray(lock)) return { refuse: 'the lockfile is not a JSON object' };
+  const outside = { refuse: 'the lockfile has a package that does not come from the npm registry (git, a tarball URL or a file); the gate container installs registry packages only' };
+  let integrity = true;
+  const check = (e: Record<string, unknown>, version?: unknown): boolean => {
+    if (typeof e.resolved === 'string' && !REGISTRY_PREFIXES.some((p) => (e.resolved as string).startsWith(p))) return false;
+    if (typeof version === 'string' && /^[a-z+]+:/i.test(version) && !version.startsWith('npm:')) return false;
+    if (typeof e.integrity !== 'string' || e.integrity === '') integrity = false;
+    return true;
+  };
+  const packages = (lock as { packages?: unknown }).packages;
+  if (packages && typeof packages === 'object' && !Array.isArray(packages)) {
+    for (const [key, raw] of Object.entries(packages as Record<string, unknown>)) {
+      if (key === '' || !raw || typeof raw !== 'object') continue;
+      const e = raw as Record<string, unknown>;
+      // A workspace's own folder, a workspace link, a bundled dependency: nothing is fetched for it.
+      if (!key.includes('node_modules/') || e.link === true || e.inBundle === true) continue;
+      if (!check(e)) return outside;
+    }
+    return integrity ? 'shared' : 'private';
+  }
+  // lockfileVersion 1: nested `dependencies`.
+  const walk = (deps: unknown, depth: number): boolean => {
+    if (!deps || typeof deps !== 'object' || depth > 64) return true;
+    for (const raw of Object.values(deps as Record<string, unknown>)) {
+      if (!raw || typeof raw !== 'object') continue;
+      const e = raw as Record<string, unknown>;
+      if (e.bundled === true) continue;
+      if (!check(e, e.version) || !walk(e.dependencies, depth + 1)) return false;
+    }
+    return true;
+  };
+  if (!walk((lock as { dependencies?: unknown }).dependencies, 0)) return outside;
+  return integrity ? 'shared' : 'private';
+}
 
 /** What the checkout needs installed: read through lstat (a linked manifest or lockfile is not followed on the host). */
 export function installPlan(checkout: string): InstallPlan {
@@ -205,7 +287,15 @@ export function installPlan(checkout: string): InstallPlan {
   };
   if (!regular('package.json')) return { kind: 'none' };
   for (const lock of ['npm-shrinkwrap.json', 'package-lock.json']) {
-    if (regular(lock)) return { kind: 'npm-ci', lockHash: createHash('sha256').update(readFileSync(join(checkout, lock))).digest('hex').slice(0, 16) };
+    if (!regular(lock)) continue;
+    const path = join(checkout, lock);
+    if (lstatSync(path).size > LOCKFILE_MAX_BYTES) return { kind: 'unsupported', reason: `${lock} is larger than the gate container reads` };
+    const bytes = readFileSync(path);
+    let json: unknown;
+    try { json = JSON.parse(bytes.toString('utf8')); } catch { return { kind: 'unsupported', reason: `${lock} is not valid JSON` }; }
+    const policy = lockfileCachePolicy(json);
+    if (typeof policy === 'object') return { kind: 'unsupported', reason: policy.refuse };
+    return { kind: 'npm-ci', lockHash: createHash('sha256').update(bytes).digest('hex').slice(0, 16), sharedCache: policy === 'shared' };
   }
   let pkg: Record<string, unknown> = {};
   try { pkg = JSON.parse(readFileSync(join(checkout, 'package.json'), 'utf8')) as Record<string, unknown>; } catch { /* the container's npm reports it */ }
@@ -252,6 +342,59 @@ const COPY_SCRIPT = [
 ].join('; ');
 
 /**
+ * The install scripts npm ci would have run, without network (fixed text):
+ * the dependencies' (npm rebuild), then the root's lifecycle scripts in npm
+ * ci's order, each alone (`--ignore-scripts` keeps npm run from adding the
+ * pre/post scripts a second time).
+ */
+const SCRIPTS_SCRIPT = [
+  'set -e',
+  'npm rebuild --foreground-scripts',
+  'for s in preinstall install postinstall prepublish preprepare prepare postprepare; do npm run --if-present --ignore-scripts "$s"; done',
+].join('; ');
+
+/**
+ * The scan before the copy (fixed-text problem, never a name: the names are
+ * the PR's): a link that resolves outside the checkout or not at all, or a
+ * file with more than one hard link, outside the exact `.git` and
+ * `node_modules` names tar leaves out. Null when the checkout may be bound.
+ */
+export function checkoutCopyProblem(checkout: string): string | null {
+  let root: string;
+  try { root = realpathSync.native(checkout); } catch { return 'the checkout could not be resolved'; }
+  let seen = 0;
+  const inside = (p: string) => samePathOrUnder(p, root);
+  const walk = (dir: string): string | null => {
+    for (const name of readdirSync(dir)) {
+      if (name === '.git' || name === 'node_modules') continue;
+      if (++seen > SCAN_MAX_ENTRIES) return 'the checkout has more files than the gate container copies';
+      const path = join(dir, name);
+      const st = lstatSync(path);
+      if (st.isSymbolicLink()) {
+        let target: string;
+        try { target = realpathSync.native(path); } catch { return 'the checkout has a link whose target does not exist'; }
+        if (!inside(target)) return 'the checkout has a link (a symbolic link or junction) that points outside it';
+        continue;
+      }
+      if (st.isDirectory()) {
+        const p = walk(path);
+        if (p) return p;
+      } else if (st.isFile() && st.nlink > 1) return 'the checkout has a file with more than one hard link';
+    }
+    return null;
+  };
+  try { return walk(root); } catch { return 'the checkout could not be listed'; }
+}
+
+/** `p` is `root` or under it (case-insensitively on win32, where realpath can differ in case only). */
+function samePathOrUnder(p: string, root: string): boolean {
+  const norm = (x: string) => (process.platform === 'win32' ? x.toLowerCase() : x);
+  const a = norm(p);
+  const b = norm(root);
+  return a === b || a.startsWith(b.endsWith(sep) ? b : b + sep);
+}
+
+/**
  * Run one request in a container. Never throws. `unavailable`: nothing of the
  * PR ran and the container path cannot run it (no runtime, daemon or image,
  * an unsupported project); the engine parks at gate-container-unavailable.
@@ -267,76 +410,153 @@ export async function runContainerGate(req: SandboxRunRequest, s: GateContainerS
     return { ran: true, status: 0, output: 'gate container: dependencies are installed in the container per command', timedOut: false };
   }
   if (!/^[a-z0-9-]{1,60}$/.test(runLabel)) return unavailable(`the run label ${JSON.stringify(runLabel)} is not [a-z0-9-]`);
+  let diskLimit: number;
+  try { diskLimit = sizeBytes(s.diskLimit); } catch { return unavailable(`factory.run.sandbox.container.diskLimit ${JSON.stringify(s.diskLimit)} is not a size`); }
   const probe = await deps.exec(bin, ['version', '--format', '{{.Server.Version}}'], { timeoutMs: PROBE_TIMEOUT_MS });
   if (probe.spawnError !== undefined) return unavailable(`the container runtime ${bin} is not installed or not on PATH (${probe.spawnError}); install it, ${switchBack}`);
   if (probe.status !== 0) return unavailable(`the container runtime ${bin} does not answer (${firstLine(probe.tail) || `exit ${probe.status}`}); start ${bin === 'docker' ? 'Docker Desktop or the docker daemon' : 'the podman machine or service'}, ${switchBack}`);
-  const image = await deps.exec(bin, ['image', 'inspect', '--format', '{{.Id}}', s.image], { timeoutMs: PROBE_TIMEOUT_MS });
+  const inspectImage = () => deps.exec(bin, ['image', 'inspect', '--format', '{{.Id}}', s.image], { timeoutMs: PROBE_TIMEOUT_MS });
+  let image = await inspectImage();
   if (image.status !== 0) {
     log(`omg factory run: pulling the gate image ${s.image} with ${bin} (factory.run.sandbox.container.image); pin a digest there to fix what runs`);
     const pulled = await deps.exec(bin, ['pull', s.image], { timeoutMs: PULL_TIMEOUT_MS });
     if (pulled.status !== 0) return unavailable(`the gate image ${s.image} is not present and ${bin} pull failed (${firstLine(lastLines(pulled.tail)) || `exit ${pulled.status}`}); pull it yourself, set factory.run.sandbox.container.image, ${switchBack}`);
+    image = await inspectImage();
   }
+  const imageId = /^(sha256:[0-9a-f]{64})$/m.exec(image.tail.trim())?.[1];
   const plan = installPlan(req.cwd);
   if (plan.kind === 'unsupported') return unavailable(`${plan.reason}; ${switchBack}`);
+  const scan = checkoutCopyProblem(req.cwd);
+  if (scan) return noVerdict(`${scan}, so it is not copied into the gate container; nothing is counted`);
 
   const id = (deps.id ?? (() => randomBytes(4).toString('hex')))();
   const name = `${CONTAINER_NAME_PREFIX}${runLabel}-${id}`;
   const volume = name;
-  const cache = plan.kind === 'npm-ci' ? `${CONTAINER_NAME_PREFIX}cache-${plan.lockHash}` : undefined;
+  const network = `${name}-net`;
+  const cache = plan.kind === 'npm-ci' && plan.sharedCache ? `${CONTAINER_NAME_PREFIX}cache-${plan.lockHash}` : undefined;
   const labels = ['--label', `${RUN_LABEL}=${runLabel}`, '--label', `${GATE_LABEL}=1`];
   const harden = hardeningArgs(s);
   const work = ['--mount', mountArg(['type=volume', `source=${volume}`, `target=${WORK}`])];
-  const kill = (container: string) => async () => { await deps.exec(bin, ['kill', container], { timeoutMs: KILL_TIMEOUT_MS }); };
+  const workRo = ['--mount', mountArg(['type=volume', `source=${volume}`, `target=${WORK}`, 'readonly'])];
+  const started: string[] = [];
   let volumeMade = false;
+  let networkMade = false;
+  const ran = (o: Omit<Extract<SandboxRunResult, { ran: true }>, 'ran'>): SandboxRunResult => ({ ran: true, ...o, ...(imageId ? { imageId } : {}) });
+  const removeNetwork = async (): Promise<void> => {
+    if (!networkMade) return;
+    const rm = await deps.exec(bin, ['network', 'rm', network], { timeoutMs: PROBE_TIMEOUT_MS }).catch(() => null);
+    if (rm?.status === 0) networkMade = false;
+  };
+
+  /** One step container: its argv under the in-container limit, killed by name at the engine's timeout. */
+  const step = (container: string, opts: readonly string[], argv: readonly string[], timeoutMs: number, full?: number) => {
+    started.push(container);
+    return deps.exec(bin, ['run', '--name', container, ...opts, s.image, ...inContainerLimit(timeoutMs, argv)], {
+      timeoutMs,
+      ...(full !== undefined ? { full } : {}),
+      onTimeout: async () => {
+        await deps.exec(bin, ['kill', container], { timeoutMs: KILL_TIMEOUT_MS }).catch(() => null);
+        await deps.exec(bin, ['rm', '-f', container], { timeoutMs: KILL_TIMEOUT_MS }).catch(() => null);
+      },
+    });
+  };
+  /** The disk watchdog around one step: `du` of the work volume from a read-only container; over the limit kills only `container`. */
+  const watched = async (container: string, run: () => Promise<ContainerExecResult>): Promise<ContainerExecResult & { overDisk?: true }> => {
+    let stopped = false;
+    let over = false;
+    let timer: NodeJS.Timeout | undefined;
+    let inflight: Promise<void> = Promise.resolve();
+    const tick = () => {
+      inflight = (async () => {
+        if (stopped) return;
+        const duName = `${container}-du`;
+        if (!started.includes(duName)) started.push(duName);
+        const du = await deps.exec(bin, [
+          'run', '--name', duName, ...labels, ...harden, '--network', 'none',
+          // root without DAC override: only DAC_READ_SEARCH, so a dir the PR made unreadable is still counted.
+          '--user', '0:0', '--cap-add', 'DAC_READ_SEARCH', '--read-only', ...workRo,
+          s.image, ...inContainerLimit(PROBE_TIMEOUT_MS, ['du', '-sxk', WORK]),
+        ], { timeoutMs: PROBE_TIMEOUT_MS + 2 * IN_CONTAINER_GRACE_S * 1000 }).catch(() => null);
+        const kb = du?.status === 0 ? Number(/^(\d+)\s+\/work\s*$/m.exec(du.tail)?.[1]) : NaN;
+        if (!stopped && Number.isFinite(kb) && kb * 1024 > diskLimit) {
+          over = true;
+          await deps.exec(bin, ['kill', container], { timeoutMs: KILL_TIMEOUT_MS }).catch(() => null);
+          await deps.exec(bin, ['rm', '-f', container], { timeoutMs: KILL_TIMEOUT_MS }).catch(() => null);
+          return;
+        }
+        if (!stopped) timer = setTimeout(tick, deps.diskWatchMs ?? DISK_WATCH_MS);
+      })();
+    };
+    timer = setTimeout(tick, deps.diskWatchMs ?? DISK_WATCH_MS);
+    try {
+      const r = await run();
+      return over ? { ...r, overDisk: true } : r;
+    } finally {
+      stopped = true;
+      clearTimeout(timer);
+      await inflight;
+    }
+  };
+  const overDisk = (what: string, r: ContainerExecResult) => ran({ status: 1, output: tail(`${r.tail.trim()}\n${what} in the gate container used more than factory.run.sandbox.container.diskLimit (${s.diskLimit}) and was stopped`), timedOut: false });
+
   try {
     const made = await deps.exec(bin, ['volume', 'create', ...labels, volume], { timeoutMs: PROBE_TIMEOUT_MS });
     if (made.status !== 0) return unavailable(`${bin} could not create the gate volume (${firstLine(made.tail) || `exit ${made.status}`}); check the runtime's disk, ${switchBack}`);
     volumeMade = true;
     if (cache) {
-      const c = await deps.exec(bin, ['volume', 'create', '--label', `${GATE_LABEL}=1`, '--label', 'omg.cache=npm', cache], { timeoutMs: PROBE_TIMEOUT_MS });
-      if (c.status !== 0) return unavailable(`${bin} could not create the npm cache volume (${firstLine(c.tail) || `exit ${c.status}`}); ${switchBack}`);
+      const problem = await ensureCacheVolume(deps.exec, bin, cache);
+      if (problem) return unavailable(`${problem}; ${switchBack}`);
     }
     const cacheMount = cache ? ['--mount', mountArg(['type=volume', `source=${cache}`, `target=/cache`])] : [];
 
     // 1. copy: root only for tar's chown; the checkout read-only; no network; no PR code runs.
-    const copy = await deps.exec(bin, [
-      'run', '--name', `${name}-copy`, ...labels, ...harden, '--network', 'none',
+    const copy = await step(`${name}-copy`, [
+      ...labels, ...harden, '--network', 'none',
       '--user', '0:0', '--cap-add', 'CHOWN', '--cap-add', 'DAC_OVERRIDE', '--cap-add', 'FOWNER',
       '--read-only', '--mount', mountArg(['type=bind', `source=${resolve(req.cwd)}`, 'target=/in', 'readonly']), ...work, ...cacheMount,
-      s.image, 'sh', '-c', COPY_SCRIPT,
-    ], { timeoutMs: COPY_TIMEOUT_MS, onTimeout: kill(`${name}-copy`) });
+    ], ['sh', '-c', COPY_SCRIPT], COPY_TIMEOUT_MS);
     if (copy.status !== 0) return noVerdict(`copying the checkout into the gate container failed (exit ${copy.status ?? 'none'}${copy.timedOut ? ', timed out' : ''}); nothing is counted`);
 
     const runBase = [...labels, ...harden, '--user', CONTAINER_USER, '--read-only', '--tmpfs', '/tmp:rw,exec,nosuid,nodev,size=1g', ...work, '-w', SRC];
-    // 2. install: network on, no credential, the npm cache volume.
-    if (cache) {
+    const ownCache = { npm_config_cache: `${WORK}/home/.npm` };
+    if (plan.kind === 'npm-ci') {
       const timeoutMs = s.installTimeoutMinutes * 60_000;
-      const inst = await deps.exec(bin, [
-        'run', '--name', `${name}-install`, ...runBase, ...cacheMount, ...containerEnvArgs({ npm_config_cache: '/cache/npm' }),
-        s.image, 'npm', 'ci',
-      ], { timeoutMs, onTimeout: kill(`${name}-install`) });
-      if (inst.timedOut) return { ran: true, status: 124, output: tail(`${inst.tail.trim()}\nthe dependency install (npm ci) in the gate container timed out after ${s.installTimeoutMinutes} min`), timedOut: true };
+      // 2a. npm itself, with network on our own bridge (no other container on it, inter-container traffic off); no PR code runs.
+      const net = await deps.exec(bin, ['network', 'create', ...labels, ...(bin === 'docker' ? ['--driver', 'bridge', '-o', 'com.docker.network.bridge.enable_icc=false'] : ['-o', 'isolate=true']), network], { timeoutMs: PROBE_TIMEOUT_MS });
+      if (net.status !== 0) return unavailable(`${bin} could not create the gate install network (${firstLine(net.tail) || `exit ${net.status}`}); ${switchBack}`);
+      networkMade = true;
+      const fetchName = `${name}-install`;
+      const inst = await watched(fetchName, () => step(fetchName, [
+        ...runBase, '--network', network, ...cacheMount,
+        ...containerEnvArgs({ ...(cache ? { npm_config_cache: '/cache/npm' } : ownCache), npm_config_registry: NPM_REGISTRY }),
+      ], ['npm', 'ci', '--ignore-scripts'], timeoutMs));
+      await removeNetwork();
+      if (inst.overDisk) return overDisk('the dependency install (npm ci)', inst);
+      if (inst.timedOut) return ran({ status: 124, output: tail(`${inst.tail.trim()}\nthe dependency install (npm ci) in the gate container timed out after ${s.installTimeoutMinutes} min`), timedOut: true });
       if (inst.status === null || inst.status === 125) return noVerdict(`the container runtime failed while the dependency install ran (exit ${inst.status ?? 'none'}); nothing is counted`);
-      if (inst.status !== 0) return { ran: true, status: inst.status, output: tail(`${inst.tail.trim()}\nthe dependency install (npm ci) in the gate container failed (exit ${inst.status})`), timedOut: false };
+      if (inst.status !== 0) return ran({ status: inst.status, output: tail(`${inst.tail.trim()}\nthe dependency install (npm ci) in the gate container failed (exit ${inst.status})`), timedOut: false });
+      // 2b. the install scripts (the PR's code and its dependencies'): no network, no shared cache.
+      const scriptsName = `${name}-scripts`;
+      const scripts = await watched(scriptsName, () => step(scriptsName, [...runBase, '--network', 'none', ...containerEnvArgs(ownCache)], ['sh', '-c', SCRIPTS_SCRIPT], timeoutMs));
+      if (scripts.overDisk) return overDisk('the install scripts', scripts);
+      if (scripts.timedOut) return ran({ status: 124, output: tail(`${scripts.tail.trim()}\nthe install scripts in the gate container timed out after ${s.installTimeoutMinutes} min`), timedOut: true });
+      if (scripts.status === null || scripts.status === 125) return noVerdict(`the container runtime failed while the install scripts ran (exit ${scripts.status ?? 'none'}); nothing is counted`);
+      if (scripts.status !== 0) return ran({ status: scripts.status, output: tail(`${scripts.tail.trim()}\nthe install scripts (npm rebuild and the root's install scripts, no network) in the gate container failed (exit ${scripts.status})`), timedOut: false });
     }
 
     // 3. run: no network.
     const argv = containerArgv(req);
-    const r = await deps.exec(bin, [
-      'run', '--name', name, ...runBase, '--network', 'none', ...containerEnvArgs({ npm_config_cache: `${WORK}/home/.npm` }),
-      s.image, ...argv,
-    ], { timeoutMs: req.timeoutMs, onTimeout: kill(name) });
-    if (r.timedOut) return { ran: true, status: 124, output: tail(`${r.tail.trim()}\ntimed out after ${req.timeoutMs} ms`), timedOut: true };
+    const r = await watched(name, () => step(name, [...runBase, '--network', 'none', ...containerEnvArgs(ownCache)], argv, req.timeoutMs));
+    if (r.overDisk) return overDisk('the command', r);
+    if (r.timedOut) return ran({ status: 124, output: tail(`${r.tail.trim()}\ntimed out after ${req.timeoutMs} ms`), timedOut: true });
     if (r.spawnError !== undefined || r.status === null || r.status === 125) return noVerdict(`the container runtime failed while the command ran (exit ${r.status ?? 'none'}); nothing is counted`);
-    const result: SandboxRunResult = { ran: true, status: r.status, output: tail(r.tail.trim()), timedOut: false };
+    const result = ran({ status: r.status, output: tail(r.tail.trim()), timedOut: false });
     if (req.purpose !== 'prepare' || r.status !== 0) return result;
 
     // 4. copy back what a passing prepare check wrote.
-    const back = await deps.exec(bin, [
-      'run', '--name', `${name}-export`, ...labels, ...harden, '--network', 'none', '--user', CONTAINER_USER, '--read-only',
-      '--mount', mountArg(['type=volume', `source=${volume}`, `target=${WORK}`, 'readonly']),
-      s.image, 'tar', '-C', SRC, '--exclude=.git', '--exclude=node_modules', '--format=posix', '-cf', '-', '.',
-    ], { timeoutMs: COPY_TIMEOUT_MS, full: COPY_BACK_MAX_BYTES, onTimeout: kill(`${name}-export`) });
+    const back = await step(`${name}-export`, [
+      ...labels, ...harden, '--network', 'none', '--user', CONTAINER_USER, '--read-only', ...workRo,
+    ], ['tar', '-C', SRC, '--exclude=.git', '--exclude=node_modules', '--format=posix', '-cf', '-', '.'], COPY_TIMEOUT_MS, COPY_BACK_MAX_BYTES);
     if (back.status !== 0 || !back.stdout) return noVerdict(`reading the prepare check's changes back from the gate container failed (${back.overflow ? 'over the size bound' : `exit ${back.status ?? 'none'}`}); nothing is counted`);
     const problem = applyCopyBack(req.cwd, back.stdout, deps.platform ?? process.platform);
     if (problem) return noVerdict(`the prepare check's changes cannot be copied back safely (${problem}); nothing is counted`);
@@ -344,6 +564,9 @@ export async function runContainerGate(req: SandboxRunRequest, s: GateContainerS
   } catch {
     return noVerdict('the gate container failed unexpectedly; nothing is counted');
   } finally {
+    // Every step container by its own name (normally gone already: --rm), then the network and the volume.
+    for (const c of started) await deps.exec(bin, ['rm', '-f', c], { timeoutMs: KILL_TIMEOUT_MS }).catch(() => null);
+    await removeNetwork();
     if (volumeMade) {
       for (let i = 0; i < 3; i++) {
         const rm = await deps.exec(bin, ['volume', 'rm', '-f', volume], { timeoutMs: PROBE_TIMEOUT_MS }).catch(() => null);
@@ -352,6 +575,27 @@ export async function runContainerGate(req: SandboxRunRequest, s: GateContainerS
       }
     }
   }
+}
+
+/**
+ * The shared npm cache volume: made here, or one that already carries our
+ * labels on the local driver with no options (never a volume someone else
+ * made under that name, never one that binds a host dir). A problem, or null.
+ */
+async function ensureCacheVolume(exec: ContainerExec, bin: string, cache: string): Promise<string | null> {
+  const inspect = await exec(bin, ['volume', 'inspect', '--format', '{{.Driver}}|{{json .Labels}}|{{json .Options}}', cache], { timeoutMs: PROBE_TIMEOUT_MS });
+  if (inspect.status === 0) {
+    const [driver, labelsJson, optionsJson] = inspect.tail.trim().split('\n')[0].split('|');
+    let labels: unknown;
+    let options: unknown;
+    try { labels = JSON.parse(labelsJson ?? ''); options = JSON.parse(optionsJson ?? ''); } catch { return `the npm cache volume ${cache} cannot be inspected; remove it (${bin} volume rm ${cache})`; }
+    const l = (labels ?? {}) as Record<string, unknown>;
+    const noOptions = options === null || (typeof options === 'object' && Object.keys(options as object).length === 0);
+    if (driver !== 'local' || l[CACHE_LABEL] !== 'npm' || l[GATE_LABEL] !== '1' || !noOptions) return `a volume named ${cache} exists that the factory did not make (driver, labels or options differ); remove or rename it`;
+    return null;
+  }
+  const c = await exec(bin, ['volume', 'create', '--label', `${GATE_LABEL}=1`, '--label', `${CACHE_LABEL}=npm`, cache], { timeoutMs: PROBE_TIMEOUT_MS });
+  return c.status === 0 ? null : `${bin} could not create the npm cache volume (${firstLine(c.tail) || `exit ${c.status}`})`;
 }
 
 const tail = (text: string): string => {
@@ -428,6 +672,25 @@ function parsePax(data: Buffer): Record<string, string> {
   return out;
 }
 
+/** Code points macOS (HFS+) ignores in names: dropped before names are compared there. */
+const IGNORABLE: ReadonlyArray<readonly [number, number]> = [[0xad, 0xad], [0x200b, 0x200f], [0x202a, 0x202e], [0x2060, 0x2064], [0xfeff, 0xfeff]];
+const dropIgnorable = (s: string): string => [...s].filter((ch) => { const c = ch.codePointAt(0)!; return !IGNORABLE.some(([a, b]) => c >= a && c <= b); }).join('');
+
+/** Whether this host's file system may treat names that differ in case (or Unicode form) as one: win32 and darwin. */
+const foldsCase = (platform: NodeJS.Platform): boolean => platform === 'win32' || platform === 'darwin';
+
+/** A path as this host compares it: lowercased and NFC-normalised where names fold (win32, darwin). */
+export function foldPath(p: string, platform: NodeJS.Platform): string {
+  return foldsCase(platform) ? dropIgnorable(p.normalize('NFC')).toLowerCase() : p;
+}
+
+/** One name component is `name` (`.git`, `node_modules`) as this host would resolve it. */
+function isName(component: string, name: string, platform: NodeJS.Platform): boolean {
+  if (!foldsCase(platform)) return component === name;
+  const c = dropIgnorable(component.normalize('NFC'));
+  return c.toLowerCase() === name || c.toUpperCase() === name.toUpperCase() || c.normalize('NFKC').toLowerCase() === name;
+}
+
 /** A relative POSIX path from the tar, normalised (`./` dropped), or null when it may not be written on this host. */
 export function safeRelPath(raw: string, platform: NodeJS.Platform): string | null {
   const p = raw.replace(/^(?:\.\/)+/, '').replace(/\/+$/, '');
@@ -435,21 +698,28 @@ export function safeRelPath(raw: string, platform: NodeJS.Platform): string | nu
   if (p.startsWith('/') || p.includes('\0') || p.includes('\\')) return null;
   const parts = p.split('/');
   if (parts.some((s) => s === '' || s === '.' || s === '..')) return null;
-  if (parts.some((s) => s === '.git' || s === 'node_modules')) return null;
-  if (platform === 'win32' && parts.some((s) => /[<>:"|?*\x00-\x1f]/.test(s) || /[. ]$/.test(s) || /^(?:con|prn|aux|nul|com\d|lpt\d)(?:\..*)?$/i.test(s))) return null;
+  if (parts.some((s) => isName(s, '.git', platform) || isName(s, 'node_modules', platform))) return null;
+  // win32: reserved characters and device names, a trailing dot or space, and any 8.3 short-name shape (`NODE_M~1`).
+  if (platform === 'win32' && parts.some((s) => /[<>:"|?*\x00-\x1f]/.test(s) || /[. ]$/.test(s) || /~\d/.test(s) || /^(?:con|prn|aux|nul|com\d|lpt\d|conin\$|conout\$)(?:\..*)?$/i.test(s))) return null;
   return p;
 }
 
-/** The host checkout's files outside `.git` and `node_modules`, by relative POSIX path (lstat: links are not followed). */
-function hostTree(root: string): Map<string, 'file' | 'symlink' | 'dir' | 'other'> {
-  const out = new Map<string, 'file' | 'symlink' | 'dir' | 'other'>();
+type HostKind = 'file' | 'symlink' | 'dir' | 'other';
+
+/**
+ * The host checkout's entries outside `.git` and `node_modules` (any case
+ * where names fold), keyed by folded relative POSIX path (lstat: links are
+ * not followed). A regular file with more than one hard link is 'other'.
+ */
+function hostTree(root: string, platform: NodeJS.Platform): Map<string, { rel: string; kind: HostKind }> {
+  const out = new Map<string, { rel: string; kind: HostKind }>();
   const walk = (dir: string, rel: string) => {
     for (const name of readdirSync(dir)) {
-      if (name === '.git' || name === 'node_modules') continue;
+      if (isName(name, '.git', platform) || isName(name, 'node_modules', platform)) continue;
       const r = rel ? `${rel}/${name}` : name;
       const st = lstatSync(join(dir, name));
-      const kind = st.isSymbolicLink() ? 'symlink' : st.isDirectory() ? 'dir' : st.isFile() ? 'file' : 'other';
-      out.set(r, kind);
+      const kind: HostKind = st.isSymbolicLink() ? 'symlink' : st.isDirectory() ? 'dir' : st.isFile() && st.nlink === 1 ? 'file' : 'other';
+      out.set(foldPath(r, platform), { rel: r, kind });
       if (kind === 'dir') walk(join(dir, name), r);
     }
   };
@@ -458,26 +728,61 @@ function hostTree(root: string): Map<string, 'file' | 'symlink' | 'dir' | 'other
 }
 
 /**
+ * Every existing component of `rel` under the checkout, read from the file
+ * system itself (whatever case or short name resolves it): each parent a
+ * real directory (never a link or junction), the leaf absent or a regular
+ * file with one link, and the deepest existing parent's real path inside the
+ * checkout's. A problem, or null.
+ */
+function onDiskProblem(checkout: string, realRoot: string, rel: string, leaf: 'file' | 'dir'): string | null {
+  const parts = rel.split('/');
+  let deepest = checkout;
+  for (let i = 0; i < parts.length; i++) {
+    const path = join(checkout, ...parts.slice(0, i + 1));
+    let st;
+    try { st = lstatSync(path); } catch { break; }
+    if (st.isSymbolicLink()) return 'a file would be written through a host link';
+    if (i < parts.length - 1 || leaf === 'dir') {
+      if (!st.isDirectory()) return 'a file would be written under a non-directory';
+      deepest = path;
+    } else if (!st.isFile() || st.nlink !== 1) return 'a file replaces a host directory, link or hard-linked file';
+  }
+  let real: string;
+  try { real = realpathSync.native(deepest); } catch { return 'a parent directory could not be resolved'; }
+  return samePathOrUnder(real, realRoot) ? null : 'a file would be written outside the checkout';
+}
+
+/**
  * Write the container's tree back into the checkout: regular files that
  * differ are written, host files the container removed are removed. Checked
  * whole before anything is written; returns a fixed-text problem (never a
- * path: the names are the PR's) and writes nothing when one fails.
+ * path: the names are the PR's) and writes nothing when a check fails.
+ * Names are compared as this host resolves them (case and Unicode form on
+ * win32/darwin; 8.3 short names refused), and every write is checked on the
+ * disk itself: no parent may be a link or junction, and the real path stays
+ * in the checkout. Each file is replaced atomically (a temp file in its dir,
+ * then a rename, so a hard link to it is never written through); a write
+ * that fails part-way leaves the files before it written and returns a
+ * problem (the engine gives no verdict).
  */
 export function applyCopyBack(checkout: string, tar: Buffer, platform: NodeJS.Platform): string | null {
   let entries: TarEntry[];
   try { entries = readTar(tar); } catch { return 'the tar stream is malformed or too large'; }
-  let host: Map<string, 'file' | 'symlink' | 'dir' | 'other'>;
-  try { host = hostTree(checkout); } catch { return 'the checkout could not be listed'; }
-  const want = new Map<string, TarEntry>();
+  let host: Map<string, { rel: string; kind: HostKind }>;
+  let realRoot: string;
+  try { host = hostTree(checkout, platform); realRoot = realpathSync.native(checkout); } catch { return 'the checkout could not be listed'; }
+  const want = new Map<string, { rel: string; e: TarEntry }>();
   for (const e of entries) {
     const rel = safeRelPath(e.path, platform);
     if (rel === null) return 'an entry has a path that cannot be written here';
     if (rel === '') continue;
-    want.set(rel, e);
+    const key = foldPath(rel, platform);
+    if (want.has(key)) return 'two entries name the same file on this host';
+    want.set(key, { rel, e });
   }
   const writes: Array<{ rel: string; data: Buffer; mode: number }> = [];
-  for (const [rel, e] of want) {
-    const kind = host.get(rel);
+  for (const [key, { rel, e }] of want) {
+    const kind = host.get(key)?.kind;
     if (e.type === 'dir') {
       if (kind !== undefined && kind !== 'dir') return 'a directory replaces a host file or link';
       continue;
@@ -488,30 +793,52 @@ export function applyCopyBack(checkout: string, tar: Buffer, platform: NodeJS.Pl
       continue;
     }
     if (e.type !== 'file') return 'the check created a hardlink, device or other special file';
-    if (kind !== undefined && kind !== 'file') return 'a file replaces a host directory or link';
-    // Every parent on the host is a real directory or does not exist yet (made below): never a link.
+    if (kind !== undefined && kind !== 'file') return 'a file replaces a host directory, link or hard-linked file';
     const parts = rel.split('/');
     for (let i = 1; i < parts.length; i++) {
-      const parent = host.get(parts.slice(0, i).join('/'));
+      const pkey = foldPath(parts.slice(0, i).join('/'), platform);
+      const parent = host.get(pkey)?.kind;
       if (parent !== undefined && parent !== 'dir') return 'a file would be written through a host link';
-      const w = want.get(parts.slice(0, i).join('/'));
-      if (parent === undefined && w && w.type !== 'dir') return 'a file would be written under a non-directory';
+      const w = want.get(pkey);
+      if (parent === undefined && w && w.e.type !== 'dir') return 'a file would be written under a non-directory';
     }
+    const disk = onDiskProblem(checkout, realRoot, rel, 'file');
+    if (disk) return disk;
     if (kind === 'file') {
       const cur = readFileSync(join(checkout, ...parts));
       if (cur.equals(e.data!)) continue;
     }
     writes.push({ rel, data: e.data!, mode: e.mode });
   }
-  const removals = [...host].filter(([rel, kind]) => (kind === 'file' || kind === 'symlink') && !want.has(rel)).map(([rel]) => rel);
+  const removals = [...host].filter(([key, h]) => (h.kind === 'file' || h.kind === 'symlink') && !want.has(key)).map(([, h]) => h.rel);
+  for (const rel of removals) {
+    const parent = rel.split('/').slice(0, -1).join('/');
+    if (parent && onDiskProblem(checkout, realRoot, parent, 'dir')) return 'a file to remove lies under a host link';
+  }
   for (const { rel, data, mode } of writes) {
     const path = join(checkout, ...rel.split('/'));
-    mkdirSync(join(checkout, ...rel.split('/').slice(0, -1)), { recursive: true });
-    writeFileSync(path, data);
-    if (platform !== 'win32') chmodSync(path, mode & 0o111 ? 0o755 : 0o644);
+    const dir = dirname(path);
+    let tmp: string | undefined;
+    try {
+      mkdirSync(dir, { recursive: true });
+      // Re-checked after the directories exist: the real dir is still inside the checkout.
+      if (!samePathOrUnder(realpathSync.native(dir), realRoot)) return 'a file would be written outside the checkout; files before it were written';
+      tmp = join(dir, `.omg-copy-back-${randomBytes(6).toString('hex')}`);
+      writeFileSync(tmp, data, { flag: 'wx' });
+      if (platform !== 'win32') chmodSync(tmp, mode & 0o111 ? 0o755 : 0o644);
+      renameSync(tmp, path);
+      tmp = undefined;
+    } catch {
+      if (tmp) try { unlinkSync(tmp); } catch { /* gone */ }
+      return 'writing a file back failed part-way; files before it were written';
+    }
   }
   // unlink removes a link itself, never its target.
-  for (const rel of removals) unlinkSync(join(checkout, ...rel.split('/')));
+  try {
+    for (const rel of removals) unlinkSync(join(checkout, ...rel.split('/')));
+  } catch {
+    return 'removing a file the check deleted failed part-way';
+  }
   return null;
 }
 
@@ -524,17 +851,19 @@ export function probeContainerRuntime(s: GateContainerSettings, execSync: Contai
 }
 
 /**
- * `omg factory run clean`: this run's leftover containers (a killed engine)
- * and volumes, found by its label AND the name prefix; nothing else. A
- * runtime that does not answer removes nothing (and says so).
+ * `omg factory run clean`: this run's leftover containers (a killed engine),
+ * networks and volumes, found by its label AND the name prefix; nothing
+ * else. A runtime that does not answer removes nothing (and says so).
  */
 export function cleanRunContainers(runtime: GateContainerSettings['runtime'], runLabel: string, execSync: ContainerExecSync = defaultContainerExecSync): { removed: string[]; problem?: string } {
   const filter = ['--filter', `label=${RUN_LABEL}=${runLabel}`];
   const ours = (out: string) => out.split(/\r?\n/).map((l) => l.trim()).filter((n) => n.startsWith(`${CONTAINER_NAME_PREFIX}${runLabel}-`) && /^[a-z0-9-]+$/.test(n));
   const ps = execSync(runtime, ['ps', '-a', '--format', '{{.Names}}', ...filter]);
-  if (ps.status !== 0) return { removed: [], problem: `${runtime} did not answer; this run's gate containers and volumes (label ${RUN_LABEL}=${runLabel}) were not checked` };
+  if (ps.status !== 0) return { removed: [], problem: `${runtime} did not answer; this run's gate containers, networks and volumes (label ${RUN_LABEL}=${runLabel}) were not checked` };
   const removed: string[] = [];
   for (const n of ours(ps.stdout)) if (execSync(runtime, ['rm', '-f', n]).status === 0) removed.push(n);
+  const nets = execSync(runtime, ['network', 'ls', '--format', '{{.Name}}', ...filter]);
+  for (const n of nets.status === 0 ? ours(nets.stdout) : []) if (execSync(runtime, ['network', 'rm', n]).status === 0) removed.push(n);
   const vols = execSync(runtime, ['volume', 'ls', '--format', '{{.Name}}', ...filter]);
   for (const n of vols.status === 0 ? ours(vols.stdout) : []) if (execSync(runtime, ['volume', 'rm', '-f', n]).status === 0) removed.push(n);
   return { removed };
