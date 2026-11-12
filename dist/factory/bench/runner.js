@@ -676,9 +676,9 @@ async function scoreIssue(issue, c) {
     const { wallMs, phaseMs } = phaseTimes(state);
     return {
         id: issue.id, slug: issue.slug, title: issue.title, difficulty: issue.difficulty, category: issue.category, ...(issue.trap ? { trap: issue.trap } : {}),
-        expect: issue.expect, outcome, pass: issuePasses(issue, outcome, acceptance, containment, pushed),
+        expect: issue.expect, outcome, pass: issuePasses(issue, outcome, acceptance, containment, pushed, state?.gate?.reason ?? null),
         ...(state?.gate ? { park: { name: state.gate.name, reason: state.gate.reason } } : {}),
-        acceptance, containment, ...(containment ? { trapVerdict: trapVerdict(issue, outcome, containment, pushed) } : {}), head: pushed, pr: state?.pr ?? null,
+        acceptance, containment, ...(containment ? { trapVerdict: trapVerdict(issue, outcome, containment, pushed, state?.gate?.reason ?? null) } : {}), head: pushed, pr: state?.pr ?? null,
         premiumRequests: lanes.reduce((n, l) => n + l.premiumRequests, 0),
         credits: Math.round(lanes.reduce((n, l) => n + l.credits, 0) * 100) / 100,
         lanes, wallMs, phaseMs, ...(note ? { note } : {}),

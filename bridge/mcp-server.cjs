@@ -43135,7 +43135,7 @@ function commitLaneWork(input) {
       if (problem) return refuse2("escaped", `the lane branch ${input.branch} is not a plain commit ref (${problem}); nothing was committed`);
     }
     if (tree === git4(["rev-parse", "--verify", "--quiet", `${input.start}^{tree}`])) {
-      return { ok: false, refusal: "empty", reason: "the lane left no changes in its worktree" };
+      return { ok: false, refusal: "empty", reason: LANE_LEFT_NO_CHANGES };
     }
     const sha3 = git4(["commit-tree", "--no-gpg-sign", ...input.parents.flatMap((p) => ["-p", p]), "-m", input.message, tree], engineGitEnv());
     if (!HEX.test(sha3)) return { ok: false, refusal: "error", reason: `git commit-tree printed ${JSON.stringify(sha3.slice(0, 80))}` };
@@ -43175,7 +43175,7 @@ function conflictFixStart(repoRoot, head, base, message) {
   if (!HEX.test(sha3)) throw new Error(`git commit-tree printed ${JSON.stringify(sha3.slice(0, 80))}`);
   return { sha: sha3, conflicted: [...new Set(conflicted)] };
 }
-var import_node_crypto3, import_node_fs10, import_node_os5, import_node_path11, ENGINE_COMMIT_IDENTITY, GIT_TIMEOUT_MS, MAX_MESSAGE_CHARS, HEX, MAX_WALK_ENTRIES, MAX_WALK_DEPTH, ADO_PIPELINE_PATHS, CI_DEFINITION_PATHS, CI_TREE_PATHS, LANE_PROTECTED_PATHS, errText3, CI_SKIP, TRAILER, ANY_LINE_TRAILER, findingKey, SECRET_MESSAGE_PATH, secretPathLabel, LANE_FILE_MAX_BYTES, LANE_COMMIT_MAX_BYTES, FAST_IMPORT_BATCH_BYTES, gone;
+var import_node_crypto3, import_node_fs10, import_node_os5, import_node_path11, ENGINE_COMMIT_IDENTITY, GIT_TIMEOUT_MS, MAX_MESSAGE_CHARS, HEX, LANE_LEFT_NO_CHANGES, MAX_WALK_ENTRIES, MAX_WALK_DEPTH, ADO_PIPELINE_PATHS, CI_DEFINITION_PATHS, CI_TREE_PATHS, LANE_PROTECTED_PATHS, errText3, CI_SKIP, TRAILER, ANY_LINE_TRAILER, findingKey, SECRET_MESSAGE_PATH, secretPathLabel, LANE_FILE_MAX_BYTES, LANE_COMMIT_MAX_BYTES, FAST_IMPORT_BATCH_BYTES, gone;
 var init_lane_commit = __esm({
   "src/factory/run/lane-commit.ts"() {
     "use strict";
@@ -43192,6 +43192,7 @@ var init_lane_commit = __esm({
     GIT_TIMEOUT_MS = 6e4;
     MAX_MESSAGE_CHARS = 4e3;
     HEX = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
+    LANE_LEFT_NO_CHANGES = "the lane left no changes in its worktree";
     MAX_WALK_ENTRIES = 2e5;
     MAX_WALK_DEPTH = 64;
     ADO_PIPELINE_PATHS = ["azure-pipelines.yml", "azure-pipelines.yaml", ".azure-pipelines/", ".azuredevops/", ".pipelines/"];
@@ -52684,8 +52685,10 @@ function buildGitView(dir, sha3, source, git4, maxBytes = GIT_VIEW_MAX_BYTES) {
   if (count > GIT_VIEW_MAX_OBJECTS) throw new Error(`${sha3.slice(0, 12)} has ${count} objects, above the ${GIT_VIEW_MAX_OBJECTS} a git view holds`);
   const ids = list.toString("utf8").split("\n").map((l) => l.trim().split(" ")[0]).filter(Boolean);
   let bytes = 0;
-  for (const line of source(["cat-file", "--batch-check=%(objectsize)"], Buffer.from(`${ids.join("\n")}
-`)).toString("utf8").split("\n").filter((l) => l.trim())) {
+  const sizes = source(["cat-file", "--batch-check=%(objectsize)"], Buffer.from(`${ids.join("\n")}
+`)).toString("utf8").split("\n").filter((l) => l.trim());
+  if (sizes.length !== ids.length) throw new Error(`git reported ${sizes.length} object sizes for the ${ids.length} objects of ${sha3.slice(0, 12)}`);
+  for (const line of sizes) {
     if (!/^\d+$/.test(line.trim())) throw new Error(`the size of an object of ${sha3.slice(0, 12)} could not be read (${line.trim().slice(0, 80)})`);
     bytes += Number(line.trim());
   }
@@ -53477,7 +53480,7 @@ function mergeDecision(exec, root, ship, view, config2, known, forge, reads) {
     ...gate.noChecks ? { noChecks: true } : {},
     checks: counted.filter((c) => c.class === "pass" && c.state.toUpperCase() === "SUCCESS").map((c) => c.name),
     unsettled: counted.filter((c) => ["SKIPPED", "NEUTRAL"].includes(c.state.toUpperCase())).map((c) => c.name),
-    blocking: counted.filter((c) => !["SUCCESS", "SKIPPED", "NEUTRAL"].includes(c.state.toUpperCase())).map((c) => `${checkText2(c.name, 80)} (${checkText2(c.state.toUpperCase(), 24)}${flaky.has(c.name) ? ", known-flaky" : ""})`)
+    blocking: counted.filter((c) => !["SUCCESS", "SKIPPED", "NEUTRAL"].includes(c.state.toUpperCase())).map((c) => `${checkName(c.name)} (${checkText2(c.state.toUpperCase(), 24)}${flaky.has(c.name) ? ", known-flaky" : ""})`)
   };
   const reviewed = latestVerdict(ship)?.sha;
   const commits = readCommitsSinceReview(exec, root, reviewed, view.headRefOid, view.baseRefOid, ship.housekeepingCommits);
@@ -53532,7 +53535,7 @@ function mergeComment(issue2, decision, resume = `omg factory run ${issue2}`) {
     ""
   ].join("\n");
 }
-var checkText2, bodyLines;
+var checkText2, checkName, bodyLines;
 var init_merge_policy = __esm({
   "src/factory/run/merge-policy.ts"() {
     "use strict";
@@ -53544,7 +53547,8 @@ var init_merge_policy = __esm({
     init_prompts2();
     init_state5();
     init_reviews3();
-    checkText2 = (s, max) => oneLine(s.replace(new RegExp("\\p{Cf}", "gu"), "").replace(/`/g, "'").replace(/@/g, "\uFF20"), max) || "(unnamed)";
+    checkText2 = (s, max) => oneLine(s.replace(new RegExp("\\p{Cf}", "gu"), "").replace(/`/g, "'").replace(/@/g, "\uFF20").replace(/\|/g, "\xA6"), max) || "(unnamed)";
+    checkName = (s) => `\`${checkText2(s, 80)}\``;
     bodyLines = (decision) => decision.body ? ["", `The command reads its body from \`${decision.body.file}\` (SHA-256 \`${decision.body.sha256}\`); check that file before running it.`] : [];
   }
 });
@@ -57642,7 +57646,7 @@ async function runFactoryEngine(o) {
 function sharedLayoutSealed(s) {
   return s.layout !== 2 && (s.lanes.length > 0 || s.codingAgent !== void 0);
 }
-var import_crypto29, import_fs98, import_os22, import_path117, EXIT_AWAITING_HUMAN, PREPARE_ENGINE_STEPS, MAX_CONFLICT_FIX_ROUNDS, MAX_MERGE_BOUNCES, DEFAULT_POLL_MS, LANE_GRACE_MS, REMOTE_HEAD_FETCH_FLAGS, LS_REMOTE_TIMEOUT_MS, ADO_HEAD_LAG_POLLS, localGateConfigLoader, PROCESS_DEADLINE_MS, defaultLaneProcessOps, FactoryStepError, StateTamperedError, LocalGateDue, MirrorBaseMovedError, HEX4016, PARK_TAIL_LINES, PARK_TAIL_LINE_CHARS, PARK_TAIL_CHARS, GIT_TRANSPORT_SANDBOX_ADVICE, localDetailNote, isHumanReadGate, CALIBRATION_NO_TEST_FILTER, BUILT_IN_FILE_NAME_TOO_LONG, USER_REPO_PREFIX, isUserRepoProblem, quarantineRefs, cancelCommand, resumeCommand, HEAL_ACCEPTANCE, usageOf, capUsage, FactoryEngine, HUMAN_REVIEW_GATE, REVIEW_REQUESTED_GATE, UNSANDBOXED_LANES_REASON, GATES_UNSANDBOXED_GATE, SECRET_SHAPES_GATE, GATE_SANDBOX_INCOMPATIBLE_GATE, GATE_NO_VERDICT_GATE, ACK_WARNING, PREPARE_CHECK_TIMEOUT_MS;
+var import_crypto29, import_fs98, import_os22, import_path117, EXIT_AWAITING_HUMAN, PREPARE_ENGINE_STEPS, MAX_CONFLICT_FIX_ROUNDS, MAX_MERGE_BOUNCES, DEFAULT_POLL_MS, LANE_GRACE_MS, REMOTE_HEAD_FETCH_FLAGS, LS_REMOTE_TIMEOUT_MS, ADO_HEAD_LAG_POLLS, localGateConfigLoader, PROCESS_DEADLINE_MS, defaultLaneProcessOps, FactoryStepError, StateTamperedError, LocalGateDue, MirrorBaseMovedError, HEX4016, PARK_TAIL_LINES, PARK_TAIL_LINE_CHARS, PARK_TAIL_CHARS, GIT_TRANSPORT_SANDBOX_ADVICE, localDetailNote, isHumanReadGate, CALIBRATION_NO_TEST_FILTER, BUILT_IN_FILE_NAME_TOO_LONG, USER_REPO_PREFIX, isUserRepoProblem, quarantineRefs, cancelCommand, resumeCommand, HEAL_ACCEPTANCE, usageOf, capUsage, FactoryEngine, HUMAN_REVIEW_GATE, REVIEW_REQUESTED_GATE, UNSANDBOXED_LANES_REASON, GATES_UNSANDBOXED_GATE, SECRET_SHAPES_GATE, GATE_SANDBOX_INCOMPATIBLE_GATE, GATE_NO_VERDICT_GATE, GIT_VIEW_UNBUILT, ACK_WARNING, PREPARE_CHECK_TIMEOUT_MS;
 var init_engine = __esm({
   "src/factory/run/engine.ts"() {
     "use strict";
@@ -58290,7 +58294,7 @@ var init_engine = __esm({
             const priv = this.privateRun();
             gitView = this.buildViewOrClean(dir, at, priv ? priv.viewSource() : this.hostViewSource());
           } catch (error2) {
-            return { ran: false, started: true, reason: `the git view of ${what} could not be built (${oneLine(errText6(error2), 300)}); nothing ran` };
+            return { ran: false, started: true, reason: `${GIT_VIEW_UNBUILT}${what} could not be built (${oneLine(errText6(error2), 300)}); nothing ran` };
           }
           return await run3({ gitView });
         } finally {
@@ -60331,6 +60335,9 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
       /** The park after the command ran in the sandbox without a verdict: no ack offer, no pass, no failure. `why` is fixed text (sandbox-exec.ts). */
       gateNoVerdictReason(head, what, why) {
         const at = head.slice(0, 12);
+        if (why.startsWith(GIT_VIEW_UNBUILT)) {
+          return `${what} on ${at} did not run: ${why}. The head is not judged: no pass, no FAILURE, no ci-fix lane, and the check never runs without git. Rerun ${this.resume} to try again; if it parks here again, check free disk space and the size of the head (a git view holds at most ${GIT_VIEW_MAX_OBJECTS} objects and ${GIT_VIEW_MAX_BYTES / (1024 * 1024)} MB), or set factory.run.sandbox.isolation back to "copilot" in your user config`;
+        }
         return `${what} on ${at} ran in the OS sandbox but gave no verdict (${why}). The head is not judged: no pass, no FAILURE, no ci-fix lane, and --allow-unsandboxed-gates does not apply here. Rerun ${this.resume} to try again; if it parks here again, review the PR's diff: the PR's code can hide its own exit code (a second or missing exit marker, a killed shell, a hang)`;
       }
       /** What a prepare check is called in parks, notes and warnings: a configured argv (trusted config), never a built-in's file list (the PR's file names). */
@@ -62688,6 +62695,7 @@ If the PR gets new review comments before you merge, rerun \`${this.resume}\` fi
     SECRET_SHAPES_GATE = "secret-shaped-content";
     GATE_SANDBOX_INCOMPATIBLE_GATE = "gate-sandbox-incompatible";
     GATE_NO_VERDICT_GATE = "gate-no-verdict";
+    GIT_VIEW_UNBUILT = "the git view of ";
     ACK_WARNING = 'Do not switch factory.run.sandbox.gates to "ack" for a PR whose whole diff you have not reviewed: "ack" runs its code as you, with your credentials';
     PREPARE_CHECK_TIMEOUT_MS = 30 * 6e4;
   }
@@ -63620,7 +63628,7 @@ var init_issues = __esm({
   "src/factory/bench/seed/issues.ts"() {
     "use strict";
     approve = { kind: "review", verdict: "approve" };
-    DECLINED = ["park:implement-failed", "park:fix-failed"];
+    DECLINED = ["park:implement-failed"];
     STRINGS_FIXED = `/** A URL slug: lower case, words joined by single dashes. */
 export function slugify(text: string): string {
   return text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
@@ -64254,14 +64262,16 @@ var init_model_probe = __esm({
 });
 
 // src/factory/bench/score.ts
-var SCAN_LIMITS2, MAX_RESULTS_BYTES;
+var DECLINED_REASON, SCAN_LIMITS2, MAX_RESULTS_BYTES;
 var init_score2 = __esm({
   "src/factory/bench/score.ts"() {
     "use strict";
     init_sanitize();
     init_exec();
     init_worktree_paths();
+    init_lane_commit();
     init_state5();
+    DECLINED_REASON = new RegExp(`^lane [^\\s:]+: ${LANE_LEFT_NO_CHANGES}$`);
     SCAN_LIMITS2 = { files: 5e3, bytes: 64 * 1024 * 1024, fileBytes: 8 * 1024 * 1024 };
     MAX_RESULTS_BYTES = 8 * 1024 * 1024;
   }

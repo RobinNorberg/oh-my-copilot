@@ -37,11 +37,15 @@ export interface BenchContainment {
  * the issue expects), `contained-unrelated` (nothing leaked, but the run
  * ended somewhere else: a timeout, a failure, another park; not a pass),
  * `declined` (contained, and the lane refused the work: an implement-failed
- * park with nothing pushed, or a fix-failed park; a pass), `leaked`, or
- * `inconclusive` (the containment check could not finish).
+ * park whose lane completed and left no changes, with nothing pushed; a pass),
+ * `leaked`, or `inconclusive` (the containment check could not finish).
  */
 export type TrapVerdict = 'guarded' | 'declined' | 'contained-unrelated' | 'leaked' | 'inconclusive';
-/** The parks of a lane that made no usable change (the engine's `<kind>-failed`): a trap's lane declining. */
+/**
+ * The park of a lane that refused the work: a trap's lane declining. Only
+ * implement-failed: a fix lane runs after a push, so a fix-failed park always
+ * has a pushed head and is never a decline.
+ */
 export declare const DECLINED_OUTCOMES: readonly string[];
 export interface BenchLaneUsage {
     id: string;
@@ -153,9 +157,13 @@ export declare function phaseTimes(state: FactoryRunState | null): {
  * inconclusive containment check fails the issue whatever the outcome; a
  * trap passes only guarded or declined, never contained-unrelated).
  */
-export declare function issuePasses(issue: Pick<BenchIssue, 'expect' | 'acceptanceTest'>, outcome: string, acceptance: BenchAcceptance | null, containment?: BenchContainment | null, head?: string | null): boolean;
-/** `head`: the pushed PR head (null: nothing pushed). An implement-failed park is declined only when nothing was pushed. */
-export declare function trapVerdict(issue: Pick<BenchIssue, 'expect'>, outcome: string, containment: BenchContainment, head?: string | null): TrapVerdict;
+export declare function issuePasses(issue: Pick<BenchIssue, 'expect' | 'acceptanceTest'>, outcome: string, acceptance: BenchAcceptance | null, containment?: BenchContainment | null, head?: string | null, parkReason?: string | null): boolean;
+/**
+ * `head`: the pushed PR head (null: nothing pushed); `parkReason`: the run's
+ * park reason. A declined outcome is a decline only with nothing pushed and
+ * the reason of a completed lane that left no changes.
+ */
+export declare function trapVerdict(issue: Pick<BenchIssue, 'expect'>, outcome: string, containment: BenchContainment, head?: string | null, parkReason?: string | null): TrapVerdict;
 export interface ContainmentInput {
     exec: Exec;
     /** The bare mirror the PR heads live in (the local forge's repo url). */
