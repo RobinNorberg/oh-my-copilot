@@ -26,7 +26,10 @@ import { basename, dirname, isAbsolute, join, resolve } from 'path';
 import { atomicWriteJsonSync } from '../lib/atomic-write.js';
 import { lockPathFor, withFileLockSync } from '../lib/file-lock.js';
 import { resolvePluginDirArg } from '../lib/plugin-dir.js';
-import { stripRetiredTeamMcpServers } from '../installer/mcp-registry.js';
+import {
+  getClaudeMcpConfigPath,
+  stripRetiredTeamMcpServers,
+} from '../installer/mcp-registry.js';
 import { getCopilotConfigDir } from '../utils/config-dir.js';
 import { getHostCliBinary, getHostCliType } from '../utils/host-detection.js';
 import { getContract } from '../team/model-contract.js';
@@ -46,6 +49,15 @@ import {
   tmuxExec,
 } from './tmux-utils.js';
 import { configureTmuxClipboardForCurrentSession, configureTmuxClipboardForSession } from './tmux-clipboard.js';
+import {
+  ensureHerdrServer,
+  herdrCreateWorkerTab,
+  herdrCreateWorkspace,
+  herdrCloseWorkspace,
+  herdrClosePane,
+  herdrRunPaneCommand,
+} from '../team/herdr-session.js';
+import { resolveTeamMultiplexer } from '../team/tmux-session.js';
 import { OMC_PLUGIN_ROOT_ENV } from '../lib/env-vars.js';
 import { OMC_CONFIG_FILE_REL } from '../lib/paths.js';
 
@@ -352,18 +364,19 @@ function refreshRuntimeClaudeJson(
   baseConfigDir: string,
   runtimeClaudeJsonPath: string,
   sourceClaudeJson = readJsonObject(join(dirname(baseConfigDir), '.claude.json')),
+  mcpServersSourceJson = readJsonObject(getClaudeMcpConfigPath(baseConfigDir)),
 ): void {
-  if (!sourceClaudeJson) return;
+  if (!sourceClaudeJson && !mcpServersSourceJson) return;
 
   const runtimeClaudeJson = readJsonObject(runtimeClaudeJsonPath) ?? {};
   let changed = false;
 
-  if (sourceClaudeJson.hasCompletedOnboarding === true && runtimeClaudeJson.hasCompletedOnboarding !== true) {
+  if (sourceClaudeJson?.hasCompletedOnboarding === true && runtimeClaudeJson.hasCompletedOnboarding !== true) {
     runtimeClaudeJson.hasCompletedOnboarding = true;
     changed = true;
   }
 
-  const sourceVersion = sourceClaudeJson.lastOnboardingVersion;
+  const sourceVersion = sourceClaudeJson?.lastOnboardingVersion;
   if (typeof sourceVersion === 'string' || typeof sourceVersion === 'number') {
     const runtimeHasVersion = hasOwn(runtimeClaudeJson, 'lastOnboardingVersion');
     const compared = compareOnboardingVersion(sourceVersion, runtimeClaudeJson.lastOnboardingVersion);
@@ -373,7 +386,7 @@ function refreshRuntimeClaudeJson(
     }
   }
 
-  if (hasOwn(sourceClaudeJson, 'oauthAccount')) {
+  if (sourceClaudeJson && hasOwn(sourceClaudeJson, 'oauthAccount')) {
     const sourceAccount = sourceClaudeJson.oauthAccount;
     if (sourceAccount === null || sourceAccount === undefined) {
       if (hasOwn(runtimeClaudeJson, 'oauthAccount')) {
@@ -391,8 +404,9 @@ function refreshRuntimeClaudeJson(
   }
 
 
-  if (isJsonObject(sourceClaudeJson.mcpServers)) {
-    runtimeClaudeJson.mcpServers = sourceClaudeJson.mcpServers;
+  const sourceMcpServers = mcpServersSourceJson?.mcpServers;
+  if (isJsonObject(sourceMcpServers)) {
+    runtimeClaudeJson.mcpServers = sourceMcpServers;
     changed = true;
   }
 
@@ -526,6 +540,11 @@ export function prepareOmcLaunchConfigDir(baseConfigDir = getCopilotConfigDir())
   const runtimeClaudeJsonPath = join(runtimeConfigDir, '.claude.json');
   const runtimeCredentialsPath = join(runtimeConfigDir, '.credentials.json');
   const sourceClaudeJsonPath = join(dirname(baseConfigDir), '.claude.json');
+  // User-scoped MCP servers come from the file `omg setup` syncs the registry
+  // into: CLAUDE_MCP_CONFIG_PATH when set, otherwise the .claude.json Claude Code
+  // reads for this config dir (a COPILOT_HOME profile's own file, or for the
+  // default dir the same ~/.claude.json as sourceClaudeJsonPath).
+  const mcpServersSourcePath = getClaudeMcpConfigPath(baseConfigDir);
   const lifecycleLockPath = lockPathFor(join(baseConfigDir, '.omc-launch.prepare.lock'));
 
   return withFileLockSync(lifecycleLockPath, () => {
@@ -534,6 +553,9 @@ export function prepareOmcLaunchConfigDir(baseConfigDir = getCopilotConfigDir())
       : null;
     const preservedRuntimeClaudeJson = readJsonObject(runtimeClaudeJsonPath);
     const sourceClaudeJson = readJsonObject(sourceClaudeJsonPath);
+    const mcpServersSourceJson = mcpServersSourcePath === sourceClaudeJsonPath
+      ? sourceClaudeJson
+      : readJsonObject(mcpServersSourcePath);
 
     reconcileRuntimeCredentials(
       baseConfigDir,
@@ -549,7 +571,7 @@ export function prepareOmcLaunchConfigDir(baseConfigDir = getCopilotConfigDir())
       if (preservedClaudeJson) {
         writeFileSync(nextClaudeJsonPath, preservedClaudeJson);
       }
-      refreshRuntimeClaudeJson(baseConfigDir, nextClaudeJsonPath, sourceClaudeJson);
+      refreshRuntimeClaudeJson(baseConfigDir, nextClaudeJsonPath, sourceClaudeJson, mcpServersSourceJson);
       copyFileSync(companionPath, join(nextConfigDir, 'CLAUDE.md'));
 
       for (const entry of [
@@ -907,11 +929,84 @@ function abortMadmaxRequiresTmux(reason: 'missing' | 'launch-failed'): never {
 }
 
 /**
+ * Sanitize a tmux session name into a Herdr workspace label. Herdr labels are
+ * free-form, but the launch label reuses the tmux session identity
+ * (buildTmuxSessionName) so the same project maps to a recognizable name in
+ * either multiplexer. Characters outside the conservative label alphabet are
+ * collapsed to dashes.
+ */
+export function sanitizeHerdrWorkspaceLabel(sessionName: string): string {
+  const sanitized = sessionName
+    .replace(/[^A-Za-z0-9._-]+/g, '-')
+    .replace(/-{2,}/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80);
+  return sanitized.length > 0 ? sanitized : 'omc-claude';
+}
+
+/**
+ * Launch Claude as a tab in a fresh Herdr workspace (multiplexer=herdr).
+ *
+ * Unlike the tmux paths there is nothing to attach to from this process: the
+ * Herdr server owns the pane, so we print attach guidance for the Herdr TUI
+ * and return immediately. Env forwarding (export prefix plus the
+ * sensitive-env file transport) rides the same shell command the tmux paths
+ * build, so credentials never reach a command line.
+ */
+async function runClaudeInHerdrWorkspace(cwd: string, args: string[]): Promise<void> {
+  const label = sanitizeHerdrWorkspaceLabel(buildTmuxSessionName(cwd));
+  let launch: TmuxClaudeLaunch;
+  try {
+    launch = buildTmuxClaudeLaunch(args, { useExec: false, preflight: '' });
+  } catch (error) {
+    console.error(`[omg] Error: unable to prepare Claude launch: ${error instanceof Error ? error.message : error}`);
+    throw error;
+  }
+
+  let allocatedWorkspaceId: string | undefined;
+  let allocatedPaneId: string | undefined;
+  try {
+    await ensureHerdrServer();
+    allocatedWorkspaceId = await herdrCreateWorkspace(cwd, label);
+    const tab = await herdrCreateWorkerTab(allocatedWorkspaceId, cwd, 'claude');
+    allocatedPaneId = tab.paneId;
+    await herdrRunPaneCommand(tab.paneId, launch.command);
+    console.log(`[omg] Claude launched in Herdr workspace "${label}" (pane ${tab.paneId}).`);
+    console.log('[omg] Attach with the Herdr TUI: run `herdr` and open the workspace.');
+  } catch (error) {
+    // Close the allocated pane before closing the workspace
+    if (allocatedPaneId) {
+      try {
+        await herdrClosePane(allocatedPaneId);
+      } catch {
+        // Pane cleanup failure is non-fatal; continue with workspace cleanup
+      }
+    }
+    // Clean up the allocated Herdr workspace before falling back
+    if (allocatedWorkspaceId) {
+      try {
+        await herdrCloseWorkspace(allocatedWorkspaceId);
+      } catch {
+        // Workspace cleanup failed, but continue with artifact cleanup
+      }
+    }
+    // The pane shell never consumed the transport; remove its artifacts.
+    launch.cleanup();
+    throw error instanceof Error ? error : new Error(String(error));
+  }
+}
+
+/**
  * runClaude: Launch Claude CLI (blocks until exit)
  * Handles 3 scenarios:
  * 1. inside-tmux: Launch claude in current pane
  * 2. outside-tmux: Create new tmux session with claude
  * 3. direct: tmux not available, run claude directly
+ *
+ * When the team multiplexer setting resolves to 'herdr', Claude instead runs
+ * as a tab in a Herdr workspace (runClaudeInHerdrWorkspace) and both tmux
+ * paths are bypassed; a Herdr failure falls back to the default flow below so
+ * an outage never prevents Claude from starting.
  *
  * When --print/-p is present, always runs direct to preserve stdout piping.
  *
@@ -919,22 +1014,35 @@ function abortMadmaxRequiresTmux(reason: 'missing' | 'launch-failed'): never {
  * installed we exit with a brew install hint rather than silently launching
  * direct. Inside an existing tmux session the current pane is reused. If
  * tmux is installed but new-session/attach-session fails, we surface the
- * error instead of silently demoting to direct mode.
+ * error instead of silently demoting to direct mode. A successful herdr
+ * launch also satisfies this requirement (the Herdr server, not this
+ * process, owns the Claude pane).
  *
  * `options.requireTmux` lets launchCommand key the macOS rule on the RAW user
  * args: Copilot's native --yolo survives normalization, so deriving it from
  * normalized args would differ by host.
  */
-export function runClaude(
+export async function runClaude(
   cwd: string,
   args: string[],
   sessionId: string,
   options: { requireTmux?: boolean } = {},
-): void {
+): Promise<void> {
   // Print mode must bypass tmux so stdout flows to the parent process (issue #1665)
   if (isPrintMode(args)) {
     runClaudeDirect(cwd, args);
     return;
+  }
+
+  if (resolveTeamMultiplexer() === 'herdr') {
+    try {
+      await runClaudeInHerdrWorkspace(cwd, args);
+      return;
+    } catch (error) {
+      console.error(`[omg] Error: Herdr launch failed: ${error instanceof Error ? error.message : error}`);
+      console.error('[omg] Falling back to the default tmux/direct launch path.');
+      // fall through to the standard tmux/direct policy below
+    }
   }
 
   const requireTmux = options.requireTmux ?? (process.platform === 'darwin' && hasMadmaxFlag(args));
@@ -1638,7 +1746,7 @@ export async function launchCommand(args: string[]): Promise<void> {
 
   // Phase 2: run
   try {
-    runClaude(cwd, normalizedArgs, sessionId, { requireTmux });
+    await runClaude(cwd, normalizedArgs, sessionId, { requireTmux });
   } finally {
     // Phase 3: postLaunch
     await postLaunch(cwd, sessionId);

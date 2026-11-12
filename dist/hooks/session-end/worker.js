@@ -2,13 +2,17 @@ import { childEnv } from '../../utils/windows-search.js';
 import { spawn } from 'child_process';
 import { randomUUID } from 'crypto';
 import { fileURLToPath } from 'url';
-import { claimSessionEndAction, claimSessionEndDiscoveryTickets, claimSessionEndJob, failClosedExhaustedForegroundCleanup, failClosedMissingCoreProducer, finishSessionEndAction, markSessionEndActionRunner, readSessionEndJob, reapStaleSessionEndOwner, settleDisabledOpenClawAction, rearmUnclaimedSessionEndJob, recoverPreparedCoreProducer, releaseSessionEndDiscoveryTicket, releaseSessionEndJob, renewSessionEndLease, resolveDeferredSessionEndChain, updateSessionEndActionPayload } from './cleanup-manifest.js';
+import { claimSessionEndAction, claimSessionEndDiscoveryTickets, claimSessionEndJob, failClosedExhaustedForegroundCleanup, failClosedMissingCoreProducer, finishSessionEndAction, markSessionEndActionRunner, readSessionEndJob, reapStaleSessionEndOwner, recordSessionEndWorkerExit, settleDisabledOpenClawAction, rearmUnclaimedSessionEndJob, recoverPreparedCoreProducer, releaseSessionEndDiscoveryTicket, releaseSessionEndJob, renewSessionEndLease, resolveDeferredSessionEndChain, updateSessionEndActionPayload } from './cleanup-manifest.js';
 import { runSessionEndAction } from './action-runner.js';
 import { armSessionEndActionWatchdog } from './action-watchdog.js';
 import { getProcessStartIdentity, isProcessIdentityLive } from '../../platform/process-utils.js';
 import { isCopilotSessionEndJob, isCopilotSessionLive } from './copilot-liveness.js';
 const WORKER_ARG = '--omc-session-end-worker';
 const MAX_WORKER_MS = 10_000;
+const RELEASE_RETRY_DELAYS_MS = [0, 250, 1_000];
+const RELEASE_RETRY_BUDGET_MS = 6_000;
+/** Worst-case wait in cleanup-manifest withLock before it gives up; a retry starts only if one more fits the budget. */
+const RELEASE_LOCK_WAIT_MS = 5_000;
 /** Copilot permission switches excluded from the COPILOT_* passthrough (mirrors action-runner.ts). */
 const COPILOT_PERMISSION_ENV = new Set(['COPILOT_ALLOW_ALL']);
 /** Durable OpenClaw routing is supplied from the manifest to the action runner, never from worker ambient state. */
@@ -190,6 +194,32 @@ function retryAfterBoundedRunners(payload, job, liveRechecks) {
         return;
     setTimeout(() => { void processSessionEndWorker(payload, liveRechecks); }, Math.max(...deadlines) - now + 1);
 }
+/**
+ * A failed release returns null rather than throwing, and a worker that leaves
+ * its own live owner record behind cannot be reaped or reclaimed until the next
+ * SessionStart, so retry from the owner's current generation (#4844).
+ */
+async function releaseOwnedJob(payload, nonce, generation, exitReason) {
+    let leaseGeneration = generation;
+    const giveUpAt = Date.now() + RELEASE_RETRY_BUDGET_MS;
+    for (const delay of [...RELEASE_RETRY_DELAYS_MS, null]) {
+        const released = releaseSessionEndJob(payload.directory, payload.sessionId, nonce, leaseGeneration, exitReason);
+        if (released)
+            return released;
+        const job = readSessionEndJob(payload.directory, payload.sessionId);
+        if (job && job.owner?.nonce !== nonce)
+            return null;
+        if (job?.owner)
+            leaseGeneration = job.owner.leaseGeneration;
+        if (delay === null || Date.now() + delay + RELEASE_LOCK_WAIT_MS > giveUpAt) {
+            recordSessionEndWorkerExit(payload.directory, { sessionId: payload.sessionId, pid: process.pid, outcome: 'release-failed', exitReason, ownerNonce: nonce, leaseGeneration, revision: job?.revision, phase: job?.phase });
+            return null;
+        }
+        if (delay > 0)
+            await new Promise(resolve => setTimeout(resolve, delay));
+    }
+    return null;
+}
 /** Copilot mid-session SessionEnd: recheck for the real end every 5 s for 30 s, then leave it to the next SessionEnd or SessionStart reconcile. */
 const COPILOT_LIVE_RECHECK_MS = 5_000;
 const COPILOT_LIVE_MAX_RECHECKS = 6;
@@ -305,7 +335,7 @@ export async function processSessionEndWorker(payload, liveRechecks = 0) {
         }
     }
     finally {
-        const released = releaseSessionEndJob(payload.directory, payload.sessionId, nonce, generation, exitReason);
+        const released = await releaseOwnedJob(payload, nonce, generation, exitReason);
         const terminalized = failClosedExhaustedForegroundCleanup(payload.directory, payload.sessionId);
         reschedulePendingWorker(payload, terminalized ?? released ?? readSessionEndJob(payload.directory, payload.sessionId));
     }

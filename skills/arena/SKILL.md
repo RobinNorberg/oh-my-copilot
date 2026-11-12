@@ -45,7 +45,14 @@ Every candidate gets the same brief, so the brief is the contract.
 3. Pick the runtime:
    - **In-session**: parallel `Task` dispatches to `oh-my-copilot:executor`,
      one per candidate, each given its own output location.
-   - **Multi-provider**: `OMC_TEAM_WORKTREE_MODE=detached omg team --no-decompose 1:copilot,1:codex,1:gemini "<brief>"`.
+   - **Multi-provider**: seat candidates for model diversity — read
+     `team.roleRouting` from the project config (`.copilot/omg.jsonc`) or the
+     user config (`claude-omc/config.jsonc`; `omg config` prints the
+     effective values), collect up to three distinct provider families in
+     canonical role order, and fill remaining seats from the default
+     families — copilot, codex, gemini — not already seated; with no routing
+     config, use
+     `OMC_TEAM_WORKTREE_MODE=detached omg team --no-decompose 1:copilot,1:codex,1:gemini "<brief>"`.
      Worktree isolation must be on — an unset mode resolves to `disabled`
      and all candidates would share one checkout — and `--no-decompose`
      keeps every candidate on the same brief instead of splitting a

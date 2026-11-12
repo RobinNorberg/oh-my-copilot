@@ -200,6 +200,10 @@
     "source": "plugin"
   },
   {
+    "name": "sdd",
+    "source": "plugin"
+  },
+  {
     "name": "omc-review",
     "source": "plugin"
   },

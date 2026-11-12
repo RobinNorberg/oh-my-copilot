@@ -42,7 +42,7 @@ describe('wait/teleport subcommand --json Commander integration (regression: par
     });
     it('dispatches wait status without --json as json:false', async () => {
         await parse(['wait', 'status']);
-        expect(waitMocks.waitStatusCommand).toHaveBeenCalledWith({ json: false });
+        expect(waitMocks.waitStatusCommand).toHaveBeenCalledWith({}); // upstream shape: json left unset without --json
     });
     it('dispatches wait detect --json with json:true', async () => {
         await parse(['wait', 'detect', '--json']);
@@ -54,7 +54,7 @@ describe('wait/teleport subcommand --json Commander integration (regression: par
     });
     it('dispatches teleport list without --json as json:false', async () => {
         await parse(['teleport', 'list']);
-        expect(teleportMocks.teleportListCommand).toHaveBeenCalledWith({ json: false });
+        expect(teleportMocks.teleportListCommand).toHaveBeenCalledWith({}); // upstream shape: json left unset without --json
     });
     it('dispatches teleport remove <path> --json with json:true', async () => {
         await parse(['teleport', 'remove', './some-worktree', '--json']);

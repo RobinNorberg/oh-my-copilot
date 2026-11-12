@@ -60,6 +60,14 @@ describe('comparePair commensurability', () => {
     expect(comparePair(true, { type: 'noul', noul: true })).toBe(true);
     expect(comparePair(false, { type: 'noul', noul: true })).toBe(false);
   });
+  it('twin boolean <-> Jev Noul probability, 0.5 or more reads as yes', () => {
+    expect(comparePair(true, { type: 'noul', noul: 0.92 })).toBe(true);
+    expect(comparePair(true, { type: 'noul', noul: 0.5 })).toBe(true);
+    expect(comparePair(true, { type: 'noul', noul: 0.08 })).toBe(false);
+    expect(comparePair(false, { type: 'noul', noul: 0.08 })).toBe(true);
+    expect(comparePair(false, { type: 'noul', noul: Number.NaN })).toBeNull();
+    expect(comparePair(false, { type: 'noul' })).toBeNull();
+  });
   it('twin string <-> Jev Choice.choice', () => {
     expect(comparePair('build', { type: 'choice', choice: 'build' })).toBe(true);
     expect(comparePair('build', { type: 'choice', choice: 'query' })).toBe(false);
@@ -126,6 +134,24 @@ describe('analyzeLog per-point stats', () => {
     expect(text).toContain('== intent ==');
     expect(text).toContain('agreement: 75.0%');
     expect(text).toContain('malformed: 2');
+  });
+});
+
+describe('calls held back by the cap or an open breaker', () => {
+  it('count in their mode but not as latency samples', () => {
+    const text = [
+      entry('slop-warning', 'shadow', false, { type: 'noul', noul: false }, 1000),
+      entry('slop-warning', 'circuit-open', false, null, 2),
+      entry('slop-warning', 'cap', false, null, 3),
+      entry('task-size', 'circuit-open', 'small', null, 1),
+    ].join('\n') + '\n';
+    const report = analyzeLog(text, 'held-back.jsonl');
+    const slop = report.points.find((p) => p.point === 'slop-warning');
+    expect(slop.requests).toBe(3);
+    expect(slop.modes).toMatchObject({ shadow: 1, cap: 1, 'circuit-open': 1 });
+    expect(slop.durationMs).toEqual({ mean: 1000, p95: 1000 });
+    const taskSize = report.points.find((p) => p.point === 'task-size');
+    expect(taskSize.durationMs).toEqual({ mean: 0, p95: 0 });
   });
 });
 

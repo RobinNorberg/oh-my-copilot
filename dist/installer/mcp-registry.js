@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { homedir } from 'os';
-import { dirname, join } from 'path';
+import { dirname, join, resolve } from 'path';
 import { isDeepStrictEqual } from 'util';
 import { getCopilotConfigDir } from '../utils/config-dir.js';
 import { getGlobalOmcConfigPath, getGlobalOmcConfigCandidates, getGlobalOmcStatePath, getGlobalOmcStateCandidates, } from '../utils/paths.js';
@@ -23,11 +23,37 @@ function getUnifiedMcpRegistryPathCandidates() {
 function getUnifiedMcpRegistryStatePathCandidates() {
     return getGlobalOmcStateCandidates('mcp-registry-state.json');
 }
-export function getClaudeMcpConfigPath() {
+/**
+ * Whether a resolved config dir is a default one: Claude Code's ~/.claude or
+ * (fork) the default Copilot home ~/.copilot. Both keep ~/.claude.json, the file
+ * next to them; `omg launch` unsets COPILOT_HOME for the default dir.
+ */
+export function isDefaultClaudeConfigDirPath(configDir) {
+    return configDir === join(homedir(), '.claude') || configDir === join(homedir(), '.copilot');
+}
+/**
+ * The .claude.json that holds Claude Code's user-scoped MCP servers for a config
+ * dir. Claude Code reads join(COPILOT_HOME || homedir(), '.claude.json'), so
+ * a profile keeps its own file. A default dir keeps ~/.claude.json even
+ * when COPILOT_HOME names it, because `omg launch` unsets the variable for
+ * that dir and its sessions read ~/.claude.json.
+ */
+export function getClaudeJsonPathForConfigDir(configDir) {
+    return isDefaultClaudeConfigDirPath(configDir)
+        ? join(homedir(), '.claude.json')
+        : join(configDir, '.claude.json');
+}
+/**
+ * The Claude MCP config for a config dir: CLAUDE_MCP_CONFIG_PATH when it is set,
+ * otherwise the .claude.json Claude Code reads for that dir. `omg setup` syncs
+ * the registry into it, `omg doctor conflicts` checks it, and `omg launch` seeds
+ * its runtime mcpServers from it.
+ */
+export function getClaudeMcpConfigPath(configDir = getCopilotConfigDir()) {
     if (process.env.CLAUDE_MCP_CONFIG_PATH?.trim()) {
         return process.env.CLAUDE_MCP_CONFIG_PATH.trim();
     }
-    return join(dirname(getCopilotConfigDir()), '.claude.json');
+    return getClaudeJsonPathForConfigDir(configDir);
 }
 export function getCodexConfigPath() {
     const codexHome = process.env.CODEX_HOME?.trim() || join(homedir(), '.codex');
@@ -158,27 +184,75 @@ function ensureParentDir(path) {
         mkdirSync(parent, { recursive: true });
     }
 }
-function readManagedServerNames() {
+function parseServerNames(value) {
+    return Array.isArray(value)
+        ? value.filter((item) => typeof item === 'string').sort((a, b) => a.localeCompare(b))
+        : [];
+}
+/** The file an older OMC synced into: CLAUDE_MCP_CONFIG_PATH, or else the .claude.json next to the config dir. */
+function getOlderSyncClaudeConfigPath() {
+    return process.env.CLAUDE_MCP_CONFIG_PATH?.trim() || join(dirname(getCopilotConfigDir()), '.claude.json');
+}
+/**
+ * Reads the managed-server state for a sync of claudeConfigPath, the Claude MCP
+ * config whose current servers are claudeConfigServerNames.
+ */
+function readManagedServerState(claudeConfigPath, claudeConfigServerNames) {
     for (const statePath of getUnifiedMcpRegistryStatePathCandidates()) {
         if (!existsSync(statePath)) {
             continue;
         }
         try {
             const state = JSON.parse(readFileSync(statePath, 'utf-8'));
-            return Array.isArray(state.managedServers)
-                ? state.managedServers.filter((item) => typeof item === 'string').sort((a, b) => a.localeCompare(b))
-                : [];
+            const serverNames = parseServerNames(state.managedServers);
+            const byClaudeConfig = state.managedServersByClaudeConfig;
+            if (!byClaudeConfig || typeof byClaudeConfig !== 'object' || Array.isArray(byClaudeConfig)) {
+                // A state from an older OMC lists the names without the file. Record them for
+                // the file that OMC synced into, so that a later sync of that file still
+                // removes the ones that left the registry. When that is not the file this
+                // sync writes, leave out the names this file already has: an OMC that
+                // already synced a profile into its own .claude.json wrote the same format,
+                // so such a name may have been synced here, and in the older file it could
+                // name a server the user added there.
+                const olderSyncClaudeConfigPath = resolve(getOlderSyncClaudeConfigPath());
+                const olderSyncServerNames = olderSyncClaudeConfigPath === resolve(claudeConfigPath)
+                    ? serverNames
+                    : serverNames.filter(name => !claudeConfigServerNames.includes(name));
+                const serverNamesByClaudeConfig = new Map();
+                if (olderSyncServerNames.length > 0) {
+                    serverNamesByClaudeConfig.set(olderSyncClaudeConfigPath, olderSyncServerNames);
+                }
+                return { serverNames, serverNamesByClaudeConfig };
+            }
+            return {
+                serverNames,
+                serverNamesByClaudeConfig: new Map(Object.entries(byClaudeConfig).map(([configPath, names]) => [configPath, parseServerNames(names)])),
+            };
         }
         catch {
-            return [];
+            return { serverNames: [], serverNamesByClaudeConfig: new Map() };
         }
     }
-    return [];
+    return { serverNames: [], serverNamesByClaudeConfig: new Map() };
 }
-function writeManagedServerNames(serverNames) {
+function writeManagedServerState(state, claudeConfigPath, serverNames) {
+    const sortedNames = [...serverNames].sort((a, b) => a.localeCompare(b));
+    const byClaudeConfig = new Map(state.serverNamesByClaudeConfig);
+    byClaudeConfig.set(resolve(claudeConfigPath), sortedNames);
     const statePath = getUnifiedMcpRegistryStatePath();
     ensureParentDir(statePath);
-    writeFileSync(statePath, JSON.stringify({ managedServers: [...serverNames].sort((a, b) => a.localeCompare(b)) }, null, 2));
+    writeFileSync(statePath, JSON.stringify({
+        managedServers: sortedNames,
+        managedServersByClaudeConfig: Object.fromEntries([...byClaudeConfig].filter(([, names]) => names.length > 0)),
+    }, null, 2));
+}
+/**
+ * The names an earlier sync wrote into claudeConfigPath, which this sync removes
+ * once they leave the registry. Names synced into another file do not count, so
+ * a server with the same name that OMC did not write into this file stays.
+ */
+function getManagedServerNamesForClaudeConfig(state, claudeConfigPath) {
+    return state.serverNamesByClaudeConfig.get(resolve(claudeConfigPath)) ?? [];
 }
 function bootstrapRegistryFromClaude(settings, registryPath) {
     const registry = extractClaudeMcpRegistry(settings);
@@ -231,7 +305,9 @@ function codexEntriesEqual(codexEntry, registryEntry, typeFieldPresent) {
     return isDeepStrictEqual(comparableCodexEntry, comparableRegistryEntry);
 }
 function normalizeCodexMcpType(type) {
-    return type === 'streamable-http' ? 'http' : type;
+    // Codex doesn't distinguish between specific HTTP-like types; it infers the
+    // transport method from 'url' vs 'command'. Map all HTTP variants to 'http'.
+    return (type === 'streamable-http' || type === 'sse') ? 'http' : type;
 }
 function inferCodexMcpTransportType(entry) {
     if (entry.command && !entry.url)
@@ -716,9 +792,9 @@ function renderCodexServerBlock(name, entry) {
     if (entry.url) {
         lines.push(`url = ${renderTomlString(entry.url)}`);
     }
-    if (entry.type) {
-        lines.push(`type = ${renderTomlString(entry.type)}`);
-    }
+    // Note: Codex does not recognize the 'type' key and warns about it (issue #4899),
+    // so we don't write it to the Codex TOML config. The type field is preserved
+    // in Claude's JSON config (.claude.json).
     if (entry.env && Object.keys(entry.env).length > 0) {
         lines.push(`env = ${renderTomlEnvTable(entry.env)}`);
     }
@@ -919,10 +995,12 @@ export function syncUnifiedMcpRegistryTargets(settings) {
     const registryPath = getUnifiedMcpRegistryPath();
     const claudeConfigPath = getClaudeMcpConfigPath();
     const codexConfigPath = getCodexConfigPath();
-    const managedServerNames = readManagedServerNames();
-    const legacyClaudeRegistry = extractClaudeMcpRegistry(settings);
     const currentClaudeConfig = readJsonObject(claudeConfigPath);
-    const claudeConfigForBootstrap = Object.keys(extractClaudeMcpRegistry(currentClaudeConfig)).length > 0
+    const currentClaudeServerNames = Object.keys(extractClaudeMcpRegistry(currentClaudeConfig));
+    const managedServerState = readManagedServerState(claudeConfigPath, currentClaudeServerNames);
+    const managedServerNames = getManagedServerNamesForClaudeConfig(managedServerState, claudeConfigPath);
+    const legacyClaudeRegistry = extractClaudeMcpRegistry(settings);
+    const claudeConfigForBootstrap = currentClaudeServerNames.length > 0
         ? currentClaudeConfig
         : settings;
     const registryState = loadOrBootstrapRegistry(claudeConfigForBootstrap);
@@ -942,8 +1020,11 @@ export function syncUnifiedMcpRegistryTargets(settings) {
         writeFileSync(codexConfigPath, nextCodexConfig.content);
         codexChanged = true;
     }
-    if (registryState.registryExists || Object.keys(legacyClaudeRegistry).length > 0 || managedServerNames.length > 0) {
-        writeManagedServerNames(serverNames);
+    if (registryState.registryExists
+        || Object.keys(legacyClaudeRegistry).length > 0
+        || managedServerState.serverNames.length > 0
+        || managedServerNames.length > 0) {
+        writeManagedServerState(managedServerState, claudeConfigPath, serverNames);
     }
     return {
         settings: cleanedSettings.settings,
