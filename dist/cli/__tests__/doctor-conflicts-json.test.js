@@ -31,9 +31,9 @@ describe('doctor conflicts Commander integration', () => {
         expect(doctorConflictsCommandMock).toHaveBeenCalledWith({ json: true });
         expect(exitSpy).toHaveBeenCalledWith(0);
     });
-    it('dispatches doctor conflicts without --json as json:false', async () => {
+    it('dispatches doctor conflicts without --json (json unset)', async () => {
         await parseDoctor(['doctor', 'conflicts']);
-        expect(doctorConflictsCommandMock).toHaveBeenCalledWith({ json: false });
+        expect(doctorConflictsCommandMock).toHaveBeenCalledWith({}); // upstream shape: json left unset without --json
         expect(exitSpy).toHaveBeenCalledWith(0);
     });
     it('propagates the command exit code for doctor conflicts --json', async () => {
