@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { delimiter, join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { IS_WIN } from './helpers/platform.js';
-import { hookPrefixForPlatform, normalizeHookCommand, normalizeHooksDataForPlatform, UNIX_HOOK_PREFIX, windowsExecArgs } from '../../scripts/lib/hook-command-normalizer.mjs';
+import { hookPrefixForPlatform, normalizeHookCommand, normalizeHooksDataForPlatform, patchHooksManifestFile, UNIX_HOOK_PREFIX, windowsExecArgs } from '../../scripts/lib/hook-command-normalizer.mjs';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const PACKAGE_ROOT = join(__dirname, '..', '..');
@@ -146,14 +146,52 @@ describe('plugin-setup.mjs hook command portability', () => {
     function patchCommand(cmd, prefix = UNIX_PREFIX) {
         return normalizeHookCommand(cmd, prefix);
     }
-    it('selects direct node only on win32 and find-node bootstrap elsewhere', () => {
-        expect(scriptContent).toContain("process.platform === 'win32'");
-        expect(scriptContent).toContain('direct node exec');
-        expect(scriptContent).toContain('find-node.sh run.cjs');
-        expect(scriptContent).toContain('normalizeHooksDataForPlatform');
-        // The prefix decision belongs to the normalizer, which probes whether this
-        // host can run the portable form; plugin-setup must not branch on platform.
+    it('delegates the manifest step to patchHooksManifestFile and never probes itself', () => {
+        expect(scriptContent).toContain("patchHooksManifestFile(join(__dirname, '..', 'hooks', 'hooks.json'))");
+        expect(scriptContent).not.toContain('nodeResolvesOnHookPath');
         expect(scriptContent).not.toMatch(/prefix[^\n]*process\.platform === 'win32'/);
+    });
+    describe('patchHooksManifestFile (the plugin-setup manifest step)', () => {
+        const shipped = join(PACKAGE_ROOT, 'hooks', 'hooks.json');
+        const withCopy = (fn) => {
+            const dir = mkdtempSync(join(tmpdir(), 'omg-hooks-manifest-'));
+            try {
+                const path = join(dir, 'hooks.json');
+                cpSync(shipped, path);
+                fn(path);
+            }
+            finally {
+                rmSync(dir, { recursive: true, force: true });
+            }
+        };
+        const hooksOf = (path) => Object.values(JSON.parse(readFileSync(path, 'utf-8')).hooks)
+            .flatMap(groups => groups.flatMap(group => group.hooks))
+            .filter(hook => hook.command === 'node' || hook.command?.includes('run.cjs'));
+        it('rewrites the cache to find-node on POSIX when node is not on the minimal hook PATH', () => withCopy((path) => {
+            expect(patchHooksManifestFile(path, 'linux', () => false)).toBe('find-node.sh run.cjs');
+            const hooks = hooksOf(path);
+            expect(hooks.length).toBeGreaterThan(0);
+            for (const hook of hooks) {
+                expect(hook.command?.startsWith(UNIX_HOOK_PREFIX)).toBe(true);
+                expect(hook.args).toBeUndefined();
+            }
+        }));
+        it('keeps the shipped exec form on POSIX when node is on the minimal hook PATH', () => withCopy((path) => {
+            const before = readFileSync(path, 'utf-8');
+            expect(patchHooksManifestFile(path, 'darwin', () => true)).toBeNull();
+            expect(readFileSync(path, 'utf-8')).toBe(before);
+        }));
+        it('restores the exec form on POSIX once node is on the minimal hook PATH', () => withCopy((path) => {
+            patchHooksManifestFile(path, 'linux', () => false);
+            expect(patchHooksManifestFile(path, 'linux', () => true)).toBe('direct node exec');
+            for (const hook of hooksOf(path))
+                expect(hook.command).toBe('node');
+        }));
+        it('never probes on win32 and skips a missing manifest', () => withCopy((path) => {
+            const probe = () => { throw new Error('probed on win32'); };
+            expect(patchHooksManifestFile(path, 'win32', probe)).toBeNull();
+            expect(patchHooksManifestFile(join(dirname(path), 'missing.json'), 'linux', () => false)).toBeNull();
+        }));
     });
     it('leaves the canonical sh+find-node+run.cjs command unchanged', () => {
         const canonical = `${UNIX_PREFIX}"\${CLAUDE_PLUGIN_ROOT}"/scripts/keyword-detector.mjs`;

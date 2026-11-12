@@ -51,6 +51,7 @@ import { pathToFileURL } from 'url';
 import { atomicWriteJsonSync } from '../lib/atomic-write.js';
 import { loadBaseKnownFlaky, OMG_REPOSITORY_REQUIRED_CHECKS, prRepoUrl } from '../ship/config.js';
 import { scrubShipEnv } from '../ship/exec.js';
+import { checkName } from '../ship/check-name.js';
 import { parseFailingTests, TRANSIENT_GH_ERROR, watchGates } from '../ship/gates.js';
 import { classifyTriage, compareVersions, escapeRe, failingTitlesFromVitestJson, filePassedInReport, findDistOrphans, flakyCandidates, newFailures, outsideNodeLoad, parseBaselineTitles, releaseProseProblems, remoteTagTarget, SMOKE_INPUTS, smokeInputHash, smokeProblems, splitFailingTitle, stampVersion, tagTargetProblem, testPassedInReport, TRIAGE_CAP, TRIAGE_POOL, triageLine, VERSION_STAMPS, } from './checks.js';
 import { parseCopilotVersion, resolveCopilotBinary } from '../smoke/copilot-binary.js';
@@ -1280,7 +1281,7 @@ class Release {
         return log.status === 0 ? parseFailingTests(log.stdout).map((t) => (t.title ? `${t.file} > ${t.title}` : t.file)) : [];
     }
     gateDetails(report) {
-        const details = report.failed.map((name) => `failed: ${name}`);
+        const details = report.failed.map((name) => `failed: ${checkName(name)}`);
         for (const check of report.checks) {
             if (check.class !== 'failed' || !check.jobId)
                 continue;
