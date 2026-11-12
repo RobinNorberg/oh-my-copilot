@@ -412,7 +412,7 @@ export async function runFactoryBoard(o: FactoryBoardOptions, deps: FactoryBoard
 
   const env = o.check === false ? null : checkEnvFor(exec, root, config, base, baseSha);
   const now = deps.now ?? Date.now;
-  warnings.push(...humanMergeLines(recordHumanMerges(root, readRuns(root, []).runs, { readPrState: forgePrStateReader(forge, exec, root), ledgerDir: deps.ledgerDir ?? defaultLedgerDir(), now: () => new Date(now()).toISOString() })).map((l) => `omg factory board: ${l}`));
+  warnings.push(...humanMergeLines(recordHumanMerges(root, readRuns(root, []).runs, { readPrState: forgePrStateReader(forge, exec, root, config.repo.url), ledgerDir: deps.ledgerDir ?? defaultLedgerDir(), now: () => new Date(now()).toISOString() })).map((l) => `omg factory board: ${l}`));
   const board = collectBoard({ forge, config, root, ids, check: env, now: (deps.now ?? Date.now)(), warnings });
   if (forge.kind === 'local') {
     // The local backlog's working tree: an item not committed on the base is untrusted, and omg factory run cannot start it yet.

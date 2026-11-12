@@ -240,7 +240,10 @@ describe('omg factory board on GitHub', () => {
       let state = 'MERGED';
       const exec: Exec = (cmd, args, o) => (cmd === 'gh' && args.join(' ') === 'pr view 12 --json headRefOid,state'
         ? (state === 'fail' ? { status: 1, stdout: '', stderr: 'HTTP 502' } : ok(JSON.stringify({ headRefOid: HEAD, state })))
-        : w.exec(cmd, args, o));
+        // A merged PR's base is compared with the run's base.
+        : cmd === 'gh' && args.join(' ') === 'pr view 12 --json number,state,isDraft,baseRefName,baseRefOid,headRefName,headRefOid,url'
+          ? ok(JSON.stringify({ number: 12, state, isDraft: false, baseRefName: cancelledRun.base, baseRefOid: 'b'.repeat(40), headRefName: 'factory/3', headRefOid: HEAD, url: 'https://github.com/o/r/pull/12' }))
+          : w.exec(cmd, args, o));
       state = 'fail';
       expect(await board(exec, { source: 'label:factory', json: true }, { ledgerDir })).toBe(0);
       expect(json().warnings).toEqual(['omg factory board: run #3: not checked for a human merge: PR #12 could not be read: gh pr view 12 did not return a head sha and state (exit 1): HTTP 502']);
