@@ -239,6 +239,69 @@ export function resolveRequireDeniedPaths(layers: Pick<GatesSandboxLayers, 'user
   return { require: false, source: user === false || base === false ? 'config' : 'default' };
 }
 
+/** `factory.run.sandbox.isolation`: where a sandboxed gate runs (the Copilot OS sandbox, or a local container). */
+export type GateIsolation = 'copilot' | 'container';
+
+/** `factory.run.sandbox.container`: the container the gate runs in with isolation "container". */
+export interface GateContainerSettings {
+  runtime: 'docker' | 'podman';
+  /** An image reference; default `node:<host major>-bookworm-slim`. A digest pin (`name@sha256:...`) is kept as given. */
+  image: string;
+  /** `--memory` (e.g. "4g"). */
+  memory: string;
+  /** `--cpus`. */
+  cpus: number;
+  /** `--pids-limit`. */
+  pidsLimit: number;
+  /** How long each dependency install step (`npm ci`, then its scripts) may run. */
+  installTimeoutMinutes: number;
+  /** The most a command's work volume may hold (e.g. "10g"); over it, a watchdog kills that command's container. */
+  diskLimit: string;
+}
+
+const CONTAINER_KEYS = ['runtime', 'image', 'memory', 'cpus', 'pidsLimit', 'installTimeoutMinutes', 'diskLimit'] as const;
+
+/** The default gate image: the host Node major on Debian bookworm slim. */
+export const defaultGateImage = (nodeVersion: string = process.versions.node): string => `node:${nodeVersion.split('.')[0]}-bookworm-slim`;
+
+/**
+ * `factory.run.sandbox.isolation` and `factory.run.sandbox.container` from
+ * the USER config only: the PR's repository must never choose where its own
+ * code runs or with what limits, so a value committed in the base's
+ * `.copilot/omg.jsonc` is ignored (`ignoredBase` names it for a notice). A
+ * malformed user value throws. The image may not start with `-` (it is one
+ * argv word after the runtime's options) and holds only reference characters.
+ */
+export function resolveGateIsolation(layers: Pick<GatesSandboxLayers, 'user' | 'base'>, nodeVersion: string = process.versions.node): { isolation: GateIsolation; container?: GateContainerSettings; ignoredBase: string[] } {
+  const block = (config: unknown): Record<string, unknown> => {
+    const raw = (config as { factory?: { run?: { sandbox?: unknown } } } | null | undefined)?.factory?.run?.sandbox;
+    return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw as Record<string, unknown> : {};
+  };
+  const base = block(layers.base);
+  const ignoredBase = (['isolation', 'container'] as const).filter((k) => base[k] !== undefined).map((k) => `factory.run.sandbox.${k}`);
+  const user = block(layers.user);
+  const bad = (key: string, want: string): never => { throw new Error(`user config: factory.run.sandbox.${key} must be ${want}`); };
+  const isolation = user.isolation === undefined ? 'copilot' : user.isolation === 'copilot' || user.isolation === 'container' ? user.isolation : bad('isolation', '"copilot" or "container"');
+  const raw = user.container ?? {};
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) bad('container', 'an object');
+  const c = raw as Record<string, unknown>;
+  const unknown = Object.keys(c).filter((k) => !(CONTAINER_KEYS as readonly string[]).includes(k));
+  if (unknown.length > 0) bad('container', `an object with only ${CONTAINER_KEYS.join(', ')} (got ${unknown.join(', ')})`);
+  const int = (key: string, min: number, max: number, fallback: number): number => {
+    const v = c[key];
+    if (v === undefined) return fallback;
+    return typeof v === 'number' && Number.isInteger(v) && v >= min && v <= max ? v : bad(`container.${key}`, `an integer from ${min} to ${max}`);
+  };
+  const runtime = c.runtime === undefined ? 'docker' : c.runtime === 'docker' || c.runtime === 'podman' ? c.runtime : bad('container.runtime', '"docker" or "podman"');
+  const image = c.image === undefined ? defaultGateImage(nodeVersion)
+    : typeof c.image === 'string' && /^[A-Za-z0-9][A-Za-z0-9._/:@-]{0,254}$/.test(c.image) ? c.image : bad('container.image', 'an image reference (letters, digits and . _ / : @ -, not starting with -)');
+  const memory = c.memory === undefined ? '4g' : typeof c.memory === 'string' && /^[1-9]\d{0,5}[kmg]$/i.test(c.memory) ? c.memory : bad('container.memory', 'a size such as "4g" or "512m"');
+  const cpus = c.cpus === undefined ? 2 : typeof c.cpus === 'number' && c.cpus > 0 && c.cpus <= 64 ? c.cpus : bad('container.cpus', 'a number above 0 and at most 64');
+  const diskLimit = c.diskLimit === undefined ? '10g' : typeof c.diskLimit === 'string' && /^[1-9]\d{0,5}[mg]$/i.test(c.diskLimit) ? c.diskLimit : bad('container.diskLimit', 'a size such as "10g" or "800m"');
+  const container: GateContainerSettings = { runtime, image, memory, cpus, pidsLimit: int('pidsLimit', 64, 65_536, 1_024), installTimeoutMinutes: int('installTimeoutMinutes', 1, 120, 15), diskLimit };
+  return { isolation, ...(isolation === 'container' ? { container } : {}), ignoredBase };
+}
+
 // ---------------------------------------------------------------------------
 // Policy (§4.2 review, §4.3 write)
 // ---------------------------------------------------------------------------

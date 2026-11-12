@@ -37,7 +37,7 @@
  * boundary: unsandboxed code still runs with the user's rights.
  */
 import { type CopilotRunDeps } from '../../copilot-run/job.js';
-import { type SandboxConfigLayers, type SandboxSettings } from '../../copilot-run/sandbox.js';
+import { type GateContainerSettings, type SandboxConfigLayers, type SandboxSettings } from '../../copilot-run/sandbox.js';
 /** The output tail a sandboxed command keeps (as the local gate record, local-gate.ts LOCAL_GATE_TAIL_CHARS). */
 export declare const SANDBOX_OUTPUT_TAIL_CHARS = 8000;
 /** One command for the sandbox: the configured argv (for records and messages) and what it resolved to. */
@@ -66,6 +66,13 @@ export interface SandboxRunRequest {
     nestedNodeModulesTargets?: string[];
     /** Where the per-command job home goes (default sandboxJobRoot(root); the private layout: under the run dir). */
     jobRoot?: string;
+    /**
+     * factory.run.sandbox.isolation "container" (user config only, resolved by the engine): the command runs in a
+     * local container (container-gate.ts) instead of the Copilot OS sandbox, never in both, never falling back.
+     */
+    container?: GateContainerSettings;
+    /** The run's container label (container-gate.ts containerRunLabel); needed with `container`. */
+    runLabel?: string;
 }
 /** The gate record and PR note line for a sandboxed run on a host without denied_paths. */
 export declare const CREDENTIAL_FILES_READABLE_NOTE = "sandboxed; credential files readable on this host";
@@ -77,6 +84,9 @@ export declare const CREDENTIAL_FILES_READABLE_NOTE = "sandboxed; credential fil
  * `refused`: the configured argv itself cannot be handed to the sandbox
  * shell (its shape or length), before any runtime launched: a property of
  * the command, which no code of the PR can cause.
+ * `unavailable` (isolation "container" only): the container runtime, its
+ * daemon or image is missing, or the project cannot be installed there;
+ * nothing of the PR's ran (the engine's gate-container-unavailable park).
  */
 export type SandboxRunResult = {
     ran: true;
@@ -84,11 +94,13 @@ export type SandboxRunResult = {
     output: string;
     timedOut: boolean;
     credentialFilesReadable?: true;
+    imageId?: string;
 } | {
     ran: false;
     reason: string;
     started?: true;
     refused?: true;
+    unavailable?: true;
 };
 export type SandboxRunner = (req: SandboxRunRequest) => Promise<SandboxRunResult>;
 /** The runtime operations runSandboxed needs (copilot_run's deps; tests pass a fake SDK). */

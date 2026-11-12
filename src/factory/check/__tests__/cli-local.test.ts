@@ -99,6 +99,24 @@ describe('omg factory check on the local (offline) forge', () => {
     expect(repo.out.join('\n')).toMatch(/gate: unresolved \(.*selects workspace packages \(-ws\)/);
   });
 
+  it('isolation "container": reports the runtime version and the image, or warns that every gate parks; the default never probes', async () => {
+    const repo = localRepo();
+    writeFile(repo, '.copilot/backlog/1-add-remove.md', backlogItem('Add remove'));
+    commitAll(repo);
+    const probed: string[] = [];
+    const probe = (up: boolean) => (s: { runtime: string; image: string }) => { probed.push(`${s.runtime} ${s.image}`); return { version: up ? '29.1.3' : null, image: false }; };
+    const user = { ship: { trustedBases: ['main'] }, factory: { run: { sandbox: { isolation: 'container', container: { image: 'node:22-bookworm-slim' } } } } };
+    expect(await runFactoryCheck({ ids: ['1'] }, { ...checkDeps(repo), containerProbe: probe(false) })).toBe(0);
+    expect(probed).toEqual([]);
+    expect(await runFactoryCheck({ ids: ['1'] }, { ...checkDeps(repo), trustedUser: () => user, containerProbe: probe(true) })).toBe(0);
+    expect(repo.out.join('\n')).toContain('gate isolation: container (docker, node:22-bookworm-slim): docker 29.1.3, image not pulled yet');
+    repo.out.length = 0;
+    expect(await runFactoryCheck({ ids: ['1'], json: true }, { ...checkDeps(repo), trustedUser: () => user, containerProbe: probe(false) })).toBe(0);
+    const json = JSON.parse(repo.out.join('\n')) as CheckJson;
+    expect(json.gateIsolation).toEqual({ kind: 'container', runtime: 'docker', image: 'node:22-bookworm-slim', version: null, imagePresent: false });
+    expect(json.warnings.join('\n')).toContain('parks at gate-container-unavailable');
+  });
+
   it('F31 + F30: a child whose local PR merged reads as closed (warning names the file); its spec is children-done, never runnable', async () => {
     const repo = localRepo();
     writeFile(repo, '.copilot/backlog/2-cli-flags.md', backlogItem('CLI flags'));
