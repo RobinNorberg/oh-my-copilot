@@ -7154,7 +7154,7 @@ var require_compile = __commonJS({
       const schOrFunc = root.refs[ref];
       if (schOrFunc)
         return schOrFunc;
-      let _sch = resolve61.call(this, root, ref);
+      let _sch = resolve62.call(this, root, ref);
       if (_sch === void 0) {
         const schema = (_a = root.localRefs) === null || _a === void 0 ? void 0 : _a[ref];
         const { schemaId } = this.opts;
@@ -7181,7 +7181,7 @@ var require_compile = __commonJS({
     function sameSchemaEnv(s1, s2) {
       return s1.schema === s2.schema && s1.root === s2.root && s1.baseId === s2.baseId;
     }
-    function resolve61(root, ref) {
+    function resolve62(root, ref) {
       let sch;
       while (typeof (sch = this.refs[ref]) == "string")
         ref = sch;
@@ -7812,7 +7812,7 @@ var require_fast_uri = __commonJS({
       }
       return uri;
     }
-    function resolve61(baseURI, relativeURI, options) {
+    function resolve62(baseURI, relativeURI, options) {
       const schemelessOptions = options ? Object.assign({ scheme: "null" }, options) : { scheme: "null" };
       const resolved = resolveComponent(parse13(baseURI, schemelessOptions), parse13(relativeURI, schemelessOptions), schemelessOptions, true);
       schemelessOptions.skipEscape = true;
@@ -8070,7 +8070,7 @@ var require_fast_uri = __commonJS({
     var fastUri = {
       SCHEMES,
       normalize: normalize10,
-      resolve: resolve61,
+      resolve: resolve62,
       resolveComponent,
       equal,
       serialize,
@@ -12842,7 +12842,7 @@ async function removeFileIfExists(filePath) {
   }
 }
 function sleep(ms) {
-  return new Promise((resolve61) => setTimeout(resolve61, ms));
+  return new Promise((resolve62) => setTimeout(resolve62, ms));
 }
 var import_child_process3, fs3, fsPromises2, path5, import_url, import_child_process4, import_util6, execFileAsync2, BRIDGE_SPAWN_TIMEOUT_MS, DEFAULT_GRACE_PERIOD_MS, SIGTERM_GRACE_MS, ownedBridgeSessionIds, runPythonProbe, systemPythonCache, USE_TCP_FALLBACK;
 var init_bridge_manager = __esm({
@@ -13541,7 +13541,7 @@ var init_client = __esm({
 Install with: ${this.serverConfig.installHint}`
           );
         }
-        return new Promise((resolve61, reject2) => {
+        return new Promise((resolve62, reject2) => {
           const command = this.devContainerContext ? "docker" : this.serverConfig.command;
           const args = this.devContainerContext ? ["exec", "-i", "-w", this.devContainerContext.containerWorkspaceRoot, this.devContainerContext.containerId, this.serverConfig.command, ...this.serverConfig.args] : this.serverConfig.args;
           this.process = (0, import_child_process6.spawn)(command, args, {
@@ -13589,7 +13589,7 @@ Install with: ${this.serverConfig.installHint}`
               return;
             }
             this.initialized = true;
-            resolve61();
+            resolve62();
           }).catch((error2) => {
             if (this.process === child && this.connectionGeneration === connectionGeneration) {
               this.forceKill();
@@ -13848,13 +13848,13 @@ ${content}`;
         const message = `Content-Length: ${Buffer.byteLength(content)}\r
 \r
 ${content}`;
-        return new Promise((resolve61, reject2) => {
+        return new Promise((resolve62, reject2) => {
           const timeoutHandle = setTimeout(() => {
             this.pendingRequests.delete(id);
             reject2(new Error(`LSP request '${method}' timed out after ${effectiveTimeout}ms`));
           }, effectiveTimeout);
           this.pendingRequests.set(id, {
-            resolve: resolve61,
+            resolve: resolve62,
             reject: reject2,
             timeout: timeoutHandle
           });
@@ -14034,7 +14034,7 @@ ${content}`;
         });
         this.assertCurrentConnection(child, connectionGeneration);
         this.openDocuments.add(hostUri);
-        await new Promise((resolve61) => setTimeout(resolve61, 100));
+        await new Promise((resolve62) => setTimeout(resolve62, 100));
         this.assertCurrentConnection(child, connectionGeneration);
         this.throwIfTerminal();
       }
@@ -14266,7 +14266,7 @@ ${content}`;
         if (this.diagnostics.has(key)) {
           return Promise.resolve();
         }
-        return new Promise((resolve61, reject2) => {
+        return new Promise((resolve62, reject2) => {
           let resolved = false;
           const removeWaiter = (waiter2) => {
             const waiters = this.diagnosticWaiters.get(key);
@@ -14285,7 +14285,7 @@ ${content}`;
               if (error2) {
                 reject2(error2);
               } else {
-                resolve61();
+                resolve62();
               }
             }
           };
@@ -14293,7 +14293,7 @@ ${content}`;
             if (!resolved) {
               resolved = true;
               removeWaiter(waiter);
-              resolve61();
+              resolve62();
             }
           }, timeoutMs);
           const existing = this.diagnosticWaiters.get(key) || [];
@@ -17669,7 +17669,7 @@ async function canBreakLock(lockInfo) {
   return !alive;
 }
 function sleep2(ms) {
-  return new Promise((resolve61) => setTimeout(resolve61, ms));
+  return new Promise((resolve62) => setTimeout(resolve62, ms));
 }
 var fs4, fsSync2, path6, os2, crypto3, import_child_process9, import_util7, execFileAsync3, STALE_LOCK_AGE_MS, DEFAULT_ACQUIRE_TIMEOUT_MS, LOCK_RETRY_INTERVAL_MS, REMOTE_LOCK_STALE_AGE_MS, LockTimeoutError, LockError, SessionLock;
 var init_session_lock = __esm({
@@ -17861,7 +17861,7 @@ var init_session_lock = __esm({
 
 // src/tools/python-repl/socket-client.ts
 async function sendSocketRequest(socketPath, method, params, timeout = 6e4) {
-  return new Promise((resolve61, reject2) => {
+  return new Promise((resolve62, reject2) => {
     const id = (0, import_crypto3.randomUUID)();
     const request = {
       jsonrpc: "2.0",
@@ -17951,7 +17951,7 @@ async function sendSocketRequest(socketPath, method, params, timeout = 6e4) {
           }
           if (!settled) {
             settled = true;
-            resolve61(response.result);
+            resolve62(response.result);
           }
         } catch (e) {
           if (!settled) {
@@ -21627,7 +21627,7 @@ async function withProcessIdentityFileLock(lockPath, fn, timeoutMs = 1e4) {
           continue;
         }
         if (Date.now() >= deadline) throw new Error("process_identity_lock_timeout");
-        await new Promise((resolve61) => setTimeout(resolve61, 25));
+        await new Promise((resolve62) => setTimeout(resolve62, 25));
         continue;
       }
       try {
@@ -21648,7 +21648,7 @@ async function withProcessIdentityFileLock(lockPath, fn, timeoutMs = 1e4) {
           }
         }
         if (Date.now() >= deadline) throw new Error("process_identity_lock_timeout");
-        await new Promise((resolve61) => setTimeout(resolve61, 25));
+        await new Promise((resolve62) => setTimeout(resolve62, 25));
       }
     }
     return await fn();
@@ -23837,7 +23837,7 @@ function withFileLockSync(lockPath, fn, opts) {
   }
 }
 function sleep3(ms) {
-  return new Promise((resolve61) => setTimeout(resolve61, ms));
+  return new Promise((resolve62) => setTimeout(resolve62, ms));
 }
 async function acquireFileLock(lockPath, opts) {
   const staleLockMs = opts?.staleLockMs ?? DEFAULT_STALE_LOCK_MS;
@@ -24879,7 +24879,7 @@ function mergeArrays(fieldName, base, incoming) {
       return mergeScalarArray(base, incoming);
   }
 }
-function mergeByKey(base, incoming, keyFn, resolve61) {
+function mergeByKey(base, incoming, keyFn, resolve62) {
   const seen = /* @__PURE__ */ new Map();
   for (const item of base) {
     seen.set(keyFn(item), item);
@@ -24888,7 +24888,7 @@ function mergeByKey(base, incoming, keyFn, resolve61) {
     const key = keyFn(item);
     const existing = seen.get(key);
     if (existing) {
-      seen.set(key, resolve61(existing, item));
+      seen.set(key, resolve62(existing, item));
     } else {
       seen.set(key, item);
     }
@@ -29515,15 +29515,15 @@ var init_tmux_utils = __esm({
 // src/smoke/copilot-binary.ts
 function resolveCopilotBinary(override, env2, deps = {}) {
   const exists = deps.existsSync ?? import_fs44.existsSync;
-  const resolve61 = deps.resolveExecutable ?? ((name) => resolveExecutable(name));
+  const resolve62 = deps.resolveExecutable ?? ((name) => resolveExecutable(name));
   const list = deps.readdirSync ?? ((p) => (0, import_fs44.readdirSync)(p));
   const platform = deps.platform ?? process.platform;
   if (override) {
     if (exists(override)) return { bin: override, source: "override" };
-    const found = resolve61(override);
+    const found = resolve62(override);
     return found ? { bin: found, source: "override" } : { bin: null, source: null };
   }
-  const onPath = resolve61("copilot");
+  const onPath = resolve62("copilot");
   if (onPath) return { bin: onPath, source: "path" };
   const envPath = env2.COPILOT_CLI_PATH?.trim();
   if (envPath && exists(envPath)) return { bin: envPath, source: "COPILOT_CLI_PATH" };
@@ -29846,7 +29846,7 @@ function hasExited(child) {
 function runAsync(spawnFn, spawnSyncFn, command, args, opts) {
   const started = Date.now();
   const maxOutput = opts.maxOutput ?? DEFAULT_MAX_OUTPUT;
-  return new Promise((resolve61) => {
+  return new Promise((resolve62) => {
     let stdout = "";
     let stderr = "";
     let timedOut = false;
@@ -29855,7 +29855,7 @@ function runAsync(spawnFn, spawnSyncFn, command, args, opts) {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      resolve61({ ...result, stdout, stderr, timedOut, durationMs: Date.now() - started });
+      resolve62({ ...result, stdout, stderr, timedOut, durationMs: Date.now() - started });
     };
     let child;
     try {
@@ -29868,7 +29868,7 @@ function runAsync(spawnFn, spawnSyncFn, command, args, opts) {
         detached: useProcessGroup()
       });
     } catch (err) {
-      resolve61({ code: null, signal: null, stdout, stderr, timedOut, error: err.message, durationMs: Date.now() - started });
+      resolve62({ code: null, signal: null, stdout, stderr, timedOut, error: err.message, durationMs: Date.now() - started });
       return;
     }
     const timer = setTimeout(() => {
@@ -34938,11 +34938,11 @@ function replayResponse(res, dirs) {
   return new Response([204, 205, 304].includes(res.status) ? null : body, { status: res.status, headers });
 }
 function deferred() {
-  let resolve61;
+  let resolve62;
   const promise = new Promise((r) => {
-    resolve61 = r;
+    resolve62 = r;
   });
-  return { promise, resolve: resolve61 };
+  return { promise, resolve: resolve62 };
 }
 function createRecordingHandler(Base, recorderOf) {
   class RecordingHandler extends Base {
@@ -35846,7 +35846,7 @@ async function runSdkTier(input) {
       }
       const path15 = (0, import_path68.join)(input.home, `events-${name}.jsonl`);
       events[name] = path15;
-      if (entries.length > 0) await new Promise((resolve61) => setTimeout(resolve61, 2));
+      if (entries.length > 0) await new Promise((resolve62) => setTimeout(resolve62, 2));
       const start = Date.now();
       const { wedged: stuck, ...run3 } = name === "chain" ? await input.runChain({
         bin,
@@ -56733,7 +56733,7 @@ var init_engine = __esm({
             said = true;
             this.o.warn?.(`omg factory run: lane ${id} waits for credits in flight: ${d.reason}`);
           }
-          await (this.o.sleep ?? ((ms) => new Promise((resolve61) => setTimeout(resolve61, ms))))(pollMs);
+          await (this.o.sleep ?? ((ms) => new Promise((resolve62) => setTimeout(resolve62, ms))))(pollMs);
           if (this.cancelWanted(this.reload())) return null;
         }
       }
@@ -70670,7 +70670,7 @@ var Protocol = class {
           return;
         }
         const pollInterval = task2.pollInterval ?? this._options?.defaultTaskPollInterval ?? 1e3;
-        await new Promise((resolve61) => setTimeout(resolve61, pollInterval));
+        await new Promise((resolve62) => setTimeout(resolve62, pollInterval));
         options?.signal?.throwIfAborted();
       }
     } catch (error2) {
@@ -70687,7 +70687,7 @@ var Protocol = class {
    */
   request(request, resultSchema, options) {
     const { relatedRequestId, resumptionToken, onresumptiontoken, task, relatedTask } = options ?? {};
-    return new Promise((resolve61, reject2) => {
+    return new Promise((resolve62, reject2) => {
       const earlyReject = (error2) => {
         reject2(error2);
       };
@@ -70765,7 +70765,7 @@ var Protocol = class {
           if (!parseResult.success) {
             reject2(parseResult.error);
           } else {
-            resolve61(parseResult.data);
+            resolve62(parseResult.data);
           }
         } catch (error2) {
           reject2(error2);
@@ -71026,12 +71026,12 @@ var Protocol = class {
       }
     } catch {
     }
-    return new Promise((resolve61, reject2) => {
+    return new Promise((resolve62, reject2) => {
       if (signal.aborted) {
         reject2(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
         return;
       }
-      const timeoutId = setTimeout(resolve61, interval);
+      const timeoutId = setTimeout(resolve62, interval);
       signal.addEventListener("abort", () => {
         clearTimeout(timeoutId);
         reject2(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
@@ -71760,12 +71760,12 @@ var StdioServerTransport = class {
     this.onclose?.();
   }
   send(message) {
-    return new Promise((resolve61) => {
+    return new Promise((resolve62) => {
       const json = serializeMessage(message);
       if (this._stdout.write(json)) {
-        resolve61();
+        resolve62();
       } else {
-        this._stdout.once("drain", resolve61);
+        this._stdout.once("drain", resolve62);
       }
     });
   }
