@@ -19,7 +19,9 @@
  *    outside the checkout, however the runtime's file sharing treats links.
  * 1. copy: the checkout, bind-mounted READ-ONLY at /in, is copied with tar
  *    into the volume (`.git` and every `node_modules` left out; links stay
- *    links). No network, no PR code runs. The only step with a host path.
+ *    links), then the engine's one-commit git view (git-view.ts), bound
+ *    read-only at /in-git, as the copy's `.git`. No network, no PR code
+ *    runs. The only step with host paths.
  * 2. install (a package.json with a package-lock.json): only npm itself
  *    gets network, never the PR's code:
  *    a. `npm ci --ignore-scripts` on a per-command bridge network
@@ -66,7 +68,7 @@ import { runSlug } from './state.js';
 /** The park when the container runtime, its daemon or the image is not there, or the project cannot be installed in it. */
 export const GATE_CONTAINER_UNAVAILABLE_GATE = 'gate-container-unavailable';
 /** What the gate-sandbox-incompatible park of a base calibration in the container tells the human to do. */
-export const CONTAINER_INCOMPATIBLE_ADVICE = 'Your gate fails in the gate container on the base: there it runs with no network, no git dir, as a non-root user on a read-only root (only /tmp, the checkout and HOME writable), with the dependencies npm ci installs from your lockfile and their install scripts run without network. Make the gate work there (or pick another factory.run.sandbox.container.image), or set factory.run.sandbox.isolation "copilot" in your user config';
+export const CONTAINER_INCOMPATIBLE_ADVICE = 'Your gate fails in the gate container on the base: there it runs with no network, a git repository of only the checked commit (git itself must be in the image), as a non-root user on a read-only root (only /tmp, the checkout and HOME writable), with the dependencies npm ci installs from your lockfile and their install scripts run without network. Make the gate work there (or pick another factory.run.sandbox.container.image), or set factory.run.sandbox.isolation "copilot" in your user config';
 /** Prefix of every container, network and volume this module makes; nothing else is ever removed. */
 export const CONTAINER_NAME_PREFIX = 'omg-gate-';
 export const RUN_LABEL = 'omg.run';
@@ -321,17 +323,20 @@ export function containerArgv(req) {
         return `${SRC}/${rel.split(sep).join('/')}`;
     });
 }
-/** The copy step's script (fixed text: no word of the checkout reaches it). */
-const COPY_SCRIPT = [
+/** Where the engine's git view (SandboxRunRequest.gitView) is bound read-only for the copy step. */
+const GIT_VIEW_MOUNT = '/in-git';
+/** The copy step's script (fixed text: no word of the checkout reaches it); with a git view it becomes `${SRC}/.git`. */
+const copyLines = (gitView) => [
     'set -e',
     `mkdir -p ${SRC} ${WORK}/home`,
     // Through a file, not a pipe: sh has no pipefail, and a partial copy must fail the step (copy back removes what is missing).
     `tar -C /in --exclude=.git --exclude=node_modules -cf ${WORK}/in.tar .`,
     `tar -C ${SRC} -xf ${WORK}/in.tar`,
     `rm -f ${WORK}/in.tar`,
+    ...(gitView ? [`mkdir ${SRC}/.git`, `tar -C ${GIT_VIEW_MOUNT} -cf ${WORK}/git.tar .`, `tar -C ${SRC}/.git -xf ${WORK}/git.tar`, `rm -f ${WORK}/git.tar`] : []),
     `chown -R ${CONTAINER_USER} ${WORK}`,
     'if [ -d /cache ]; then mkdir -p /cache/npm; [ "$(stat -c %u /cache/npm)" = 1000 ] || chown -R 1000:1000 /cache; fi',
-].join('; ');
+];
 /**
  * The checkout's own `.npmrc` (scoped registries, proxies, strict-ssl) steers
  * npm itself, so it is held outside the project while npm ci fetches and put
@@ -340,9 +345,10 @@ const COPY_SCRIPT = [
 const NPMRC_HELD = `${WORK}/npmrc.held`;
 const HOLD_NPMRC = `if [ -e ${SRC}/.npmrc ] || [ -L ${SRC}/.npmrc ]; then mv ${SRC}/.npmrc ${NPMRC_HELD}; fi`;
 const RESTORE_NPMRC = `if [ -e ${NPMRC_HELD} ] || [ -L ${NPMRC_HELD} ]; then rm -rf ${SRC}/.npmrc; mv ${NPMRC_HELD} ${SRC}/.npmrc; fi`;
-/** The copy step's script for a plan: the npm ci plan also holds the checkout's .npmrc aside. */
-export function copyScript(npmCi) {
-    return npmCi ? `${COPY_SCRIPT}; ${HOLD_NPMRC}` : COPY_SCRIPT;
+/** The copy step's script for a plan: the npm ci plan also holds the checkout's .npmrc aside; a git view is copied in as `.git`. */
+export function copyScript(npmCi, gitView = false) {
+    const copy = copyLines(gitView).join('; ');
+    return npmCi ? `${copy}; ${HOLD_NPMRC}` : copy;
 }
 /**
  * npm's own settings in the fetch step, over anything npm would read (no
@@ -617,7 +623,8 @@ export async function runContainerGate(req, s, runLabel, deps) {
             ...labels, ...harden, '--network', 'none',
             '--user', '0:0', '--cap-add', 'CHOWN', '--cap-add', 'DAC_OVERRIDE', '--cap-add', 'FOWNER',
             '--read-only', '--mount', mountArg(['type=bind', `source=${resolve(req.cwd)}`, 'target=/in', 'readonly']), ...work, ...cacheMount,
-        ], ['sh', '-c', copyScript(plan.kind === 'npm-ci')], COPY_TIMEOUT_MS);
+            ...(req.gitView ? ['--mount', mountArg(['type=bind', `source=${resolve(req.gitView)}`, `target=${GIT_VIEW_MOUNT}`, 'readonly'])] : []),
+        ], ['sh', '-c', copyScript(plan.kind === 'npm-ci', req.gitView !== undefined)], COPY_TIMEOUT_MS);
         if (copy.status !== 0)
             return noVerdict(`copying the checkout into the gate container failed (exit ${copy.status ?? 'none'}${copy.timedOut ? ', timed out' : ''}); nothing is counted`);
         const runBase = [...labels, ...harden, '--user', CONTAINER_USER, '--read-only', '--tmpfs', '/tmp:rw,exec,nosuid,nodev,size=1g', ...work, '-w', SRC];
