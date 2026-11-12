@@ -113,7 +113,7 @@ npm run build:runtime-cli  # → bridge/runtime-cli.cjs
 npx tsc --skipLibCheck     # → dist/ (use --skipLibCheck to bypass missing optional deps)
 ```
 
-Post-build verification: `grep -c "oh-my-claudecode" bridge/cli.cjs` must return 0.
+Post-build verification: every `grep -n "oh-my-claudecode" bridge/cli.cjs` hit must be an allowed reference (list in `port-upstream.md` Step 4.6).
 This saved 3-4 hours on the v4.11.7 port vs manually editing 3,627 diff lines.
 
 ### Agent File Extension Divergence
