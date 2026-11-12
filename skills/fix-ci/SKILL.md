@@ -47,7 +47,9 @@ Red CI has exactly three causes; classify before touching anything.
    trigger a new run with `gh run rerun <run-id> --failed -R <OWNER/REPO>`
    (select the run ID from `gh run list --commit <headSha> -R <OWNER/REPO>`);
    `gh pr checks` only reads
-   existing status and never starts a new run. Report the before and
+   existing status and never starts a new run. Wait for the new run in
+   the foreground (`gh pr checks <N> -R <OWNER/REPO> --watch`); never idle
+   on a background notification. Report the before and
    after output, trimmed to the decisive lines (`babysit` verdict policy
    governs readiness).
 

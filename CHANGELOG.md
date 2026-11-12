@@ -4,6 +4,11 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Stalled factory lanes end on their own.** A lane whose Copilot session sends no event for `factory.run.laneIdleMinutes` (default 15) is cancelled and recorded as `stalled`. Nothing it did is pushed, and it gets the normal fresh retry. Park text and `omg factory run status` name the lane and its last event time, and the progress log's heartbeat shows it too.
+- **Wait in the foreground.** The executor agent and the `babysit`, `fix-ci`, `ralph` and `ralph-experiment` skills now say: wait for CI or tests in the foreground (`gh pr checks <N> --watch`, or read the job's output file), never idle on a background notification.
+
 # oh-my-copilot v5.27.0
 
 ## [5.27.0] - 2026-11-12
