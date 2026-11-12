@@ -153,6 +153,8 @@ export interface FactoryEngineOptions {
     gateSandbox?: SandboxRunner;
     /** The trusted user config factory.run.sandbox.gates is read from (default: userConfigLayers().trustedUser); tests pass one. */
     gateSandboxUserConfig?: unknown;
+    /** The trusted user config factory.merge.auto is read from (default: userConfigLayers().trustedUser); tests pass one. */
+    autoMergeUserConfig?: unknown;
     now?: () => number;
     pollMs?: number;
     progressFile?: string;

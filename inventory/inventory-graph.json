@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "84266b004c2f75cda54318c9a1bcbf4cd412f96b",
-    "sourceSha256": "1d9f6796dfa31528afd21b634114ce2909063a5ece97a720f50e4a8d9a7ce8a8",
+    "head": "b536d7957de93bd22c980b197373e0693347f05a",
+    "sourceSha256": "cd3b915f6f92c0af2fa0275e4c4e3cab56683874b50c70f8f4cd2eda236a7085",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "84266b004c2f75cda54318c9a1bcbf4cd412f96b",
-  "sourceSha256": "1d9f6796dfa31528afd21b634114ce2909063a5ece97a720f50e4a8d9a7ce8a8",
+  "head": "b536d7957de93bd22c980b197373e0693347f05a",
+  "sourceSha256": "cd3b915f6f92c0af2fa0275e4c4e3cab56683874b50c70f8f4cd2eda236a7085",
   "counts": {
     "public": {
       "skills": 98,
@@ -28,13 +28,13 @@
       "toolFiles": 68,
       "libFiles": 55,
       "templateHooks": 25,
-      "srcFiles": 2074,
-      "total": 2099
+      "srcFiles": 2075,
+      "total": 2100
     },
     "generated": {
-      "distFiles": 7664,
+      "distFiles": 7668,
       "bridgeFiles": 8,
-      "total": 7672
+      "total": 7676
     },
     "prompt": {
       "promptLikeFiles": 72
@@ -3382,6 +3382,10 @@
       "dist/factory/poll.d.ts.map",
       "dist/factory/poll.js",
       "dist/factory/poll.js.map",
+      "dist/factory/run/__tests__/auto-merge.test.d.ts",
+      "dist/factory/run/__tests__/auto-merge.test.d.ts.map",
+      "dist/factory/run/__tests__/auto-merge.test.js",
+      "dist/factory/run/__tests__/auto-merge.test.js.map",
       "dist/factory/run/__tests__/ci-heal.test.d.ts",
       "dist/factory/run/__tests__/ci-heal.test.d.ts.map",
       "dist/factory/run/__tests__/ci-heal.test.js",
@@ -3394,10 +3398,6 @@
       "dist/factory/run/__tests__/coding-agent-lane.test.d.ts.map",
       "dist/factory/run/__tests__/coding-agent-lane.test.js",
       "dist/factory/run/__tests__/coding-agent-lane.test.js.map",
-      "dist/factory/run/__tests__/container-gate.test.d.ts",
-      "dist/factory/run/__tests__/container-gate.test.d.ts.map",
-      "dist/factory/run/__tests__/container-gate.test.js",
-      "dist/factory/run/__tests__/container-gate.test.js.map",
       "dist/factory/run/__tests__/engine-ado-harness.d.ts",
       "dist/factory/run/__tests__/engine-ado-harness.d.ts.map",
       "dist/factory/run/__tests__/engine-ado-harness.js",
@@ -3434,6 +3434,10 @@
       "dist/factory/run/__tests__/engine.ado.test.d.ts.map",
       "dist/factory/run/__tests__/engine.ado.test.js",
       "dist/factory/run/__tests__/engine.ado.test.js.map",
+      "dist/factory/run/__tests__/engine.auto-merge.github.test.d.ts",
+      "dist/factory/run/__tests__/engine.auto-merge.github.test.d.ts.map",
+      "dist/factory/run/__tests__/engine.auto-merge.github.test.js",
+      "dist/factory/run/__tests__/engine.auto-merge.github.test.js.map",
       "dist/factory/run/__tests__/engine.coding-agent.test.d.ts",
       "dist/factory/run/__tests__/engine.coding-agent.test.d.ts.map",
       "dist/factory/run/__tests__/engine.coding-agent.test.js",
@@ -3442,10 +3446,6 @@
       "dist/factory/run/__tests__/engine.commit-hardening.test.d.ts.map",
       "dist/factory/run/__tests__/engine.commit-hardening.test.js",
       "dist/factory/run/__tests__/engine.commit-hardening.test.js.map",
-      "dist/factory/run/__tests__/engine.gates-container.test.d.ts",
-      "dist/factory/run/__tests__/engine.gates-container.test.d.ts.map",
-      "dist/factory/run/__tests__/engine.gates-container.test.js",
-      "dist/factory/run/__tests__/engine.gates-container.test.js.map",
       "dist/factory/run/__tests__/engine.gates-sandbox.builtin.test.d.ts",
       "dist/factory/run/__tests__/engine.gates-sandbox.builtin.test.d.ts.map",
       "dist/factory/run/__tests__/engine.gates-sandbox.builtin.test.js",
@@ -3478,6 +3478,10 @@
       "dist/factory/run/__tests__/engine.lanes.test.d.ts.map",
       "dist/factory/run/__tests__/engine.lanes.test.js",
       "dist/factory/run/__tests__/engine.lanes.test.js.map",
+      "dist/factory/run/__tests__/engine.local.auto-merge.test.d.ts",
+      "dist/factory/run/__tests__/engine.local.auto-merge.test.d.ts.map",
+      "dist/factory/run/__tests__/engine.local.auto-merge.test.js",
+      "dist/factory/run/__tests__/engine.local.auto-merge.test.js.map",
       "dist/factory/run/__tests__/engine.local.ci-recheck.test.d.ts",
       "dist/factory/run/__tests__/engine.local.ci-recheck.test.d.ts.map",
       "dist/factory/run/__tests__/engine.local.ci-recheck.test.js",
@@ -3678,6 +3682,10 @@
       "dist/factory/run/__tests__/workspace-tree.test.d.ts.map",
       "dist/factory/run/__tests__/workspace-tree.test.js",
       "dist/factory/run/__tests__/workspace-tree.test.js.map",
+      "dist/factory/run/auto-merge.d.ts",
+      "dist/factory/run/auto-merge.d.ts.map",
+      "dist/factory/run/auto-merge.js",
+      "dist/factory/run/auto-merge.js.map",
       "dist/factory/run/budget.d.ts",
       "dist/factory/run/budget.d.ts.map",
       "dist/factory/run/budget.js",
@@ -3694,10 +3702,6 @@
       "dist/factory/run/coding-agent-lane.d.ts.map",
       "dist/factory/run/coding-agent-lane.js",
       "dist/factory/run/coding-agent-lane.js.map",
-      "dist/factory/run/container-gate.d.ts",
-      "dist/factory/run/container-gate.d.ts.map",
-      "dist/factory/run/container-gate.js",
-      "dist/factory/run/container-gate.js.map",
       "dist/factory/run/engine.d.ts",
       "dist/factory/run/engine.d.ts.map",
       "dist/factory/run/engine.js",
@@ -22109,6 +22113,26 @@
         "path": "dist/factory/poll.js.map"
       },
       {
+        "id": "dist/factory/run/__tests__/auto-merge.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/auto-merge.test.d.ts"
+      },
+      {
+        "id": "dist/factory/run/__tests__/auto-merge.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/auto-merge.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/auto-merge.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/auto-merge.test.js"
+      },
+      {
+        "id": "dist/factory/run/__tests__/auto-merge.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/auto-merge.test.js.map"
+      },
+      {
         "id": "dist/factory/run/__tests__/ci-heal.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/factory/run/__tests__/ci-heal.test.d.ts"
@@ -22167,26 +22191,6 @@
         "id": "dist/factory/run/__tests__/coding-agent-lane.test.js.map",
         "kind": "generated-dist",
         "path": "dist/factory/run/__tests__/coding-agent-lane.test.js.map"
-      },
-      {
-        "id": "dist/factory/run/__tests__/container-gate.test.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/factory/run/__tests__/container-gate.test.d.ts"
-      },
-      {
-        "id": "dist/factory/run/__tests__/container-gate.test.d.ts.map",
-        "kind": "generated-dist",
-        "path": "dist/factory/run/__tests__/container-gate.test.d.ts.map"
-      },
-      {
-        "id": "dist/factory/run/__tests__/container-gate.test.js",
-        "kind": "generated-dist",
-        "path": "dist/factory/run/__tests__/container-gate.test.js"
-      },
-      {
-        "id": "dist/factory/run/__tests__/container-gate.test.js.map",
-        "kind": "generated-dist",
-        "path": "dist/factory/run/__tests__/container-gate.test.js.map"
       },
       {
         "id": "dist/factory/run/__tests__/engine-ado-harness.d.ts",
@@ -22369,6 +22373,26 @@
         "path": "dist/factory/run/__tests__/engine.ado.test.js.map"
       },
       {
+        "id": "dist/factory/run/__tests__/engine.auto-merge.github.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.auto-merge.github.test.d.ts"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.auto-merge.github.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.auto-merge.github.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.auto-merge.github.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.auto-merge.github.test.js"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.auto-merge.github.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.auto-merge.github.test.js.map"
+      },
+      {
         "id": "dist/factory/run/__tests__/engine.coding-agent.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/factory/run/__tests__/engine.coding-agent.test.d.ts"
@@ -22407,26 +22431,6 @@
         "id": "dist/factory/run/__tests__/engine.commit-hardening.test.js.map",
         "kind": "generated-dist",
         "path": "dist/factory/run/__tests__/engine.commit-hardening.test.js.map"
-      },
-      {
-        "id": "dist/factory/run/__tests__/engine.gates-container.test.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/factory/run/__tests__/engine.gates-container.test.d.ts"
-      },
-      {
-        "id": "dist/factory/run/__tests__/engine.gates-container.test.d.ts.map",
-        "kind": "generated-dist",
-        "path": "dist/factory/run/__tests__/engine.gates-container.test.d.ts.map"
-      },
-      {
-        "id": "dist/factory/run/__tests__/engine.gates-container.test.js",
-        "kind": "generated-dist",
-        "path": "dist/factory/run/__tests__/engine.gates-container.test.js"
-      },
-      {
-        "id": "dist/factory/run/__tests__/engine.gates-container.test.js.map",
-        "kind": "generated-dist",
-        "path": "dist/factory/run/__tests__/engine.gates-container.test.js.map"
       },
       {
         "id": "dist/factory/run/__tests__/engine.gates-sandbox.builtin.test.d.ts",
@@ -22587,6 +22591,26 @@
         "id": "dist/factory/run/__tests__/engine.lanes.test.js.map",
         "kind": "generated-dist",
         "path": "dist/factory/run/__tests__/engine.lanes.test.js.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.local.auto-merge.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.local.auto-merge.test.d.ts"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.local.auto-merge.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.local.auto-merge.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.local.auto-merge.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.local.auto-merge.test.js"
+      },
+      {
+        "id": "dist/factory/run/__tests__/engine.local.auto-merge.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/__tests__/engine.local.auto-merge.test.js.map"
       },
       {
         "id": "dist/factory/run/__tests__/engine.local.ci-recheck.test.d.ts",
@@ -23589,6 +23613,26 @@
         "path": "dist/factory/run/__tests__/workspace-tree.test.js.map"
       },
       {
+        "id": "dist/factory/run/auto-merge.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/auto-merge.d.ts"
+      },
+      {
+        "id": "dist/factory/run/auto-merge.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/auto-merge.d.ts.map"
+      },
+      {
+        "id": "dist/factory/run/auto-merge.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/auto-merge.js"
+      },
+      {
+        "id": "dist/factory/run/auto-merge.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/run/auto-merge.js.map"
+      },
+      {
         "id": "dist/factory/run/budget.d.ts",
         "kind": "generated-dist",
         "path": "dist/factory/run/budget.d.ts"
@@ -23667,26 +23711,6 @@
         "id": "dist/factory/run/coding-agent-lane.js.map",
         "kind": "generated-dist",
         "path": "dist/factory/run/coding-agent-lane.js.map"
-      },
-      {
-        "id": "dist/factory/run/container-gate.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/factory/run/container-gate.d.ts"
-      },
-      {
-        "id": "dist/factory/run/container-gate.d.ts.map",
-        "kind": "generated-dist",
-        "path": "dist/factory/run/container-gate.d.ts.map"
-      },
-      {
-        "id": "dist/factory/run/container-gate.js",
-        "kind": "generated-dist",
-        "path": "dist/factory/run/container-gate.js"
-      },
-      {
-        "id": "dist/factory/run/container-gate.js.map",
-        "kind": "generated-dist",
-        "path": "dist/factory/run/container-gate.js.map"
       },
       {
         "id": "dist/factory/run/engine.d.ts",
@@ -56529,6 +56553,11 @@
         "path": "src/factory/poll.ts"
       },
       {
+        "id": "src/factory/run/__tests__/auto-merge.test.ts",
+        "kind": "src",
+        "path": "src/factory/run/__tests__/auto-merge.test.ts"
+      },
+      {
         "id": "src/factory/run/__tests__/ci-heal.test.ts",
         "kind": "src",
         "path": "src/factory/run/__tests__/ci-heal.test.ts"
@@ -56542,11 +56571,6 @@
         "id": "src/factory/run/__tests__/coding-agent-lane.test.ts",
         "kind": "src",
         "path": "src/factory/run/__tests__/coding-agent-lane.test.ts"
-      },
-      {
-        "id": "src/factory/run/__tests__/container-gate.test.ts",
-        "kind": "src",
-        "path": "src/factory/run/__tests__/container-gate.test.ts"
       },
       {
         "id": "src/factory/run/__tests__/engine-ado-harness.ts",
@@ -56594,6 +56618,11 @@
         "path": "src/factory/run/__tests__/engine.ado.test.ts"
       },
       {
+        "id": "src/factory/run/__tests__/engine.auto-merge.github.test.ts",
+        "kind": "src",
+        "path": "src/factory/run/__tests__/engine.auto-merge.github.test.ts"
+      },
+      {
         "id": "src/factory/run/__tests__/engine.coding-agent.test.ts",
         "kind": "src",
         "path": "src/factory/run/__tests__/engine.coding-agent.test.ts"
@@ -56602,11 +56631,6 @@
         "id": "src/factory/run/__tests__/engine.commit-hardening.test.ts",
         "kind": "src",
         "path": "src/factory/run/__tests__/engine.commit-hardening.test.ts"
-      },
-      {
-        "id": "src/factory/run/__tests__/engine.gates-container.test.ts",
-        "kind": "src",
-        "path": "src/factory/run/__tests__/engine.gates-container.test.ts"
       },
       {
         "id": "src/factory/run/__tests__/engine.gates-sandbox.builtin.test.ts",
@@ -56647,6 +56671,11 @@
         "id": "src/factory/run/__tests__/engine.lanes.test.ts",
         "kind": "src",
         "path": "src/factory/run/__tests__/engine.lanes.test.ts"
+      },
+      {
+        "id": "src/factory/run/__tests__/engine.local.auto-merge.test.ts",
+        "kind": "src",
+        "path": "src/factory/run/__tests__/engine.local.auto-merge.test.ts"
       },
       {
         "id": "src/factory/run/__tests__/engine.local.ci-recheck.test.ts",
@@ -56904,6 +56933,11 @@
         "path": "src/factory/run/__tests__/workspace-tree.test.ts"
       },
       {
+        "id": "src/factory/run/auto-merge.ts",
+        "kind": "src",
+        "path": "src/factory/run/auto-merge.ts"
+      },
+      {
         "id": "src/factory/run/budget.ts",
         "kind": "src",
         "path": "src/factory/run/budget.ts"
@@ -56922,11 +56956,6 @@
         "id": "src/factory/run/coding-agent-lane.ts",
         "kind": "src",
         "path": "src/factory/run/coding-agent-lane.ts"
-      },
-      {
-        "id": "src/factory/run/container-gate.ts",
-        "kind": "src",
-        "path": "src/factory/run/container-gate.ts"
       },
       {
         "id": "src/factory/run/engine.ts",
@@ -86792,16 +86821,6 @@
       },
       {
         "from": "src/factory/check/cli.ts",
-        "to": "src/copilot-run/sandbox.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/check/cli.ts",
-        "to": "src/copilot-run/sandbox.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/check/cli.ts",
         "to": "src/factory/check/score.ts",
         "kind": "imports"
       },
@@ -86809,11 +86828,6 @@
         "from": "src/factory/check/cli.ts",
         "to": "src/factory/check/score.ts",
         "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/check/cli.ts",
-        "to": "src/factory/run/container-gate.ts",
-        "kind": "imports"
       },
       {
         "from": "src/factory/check/cli.ts",
@@ -88701,6 +88715,31 @@
         "kind": "imports"
       },
       {
+        "from": "src/factory/run/__tests__/auto-merge.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/auto-merge.test.ts",
+        "to": "src/factory/run/auto-merge.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/auto-merge.test.ts",
+        "to": "src/factory/run/auto-merge.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/auto-merge.test.ts",
+        "to": "src/factory/run/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/auto-merge.test.ts",
+        "to": "src/forge/github/merge.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/factory/run/__tests__/ci-heal.test.ts",
         "to": "external:node:fs",
         "kind": "imports"
@@ -88953,51 +88992,6 @@
       {
         "from": "src/factory/run/__tests__/coding-agent-lane.test.ts",
         "to": "src/ship/exec.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/container-gate.test.ts",
-        "to": "external:node:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/container-gate.test.ts",
-        "to": "external:node:os",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/container-gate.test.ts",
-        "to": "external:node:path",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/container-gate.test.ts",
-        "to": "external:vitest",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/container-gate.test.ts",
-        "to": "src/copilot-run/sandbox.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/container-gate.test.ts",
-        "to": "src/copilot-run/sandbox.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/container-gate.test.ts",
-        "to": "src/factory/run/container-gate.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/container-gate.test.ts",
-        "to": "src/factory/run/container-gate.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/container-gate.test.ts",
-        "to": "src/factory/run/sandbox-exec.ts",
         "kind": "type-imports"
       },
       {
@@ -89556,6 +89550,36 @@
         "kind": "imports"
       },
       {
+        "from": "src/factory/run/__tests__/engine.auto-merge.github.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.auto-merge.github.test.ts",
+        "to": "src/factory/run/__tests__/engine-harness.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.auto-merge.github.test.ts",
+        "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.auto-merge.github.test.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.auto-merge.github.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.auto-merge.github.test.ts",
+        "to": "src/ship/state.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/factory/run/__tests__/engine.coding-agent.test.ts",
         "to": "external:node:fs",
         "kind": "imports"
@@ -89663,86 +89687,6 @@
       {
         "from": "src/factory/run/__tests__/engine.commit-hardening.test.ts",
         "to": "src/factory/run/tamper-quarantine.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.gates-container.test.ts",
-        "to": "external:node:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.gates-container.test.ts",
-        "to": "external:node:path",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.gates-container.test.ts",
-        "to": "external:vitest",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.gates-container.test.ts",
-        "to": "src/copilot-run/sandbox.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.gates-container.test.ts",
-        "to": "src/factory/run/__tests__/engine-local-harness.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.gates-container.test.ts",
-        "to": "src/factory/run/__tests__/engine-local-harness.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.gates-container.test.ts",
-        "to": "src/factory/run/__tests__/fake-lanes.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.gates-container.test.ts",
-        "to": "src/factory/run/clean.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.gates-container.test.ts",
-        "to": "src/factory/run/container-gate.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.gates-container.test.ts",
-        "to": "src/factory/run/container-gate.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.gates-container.test.ts",
-        "to": "src/factory/run/engine.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.gates-container.test.ts",
-        "to": "src/factory/run/engine.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.gates-container.test.ts",
-        "to": "src/factory/run/prepare.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.gates-container.test.ts",
-        "to": "src/factory/run/sandbox-exec.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.gates-container.test.ts",
-        "to": "src/factory/run/state.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/__tests__/engine.gates-container.test.ts",
-        "to": "src/ship/config.ts",
         "kind": "imports"
       },
       {
@@ -90243,6 +90187,56 @@
       {
         "from": "src/factory/run/__tests__/engine.lanes.test.ts",
         "to": "src/ship/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.local.auto-merge.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.local.auto-merge.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.local.auto-merge.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.local.auto-merge.test.ts",
+        "to": "src/factory/run/__tests__/engine-local-harness.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.local.auto-merge.test.ts",
+        "to": "src/factory/run/__tests__/engine-local-harness.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.local.auto-merge.test.ts",
+        "to": "src/factory/run/__tests__/fake-lanes.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.local.auto-merge.test.ts",
+        "to": "src/factory/run/engine.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.local.auto-merge.test.ts",
+        "to": "src/factory/run/prepare.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.local.auto-merge.test.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/__tests__/engine.local.auto-merge.test.ts",
+        "to": "src/ship/config.ts",
         "kind": "imports"
       },
       {
@@ -92831,6 +92825,26 @@
         "kind": "imports"
       },
       {
+        "from": "src/factory/run/auto-merge.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/auto-merge.ts",
+        "to": "src/factory/run/lane-commit.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/auto-merge.ts",
+        "to": "src/ship/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/auto-merge.ts",
+        "to": "src/ship/merge.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/factory/run/budget.ts",
         "to": "src/copilot-run/job.ts",
         "kind": "imports"
@@ -92922,28 +92936,8 @@
       },
       {
         "from": "src/factory/run/clean.ts",
-        "to": "src/copilot-run/sandbox.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/clean.ts",
-        "to": "src/copilot-run/sandbox.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/clean.ts",
         "to": "src/factory/run/claims.ts",
         "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/clean.ts",
-        "to": "src/factory/run/container-gate.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/clean.ts",
-        "to": "src/factory/run/container-gate.ts",
-        "kind": "type-imports"
       },
       {
         "from": "src/factory/run/clean.ts",
@@ -93086,51 +93080,6 @@
         "kind": "imports"
       },
       {
-        "from": "src/factory/run/container-gate.ts",
-        "to": "external:node:child_process",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/container-gate.ts",
-        "to": "external:node:crypto",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/container-gate.ts",
-        "to": "external:node:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/container-gate.ts",
-        "to": "external:node:path",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/container-gate.ts",
-        "to": "src/copilot-run/sandbox.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/container-gate.ts",
-        "to": "src/factory/run/sandbox-exec.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/container-gate.ts",
-        "to": "src/factory/run/sandbox-exec.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/container-gate.ts",
-        "to": "src/factory/run/state.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/container-gate.ts",
-        "to": "src/factory/run/state.ts",
-        "kind": "type-imports"
-      },
-      {
         "from": "src/factory/run/engine.ts",
         "to": "external:crypto",
         "kind": "imports"
@@ -93182,6 +93131,16 @@
       },
       {
         "from": "src/factory/run/engine.ts",
+        "to": "src/factory/run/auto-merge.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/engine.ts",
+        "to": "src/factory/run/auto-merge.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/run/engine.ts",
         "to": "src/factory/run/budget.ts",
         "kind": "imports"
       },
@@ -93209,11 +93168,6 @@
         "from": "src/factory/run/engine.ts",
         "to": "src/factory/run/coding-agent-lane.ts",
         "kind": "type-imports"
-      },
-      {
-        "from": "src/factory/run/engine.ts",
-        "to": "src/factory/run/container-gate.ts",
-        "kind": "imports"
       },
       {
         "from": "src/factory/run/engine.ts",
@@ -93477,6 +93431,11 @@
       },
       {
         "from": "src/factory/run/engine.ts",
+        "to": "src/forge/github/merge.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/engine.ts",
         "to": "src/forge/github/reviews.ts",
         "kind": "imports"
       },
@@ -93663,6 +93622,11 @@
       {
         "from": "src/factory/run/exec.ts",
         "to": "src/forge/github/graphql.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/run/exec.ts",
+        "to": "src/forge/github/merge.ts",
         "kind": "imports"
       },
       {
@@ -94568,11 +94532,6 @@
       {
         "from": "src/factory/run/sandbox-exec.ts",
         "to": "src/factory/heal/sanitize.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/factory/run/sandbox-exec.ts",
-        "to": "src/factory/run/container-gate.ts",
         "kind": "imports"
       },
       {
@@ -132212,12 +132171,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 10990,
-      "edgeCount": 13586,
-      "importEdgeCount": 11165,
+      "nodeCount": 10995,
+      "edgeCount": 13572,
+      "importEdgeCount": 11160,
       "registerEdgeCount": 119
     }
   },
-  "inventorySha256": "1e58d28e110487dfc74a7eabf229a0e7db4d24e8a20a72147794ef05294e3a3e",
-  "manifestSha256": "70f65fb5aec7e08a551ad8ad0884a0ff151c551e17b100f0e0abeb73b2a7b803"
+  "inventorySha256": "e6a04023a3dffc18dfc49d044250a539dec876446beb02dbc92a149b3d8585a7",
+  "manifestSha256": "f71e34cb15ddd7b5209177b8d69ce7b013bce8cc2283666566e2ce3c5318b4ba"
 }

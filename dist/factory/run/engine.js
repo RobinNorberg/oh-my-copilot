@@ -55,7 +55,7 @@
 import { createHash } from 'crypto';
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
-import { basename, dirname, isAbsolute, join, relative, resolve } from 'path';
+import { basename, dirname, isAbsolute, join, posix, relative, resolve } from 'path';
 import { BASE_CONFIG_PATH, configuredProtectedPaths, DEFAULT_SHIP_CONFIG, isPlainBranchName, isRepoPath, loadBaseKnownFlaky, loadTrustedShipConfig, omgRepositoryFallback, readBaseFile, remoteRepoMismatch, resolveTrustedBases, userConfigLayers } from '../../ship/config.js';
 import { TRUSTED_READ_ENV } from '../../ship/exec.js';
 import { listChangedFiles, protectedChanges } from '../../ship/merge.js';
@@ -71,6 +71,8 @@ import { ghCheckRunApps, ghCheckSuites, ghCommitCheckNames, ghRequiredCheckRules
 import { ciFixPrompt, conflictFixPrompt, fenceFor, fenced, fixPrompt, implementPrompt, oneLine, reviewPrompt } from './prompts.js';
 import { decisionsViolation, loadTeamContext, pathsInDiff, pathsInText } from '../team/context.js';
 import { mergeComment, mergeDecision } from './merge-policy.js';
+import { autoMergeComment, autoMergeVerdict, baseInstallFiles, baseTestSetup as baseTestSetupOf, classifyChanges, committedMergeConfig, hasFrontmatter, isFrontmatterCandidate, parseChangedEntries, patchLines, resolveAutoMergeConfig, TEST_CONFIG_NAME } from './auto-merge.js';
+import { githubAutoMergeArgs, githubCommitReadArgs } from '../../forge/github/merge.js';
 import { resolveAzEntry } from '../../forge/ado/az-binary.js';
 import { adoGuardContext, defaultAzBinaryDeps } from '../../forge/ado/index.js';
 import { adoBuildUrl } from '../../forge/ado/checks.js';
@@ -603,6 +605,7 @@ class FactoryEngine {
     containerImageId;
     /** The one-per-run warning that the sandbox on this host cannot deny paths was given. */
     warnedCredentialFilesReadable = false;
+    warnedCommittedMerge = false;
     /** Calibrations re-run in this invocation (a failing one is retried once per invocation). */
     recalibrated = new Set();
     /** The prepare checkout's git dir, named explicitly to engine git there once the PR's code ran in it (pinCheckoutGit). */
@@ -4142,21 +4145,25 @@ class FactoryEngine {
             this.save((x) => moveTo(x, 'gates', `gates no longer green: ${decision.reasons.join('; ')}`, this.iso()));
             return;
         }
+        // Opt-in (factory.merge.auto, user config only): true = the engine merged and the run finished; a string = why it did not.
+        const auto = decision.ok ? await this.autoMerge(pr, head, view, ship, decision, config) : undefined;
+        if (auto === true)
+            return;
         const cmd = decision.command.join(' ');
         this.mergeCmd = decision.ok ? cmd : undefined;
         this.commentOnce('pr', `merge@${head.slice(0, 12)}`, 'merge', `${mergeComment(this.key, decision, this.resume)}${decision.ok ? this.humanComment ?? '' : ''}`);
         if (decision.ok)
-            this.gate('merge', `merge is a human step; review approved and gates green at ${head.slice(0, 12)}${decision.noChecks ? ` (${NO_CI_CHECKS_NOTE}: no CI ran on this head, check the change yourself)` : ''}${this.humanNote ?? ''}: run ${cmd}, then ${this.resume}`);
+            this.gate('merge', `merge is a human step; review approved and gates green at ${head.slice(0, 12)}${decision.noChecks ? ` (${NO_CI_CHECKS_NOTE}: no CI ran on this head, check the change yourself)` : ''}${this.humanNote ?? ''}${auto ? `; auto-merge (factory.merge.auto) not taken: ${auto}` : ''}: run ${cmd}, then ${this.resume}`);
         else
             this.gate('merge-refused', `ship's merge rule refuses ${head.slice(0, 12)}: ${decision.reasons.join('; ')}`);
     }
-    /** The human merged the PR: ship and factory record it; the run is done. */
-    finishMerged(pr) {
+    /** The human merged the PR (or the opt-in auto-merge did, `by` and the base it moved to): ship and factory record it; the run is done. */
+    finishMerged(pr, by = 'a human', mergedBase) {
         // The local forge's MERGED is a PR store file the PR's code could write (its mergedHead too): it counts only when
         // your base (as the engine synced it in this invocation, else refs/heads/<base>) contains the head the engine pushed.
         if (this.forge?.kind === 'local') {
             const head = this.state.head ?? '';
-            const base = this.basePushSha ?? this.exec('git', ['rev-parse', '--verify', `refs/heads/${this.state.base}`], { cwd: this.o.root, env: TRUSTED_READ_ENV }).stdout.trim();
+            const base = mergedBase ?? this.basePushSha ?? this.exec('git', ['rev-parse', '--verify', `refs/heads/${this.state.base}`], { cwd: this.o.root, env: TRUSTED_READ_ENV }).stdout.trim();
             if (!HEX40.test(base) || !this.isAncestor(head, base)) {
                 this.gate('lane-tampered', `the local forge reports PR #${pr} merged, but your ${this.state.base} ${base.slice(0, 12) || '(unreadable)'} does not contain the head the engine pushed ${head.slice(0, 12) || '(none)'}; something else wrote the PR store. Check what did (a prepare check or gate is the PR's own code), then rerun ${this.resume}`);
                 return;
@@ -4165,10 +4172,302 @@ class FactoryEngine {
         this.writeShip(pr, (cur) => {
             if (!cur)
                 throw new FactoryStepError(`no ship state for PR #${pr}`);
-            return canTransition(cur.phase, 'merged') ? transition(cur, 'merged', `merged on ${this.forgeName} by a human`, this.iso()) : cur;
+            return canTransition(cur.phase, 'merged') ? transition(cur, 'merged', `merged on ${this.forgeName} by ${by}`, this.iso()) : cur;
         });
-        this.save((x) => moveTo(x, 'merged', `PR #${pr} merged on ${this.forgeName}`, this.iso()));
+        this.save((x) => moveTo(x, 'merged', `PR #${pr} merged on ${this.forgeName}${by === 'a human' ? '' : ` by ${by}`}`, this.iso()));
         this.progress.emit('merged', 'done', `PR #${pr} merged`, this.fields());
+    }
+    /**
+     * Opt-in auto-merge (auto-merge.ts), after ship's merge rule allowed the
+     * head: undefined when factory.merge.auto is off for this repository, a
+     * short reason when a condition fails or the merge did not go through (the
+     * human park follows, unchanged), true when the engine merged and finished
+     * the run. Every input is read here by the engine (trusted), on the exact
+     * head: the user config, the diff's modes and line counts, the labels, the
+     * human review read of this merge step. The PR is read again right before
+     * the merge, which is pinned to the head (GitHub REST `sha`; the local
+     * forge merges only a head that already contains your clean, checked-out base).
+     */
+    async autoMerge(pr, head, view, ship, decision, config) {
+        const local = this.forge?.kind === 'local';
+        let user = this.o.autoMergeUserConfig;
+        if (user === undefined) {
+            try {
+                user = userConfigLayers().trustedUser;
+            }
+            catch {
+                user = null;
+            }
+        }
+        const commit = config.trustedBaseCommit;
+        if (commit && !this.warnedCommittedMerge) {
+            try {
+                const text = readBaseFile(this.exec, this.o.root, commit, BASE_CONFIG_PATH);
+                if (text && text.trim() && committedMergeConfig(parseJsonc(text))) {
+                    this.warnedCommittedMerge = true;
+                    this.o.warn?.(`omg factory run: factory.merge in the committed ${BASE_CONFIG_PATH} is ignored: auto-merge is set in your user config only (factory.merge.auto), because a PR can change committed config`);
+                }
+            }
+            catch { /* an unreadable committed config sets nothing */ }
+        }
+        const resolved = resolveAutoMergeConfig(user, { url: this.state.repoUrl || undefined, root: this.o.root, local });
+        if (resolved.error) {
+            this.o.warn?.(`omg factory run: ${resolved.error}; auto-merge stays off`);
+            return undefined;
+        }
+        if (!resolved.config)
+            return undefined;
+        // Labels: the issue's and (GitHub) the PR's; unreadable = null, which keeps the merge human.
+        let labels;
+        try {
+            const issue = this.state.kind === 'ci-heal' || !this.o.issue ? [] : (this.forge ? this.forge.tracker.viewItem(this.o.issue) : ghViewItem(this.exec, this.o.issue, this.o.root)).labels;
+            const prLabels = this.forge ? [] : (JSON.parse(ghRun(this.exec, ['pr', 'view', String(pr), '--json', 'labels'], this.o.root)).labels ?? []).map((l) => String(l.name));
+            labels = [...issue, ...prLabels];
+        }
+        catch {
+            labels = null;
+        }
+        const diff = (flag) => this.exec('git', ['diff', '--no-ext-diff', '--no-textconv', flag, '-z', '--no-renames', '--no-abbrev', `${view.baseRefOid}...${head}`], { cwd: this.o.root, env: TRUSTED_READ_ENV });
+        const raw = diff('--raw');
+        const num = diff('--numstat');
+        const entries = raw.status === 0 && num.status === 0 ? parseChangedEntries(raw.stdout, num.stdout) : null;
+        const extra = [config.knownFlakyFile];
+        let protectedProblem;
+        extra.push(...configuredProtectedPaths(this.o.root, (source, error) => { protectedProblem = `${source}: ${error}`; }));
+        // Your core.hooksPath (repository, global or system config; the engine's own command-line pin is skipped): a PR never changes the hooks you run.
+        const hooks = this.exec('git', ['config', '--show-scope', '--get-all', 'core.hooksPath'], { cwd: this.o.root, env: TRUSTED_READ_ENV });
+        if (hooks.status > 1)
+            protectedProblem ??= `git config core.hooksPath could not be read (exit ${hooks.status})`;
+        else {
+            for (const line of hooks.stdout.split('\n')) {
+                const [scope, ...rest] = line.split('\t');
+                const value = rest.join('\t').trim();
+                if (!value || scope === 'command')
+                    continue;
+                // Normalised first: `scripts/../h2` is h2 (review-498b INFO). `.` (the root) is covered by deniedPaths' root hook names (review-498c L-e).
+                const rel = posix.normalize((isAbsolute(value) ? relative(this.o.root, value) : value).replace(/\\/g, '/'));
+                if (rel && rel !== '.' && !rel.startsWith('..') && !isAbsolute(rel))
+                    extra.push(`${rel.replace(/\/+$/, '')}/`);
+            }
+        }
+        const tiers = resolved.config.tiers;
+        const testSetup = tiers.some((t) => t !== 'docs') ? this.baseTestSetup(view.baseRefOid) : undefined;
+        const frontmatter = tiers.some((t) => t !== 'tests') && entries ? this.frontmatterPaths(entries, view.baseRefOid, head) : undefined;
+        let installFiles;
+        // The base's root names (binding.gyp, pnpm-workspace.yaml make install run code the engine does not read: review-498c L-b).
+        const rootList = this.exec('git', ['ls-tree', '-z', '--name-only', view.baseRefOid], { cwd: this.o.root, env: TRUSTED_READ_ENV });
+        try {
+            if (rootList.status !== 0)
+                throw new Error(`the base's root files could not be listed (exit ${rootList.status})`);
+            installFiles = baseInstallFiles(readBaseFile(this.exec, this.o.root, view.baseRefOid, 'package.json'), rootList.stdout.split('\0').filter(Boolean));
+        }
+        catch (error) {
+            // Unreadable: nothing extra is denied, so the small tier is off; docs and tests cannot touch a script anyway.
+            installFiles = { paths: [], problem: `the base package.json could not be read (${oneLine(error instanceof Error ? error.message : String(error), 120)})` };
+        }
+        let patch;
+        if (tiers.some((t) => t !== 'docs')) {
+            const diffText = this.exec('git', ['diff', '--no-ext-diff', '--no-textconv', `${view.baseRefOid}...${head}`], { cwd: this.o.root, env: TRUSTED_READ_ENV });
+            patch = diffText.status === 0 ? patchLines(diffText.stdout) : null;
+        }
+        const changes = protectedProblem ? { reasons: [`the configured protected paths could not be read (${protectedProblem})`], evidence: [] } : classifyChanges(entries, resolved.config, {
+            extraDenied: extra, installFiles, ...(testSetup ? { testSetup } : {}), ...(frontmatter ? { frontmatter } : {}), ...(patch !== undefined ? { patch } : {}),
+        });
+        const pending = this.state.pendingCommit;
+        const verdict = autoMergeVerdict({
+            head,
+            config: resolved.config,
+            run: {
+                ciHeal: this.state.kind === 'ci-heal',
+                forgeKind: this.forge?.kind ?? 'github',
+                history: this.state.history,
+                ...(this.state.unsandboxedAck ? { unsandboxedAck: this.state.unsandboxedAck } : {}),
+                ...(this.state.unsandboxedGatesAck ? { unsandboxedGatesAck: this.state.unsandboxedGatesAck } : {}),
+                ...(this.state.gateChangeApproved ? { gateChangeApproved: this.state.gateChangeApproved } : {}),
+                ...(pending?.secretAck ? { secretAck: pending.secretAck } : {}),
+            },
+            decision,
+            requiredChecks: config.requiredChecks,
+            ...(latestVerdict(ship) ? { verdict: latestVerdict(ship) } : {}),
+            ...(this.humanClear?.head === head ? { human: { commentOnly: this.humanClear.commentOnly } } : {}),
+            labels,
+            changes,
+        });
+        const short = (reasons) => `${reasons.slice(0, 3).join('; ')}${reasons.length > 3 ? `; and ${reasons.length - 3} more` : ''}`;
+        if (!verdict.ok || !verdict.tier)
+            return short(verdict.reasons);
+        // TOCTOU: read the PR again right before the merge; any move keeps the merge human.
+        const again = await this.prViewReady(pr);
+        if (again.state !== 'OPEN' || again.isDraft || again.headRefOid !== head || again.baseRefOid !== view.baseRefOid || again.baseRefName !== view.baseRefName) {
+            return `the PR changed between the check and the merge (now ${again.state.toLowerCase()}, head ${String(again.headRefOid).slice(0, 12)}, base ${String(again.baseRefOid).slice(0, 12)})`;
+        }
+        const added = (entries ?? []).filter((e) => e.status === 'A').map((e) => e.path);
+        const merged = local ? this.localAutoMerge(head, view.baseRefOid, added) : this.githubAutoMerge(pr, head);
+        if (typeof merged === 'string')
+            return merged;
+        const by = `the factory (auto-merge tier ${verdict.tier})`;
+        this.save((x) => ({ ...x, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `auto-merged by tier ${verdict.tier} at ${head.slice(0, 12)}: ${verdict.evidence.join('; ')}` }] }));
+        this.commentOnce('pr', `auto-merge@${head.slice(0, 12)}`, 'merge', autoMergeComment(runLabel(this.key), verdict.tier, head, verdict.evidence, by));
+        // GitHub pins only the head: a base that moved between the re-read and the PUT is merged into unchecked. Say so loudly.
+        if (!local) {
+            const moved = this.githubMergeBaseProblem(merged.mergeSha, view.baseRefOid);
+            if (moved) {
+                const text = `WARNING: auto-merge of ${head.slice(0, 12)}: ${moved}. The merged result was not checked by the gates; check ${this.state.base} now. Turn on "Require branches to be up to date before merging" in branch protection to prevent this.`;
+                this.save((x) => ({ ...x, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: text }] }));
+                this.commentOnce('pr', `auto-merge-base@${head.slice(0, 12)}`, 'merge', `Factory run for ${runLabel(this.key)}: ${text}\n`);
+                this.o.warn?.(`omg factory run: ${text}`);
+            }
+        }
+        this.finishMerged(pr, by, merged.base);
+        return true;
+    }
+    /** GitHub: the head-pinned REST merge (GitHub refuses a moved head with 409), admitted by the guard for this step only. */
+    githubAutoMerge(pr, head) {
+        const repo = this.githubReadContext()?.repo;
+        const args = repo ? githubAutoMergeArgs({ repo, pr, head }) : undefined;
+        if (!args)
+            return 'the run\'s GitHub repository is not known, so there is no head-pinned merge to run';
+        this.autoMergeStep = { pr, head };
+        try {
+            const res = this.exec('gh', args, { cwd: this.o.root });
+            if (res.status !== 0)
+                return `GitHub refused the head-pinned merge: ${oneLine(res.stderr || res.stdout, 200)}`;
+            let out;
+            try {
+                out = JSON.parse(res.stdout);
+            }
+            catch {
+                out = {};
+            }
+            if (out.merged !== true)
+                return `GitHub did not confirm the merge: ${oneLine(res.stdout, 200)}`;
+            return typeof out.sha === 'string' && HEX40.test(out.sha) ? { mergeSha: out.sha } : {};
+        }
+        finally {
+            this.autoMergeStep = undefined;
+        }
+    }
+    /** After the GitHub merge: why its merge commit's first parent is not the base the gates checked (undefined = it is). */
+    githubMergeBaseProblem(mergeSha, baseSha) {
+        const repo = this.githubReadContext()?.repo;
+        const args = repo && mergeSha ? githubCommitReadArgs(repo, mergeSha) : undefined;
+        if (!args)
+            return `GitHub did not return the merge commit, so its first parent could not be checked against ${this.state.base} ${baseSha.slice(0, 12)}`;
+        let parents;
+        try {
+            const res = this.exec('gh', args, { cwd: this.o.root });
+            parents = res.status === 0 ? JSON.parse(res.stdout).parents : undefined;
+        }
+        catch {
+            parents = undefined;
+        }
+        const first = Array.isArray(parents) ? parents[0]?.sha : undefined;
+        if (typeof first !== 'string')
+            return `the merge commit ${mergeSha.slice(0, 12)} could not be read, so its first parent could not be checked against ${this.state.base} ${baseSha.slice(0, 12)}`;
+        return first === baseSha ? undefined : `GitHub merged into ${this.state.base} ${first.slice(0, 12)}, not ${baseSha.slice(0, 12)} the gates checked (the base moved before the merge)`;
+    }
+    /**
+     * The Markdown-like changed files (isFrontmatterCandidate) whose BASE blob
+     * (not added) or HEAD blob (not deleted) starts with frontmatter (review-498b
+     * N1): a skill, command, agent or mission contract a tool parses. Read with
+     * ship's exact `git show <sha>:<path>`; a read that fails (or a path that
+     * shape refuses) or more than 200 such files is a problem, which keeps the
+     * docs and small tiers off.
+     */
+    frontmatterPaths(entries, baseSha, head) {
+        const candidates = entries.filter((e) => isFrontmatterCandidate(e.path));
+        if (candidates.length > 200)
+            return { paths: [], problem: `${candidates.length} Markdown-like files changed; the engine reads at most 200 for frontmatter` };
+        const paths = [];
+        for (const e of candidates) {
+            const shas = [...(e.status !== 'A' ? [baseSha] : []), ...(e.status !== 'D' ? [head] : [])];
+            for (const sha of shas) {
+                let text;
+                try {
+                    text = readBaseFile(this.exec, this.o.root, sha, e.path);
+                }
+                catch (error) {
+                    return { paths, problem: `${e.path} could not be read at ${sha.slice(0, 12)} to check for frontmatter (${oneLine(error instanceof Error ? error.message : String(error), 120)})` };
+                }
+                if (text !== null && hasFrontmatter(text)) {
+                    paths.push(e.path);
+                    break;
+                }
+            }
+        }
+        return { paths };
+    }
+    /**
+     * The setup files of the BASE commit's root test configs (baseTestSetup),
+     * never the head's: the PR cannot hide its own setup file. A listing or
+     * read that fails is a problem, which keeps the tests and small tiers off.
+     */
+    baseTestSetup(baseSha) {
+        const list = this.exec('git', ['ls-tree', '-z', '--name-only', baseSha], { cwd: this.o.root, env: TRUSTED_READ_ENV });
+        if (list.status !== 0)
+            return { paths: [], problem: `the base's root files could not be listed (exit ${list.status})` };
+        const files = [];
+        for (const name of list.stdout.split('\0').filter((n) => TEST_CONFIG_NAME.test(n))) {
+            try {
+                const text = readBaseFile(this.exec, this.o.root, baseSha, name);
+                if (text !== null)
+                    files.push({ path: name, text });
+            }
+            catch (error) {
+                return { paths: [], problem: `the base test config ${name} could not be read (${oneLine(error instanceof Error ? error.message : String(error), 120)})` };
+            }
+        }
+        return baseTestSetupOf(files);
+    }
+    /**
+     * The local forge: `git merge --no-ff --no-edit --no-verify <head>` in your
+     * repository, only with your base checked out there, no tracked change, the
+     * base still at the commit the run synced, and the head already containing
+     * it (so the merge takes the head's tree as is: no merge driver runs), and
+     * no path the PR adds already in your checkout. Like every engine git
+     * command it runs under hardenedGitExec: core.hooksPath is the engine's
+     * empty dir (no post-merge from .git/hooks or a tracked hooks dir) and
+     * merge.renormalize is off. A failed merge is aborted. Returns the base's new commit.
+     */
+    localAutoMerge(head, baseSha, added) {
+        const git = (args) => this.exec('git', args, { cwd: this.o.root, env: TRUSTED_READ_ENV });
+        // git overwrites an ignored or untracked file in the way without asking: a path the PR adds must not exist in your checkout yet.
+        // review-498b L1: every parent too: an ignored FILE `a` (or a link) where the PR adds `a/b.md` is replaced by git.
+        const inTheWay = added.filter((p) => {
+            const parts = p.split('/');
+            return parts.some((_, n) => {
+                try {
+                    const st = lstatSync(join(this.o.root, ...parts.slice(0, n + 1)));
+                    return n === parts.length - 1 || !st.isDirectory();
+                }
+                catch {
+                    return false;
+                }
+            });
+        });
+        if (inTheWay.length > 0)
+            return `the PR adds ${inTheWay.slice(0, 3).join(', ')}${inTheWay.length > 3 ? ` and ${inTheWay.length - 3} more` : ''}, which already exist in your checkout, or under a file or link there (an ignored or untracked file the merge would overwrite)`;
+        const branch = git(['rev-parse', '--symbolic-full-name', 'HEAD']);
+        if (branch.status !== 0 || branch.stdout.trim() !== `refs/heads/${this.state.base}`)
+            return `your repository does not have ${this.state.base} checked out (the local merge runs there)`;
+        const dirty = git(['status', '--porcelain', '--untracked-files=no']);
+        if (dirty.status !== 0 || dirty.stdout.trim() !== '')
+            return `your repository has uncommitted changes to tracked files`;
+        const at = git(['rev-parse', '--verify', `refs/heads/${this.state.base}`]).stdout.trim();
+        if (at !== baseSha)
+            return `your ${this.state.base} is at ${at.slice(0, 12) || '(unreadable)'}, not ${baseSha.slice(0, 12)} the gates checked against`;
+        if (git(['merge-base', '--is-ancestor', baseSha, head]).status !== 0)
+            return `head ${head.slice(0, 12)} does not contain ${this.state.base} ${baseSha.slice(0, 12)}; a merge would combine trees the gates never checked`;
+        const res = git(['merge', '--no-ff', '--no-edit', '--no-verify', head]);
+        if (res.status !== 0) {
+            if (git(['rev-parse', '-q', '--verify', 'MERGE_HEAD']).status === 0)
+                git(['merge', '--abort']);
+            return `git merge of ${head.slice(0, 12)} failed: ${oneLine(res.stderr || res.stdout, 200)}`;
+        }
+        const after = git(['rev-parse', '--verify', `refs/heads/${this.state.base}`]).stdout.trim();
+        if (!HEX40.test(after) || git(['merge-base', '--is-ancestor', head, after]).status !== 0)
+            return `after the merge your ${this.state.base} does not contain ${head.slice(0, 12)}; check your repository`;
+        return { base: after };
     }
     // --- Shared git state around lanes -------------------------------------------------------------
     /**
@@ -4976,6 +5275,8 @@ class FactoryEngine {
     // merge then treat like any lane's. The agent's PR gets a link comment and is closed after publish (D5).
     /** The coding agent write context, set ONLY around the assign and around the agent PR's link comment and close; cleared in finally. */
     agentStep;
+    /** Set only around the opt-in auto-merge's GitHub REST merge (the guard admits that one call for this PR and head). */
+    autoMergeStep;
     /** Whether this invocation's run uses the coding agent, and its keys (resolved once; its warning printed once). */
     agentChoice;
     /** The repository-only GitHub read context (the coding agent's status read): the run's repository as intake recorded it. */
@@ -5030,7 +5331,7 @@ class FactoryEngine {
     }
     githubReadContext() {
         const repo = this.state?.repoUrl ? codingAgentRepoOf(this.state.repoUrl) : undefined;
-        return repo ? { repo: ghRepoArg(repo) } : undefined;
+        return repo ? { repo: ghRepoArg(repo), ...(this.autoMergeStep ? { autoMerge: this.autoMergeStep } : {}) } : undefined;
     }
     withAgentStep(ctx, call) {
         this.agentStep = ctx;
@@ -5478,6 +5779,8 @@ class FactoryEngine {
     humanNote;
     /** The same read for the merge comment on the PR. */
     humanComment;
+    /** The same read as auto-merge needs it: clean at this head, and its comment-only reviews (undefined = not read). */
+    humanClear;
     /** factory.review.human from the trusted layers; absent (no forge config included) = "fix". */
     humanMode() {
         return this.o.forge?.config.review?.human ?? 'fix';
@@ -5584,6 +5887,7 @@ class FactoryEngine {
     humanReviewParked(pr, head, ship) {
         this.humanNote = undefined;
         this.humanComment = undefined;
+        this.humanClear = undefined;
         const mode = this.humanMode();
         if (mode === 'off')
             return false;
@@ -5659,6 +5963,7 @@ class FactoryEngine {
         const read = `${none}${approved.length > 0 ? `, approved at this head by ${this.names(approved)}` : ''}${commented}${also}${ignored}${gone}${sandbox}`;
         this.humanNote = `; human review: ${read}; ${rerun}`;
         this.humanComment = `\nHuman review at this head: ${read}.\n\nIf the PR gets new review comments before you merge, rerun \`${this.resume}\` first.\n`;
+        this.humanClear = { head, commentOnly: commentOnly.length };
         return false;
     }
     /**

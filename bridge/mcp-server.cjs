@@ -6405,8 +6405,8 @@ var require_resolve = __commonJS({
       }
       return count;
     }
-    function getFullPath(resolver, id = "", normalize10) {
-      if (normalize10 !== false)
+    function getFullPath(resolver, id = "", normalize11) {
+      if (normalize11 !== false)
         id = normalizeId(id);
       const p = resolver.parse(id);
       return _getFullPath(resolver, p);
@@ -6981,8 +6981,8 @@ var require_validate = __commonJS({
           return data;
       }
       let expr = data;
-      const segments = jsonPointer.split("/");
-      for (const segment of segments) {
+      const segments2 = jsonPointer.split("/");
+      for (const segment of segments2) {
         if (segment) {
           data = (0, codegen_1._)`${data}${(0, codegen_1.getProperty)((0, util_1.unescapeJsonPointer)(segment))}`;
           expr = (0, codegen_1._)`${expr} && ${data}`;
@@ -7802,7 +7802,7 @@ var require_fast_uri = __commonJS({
     "use strict";
     var { normalizeIPv6, removeDotSegments, recomposeAuthority, normalizePercentEncoding, normalizePathEncoding, escapePreservingEscapes, reescapeHostDelimiters, isIPv4, nonSimpleDomain } = require_utils();
     var { SCHEMES, getSchemeHandler } = require_schemes();
-    function normalize10(uri, options) {
+    function normalize11(uri, options) {
       if (typeof uri === "string") {
         uri = /** @type {T} */
         normalizeString(uri, options);
@@ -7818,49 +7818,49 @@ var require_fast_uri = __commonJS({
       schemelessOptions.skipEscape = true;
       return serialize(resolved, schemelessOptions);
     }
-    function resolveComponent(base, relative36, options, skipNormalization) {
+    function resolveComponent(base, relative35, options, skipNormalization) {
       const target = {};
       if (!skipNormalization) {
         base = parse13(serialize(base, options), options);
-        relative36 = parse13(serialize(relative36, options), options);
+        relative35 = parse13(serialize(relative35, options), options);
       }
       options = options || {};
-      if (!options.tolerant && relative36.scheme) {
-        target.scheme = relative36.scheme;
-        target.userinfo = relative36.userinfo;
-        target.host = relative36.host;
-        target.port = relative36.port;
-        target.path = removeDotSegments(relative36.path || "");
-        target.query = relative36.query;
+      if (!options.tolerant && relative35.scheme) {
+        target.scheme = relative35.scheme;
+        target.userinfo = relative35.userinfo;
+        target.host = relative35.host;
+        target.port = relative35.port;
+        target.path = removeDotSegments(relative35.path || "");
+        target.query = relative35.query;
       } else {
-        if (relative36.userinfo !== void 0 || relative36.host !== void 0 || relative36.port !== void 0) {
-          target.userinfo = relative36.userinfo;
-          target.host = relative36.host;
-          target.port = relative36.port;
-          target.path = removeDotSegments(relative36.path || "");
-          target.query = relative36.query;
+        if (relative35.userinfo !== void 0 || relative35.host !== void 0 || relative35.port !== void 0) {
+          target.userinfo = relative35.userinfo;
+          target.host = relative35.host;
+          target.port = relative35.port;
+          target.path = removeDotSegments(relative35.path || "");
+          target.query = relative35.query;
         } else {
-          if (!relative36.path) {
+          if (!relative35.path) {
             target.path = base.path;
-            if (relative36.query !== void 0) {
-              target.query = relative36.query;
+            if (relative35.query !== void 0) {
+              target.query = relative35.query;
             } else {
               target.query = base.query;
             }
           } else {
-            if (relative36.path[0] === "/") {
-              target.path = removeDotSegments(relative36.path);
+            if (relative35.path[0] === "/") {
+              target.path = removeDotSegments(relative35.path);
             } else {
               if ((base.userinfo !== void 0 || base.host !== void 0 || base.port !== void 0) && !base.path) {
-                target.path = "/" + relative36.path;
+                target.path = "/" + relative35.path;
               } else if (!base.path) {
-                target.path = relative36.path;
+                target.path = relative35.path;
               } else {
-                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative36.path;
+                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative35.path;
               }
               target.path = removeDotSegments(target.path);
             }
-            target.query = relative36.query;
+            target.query = relative35.query;
           }
           target.userinfo = base.userinfo;
           target.host = base.host;
@@ -7868,7 +7868,7 @@ var require_fast_uri = __commonJS({
         }
         target.scheme = base.scheme;
       }
-      target.fragment = relative36.fragment;
+      target.fragment = relative35.fragment;
       return target;
     }
     function equal(uriA, uriB, options) {
@@ -8069,7 +8069,7 @@ var require_fast_uri = __commonJS({
     }
     var fastUri = {
       SCHEMES,
-      normalize: normalize10,
+      normalize: normalize11,
       resolve: resolve62,
       resolveComponent,
       equal,
@@ -8491,9 +8491,9 @@ var require_core = __commonJS({
         const rules = this.RULES.all;
         metaSchema = JSON.parse(JSON.stringify(metaSchema));
         for (const jsonPointer of keywordsJsonPointers) {
-          const segments = jsonPointer.split("/").slice(1);
+          const segments2 = jsonPointer.split("/").slice(1);
           let keywords = metaSchema;
-          for (const seg of segments)
+          for (const seg of segments2)
             keywords = keywords[seg];
           for (const key in rules) {
             const rule = rules[key];
@@ -11379,8 +11379,8 @@ function getGlobalOmcStateRoot() {
   }
   return (0, import_path4.join)(getLegacyOmcDir(), "state");
 }
-function getGlobalOmcStatePath(...segments) {
-  return (0, import_path4.join)(getGlobalOmcStateRoot(), ...segments);
+function getGlobalOmcStatePath(...segments2) {
+  return (0, import_path4.join)(getGlobalOmcStateRoot(), ...segments2);
 }
 var import_path4, import_fs3, import_os2, OCCUPIED_CODES, STALE_THRESHOLD_MS;
 var init_paths2 = __esm({
@@ -14091,8 +14091,8 @@ ${content}`;
         const current = new Promise((resolveCurrent) => {
           release = resolveCurrent;
         });
-        const tail4 = previous.catch(() => void 0).then(() => current);
-        this.documentOperationTails.set(hostUri, tail4);
+        const tail3 = previous.catch(() => void 0).then(() => current);
+        this.documentOperationTails.set(hostUri, tail3);
         const predecessorCompleted = await Promise.race([
           previous.then(() => true, () => true),
           cancellation.then(() => false)
@@ -14105,7 +14105,7 @@ ${content}`;
           return await operation();
         } finally {
           release();
-          if (this.documentOperationTails.get(hostUri) === tail4) {
+          if (this.documentOperationTails.get(hostUri) === tail3) {
             this.documentOperationTails.delete(hostUri);
           }
         }
@@ -16043,8 +16043,8 @@ function sameCanonicalPath(left, right) {
   if (process.platform !== "win32") {
     return false;
   }
-  const fold4 = (value) => value.replaceAll("/", "\\").toLowerCase();
-  return fold4(a) === fold4(b);
+  const fold5 = (value) => value.replaceAll("/", "\\").toLowerCase();
+  return fold5(a) === fold5(b);
 }
 function isCredibleGitWorktreeRoot(root) {
   try {
@@ -24727,13 +24727,13 @@ var init_directive_detector = __esm({
 function withMutex(projectRoot, fn) {
   const prev = writeMutexes.get(projectRoot) ?? Promise.resolve();
   const next = prev.then(() => fn()).catch(() => fn());
-  const tail4 = next.then(
+  const tail3 = next.then(
     () => {
     },
     () => {
     }
   );
-  writeMutexes.set(projectRoot, tail4);
+  writeMutexes.set(projectRoot, tail3);
   return next;
 }
 async function addCustomNote(projectRoot, category, content) {
@@ -30009,8 +30009,8 @@ function trackerTagEditProblem(body, labels) {
   const split = (v) => v.split(";").map((t) => t.trim());
   const current = body[tests[0]].value === "" ? [] : split(body[tests[0]].value).filter(Boolean);
   const next = split(body[adds[0]].value);
-  const fold4 = (t) => t.replace(/[A-Z]/g, (c) => c.toLowerCase());
-  const has = (list, tag) => list.some((t) => fold4(t) === fold4(tag));
+  const fold5 = (t) => t.replace(/[A-Z]/g, (c) => c.toLowerCase());
+  const has = (list, tag) => list.some((t) => fold5(t) === fold5(tag));
   for (const tag of next) {
     if (has(current, tag)) continue;
     if (!isTrackerTag(tag)) return `${at} has a refused tag ${JSON.stringify(tag)}`;
@@ -31898,8 +31898,8 @@ function evaluateSdkSkills(skills, root, skillDirs, platform = process.platform)
     if (str2(s.path) && p.startsWith(prefix)) fromSkillsDir.add(p.slice(prefix.length).split("/")[0]);
     else other.push(str2(s.commandName) || str2(s.name));
   }
-  const fold4 = (d) => platform === "win32" ? d.toLowerCase() : d;
-  const missing = skillDirs.filter((d) => !fromSkillsDir.has(fold4(d)));
+  const fold5 = (d) => platform === "win32" ? d.toLowerCase() : d;
+  const missing = skillDirs.filter((d) => !fromSkillsDir.has(fold5(d)));
   const ok2 = skillDirs.length > 0 && missing.length === 0 && fromSkillsDir.size === skillDirs.length;
   return {
     id,
@@ -31965,11 +31965,11 @@ function evaluateSdkSandbox(probe) {
   if (probe.applyError) return { id, ok: false, detail: `supported, capabilities ${caps}; the review policy was not applied: ${probe.applyError}` };
   const enf = probe.enforcement;
   if (enf === void 0 || typeof enf === "string") return { id, ok: false, detail: `supported, capabilities ${caps}; review policy applied; enforcement unread: ${enf ?? "not asked"}` };
-  const spawn8 = probe.spawn ?? { ok: false, detail: "not run" };
+  const spawn7 = probe.spawn ?? { ok: false, detail: "not run" };
   return {
     id,
-    ok: !enf.blocked && spawn8.ok,
-    detail: `supported, capabilities ${caps}; review policy applied (options.update), enforcement required=${enf.required} blocked=${enf.blocked}${enf.reason ? ` (${enf.reason})` : ""}; spawn canary: ${spawn8.detail}`
+    ok: !enf.blocked && spawn7.ok,
+    detail: `supported, capabilities ${caps}; review policy applied (options.update), enforcement required=${enf.required} blocked=${enf.blocked}${enf.reason ? ` (${enf.reason})` : ""}; spawn canary: ${spawn7.detail}`
   };
 }
 function sliceLogByTime(text3, starts) {
@@ -32612,10 +32612,10 @@ var init_copilot_session_env = __esm({
 });
 
 // src/team/sdk-policy.ts
-function gitSubcommandDeny(tail4, reason) {
+function gitSubcommandDeny(tail3, reason) {
   return [
-    { re: new RegExp(String.raw`(?:^|[\s;&|("'/\\])git(?:\.exe)?["']?${GIT_GLOBAL_OPTIONS}\s+${tail4}`, "i"), reason },
-    { re: new RegExp(String.raw`\bgit\b[\s\S]*\$\{?\w+\}?${GIT_GLOBAL_OPTIONS}\s+${tail4}`, "i"), reason }
+    { re: new RegExp(String.raw`(?:^|[\s;&|("'/\\])git(?:\.exe)?["']?${GIT_GLOBAL_OPTIONS}\s+${tail3}`, "i"), reason },
+    { re: new RegExp(String.raw`\bgit\b[\s\S]*\$\{?\w+\}?${GIT_GLOBAL_OPTIONS}\s+${tail3}`, "i"), reason }
   ];
 }
 function normalizeShellCommand(command) {
@@ -32987,36 +32987,6 @@ function resolveRequireDeniedPaths(layers) {
   if (base) return { require: true, source: "the base .copilot/omg.jsonc" };
   return { require: false, source: user === false || base === false ? "config" : "default" };
 }
-function resolveGateIsolation(layers, nodeVersion = process.versions.node) {
-  const block2 = (config2) => {
-    const raw2 = config2?.factory?.run?.sandbox;
-    return raw2 && typeof raw2 === "object" && !Array.isArray(raw2) ? raw2 : {};
-  };
-  const base = block2(layers.base);
-  const ignoredBase = ["isolation", "container"].filter((k) => base[k] !== void 0).map((k) => `factory.run.sandbox.${k}`);
-  const user = block2(layers.user);
-  const bad = (key, want) => {
-    throw new Error(`user config: factory.run.sandbox.${key} must be ${want}`);
-  };
-  const isolation = user.isolation === void 0 ? "copilot" : user.isolation === "copilot" || user.isolation === "container" ? user.isolation : bad("isolation", '"copilot" or "container"');
-  const raw = user.container ?? {};
-  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) bad("container", "an object");
-  const c = raw;
-  const unknown2 = Object.keys(c).filter((k) => !CONTAINER_KEYS.includes(k));
-  if (unknown2.length > 0) bad("container", `an object with only ${CONTAINER_KEYS.join(", ")} (got ${unknown2.join(", ")})`);
-  const int2 = (key, min, max, fallback) => {
-    const v = c[key];
-    if (v === void 0) return fallback;
-    return typeof v === "number" && Number.isInteger(v) && v >= min && v <= max ? v : bad(`container.${key}`, `an integer from ${min} to ${max}`);
-  };
-  const runtime = c.runtime === void 0 ? "docker" : c.runtime === "docker" || c.runtime === "podman" ? c.runtime : bad("container.runtime", '"docker" or "podman"');
-  const image = c.image === void 0 ? defaultGateImage(nodeVersion) : typeof c.image === "string" && /^[A-Za-z0-9][A-Za-z0-9._/:@-]{0,254}$/.test(c.image) ? c.image : bad("container.image", "an image reference (letters, digits and . _ / : @ -, not starting with -)");
-  const memory = c.memory === void 0 ? "4g" : typeof c.memory === "string" && /^[1-9]\d{0,5}[kmg]$/i.test(c.memory) ? c.memory : bad("container.memory", 'a size such as "4g" or "512m"');
-  const cpus2 = c.cpus === void 0 ? 2 : typeof c.cpus === "number" && c.cpus > 0 && c.cpus <= 64 ? c.cpus : bad("container.cpus", "a number above 0 and at most 64");
-  const diskLimit = c.diskLimit === void 0 ? "10g" : typeof c.diskLimit === "string" && /^[1-9]\d{0,5}[mg]$/i.test(c.diskLimit) ? c.diskLimit : bad("container.diskLimit", 'a size such as "10g" or "800m"');
-  const container = { runtime, image, memory, cpus: cpus2, pidsLimit: int2("pidsLimit", 64, 65536, 1024), installTimeoutMinutes: int2("installTimeoutMinutes", 1, 120, 15), diskLimit };
-  return { isolation, ...isolation === "container" ? { container } : {}, ignoredBase };
-}
 function sameRealPath(real2, want, platform) {
   let w;
   try {
@@ -33227,15 +33197,15 @@ function buildSandboxConfig(profile, ctx, host) {
       nm = import_node_fs7.realpathSync.native(ctx.nodeModulesTarget);
     } catch {
     }
-    const fold4 = (p) => ctx.platform === "win32" ? p.toLowerCase() : p;
+    const fold5 = (p) => ctx.platform === "win32" ? p.toLowerCase() : p;
     const allowed = new Set((ctx.nestedNodeModulesTargets ?? []).flatMap((p) => {
       try {
-        return [fold4(import_node_fs7.realpathSync.native(p))];
+        return [fold5(import_node_fs7.realpathSync.native(p))];
       } catch {
         return [];
       }
     }));
-    nested = (tree.nested ?? []).filter((p) => allowed.has(fold4(p)));
+    nested = (tree.nested ?? []).filter((p) => allowed.has(fold5(p)));
   }
   const filesystem = {
     readwritePaths: [ctx.worktree, ...laneHome, ...ctx.hostCommits ? [] : laneGitWritePaths(ctx), ...settings.extraReadwritePaths],
@@ -33382,8 +33352,8 @@ function rpcMethod(root, path15, name) {
     return null;
   }
 }
-function bwrapTrialLaunchError(spawn8 = defaultTrialSpawner, timeoutMs = 1e4) {
-  const r = spawn8("bwrap", BWRAP_TRIAL_ARGS, timeoutMs);
+function bwrapTrialLaunchError(spawn7 = defaultTrialSpawner, timeoutMs = 1e4) {
+  const r = spawn7("bwrap", BWRAP_TRIAL_ARGS, timeoutMs);
   if (r.error?.code === "ENOENT") return "bwrap (bubblewrap) is not on PATH, and the Linux sandbox runs every shell under it: install bubblewrap";
   if (r.error) return `a trial bwrap launch failed: ${errText(r.error)}`;
   if (r.status === 0) return null;
@@ -33541,7 +33511,7 @@ function allowlistSessionEnv(env2, jobHome) {
   }
   return { ...out, ...relocatedProfileEnv(jobHome) };
 }
-var import_node_child_process2, import_node_fs7, import_node_path8, SANDBOX_SHELL_TOOLS, REVIEW_READ_TOOLS, REVIEW_SHELL_TOOLS, DEFAULT_SANDBOX_SETTINGS, SANDBOX_KILL_ENV, isStringArray2, GATES_SANDBOX_MODES, CONTAINER_KEYS, defaultGateImage, REGISTRY_HOSTS, GATE_TREE_MARKER_NAME, errText, BWRAP_TRIAL_ARGS, defaultTrialSpawner, cachedBwrapTrial, SESSION_ENV_ALLOWLIST, MXC_REQUIRED_ENV, TOKEN_PATTERN;
+var import_node_child_process2, import_node_fs7, import_node_path8, SANDBOX_SHELL_TOOLS, REVIEW_READ_TOOLS, REVIEW_SHELL_TOOLS, DEFAULT_SANDBOX_SETTINGS, SANDBOX_KILL_ENV, isStringArray2, GATES_SANDBOX_MODES, REGISTRY_HOSTS, GATE_TREE_MARKER_NAME, errText, BWRAP_TRIAL_ARGS, defaultTrialSpawner, cachedBwrapTrial, SESSION_ENV_ALLOWLIST, MXC_REQUIRED_ENV, TOKEN_PATTERN;
 var init_sandbox2 = __esm({
   "src/copilot-run/sandbox.ts"() {
     "use strict";
@@ -33571,8 +33541,6 @@ var init_sandbox2 = __esm({
     SANDBOX_KILL_ENV = "OMG_SANDBOX";
     isStringArray2 = (v) => Array.isArray(v) && v.every((x) => typeof x === "string");
     GATES_SANDBOX_MODES = ["enforced", "ack", "unsandboxed"];
-    CONTAINER_KEYS = ["runtime", "image", "memory", "cpus", "pidsLimit", "installTimeoutMinutes", "diskLimit"];
-    defaultGateImage = (nodeVersion = process.versions.node) => `node:${nodeVersion.split(".")[0]}-bookworm-slim`;
     REGISTRY_HOSTS = ["registry.npmjs.org", "*.npmjs.org"];
     GATE_TREE_MARKER_NAME = ".omg-gate-tree";
     errText = (err) => err instanceof Error ? err.message : String(err);
@@ -33661,7 +33629,7 @@ var init_version = __esm({
 });
 
 // src/smoke/replay/redact.ts
-function userHomePatterns(win, pct, posix8, posixFlags) {
+function userHomePatterns(win, pct, posix9, posixFlags) {
   return [
     // The separator spelling is captured once, so `\n` after an escaped `\\` is not taken for a tail separator.
     // `\` doubles per JSON level, so any run of backslashes is a separator. The one after `Users` may be either
@@ -33670,7 +33638,7 @@ function userHomePatterns(win, pct, posix8, posixFlags) {
     // Percent-encoded (`file:///c%3A/Users/...`, `C%3A%5CUsers%5C...`, `%2Fhome%2Fname`).
     new RegExp(String.raw`(?<head>(?:\b[A-Za-z]%3A${PCT_SEP}Users|%2F(?:home|Users))${PCT_SEP}(?!<user>)${pct})(?:${PCT_SEP}${PCT_SEG})*`, "gi"),
     // POSIX, Git Bash (`/c/Users/...`) and WSL (`/mnt/c/Users/...`).
-    new RegExp(String.raw`(?<head>(?<![\w.$}-])\/(?:home|Users|(?:mnt\/)?[A-Za-z]\/Users)\/(?!<user>)${posix8})(?:\/${POSIX_SEG})*`, posixFlags)
+    new RegExp(String.raw`(?<head>(?<![\w.$}-])\/(?:home|Users|(?:mnt\/)?[A-Za-z]\/Users)\/(?!<user>)${posix9})(?:\/${POSIX_SEG})*`, posixFlags)
   ];
 }
 function knownUserHomePatterns(user) {
@@ -33820,11 +33788,11 @@ function pathMatchers(dirs) {
       spellings.set(jsonEscape(back), String.raw`\\\\`);
       spellings.set(jsonEscape(jsonEscape(back)), String.raw`\\\\\\\\`);
     }
-    for (const [spelling, sep20] of spellings) {
+    for (const [spelling, sep19] of spellings) {
       out.push({
         name,
         headLength: spelling.length,
-        pattern: new RegExp(`${escapeRegExp(spelling)}(?!${SEGMENT_CHAR})(?:(?:${sep20}|/)${SEGMENT_CHAR}+)*`, win ? "gi" : "g")
+        pattern: new RegExp(`${escapeRegExp(spelling)}(?!${SEGMENT_CHAR})(?:(?:${sep19}|/)${SEGMENT_CHAR}+)*`, win ? "gi" : "g")
       });
     }
   }
@@ -33845,11 +33813,11 @@ function substitutePaths(text3, dirs, onHit) {
 }
 function restorePlaceholders(text3, dirs, options = {}) {
   const depth = options.jsonDepth ?? 0;
-  return text3.replace(/\$\{(PROJECT|HOME|ROOT|REMOTE|TMP|USERHOME)\}((?:\/[^\\/\s"'<>|:*?]+)*)/g, (match, name, tail4) => {
+  return text3.replace(/\$\{(PROJECT|HOME|ROOT|REMOTE|TMP|USERHOME)\}((?:\/[^\\/\s"'<>|:*?]+)*)/g, (match, name, tail3) => {
     const dir = dirs[name]?.replace(/[\\/]+$/, "");
     if (!dir) return match;
     const nativeBack = options.separator === "native" && isWindowsPath(dir);
-    let path15 = nativeBack ? `${dir.replace(/\//g, "\\")}${tail4.replace(/\//g, "\\")}` : `${dir.replace(/\\/g, "/")}${tail4}`;
+    let path15 = nativeBack ? `${dir.replace(/\//g, "\\")}${tail3.replace(/\//g, "\\")}` : `${dir.replace(/\\/g, "/")}${tail3}`;
     for (let i = 0; i < depth; i++) path15 = jsonEscape(path15);
     return path15;
   });
@@ -33986,7 +33954,7 @@ var init_redact = __esm({
     PCT_SEG = String.raw`(?:[^\\/\s"'<>|:*?%]|%(?!5C|2F)[0-9A-F]{2})+`;
     POSIX_SEG = String.raw`[^/\s"'\\<>|:*?]+`;
     PCT_SEP = String.raw`(?:%5C|%2F|\/)`;
-    spaced = (seg, sep20) => `(?:${seg}(?: ${seg})+(?=${sep20})|${seg})`;
+    spaced = (seg, sep19) => `(?:${seg}(?: ${seg})+(?=${sep19})|${seg})`;
     USER_HOME_PATHS = userHomePatterns(spaced(WIN_SEG, String.raw`[\\/]`), PCT_SEG, spaced(POSIX_SEG, "/"), "g");
     jsonEscape = (s) => JSON.stringify(s).slice(1, -1);
     KEY_ENV = /HMAC|_KEY$/i;
@@ -34552,11 +34520,11 @@ function readJsonl(file) {
     throw err;
   }
   const lines3 = text3.split("\n");
-  const tail4 = lines3.pop() ?? "";
+  const tail3 = lines3.pop() ?? "";
   const out = lines3.filter((line) => line.trim() !== "").map((line) => JSON.parse(line));
-  if (tail4.trim() !== "") {
+  if (tail3.trim() !== "") {
     try {
-      out.push(JSON.parse(tail4));
+      out.push(JSON.parse(tail3));
     } catch {
     }
   }
@@ -35603,8 +35571,8 @@ function exportPath(target, condition) {
   if (typeof cond === "string") return cond;
   return typeof cond?.default === "string" ? cond.default : void 0;
 }
-function npmRootG(env2, spawnSync16) {
-  const res = process.platform === "win32" ? spawnSync16("npm root -g", { env: env2, encoding: "utf8", timeout: 15e3, windowsHide: true, shell: true }) : spawnSync16("npm", ["root", "-g"], { env: env2, encoding: "utf8", timeout: 15e3 });
+function npmRootG(env2, spawnSync15) {
+  const res = process.platform === "win32" ? spawnSync15("npm root -g", { env: env2, encoding: "utf8", timeout: 15e3, windowsHide: true, shell: true }) : spawnSync15("npm", ["root", "-g"], { env: env2, encoding: "utf8", timeout: 15e3 });
   const out = String(res.stdout ?? "").trim();
   return res.status === 0 && out ? out : null;
 }
@@ -35644,11 +35612,11 @@ function resolveShimTarget(shim, read = (p) => (0, import_fs55.readFileSync)(p, 
   }
   return null;
 }
-async function loadCopilotSdk(env2 = process.env, spawnSync16 = import_child_process17.spawnSync) {
-  const found = await findCopilotSdk(env2, spawnSync16);
+async function loadCopilotSdk(env2 = process.env, spawnSync15 = import_child_process17.spawnSync) {
+  const found = await findCopilotSdk(env2, spawnSync15);
   return found ? withCassette(found, env2) : null;
 }
-async function findCopilotSdk(env2, spawnSync16) {
+async function findCopilotSdk(env2, spawnSync15) {
   const spec = SDK_PACKAGE;
   try {
     const mod = await import(spec);
@@ -35671,7 +35639,7 @@ async function findCopilotSdk(env2, spawnSync16) {
     const hit = await tryRoot(root);
     if (hit) return hit;
   }
-  return tryRoot(npmRootG(env2, spawnSync16));
+  return tryRoot(npmRootG(env2, spawnSync15));
 }
 function withTimeout2(promise, ms, label) {
   let timer;
@@ -35720,8 +35688,8 @@ function pidAlive(pid) {
     return err.code === "EPERM";
   }
 }
-function prepareSdkProject(spawnSync16, projectDir, remoteDir, env2) {
-  const git4 = (args, cwd) => spawnSync16("git", args, { cwd, env: env2, encoding: "utf8", timeout: 3e4, windowsHide: true });
+function prepareSdkProject(spawnSync15, projectDir, remoteDir, env2) {
+  const git4 = (args, cwd) => spawnSync15("git", args, { cwd, env: env2, encoding: "utf8", timeout: 3e4, windowsHide: true });
   (0, import_fs55.mkdirSync)(projectDir, { recursive: true });
   (0, import_fs55.writeFileSync)((0, import_path68.join)(projectDir, "hello.txt"), "omg smoke fixture\n");
   const steps = [
@@ -35802,8 +35770,8 @@ function collectFiletools(projectDir, probe) {
     created: read(FILETOOLS_FILES.created) !== null
   };
 }
-function remoteRefs(spawnSync16, remoteDir, env2) {
-  const res = spawnSync16("git", ["--git-dir", remoteDir, "for-each-ref"], { env: env2, encoding: "utf8", timeout: 3e4, windowsHide: true });
+function remoteRefs(spawnSync15, remoteDir, env2) {
+  const res = spawnSync15("git", ["--git-dir", remoteDir, "for-each-ref"], { env: env2, encoding: "utf8", timeout: 3e4, windowsHide: true });
   return res.status === 0 ? String(res.stdout ?? "") : null;
 }
 function scenarioPlaceholderDirs(input, name) {
@@ -40972,9 +40940,33 @@ function ghMergeCommand(pr, headSha) {
 function githubMerge() {
   return { humanMergeCommand: ghMergeCommand, blockingPolicies: () => [] };
 }
+function githubAutoMergeArgs(step) {
+  const parts = step.repo.split("/");
+  if (parts.length !== 3 || !HOST2.test(parts[0]) || !NAME2.test(parts[1]) || !NAME2.test(parts[2]) || /^\.+$/.test(parts[1]) || /^\.+$/.test(parts[2])) return void 0;
+  if (!Number.isSafeInteger(step.pr) || step.pr < 1 || !/^[0-9a-f]{40}$/.test(step.head)) return void 0;
+  return ["api", "--hostname", parts[0], "--method", "PUT", `repos/${parts[1]}/${parts[2]}/pulls/${step.pr}/merge`, "-f", `sha=${step.head}`, "-f", "merge_method=merge"];
+}
+function githubCommitReadArgs(repo, sha3) {
+  const parts = repo.split("/");
+  if (parts.length !== 3 || !HOST2.test(parts[0]) || !NAME2.test(parts[1]) || !NAME2.test(parts[2]) || /^\.+$/.test(parts[1]) || /^\.+$/.test(parts[2])) return void 0;
+  if (!/^[0-9a-f]{40}$/.test(sha3)) return void 0;
+  return ["api", "--hostname", parts[0], `repos/${parts[1]}/${parts[2]}/commits/${sha3}`];
+}
+function isGithubCommitReadArgs(args, repo) {
+  const sha3 = args.length === 4 ? /\/commits\/([0-9a-f]{40})$/.exec(args[3])?.[1] : void 0;
+  const want = repo && sha3 ? githubCommitReadArgs(repo, sha3) : void 0;
+  return want !== void 0 && want.every((v, i) => args[i] === v);
+}
+function isGithubAutoMergeArgs(args, step) {
+  const want = step ? githubAutoMergeArgs(step) : void 0;
+  return want !== void 0 && args.length === want.length && want.every((v, i) => args[i] === v);
+}
+var HOST2, NAME2;
 var init_merge = __esm({
   "src/forge/github/merge.ts"() {
     "use strict";
+    HOST2 = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$/;
+    NAME2 = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
   }
 });
 
@@ -41194,12 +41186,12 @@ function readCommitsSinceReview(exec, cwd, reviewed, head, baseSha, housekeeping
   return { commitsSinceReview, baseHistory, housekeepingContent };
 }
 function protectedChanges(changed, extra = []) {
-  const fold4 = (s) => s.normalize("NFKC").replace(new RegExp("\\p{Default_Ignorable_Code_Point}", "gu"), "").toUpperCase().toLowerCase().normalize("NFKC");
-  const rules = [...PROTECTED_PATHS, ...extra].map(fold4);
+  const fold5 = (s) => s.normalize("NFKC").replace(new RegExp("\\p{Default_Ignorable_Code_Point}", "gu"), "").toUpperCase().toLowerCase().normalize("NFKC");
+  const rules = [...PROTECTED_PATHS, ...extra].map(fold5);
   return changed.filter((raw) => {
     const path15 = raw.replace(/\\/g, "/").trim();
     if (path15.split("/").some((s) => /[:~]/.test(s) || s === "..")) return true;
-    const f = fold4(path15).split("/").map((s) => s.replace(/[. ]+$/, "")).filter(Boolean).join("/");
+    const f = fold5(path15).split("/").map((s) => s.replace(/[. ]+$/, "")).filter(Boolean).join("/");
     return rules.some((p) => p.endsWith("/") ? f === p.slice(0, -1) || f.startsWith(p) : f === p);
   });
 }
@@ -41298,16 +41290,16 @@ function safeRealpath(p) {
   try {
     return (0, import_fs62.realpathSync)(p);
   } catch {
-    const segments = [];
+    const segments2 = [];
     let current = (0, import_path79.resolve)(p);
     while (!(0, import_fs62.existsSync)(current)) {
-      segments.unshift((0, import_path79.basename)(current));
+      segments2.unshift((0, import_path79.basename)(current));
       const parent = (0, import_path79.dirname)(current);
       if (parent === current) break;
       current = parent;
     }
     try {
-      return (0, import_path79.join)((0, import_fs62.realpathSync)(current), ...segments);
+      return (0, import_path79.join)((0, import_fs62.realpathSync)(current), ...segments2);
     } catch {
       return (0, import_path79.resolve)(p);
     }
@@ -43216,7 +43208,7 @@ var init_gh = __esm({
 
 // src/forge/github/coding-agent.ts
 function checkRepo(repo, what) {
-  if (!HOST2.test(repo.host) || !NAME2.test(repo.owner) || !NAME2.test(repo.name)) {
+  if (!HOST3.test(repo.host) || !NAME3.test(repo.owner) || !NAME3.test(repo.name)) {
     throw new Error(`coding agent ${what}: ${repo.host}/${repo.owner}/${repo.name} is not a plain GitHub repository`);
   }
 }
@@ -43284,13 +43276,13 @@ function repoOf(repoArg) {
   const parts = repoArg?.split("/");
   if (!parts || parts.length !== 3) return void 0;
   const [host, owner, name] = parts;
-  return HOST2.test(host) && NAME2.test(owner) && NAME2.test(name) ? { host, owner, name } : void 0;
+  return HOST3.test(host) && NAME3.test(owner) && NAME3.test(name) ? { host, owner, name } : void 0;
 }
 function isCodingAgentAssignArgs(args, ctx) {
   const repo = repoOf(ctx?.repo);
   if (!ctx || !repo || args.length !== 10 || !Number.isSafeInteger(ctx.issue) || !NUMBER2.test(String(ctx.issue)) || !isBranch2(ctx.base)) return false;
   const path15 = /^repos\/([^/]+)\/([^/]+)\/issues\/(\d+)\/assignees$/.exec(args[5]);
-  return args[0] === "api" && args[1] === "--hostname" && lower(args[2]) === lower(repo.host) && args[3] === "--method" && args[4] === "POST" && path15 !== null && NAME2.test(path15[1]) && lower(path15[1]) === lower(repo.owner) && NAME2.test(path15[2]) && lower(path15[2]) === lower(repo.name) && path15[3] === String(ctx.issue) && args[6] === "-f" && args[7] === `assignees[]=${CODING_AGENT_REST_ASSIGNEE}` && args[8] === "-f" && args[9] === `agent_assignment[base_branch]=${ctx.base}`;
+  return args[0] === "api" && args[1] === "--hostname" && lower(args[2]) === lower(repo.host) && args[3] === "--method" && args[4] === "POST" && path15 !== null && NAME3.test(path15[1]) && lower(path15[1]) === lower(repo.owner) && NAME3.test(path15[2]) && lower(path15[2]) === lower(repo.name) && path15[3] === String(ctx.issue) && args[6] === "-f" && args[7] === `assignees[]=${CODING_AGENT_REST_ASSIGNEE}` && args[8] === "-f" && args[9] === `agent_assignment[base_branch]=${ctx.base}`;
 }
 function isCodingAgentStatusArgs(args, repoArg) {
   const repo = repoOf(repoArg);
@@ -43299,7 +43291,7 @@ function isCodingAgentStatusArgs(args, repoArg) {
   const o = value(args[7], "owner");
   const n = value(args[9], "name");
   const since = value(args[13], "since");
-  return args[0] === "api" && args[1] === "graphql" && args[2] === "--hostname" && lower(args[3]) === lower(repo.host) && args[4] === "-f" && args[5] === `query=${CODING_AGENT_STATUS_QUERY}` && args[6] === "-f" && NAME2.test(o) && lower(o) === lower(repo.owner) && args[8] === "-f" && NAME2.test(n) && lower(n) === lower(repo.name) && args[10] === "-F" && NUMBER2.test(value(args[11], "number")) && args[12] === "-f" && ISO_SECONDS.test(since) && isTime(since);
+  return args[0] === "api" && args[1] === "graphql" && args[2] === "--hostname" && lower(args[3]) === lower(repo.host) && args[4] === "-f" && args[5] === `query=${CODING_AGENT_STATUS_QUERY}` && args[6] === "-f" && NAME3.test(o) && lower(o) === lower(repo.owner) && args[8] === "-f" && NAME3.test(n) && lower(n) === lower(repo.name) && args[10] === "-F" && NUMBER2.test(value(args[11], "number")) && args[12] === "-f" && ISO_SECONDS.test(since) && isTime(since);
 }
 function isCodingAgentCloseArgs(args, ctx) {
   const repo = repoOf(ctx?.repo);
@@ -43465,7 +43457,7 @@ function adoptPreconditions(status, want) {
   if (pr.allCommitsSignedByGitHub === void 0) reasons.push(`PR #${pr.number} commit signatures are unknown (commit list cut or unreadable)`);
   return reasons.length > 0 || !pr.head ? { ok: false, reasons } : { ok: true, pr: pr.number, head: pr.head };
 }
-var CODING_AGENT_LOGIN, CODING_AGENT_REST_ASSIGNEE, CODING_AGENT_COMMIT_LOGIN, CODING_AGENT_SINCE_SKEW_SECONDS, PR_COMMITS, PR_FIELDS, CODING_AGENT_STATUS_QUERY, NAME2, HOST2, NUMBER2, HEX402, BRANCH2, isBranch2, ISO, ISO_SECONDS, isTime, lower, sameRepoArg, isObj, str3, nodes, cut, time3, isAgent, isAgentCommit, isGithubSigned, atOrAfter, STATES;
+var CODING_AGENT_LOGIN, CODING_AGENT_REST_ASSIGNEE, CODING_AGENT_COMMIT_LOGIN, CODING_AGENT_SINCE_SKEW_SECONDS, PR_COMMITS, PR_FIELDS, CODING_AGENT_STATUS_QUERY, NAME3, HOST3, NUMBER2, HEX402, BRANCH2, isBranch2, ISO, ISO_SECONDS, isTime, lower, sameRepoArg, isObj, str3, nodes, cut, time3, isAgent, isAgentCommit, isGithubSigned, atOrAfter, STATES;
 var init_coding_agent = __esm({
   "src/forge/github/coding-agent.ts"() {
     "use strict";
@@ -43477,8 +43469,8 @@ var init_coding_agent = __esm({
     PR_COMMITS = 100;
     PR_FIELDS = `number state isDraft isCrossRepository baseRefName headRefName headRefOid author{__typename login} baseRepository{nameWithOwner} headRepository{nameWithOwner} commits(last:${PR_COMMITS}){pageInfo{hasPreviousPage} nodes{commit{oid committedDate author{user{login}} signature{isValid wasSignedByGitHub}}}} timelineItems(last:50,since:$since,itemTypes:[REVIEW_REQUESTED_EVENT]){pageInfo{hasPreviousPage} nodes{__typename ... on ReviewRequestedEvent{createdAt actor{__typename login}}}}`;
     CODING_AGENT_STATUS_QUERY = `query($owner:String!,$name:String!,$number:Int!,$since:DateTime!){repository(owner:$owner,name:$name){nameWithOwner suggestedActors(capabilities:[CAN_BE_ASSIGNED],first:100){pageInfo{hasNextPage} nodes{__typename login}} issue(number:$number){number state timelineItems(last:100,since:$since,itemTypes:[ASSIGNED_EVENT,UNASSIGNED_EVENT,CONNECTED_EVENT,CROSS_REFERENCED_EVENT]){pageInfo{hasPreviousPage} nodes{__typename ... on AssignedEvent{createdAt assignee{__typename ... on Bot{login}}} ... on UnassignedEvent{createdAt assignee{__typename ... on Bot{login}}} ... on ConnectedEvent{createdAt actor{__typename login} subject{__typename ...P}} ... on CrossReferencedEvent{createdAt actor{__typename login} source{__typename ...P}}}}}}} fragment P on PullRequest{${PR_FIELDS}}`;
-    NAME2 = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
-    HOST2 = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$/;
+    NAME3 = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
+    HOST3 = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$/;
     NUMBER2 = /^[1-9]\d{0,9}$/;
     HEX402 = /^[0-9a-f]{40}$/;
     BRANCH2 = /^\w[\w./-]{0,199}$/;
@@ -43846,12 +43838,12 @@ var init_coding_agent_lane = __esm({
 
 // src/forge/review-feedback.ts
 function truncationMessage(pr, what) {
-  const tail4 = "so human feedback cannot be read completely.";
-  if (what === "reviewThreads") return `PR #${pr}: more than 100 review threads (resolved and outdated ones count), ${tail4} Delete the spam threads or lock the conversation on the forge, then rerun.`;
-  if (what === "latestReviews") return `PR #${pr}: more than 50 latest reviews, ${tail4} Dismiss or delete the surplus reviews on the forge, then rerun.`;
-  if (what === "reviewRequests") return `PR #${pr}: more than 20 pending review requests, ${tail4} Remove the surplus review requests on the forge, then rerun.`;
-  if (what.startsWith("comments of thread")) return `PR #${pr}: ${visibleLine(what)} has more than 20 comments, ${tail4} Resolve the thread or trim its comments on the forge, then rerun.`;
-  return `PR #${pr}: ${visibleLine(what)} has more entries than one read returns, ${tail4} Reduce it on the forge, then rerun.`;
+  const tail3 = "so human feedback cannot be read completely.";
+  if (what === "reviewThreads") return `PR #${pr}: more than 100 review threads (resolved and outdated ones count), ${tail3} Delete the spam threads or lock the conversation on the forge, then rerun.`;
+  if (what === "latestReviews") return `PR #${pr}: more than 50 latest reviews, ${tail3} Dismiss or delete the surplus reviews on the forge, then rerun.`;
+  if (what === "reviewRequests") return `PR #${pr}: more than 20 pending review requests, ${tail3} Remove the surplus review requests on the forge, then rerun.`;
+  if (what.startsWith("comments of thread")) return `PR #${pr}: ${visibleLine(what)} has more than 20 comments, ${tail3} Resolve the thread or trim its comments on the forge, then rerun.`;
+  return `PR #${pr}: ${visibleLine(what)} has more entries than one read returns, ${tail3} Reduce it on the forge, then rerun.`;
 }
 function assertReviewHead(pr, head, actual) {
   if (!REVIEW_HEAD.test(head)) throw new ReviewFeedbackError(`review feedback of PR ${pr}: ${JSON.stringify(head.slice(0, 60))} is not a full commit sha`);
@@ -44194,7 +44186,7 @@ var init_reviews = __esm({
 
 // src/forge/github/graphql.ts
 function reviewFeedbackArgs(repo, pr) {
-  if (!HOST3.test(repo.host) || !NAME3.test(repo.owner) || !NAME3.test(repo.name) || !Number.isSafeInteger(pr) || !NUMBER3.test(String(pr))) {
+  if (!HOST4.test(repo.host) || !NAME4.test(repo.owner) || !NAME4.test(repo.name) || !Number.isSafeInteger(pr) || !NUMBER3.test(String(pr))) {
     throw new Error(`review feedback: ${repo.host}/${repo.owner}/${repo.name} #${pr} is not a plain GitHub repository and PR number`);
   }
   return ["api", "graphql", "--hostname", repo.host, "-f", `query=${REVIEW_FEEDBACK_QUERY}`, "-f", `owner=${repo.owner}`, "-f", `name=${repo.name}`, "-F", `number=${pr}`];
@@ -44204,12 +44196,12 @@ function isReviewFeedbackArgs(args, repoArg) {
   const parts = repoArg.split("/");
   if (parts.length !== 3) return false;
   const [host, owner, name] = parts;
-  if (!HOST3.test(host) || !NAME3.test(owner) || !NAME3.test(name)) return false;
+  if (!HOST4.test(host) || !NAME4.test(owner) || !NAME4.test(name)) return false;
   const value = (arg, key) => arg.startsWith(`${key}=`) ? arg.slice(key.length + 1) : "";
   const o = value(args[7], "owner");
   const n = value(args[9], "name");
   const pr = value(args[11], "number");
-  return args[0] === "api" && args[1] === "graphql" && args[2] === "--hostname" && args[3].toLowerCase() === host.toLowerCase() && args[4] === "-f" && args[5] === `query=${REVIEW_FEEDBACK_QUERY}` && args[6] === "-f" && NAME3.test(o) && o.toLowerCase() === owner.toLowerCase() && args[8] === "-f" && NAME3.test(n) && n.toLowerCase() === name.toLowerCase() && args[10] === "-F" && NUMBER3.test(pr);
+  return args[0] === "api" && args[1] === "graphql" && args[2] === "--hostname" && args[3].toLowerCase() === host.toLowerCase() && args[4] === "-f" && args[5] === `query=${REVIEW_FEEDBACK_QUERY}` && args[6] === "-f" && NAME4.test(o) && o.toLowerCase() === owner.toLowerCase() && args[8] === "-f" && NAME4.test(n) && n.toLowerCase() === name.toLowerCase() && args[10] === "-F" && NUMBER3.test(pr);
 }
 function isFactoryComment(body) {
   return body.trimEnd().split("\n").pop()?.trim() === ADO_FACTORY_COMMENT_MARKER;
@@ -44335,7 +44327,7 @@ ${k.body}`).join("\n\n");
     const who = isObj3(q.requestedReviewer) ? q.requestedReviewer : {};
     const slug = str5(who.slug);
     const l = login(who);
-    const name = l ? who.__typename === "Bot" ? `${l}[bot]` : who.__typename === "Mannequin" ? `mannequin:${l}` : l : slug && NAME3.test(slug) ? `team:${slug}` : void 0;
+    const name = l ? who.__typename === "Bot" ? `${l}[bot]` : who.__typename === "Mannequin" ? `mannequin:${l}` : l : slug && NAME4.test(slug) ? `team:${slug}` : void 0;
     if (name) pending.add(name);
   }
   return {
@@ -44347,15 +44339,15 @@ ${k.body}`).join("\n\n");
     ...trustIncomplete ? { trustIncomplete: true } : {}
   };
 }
-var REVIEW_FEEDBACK_QUERY, NAME3, HOST3, NUMBER3, HEX404, MAX_FEEDBACK_BODY_CHARS2, TRUNCATED2, WRITE_PERMISSIONS, GITHUB_RATE_LIMITED, isObj3, str5, login, capped2, DECISION, errorText, isRateLimited;
+var REVIEW_FEEDBACK_QUERY, NAME4, HOST4, NUMBER3, HEX404, MAX_FEEDBACK_BODY_CHARS2, TRUNCATED2, WRITE_PERMISSIONS, GITHUB_RATE_LIMITED, isObj3, str5, login, capped2, DECISION, errorText, isRateLimited;
 var init_graphql = __esm({
   "src/forge/github/graphql.ts"() {
     "use strict";
     init_reviews();
     init_review_feedback();
     REVIEW_FEEDBACK_QUERY = "query($owner:String!,$name:String!,$number:Int!){viewer{login} repository(owner:$owner,name:$name){viewerPermission collaborators(first:100){pageInfo{hasNextPage} edges{permission node{login}}} pullRequest(number:$number){headRefOid latestReviews(first:50){pageInfo{hasNextPage} nodes{id state submittedAt body author{__typename login} commit{oid}}} latestOpinionatedReviews(first:50){pageInfo{hasNextPage} nodes{state submittedAt body author{__typename login} commit{oid}}} reviewRequests(first:20){pageInfo{hasNextPage} nodes{requestedReviewer{__typename ... on User{login} ... on Bot{login} ... on Mannequin{login} ... on Team{slug}}}} reviewThreads(first:100){pageInfo{hasNextPage} nodes{id isResolved isOutdated resolvedBy{login} comments(first:20){pageInfo{hasNextPage} nodes{body path line originalLine createdAt author{__typename login}}}}}}}}";
-    NAME3 = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
-    HOST3 = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$/;
+    NAME4 = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
+    HOST4 = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$/;
     NUMBER3 = /^[1-9]\d{0,9}$/;
     HEX404 = /^[0-9a-f]{40}$/;
     MAX_FEEDBACK_BODY_CHARS2 = 8e3;
@@ -44366,7 +44358,7 @@ var init_graphql = __esm({
     str5 = (v) => typeof v === "string" ? v : void 0;
     login = (v) => {
       const l = isObj3(v) ? str5(v.login) : void 0;
-      return l && NAME3.test(l) ? l : void 0;
+      return l && NAME4.test(l) ? l : void 0;
     };
     capped2 = (body) => body.length <= MAX_FEEDBACK_BODY_CHARS2 ? body : `${body.slice(0, MAX_FEEDBACK_BODY_CHARS2 - TRUNCATED2.length)}${TRUNCATED2}`;
     DECISION = {
@@ -44535,12 +44527,12 @@ function localRemoteRefusedKeys(stdout) {
   return [...new Set(refused)];
 }
 function mirrorRewriteKeys(stdout, mirror) {
-  const fold4 = (s) => process.platform === "win32" || process.platform === "darwin" ? s.toLowerCase() : s;
-  const forms = [mirror, mirror.replace(/\\/g, "/"), mirror.replace(/\//g, "\\")].map(fold4);
+  const fold5 = (s) => process.platform === "win32" || process.platform === "darwin" ? s.toLowerCase() : s;
+  const forms = [mirror, mirror.replace(/\\/g, "/"), mirror.replace(/\//g, "\\")].map(fold5);
   const refused = stdout.split("\0").filter(Boolean).map((rec) => {
     const nl = rec.indexOf("\n");
     return nl < 0 ? { key: rec, value: "" } : { key: rec.slice(0, nl), value: rec.slice(nl + 1) };
-  }).filter(({ value }) => forms.some((f) => f.startsWith(fold4(value)))).map(({ key, value }) => `${key}=${value}`);
+  }).filter(({ value }) => forms.some((f) => f.startsWith(fold5(value)))).map(({ key, value }) => `${key}=${value}`);
   return [...new Set(refused)];
 }
 function mirrorNamedRemoteKeys(stdout, mirror) {
@@ -44597,6 +44589,7 @@ function factoryGit(a, protectedBranches, extraProtected = [], local, agent) {
       return null;
     case "config":
       if (same2(a, [...LOCAL_REMOTE_REFUSED_CONFIG_ARGS]) || same2(a, [...URL_REWRITE_CONFIG_ARGS]) || same2(a, [...REMOTE_CONFIG_ARGS])) return true;
+      if (same2(r, ["--show-scope", "--get-all", "core.hooksPath"])) return true;
       return same2(r, ["--get", "core.excludesFile"]) ? true : null;
     case "for-each-ref":
       return same2(r, [FOR_EACH_REF_FORMAT]);
@@ -44605,6 +44598,7 @@ function factoryGit(a, protectedBranches, extraProtected = [], local, agent) {
     case "log":
       return r.length === STATE_CHANGE_LOG_FLAGS.length + 3 && same2(r.slice(0, STATE_CHANGE_LOG_FLAGS.length), [...STATE_CHANGE_LOG_FLAGS]) && /^[0-9a-f]{40}$/.test(r[STATE_CHANGE_LOG_FLAGS.length]) && r[STATE_CHANGE_LOG_FLAGS.length + 1] === "--" && isPlainRepoPath(r[STATE_CHANGE_LOG_FLAGS.length + 2]) ? true : null;
     case "diff":
+      if (r.length === 7 && r[0] === "--no-ext-diff" && r[1] === "--no-textconv" && (same2(r.slice(2, 6), ["--raw", "-z", "--no-renames", "--no-abbrev"]) || same2(r.slice(2, 6), ["--numstat", "-z", "--no-renames", "--no-abbrev"])) && /^[0-9a-f]{40}\.\.\.[0-9a-f]{40}$/.test(r[6])) return true;
       return r.length === 3 && r[0] === "--no-ext-diff" && r[1] === "--no-textconv" && /^[0-9a-f]{40}\.\.\.[0-9a-f]{40}$/.test(r[2]) ? true : null;
     case "ls-tree":
       if (r.length === 6 && same2(r.slice(0, 3), ["-r", "-z", "--name-only"]) && /^[0-9a-f]{40}$/.test(r[3]) && same2(r.slice(4), ["--", "docs/standards/"])) return true;
@@ -44612,6 +44606,7 @@ function factoryGit(a, protectedBranches, extraProtected = [], local, agent) {
       if (r.length === 5 && same2(r.slice(0, 2), ["-z", "--name-only"]) && /^[0-9a-f]{40}$/.test(r[2]) && r[3] === "--" && r[4].endsWith("/")) {
         return isPlainRepoPath(r[4].slice(0, -1));
       }
+      if (r.length === 3 && r[0] === "-z" && r[1] === "--name-only" && /^[0-9a-f]{40}$/.test(r[2])) return true;
       if (r.length === 4 && r[0] === "-z" && /^[0-9a-f]{40}$/.test(r[1]) && r[2] === "--") return isPlainRepoPath(r[3]);
       return null;
     case "rev-list":
@@ -44634,7 +44629,10 @@ function factoryGh(a, writes, github, agent) {
   if (isCodingAgentAssignArgs(a, agent) || isCodingAgentCloseArgs(a, agent)) return true;
   if (isCodingAgentLinkCommentArgs(a, agent)) return true;
   const [group, sub, ...r] = a;
-  if (group === "api") return isReviewFeedbackArgs(a, github?.repo) || isRequiredChecksArgs(a, github?.repo) || isGateReadArgs(a, github?.repo) ? true : null;
+  if (group === "api") {
+    const step = github?.autoMerge ? { repo: github.repo, ...github.autoMerge } : void 0;
+    return isReviewFeedbackArgs(a, github?.repo) || isRequiredChecksArgs(a, github?.repo) || isGateReadArgs(a, github?.repo) || isGithubAutoMergeArgs(a, step) || isGithubCommitReadArgs(a, github?.repo) ? true : null;
+  }
   if (group === "issue") {
     if (sub === "view") return r.length === 3 && NUMBER5.test(r[0]) && r[1] === "--json" && JSON_FIELDS2.test(r[2]);
     if (sub === "comment") return r.length === 3 && NUMBER5.test(r[0]) && r[1] === "--body-file" && isFile2(r[2]);
@@ -44798,6 +44796,7 @@ var init_exec2 = __esm({
     init_coding_agent_lane();
     init_graphql();
     init_checks();
+    init_merge();
     init_mirror();
     init_exec();
     init_guard2();
@@ -44845,7 +44844,7 @@ var init_exec2 = __esm({
       "remote.origin.uploadpack=git-upload-pack",
       "remote.origin.receivepack=git-receive-pack"
     ];
-    LOCAL_ONLY_GIT_PINS = ["commit.gpgSign=false", "tag.gpgSign=false", "filter.lfs.smudge=", "filter.lfs.process=", "filter.lfs.required=false"];
+    LOCAL_ONLY_GIT_PINS = ["commit.gpgSign=false", "tag.gpgSign=false", "filter.lfs.smudge=", "filter.lfs.process=", "filter.lfs.required=false", "merge.renormalize=false"];
     TRANSPORT_SUBCOMMANDS = /* @__PURE__ */ new Set(["push", "fetch", "ls-remote", "pull", "clone"]);
     MIRROR_UPLOAD_PACK_ARG = "--upload-pack=git -c core.alternateRefsCommand=true upload-pack";
     MIRROR_REDIRECT_NAMES = [".git", "commondir", "gitdir", "config.worktree"];
@@ -45390,15 +45389,15 @@ function tokenize2(segment) {
   return tokens;
 }
 function realExistingPrefix(p) {
-  const tail4 = [];
+  const tail3 = [];
   let cur = (0, import_node_path12.resolve)(p);
   for (; ; ) {
     try {
-      return (0, import_node_path12.join)(import_node_fs11.realpathSync.native(cur), ...tail4.reverse());
+      return (0, import_node_path12.join)(import_node_fs11.realpathSync.native(cur), ...tail3.reverse());
     } catch {
       const parent = (0, import_node_path12.dirname)(cur);
       if (parent === cur) return (0, import_node_path12.resolve)(p);
-      tail4.push((0, import_node_path12.basename)(cur));
+      tail3.push((0, import_node_path12.basename)(cur));
       cur = parent;
     }
   }
@@ -45486,10 +45485,10 @@ function checkSegment(tokens, role, ctx) {
   return null;
 }
 function checkText(text3, ctx, raw) {
-  const segments = text3.split("|");
-  if (segments.length > MAX_SEGMENTS) return `more than ${MAX_SEGMENTS} pipeline segments`;
+  const segments2 = text3.split("|");
+  if (segments2.length > MAX_SEGMENTS) return `more than ${MAX_SEGMENTS} pipeline segments`;
   const names = [];
-  for (const [i, segment] of segments.entries()) {
+  for (const [i, segment] of segments2.entries()) {
     const tokens = tokenize2(segment);
     if (typeof tokens === "string") return tokens;
     if (tokens.length === 0) return "empty pipeline segment";
@@ -46061,8 +46060,8 @@ function relativeHooksPathRule(cwd, gitDirArgs = []) {
   const values = lines(out).filter((l) => !l.startsWith("command	")).map((l) => l.slice(l.indexOf("	") + 1).trim());
   const value = values[values.length - 1];
   if (!value || value.startsWith("~") || (0, import_node_path13.isAbsolute)(value) || import_node_path13.win32.isAbsolute(value)) return null;
-  const segments = value.replace(/\\/g, "/").split("/").filter((seg) => seg && seg !== ".");
-  return segments.length > 0 && !segments.includes("..") ? `${segments.join("/")}/` : null;
+  const segments2 = value.replace(/\\/g, "/").split("/").filter((seg) => seg && seg !== ".");
+  return segments2.length > 0 && !segments2.includes("..") ? `${segments2.join("/")}/` : null;
 }
 function relativeInside(path15, root) {
   const rel = (0, import_node_path13.relative)((0, import_node_path13.resolve)(root), (0, import_node_path13.resolve)(path15));
@@ -48683,8 +48682,8 @@ async function withRepoImportLockAsync(root, label, fn, o = {}) {
 }
 function ownerFromOtherCheckout(prior, root, platform = process.platform) {
   if (typeof prior.root !== "string") return false;
-  const fold4 = (p) => platform === "win32" || platform === "darwin" ? (0, import_path98.resolve)(p).toLowerCase() : (0, import_path98.resolve)(p);
-  return fold4(prior.root) !== fold4(root);
+  const fold5 = (p) => platform === "win32" || platform === "darwin" ? (0, import_path98.resolve)(p).toLowerCase() : (0, import_path98.resolve)(p);
+  return fold5(prior.root) !== fold5(root);
 }
 function ownerHolds(owner, deps) {
   if (owner.hostname !== deps.hostname) return true;
@@ -49157,7 +49156,7 @@ function isLink(p) {
 }
 function buildGateTree(source, target, root, checkout, label, warn) {
   (0, import_fs83.mkdirSync)(target);
-  const fold4 = (p) => process.platform === "win32" ? p.toLowerCase() : p;
+  const fold5 = (p) => process.platform === "win32" ? p.toLowerCase() : p;
   const want = (0, import_path100.join)(import_fs83.realpathSync.native(checkout), ...label.split("/").filter((s) => s !== ""), "node_modules");
   let got;
   try {
@@ -49165,7 +49164,7 @@ function buildGateTree(source, target, root, checkout, label, warn) {
   } catch {
     got = "";
   }
-  if (fold4(got) !== fold4(want)) {
+  if (fold5(got) !== fold5(want)) {
     try {
       (0, import_fs83.rmdirSync)(target);
     } catch {
@@ -49839,16 +49838,16 @@ var init_gate_procs = __esm({
 // src/factory/run/private-store.ts
 function canonicalExisting(p) {
   let head = (0, import_path103.resolve)(p);
-  const tail4 = [];
+  const tail3 = [];
   for (; ; ) {
     try {
-      return (0, import_path103.join)(import_fs86.realpathSync.native(head), ...tail4);
+      return (0, import_path103.join)(import_fs86.realpathSync.native(head), ...tail3);
     } catch (err) {
       if (err.code !== "ENOENT") throw new PrivateStoreError(`the path ${(0, import_path103.resolve)(p)} cannot be resolved`, String(err.message));
       if (lexists2(head)) throw new PrivateStoreError(`the path ${(0, import_path103.resolve)(p)} holds a dangling link at ${head}`);
       const up = (0, import_path103.dirname)(head);
       if (up === head) return (0, import_path103.resolve)(p);
-      tail4.unshift((0, import_path103.basename)(head));
+      tail3.unshift((0, import_path103.basename)(head));
       head = up;
     }
   }
@@ -51118,6 +51117,308 @@ var init_private_run = __esm({
   }
 });
 
+// src/factory/run/clean.ts
+var import_fs88, import_path105;
+var init_clean = __esm({
+  "src/factory/run/clean.ts"() {
+    "use strict";
+    import_fs88 = require("fs");
+    import_path105 = require("path");
+    init_job();
+    init_local();
+    init_config2();
+    init_exec();
+    init_git_worktree();
+    init_exec2();
+    init_forge_roots();
+    init_ledger2();
+    init_prepare();
+    init_process_utils();
+    init_state5();
+    init_claims();
+    init_gate_procs();
+    init_paths2();
+    init_private_store();
+    init_private_run();
+    init_worktree_paths();
+  }
+});
+
+// src/factory/run/reset.ts
+var import_fs89, import_path106;
+var init_reset = __esm({
+  "src/factory/run/reset.ts"() {
+    "use strict";
+    import_fs89 = require("fs");
+    import_path106 = require("path");
+    init_job();
+    init_local();
+    init_exec();
+    init_git_worktree();
+    init_exec2();
+    init_forge_roots();
+    init_ledger2();
+    init_prepare();
+    init_state5();
+    init_claims();
+    init_clean();
+  }
+});
+
+// src/ship/prepare.ts
+function detectPrepareChecks(baseHas, exists = baseHas) {
+  const lost = {};
+  const gone2 = (marker) => `${marker} is committed on the base but missing from the checkout; restore it (prepare never skips a check the base has)`;
+  const tsc = baseHas("tsconfig.json") && exists(TSC_SCRIPT);
+  if (tsc && !exists("tsconfig.json")) lost.tsc = gone2("tsconfig.json");
+  const baseEslint = exists(ESLINT_SCRIPT) ? ESLINT_CONFIGS.filter(baseHas) : [];
+  if (baseEslint.length > 0 && !ESLINT_CONFIGS.some(exists)) lost.lint = gone2(baseEslint.join(", "));
+  const inventory = baseHas(INVENTORY_SCRIPT);
+  if (inventory && !exists(INVENTORY_SCRIPT)) lost.inventory = gone2(INVENTORY_SCRIPT);
+  return { tsc, lint: baseEslint.length > 0, tests: exists(VITEST_SCRIPT), inventory, lost };
+}
+function baseFileExists(exec, cwd, commit) {
+  const seen = /* @__PURE__ */ new Map();
+  return (p) => {
+    let found = seen.get(p);
+    if (found === void 0) {
+      found = readBaseFile(exec, cwd, commit, p) !== null;
+      seen.set(p, found);
+    }
+    return found;
+  };
+}
+function selectTargetedTests(changed, exists) {
+  const picked = /* @__PURE__ */ new Set();
+  const add = (p) => {
+    if (exists(p)) picked.add(p);
+  };
+  for (const raw of changed) {
+    const file = raw.replace(/\\/g, "/");
+    if (TEST_FILE.test(file) && (file.startsWith("src/") || file.startsWith("tests/"))) {
+      add(file);
+      continue;
+    }
+    if (file.startsWith("skills/")) {
+      add("src/__tests__/skills.test.ts");
+      continue;
+    }
+    const m = /^(src\/(?:.*\/)?)([^/]+)\.(ts|tsx|mts)$/.exec(file);
+    if (!m || file.endsWith(".d.ts")) continue;
+    const [, dir, name] = m;
+    add(`${dir}${name}.test.ts`);
+    add(`${dir}__tests__/${name}.test.ts`);
+  }
+  return [...picked].sort();
+}
+function selectGeneratorChecks(changed) {
+  const touches = (prefixes) => changed.some((f) => prefixes.some((p) => f.replace(/\\/g, "/").startsWith(p)));
+  const out = [];
+  if (touches(["skills/", "agents/", "docs/CLAUDE.md"])) out.push(["scripts/generate-prompt-projections.mjs", "--verify"]);
+  if (touches(["agents/"])) out.push(["scripts/copilot/build-agents.mjs", "--verify"]);
+  if (touches(["hooks/"])) out.push(["scripts/copilot/build-hooks.mjs", "--verify"]);
+  return out;
+}
+function lines2(text3) {
+  return text3.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+}
+function tail(text3, n = 20) {
+  return lines2(text3).slice(-n).join("\n");
+}
+async function runPrepareAsync(opts, runCheck) {
+  const steps = prepareSteps(opts);
+  let next = steps.next();
+  while (!next.done) next = steps.next(await runCheck(next.value));
+  return next.value;
+}
+function* prepareSteps(opts) {
+  const { exec, cwd, base } = opts;
+  const remote = opts.remote ?? "origin";
+  const node = opts.node ?? process.execPath;
+  const exists = opts.exists ?? ((p) => (0, import_fs90.existsSync)((0, import_path107.isAbsolute)(p) ? p : (0, import_path107.join)(cwd, p)));
+  const upstream = `refs/remotes/${remote}/${base}`;
+  const { baseSha } = opts;
+  const steps = [];
+  const housekeepingCommits = [];
+  const git4 = (...args) => exec("git", args, { cwd });
+  const fail2 = (name, detail, extra = {}) => {
+    steps.push({ name, status: "failed", detail });
+    return { ok: false, steps, housekeepingCommits, blockedReason: `${name}: ${detail.split("\n")[0]}`, ...extra };
+  };
+  const head = () => git4("rev-parse", "HEAD").stdout.trim();
+  for (const [label, name] of [["base", base], ["branch", opts.branch]]) {
+    if (!isPlainBranchName(name) || git4("check-ref-format", "--branch", name).status !== 0) {
+      return fail2("preflight", `${label} ${JSON.stringify(name)} is not a valid branch name`);
+    }
+  }
+  if (!/^[\w][\w.-]*$/.test(remote)) return fail2("preflight", `remote ${JSON.stringify(remote)} is not a valid remote name`);
+  if (!/^[0-9a-f]{40}$/.test(opts.reviewedSha)) return fail2("preflight", `reviewed sha ${JSON.stringify(opts.reviewedSha)} is not a full commit id`);
+  if (!/^[0-9a-f]{40}$/.test(baseSha)) return fail2("preflight", `GitHub's base sha ${JSON.stringify(baseSha)} is not a full commit id`);
+  const branch2 = git4("rev-parse", "--abbrev-ref", "HEAD").stdout.trim();
+  if (!branch2 || branch2 === "HEAD") return fail2("preflight", "detached HEAD; check out the PR branch");
+  if (branch2 === base || branch2 === "main" || branch2 === "master") return fail2("preflight", `refusing to prepare on ${branch2}; use the PR branch`);
+  if (branch2 !== opts.branch) return fail2("preflight", `checked out ${branch2}, but the ship run is for ${opts.branch}; check out the PR branch`);
+  if (git4("merge-base", "--is-ancestor", opts.reviewedSha, "HEAD").status !== 0) {
+    return fail2("preflight", `HEAD does not contain the reviewed commit ${opts.reviewedSha.slice(0, 12)}; pull the PR branch (merge, never rebase) or re-review`);
+  }
+  for (const [ref, what] of [["MERGE_HEAD", "a merge"], ["CHERRY_PICK_HEAD", "a cherry-pick"], ["REVERT_HEAD", "a revert"]]) {
+    if (git4("rev-parse", "-q", "--verify", ref).status === 0) return fail2("preflight", `${what} is in progress; commit or abort it first`);
+  }
+  for (const marker of ["rebase-merge", "rebase-apply"]) {
+    const p = git4("rev-parse", "--git-path", marker).stdout.trim();
+    if (p && exists((0, import_path107.isAbsolute)(p) ? p : (0, import_path107.join)(cwd, p))) return fail2("preflight", "a rebase is in progress; finish or abort it (ship never rebases)");
+  }
+  const dirty = git4("status", "--porcelain", "--untracked-files=no").stdout.trim();
+  if (dirty) return fail2("preflight", `working tree has uncommitted changes:
+${dirty}`);
+  if (git4("diff", "--cached", "--quiet").status !== 0) return fail2("preflight", "the index has staged changes; commit or unstage them first");
+  steps.push({ name: "preflight", status: "ok", detail: branch2 });
+  if (opts.prefetchedBase) {
+    if (git4("cat-file", "-e", `${baseSha}^{commit}`).status !== 0) return fail2("fetch", `the base ${baseSha} the caller fetched is not a commit in the checkout's repository`);
+    steps.push({ name: "fetch", status: "ok", detail: `${base} = ${baseSha} (fetched by the caller)` });
+  } else {
+    const mismatch = remoteRepoMismatch(exec, cwd, remote, opts.repoUrl);
+    if (mismatch) return fail2("remote", `${mismatch}; refusing to fetch (fail closed)`);
+    const fetched = git4("fetch", remote, base);
+    if (fetched.status !== 0) return fail2("fetch", tail(fetched.stderr));
+    const local = git4("rev-parse", "--verify", upstream);
+    if (local.status !== 0 || local.stdout.trim() !== baseSha) {
+      return fail2("fetch", `${upstream} is ${local.stdout.trim() || "missing"}, but GitHub reports ${base} at ${baseSha}; refusing (fail closed; re-run if ${base} just moved)`);
+    }
+    steps.push({ name: "fetch", status: "ok", detail: `${upstream} = ${baseSha}` });
+  }
+  if (git4("merge-base", "--is-ancestor", baseSha, "HEAD").status === 0) {
+    steps.push({ name: "merge-base", status: "skipped", detail: `already contains ${base} ${baseSha.slice(0, 12)}` });
+  } else {
+    const merged = git4("merge", "--no-ff", "--no-edit", "--no-verify", baseSha);
+    if (merged.status !== 0) {
+      const conflicts = lines2(git4("diff", "--name-only", "--diff-filter=U").stdout);
+      const inventoryOnly = conflicts.length > 0 && conflicts.every((f) => f.startsWith(`${INVENTORY_DIR}/`));
+      if (!inventoryOnly) {
+        return fail2("merge-base", conflicts.length > 0 ? `conflicts outside ${INVENTORY_DIR}/ need a human or a fix lane: ${conflicts.join(", ")} (resolve and commit, or git merge --abort)` : tail(merged.stderr || merged.stdout), { conflicts });
+      }
+      for (const args of [["checkout", "--theirs", "--", INVENTORY_DIR], ["add", "--", INVENTORY_DIR], ["commit", "--no-edit", "--no-verify"]]) {
+        const r = git4(...args);
+        if (r.status !== 0) return fail2("merge-base", `git ${args.join(" ")}: ${tail(r.stderr || r.stdout)}`, { conflicts });
+      }
+      steps.push({ name: "merge-base", status: "ok", detail: `merged ${base} ${baseSha.slice(0, 12)}; inventory conflict resolved with --theirs` });
+    } else {
+      steps.push({ name: "merge-base", status: "ok", detail: `merged ${base} ${baseSha.slice(0, 12)}` });
+    }
+    housekeepingCommits.push(head());
+  }
+  let found;
+  try {
+    found = detectPrepareChecks(opts.baseExists ?? baseFileExists(exec, cwd, baseSha), exists);
+  } catch (error2) {
+    return fail2(PREPARE_DETECT_STEP, `cannot read the base ${baseSha.slice(0, 12)}: ${error2 instanceof Error ? error2.message : String(error2)}`);
+  }
+  if (opts.checks === false) {
+    steps.push({ name: "checks", status: "skipped", detail: "--no-checks" });
+  } else if (opts.commands) {
+    const missing = opts.commands.find((c) => "missing" in c);
+    if (missing && "missing" in missing) return fail2(PREPARE_CONFIG_STEP, `ship.prepare.checks ${JSON.stringify(missing.argv)}: ${missing.missing}`);
+    if (opts.commands.length === 0) steps.push({ name: "checks", status: "skipped", detail: "ship.prepare.checks is empty" });
+    for (const c of opts.commands) {
+      if ("missing" in c) continue;
+      const name = c.argv.join(" ").slice(0, 80);
+      const r = yield { step: name, kind: "configured", argv: c.argv, exe: c.exe, args: c.args };
+      if (r.notStarted !== void 0) return fail2(PREPARE_SANDBOX_STEP, `${name}: ${r.notStarted}`);
+      if (r.status !== 0) return fail2(name, tail(`${r.stdout}
+${r.stderr}`));
+      steps.push({ name, status: "ok" });
+    }
+  } else {
+    const changed = git4("diff", "--name-only", "-z", `${baseSha}...HEAD`).stdout.split("\0").filter(Boolean);
+    const lintable = changed.filter((f) => /^src\/.*\.(?:ts|tsx|mts)$/.test(f) && !f.endsWith(".d.ts") && exists(f));
+    const tests = selectTargetedTests(changed, exists);
+    const plan = [
+      ["tsc", found.tsc ? [TSC_SCRIPT, "--noEmit"] : null, "no tsconfig.json on the base or no typescript package"],
+      ["lint", !found.lint ? null : lintable.length > 0 ? [ESLINT_SCRIPT, ...lintable] : null, found.lint ? "no changed src TypeScript" : "no eslint package or no eslint config on the base"],
+      ["tests", !found.tests ? null : tests.length > 0 ? [VITEST_SCRIPT, "run", ...tests] : null, found.tests ? "no targeted tests for the diff" : "no vitest package"],
+      ...selectGeneratorChecks(changed).filter((args) => exists(args[0])).map((args) => [import_path107.posix.basename(args[0]), args, ""])
+    ];
+    for (const [name, args, skipReason] of plan) {
+      const lost = found.lost[name];
+      if (lost) return fail2(name, lost);
+      if (!args) {
+        steps.push({ name, status: "skipped", detail: skipReason });
+        continue;
+      }
+      const r = yield { step: name, kind: "built-in", argv: [node, ...args], exe: node, args };
+      if (r.notStarted !== void 0) return fail2(PREPARE_SANDBOX_STEP, `${name}: ${r.notStarted}`);
+      if (r.status !== 0) return fail2(name, tail(`${r.stdout}
+${r.stderr}`));
+      steps.push({ name, status: "ok", detail: args.slice(1).map(visibleLine).join(" ").slice(0, 300) });
+    }
+  }
+  if (found.lost.inventory) return fail2("inventory", found.lost.inventory);
+  const inventory = (mode) => ({ step: "inventory", kind: "inventory", argv: [node, INVENTORY_SCRIPT, mode], exe: node, args: [INVENTORY_SCRIPT, mode] });
+  const current = found.inventory ? yield inventory("--verify") : void 0;
+  if (current?.notStarted !== void 0) return fail2(PREPARE_SANDBOX_STEP, `inventory: ${current.notStarted}`);
+  if (!found.inventory) {
+    steps.push({ name: "inventory", status: "skipped", detail: `no ${INVENTORY_SCRIPT} on the base` });
+  } else if (current.status === 0) {
+    steps.push({ name: "inventory", status: "skipped", detail: "baseline is current" });
+  } else {
+    const written = yield inventory("--write");
+    if (written.notStarted !== void 0) return fail2(PREPARE_SANDBOX_STEP, `inventory: ${written.notStarted}`);
+    if (written.status !== 0) return fail2("inventory", tail(written.stderr || written.stdout));
+    const added = git4("add", "--", INVENTORY_DIR);
+    if (added.status !== 0) return fail2("inventory", `git add -- ${INVENTORY_DIR}: ${tail(added.stderr || added.stdout)}`);
+    if (git4("diff", "--cached", "--quiet", "--", INVENTORY_DIR).status !== 0) {
+      const committed = git4("commit", "--no-verify", "-m", INVENTORY_COMMIT_MESSAGE, "--", INVENTORY_DIR);
+      if (committed.status !== 0) return fail2("inventory", tail(committed.stderr || committed.stdout));
+      housekeepingCommits.push(head());
+    }
+    const verified = yield inventory("--verify");
+    if (verified.notStarted !== void 0) return fail2(PREPARE_SANDBOX_STEP, `inventory: ${verified.notStarted}`);
+    if (verified.status !== 0) return fail2("inventory", `regenerated baseline still fails --verify:
+${tail(verified.stderr || verified.stdout)}`);
+    steps.push({ name: "inventory", status: "ok", detail: "regenerated as the last commit" });
+  }
+  if (opts.push) {
+    const pushed = git4("push", remote, `HEAD:refs/heads/${opts.branch}`);
+    if (pushed.status !== 0) return fail2("push", tail(pushed.stderr));
+    steps.push({ name: "push", status: "ok", detail: `${remote} ${opts.branch}` });
+  }
+  return { ok: true, steps, housekeepingCommits };
+}
+var import_fs90, import_path107, INVENTORY_DIR, INVENTORY_SCRIPT, INVENTORY_COMMIT_MESSAGE, PREPARE_CONFIG_STEP, PREPARE_DETECT_STEP, TSC_SCRIPT, ESLINT_SCRIPT, VITEST_SCRIPT, ESLINT_CONFIGS, TEST_FILE, PREPARE_SANDBOX_STEP;
+var init_prepare2 = __esm({
+  "src/ship/prepare.ts"() {
+    "use strict";
+    import_fs90 = require("fs");
+    import_path107 = require("path");
+    init_review_feedback();
+    init_config2();
+    INVENTORY_DIR = "inventory";
+    INVENTORY_SCRIPT = "scripts/generate-inventory-graph.mjs";
+    INVENTORY_COMMIT_MESSAGE = "chore(inventory): regenerate inventory graph baseline";
+    PREPARE_CONFIG_STEP = "checks-config";
+    PREPARE_DETECT_STEP = "detect";
+    TSC_SCRIPT = "node_modules/typescript/bin/tsc";
+    ESLINT_SCRIPT = "node_modules/eslint/bin/eslint.js";
+    VITEST_SCRIPT = "node_modules/vitest/vitest.mjs";
+    ESLINT_CONFIGS = [
+      "eslint.config.js",
+      "eslint.config.mjs",
+      "eslint.config.cjs",
+      "eslint.config.ts",
+      "eslint.config.mts",
+      "eslint.config.cts",
+      ".eslintrc",
+      ".eslintrc.js",
+      ".eslintrc.cjs",
+      ".eslintrc.json",
+      ".eslintrc.yml",
+      ".eslintrc.yaml"
+    ];
+    TEST_FILE = /\.(?:test|spec)\.[cm]?[jt]sx?$/;
+    PREPARE_SANDBOX_STEP = "checks-sandbox";
+  }
+});
+
 // src/factory/run/sandbox-exec.ts
 function sandboxShellCommand(platform, argv, cwd, marker) {
   if (argv.length === 0 || !/^[A-Za-z0-9-]+$/.test(marker) || [cwd, ...argv].some((a) => a.includes("\0"))) return null;
@@ -51310,14 +51611,14 @@ async function runSandboxed(argv, o, deps) {
     const raw = typeof r?.output === "string" ? r.output : "";
     const read = readMarker(raw, marker);
     const marked = readable ? { credentialFilesReadable: true } : {};
-    if (timeout) return { ran: true, status: 124, output: tail(`${read.output.trim()}
+    if (timeout) return { ran: true, status: 124, output: tail2(`${read.output.trim()}
 timed out after ${o.timeoutMs} ms`), timedOut: true, ...marked };
     if (typeof r?.success !== "boolean") return noVerdict("the sandbox shell call reported no success field");
     if (read.code === null) return noVerdict("the output did not end with the one exit-code marker line the sandbox shell prints after the command");
     const exitOk = r.exitCode === void 0 || r.exitCode === null || r.exitCode === 0 || r.exitCode === read.code;
     const successOk = r.success === true || read.code !== 0;
     if (!exitOk || !successOk) return noVerdict("the sandbox shell's own result contradicts the exit code the command printed");
-    return { ran: true, status: read.code, output: tail(read.output.trim()), timedOut: false, ...marked };
+    return { ran: true, status: read.code, output: tail2(read.output.trim()), timedOut: false, ...marked };
   } catch (err) {
     if (started) return noVerdict("the sandbox runtime failed while the command ran");
     return notStarted(`the sandbox runtime failed: ${errText4(err).slice(0, 300)}`);
@@ -51373,10 +51674,6 @@ timed out after ${o.timeoutMs} ms`), timedOut: true, ...marked };
 }
 function createSandboxRunner(root, deps = defaultCopilotRunDeps(), layers) {
   return async (req) => {
-    if (req.container) {
-      if (!req.runLabel) return { ran: false, reason: "the gate container request has no run label", unavailable: true };
-      return runContainerGate(req, req.container, req.runLabel, { exec: defaultContainerExec, platform: deps.platform });
-    }
     let settings;
     try {
       settings = (layers ? loadSandboxSettings(root, "factory", layers) : loadSandboxSettings(root, "factory")).settings;
@@ -51426,7 +51723,7 @@ function gateEnv(env2, home) {
     GCM_INTERACTIVE: "never"
   };
 }
-var import_node_crypto5, import_node_fs13, import_node_os7, import_node_path14, SANDBOX_OUTPUT_TAIL_CHARS, START_TIMEOUT_MS3, RPC_TIMEOUT_MS3, STOP_TIMEOUT_MS3, CANCEL_GRACE_MS, ATTEST_WAIT_MS, CREDENTIAL_FILES_READABLE_NOTE, MARKER_PREFIX, SHELL_OUTPUT_BYTES, SHELL_OUTPUT_LINES, SHELL_LINE_CHARS, sandboxCommandMaxChars, SIZING_MARKER, tail, sandboxJobRoot, GATE_ENV_KEPT;
+var import_node_crypto5, import_node_fs13, import_node_os7, import_node_path14, SANDBOX_OUTPUT_TAIL_CHARS, START_TIMEOUT_MS3, RPC_TIMEOUT_MS3, STOP_TIMEOUT_MS3, CANCEL_GRACE_MS, ATTEST_WAIT_MS, CREDENTIAL_FILES_READABLE_NOTE, MARKER_PREFIX, SHELL_OUTPUT_BYTES, SHELL_OUTPUT_LINES, SHELL_LINE_CHARS, sandboxCommandMaxChars, SIZING_MARKER, tail2, sandboxJobRoot, GATE_ENV_KEPT;
 var init_sandbox_exec = __esm({
   "src/factory/run/sandbox-exec.ts"() {
     "use strict";
@@ -51436,7 +51733,6 @@ var init_sandbox_exec = __esm({
     import_node_path14 = require("node:path");
     init_job();
     init_sandbox2();
-    init_container_gate();
     init_sandbox_session();
     init_timeout();
     init_worktree_paths();
@@ -51459,7 +51755,7 @@ var init_sandbox_exec = __esm({
     SHELL_LINE_CHARS = 2e3;
     sandboxCommandMaxChars = (platform) => platform === "win32" ? 28e3 : 12e4;
     SIZING_MARKER = `${MARKER_PREFIX}${"0".repeat(16)}`;
-    tail = (text3) => {
+    tail2 = (text3) => {
       const clean = redactGateOutput(text3);
       return clean.length > SANDBOX_OUTPUT_TAIL_CHARS ? clean.slice(-SANDBOX_OUTPUT_TAIL_CHARS) : clean;
     };
@@ -51477,1044 +51773,6 @@ var init_sandbox_exec = __esm({
       "NODE_ENV",
       "NPM_CONFIG_CACHE"
     ];
-  }
-});
-
-// src/factory/run/container-gate.ts
-function containerRunLabel(root, key) {
-  const repo = (0, import_node_crypto6.createHash)("sha256").update((0, import_node_path15.resolve)(root)).digest("hex").slice(0, 10);
-  return `${repo}-${runSlug(key).toLowerCase().replace(/[^a-z0-9-]/g, "-").slice(0, 40)}`;
-}
-function mountArg(fields) {
-  return fields.map((f) => /[",\n\r]/.test(f) ? `"${f.replace(/"/g, '""')}"` : f).join(",");
-}
-function hardeningArgs(s) {
-  return [
-    "--rm",
-    "--init",
-    "--pull",
-    "never",
-    "--cap-drop",
-    "ALL",
-    "--security-opt",
-    "no-new-privileges",
-    "--pids-limit",
-    String(s.pidsLimit),
-    "--memory",
-    s.memory,
-    "--cpus",
-    String(s.cpus)
-  ];
-}
-function containerEnvArgs(extra = {}) {
-  const env2 = {
-    PATH: CONTAINER_PATH,
-    HOME: `${WORK}/home`,
-    CI: "1",
-    npm_config_update_notifier: "false",
-    npm_config_fund: "false",
-    npm_config_audit: "false",
-    ...extra
-  };
-  return Object.entries(env2).flatMap(([k, v]) => ["-e", `${k}=${v}`]);
-}
-function inContainerLimit(timeoutMs, argv) {
-  return ["timeout", "-s", "KILL", `${Math.ceil(timeoutMs / 1e3) + IN_CONTAINER_GRACE_S}s`, ...argv];
-}
-function sizeBytes(size) {
-  const m = /^(\d+)([mg])$/i.exec(size);
-  if (!m) throw new Error(`not a size: ${size}`);
-  return Number(m[1]) * (m[2].toLowerCase() === "g" ? 1024 ** 3 : 1024 ** 2);
-}
-function lockfileCachePolicy(lock) {
-  if (!lock || typeof lock !== "object" || Array.isArray(lock)) return { refuse: "the lockfile is not a JSON object" };
-  const outside = { refuse: "the lockfile has a package that does not come from the npm registry (git, a tarball URL or a file); the gate container installs registry packages only" };
-  let integrity = true;
-  const check2 = (e, version2) => {
-    if (typeof e.resolved === "string" && !REGISTRY_PREFIXES.some((p) => e.resolved.startsWith(p))) return false;
-    if (typeof version2 === "string" && /^[a-z+]+:/i.test(version2) && !version2.startsWith("npm:")) return false;
-    if (typeof e.integrity !== "string" || e.integrity === "") integrity = false;
-    return true;
-  };
-  const packages = lock.packages;
-  if (packages && typeof packages === "object" && !Array.isArray(packages)) {
-    for (const [key, raw] of Object.entries(packages)) {
-      if (key === "" || !raw || typeof raw !== "object") continue;
-      const e = raw;
-      if (!key.includes("node_modules/") || e.link === true || e.inBundle === true) continue;
-      if (!check2(e)) return outside;
-    }
-    return integrity ? "shared" : "private";
-  }
-  const walk = (deps, depth) => {
-    if (!deps || typeof deps !== "object" || depth > 64) return true;
-    for (const raw of Object.values(deps)) {
-      if (!raw || typeof raw !== "object") continue;
-      const e = raw;
-      if (e.bundled === true) continue;
-      if (!check2(e, e.version) || !walk(e.dependencies, depth + 1)) return false;
-    }
-    return true;
-  };
-  if (!walk(lock.dependencies, 0)) return outside;
-  return integrity ? "shared" : "private";
-}
-function installPlan(checkout) {
-  const regular = (name) => {
-    try {
-      return (0, import_node_fs14.lstatSync)((0, import_node_path15.join)(checkout, name)).isFile();
-    } catch {
-      return false;
-    }
-  };
-  if (!regular("package.json")) return { kind: "none" };
-  for (const lock of ["npm-shrinkwrap.json", "package-lock.json"]) {
-    if (!regular(lock)) continue;
-    const path15 = (0, import_node_path15.join)(checkout, lock);
-    if ((0, import_node_fs14.lstatSync)(path15).size > LOCKFILE_MAX_BYTES) return { kind: "unsupported", reason: `${lock} is larger than the gate container reads` };
-    const bytes = (0, import_node_fs14.readFileSync)(path15);
-    let json;
-    try {
-      json = JSON.parse(bytes.toString("utf8"));
-    } catch {
-      return { kind: "unsupported", reason: `${lock} is not valid JSON` };
-    }
-    const policy = lockfileCachePolicy(json);
-    if (typeof policy === "object") return { kind: "unsupported", reason: policy.refuse };
-    return { kind: "npm-ci", lockHash: (0, import_node_crypto6.createHash)("sha256").update(bytes).digest("hex").slice(0, 16), sharedCache: policy === "shared" };
-  }
-  let pkg = {};
-  try {
-    pkg = JSON.parse((0, import_node_fs14.readFileSync)((0, import_node_path15.join)(checkout, "package.json"), "utf8"));
-  } catch {
-  }
-  const deps = ["dependencies", "devDependencies", "optionalDependencies"].some((k) => {
-    const v = pkg?.[k];
-    return v && typeof v === "object" && Object.keys(v).length > 0;
-  });
-  if (!deps) return { kind: "none" };
-  const other = ["pnpm-lock.yaml", "yarn.lock", "bun.lockb", "bun.lock"].find(regular);
-  return { kind: "unsupported", reason: other ? `the project uses ${other}; the gate container installs npm projects (package-lock.json or npm-shrinkwrap.json) only` : "the project has dependencies but no package-lock.json; the gate container installs with npm ci only" };
-}
-function containerArgv(req) {
-  const words = isNodeExe(req.exe) && req.args.length > 0 && !(0, import_node_path15.isAbsolute)(req.args[0]) ? ["node", ...req.args] : [...req.argv];
-  const root = (0, import_node_path15.resolve)(req.cwd);
-  return words.map((w, i) => {
-    if (i === 0 && isNodeExe(w)) return "node";
-    if (!(0, import_node_path15.isAbsolute)(w)) return w;
-    const rel = (0, import_node_path15.relative)(root, (0, import_node_path15.resolve)(w));
-    if (rel === "") return SRC;
-    if (rel.startsWith("..") || (0, import_node_path15.isAbsolute)(rel)) return w;
-    return `${SRC}/${rel.split(import_node_path15.sep).join("/")}`;
-  });
-}
-function checkoutCopyProblem(checkout) {
-  let root;
-  try {
-    root = import_node_fs14.realpathSync.native(checkout);
-  } catch {
-    return "the checkout could not be resolved";
-  }
-  let seen = 0;
-  const inside2 = (p) => samePathOrUnder(p, root);
-  const walk = (dir) => {
-    for (const name of (0, import_node_fs14.readdirSync)(dir)) {
-      if (name === ".git" || name === "node_modules") continue;
-      if (++seen > SCAN_MAX_ENTRIES) return "the checkout has more files than the gate container copies";
-      const path15 = (0, import_node_path15.join)(dir, name);
-      const st = (0, import_node_fs14.lstatSync)(path15);
-      if (st.isSymbolicLink()) {
-        let target;
-        try {
-          target = import_node_fs14.realpathSync.native(path15);
-        } catch {
-          return "the checkout has a link whose target does not exist";
-        }
-        if (!inside2(target)) return "the checkout has a link (a symbolic link or junction) that points outside it";
-        continue;
-      }
-      if (st.isDirectory()) {
-        const p = walk(path15);
-        if (p) return p;
-      } else if (st.isFile() && st.nlink > 1) return "the checkout has a file with more than one hard link";
-    }
-    return null;
-  };
-  try {
-    return walk(root);
-  } catch {
-    return "the checkout could not be listed";
-  }
-}
-function samePathOrUnder(p, root) {
-  const norm2 = (x) => process.platform === "win32" ? x.toLowerCase() : x;
-  const a = norm2(p);
-  const b = norm2(root);
-  return a === b || a.startsWith(b.endsWith(import_node_path15.sep) ? b : b + import_node_path15.sep);
-}
-async function runContainerGate(req, s, runLabel2, deps) {
-  const unavailable = (reason) => ({ ran: false, reason, unavailable: true });
-  const noVerdict = (reason) => ({ ran: false, reason, started: true });
-  const log = deps.log ?? ((line) => {
-    process.stderr.write(`${line}
-`);
-  });
-  const bin = s.runtime;
-  const switchBack = 'or set factory.run.sandbox.isolation "copilot" in your user config';
-  if (req.purpose === "install") {
-    return { ran: true, status: 0, output: "gate container: dependencies are installed in the container per command", timedOut: false };
-  }
-  if (!/^[a-z0-9-]{1,60}$/.test(runLabel2)) return unavailable(`the run label ${JSON.stringify(runLabel2)} is not [a-z0-9-]`);
-  let diskLimit;
-  try {
-    diskLimit = sizeBytes(s.diskLimit);
-  } catch {
-    return unavailable(`factory.run.sandbox.container.diskLimit ${JSON.stringify(s.diskLimit)} is not a size`);
-  }
-  const probe = await deps.exec(bin, ["version", "--format", "{{.Server.Version}}"], { timeoutMs: PROBE_TIMEOUT_MS });
-  if (probe.spawnError !== void 0) return unavailable(`the container runtime ${bin} is not installed or not on PATH (${probe.spawnError}); install it, ${switchBack}`);
-  if (probe.status !== 0) return unavailable(`the container runtime ${bin} does not answer (${firstLine(probe.tail) || `exit ${probe.status}`}); start ${bin === "docker" ? "Docker Desktop or the docker daemon" : "the podman machine or service"}, ${switchBack}`);
-  const inspectImage = () => deps.exec(bin, ["image", "inspect", "--format", "{{.Id}}", s.image], { timeoutMs: PROBE_TIMEOUT_MS });
-  let image = await inspectImage();
-  if (image.status !== 0) {
-    log(`omg factory run: pulling the gate image ${s.image} with ${bin} (factory.run.sandbox.container.image); pin a digest there to fix what runs`);
-    const pulled = await deps.exec(bin, ["pull", s.image], { timeoutMs: PULL_TIMEOUT_MS });
-    if (pulled.status !== 0) return unavailable(`the gate image ${s.image} is not present and ${bin} pull failed (${firstLine(lastLines(pulled.tail)) || `exit ${pulled.status}`}); pull it yourself, set factory.run.sandbox.container.image, ${switchBack}`);
-    image = await inspectImage();
-  }
-  const imageId = /^(sha256:[0-9a-f]{64})$/m.exec(image.tail.trim())?.[1];
-  const plan = installPlan(req.cwd);
-  if (plan.kind === "unsupported") return unavailable(`${plan.reason}; ${switchBack}`);
-  const scan = checkoutCopyProblem(req.cwd);
-  if (scan) return noVerdict(`${scan}, so it is not copied into the gate container; nothing is counted`);
-  const id = (deps.id ?? (() => (0, import_node_crypto6.randomBytes)(4).toString("hex")))();
-  const name = `${CONTAINER_NAME_PREFIX}${runLabel2}-${id}`;
-  const volume = name;
-  const network = `${name}-net`;
-  const cache = plan.kind === "npm-ci" && plan.sharedCache ? `${CONTAINER_NAME_PREFIX}cache-${plan.lockHash}` : void 0;
-  const labels = ["--label", `${RUN_LABEL2}=${runLabel2}`, "--label", `${GATE_LABEL}=1`];
-  const harden = hardeningArgs(s);
-  const work = ["--mount", mountArg(["type=volume", `source=${volume}`, `target=${WORK}`])];
-  const workRo = ["--mount", mountArg(["type=volume", `source=${volume}`, `target=${WORK}`, "readonly"])];
-  const started = [];
-  let volumeMade = false;
-  let networkMade = false;
-  const ran = (o) => ({ ran: true, ...o, ...imageId ? { imageId } : {} });
-  const removeNetwork = async () => {
-    if (!networkMade) return;
-    const rm4 = await deps.exec(bin, ["network", "rm", network], { timeoutMs: PROBE_TIMEOUT_MS }).catch(() => null);
-    if (rm4?.status === 0) networkMade = false;
-  };
-  const step = (container, opts, argv, timeoutMs, full) => {
-    started.push(container);
-    return deps.exec(bin, ["run", "--name", container, ...opts, s.image, ...inContainerLimit(timeoutMs, argv)], {
-      timeoutMs,
-      ...full !== void 0 ? { full } : {},
-      onTimeout: async () => {
-        await deps.exec(bin, ["kill", container], { timeoutMs: KILL_TIMEOUT_MS }).catch(() => null);
-        await deps.exec(bin, ["rm", "-f", container], { timeoutMs: KILL_TIMEOUT_MS }).catch(() => null);
-      }
-    });
-  };
-  const watched = async (container, run3) => {
-    let stopped = false;
-    let over = false;
-    let timer;
-    let inflight = Promise.resolve();
-    const tick = () => {
-      inflight = (async () => {
-        if (stopped) return;
-        const duName = `${container}-du`;
-        if (!started.includes(duName)) started.push(duName);
-        const du = await deps.exec(bin, [
-          "run",
-          "--name",
-          duName,
-          ...labels,
-          ...harden,
-          "--network",
-          "none",
-          // root without DAC override: only DAC_READ_SEARCH, so a dir the PR made unreadable is still counted.
-          "--user",
-          "0:0",
-          "--cap-add",
-          "DAC_READ_SEARCH",
-          "--read-only",
-          ...workRo,
-          s.image,
-          ...inContainerLimit(PROBE_TIMEOUT_MS, ["du", "-sxk", WORK])
-        ], { timeoutMs: PROBE_TIMEOUT_MS + 2 * IN_CONTAINER_GRACE_S * 1e3 }).catch(() => null);
-        const kb = du?.status === 0 ? Number(/^(\d+)\s+\/work\s*$/m.exec(du.tail)?.[1]) : NaN;
-        if (!stopped && Number.isFinite(kb) && kb * 1024 > diskLimit) {
-          over = true;
-          await deps.exec(bin, ["kill", container], { timeoutMs: KILL_TIMEOUT_MS }).catch(() => null);
-          await deps.exec(bin, ["rm", "-f", container], { timeoutMs: KILL_TIMEOUT_MS }).catch(() => null);
-          return;
-        }
-        if (!stopped) timer = setTimeout(tick, deps.diskWatchMs ?? DISK_WATCH_MS);
-      })();
-    };
-    timer = setTimeout(tick, deps.diskWatchMs ?? DISK_WATCH_MS);
-    try {
-      const r = await run3();
-      return over ? { ...r, overDisk: true } : r;
-    } finally {
-      stopped = true;
-      clearTimeout(timer);
-      await inflight;
-    }
-  };
-  const overDisk = (what, r) => ran({ status: 1, output: tail2(`${r.tail.trim()}
-${what} in the gate container used more than factory.run.sandbox.container.diskLimit (${s.diskLimit}) and was stopped`), timedOut: false });
-  try {
-    const made = await deps.exec(bin, ["volume", "create", ...labels, volume], { timeoutMs: PROBE_TIMEOUT_MS });
-    if (made.status !== 0) return unavailable(`${bin} could not create the gate volume (${firstLine(made.tail) || `exit ${made.status}`}); check the runtime's disk, ${switchBack}`);
-    volumeMade = true;
-    if (cache) {
-      const problem2 = await ensureCacheVolume(deps.exec, bin, cache);
-      if (problem2) return unavailable(`${problem2}; ${switchBack}`);
-    }
-    const cacheMount = cache ? ["--mount", mountArg(["type=volume", `source=${cache}`, `target=/cache`])] : [];
-    const copy = await step(`${name}-copy`, [
-      ...labels,
-      ...harden,
-      "--network",
-      "none",
-      "--user",
-      "0:0",
-      "--cap-add",
-      "CHOWN",
-      "--cap-add",
-      "DAC_OVERRIDE",
-      "--cap-add",
-      "FOWNER",
-      "--read-only",
-      "--mount",
-      mountArg(["type=bind", `source=${(0, import_node_path15.resolve)(req.cwd)}`, "target=/in", "readonly"]),
-      ...work,
-      ...cacheMount
-    ], ["sh", "-c", COPY_SCRIPT], COPY_TIMEOUT_MS);
-    if (copy.status !== 0) return noVerdict(`copying the checkout into the gate container failed (exit ${copy.status ?? "none"}${copy.timedOut ? ", timed out" : ""}); nothing is counted`);
-    const runBase = [...labels, ...harden, "--user", CONTAINER_USER, "--read-only", "--tmpfs", "/tmp:rw,exec,nosuid,nodev,size=1g", ...work, "-w", SRC];
-    const ownCache = { npm_config_cache: `${WORK}/home/.npm` };
-    if (plan.kind === "npm-ci") {
-      const timeoutMs = s.installTimeoutMinutes * 6e4;
-      const net2 = await deps.exec(bin, ["network", "create", ...labels, ...bin === "docker" ? ["--driver", "bridge", "-o", "com.docker.network.bridge.enable_icc=false"] : ["-o", "isolate=true"], network], { timeoutMs: PROBE_TIMEOUT_MS });
-      if (net2.status !== 0) return unavailable(`${bin} could not create the gate install network (${firstLine(net2.tail) || `exit ${net2.status}`}); ${switchBack}`);
-      networkMade = true;
-      const fetchName = `${name}-install`;
-      const inst = await watched(fetchName, () => step(fetchName, [
-        ...runBase,
-        "--network",
-        network,
-        ...cacheMount,
-        ...containerEnvArgs({ ...cache ? { npm_config_cache: "/cache/npm" } : ownCache, npm_config_registry: NPM_REGISTRY })
-      ], ["npm", "ci", "--ignore-scripts"], timeoutMs));
-      await removeNetwork();
-      if (inst.overDisk) return overDisk("the dependency install (npm ci)", inst);
-      if (inst.timedOut) return ran({ status: 124, output: tail2(`${inst.tail.trim()}
-the dependency install (npm ci) in the gate container timed out after ${s.installTimeoutMinutes} min`), timedOut: true });
-      if (inst.status === null || inst.status === 125) return noVerdict(`the container runtime failed while the dependency install ran (exit ${inst.status ?? "none"}); nothing is counted`);
-      if (inst.status !== 0) return ran({ status: inst.status, output: tail2(`${inst.tail.trim()}
-the dependency install (npm ci) in the gate container failed (exit ${inst.status})`), timedOut: false });
-      const scriptsName = `${name}-scripts`;
-      const scripts = await watched(scriptsName, () => step(scriptsName, [...runBase, "--network", "none", ...containerEnvArgs(ownCache)], ["sh", "-c", SCRIPTS_SCRIPT], timeoutMs));
-      if (scripts.overDisk) return overDisk("the install scripts", scripts);
-      if (scripts.timedOut) return ran({ status: 124, output: tail2(`${scripts.tail.trim()}
-the install scripts in the gate container timed out after ${s.installTimeoutMinutes} min`), timedOut: true });
-      if (scripts.status === null || scripts.status === 125) return noVerdict(`the container runtime failed while the install scripts ran (exit ${scripts.status ?? "none"}); nothing is counted`);
-      if (scripts.status !== 0) return ran({ status: scripts.status, output: tail2(`${scripts.tail.trim()}
-the install scripts (npm rebuild and the root's install scripts, no network) in the gate container failed (exit ${scripts.status})`), timedOut: false });
-    }
-    const argv = containerArgv(req);
-    const r = await watched(name, () => step(name, [...runBase, "--network", "none", ...containerEnvArgs(ownCache)], argv, req.timeoutMs));
-    if (r.overDisk) return overDisk("the command", r);
-    if (r.timedOut) return ran({ status: 124, output: tail2(`${r.tail.trim()}
-timed out after ${req.timeoutMs} ms`), timedOut: true });
-    if (r.spawnError !== void 0 || r.status === null || r.status === 125) return noVerdict(`the container runtime failed while the command ran (exit ${r.status ?? "none"}); nothing is counted`);
-    const result = ran({ status: r.status, output: tail2(r.tail.trim()), timedOut: false });
-    if (req.purpose !== "prepare" || r.status !== 0) return result;
-    const back = await step(`${name}-export`, [
-      ...labels,
-      ...harden,
-      "--network",
-      "none",
-      "--user",
-      CONTAINER_USER,
-      "--read-only",
-      ...workRo
-    ], ["tar", "-C", SRC, "--exclude=.git", "--exclude=node_modules", "--format=posix", "-cf", "-", "."], COPY_TIMEOUT_MS, COPY_BACK_MAX_BYTES);
-    if (back.status !== 0 || !back.stdout) return noVerdict(`reading the prepare check's changes back from the gate container failed (${back.overflow ? "over the size bound" : `exit ${back.status ?? "none"}`}); nothing is counted`);
-    const problem = applyCopyBack(req.cwd, back.stdout, deps.platform ?? process.platform);
-    if (problem) return noVerdict(`the prepare check's changes cannot be copied back safely (${problem}); nothing is counted`);
-    return result;
-  } catch {
-    return noVerdict("the gate container failed unexpectedly; nothing is counted");
-  } finally {
-    for (const c of started) await deps.exec(bin, ["rm", "-f", c], { timeoutMs: KILL_TIMEOUT_MS }).catch(() => null);
-    await removeNetwork();
-    if (volumeMade) {
-      for (let i = 0; i < 3; i++) {
-        const rm4 = await deps.exec(bin, ["volume", "rm", "-f", volume], { timeoutMs: PROBE_TIMEOUT_MS }).catch(() => null);
-        if (rm4?.status === 0) break;
-        await new Promise((r) => setTimeout(r, 500));
-      }
-    }
-  }
-}
-async function ensureCacheVolume(exec, bin, cache) {
-  const inspect = await exec(bin, ["volume", "inspect", "--format", "{{.Driver}}|{{json .Labels}}|{{json .Options}}", cache], { timeoutMs: PROBE_TIMEOUT_MS });
-  if (inspect.status === 0) {
-    const [driver, labelsJson, optionsJson] = inspect.tail.trim().split("\n")[0].split("|");
-    let labels;
-    let options;
-    try {
-      labels = JSON.parse(labelsJson ?? "");
-      options = JSON.parse(optionsJson ?? "");
-    } catch {
-      return `the npm cache volume ${cache} cannot be inspected; remove it (${bin} volume rm ${cache})`;
-    }
-    const l = labels ?? {};
-    const noOptions = options === null || typeof options === "object" && Object.keys(options).length === 0;
-    if (driver !== "local" || l[CACHE_LABEL] !== "npm" || l[GATE_LABEL] !== "1" || !noOptions) return `a volume named ${cache} exists that the factory did not make (driver, labels or options differ); remove or rename it`;
-    return null;
-  }
-  const c = await exec(bin, ["volume", "create", "--label", `${GATE_LABEL}=1`, "--label", `${CACHE_LABEL}=npm`, cache], { timeoutMs: PROBE_TIMEOUT_MS });
-  return c.status === 0 ? null : `${bin} could not create the npm cache volume (${firstLine(c.tail) || `exit ${c.status}`})`;
-}
-function readTar(buf, maxEntries = COPY_BACK_MAX_ENTRIES) {
-  const entries = [];
-  let off = 0;
-  let pax = {};
-  let longName;
-  let longLink;
-  const str9 = (b) => {
-    const z = b.indexOf(0);
-    return (z === -1 ? b : b.subarray(0, z)).toString("utf8");
-  };
-  const octal = (b) => {
-    if (b[0] & 128) throw new Error("base-256 size");
-    const t = str9(b).trim();
-    if (t === "") return 0;
-    if (!/^[0-7]+$/.test(t)) throw new Error("bad octal field");
-    return parseInt(t, 8);
-  };
-  while (off + 512 <= buf.length) {
-    const h = buf.subarray(off, off + 512);
-    if (h.every((x) => x === 0)) return entries;
-    const sum = octal(h.subarray(148, 156));
-    let calc = 0;
-    for (let i = 0; i < 512; i++) calc += i >= 148 && i < 156 ? 32 : h[i];
-    if (calc !== sum) throw new Error("bad header checksum");
-    const flag = String.fromCharCode(h[156] || 48);
-    let size = octal(h.subarray(124, 136));
-    if (pax.size !== void 0) size = Number(pax.size);
-    if (!Number.isSafeInteger(size) || size < 0) throw new Error("bad size");
-    const start = off + 512;
-    const end = start + size;
-    if (end > buf.length) throw new Error("truncated");
-    const data = buf.subarray(start, end);
-    off = start + Math.ceil(size / 512) * 512;
-    if (flag === "x") {
-      pax = { ...pax, ...parsePax(data) };
-      continue;
-    }
-    if (flag === "g") continue;
-    if (flag === "L") {
-      longName = str9(data);
-      continue;
-    }
-    if (flag === "K") {
-      longLink = str9(data);
-      continue;
-    }
-    const prefix = str9(h.subarray(345, 500));
-    const path15 = pax.path ?? longName ?? (prefix ? `${prefix}/${str9(h.subarray(0, 100))}` : str9(h.subarray(0, 100)));
-    const linkTarget = pax.linkpath ?? longLink ?? str9(h.subarray(157, 257));
-    const type = flag === "0" || flag === "7" ? "file" : flag === "5" ? "dir" : flag === "2" ? "symlink" : flag === "1" ? "hardlink" : "other";
-    entries.push({ path: path15, type, mode: octal(h.subarray(100, 108)), ...type === "file" ? { data: Buffer.from(data) } : {}, ...type === "symlink" || type === "hardlink" ? { linkTarget } : {} });
-    if (entries.length > maxEntries) throw new Error("too many entries");
-    pax = {};
-    longName = void 0;
-    longLink = void 0;
-  }
-  throw new Error("no end-of-archive marker");
-}
-function parsePax(data) {
-  const out = {};
-  let i = 0;
-  while (i < data.length) {
-    const space = data.indexOf(32, i);
-    if (space === -1) throw new Error("bad pax record");
-    const len = Number(data.subarray(i, space).toString("ascii"));
-    if (!Number.isSafeInteger(len) || len <= space - i || i + len > data.length) throw new Error("bad pax record");
-    const rec = data.subarray(space + 1, i + len - 1).toString("utf8");
-    const eq = rec.indexOf("=");
-    if (eq > 0) out[rec.slice(0, eq)] = rec.slice(eq + 1);
-    i += len;
-  }
-  return out;
-}
-function foldPath(p, platform) {
-  return foldsCase(platform) ? dropIgnorable(p.normalize("NFC")).toLowerCase() : p;
-}
-function isName(component, name, platform) {
-  if (!foldsCase(platform)) return component === name;
-  const c = dropIgnorable(component.normalize("NFC"));
-  return c.toLowerCase() === name || c.toUpperCase() === name.toUpperCase() || c.normalize("NFKC").toLowerCase() === name;
-}
-function safeRelPath(raw, platform) {
-  const p = raw.replace(/^(?:\.\/)+/, "").replace(/\/+$/, "");
-  if (p === "" || p === ".") return "";
-  if (p.startsWith("/") || p.includes("\0") || p.includes("\\")) return null;
-  const parts = p.split("/");
-  if (parts.some((s) => s === "" || s === "." || s === "..")) return null;
-  if (parts.some((s) => isName(s, ".git", platform) || isName(s, "node_modules", platform))) return null;
-  if (platform === "win32" && parts.some((s) => /[<>:"|?*\x00-\x1f]/.test(s) || /[. ]$/.test(s) || /~\d/.test(s) || /^(?:con|prn|aux|nul|com\d|lpt\d|conin\$|conout\$)(?:\..*)?$/i.test(s))) return null;
-  return p;
-}
-function hostTree(root, platform) {
-  const out = /* @__PURE__ */ new Map();
-  const walk = (dir, rel) => {
-    for (const name of (0, import_node_fs14.readdirSync)(dir)) {
-      if (isName(name, ".git", platform) || isName(name, "node_modules", platform)) continue;
-      const r = rel ? `${rel}/${name}` : name;
-      const st = (0, import_node_fs14.lstatSync)((0, import_node_path15.join)(dir, name));
-      const kind = st.isSymbolicLink() ? "symlink" : st.isDirectory() ? "dir" : st.isFile() && st.nlink === 1 ? "file" : "other";
-      out.set(foldPath(r, platform), { rel: r, kind });
-      if (kind === "dir") walk((0, import_node_path15.join)(dir, name), r);
-    }
-  };
-  walk(root, "");
-  return out;
-}
-function onDiskProblem(checkout, realRoot, rel, leaf) {
-  const parts = rel.split("/");
-  let deepest = checkout;
-  for (let i = 0; i < parts.length; i++) {
-    const path15 = (0, import_node_path15.join)(checkout, ...parts.slice(0, i + 1));
-    let st;
-    try {
-      st = (0, import_node_fs14.lstatSync)(path15);
-    } catch {
-      break;
-    }
-    if (st.isSymbolicLink()) return "a file would be written through a host link";
-    if (i < parts.length - 1 || leaf === "dir") {
-      if (!st.isDirectory()) return "a file would be written under a non-directory";
-      deepest = path15;
-    } else if (!st.isFile() || st.nlink !== 1) return "a file replaces a host directory, link or hard-linked file";
-  }
-  let real2;
-  try {
-    real2 = import_node_fs14.realpathSync.native(deepest);
-  } catch {
-    return "a parent directory could not be resolved";
-  }
-  return samePathOrUnder(real2, realRoot) ? null : "a file would be written outside the checkout";
-}
-function applyCopyBack(checkout, tar, platform) {
-  let entries;
-  try {
-    entries = readTar(tar);
-  } catch {
-    return "the tar stream is malformed or too large";
-  }
-  let host;
-  let realRoot;
-  try {
-    host = hostTree(checkout, platform);
-    realRoot = import_node_fs14.realpathSync.native(checkout);
-  } catch {
-    return "the checkout could not be listed";
-  }
-  const want = /* @__PURE__ */ new Map();
-  for (const e of entries) {
-    const rel = safeRelPath(e.path, platform);
-    if (rel === null) return "an entry has a path that cannot be written here";
-    if (rel === "") continue;
-    const key = foldPath(rel, platform);
-    if (want.has(key)) return "two entries name the same file on this host";
-    want.set(key, { rel, e });
-  }
-  const writes = [];
-  for (const [key, { rel, e }] of want) {
-    const kind = host.get(key)?.kind;
-    if (e.type === "dir") {
-      if (kind !== void 0 && kind !== "dir") return "a directory replaces a host file or link";
-      continue;
-    }
-    if (e.type === "symlink") {
-      if (kind !== "symlink") return "the check created a symbolic link";
-      continue;
-    }
-    if (e.type !== "file") return "the check created a hardlink, device or other special file";
-    if (kind !== void 0 && kind !== "file") return "a file replaces a host directory, link or hard-linked file";
-    const parts = rel.split("/");
-    for (let i = 1; i < parts.length; i++) {
-      const pkey = foldPath(parts.slice(0, i).join("/"), platform);
-      const parent = host.get(pkey)?.kind;
-      if (parent !== void 0 && parent !== "dir") return "a file would be written through a host link";
-      const w = want.get(pkey);
-      if (parent === void 0 && w && w.e.type !== "dir") return "a file would be written under a non-directory";
-    }
-    const disk = onDiskProblem(checkout, realRoot, rel, "file");
-    if (disk) return disk;
-    if (kind === "file") {
-      const cur = (0, import_node_fs14.readFileSync)((0, import_node_path15.join)(checkout, ...parts));
-      if (cur.equals(e.data)) continue;
-    }
-    writes.push({ rel, data: e.data, mode: e.mode });
-  }
-  const removals = [...host].filter(([key, h]) => (h.kind === "file" || h.kind === "symlink") && !want.has(key)).map(([, h]) => h.rel);
-  for (const rel of removals) {
-    const parent = rel.split("/").slice(0, -1).join("/");
-    if (parent && onDiskProblem(checkout, realRoot, parent, "dir")) return "a file to remove lies under a host link";
-  }
-  for (const { rel, data, mode } of writes) {
-    const path15 = (0, import_node_path15.join)(checkout, ...rel.split("/"));
-    const dir = (0, import_node_path15.dirname)(path15);
-    let tmp;
-    try {
-      (0, import_node_fs14.mkdirSync)(dir, { recursive: true });
-      if (!samePathOrUnder(import_node_fs14.realpathSync.native(dir), realRoot)) return "a file would be written outside the checkout; files before it were written";
-      tmp = (0, import_node_path15.join)(dir, `.omg-copy-back-${(0, import_node_crypto6.randomBytes)(6).toString("hex")}`);
-      (0, import_node_fs14.writeFileSync)(tmp, data, { flag: "wx" });
-      if (platform !== "win32") (0, import_node_fs14.chmodSync)(tmp, mode & 73 ? 493 : 420);
-      (0, import_node_fs14.renameSync)(tmp, path15);
-      tmp = void 0;
-    } catch {
-      if (tmp) try {
-        (0, import_node_fs14.unlinkSync)(tmp);
-      } catch {
-      }
-      return "writing a file back failed part-way; files before it were written";
-    }
-  }
-  try {
-    for (const rel of removals) (0, import_node_fs14.unlinkSync)((0, import_node_path15.join)(checkout, ...rel.split("/")));
-  } catch {
-    return "removing a file the check deleted failed part-way";
-  }
-  return null;
-}
-var import_node_child_process5, import_node_crypto6, import_node_fs14, import_node_path15, GATE_CONTAINER_UNAVAILABLE_GATE, CONTAINER_INCOMPATIBLE_ADVICE, CONTAINER_NAME_PREFIX, RUN_LABEL2, GATE_LABEL, CACHE_LABEL, CONTAINER_PATH, CONTAINER_USER, WORK, SRC, NPM_REGISTRY, REGISTRY_PREFIXES, PROBE_TIMEOUT_MS, PULL_TIMEOUT_MS, COPY_TIMEOUT_MS, KILL_TIMEOUT_MS, IN_CONTAINER_GRACE_S, DISK_WATCH_MS, OUTPUT_TAIL_BYTES, COPY_BACK_MAX_BYTES, COPY_BACK_MAX_ENTRIES, SCAN_MAX_ENTRIES, LOCKFILE_MAX_BYTES, defaultContainerExec, isNodeExe, COPY_SCRIPT, SCRIPTS_SCRIPT, tail2, firstLine, lastLines, IGNORABLE, dropIgnorable, foldsCase;
-var init_container_gate = __esm({
-  "src/factory/run/container-gate.ts"() {
-    "use strict";
-    import_node_child_process5 = require("node:child_process");
-    import_node_crypto6 = require("node:crypto");
-    import_node_fs14 = require("node:fs");
-    import_node_path15 = require("node:path");
-    init_sandbox_exec();
-    init_state5();
-    GATE_CONTAINER_UNAVAILABLE_GATE = "gate-container-unavailable";
-    CONTAINER_INCOMPATIBLE_ADVICE = 'Your gate fails in the gate container on the base: there it runs with no network, no git dir, as a non-root user on a read-only root (only /tmp, the checkout and HOME writable), with the dependencies npm ci installs from your lockfile and their install scripts run without network. Make the gate work there (or pick another factory.run.sandbox.container.image), or set factory.run.sandbox.isolation "copilot" in your user config';
-    CONTAINER_NAME_PREFIX = "omg-gate-";
-    RUN_LABEL2 = "omg.run";
-    GATE_LABEL = "omg.gate";
-    CACHE_LABEL = "omg.cache";
-    CONTAINER_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin";
-    CONTAINER_USER = "1000:1000";
-    WORK = "/work";
-    SRC = `${WORK}/src`;
-    NPM_REGISTRY = "https://registry.npmjs.org/";
-    REGISTRY_PREFIXES = [NPM_REGISTRY, "https://registry.yarnpkg.com/"];
-    PROBE_TIMEOUT_MS = 2e4;
-    PULL_TIMEOUT_MS = 15 * 6e4;
-    COPY_TIMEOUT_MS = 10 * 6e4;
-    KILL_TIMEOUT_MS = 3e4;
-    IN_CONTAINER_GRACE_S = 30;
-    DISK_WATCH_MS = 1e4;
-    OUTPUT_TAIL_BYTES = 64 * 1024;
-    COPY_BACK_MAX_BYTES = 256 * 1024 * 1024;
-    COPY_BACK_MAX_ENTRIES = 1e5;
-    SCAN_MAX_ENTRIES = 2e5;
-    LOCKFILE_MAX_BYTES = 64 * 1024 * 1024;
-    defaultContainerExec = (bin, args, o) => new Promise((done) => {
-      let tail4 = Buffer.alloc(0);
-      const out = [];
-      let outBytes = 0;
-      let overflow = false;
-      let timedOut = false;
-      let settled = false;
-      const keep = (chunk) => {
-        tail4 = Buffer.concat([tail4, chunk]);
-        if (tail4.length > OUTPUT_TAIL_BYTES) tail4 = tail4.subarray(tail4.length - OUTPUT_TAIL_BYTES);
-      };
-      const finish = (r) => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timer);
-        clearTimeout(hardKill);
-        done({ ...r, tail: tail4.toString("utf8"), overflow, timedOut, ...o.full !== void 0 && !overflow ? { stdout: Buffer.concat(out) } : {} });
-      };
-      let hardKill;
-      let child;
-      try {
-        child = (0, import_node_child_process5.spawn)(bin, [...args], { stdio: ["ignore", "pipe", "pipe"], windowsHide: true, shell: false });
-      } catch (error2) {
-        done({ status: null, tail: "", overflow: false, timedOut: false, spawnError: error2 instanceof Error ? error2.message : String(error2) });
-        return;
-      }
-      const timer = setTimeout(() => {
-        timedOut = true;
-        void Promise.resolve(o.onTimeout?.()).catch(() => void 0).finally(() => {
-          hardKill = setTimeout(() => {
-            try {
-              child.kill("SIGKILL");
-            } catch {
-            }
-          }, 1e4);
-        });
-      }, o.timeoutMs);
-      child.stdout.on("data", (chunk) => {
-        if (o.full !== void 0) {
-          if (!overflow && outBytes + chunk.length <= o.full) {
-            out.push(chunk);
-            outBytes += chunk.length;
-          } else {
-            overflow = true;
-            out.length = 0;
-          }
-        } else keep(chunk);
-      });
-      child.stderr.on("data", (chunk) => keep(chunk));
-      child.on("error", (error2) => finish({ status: null, spawnError: error2.message }));
-      child.on("close", (code) => finish({ status: code }));
-    });
-    isNodeExe = (p) => /^node(?:\.exe)?$/i.test((0, import_node_path15.basename)(p));
-    COPY_SCRIPT = [
-      "set -e",
-      `mkdir -p ${SRC} ${WORK}/home`,
-      // Through a file, not a pipe: sh has no pipefail, and a partial copy must fail the step (copy back removes what is missing).
-      `tar -C /in --exclude=.git --exclude=node_modules -cf ${WORK}/in.tar .`,
-      `tar -C ${SRC} -xf ${WORK}/in.tar`,
-      `rm -f ${WORK}/in.tar`,
-      `chown -R ${CONTAINER_USER} ${WORK}`,
-      'if [ -d /cache ]; then mkdir -p /cache/npm; [ "$(stat -c %u /cache/npm)" = 1000 ] || chown -R 1000:1000 /cache; fi'
-    ].join("; ");
-    SCRIPTS_SCRIPT = [
-      "set -e",
-      "npm rebuild --foreground-scripts",
-      'for s in preinstall install postinstall prepublish preprepare prepare postprepare; do npm run --if-present --ignore-scripts "$s"; done'
-    ].join("; ");
-    tail2 = (text3) => {
-      const clean = redactGateOutput(text3);
-      return clean.length > SANDBOX_OUTPUT_TAIL_CHARS ? clean.slice(-SANDBOX_OUTPUT_TAIL_CHARS) : clean;
-    };
-    firstLine = (text3) => text3.trim().split("\n")[0]?.trim().slice(0, 300) ?? "";
-    lastLines = (text3) => text3.trim().split("\n").slice(-1).join("\n");
-    IGNORABLE = [[173, 173], [8203, 8207], [8234, 8238], [8288, 8292], [65279, 65279]];
-    dropIgnorable = (s) => [...s].filter((ch) => {
-      const c = ch.codePointAt(0);
-      return !IGNORABLE.some(([a, b]) => c >= a && c <= b);
-    }).join("");
-    foldsCase = (platform) => platform === "win32" || platform === "darwin";
-  }
-});
-
-// src/factory/run/clean.ts
-var import_fs88, import_path105;
-var init_clean = __esm({
-  "src/factory/run/clean.ts"() {
-    "use strict";
-    import_fs88 = require("fs");
-    import_path105 = require("path");
-    init_job();
-    init_local();
-    init_config2();
-    init_exec();
-    init_git_worktree();
-    init_exec2();
-    init_forge_roots();
-    init_ledger2();
-    init_prepare();
-    init_process_utils();
-    init_state5();
-    init_claims();
-    init_gate_procs();
-    init_paths2();
-    init_private_store();
-    init_private_run();
-    init_worktree_paths();
-    init_sandbox2();
-    init_container_gate();
-  }
-});
-
-// src/factory/run/reset.ts
-var import_fs89, import_path106;
-var init_reset = __esm({
-  "src/factory/run/reset.ts"() {
-    "use strict";
-    import_fs89 = require("fs");
-    import_path106 = require("path");
-    init_job();
-    init_local();
-    init_exec();
-    init_git_worktree();
-    init_exec2();
-    init_forge_roots();
-    init_ledger2();
-    init_prepare();
-    init_state5();
-    init_claims();
-    init_clean();
-  }
-});
-
-// src/ship/prepare.ts
-function detectPrepareChecks(baseHas, exists = baseHas) {
-  const lost = {};
-  const gone2 = (marker) => `${marker} is committed on the base but missing from the checkout; restore it (prepare never skips a check the base has)`;
-  const tsc = baseHas("tsconfig.json") && exists(TSC_SCRIPT);
-  if (tsc && !exists("tsconfig.json")) lost.tsc = gone2("tsconfig.json");
-  const baseEslint = exists(ESLINT_SCRIPT) ? ESLINT_CONFIGS.filter(baseHas) : [];
-  if (baseEslint.length > 0 && !ESLINT_CONFIGS.some(exists)) lost.lint = gone2(baseEslint.join(", "));
-  const inventory = baseHas(INVENTORY_SCRIPT);
-  if (inventory && !exists(INVENTORY_SCRIPT)) lost.inventory = gone2(INVENTORY_SCRIPT);
-  return { tsc, lint: baseEslint.length > 0, tests: exists(VITEST_SCRIPT), inventory, lost };
-}
-function baseFileExists(exec, cwd, commit) {
-  const seen = /* @__PURE__ */ new Map();
-  return (p) => {
-    let found = seen.get(p);
-    if (found === void 0) {
-      found = readBaseFile(exec, cwd, commit, p) !== null;
-      seen.set(p, found);
-    }
-    return found;
-  };
-}
-function selectTargetedTests(changed, exists) {
-  const picked = /* @__PURE__ */ new Set();
-  const add = (p) => {
-    if (exists(p)) picked.add(p);
-  };
-  for (const raw of changed) {
-    const file = raw.replace(/\\/g, "/");
-    if (TEST_FILE.test(file) && (file.startsWith("src/") || file.startsWith("tests/"))) {
-      add(file);
-      continue;
-    }
-    if (file.startsWith("skills/")) {
-      add("src/__tests__/skills.test.ts");
-      continue;
-    }
-    const m = /^(src\/(?:.*\/)?)([^/]+)\.(ts|tsx|mts)$/.exec(file);
-    if (!m || file.endsWith(".d.ts")) continue;
-    const [, dir, name] = m;
-    add(`${dir}${name}.test.ts`);
-    add(`${dir}__tests__/${name}.test.ts`);
-  }
-  return [...picked].sort();
-}
-function selectGeneratorChecks(changed) {
-  const touches = (prefixes) => changed.some((f) => prefixes.some((p) => f.replace(/\\/g, "/").startsWith(p)));
-  const out = [];
-  if (touches(["skills/", "agents/", "docs/CLAUDE.md"])) out.push(["scripts/generate-prompt-projections.mjs", "--verify"]);
-  if (touches(["agents/"])) out.push(["scripts/copilot/build-agents.mjs", "--verify"]);
-  if (touches(["hooks/"])) out.push(["scripts/copilot/build-hooks.mjs", "--verify"]);
-  return out;
-}
-function lines2(text3) {
-  return text3.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-}
-function tail3(text3, n = 20) {
-  return lines2(text3).slice(-n).join("\n");
-}
-async function runPrepareAsync(opts, runCheck) {
-  const steps = prepareSteps(opts);
-  let next = steps.next();
-  while (!next.done) next = steps.next(await runCheck(next.value));
-  return next.value;
-}
-function* prepareSteps(opts) {
-  const { exec, cwd, base } = opts;
-  const remote = opts.remote ?? "origin";
-  const node = opts.node ?? process.execPath;
-  const exists = opts.exists ?? ((p) => (0, import_fs90.existsSync)((0, import_path107.isAbsolute)(p) ? p : (0, import_path107.join)(cwd, p)));
-  const upstream = `refs/remotes/${remote}/${base}`;
-  const { baseSha } = opts;
-  const steps = [];
-  const housekeepingCommits = [];
-  const git4 = (...args) => exec("git", args, { cwd });
-  const fail2 = (name, detail, extra = {}) => {
-    steps.push({ name, status: "failed", detail });
-    return { ok: false, steps, housekeepingCommits, blockedReason: `${name}: ${detail.split("\n")[0]}`, ...extra };
-  };
-  const head = () => git4("rev-parse", "HEAD").stdout.trim();
-  for (const [label, name] of [["base", base], ["branch", opts.branch]]) {
-    if (!isPlainBranchName(name) || git4("check-ref-format", "--branch", name).status !== 0) {
-      return fail2("preflight", `${label} ${JSON.stringify(name)} is not a valid branch name`);
-    }
-  }
-  if (!/^[\w][\w.-]*$/.test(remote)) return fail2("preflight", `remote ${JSON.stringify(remote)} is not a valid remote name`);
-  if (!/^[0-9a-f]{40}$/.test(opts.reviewedSha)) return fail2("preflight", `reviewed sha ${JSON.stringify(opts.reviewedSha)} is not a full commit id`);
-  if (!/^[0-9a-f]{40}$/.test(baseSha)) return fail2("preflight", `GitHub's base sha ${JSON.stringify(baseSha)} is not a full commit id`);
-  const branch2 = git4("rev-parse", "--abbrev-ref", "HEAD").stdout.trim();
-  if (!branch2 || branch2 === "HEAD") return fail2("preflight", "detached HEAD; check out the PR branch");
-  if (branch2 === base || branch2 === "main" || branch2 === "master") return fail2("preflight", `refusing to prepare on ${branch2}; use the PR branch`);
-  if (branch2 !== opts.branch) return fail2("preflight", `checked out ${branch2}, but the ship run is for ${opts.branch}; check out the PR branch`);
-  if (git4("merge-base", "--is-ancestor", opts.reviewedSha, "HEAD").status !== 0) {
-    return fail2("preflight", `HEAD does not contain the reviewed commit ${opts.reviewedSha.slice(0, 12)}; pull the PR branch (merge, never rebase) or re-review`);
-  }
-  for (const [ref, what] of [["MERGE_HEAD", "a merge"], ["CHERRY_PICK_HEAD", "a cherry-pick"], ["REVERT_HEAD", "a revert"]]) {
-    if (git4("rev-parse", "-q", "--verify", ref).status === 0) return fail2("preflight", `${what} is in progress; commit or abort it first`);
-  }
-  for (const marker of ["rebase-merge", "rebase-apply"]) {
-    const p = git4("rev-parse", "--git-path", marker).stdout.trim();
-    if (p && exists((0, import_path107.isAbsolute)(p) ? p : (0, import_path107.join)(cwd, p))) return fail2("preflight", "a rebase is in progress; finish or abort it (ship never rebases)");
-  }
-  const dirty = git4("status", "--porcelain", "--untracked-files=no").stdout.trim();
-  if (dirty) return fail2("preflight", `working tree has uncommitted changes:
-${dirty}`);
-  if (git4("diff", "--cached", "--quiet").status !== 0) return fail2("preflight", "the index has staged changes; commit or unstage them first");
-  steps.push({ name: "preflight", status: "ok", detail: branch2 });
-  if (opts.prefetchedBase) {
-    if (git4("cat-file", "-e", `${baseSha}^{commit}`).status !== 0) return fail2("fetch", `the base ${baseSha} the caller fetched is not a commit in the checkout's repository`);
-    steps.push({ name: "fetch", status: "ok", detail: `${base} = ${baseSha} (fetched by the caller)` });
-  } else {
-    const mismatch = remoteRepoMismatch(exec, cwd, remote, opts.repoUrl);
-    if (mismatch) return fail2("remote", `${mismatch}; refusing to fetch (fail closed)`);
-    const fetched = git4("fetch", remote, base);
-    if (fetched.status !== 0) return fail2("fetch", tail3(fetched.stderr));
-    const local = git4("rev-parse", "--verify", upstream);
-    if (local.status !== 0 || local.stdout.trim() !== baseSha) {
-      return fail2("fetch", `${upstream} is ${local.stdout.trim() || "missing"}, but GitHub reports ${base} at ${baseSha}; refusing (fail closed; re-run if ${base} just moved)`);
-    }
-    steps.push({ name: "fetch", status: "ok", detail: `${upstream} = ${baseSha}` });
-  }
-  if (git4("merge-base", "--is-ancestor", baseSha, "HEAD").status === 0) {
-    steps.push({ name: "merge-base", status: "skipped", detail: `already contains ${base} ${baseSha.slice(0, 12)}` });
-  } else {
-    const merged = git4("merge", "--no-ff", "--no-edit", "--no-verify", baseSha);
-    if (merged.status !== 0) {
-      const conflicts = lines2(git4("diff", "--name-only", "--diff-filter=U").stdout);
-      const inventoryOnly = conflicts.length > 0 && conflicts.every((f) => f.startsWith(`${INVENTORY_DIR}/`));
-      if (!inventoryOnly) {
-        return fail2("merge-base", conflicts.length > 0 ? `conflicts outside ${INVENTORY_DIR}/ need a human or a fix lane: ${conflicts.join(", ")} (resolve and commit, or git merge --abort)` : tail3(merged.stderr || merged.stdout), { conflicts });
-      }
-      for (const args of [["checkout", "--theirs", "--", INVENTORY_DIR], ["add", "--", INVENTORY_DIR], ["commit", "--no-edit", "--no-verify"]]) {
-        const r = git4(...args);
-        if (r.status !== 0) return fail2("merge-base", `git ${args.join(" ")}: ${tail3(r.stderr || r.stdout)}`, { conflicts });
-      }
-      steps.push({ name: "merge-base", status: "ok", detail: `merged ${base} ${baseSha.slice(0, 12)}; inventory conflict resolved with --theirs` });
-    } else {
-      steps.push({ name: "merge-base", status: "ok", detail: `merged ${base} ${baseSha.slice(0, 12)}` });
-    }
-    housekeepingCommits.push(head());
-  }
-  let found;
-  try {
-    found = detectPrepareChecks(opts.baseExists ?? baseFileExists(exec, cwd, baseSha), exists);
-  } catch (error2) {
-    return fail2(PREPARE_DETECT_STEP, `cannot read the base ${baseSha.slice(0, 12)}: ${error2 instanceof Error ? error2.message : String(error2)}`);
-  }
-  if (opts.checks === false) {
-    steps.push({ name: "checks", status: "skipped", detail: "--no-checks" });
-  } else if (opts.commands) {
-    const missing = opts.commands.find((c) => "missing" in c);
-    if (missing && "missing" in missing) return fail2(PREPARE_CONFIG_STEP, `ship.prepare.checks ${JSON.stringify(missing.argv)}: ${missing.missing}`);
-    if (opts.commands.length === 0) steps.push({ name: "checks", status: "skipped", detail: "ship.prepare.checks is empty" });
-    for (const c of opts.commands) {
-      if ("missing" in c) continue;
-      const name = c.argv.join(" ").slice(0, 80);
-      const r = yield { step: name, kind: "configured", argv: c.argv, exe: c.exe, args: c.args };
-      if (r.notStarted !== void 0) return fail2(PREPARE_SANDBOX_STEP, `${name}: ${r.notStarted}`);
-      if (r.status !== 0) return fail2(name, tail3(`${r.stdout}
-${r.stderr}`));
-      steps.push({ name, status: "ok" });
-    }
-  } else {
-    const changed = git4("diff", "--name-only", "-z", `${baseSha}...HEAD`).stdout.split("\0").filter(Boolean);
-    const lintable = changed.filter((f) => /^src\/.*\.(?:ts|tsx|mts)$/.test(f) && !f.endsWith(".d.ts") && exists(f));
-    const tests = selectTargetedTests(changed, exists);
-    const plan = [
-      ["tsc", found.tsc ? [TSC_SCRIPT, "--noEmit"] : null, "no tsconfig.json on the base or no typescript package"],
-      ["lint", !found.lint ? null : lintable.length > 0 ? [ESLINT_SCRIPT, ...lintable] : null, found.lint ? "no changed src TypeScript" : "no eslint package or no eslint config on the base"],
-      ["tests", !found.tests ? null : tests.length > 0 ? [VITEST_SCRIPT, "run", ...tests] : null, found.tests ? "no targeted tests for the diff" : "no vitest package"],
-      ...selectGeneratorChecks(changed).filter((args) => exists(args[0])).map((args) => [import_path107.posix.basename(args[0]), args, ""])
-    ];
-    for (const [name, args, skipReason] of plan) {
-      const lost = found.lost[name];
-      if (lost) return fail2(name, lost);
-      if (!args) {
-        steps.push({ name, status: "skipped", detail: skipReason });
-        continue;
-      }
-      const r = yield { step: name, kind: "built-in", argv: [node, ...args], exe: node, args };
-      if (r.notStarted !== void 0) return fail2(PREPARE_SANDBOX_STEP, `${name}: ${r.notStarted}`);
-      if (r.status !== 0) return fail2(name, tail3(`${r.stdout}
-${r.stderr}`));
-      steps.push({ name, status: "ok", detail: args.slice(1).map(visibleLine).join(" ").slice(0, 300) });
-    }
-  }
-  if (found.lost.inventory) return fail2("inventory", found.lost.inventory);
-  const inventory = (mode) => ({ step: "inventory", kind: "inventory", argv: [node, INVENTORY_SCRIPT, mode], exe: node, args: [INVENTORY_SCRIPT, mode] });
-  const current = found.inventory ? yield inventory("--verify") : void 0;
-  if (current?.notStarted !== void 0) return fail2(PREPARE_SANDBOX_STEP, `inventory: ${current.notStarted}`);
-  if (!found.inventory) {
-    steps.push({ name: "inventory", status: "skipped", detail: `no ${INVENTORY_SCRIPT} on the base` });
-  } else if (current.status === 0) {
-    steps.push({ name: "inventory", status: "skipped", detail: "baseline is current" });
-  } else {
-    const written = yield inventory("--write");
-    if (written.notStarted !== void 0) return fail2(PREPARE_SANDBOX_STEP, `inventory: ${written.notStarted}`);
-    if (written.status !== 0) return fail2("inventory", tail3(written.stderr || written.stdout));
-    const added = git4("add", "--", INVENTORY_DIR);
-    if (added.status !== 0) return fail2("inventory", `git add -- ${INVENTORY_DIR}: ${tail3(added.stderr || added.stdout)}`);
-    if (git4("diff", "--cached", "--quiet", "--", INVENTORY_DIR).status !== 0) {
-      const committed = git4("commit", "--no-verify", "-m", INVENTORY_COMMIT_MESSAGE, "--", INVENTORY_DIR);
-      if (committed.status !== 0) return fail2("inventory", tail3(committed.stderr || committed.stdout));
-      housekeepingCommits.push(head());
-    }
-    const verified = yield inventory("--verify");
-    if (verified.notStarted !== void 0) return fail2(PREPARE_SANDBOX_STEP, `inventory: ${verified.notStarted}`);
-    if (verified.status !== 0) return fail2("inventory", `regenerated baseline still fails --verify:
-${tail3(verified.stderr || verified.stdout)}`);
-    steps.push({ name: "inventory", status: "ok", detail: "regenerated as the last commit" });
-  }
-  if (opts.push) {
-    const pushed = git4("push", remote, `HEAD:refs/heads/${opts.branch}`);
-    if (pushed.status !== 0) return fail2("push", tail3(pushed.stderr));
-    steps.push({ name: "push", status: "ok", detail: `${remote} ${opts.branch}` });
-  }
-  return { ok: true, steps, housekeepingCommits };
-}
-var import_fs90, import_path107, INVENTORY_DIR, INVENTORY_SCRIPT, INVENTORY_COMMIT_MESSAGE, PREPARE_CONFIG_STEP, PREPARE_DETECT_STEP, TSC_SCRIPT, ESLINT_SCRIPT, VITEST_SCRIPT, ESLINT_CONFIGS, TEST_FILE, PREPARE_SANDBOX_STEP;
-var init_prepare2 = __esm({
-  "src/ship/prepare.ts"() {
-    "use strict";
-    import_fs90 = require("fs");
-    import_path107 = require("path");
-    init_review_feedback();
-    init_config2();
-    INVENTORY_DIR = "inventory";
-    INVENTORY_SCRIPT = "scripts/generate-inventory-graph.mjs";
-    INVENTORY_COMMIT_MESSAGE = "chore(inventory): regenerate inventory graph baseline";
-    PREPARE_CONFIG_STEP = "checks-config";
-    PREPARE_DETECT_STEP = "detect";
-    TSC_SCRIPT = "node_modules/typescript/bin/tsc";
-    ESLINT_SCRIPT = "node_modules/eslint/bin/eslint.js";
-    VITEST_SCRIPT = "node_modules/vitest/vitest.mjs";
-    ESLINT_CONFIGS = [
-      "eslint.config.js",
-      "eslint.config.mjs",
-      "eslint.config.cjs",
-      "eslint.config.ts",
-      "eslint.config.mts",
-      "eslint.config.cts",
-      ".eslintrc",
-      ".eslintrc.js",
-      ".eslintrc.cjs",
-      ".eslintrc.json",
-      ".eslintrc.yml",
-      ".eslintrc.yaml"
-    ];
-    TEST_FILE = /\.(?:test|spec)\.[cm]?[jt]sx?$/;
-    PREPARE_SANDBOX_STEP = "checks-sandbox";
   }
 });
 
@@ -53074,8 +52332,8 @@ function matchPathGlob(glob, path15) {
   if (globSegments.includes("..") || globLimitProblem(glob)) return false;
   const normalized = path15.replace(/\\/g, "/").replace(/^\.\//, "");
   if (normalized.length > MAX_MATCH_PATH_CHARS) return false;
-  const segments = globSegments.length > 1 && globSegments[globSegments.length - 1] === "**" ? [...globSegments.slice(0, -1), "*", "**"] : globSegments;
-  return matchSegments(segments, normalized.split("/"));
+  const segments2 = globSegments.length > 1 && globSegments[globSegments.length - 1] === "**" ? [...globSegments.slice(0, -1), "*", "**"] : globSegments;
+  return matchSegments(segments2, normalized.split("/"));
 }
 var MAX_GLOB_WILDCARDS, MAX_GLOBSTARS, MAX_MATCH_PATH_CHARS;
 var init_role_router = __esm({
@@ -53271,7 +52529,11 @@ var init_context = __esm({
 // src/factory/run/merge-policy.ts
 function mergeDecision(exec, root, ship, view, config2, known, forge, reads) {
   const gate = evaluateGates(exec, view.number, config2, known, root, view.headRefOid, forge, ship.phase === "ready" ? 0 : void 0, Date.now, reads);
-  const noChecks = gate.noChecks ? { noChecks: true } : {};
+  const noChecks = {
+    ...gate.noChecks ? { noChecks: true } : {},
+    checks: gate.checks.filter((c) => c.class === "pass" && c.state.toUpperCase() === "SUCCESS").map((c) => c.name),
+    unsettled: gate.checks.filter((c) => ["SKIPPED", "NEUTRAL"].includes(c.state.toUpperCase())).map((c) => c.name)
+  };
   const reviewed = latestVerdict(ship)?.sha;
   const commits = readCommitsSinceReview(exec, root, reviewed, view.headRefOid, view.baseRefOid, ship.housekeepingCommits);
   const extraProtected = [
@@ -53340,6 +52602,751 @@ var init_merge_policy = __esm({
   }
 });
 
+// src/factory/run/auto-merge.ts
+function resolveAutoMergeConfig(user, repo) {
+  const auto = user?.factory?.merge?.auto;
+  if (auto === void 0 || auto === null) return {};
+  if (typeof auto !== "object" || Array.isArray(auto)) return { error: "factory.merge.auto must be an object keyed by repository" };
+  const samePath3 = (a, b) => {
+    const norm2 = (p) => (0, import_path108.normalize)((0, import_path108.resolve)(p)).replace(/[\\/]+$/, "");
+    return process.platform === "win32" ? norm2(a).toLowerCase() === norm2(b).toLowerCase() : norm2(a) === norm2(b);
+  };
+  const matches = Object.keys(auto).filter((key2) => {
+    if (repo.local) return /^(?:[A-Za-z]:[\\/]|\/)/.test(key2) && samePath3(key2, repo.root);
+    return repo.url !== void 0 && !repoIdentity(key2).startsWith("path:") && sameRepo(key2, repo.url);
+  });
+  if (matches.length === 0) return {};
+  if (matches.length > 1) return { error: `factory.merge.auto has ${matches.length} entries for this repository (${matches.join(", ")}); keep one` };
+  const key = matches[0];
+  const v = auto[key];
+  if (!v || typeof v !== "object" || Array.isArray(v)) return { key, error: `factory.merge.auto["${key}"] must be an object` };
+  const o = v;
+  const unknownKeys = Object.keys(o).filter((k) => !["enabled", "tiers", "maxChangedLines", "maxFiles", ...GLOB_KEYS].includes(k));
+  if (unknownKeys.length > 0) return { key, error: `factory.merge.auto["${key}"] has unknown keys: ${unknownKeys.join(", ")}` };
+  if (typeof o.enabled !== "boolean") return { key, error: `factory.merge.auto["${key}"].enabled must be a boolean` };
+  if (!Array.isArray(o.tiers) || o.tiers.length === 0 || !o.tiers.every((t) => AUTO_MERGE_TIERS.includes(t))) {
+    return { key, error: `factory.merge.auto["${key}"].tiers must be a non-empty list of ${AUTO_MERGE_TIERS.map((t) => `"${t}"`).join(", ")}` };
+  }
+  const cap = (name) => {
+    const n = o[name];
+    if (n === void 0) return void 0;
+    return typeof n === "number" && Number.isSafeInteger(n) && n >= 1 && n <= MAX_CAP ? n : `factory.merge.auto["${key}"].${name} must be an integer from 1 to ${MAX_CAP}`;
+  };
+  const lines3 = cap("maxChangedLines");
+  const files = cap("maxFiles");
+  if (typeof lines3 === "string") return { key, error: lines3 };
+  if (typeof files === "string") return { key, error: files };
+  const globs = {};
+  for (const name of GLOB_KEYS) {
+    const g = o[name];
+    if (g === void 0) continue;
+    if (!Array.isArray(g) || g.length > MAX_GLOBS || !g.every((x) => typeof x === "string" && x.trim() !== "" && x.length <= 500 && !/[\0\r\n]/.test(x))) {
+      return { key, error: `factory.merge.auto["${key}"].${name} must be a list of at most ${MAX_GLOBS} path globs` };
+    }
+    globs[name] = [...g];
+  }
+  if (!o.enabled) return { key };
+  return {
+    key,
+    config: {
+      enabled: true,
+      tiers: [...new Set(o.tiers)],
+      ...lines3 !== void 0 ? { maxChangedLines: lines3 } : {},
+      ...files !== void 0 ? { maxFiles: files } : {},
+      ...globs
+    }
+  };
+}
+function committedMergeConfig(base) {
+  const merge2 = base?.factory?.merge;
+  return merge2 !== void 0;
+}
+function parseChangedEntries(rawZ, numstatZ) {
+  const raw = rawZ.split("\0");
+  const modes = /* @__PURE__ */ new Map();
+  for (let i = 0; i < raw.length; i++) {
+    const head = raw[i];
+    if (head === "") continue;
+    const m = /^:([0-7]{6}) ([0-7]{6}) [0-9a-f]{40,64} [0-9a-f]{40,64} ([ADMT])$/.exec(head);
+    const path15 = raw[i + 1];
+    if (!m || path15 === void 0 || path15 === "" || modes.has(path15)) return null;
+    modes.set(path15, { status: m[3], oldMode: m[1], newMode: m[2] });
+    i++;
+  }
+  const out = [];
+  for (const rec of numstatZ.split("\0")) {
+    if (rec === "") continue;
+    const m = /^(-|\d+)\t(-|\d+)\t(.+)$/s.exec(rec);
+    if (!m) return null;
+    const mode = modes.get(m[3]);
+    if (!mode || out.some((e) => e.path === m[3])) return null;
+    out.push({ path: m[3], ...mode, added: m[1] === "-" ? null : Number(m[1]), deleted: m[2] === "-" ? null : Number(m[2]) });
+  }
+  return out.length === modes.size ? out : null;
+}
+function globMatcher(glob) {
+  let g = rootRelative(fold2(glob));
+  if (g.endsWith("/")) g += "**";
+  const anyDepth = !g.includes("/");
+  const body = g.split("/").map((seg) => seg === "**" ? "\0" : seg.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, "[^/]*").replace(/\?/g, "[^/]")).join("/").replace(/\u0000\//g, "(?:[^/]+/)*").replace(/\/\u0000/g, "(?:/[^/]+)*").replace(/\u0000/g, ".*");
+  const re = new RegExp(`^${anyDepth ? "(?:[^/]+/)*" : ""}${body}$`);
+  return (path15) => re.test(segments(path15).join("/"));
+}
+function deniedPaths(paths, extra = [], globs = []) {
+  const anchored = new Set(protectedChanges(paths, [...LANE_PROTECTED_PATHS, ...CI_TREE_PATHS, ...PROTECTED_PATHS, ".omg/", ".omc/", ...HOOK_DIRS, ...SHIPPED_DIRS, ...extra.map(rootRelative).filter(Boolean)]));
+  const user = globs.map(globMatcher);
+  return paths.filter((p) => {
+    if (anchored.has(p)) return true;
+    const segs = segments(p);
+    if (segs.length === 0) return true;
+    if (segs.length === 1 && GIT_HOOK_NAMES.has(segs[0].replace(/\.exe$/, ""))) return true;
+    if (segs.slice(0, -1).some((s) => DENIED_DIRS.has(s))) return true;
+    if (user.some((m) => m(p))) return true;
+    const name = segs[segs.length - 1];
+    return DENIED_DIRS.has(name) || DENIED_NAMES.has(name) || DENIED_NAME_PATTERNS.some((r) => r.test(name));
+  });
+}
+function isDocsPath(path15) {
+  const segs = segments(path15);
+  if (segs.length === 0) return false;
+  const name = segs[segs.length - 1];
+  if (segs.length === 1) return ROOT_DOCS.test(name);
+  return segs[0] === "docs" && DOCS_EXT.test(name);
+}
+function baseInstallFiles(text3, rootNames = []) {
+  const problems = [];
+  const root = new Set(rootNames.map((n) => fold2(n)));
+  if (root.has("binding.gyp")) problems.push("the base has a root binding.gyp, so install runs node-gyp on repository sources");
+  if (root.has("pnpm-workspace.yaml")) problems.push("the base is a pnpm workspace, so install runs every workspace package's scripts, which the engine does not read");
+  const done = (paths2, problem) => {
+    const first = problem ?? problems[0];
+    const out = paths2.map(rootRelative).filter(Boolean);
+    return first ? { paths: out, problem: first } : { paths: out };
+  };
+  if (text3 === null) return done([]);
+  let pkg;
+  try {
+    pkg = JSON.parse(text3);
+  } catch {
+    return done([], "the base package.json could not be parsed");
+  }
+  if (!pkg || typeof pkg !== "object" || Array.isArray(pkg)) return done([], "the base package.json is not an object");
+  if (pkg.gypfile !== void 0 && pkg.gypfile !== false) problems.push('the base package.json sets "gypfile", so install runs node-gyp on repository sources');
+  if (pkg.workspaces !== void 0) problems.push(`the base package.json has "workspaces": install runs each workspace package's scripts, which the engine does not read`);
+  const paths = [];
+  const scripts = pkg.scripts === void 0 ? {} : pkg.scripts;
+  if (!scripts || typeof scripts !== "object" || Array.isArray(scripts)) return done(paths, 'the base package.json "scripts" is not an object');
+  const table = scripts;
+  const seen = /* @__PURE__ */ new Set();
+  const visit2 = (name, depth) => {
+    if (seen.has(name)) return;
+    seen.add(name);
+    const body = table[name];
+    if (body === void 0) return;
+    const cannot = (what) => problems.push(`the base package.json script "${name}" ${what}, which the engine cannot follow`);
+    if (typeof body !== "string") {
+      problems.push(`the base package.json script "${name}" is not a string`);
+      return;
+    }
+    if (/[$`%*?{}[\]]/.test(body)) {
+      problems.push(`the base package.json script "${name}" has a variable, substitution or glob, so the files it runs are unknown`);
+      return;
+    }
+    for (const command of body.split(/[;&|()<>\r\n]+/)) {
+      const words = command.split(/\s+/).map((w) => w.replace(/^['"]+|['"]+$/g, "")).filter(Boolean);
+      for (let i = 0; i < words.length; i++) {
+        const w = words[i];
+        const next = words[i + 1];
+        if (ELSEWHERE_FLAG.test(w)) {
+          cannot(`passes ${w} (another package or directory)`);
+          continue;
+        }
+        if (SCRIPT_RUNNER.test(w)) {
+          if (next === void 0) continue;
+          if (next.startsWith("-")) {
+            cannot(`passes ${next} to ${w}`);
+            continue;
+          }
+          const explicit = next === "run" || next === "run-script";
+          if (explicit || Object.hasOwn(table, next)) {
+            const target = explicit ? words[i + 2] : next;
+            if (target === void 0 || target.startsWith("-") || depth >= 5) cannot(`runs another script with ${w}`);
+            else visit2(target, depth + 1);
+            i += explicit ? 2 : 1;
+            continue;
+          }
+          if (RUNNER_INSTALL.test(next)) {
+            i++;
+            continue;
+          }
+          cannot(`runs ${w} ${next}`);
+          i++;
+          continue;
+        }
+        if (UNFOLLOWABLE.test(w)) {
+          cannot(`runs ${w}`);
+          continue;
+        }
+        if (INTERPRETER.test(w)) {
+          cannot(`runs ${w}${next ? ` ${next}` : ""} (what it runs or imports)`);
+          continue;
+        }
+        if (w.startsWith("-")) continue;
+        if (w.includes("/") || w.includes("\\") || /\.[A-Za-z0-9]{1,5}$/.test(w)) {
+          paths.push(w);
+          cannot(`runs the repository file ${w} (what it imports)`);
+        }
+      }
+    }
+  };
+  for (const name of Object.keys(table).filter((n) => LIFECYCLE_SCRIPT.test(n))) visit2(name, 0);
+  if (pkg.bin !== void 0) {
+    const bins = typeof pkg.bin === "string" ? [pkg.bin] : pkg.bin && typeof pkg.bin === "object" && !Array.isArray(pkg.bin) ? Object.values(pkg.bin) : [void 0];
+    if (!bins.every((b) => typeof b === "string")) return done(paths, 'the base package.json "bin" is not a string or an object of strings');
+    paths.push(...bins);
+  }
+  return done(paths);
+}
+function patchLines(patch) {
+  if (patch.includes("\x1B")) return null;
+  const out = [];
+  let hunk = false;
+  let oldPath = "";
+  let newPath = "";
+  for (const line of patch.split("\n")) {
+    if (line.startsWith("diff --git ")) {
+      hunk = false;
+      oldPath = newPath = line.slice(11);
+    } else if (!hunk && line.startsWith("--- ")) oldPath = line.slice(4);
+    else if (!hunk && line.startsWith("+++ ")) newPath = line.slice(4);
+    else if (line.startsWith("@@")) hunk = true;
+    else if (hunk && (line.startsWith("+") || line.startsWith("-"))) {
+      out.push({ path: newPath === "/dev/null" ? oldPath : newPath, sign: line[0], text: line.slice(1) });
+    }
+  }
+  return out;
+}
+function isTestPath(path15) {
+  const segs = segments(path15);
+  if (segs.length === 0) return false;
+  const name = segs[segs.length - 1];
+  if (TEST_NAME.some((r) => r.test(name))) return true;
+  const dirs = segs.slice(0, -1);
+  return (ROOT_TEST_DIRS.has(dirs[0] ?? "") || dirs.some((s) => ANY_DEPTH_TEST_DIRS.has(s))) && TEST_DIR_FILE.test(name);
+}
+function classifyChanges(entries, config2, opts = {}) {
+  if (entries === null) return { reasons: ["the changed files could not be read (git diff --raw/--numstat base...head); auto-merge fails closed"], evidence: [] };
+  if (entries.length === 0) return { reasons: ["the PR changes no file"], evidence: [] };
+  const reasons = [];
+  const list = (ps) => `${ps.slice(0, 5).join(", ")}${ps.length > 5 ? `, and ${ps.length - 5} more` : ""}`;
+  const odd = entries.filter((e) => !plainMode(e.oldMode) || !plainMode(e.newMode) || e.oldMode === "000000" && e.newMode === "000000");
+  if (odd.length > 0) reasons.push(`non-plain file modes (symlink, gitlink, executable or mode change): ${list(odd.map((e) => `${e.path} ${e.oldMode}->${e.newMode}`))}`);
+  const binary = entries.filter((e) => e.added === null || e.deleted === null);
+  if (binary.length > 0) reasons.push(`binary changes: ${list(binary.map((e) => e.path))}`);
+  const denied = deniedPaths(entries.map((e) => e.path), [...opts.extraDenied ?? [], ...opts.installFiles?.paths ?? []], config2.securityCritical ?? []);
+  if (denied.length > 0) reasons.push(`touches paths that always need a human (CI, config, manifests, lockfiles, hooks, agent prompts, factory or security-critical files): ${list(denied)}`);
+  const isSetup = setupMatcher(opts.testSetup?.paths ?? []);
+  const setup = entries.filter((e) => isSetup(e.path));
+  if (setup.length > 0) reasons.push(`touches files the base test config runs around every test run (setupFiles, globalSetup): ${list(setup.map((e) => e.path))}`);
+  const deletedTests = entries.filter((e) => e.status === "D" && looksLikeTest(e.path));
+  if (deletedTests.length > 0) reasons.push(`deletes test files (a deleted test needs a human): ${list(deletedTests.map((e) => e.path))}`);
+  const lines3 = entries.reduce((n, e) => n + (e.added ?? 0) + (e.deleted ?? 0), 0);
+  const files = entries.length;
+  const evidence = [`${files} file(s), ${lines3} changed line(s), plain file modes, no binary, no denied path, no deleted test`];
+  if (reasons.length > 0) return { reasons, evidence: [] };
+  const docsDenied = (config2.docsDenied ?? []).map(globMatcher);
+  const frontmatter = new Set((opts.frontmatter?.paths ?? []).map((p) => segments(p).join("/")));
+  const withFrontmatter = (e) => frontmatter.has(segments(e.path).join("/"));
+  const gutted = entries.filter((e) => e.status === "M" && looksLikeTest(e.path) && (e.deleted ?? 0) > (e.added ?? 0)).map((e) => e.path);
+  const assertions = /* @__PURE__ */ new Map();
+  for (const l of opts.patch ?? []) {
+    if (patchPathIsTest(l.path) && ASSERTION.test(l.text)) assertions.set(l.path, (assertions.get(l.path) ?? 0) + (l.sign === "-" ? 1 : -1));
+  }
+  gutted.push(...[...assertions].filter(([path15, net2]) => net2 > 0 && !gutted.some((g) => path15.endsWith(g))).map(([path15]) => path15));
+  const skipLine = opts.patch?.find((l) => l.sign === "+" && (TEST_SKIP.some((r) => r.test(l.text)) || patchPathIsTest(l.path) && TEST_FILE_SKIP.some((r) => r.test(l.text))))?.text;
+  const misses = [];
+  for (const tier of AUTO_MERGE_TIERS) {
+    if (!config2.tiers.includes(tier)) continue;
+    const maxLines = config2.maxChangedLines ?? (tier === "small" ? DEFAULT_SMALL_MAX_CHANGED_LINES : void 0);
+    const maxFiles = config2.maxFiles ?? (tier === "small" ? DEFAULT_SMALL_MAX_FILES : void 0);
+    if (tier !== "docs" && opts.testSetup?.problem) {
+      misses.push(`${tier}: ${opts.testSetup.problem}`);
+      continue;
+    }
+    if (tier !== "tests" && opts.frontmatter?.problem) {
+      misses.push(`${tier}: ${opts.frontmatter.problem}`);
+      continue;
+    }
+    if (tier === "small" && opts.installFiles?.problem) {
+      misses.push(`${tier}: ${opts.installFiles.problem}`);
+      continue;
+    }
+    if (tier !== "docs") {
+      if (opts.patch === null) {
+        misses.push(`${tier}: the PR's patch could not be read, so a skipped or emptied test cannot be ruled out`);
+        continue;
+      }
+      if (gutted.length > 0) {
+        misses.push(`${tier}: ${list(gutted)} lose(s) more lines (or assertion lines) than it gains (a gutted test needs a human)`);
+        continue;
+      }
+      if (skipLine !== void 0) {
+        misses.push(`${tier}: an added line skips, focuses or empties a test (${oneLineOf(skipLine)})`);
+        continue;
+      }
+    }
+    const outside = tier === "docs" ? entries.filter((e) => !isDocsPath(e.path) || !canonicalSpelling(e.path) || docsDenied.some((m) => m(e.path)) || withFrontmatter(e)) : tier === "tests" ? entries.filter((e) => !isTestPath(e.path) || e.status === "D" || segments(e.path).some((s) => TEST_RUNNER_CODE.test(s))) : entries.filter((e) => protectedChanges([e.path], SMALL_TIER_DENIED).length > 0 || withFrontmatter(e));
+    if (outside.length > 0) {
+      const fm = outside.filter(withFrontmatter);
+      if (fm.length > 0 && tier !== "tests") {
+        misses.push(`${tier}: ${list(fm.map((e) => e.path))} start(s) with frontmatter, which a tool may run as config`);
+        continue;
+      }
+      const what = tier === "docs" ? "docs" : tier === "tests" ? "test files (setup, teardown, benchmarks and deletions are not)" : `small-tier files (never under ${SMALL_TIER_DENIED.join(", ")})`;
+      misses.push(`${tier}: ${list(outside.map((e) => e.path))} ${outside.length === 1 ? "is" : "are"} not ${what}`);
+      continue;
+    }
+    if (maxLines !== void 0 && lines3 > maxLines) {
+      misses.push(`${tier}: ${lines3} changed lines > maxChangedLines ${maxLines}`);
+      continue;
+    }
+    if (maxFiles !== void 0 && files > maxFiles) {
+      misses.push(`${tier}: ${files} files > maxFiles ${maxFiles}`);
+      continue;
+    }
+    return { tier, reasons: [], evidence: [...evidence, `every file fits tier ${tier}${maxLines !== void 0 ? ` (lines ${lines3}/${maxLines}` : ""}${maxFiles !== void 0 ? `${maxLines !== void 0 ? ", " : " ("}files ${files}/${maxFiles}` : ""}${maxLines !== void 0 || maxFiles !== void 0 ? ")" : ""}`] };
+  }
+  return { reasons: [`no enabled tier fits (${misses.join("; ")})`], evidence: [] };
+}
+function baseTestSetup(files) {
+  const paths = [];
+  for (const { path: path15, text: text3 } of files) {
+    if (/^package\.json$/i.test(path15)) {
+      let jest;
+      try {
+        jest = JSON.parse(text3).jest;
+      } catch {
+        return { paths, problem: "the base package.json could not be parsed" };
+      }
+      if (jest === void 0) continue;
+      if (!jest || typeof jest !== "object") return { paths, problem: 'the base package.json "jest" is not an object' };
+      if (jest.projects !== void 0) return { paths, problem: 'the base package.json "jest" has "projects", whose configs the engine does not read' };
+      const leaves = (v, depth) => {
+        if (typeof v === "string") paths.push(v);
+        else if (depth < 6 && v && typeof v === "object") for (const x of Array.isArray(v) ? v : Object.values(v)) leaves(x, depth + 1);
+      };
+      for (const k of SETUP_KEY_NAMES) leaves(jest[k], 0);
+      continue;
+    }
+    if (LOADS_MORE.test(text3)) return { paths, problem: `${path15} imports a relative file, or uses mergeConfig, defineWorkspace or defineProject, so the setup files it runs are unknown` };
+    const keyed = new Set([...text3.matchAll(SETUP_KEYS)].map((m) => m.index + (/^["']/.test(m[0]) ? 1 : 0)));
+    const loose = [...text3.matchAll(SETUP_KEY_WORD)].find((m) => !keyed.has(m.index));
+    if (loose) return { paths, problem: `${path15}: ${loose[1]} is not written as a plain key: value (shorthand, computed key or spread), so its files are unknown` };
+    for (const m of text3.matchAll(SETUP_KEYS)) {
+      let i = m.index + m[0].length;
+      const literal3 = () => {
+        STRING.lastIndex = i;
+        const s = STRING.exec(text3);
+        if (!s || s[1] === "`" && s[2].includes("${")) return void 0;
+        i = STRING.lastIndex;
+        return s[2];
+      };
+      const skip = () => {
+        while (i < text3.length && /[\s,]/.test(text3[i])) i++;
+      };
+      if (text3[i] === "[") {
+        i++;
+        for (skip(); text3[i] !== "]"; skip()) {
+          const s = literal3();
+          if (s === void 0) return { paths, problem: `${path15}: ${m[1]} is not a list of string literals, so its files are unknown` };
+          paths.push(s);
+        }
+      } else {
+        const s = literal3();
+        if (s === void 0) return { paths, problem: `${path15}: ${m[1]} is not a string literal, so its file is unknown` };
+        paths.push(s);
+      }
+    }
+    const more = MORE_CONFIG_KEY.exec(text3);
+    if (more) return { paths, problem: `${path15} uses ${more[0].replace(/["'\s:,}\]]/g, "")}, which points at config the engine does not read` };
+    const foreign = [...text3.matchAll(IMPORT_SPECIFIER)].find((m) => !ALLOWED_IMPORT.test(m[2]));
+    if (foreign) return { paths, problem: `${path15} imports "${foreign[2]}" (only vitest, vite and node builtins are read as safe), so the setup files it runs are unknown` };
+    if (DYNAMIC_LOAD.test(text3)) return { paths, problem: `${path15} has an import() or require() of a computed path, so the setup files it runs are unknown` };
+    if (/__dirname|__filename|\bimport\.meta\b/.test(text3) && /\b(?:require|import)\s*\(/.test(text3)) return { paths, problem: `${path15} loads a file relative to __dirname or import.meta, so the setup files it runs are unknown` };
+  }
+  return { paths };
+}
+function autoMergeVerdict(i) {
+  const reasons = [];
+  const evidence = [];
+  const at = i.head.slice(0, 12);
+  const check2 = (ok2, good, bad) => ok2 ? evidence.push(good) : reasons.push(bad);
+  check2(i.run.forgeKind !== "azure-devops", `forge ${i.run.forgeKind}`, "Azure DevOps PRs always merge by a human (no head-pinned engine merge there)");
+  check2(!i.run.ciHeal, "issue run", "ci-heal runs always merge by a human");
+  check2(i.decision.ok && i.decision.reasons.length === 0, "ship's merge rule allows this head with no reason", `ship's merge rule has reasons: ${i.decision.reasons.join("; ")}`);
+  const v = i.verdict;
+  check2(!!v && v.verdict === "approve" && v.sha === i.head, `factory review approved ${at}${v ? ` (${v.reviewer})` : ""}`, `the factory review did not approve this exact head (latest: ${v ? `${v.verdict} at ${v.sha.slice(0, 12)}` : "none"})`);
+  const checks = i.decision.checks ?? [];
+  const required2 = i.requiredChecks ?? [];
+  const succeeded = required2.length > 0 ? checks.filter((c) => required2.includes(c)) : checks;
+  const unsettled = required2.length > 0 ? [] : i.decision.unsettled ?? [];
+  check2(unsettled.length === 0, "no check skipped or neutral on this head", `checks skipped or neutral on this head (${unsettled.slice(0, 8).join(", ")}${unsettled.length > 8 ? ", ..." : ""}); without required checks every check must succeed (set ship.requiredChecks or branch protection to name the ones that matter)`);
+  check2(
+    !i.decision.noChecks && succeeded.length > 0,
+    `CI green at ${at}: ${succeeded.slice(0, 8).join(", ")}${succeeded.length > 8 ? ", ..." : ""} succeeded${required2.length > 0 ? " (required)" : ""}`,
+    required2.length > 0 ? `no required check (${required2.slice(0, 8).join(", ")}) succeeded on this head (skipped or neutral checks do not count)` : "no CI check succeeded on this head (skipped, neutral or no checks never auto-merge)"
+  );
+  check2(i.human !== void 0, "human review read: no open thread or change request", 'factory.review.human is "off", so human review threads are not read');
+  if (i.human) check2(i.human.commentOnly === 0, "no comment-only human review at this head", `${i.human.commentOnly} comment-only human review(s) at this head`);
+  check2(i.labels !== null && !i.labels.some((l) => l.toLowerCase() === MANUAL_MERGE_LABEL), `no ${MANUAL_MERGE_LABEL} label`, i.labels === null ? "the issue or PR labels could not be read" : `the issue or PR carries ${MANUAL_MERGE_LABEL}`);
+  const flagged = i.run.history.map((h) => PARK_NOTE.exec(h.note)?.[1] ?? (/^awaiting-human:/.test(h.note) ? "(unparsed park)" : void 0)).filter((n) => !!n && !BENIGN_PARKS.has(n));
+  const tamper = i.run.history.some((h) => /tamper|quarantin/i.test(h.note));
+  const acks = [
+    ...i.run.unsandboxedAck ? ["--allow-unsandboxed-lanes"] : [],
+    ...i.run.unsandboxedGatesAck ? ["--allow-unsandboxed-gates"] : [],
+    ...i.run.gateChangeApproved ? ["--allow-gate-change"] : [],
+    ...i.run.secretAck && i.run.secretAck.length > 0 ? ["--allow-secret-shapes"] : [],
+    ...i.run.history.some((h) => /--allow-[a-z-]+/.test(h.note)) ? ["an --allow-* flag (run history)"] : []
+  ];
+  check2(flagged.length === 0 && !tamper, "no secret-scan, tamper or sandbox park in this run", `this run parked at ${[...new Set(flagged)].join(", ") || "a tamper or quarantine hold"}`);
+  check2(acks.length === 0, "no --allow-* acknowledgement in this run", `this run used ${[...new Set(acks)].join(", ")}`);
+  if (i.changes.tier) evidence.push(...i.changes.evidence);
+  else reasons.push(...i.changes.reasons);
+  return reasons.length === 0 ? { ok: true, tier: i.changes.tier, reasons, evidence } : { ok: false, reasons, evidence };
+}
+function autoMergeComment(label, tier, head, evidence, by) {
+  return [
+    `Factory run for ${label}: auto-merged by tier ${tier} at ${head.slice(0, 12)} (${by}).`,
+    "",
+    "Every auto-merge condition held on this exact head:",
+    "",
+    ...evidence.map((e) => `- ${e}`),
+    "",
+    `factory.merge.auto in your user config turns this on per repository; add the ${MANUAL_MERGE_LABEL} label to keep a PR's merge human.`,
+    ""
+  ].join("\n");
+}
+var import_path108, AUTO_MERGE_TIERS, MANUAL_MERGE_LABEL, DEFAULT_SMALL_MAX_CHANGED_LINES, DEFAULT_SMALL_MAX_FILES, MAX_CAP, GLOB_KEYS, MAX_GLOBS, fold2, segments, DENIED_DIRS, GIT_HOOK_NAMES, HOOK_DIRS, SHIPPED_DIRS, DENIED_NAMES, DENIED_NAME_PATTERNS, rootRelative, ROOT_DOCS, DOCS_EXT, FRONTMATTER_CANDIDATE, isFrontmatterCandidate, canonicalSpelling, hasFrontmatter, LIFECYCLE_SCRIPT, SCRIPT_RUNNER, RUNNER_INSTALL, UNFOLLOWABLE, INTERPRETER, ELSEWHERE_FLAG, TEST_SKIP, TEST_FILE_SKIP, ASSERTION, patchPathIsTest, TEST_NAME, ROOT_TEST_DIRS, ANY_DEPTH_TEST_DIRS, TEST_DIR_FILE, TEST_RUNNER_CODE, looksLikeTest, plainMode, SMALL_TIER_DENIED, setupMatcher, oneLineOf, TEST_CONFIG_NAME, SETUP_KEY_NAMES, MORE_CONFIG_KEY, ALLOWED_IMPORT, IMPORT_SPECIFIER, DYNAMIC_LOAD, KEY_ALT, SETUP_KEYS, SETUP_KEY_WORD, LOADS_MORE, STRING, BENIGN_PARKS, PARK_NOTE;
+var init_auto_merge = __esm({
+  "src/factory/run/auto-merge.ts"() {
+    "use strict";
+    import_path108 = require("path");
+    init_config2();
+    init_merge2();
+    init_lane_commit();
+    AUTO_MERGE_TIERS = ["docs", "tests", "small"];
+    MANUAL_MERGE_LABEL = "factory:manual-merge";
+    DEFAULT_SMALL_MAX_CHANGED_LINES = 80;
+    DEFAULT_SMALL_MAX_FILES = 10;
+    MAX_CAP = 1e5;
+    GLOB_KEYS = ["docsDenied", "securityCritical"];
+    MAX_GLOBS = 200;
+    fold2 = (s) => s.normalize("NFKC").replace(new RegExp("\\p{Default_Ignorable_Code_Point}", "gu"), "").toUpperCase().toLowerCase().normalize("NFKC");
+    segments = (path15) => fold2(path15.replace(/\\/g, "/").trim()).split("/").map((s) => s.replace(/[. ]+$/, "")).filter((s) => s.length > 0);
+    DENIED_DIRS = /* @__PURE__ */ new Set([
+      ".github",
+      ".copilot",
+      ".omg",
+      ".omc",
+      ".claude",
+      ".vscode",
+      ".husky",
+      ".devcontainer",
+      ".circleci",
+      ".buildkite",
+      ".woodpecker",
+      ".azure-pipelines",
+      ".azuredevops",
+      ".pipelines",
+      ".gitlab",
+      ".idea",
+      ".cargo",
+      ".yarn",
+      "node_modules",
+      "skills",
+      "agents",
+      "commands",
+      "templates",
+      "prompts",
+      "instructions",
+      ".cursor",
+      ".gemini",
+      ".codex",
+      ".agents",
+      ".windsurf",
+      ".roo",
+      ".continue",
+      ".kiro",
+      ".clinerules",
+      ".aider",
+      ".vitepress",
+      ".docusaurus",
+      ".githooks",
+      "githooks",
+      "__mocks__",
+      ".omx",
+      ".junie",
+      ".amazonq",
+      ".trae",
+      ".opencode",
+      ".augment",
+      ".zed",
+      "memory-bank",
+      ".claude-plugin",
+      "missions"
+    ]);
+    GIT_HOOK_NAMES = /* @__PURE__ */ new Set([
+      "applypatch-msg",
+      "pre-applypatch",
+      "post-applypatch",
+      "pre-commit",
+      "pre-merge-commit",
+      "prepare-commit-msg",
+      "commit-msg",
+      "post-commit",
+      "pre-rebase",
+      "post-checkout",
+      "post-merge",
+      "pre-push",
+      "pre-receive",
+      "update",
+      "proc-receive",
+      "post-receive",
+      "post-update",
+      "reference-transaction",
+      "push-to-checkout",
+      "pre-auto-gc",
+      "post-rewrite",
+      "sendemail-validate",
+      "fsmonitor-watchman",
+      "post-index-change",
+      "p4-changelist",
+      "p4-prepare-changelist",
+      "p4-post-changelist",
+      "p4-pre-submit"
+    ]);
+    HOOK_DIRS = ["hooks/", "scripts/hooks/", "tools/hooks/", "git-hooks/", ".config/"];
+    SHIPPED_DIRS = ["bridge/", "dist/"];
+    DENIED_NAMES = /* @__PURE__ */ new Set([
+      "package.json",
+      "package-lock.json",
+      "npm-shrinkwrap.json",
+      "yarn.lock",
+      "pnpm-lock.yaml",
+      "pnpm-workspace.yaml",
+      "bun.lock",
+      "bun.lockb",
+      ".npmrc",
+      ".yarnrc",
+      ".yarnrc.yml",
+      ".pnpmfile.cjs",
+      ".nvmrc",
+      ".node-version",
+      ".tool-versions",
+      "cargo.toml",
+      "cargo.lock",
+      "go.mod",
+      "go.sum",
+      "go.work",
+      "go.work.sum",
+      "pyproject.toml",
+      "poetry.lock",
+      "pipfile",
+      "pipfile.lock",
+      "uv.lock",
+      "setup.py",
+      "setup.cfg",
+      "tox.ini",
+      "noxfile.py",
+      "conftest.py",
+      "gemfile",
+      "gemfile.lock",
+      "composer.json",
+      "composer.lock",
+      "pom.xml",
+      "build.gradle",
+      "build.gradle.kts",
+      "settings.gradle",
+      "settings.gradle.kts",
+      "gradle.properties",
+      "gradlew",
+      "gradlew.bat",
+      "directory.packages.props",
+      "directory.build.props",
+      "directory.build.targets",
+      "nuget.config",
+      "packages.lock.json",
+      "global.json",
+      "jsconfig.json",
+      ".babelrc",
+      ".editorconfig",
+      ".gitattributes",
+      ".gitmodules",
+      ".gitignore",
+      ".mailmap",
+      "dockerfile",
+      "compose.yaml",
+      "compose.yml",
+      "makefile",
+      "justfile",
+      "taskfile.yml",
+      "codeowners",
+      "cmakelists.txt",
+      "constraints.txt",
+      "agents.md",
+      "agent.md",
+      "claude.md",
+      "gemini.md",
+      "copilot-instructions.md",
+      "skill.md",
+      "omg.jsonc",
+      "claude.local.md",
+      "agents.override.md",
+      "warp.md",
+      "conventions.md",
+      "sandbox.md",
+      "mission.md",
+      "omc.jsonc",
+      "config.jsonc",
+      ".mcp.json",
+      ".cursorrules",
+      ".windsurfrules",
+      ".clinerules",
+      ".roorules",
+      ".goosehints",
+      ".aider.conf.yml",
+      "renovate.json",
+      "dependabot.yml",
+      "lefthook.yml",
+      ".pre-commit-config.yaml",
+      "jenkinsfile",
+      ".gitlab-ci.yml",
+      ".travis.yml",
+      "appveyor.yml",
+      ".appveyor.yml",
+      ".drone.yml",
+      "bitbucket-pipelines.yml",
+      ".woodpecker.yml",
+      "azure-pipelines.yml",
+      "azure-pipelines.yaml"
+    ]);
+    DENIED_NAME_PATTERNS = [
+      /^requirements.*\.(?:txt|in)$/,
+      /\.(?:csproj|fsproj|vbproj|sln|props|targets)$/,
+      /^tsconfig.*\.json$/,
+      /^\.eslintrc/,
+      /^eslint\.config\./,
+      /^\.prettierrc/,
+      /^prettier\.config\./,
+      /^\.stylelintrc/,
+      /(?:^|\.)config\.[cm]?[jt]sx?$/,
+      /^vitest\.(?:workspace|projects)\./,
+      /^\.env(?:\..*)?$/,
+      /^docker-compose.*\.ya?ml$/,
+      /^\.?dockerfile\./,
+      /\.(?:prompt|instructions|chatmode|agent)\.md$/,
+      /\.mdc$/
+    ];
+    rootRelative = (p) => p.replace(/\\/g, "/").trim().replace(/^(?:\.\/|\/)+/, "");
+    ROOT_DOCS = /^(?:readme|changelog|contributing)(?:[._-][^/]*)?\.(?:md|rst|txt)$/;
+    DOCS_EXT = /\.(?:md|rst|txt)$/;
+    FRONTMATTER_CANDIDATE = /\.(?:md|markdown|mdx|rst|mdc)$/i;
+    isFrontmatterCandidate = (path15) => FRONTMATTER_CANDIDATE.test(path15) || FRONTMATTER_CANDIDATE.test(segments(path15).join("/")) || isDocsPath(path15);
+    canonicalSpelling = (path15) => path15.split("/").every((s) => s === s.normalize("NFKC").replace(new RegExp("\\p{Default_Ignorable_Code_Point}", "gu"), "").replace(/[. ]+$/, "").trim());
+    hasFrontmatter = (text3) => /^\uFEFF?\s*(?:---|\+\+\+)/.test(text3);
+    LIFECYCLE_SCRIPT = /^(?:preinstall|install|postinstall|preprepare|prepare|postprepare|dependencies|prepublish\w*|prepack|postpack)$/;
+    SCRIPT_RUNNER = /^(?:npm|pnpm|yarn|bun)$/;
+    RUNNER_INSTALL = /^(?:install|i|ci)$/;
+    UNFOLLOWABLE = /^(?:npx|pnpx|bunx|run-s|run-p|npm-run-all2?|concurrently|wireit|turbo|nx|lerna|node-gyp|node-pre-gyp|prebuild-install|cmake-js)$/i;
+    INTERPRETER = /^(?:node|nodejs|tsx|ts-node(?:-esm)?|esno|deno|python[\d.]*|py|sh|bash|zsh|dash|pwsh|powershell|cmd|perl|ruby|php)(?:\.exe)?$/i;
+    ELSEWHERE_FLAG = /^(?:-w|-ws|--workspaces?(?:=.*)?|--prefix(?:=.*)?|-C|--dir(?:=.*)?|--cwd(?:=.*)?|--filter(?:=.*)?|-F|-r|--recursive)$/;
+    TEST_SKIP = [
+      /\.(?:skip|todo|only|skipIf|runIf|fails)\b|\bx(?:it|describe|test)\s*\(|\bf(?:it|describe)\s*\(|pytest\.mark\.(?:skip|xfail)|unittest\.skip|\bt\.Skip(?:Now|f)?\(/,
+      /\[\s*['"`](?:skip|todo|only|skipIf|runIf|fails)['"`]\s*\]/,
+      /\bskipTest\s*\(|\bpytest\.(?:skip|xfail)\s*\(/,
+      /\bif\s*\(\s*(?:false|0|null|undefined|!\s*(?:true|1|0|!\s*0))\s*\)/,
+      /\bexpect\.assertions\s*\(\s*0\s*\)/,
+      /\.each\s*\(\s*\[\s*\]\s*\)/,
+      /\bexpect\(\s*!*\s*(?:true|false|-?\d+(?:\.\d+)?|null|undefined|'[^']*'|"[^"]*"|`[^`$]*`)\s*\)/
+    ];
+    TEST_FILE_SKIP = [
+      /^\s*return\s*;?\s*(?:\/\/.*)?$/,
+      /\bexpect\(\s*([\w$.]+)\s*\)\s*\.\s*(?:toBe|toEqual|toStrictEqual)\s*\(\s*\1\s*\)/,
+      /\bassert\.(?:equal|strictEqual|deepEqual|deepStrictEqual)\s*\(\s*([\w$.]+)\s*,\s*\1\s*\)/
+    ];
+    ASSERTION = /\b(?:expect|assert\w*|should|self\.assert\w+|t\.(?:Errorf?|Fatalf?|Fail\w*)|require\.\w+)\s*[.(]|^\s*assert\s/;
+    patchPathIsTest = (path15) => path15.startsWith('"') || looksLikeTest(path15) || looksLikeTest(path15.replace(/^[^/]*\//, ""));
+    TEST_NAME = [/\.(?:test|spec)\.[cm]?[jt]sx?$/, /_test\.go$/, /^test_[^/]+\.py$/, /_test\.py$/, /(?:^|_)(?:test|spec)\.rb$/];
+    ROOT_TEST_DIRS = /* @__PURE__ */ new Set(["__tests__", "__snapshots__", "test", "tests", "spec"]);
+    ANY_DEPTH_TEST_DIRS = /* @__PURE__ */ new Set(["__tests__", "__snapshots__"]);
+    TEST_DIR_FILE = /\.(?:[cm]?[jt]sx?|py|go|rb|snap|json|txt|md)$/;
+    TEST_RUNNER_CODE = /setup|teardown|bench|env|report|sequenc|serial|resolv|transform|global|runner|preset/;
+    looksLikeTest = (path15) => isTestPath(path15) || segments(path15).some((s) => /(?:^|[._-])(?:tests?|specs?)(?:$|[._-])|__tests__/.test(s));
+    plainMode = (mode) => mode === "100644" || mode === "000000";
+    SMALL_TIER_DENIED = ["src/factory/", "src/ship/", "src/copilot-run/", "src/forge/"];
+    setupMatcher = (paths) => {
+      const want = new Set(paths.map((p) => segments(rootRelative(p.replace(/^<rootdir>\//i, ""))).join("/")).filter(Boolean));
+      return (path15) => {
+        const f = segments(path15).join("/");
+        return want.has(f) || want.has(f.replace(/\.[^./]+$/, ""));
+      };
+    };
+    oneLineOf = (s) => {
+      const t = s.trim().replace(/\s+/g, " ");
+      return t.length > 80 ? `${t.slice(0, 80)}...` : t;
+    };
+    TEST_CONFIG_NAME = /^(?:(?:vitest|vite|jest)(?:\.[\w-]+)*\.config\.(?:[cm]?[jt]s|json)|vitest\.(?:workspace|projects)\.(?:[cm]?[jt]s|json)|package\.json)$/i;
+    SETUP_KEY_NAMES = [
+      "setupFiles",
+      "setupFilesAfterEnv",
+      "globalSetup",
+      "globalTeardown",
+      "reporters",
+      "environment",
+      "testEnvironment",
+      "runner",
+      "testRunner",
+      "sequencer",
+      "testSequencer",
+      "snapshotSerializers",
+      "resolveSnapshotPath",
+      "snapshotResolver",
+      "transform",
+      "watchPlugins",
+      "preset",
+      "pool",
+      "checker",
+      "customProviderModule"
+    ];
+    MORE_CONFIG_KEY = /(?<![\w$])["']?(?:projects|workspace)(?![\w$])|(?<![\w$])["']?extends["']?\s*[:,}\]]/;
+    ALLOWED_IMPORT = /^(?:vitest|vite|vitest\/config|vitest\/node|node:[\w/]+|path|url|fs|os|module)$/;
+    IMPORT_SPECIFIER = /\b(?:from|import|require)\s*\(?\s*(['"])([^'"\n]*)\1/g;
+    DYNAMIC_LOAD = /\b(?:require|import)\s*\((?!\s*(['"])[^'"`$\n]*\1\s*\))/;
+    KEY_ALT = SETUP_KEY_NAMES.join("|");
+    SETUP_KEYS = new RegExp(`(?<![\\w$])["']?(${KEY_ALT})["']?\\s*:\\s*`, "g");
+    SETUP_KEY_WORD = new RegExp(`(?<![\\w$])(${KEY_ALT})(?![\\w$])`, "g");
+    LOADS_MORE = /\b(?:import|require)\s*\(?\s*['"`]\.{1,2}[\/\\]|\bfrom\s*['"`]\.{1,2}[\/\\]|\b(?:mergeConfig|defineWorkspace|defineProject)\b/;
+    STRING = /(['"`])((?:\\.|(?!\1)[^\\\n])*)\1/y;
+    BENIGN_PARKS = /* @__PURE__ */ new Set([
+      "merge",
+      "merge-conflicts",
+      "human-review",
+      "budget",
+      "wall-time",
+      "needs-plan",
+      "blocked-by",
+      "ci-failed",
+      "ci-flaky",
+      "gates",
+      "gates-timeout",
+      "fix-rounds-spent",
+      "base-changed",
+      "prepare-checks"
+    ]);
+    PARK_NOTE = /^awaiting-human: ([^:\s]+):/;
+  }
+});
+
 // src/forge/ado/az-binary.ts
 function pathEnv(env2, platform) {
   if (platform !== "win32") return env2.PATH ?? "";
@@ -53358,15 +53365,15 @@ function searchable(dir, deps, roots) {
   if (dir.slice(3).split(/[\\/]+/).some((s) => s.endsWith(".") || s.endsWith(" "))) return void 0;
   const resolved = real(deps, dir);
   if (resolved === void 0 || !/^[A-Za-z]:[\\/]/.test(resolved)) return void 0;
-  return trustedPath(resolved, roots) ? import_path108.win32.resolve(resolved) : void 0;
+  return trustedPath(resolved, roots) ? import_path109.win32.resolve(resolved) : void 0;
 }
 function resolvePosixAz(deps, given) {
-  const roots = given.flatMap((r) => [import_path108.posix.resolve(r), real(deps, r)].filter((x) => x !== void 0));
+  const roots = given.flatMap((r) => [import_path109.posix.resolve(r), real(deps, r)].filter((x) => x !== void 0));
   for (const dir of (deps.env.PATH ?? "").split(":")) {
     if (!dir.startsWith("/") || dir.split("/").some((s) => s === "." || s === "..")) continue;
     const realDir2 = real(deps, dir);
     if (realDir2 === void 0 || !posixTrusted(realDir2, roots)) continue;
-    const candidate = import_path108.posix.join(realDir2, "az");
+    const candidate = import_path109.posix.join(realDir2, "az");
     if (!deps.isFile(candidate)) continue;
     const realAz = real(deps, candidate);
     if (realAz === void 0 || !realAz.startsWith("/") || !posixTrusted(realAz, roots)) continue;
@@ -53378,17 +53385,17 @@ function resolveAzEntry(deps) {
   const given = deps.untrustedRoots.filter((r) => r.trim() !== "");
   if (given.length === 0) throw new AzBinaryError("Azure CLI resolution needs the repository, worktree, lane and job roots (untrustedRoots)");
   if (deps.platform !== "win32") return resolvePosixAz(deps, given);
-  const roots = given.flatMap((r) => [import_path108.win32.resolve(r), real(deps, r)].filter((x) => x !== void 0));
+  const roots = given.flatMap((r) => [import_path109.win32.resolve(r), real(deps, r)].filter((x) => x !== void 0));
   const dirs = pathEnv(deps.env, deps.platform).split(";").map((d) => d.trim().replace(/^"(.*)"$/, "$1")).filter((d) => d !== "").map((d) => searchable(d, deps, roots)).filter((d) => d !== void 0);
-  const azCmd = dirs.map((d) => import_path108.win32.join(d, "az.cmd")).find((p) => deps.isFile(p));
+  const azCmd = dirs.map((d) => import_path109.win32.join(d, "az.cmd")).find((p) => deps.isFile(p));
   if (!azCmd) {
     throw new AzBinaryError(
       "Azure CLI not found: no az.cmd on a drive-absolute PATH entry outside node_modules and the repository, lane and job roots. Install it with the MSI (https://aka.ms/installazurecliwindows)."
     );
   }
-  const python = import_path108.win32.resolve(import_path108.win32.dirname(azCmd), "..", "python.exe");
-  const cliPackage = import_path108.win32.resolve(import_path108.win32.dirname(azCmd), "..", "Lib", "site-packages", "azure", "cli");
-  if (!deps.isFile(python) || !(deps.isFile(import_path108.win32.join(cliPackage, "__main__.py")) || deps.isFile(import_path108.win32.join(cliPackage, "__main__.pyc")))) {
+  const python = import_path109.win32.resolve(import_path109.win32.dirname(azCmd), "..", "python.exe");
+  const cliPackage = import_path109.win32.resolve(import_path109.win32.dirname(azCmd), "..", "Lib", "site-packages", "azure", "cli");
+  if (!deps.isFile(python) || !(deps.isFile(import_path109.win32.join(cliPackage, "__main__.py")) || deps.isFile(import_path109.win32.join(cliPackage, "__main__.pyc")))) {
     throw new AzBinaryError(
       `Azure CLI at ${azCmd} has no bundled ${python} with ${cliPackage} (not the MSI layout). omg runs az through that python, never through cmd.exe; reinstall the Azure CLI with the MSI (https://aka.ms/installazurecliwindows).`
     );
@@ -53399,11 +53406,11 @@ function resolveAzEntry(deps) {
   }
   return { command: python, prefix: AZ_PYTHON_PREFIX, env: { AZ_INSTALLER: "MSI" } };
 }
-var import_path108, AZ_PYTHON_PREFIX, AzBinaryError, fold2, within, trustedPath, posixWithin, posixTrusted;
+var import_path109, AZ_PYTHON_PREFIX, AzBinaryError, fold3, within, trustedPath, posixWithin, posixTrusted;
 var init_az_binary = __esm({
   "src/forge/ado/az-binary.ts"() {
     "use strict";
-    import_path108 = require("path");
+    import_path109 = require("path");
     AZ_PYTHON_PREFIX = Object.freeze(["-IBm", "azure.cli"]);
     AzBinaryError = class extends Error {
       constructor(message) {
@@ -53411,14 +53418,14 @@ var init_az_binary = __esm({
         this.name = "AzBinaryError";
       }
     };
-    fold2 = (p) => import_path108.win32.resolve(p).replace(/[\\/]+$/, "").toLowerCase();
+    fold3 = (p) => import_path109.win32.resolve(p).replace(/[\\/]+$/, "").toLowerCase();
     within = (dir, root) => {
-      const d = fold2(dir), r = fold2(root);
+      const d = fold3(dir), r = fold3(root);
       return d === r || d.startsWith(`${r}\\`);
     };
-    trustedPath = (path15, roots) => !import_path108.win32.resolve(path15).split("\\").some((s) => s.toLowerCase() === "node_modules") && !roots.some((root) => within(path15, root));
+    trustedPath = (path15, roots) => !import_path109.win32.resolve(path15).split("\\").some((s) => s.toLowerCase() === "node_modules") && !roots.some((root) => within(path15, root));
     posixWithin = (path15, root) => {
-      const p = import_path108.posix.resolve(path15), r = import_path108.posix.resolve(root);
+      const p = import_path109.posix.resolve(path15), r = import_path109.posix.resolve(root);
       return p === r || p.startsWith(r === "/" ? "/" : `${r}/`);
     };
     posixTrusted = (path15, roots) => !path15.split("/").includes("node_modules") && !roots.some((root) => posixWithin(path15, root));
@@ -53628,7 +53635,7 @@ var init_checks3 = __esm({
 function ofRepo(build, ctx) {
   const repository = isObject3(build.repository) ? build.repository : {};
   const name = str4(repository.name);
-  return repository.type === "TfsGit" && name !== void 0 && fold3(name) === fold3(ctx.repo.name);
+  return repository.type === "TfsGit" && name !== void 0 && fold4(name) === fold4(ctx.repo.name);
 }
 function prHead(build) {
   const { triggerSha, parameterSha } = buildHeadFields(build);
@@ -53708,7 +53715,7 @@ function adoCi(ctx, pipeline) {
     rerunIntent: (runId) => `Rerun failed jobs on ${adoBuildUrl(ctx.repo, runId)}`
   };
 }
-var BUILD_ID, HEX4013, JOB_ID2, PUSH_REASONS, JOB_CONCLUSION, branchName, sameId, byOrder, fold3;
+var BUILD_ID, HEX4013, JOB_ID2, PUSH_REASONS, JOB_CONCLUSION, branchName, sameId, byOrder, fold4;
 var init_ci = __esm({
   "src/forge/ado/ci.ts"() {
     "use strict";
@@ -53730,7 +53737,7 @@ var init_ci = __esm({
     branchName = (ref) => ref?.startsWith("refs/heads/") ? ref.slice("refs/heads/".length) : void 0;
     sameId = (a, b) => typeof a === "string" && typeof b === "string" && a.toLowerCase() === b.toLowerCase();
     byOrder = (a, b) => Number(a.order ?? 0) - Number(b.order ?? 0);
-    fold3 = (s) => s.replace(/[A-Z]/g, (c) => c.toLowerCase());
+    fold4 = (s) => s.replace(/[A-Z]/g, (c) => c.toLowerCase());
   }
 });
 
@@ -53748,14 +53755,14 @@ function mergeBodyDirProblem(dir, platform = process.platform) {
   return void 0;
 }
 function writeBody(ctx, o, pr, headSha) {
-  if (!(0, import_path109.isAbsolute)(o.stateDir)) throw new Error(`merge body directory ${o.stateDir} is not absolute`);
+  if (!(0, import_path110.isAbsolute)(o.stateDir)) throw new Error(`merge body directory ${o.stateDir} is not absolute`);
   (0, import_fs91.mkdirSync)(o.stateDir, { recursive: true, mode: 448 });
   const dir = realOr2(o.stateDir);
   const root = o.untrustedRoots.find((r) => r.trim() !== "" && under2(dir, r));
   if (root) throw new Error(`merge body directory ${dir} is under the untrusted root ${root}`);
   const problem = mergeBodyDirProblem(dir);
   if (problem) throw new Error(problem);
-  const path15 = (0, import_path109.join)(dir, fileSafe(`ado-merge-${ctx.repo.owner}-${ctx.repo.project}-${ctx.repo.name}-pr-${pr}-${headSha.slice(0, 12)}.json`));
+  const path15 = (0, import_path110.join)(dir, fileSafe(`ado-merge-${ctx.repo.owner}-${ctx.repo.project}-${ctx.repo.name}-pr-${pr}-${headSha.slice(0, 12)}.json`));
   const content = `${JSON.stringify(adoMergeBody(headSha), null, 2)}
 `;
   (0, import_fs91.rmSync)(path15, { force: true });
@@ -53788,13 +53795,13 @@ function adoMerge(ctx, o) {
     }
   };
 }
-var import_crypto27, import_fs91, import_path109, SATISFIED, realOr2, under2, fileSafe;
+var import_crypto27, import_fs91, import_path110, SATISFIED, realOr2, under2, fileSafe;
 var init_merge4 = __esm({
   "src/forge/ado/merge.ts"() {
     "use strict";
     import_crypto27 = require("crypto");
     import_fs91 = require("fs");
-    import_path109 = require("path");
+    import_path110 = require("path");
     init_checks3();
     init_invoke();
     init_reviews();
@@ -53803,12 +53810,12 @@ var init_merge4 = __esm({
       try {
         return import_fs91.realpathSync.native(p);
       } catch {
-        return (0, import_path109.resolve)(p);
+        return (0, import_path110.resolve)(p);
       }
     };
     under2 = (path15, root) => {
-      const rel = (0, import_path109.relative)(realOr2(root), path15);
-      return rel === "" || !rel.startsWith("..") && !(0, import_path109.isAbsolute)(rel);
+      const rel = (0, import_path110.relative)(realOr2(root), path15);
+      return rel === "" || !rel.startsWith("..") && !(0, import_path110.isAbsolute)(rel);
     };
     fileSafe = (s) => s.replace(/[^A-Za-z0-9._-]+/g, "_");
   }
@@ -53844,18 +53851,18 @@ function recordingAdoExec(exec, dir, now = () => /* @__PURE__ */ new Date()) {
       ...requestBody !== void 0 ? { requestBody } : {}
     };
     (0, import_fs92.mkdirSync)(dir, { recursive: true });
-    (0, import_fs92.writeFileSync)((0, import_path110.join)(dir, `${inv.route.id}.${(0, import_crypto28.createHash)("sha256").update(key).digest("hex").slice(0, 10)}.json`), `${JSON.stringify(fixture, null, 2)}
+    (0, import_fs92.writeFileSync)((0, import_path111.join)(dir, `${inv.route.id}.${(0, import_crypto28.createHash)("sha256").update(key).digest("hex").slice(0, 10)}.json`), `${JSON.stringify(fixture, null, 2)}
 `, "utf8");
     return res;
   };
 }
-var import_crypto28, import_fs92, import_path110, ADO_RECORD_ENV, parseMaybe;
+var import_crypto28, import_fs92, import_path111, ADO_RECORD_ENV, parseMaybe;
 var init_record = __esm({
   "src/forge/ado/record.ts"() {
     "use strict";
     import_crypto28 = require("crypto");
     import_fs92 = require("fs");
-    import_path110 = require("path");
+    import_path111 = require("path");
     init_az_binary();
     init_guard();
     init_redact2();
@@ -54285,19 +54292,19 @@ function createAzureDevOpsForge(exec, cwd, config2, options) {
     tracker: adoTracker(ctx, config2.intake.source, options.trackerBodyDir),
     reviews: adoReviews(ctx, { trustedReviewers: config2.review?.trustedReviewers ?? [] }),
     checks: adoChecks(ctx),
-    merge: adoMerge(ctx, { stateDir: options.stateDir ?? (0, import_path111.join)((0, import_os20.homedir)(), ".omg", "forge"), untrustedRoots }),
+    merge: adoMerge(ctx, { stateDir: options.stateDir ?? (0, import_path112.join)((0, import_os20.homedir)(), ".omg", "forge"), untrustedRoots }),
     ...pipeline ? { ci: adoCi(ctx, pipeline) } : {},
     // Heal needs to know which pipeline is CI: only a trusted factory.heal.pipeline names it.
     capabilities: { heal: pipeline !== void 0, projectsV2: false, boardColumns: true, webhookIntake: false }
   };
 }
-var import_fs94, import_os20, import_path111, progressValues, progressStates, progressColumns;
+var import_fs94, import_os20, import_path112, progressValues, progressStates, progressColumns;
 var init_ado = __esm({
   "src/forge/ado/index.ts"() {
     "use strict";
     import_fs94 = require("fs");
     import_os20 = require("os");
-    import_path111 = require("path");
+    import_path112 = require("path");
     init_az_binary();
     init_checks3();
     init_ci();
@@ -54895,7 +54902,7 @@ function resolveLocalGateArgv(argv, o) {
   const exists = o.exists ?? import_fs95.existsSync;
   const what = o.subject ?? "the local gate";
   const key = o.configKey ?? "factory.forge.local.gate";
-  const P = platform === "win32" ? import_path112.win32 : import_path112.posix;
+  const P = platform === "win32" ? import_path113.win32 : import_path113.posix;
   const [cmd, ...args] = argv;
   if (!cmd) return { missing: `${what} argv is empty` };
   const hasPath = /[\\/]/.test(cmd) || platform === "win32" && cmd.includes(":");
@@ -55032,7 +55039,7 @@ async function runLocalGate(i) {
   writeLocalCheckRecord(i.stateDir, i.root, base);
   if (i.mode === "enforced") return runSandboxedGate(i, base, now);
   const procs = gateProcsPath(i.stateDir, i.root, i.head);
-  await sweepGateProcs((0, import_path112.dirname)(procs)).catch(() => void 0);
+  await sweepGateProcs((0, import_path113.dirname)(procs)).catch(() => void 0);
   await reapGateProcs(procs).catch(() => void 0);
   let r;
   try {
@@ -55078,7 +55085,7 @@ async function runSandboxedGate(i, base, now) {
   }
   if (!r.ran) {
     drop();
-    return { started: false, reason: r.reason, sandbox: true, ...r.started ? { noVerdict: true } : {}, ...r.refused ? { refused: true } : {}, ...r.unavailable ? { unavailable: true } : {} };
+    return { started: false, reason: r.reason, sandbox: true, ...r.started ? { noVerdict: true } : {}, ...r.refused ? { refused: true } : {} };
   }
   const output = `${r.output}${r.timedOut ? `
 local gate timed out after ${i.timeoutMinutes} min` : ""}`;
@@ -55094,8 +55101,8 @@ local gate timed out after ${i.timeoutMinutes} min` : ""}`;
   return { started: true, record: done };
 }
 function repoPath(p) {
-  if (import_path112.posix.isAbsolute(p) || import_path112.win32.isAbsolute(p) || /^[a-z]:/i.test(p)) return void 0;
-  const norm2 = import_path112.posix.normalize(p.replace(/\\/g, "/"));
+  if (import_path113.posix.isAbsolute(p) || import_path113.win32.isAbsolute(p) || /^[a-z]:/i.test(p)) return void 0;
+  const norm2 = import_path113.posix.normalize(p.replace(/\\/g, "/"));
   return norm2 === "." || norm2.startsWith("../") || norm2 === ".." ? void 0 : norm2;
 }
 function scriptSource(manager2, args, shown) {
@@ -55117,7 +55124,7 @@ function scriptSource(manager2, args, shown) {
     else if (VALUE_FLAGS.has(flag)) value = args[++i];
     if (WORKSPACE_FLAGS.has(flag)) return { sources: [], unresolved: `${shown} selects workspace packages (${flag}), so the script's package.json is not known` };
     if (DIR_FLAGS.has(flag)) {
-      const p = value === void 0 ? void 0 : /^\.\/?$/.test(import_path112.posix.normalize(value.replace(/\\/g, "/"))) ? "" : repoPath(value)?.replace(/\/+$/, "");
+      const p = value === void 0 ? void 0 : /^\.\/?$/.test(import_path113.posix.normalize(value.replace(/\\/g, "/"))) ? "" : repoPath(value)?.replace(/\/+$/, "");
       if (p === void 0) return { sources: [], unresolved: `${shown} runs in ${JSON.stringify(value ?? "")}, which is not a directory inside the repository` };
       dir = p;
     } else if ((CONFIG_FLAGS.has(flag) || flag === "--script-shell") && value !== void 0) {
@@ -55183,14 +55190,14 @@ function gateDefinition(sources, read) {
     return [s.path, s.scripts.map((k) => [k, Object.prototype.hasOwnProperty.call(scripts, k) ? scripts[k] : null])];
   }));
 }
-var import_child_process23, import_fs95, import_os21, import_path112, LOCAL_GATE_TAIL_CHARS, LOCAL_GATE_STALE_GRACE_MS, STREAM_KEEP_CHARS, KILL_DEADLINE_MS, EXIT_DRAIN_MS, NODE_SCRIPTS2, npmCliHint, keepTail, defaultLocalGateRunner, realOrResolved, isLink2, runIdAt, tailOf, NPM_TEST, NPM_RUN, PM_CONFIG_FILES, DIR_FLAGS, CONFIG_FLAGS, WORKSPACE_FLAGS, PM_NON_SCRIPT, VALUE_FLAGS, npxUnresolved, describeGateSources;
+var import_child_process23, import_fs95, import_os21, import_path113, LOCAL_GATE_TAIL_CHARS, LOCAL_GATE_STALE_GRACE_MS, STREAM_KEEP_CHARS, KILL_DEADLINE_MS, EXIT_DRAIN_MS, NODE_SCRIPTS2, npmCliHint, keepTail, defaultLocalGateRunner, realOrResolved, isLink2, runIdAt, tailOf, NPM_TEST, NPM_RUN, PM_CONFIG_FILES, DIR_FLAGS, CONFIG_FLAGS, WORKSPACE_FLAGS, PM_NON_SCRIPT, VALUE_FLAGS, npxUnresolved, describeGateSources;
 var init_local_gate = __esm({
   "src/factory/run/local-gate.ts"() {
     "use strict";
     import_child_process23 = require("child_process");
     import_fs95 = require("fs");
     import_os21 = require("os");
-    import_path112 = require("path");
+    import_path113 = require("path");
     init_local();
     init_process_utils();
     init_windows_search();
@@ -55218,7 +55225,7 @@ var init_local_gate = __esm({
       const target = resolveLocalGateArgv(argv, { cwd });
       if ("missing" in target) return { status: 127, stdout: "", stderr: "", timedOut: false, startError: target.missing };
       const exe = resolveBareExe(target.exe) ?? target.exe;
-      const home = (0, import_fs95.mkdtempSync)((0, import_path112.join)((0, import_os21.tmpdir)(), "omg-gate-home-"));
+      const home = (0, import_fs95.mkdtempSync)((0, import_path113.join)((0, import_os21.tmpdir)(), "omg-gate-home-"));
       try {
         return await runOwned(exe, target.args, cwd, childEnv(gateEnv(process.env, home)), timeoutMs, track);
       } finally {
@@ -55232,7 +55239,7 @@ var init_local_gate = __esm({
       try {
         return import_fs95.realpathSync.native(p);
       } catch {
-        return (0, import_path112.resolve)(p);
+        return (0, import_path113.resolve)(p);
       }
     };
     isLink2 = (p) => {
@@ -55482,39 +55489,39 @@ function parseProcStat(stat) {
 }
 function listLinux() {
   const rows = [];
-  for (const name of (0, import_node_fs15.readdirSync)("/proc")) {
+  for (const name of (0, import_node_fs14.readdirSync)("/proc")) {
     if (!/^\d+$/.test(name)) continue;
     let stat = null;
     try {
-      stat = parseProcStat((0, import_node_fs15.readFileSync)(`/proc/${name}/stat`, "utf8"));
+      stat = parseProcStat((0, import_node_fs14.readFileSync)(`/proc/${name}/stat`, "utf8"));
     } catch {
       continue;
     }
     if (!stat) continue;
     let cwd = null;
     try {
-      cwd = (0, import_node_fs15.readlinkSync)(`/proc/${name}/cwd`);
+      cwd = (0, import_node_fs14.readlinkSync)(`/proc/${name}/cwd`);
     } catch {
     }
     rows.push({ pid: Number(name), ...stat, cwd });
   }
   return rows;
 }
-var import_node_child_process6, import_node_fs15, import_node_path16, import_node_util, execFileAsync6, LANE_PROCS_QUERY_TIMEOUT_MS, KILL_DEADLINE_MS2, under3, WIN_QUERY, defaultLaneProcsDeps;
+var import_node_child_process5, import_node_fs14, import_node_path15, import_node_util, execFileAsync6, LANE_PROCS_QUERY_TIMEOUT_MS, KILL_DEADLINE_MS2, under3, WIN_QUERY, defaultLaneProcsDeps;
 var init_lane_procs = __esm({
   "src/factory/run/lane-procs.ts"() {
     "use strict";
-    import_node_child_process6 = require("node:child_process");
-    import_node_fs15 = require("node:fs");
-    import_node_path16 = require("node:path");
+    import_node_child_process5 = require("node:child_process");
+    import_node_fs14 = require("node:fs");
+    import_node_path15 = require("node:path");
     import_node_util = require("node:util");
     init_process_utils();
-    execFileAsync6 = (0, import_node_util.promisify)(import_node_child_process6.execFile);
+    execFileAsync6 = (0, import_node_util.promisify)(import_node_child_process5.execFile);
     LANE_PROCS_QUERY_TIMEOUT_MS = 1e4;
     KILL_DEADLINE_MS2 = 1e4;
     under3 = (dir, path15) => {
-      const r = (0, import_node_path16.relative)((0, import_node_path16.resolve)(dir), (0, import_node_path16.resolve)(path15));
-      return r === "" || !r.startsWith("..") && !(0, import_node_path16.isAbsolute)(r);
+      const r = (0, import_node_path15.relative)((0, import_node_path15.resolve)(dir), (0, import_node_path15.resolve)(path15));
+      return r === "" || !r.startsWith("..") && !(0, import_node_path15.isAbsolute)(r);
     };
     WIN_QUERY = `Get-CimInstance Win32_Process -Property ProcessId,ParentProcessId,CreationDate -ErrorAction Stop | ForEach-Object { $c = if ($_.CreationDate) { ([DateTime]$_.CreationDate).ToUniversalTime().Ticks } else { '-' }; "$($_.ProcessId) $($_.ParentProcessId) $c" }`;
     defaultLaneProcsDeps = {
@@ -55557,8 +55564,8 @@ function benignChange(key, was, now) {
 }
 function configEntries(bytes, tmp) {
   if (bytes === null) return [];
-  const file = (0, import_node_path17.join)(tmp, `cfg-${Math.random().toString(36).slice(2)}`);
-  (0, import_node_fs16.writeFileSync)(file, bytes);
+  const file = (0, import_node_path16.join)(tmp, `cfg-${Math.random().toString(36).slice(2)}`);
+  (0, import_node_fs15.writeFileSync)(file, bytes);
   try {
     const out = runHostGit(tmp, ["config", "--file", file, "--null", "--list"], 3e4);
     return out.split("\0").filter(Boolean).map((e) => {
@@ -55569,7 +55576,7 @@ function configEntries(bytes, tmp) {
     return null;
   } finally {
     try {
-      (0, import_node_fs16.unlinkSync)(file);
+      (0, import_node_fs15.unlinkSync)(file);
     } catch {
     }
   }
@@ -55586,8 +55593,8 @@ function changedKeys(before, after, tmp) {
 function putKeysBack(current, old, keys, tmp) {
   const entries = configEntries(old, tmp);
   if (!entries) return null;
-  const file = (0, import_node_path17.join)(tmp, `merge-${Math.random().toString(36).slice(2)}`);
-  (0, import_node_fs16.writeFileSync)(file, current);
+  const file = (0, import_node_path16.join)(tmp, `merge-${Math.random().toString(36).slice(2)}`);
+  (0, import_node_fs15.writeFileSync)(file, current);
   try {
     for (const key of keys) {
       const values = entries.filter(([k]) => k === key).map(([, v]) => v);
@@ -55599,12 +55606,12 @@ function putKeysBack(current, old, keys, tmp) {
       }
       for (const v of values) runHostGit(tmp, ["config", "--file", file, "--add", key, v], 3e4);
     }
-    return (0, import_node_fs16.readFileSync)(file);
+    return (0, import_node_fs15.readFileSync)(file);
   } catch {
     return null;
   } finally {
     try {
-      (0, import_node_fs16.unlinkSync)(file);
+      (0, import_node_fs15.unlinkSync)(file);
     } catch {
     }
   }
@@ -55618,12 +55625,12 @@ function assertParentsReal(common, rel) {
   const segs = rel.split("/").slice(0, -1);
   let dir = common;
   for (const s of segs) {
-    dir = (0, import_node_path17.join)(dir, s);
+    dir = (0, import_node_path16.join)(dir, s);
     let st;
     try {
-      st = (0, import_node_fs16.lstatSync)(dir);
+      st = (0, import_node_fs15.lstatSync)(dir);
     } catch {
-      (0, import_node_fs16.mkdirSync)(dir);
+      (0, import_node_fs15.mkdirSync)(dir);
       continue;
     }
     if (st.isSymbolicLink() || !st.isDirectory()) throw new Error(`${dir} is not a real directory`);
@@ -55633,7 +55640,7 @@ function restoreConfigLocked(abs, compute) {
   const lock = `${abs}.lock`;
   let fd;
   try {
-    fd = (0, import_node_fs16.openSync)(lock, "wx", 420);
+    fd = (0, import_node_fs15.openSync)(lock, "wx", 420);
   } catch (error2) {
     if (error2.code === "EEXIST") throw new Error(CONFIG_LOCKED);
     throw error2;
@@ -55641,55 +55648,55 @@ function restoreConfigLocked(abs, compute) {
   try {
     let locked = null;
     try {
-      locked = (0, import_node_fs16.readFileSync)(abs);
+      locked = (0, import_node_fs15.readFileSync)(abs);
     } catch (error2) {
       if (error2.code !== "ENOENT") throw error2;
     }
     const out = compute(locked);
     if (out === null) {
-      (0, import_node_fs16.closeSync)(fd);
+      (0, import_node_fs15.closeSync)(fd);
       fd = void 0;
-      if (locked !== null) (0, import_node_fs16.unlinkSync)(abs);
-      (0, import_node_fs16.unlinkSync)(lock);
+      if (locked !== null) (0, import_node_fs15.unlinkSync)(abs);
+      (0, import_node_fs15.unlinkSync)(lock);
       return;
     }
-    (0, import_node_fs16.writeSync)(fd, out);
-    (0, import_node_fs16.fsyncSync)(fd);
-    (0, import_node_fs16.closeSync)(fd);
+    (0, import_node_fs15.writeSync)(fd, out);
+    (0, import_node_fs15.fsyncSync)(fd);
+    (0, import_node_fs15.closeSync)(fd);
     fd = void 0;
-    (0, import_node_fs16.renameSync)(lock, abs);
+    (0, import_node_fs15.renameSync)(lock, abs);
   } catch (error2) {
     if (fd !== void 0) {
       try {
-        (0, import_node_fs16.closeSync)(fd);
+        (0, import_node_fs15.closeSync)(fd);
       } catch {
       }
     }
     try {
-      (0, import_node_fs16.unlinkSync)(lock);
+      (0, import_node_fs15.unlinkSync)(lock);
     } catch {
     }
     throw error2;
   }
 }
 function atomicRestore(abs, bytes, exec) {
-  if ((0, import_node_fs16.existsSync)(`${abs}.lock`)) throw new Error(`${(0, import_node_path17.basename)(abs)}.lock exists (a git command is writing it), so it was not restored`);
+  if ((0, import_node_fs15.existsSync)(`${abs}.lock`)) throw new Error(`${(0, import_node_path16.basename)(abs)}.lock exists (a git command is writing it), so it was not restored`);
   let st;
   try {
-    st = (0, import_node_fs16.lstatSync)(abs);
+    st = (0, import_node_fs15.lstatSync)(abs);
   } catch {
     st = void 0;
   }
-  if (st?.isDirectory()) (0, import_node_fs16.rmdirSync)(abs);
+  if (st?.isDirectory()) (0, import_node_fs15.rmdirSync)(abs);
   else if (st?.isSymbolicLink()) removeEntry(abs);
   const tmp = `${abs}.omg-restore-${Math.random().toString(36).slice(2)}`;
-  (0, import_node_fs16.writeFileSync)(tmp, bytes, { mode: exec ? 493 : 420, flag: "wx" });
+  (0, import_node_fs15.writeFileSync)(tmp, bytes, { mode: exec ? 493 : 420, flag: "wx" });
   try {
-    if (exec) (0, import_node_fs16.chmodSync)(tmp, 493);
-    (0, import_node_fs16.renameSync)(tmp, abs);
+    if (exec) (0, import_node_fs15.chmodSync)(tmp, 493);
+    (0, import_node_fs15.renameSync)(tmp, abs);
   } catch (error2) {
     try {
-      (0, import_node_fs16.unlinkSync)(tmp);
+      (0, import_node_fs15.unlinkSync)(tmp);
     } catch {
     }
     throw error2;
@@ -55697,17 +55704,17 @@ function atomicRestore(abs, bytes, exec) {
 }
 function removeEntry(abs) {
   try {
-    (0, import_node_fs16.unlinkSync)(abs);
+    (0, import_node_fs15.unlinkSync)(abs);
   } catch (error2) {
     const code = error2.code;
-    if (code !== "EPERM" && code !== "EISDIR" || !(0, import_node_fs16.lstatSync)(abs).isSymbolicLink()) throw error2;
-    (0, import_node_fs16.rmdirSync)(abs);
+    if (code !== "EPERM" && code !== "EISDIR" || !(0, import_node_fs15.lstatSync)(abs).isSymbolicLink()) throw error2;
+    (0, import_node_fs15.rmdirSync)(abs);
   }
 }
 function asideName(abs) {
   for (let n = 0; ; n++) {
     const p = `${abs}.omg-quarantined${n ? `-${n}` : ""}`;
-    if (!(0, import_node_fs16.existsSync)(p)) return p;
+    if (!(0, import_node_fs15.existsSync)(p)) return p;
   }
 }
 function problemStatus(p, touched, before, after) {
@@ -55724,7 +55731,7 @@ function problemStatus(p, touched, before, after) {
   m = /^submodule git dir (modules\/.+) was removed$/.exec(p);
   if (m) return "ok";
   m = /^submodule git dir (modules\/.+) was added$/.exec(p) ?? /^(modules\/.+) changed \(config, hooks, info or alternates\)$/.exec(p);
-  if (m) return touched(`${m[1]}/`) && !(0, import_node_fs16.existsSync)((0, import_node_path17.join)(before.commonDir, ...m[1].split("/"), "objects", "info", "alternates")) ? "ok" : "unhandled";
+  if (m) return touched(`${m[1]}/`) && !(0, import_node_fs15.existsSync)((0, import_node_path16.join)(before.commonDir, ...m[1].split("/"), "objects", "info", "alternates")) ? "ok" : "unhandled";
   m = /^worktree entry worktrees\/([^/]+) was added$/.exec(p);
   if (m) return after?.worktrees?.[m[1]]?.commondir === "../.." ? "ok" : "unhandled";
   if (/^worktree entry worktrees\/[^/]+ was removed or is no longer a directory$/.test(p)) return "ok";
@@ -55744,15 +55751,15 @@ function advice(p, common) {
   return `inspect it in ${common} and remove what you did not add`;
 }
 function quarantineTamper(i) {
-  const hold = { root: (0, import_node_path17.resolve)(i.root), at: i.at, run: i.run, gate: i.gate, moved: [], restored: [], notRestored: [], refs: [], kept: [], active: [], undo: [] };
+  const hold = { root: (0, import_node_path16.resolve)(i.root), at: i.at, run: i.run, gate: i.gate, moved: [], restored: [], notRestored: [], refs: [], kept: [], active: [], undo: [] };
   const common = i.before.commonDir;
   const kept = i.before.restore;
   const touchedRels = [];
   const failedRels = /* @__PURE__ */ new Set();
-  const dir = (0, import_node_path17.join)(i.ledgerDir, "quarantine", repoKey(i.root), `${i.at.replace(/[:.]/g, "-")}${i.label ? `-${i.label.replace(/[^A-Za-z0-9._-]/g, "_")}` : ""}`);
+  const dir = (0, import_node_path16.join)(i.ledgerDir, "quarantine", repoKey(i.root), `${i.at.replace(/[:.]/g, "-")}${i.label ? `-${i.label.replace(/[^A-Za-z0-9._-]/g, "_")}` : ""}`);
   const quarantine = () => {
     if (!hold.quarantine) {
-      (0, import_node_fs16.mkdirSync)(dir, { recursive: true, mode: 448 });
+      (0, import_node_fs15.mkdirSync)(dir, { recursive: true, mode: 448 });
       hold.quarantine = dir;
     }
     return dir;
@@ -55768,9 +55775,9 @@ function quarantineTamper(i) {
     }
     if (now) {
       let handleItem2 = function(rel, was, is) {
-        const abs = (0, import_node_path17.join)(common, ...rel.split("/"));
+        const abs = (0, import_node_path16.join)(common, ...rel.split("/"));
         const owner = ownerOf2(rel);
-        if (owner && !realDir((0, import_node_path17.join)(common, ...owner.split("/")))) {
+        if (owner && !realDir((0, import_node_path16.join)(common, ...owner.split("/")))) {
           hold.kept.push(`${rel} (its git dir ${owner} is gone; nothing was recreated)`);
           return false;
         }
@@ -55778,7 +55785,7 @@ function quarantineTamper(i) {
         if (isConfigRel(rel) && (was === void 0 || old !== null) && (is?.startsWith("b64") ?? false)) {
           const current = decode(is);
           quarantine();
-          (0, import_node_fs16.mkdirSync)(tmp, { recursive: true });
+          (0, import_node_fs15.mkdirSync)(tmp, { recursive: true });
           const diff = changedKeys(old, current, tmp);
           if (diff !== null) {
             const { keys, held: program2 } = diff;
@@ -55798,7 +55805,7 @@ function quarantineTamper(i) {
             let exact = false;
             restoreConfigLocked(abs, (locked) => {
               if (locked === null) return old;
-              if (!locked.equals(current)) (0, import_node_fs16.writeFileSync)(to, locked);
+              if (!locked.equals(current)) (0, import_node_fs15.writeFileSync)(to, locked);
               const keysNow = changedKeys(old, locked, tmp);
               if (keysNow !== null) {
                 putBack = keysNow.held;
@@ -55840,7 +55847,7 @@ function quarantineTamper(i) {
         if (was.startsWith("link:")) {
           try {
             assertParentsReal(common, rel);
-            (0, import_node_fs16.symlinkSync)(was.slice(5), abs);
+            (0, import_node_fs15.symlinkSync)(was.slice(5), abs);
             hold.restored.push(rel);
           } catch (error2) {
             hold.notRestored.push(`${rel} (a link to ${was.slice(5)} before the run; it could not be made again: ${errText5(error2)})`);
@@ -55850,38 +55857,38 @@ function quarantineTamper(i) {
         }
         return renamed;
       }, saveBytes2 = function(rel, bytes) {
-        const to = (0, import_node_path17.join)(quarantine(), ...rel.split("/"));
-        (0, import_node_fs16.mkdirSync)((0, import_node_path17.dirname)(to), { recursive: true });
-        (0, import_node_fs16.writeFileSync)(to, bytes);
+        const to = (0, import_node_path16.join)(quarantine(), ...rel.split("/"));
+        (0, import_node_fs15.mkdirSync)((0, import_node_path16.dirname)(to), { recursive: true });
+        (0, import_node_fs15.writeFileSync)(to, bytes);
         return to;
       }, saveCurrent2 = function(rel, abs, is) {
         if (is.startsWith("link:")) {
-          const to2 = (0, import_node_path17.join)(quarantine(), LINKS_DIR, ...rel.split("/"));
-          (0, import_node_fs16.mkdirSync)((0, import_node_path17.dirname)(to2), { recursive: true });
-          (0, import_node_fs16.writeFileSync)(to2, is.slice(5));
+          const to2 = (0, import_node_path16.join)(quarantine(), LINKS_DIR, ...rel.split("/"));
+          (0, import_node_fs15.mkdirSync)((0, import_node_path16.dirname)(to2), { recursive: true });
+          (0, import_node_fs15.writeFileSync)(to2, is.slice(5));
           return { at: to2, renamed: false };
         }
         const bytes = decode(is);
         if (bytes) {
           const to2 = saveBytes2(rel, bytes);
-          if (is.startsWith("b64x:")) (0, import_node_fs16.chmodSync)(to2, 493);
+          if (is.startsWith("b64x:")) (0, import_node_fs15.chmodSync)(to2, 493);
           return { at: to2, renamed: false };
         }
-        const to = (0, import_node_path17.join)(quarantine(), ...rel.split("/"));
-        (0, import_node_fs16.mkdirSync)((0, import_node_path17.dirname)(to), { recursive: true });
+        const to = (0, import_node_path16.join)(quarantine(), ...rel.split("/"));
+        (0, import_node_fs15.mkdirSync)((0, import_node_path16.dirname)(to), { recursive: true });
         try {
-          (0, import_node_fs16.copyFileSync)(abs, to);
+          (0, import_node_fs15.copyFileSync)(abs, to);
           return { at: to, renamed: false };
         } catch {
         }
         try {
-          (0, import_node_fs16.renameSync)(abs, to);
+          (0, import_node_fs15.renameSync)(abs, to);
           return { at: to, renamed: true };
         } catch (error2) {
           if (error2.code !== "EXDEV") throw error2;
         }
         const aside = asideName(abs);
-        (0, import_node_fs16.renameSync)(abs, aside);
+        (0, import_node_fs15.renameSync)(abs, aside);
         return { at: aside, renamed: true };
       };
       var handleItem = handleItem2, saveBytes = saveBytes2, saveCurrent = saveCurrent2;
@@ -55892,7 +55899,7 @@ function quarantineTamper(i) {
       };
       const changed = [.../* @__PURE__ */ new Set([...Object.keys(kept), ...Object.keys(now)])].filter((rel) => rel !== RESTORE_SCOPE_KEY && kept[rel] !== now[rel] && inScope(rel)).sort();
       touchedRels.push(...changed);
-      const tmp = (0, import_node_path17.join)(dir, ".tmp");
+      const tmp = (0, import_node_path16.join)(dir, ".tmp");
       const movedAway = [];
       const added = changed.filter((rel) => kept[rel] === void 0).reverse();
       for (const rel of [...added, ...changed.filter((rel2) => kept[rel2] !== void 0)]) {
@@ -55905,7 +55912,7 @@ function quarantineTamper(i) {
           hold.active.push(`${rel}: ${STILL_ACTIVE}: it could not be moved or restored (${errText5(error2)}); remove or fix it by hand in ${common}`);
         }
       }
-      (0, import_node_fs16.rmSync)(tmp, { recursive: true, force: true });
+      (0, import_node_fs15.rmSync)(tmp, { recursive: true, force: true });
     }
   }
   try {
@@ -55919,13 +55926,13 @@ function quarantineTamper(i) {
   }
   if (hold.quarantine && hold.undo.length > 0) {
     try {
-      (0, import_node_fs16.writeFileSync)((0, import_node_path17.join)(hold.quarantine, "undo.txt"), `${hold.undo.join("\n")}
+      (0, import_node_fs15.writeFileSync)((0, import_node_path16.join)(hold.quarantine, "undo.txt"), `${hold.undo.join("\n")}
 `);
     } catch {
     }
   }
   if (!hold.failed && hold.moved.length + hold.restored.length + hold.notRestored.length + hold.refs.length + hold.kept.length + hold.active.length === 0) {
-    if (hold.quarantine) (0, import_node_fs16.rmSync)(hold.quarantine, { recursive: true, force: true });
+    if (hold.quarantine) (0, import_node_fs15.rmSync)(hold.quarantine, { recursive: true, force: true });
     delete hold.quarantine;
     return hold;
   }
@@ -55951,7 +55958,7 @@ function refChanges(before, now, common, quarantine, only) {
     if (was === is) continue;
     if (was === void 0 && name.startsWith("refs/replace/")) {
       saved.push(`${name} ${is}`);
-      (0, import_node_fs16.writeFileSync)((0, import_node_path17.join)(quarantine(), "refs.txt"), `${saved.join("\n")}
+      (0, import_node_fs15.writeFileSync)((0, import_node_path16.join)(quarantine(), "refs.txt"), `${saved.join("\n")}
 `);
       runHostGit(common, ["--git-dir", common, "update-ref", "-d", name, is], 3e4);
       out.push(`${name} was created at ${is.slice(0, 12)}: deleted (saved in refs.txt)`);
@@ -55959,21 +55966,21 @@ function refChanges(before, now, common, quarantine, only) {
     else if (is === void 0) out.push(`${name} was deleted (was ${was.slice(0, 12)}); to put it back: git update-ref ${name} ${was}`);
     else out.push(`${name} moved ${was.slice(0, 12)} -> ${is.slice(0, 12)}; if you did not move it: git update-ref ${name} ${was} ${is}`);
   }
-  if (out.length > 0) (0, import_node_fs16.writeFileSync)((0, import_node_path17.join)(quarantine(), "refs.txt"), `${[...saved, ...out].join("\n")}
+  if (out.length > 0) (0, import_node_fs15.writeFileSync)((0, import_node_path16.join)(quarantine(), "refs.txt"), `${[...saved, ...out].join("\n")}
 `);
   return out;
 }
 function writeTamperHold(ledgerDir, root, hold) {
   const path15 = tamperHoldPath(ledgerDir, root);
-  (0, import_node_fs16.mkdirSync)((0, import_node_path17.dirname)(path15), { recursive: true, mode: 448 });
+  (0, import_node_fs15.mkdirSync)((0, import_node_path16.dirname)(path15), { recursive: true, mode: 448 });
   atomicWriteFileSync(path15, `${JSON.stringify(hold, null, 2)}
 `);
 }
 function readTamperHold(ledgerDir, root) {
   const path15 = tamperHoldPath(ledgerDir, root);
-  if (!(0, import_node_fs16.existsSync)(path15)) return null;
+  if (!(0, import_node_fs15.existsSync)(path15)) return null;
   try {
-    const h = JSON.parse((0, import_node_fs16.readFileSync)(path15, "utf8"));
+    const h = JSON.parse((0, import_node_fs15.readFileSync)(path15, "utf8"));
     return typeof h === "object" && h !== null && typeof h.gate === "string" ? h : "unreadable";
   } catch {
     return "unreadable";
@@ -55987,18 +55994,18 @@ function tamperHoldMessage(ledgerDir, root) {
   const active = hold.active ?? [];
   return `a tamper hold is set on this checkout since ${hold.at} (run ${hold.run} parked at ${hold.gate}), so no factory run starts here${hold.quarantine ? `; what changed in .git is in ${hold.quarantine}` : ""}${active.length ? `; ${active.length} item(s) are ${STILL_ACTIVE}: ${active.slice(0, 3).join("; ")}` : ""}. Your own change during that run (a git config key, \`git remote add\` or \`git remote set-url\` included, and a branch's upstream set to a path, a URL, "." or a remote added during the run, a hook husky or an editor installed) triggers this too: put it back with the cp command in undo.txt in that folder if it was yours. Then run ${RELEASE_TAMPER_COMMAND}`;
 }
-var import_node_fs16, import_node_path17, repoKey, tamperHoldPath, RELEASE_TAMPER_COMMAND, STILL_ACTIVE, BENIGN_KEYS, benignKey, BRANCH_UPSTREAM, HEADS_REF, sameValues, valuesByKey, decode, isConfigRel, realDir, errText5, CONFIG_LOCKED, LINKS_DIR;
+var import_node_fs15, import_node_path16, repoKey, tamperHoldPath, RELEASE_TAMPER_COMMAND, STILL_ACTIVE, BENIGN_KEYS, benignKey, BRANCH_UPSTREAM, HEADS_REF, sameValues, valuesByKey, decode, isConfigRel, realDir, errText5, CONFIG_LOCKED, LINKS_DIR;
 var init_tamper_quarantine = __esm({
   "src/factory/run/tamper-quarantine.ts"() {
     "use strict";
-    import_node_fs16 = require("node:fs");
-    import_node_path17 = require("node:path");
+    import_node_fs15 = require("node:fs");
+    import_node_path16 = require("node:path");
     init_atomic_write();
     init_git_worktree();
     init_ledger2();
     init_review_guard();
-    repoKey = (root) => sha256((0, import_node_path17.resolve)(root).toLowerCase()).slice(0, 16);
-    tamperHoldPath = (ledgerDir, root) => (0, import_node_path17.join)(ledgerDir, "holds", `${repoKey(root)}.json`);
+    repoKey = (root) => sha256((0, import_node_path16.resolve)(root).toLowerCase()).slice(0, 16);
+    tamperHoldPath = (ledgerDir, root) => (0, import_node_path16.join)(ledgerDir, "holds", `${repoKey(root)}.json`);
     RELEASE_TAMPER_COMMAND = "omg factory run release --tamper";
     STILL_ACTIVE = "STILL ACTIVE (it can run on your next git command)";
     BENIGN_KEYS = [
@@ -56025,7 +56032,7 @@ var init_tamper_quarantine = __esm({
     isConfigRel = (rel) => /^(?:config|config\.worktree|worktrees\/[^/]+\/config\.worktree|modules\/.+\/(?:config|config\.worktree))$/.test(rel) && !/\/(?:hooks|info)\//.test(`/${rel}`);
     realDir = (path15) => {
       try {
-        const st = (0, import_node_fs16.lstatSync)(path15);
+        const st = (0, import_node_fs15.lstatSync)(path15);
         return st.isDirectory() && !st.isSymbolicLink();
       } catch {
         return false;
@@ -56059,10 +56066,10 @@ function progressAgentFileName(agent) {
   return `${agent.replace(/[^A-Za-z0-9._-]/g, "_").replace(/^\.+/, "_") || "agent"}.log`;
 }
 function defaultProgressDir(cwd = process.cwd()) {
-  return (0, import_path113.join)(getOmcRoot(cwd), "progress");
+  return (0, import_path114.join)(getOmcRoot(cwd), "progress");
 }
 function resolveProgressFile(agent, file, cwd) {
-  return file || process.env[PROGRESS_FILE_ENV] || (0, import_path113.join)(defaultProgressDir(cwd), progressAgentFileName(agent));
+  return file || process.env[PROGRESS_FILE_ENV] || (0, import_path114.join)(defaultProgressDir(cwd), progressAgentFileName(agent));
 }
 function truncate(value, max) {
   return value.length <= max ? value : Array.from(value).slice(0, max).join("");
@@ -56098,7 +56105,7 @@ function emitProgress(input) {
       agent,
       fields
     });
-    (0, import_fs96.mkdirSync)((0, import_path113.dirname)(path15), { recursive: true });
+    (0, import_fs96.mkdirSync)((0, import_path114.dirname)(path15), { recursive: true });
     rotateIfNeeded2(path15);
     (0, import_fs96.appendFileSync)(path15, `${line}
 `, "utf8");
@@ -56107,12 +56114,12 @@ function emitProgress(input) {
     return false;
   }
 }
-var import_fs96, import_path113, PROGRESS_STATUSES, PROGRESS_FILE_ENV, PROGRESS_AGENT_ENV, PROGRESS_MAX_BYTES, PROGRESS_MAX_NOTE, PROGRESS_MAX_VALUE, KEY_RE, BARE_VALUE_RE, RESERVED_KEYS;
+var import_fs96, import_path114, PROGRESS_STATUSES, PROGRESS_FILE_ENV, PROGRESS_AGENT_ENV, PROGRESS_MAX_BYTES, PROGRESS_MAX_NOTE, PROGRESS_MAX_VALUE, KEY_RE, BARE_VALUE_RE, RESERVED_KEYS;
 var init_agent_progress = __esm({
   "src/lib/agent-progress.ts"() {
     "use strict";
     import_fs96 = require("fs");
-    import_path113 = require("path");
+    import_path114 = require("path");
     init_worktree_paths();
     PROGRESS_STATUSES = ["start", "ok", "fail", "blocked", "heartbeat", "done"];
     PROGRESS_FILE_ENV = "OMG_PROGRESS_FILE";
@@ -56128,7 +56135,7 @@ var init_agent_progress = __esm({
 
 // src/factory/run/progress.ts
 function factoryProgressFile(root, issue2) {
-  return (0, import_path114.join)(defaultProgressDir(root), `factory-${issue2}.log`);
+  return (0, import_path115.join)(defaultProgressDir(root), `factory-${issue2}.log`);
 }
 function createFactoryProgress(input) {
   const file = input.file ?? factoryProgressFile(input.root, input.issue);
@@ -56154,11 +56161,11 @@ function createFactoryProgress(input) {
     }
   };
 }
-var import_path114, HEARTBEAT_MIN_MS;
+var import_path115, HEARTBEAT_MIN_MS;
 var init_progress2 = __esm({
   "src/factory/run/progress.ts"() {
     "use strict";
-    import_path114 = require("path");
+    import_path115 = require("path");
     init_agent_progress();
     HEARTBEAT_MIN_MS = 6e4;
   }
@@ -56185,7 +56192,7 @@ function readTrustedBaseLayerAtRef(exec, root, base, ref, user, warn = () => {
 }
 function creditReservationPath(ledgerDir, repo8) {
   if (!/^[0-9a-f]{8}$/.test(repo8)) throw new FactoryStateError(`the credit reservation key must be 8 hex characters (got ${ownerText(repo8)})`);
-  return (0, import_path115.join)(ledgerDir, "credits", `${repo8}.json`);
+  return (0, import_path116.join)(ledgerDir, "credits", `${repo8}.json`);
 }
 function readCreditFile(path15) {
   let raw;
@@ -56208,7 +56215,7 @@ function readCreditFile(path15) {
   return f.reservations;
 }
 function withCreditFile(path15, fn) {
-  ensureDirSync((0, import_path115.join)(path15, ".."));
+  ensureDirSync((0, import_path116.join)(path15, ".."));
   return withFileLockSync(lockPathFor(path15), fn, { timeoutMs: 1e4 });
 }
 function reserveLaneCredits(o) {
@@ -56249,12 +56256,12 @@ function reserveLaneCredits(o) {
     };
   });
 }
-var import_fs97, import_path115, PARALLEL_LAYOUT_GATE, isReservation, fmt;
+var import_fs97, import_path116, PARALLEL_LAYOUT_GATE, isReservation, fmt;
 var init_parallel = __esm({
   "src/factory/run/parallel.ts"() {
     "use strict";
     import_fs97 = require("fs");
-    import_path115 = require("path");
+    import_path116 = require("path");
     init_atomic_write();
     init_file_lock();
     init_config2();
@@ -56296,11 +56303,11 @@ function checkoutChanges(root, checkout, raw, nested) {
   let ownLink = false;
   let ownTree = false;
   try {
-    const link = (0, import_path116.join)(checkout, "node_modules");
+    const link = (0, import_path117.join)(checkout, "node_modules");
     const real2 = (p) => process.platform === "win32" ? (0, import_fs98.realpathSync)(p).toLowerCase() : (0, import_fs98.realpathSync)(p);
     const st = (0, import_fs98.lstatSync)(link);
-    if (st.isSymbolicLink()) ownLink = real2(link) === real2((0, import_path116.join)(root, "node_modules"));
-    else ownTree = st.isDirectory() && (0, import_fs98.existsSync)((0, import_path116.join)(link, GATE_TREE_MARKER));
+    if (st.isSymbolicLink()) ownLink = real2(link) === real2((0, import_path117.join)(root, "node_modules"));
+    else ownTree = st.isDirectory() && (0, import_fs98.existsSync)((0, import_path117.join)(link, GATE_TREE_MARKER));
   } catch {
   }
   const untracked = ownTree ? new Set(raw.split("\0").filter((r) => r.startsWith("?? ")).map((r) => r.slice(3))) : /* @__PURE__ */ new Set();
@@ -56321,25 +56328,25 @@ function parseStatusPaths(raw) {
 }
 function parkTail(text3) {
   const lines3 = redactGateOutput(text3).split(/\r?\n/).map((l) => l.trim()).filter(Boolean).slice(-PARK_TAIL_LINES);
-  const tail4 = lines3.map((l) => oneLine(visibleLine(l), PARK_TAIL_LINE_CHARS)).join(" | ");
-  return tail4.length > PARK_TAIL_CHARS ? `...${tail4.slice(-PARK_TAIL_CHARS)}` : tail4;
+  const tail3 = lines3.map((l) => oneLine(visibleLine(l), PARK_TAIL_LINE_CHARS)).join(" | ");
+  return tail3.length > PARK_TAIL_CHARS ? `...${tail3.slice(-PARK_TAIL_CHARS)}` : tail3;
 }
 function ciFailureTail(failure2) {
   const where = failure2.source === "prepare" ? "; the failure is from the prepare checks on this host (the OS sandbox when gates are enforced), not from the forge CI" : "";
   const tests = failure2.tests.length > 0 ? `failing tests: ${failure2.tests.slice(0, 5).map((t) => oneLine(visibleLine(t), PARK_TAIL_LINE_CHARS)).join(", ")}${failure2.tests.length > 5 ? ` and ${failure2.tests.length - 5} more` : ""}` : "";
-  const tail4 = failure2.detail ? parkTail(failure2.detail) : "";
-  return { where, detail: [tests, tail4 ? `output tail: ${tail4}` : ""].filter(Boolean).join("; ") };
+  const tail3 = failure2.detail ? parkTail(failure2.detail) : "";
+  return { where, detail: [tests, tail3 ? `output tail: ${tail3}` : ""].filter(Boolean).join("; ") };
 }
-function nodeModulesWriteDenied(tail4) {
-  for (const line of tail4.split(/\r?\n/)) {
+function nodeModulesWriteDenied(tail3) {
+  for (const line of tail3.split(/\r?\n/)) {
     if (!/\b(?:EPERM|EACCES|EROFS)\b/.test(line)) continue;
     const m = /node_modules[\x5c/]+(@[\w.-]+[\x5c/]+[\w.-]+|[\w.@-]+)/.exec(line);
     if (m) return `node_modules/${m[1].replace(/[\x5c/]+/g, "/")}`;
   }
   return void 0;
 }
-function sandboxIncompatibleAdvice(tail4) {
-  const denied = tail4 ? nodeModulesWriteDenied(tail4) : void 0;
+function sandboxIncompatibleAdvice(tail3) {
+  const denied = tail3 ? nodeModulesWriteDenied(tail3) : void 0;
   if (!denied || GATE_CACHE_DIRS.includes(denied.slice("node_modules/".length))) return 'Your gate fails in the sandbox on the base: set factory.run.sandbox.writeNetwork "registry" if it needs the npm registry';
   return `Your gate cannot write ${denied} in the sandbox: node_modules is read-only there except the fresh per-run dirs ${GATE_CACHE_DIRS.join(", ")}. Move that tool's output or cache out of node_modules (for tsc a tsBuildInfoFile outside it, for vite a cacheDir outside it), or report ${denied} to oh-my-copilot so it can become a per-run dir`;
 }
@@ -56354,12 +56361,12 @@ function pinCheckoutGit(exec, pin) {
   };
 }
 function checkoutGitLink(checkout) {
-  const file = (0, import_path116.join)(checkout, ".git");
+  const file = (0, import_path117.join)(checkout, ".git");
   try {
     if (!(0, import_fs98.lstatSync)(file).isFile()) return { hash: "not a regular file" };
     const bytes = (0, import_fs98.readFileSync)(file);
     const m = /^gitdir: (.+?)\s*$/.exec(bytes.toString("utf8"));
-    return { hash: (0, import_crypto29.createHash)("sha256").update(bytes).digest("hex"), ...m ? { gitDir: (0, import_path116.resolve)(checkout, m[1]) } : {} };
+    return { hash: (0, import_crypto29.createHash)("sha256").update(bytes).digest("hex"), ...m ? { gitDir: (0, import_path117.resolve)(checkout, m[1]) } : {} };
   } catch (error2) {
     return { hash: `unreadable: ${errText6(error2)}` };
   }
@@ -56368,7 +56375,7 @@ function calibrationArgs(c, dir) {
   const [script, ...rest] = c.args;
   if (c.kind !== "built-in" || script !== VITEST_SCRIPT && script !== ESLINT_SCRIPT) return [...c.args];
   const vitest = script === VITEST_SCRIPT;
-  const files = (vitest ? rest.slice(1) : rest).filter((f) => (0, import_fs98.existsSync)((0, import_path116.join)(dir, f)));
+  const files = (vitest ? rest.slice(1) : rest).filter((f) => (0, import_fs98.existsSync)((0, import_path117.join)(dir, f)));
   if (files.length === 0) return vitest ? [script, "run", "--passWithNoTests", CALIBRATION_NO_TEST_FILTER] : [script, "--version"];
   return vitest ? [script, "run", ...files] : [script, ...files];
 }
@@ -56681,21 +56688,20 @@ async function runFactoryEngine(o) {
 function sharedLayoutSealed(s) {
   return s.layout !== 2 && (s.lanes.length > 0 || s.codingAgent !== void 0);
 }
-var import_crypto29, import_fs98, import_os22, import_path116, EXIT_AWAITING_HUMAN, PREPARE_ENGINE_STEPS, MAX_CONFLICT_FIX_ROUNDS, MAX_MERGE_BOUNCES, DEFAULT_POLL_MS, LANE_GRACE_MS, REMOTE_HEAD_FETCH_FLAGS, LS_REMOTE_TIMEOUT_MS, ADO_HEAD_LAG_POLLS, localGateConfigLoader, PROCESS_DEADLINE_MS, defaultLaneProcessOps, FactoryStepError, StateTamperedError, LocalGateDue, MirrorBaseMovedError, HEX4015, PARK_TAIL_LINES, PARK_TAIL_LINE_CHARS, PARK_TAIL_CHARS, localDetailNote, isHumanReadGate, CALIBRATION_NO_TEST_FILTER, BUILT_IN_FILE_NAME_TOO_LONG, USER_REPO_PREFIX, isUserRepoProblem, quarantineRefs, cancelCommand, resumeCommand, HEAL_ACCEPTANCE, usageOf, capUsage, FactoryEngine, HUMAN_REVIEW_GATE, REVIEW_REQUESTED_GATE, UNSANDBOXED_LANES_REASON, GATES_UNSANDBOXED_GATE, SECRET_SHAPES_GATE, GATE_SANDBOX_INCOMPATIBLE_GATE, GATE_NO_VERDICT_GATE, ACK_WARNING, PREPARE_CHECK_TIMEOUT_MS;
+var import_crypto29, import_fs98, import_os22, import_path117, EXIT_AWAITING_HUMAN, PREPARE_ENGINE_STEPS, MAX_CONFLICT_FIX_ROUNDS, MAX_MERGE_BOUNCES, DEFAULT_POLL_MS, LANE_GRACE_MS, REMOTE_HEAD_FETCH_FLAGS, LS_REMOTE_TIMEOUT_MS, ADO_HEAD_LAG_POLLS, localGateConfigLoader, PROCESS_DEADLINE_MS, defaultLaneProcessOps, FactoryStepError, StateTamperedError, LocalGateDue, MirrorBaseMovedError, HEX4015, PARK_TAIL_LINES, PARK_TAIL_LINE_CHARS, PARK_TAIL_CHARS, localDetailNote, isHumanReadGate, CALIBRATION_NO_TEST_FILTER, BUILT_IN_FILE_NAME_TOO_LONG, USER_REPO_PREFIX, isUserRepoProblem, quarantineRefs, cancelCommand, resumeCommand, HEAL_ACCEPTANCE, usageOf, capUsage, FactoryEngine, HUMAN_REVIEW_GATE, REVIEW_REQUESTED_GATE, UNSANDBOXED_LANES_REASON, GATES_UNSANDBOXED_GATE, SECRET_SHAPES_GATE, GATE_SANDBOX_INCOMPATIBLE_GATE, GATE_NO_VERDICT_GATE, ACK_WARNING, PREPARE_CHECK_TIMEOUT_MS;
 var init_engine = __esm({
   "src/factory/run/engine.ts"() {
     "use strict";
     import_crypto29 = require("crypto");
     import_fs98 = require("fs");
     import_os22 = require("os");
-    import_path116 = require("path");
+    import_path117 = require("path");
     init_config2();
     init_exec();
     init_merge2();
     init_prepare2();
     init_jsonc();
     init_sandbox2();
-    init_container_gate();
     init_sandbox_exec();
     init_git_worktree();
     init_gates_driver();
@@ -56704,6 +56710,8 @@ var init_engine = __esm({
     init_prompts2();
     init_context();
     init_merge_policy();
+    init_auto_merge();
+    init_merge();
     init_az_binary();
     init_ado();
     init_checks3();
@@ -56845,8 +56853,8 @@ var init_engine = __esm({
         this.resume = resumeCommand(this.key);
         this.what = typeof this.key === "number" ? `${forgeTerms(this.forge ? this.forge.kind : "github").item} #${this.key}` : `ci-heal ${this.key}`;
         this.progress = createFactoryProgress({ root: o.root, issue: this.key, file: o.progressFile, now: this.clock });
-        const rel = (0, import_path116.relative)(o.root, getOmcRoot(o.root)).replace(/\\/g, "/");
-        this.stateRootRel = rel && !rel.startsWith("..") && !(0, import_path116.isAbsolute)(rel) ? rel : null;
+        const rel = (0, import_path117.relative)(o.root, getOmcRoot(o.root)).replace(/\\/g, "/");
+        this.stateRootRel = rel && !rel.startsWith("..") && !(0, import_path117.isAbsolute)(rel) ? rel : null;
         this.statePath = factoryStatePath(o.root, this.key);
         for (const lock of [lockPathFor(this.statePath), lockPathFor(factoryOwnerPath(o.root, this.key))]) {
           if (!ledger.tracks(lock)) ledger.record(lock, null);
@@ -56901,10 +56909,9 @@ var init_engine = __esm({
       gatesAllowed;
       /** factory.run.sandbox.gates, resolved once per trusted base commit. */
       gatesModeCache;
-      /** The gate image's id (`sha256:...`) the last container run reported: base calibrations are keyed on it, not on the tag (L2, review-499). */
-      containerImageId;
       /** The one-per-run warning that the sandbox on this host cannot deny paths was given. */
       warnedCredentialFilesReadable = false;
+      warnedCommittedMerge = false;
       /** Calibrations re-run in this invocation (a failing one is retried once per invocation). */
       recalibrated = /* @__PURE__ */ new Set();
       /** The prepare checkout's git dir, named explicitly to engine git there once the PR's code ran in it (pinCheckoutGit). */
@@ -56917,8 +56924,8 @@ var init_engine = __esm({
         return new Date(this.clock()).toISOString();
       }
       rel(path15) {
-        const r = (0, import_path116.relative)(this.o.root, path15).replace(/\\/g, "/");
-        return r && !r.startsWith("..") && !(0, import_path116.isAbsolute)(r) ? r : path15;
+        const r = (0, import_path117.relative)(this.o.root, path15).replace(/\\/g, "/");
+        return r && !r.startsWith("..") && !(0, import_path117.isAbsolute)(r) ? r : path15;
       }
       /** The ship state of `pr` is engine-owned from the moment the engine knows the PR (absent until it writes it). */
       trackShip(pr) {
@@ -56934,7 +56941,7 @@ var init_engine = __esm({
       }
       /** Refuses (StateTamperedError) unless `bytes`, one read of `path`, are the engine's last write of it. */
       ownBytes(path15, bytes) {
-        if (!this.ledger.matches(path15, bytes)) throw new StateTamperedError([(0, import_path116.resolve)(path15)]);
+        if (!this.ledger.matches(path15, bytes)) throw new StateTamperedError([(0, import_path117.resolve)(path15)]);
       }
       /** The wall time since the last save, for elapsedMs. */
       tick() {
@@ -57250,7 +57257,7 @@ var init_engine = __esm({
        */
       gateJobRoot() {
         const p = this.privateRun();
-        return p ? (0, import_path116.join)(p.layout.runDir, "gates") : sandboxJobRoot(this.o.root);
+        return p ? (0, import_path117.join)(p.layout.runDir, "gates") : sandboxJobRoot(this.o.root);
       }
       /**
        * The OS sandbox runner with this run's fixed fields: the only target a
@@ -57261,14 +57268,8 @@ var init_engine = __esm({
        */
       sandboxRun(req) {
         const p = this.privateRun();
-        const nested = trustedNestedRels(this.o.root, req.cwd, this.baseWorkspaces()).map((rel) => (0, import_path116.join)(this.o.root, ...rel.split("/"), "node_modules"));
-        const container = this.gatesModeCache?.container;
-        const r = this.o.gateSandbox({ ...req, nodeModulesTarget: (0, import_path116.join)(this.o.root, "node_modules"), ...nested.length > 0 ? { nestedNodeModulesTargets: nested } : {}, ...p ? { mainRoot: this.o.root, jobRoot: this.gateJobRoot() } : {}, ...container ? { container, runLabel: containerRunLabel(this.o.root, this.key) } : {} });
-        if (!container) return r;
-        return r.then((out) => {
-          if (out.ran && out.imageId) this.containerImageId = out.imageId;
-          return out;
-        });
+        const nested = trustedNestedRels(this.o.root, req.cwd, this.baseWorkspaces()).map((rel) => (0, import_path117.join)(this.o.root, ...rel.split("/"), "node_modules"));
+        return this.o.gateSandbox({ ...req, nodeModulesTarget: (0, import_path117.join)(this.o.root, "node_modules"), ...nested.length > 0 ? { nestedNodeModulesTargets: nested } : {}, ...p ? { mainRoot: this.o.root, jobRoot: this.gateJobRoot() } : {} });
       }
       /**
        * Why `<checkout>/node_modules` must not be granted: a link in the
@@ -57277,7 +57278,7 @@ var init_engine = __esm({
        * code re-pointed it (review-483 M4). Null when it is the engine's.
        */
       nodeModulesRepointed(checkout) {
-        return nodeModulesTreeProblem(checkout, (0, import_path116.join)(this.o.root, "node_modules")).problem;
+        return nodeModulesTreeProblem(checkout, (0, import_path117.join)(this.o.root, "node_modules")).problem;
       }
       /**
        * The workspace globs (workspace-tree.ts) of the TRUSTED BASE at `baseSha`
@@ -57477,7 +57478,6 @@ var init_engine = __esm({
        * sandbox with the registry reachable. Null when the checkout is ready.
        */
       async privateNodeModules(p, path15, baseSha, head, loaded2) {
-        if (this.gatesSandbox(loaded2).container) return null;
         const rule = lockfileUnchanged(p.repo, baseSha, head, p.ctx);
         if (rule.policy === "junction") {
           this.linkGateTree(path15, baseSha);
@@ -57549,7 +57549,7 @@ var init_engine = __esm({
         return v;
       }
       writeBody(name, text3) {
-        const path15 = (0, import_path116.join)(factoryStateDir2(this.o.root), `run-${this.key}-${name}.md`);
+        const path15 = (0, import_path117.join)(factoryStateDir2(this.o.root), `run-${this.key}-${name}.md`);
         (0, import_fs98.writeFileSync)(path15, text3, "utf8");
         return path15;
       }
@@ -57592,7 +57592,7 @@ var init_engine = __esm({
             recorded = null;
           }
           if (recorded?.phase === "prepare" && recorded.pr && bad.length > 0) {
-            const ship = (0, import_path116.resolve)(shipStatePath(this.o.root, recorded.pr));
+            const ship = (0, import_path117.resolve)(shipStatePath(this.o.root, recorded.pr));
             if (bad.includes(ship) && bad.every((p) => p === ship) && !this.ledger.mismatches([this.statePath]).length) {
               this.ledger.record(ship, (0, import_fs98.existsSync)(ship) ? (0, import_fs98.readFileSync)(ship, "utf8") : null);
               bad = [];
@@ -57602,7 +57602,7 @@ var init_engine = __esm({
         }
         const bytes = currentBytes(this.statePath);
         if (this.ledger.tracks(this.statePath) && !this.ledger.matches(this.statePath, bytes)) {
-          return this.onTampered(new StateTamperedError([(0, import_path116.resolve)(this.statePath)]));
+          return this.onTampered(new StateTamperedError([(0, import_path117.resolve)(this.statePath)]));
         }
         const existing = bytes === null ? null : parseFactoryState(this.statePath, this.key, bytes.toString("utf8"));
         if (existing && !this.ledger.tracks(this.statePath)) {
@@ -57670,7 +57670,7 @@ var init_engine = __esm({
             const forgeKind = this.o.forge ? { forgeKind: this.o.forge.config.kind } : {};
             this.state = updateFactoryState(this.o.root, this.key, () => ({ ...createFactoryState({ issue: this.o.issue ?? 0, repoUrl: "", base: this.o.base, ...heal?.record ? { heal: heal.record } : {}, ...this.o.forge?.config.kind === "local" ? { remote: LOCAL_REMOTE } : {}, ...this.forge ? { itemNoun: forgeTerms(this.forge.kind).item } : {} }, this.iso()), ...forgeKind }), {
               verify: (b) => {
-                if (b !== null) throw new StateTamperedError([(0, import_path116.resolve)(this.statePath)]);
+                if (b !== null) throw new StateTamperedError([(0, import_path117.resolve)(this.statePath)]);
               },
               onWrite: (path15, content) => this.ledger.record(path15, content)
             });
@@ -58916,7 +58916,7 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
           removeWorkerWorktree(FACTORY_CHECKOUT_TEAM, checkoutWorker(this.key), this.o.root, { contained: [head], ...gitLinks ? { gitLinks } : {} });
           forgetWorktreeGitLinks(path15);
         } catch (error2) {
-          if (!this.gatesModeCache?.container) this.linkGateTree(path15);
+          this.linkGateTree(path15);
           throw new FactoryStepError(`could not discard the engine's prepare checkout ${path15}: ${errText6(error2)}`);
         }
         this.save((x) => {
@@ -58963,7 +58963,7 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
           unlinkNodeModules(this.o.root, path15);
           removeWorkerWorktree(FACTORY_CHECKOUT_TEAM, checkoutWorker(this.key), this.o.root, { contained: [...new Set(contained)] });
         } catch (error2) {
-          if (!this.gatesModeCache?.container) this.linkGateTree(path15);
+          this.linkGateTree(path15);
           throw new FactoryStepError(`could not discard the engine's prepare checkout ${path15}, which an older release made: ${errText6(error2)}. ${this.freshCheckoutRecovery()}`);
         }
         this.save((x) => {
@@ -58998,16 +58998,16 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
           if (!links) return "its .git file or admin dir is missing, a link or malformed";
           const admin = this.state.checkoutAdmin;
           if (!admin) return `the run state records no admin dir for it (a checkout made before this release, or by something else)`;
-          if ((0, import_path116.basename)(links.adminDir) !== admin) return `its .git file names the admin dir ${visibleLine(links.adminDir)}, but the engine's \`worktree add\` made ${admin}`;
+          if ((0, import_path117.basename)(links.adminDir) !== admin) return `its .git file names the admin dir ${visibleLine(links.adminDir)}, but the engine's \`worktree add\` made ${admin}`;
           let common;
           try {
-            common = this.privateRun()?.repo.gitDir ?? (0, import_path116.resolve)(this.o.root, this.run(["rev-parse", "--git-common-dir"]).trim());
+            common = this.privateRun()?.repo.gitDir ?? (0, import_path117.resolve)(this.o.root, this.run(["rev-parse", "--git-common-dir"]).trim());
           } catch (error2) {
             return errText6(error2);
           }
           const gitdir = links.gitdir.trim();
-          if (!worktreeGitLinksIntact(path15, links, common) || !samePath2((0, import_path116.isAbsolute)(gitdir) ? gitdir : (0, import_path116.resolve)(links.adminDir, gitdir), (0, import_path116.join)(path15, ".git")) || links.commondir.trim() !== "../..") {
-            return `its .git file names ${visibleLine(links.adminDir)}, which is not the admin dir git made for it under ${(0, import_path116.join)(common, "worktrees")}`;
+          if (!worktreeGitLinksIntact(path15, links, common) || !samePath2((0, import_path117.isAbsolute)(gitdir) ? gitdir : (0, import_path117.resolve)(links.adminDir, gitdir), (0, import_path117.join)(path15, ".git")) || links.commondir.trim() !== "../..") {
+            return `its .git file names ${visibleLine(links.adminDir)}, which is not the admin dir git made for it under ${(0, import_path117.join)(common, "worktrees")}`;
           }
           try {
             recordWorktreeGitLinks(path15, links);
@@ -59077,7 +59077,7 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
           if (fetchedBase !== view.baseRefOid) throw new FactoryStepError(`${runRemote(s)}/${s.base} is ${fetchedBase.slice(0, 12)}, but the forge reports ${s.base} at ${view.baseRefOid.slice(0, 12)}; refusing (fail closed; rerun ${this.resume} if ${s.base} just moved)`);
           await this.importReady(() => priv.ensureCommit(view.baseRefOid));
         }
-        const common = priv ? priv.repo.gitDir : (0, import_path116.resolve)(this.o.root, this.run(["rev-parse", "--git-common-dir"]).trim());
+        const common = priv ? priv.repo.gitDir : (0, import_path117.resolve)(this.o.root, this.run(["rev-parse", "--git-common-dir"]).trim());
         const refProblem = jobRefProblem(common, priv ? priv.repo.repo : this.o.root, `refs/heads/${branch2}`);
         if (refProblem) {
           this.gate("lane-tampered", `the prepare checkout branch ${branch2} is not a plain commit ref (${refProblem}); nothing was checked out, inspect and delete the branch by hand`);
@@ -59090,7 +59090,7 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
           throw new FactoryStepError(`the pre-prepare snapshot failed: ${errText6(error2)}`);
         }
         const userBefore = await this.importReady(() => this.userSnap("prepare"));
-        (0, import_fs98.mkdirSync)((0, import_path116.dirname)(path15), { recursive: true });
+        (0, import_fs98.mkdirSync)((0, import_path117.dirname)(path15), { recursive: true });
         if (priv) {
           priv.addWorktree(path15, head, branch2);
           this.sealPrivate();
@@ -59102,16 +59102,14 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
         } catch (error2) {
           throw new FactoryStepError(`the prepare checkout's git links cannot be recorded: ${errText6(error2)}`);
         }
-        this.save((x) => ({ ...x, checkoutHead: head, checkoutAdmin: (0, import_path116.basename)(recorded.adminDir) }));
+        this.save((x) => ({ ...x, checkoutHead: head, checkoutAdmin: (0, import_path117.basename)(recorded.adminDir) }));
         if (priv) {
           const install = await this.privateNodeModules(priv, path15, view.baseRefOid, head, this.gateConfig(view));
           if (install) {
             this.gate(install.name, install.reason, install.detail);
             return;
           }
-        } else if (!this.gatesSandbox(this.gateConfig(view)).container) {
-          this.linkGateTree(path15, view.baseRefOid);
-        }
+        } else this.linkGateTree(path15, view.baseRefOid);
         const gitLink = checkoutGitLink(path15);
         if (!gitLink.gitDir) throw new FactoryStepError(`the new prepare checkout ${path15} has no gitfile naming its git dir (${gitLink.hash})`);
         if (!samePath2(gitLink.gitDir, recorded.adminDir)) throw new FactoryStepError(`the new prepare checkout ${path15} names the git dir ${gitLink.gitDir}, not the admin dir ${recorded.adminDir} its git links were recorded with`);
@@ -59198,10 +59196,7 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
         try {
           const text3 = commit ? readBaseFile(this.exec, this.o.root, commit, BASE_CONFIG_PATH) : null;
           const base = text3 && text3.trim() ? parseJsonc(text3) : void 0;
-          const isolation = resolveGateIsolation({ user, base });
-          if (isolation.ignoredBase.length > 0) this.o.warn?.(`omg factory run: ignoring ${isolation.ignoredBase.join(" and ")} in the base .copilot/omg.jsonc: where the PR's code runs is set in your user config only`);
-          resolved = { ...resolveGatesSandboxMode({ user, base, env: process.env }), requireDeniedPaths: resolveRequireDeniedPaths({ user, base }).require, ...isolation.container ? { container: isolation.container } : {} };
-          if (resolved.container && resolved.mode === "ack") resolved = { ...resolved, mode: "enforced", source: `${resolved.source}; isolation "container" runs it in the gate container` };
+          resolved = { ...resolveGatesSandboxMode({ user, base, env: process.env }), requireDeniedPaths: resolveRequireDeniedPaths({ user, base }).require };
         } catch (error2) {
           throw new FactoryStepError(`factory.run.sandbox: ${errText6(error2)}`);
         }
@@ -59241,14 +59236,6 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
       gateNoStartAfterCodeReason(head, what, why) {
         const at = head.slice(0, 12);
         return `${what} on ${at} could not start in the OS sandbox (${why}) after the PR's code of this head already ran in it (an earlier prepare check), so the PR's code may be the cause. The head is not judged: no pass, no FAILURE, no ci-fix lane, and --allow-unsandboxed-gates does not apply here. Rerun ${this.resume} to try again; if it parks here again, review the PR's diff and fix the cause`;
-      }
-      /** The park when isolation "container" cannot run `what` (container-gate.ts): nothing ran, no ack offer, no fallback. */
-      gateContainerUnavailableReason(head, what, why) {
-        return `${what} on ${head.slice(0, 12)} did not run: factory.run.sandbox.isolation is "container" and the gate container is not available (${why}). The head is not judged: no pass, no FAILURE, no ci-fix lane, and it never falls back to the Copilot sandbox. Fix that, then rerun ${this.resume}`;
-      }
-      /** Where a sandboxed command runs, for parks and notes: the gate container (isolation "container") or the OS sandbox. */
-      sandboxName() {
-        return this.gatesModeCache?.container ? `the gate container (${this.gatesModeCache.container.runtime} ${this.gatesModeCache.container.image})` : "the OS sandbox";
       }
       /** The park after the command ran in the sandbox without a verdict: no ack offer, no pass, no failure. `why` is fixed text (sandbox-exec.ts). */
       gateNoVerdictReason(head, what, why) {
@@ -59309,9 +59296,9 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
           if (how === "unsandboxed") this.noteUnsandboxedGates(head, label);
           else ran.acked = true;
           ran.modes.add(how);
-          const procs = (0, import_path116.join)(this.gateJobRoot(), "prepare-procs", `${head}.json`);
-          (0, import_fs98.mkdirSync)((0, import_path116.dirname)(procs), { recursive: true });
-          await sweepGateProcs((0, import_path116.dirname)(procs)).catch(() => void 0);
+          const procs = (0, import_path117.join)(this.gateJobRoot(), "prepare-procs", `${head}.json`);
+          (0, import_fs98.mkdirSync)((0, import_path117.dirname)(procs), { recursive: true });
+          await sweepGateProcs((0, import_path117.dirname)(procs)).catch(() => void 0);
           await reapGateProcs(procs).catch(() => void 0);
           let r;
           try {
@@ -59332,7 +59319,7 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
             return { status: 1, stdout: "", stderr: BUILT_IN_FILE_NAME_TOO_LONG };
           }
           const repointed = this.nodeModulesRepointed(path15);
-          if (repointed) return stop({ name: "lane-tampered", reason: `${label} on ${head.slice(0, 12)} did not run: ${(0, import_path116.join)(path15, "node_modules")} (or a link in it) is not as the engine made it, so the PR's code changed it${localDetailNote(this.key, "which link")}; nothing of this prepare is trusted and nothing is pushed; inspect and remove ${path15} by hand`, detail: oneLine(visibleLine(repointed), PARK_TAIL_CHARS) });
+          if (repointed) return stop({ name: "lane-tampered", reason: `${label} on ${head.slice(0, 12)} did not run: ${(0, import_path117.join)(path15, "node_modules")} (or a link in it) is not as the engine made it, so the PR's code changed it${localDetailNote(this.key, "which link")}; nothing of this prepare is trusted and nothing is pushed; inspect and remove ${path15} by hand`, detail: oneLine(visibleLine(repointed), PARK_TAIL_CHARS) });
           const r = this.o.gateSandbox ? await this.sandboxRun({ purpose: "prepare", argv: c.argv, exe: c.exe, args: c.args, cwd: path15, commonGitDir: at.commonGitDir, timeoutMs: PREPARE_CHECK_TIMEOUT_MS, ...at.gates.requireDeniedPaths ? { requireDeniedPaths: true } : {} }) : { ran: false, reason: "no OS sandbox runner was given to the engine" };
           const t = tampered();
           if (t) return t;
@@ -59346,7 +59333,6 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
             return { status: r.timedOut ? 124 : r.status, stdout: redactGateOutput(r.output), stderr: "" };
           }
           if (r.started) return stop({ name: GATE_NO_VERDICT_GATE, reason: this.gateNoVerdictReason(head, label, r.reason) });
-          if (r.unavailable) return stop({ name: GATE_CONTAINER_UNAVAILABLE_GATE, reason: this.gateContainerUnavailableReason(head, label, r.reason) });
           const ownShape = r.refused === true && c.kind === "configured";
           const codeRan = ran.modes.has("enforced") || ran.modes.has("enforced-readable") || this.state.sandboxedPrepareHead === head || this.state.sandboxedGateHead === head;
           if (!ownShape && codeRan && !this.gatesAccepted(head)) {
@@ -59367,22 +59353,21 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
        * on the base itself, or its calibration could not run.
        */
       async calibrateGate(c, baseSha, commonGitDir, timeoutMs, what, head) {
-        const container = this.gatesModeCache?.container;
-        const key = (0, import_crypto29.createHash)("sha256").update(`${baseSha}\0${JSON.stringify(c.argv)}${container ? `\0container\0${container.runtime}\0${this.containerImageId ?? container.image}` : ""}`).digest("hex");
+        const key = (0, import_crypto29.createHash)("sha256").update(`${baseSha}\0${JSON.stringify(c.argv)}`).digest("hex");
         let cal = this.state.gateCalibration?.[key];
         if (!cal || !cal.ok && !this.recalibrated.has(key)) {
           this.recalibrated.add(key);
           const out = await this.runOnBase(c, baseSha, commonGitDir, timeoutMs);
           if ("notStarted" in out) {
-            return { name: GATE_SANDBOX_INCOMPATIBLE_GATE, reason: `${what} failed in ${this.sandboxName()} on ${head.slice(0, 12)}, and its calibration on the base ${baseSha.slice(0, 12)} could not run (${out.notStarted}); the failure is not counted (no ci-fix lane). Fix the cause, then rerun ${this.resume}. ${ACK_WARNING}` };
+            return { name: GATE_SANDBOX_INCOMPATIBLE_GATE, reason: `${what} failed in the OS sandbox on ${head.slice(0, 12)}, and its calibration on the base ${baseSha.slice(0, 12)} could not run (${out.notStarted}); the failure is not counted (no ci-fix lane). Fix the cause, then rerun ${this.resume}. ${ACK_WARNING}` };
           }
           cal = out;
-          this.save((x) => ({ ...x, gateCalibration: { ...x.gateCalibration ?? {}, [key]: out }, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `calibrated ${what.slice(0, 120)} in ${this.sandboxName()} on the base ${baseSha.slice(0, 12)}: ${out.ok ? "passes" : "fails"}` }] }));
+          this.save((x) => ({ ...x, gateCalibration: { ...x.gateCalibration ?? {}, [key]: out }, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `calibrated ${what.slice(0, 120)} in the OS sandbox on the base ${baseSha.slice(0, 12)}: ${out.ok ? "passes" : "fails"}` }] }));
         }
         if (cal.ok) return null;
         return {
           name: GATE_SANDBOX_INCOMPATIBLE_GATE,
-          reason: `${what} fails in ${this.sandboxName()} on the base ${baseSha.slice(0, 12)} itself, so its failure on ${head.slice(0, 12)} is not counted (no ci-fix lane). ${this.gatesModeCache?.container ? CONTAINER_INCOMPATIBLE_ADVICE : sandboxIncompatibleAdvice(cal.tail)}, then rerun ${this.resume}. ${ACK_WARNING}${cal.tail ? `; base output tail: ${cal.tail.slice(-1500)}` : ""}`
+          reason: `${what} fails in the OS sandbox on the base ${baseSha.slice(0, 12)} itself, so its failure on ${head.slice(0, 12)} is not counted (no ci-fix lane). ${sandboxIncompatibleAdvice(cal.tail)}, then rerun ${this.resume}. ${ACK_WARNING}${cal.tail ? `; base output tail: ${cal.tail.slice(-1500)}` : ""}`
         };
       }
       /**
@@ -59396,20 +59381,18 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
         if (!HEX4015.test(baseSha)) return { notStarted: `the base ${JSON.stringify(baseSha)} is not a full commit id` };
         const jobRoot = this.gateJobRoot();
         (0, import_fs98.mkdirSync)(jobRoot, { recursive: true });
-        const dir = (0, import_fs98.mkdtempSync)((0, import_path116.join)(jobRoot, "base-"));
+        const dir = (0, import_fs98.mkdtempSync)((0, import_path117.join)(jobRoot, "base-"));
         const index = `${dir}.index`;
         try {
           const env2 = { ...process.env, GIT_INDEX_FILE: index, GIT_NO_REPLACE_OBJECTS: "1" };
           runHostGit(this.o.root, ["read-tree", baseSha], void 0, env2);
           runHostGit(this.o.root, ["checkout-index", "-a", "-f", `--prefix=${dir.replace(/\\/g, "/")}/`], void 0, env2);
-          if (!this.gatesModeCache?.container) {
-            const layout = linkNodeModules(this.o.root, dir, this.o.warn, this.baseWorkspaces(baseSha));
-            if (layout) return { notStarted: visibleLine(layout) };
-          }
+          const layout = linkNodeModules(this.o.root, dir, this.o.warn, this.baseWorkspaces(baseSha));
+          if (layout) return { notStarted: visibleLine(layout) };
           const r = await this.sandboxRun({ purpose: "calibrate", argv: c.argv, exe: c.exe, args: calibrationArgs(c, dir), cwd: dir, commonGitDir, timeoutMs, ...this.gatesModeCache?.requireDeniedPaths ? { requireDeniedPaths: true } : {} });
           if (!r.ran) return { notStarted: r.reason };
-          const tail4 = r.output.trim().slice(-2e3);
-          return { ok: r.status === 0 && !r.timedOut, ...tail4 ? { tail: tail4 } : {} };
+          const tail3 = r.output.trim().slice(-2e3);
+          return { ok: r.status === 0 && !r.timedOut, ...tail3 ? { tail: tail3 } : {} };
         } catch (error2) {
           return { notStarted: errText6(error2).slice(0, 300) };
         } finally {
@@ -59584,8 +59567,8 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
       }
       /** Recorded prepare-check and local-gate processes (gate-procs.ts) that still run with their identity, for the checkout at `head`. */
       liveCheckoutProcs(head) {
-        const dirs = [(0, import_path116.join)(this.gateJobRoot(), "prepare-procs")];
-        if (this.forge?.kind === "local" && HEX4015.test(head)) dirs.push((0, import_path116.dirname)(gateProcsPath(this.localGateStateDir(), this.o.root, head)));
+        const dirs = [(0, import_path117.join)(this.gateJobRoot(), "prepare-procs")];
+        if (this.forge?.kind === "local" && HEX4015.test(head)) dirs.push((0, import_path117.dirname)(gateProcsPath(this.localGateStateDir(), this.o.root, head)));
         try {
           return [...new Set(dirs.flatMap((d) => liveGateProcs(d)))];
         } catch (error2) {
@@ -59638,10 +59621,10 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
           let dirty = [];
           let problem = typeof gitArgs === "string" ? gitArgs : null;
           if (typeof gitArgs !== "string") {
-            const indexDir = (0, import_fs98.mkdtempSync)((0, import_path116.join)((0, import_os22.tmpdir)(), "omg-gate-index-"));
+            const indexDir = (0, import_fs98.mkdtempSync)((0, import_path117.join)((0, import_os22.tmpdir)(), "omg-gate-index-"));
             try {
               at = runHostGit(checkout, [...gitArgs, "rev-parse", "HEAD"]).trim();
-              const fresh = { ...process.env, GIT_INDEX_FILE: (0, import_path116.join)(indexDir, "index") };
+              const fresh = { ...process.env, GIT_INDEX_FILE: (0, import_path117.join)(indexDir, "index") };
               runHostGit(checkout, [...gitArgs, "read-tree", at], void 0, fresh);
               const status = [...gitArgs, "-c", "core.untrackedCache=false", "status", "--porcelain=v1", "-z", "--untracked-files=all"];
               dirty = checkoutChanges(this.o.root, checkout, runHostGit(checkout, status, void 0, fresh), trustedNestedRels(this.o.root, checkout, this.baseWorkspaces()));
@@ -59695,7 +59678,7 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
         }
         const timeoutMinutes = this.localGateTimeout();
         const gates = this.gatesSandbox(this.gateCfg.loaded);
-        const common = this.privateRun()?.repo.gitDir ?? (0, import_path116.resolve)(this.o.root, this.run(["rev-parse", "--git-common-dir"]).trim());
+        const common = this.privateRun()?.repo.gitDir ?? (0, import_path117.resolve)(this.o.root, this.run(["rev-parse", "--git-common-dir"]).trim());
         this.progress.heartbeat("gates", `local gate ${gate.join(" ")} on ${head.slice(0, 12)}`, this.fields());
         const input = { stateDir, root: this.o.root, head, gate, timeoutMinutes, checkout, ...this.o.localGate ? { runner: this.o.localGate } : {}, now: () => new Date(this.clock()) };
         const recordedLinks = recordedWorktreeGitLinks(checkout);
@@ -59717,7 +59700,7 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
           if (gates.mode === "enforced") {
             const repointed = this.nodeModulesRepointed(checkout);
             if (repointed) {
-              this.gate("lane-tampered", `the local gate did not run on ${head.slice(0, 12)}: ${(0, import_path116.join)(checkout, "node_modules")} (or a link in it) is not as the engine made it, so the PR's code changed it${localDetailNote(this.key, "which link")}; inspect and remove ${checkout} by hand, then rerun ${this.resume}`, oneLine(visibleLine(repointed), PARK_TAIL_CHARS));
+              this.gate("lane-tampered", `the local gate did not run on ${head.slice(0, 12)}: ${(0, import_path117.join)(checkout, "node_modules")} (or a link in it) is not as the engine made it, so the PR's code changed it${localDetailNote(this.key, "which link")}; inspect and remove ${checkout} by hand, then rerun ${this.resume}`, oneLine(visibleLine(repointed), PARK_TAIL_CHARS));
               return false;
             }
             out = this.o.gateSandbox ? await runLocalGate({ ...input, mode: "enforced", sandbox: { run: (req) => this.sandboxRun(req), commonGitDir: common, requireDeniedPaths: gates.requireDeniedPaths } }) : { started: false, reason: "no OS sandbox runner was given to the engine", sandbox: true };
@@ -59725,10 +59708,6 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
             if (!out.started && out.noVerdict) {
               if (checkoutGitLink(checkout).hash !== linkBefore) return this.gateTamperedByGate(head, checkout, stateDir);
               this.gate(GATE_NO_VERDICT_GATE, this.gateNoVerdictReason(head, `the local gate \`${gate.join(" ")}\``, out.reason));
-              return false;
-            }
-            if (!out.started && out.unavailable) {
-              this.gate(GATE_CONTAINER_UNAVAILABLE_GATE, this.gateContainerUnavailableReason(head, `the local gate \`${gate.join(" ")}\``, out.reason));
               return false;
             }
             unavailable = !out.started && out.sandbox === true;
@@ -59930,17 +59909,19 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
           this.save((x) => moveTo(x, "gates", `gates no longer green: ${decision.reasons.join("; ")}`, this.iso()));
           return;
         }
+        const auto = decision.ok ? await this.autoMerge(pr, head, view, ship, decision, config2) : void 0;
+        if (auto === true) return;
         const cmd = decision.command.join(" ");
         this.mergeCmd = decision.ok ? cmd : void 0;
         this.commentOnce("pr", `merge@${head.slice(0, 12)}`, "merge", `${mergeComment(this.key, decision, this.resume)}${decision.ok ? this.humanComment ?? "" : ""}`);
-        if (decision.ok) this.gate("merge", `merge is a human step; review approved and gates green at ${head.slice(0, 12)}${decision.noChecks ? ` (${NO_CI_CHECKS_NOTE}: no CI ran on this head, check the change yourself)` : ""}${this.humanNote ?? ""}: run ${cmd}, then ${this.resume}`);
+        if (decision.ok) this.gate("merge", `merge is a human step; review approved and gates green at ${head.slice(0, 12)}${decision.noChecks ? ` (${NO_CI_CHECKS_NOTE}: no CI ran on this head, check the change yourself)` : ""}${this.humanNote ?? ""}${auto ? `; auto-merge (factory.merge.auto) not taken: ${auto}` : ""}: run ${cmd}, then ${this.resume}`);
         else this.gate("merge-refused", `ship's merge rule refuses ${head.slice(0, 12)}: ${decision.reasons.join("; ")}`);
       }
-      /** The human merged the PR: ship and factory record it; the run is done. */
-      finishMerged(pr) {
+      /** The human merged the PR (or the opt-in auto-merge did, `by` and the base it moved to): ship and factory record it; the run is done. */
+      finishMerged(pr, by = "a human", mergedBase) {
         if (this.forge?.kind === "local") {
           const head = this.state.head ?? "";
-          const base = this.basePushSha ?? this.exec("git", ["rev-parse", "--verify", `refs/heads/${this.state.base}`], { cwd: this.o.root, env: TRUSTED_READ_ENV }).stdout.trim();
+          const base = mergedBase ?? this.basePushSha ?? this.exec("git", ["rev-parse", "--verify", `refs/heads/${this.state.base}`], { cwd: this.o.root, env: TRUSTED_READ_ENV }).stdout.trim();
           if (!HEX4015.test(base) || !this.isAncestor(head, base)) {
             this.gate("lane-tampered", `the local forge reports PR #${pr} merged, but your ${this.state.base} ${base.slice(0, 12) || "(unreadable)"} does not contain the head the engine pushed ${head.slice(0, 12) || "(none)"}; something else wrote the PR store. Check what did (a prepare check or gate is the PR's own code), then rerun ${this.resume}`);
             return;
@@ -59948,10 +59929,269 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
         }
         this.writeShip(pr, (cur) => {
           if (!cur) throw new FactoryStepError(`no ship state for PR #${pr}`);
-          return canTransition(cur.phase, "merged") ? transition(cur, "merged", `merged on ${this.forgeName} by a human`, this.iso()) : cur;
+          return canTransition(cur.phase, "merged") ? transition(cur, "merged", `merged on ${this.forgeName} by ${by}`, this.iso()) : cur;
         });
-        this.save((x) => moveTo(x, "merged", `PR #${pr} merged on ${this.forgeName}`, this.iso()));
+        this.save((x) => moveTo(x, "merged", `PR #${pr} merged on ${this.forgeName}${by === "a human" ? "" : ` by ${by}`}`, this.iso()));
         this.progress.emit("merged", "done", `PR #${pr} merged`, this.fields());
+      }
+      /**
+       * Opt-in auto-merge (auto-merge.ts), after ship's merge rule allowed the
+       * head: undefined when factory.merge.auto is off for this repository, a
+       * short reason when a condition fails or the merge did not go through (the
+       * human park follows, unchanged), true when the engine merged and finished
+       * the run. Every input is read here by the engine (trusted), on the exact
+       * head: the user config, the diff's modes and line counts, the labels, the
+       * human review read of this merge step. The PR is read again right before
+       * the merge, which is pinned to the head (GitHub REST `sha`; the local
+       * forge merges only a head that already contains your clean, checked-out base).
+       */
+      async autoMerge(pr, head, view, ship, decision, config2) {
+        const local = this.forge?.kind === "local";
+        let user = this.o.autoMergeUserConfig;
+        if (user === void 0) {
+          try {
+            user = userConfigLayers().trustedUser;
+          } catch {
+            user = null;
+          }
+        }
+        const commit = config2.trustedBaseCommit;
+        if (commit && !this.warnedCommittedMerge) {
+          try {
+            const text3 = readBaseFile(this.exec, this.o.root, commit, BASE_CONFIG_PATH);
+            if (text3 && text3.trim() && committedMergeConfig(parseJsonc(text3))) {
+              this.warnedCommittedMerge = true;
+              this.o.warn?.(`omg factory run: factory.merge in the committed ${BASE_CONFIG_PATH} is ignored: auto-merge is set in your user config only (factory.merge.auto), because a PR can change committed config`);
+            }
+          } catch {
+          }
+        }
+        const resolved = resolveAutoMergeConfig(user, { url: this.state.repoUrl || void 0, root: this.o.root, local });
+        if (resolved.error) {
+          this.o.warn?.(`omg factory run: ${resolved.error}; auto-merge stays off`);
+          return void 0;
+        }
+        if (!resolved.config) return void 0;
+        let labels;
+        try {
+          const issue2 = this.state.kind === "ci-heal" || !this.o.issue ? [] : (this.forge ? this.forge.tracker.viewItem(this.o.issue) : ghViewItem(this.exec, this.o.issue, this.o.root)).labels;
+          const prLabels = this.forge ? [] : (JSON.parse(ghRun(this.exec, ["pr", "view", String(pr), "--json", "labels"], this.o.root)).labels ?? []).map((l) => String(l.name));
+          labels = [...issue2, ...prLabels];
+        } catch {
+          labels = null;
+        }
+        const diff = (flag) => this.exec("git", ["diff", "--no-ext-diff", "--no-textconv", flag, "-z", "--no-renames", "--no-abbrev", `${view.baseRefOid}...${head}`], { cwd: this.o.root, env: TRUSTED_READ_ENV });
+        const raw = diff("--raw");
+        const num5 = diff("--numstat");
+        const entries = raw.status === 0 && num5.status === 0 ? parseChangedEntries(raw.stdout, num5.stdout) : null;
+        const extra = [config2.knownFlakyFile];
+        let protectedProblem;
+        extra.push(...configuredProtectedPaths(this.o.root, (source, error2) => {
+          protectedProblem = `${source}: ${error2}`;
+        }));
+        const hooks = this.exec("git", ["config", "--show-scope", "--get-all", "core.hooksPath"], { cwd: this.o.root, env: TRUSTED_READ_ENV });
+        if (hooks.status > 1) protectedProblem ??= `git config core.hooksPath could not be read (exit ${hooks.status})`;
+        else {
+          for (const line of hooks.stdout.split("\n")) {
+            const [scope, ...rest] = line.split("	");
+            const value = rest.join("	").trim();
+            if (!value || scope === "command") continue;
+            const rel = import_path117.posix.normalize(((0, import_path117.isAbsolute)(value) ? (0, import_path117.relative)(this.o.root, value) : value).replace(/\\/g, "/"));
+            if (rel && rel !== "." && !rel.startsWith("..") && !(0, import_path117.isAbsolute)(rel)) extra.push(`${rel.replace(/\/+$/, "")}/`);
+          }
+        }
+        const tiers = resolved.config.tiers;
+        const testSetup = tiers.some((t) => t !== "docs") ? this.baseTestSetup(view.baseRefOid) : void 0;
+        const frontmatter = tiers.some((t) => t !== "tests") && entries ? this.frontmatterPaths(entries, view.baseRefOid, head) : void 0;
+        let installFiles;
+        const rootList = this.exec("git", ["ls-tree", "-z", "--name-only", view.baseRefOid], { cwd: this.o.root, env: TRUSTED_READ_ENV });
+        try {
+          if (rootList.status !== 0) throw new Error(`the base's root files could not be listed (exit ${rootList.status})`);
+          installFiles = baseInstallFiles(readBaseFile(this.exec, this.o.root, view.baseRefOid, "package.json"), rootList.stdout.split("\0").filter(Boolean));
+        } catch (error2) {
+          installFiles = { paths: [], problem: `the base package.json could not be read (${oneLine(error2 instanceof Error ? error2.message : String(error2), 120)})` };
+        }
+        let patch;
+        if (tiers.some((t) => t !== "docs")) {
+          const diffText = this.exec("git", ["diff", "--no-ext-diff", "--no-textconv", `${view.baseRefOid}...${head}`], { cwd: this.o.root, env: TRUSTED_READ_ENV });
+          patch = diffText.status === 0 ? patchLines(diffText.stdout) : null;
+        }
+        const changes = protectedProblem ? { reasons: [`the configured protected paths could not be read (${protectedProblem})`], evidence: [] } : classifyChanges(entries, resolved.config, {
+          extraDenied: extra,
+          installFiles,
+          ...testSetup ? { testSetup } : {},
+          ...frontmatter ? { frontmatter } : {},
+          ...patch !== void 0 ? { patch } : {}
+        });
+        const pending = this.state.pendingCommit;
+        const verdict = autoMergeVerdict({
+          head,
+          config: resolved.config,
+          run: {
+            ciHeal: this.state.kind === "ci-heal",
+            forgeKind: this.forge?.kind ?? "github",
+            history: this.state.history,
+            ...this.state.unsandboxedAck ? { unsandboxedAck: this.state.unsandboxedAck } : {},
+            ...this.state.unsandboxedGatesAck ? { unsandboxedGatesAck: this.state.unsandboxedGatesAck } : {},
+            ...this.state.gateChangeApproved ? { gateChangeApproved: this.state.gateChangeApproved } : {},
+            ...pending?.secretAck ? { secretAck: pending.secretAck } : {}
+          },
+          decision,
+          requiredChecks: config2.requiredChecks,
+          ...latestVerdict(ship) ? { verdict: latestVerdict(ship) } : {},
+          ...this.humanClear?.head === head ? { human: { commentOnly: this.humanClear.commentOnly } } : {},
+          labels,
+          changes
+        });
+        const short = (reasons) => `${reasons.slice(0, 3).join("; ")}${reasons.length > 3 ? `; and ${reasons.length - 3} more` : ""}`;
+        if (!verdict.ok || !verdict.tier) return short(verdict.reasons);
+        const again = await this.prViewReady(pr);
+        if (again.state !== "OPEN" || again.isDraft || again.headRefOid !== head || again.baseRefOid !== view.baseRefOid || again.baseRefName !== view.baseRefName) {
+          return `the PR changed between the check and the merge (now ${again.state.toLowerCase()}, head ${String(again.headRefOid).slice(0, 12)}, base ${String(again.baseRefOid).slice(0, 12)})`;
+        }
+        const added = (entries ?? []).filter((e) => e.status === "A").map((e) => e.path);
+        const merged = local ? this.localAutoMerge(head, view.baseRefOid, added) : this.githubAutoMerge(pr, head);
+        if (typeof merged === "string") return merged;
+        const by = `the factory (auto-merge tier ${verdict.tier})`;
+        this.save((x) => ({ ...x, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `auto-merged by tier ${verdict.tier} at ${head.slice(0, 12)}: ${verdict.evidence.join("; ")}` }] }));
+        this.commentOnce("pr", `auto-merge@${head.slice(0, 12)}`, "merge", autoMergeComment(runLabel(this.key), verdict.tier, head, verdict.evidence, by));
+        if (!local) {
+          const moved = this.githubMergeBaseProblem(merged.mergeSha, view.baseRefOid);
+          if (moved) {
+            const text3 = `WARNING: auto-merge of ${head.slice(0, 12)}: ${moved}. The merged result was not checked by the gates; check ${this.state.base} now. Turn on "Require branches to be up to date before merging" in branch protection to prevent this.`;
+            this.save((x) => ({ ...x, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: text3 }] }));
+            this.commentOnce("pr", `auto-merge-base@${head.slice(0, 12)}`, "merge", `Factory run for ${runLabel(this.key)}: ${text3}
+`);
+            this.o.warn?.(`omg factory run: ${text3}`);
+          }
+        }
+        this.finishMerged(pr, by, merged.base);
+        return true;
+      }
+      /** GitHub: the head-pinned REST merge (GitHub refuses a moved head with 409), admitted by the guard for this step only. */
+      githubAutoMerge(pr, head) {
+        const repo = this.githubReadContext()?.repo;
+        const args = repo ? githubAutoMergeArgs({ repo, pr, head }) : void 0;
+        if (!args) return "the run's GitHub repository is not known, so there is no head-pinned merge to run";
+        this.autoMergeStep = { pr, head };
+        try {
+          const res = this.exec("gh", args, { cwd: this.o.root });
+          if (res.status !== 0) return `GitHub refused the head-pinned merge: ${oneLine(res.stderr || res.stdout, 200)}`;
+          let out;
+          try {
+            out = JSON.parse(res.stdout);
+          } catch {
+            out = {};
+          }
+          if (out.merged !== true) return `GitHub did not confirm the merge: ${oneLine(res.stdout, 200)}`;
+          return typeof out.sha === "string" && HEX4015.test(out.sha) ? { mergeSha: out.sha } : {};
+        } finally {
+          this.autoMergeStep = void 0;
+        }
+      }
+      /** After the GitHub merge: why its merge commit's first parent is not the base the gates checked (undefined = it is). */
+      githubMergeBaseProblem(mergeSha, baseSha) {
+        const repo = this.githubReadContext()?.repo;
+        const args = repo && mergeSha ? githubCommitReadArgs(repo, mergeSha) : void 0;
+        if (!args) return `GitHub did not return the merge commit, so its first parent could not be checked against ${this.state.base} ${baseSha.slice(0, 12)}`;
+        let parents;
+        try {
+          const res = this.exec("gh", args, { cwd: this.o.root });
+          parents = res.status === 0 ? JSON.parse(res.stdout).parents : void 0;
+        } catch {
+          parents = void 0;
+        }
+        const first = Array.isArray(parents) ? parents[0]?.sha : void 0;
+        if (typeof first !== "string") return `the merge commit ${mergeSha.slice(0, 12)} could not be read, so its first parent could not be checked against ${this.state.base} ${baseSha.slice(0, 12)}`;
+        return first === baseSha ? void 0 : `GitHub merged into ${this.state.base} ${first.slice(0, 12)}, not ${baseSha.slice(0, 12)} the gates checked (the base moved before the merge)`;
+      }
+      /**
+       * The Markdown-like changed files (isFrontmatterCandidate) whose BASE blob
+       * (not added) or HEAD blob (not deleted) starts with frontmatter (review-498b
+       * N1): a skill, command, agent or mission contract a tool parses. Read with
+       * ship's exact `git show <sha>:<path>`; a read that fails (or a path that
+       * shape refuses) or more than 200 such files is a problem, which keeps the
+       * docs and small tiers off.
+       */
+      frontmatterPaths(entries, baseSha, head) {
+        const candidates = entries.filter((e) => isFrontmatterCandidate(e.path));
+        if (candidates.length > 200) return { paths: [], problem: `${candidates.length} Markdown-like files changed; the engine reads at most 200 for frontmatter` };
+        const paths = [];
+        for (const e of candidates) {
+          const shas = [...e.status !== "A" ? [baseSha] : [], ...e.status !== "D" ? [head] : []];
+          for (const sha3 of shas) {
+            let text3;
+            try {
+              text3 = readBaseFile(this.exec, this.o.root, sha3, e.path);
+            } catch (error2) {
+              return { paths, problem: `${e.path} could not be read at ${sha3.slice(0, 12)} to check for frontmatter (${oneLine(error2 instanceof Error ? error2.message : String(error2), 120)})` };
+            }
+            if (text3 !== null && hasFrontmatter(text3)) {
+              paths.push(e.path);
+              break;
+            }
+          }
+        }
+        return { paths };
+      }
+      /**
+       * The setup files of the BASE commit's root test configs (baseTestSetup),
+       * never the head's: the PR cannot hide its own setup file. A listing or
+       * read that fails is a problem, which keeps the tests and small tiers off.
+       */
+      baseTestSetup(baseSha) {
+        const list = this.exec("git", ["ls-tree", "-z", "--name-only", baseSha], { cwd: this.o.root, env: TRUSTED_READ_ENV });
+        if (list.status !== 0) return { paths: [], problem: `the base's root files could not be listed (exit ${list.status})` };
+        const files = [];
+        for (const name of list.stdout.split("\0").filter((n) => TEST_CONFIG_NAME.test(n))) {
+          try {
+            const text3 = readBaseFile(this.exec, this.o.root, baseSha, name);
+            if (text3 !== null) files.push({ path: name, text: text3 });
+          } catch (error2) {
+            return { paths: [], problem: `the base test config ${name} could not be read (${oneLine(error2 instanceof Error ? error2.message : String(error2), 120)})` };
+          }
+        }
+        return baseTestSetup(files);
+      }
+      /**
+       * The local forge: `git merge --no-ff --no-edit --no-verify <head>` in your
+       * repository, only with your base checked out there, no tracked change, the
+       * base still at the commit the run synced, and the head already containing
+       * it (so the merge takes the head's tree as is: no merge driver runs), and
+       * no path the PR adds already in your checkout. Like every engine git
+       * command it runs under hardenedGitExec: core.hooksPath is the engine's
+       * empty dir (no post-merge from .git/hooks or a tracked hooks dir) and
+       * merge.renormalize is off. A failed merge is aborted. Returns the base's new commit.
+       */
+      localAutoMerge(head, baseSha, added) {
+        const git4 = (args) => this.exec("git", args, { cwd: this.o.root, env: TRUSTED_READ_ENV });
+        const inTheWay = added.filter((p) => {
+          const parts = p.split("/");
+          return parts.some((_, n) => {
+            try {
+              const st = (0, import_fs98.lstatSync)((0, import_path117.join)(this.o.root, ...parts.slice(0, n + 1)));
+              return n === parts.length - 1 || !st.isDirectory();
+            } catch {
+              return false;
+            }
+          });
+        });
+        if (inTheWay.length > 0) return `the PR adds ${inTheWay.slice(0, 3).join(", ")}${inTheWay.length > 3 ? ` and ${inTheWay.length - 3} more` : ""}, which already exist in your checkout, or under a file or link there (an ignored or untracked file the merge would overwrite)`;
+        const branch2 = git4(["rev-parse", "--symbolic-full-name", "HEAD"]);
+        if (branch2.status !== 0 || branch2.stdout.trim() !== `refs/heads/${this.state.base}`) return `your repository does not have ${this.state.base} checked out (the local merge runs there)`;
+        const dirty = git4(["status", "--porcelain", "--untracked-files=no"]);
+        if (dirty.status !== 0 || dirty.stdout.trim() !== "") return `your repository has uncommitted changes to tracked files`;
+        const at = git4(["rev-parse", "--verify", `refs/heads/${this.state.base}`]).stdout.trim();
+        if (at !== baseSha) return `your ${this.state.base} is at ${at.slice(0, 12) || "(unreadable)"}, not ${baseSha.slice(0, 12)} the gates checked against`;
+        if (git4(["merge-base", "--is-ancestor", baseSha, head]).status !== 0) return `head ${head.slice(0, 12)} does not contain ${this.state.base} ${baseSha.slice(0, 12)}; a merge would combine trees the gates never checked`;
+        const res = git4(["merge", "--no-ff", "--no-edit", "--no-verify", head]);
+        if (res.status !== 0) {
+          if (git4(["rev-parse", "-q", "--verify", "MERGE_HEAD"]).status === 0) git4(["merge", "--abort"]);
+          return `git merge of ${head.slice(0, 12)} failed: ${oneLine(res.stderr || res.stdout, 200)}`;
+        }
+        const after = git4(["rev-parse", "--verify", `refs/heads/${this.state.base}`]).stdout.trim();
+        if (!HEX4015.test(after) || git4(["merge-base", "--is-ancestor", head, after]).status !== 0) return `after the merge your ${this.state.base} does not contain ${head.slice(0, 12)}; check your repository`;
+        return { base: after };
       }
       // --- Shared git state around lanes -------------------------------------------------------------
       /**
@@ -60134,7 +60374,7 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
           const ledgerDir = this.o.ledgerDir ?? defaultLedgerDir();
           const failed = `the tamper quarantine failed (${errText6(error2)}); nothing in .git was quarantined or restored`;
           try {
-            writeTamperHold(ledgerDir, this.o.root, { root: (0, import_path116.resolve)(this.o.root), at: this.iso(), run: String(this.key), gate, moved: [], restored: [], notRestored: [], refs: [], failed, held: true });
+            writeTamperHold(ledgerDir, this.o.root, { root: (0, import_path117.resolve)(this.o.root), at: this.iso(), run: String(this.key), gate, moved: [], restored: [], notRestored: [], refs: [], failed, held: true });
           } catch (holdError) {
             return `${note}. The tamper quarantine failed (${errText6(error2)}) and the hold could not be written either (${errText6(holdError)}); .git was left as it is: check its config, hooks, info and refs by hand before you run the factory here again`;
           }
@@ -60145,8 +60385,8 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
       inPrivateDir(path15) {
         const dir = this.state.layout === 2 ? this.state.privateDir : void 0;
         if (!dir) return false;
-        const rel = (0, import_path116.relative)((0, import_path116.resolve)(dir), (0, import_path116.resolve)(path15));
-        return rel === "" || !rel.startsWith("..") && !(0, import_path116.isAbsolute)(rel);
+        const rel = (0, import_path117.relative)((0, import_path117.resolve)(dir), (0, import_path117.resolve)(path15));
+        return rel === "" || !rel.startsWith("..") && !(0, import_path117.isAbsolute)(rel);
       }
       /**
        * The tamper quarantine of the snapshot the tamper checks compare (snap()):
@@ -60223,7 +60463,7 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
         const ledgerDir = this.o.ledgerDir ?? defaultLedgerDir();
         const failed = `the engine has no snapshot of your repository from before the step (${plain.slice(0, 3).join("; ")}); nothing in .git was quarantined or restored`;
         try {
-          writeTamperHold(ledgerDir, this.o.root, { root: (0, import_path116.resolve)(this.o.root), at: this.iso(), run: String(this.key), gate, moved: [], restored: [], notRestored: [], refs: [], failed, held: true });
+          writeTamperHold(ledgerDir, this.o.root, { root: (0, import_path117.resolve)(this.o.root), at: this.iso(), run: String(this.key), gate, moved: [], restored: [], notRestored: [], refs: [], failed, held: true });
         } catch (holdError) {
           return `${note}. ${failed[0].toUpperCase()}${failed.slice(1)}, and the hold could not be written (${errText6(holdError)}): check your repository's .git config, hooks, info and refs by hand before you run the factory here again`;
         }
@@ -60652,6 +60892,8 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
       // merge then treat like any lane's. The agent's PR gets a link comment and is closed after publish (D5).
       /** The coding agent write context, set ONLY around the assign and around the agent PR's link comment and close; cleared in finally. */
       agentStep;
+      /** Set only around the opt-in auto-merge's GitHub REST merge (the guard admits that one call for this PR and head). */
+      autoMergeStep;
       /** Whether this invocation's run uses the coding agent, and its keys (resolved once; its warning printed once). */
       agentChoice;
       /** The repository-only GitHub read context (the coding agent's status read): the run's repository as intake recorded it. */
@@ -60698,7 +60940,7 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
       }
       githubReadContext() {
         const repo = this.state?.repoUrl ? codingAgentRepoOf(this.state.repoUrl) : void 0;
-        return repo ? { repo: ghRepoArg(repo) } : void 0;
+        return repo ? { repo: ghRepoArg(repo), ...this.autoMergeStep ? { autoMerge: this.autoMergeStep } : {} } : void 0;
       }
       withAgentStep(ctx, call) {
         this.agentStep = ctx;
@@ -61081,6 +61323,8 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
       humanNote;
       /** The same read for the merge comment on the PR. */
       humanComment;
+      /** The same read as auto-merge needs it: clean at this head, and its comment-only reviews (undefined = not read). */
+      humanClear;
       /** factory.review.human from the trusted layers; absent (no forge config included) = "fix". */
       humanMode() {
         return this.o.forge?.config.review?.human ?? "fix";
@@ -61182,6 +61426,7 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
       humanReviewParked(pr, head, ship) {
         this.humanNote = void 0;
         this.humanComment = void 0;
+        this.humanClear = void 0;
         const mode = this.humanMode();
         if (mode === "off") return false;
         const fb = this.readHuman(pr, head);
@@ -61252,6 +61497,7 @@ Human review at this head: ${read}.
 
 If the PR gets new review comments before you merge, rerun \`${this.resume}\` first.
 `;
+        this.humanClear = { head, commentOnly: commentOnly.length };
         return false;
       }
       /**
@@ -61355,7 +61601,7 @@ var init_required_checks = __esm({
 });
 
 // src/factory/check/cli.ts
-var import_fs99, import_path117;
+var import_fs99, import_path118;
 var init_cli = __esm({
   "src/factory/check/cli.ts"() {
     "use strict";
@@ -61367,7 +61613,7 @@ var init_cli = __esm({
     init_ado();
     init_forge_roots();
     import_fs99 = require("fs");
-    import_path117 = require("path");
+    import_path118 = require("path");
     init_config2();
     init_required_checks();
     init_prepare2();
@@ -61380,8 +61626,6 @@ var init_cli = __esm({
     init_checks();
     init_state5();
     init_local_gate();
-    init_sandbox2();
-    init_container_gate();
     init_score();
   }
 });
@@ -61434,11 +61678,11 @@ var init_signature = __esm({
 });
 
 // src/factory/heal/debug-lane.ts
-var import_path118, DEBUG_LANE_GRACE_MS, NO_CONFINEMENT;
+var import_path119, DEBUG_LANE_GRACE_MS, NO_CONFINEMENT;
 var init_debug_lane = __esm({
   "src/factory/heal/debug-lane.ts"() {
     "use strict";
-    import_path118 = require("path");
+    import_path119 = require("path");
     init_worktree_paths();
     init_budget();
     init_lane();
@@ -61451,13 +61695,13 @@ var init_debug_lane = __esm({
 });
 
 // src/factory/heal/heal-evidence.ts
-var import_crypto31, import_fs100, import_path119, EVIDENCE_LIMITS;
+var import_crypto31, import_fs100, import_path120, EVIDENCE_LIMITS;
 var init_heal_evidence = __esm({
   "src/factory/heal/heal-evidence.ts"() {
     "use strict";
     import_crypto31 = require("crypto");
     import_fs100 = require("fs");
-    import_path119 = require("path");
+    import_path120 = require("path");
     init_atomic_write();
     init_gates();
     init_ci2();
@@ -61479,13 +61723,13 @@ var init_heal_evidence = __esm({
 });
 
 // src/factory/heal/run.ts
-var import_crypto32, import_fs101, import_path120, DEBUG_LANE_TIMEOUT_MS;
+var import_crypto32, import_fs101, import_path121, DEBUG_LANE_TIMEOUT_MS;
 var init_run2 = __esm({
   "src/factory/heal/run.ts"() {
     "use strict";
     import_crypto32 = require("crypto");
     import_fs101 = require("fs");
-    import_path120 = require("path");
+    import_path121 = require("path");
     init_atomic_write();
     init_file_lock();
     init_ledger();
@@ -61504,11 +61748,11 @@ var init_run2 = __esm({
 });
 
 // src/factory/heal/implement.ts
-var import_path121;
+var import_path122;
 var init_implement = __esm({
   "src/factory/heal/implement.ts"() {
     "use strict";
-    import_path121 = require("path");
+    import_path122 = require("path");
     init_file_lock();
     init_budget();
     init_engine();
@@ -61519,11 +61763,11 @@ var init_implement = __esm({
 });
 
 // src/factory/heal/cli.ts
-var import_path122, SCAN_LIMITS;
+var import_path123, SCAN_LIMITS;
 var init_cli2 = __esm({
   "src/factory/heal/cli.ts"() {
     "use strict";
-    import_path122 = require("path");
+    import_path123 = require("path");
     init_esm();
     init_file_lock();
     init_config2();
@@ -61575,13 +61819,13 @@ var init_factory_check = __esm({
 });
 
 // src/factory/enqueue.ts
-var import_fs103, import_os23, import_path123, MAX_FILE_BYTES;
+var import_fs103, import_os23, import_path124, MAX_FILE_BYTES;
 var init_enqueue = __esm({
   "src/factory/enqueue.ts"() {
     "use strict";
     import_fs103 = require("fs");
     import_os23 = require("os");
-    import_path123 = require("path");
+    import_path124 = require("path");
     init_guard();
     init_html();
     init_ado();
@@ -61662,11 +61906,11 @@ var init_guard3 = __esm({
 });
 
 // src/factory/setup/detect.ts
-var import_path124;
+var import_path125;
 var init_detect = __esm({
   "src/factory/setup/detect.ts"() {
     "use strict";
-    import_path124 = require("path");
+    import_path125 = require("path");
     init_ado_config();
     init_config3();
     init_local();
@@ -61684,14 +61928,14 @@ var init_auth = __esm({
 });
 
 // src/cli/commands/intake.ts
-var import_child_process24, import_fs104, import_path125, LOCK_STALE_MS3;
+var import_child_process24, import_fs104, import_path126, LOCK_STALE_MS3;
 var init_intake = __esm({
   "src/cli/commands/intake.ts"() {
     "use strict";
     init_esm();
     import_child_process24 = require("child_process");
     import_fs104 = require("fs");
-    import_path125 = require("path");
+    import_path126 = require("path");
     init_worktree_paths();
     init_tmux_utils();
     init_host_detection();
@@ -61925,12 +62169,12 @@ var init_main = __esm({
 });
 
 // src/factory/setup/write.ts
-var import_fs105, import_path126, BOM, SAMPLE_BACKLOG_TEXT, TEAM_ROUTING_SEED, TEAM_DECISIONS_SEED;
+var import_fs105, import_path127, BOM, SAMPLE_BACKLOG_TEXT, TEAM_ROUTING_SEED, TEAM_DECISIONS_SEED;
 var init_write = __esm({
   "src/factory/setup/write.ts"() {
     "use strict";
     import_fs105 = require("fs");
-    import_path126 = require("path");
+    import_path127 = require("path");
     init_backlog();
     init_main();
     init_config3();
@@ -61967,12 +62211,12 @@ var init_write = __esm({
 });
 
 // src/factory/setup/workflows.ts
-var import_fs106, import_path127, import_url11;
+var import_fs106, import_path128, import_url11;
 var init_workflows = __esm({
   "src/factory/setup/workflows.ts"() {
     "use strict";
     import_fs106 = require("fs");
-    import_path127 = require("path");
+    import_path128 = require("path");
     import_url11 = require("url");
     init_guard3();
     init_write();
@@ -62104,12 +62348,12 @@ var init_factory_board = __esm({
 });
 
 // src/factory/dashboard/collect.ts
-var import_fs110, import_path128;
+var import_fs110, import_path129;
 var init_collect2 = __esm({
   "src/factory/dashboard/collect.ts"() {
     "use strict";
     import_fs110 = require("fs");
-    import_path128 = require("path");
+    import_path129 = require("path");
     init_score();
     init_collect();
     init_state5();
@@ -62124,13 +62368,13 @@ var init_render2 = __esm({
 });
 
 // src/cli/commands/factory-dashboard.ts
-var import_child_process25, import_fs111, import_path129;
+var import_child_process25, import_fs111, import_path130;
 var init_factory_dashboard = __esm({
   "src/cli/commands/factory-dashboard.ts"() {
     "use strict";
     import_child_process25 = require("child_process");
     import_fs111 = require("fs");
-    import_path129 = require("path");
+    import_path130 = require("path");
     init_esm();
     init_collect2();
     init_render2();
@@ -62139,14 +62383,14 @@ var init_factory_dashboard = __esm({
 });
 
 // src/cli/commands/factory-pr.ts
-var import_fs112, import_os24, import_path130, import_crypto33;
+var import_fs112, import_os24, import_path131, import_crypto33;
 var init_factory_pr = __esm({
   "src/cli/commands/factory-pr.ts"() {
     "use strict";
     init_esm();
     import_fs112 = require("fs");
     import_os24 = require("os");
-    import_path130 = require("path");
+    import_path131 = require("path");
     import_crypto33 = require("crypto");
     init_cli();
     init_state5();
@@ -62160,12 +62404,12 @@ var init_factory_pr = __esm({
 });
 
 // src/factory/team/reminders.ts
-var import_fs113, import_path131;
+var import_fs113, import_path132;
 var init_reminders = __esm({
   "src/factory/team/reminders.ts"() {
     "use strict";
     import_fs113 = require("fs");
-    import_path131 = require("path");
+    import_path132 = require("path");
     init_atomic_write();
     init_file_lock();
     init_review_feedback();
@@ -62176,13 +62420,13 @@ var init_reminders = __esm({
 });
 
 // src/factory/poll.ts
-var import_child_process26, import_fs114, import_path132, POLL_DEFAULT_INTERVAL_MS, POLL_MIN_INTERVAL_MS, POLL_MAX_INTERVAL_MS, POLL_OWNER_STALE_MS, AUTO_START_MAX_STDOUT, AUTO_START_SLACK_MS, AUTO_START_GRACE_MS;
+var import_child_process26, import_fs114, import_path133, POLL_DEFAULT_INTERVAL_MS, POLL_MIN_INTERVAL_MS, POLL_MAX_INTERVAL_MS, POLL_OWNER_STALE_MS, AUTO_START_MAX_STDOUT, AUTO_START_SLACK_MS, AUTO_START_GRACE_MS;
 var init_poll = __esm({
   "src/factory/poll.ts"() {
     "use strict";
     import_child_process26 = require("child_process");
     import_fs114 = require("fs");
-    import_path132 = require("path");
+    import_path133 = require("path");
     init_ledger();
     init_atomic_write();
     init_file_lock();
@@ -62237,9 +62481,9 @@ function buildRouteTableNarrow() {
 }
 function validateFactoryPrerequisites(cwd) {
   const missing = [];
-  if (!(0, import_fs115.existsSync)((0, import_path133.join)(getOmcRoot(cwd), "state"))) missing.push(".omg/state/");
+  if (!(0, import_fs115.existsSync)((0, import_path134.join)(getOmcRoot(cwd), "state"))) missing.push(".omg/state/");
   for (const face of ["CLAUDE.md", "GLOSSARY.md"]) {
-    if (!(0, import_fs115.existsSync)((0, import_path133.join)(cwd, face))) missing.push(face);
+    if (!(0, import_fs115.existsSync)((0, import_path134.join)(cwd, face))) missing.push(face);
   }
   return { ok: missing.length === 0, missing };
 }
@@ -62250,8 +62494,8 @@ function runFactoryInit(options = {}) {
       message: "factory init refused: --no-narrow is retired. Its full template (intake -> intent -> launch -> diagnose) chained launch, which needs a live captain, into a diagnose skill that does not exist. Run launch in a session and deliver each issue with omg factory run <issue>; CI: failed push runs of ci.yml on the dev branch are queued by the listener (workflow_run) and processed by the next omg factory heal scan; failures on other branches or workflows are no longer acted on by the listener (run omg factory heal scan manually). See the factory section of docs/REFERENCE.md."
     };
   }
-  const cwd = (0, import_path133.resolve)(options.cwd ?? process.cwd());
-  const routesPath = (0, import_path133.join)(getOmcRoot(cwd), "factory-routes.json");
+  const cwd = (0, import_path134.resolve)(options.cwd ?? process.cwd());
+  const routesPath = (0, import_path134.join)(getOmcRoot(cwd), "factory-routes.json");
   const prerequisites = validateFactoryPrerequisites(cwd);
   if (!prerequisites.ok) {
     return {
@@ -62267,7 +62511,7 @@ function runFactoryInit(options = {}) {
   }
   const table = buildRouteTableNarrow();
   try {
-    (0, import_fs115.mkdirSync)((0, import_path133.join)(routesPath, ".."), { recursive: true });
+    (0, import_fs115.mkdirSync)((0, import_path134.join)(routesPath, ".."), { recursive: true });
     (0, import_fs115.writeFileSync)(routesPath, `${JSON.stringify(table, null, 2)}
 `, "utf8");
   } catch (error2) {
@@ -62279,14 +62523,14 @@ function runFactoryInit(options = {}) {
     message: `factory init wrote ${routesPath} (narrow starter table): ${routes}. The SessionEnd chain enqueuer reads this file as the single source of truth \u2014 a missing route halts the chain, and skill "stop" marks a terminal stage.`
   };
 }
-var import_fs115, import_path133;
+var import_fs115, import_path134;
 var init_factory = __esm({
   "src/cli/commands/factory.ts"() {
     "use strict";
     init_esm();
     init_integer_option();
     import_fs115 = require("fs");
-    import_path133 = require("path");
+    import_path134 = require("path");
     init_listener();
     init_status();
     init_routing();
@@ -62335,9 +62579,9 @@ var init_factory = __esm({
 // src/smoke/copilot-chain-scenario.ts
 function prepareChainProject(projectDir) {
   try {
-    (0, import_fs116.mkdirSync)((0, import_path134.join)(getOmcRoot(projectDir), "state"), { recursive: true });
+    (0, import_fs116.mkdirSync)((0, import_path135.join)(getOmcRoot(projectDir), "state"), { recursive: true });
     for (const face of ["CLAUDE.md", "GLOSSARY.md"]) {
-      if (!(0, import_fs116.existsSync)((0, import_path134.join)(projectDir, face))) (0, import_fs116.writeFileSync)((0, import_path134.join)(projectDir, face), `# ${face}
+      if (!(0, import_fs116.existsSync)((0, import_path135.join)(projectDir, face))) (0, import_fs116.writeFileSync)((0, import_path135.join)(projectDir, face), `# ${face}
 `, "utf8");
     }
   } catch (err) {
@@ -62351,11 +62595,11 @@ function prepareChainProject(projectDir) {
     "failed:*": { stage: "halt", skill: "stop" }
   };
   try {
-    (0, import_fs116.writeFileSync)((0, import_path134.join)(getOmcRoot(projectDir), "factory-routes.json"), `${JSON.stringify(routes, null, 2)}
+    (0, import_fs116.writeFileSync)((0, import_path135.join)(getOmcRoot(projectDir), "factory-routes.json"), `${JSON.stringify(routes, null, 2)}
 `);
-    const skillDir = (0, import_path134.join)(projectDir, ".github", "skills", CHAIN_SKILL);
+    const skillDir = (0, import_path135.join)(projectDir, ".github", "skills", CHAIN_SKILL);
     (0, import_fs116.mkdirSync)(skillDir, { recursive: true });
-    (0, import_fs116.writeFileSync)((0, import_path134.join)(skillDir, "SKILL.md"), [
+    (0, import_fs116.writeFileSync)((0, import_path135.join)(skillDir, "SKILL.md"), [
       "---",
       `name: ${CHAIN_SKILL}`,
       "description: Acknowledge an oh-my-copilot factory chain smoke link. Use when invoked as /chain-ack.",
@@ -62374,7 +62618,7 @@ function pathKey2(env2) {
 }
 function chainLinkSmokeEnv(base, bin, root, linkId) {
   const key = pathKey2(base);
-  const withPath = { ...base, [key]: [(0, import_path134.dirname)(bin), base[key]].filter(Boolean).join(import_path134.delimiter), OMC_PLUGIN_ROOT: root };
+  const withPath = { ...base, [key]: [(0, import_path135.dirname)(bin), base[key]].filter(Boolean).join(import_path135.delimiter), OMC_PLUGIN_ROOT: root };
   return chainLinkEnv(withPath, "copilot", linkId);
 }
 function readJson2(path15) {
@@ -62395,20 +62639,20 @@ function collectChainEvidence(projectDir, home, firstLink) {
   for (const entry of entries) {
     const match = /^chain-([0-9a-f-]{36})\.json$/i.exec(entry);
     if (!match) continue;
-    const value = readJson2((0, import_path134.join)(factoryDir, entry));
+    const value = readJson2((0, import_path135.join)(factoryDir, entry));
     if (value && typeof value === "object" && !Array.isArray(value)) ledgers.push({ ...value, file: match[1] });
   }
   ledgers.sort((a, b) => a.file === firstLink ? -1 : b.file === firstLink ? 1 : String(a.createdAt ?? "").localeCompare(String(b.createdAt ?? "")));
   let decisions = [];
   try {
-    decisions = parseJsonl((0, import_fs116.readFileSync)((0, import_path134.join)(factoryDir, "chain-decisions.jsonl"), "utf8")).events;
+    decisions = parseJsonl((0, import_fs116.readFileSync)((0, import_path135.join)(factoryDir, "chain-decisions.jsonl"), "utf8")).events;
   } catch {
   }
-  const stopped = readJson2((0, import_path134.join)(factoryDir, `chain-${CHAIN_INTENT_ID}.stopped.json`));
+  const stopped = readJson2((0, import_path135.join)(factoryDir, `chain-${CHAIN_INTENT_ID}.stopped.json`));
   const sessions = ledgers.map((l) => l.hostSessionId).filter((id) => typeof id === "string" && /^[\w-]{1,64}$/.test(id)).map((hostSessionId) => {
     let events = null;
     try {
-      events = parseJsonl((0, import_fs116.readFileSync)((0, import_path134.join)(home, "session-state", hostSessionId, "events.jsonl"), "utf8")).events;
+      events = parseJsonl((0, import_fs116.readFileSync)((0, import_path135.join)(home, "session-state", hostSessionId, "events.jsonl"), "utf8")).events;
     } catch {
     }
     return { hostSessionId, events };
@@ -62423,26 +62667,26 @@ function openLinks(projectDir) {
   } catch {
     return [];
   }
-  return entries.map((e) => /^chain-([0-9a-f-]{36})\.json$/i.exec(e)?.[1]).filter((id) => !!id).filter((id) => !readJson2((0, import_path134.join)(factoryDir, `chain-${id}.json`))?.closedAt);
+  return entries.map((e) => /^chain-([0-9a-f-]{36})\.json$/i.exec(e)?.[1]).filter((id) => !!id).filter((id) => !readJson2((0, import_path135.join)(factoryDir, `chain-${id}.json`))?.closedAt);
 }
 function chainSettled(projectDir, firstLink) {
   const factoryDir = factoryStateDir(projectDir);
-  if (!(0, import_fs116.existsSync)((0, import_path134.join)(factoryDir, `chain-${firstLink}.json`)) || openLinks(projectDir).length > 0) return false;
-  const ledgers = (0, import_fs116.readdirSync)(factoryDir).filter((e) => /^chain-[0-9a-f-]{36}\.json$/i.test(e)).map((e) => ({ id: e.slice("chain-".length, -".json".length), ledger: readJson2((0, import_path134.join)(factoryDir, e)) }));
+  if (!(0, import_fs116.existsSync)((0, import_path135.join)(factoryDir, `chain-${firstLink}.json`)) || openLinks(projectDir).length > 0) return false;
+  const ledgers = (0, import_fs116.readdirSync)(factoryDir).filter((e) => /^chain-[0-9a-f-]{36}\.json$/i.test(e)).map((e) => ({ id: e.slice("chain-".length, -".json".length), ledger: readJson2((0, import_path135.join)(factoryDir, e)) }));
   return ledgers.every(({ id, ledger }) => ledger?.decision !== "enqueued" || ledgers.some((l) => l.ledger?.parentLink === id));
 }
 function stopTimedOutChain(projectDir, open3) {
   const factoryDir = factoryStateDir(projectDir);
   const now = (/* @__PURE__ */ new Date()).toISOString();
   for (const id of open3) {
-    const ledger = readJson2((0, import_path134.join)(factoryDir, `chain-${id}.json`));
+    const ledger = readJson2((0, import_path135.join)(factoryDir, `chain-${id}.json`));
     if (!ledger || typeof ledger !== "object") continue;
     try {
-      (0, import_fs116.writeFileSync)((0, import_path134.join)(factoryDir, `chain-${id}.json`), JSON.stringify({ ...ledger, closedAt: now, decision: "smoke-timeout" }, null, 2));
+      (0, import_fs116.writeFileSync)((0, import_path135.join)(factoryDir, `chain-${id}.json`), JSON.stringify({ ...ledger, closedAt: now, decision: "smoke-timeout" }, null, 2));
     } catch {
     }
   }
-  const marker = (0, import_path134.join)(factoryDir, `chain-${CHAIN_INTENT_ID}.stopped.json`);
+  const marker = (0, import_path135.join)(factoryDir, `chain-${CHAIN_INTENT_ID}.stopped.json`);
   if ((0, import_fs116.existsSync)(marker)) return;
   try {
     (0, import_fs116.writeFileSync)(marker, JSON.stringify({ intentId: CHAIN_INTENT_ID, reason: "smoke-timeout", stoppedAt: now }, null, 2));
@@ -62505,14 +62749,14 @@ async function runChainScenario(input) {
     chain
   };
 }
-var import_crypto34, import_child_process27, import_fs116, import_path134, CHAIN_ACK_TOKEN, sleep7;
+var import_crypto34, import_child_process27, import_fs116, import_path135, CHAIN_ACK_TOKEN, sleep7;
 var init_copilot_chain_scenario = __esm({
   "src/smoke/copilot-chain-scenario.ts"() {
     "use strict";
     import_crypto34 = require("crypto");
     import_child_process27 = require("child_process");
     import_fs116 = require("fs");
-    import_path134 = require("path");
+    import_path135 = require("path");
     init_tmux_utils();
     init_factory();
     init_chain_enqueuer();
@@ -62530,7 +62774,7 @@ var init_copilot_chain_scenario = __esm({
 
 // src/smoke/copilot-hook-manifest.ts
 function readCopilotHookManifest(root) {
-  const parsed = JSON.parse((0, import_fs117.readFileSync)((0, import_path135.join)(root, COPILOT_HOOKS_PATH), "utf-8"));
+  const parsed = JSON.parse((0, import_fs117.readFileSync)((0, import_path136.join)(root, COPILOT_HOOKS_PATH), "utf-8"));
   if (!parsed || typeof parsed !== "object" || !parsed.hooks || typeof parsed.hooks !== "object") {
     throw new Error(`${COPILOT_HOOKS_PATH} has no "hooks" object`);
   }
@@ -62573,12 +62817,12 @@ function dispatchHookEntry(event, entry, root, payload, opts) {
     ...err && !timedOut ? { error: err.message } : {}
   };
 }
-var import_fs117, import_path135, PLUGIN_ROOT_TOKEN, COPILOT_HOOKS_PATH, DEFAULT_ENTRY_TIMEOUT_SEC, GRACE_MS;
+var import_fs117, import_path136, PLUGIN_ROOT_TOKEN, COPILOT_HOOKS_PATH, DEFAULT_ENTRY_TIMEOUT_SEC, GRACE_MS;
 var init_copilot_hook_manifest = __esm({
   "src/smoke/copilot-hook-manifest.ts"() {
     "use strict";
     import_fs117 = require("fs");
-    import_path135 = require("path");
+    import_path136 = require("path");
     PLUGIN_ROOT_TOKEN = "${CLAUDE_PLUGIN_ROOT}";
     COPILOT_HOOKS_PATH = "copilot/hooks.json";
     DEFAULT_ENTRY_TIMEOUT_SEC = 30;
@@ -62590,14 +62834,14 @@ var init_copilot_hook_manifest = __esm({
 function prepareStubPlugin(home, name, text3, node = process.execPath) {
   const reg = STUB_EVENTS[name];
   if (!reg) return null;
-  const dir = (0, import_path136.join)(home, `${name}-stub`);
-  const log = (0, import_path136.join)(home, `${name}-stub.jsonl`);
-  const config2 = (0, import_path136.join)(dir, "config.json");
-  const script = (0, import_path136.join)(dir, "stub.cjs");
+  const dir = (0, import_path137.join)(home, `${name}-stub`);
+  const log = (0, import_path137.join)(home, `${name}-stub.jsonl`);
+  const config2 = (0, import_path137.join)(dir, "config.json");
+  const script = (0, import_path137.join)(dir, "stub.cjs");
   (0, import_fs118.mkdirSync)(dir, { recursive: true });
-  (0, import_fs118.writeFileSync)((0, import_path136.join)(dir, "plugin.json"), `${JSON.stringify({ name: `omg-smoke-${name}-stub`, version: "0.0.0", description: `omg smoke ${name} stub hook`, hooks: "./hooks.json" }, null, 2)}
+  (0, import_fs118.writeFileSync)((0, import_path137.join)(dir, "plugin.json"), `${JSON.stringify({ name: `omg-smoke-${name}-stub`, version: "0.0.0", description: `omg smoke ${name} stub hook`, hooks: "./hooks.json" }, null, 2)}
 `);
-  (0, import_fs118.writeFileSync)((0, import_path136.join)(dir, "hooks.json"), `${JSON.stringify({ version: 1, hooks: { [reg.event]: [{ type: "command", exec: node, args: [script, reg.kind, config2, log], timeoutSec: 10 }] } }, null, 2)}
+  (0, import_fs118.writeFileSync)((0, import_path137.join)(dir, "hooks.json"), `${JSON.stringify({ version: 1, hooks: { [reg.event]: [{ type: "command", exec: node, args: [script, reg.kind, config2, log], timeoutSec: 10 }] } }, null, 2)}
 `);
   (0, import_fs118.writeFileSync)(config2, JSON.stringify({ text: text3 }));
   (0, import_fs118.writeFileSync)(script, [
@@ -62681,14 +62925,14 @@ async function runCliScenario(input) {
   try {
     stub = prepareStubPlugin(input.home, name, name === "continuation" ? continuationReason(nonce) : promptContextLine(nonce), input.node);
     if (name === "ultragoal") {
-      (0, import_fs118.writeFileSync)((0, import_path136.join)(input.projectDir, "README.md"), "# omg smoke ultragoal fixture\n");
+      (0, import_fs118.writeFileSync)((0, import_path137.join)(input.projectDir, "README.md"), "# omg smoke ultragoal fixture\n");
       cli.seed = seedUltragoal(input, sessionId, (input.now ?? Date.now)());
     }
   } catch (err) {
     return { ...base, events: [], idle: false, timedOut: false, error: `${name} setup: ${err.message}` };
   }
   if (cli.seed && !cli.seed.ok) return { ...base, events: [], idle: false, timedOut: false, error: `ultragoal seed: ${cli.seed.detail}` };
-  const eventsFile = (0, import_path136.join)(input.home, "session-state", sessionId, "events.jsonl");
+  const eventsFile = (0, import_path137.join)(input.home, "session-state", sessionId, "events.jsonl");
   const readEvents = () => {
     try {
       return parseJsonl((0, import_fs118.readFileSync)(eventsFile, "utf8")).events;
@@ -62709,7 +62953,7 @@ async function runCliScenario(input) {
     "--log-level",
     "debug",
     "--log-dir",
-    (0, import_path136.join)(input.home, "logs"),
+    (0, import_path137.join)(input.home, "logs"),
     "--max-ai-credits",
     String(Math.max(RUNTIME_MIN_MAX_CREDITS, Math.ceil(budget2)))
   ];
@@ -62759,14 +63003,14 @@ async function runCliScenario(input) {
   }
   return { ...base, capped: capped3, events, idle: !timedOut && !error2, timedOut, ...error2 ? { error: error2 } : {} };
 }
-var import_crypto35, import_child_process28, import_fs118, import_path136, CLI_SCENARIO_PERMISSIONS, SANDBOX_FLAGS, STUB_EVENTS;
+var import_crypto35, import_child_process28, import_fs118, import_path137, CLI_SCENARIO_PERMISSIONS, SANDBOX_FLAGS, STUB_EVENTS;
 var init_copilot_cli_scenarios = __esm({
   "src/smoke/copilot-cli-scenarios.ts"() {
     "use strict";
     import_crypto35 = require("crypto");
     import_child_process28 = require("child_process");
     import_fs118 = require("fs");
-    import_path136 = require("path");
+    import_path137 = require("path");
     init_worktree_paths();
     init_tmux_utils();
     init_copilot_session_eval();
@@ -62857,12 +63101,12 @@ function scriptedFactoryGh(bare) {
   return { exec, record: record3 };
 }
 function prepareFactoryRepo(dir) {
-  const bare = (0, import_path137.join)(dir, "remote.git");
-  const repo = (0, import_path137.join)(dir, "repo");
+  const bare = (0, import_path138.join)(dir, "remote.git");
+  const repo = (0, import_path138.join)(dir, "repo");
   try {
     (0, import_fs119.mkdirSync)(repo, { recursive: true });
-    (0, import_fs119.writeFileSync)((0, import_path137.join)(repo, "README.md"), "# omg factory run smoke\n");
-    (0, import_fs119.writeFileSync)((0, import_path137.join)(repo, ".gitignore"), ".omg/\nnode_modules/\n");
+    (0, import_fs119.writeFileSync)((0, import_path138.join)(repo, "README.md"), "# omg factory run smoke\n");
+    (0, import_fs119.writeFileSync)((0, import_path138.join)(repo, ".gitignore"), ".omg/\nnode_modules/\n");
   } catch (err) {
     return `repository files: ${err.message}`;
   }
@@ -62910,11 +63154,11 @@ async function runFactoryRunScenario(input) {
     capped: false,
     wedged: false
   };
-  const dir = (0, import_path137.join)((0, import_path137.dirname)(input.projectDir), input.name);
+  const dir = (0, import_path138.join)((0, import_path138.dirname)(input.projectDir), input.name);
   const prepError = prepareFactoryRepo(dir);
   if (prepError) return { ...base, events: [], idle: false, timedOut: false, error: `factory repository setup: ${prepError}` };
-  const repo = (0, import_path137.join)(dir, "repo");
-  const bare = (0, import_path137.join)(dir, "remote.git");
+  const repo = (0, import_path138.join)(dir, "repo");
+  const bare = (0, import_path138.join)(dir, "remote.git");
   const baseBefore = bareRef(bare, `refs/heads/${FACTORY_RUN_BASE}`);
   const gh = scriptedFactoryGh(bare);
   const lanes = new RecordingLanes(input.lanes ? input.lanes(repo) : copilotLanes(input), input.name === "factory-run-fix", input.model);
@@ -62929,7 +63173,7 @@ async function runFactoryRunScenario(input) {
       lanes,
       limits,
       base: FACTORY_RUN_BASE,
-      ledgerDir: (0, import_path137.join)(dir, "ledger"),
+      ledgerDir: (0, import_path138.join)(dir, "ledger"),
       gateConfig: smokeGateConfig,
       // Prepare's checks (none in this fixture) would run in the OS sandbox, as in omg factory run.
       gateSandbox: createSandboxRunner(repo),
@@ -62984,12 +63228,12 @@ async function runFactoryRunScenario(input) {
   const model = laneModelLabel(input.model, [...lanes.results.values()].map((r) => r.model ?? null));
   return { ...base, model, events, idle: parked && !error2, timedOut: false, ...error2 ? { error: error2 } : {}, factory: evidence };
 }
-var import_fs119, import_path137, FIX_REVIEW_INSTRUCTION, FACTORY_LANE_TIMEOUT_MS, ok, smokeGateConfig, RecordingLanes;
+var import_fs119, import_path138, FIX_REVIEW_INSTRUCTION, FACTORY_LANE_TIMEOUT_MS, ok, smokeGateConfig, RecordingLanes;
 var init_copilot_factory_run_scenario = __esm({
   "src/smoke/copilot-factory-run-scenario.ts"() {
     "use strict";
     import_fs119 = require("fs");
-    import_path137 = require("path");
+    import_path138 = require("path");
     init_job();
     init_budget();
     init_engine();
@@ -63185,7 +63429,7 @@ function sandboxLanes(input, canary) {
 }
 function commitProbe(repo) {
   try {
-    (0, import_fs120.writeFileSync)((0, import_path138.join)(repo, SANDBOX_PROBE_SCRIPT), SANDBOX_PROBE_SOURCE);
+    (0, import_fs120.writeFileSync)((0, import_path139.join)(repo, SANDBOX_PROBE_SCRIPT), SANDBOX_PROBE_SOURCE);
   } catch (err) {
     return { error: `probe script: ${errText7(err)}` };
   }
@@ -63235,7 +63479,7 @@ function probeOutput(events) {
 }
 function landed(kind, path15, nonce) {
   const hit = (0, import_fs120.existsSync)(path15);
-  if (hit && (0, import_path138.basename)(path15).includes(nonce)) {
+  if (hit && (0, import_path139.basename)(path15).includes(nonce)) {
     try {
       (0, import_fs120.rmSync)(path15, { force: true });
     } catch {
@@ -63273,10 +63517,10 @@ async function runSandboxLaneScenario(input) {
     capped: false,
     wedged: false
   };
-  const dir = (0, import_path138.join)((0, import_path138.dirname)(input.projectDir), "sandbox-lane");
+  const dir = (0, import_path139.join)((0, import_path139.dirname)(input.projectDir), "sandbox-lane");
   const prepError = prepareFactoryRepo(dir);
   if (prepError) return { ...base, events: [], idle: false, timedOut: false, error: `sandbox repository setup: ${prepError}` };
-  const repo = (0, import_path138.join)(dir, "repo");
+  const repo = (0, import_path139.join)(dir, "repo");
   const probe = commitProbe(repo);
   if ("error" in probe) return { ...base, events: [], idle: false, timedOut: false, error: `sandbox repository setup: ${probe.error}` };
   const nonce = (0, import_crypto36.randomBytes)(6).toString("hex");
@@ -63303,12 +63547,12 @@ async function runSandboxLaneScenario(input) {
   const shared = input.sharedDir ?? defaultSharedDir(input.env);
   const canaryName = `omg-canary-${nonce}`;
   const outside = {
-    main: (0, import_path138.join)(repo, canaryName),
-    shared: (0, import_path138.join)(shared, canaryName),
-    gitDir: (0, import_path138.join)(repo, ".git", canaryName),
-    realHome: (0, import_path138.join)(realHome, canaryName),
-    review: (0, import_path138.join)(shared, `${canaryName}-review`),
-    canary: (0, import_path138.join)(shared, `${canaryName}-q5`)
+    main: (0, import_path139.join)(repo, canaryName),
+    shared: (0, import_path139.join)(shared, canaryName),
+    gitDir: (0, import_path139.join)(repo, ".git", canaryName),
+    realHome: (0, import_path139.join)(realHome, canaryName),
+    review: (0, import_path139.join)(shared, `${canaryName}-review`),
+    canary: (0, import_path139.join)(shared, `${canaryName}-q5`)
   };
   let localHits = 0;
   const server2 = (0, import_http2.createServer)((req, res) => {
@@ -63375,7 +63619,7 @@ async function runSandboxLaneScenario(input) {
     const reviewWt = results.review?.worktree;
     const reviewTargets = [
       landed("shared", outside.review, nonce),
-      ...reviewWt ? [landed("worktree", (0, import_path138.join)(reviewWt, SANDBOX_REVIEW_FILE), nonce)] : []
+      ...reviewWt ? [landed("worktree", (0, import_path139.join)(reviewWt, SANDBOX_REVIEW_FILE), nonce)] : []
     ];
     await runLane("write", lanes);
     const write = results.write;
@@ -63385,7 +63629,7 @@ async function runSandboxLaneScenario(input) {
       landed("shared", outside.shared, nonce),
       landed("git-dir", outside.gitDir, nonce),
       landed("real-home", outside.realHome, nonce),
-      ...write?.worktree ? [landed("worktree", (0, import_path138.join)(write.worktree, SANDBOX_LANE_FILE), nonce)] : []
+      ...write?.worktree ? [landed("worktree", (0, import_path139.join)(write.worktree, SANDBOX_LANE_FILE), nonce)] : []
     ];
     if (writeOut?.home) writeTargets.push({ kind: "profile", path: writeOut.home, landed: writeOut.writes.some((w) => w.path === writeOut.home && w.ok) });
     let commit = null;
@@ -63404,7 +63648,7 @@ async function runSandboxLaneScenario(input) {
     const canaryWt = results.canary?.worktree;
     const canaryTargets = [
       landed("shared", outside.canary, nonce),
-      ...canaryWt ? [landed("worktree", (0, import_path138.join)(canaryWt, SANDBOX_CANARY_FILE), nonce)] : []
+      ...canaryWt ? [landed("worktree", (0, import_path139.join)(canaryWt, SANDBOX_CANARY_FILE), nonce)] : []
     ];
     const canaryId = canary.result?.toolCallId ?? "";
     const sandboxed = canaryId ? shellAttestation(events.canary ?? []).sandboxedById.get(canaryId) ?? null : null;
@@ -63437,7 +63681,7 @@ async function runSandboxLaneScenario(input) {
   const error2 = errors.length ? errors.join("; ") : void 0;
   return { ...base, model: laneModelLabel(input.model, evidence.lanes.map((l) => l.model)), events: all, idle: !error2, timedOut: false, ...error2 ? { error: error2 } : {}, sandbox: evidence };
 }
-var import_crypto36, import_fs120, import_http2, import_os25, import_path138, SANDBOX_LANE_TIMEOUT_MS, CANARY_RPC_TIMEOUT_MS, SANDBOX_PROBE_SOURCE, errText7, quote2;
+var import_crypto36, import_fs120, import_http2, import_os25, import_path139, SANDBOX_LANE_TIMEOUT_MS, CANARY_RPC_TIMEOUT_MS, SANDBOX_PROBE_SOURCE, errText7, quote2;
 var init_copilot_sandbox_lane_scenario = __esm({
   "src/smoke/copilot-sandbox-lane-scenario.ts"() {
     "use strict";
@@ -63445,7 +63689,7 @@ var init_copilot_sandbox_lane_scenario = __esm({
     import_fs120 = require("fs");
     import_http2 = require("http");
     import_os25 = require("os");
-    import_path138 = require("path");
+    import_path139 = require("path");
     init_job();
     init_sandbox2();
     init_lane_commit();
@@ -63501,7 +63745,7 @@ function teamLeaderEnv(base, bin, budget, model) {
   const key = pathKey3(base);
   const env2 = {
     ...base,
-    [key]: [(0, import_path139.dirname)(bin), base[key]].filter(Boolean).join(import_path139.delimiter),
+    [key]: [(0, import_path140.dirname)(bin), base[key]].filter(Boolean).join(import_path140.delimiter),
     COPILOT_CLI: "1",
     OMC_RUNTIME_V2: "1",
     OMC_TEAM_WORKTREE_MODE: "detached",
@@ -63572,17 +63816,17 @@ function tasksSettled(status) {
   return total > 0 && num4(t.completed) + num4(t.failed) === total;
 }
 function leftoverReservations(projectDir, teamName) {
-  const base = (0, import_path139.join)(getOmcRoot(projectDir), "state", "team-recovery", "team-instances");
+  const base = (0, import_path140.join)(getOmcRoot(projectDir), "state", "team-recovery", "team-instances");
   let hashes = [];
   try {
     hashes = (0, import_fs121.readdirSync)(base);
   } catch {
     return [];
   }
-  return hashes.map((h) => (0, import_path139.join)(base, h, teamName, "reservation.json")).filter((p) => (0, import_fs121.existsSync)(p));
+  return hashes.map((h) => (0, import_path140.join)(base, h, teamName, "reservation.json")).filter((p) => (0, import_fs121.existsSync)(p));
 }
 function sessionUsage(stateRoot, worker) {
-  const session = readJson3((0, import_path139.join)(stateRoot, "workers", worker, "sdk-session.json"));
+  const session = readJson3((0, import_path140.join)(stateRoot, "workers", worker, "sdk-session.json"));
   const usage = session?.usage;
   if (!usage) return null;
   const finalPremium = usage.shutdown_premium_requests;
@@ -63619,7 +63863,7 @@ async function runTeamScenario(input) {
   const started = now();
   const deadline = started + budgetMs;
   const env2 = teamLeaderEnv(input.env, input.bin, input.budget, input.model);
-  const cli = (0, import_path139.join)(input.root, "bridge", "cli.cjs");
+  const cli = (0, import_path140.join)(input.root, "bridge", "cli.cjs");
   const spawnFn = input.spawn ?? import_child_process29.spawn;
   const omg = (args, timeoutMs) => runAsync(spawnFn, input.spawnSync, process.execPath, [cli, ...args], { cwd: input.projectDir, env: env2, timeoutMs });
   const base = {
@@ -63664,7 +63908,7 @@ async function runTeamScenario(input) {
     await sleep8(pollMs);
   }
   const stateRoot = str8(evidence.status?.team_state_root);
-  const stateDir = stateRoot && (0, import_path139.isAbsolute)(stateRoot) ? stateRoot : (0, import_path139.join)(getOmcRoot(input.projectDir), "state", "team", teamName);
+  const stateDir = stateRoot && (0, import_path140.isAbsolute)(stateRoot) ? stateRoot : (0, import_path140.join)(getOmcRoot(input.projectDir), "state", "team", teamName);
   const workers = sdkWorkers(evidence.status).map((w) => str8(w.name)).filter(Boolean);
   evidence.tasks = parseApiTasks(lastJsonObject((await omg(["team", "api", "list-tasks", "--input", JSON.stringify({ team_name: teamName }), "--json"], 6e4)).stdout));
   const git4 = (args, cwd) => input.spawnSync("git", args, { cwd, encoding: "utf8", timeout: 3e4, windowsHide: true });
@@ -63682,16 +63926,16 @@ async function runTeamScenario(input) {
     evidence.commits.push({ worker: name, worktree, subjects, files, head, survived: null });
   }
   const eventsByWorker = /* @__PURE__ */ new Map();
-  const logDir = (0, import_path139.join)(input.home, "logs");
+  const logDir = (0, import_path140.join)(input.home, "logs");
   for (const worker of workers) {
     try {
-      eventsByWorker.set(worker, parseJsonl((0, import_fs121.readFileSync)((0, import_path139.join)(stateDir, "workers", worker, "sdk-events.jsonl"), "utf8")).events);
+      eventsByWorker.set(worker, parseJsonl((0, import_fs121.readFileSync)((0, import_path140.join)(stateDir, "workers", worker, "sdk-events.jsonl"), "utf8")).events);
     } catch {
     }
-    const workerLogs = (0, import_path139.join)(stateDir, "workers", worker, "copilot-home", "logs");
+    const workerLogs = (0, import_path140.join)(stateDir, "workers", worker, "copilot-home", "logs");
     try {
       (0, import_fs121.mkdirSync)(logDir, { recursive: true });
-      for (const f of (0, import_fs121.readdirSync)(workerLogs).filter((n) => n.endsWith(".log"))) (0, import_fs121.copyFileSync)((0, import_path139.join)(workerLogs, f), (0, import_path139.join)(logDir, `team-${worker}-${f}`));
+      for (const f of (0, import_fs121.readdirSync)(workerLogs).filter((n) => n.endsWith(".log"))) (0, import_fs121.copyFileSync)((0, import_path140.join)(workerLogs, f), (0, import_path140.join)(logDir, `team-${worker}-${f}`));
     } catch {
     }
   }
@@ -63749,13 +63993,13 @@ async function runTeamScenario(input) {
     team: evidence
   };
 }
-var import_child_process29, import_fs121, import_path139, sleep8;
+var import_child_process29, import_fs121, import_path140, sleep8;
 var init_copilot_team_scenario = __esm({
   "src/smoke/copilot-team-scenario.ts"() {
     "use strict";
     import_child_process29 = require("child_process");
     import_fs121 = require("fs");
-    import_path139 = require("path");
+    import_path140 = require("path");
     init_worktree_paths();
     init_copilot_session_eval();
     init_copilot_sdk_scenarios();
@@ -63832,7 +64076,7 @@ function readJson4(path15) {
 }
 function countDirsWith(dir, file) {
   try {
-    return (0, import_fs122.readdirSync)(dir).filter((name) => (0, import_fs122.existsSync)((0, import_path140.join)(dir, name, file))).sort();
+    return (0, import_fs122.readdirSync)(dir).filter((name) => (0, import_fs122.existsSync)((0, import_path141.join)(dir, name, file))).sort();
   } catch {
     return [];
   }
@@ -63856,7 +64100,7 @@ function extractJsonArray(text3) {
   }
 }
 function makeTempDir(prefix) {
-  return (0, import_fs122.mkdtempSync)((0, import_path140.join)((0, import_os26.tmpdir)(), prefix));
+  return (0, import_fs122.mkdtempSync)((0, import_path141.join)((0, import_os26.tmpdir)(), prefix));
 }
 function removeDir(path15) {
   if (!path15) return;
@@ -63866,8 +64110,8 @@ function removeDir(path15) {
   }
 }
 function checkManifest(root) {
-  const manifest = readJson4((0, import_path140.join)(root, "plugin.json"));
-  const pkg = readJson4((0, import_path140.join)(root, "package.json"));
+  const manifest = readJson4((0, import_path141.join)(root, "plugin.json"));
+  const pkg = readJson4((0, import_path141.join)(root, "package.json"));
   const pluginVersion = typeof manifest?.version === "string" ? manifest.version : null;
   const packageVersion = typeof pkg?.version === "string" ? pkg.version : null;
   const problems = [];
@@ -63913,8 +64157,8 @@ function checkGeneratedHooks(ctx) {
   };
 }
 function checkAgents(root) {
-  const source = countFiles((0, import_path140.join)(root, "agents"), ".md");
-  const generated = countFiles((0, import_path140.join)(root, "copilot", "agents"), ".md");
+  const source = countFiles((0, import_path141.join)(root, "agents"), ".md");
+  const generated = countFiles((0, import_path141.join)(root, "copilot", "agents"), ".md");
   const ok2 = source > 0 && source === generated;
   return {
     id: "copilot.agents",
@@ -63951,7 +64195,7 @@ function checkPluginList(ctx, bin, env2, cwd, packageVersion) {
   };
 }
 function normalizePath(p) {
-  let out = (0, import_path140.resolve)(p);
+  let out = (0, import_path141.resolve)(p);
   try {
     out = import_fs122.realpathSync.native(out);
   } catch {
@@ -63959,14 +64203,14 @@ function normalizePath(p) {
   return process.platform === "win32" ? out.toLowerCase() : out;
 }
 function checkSkillList(ctx, bin, env2, cwd) {
-  const expected = countDirsWith((0, import_path140.join)(ctx.root, "skills"), "SKILL.md");
+  const expected = countDirsWith((0, import_path141.join)(ctx.root, "skills"), "SKILL.md");
   const res = runCopilotSync(ctx, bin, ["--plugin-dir", ctx.root, "--no-auto-update", "skill", "list", "--json"], env2, cwd);
   const stdout = String(res.stdout ?? "");
   const list = extractJsonArray(stdout);
   if (res.status !== 0 || !list) {
     return { id: "copilot.skill_list", ok: false, detail: `skill list exit ${res.status}${list ? "" : ", no JSON array"}`, evidence: excerpt(`${stdout}${res.stderr ?? ""}`) };
   }
-  const skillsDir = normalizePath((0, import_path140.join)(ctx.root, "skills")) + import_path140.sep;
+  const skillsDir = normalizePath((0, import_path141.join)(ctx.root, "skills")) + import_path141.sep;
   const pluginSkills = list.filter((s) => s.source === "plugin");
   const fromSkillsDir = new Set(pluginSkills.filter((s) => typeof s.path === "string" && normalizePath(s.path).startsWith(skillsDir)).map((s) => normalizePath(s.path).slice(skillsDir.length).split(/[\\/]/)[0]));
   const missing = expected.filter((d) => !fromSkillsDir.has(process.platform === "win32" ? d.toLowerCase() : d));
@@ -63984,7 +64228,7 @@ async function defaultExpectedToolCount() {
 }
 async function checkMcpListTools(ctx) {
   const id = "mcp.list_tools";
-  const server2 = (0, import_path140.join)(ctx.root, "dist", "mcp", "standalone-server.js");
+  const server2 = (0, import_path141.join)(ctx.root, "dist", "mcp", "standalone-server.js");
   if (!(0, import_fs122.existsSync)(server2)) return { id, ok: false, detail: `${server2} missing; run npm run build` };
   let expected;
   try {
@@ -64075,7 +64319,7 @@ async function checkMcpListTools(ctx) {
 }
 function initProject(ctx, projectDir, env2) {
   const res = ctx.spawnSyncFn("git", ["init", "-q"], { cwd: projectDir, env: env2, encoding: "utf8", timeout: 3e4, windowsHide: true });
-  if (res.status !== 0 || !(0, import_fs122.existsSync)((0, import_path140.join)(projectDir, ".git"))) (0, import_fs122.mkdirSync)((0, import_path140.join)(projectDir, ".git"), { recursive: true });
+  if (res.status !== 0 || !(0, import_fs122.existsSync)((0, import_path141.join)(projectDir, ".git"))) (0, import_fs122.mkdirSync)((0, import_path141.join)(projectDir, ".git"), { recursive: true });
 }
 function readText(path15) {
   try {
@@ -64087,7 +64331,7 @@ function readText(path15) {
 function readDebugLogs(logDir) {
   let files;
   try {
-    files = (0, import_fs122.readdirSync)(logDir).filter((f) => f.endsWith(".log")).map((f) => (0, import_path140.join)(logDir, f));
+    files = (0, import_fs122.readdirSync)(logDir).filter((f) => f.endsWith(".log")).map((f) => (0, import_path141.join)(logDir, f));
   } catch {
     return { text: null };
   }
@@ -64096,24 +64340,24 @@ function readDebugLogs(logDir) {
   return { text: files.map((f) => readText(f) ?? "").join("\n"), path: files[files.length - 1] };
 }
 function mcpServerNames(root) {
-  const mcp = readJson4((0, import_path140.join)(root, ".mcp.json"));
+  const mcp = readJson4((0, import_path141.join)(root, ".mcp.json"));
   const servers = mcp?.mcpServers;
   return servers && typeof servers === "object" ? Object.keys(servers) : [];
 }
 async function runTier1(ctx, bin, opts, cleanup, artifacts) {
   const parent = makeTempDir("omg-smoke-");
   cleanup.push(parent);
-  const home = (0, import_path140.join)(parent, "home");
+  const home = (0, import_path141.join)(parent, "home");
   artifacts.copilotHome = home;
-  const projectDir = (0, import_path140.join)(parent, "project");
+  const projectDir = (0, import_path141.join)(parent, "project");
   (0, import_fs122.mkdirSync)(home);
   (0, import_fs122.mkdirSync)(projectDir);
-  const logDir = (0, import_path140.join)(home, "logs");
+  const logDir = (0, import_path141.join)(home, "logs");
   const sessionId = (ctx.deps.randomUUID ?? import_crypto37.randomUUID)();
   const identity = loginIdentity(ctx.deps.userConfigDir ?? getCopilotConfigDir());
   const env2 = buildSessionEnv(ctx.env, home, { session: true, hasLogin: identity.loggedInUsers !== void 0 });
   const config2 = { ...identity, trustedFolders: [projectDir] };
-  (0, import_fs122.writeFileSync)((0, import_path140.join)(home, "config.json"), `${JSON.stringify(config2, null, 2)}
+  (0, import_fs122.writeFileSync)((0, import_path141.join)(home, "config.json"), `${JSON.stringify(config2, null, 2)}
 `);
   initProject(ctx, projectDir, env2);
   const prompt = opts.prompt ?? (opts.delegate ? DELEGATE_SMOKE_PROMPT : DEFAULT_SMOKE_PROMPT);
@@ -64145,12 +64389,12 @@ async function runTier1(ctx, bin, opts, cleanup, artifacts) {
     timeoutMs,
     windowsVerbatimArguments: plan.windowsVerbatimArguments
   });
-  const stdoutPath = (0, import_path140.join)(home, "smoke-stdout.jsonl");
+  const stdoutPath = (0, import_path141.join)(home, "smoke-stdout.jsonl");
   try {
     (0, import_fs122.writeFileSync)(stdoutPath, run3.stdout);
   } catch {
   }
-  const eventsPath = (0, import_path140.join)(home, "session-state", sessionId, "events.jsonl");
+  const eventsPath = (0, import_path141.join)(home, "session-state", sessionId, "events.jsonl");
   const logs = readDebugLogs(logDir);
   Object.assign(artifacts, { eventsLog: eventsPath, debugLog: logs.path, stdout: stdoutPath });
   return evaluateTier1({
@@ -64224,7 +64468,7 @@ function prepareCassetteRun(opts, env2) {
   if (opts.record === void 0 && opts.replay === void 0) return void 0;
   const run3 = {
     mode: opts.record !== void 0 ? "record" : "replay",
-    root: (0, import_path140.resolve)(opts.record ?? opts.replay),
+    root: (0, import_path141.resolve)(opts.record ?? opts.replay),
     // Replaced by the per-run temp dir in runTier2; the checks below do not touch state.
     stateRoot: "",
     strict: !!opts.replayStrict,
@@ -64247,7 +64491,7 @@ async function runCopilotSmoke(input = {}) {
   const env2 = input.env ?? process.env;
   const deps = input.deps ?? {};
   const tier = input.tier === 1 || input.tier === 2 ? input.tier : 0;
-  const root = (0, import_path140.resolve)(input.pluginRoot ?? resolveDefaultPluginRoot(env2));
+  const root = (0, import_path141.resolve)(input.pluginRoot ?? resolveDefaultPluginRoot(env2));
   const opts = { ...input, pluginRoot: root, tier };
   if (opts.prompt !== void 0 && /\0/.test(opts.prompt)) throw new Error("smoke prompt must not contain NUL");
   const unknown2 = (opts.scenarios ?? []).filter((s) => !KNOWN_SCENARIOS.includes(s));
@@ -64357,21 +64601,21 @@ async function runChecks(ctx, opts, started, checks, artifacts, cleanup) {
 async function runTier2(ctx, bin, binVersion, packageVersion, opts, scenarios, cleanup, artifacts) {
   const parent = makeTempDir("omg-smoke-sdk-");
   cleanup.push(parent);
-  const home = (0, import_path140.join)(parent, "home");
-  const projectDir = (0, import_path140.join)(parent, "project");
-  const remoteDir = (0, import_path140.join)(parent, "remote.git");
+  const home = (0, import_path141.join)(parent, "home");
+  const projectDir = (0, import_path141.join)(parent, "project");
+  const remoteDir = (0, import_path141.join)(parent, "remote.git");
   (0, import_fs122.mkdirSync)(home);
   artifacts.copilotHome = home;
-  const run3 = ctx.cassette ? { ...ctx.cassette, stateRoot: (0, import_path140.join)(parent, "cassette-state") } : void 0;
+  const run3 = ctx.cassette ? { ...ctx.cassette, stateRoot: (0, import_path141.join)(parent, "cassette-state") } : void 0;
   const identity = run3?.mode === "replay" ? {} : loginIdentity(ctx.deps.userConfigDir ?? getCopilotConfigDir());
   const base = run3 ? cassetteEnv(ctx.env, run3, scenarioPlaceholderDirs({ root: ctx.root, home, projectDir, remoteDir })) : ctx.env;
   const env2 = buildSessionEnv(base, home, { session: true, hasLogin: identity.loggedInUsers !== void 0 });
   env2.OMC_GIT_GUARDRAILS = "1";
-  (0, import_fs122.writeFileSync)((0, import_path140.join)(home, "config.json"), `${JSON.stringify({ ...identity, trustedFolders: [projectDir] }, null, 2)}
+  (0, import_fs122.writeFileSync)((0, import_path141.join)(home, "config.json"), `${JSON.stringify({ ...identity, trustedFolders: [projectDir] }, null, 2)}
 `);
   let agentFiles = [];
   try {
-    agentFiles = (0, import_fs122.readdirSync)((0, import_path140.join)(ctx.root, "agents")).filter((f) => f.endsWith(".md")).sort();
+    agentFiles = (0, import_fs122.readdirSync)((0, import_path141.join)(ctx.root, "agents")).filter((f) => f.endsWith(".md")).sort();
   } catch {
   }
   const result = await runSdkTier({
@@ -64391,7 +64635,7 @@ async function runTier2(ctx, bin, binVersion, packageVersion, opts, scenarios, c
     loadSdk: ctx.deps.loadSdk ?? (() => loadCopilotSdk(base, ctx.spawnSyncFn)),
     loadExpectedToolCount: ctx.deps.loadExpectedToolCount ?? defaultExpectedToolCount,
     spawnSync: ctx.spawnSyncFn,
-    skillDirs: countDirsWith((0, import_path140.join)(ctx.root, "skills"), "SKILL.md"),
+    skillDirs: countDirsWith((0, import_path141.join)(ctx.root, "skills"), "SKILL.md"),
     agentFiles,
     mcpServer: mcpServerNames(ctx.root)[0] ?? "t",
     runChain: ctx.deps.runChain ?? runChainScenario,
@@ -64402,11 +64646,11 @@ async function runTier2(ctx, bin, binVersion, packageVersion, opts, scenarios, c
     ...run3 ? { cassette: run3 } : {}
   });
   if (Object.keys(result.events).length) artifacts.events = result.events;
-  const logs = readDebugLogs((0, import_path140.join)(home, "logs"));
+  const logs = readDebugLogs((0, import_path141.join)(home, "logs"));
   if (logs.path) artifacts.debugLog = logs.path;
   return result;
 }
-var import_child_process30, import_crypto37, import_fs122, import_os26, import_path140, DEFAULT_SMOKE_MODEL, DEFAULT_MAX_CREDITS2, MIN_MAX_CREDITS, DEFAULT_TIER0_TIMEOUT_MS, DEFAULT_TIER1_TIMEOUT_MS, MCP_LIST_TIMEOUT_MS, PLUGIN_NAME3, DELEGATE_AGENT2, DEFAULT_SMOKE_PROMPT, DELEGATE_SMOKE_PROMPT, SMOKE_PERMISSION_FLAGS, TIER0_COPILOT_IDS, LIVE_RUN_REFUSED_DETAIL, LIVE_PROCESS_SCENARIOS_REFUSED_DETAIL;
+var import_child_process30, import_crypto37, import_fs122, import_os26, import_path141, DEFAULT_SMOKE_MODEL, DEFAULT_MAX_CREDITS2, MIN_MAX_CREDITS, DEFAULT_TIER0_TIMEOUT_MS, DEFAULT_TIER1_TIMEOUT_MS, MCP_LIST_TIMEOUT_MS, PLUGIN_NAME3, DELEGATE_AGENT2, DEFAULT_SMOKE_PROMPT, DELEGATE_SMOKE_PROMPT, SMOKE_PERMISSION_FLAGS, TIER0_COPILOT_IDS, LIVE_RUN_REFUSED_DETAIL, LIVE_PROCESS_SCENARIOS_REFUSED_DETAIL;
 var init_copilot_smoke = __esm({
   "src/smoke/copilot-smoke.ts"() {
     "use strict";
@@ -64414,7 +64658,7 @@ var init_copilot_smoke = __esm({
     import_crypto37 = require("crypto");
     import_fs122 = require("fs");
     import_os26 = require("os");
-    import_path140 = require("path");
+    import_path141 = require("path");
     init_tmux_utils();
     init_config_dir();
     init_copilot_binary();
@@ -64451,7 +64695,7 @@ var init_copilot_smoke = __esm({
 
 // src/tools/host-smoke-tool.ts
 function canonical(p) {
-  let out = (0, import_path141.resolve)(p);
+  let out = (0, import_path142.resolve)(p);
   try {
     out = import_fs123.realpathSync.native(out);
   } catch {
@@ -64461,12 +64705,12 @@ function canonical(p) {
 function errorResult(text3) {
   return { content: [{ type: "text", text: text3 }], isError: true };
 }
-var import_fs123, import_path141, SMOKE_ALLOW_LIVE_ENV, SMOKE_ALLOW_ANY_ROOT_ENV, SCENARIO_NAMES, OPT_IN_SCENARIO_NAMES, hostSmokeSchema, hostSmokeTool;
+var import_fs123, import_path142, SMOKE_ALLOW_LIVE_ENV, SMOKE_ALLOW_ANY_ROOT_ENV, SCENARIO_NAMES, OPT_IN_SCENARIO_NAMES, hostSmokeSchema, hostSmokeTool;
 var init_host_smoke_tool = __esm({
   "src/tools/host-smoke-tool.ts"() {
     "use strict";
     import_fs123 = require("fs");
-    import_path141 = require("path");
+    import_path142 = require("path");
     init_zod();
     init_names();
     SMOKE_ALLOW_LIVE_ENV = "OMC_SMOKE_ALLOW_LIVE";
@@ -64519,9 +64763,9 @@ var init_host_smoke_tool = __esm({
           }
           if (args.replay !== void 0 && process.env[SMOKE_ALLOW_LIVE_ENV] !== "1") {
             const packageRoot = resolvePackageRoot2();
-            const fixtures = packageRoot ? canonical((0, import_path141.join)(packageRoot, "src", "smoke", "__tests__", "fixtures", "cassettes")) : null;
+            const fixtures = packageRoot ? canonical((0, import_path142.join)(packageRoot, "src", "smoke", "__tests__", "fixtures", "cassettes")) : null;
             const replayDir = canonical(args.replay);
-            if (!fixtures || replayDir !== fixtures && !replayDir.startsWith(fixtures + import_path141.sep)) {
+            if (!fixtures || replayDir !== fixtures && !replayDir.startsWith(fixtures + import_path142.sep)) {
               return errorResult(
                 `host_smoke: replay ${JSON.stringify(args.replay)} is outside this package's cassette fixtures (${fixtures ?? "unresolved"}). Set ${SMOKE_ALLOW_LIVE_ENV}=1 to replay other cassettes.`
               );
@@ -64653,19 +64897,19 @@ var init_copilot_run_tools = __esm({
 });
 
 // src/hooks/learner/constants.ts
-var import_path142, import_os27, USER_SKILLS_DIR, GLOBAL_SKILLS_DIR, PROJECT_SKILLS_SUBDIR, PROJECT_AGENT_SKILLS_SUBDIR, MAX_RECURSION_DEPTH, SKILL_EXTENSION, DEBUG_ENABLED;
+var import_path143, import_os27, USER_SKILLS_DIR, GLOBAL_SKILLS_DIR, PROJECT_SKILLS_SUBDIR, PROJECT_AGENT_SKILLS_SUBDIR, MAX_RECURSION_DEPTH, SKILL_EXTENSION, DEBUG_ENABLED;
 var init_constants3 = __esm({
   "src/hooks/learner/constants.ts"() {
     "use strict";
-    import_path142 = require("path");
+    import_path143 = require("path");
     import_os27 = require("os");
     init_config_dir();
     init_worktree_paths();
     init_debug_flag();
-    USER_SKILLS_DIR = (0, import_path142.join)(getCopilotConfigDir(), "skills", "omc-learned");
-    GLOBAL_SKILLS_DIR = (0, import_path142.join)((0, import_os27.homedir)(), ".omg", "skills");
+    USER_SKILLS_DIR = (0, import_path143.join)(getCopilotConfigDir(), "skills", "omc-learned");
+    GLOBAL_SKILLS_DIR = (0, import_path143.join)((0, import_os27.homedir)(), ".omg", "skills");
     PROJECT_SKILLS_SUBDIR = OmcPaths.SKILLS;
-    PROJECT_AGENT_SKILLS_SUBDIR = (0, import_path142.join)(".agents", "skills");
+    PROJECT_AGENT_SKILLS_SUBDIR = (0, import_path143.join)(".agents", "skills");
     MAX_RECURSION_DEPTH = 10;
     SKILL_EXTENSION = ".md";
     DEBUG_ENABLED = isDebugEnabled("learner");
@@ -64679,7 +64923,7 @@ function findSkillFilesRecursive(dir, results, depth = 0) {
   try {
     const entries = (0, import_fs124.readdirSync)(dir, { withFileTypes: true });
     for (const entry of entries) {
-      const fullPath = (0, import_path143.join)(dir, entry.name);
+      const fullPath = (0, import_path144.join)(dir, entry.name);
       if (entry.isDirectory()) {
         findSkillFilesRecursive(fullPath, results, depth + 1);
       } else if (entry.isFile() && entry.name.endsWith(SKILL_EXTENSION)) {
@@ -64700,9 +64944,9 @@ function safeRealpathSync(filePath) {
   }
 }
 function isWithinBoundary(realPath, boundary) {
-  const normalizedReal = (0, import_path143.normalize)(realPath);
-  const normalizedBoundary = (0, import_path143.normalize)(safeRealpathSync(boundary));
-  return normalizedReal === normalizedBoundary || normalizedReal.startsWith(normalizedBoundary + import_path143.sep);
+  const normalizedReal = (0, import_path144.normalize)(realPath);
+  const normalizedBoundary = (0, import_path144.normalize)(safeRealpathSync(boundary));
+  return normalizedReal === normalizedBoundary || normalizedReal.startsWith(normalizedBoundary + import_path144.sep);
 }
 function findSkillFiles(projectRoot, options) {
   const candidates = [];
@@ -64710,8 +64954,8 @@ function findSkillFiles(projectRoot, options) {
   const scope = options?.scope ?? "all";
   if (projectRoot && (scope === "project" || scope === "all")) {
     const projectSkillDirs = [
-      (0, import_path143.join)(projectRoot, PROJECT_SKILLS_SUBDIR),
-      (0, import_path143.join)(projectRoot, PROJECT_AGENT_SKILLS_SUBDIR)
+      (0, import_path144.join)(projectRoot, PROJECT_SKILLS_SUBDIR),
+      (0, import_path144.join)(projectRoot, PROJECT_AGENT_SKILLS_SUBDIR)
     ];
     for (const projectSkillsDir of projectSkillDirs) {
       const projectFiles = [];
@@ -64761,12 +65005,12 @@ function findSkillFiles(projectRoot, options) {
   }
   return candidates;
 }
-var import_fs124, import_path143;
+var import_fs124, import_path144;
 var init_finder2 = __esm({
   "src/hooks/learner/finder.ts"() {
     "use strict";
     import_fs124 = require("fs");
-    import_path143 = require("path");
+    import_path144 = require("path");
     init_constants3();
   }
 });
@@ -64942,7 +65186,7 @@ function loadAllSkills(projectRoot) {
         continue;
       }
       const skillId = metadata.id;
-      const relativePath = (0, import_path144.normalize)((0, import_path144.relative)(candidate.sourceDir, candidate.path));
+      const relativePath = (0, import_path145.normalize)((0, import_path145.relative)(candidate.sourceDir, candidate.path));
       const skill = {
         path: candidate.path,
         relativePath,
@@ -64964,13 +65208,13 @@ function loadAllSkills(projectRoot) {
   }
   return Array.from(seenIds.values()).sort((a, b) => b.priority - a.priority);
 }
-var import_fs125, import_crypto38, import_path144;
+var import_fs125, import_crypto38, import_path145;
 var init_loader2 = __esm({
   "src/hooks/learner/loader.ts"() {
     "use strict";
     import_fs125 = require("fs");
     import_crypto38 = require("crypto");
-    import_path144 = require("path");
+    import_path145 = require("path");
     init_finder2();
     init_parser2();
     init_constants3();
@@ -64979,13 +65223,13 @@ var init_loader2 = __esm({
 
 // src/tools/skills-tools.ts
 function validateProjectRoot(input) {
-  const normalized = (0, import_path145.normalize)((0, import_path145.resolve)(input));
+  const normalized = (0, import_path146.normalize)((0, import_path146.resolve)(input));
   if (input.includes("..")) {
     throw new Error("Invalid project root: path traversal not allowed");
   }
   const isWithinAllowed = ALLOWED_BOUNDARIES.some((boundary) => {
-    const normalizedBoundary = (0, import_path145.normalize)(boundary);
-    return normalized === normalizedBoundary || normalized.startsWith(normalizedBoundary + import_path145.sep);
+    const normalizedBoundary = (0, import_path146.normalize)(boundary);
+    return normalized === normalizedBoundary || normalized.startsWith(normalizedBoundary + import_path146.sep);
   });
   if (!isWithinAllowed) {
     throw new Error("Invalid project root: path is outside allowed directories");
@@ -65011,12 +65255,12 @@ function formatSkillOutput(skills) {
   }
   return lines3.join("\n");
 }
-var import_path145, import_os28, ALLOWED_BOUNDARIES, loadLocalSchema, loadGlobalSchema, listSkillsSchema, loadLocalTool, loadGlobalTool, listSkillsTool, skillsTools;
+var import_path146, import_os28, ALLOWED_BOUNDARIES, loadLocalSchema, loadGlobalSchema, listSkillsSchema, loadLocalTool, loadGlobalTool, listSkillsTool, skillsTools;
 var init_skills_tools = __esm({
   "src/tools/skills-tools.ts"() {
     "use strict";
     init_zod();
-    import_path145 = require("path");
+    import_path146 = require("path");
     import_os28 = require("os");
     init_config_dir();
     init_loader2();
