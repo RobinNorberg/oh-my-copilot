@@ -68,7 +68,7 @@ import { forgetWorktreeGitLinks, readWorktreeGitLinks, recordedWorktreeGitLinks,
 import { buildGitView } from './git-view.js';
 import { driveGates } from './gates-driver.js';
 import { missingCheckHint, NO_CI_CHECKS_NOTE, noHeadChecksText } from '../../ship/gates.js';
-import { ghCheckRunApps, ghCheckSuites, ghCommitCheckNames, ghRequiredCheckRules } from '../../forge/github/checks.js';
+import { ghBranchTip, ghCheckRunApps, ghCheckSuites, ghCommitCheckNames, ghRequiredCheckRules } from '../../forge/github/checks.js';
 import { ciFixPrompt, conflictFixPrompt, fenceFor, fenced, fixPrompt, implementPrompt, oneLine, reviewPrompt } from './prompts.js';
 import { decisionsViolation, loadTeamContext, pathsInDiff, pathsInText } from '../team/context.js';
 import { mergeComment, mergeDecision } from './merge-policy.js';
@@ -2864,7 +2864,7 @@ class FactoryEngine {
     }
     prView(pr) {
         if (!this.forge)
-            return this.gh((exec, cwd) => ghMergeView(exec, pr, cwd));
+            return this.liveBase(this.gh((exec, cwd) => ghMergeView(exec, pr, cwd)));
         // The local forge: the human merged on the local base, so sync it to the mirror first (fast-forward only); the PR then reads MERGED.
         if (this.forge.kind !== 'local') {
             const v = this.forge.reviews.viewPr(pr);
@@ -2889,6 +2889,21 @@ class FactoryEngine {
             throw new MirrorBaseMovedError(`the local forge mirror's ${this.state.base} moved to ${v.baseRefOid.slice(0, 12)} while the PR was read; the engine synced ${sealed.slice(0, 12)}. Check what wrote the mirror ${this.o.forge.config.repo.url}, then rerun ${this.resume}`);
         return { number: v.number, state: v.state, isDraft: v.isDraft, baseRefName: v.baseRefName, baseRefOid: sealed, headRefOid: v.headRefOid };
     }
+    /**
+     * GitHub: an open PR's base sha is its base branch's live tip (ghBranchTip), not the PR's baseRefOid, which
+     * stays at the base of the PR's last update after another merge into the base. Prepare merges this tip, the
+     * trusted config is read at it after the fetched ref is checked against it, and the merge rule's diffs and
+     * housekeeping checks see the base the head contains. A failed read fails closed; a closed, merged or
+     * retargeted PR keeps its view (prGone stops or parks before any base is used).
+     */
+    liveBase(view) {
+        if (view.state !== 'OPEN' || view.baseRefName !== this.state.base)
+            return view;
+        const repo = this.githubReadContext()?.repo;
+        if (!repo)
+            throw new FactoryStepError(`the run's GitHub repository is not known, so the live tip of ${this.state.base} cannot be read for PR #${view.number}; refusing (fail closed)`);
+        return { ...view, baseRefOid: this.gh((exec, cwd) => ghBranchTip(exec, repo, view.baseRefName, cwd)) };
+    }
     /** The PR is not open, or targets another base: true when the run moved (merged) or parked. */
     prGone(view) {
         if (view.state === 'MERGED') {
@@ -2906,7 +2921,7 @@ class FactoryEngine {
         return false;
     }
     /**
-     * Ship's gate config at GitHub's base sha, loaded once per base sha. When
+     * Ship's gate config at the view's base sha (on GitHub the base branch's live tip, liveBase), loaded once per base sha. When
      * its fetch moved origin/<base>, the recheck baseline follows.
      */
     gateConfig(view) {
@@ -3296,7 +3311,7 @@ class FactoryEngine {
             this.checkoutGitPin = undefined;
         }
         const fetched = result.steps.some((st) => st.name === 'fetch' && st.status === 'ok');
-        // From here the PR's diff (review, protected paths) is against the base GitHub reports.
+        // From here the PR's diff (review, protected paths) is against the base prepare merged (on GitHub its live tip, liveBase).
         const sandboxNote = ran.modes.size > 0 ? [{ at: this.iso(), from: s.phase, to: s.phase, note: `prepare checks on ${head.slice(0, 12)} ran ${[...ran.modes].map((m) => (m === 'enforced' ? 'in the OS sandbox' : m === 'enforced-readable' ? `in the OS sandbox (${CREDENTIAL_FILES_READABLE_NOTE})` : `unsandboxed (${m})`)).join(' and ')}` }] : [];
         const sandboxed = ran.modes.has('enforced') || ran.modes.has('enforced-readable');
         this.save((x) => ({ ...x, checkoutHead, ...(sandboxed ? { sandboxedPrepareHead: checkoutHead } : {}), ...(fetched ? { baseSha: view.baseRefOid } : {}), history: [...x.history, ...sandboxNote] }));

@@ -103,8 +103,8 @@ describe('the merge step reads human review feedback for the head the engine pus
     // Under the enforced sandbox (or remote lanes) no credentials clause; the human is told to rerun on new comments.
     expect(out.gate?.reason).not.toContain('your GitHub login');
     expect(out.gate?.reason).toContain(`if the PR gets new review comments before you merge, rerun omg factory run ${ISSUE} first`);
-    // The gates' commit GETs (review-493 M-2) are the only other gh api reads.
-    expect(h.raw.filter((r) => r.cmd === 'gh' && r.args[0] === 'api' && r.args[1] !== 'graphql').every((r) => r.args[3] === '--method' && r.args[4] === 'GET' && /\/commits\/[0-9a-f]{40}\//.test(r.args[5]))).toBe(true);
+    // The gates' commit GETs (review-493 M-2) and the base branch's live tip (liveBase) are the only other gh api reads.
+    expect(h.raw.filter((r) => r.cmd === 'gh' && r.args[0] === 'api' && r.args[1] !== 'graphql').every((r) => r.args[3] === '--method' && r.args[4] === 'GET' && (/\/commits\/[0-9a-f]{40}\//.test(r.args[5]) || r.args[5] === 'repos/o/r/branches/dev'))).toBe(true);
     const read = h.raw.filter((r) => r.cmd === 'gh' && r.args[0] === 'api' && r.args[1] === 'graphql');
     expect(read).toHaveLength(1);
     expect(read[0].args.slice(0, 4)).toEqual(['api', 'graphql', '--hostname', 'github.com']);
@@ -333,8 +333,8 @@ describe('the merge step reads human review feedback for the head the engine pus
     const out = await run(approveAll(), { noForge: true }).done;
     expect(out.gate?.name, out.message).toBe('human-review');
     expect(out.gate?.reason).toContain('changes requested on PR #42 by dana');
-    // The gates' commit GETs (review-493 M-2) are the only other gh api reads.
-    expect(h.raw.filter((r) => r.cmd === 'gh' && r.args[0] === 'api' && r.args[1] !== 'graphql').every((r) => r.args[3] === '--method' && r.args[4] === 'GET' && /\/commits\/[0-9a-f]{40}\//.test(r.args[5]))).toBe(true);
+    // The gates' commit GETs (review-493 M-2) and the base branch's live tip (liveBase) are the only other gh api reads.
+    expect(h.raw.filter((r) => r.cmd === 'gh' && r.args[0] === 'api' && r.args[1] !== 'graphql').every((r) => r.args[3] === '--method' && r.args[4] === 'GET' && (/\/commits\/[0-9a-f]{40}\//.test(r.args[5]) || r.args[5] === 'repos/o/r/branches/dev'))).toBe(true);
     const read = h.raw.filter((r) => r.cmd === 'gh' && r.args[0] === 'api' && r.args[1] === 'graphql');
     expect(read).toHaveLength(1);
     expect(read[0].args.slice(0, 4)).toEqual(['api', 'graphql', '--hostname', 'github.com']);
