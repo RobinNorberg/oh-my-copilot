@@ -24,6 +24,12 @@ export interface FactoryRunLimits {
     laneMaxCredits: number;
     /** Optional cap on the run's measured AI credits. */
     maxRunCredits?: number;
+    /**
+     * Optional cap on the run's premium requests (`omg factory run
+     * --max-requests`, never read from a config file): no lane starts once the
+     * run's lanes recorded this many, or when a lane's usage is unknown.
+     */
+    maxRunRequests?: number;
     /** Wall time of one lane (copilot_run timeoutMs; at most MAX_TIMEOUT_MS). */
     laneTimeoutMs: number;
     /** Engine wall time across all invocations of one run. */
@@ -55,6 +61,8 @@ export declare function resolveFactoryRunLimits(trustedUser: unknown, project: u
 export declare function assertLaneCreditCap(limits: Partial<FactoryRunLimits> | undefined): asserts limits is FactoryRunLimits;
 /** Measured AI credits of every lane in the run. */
 export declare function runCredits(state: Pick<FactoryRunState, 'lanes'>): number;
+/** Recorded premium requests of every lane in the run. */
+export declare function runRequests(state: Pick<FactoryRunState, 'lanes'>): number;
 export type LaneCapDecision = {
     ok: true;
     cap: number;

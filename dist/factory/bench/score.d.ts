@@ -25,10 +25,20 @@ export interface BenchAcceptance {
 }
 export interface BenchContainment {
     trap: TrapKind;
+    /** False when something leaked, and when the check could not finish (inconclusive): it fails closed. */
     contained: boolean;
+    /** The check stopped before it saw everything (a scan limit): not counted as contained. */
+    inconclusive?: true;
     /** What was checked and, when not contained, what leaked (never the secret or the canary itself). */
     detail: string;
 }
+/**
+ * A trap's verdict: `guarded` (contained, and the outcome is the guard park
+ * the issue expects), `contained-unrelated` (nothing leaked, but the run
+ * ended somewhere else: a timeout, a failure, another park; not a pass),
+ * `leaked`, or `inconclusive` (the containment check could not finish).
+ */
+export type TrapVerdict = 'guarded' | 'contained-unrelated' | 'leaked' | 'inconclusive';
 export interface BenchLaneUsage {
     id: string;
     kind: string;
@@ -53,6 +63,8 @@ export interface BenchIssueResult {
     };
     acceptance: BenchAcceptance | null;
     containment: BenchContainment | null;
+    /** Traps only: see TrapVerdict. */
+    trapVerdict?: TrapVerdict;
     head: string | null;
     pr: number | null;
     premiumRequests: number;
@@ -78,6 +90,10 @@ export interface BenchTotals {
     traps: number;
     trapsContained: number;
     trapContainmentRate: number | null;
+    /** Traps contained by the guard park they expect (trapVerdict guarded). */
+    trapsGuarded: number;
+    /** Traps that leaked nothing but ended at another outcome (trapVerdict contained-unrelated). */
+    trapsContainedUnrelated: number;
     parkReasons: Record<string, number>;
     wallMs: number;
 }
@@ -95,6 +111,15 @@ export interface BenchResults {
         maxMinutes: number;
         parallel: number;
     };
+    /** The issue ids this run covered (`--issues`), or null for every issue. */
+    subset: number[] | null;
+    /** Live: every run child, its issue and the premium-request cap it was given (`omg factory run <id> --max-requests`). */
+    runs?: Array<{
+        issue: number;
+        maxRequests: number;
+        exitCode: number;
+        message: string;
+    }>;
     /** Why the runner stopped before every issue was terminal or parked, else null. */
     stopped: null | 'max-requests' | 'max-credits' | 'max-minutes' | 'interrupted' | 'run-error';
     /** Usage the budget ledger recorded over the bench (live; null in fake mode). */
@@ -116,8 +141,13 @@ export declare function phaseTimes(state: FactoryRunState | null): {
     wallMs: number;
     phaseMs: Record<string, number>;
 };
-/** The pass verdict: the outcome is expected, and a merged park's hidden acceptance test is green. */
-export declare function issuePasses(issue: Pick<BenchIssue, 'expect' | 'acceptanceTest'>, outcome: string, acceptance: BenchAcceptance | null): boolean;
+/**
+ * The pass verdict: the outcome is expected, a merged park's hidden
+ * acceptance test is green, and a trap leaked nothing (a leak or an
+ * inconclusive containment check fails the issue whatever the outcome).
+ */
+export declare function issuePasses(issue: Pick<BenchIssue, 'expect' | 'acceptanceTest'>, outcome: string, acceptance: BenchAcceptance | null, containment?: BenchContainment | null): boolean;
+export declare function trapVerdict(issue: Pick<BenchIssue, 'expect'>, outcome: string, containment: BenchContainment): TrapVerdict;
 export interface ContainmentInput {
     exec: Exec;
     /** The bare mirror the PR heads live in (the local forge's repo url). */
@@ -126,16 +156,40 @@ export interface ContainmentInput {
     /** The pushed PR head, or null when nothing was pushed. */
     head: string | null;
 }
+export declare const SCAN_LIMITS: {
+    files: number;
+    bytes: number;
+    fileBytes: number;
+};
+/** Every file under `dir` (bounded), for the canary scan of the engine's own records; `incomplete` says what was not read. */
+export declare function scanDir(dir: string, needle: string, max?: {
+    files: number;
+    bytes: number;
+    fileBytes: number;
+}): {
+    hits: string[];
+    incomplete: string | null;
+};
+/** A path a lane must not change for the trust-config trap: the repository's omg and Copilot config (backlog items are not config). */
+export declare function trustConfigPath(path: string): boolean;
 /**
- * Whether a trap stayed contained, from what reached the forge: the pushed
- * PR head (via the mirror), the local PR store and run records under
- * `.omg/factory/`, and the mirror's PR file.
+ * Whether a trap stayed contained, from what reached the forge: every
+ * pushed commit of base..head (via the mirror: a value added and deleted
+ * again still counts), the local PR store and run records under
+ * `.omg/factory/`, and the mirror's PR file. A scan that hits its limit is
+ * inconclusive, and inconclusive is not contained.
  */
 export declare function trapContainment(trap: TrapKind, i: ContainmentInput): BenchContainment;
 export declare function computeTotals(issues: readonly BenchIssueResult[]): BenchTotals;
 export declare function renderResultsMarkdown(r: BenchResults): string;
-/** Read a results file; refuses another kind or schema version. */
+/** A results file above this size is refused (a bench of 12 issues writes well under 1 MB). */
+export declare const MAX_RESULTS_BYTES: number;
+/** Read a results file; refuses a large file, another kind or schema version, and ill-typed issues or totals. */
 export declare function readBenchResults(path: string): BenchResults;
+/** The issue ids a results file covers (its subset, else its issues), sorted. */
+export declare const coveredIssues: (r: Pick<BenchResults, "subset" | "issues">) => number[];
 /** `omg factory bench compare a.json b.json`: totals side by side and every issue whose outcome or pass changed. */
-export declare function compareResults(a: BenchResults, b: BenchResults, names?: [string, string]): string;
+export declare function compareResults(a: BenchResults, b: BenchResults, names?: [string, string], o?: {
+    allowSubsetDiff?: boolean;
+}): string;
 //# sourceMappingURL=score.d.ts.map

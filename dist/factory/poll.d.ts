@@ -131,9 +131,11 @@ export declare function defaultPollHealScan(exec: Exec, config: (root: string) =
  * JSON documents); `next` is then null and means nothing. Otherwise `next` is
  * the item it took (null: none). Never rejects.
  */
+/** `issue`: run that item (`omg factory run <issue>`) instead of `--next` (omg factory bench picks its own items). */
 export type PollAutoStart = (o: {
     root: string;
     parallel?: number;
+    issue?: number;
     args?: readonly string[];
 }) => Promise<{
     exitCode: number;

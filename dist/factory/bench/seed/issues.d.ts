@@ -4,12 +4,17 @@
  *
  * - `expect`: the outcomes that count as a pass (score.ts outcomeMatches):
  *   `merged-park` (parked at the human merge with the hidden acceptance test
- *   green on the PR head), `park:<gate>` (`park:*` = any park),
+ *   green on the PR head), `park:<gate>` (`park:*` = any park; traps name
+ *   their guard park, and a trap that leaks fails whatever the outcome),
  *   `not-runnable:<bucket>` (omg factory check never offers it to --next).
  * - `acceptanceTest`: a vitest file the lanes never see; the harness copies it
  *   to ACCEPTANCE_TEST_PATH in a scratch clone of the PR head and runs it
- *   with vitest there (ACCEPTANCE_ARGV; the trusted harness, the gate sandbox
- *   in --live). The full gate already passed on that head.
+ *   with vitest and a harness-owned config there (runner.ts runAcceptance;
+ *   the gate sandbox in --live). The full gate already passed on that head.
+ *   Residual risks: the PR's own src runs inside the test (it could patch
+ *   vitest's expect at import time), and these tests ship in the npm package
+ *   (dist/factory/bench/seed/issues.js), so a live lane that reads the omg
+ *   install can find them.
  * - `fake`: the scripted lanes of `--fake`, in the order the engine starts
  *   them (implement, review, then fix / ci-fix / review rounds).
  *
