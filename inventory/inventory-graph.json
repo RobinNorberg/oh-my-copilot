@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "872cef19c3e379a31f273b2644da2a5a6305554f",
-    "sourceSha256": "c83374c63fd9a04182275df6089748765d8ba64d57728db894218d327fd2846e",
+    "head": "74330532a5fe0ba83344c63c162e11818c645764",
+    "sourceSha256": "0dec85796808800c0ebd100081337379a7c688d9ea7e5ea396d6b466c0f37887",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "872cef19c3e379a31f273b2644da2a5a6305554f",
-  "sourceSha256": "c83374c63fd9a04182275df6089748765d8ba64d57728db894218d327fd2846e",
+  "head": "74330532a5fe0ba83344c63c162e11818c645764",
+  "sourceSha256": "0dec85796808800c0ebd100081337379a7c688d9ea7e5ea396d6b466c0f37887",
   "counts": {
     "public": {
       "skills": 98,
@@ -28,13 +28,13 @@
       "toolFiles": 68,
       "libFiles": 55,
       "templateHooks": 25,
-      "srcFiles": 2068,
-      "total": 2093
+      "srcFiles": 2072,
+      "total": 2097
     },
     "generated": {
-      "distFiles": 7640,
+      "distFiles": 7656,
       "bridgeFiles": 8,
-      "total": 7648
+      "total": 7664
     },
     "prompt": {
       "promptLikeFiles": 72
@@ -2880,6 +2880,10 @@
       "dist/cli/commands/factory-check.d.ts.map",
       "dist/cli/commands/factory-check.js",
       "dist/cli/commands/factory-check.js.map",
+      "dist/cli/commands/factory-dashboard.d.ts",
+      "dist/cli/commands/factory-dashboard.d.ts.map",
+      "dist/cli/commands/factory-dashboard.js",
+      "dist/cli/commands/factory-dashboard.js.map",
       "dist/cli/commands/factory-poll.d.ts",
       "dist/cli/commands/factory-poll.d.ts.map",
       "dist/cli/commands/factory-poll.js",
@@ -3266,6 +3270,18 @@
       "dist/factory/check/score.d.ts.map",
       "dist/factory/check/score.js",
       "dist/factory/check/score.js.map",
+      "dist/factory/dashboard/__tests__/dashboard.test.d.ts",
+      "dist/factory/dashboard/__tests__/dashboard.test.d.ts.map",
+      "dist/factory/dashboard/__tests__/dashboard.test.js",
+      "dist/factory/dashboard/__tests__/dashboard.test.js.map",
+      "dist/factory/dashboard/collect.d.ts",
+      "dist/factory/dashboard/collect.d.ts.map",
+      "dist/factory/dashboard/collect.js",
+      "dist/factory/dashboard/collect.js.map",
+      "dist/factory/dashboard/render.d.ts",
+      "dist/factory/dashboard/render.d.ts.map",
+      "dist/factory/dashboard/render.js",
+      "dist/factory/dashboard/render.js.map",
       "dist/factory/enqueue.d.ts",
       "dist/factory/enqueue.d.ts.map",
       "dist/factory/enqueue.js",
@@ -19575,6 +19591,26 @@
         "path": "dist/cli/commands/factory-check.js.map"
       },
       {
+        "id": "dist/cli/commands/factory-dashboard.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/factory-dashboard.d.ts"
+      },
+      {
+        "id": "dist/cli/commands/factory-dashboard.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/factory-dashboard.d.ts.map"
+      },
+      {
+        "id": "dist/cli/commands/factory-dashboard.js",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/factory-dashboard.js"
+      },
+      {
+        "id": "dist/cli/commands/factory-dashboard.js.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/factory-dashboard.js.map"
+      },
+      {
         "id": "dist/cli/commands/factory-poll.d.ts",
         "kind": "generated-dist",
         "path": "dist/cli/commands/factory-poll.d.ts"
@@ -21503,6 +21539,66 @@
         "id": "dist/factory/check/score.js.map",
         "kind": "generated-dist",
         "path": "dist/factory/check/score.js.map"
+      },
+      {
+        "id": "dist/factory/dashboard/__tests__/dashboard.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/dashboard/__tests__/dashboard.test.d.ts"
+      },
+      {
+        "id": "dist/factory/dashboard/__tests__/dashboard.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/dashboard/__tests__/dashboard.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/dashboard/__tests__/dashboard.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/dashboard/__tests__/dashboard.test.js"
+      },
+      {
+        "id": "dist/factory/dashboard/__tests__/dashboard.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/dashboard/__tests__/dashboard.test.js.map"
+      },
+      {
+        "id": "dist/factory/dashboard/collect.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/dashboard/collect.d.ts"
+      },
+      {
+        "id": "dist/factory/dashboard/collect.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/dashboard/collect.d.ts.map"
+      },
+      {
+        "id": "dist/factory/dashboard/collect.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/dashboard/collect.js"
+      },
+      {
+        "id": "dist/factory/dashboard/collect.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/dashboard/collect.js.map"
+      },
+      {
+        "id": "dist/factory/dashboard/render.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/dashboard/render.d.ts"
+      },
+      {
+        "id": "dist/factory/dashboard/render.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/dashboard/render.d.ts.map"
+      },
+      {
+        "id": "dist/factory/dashboard/render.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/dashboard/render.js"
+      },
+      {
+        "id": "dist/factory/dashboard/render.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/dashboard/render.js.map"
       },
       {
         "id": "dist/factory/enqueue.d.ts",
@@ -55640,6 +55736,11 @@
         "path": "src/cli/commands/factory-check.ts"
       },
       {
+        "id": "src/cli/commands/factory-dashboard.ts",
+        "kind": "src",
+        "path": "src/cli/commands/factory-dashboard.ts"
+      },
+      {
         "id": "src/cli/commands/factory-poll.ts",
         "kind": "src",
         "path": "src/cli/commands/factory-poll.ts"
@@ -56218,6 +56319,21 @@
         "id": "src/factory/check/score.ts",
         "kind": "src",
         "path": "src/factory/check/score.ts"
+      },
+      {
+        "id": "src/factory/dashboard/__tests__/dashboard.test.ts",
+        "kind": "src",
+        "path": "src/factory/dashboard/__tests__/dashboard.test.ts"
+      },
+      {
+        "id": "src/factory/dashboard/collect.ts",
+        "kind": "src",
+        "path": "src/factory/dashboard/collect.ts"
+      },
+      {
+        "id": "src/factory/dashboard/render.ts",
+        "kind": "src",
+        "path": "src/factory/dashboard/render.ts"
       },
       {
         "id": "src/factory/enqueue.ts",
@@ -81632,6 +81748,46 @@
         "kind": "imports"
       },
       {
+        "from": "src/cli/commands/factory-dashboard.ts",
+        "to": "external:chalk",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-dashboard.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-dashboard.ts",
+        "to": "external:commander",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-dashboard.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-dashboard.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-dashboard.ts",
+        "to": "src/factory/check/cli.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-dashboard.ts",
+        "to": "src/factory/dashboard/collect.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-dashboard.ts",
+        "to": "src/factory/dashboard/render.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/cli/commands/factory-poll.ts",
         "to": "external:chalk",
         "kind": "imports"
@@ -82039,6 +82195,11 @@
       {
         "from": "src/cli/commands/factory.ts",
         "to": "src/cli/commands/factory-check.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory.ts",
+        "to": "src/cli/commands/factory-dashboard.ts",
         "kind": "imports"
       },
       {
@@ -86765,6 +86926,91 @@
         "from": "src/factory/check/score.ts",
         "to": "src/utils/string-width.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/factory/dashboard/__tests__/dashboard.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/dashboard/__tests__/dashboard.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/dashboard/__tests__/dashboard.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/dashboard/__tests__/dashboard.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/dashboard/__tests__/dashboard.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/dashboard/__tests__/dashboard.test.ts",
+        "to": "src/cli/commands/factory-dashboard.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/dashboard/__tests__/dashboard.test.ts",
+        "to": "src/factory/dashboard/collect.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/dashboard/__tests__/dashboard.test.ts",
+        "to": "src/factory/dashboard/render.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/dashboard/__tests__/dashboard.test.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/dashboard/__tests__/dashboard.test.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/dashboard/collect.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/dashboard/collect.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/dashboard/collect.ts",
+        "to": "src/factory/board/collect.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/dashboard/collect.ts",
+        "to": "src/factory/check/score.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/dashboard/collect.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/dashboard/collect.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/dashboard/render.ts",
+        "to": "src/factory/dashboard/collect.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/factory/enqueue.ts",
@@ -131728,12 +131974,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 10960,
-      "edgeCount": 13524,
-      "importEdgeCount": 11118,
+      "nodeCount": 10980,
+      "edgeCount": 13550,
+      "importEdgeCount": 11141,
       "registerEdgeCount": 119
     }
   },
-  "inventorySha256": "0cfcb052ab37508cfcdbedcfac9f9f07402829208b191db49722c3f0a247010f",
-  "manifestSha256": "2832c3f0d92ee043e98633b18b9dedd582b48216340e1d64f2d4a670374cd227"
+  "inventorySha256": "6cd873566163f75be0d5efb5ab75aaad9bd08516f37268f588574e8bd2fc148b",
+  "manifestSha256": "bd9d7364eed5648b667ac6cda7579427098022b7866b1a04b97f356482ba00a1"
 }
