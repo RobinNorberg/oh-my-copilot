@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "468dbb1d9f90c08f1c39023172fe831c8f77a6db",
-    "sourceSha256": "6ef6fbe8fa8c660f905aa8d1202001c38e5531d1aae4f511603cd5283c79a048",
+    "head": "6f64a24fd1717128ff86e003c5ace9ce7530a308",
+    "sourceSha256": "1ef17fca1c0b05718285403a3b4bd7fe31cd79750ab755c1b1302c46f04dc499",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "468dbb1d9f90c08f1c39023172fe831c8f77a6db",
-  "sourceSha256": "6ef6fbe8fa8c660f905aa8d1202001c38e5531d1aae4f511603cd5283c79a048",
+  "head": "6f64a24fd1717128ff86e003c5ace9ce7530a308",
+  "sourceSha256": "1ef17fca1c0b05718285403a3b4bd7fe31cd79750ab755c1b1302c46f04dc499",
   "counts": {
     "public": {
       "skills": 98,
@@ -28,13 +28,13 @@
       "toolFiles": 68,
       "libFiles": 55,
       "templateHooks": 25,
-      "srcFiles": 2064,
-      "total": 2089
+      "srcFiles": 2068,
+      "total": 2093
     },
     "generated": {
-      "distFiles": 7624,
+      "distFiles": 7640,
       "bridgeFiles": 8,
-      "total": 7632
+      "total": 7648
     },
     "prompt": {
       "promptLikeFiles": 72
@@ -2880,6 +2880,10 @@
       "dist/cli/commands/factory-check.d.ts.map",
       "dist/cli/commands/factory-check.js",
       "dist/cli/commands/factory-check.js.map",
+      "dist/cli/commands/factory-dashboard.d.ts",
+      "dist/cli/commands/factory-dashboard.d.ts.map",
+      "dist/cli/commands/factory-dashboard.js",
+      "dist/cli/commands/factory-dashboard.js.map",
       "dist/cli/commands/factory-poll.d.ts",
       "dist/cli/commands/factory-poll.d.ts.map",
       "dist/cli/commands/factory-poll.js",
@@ -3266,6 +3270,18 @@
       "dist/factory/check/score.d.ts.map",
       "dist/factory/check/score.js",
       "dist/factory/check/score.js.map",
+      "dist/factory/dashboard/__tests__/dashboard.test.d.ts",
+      "dist/factory/dashboard/__tests__/dashboard.test.d.ts.map",
+      "dist/factory/dashboard/__tests__/dashboard.test.js",
+      "dist/factory/dashboard/__tests__/dashboard.test.js.map",
+      "dist/factory/dashboard/collect.d.ts",
+      "dist/factory/dashboard/collect.d.ts.map",
+      "dist/factory/dashboard/collect.js",
+      "dist/factory/dashboard/collect.js.map",
+      "dist/factory/dashboard/render.d.ts",
+      "dist/factory/dashboard/render.d.ts.map",
+      "dist/factory/dashboard/render.js",
+      "dist/factory/dashboard/render.js.map",
       "dist/factory/enqueue.d.ts",
       "dist/factory/enqueue.d.ts.map",
       "dist/factory/enqueue.js",
@@ -19559,6 +19575,26 @@
         "path": "dist/cli/commands/factory-check.js.map"
       },
       {
+        "id": "dist/cli/commands/factory-dashboard.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/factory-dashboard.d.ts"
+      },
+      {
+        "id": "dist/cli/commands/factory-dashboard.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/factory-dashboard.d.ts.map"
+      },
+      {
+        "id": "dist/cli/commands/factory-dashboard.js",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/factory-dashboard.js"
+      },
+      {
+        "id": "dist/cli/commands/factory-dashboard.js.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/factory-dashboard.js.map"
+      },
+      {
         "id": "dist/cli/commands/factory-poll.d.ts",
         "kind": "generated-dist",
         "path": "dist/cli/commands/factory-poll.d.ts"
@@ -21487,6 +21523,66 @@
         "id": "dist/factory/check/score.js.map",
         "kind": "generated-dist",
         "path": "dist/factory/check/score.js.map"
+      },
+      {
+        "id": "dist/factory/dashboard/__tests__/dashboard.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/dashboard/__tests__/dashboard.test.d.ts"
+      },
+      {
+        "id": "dist/factory/dashboard/__tests__/dashboard.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/dashboard/__tests__/dashboard.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/dashboard/__tests__/dashboard.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/dashboard/__tests__/dashboard.test.js"
+      },
+      {
+        "id": "dist/factory/dashboard/__tests__/dashboard.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/dashboard/__tests__/dashboard.test.js.map"
+      },
+      {
+        "id": "dist/factory/dashboard/collect.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/dashboard/collect.d.ts"
+      },
+      {
+        "id": "dist/factory/dashboard/collect.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/dashboard/collect.d.ts.map"
+      },
+      {
+        "id": "dist/factory/dashboard/collect.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/dashboard/collect.js"
+      },
+      {
+        "id": "dist/factory/dashboard/collect.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/dashboard/collect.js.map"
+      },
+      {
+        "id": "dist/factory/dashboard/render.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/dashboard/render.d.ts"
+      },
+      {
+        "id": "dist/factory/dashboard/render.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/dashboard/render.d.ts.map"
+      },
+      {
+        "id": "dist/factory/dashboard/render.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/dashboard/render.js"
+      },
+      {
+        "id": "dist/factory/dashboard/render.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/dashboard/render.js.map"
       },
       {
         "id": "dist/factory/enqueue.d.ts",
@@ -55544,6 +55640,11 @@
         "path": "src/cli/commands/factory-check.ts"
       },
       {
+        "id": "src/cli/commands/factory-dashboard.ts",
+        "kind": "src",
+        "path": "src/cli/commands/factory-dashboard.ts"
+      },
+      {
         "id": "src/cli/commands/factory-poll.ts",
         "kind": "src",
         "path": "src/cli/commands/factory-poll.ts"
@@ -56122,6 +56223,21 @@
         "id": "src/factory/check/score.ts",
         "kind": "src",
         "path": "src/factory/check/score.ts"
+      },
+      {
+        "id": "src/factory/dashboard/__tests__/dashboard.test.ts",
+        "kind": "src",
+        "path": "src/factory/dashboard/__tests__/dashboard.test.ts"
+      },
+      {
+        "id": "src/factory/dashboard/collect.ts",
+        "kind": "src",
+        "path": "src/factory/dashboard/collect.ts"
+      },
+      {
+        "id": "src/factory/dashboard/render.ts",
+        "kind": "src",
+        "path": "src/factory/dashboard/render.ts"
       },
       {
         "id": "src/factory/enqueue.ts",
@@ -81516,6 +81632,46 @@
         "kind": "imports"
       },
       {
+        "from": "src/cli/commands/factory-dashboard.ts",
+        "to": "external:chalk",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-dashboard.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-dashboard.ts",
+        "to": "external:commander",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-dashboard.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-dashboard.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-dashboard.ts",
+        "to": "src/factory/check/cli.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-dashboard.ts",
+        "to": "src/factory/dashboard/collect.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory-dashboard.ts",
+        "to": "src/factory/dashboard/render.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/cli/commands/factory-poll.ts",
         "to": "external:chalk",
         "kind": "imports"
@@ -81923,6 +82079,11 @@
       {
         "from": "src/cli/commands/factory.ts",
         "to": "src/cli/commands/factory-check.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory.ts",
+        "to": "src/cli/commands/factory-dashboard.ts",
         "kind": "imports"
       },
       {
@@ -86649,6 +86810,96 @@
         "from": "src/factory/check/score.ts",
         "to": "src/utils/string-width.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/factory/dashboard/__tests__/dashboard.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/dashboard/__tests__/dashboard.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/dashboard/__tests__/dashboard.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/dashboard/__tests__/dashboard.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/dashboard/__tests__/dashboard.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/dashboard/__tests__/dashboard.test.ts",
+        "to": "src/cli/commands/factory-dashboard.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/dashboard/__tests__/dashboard.test.ts",
+        "to": "src/factory/dashboard/collect.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/dashboard/__tests__/dashboard.test.ts",
+        "to": "src/factory/dashboard/render.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/dashboard/__tests__/dashboard.test.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/dashboard/__tests__/dashboard.test.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/dashboard/collect.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/dashboard/collect.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/dashboard/collect.ts",
+        "to": "src/factory/board/collect.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/dashboard/collect.ts",
+        "to": "src/factory/check/score.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/dashboard/collect.ts",
+        "to": "src/factory/run/budget.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/dashboard/collect.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/dashboard/collect.ts",
+        "to": "src/factory/run/state.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/dashboard/render.ts",
+        "to": "src/factory/dashboard/collect.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/factory/enqueue.ts",
@@ -131472,12 +131723,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 10940,
-      "edgeCount": 13496,
-      "importEdgeCount": 11094,
+      "nodeCount": 10960,
+      "edgeCount": 13523,
+      "importEdgeCount": 11118,
       "registerEdgeCount": 119
     }
   },
-  "inventorySha256": "8d53bf93f3bd28334c1cde6db289377dd7d91f05736f7a84a05438f8c424cf4f",
-  "manifestSha256": "982c8369bc383bcc3384f7e62cd9199aeae22db71081fe4eacf392215b05ba59"
+  "inventorySha256": "c677b03806cae90fba88c8b6dad72ec4b3f169a9ad59b97b384a91548f71982c",
+  "manifestSha256": "ba9925e9860ebe1a3416239071239bf0c56bdda5c9aa02279bb015b529e351e4"
 }
