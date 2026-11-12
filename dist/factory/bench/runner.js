@@ -29,7 +29,7 @@ import { randomBytes } from 'node:crypto';
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve, sep } from 'node:path';
 import { ledgerPath, ledgerTotals, parseLedger } from '../../budget/ledger.js';
-import { resolveGatesSandboxMode } from '../../copilot-run/sandbox.js';
+import { resolveGateIsolation, resolveGatesSandboxMode } from '../../copilot-run/sandbox.js';
 import { createForge } from '../../forge/index.js';
 import { resolveForgeConfig } from '../../forge/config.js';
 import { LOCAL_REMOTE, readMirrorRef } from '../../forge/local/index.js';
@@ -135,22 +135,25 @@ export function parseIssueList(raw) {
  * `--live` runs the lanes' code in prepare checks, the local gate and the
  * acceptance: it needs the gate sandbox enforced (factory.run.sandbox.gates,
  * the user config then the fixture's base), or the container isolation of
- * the user config. Null when allowed, else why not.
+ * the user config with gates not "unsandboxed" (the engine moves only "ack"
+ * into the container; "unsandboxed" still runs gate commands on the host).
+ * Either setting that does not resolve refuses. Null when allowed, else why not.
  */
 export function liveSandboxRefusal(trustedUser, base) {
-    const isolation = trustedUser?.factory?.run?.sandbox?.isolation;
-    if (isolation === 'container')
-        return null;
     let mode;
+    let container;
     try {
         mode = resolveGatesSandboxMode({ user: trustedUser, base, env: process.env });
+        container = resolveGateIsolation({ user: trustedUser, base }).container !== undefined;
     }
     catch (error) {
         return `the gate sandbox setting does not resolve (${error instanceof Error ? error.message : String(error)})`;
     }
     if (mode.mode === 'enforced')
         return null;
-    return `--live runs the lanes' code in prepare checks, the local gate and the acceptance test, so it needs factory.run.sandbox.gates "enforced" (it is "${mode.mode}" from ${mode.source}) or factory.run.sandbox.isolation "container" in your user config`;
+    if (container && mode.mode !== 'unsandboxed')
+        return null;
+    return `--live runs the lanes' code in prepare checks, the local gate and the acceptance test, so it needs factory.run.sandbox.gates "enforced", or factory.run.sandbox.isolation "container" in your user config with gates not "unsandboxed" (gates is "${mode.mode}" from ${mode.source}; isolation is ${container ? '"container"' : 'not "container"'})`;
 }
 /** The number of `it(` / `test(` calls at a line start of a hidden test: the passes the acceptance must report. */
 export const expectedTests = (test) => (test.match(/^\s*(?:it|test)\(/gm) ?? []).length;

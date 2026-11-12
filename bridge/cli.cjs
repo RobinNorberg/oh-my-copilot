@@ -148546,16 +148546,17 @@ function parseIssueList(raw) {
   return parts.map(Number);
 }
 function liveSandboxRefusal(trustedUser, base) {
-  const isolation = trustedUser?.factory?.run?.sandbox?.isolation;
-  if (isolation === "container") return null;
   let mode;
+  let container;
   try {
     mode = resolveGatesSandboxMode({ user: trustedUser, base, env: process.env });
+    container = resolveGateIsolation({ user: trustedUser, base }).container !== void 0;
   } catch (error2) {
     return `the gate sandbox setting does not resolve (${error2 instanceof Error ? error2.message : String(error2)})`;
   }
   if (mode.mode === "enforced") return null;
-  return `--live runs the lanes' code in prepare checks, the local gate and the acceptance test, so it needs factory.run.sandbox.gates "enforced" (it is "${mode.mode}" from ${mode.source}) or factory.run.sandbox.isolation "container" in your user config`;
+  if (container && mode.mode !== "unsandboxed") return null;
+  return `--live runs the lanes' code in prepare checks, the local gate and the acceptance test, so it needs factory.run.sandbox.gates "enforced", or factory.run.sandbox.isolation "container" in your user config with gates not "unsandboxed" (gates is "${mode.mode}" from ${mode.source}; isolation is ${container ? '"container"' : 'not "container"'})`;
 }
 async function runAcceptance(o) {
   const exec3 = o.exec ?? defaultExec;

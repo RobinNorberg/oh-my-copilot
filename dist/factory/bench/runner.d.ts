@@ -102,7 +102,9 @@ export declare function parseIssueList(raw: string): number[];
  * `--live` runs the lanes' code in prepare checks, the local gate and the
  * acceptance: it needs the gate sandbox enforced (factory.run.sandbox.gates,
  * the user config then the fixture's base), or the container isolation of
- * the user config. Null when allowed, else why not.
+ * the user config with gates not "unsandboxed" (the engine moves only "ack"
+ * into the container; "unsandboxed" still runs gate commands on the host).
+ * Either setting that does not resolve refuses. Null when allowed, else why not.
  */
 export declare function liveSandboxRefusal(trustedUser: unknown, base: unknown): string | null;
 /** The number of `it(` / `test(` calls at a line start of a hidden test: the passes the acceptance must report. */

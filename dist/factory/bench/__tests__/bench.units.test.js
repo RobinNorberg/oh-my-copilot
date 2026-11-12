@@ -699,7 +699,12 @@ describe('live runner caps (injected run child and ledger, no Copilot)', () => {
         const bench = liveFixture();
         const start = vi.fn();
         const base = { dir: bench, mode: 'live', modelProbe: noProbe, maxRequests: 10, outDir: join(dir, 'out'), ledger: () => ({ premiumRequests: 0, credits: 0 }), liveStart: start };
-        await expect(runBench({ ...base, trustedUser: { factory: { run: { sandbox: { gates: 'ack' } } } } })).rejects.toThrow(/needs factory.run.sandbox.gates "enforced" \(it is "ack" from user config\)/);
+        await expect(runBench({ ...base, trustedUser: { factory: { run: { sandbox: { gates: 'ack' } } } } })).rejects.toThrow(/needs factory.run.sandbox.gates "enforced".*\(gates is "ack" from user config; isolation is not "container"\)/);
+        // The engine moves only "ack" into the container: "unsandboxed" still runs gate commands on the host.
+        await expect(runBench({ ...base, trustedUser: { factory: { run: { sandbox: { gates: 'unsandboxed', isolation: 'container' } } } } })).rejects.toThrow(/gates is "unsandboxed" from user config; isolation is "container"/);
+        expect(liveSandboxRefusal({ factory: { run: { sandbox: { gates: 'unsandboxed', isolation: 'container' } } } }, undefined)).toMatch(/with gates not "unsandboxed"/);
+        // An isolation setting that does not resolve refuses, even with gates "enforced".
+        expect(liveSandboxRefusal({ factory: { run: { sandbox: { gates: 'enforced', isolation: 'vm' } } } }, undefined)).toMatch(/does not resolve .*isolation must be/);
         await expect(runBench({ ...base, trustedUser: { factory: { run: { sandbox: { gates: 'unsandboxed' } } } } })).rejects.toThrow(BenchUsageError);
         expect(start).not.toHaveBeenCalled();
         expect(liveSandboxRefusal({ factory: { run: { sandbox: { gates: 'ack', isolation: 'container' } } } }, undefined)).toBeNull();
