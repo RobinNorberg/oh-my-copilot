@@ -131920,10 +131920,13 @@ var init_context = __esm({
 // src/factory/run/merge-policy.ts
 function mergeDecision(exec3, root2, ship, view2, config2, known, forge, reads) {
   const gate = evaluateGates(exec3, view2.number, config2, known, root2, view2.headRefOid, forge, ship.phase === "ready" ? 0 : void 0, Date.now, reads);
+  const counted = gate.checks.filter((c) => c.class !== "advisory");
+  const flaky = new Set(gate.flaky.filter((a) => a.knownFlaky).map((a) => a.check));
   const noChecks = {
     ...gate.noChecks ? { noChecks: true } : {},
-    checks: gate.checks.filter((c) => c.class === "pass" && c.state.toUpperCase() === "SUCCESS").map((c) => c.name),
-    unsettled: gate.checks.filter((c) => ["SKIPPED", "NEUTRAL"].includes(c.state.toUpperCase())).map((c) => c.name)
+    checks: counted.filter((c) => c.class === "pass" && c.state.toUpperCase() === "SUCCESS").map((c) => c.name),
+    unsettled: counted.filter((c) => ["SKIPPED", "NEUTRAL"].includes(c.state.toUpperCase())).map((c) => c.name),
+    blocking: counted.filter((c) => !["SUCCESS", "SKIPPED", "NEUTRAL"].includes(c.state.toUpperCase())).map((c) => `${checkText2(c.name, 80)} (${checkText2(c.state.toUpperCase(), 24)}${flaky.has(c.name) ? ", known-flaky" : ""})`)
   };
   const reviewed = latestVerdict(ship)?.sha;
   const commits = readCommitsSinceReview(exec3, root2, reviewed, view2.headRefOid, view2.baseRefOid, ship.housekeepingCommits);
@@ -131978,7 +131981,7 @@ function mergeComment(issue2, decision, resume = `omg factory run ${issue2}`) {
     ""
   ].join("\n");
 }
-var bodyLines;
+var checkText2, bodyLines;
 var init_merge_policy = __esm({
   "src/factory/run/merge-policy.ts"() {
     "use strict";
@@ -131987,8 +131990,10 @@ var init_merge_policy = __esm({
     init_merge2();
     init_state5();
     init_lane_commit();
+    init_prompts2();
     init_state6();
     init_reviews3();
+    checkText2 = (s, max) => oneLine(s.replace(/`/g, "'"), max) || "(unnamed)";
     bodyLines = (decision) => decision.body ? ["", `The command reads its body from \`${decision.body.file}\` (SHA-256 \`${decision.body.sha256}\`); check that file before running it.`] : [];
   }
 });
@@ -132377,6 +132382,12 @@ function autoMergeVerdict(i) {
   check2(i.decision.ok && i.decision.reasons.length === 0, "ship's merge rule allows this head with no reason", `ship's merge rule has reasons: ${i.decision.reasons.join("; ")}`);
   const v = i.verdict;
   check2(!!v && v.verdict === "approve" && v.sha === i.head, `factory review approved ${at}${v ? ` (${v.reviewer})` : ""}`, `the factory review did not approve this exact head (latest: ${v ? `${v.verdict} at ${v.sha.slice(0, 12)}` : "none"})`);
+  const blocking = i.decision.blocking;
+  check2(
+    blocking !== void 0 && blocking.length === 0,
+    "every check on this head succeeded, skipped or was neutral (advisory checks aside)",
+    blocking === void 0 ? "the check states on this head were not read" : `checks did not succeed on this head: ${blocking.slice(0, 8).join(", ")}${blocking.length > 8 ? ", ..." : ""}; a known-flaky or failed check always leaves the merge to a human`
+  );
   const checks = i.decision.checks ?? [];
   const required2 = i.requiredChecks ?? [];
   const succeeded = required2.length > 0 ? checks.filter((c) => required2.includes(c)) : checks;

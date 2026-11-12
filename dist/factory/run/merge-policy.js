@@ -18,9 +18,12 @@ import { evaluateGates, NO_CI_CHECKS_NOTE } from '../../ship/gates.js';
 import { decideMerge, listChangedFiles, readCommitsSinceReview } from '../../ship/merge.js';
 import { latestVerdict } from '../../ship/state.js';
 import { ADO_PIPELINE_PATHS, CI_DEFINITION_PATHS } from './lane-commit.js';
+import { oneLine } from './prompts.js';
 import { runLabel } from './state.js';
 // The merge view is the GitHub forge's `gh pr view --json MERGE_VIEW_FIELDS` read.
 export { MERGE_VIEW_FIELDS, parseMergeView } from '../../forge/github/reviews.js';
+/** A forge-reported check name or state in a park reason: one line, no backticks, capped. */
+const checkText = (s, max) => oneLine(s.replace(/`/g, "'"), max) || '(unnamed)';
 /**
  * ship's decideMerge on a fresh one-shot gate read for the head (no watch,
  * no rerun) and the commits since the reviewed sha. `view.baseRefOid` must be
@@ -34,8 +37,13 @@ export { MERGE_VIEW_FIELDS, parseMergeView } from '../../forge/github/reviews.js
 export function mergeDecision(exec, root, ship, view, config, known, forge, reads) {
     // Ship phase ready: the gates loop already waited out the settle window for this head, so this read has that history.
     const gate = evaluateGates(exec, view.number, config, known, root, view.headRefOid, forge, ship.phase === 'ready' ? 0 : undefined, Date.now, reads);
-    const noChecks = { ...(gate.noChecks ? { noChecks: true } : {}), checks: gate.checks.filter((c) => c.class === 'pass' && c.state.toUpperCase() === 'SUCCESS').map((c) => c.name),
-        unsettled: gate.checks.filter((c) => ['SKIPPED', 'NEUTRAL'].includes(c.state.toUpperCase())).map((c) => c.name) };
+    // Raw states only: the gate's `pass` class (and its `flaky` verdict) never stands in for a SUCCESS here. Advisory checks are ignored.
+    const counted = gate.checks.filter((c) => c.class !== 'advisory');
+    const flaky = new Set(gate.flaky.filter((a) => a.knownFlaky).map((a) => a.check));
+    const noChecks = { ...(gate.noChecks ? { noChecks: true } : {}), checks: counted.filter((c) => c.class === 'pass' && c.state.toUpperCase() === 'SUCCESS').map((c) => c.name),
+        unsettled: counted.filter((c) => ['SKIPPED', 'NEUTRAL'].includes(c.state.toUpperCase())).map((c) => c.name),
+        blocking: counted.filter((c) => !['SUCCESS', 'SKIPPED', 'NEUTRAL'].includes(c.state.toUpperCase()))
+            .map((c) => `${checkText(c.name, 80)} (${checkText(c.state.toUpperCase(), 24)}${flaky.has(c.name) ? ', known-flaky' : ''})`) };
     const reviewed = latestVerdict(ship)?.sha;
     const commits = readCommitsSinceReview(exec, root, reviewed, view.headRefOid, view.baseRefOid, ship.housekeepingCommits);
     const extraProtected = [
