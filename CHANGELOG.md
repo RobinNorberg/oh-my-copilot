@@ -4,6 +4,11 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Stalled factory lanes end on their own.** A lane whose Copilot session sends no event for `factory.run.laneIdleMinutes` (default 15) is cancelled and recorded as `stalled`. Nothing it did is pushed, and it gets the normal fresh retry. Park text and `omg factory run status` name the lane and its last event time, and the progress log's heartbeat shows it too. The lowest value is 1 minute. A lane that finishes just before its cancel, with a new event, counts as a normal completion. A long quiet tool call or host sleep can still stall a healthy lane; raise the limit in your user config if that happens.
+- **Wait in the foreground.** The executor agent, the factory implement, fix and CI-fix lane prompts, and the `babysit`, `fix-ci`, `ralph` and `ralph-experiment` skills now say: wait for CI or tests in the foreground (`gh pr checks <N> --watch`, or read the job's output file), never idle on a background notification.
+
 ### Fixed
 
 - **Plugin hooks keep working in a config folder shared with WSL or macOS.** Setup on Linux or macOS keeps the `node` plus arguments hook form when `node` is in a standard system folder (`/usr/local/bin`, `/usr/bin`, `/bin`, Homebrew or MacPorts). A `node` that only nvm, fnm, volta or a login shell puts on PATH gets the `find-node.sh` form, because a host started from a desktop launcher may not see it. Native Windows no longer needs a repair afterwards.

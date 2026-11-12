@@ -45,7 +45,7 @@ Optimization tasks fail when treated as implementation tasks. "Make X faster" do
 <Execution_Policy>
 - One hypothesis at a time -- sequential experiments, not parallel
 - Delegate implementation to executor agents or teams for each hypothesis
-- Run long measurement commands (builds, benchmarks, test suites) in the background (`run_in_background: true`)
+- Run long measurement commands (builds, benchmarks, test suites) in the background (`run_in_background: true`); when you need the result, wait in the foreground (read its output file, `gh pr checks <N> --watch` for CI) and never idle on a background notification
 - Always pass the model explicitly when delegating to agents (`model="sonnet"`)
 - Pseudo-code below uses Claude Code names; see "On GitHub Copilot CLI" below for the Copilot equivalents
 - Commit before measuring, roll back on discard -- no uncommitted experiments. Roll back safely (see Rollback_Safety)

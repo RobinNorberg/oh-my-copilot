@@ -28,6 +28,8 @@ export class FakeLanes {
     cancelled = [];
     /** Called on every wait() that still reports `running`. */
     onRunningPoll = () => { };
+    /** The result's lastEventAt (the session's last event); undefined = the backend cannot tell (no idle check). */
+    lastEventAt = () => undefined;
     jobs = new Map();
     /** `scripts` is consumed in start order; `runningPolls[i]` makes lane i report `running` that many times first. */
     /** '' for the first backend on a repository, then `-g2`, `-g3`, ... */
@@ -69,7 +71,9 @@ export class FakeLanes {
     result(job, remoteId, state) {
         const terminal = state !== 'running';
         const o = job.outcome ?? {};
+        const lastEventAt = this.lastEventAt(remoteId);
         return {
+            ...(lastEventAt !== undefined ? { lastEventAt } : {}),
             state,
             branch: job.ctx.branch || null,
             pr: null,
@@ -107,6 +111,8 @@ export class FakeLanes {
     }
     /** cancel() throws a plain error (the backend cannot tell whether the job stopped). */
     cancelFails = false;
+    /** 'completed': the job finished before cancel() reached it (its script runs; the terminal snapshot is completed). */
+    cancelFinds = undefined;
     async cancel(remoteId) {
         this.cancelled.push(remoteId);
         if (this.cancelFails)
@@ -115,6 +121,11 @@ export class FakeLanes {
         // Like copilot_run after a restart: a job the backend does not know (or lost) is LaneLostError.
         if (!job || job.outcome?.lost)
             throw new LaneLostError(remoteId, `unknown job ${remoteId}`);
+        if (this.cancelFinds === 'completed') {
+            if (!job.outcome)
+                job.outcome = job.script(job.ctx) ?? {};
+            return { supported: true, result: this.result(job, remoteId, 'completed') };
+        }
         job.outcome = { ...(job.outcome ?? {}), state: 'cancelled' };
         return { supported: true, result: this.result(job, remoteId, 'cancelled') };
     }

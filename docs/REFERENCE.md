@@ -1221,6 +1221,7 @@ Keys live under `factory.run`. The engine reads them from the user config at its
 | `laneMaxCredits` | `30` | AI-credit cap passed to every lane. Mandatory, and at least 30, the Copilot CLI minimum. |
 | `maxRunCredits` | unset | Cap on the run's measured AI credits, checked at step boundaries. Each lane's cap is lowered to what is left. Must be at least `laneMaxCredits` + 30: a run needs an implement and a review lane, and the second needs the Copilot CLI minimum of 30 left. |
 | `laneTimeoutMinutes` | `30` | Wall time of one lane, at most `copilot_run`'s maximum timeout |
+| `laneIdleMinutes` | `15` | No-progress timeout of one lane. See [Stalled lanes](#stalled-lanes). Must be at least 1 |
 | `maxRunWallTimeMinutes` | `240` | Engine wall time across all invocations of one run |
 | `maxRetries` | `1` | Fresh retries of a failed lane per phase |
 | `maxFixRounds` | `2` | Changes-requested rounds before ship blocks the run. Defaults to `ship.maxFixRounds`, which the user config may also set. |
@@ -1234,6 +1235,17 @@ Keys live under `factory.run`. The engine reads them from the user config at its
 | `maxInFlightCredits` | `laneMaxCredits` x `maxConcurrent` | The AI credits the lanes in flight on this repository may reserve together (each lane reserves its cap before it starts); see [Parallel runs](#parallel-runs). Same two layers |
 
 The base branch comes from `ship.base`. The gates and the merge rule use ship's config. `requiredChecks`, `advisoryChecks` and the known-flaky list load in strict mode: from the user config, or from `.copilot/omg.jsonc` as committed at GitHub's base sha, never from the working tree or the PR head. A base the engine cannot verify stops the step. See [`omg ship`](#omg-ship) for the ship keys.
+
+##### Stalled lanes
+
+A lane can hang without ending: its Copilot session stays alive but does nothing, or the session dies and its job never reports an end. The engine watches each lane's last session event (a tool call, a message or a usage report). When a running lane has no new event for `factory.run.laneIdleMinutes` (default 15), the engine cancels it and records it as `stalled`.
+
+- **Fail closed.** A stalled lane is a failed lane. Nothing it did is committed or pushed. It gets the normal fresh retry (`maxRetries`); after that the run parks at `<kind>-failed`, and the reason names the lane and its last event time.
+- **Cancel not confirmed.** If the cancel is not confirmed, the lane may still run. The run parks at `lane-unconfirmed` with the lane, its job and its last event time. Stop the job, then rerun.
+- **Status.** `omg factory run status <issue>` shows a running or stalled lane's last event time, and why a stalled lane stalled. The progress log's lane heartbeat (at most once a minute) also names the last event.
+- **Finished just in time.** If the lane completes between the engine's last check and the cancel, and it sent a new event in that gap, the engine treats it as a normal completion. Its work goes through the usual tamper check. Without a new event it stays `stalled`.
+- **Limits.** A lane that produces no events is not judged by its file changes. A long quiet tool call (a slow test run) counts as no progress, so raise `laneIdleMinutes` for slow test suites. A lane backend that cannot report events (the cloud lanes) is bounded by `laneTimeoutMinutes` only.
+- **False stalls.** Two things can stall a healthy lane. One is a single tool call that runs longer than the idle limit without output, such as a long test suite or build. The other is the host going to sleep or hibernating. Both fail closed and get the normal retry. If this happens, raise `laneIdleMinutes` in your user config. The lowest value is 1 minute.
 
 ##### Auto-merge (opt-in)
 
