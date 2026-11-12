@@ -179,7 +179,8 @@ export function privateGitTools(dir) {
         writeFileSync(globalConfig, '', { mode: 0o600 });
     return { hooksDir, globalConfig };
 }
-function toolsProblem(t) {
+/** Fixed text when the hooks dir is not empty or the global config is not an empty file (checked before every command here). */
+export function toolsProblem(t) {
     try {
         const h = lstatSync(t.hooksDir);
         if (!h.isDirectory() || h.isSymbolicLink() || readdirSync(t.hooksDir).length > 0)

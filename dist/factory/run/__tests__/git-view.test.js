@@ -95,5 +95,26 @@ describe('buildGitView', () => {
         buildGitView(plain, sha, source(repo), viewGit);
         expect(inView(plain, 'status', '--porcelain').out).toBe('');
     });
+    it('refuses a commit whose objects sum above the byte cap before any pack is made, and an object size git cannot read', () => {
+        const sha = g(repo, 'rev-parse', 'HEAD');
+        const seen = [];
+        const watched = (args, input) => { seen.push(args[0]); return source(repo)(args, input); };
+        // The commit, its tree and a.txt ("one\n", 4 bytes) sum to more than 4 bytes.
+        expect(() => buildGitView(join(dir, 'big'), sha, watched, viewGit, 4)).toThrow(/bytes of objects, above the 4 a git view holds/);
+        expect(seen).not.toContain('pack-objects');
+        expect(existsSync(join(dir, 'big'))).toBe(false);
+        const isCheck = (args) => args[0] === 'cat-file' && args[1].startsWith('--batch-check');
+        const sizes = (input) => String(input).split('\n').filter(Boolean).map(() => '4');
+        const missing = (args, input) => (isCheck(args) ? Buffer.from(['4', '4', `${'0'.repeat(40)} missing`].join('\n')) : source(repo)(args, input));
+        expect(() => buildGitView(join(dir, 'gone'), sha, missing, viewGit)).toThrow(/could not be read/);
+        // L3: fewer (or more) size lines than objects refuse: a short answer must not sum to a small total.
+        const short = (args, input) => (isCheck(args) ? Buffer.from(`${sizes(input).slice(1).join('\n')}\n`) : source(repo)(args, input));
+        expect(() => buildGitView(join(dir, 'short'), sha, short, viewGit)).toThrow(/reported 2 object sizes for the 3 objects/);
+        const extra = (args, input) => (isCheck(args) ? Buffer.from(`${[...sizes(input), '4'].join('\n')}\n`) : source(repo)(args, input));
+        expect(() => buildGitView(join(dir, 'extra'), sha, extra, viewGit)).toThrow(/reported 4 object sizes for the 3 objects/);
+        expect(existsSync(join(dir, 'short'))).toBe(false);
+        // Under the default cap the same commit builds.
+        expect(buildGitView(join(dir, 'ok'), sha, source(repo), viewGit)).toBe(join(dir, 'ok', '.git'));
+    });
 });
 //# sourceMappingURL=git-view.test.js.map

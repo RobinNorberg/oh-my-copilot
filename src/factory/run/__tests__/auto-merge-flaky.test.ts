@@ -69,14 +69,14 @@ describe('auto-merge and checks that did not succeed', () => {
     const d = decide([{ name: 'Lint', state: 'SUCCESS' }, { name: 'Test', state: 'FAILURE', link: job(1) }]);
     const v = verdict(d);
     expect(v.ok).toBe(false);
-    expect(v.reasons.join('\n')).toMatch(/Test \(FAILURE, known-flaky\)/);
+    expect(v.reasons.join('\n')).toMatch(/`Test` \(FAILURE, known-flaky\)/);
   });
 
   it('a known-flaky FAILURE with required checks leaves the merge to a human, naming the check', () => {
     const d = decide([{ name: 'Lint', state: 'SUCCESS' }, { name: 'Test', state: 'FAILURE', link: job(1) }], { requiredChecks: ['Lint'] });
     const v = verdict(d, ['Lint']);
     expect(v.ok).toBe(false);
-    expect(v.reasons.join('\n')).toMatch(/Test \(FAILURE, known-flaky\)/);
+    expect(v.reasons.join('\n')).toMatch(/`Test` \(FAILURE, known-flaky\)/);
   });
 
   it('even if the merge rule allowed the head, a check that did not succeed keeps the merge human (fail closed)', () => {
@@ -84,7 +84,7 @@ describe('auto-merge and checks that did not succeed', () => {
     const d = decide([{ name: 'Lint', state: 'SUCCESS' }, { name: 'Test', state: 'FAILURE', link: job(1) }], { requiredChecks: ['Lint'] });
     const v = verdict({ ...d, ok: true, reasons: [] }, ['Lint']);
     expect(v.ok).toBe(false);
-    expect(v.reasons.join('\n')).toMatch(/did not succeed on this head: Test \(FAILURE, known-flaky\)/);
+    expect(v.reasons.join('\n')).toMatch(/did not succeed on this head: `Test` \(FAILURE, known-flaky\)/);
     // An older decision without the check states fails closed too.
     const { blocking: _, ...old } = d;
     expect(verdict({ ...old, ok: true, reasons: [] }, ['Lint']).reasons.join('\n')).toMatch(/check states on this head were not read/);
@@ -96,7 +96,7 @@ describe('auto-merge and checks that did not succeed', () => {
     const d = decide(list, { requiredChecks: ['Lint'] });
     const v = verdict({ ...d, ok: true, reasons: [] }, ['Lint']);
     expect(v.ok).toBe(false);
-    expect(v.reasons.join('\n')).toContain(`Build (${state})`);
+    expect(v.reasons.join('\n')).toContain(`\`Build\` (${state})`);
   });
 
   it('a failing or skipped check in ship.advisoryChecks is ignored: still eligible', () => {
@@ -106,12 +106,48 @@ describe('auto-merge and checks that did not succeed', () => {
     expect(verdict(decide(list, { advisoryChecks, requiredChecks: ['Test'] }), ['Test'])).toMatchObject({ ok: true, tier: 'docs' });
   });
 
-  it('a check name is sanitised in the reason: one line, no backticks, capped', () => {
+  it('a check name is sanitised in the reason: one line, no backticks of its own (only its code span), capped', () => {
     const name = `Evil\`name\n@team ${'x'.repeat(300)}`;
     const d = decide([{ name: 'Lint', state: 'SUCCESS' }, { name, state: 'CANCELLED' }], { requiredChecks: ['Lint'] });
     const line = verdict({ ...d, ok: true, reasons: [] }, ['Lint']).reasons.find((r) => r.includes('did not succeed'))!;
-    expect(line).not.toMatch(/[`\n]/);
+    expect(line).not.toMatch(/\n/);
+    expect(line.match(/`/g)).toHaveLength(2);
+    expect(line).toMatch(/`Evil'name/);
     expect(line.length).toBeLessThan(260);
     expect(line).toContain('Evil');
+  });
+
+  it('duplicate check names (one SUCCESS, one FAILURE, same name) leave the merge to a human, in either order', () => {
+    for (const list of [[{ name: 'Test', state: 'SUCCESS' }, { name: 'Test', state: 'FAILURE' }], [{ name: 'Test', state: 'FAILURE' }, { name: 'Test', state: 'SUCCESS' }]]) {
+      expect(verdict(decide(list)).ok, JSON.stringify(list)).toBe(false);
+      const d = decide(list, { requiredChecks: ['Test'] });
+      expect(verdict(d, ['Test']).ok, JSON.stringify(list)).toBe(false);
+      // Even when the merge rule allowed the head, the FAILURE entry blocks.
+      const v = verdict({ ...d, ok: true, reasons: [] }, ['Test']);
+      expect(v.ok).toBe(false);
+      expect(v.reasons.join('\n')).toContain('`Test` (FAILURE');
+    }
+  });
+
+  it('a check name loses format characters (bidi, zero-width) and its "@" cannot mention anyone', () => {
+    const name = ['Te', String.fromCharCode(0x202e), 'st', String.fromCharCode(0x200b), ' @org/team ', String.fromCharCode(0x2066), 'x', String.fromCharCode(0x2069)].join('');
+    const d = decide([{ name: 'Lint', state: 'SUCCESS' }, { name, state: 'CANCELLED' }], { requiredChecks: ['Lint'] });
+    const line = verdict({ ...d, ok: true, reasons: [] }, ['Lint']).reasons.find((r) => r.includes('did not succeed'))!;
+    expect(line).not.toMatch(/\p{Cf}/u);
+    expect(line).not.toContain('@');
+    expect(line).toContain('`Test ＠org/team x` (CANCELLED)');
+  });
+
+  it('a check name is one code span: markdown links, HTML, cross-references and "|" stay literal (L4)', () => {
+    const names = ['[click](https://evil.example/x)', '<img src=x onerror=alert(1)>', 'owner/repo#1', 'a | b', '@user', 'tick`s`'];
+    const d = decide([{ name: 'Lint', state: 'SUCCESS' }, ...names.map((name) => ({ name, state: 'FAILURE' }))], { requiredChecks: ['Lint'] });
+    const line = verdict({ ...d, ok: true, reasons: [] }, ['Lint']).reasons.find((r) => r.includes('did not succeed'))!;
+    for (const s of ['`[click](https://evil.example/x)` (FAILURE)', '`<img src=x onerror=alert(1)>` (FAILURE)', '`owner/repo#1` (FAILURE)', '`a ¦ b` (FAILURE)', "`tick's'` (FAILURE)", '`＠user` (FAILURE)']) {
+      expect(line).toContain(s);
+    }
+    expect(line).not.toContain('|');
+    expect(line).not.toContain('@');
+    // Every name opens and closes its own span: the backticks pair up.
+    expect((line.match(/`/g) ?? []).length % 2).toBe(0);
   });
 });

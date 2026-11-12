@@ -22,7 +22,7 @@ import { BASE, lanesFor, LOCAL_ISSUE, localOpts, localWorld, type LocalWorld } f
 import { commitFile, gitIn, review } from './fake-lanes.js';
 
 /** N3: when set, removing the engine's node_modules link from the prepare checkout throws (a busy file on win32). */
-const removal = vi.hoisted(() => ({ fail: false }));
+const removal = vi.hoisted(() => ({ fail: false, linkFail: false }));
 vi.mock('../prepare.js', async (importOriginal) => {
   const real = await importOriginal<typeof import('../prepare.js')>();
   return {
@@ -31,12 +31,17 @@ vi.mock('../prepare.js', async (importOriginal) => {
       if (removal.fail) throw Object.assign(new Error(`EBUSY: resource busy or locked, rmdir '${checkout}'`), { code: 'EBUSY' });
       return real.unlinkNodeModules(root, checkout);
     },
+    // review-501b INFO: when set, building the node_modules tree throws too.
+    linkNodeModules: (...args: Parameters<typeof real.linkNodeModules>) => {
+      if (removal.linkFail) throw new Error('the tree could not be linked (test)');
+      return real.linkNodeModules(...args);
+    },
   };
 });
 
 const MULTI_RUN_MS = 300_000;
 let w: LocalWorld;
-afterEach(() => { removal.fail = false; rmSync(w.dir, { recursive: true, force: true }); });
+afterEach(() => { removal.fail = false; removal.linkFail = false; rmSync(w.dir, { recursive: true, force: true }); });
 
 const greet = () => commitFile('src/greet.js', 'export const greet = () => "hi";\n');
 const PREPARE_CHECK = ['node', 'check.js'];
@@ -202,6 +207,24 @@ describe('isolation "container"', () => {
     const again = await runFactoryEngine(opts(lanesFor(w, [commitFile('src/fix.js', 'export const fix = 1;\n'), review('approve')]), { gateSandbox: sandbox().run, gateSandboxUserConfig: userContainer }));
     expect(again.message, readFactoryState(w.root, LOCAL_ISSUE)!.history.map((h) => `${h.to}: ${h.note}`).join('\n')).toMatch(/could not discard the engine's prepare checkout/);
     expect(existsSync(join(checkout, 'node_modules'))).toBe(false);
+  }, MULTI_RUN_MS);
+
+  it('review-501b INFO: the OS sandbox: a failed relink after a failed discard only warns; the discard\'s own error is reported', async () => {
+    w = localWorld();
+    writeFileSync(join(w.root, '.gitignore'), '.omg/\nnode_modules/\n');
+    gitIn(w.root, 'add', '.gitignore');
+    gitIn(w.root, 'commit', '-q', '-m', 'ignore node_modules');
+    mkdirSync(join(w.root, 'node_modules', 'vitest'), { recursive: true });
+    let prepares = 0;
+    const s = sandbox((req) => ({ ran: true, status: req.purpose === 'prepare' && prepares++ === 0 ? 1 : 0, output: '', timedOut: false }));
+    const first = await runFactoryEngine(opts(lanesFor(w, [greet(), review('approve')]), { gateSandbox: s.run, gateSandboxUserConfig: {} }));
+    expect(first.message).toMatch(/ci-fix-failed: .*no script for lane/);
+    removal.fail = true;
+    removal.linkFail = true;
+    const warnings: string[] = [];
+    const again = await runFactoryEngine(opts(lanesFor(w, [commitFile('src/fix.js', 'export const fix = 1;\n'), review('approve')]), { gateSandbox: sandbox().run, gateSandboxUserConfig: {}, warn: (m) => warnings.push(m) }));
+    expect(again.message).toMatch(/could not discard the engine's prepare checkout .*EBUSY/);
+    expect(warnings.join('\n')).toMatch(/could not link the node_modules tree of the kept prepare checkout .* again \(the tree could not be linked \(test\)\)/);
   }, MULTI_RUN_MS);
 
   it('L3: gates "ack" with isolation "container" runs in the container, never plainly after an ack', async () => {

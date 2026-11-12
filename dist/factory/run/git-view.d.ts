@@ -24,6 +24,8 @@
  */
 /** The most objects (commit, trees, blobs) a view holds; a larger commit gets no view. */
 export declare const GIT_VIEW_MAX_OBJECTS = 500000;
+/** The most bytes (sum of the objects' sizes) a view holds; a larger commit gets no view, and no pack is made. */
+export declare const GIT_VIEW_MAX_BYTES: number;
 /** Host git in the trusted repository that holds `sha` (hardened: replace objects off, no hooks); stdout as bytes. */
 export type GitViewSource = (args: readonly string[], input?: Buffer) => Buffer;
 /** Host git on the new view (the engine's own, fresh dir): `cwd` is the view's work tree; stdout as text. */
@@ -33,5 +35,5 @@ export type GitViewGit = (cwd: string, args: readonly string[], input?: Buffer) 
  * `<dir>/.git` that already exists is refused) and return that git dir.
  * Throws on any failure; the caller removes `dir` (or its `.git`).
  */
-export declare function buildGitView(dir: string, sha: string, source: GitViewSource, git: GitViewGit): string;
+export declare function buildGitView(dir: string, sha: string, source: GitViewSource, git: GitViewGit, maxBytes?: number): string;
 //# sourceMappingURL=git-view.d.ts.map

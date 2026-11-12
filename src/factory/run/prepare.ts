@@ -107,6 +107,8 @@ export function linkNodeModules(root: string, checkout: string, warn?: (message:
     }
     // The marker lists the nested trees for the removal and the sandbox's grant check (both re-validate every line).
     writeFileSync(join(target, GATE_TREE_MARKER), built.map((r) => `${r}\n`).join(''));
+    const moved = treeMoved(target, checkout, '');
+    if (moved) throw new Error(moved);
   } catch (error) {
     for (const rel of built) {
       const dir = plainDirUnder(checkout, rel);
@@ -141,13 +143,10 @@ function buildGateTree(source: string, target: string, root: string, checkout: s
   mkdirSync(target);
   // L3 (review-501): a dir on the way swapped for a junction or link after plainDirUnder (a surviving PR process) would
   // put the tree, its marker and its links outside the checkout: the new dir must be where it was meant to be.
-  const fold = (p: string) => (process.platform === 'win32' ? p.toLowerCase() : p);
-  const want = join(realpathSync.native(checkout), ...label.split('/').filter((s) => s !== ''), 'node_modules');
-  let got: string;
-  try { got = realpathSync.native(target); } catch { got = ''; }
-  if (fold(got) !== fold(want)) {
+  const moved = treeMoved(target, checkout, label);
+  if (moved) {
     try { rmdirSync(target); } catch { /* left for the caller's removal */ }
-    throw new Error(`the gate's node_modules tree ${target} resolves to ${got || 'nothing'}, not ${want}: a dir on its way was replaced by a link`);
+    throw new Error(moved);
   }
   writeFileSync(join(target, GATE_TREE_MARKER), '');
   for (const name of GATE_CACHE_DIRS) mkdirSync(join(target, name));
@@ -187,6 +186,18 @@ function buildGateTree(source: string, target: string, root: string, checkout: s
     }
     place(from, join(target, e.name));
   }
+  // L3 residual (review-501b): the same check after the last write; a swap during the build fails it (the caller removes, link-safe).
+  const after = treeMoved(target, checkout, label);
+  if (after) throw new Error(after);
+}
+
+/** Why `target` (the tree for `label` in `checkout`) does not resolve where it was meant to be, or null. */
+function treeMoved(target: string, checkout: string, label: string): string | null {
+  const fold = (p: string) => (process.platform === 'win32' ? p.toLowerCase() : p);
+  const want = join(realpathSync.native(checkout), ...label.split('/').filter((s) => s !== ''), 'node_modules');
+  let got: string;
+  try { got = realpathSync.native(target); } catch { got = ''; }
+  return fold(got) === fold(want) ? null : `the gate's node_modules tree ${target} resolves to ${got || 'nothing'}, not ${want}: a dir on its way was replaced by a link`;
 }
 
 /** Unlink `link` when it resolves to the root's node_modules (the single link of older releases); true when it went. */

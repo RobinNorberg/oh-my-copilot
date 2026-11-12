@@ -487,8 +487,10 @@ export async function runContainerGate(req: SandboxRunRequest, s: GateContainerS
     image = await inspectImage();
   }
   const imageId = /^(sha256:[0-9a-f]{64})$/m.exec(image.tail.trim())?.[1];
+  // No id, no run: a tag could name another image by the time a container starts (review-499c).
+  if (!imageId) return unavailable(`could not read the image id of ${s.image} from ${bin} image inspect (${firstLine(image.tail) || `exit ${image.status}`}); pull the image again or pin a digest in factory.run.sandbox.container.image, ${switchBack}`);
   // Every container runs the exact image inspected above, never what the tag names later (review-499b N4).
-  const ref = imageId ?? s.image;
+  const ref = imageId;
   const plan = installPlan(req.cwd);
   if (plan.kind === 'unsupported') return unavailable(`${plan.reason}; ${switchBack}`);
   const scan = checkoutCopyProblem(req.cwd);
@@ -506,7 +508,7 @@ export async function runContainerGate(req: SandboxRunRequest, s: GateContainerS
   const started: string[] = [];
   let volumeMade = false;
   let networkMade = false;
-  const ran = (o: Omit<Extract<SandboxRunResult, { ran: true }>, 'ran'>): SandboxRunResult => ({ ran: true, ...o, ...(imageId ? { imageId } : {}) });
+  const ran = (o: Omit<Extract<SandboxRunResult, { ran: true }>, 'ran'>): SandboxRunResult => ({ ran: true, ...o, imageId });
   const removeNetwork = async (): Promise<void> => {
     if (!networkMade) return;
     const rm = await deps.exec(bin, ['network', 'rm', network], { timeoutMs: PROBE_TIMEOUT_MS }).catch(() => null);
