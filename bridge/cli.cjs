@@ -98494,7 +98494,7 @@ function gitAllowed(a, protectedBranches) {
     case "diff":
       return same(r, ["--name-only", "--diff-filter=U"]) || same(r, ["--cached", "--quiet"]) || same(r, ["--cached", "--quiet", "--", "inventory"]) || r.length > 3 && same(r.slice(0, 3), ["--cached", "--quiet", "--"]) && isOutputDirs(r.slice(3)) || r.length === 3 && r[0] === "--name-only" && r[1] === "-z" && /^[0-9a-f]{40}\.\.\.HEAD$/.test(r[2]) || r.length === 4 && r[0] === "--name-only" && r[1] === "--no-renames" && r[2] === "-z" && /^[0-9a-f]{40}\.\.\.[0-9a-f]{40}$/.test(r[3]) || r.length === 5 && r[0] === "--name-only" && r[1] === "--no-renames" && r[2] === "-z" && HEX40.test(r[3]) && HEX40.test(r[4]) || r.length === 6 && same(r.slice(0, 4), ["--raw", "--no-renames", "-z", "--no-abbrev"]) && HEX40.test(r[4]) && HEX40.test(r[5]);
     case "ls-files":
-      return r.length > 5 && same(r.slice(0, 5), ["-z", "-o", "-i", "--exclude-standard", "--"]) && isOutputDirs(r.slice(5));
+      return r.length > 5 && same(r.slice(0, 5), ["-z", "-o", "-i", "--exclude-standard", "--"]) && isOutputDirs(r.slice(5)) || same(r, ["-z", "-o", "-i", "--exclude-standard", "--directory"]) || same(r, ["-z", "-v"]);
     case "checkout":
       return same(r, ["--theirs", "--", "inventory"]);
     case "add":
@@ -135795,6 +135795,18 @@ ${dirty}`);
     const stray = preIgnored.stdout.split("\0").filter(Boolean);
     if (stray.length > 0) {
       return fail10(PREPARE_BUILD_STEP, `ignored files are already in ship.prepare.build.outputs, and git add -f would commit them; nothing is built (fail closed). Remove them: ${shown(stray)}`);
+    }
+    const ignored = git10("ls-files", "-z", "-o", "-i", "--exclude-standard", "--directory");
+    if (ignored.status !== 0) return fail10(PREPARE_BUILD_STEP, "git ls-files failed before the build");
+    const hidden = ignored.stdout.split("\0").filter((p) => p && !/^(?:node_modules|\.omg|\.omc)\//.test(p));
+    if (hidden.length > 0) {
+      return fail10(PREPARE_BUILD_STEP, `the checkout has ignored files outside node_modules/, .omg/ and .omc/, which the build could compile into its output; nothing is built (fail closed). Remove these ignored files before the build: ${shown(hidden)}`);
+    }
+    const tracked = git10("ls-files", "-z", "-v");
+    if (tracked.status !== 0) return fail10(PREPARE_BUILD_STEP, "git ls-files -v failed before the build");
+    const flagged = tracked.stdout.split("\0").filter((e) => e && !e.startsWith("H "));
+    if (flagged.length > 0) {
+      return fail10(PREPARE_BUILD_STEP, `tracked files are marked assume-unchanged or skip-worktree, so git status cannot show their edits; nothing is built (fail closed). Clear the flags (git update-index --no-assume-unchanged / --no-skip-worktree): ${shown(flagged.map((e) => e.slice(2)))}`);
     }
     const headBefore = head();
     const r = yield { step: PREPARE_BUILD_STEP, kind: "build", argv: build.argv, exe: build.exe, args: build.args };

@@ -149,6 +149,49 @@ describe('ship.prepare.build in prepare', () => {
         expect(git(r.dir, 'log', '-1', '--format=%s')).not.toBe(BUILD_COMMIT_MESSAGE);
         expect(git(r.dir, 'ls-files', 'dist')).toBe('dist/a.js');
     });
+    it('review-529b A: an untracked file hidden by a self-ignoring .gitignore fails the build step before the build runs', () => {
+        const r = repo();
+        writeFileSync(join(r.dir, 'src', '.gitignore'), 'evil.ts\n.gitignore\n');
+        writeFileSync(join(r.dir, 'src', 'evil.ts'), 'evil\n');
+        expect(git(r.dir, 'status', '--porcelain')).toBe('');
+        const { result, ran } = prepare(r, (cwd) => { writeFileSync(join(cwd, 'dist', 'evil.js'), 'compiled evil\n'); return 0; });
+        expect(result.ok).toBe(false);
+        expect(ran).toEqual([]);
+        expect(result.steps.at(-1)).toMatchObject({ name: PREPARE_BUILD_STEP, status: 'failed' });
+        expect(result.blockedReason).toMatch(/Remove these ignored files before the build: .*src\/\.gitignore/);
+        expect(result.blockedReason).toMatch(/src\/evil\.ts/);
+        expect(git(r.dir, 'log', '-1', '--format=%s')).not.toBe(BUILD_COMMIT_MESSAGE);
+    });
+    it('review-529b A: a file hidden by .git/info/exclude fails the build step; node_modules/, .omg/ and .omc/ pass', () => {
+        const r = repo();
+        writeFileSync(join(r.dir, '.git', 'info', 'exclude'), 'evil.ts\nnode_modules/\n.omg/\n.omc/\n');
+        for (const d of ['node_modules/pkg', '.omg/state', '.omc/state']) {
+            mkdirSync(join(r.dir, d), { recursive: true });
+            writeFileSync(join(r.dir, d, 'f.js'), 'x\n');
+        }
+        const clean = prepare(r, () => 0);
+        expect(clean.result.ok, clean.result.blockedReason).toBe(true);
+        expect(clean.ran).toEqual(['npm run build']);
+        const r2 = repo();
+        writeFileSync(join(r2.dir, '.git', 'info', 'exclude'), 'evil.ts\n');
+        writeFileSync(join(r2.dir, 'src', 'evil.ts'), 'evil\n');
+        const { result, ran } = prepare(r2, () => 0);
+        expect(result.ok).toBe(false);
+        expect(ran).toEqual([]);
+        expect(result.blockedReason).toMatch(/ignored files outside node_modules\/, \.omg\/ and \.omc\/.*src\/evil\.ts/);
+    });
+    it('review-529b A: an edit to a tracked file marked assume-unchanged or skip-worktree fails the build step', () => {
+        for (const flag of ['--assume-unchanged', '--skip-worktree']) {
+            const r = repo();
+            git(r.dir, 'update-index', flag, 'src/a.ts');
+            writeFileSync(join(r.dir, 'src', 'a.ts'), 'tampered\n');
+            expect(git(r.dir, 'status', '--porcelain'), flag).toBe('');
+            const { result, ran } = prepare(r, () => 0);
+            expect(result.ok, flag).toBe(false);
+            expect(ran, flag).toEqual([]);
+            expect(result.blockedReason, flag).toMatch(/assume-unchanged or skip-worktree.*src\/a\.ts/);
+        }
+    });
     it('review-529 L2: an output that is a file, not a directory, fails the build step', () => {
         const r = repo();
         const { result, ran } = prepare(r, () => 0, { build: { ...BUILD, outputs: ['.gitignore'] } });
@@ -231,6 +274,11 @@ describe('ship.prepare.build config', () => {
         expect(() => assertSafeCommand('git', ['status', '--porcelain=v1', '-z', '--untracked-files=all', '--no-renames'])).not.toThrow();
         expect(() => assertSafeCommand('git', ['ls-files', '-z', '-o', '-i', '--exclude-standard', '--', 'dist', 'bridge'])).not.toThrow();
         expect(() => assertSafeCommand('git', ['diff', '--raw', '--no-renames', '-z', '--no-abbrev', 'a'.repeat(40), 'b'.repeat(40)])).not.toThrow();
+        expect(() => assertSafeCommand('git', ['ls-files', '-z', '-o', '-i', '--exclude-standard', '--directory'])).not.toThrow();
+        expect(() => assertSafeCommand('git', ['ls-files', '-z', '-v'])).not.toThrow();
+        for (const bad of [['ls-files', '-z', '-o', '-i', '--exclude-standard', '--directory', '--', 'src'], ['ls-files', '-z', '-v', '--', 'src'], ['ls-files', '-v'], ['ls-files', '-z', '-o', '-i', '--directory']]) {
+            expect(() => assertSafeCommand('git', bad), bad.join(' ')).toThrow();
+        }
         for (const bad of [['ls-files', '-z', '-o', '-i', '--exclude-standard', '--', '.'], ['ls-files', '-z', '-o', '-i', '--exclude-standard', '--', 'node_modules'], ['add', '-f', '-A', '--', '.github'], ['add', '-f', '-A', '--', './dist'], ['add', '-f', '-A', '--', '.'], ['add', '-f', '-A', '--', '.git'], ['add', '-f', '-A', '--', '../x'], ['add', '-f', '-A', '--'], ['commit', '--no-verify', '-m', BUILD_COMMIT_MESSAGE, '--', ':/'], ['commit', '--no-verify', '-m', 'x', '--', 'dist'], ['add', '-f', '-A', '--', '*']]) {
             expect(() => assertSafeCommand('git', bad), bad.join(' ')).toThrow();
         }

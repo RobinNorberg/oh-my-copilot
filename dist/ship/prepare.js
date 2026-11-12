@@ -322,6 +322,23 @@ function* prepareSteps(opts) {
         if (stray.length > 0) {
             return fail(PREPARE_BUILD_STEP, `ignored files are already in ship.prepare.build.outputs, and git add -f would commit them; nothing is built (fail closed). Remove them: ${shown(stray)}`);
         }
+        // git status hides ignored files and files git is told not to look at. Anything ignored outside the dependency
+        // and runtime dirs (a self-ignoring .gitignore, .git/info/exclude) could be compiled in unseen; refuse it.
+        const ignored = git('ls-files', '-z', '-o', '-i', '--exclude-standard', '--directory');
+        if (ignored.status !== 0)
+            return fail(PREPARE_BUILD_STEP, 'git ls-files failed before the build');
+        const hidden = ignored.stdout.split('\0').filter((p) => p && !/^(?:node_modules|\.omg|\.omc)\//.test(p));
+        if (hidden.length > 0) {
+            return fail(PREPARE_BUILD_STEP, `the checkout has ignored files outside node_modules/, .omg/ and .omc/, which the build could compile into its output; nothing is built (fail closed). Remove these ignored files before the build: ${shown(hidden)}`);
+        }
+        // A tracked file marked assume-unchanged (lowercase tag) or skip-worktree (S) can differ from HEAD while status is empty.
+        const tracked = git('ls-files', '-z', '-v');
+        if (tracked.status !== 0)
+            return fail(PREPARE_BUILD_STEP, 'git ls-files -v failed before the build');
+        const flagged = tracked.stdout.split('\0').filter((e) => e && !e.startsWith('H '));
+        if (flagged.length > 0) {
+            return fail(PREPARE_BUILD_STEP, `tracked files are marked assume-unchanged or skip-worktree, so git status cannot show their edits; nothing is built (fail closed). Clear the flags (git update-index --no-assume-unchanged / --no-skip-worktree): ${shown(flagged.map((e) => e.slice(2)))}`);
+        }
         const headBefore = head();
         const r = yield { step: PREPARE_BUILD_STEP, kind: 'build', argv: build.argv, exe: build.exe, args: build.args };
         if (r.notStarted !== undefined)

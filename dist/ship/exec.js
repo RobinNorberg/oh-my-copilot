@@ -194,7 +194,10 @@ function gitAllowed(a, protectedBranches) {
                 || (r.length === 6 && same(r.slice(0, 4), ['--raw', '--no-renames', '-z', '--no-abbrev']) && HEX40.test(r[4]) && HEX40.test(r[5]));
         case 'ls-files':
             // prepare's build precheck: ignored, untracked files already in the outputs (git add -f would commit them).
-            return r.length > 5 && same(r.slice(0, 5), ['-z', '-o', '-i', '--exclude-standard', '--']) && isOutputDirs(r.slice(5));
+            return (r.length > 5 && same(r.slice(0, 5), ['-z', '-o', '-i', '--exclude-standard', '--']) && isOutputDirs(r.slice(5)))
+                // prepare's build precheck: every ignored entry (a dir collapsed), and every tracked file's tag (assume-unchanged, skip-worktree).
+                || same(r, ['-z', '-o', '-i', '--exclude-standard', '--directory'])
+                || same(r, ['-z', '-v']);
         case 'checkout':
             return same(r, ['--theirs', '--', 'inventory']);
         case 'add':
