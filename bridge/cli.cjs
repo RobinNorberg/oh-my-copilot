@@ -123390,7 +123390,9 @@ function summarizeChanges(cwd2, base, extraProtected = [], gitDirArgs = [], igno
   if (stat2 === null || names === null || indexLinks === null || headLinks === null || baseLinks === null) return null;
   const newGitlinks = [.../* @__PURE__ */ new Set([...indexLinks, ...headLinks])].filter((p) => !baseLinks.includes(p));
   const changedFiles2 = [.../* @__PURE__ */ new Set([...lines(names), ...newGitlinks])];
-  const untrackedFiles = lines(git2(top, [...gitDirArgs, "ls-files", "--others", "--exclude-standard"]));
+  const untracked = git2(top, [...gitDirArgs, "ls-files", "--others", "--exclude-standard"]);
+  if (untracked === null) return null;
+  const untrackedFiles = lines(untracked);
   let ignored = [];
   if (ignoredUnderProtected) {
     const specs = [...PROTECTED_PATHS, ...extraProtected].map((rule) => `:(icase,literal)${rule}`);
@@ -123878,8 +123880,13 @@ var init_job = __esm({
           workCwd = sub && (0, import_node_fs29.existsSync)((0, import_node_path35.join)(info.path, sub)) ? (0, import_node_path35.join)(info.path, sub) : info.path;
           worktree = { path: info.path, branch: info.branch, repoRoot: ledgerCwd };
           baseCommit = info.baseCommit ?? startSha ?? baseCommit;
-          if (!startSha && lines(git2(ledgerCwd, ["status", "--porcelain", "--untracked-files=no"])).length > 0) {
-            notes.push(`${ledgerCwd} has uncommitted changes; the worktree starts from HEAD ${baseCommit?.slice(0, 12) ?? "?"} without them.`);
+          if (!startSha) {
+            const status = git2(ledgerCwd, ["status", "--porcelain", "--untracked-files=no"]);
+            if (status === null) {
+              notes.push(`git status failed in ${ledgerCwd}, so it may have uncommitted changes; the worktree starts from HEAD ${baseCommit?.slice(0, 12) ?? "?"} without them.`);
+            } else if (lines(status).length > 0) {
+              notes.push(`${ledgerCwd} has uncommitted changes; the worktree starts from HEAD ${baseCommit?.slice(0, 12) ?? "?"} without them.`);
+            }
           }
         } else if (repoRoot3) {
           notes.push('isolation "none": Copilot works in your working tree; the change summary includes edits that were already there.');
