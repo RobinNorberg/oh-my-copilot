@@ -302,6 +302,33 @@ export function resolveGateIsolation(layers: Pick<GatesSandboxLayers, 'user' | '
   return { isolation, ...(isolation === 'container' ? { container } : {}), ignoredBase };
 }
 
+/** The Windows git-transport fallback's image when the user names none: the full bookworm image, which has git. */
+export const defaultGitGateImage = (nodeVersion: string = process.versions.node): string => `node:${nodeVersion.split('.')[0]}-bookworm`;
+
+/** factory.run.sandbox.windowsGitTransport: "fallback" (default) or "strict" (keep the gate-sandbox-incompatible park). */
+export type WindowsGitTransportMode = 'fallback' | 'strict';
+
+/**
+ * `factory.run.sandbox.windowsGitTransport` from the USER config only (a
+ * base-committed value is ignored: `ignoredBase`), and the container the
+ * fallback tries first: the user's `factory.run.sandbox.container` settings,
+ * with an image that has git (defaultGitGateImage) unless the user names
+ * one. A malformed user value throws.
+ */
+export function resolveWindowsGitTransport(layers: Pick<GatesSandboxLayers, 'user' | 'base'>, nodeVersion: string = process.versions.node): { mode: WindowsGitTransportMode; container: GateContainerSettings; ignoredBase: boolean } {
+  const block = (config: unknown): Record<string, unknown> => {
+    const raw = (config as { factory?: { run?: { sandbox?: unknown } } } | null | undefined)?.factory?.run?.sandbox;
+    return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw as Record<string, unknown> : {};
+  };
+  const user = block(layers.user);
+  const v = user.windowsGitTransport;
+  if (v !== undefined && v !== 'fallback' && v !== 'strict') throw new Error('user config: factory.run.sandbox.windowsGitTransport must be "fallback" or "strict"');
+  const own = user.container;
+  const container = resolveGateIsolation({ user: { factory: { run: { sandbox: { isolation: 'container', ...(own !== undefined ? { container: own } : {}) } } } }, base: undefined }, nodeVersion).container!;
+  const named = typeof own === 'object' && own !== null && (own as Record<string, unknown>).image !== undefined;
+  return { mode: v ?? 'fallback', container: named ? container : { ...container, image: defaultGitGateImage(nodeVersion) }, ignoredBase: block(layers.base).windowsGitTransport !== undefined };
+}
+
 // ---------------------------------------------------------------------------
 // Policy (§4.2 review, §4.3 write)
 // ---------------------------------------------------------------------------

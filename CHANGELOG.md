@@ -4,6 +4,10 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- **Windows: checks that use git clone, fetch or push no longer park the factory.** In the Copilot OS sandbox on Windows these cannot run (Git for Windows' `sh.exe` exits `0xC0000142` there). When a check fails on the base for that reason, the engine confirms the cause, then runs the check in the gate container (an image with git), or without a sandbox when no container runtime works. Each such run warns and leaves a history note and a PR note. Set `factory.run.sandbox.windowsGitTransport: "strict"` in your user config to keep the old park. See "Known gap: git transport in the Windows sandbox" in docs/REFERENCE.md.
+
 # oh-my-copilot v5.27.0
 
 ## [5.27.0] - 2026-11-12
