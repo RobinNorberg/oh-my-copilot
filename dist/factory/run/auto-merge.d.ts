@@ -69,7 +69,12 @@ export interface ChangedEntry {
  * malformed or they disagree (the caller fails closed).
  */
 export declare function parseChangedEntries(rawZ: string, numstatZ: string): ChangedEntry[] | null;
-/** A user glob as a test on a folded path: `**` any depth, `*` and `?` inside one segment, a trailing `/` a whole directory; a glob without `/` matches the file name at any depth. */
+/**
+ * A user glob as a test on a folded path: `**` any depth, `*` and `?` inside
+ * one segment, a trailing `/` a whole directory; a glob without `/` matches
+ * the file name at any depth. Braces `{a,b}` and classes `[ab]` are not glob
+ * syntax here: they match literally (write one glob per alternative).
+ */
 export declare function globMatcher(glob: string): (path: string) => boolean;
 /**
  * The changed paths no tier may auto-merge: the factory's and ship's
@@ -81,8 +86,35 @@ export declare function globMatcher(glob: string): (path: string) => boolean;
  * (protectedChanges' raw `:`/`~`/`..` rule).
  */
 export declare function deniedPaths(paths: readonly string[], extra?: readonly string[], globs?: readonly string[]): string[];
-/** docs: Markdown or reStructuredText anywhere, plain text under the root `docs/`. Never .mdx, HTML, scripts, site code or images. */
+/**
+ * docs: an allowlist (review-498b N2): root README*, CHANGELOG* and
+ * CONTRIBUTING* (.md, .rst, .txt) and `.md`, `.rst`, `.txt` files under the
+ * root `docs/`. Nothing else is docs: Markdown elsewhere (src/notes.md, a
+ * mission contract, an agent's rules file) may be read by tools or agents.
+ */
 export declare function isDocsPath(path: string): boolean;
+/** Files whose text may carry frontmatter that a tool parses as config (skills, commands, agents, mission contracts): their blobs are read. */
+export declare const FRONTMATTER_CANDIDATE: RegExp;
+/** A blob that starts with YAML (`---`) or TOML (`+++`) frontmatter, after an optional BOM and blank space. */
+export declare const hasFrontmatter: (text: string) => boolean;
+/**
+ * The files the BASE package.json runs for every user of the package
+ * (review-498b N3): every path-like word of its install and publish lifecycle
+ * scripts (and of the scripts they run with `npm run <name>`) and its "bin"
+ * targets. A script with a variable, a substitution or a glob, or a "bin"
+ * that is not strings, is a `problem` (the engine then keeps the small tier
+ * off). Absent package.json (`text` null): nothing.
+ */
+export declare function baseInstallFiles(text: string | null): {
+    paths: string[];
+    problem?: string;
+};
+/**
+ * The added lines of a plain `git diff` patch (lines starting with `+` inside
+ * a hunk); null when the text has an ANSI escape (a colour setting: the
+ * engine cannot read it, so it fails closed).
+ */
+export declare function addedPatchLines(patch: string): string[] | null;
 /** tests: a test file by name, or a source / snapshot / fixture-data file under a root test directory or any `__tests__`. */
 export declare function isTestPath(path: string): boolean;
 export interface TierResult {
@@ -100,6 +132,18 @@ export interface ClassifyOptions {
         paths: readonly string[];
         problem?: string;
     };
+    /** The .md/.rst/.mdc paths whose BASE or HEAD blob starts with frontmatter (hasFrontmatter); `problem` = a blob could not be read. */
+    frontmatter?: {
+        paths: readonly string[];
+        problem?: string;
+    };
+    /** The files the BASE package.json runs on install or publish (baseInstallFiles): denied in every tier; `problem` keeps the small tier off. */
+    installFiles?: {
+        paths: readonly string[];
+        problem?: string;
+    };
+    /** The patch's added lines (addedPatchLines); null = unreadable, which keeps the tests and small tiers off. Undefined = not read. */
+    addedLines?: readonly string[] | null;
 }
 /**
  * The first enabled tier (docs, tests, small, in that order) every changed
@@ -113,11 +157,13 @@ export declare function classifyChanges(entries: readonly ChangedEntry[] | null,
 export declare const TEST_CONFIG_NAME: RegExp;
 /**
  * The setup files the base's root test configs name (vitest / vite / jest
- * configs and package.json's `jest`), read as text: each setupFiles,
- * setupFilesAfterEnv, globalSetup or globalTeardown value must be a string
- * literal or an array of them. Anything else (a variable, a call, a template
- * with `${}`) is a `problem`, and the engine then keeps the tests and small
- * tiers off: it cannot know which file runs.
+ * configs and package.json's `jest`), read as text: each SETUP_KEY_NAMES
+ * value (setup, teardown, reporters, environment, runner, sequencer,
+ * serializers, transform...) must be a string literal or an array of them.
+ * Anything else (a variable, a call, a template with `${}`, a shorthand or
+ * computed key, a relative import or require, mergeConfig, defineWorkspace,
+ * defineProject) is a `problem`, and the engine then keeps the tests and
+ * small tiers off: it cannot know which file runs.
  */
 export declare function baseTestSetup(files: ReadonlyArray<{
     path: string;
@@ -155,6 +201,7 @@ export interface AutoMergeInput {
         reasons: readonly string[];
         noChecks?: true;
         checks?: readonly string[];
+        unsettled?: readonly string[];
     };
     /** ship.requiredChecks (config or branch protection): when set, one of them must be among the succeeded checks. */
     requiredChecks?: readonly string[];

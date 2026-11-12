@@ -32,6 +32,8 @@ export interface FactoryMergeDecision extends MergeDecision {
     noChecks?: true;
     /** The checks that ran and SUCCEEDED on this head (auto-merge needs at least one); SKIPPED, NEUTRAL and known-flaky failures are not here. */
     checks?: string[];
+    /** The checks on this head that were SKIPPED or NEUTRAL: without required checks auto-merge needs none (review-498b N6). */
+    unsettled?: string[];
 }
 /**
  * ship's decideMerge on a fresh one-shot gate read for the head (no watch,

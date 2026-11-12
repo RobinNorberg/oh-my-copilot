@@ -55,7 +55,7 @@
 import { createHash } from 'crypto';
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
-import { basename, dirname, isAbsolute, join, relative, resolve } from 'path';
+import { basename, dirname, isAbsolute, join, posix, relative, resolve } from 'path';
 import { BASE_CONFIG_PATH, configuredProtectedPaths, DEFAULT_SHIP_CONFIG, isPlainBranchName, isRepoPath, loadBaseKnownFlaky, loadTrustedShipConfig, omgRepositoryFallback, readBaseFile, remoteRepoMismatch, resolveTrustedBases, userConfigLayers } from '../../ship/config.js';
 import { TRUSTED_READ_ENV } from '../../ship/exec.js';
 import { listChangedFiles, protectedChanges } from '../../ship/merge.js';
@@ -70,7 +70,7 @@ import { ghCheckRunApps, ghCheckSuites, ghCommitCheckNames, ghRequiredCheckRules
 import { ciFixPrompt, conflictFixPrompt, fenceFor, fenced, fixPrompt, implementPrompt, oneLine, reviewPrompt } from './prompts.js';
 import { decisionsViolation, loadTeamContext, pathsInDiff, pathsInText } from '../team/context.js';
 import { mergeComment, mergeDecision } from './merge-policy.js';
-import { autoMergeComment, autoMergeVerdict, baseTestSetup as baseTestSetupOf, classifyChanges, committedMergeConfig, parseChangedEntries, resolveAutoMergeConfig, TEST_CONFIG_NAME } from './auto-merge.js';
+import { addedPatchLines, autoMergeComment, autoMergeVerdict, baseInstallFiles, baseTestSetup as baseTestSetupOf, classifyChanges, committedMergeConfig, FRONTMATTER_CANDIDATE, hasFrontmatter, parseChangedEntries, resolveAutoMergeConfig, TEST_CONFIG_NAME } from './auto-merge.js';
 import { githubAutoMergeArgs, githubCommitReadArgs } from '../../forge/github/merge.js';
 import { resolveAzEntry } from '../../forge/ado/az-binary.js';
 import { adoGuardContext, defaultAzBinaryDeps } from '../../forge/ado/index.js';
@@ -4196,13 +4196,31 @@ class FactoryEngine {
                 const value = rest.join('\t').trim();
                 if (!value || scope === 'command')
                     continue;
-                const rel = isAbsolute(value) ? relative(this.o.root, value) : value;
-                if (rel && !rel.startsWith('..') && !isAbsolute(rel))
-                    extra.push(`${rel.replace(/\\/g, '/').replace(/\/+$/, '')}/`);
+                // Normalised first: `scripts/../h2` is h2 (review-498b INFO).
+                const rel = posix.normalize((isAbsolute(value) ? relative(this.o.root, value) : value).replace(/\\/g, '/'));
+                if (rel && rel !== '.' && !rel.startsWith('..') && !isAbsolute(rel))
+                    extra.push(`${rel.replace(/\/+$/, '')}/`);
             }
         }
-        const testSetup = resolved.config.tiers.some((t) => t !== 'docs') ? this.baseTestSetup(view.baseRefOid) : undefined;
-        const changes = protectedProblem ? { reasons: [`the configured protected paths could not be read (${protectedProblem})`], evidence: [] } : classifyChanges(entries, resolved.config, { extraDenied: extra, ...(testSetup ? { testSetup } : {}) });
+        const tiers = resolved.config.tiers;
+        const testSetup = tiers.some((t) => t !== 'docs') ? this.baseTestSetup(view.baseRefOid) : undefined;
+        const frontmatter = tiers.some((t) => t !== 'tests') && entries ? this.frontmatterPaths(entries, view.baseRefOid, head) : undefined;
+        let installFiles;
+        try {
+            installFiles = baseInstallFiles(readBaseFile(this.exec, this.o.root, view.baseRefOid, 'package.json'));
+        }
+        catch (error) {
+            // Unreadable: nothing extra is denied, so the small tier is off; docs and tests cannot touch a script anyway.
+            installFiles = { paths: [], problem: `the base package.json could not be read (${oneLine(error instanceof Error ? error.message : String(error), 120)})` };
+        }
+        let addedLines;
+        if (tiers.some((t) => t !== 'docs')) {
+            const patch = this.exec('git', ['diff', '--no-ext-diff', '--no-textconv', `${view.baseRefOid}...${head}`], { cwd: this.o.root, env: TRUSTED_READ_ENV });
+            addedLines = patch.status === 0 ? addedPatchLines(patch.stdout) : null;
+        }
+        const changes = protectedProblem ? { reasons: [`the configured protected paths could not be read (${protectedProblem})`], evidence: [] } : classifyChanges(entries, resolved.config, {
+            extraDenied: extra, installFiles, ...(testSetup ? { testSetup } : {}), ...(frontmatter ? { frontmatter } : {}), ...(addedLines !== undefined ? { addedLines } : {}),
+        });
         const pending = this.state.pendingCommit;
         const verdict = autoMergeVerdict({
             head,
@@ -4297,6 +4315,37 @@ class FactoryEngine {
         return first === baseSha ? undefined : `GitHub merged into ${this.state.base} ${first.slice(0, 12)}, not ${baseSha.slice(0, 12)} the gates checked (the base moved before the merge)`;
     }
     /**
+     * The Markdown-like changed files (FRONTMATTER_CANDIDATE) whose BASE blob
+     * (not added) or HEAD blob (not deleted) starts with frontmatter (review-498b
+     * N1): a skill, command, agent or mission contract a tool parses. Read with
+     * ship's exact `git show <sha>:<path>`; a read that fails (or a path that
+     * shape refuses) or more than 200 such files is a problem, which keeps the
+     * docs and small tiers off.
+     */
+    frontmatterPaths(entries, baseSha, head) {
+        const candidates = entries.filter((e) => FRONTMATTER_CANDIDATE.test(e.path));
+        if (candidates.length > 200)
+            return { paths: [], problem: `${candidates.length} Markdown-like files changed; the engine reads at most 200 for frontmatter` };
+        const paths = [];
+        for (const e of candidates) {
+            const shas = [...(e.status !== 'A' ? [baseSha] : []), ...(e.status !== 'D' ? [head] : [])];
+            for (const sha of shas) {
+                let text;
+                try {
+                    text = readBaseFile(this.exec, this.o.root, sha, e.path);
+                }
+                catch (error) {
+                    return { paths, problem: `${e.path} could not be read at ${sha.slice(0, 12)} to check for frontmatter (${oneLine(error instanceof Error ? error.message : String(error), 120)})` };
+                }
+                if (text !== null && hasFrontmatter(text)) {
+                    paths.push(e.path);
+                    break;
+                }
+            }
+        }
+        return { paths };
+    }
+    /**
      * The setup files of the BASE commit's root test configs (baseTestSetup),
      * never the head's: the PR cannot hide its own setup file. A listing or
      * read that fails is a problem, which keeps the tests and small tiers off.
@@ -4331,15 +4380,21 @@ class FactoryEngine {
     localAutoMerge(head, baseSha, added) {
         const git = (args) => this.exec('git', args, { cwd: this.o.root, env: TRUSTED_READ_ENV });
         // git overwrites an ignored or untracked file in the way without asking: a path the PR adds must not exist in your checkout yet.
-        const inTheWay = added.filter((p) => { try {
-            lstatSync(join(this.o.root, p));
-            return true;
-        }
-        catch {
-            return false;
-        } });
+        // review-498b L1: every parent too: an ignored FILE `a` (or a link) where the PR adds `a/b.md` is replaced by git.
+        const inTheWay = added.filter((p) => {
+            const parts = p.split('/');
+            return parts.some((_, n) => {
+                try {
+                    const st = lstatSync(join(this.o.root, ...parts.slice(0, n + 1)));
+                    return n === parts.length - 1 || !st.isDirectory();
+                }
+                catch {
+                    return false;
+                }
+            });
+        });
         if (inTheWay.length > 0)
-            return `the PR adds ${inTheWay.slice(0, 3).join(', ')}${inTheWay.length > 3 ? ` and ${inTheWay.length - 3} more` : ''}, which already exist in your checkout (an ignored or untracked file the merge would overwrite)`;
+            return `the PR adds ${inTheWay.slice(0, 3).join(', ')}${inTheWay.length > 3 ? ` and ${inTheWay.length - 3} more` : ''}, which already exist in your checkout, or under a file or link there (an ignored or untracked file the merge would overwrite)`;
         const branch = git(['rev-parse', '--symbolic-full-name', 'HEAD']);
         if (branch.status !== 0 || branch.stdout.trim() !== `refs/heads/${this.state.base}`)
             return `your repository does not have ${this.state.base} checked out (the local merge runs there)`;
