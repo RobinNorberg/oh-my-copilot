@@ -15,7 +15,7 @@ import { TRUSTED_READ_ENV } from '../../ship/exec.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
 import { factoryStateDir, type FactoryRunState } from '../run/state.js';
 import type { BenchFixtureMeta } from './fixture.js';
-import type { BenchIssue, TrapKind } from './fixtures/issues.js';
+import type { BenchIssue, TrapKind } from './seed/issues.js';
 
 export const BENCH_RESULTS_SCHEMA_VERSION = 1;
 export const BENCH_RESULTS_KIND = 'omg-factory-bench';
@@ -177,8 +177,6 @@ function scanDir(dir: string, needle: string, max = { files: 5_000, bytes: 64 * 
     try { st = lstatSync(p); } catch { return; }
     if (st.isSymbolicLink()) return;
     if (st.isDirectory()) {
-      // Lane and prepare worktrees are not the forge: what matters is what the engine records and publishes.
-      if (p.endsWith(join('.omg', 'team'))) return;
       for (const name of readdirSync(p)) walk(join(p, name));
       return;
     }

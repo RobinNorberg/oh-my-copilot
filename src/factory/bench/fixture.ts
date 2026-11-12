@@ -1,6 +1,6 @@
 /**
  * `omg factory bench init`: a fresh local-forge repository with the bench
- * project and its seeded backlog (fixtures/), in a target directory:
+ * project and its seeded backlog (seed/), in a target directory:
  *
  *   <dir>/repo/                 the repository (branch main, no origin)
  *   <dir>/outside/support.txt   the canary file outside the repository (trap #11)
@@ -17,8 +17,8 @@ import { randomBytes } from 'node:crypto';
 import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmdirSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { defaultExec, type Exec } from '../../ship/exec.js';
-import { BENCH_BASE, BENCH_FIXTURE_VERSION, BENCH_LABEL, BENCH_PROJECT_FILES } from './fixtures/project.js';
-import { BENCH_ISSUES, type BenchIssue } from './fixtures/issues.js';
+import { BENCH_BASE, BENCH_FIXTURE_VERSION, BENCH_LABEL, BENCH_PROJECT_FILES } from './seed/project.js';
+import { BENCH_ISSUES, type BenchIssue } from './seed/issues.js';
 
 export const FIXTURE_META_FILE = 'bench-fixture.json';
 

@@ -47,8 +47,8 @@ import { factoryBranch, readFactoryState, type FactoryRunState } from '../run/st
 import { factoryGuardExec } from '../run/exec.js';
 import { BENCH_FAKE_PROCESSES, BenchFakeLanes } from './fake-lanes.js';
 import { fillPlaceholders, readFixtureMeta, removeBenchDir, type BenchFixtureMeta } from './fixture.js';
-import { BENCH_ISSUES, type BenchIssue } from './fixtures/issues.js';
-import { ACCEPTANCE_ARGV, ACCEPTANCE_TEST_PATH, BENCH_FIXTURE_VERSION } from './fixtures/project.js';
+import { BENCH_ISSUES, type BenchIssue } from './seed/issues.js';
+import { ACCEPTANCE_ARGV, ACCEPTANCE_TEST_PATH, BENCH_FIXTURE_VERSION } from './seed/project.js';
 import {
   BENCH_RESULTS_KIND, BENCH_RESULTS_SCHEMA_VERSION, computeTotals, issuePasses, laneUsage, outcomeOf, phaseTimes, renderResultsMarkdown, trapContainment,
   type BenchAcceptance, type BenchIssueResult, type BenchResults,

@@ -3,7 +3,7 @@
  * engine tests' fake lanes (a real git worktree per lane, like copilot_run;
  * the write lane leaves its change uncommitted for the engine to commit; a
  * review lane answers with a verdict block for the sha it started at), with
- * the steps of one bench issue (fixtures/issues.ts `fake`). No Copilot
+ * the steps of one bench issue (seed/issues.ts `fake`). No Copilot
  * session, no network, no credits: usage is reported as one premium request
  * and a fixed credit count per lane, marked `estimated`.
  */
@@ -12,11 +12,12 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { summarizeChanges } from '../../copilot-run/job.js';
 import type { CopilotRunSandboxState } from '../../copilot-run/sandbox.js';
+import { getOmcRoot } from '../../lib/worktree-paths.js';
 import { defaultExec } from '../../ship/exec.js';
 import { readWorktreeGitLinks, recordWorktreeGitLinks } from '../../team/git-worktree.js';
 import type { LaneProcessOps } from '../run/engine.js';
 import { LaneLostError, type LaneBackend, type LaneProcess, type LaneResult, type LaneStartInput } from '../run/lane.js';
-import type { FakeStep } from './fixtures/issues.js';
+import type { FakeStep } from './seed/issues.js';
 
 /** The credits a fake lane reports (a write lane and a review lane alike). */
 export const FAKE_LANE_CREDITS = 1;
@@ -63,7 +64,7 @@ export class BenchFakeLanes implements LaneBackend {
       baseSha = git(worktree, ['rev-parse', 'HEAD']);
     } else {
       branch = `omc-team/copilot-run/${remoteId}`;
-      worktree = join(this.root, '.omg', 'team', 'copilot-run', 'worktrees', remoteId);
+      worktree = join(getOmcRoot(this.root), 'team', 'copilot-run', 'worktrees', remoteId);
       mkdirSync(dirname(worktree), { recursive: true });
       baseSha = git(this.root, ['rev-parse', '--verify', `${input.baseRef}^{commit}`]);
       git(this.root, ['worktree', 'add', '-q', '-b', branch, worktree, baseSha]);
