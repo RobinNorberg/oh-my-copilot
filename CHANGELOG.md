@@ -4,6 +4,26 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ## [Unreleased]
 
+# oh-my-copilot v5.27.0
+
+## [5.27.0] - 2026-11-12
+
+### Changed
+
+- **Upstream port: oh-my-claudecode dev through 330d5c391 (412 commits, #524).** Includes team task-claim renewal, Herdr panes for team launches, the `sdd` skill, user-level playbook checks, keyword-detector fixes (autopilot needs an explicit command), literal `$ARGUMENTS` substitution, `--json` read in subcommands, and Windows rename retries on `EPERM`/`EBUSY`/`EACCES`.
+- **Minimal inventory baseline (upstream #5017).** The committed inventory holds only provenance, so pull requests no longer conflict on it.
+- **Plugin hooks run as `node` plus arguments.** The Copilot hook file is generated from that form; the premium-budget hooks are kept.
+- **Claude MCP profile path follows `COPILOT_HOME`.** The default `~/.copilot` still uses `~/.claude.json`; a custom `COPILOT_HOME` uses `<COPILOT_HOME>/.claude.json`.
+
+### Fixed
+
+- `/oh-my-copilot:autopilot` and `/omg:autopilot` activate autopilot again.
+
+### Known issues
+
+- A config folder shared between WSL and Windows: after WSL rewrites the cached plugin hook manifest, Claude Code hooks on Windows fail until a Windows-side install or repair restores it. Copilot is not affected.
+- Herdr panes are untested on Windows.
+
 # oh-my-copilot v5.26.0
 
 ## [5.26.0] - 2026-11-12
