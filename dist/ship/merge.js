@@ -34,10 +34,13 @@ export function parseCommitParents(stdout) {
     return out;
 }
 const HOUSEKEEPING_DIR = 'inventory/';
-/** `git diff --name-only --no-renames -z <from> <to>` paths outside inventory/; null when the diff fails. */
-function outsideInventory(exec, cwd, from, to) {
+/**
+ * `git diff --name-only --no-renames -z <from> <to>` paths outside inventory/
+ * and the trusted ship.prepare.build outputs; null when the diff fails.
+ */
+function outsideHousekeeping(exec, cwd, from, to, dirs) {
     const res = exec('git', ['diff', '--name-only', '--no-renames', '-z', from, to], { cwd, env: TRUSTED_READ_ENV });
-    return res.status === 0 ? res.stdout.split('\0').filter((f) => f.length > 0 && !f.startsWith(HOUSEKEEPING_DIR)) : null;
+    return res.status === 0 ? res.stdout.split('\0').filter((f) => f.length > 0 && !dirs.some((d) => f.startsWith(d))) : null;
 }
 /**
  * Why a recorded housekeeping commit carries more than an inventory change
@@ -50,7 +53,7 @@ function outsideInventory(exec, cwd, from, to) {
  * both the engine's merge and merge-tree's, so a merge made while one is
  * configured is refused. Any git failure is a reason (fail closed).
  */
-function housekeepingContentProblem(exec, cwd, c, drivers) {
+function housekeepingContentProblem(exec, cwd, c, drivers, buildOutputs) {
     const short = (s) => s.slice(0, 12);
     let expected = c.parents[0];
     if (c.parents.length === 2) {
@@ -66,10 +69,12 @@ function housekeepingContentProblem(exec, cwd, c, drivers) {
         }
         expected = first;
     }
-    const outside = outsideInventory(exec, cwd, expected, c.sha);
+    // A one-parent commit may also be prepare's build commit: the trusted ship.prepare.build outputs. A merge stays inventory-only.
+    const dirs = [HOUSEKEEPING_DIR, ...(c.parents.length === 1 ? buildOutputs.map((o) => `${o}/`) : [])];
+    const outside = outsideHousekeeping(exec, cwd, expected, c.sha, dirs);
     if (outside === null)
         return `could not diff it against ${c.parents.length === 2 ? 'the rebuilt merge' : `its parent ${short(expected)}`}`;
-    return outside.length > 0 ? `it changes files outside ${HOUSEKEEPING_DIR}: ${outside.join(', ')}` : null;
+    return outside.length > 0 ? `it changes files outside ${dirs.join(', ')}: ${outside.join(', ')}` : null;
 }
 /**
  * The decideMerge inputs about the commits after the reviewed sha:
@@ -80,8 +85,10 @@ function housekeepingContentProblem(exec, cwd, c, drivers) {
  * recorded one- or two-parent housekeeping commit (housekeepingContentProblem).
  * `baseSha` must be in the object store (fetched and checked against
  * GitHub); an unknown one puts nothing in baseHistory (fail closed).
+ * `buildOutputs` is the TRUSTED ship.prepare.build outputs (user config or
+ * the base, never the head): a one-parent housekeeping commit may change them.
  */
-export function readCommitsSinceReview(exec, cwd, reviewed, head, baseSha, housekeeping) {
+export function readCommitsSinceReview(exec, cwd, reviewed, head, baseSha, housekeeping, buildOutputs = []) {
     const baseHistory = new Set();
     const housekeepingContent = new Map();
     if (!reviewed || reviewed === head)
@@ -106,7 +113,7 @@ export function readCommitsSinceReview(exec, cwd, reviewed, head, baseSha, house
             baseHistory.add(second);
         }
         if (c.parents.length === 1 || c.parents.length === 2)
-            housekeepingContent.set(c.sha, housekeepingContentProblem(exec, cwd, c, readDrivers));
+            housekeepingContent.set(c.sha, housekeepingContentProblem(exec, cwd, c, readDrivers, buildOutputs));
     }
     return { commitsSinceReview, baseHistory, housekeepingContent };
 }
@@ -152,7 +159,8 @@ export function mergeCommand(pr, headSha) { return ghMergeCommand(pr, headSha); 
  * recorded merge has exactly two parents and brings in a commit in GitHub's
  * current base history (so a merge of a forged `origin/<base>` is not
  * housekeeping, even when the engine recorded it), and every recorded commit
- * changes nothing outside inventory/ beyond what its parents give (so a hook,
+ * changes nothing outside inventory/ (a one-parent commit: or the trusted
+ * ship.prepare.build outputs) beyond what its parents give (so a hook,
  * a merge driver or a file staged by another lane cannot ride along).
  */
 function unreviewedReasons(commits, reviewed, head, housekeeping, baseHistory, content) {

@@ -52,7 +52,7 @@ export function mergeDecision(exec, root, ship, view, config, known, forge, read
         blocking: counted.filter((c) => !['SUCCESS', 'SKIPPED', 'NEUTRAL'].includes(c.state.toUpperCase()))
             .map((c) => `${checkName(c.name)} (${checkText(c.state.toUpperCase(), 24)}${flaky.has(c.name) ? ', known-flaky' : ''})`) };
     const reviewed = latestVerdict(ship)?.sha;
-    const commits = readCommitsSinceReview(exec, root, reviewed, view.headRefOid, view.baseRefOid, ship.housekeepingCommits);
+    const commits = readCommitsSinceReview(exec, root, reviewed, view.headRefOid, view.baseRefOid, ship.housekeepingCommits, config.prepareBuild?.outputs);
     const extraProtected = [
         ...(config.knownFlakyFile !== DEFAULT_SHIP_CONFIG.knownFlakyFile ? [config.knownFlakyFile] : []),
         ...(forge ? ADO_PIPELINE_PATHS : []),

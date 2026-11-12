@@ -139,6 +139,18 @@ export function resolveShipConfig(input) {
         if (checks !== undefined) {
             config.prepareChecks = Array.isArray(checks) && checks.every(argv) ? checks.map((a) => [...a]) : bad('prepare.checks', 'an array of argv arrays of non-empty strings, for example [["cargo", "check"]]');
         }
+        const build = raw.prepare.build;
+        if (build !== undefined) {
+            const want = '{ "command": ["npm", "run", "build"], "outputs": ["dist"] }: an argv and one or more repo-relative directories (not ., .git or inventory)';
+            const b = build;
+            if (!b || typeof b !== 'object' || Array.isArray(b) || !argv(b.command) || !Array.isArray(b.outputs) || b.outputs.length === 0)
+                bad('prepare.build', want);
+            const outputs = b.outputs.map((o) => (typeof o === 'string' ? o.replace(/\/+$/, '') : o));
+            const okOutput = (o) => isRepoPath(o) && o !== '.' && o.split('/')[0].toLowerCase() !== '.git' && o.split('/')[0] !== 'inventory';
+            if (!outputs.every(okOutput))
+                bad('prepare.build', want);
+            config.prepareBuild = { command: [...b.command], outputs: [...new Set(outputs)] };
+        }
     }
     return config;
 }
@@ -317,6 +329,11 @@ export function resolveTrustedBases(trustedUser) {
 export function trustedPrepareChecks(trustedUser, base) {
     const prepare = shipBlock(trustedUser, 'user config (default location)').prepare ?? shipBlock(base, BASE_CONFIG_PATH).prepare;
     return resolveShipConfig({ prepare }).prepareChecks;
+}
+/** ship.prepare.build as loadTrustedShipConfig resolves it (the same trusted `prepare` block as trustedPrepareChecks); undefined = no build. */
+export function trustedPrepareBuild(trustedUser, base) {
+    const prepare = shipBlock(trustedUser, 'user config (default location)').prepare ?? shipBlock(base, BASE_CONFIG_PATH).prepare;
+    return resolveShipConfig({ prepare }).prepareBuild;
 }
 /**
  * ship.requiredChecks as loadTrustedShipConfig resolves it (a safety key):

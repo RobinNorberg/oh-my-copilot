@@ -30682,7 +30682,7 @@ function gitAllowed(a, protectedBranches) {
     case "check-ref-format":
       return r.length === 2 && r[0] === "--branch" && isBranch(r[1]);
     case "status":
-      return same(r, ["--porcelain", "--untracked-files=no"]);
+      return same(r, ["--porcelain", "--untracked-files=no"]) || same(r, ["--porcelain=v1", "-z", "--untracked-files=all", "--no-renames"]);
     case "fetch":
       return r.length === 2 && REMOTE.test(r[0]) && isBranch(r[1]);
     case "merge-base":
@@ -30696,13 +30696,13 @@ function gitAllowed(a, protectedBranches) {
     case "config":
       return same(r, ["--get-regexp", "^merge\\..*\\.driver$"]);
     case "diff":
-      return same(r, ["--name-only", "--diff-filter=U"]) || same(r, ["--cached", "--quiet"]) || same(r, ["--cached", "--quiet", "--", "inventory"]) || r.length === 3 && r[0] === "--name-only" && r[1] === "-z" && /^[0-9a-f]{40}\.\.\.HEAD$/.test(r[2]) || r.length === 4 && r[0] === "--name-only" && r[1] === "--no-renames" && r[2] === "-z" && /^[0-9a-f]{40}\.\.\.[0-9a-f]{40}$/.test(r[3]) || r.length === 5 && r[0] === "--name-only" && r[1] === "--no-renames" && r[2] === "-z" && HEX40.test(r[3]) && HEX40.test(r[4]);
+      return same(r, ["--name-only", "--diff-filter=U"]) || same(r, ["--cached", "--quiet"]) || same(r, ["--cached", "--quiet", "--", "inventory"]) || r.length > 3 && same(r.slice(0, 3), ["--cached", "--quiet", "--"]) && isOutputDirs(r.slice(3)) || r.length === 3 && r[0] === "--name-only" && r[1] === "-z" && /^[0-9a-f]{40}\.\.\.HEAD$/.test(r[2]) || r.length === 4 && r[0] === "--name-only" && r[1] === "--no-renames" && r[2] === "-z" && /^[0-9a-f]{40}\.\.\.[0-9a-f]{40}$/.test(r[3]) || r.length === 5 && r[0] === "--name-only" && r[1] === "--no-renames" && r[2] === "-z" && HEX40.test(r[3]) && HEX40.test(r[4]);
     case "checkout":
       return same(r, ["--theirs", "--", "inventory"]);
     case "add":
-      return same(r, ["--", "inventory"]);
+      return same(r, ["--", "inventory"]) || r.length > 3 && same(r.slice(0, 3), ["-f", "-A", "--"]) && isOutputDirs(r.slice(3));
     case "commit":
-      return same(r, ["--no-edit", "--no-verify"]) || r.length === 5 && r[0] === "--no-verify" && r[1] === "-m" && isPath(r[2]) && r[3] === "--" && r[4] === "inventory";
+      return same(r, ["--no-edit", "--no-verify"]) || r.length === 5 && r[0] === "--no-verify" && r[1] === "-m" && isPath(r[2]) && r[3] === "--" && r[4] === "inventory" || r.length > 4 && r[0] === "--no-verify" && r[1] === "-m" && r[2] === BUILD_COMMIT_MESSAGE && r[3] === "--" && isOutputDirs(r.slice(4));
     case "push": {
       const m = r.length === 2 ? /^HEAD:refs\/heads\/(.+)$/.exec(r[1]) : null;
       return Boolean(m) && REMOTE.test(r[0]) && isBranch(m[1]) && !protectedBranches.some((b) => b.toLowerCase() === m[1].toLowerCase());
@@ -30758,7 +30758,7 @@ function assertSafeCommand(cmd, args, extraProtected = [], env2) {
     throw new ShipSafetyError(`omg ship refuses \`${file} ${args.join(" ")}\` with environment ${JSON.stringify(env2)}: only ${JSON.stringify(TRUSTED_READ_ENV)} on git is allowed`);
   }
 }
-var import_child_process16, ShipSafetyError, TRUSTED_READ_ENV, TRUSTED_FETCH_ENV, KEPT_GIT_VARS, DROPPED_GH_VARS, isDroppedAdoVar, defaultExec, OPERAND, REMOTE, BRANCH, HEX40, ABBREV_SHA, NUMBER, JSON_FIELDS, isOperand, isBranch, isPath, isRemoteRef, same, MERGE_STATE_REFS, GIT_PATH_MARKERS, LOG_SAFE_FLAG, PROTECTED_BRANCHES, NODE_SCRIPTS, ALLOWED;
+var import_child_process16, ShipSafetyError, TRUSTED_READ_ENV, TRUSTED_FETCH_ENV, KEPT_GIT_VARS, DROPPED_GH_VARS, isDroppedAdoVar, defaultExec, OPERAND, REMOTE, BRANCH, HEX40, ABBREV_SHA, NUMBER, JSON_FIELDS, isOperand, isBranch, isPath, isRemoteRef, same, BUILD_COMMIT_MESSAGE, isOutputDirs, MERGE_STATE_REFS, GIT_PATH_MARKERS, LOG_SAFE_FLAG, PROTECTED_BRANCHES, NODE_SCRIPTS, ALLOWED;
 var init_exec = __esm({
   "src/ship/exec.ts"() {
     "use strict";
@@ -30818,6 +30818,8 @@ var init_exec = __esm({
       return Boolean(m) && REMOTE.test(m[1]) && isBranch(m[2]);
     };
     same = (args, shape) => args.length === shape.length && shape.every((v, i) => args[i] === v);
+    BUILD_COMMIT_MESSAGE = "chore(build): rebuild committed build output";
+    isOutputDirs = (dirs) => dirs.length > 0 && dirs.every((d) => /^[\w.][\w.-]*(?:\/[\w.][\w.-]*)*$/.test(d) && d !== "." && !d.split("/").includes("..") && d.split("/")[0].toLowerCase() !== ".git");
     MERGE_STATE_REFS = /* @__PURE__ */ new Set(["MERGE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD"]);
     GIT_PATH_MARKERS = /* @__PURE__ */ new Set(["rebase-merge", "rebase-apply"]);
     LOG_SAFE_FLAG = /^--(?:oneline|first-parent|no-merges|format=[\w%()<>:,. -]*|max-count=\d+|stat|name-only)$/;
@@ -30883,6 +30885,16 @@ function resolveShipConfig(input) {
     const argv = (a) => Array.isArray(a) && a.length > 0 && a.every((x) => typeof x === "string" && x.length > 0);
     if (checks !== void 0) {
       config2.prepareChecks = Array.isArray(checks) && checks.every(argv) ? checks.map((a) => [...a]) : bad("prepare.checks", 'an array of argv arrays of non-empty strings, for example [["cargo", "check"]]');
+    }
+    const build = raw.prepare.build;
+    if (build !== void 0) {
+      const want = '{ "command": ["npm", "run", "build"], "outputs": ["dist"] }: an argv and one or more repo-relative directories (not ., .git or inventory)';
+      const b = build;
+      if (!b || typeof b !== "object" || Array.isArray(b) || !argv(b.command) || !Array.isArray(b.outputs) || b.outputs.length === 0) bad("prepare.build", want);
+      const outputs = b.outputs.map((o) => typeof o === "string" ? o.replace(/\/+$/, "") : o);
+      const okOutput = (o) => isRepoPath(o) && o !== "." && o.split("/")[0].toLowerCase() !== ".git" && o.split("/")[0] !== "inventory";
+      if (!outputs.every(okOutput)) bad("prepare.build", want);
+      config2.prepareBuild = { command: [...b.command], outputs: [...new Set(outputs)] };
     }
   }
   return config2;
@@ -41310,11 +41322,11 @@ function parseCommitParents(stdout) {
   }
   return out;
 }
-function outsideInventory(exec, cwd, from, to) {
+function outsideHousekeeping(exec, cwd, from, to, dirs) {
   const res = exec("git", ["diff", "--name-only", "--no-renames", "-z", from, to], { cwd, env: TRUSTED_READ_ENV });
-  return res.status === 0 ? res.stdout.split("\0").filter((f) => f.length > 0 && !f.startsWith(HOUSEKEEPING_DIR)) : null;
+  return res.status === 0 ? res.stdout.split("\0").filter((f) => f.length > 0 && !dirs.some((d) => f.startsWith(d))) : null;
 }
-function housekeepingContentProblem(exec, cwd, c, drivers) {
+function housekeepingContentProblem(exec, cwd, c, drivers, buildOutputs) {
   const short = (s) => s.slice(0, 12);
   let expected = c.parents[0];
   if (c.parents.length === 2) {
@@ -41328,11 +41340,12 @@ function housekeepingContentProblem(exec, cwd, c, drivers) {
     }
     expected = first;
   }
-  const outside = outsideInventory(exec, cwd, expected, c.sha);
+  const dirs = [HOUSEKEEPING_DIR, ...c.parents.length === 1 ? buildOutputs.map((o) => `${o}/`) : []];
+  const outside = outsideHousekeeping(exec, cwd, expected, c.sha, dirs);
   if (outside === null) return `could not diff it against ${c.parents.length === 2 ? "the rebuilt merge" : `its parent ${short(expected)}`}`;
-  return outside.length > 0 ? `it changes files outside ${HOUSEKEEPING_DIR}: ${outside.join(", ")}` : null;
+  return outside.length > 0 ? `it changes files outside ${dirs.join(", ")}: ${outside.join(", ")}` : null;
 }
-function readCommitsSinceReview(exec, cwd, reviewed, head, baseSha, housekeeping) {
+function readCommitsSinceReview(exec, cwd, reviewed, head, baseSha, housekeeping, buildOutputs = []) {
   const baseHistory = /* @__PURE__ */ new Set();
   const housekeepingContent = /* @__PURE__ */ new Map();
   if (!reviewed || reviewed === head) return { commitsSinceReview: [], baseHistory, housekeepingContent };
@@ -41353,7 +41366,7 @@ function readCommitsSinceReview(exec, cwd, reviewed, head, baseSha, housekeeping
     if (c.parents.length === 2 && exec("git", ["merge-base", "--is-ancestor", second, baseSha], { cwd }).status === 0) {
       baseHistory.add(second);
     }
-    if (c.parents.length === 1 || c.parents.length === 2) housekeepingContent.set(c.sha, housekeepingContentProblem(exec, cwd, c, readDrivers));
+    if (c.parents.length === 1 || c.parents.length === 2) housekeepingContent.set(c.sha, housekeepingContentProblem(exec, cwd, c, readDrivers, buildOutputs));
   }
   return { commitsSinceReview, baseHistory, housekeepingContent };
 }
@@ -52676,6 +52689,40 @@ ${dirty}`);
     }
     housekeepingCommits.push(head());
   }
+  if (opts.build) {
+    const build = opts.build;
+    if ("missing" in build) return fail2(PREPARE_CONFIG_STEP, `ship.prepare.build ${JSON.stringify(build.argv)}: ${build.missing}`);
+    const status = () => {
+      const r2 = git4("status", "--porcelain=v1", "-z", "--untracked-files=all", "--no-renames");
+      return r2.status === 0 ? r2.stdout.split("\0").filter(Boolean) : null;
+    };
+    const inOutputs = (p) => build.outputs.some((o) => p === o || p.startsWith(`${o}/`));
+    const before = status();
+    const headBefore = head();
+    if (before === null) return fail2(PREPARE_BUILD_STEP, "git status failed before the build");
+    const r = yield { step: PREPARE_BUILD_STEP, kind: "build", argv: build.argv, exe: build.exe, args: build.args };
+    if (r.notStarted !== void 0) return fail2(PREPARE_SANDBOX_STEP, `${PREPARE_BUILD_STEP}: ${r.notStarted}`);
+    if (r.status !== 0) return fail2(PREPARE_BUILD_STEP, tail3(`${r.stdout}
+${r.stderr}`));
+    if (head() !== headBefore) return fail2(PREPARE_BUILD_STEP, "the build moved HEAD (it made or reset a commit); the build only writes files, prepare commits them");
+    const after = status();
+    if (after === null) return fail2(PREPARE_BUILD_STEP, "git status failed after the build");
+    const outside = after.filter((e) => !before.includes(e) && !inOutputs(e.slice(3)));
+    if (outside.length > 0) {
+      return fail2(PREPARE_BUILD_STEP, `the build changed files outside ship.prepare.build.outputs (${build.outputs.join(", ")}), so nothing is committed (fail closed): ${outside.slice(0, 10).map((e) => visibleLine(e.slice(3))).join(", ")}`);
+    }
+    const outputs = build.outputs.filter((o) => exists(o) || after.some((e) => e.slice(3) === o || e.slice(3).startsWith(`${o}/`)));
+    const added = outputs.length > 0 ? git4("add", "-f", "-A", "--", ...outputs) : void 0;
+    if (added && added.status !== 0) return fail2(PREPARE_BUILD_STEP, `git add -f -A -- ${outputs.join(" ")}: ${tail3(added.stderr || added.stdout)}`);
+    if (outputs.length > 0 && git4("diff", "--cached", "--quiet", "--", ...outputs).status !== 0) {
+      const committed = git4("commit", "--no-verify", "-m", BUILD_COMMIT_MESSAGE, "--", ...outputs);
+      if (committed.status !== 0) return fail2(PREPARE_BUILD_STEP, tail3(committed.stderr || committed.stdout));
+      housekeepingCommits.push(head());
+      steps.push({ name: PREPARE_BUILD_STEP, status: "ok", detail: `committed ${outputs.join(", ")}` });
+    } else {
+      steps.push({ name: PREPARE_BUILD_STEP, status: "skipped", detail: "build output is current" });
+    }
+  }
   let found;
   try {
     found = detectPrepareChecks(opts.baseExists ?? baseFileExists(exec, cwd, baseSha), exists);
@@ -52753,7 +52800,7 @@ ${tail3(verified.stderr || verified.stdout)}`);
   }
   return { ok: true, steps, housekeepingCommits };
 }
-var import_fs90, import_path107, INVENTORY_DIR, INVENTORY_SCRIPT, INVENTORY_COMMIT_MESSAGE, PREPARE_CONFIG_STEP, PREPARE_DETECT_STEP, TSC_SCRIPT, ESLINT_SCRIPT, VITEST_SCRIPT, ESLINT_CONFIGS, TEST_FILE, PREPARE_SANDBOX_STEP;
+var import_fs90, import_path107, INVENTORY_DIR, INVENTORY_SCRIPT, INVENTORY_COMMIT_MESSAGE, PREPARE_BUILD_STEP, PREPARE_CONFIG_STEP, PREPARE_DETECT_STEP, TSC_SCRIPT, ESLINT_SCRIPT, VITEST_SCRIPT, ESLINT_CONFIGS, TEST_FILE, PREPARE_SANDBOX_STEP;
 var init_prepare2 = __esm({
   "src/ship/prepare.ts"() {
     "use strict";
@@ -52761,9 +52808,11 @@ var init_prepare2 = __esm({
     import_path107 = require("path");
     init_review_feedback();
     init_config2();
+    init_exec();
     INVENTORY_DIR = "inventory";
     INVENTORY_SCRIPT = "scripts/generate-inventory-graph.mjs";
     INVENTORY_COMMIT_MESSAGE = "chore(inventory): regenerate inventory graph baseline";
+    PREPARE_BUILD_STEP = "build";
     PREPARE_CONFIG_STEP = "checks-config";
     PREPARE_DETECT_STEP = "detect";
     TSC_SCRIPT = "node_modules/typescript/bin/tsc";
@@ -53596,7 +53645,7 @@ function mergeDecision(exec, root, ship, view, config2, known, forge, reads) {
     blocking: counted.filter((c) => !["SUCCESS", "SKIPPED", "NEUTRAL"].includes(c.state.toUpperCase())).map((c) => `${checkName(c.name)} (${checkText2(c.state.toUpperCase(), 24)}${flaky.has(c.name) ? ", known-flaky" : ""})`)
   };
   const reviewed = latestVerdict(ship)?.sha;
-  const commits = readCommitsSinceReview(exec, root, reviewed, view.headRefOid, view.baseRefOid, ship.housekeepingCommits);
+  const commits = readCommitsSinceReview(exec, root, reviewed, view.headRefOid, view.baseRefOid, ship.housekeepingCommits, config2.prepareBuild?.outputs);
   const extraProtected = [
     ...config2.knownFlakyFile !== DEFAULT_SHIP_CONFIG.knownFlakyFile ? [config2.knownFlakyFile] : [],
     ...forge ? ADO_PIPELINE_PATHS : [],
@@ -60290,13 +60339,15 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
         if (!gitLink.gitDir) throw new FactoryStepError(`the new prepare checkout ${path15} has no gitfile naming its git dir (${gitLink.hash})`);
         if (!samePath2(gitLink.gitDir, recorded.adminDir)) throw new FactoryStepError(`the new prepare checkout ${path15} names the git dir ${gitLink.gitDir}, not the admin dir ${recorded.adminDir} its git links were recorded with`);
         const commands = configured?.map((argv) => ({ argv, ...resolveLocalGateArgv(argv, { cwd: path15, subject: "the prepare check", configKey: "ship.prepare.checks" }) }));
+        const pb = this.gateConfig(view).config.prepareBuild;
+        const build = pb && { argv: pb.command, outputs: pb.outputs, ...resolveLocalGateArgv(pb.command, { cwd: path15, subject: "the prepare build", configKey: "ship.prepare.build" }) };
         const gates = this.gatesSandbox(this.gateConfig(view));
         const ran = { modes: /* @__PURE__ */ new Set(), acked: false, park: void 0 };
         let result;
         let checkoutHead;
         try {
           result = await runPrepareAsync(
-            { exec: priv ? priv.exec() : this.exec, cwd: path15, base: s.base, branch: branch2, reviewedSha: head, baseSha: view.baseRefOid, repoUrl: s.repoUrl, remote: runRemote(s), push: false, commands, ...priv ? { prefetchedBase: true } : {} },
+            { exec: priv ? priv.exec() : this.exec, cwd: path15, base: s.base, branch: branch2, reviewedSha: head, baseSha: view.baseRefOid, repoUrl: s.repoUrl, remote: runRemote(s), push: false, commands, ...build ? { build } : {}, ...priv ? { prefetchedBase: true } : {} },
             (c) => this.prepareCheck(c, { head, path: path15, commonGitDir: common, baseSha: view.baseRefOid, gates, ran, gitLink: { hash: gitLink.hash, gitDir: gitLink.gitDir } })
           );
           if (ran.park?.name === "lane-tampered") {
@@ -60457,6 +60508,7 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
       /** What a prepare check is called in parks, notes and warnings: a configured argv (trusted config), never a built-in's file list (the PR's file names). */
       prepareCheckLabel(c) {
         if (c.kind === "configured") return `the prepare check \`${c.argv.join(" ")}\``;
+        if (c.kind === "build") return `the prepare build \`${c.argv.join(" ")}\``;
         return c.kind === "inventory" ? "the inventory generator" : `the built-in prepare check ${c.step}`;
       }
       /** gates "unsandboxed": a warning every time and one PR note per head. */
@@ -60548,7 +60600,7 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
           }
           if (r.started) return stop({ name: GATE_NO_VERDICT_GATE, reason: this.gateNoVerdictReason(head, label, r.reason) });
           if (r.unavailable) return stop({ name: GATE_CONTAINER_UNAVAILABLE_GATE, reason: this.gateContainerUnavailableReason(head, label, r.reason) });
-          const ownShape = r.refused === true && c.kind === "configured";
+          const ownShape = r.refused === true && (c.kind === "configured" || c.kind === "build");
           const codeRan = ran.modes.has("enforced") || ran.modes.has("enforced-readable") || this.state.sandboxedPrepareHead === head || this.state.sandboxedGateHead === head;
           if (!ownShape && codeRan && !this.gatesAccepted(head)) {
             return stop({ name: GATE_NO_VERDICT_GATE, reason: this.gateNoStartAfterCodeReason(head, label, r.reason) });

@@ -32,8 +32,10 @@ export declare function parseCommitParents(stdout: string): CommitParents[] | nu
  * recorded one- or two-parent housekeeping commit (housekeepingContentProblem).
  * `baseSha` must be in the object store (fetched and checked against
  * GitHub); an unknown one puts nothing in baseHistory (fail closed).
+ * `buildOutputs` is the TRUSTED ship.prepare.build outputs (user config or
+ * the base, never the head): a one-parent housekeeping commit may change them.
  */
-export declare function readCommitsSinceReview(exec: Exec, cwd: string, reviewed: string | undefined, head: string, baseSha: string, housekeeping: readonly string[]): {
+export declare function readCommitsSinceReview(exec: Exec, cwd: string, reviewed: string | undefined, head: string, baseSha: string, housekeeping: readonly string[], buildOutputs?: readonly string[]): {
     commitsSinceReview: CommitParents[] | null;
     baseHistory: Set<string>;
     housekeepingContent: Map<string, string | null>;
@@ -62,7 +64,8 @@ export interface MergeInput {
     baseHistory: ReadonlySet<string>;
     /**
      * Content check of each recorded one- or two-parent housekeeping commit in
-     * commitsSinceReview: null when it changes only inventory/, else why not.
+     * commitsSinceReview: null when it changes only inventory/ (a one-parent
+     * commit: or the trusted ship.prepare.build outputs), else why not.
      * A housekeeping commit missing from the map is refused (fail closed).
      */
     housekeepingContent: ReadonlyMap<string, string | null>;

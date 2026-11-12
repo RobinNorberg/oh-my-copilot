@@ -51,6 +51,8 @@ export declare function isTrustedFetch(base: string, args: string[], env: Readon
  */
 export declare function scrubShipEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv;
 export declare const defaultExec: Exec;
+/** prepare's ship.prepare.build commit: the only message the guard admits a commit of build output directories with. */
+export declare const BUILD_COMMIT_MESSAGE = "chore(build): rebuild committed build output";
 /** Branches the guard never pushes to, whatever the caller asks (the run's base is added per call). */
 export declare const PROTECTED_BRANCHES: readonly string[];
 /**
