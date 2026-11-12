@@ -131211,6 +131211,7 @@ function deniedPaths(paths, extra = [], globs = []) {
     if (anchored.has(p)) return true;
     const segs = segments(p);
     if (segs.length === 0) return true;
+    if (segs.length === 1 && GIT_HOOK_NAMES.has(segs[0].replace(/\.exe$/, ""))) return true;
     if (segs.slice(0, -1).some((s) => DENIED_DIRS.has(s))) return true;
     if (user.some((m) => m(p))) return true;
     const name = segs[segs.length - 1];
@@ -131224,63 +131225,116 @@ function isDocsPath(path30) {
   if (segs.length === 1) return ROOT_DOCS.test(name);
   return segs[0] === "docs" && DOCS_EXT.test(name);
 }
-function baseInstallFiles(text5) {
-  if (text5 === null) return { paths: [] };
+function baseInstallFiles(text5, rootNames = []) {
+  const problems = [];
+  const root2 = new Set(rootNames.map((n) => fold3(n)));
+  if (root2.has("binding.gyp")) problems.push("the base has a root binding.gyp, so install runs node-gyp on repository sources");
+  if (root2.has("pnpm-workspace.yaml")) problems.push("the base is a pnpm workspace, so install runs every workspace package's scripts, which the engine does not read");
+  const done = (paths2, problem) => {
+    const first = problem ?? problems[0];
+    const out = paths2.map(rootRelative).filter(Boolean);
+    return first ? { paths: out, problem: first } : { paths: out };
+  };
+  if (text5 === null) return done([]);
   let pkg;
   try {
     pkg = JSON.parse(text5);
   } catch {
-    return { paths: [], problem: "the base package.json could not be parsed" };
+    return done([], "the base package.json could not be parsed");
   }
-  if (!pkg || typeof pkg !== "object" || Array.isArray(pkg)) return { paths: [], problem: "the base package.json is not an object" };
+  if (!pkg || typeof pkg !== "object" || Array.isArray(pkg)) return done([], "the base package.json is not an object");
+  if (pkg.gypfile !== void 0 && pkg.gypfile !== false) problems.push('the base package.json sets "gypfile", so install runs node-gyp on repository sources');
+  if (pkg.workspaces !== void 0) problems.push(`the base package.json has "workspaces": install runs each workspace package's scripts, which the engine does not read`);
   const paths = [];
   const scripts = pkg.scripts === void 0 ? {} : pkg.scripts;
-  if (!scripts || typeof scripts !== "object" || Array.isArray(scripts)) return { paths, problem: 'the base package.json "scripts" is not an object' };
+  if (!scripts || typeof scripts !== "object" || Array.isArray(scripts)) return done(paths, 'the base package.json "scripts" is not an object');
   const table2 = scripts;
   const seen = /* @__PURE__ */ new Set();
   const visit = (name, depth) => {
-    if (seen.has(name)) return void 0;
+    if (seen.has(name)) return;
     seen.add(name);
     const body = table2[name];
-    if (body === void 0) return void 0;
-    if (typeof body !== "string") return `the base package.json script "${name}" is not a string`;
-    if (/[$`%*?{}[\]]/.test(body)) return `the base package.json script "${name}" has a variable, substitution or glob, so the files it runs are unknown`;
-    const words = body.split(/[\s;&|()<>]+/).map((w) => w.replace(/^['"]+|['"]+$/g, "")).filter(Boolean);
-    for (let i = 0; i < words.length; i++) {
-      const w = words[i];
-      if (SCRIPT_RUNNER.test(w) && words[i + 1] !== void 0 && (words[i + 1] === "run" || words[i + 1] === "run-script" || Object.hasOwn(table2, words[i + 1]))) {
-        const explicit = words[i + 1] === "run" || words[i + 1] === "run-script";
-        const next = explicit ? words[i + 2] : words[i + 1];
-        if (next === void 0 || depth >= 5) return `the base package.json script "${name}" runs another script the engine cannot follow`;
-        const why = visit(next, depth + 1);
-        if (why) return why;
-        i += explicit ? 2 : 1;
-        continue;
-      }
-      if (w.startsWith("-")) continue;
-      if (w.includes("/") || w.includes("\\") || /\.[A-Za-z0-9]{1,5}$/.test(w)) paths.push(w);
+    if (body === void 0) return;
+    const cannot = (what) => problems.push(`the base package.json script "${name}" ${what}, which the engine cannot follow`);
+    if (typeof body !== "string") {
+      problems.push(`the base package.json script "${name}" is not a string`);
+      return;
     }
-    return void 0;
+    if (/[$`%*?{}[\]]/.test(body)) {
+      problems.push(`the base package.json script "${name}" has a variable, substitution or glob, so the files it runs are unknown`);
+      return;
+    }
+    for (const command of body.split(/[;&|()<>\r\n]+/)) {
+      const words = command.split(/\s+/).map((w) => w.replace(/^['"]+|['"]+$/g, "")).filter(Boolean);
+      for (let i = 0; i < words.length; i++) {
+        const w = words[i];
+        const next = words[i + 1];
+        if (ELSEWHERE_FLAG.test(w)) {
+          cannot(`passes ${w} (another package or directory)`);
+          continue;
+        }
+        if (SCRIPT_RUNNER.test(w)) {
+          if (next === void 0) continue;
+          if (next.startsWith("-")) {
+            cannot(`passes ${next} to ${w}`);
+            continue;
+          }
+          const explicit = next === "run" || next === "run-script";
+          if (explicit || Object.hasOwn(table2, next)) {
+            const target = explicit ? words[i + 2] : next;
+            if (target === void 0 || target.startsWith("-") || depth >= 5) cannot(`runs another script with ${w}`);
+            else visit(target, depth + 1);
+            i += explicit ? 2 : 1;
+            continue;
+          }
+          if (RUNNER_INSTALL.test(next)) {
+            i++;
+            continue;
+          }
+          cannot(`runs ${w} ${next}`);
+          i++;
+          continue;
+        }
+        if (UNFOLLOWABLE.test(w)) {
+          cannot(`runs ${w}`);
+          continue;
+        }
+        if (INTERPRETER.test(w)) {
+          cannot(`runs ${w}${next ? ` ${next}` : ""} (what it runs or imports)`);
+          continue;
+        }
+        if (w.startsWith("-")) continue;
+        if (w.includes("/") || w.includes("\\") || /\.[A-Za-z0-9]{1,5}$/.test(w)) {
+          paths.push(w);
+          cannot(`runs the repository file ${w} (what it imports)`);
+        }
+      }
+    }
   };
-  for (const name of Object.keys(table2).filter((n) => LIFECYCLE_SCRIPT.test(n))) {
-    const why = visit(name, 0);
-    if (why) return { paths, problem: why };
-  }
+  for (const name of Object.keys(table2).filter((n) => LIFECYCLE_SCRIPT.test(n))) visit(name, 0);
   if (pkg.bin !== void 0) {
     const bins = typeof pkg.bin === "string" ? [pkg.bin] : pkg.bin && typeof pkg.bin === "object" && !Array.isArray(pkg.bin) ? Object.values(pkg.bin) : [void 0];
-    if (!bins.every((b) => typeof b === "string")) return { paths, problem: 'the base package.json "bin" is not a string or an object of strings' };
+    if (!bins.every((b) => typeof b === "string")) return done(paths, 'the base package.json "bin" is not a string or an object of strings');
     paths.push(...bins);
   }
-  return { paths: paths.map(rootRelative).filter(Boolean) };
+  return done(paths);
 }
-function addedPatchLines(patch) {
+function patchLines(patch) {
   if (patch.includes("\x1B")) return null;
   const out = [];
   let hunk = false;
+  let oldPath = "";
+  let newPath = "";
   for (const line2 of patch.split("\n")) {
-    if (line2.startsWith("diff --git ")) hunk = false;
+    if (line2.startsWith("diff --git ")) {
+      hunk = false;
+      oldPath = newPath = line2.slice(11);
+    } else if (!hunk && line2.startsWith("--- ")) oldPath = line2.slice(4);
+    else if (!hunk && line2.startsWith("+++ ")) newPath = line2.slice(4);
     else if (line2.startsWith("@@")) hunk = true;
-    else if (hunk && line2.startsWith("+")) out.push(line2.slice(1));
+    else if (hunk && (line2.startsWith("+") || line2.startsWith("-"))) {
+      out.push({ path: newPath === "/dev/null" ? oldPath : newPath, sign: line2[0], text: line2.slice(1) });
+    }
   }
   return out;
 }
@@ -131316,7 +131370,12 @@ function classifyChanges(entries, config2, opts = {}) {
   const frontmatter = new Set((opts.frontmatter?.paths ?? []).map((p) => segments(p).join("/")));
   const withFrontmatter = (e) => frontmatter.has(segments(e.path).join("/"));
   const gutted = entries.filter((e) => e.status === "M" && looksLikeTest(e.path) && (e.deleted ?? 0) > (e.added ?? 0)).map((e) => e.path);
-  const skipLine = opts.addedLines?.find((l) => TEST_SKIP.test(l));
+  const assertions = /* @__PURE__ */ new Map();
+  for (const l of opts.patch ?? []) {
+    if (patchPathIsTest(l.path) && ASSERTION.test(l.text)) assertions.set(l.path, (assertions.get(l.path) ?? 0) + (l.sign === "-" ? 1 : -1));
+  }
+  gutted.push(...[...assertions].filter(([path30, net2]) => net2 > 0 && !gutted.some((g) => path30.endsWith(g))).map(([path30]) => path30));
+  const skipLine = opts.patch?.find((l) => l.sign === "+" && (TEST_SKIP.some((r) => r.test(l.text)) || patchPathIsTest(l.path) && TEST_FILE_SKIP.some((r) => r.test(l.text))))?.text;
   const misses = [];
   for (const tier of AUTO_MERGE_TIERS) {
     if (!config2.tiers.includes(tier)) continue;
@@ -131335,12 +131394,12 @@ function classifyChanges(entries, config2, opts = {}) {
       continue;
     }
     if (tier !== "docs") {
-      if (opts.addedLines === null) {
+      if (opts.patch === null) {
         misses.push(`${tier}: the PR's patch could not be read, so a skipped or emptied test cannot be ruled out`);
         continue;
       }
       if (gutted.length > 0) {
-        misses.push(`${tier}: ${list3(gutted)} lose(s) more lines than it gains (a gutted test needs a human)`);
+        misses.push(`${tier}: ${list3(gutted)} lose(s) more lines (or assertion lines) than it gains (a gutted test needs a human)`);
         continue;
       }
       if (skipLine !== void 0) {
@@ -131348,7 +131407,7 @@ function classifyChanges(entries, config2, opts = {}) {
         continue;
       }
     }
-    const outside = tier === "docs" ? entries.filter((e) => !isDocsPath(e.path) || docsDenied.some((m) => m(e.path)) || withFrontmatter(e)) : tier === "tests" ? entries.filter((e) => !isTestPath(e.path) || e.status === "D" || segments(e.path).some((s) => TEST_RUNNER_CODE.test(s))) : entries.filter((e) => protectedChanges([e.path], SMALL_TIER_DENIED).length > 0 || withFrontmatter(e));
+    const outside = tier === "docs" ? entries.filter((e) => !isDocsPath(e.path) || !canonicalSpelling(e.path) || docsDenied.some((m) => m(e.path)) || withFrontmatter(e)) : tier === "tests" ? entries.filter((e) => !isTestPath(e.path) || e.status === "D" || segments(e.path).some((s) => TEST_RUNNER_CODE.test(s))) : entries.filter((e) => protectedChanges([e.path], SMALL_TIER_DENIED).length > 0 || withFrontmatter(e));
     if (outside.length > 0) {
       const fm = outside.filter(withFrontmatter);
       if (fm.length > 0 && tier !== "tests") {
@@ -131383,6 +131442,7 @@ function baseTestSetup(files) {
       }
       if (jest === void 0) continue;
       if (!jest || typeof jest !== "object") return { paths, problem: 'the base package.json "jest" is not an object' };
+      if (jest.projects !== void 0) return { paths, problem: 'the base package.json "jest" has "projects", whose configs the engine does not read' };
       const leaves = (v, depth) => {
         if (typeof v === "string") paths.push(v);
         else if (depth < 6 && v && typeof v === "object") for (const x of Array.isArray(v) ? v : Object.values(v)) leaves(x, depth + 1);
@@ -131419,6 +131479,12 @@ function baseTestSetup(files) {
         paths.push(s);
       }
     }
+    const more = MORE_CONFIG_KEY.exec(text5);
+    if (more) return { paths, problem: `${path30} uses ${more[0].replace(/["'\s:,}\]]/g, "")}, which points at config the engine does not read` };
+    const foreign = [...text5.matchAll(IMPORT_SPECIFIER)].find((m) => !ALLOWED_IMPORT.test(m[2]));
+    if (foreign) return { paths, problem: `${path30} imports "${foreign[2]}" (only vitest, vite and node builtins are read as safe), so the setup files it runs are unknown` };
+    if (DYNAMIC_LOAD.test(text5)) return { paths, problem: `${path30} has an import() or require() of a computed path, so the setup files it runs are unknown` };
+    if (/__dirname|__filename|\bimport\.meta\b/.test(text5) && /\b(?:require|import)\s*\(/.test(text5)) return { paths, problem: `${path30} loads a file relative to __dirname or import.meta, so the setup files it runs are unknown` };
   }
   return { paths };
 }
@@ -131472,7 +131538,7 @@ function autoMergeComment(label2, tier, head, evidence, by) {
     ""
   ].join("\n");
 }
-var import_path194, AUTO_MERGE_TIERS, MANUAL_MERGE_LABEL, DEFAULT_SMALL_MAX_CHANGED_LINES, DEFAULT_SMALL_MAX_FILES, MAX_CAP, GLOB_KEYS, MAX_GLOBS, fold3, segments, DENIED_DIRS, HOOK_DIRS, SHIPPED_DIRS, DENIED_NAMES, DENIED_NAME_PATTERNS, rootRelative, ROOT_DOCS, DOCS_EXT, FRONTMATTER_CANDIDATE, hasFrontmatter, LIFECYCLE_SCRIPT, SCRIPT_RUNNER, TEST_SKIP, TEST_NAME, ROOT_TEST_DIRS, ANY_DEPTH_TEST_DIRS, TEST_DIR_FILE, TEST_RUNNER_CODE, looksLikeTest, plainMode, SMALL_TIER_DENIED, setupMatcher, oneLineOf, TEST_CONFIG_NAME, SETUP_KEY_NAMES, KEY_ALT, SETUP_KEYS, SETUP_KEY_WORD, LOADS_MORE, STRING, BENIGN_PARKS, PARK_NOTE;
+var import_path194, AUTO_MERGE_TIERS, MANUAL_MERGE_LABEL, DEFAULT_SMALL_MAX_CHANGED_LINES, DEFAULT_SMALL_MAX_FILES, MAX_CAP, GLOB_KEYS, MAX_GLOBS, fold3, segments, DENIED_DIRS, GIT_HOOK_NAMES, HOOK_DIRS, SHIPPED_DIRS, DENIED_NAMES, DENIED_NAME_PATTERNS, rootRelative, ROOT_DOCS, DOCS_EXT, FRONTMATTER_CANDIDATE, isFrontmatterCandidate, canonicalSpelling, hasFrontmatter, LIFECYCLE_SCRIPT, SCRIPT_RUNNER, RUNNER_INSTALL, UNFOLLOWABLE, INTERPRETER, ELSEWHERE_FLAG, TEST_SKIP, TEST_FILE_SKIP, ASSERTION, patchPathIsTest, TEST_NAME, ROOT_TEST_DIRS, ANY_DEPTH_TEST_DIRS, TEST_DIR_FILE, TEST_RUNNER_CODE, looksLikeTest, plainMode, SMALL_TIER_DENIED, setupMatcher, oneLineOf, TEST_CONFIG_NAME, SETUP_KEY_NAMES, MORE_CONFIG_KEY, ALLOWED_IMPORT, IMPORT_SPECIFIER, DYNAMIC_LOAD, KEY_ALT, SETUP_KEYS, SETUP_KEY_WORD, LOADS_MORE, STRING, BENIGN_PARKS, PARK_NOTE;
 var init_auto_merge = __esm({
   "src/factory/run/auto-merge.ts"() {
     "use strict";
@@ -131540,6 +131606,36 @@ var init_auto_merge = __esm({
       "memory-bank",
       ".claude-plugin",
       "missions"
+    ]);
+    GIT_HOOK_NAMES = /* @__PURE__ */ new Set([
+      "applypatch-msg",
+      "pre-applypatch",
+      "post-applypatch",
+      "pre-commit",
+      "pre-merge-commit",
+      "prepare-commit-msg",
+      "commit-msg",
+      "post-commit",
+      "pre-rebase",
+      "post-checkout",
+      "post-merge",
+      "pre-push",
+      "pre-receive",
+      "update",
+      "proc-receive",
+      "post-receive",
+      "post-update",
+      "reference-transaction",
+      "push-to-checkout",
+      "pre-auto-gc",
+      "post-rewrite",
+      "sendemail-validate",
+      "fsmonitor-watchman",
+      "post-index-change",
+      "p4-changelist",
+      "p4-prepare-changelist",
+      "p4-post-changelist",
+      "p4-pre-submit"
     ]);
     HOOK_DIRS = ["hooks/", "scripts/hooks/", "tools/hooks/", "git-hooks/", ".config/"];
     SHIPPED_DIRS = ["bridge/", "dist/"];
@@ -131667,10 +131763,31 @@ var init_auto_merge = __esm({
     ROOT_DOCS = /^(?:readme|changelog|contributing)(?:[._-][^/]*)?\.(?:md|rst|txt)$/;
     DOCS_EXT = /\.(?:md|rst|txt)$/;
     FRONTMATTER_CANDIDATE = /\.(?:md|markdown|mdx|rst|mdc)$/i;
+    isFrontmatterCandidate = (path30) => FRONTMATTER_CANDIDATE.test(path30) || FRONTMATTER_CANDIDATE.test(segments(path30).join("/")) || isDocsPath(path30);
+    canonicalSpelling = (path30) => path30.split("/").every((s) => s === s.normalize("NFKC").replace(new RegExp("\\p{Default_Ignorable_Code_Point}", "gu"), "").replace(/[. ]+$/, "").trim());
     hasFrontmatter = (text5) => /^\uFEFF?\s*(?:---|\+\+\+)/.test(text5);
-    LIFECYCLE_SCRIPT = /^(?:preinstall|install|postinstall|prepare|prepublish\w*|prepack|postpack)$/;
+    LIFECYCLE_SCRIPT = /^(?:preinstall|install|postinstall|preprepare|prepare|postprepare|dependencies|prepublish\w*|prepack|postpack)$/;
     SCRIPT_RUNNER = /^(?:npm|pnpm|yarn|bun)$/;
-    TEST_SKIP = /\.(?:skip|todo|only|skipIf|runIf|fails)\b|\bx(?:it|describe|test)\s*\(|\bf(?:it|describe)\s*\(|\bexpect\(\s*(?:true|1)\s*\)|pytest\.mark\.(?:skip|xfail)|unittest\.skip|\bt\.Skip(?:Now|f)?\(/;
+    RUNNER_INSTALL = /^(?:install|i|ci)$/;
+    UNFOLLOWABLE = /^(?:npx|pnpx|bunx|run-s|run-p|npm-run-all2?|concurrently|wireit|turbo|nx|lerna|node-gyp|node-pre-gyp|prebuild-install|cmake-js)$/i;
+    INTERPRETER = /^(?:node|nodejs|tsx|ts-node(?:-esm)?|esno|deno|python[\d.]*|py|sh|bash|zsh|dash|pwsh|powershell|cmd|perl|ruby|php)(?:\.exe)?$/i;
+    ELSEWHERE_FLAG = /^(?:-w|-ws|--workspaces?(?:=.*)?|--prefix(?:=.*)?|-C|--dir(?:=.*)?|--cwd(?:=.*)?|--filter(?:=.*)?|-F|-r|--recursive)$/;
+    TEST_SKIP = [
+      /\.(?:skip|todo|only|skipIf|runIf|fails)\b|\bx(?:it|describe|test)\s*\(|\bf(?:it|describe)\s*\(|pytest\.mark\.(?:skip|xfail)|unittest\.skip|\bt\.Skip(?:Now|f)?\(/,
+      /\[\s*['"`](?:skip|todo|only|skipIf|runIf|fails)['"`]\s*\]/,
+      /\bskipTest\s*\(|\bpytest\.(?:skip|xfail)\s*\(/,
+      /\bif\s*\(\s*(?:false|0|null|undefined|!\s*(?:true|1|0|!\s*0))\s*\)/,
+      /\bexpect\.assertions\s*\(\s*0\s*\)/,
+      /\.each\s*\(\s*\[\s*\]\s*\)/,
+      /\bexpect\(\s*!*\s*(?:true|false|-?\d+(?:\.\d+)?|null|undefined|'[^']*'|"[^"]*"|`[^`$]*`)\s*\)/
+    ];
+    TEST_FILE_SKIP = [
+      /^\s*return\s*;?\s*(?:\/\/.*)?$/,
+      /\bexpect\(\s*([\w$.]+)\s*\)\s*\.\s*(?:toBe|toEqual|toStrictEqual)\s*\(\s*\1\s*\)/,
+      /\bassert\.(?:equal|strictEqual|deepEqual|deepStrictEqual)\s*\(\s*([\w$.]+)\s*,\s*\1\s*\)/
+    ];
+    ASSERTION = /\b(?:expect|assert\w*|should|self\.assert\w+|t\.(?:Errorf?|Fatalf?|Fail\w*)|require\.\w+)\s*[.(]|^\s*assert\s/;
+    patchPathIsTest = (path30) => path30.startsWith('"') || looksLikeTest(path30) || looksLikeTest(path30.replace(/^[^/]*\//, ""));
     TEST_NAME = [/\.(?:test|spec)\.[cm]?[jt]sx?$/, /_test\.go$/, /^test_[^/]+\.py$/, /_test\.py$/, /(?:^|_)(?:test|spec)\.rb$/];
     ROOT_TEST_DIRS = /* @__PURE__ */ new Set(["__tests__", "__snapshots__", "test", "tests", "spec"]);
     ANY_DEPTH_TEST_DIRS = /* @__PURE__ */ new Set(["__tests__", "__snapshots__"]);
@@ -131708,8 +131825,15 @@ var init_auto_merge = __esm({
       "snapshotResolver",
       "transform",
       "watchPlugins",
-      "preset"
+      "preset",
+      "pool",
+      "checker",
+      "customProviderModule"
     ];
+    MORE_CONFIG_KEY = /(?<![\w$])["']?(?:projects|workspace)(?![\w$])|(?<![\w$])["']?extends["']?\s*[:,}\]]/;
+    ALLOWED_IMPORT = /^(?:vitest|vite|vitest\/config|vitest\/node|node:[\w/]+|path|url|fs|os|module)$/;
+    IMPORT_SPECIFIER = /\b(?:from|import|require)\s*\(?\s*(['"])([^'"\n]*)\1/g;
+    DYNAMIC_LOAD = /\b(?:require|import)\s*\((?!\s*(['"])[^'"`$\n]*\1\s*\))/;
     KEY_ALT = SETUP_KEY_NAMES.join("|");
     SETUP_KEYS = new RegExp(`(?<![\\w$])["']?(${KEY_ALT})["']?\\s*:\\s*`, "g");
     SETUP_KEY_WORD = new RegExp(`(?<![\\w$])(${KEY_ALT})(?![\\w$])`, "g");
@@ -138791,22 +138915,24 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
         const testSetup = tiers.some((t) => t !== "docs") ? this.baseTestSetup(view2.baseRefOid) : void 0;
         const frontmatter = tiers.some((t) => t !== "tests") && entries ? this.frontmatterPaths(entries, view2.baseRefOid, head) : void 0;
         let installFiles;
+        const rootList = this.exec("git", ["ls-tree", "-z", "--name-only", view2.baseRefOid], { cwd: this.o.root, env: TRUSTED_READ_ENV });
         try {
-          installFiles = baseInstallFiles(readBaseFile(this.exec, this.o.root, view2.baseRefOid, "package.json"));
+          if (rootList.status !== 0) throw new Error(`the base's root files could not be listed (exit ${rootList.status})`);
+          installFiles = baseInstallFiles(readBaseFile(this.exec, this.o.root, view2.baseRefOid, "package.json"), rootList.stdout.split("\0").filter(Boolean));
         } catch (error2) {
           installFiles = { paths: [], problem: `the base package.json could not be read (${oneLine(error2 instanceof Error ? error2.message : String(error2), 120)})` };
         }
-        let addedLines;
+        let patch;
         if (tiers.some((t) => t !== "docs")) {
-          const patch = this.exec("git", ["diff", "--no-ext-diff", "--no-textconv", `${view2.baseRefOid}...${head}`], { cwd: this.o.root, env: TRUSTED_READ_ENV });
-          addedLines = patch.status === 0 ? addedPatchLines(patch.stdout) : null;
+          const diffText = this.exec("git", ["diff", "--no-ext-diff", "--no-textconv", `${view2.baseRefOid}...${head}`], { cwd: this.o.root, env: TRUSTED_READ_ENV });
+          patch = diffText.status === 0 ? patchLines(diffText.stdout) : null;
         }
         const changes = protectedProblem ? { reasons: [`the configured protected paths could not be read (${protectedProblem})`], evidence: [] } : classifyChanges(entries, resolved.config, {
           extraDenied: extra,
           installFiles,
           ...testSetup ? { testSetup } : {},
           ...frontmatter ? { frontmatter } : {},
-          ...addedLines !== void 0 ? { addedLines } : {}
+          ...patch !== void 0 ? { patch } : {}
         });
         const pending = this.state.pendingCommit;
         const verdict = autoMergeVerdict({
@@ -138891,7 +139017,7 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
         return first === baseSha ? void 0 : `GitHub merged into ${this.state.base} ${first.slice(0, 12)}, not ${baseSha.slice(0, 12)} the gates checked (the base moved before the merge)`;
       }
       /**
-       * The Markdown-like changed files (FRONTMATTER_CANDIDATE) whose BASE blob
+       * The Markdown-like changed files (isFrontmatterCandidate) whose BASE blob
        * (not added) or HEAD blob (not deleted) starts with frontmatter (review-498b
        * N1): a skill, command, agent or mission contract a tool parses. Read with
        * ship's exact `git show <sha>:<path>`; a read that fails (or a path that
@@ -138899,7 +139025,7 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
        * docs and small tiers off.
        */
       frontmatterPaths(entries, baseSha, head) {
-        const candidates = entries.filter((e) => FRONTMATTER_CANDIDATE.test(e.path));
+        const candidates = entries.filter((e) => isFrontmatterCandidate(e.path));
         if (candidates.length > 200) return { paths: [], problem: `${candidates.length} Markdown-like files changed; the engine reads at most 200 for frontmatter` };
         const paths = [];
         for (const e of candidates) {
