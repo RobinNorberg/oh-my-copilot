@@ -121,6 +121,7 @@ import {
   cleanupTeamWorktrees,
   inspectTeamWorktreeCleanupSafety,
   ensureWorkerWorktree,
+  HOST_GIT_MAX_BUFFER,
   installWorktreeRootAgents,
   normalizeTeamWorktreeMode,
   writePreservedWorktreesRecord,
@@ -1692,7 +1693,7 @@ export async function runBoundedLaunches<J, R>(
  */
 function inspectLeaderCheckoutForWorktrees(cwd: string): 'ready' | 'not_git' | 'dirty' {
   const run = (args: string[]): string => execFileSync('git', args, {
-    cwd, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true,
+    cwd, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true, maxBuffer: HOST_GIT_MAX_BUFFER,
   });
   try {
     run(['rev-parse', '--verify', 'HEAD']);
