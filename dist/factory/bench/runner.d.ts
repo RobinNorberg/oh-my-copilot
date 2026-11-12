@@ -31,6 +31,7 @@ import { type CheckResult } from '../check/score.js';
 import { type PollAutoStart } from '../poll.js';
 import { type SandboxRunner } from '../run/sandbox-exec.js';
 import { type BenchFixtureMeta } from './fixture.js';
+import { type BenchModelProbe } from './model-probe.js';
 import { type BenchAcceptance, type BenchResults } from './score.js';
 /** The fewest premium requests a run spends (an implement and a review lane): the headroom a live start needs. */
 export declare const MIN_RUN_REQUESTS = 2;
@@ -64,10 +65,13 @@ export interface BenchRunOptions {
     /** Live: the run child (default: poll's auto-start child of this CLI entry). */
     liveStart?: PollAutoStart;
     /** Live: usage recorded in the fixture's budget ledger (default: the ledger file; an unreadable ledger throws). */
-    ledger?: (root: string) => {
-        premiumRequests: number;
-        credits: number;
-    };
+    ledger?: (root: string) => LedgerSnapshot;
+    /** Live: the lanes' default Copilot model and multiplier (default: probeLaneModel, no model turn). */
+    modelProbe?: BenchModelProbe;
+    /** Live: the highest premium multiplier the lanes' model may have (a known one above 1 is refused without it). */
+    allowMultiplier?: number;
+    /** Live: where the model line goes (the CLI prints it even with --json); default `log`. */
+    announce?: (message: string) => void;
     /** The runner of the acceptance gate (default: fake plain processes; live the gate sandbox). */
     acceptanceRunner?: SandboxRunner;
     /** Live: the trusted user config (default: userConfigLayers().trustedUser). */
@@ -123,5 +127,32 @@ export declare function runAcceptance(o: {
     exec?: Exec;
     timeoutMs?: number;
 }): Promise<BenchAcceptance>;
+/**
+ * A read of the budget ledger: its totals, and (from the ledger file) every
+ * record by key with its source plus the ledger's epoch (since/reset), so a
+ * drop can be told apart: only a record that went from estimated to measured
+ * (session.shutdown replacing the counted user calls, e.g. a 0x model) may
+ * go down. Without records, any drop stops the bench.
+ */
+export interface LedgerSnapshot {
+    premiumRequests: number;
+    credits: number;
+    records?: Record<string, {
+        premiumRequests: number;
+        credits: number;
+        source: 'measured' | 'estimated';
+    }>;
+    epoch?: string;
+}
+/**
+ * The bench's ledger usage since `start`: per record the highest value seen
+ * (a 0x shutdown correction keeps the counted calls: never under), summed
+ * and minus the start. Throws on anything else that went down: a reset, a
+ * record removed, a drop that is not estimated -> measured.
+ */
+export declare function ledgerTracker(start: LedgerSnapshot): (now: LedgerSnapshot) => {
+    premiumRequests: number;
+    credits: number;
+};
 export declare function runBench(o: BenchRunOptions): Promise<BenchRunOutput>;
 //# sourceMappingURL=runner.d.ts.map

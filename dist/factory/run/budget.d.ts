@@ -63,6 +63,12 @@ export declare function assertLaneCreditCap(limits: Partial<FactoryRunLimits> | 
 export declare function runCredits(state: Pick<FactoryRunState, 'lanes'>): number;
 /** Recorded premium requests of every lane in the run. */
 export declare function runRequests(state: Pick<FactoryRunState, 'lanes'>): number;
+/**
+ * A lane whose premium requests are not known: no usage, or the engine's
+ * cap placeholder for a lane it lost (estimated, 0 requests). A coding-agent
+ * lane's estimate is its fixed session charge, so it is known.
+ */
+export declare function laneRequestsUnknown(lane: Pick<FactoryRunState['lanes'][number], 'usage' | 'kind'>): boolean;
 export type LaneCapDecision = {
     ok: true;
     cap: number;

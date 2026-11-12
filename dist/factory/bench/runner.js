@@ -40,7 +40,7 @@ import { parseJsonc } from '../../utils/jsonc.js';
 import { checkEnvFor, forgeReadExec, localBase, readForgeOptions } from '../check/cli.js';
 import { checkItems } from '../check/score.js';
 import { defaultPollAutoStart, pollParallel } from '../poll.js';
-import { DEFAULT_FACTORY_RUN_LIMITS } from '../run/budget.js';
+import { DEFAULT_FACTORY_RUN_LIMITS, laneRequestsUnknown } from '../run/budget.js';
 import { runFactoryEngine } from '../run/engine.js';
 import { factoryForgeOptions, loadFactoryForgeConfig } from '../run/forge-roots.js';
 import { defaultLedgerDir } from '../run/ledger.js';
@@ -51,6 +51,7 @@ import { factoryBranch, readFactoryState } from '../run/state.js';
 import { factoryGuardExec } from '../run/exec.js';
 import { BENCH_FAKE_PROCESSES, BenchFakeLanes } from './fake-lanes.js';
 import { fillPlaceholders, readFixtureMeta, removeBenchDir } from './fixture.js';
+import { multiplierRefusal, probeLaneModel } from './model-probe.js';
 import { BENCH_ISSUES } from './seed/issues.js';
 import { ACCEPTANCE_TEST_PATH, BENCH_FIXTURE_VERSION } from './seed/project.js';
 import { BENCH_RESULTS_KIND, BENCH_RESULTS_SCHEMA_VERSION, computeTotals, issuePasses, laneUsage, outcomeOf, phaseTimes, renderResultsMarkdown, trapContainment, trapVerdict, } from './score.js';
@@ -180,9 +181,10 @@ export async function runAcceptance(o) {
             return { ran: false, passed: false, status: null, detail: `the mirror's ${o.branch} is ${at.slice(0, 12)}, not the recorded head ${o.head.slice(0, 12)}` };
         const lst = (p) => lstatSync(p, { throwIfNoEntry: false });
         // The harness's node_modules (the fixture's, read-only linked) and package.json rules, never the head's.
-        const tracked = exec('git', ['-C', co, 'ls-files', '--', 'node_modules'], { env: TRUSTED_READ_ENV });
+        // Any depth: a nested node_modules (test/node_modules/vitest) would shadow the harness's packages.
+        const tracked = exec('git', ['-C', co, 'ls-files', '--', 'node_modules', ':(glob)**/node_modules', ':(glob)**/node_modules/**'], { env: TRUSTED_READ_ENV });
         if (tracked.status !== 0 || tracked.stdout.trim())
-            return refused('the PR head tracks node_modules');
+            return refused('the PR head tracks a node_modules path');
         if (lst(join(co, 'node_modules')))
             return refused('the PR head has a node_modules entry');
         const pkgField = (text) => {
@@ -279,9 +281,64 @@ const defaultLedger = (root) => {
     if (invalid)
         throw new Error(`the budget ledger ${path} is unreadable; the bench cannot enforce --max-requests without it`);
     const t = ledgerTotals(ledger);
-    return { premiumRequests: t.premiumRequests, credits: t.credits };
+    const records = {};
+    const put = (key, r) => {
+        records[key] = { premiumRequests: Number(r.premiumRequests) || 0, credits: Number(r.credits) || 0, source: r.source === 'measured' ? 'measured' : 'estimated' };
+    };
+    for (const [k, r] of Object.entries(ledger.sessions))
+        put(`s:${k}`, r);
+    for (const [team, rs] of Object.entries(ledger.teams))
+        for (const [k, r] of Object.entries(rs))
+            put(`t:${team}:${k}`, r);
+    return { premiumRequests: t.premiumRequests, credits: t.credits, records, epoch: `${ledger.since}|${ledger.resetAt ?? ''}` };
 };
-/** One issue's recorded lane usage from its run state (a lane without usage counts one request; unreadable: null). */
+/**
+ * The bench's ledger usage since `start`: per record the highest value seen
+ * (a 0x shutdown correction keeps the counted calls: never under), summed
+ * and minus the start. Throws on anything else that went down: a reset, a
+ * record removed, a drop that is not estimated -> measured.
+ */
+export function ledgerTracker(start) {
+    const last = new Map(Object.entries(start.records ?? {}));
+    const high = new Map(last);
+    const base = { premiumRequests: start.premiumRequests, credits: start.credits };
+    return (now) => {
+        if (!start.records || !now.records) {
+            const delta = { premiumRequests: now.premiumRequests - base.premiumRequests, credits: now.credits - base.credits };
+            if (!(delta.premiumRequests >= 0) || !(delta.credits >= 0))
+                throw new Error(`the budget ledger went down since the bench started (${delta.premiumRequests} requests, ${delta.credits} credits); it cannot be trusted`);
+            return delta;
+        }
+        if (now.epoch !== start.epoch)
+            throw new Error('the budget ledger was reset since the bench started; it cannot be trusted');
+        for (const [key, was] of last) {
+            const is = now.records[key];
+            if (!is)
+                throw new Error(`the budget ledger record ${key} disappeared since the bench started; it cannot be trusted`);
+            const fell = is.premiumRequests < was.premiumRequests || is.credits < was.credits;
+            if (fell && !(was.source === 'estimated' && is.source === 'measured')) {
+                throw new Error(`the budget ledger record ${key} went down (${was.premiumRequests} -> ${is.premiumRequests} requests, ${was.credits} -> ${is.credits} credits) without a session.shutdown correction; it cannot be trusted`);
+            }
+        }
+        for (const [key, is] of Object.entries(now.records)) {
+            last.set(key, is);
+            const was = high.get(key);
+            high.set(key, was ? { premiumRequests: Math.max(was.premiumRequests, is.premiumRequests), credits: Math.max(was.credits, is.credits), source: is.source } : is);
+        }
+        let premiumRequests = 0;
+        let credits = 0;
+        for (const r of high.values()) {
+            premiumRequests += r.premiumRequests;
+            credits += r.credits;
+        }
+        for (const r of Object.values(start.records)) {
+            premiumRequests -= r.premiumRequests;
+            credits -= r.credits;
+        }
+        return { premiumRequests, credits };
+    };
+}
+/** One issue's recorded lane usage from its run state (a lane with unknown requests, laneRequestsUnknown, counts one; unreadable: null). */
 function issueUsage(root, id) {
     let state;
     try {
@@ -292,7 +349,7 @@ function issueUsage(root, id) {
     }
     const lanes = state?.lanes ?? [];
     return {
-        requests: lanes.reduce((n, l) => n + (l.usage ? l.usage.premiumRequests : 1), 0),
+        requests: lanes.reduce((n, l) => n + (laneRequestsUnknown(l) ? 1 : l.usage.premiumRequests), 0),
         credits: lanes.reduce((n, l) => n + (l.usage?.credits ?? 0), 0),
     };
 }
@@ -390,20 +447,27 @@ export async function runBench(o) {
         config = loadFactoryForgeConfig(factoryGuardExec(defaultExec), meta.root, meta.base, trustedUser, undefined).config;
         if (config.kind !== 'local')
             throw new BenchUsageError(`the fixture resolves to the ${config.kind} forge (your user config's factory.forge?); the bench needs the local forge`);
+        // The lanes' model and its multiplier, before anything is spent (read-only, no model turn).
+        const model = await (o.modelProbe ?? (() => probeLaneModel(join(benchDir, 'model-probe'))))();
+        const modelLine = `lanes' default Copilot model: ${model.model ?? 'unknown'}; premium multiplier: ${model.multiplier ?? 'unknown'} (${model.detail})`;
+        (o.announce ?? log)(modelLine);
+        notes.push(modelLine);
+        if (model.multiplier === null)
+            notes.push('the multiplier is unknown: a lane without session.shutdown totals counts its user calls once each, which undercounts a model above 1x');
+        const multiplierStop = multiplierRefusal(model, o.allowMultiplier);
+        if (multiplierStop)
+            throw new BenchUsageError(multiplierStop);
         const ledger = o.ledger ?? defaultLedger;
-        const start0 = ledger(meta.root);
+        const ledgerSince = ledgerTracker(ledger(meta.root));
         const cap = o.maxRequests;
-        /** Started issues: their child's per-run cap, and whether the child is still running. */
+        /** Started issues: their child's per-run cap, whether the child is still running, and whether a busy child left it to start again. */
         const runs = new Map();
         let finished = 0;
         let busyStreak = 0;
         const running = new Set();
-        /** The usage so far (the largest of the ledger delta, the run states, MIN per finished run); throws when the ledger is unusable or went down. */
+        /** The usage so far (the largest of the ledger delta, the run states, MIN per finished run); throws when the ledger is unusable or went down (ledgerTracker). */
         const usage = () => {
-            const t = ledger(meta.root);
-            const delta = { premiumRequests: t.premiumRequests - start0.premiumRequests, credits: t.credits - start0.credits };
-            if (!(delta.premiumRequests >= 0) || !(delta.credits >= 0))
-                throw new Error(`the budget ledger went down since the bench started (${delta.premiumRequests} requests, ${delta.credits} credits); it cannot be trusted`);
+            const delta = ledgerSince(ledger(meta.root));
             let stateRequests = 0;
             let stateCredits = 0;
             let reserved = 0;
@@ -431,6 +495,7 @@ export async function runBench(o) {
                 notes.push(`no further run starts: ${error instanceof Error ? error.message : String(error)}`);
                 return { stop: 'run-error' };
             }
+            // A soft stop (LOW-5): it reserves nothing for runs in flight, so they may end above it; --max-requests is the hard cap.
             if (o.maxCredits !== undefined && u.credits >= o.maxCredits)
                 return { stop: 'max-credits' };
             const available = cap - u.used - u.reserved;
@@ -441,7 +506,7 @@ export async function runBench(o) {
         };
         const pick = () => {
             try {
-                return checkBacklog(defaultExec, meta.root, meta.base, config).find((r) => r.bucket === 'runnable' && inScope(r.id) && !runs.has(r.id))?.id ?? null;
+                return checkBacklog(defaultExec, meta.root, meta.base, config).find((r) => r.bucket === 'runnable' && inScope(r.id) && (!runs.has(r.id) || runs.get(r.id).retry))?.id ?? null;
             }
             catch (error) {
                 notes.push(`omg factory check over the backlog failed: ${error instanceof Error ? error.message : String(error)}`);
@@ -469,8 +534,9 @@ export async function runBench(o) {
                     log(`#${next}: exit ${r.exitCode}: ${r.message.split('\n')[0].slice(0, 200)}`);
                     runsLog.push({ issue: next, maxRequests: c.allot, exitCode: r.exitCode, message: r.message.split('\n')[0].slice(0, 300) });
                     if (r.exitCode === 6) {
-                        // Busy: another engine holds the lock or every slot; nothing was spent. The issue goes back, after a wait.
-                        runs.delete(next);
+                        // Busy: another engine holds the lock or every slot. The issue goes back, after a wait; its entry stays
+                        // (not running) so any lane the run did start before the busy surfaced still counts.
+                        runs.set(next, { allot: c.allot, running: false, retry: true });
                         busyStreak += 1;
                         notes.push(`#${next}: busy: ${r.message.split('\n')[0]}`);
                         if (busyStreak >= MAX_BUSY_STREAK) {

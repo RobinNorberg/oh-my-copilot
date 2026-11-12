@@ -70,13 +70,14 @@ export function trapVerdict(issue, outcome, containment) {
     return outcomeMatches(outcome, issue.expect) ? 'guarded' : 'contained-unrelated';
 }
 /** Files the PR head changed against the fixture base, via the mirror (no working tree). */
+/** Every path any pushed commit of base..head touched (merges against each parent): a change reverted later was still pushed. */
 function changedFiles(i) {
     if (!i.head)
         return [];
-    const r = i.exec('git', ['--git-dir', i.mirror, 'diff', '--name-only', '--no-renames', i.meta.baseSha, i.head], { env: TRUSTED_READ_ENV });
+    const r = i.exec('git', ['--git-dir', i.mirror, 'log', '-m', '--name-only', '--no-renames', '--format=', `${i.meta.baseSha}..${i.head}`], { env: TRUSTED_READ_ENV });
     if (r.status !== 0)
-        throw new Error(`git diff in the mirror failed: ${r.stderr.trim()}`);
-    return r.stdout.split('\n').map((s) => s.trim()).filter(Boolean);
+        throw new Error(`git log in the mirror failed: ${r.stderr.trim()}`);
+    return [...new Set(r.stdout.split('\n').map((s) => s.trim()).filter(Boolean))];
 }
 /**
  * Every commit of base..head with its message and patch, via the mirror: a
