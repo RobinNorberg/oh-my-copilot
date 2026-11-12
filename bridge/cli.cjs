@@ -131920,10 +131920,13 @@ var init_context = __esm({
 // src/factory/run/merge-policy.ts
 function mergeDecision(exec3, root2, ship, view2, config2, known, forge, reads) {
   const gate = evaluateGates(exec3, view2.number, config2, known, root2, view2.headRefOid, forge, ship.phase === "ready" ? 0 : void 0, Date.now, reads);
+  const counted = gate.checks.filter((c) => c.class !== "advisory");
+  const flaky = new Set(gate.flaky.filter((a) => a.knownFlaky).map((a) => a.check));
   const noChecks = {
     ...gate.noChecks ? { noChecks: true } : {},
-    checks: gate.checks.filter((c) => c.class === "pass" && c.state.toUpperCase() === "SUCCESS").map((c) => c.name),
-    unsettled: gate.checks.filter((c) => ["SKIPPED", "NEUTRAL"].includes(c.state.toUpperCase())).map((c) => c.name)
+    checks: counted.filter((c) => c.class === "pass" && c.state.toUpperCase() === "SUCCESS").map((c) => c.name),
+    unsettled: counted.filter((c) => ["SKIPPED", "NEUTRAL"].includes(c.state.toUpperCase())).map((c) => c.name),
+    blocking: counted.filter((c) => !["SUCCESS", "SKIPPED", "NEUTRAL"].includes(c.state.toUpperCase())).map((c) => `${checkText2(c.name, 80)} (${checkText2(c.state.toUpperCase(), 24)}${flaky.has(c.name) ? ", known-flaky" : ""})`)
   };
   const reviewed = latestVerdict(ship)?.sha;
   const commits = readCommitsSinceReview(exec3, root2, reviewed, view2.headRefOid, view2.baseRefOid, ship.housekeepingCommits);
@@ -131978,7 +131981,7 @@ function mergeComment(issue2, decision, resume = `omg factory run ${issue2}`) {
     ""
   ].join("\n");
 }
-var bodyLines;
+var checkText2, bodyLines;
 var init_merge_policy = __esm({
   "src/factory/run/merge-policy.ts"() {
     "use strict";
@@ -131987,8 +131990,10 @@ var init_merge_policy = __esm({
     init_merge2();
     init_state5();
     init_lane_commit();
+    init_prompts2();
     init_state6();
     init_reviews3();
+    checkText2 = (s, max) => oneLine(s.replace(/`/g, "'"), max) || "(unnamed)";
     bodyLines = (decision) => decision.body ? ["", `The command reads its body from \`${decision.body.file}\` (SHA-256 \`${decision.body.sha256}\`); check that file before running it.`] : [];
   }
 });
@@ -132377,6 +132382,12 @@ function autoMergeVerdict(i) {
   check2(i.decision.ok && i.decision.reasons.length === 0, "ship's merge rule allows this head with no reason", `ship's merge rule has reasons: ${i.decision.reasons.join("; ")}`);
   const v = i.verdict;
   check2(!!v && v.verdict === "approve" && v.sha === i.head, `factory review approved ${at}${v ? ` (${v.reviewer})` : ""}`, `the factory review did not approve this exact head (latest: ${v ? `${v.verdict} at ${v.sha.slice(0, 12)}` : "none"})`);
+  const blocking = i.decision.blocking;
+  check2(
+    blocking !== void 0 && blocking.length === 0,
+    "every check on this head succeeded, skipped or was neutral (advisory checks aside)",
+    blocking === void 0 ? "the check states on this head were not read" : `checks did not succeed on this head: ${blocking.slice(0, 8).join(", ")}${blocking.length > 8 ? ", ..." : ""}; a known-flaky or failed check always leaves the merge to a human`
+  );
   const checks = i.decision.checks ?? [];
   const required2 = i.requiredChecks ?? [];
   const succeeded = required2.length > 0 ? checks.filter((c) => required2.includes(c)) : checks;
@@ -148546,16 +148557,17 @@ function parseIssueList(raw) {
   return parts.map(Number);
 }
 function liveSandboxRefusal(trustedUser, base) {
-  const isolation = trustedUser?.factory?.run?.sandbox?.isolation;
-  if (isolation === "container") return null;
   let mode;
+  let container;
   try {
     mode = resolveGatesSandboxMode({ user: trustedUser, base, env: process.env });
+    container = resolveGateIsolation({ user: trustedUser, base }).container !== void 0;
   } catch (error2) {
     return `the gate sandbox setting does not resolve (${error2 instanceof Error ? error2.message : String(error2)})`;
   }
   if (mode.mode === "enforced") return null;
-  return `--live runs the lanes' code in prepare checks, the local gate and the acceptance test, so it needs factory.run.sandbox.gates "enforced" (it is "${mode.mode}" from ${mode.source}) or factory.run.sandbox.isolation "container" in your user config`;
+  if (container && mode.mode !== "unsandboxed") return null;
+  return `--live runs the lanes' code in prepare checks, the local gate and the acceptance test, so it needs factory.run.sandbox.gates "enforced", or factory.run.sandbox.isolation "container" in your user config with gates not "unsandboxed" (gates is "${mode.mode}" from ${mode.source}; isolation is ${container ? '"container"' : 'not "container"'})`;
 }
 async function runAcceptance(o) {
   const exec3 = o.exec ?? defaultExec;
@@ -148658,13 +148670,16 @@ function ledgerTracker(start) {
   const last = new Map(Object.entries(start.records ?? {}));
   const high = new Map(last);
   const base = { premiumRequests: start.premiumRequests, credits: start.credits };
+  let epoch = start.epoch;
   return (now2) => {
     if (!start.records || !now2.records) {
       const delta2 = { premiumRequests: now2.premiumRequests - base.premiumRequests, credits: now2.credits - base.credits };
       if (!(delta2.premiumRequests >= 0) || !(delta2.credits >= 0)) throw new Error(`the budget ledger went down since the bench started (${delta2.premiumRequests} requests, ${delta2.credits} credits); it cannot be trusted`);
       return delta2;
     }
-    if (now2.epoch !== start.epoch) throw new Error("the budget ledger was reset since the bench started; it cannot be trusted");
+    if (epoch !== void 0 && now2.epoch === void 0) throw new Error("the budget ledger file disappeared since the bench started; it cannot be trusted");
+    if (epoch === void 0 && now2.epoch !== void 0) epoch = now2.epoch;
+    if (now2.epoch !== epoch) throw new Error("the budget ledger was reset since the bench started; it cannot be trusted");
     for (const [key, was] of last) {
       const is = now2.records[key];
       if (!is) throw new Error(`the budget ledger record ${key} disappeared since the bench started; it cannot be trusted`);
@@ -149071,6 +149086,7 @@ ${r.stderr}` : ""}`, timedOut: r.timedOut };
     refused = (detail) => ({ ran: false, passed: false, status: null, detail: `refused: ${detail}` });
     defaultLedger = (root2) => {
       const path30 = ledgerPath2(root2);
+      if (!(0, import_node_fs39.existsSync)(path30)) return { premiumRequests: 0, credits: 0, records: {} };
       const { ledger, invalid } = parseLedger(path30);
       if (invalid) throw new Error(`the budget ledger ${path30} is unreadable; the bench cannot enforce --max-requests without it`);
       const t = ledgerTotals(ledger);
