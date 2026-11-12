@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "ab8b27c4a19436595d879728d9de54e9e062aee9",
-    "sourceSha256": "57cdb049f116f93380d42ffb704439fb7da3dc89a769293d52666552e3882745",
+    "head": "76c76ec05685f683f181a842fc69c43adb2172cf",
+    "sourceSha256": "c6cffa266511403e93f776cebce53dd7d2dcbf479bb29691a37d66768b24d6c2",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "ab8b27c4a19436595d879728d9de54e9e062aee9",
-  "sourceSha256": "57cdb049f116f93380d42ffb704439fb7da3dc89a769293d52666552e3882745",
+  "head": "76c76ec05685f683f181a842fc69c43adb2172cf",
+  "sourceSha256": "c6cffa266511403e93f776cebce53dd7d2dcbf479bb29691a37d66768b24d6c2",
   "counts": {
     "public": {
       "skills": 98,
@@ -28,13 +28,13 @@
       "toolFiles": 68,
       "libFiles": 55,
       "templateHooks": 25,
-      "srcFiles": 2091,
-      "total": 2116
+      "srcFiles": 2090,
+      "total": 2115
     },
     "generated": {
-      "distFiles": 7732,
+      "distFiles": 7728,
       "bridgeFiles": 8,
-      "total": 7740
+      "total": 7736
     },
     "prompt": {
       "promptLikeFiles": 72
@@ -3094,10 +3094,6 @@
       "dist/copilot-run/__tests__/fake-sdk.d.ts.map",
       "dist/copilot-run/__tests__/fake-sdk.js",
       "dist/copilot-run/__tests__/fake-sdk.js.map",
-      "dist/copilot-run/__tests__/job.large-tree.test.d.ts",
-      "dist/copilot-run/__tests__/job.large-tree.test.d.ts.map",
-      "dist/copilot-run/__tests__/job.large-tree.test.js",
-      "dist/copilot-run/__tests__/job.large-tree.test.js.map",
       "dist/copilot-run/__tests__/job.sandbox.test.d.ts",
       "dist/copilot-run/__tests__/job.sandbox.test.d.ts.map",
       "dist/copilot-run/__tests__/job.sandbox.test.js",
@@ -20735,26 +20731,6 @@
         "id": "dist/copilot-run/__tests__/fake-sdk.js.map",
         "kind": "generated-dist",
         "path": "dist/copilot-run/__tests__/fake-sdk.js.map"
-      },
-      {
-        "id": "dist/copilot-run/__tests__/job.large-tree.test.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/copilot-run/__tests__/job.large-tree.test.d.ts"
-      },
-      {
-        "id": "dist/copilot-run/__tests__/job.large-tree.test.d.ts.map",
-        "kind": "generated-dist",
-        "path": "dist/copilot-run/__tests__/job.large-tree.test.d.ts.map"
-      },
-      {
-        "id": "dist/copilot-run/__tests__/job.large-tree.test.js",
-        "kind": "generated-dist",
-        "path": "dist/copilot-run/__tests__/job.large-tree.test.js"
-      },
-      {
-        "id": "dist/copilot-run/__tests__/job.large-tree.test.js.map",
-        "kind": "generated-dist",
-        "path": "dist/copilot-run/__tests__/job.large-tree.test.js.map"
       },
       {
         "id": "dist/copilot-run/__tests__/job.sandbox.test.d.ts",
@@ -56467,11 +56443,6 @@
         "path": "src/copilot-run/__tests__/fake-sdk.ts"
       },
       {
-        "id": "src/copilot-run/__tests__/job.large-tree.test.ts",
-        "kind": "src",
-        "path": "src/copilot-run/__tests__/job.large-tree.test.ts"
-      },
-      {
         "id": "src/copilot-run/__tests__/job.sandbox.test.ts",
         "kind": "src",
         "path": "src/copilot-run/__tests__/job.sandbox.test.ts"
@@ -84862,41 +84833,6 @@
         "from": "src/copilot-run/__tests__/fake-sdk.ts",
         "to": "src/smoke/copilot-sdk-driver.ts",
         "kind": "type-imports"
-      },
-      {
-        "from": "src/copilot-run/__tests__/job.large-tree.test.ts",
-        "to": "external:node:child_process",
-        "kind": "imports"
-      },
-      {
-        "from": "src/copilot-run/__tests__/job.large-tree.test.ts",
-        "to": "external:node:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/copilot-run/__tests__/job.large-tree.test.ts",
-        "to": "external:node:path",
-        "kind": "imports"
-      },
-      {
-        "from": "src/copilot-run/__tests__/job.large-tree.test.ts",
-        "to": "external:vitest",
-        "kind": "imports"
-      },
-      {
-        "from": "src/copilot-run/__tests__/job.large-tree.test.ts",
-        "to": "src/copilot-run/__tests__/fake-sdk.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/copilot-run/__tests__/job.large-tree.test.ts",
-        "to": "src/copilot-run/job.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/copilot-run/__tests__/job.large-tree.test.ts",
-        "to": "src/team/git-worktree.ts",
-        "kind": "imports"
       },
       {
         "from": "src/copilot-run/__tests__/job.sandbox.test.ts",
@@ -133600,12 +133536,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 11075,
-      "edgeCount": 13765,
-      "importEdgeCount": 11304,
+      "nodeCount": 11070,
+      "edgeCount": 13758,
+      "importEdgeCount": 11297,
       "registerEdgeCount": 119
     }
   },
-  "inventorySha256": "57ff839ecad66ba5be1022d09ad016748cd3ce36eda7846449c2c90fe3a43ae5",
-  "manifestSha256": "df50681cce5becf4194de49637c40cef5d89c92ef2f865fc1606ca8c6375bba3"
+  "inventorySha256": "78b729378ba3e7f0fbaf39a7360f0217656f1fd8644ec0123e3ef025190427fb",
+  "manifestSha256": "b2307fd2187c99974085825926b9733f6b0658f4410b8866cc5c1a8778e2d766"
 }
