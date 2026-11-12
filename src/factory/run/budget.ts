@@ -172,7 +172,17 @@ export function runRequests(state: Pick<FactoryRunState, 'lanes'>): number {
   return state.lanes.reduce((sum, lane) => sum + (lane.usage?.premiumRequests ?? 0), 0);
 }
 
-export type LaneCapDecision = { ok: true; cap: number } | { ok: false; reason: string };
+/**
+ * A lane whose premium requests are not known: no usage, or the engine's
+ * cap placeholder for a lane it lost (estimated, 0 requests). A coding-agent
+ * lane's estimate is its fixed session charge, so it is known.
+ */
+export function laneRequestsUnknown(lane: Pick<FactoryRunState['lanes'][number], 'usage' | 'kind'>): boolean {
+  if (!lane.usage) return true;
+  return lane.usage.source === 'estimated' && lane.usage.premiumRequests === 0 && lane.kind !== 'coding-agent';
+}
+
+export type LaneCapDecision ={ ok: true; cap: number } | { ok: false; reason: string };
 
 /**
  * The cap for the next lane: laneMaxCredits, lowered to what maxRunCredits
@@ -182,9 +192,10 @@ export type LaneCapDecision = { ok: true; cap: number } | { ok: false; reason: s
 export function nextLaneCap(state: Pick<FactoryRunState, 'lanes'>, limits: FactoryRunLimits): LaneCapDecision {
   assertLaneCreditCap(limits);
   if (limits.maxRunRequests !== undefined) {
-    // Fail closed: a lane without recorded usage (lost, or a start that left no record) may have spent anything.
-    const unknown = state.lanes.find((l) => !l.usage);
-    if (unknown) return { ok: false, reason: `lane ${unknown.id} has no recorded usage, so --max-requests ${limits.maxRunRequests} cannot be enforced; no further lane starts (rerun without --max-requests, or with a new cap, to go on)` };
+    // Fail closed: a lane without recorded usage (a start that left no record), or one counted only at its
+    // credit cap (lost, cancelled unconfirmed, resumed while running: 0 requests, estimated), may have spent anything.
+    const unknown = state.lanes.find(laneRequestsUnknown);
+    if (unknown) return { ok: false, reason: `lane ${unknown.id} has no known request count (no usage recorded, or lost and counted only at its credit cap), so --max-requests ${limits.maxRunRequests} cannot be enforced; no further lane starts (rerun without --max-requests, or with a new cap, to go on)` };
     const requests = runRequests(state);
     if (requests >= limits.maxRunRequests) return { ok: false, reason: `run spent ${requests} of --max-requests ${limits.maxRunRequests} premium requests; no further lane starts (rerun with a higher --max-requests to go on)` };
   }

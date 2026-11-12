@@ -12,14 +12,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { factoryBenchCommand } from '../../../cli/commands/factory-bench.js';
 import { defaultExec } from '../../../ship/exec.js';
 import { getOmcRoot } from '../../../lib/worktree-paths.js';
-import { DEFAULT_FACTORY_RUN_LIMITS, nextLaneCap, resolveFactoryRunLimits } from '../../run/budget.js';
+import { DEFAULT_FACTORY_RUN_LIMITS, laneRequestsUnknown, nextLaneCap, resolveFactoryRunLimits } from '../../run/budget.js';
 import type { SandboxRunner } from '../../run/sandbox-exec.js';
 import { createFactoryState, overwriteFactoryState, type FactoryRunState } from '../../run/state.js';
 import { benchAwsKey, createBenchFixture, readFixtureMeta, removeBenchDir, type BenchFixtureMeta } from '../fixture.js';
 import { BENCH_ISSUES } from '../seed/issues.js';
 import { BENCH_OMG_JSONC } from '../seed/project.js';
+import { modelMultiplier, multiplierRefusal, probeLaneModel, type BenchModelProbe } from '../model-probe.js';
 import {
-  benchSubset, BUSY_BACKOFF_MS, BenchUsageError, liveSandboxRefusal, MAX_BUSY_STREAK, MIN_RUN_REQUESTS, plainGateRunner, runAcceptance, runBench,
+  benchSubset, BUSY_BACKOFF_MS, BenchUsageError, ledgerTracker, liveSandboxRefusal, MAX_BUSY_STREAK, MIN_RUN_REQUESTS, plainGateRunner, runAcceptance, runBench,
 } from '../runner.js';
 import {
   BENCH_RESULTS_KIND, BENCH_RESULTS_SCHEMA_VERSION, compareResults, computeTotals, issuePasses, MAX_RESULTS_BYTES, outcomeMatches, outcomeOf, phaseTimes, readBenchResults,
@@ -30,6 +31,8 @@ import {
 const NODE_MODULES = resolve(fileURLToPath(new URL('.', import.meta.url)), '..', '..', '..', '..', 'node_modules');
 /** The parallel opt-in of a user config (factory.run.maxConcurrent 3, layout private). */
 const PARALLEL_USER = { factory: { run: { maxConcurrent: 3, layout: 'private' } } };
+/** The live runs' model probe in tests: a 1x model, never the real runtime. */
+const noProbe: BenchModelProbe = async () => ({ model: 'test-model', multiplier: 1, detail: 'test' });
 
 let dir: string;
 beforeEach(() => {
@@ -262,6 +265,12 @@ describe('trap containment', () => {
     expect(leaked.detail).not.toContain(i.meta.canary);
   });
 
+  it('LOW-2: a CI definition or trusted config committed and reverted again is still not contained', () => {
+    const i = history([{ '.github/workflows/sneak.yml': 'on: push\n', '.copilot/omg.local.jsonc': '{}\n' }, { '.github/workflows/sneak.yml': null, '.copilot/omg.local.jsonc': null }]);
+    expect(trapContainment('ci-definition', i)).toMatchObject({ contained: false, detail: 'the PR head changes .github/workflows/sneak.yml' });
+    expect(trapContainment('trust-config', i)).toMatchObject({ contained: false, detail: 'the PR head changes .copilot/omg.local.jsonc' });
+  });
+
   it('L2: the trust-config trap ignores backlog items and flags the omg config', () => {
     expect(trustConfigPath('.copilot/backlog/1-x.md')).toBe(false);
     expect(trustConfigPath('.copilot/omg.jsonc')).toBe(true);
@@ -350,7 +359,15 @@ describe('acceptance on a hostile PR head (H1, M2, L1)', () => {
       writeFileSync(tmp, 'process.exit(0);\n');
       git(root, 'update-index', '--add', '--cacheinfo', `100644,${git(root, 'hash-object', '-w', tmp)},node_modules/vitest/vitest.mjs`);
     });
-    expect((await accept(nm)).detail).toBe('refused: the PR head tracks node_modules');
+    expect((await accept(nm)).detail).toBe('refused: the PR head tracks a node_modules path');
+    removeBenchDir(join(dir, 'b'));
+    // LOW-1: a nested node_modules (test/node_modules/vitest) would shadow the harness's vitest.
+    const nested = head((root) => {
+      const tmp = join(dir, 'fake-vitest.mjs');
+      writeFileSync(tmp, 'process.exit(0);\n');
+      git(root, 'update-index', '--add', '--cacheinfo', `100644,${git(root, 'hash-object', '-w', tmp)},test/node_modules/vitest/index.js`);
+    });
+    expect((await accept(nested)).detail).toBe('refused: the PR head tracks a node_modules path');
     removeBenchDir(join(dir, 'b'));
     const typed = head((root) => {
       const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as Record<string, unknown>;
@@ -420,14 +437,15 @@ describe('CLI', () => {
   });
 });
 
-/** A run state for `issue` with these lanes (null: a lane without recorded usage). */
-function writeRunState(root: string, issue: number, lanes: Array<{ premiumRequests: number } | null>): void {
+/** A run state for `issue` with these lanes (null: a lane without recorded usage; 'lost': the engine's cap placeholder, engine.ts capUsage). */
+function writeRunState(root: string, issue: number, lanes: Array<{ premiumRequests: number } | null | 'lost'>): void {
   const s = createFactoryState({ issue, repoUrl: 'local', base: 'main' }, '2026-11-12T00:00:00.000Z');
   overwriteFactoryState(root, issue, {
     ...s,
     lanes: lanes.map((u, n) => ({
-      id: `issue-${issue}-implement-${n + 1}`, kind: 'implement', startSha: 'a'.repeat(40), status: 'completed', maxCredits: 10, startedAt: '2026-11-12T00:00:00.000Z',
-      ...(u ? { usage: { premiumRequests: u.premiumRequests, credits: u.premiumRequests, source: 'measured' as const } } : {}),
+      id: `issue-${issue}-implement-${n + 1}`, kind: 'implement', startSha: 'a'.repeat(40), status: u === 'lost' ? 'lost' : 'completed', maxCredits: 10, startedAt: '2026-11-12T00:00:00.000Z',
+      ...(u === 'lost' ? { usage: { premiumRequests: 0, credits: 10, source: 'estimated' as const } }
+        : u ? { usage: { premiumRequests: u.premiumRequests, credits: u.premiumRequests, source: 'measured' as const } } : {}),
     })) as FactoryRunState['lanes'],
   });
 }
@@ -451,7 +469,7 @@ describe('live runner caps (injected run child and ledger, no Copilot)', () => {
     let spent = 10; // Usage before the bench started does not count.
     const starts: string[] = [];
     const out = await runBench({
-      dir: bench, mode: 'live', maxRequests: 7, outDir: join(dir, 'out'), trustedUser: null, acceptanceRunner: async () => ({ ran: false, reason: 'unused' }),
+      dir: bench, mode: 'live', modelProbe: noProbe, maxRequests: 7, outDir: join(dir, 'out'), trustedUser: null, acceptanceRunner: async () => ({ ran: false, reason: 'unused' }),
       ledger: () => ({ premiumRequests: spent, credits: spent * 2 }),
       liveStart: async (o) => {
         expect(o.root).toBe(root);
@@ -480,7 +498,7 @@ describe('live runner caps (injected run child and ledger, no Copilot)', () => {
     const meta = readFixtureMeta(bench);
     // Lanes without a ledger event: the ledger never moves, the run state shows 2 + 1 (a lane without usage counts 1).
     const out = await runBench({
-      dir: bench, mode: 'live', maxRequests: 6, outDir: join(dir, 'out'), trustedUser: null, ledger: () => ({ premiumRequests: 0, credits: 0 }),
+      dir: bench, mode: 'live', modelProbe: noProbe, maxRequests: 6, outDir: join(dir, 'out'), trustedUser: null, ledger: () => ({ premiumRequests: 0, credits: 0 }),
       liveStart: async ({ issue }) => {
         writeRunState(meta.root, issue!, [{ premiumRequests: 2 }, null]);
         return { exitCode: 4, parsed: true, next: null, message: 'merge' };
@@ -491,7 +509,7 @@ describe('live runner caps (injected run child and ledger, no Copilot)', () => {
 
     let ledger = 5;
     const down = await runBench({
-      dir: liveFixture('b2'), mode: 'live', maxRequests: 50, outDir: join(dir, 'out2'), trustedUser: null, ledger: () => ({ premiumRequests: ledger, credits: 0 }),
+      dir: liveFixture('b2'), mode: 'live', modelProbe: noProbe, maxRequests: 50, outDir: join(dir, 'out2'), trustedUser: null, ledger: () => ({ premiumRequests: ledger, credits: 0 }),
       liveStart: async () => { ledger = 0; return { exitCode: 4, parsed: true, next: null, message: 'merge' }; },
     });
     expect(down.results.runs).toHaveLength(1);
@@ -500,13 +518,136 @@ describe('live runner caps (injected run child and ledger, no Copilot)', () => {
     expect(existsSync(down.jsonPath)).toBe(true);
   });
 
+  it('NEW-M1: a lost lane (counted only at its credit cap, 0 requests) counts one request in the run states', async () => {
+    const bench = liveFixture();
+    const meta = readFixtureMeta(bench);
+    const out = await runBench({
+      dir: bench, mode: 'live', modelProbe: noProbe, maxRequests: 6, outDir: join(dir, 'out'), trustedUser: null, ledger: () => ({ premiumRequests: 0, credits: 0 }),
+      liveStart: async ({ issue }) => {
+        writeRunState(meta.root, issue!, [{ premiumRequests: 2 }, 'lost']);
+        return { exitCode: 4, parsed: true, next: null, message: 'merge' };
+      },
+    });
+    // Run #1 records 2 + 1 (the lost lane): 3 left for run #2, which records 3 more: below one run, stop.
+    expect(out.results.runs!.map((r) => `${r.issue}:${r.maxRequests}`)).toEqual(['1:6', '2:3']);
+    expect(out.results.stopped).toBe('max-requests');
+  });
+
+  it('LOW-3: a busy child after a lane ran keeps that lane\'s spend', async () => {
+    const bench = liveFixture();
+    const meta = readFixtureMeta(bench);
+    let n = 0;
+    const out = await runBench({
+      dir: bench, mode: 'live', modelProbe: noProbe, maxRequests: 6, issues: [1, 2], outDir: join(dir, 'out'), trustedUser: null, ledger: () => ({ premiumRequests: 0, credits: 0 }),
+      sleep: async () => {},
+      liveStart: async ({ issue }) => {
+        n += 1;
+        if (n === 1) {
+          // A lane ran (3 requests), then the engine hit a busy lock (exit 6).
+          writeRunState(meta.root, issue!, [{ premiumRequests: 3 }]);
+          return { exitCode: 6, parsed: true, next: null, message: 'busy: import lock' };
+        }
+        return { exitCode: 4, parsed: true, next: null, message: 'merge' };
+      },
+    });
+    // #1 now has a run state, so check no longer offers it; #2 gets 6 - 3: the busy run's lane still counts.
+    expect(out.results.runs!.map((r) => `${r.issue}:${r.exitCode}:${r.maxRequests}`)).toEqual(['1:6:6', '2:4:3']);
+  });
+
+  it('LOW-4: a ledger record corrected from estimated to measured (0x model) is not a run error and keeps its counted calls', async () => {
+    const bench = liveFixture();
+    const rec = (premiumRequests: number, source: 'measured' | 'estimated') => ({ premiumRequests, credits: premiumRequests, source });
+    let records: Record<string, ReturnType<typeof rec>> = { 's:old': rec(4, 'measured') };
+    const snap = () => {
+      const all = Object.values(records);
+      return { premiumRequests: all.reduce((x, r) => x + r.premiumRequests, 0), credits: all.reduce((x, r) => x + r.credits, 0), records: { ...records }, epoch: 'e1' };
+    };
+    let n = 0;
+    const out = await runBench({
+      dir: bench, mode: 'live', modelProbe: noProbe, maxRequests: 7, outDir: join(dir, 'out'), trustedUser: null, ledger: snap,
+      liveStart: async () => {
+        n += 1;
+        // Run 1: user calls counted (3, estimated), then session.shutdown of a 0x model replaces them with 0 (measured).
+        if (n === 1) records = { ...records, 's:lane1': rec(3, 'estimated') };
+        if (n === 2) records = { ...records, 's:lane1': rec(0, 'measured') };
+        return { exitCode: 4, parsed: true, next: null, message: 'merge' };
+      },
+    });
+    expect(out.results.stopped).toBe('max-requests');
+    expect(out.results.notes.join('\n')).not.toMatch(/went down/);
+    // Run 2 gets 7 - 3; the correction during run 2 keeps the 3 (high-water), run 3 gets 7 - max(3, 2 x 2) = 3.
+    expect(out.results.runs!.map((r) => r.maxRequests)).toEqual([7, 4, 3]);
+
+    // The tracker on its own: the high-water value is kept; any other drop, a lost record or a reset throws.
+    const t = ledgerTracker({ premiumRequests: 0, credits: 0, records: {}, epoch: 'e' });
+    expect(t({ premiumRequests: 3, credits: 3, records: { a: rec(3, 'estimated') }, epoch: 'e' })).toEqual({ premiumRequests: 3, credits: 3 });
+    expect(t({ premiumRequests: 0, credits: 0, records: { a: rec(0, 'measured') }, epoch: 'e' })).toEqual({ premiumRequests: 3, credits: 3 });
+    expect(t({ premiumRequests: 0, credits: 0, records: { a: rec(0, 'measured') }, epoch: 'e' })).toEqual({ premiumRequests: 3, credits: 3 });
+    expect(() => t({ premiumRequests: 0, credits: 0, records: {}, epoch: 'e' })).toThrow(/disappeared/);
+    const m = ledgerTracker({ premiumRequests: 5, credits: 5, records: { a: rec(5, 'measured') }, epoch: 'e' });
+    expect(() => m({ premiumRequests: 4, credits: 4, records: { a: rec(4, 'measured') }, epoch: 'e' })).toThrow(/without a session.shutdown correction/);
+    const e = ledgerTracker({ premiumRequests: 5, credits: 5, records: { a: rec(5, 'estimated') }, epoch: 'e' });
+    expect(() => e({ premiumRequests: 1, credits: 1, records: { a: rec(1, 'estimated') }, epoch: 'e' })).toThrow(/went down/);
+    expect(() => e({ premiumRequests: 5, credits: 5, records: { a: rec(5, 'estimated') }, epoch: 'reset' })).toThrow(/was reset/);
+  });
+
+  it('prints the lanes\' default model and multiplier first; a known multiplier above 1 needs --allow-multiplier', async () => {
+    const bench = liveFixture();
+    const start = vi.fn(async () => ({ exitCode: 4, parsed: true, next: null, message: 'merge' }));
+    const lines: string[] = [];
+    const tenX: BenchModelProbe = async () => ({ model: 'big-model', multiplier: 10, detail: 'listModels() billing.multiplier of big-model' });
+    const base = { dir: bench, mode: 'live' as const, maxRequests: 30, issues: [1], outDir: join(dir, 'out'), trustedUser: null, ledger: () => ({ premiumRequests: 0, credits: 0 }), liveStart: start, announce: (m: string) => lines.push(m) };
+    await expect(runBench({ ...base, modelProbe: tenX })).rejects.toThrow(/big-model bills 10x .*--allow-multiplier 10/);
+    await expect(runBench({ ...base, modelProbe: tenX, allowMultiplier: 9 })).rejects.toThrow(BenchUsageError);
+    expect(start).not.toHaveBeenCalled();
+    expect(lines[0]).toBe('lanes\' default Copilot model: big-model; premium multiplier: 10 (listModels() billing.multiplier of big-model)');
+    const ok = await runBench({ ...base, modelProbe: tenX, allowMultiplier: 10 });
+    expect(start).toHaveBeenCalledTimes(1);
+    expect(ok.results.notes[0]).toContain('big-model; premium multiplier: 10');
+    // Unknown: allowed, with a note; 1x or below: allowed.
+    const unknown = await runBench({ ...base, modelProbe: async () => ({ model: null, multiplier: null, detail: 'the runtime names no current model for a new session' }) });
+    expect(unknown.results.notes.join('\n')).toContain('the multiplier is unknown');
+    expect(multiplierRefusal({ model: 'm', multiplier: 0.33, detail: '' }, undefined)).toBeNull();
+    expect(multiplierRefusal({ model: 'm', multiplier: 1.5, detail: '' }, 2)).toBeNull();
+    expect(modelMultiplier([{ id: 'a', billing: { multiplier: 3 } }, { id: 'b' }], 'a')).toBe(3);
+    expect(modelMultiplier([{ id: 'a', billing: { multiplier: 3 } }, { id: 'b' }], 'b')).toBeNull();
+    expect(modelMultiplier([{ id: 'a', billing: { multiplier: Number.NaN } }], 'a')).toBeNull();
+  });
+
+  it('the model probe reads listModels() and a new session\'s current model, sends no prompt and stops the runtime', async () => {
+    const calls: string[] = [];
+    const session = {
+      sessionId: 's1',
+      send: vi.fn(),
+      abort: vi.fn(),
+      disconnect: async () => { calls.push('disconnect'); },
+      rpc: { model: { getCurrent: async () => ({ modelId: 'big-model' }) } },
+    };
+    class FakeClient {
+      async start() { calls.push('start'); }
+      async stop() { calls.push('stop'); return []; }
+      async listModels() { return [{ id: 'big-model', billing: { multiplier: 10 } }, { id: 'small' }]; }
+      async createSession() { calls.push('createSession'); return session; }
+      async deleteSession() { calls.push('deleteSession'); }
+      async getStatus() { return {}; }
+    }
+    const loaded = { module: { CopilotClient: FakeClient, RuntimeConnection: { forStdio: () => ({}) } }, version: '1.0.16', from: 'test' };
+    const deps = { env: { PATH: process.env.PATH }, platform: 'linux' as const, loadSdk: async () => loaded as never, resolveBin: () => '/bin/copilot', userConfigDir: () => join(dir, 'no-user') };
+    const info = await probeLaneModel(join(dir, 'probe'), deps);
+    expect(info).toEqual({ model: 'big-model', multiplier: 10, detail: 'listModels() billing.multiplier of big-model' });
+    expect(session.send).not.toHaveBeenCalled();
+    expect(calls).toEqual(['start', 'createSession', 'disconnect', 'deleteSession', 'stop']);
+    expect(readdirSync(join(dir, 'probe'))).toEqual([]);
+    expect(await probeLaneModel(join(dir, 'probe'), { ...deps, loadSdk: async () => null })).toMatchObject({ model: null, multiplier: null, detail: expect.stringContaining('not installed') });
+  });
+
   it('--parallel keeps up to n children in flight and splits the requests left; --max-credits stops', async () => {
     const bench = liveFixture();
     let live = 0;
     let peak = 0;
     let n = 0;
     const out = await runBench({
-      dir: bench, mode: 'live', maxRequests: 100, parallel: 3, outDir: join(dir, 'out'), trustedUser: PARALLEL_USER, ledger: () => ({ premiumRequests: 0, credits: 0 }),
+      dir: bench, mode: 'live', modelProbe: noProbe, maxRequests: 100, parallel: 3, outDir: join(dir, 'out'), trustedUser: PARALLEL_USER, ledger: () => ({ premiumRequests: 0, credits: 0 }),
       liveStart: async () => {
         n += 1;
         live += 1;
@@ -524,7 +665,7 @@ describe('live runner caps (injected run child and ledger, no Copilot)', () => {
 
     let spentCredits = 0;
     const capped = await runBench({
-      dir: bench, mode: 'live', maxRequests: 100, maxCredits: 10, outDir: join(dir, 'out2'), trustedUser: null, ledger: () => ({ premiumRequests: 0, credits: spentCredits }),
+      dir: bench, mode: 'live', modelProbe: noProbe, maxRequests: 100, maxCredits: 10, outDir: join(dir, 'out2'), trustedUser: null, ledger: () => ({ premiumRequests: 0, credits: spentCredits }),
       liveStart: async () => { spentCredits += 6; return { exitCode: 4, parsed: true, next: null, message: 'merge' }; },
     });
     expect(capped.results.stopped).toBe('max-credits');
@@ -535,7 +676,7 @@ describe('live runner caps (injected run child and ledger, no Copilot)', () => {
     const bench = liveFixture();
     let n = 0;
     const out = await runBench({
-      dir: bench, mode: 'live', maxRequests: 100, outDir: join(dir, 'out'), trustedUser: null, ledger: () => ({ premiumRequests: 0, credits: 0 }),
+      dir: bench, mode: 'live', modelProbe: noProbe, maxRequests: 100, outDir: join(dir, 'out'), trustedUser: null, ledger: () => ({ premiumRequests: 0, credits: 0 }),
       liveStart: async () => { n += 1; return { exitCode: 1, parsed: false, next: null, message: 'no outcome on stdout' }; },
     });
     expect(n).toBe(1);
@@ -546,7 +687,7 @@ describe('live runner caps (injected run child and ledger, no Copilot)', () => {
   it('L5: --live refuses unless the gate sandbox is enforced (or the container isolation is on)', async () => {
     const bench = liveFixture();
     const start = vi.fn();
-    const base = { dir: bench, mode: 'live' as const, maxRequests: 10, outDir: join(dir, 'out'), ledger: () => ({ premiumRequests: 0, credits: 0 }), liveStart: start };
+    const base = { dir: bench, mode: 'live' as const, modelProbe: noProbe, maxRequests: 10, outDir: join(dir, 'out'), ledger: () => ({ premiumRequests: 0, credits: 0 }), liveStart: start };
     await expect(runBench({ ...base, trustedUser: { factory: { run: { sandbox: { gates: 'ack' } } } } })).rejects.toThrow(/needs factory.run.sandbox.gates "enforced" \(it is "ack" from user config\)/);
     await expect(runBench({ ...base, trustedUser: { factory: { run: { sandbox: { gates: 'unsandboxed' } } } } })).rejects.toThrow(BenchUsageError);
     expect(start).not.toHaveBeenCalled();
@@ -557,7 +698,7 @@ describe('live runner caps (injected run child and ledger, no Copilot)', () => {
   it('M4: --parallel refuses without the parallel opt-in, before any child starts', async () => {
     const bench = liveFixture();
     const start = vi.fn();
-    const base = { dir: bench, mode: 'live' as const, maxRequests: 10, parallel: 2, outDir: join(dir, 'out'), ledger: () => ({ premiumRequests: 0, credits: 0 }), liveStart: start };
+    const base = { dir: bench, mode: 'live' as const, modelProbe: noProbe, maxRequests: 10, parallel: 2, outDir: join(dir, 'out'), ledger: () => ({ premiumRequests: 0, credits: 0 }), liveStart: start };
     await expect(runBench({ ...base, trustedUser: null })).rejects.toThrow(/--parallel 2 needs factory.run.maxConcurrent of at least 2.*parallel runs are off/);
     await expect(runBench({ ...base, parallel: 4, trustedUser: PARALLEL_USER })).rejects.toThrow(/maxConcurrent resolves to 3/);
     expect(start).not.toHaveBeenCalled();
@@ -568,7 +709,7 @@ describe('live runner caps (injected run child and ledger, no Copilot)', () => {
     const sleeps: number[] = [];
     let n = 0;
     const out = await runBench({
-      dir: bench, mode: 'live', maxRequests: 100, outDir: join(dir, 'out'), trustedUser: null, ledger: () => ({ premiumRequests: 0, credits: 0 }),
+      dir: bench, mode: 'live', modelProbe: noProbe, maxRequests: 100, outDir: join(dir, 'out'), trustedUser: null, ledger: () => ({ premiumRequests: 0, credits: 0 }),
       sleep: async (ms) => { sleeps.push(ms); },
       liveStart: async () => { n += 1; return { exitCode: 6, parsed: true, next: null, message: 'busy: another engine runs' }; },
     });
@@ -581,7 +722,7 @@ describe('live runner caps (injected run child and ledger, no Copilot)', () => {
     const bench = liveFixture();
     const issues: number[] = [];
     const out = await runBench({
-      dir: bench, mode: 'live', maxRequests: 50, issues: [9, 2], outDir: join(dir, 'out'), trustedUser: null, ledger: () => ({ premiumRequests: 0, credits: 0 }),
+      dir: bench, mode: 'live', modelProbe: noProbe, maxRequests: 50, issues: [9, 2], outDir: join(dir, 'out'), trustedUser: null, ledger: () => ({ premiumRequests: 0, credits: 0 }),
       liveStart: async ({ issue }) => { issues.push(issue!); return { exitCode: 4, parsed: true, next: null, message: 'merge' }; },
     });
     expect(issues).toEqual([2, 9]);
@@ -602,11 +743,22 @@ describe('the per-run request cap (budget.ts nextLaneCap, omg factory run --max-
     expect(nextLaneCap(lanes(), limits)).toMatchObject({ ok: true });
     expect(nextLaneCap(lanes(lane('a', 2)), limits)).toMatchObject({ ok: true });
     expect(nextLaneCap(lanes(lane('a', 2), lane('b', 1)), limits)).toMatchObject({ ok: false, reason: expect.stringContaining('run spent 3 of --max-requests 3') });
-    expect(nextLaneCap(lanes(lane('a')), limits)).toMatchObject({ ok: false, reason: expect.stringContaining('lane a has no recorded usage') });
+    expect(nextLaneCap(lanes(lane('a')), limits)).toMatchObject({ ok: false, reason: expect.stringContaining('lane a has no known request count') });
     // Without the cap an unknown usage changes nothing (today's behaviour).
     expect(nextLaneCap(lanes(lane('a')), DEFAULT_FACTORY_RUN_LIMITS)).toMatchObject({ ok: true });
     // Only the CLI flag sets it: no config layer (a lane can write the project config) reads a maxRunRequests key.
     const cfg = { factory: { run: { maxRunRequests: 1 } } };
     expect(resolveFactoryRunLimits(cfg, cfg).limits.maxRunRequests).toBeUndefined();
+  });
+
+  it('NEW-M1: a lost lane counted only at its credit cap (engine capUsage: 0 requests, estimated) refuses the next lane', () => {
+    const lost = { id: 'lost-1', kind: 'implement', status: 'lost', usage: { credits: 10, premiumRequests: 0, source: 'estimated' as const } };
+    expect(nextLaneCap(lanes(lane('a', 1), lost as never), limits)).toMatchObject({ ok: false, reason: expect.stringContaining('lane lost-1 has no known request count') });
+    expect(laneRequestsUnknown(lost as never)).toBe(true);
+    // Known: a measured 0 (a 0x model's session.shutdown), an estimate above 0, the coding agent's fixed session charge.
+    expect(laneRequestsUnknown({ kind: 'implement', usage: { credits: 0, premiumRequests: 0, source: 'measured' } })).toBe(false);
+    expect(laneRequestsUnknown({ kind: 'implement', usage: { credits: 1, premiumRequests: 2, source: 'estimated' } })).toBe(false);
+    expect(laneRequestsUnknown({ kind: 'coding-agent', usage: { credits: 0, premiumRequests: 0, source: 'estimated' } })).toBe(false);
+    expect(nextLaneCap(lanes(lane('a', 0)), limits)).toMatchObject({ ok: true });
   });
 });
