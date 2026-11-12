@@ -83,6 +83,31 @@ describe('omg factory run: the lane no-progress timeout (factory.run.laneIdleMin
     expect(lanes.cancelled).toEqual([]);
     expect(out.gate?.name).toBe('merge');
   });
+
+  it('a lane that completes between the stall poll and the cancel, with a newer event, is a normal completion', async () => {
+    const last = '2026-11-12T20:02:00.000Z';
+    const done = '2026-11-12T20:09:30.000Z';
+    // Quiet at `last` while polled; the cancel finds it completed, with an event after the one the engine saw.
+    const rig = stallRig([commitFile('a.ts'), review('approve')], [1000], (id) => (rig.lanes.cancelled.includes(id) ? done : last));
+    rig.lanes.cancelFinds = 'completed';
+    const out = await runFactoryEngine(opts(rig.lanes, { limits: limits({ laneIdleMs: 5 * MIN, maxRetries: 0 }), now: rig.now }));
+    expect(rig.lanes.cancelled).toEqual(['cr-fake1']);
+    expect(rig.lanes.started).toHaveLength(2);
+    expect(out.gate?.name).toBe('merge');
+    const s = readFactoryState(h.root, ISSUE)!;
+    expect(s.lanes.map((l) => l.status)).toEqual(['completed', 'completed']);
+    expect(s.lanes[0].note ?? '').not.toMatch(/stalled/);
+  });
+
+  it('a completed cancel snapshot without a newer event stays a stall (fail closed)', async () => {
+    const last = '2026-11-12T20:02:00.000Z';
+    const rig = stallRig([commitFile('a.ts')], [1000], () => last);
+    rig.lanes.cancelFinds = 'completed';
+    const out = await runFactoryEngine(opts(rig.lanes, { limits: limits({ laneIdleMs: 5 * MIN, maxRetries: 0 }), now: rig.now }));
+    expect(out.gate?.name).toBe('implement-failed');
+    expect(remoteHead(h)).toBeNull();
+    expect(readFactoryState(h.root, ISSUE)!.lanes[0].status).toBe('stalled');
+  });
 });
 
 describe('factory.run.laneIdleMinutes', () => {
@@ -95,10 +120,13 @@ describe('factory.run.laneIdleMinutes', () => {
     expect(raised.warnings.join('\n')).toMatch(/ignoring factory\.run\.laneIdleMinutes 60/);
   });
 
-  it('refuses 0 and a negative value', () => {
-    expect(() => resolveFactoryRunLimits({ factory: { run: { laneIdleMinutes: 0 } } }, undefined)).toThrow(/laneIdleMinutes must be above 0/);
-    expect(() => resolveFactoryRunLimits(undefined, { factory: { run: { laneIdleMinutes: 0 } } })).toThrow(/laneIdleMinutes must be above 0/);
+  it('refuses 0, a negative value and anything below 1 minute from either layer', () => {
+    expect(() => resolveFactoryRunLimits({ factory: { run: { laneIdleMinutes: 0 } } }, undefined)).toThrow(/laneIdleMinutes must be at least 1 \(got 0\)/);
+    expect(() => resolveFactoryRunLimits(undefined, { factory: { run: { laneIdleMinutes: 0 } } })).toThrow(/laneIdleMinutes must be at least 1/);
     expect(() => resolveFactoryRunLimits({ factory: { run: { laneIdleMinutes: -1 } } }, undefined)).toThrow(/non-negative/);
+    expect(() => resolveFactoryRunLimits({ factory: { run: { laneIdleMinutes: 0.5 } } }, undefined)).toThrow(/laneIdleMinutes must be at least 1 \(got 0\.5\)/);
+    expect(() => resolveFactoryRunLimits(undefined, { factory: { run: { laneIdleMinutes: 0.01 } } })).toThrow(/laneIdleMinutes must be at least 1 \(got 0\.01\)/);
+    expect(resolveFactoryRunLimits({ factory: { run: { laneIdleMinutes: 1 } } }, undefined).limits.laneIdleMs).toBe(MIN);
   });
 });
 

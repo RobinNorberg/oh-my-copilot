@@ -5209,6 +5209,12 @@ class FactoryEngine {
           this.gate('lane-unconfirmed', `lane ${id} (${remoteId}) stalled: ${quiet}, and its cancel was not confirmed; it may still run, so its tamper check cannot be trusted yet. Stop the job, then rerun ${this.resume}`);
           return { kind: 'stopped' };
         }
+        // The lane finished between our poll and the cancel, with a session event after the last one we saw: a normal
+        // completion (the tamper check and accept path below still run). Any doubt stays a stall.
+        if (confirmed.state === 'completed' && confirmed.lastEventAt && confirmed.lastEventAt !== lastEventAt) {
+          result = confirmed;
+          break;
+        }
         // Fail closed: a stalled lane is a failed lane (nothing is committed or pushed), with the normal fresh retry.
         result = { ...confirmed, state: 'failed', error: `stalled: ${quiet}` };
         stalled = true;
