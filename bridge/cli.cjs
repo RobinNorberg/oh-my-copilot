@@ -130927,7 +130927,6 @@ var init_auto_merge = __esm({
       "omc.jsonc",
       "config.jsonc",
       ".mcp.json",
-      "known-flaky-tests.json",
       "renovate.json",
       "dependabot.yml",
       "lefthook.yml",
