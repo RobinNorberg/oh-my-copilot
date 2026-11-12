@@ -186062,7 +186062,7 @@ async function runClaudeInHerdrWorkspace(cwd2, args) {
   try {
     launch = buildTmuxClaudeLaunch(args, { useExec: false, preflight: "" });
   } catch (error2) {
-    console.error(`[omc] Error: unable to prepare Claude launch: ${error2 instanceof Error ? error2.message : error2}`);
+    console.error(`[omg] Error: unable to prepare Claude launch: ${error2 instanceof Error ? error2.message : error2}`);
     throw error2;
   }
   let allocatedWorkspaceId;
@@ -186073,8 +186073,8 @@ async function runClaudeInHerdrWorkspace(cwd2, args) {
     const tab = await herdrCreateWorkerTab(allocatedWorkspaceId, cwd2, "claude");
     allocatedPaneId = tab.paneId;
     await herdrRunPaneCommand(tab.paneId, launch.command);
-    console.log(`[omc] Claude launched in Herdr workspace "${label2}" (pane ${tab.paneId}).`);
-    console.log("[omc] Attach with the Herdr TUI: run `herdr` and open the workspace.");
+    console.log(`[omg] Claude launched in Herdr workspace "${label2}" (pane ${tab.paneId}).`);
+    console.log("[omg] Attach with the Herdr TUI: run `herdr` and open the workspace.");
   } catch (error2) {
     if (allocatedPaneId) {
       try {
@@ -192357,7 +192357,7 @@ Examples:
   await waitCommand(options);
 });
 waitCmd.command("status").description("Show detailed rate limit and daemon status").option("--json", "Output as JSON").action(async (_options, command) => {
-  await waitStatusCommand({ json: command.optsWithGlobals().json ?? false });
+  await waitStatusCommand({ json: command.optsWithGlobals().json });
 });
 waitCmd.command("daemon <action>").description("Start or stop the auto-resume daemon").option("-v, --verbose", "Enable verbose logging").option("-f, --foreground", "Run in foreground (blocking)").option("-i, --interval <seconds>", "Poll interval in seconds", integerOption(1), 60).addHelpText("after", `
 Examples:
@@ -192377,7 +192377,7 @@ Examples:
 });
 waitCmd.command("detect").description("Scan for blocked Claude Code sessions in tmux").option("--json", "Output as JSON").option("-l, --lines <number>", "Number of pane lines to analyze", integerOption(1), 15).action(async (options, command) => {
   await waitDetectCommand({
-    json: command.optsWithGlobals().json ?? false,
+    json: command.optsWithGlobals().json,
     lines: options.lines
   });
 });
@@ -192420,10 +192420,10 @@ Note:
   });
 });
 teleportCmd.command("list").description("List existing worktrees in ~/Workspace/omc-worktrees/").option("--json", "Output as JSON").action(async (_options, command) => {
-  await teleportListCommand({ json: command.optsWithGlobals().json ?? false });
+  await teleportListCommand({ json: command.optsWithGlobals().json });
 });
 teleportCmd.command("remove <path>").alias("rm").description("Remove a worktree").option("-f, --force", "Force removal even with uncommitted changes").option("--json", "Output as JSON").action(async (path30, options, command) => {
-  const exitCode = await teleportRemoveCommand(path30, { ...options, json: command.optsWithGlobals().json ?? false });
+  const exitCode = await teleportRemoveCommand(path30, { ...options, json: command.optsWithGlobals().json });
   if (exitCode !== 0) process.exit(exitCode);
 });
 var sessionCmd = program2.command("session").alias("sessions").description("Inspect prior local session history").addHelpText("after", `
@@ -192502,7 +192502,7 @@ Examples:
   $ omg doctor conflicts --plugin-dir /tmp/foo  Check against a specific plugin dir`).action(async (_options, command) => {
   const opts = command.optsWithGlobals();
   applyPluginDirOption(opts.pluginDir);
-  const exitCode = await doctorConflictsCommand({ json: opts.json ?? false });
+  const exitCode = await doctorConflictsCommand({ json: opts.json });
   process.exit(exitCode);
 });
 program2.command("budget [action]").description("Show (status, the default) or reset the AI Credits budget ledger").option("--json", "Output as JSON").option("--by <field>", "Group usage by role, kind or run (status)").addHelpText("after", `

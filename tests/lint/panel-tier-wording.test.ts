@@ -35,7 +35,8 @@ describe("panel-tier wording", () => {
       expect(
         body,
         `${skill} keeps the no-config fallback to the default provider triple`,
-      ).toContain("1:claude,1:codex,1:gemini");
+        // fork: Copilot is the default first family (upstream: 1:claude).
+      ).toContain("1:copilot,1:codex,1:gemini");
     }
   });
 });

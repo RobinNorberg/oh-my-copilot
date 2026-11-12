@@ -56,6 +56,7 @@ vi.mock("../tmux-utils.js", async (importOriginal) => {
 
 import { runClaude, sanitizeHerdrWorkspaceLabel } from "../launch.js";
 import { tmuxExec } from "../tmux-utils.js";
+import { getHostCliBinary } from "../../utils/host-detection.js";
 
 /** The direct launch ran: execFileSync on POSIX, spawnSync on win32 (fork). */
 function expectDirectLaunch(args: string[]): void {
@@ -63,7 +64,8 @@ function expectDirectLaunch(args: string[]): void {
     expect(spawnSync).toHaveBeenCalled();
     return;
   }
-  expect(execFileSync).toHaveBeenCalledWith("claude", args, expect.anything());
+  // fork: the host CLI binary (copilot by default), not a fixed "claude".
+  expect(execFileSync).toHaveBeenCalledWith(getHostCliBinary(), args, expect.anything());
 }
 
 describe("runClaude herdr arm", () => {
@@ -105,7 +107,7 @@ describe("runClaude herdr arm", () => {
     );
     expect(herdrMocks.herdrRunPaneCommand).toHaveBeenCalledWith(
       "w9:p2",
-      expect.stringContaining("claude"),
+      expect.stringContaining(getHostCliBinary()),
     );
     expect(tmuxExec).not.toHaveBeenCalled();
 

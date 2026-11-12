@@ -49,13 +49,15 @@ vi.mock("../tmux-utils.js", async (importOriginal) => {
 });
 import { runClaude, sanitizeHerdrWorkspaceLabel } from "../launch.js";
 import { tmuxExec } from "../tmux-utils.js";
+import { getHostCliBinary } from "../../utils/host-detection.js";
 /** The direct launch ran: execFileSync on POSIX, spawnSync on win32 (fork). */
 function expectDirectLaunch(args) {
     if (process.platform === "win32") {
         expect(spawnSync).toHaveBeenCalled();
         return;
     }
-    expect(execFileSync).toHaveBeenCalledWith("claude", args, expect.anything());
+    // fork: the host CLI binary (copilot by default), not a fixed "claude".
+    expect(execFileSync).toHaveBeenCalledWith(getHostCliBinary(), args, expect.anything());
 }
 describe("runClaude herdr arm", () => {
     let stderrSpy;
@@ -83,7 +85,7 @@ describe("runClaude herdr arm", () => {
         expect(herdrMocks.ensureHerdrServer).toHaveBeenCalledTimes(1);
         expect(herdrMocks.herdrCreateWorkspace).toHaveBeenCalledWith("/tmp", "test-session");
         expect(herdrMocks.herdrCreateWorkerTab).toHaveBeenCalledWith("w9", "/tmp", "claude");
-        expect(herdrMocks.herdrRunPaneCommand).toHaveBeenCalledWith("w9:p2", expect.stringContaining("claude"));
+        expect(herdrMocks.herdrRunPaneCommand).toHaveBeenCalledWith("w9:p2", expect.stringContaining(getHostCliBinary()));
         expect(tmuxExec).not.toHaveBeenCalled();
         const printed = stdoutSpy.mock.calls
             .map((call) => call.join(" "))

@@ -17,7 +17,7 @@ NON-NEGOTIABLE, runs before any story work and at every verification gate:
 
 0. Resolve the CLI once per run. An `omg ralph afk` session exports
    `OMC_RALPH_AFK_FEEDBACK` and grants only the bare `Bash(omg ralph verify:*)`
-   form, so use `omg` directly there — do not run a discovery probe, it is not
+   form (`shell(omg ralph verify)` on Copilot CLI), so use `omg` directly there — do not run a discovery probe, it is not
    granted and is denied in headless mode. Everywhere else use `omg` when it is
    on PATH; on a plugin-only install there is no `omg`, so use the plugin-shaped
    form `node "$CLAUDE_PLUGIN_ROOT"/bridge/cli.cjs` — the same prefix OMC's own

@@ -838,7 +838,7 @@ async function runClaudeInHerdrWorkspace(cwd, args) {
         launch = buildTmuxClaudeLaunch(args, { useExec: false, preflight: '' });
     }
     catch (error) {
-        console.error(`[omc] Error: unable to prepare Claude launch: ${error instanceof Error ? error.message : error}`);
+        console.error(`[omg] Error: unable to prepare Claude launch: ${error instanceof Error ? error.message : error}`);
         throw error;
     }
     let allocatedWorkspaceId;
@@ -849,8 +849,8 @@ async function runClaudeInHerdrWorkspace(cwd, args) {
         const tab = await herdrCreateWorkerTab(allocatedWorkspaceId, cwd, 'claude');
         allocatedPaneId = tab.paneId;
         await herdrRunPaneCommand(tab.paneId, launch.command);
-        console.log(`[omc] Claude launched in Herdr workspace "${label}" (pane ${tab.paneId}).`);
-        console.log('[omc] Attach with the Herdr TUI: run `herdr` and open the workspace.');
+        console.log(`[omg] Claude launched in Herdr workspace "${label}" (pane ${tab.paneId}).`);
+        console.log('[omg] Attach with the Herdr TUI: run `herdr` and open the workspace.');
     }
     catch (error) {
         // Close the allocated pane before closing the workspace

@@ -1049,7 +1049,7 @@ waitCmd
     // that parent option before this subcommand sees it. optsWithGlobals()
     // walks the command chain and picks up whichever level Commander
     // actually attributed the flag to (same workaround as `doctor conflicts`).
-    await waitStatusCommand({ json: command.optsWithGlobals().json ?? false });
+    await waitStatusCommand({ json: command.optsWithGlobals().json });
   });
 
 waitCmd
@@ -1085,7 +1085,7 @@ waitCmd
     // `wait` declares its own --json; see the `status` subcommand above for why
     // this subcommand must read it via optsWithGlobals() instead of `options.json`.
     await waitDetectCommand({
-      json: command.optsWithGlobals().json ?? false,
+      json: command.optsWithGlobals().json,
       lines: options.lines,
     });
   });
@@ -1158,7 +1158,7 @@ teleportCmd
     // before this subcommand sees it. optsWithGlobals() walks the command chain
     // and picks up whichever level Commander actually attributed the flag to
     // (same workaround as `doctor conflicts`).
-    await teleportListCommand({ json: command.optsWithGlobals().json ?? false });
+    await teleportListCommand({ json: command.optsWithGlobals().json });
   });
 
 teleportCmd
@@ -1169,7 +1169,7 @@ teleportCmd
   .option('--json', 'Output as JSON')
   .action(async (path: string, options, command) => {
     // See `list` above: --json must come from optsWithGlobals(), not `options.json`.
-    const exitCode = await teleportRemoveCommand(path, { ...options, json: command.optsWithGlobals().json ?? false });
+    const exitCode = await teleportRemoveCommand(path, { ...options, json: command.optsWithGlobals().json });
     if (exitCode !== 0) process.exit(exitCode);
   });
 
@@ -1343,7 +1343,7 @@ Examples:
     // Commander actually attributed the flag to; team-routing uses the same workaround below.
     const opts = command.optsWithGlobals();
     applyPluginDirOption(opts.pluginDir);
-    const exitCode = await doctorConflictsCommand({ json: opts.json ?? false });
+    const exitCode = await doctorConflictsCommand({ json: opts.json });
     process.exit(exitCode);
   });
 

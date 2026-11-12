@@ -6,7 +6,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { resolveOmcCliPrefix } from '../../src/utils/omc-cli-rendering.js';
-import { ralphAfkArgv, RALPH_AFK_SESSION_COMMANDS } from '../../src/cli/commands/ralph.js';
+import { COPILOT_RALPH_AFK_SESSION_FLAGS, ralphAfkArgv, RALPH_AFK_SESSION_COMMANDS } from '../../src/cli/commands/ralph.js';
 
 // A plugin-only install has no `omc` on PATH. The ralph feedback gate is
 // mandatory, so the skill's documented fallback must actually run: resolve the
@@ -109,12 +109,17 @@ describe('ralph AFK preflight uses the granted CLI form (issue #4814 follow-up)'
     // list and is denied in headless mode, which would block the gate before
     // its first permitted call.
     const argv = ralphAfkArgv('task', [], 'afk-session');
-    const allowedTools = argv[argv.indexOf('--allowedTools') + 1];
-    for (const grant of RALPH_AFK_SESSION_COMMANDS) expect(allowedTools).toContain(grant);
+    // fork: the Copilot host grants the same command through --allow-tool flags.
+    if (argv.includes('--allowedTools')) {
+      const allowedTools = argv[argv.indexOf('--allowedTools') + 1];
+      for (const grant of RALPH_AFK_SESSION_COMMANDS) expect(allowedTools).toContain(grant);
+    } else {
+      for (const flag of COPILOT_RALPH_AFK_SESSION_FLAGS) expect(argv).toContain(flag);
+    }
 
     const skill = readFileSync(join(REPO_ROOT, 'skills', 'ralph', 'SKILL.md'), 'utf8');
     expect(skill).toContain('OMC_RALPH_AFK_FEEDBACK');
-    expect(skill).toContain('Bash(omc ralph verify:*)');
+    expect(skill).toContain('Bash(omg ralph verify:*)');
     expect(skill).not.toContain('command -v');
     // The non-AFK plugin-only fallback stays documented.
     expect(skill).toContain('node "$CLAUDE_PLUGIN_ROOT"/bridge/cli.cjs');
