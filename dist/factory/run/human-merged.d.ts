@@ -8,11 +8,13 @@
  * - `omg factory run status [<n>]`, `omg factory board` and
  *   `omg factory dashboard` through recordHumanMerge below.
  *
- * The PR state comes from the forge's own read (GitHub, Azure DevOps). On the
- * local forge the PR store is a file the PR's code could write, so only your
- * base branch counts: the run is merged when refs/heads/<base> contains the
- * head the engine pushed. A failed read changes nothing. A closed, unmerged
- * PR changes nothing either; the caller says so.
+ * The PR state comes from the forge's own read (GitHub, Azure DevOps), for the
+ * run's own forge, repository and base. On the local forge the PR store is a
+ * file the PR's code could write, so your base branch counts: the run is
+ * merged when refs/heads/<base> contains the head the engine pushed and the
+ * store still names that head (forgePrStateReader, which also names the risk
+ * left). A failed read changes nothing. A closed, unmerged PR changes nothing
+ * either; the caller says so.
  *
  * recordHumanMerge writes like the engine: under the run's owner file (a live
  * engine on the run: nothing is written), only when the state bytes are the
@@ -30,12 +32,23 @@ export declare function markMergedByHuman(s: FactoryRunState, now: string): Fact
 /** What the forge says about the run's PR: OPEN, MERGED or CLOSED. Throws when it cannot tell. */
 export type PrStateRead = (s: FactoryRunState) => 'OPEN' | 'MERGED' | 'CLOSED';
 /**
- * The PR state through the forge adapter. The local forge: MERGED only when
- * your base branch contains the head the engine pushed (the store's MERGED
- * alone is not trusted; a merge on your base not yet synced to the mirror is
- * merged too).
+ * The PR state through the forge adapter, for the run's own forge and
+ * repository only (`repoUrl`: the forge config's repository; another one is a
+ * read error, like the engine's resume check).
+ *
+ * GitHub and Azure DevOps: the adapter's state; a merged PR whose base is not
+ * the run's base is a read error.
+ *
+ * The local forge: MERGED only when your base branch contains the head the
+ * engine pushed AND the PR store still names that head for the PR (state not
+ * CLOSED). The store's MERGED is not required: it turns MERGED only after the
+ * next run or poll syncs your base into the mirror, so it adds nothing to the
+ * base check. Replace refs or grafts make every git read a lie: a read error.
+ * What remains: a lane able to write your shared refs (refs/heads/<base>) and
+ * the PR store could fake a merge of a stopped run; the engine's step-boundary
+ * compare catches that while it watches the lane, not after a cancel.
  */
-export declare function forgePrStateReader(forge: Forge, exec: Exec, root: string): PrStateRead;
+export declare function forgePrStateReader(forge: Forge, exec: Exec, root: string, repoUrl: string | undefined): PrStateRead;
 export type HumanMergeResult = {
     kind: 'merged';
     key: FactoryRunKey;

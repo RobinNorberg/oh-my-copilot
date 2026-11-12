@@ -8,11 +8,13 @@
  * - `omg factory run status [<n>]`, `omg factory board` and
  *   `omg factory dashboard` through recordHumanMerge below.
  *
- * The PR state comes from the forge's own read (GitHub, Azure DevOps). On the
- * local forge the PR store is a file the PR's code could write, so only your
- * base branch counts: the run is merged when refs/heads/<base> contains the
- * head the engine pushed. A failed read changes nothing. A closed, unmerged
- * PR changes nothing either; the caller says so.
+ * The PR state comes from the forge's own read (GitHub, Azure DevOps), for the
+ * run's own forge, repository and base. On the local forge the PR store is a
+ * file the PR's code could write, so your base branch counts: the run is
+ * merged when refs/heads/<base> contains the head the engine pushed and the
+ * store still names that head (forgePrStateReader, which also names the risk
+ * left). A failed read changes nothing. A closed, unmerged PR changes nothing
+ * either; the caller says so.
  *
  * recordHumanMerge writes like the engine: under the run's owner file (a live
  * engine on the run: nothing is written), only when the state bytes are the
@@ -22,8 +24,9 @@ import { TRUSTED_READ_ENV } from '../../ship/exec.js';
 import { LOCAL_REMOTE } from '../../forge/local/mirror.js';
 import { canTransition, shipStatePath, transition, updateShipState } from '../../ship/state.js';
 import { currentBytes, EngineLedger } from './ledger.js';
+import { replaceObjectsProblem } from './review-guard.js';
 import { tamperHoldMessage } from './tamper-quarantine.js';
-import { acquireFactoryOwner, factoryStatePath, FactoryBusyError, parseFactoryState, runKeyOf, runLabel, updateFactoryState, verifyFactoryIntegrity, } from './state.js';
+import { acquireFactoryOwner, factoryStatePath, FactoryBusyError, forgeResumeProblem, parseFactoryState, runKeyOf, runLabel, updateFactoryState, verifyFactoryIntegrity, } from './state.js';
 const HEX40 = /^[0-9a-f]{40}$/;
 /** A run a human may have merged after the factory stopped: it has a PR, is not merged, and is cancelled, failed or parked (not at a tamper park). */
 export function humanMergeCandidate(s) {
@@ -44,12 +47,23 @@ export function markMergedByHuman(s, now) {
     return { ...rest, phase: 'merged', updatedAt: now, history: [...s.history, { at: now, from: s.phase, to: 'merged', note }] };
 }
 /**
- * The PR state through the forge adapter. The local forge: MERGED only when
- * your base branch contains the head the engine pushed (the store's MERGED
- * alone is not trusted; a merge on your base not yet synced to the mirror is
- * merged too).
+ * The PR state through the forge adapter, for the run's own forge and
+ * repository only (`repoUrl`: the forge config's repository; another one is a
+ * read error, like the engine's resume check).
+ *
+ * GitHub and Azure DevOps: the adapter's state; a merged PR whose base is not
+ * the run's base is a read error.
+ *
+ * The local forge: MERGED only when your base branch contains the head the
+ * engine pushed AND the PR store still names that head for the PR (state not
+ * CLOSED). The store's MERGED is not required: it turns MERGED only after the
+ * next run or poll syncs your base into the mirror, so it adds nothing to the
+ * base check. Replace refs or grafts make every git read a lie: a read error.
+ * What remains: a lane able to write your shared refs (refs/heads/<base>) and
+ * the PR store could fake a merge of a stopped run; the engine's step-boundary
+ * compare catches that while it watches the lane, not after a cancel.
  */
-export function forgePrStateReader(forge, exec, root) {
+export function forgePrStateReader(forge, exec, root, repoUrl) {
     return (s) => {
         const pr = s.pr;
         const label = runLabel(runKeyOf(s));
@@ -58,22 +72,37 @@ export function forgePrStateReader(forge, exec, root) {
         const local = s.remote === LOCAL_REMOTE;
         if (local !== (forge.kind === 'local'))
             throw new Error(`run ${label} started on ${local ? 'the local forge' : s.forgeKind ?? 'github'}, but the forge resolves to ${forge.kind}`);
+        const swapped = forgeResumeProblem(s, forge.kind, repoUrl);
+        if (swapped)
+            throw new Error(swapped);
         if (!local) {
             const state = forge.reviews.prHead(pr).state;
             if (state !== 'OPEN' && state !== 'MERGED' && state !== 'CLOSED')
                 throw new Error(`PR #${pr} has an unknown state ${String(state)}`);
+            if (state === 'MERGED') {
+                const base = forge.reviews.viewPr(pr).baseRefName;
+                if (base !== s.base)
+                    throw new Error(`PR #${pr} was merged into ${base}, not the run's base ${s.base}`);
+            }
             return state;
         }
         const head = s.head ?? '';
         if (!HEX40.test(head))
             throw new Error(`run ${label} has no pushed head`);
+        const replaced = replaceObjectsProblem(exec, root);
+        if (replaced)
+            throw new Error(replaced);
         const r = exec('git', ['merge-base', '--is-ancestor', head, `refs/heads/${s.base}`], { cwd: root, env: TRUSTED_READ_ENV });
-        if (r.status === 0)
-            return 'MERGED';
-        if (r.status !== 1)
+        if (r.status !== 0 && r.status !== 1)
             throw new Error(`git merge-base --is-ancestor failed (exit ${r.status}): ${r.stderr.trim()}`);
-        const state = forge.reviews.prHead(pr).state;
-        return state === 'CLOSED' ? 'CLOSED' : 'OPEN';
+        const v = forge.reviews.viewPr(pr);
+        if (v.state === 'CLOSED')
+            return 'CLOSED';
+        if (r.status === 1)
+            return 'OPEN';
+        if (v.headRefOid !== head || v.baseRefName !== s.base)
+            throw new Error(`your ${s.base} contains the pushed head ${head.slice(0, 12)}, but the local PR store names ${v.headRefOid.slice(0, 12)} into ${v.baseRefName} for PR #${pr}`);
+        return 'MERGED';
     };
 }
 /**
@@ -85,7 +114,6 @@ export function recordHumanMerge(root, key, o) {
     const unchanged = (reason) => ({ kind: 'unchanged', key, reason });
     const path = factoryStatePath(root, key);
     let s;
-    let ledger;
     try {
         const bytes = currentBytes(path);
         if (bytes === null)
@@ -97,8 +125,7 @@ export function recordHumanMerge(root, key, o) {
             return unchanged('the run state fails its integrity check');
         if (tamperHoldMessage(o.ledgerDir, root))
             return unchanged('a tamper hold is set on this checkout');
-        ledger = EngineLedger.open(o.ledgerDir, root, key);
-        if (!ledger.matches(path, bytes))
+        if (!EngineLedger.open(o.ledgerDir, root, key).matches(path, bytes))
             return unchanged('the run state is not the engine\'s last write');
     }
     catch (error) {
@@ -124,6 +151,8 @@ export function recordHumanMerge(root, key, o) {
         return unchanged(error instanceof FactoryBusyError ? `an engine is running the run: ${text(error)}` : text(error));
     }
     try {
+        // The ledger as it is now, under the owner file: the copy read before the forge read may be stale, and record() saves the whole file.
+        const ledger = EngineLedger.open(o.ledgerDir, root, key);
         const previous = previousStateText(s);
         const now = o.now();
         const written = updateFactoryState(root, key, (cur) => {

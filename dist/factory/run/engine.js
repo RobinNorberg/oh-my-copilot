@@ -1675,7 +1675,7 @@ class FactoryEngine {
         const pr = existing.pr;
         let state;
         try {
-            state = this.forge ? forgePrStateReader(this.forge, this.exec, this.o.root)(existing) : String(this.prHeadState(pr).state);
+            state = this.forge ? forgePrStateReader(this.forge, this.exec, this.o.root, this.o.forge?.config.repo.url)(existing) : String(this.prHeadState(pr).state);
         }
         catch (error) {
             this.o.warn?.(`omg factory run: PR #${pr} could not be read to check for a human merge: ${errText(error)}`);

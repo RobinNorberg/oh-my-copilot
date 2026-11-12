@@ -56324,25 +56324,35 @@ function markMergedByHuman(s, now) {
   const note = `PR #${s.pr} merged by a human after ${previousStateText(s)}`;
   return { ...rest, phase: "merged", updatedAt: now, history: [...s.history, { at: now, from: s.phase, to: "merged", note }] };
 }
-function forgePrStateReader(forge, exec, root) {
+function forgePrStateReader(forge, exec, root, repoUrl) {
   return (s) => {
     const pr = s.pr;
     const label = runLabel(runKeyOf(s));
     if (pr === void 0) throw new Error(`run ${label} has no PR`);
     const local = s.remote === LOCAL_REMOTE;
     if (local !== (forge.kind === "local")) throw new Error(`run ${label} started on ${local ? "the local forge" : s.forgeKind ?? "github"}, but the forge resolves to ${forge.kind}`);
+    const swapped = forgeResumeProblem(s, forge.kind, repoUrl);
+    if (swapped) throw new Error(swapped);
     if (!local) {
-      const state2 = forge.reviews.prHead(pr).state;
-      if (state2 !== "OPEN" && state2 !== "MERGED" && state2 !== "CLOSED") throw new Error(`PR #${pr} has an unknown state ${String(state2)}`);
-      return state2;
+      const state = forge.reviews.prHead(pr).state;
+      if (state !== "OPEN" && state !== "MERGED" && state !== "CLOSED") throw new Error(`PR #${pr} has an unknown state ${String(state)}`);
+      if (state === "MERGED") {
+        const base = forge.reviews.viewPr(pr).baseRefName;
+        if (base !== s.base) throw new Error(`PR #${pr} was merged into ${base}, not the run's base ${s.base}`);
+      }
+      return state;
     }
     const head = s.head ?? "";
     if (!HEX4016.test(head)) throw new Error(`run ${label} has no pushed head`);
+    const replaced = replaceObjectsProblem(exec, root);
+    if (replaced) throw new Error(replaced);
     const r = exec("git", ["merge-base", "--is-ancestor", head, `refs/heads/${s.base}`], { cwd: root, env: TRUSTED_READ_ENV });
-    if (r.status === 0) return "MERGED";
-    if (r.status !== 1) throw new Error(`git merge-base --is-ancestor failed (exit ${r.status}): ${r.stderr.trim()}`);
-    const state = forge.reviews.prHead(pr).state;
-    return state === "CLOSED" ? "CLOSED" : "OPEN";
+    if (r.status !== 0 && r.status !== 1) throw new Error(`git merge-base --is-ancestor failed (exit ${r.status}): ${r.stderr.trim()}`);
+    const v = forge.reviews.viewPr(pr);
+    if (v.state === "CLOSED") return "CLOSED";
+    if (r.status === 1) return "OPEN";
+    if (v.headRefOid !== head || v.baseRefName !== s.base) throw new Error(`your ${s.base} contains the pushed head ${head.slice(0, 12)}, but the local PR store names ${v.headRefOid.slice(0, 12)} into ${v.baseRefName} for PR #${pr}`);
+    return "MERGED";
   };
 }
 var HEX4016;
@@ -56353,6 +56363,7 @@ var init_human_merged = __esm({
     init_mirror();
     init_state4();
     init_ledger2();
+    init_review_guard();
     init_tamper_quarantine();
     init_state5();
     HEX4016 = /^[0-9a-f]{40}$/;
@@ -58964,7 +58975,7 @@ var init_engine = __esm({
         const pr = existing.pr;
         let state;
         try {
-          state = this.forge ? forgePrStateReader(this.forge, this.exec, this.o.root)(existing) : String(this.prHeadState(pr).state);
+          state = this.forge ? forgePrStateReader(this.forge, this.exec, this.o.root, this.o.forge?.config.repo.url)(existing) : String(this.prHeadState(pr).state);
         } catch (error2) {
           this.o.warn?.(`omg factory run: PR #${pr} could not be read to check for a human merge: ${errText6(error2)}`);
           return null;

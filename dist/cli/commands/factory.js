@@ -993,7 +993,7 @@ export function cliHumanMerges(deps, root, runs) {
         const loaded = deps.forge(root, deps.base(root), { dryRun: true });
         const read = forgeReadExec(deps.exec, loaded.config, root);
         const forge = createForge(read.exec, root, loaded.config, { ...read.options, local: { omgRoot: getOmcRoot(root) } });
-        readPrState = forgePrStateReader(forge, read.exec, root);
+        readPrState = forgePrStateReader(forge, read.exec, root, loaded.config.repo.url);
     }
     catch (error) {
         return [`not checked for a human merge: the forge could not be loaded: ${error instanceof Error ? error.message : String(error)}`];

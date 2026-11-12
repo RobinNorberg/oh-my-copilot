@@ -84,6 +84,28 @@ describe('omg factory run: a stopped run whose PR a human merged', () => {
         expect(s.phase).toBe('fix');
         expect(s.gate?.name).toBe('fix-failed');
     });
+    it('parked at the merge gate + merged PR: the merge step reads the PR itself (no human-merge record first)', async () => {
+        await stoppedRun((s) => s);
+        h.gh.merged = true;
+        const out = await run([]).done;
+        expect(out.phase, out.message).toBe('merged');
+        const notes = readFactoryState(h.root, ISSUE).history.map((e) => e.note ?? '');
+        expect(notes.some((n) => n.includes('merged by a human after'))).toBe(false);
+    });
+    it.each(['prepare', 'gates'])('parked in %s + merged PR: that step reads the PR itself (no human-merge record first)', async (phase) => {
+        await stoppedRun((s) => ({ ...s, phase, gate: { name: `${phase}-timeout`, reason: 'test', at: s.updatedAt } }));
+        h.gh.merged = true;
+        await run([]).done;
+        const notes = readFactoryState(h.root, ISSUE).history.map((e) => e.note ?? '');
+        expect(notes.some((n) => n.includes('merged by a human after'))).toBe(false);
+    });
+    it('parked at a tamper park + merged PR: never recorded as a human merge', async () => {
+        await stoppedRun((s) => ({ ...s, phase: 'fix', gate: { name: 'lane-tampered', reason: 'test', at: s.updatedAt } }));
+        h.gh.merged = true;
+        await run([]).done;
+        const notes = readFactoryState(h.root, ISSUE).history.map((e) => e.note ?? '');
+        expect(notes.some((n) => n.includes('merged by a human after'))).toBe(false);
+    });
     it('cancelled + open PR: unchanged, nothing resumes', async () => {
         await stoppedRun(cancelled);
         const { lanes, done } = run([commitFile('b.ts')]);
