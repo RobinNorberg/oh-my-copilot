@@ -337,6 +337,13 @@ export declare const GIT_TRANSPORT_FAILURE = "Could not read from remote reposit
 export declare const MSYS_DLL_INIT_FAILED: readonly number[];
 /** A base calibration's output that names git's failed transport, on Windows (the OS sandbox only). */
 export declare const windowsGitTransportFailure: (output: string | undefined, platform?: NodeJS.Platform) => boolean;
+/**
+ * A base calibration's output that names esbuild's refused open of a package
+ * dir through the gate tree's junction, on Windows (the OS sandbox only;
+ * prepare.ts GATE_TREE_COPY_WHY): `Cannot read directory "node_modules/<pkg>":
+ * Access is denied.`
+ */
+export declare const windowsJunctionReadDenied: (output: string | undefined, platform?: NodeJS.Platform) => boolean;
 /** What the gate-sandbox-incompatible park of a failing base calibration tells the human to do. */
 export declare function sandboxIncompatibleAdvice(tail: string | undefined, platform?: NodeJS.Platform): string;
 /**

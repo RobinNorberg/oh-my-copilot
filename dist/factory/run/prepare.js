@@ -12,7 +12,7 @@
  * in it with push off, and the engine pushes the result itself.
  */
 import { copyFileSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmdirSync, statSync, symlinkSync, unlinkSync, writeFileSync } from 'fs';
-import { join } from 'path';
+import { basename, join } from 'path';
 import { loadBaseKnownFlaky, loadTrustedShipConfig, userConfigLayers } from '../../ship/config.js';
 import { getBranchName, getWorktreePath } from '../../team/git-worktree.js';
 import { runSlug } from './state.js';
@@ -73,8 +73,12 @@ function unlinkLink(p) {
  * working tree. Returns why the layout is not supported (Yarn PnP, a nested
  * git repository, over the bounds; the folder named), else null; the trees
  * that can be built still are.
+ *
+ * `copy` (GATE_TREE_COPY_WHY): each package dir is a copy of yours instead
+ * of a link (`.bin` and workspace self-links stay links), so a tool that
+ * opens a package dir itself (esbuild) never opens a junction.
  */
-export function linkNodeModules(root, checkout, warn, workspaces = []) {
+export function linkNodeModules(root, checkout, warn, workspaces = [], copy = false) {
     const source = join(root, 'node_modules');
     const target = join(checkout, 'node_modules');
     if (!existsSync(checkout))
@@ -94,7 +98,7 @@ export function linkNodeModules(root, checkout, warn, workspaces = []) {
         return ws.problem;
     const built = [];
     try {
-        buildGateTree(source, target, root, checkout, '', warn);
+        buildGateTree(source, target, root, checkout, '', warn, copy);
         // A nested tree for each workspace package whose node_modules exists in your checkout (npm puts version conflicts
         // there, pnpm every package's direct deps), in the same package dir of the gate checkout.
         for (const rel of ws.dirs) {
@@ -107,7 +111,7 @@ export function linkNodeModules(root, checkout, warn, workspaces = []) {
             if (existsSync(nested) || isLink(nested))
                 continue;
             built.push(rel);
-            buildGateTree(src, nested, root, checkout, `${rel}/`, warn);
+            buildGateTree(src, nested, root, checkout, `${rel}/`, warn, copy);
         }
         // The marker lists the nested trees for the removal and the sandbox's grant check (both re-validate every line).
         writeFileSync(join(target, GATE_TREE_MARKER), built.map((r) => `${r}\n`).join(''));
@@ -153,9 +157,10 @@ const linkType = () => (process.platform === 'win32' ? 'junction' : 'dir');
  * `<source>/<name>` read-only, except a link into your working tree outside
  * any node_modules (a workspace self-link, workspaceLinkTarget), which goes
  * to the same dir of the gate checkout. A `@scope` dir holding such a link is
- * a real dir with one link per package; any other is linked whole.
+ * a real dir with one link per package; any other is linked whole. `copy`:
+ * every dir but `.bin` and the workspace self-links is copied (copyGateDir).
  */
-function buildGateTree(source, target, root, checkout, label, warn) {
+function buildGateTree(source, target, root, checkout, label, warn, copy = false) {
     mkdirSync(target);
     // L3 (review-501): a dir on the way swapped for a junction or link after plainDirUnder (a surviving PR process) would
     // put the tree, its marker and its links outside the checkout: the new dir must be where it was meant to be.
@@ -176,7 +181,10 @@ function buildGateTree(source, target, root, checkout, label, warn) {
             warn?.(`omg factory run: ${w.skip}, so it is left out of the gate's node_modules tree ${target}`);
             return;
         }
-        symlinkSync('to' in w ? w.to : from, to, linkType());
+        if (copy && !('to' in w) && basename(from) !== '.bin')
+            copyGateDir(from, to);
+        else
+            symlinkSync('to' in w ? w.to : from, to, linkType());
     };
     for (const e of readdirSync(source, { withFileTypes: true })) {
         if (e.name === GATE_TREE_MARKER || GATE_CACHE_DIRS.includes(e.name))
@@ -223,6 +231,45 @@ function buildGateTree(source, target, root, checkout, label, warn) {
     const after = treeMoved(target, checkout, label);
     if (after)
         throw new Error(after);
+}
+/**
+ * Why a gate tree may be built as copies: in the Copilot OS sandbox on
+ * Windows (its low-integrity token) a directory junction whose target the
+ * sandbox may only read cannot be opened as a whole with generic read access
+ * (CreateFile GENERIC_READ: Access is denied), although listing it, reading
+ * files through it and opening the target by its own path all work (live
+ * 2026-11-13, Copilot CLI 1.0.105, Windows 11 26300). Node's readdir asks
+ * for list access only, so tsc, eslint and vitest work through the links;
+ * esbuild (Go's os.Open) asks for generic read on every package dir it lists
+ * and fails with `Cannot read directory "node_modules/<pkg>": Access is
+ * denied.` Granting the target changes nothing (a dir the sandbox was never
+ * granted fails the same way); only a real dir in the checkout works.
+ */
+export const GATE_TREE_COPY_WHY = 'the OS sandbox on Windows denies opening a package dir through the gate tree\'s junction with generic read access, which esbuild needs';
+/**
+ * A copy of your package dir `from` at `to`: dirs made, files copied (never
+ * hard-linked: the PR's code could write your file through one). A dir link
+ * inside it is made again to the same target (as a link tree reaches it
+ * anyway); a file link or a dangling one is left out. Nothing of yours is
+ * written.
+ */
+function copyGateDir(from, to) {
+    mkdirSync(to);
+    for (const e of readdirSync(from, { withFileTypes: true })) {
+        const s = join(from, e.name);
+        const d = join(to, e.name);
+        if (e.isSymbolicLink()) {
+            try {
+                if (statSync(s).isDirectory())
+                    symlinkSync(realpathSync.native(s), d, linkType());
+            }
+            catch { /* dangling: left out */ }
+        }
+        else if (e.isDirectory())
+            copyGateDir(s, d);
+        else if (e.isFile())
+            copyFileSync(s, d);
+    }
 }
 /** Why `target` (the tree for `label` in `checkout`) does not resolve where it was meant to be, or null. */
 function treeMoved(target, checkout, label) {

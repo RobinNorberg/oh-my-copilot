@@ -279,6 +279,13 @@ export interface FactoryRunState {
     /** The head a check last ran on WITHOUT any sandbox through the Windows git-transport fallback: such a run is never auto-merged. */
     gitTransportPlainHead?: string;
     /**
+     * The run's gate node_modules trees are copies of yours, not links: a base
+     * calibration failed in the OS sandbox on Windows opening a package dir
+     * through a junction (prepare.ts GATE_TREE_COPY_WHY). Optional: older state
+     * files lack it.
+     */
+    gateTreeCopy?: true;
+    /**
      * The name of the prepare checkout's admin dir under `<common>/worktrees/`,
      * as `worktree add` made it: a later invocation reads the checkout only
      * through that admin dir, never another one its `.git` file names.
@@ -323,12 +330,15 @@ export interface FactoryRunState {
      * the sha256 of the base sha and the check's argv: whether the command
      * passes in the sandbox on the trusted base itself, and its output tail.
      * `timedOut`: it did not finish (no verdict; never a held failure).
+     * `junctionRead`: it failed in the OS sandbox on Windows opening a package
+     * dir through the gate tree's junction (the engine then copies the tree).
      */
     gateCalibration?: Record<string, {
         ok: boolean;
         tail?: string;
         timedOut?: true;
         gitTransport?: true;
+        junctionRead?: true;
     }>;
     /** The Copilot coding agent session of an issue run whose implementer is the agent (coding-agent-lane.ts); sealed, shape-checked on load. */
     codingAgent?: CodingAgentRunRecord;
