@@ -7818,49 +7818,49 @@ var require_fast_uri = __commonJS({
       schemelessOptions.skipEscape = true;
       return serialize(resolved, schemelessOptions);
     }
-    function resolveComponent(base, relative36, options, skipNormalization) {
+    function resolveComponent(base, relative37, options, skipNormalization) {
       const target = {};
       if (!skipNormalization) {
         base = parse13(serialize(base, options), options);
-        relative36 = parse13(serialize(relative36, options), options);
+        relative37 = parse13(serialize(relative37, options), options);
       }
       options = options || {};
-      if (!options.tolerant && relative36.scheme) {
-        target.scheme = relative36.scheme;
-        target.userinfo = relative36.userinfo;
-        target.host = relative36.host;
-        target.port = relative36.port;
-        target.path = removeDotSegments(relative36.path || "");
-        target.query = relative36.query;
+      if (!options.tolerant && relative37.scheme) {
+        target.scheme = relative37.scheme;
+        target.userinfo = relative37.userinfo;
+        target.host = relative37.host;
+        target.port = relative37.port;
+        target.path = removeDotSegments(relative37.path || "");
+        target.query = relative37.query;
       } else {
-        if (relative36.userinfo !== void 0 || relative36.host !== void 0 || relative36.port !== void 0) {
-          target.userinfo = relative36.userinfo;
-          target.host = relative36.host;
-          target.port = relative36.port;
-          target.path = removeDotSegments(relative36.path || "");
-          target.query = relative36.query;
+        if (relative37.userinfo !== void 0 || relative37.host !== void 0 || relative37.port !== void 0) {
+          target.userinfo = relative37.userinfo;
+          target.host = relative37.host;
+          target.port = relative37.port;
+          target.path = removeDotSegments(relative37.path || "");
+          target.query = relative37.query;
         } else {
-          if (!relative36.path) {
+          if (!relative37.path) {
             target.path = base.path;
-            if (relative36.query !== void 0) {
-              target.query = relative36.query;
+            if (relative37.query !== void 0) {
+              target.query = relative37.query;
             } else {
               target.query = base.query;
             }
           } else {
-            if (relative36.path[0] === "/") {
-              target.path = removeDotSegments(relative36.path);
+            if (relative37.path[0] === "/") {
+              target.path = removeDotSegments(relative37.path);
             } else {
               if ((base.userinfo !== void 0 || base.host !== void 0 || base.port !== void 0) && !base.path) {
-                target.path = "/" + relative36.path;
+                target.path = "/" + relative37.path;
               } else if (!base.path) {
-                target.path = relative36.path;
+                target.path = relative37.path;
               } else {
-                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative36.path;
+                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative37.path;
               }
               target.path = removeDotSegments(target.path);
             }
-            target.query = relative36.query;
+            target.query = relative37.query;
           }
           target.userinfo = base.userinfo;
           target.host = base.host;
@@ -7868,7 +7868,7 @@ var require_fast_uri = __commonJS({
         }
         target.scheme = base.scheme;
       }
-      target.fragment = relative36.fragment;
+      target.fragment = relative37.fragment;
       return target;
     }
     function equal(uriA, uriB, options) {
@@ -48566,6 +48566,138 @@ var init_string_width = __esm({
   }
 });
 
+// src/factory/run/test-delta.ts
+function testId(parts) {
+  const hash = (0, import_node_crypto5.createHash)("sha256").update(JSON.stringify(parts)).digest("hex").slice(0, ID_HASH_CHARS);
+  return `${hash} ${parts.join(" > ")}`.slice(0, TEST_ID_MAX_CHARS);
+}
+function testIdText(id) {
+  return /^[0-9a-f]{16} /.test(id) ? id.slice(ID_HASH_CHARS + 1) : id;
+}
+function vitestReportPath(dir) {
+  return (0, import_node_path14.join)(dir, `.omg-vitest-report-${(0, import_node_crypto5.randomBytes)(6).toString("hex")}.json`);
+}
+function vitestReportArgs(path15) {
+  return ["--reporter=default", "--reporter=json", `--outputFile=${path15}`, "--coverage.enabled=false"];
+}
+function relative28(name, root) {
+  const n = slash(name);
+  const r = slash(root).replace(/\/+$/, "");
+  return n.toLowerCase().startsWith(`${r.toLowerCase()}/`) ? n.slice(r.length + 1) : n;
+}
+function parseVitestReport(text3, root) {
+  let data;
+  try {
+    data = JSON.parse(text3);
+  } catch {
+    return null;
+  }
+  const files = data?.testResults;
+  if (!Array.isArray(files)) return null;
+  let passed = 0;
+  const failed = /* @__PURE__ */ new Set();
+  const broken = /* @__PURE__ */ new Set();
+  for (const f of files) {
+    if (typeof f !== "object" || f === null || typeof f.name !== "string" || !Array.isArray(f.assertionResults)) return null;
+    const file = relative28(f.name, root);
+    let own = 0;
+    for (const a of f.assertionResults) {
+      if (typeof a !== "object" || a === null || typeof a.title !== "string") return null;
+      if (a.status === "passed") passed += 1;
+      if (a.status !== "failed") continue;
+      own += 1;
+      const ancestors = Array.isArray(a.ancestorTitles) ? a.ancestorTitles.filter((t) => typeof t === "string") : [];
+      failed.add(testId([file, ...ancestors, a.title]));
+    }
+    if (f.status === "failed" && own === 0) broken.add(testId([file]));
+  }
+  return { passed, failed: [...failed].sort(), brokenFiles: [...broken].sort() };
+}
+function readVitestReport(path15, root) {
+  try {
+    const fd = (0, import_node_fs13.openSync)(path15, "r");
+    try {
+      const size = (0, import_node_fs13.fstatSync)(fd).size;
+      if (size > VITEST_REPORT_MAX_BYTES) return null;
+      const buf = Buffer.alloc(size);
+      let off = 0;
+      while (off < size) {
+        const n = (0, import_node_fs13.readSync)(fd, buf, off, size - off, off);
+        if (n <= 0) break;
+        off += n;
+      }
+      return parseVitestReport(buf.subarray(0, off).toString("utf8"), root);
+    } finally {
+      (0, import_node_fs13.closeSync)(fd);
+    }
+  } catch {
+    return null;
+  } finally {
+    try {
+      (0, import_node_fs13.rmSync)(path15, { force: true });
+    } catch {
+    }
+  }
+}
+function stripAnsi2(text3) {
+  return text3.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "");
+}
+function vitestOutputFailures(output) {
+  const text3 = stripAnsi2(output);
+  return [
+    .../^\s*Errors\s+\d+\s+errors?\b/m.test(text3) ? [UNHANDLED_ERRORS_ID] : [],
+    .../does not meet (?:global )?threshold/i.test(text3) ? [COVERAGE_THRESHOLD_ID] : []
+  ];
+}
+function vitestSummaryFailed(output) {
+  const text3 = stripAnsi2(output);
+  const tests = /^\s*Tests\s+(\d+)\s+failed\b/m.exec(text3)?.[1];
+  const files = /^\s*Test Files\s+(\d+)\s+failed\b/m.exec(text3)?.[1];
+  return { ...tests ? { tests: Number(tests) } : {}, ...files ? { files: Number(files) } : {} };
+}
+function headRunSignals(status, output) {
+  return { status, output: vitestOutputFailures(output), summary: vitestSummaryFailed(output) };
+}
+function testDeltaVerdict(base, head, signals = { status: 1, output: [], summary: {} }, baseOutput = []) {
+  if (!base) return { kind: "park", why: "the base run left no test report" };
+  if (base.passed === 0) return { kind: "park", why: "no selected test passes on the base" };
+  if (!head) return { kind: "park", why: "the head run left no test report" };
+  if (signals.status !== 1) return { kind: "park", why: `the head run exited ${signals.status}, not 1 (failed tests)` };
+  const both = signals.output.filter((id) => baseOutput.includes(id));
+  if (both.length > 0) return { kind: "park", why: `${both.join(" and ")} on the base and the head` };
+  if (signals.summary.tests !== void 0 && signals.summary.tests > head.failed.length) return { kind: "park", why: "the head run's summary names more failed tests than its report" };
+  const files = /* @__PURE__ */ new Set([...head.failed.map((id) => testIdText(id).split(" > ")[0]), ...head.brokenFiles.map(testIdText)]);
+  if (signals.summary.files !== void 0 && signals.summary.files > files.size) return { kind: "park", why: "the head run's summary names more failed test files than its report" };
+  const onHead = [...head.failed, ...head.brokenFiles.map(fileId2), ...signals.output];
+  if (onHead.length === 0) return { kind: "park", why: "the head run failed, but its report names no failing test" };
+  const onBase = /* @__PURE__ */ new Set([...base.failed, ...base.brokenFiles.map(fileId2)]);
+  const counted = onHead.filter((t) => !onBase.has(t));
+  const excused = onHead.filter((t) => onBase.has(t));
+  return counted.length > 0 ? { kind: "fail", counted, excused } : { kind: "pass", excused };
+}
+function vitestSummaryShapeOk(v) {
+  const s = v;
+  const strs = (x) => Array.isArray(x) && x.length <= BASE_FAILURES_MAX && x.every((t) => typeof t === "string" && t.length <= TEST_ID_MAX_CHARS);
+  return typeof s === "object" && s !== null && !Array.isArray(s) && Number.isSafeInteger(s.passed) && s.passed >= 0 && strs(s.failed) && strs(s.brokenFiles) && Object.keys(s).every((k) => k === "passed" || k === "failed" || k === "brokenFiles");
+}
+var import_node_crypto5, import_node_fs13, import_node_path14, VITEST_REPORT_MAX_BYTES, BASE_FAILURES_MAX, TEST_ID_MAX_CHARS, ID_HASH_CHARS, slash, fileId2, UNHANDLED_ERRORS_ID, COVERAGE_THRESHOLD_ID;
+var init_test_delta = __esm({
+  "src/factory/run/test-delta.ts"() {
+    "use strict";
+    import_node_crypto5 = require("node:crypto");
+    import_node_fs13 = require("node:fs");
+    import_node_path14 = require("node:path");
+    VITEST_REPORT_MAX_BYTES = 32 * 1024 * 1024;
+    BASE_FAILURES_MAX = 200;
+    TEST_ID_MAX_CHARS = 300;
+    ID_HASH_CHARS = 16;
+    slash = (p) => p.replace(/\\/g, "/");
+    fileId2 = (id) => `${id} (the file failed)`;
+    UNHANDLED_ERRORS_ID = 'errors outside any test (vitest "Unhandled Errors")';
+    COVERAGE_THRESHOLD_ID = "a coverage threshold is not met";
+  }
+});
+
 // src/factory/run/state.ts
 function healRunKey(sig8) {
   const key = `heal-${sig8}`;
@@ -48744,12 +48876,13 @@ function humanReviewShapeProblem(s) {
   if (s.sandboxedPrepareHead !== void 0 && (!isStr2(s.sandboxedPrepareHead) || !HEX409.test(s.sandboxedPrepareHead))) return "sandboxedPrepareHead";
   if (s.sandboxedGateHead !== void 0 && (!isStr2(s.sandboxedGateHead) || !HEX409.test(s.sandboxedGateHead))) return "sandboxedGateHead";
   if (s.gitTransportPlainHead !== void 0 && (!isStr2(s.gitTransportPlainHead) || !HEX409.test(s.gitTransportPlainHead))) return "gitTransportPlainHead";
+  if (s.testDeltaExcusedHead !== void 0 && (!isStr2(s.testDeltaExcusedHead) || !HEX409.test(s.testDeltaExcusedHead))) return "testDeltaExcusedHead";
   if (s.gateTreeCopy !== void 0 && s.gateTreeCopy !== true) return "gateTreeCopy";
   if (s.checkoutAdmin !== void 0 && (!isStr2(s.checkoutAdmin) || !/^[A-Za-z0-9._-]+$/.test(s.checkoutAdmin) || s.checkoutAdmin === "." || s.checkoutAdmin === "..")) return "checkoutAdmin";
   const cal = s.gateCalibration;
   if (cal !== void 0 && (typeof cal !== "object" || cal === null || Array.isArray(cal) || !Object.entries(cal).every(([k, v]) => {
     const e = v;
-    return HEX64.test(k) && typeof e === "object" && e !== null && typeof e.ok === "boolean" && (e.tail === void 0 || isStr2(e.tail)) && (e.gitTransport === void 0 || e.gitTransport === true) && (e.timedOut === void 0 || e.timedOut === true) && (e.junctionRead === void 0 || e.junctionRead === true) && Object.keys(e).every((x) => x === "ok" || x === "tail" || x === "timedOut" || x === "gitTransport" || x === "junctionRead");
+    return HEX64.test(k) && typeof e === "object" && e !== null && typeof e.ok === "boolean" && (e.tail === void 0 || isStr2(e.tail)) && (e.gitTransport === void 0 || e.gitTransport === true) && (e.timedOut === void 0 || e.timedOut === true) && (e.junctionRead === void 0 || e.junctionRead === true) && (e.tests === void 0 || vitestSummaryShapeOk(e.tests)) && Object.keys(e).every((x) => x === "ok" || x === "tail" || x === "timedOut" || x === "gitTransport" || x === "junctionRead" || x === "tests");
   }))) return "gateCalibration";
   const lanes = s.lanes;
   if (!lanes.every((l) => {
@@ -49048,6 +49181,7 @@ var init_state5 = __esm({
     init_types10();
     init_mirror();
     init_coding_agent_lane();
+    init_test_delta();
     FACTORY_PHASES = [
       "intake",
       "plan",
@@ -51582,37 +51716,37 @@ async function runSandboxed(argv, o, deps) {
   const refuse2 = (reason) => ({ ran: false, reason, refused: true });
   const noVerdict = (reason) => ({ ran: false, reason, started: true });
   const sleep9 = deps.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
-  const marker = `${MARKER_PREFIX}${(0, import_node_crypto5.randomBytes)(8).toString("hex")}`;
+  const marker = `${MARKER_PREFIX}${(0, import_node_crypto6.randomBytes)(8).toString("hex")}`;
   const command = sandboxShellCommand(deps.platform, argv, o.cwd, marker);
   if (command === null) return refuse2("the command cannot be passed to the sandbox shell unchanged (a NUL, or on Windows an empty argument or a double quote)");
   const max = sandboxCommandMaxChars(deps.platform);
   if (command.length > max) {
     return refuse2(`the command is too long for the sandbox shell: it encodes to ${command.length} characters, above the ${max} that ${deps.platform === "win32" ? "a Windows command line" : "one shell argument"} can safely carry; shorten the configured command`);
   }
-  const jobHome = (0, import_node_path14.join)(o.jobRoot, `gate-${Date.now().toString(36)}-${(0, import_node_crypto5.randomBytes)(4).toString("hex")}`);
-  const workDir = (0, import_node_path14.join)(jobHome, "work");
+  const jobHome = (0, import_node_path15.join)(o.jobRoot, `gate-${Date.now().toString(36)}-${(0, import_node_crypto6.randomBytes)(4).toString("hex")}`);
+  const workDir = (0, import_node_path15.join)(jobHome, "work");
   let client = null;
   let session = null;
   let pid;
   let started = false;
   try {
-    (0, import_node_fs13.mkdirSync)(workDir, { recursive: true });
+    (0, import_node_fs14.mkdirSync)(workDir, { recursive: true });
     const loaded2 = await deps.loadSdk().catch(() => null);
     if (!loaded2) return notStarted("@github/copilot-sdk is not installed or could not be loaded, so the sandbox cannot start");
     const found = deps.resolveBin();
     const bin = found && deps.platform === "win32" && /\.(cmd|bat|ps1)$/i.test(found) ? resolveShimTarget(found) : found;
     if (!bin) return notStarted(found ? `copilot shim ${found} names no .js/.exe target` : "copilot CLI not found (PATH, COPILOT_CLI_PATH, WinGet), so the sandbox cannot start");
     const ident = loginIdentity(deps.userConfigDir());
-    (0, import_node_fs13.writeFileSync)((0, import_node_path14.join)(jobHome, "config.json"), `${JSON.stringify({ ...ident, trustedFolders: [workDir] }, null, 2)}
+    (0, import_node_fs14.writeFileSync)((0, import_node_path15.join)(jobHome, "config.json"), `${JSON.stringify({ ...ident, trustedFolders: [workDir] }, null, 2)}
 `);
     const env2 = childEnv(allowlistSessionEnv(buildSessionEnv(deps.env, jobHome, { session: false, hasLogin: ident.loggedInUsers !== void 0 }), jobHome));
     const missing = missingSandboxEnv(env2, deps.platform);
     if (missing.length) return notStarted(`the sandbox env lacks ${missing.join(", ")}, which the Windows sandbox needs to launch any process`);
-    (0, import_node_fs13.mkdirSync)(env2.XDG_CONFIG_HOME, { recursive: true });
-    (0, import_node_fs13.mkdirSync)((0, import_node_path14.dirname)(env2.GIT_CONFIG_GLOBAL), { recursive: true });
-    (0, import_node_fs13.mkdirSync)(env2.TEMP, { recursive: true });
-    (0, import_node_fs13.writeFileSync)(env2.GIT_CONFIG_GLOBAL, "[credential]\n	helper =\n");
-    Object.assign(env2, { GIT_TERMINAL_PROMPT: "0", GCM_INTERACTIVE: "never", COPILOT_ALLOW_ALL: "false", GIT_CEILING_DIRECTORIES: (0, import_node_path14.resolve)(o.jobRoot) });
+    (0, import_node_fs14.mkdirSync)(env2.XDG_CONFIG_HOME, { recursive: true });
+    (0, import_node_fs14.mkdirSync)((0, import_node_path15.dirname)(env2.GIT_CONFIG_GLOBAL), { recursive: true });
+    (0, import_node_fs14.mkdirSync)(env2.TEMP, { recursive: true });
+    (0, import_node_fs14.writeFileSync)(env2.GIT_CONFIG_GLOBAL, "[credential]\n	helper =\n");
+    Object.assign(env2, { GIT_TERMINAL_PROMPT: "0", GCM_INTERACTIVE: "never", COPILOT_ALLOW_ALL: "false", GIT_CEILING_DIRECTORIES: (0, import_node_path15.resolve)(o.jobRoot) });
     const gitHubToken = sessionGitHubToken(deps.env);
     const { CopilotClient, RuntimeConnection } = loaded2.module;
     const c = new CopilotClient({
@@ -51637,8 +51771,8 @@ async function runSandboxed(argv, o, deps) {
       policyContext: () => {
         const proxy = proxyCaEnv(deps.env, deps.platform, realHome);
         return {
-          worktree: (0, import_node_path14.resolve)(o.cwd),
-          commonGitDir: (0, import_node_path14.resolve)(o.commonGitDir),
+          worktree: (0, import_node_path15.resolve)(o.cwd),
+          commonGitDir: (0, import_node_path15.resolve)(o.commonGitDir),
           pluginRoot,
           jobHome,
           jobDir: jobHome,
@@ -51648,9 +51782,9 @@ async function runSandboxed(argv, o, deps) {
           hostCommits: true,
           toolPaths: (deps.toolPaths ?? laneToolPaths)(deps.env, deps.platform),
           extraReadonly: proxy.caPaths,
-          ...o.mainRoot ? { mainRoot: (0, import_node_path14.resolve)(o.mainRoot) } : {},
-          ...o.nodeModulesTarget ? { nodeModulesTarget: (0, import_node_path14.resolve)(o.nodeModulesTarget) } : {},
-          ...o.nestedNodeModulesTargets ? { nestedNodeModulesTargets: o.nestedNodeModulesTargets.map((p) => (0, import_node_path14.resolve)(p)) } : {}
+          ...o.mainRoot ? { mainRoot: (0, import_node_path15.resolve)(o.mainRoot) } : {},
+          ...o.nodeModulesTarget ? { nodeModulesTarget: (0, import_node_path15.resolve)(o.nodeModulesTarget) } : {},
+          ...o.nestedNodeModulesTargets ? { nestedNodeModulesTargets: o.nestedNodeModulesTargets.map((p) => (0, import_node_path15.resolve)(p)) } : {}
         };
       },
       note: (text3) => {
@@ -51688,7 +51822,7 @@ async function runSandboxed(argv, o, deps) {
     if (sandbox.state?.mode !== "enforced") return notStarted(`the sandbox policy was not confirmed: ${sandbox.state?.reason ?? "unknown reason"}`);
     const shell = session.rpc.shell;
     if (typeof shell?.executeUserRequested !== "function") return notStarted("the SDK has no shell.executeUserRequested RPC, so the command cannot run in the sandbox");
-    const requestId = (0, import_node_crypto5.randomUUID)();
+    const requestId = (0, import_node_crypto6.randomUUID)();
     let timer;
     started = true;
     const call = shell.executeUserRequested.call(shell, { requestId, command }).then((value) => ({ value }), (error2) => ({ error: error2 }));
@@ -51778,7 +51912,7 @@ timed out after ${o.timeoutMs} ms`), timedOut: true, ...marked };
       }
     }
     try {
-      (0, import_node_fs13.rmSync)(jobHome, { recursive: true, force: true });
+      (0, import_node_fs14.rmSync)(jobHome, { recursive: true, force: true });
     } catch {
     }
   }
@@ -51817,18 +51951,18 @@ function gateEnv(env2, home) {
     const upper = key.toUpperCase();
     if (value !== void 0 && (kept.has(upper) || upper.startsWith("LC_"))) out[key] = value;
   }
-  const tmp = (0, import_node_path14.join)(home, "tmp");
-  (0, import_node_fs13.mkdirSync)(tmp, { recursive: true });
-  const gitConfig = (0, import_node_path14.join)(home, ".gitconfig-empty");
-  (0, import_node_fs13.writeFileSync)(gitConfig, "");
+  const tmp = (0, import_node_path15.join)(home, "tmp");
+  (0, import_node_fs14.mkdirSync)(tmp, { recursive: true });
+  const gitConfig = (0, import_node_path15.join)(home, ".gitconfig-empty");
+  (0, import_node_fs14.writeFileSync)(gitConfig, "");
   return {
     ...out,
     ...TRUSTED_READ_ENV,
     HOME: home,
     USERPROFILE: home,
-    XDG_CONFIG_HOME: (0, import_node_path14.join)(home, ".config"),
-    ...has("APPDATA") ? { APPDATA: (0, import_node_path14.join)(home, "AppData", "Roaming") } : {},
-    ...has("LOCALAPPDATA") ? { LOCALAPPDATA: (0, import_node_path14.join)(home, "AppData", "Local") } : {},
+    XDG_CONFIG_HOME: (0, import_node_path15.join)(home, ".config"),
+    ...has("APPDATA") ? { APPDATA: (0, import_node_path15.join)(home, "AppData", "Roaming") } : {},
+    ...has("LOCALAPPDATA") ? { LOCALAPPDATA: (0, import_node_path15.join)(home, "AppData", "Local") } : {},
     TEMP: tmp,
     TMP: tmp,
     TMPDIR: tmp,
@@ -51838,14 +51972,14 @@ function gateEnv(env2, home) {
     GCM_INTERACTIVE: "never"
   };
 }
-var import_node_crypto5, import_node_fs13, import_node_os7, import_node_path14, SANDBOX_OUTPUT_TAIL_CHARS, START_TIMEOUT_MS3, RPC_TIMEOUT_MS3, STOP_TIMEOUT_MS3, CANCEL_GRACE_MS, ATTEST_WAIT_MS, CREDENTIAL_FILES_READABLE_NOTE, MARKER_PREFIX, SHELL_OUTPUT_BYTES, SHELL_OUTPUT_LINES, SHELL_LINE_CHARS, sandboxCommandMaxChars, SIZING_MARKER, tail, sandboxJobRoot, GATE_ENV_KEPT;
+var import_node_crypto6, import_node_fs14, import_node_os7, import_node_path15, SANDBOX_OUTPUT_TAIL_CHARS, START_TIMEOUT_MS3, RPC_TIMEOUT_MS3, STOP_TIMEOUT_MS3, CANCEL_GRACE_MS, ATTEST_WAIT_MS, CREDENTIAL_FILES_READABLE_NOTE, MARKER_PREFIX, SHELL_OUTPUT_BYTES, SHELL_OUTPUT_LINES, SHELL_LINE_CHARS, sandboxCommandMaxChars, SIZING_MARKER, tail, sandboxJobRoot, GATE_ENV_KEPT;
 var init_sandbox_exec = __esm({
   "src/factory/run/sandbox-exec.ts"() {
     "use strict";
-    import_node_crypto5 = require("node:crypto");
-    import_node_fs13 = require("node:fs");
+    import_node_crypto6 = require("node:crypto");
+    import_node_fs14 = require("node:fs");
     import_node_os7 = require("node:os");
-    import_node_path14 = require("node:path");
+    import_node_path15 = require("node:path");
     init_job();
     init_sandbox2();
     init_container_gate();
@@ -51875,7 +52009,7 @@ var init_sandbox_exec = __esm({
       const clean = redactGateOutput(text3);
       return clean.length > SANDBOX_OUTPUT_TAIL_CHARS ? clean.slice(-SANDBOX_OUTPUT_TAIL_CHARS) : clean;
     };
-    sandboxJobRoot = (root) => (0, import_node_path14.join)(getOmcRoot(root), "state", "factory-gates");
+    sandboxJobRoot = (root) => (0, import_node_path15.join)(getOmcRoot(root), "state", "factory-gates");
     GATE_ENV_KEPT = [
       "PATH",
       "PATHEXT",
@@ -51894,7 +52028,7 @@ var init_sandbox_exec = __esm({
 
 // src/factory/run/container-gate.ts
 function containerRunLabel(root, key) {
-  const repo = (0, import_node_crypto6.createHash)("sha256").update((0, import_node_path15.resolve)(root)).digest("hex").slice(0, 10);
+  const repo = (0, import_node_crypto7.createHash)("sha256").update((0, import_node_path16.resolve)(root)).digest("hex").slice(0, 10);
   return `${repo}-${runSlug(key).toLowerCase().replace(/[^a-z0-9-]/g, "-").slice(0, 40)}`;
 }
 function mountArg(fields) {
@@ -51977,7 +52111,7 @@ function lockfileCachePolicy(lock) {
 function installPlan(checkout) {
   const regular = (name) => {
     try {
-      return (0, import_node_fs14.lstatSync)((0, import_node_path15.join)(checkout, name)).isFile();
+      return (0, import_node_fs15.lstatSync)((0, import_node_path16.join)(checkout, name)).isFile();
     } catch {
       return false;
     }
@@ -51985,9 +52119,9 @@ function installPlan(checkout) {
   if (!regular("package.json")) return { kind: "none" };
   for (const lock of ["npm-shrinkwrap.json", "package-lock.json"]) {
     if (!regular(lock)) continue;
-    const path15 = (0, import_node_path15.join)(checkout, lock);
-    if ((0, import_node_fs14.lstatSync)(path15).size > LOCKFILE_MAX_BYTES) return { kind: "unsupported", reason: `${lock} is larger than the gate container reads` };
-    const bytes = (0, import_node_fs14.readFileSync)(path15);
+    const path15 = (0, import_node_path16.join)(checkout, lock);
+    if ((0, import_node_fs15.lstatSync)(path15).size > LOCKFILE_MAX_BYTES) return { kind: "unsupported", reason: `${lock} is larger than the gate container reads` };
+    const bytes = (0, import_node_fs15.readFileSync)(path15);
     let json2;
     try {
       json2 = JSON.parse(bytes.toString("utf8"));
@@ -51996,11 +52130,11 @@ function installPlan(checkout) {
     }
     const policy = lockfileCachePolicy(json2);
     if (typeof policy === "object") return { kind: "unsupported", reason: policy.refuse };
-    return { kind: "npm-ci", lockHash: (0, import_node_crypto6.createHash)("sha256").update(bytes).digest("hex").slice(0, 16), sharedCache: policy === "shared" };
+    return { kind: "npm-ci", lockHash: (0, import_node_crypto7.createHash)("sha256").update(bytes).digest("hex").slice(0, 16), sharedCache: policy === "shared" };
   }
   let pkg = {};
   try {
-    pkg = JSON.parse((0, import_node_fs14.readFileSync)((0, import_node_path15.join)(checkout, "package.json"), "utf8"));
+    pkg = JSON.parse((0, import_node_fs15.readFileSync)((0, import_node_path16.join)(checkout, "package.json"), "utf8"));
   } catch {
   }
   const deps = ["dependencies", "devDependencies", "optionalDependencies"].some((k) => {
@@ -52012,15 +52146,15 @@ function installPlan(checkout) {
   return { kind: "unsupported", reason: other ? `the project uses ${other}; the gate container installs npm projects (package-lock.json or npm-shrinkwrap.json) only` : "the project has dependencies but no package-lock.json; the gate container installs with npm ci only" };
 }
 function containerArgv(req) {
-  const words = isNodeExe(req.exe) && req.args.length > 0 && !(0, import_node_path15.isAbsolute)(req.args[0]) ? ["node", ...req.args] : [...req.argv];
-  const root = (0, import_node_path15.resolve)(req.cwd);
+  const words = isNodeExe(req.exe) && req.args.length > 0 && !(0, import_node_path16.isAbsolute)(req.args[0]) ? ["node", ...req.args] : [...req.argv];
+  const root = (0, import_node_path16.resolve)(req.cwd);
   return words.map((w, i) => {
     if (i === 0 && isNodeExe(w)) return "node";
-    if (!(0, import_node_path15.isAbsolute)(w)) return w;
-    const rel = (0, import_node_path15.relative)(root, (0, import_node_path15.resolve)(w));
+    if (!(0, import_node_path16.isAbsolute)(w)) return w;
+    const rel = (0, import_node_path16.relative)(root, (0, import_node_path16.resolve)(w));
     if (rel === "") return SRC;
-    if (rel.startsWith("..") || (0, import_node_path15.isAbsolute)(rel)) return w;
-    return `${SRC}/${rel.split(import_node_path15.sep).join("/")}`;
+    if (rel.startsWith("..") || (0, import_node_path16.isAbsolute)(rel)) return w;
+    return `${SRC}/${rel.split(import_node_path16.sep).join("/")}`;
   });
 }
 function copyScript(npmCi, gitView = false) {
@@ -52030,24 +52164,24 @@ function copyScript(npmCi, gitView = false) {
 function checkoutCopyProblem(checkout) {
   let root;
   try {
-    root = import_node_fs14.realpathSync.native(checkout);
+    root = import_node_fs15.realpathSync.native(checkout);
   } catch {
     return "the checkout could not be resolved";
   }
   let seen = 0;
   const inside2 = (p) => samePathOrUnder(p, root);
   const walk = (dir) => {
-    for (const name of (0, import_node_fs14.readdirSync)(dir)) {
+    for (const name of (0, import_node_fs15.readdirSync)(dir)) {
       if (name === ".git" || name === "node_modules") continue;
       if (++seen > SCAN_MAX_ENTRIES) return "the checkout has more files than the gate container copies";
-      const path15 = (0, import_node_path15.join)(dir, name);
-      const st = (0, import_node_fs14.lstatSync)(path15);
+      const path15 = (0, import_node_path16.join)(dir, name);
+      const st = (0, import_node_fs15.lstatSync)(path15);
       if (st.isSymbolicLink()) {
-        const lexical = linkTargetProblem((0, import_node_fs14.readlinkSync)(path15), (0, import_node_path15.relative)(root, dir).split(import_node_path15.sep).filter(Boolean).length);
+        const lexical = linkTargetProblem((0, import_node_fs15.readlinkSync)(path15), (0, import_node_path16.relative)(root, dir).split(import_node_path16.sep).filter(Boolean).length);
         if (lexical) return lexical;
         let target;
         try {
-          target = import_node_fs14.realpathSync.native(path15);
+          target = import_node_fs15.realpathSync.native(path15);
         } catch {
           return "the checkout has a link whose target does not exist";
         }
@@ -52086,7 +52220,7 @@ function samePathOrUnder(p, root) {
   const norm2 = (x) => process.platform === "win32" ? x.toLowerCase() : x;
   const a = norm2(p);
   const b = norm2(root);
-  return a === b || a.startsWith(b.endsWith(import_node_path15.sep) ? b : b + import_node_path15.sep);
+  return a === b || a.startsWith(b.endsWith(import_node_path16.sep) ? b : b + import_node_path16.sep);
 }
 async function runContainerGate(req, s, runLabel2, deps) {
   const unavailable = (reason) => ({ ran: false, reason, unavailable: true });
@@ -52125,7 +52259,7 @@ async function runContainerGate(req, s, runLabel2, deps) {
   if (plan.kind === "unsupported") return unavailable(`${plan.reason}; ${switchBack}`);
   const scan = checkoutCopyProblem(req.cwd);
   if (scan) return noVerdict(`${scan}, so it is not copied into the gate container; nothing is counted`);
-  const id = (deps.id ?? (() => (0, import_node_crypto6.randomBytes)(4).toString("hex")))();
+  const id = (deps.id ?? (() => (0, import_node_crypto7.randomBytes)(4).toString("hex")))();
   const name = `${CONTAINER_NAME_PREFIX}${runLabel2}-${id}`;
   const volume = name;
   const network = `${name}-net`;
@@ -52240,10 +52374,10 @@ ${what} in the gate container ${r.overDisk === "unmeasured" ? `was stopped: its 
       "FOWNER",
       "--read-only",
       "--mount",
-      mountArg(["type=bind", `source=${(0, import_node_path15.resolve)(req.cwd)}`, "target=/in", "readonly"]),
+      mountArg(["type=bind", `source=${(0, import_node_path16.resolve)(req.cwd)}`, "target=/in", "readonly"]),
       ...work,
       ...cacheMount,
-      ...req.gitView ? ["--mount", mountArg(["type=bind", `source=${(0, import_node_path15.resolve)(req.gitView)}`, `target=${GIT_VIEW_MOUNT}`, "readonly"])] : []
+      ...req.gitView ? ["--mount", mountArg(["type=bind", `source=${(0, import_node_path16.resolve)(req.gitView)}`, `target=${GIT_VIEW_MOUNT}`, "readonly"])] : []
     ], ["sh", "-c", copyScript(plan.kind === "npm-ci", req.gitView !== void 0)], COPY_TIMEOUT_MS);
     if (copy.status !== 0) return noVerdict(`copying the checkout into the gate container failed (exit ${copy.status ?? "none"}${copy.timedOut ? ", timed out" : ""}); nothing is counted`);
     const runBase = [...labels, ...harden, "--user", CONTAINER_USER, "--read-only", "--tmpfs", "/tmp:rw,exec,nosuid,nodev,size=1g", ...work, "-w", SRC];
@@ -52427,13 +52561,13 @@ function safeRelPath(raw, platform) {
 function hostTree(root, platform) {
   const out = /* @__PURE__ */ new Map();
   const walk = (dir, rel) => {
-    for (const name of (0, import_node_fs14.readdirSync)(dir)) {
+    for (const name of (0, import_node_fs15.readdirSync)(dir)) {
       if (isName(name, ".git", platform) || isName(name, "node_modules", platform)) continue;
       const r = rel ? `${rel}/${name}` : name;
-      const st = (0, import_node_fs14.lstatSync)((0, import_node_path15.join)(dir, name));
+      const st = (0, import_node_fs15.lstatSync)((0, import_node_path16.join)(dir, name));
       const kind = st.isSymbolicLink() ? "symlink" : st.isDirectory() ? "dir" : st.isFile() && st.nlink === 1 ? "file" : "other";
       out.set(foldPath(r, platform), { rel: r, kind });
-      if (kind === "dir") walk((0, import_node_path15.join)(dir, name), r);
+      if (kind === "dir") walk((0, import_node_path16.join)(dir, name), r);
     }
   };
   walk(root, "");
@@ -52443,10 +52577,10 @@ function onDiskProblem(checkout, realRoot, rel, leaf) {
   const parts = rel.split("/");
   let deepest = checkout;
   for (let i = 0; i < parts.length; i++) {
-    const path15 = (0, import_node_path15.join)(checkout, ...parts.slice(0, i + 1));
+    const path15 = (0, import_node_path16.join)(checkout, ...parts.slice(0, i + 1));
     let st;
     try {
-      st = (0, import_node_fs14.lstatSync)(path15);
+      st = (0, import_node_fs15.lstatSync)(path15);
     } catch (error2) {
       if (error2.code === "ENOENT") break;
       return "a path could not be checked";
@@ -52459,7 +52593,7 @@ function onDiskProblem(checkout, realRoot, rel, leaf) {
   }
   let real2;
   try {
-    real2 = import_node_fs14.realpathSync.native(deepest);
+    real2 = import_node_fs15.realpathSync.native(deepest);
   } catch {
     return "a parent directory could not be resolved";
   }
@@ -52476,7 +52610,7 @@ function applyCopyBack(checkout, tar, platform) {
   let realRoot;
   try {
     host = hostTree(checkout, platform);
-    realRoot = import_node_fs14.realpathSync.native(checkout);
+    realRoot = import_node_fs15.realpathSync.native(checkout);
   } catch {
     return "the checkout could not be listed";
   }
@@ -52513,7 +52647,7 @@ function applyCopyBack(checkout, tar, platform) {
     const disk = onDiskProblem(checkout, realRoot, rel, "file");
     if (disk) return disk;
     if (kind === "file") {
-      const cur = (0, import_node_fs14.readFileSync)((0, import_node_path15.join)(checkout, ...parts));
+      const cur = (0, import_node_fs15.readFileSync)((0, import_node_path16.join)(checkout, ...parts));
       if (cur.equals(e.data)) continue;
     }
     writes.push({ rel, data: e.data, mode: e.mode });
@@ -52524,40 +52658,40 @@ function applyCopyBack(checkout, tar, platform) {
     if (parent && onDiskProblem(checkout, realRoot, parent, "dir")) return "a file to remove lies under a host link";
   }
   for (const { rel, data, mode } of writes) {
-    const path15 = (0, import_node_path15.join)(checkout, ...rel.split("/"));
-    const dir = (0, import_node_path15.dirname)(path15);
+    const path15 = (0, import_node_path16.join)(checkout, ...rel.split("/"));
+    const dir = (0, import_node_path16.dirname)(path15);
     let tmp;
     try {
-      (0, import_node_fs14.mkdirSync)(dir, { recursive: true });
-      if (!samePathOrUnder(import_node_fs14.realpathSync.native(dir), realRoot)) return "a file would be written outside the checkout; files before it were written";
-      tmp = (0, import_node_path15.join)(dir, `.omg-copy-back-${(0, import_node_crypto6.randomBytes)(6).toString("hex")}`);
-      (0, import_node_fs14.writeFileSync)(tmp, data, { flag: "wx" });
-      if (platform !== "win32") (0, import_node_fs14.chmodSync)(tmp, mode & 73 ? 493 : 420);
-      (0, import_node_fs14.renameSync)(tmp, path15);
+      (0, import_node_fs15.mkdirSync)(dir, { recursive: true });
+      if (!samePathOrUnder(import_node_fs15.realpathSync.native(dir), realRoot)) return "a file would be written outside the checkout; files before it were written";
+      tmp = (0, import_node_path16.join)(dir, `.omg-copy-back-${(0, import_node_crypto7.randomBytes)(6).toString("hex")}`);
+      (0, import_node_fs15.writeFileSync)(tmp, data, { flag: "wx" });
+      if (platform !== "win32") (0, import_node_fs15.chmodSync)(tmp, mode & 73 ? 493 : 420);
+      (0, import_node_fs15.renameSync)(tmp, path15);
       tmp = void 0;
     } catch {
       if (tmp) try {
-        (0, import_node_fs14.unlinkSync)(tmp);
+        (0, import_node_fs15.unlinkSync)(tmp);
       } catch {
       }
       return "writing a file back failed part-way; files before it were written";
     }
   }
   try {
-    for (const rel of removals) (0, import_node_fs14.unlinkSync)((0, import_node_path15.join)(checkout, ...rel.split("/")));
+    for (const rel of removals) (0, import_node_fs15.unlinkSync)((0, import_node_path16.join)(checkout, ...rel.split("/")));
   } catch {
     return "removing a file the check deleted failed part-way";
   }
   return null;
 }
-var import_node_child_process6, import_node_crypto6, import_node_fs14, import_node_path15, GATE_CONTAINER_UNAVAILABLE_GATE, CONTAINER_INCOMPATIBLE_ADVICE, CONTAINER_NAME_PREFIX, RUN_LABEL2, GATE_LABEL, CACHE_LABEL, CONTAINER_PATH, CONTAINER_USER, WORK, SRC, NPM_REGISTRY, REGISTRY_PREFIXES, PROBE_TIMEOUT_MS, PULL_TIMEOUT_MS, COPY_TIMEOUT_MS, KILL_TIMEOUT_MS, IN_CONTAINER_GRACE_S, DISK_WATCH_MS, OUTPUT_TAIL_BYTES, COPY_BACK_MAX_BYTES, COPY_BACK_MAX_ENTRIES, SCAN_MAX_ENTRIES, LOCKFILE_MAX_BYTES, defaultContainerExec, isNodeExe, GIT_VIEW_MOUNT, copyLines, NPMRC_HELD, HOLD_NPMRC, RESTORE_NPMRC, NPM_FETCH_ENV, SCRIPTS_SCRIPT, tail2, firstLine, lastLines, IGNORABLE, dropIgnorable, foldsCase;
+var import_node_child_process6, import_node_crypto7, import_node_fs15, import_node_path16, GATE_CONTAINER_UNAVAILABLE_GATE, CONTAINER_INCOMPATIBLE_ADVICE, CONTAINER_NAME_PREFIX, RUN_LABEL2, GATE_LABEL, CACHE_LABEL, CONTAINER_PATH, CONTAINER_USER, WORK, SRC, NPM_REGISTRY, REGISTRY_PREFIXES, PROBE_TIMEOUT_MS, PULL_TIMEOUT_MS, COPY_TIMEOUT_MS, KILL_TIMEOUT_MS, IN_CONTAINER_GRACE_S, DISK_WATCH_MS, OUTPUT_TAIL_BYTES, COPY_BACK_MAX_BYTES, COPY_BACK_MAX_ENTRIES, SCAN_MAX_ENTRIES, LOCKFILE_MAX_BYTES, defaultContainerExec, isNodeExe, GIT_VIEW_MOUNT, copyLines, NPMRC_HELD, HOLD_NPMRC, RESTORE_NPMRC, NPM_FETCH_ENV, SCRIPTS_SCRIPT, tail2, firstLine, lastLines, IGNORABLE, dropIgnorable, foldsCase;
 var init_container_gate = __esm({
   "src/factory/run/container-gate.ts"() {
     "use strict";
     import_node_child_process6 = require("node:child_process");
-    import_node_crypto6 = require("node:crypto");
-    import_node_fs14 = require("node:fs");
-    import_node_path15 = require("node:path");
+    import_node_crypto7 = require("node:crypto");
+    import_node_fs15 = require("node:fs");
+    import_node_path16 = require("node:path");
     init_sandbox_exec();
     init_state5();
     GATE_CONTAINER_UNAVAILABLE_GATE = "gate-container-unavailable";
@@ -52635,7 +52769,7 @@ var init_container_gate = __esm({
       child.on("error", (error2) => finish({ status: null, spawnError: error2.message }));
       child.on("close", (code) => finish({ status: code }));
     });
-    isNodeExe = (p) => /^node(?:\.exe)?$/i.test((0, import_node_path15.basename)(p));
+    isNodeExe = (p) => /^node(?:\.exe)?$/i.test((0, import_node_path16.basename)(p));
     GIT_VIEW_MOUNT = "/in-git";
     copyLines = (gitView) => [
       "set -e",
@@ -53079,27 +53213,27 @@ function buildGitView(dir, sha3, source, git4, maxBytes = GIT_VIEW_MAX_BYTES) {
   }
   if (bytes > maxBytes) throw new Error(`${sha3.slice(0, 12)} holds ${bytes} bytes of objects, above the ${maxBytes} a git view holds`);
   const pack = source(["pack-objects", "--stdout", "-q"], list);
-  (0, import_node_fs15.mkdirSync)(dir, { recursive: true });
-  const gitDir = (0, import_node_path16.join)(dir, ".git");
-  if ((0, import_node_fs15.existsSync)(gitDir)) throw new Error(`${gitDir} already exists`);
+  (0, import_node_fs16.mkdirSync)(dir, { recursive: true });
+  const gitDir = (0, import_node_path17.join)(dir, ".git");
+  if ((0, import_node_fs16.existsSync)(gitDir)) throw new Error(`${gitDir} already exists`);
   git4(dir, ["init", "-q", "--template=", dir]);
   const own = ["--git-dir", gitDir, "--work-tree", dir];
   git4(dir, [...own, "index-pack", "--stdin"], pack);
-  (0, import_node_fs15.writeFileSync)((0, import_node_path16.join)(gitDir, "shallow"), `${sha3}
+  (0, import_node_fs16.writeFileSync)((0, import_node_path17.join)(gitDir, "shallow"), `${sha3}
 `);
-  (0, import_node_fs15.writeFileSync)((0, import_node_path16.join)(gitDir, "HEAD"), `${sha3}
+  (0, import_node_fs16.writeFileSync)((0, import_node_path17.join)(gitDir, "HEAD"), `${sha3}
 `);
   git4(dir, [...own, "read-tree", sha3]);
   const head = git4(dir, [...own, "rev-parse", "--verify", "HEAD^{commit}"]).trim();
   if (head !== sha3) throw new Error(`the git view's HEAD is ${head.slice(0, 12)}, not ${sha3.slice(0, 12)}`);
   return gitDir;
 }
-var import_node_fs15, import_node_path16, GIT_VIEW_MAX_OBJECTS, GIT_VIEW_MAX_BYTES, HEX4012;
+var import_node_fs16, import_node_path17, GIT_VIEW_MAX_OBJECTS, GIT_VIEW_MAX_BYTES, HEX4012;
 var init_git_view = __esm({
   "src/factory/run/git-view.ts"() {
     "use strict";
-    import_node_fs15 = require("node:fs");
-    import_node_path16 = require("node:path");
+    import_node_fs16 = require("node:fs");
+    import_node_path17 = require("node:path");
     GIT_VIEW_MAX_OBJECTS = 5e5;
     GIT_VIEW_MAX_BYTES = 256 * 1024 * 1024;
     HEX4012 = /^[0-9a-f]{40}$/;
@@ -54356,6 +54490,7 @@ function autoMergeVerdict(i) {
   ];
   check2(flagged.length === 0 && !tamper, "no secret-scan, tamper or sandbox park in this run", `this run parked at ${[...new Set(flagged)].join(", ") || "a tamper or quarantine hold"}`);
   check2(acks.length === 0, "no --allow-* acknowledgement in this run", `this run used ${[...new Set(acks)].join(", ")}`);
+  check2(!i.run.testDeltaExcusedHead, "no prepare test excused for failing on the base too", `prepare tests passed on ${i.run.testDeltaExcusedHead?.slice(0, 12)} only because tests that fail on the base too were not counted`);
   if (i.changes.tier) evidence.push(...i.changes.evidence);
   else reasons.push(...i.changes.reasons);
   return reasons.length === 0 ? { ok: true, tier: i.changes.tier, reasons, evidence } : { ok: false, reasons, evidence };
@@ -56088,8 +56223,8 @@ function benignChange(key, was, now) {
 }
 function configEntries(bytes, tmp) {
   if (bytes === null) return [];
-  const file = (0, import_node_path17.join)(tmp, `cfg-${Math.random().toString(36).slice(2)}`);
-  (0, import_node_fs16.writeFileSync)(file, bytes);
+  const file = (0, import_node_path18.join)(tmp, `cfg-${Math.random().toString(36).slice(2)}`);
+  (0, import_node_fs17.writeFileSync)(file, bytes);
   try {
     const out = runHostGit(tmp, ["config", "--file", file, "--null", "--list"], 3e4);
     return out.split("\0").filter(Boolean).map((e) => {
@@ -56100,7 +56235,7 @@ function configEntries(bytes, tmp) {
     return null;
   } finally {
     try {
-      (0, import_node_fs16.unlinkSync)(file);
+      (0, import_node_fs17.unlinkSync)(file);
     } catch {
     }
   }
@@ -56117,8 +56252,8 @@ function changedKeys(before, after, tmp) {
 function putKeysBack(current, old, keys, tmp) {
   const entries = configEntries(old, tmp);
   if (!entries) return null;
-  const file = (0, import_node_path17.join)(tmp, `merge-${Math.random().toString(36).slice(2)}`);
-  (0, import_node_fs16.writeFileSync)(file, current);
+  const file = (0, import_node_path18.join)(tmp, `merge-${Math.random().toString(36).slice(2)}`);
+  (0, import_node_fs17.writeFileSync)(file, current);
   try {
     for (const key of keys) {
       const values = entries.filter(([k]) => k === key).map(([, v]) => v);
@@ -56130,12 +56265,12 @@ function putKeysBack(current, old, keys, tmp) {
       }
       for (const v of values) runHostGit(tmp, ["config", "--file", file, "--add", key, v], 3e4);
     }
-    return (0, import_node_fs16.readFileSync)(file);
+    return (0, import_node_fs17.readFileSync)(file);
   } catch {
     return null;
   } finally {
     try {
-      (0, import_node_fs16.unlinkSync)(file);
+      (0, import_node_fs17.unlinkSync)(file);
     } catch {
     }
   }
@@ -56149,12 +56284,12 @@ function assertParentsReal(common, rel) {
   const segs = rel.split("/").slice(0, -1);
   let dir = common;
   for (const s of segs) {
-    dir = (0, import_node_path17.join)(dir, s);
+    dir = (0, import_node_path18.join)(dir, s);
     let st;
     try {
-      st = (0, import_node_fs16.lstatSync)(dir);
+      st = (0, import_node_fs17.lstatSync)(dir);
     } catch {
-      (0, import_node_fs16.mkdirSync)(dir);
+      (0, import_node_fs17.mkdirSync)(dir);
       continue;
     }
     if (st.isSymbolicLink() || !st.isDirectory()) throw new Error(`${dir} is not a real directory`);
@@ -56164,7 +56299,7 @@ function restoreConfigLocked(abs, compute) {
   const lock = `${abs}.lock`;
   let fd;
   try {
-    fd = (0, import_node_fs16.openSync)(lock, "wx", 420);
+    fd = (0, import_node_fs17.openSync)(lock, "wx", 420);
   } catch (error2) {
     if (error2.code === "EEXIST") throw new Error(CONFIG_LOCKED);
     throw error2;
@@ -56172,55 +56307,55 @@ function restoreConfigLocked(abs, compute) {
   try {
     let locked = null;
     try {
-      locked = (0, import_node_fs16.readFileSync)(abs);
+      locked = (0, import_node_fs17.readFileSync)(abs);
     } catch (error2) {
       if (error2.code !== "ENOENT") throw error2;
     }
     const out = compute(locked);
     if (out === null) {
-      (0, import_node_fs16.closeSync)(fd);
+      (0, import_node_fs17.closeSync)(fd);
       fd = void 0;
-      if (locked !== null) (0, import_node_fs16.unlinkSync)(abs);
-      (0, import_node_fs16.unlinkSync)(lock);
+      if (locked !== null) (0, import_node_fs17.unlinkSync)(abs);
+      (0, import_node_fs17.unlinkSync)(lock);
       return;
     }
-    (0, import_node_fs16.writeSync)(fd, out);
-    (0, import_node_fs16.fsyncSync)(fd);
-    (0, import_node_fs16.closeSync)(fd);
+    (0, import_node_fs17.writeSync)(fd, out);
+    (0, import_node_fs17.fsyncSync)(fd);
+    (0, import_node_fs17.closeSync)(fd);
     fd = void 0;
-    (0, import_node_fs16.renameSync)(lock, abs);
+    (0, import_node_fs17.renameSync)(lock, abs);
   } catch (error2) {
     if (fd !== void 0) {
       try {
-        (0, import_node_fs16.closeSync)(fd);
+        (0, import_node_fs17.closeSync)(fd);
       } catch {
       }
     }
     try {
-      (0, import_node_fs16.unlinkSync)(lock);
+      (0, import_node_fs17.unlinkSync)(lock);
     } catch {
     }
     throw error2;
   }
 }
 function atomicRestore(abs, bytes, exec) {
-  if ((0, import_node_fs16.existsSync)(`${abs}.lock`)) throw new Error(`${(0, import_node_path17.basename)(abs)}.lock exists (a git command is writing it), so it was not restored`);
+  if ((0, import_node_fs17.existsSync)(`${abs}.lock`)) throw new Error(`${(0, import_node_path18.basename)(abs)}.lock exists (a git command is writing it), so it was not restored`);
   let st;
   try {
-    st = (0, import_node_fs16.lstatSync)(abs);
+    st = (0, import_node_fs17.lstatSync)(abs);
   } catch {
     st = void 0;
   }
-  if (st?.isDirectory()) (0, import_node_fs16.rmdirSync)(abs);
+  if (st?.isDirectory()) (0, import_node_fs17.rmdirSync)(abs);
   else if (st?.isSymbolicLink()) removeEntry(abs);
   const tmp = `${abs}.omg-restore-${Math.random().toString(36).slice(2)}`;
-  (0, import_node_fs16.writeFileSync)(tmp, bytes, { mode: exec ? 493 : 420, flag: "wx" });
+  (0, import_node_fs17.writeFileSync)(tmp, bytes, { mode: exec ? 493 : 420, flag: "wx" });
   try {
-    if (exec) (0, import_node_fs16.chmodSync)(tmp, 493);
-    (0, import_node_fs16.renameSync)(tmp, abs);
+    if (exec) (0, import_node_fs17.chmodSync)(tmp, 493);
+    (0, import_node_fs17.renameSync)(tmp, abs);
   } catch (error2) {
     try {
-      (0, import_node_fs16.unlinkSync)(tmp);
+      (0, import_node_fs17.unlinkSync)(tmp);
     } catch {
     }
     throw error2;
@@ -56228,17 +56363,17 @@ function atomicRestore(abs, bytes, exec) {
 }
 function removeEntry(abs) {
   try {
-    (0, import_node_fs16.unlinkSync)(abs);
+    (0, import_node_fs17.unlinkSync)(abs);
   } catch (error2) {
     const code = error2.code;
-    if (code !== "EPERM" && code !== "EISDIR" || !(0, import_node_fs16.lstatSync)(abs).isSymbolicLink()) throw error2;
-    (0, import_node_fs16.rmdirSync)(abs);
+    if (code !== "EPERM" && code !== "EISDIR" || !(0, import_node_fs17.lstatSync)(abs).isSymbolicLink()) throw error2;
+    (0, import_node_fs17.rmdirSync)(abs);
   }
 }
 function asideName(abs) {
   for (let n = 0; ; n++) {
     const p = `${abs}.omg-quarantined${n ? `-${n}` : ""}`;
-    if (!(0, import_node_fs16.existsSync)(p)) return p;
+    if (!(0, import_node_fs17.existsSync)(p)) return p;
   }
 }
 function problemStatus(p, touched, before, after) {
@@ -56255,7 +56390,7 @@ function problemStatus(p, touched, before, after) {
   m = /^submodule git dir (modules\/.+) was removed$/.exec(p);
   if (m) return "ok";
   m = /^submodule git dir (modules\/.+) was added$/.exec(p) ?? /^(modules\/.+) changed \(config, hooks, info or alternates\)$/.exec(p);
-  if (m) return touched(`${m[1]}/`) && !(0, import_node_fs16.existsSync)((0, import_node_path17.join)(before.commonDir, ...m[1].split("/"), "objects", "info", "alternates")) ? "ok" : "unhandled";
+  if (m) return touched(`${m[1]}/`) && !(0, import_node_fs17.existsSync)((0, import_node_path18.join)(before.commonDir, ...m[1].split("/"), "objects", "info", "alternates")) ? "ok" : "unhandled";
   m = /^worktree entry worktrees\/([^/]+) was added$/.exec(p);
   if (m) return after?.worktrees?.[m[1]]?.commondir === "../.." ? "ok" : "unhandled";
   if (/^worktree entry worktrees\/[^/]+ was removed or is no longer a directory$/.test(p)) return "ok";
@@ -56275,15 +56410,15 @@ function advice(p, common) {
   return `inspect it in ${common} and remove what you did not add`;
 }
 function quarantineTamper(i) {
-  const hold = { root: (0, import_node_path17.resolve)(i.root), at: i.at, run: i.run, gate: i.gate, moved: [], restored: [], notRestored: [], refs: [], kept: [], active: [], undo: [] };
+  const hold = { root: (0, import_node_path18.resolve)(i.root), at: i.at, run: i.run, gate: i.gate, moved: [], restored: [], notRestored: [], refs: [], kept: [], active: [], undo: [] };
   const common = i.before.commonDir;
   const kept = i.before.restore;
   const touchedRels = [];
   const failedRels = /* @__PURE__ */ new Set();
-  const dir = (0, import_node_path17.join)(i.ledgerDir, "quarantine", repoKey(i.root), `${i.at.replace(/[:.]/g, "-")}${i.label ? `-${i.label.replace(/[^A-Za-z0-9._-]/g, "_")}` : ""}`);
+  const dir = (0, import_node_path18.join)(i.ledgerDir, "quarantine", repoKey(i.root), `${i.at.replace(/[:.]/g, "-")}${i.label ? `-${i.label.replace(/[^A-Za-z0-9._-]/g, "_")}` : ""}`);
   const quarantine = () => {
     if (!hold.quarantine) {
-      (0, import_node_fs16.mkdirSync)(dir, { recursive: true, mode: 448 });
+      (0, import_node_fs17.mkdirSync)(dir, { recursive: true, mode: 448 });
       hold.quarantine = dir;
     }
     return dir;
@@ -56299,9 +56434,9 @@ function quarantineTamper(i) {
     }
     if (now) {
       let handleItem2 = function(rel, was, is) {
-        const abs = (0, import_node_path17.join)(common, ...rel.split("/"));
+        const abs = (0, import_node_path18.join)(common, ...rel.split("/"));
         const owner = ownerOf2(rel);
-        if (owner && !realDir((0, import_node_path17.join)(common, ...owner.split("/")))) {
+        if (owner && !realDir((0, import_node_path18.join)(common, ...owner.split("/")))) {
           hold.kept.push(`${rel} (its git dir ${owner} is gone; nothing was recreated)`);
           return false;
         }
@@ -56309,7 +56444,7 @@ function quarantineTamper(i) {
         if (isConfigRel(rel) && (was === void 0 || old !== null) && (is?.startsWith("b64") ?? false)) {
           const current = decode(is);
           quarantine();
-          (0, import_node_fs16.mkdirSync)(tmp, { recursive: true });
+          (0, import_node_fs17.mkdirSync)(tmp, { recursive: true });
           const diff = changedKeys(old, current, tmp);
           if (diff !== null) {
             const { keys, held: program2 } = diff;
@@ -56329,7 +56464,7 @@ function quarantineTamper(i) {
             let exact = false;
             restoreConfigLocked(abs, (locked) => {
               if (locked === null) return old;
-              if (!locked.equals(current)) (0, import_node_fs16.writeFileSync)(to, locked);
+              if (!locked.equals(current)) (0, import_node_fs17.writeFileSync)(to, locked);
               const keysNow = changedKeys(old, locked, tmp);
               if (keysNow !== null) {
                 putBack = keysNow.held;
@@ -56371,7 +56506,7 @@ function quarantineTamper(i) {
         if (was.startsWith("link:")) {
           try {
             assertParentsReal(common, rel);
-            (0, import_node_fs16.symlinkSync)(was.slice(5), abs);
+            (0, import_node_fs17.symlinkSync)(was.slice(5), abs);
             hold.restored.push(rel);
           } catch (error2) {
             hold.notRestored.push(`${rel} (a link to ${was.slice(5)} before the run; it could not be made again: ${errText5(error2)})`);
@@ -56381,38 +56516,38 @@ function quarantineTamper(i) {
         }
         return renamed;
       }, saveBytes2 = function(rel, bytes) {
-        const to = (0, import_node_path17.join)(quarantine(), ...rel.split("/"));
-        (0, import_node_fs16.mkdirSync)((0, import_node_path17.dirname)(to), { recursive: true });
-        (0, import_node_fs16.writeFileSync)(to, bytes);
+        const to = (0, import_node_path18.join)(quarantine(), ...rel.split("/"));
+        (0, import_node_fs17.mkdirSync)((0, import_node_path18.dirname)(to), { recursive: true });
+        (0, import_node_fs17.writeFileSync)(to, bytes);
         return to;
       }, saveCurrent2 = function(rel, abs, is) {
         if (is.startsWith("link:")) {
-          const to2 = (0, import_node_path17.join)(quarantine(), LINKS_DIR, ...rel.split("/"));
-          (0, import_node_fs16.mkdirSync)((0, import_node_path17.dirname)(to2), { recursive: true });
-          (0, import_node_fs16.writeFileSync)(to2, is.slice(5));
+          const to2 = (0, import_node_path18.join)(quarantine(), LINKS_DIR, ...rel.split("/"));
+          (0, import_node_fs17.mkdirSync)((0, import_node_path18.dirname)(to2), { recursive: true });
+          (0, import_node_fs17.writeFileSync)(to2, is.slice(5));
           return { at: to2, renamed: false };
         }
         const bytes = decode(is);
         if (bytes) {
           const to2 = saveBytes2(rel, bytes);
-          if (is.startsWith("b64x:")) (0, import_node_fs16.chmodSync)(to2, 493);
+          if (is.startsWith("b64x:")) (0, import_node_fs17.chmodSync)(to2, 493);
           return { at: to2, renamed: false };
         }
-        const to = (0, import_node_path17.join)(quarantine(), ...rel.split("/"));
-        (0, import_node_fs16.mkdirSync)((0, import_node_path17.dirname)(to), { recursive: true });
+        const to = (0, import_node_path18.join)(quarantine(), ...rel.split("/"));
+        (0, import_node_fs17.mkdirSync)((0, import_node_path18.dirname)(to), { recursive: true });
         try {
-          (0, import_node_fs16.copyFileSync)(abs, to);
+          (0, import_node_fs17.copyFileSync)(abs, to);
           return { at: to, renamed: false };
         } catch {
         }
         try {
-          (0, import_node_fs16.renameSync)(abs, to);
+          (0, import_node_fs17.renameSync)(abs, to);
           return { at: to, renamed: true };
         } catch (error2) {
           if (error2.code !== "EXDEV") throw error2;
         }
         const aside = asideName(abs);
-        (0, import_node_fs16.renameSync)(abs, aside);
+        (0, import_node_fs17.renameSync)(abs, aside);
         return { at: aside, renamed: true };
       };
       var handleItem = handleItem2, saveBytes = saveBytes2, saveCurrent = saveCurrent2;
@@ -56423,7 +56558,7 @@ function quarantineTamper(i) {
       };
       const changed = [.../* @__PURE__ */ new Set([...Object.keys(kept), ...Object.keys(now)])].filter((rel) => rel !== RESTORE_SCOPE_KEY && kept[rel] !== now[rel] && inScope(rel)).sort();
       touchedRels.push(...changed);
-      const tmp = (0, import_node_path17.join)(dir, ".tmp");
+      const tmp = (0, import_node_path18.join)(dir, ".tmp");
       const movedAway = [];
       const added = changed.filter((rel) => kept[rel] === void 0).reverse();
       for (const rel of [...added, ...changed.filter((rel2) => kept[rel2] !== void 0)]) {
@@ -56436,7 +56571,7 @@ function quarantineTamper(i) {
           hold.active.push(`${rel}: ${STILL_ACTIVE}: it could not be moved or restored (${errText5(error2)}); remove or fix it by hand in ${common}`);
         }
       }
-      (0, import_node_fs16.rmSync)(tmp, { recursive: true, force: true });
+      (0, import_node_fs17.rmSync)(tmp, { recursive: true, force: true });
     }
   }
   try {
@@ -56450,13 +56585,13 @@ function quarantineTamper(i) {
   }
   if (hold.quarantine && hold.undo.length > 0) {
     try {
-      (0, import_node_fs16.writeFileSync)((0, import_node_path17.join)(hold.quarantine, "undo.txt"), `${hold.undo.join("\n")}
+      (0, import_node_fs17.writeFileSync)((0, import_node_path18.join)(hold.quarantine, "undo.txt"), `${hold.undo.join("\n")}
 `);
     } catch {
     }
   }
   if (!hold.failed && hold.moved.length + hold.restored.length + hold.notRestored.length + hold.refs.length + hold.kept.length + hold.active.length === 0) {
-    if (hold.quarantine) (0, import_node_fs16.rmSync)(hold.quarantine, { recursive: true, force: true });
+    if (hold.quarantine) (0, import_node_fs17.rmSync)(hold.quarantine, { recursive: true, force: true });
     delete hold.quarantine;
     return hold;
   }
@@ -56482,7 +56617,7 @@ function refChanges(before, now, common, quarantine, only) {
     if (was === is) continue;
     if (was === void 0 && name.startsWith("refs/replace/")) {
       saved.push(`${name} ${is}`);
-      (0, import_node_fs16.writeFileSync)((0, import_node_path17.join)(quarantine(), "refs.txt"), `${saved.join("\n")}
+      (0, import_node_fs17.writeFileSync)((0, import_node_path18.join)(quarantine(), "refs.txt"), `${saved.join("\n")}
 `);
       runHostGit(common, ["--git-dir", common, "update-ref", "-d", name, is], 3e4);
       out.push(`${name} was created at ${is.slice(0, 12)}: deleted (saved in refs.txt)`);
@@ -56490,21 +56625,21 @@ function refChanges(before, now, common, quarantine, only) {
     else if (is === void 0) out.push(`${name} was deleted (was ${was.slice(0, 12)}); to put it back: git update-ref ${name} ${was}`);
     else out.push(`${name} moved ${was.slice(0, 12)} -> ${is.slice(0, 12)}; if you did not move it: git update-ref ${name} ${was} ${is}`);
   }
-  if (out.length > 0) (0, import_node_fs16.writeFileSync)((0, import_node_path17.join)(quarantine(), "refs.txt"), `${[...saved, ...out].join("\n")}
+  if (out.length > 0) (0, import_node_fs17.writeFileSync)((0, import_node_path18.join)(quarantine(), "refs.txt"), `${[...saved, ...out].join("\n")}
 `);
   return out;
 }
 function writeTamperHold(ledgerDir, root, hold) {
   const path15 = tamperHoldPath(ledgerDir, root);
-  (0, import_node_fs16.mkdirSync)((0, import_node_path17.dirname)(path15), { recursive: true, mode: 448 });
+  (0, import_node_fs17.mkdirSync)((0, import_node_path18.dirname)(path15), { recursive: true, mode: 448 });
   atomicWriteFileSync(path15, `${JSON.stringify(hold, null, 2)}
 `);
 }
 function readTamperHold(ledgerDir, root) {
   const path15 = tamperHoldPath(ledgerDir, root);
-  if (!(0, import_node_fs16.existsSync)(path15)) return null;
+  if (!(0, import_node_fs17.existsSync)(path15)) return null;
   try {
-    const h = JSON.parse((0, import_node_fs16.readFileSync)(path15, "utf8"));
+    const h = JSON.parse((0, import_node_fs17.readFileSync)(path15, "utf8"));
     return typeof h === "object" && h !== null && typeof h.gate === "string" ? h : "unreadable";
   } catch {
     return "unreadable";
@@ -56518,18 +56653,18 @@ function tamperHoldMessage(ledgerDir, root) {
   const active = hold.active ?? [];
   return `a tamper hold is set on this checkout since ${hold.at} (run ${hold.run} parked at ${hold.gate}), so no factory run starts here${hold.quarantine ? `; what changed in .git is in ${hold.quarantine}` : ""}${active.length ? `; ${active.length} item(s) are ${STILL_ACTIVE}: ${active.slice(0, 3).join("; ")}` : ""}. Your own change during that run (a git config key, \`git remote add\` or \`git remote set-url\` included, and a branch's upstream set to a path, a URL, "." or a remote added during the run, a hook husky or an editor installed) triggers this too: put it back with the cp command in undo.txt in that folder if it was yours. Then run ${RELEASE_TAMPER_COMMAND}`;
 }
-var import_node_fs16, import_node_path17, repoKey, tamperHoldPath, RELEASE_TAMPER_COMMAND, STILL_ACTIVE, BENIGN_KEYS, benignKey, BRANCH_UPSTREAM, HEADS_REF, sameValues, valuesByKey, decode, isConfigRel, realDir, errText5, CONFIG_LOCKED, LINKS_DIR;
+var import_node_fs17, import_node_path18, repoKey, tamperHoldPath, RELEASE_TAMPER_COMMAND, STILL_ACTIVE, BENIGN_KEYS, benignKey, BRANCH_UPSTREAM, HEADS_REF, sameValues, valuesByKey, decode, isConfigRel, realDir, errText5, CONFIG_LOCKED, LINKS_DIR;
 var init_tamper_quarantine = __esm({
   "src/factory/run/tamper-quarantine.ts"() {
     "use strict";
-    import_node_fs16 = require("node:fs");
-    import_node_path17 = require("node:path");
+    import_node_fs17 = require("node:fs");
+    import_node_path18 = require("node:path");
     init_atomic_write();
     init_git_worktree();
     init_ledger2();
     init_review_guard();
-    repoKey = (root) => sha256((0, import_node_path17.resolve)(root).toLowerCase()).slice(0, 16);
-    tamperHoldPath = (ledgerDir, root) => (0, import_node_path17.join)(ledgerDir, "holds", `${repoKey(root)}.json`);
+    repoKey = (root) => sha256((0, import_node_path18.resolve)(root).toLowerCase()).slice(0, 16);
+    tamperHoldPath = (ledgerDir, root) => (0, import_node_path18.join)(ledgerDir, "holds", `${repoKey(root)}.json`);
     RELEASE_TAMPER_COMMAND = "omg factory run release --tamper";
     STILL_ACTIVE = "STILL ACTIVE (it can run on your next git command)";
     BENIGN_KEYS = [
@@ -56556,7 +56691,7 @@ var init_tamper_quarantine = __esm({
     isConfigRel = (rel) => /^(?:config|config\.worktree|worktrees\/[^/]+\/config\.worktree|modules\/.+\/(?:config|config\.worktree))$/.test(rel) && !/\/(?:hooks|info)\//.test(`/${rel}`);
     realDir = (path15) => {
       try {
-        const st = (0, import_node_fs16.lstatSync)(path15);
+        const st = (0, import_node_fs17.lstatSync)(path15);
         return st.isDirectory() && !st.isSymbolicLink();
       } catch {
         return false;
@@ -57409,39 +57544,39 @@ function parseProcStat(stat) {
 }
 function listLinux() {
   const rows = [];
-  for (const name of (0, import_node_fs17.readdirSync)("/proc")) {
+  for (const name of (0, import_node_fs18.readdirSync)("/proc")) {
     if (!/^\d+$/.test(name)) continue;
     let stat = null;
     try {
-      stat = parseProcStat((0, import_node_fs17.readFileSync)(`/proc/${name}/stat`, "utf8"));
+      stat = parseProcStat((0, import_node_fs18.readFileSync)(`/proc/${name}/stat`, "utf8"));
     } catch {
       continue;
     }
     if (!stat) continue;
     let cwd = null;
     try {
-      cwd = (0, import_node_fs17.readlinkSync)(`/proc/${name}/cwd`);
+      cwd = (0, import_node_fs18.readlinkSync)(`/proc/${name}/cwd`);
     } catch {
     }
     rows.push({ pid: Number(name), ...stat, cwd });
   }
   return rows;
 }
-var import_node_child_process7, import_node_fs17, import_node_path18, import_node_util2, execFileAsync7, LANE_PROCS_QUERY_TIMEOUT_MS, KILL_DEADLINE_MS2, under3, WIN_QUERY, defaultLaneProcsDeps;
+var import_node_child_process7, import_node_fs18, import_node_path19, import_node_util2, execFileAsync7, LANE_PROCS_QUERY_TIMEOUT_MS, KILL_DEADLINE_MS2, under3, WIN_QUERY, defaultLaneProcsDeps;
 var init_lane_procs = __esm({
   "src/factory/run/lane-procs.ts"() {
     "use strict";
     import_node_child_process7 = require("node:child_process");
-    import_node_fs17 = require("node:fs");
-    import_node_path18 = require("node:path");
+    import_node_fs18 = require("node:fs");
+    import_node_path19 = require("node:path");
     import_node_util2 = require("node:util");
     init_process_utils();
     execFileAsync7 = (0, import_node_util2.promisify)(import_node_child_process7.execFile);
     LANE_PROCS_QUERY_TIMEOUT_MS = 1e4;
     KILL_DEADLINE_MS2 = 1e4;
     under3 = (dir, path15) => {
-      const r = (0, import_node_path18.relative)((0, import_node_path18.resolve)(dir), (0, import_node_path18.resolve)(path15));
-      return r === "" || !r.startsWith("..") && !(0, import_node_path18.isAbsolute)(r);
+      const r = (0, import_node_path19.relative)((0, import_node_path19.resolve)(dir), (0, import_node_path19.resolve)(path15));
+      return r === "" || !r.startsWith("..") && !(0, import_node_path19.isAbsolute)(r);
     };
     WIN_QUERY = `Get-CimInstance Win32_Process -Property ProcessId,ParentProcessId,CreationDate -ErrorAction Stop | ForEach-Object { $c = if ($_.CreationDate) { ([DateTime]$_.CreationDate).ToUniversalTime().Ticks } else { '-' }; "$($_.ProcessId) $($_.ParentProcessId) $c" }`;
     defaultLaneProcsDeps = {
@@ -57804,8 +57939,13 @@ function calibrationArgs(c, dir) {
 function fileListParts(c, cwd, platform = process.platform) {
   const script = c.args[0];
   if (c.kind !== "built-in" || script !== VITEST_SCRIPT && script !== ESLINT_SCRIPT) return [c];
-  const parts = splitFileListArgs(platform, c.exe, c.args, script === VITEST_SCRIPT ? 2 : 1, cwd);
+  const fixed = script === VITEST_SCRIPT ? 2 : 1;
+  const extra = sizingReportArgs(c, cwd);
+  const parts = splitFileListArgs(platform, c.exe, [...c.args.slice(0, fixed), ...extra, ...c.args.slice(fixed)], fixed + extra.length, cwd).map((args) => [...args.slice(0, fixed), ...args.slice(fixed + extra.length)]);
   return parts.length === 1 ? [c] : parts.map((args) => ({ ...c, argv: [c.exe, ...args], args }));
+}
+function sizingReportArgs(c, cwd) {
+  return isBuiltInVitest(c) ? vitestReportArgs(vitestReportPath(cwd)) : [];
 }
 function errText6(error2) {
   return error2 instanceof Error ? error2.message : String(error2);
@@ -58110,7 +58250,7 @@ async function runFactoryEngine(o) {
 function sharedLayoutSealed(s) {
   return s.layout !== 2 && (s.lanes.length > 0 || s.codingAgent !== void 0);
 }
-var import_crypto29, import_fs98, import_os22, import_path117, EXIT_AWAITING_HUMAN, PREPARE_ENGINE_STEPS, MAX_CONFLICT_FIX_ROUNDS, MAX_MERGE_BOUNCES, DEFAULT_POLL_MS, LANE_GRACE_MS, REMOTE_HEAD_FETCH_FLAGS, LS_REMOTE_TIMEOUT_MS, ADO_HEAD_LAG_POLLS, localGateConfigLoader, PROCESS_DEADLINE_MS, defaultLaneProcessOps, FactoryStepError, StateTamperedError, LocalGateDue, MirrorBaseMovedError, HEX4017, PARK_TAIL_LINES, PARK_TAIL_LINE_CHARS, PARK_TAIL_CHARS, GIT_TRANSPORT_SANDBOX_ADVICE, GIT_TRANSPORT_FAILURE, MSYS_DLL_INIT_FAILED, windowsGitTransportFailure, windowsJunctionReadDenied, localDetailNote, isHumanReadGate, CALIBRATION_NO_TEST_FILTER, BUILT_IN_FILE_NAME_TOO_LONG, USER_REPO_PREFIX, isUserRepoProblem, quarantineRefs, cancelCommand, resumeCommand, HEAL_ACCEPTANCE, usageOf, capUsage, FactoryEngine, HUMAN_REVIEW_GATE, REVIEW_REQUESTED_GATE, UNSANDBOXED_LANES_REASON, GATES_UNSANDBOXED_GATE, SECRET_SHAPES_GATE, GATE_SANDBOX_INCOMPATIBLE_GATE, GATE_NO_VERDICT_GATE, GIT_VIEW_UNBUILT, ACK_WARNING, PREPARE_CHECK_TIMEOUT_MS;
+var import_crypto29, import_fs98, import_os22, import_path117, EXIT_AWAITING_HUMAN, PREPARE_ENGINE_STEPS, MAX_CONFLICT_FIX_ROUNDS, MAX_MERGE_BOUNCES, DEFAULT_POLL_MS, LANE_GRACE_MS, REMOTE_HEAD_FETCH_FLAGS, LS_REMOTE_TIMEOUT_MS, ADO_HEAD_LAG_POLLS, localGateConfigLoader, PROCESS_DEADLINE_MS, defaultLaneProcessOps, FactoryStepError, StateTamperedError, LocalGateDue, MirrorBaseMovedError, HEX4017, PARK_TAIL_LINES, PARK_TAIL_LINE_CHARS, PARK_TAIL_CHARS, GIT_TRANSPORT_SANDBOX_ADVICE, GIT_TRANSPORT_FAILURE, MSYS_DLL_INIT_FAILED, windowsGitTransportFailure, windowsJunctionReadDenied, localDetailNote, isHumanReadGate, CALIBRATION_NO_TEST_FILTER, isBuiltInVitest, BUILT_IN_FILE_NAME_TOO_LONG, USER_REPO_PREFIX, isUserRepoProblem, quarantineRefs, cancelCommand, resumeCommand, HEAL_ACCEPTANCE, usageOf, capUsage, FactoryEngine, HUMAN_REVIEW_GATE, REVIEW_REQUESTED_GATE, UNSANDBOXED_LANES_REASON, GATES_UNSANDBOXED_GATE, SECRET_SHAPES_GATE, GATE_SANDBOX_INCOMPATIBLE_GATE, GATE_NO_VERDICT_GATE, GIT_VIEW_UNBUILT, ACK_WARNING, PREPARE_CHECK_TIMEOUT_MS;
 var init_engine = __esm({
   "src/factory/run/engine.ts"() {
     "use strict";
@@ -58133,6 +58273,7 @@ var init_engine = __esm({
     init_gates();
     init_checks();
     init_prompts2();
+    init_test_delta();
     init_context();
     init_merge_policy();
     init_auto_merge();
@@ -58257,6 +58398,7 @@ var init_engine = __esm({
     localDetailNote = (key, what) => `; ${what} is shown on this host only (omg factory run status ${key}), never posted`;
     isHumanReadGate = (name) => name === HUMAN_REVIEW_GATE || name === "merge" || name === "fix-rounds-spent" || name === "head-moved-externally";
     CALIBRATION_NO_TEST_FILTER = "omg-calibration-matches-no-test-file";
+    isBuiltInVitest = (c) => c.kind === "built-in" && c.args[0] === VITEST_SCRIPT;
     BUILT_IN_FILE_NAME_TOO_LONG = "a changed file name is too long for the sandbox shell";
     USER_REPO_PREFIX = "your repository: ";
     isUserRepoProblem = (p) => p.startsWith(USER_REPO_PREFIX) || /\bof your repository\b/.test(p);
@@ -61097,14 +61239,21 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
         if (at.gates.mode === "unsandboxed") return plain("unsandboxed");
         let why = `factory.run.sandbox.gates is "ack" (${at.gates.source})`;
         if (at.gates.mode === "enforced") {
-          if (c.kind === "built-in" && (c.args[0] === VITEST_SCRIPT || c.args[0] === ESLINT_SCRIPT) && sandboxCommandTooLong(process.platform, c.argv, path15)) {
+          if (c.kind === "built-in" && (c.args[0] === VITEST_SCRIPT || c.args[0] === ESLINT_SCRIPT) && sandboxCommandTooLong(process.platform, [...c.argv, ...sizingReportArgs(c, path15)], path15)) {
             return { status: 1, stdout: "", stderr: BUILT_IN_FILE_NAME_TOO_LONG };
           }
           const repointed = this.nodeModulesRepointed(path15);
           if (repointed) return stop({ name: "lane-tampered", reason: `${label} on ${head.slice(0, 12)} did not run: ${(0, import_path117.join)(path15, "node_modules")} (or a link in it) is not as the engine made it, so the PR's code changed it${localDetailNote(this.key, "which link")}; nothing of this prepare is trusted and nothing is pushed; inspect and remove ${path15} by hand`, detail: oneLine(visibleLine(repointed), PARK_TAIL_CHARS) });
           const priv = this.privateRun();
           const checkedOut = () => priv ? priv.gitOk(["rev-parse", "HEAD"], "reading the prepare checkout", path15) : this.run(["rev-parse", "HEAD"], "git", void 0, path15);
-          const r = this.o.gateSandbox ? await this.withGitView(checkedOut, label, (view) => this.sandboxRun({ purpose: "prepare", argv: c.argv, exe: c.exe, args: c.args, cwd: path15, commonGitDir: at.commonGitDir, timeoutMs: PREPARE_CHECK_TIMEOUT_MS, ...at.gates.requireDeniedPaths ? { requireDeniedPaths: true } : {}, ...view })) : { ran: false, reason: "no OS sandbox runner was given to the engine" };
+          const report = this.o.gateSandbox && !this.gatesModeCache?.container && isBuiltInVitest(c) ? vitestReportPath(path15) : void 0;
+          let headTests = null;
+          let r;
+          try {
+            r = this.o.gateSandbox ? await this.withGitView(checkedOut, label, (view) => this.sandboxRun({ purpose: "prepare", argv: c.argv, exe: c.exe, args: report ? [...c.args, ...vitestReportArgs(report)] : c.args, cwd: path15, commonGitDir: at.commonGitDir, timeoutMs: PREPARE_CHECK_TIMEOUT_MS, ...at.gates.requireDeniedPaths ? { requireDeniedPaths: true } : {}, ...view })) : { ran: false, reason: "no OS sandbox runner was given to the engine" };
+          } finally {
+            if (report) headTests = readVitestReport(report, path15);
+          }
           const t = tampered();
           if (t) return t;
           if (r.ran) {
@@ -61117,6 +61266,10 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
               const switched = this.switchToGateTreeCopy(path15);
               if (switched === true) return this.prepareCheck(c, at);
               if (switched) return stop(switched);
+            }
+            if (park && report && !park.gitTransport && !park.junctionRead && !r.timedOut) {
+              const judged = this.judgeTestDelta(park, headTests, head, label, at.baseSha, r.status, r.output);
+              if (judged) return judged;
             }
             const fallback = park?.gitTransport ? await this.gitTransportFallback(at.commonGitDir) : null;
             if (fallback) {
@@ -61165,6 +61318,36 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
         return stop({ name: GATES_UNSANDBOXED_GATE, reason: this.gatesUnsandboxedReason(head, label, why) });
       }
       /**
+       * The built-in vitest check failed in the OS sandbox on `head` and on the
+       * base: judged per test (test-delta.ts). Null keeps today's park (no base
+       * or head report, nothing passes on the base, or the head failed outside
+       * any test). Else a FAILURE that names the tests failing on the head only
+       * (the ci-fix lane gets them), or a pass; either way the tests that fail
+       * on the base too are listed in a warning, a history note and one PR note
+       * per head. Their names come from the trusted base's report. A pass that
+       * excused any test is recorded (testDeltaExcusedHead): such a head is never
+       * auto-merged (L3, review-548), since an excused test may now fail for a
+       * new reason.
+       */
+      judgeTestDelta(park, headTests, head, label, baseSha, status, output) {
+        const v = testDeltaVerdict(park.baseTests, headTests, headRunSignals(status, output), park.baseOutput ?? []);
+        if (v.kind === "park") return null;
+        const list = (ids) => `${ids.slice(0, 10).map((id) => visibleLine(testIdText(id))).join("; ")}${ids.length > 10 ? `; and ${ids.length - 10} more` : ""}`;
+        if (v.excused.length > 0) {
+          const text3 = `${label} on ${head.slice(0, 12)}: ${v.excused.length} test(s) fail in the OS sandbox on the base ${baseSha.slice(0, 12)} too and were not counted: ${list(v.excused)}`;
+          this.o.warn?.(`omg factory run: ${text3}`);
+          this.save((x) => ({ ...x, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: text3.slice(0, 400) }] }));
+          this.commentOnce("pr", `base-test-failures@${head.slice(0, 12)}`, "sandbox", `**Sandbox: tests that fail on the base too.** ${text3}.
+`);
+        }
+        if (v.kind === "pass") {
+          if (this.state.testDeltaExcusedHead !== head) this.save((x) => ({ ...x, testDeltaExcusedHead: head }));
+          return { status: 0, stdout: redactGateOutput(output), stderr: "" };
+        }
+        const counted = `${v.counted.length} test(s) fail on ${head.slice(0, 12)} that did not fail on the base ${baseSha.slice(0, 12)} (new tests count): ${list(v.counted)}`;
+        return { status: status === 0 ? 1 : status, stdout: redactGateOutput(output), stderr: redactGateOutput(counted) };
+      }
+      /**
        * After `what` failed in the sandbox on `head`: run the same command in the
        * sandbox on a plain copy of the trusted base tree (once per base sha and
        * argv; a passing calibration is kept in the sealed state, a failing one is
@@ -61201,7 +61384,8 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
           name: GATE_SANDBOX_INCOMPATIBLE_GATE,
           reason: `${what} fails in ${placeName} on the base ${baseSha.slice(0, 12)} itself, so its failure on ${head.slice(0, 12)} is not counted (no ci-fix lane). ${advice2}, then rerun ${this.resume}. ${ACK_WARNING}${cal.tail ? `; base output tail: ${cal.tail.slice(-1500)}` : ""}`,
           ...!container && !plainRun && cal.gitTransport ? { gitTransport: true } : {},
-          ...!container && !plainRun && cal.junctionRead ? { junctionRead: true } : {}
+          ...!container && !plainRun && cal.junctionRead ? { junctionRead: true } : {},
+          ...!container && !plainRun && cal.tests ? { baseTests: cal.tests, baseOutput: vitestOutputFailures(cal.tail ?? "") } : {}
         };
       }
       /**
@@ -61244,12 +61428,16 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
             const ptail = redactGateOutput(`${p.stdout}${p.stderr}`).trim().slice(-2e3);
             return { ok: p.status === 0 && !p.timedOut, ...ptail ? { tail: ptail } : {}, ...p.timedOut ? { timedOut: true } : {} };
           }
-          const r = await this.sandboxRun({ purpose: "calibrate", argv: c.argv, exe: c.exe, args: calibrationArgs(c, dir), cwd: dir, commonGitDir, timeoutMs, ...this.gatesModeCache?.requireDeniedPaths ? { requireDeniedPaths: true } : {}, ...gitView ? { gitView } : {} }, fallbackContainer);
+          const report = !container && isBuiltInVitest(c) ? vitestReportPath(dir) : void 0;
+          const args = calibrationArgs(c, dir);
+          const r = await this.sandboxRun({ purpose: "calibrate", argv: c.argv, exe: c.exe, args: report ? [...args, ...vitestReportArgs(report)] : args, cwd: dir, commonGitDir, timeoutMs, ...this.gatesModeCache?.requireDeniedPaths ? { requireDeniedPaths: true } : {}, ...gitView ? { gitView } : {} }, fallbackContainer);
+          const tests = report ? readVitestReport(report, dir) : null;
           if (!r.ran) return { notStarted: r.reason };
           const tail4 = r.output.trim().slice(-2e3);
           const ok2 = r.status === 0 && !r.timedOut;
           const junctionRead = !ok2 && !container && !this.state.gateTreeCopy && windowsJunctionReadDenied(r.output, this.gatePlatform);
-          return { ok: ok2, ...tail4 ? { tail: tail4 } : {}, ...r.timedOut ? { timedOut: true } : {}, ...!ok2 && !container && windowsGitTransportFailure(r.output, this.gatePlatform) ? { gitTransport: true } : {}, ...junctionRead ? { junctionRead: true } : {} };
+          const keep = !ok2 && !r.timedOut && tests && tests.failed.length + tests.brokenFiles.length <= BASE_FAILURES_MAX;
+          return { ok: ok2, ...tail4 ? { tail: tail4 } : {}, ...r.timedOut ? { timedOut: true } : {}, ...!ok2 && !container && windowsGitTransportFailure(r.output, this.gatePlatform) ? { gitTransport: true } : {}, ...junctionRead ? { junctionRead: true } : {}, ...keep ? { tests } : {} };
         } catch (error2) {
           return { notStarted: errText6(error2).slice(0, 300) };
         } finally {
@@ -61962,7 +62150,8 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
             ...this.state.unsandboxedGatesAck ? { unsandboxedGatesAck: this.state.unsandboxedGatesAck } : {},
             ...this.state.gateChangeApproved ? { gateChangeApproved: this.state.gateChangeApproved } : {},
             ...pending?.secretAck ? { secretAck: pending.secretAck } : {},
-            ...this.state.gitTransportPlainHead ? { gitTransportPlainHead: this.state.gitTransportPlainHead } : {}
+            ...this.state.gitTransportPlainHead ? { gitTransportPlainHead: this.state.gitTransportPlainHead } : {},
+            ...this.state.testDeltaExcusedHead ? { testDeltaExcusedHead: this.state.testDeltaExcusedHead } : {}
           },
           decision,
           requiredChecks: config2.requiredChecks,

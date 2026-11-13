@@ -1,0 +1,87 @@
+{
+  "numTotalTestSuites": 4,
+  "numPassedTestSuites": 0,
+  "numFailedTestSuites": 4,
+  "numPendingTestSuites": 0,
+  "numTotalTests": 3,
+  "numPassedTests": 1,
+  "numFailedTests": 1,
+  "numPendingTests": 1,
+  "numTodoTests": 0,
+  "snapshot": {
+    "added": 0,
+    "failure": false,
+    "filesAdded": 0,
+    "filesRemoved": 0,
+    "filesRemovedList": [],
+    "filesUnmatched": 0,
+    "filesUpdated": 0,
+    "matched": 0,
+    "total": 0,
+    "unchecked": 0,
+    "uncheckedKeysByFile": [],
+    "unmatched": 0,
+    "updated": 0,
+    "didUpdate": false
+  },
+  "startTime": 1794541052590,
+  "success": false,
+  "testResults": [
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": [
+            "outer",
+            "inner > part"
+          ],
+          "fullName": "outer inner > part passes",
+          "status": "passed",
+          "title": "passes",
+          "duration": 1.0935000000000628,
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "outer",
+            "inner > part"
+          ],
+          "fullName": "outer inner > part fails",
+          "status": "failed",
+          "title": "fails",
+          "duration": 4.152299999999968,
+          "failureMessages": [
+            "AssertionError: expected 1 to be 2 // Object.is equality"
+          ],
+          "meta": {},
+          "tags": []
+        },
+        {
+          "ancestorTitles": [
+            "outer"
+          ],
+          "fullName": "outer skipped",
+          "status": "skipped",
+          "title": "skipped",
+          "failureMessages": [],
+          "meta": {},
+          "tags": []
+        }
+      ],
+      "startTime": 1794541053359,
+      "endTime": 1794541053364.1523,
+      "status": "failed",
+      "message": "",
+      "name": "C:/work/repo/src/a.test.ts"
+    },
+    {
+      "assertionResults": [],
+      "startTime": 1794541052590,
+      "endTime": 1794541052590,
+      "status": "failed",
+      "message": "Cannot find module './does-not-exist.js' imported from C:/work/repo/src/b.test.ts",
+      "name": "C:/work/repo/src/b.test.ts"
+    }
+  ]
+}
