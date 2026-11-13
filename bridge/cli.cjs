@@ -100116,7 +100116,7 @@ var init_process_utils2 = __esm({
 });
 
 // src/smoke/replay/redact.ts
-function userHomePatterns(win, pct2, posix13, posixFlags) {
+function userHomePatterns(win, pct2, posix14, posixFlags) {
   return [
     // The separator spelling is captured once, so `\n` after an escaped `\\` is not taken for a tail separator.
     // `\` doubles per JSON level, so any run of backslashes is a separator. The one after `Users` may be either
@@ -100125,7 +100125,7 @@ function userHomePatterns(win, pct2, posix13, posixFlags) {
     // Percent-encoded (`file:///c%3A/Users/...`, `C%3A%5CUsers%5C...`, `%2Fhome%2Fname`).
     new RegExp(String.raw`(?<head>(?:\b[A-Za-z]%3A${PCT_SEP}Users|%2F(?:home|Users))${PCT_SEP}(?!<user>)${pct2})(?:${PCT_SEP}${PCT_SEG})*`, "gi"),
     // POSIX, Git Bash (`/c/Users/...`) and WSL (`/mnt/c/Users/...`).
-    new RegExp(String.raw`(?<head>(?<![\w.$}-])\/(?:home|Users|(?:mnt\/)?[A-Za-z]\/Users)\/(?!<user>)${posix13})(?:\/${POSIX_SEG})*`, posixFlags)
+    new RegExp(String.raw`(?<head>(?<![\w.$}-])\/(?:home|Users|(?:mnt\/)?[A-Za-z]\/Users)\/(?!<user>)${posix14})(?:\/${POSIX_SEG})*`, posixFlags)
   ];
 }
 function knownUserHomePatterns(user) {
@@ -132010,6 +132010,16 @@ function checkoutPath(root2, issue2) {
 function checkoutBranch(issue2) {
   return getBranchName(FACTORY_CHECKOUT_TEAM, checkoutWorker(issue2));
 }
+function gateTreeIncomplete(target) {
+  try {
+    if (!(0, import_fs159.lstatSync)(target).isDirectory()) return false;
+    const m = (0, import_fs159.lstatSync)((0, import_path187.join)(target, GATE_TREE_MARKER));
+    if (!m.isFile() || m.size > 64 * 1024) return false;
+    return !(0, import_fs159.readFileSync)((0, import_path187.join)(target, GATE_TREE_MARKER), "utf-8").split("\n").includes(GATE_TREE_COMPLETE);
+  } catch {
+    return false;
+  }
+}
 function unlinkLink(p) {
   try {
     (0, import_fs159.unlinkSync)(p);
@@ -132029,21 +132039,42 @@ function linkNodeModules(root2, checkout, warn, workspaces = [], copy = false) {
   } catch {
     present = false;
   }
+  if (present && gateTreeIncomplete(target)) {
+    unlinkNodeModules(root2, checkout);
+    present = (0, import_fs159.existsSync)(target) || isLink(target);
+  }
   if (present) return ws.problem;
+  const trees = [{ src: source, to: target, rel: "" }];
+  for (const rel of ws.dirs) {
+    const yours = plainDirUnder(root2, rel);
+    const src = yours ? (0, import_path187.join)(yours, "node_modules") : null;
+    const dir = plainDirUnder(checkout, rel);
+    if (!src || !dir || isLink(src) || !(0, import_fs159.existsSync)(src) || !(0, import_fs159.statSync)(src).isDirectory()) continue;
+    const nested = (0, import_path187.join)(dir, "node_modules");
+    if ((0, import_fs159.existsSync)(nested) || isLink(nested)) continue;
+    trees.push({ src, to: nested, rel });
+  }
   const built = [];
+  let budget;
+  if (copy) {
+    const limits = { ...DEFAULT_COPY_LIMITS, ...copy === true ? {} : copy };
+    const roots = trees.map((t) => ({ real: import_fs159.realpathSync.native(t.src), to: t.to }));
+    const dry = { bytes: 0, files: 0, roots, limits, dry: true };
+    for (const t of trees) buildGateTree(t.src, t.to, root2, checkout, t.rel ? `${t.rel}/` : "", void 0, dry);
+    const free = limits.freeBytes(checkout);
+    if (free !== null && free < dry.bytes + limits.marginBytes) throw new Error(`the copied gate node_modules tree needs ${dry.bytes} bytes plus a ${limits.marginBytes}-byte margin on the volume of ${checkout}, which has ${free} bytes free, so it is not copied`);
+    budget = { bytes: 0, files: 0, roots, limits, dry: false };
+  }
   try {
-    buildGateTree(source, target, root2, checkout, "", warn, copy);
-    for (const rel of ws.dirs) {
-      const yours = plainDirUnder(root2, rel);
-      const src = yours ? (0, import_path187.join)(yours, "node_modules") : null;
-      const dir = plainDirUnder(checkout, rel);
-      if (!src || !dir || isLink(src) || !(0, import_fs159.existsSync)(src) || !(0, import_fs159.statSync)(src).isDirectory()) continue;
-      const nested = (0, import_path187.join)(dir, "node_modules");
-      if ((0, import_fs159.existsSync)(nested) || isLink(nested)) continue;
-      built.push(rel);
-      buildGateTree(src, nested, root2, checkout, `${rel}/`, warn, copy);
+    for (const t of trees) {
+      if (t.rel) {
+        built.push(t.rel);
+        (0, import_fs159.writeFileSync)((0, import_path187.join)(target, GATE_TREE_MARKER), built.map((r) => `${r}
+`).join(""));
+      }
+      buildGateTree(t.src, t.to, root2, checkout, t.rel ? `${t.rel}/` : "", warn, budget);
     }
-    (0, import_fs159.writeFileSync)((0, import_path187.join)(target, GATE_TREE_MARKER), built.map((r) => `${r}
+    (0, import_fs159.writeFileSync)((0, import_path187.join)(target, GATE_TREE_MARKER), [...built, GATE_TREE_COMPLETE].map((r) => `${r}
 `).join(""));
     const moved = treeMoved(target, checkout, "");
     if (moved) throw new Error(moved);
@@ -132071,26 +132102,30 @@ function isLink(p) {
     return false;
   }
 }
-function buildGateTree(source, target, root2, checkout, label2, warn, copy = false) {
-  (0, import_fs159.mkdirSync)(target);
-  const moved = treeMoved(target, checkout, label2);
-  if (moved) {
-    try {
-      (0, import_fs159.rmdirSync)(target);
-    } catch {
+function buildGateTree(source, target, root2, checkout, label2, warn, copy) {
+  const dry = copy?.dry === true;
+  if (!dry) {
+    (0, import_fs159.mkdirSync)(target);
+    const moved = treeMoved(target, checkout, label2);
+    if (moved) {
+      try {
+        (0, import_fs159.rmdirSync)(target);
+      } catch {
+      }
+      throw new Error(moved);
     }
-    throw new Error(moved);
+    (0, import_fs159.writeFileSync)((0, import_path187.join)(target, GATE_TREE_MARKER), "");
+    for (const name of GATE_CACHE_DIRS) (0, import_fs159.mkdirSync)((0, import_path187.join)(target, name));
   }
-  (0, import_fs159.writeFileSync)((0, import_path187.join)(target, GATE_TREE_MARKER), "");
-  for (const name of GATE_CACHE_DIRS) (0, import_fs159.mkdirSync)((0, import_path187.join)(target, name));
   const place = (from, to) => {
     const w = workspaceLinkTarget(from, root2, checkout);
     if ("skip" in w) {
       warn?.(`omg factory run: ${w.skip}, so it is left out of the gate's node_modules tree ${target}`);
       return;
     }
-    if (copy && !("to" in w) && (0, import_path187.basename)(from) !== ".bin") copyGateDir(from, to);
-    else (0, import_fs159.symlinkSync)("to" in w ? w.to : from, to, linkType());
+    if (copy && !("to" in w) && (0, import_path187.basename)(from) !== ".bin") return copyGateEntry(from, to, copy);
+    spend(copy, 0);
+    if (!dry) (0, import_fs159.symlinkSync)("to" in w ? w.to : from, to, linkType());
   };
   for (const e of (0, import_fs159.readdirSync)(source, { withFileTypes: true })) {
     if (e.name === GATE_TREE_MARKER || GATE_CACHE_DIRS.includes(e.name)) continue;
@@ -132106,14 +132141,16 @@ function buildGateTree(source, target, root2, checkout, label2, warn, copy = fal
         warn?.(`omg factory run: ${label2}node_modules/${e.name} (${st.size} bytes) is over ${GATE_TREE_FILE_MAX_BYTES} bytes, so it is not copied into the gate's node_modules tree ${target}`);
         continue;
       }
-      (0, import_fs159.copyFileSync)(from, (0, import_path187.join)(target, e.name));
+      spend(copy, st.size);
+      if (!dry) (0, import_fs159.copyFileSync)(from, (0, import_path187.join)(target, e.name));
       continue;
     }
     if (!st.isDirectory()) continue;
     if (e.name.startsWith("@") && !isLink(from)) {
       const children = (0, import_fs159.readdirSync)(from);
       if (children.some((c) => !("keep" in workspaceLinkTarget((0, import_path187.join)(from, c), root2, checkout)))) {
-        (0, import_fs159.mkdirSync)((0, import_path187.join)(target, e.name));
+        spend(copy, 0);
+        if (!dry) (0, import_fs159.mkdirSync)((0, import_path187.join)(target, e.name));
         for (const c of children) {
           try {
             if (!(0, import_fs159.statSync)((0, import_path187.join)(from, c)).isDirectory()) continue;
@@ -132127,21 +132164,70 @@ function buildGateTree(source, target, root2, checkout, label2, warn, copy = fal
     }
     place(from, (0, import_path187.join)(target, e.name));
   }
+  if (dry) return;
   const after = treeMoved(target, checkout, label2);
   if (after) throw new Error(after);
 }
-function copyGateDir(from, to) {
-  (0, import_fs159.mkdirSync)(to);
+function copyLimitText(what) {
+  return `the copied gate node_modules tree would be over ${what}, so it is not copied`;
+}
+function spend(b, bytes) {
+  if (!b) return;
+  if (b.files + 1 > b.limits.maxFiles) throw new Error(copyLimitText(`${b.limits.maxFiles} entries (files, dirs and links)`));
+  if (b.bytes + bytes > b.limits.maxBytes) throw new Error(copyLimitText(`${b.limits.maxBytes} bytes`));
+  b.files += 1;
+  b.bytes += bytes;
+}
+function copiedAt(real2, budget) {
+  const P = process.platform === "win32" ? import_path187.win32 : import_path187.posix;
+  let best = null;
+  for (const r of budget.roots) {
+    const rel = P.relative(r.real, real2);
+    if (rel.startsWith("..") || P.isAbsolute(rel)) continue;
+    if (!best || r.real.length > best.len) best = { rel, to: r.to, len: r.real.length };
+  }
+  if (!best) return null;
+  const first = best.rel.split(/[\\/]/)[0];
+  if (first === ".bin" || first === GATE_TREE_MARKER || GATE_CACHE_DIRS.includes(first)) return null;
+  return best.rel ? (0, import_path187.join)(best.to, best.rel) : best.to;
+}
+function copyGateEntry(from, to, budget) {
+  if (isLink(from)) {
+    let at = null;
+    try {
+      at = copiedAt(import_fs159.realpathSync.native(from), budget);
+    } catch {
+    }
+    if (at) {
+      spend(budget, 0);
+      if (!budget.dry) (0, import_fs159.symlinkSync)(at, to, linkType());
+      return;
+    }
+  }
+  copyGateDir(from, to, budget);
+}
+function copyGateDir(from, to, budget) {
+  spend(budget, 0);
+  if (!budget.dry) (0, import_fs159.mkdirSync)(to);
   for (const e of (0, import_fs159.readdirSync)(from, { withFileTypes: true })) {
     const s = (0, import_path187.join)(from, e.name);
     const d = (0, import_path187.join)(to, e.name);
     if (e.isSymbolicLink()) {
+      let real2;
       try {
-        if ((0, import_fs159.statSync)(s).isDirectory()) (0, import_fs159.symlinkSync)(import_fs159.realpathSync.native(s), d, linkType());
+        if (!(0, import_fs159.statSync)(s).isDirectory()) continue;
+        real2 = import_fs159.realpathSync.native(s);
       } catch {
+        continue;
       }
-    } else if (e.isDirectory()) copyGateDir(s, d);
-    else if (e.isFile()) (0, import_fs159.copyFileSync)(s, d);
+      spend(budget, 0);
+      if (!budget.dry) (0, import_fs159.symlinkSync)(copiedAt(real2, budget) ?? real2, d, linkType());
+    } else if (e.isDirectory()) copyGateDir(s, d, budget);
+    else if (e.isFile()) {
+      const size = (0, import_fs159.statSync)(s).size;
+      spend(budget, size);
+      if (!budget.dry) (0, import_fs159.copyFileSync)(s, d);
+    }
   }
 }
 function treeMoved(target, checkout, label2) {
@@ -132246,7 +132332,7 @@ function nestedTreeDirs(checkout) {
     const st = (0, import_fs159.lstatSync)((0, import_path187.join)(checkout, "node_modules"));
     const m = (0, import_fs159.lstatSync)(marker);
     if (!st.isSymbolicLink() && st.isDirectory() && m.isFile() && m.size <= 64 * 1024) {
-      for (const line2 of (0, import_fs159.readFileSync)(marker, "utf-8").split("\n")) if (line2) rels.add(line2);
+      for (const line2 of (0, import_fs159.readFileSync)(marker, "utf-8").split("\n")) if (line2 && line2 !== GATE_TREE_COMPLETE) rels.add(line2);
     }
   } catch {
   }
@@ -132273,7 +132359,7 @@ function trustedNestedRels(root2, checkout, workspaces) {
     const st = (0, import_fs159.lstatSync)((0, import_path187.join)(checkout, "node_modules"));
     const m = (0, import_fs159.lstatSync)(marker);
     if (!st.isSymbolicLink() && st.isDirectory() && m.isFile() && m.size <= 64 * 1024) {
-      for (const line2 of (0, import_fs159.readFileSync)(marker, "utf-8").split("\n")) if (line2) listed2.add(line2);
+      for (const line2 of (0, import_fs159.readFileSync)(marker, "utf-8").split("\n")) if (line2 && line2 !== GATE_TREE_COMPLETE) listed2.add(line2);
     }
   } catch {
     return [];
@@ -132289,7 +132375,7 @@ function sameDir(a, b) {
     return false;
   }
 }
-var import_fs159, import_path187, FACTORY_CHECKOUT_TEAM, checkoutWorker, GATE_CACHE_DIRS, GATE_TREE_MARKER, GATE_TREE_FILE_MAX_BYTES, nestedTrees, linkType, GATE_TREE_COPY_WHY, defaultGateConfigLoader;
+var import_fs159, import_path187, FACTORY_CHECKOUT_TEAM, checkoutWorker, GATE_CACHE_DIRS, GATE_TREE_MARKER, GATE_TREE_COMPLETE, GATE_TREE_FILE_MAX_BYTES, nestedTrees, linkType, GATE_TREE_COPY_WHY, GATE_TREE_COPY_MAX_BYTES, GATE_TREE_COPY_MAX_FILES, GATE_TREE_COPY_FREE_MARGIN_BYTES, DEFAULT_COPY_LIMITS, defaultGateConfigLoader;
 var init_prepare = __esm({
   "src/factory/run/prepare.ts"() {
     "use strict";
@@ -132303,10 +132389,27 @@ var init_prepare = __esm({
     checkoutWorker = (issue2) => runSlug(issue2);
     GATE_CACHE_DIRS = [".cache", ".tmp", ".vite", ".vite-temp", ".vitest"];
     GATE_TREE_MARKER = ".omg-gate-tree";
+    GATE_TREE_COMPLETE = ".omg-complete";
     GATE_TREE_FILE_MAX_BYTES = 16 * 1024 * 1024;
     nestedTrees = /* @__PURE__ */ new Map();
     linkType = () => process.platform === "win32" ? "junction" : "dir";
     GATE_TREE_COPY_WHY = "the OS sandbox on Windows denies opening a package dir through the gate tree's junction with generic read access, which esbuild needs";
+    GATE_TREE_COPY_MAX_BYTES = 2 * 1024 * 1024 * 1024;
+    GATE_TREE_COPY_MAX_FILES = 2e5;
+    GATE_TREE_COPY_FREE_MARGIN_BYTES = 1024 * 1024 * 1024;
+    DEFAULT_COPY_LIMITS = {
+      maxBytes: GATE_TREE_COPY_MAX_BYTES,
+      maxFiles: GATE_TREE_COPY_MAX_FILES,
+      marginBytes: GATE_TREE_COPY_FREE_MARGIN_BYTES,
+      freeBytes: (dir) => {
+        try {
+          const fs28 = (0, import_fs159.statfsSync)(dir);
+          return Number(fs28.bavail) * Number(fs28.bsize);
+        } catch {
+          return null;
+        }
+      }
+    };
     defaultGateConfigLoader = (i) => {
       const layers = userConfigLayers();
       const config2 = loadTrustedShipConfig({
@@ -142307,33 +142410,63 @@ var init_engine = __esm({
         this.wsGlobs = { baseSha: sha3, globs: baseWorkspacePatterns(read) };
         return this.wsGlobs.globs;
       }
-      /** linkNodeModules with the base's workspaces; a layout it does not support is a warning here (the base calibration parks on it). */
-      linkGateTree(path30, baseSha) {
-        const problem = linkNodeModules(this.o.root, path30, this.o.warn, this.baseWorkspaces(baseSha), this.state.gateTreeCopy === true);
+      /**
+       * linkNodeModules with the base's workspaces; a layout it does not support
+       * is a warning here (the base calibration parks on it). A copied tree
+       * (`copy`, the run's gateTreeCopy by default) that cannot be built (over
+       * the bounds, no disk space, a busy file) returns why, for the caller's
+       * park (L2, review-546); a linked tree's error throws as before.
+       */
+      linkGateTree(path30, baseSha, copy = this.state.gateTreeCopy === true) {
+        let problem;
+        try {
+          problem = linkNodeModules(this.o.root, path30, this.o.warn, this.baseWorkspaces(baseSha), copy);
+        } catch (error2) {
+          if (!copy) throw error2;
+          return `the copied node_modules tree of ${path30} could not be built (${oneLine(errText6(error2), 300)})`;
+        }
         if (problem) this.o.warn?.(`omg factory run: ${problem}; a gate that fails in the sandbox parks at ${GATE_SANDBOX_INCOMPATIBLE_GATE}`);
+        return null;
+      }
+      /** The gate-sandbox-incompatible park of a copied tree linkGateTree could not build (`why`). */
+      treeCopyPark(why) {
+        return { name: GATE_SANDBOX_INCOMPATIBLE_GATE, reason: `${why}; the run's gate trees are copies because ${GATE_TREE_COPY_WHY}. For an npm project, set factory.run.sandbox.isolation to "container" in your user config: the gates then run in a container with its own npm ci and need no copy. A full disk or a busy file can also be the cause: free space or close the program holding the file. Then rerun ${this.resume}. ${ACK_WARNING}` };
       }
       /**
        * After a base calibration failed in the OS sandbox on Windows opening a
        * package dir through the gate tree's junction (windowsJunctionReadDenied):
-       * from now on this run's gate trees are copies of your node_modules
-       * (prepare.ts GATE_TREE_COPY_WHY), and the tree in `checkout` is rebuilt as
-       * one. The command stays in the sandbox; the copy is the checkout's own, so
-       * the PR's code can write only that. False (the caller keeps its park) when
-       * the run copies already or the rebuild fails.
+       * the tree in `checkout` is rebuilt as a copy of your node_modules
+       * (prepare.ts GATE_TREE_COPY_WHY), and only then (L2, review-546) the run
+       * records that its gate trees are copies from now on. The command stays in
+       * the sandbox; the copy is the checkout's own, so the PR's code can write
+       * only that. True when switched; false (the caller keeps its park) when the
+       * run copies already or is container-isolated; else the park naming the
+       * rebuild error (a busy file, a full disk, over the bounds), with the linked
+       * tree put back where possible and the run left linking (fail closed).
        */
       switchToGateTreeCopy(checkout) {
         if (this.state.gateTreeCopy || this.containerIsolated()) return false;
+        let failed3;
+        try {
+          unlinkNodeModules(this.o.root, checkout);
+          failed3 = this.linkGateTree(checkout, void 0, true);
+        } catch (error2) {
+          failed3 = `the node_modules tree of ${checkout} could not be removed to be rebuilt as a copy (${oneLine(errText6(error2), 300)})`;
+        }
+        if (failed3) {
+          this.o.warn?.(`omg factory run: ${failed3}`);
+          try {
+            unlinkNodeModules(this.o.root, checkout);
+            this.linkGateTree(checkout, void 0, false);
+          } catch (error2) {
+            this.o.warn?.(`omg factory run: could not link the node_modules tree of ${checkout} again (${oneLine(errText6(error2), 300)})`);
+          }
+          return this.treeCopyPark(failed3);
+        }
         const note = `the gate's node_modules trees are copies of yours from now on, not links: ${GATE_TREE_COPY_WHY}`;
         this.o.warn?.(`omg factory run: ${note}`);
         this.save((x) => ({ ...x, gateTreeCopy: true, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note }] }));
-        try {
-          unlinkNodeModules(this.o.root, checkout);
-          this.linkGateTree(checkout);
-          return true;
-        } catch (error2) {
-          this.o.warn?.(`omg factory run: could not rebuild the node_modules tree of ${checkout} as a copy (${oneLine(errText6(error2), 300)})`);
-          return false;
-        }
+        return true;
       }
       /**
        * A checkout kept after a failed discard gets its node_modules tree back
@@ -142343,7 +142476,8 @@ var init_engine = __esm({
       relinkKeptCheckout(path30) {
         if (this.containerIsolated()) return;
         try {
-          this.linkGateTree(path30);
+          const failed3 = this.linkGateTree(path30);
+          if (failed3) this.o.warn?.(`omg factory run: ${failed3}`);
         } catch (error2) {
           this.o.warn?.(`omg factory run: could not link the node_modules tree of the kept prepare checkout ${path30} again (${oneLine(errText6(error2), 300)})`);
         }
@@ -142524,8 +142658,8 @@ var init_engine = __esm({
         if (this.gatesSandbox(loaded2).container) return null;
         const rule = lockfileUnchanged(p.repo, baseSha, head, p.ctx);
         if (rule.policy === "junction") {
-          this.linkGateTree(path30, baseSha);
-          return null;
+          const failed3 = this.linkGateTree(path30, baseSha);
+          return failed3 ? this.treeCopyPark(failed3) : null;
         }
         const what = rule.lockfiles.length === 0 ? "the base has no lockfile" : `the PR changes ${rule.changed.join(", ")}`;
         let mode;
@@ -144225,7 +144359,12 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
             return;
           }
         } else if (!this.gatesSandbox(this.gateConfig(view2)).container) {
-          this.linkGateTree(path30, view2.baseRefOid);
+          const failed4 = this.linkGateTree(path30, view2.baseRefOid);
+          if (failed4) {
+            const park = this.treeCopyPark(failed4);
+            this.gate(park.name, park.reason);
+            return;
+          }
         }
         const gitLink = checkoutGitLink(path30);
         if (!gitLink.gitDir) throw new FactoryStepError(`the new prepare checkout ${path30} has no gitfile naming its git dir (${gitLink.hash})`);
@@ -144585,7 +144724,11 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
             if (r.credentialFilesReadable) this.noteCredentialFilesReadable(head);
             if (r.status === 0 && !r.timedOut) return { status: 0, stdout: redactGateOutput(r.output), stderr: "" };
             const park = await this.calibrateGate(c, at.baseSha, at.commonGitDir, PREPARE_CHECK_TIMEOUT_MS, label2, head);
-            if (park?.junctionRead && this.switchToGateTreeCopy(path30)) return this.prepareCheck(c, at);
+            if (park?.junctionRead) {
+              const switched = this.switchToGateTreeCopy(path30);
+              if (switched === true) return this.prepareCheck(c, at);
+              if (switched) return stop(switched);
+            }
             if (park && report3 && !park.gitTransport && !park.junctionRead && !r.timedOut) {
               const judged = this.judgeTestDelta(park, headTests, head, label2, at.baseSha, r.status, r.output);
               if (judged) return judged;
@@ -145117,9 +145260,16 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
         const target = resolveLocalGateArgv(gate, { cwd: checkout });
         const park = !base || "missing" in target ? { name: GATE_SANDBOX_INCOMPATIBLE_GATE, reason: `the local gate failed in the OS sandbox on ${head.slice(0, 12)}, and the run has no base to calibrate it on; the failure is not counted (no ci-fix lane); rerun ${this.resume}` } : await this.calibrateGate({ argv: gate, exe: target.exe, args: target.args }, base, common, timeoutMinutes * 6e4, `the local gate \`${gate.join(" ")}\``, head);
         if (!park) return true;
-        if (park.junctionRead && this.switchToGateTreeCopy(checkout)) {
-          (0, import_fs174.rmSync)(localCheckRecordPath(stateDir, this.o.root, head), { force: true });
-          return this.ensureLocalGate(head);
+        if (park.junctionRead) {
+          const switched = this.switchToGateTreeCopy(checkout);
+          if (switched === true) {
+            (0, import_fs174.rmSync)(localCheckRecordPath(stateDir, this.o.root, head), { force: true });
+            return this.ensureLocalGate(head);
+          }
+          if (switched) {
+            this.gate(switched.name, switched.reason);
+            return false;
+          }
         }
         const fallback = "gitTransport" in park && park.gitTransport ? await this.gitTransportFallback(common) : null;
         if (fallback && base && !("missing" in target)) {
