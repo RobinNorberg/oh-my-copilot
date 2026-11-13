@@ -48885,12 +48885,13 @@ function humanReviewShapeProblem(s) {
   if (s.sandboxedGateHead !== void 0 && (!isStr2(s.sandboxedGateHead) || !HEX409.test(s.sandboxedGateHead))) return "sandboxedGateHead";
   if (s.gitTransportPlainHead !== void 0 && (!isStr2(s.gitTransportPlainHead) || !HEX409.test(s.gitTransportPlainHead))) return "gitTransportPlainHead";
   if (s.testDeltaExcusedHead !== void 0 && (!isStr2(s.testDeltaExcusedHead) || !HEX409.test(s.testDeltaExcusedHead))) return "testDeltaExcusedHead";
+  if (s.plainHeadRan !== void 0 && s.plainHeadRan !== true) return "plainHeadRan";
   if (s.gateTreeCopy !== void 0 && s.gateTreeCopy !== true) return "gateTreeCopy";
   if (s.checkoutAdmin !== void 0 && (!isStr2(s.checkoutAdmin) || !/^[A-Za-z0-9._-]+$/.test(s.checkoutAdmin) || s.checkoutAdmin === "." || s.checkoutAdmin === "..")) return "checkoutAdmin";
   const cal = s.gateCalibration;
   if (cal !== void 0 && (typeof cal !== "object" || cal === null || Array.isArray(cal) || !Object.entries(cal).every(([k, v]) => {
     const e = v;
-    return HEX64.test(k) && typeof e === "object" && e !== null && typeof e.ok === "boolean" && (e.tail === void 0 || isStr2(e.tail)) && (e.gitTransport === void 0 || e.gitTransport === true) && (e.timedOut === void 0 || e.timedOut === true) && (e.junctionRead === void 0 || e.junctionRead === true) && (e.tests === void 0 || vitestSummaryShapeOk(e.tests)) && Object.keys(e).every((x) => x === "ok" || x === "tail" || x === "timedOut" || x === "gitTransport" || x === "junctionRead" || x === "tests");
+    return HEX64.test(k) && typeof e === "object" && e !== null && typeof e.ok === "boolean" && (e.tail === void 0 || isStr2(e.tail)) && (e.gitTransport === void 0 || e.gitTransport === true) && (e.timedOut === void 0 || e.timedOut === true) && (e.junctionRead === void 0 || e.junctionRead === true) && (e.tests === void 0 || vitestSummaryShapeOk(e.tests)) && (e.beforePlainHead === void 0 || e.beforePlainHead === true) && Object.keys(e).every((x) => x === "ok" || x === "tail" || x === "timedOut" || x === "gitTransport" || x === "junctionRead" || x === "tests" || x === "beforePlainHead");
   }))) return "gateCalibration";
   const lanes = s.lanes;
   if (!lanes.every((l) => {
@@ -61183,12 +61184,28 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
       /**
        * The base failed in the fallback's container before, for this exact image
        * id, with a verdict (not a timeout: N1, review-532b): the head's container
-       * run is skipped.
+       * run is skipped. Not a base that kept a per-test report there (L1,
+       * review-550): the head's run in the container is judged per test.
        */
       containerFailedOnBase(c, baseSha, container) {
         if (!this.containerImageId) return false;
         const cal = this.state.gateCalibration?.[this.calibrationKey(baseSha, c.argv, container)];
-        return cal !== void 0 && !cal.ok && !cal.timedOut;
+        return cal !== void 0 && !cal.ok && !cal.timedOut && !cal.tests;
+      }
+      /**
+       * The PR's code ran without any sandbox on this host in this run (M1,
+       * review-550): gates "unsandboxed", an --allow-unsandboxed-gates ack, a
+       * write lane run without the enforced sandbox, or the git-transport
+       * fallback's plain run. A plain base calibration made from then on shares
+       * the host (the root's node_modules, the repo's git config) with it.
+       */
+      plainHeadCodeRan() {
+        const s = this.state;
+        return s.plainHeadRan === true || s.gitTransportPlainHead !== void 0 || s.unsandboxedGatesAck !== void 0 || s.unsandboxedAck !== void 0;
+      }
+      /** Recorded (sealed) before the PR's code runs without any sandbox. */
+      notePlainHeadRan() {
+        if (!this.state.plainHeadRan) this.save((x) => ({ ...x, plainHeadRan: true }));
       }
       /** The loud note of a check the Windows git-transport fallback runs outside the OS sandbox: a warning, a history note, one PR note per head. */
       noteGitTransportFallback(head, what, how, container) {
@@ -61215,6 +61232,7 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
       }
       /** gates "unsandboxed": a warning every time and one PR note per head. */
       noteUnsandboxedGates(head, what) {
+        this.notePlainHeadRan();
         const source = this.gatesModeCache?.source ?? "config";
         this.o.warn?.(`omg factory run: ${what} on ${head.slice(0, 12)} runs WITHOUT the OS sandbox (factory.run.sandbox.gates "unsandboxed", ${source})`);
         this.commentOnce("pr", `gates-unsandboxed@${head.slice(0, 12)}`, "sandbox", `**Sandbox: gates unsandboxed.** ${what} on ${head.slice(0, 12)} ran the PR's own code without the OS sandbox (\`factory.run.sandbox.gates: "unsandboxed"\`, ${source}).
@@ -61261,6 +61279,7 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
         const plain = async (how, extraArgs = []) => {
           if (how === "unsandboxed") this.noteUnsandboxedGates(head, label);
           else if (how === "ack") ran.acked = true;
+          this.notePlainHeadRan();
           ran.modes.add(how);
           const procs = (0, import_path117.join)(this.gateJobRoot(), "prepare-procs", `${head}.json`);
           (0, import_fs98.mkdirSync)((0, import_path117.dirname)(procs), { recursive: true });
@@ -61348,8 +61367,9 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
                   this.o.warn?.(`omg factory run: the Windows git-transport fallback could not use the gate container: ${fr.reason}`);
                 }
               }
-              this.noteGitTransportFallback(head, label, "unsandboxed", fallback);
               const preport = isBuiltInVitest(c) ? vitestReportPath(path15) : void 0;
+              if (preport && !this.plainHeadCodeRan()) await this.calibrateGate(c, at.baseSha, at.commonGitDir, PREPARE_CHECK_TIMEOUT_MS, label, head, "plain");
+              this.noteGitTransportFallback(head, label, "unsandboxed", fallback);
               let pTests = null;
               let pr;
               try {
@@ -61359,9 +61379,12 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
               }
               if (pr.notStarted !== void 0 || pr.status === 0) return pr;
               const ppark = await this.calibrateGate(c, at.baseSha, at.commonGitDir, PREPARE_CHECK_TIMEOUT_MS, label, head, "plain");
-              const pjudged = ppark && preport ? this.judgeTestDelta(ppark, pTests, head, label, at.baseSha, pr.status, `${pr.stdout}
+              const pjudged = ppark && preport && ppark.beforePlainHead ? this.judgeTestDelta(ppark, pTests, head, label, at.baseSha, pr.status, `${pr.stdout}
 ${pr.stderr}`, "a plain run (no sandbox)") : null;
               if (pjudged) return pjudged;
+              if (ppark && preport && ppark.baseTests && !ppark.beforePlainHead) {
+                return stop({ ...ppark, reason: `Not compared test by test: the base ran plainly after the PR's code had run plainly on this host in this run, so its failures may be the PR's doing. ${ppark.reason}` });
+              }
               return ppark ? stop(ppark) : pr;
             }
             if (park) return stop(park);
@@ -61424,7 +61447,9 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
        * git-transport fallback's container instead (a stored failure there is
        * not retried while the image id is known and unchanged), or plainly
        * without any sandbox ('plain': the trusted base's code, after a plain
-       * failure of the head).
+       * failure of the head, or before the head's plain run for the built-in
+       * vitest check; `beforePlainHead` when no plain head of this run had run
+       * yet, M1 review-550).
        */
       async calibrateGate(c, baseSha, commonGitDir, timeoutMs, what, head, where) {
         const plainRun = where === "plain";
@@ -61435,10 +61460,12 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
         const sticky = where !== void 0 && !plainRun && !this.gatesModeCache?.container && !!this.containerImageId && !cal?.timedOut;
         if (!cal || !cal.ok && !sticky && !this.recalibrated.has(key)) {
           this.recalibrated.add(key);
-          const out = await this.runOnBase(c, baseSha, commonGitDir, timeoutMs, where);
-          if ("notStarted" in out) {
-            return { name: GATE_SANDBOX_INCOMPATIBLE_GATE, reason: `${what} failed in ${placeName} on ${head.slice(0, 12)}, and its calibration on the base ${baseSha.slice(0, 12)} could not run (${out.notStarted}); the failure is not counted (no ci-fix lane). Fix the cause, then rerun ${this.resume}. ${ACK_WARNING}` };
+          const beforePlainHead = plainRun && !this.plainHeadCodeRan();
+          const ran = await this.runOnBase(c, baseSha, commonGitDir, timeoutMs, where);
+          if ("notStarted" in ran) {
+            return { name: GATE_SANDBOX_INCOMPATIBLE_GATE, reason: `${what} failed in ${placeName} on ${head.slice(0, 12)}, and its calibration on the base ${baseSha.slice(0, 12)} could not run (${ran.notStarted}); the failure is not counted (no ci-fix lane). Fix the cause, then rerun ${this.resume}. ${ACK_WARNING}` };
           }
+          const out = beforePlainHead ? { ...ran, beforePlainHead: true } : ran;
           cal = out;
           this.save((x) => ({ ...x, gateCalibration: { ...x.gateCalibration ?? {}, [key]: out }, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `calibrated ${what.slice(0, 120)} in ${placeName} on the base ${baseSha.slice(0, 12)}: ${out.ok ? "passes" : "fails"}` }] }));
         }
@@ -61450,7 +61477,8 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
           ...!container && !plainRun && cal.gitTransport ? { gitTransport: true } : {},
           ...!container && !plainRun && cal.junctionRead ? { junctionRead: true } : {},
           // The base's report from this place only (the key holds the place): the caller judges a head run from the same one.
-          ...cal.tests ? { baseTests: cal.tests, baseOutput: vitestOutputFailures(cal.tail ?? "") } : {}
+          ...cal.tests ? { baseTests: cal.tests, baseOutput: vitestOutputFailures(cal.tail ?? "") } : {},
+          ...plainRun && cal.beforePlainHead ? { beforePlainHead: true } : {}
         };
       }
       /**
