@@ -1681,12 +1681,18 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
                 { name: 'Test', state: 'FAILURE', link: 'https://github.com/o/r/actions/runs/77/job/88' },
                 { name: evil, state: 'FAILURE', link: 'https://github.com/o/r/actions/runs/77/job/89' },
             ]);
+            handlers.unshift((key) => (key === 'gh run view --job 89 --log' ? ok('Build\tRun\t2026-10-21T12:00:00.000Z  FAIL  src/a.test.ts > `x` @team \u001b[31m\'quoted\' | pipe\n') : undefined));
             handlers.unshift((key) => (key.startsWith('gh run list --commit') ? ok('[{"databaseId":77,"status":"completed","conclusion":"failure","workflowName":"CI"}]') : undefined));
             const result = await run({ from: 'suite', suite: 'full', to: 'pr', allowSkippedSmoke: true });
             const details = result.phases[2].details ?? [];
             expect(details).toContain('failed: `Test`');
             expect(details).toContain("failed: `Build' ＠team [31mred`");
             expect(details.filter((d) => d.startsWith('failed: ')).join()).not.toMatch(/[\n\u001b@]/);
+            const testLines = details.filter((d) => d.startsWith('  '));
+            expect(testLines.length).toBeGreaterThan(0);
+            expect(testLines.some((d) => d.includes('Build'))).toBe(true);
+            expect(testLines.every((d) => !/[\u001b@\n|]/.test(d) && d.startsWith("  `Build' ＠team"))).toBe(true);
+            expect(testLines.some((d) => d.includes("＠team [31m'quoted' ¦ pipe"))).toBe(true);
         });
         it('--to suite and --to smoke prepare without pushing anything', async () => {
             suiteDone();

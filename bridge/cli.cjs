@@ -190370,7 +190370,7 @@ ${rr.stderr}`) });
     const details = report3.failed.map((name) => `failed: ${checkName(name)}`);
     for (const check2 of report3.checks) {
       if (check2.class !== "failed" || !check2.jobId) continue;
-      for (const t of this.failingTestsOfJob(check2.jobId)) details.push(`  ${check2.name}: ${t}`);
+      for (const t of this.failingTestsOfJob(check2.jobId)) details.push(`  ${checkName(check2.name)}: ${checkText(t, 160)}`);
     }
     return details;
   }
