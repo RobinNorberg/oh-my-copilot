@@ -33099,13 +33099,14 @@ function resolveRequireDeniedPaths(layers) {
   return { require: false, source: user === false || base === false ? "config" : "default" };
 }
 function resolveGateIsolation(layers, nodeVersion = process.versions.node) {
-  const block2 = (config2) => {
+  const block2 = (config2, strict = false) => {
     const raw2 = config2?.factory?.run?.sandbox;
+    if (strict && raw2 !== void 0 && (raw2 === null || typeof raw2 !== "object" || Array.isArray(raw2))) throw new Error("user config: factory.run.sandbox must be an object");
     return raw2 && typeof raw2 === "object" && !Array.isArray(raw2) ? raw2 : {};
   };
   const base = block2(layers.base);
   const ignoredBase = ["isolation", "container"].filter((k) => base[k] !== void 0).map((k) => `factory.run.sandbox.${k}`);
-  const user = block2(layers.user);
+  const user = block2(layers.user, true);
   const bad = (key, want) => {
     throw new Error(`user config: factory.run.sandbox.${key} must be ${want}`);
   };
@@ -33129,11 +33130,12 @@ function resolveGateIsolation(layers, nodeVersion = process.versions.node) {
   return { isolation, ...isolation === "container" ? { container } : {}, ignoredBase };
 }
 function resolveWindowsGitTransport(layers, nodeVersion = process.versions.node) {
-  const block2 = (config2) => {
+  const block2 = (config2, strict = false) => {
     const raw = config2?.factory?.run?.sandbox;
+    if (strict && raw !== void 0 && (raw === null || typeof raw !== "object" || Array.isArray(raw))) throw new Error("user config: factory.run.sandbox must be an object");
     return raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
   };
-  const user = block2(layers.user);
+  const user = block2(layers.user, true);
   const v = user.windowsGitTransport;
   if (v !== void 0 && v !== "fallback" && v !== "strict") throw new Error('user config: factory.run.sandbox.windowsGitTransport must be "fallback" or "strict"');
   const own = user.container;

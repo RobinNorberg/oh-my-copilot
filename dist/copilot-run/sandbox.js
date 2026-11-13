@@ -195,13 +195,15 @@ export const defaultGateImage = (nodeVersion = process.versions.node) => `node:$
  * argv word after the runtime's options) and holds only reference characters.
  */
 export function resolveGateIsolation(layers, nodeVersion = process.versions.node) {
-    const block = (config) => {
+    const block = (config, strict = false) => {
         const raw = config?.factory?.run?.sandbox;
+        if (strict && raw !== undefined && (raw === null || typeof raw !== 'object' || Array.isArray(raw)))
+            throw new Error('user config: factory.run.sandbox must be an object');
         return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
     };
     const base = block(layers.base);
     const ignoredBase = ['isolation', 'container'].filter((k) => base[k] !== undefined).map((k) => `factory.run.sandbox.${k}`);
-    const user = block(layers.user);
+    const user = block(layers.user, true);
     const bad = (key, want) => { throw new Error(`user config: factory.run.sandbox.${key} must be ${want}`); };
     const isolation = user.isolation === undefined ? 'copilot' : user.isolation === 'copilot' || user.isolation === 'container' ? user.isolation : bad('isolation', '"copilot" or "container"');
     const raw = user.container ?? {};
@@ -236,11 +238,13 @@ export const defaultGitGateImage = (nodeVersion = process.versions.node) => `nod
  * one. A malformed user value throws.
  */
 export function resolveWindowsGitTransport(layers, nodeVersion = process.versions.node) {
-    const block = (config) => {
+    const block = (config, strict = false) => {
         const raw = config?.factory?.run?.sandbox;
+        if (strict && raw !== undefined && (raw === null || typeof raw !== 'object' || Array.isArray(raw)))
+            throw new Error('user config: factory.run.sandbox must be an object');
         return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
     };
-    const user = block(layers.user);
+    const user = block(layers.user, true);
     const v = user.windowsGitTransport;
     if (v !== undefined && v !== 'fallback' && v !== 'strict')
         throw new Error('user config: factory.run.sandbox.windowsGitTransport must be "fallback" or "strict"');
