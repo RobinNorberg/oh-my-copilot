@@ -44363,6 +44363,12 @@ function adoReviews(ctx, review = { trustedReviewers: [] }) {
       if (!v.lastMergeSourceCommit) throw new Error(`pull request ${pr}: no source commit yet`);
       return { headRefOid: v.lastMergeSourceCommit, state: STATE[v.status] ?? v.status.toUpperCase() };
     },
+    // mergeStatus: `conflicts` is a conflict, `succeeded` merges; queued/notSet/failure/rejectedByPolicy say nothing about conflicts.
+    mergeability(pr) {
+      const v = readAdoPr(ctx, pr);
+      const head = v.lastMergeSourceCommit ? { headRefOid: v.lastMergeSourceCommit } : {};
+      return { state: v.mergeStatus === "conflicts" ? "conflicting" : v.mergeStatus === "succeeded" ? "mergeable" : "unknown", ...head };
+    },
     markReady(pr) {
       adoJson(adoCall(ctx, "git.pullRequests.PATCH", { ...repoParams(ctx), pullRequestId: String(pr) }, {}, { isDraft: false }), `mark pull request ${pr} ready`);
     },
@@ -44634,7 +44640,7 @@ function readMirrorRef(mirror, name) {
   }
   return void 0;
 }
-var import_crypto20, import_fs71, import_path87, LOCAL_REMOTE, HEX405, BRANCH3, localForgeDir, localStoreDir, localCheckRecordPath, mirrorInitArgs, mirrorRemoteAddArgs, mirrorRemoteGetUrlArgs, mirrorPushArgs, mirrorFetchArgs, backlogListArgs, backlogShowArgs, mergedArgs, STATE_CHANGE_LOG_FLAGS, lastStateChangeArgs;
+var import_crypto20, import_fs71, import_path87, LOCAL_REMOTE, HEX405, BRANCH3, localForgeDir, localStoreDir, localCheckRecordPath, mirrorInitArgs, mirrorRemoteAddArgs, mirrorRemoteGetUrlArgs, mirrorPushArgs, mirrorFetchArgs, backlogListArgs, backlogShowArgs, mergedArgs, mergeTreeArgs, STATE_CHANGE_LOG_FLAGS, lastStateChangeArgs;
 var init_mirror = __esm({
   "src/forge/local/mirror.ts"() {
     "use strict";
@@ -44655,6 +44661,7 @@ var init_mirror = __esm({
     backlogListArgs = (commit, dir) => ["ls-tree", "-z", "--name-only", sha(commit), "--", `${dir}/`];
     backlogShowArgs = (commit, path15) => ["show", `${sha(commit)}:${path15}`];
     mergedArgs = (head, base) => ["merge-base", "--is-ancestor", sha(head), sha(base)];
+    mergeTreeArgs = (head, base) => ["merge-tree", "--write-tree", sha(head), sha(base)];
     STATE_CHANGE_LOG_FLAGS = ["-1", "--no-show-signature", "--no-ext-diff", "--no-textconv", "-G^state:", "--format=%H %P"];
     lastStateChangeArgs = (commit, path15) => ["log", ...STATE_CHANGE_LOG_FLAGS, sha(commit), "--", path15];
   }
@@ -47671,6 +47678,15 @@ ${body}`, omgRoot);
       const v = view(pr);
       return { headRefOid: v.headRefOid, state: v.state };
     },
+    // The mirror's base (the base the engine synced and prepare merges): a head that already contains it is
+    // mergeable; else git's merge-tree decides (exit 1 conflicts); anything git cannot tell is unknown.
+    mergeability(pr) {
+      const v = view(pr);
+      if (v.state !== "OPEN") return { state: "unknown", headRefOid: v.headRefOid };
+      if (v.headRefOid === v.baseRefOid || isAncestor(ctx, v.baseRefOid, v.headRefOid) === true) return { state: "mergeable", headRefOid: v.headRefOid };
+      const r = ctx.exec("git", mergeTreeArgs(v.headRefOid, v.baseRefOid), { cwd: ctx.root, env: TRUSTED_READ_ENV2 });
+      return { state: r.status === 0 ? "mergeable" : r.status === 1 ? "conflicting" : "unknown", headRefOid: v.headRefOid };
+    },
     markReady(pr) {
       updatePrStore(ctx.storePath, (store) => {
         const p = store.prs.find((x) => x.number === pr);
@@ -48859,6 +48875,7 @@ function shapeProblem2(s) {
   if (typeof s.retries !== "object" || s.retries === null || !Object.values(s.retries).every(isCount3)) return "retries";
   if (typeof s.lostStreak !== "object" || s.lostStreak === null) return "lostStreak";
   if (typeof s.elapsedMs !== "number" || !isCount3(s.ciFixRounds)) return "elapsedMs/ciFixRounds";
+  if (s.conflictReprepares !== void 0 && !isCount3(s.conflictReprepares)) return "conflictReprepares";
   if (!Array.isArray(s.history)) return "history";
   if (!isStr2(s.createdAt) || !isStr2(s.updatedAt)) return "createdAt/updatedAt";
   return humanReviewShapeProblem(s);
@@ -53265,6 +53282,12 @@ function ghPrHead(exec, pr, cwd) {
   }
   return { headRefOid: v.headRefOid, state: v.state };
 }
+function ghPrMergeability(exec, pr, cwd) {
+  const v = ghJson(exec, ["pr", "view", String(pr), "--json", "headRefOid,mergeable,mergeStateStatus"], cwd);
+  const head = typeof v?.headRefOid === "string" && HEX4013.test(v.headRefOid) ? { headRefOid: v.headRefOid } : {};
+  if (v?.mergeable === "CONFLICTING" || v?.mergeStateStatus === "DIRTY") return { state: "conflicting", ...head };
+  return { state: v?.mergeable === "MERGEABLE" ? "mergeable" : "unknown", ...head };
+}
 function ghPrHeadState(exec, pr, cwd) {
   return ghJson(exec, ["pr", "view", String(pr), "--json", "headRefOid,state"], cwd);
 }
@@ -53328,6 +53351,7 @@ function githubReviews(exec, cwd, o = {}) {
     createDraftPr: (o2) => ghCreateDraftPr(exec, o2, cwd),
     viewPr: (pr) => ghViewPr(exec, pr, cwd),
     prHead: (pr) => ghPrHead(exec, pr, cwd),
+    mergeability: (pr) => ghPrMergeability(exec, pr, cwd),
     markReady: (pr) => ghMarkReady(exec, pr, cwd),
     commentPr: (pr, bodyFile) => ghCommentPr(exec, pr, bodyFile, cwd)
   };
@@ -58258,7 +58282,7 @@ async function runFactoryEngine(o) {
 function sharedLayoutSealed(s) {
   return s.layout !== 2 && (s.lanes.length > 0 || s.codingAgent !== void 0);
 }
-var import_crypto29, import_fs98, import_os22, import_path117, EXIT_AWAITING_HUMAN, PREPARE_ENGINE_STEPS, MAX_CONFLICT_FIX_ROUNDS, MAX_MERGE_BOUNCES, DEFAULT_POLL_MS, LANE_GRACE_MS, REMOTE_HEAD_FETCH_FLAGS, LS_REMOTE_TIMEOUT_MS, ADO_HEAD_LAG_POLLS, localGateConfigLoader, PROCESS_DEADLINE_MS, defaultLaneProcessOps, FactoryStepError, StateTamperedError, LocalGateDue, MirrorBaseMovedError, HEX4017, PARK_TAIL_LINES, PARK_TAIL_LINE_CHARS, PARK_TAIL_CHARS, GIT_TRANSPORT_SANDBOX_ADVICE, GIT_TRANSPORT_FAILURE, MSYS_DLL_INIT_FAILED, windowsGitTransportFailure, windowsJunctionReadDenied, localDetailNote, isHumanReadGate, CALIBRATION_NO_TEST_FILTER, isBuiltInVitest, BUILT_IN_FILE_NAME_TOO_LONG, USER_REPO_PREFIX, isUserRepoProblem, quarantineRefs, cancelCommand, resumeCommand, HEAL_ACCEPTANCE, usageOf, capUsage, FactoryEngine, HUMAN_REVIEW_GATE, REVIEW_REQUESTED_GATE, UNSANDBOXED_LANES_REASON, GATES_UNSANDBOXED_GATE, SECRET_SHAPES_GATE, GATE_SANDBOX_INCOMPATIBLE_GATE, GATE_NO_VERDICT_GATE, GIT_VIEW_UNBUILT, ACK_WARNING, PREPARE_CHECK_TIMEOUT_MS;
+var import_crypto29, import_fs98, import_os22, import_path117, EXIT_AWAITING_HUMAN, PREPARE_ENGINE_STEPS, MAX_CONFLICT_FIX_ROUNDS, MAX_MERGE_BOUNCES, MAX_CONFLICT_REPREPARES, MERGEABILITY_READS, MERGEABILITY_WAIT_MS, DEFAULT_POLL_MS, LANE_GRACE_MS, REMOTE_HEAD_FETCH_FLAGS, LS_REMOTE_TIMEOUT_MS, ADO_HEAD_LAG_POLLS, localGateConfigLoader, PROCESS_DEADLINE_MS, defaultLaneProcessOps, FactoryStepError, StateTamperedError, LocalGateDue, MirrorBaseMovedError, HEX4017, PARK_TAIL_LINES, PARK_TAIL_LINE_CHARS, PARK_TAIL_CHARS, GIT_TRANSPORT_SANDBOX_ADVICE, GIT_TRANSPORT_FAILURE, MSYS_DLL_INIT_FAILED, windowsGitTransportFailure, windowsJunctionReadDenied, localDetailNote, isHumanReadGate, CALIBRATION_NO_TEST_FILTER, isBuiltInVitest, BUILT_IN_FILE_NAME_TOO_LONG, USER_REPO_PREFIX, isUserRepoProblem, quarantineRefs, cancelCommand, resumeCommand, HEAL_ACCEPTANCE, usageOf, capUsage, FactoryEngine, HUMAN_REVIEW_GATE, REVIEW_REQUESTED_GATE, UNSANDBOXED_LANES_REASON, GATES_UNSANDBOXED_GATE, SECRET_SHAPES_GATE, GATE_SANDBOX_INCOMPATIBLE_GATE, GATE_NO_VERDICT_GATE, GIT_VIEW_UNBUILT, ACK_WARNING, PREPARE_CHECK_TIMEOUT_MS;
 var init_engine = __esm({
   "src/factory/run/engine.ts"() {
     "use strict";
@@ -58338,6 +58362,9 @@ var init_engine = __esm({
     PREPARE_ENGINE_STEPS = /* @__PURE__ */ new Set(["preflight", "remote", "fetch", "merge-base", "push", PREPARE_CONFIG_STEP, PREPARE_DETECT_STEP]);
     MAX_CONFLICT_FIX_ROUNDS = 2;
     MAX_MERGE_BOUNCES = 2;
+    MAX_CONFLICT_REPREPARES = 3;
+    MERGEABILITY_READS = 4;
+    MERGEABILITY_WAIT_MS = 5e3;
     DEFAULT_POLL_MS = 5e3;
     LANE_GRACE_MS = 6e4;
     REMOTE_HEAD_FETCH_FLAGS = ["--no-tags", "--no-write-fetch-head", "--no-auto-gc", "--refmap="];
@@ -61899,6 +61926,49 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
           }
         };
       }
+      /**
+       * True only when the forge says the PR CONFLICTS with its base for exactly
+       * the pushed head (a conflicting PR runs no CI, so its gates never settle).
+       * Unknown is read again MERGEABILITY_READS times (GitHub computes it
+       * lazily); still unknown, a failed read or an answer for another head is
+       * false: the gates go on as before, never a re-prepare on a guess.
+       */
+      async prConflicts(pr, head) {
+        const read = this.forge?.reviews.mergeability?.bind(this.forge.reviews);
+        if (this.forge && !read) return false;
+        for (let i = 0; i < MERGEABILITY_READS; i += 1) {
+          if (i > 0) await (this.o.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms))))(MERGEABILITY_WAIT_MS);
+          let m;
+          try {
+            m = read ? read(pr) : this.gh((exec, cwd) => ghPrMergeability(exec, pr, cwd));
+          } catch (error2) {
+            if (error2 instanceof FactorySafetyError) throw error2;
+            return false;
+          }
+          if (m.state === "mergeable") return false;
+          if (m.state === "conflicting" && m.headRefOid === head) return true;
+        }
+        return false;
+      }
+      /**
+       * The PR conflicts with its base after the base moved: back to prepare,
+       * which merges the base again (inventory and build housekeeping, else the
+       * conflict-fix lane with its own cap). Bounded per run by
+       * MAX_CONFLICT_REPREPARES, so a base that keeps moving cannot loop.
+       */
+      reprepareConflict(pr, head) {
+        const count = (this.state.conflictReprepares ?? 0) + 1;
+        if (count > MAX_CONFLICT_REPREPARES) {
+          this.gate("merge-conflicts", `PR #${pr} conflicts with ${this.state.base} at ${head.slice(0, 12)} again after ${MAX_CONFLICT_REPREPARES} re-prepares in this run (the base keeps moving, or the merge does not hold); merge ${this.state.base} into ${this.state.branch} by hand and push, then rerun ${this.resume}`);
+          return;
+        }
+        const note = `the PR conflicts with ${this.state.base} after it moved; preparing again (${count} of ${MAX_CONFLICT_REPREPARES})`;
+        this.writeShip(pr, (cur) => cur && canTransition(cur.phase, "prepare") ? transition(cur, "prepare", note, this.iso()) : cur);
+        this.save((x) => {
+          const { prepared: _p, ...rest } = x;
+          return moveTo({ ...rest, conflictReprepares: count }, "prepare", note, this.iso());
+        });
+      }
       /** The gates driver on the pushed head; green moves ship to ready and the run to merge. */
       async gates() {
         const { pr, head } = this.state;
@@ -61912,6 +61982,7 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
           return;
         }
         if (ship.phase !== "gates") throw new FactoryStepError(`ship state for PR #${pr} is ${ship.phase}, not gates`);
+        if (await this.prConflicts(pr, head)) return this.reprepareConflict(pr, head);
         const { config: config2, known } = this.gateConfig(view);
         const fields = () => ({ ...this.fields() });
         const local = this.forge?.kind === "local";
@@ -61973,6 +62044,7 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
             return;
           }
           case "missing-checks":
+            if (await this.prConflicts(pr, head)) return this.reprepareConflict(pr, head);
             this.gate("missing-checks", `${missingCheckHint(out.missing, config2)}; every other check completed at ${at} and nothing new reported for the settle window, so the gates stop waiting; fix it, then rerun ${this.resume}`);
             return;
           case "failed": {
@@ -61984,6 +62056,7 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
             this.gate("ci-flaky", `known-flaky failures at ${at} are out of rerun budget (${out.report.failed.map(checkName).join(", ")}); rerun the failed jobs by hand`);
             return;
           case "no-workflows":
+            if (await this.prConflicts(pr, head)) return this.reprepareConflict(pr, head);
             this.gate("no-workflows", `${out.report.noHeadChecks ? `${noHeadChecksText(out.report.noHeadChecks)} (head ${at})` : `no checks and no workflow runs exist for ${at}`}; push the branch with a token that triggers workflows (or enable Actions), or close and reopen PR #${pr}${out.report.noHeadChecks ? `; to stop instead: ${cancelCommand(this.key)}` : ""}`);
             return;
           case "timeout":

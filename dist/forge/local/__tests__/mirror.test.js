@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { backlogListArgs, backlogShowArgs, isLocalBranchName, LOCAL_REMOTE, localCheckRecordPath, localMirrorPath, localPrStorePath, localRepoId, localStoreDir, mergedArgs, mirrorFetchArgs, mirrorInitArgs, mirrorPushArgs, mirrorRemoteAddArgs, mirrorRemoteGetUrlArgs, readMirrorRef, } from '../mirror.js';
+import { backlogListArgs, backlogShowArgs, isLocalBranchName, LOCAL_REMOTE, localCheckRecordPath, localMirrorPath, localPrStorePath, localRepoId, localStoreDir, mergedArgs, mergeTreeArgs, mirrorFetchArgs, mirrorInitArgs, mirrorPushArgs, mirrorRemoteAddArgs, mirrorRemoteGetUrlArgs, readMirrorRef, } from '../mirror.js';
 const A = 'a'.repeat(40);
 const B = 'b'.repeat(40);
 const dirs = [];
@@ -46,10 +46,12 @@ describe('argv builders', () => {
         expect(backlogListArgs(A, '.copilot/backlog')).toEqual(['ls-tree', '-z', '--name-only', A, '--', '.copilot/backlog/']);
         expect(backlogShowArgs(A, '.copilot/backlog/1-x.md')).toEqual(['show', `${A}:.copilot/backlog/1-x.md`]);
         expect(mergedArgs(A, B)).toEqual(['merge-base', '--is-ancestor', A, B]);
+        expect(mergeTreeArgs(A, B)).toEqual(['merge-tree', '--write-tree', A, B]);
     });
     it('refuses a ref that is not a 40-hex sha, and a branch that is not plain', () => {
         expect(() => mirrorPushArgs('HEAD', 'main')).toThrow(/40-hex/);
         expect(() => mergedArgs(A, 'main')).toThrow(/40-hex/);
+        expect(() => mergeTreeArgs('HEAD', B)).toThrow(/40-hex/);
         for (const bad of ['-x', 'a..b', 'a//b', 'a.lock', 'a/.b', 'a@{1}', 'a b', 'a/', '']) {
             expect(isLocalBranchName(bad), bad).toBe(false);
             expect(() => mirrorFetchArgs(bad), bad).toThrow(/branch/);

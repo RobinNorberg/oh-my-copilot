@@ -6,7 +6,7 @@
  */
 
 import { readFileSync } from 'fs';
-import type { ForgePr, ForgeReviewFeedback, ForgeReviews, ForgeThread } from '../types.js';
+import type { ForgePr, ForgeReviewFeedback, ForgeReviews, ForgeThread, PrMergeability } from '../types.js';
 import { assertReviewHead } from '../review-feedback.js';
 import { adoCall, adoJson, isObject, listValue, repoParams, str, type AdoContext } from './invoke.js';
 
@@ -238,6 +238,13 @@ export function adoReviews(ctx: AdoContext, review: { trustedReviewers: readonly
       const v = readAdoPr(ctx, pr);
       if (!v.lastMergeSourceCommit) throw new Error(`pull request ${pr}: no source commit yet`);
       return { headRefOid: v.lastMergeSourceCommit, state: STATE[v.status] ?? v.status.toUpperCase() };
+    },
+
+    // mergeStatus: `conflicts` is a conflict, `succeeded` merges; queued/notSet/failure/rejectedByPolicy say nothing about conflicts.
+    mergeability(pr: number): PrMergeability {
+      const v = readAdoPr(ctx, pr);
+      const head = v.lastMergeSourceCommit ? { headRefOid: v.lastMergeSourceCommit } : {};
+      return { state: v.mergeStatus === 'conflicts' ? 'conflicting' : v.mergeStatus === 'succeeded' ? 'mergeable' : 'unknown', ...head };
     },
 
     markReady(pr: number): void {

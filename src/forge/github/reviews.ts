@@ -8,7 +8,7 @@
 
 import type { Exec, ExecResult } from '../../ship/exec.js';
 import type { PrView } from '../../ship/merge.js';
-import type { ForgePr, ForgeRepo, ForgeReviewFeedback, ForgeReviews } from '../types.js';
+import type { ForgePr, ForgeRepo, ForgeReviewFeedback, ForgeReviews, PrMergeability } from '../types.js';
 import { GhCommandError, ghJson, ghRun } from './gh.js';
 import { GITHUB_RATE_LIMITED, parseReviewFeedback, reviewFeedbackArgs, type ReviewTrust } from './graphql.js';
 import { ReviewFeedbackError } from '../review-feedback.js';
@@ -48,6 +48,18 @@ export function ghPrHead(exec: Exec, pr: number, cwd: string): { headRefOid: str
     throw new Error(`gh pr view ${pr} did not return a head sha and state (exit ${res.status}): ${res.stderr.trim()}`);
   }
   return { headRefOid: v.headRefOid, state: v.state };
+}
+
+/**
+ * `gh pr view <pr> --json headRefOid,mergeable,mergeStateStatus`: CONFLICTING
+ * (or a DIRTY merge state) is a conflict, MERGEABLE is clean, anything else
+ * (UNKNOWN while GitHub computes it lazily) is unknown. Throws on a failed read.
+ */
+export function ghPrMergeability(exec: Exec, pr: number, cwd: string): PrMergeability {
+  const v = ghJson<{ headRefOid?: unknown; mergeable?: unknown; mergeStateStatus?: unknown }>(exec, ['pr', 'view', String(pr), '--json', 'headRefOid,mergeable,mergeStateStatus'], cwd);
+  const head = typeof v?.headRefOid === 'string' && HEX40.test(v.headRefOid) ? { headRefOid: v.headRefOid } : {};
+  if (v?.mergeable === 'CONFLICTING' || v?.mergeStateStatus === 'DIRTY') return { state: 'conflicting', ...head };
+  return { state: v?.mergeable === 'MERGEABLE' ? 'mergeable' : 'unknown', ...head };
 }
 
 /** The engine's review read: `gh pr view <pr> --json headRefOid,state`, fields unchecked. */
@@ -150,6 +162,7 @@ export function githubReviews(exec: Exec, cwd: string, o: { repo?: ForgeRepo; re
     createDraftPr: (o) => ghCreateDraftPr(exec, o, cwd),
     viewPr: (pr) => ghViewPr(exec, pr, cwd),
     prHead: (pr) => ghPrHead(exec, pr, cwd),
+    mergeability: (pr) => ghPrMergeability(exec, pr, cwd),
     markReady: (pr) => ghMarkReady(exec, pr, cwd),
     commentPr: (pr, bodyFile) => ghCommentPr(exec, pr, bodyFile, cwd),
   };
