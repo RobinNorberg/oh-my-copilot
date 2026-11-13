@@ -1009,7 +1009,7 @@ describe('the prepare checkout\'s node_modules link', () => {
     unlinkNodeModules(root, checkout);
   });
 
-  it('copy mode: package dirs (scopes whole) are copies, .bin stays a link, a dir link inside a package is made again; the sandbox check passes; removal leaves yours', () => {
+  it('copy mode: package dirs (scopes whole) are copies, .bin stays a link, a dir link inside a package into your node_modules is copied (L3); the sandbox check passes; removal leaves yours', () => {
     const { root, checkout } = setup();
     const nm = join(root, 'node_modules');
     for (const d of ['@scope/pkg/lib', '.bin', 'typescript/lib', 'shared']) mkdirSync(join(nm, d), { recursive: true });
@@ -1027,7 +1027,7 @@ describe('the prepare checkout\'s node_modules link', () => {
     expect(lstatSync(join(tree, '.bin')).isSymbolicLink()).toBe(true);
     expect(readFileSync(join(tree, '@scope', 'pkg', 'lib', 'index.js'), 'utf-8')).toBe('scoped\n');
     expect(readFileSync(join(tree, 'typescript', 'lib', 'tsc.js'), 'utf-8')).toBe('tsc\n');
-    expect(lstatSync(join(tree, 'typescript', 'lib', 'linked')).isSymbolicLink()).toBe(true);
+    expect(lstatSync(join(tree, 'typescript', 'lib', 'linked')).isSymbolicLink()).toBe(false);
     expect(readFileSync(join(tree, 'typescript', 'lib', 'linked', 'x.js'), 'utf-8')).toBe('shared\n');
     expect(existsSync(join(tree, GATE_TREE_MARKER))).toBe(true);
     // A write to the copy never reaches yours.
@@ -1038,6 +1038,69 @@ describe('the prepare checkout\'s node_modules link', () => {
     expect(existsSync(tree)).toBe(false);
     expect(readFileSync(join(nm, 'shared', 'x.js'), 'utf-8')).toBe('shared\n');
     expect(readFileSync(join(nm, '.bin', 'tsc'), 'utf-8')).toBe('shim\n');
+  });
+
+  it('L3 copy mode: pnpm-style links into .pnpm are copies, a link outside your node_modules stays a link, a cycle stays a link', () => {
+    const { root, checkout } = setup();
+    const nm = join(root, 'node_modules');
+    const store = join(nm, '.pnpm');
+    for (const d of ['a@1/node_modules/a', 'b@2/node_modules/b']) mkdirSync(join(store, d), { recursive: true });
+    writeFileSync(join(store, 'a@1', 'node_modules', 'a', 'index.js'), 'a\n');
+    writeFileSync(join(store, 'b@2', 'node_modules', 'b', 'index.js'), 'b\n');
+    symlinkSync(join(store, 'b@2', 'node_modules', 'b'), join(store, 'a@1', 'node_modules', 'b'), linkType);
+    symlinkSync(join(store, 'a@1', 'node_modules', 'a'), join(nm, 'a'), linkType);
+    // A cycle: b links back to its own store dir.
+    symlinkSync(join(store, 'b@2'), join(store, 'b@2', 'node_modules', 'b', 'up'), linkType);
+    // Outside your node_modules (a workspace's own dir, say).
+    const outside = join(root, 'tools');
+    mkdirSync(outside);
+    writeFileSync(join(outside, 't.js'), 't\n');
+    symlinkSync(outside, join(store, 'a@1', 'node_modules', 'a', 'tools'), linkType);
+    expect(linkNodeModules(root, checkout, undefined, [], true)).toBeNull();
+    const tree = join(checkout, 'node_modules');
+    const dep = join(tree, '.pnpm', 'a@1', 'node_modules', 'b');
+    expect(lstatSync(dep).isSymbolicLink()).toBe(false);
+    expect(readFileSync(join(dep, 'index.js'), 'utf-8')).toBe('b\n');
+    expect(lstatSync(join(tree, 'a')).isSymbolicLink()).toBe(false);
+    expect(readFileSync(join(tree, 'a', 'index.js'), 'utf-8')).toBe('a\n');
+    expect(lstatSync(join(tree, 'a', 'tools')).isSymbolicLink()).toBe(true);
+    // In .pnpm/b@2 itself `up` points at a dir on the way down: a link. Under a@1, b@2 is not on the way yet, so it is
+    // copied once, and its own `up` then is the cycle.
+    expect(lstatSync(join(tree, '.pnpm', 'b@2', 'node_modules', 'b', 'up')).isSymbolicLink()).toBe(true);
+    expect(lstatSync(join(dep, 'up')).isSymbolicLink()).toBe(false);
+    expect(lstatSync(join(dep, 'up', 'node_modules', 'b', 'up')).isSymbolicLink()).toBe(true);
+    unlinkNodeModules(root, checkout);
+    expect(existsSync(tree)).toBe(false);
+    expect(readFileSync(join(outside, 't.js'), 'utf-8')).toBe('t\n');
+    expect(readFileSync(join(store, 'b@2', 'node_modules', 'b', 'index.js'), 'utf-8')).toBe('b\n');
+  });
+
+  it('L1 copy mode: over the file or byte bound, or short of disk space, nothing is copied and the error names it', () => {
+    const { root, checkout } = setup();
+    const nm = join(root, 'node_modules');
+    for (let i = 0; i < 5; i += 1) writeFileSync(join(nm, 'typescript', `f${i}.js`), 'x'.repeat(100));
+    expect(() => linkNodeModules(root, checkout, undefined, [], { maxFiles: 3 })).toThrow(/over 3 files, so it is not copied/);
+    expect(existsSync(join(checkout, 'node_modules'))).toBe(false);
+    expect(() => linkNodeModules(root, checkout, undefined, [], { maxBytes: 300 })).toThrow(/over 300 bytes, so it is not copied/);
+    expect(existsSync(join(checkout, 'node_modules'))).toBe(false);
+    expect(() => linkNodeModules(root, checkout, undefined, [], { marginBytes: 1000, freeBytes: () => 1200 })).toThrow(/needs about 50\d bytes plus a 1000-byte margin .* 1200 bytes free/);
+    expect(existsSync(join(checkout, 'node_modules'))).toBe(false);
+    // Unknown free space (the platform cannot tell): the bounds alone decide.
+    expect(linkNodeModules(root, checkout, undefined, [], { freeBytes: () => null })).toBeNull();
+    unlinkNodeModules(root, checkout);
+  });
+
+  it('L1 copy mode: a bound reached while copying (materialised links count) removes the partial tree', () => {
+    const { root, checkout } = setup();
+    const nm = join(root, 'node_modules');
+    mkdirSync(join(nm, 'big'));
+    for (let i = 0; i < 4; i += 1) writeFileSync(join(nm, 'big', `f${i}.js`), 'x');
+    // Not counted by the preflight (links are not walked), copied by the copy: 2 + 4 + 4 files.
+    symlinkSync(join(nm, 'big'), join(nm, 'typescript', 'big'), linkType);
+    symlinkSync(join(nm, 'big'), join(nm, 'typescript', 'big2'), linkType);
+    expect(() => linkNodeModules(root, checkout, undefined, [], { maxFiles: 8 })).toThrow(/over 8 files/);
+    expect(existsSync(join(checkout, 'node_modules'))).toBe(false);
+    expect(readdirSync(join(nm, 'big'))).toHaveLength(4);
   });
 
   it('copy mode: esbuild bundles a package from the copied tree', async () => {
