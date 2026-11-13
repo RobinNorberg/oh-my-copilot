@@ -57883,6 +57883,13 @@ function parseStatusPaths(raw) {
   }
   return paths;
 }
+function isNewerEvent(next, prev) {
+  const n = next ? Date.parse(next) : NaN;
+  if (!Number.isFinite(n)) return false;
+  if (!prev) return true;
+  const p = Date.parse(prev);
+  return !Number.isFinite(p) || n > p;
+}
 function parkTail(text3) {
   const lines3 = redactGateOutput(text3).split(/\r?\n/).map((l) => l.trim()).filter(Boolean).slice(-PARK_TAIL_LINES);
   const tail4 = lines3.map((l) => oneLine(visibleLine(l), PARK_TAIL_LINE_CHARS)).join(" | ");
@@ -62967,7 +62974,7 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
           const known = this.state.lanes.find((l) => l.id === id)?.process;
           if (proc && (known?.pid !== proc.pid || known.identity !== proc.identity)) this.updateLane(id, { process: { pid: proc.pid, identity: proc.identity } });
           if (isTerminalLaneState(result.state)) break;
-          if (result.lastEventAt && result.lastEventAt !== lastEventAt) {
+          if (isNewerEvent(result.lastEventAt, lastEventAt)) {
             lastEventAt = result.lastEventAt;
             progressAt = this.clock();
             const stored = this.state.lanes.find((l) => l.id === id)?.lastEventAt;
@@ -62981,7 +62988,7 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
               this.gate("lane-unconfirmed", `lane ${id} (${remoteId}) stalled: ${quiet}, and its cancel was not confirmed; it may still run, so its tamper check cannot be trusted yet. Stop the job, then rerun ${this.resume}`);
               return { kind: "stopped" };
             }
-            if (confirmed.state === "completed" && confirmed.lastEventAt && confirmed.lastEventAt !== lastEventAt) {
+            if (confirmed.state === "completed" && isNewerEvent(confirmed.lastEventAt, lastEventAt)) {
               result = confirmed;
               break;
             }
