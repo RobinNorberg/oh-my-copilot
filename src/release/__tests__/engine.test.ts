@@ -1355,7 +1355,7 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
       checksJson = checks('FAILURE', 'FAILURE');
       const result = await release({ to: 'pr' });
       expect(result.ok).toBe(false);
-      expect(result.phases[0].details).toContain('  Test: src/a.test.ts > suite > breaks');
+      expect(result.phases[0].details).toContain('  `Test`: src/a.test.ts > suite > breaks');
       expect(calls.filter((c) => c === 'gh run rerun 77 --failed')).toHaveLength(1);
     });
 
