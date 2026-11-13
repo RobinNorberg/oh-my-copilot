@@ -568,7 +568,7 @@ const PARK_TAIL_LINE_CHARS = 200;
 const PARK_TAIL_CHARS = 1_500;
 
 /** True when `next` is a parseable time later than `prev` (or `prev` is absent). Unparseable values are not newer. */
-export function isNewerEvent(next: string | undefined | null, prev: string | undefined | null): boolean {
+export function isNewerEvent(next: string | undefined | null, prev: string | undefined | null): next is string {
   const n = next ? Date.parse(next) : NaN;
   if (!Number.isFinite(n)) return false;
   if (!prev) return true;
