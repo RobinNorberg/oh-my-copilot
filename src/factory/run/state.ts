@@ -34,6 +34,7 @@ import type { ShipVerdict } from '../../ship/state.js';
 import { PROGRESS_STAGES, type ForgeKind, type ProgressStage } from '../../forge/types.js';
 import { LOCAL_REMOTE } from '../../forge/local/mirror.js';
 import { codingAgentRecordProblem, type CodingAgentRunRecord } from './coding-agent-lane.js';
+import { vitestSummaryShapeOk, type VitestRunSummary } from './test-delta.js';
 
 export const FACTORY_PHASES = [
   'intake', 'plan', 'implement', 'publish', 'review', 'fix', 'prepare', 'conflict-fix', 'gates', 'ci-fix', 'merge', 'merged', 'cancelled', 'failed',
@@ -317,8 +318,10 @@ export interface FactoryRunState {
    * `timedOut`: it did not finish (no verdict; never a held failure).
    * `junctionRead`: it failed in the OS sandbox on Windows opening a package
    * dir through the gate tree's junction (the engine then copies the tree).
+   * `tests`: the built-in vitest check's per-test result on the base
+   * (test-delta.ts), which the head's failures are judged against.
    */
-  gateCalibration?: Record<string, { ok: boolean; tail?: string; timedOut?: true; gitTransport?: true; junctionRead?: true }>;
+  gateCalibration?: Record<string, { ok: boolean; tail?: string; timedOut?: true; gitTransport?: true; junctionRead?: true; tests?: VitestRunSummary }>;
   /** The Copilot coding agent session of an issue run whose implementer is the agent (coding-agent-lane.ts); sealed, shape-checked on load. */
   codingAgent?: CodingAgentRunRecord;
   /** Human-gate comments already posted (`<gate>@<sha12>` per target), so a rerun does not repeat them. */
@@ -658,8 +661,8 @@ function humanReviewShapeProblem(s: Record<string, unknown>): string | null {
   if (cal !== undefined && (typeof cal !== 'object' || cal === null || Array.isArray(cal) || !Object.entries(cal).every(([k, v]) => {
     const e = v as Record<string, unknown> | null;
     return HEX64.test(k) && typeof e === 'object' && e !== null && typeof e.ok === 'boolean' && (e.tail === undefined || isStr(e.tail)) && (e.gitTransport === undefined || e.gitTransport === true) && (e.timedOut === undefined || e.timedOut === true)
-      && (e.junctionRead === undefined || e.junctionRead === true)
-      && Object.keys(e).every((x) => x === 'ok' || x === 'tail' || x === 'timedOut' || x === 'gitTransport' || x === 'junctionRead');
+      && (e.junctionRead === undefined || e.junctionRead === true) && (e.tests === undefined || vitestSummaryShapeOk(e.tests))
+      && Object.keys(e).every((x) => x === 'ok' || x === 'tail' || x === 'timedOut' || x === 'gitTransport' || x === 'junctionRead' || x === 'tests');
   }))) return 'gateCalibration';
   const lanes = s.lanes as Array<Record<string, unknown>>;
   if (!lanes.every((l) => {
