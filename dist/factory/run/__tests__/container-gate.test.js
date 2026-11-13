@@ -229,6 +229,18 @@ describe('runContainerGate argv', () => {
         expect(logs).toEqual([expect.stringContaining(`pulling the gate image ${settings().image}`)]);
         expect(nopull.runs()).toEqual([]);
     });
+    it('a missing pinned sha256 image id is not pulled; a missing name:tag still is', async () => {
+        const pinned = `sha256:${'a'.repeat(64)}`;
+        const calls = [];
+        const gone = fake((args) => { calls.push(args[0]); return args[0] === 'image' ? ok({ status: 1, tail: 'No such image' }) : ok(); });
+        const r = await runContainerGate(request(), settings({ image: pinned }), LABEL, { exec: gone.exec, log: () => { } });
+        expect(r).toMatchObject({ ran: false, unavailable: true, reason: expect.stringContaining(`the pinned gate image ${pinned} is no longer present`) });
+        expect(calls).not.toContain('pull');
+        const named = [];
+        const tagged = fake((args) => { named.push(args[0]); return args[0] === 'image' ? ok({ status: 1 }) : ok(); });
+        await runContainerGate(request(), settings({ image: 'node:22' }), LABEL, { exec: tagged.exec, log: () => { } });
+        expect(named).toContain('pull');
+    });
     it('a yarn or pnpm project, or dependencies without a lockfile, is unavailable before any container', async () => {
         writeFileSync(join(dir, 'package.json'), JSON.stringify({ dependencies: { a: '1' } }));
         writeFileSync(join(dir, 'yarn.lock'), '');
