@@ -15,6 +15,7 @@ import {
   safeRelPath, type ContainerExec, type ContainerExecOptions, type ContainerExecResult,
 } from '../container-gate.js';
 import type { SandboxRunRequest } from '../sandbox-exec.js';
+import { VITEST_REPORT_MAX_BYTES } from '../test-delta.js';
 
 let dir: string;
 beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'omg-container-gate-')); });
@@ -322,6 +323,40 @@ describe('runContainerGate argv', () => {
     const failing = fake((args) => (args[0] === 'run' && !/-(copy|install)$/.test(nameOf([...args])) ? ok({ status: 1 }) : ok()));
     await runContainerGate(request({ purpose: 'prepare' }), settings(), LABEL, { exec: failing.exec });
     expect(failing.step('-export')).toBeUndefined();
+  });
+
+  it('a failed run with a reportFile: the report comes back from a read-only cat of that one file, bounded; a passed run or a failed read has none', async () => {
+    const reportFile = join(dir, '.omg-vitest-report-abc.json');
+    const vitest = { purpose: 'calibrate' as const, argv: ['node', 'node_modules/vitest/vitest.mjs', 'run'], exe: process.execPath, args: ['node_modules/vitest/vitest.mjs', 'run', `--outputFile=${reportFile}`], reportFile };
+    const main = (args: readonly string[]) => args[0] === 'run' && nameOf([...args]) === `omg-gate-${LABEL}-00000002`;
+    const f = fake((args, o) => {
+      if (main(args)) return ok({ status: 1, tail: 'FAIL a' });
+      if (args[0] === 'run' && nameOf([...args]).endsWith('-report')) return ok({ stdout: o.full !== undefined ? Buffer.from('{"testResults":[]}') : undefined });
+      return ok();
+    });
+    const r = await runContainerGate(request(vitest), settings(), LABEL, { exec: f.exec, id: () => '00000002' });
+    expect(r).toMatchObject({ ran: true, status: 1, report: '{"testResults":[]}' });
+    // The run wrote it at /work/src/<name> (the --outputFile= word mapped), and the read is that path only.
+    expect(f.runs().find((c) => main(c.args))!.args.slice(-4)).toEqual(['node', 'node_modules/vitest/vitest.mjs', 'run', '--outputFile=/work/src/.omg-vitest-report-abc.json']);
+    const read = f.step('-report')!;
+    expect(read.args.slice(-2)).toEqual(['cat', '/work/src/.omg-vitest-report-abc.json']);
+    expect(values(read.args, '--network')).toEqual(['none']);
+    expect(values(read.args, '--mount')[0]).toMatch(/,readonly$/);
+    expect(read.args).toContain('--read-only');
+    expect(read.o.full).toBe(VITEST_REPORT_MAX_BYTES);
+    // Over the bound or a failed cat: no report (the engine then parks).
+    const over = fake((args) => (main(args) ? ok({ status: 1 }) : args[0] === 'run' && nameOf([...args]).endsWith('-report') ? ok({ overflow: true }) : ok()));
+    expect(await runContainerGate(request(vitest), settings(), LABEL, { exec: over.exec, id: () => '00000002' })).not.toHaveProperty('report');
+    const missing = fake((args) => (main(args) ? ok({ status: 1 }) : args[0] === 'run' && nameOf([...args]).endsWith('-report') ? ok({ status: 1 }) : ok()));
+    expect(await runContainerGate(request(vitest), settings(), LABEL, { exec: missing.exec, id: () => '00000002' })).not.toHaveProperty('report');
+    // A passing run reads nothing back but the copy back of a prepare check.
+    const passing = fake();
+    await runContainerGate(request(vitest), settings(), LABEL, { exec: passing.exec, id: () => '00000002' });
+    expect(passing.step('-report')).toBeUndefined();
+    // A reportFile outside the checkout is never read.
+    const outside = fake((args) => (main(args) ? ok({ status: 1 }) : ok()));
+    await runContainerGate(request({ ...vitest, reportFile: join(dir, '..', 'x.json') }), settings(), LABEL, { exec: outside.exec, id: () => '00000002' });
+    expect(outside.step('-report')).toBeUndefined();
   });
 });
 
