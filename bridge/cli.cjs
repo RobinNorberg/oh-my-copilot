@@ -133945,8 +133945,8 @@ function identityEnv() {
 function withImportLock(root2, layout, label2, fn, held) {
   return withRepoImportLock(root2, label2, () => withSeedLock(layout, fn), held ? { held } : {});
 }
-function withSeedLock(layout, fn) {
-  return withFileLockSync((0, import_path191.join)(layout.repoDir, "import.lock"), fn, { timeoutMs: IMPORT_LOCK_WAIT_MS, staleLockMs: 6e4 });
+function withSeedLock(layout, fn, waitMs = IMPORT_LOCK_WAIT_MS) {
+  return withFileLockSync((0, import_path191.join)(layout.repoDir, "import.lock"), fn, { timeoutMs: waitMs, staleLockMs: SEED_LOCK_STALE_MS });
 }
 function sweepTrash(layout, warn) {
   let names = [];
@@ -133968,7 +133968,7 @@ function dropStaleImports(userGitDir, slug, ctx, warn) {
     if (!dropStaleImportRef(userGitDir, ref, sha3, ctx)) warn(`omg factory run: the stale import ref ${ref} could not be deleted; delete it by hand (git update-ref -d ${ref})`);
   }
 }
-var import_child_process47, import_fs163, import_path191, LAYOUT_UNSUPPORTED_GATE, PRIVATE_STORE_GATE, REPO_GUARD_GATE, IMPORT_REFUSED_GATE, GATE_INSTALL_GATE, run2, KIND_TEXT, RUNS_CODE, STUCK_FIX, inside, PrivateRun;
+var import_child_process47, import_fs163, import_path191, LAYOUT_UNSUPPORTED_GATE, PRIVATE_STORE_GATE, REPO_GUARD_GATE, IMPORT_REFUSED_GATE, GATE_INSTALL_GATE, run2, KIND_TEXT, RUNS_CODE, STUCK_FIX, inside, PrivateRun, SEED_LOCK_STALE_MS;
 var init_private_run = __esm({
   "src/factory/run/private-run.ts"() {
     "use strict";
@@ -134271,6 +134271,7 @@ var init_private_run = __esm({
         });
       }
     };
+    SEED_LOCK_STALE_MS = 6e4;
   }
 });
 
