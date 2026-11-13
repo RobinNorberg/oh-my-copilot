@@ -12,7 +12,11 @@
  * outlives the command (the job home is removed with the runtime). The engine
  * reads and removes the file right after the run. The base's report comes
  * from the trusted base calibration only; the head's report decides only the
- * head's own failures.
+ * head's own failures. The same holds for the Windows git-transport
+ * fallback: a head run in the gate container (its report read back from the
+ * container, file names under /work/src) is judged against the base's run
+ * in the same container, a plain head run against the base's plain run;
+ * never one place against another.
  */
 import { createHash, randomBytes } from 'node:crypto';
 import { closeSync, fstatSync, openSync, readSync, rmSync } from 'node:fs';
@@ -24,8 +28,14 @@ export interface VitestRunSummary {
   passed: number;
   /** The id (testId) of every failed test (file relative to the run dir), sorted, unique. */
   failed: string[];
-  /** The id (testId of the file alone) of each test file that failed with no failed test of its own (the file did not load, or a hook failed), sorted. */
+  /**
+   * The id (testId of the file alone) of each test file that failed with no
+   * failed test of its own, or with an error of the file itself (vitest's
+   * file-level `message`: the file did not load, or a hook failed), sorted.
+   */
   brokenFiles: string[];
+  /** How many files hold a failure (a failed test or a broken file), counted by full file name (N4, review-548b). A head's only; a base summary may lack it. */
+  failedFiles?: number;
 }
 
 /** A report above this size is not read (no report: fail closed). */
@@ -94,6 +104,7 @@ export function parseVitestReport(text: string, root: string): VitestRunSummary 
   let passed = 0;
   const failed = new Set<string>();
   const broken = new Set<string>();
+  const failedFiles = new Set<string>();
   for (const f of files as Array<Record<string, unknown>>) {
     if (typeof f !== 'object' || f === null || typeof f.name !== 'string' || !Array.isArray(f.assertionResults)) return null;
     const file = relative(f.name, root);
@@ -106,9 +117,12 @@ export function parseVitestReport(text: string, root: string): VitestRunSummary 
       const ancestors = Array.isArray(a.ancestorTitles) ? a.ancestorTitles.filter((t): t is string => typeof t === 'string') : [];
       failed.add(testId([file, ...ancestors, a.title]));
     }
-    if (f.status === 'failed' && own === 0) broken.add(testId([file]));
+    // N1 (review-548b): an error of the file itself (a hook that failed beside a failed test) is a failure of its own.
+    const fileError = typeof f.message === 'string' && f.message.trim() !== '';
+    if (f.status === 'failed' && (own === 0 || fileError)) broken.add(testId([file]));
+    if (f.status === 'failed' || own > 0) failedFiles.add(file);
   }
-  return { passed, failed: [...failed].sort(), brokenFiles: [...broken].sort() };
+  return { passed, failed: [...failed].sort(), brokenFiles: [...broken].sort(), failedFiles: failedFiles.size };
 }
 
 /** The report at `path` (its file names made relative to `root`), then the file removed; null when it is missing, too large or not a report. */
@@ -156,6 +170,8 @@ const fileId = (id: string): string => `${id} (the file failed)`;
 export const UNHANDLED_ERRORS_ID = 'errors outside any test (vitest "Unhandled Errors")';
 /** What a coverage threshold the run missed is listed as. */
 export const COVERAGE_THRESHOLD_ID = 'a coverage threshold is not met';
+/** What vitest's experimental.importDurations.failOnDanger failure (an import over the danger threshold) is listed as. */
+export const IMPORT_DANGER_ID = 'an import exceeded vitest\'s danger threshold (experimental.importDurations.failOnDanger)';
 
 /** Terminal color codes (FORCE_COLOR), taken out before any output is read. */
 export function stripAnsi(text: string): string {
@@ -168,29 +184,39 @@ export function stripAnsi(text: string): string {
  * error`; the report says `success: true`, the exit code is 1) and a
  * coverage threshold the run missed (`... does not meet global threshold
  * ...`; the report args turn coverage off, so only a run that turns it back
- * on prints it). A head that forges a line only fails itself.
+ * on prints it), and an import over vitest's danger threshold with
+ * experimental.importDurations.failOnDanger (`ERROR: 1 import(s) exceeded
+ * the danger threshold`; N2, review-548b: the report args do not turn it
+ * off, since vitest before 4.1 refuses an unknown option). A head that
+ * forges a line only fails itself.
  */
 export function vitestOutputFailures(output: string): string[] {
   const text = stripAnsi(output);
   return [
     ...(/^\s*Errors\s+\d+\s+errors?\b/m.test(text) ? [UNHANDLED_ERRORS_ID] : []),
     ...(/does not meet (?:global )?threshold/i.test(text) ? [COVERAGE_THRESHOLD_ID] : []),
+    ...(/import\(s\) exceeded the danger threshold/i.test(text) ? [IMPORT_DANGER_ID] : []),
   ];
 }
 
-/** vitest's summary counts of failed tests and test files (`Tests  2 failed | 5 passed (7)`); a count is left out when its line is not there. */
-export function vitestSummaryFailed(output: string): { tests?: number; files?: number } {
+/**
+ * vitest's summary counts of failed tests and test files (`Tests  2 failed |
+ * 5 passed (7)`); a count is left out when its line is not there. `seen`:
+ * a `Tests` or `Test Files` summary line is there at all.
+ */
+export function vitestSummaryFailed(output: string): { tests?: number; files?: number; seen: boolean } {
   const text = stripAnsi(output);
   const tests = /^\s*Tests\s+(\d+)\s+failed\b/m.exec(text)?.[1];
   const files = /^\s*Test Files\s+(\d+)\s+failed\b/m.exec(text)?.[1];
-  return { ...(tests ? { tests: Number(tests) } : {}), ...(files ? { files: Number(files) } : {}) };
+  const seen = /^\s*(?:Tests|Test Files)\s+\S/m.test(text);
+  return { ...(tests ? { tests: Number(tests) } : {}), ...(files ? { files: Number(files) } : {}), seen };
 }
 
 /** The head run besides its report: its exit status, vitestOutputFailures and vitestSummaryFailed of its output. */
 export interface HeadRunSignals {
   status: number;
   output: readonly string[];
-  summary: { tests?: number; files?: number };
+  summary: { tests?: number; files?: number; seen: boolean };
 }
 
 /** The head run's signals from its exit status and console output. */
@@ -203,19 +229,22 @@ export function headRunSignals(status: number, output: string): HeadRunSignals {
  * and output (headRunSignals); `baseOutput`: vitestOutputFailures of the
  * base's output. An output failure on the head only counts like a new
  * failure; on both, the run parks (it cannot be told apart). When in doubt
- * it parks: an exit status other than vitest's 1 for failed tests, or a
- * summary that names more failed tests or files than the report.
+ * it parks: an exit status other than vitest's 1 for failed tests, no
+ * summary line at all (N3, review-548b), or a summary that names more
+ * failed tests or files than the report.
  */
-export function testDeltaVerdict(base: VitestRunSummary | undefined, head: VitestRunSummary | null, signals: HeadRunSignals = { status: 1, output: [], summary: {} }, baseOutput: readonly string[] = []): TestDeltaVerdict {
+export function testDeltaVerdict(base: VitestRunSummary | undefined, head: VitestRunSummary | null, signals: HeadRunSignals, baseOutput: readonly string[] = []): TestDeltaVerdict {
   if (!base) return { kind: 'park', why: 'the base run left no test report' };
   if (base.passed === 0) return { kind: 'park', why: 'no selected test passes on the base' };
   if (!head) return { kind: 'park', why: 'the head run left no test report' };
   if (signals.status !== 1) return { kind: 'park', why: `the head run exited ${signals.status}, not 1 (failed tests)` };
   const both = signals.output.filter((id) => baseOutput.includes(id));
   if (both.length > 0) return { kind: 'park', why: `${both.join(' and ')} on the base and the head` };
+  if (!signals.summary.seen) return { kind: 'park', why: 'the head run\'s output has no vitest summary (Tests or Test Files)' };
   if (signals.summary.tests !== undefined && signals.summary.tests > head.failed.length) return { kind: 'park', why: 'the head run\'s summary names more failed tests than its report' };
-  const files = new Set([...head.failed.map((id) => testIdText(id).split(' > ')[0]), ...head.brokenFiles.map(testIdText)]);
-  if (signals.summary.files !== undefined && signals.summary.files > files.size) return { kind: 'park', why: 'the head run\'s summary names more failed test files than its report' };
+  // N4 (review-548b): the files by their full names (parseVitestReport); a summary without the count, by the ids' readable part.
+  const files = head.failedFiles ?? new Set([...head.failed.map((id) => testIdText(id).split(' > ')[0]), ...head.brokenFiles.map(testIdText)]).size;
+  if (signals.summary.files !== undefined && signals.summary.files > files) return { kind: 'park', why: 'the head run\'s summary names more failed test files than its report' };
   const onHead = [...head.failed, ...head.brokenFiles.map(fileId), ...signals.output];
   if (onHead.length === 0) return { kind: 'park', why: 'the head run failed, but its report names no failing test' };
   const onBase = new Set([...base.failed, ...base.brokenFiles.map(fileId)]);
@@ -228,6 +257,8 @@ export function testDeltaVerdict(base: VitestRunSummary | undefined, head: Vites
 export function vitestSummaryShapeOk(v: unknown): v is VitestRunSummary {
   const s = v as Record<string, unknown> | null;
   const strs = (x: unknown) => Array.isArray(x) && x.length <= BASE_FAILURES_MAX && x.every((t) => typeof t === 'string' && t.length <= TEST_ID_MAX_CHARS);
-  return typeof s === 'object' && s !== null && !Array.isArray(s) && Number.isSafeInteger(s.passed) && (s.passed as number) >= 0
-    && strs(s.failed) && strs(s.brokenFiles) && Object.keys(s).every((k) => k === 'passed' || k === 'failed' || k === 'brokenFiles');
+  const count = (x: unknown) => Number.isSafeInteger(x) && (x as number) >= 0;
+  return typeof s === 'object' && s !== null && !Array.isArray(s) && count(s.passed)
+    && strs(s.failed) && strs(s.brokenFiles) && (s.failedFiles === undefined || count(s.failedFiles))
+    && Object.keys(s).every((k) => k === 'passed' || k === 'failed' || k === 'brokenFiles' || k === 'failedFiles');
 }

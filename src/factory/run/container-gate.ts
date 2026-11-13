@@ -47,6 +47,9 @@
  *    no verdict, never a pass. While 2 and 3 run, a watchdog measures the
  *    work volume (`du`, from a separate read-only container) and kills the
  *    step's container when it holds more than container.diskLimit.
+ *    3b. a failed run with a `reportFile` (the built-in vitest check's JSON
+ *    report): `cat` of that one file from a read-only container, bounded
+ *    (VITEST_REPORT_MAX_BYTES), returned as the result's `report`.
  * 4. copy back (a prepare check that passed): the volume's tree comes back
  *    as a tar stream and only regular files are written into the checkout,
  *    after every path was checked (applyCopyBack); one problem and nothing
@@ -67,6 +70,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'nod
 import type { GateContainerSettings } from '../../copilot-run/sandbox.js';
 import { redactGateOutput, SANDBOX_OUTPUT_TAIL_CHARS, type SandboxRunRequest, type SandboxRunResult } from './sandbox-exec.js';
 import { runSlug, type FactoryRunKey } from './state.js';
+import { VITEST_REPORT_MAX_BYTES } from './test-delta.js';
 
 /** The park when the container runtime, its daemon or the image is not there, or the project cannot be installed in it. */
 export const GATE_CONTAINER_UNAVAILABLE_GATE = 'gate-container-unavailable';
@@ -315,25 +319,35 @@ export function installPlan(checkout: string): InstallPlan {
 }
 
 const isNodeExe = (p: string): boolean => /^node(?:\.exe)?$/i.test(basename(p));
+const OUTPUT_FILE_FLAG = '--outputFile=';
 
 /**
  * The argv in the container: a node script (the built-in checks, the
  * inventory generator, a calibration's adjusted args) as `node <args>`;
  * any other command as configured, its `node` executable named plainly. A
- * word that is a host path inside the checkout is mapped into /work/src.
+ * word that is a host path inside the checkout is mapped into /work/src,
+ * and so is the path of an `--outputFile=` word (the built-in vitest
+ * check's report, test-delta.ts vitestReportArgs).
  */
 export function containerArgv(req: Pick<SandboxRunRequest, 'argv' | 'exe' | 'args' | 'cwd'>): string[] {
   const words = isNodeExe(req.exe) && req.args.length > 0 && !isAbsolute(req.args[0]) ? ['node', ...req.args] : [...req.argv];
   const root = resolve(req.cwd);
-  return words.map((w, i) => {
-    if (i === 0 && isNodeExe(w)) return 'node';
+  const mapped = (w: string): string => {
     if (!isAbsolute(w)) return w;
     const rel = relative(root, resolve(w));
     if (rel === '') return SRC;
     if (rel.startsWith('..') || isAbsolute(rel)) return w;
     return `${SRC}/${rel.split(sep).join('/')}`;
+  };
+  return words.map((w, i) => {
+    if (i === 0 && isNodeExe(w)) return 'node';
+    if (w.startsWith(OUTPUT_FILE_FLAG)) return `${OUTPUT_FILE_FLAG}${mapped(w.slice(OUTPUT_FILE_FLAG.length))}`;
+    return mapped(w);
   });
 }
+
+/** The checkout's copy in the container (where a command runs and a report's file names start). */
+export const CONTAINER_SRC = SRC;
 
 /** Where the engine's git view (SandboxRunRequest.gitView) is bound read-only for the copy step. */
 const GIT_VIEW_MOUNT = '/in-git';
@@ -491,6 +505,8 @@ export async function runContainerGate(req: SandboxRunRequest, s: GateContainerS
   const inspectImage = () => deps.exec(bin, ['image', 'inspect', '--format', '{{.Id}}', s.image], { timeoutMs: PROBE_TIMEOUT_MS });
   let image = await inspectImage();
   if (image.status !== 0) {
+    // A pinned image id cannot be pulled; it was removed after the run resolved it.
+    if (/^sha256:[0-9a-f]{64}$/.test(s.image)) return unavailable(`the pinned gate image ${s.image} is no longer present (removed during the run?); start the run again so the image tag is resolved and pulled again`);
     log(`omg factory run: pulling the gate image ${s.image} with ${bin} (factory.run.sandbox.container.image); pin a digest there to fix what runs`);
     const pulled = await deps.exec(bin, ['pull', s.image], { timeoutMs: PULL_TIMEOUT_MS });
     if (pulled.status !== 0) return unavailable(`the gate image ${s.image} is not present and ${bin} pull failed (${firstLine(lastLines(pulled.tail)) || `exit ${pulled.status}`}); pull it yourself, set factory.run.sandbox.container.image, ${switchBack}`);
@@ -648,6 +664,17 @@ export async function runContainerGate(req: SandboxRunRequest, s: GateContainerS
     if (r.timedOut) return ran({ status: 124, output: tail(`${r.tail.trim()}\ntimed out after ${req.timeoutMs} ms`), timedOut: true });
     if (r.spawnError !== undefined || r.status === null || r.status === 125) return noVerdict(`the container runtime failed while the command ran (exit ${r.status ?? 'none'}); nothing is counted`);
     const result = ran({ status: r.status, output: tail(r.tail.trim()), timedOut: false });
+    if (r.status !== 0 && req.reportFile) {
+      // 3b. a failed run's report file (nothing of a failed run is copied back): read-only, no network, bounded; a
+      // problem leaves it out (the engine then has no report: it parks, never passes).
+      const rel = relative(resolve(req.cwd), resolve(req.reportFile));
+      if (rel !== '' && !rel.startsWith('..') && !isAbsolute(rel)) {
+        const got = await step(`${name}-report`, [
+          ...labels, ...harden, '--network', 'none', '--user', CONTAINER_USER, '--read-only', ...workRo,
+        ], ['cat', `${SRC}/${rel.split(sep).join('/')}`], COPY_TIMEOUT_MS, VITEST_REPORT_MAX_BYTES);
+        if (got.status === 0 && got.stdout && !got.overflow) return ran({ status: r.status, output: tail(r.tail.trim()), timedOut: false, report: got.stdout.toString('utf8') });
+      }
+    }
     if (req.purpose !== 'prepare' || r.status !== 0) return result;
 
     // 4. copy back what a passing prepare check wrote.

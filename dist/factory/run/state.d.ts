@@ -271,6 +271,8 @@ export interface FactoryRunState {
     };
     /** merge -> gates returns so far; the cap holds across reruns. */
     mergeBounces?: number;
+    /** gates -> prepare returns for a PR that conflicts with its moved base (MAX_CONFLICT_REPREPARES); the cap holds across reruns. */
+    conflictReprepares?: number;
     /** The engine-owned prepare checkout's HEAD when the engine last left it. */
     checkoutHead?: string;
     /** The checkout head a prepare left after the PR's code ran in the OS sandbox there (a local gate start failure on it parks at gate-no-verdict). */
@@ -281,6 +283,13 @@ export interface FactoryRunState {
     gitTransportPlainHead?: string;
     /** The head whose built-in prepare tests passed only because tests that fail on the base too were not counted (test-delta.ts): such a run is never auto-merged. */
     testDeltaExcusedHead?: string;
+    /**
+     * The PR's code ran WITHOUT any sandbox on your host at least once in this
+     * run (factory.run.sandbox.gates "unsandboxed", or the Windows
+     * git-transport fallback's plain run): a plain base calibration made from
+     * then on may be the head's doing (review-550 M1).
+     */
+    plainHeadRan?: true;
     /**
      * The run's gate node_modules trees are copies of yours, not links: a base
      * calibration failed in the OS sandbox on Windows opening a package dir
@@ -337,6 +346,8 @@ export interface FactoryRunState {
      * dir through the gate tree's junction (the engine then copies the tree).
      * `tests`: the built-in vitest check's per-test result on the base
      * (test-delta.ts), which the head's failures are judged against.
+     * `beforePlainHead`: a plain calibration made before the PR's code ran
+     * plainly in this run; only such a one may excuse a plain head's tests.
      */
     gateCalibration?: Record<string, {
         ok: boolean;
@@ -345,6 +356,7 @@ export interface FactoryRunState {
         gitTransport?: true;
         junctionRead?: true;
         tests?: VitestRunSummary;
+        beforePlainHead?: true;
     }>;
     /** The Copilot coding agent session of an issue run whose implementer is the agent (coding-agent-lane.ts); sealed, shape-checked on load. */
     codingAgent?: CodingAgentRunRecord;

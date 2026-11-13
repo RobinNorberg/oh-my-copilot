@@ -273,13 +273,14 @@ export const defaultGateImage = (nodeVersion: string = process.versions.node): s
  * argv word after the runtime's options) and holds only reference characters.
  */
 export function resolveGateIsolation(layers: Pick<GatesSandboxLayers, 'user' | 'base'>, nodeVersion: string = process.versions.node): { isolation: GateIsolation; container?: GateContainerSettings; ignoredBase: string[] } {
-  const block = (config: unknown): Record<string, unknown> => {
+  const block = (config: unknown, strict = false): Record<string, unknown> => {
     const raw = (config as { factory?: { run?: { sandbox?: unknown } } } | null | undefined)?.factory?.run?.sandbox;
+    if (strict && raw !== undefined && (raw === null || typeof raw !== 'object' || Array.isArray(raw))) throw new Error('user config: factory.run.sandbox must be an object');
     return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw as Record<string, unknown> : {};
   };
   const base = block(layers.base);
   const ignoredBase = (['isolation', 'container'] as const).filter((k) => base[k] !== undefined).map((k) => `factory.run.sandbox.${k}`);
-  const user = block(layers.user);
+  const user = block(layers.user, true);
   const bad = (key: string, want: string): never => { throw new Error(`user config: factory.run.sandbox.${key} must be ${want}`); };
   const isolation = user.isolation === undefined ? 'copilot' : user.isolation === 'copilot' || user.isolation === 'container' ? user.isolation : bad('isolation', '"copilot" or "container"');
   const raw = user.container ?? {};
@@ -316,11 +317,12 @@ export type WindowsGitTransportMode = 'fallback' | 'strict';
  * one. A malformed user value throws.
  */
 export function resolveWindowsGitTransport(layers: Pick<GatesSandboxLayers, 'user' | 'base'>, nodeVersion: string = process.versions.node): { mode: WindowsGitTransportMode; container: GateContainerSettings; ignoredBase: boolean } {
-  const block = (config: unknown): Record<string, unknown> => {
+  const block = (config: unknown, strict = false): Record<string, unknown> => {
     const raw = (config as { factory?: { run?: { sandbox?: unknown } } } | null | undefined)?.factory?.run?.sandbox;
+    if (strict && raw !== undefined && (raw === null || typeof raw !== 'object' || Array.isArray(raw))) throw new Error('user config: factory.run.sandbox must be an object');
     return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw as Record<string, unknown> : {};
   };
-  const user = block(layers.user);
+  const user = block(layers.user, true);
   const v = user.windowsGitTransport;
   if (v !== undefined && v !== 'fallback' && v !== 'strict') throw new Error('user config: factory.run.sandbox.windowsGitTransport must be "fallback" or "strict"');
   const own = user.container;

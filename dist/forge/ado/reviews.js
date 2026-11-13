@@ -213,6 +213,12 @@ export function adoReviews(ctx, review = { trustedReviewers: [] }) {
                 throw new Error(`pull request ${pr}: no source commit yet`);
             return { headRefOid: v.lastMergeSourceCommit, state: STATE[v.status] ?? v.status.toUpperCase() };
         },
+        // mergeStatus: `conflicts` is a conflict, `succeeded` merges; queued/notSet/failure/rejectedByPolicy say nothing about conflicts.
+        mergeability(pr) {
+            const v = readAdoPr(ctx, pr);
+            const head = v.lastMergeSourceCommit ? { headRefOid: v.lastMergeSourceCommit } : {};
+            return { state: v.mergeStatus === 'conflicts' ? 'conflicting' : v.mergeStatus === 'succeeded' ? 'mergeable' : 'unknown', ...head };
+        },
         markReady(pr) {
             adoJson(adoCall(ctx, 'git.pullRequests.PATCH', { ...repoParams(ctx), pullRequestId: String(pr) }, {}, { isDraft: false }), `mark pull request ${pr} ready`);
         },

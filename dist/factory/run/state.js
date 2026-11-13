@@ -275,6 +275,8 @@ function shapeProblem(s) {
         return 'lostStreak';
     if (typeof s.elapsedMs !== 'number' || !isCount(s.ciFixRounds))
         return 'elapsedMs/ciFixRounds';
+    if (s.conflictReprepares !== undefined && !isCount(s.conflictReprepares))
+        return 'conflictReprepares';
     if (!Array.isArray(s.history))
         return 'history';
     if (!isStr(s.createdAt) || !isStr(s.updatedAt))
@@ -323,6 +325,8 @@ function humanReviewShapeProblem(s) {
         return 'gitTransportPlainHead';
     if (s.testDeltaExcusedHead !== undefined && (!isStr(s.testDeltaExcusedHead) || !HEX40.test(s.testDeltaExcusedHead)))
         return 'testDeltaExcusedHead';
+    if (s.plainHeadRan !== undefined && s.plainHeadRan !== true)
+        return 'plainHeadRan';
     if (s.gateTreeCopy !== undefined && s.gateTreeCopy !== true)
         return 'gateTreeCopy';
     // One admin dir name under <common>/worktrees (git makes it from the checkout's base name): no separator, nothing else.
@@ -333,7 +337,8 @@ function humanReviewShapeProblem(s) {
         const e = v;
         return HEX64.test(k) && typeof e === 'object' && e !== null && typeof e.ok === 'boolean' && (e.tail === undefined || isStr(e.tail)) && (e.gitTransport === undefined || e.gitTransport === true) && (e.timedOut === undefined || e.timedOut === true)
             && (e.junctionRead === undefined || e.junctionRead === true) && (e.tests === undefined || vitestSummaryShapeOk(e.tests))
-            && Object.keys(e).every((x) => x === 'ok' || x === 'tail' || x === 'timedOut' || x === 'gitTransport' || x === 'junctionRead' || x === 'tests');
+            && (e.beforePlainHead === undefined || e.beforePlainHead === true)
+            && Object.keys(e).every((x) => x === 'ok' || x === 'tail' || x === 'timedOut' || x === 'gitTransport' || x === 'junctionRead' || x === 'tests' || x === 'beforePlainHead');
     })))
         return 'gateCalibration';
     const lanes = s.lanes;
