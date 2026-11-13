@@ -269,6 +269,13 @@ export interface FactoryRunState {
   /** The head a check last ran on WITHOUT any sandbox through the Windows git-transport fallback: such a run is never auto-merged. */
   gitTransportPlainHead?: string;
   /**
+   * The run's gate node_modules trees are copies of yours, not links: a base
+   * calibration failed in the OS sandbox on Windows opening a package dir
+   * through a junction (prepare.ts GATE_TREE_COPY_WHY). Optional: older state
+   * files lack it.
+   */
+  gateTreeCopy?: true;
+  /**
    * The name of the prepare checkout's admin dir under `<common>/worktrees/`,
    * as `worktree add` made it: a later invocation reads the checkout only
    * through that admin dir, never another one its `.git` file names.
@@ -308,8 +315,10 @@ export interface FactoryRunState {
    * the sha256 of the base sha and the check's argv: whether the command
    * passes in the sandbox on the trusted base itself, and its output tail.
    * `timedOut`: it did not finish (no verdict; never a held failure).
+   * `junctionRead`: it failed in the OS sandbox on Windows opening a package
+   * dir through the gate tree's junction (the engine then copies the tree).
    */
-  gateCalibration?: Record<string, { ok: boolean; tail?: string; timedOut?: true; gitTransport?: true }>;
+  gateCalibration?: Record<string, { ok: boolean; tail?: string; timedOut?: true; gitTransport?: true; junctionRead?: true }>;
   /** The Copilot coding agent session of an issue run whose implementer is the agent (coding-agent-lane.ts); sealed, shape-checked on load. */
   codingAgent?: CodingAgentRunRecord;
   /** Human-gate comments already posted (`<gate>@<sha12>` per target), so a rerun does not repeat them. */
@@ -642,13 +651,15 @@ function humanReviewShapeProblem(s: Record<string, unknown>): string | null {
   if (s.sandboxedPrepareHead !== undefined && (!isStr(s.sandboxedPrepareHead) || !HEX40.test(s.sandboxedPrepareHead))) return 'sandboxedPrepareHead';
   if (s.sandboxedGateHead !== undefined && (!isStr(s.sandboxedGateHead) || !HEX40.test(s.sandboxedGateHead))) return 'sandboxedGateHead';
   if (s.gitTransportPlainHead !== undefined && (!isStr(s.gitTransportPlainHead) || !HEX40.test(s.gitTransportPlainHead))) return 'gitTransportPlainHead';
+  if (s.gateTreeCopy !== undefined && s.gateTreeCopy !== true) return 'gateTreeCopy';
   // One admin dir name under <common>/worktrees (git makes it from the checkout's base name): no separator, nothing else.
   if (s.checkoutAdmin !== undefined && (!isStr(s.checkoutAdmin) || !/^[A-Za-z0-9._-]+$/.test(s.checkoutAdmin) || s.checkoutAdmin === '.' || s.checkoutAdmin === '..')) return 'checkoutAdmin';
   const cal = s.gateCalibration as Record<string, unknown> | undefined;
   if (cal !== undefined && (typeof cal !== 'object' || cal === null || Array.isArray(cal) || !Object.entries(cal).every(([k, v]) => {
     const e = v as Record<string, unknown> | null;
     return HEX64.test(k) && typeof e === 'object' && e !== null && typeof e.ok === 'boolean' && (e.tail === undefined || isStr(e.tail)) && (e.gitTransport === undefined || e.gitTransport === true) && (e.timedOut === undefined || e.timedOut === true)
-      && Object.keys(e).every((x) => x === 'ok' || x === 'tail' || x === 'timedOut' || x === 'gitTransport');
+      && (e.junctionRead === undefined || e.junctionRead === true)
+      && Object.keys(e).every((x) => x === 'ok' || x === 'tail' || x === 'timedOut' || x === 'gitTransport' || x === 'junctionRead');
   }))) return 'gateCalibration';
   const lanes = s.lanes as Array<Record<string, unknown>>;
   if (!lanes.every((l) => {

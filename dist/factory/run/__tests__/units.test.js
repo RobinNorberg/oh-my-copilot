@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { parseProgressLog } from '../../../lib/agent-progress.js';
 import { assertLaneCreditCap, DEFAULT_FACTORY_RUN_LIMITS, nextLaneCap, resolveFactoryRunLimits, runCreditsExceeded } from '../budget.js';
-import { ciFailureTail, GIT_TRANSPORT_SANDBOX_ADVICE, nodeModulesWriteDenied, sandboxIncompatibleAdvice, ciFixPrompt, conflictFixPrompt, fenceFor, findPlanLink, fixPrompt, hasAcceptanceCriteria, implementPrompt, issueAuthorTrusted, oneLine, reviewPrompt } from '../engine.js';
+import { ciFailureTail, GIT_TRANSPORT_SANDBOX_ADVICE, nodeModulesWriteDenied, sandboxIncompatibleAdvice, windowsJunctionReadDenied, ciFixPrompt, conflictFixPrompt, fenceFor, findPlanLink, fixPrompt, hasAcceptanceCriteria, implementPrompt, issueAuthorTrusted, oneLine, reviewPrompt } from '../engine.js';
 import { ghRepoArg } from '../../../forge/github/gh.js';
 import { shipyardKeySearch } from '../../../forge/types.js';
 import { assertFactoryCommand, factoryGuardExec, FactorySafetyError, hardenedGitExec } from '../exec.js';
@@ -927,6 +927,58 @@ describe('the prepare checkout\'s node_modules link', () => {
         expect(existsSync(join(checkout, 'node_modules', 'big.bin'))).toBe(false);
         expect(notes.join('\n')).toMatch(/big\.bin .*not copied/);
         unlinkNodeModules(root, checkout);
+    });
+    it('copy mode: package dirs (scopes whole) are copies, .bin stays a link, a dir link inside a package is made again; the sandbox check passes; removal leaves yours', () => {
+        const { root, checkout } = setup();
+        const nm = join(root, 'node_modules');
+        for (const d of ['@scope/pkg/lib', '.bin', 'typescript/lib', 'shared'])
+            mkdirSync(join(nm, d), { recursive: true });
+        writeFileSync(join(nm, '@scope', 'pkg', 'lib', 'index.js'), 'scoped\n');
+        writeFileSync(join(nm, '.bin', 'tsc'), 'shim\n');
+        writeFileSync(join(nm, 'typescript', 'lib', 'tsc.js'), 'tsc\n');
+        writeFileSync(join(nm, 'shared', 'x.js'), 'shared\n');
+        symlinkSync(join(nm, 'shared'), join(nm, 'typescript', 'lib', 'linked'), linkType);
+        expect(linkNodeModules(root, checkout, undefined, [], true)).toBeNull();
+        const tree = join(checkout, 'node_modules');
+        for (const name of ['typescript', '@scope', 'shared']) {
+            expect(lstatSync(join(tree, name)).isSymbolicLink()).toBe(false);
+            expect(lstatSync(join(tree, name)).isDirectory()).toBe(true);
+        }
+        expect(lstatSync(join(tree, '.bin')).isSymbolicLink()).toBe(true);
+        expect(readFileSync(join(tree, '@scope', 'pkg', 'lib', 'index.js'), 'utf-8')).toBe('scoped\n');
+        expect(readFileSync(join(tree, 'typescript', 'lib', 'tsc.js'), 'utf-8')).toBe('tsc\n');
+        expect(lstatSync(join(tree, 'typescript', 'lib', 'linked')).isSymbolicLink()).toBe(true);
+        expect(readFileSync(join(tree, 'typescript', 'lib', 'linked', 'x.js'), 'utf-8')).toBe('shared\n');
+        expect(existsSync(join(tree, GATE_TREE_MARKER))).toBe(true);
+        // A write to the copy never reaches yours.
+        writeFileSync(join(tree, 'typescript', 'lib', 'tsc.js'), 'changed\n');
+        expect(readFileSync(join(nm, 'typescript', 'lib', 'tsc.js'), 'utf-8')).toBe('tsc\n');
+        expect(nodeModulesTreeProblem(checkout, nm)).toEqual({ problem: null, linked: true });
+        unlinkNodeModules(root, checkout);
+        expect(existsSync(tree)).toBe(false);
+        expect(readFileSync(join(nm, 'shared', 'x.js'), 'utf-8')).toBe('shared\n');
+        expect(readFileSync(join(nm, '.bin', 'tsc'), 'utf-8')).toBe('shim\n');
+    });
+    it('copy mode: esbuild bundles a package from the copied tree', async () => {
+        const { root, checkout } = setup();
+        mkdirSync(join(root, 'node_modules', 'fakepkg'));
+        writeFileSync(join(root, 'node_modules', 'fakepkg', 'package.json'), '{"name":"fakepkg","main":"index.js"}\n');
+        writeFileSync(join(root, 'node_modules', 'fakepkg', 'index.js'), 'export const v = 41 + 1;\n');
+        writeFileSync(join(checkout, 'entry.js'), "import { v } from 'fakepkg';\nconsole.log(v);\n");
+        linkNodeModules(root, checkout, undefined, [], true);
+        const { build } = await import('esbuild');
+        const out = await build({ absWorkingDir: checkout, entryPoints: ['entry.js'], bundle: true, platform: 'node', write: false, logLevel: 'silent' });
+        expect(out.outputFiles[0].text).toContain('41 + 1');
+        unlinkNodeModules(root, checkout);
+    });
+    it('windowsJunctionReadDenied: esbuild\'s refused package dir on win32 only', () => {
+        const out = 'X [ERROR] boom\nerror: Cannot read directory "node_modules/@modelcontextprotocol": Access is denied.\nerror: Cannot read directory "node_modules/zod": Access is denied.';
+        expect(windowsJunctionReadDenied(out, 'win32')).toBe(true);
+        expect(windowsJunctionReadDenied('error: Cannot read directory "C:\\w\\base-1\\node_modules\\zod": Access is denied.', 'win32')).toBe(true);
+        expect(windowsJunctionReadDenied(out, 'linux')).toBe(false);
+        expect(windowsJunctionReadDenied('error: Cannot read directory "src/gen": Access is denied.', 'win32')).toBe(false);
+        expect(windowsJunctionReadDenied("Error: EPERM: operation not permitted, open 'node_modules/zod/x.js'", 'win32')).toBe(false);
+        expect(windowsJunctionReadDenied(undefined, 'win32')).toBe(false);
     });
     it('M1: a permission error under node_modules in the base tail names that dir instead of the registry advice', () => {
         expect(nodeModulesWriteDenied("error TS5033: Could not write file 'C:\\w\\base-x\\node_modules\\.prisma\\client\\x.d.ts': EPERM: operation not permitted")).toBe('node_modules/.prisma');

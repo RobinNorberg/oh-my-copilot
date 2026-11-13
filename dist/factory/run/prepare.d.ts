@@ -57,8 +57,26 @@ export declare const GATE_TREE_FILE_MAX_BYTES: number;
  * working tree. Returns why the layout is not supported (Yarn PnP, a nested
  * git repository, over the bounds; the folder named), else null; the trees
  * that can be built still are.
+ *
+ * `copy` (GATE_TREE_COPY_WHY): each package dir is a copy of yours instead
+ * of a link (`.bin` and workspace self-links stay links), so a tool that
+ * opens a package dir itself (esbuild) never opens a junction.
  */
-export declare function linkNodeModules(root: string, checkout: string, warn?: (message: string) => void, workspaces?: readonly string[]): string | null;
+export declare function linkNodeModules(root: string, checkout: string, warn?: (message: string) => void, workspaces?: readonly string[], copy?: boolean): string | null;
+/**
+ * Why a gate tree may be built as copies: in the Copilot OS sandbox on
+ * Windows (its low-integrity token) a directory junction whose target the
+ * sandbox may only read cannot be opened as a whole with generic read access
+ * (CreateFile GENERIC_READ: Access is denied), although listing it, reading
+ * files through it and opening the target by its own path all work (live
+ * 2026-11-13, Copilot CLI 1.0.105, Windows 11 26300). Node's readdir asks
+ * for list access only, so tsc, eslint and vitest work through the links;
+ * esbuild (Go's os.Open) asks for generic read on every package dir it lists
+ * and fails with `Cannot read directory "node_modules/<pkg>": Access is
+ * denied.` Granting the target changes nothing (a dir the sandbox was never
+ * granted fails the same way); only a real dir in the checkout works.
+ */
+export declare const GATE_TREE_COPY_WHY = "the OS sandbox on Windows denies opening a package dir through the gate tree's junction with generic read access, which esbuild needs";
 /**
  * Remove what linkNodeModules made before the checkout is discarded: on
  * POSIX a symlink named node_modules is untracked for a `node_modules/`
