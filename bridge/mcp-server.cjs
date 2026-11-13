@@ -48567,11 +48567,18 @@ var init_string_width = __esm({
 });
 
 // src/factory/run/test-delta.ts
+function testId(parts) {
+  const hash = (0, import_node_crypto5.createHash)("sha256").update(JSON.stringify(parts)).digest("hex").slice(0, ID_HASH_CHARS);
+  return `${hash} ${parts.join(" > ")}`.slice(0, TEST_ID_MAX_CHARS);
+}
+function testIdText(id) {
+  return /^[0-9a-f]{16} /.test(id) ? id.slice(ID_HASH_CHARS + 1) : id;
+}
 function vitestReportPath(dir) {
   return (0, import_node_path14.join)(dir, `.omg-vitest-report-${(0, import_node_crypto5.randomBytes)(6).toString("hex")}.json`);
 }
 function vitestReportArgs(path15) {
-  return ["--reporter=default", "--reporter=json", `--outputFile=${path15}`];
+  return ["--reporter=default", "--reporter=json", `--outputFile=${path15}`, "--coverage.enabled=false"];
 }
 function relative28(name, root) {
   const n = slash(name);
@@ -48600,9 +48607,9 @@ function parseVitestReport(text3, root) {
       if (a.status !== "failed") continue;
       own += 1;
       const ancestors = Array.isArray(a.ancestorTitles) ? a.ancestorTitles.filter((t) => typeof t === "string") : [];
-      failed.add(cut2([file, ...ancestors, a.title].join(" > ")));
+      failed.add(testId([file, ...ancestors, a.title]));
     }
-    if (f.status === "failed" && own === 0) broken.add(cut2(file));
+    if (f.status === "failed" && own === 0) broken.add(testId([file]));
   }
   return { passed, failed: [...failed].sort(), brokenFiles: [...broken].sort() };
 }
@@ -48632,15 +48639,36 @@ function readVitestReport(path15, root) {
     }
   }
 }
-function vitestUnhandledErrors(output) {
-  return /^\s*Errors\s+\d+\s+errors?\b/m.test(output);
+function stripAnsi2(text3) {
+  return text3.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "");
 }
-function testDeltaVerdict(base, head, unhandled = { head: false, base: false }) {
+function vitestOutputFailures(output) {
+  const text3 = stripAnsi2(output);
+  return [
+    .../^\s*Errors\s+\d+\s+errors?\b/m.test(text3) ? [UNHANDLED_ERRORS_ID] : [],
+    .../does not meet (?:global )?threshold/i.test(text3) ? [COVERAGE_THRESHOLD_ID] : []
+  ];
+}
+function vitestSummaryFailed(output) {
+  const text3 = stripAnsi2(output);
+  const tests = /^\s*Tests\s+(\d+)\s+failed\b/m.exec(text3)?.[1];
+  const files = /^\s*Test Files\s+(\d+)\s+failed\b/m.exec(text3)?.[1];
+  return { ...tests ? { tests: Number(tests) } : {}, ...files ? { files: Number(files) } : {} };
+}
+function headRunSignals(status, output) {
+  return { status, output: vitestOutputFailures(output), summary: vitestSummaryFailed(output) };
+}
+function testDeltaVerdict(base, head, signals = { status: 1, output: [], summary: {} }, baseOutput = []) {
   if (!base) return { kind: "park", why: "the base run left no test report" };
   if (base.passed === 0) return { kind: "park", why: "no selected test passes on the base" };
   if (!head) return { kind: "park", why: "the head run left no test report" };
-  if (unhandled.head && unhandled.base) return { kind: "park", why: "errors outside any test on the base and the head" };
-  const onHead = [...head.failed, ...head.brokenFiles.map(fileId2), ...unhandled.head ? [UNHANDLED_ERRORS_ID] : []];
+  if (signals.status !== 1) return { kind: "park", why: `the head run exited ${signals.status}, not 1 (failed tests)` };
+  const both = signals.output.filter((id) => baseOutput.includes(id));
+  if (both.length > 0) return { kind: "park", why: `${both.join(" and ")} on the base and the head` };
+  if (signals.summary.tests !== void 0 && signals.summary.tests > head.failed.length) return { kind: "park", why: "the head run's summary names more failed tests than its report" };
+  const files = /* @__PURE__ */ new Set([...head.failed.map((id) => testIdText(id).split(" > ")[0]), ...head.brokenFiles.map(testIdText)]);
+  if (signals.summary.files !== void 0 && signals.summary.files > files.size) return { kind: "park", why: "the head run's summary names more failed test files than its report" };
+  const onHead = [...head.failed, ...head.brokenFiles.map(fileId2), ...signals.output];
   if (onHead.length === 0) return { kind: "park", why: "the head run failed, but its report names no failing test" };
   const onBase = /* @__PURE__ */ new Set([...base.failed, ...base.brokenFiles.map(fileId2)]);
   const counted = onHead.filter((t) => !onBase.has(t));
@@ -48652,7 +48680,7 @@ function vitestSummaryShapeOk(v) {
   const strs = (x) => Array.isArray(x) && x.length <= BASE_FAILURES_MAX && x.every((t) => typeof t === "string" && t.length <= TEST_ID_MAX_CHARS);
   return typeof s === "object" && s !== null && !Array.isArray(s) && Number.isSafeInteger(s.passed) && s.passed >= 0 && strs(s.failed) && strs(s.brokenFiles) && Object.keys(s).every((k) => k === "passed" || k === "failed" || k === "brokenFiles");
 }
-var import_node_crypto5, import_node_fs13, import_node_path14, VITEST_REPORT_MAX_BYTES, BASE_FAILURES_MAX, TEST_ID_MAX_CHARS, slash, cut2, fileId2, UNHANDLED_ERRORS_ID;
+var import_node_crypto5, import_node_fs13, import_node_path14, VITEST_REPORT_MAX_BYTES, BASE_FAILURES_MAX, TEST_ID_MAX_CHARS, ID_HASH_CHARS, slash, fileId2, UNHANDLED_ERRORS_ID, COVERAGE_THRESHOLD_ID;
 var init_test_delta = __esm({
   "src/factory/run/test-delta.ts"() {
     "use strict";
@@ -48662,10 +48690,11 @@ var init_test_delta = __esm({
     VITEST_REPORT_MAX_BYTES = 32 * 1024 * 1024;
     BASE_FAILURES_MAX = 200;
     TEST_ID_MAX_CHARS = 300;
+    ID_HASH_CHARS = 16;
     slash = (p) => p.replace(/\\/g, "/");
-    cut2 = (id) => id.length > TEST_ID_MAX_CHARS ? id.slice(0, TEST_ID_MAX_CHARS) : id;
-    fileId2 = (file) => `${file} (the file failed)`;
+    fileId2 = (id) => `${id} (the file failed)`;
     UNHANDLED_ERRORS_ID = 'errors outside any test (vitest "Unhandled Errors")';
+    COVERAGE_THRESHOLD_ID = "a coverage threshold is not met";
   }
 });
 
@@ -48847,6 +48876,7 @@ function humanReviewShapeProblem(s) {
   if (s.sandboxedPrepareHead !== void 0 && (!isStr2(s.sandboxedPrepareHead) || !HEX409.test(s.sandboxedPrepareHead))) return "sandboxedPrepareHead";
   if (s.sandboxedGateHead !== void 0 && (!isStr2(s.sandboxedGateHead) || !HEX409.test(s.sandboxedGateHead))) return "sandboxedGateHead";
   if (s.gitTransportPlainHead !== void 0 && (!isStr2(s.gitTransportPlainHead) || !HEX409.test(s.gitTransportPlainHead))) return "gitTransportPlainHead";
+  if (s.testDeltaExcusedHead !== void 0 && (!isStr2(s.testDeltaExcusedHead) || !HEX409.test(s.testDeltaExcusedHead))) return "testDeltaExcusedHead";
   if (s.gateTreeCopy !== void 0 && s.gateTreeCopy !== true) return "gateTreeCopy";
   if (s.checkoutAdmin !== void 0 && (!isStr2(s.checkoutAdmin) || !/^[A-Za-z0-9._-]+$/.test(s.checkoutAdmin) || s.checkoutAdmin === "." || s.checkoutAdmin === "..")) return "checkoutAdmin";
   const cal = s.gateCalibration;
@@ -53418,19 +53448,19 @@ function fixPrompt(s, round, scripts = []) {
 function humanFixPrompt(s, round, threads, changesRequestedBy = [], scripts = []) {
   const blocks = [];
   let used = 0;
-  let cut3 = 0;
+  let cut2 = 0;
   for (const [i, t] of threads.entries()) {
     const where = t.file ? `${oneLine(visibleLine(t.file), 300)}${Number.isSafeInteger(t.line) && t.line > 0 ? `:${t.line}` : ""}` : "the pull request";
     const block2 = `--- comment ${i + 1} of ${threads.length}: ${oneLine(visibleLine(t.author), 100)} on ${where} ---
 ${visibleText(t.body)}`;
     if (used + block2.length > MAX_HUMAN_FEEDBACK_CHARS) {
-      cut3 = threads.length - i;
+      cut2 = threads.length - i;
       break;
     }
     blocks.push(block2);
     used += block2.length;
   }
-  if (cut3 > 0) blocks.push(`--- ${cut3} more comment(s) cut at ${MAX_HUMAN_FEEDBACK_CHARS} characters ---`);
+  if (cut2 > 0) blocks.push(`--- ${cut2} more comment(s) cut at ${MAX_HUMAN_FEEDBACK_CHARS} characters ---`);
   const by = changesRequestedBy.map((a) => oneLine(visibleLine(a), 100)).filter(Boolean);
   return [
     `You are fixing human review feedback (round ${round}) for ${subject(s)}`,
@@ -53498,9 +53528,9 @@ function ciFixPrompt(s) {
   ].join("\n");
 }
 function reviewPrompt(s, head, diff, standards = [], team) {
-  const cut3 = diff.length > MAX_REVIEW_DIFF_CHARS ? `${diff.slice(0, MAX_REVIEW_DIFF_CHARS)}
+  const cut2 = diff.length > MAX_REVIEW_DIFF_CHARS ? `${diff.slice(0, MAX_REVIEW_DIFF_CHARS)}
 ... (diff cut at ${MAX_REVIEW_DIFF_CHARS} characters; read the rest in the worktree)` : diff;
-  const fence2 = fenceFor(cut3);
+  const fence2 = fenceFor(cut2);
   const twoAxis = standards.length > 0;
   const listed = standards.slice(0, MAX_STANDARDS_FILES).map((f) => `- ${oneLine(f, 300)}`);
   if (standards.length > listed.length) listed.push(`- ... and ${standards.length - listed.length} more`);
@@ -53535,7 +53565,7 @@ function reviewPrompt(s, head, diff, standards = [], team) {
     "## Diff",
     "",
     `${fence2}diff`,
-    cut3,
+    cut2,
     fence2
   ].join("\n");
 }
@@ -54357,6 +54387,7 @@ function autoMergeVerdict(i) {
   ];
   check2(flagged.length === 0 && !tamper, "no secret-scan, tamper or sandbox park in this run", `this run parked at ${[...new Set(flagged)].join(", ") || "a tamper or quarantine hold"}`);
   check2(acks.length === 0, "no --allow-* acknowledgement in this run", `this run used ${[...new Set(acks)].join(", ")}`);
+  check2(!i.run.testDeltaExcusedHead, "no prepare test excused for failing on the base too", `prepare tests passed on ${i.run.testDeltaExcusedHead?.slice(0, 12)} only because tests that fail on the base too were not counted`);
   if (i.changes.tier) evidence.push(...i.changes.evidence);
   else reasons.push(...i.changes.reasons);
   return reasons.length === 0 ? { ok: true, tier: i.changes.tier, reasons, evidence } : { ok: false, reasons, evidence };
@@ -61077,8 +61108,13 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
           const priv = this.privateRun();
           const checkedOut = () => priv ? priv.gitOk(["rev-parse", "HEAD"], "reading the prepare checkout", path15) : this.run(["rev-parse", "HEAD"], "git", void 0, path15);
           const report = this.o.gateSandbox && !this.gatesModeCache?.container && isBuiltInVitest(c) ? vitestReportPath(path15) : void 0;
-          const r = this.o.gateSandbox ? await this.withGitView(checkedOut, label, (view) => this.sandboxRun({ purpose: "prepare", argv: c.argv, exe: c.exe, args: report ? [...c.args, ...vitestReportArgs(report)] : c.args, cwd: path15, commonGitDir: at.commonGitDir, timeoutMs: PREPARE_CHECK_TIMEOUT_MS, ...at.gates.requireDeniedPaths ? { requireDeniedPaths: true } : {}, ...view })) : { ran: false, reason: "no OS sandbox runner was given to the engine" };
-          const headTests = report ? readVitestReport(report, path15) : null;
+          let headTests = null;
+          let r;
+          try {
+            r = this.o.gateSandbox ? await this.withGitView(checkedOut, label, (view) => this.sandboxRun({ purpose: "prepare", argv: c.argv, exe: c.exe, args: report ? [...c.args, ...vitestReportArgs(report)] : c.args, cwd: path15, commonGitDir: at.commonGitDir, timeoutMs: PREPARE_CHECK_TIMEOUT_MS, ...at.gates.requireDeniedPaths ? { requireDeniedPaths: true } : {}, ...view })) : { ran: false, reason: "no OS sandbox runner was given to the engine" };
+          } finally {
+            if (report) headTests = readVitestReport(report, path15);
+          }
           const t = tampered();
           if (t) return t;
           if (r.ran) {
@@ -61145,12 +61181,15 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
        * any test). Else a FAILURE that names the tests failing on the head only
        * (the ci-fix lane gets them), or a pass; either way the tests that fail
        * on the base too are listed in a warning, a history note and one PR note
-       * per head. Their names come from the trusted base's report.
+       * per head. Their names come from the trusted base's report. A pass that
+       * excused any test is recorded (testDeltaExcusedHead): such a head is never
+       * auto-merged (L3, review-548), since an excused test may now fail for a
+       * new reason.
        */
       judgeTestDelta(park, headTests, head, label, baseSha, status, output) {
-        const v = testDeltaVerdict(park.baseTests, headTests, { head: vitestUnhandledErrors(output), base: park.baseUnhandled === true });
+        const v = testDeltaVerdict(park.baseTests, headTests, headRunSignals(status, output), park.baseOutput ?? []);
         if (v.kind === "park") return null;
-        const list = (ids) => `${ids.slice(0, 10).map((id) => visibleLine(id)).join("; ")}${ids.length > 10 ? `; and ${ids.length - 10} more` : ""}`;
+        const list = (ids) => `${ids.slice(0, 10).map((id) => visibleLine(testIdText(id))).join("; ")}${ids.length > 10 ? `; and ${ids.length - 10} more` : ""}`;
         if (v.excused.length > 0) {
           const text3 = `${label} on ${head.slice(0, 12)}: ${v.excused.length} test(s) fail in the OS sandbox on the base ${baseSha.slice(0, 12)} too and were not counted: ${list(v.excused)}`;
           this.o.warn?.(`omg factory run: ${text3}`);
@@ -61158,7 +61197,10 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
           this.commentOnce("pr", `base-test-failures@${head.slice(0, 12)}`, "sandbox", `**Sandbox: tests that fail on the base too.** ${text3}.
 `);
         }
-        if (v.kind === "pass") return { status: 0, stdout: redactGateOutput(output), stderr: "" };
+        if (v.kind === "pass") {
+          if (this.state.testDeltaExcusedHead !== head) this.save((x) => ({ ...x, testDeltaExcusedHead: head }));
+          return { status: 0, stdout: redactGateOutput(output), stderr: "" };
+        }
         const counted = `${v.counted.length} test(s) fail on ${head.slice(0, 12)} that did not fail on the base ${baseSha.slice(0, 12)} (new tests count): ${list(v.counted)}`;
         return { status: status === 0 ? 1 : status, stdout: redactGateOutput(output), stderr: redactGateOutput(counted) };
       }
@@ -61200,7 +61242,7 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
           reason: `${what} fails in ${placeName} on the base ${baseSha.slice(0, 12)} itself, so its failure on ${head.slice(0, 12)} is not counted (no ci-fix lane). ${advice2}, then rerun ${this.resume}. ${ACK_WARNING}${cal.tail ? `; base output tail: ${cal.tail.slice(-1500)}` : ""}`,
           ...!container && !plainRun && cal.gitTransport ? { gitTransport: true } : {},
           ...!container && !plainRun && cal.junctionRead ? { junctionRead: true } : {},
-          ...!container && !plainRun && cal.tests ? { baseTests: cal.tests, ...vitestUnhandledErrors(cal.tail ?? "") ? { baseUnhandled: true } : {} } : {}
+          ...!container && !plainRun && cal.tests ? { baseTests: cal.tests, baseOutput: vitestOutputFailures(cal.tail ?? "") } : {}
         };
       }
       /**
@@ -61958,7 +62000,8 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
             ...this.state.unsandboxedGatesAck ? { unsandboxedGatesAck: this.state.unsandboxedGatesAck } : {},
             ...this.state.gateChangeApproved ? { gateChangeApproved: this.state.gateChangeApproved } : {},
             ...pending?.secretAck ? { secretAck: pending.secretAck } : {},
-            ...this.state.gitTransportPlainHead ? { gitTransportPlainHead: this.state.gitTransportPlainHead } : {}
+            ...this.state.gitTransportPlainHead ? { gitTransportPlainHead: this.state.gitTransportPlainHead } : {},
+            ...this.state.testDeltaExcusedHead ? { testDeltaExcusedHead: this.state.testDeltaExcusedHead } : {}
           },
           decision,
           requiredChecks: config2.requiredChecks,

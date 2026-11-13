@@ -279,6 +279,8 @@ export interface FactoryRunState {
     sandboxedGateHead?: string;
     /** The head a check last ran on WITHOUT any sandbox through the Windows git-transport fallback: such a run is never auto-merged. */
     gitTransportPlainHead?: string;
+    /** The head whose built-in prepare tests passed only because tests that fail on the base too were not counted (test-delta.ts): such a run is never auto-merged. */
+    testDeltaExcusedHead?: string;
     /**
      * The run's gate node_modules trees are copies of yours, not links: a base
      * calibration failed in the OS sandbox on Windows opening a package dir

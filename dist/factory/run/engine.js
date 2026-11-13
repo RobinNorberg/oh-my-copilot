@@ -71,7 +71,7 @@ import { driveGates } from './gates-driver.js';
 import { missingCheckHint, NO_CI_CHECKS_NOTE, noHeadChecksText } from '../../ship/gates.js';
 import { ghBranchTip, ghCheckRunApps, ghCheckSuites, ghCommitCheckNames, ghRequiredCheckRules } from '../../forge/github/checks.js';
 import { ciFixPrompt, conflictFixPrompt, fenceFor, fenced, fixPrompt, implementPrompt, oneLine, reviewPrompt } from './prompts.js';
-import { BASE_FAILURES_MAX, readVitestReport, testDeltaVerdict, vitestReportArgs, vitestReportPath, vitestUnhandledErrors } from './test-delta.js';
+import { BASE_FAILURES_MAX, headRunSignals, readVitestReport, testDeltaVerdict, testIdText, vitestOutputFailures, vitestReportArgs, vitestReportPath } from './test-delta.js';
 import { decisionsViolation, loadTeamContext, pathsInDiff, pathsInText } from '../team/context.js';
 import { mergeComment, mergeDecision } from './merge-policy.js';
 import { autoMergeComment, autoMergeVerdict, baseInstallFiles, baseTestSetup as baseTestSetupOf, classifyChanges, committedMergeConfig, hasFrontmatter, isFrontmatterCandidate, parseChangedEntries, patchLines, resolveAutoMergeConfig, TEST_CONFIG_NAME } from './auto-merge.js';
@@ -3811,11 +3811,19 @@ class FactoryEngine {
             const checkedOut = () => (priv ? priv.gitOk(['rev-parse', 'HEAD'], 'reading the prepare checkout', path) : this.run(['rev-parse', 'HEAD'], 'git', undefined, path));
             // The built-in vitest check in the OS sandbox writes a JSON report, so a failure is judged per test against the base (test-delta.ts).
             const report = this.o.gateSandbox && !this.gatesModeCache?.container && isBuiltInVitest(c) ? vitestReportPath(path) : undefined;
-            const r = this.o.gateSandbox
-                ? await this.withGitView(checkedOut, label, (view) => this.sandboxRun({ purpose: 'prepare', argv: c.argv, exe: c.exe, args: report ? [...c.args, ...vitestReportArgs(report)] : c.args, cwd: path, commonGitDir: at.commonGitDir, timeoutMs: PREPARE_CHECK_TIMEOUT_MS, ...(at.gates.requireDeniedPaths ? { requireDeniedPaths: true } : {}), ...view }))
-                : { ran: false, reason: 'no OS sandbox runner was given to the engine' };
-            // Read and removed right away: the file is not the PR's, and no later check sees it.
-            const headTests = report ? readVitestReport(report, path) : null;
+            let headTests = null;
+            let r;
+            try {
+                r = this.o.gateSandbox
+                    ? await this.withGitView(checkedOut, label, (view) => this.sandboxRun({ purpose: 'prepare', argv: c.argv, exe: c.exe, args: report ? [...c.args, ...vitestReportArgs(report)] : c.args, cwd: path, commonGitDir: at.commonGitDir, timeoutMs: PREPARE_CHECK_TIMEOUT_MS, ...(at.gates.requireDeniedPaths ? { requireDeniedPaths: true } : {}), ...view }))
+                    : { ran: false, reason: 'no OS sandbox runner was given to the engine' };
+            }
+            finally {
+                // Read and removed right away, even when the run threw (L4, review-548): the file is not the PR's, and no
+                // later check (or prepare's untracked-file refusal) sees it.
+                if (report)
+                    headTests = readVitestReport(report, path);
+            }
             const t = tampered();
             if (t)
                 return t;
@@ -3915,21 +3923,27 @@ class FactoryEngine {
      * any test). Else a FAILURE that names the tests failing on the head only
      * (the ci-fix lane gets them), or a pass; either way the tests that fail
      * on the base too are listed in a warning, a history note and one PR note
-     * per head. Their names come from the trusted base's report.
+     * per head. Their names come from the trusted base's report. A pass that
+     * excused any test is recorded (testDeltaExcusedHead): such a head is never
+     * auto-merged (L3, review-548), since an excused test may now fail for a
+     * new reason.
      */
     judgeTestDelta(park, headTests, head, label, baseSha, status, output) {
-        const v = testDeltaVerdict(park.baseTests, headTests, { head: vitestUnhandledErrors(output), base: park.baseUnhandled === true });
+        const v = testDeltaVerdict(park.baseTests, headTests, headRunSignals(status, output), park.baseOutput ?? []);
         if (v.kind === 'park')
             return null;
-        const list = (ids) => `${ids.slice(0, 10).map((id) => visibleLine(id)).join('; ')}${ids.length > 10 ? `; and ${ids.length - 10} more` : ''}`;
+        const list = (ids) => `${ids.slice(0, 10).map((id) => visibleLine(testIdText(id))).join('; ')}${ids.length > 10 ? `; and ${ids.length - 10} more` : ''}`;
         if (v.excused.length > 0) {
             const text = `${label} on ${head.slice(0, 12)}: ${v.excused.length} test(s) fail in the OS sandbox on the base ${baseSha.slice(0, 12)} too and were not counted: ${list(v.excused)}`;
             this.o.warn?.(`omg factory run: ${text}`);
             this.save((x) => ({ ...x, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: text.slice(0, 400) }] }));
             this.commentOnce('pr', `base-test-failures@${head.slice(0, 12)}`, 'sandbox', `**Sandbox: tests that fail on the base too.** ${text}.\n`);
         }
-        if (v.kind === 'pass')
+        if (v.kind === 'pass') {
+            if (this.state.testDeltaExcusedHead !== head)
+                this.save((x) => ({ ...x, testDeltaExcusedHead: head }));
             return { status: 0, stdout: redactGateOutput(output), stderr: '' };
+        }
         // The head's own test names (the PR's output): only in the failure's output, which stays local detail (H1). Last,
         // so prepare's output tail keeps it.
         const counted = `${v.counted.length} test(s) fail on ${head.slice(0, 12)} that did not fail on the base ${baseSha.slice(0, 12)} (new tests count): ${list(v.counted)}`;
@@ -3978,7 +3992,7 @@ class FactoryEngine {
             reason: `${what} fails in ${placeName} on the base ${baseSha.slice(0, 12)} itself, so its failure on ${head.slice(0, 12)} is not counted (no ci-fix lane). ${advice}, then rerun ${this.resume}. ${ACK_WARNING}${cal.tail ? `; base output tail: ${cal.tail.slice(-1_500)}` : ''}`,
             ...(!container && !plainRun && cal.gitTransport ? { gitTransport: true } : {}),
             ...(!container && !plainRun && cal.junctionRead ? { junctionRead: true } : {}),
-            ...(!container && !plainRun && cal.tests ? { baseTests: cal.tests, ...(vitestUnhandledErrors(cal.tail ?? '') ? { baseUnhandled: true } : {}) } : {}),
+            ...(!container && !plainRun && cal.tests ? { baseTests: cal.tests, baseOutput: vitestOutputFailures(cal.tail ?? '') } : {}),
         };
     }
     /**
@@ -4875,6 +4889,7 @@ class FactoryEngine {
                 ...(this.state.gateChangeApproved ? { gateChangeApproved: this.state.gateChangeApproved } : {}),
                 ...(pending?.secretAck ? { secretAck: pending.secretAck } : {}),
                 ...(this.state.gitTransportPlainHead ? { gitTransportPlainHead: this.state.gitTransportPlainHead } : {}),
+                ...(this.state.testDeltaExcusedHead ? { testDeltaExcusedHead: this.state.testDeltaExcusedHead } : {}),
             },
             decision,
             requiredChecks: config.requiredChecks,

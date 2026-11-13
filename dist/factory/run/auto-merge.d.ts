@@ -209,6 +209,8 @@ export interface AutoMergeRunFacts {
     secretAck?: readonly unknown[];
     /** A check ran WITHOUT any sandbox through the Windows git-transport fallback (the head it ran on). */
     gitTransportPlainHead?: string;
+    /** Built-in prepare tests passed only because tests that fail on the base too were not counted (the head it was on). */
+    testDeltaExcusedHead?: string;
 }
 export interface AutoMergeInput {
     head: string;

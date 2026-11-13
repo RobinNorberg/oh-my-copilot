@@ -321,6 +321,8 @@ function humanReviewShapeProblem(s) {
         return 'sandboxedGateHead';
     if (s.gitTransportPlainHead !== undefined && (!isStr(s.gitTransportPlainHead) || !HEX40.test(s.gitTransportPlainHead)))
         return 'gitTransportPlainHead';
+    if (s.testDeltaExcusedHead !== undefined && (!isStr(s.testDeltaExcusedHead) || !HEX40.test(s.testDeltaExcusedHead)))
+        return 'testDeltaExcusedHead';
     if (s.gateTreeCopy !== undefined && s.gateTreeCopy !== true)
         return 'gateTreeCopy';
     // One admin dir name under <common>/worktrees (git makes it from the checkout's base name): no separator, nothing else.
