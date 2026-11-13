@@ -50008,8 +50008,9 @@ function runPhase(root, key, ledgerDir) {
   try {
     const state = parseFactoryState(path15, key, bytes.toString("utf8"));
     return verifyFactoryIntegrity(state) ? { phase: state.phase } : unreadable("it fails its integrity check");
-  } catch {
-    return unreadable("it does not parse");
+  } catch (error2) {
+    const why = error2 instanceof FactoryStateError && error2.message.startsWith(path15) ? `it${error2.message.slice(path15.length)}` : "it does not parse";
+    return unreadable(/^it is malformed /.test(why) ? `${why}; an omg of another version may have written it` : why);
   }
 }
 function claimSharesState(other, root, platform) {
