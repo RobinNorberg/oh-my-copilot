@@ -1280,7 +1280,7 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
             checksJson = checks('FAILURE', 'FAILURE');
             const result = await release({ to: 'pr' });
             expect(result.ok).toBe(false);
-            expect(result.phases[0].details).toContain('  Test: src/a.test.ts > suite > breaks');
+            expect(result.phases[0].details).toContain('  `Test`: src/a.test.ts > suite > breaks');
             expect(calls.filter((c) => c === 'gh run rerun 77 --failed')).toHaveLength(1);
         });
         it('prints the merge command instead of merging without ship.allowAdminMerge', async () => {
@@ -1692,7 +1692,7 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
             expect(testLines.length).toBeGreaterThan(0);
             expect(testLines.some((d) => d.includes('Build'))).toBe(true);
             expect(testLines.every((d) => !/[\u001b@\n|]/.test(d) && d.startsWith("  `Build' ＠team"))).toBe(true);
-            expect(testLines.some((d) => d.includes("＠team [31m'quoted' ¦ pipe"))).toBe(true);
+            expect(testLines.some((d) => d.includes("'x' ＠team 'quoted' ¦ pipe"))).toBe(true);
         });
         it('--to suite and --to smoke prepare without pushing anything', async () => {
             suiteDone();
