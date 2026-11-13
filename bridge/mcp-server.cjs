@@ -40591,6 +40591,16 @@ var init_checks = __esm({
   }
 });
 
+// src/lib/one-line.ts
+function oneLine(text3, max = 200) {
+  return (text3 ?? "").replace(/[\p{Cc}\p{Zl}\p{Zp}]+/gu, " ").replace(/\s+/g, " ").trim().slice(0, max);
+}
+var init_one_line = __esm({
+  "src/lib/one-line.ts"() {
+    "use strict";
+  }
+});
+
 // src/ship/workflow.ts
 function parseWorkflow(text3) {
   const triggers = [];
@@ -40705,7 +40715,7 @@ function noHeadChecksText(n) {
   const causes = "Actions may be disabled, delayed, or the push did not trigger workflows";
   if (n.ciDefinitions) {
     if (n.ciDefinitions.length === 0) return `nothing has reported a check for this head within ${window}, and the CI definitions in the base and head trees could not be read, so the gates do not assume this repository has no CI: ${causes}`;
-    const files = `${n.ciDefinitions.slice(0, 5).join(", ")}${n.ciDefinitions.length > 5 ? `, and ${n.ciDefinitions.length - 5} more` : ""}`;
+    const files = `${n.ciDefinitions.slice(0, 5).map((f) => oneLine(f)).join(", ")}${n.ciDefinitions.length > 5 ? `, and ${n.ciDefinitions.length - 5} more` : ""}`;
     return `this repository has CI definitions (${files}) but nothing reported for this commit within ${window} (the base commit reported no check either, as CI that runs only on pull requests leaves it): ${causes}`;
   }
   if (n.suites === "present") return `nothing has reported a check for this head within ${window}, but GitHub lists check suites for it, so the gates do not assume this repository has no CI: ${causes}`;
@@ -40713,7 +40723,7 @@ function noHeadChecksText(n) {
   if (n.base === void 0) {
     return `nothing has reported a check for this head within ${window}, and the base commit's checks could not be read, so the gates do not assume this repository has no CI: Actions may be disabled, delayed, or the push did not trigger workflows`;
   }
-  const names = `${n.base.slice(0, 5).join(", ")}${n.base.length > 5 ? `, and ${n.base.length - 5} more` : ""}`;
+  const names = `${n.base.slice(0, 5).map((f) => oneLine(f)).join(", ")}${n.base.length > 5 ? `, and ${n.base.length - 5} more` : ""}`;
   return `the base commit ran CI (${names}) but nothing has reported for this head: Actions may be disabled, delayed, or the push did not trigger workflows`;
 }
 function openSuites(suites, settled, baseSuites) {
@@ -41040,6 +41050,7 @@ var init_gates = __esm({
     import_fs60 = require("fs");
     import_path77 = require("path");
     init_checks();
+    init_one_line();
     init_workflow();
     CHECK_FIELDS = "name,state,bucket,link,workflow,event,startedAt,completedAt";
     RUN_FIELDS = "databaseId,status,conclusion,workflowName,headSha";
@@ -53535,9 +53546,6 @@ var init_terms = __esm({
 });
 
 // src/factory/run/prompts.ts
-function oneLine(text3, max = MAX_TITLE_CHARS) {
-  return (text3 ?? "").replace(/[\p{Cc}\p{Zl}\p{Zp}]+/gu, " ").replace(/\s+/g, " ").trim().slice(0, max);
-}
 function fenceFor(content) {
   const longest = Math.max(0, ...[...content.matchAll(/`+/g)].map((m) => m[0].length));
   return "`".repeat(Math.max(3, longest + 1));
@@ -53732,17 +53740,17 @@ function reviewPrompt(s, head, diff, standards = [], team) {
     fence2
   ].join("\n");
 }
-var MAX_CI_DETAIL_CHARS, MAX_REVIEW_DIFF_CHARS, MAX_STANDARDS_FILES, MAX_TITLE_CHARS, WRITE_LANE_GIT_RULES, subject, planLabel, untrustedText, LANE_SCRIPT_NAMES, scriptsLine, FOREGROUND_WAIT_RULE, planSection, MAX_HUMAN_FEEDBACK_CHARS;
+var MAX_CI_DETAIL_CHARS, MAX_REVIEW_DIFF_CHARS, MAX_STANDARDS_FILES, WRITE_LANE_GIT_RULES, subject, planLabel, untrustedText, LANE_SCRIPT_NAMES, scriptsLine, FOREGROUND_WAIT_RULE, planSection, MAX_HUMAN_FEEDBACK_CHARS;
 var init_prompts2 = __esm({
   "src/factory/run/prompts.ts"() {
     "use strict";
     init_review_feedback();
     init_terms();
+    init_one_line();
     init_gates_driver();
     MAX_CI_DETAIL_CHARS = 8e3;
     MAX_REVIEW_DIFF_CHARS = 6e4;
     MAX_STANDARDS_FILES = 50;
-    MAX_TITLE_CHARS = 200;
     WRITE_LANE_GIT_RULES = [
       "Leave your changes in this worktree and do NOT commit: the git directory is read-only, so git add, git commit, git merge, git stash and every other git command that writes fail. The engine commits your changes after you finish, with your final message as the commit message, so end with a short summary of the change.",
       "Do NOT push, open a pull request, or change git config, hooks or refs.",

@@ -17,6 +17,7 @@ import type { ShipConfig, KnownFlakyTest } from './config.js';
 import type { Exec } from './exec.js';
 import { ghHeadSha, ghJobLog, ghPrChecks, ghRerun, ghRunsForHead } from '../forge/github/checks.js';
 import type { ForgeChecks, ForgeKind, ForgeReviews } from '../forge/types.js';
+import { oneLine } from '../lib/one-line.js';
 import { CI_WORKFLOW, jobCheckNames } from './workflow.js';
 
 /**
@@ -248,7 +249,7 @@ export function noHeadChecksText(n: NonNullable<GateReport['noHeadChecks']>): st
   const causes = 'Actions may be disabled, delayed, or the push did not trigger workflows';
   if (n.ciDefinitions) {
     if (n.ciDefinitions.length === 0) return `nothing has reported a check for this head within ${window}, and the CI definitions in the base and head trees could not be read, so the gates do not assume this repository has no CI: ${causes}`;
-    const files = `${n.ciDefinitions.slice(0, 5).join(', ')}${n.ciDefinitions.length > 5 ? `, and ${n.ciDefinitions.length - 5} more` : ''}`;
+    const files = `${n.ciDefinitions.slice(0, 5).map((f) => oneLine(f)).join(', ')}${n.ciDefinitions.length > 5 ? `, and ${n.ciDefinitions.length - 5} more` : ''}`;
     return `this repository has CI definitions (${files}) but nothing reported for this commit within ${window} (the base commit reported no check either, as CI that runs only on pull requests leaves it): ${causes}`;
   }
   if (n.suites === 'present') return `nothing has reported a check for this head within ${window}, but GitHub lists check suites for it, so the gates do not assume this repository has no CI: ${causes}`;
@@ -256,7 +257,7 @@ export function noHeadChecksText(n: NonNullable<GateReport['noHeadChecks']>): st
   if (n.base === undefined) {
     return `nothing has reported a check for this head within ${window}, and the base commit's checks could not be read, so the gates do not assume this repository has no CI: Actions may be disabled, delayed, or the push did not trigger workflows`;
   }
-  const names = `${n.base.slice(0, 5).join(', ')}${n.base.length > 5 ? `, and ${n.base.length - 5} more` : ''}`;
+  const names = `${n.base.slice(0, 5).map((f) => oneLine(f)).join(', ')}${n.base.length > 5 ? `, and ${n.base.length - 5} more` : ''}`;
   return `the base commit ran CI (${names}) but nothing has reported for this head: Actions may be disabled, delayed, or the push did not trigger workflows`;
 }
 
