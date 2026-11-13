@@ -13,7 +13,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { readLocalCheckRecord } from '../../../forge/local/index.js';
-import { defaultGitGateImage, resolveWindowsGitTransport } from '../../../copilot-run/sandbox.js';
+import { defaultGitGateImage, resolveGateIsolation, resolveWindowsGitTransport } from '../../../copilot-run/sandbox.js';
 import { resolveShipConfig, trustedUserConfigPath } from '../../../ship/config.js';
 
 // The trusted user config's home (M1, review-532b): os.userInfo().homedir is `home.dir` while it is set, so the real
@@ -396,5 +396,17 @@ describe('detection and settings', () => {
     const base = { factory: { run: { sandbox: { windowsGitTransport: 'strict' } } } };
     expect(resolveWindowsGitTransport({ user: undefined, base })).toMatchObject({ mode: 'fallback', ignoredBase: true });
     expect(() => resolveWindowsGitTransport({ user: { factory: { run: { sandbox: { windowsGitTransport: 'off' } } } }, base: undefined })).toThrow(/windowsGitTransport must be "fallback" or "strict"/);
+  });
+
+  it('a user factory.run.sandbox that is not an object throws; absent, {} and a strict value still resolve', () => {
+    for (const sandbox of [[], 'strict', 7]) {
+      const user = { factory: { run: { sandbox } } };
+      expect(() => resolveWindowsGitTransport({ user, base: undefined })).toThrow('user config: factory.run.sandbox must be an object');
+      expect(() => resolveGateIsolation({ user, base: undefined })).toThrow('user config: factory.run.sandbox must be an object');
+    }
+    expect(resolveWindowsGitTransport({ user: undefined, base: undefined }).mode).toBe('fallback');
+    expect(resolveWindowsGitTransport({ user: { factory: { run: { sandbox: {} } } }, base: undefined }).mode).toBe('fallback');
+    expect(resolveWindowsGitTransport({ user: { factory: { run: { sandbox: { windowsGitTransport: 'strict' } } } }, base: undefined }).mode).toBe('strict');
+    expect(resolveWindowsGitTransport({ user: undefined, base: { factory: { run: { sandbox: [] } } } }).mode).toBe('fallback');
   });
 });

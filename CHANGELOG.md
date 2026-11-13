@@ -4,6 +4,10 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A malformed `factory.run.sandbox` in the user config is refused.** An array, string or number there used to be read as an empty block, so `windowsGitTransport` and `isolation` silently fell back to their defaults. It now throws `user config: factory.run.sandbox must be an object`.
+
 ### Added
 
 - **Live factory bench baseline.** `benchmark/factory-bench/baseline.json` is now a live omg 5.27.0 run on fixture v2: 12 issues, 11 passed, 21 premium requests. Issue 6 (discount-codes) passed review and gates but fails the hidden acceptance test. Local paths are redacted.
