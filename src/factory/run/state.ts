@@ -261,6 +261,8 @@ export interface FactoryRunState {
   prepared?: { head: string; housekeeping: string[] };
   /** merge -> gates returns so far; the cap holds across reruns. */
   mergeBounces?: number;
+  /** gates -> prepare returns for a PR that conflicts with its moved base (MAX_CONFLICT_REPREPARES); the cap holds across reruns. */
+  conflictReprepares?: number;
   /** The engine-owned prepare checkout's HEAD when the engine last left it. */
   checkoutHead?: string;
   /** The checkout head a prepare left after the PR's code ran in the OS sandbox there (a local gate start failure on it parks at gate-no-verdict). */
@@ -623,6 +625,7 @@ function shapeProblem(s: Record<string, unknown>): string | null {
   if (typeof s.retries !== 'object' || s.retries === null || !Object.values(s.retries).every(isCount)) return 'retries';
   if (typeof s.lostStreak !== 'object' || s.lostStreak === null) return 'lostStreak';
   if (typeof s.elapsedMs !== 'number' || !isCount(s.ciFixRounds)) return 'elapsedMs/ciFixRounds';
+  if (s.conflictReprepares !== undefined && !isCount(s.conflictReprepares)) return 'conflictReprepares';
   if (!Array.isArray(s.history)) return 'history';
   if (!isStr(s.createdAt) || !isStr(s.updatedAt)) return 'createdAt/updatedAt';
   return humanReviewShapeProblem(s);

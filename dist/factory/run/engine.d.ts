@@ -71,7 +71,13 @@ export { EXIT_BUSY };
 /** Conflict-fix lanes (distinct start heads) before base conflicts park at awaiting-human: merge-conflicts. */
 export declare const MAX_CONFLICT_FIX_ROUNDS = 2;
 /** merge's gate read may send the run back to gates this often per invocation before awaiting-human: gates-disagree. */
-export declare const MAX_MERGE_BOUNCES = 2; /** Lane waits are sliced so the cancel flag is seen within this long. */
+export declare const MAX_MERGE_BOUNCES = 2;
+/** Gates -> prepare returns for a PR that conflicts with its moved base, per run (across reruns), before awaiting-human: merge-conflicts. */
+export declare const MAX_CONFLICT_REPREPARES = 3;
+/** Reads of the forge's mergeability while it is unknown (GitHub computes it lazily after a push or a base move), MERGEABILITY_WAIT_MS apart. */
+export declare const MERGEABILITY_READS = 4;
+export declare const MERGEABILITY_WAIT_MS = 5000;
+/** Lane waits are sliced so the cancel flag is seen within this long. */
 export declare const DEFAULT_POLL_MS = 5000;
 /** A ci-heal run's inputs (src/factory/heal/implement.ts builds them from a sealed heal signature state). */
 export interface FactoryHealStart {

@@ -11,7 +11,7 @@
 import { readFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { assertReviewHead } from '../review-feedback.js';
-import { isLocalBranchName, mergedArgs, readMirrorRef } from './mirror.js';
+import { isLocalBranchName, mergedArgs, mergeTreeArgs, readMirrorRef } from './mirror.js';
 import { appendNoFollow, readLocalReviews, readPrStore, updatePrStore, writeAtomic } from './store.js';
 /** ship's TRUSTED_READ_ENV, by value (importing ship/exec.ts would load child_process into src/forge). */
 const TRUSTED_READ_ENV = Object.freeze({ GIT_NO_REPLACE_OBJECTS: '1' });
@@ -121,6 +121,17 @@ export function localReviews(ctx) {
         prHead(pr) {
             const v = view(pr);
             return { headRefOid: v.headRefOid, state: v.state };
+        },
+        // The mirror's base (the base the engine synced and prepare merges): a head that already contains it is
+        // mergeable; else git's merge-tree decides (exit 1 conflicts); anything git cannot tell is unknown.
+        mergeability(pr) {
+            const v = view(pr);
+            if (v.state !== 'OPEN')
+                return { state: 'unknown', headRefOid: v.headRefOid };
+            if (v.headRefOid === v.baseRefOid || isAncestor(ctx, v.baseRefOid, v.headRefOid) === true)
+                return { state: 'mergeable', headRefOid: v.headRefOid };
+            const r = ctx.exec('git', mergeTreeArgs(v.headRefOid, v.baseRefOid), { cwd: ctx.root, env: TRUSTED_READ_ENV });
+            return { state: r.status === 0 ? 'mergeable' : r.status === 1 ? 'conflicting' : 'unknown', headRefOid: v.headRefOid };
         },
         markReady(pr) {
             updatePrStore(ctx.storePath, (store) => {
