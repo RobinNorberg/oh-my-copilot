@@ -33,6 +33,8 @@ export declare function checkoutBranch(issue: FactoryRunKey): string;
 export declare const GATE_CACHE_DIRS: readonly string[];
 /** The engine's own file in a node_modules tree it built (linkNodeModules). */
 export declare const GATE_TREE_MARKER = ".omg-gate-tree";
+/** The marker's last line once linkNodeModules built every tree (L3, review-547); a leading dot, so never a workspace dir. */
+export declare const GATE_TREE_COMPLETE = ".omg-complete";
 /** L3 (review-490): the largest top-level node_modules file copied into a tree (npm's `.package-lock.json` of a big monorepo is a few MB). */
 export declare const GATE_TREE_FILE_MAX_BYTES: number;
 /**
@@ -60,10 +62,13 @@ export declare const GATE_TREE_FILE_MAX_BYTES: number;
  *
  * `copy` (GATE_TREE_COPY_WHY): each package dir is a copy of yours instead
  * of a link (`.bin` and workspace self-links stay links), so a tool that
- * opens a package dir itself (esbuild) never opens a junction. It throws,
- * before anything is copied, when the copy would pass a GATE_TREE_COPY_*
- * bound or the checkout's volume lacks the space (copyPreflight), and at a
- * bound while copying (copyGateDir; the partial tree is removed first).
+ * opens a package dir itself (esbuild) never opens a junction; a link to a
+ * dir of a copied tree points at its copy (copiedAt). It throws, before
+ * anything is copied, when the copy would pass a GATE_TREE_COPY_* bound or
+ * the checkout's volume lacks the space (a dry run of the copy's own walk),
+ * and at a bound while copying (the partial tree is removed first). The
+ * marker's completion line (GATE_TREE_COMPLETE) is written last; a tree
+ * found without it is removed and built again.
  */
 export declare function linkNodeModules(root: string, checkout: string, warn?: (message: string) => void, workspaces?: readonly string[], copy?: boolean | Partial<GateTreeCopyLimits>): string | null;
 /**

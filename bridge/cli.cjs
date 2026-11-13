@@ -99740,11 +99740,11 @@ function laneToolPaths(env2, platform, probe = defaultToolPathProbe(env2, platfo
   if (git10) {
     const execDir = probe.gitExecPath(git10);
     const root2 = platform === "win32" ? gitForWindowsRoot(execDir) : null;
-    const under5 = (p, dir) => {
+    const under4 = (p, dir) => {
       const rel = P.relative(dir, p);
       return !!rel && !rel.startsWith("..") && !P.isAbsolute(rel);
     };
-    if (root2 && under5(real2(git10), root2)) out.push(root2);
+    if (root2 && under4(real2(git10), root2)) out.push(root2);
     else out.push(...binDirs(git10), ...execDir ? [execDir] : []);
   }
   const seen = /* @__PURE__ */ new Set();
@@ -100116,7 +100116,7 @@ var init_process_utils2 = __esm({
 });
 
 // src/smoke/replay/redact.ts
-function userHomePatterns(win, pct2, posix13, posixFlags) {
+function userHomePatterns(win, pct2, posix14, posixFlags) {
   return [
     // The separator spelling is captured once, so `\n` after an escaped `\\` is not taken for a tail separator.
     // `\` doubles per JSON level, so any run of backslashes is a separator. The one after `Users` may be either
@@ -100125,7 +100125,7 @@ function userHomePatterns(win, pct2, posix13, posixFlags) {
     // Percent-encoded (`file:///c%3A/Users/...`, `C%3A%5CUsers%5C...`, `%2Fhome%2Fname`).
     new RegExp(String.raw`(?<head>(?:\b[A-Za-z]%3A${PCT_SEP}Users|%2F(?:home|Users))${PCT_SEP}(?!<user>)${pct2})(?:${PCT_SEP}${PCT_SEG})*`, "gi"),
     // POSIX, Git Bash (`/c/Users/...`) and WSL (`/mnt/c/Users/...`).
-    new RegExp(String.raw`(?<head>(?<![\w.$}-])\/(?:home|Users|(?:mnt\/)?[A-Za-z]\/Users)\/(?!<user>)${posix13})(?:\/${POSIX_SEG})*`, posixFlags)
+    new RegExp(String.raw`(?<head>(?<![\w.$}-])\/(?:home|Users|(?:mnt\/)?[A-Za-z]\/Users)\/(?!<user>)${posix14})(?:\/${POSIX_SEG})*`, posixFlags)
   ];
 }
 function knownUserHomePatterns(user) {
@@ -131876,6 +131876,16 @@ function checkoutPath(root2, issue2) {
 function checkoutBranch(issue2) {
   return getBranchName(FACTORY_CHECKOUT_TEAM, checkoutWorker(issue2));
 }
+function gateTreeIncomplete(target) {
+  try {
+    if (!(0, import_fs159.lstatSync)(target).isDirectory()) return false;
+    const m = (0, import_fs159.lstatSync)((0, import_path187.join)(target, GATE_TREE_MARKER));
+    if (!m.isFile() || m.size > 64 * 1024) return false;
+    return !(0, import_fs159.readFileSync)((0, import_path187.join)(target, GATE_TREE_MARKER), "utf-8").split("\n").includes(GATE_TREE_COMPLETE);
+  } catch {
+    return false;
+  }
+}
 function unlinkLink(p) {
   try {
     (0, import_fs159.unlinkSync)(p);
@@ -131895,29 +131905,42 @@ function linkNodeModules(root2, checkout, warn, workspaces = [], copy = false) {
   } catch {
     present = false;
   }
+  if (present && gateTreeIncomplete(target)) {
+    unlinkNodeModules(root2, checkout);
+    present = (0, import_fs159.existsSync)(target) || isLink(target);
+  }
   if (present) return ws.problem;
+  const trees = [{ src: source, to: target, rel: "" }];
+  for (const rel of ws.dirs) {
+    const yours = plainDirUnder(root2, rel);
+    const src = yours ? (0, import_path187.join)(yours, "node_modules") : null;
+    const dir = plainDirUnder(checkout, rel);
+    if (!src || !dir || isLink(src) || !(0, import_fs159.existsSync)(src) || !(0, import_fs159.statSync)(src).isDirectory()) continue;
+    const nested = (0, import_path187.join)(dir, "node_modules");
+    if ((0, import_fs159.existsSync)(nested) || isLink(nested)) continue;
+    trees.push({ src, to: nested, rel });
+  }
   const built = [];
   let budget;
   if (copy) {
-    const nested = ws.dirs.map((rel) => plainDirUnder(root2, rel)).flatMap((d) => d && !isLink((0, import_path187.join)(d, "node_modules")) && (0, import_fs159.existsSync)((0, import_path187.join)(d, "node_modules")) ? [(0, import_path187.join)(d, "node_modules")] : []);
     const limits = { ...DEFAULT_COPY_LIMITS, ...copy === true ? {} : copy };
-    const over = copyPreflight([source, ...nested], checkout, limits);
-    if (over) throw new Error(over);
-    budget = { bytes: 0, files: 0, inside: [source, ...nested].map((d) => import_fs159.realpathSync.native(d)), limits };
+    const roots = trees.map((t) => ({ real: import_fs159.realpathSync.native(t.src), to: t.to }));
+    const dry = { bytes: 0, files: 0, roots, limits, dry: true };
+    for (const t of trees) buildGateTree(t.src, t.to, root2, checkout, t.rel ? `${t.rel}/` : "", void 0, dry);
+    const free = limits.freeBytes(checkout);
+    if (free !== null && free < dry.bytes + limits.marginBytes) throw new Error(`the copied gate node_modules tree needs ${dry.bytes} bytes plus a ${limits.marginBytes}-byte margin on the volume of ${checkout}, which has ${free} bytes free, so it is not copied`);
+    budget = { bytes: 0, files: 0, roots, limits, dry: false };
   }
   try {
-    buildGateTree(source, target, root2, checkout, "", warn, budget);
-    for (const rel of ws.dirs) {
-      const yours = plainDirUnder(root2, rel);
-      const src = yours ? (0, import_path187.join)(yours, "node_modules") : null;
-      const dir = plainDirUnder(checkout, rel);
-      if (!src || !dir || isLink(src) || !(0, import_fs159.existsSync)(src) || !(0, import_fs159.statSync)(src).isDirectory()) continue;
-      const nested = (0, import_path187.join)(dir, "node_modules");
-      if ((0, import_fs159.existsSync)(nested) || isLink(nested)) continue;
-      built.push(rel);
-      buildGateTree(src, nested, root2, checkout, `${rel}/`, warn, budget);
+    for (const t of trees) {
+      if (t.rel) {
+        built.push(t.rel);
+        (0, import_fs159.writeFileSync)((0, import_path187.join)(target, GATE_TREE_MARKER), built.map((r) => `${r}
+`).join(""));
+      }
+      buildGateTree(t.src, t.to, root2, checkout, t.rel ? `${t.rel}/` : "", warn, budget);
     }
-    (0, import_fs159.writeFileSync)((0, import_path187.join)(target, GATE_TREE_MARKER), built.map((r) => `${r}
+    (0, import_fs159.writeFileSync)((0, import_path187.join)(target, GATE_TREE_MARKER), [...built, GATE_TREE_COMPLETE].map((r) => `${r}
 `).join(""));
     const moved = treeMoved(target, checkout, "");
     if (moved) throw new Error(moved);
@@ -131946,25 +131969,29 @@ function isLink(p) {
   }
 }
 function buildGateTree(source, target, root2, checkout, label2, warn, copy) {
-  (0, import_fs159.mkdirSync)(target);
-  const moved = treeMoved(target, checkout, label2);
-  if (moved) {
-    try {
-      (0, import_fs159.rmdirSync)(target);
-    } catch {
+  const dry = copy?.dry === true;
+  if (!dry) {
+    (0, import_fs159.mkdirSync)(target);
+    const moved = treeMoved(target, checkout, label2);
+    if (moved) {
+      try {
+        (0, import_fs159.rmdirSync)(target);
+      } catch {
+      }
+      throw new Error(moved);
     }
-    throw new Error(moved);
+    (0, import_fs159.writeFileSync)((0, import_path187.join)(target, GATE_TREE_MARKER), "");
+    for (const name of GATE_CACHE_DIRS) (0, import_fs159.mkdirSync)((0, import_path187.join)(target, name));
   }
-  (0, import_fs159.writeFileSync)((0, import_path187.join)(target, GATE_TREE_MARKER), "");
-  for (const name of GATE_CACHE_DIRS) (0, import_fs159.mkdirSync)((0, import_path187.join)(target, name));
   const place = (from, to) => {
     const w = workspaceLinkTarget(from, root2, checkout);
     if ("skip" in w) {
       warn?.(`omg factory run: ${w.skip}, so it is left out of the gate's node_modules tree ${target}`);
       return;
     }
-    if (copy && !("to" in w) && (0, import_path187.basename)(from) !== ".bin") copyGateDir(from, to, copy);
-    else (0, import_fs159.symlinkSync)("to" in w ? w.to : from, to, linkType());
+    if (copy && !("to" in w) && (0, import_path187.basename)(from) !== ".bin") return copyGateEntry(from, to, copy);
+    spend(copy, 0);
+    if (!dry) (0, import_fs159.symlinkSync)("to" in w ? w.to : from, to, linkType());
   };
   for (const e of (0, import_fs159.readdirSync)(source, { withFileTypes: true })) {
     if (e.name === GATE_TREE_MARKER || GATE_CACHE_DIRS.includes(e.name)) continue;
@@ -131980,14 +132007,16 @@ function buildGateTree(source, target, root2, checkout, label2, warn, copy) {
         warn?.(`omg factory run: ${label2}node_modules/${e.name} (${st.size} bytes) is over ${GATE_TREE_FILE_MAX_BYTES} bytes, so it is not copied into the gate's node_modules tree ${target}`);
         continue;
       }
-      (0, import_fs159.copyFileSync)(from, (0, import_path187.join)(target, e.name));
+      spend(copy, st.size);
+      if (!dry) (0, import_fs159.copyFileSync)(from, (0, import_path187.join)(target, e.name));
       continue;
     }
     if (!st.isDirectory()) continue;
     if (e.name.startsWith("@") && !isLink(from)) {
       const children = (0, import_fs159.readdirSync)(from);
       if (children.some((c) => !("keep" in workspaceLinkTarget((0, import_path187.join)(from, c), root2, checkout)))) {
-        (0, import_fs159.mkdirSync)((0, import_path187.join)(target, e.name));
+        spend(copy, 0);
+        if (!dry) (0, import_fs159.mkdirSync)((0, import_path187.join)(target, e.name));
         for (const c of children) {
           try {
             if (!(0, import_fs159.statSync)((0, import_path187.join)(from, c)).isDirectory()) continue;
@@ -132001,42 +132030,51 @@ function buildGateTree(source, target, root2, checkout, label2, warn, copy) {
     }
     place(from, (0, import_path187.join)(target, e.name));
   }
+  if (dry) return;
   const after = treeMoved(target, checkout, label2);
   if (after) throw new Error(after);
 }
 function copyLimitText(what) {
-  return `the copied gate node_modules tree would be over ${what}, so it is not copied (a node_modules that large cannot use the copied tree the Windows sandbox needs for esbuild)`;
+  return `the copied gate node_modules tree would be over ${what}, so it is not copied`;
 }
-function copyPreflight(sources, checkout, limits) {
-  let bytes = 0;
-  let files = 0;
-  const walk = (dir, top) => {
-    for (const e of (0, import_fs159.readdirSync)(dir, { withFileTypes: true })) {
-      if (top && (e.name === ".bin" || e.name === GATE_TREE_MARKER || GATE_CACHE_DIRS.includes(e.name))) continue;
-      if (e.isSymbolicLink()) continue;
-      const p = (0, import_path187.join)(dir, e.name);
-      if (e.isDirectory()) {
-        const over = walk(p, false);
-        if (over) return over;
-      } else if (e.isFile()) {
-        bytes += (0, import_fs159.lstatSync)(p).size;
-        files += 1;
-        if (bytes > limits.maxBytes) return copyLimitText(`${limits.maxBytes} bytes`);
-        if (files > limits.maxFiles) return copyLimitText(`${limits.maxFiles} files`);
-      }
-    }
-    return null;
-  };
-  for (const s of sources) {
-    const over = walk(s, true);
-    if (over) return over;
+function spend(b, bytes) {
+  if (!b) return;
+  if (b.files + 1 > b.limits.maxFiles) throw new Error(copyLimitText(`${b.limits.maxFiles} entries (files, dirs and links)`));
+  if (b.bytes + bytes > b.limits.maxBytes) throw new Error(copyLimitText(`${b.limits.maxBytes} bytes`));
+  b.files += 1;
+  b.bytes += bytes;
+}
+function copiedAt(real2, budget) {
+  const P = process.platform === "win32" ? import_path187.win32 : import_path187.posix;
+  let best = null;
+  for (const r of budget.roots) {
+    const rel = P.relative(r.real, real2);
+    if (rel.startsWith("..") || P.isAbsolute(rel)) continue;
+    if (!best || r.real.length > best.len) best = { rel, to: r.to, len: r.real.length };
   }
-  const free = limits.freeBytes(checkout);
-  if (free !== null && free < bytes + limits.marginBytes) return `the copied gate node_modules tree needs about ${bytes} bytes plus a ${limits.marginBytes}-byte margin on the volume of ${checkout}, which has ${free} bytes free, so it is not copied; free disk space`;
-  return null;
+  if (!best) return null;
+  const first = best.rel.split(/[\\/]/)[0];
+  if (first === ".bin" || first === GATE_TREE_MARKER || GATE_CACHE_DIRS.includes(first)) return null;
+  return best.rel ? (0, import_path187.join)(best.to, best.rel) : best.to;
 }
-function copyGateDir(from, to, budget, seen = [foldPath(import_fs159.realpathSync.native(from))]) {
-  (0, import_fs159.mkdirSync)(to);
+function copyGateEntry(from, to, budget) {
+  if (isLink(from)) {
+    let at = null;
+    try {
+      at = copiedAt(import_fs159.realpathSync.native(from), budget);
+    } catch {
+    }
+    if (at) {
+      spend(budget, 0);
+      if (!budget.dry) (0, import_fs159.symlinkSync)(at, to, linkType());
+      return;
+    }
+  }
+  copyGateDir(from, to, budget);
+}
+function copyGateDir(from, to, budget) {
+  spend(budget, 0);
+  if (!budget.dry) (0, import_fs159.mkdirSync)(to);
   for (const e of (0, import_fs159.readdirSync)(from, { withFileTypes: true })) {
     const s = (0, import_path187.join)(from, e.name);
     const d = (0, import_path187.join)(to, e.name);
@@ -132048,17 +132086,13 @@ function copyGateDir(from, to, budget, seen = [foldPath(import_fs159.realpathSyn
       } catch {
         continue;
       }
-      const r = foldPath(real2);
-      if (budget.inside.some((i) => under(real2, i)) && !seen.includes(r)) copyGateDir(real2, d, budget, [...seen, r]);
-      else (0, import_fs159.symlinkSync)(real2, d, linkType());
-    } else if (e.isDirectory()) copyGateDir(s, d, budget, [...seen, foldPath((0, import_path187.join)(seen[seen.length - 1], e.name))]);
+      spend(budget, 0);
+      if (!budget.dry) (0, import_fs159.symlinkSync)(copiedAt(real2, budget) ?? real2, d, linkType());
+    } else if (e.isDirectory()) copyGateDir(s, d, budget);
     else if (e.isFile()) {
       const size = (0, import_fs159.statSync)(s).size;
-      if (budget.files + 1 > budget.limits.maxFiles) throw new Error(copyLimitText(`${budget.limits.maxFiles} files`));
-      if (budget.bytes + size > budget.limits.maxBytes) throw new Error(copyLimitText(`${budget.limits.maxBytes} bytes`));
-      (0, import_fs159.copyFileSync)(s, d);
-      budget.files += 1;
-      budget.bytes += size;
+      spend(budget, size);
+      if (!budget.dry) (0, import_fs159.copyFileSync)(s, d);
     }
   }
 }
@@ -132164,7 +132198,7 @@ function nestedTreeDirs(checkout) {
     const st = (0, import_fs159.lstatSync)((0, import_path187.join)(checkout, "node_modules"));
     const m = (0, import_fs159.lstatSync)(marker);
     if (!st.isSymbolicLink() && st.isDirectory() && m.isFile() && m.size <= 64 * 1024) {
-      for (const line2 of (0, import_fs159.readFileSync)(marker, "utf-8").split("\n")) if (line2) rels.add(line2);
+      for (const line2 of (0, import_fs159.readFileSync)(marker, "utf-8").split("\n")) if (line2 && line2 !== GATE_TREE_COMPLETE) rels.add(line2);
     }
   } catch {
   }
@@ -132191,7 +132225,7 @@ function trustedNestedRels(root2, checkout, workspaces) {
     const st = (0, import_fs159.lstatSync)((0, import_path187.join)(checkout, "node_modules"));
     const m = (0, import_fs159.lstatSync)(marker);
     if (!st.isSymbolicLink() && st.isDirectory() && m.isFile() && m.size <= 64 * 1024) {
-      for (const line2 of (0, import_fs159.readFileSync)(marker, "utf-8").split("\n")) if (line2) listed2.add(line2);
+      for (const line2 of (0, import_fs159.readFileSync)(marker, "utf-8").split("\n")) if (line2 && line2 !== GATE_TREE_COMPLETE) listed2.add(line2);
     }
   } catch {
     return [];
@@ -132207,7 +132241,7 @@ function sameDir(a, b) {
     return false;
   }
 }
-var import_fs159, import_path187, FACTORY_CHECKOUT_TEAM, checkoutWorker, GATE_CACHE_DIRS, GATE_TREE_MARKER, GATE_TREE_FILE_MAX_BYTES, nestedTrees, linkType, GATE_TREE_COPY_WHY, GATE_TREE_COPY_MAX_BYTES, GATE_TREE_COPY_MAX_FILES, GATE_TREE_COPY_FREE_MARGIN_BYTES, DEFAULT_COPY_LIMITS, foldPath, under, defaultGateConfigLoader;
+var import_fs159, import_path187, FACTORY_CHECKOUT_TEAM, checkoutWorker, GATE_CACHE_DIRS, GATE_TREE_MARKER, GATE_TREE_COMPLETE, GATE_TREE_FILE_MAX_BYTES, nestedTrees, linkType, GATE_TREE_COPY_WHY, GATE_TREE_COPY_MAX_BYTES, GATE_TREE_COPY_MAX_FILES, GATE_TREE_COPY_FREE_MARGIN_BYTES, DEFAULT_COPY_LIMITS, defaultGateConfigLoader;
 var init_prepare = __esm({
   "src/factory/run/prepare.ts"() {
     "use strict";
@@ -132221,6 +132255,7 @@ var init_prepare = __esm({
     checkoutWorker = (issue2) => runSlug(issue2);
     GATE_CACHE_DIRS = [".cache", ".tmp", ".vite", ".vite-temp", ".vitest"];
     GATE_TREE_MARKER = ".omg-gate-tree";
+    GATE_TREE_COMPLETE = ".omg-complete";
     GATE_TREE_FILE_MAX_BYTES = 16 * 1024 * 1024;
     nestedTrees = /* @__PURE__ */ new Map();
     linkType = () => process.platform === "win32" ? "junction" : "dir";
@@ -132240,12 +132275,6 @@ var init_prepare = __esm({
           return null;
         }
       }
-    };
-    foldPath = (p) => process.platform === "win32" ? p.toLowerCase() : p;
-    under = (p, dir) => {
-      const a = foldPath(p);
-      const b = foldPath(dir).replace(/[\\/]+$/, "");
-      return a === b || a.startsWith(`${b}\\`) || a.startsWith(`${b}/`);
     };
     defaultGateConfigLoader = (i) => {
       const layers = userConfigLayers();
@@ -132773,7 +132802,7 @@ function canonicalExisting(p) {
     }
   }
 }
-function under2(p, root2, platform) {
+function under(p, root2, platform) {
   try {
     return isUnderRoot(p, root2, platform === "darwin" ? "win32" : platform);
   } catch (err) {
@@ -132801,7 +132830,7 @@ function privateWorkRoot(input) {
   const w = canonicalExisting(work);
   for (const [name, p] of [["the repository", input.root], ["the OMC state root", input.omcRoot]]) {
     const c = canonicalExisting(p);
-    if (under2(w, c, platform) || under2(c, w, platform)) throw new PrivateStoreError(`the private work root ${work} and ${name} ${(0, import_path190.resolve)(p)} must not contain one another; set factory.run.workDir elsewhere`);
+    if (under(w, c, platform) || under(c, w, platform)) throw new PrivateStoreError(`the private work root ${work} and ${name} ${(0, import_path190.resolve)(p)} must not contain one another; set factory.run.workDir elsewhere`);
   }
   return work;
 }
@@ -133491,7 +133520,7 @@ function walkNoFollow(dir, seen, seam, visit) {
 }
 function removeRunDir(dir, work, platform = process.platform, seam = {}) {
   const d = (0, import_path190.resolve)(dir);
-  if (!under2(d, work, platform) || sameFsPath(d, work)) throw new PrivateStoreError(`${d} is not under the private work root ${(0, import_path190.resolve)(work)}`);
+  if (!under(d, work, platform) || sameFsPath(d, work)) throw new PrivateStoreError(`${d} is not under the private work root ${(0, import_path190.resolve)(work)}`);
   if (!lexists2(d)) return;
   if ((0, import_fs162.lstatSync)(d).isSymbolicLink()) {
     unlinkLink2(d);
@@ -134951,7 +134980,7 @@ function parsePax(data) {
   }
   return out;
 }
-function foldPath2(p, platform) {
+function foldPath(p, platform) {
   return foldsCase(platform) ? dropIgnorable(p.normalize("NFC")).toLowerCase() : p;
 }
 function isName(component2, name, platform) {
@@ -134977,7 +135006,7 @@ function hostTree(root2, platform) {
       const r = rel ? `${rel}/${name}` : name;
       const st = (0, import_node_fs34.lstatSync)((0, import_node_path39.join)(dir, name));
       const kind = st.isSymbolicLink() ? "symlink" : st.isDirectory() ? "dir" : st.isFile() && st.nlink === 1 ? "file" : "other";
-      out.set(foldPath2(r, platform), { rel: r, kind });
+      out.set(foldPath(r, platform), { rel: r, kind });
       if (kind === "dir") walk((0, import_node_path39.join)(dir, name), r);
     }
   };
@@ -135030,7 +135059,7 @@ function applyCopyBack(checkout, tar, platform) {
     const rel = safeRelPath(e.path, platform);
     if (rel === null) return "an entry has a path that cannot be written here";
     if (rel === "") continue;
-    const key = foldPath2(rel, platform);
+    const key = foldPath(rel, platform);
     if (want.has(key)) return "two entries name the same file on this host";
     want.set(key, { rel, e });
   }
@@ -135049,7 +135078,7 @@ function applyCopyBack(checkout, tar, platform) {
     if (kind !== void 0 && kind !== "file") return "a file replaces a host directory, link or hard-linked file";
     const parts = rel.split("/");
     for (let i = 1; i < parts.length; i++) {
-      const pkey = foldPath2(parts.slice(0, i).join("/"), platform);
+      const pkey = foldPath(parts.slice(0, i).join("/"), platform);
       const parent = host.get(pkey)?.kind;
       if (parent !== void 0 && parent !== "dir") return "a file would be written through a host link";
       const w = want.get(pkey);
@@ -138052,7 +138081,7 @@ function writeBody(ctx, o, pr, headSha) {
   if (!(0, import_path197.isAbsolute)(o.stateDir)) throw new Error(`merge body directory ${o.stateDir} is not absolute`);
   (0, import_fs167.mkdirSync)(o.stateDir, { recursive: true, mode: 448 });
   const dir = realOr2(o.stateDir);
-  const root2 = o.untrustedRoots.find((r) => r.trim() !== "" && under3(dir, r));
+  const root2 = o.untrustedRoots.find((r) => r.trim() !== "" && under2(dir, r));
   if (root2) throw new Error(`merge body directory ${dir} is under the untrusted root ${root2}`);
   const problem = mergeBodyDirProblem(dir);
   if (problem) throw new Error(problem);
@@ -138089,7 +138118,7 @@ function adoMerge(ctx, o) {
     }
   };
 }
-var import_crypto53, import_fs167, import_path197, SATISFIED, realOr2, under3, fileSafe;
+var import_crypto53, import_fs167, import_path197, SATISFIED, realOr2, under2, fileSafe;
 var init_merge4 = __esm({
   "src/forge/ado/merge.ts"() {
     "use strict";
@@ -138107,7 +138136,7 @@ var init_merge4 = __esm({
         return (0, import_path197.resolve)(p);
       }
     };
-    under3 = (path30, root2) => {
+    under2 = (path30, root2) => {
       const rel = (0, import_path197.relative)(realOr2(root2), path30);
       return rel === "" || !rel.startsWith("..") && !(0, import_path197.isAbsolute)(rel);
     };
@@ -140547,7 +140576,7 @@ function laneTree(rows, root2, worktree, self2, seeds = /* @__PURE__ */ new Map(
   const owned = new Map([[root2.pid, root2.start], ...seeds]);
   if (worktree) {
     for (const r of rows) {
-      if (r.pid !== self2 && r.start !== null && r.start >= root2.start && r.cwd && under4(worktree, r.cwd)) owned.set(r.pid, r.start);
+      if (r.pid !== self2 && r.start !== null && r.start >= root2.start && r.cwd && under3(worktree, r.cwd)) owned.set(r.pid, r.start);
     }
   }
   for (let added = true; added; ) {
@@ -140657,7 +140686,7 @@ function listLinux() {
   }
   return rows;
 }
-var import_node_child_process19, import_node_fs37, import_node_path42, import_node_util2, execFileAsync8, LANE_PROCS_QUERY_TIMEOUT_MS, KILL_DEADLINE_MS2, under4, WIN_QUERY, defaultLaneProcsDeps;
+var import_node_child_process19, import_node_fs37, import_node_path42, import_node_util2, execFileAsync8, LANE_PROCS_QUERY_TIMEOUT_MS, KILL_DEADLINE_MS2, under3, WIN_QUERY, defaultLaneProcsDeps;
 var init_lane_procs = __esm({
   "src/factory/run/lane-procs.ts"() {
     "use strict";
@@ -140669,7 +140698,7 @@ var init_lane_procs = __esm({
     execFileAsync8 = (0, import_node_util2.promisify)(import_node_child_process19.execFile);
     LANE_PROCS_QUERY_TIMEOUT_MS = 1e4;
     KILL_DEADLINE_MS2 = 1e4;
-    under4 = (dir, path30) => {
+    under3 = (dir, path30) => {
       const r = (0, import_node_path42.relative)((0, import_node_path42.resolve)(dir), (0, import_node_path42.resolve)(path30));
       return r === "" || !r.startsWith("..") && !(0, import_node_path42.isAbsolute)(r);
     };
@@ -142259,7 +142288,7 @@ var init_engine = __esm({
       }
       /** The gate-sandbox-incompatible park of a copied tree linkGateTree could not build (`why`). */
       treeCopyPark(why) {
-        return { name: GATE_SANDBOX_INCOMPATIBLE_GATE, reason: `${why}; the run's gate trees are copies because ${GATE_TREE_COPY_WHY}. Free disk space or close the program holding the file, then rerun ${this.resume}. ${ACK_WARNING}` };
+        return { name: GATE_SANDBOX_INCOMPATIBLE_GATE, reason: `${why}; the run's gate trees are copies because ${GATE_TREE_COPY_WHY}. For an npm project, set factory.run.sandbox.isolation to "container" in your user config: the gates then run in a container with its own npm ci and need no copy. A full disk or a busy file can also be the cause: free space or close the program holding the file. Then rerun ${this.resume}. ${ACK_WARNING}` };
       }
       /**
        * After a base calibration failed in the OS sandbox on Windows opening a

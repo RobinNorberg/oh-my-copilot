@@ -12,7 +12,7 @@
  * in it with push off, and the engine pushes the result itself.
  */
 import { copyFileSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmdirSync, statfsSync, statSync, symlinkSync, unlinkSync, writeFileSync } from 'fs';
-import { basename, join } from 'path';
+import { basename, join, posix, win32 } from 'path';
 import { loadBaseKnownFlaky, loadTrustedShipConfig, userConfigLayers } from '../../ship/config.js';
 import { getBranchName, getWorktreePath } from '../../team/git-worktree.js';
 import { runSlug } from './state.js';
@@ -40,6 +40,22 @@ export function checkoutBranch(issue) {
 export const GATE_CACHE_DIRS = ['.cache', '.tmp', '.vite', '.vite-temp', '.vitest'];
 /** The engine's own file in a node_modules tree it built (linkNodeModules). */
 export const GATE_TREE_MARKER = '.omg-gate-tree';
+/** The marker's last line once linkNodeModules built every tree (L3, review-547); a leading dot, so never a workspace dir. */
+export const GATE_TREE_COMPLETE = '.omg-complete';
+/** `target` is a real dir holding the engine's marker without the completion line (a build cut off by a crash). */
+function gateTreeIncomplete(target) {
+    try {
+        if (!lstatSync(target).isDirectory())
+            return false;
+        const m = lstatSync(join(target, GATE_TREE_MARKER));
+        if (!m.isFile() || m.size > 64 * 1024)
+            return false;
+        return !readFileSync(join(target, GATE_TREE_MARKER), 'utf-8').split('\n').includes(GATE_TREE_COMPLETE);
+    }
+    catch {
+        return false;
+    }
+}
 /** L3 (review-490): the largest top-level node_modules file copied into a tree (npm's `.package-lock.json` of a big monorepo is a few MB). */
 export const GATE_TREE_FILE_MAX_BYTES = 16 * 1024 * 1024;
 function unlinkLink(p) {
@@ -76,10 +92,13 @@ function unlinkLink(p) {
  *
  * `copy` (GATE_TREE_COPY_WHY): each package dir is a copy of yours instead
  * of a link (`.bin` and workspace self-links stay links), so a tool that
- * opens a package dir itself (esbuild) never opens a junction. It throws,
- * before anything is copied, when the copy would pass a GATE_TREE_COPY_*
- * bound or the checkout's volume lacks the space (copyPreflight), and at a
- * bound while copying (copyGateDir; the partial tree is removed first).
+ * opens a package dir itself (esbuild) never opens a junction; a link to a
+ * dir of a copied tree points at its copy (copiedAt). It throws, before
+ * anything is copied, when the copy would pass a GATE_TREE_COPY_* bound or
+ * the checkout's volume lacks the space (a dry run of the copy's own walk),
+ * and at a bound while copying (the partial tree is removed first). The
+ * marker's completion line (GATE_TREE_COMPLETE) is written last; a tree
+ * found without it is removed and built again.
  */
 export function linkNodeModules(root, checkout, warn, workspaces = [], copy = false) {
     const source = join(root, 'node_modules');
@@ -97,37 +116,54 @@ export function linkNodeModules(root, checkout, warn, workspaces = [], copy = fa
     catch {
         present = false;
     }
+    // L3 (review-547): a tree whose marker lacks the completion line was cut off mid-build (a crash): removed and built again.
+    if (present && gateTreeIncomplete(target)) {
+        unlinkNodeModules(root, checkout);
+        present = existsSync(target) || isLink(target);
+    }
     if (present)
         return ws.problem;
+    // The trees this call builds: the root one, then one per workspace package whose node_modules exists in your
+    // checkout (npm puts version conflicts there, pnpm every package's direct deps), in the same package dir of the gate checkout.
+    const trees = [{ src: source, to: target, rel: '' }];
+    for (const rel of ws.dirs) {
+        const yours = plainDirUnder(root, rel);
+        const src = yours ? join(yours, 'node_modules') : null;
+        const dir = plainDirUnder(checkout, rel);
+        if (!src || !dir || isLink(src) || !existsSync(src) || !statSync(src).isDirectory())
+            continue;
+        const nested = join(dir, 'node_modules');
+        if (existsSync(nested) || isLink(nested))
+            continue;
+        trees.push({ src, to: nested, rel });
+    }
     const built = [];
     let budget;
     if (copy) {
-        // L1 (review-546): over the bounds or the volume's free space, nothing is copied; the caller parks with this text.
-        const nested = ws.dirs.map((rel) => plainDirUnder(root, rel)).flatMap((d) => (d && !isLink(join(d, 'node_modules')) && existsSync(join(d, 'node_modules')) ? [join(d, 'node_modules')] : []));
+        // M1 (review-547): the copy's own walk, dry (nothing written), so the bounds and the free-space check see what the
+        // copy will hold; over a bound or the volume's free space, nothing is copied and the caller parks with this text.
         const limits = { ...DEFAULT_COPY_LIMITS, ...(copy === true ? {} : copy) };
-        const over = copyPreflight([source, ...nested], checkout, limits);
-        if (over)
-            throw new Error(over);
-        budget = { bytes: 0, files: 0, inside: [source, ...nested].map((d) => realpathSync.native(d)), limits };
+        const roots = trees.map((t) => ({ real: realpathSync.native(t.src), to: t.to }));
+        const dry = { bytes: 0, files: 0, roots, limits, dry: true };
+        for (const t of trees)
+            buildGateTree(t.src, t.to, root, checkout, t.rel ? `${t.rel}/` : '', undefined, dry);
+        const free = limits.freeBytes(checkout);
+        if (free !== null && free < dry.bytes + limits.marginBytes)
+            throw new Error(`the copied gate node_modules tree needs ${dry.bytes} bytes plus a ${limits.marginBytes}-byte margin on the volume of ${checkout}, which has ${free} bytes free, so it is not copied`);
+        budget = { bytes: 0, files: 0, roots, limits, dry: false };
     }
     try {
-        buildGateTree(source, target, root, checkout, '', warn, budget);
-        // A nested tree for each workspace package whose node_modules exists in your checkout (npm puts version conflicts
-        // there, pnpm every package's direct deps), in the same package dir of the gate checkout.
-        for (const rel of ws.dirs) {
-            const yours = plainDirUnder(root, rel);
-            const src = yours ? join(yours, 'node_modules') : null;
-            const dir = plainDirUnder(checkout, rel);
-            if (!src || !dir || isLink(src) || !existsSync(src) || !statSync(src).isDirectory())
-                continue;
-            const nested = join(dir, 'node_modules');
-            if (existsSync(nested) || isLink(nested))
-                continue;
-            built.push(rel);
-            buildGateTree(src, nested, root, checkout, `${rel}/`, warn, budget);
+        for (const t of trees) {
+            if (t.rel) {
+                built.push(t.rel);
+                // Listed before it is built, so a crash mid-build leaves it named for the removal (L3, review-547).
+                writeFileSync(join(target, GATE_TREE_MARKER), built.map((r) => `${r}\n`).join(''));
+            }
+            buildGateTree(t.src, t.to, root, checkout, t.rel ? `${t.rel}/` : '', warn, budget);
         }
-        // The marker lists the nested trees for the removal and the sandbox's grant check (both re-validate every line).
-        writeFileSync(join(target, GATE_TREE_MARKER), built.map((r) => `${r}\n`).join(''));
+        // The marker lists the nested trees for the removal and the sandbox's grant check (both re-validate every line);
+        // its completion line is the last write of the build (L3, review-547).
+        writeFileSync(join(target, GATE_TREE_MARKER), [...built, GATE_TREE_COMPLETE].map((r) => `${r}\n`).join(''));
         const moved = treeMoved(target, checkout, '');
         if (moved)
             throw new Error(moved);
@@ -175,20 +211,24 @@ const linkType = () => (process.platform === 'win32' ? 'junction' : 'dir');
  * (copyGateDir).
  */
 function buildGateTree(source, target, root, checkout, label, warn, copy) {
-    mkdirSync(target);
-    // L3 (review-501): a dir on the way swapped for a junction or link after plainDirUnder (a surviving PR process) would
-    // put the tree, its marker and its links outside the checkout: the new dir must be where it was meant to be.
-    const moved = treeMoved(target, checkout, label);
-    if (moved) {
-        try {
-            rmdirSync(target);
+    // A dry budget (linkNodeModules' preflight) walks and counts exactly as below and writes nothing.
+    const dry = copy?.dry === true;
+    if (!dry) {
+        mkdirSync(target);
+        // L3 (review-501): a dir on the way swapped for a junction or link after plainDirUnder (a surviving PR process) would
+        // put the tree, its marker and its links outside the checkout: the new dir must be where it was meant to be.
+        const moved = treeMoved(target, checkout, label);
+        if (moved) {
+            try {
+                rmdirSync(target);
+            }
+            catch { /* left for the caller's removal */ }
+            throw new Error(moved);
         }
-        catch { /* left for the caller's removal */ }
-        throw new Error(moved);
+        writeFileSync(join(target, GATE_TREE_MARKER), '');
+        for (const name of GATE_CACHE_DIRS)
+            mkdirSync(join(target, name));
     }
-    writeFileSync(join(target, GATE_TREE_MARKER), '');
-    for (const name of GATE_CACHE_DIRS)
-        mkdirSync(join(target, name));
     const place = (from, to) => {
         const w = workspaceLinkTarget(from, root, checkout);
         if ('skip' in w) {
@@ -196,8 +236,9 @@ function buildGateTree(source, target, root, checkout, label, warn, copy) {
             return;
         }
         if (copy && !('to' in w) && basename(from) !== '.bin')
-            copyGateDir(from, to, copy);
-        else
+            return copyGateEntry(from, to, copy);
+        spend(copy, 0);
+        if (!dry)
             symlinkSync('to' in w ? w.to : from, to, linkType());
     };
     for (const e of readdirSync(source, { withFileTypes: true })) {
@@ -217,7 +258,9 @@ function buildGateTree(source, target, root, checkout, label, warn, copy) {
                 continue;
             }
             // A copy, never a link: a hard link would hand the PR's code your file to write.
-            copyFileSync(from, join(target, e.name));
+            spend(copy, st.size);
+            if (!dry)
+                copyFileSync(from, join(target, e.name));
             continue;
         }
         if (!st.isDirectory())
@@ -225,7 +268,9 @@ function buildGateTree(source, target, root, checkout, label, warn, copy) {
         if (e.name.startsWith('@') && !isLink(from)) {
             const children = readdirSync(from);
             if (children.some((c) => !('keep' in workspaceLinkTarget(join(from, c), root, checkout)))) {
-                mkdirSync(join(target, e.name));
+                spend(copy, 0);
+                if (!dry)
+                    mkdirSync(join(target, e.name));
                 for (const c of children) {
                     try {
                         if (!statSync(join(from, c)).isDirectory())
@@ -241,6 +286,8 @@ function buildGateTree(source, target, root, checkout, label, warn, copy) {
         }
         place(from, join(target, e.name));
     }
+    if (dry)
+        return;
     // L3 residual (review-501b): the same check after the last write; a swap during the build fails it (the caller removes, link-safe).
     const after = treeMoved(target, checkout, label);
     if (after)
@@ -280,75 +327,78 @@ const DEFAULT_COPY_LIMITS = {
         }
     },
 };
-const foldPath = (p) => (process.platform === 'win32' ? p.toLowerCase() : p);
-const under = (p, dir) => {
-    const a = foldPath(p);
-    const b = foldPath(dir).replace(/[\\/]+$/, '');
-    return a === b || a.startsWith(`${b}\\`) || a.startsWith(`${b}/`);
-};
 /** The copy would pass a GATE_TREE_COPY_* bound: the run parks with this text (linkNodeModules throws it). */
 function copyLimitText(what) {
-    return `the copied gate node_modules tree would be over ${what}, so it is not copied (a node_modules that large cannot use the copied tree the Windows sandbox needs for esbuild)`;
+    return `the copied gate node_modules tree would be over ${what}, so it is not copied`;
+}
+/** One more entry (`bytes` of file content) in a copied tree; over a GATE_TREE_COPY_* bound it throws. No budget: a linked tree, unbounded. */
+function spend(b, bytes) {
+    if (!b)
+        return;
+    if (b.files + 1 > b.limits.maxFiles)
+        throw new Error(copyLimitText(`${b.limits.maxFiles} entries (files, dirs and links)`));
+    if (b.bytes + bytes > b.limits.maxBytes)
+        throw new Error(copyLimitText(`${b.limits.maxBytes} bytes`));
+    b.files += 1;
+    b.bytes += bytes;
 }
 /**
- * L1 (review-546): before a copied tree is built, the size of the dirs of
- * yours it copies (each source tree without `.bin`, the cache dirs and
- * links: an estimate, as the copy also materialises dir links, L3) must be
- * within the GATE_TREE_COPY_* bounds, and the checkout's volume must have
- * that much free plus GATE_TREE_COPY_FREE_MARGIN_BYTES (statfs; skipped where
- * the platform cannot tell). Why not, else null. A synchronous walk, like the
- * copy itself: it runs once per prepare checkout and calibration dir.
+ * L3 / M1 (review-546, review-547): where in the gate the copy of your dir
+ * `real` (a realpath) is, when it lies in one of the trees being copied
+ * (`budget.roots`), else null. That dir is copied once, by the walk of its
+ * own tree, so a link to it becomes a link to the copy (pnpm's
+ * `.pnpm/<pkg>/node_modules/<dep>`, npm's nested links): nothing is copied
+ * twice, a cycle stays a cycle, and the copy keeps the layout pnpm resolves
+ * through. Dirs the gate does not copy (`.bin`, the cache dirs) give null.
  */
-function copyPreflight(sources, checkout, limits) {
-    let bytes = 0;
-    let files = 0;
-    const walk = (dir, top) => {
-        for (const e of readdirSync(dir, { withFileTypes: true })) {
-            if (top && (e.name === '.bin' || e.name === GATE_TREE_MARKER || GATE_CACHE_DIRS.includes(e.name)))
-                continue;
-            if (e.isSymbolicLink())
-                continue;
-            const p = join(dir, e.name);
-            if (e.isDirectory()) {
-                const over = walk(p, false);
-                if (over)
-                    return over;
-            }
-            else if (e.isFile()) {
-                bytes += lstatSync(p).size;
-                files += 1;
-                if (bytes > limits.maxBytes)
-                    return copyLimitText(`${limits.maxBytes} bytes`);
-                if (files > limits.maxFiles)
-                    return copyLimitText(`${limits.maxFiles} files`);
-            }
-        }
-        return null;
-    };
-    for (const s of sources) {
-        const over = walk(s, true);
-        if (over)
-            return over;
+function copiedAt(real, budget) {
+    const P = process.platform === 'win32' ? win32 : posix;
+    let best = null;
+    for (const r of budget.roots) {
+        const rel = P.relative(r.real, real);
+        if (rel.startsWith('..') || P.isAbsolute(rel))
+            continue;
+        if (!best || r.real.length > best.len)
+            best = { rel, to: r.to, len: r.real.length };
     }
-    const free = limits.freeBytes(checkout);
-    if (free !== null && free < bytes + limits.marginBytes)
-        return `the copied gate node_modules tree needs about ${bytes} bytes plus a ${limits.marginBytes}-byte margin on the volume of ${checkout}, which has ${free} bytes free, so it is not copied; free disk space`;
-    return null;
+    if (!best)
+        return null;
+    const first = best.rel.split(/[\\/]/)[0];
+    if (first === '.bin' || first === GATE_TREE_MARKER || GATE_CACHE_DIRS.includes(first))
+        return null;
+    return best.rel ? join(best.to, best.rel) : best.to;
+}
+/** A top-level package entry of a copied tree: a link into a copied tree becomes a link to that copy (copiedAt), anything else a copy (copyGateDir). */
+function copyGateEntry(from, to, budget) {
+    if (isLink(from)) {
+        let at = null;
+        try {
+            at = copiedAt(realpathSync.native(from), budget);
+        }
+        catch { /* dangling: copyGateDir's own read fails */ }
+        if (at) {
+            spend(budget, 0);
+            if (!budget.dry)
+                symlinkSync(at, to, linkType());
+            return;
+        }
+    }
+    copyGateDir(from, to, budget);
 }
 /**
  * A copy of your package dir `from` at `to`: dirs made, files copied (never
- * hard-linked: the PR's code could write your file through one), counted
- * against `budget` (over a GATE_TREE_COPY_* bound it throws). L3
- * (review-546): a dir link that resolves inside one of your node_modules
- * dirs (`budget.inside`: pnpm's `.pnpm/<pkg>/node_modules/<dep>`, npm's
- * nested links) is copied too, so esbuild never opens a junction there; one
- * that resolves to a dir already on the way down (`seen`, a cycle) or
- * outside your node_modules is made again as a link to the same target
- * (never followed). A file link or a dangling one is left out. Nothing of
- * yours is written. Synchronous, like the tree build around it.
+ * hard-linked: the PR's code could write your file through one), every entry
+ * counted against `budget` (over a GATE_TREE_COPY_* bound it throws). A dir
+ * link inside it points at the copy of its target when that lies in a tree
+ * being copied (copiedAt; the PR's code can write that copy anyway), else at
+ * the same target as yours (never followed, never copied). A file link or a
+ * dangling one is left out. Nothing of yours is written. Synchronous, like
+ * the tree build around it.
  */
-function copyGateDir(from, to, budget, seen = [foldPath(realpathSync.native(from))]) {
-    mkdirSync(to);
+function copyGateDir(from, to, budget) {
+    spend(budget, 0);
+    if (!budget.dry)
+        mkdirSync(to);
     for (const e of readdirSync(from, { withFileTypes: true })) {
         const s = join(from, e.name);
         const d = join(to, e.name);
@@ -362,23 +412,17 @@ function copyGateDir(from, to, budget, seen = [foldPath(realpathSync.native(from
             catch {
                 continue; /* dangling: left out */
             }
-            const r = foldPath(real);
-            if (budget.inside.some((i) => under(real, i)) && !seen.includes(r))
-                copyGateDir(real, d, budget, [...seen, r]);
-            else
-                symlinkSync(real, d, linkType());
+            spend(budget, 0);
+            if (!budget.dry)
+                symlinkSync(copiedAt(real, budget) ?? real, d, linkType());
         }
         else if (e.isDirectory())
-            copyGateDir(s, d, budget, [...seen, foldPath(join(seen[seen.length - 1], e.name))]);
+            copyGateDir(s, d, budget);
         else if (e.isFile()) {
             const size = statSync(s).size;
-            if (budget.files + 1 > budget.limits.maxFiles)
-                throw new Error(copyLimitText(`${budget.limits.maxFiles} files`));
-            if (budget.bytes + size > budget.limits.maxBytes)
-                throw new Error(copyLimitText(`${budget.limits.maxBytes} bytes`));
-            copyFileSync(s, d);
-            budget.files += 1;
-            budget.bytes += size;
+            spend(budget, size);
+            if (!budget.dry)
+                copyFileSync(s, d);
         }
     }
 }
@@ -539,7 +583,7 @@ export function nestedTreeDirs(checkout) {
         const m = lstatSync(marker);
         if (!st.isSymbolicLink() && st.isDirectory() && m.isFile() && m.size <= 64 * 1024) {
             for (const line of readFileSync(marker, 'utf-8').split('\n'))
-                if (line)
+                if (line && line !== GATE_TREE_COMPLETE)
                     rels.add(line);
         }
     }
@@ -581,7 +625,7 @@ export function trustedNestedRels(root, checkout, workspaces) {
         const m = lstatSync(marker);
         if (!st.isSymbolicLink() && st.isDirectory() && m.isFile() && m.size <= 64 * 1024) {
             for (const line of readFileSync(marker, 'utf-8').split('\n'))
-                if (line)
+                if (line && line !== GATE_TREE_COMPLETE)
                     listed.add(line);
         }
     }

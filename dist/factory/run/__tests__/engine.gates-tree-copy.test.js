@@ -154,7 +154,7 @@ describe('copied gate tree (esbuild through a junction in the Windows OS sandbox
         expect(out.gate?.name, out.message).toBe(GATE_SANDBOX_INCOMPATIBLE_GATE);
         const state = readFactoryState(w.root, LOCAL_ISSUE);
         expect(state.gate?.reason).toMatch(/copied node_modules tree of .* could not be built \(ENOSPC: no space left on device/);
-        expect(state.gate?.reason).toMatch(/Free disk space or close the program holding the file/);
+        expect(state.gate?.reason).toMatch(/isolation to "container" in your user config.*free space or close the program holding the file/);
         expect(state.gateTreeCopy).toBeUndefined();
         expect(state.history.some((h) => /copies of yours from now on/.test(h.note ?? ''))).toBe(false);
         expect(s.seen).toEqual(['prepare:link', 'calibrate:link']);
