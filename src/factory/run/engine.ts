@@ -57,7 +57,7 @@ import { createHash } from 'crypto';
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { basename, dirname, isAbsolute, join, posix, relative, resolve } from 'path';
-import { BASE_CONFIG_PATH, configuredProtectedPaths, DEFAULT_SHIP_CONFIG, isPlainBranchName, isRepoPath, loadBaseKnownFlaky, loadTrustedShipConfig, omgRepositoryFallback, readBaseFile, remoteRepoMismatch, resolveTrustedBases, userConfigLayers } from '../../ship/config.js';
+import { BASE_CONFIG_PATH, configuredProtectedPaths, DEFAULT_SHIP_CONFIG, isPlainBranchName, isRepoPath, loadBaseKnownFlaky, loadTrustedShipConfig, omgRepositoryFallback, readBaseFile, remoteRepoMismatch, resolveTrustedBases, trustedUserConfigPath, userConfigLayers } from '../../ship/config.js';
 import { scrubShipEnv, TRUSTED_READ_ENV, type Exec } from '../../ship/exec.js';
 import { checkName } from '../../ship/check-name.js';
 import { listChangedFiles, protectedChanges } from '../../ship/merge.js';
@@ -1342,9 +1342,12 @@ class FactoryEngine {
     const nested = trustedNestedRels(this.o.root, req.cwd, this.baseWorkspaces()).map((rel) => join(this.o.root, ...rel.split('/'), 'node_modules'));
     // isolation "container" (gatesSandbox, user config), or the Windows git-transport fallback's container: the runner
     // uses the container, labelled with this run.
-    const container = this.gatesModeCache?.container ?? fallbackContainer;
+    const settings = this.gatesModeCache?.container ?? fallbackContainer;
     // review-499b N3: never the OS sandbox because gatesSandbox() was not resolved yet in this process.
-    if (!container && this.containerIsolated()) return Promise.reject(new FactoryStepError('factory.run.sandbox.isolation "container" is set in your user config, but the gate settings were not resolved before a gate command; nothing ran'));
+    if (!settings && this.containerIsolated()) return Promise.reject(new FactoryStepError('factory.run.sandbox.isolation "container" is set in your user config, but the gate settings were not resolved before a gate command; nothing ran'));
+    // N2 (review-532b): once the image id is known, every container command of the run names it, never the tag again,
+    // so the head and the base calibrations run the same image.
+    const container = settings && this.containerImageId ? { ...settings, image: this.containerImageId } : settings;
     const r = this.o.gateSandbox!({ ...req, nodeModulesTarget: join(this.o.root, 'node_modules'), ...(nested.length > 0 ? { nestedNodeModulesTargets: nested } : {}), ...(p ? { mainRoot: this.o.root, jobRoot: this.gateJobRoot() } : {}), ...(container ? { container, runLabel: containerRunLabel(this.o.root, this.key) } : {}) });
     if (!container) return r;
     return r.then((out) => {
@@ -3450,6 +3453,10 @@ class FactoryEngine {
     let userConfigUnreadable = false;
     if (user === undefined) {
       try { user = userConfigLayers().trustedUser; } catch { user = null; userConfigUnreadable = true; }
+      // M1 (review-532b): the loader turns a read or parse error into null, so a file there that gives no object is unreadable.
+      if (!userConfigUnreadable && (user === null || typeof user !== 'object' || Array.isArray(user))) {
+        try { userConfigUnreadable = existsSync(trustedUserConfigPath()); } catch { /* no resolvable home: no trusted user layer */ }
+      }
     }
     let resolved: { mode: GatesSandboxMode; source: string; requireDeniedPaths: boolean; container?: GateContainerSettings; gitTransport?: GitTransportSettings };
     try {
@@ -3595,16 +3602,20 @@ class FactoryEngine {
     return createHash('sha256').update(`${baseSha}\0${JSON.stringify(argv)}${container ? `\0container\0${container.runtime}\0${this.containerImageId ?? container.image}` : ''}${where === 'plain' ? '\0plain' : ''}`).digest('hex');
   }
 
-  /** The base failed in the fallback's container before, for this exact image id: the head's container run is skipped. */
+  /**
+   * The base failed in the fallback's container before, for this exact image
+   * id, with a verdict (not a timeout: N1, review-532b): the head's container
+   * run is skipped.
+   */
   private containerFailedOnBase(c: { argv: readonly string[] }, baseSha: string, container: GateContainerSettings): boolean {
     if (!this.containerImageId) return false;
     const cal = this.state.gateCalibration?.[this.calibrationKey(baseSha, c.argv, container)];
-    return cal !== undefined && !cal.ok;
+    return cal !== undefined && !cal.ok && !cal.timedOut;
   }
 
   /** The loud note of a check the Windows git-transport fallback runs outside the OS sandbox: a warning, a history note, one PR note per head. */
   private noteGitTransportFallback(head: string, what: string, how: 'container' | 'unsandboxed', container: GateContainerSettings): void {
-    const where = how === 'container' ? `in ${this.sandboxName(container)}` : 'WITHOUT any sandbox, as your user (no gate container could run it)';
+    const where = how === 'container' ? `in ${this.sandboxName(container)}` : 'WITHOUT any sandbox, as your user (not in the gate container)';
     const text = `${what} on ${head.slice(0, 12)} ran ${where}: its base fails in the OS sandbox on Windows because git clone, fetch and push need Git for Windows' sh.exe, which cannot start there (known gap; factory.run.sandbox.windowsGitTransport "strict" in your user config parks instead)`;
     this.o.warn?.(`omg factory run: ${text}`);
     // M2 (review-532): a plain run of the PR's code is never auto-merged (autoMergeVerdict), like an --allow-* ack.
@@ -3732,7 +3743,10 @@ class FactoryEngine {
         // The base cannot run in the OS sandbox on Windows (git transport): the gate container, else plainly, never a park by default.
         const fallback = park?.gitTransport ? await this.gitTransportFallback(at.commonGitDir) : null;
         if (fallback) {
-          if (this.containerFailedOnBase(c, at.baseSha, fallback)) {
+          if (c.kind === 'build') {
+            // #529: prepare commits what the build writes, and the gate container is Linux: the build runs on your host.
+            this.o.warn?.(`omg factory run: the Windows git-transport fallback skips the gate container for ${label}: prepare commits what a build writes, so it runs on your host`);
+          } else if (this.containerFailedOnBase(c, at.baseSha, fallback)) {
             // M4 (review-532): the base failed in this exact image before; the head's container run would only fail too.
             this.o.warn?.(`omg factory run: the Windows git-transport fallback skips the gate container for ${label}: it failed there on the base ${at.baseSha.slice(0, 12)} before (image ${this.containerImageId})`);
           } else {
@@ -3807,9 +3821,10 @@ class FactoryEngine {
     const container = plainRun ? undefined : this.gatesModeCache?.container ?? where;
     const key = this.calibrationKey(baseSha, c.argv, where);
     // M4 (review-532): the fallback container's stored failure for a known image id holds; a new image is a new key.
-    const sticky = where !== undefined && !plainRun && !this.gatesModeCache?.container && !!this.containerImageId;
+    // N1 (review-532b): only a failing verdict holds; a timed-out base run is retried like any other.
     const placeName = plainRun ? 'a plain run (no sandbox)' : this.sandboxName(container);
     let cal = this.state.gateCalibration?.[key];
+    const sticky = where !== undefined && !plainRun && !this.gatesModeCache?.container && !!this.containerImageId && !cal?.timedOut;
     if (!cal || (!cal.ok && !sticky && !this.recalibrated.has(key))) {
       this.recalibrated.add(key);
       const out = await this.runOnBase(c, baseSha, commonGitDir, timeoutMs, where);
@@ -3836,7 +3851,7 @@ class FactoryEngine {
    * `gitTransport`: it failed in the OS sandbox on Windows with git's
    * transport error anywhere in the output (the tail kept may not show it).
    */
-  private async runOnBase(c: { argv: readonly string[]; exe: string; args: readonly string[]; kind?: PrepareCheckRun['kind'] }, baseSha: string, commonGitDir: string, timeoutMs: number, where?: GateContainerSettings | 'plain'): Promise<{ ok: boolean; tail?: string; gitTransport?: true } | { notStarted: string }> {
+  private async runOnBase(c: { argv: readonly string[]; exe: string; args: readonly string[]; kind?: PrepareCheckRun['kind'] }, baseSha: string, commonGitDir: string, timeoutMs: number, where?: GateContainerSettings | 'plain'): Promise<{ ok: boolean; tail?: string; timedOut?: true; gitTransport?: true } | { notStarted: string }> {
     const plainRun = where === 'plain';
     const fallbackContainer = plainRun ? undefined : where;
     const container = plainRun ? undefined : this.gatesModeCache?.container ?? fallbackContainer;
@@ -3870,13 +3885,13 @@ class FactoryEngine {
         }
         if (p.startError !== undefined) return { notStarted: oneLine(p.startError, 300) };
         const ptail = redactGateOutput(`${p.stdout}${p.stderr}`).trim().slice(-2_000);
-        return { ok: p.status === 0 && !p.timedOut, ...(ptail ? { tail: ptail } : {}) };
+        return { ok: p.status === 0 && !p.timedOut, ...(ptail ? { tail: ptail } : {}), ...(p.timedOut ? { timedOut: true as const } : {}) };
       }
       const r = await this.sandboxRun({ purpose: 'calibrate', argv: c.argv, exe: c.exe, args: calibrationArgs(c, dir), cwd: dir, commonGitDir, timeoutMs, ...(this.gatesModeCache?.requireDeniedPaths ? { requireDeniedPaths: true } : {}), ...(gitView ? { gitView } : {}) }, fallbackContainer);
       if (!r.ran) return { notStarted: r.reason };
       const tail = r.output.trim().slice(-2_000);
       const ok = r.status === 0 && !r.timedOut;
-      return { ok, ...(tail ? { tail } : {}), ...(!ok && !container && windowsGitTransportFailure(r.output, this.gatePlatform) ? { gitTransport: true as const } : {}) };
+      return { ok, ...(tail ? { tail } : {}), ...(r.timedOut ? { timedOut: true as const } : {}), ...(!ok && !container && windowsGitTransportFailure(r.output, this.gatePlatform) ? { gitTransport: true as const } : {}) };
     } catch (error) {
       return { notStarted: errText(error).slice(0, 300) };
     } finally {
