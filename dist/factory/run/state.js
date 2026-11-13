@@ -31,6 +31,7 @@ import { isBuildOutputDir } from '../../ship/exec.js';
 import { PROGRESS_STAGES } from '../../forge/types.js';
 import { LOCAL_REMOTE } from '../../forge/local/mirror.js';
 import { codingAgentRecordProblem } from './coding-agent-lane.js';
+import { vitestSummaryShapeOk } from './test-delta.js';
 export const FACTORY_PHASES = [
     'intake', 'plan', 'implement', 'publish', 'review', 'fix', 'prepare', 'conflict-fix', 'gates', 'ci-fix', 'merge', 'merged', 'cancelled', 'failed',
 ];
@@ -274,6 +275,8 @@ function shapeProblem(s) {
         return 'lostStreak';
     if (typeof s.elapsedMs !== 'number' || !isCount(s.ciFixRounds))
         return 'elapsedMs/ciFixRounds';
+    if (s.conflictReprepares !== undefined && !isCount(s.conflictReprepares))
+        return 'conflictReprepares';
     if (!Array.isArray(s.history))
         return 'history';
     if (!isStr(s.createdAt) || !isStr(s.updatedAt))
@@ -320,6 +323,12 @@ function humanReviewShapeProblem(s) {
         return 'sandboxedGateHead';
     if (s.gitTransportPlainHead !== undefined && (!isStr(s.gitTransportPlainHead) || !HEX40.test(s.gitTransportPlainHead)))
         return 'gitTransportPlainHead';
+    if (s.testDeltaExcusedHead !== undefined && (!isStr(s.testDeltaExcusedHead) || !HEX40.test(s.testDeltaExcusedHead)))
+        return 'testDeltaExcusedHead';
+    if (s.plainHeadRan !== undefined && s.plainHeadRan !== true)
+        return 'plainHeadRan';
+    if (s.gateTreeCopy !== undefined && s.gateTreeCopy !== true)
+        return 'gateTreeCopy';
     // One admin dir name under <common>/worktrees (git makes it from the checkout's base name): no separator, nothing else.
     if (s.checkoutAdmin !== undefined && (!isStr(s.checkoutAdmin) || !/^[A-Za-z0-9._-]+$/.test(s.checkoutAdmin) || s.checkoutAdmin === '.' || s.checkoutAdmin === '..'))
         return 'checkoutAdmin';
@@ -327,7 +336,9 @@ function humanReviewShapeProblem(s) {
     if (cal !== undefined && (typeof cal !== 'object' || cal === null || Array.isArray(cal) || !Object.entries(cal).every(([k, v]) => {
         const e = v;
         return HEX64.test(k) && typeof e === 'object' && e !== null && typeof e.ok === 'boolean' && (e.tail === undefined || isStr(e.tail)) && (e.gitTransport === undefined || e.gitTransport === true) && (e.timedOut === undefined || e.timedOut === true)
-            && Object.keys(e).every((x) => x === 'ok' || x === 'tail' || x === 'timedOut' || x === 'gitTransport');
+            && (e.junctionRead === undefined || e.junctionRead === true) && (e.tests === undefined || vitestSummaryShapeOk(e.tests))
+            && (e.beforePlainHead === undefined || e.beforePlainHead === true)
+            && Object.keys(e).every((x) => x === 'ok' || x === 'tail' || x === 'timedOut' || x === 'gitTransport' || x === 'junctionRead' || x === 'tests' || x === 'beforePlainHead');
     })))
         return 'gateCalibration';
     const lanes = s.lanes;

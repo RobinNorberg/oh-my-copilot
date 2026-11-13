@@ -71,7 +71,13 @@ export { EXIT_BUSY };
 /** Conflict-fix lanes (distinct start heads) before base conflicts park at awaiting-human: merge-conflicts. */
 export declare const MAX_CONFLICT_FIX_ROUNDS = 2;
 /** merge's gate read may send the run back to gates this often per invocation before awaiting-human: gates-disagree. */
-export declare const MAX_MERGE_BOUNCES = 2; /** Lane waits are sliced so the cancel flag is seen within this long. */
+export declare const MAX_MERGE_BOUNCES = 2;
+/** Gates -> prepare returns for a PR that conflicts with its moved base, per run (across reruns), before awaiting-human: merge-conflicts. */
+export declare const MAX_CONFLICT_REPREPARES = 3;
+/** Reads of the forge's mergeability while it is unknown (GitHub computes it lazily after a push or a base move), MERGEABILITY_WAIT_MS apart. */
+export declare const MERGEABILITY_READS = 4;
+export declare const MERGEABILITY_WAIT_MS = 5000;
+/** Lane waits are sliced so the cancel flag is seen within this long. */
 export declare const DEFAULT_POLL_MS = 5000;
 /** A ci-heal run's inputs (src/factory/heal/implement.ts builds them from a sealed heal signature state). */
 export interface FactoryHealStart {
@@ -302,6 +308,8 @@ export declare class StateTamperedError extends Error {
     readonly paths: string[];
     constructor(paths: string[]);
 }
+/** True when `next` is a parseable time later than `prev` (or `prev` is absent). Unparseable values are not newer. */
+export declare function isNewerEvent(next: string | undefined | null, prev: string | undefined | null): next is string;
 /** The last lines of `text`, redacted (token shapes), each made visible and one line, bounded: a gate's local `detail`. */
 export declare function parkTail(text: string): string;
 /**
@@ -337,6 +345,13 @@ export declare const GIT_TRANSPORT_FAILURE = "Could not read from remote reposit
 export declare const MSYS_DLL_INIT_FAILED: readonly number[];
 /** A base calibration's output that names git's failed transport, on Windows (the OS sandbox only). */
 export declare const windowsGitTransportFailure: (output: string | undefined, platform?: NodeJS.Platform) => boolean;
+/**
+ * A base calibration's output that names esbuild's refused open of a package
+ * dir through the gate tree's junction, on Windows (the OS sandbox only;
+ * prepare.ts GATE_TREE_COPY_WHY): `Cannot read directory "node_modules/<pkg>":
+ * Access is denied.`
+ */
+export declare const windowsJunctionReadDenied: (output: string | undefined, platform?: NodeJS.Platform) => boolean;
 /** What the gate-sandbox-incompatible park of a failing base calibration tells the human to do. */
 export declare function sandboxIncompatibleAdvice(tail: string | undefined, platform?: NodeJS.Platform): string;
 /**

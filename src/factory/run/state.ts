@@ -34,6 +34,7 @@ import type { ShipVerdict } from '../../ship/state.js';
 import { PROGRESS_STAGES, type ForgeKind, type ProgressStage } from '../../forge/types.js';
 import { LOCAL_REMOTE } from '../../forge/local/mirror.js';
 import { codingAgentRecordProblem, type CodingAgentRunRecord } from './coding-agent-lane.js';
+import { vitestSummaryShapeOk, type VitestRunSummary } from './test-delta.js';
 
 export const FACTORY_PHASES = [
   'intake', 'plan', 'implement', 'publish', 'review', 'fix', 'prepare', 'conflict-fix', 'gates', 'ci-fix', 'merge', 'merged', 'cancelled', 'failed',
@@ -260,6 +261,8 @@ export interface FactoryRunState {
   prepared?: { head: string; housekeeping: string[] };
   /** merge -> gates returns so far; the cap holds across reruns. */
   mergeBounces?: number;
+  /** gates -> prepare returns for a PR that conflicts with its moved base (MAX_CONFLICT_REPREPARES); the cap holds across reruns. */
+  conflictReprepares?: number;
   /** The engine-owned prepare checkout's HEAD when the engine last left it. */
   checkoutHead?: string;
   /** The checkout head a prepare left after the PR's code ran in the OS sandbox there (a local gate start failure on it parks at gate-no-verdict). */
@@ -268,6 +271,22 @@ export interface FactoryRunState {
   sandboxedGateHead?: string;
   /** The head a check last ran on WITHOUT any sandbox through the Windows git-transport fallback: such a run is never auto-merged. */
   gitTransportPlainHead?: string;
+  /** The head whose built-in prepare tests passed only because tests that fail on the base too were not counted (test-delta.ts): such a run is never auto-merged. */
+  testDeltaExcusedHead?: string;
+  /**
+   * The PR's code ran WITHOUT any sandbox on your host at least once in this
+   * run (factory.run.sandbox.gates "unsandboxed", or the Windows
+   * git-transport fallback's plain run): a plain base calibration made from
+   * then on may be the head's doing (review-550 M1).
+   */
+  plainHeadRan?: true;
+  /**
+   * The run's gate node_modules trees are copies of yours, not links: a base
+   * calibration failed in the OS sandbox on Windows opening a package dir
+   * through a junction (prepare.ts GATE_TREE_COPY_WHY). Optional: older state
+   * files lack it.
+   */
+  gateTreeCopy?: true;
   /**
    * The name of the prepare checkout's admin dir under `<common>/worktrees/`,
    * as `worktree add` made it: a later invocation reads the checkout only
@@ -308,8 +327,14 @@ export interface FactoryRunState {
    * the sha256 of the base sha and the check's argv: whether the command
    * passes in the sandbox on the trusted base itself, and its output tail.
    * `timedOut`: it did not finish (no verdict; never a held failure).
+   * `junctionRead`: it failed in the OS sandbox on Windows opening a package
+   * dir through the gate tree's junction (the engine then copies the tree).
+   * `tests`: the built-in vitest check's per-test result on the base
+   * (test-delta.ts), which the head's failures are judged against.
+   * `beforePlainHead`: a plain calibration made before the PR's code ran
+   * plainly in this run; only such a one may excuse a plain head's tests.
    */
-  gateCalibration?: Record<string, { ok: boolean; tail?: string; timedOut?: true; gitTransport?: true }>;
+  gateCalibration?: Record<string, { ok: boolean; tail?: string; timedOut?: true; gitTransport?: true; junctionRead?: true; tests?: VitestRunSummary; beforePlainHead?: true }>;
   /** The Copilot coding agent session of an issue run whose implementer is the agent (coding-agent-lane.ts); sealed, shape-checked on load. */
   codingAgent?: CodingAgentRunRecord;
   /** Human-gate comments already posted (`<gate>@<sha12>` per target), so a rerun does not repeat them. */
@@ -600,6 +625,7 @@ function shapeProblem(s: Record<string, unknown>): string | null {
   if (typeof s.retries !== 'object' || s.retries === null || !Object.values(s.retries).every(isCount)) return 'retries';
   if (typeof s.lostStreak !== 'object' || s.lostStreak === null) return 'lostStreak';
   if (typeof s.elapsedMs !== 'number' || !isCount(s.ciFixRounds)) return 'elapsedMs/ciFixRounds';
+  if (s.conflictReprepares !== undefined && !isCount(s.conflictReprepares)) return 'conflictReprepares';
   if (!Array.isArray(s.history)) return 'history';
   if (!isStr(s.createdAt) || !isStr(s.updatedAt)) return 'createdAt/updatedAt';
   return humanReviewShapeProblem(s);
@@ -642,13 +668,18 @@ function humanReviewShapeProblem(s: Record<string, unknown>): string | null {
   if (s.sandboxedPrepareHead !== undefined && (!isStr(s.sandboxedPrepareHead) || !HEX40.test(s.sandboxedPrepareHead))) return 'sandboxedPrepareHead';
   if (s.sandboxedGateHead !== undefined && (!isStr(s.sandboxedGateHead) || !HEX40.test(s.sandboxedGateHead))) return 'sandboxedGateHead';
   if (s.gitTransportPlainHead !== undefined && (!isStr(s.gitTransportPlainHead) || !HEX40.test(s.gitTransportPlainHead))) return 'gitTransportPlainHead';
+  if (s.testDeltaExcusedHead !== undefined && (!isStr(s.testDeltaExcusedHead) || !HEX40.test(s.testDeltaExcusedHead))) return 'testDeltaExcusedHead';
+  if (s.plainHeadRan !== undefined && s.plainHeadRan !== true) return 'plainHeadRan';
+  if (s.gateTreeCopy !== undefined && s.gateTreeCopy !== true) return 'gateTreeCopy';
   // One admin dir name under <common>/worktrees (git makes it from the checkout's base name): no separator, nothing else.
   if (s.checkoutAdmin !== undefined && (!isStr(s.checkoutAdmin) || !/^[A-Za-z0-9._-]+$/.test(s.checkoutAdmin) || s.checkoutAdmin === '.' || s.checkoutAdmin === '..')) return 'checkoutAdmin';
   const cal = s.gateCalibration as Record<string, unknown> | undefined;
   if (cal !== undefined && (typeof cal !== 'object' || cal === null || Array.isArray(cal) || !Object.entries(cal).every(([k, v]) => {
     const e = v as Record<string, unknown> | null;
     return HEX64.test(k) && typeof e === 'object' && e !== null && typeof e.ok === 'boolean' && (e.tail === undefined || isStr(e.tail)) && (e.gitTransport === undefined || e.gitTransport === true) && (e.timedOut === undefined || e.timedOut === true)
-      && Object.keys(e).every((x) => x === 'ok' || x === 'tail' || x === 'timedOut' || x === 'gitTransport');
+      && (e.junctionRead === undefined || e.junctionRead === true) && (e.tests === undefined || vitestSummaryShapeOk(e.tests))
+      && (e.beforePlainHead === undefined || e.beforePlainHead === true)
+      && Object.keys(e).every((x) => x === 'ok' || x === 'tail' || x === 'timedOut' || x === 'gitTransport' || x === 'junctionRead' || x === 'tests' || x === 'beforePlainHead');
   }))) return 'gateCalibration';
   const lanes = s.lanes as Array<Record<string, unknown>>;
   if (!lanes.every((l) => {
