@@ -136,6 +136,8 @@ export interface Harness {
         baseRefOid?: string;
         /** Heads `gh pr view` reports first, one per call (GitHub still showing an older push). */
         headSequence: string[];
+        /** `mergeable` answers of the mergeability read (`--json headRefOid,mergeable,...`), one per read, the last repeats (default MERGEABLE). */
+        mergeable?: string[];
         openPrs: number[];
         /** `gh pr ready` ran (the PR is no longer a draft). */
         ready: boolean;

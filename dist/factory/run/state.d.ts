@@ -271,6 +271,8 @@ export interface FactoryRunState {
     };
     /** merge -> gates returns so far; the cap holds across reruns. */
     mergeBounces?: number;
+    /** gates -> prepare returns for a PR that conflicts with its moved base (MAX_CONFLICT_REPREPARES); the cap holds across reruns. */
+    conflictReprepares?: number;
     /** The engine-owned prepare checkout's HEAD when the engine last left it. */
     checkoutHead?: string;
     /** The checkout head a prepare left after the PR's code ran in the OS sandbox there (a local gate start failure on it parks at gate-no-verdict). */

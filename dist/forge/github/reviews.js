@@ -43,6 +43,18 @@ export function ghPrHead(exec, pr, cwd) {
     }
     return { headRefOid: v.headRefOid, state: v.state };
 }
+/**
+ * `gh pr view <pr> --json headRefOid,mergeable,mergeStateStatus`: CONFLICTING
+ * (or a DIRTY merge state) is a conflict, MERGEABLE is clean, anything else
+ * (UNKNOWN while GitHub computes it lazily) is unknown. Throws on a failed read.
+ */
+export function ghPrMergeability(exec, pr, cwd) {
+    const v = ghJson(exec, ['pr', 'view', String(pr), '--json', 'headRefOid,mergeable,mergeStateStatus'], cwd);
+    const head = typeof v?.headRefOid === 'string' && HEX40.test(v.headRefOid) ? { headRefOid: v.headRefOid } : {};
+    if (v?.mergeable === 'CONFLICTING' || v?.mergeStateStatus === 'DIRTY')
+        return { state: 'conflicting', ...head };
+    return { state: v?.mergeable === 'MERGEABLE' ? 'mergeable' : 'unknown', ...head };
+}
 /** The engine's review read: `gh pr view <pr> --json headRefOid,state`, fields unchecked. */
 export function ghPrHeadState(exec, pr, cwd) {
     return ghJson(exec, ['pr', 'view', String(pr), '--json', 'headRefOid,state'], cwd);
@@ -136,6 +148,7 @@ export function githubReviews(exec, cwd, o = {}) {
         createDraftPr: (o) => ghCreateDraftPr(exec, o, cwd),
         viewPr: (pr) => ghViewPr(exec, pr, cwd),
         prHead: (pr) => ghPrHead(exec, pr, cwd),
+        mergeability: (pr) => ghPrMergeability(exec, pr, cwd),
         markReady: (pr) => ghMarkReady(exec, pr, cwd),
         commentPr: (pr, bodyFile) => ghCommentPr(exec, pr, bodyFile, cwd),
     };

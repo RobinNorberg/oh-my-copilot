@@ -258,6 +258,11 @@ export interface ForgeReviewFeedback {
     trustIncomplete?: boolean;
 }
 /** A triage write to one tracker item. */
+/** ForgeReviews.mergeability: the forge's merge-conflict answer for a PR. */
+export interface PrMergeability {
+    state: 'conflicting' | 'mergeable' | 'unknown';
+    headRefOid?: string;
+}
 export interface ForgeTriageChange {
     add: string[];
     remove: string[];
@@ -284,6 +289,14 @@ export interface ForgeReviews {
         headRefOid: string;
         state: string;
     };
+    /**
+     * Whether the PR's head merges into its base as the forge sees it now
+     * (the gates phase: a conflicting PR runs no CI). `unknown` while the
+     * forge has not computed it yet, or for any value it does not name
+     * plainly. `headRefOid` is the head the answer is for, when the forge says.
+     * Throws on a failed read. Optional: a forge without it is always unknown.
+     */
+    mergeability?(pr: number): PrMergeability;
     markReady(pr: number): void;
     commentPr(pr: number, bodyFile: string): {
         ok: boolean;

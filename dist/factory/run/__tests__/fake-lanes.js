@@ -295,6 +295,11 @@ export function harness(prefix = 'omg-factory-run-') {
         if (key.startsWith(`gh pr view ${PR} --json `)) {
             const remote = bareRef(bare, `refs/heads/${h.gh.branch}`);
             const base = bareRef(bare, 'refs/heads/dev');
+            if (args[4] === 'headRefOid,mergeable,mergeStateStatus') {
+                const m = h.gh.mergeable ?? [];
+                const mergeable = (m.length > 1 ? m.shift() : m[0]) ?? 'MERGEABLE';
+                return ok(JSON.stringify({ headRefOid: h.gh.headOverride ?? remote, mergeable, mergeStateStatus: mergeable === 'CONFLICTING' ? 'DIRTY' : mergeable === 'MERGEABLE' ? 'CLEAN' : 'UNKNOWN' }));
+            }
             const headRefOid = h.gh.headSequence.shift() ?? h.gh.headOverride ?? remote;
             return ok(JSON.stringify({ number: PR, headRefOid, state: h.gh.merged ? 'MERGED' : 'OPEN', isDraft: !h.gh.ready, baseRefName: 'dev', baseRefOid: h.gh.baseRefOid ?? base, headRefName: h.gh.branch, url: `${REPO_URL}/pull/${PR}` }));
         }

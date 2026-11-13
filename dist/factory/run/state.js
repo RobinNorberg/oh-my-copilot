@@ -275,6 +275,8 @@ function shapeProblem(s) {
         return 'lostStreak';
     if (typeof s.elapsedMs !== 'number' || !isCount(s.ciFixRounds))
         return 'elapsedMs/ciFixRounds';
+    if (s.conflictReprepares !== undefined && !isCount(s.conflictReprepares))
+        return 'conflictReprepares';
     if (!Array.isArray(s.history))
         return 'history';
     if (!isStr(s.createdAt) || !isStr(s.updatedAt))
