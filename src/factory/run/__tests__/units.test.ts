@@ -1047,4 +1047,7 @@ describe('isNewerEvent (lane stall check)', () => {
     expect(isNewerEvent(T1, null)).toBe(true);
     expect(isNewerEvent(T1, undefined)).toBe(true);
   });
+  it('treats an unparseable previous time as absent', () => {
+    expect(isNewerEvent(T1, 'garbage')).toBe(true);
+  });
 });

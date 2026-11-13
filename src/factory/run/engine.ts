@@ -567,7 +567,6 @@ const PARK_TAIL_LINES = 12;
 const PARK_TAIL_LINE_CHARS = 200;
 const PARK_TAIL_CHARS = 1_500;
 
-/** The last lines of `text`, redacted (token shapes), each made visible and one line, bounded: a gate's local `detail`. */
 /** True when `next` is a parseable time later than `prev` (or `prev` is absent). Unparseable values are not newer. */
 export function isNewerEvent(next: string | undefined | null, prev: string | undefined | null): boolean {
   const n = next ? Date.parse(next) : NaN;
@@ -577,6 +576,7 @@ export function isNewerEvent(next: string | undefined | null, prev: string | und
   return !Number.isFinite(p) || n > p;
 }
 
+/** The last lines of `text`, redacted (token shapes), each made visible and one line, bounded: a gate's local `detail`. */
 export function parkTail(text: string): string {
   const lines = redactGateOutput(text).split(/\r?\n/).map((l) => l.trim()).filter(Boolean).slice(-PARK_TAIL_LINES);
   const tail = lines.map((l) => oneLine(visibleLine(l), PARK_TAIL_LINE_CHARS)).join(' | ');
@@ -5539,7 +5539,7 @@ class FactoryEngine {
       const known = this.state.lanes.find((l) => l.id === id)?.process;
       if (proc && (known?.pid !== proc.pid || known.identity !== proc.identity)) this.updateLane(id, { process: { pid: proc.pid, identity: proc.identity } });
       if (isTerminalLaneState(result.state)) break;
-      if (result.lastEventAt && isNewerEvent(result.lastEventAt, lastEventAt)) {
+      if (isNewerEvent(result.lastEventAt, lastEventAt)) {
         lastEventAt = result.lastEventAt;
         progressAt = this.clock();
         // Persisted for `omg factory run status`, at most once a minute (every event would rewrite the state).
@@ -5556,7 +5556,7 @@ class FactoryEngine {
         }
         // The lane finished between our poll and the cancel, with a session event after the last one we saw: a normal
         // completion (the tamper check and accept path below still run). Any doubt stays a stall.
-        if (confirmed.state === 'completed' && confirmed.lastEventAt && isNewerEvent(confirmed.lastEventAt, lastEventAt)) {
+        if (confirmed.state === 'completed' && isNewerEvent(confirmed.lastEventAt, lastEventAt)) {
           result = confirmed;
           break;
         }
