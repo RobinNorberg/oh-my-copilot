@@ -1181,36 +1181,70 @@ class FactoryEngine {
         this.wsGlobs = { baseSha: sha, globs: baseWorkspacePatterns(read) };
         return this.wsGlobs.globs;
     }
-    /** linkNodeModules with the base's workspaces; a layout it does not support is a warning here (the base calibration parks on it). */
-    linkGateTree(path, baseSha) {
-        const problem = linkNodeModules(this.o.root, path, this.o.warn, this.baseWorkspaces(baseSha), this.state.gateTreeCopy === true);
+    /**
+     * linkNodeModules with the base's workspaces; a layout it does not support
+     * is a warning here (the base calibration parks on it). A copied tree
+     * (`copy`, the run's gateTreeCopy by default) that cannot be built (over
+     * the bounds, no disk space, a busy file) returns why, for the caller's
+     * park (L2, review-546); a linked tree's error throws as before.
+     */
+    linkGateTree(path, baseSha, copy = this.state.gateTreeCopy === true) {
+        let problem;
+        try {
+            problem = linkNodeModules(this.o.root, path, this.o.warn, this.baseWorkspaces(baseSha), copy);
+        }
+        catch (error) {
+            if (!copy)
+                throw error;
+            return `the copied node_modules tree of ${path} could not be built (${oneLine(errText(error), 300)})`;
+        }
         if (problem)
             this.o.warn?.(`omg factory run: ${problem}; a gate that fails in the sandbox parks at ${GATE_SANDBOX_INCOMPATIBLE_GATE}`);
+        return null;
+    }
+    /** The gate-sandbox-incompatible park of a copied tree linkGateTree could not build (`why`). */
+    treeCopyPark(why) {
+        return { name: GATE_SANDBOX_INCOMPATIBLE_GATE, reason: `${why}; the run's gate trees are copies because ${GATE_TREE_COPY_WHY}. For an npm project, set factory.run.sandbox.isolation to "container" in your user config: the gates then run in a container with its own npm ci and need no copy. A full disk or a busy file can also be the cause: free space or close the program holding the file. Then rerun ${this.resume}. ${ACK_WARNING}` };
     }
     /**
      * After a base calibration failed in the OS sandbox on Windows opening a
      * package dir through the gate tree's junction (windowsJunctionReadDenied):
-     * from now on this run's gate trees are copies of your node_modules
-     * (prepare.ts GATE_TREE_COPY_WHY), and the tree in `checkout` is rebuilt as
-     * one. The command stays in the sandbox; the copy is the checkout's own, so
-     * the PR's code can write only that. False (the caller keeps its park) when
-     * the run copies already or the rebuild fails.
+     * the tree in `checkout` is rebuilt as a copy of your node_modules
+     * (prepare.ts GATE_TREE_COPY_WHY), and only then (L2, review-546) the run
+     * records that its gate trees are copies from now on. The command stays in
+     * the sandbox; the copy is the checkout's own, so the PR's code can write
+     * only that. True when switched; false (the caller keeps its park) when the
+     * run copies already or is container-isolated; else the park naming the
+     * rebuild error (a busy file, a full disk, over the bounds), with the linked
+     * tree put back where possible and the run left linking (fail closed).
      */
     switchToGateTreeCopy(checkout) {
         if (this.state.gateTreeCopy || this.containerIsolated())
             return false;
+        let failed;
+        try {
+            unlinkNodeModules(this.o.root, checkout);
+            failed = this.linkGateTree(checkout, undefined, true);
+        }
+        catch (error) {
+            failed = `the node_modules tree of ${checkout} could not be removed to be rebuilt as a copy (${oneLine(errText(error), 300)})`;
+        }
+        if (failed) {
+            this.o.warn?.(`omg factory run: ${failed}`);
+            // Back to the linked tree the run had (best effort: a tree still half there is left alone, and the run parks anyway).
+            try {
+                unlinkNodeModules(this.o.root, checkout);
+                this.linkGateTree(checkout, undefined, false);
+            }
+            catch (error) {
+                this.o.warn?.(`omg factory run: could not link the node_modules tree of ${checkout} again (${oneLine(errText(error), 300)})`);
+            }
+            return this.treeCopyPark(failed);
+        }
         const note = `the gate's node_modules trees are copies of yours from now on, not links: ${GATE_TREE_COPY_WHY}`;
         this.o.warn?.(`omg factory run: ${note}`);
         this.save((x) => ({ ...x, gateTreeCopy: true, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note }] }));
-        try {
-            unlinkNodeModules(this.o.root, checkout);
-            this.linkGateTree(checkout);
-            return true;
-        }
-        catch (error) {
-            this.o.warn?.(`omg factory run: could not rebuild the node_modules tree of ${checkout} as a copy (${oneLine(errText(error), 300)})`);
-            return false;
-        }
+        return true;
     }
     /**
      * A checkout kept after a failed discard gets its node_modules tree back
@@ -1221,7 +1255,9 @@ class FactoryEngine {
         if (this.containerIsolated())
             return;
         try {
-            this.linkGateTree(path);
+            const failed = this.linkGateTree(path);
+            if (failed)
+                this.o.warn?.(`omg factory run: ${failed}`);
         }
         catch (error) {
             this.o.warn?.(`omg factory run: could not link the node_modules tree of the kept prepare checkout ${path} again (${oneLine(errText(error), 300)})`);
@@ -1403,8 +1439,8 @@ class FactoryEngine {
             return null;
         const rule = lockfileUnchanged(p.repo, baseSha, head, p.ctx);
         if (rule.policy === 'junction') {
-            this.linkGateTree(path, baseSha);
-            return null;
+            const failed = this.linkGateTree(path, baseSha);
+            return failed ? this.treeCopyPark(failed) : null;
         }
         const what = rule.lockfiles.length === 0 ? 'the base has no lockfile' : `the PR changes ${rule.changed.join(', ')}`;
         let mode;
@@ -3394,7 +3430,12 @@ class FactoryEngine {
         }
         else if (!this.gatesSandbox(this.gateConfig(view)).container) {
             // isolation "container" (C1, review-499): no link to your node_modules in a checkout the container's writes come back to.
-            this.linkGateTree(path, view.baseRefOid);
+            const failed = this.linkGateTree(path, view.baseRefOid);
+            if (failed) {
+                const park = this.treeCopyPark(failed);
+                this.gate(park.name, park.reason);
+                return;
+            }
         }
         // The checkout's gitfile before any PR code ran: compared after each check, and its git dir named to engine git from then on.
         const gitLink = checkoutGitLink(path);
@@ -3817,8 +3858,13 @@ class FactoryEngine {
                 const park = await this.calibrateGate(c, at.baseSha, at.commonGitDir, PREPARE_CHECK_TIMEOUT_MS, label, head);
                 // The base failed opening a package dir through the gate tree's junction (esbuild on Windows): the same check
                 // again, still in the sandbox, on a copied tree; its failure then counts only against a base that passes there.
-                if (park?.junctionRead && this.switchToGateTreeCopy(path))
-                    return this.prepareCheck(c, at);
+                if (park?.junctionRead) {
+                    const switched = this.switchToGateTreeCopy(path);
+                    if (switched === true)
+                        return this.prepareCheck(c, at);
+                    if (switched)
+                        return stop(switched);
+                }
                 // The base cannot run in the OS sandbox on Windows (git transport): the gate container, else plainly, never a park by default.
                 const fallback = park?.gitTransport ? await this.gitTransportFallback(at.commonGitDir) : null;
                 if (fallback) {
@@ -4436,9 +4482,16 @@ class FactoryEngine {
             return true;
         // The base failed opening a package dir through the gate tree's junction (esbuild on Windows): the gate again, still
         // in the sandbox, on a copied tree (its FAILURE record goes, so the head is judged by that run).
-        if (park.junctionRead && this.switchToGateTreeCopy(checkout)) {
-            rmSync(localCheckRecordPath(stateDir, this.o.root, head), { force: true });
-            return this.ensureLocalGate(head);
+        if (park.junctionRead) {
+            const switched = this.switchToGateTreeCopy(checkout);
+            if (switched === true) {
+                rmSync(localCheckRecordPath(stateDir, this.o.root, head), { force: true });
+                return this.ensureLocalGate(head);
+            }
+            if (switched) {
+                this.gate(switched.name, switched.reason);
+                return false;
+            }
         }
         // The base cannot run in the OS sandbox on Windows (git transport): the gate container, else plainly, never a park by default.
         const fallback = 'gitTransport' in park && park.gitTransport ? await this.gitTransportFallback(common) : null;

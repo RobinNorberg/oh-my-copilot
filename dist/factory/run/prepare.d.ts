@@ -33,6 +33,8 @@ export declare function checkoutBranch(issue: FactoryRunKey): string;
 export declare const GATE_CACHE_DIRS: readonly string[];
 /** The engine's own file in a node_modules tree it built (linkNodeModules). */
 export declare const GATE_TREE_MARKER = ".omg-gate-tree";
+/** The marker's last line once linkNodeModules built every tree (L3, review-547); a leading dot, so never a workspace dir. */
+export declare const GATE_TREE_COMPLETE = ".omg-complete";
 /** L3 (review-490): the largest top-level node_modules file copied into a tree (npm's `.package-lock.json` of a big monorepo is a few MB). */
 export declare const GATE_TREE_FILE_MAX_BYTES: number;
 /**
@@ -60,9 +62,15 @@ export declare const GATE_TREE_FILE_MAX_BYTES: number;
  *
  * `copy` (GATE_TREE_COPY_WHY): each package dir is a copy of yours instead
  * of a link (`.bin` and workspace self-links stay links), so a tool that
- * opens a package dir itself (esbuild) never opens a junction.
+ * opens a package dir itself (esbuild) never opens a junction; a link to a
+ * dir of a copied tree points at its copy (copiedAt). It throws, before
+ * anything is copied, when the copy would pass a GATE_TREE_COPY_* bound or
+ * the checkout's volume lacks the space (a dry run of the copy's own walk),
+ * and at a bound while copying (the partial tree is removed first). The
+ * marker's completion line (GATE_TREE_COMPLETE) is written last; a tree
+ * found without it is removed and built again.
  */
-export declare function linkNodeModules(root: string, checkout: string, warn?: (message: string) => void, workspaces?: readonly string[], copy?: boolean): string | null;
+export declare function linkNodeModules(root: string, checkout: string, warn?: (message: string) => void, workspaces?: readonly string[], copy?: boolean | Partial<GateTreeCopyLimits>): string | null;
 /**
  * Why a gate tree may be built as copies: in the Copilot OS sandbox on
  * Windows (its low-integrity token) a directory junction whose target the
@@ -77,6 +85,19 @@ export declare function linkNodeModules(root: string, checkout: string, warn?: (
  * granted fails the same way); only a real dir in the checkout works.
  */
 export declare const GATE_TREE_COPY_WHY = "the OS sandbox on Windows denies opening a package dir through the gate tree's junction with generic read access, which esbuild needs";
+/** L1 (review-546): the most bytes all copied trees of one linkNodeModules call may hold. */
+export declare const GATE_TREE_COPY_MAX_BYTES: number;
+/** L1 (review-546): the most files all copied trees of one linkNodeModules call may hold. */
+export declare const GATE_TREE_COPY_MAX_FILES = 200000;
+/** L1 (review-546): free space the destination volume keeps after the estimated copy. */
+export declare const GATE_TREE_COPY_FREE_MARGIN_BYTES: number;
+/** The bounds of a copied tree (the GATE_TREE_COPY_* constants; tests pass smaller ones), and the free space of a volume (statfs). */
+export interface GateTreeCopyLimits {
+    maxBytes: number;
+    maxFiles: number;
+    marginBytes: number;
+    freeBytes: (dir: string) => number | null;
+}
 /**
  * Remove what linkNodeModules made before the checkout is discarded: on
  * POSIX a symlink named node_modules is untracked for a `node_modules/`
