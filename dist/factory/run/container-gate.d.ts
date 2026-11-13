@@ -180,6 +180,12 @@ export declare function checkoutCopyProblem(checkout: string): string | null;
  */
 export declare function linkTargetProblem(target: string, depth: number): string | null;
 /**
+ * The id of the gate image as the runtime has it now (`image inspect`, no
+ * pull), or undefined: no runtime, no such image, no id. The engine keys
+ * container calibrations by it before any container runs.
+ */
+export declare function inspectGateImageId(s: Pick<GateContainerSettings, 'runtime' | 'image'>, exec?: ContainerExec): Promise<string | undefined>;
+/**
  * Run one request in a container. Never throws. `unavailable`: nothing of the
  * PR ran and the container path cannot run it (no runtime, daemon or image,
  * an unsupported project); the engine parks at gate-container-unavailable.

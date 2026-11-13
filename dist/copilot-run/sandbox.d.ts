@@ -158,6 +158,22 @@ export declare function resolveGateIsolation(layers: Pick<GatesSandboxLayers, 'u
     container?: GateContainerSettings;
     ignoredBase: string[];
 };
+/** The Windows git-transport fallback's image when the user names none: the full bookworm image, which has git. */
+export declare const defaultGitGateImage: (nodeVersion?: string) => string;
+/** factory.run.sandbox.windowsGitTransport: "fallback" (default) or "strict" (keep the gate-sandbox-incompatible park). */
+export type WindowsGitTransportMode = 'fallback' | 'strict';
+/**
+ * `factory.run.sandbox.windowsGitTransport` from the USER config only (a
+ * base-committed value is ignored: `ignoredBase`), and the container the
+ * fallback tries first: the user's `factory.run.sandbox.container` settings,
+ * with an image that has git (defaultGitGateImage) unless the user names
+ * one. A malformed user value throws.
+ */
+export declare function resolveWindowsGitTransport(layers: Pick<GatesSandboxLayers, 'user' | 'base'>, nodeVersion?: string): {
+    mode: WindowsGitTransportMode;
+    container: GateContainerSettings;
+    ignoredBase: boolean;
+};
 /** The SDK's SandboxConfig (rpc.d.ts), the fields this module sets. */
 export interface SandboxConfig {
     enabled: boolean;

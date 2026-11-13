@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { defaultGateImage, resolveGateIsolation } from '../../../copilot-run/sandbox.js';
-import { applyCopyBack, checkoutCopyProblem, cleanRunContainers, copyScript, linkTargetProblem, lockfileCachePolicy, NPM_FETCH_ENV, sizeBytes, containerArgv, containerRunLabel, defaultContainerExec, installPlan, mountArg, readTar, runContainerGate, safeRelPath, } from '../container-gate.js';
+import { applyCopyBack, checkoutCopyProblem, cleanRunContainers, copyScript, linkTargetProblem, lockfileCachePolicy, NPM_FETCH_ENV, sizeBytes, containerArgv, containerRunLabel, defaultContainerExec, inspectGateImageId, installPlan, mountArg, readTar, runContainerGate, safeRelPath, } from '../container-gate.js';
 let dir;
 beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'omg-container-gate-')); });
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
@@ -728,6 +728,16 @@ describe('helpers', () => {
         const r = await defaultContainerExec(join(dir, 'no-such-runtime'), ['version'], { timeoutMs: 10_000 });
         expect(r.status).toBeNull();
         expect(r.spawnError).toBeDefined();
+    });
+});
+describe('inspectGateImageId', () => {
+    it('reads the id with image inspect only (no pull); undefined when the image or its id is missing', async () => {
+        const calls = [];
+        const exec = (r) => async (_bin, args) => { calls.push([...args]); return r; };
+        expect(await inspectGateImageId({ runtime: 'docker', image: 'node:24-bookworm' }, exec(ok({ tail: `${IMAGE_ID}\n` })))).toBe(IMAGE_ID);
+        expect(calls).toEqual([['image', 'inspect', '--format', '{{.Id}}', 'node:24-bookworm']]);
+        expect(await inspectGateImageId({ runtime: 'docker', image: 'x' }, exec(ok({ status: 1, tail: 'No such image' })))).toBeUndefined();
+        expect(await inspectGateImageId({ runtime: 'docker', image: 'x' }, exec(ok({ tail: 'garbage' })))).toBeUndefined();
     });
 });
 //# sourceMappingURL=container-gate.test.js.map

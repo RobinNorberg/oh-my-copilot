@@ -40,6 +40,7 @@ import { EXIT_FORGE_UNAVAILABLE, FactoryForgeUnavailableError, factoryForgeOptio
 import { visibleLine } from '../../forge/review-feedback.js';
 import { CopilotLaneBackend } from '../../factory/run/lane.js';
 import { createSandboxRunner } from '../../factory/run/sandbox-exec.js';
+import { inspectGateImageId } from '../../factory/run/container-gate.js';
 import { releaseTamperHold, tamperHoldMessage } from '../../factory/run/tamper-quarantine.js';
 import { acquireFactoryRepoOwnerForRun, defaultOwnerDeps, describeOwner, FactoryBusyError, FactoryTamperHoldError, factoryCancelRequested, factoryOwnerPath, factoryRepoOwnerPath, factoryStateDir, factoryStatePath, ownerFromOtherCheckout, ownerHolding, readFactoryState, refuseWhileEngineRuns, runLabel, unreadableOwnerMessage, withOwnerFileLock, requestFactoryCancel, verifyFactoryIntegrity, acquireFactoryOwner, acquireRunSlot, factoryImportLockPath, heldSlots, withRepoImportLock, withRepoImportLockAsync, tryScanLock, SCAN_WAIT_MS, } from '../../factory/run/state.js';
 import { remoteRepoMismatch, resolveShipConfig, userConfigLayers } from '../../ship/config.js';
@@ -631,7 +632,7 @@ export function factoryRunCommand(deps = defaultFactoryRunDeps) {
                         ...(o.allowUnsandboxedLanes ? { allowUnsandboxedLanes: true } : {}),
                         ...(o.allowUnsandboxedGates ? { allowUnsandboxedGates: true } : {}),
                         ...(o.allowSecretShapes ? { allowSecretShapes: true } : {}),
-                        ...(deps.gateSandbox && !o.dryRun ? { gateSandbox: deps.gateSandbox(root) } : {}),
+                        ...(deps.gateSandbox && !o.dryRun ? { gateSandbox: deps.gateSandbox(root), gateImageId: (c) => inspectGateImageId(c) } : {}),
                         lanes: o.dryRun ? NO_LANES : deps.lanes(root),
                         ...(forge ? { forge } : {}),
                         ...(deps.ledgerDir ? { ledgerDir: deps.ledgerDir } : {}),
