@@ -689,6 +689,8 @@ export interface AutoMergeRunFacts {
   secretAck?: readonly unknown[];
   /** A check ran WITHOUT any sandbox through the Windows git-transport fallback (the head it ran on). */
   gitTransportPlainHead?: string;
+  /** Built-in prepare tests passed only because tests that fail on the base too were not counted (the head it was on). */
+  testDeltaExcusedHead?: string;
 }
 
 export interface AutoMergeInput {
@@ -763,6 +765,8 @@ export function autoMergeVerdict(i: AutoMergeInput): AutoMergeVerdict {
   ];
   check(flagged.length === 0 && !tamper, 'no secret-scan, tamper or sandbox park in this run', `this run parked at ${[...new Set(flagged)].join(', ') || 'a tamper or quarantine hold'}`);
   check(acks.length === 0, 'no --allow-* acknowledgement in this run', `this run used ${[...new Set(acks)].join(', ')}`);
+  // L3 (review-548): an excused test may fail on this head for a new reason, so a human looks.
+  check(!i.run.testDeltaExcusedHead, 'no prepare test excused for failing on the base too', `prepare tests passed on ${i.run.testDeltaExcusedHead?.slice(0, 12)} only because tests that fail on the base too were not counted`);
 
   if (i.changes.tier) evidence.push(...i.changes.evidence);
   else reasons.push(...i.changes.reasons);

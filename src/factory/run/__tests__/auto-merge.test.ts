@@ -537,6 +537,7 @@ describe('autoMergeVerdict', () => {
     ['gate change ack', { run: { ...ok.run, gateChangeApproved: 'x' } }, /--allow-gate-change/],
     ['secret ack', { run: { ...ok.run, secretAck: [{}] } }, /--allow-secret-shapes/],
     ['plain git-transport run', { run: { ...ok.run, gitTransportPlainHead: HEAD } }, /the Windows git-transport fallback without a sandbox/],
+    ['prepare tests passed with base failures excused', { run: { ...ok.run, testDeltaExcusedHead: HEAD } }, /only because tests that fail on the base too were not counted/],
     ['allow flag in history', { run: { ...ok.run, history: [{ note: 'accepted (--allow-unsandboxed-lanes)' }] } }, /an --allow-\* flag/],
     ['tier miss', { changes: classifyChanges([file('package.json')], all) }, /always need a human/],
   ];
