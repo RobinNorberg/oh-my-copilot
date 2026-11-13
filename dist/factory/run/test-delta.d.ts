@@ -27,8 +27,9 @@ export declare function readVitestReport(path: string, root: string): VitestRunS
 /**
  * The head's failures against the base's, for a head run that failed:
  * - `park` (today's gate-sandbox-incompatible): no base report, no test
- *   passes on the base, no head report, or the head failed with no failing
- *   test or file in its report (something else failed: not attributable);
+ *   passes on the base, no head report, errors outside any test on both, or
+ *   the head failed with no failing test, file or error in its report
+ *   (something else failed: not attributable);
  * - `fail`: a test or file fails on the head that did not fail on the base
  *   (a new test counts: it never passed on the base);
  * - `pass`: every failure on the head failed on the base too (`excused`).
@@ -44,7 +45,24 @@ export type TestDeltaVerdict = {
     kind: 'pass';
     excused: string[];
 };
-export declare function testDeltaVerdict(base: VitestRunSummary | undefined, head: VitestRunSummary | null): TestDeltaVerdict;
+/** What an error outside every test is listed as. */
+export declare const UNHANDLED_ERRORS_ID = "errors outside any test (vitest \"Unhandled Errors\")";
+/**
+ * vitest's summary line for errors outside every test (`Errors  1 error`).
+ * The JSON report does not hold them (it says `success: true`), but the exit
+ * code is 1. Read from the output tail: a head that forges the line only
+ * fails itself.
+ */
+export declare function vitestUnhandledErrors(output: string): boolean;
+/**
+ * `unhandled`: whether each run printed vitest's unhandled-errors summary
+ * (vitestUnhandledErrors). On the head only, it counts like a new failure;
+ * on both, the run parks (it cannot be told apart).
+ */
+export declare function testDeltaVerdict(base: VitestRunSummary | undefined, head: VitestRunSummary | null, unhandled?: {
+    head: boolean;
+    base: boolean;
+}): TestDeltaVerdict;
 /** A summary the sealed state may hold (state.ts shape check). */
 export declare function vitestSummaryShapeOk(v: unknown): v is VitestRunSummary;
 //# sourceMappingURL=test-delta.d.ts.map

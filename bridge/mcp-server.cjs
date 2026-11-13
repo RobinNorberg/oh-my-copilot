@@ -48632,11 +48632,15 @@ function readVitestReport(path15, root) {
     }
   }
 }
-function testDeltaVerdict(base, head) {
+function vitestUnhandledErrors(output) {
+  return /^\s*Errors\s+\d+\s+errors?\b/m.test(output);
+}
+function testDeltaVerdict(base, head, unhandled = { head: false, base: false }) {
   if (!base) return { kind: "park", why: "the base run left no test report" };
   if (base.passed === 0) return { kind: "park", why: "no selected test passes on the base" };
   if (!head) return { kind: "park", why: "the head run left no test report" };
-  const onHead = [...head.failed, ...head.brokenFiles.map(fileId2)];
+  if (unhandled.head && unhandled.base) return { kind: "park", why: "errors outside any test on the base and the head" };
+  const onHead = [...head.failed, ...head.brokenFiles.map(fileId2), ...unhandled.head ? [UNHANDLED_ERRORS_ID] : []];
   if (onHead.length === 0) return { kind: "park", why: "the head run failed, but its report names no failing test" };
   const onBase = /* @__PURE__ */ new Set([...base.failed, ...base.brokenFiles.map(fileId2)]);
   const counted = onHead.filter((t) => !onBase.has(t));
@@ -48648,7 +48652,7 @@ function vitestSummaryShapeOk(v) {
   const strs = (x) => Array.isArray(x) && x.length <= BASE_FAILURES_MAX && x.every((t) => typeof t === "string" && t.length <= TEST_ID_MAX_CHARS);
   return typeof s === "object" && s !== null && !Array.isArray(s) && Number.isSafeInteger(s.passed) && s.passed >= 0 && strs(s.failed) && strs(s.brokenFiles) && Object.keys(s).every((k) => k === "passed" || k === "failed" || k === "brokenFiles");
 }
-var import_node_crypto5, import_node_fs13, import_node_path14, VITEST_REPORT_MAX_BYTES, BASE_FAILURES_MAX, TEST_ID_MAX_CHARS, slash, cut2, fileId2;
+var import_node_crypto5, import_node_fs13, import_node_path14, VITEST_REPORT_MAX_BYTES, BASE_FAILURES_MAX, TEST_ID_MAX_CHARS, slash, cut2, fileId2, UNHANDLED_ERRORS_ID;
 var init_test_delta = __esm({
   "src/factory/run/test-delta.ts"() {
     "use strict";
@@ -48661,6 +48665,7 @@ var init_test_delta = __esm({
     slash = (p) => p.replace(/\\/g, "/");
     cut2 = (id) => id.length > TEST_ID_MAX_CHARS ? id.slice(0, TEST_ID_MAX_CHARS) : id;
     fileId2 = (file) => `${file} (the file failed)`;
+    UNHANDLED_ERRORS_ID = 'errors outside any test (vitest "Unhandled Errors")';
   }
 });
 
@@ -61143,7 +61148,7 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
        * per head. Their names come from the trusted base's report.
        */
       judgeTestDelta(park, headTests, head, label, baseSha, status, output) {
-        const v = testDeltaVerdict(park.baseTests, headTests);
+        const v = testDeltaVerdict(park.baseTests, headTests, { head: vitestUnhandledErrors(output), base: park.baseUnhandled === true });
         if (v.kind === "park") return null;
         const list = (ids) => `${ids.slice(0, 10).map((id) => visibleLine(id)).join("; ")}${ids.length > 10 ? `; and ${ids.length - 10} more` : ""}`;
         if (v.excused.length > 0) {
@@ -61195,7 +61200,7 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
           reason: `${what} fails in ${placeName} on the base ${baseSha.slice(0, 12)} itself, so its failure on ${head.slice(0, 12)} is not counted (no ci-fix lane). ${advice2}, then rerun ${this.resume}. ${ACK_WARNING}${cal.tail ? `; base output tail: ${cal.tail.slice(-1500)}` : ""}`,
           ...!container && !plainRun && cal.gitTransport ? { gitTransport: true } : {},
           ...!container && !plainRun && cal.junctionRead ? { junctionRead: true } : {},
-          ...!container && !plainRun && cal.tests ? { baseTests: cal.tests } : {}
+          ...!container && !plainRun && cal.tests ? { baseTests: cal.tests, ...vitestUnhandledErrors(cal.tail ?? "") ? { baseUnhandled: true } : {} } : {}
         };
       }
       /**

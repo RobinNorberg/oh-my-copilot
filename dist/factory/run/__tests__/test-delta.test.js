@@ -6,7 +6,7 @@ import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { BASE_FAILURES_MAX, parseVitestReport, readVitestReport, testDeltaVerdict, TEST_ID_MAX_CHARS, vitestReportArgs, vitestReportPath, vitestSummaryShapeOk, } from '../test-delta.js';
+import { BASE_FAILURES_MAX, parseVitestReport, readVitestReport, testDeltaVerdict, TEST_ID_MAX_CHARS, UNHANDLED_ERRORS_ID, vitestReportArgs, vitestReportPath, vitestSummaryShapeOk, vitestUnhandledErrors, } from '../test-delta.js';
 /** One file's entry; `loadError` = vitest's shape of a file that did not load (failed, no assertions). */
 const file = (root, rel, tests, loadError) => ({
     name: `${root}/${rel}`,
@@ -68,6 +68,16 @@ describe('testDeltaVerdict', () => {
         expect(testDeltaVerdict(base, head(file(HEAD_ROOT, 'src/a.test.ts', [['adds', 'passed'], ['other', 'failed']]))).kind).toBe('fail');
         const v = testDeltaVerdict(base, head(file(HEAD_ROOT, 'src/release/__tests__/engine.test.ts', [['kills the tree', 'failed'], ['kills the tree (renamed)', 'passed']])));
         expect(v.kind).toBe('pass');
+    });
+    it('errors outside any test (vitest prints "Errors  N error", the JSON report says nothing): head only fails, both park', () => {
+        const summary = '\n Test Files  1 passed (1)\n      Tests  1 passed (1)\n     Errors  1 error\n   Duration  782ms\n';
+        expect(vitestUnhandledErrors(summary)).toBe(true);
+        expect(vitestUnhandledErrors(' Test Files  1 failed (1)\n      Tests  1 failed (1)\n')).toBe(false);
+        const sameFailure = head(file(HEAD_ROOT, 'src/release/__tests__/engine.test.ts', [['kills the tree', 'failed']]));
+        expect(testDeltaVerdict(base, sameFailure, { head: true, base: false })).toEqual({ kind: 'fail', counted: [UNHANDLED_ERRORS_ID], excused: ['src/release/__tests__/engine.test.ts > group > kills the tree'] });
+        expect(testDeltaVerdict(base, head(file(HEAD_ROOT, 'src/a.test.ts', [['adds', 'passed']])), { head: true, base: false }).kind).toBe('fail');
+        expect(testDeltaVerdict(base, sameFailure, { head: true, base: true }).kind).toBe('park');
+        expect(testDeltaVerdict(base, sameFailure, { head: false, base: true }).kind).toBe('pass');
     });
     it('park (today\'s gate-sandbox-incompatible): no base report, nothing passes on the base, no head report, or a head failure outside every test', () => {
         const headOk = head(file(HEAD_ROOT, 'src/release/__tests__/engine.test.ts', [['kills the tree', 'failed']]));

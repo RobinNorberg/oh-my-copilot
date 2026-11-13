@@ -71,7 +71,7 @@ import { driveGates } from './gates-driver.js';
 import { missingCheckHint, NO_CI_CHECKS_NOTE, noHeadChecksText } from '../../ship/gates.js';
 import { ghBranchTip, ghCheckRunApps, ghCheckSuites, ghCommitCheckNames, ghRequiredCheckRules } from '../../forge/github/checks.js';
 import { ciFixPrompt, conflictFixPrompt, fenceFor, fenced, fixPrompt, implementPrompt, oneLine, reviewPrompt } from './prompts.js';
-import { BASE_FAILURES_MAX, readVitestReport, testDeltaVerdict, vitestReportArgs, vitestReportPath } from './test-delta.js';
+import { BASE_FAILURES_MAX, readVitestReport, testDeltaVerdict, vitestReportArgs, vitestReportPath, vitestUnhandledErrors } from './test-delta.js';
 import { decisionsViolation, loadTeamContext, pathsInDiff, pathsInText } from '../team/context.js';
 import { mergeComment, mergeDecision } from './merge-policy.js';
 import { autoMergeComment, autoMergeVerdict, baseInstallFiles, baseTestSetup as baseTestSetupOf, classifyChanges, committedMergeConfig, hasFrontmatter, isFrontmatterCandidate, parseChangedEntries, patchLines, resolveAutoMergeConfig, TEST_CONFIG_NAME } from './auto-merge.js';
@@ -3918,7 +3918,7 @@ class FactoryEngine {
      * per head. Their names come from the trusted base's report.
      */
     judgeTestDelta(park, headTests, head, label, baseSha, status, output) {
-        const v = testDeltaVerdict(park.baseTests, headTests);
+        const v = testDeltaVerdict(park.baseTests, headTests, { head: vitestUnhandledErrors(output), base: park.baseUnhandled === true });
         if (v.kind === 'park')
             return null;
         const list = (ids) => `${ids.slice(0, 10).map((id) => visibleLine(id)).join('; ')}${ids.length > 10 ? `; and ${ids.length - 10} more` : ''}`;
@@ -3978,7 +3978,7 @@ class FactoryEngine {
             reason: `${what} fails in ${placeName} on the base ${baseSha.slice(0, 12)} itself, so its failure on ${head.slice(0, 12)} is not counted (no ci-fix lane). ${advice}, then rerun ${this.resume}. ${ACK_WARNING}${cal.tail ? `; base output tail: ${cal.tail.slice(-1_500)}` : ''}`,
             ...(!container && !plainRun && cal.gitTransport ? { gitTransport: true } : {}),
             ...(!container && !plainRun && cal.junctionRead ? { junctionRead: true } : {}),
-            ...(!container && !plainRun && cal.tests ? { baseTests: cal.tests } : {}),
+            ...(!container && !plainRun && cal.tests ? { baseTests: cal.tests, ...(vitestUnhandledErrors(cal.tail ?? '') ? { baseUnhandled: true } : {}) } : {}),
         };
     }
     /**
