@@ -314,10 +314,12 @@ export interface FactoryRunState {
      * Base calibrations of a check in the sandbox (sandbox-exec.ts), keyed by
      * the sha256 of the base sha and the check's argv: whether the command
      * passes in the sandbox on the trusted base itself, and its output tail.
+     * `timedOut`: it did not finish (no verdict; never a held failure).
      */
     gateCalibration?: Record<string, {
         ok: boolean;
         tail?: string;
+        timedOut?: true;
         gitTransport?: true;
     }>;
     /** The Copilot coding agent session of an issue run whose implementer is the agent (coding-agent-lane.ts); sealed, shape-checked on load. */

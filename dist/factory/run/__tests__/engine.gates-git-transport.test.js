@@ -8,18 +8,19 @@
  * lanes, a recording fake sandbox (container requests included) and a
  * recording plain runner, on a declared win32 host.
  */
-import { rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { readLocalCheckRecord } from '../../../forge/local/index.js';
 import { defaultGitGateImage, resolveWindowsGitTransport } from '../../../copilot-run/sandbox.js';
-import { resolveShipConfig } from '../../../ship/config.js';
-// An unreadable user config (M1): userConfigLayers throws while `unreadable.on` is set.
-const unreadable = vi.hoisted(() => ({ on: false }));
-vi.mock('../../../ship/config.js', async (importOriginal) => {
+import { resolveShipConfig, trustedUserConfigPath } from '../../../ship/config.js';
+// The trusted user config's home (M1, review-532b): os.userInfo().homedir is `home.dir` while it is set, so the real
+// loader reads a real file under the test dir.
+const home = vi.hoisted(() => ({ dir: undefined }));
+vi.mock('os', async (importOriginal) => {
     const actual = await importOriginal();
-    return { ...actual, userConfigLayers: (...a) => { if (unreadable.on)
-            throw new Error('config.jsonc: Unexpected token'); return actual.userConfigLayers(...a); } };
+    const userInfo = ((...a) => (home.dir ? { ...actual.userInfo(...a), homedir: home.dir } : actual.userInfo(...a)));
+    return { ...actual, userInfo, default: { ...actual, userInfo } };
 });
 import { GATE_SANDBOX_INCOMPATIBLE_GATE, GIT_TRANSPORT_SANDBOX_ADVICE, MSYS_DLL_INIT_FAILED, runFactoryEngine, windowsGitTransportFailure } from '../engine.js';
 import { readFactoryState } from '../state.js';
@@ -28,7 +29,7 @@ import { commitFile, review } from './fake-lanes.js';
 const T = 300_000;
 let w;
 afterEach(() => {
-    unreadable.on = false;
+    home.dir = undefined;
     rmSync(w.dir, { recursive: true, force: true });
 });
 const IMAGE_ID = `sha256:${'a'.repeat(64)}`;
@@ -129,17 +130,60 @@ describe('Windows git-transport fallback (prepare checks)', () => {
         await runFactoryEngine(opts(lanes, { gateSandbox: s.run, gitTransportHost: host }));
         expect(lanes.started.map((l) => l.laneId)).toContain(`issue-${LOCAL_ISSUE}-ci-fix-1`);
     }, T);
-    it('an unreadable user config keeps the park (fail closed): no probe, no container, nothing plain', async () => {
+    // M1 (review-532b): the real loader turns a read or parse error into null; a config file that is there but gives no
+    // object keeps the fallback off (it may say "strict").
+    for (const [name, plant] of [
+        ['a malformed user config file', (path) => writeFileSync(path, '{ "factory": { "run": { "sandbox": { "windowsGitTransport": "strict" ')],
+        ['a user config path that cannot be read (a directory)', (path) => mkdirSync(path)],
+    ]) {
+        it(`${name} keeps the park (fail closed): no probe, no container, nothing plain`, async () => {
+            w = localWorld();
+            home.dir = join(w.dir, 'home');
+            const path = trustedUserConfigPath();
+            expect(path.startsWith(home.dir)).toBe(true);
+            mkdirSync(join(path, '..'), { recursive: true });
+            plant(path);
+            const { sh, host } = win32();
+            const s = sandbox(sh, (kind) => (kind === 'prepare' || kind === 'calibrate' ? TRANSPORT : kind === 'probe' ? MSYS_FAILS : PASS));
+            const warnings = [];
+            const err = vi.spyOn(console, 'error').mockImplementation(() => { });
+            try {
+                const out = await runFactoryEngine(opts(lanesFor(w, [greet(), review('approve')]), { gateSandbox: s.run, gitTransportHost: host, gateSandboxUserConfig: undefined, warn: (m) => warnings.push(m) }));
+                expect(out.gate?.name, out.message).toBe(GATE_SANDBOX_INCOMPATIBLE_GATE);
+            }
+            finally {
+                err.mockRestore();
+            }
+            expect(s.kinds).toEqual(['prepare', 'calibrate']);
+            expect(plainPrepare()).toEqual([]);
+            expect(warnings.join('\n')).toContain('your user config could not be read, so the Windows git-transport fallback stays off');
+        }, T);
+    }
+    it('no user config file at all: the fallback runs (the default)', async () => {
         w = localWorld();
-        unreadable.on = true;
+        home.dir = join(w.dir, 'home-empty');
         const { sh, host } = win32();
         const s = sandbox(sh, (kind) => (kind === 'prepare' || kind === 'calibrate' ? TRANSPORT : kind === 'probe' ? MSYS_FAILS : PASS));
+        const out = await runFactoryEngine(opts(lanesFor(w, [greet(), review('approve')]), { gateSandbox: s.run, gitTransportHost: host, gateSandboxUserConfig: undefined }));
+        expect(out.gate?.name, out.message).toBe('merge');
+        expect(s.kinds).toContain('container-prepare');
+    }, T);
+    it('ship.prepare.build skips the gate container (#529: its outputs are committed): it runs on your host, flagged', async () => {
+        w = localWorld();
+        const { sh, host } = win32();
+        const buildConfig = () => ({
+            config: { ...resolveShipConfig(undefined), requiredChecks: ['Test'], advisoryChecks: [], prepareChecks: [], prepareBuild: { command: ['node', 'build.js'], outputs: ['dist'] } },
+            known: [],
+        });
+        const s = sandbox(sh, (kind, req) => (kind === 'probe' ? MSYS_FAILS : (kind === 'prepare' || kind === 'calibrate') && req.argv.includes('build.js') ? TRANSPORT : PASS));
         const warnings = [];
-        const out = await runFactoryEngine(opts(lanesFor(w, [greet(), review('approve')]), { gateSandbox: s.run, gitTransportHost: host, gateSandboxUserConfig: undefined, warn: (m) => warnings.push(m) }));
-        expect(out.gate?.name, out.message).toBe(GATE_SANDBOX_INCOMPATIBLE_GATE);
-        expect(s.kinds).toEqual(['prepare', 'calibrate']);
-        expect(plainPrepare()).toEqual([]);
-        expect(warnings.join('\n')).toContain('your user config could not be read, so the Windows git-transport fallback stays off');
+        const out = await runFactoryEngine(opts(lanesFor(w, [greet(), review('approve')]), { gateConfig: buildConfig, gateSandbox: s.run, gitTransportHost: host, warn: (m) => warnings.push(m) }));
+        expect(out.gate?.name, out.message).toBe('merge');
+        expect(s.kinds.filter((k) => k.startsWith('container-'))).toEqual([]);
+        expect(w.gateRuns.filter((r) => r.argv.includes('build.js'))).toHaveLength(1);
+        expect(warnings.join('\n')).toContain('skips the gate container for the prepare build `node build.js`: prepare commits what a build writes, so it runs on your host');
+        const state = readFactoryState(w.root, LOCAL_ISSUE);
+        expect(state.gitTransportPlainHead).toMatch(/^[0-9a-f]{40}$/);
     }, T);
     it('a probe that throws gives no verdict: the run parks as before', async () => {
         w = localWorld();
@@ -262,6 +306,60 @@ describe('Windows git-transport fallback (the local gate)', () => {
         const state = readFactoryState(w.root, LOCAL_ISSUE);
         expect(readLocalCheckRecord(w.stateDir, w.root, state.head)).toMatchObject({ state: 'SUCCESS', sandbox: 'unsandboxed' });
         expect(state.gitTransportPlainHead).toBe(state.head);
+    }, T);
+    it('N2: once the image id is known, every container command names it, not the tag', async () => {
+        w = localWorld();
+        w.gateStatus = [1, 1, 0];
+        const { sh, host } = win32();
+        const FAIL = { ran: true, status: 1, output: 'gyp ERR! getaddrinfo EAI_AGAIN nodejs.org', timedOut: false };
+        const s = sandbox(sh, (kind) => (kind === 'gate' || kind === 'calibrate' ? TRANSPORT : kind === 'probe' ? MSYS_FAILS : kind.startsWith('container-') ? FAIL : PASS));
+        await runFactoryEngine(opts(lanesFor(w, [greet(), review('approve')]), { gateSandbox: s.run, gitTransportHost: host, gateImageId: async () => IMAGE_ID }));
+        const images = s.reqs.filter((r) => r.container).map((r) => r.container.image);
+        expect(images).toEqual([IMAGE_ID, IMAGE_ID]);
+    }, T);
+    it('N1: a base calibration that timed out in the container is not held: the rerun tries the container again', async () => {
+        w = localWorld();
+        w.gateStatus = [1, 1, 0];
+        const { sh, host } = win32();
+        let gates = 0;
+        const s = sandbox(sh, (kind) => {
+            if (kind === 'gate' || kind === 'calibrate')
+                return TRANSPORT;
+            if (kind === 'probe')
+                return MSYS_FAILS;
+            if (kind === 'container-gate')
+                return (gates += 1) === 1 ? { ran: true, status: 1, output: 'not ok 1', timedOut: false } : PASS;
+            if (kind === 'container-calibrate')
+                return { ran: true, status: 124, output: 'slow', timedOut: true };
+            return PASS;
+        });
+        const lanes = lanesFor(w, [greet(), review('approve'), review('approve')]);
+        const first = await runFactoryEngine(opts(lanes, { gateSandbox: s.run, gitTransportHost: host, gateImageId: async () => IMAGE_ID }));
+        expect(first.gate?.name, first.message).toBe(GATE_SANDBOX_INCOMPATIBLE_GATE);
+        expect(s.kinds).toEqual(['prepare', 'gate', 'calibrate', 'probe', 'container-gate', 'container-calibrate']);
+        expect(Object.values(readFactoryState(w.root, LOCAL_ISSUE).gateCalibration ?? {})).toContainEqual(expect.objectContaining({ ok: false, timedOut: true }));
+        const before = s.kinds.length;
+        const again = await runFactoryEngine(opts(lanes, { gateSandbox: s.run, gitTransportHost: host, gateImageId: async () => IMAGE_ID }));
+        expect(again.gate?.name, again.message).toBe('merge');
+        expect(s.kinds.slice(before)).toContain('container-gate');
+        const state = readFactoryState(w.root, LOCAL_ISSUE);
+        expect(readLocalCheckRecord(w.stateDir, w.root, state.head)).toMatchObject({ state: 'SUCCESS', sandbox: 'enforced' });
+    }, T);
+    it('N3: a changed image id is a new key: the rerun tries the container again on the new image', async () => {
+        w = localWorld();
+        w.gateStatus = [1, 1, 0];
+        const { sh, host } = win32();
+        const FAIL = { ran: true, status: 1, output: 'gyp ERR! getaddrinfo EAI_AGAIN nodejs.org', timedOut: false };
+        const s = sandbox(sh, (kind) => (kind === 'gate' || kind === 'calibrate' ? TRANSPORT : kind === 'probe' ? MSYS_FAILS : kind.startsWith('container-') ? FAIL : PASS));
+        const lanes = lanesFor(w, [greet(), review('approve'), review('approve')]);
+        const first = await runFactoryEngine(opts(lanes, { gateSandbox: s.run, gitTransportHost: host, gateImageId: async () => IMAGE_ID }));
+        expect(first.gate?.name, first.message).toBe(GATE_SANDBOX_INCOMPATIBLE_GATE);
+        const before = s.kinds.length;
+        const NEW_ID = `sha256:${'b'.repeat(64)}`;
+        const again = await runFactoryEngine(opts(lanes, { gateSandbox: s.run, gitTransportHost: host, gateImageId: async () => NEW_ID }));
+        expect(again.gate?.name, again.message).toBe('merge');
+        expect(s.kinds.slice(before).filter((k) => k.startsWith('container-'))).toEqual(['container-gate', 'container-calibrate']);
+        expect(s.reqs.slice(before).filter((r) => r.container).map((r) => r.container.image)).toEqual([NEW_ID, NEW_ID]);
     }, T);
 });
 describe('detection and settings', () => {

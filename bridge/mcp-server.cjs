@@ -48748,7 +48748,7 @@ function humanReviewShapeProblem(s) {
   const cal = s.gateCalibration;
   if (cal !== void 0 && (typeof cal !== "object" || cal === null || Array.isArray(cal) || !Object.entries(cal).every(([k, v]) => {
     const e = v;
-    return HEX64.test(k) && typeof e === "object" && e !== null && typeof e.ok === "boolean" && (e.tail === void 0 || isStr2(e.tail)) && (e.gitTransport === void 0 || e.gitTransport === true) && Object.keys(e).every((x) => x === "ok" || x === "tail" || x === "gitTransport");
+    return HEX64.test(k) && typeof e === "object" && e !== null && typeof e.ok === "boolean" && (e.tail === void 0 || isStr2(e.tail)) && (e.gitTransport === void 0 || e.gitTransport === true) && (e.timedOut === void 0 || e.timedOut === true) && Object.keys(e).every((x) => x === "ok" || x === "tail" || x === "timedOut" || x === "gitTransport");
   }))) return "gateCalibration";
   const lanes = s.lanes;
   if (!lanes.every((l) => {
@@ -58509,8 +58509,9 @@ var init_engine = __esm({
       sandboxRun(req, fallbackContainer) {
         const p = this.privateRun();
         const nested = trustedNestedRels(this.o.root, req.cwd, this.baseWorkspaces()).map((rel) => (0, import_path117.join)(this.o.root, ...rel.split("/"), "node_modules"));
-        const container = this.gatesModeCache?.container ?? fallbackContainer;
-        if (!container && this.containerIsolated()) return Promise.reject(new FactoryStepError('factory.run.sandbox.isolation "container" is set in your user config, but the gate settings were not resolved before a gate command; nothing ran'));
+        const settings = this.gatesModeCache?.container ?? fallbackContainer;
+        if (!settings && this.containerIsolated()) return Promise.reject(new FactoryStepError('factory.run.sandbox.isolation "container" is set in your user config, but the gate settings were not resolved before a gate command; nothing ran'));
+        const container = settings && this.containerImageId ? { ...settings, image: this.containerImageId } : settings;
         const r = this.o.gateSandbox({ ...req, nodeModulesTarget: (0, import_path117.join)(this.o.root, "node_modules"), ...nested.length > 0 ? { nestedNodeModulesTargets: nested } : {}, ...p ? { mainRoot: this.o.root, jobRoot: this.gateJobRoot() } : {}, ...container ? { container, runLabel: containerRunLabel(this.o.root, this.key) } : {} });
         if (!container) return r;
         return r.then((out) => {
@@ -60541,6 +60542,12 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
             user = null;
             userConfigUnreadable = true;
           }
+          if (!userConfigUnreadable && (user === null || typeof user !== "object" || Array.isArray(user))) {
+            try {
+              userConfigUnreadable = (0, import_fs98.existsSync)(trustedUserConfigPath());
+            } catch {
+            }
+          }
         }
         let resolved;
         try {
@@ -60684,15 +60691,19 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
         const container = where === "plain" ? void 0 : this.gatesModeCache?.container ?? where;
         return (0, import_crypto29.createHash)("sha256").update(`${baseSha}\0${JSON.stringify(argv)}${container ? `\0container\0${container.runtime}\0${this.containerImageId ?? container.image}` : ""}${where === "plain" ? "\0plain" : ""}`).digest("hex");
       }
-      /** The base failed in the fallback's container before, for this exact image id: the head's container run is skipped. */
+      /**
+       * The base failed in the fallback's container before, for this exact image
+       * id, with a verdict (not a timeout: N1, review-532b): the head's container
+       * run is skipped.
+       */
       containerFailedOnBase(c, baseSha, container) {
         if (!this.containerImageId) return false;
         const cal = this.state.gateCalibration?.[this.calibrationKey(baseSha, c.argv, container)];
-        return cal !== void 0 && !cal.ok;
+        return cal !== void 0 && !cal.ok && !cal.timedOut;
       }
       /** The loud note of a check the Windows git-transport fallback runs outside the OS sandbox: a warning, a history note, one PR note per head. */
       noteGitTransportFallback(head, what, how, container) {
-        const where = how === "container" ? `in ${this.sandboxName(container)}` : "WITHOUT any sandbox, as your user (no gate container could run it)";
+        const where = how === "container" ? `in ${this.sandboxName(container)}` : "WITHOUT any sandbox, as your user (not in the gate container)";
         const text3 = `${what} on ${head.slice(0, 12)} ran ${where}: its base fails in the OS sandbox on Windows because git clone, fetch and push need Git for Windows' sh.exe, which cannot start there (known gap; factory.run.sandbox.windowsGitTransport "strict" in your user config parks instead)`;
         this.o.warn?.(`omg factory run: ${text3}`);
         this.save((x) => ({ ...x, ...how === "unsandboxed" ? { gitTransportPlainHead: head } : {}, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: text3.slice(0, 400) }] }));
@@ -60799,7 +60810,9 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
             const park = await this.calibrateGate(c, at.baseSha, at.commonGitDir, PREPARE_CHECK_TIMEOUT_MS, label, head);
             const fallback = park?.gitTransport ? await this.gitTransportFallback(at.commonGitDir) : null;
             if (fallback) {
-              if (this.containerFailedOnBase(c, at.baseSha, fallback)) {
+              if (c.kind === "build") {
+                this.o.warn?.(`omg factory run: the Windows git-transport fallback skips the gate container for ${label}: prepare commits what a build writes, so it runs on your host`);
+              } else if (this.containerFailedOnBase(c, at.baseSha, fallback)) {
                 this.o.warn?.(`omg factory run: the Windows git-transport fallback skips the gate container for ${label}: it failed there on the base ${at.baseSha.slice(0, 12)} before (image ${this.containerImageId})`);
               } else {
                 const fr = await this.withGitView(checkedOut, label, (view) => this.sandboxRun({ purpose: "prepare", argv: c.argv, exe: c.exe, args: c.args, cwd: path15, commonGitDir: at.commonGitDir, timeoutMs: PREPARE_CHECK_TIMEOUT_MS, ...view }, fallback), true);
@@ -60860,9 +60873,9 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
         const plainRun = where === "plain";
         const container = plainRun ? void 0 : this.gatesModeCache?.container ?? where;
         const key = this.calibrationKey(baseSha, c.argv, where);
-        const sticky = where !== void 0 && !plainRun && !this.gatesModeCache?.container && !!this.containerImageId;
         const placeName = plainRun ? "a plain run (no sandbox)" : this.sandboxName(container);
         let cal = this.state.gateCalibration?.[key];
+        const sticky = where !== void 0 && !plainRun && !this.gatesModeCache?.container && !!this.containerImageId && !cal?.timedOut;
         if (!cal || !cal.ok && !sticky && !this.recalibrated.has(key)) {
           this.recalibrated.add(key);
           const out = await this.runOnBase(c, baseSha, commonGitDir, timeoutMs, where);
@@ -60918,13 +60931,13 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
             }
             if (p.startError !== void 0) return { notStarted: oneLine(p.startError, 300) };
             const ptail = redactGateOutput(`${p.stdout}${p.stderr}`).trim().slice(-2e3);
-            return { ok: p.status === 0 && !p.timedOut, ...ptail ? { tail: ptail } : {} };
+            return { ok: p.status === 0 && !p.timedOut, ...ptail ? { tail: ptail } : {}, ...p.timedOut ? { timedOut: true } : {} };
           }
           const r = await this.sandboxRun({ purpose: "calibrate", argv: c.argv, exe: c.exe, args: calibrationArgs(c, dir), cwd: dir, commonGitDir, timeoutMs, ...this.gatesModeCache?.requireDeniedPaths ? { requireDeniedPaths: true } : {}, ...gitView ? { gitView } : {} }, fallbackContainer);
           if (!r.ran) return { notStarted: r.reason };
           const tail4 = r.output.trim().slice(-2e3);
           const ok2 = r.status === 0 && !r.timedOut;
-          return { ok: ok2, ...tail4 ? { tail: tail4 } : {}, ...!ok2 && !container && windowsGitTransportFailure(r.output, this.gatePlatform) ? { gitTransport: true } : {} };
+          return { ok: ok2, ...tail4 ? { tail: tail4 } : {}, ...r.timedOut ? { timedOut: true } : {}, ...!ok2 && !container && windowsGitTransportFailure(r.output, this.gatePlatform) ? { gitTransport: true } : {} };
         } catch (error2) {
           return { notStarted: errText6(error2).slice(0, 300) };
         } finally {
