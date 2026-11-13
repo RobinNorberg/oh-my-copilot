@@ -1473,7 +1473,7 @@ class FactoryEngine {
 
   /** The gate-sandbox-incompatible park of a copied tree linkGateTree could not build (`why`). */
   private treeCopyPark(why: string): { name: string; reason: string } {
-    return { name: GATE_SANDBOX_INCOMPATIBLE_GATE, reason: `${why}; the run's gate trees are copies because ${GATE_TREE_COPY_WHY}. Free disk space or close the program holding the file, then rerun ${this.resume}. ${ACK_WARNING}` };
+    return { name: GATE_SANDBOX_INCOMPATIBLE_GATE, reason: `${why}; the run's gate trees are copies because ${GATE_TREE_COPY_WHY}. For an npm project, set factory.run.sandbox.isolation to "container" in your user config: the gates then run in a container with its own npm ci and need no copy. A full disk or a busy file can also be the cause: free space or close the program holding the file. Then rerun ${this.resume}. ${ACK_WARNING}` };
   }
 
   /**
