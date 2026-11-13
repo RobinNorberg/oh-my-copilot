@@ -269,6 +269,8 @@ export interface FactoryRunState {
   sandboxedGateHead?: string;
   /** The head a check last ran on WITHOUT any sandbox through the Windows git-transport fallback: such a run is never auto-merged. */
   gitTransportPlainHead?: string;
+  /** The head whose built-in prepare tests passed only because tests that fail on the base too were not counted (test-delta.ts): such a run is never auto-merged. */
+  testDeltaExcusedHead?: string;
   /**
    * The run's gate node_modules trees are copies of yours, not links: a base
    * calibration failed in the OS sandbox on Windows opening a package dir
@@ -654,6 +656,7 @@ function humanReviewShapeProblem(s: Record<string, unknown>): string | null {
   if (s.sandboxedPrepareHead !== undefined && (!isStr(s.sandboxedPrepareHead) || !HEX40.test(s.sandboxedPrepareHead))) return 'sandboxedPrepareHead';
   if (s.sandboxedGateHead !== undefined && (!isStr(s.sandboxedGateHead) || !HEX40.test(s.sandboxedGateHead))) return 'sandboxedGateHead';
   if (s.gitTransportPlainHead !== undefined && (!isStr(s.gitTransportPlainHead) || !HEX40.test(s.gitTransportPlainHead))) return 'gitTransportPlainHead';
+  if (s.testDeltaExcusedHead !== undefined && (!isStr(s.testDeltaExcusedHead) || !HEX40.test(s.testDeltaExcusedHead))) return 'testDeltaExcusedHead';
   if (s.gateTreeCopy !== undefined && s.gateTreeCopy !== true) return 'gateTreeCopy';
   // One admin dir name under <common>/worktrees (git makes it from the checkout's base name): no separator, nothing else.
   if (s.checkoutAdmin !== undefined && (!isStr(s.checkoutAdmin) || !/^[A-Za-z0-9._-]+$/.test(s.checkoutAdmin) || s.checkoutAdmin === '.' || s.checkoutAdmin === '..')) return 'checkoutAdmin';
