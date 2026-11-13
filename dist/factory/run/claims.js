@@ -41,7 +41,7 @@ import { repoIdentity } from '../../ship/config.js';
 import { TRUSTED_READ_ENV } from '../../ship/exec.js';
 import { FactorySafetyError, hardenedGitExec } from './exec.js';
 import { emptyHooksDir, EngineLedger } from './ledger.js';
-import { defaultOwnerDeps, describeOwner, FactoryBusyError, factoryStateDir, factoryStatePath, isOwnerRecord, ownerHolds, ownerRecord, ownerText, parseFactoryState, runLabel, TERMINAL_FACTORY_PHASES, verifyFactoryIntegrity, withOwnerFileLock, } from './state.js';
+import { defaultOwnerDeps, describeOwner, FactoryBusyError, FactoryStateError, factoryStateDir, factoryStatePath, isOwnerRecord, ownerHolds, ownerRecord, ownerText, parseFactoryState, runLabel, TERMINAL_FACTORY_PHASES, verifyFactoryIntegrity, withOwnerFileLock, } from './state.js';
 /**
  * The repository a claim is keyed on: the origin remote's URL (`git remote
  * get-url origin`, read-only, the same trusted origin the forge config is
@@ -227,8 +227,10 @@ function runPhase(root, key, ledgerDir) {
         const state = parseFactoryState(path, key, bytes.toString('utf8'));
         return verifyFactoryIntegrity(state) ? { phase: state.phase } : unreadable('it fails its integrity check');
     }
-    catch {
-        return unreadable('it does not parse');
+    catch (error) {
+        // The parser's own reason (bad JSON, another run's state, the malformed field), with the path the message already shows as "it".
+        const why = error instanceof FactoryStateError && error.message.startsWith(path) ? `it${error.message.slice(path.length)}` : 'it does not parse';
+        return unreadable(/^it is malformed /.test(why) ? `${why}; an omg of another version may have written it` : why);
     }
 }
 /**
