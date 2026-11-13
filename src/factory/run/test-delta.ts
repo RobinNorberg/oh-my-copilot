@@ -12,7 +12,11 @@
  * outlives the command (the job home is removed with the runtime). The engine
  * reads and removes the file right after the run. The base's report comes
  * from the trusted base calibration only; the head's report decides only the
- * head's own failures.
+ * head's own failures. The same holds for the Windows git-transport
+ * fallback: a head run in the gate container (its report read back from the
+ * container, file names under /work/src) is judged against the base's run
+ * in the same container, a plain head run against the base's plain run;
+ * never one place against another.
  */
 import { createHash, randomBytes } from 'node:crypto';
 import { closeSync, fstatSync, openSync, readSync, rmSync } from 'node:fs';
