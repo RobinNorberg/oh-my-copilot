@@ -24,6 +24,9 @@ const unsandboxed = { gateSandboxUserConfig: { factory: { run: { sandbox: { gate
 describe('local forge: gates -> prepare for a head that conflicts with the moved base', () => {
   it('a rerun in gates finds the head conflicting with the new base, prepares again and the conflict-fix lane resolves it', async () => {
     w = localWorld();
+    // The engine's own base merge commits in the prepare checkout (CI has no global git identity).
+    gitIn(w.root, 'config', 'user.name', 't');
+    gitIn(w.root, 'config', 'user.email', 't@example.invalid');
     // The first run parks in gates (the gate cannot start), at a head that merged cleanly then.
     w.gate = async () => ({ status: 127, stdout: '', stderr: '', timedOut: false, startError: 'npm is not on PATH' });
     const first = await runFactoryEngine(localOpts(w, lanesFor(w, [commitFile('README.md', 'lane side\n'), review('approve')]), unsandboxed));
