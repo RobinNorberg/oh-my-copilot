@@ -97,6 +97,14 @@ export interface FactoryLaneRecord {
    * other paths): run clean / reset read the note.
    */
   stopUnconfirmed?: boolean;
+  /**
+   * The tamper check of a lane the engine cancelled: `clean` (it compared and
+   * found nothing), `problems` (it found a change), `skipped` (the stop was not
+   * confirmed, the cancel failed, or no compare ran). Absent (older states):
+   * not known to be clean, so a human-merge check skips the run
+   * (human-merged.ts).
+   */
+  tamperCheck?: 'clean' | 'problems' | 'skipped';
   /** The session's last event the engine saw (ISO, refreshed at most once a minute); status and park text name it. */
   lastEventAt?: string;
   startedAt: string;
@@ -585,6 +593,7 @@ function shapeProblem(s: Record<string, unknown>): string | null {
     const sbx = x?.sandbox as Record<string, unknown> | undefined;
     return isStr(x?.id) && isStr(x.kind) && isStr(x.status) && isStr(x.startSha) && typeof x.maxCredits === 'number'
       && (x.stopUnconfirmed === undefined || typeof x.stopUnconfirmed === 'boolean')
+      && (x.tamperCheck === undefined || x.tamperCheck === 'clean' || x.tamperCheck === 'problems' || x.tamperCheck === 'skipped')
       && (sbx === undefined || (typeof sbx === 'object' && sbx !== null && isStr(sbx.mode) && isCount(sbx.unsandboxedCalls)
         && (sbx.writeNetwork === undefined || sbx.writeNetwork === 'none' || sbx.writeNetwork === 'registry')));
   })) return 'lanes';

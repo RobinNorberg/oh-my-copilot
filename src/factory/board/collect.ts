@@ -13,8 +13,9 @@
  * listed under `outside`.
  *
  * Everything goes through openReadForge: check's read guard with no marker,
- * so no tracker or forge write passes; the board writes nothing, not even
- * local state. `--no-check` skips the rules and reads the live stages with
+ * so no tracker or forge write passes. The one local write: a stopped run
+ * (cancelled, failed, parked) whose PR a human merged is recorded as merged
+ * first (src/factory/run/human-merged.ts; runFactoryBoard only). `--no-check` skips the rules and reads the live stages with
  * one batched `tracker.peekItems` (Azure DevOps), or viewItem per item.
  *
  * Exit codes: 0 shown; 1 an item could not be read; 2 usage; 5 incompatible
@@ -28,6 +29,8 @@ import { checkItems, plainText, type CheckResult } from '../check/score.js';
 import type { CheckBucket } from '../check/rules.js';
 import { PROGRESS_STAGES, type Forge, type ForgeItem, type ForgeKind, type ForgePeek, type ProgressStage, type ResolvedForgeConfig } from '../../forge/types.js';
 import { latestVerdict, readShipState } from '../../ship/state.js';
+import { forgePrStateReader, humanMergeLines, recordHumanMerges } from '../run/human-merged.js';
+import { defaultLedgerDir } from '../run/ledger.js';
 import { runCredits } from '../run/budget.js';
 import { FactorySafetyError } from '../run/exec.js';
 import {
@@ -102,7 +105,11 @@ export interface FactoryBoardOptions {
 }
 
 /** check's deps plus the clock (stale). */
-export type FactoryBoardDeps = Pick<FactoryCheckDeps, 'exec' | 'base' | 'trustedUser' | 'projectConfig' | 'createForge' | 'resolveAz' | 'out' | 'err'> & { now?: () => number };
+export type FactoryBoardDeps = Pick<FactoryCheckDeps, 'exec' | 'base' | 'trustedUser' | 'projectConfig' | 'createForge' | 'resolveAz' | 'out' | 'err'> & {
+  now?: () => number;
+  /** Engine ledger directory (default defaultLedgerDir()): a human merge is recorded only on a state that is the engine's last write. */
+  ledgerDir?: string;
+};
 
 const RUN_FILE = /^run-(\d+|heal-[0-9a-f]{8})\.json$/;
 const message = (error: unknown): string => plainText(error instanceof Error ? error.message : String(error));
@@ -404,6 +411,8 @@ export async function runFactoryBoard(o: FactoryBoardOptions, deps: FactoryBoard
   }
 
   const env = o.check === false ? null : checkEnvFor(exec, root, config, base, baseSha);
+  const now = deps.now ?? Date.now;
+  warnings.push(...humanMergeLines(recordHumanMerges(root, readRuns(root, []).runs, { readPrState: forgePrStateReader(forge, exec, root, config.repo.url), ledgerDir: deps.ledgerDir ?? defaultLedgerDir(), now: () => new Date(now()).toISOString() })).map((l) => `omg factory board: ${l}`));
   const board = collectBoard({ forge, config, root, ids, check: env, now: (deps.now ?? Date.now)(), warnings });
   if (forge.kind === 'local') {
     // The local backlog's working tree: an item not committed on the base is untrusted, and omg factory run cannot start it yet.

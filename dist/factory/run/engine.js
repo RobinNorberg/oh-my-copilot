@@ -87,6 +87,7 @@ import { ghCommentPr, ghCreateDraftPr, ghFindOpenPr, ghMarkReady, ghMergeView, g
 import { ghDependsOn, ghIssueComment, ghIssueJson, ghIssueView, ghViewItem, githubTracker } from '../../forge/github/tracker.js';
 import { isSatisfied } from '../check/score.js';
 import { outcomePosts, postedBefore } from './outcome.js';
+import { forgePrStateReader, humanMergeCandidate, laneTrustProblem, markMergedByHuman } from './human-merged.js';
 import { checkoutBranch, checkoutPath, checkoutWorker, defaultGateConfigLoader, FACTORY_CHECKOUT_TEAM, GATE_CACHE_DIRS, GATE_TREE_MARKER, gateTreeHasLinks, linkNodeModules, trustedNestedRels, unlinkNodeModules } from './prepare.js';
 import { baseWorkspacePatterns } from './workspace-tree.js';
 import { canTransition, createShipState, transition, latestVerdict, parseShipState, recordVerdict, shipStatePath, updateShipState, verifyShipIntegrity, } from '../../ship/state.js';
@@ -1532,6 +1533,20 @@ class FactoryEngine {
             return { exitCode: 1, phase: 'failed', state: existing, message: `the factory run state for ${this.what} fails its integrity check (edited outside omg factory run); the run is failed and is not resumed` };
         }
         if (existing && TERMINAL_FACTORY_PHASES.includes(existing.phase)) {
+            // A cancelled or failed run whose PR a human merged afterwards: recorded as merged (human-merged.ts).
+            if (humanMergeCandidate(existing) && !forgeResumeProblem(existing, this.o.forge?.config.kind ?? 'github', this.o.forge?.config.repo.url)) {
+                this.state = existing;
+                try {
+                    const healed = this.humanMergedFirst(existing);
+                    if (healed)
+                        return healed;
+                }
+                catch (error) {
+                    if (error instanceof StateTamperedError)
+                        return this.onTampered(error);
+                    throw error;
+                }
+            }
             let final = existing;
             // A crash after the terminal save and before its tracker write: write that stage once now.
             if (this.sync && existing.trackerStage !== trackerStageOf(existing) && !forgeResumeProblem(existing, this.o.forge?.config.kind ?? 'github', this.o.forge?.config.repo.url)) {
@@ -1614,6 +1629,12 @@ class FactoryEngine {
             }
             else {
                 this.state = existing;
+                // A parked run whose PR a human merged: recorded as merged before any lane resumes (prepare, gates and merge read the PR first anyway).
+                if (humanMergeCandidate(existing) && !['prepare', 'gates', 'merge'].includes(existing.phase)) {
+                    const healed = this.humanMergedFirst(existing);
+                    if (healed)
+                        return healed;
+                }
                 // A human looked at the gate; what they changed in the repo is the new baseline.
                 if (existing.gate)
                     this.ledger.setRecheck(undefined);
@@ -1663,6 +1684,44 @@ class FactoryEngine {
             throw error;
         }
         return this.loop();
+    }
+    /**
+     * A stopped run with a PR (human-merged.ts): the PR is read before anything resumes. Merged: the run is recorded
+     * merged (ship follows) and finishes, no lane starts. Closed unmerged: the run stops with a message, unchanged.
+     * Open, or a failed read (never taken as merged): null, the run goes on as before.
+     */
+    humanMergedFirst(existing) {
+        const pr = existing.pr;
+        const untrusted = laneTrustProblem(existing);
+        if (untrusted) {
+            this.o.warn?.(`omg factory run: not checked for a human merge: ${untrusted}`);
+            return null;
+        }
+        let state;
+        try {
+            state = this.forge ? forgePrStateReader(this.forge, this.exec, this.o.root, this.o.forge?.config.repo.url)(existing).state : String(this.prHeadState(pr).state);
+        }
+        catch (error) {
+            this.o.warn?.(`omg factory run: PR #${pr} could not be read to check for a human merge: ${errText(error)}`);
+            return null;
+        }
+        if (state === 'MERGED') {
+            this.save((x) => markMergedByHuman(x, this.iso()));
+            if (this.readShip(pr))
+                this.writeShip(pr, (cur) => (canTransition(cur.phase, 'merged') ? transition(cur, 'merged', `merged on ${this.forgeName} by a human after the factory run stopped`, this.iso()) : cur));
+            this.progress.emit('merged', 'done', `PR #${pr} merged by a human`, this.fields());
+            return this.loop();
+        }
+        // A cancelled or failed run already stops; only a parked run would resume.
+        if (state !== 'CLOSED' || !existing.gate)
+            return null;
+        return {
+            exitCode: EXIT_AWAITING_HUMAN,
+            phase: existing.phase,
+            state: existing,
+            gate: existing.gate,
+            message: `PR #${pr} of the factory run for ${this.what} was closed without merging, so the run (parked at awaiting-human: ${existing.gate.name}) was not resumed and no lane started. Reopen the PR and rerun ${this.resume}, or ${cancelCommand(this.key)}`,
+        };
     }
     /** Resume rules: a human gate is re-evaluated, a takeover is noted (running lanes are settled by settleLost). */
     resumed(s, tookOver) {
@@ -1776,7 +1835,7 @@ class FactoryEngine {
             const parked = setGate({
                 ...s,
                 elapsedMs: s.elapsedMs + this.tick(),
-                lanes: s.lanes.map((l) => (stopped.has(l.id) ? { ...l, status: 'cancelled', endedAt: at, usage: stopped.get(l.id), note: 'cancelled: engine state tampered' } : l)),
+                lanes: s.lanes.map((l) => (stopped.has(l.id) ? { ...l, status: 'cancelled', endedAt: at, usage: stopped.get(l.id), note: 'cancelled: engine state tampered', tamperCheck: 'skipped' } : l)),
             }, 'state-tampered', reason, at);
             try {
                 const { sealed, content } = overwriteFactoryState(this.o.root, this.key, parked);
@@ -2008,7 +2067,8 @@ class FactoryEngine {
             cancelRequested: true,
             // A confirmed stop replaces a stale "not confirmed" note (the wall-time path leaves one on a running lane).
             lanes: s.lanes.map((l) => (l.status === 'running' ? {
-                ...l, status: 'cancelled', endedAt: at, ...(usage.has(l.id) ? { usage: usage.get(l.id) } : {}),
+                // No compare runs here (the baselines were dropped above): the lane's tamper check is skipped.
+                ...l, status: 'cancelled', endedAt: at, tamperCheck: 'skipped', ...(usage.has(l.id) ? { usage: usage.get(l.id) } : {}),
                 ...(unconfirmed.has(l.id)
                     ? { note: 'cancelled; the cancel was not confirmed, so the lane may still run', stopUnconfirmed: true }
                     : { stopUnconfirmed: false, ...(l.note && /not confirmed|may still run/.test(l.note) ? { note: 'cancelled; the stop was confirmed' } : {}) }),
@@ -5473,6 +5533,7 @@ class FactoryEngine {
         let note;
         let usage = capUsage(maxCredits);
         let tampered = false;
+        let tamperCheck = 'skipped';
         let userTamper;
         try {
             const c = await this.o.lanes.cancel(remoteId);
@@ -5481,6 +5542,7 @@ class FactoryEngine {
                 settleHeal(usage.credits);
                 const { problems, after } = await this.importReady(() => this.laneProblems(kind, before, c.result, startRef, laneId), !laneSandboxEnforced(c.result.sandbox));
                 tampered = problems.length > 0;
+                tamperCheck = tampered ? 'problems' : 'clean';
                 // Review-483b L-c: the private layout routes a change found in YOUR repository through laneTampered (quarantine + hold), as runLane does.
                 if (this.privateRun() && problems.some(isUserRepoProblem))
                     userTamper = { problems, ...(after ? { after } : {}), ...(this.laneUserBefore(laneId, c.result.sandbox) ? { userBase: this.laneUserBefore(laneId, c.result.sandbox) } : {}) };
@@ -5497,7 +5559,7 @@ class FactoryEngine {
             note = `cancelled; the cancel failed (${errText(error)}), so the tamper check was skipped`;
         }
         this.ledger.dropBaseline(laneId);
-        this.updateLane(laneId, { status: 'cancelled', endedAt: this.iso(), usage, note, ...(tampered && kind === 'review' ? { verdict: 'invalid' } : {}) });
+        this.updateLane(laneId, { status: 'cancelled', endedAt: this.iso(), usage, note, tamperCheck, ...(tampered && kind === 'review' ? { verdict: 'invalid' } : {}) });
         if (tampered)
             this.o.warn?.(`omg factory run: lane ${laneId} ${note}`);
         // The quarantine and hold come before the cancel finishes (the cancel flag still ends the run at the next step).
@@ -5729,6 +5791,9 @@ class FactoryEngine {
             await this.laneTampered(id, kind, problems, before, after, userBase);
             return { kind: 'stopped' };
         }
+        // A lane that ended cancelled on its own passed the same compare: its tamper check is clean (human-merged.ts reads it).
+        if (status === 'cancelled')
+            this.updateLane(id, { tamperCheck: 'clean' });
         this.ledger.setRecheck({ laneId: id, kind, snapshot: after });
         return { kind: 'done', result, lane: this.state.lanes.find((l) => l.id === id), after };
     }

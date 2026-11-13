@@ -102,6 +102,27 @@ describe('omg factory run CLI', () => {
     expect(out.join('\n')).toMatch(/cancel requested/);
   }, ENGINE_FLOW_TIMEOUT_MS);
 
+  it('status records a stopped run whose PR a human merged (forge read), and reads an open PR only', async () => {
+    lanes = new FakeLanes(h.root, [commitFile('a.ts'), review('approve')]);
+    expect(await cli(deps(), String(ISSUE))).toBe(0);
+    const withForge = deps({ forge: () => resolveForgeConfig(undefined, undefined, undefined, 'https://github.com/o/r.git') });
+    out = [];
+    expect(await cli(withForge, 'status', String(ISSUE), '--json')).toBe(0);
+    expect(out.join('\n')).not.toMatch(/not checked/);
+    expect(JSON.parse(out.join('\n'))).toMatchObject({ phase: 'merge', gate: { name: 'merge' } });
+    h.gh.merged = true;
+    out = [];
+    expect(await cli(withForge, 'status')).toBe(0);
+    expect(out.join('\n')).toContain(`run #${ISSUE}: PR #42 was merged by a human after awaiting-human: merge; recorded the run as merged`);
+    expect(readFactoryState(h.root, ISSUE)).toMatchObject({ phase: 'merged' });
+    // The engine reads its own record afterwards: the run is merged, nothing resumes.
+    lanes = new FakeLanes(h.root, []);
+    out = [];
+    expect(await cli(deps(), String(ISSUE))).toBe(0);
+    expect(out.join('\n')).toMatch(/is merged/);
+    expect(lanes.started).toHaveLength(0);
+  }, ENGINE_FLOW_TIMEOUT_MS);
+
   it('a gate other than merge exits 4', async () => {
     h.gh.issue.body = 'no plan';
     lanes = new FakeLanes(h.root, []);

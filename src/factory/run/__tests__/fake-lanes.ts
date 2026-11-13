@@ -395,7 +395,7 @@ export function harness(prefix = 'omg-factory-run-'): Harness {
       const remote = bareRef(bare, `refs/heads/${h.gh.branch}`);
       const base = bareRef(bare, 'refs/heads/dev');
       const headRefOid = h.gh.headSequence.shift() ?? h.gh.headOverride ?? remote;
-      return ok(JSON.stringify({ number: PR, headRefOid, state: h.gh.merged ? 'MERGED' : 'OPEN', isDraft: !h.gh.ready, baseRefName: 'dev', baseRefOid: h.gh.baseRefOid ?? base }));
+      return ok(JSON.stringify({ number: PR, headRefOid, state: h.gh.merged ? 'MERGED' : 'OPEN', isDraft: !h.gh.ready, baseRefName: 'dev', baseRefOid: h.gh.baseRefOid ?? base, headRefName: h.gh.branch, url: `${REPO_URL}/pull/${PR}` }));
     }
     if (key === `gh pr ready ${PR}`) {
       h.gh.ready = true;

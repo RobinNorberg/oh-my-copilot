@@ -1,6 +1,8 @@
 /**
  * `omg factory dashboard`: a static HTML page (or --json) of every factory run
- * of this repository, from local state only. Logic in src/factory/dashboard/.
+ * of this repository, from local state. A stopped run with a PR is first
+ * checked on the forge: a PR a human merged records the run as merged
+ * (src/factory/run/human-merged.ts). Logic in src/factory/dashboard/.
  */
 
 import { execFileSync } from 'child_process';
@@ -17,6 +19,8 @@ export interface FactoryDashboardDeps {
   out: (line: string) => void;
   err: (line: string) => void;
   now?: () => Date;
+  /** Records the stopped runs whose PR a human merged (human-merged.ts) before the page is collected; returns lines for stderr. */
+  humanMerges?: (root: string) => string[];
 }
 
 const defaultRoot = (): string => execFileSync('git', ['rev-parse', '--show-toplevel'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true }).trim();
@@ -25,7 +29,7 @@ export const defaultDashboardDeps: FactoryDashboardDeps = { root: defaultRoot, o
 
 export function factoryDashboardCommand(deps: FactoryDashboardDeps = defaultDashboardDeps): Command {
   return new Command('dashboard')
-    .description('One static HTML page of all factory runs, parks, time per phase, credits per role and day, and bench results (local state only)')
+    .description('One static HTML page of all factory runs, parks, time per phase, credits per role and day, and bench results (local state; the forge is read only for a stopped run with a PR, to record a human merge)')
     .option('--out <file>', 'write the HTML page to this file (default: print it)')
     .option('--json', 'emit the same data as JSON (schemaVersion 1)')
     .option('--since <date>', 'only runs and lanes on or after this date (2026-11-01 means local midnight; days are in local time)')
@@ -39,6 +43,7 @@ export function factoryDashboardCommand(deps: FactoryDashboardDeps = defaultDash
         return;
       }
       try {
+        for (const line of deps.humanMerges?.(root) ?? []) deps.err(line);
         const data = collectDashboard(root, { since: o.since, now: deps.now });
         const body = o.json ? JSON.stringify(data, null, 2) : renderDashboardHtml(data);
         if (o.out) {
