@@ -509,6 +509,7 @@ export function withImportLock(root, layout, label, fn, held) {
  * seed fetch of a big repository is not stolen (review-483 L9).
  */
 export function withSeedLock(layout, fn) {
+    // The 60 s window only reaps DEAD holders (file-lock: stale = old AND pid dead), so the ~120 s bounded ls-remote + fetch hold is safe (#509).
     return withFileLockSync(join(layout.repoDir, 'import.lock'), fn, { timeoutMs: IMPORT_LOCK_WAIT_MS, staleLockMs: 60_000 });
 }
 /** Remove the `<repoDir>/.trash-*` a failed removeRunDir left (the SLUG pattern cannot name one). */

@@ -1,8 +1,10 @@
 import { spawnSync } from 'node:child_process';
-import { appendFileSync, chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { appendFileSync, chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { withFileLockSync } from '../../../lib/file-lock.js';
+import { withSeedLock } from '../private-run.js';
 import { defaultExec } from '../../../ship/exec.js';
 import { protectedChanges } from '../../../ship/merge.js';
 import { LANE_PROTECTED_PATHS } from '../lane-commit.js';
@@ -720,5 +722,28 @@ describe('lockfileUnchanged', () => {
         const empty = g(dir, [`--git-dir=${p.gitDir}`, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit-tree', emptyTree, '-m', 'empty']);
         expect(lockfileUnchanged(p, empty, empty, ctx)).toEqual({ policy: 'park', lockfiles: [], changed: [] });
     }, T);
+});
+describe('seed lock staleness (#509)', () => {
+    // withSeedLock waits IMPORT_LOCK_WAIT_MS (15 min), so the live-holder case drives withFileLockSync with the
+    // same 60 s stale window and a short timeout; the dead-holder case runs through withSeedLock itself.
+    const STALE_MS = 60_000;
+    const age = (f) => { const t = new Date(Date.now() - 10 * STALE_MS); utimesSync(f, t, t); };
+    it('does not reap a lock older than the stale window while its holder pid is alive', () => {
+        const lock = join(dir, 'live', 'import.lock');
+        mkdirSync(dirname(lock), { recursive: true });
+        writeFileSync(lock, JSON.stringify({ pid: process.pid, timestamp: Date.now() }));
+        age(lock);
+        expect(() => withFileLockSync(lock, () => 'took', { timeoutMs: 200, retryDelayMs: 20, staleLockMs: STALE_MS })).toThrow(/Failed to acquire/);
+        expect(existsSync(lock)).toBe(true);
+    });
+    it('takes over a lock older than the stale window whose holder pid is dead', () => {
+        const dead = spawnSync(process.execPath, ['-e', '0']).pid;
+        const lay = privateRunLayout(join(dir, 'fw'), 'abcdef01', 'issue-1');
+        const lock = join(lay.repoDir, 'import.lock');
+        mkdirSync(lay.repoDir, { recursive: true });
+        writeFileSync(lock, JSON.stringify({ pid: dead, timestamp: Date.now() }));
+        age(lock);
+        expect(withSeedLock(lay, () => 'took')).toBe('took');
+    });
 });
 //# sourceMappingURL=private-store.test.js.map
