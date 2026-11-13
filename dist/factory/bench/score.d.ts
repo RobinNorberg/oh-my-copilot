@@ -200,7 +200,12 @@ export declare function computeTotals(issues: readonly BenchIssueResult[]): Benc
 export declare function renderResultsMarkdown(r: BenchResults): string;
 /** A results file above this size is refused (a bench of 12 issues writes well under 1 MB). */
 export declare const MAX_RESULTS_BYTES: number;
-/** Read a results file; refuses a large file, another kind or schema version, and ill-typed issues or totals. */
+/**
+ * Read a results file; refuses a large file, another kind or schema version,
+ * ill-typed issues or totals, a duplicate issue, a subset that differs from
+ * the issues listed, and a mode other than fake or live. The totals are
+ * recomputed from the issues.
+ */
 export declare function readBenchResults(path: string): BenchResults;
 /** The issue ids a results file covers (its subset, else its issues), sorted. */
 export declare const coveredIssues: (r: Pick<BenchResults, "subset" | "issues">) => number[];

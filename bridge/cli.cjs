@@ -153383,14 +153383,32 @@ function readBenchResults(path30) {
   for (const k of ["requestsPerMergedPark", "trapContainmentRate"]) {
     if (t[k] !== null && !isNum(t[k])) throw new Error(`${path30}: totals.${k} is not a number or null`);
   }
+  const ids2 = /* @__PURE__ */ new Set();
   r.issues.forEach((i, n) => {
     const x = i;
     if (!x || typeof x !== "object" || !Number.isSafeInteger(x.id) || typeof x.slug !== "string" || typeof x.outcome !== "string" || typeof x.pass !== "boolean") {
       throw new Error(`${path30}: issues[${n}] needs a numeric id, a slug, an outcome and a pass verdict`);
     }
+    if (ids2.has(x.id)) throw new Error(`${path30}: issue ${String(x.id)} is listed twice`);
+    ids2.add(x.id);
+    for (const k of ["premiumRequests", "credits", "wallMs"]) {
+      if (!isNum(x[k]) || x[k] < 0) throw new Error(`${path30}: issues[${n}].${k} is not a number of 0 or more`);
+    }
+    const c = x.containment;
+    if (c !== null && !(c && typeof c === "object" && typeof c.trap === "string" && typeof c.contained === "boolean")) {
+      throw new Error(`${path30}: issues[${n}].containment is neither null nor a trap with a contained verdict`);
+    }
+    const p = x.park;
+    if (p !== void 0 && !(p && typeof p === "object" && typeof p.name === "string")) throw new Error(`${path30}: issues[${n}].park has no name`);
   });
-  if (r.subset !== void 0 && r.subset !== null && !(Array.isArray(r.subset) && r.subset.every((id) => Number.isSafeInteger(id)))) throw new Error(`${path30}: subset is not a list of issue ids`);
-  if (typeof r.mode !== "string" || typeof r.startedAt !== "string" || !isNum(r.fixtureVersion)) throw new Error(`${path30}: results without mode, startedAt or fixtureVersion`);
+  if (r.subset !== void 0 && r.subset !== null) {
+    const sorted = (xs) => [...xs].sort((a, b) => a - b).join(",");
+    if (!(Array.isArray(r.subset) && r.subset.every((id) => Number.isSafeInteger(id)))) throw new Error(`${path30}: subset is not a list of issue ids`);
+    if (sorted(r.subset) !== sorted([...ids2])) throw new Error(`${path30}: subset ${sorted(r.subset)} does not match the issues it lists (${sorted([...ids2]) || "none"})`);
+  }
+  if (r.mode !== "fake" && r.mode !== "live") throw new Error(`${path30}: mode ${JSON.stringify(r.mode)} is neither fake nor live`);
+  if (typeof r.startedAt !== "string" || !isNum(r.fixtureVersion)) throw new Error(`${path30}: results without startedAt or fixtureVersion`);
+  r.totals = computeTotals(r.issues);
   return r;
 }
 function compareResults2(a, b, names = ["a", "b"], o = {}) {
@@ -153449,6 +153467,12 @@ function benchRegressions(baseline, current, o = {}) {
       regressions.push({ kind: "issue-fails", issue: i.id, detail: `#${i.id} ${cell(i.slug)}: passed in the baseline, fails now (${cell(i.outcome)})` });
     }
   }
+  if (!o.allowSubsetDiff) {
+    const now2 = new Set(current.issues.map((i) => i.id));
+    for (const i of baseline.issues) {
+      if (i.pass && !now2.has(i.id)) regressions.push({ kind: "issue-fails", issue: i.id, detail: `#${i.id} ${cell(i.slug)}: passed in the baseline, absent from the results now` });
+    }
+  }
   const tb = baseline.totals;
   const tc = current.totals;
   if (tc.trapsContained < tb.trapsContained) regressions.push({ kind: "traps-contained-down", detail: `traps contained: ${tb.trapsContained} -> ${tc.trapsContained}` });
@@ -153457,7 +153481,8 @@ function benchRegressions(baseline, current, o = {}) {
   if (baseline.mode !== current.mode) notes.push(`requests per merged park not compared: ${baseline.mode} baseline vs ${current.mode} results`);
   else if (tb.requestsPerMergedPark === null || tc.requestsPerMergedPark === null) notes.push("requests per merged park not compared: a side has no merged park");
   else if (tc.requestsPerMergedPark > tb.requestsPerMergedPark * (1 + tolerance / 100)) {
-    regressions.push({ kind: "requests-up", detail: `requests per merged park: ${tb.requestsPerMergedPark} -> ${tc.requestsPerMergedPark} (over the +${tolerance}% tolerance)` });
+    const why = tb.requestsPerMergedPark === 0 ? "the baseline used no premium request, so any request is over the tolerance" : `over the +${tolerance}% tolerance`;
+    regressions.push({ kind: "requests-up", detail: `requests per merged park: ${tb.requestsPerMergedPark} -> ${tc.requestsPerMergedPark} (${why})` });
   }
   return { regressions, notes };
 }

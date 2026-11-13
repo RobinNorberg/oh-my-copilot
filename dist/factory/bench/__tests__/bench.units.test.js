@@ -191,6 +191,41 @@ describe('scoring', () => {
         writeFileSync(path, ' '.repeat(MAX_RESULTS_BYTES + 1));
         expect(() => readBenchResults(path)).toThrow(/over the \d+ byte limit/);
     });
+    it('M1: readBenchResults validates the issues and recomputes the totals', () => {
+        const path = join(dir, 'r.json');
+        const all = Array.from({ length: 12 }, (_, n) => issueResult({ id: n + 1 }));
+        // Hand-trimmed: claims all 12, lists 10.
+        writeFileSync(path, JSON.stringify(results(all.slice(0, 10), { subset: all.map((i) => i.id) })));
+        expect(() => readBenchResults(path)).toThrow(/subset 1,2,3,4,5,6,7,8,9,10,11,12 does not match the issues it lists \(1,2,3,4,5,6,7,8,9,10\)/);
+        writeFileSync(path, JSON.stringify(results(all.slice(0, 3), { subset: [3, 1, 2] })));
+        expect(readBenchResults(path).subset).toEqual([3, 1, 2]);
+        writeFileSync(path, JSON.stringify(results([issueResult({ id: 1 }), issueResult({ id: 1 })])));
+        expect(() => readBenchResults(path)).toThrow(/issue 1 is listed twice/);
+        for (const [k, v] of [['premiumRequests', -1], ['credits', '2'], ['wallMs', null]]) {
+            writeFileSync(path, JSON.stringify(results([issueResult({ [k]: v })])));
+            expect(() => readBenchResults(path)).toThrow(new RegExp(`issues\\[0\\]\\.${k} is not a number of 0 or more`));
+        }
+        // Tampered totals: the file says 12 of 12 passed at 0 requests; the issues say otherwise.
+        const real = results([issueResult({ id: 1 }), issueResult({ id: 2, pass: false, outcome: 'park:gates-failed', premiumRequests: 7 })]);
+        writeFileSync(path, JSON.stringify({ ...real, totals: { ...real.totals, issues: 12, passed: 12, passRate: 1, premiumRequests: 0, requestsPerMergedPark: 0 } }));
+        expect(readBenchResults(path).totals).toEqual(computeTotals(real.issues));
+    });
+    it('L2/L3: readBenchResults refuses a malformed containment or an unknown mode', () => {
+        const path = join(dir, 'r.json');
+        for (const containment of [{ trap: 'secret', contained: 'false', detail: '' }, { contained: true }, 'yes', []]) {
+            writeFileSync(path, JSON.stringify(results([issueResult({ containment })])));
+            expect(() => readBenchResults(path)).toThrow(/issues\[0\]\.containment is neither null nor a trap/);
+        }
+        const { containment: _c, ...noContainment } = issueResult({});
+        writeFileSync(path, JSON.stringify(results([noContainment])));
+        expect(() => readBenchResults(path)).toThrow(/containment is neither null/);
+        writeFileSync(path, JSON.stringify(results([issueResult({ containment: { trap: 'secret', contained: false, detail: 'x' } })])));
+        expect(readBenchResults(path).totals.traps).toBe(1);
+        for (const mode of ['Live', 'dry', 1]) {
+            writeFileSync(path, JSON.stringify(results([issueResult({})], { mode })));
+            expect(() => readBenchResults(path)).toThrow(/mode .* is neither fake nor live/);
+        }
+    });
     it('compare refuses results of different issue subsets unless allowed', () => {
         const a = results([issueResult({ id: 1 }), issueResult({ id: 2 })]);
         const b = results([issueResult({ id: 2 })], { subset: [2] });
@@ -251,6 +286,18 @@ describe('regression verdict (benchRegressions)', () => {
         const sub = results(base().filter((i) => i.id !== 3), { subset: [2, 9, 10] });
         expect(() => benchRegressions(a, sub)).toThrow(/cover different issues \(2,3,9,10 vs 2,9,10\)/);
         expect(kinds(benchRegressions(a, sub, { allowSubsetDiff: true }))).toEqual(['passed-down']);
+    });
+    it('a baseline-passing issue absent from the current results is issue-fails (also when the subsets claim to match)', () => {
+        // Objects built in memory, not read: the subset check in readBenchResults does not run.
+        const sub = results(base().filter((i) => i.id !== 3), { subset: [2, 3, 9, 10] });
+        const v = benchRegressions(results(base()), sub);
+        expect(kinds(v)).toEqual(['issue-fails#3', 'passed-down']);
+        expect(v.regressions[0].detail).toBe('#3 fix-slugify: passed in the baseline, absent from the results now');
+    });
+    it('a zero baseline of requests per merged park reads sensibly', () => {
+        const free = results(base().map((i) => ({ ...i, premiumRequests: 0 })), { mode: 'live' });
+        const v = benchRegressions(free, results(base(), { mode: 'live' }));
+        expect(v.regressions[0].detail).toBe('requests per merged park: 0 -> 2 (the baseline used no premium request, so any request is over the tolerance)');
     });
     it('reads results written before the declined verdict (no trapsDeclined, no trapVerdict)', () => {
         const old = results(base().map(({ trapVerdict: _v, ...i }) => i));

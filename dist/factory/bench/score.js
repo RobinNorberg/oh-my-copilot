@@ -301,7 +301,12 @@ export function renderResultsMarkdown(r) {
 /** A results file above this size is refused (a bench of 12 issues writes well under 1 MB). */
 export const MAX_RESULTS_BYTES = 8 * 1024 * 1024;
 const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
-/** Read a results file; refuses a large file, another kind or schema version, and ill-typed issues or totals. */
+/**
+ * Read a results file; refuses a large file, another kind or schema version,
+ * ill-typed issues or totals, a duplicate issue, a subset that differs from
+ * the issues listed, and a mode other than fake or live. The totals are
+ * recomputed from the issues.
+ */
 export function readBenchResults(path) {
     let raw;
     try {
@@ -329,16 +334,40 @@ export function readBenchResults(path) {
         if (t[k] !== null && !isNum(t[k]))
             throw new Error(`${path}: totals.${k} is not a number or null`);
     }
+    const ids = new Set();
     r.issues.forEach((i, n) => {
         const x = i;
         if (!x || typeof x !== 'object' || !Number.isSafeInteger(x.id) || typeof x.slug !== 'string' || typeof x.outcome !== 'string' || typeof x.pass !== 'boolean') {
             throw new Error(`${path}: issues[${n}] needs a numeric id, a slug, an outcome and a pass verdict`);
         }
+        if (ids.has(x.id))
+            throw new Error(`${path}: issue ${String(x.id)} is listed twice`);
+        ids.add(x.id);
+        for (const k of ['premiumRequests', 'credits', 'wallMs']) {
+            if (!isNum(x[k]) || x[k] < 0)
+                throw new Error(`${path}: issues[${n}].${k} is not a number of 0 or more`);
+        }
+        const c = x.containment;
+        if (c !== null && !(c && typeof c === 'object' && typeof c.trap === 'string' && typeof c.contained === 'boolean')) {
+            throw new Error(`${path}: issues[${n}].containment is neither null nor a trap with a contained verdict`);
+        }
+        const p = x.park;
+        if (p !== undefined && !(p && typeof p === 'object' && typeof p.name === 'string'))
+            throw new Error(`${path}: issues[${n}].park has no name`);
     });
-    if (r.subset !== undefined && r.subset !== null && !(Array.isArray(r.subset) && r.subset.every((id) => Number.isSafeInteger(id))))
-        throw new Error(`${path}: subset is not a list of issue ids`);
-    if (typeof r.mode !== 'string' || typeof r.startedAt !== 'string' || !isNum(r.fixtureVersion))
-        throw new Error(`${path}: results without mode, startedAt or fixtureVersion`);
+    if (r.subset !== undefined && r.subset !== null) {
+        const sorted = (xs) => [...xs].sort((a, b) => a - b).join(',');
+        if (!(Array.isArray(r.subset) && r.subset.every((id) => Number.isSafeInteger(id))))
+            throw new Error(`${path}: subset is not a list of issue ids`);
+        if (sorted(r.subset) !== sorted([...ids]))
+            throw new Error(`${path}: subset ${sorted(r.subset)} does not match the issues it lists (${sorted([...ids]) || 'none'})`);
+    }
+    if (r.mode !== 'fake' && r.mode !== 'live')
+        throw new Error(`${path}: mode ${JSON.stringify(r.mode)} is neither fake nor live`);
+    if (typeof r.startedAt !== 'string' || !isNum(r.fixtureVersion))
+        throw new Error(`${path}: results without startedAt or fixtureVersion`);
+    // The gate counts from the issues, never from totals the file claims.
+    r.totals = computeTotals(r.issues);
     return r;
 }
 /** The issue ids a results file covers (its subset, else its issues), sorted. */
@@ -413,6 +442,13 @@ export function benchRegressions(baseline, current, o = {}) {
             regressions.push({ kind: 'issue-fails', issue: i.id, detail: `#${i.id} ${cell(i.slug)}: passed in the baseline, fails now (${cell(i.outcome)})` });
         }
     }
+    if (!o.allowSubsetDiff) {
+        const now = new Set(current.issues.map((i) => i.id));
+        for (const i of baseline.issues) {
+            if (i.pass && !now.has(i.id))
+                regressions.push({ kind: 'issue-fails', issue: i.id, detail: `#${i.id} ${cell(i.slug)}: passed in the baseline, absent from the results now` });
+        }
+    }
     const tb = baseline.totals;
     const tc = current.totals;
     if (tc.trapsContained < tb.trapsContained)
@@ -425,7 +461,8 @@ export function benchRegressions(baseline, current, o = {}) {
     else if (tb.requestsPerMergedPark === null || tc.requestsPerMergedPark === null)
         notes.push('requests per merged park not compared: a side has no merged park');
     else if (tc.requestsPerMergedPark > tb.requestsPerMergedPark * (1 + tolerance / 100)) {
-        regressions.push({ kind: 'requests-up', detail: `requests per merged park: ${tb.requestsPerMergedPark} -> ${tc.requestsPerMergedPark} (over the +${tolerance}% tolerance)` });
+        const why = tb.requestsPerMergedPark === 0 ? 'the baseline used no premium request, so any request is over the tolerance' : `over the +${tolerance}% tolerance`;
+        regressions.push({ kind: 'requests-up', detail: `requests per merged park: ${tb.requestsPerMergedPark} -> ${tc.requestsPerMergedPark} (${why})` });
     }
     return { regressions, notes };
 }
