@@ -272,6 +272,13 @@ export interface FactoryRunState {
   /** The head whose built-in prepare tests passed only because tests that fail on the base too were not counted (test-delta.ts): such a run is never auto-merged. */
   testDeltaExcusedHead?: string;
   /**
+   * The PR's code ran WITHOUT any sandbox on your host at least once in this
+   * run (factory.run.sandbox.gates "unsandboxed", or the Windows
+   * git-transport fallback's plain run): a plain base calibration made from
+   * then on may be the head's doing (review-550 M1).
+   */
+  plainHeadRan?: true;
+  /**
    * The run's gate node_modules trees are copies of yours, not links: a base
    * calibration failed in the OS sandbox on Windows opening a package dir
    * through a junction (prepare.ts GATE_TREE_COPY_WHY). Optional: older state
@@ -322,8 +329,10 @@ export interface FactoryRunState {
    * dir through the gate tree's junction (the engine then copies the tree).
    * `tests`: the built-in vitest check's per-test result on the base
    * (test-delta.ts), which the head's failures are judged against.
+   * `beforePlainHead`: a plain calibration made before the PR's code ran
+   * plainly in this run; only such a one may excuse a plain head's tests.
    */
-  gateCalibration?: Record<string, { ok: boolean; tail?: string; timedOut?: true; gitTransport?: true; junctionRead?: true; tests?: VitestRunSummary }>;
+  gateCalibration?: Record<string, { ok: boolean; tail?: string; timedOut?: true; gitTransport?: true; junctionRead?: true; tests?: VitestRunSummary; beforePlainHead?: true }>;
   /** The Copilot coding agent session of an issue run whose implementer is the agent (coding-agent-lane.ts); sealed, shape-checked on load. */
   codingAgent?: CodingAgentRunRecord;
   /** Human-gate comments already posted (`<gate>@<sha12>` per target), so a rerun does not repeat them. */
@@ -657,6 +666,7 @@ function humanReviewShapeProblem(s: Record<string, unknown>): string | null {
   if (s.sandboxedGateHead !== undefined && (!isStr(s.sandboxedGateHead) || !HEX40.test(s.sandboxedGateHead))) return 'sandboxedGateHead';
   if (s.gitTransportPlainHead !== undefined && (!isStr(s.gitTransportPlainHead) || !HEX40.test(s.gitTransportPlainHead))) return 'gitTransportPlainHead';
   if (s.testDeltaExcusedHead !== undefined && (!isStr(s.testDeltaExcusedHead) || !HEX40.test(s.testDeltaExcusedHead))) return 'testDeltaExcusedHead';
+  if (s.plainHeadRan !== undefined && s.plainHeadRan !== true) return 'plainHeadRan';
   if (s.gateTreeCopy !== undefined && s.gateTreeCopy !== true) return 'gateTreeCopy';
   // One admin dir name under <common>/worktrees (git makes it from the checkout's base name): no separator, nothing else.
   if (s.checkoutAdmin !== undefined && (!isStr(s.checkoutAdmin) || !/^[A-Za-z0-9._-]+$/.test(s.checkoutAdmin) || s.checkoutAdmin === '.' || s.checkoutAdmin === '..')) return 'checkoutAdmin';
@@ -665,7 +675,8 @@ function humanReviewShapeProblem(s: Record<string, unknown>): string | null {
     const e = v as Record<string, unknown> | null;
     return HEX64.test(k) && typeof e === 'object' && e !== null && typeof e.ok === 'boolean' && (e.tail === undefined || isStr(e.tail)) && (e.gitTransport === undefined || e.gitTransport === true) && (e.timedOut === undefined || e.timedOut === true)
       && (e.junctionRead === undefined || e.junctionRead === true) && (e.tests === undefined || vitestSummaryShapeOk(e.tests))
-      && Object.keys(e).every((x) => x === 'ok' || x === 'tail' || x === 'timedOut' || x === 'gitTransport' || x === 'junctionRead' || x === 'tests');
+      && (e.beforePlainHead === undefined || e.beforePlainHead === true)
+      && Object.keys(e).every((x) => x === 'ok' || x === 'tail' || x === 'timedOut' || x === 'gitTransport' || x === 'junctionRead' || x === 'tests' || x === 'beforePlainHead');
   }))) return 'gateCalibration';
   const lanes = s.lanes as Array<Record<string, unknown>>;
   if (!lanes.every((l) => {

@@ -280,15 +280,66 @@ describe('the same per-test verdict in the git-transport fallback\'s gate contai
     const out = await runFactoryEngine(fallbackOpts(s.run, host, p.gate, (m) => warnings.push(m)));
     expect(out.gate?.name, out.message).toBe('merge');
     const vitest = p.runs.filter((r) => r.argv[1] === VITEST_SCRIPT);
-    expect(vitest.map((r) => basename(r.cwd).startsWith('base-'))).toEqual([false, true]);
+    // M1 (review-550): the base runs plainly BEFORE the head's plain run, so the head's code cannot have touched it.
+    expect(vitest.map((r) => basename(r.cwd).startsWith('base-'))).toEqual([true, false]);
     for (const r of vitest) expect(r.argv.some((a) => a.startsWith(`--outputFile=${r.cwd}`))).toBe(true);
     // No report file is left in the head's checkout.
-    expect(readdirSync(vitest[0].cwd).filter((f) => f.startsWith('.omg-vitest-report-'))).toEqual([]);
+    expect(readdirSync(vitest[1].cwd).filter((f) => f.startsWith('.omg-vitest-report-'))).toEqual([]);
     expect(warnings.join('\n')).toMatch(/1 test\(s\) fail in a plain run \(no sandbox\) on the base [0-9a-f]{12} too and were not counted/);
     const state = readFactoryState(w.root, LOCAL_ISSUE)!;
     expect(state.testDeltaExcusedHead).toMatch(/^[0-9a-f]{40}$/);
     expect(state.gitTransportPlainHead).toBe(state.testDeltaExcusedHead);
+    expect(state.plainHeadRan).toBe(true);
+    expect(Object.values(state.gateCalibration ?? {}).filter((c) => c.beforePlainHead)).toEqual([expect.objectContaining({ ok: false, beforePlainHead: true })]);
   }, MULTI_RUN_MS);
+
+  it('M1: a plain base calibration made after the head ran plainly is never compared test by test: today\'s park, named', async () => {
+    w = vitestWorld();
+    const { sh, host } = win32();
+    const p = plainGate({ [KILL]: 'failed', plans: 'passed' }, { [KILL]: 'failed', plans: 'passed' });
+    // The base's first plain run (before the head's) cannot start; the one after the head's plain failure runs.
+    let baseRuns = 0;
+    const gate: LocalGateRunner = async (argv, cwd, ...rest) => {
+      if (argv[1] === VITEST_SCRIPT && basename(cwd).startsWith('base-') && (baseRuns += 1) === 1) return { status: 1, stdout: '', stderr: '', timedOut: false, startError: 'spawn EBUSY' };
+      return p.gate(argv, cwd, ...rest);
+    };
+    const out = await runFactoryEngine(fallbackOpts(fallbackSandbox(sh, null).run, host, gate, () => undefined));
+    expect(out.gate?.name, out.message).toBe(GATE_SANDBOX_INCOMPATIBLE_GATE);
+    expect(out.gate?.reason).toContain('Not compared test by test: the base ran plainly after the PR\'s code had run plainly');
+    const vitest = p.runs.filter((r) => r.argv[1] === VITEST_SCRIPT);
+    expect(vitest.map((r) => basename(r.cwd).startsWith('base-'))).toEqual([false, true]);
+    const state = readFactoryState(w.root, LOCAL_ISSUE)!;
+    expect(state.testDeltaExcusedHead).toBeUndefined();
+    expect(Object.values(state.gateCalibration ?? {}).some((c) => c.beforePlainHead)).toBe(false);
+  }, MULTI_RUN_MS);
+
+  it('L1: a base that kept a per-test report in the container is not a sticky container failure: the second head runs in the container again', async () => {
+    w = vitestWorld();
+    const { sh, host } = win32();
+    let heads = 0;
+    const reqs: SandboxRunRequest[] = [];
+    const run: SandboxRunner = async (req) => {
+      reqs.push(req);
+      if (req.exe === sh) return { ran: true, status: 0xc0000142, output: '', timedOut: false };
+      if (req.args[0] !== VITEST_SCRIPT) return PASS;
+      if (!req.container) return { ran: true, status: 1, output: TRANSPORT_OUT, timedOut: false };
+      if (req.purpose === 'calibrate') return containerResult(req, { [KILL]: 'failed', plans: 'passed' });
+      // The first head breaks `plans` (a ci-fix lane), the second one only fails the base's test.
+      return containerResult(req, (heads += 1) === 1 ? { [KILL]: 'failed', plans: 'failed' } : { [KILL]: 'failed', plans: 'passed' });
+    };
+    const p = plainGate({}, {});
+    const warnings: string[] = [];
+    const lanes = lanesFor(w, [commitFile(TEST_FILE, 'head\n'), review('approve'), commitFile(TEST_FILE, 'fixed\n'), review('approve')]);
+    const out = await runFactoryEngine(localOpts(w, lanes, { gateSandbox: run, gateSandboxUserConfig: {}, gitTransportHost: host, localGate: p.gate, gateImageId: async () => 'sha256:' + 'a'.repeat(64), warn: (m) => warnings.push(m) }));
+    expect(lanes.started.map((l) => l.laneId)).toContain(`issue-${LOCAL_ISSUE}-ci-fix-1`);
+    expect(out.gate?.name, out.message).toBe('merge');
+    expect(reqs.filter((r) => r.container && r.purpose === 'prepare' && r.args[0] === VITEST_SCRIPT)).toHaveLength(2);
+    expect(p.runs.filter((r) => r.argv[1] === VITEST_SCRIPT)).toEqual([]);
+    expect(warnings.join('\n')).not.toContain('skips the gate container');
+    const state = readFactoryState(w.root, LOCAL_ISSUE)!;
+    expect(state.gitTransportPlainHead).toBeUndefined();
+    expect(state.plainHeadRan).toBeUndefined();
+  }, 2 * MULTI_RUN_MS);
 
   it('the plain run: a new failure counts (ci-fix material); a plain base without a report keeps today\'s park', async () => {
     w = vitestWorld();

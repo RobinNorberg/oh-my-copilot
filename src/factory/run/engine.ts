@@ -3753,12 +3753,30 @@ class FactoryEngine {
   /**
    * The base failed in the fallback's container before, for this exact image
    * id, with a verdict (not a timeout: N1, review-532b): the head's container
-   * run is skipped.
+   * run is skipped. Not a base that kept a per-test report there (L1,
+   * review-550): the head's run in the container is judged per test.
    */
   private containerFailedOnBase(c: { argv: readonly string[] }, baseSha: string, container: GateContainerSettings): boolean {
     if (!this.containerImageId) return false;
     const cal = this.state.gateCalibration?.[this.calibrationKey(baseSha, c.argv, container)];
-    return cal !== undefined && !cal.ok && !cal.timedOut;
+    return cal !== undefined && !cal.ok && !cal.timedOut && !cal.tests;
+  }
+
+  /**
+   * The PR's code ran without any sandbox on this host in this run (M1,
+   * review-550): gates "unsandboxed", an --allow-unsandboxed-gates ack, a
+   * write lane run without the enforced sandbox, or the git-transport
+   * fallback's plain run. A plain base calibration made from then on shares
+   * the host (the root's node_modules, the repo's git config) with it.
+   */
+  private plainHeadCodeRan(): boolean {
+    const s = this.state;
+    return s.plainHeadRan === true || s.gitTransportPlainHead !== undefined || s.unsandboxedGatesAck !== undefined || s.unsandboxedAck !== undefined;
+  }
+
+  /** Recorded (sealed) before the PR's code runs without any sandbox. */
+  private notePlainHeadRan(): void {
+    if (!this.state.plainHeadRan) this.save((x) => ({ ...x, plainHeadRan: true }));
   }
 
   /** The loud note of a check the Windows git-transport fallback runs outside the OS sandbox: a warning, a history note, one PR note per head. */
@@ -3790,6 +3808,7 @@ class FactoryEngine {
 
   /** gates "unsandboxed": a warning every time and one PR note per head. */
   private noteUnsandboxedGates(head: string, what: string): void {
+    this.notePlainHeadRan();
     const source = this.gatesModeCache?.source ?? 'config';
     this.o.warn?.(`omg factory run: ${what} on ${head.slice(0, 12)} runs WITHOUT the OS sandbox (factory.run.sandbox.gates "unsandboxed", ${source})`);
     this.commentOnce('pr', `gates-unsandboxed@${head.slice(0, 12)}`, 'sandbox', `**Sandbox: gates unsandboxed.** ${what} on ${head.slice(0, 12)} ran the PR's own code without the OS sandbox (\`factory.run.sandbox.gates: "unsandboxed"\`, ${source}).\n`);
@@ -3839,6 +3858,7 @@ class FactoryEngine {
     const plain = async (how: 'ack' | 'unsandboxed' | 'git-transport', extraArgs: readonly string[] = []): Promise<PrepareCheckResult> => {
       if (how === 'unsandboxed') this.noteUnsandboxedGates(head, label);
       else if (how === 'ack') ran.acked = true;
+      this.notePlainHeadRan();
       ran.modes.add(how);
       // The orphans of an unsandboxed check (Windows does not reparent them) are recorded and killed after it, as the local gate's.
       const procs = join(this.gateJobRoot(), 'prepare-procs', `${head}.json`);
@@ -3954,8 +3974,12 @@ class FactoryEngine {
               this.o.warn?.(`omg factory run: the Windows git-transport fallback could not use the gate container: ${fr.reason}`);
             }
           }
-          this.noteGitTransportFallback(head, label, 'unsandboxed', fallback);
           const preport = isBuiltInVitest(c) ? vitestReportPath(path) : undefined;
+          // M1 (review-550): the base's plain run shares this host with the head's (the root's node_modules, the repo's
+          // git config), so a base calibrated after the PR's code ran plainly may fail exactly the head's broken tests.
+          // The built-in vitest check calibrates its plain base first, while no plain head of this run has run yet.
+          if (preport && !this.plainHeadCodeRan()) await this.calibrateGate(c, at.baseSha, at.commonGitDir, PREPARE_CHECK_TIMEOUT_MS, label, head, 'plain');
+          this.noteGitTransportFallback(head, label, 'unsandboxed', fallback);
           let pTests: VitestRunSummary | null = null;
           let pr: PrepareCheckResult;
           try {
@@ -3966,9 +3990,13 @@ class FactoryEngine {
           if (pr.notStarted !== undefined || pr.status === 0) return pr;
           // L1 (review-532): a plain failure counts only when the trusted base passes plainly too.
           const ppark = await this.calibrateGate(c, at.baseSha, at.commonGitDir, PREPARE_CHECK_TIMEOUT_MS, label, head, 'plain');
-          // The built-in vitest check, judged per test against the base's plain run.
-          const pjudged = ppark && preport ? this.judgeTestDelta(ppark, pTests, head, label, at.baseSha, pr.status, `${pr.stdout}\n${pr.stderr}`, 'a plain run (no sandbox)') : null;
+          // The built-in vitest check, judged per test against the base's plain run, only one made before any plain head
+          // of this run ran (M1, review-550); a later one keeps today's park.
+          const pjudged = ppark && preport && ppark.beforePlainHead ? this.judgeTestDelta(ppark, pTests, head, label, at.baseSha, pr.status, `${pr.stdout}\n${pr.stderr}`, 'a plain run (no sandbox)') : null;
           if (pjudged) return pjudged;
+          if (ppark && preport && ppark.baseTests && !ppark.beforePlainHead) {
+            return stop({ ...ppark, reason: `Not compared test by test: the base ran plainly after the PR's code had run plainly on this host in this run, so its failures may be the PR's doing. ${ppark.reason}` });
+          }
           return ppark ? stop(ppark) : pr;
         }
         if (park) return stop(park);
@@ -4039,9 +4067,11 @@ class FactoryEngine {
    * git-transport fallback's container instead (a stored failure there is
    * not retried while the image id is known and unchanged), or plainly
    * without any sandbox ('plain': the trusted base's code, after a plain
-   * failure of the head).
+   * failure of the head, or before the head's plain run for the built-in
+   * vitest check; `beforePlainHead` when no plain head of this run had run
+   * yet, M1 review-550).
    */
-  private async calibrateGate(c: { argv: readonly string[]; exe: string; args: readonly string[]; kind?: PrepareCheckRun['kind'] }, baseSha: string, commonGitDir: string, timeoutMs: number, what: string, head: string, where?: GateContainerSettings | 'plain'): Promise<{ name: string; reason: string; gitTransport?: true; junctionRead?: true; baseTests?: VitestRunSummary; baseOutput?: string[] } | null> {
+  private async calibrateGate(c: { argv: readonly string[]; exe: string; args: readonly string[]; kind?: PrepareCheckRun['kind'] }, baseSha: string, commonGitDir: string, timeoutMs: number, what: string, head: string, where?: GateContainerSettings | 'plain'): Promise<{ name: string; reason: string; gitTransport?: true; junctionRead?: true; baseTests?: VitestRunSummary; baseOutput?: string[]; beforePlainHead?: true } | null> {
     // A calibration holds for the isolation it ran in: the gate container's (and its image, by id once a run reported it)
     // is keyed apart from the OS sandbox's and a plain run's.
     const plainRun = where === 'plain';
@@ -4054,10 +4084,13 @@ class FactoryEngine {
     const sticky = where !== undefined && !plainRun && !this.gatesModeCache?.container && !!this.containerImageId && !cal?.timedOut;
     if (!cal || (!cal.ok && !sticky && !this.recalibrated.has(key))) {
       this.recalibrated.add(key);
-      const out = await this.runOnBase(c, baseSha, commonGitDir, timeoutMs, where);
-      if ('notStarted' in out) {
-        return { name: GATE_SANDBOX_INCOMPATIBLE_GATE, reason: `${what} failed in ${placeName} on ${head.slice(0, 12)}, and its calibration on the base ${baseSha.slice(0, 12)} could not run (${out.notStarted}); the failure is not counted (no ci-fix lane). Fix the cause, then rerun ${this.resume}. ${ACK_WARNING}` };
+      // M1 (review-550): read before the run, which is the base's own code.
+      const beforePlainHead = plainRun && !this.plainHeadCodeRan();
+      const ran = await this.runOnBase(c, baseSha, commonGitDir, timeoutMs, where);
+      if ('notStarted' in ran) {
+        return { name: GATE_SANDBOX_INCOMPATIBLE_GATE, reason: `${what} failed in ${placeName} on ${head.slice(0, 12)}, and its calibration on the base ${baseSha.slice(0, 12)} could not run (${ran.notStarted}); the failure is not counted (no ci-fix lane). Fix the cause, then rerun ${this.resume}. ${ACK_WARNING}` };
       }
+      const out = beforePlainHead ? { ...ran, beforePlainHead: true as const } : ran;
       cal = out;
       this.save((x) => ({ ...x, gateCalibration: { ...(x.gateCalibration ?? {}), [key]: out }, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `calibrated ${what.slice(0, 120)} in ${placeName} on the base ${baseSha.slice(0, 12)}: ${out.ok ? 'passes' : 'fails'}` }] }));
     }
@@ -4070,6 +4103,7 @@ class FactoryEngine {
       ...(!container && !plainRun && cal.junctionRead ? { junctionRead: true as const } : {}),
       // The base's report from this place only (the key holds the place): the caller judges a head run from the same one.
       ...(cal.tests ? { baseTests: cal.tests, baseOutput: vitestOutputFailures(cal.tail ?? '') } : {}),
+      ...(plainRun && cal.beforePlainHead ? { beforePlainHead: true as const } : {}),
     };
   }
 

@@ -283,5 +283,11 @@ describe('vitestSummaryShapeOk (the sealed state)', () => {
     const cal = (tests: unknown) => JSON.stringify({ ...s, gateCalibration: { ['b'.repeat(64)]: { ok: false, tests } } });
     expect(parseFactoryState('run-7.json', 7, cal(base)).gateCalibration?.['b'.repeat(64)].tests).toEqual(base);
     expect(() => parseFactoryState('run-7.json', 7, cal({ ...base, extra: 1 }))).toThrow(/field gateCalibration/);
+    // M1 (review-550): the plain-before-head marker and the run's plain-code flag are `true` only.
+    const plainCal = (v: unknown) => JSON.stringify({ ...s, gateCalibration: { ['b'.repeat(64)]: { ok: false, beforePlainHead: v } } });
+    expect(parseFactoryState('run-7.json', 7, plainCal(true)).gateCalibration?.['b'.repeat(64)].beforePlainHead).toBe(true);
+    expect(() => parseFactoryState('run-7.json', 7, plainCal(false))).toThrow(/field gateCalibration/);
+    expect(parseFactoryState('run-7.json', 7, JSON.stringify({ ...s, plainHeadRan: true })).plainHeadRan).toBe(true);
+    expect(() => parseFactoryState('run-7.json', 7, JSON.stringify({ ...s, plainHeadRan: 1 }))).toThrow(/field plainHeadRan/);
   });
 });
