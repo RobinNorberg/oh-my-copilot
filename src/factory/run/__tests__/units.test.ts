@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { parseProgressLog } from '../../../lib/agent-progress.js';
 import { assertLaneCreditCap, DEFAULT_FACTORY_RUN_LIMITS, nextLaneCap, resolveFactoryRunLimits, runCreditsExceeded } from '../budget.js';
-import { ciFailureTail, GIT_TRANSPORT_SANDBOX_ADVICE, nodeModulesWriteDenied, sandboxIncompatibleAdvice, ciFixPrompt, conflictFixPrompt, fenceFor, findPlanLink, fixPrompt, hasAcceptanceCriteria, implementPrompt, issueAuthorTrusted, oneLine, reviewPrompt } from '../engine.js';
+import { ciFailureTail, GIT_TRANSPORT_SANDBOX_ADVICE, nodeModulesWriteDenied, sandboxIncompatibleAdvice, windowsJunctionReadDenied, ciFixPrompt, conflictFixPrompt, fenceFor, findPlanLink, fixPrompt, hasAcceptanceCriteria, implementPrompt, issueAuthorTrusted, oneLine, reviewPrompt } from '../engine.js';
 import { ghRepoArg } from '../../../forge/github/gh.js';
 import { shipyardKeySearch } from '../../../forge/types.js';
 import { assertFactoryCommand, factoryGuardExec, FactorySafetyError, hardenedGitExec, type TrackerWriteContext } from '../exec.js';
@@ -27,7 +27,7 @@ import {
   type FactoryRunState,
 } from '../state.js';
 import { gitIn } from './fake-lanes.js';
-import { GATE_CACHE_DIRS, GATE_TREE_FILE_MAX_BYTES, GATE_TREE_MARKER, gateTreeHasLinks, linkNodeModules, unlinkNodeModules } from '../prepare.js';
+import { GATE_CACHE_DIRS, GATE_TREE_COMPLETE, GATE_TREE_FILE_MAX_BYTES, GATE_TREE_MARKER, gateTreeHasLinks, linkNodeModules, unlinkNodeModules } from '../prepare.js';
 import { nodeModulesTreeProblem } from '../../../copilot-run/sandbox.js';
 
 const SHA = '0123456789abcdef0123456789abcdef01234567';
@@ -1007,6 +1007,203 @@ describe('the prepare checkout\'s node_modules link', () => {
     expect(existsSync(join(checkout, 'node_modules', 'big.bin'))).toBe(false);
     expect(notes.join('\n')).toMatch(/big\.bin .*not copied/);
     unlinkNodeModules(root, checkout);
+  });
+
+  const realOf = (p: string) => realpathSync.native(p).toLowerCase();
+
+  it('copy mode: package dirs (scopes whole) are copies, .bin stays a link, a dir link inside a package into your node_modules points at its copy (L3); the sandbox check passes; removal leaves yours', () => {
+    const { root, checkout } = setup();
+    const nm = join(root, 'node_modules');
+    for (const d of ['@scope/pkg/lib', '.bin', 'typescript/lib', 'shared']) mkdirSync(join(nm, d), { recursive: true });
+    writeFileSync(join(nm, '@scope', 'pkg', 'lib', 'index.js'), 'scoped\n');
+    writeFileSync(join(nm, '.bin', 'tsc'), 'shim\n');
+    writeFileSync(join(nm, 'typescript', 'lib', 'tsc.js'), 'tsc\n');
+    writeFileSync(join(nm, 'shared', 'x.js'), 'shared\n');
+    symlinkSync(join(nm, 'shared'), join(nm, 'typescript', 'lib', 'linked'), linkType);
+    expect(linkNodeModules(root, checkout, undefined, [], true)).toBeNull();
+    const tree = join(checkout, 'node_modules');
+    for (const name of ['typescript', '@scope', 'shared']) {
+      expect(lstatSync(join(tree, name)).isSymbolicLink()).toBe(false);
+      expect(lstatSync(join(tree, name)).isDirectory()).toBe(true);
+    }
+    expect(lstatSync(join(tree, '.bin')).isSymbolicLink()).toBe(true);
+    expect(readFileSync(join(tree, '@scope', 'pkg', 'lib', 'index.js'), 'utf-8')).toBe('scoped\n');
+    expect(readFileSync(join(tree, 'typescript', 'lib', 'tsc.js'), 'utf-8')).toBe('tsc\n');
+    // The copy of `shared`, not yours, and not a second copy.
+    expect(realOf(join(tree, 'typescript', 'lib', 'linked'))).toBe(realOf(join(tree, 'shared')));
+    expect(readFileSync(join(tree, 'typescript', 'lib', 'linked', 'x.js'), 'utf-8')).toBe('shared\n');
+    expect(readFileSync(join(tree, GATE_TREE_MARKER), 'utf-8')).toBe(`${GATE_TREE_COMPLETE}\n`);
+    // A write to the copy never reaches yours.
+    writeFileSync(join(tree, 'typescript', 'lib', 'tsc.js'), 'changed\n');
+    expect(readFileSync(join(nm, 'typescript', 'lib', 'tsc.js'), 'utf-8')).toBe('tsc\n');
+    expect(nodeModulesTreeProblem(checkout, nm)).toEqual({ problem: null, linked: true });
+    unlinkNodeModules(root, checkout);
+    expect(existsSync(tree)).toBe(false);
+    expect(readFileSync(join(nm, 'shared', 'x.js'), 'utf-8')).toBe('shared\n');
+    expect(readFileSync(join(nm, '.bin', 'tsc'), 'utf-8')).toBe('shim\n');
+  });
+
+  /** A pnpm-shaped node_modules: `a` (top-level link into .pnpm) requires `b`, a link next to it into b's store dir. */
+  function pnpmTree(nm: string): string {
+    const store = join(nm, '.pnpm');
+    for (const d of ['a@1/node_modules/a', 'b@2/node_modules/b']) mkdirSync(join(store, d), { recursive: true });
+    writeFileSync(join(store, 'a@1', 'node_modules', 'a', 'package.json'), '{"name":"a","main":"index.js"}\n');
+    writeFileSync(join(store, 'a@1', 'node_modules', 'a', 'index.js'), "module.exports = require('b') + 1;\n");
+    writeFileSync(join(store, 'b@2', 'node_modules', 'b', 'package.json'), '{"name":"b","main":"index.js"}\n');
+    writeFileSync(join(store, 'b@2', 'node_modules', 'b', 'index.js'), 'module.exports = 40 + 1;\n');
+    symlinkSync(join(store, 'b@2', 'node_modules', 'b'), join(store, 'a@1', 'node_modules', 'b'), linkType);
+    symlinkSync(join(store, 'a@1', 'node_modules', 'a'), join(nm, 'a'), linkType);
+    return store;
+  }
+
+  it('M1/M2 (review-547) copy mode: pnpm links point at the copied .pnpm store (each dir copied once), a link outside your node_modules stays yours, a cycle stays a cycle; esbuild resolves a transitive dep', async () => {
+    const { root, checkout } = setup();
+    const nm = join(root, 'node_modules');
+    const store = pnpmTree(nm);
+    // A cycle: b links back to its own store dir.
+    symlinkSync(join(store, 'b@2'), join(store, 'b@2', 'node_modules', 'b', 'up'), linkType);
+    // Outside your node_modules (a workspace's own dir, say).
+    const outside = join(root, 'tools');
+    mkdirSync(outside);
+    writeFileSync(join(outside, 't.js'), 't\n');
+    symlinkSync(outside, join(store, 'a@1', 'node_modules', 'a', 'tools'), linkType);
+    expect(linkNodeModules(root, checkout, undefined, [], true)).toBeNull();
+    const tree = join(checkout, 'node_modules');
+    const copiedA = join(tree, '.pnpm', 'a@1', 'node_modules', 'a');
+    const copiedB = join(tree, '.pnpm', 'b@2', 'node_modules', 'b');
+    expect(lstatSync(copiedA).isSymbolicLink()).toBe(false);
+    expect(lstatSync(copiedB).isSymbolicLink()).toBe(false);
+    expect(realOf(join(tree, 'a'))).toBe(realOf(copiedA));
+    expect(realOf(join(tree, '.pnpm', 'a@1', 'node_modules', 'b'))).toBe(realOf(copiedB));
+    expect(realOf(join(copiedB, 'up'))).toBe(realOf(join(tree, '.pnpm', 'b@2')));
+    expect(realOf(join(copiedA, 'tools'))).toBe(realOf(outside));
+    // The sandbox's top-level check accepts a link into the checkout.
+    expect(nodeModulesTreeProblem(checkout, nm).problem).toBeNull();
+    // Transitive resolution through the copied store (M2): a's realpath is in .pnpm, where b sits next to it.
+    writeFileSync(join(checkout, 'entry.js'), "console.log(require('a'));\n");
+    const { build } = await import('esbuild');
+    const out = await build({ absWorkingDir: checkout, entryPoints: ['entry.js'], bundle: true, platform: 'node', write: false, logLevel: 'silent' });
+    expect(out.outputFiles[0].text).toContain('40 + 1');
+    unlinkNodeModules(root, checkout);
+    expect(existsSync(tree)).toBe(false);
+    expect(readFileSync(join(outside, 't.js'), 'utf-8')).toBe('t\n');
+    expect(readFileSync(join(store, 'b@2', 'node_modules', 'b', 'index.js'), 'utf-8')).toBe('module.exports = 40 + 1;\n');
+  });
+
+  it('L1 copy mode: over the entry or byte bound, or short of disk space, nothing is copied and the error names it', () => {
+    const { root, checkout } = setup();
+    const nm = join(root, 'node_modules');
+    for (let i = 0; i < 5; i += 1) writeFileSync(join(nm, 'typescript', `f${i}.js`), 'x'.repeat(100));
+    expect(() => linkNodeModules(root, checkout, undefined, [], { maxFiles: 3 })).toThrow(/over 3 entries \(files, dirs and links\), so it is not copied/);
+    expect(existsSync(join(checkout, 'node_modules'))).toBe(false);
+    expect(() => linkNodeModules(root, checkout, undefined, [], { maxBytes: 300 })).toThrow(/over 300 bytes, so it is not copied/);
+    expect(existsSync(join(checkout, 'node_modules'))).toBe(false);
+    // 3 + 5 * 100 bytes: what the copy holds, exactly.
+    expect(() => linkNodeModules(root, checkout, undefined, [], { marginBytes: 1000, freeBytes: () => 1200 })).toThrow(/needs 503 bytes plus a 1000-byte margin .* 1200 bytes free/);
+    expect(existsSync(join(checkout, 'node_modules'))).toBe(false);
+    // Unknown free space (the platform cannot tell): the bounds alone decide.
+    expect(linkNodeModules(root, checkout, undefined, [], { freeBytes: () => null })).toBeNull();
+    unlinkNodeModules(root, checkout);
+  });
+
+  it('M1 (review-547): the free-space estimate counts linked package content as the copy holds it, and a top-level file (nit)', () => {
+    const { root, checkout } = setup();
+    const nm = join(root, 'node_modules');
+    pnpmTree(nm);
+    writeFileSync(join(nm, '.package-lock.json'), 'y'.repeat(1000));
+    // One free byte: the free-space check fails and names the estimate.
+    let needs = 0;
+    try { linkNodeModules(root, checkout, undefined, [], { marginBytes: 0, freeBytes: () => 1 }); } catch (error) { needs = Number(/needs (\d+) bytes/.exec(String(error))?.[1]); }
+    expect(existsSync(join(checkout, 'node_modules'))).toBe(false);
+    // The real copy writes exactly that many bytes.
+    linkNodeModules(root, checkout, undefined, [], { freeBytes: () => null });
+    const sum = (d: string): number => readdirSync(d, { withFileTypes: true }).reduce((n, e) => n + (e.isSymbolicLink() ? 0 : e.isDirectory() ? sum(join(d, e.name)) : e.name === GATE_TREE_MARKER ? 0 : lstatSync(join(d, e.name)).size), 0);
+    expect(sum(join(checkout, 'node_modules'))).toBe(needs);
+    expect(needs).toBeGreaterThan(1000);
+    unlinkNodeModules(root, checkout);
+  });
+
+  it('L1 (review-547) copy mode: a chain of links that doubles at every level is copied once per dir, and every dir and link counts toward the bound', () => {
+    const { root, checkout } = setup();
+    const nm = join(root, 'node_modules');
+    const levels = 14;
+    for (let i = 0; i <= levels; i += 1) mkdirSync(join(nm, 'chain', `l${i}`), { recursive: true });
+    for (let i = 0; i < levels; i += 1) {
+      symlinkSync(join(nm, 'chain', `l${i + 1}`), join(nm, 'chain', `l${i}`, 'left'), linkType);
+      symlinkSync(join(nm, 'chain', `l${i + 1}`), join(nm, 'chain', `l${i}`, 'right'), linkType);
+    }
+    // Followed, the chain would be 2^14 dirs; copied, it is 1 + 15 dirs and 28 links (plus typescript's 2 entries).
+    expect(() => linkNodeModules(root, checkout, undefined, [], { maxFiles: 40 })).toThrow(/over 40 entries/);
+    expect(existsSync(join(checkout, 'node_modules'))).toBe(false);
+    expect(linkNodeModules(root, checkout, undefined, [], { maxFiles: 46 })).toBeNull();
+    const tree = join(checkout, 'node_modules');
+    expect(realOf(join(tree, 'chain', 'l0', 'left', 'right'))).toBe(realOf(join(tree, 'chain', 'l2')));
+    unlinkNodeModules(root, checkout);
+    expect(existsSync(tree)).toBe(false);
+    expect(readdirSync(join(nm, 'chain'))).toHaveLength(levels + 1);
+  });
+
+  it('L1 copy mode: a bound reached while copying (the source grew after the preflight) removes the partial tree', () => {
+    const { root, checkout } = setup();
+    const nm = join(root, 'node_modules');
+    // The preflight counts 2 entries; the free-space call (between preflight and copy) adds 10 files.
+    const grow = () => { for (let i = 0; i < 10; i += 1) writeFileSync(join(nm, 'typescript', `g${i}.js`), 'x'); return null; };
+    expect(() => linkNodeModules(root, checkout, undefined, [], { maxFiles: 8, freeBytes: grow })).toThrow(/over 8 entries/);
+    expect(existsSync(join(checkout, 'node_modules'))).toBe(false);
+    expect(readdirSync(join(nm, 'typescript'))).toHaveLength(11);
+  });
+
+  it('L3 (review-547): a tree whose marker lacks the completion line (a crash mid-build) is removed and built again; a complete one is left alone', () => {
+    const { root, checkout } = setup();
+    const nm = join(root, 'node_modules');
+    mkdirSync(join(nm, 'zod'));
+    writeFileSync(join(nm, 'zod', 'index.js'), 'z\n');
+    expect(linkNodeModules(root, checkout, undefined, [], true)).toBeNull();
+    const tree = join(checkout, 'node_modules');
+    // A complete tree stays as it is (a file the tools wrote there survives).
+    writeFileSync(join(tree, '.vite', 'kept.json'), '{}\n');
+    expect(linkNodeModules(root, checkout, undefined, [], true)).toBeNull();
+    expect(existsSync(join(tree, '.vite', 'kept.json'))).toBe(true);
+    // The crash: zod was never copied and the completion line never written.
+    rmSync(join(tree, 'zod'), { recursive: true });
+    writeFileSync(join(tree, GATE_TREE_MARKER), '');
+    expect(linkNodeModules(root, checkout, undefined, [], true)).toBeNull();
+    expect(readFileSync(join(tree, 'zod', 'index.js'), 'utf-8')).toBe('z\n');
+    expect(existsSync(join(tree, '.vite', 'kept.json'))).toBe(false);
+    expect(readFileSync(join(tree, GATE_TREE_MARKER), 'utf-8')).toBe(`${GATE_TREE_COMPLETE}\n`);
+    // A linked tree the same way.
+    unlinkNodeModules(root, checkout);
+    linkNodeModules(root, checkout);
+    writeFileSync(join(tree, GATE_TREE_MARKER), '');
+    unlinkOne(join(tree, 'zod'));
+    expect(linkNodeModules(root, checkout)).toBeNull();
+    expect(lstatSync(join(tree, 'zod')).isSymbolicLink()).toBe(true);
+    unlinkNodeModules(root, checkout);
+    expect(existsSync(tree)).toBe(false);
+    expect(readFileSync(join(nm, 'zod', 'index.js'), 'utf-8')).toBe('z\n');
+  });
+
+  it('copy mode: esbuild bundles a package from the copied tree', async () => {
+    const { root, checkout } = setup();
+    mkdirSync(join(root, 'node_modules', 'fakepkg'));
+    writeFileSync(join(root, 'node_modules', 'fakepkg', 'package.json'), '{"name":"fakepkg","main":"index.js"}\n');
+    writeFileSync(join(root, 'node_modules', 'fakepkg', 'index.js'), 'export const v = 41 + 1;\n');
+    writeFileSync(join(checkout, 'entry.js'), "import { v } from 'fakepkg';\nconsole.log(v);\n");
+    linkNodeModules(root, checkout, undefined, [], true);
+    const { build } = await import('esbuild');
+    const out = await build({ absWorkingDir: checkout, entryPoints: ['entry.js'], bundle: true, platform: 'node', write: false, logLevel: 'silent' });
+    expect(out.outputFiles[0].text).toContain('41 + 1');
+    unlinkNodeModules(root, checkout);
+  });
+
+  it('windowsJunctionReadDenied: esbuild\'s refused package dir on win32 only', () => {
+    const out = 'X [ERROR] boom\nerror: Cannot read directory "node_modules/@modelcontextprotocol": Access is denied.\nerror: Cannot read directory "node_modules/zod": Access is denied.';
+    expect(windowsJunctionReadDenied(out, 'win32')).toBe(true);
+    expect(windowsJunctionReadDenied('error: Cannot read directory "C:\\w\\base-1\\node_modules\\zod": Access is denied.', 'win32')).toBe(true);
+    expect(windowsJunctionReadDenied(out, 'linux')).toBe(false);
+    expect(windowsJunctionReadDenied('error: Cannot read directory "src/gen": Access is denied.', 'win32')).toBe(false);
+    expect(windowsJunctionReadDenied("Error: EPERM: operation not permitted, open 'node_modules/zod/x.js'", 'win32')).toBe(false);
+    expect(windowsJunctionReadDenied(undefined, 'win32')).toBe(false);
   });
 
   it('M1: a permission error under node_modules in the base tail names that dir instead of the registry advice', () => {

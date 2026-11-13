@@ -22,6 +22,7 @@ import type { ShipVerdict } from '../../ship/state.js';
 import { type ForgeKind, type ProgressStage } from '../../forge/types.js';
 import { LOCAL_REMOTE } from '../../forge/local/mirror.js';
 import { type CodingAgentRunRecord } from './coding-agent-lane.js';
+import { type VitestRunSummary } from './test-delta.js';
 export declare const FACTORY_PHASES: readonly ["intake", "plan", "implement", "publish", "review", "fix", "prepare", "conflict-fix", "gates", "ci-fix", "merge", "merged", "cancelled", "failed"];
 export type FactoryPhase = (typeof FACTORY_PHASES)[number];
 export declare const TERMINAL_FACTORY_PHASES: readonly FactoryPhase[];
@@ -278,6 +279,15 @@ export interface FactoryRunState {
     sandboxedGateHead?: string;
     /** The head a check last ran on WITHOUT any sandbox through the Windows git-transport fallback: such a run is never auto-merged. */
     gitTransportPlainHead?: string;
+    /** The head whose built-in prepare tests passed only because tests that fail on the base too were not counted (test-delta.ts): such a run is never auto-merged. */
+    testDeltaExcusedHead?: string;
+    /**
+     * The run's gate node_modules trees are copies of yours, not links: a base
+     * calibration failed in the OS sandbox on Windows opening a package dir
+     * through a junction (prepare.ts GATE_TREE_COPY_WHY). Optional: older state
+     * files lack it.
+     */
+    gateTreeCopy?: true;
     /**
      * The name of the prepare checkout's admin dir under `<common>/worktrees/`,
      * as `worktree add` made it: a later invocation reads the checkout only
@@ -323,12 +333,18 @@ export interface FactoryRunState {
      * the sha256 of the base sha and the check's argv: whether the command
      * passes in the sandbox on the trusted base itself, and its output tail.
      * `timedOut`: it did not finish (no verdict; never a held failure).
+     * `junctionRead`: it failed in the OS sandbox on Windows opening a package
+     * dir through the gate tree's junction (the engine then copies the tree).
+     * `tests`: the built-in vitest check's per-test result on the base
+     * (test-delta.ts), which the head's failures are judged against.
      */
     gateCalibration?: Record<string, {
         ok: boolean;
         tail?: string;
         timedOut?: true;
         gitTransport?: true;
+        junctionRead?: true;
+        tests?: VitestRunSummary;
     }>;
     /** The Copilot coding agent session of an issue run whose implementer is the agent (coding-agent-lane.ts); sealed, shape-checked on load. */
     codingAgent?: CodingAgentRunRecord;
