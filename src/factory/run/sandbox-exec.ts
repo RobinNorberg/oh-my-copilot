@@ -103,7 +103,8 @@ export interface SandboxRunRequest {
   jobRoot?: string;
   /**
    * factory.run.sandbox.isolation "container" (user config only, resolved by the engine): the command runs in a
-   * local container (container-gate.ts) instead of the Copilot OS sandbox, never in both, never falling back.
+   * local container (container-gate.ts) instead of the Copilot OS sandbox, never in both, never falling back. The
+   * engine also sets it for the Windows git-transport fallback (factory.run.sandbox.windowsGitTransport).
    */
   container?: GateContainerSettings;
   /** The run's container label (container-gate.ts containerRunLabel); needed with `container`. */

@@ -44,6 +44,7 @@ import { visibleLine } from '../../forge/review-feedback.js';
 import { CopilotLaneBackend, type LaneBackend } from '../../factory/run/lane.js';
 import type { GateConfigLoader } from '../../factory/run/prepare.js';
 import { createSandboxRunner, type SandboxRunner } from '../../factory/run/sandbox-exec.js';
+import { inspectGateImageId } from '../../factory/run/container-gate.js';
 import { releaseTamperHold, tamperHoldMessage } from '../../factory/run/tamper-quarantine.js';
 import {
   acquireFactoryRepoOwnerForRun, defaultOwnerDeps, describeOwner, FactoryBusyError, FactoryTamperHoldError, factoryCancelRequested, factoryOwnerPath, factoryRepoOwnerPath, factoryStateDir, factoryStatePath, ownerFromOtherCheckout, ownerHolding, readFactoryState,
@@ -641,7 +642,7 @@ export function factoryRunCommand(deps: FactoryRunDeps = defaultFactoryRunDeps):
                 ...(o.allowUnsandboxedLanes ? { allowUnsandboxedLanes: true } : {}),
                 ...(o.allowUnsandboxedGates ? { allowUnsandboxedGates: true } : {}),
                 ...(o.allowSecretShapes ? { allowSecretShapes: true } : {}),
-                ...(deps.gateSandbox && !o.dryRun ? { gateSandbox: deps.gateSandbox(root) } : {}),
+                ...(deps.gateSandbox && !o.dryRun ? { gateSandbox: deps.gateSandbox(root), gateImageId: (c) => inspectGateImageId(c) } : {}),
                 lanes: o.dryRun ? NO_LANES : deps.lanes(root),
                 ...(forge ? { forge } : {}),
                 ...(deps.ledgerDir ? { ledgerDir: deps.ledgerDir } : {}),
