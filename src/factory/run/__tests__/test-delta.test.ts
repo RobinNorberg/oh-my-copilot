@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import {
-  BASE_FAILURES_MAX, COVERAGE_THRESHOLD_ID, headRunSignals, parseVitestReport, readVitestReport, stripAnsi, testDeltaVerdict, testId, testIdText, TEST_ID_MAX_CHARS, UNHANDLED_ERRORS_ID,
+  BASE_FAILURES_MAX, COVERAGE_THRESHOLD_ID, headRunSignals, IMPORT_DANGER_ID, parseVitestReport, readVitestReport, stripAnsi, testDeltaVerdict, testId, testIdText, TEST_ID_MAX_CHARS, UNHANDLED_ERRORS_ID,
   vitestOutputFailures, vitestReportArgs, vitestReportPath, vitestSummaryFailed, vitestSummaryShapeOk, type VitestRunSummary,
 } from '../test-delta.js';
 import { createFactoryState, parseFactoryState } from '../state.js';
@@ -46,8 +46,8 @@ const base = parseVitestReport(report(
   file(BASE_ROOT, 'src/a.test.ts', [['adds', 'passed']]),
 ), BASE_ROOT)!;
 
-/** A failed head run's signals: exit 1, nothing else in the output. */
-const failedRun = (output = '') => headRunSignals(1, output);
+/** A failed head run's signals: exit 1, nothing else in the output (its summary line counted as there; N3 has its own test). */
+const failedRun = (output = '') => { const s = headRunSignals(1, output); return { ...s, summary: { ...s.summary, seen: true } }; };
 
 describe('parseVitestReport', () => {
   it('names failed tests by relative file, describe and title; counts passes; a failed file without a failed test is broken', () => {
@@ -55,17 +55,17 @@ describe('parseVitestReport', () => {
       file(HEAD_ROOT, 'src/a.test.ts', [['adds', 'passed'], ['subtracts', 'failed'], ['later', 'skipped']]),
       file(HEAD_ROOT, 'src/b.test.ts', [], 'Cannot find module'),
     ), HEAD_ROOT);
-    expect(r).toEqual({ passed: 1, failed: [id('src/a.test.ts', 'group', 'subtracts')], brokenFiles: [id('src/b.test.ts')] });
+    expect(r).toEqual({ passed: 1, failed: [id('src/a.test.ts', 'group', 'subtracts')], brokenFiles: [id('src/b.test.ts')], failedFiles: 2 });
     expect(testIdText(r!.failed[0])).toBe('src/a.test.ts > group > subtracts');
   });
 
   it('a real vitest JSON report (fixture): nested describes, a skipped test, a file that did not load', () => {
     const text = readFileSync(join(HERE, 'fixtures', 'vitest-report.json'), 'utf8');
     const r = parseVitestReport(text, 'C:/work/repo');
-    expect(r).toEqual({ passed: 1, failed: [id('src/a.test.ts', 'outer', 'inner > part', 'fails')], brokenFiles: [id('src/b.test.ts')] });
+    expect(r).toEqual({ passed: 1, failed: [id('src/a.test.ts', 'outer', 'inner > part', 'fails')], brokenFiles: [id('src/b.test.ts')], failedFiles: 2 });
     // Its console summary (same run) agrees with the report: no park for a count the report lacks.
     const summary = '\n Test Files  2 failed (2)\n      Tests  1 failed | 1 passed | 1 skipped (3)\n   Start at  04:37:32\n';
-    expect(vitestSummaryFailed(summary)).toEqual({ tests: 1, files: 2 });
+    expect(vitestSummaryFailed(summary)).toEqual({ tests: 1, files: 2, seen: true });
     expect(testDeltaVerdict({ passed: 3, failed: [], brokenFiles: [] }, r, failedRun(summary))).toEqual({
       kind: 'fail', counted: [id('src/a.test.ts', 'outer', 'inner > part', 'fails'), fileFailed('src/b.test.ts')], excused: [],
     });
@@ -164,7 +164,7 @@ describe('testDeltaVerdict', () => {
     const colored = '\x1b[2m Test Files \x1b[22m \x1b[1m\x1b[31m1 failed\x1b[39m\x1b[22m\x1b[2m (1)\x1b[22m\n\x1b[2m      Tests \x1b[22m \x1b[1m\x1b[31m1 failed\x1b[39m\x1b[22m\x1b[2m | \x1b[22m\x1b[1m\x1b[32m2 passed\x1b[39m\x1b[22m\x1b[90m (3)\x1b[39m\n\x1b[2m     Errors \x1b[22m \x1b[1m\x1b[31m1 error\x1b[39m\x1b[22m\n';
     expect(stripAnsi(colored)).toContain('     Errors  1 error');
     expect(vitestOutputFailures(colored)).toEqual([UNHANDLED_ERRORS_ID]);
-    expect(vitestSummaryFailed(colored)).toEqual({ tests: 1, files: 1 });
+    expect(vitestSummaryFailed(colored)).toEqual({ tests: 1, files: 1, seen: true });
     const sameFailure = head(file(HEAD_ROOT, ENGINE, [['kills the tree', 'failed'], ['plans', 'passed'], ['tags', 'passed']]));
     expect(testDeltaVerdict(base, sameFailure, failedRun(colored))).toEqual({ kind: 'fail', counted: [UNHANDLED_ERRORS_ID], excused: [id(ENGINE, 'group', 'kills the tree')] });
   });
@@ -184,6 +184,44 @@ describe('testDeltaVerdict', () => {
     expect(testDeltaVerdict(base, sameFailure, failedRun('      Tests  2 failed | 1 passed (3)\n')).kind).toBe('park');
     expect(testDeltaVerdict(base, sameFailure, failedRun(' Test Files  2 failed (2)\n      Tests  1 failed (1)\n')).kind).toBe('park');
     expect(testDeltaVerdict(base, sameFailure, failedRun(' Test Files  1 failed (1)\n      Tests  1 failed (1)\n')).kind).toBe('pass');
+  });
+
+  it('N1: an error of the file itself (a hook) beside an excused test counts when the base file had none; on both it is excused', () => {
+    const hook = { ...file(HEAD_ROOT, ENGINE, [['kills the tree', 'failed'], ['plans', 'passed'], ['tags', 'passed']]), message: 'afterAll hook failed' };
+    const h = head(hook)!;
+    expect(h.brokenFiles).toEqual([id(ENGINE)]);
+    expect(testDeltaVerdict(base, h, failedRun())).toEqual({ kind: 'fail', counted: [fileFailed(ENGINE)], excused: [id(ENGINE, 'group', 'kills the tree')] });
+    const b = parseVitestReport(report({ ...file(BASE_ROOT, ENGINE, [['kills the tree', 'failed'], ['plans', 'passed']]), message: 'afterAll hook failed' }), BASE_ROOT)!;
+    expect(testDeltaVerdict(b, h, failedRun()).kind).toBe('pass');
+    // A whitespace-only message is none.
+    expect(head({ ...hook, message: '  ' })!.brokenFiles).toEqual([]);
+  });
+
+  it('N2: an import over vitest\'s danger threshold (failOnDanger) on the head only counts; on both it parks', () => {
+    const out = '\x1b[31mERROR: 2 import(s) exceeded the danger threshold of 500ms\x1b[39m\n';
+    expect(vitestOutputFailures(out)).toEqual([IMPORT_DANGER_ID]);
+    const sameFailure = head(file(HEAD_ROOT, ENGINE, [['kills the tree', 'failed']]));
+    expect(testDeltaVerdict(base, sameFailure, failedRun(out))).toEqual({ kind: 'fail', counted: [IMPORT_DANGER_ID], excused: [id(ENGINE, 'group', 'kills the tree')] });
+    expect(testDeltaVerdict(base, sameFailure, failedRun(out), [IMPORT_DANGER_ID]).kind).toBe('park');
+  });
+
+  it('N3: a head run that exits 1 with no Tests or Test Files summary line parks', () => {
+    const sameFailure = head(file(HEAD_ROOT, ENGINE, [['kills the tree', 'failed']]));
+    expect(vitestSummaryFailed('nothing here\n')).toEqual({ seen: false });
+    expect(vitestSummaryFailed('      Tests  1 passed (1)\n')).toEqual({ seen: true });
+    expect(testDeltaVerdict(base, sameFailure, headRunSignals(1, 'killed\n'))).toEqual({ kind: 'park', why: 'the head run\'s output has no vitest summary (Tests or Test Files)' });
+    expect(testDeltaVerdict(base, sameFailure, headRunSignals(1, ' Test Files  1 failed (1)\n      Tests  1 failed (1)\n')).kind).toBe('pass');
+  });
+
+  it('N4: failed files are counted by their full names, not the cut readable id', () => {
+    // Two files whose names share the first TEST_ID_MAX_CHARS chars: one readable prefix, two files.
+    const long = `src/${'d'.repeat(TEST_ID_MAX_CHARS)}`;
+    const h = head(file(HEAD_ROOT, `${long}/one.test.ts`, [['x', 'failed']]), file(HEAD_ROOT, `${long}/two.test.ts`, [['x', 'failed']]))!;
+    expect(h.failedFiles).toBe(2);
+    expect(new Set(h.failed.map((t) => testIdText(t).split(' > ')[0])).size).toBe(1);
+    const b = parseVitestReport(report(file(BASE_ROOT, `${long}/one.test.ts`, [['x', 'failed']]), file(BASE_ROOT, `${long}/two.test.ts`, [['x', 'failed']]), file(BASE_ROOT, 'src/a.test.ts', [['adds', 'passed']])), BASE_ROOT)!;
+    expect(testDeltaVerdict(b, h, failedRun(' Test Files  2 failed (2)\n      Tests  2 failed (2)\n')).kind).toBe('pass');
+    expect(testDeltaVerdict(b, h, failedRun(' Test Files  3 failed (3)\n      Tests  2 failed (2)\n')).kind).toBe('park');
   });
 
   it('park (today\'s gate-sandbox-incompatible): no base report, nothing passes on the base, no head report, or a head failure outside every test', () => {
@@ -226,6 +264,9 @@ describe('vitestSummaryShapeOk (the sealed state)', () => {
   it('accepts a summary, refuses extra keys, non-strings, over-long lists and ids', () => {
     expect(vitestSummaryShapeOk(base)).toBe(true);
     expect(vitestSummaryShapeOk({ ...base, extra: 1 })).toBe(false);
+    expect(vitestSummaryShapeOk({ ...base, failedFiles: 2 })).toBe(true);
+    expect(vitestSummaryShapeOk({ ...base, failedFiles: -1 })).toBe(false);
+    expect(vitestSummaryShapeOk({ ...base, failedFiles: '2' })).toBe(false);
     expect(vitestSummaryShapeOk({ ...base, failed: [1] })).toBe(false);
     expect(vitestSummaryShapeOk({ ...base, passed: -1 })).toBe(false);
     expect(vitestSummaryShapeOk({ ...base, failed: Array.from({ length: BASE_FAILURES_MAX + 1 }, (_, i) => `t${i}`) })).toBe(false);
@@ -242,5 +283,11 @@ describe('vitestSummaryShapeOk (the sealed state)', () => {
     const cal = (tests: unknown) => JSON.stringify({ ...s, gateCalibration: { ['b'.repeat(64)]: { ok: false, tests } } });
     expect(parseFactoryState('run-7.json', 7, cal(base)).gateCalibration?.['b'.repeat(64)].tests).toEqual(base);
     expect(() => parseFactoryState('run-7.json', 7, cal({ ...base, extra: 1 }))).toThrow(/field gateCalibration/);
+    // M1 (review-550): the plain-before-head marker and the run's plain-code flag are `true` only.
+    const plainCal = (v: unknown) => JSON.stringify({ ...s, gateCalibration: { ['b'.repeat(64)]: { ok: false, beforePlainHead: v } } });
+    expect(parseFactoryState('run-7.json', 7, plainCal(true)).gateCalibration?.['b'.repeat(64)].beforePlainHead).toBe(true);
+    expect(() => parseFactoryState('run-7.json', 7, plainCal(false))).toThrow(/field gateCalibration/);
+    expect(parseFactoryState('run-7.json', 7, JSON.stringify({ ...s, plainHeadRan: true })).plainHeadRan).toBe(true);
+    expect(() => parseFactoryState('run-7.json', 7, JSON.stringify({ ...s, plainHeadRan: 1 }))).toThrow(/field plainHeadRan/);
   });
 });

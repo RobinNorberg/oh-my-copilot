@@ -16,6 +16,12 @@ import { defaultExec } from '../../../ship/exec.js';
 import { DEFAULT_FACTORY_RUN_LIMITS } from '../budget.js';
 import { factoryForgeOptions } from '../forge-roots.js';
 import { FakeLanes, FakeProcesses, gitIn, withTestSandbox } from './fake-lanes.js';
+// The factory's own gate env (sandbox-exec.ts gateEnv) sets GIT_CONFIG_NOSYSTEM and GIT_CONFIG_GLOBAL. The engine's
+// exec seam drops every GIT_* it does not know (scrubShipEnv), but its host git keeps them (runHostGit), so on Git for
+// Windows a checkout made with the system core.autocrlf=true reads as changed to a status without it, and the local
+// gate parks at lane-tampered. The tests' engines run as under a plain shell, also when the factory runs this suite.
+for (const name of ['GIT_CONFIG_NOSYSTEM', 'GIT_CONFIG_GLOBAL', 'GIT_CONFIG_SYSTEM'])
+    delete process.env[name];
 export const LOCAL_ISSUE = 7;
 export const BASE = 'main';
 export const BACKLOG_ITEM = '---\ntitle: Add greet()\nlabels: [factory]\n---\nAdd a greet function.\n\n## Acceptance\n- [ ] greet() returns hi\n';

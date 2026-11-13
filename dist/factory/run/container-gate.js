@@ -47,6 +47,9 @@
  *    no verdict, never a pass. While 2 and 3 run, a watchdog measures the
  *    work volume (`du`, from a separate read-only container) and kills the
  *    step's container when it holds more than container.diskLimit.
+ *    3b. a failed run with a `reportFile` (the built-in vitest check's JSON
+ *    report): `cat` of that one file from a read-only container, bounded
+ *    (VITEST_REPORT_MAX_BYTES), returned as the result's `report`.
  * 4. copy back (a prepare check that passed): the volume's tree comes back
  *    as a tar stream and only regular files are written into the checkout,
  *    after every path was checked (applyCopyBack); one problem and nothing
@@ -65,6 +68,7 @@ import { chmodSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSyn
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { redactGateOutput, SANDBOX_OUTPUT_TAIL_CHARS } from './sandbox-exec.js';
 import { runSlug } from './state.js';
+import { VITEST_REPORT_MAX_BYTES } from './test-delta.js';
 /** The park when the container runtime, its daemon or the image is not there, or the project cannot be installed in it. */
 export const GATE_CONTAINER_UNAVAILABLE_GATE = 'gate-container-unavailable';
 /** What the gate-sandbox-incompatible park of a base calibration in the container tells the human to do. */
@@ -301,18 +305,19 @@ export function installPlan(checkout) {
     return { kind: 'unsupported', reason: other ? `the project uses ${other}; the gate container installs npm projects (package-lock.json or npm-shrinkwrap.json) only` : 'the project has dependencies but no package-lock.json; the gate container installs with npm ci only' };
 }
 const isNodeExe = (p) => /^node(?:\.exe)?$/i.test(basename(p));
+const OUTPUT_FILE_FLAG = '--outputFile=';
 /**
  * The argv in the container: a node script (the built-in checks, the
  * inventory generator, a calibration's adjusted args) as `node <args>`;
  * any other command as configured, its `node` executable named plainly. A
- * word that is a host path inside the checkout is mapped into /work/src.
+ * word that is a host path inside the checkout is mapped into /work/src,
+ * and so is the path of an `--outputFile=` word (the built-in vitest
+ * check's report, test-delta.ts vitestReportArgs).
  */
 export function containerArgv(req) {
     const words = isNodeExe(req.exe) && req.args.length > 0 && !isAbsolute(req.args[0]) ? ['node', ...req.args] : [...req.argv];
     const root = resolve(req.cwd);
-    return words.map((w, i) => {
-        if (i === 0 && isNodeExe(w))
-            return 'node';
+    const mapped = (w) => {
         if (!isAbsolute(w))
             return w;
         const rel = relative(root, resolve(w));
@@ -321,8 +326,17 @@ export function containerArgv(req) {
         if (rel.startsWith('..') || isAbsolute(rel))
             return w;
         return `${SRC}/${rel.split(sep).join('/')}`;
+    };
+    return words.map((w, i) => {
+        if (i === 0 && isNodeExe(w))
+            return 'node';
+        if (w.startsWith(OUTPUT_FILE_FLAG))
+            return `${OUTPUT_FILE_FLAG}${mapped(w.slice(OUTPUT_FILE_FLAG.length))}`;
+        return mapped(w);
     });
 }
+/** The checkout's copy in the container (where a command runs and a report's file names start). */
+export const CONTAINER_SRC = SRC;
 /** Where the engine's git view (SandboxRunRequest.gitView) is bound read-only for the copy step. */
 const GIT_VIEW_MOUNT = '/in-git';
 /** The copy step's script (fixed text: no word of the checkout reaches it); with a git view it becomes `${SRC}/.git`. */
@@ -687,6 +701,18 @@ export async function runContainerGate(req, s, runLabel, deps) {
         if (r.spawnError !== undefined || r.status === null || r.status === 125)
             return noVerdict(`the container runtime failed while the command ran (exit ${r.status ?? 'none'}); nothing is counted`);
         const result = ran({ status: r.status, output: tail(r.tail.trim()), timedOut: false });
+        if (r.status !== 0 && req.reportFile) {
+            // 3b. a failed run's report file (nothing of a failed run is copied back): read-only, no network, bounded; a
+            // problem leaves it out (the engine then has no report: it parks, never passes).
+            const rel = relative(resolve(req.cwd), resolve(req.reportFile));
+            if (rel !== '' && !rel.startsWith('..') && !isAbsolute(rel)) {
+                const got = await step(`${name}-report`, [
+                    ...labels, ...harden, '--network', 'none', '--user', CONTAINER_USER, '--read-only', ...workRo,
+                ], ['cat', `${SRC}/${rel.split(sep).join('/')}`], COPY_TIMEOUT_MS, VITEST_REPORT_MAX_BYTES);
+                if (got.status === 0 && got.stdout && !got.overflow)
+                    return ran({ status: r.status, output: tail(r.tail.trim()), timedOut: false, report: got.stdout.toString('utf8') });
+            }
+        }
         if (req.purpose !== 'prepare' || r.status !== 0)
             return result;
         // 4. copy back what a passing prepare check wrote.
