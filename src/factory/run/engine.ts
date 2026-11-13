@@ -72,6 +72,7 @@ import { driveGates } from './gates-driver.js';
 import { missingCheckHint, NO_CI_CHECKS_NOTE, noHeadChecksText, type GateHeadReads } from '../../ship/gates.js';
 import { ghBranchTip, ghCheckRunApps, ghCheckSuites, ghCommitCheckNames, ghRequiredCheckRules } from '../../forge/github/checks.js';
 import { ciFixPrompt, conflictFixPrompt, fenceFor, fenced, fixPrompt, implementPrompt, oneLine, reviewPrompt } from './prompts.js';
+import { BASE_FAILURES_MAX, headRunSignals, readVitestReport, testDeltaVerdict, testIdText, vitestOutputFailures, vitestReportArgs, vitestReportPath, type VitestRunSummary } from './test-delta.js';
 import { decisionsViolation, loadTeamContext, pathsInDiff, pathsInText, type ReadAt, type TeamContext } from '../team/context.js';
 import { mergeComment, mergeDecision, type FactoryMergeDecision, type MergeView } from './merge-policy.js';
 import { autoMergeComment, autoMergeVerdict, baseInstallFiles, baseTestSetup as baseTestSetupOf, classifyChanges, committedMergeConfig, hasFrontmatter, isFrontmatterCandidate, parseChangedEntries, patchLines, resolveAutoMergeConfig, TEST_CONFIG_NAME, type ChangedEntry, type PatchLine } from './auto-merge.js';
@@ -717,6 +718,9 @@ function calibrationArgs(c: { args: readonly string[]; kind?: PrepareCheckRun['k
   return vitest ? [script, 'run', ...files] : [script, ...files];
 }
 
+/** prepare's built-in vitest check (its args are ours, so its reporter is too). */
+const isBuiltInVitest = (c: { args: readonly string[]; kind?: PrepareCheckRun['kind'] }): boolean => c.kind === 'built-in' && c.args[0] === VITEST_SCRIPT;
+
 /** The fixed failure text of a built-in eslint or vitest check whose one changed file name the sandbox shell cannot carry. */
 export const BUILT_IN_FILE_NAME_TOO_LONG = 'a changed file name is too long for the sandbox shell';
 
@@ -728,8 +732,17 @@ export const BUILT_IN_FILE_NAME_TOO_LONG = 'a changed file name is too long for 
 export function fileListParts(c: PrepareCheckRun, cwd: string, platform: NodeJS.Platform = process.platform): PrepareCheckRun[] {
   const script = c.args[0];
   if (c.kind !== 'built-in' || (script !== VITEST_SCRIPT && script !== ESLINT_SCRIPT)) return [c];
-  const parts = splitFileListArgs(platform, c.exe, c.args, script === VITEST_SCRIPT ? 2 : 1, cwd);
+  const fixed = script === VITEST_SCRIPT ? 2 : 1;
+  // A vitest call also carries its report args (test-delta.ts): sized in, then taken out again.
+  const extra = sizingReportArgs(c, cwd);
+  const parts = splitFileListArgs(platform, c.exe, [...c.args.slice(0, fixed), ...extra, ...c.args.slice(fixed)], fixed + extra.length, cwd)
+    .map((args) => [...args.slice(0, fixed), ...args.slice(fixed + extra.length)]);
   return parts.length === 1 ? [c] : parts.map((args) => ({ ...c, argv: [c.exe, ...args], args }));
+}
+
+/** The report args a built-in vitest call in `cwd` gets, at their real length (none for every other check). */
+function sizingReportArgs(c: { args: readonly string[]; kind?: PrepareCheckRun['kind'] }, cwd: string): string[] {
+  return isBuiltInVitest(c) ? vitestReportArgs(vitestReportPath(cwd)) : [];
 }
 
 function errText(error: unknown): string {
@@ -1461,34 +1474,66 @@ class FactoryEngine {
     return this.wsGlobs.globs;
   }
 
-  /** linkNodeModules with the base's workspaces; a layout it does not support is a warning here (the base calibration parks on it). */
-  private linkGateTree(path: string, baseSha?: string): void {
-    const problem = linkNodeModules(this.o.root, path, this.o.warn, this.baseWorkspaces(baseSha), this.state.gateTreeCopy === true);
+  /**
+   * linkNodeModules with the base's workspaces; a layout it does not support
+   * is a warning here (the base calibration parks on it). A copied tree
+   * (`copy`, the run's gateTreeCopy by default) that cannot be built (over
+   * the bounds, no disk space, a busy file) returns why, for the caller's
+   * park (L2, review-546); a linked tree's error throws as before.
+   */
+  private linkGateTree(path: string, baseSha?: string, copy = this.state.gateTreeCopy === true): string | null {
+    let problem: string | null;
+    try {
+      problem = linkNodeModules(this.o.root, path, this.o.warn, this.baseWorkspaces(baseSha), copy);
+    } catch (error) {
+      if (!copy) throw error;
+      return `the copied node_modules tree of ${path} could not be built (${oneLine(errText(error), 300)})`;
+    }
     if (problem) this.o.warn?.(`omg factory run: ${problem}; a gate that fails in the sandbox parks at ${GATE_SANDBOX_INCOMPATIBLE_GATE}`);
+    return null;
+  }
+
+  /** The gate-sandbox-incompatible park of a copied tree linkGateTree could not build (`why`). */
+  private treeCopyPark(why: string): { name: string; reason: string } {
+    return { name: GATE_SANDBOX_INCOMPATIBLE_GATE, reason: `${why}; the run's gate trees are copies because ${GATE_TREE_COPY_WHY}. For an npm project, set factory.run.sandbox.isolation to "container" in your user config: the gates then run in a container with its own npm ci and need no copy. A full disk or a busy file can also be the cause: free space or close the program holding the file. Then rerun ${this.resume}. ${ACK_WARNING}` };
   }
 
   /**
    * After a base calibration failed in the OS sandbox on Windows opening a
    * package dir through the gate tree's junction (windowsJunctionReadDenied):
-   * from now on this run's gate trees are copies of your node_modules
-   * (prepare.ts GATE_TREE_COPY_WHY), and the tree in `checkout` is rebuilt as
-   * one. The command stays in the sandbox; the copy is the checkout's own, so
-   * the PR's code can write only that. False (the caller keeps its park) when
-   * the run copies already or the rebuild fails.
+   * the tree in `checkout` is rebuilt as a copy of your node_modules
+   * (prepare.ts GATE_TREE_COPY_WHY), and only then (L2, review-546) the run
+   * records that its gate trees are copies from now on. The command stays in
+   * the sandbox; the copy is the checkout's own, so the PR's code can write
+   * only that. True when switched; false (the caller keeps its park) when the
+   * run copies already or is container-isolated; else the park naming the
+   * rebuild error (a busy file, a full disk, over the bounds), with the linked
+   * tree put back where possible and the run left linking (fail closed).
    */
-  private switchToGateTreeCopy(checkout: string): boolean {
+  private switchToGateTreeCopy(checkout: string): boolean | { name: string; reason: string } {
     if (this.state.gateTreeCopy || this.containerIsolated()) return false;
+    let failed: string | null;
+    try {
+      unlinkNodeModules(this.o.root, checkout);
+      failed = this.linkGateTree(checkout, undefined, true);
+    } catch (error) {
+      failed = `the node_modules tree of ${checkout} could not be removed to be rebuilt as a copy (${oneLine(errText(error), 300)})`;
+    }
+    if (failed) {
+      this.o.warn?.(`omg factory run: ${failed}`);
+      // Back to the linked tree the run had (best effort: a tree still half there is left alone, and the run parks anyway).
+      try {
+        unlinkNodeModules(this.o.root, checkout);
+        this.linkGateTree(checkout, undefined, false);
+      } catch (error) {
+        this.o.warn?.(`omg factory run: could not link the node_modules tree of ${checkout} again (${oneLine(errText(error), 300)})`);
+      }
+      return this.treeCopyPark(failed);
+    }
     const note = `the gate's node_modules trees are copies of yours from now on, not links: ${GATE_TREE_COPY_WHY}`;
     this.o.warn?.(`omg factory run: ${note}`);
     this.save((x) => ({ ...x, gateTreeCopy: true, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note }] }));
-    try {
-      unlinkNodeModules(this.o.root, checkout);
-      this.linkGateTree(checkout);
-      return true;
-    } catch (error) {
-      this.o.warn?.(`omg factory run: could not rebuild the node_modules tree of ${checkout} as a copy (${oneLine(errText(error), 300)})`);
-      return false;
-    }
+    return true;
   }
 
   /**
@@ -1499,7 +1544,8 @@ class FactoryEngine {
   private relinkKeptCheckout(path: string): void {
     if (this.containerIsolated()) return;
     try {
-      this.linkGateTree(path);
+      const failed = this.linkGateTree(path);
+      if (failed) this.o.warn?.(`omg factory run: ${failed}`);
     } catch (error) {
       this.o.warn?.(`omg factory run: could not link the node_modules tree of the kept prepare checkout ${path} again (${oneLine(errText(error), 300)})`);
     }
@@ -1670,8 +1716,8 @@ class FactoryEngine {
     if (this.gatesSandbox(loaded).container) return null;
     const rule = lockfileUnchanged(p.repo, baseSha, head, p.ctx);
     if (rule.policy === 'junction') {
-      this.linkGateTree(path, baseSha);
-      return null;
+      const failed = this.linkGateTree(path, baseSha);
+      return failed ? this.treeCopyPark(failed) : null;
     }
     const what = rule.lockfiles.length === 0 ? 'the base has no lockfile' : `the PR changes ${rule.changed.join(', ')}`;
     let mode: 'park' | 'sandboxed';
@@ -3456,7 +3502,12 @@ class FactoryEngine {
       }
     } else if (!this.gatesSandbox(this.gateConfig(view)).container) {
       // isolation "container" (C1, review-499): no link to your node_modules in a checkout the container's writes come back to.
-      this.linkGateTree(path, view.baseRefOid);
+      const failed = this.linkGateTree(path, view.baseRefOid);
+      if (failed) {
+        const park = this.treeCopyPark(failed);
+        this.gate(park.name, park.reason);
+        return;
+      }
     }
     // The checkout's gitfile before any PR code ran: compared after each check, and its git dir named to engine git from then on.
     const gitLink = checkoutGitLink(path);
@@ -3815,7 +3866,7 @@ class FactoryEngine {
       // lane gets the check "prepare lint" (or "prepare tests") with this fixed text as its detail and can rename
       // the file. Never the --allow-unsandboxed-gates offer, and decided before any sandbox call for this part.
       // Configured commands are trusted config and keep their own refusal path below.
-      if (c.kind === 'built-in' && (c.args[0] === VITEST_SCRIPT || c.args[0] === ESLINT_SCRIPT) && sandboxCommandTooLong(process.platform, c.argv, path)) {
+      if (c.kind === 'built-in' && (c.args[0] === VITEST_SCRIPT || c.args[0] === ESLINT_SCRIPT) && sandboxCommandTooLong(process.platform, [...c.argv, ...sizingReportArgs(c, path)], path)) {
         return { status: 1, stdout: '', stderr: BUILT_IN_FILE_NAME_TOO_LONG };
       }
       // A node_modules link the PR's code re-pointed is never granted to the sandbox (review-483 M4).
@@ -3825,9 +3876,19 @@ class FactoryEngine {
       // Still inside checkoutGitPin: engine git reads the checkout's HEAD (prepare's merge or inventory commit) through its recorded git dir.
       const priv = this.privateRun();
       const checkedOut = () => (priv ? priv.gitOk(['rev-parse', 'HEAD'], 'reading the prepare checkout', path) : this.run(['rev-parse', 'HEAD'], 'git', undefined, path));
-      const r = this.o.gateSandbox
-        ? await this.withGitView(checkedOut, label, (view) => this.sandboxRun({ purpose: 'prepare', argv: c.argv, exe: c.exe, args: c.args, cwd: path, commonGitDir: at.commonGitDir, timeoutMs: PREPARE_CHECK_TIMEOUT_MS, ...(at.gates.requireDeniedPaths ? { requireDeniedPaths: true } : {}), ...view }))
-        : { ran: false as const, reason: 'no OS sandbox runner was given to the engine' };
+      // The built-in vitest check in the OS sandbox writes a JSON report, so a failure is judged per test against the base (test-delta.ts).
+      const report = this.o.gateSandbox && !this.gatesModeCache?.container && isBuiltInVitest(c) ? vitestReportPath(path) : undefined;
+      let headTests: VitestRunSummary | null = null;
+      let r: SandboxRunResult;
+      try {
+        r = this.o.gateSandbox
+          ? await this.withGitView(checkedOut, label, (view) => this.sandboxRun({ purpose: 'prepare', argv: c.argv, exe: c.exe, args: report ? [...c.args, ...vitestReportArgs(report)] : c.args, cwd: path, commonGitDir: at.commonGitDir, timeoutMs: PREPARE_CHECK_TIMEOUT_MS, ...(at.gates.requireDeniedPaths ? { requireDeniedPaths: true } : {}), ...view }))
+          : { ran: false as const, reason: 'no OS sandbox runner was given to the engine' };
+      } finally {
+        // Read and removed right away, even when the run threw (L4, review-548): the file is not the PR's, and no
+        // later check (or prepare's untracked-file refusal) sees it.
+        if (report) headTests = readVitestReport(report, path);
+      }
       const t = tampered();
       if (t) return t;
       if (r.ran) {
@@ -3840,7 +3901,16 @@ class FactoryEngine {
         const park = await this.calibrateGate(c, at.baseSha, at.commonGitDir, PREPARE_CHECK_TIMEOUT_MS, label, head);
         // The base failed opening a package dir through the gate tree's junction (esbuild on Windows): the same check
         // again, still in the sandbox, on a copied tree; its failure then counts only against a base that passes there.
-        if (park?.junctionRead && this.switchToGateTreeCopy(path)) return this.prepareCheck(c, at);
+        if (park?.junctionRead) {
+          const switched = this.switchToGateTreeCopy(path);
+          if (switched === true) return this.prepareCheck(c, at);
+          if (switched) return stop(switched);
+        }
+        // The built-in vitest check, judged per test: a failure that fails on the base too is not counted.
+        if (park && report && !park.gitTransport && !park.junctionRead && !r.timedOut) {
+          const judged = this.judgeTestDelta(park, headTests, head, label, at.baseSha, r.status, r.output);
+          if (judged) return judged;
+        }
         // The base cannot run in the OS sandbox on Windows (git transport): the gate container, else plainly, never a park by default.
         const fallback = park?.gitTransport ? await this.gitTransportFallback(at.commonGitDir) : null;
         if (fallback) {
@@ -3901,6 +3971,38 @@ class FactoryEngine {
   }
 
   /**
+   * The built-in vitest check failed in the OS sandbox on `head` and on the
+   * base: judged per test (test-delta.ts). Null keeps today's park (no base
+   * or head report, nothing passes on the base, or the head failed outside
+   * any test). Else a FAILURE that names the tests failing on the head only
+   * (the ci-fix lane gets them), or a pass; either way the tests that fail
+   * on the base too are listed in a warning, a history note and one PR note
+   * per head. Their names come from the trusted base's report. A pass that
+   * excused any test is recorded (testDeltaExcusedHead): such a head is never
+   * auto-merged (L3, review-548), since an excused test may now fail for a
+   * new reason.
+   */
+  private judgeTestDelta(park: { baseTests?: VitestRunSummary; baseOutput?: string[] }, headTests: VitestRunSummary | null, head: string, label: string, baseSha: string, status: number, output: string): PrepareCheckResult | null {
+    const v = testDeltaVerdict(park.baseTests, headTests, headRunSignals(status, output), park.baseOutput ?? []);
+    if (v.kind === 'park') return null;
+    const list = (ids: string[]) => `${ids.slice(0, 10).map((id) => visibleLine(testIdText(id))).join('; ')}${ids.length > 10 ? `; and ${ids.length - 10} more` : ''}`;
+    if (v.excused.length > 0) {
+      const text = `${label} on ${head.slice(0, 12)}: ${v.excused.length} test(s) fail in the OS sandbox on the base ${baseSha.slice(0, 12)} too and were not counted: ${list(v.excused)}`;
+      this.o.warn?.(`omg factory run: ${text}`);
+      this.save((x) => ({ ...x, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: text.slice(0, 400) }] }));
+      this.commentOnce('pr', `base-test-failures@${head.slice(0, 12)}`, 'sandbox',`**Sandbox: tests that fail on the base too.** ${text}.\n`);
+    }
+    if (v.kind === 'pass') {
+      if (this.state.testDeltaExcusedHead !== head) this.save((x) => ({ ...x, testDeltaExcusedHead: head }));
+      return { status: 0, stdout: redactGateOutput(output), stderr: '' };
+    }
+    // The head's own test names (the PR's output): only in the failure's output, which stays local detail (H1). Last,
+    // so prepare's output tail keeps it.
+    const counted = `${v.counted.length} test(s) fail on ${head.slice(0, 12)} that did not fail on the base ${baseSha.slice(0, 12)} (new tests count): ${list(v.counted)}`;
+    return { status: status === 0 ? 1 : status, stdout: redactGateOutput(output), stderr: redactGateOutput(counted) };
+  }
+
+  /**
    * After `what` failed in the sandbox on `head`: run the same command in the
    * sandbox on a plain copy of the trusted base tree (once per base sha and
    * argv; a passing calibration is kept in the sealed state, a failing one is
@@ -3915,7 +4017,7 @@ class FactoryEngine {
    * without any sandbox ('plain': the trusted base's code, after a plain
    * failure of the head).
    */
-  private async calibrateGate(c: { argv: readonly string[]; exe: string; args: readonly string[]; kind?: PrepareCheckRun['kind'] }, baseSha: string, commonGitDir: string, timeoutMs: number, what: string, head: string, where?: GateContainerSettings | 'plain'): Promise<{ name: string; reason: string; gitTransport?: true; junctionRead?: true } | null> {
+  private async calibrateGate(c: { argv: readonly string[]; exe: string; args: readonly string[]; kind?: PrepareCheckRun['kind'] }, baseSha: string, commonGitDir: string, timeoutMs: number, what: string, head: string, where?: GateContainerSettings | 'plain'): Promise<{ name: string; reason: string; gitTransport?: true; junctionRead?: true; baseTests?: VitestRunSummary; baseOutput?: string[] } | null> {
     // A calibration holds for the isolation it ran in: the gate container's (and its image, by id once a run reported it)
     // is keyed apart from the OS sandbox's and a plain run's.
     const plainRun = where === 'plain';
@@ -3942,6 +4044,7 @@ class FactoryEngine {
       reason: `${what} fails in ${placeName} on the base ${baseSha.slice(0, 12)} itself, so its failure on ${head.slice(0, 12)} is not counted (no ci-fix lane). ${advice}, then rerun ${this.resume}. ${ACK_WARNING}${cal.tail ? `; base output tail: ${cal.tail.slice(-1_500)}` : ''}`,
       ...(!container && !plainRun && cal.gitTransport ? { gitTransport: true as const } : {}),
       ...(!container && !plainRun && cal.junctionRead ? { junctionRead: true as const } : {}),
+      ...(!container && !plainRun && cal.tests ? { baseTests: cal.tests, baseOutput: vitestOutputFailures(cal.tail ?? '') } : {}),
     };
   }
 
@@ -3953,7 +4056,7 @@ class FactoryEngine {
    * `gitTransport`: it failed in the OS sandbox on Windows with git's
    * transport error anywhere in the output (the tail kept may not show it).
    */
-  private async runOnBase(c: { argv: readonly string[]; exe: string; args: readonly string[]; kind?: PrepareCheckRun['kind'] }, baseSha: string, commonGitDir: string, timeoutMs: number, where?: GateContainerSettings | 'plain'): Promise<{ ok: boolean; tail?: string; timedOut?: true; gitTransport?: true; junctionRead?: true } | { notStarted: string }> {
+  private async runOnBase(c: { argv: readonly string[]; exe: string; args: readonly string[]; kind?: PrepareCheckRun['kind'] }, baseSha: string, commonGitDir: string, timeoutMs: number, where?: GateContainerSettings | 'plain'): Promise<{ ok: boolean; tail?: string; timedOut?: true; gitTransport?: true; junctionRead?: true; tests?: VitestRunSummary } | { notStarted: string }> {
     const plainRun = where === 'plain';
     const fallbackContainer = plainRun ? undefined : where;
     const container = plainRun ? undefined : this.gatesModeCache?.container ?? fallbackContainer;
@@ -3990,12 +4093,18 @@ class FactoryEngine {
         const ptail = redactGateOutput(`${p.stdout}${p.stderr}`).trim().slice(-2_000);
         return { ok: p.status === 0 && !p.timedOut, ...(ptail ? { tail: ptail } : {}), ...(p.timedOut ? { timedOut: true as const } : {}) };
       }
-      const r = await this.sandboxRun({ purpose: 'calibrate', argv: c.argv, exe: c.exe, args: calibrationArgs(c, dir), cwd: dir, commonGitDir, timeoutMs, ...(this.gatesModeCache?.requireDeniedPaths ? { requireDeniedPaths: true } : {}), ...(gitView ? { gitView } : {}) }, fallbackContainer);
+      // The built-in vitest check in the OS sandbox: a JSON report per test, which the head's failures are judged against (test-delta.ts).
+      const report = !container && isBuiltInVitest(c) ? vitestReportPath(dir) : undefined;
+      const args = calibrationArgs(c, dir);
+      const r = await this.sandboxRun({ purpose: 'calibrate', argv: c.argv, exe: c.exe, args: report ? [...args, ...vitestReportArgs(report)] : args, cwd: dir, commonGitDir, timeoutMs, ...(this.gatesModeCache?.requireDeniedPaths ? { requireDeniedPaths: true } : {}), ...(gitView ? { gitView } : {}) }, fallbackContainer);
+      const tests = report ? readVitestReport(report, dir) : null;
       if (!r.ran) return { notStarted: r.reason };
       const tail = r.output.trim().slice(-2_000);
       const ok = r.status === 0 && !r.timedOut;
       const junctionRead = !ok && !container && !this.state.gateTreeCopy && windowsJunctionReadDenied(r.output, this.gatePlatform);
-      return { ok, ...(tail ? { tail } : {}), ...(r.timedOut ? { timedOut: true as const } : {}), ...(!ok && !container && windowsGitTransportFailure(r.output, this.gatePlatform) ? { gitTransport: true as const } : {}), ...(junctionRead ? { junctionRead: true as const } : {}) };
+      // Only a failing base's report is kept (a passing base counts every head failure), and only one the sealed state can hold.
+      const keep = !ok && !r.timedOut && tests && tests.failed.length + tests.brokenFiles.length <= BASE_FAILURES_MAX;
+      return { ok, ...(tail ? { tail } : {}), ...(r.timedOut ? { timedOut: true as const } : {}), ...(!ok && !container && windowsGitTransportFailure(r.output, this.gatePlatform) ? { gitTransport: true as const } : {}), ...(junctionRead ? { junctionRead: true as const } : {}), ...(keep ? { tests } : {}) };
     } catch (error) {
       return { notStarted: errText(error).slice(0, 300) };
     } finally {
@@ -4400,9 +4509,16 @@ class FactoryEngine {
     if (!park) return true;
     // The base failed opening a package dir through the gate tree's junction (esbuild on Windows): the gate again, still
     // in the sandbox, on a copied tree (its FAILURE record goes, so the head is judged by that run).
-    if (park.junctionRead && this.switchToGateTreeCopy(checkout)) {
-      rmSync(localCheckRecordPath(stateDir, this.o.root, head), { force: true });
-      return this.ensureLocalGate(head);
+    if (park.junctionRead) {
+      const switched = this.switchToGateTreeCopy(checkout);
+      if (switched === true) {
+        rmSync(localCheckRecordPath(stateDir, this.o.root, head), { force: true });
+        return this.ensureLocalGate(head);
+      }
+      if (switched) {
+        this.gate(switched.name, switched.reason);
+        return false;
+      }
     }
     // The base cannot run in the OS sandbox on Windows (git transport): the gate container, else plainly, never a park by default.
     const fallback = 'gitTransport' in park && park.gitTransport ? await this.gitTransportFallback(common) : null;
@@ -4748,6 +4864,7 @@ class FactoryEngine {
         ...(this.state.gateChangeApproved ? { gateChangeApproved: this.state.gateChangeApproved } : {}),
         ...(pending?.secretAck ? { secretAck: pending.secretAck } : {}),
         ...(this.state.gitTransportPlainHead ? { gitTransportPlainHead: this.state.gitTransportPlainHead } : {}),
+        ...(this.state.testDeltaExcusedHead ? { testDeltaExcusedHead: this.state.testDeltaExcusedHead } : {}),
       },
       decision,
       requiredChecks: config.requiredChecks,
