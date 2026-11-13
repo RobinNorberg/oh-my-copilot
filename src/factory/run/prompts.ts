@@ -6,6 +6,7 @@
 
 import { visibleLine, visibleText } from '../../forge/review-feedback.js';
 import { forgeTerms } from '../../forge/terms.js';
+import { oneLine } from '../../lib/one-line.js';
 import type { TeamContext } from '../team/context.js';
 import { MAX_FAILING_TITLES } from './gates-driver.js';
 import type { FactoryRunState } from './state.js';
@@ -17,13 +18,7 @@ const MAX_CI_DETAIL_CHARS = 8_000;
 export const MAX_REVIEW_DIFF_CHARS = 60_000;
 /** Standards files listed in a two-axis review prompt. */
 const MAX_STANDARDS_FILES = 50;
-/** Issue titles in prompts and the PR title are cut to one line of this many characters. */
-const MAX_TITLE_CHARS = 200;
-
-/** Untrusted text on one line: control and line-separator characters become spaces, then it is cut. */
-export function oneLine(text: string | undefined, max = MAX_TITLE_CHARS): string {
-  return (text ?? '').replace(/[\p{Cc}\p{Zl}\p{Zp}]+/gu, ' ').replace(/\s+/g, ' ').trim().slice(0, max);
-}
+export { oneLine };
 
 /** A backtick fence longer than any backtick run in `content`, so the content cannot close it. */
 export function fenceFor(content: string): string {
