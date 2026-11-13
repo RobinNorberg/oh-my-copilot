@@ -13,6 +13,7 @@ import {
   localRepoId,
   localStoreDir,
   mergedArgs,
+  mergeTreeArgs,
   mirrorFetchArgs,
   mirrorInitArgs,
   mirrorPushArgs,
@@ -68,11 +69,13 @@ describe('argv builders', () => {
     expect(backlogListArgs(A, '.copilot/backlog')).toEqual(['ls-tree', '-z', '--name-only', A, '--', '.copilot/backlog/']);
     expect(backlogShowArgs(A, '.copilot/backlog/1-x.md')).toEqual(['show', `${A}:.copilot/backlog/1-x.md`]);
     expect(mergedArgs(A, B)).toEqual(['merge-base', '--is-ancestor', A, B]);
+    expect(mergeTreeArgs(A, B)).toEqual(['merge-tree', '--write-tree', A, B]);
   });
 
   it('refuses a ref that is not a 40-hex sha, and a branch that is not plain', () => {
     expect(() => mirrorPushArgs('HEAD', 'main')).toThrow(/40-hex/);
     expect(() => mergedArgs(A, 'main')).toThrow(/40-hex/);
+    expect(() => mergeTreeArgs('HEAD', B)).toThrow(/40-hex/);
     for (const bad of ['-x', 'a..b', 'a//b', 'a.lock', 'a/.b', 'a@{1}', 'a b', 'a/', '']) {
       expect(isLocalBranchName(bad), bad).toBe(false);
       expect(() => mirrorFetchArgs(bad), bad).toThrow(/branch/);

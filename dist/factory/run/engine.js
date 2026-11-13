@@ -84,7 +84,7 @@ import { forgeTerms } from '../../forge/terms.js';
 import { GhCommandError, ghRepoArg, ghRun } from '../../forge/github/gh.js';
 import { adoptPreconditions, assignCodingAgent, codingAgentCloseArgs, codingAgentStatusArgs, parseCodingAgentStatus, } from '../../forge/github/coding-agent.js';
 import { CODING_AGENT_ADOPT_GATE, CODING_AGENT_CONFIRM_READS, CODING_AGENT_FETCH_HEAD_ARGS, CODING_AGENT_GATE, CODING_AGENT_HEAD_MOVED_GATE, CODING_AGENT_REASSIGNED_GATE, CODING_AGENT_SESSION_USAGE, CODING_AGENT_SESSIONS_GATE, CODING_AGENT_TIMEOUT_GATE, CODING_AGENT_UNCONFIRMED_GATE, CODING_AGENT_WAIT_GATE, codingAgentFetchArgs, codingAgentLinkBody, codingAgentLinkCommentArgs, codingAgentRefusal, codingAgentRepoOf, codingAgentSessionsOn, codingAgentTreeArgs, linkEntries, loadCodingAgentChoice, openAgentPrs, PRE_ASSIGN_SINCE, recordCodingAgentSession, CodingAgentMirrorUnreadableError, CodingAgentSessionsBusyError, codingAgentMergeBaseArgs, isDefiniteAssignRefusal, releaseCodingAgentSession, reserveCodingAgentSession, DEFAULT_CODING_AGENT_CONFIG, } from './coding-agent-lane.js';
-import { ghCommentPr, ghCreateDraftPr, ghFindOpenPr, ghMarkReady, ghMergeView, ghOpenPrs, ghPrHeadState, ghRepoView, githubReviews } from '../../forge/github/reviews.js';
+import { ghCommentPr, ghCreateDraftPr, ghFindOpenPr, ghMarkReady, ghMergeView, ghOpenPrs, ghPrHeadState, ghPrMergeability, ghRepoView, githubReviews } from '../../forge/github/reviews.js';
 import { ghDependsOn, ghIssueComment, ghIssueJson, ghIssueView, ghViewItem, githubTracker } from '../../forge/github/tracker.js';
 import { isSatisfied } from '../check/score.js';
 import { outcomePosts, postedBefore } from './outcome.js';
@@ -130,7 +130,13 @@ const PREPARE_ENGINE_STEPS = new Set(['preflight', 'remote', 'fetch', 'merge-bas
 /** Conflict-fix lanes (distinct start heads) before base conflicts park at awaiting-human: merge-conflicts. */
 export const MAX_CONFLICT_FIX_ROUNDS = 2;
 /** merge's gate read may send the run back to gates this often per invocation before awaiting-human: gates-disagree. */
-export const MAX_MERGE_BOUNCES = 2; /** Lane waits are sliced so the cancel flag is seen within this long. */
+export const MAX_MERGE_BOUNCES = 2;
+/** Gates -> prepare returns for a PR that conflicts with its moved base, per run (across reruns), before awaiting-human: merge-conflicts. */
+export const MAX_CONFLICT_REPREPARES = 3;
+/** Reads of the forge's mergeability while it is unknown (GitHub computes it lazily after a push or a base move), MERGEABILITY_WAIT_MS apart. */
+export const MERGEABILITY_READS = 4;
+export const MERGEABILITY_WAIT_MS = 5_000;
+/** Lane waits are sliced so the cancel flag is seen within this long. */
 export const DEFAULT_POLL_MS = 5_000;
 /** The engine cancels a lane this long past its own timeout (copilot_run enforces the timeout first). */
 const LANE_GRACE_MS = 60_000;
@@ -293,6 +299,16 @@ const HEX40 = /^[0-9a-f]{40}$/;
 const PARK_TAIL_LINES = 12;
 const PARK_TAIL_LINE_CHARS = 200;
 const PARK_TAIL_CHARS = 1_500;
+/** True when `next` is a parseable time later than `prev` (or `prev` is absent). Unparseable values are not newer. */
+export function isNewerEvent(next, prev) {
+    const n = next ? Date.parse(next) : NaN;
+    if (!Number.isFinite(n))
+        return false;
+    if (!prev)
+        return true;
+    const p = Date.parse(prev);
+    return !Number.isFinite(p) || n > p;
+}
 /** The last lines of `text`, redacted (token shapes), each made visible and one line, bounded: a gate's local `detail`. */
 export function parkTail(text) {
     const lines = redactGateOutput(text).split(/\r?\n/).map((l) => l.trim()).filter(Boolean).slice(-PARK_TAIL_LINES);
@@ -4655,6 +4671,55 @@ class FactoryEngine {
             },
         };
     }
+    /**
+     * True only when the forge says the PR CONFLICTS with its base for exactly
+     * the pushed head (a conflicting PR runs no CI, so its gates never settle).
+     * Unknown is read again MERGEABILITY_READS times (GitHub computes it
+     * lazily); still unknown, a failed read or an answer for another head is
+     * false: the gates go on as before, never a re-prepare on a guess.
+     */
+    async prConflicts(pr, head) {
+        const read = this.forge?.reviews.mergeability?.bind(this.forge.reviews);
+        if (this.forge && !read)
+            return false;
+        for (let i = 0; i < MERGEABILITY_READS; i += 1) {
+            if (i > 0)
+                await (this.o.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms))))(MERGEABILITY_WAIT_MS);
+            let m;
+            try {
+                m = read ? read(pr) : this.gh((exec, cwd) => ghPrMergeability(exec, pr, cwd));
+            }
+            catch (error) {
+                if (error instanceof FactorySafetyError)
+                    throw error;
+                return false;
+            }
+            if (m.state === 'mergeable')
+                return false;
+            if (m.state === 'conflicting' && m.headRefOid === head)
+                return true;
+        }
+        return false;
+    }
+    /**
+     * The PR conflicts with its base after the base moved: back to prepare,
+     * which merges the base again (inventory and build housekeeping, else the
+     * conflict-fix lane with its own cap). Bounded per run by
+     * MAX_CONFLICT_REPREPARES, so a base that keeps moving cannot loop.
+     */
+    reprepareConflict(pr, head) {
+        const count = (this.state.conflictReprepares ?? 0) + 1;
+        if (count > MAX_CONFLICT_REPREPARES) {
+            this.gate('merge-conflicts', `PR #${pr} conflicts with ${this.state.base} at ${head.slice(0, 12)} again after ${MAX_CONFLICT_REPREPARES} re-prepares in this run (the base keeps moving, or the merge does not hold); merge ${this.state.base} into ${this.state.branch} by hand and push, then rerun ${this.resume}`);
+            return;
+        }
+        const note = `the PR conflicts with ${this.state.base} after it moved; preparing again (${count} of ${MAX_CONFLICT_REPREPARES})`;
+        this.writeShip(pr, (cur) => (cur && canTransition(cur.phase, 'prepare') ? transition(cur, 'prepare', note, this.iso()) : cur));
+        this.save((x) => {
+            const { prepared: _p, ...rest } = x;
+            return moveTo({ ...rest, conflictReprepares: count }, 'prepare', note, this.iso());
+        });
+    }
     /** The gates driver on the pushed head; green moves ship to ready and the run to merge. */
     async gates() {
         const { pr, head } = this.state;
@@ -4672,6 +4737,9 @@ class FactoryEngine {
         }
         if (ship.phase !== 'gates')
             throw new FactoryStepError(`ship state for PR #${pr} is ${ship.phase}, not gates`);
+        // A PR that conflicts with its moved base gets no CI run: prepare merges the base again instead of waiting.
+        if (await this.prConflicts(pr, head))
+            return this.reprepareConflict(pr, head);
         const { config, known } = this.gateConfig(view);
         const fields = () => ({ ...this.fields() });
         const local = this.forge?.kind === 'local';
@@ -4732,6 +4800,9 @@ class FactoryEngine {
                 return;
             }
             case 'missing-checks':
+                // The base may have moved under the PR while the gates waited: a conflict, not a missing check.
+                if (await this.prConflicts(pr, head))
+                    return this.reprepareConflict(pr, head);
                 this.gate('missing-checks', `${missingCheckHint(out.missing, config)}; every other check completed at ${at} and nothing new reported for the settle window, so the gates stop waiting; fix it, then rerun ${this.resume}`);
                 return;
             case 'failed': {
@@ -4744,6 +4815,8 @@ class FactoryEngine {
                 this.gate('ci-flaky', `known-flaky failures at ${at} are out of rerun budget (${out.report.failed.map(checkName).join(', ')}); rerun the failed jobs by hand`);
                 return;
             case 'no-workflows':
+                if (await this.prConflicts(pr, head))
+                    return this.reprepareConflict(pr, head);
                 this.gate('no-workflows', `${out.report.noHeadChecks ? `${noHeadChecksText(out.report.noHeadChecks)} (head ${at})` : `no checks and no workflow runs exist for ${at}`}; push the branch with a token that triggers workflows (or enable Actions), or close and reopen PR #${pr}${out.report.noHeadChecks ? `; to stop instead: ${cancelCommand(this.key)}` : ''}`);
                 return;
             case 'timeout':
@@ -5886,7 +5959,7 @@ class FactoryEngine {
                 this.updateLane(id, { process: { pid: proc.pid, identity: proc.identity } });
             if (isTerminalLaneState(result.state))
                 break;
-            if (result.lastEventAt && result.lastEventAt !== lastEventAt) {
+            if (isNewerEvent(result.lastEventAt, lastEventAt)) {
                 lastEventAt = result.lastEventAt;
                 progressAt = this.clock();
                 // Persisted for `omg factory run status`, at most once a minute (every event would rewrite the state).
@@ -5904,7 +5977,7 @@ class FactoryEngine {
                 }
                 // The lane finished between our poll and the cancel, with a session event after the last one we saw: a normal
                 // completion (the tamper check and accept path below still run). Any doubt stays a stall.
-                if (confirmed.state === 'completed' && confirmed.lastEventAt && confirmed.lastEventAt !== lastEventAt) {
+                if (confirmed.state === 'completed' && isNewerEvent(confirmed.lastEventAt, lastEventAt)) {
                     result = confirmed;
                     break;
                 }
