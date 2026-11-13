@@ -80,6 +80,12 @@ export interface SandboxRunRequest {
      * sandbox reads no field: a base calibration's view is `<cwd>/.git` there, a prepare checkout uses its own link.
      */
     gitView?: string;
+    /**
+     * A report file the command writes (the built-in vitest check's JSON report, test-delta.ts), as a host path in
+     * `cwd`. Only `container` reads it: after a failed run it comes back as the result's `report` (bounded), since
+     * nothing of a failed run is copied back. The OS sandbox writes it in `cwd` itself.
+     */
+    reportFile?: string;
 }
 /** The gate record and PR note line for a sandboxed run on a host without denied_paths. */
 export declare const CREDENTIAL_FILES_READABLE_NOTE = "sandboxed; credential files readable on this host";
@@ -102,6 +108,7 @@ export type SandboxRunResult = {
     timedOut: boolean;
     credentialFilesReadable?: true;
     imageId?: string;
+    report?: string;
 } | {
     ran: false;
     reason: string;

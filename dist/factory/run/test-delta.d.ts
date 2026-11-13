@@ -4,8 +4,14 @@ export interface VitestRunSummary {
     passed: number;
     /** The id (testId) of every failed test (file relative to the run dir), sorted, unique. */
     failed: string[];
-    /** The id (testId of the file alone) of each test file that failed with no failed test of its own (the file did not load, or a hook failed), sorted. */
+    /**
+     * The id (testId of the file alone) of each test file that failed with no
+     * failed test of its own, or with an error of the file itself (vitest's
+     * file-level `message`: the file did not load, or a hook failed), sorted.
+     */
     brokenFiles: string[];
+    /** How many files hold a failure (a failed test or a broken file), counted by full file name (N4, review-548b). A head's only; a base summary may lack it. */
+    failedFiles?: number;
 }
 /** A report above this size is not read (no report: fail closed). */
 export declare const VITEST_REPORT_MAX_BYTES: number;
@@ -63,6 +69,8 @@ export type TestDeltaVerdict = {
 export declare const UNHANDLED_ERRORS_ID = "errors outside any test (vitest \"Unhandled Errors\")";
 /** What a coverage threshold the run missed is listed as. */
 export declare const COVERAGE_THRESHOLD_ID = "a coverage threshold is not met";
+/** What vitest's experimental.importDurations.failOnDanger failure (an import over the danger threshold) is listed as. */
+export declare const IMPORT_DANGER_ID = "an import exceeded vitest's danger threshold (experimental.importDurations.failOnDanger)";
 /** Terminal color codes (FORCE_COLOR), taken out before any output is read. */
 export declare function stripAnsi(text: string): string;
 /**
@@ -71,13 +79,22 @@ export declare function stripAnsi(text: string): string;
  * error`; the report says `success: true`, the exit code is 1) and a
  * coverage threshold the run missed (`... does not meet global threshold
  * ...`; the report args turn coverage off, so only a run that turns it back
- * on prints it). A head that forges a line only fails itself.
+ * on prints it), and an import over vitest's danger threshold with
+ * experimental.importDurations.failOnDanger (`ERROR: 1 import(s) exceeded
+ * the danger threshold`; N2, review-548b: the report args do not turn it
+ * off, since vitest before 4.1 refuses an unknown option). A head that
+ * forges a line only fails itself.
  */
 export declare function vitestOutputFailures(output: string): string[];
-/** vitest's summary counts of failed tests and test files (`Tests  2 failed | 5 passed (7)`); a count is left out when its line is not there. */
+/**
+ * vitest's summary counts of failed tests and test files (`Tests  2 failed |
+ * 5 passed (7)`); a count is left out when its line is not there. `seen`:
+ * a `Tests` or `Test Files` summary line is there at all.
+ */
 export declare function vitestSummaryFailed(output: string): {
     tests?: number;
     files?: number;
+    seen: boolean;
 };
 /** The head run besides its report: its exit status, vitestOutputFailures and vitestSummaryFailed of its output. */
 export interface HeadRunSignals {
@@ -86,6 +103,7 @@ export interface HeadRunSignals {
     summary: {
         tests?: number;
         files?: number;
+        seen: boolean;
     };
 }
 /** The head run's signals from its exit status and console output. */
@@ -95,10 +113,11 @@ export declare function headRunSignals(status: number, output: string): HeadRunS
  * and output (headRunSignals); `baseOutput`: vitestOutputFailures of the
  * base's output. An output failure on the head only counts like a new
  * failure; on both, the run parks (it cannot be told apart). When in doubt
- * it parks: an exit status other than vitest's 1 for failed tests, or a
- * summary that names more failed tests or files than the report.
+ * it parks: an exit status other than vitest's 1 for failed tests, no
+ * summary line at all (N3, review-548b), or a summary that names more
+ * failed tests or files than the report.
  */
-export declare function testDeltaVerdict(base: VitestRunSummary | undefined, head: VitestRunSummary | null, signals?: HeadRunSignals, baseOutput?: readonly string[]): TestDeltaVerdict;
+export declare function testDeltaVerdict(base: VitestRunSummary | undefined, head: VitestRunSummary | null, signals: HeadRunSignals, baseOutput?: readonly string[]): TestDeltaVerdict;
 /** A summary the sealed state may hold (state.ts shape check). */
 export declare function vitestSummaryShapeOk(v: unknown): v is VitestRunSummary;
 //# sourceMappingURL=test-delta.d.ts.map

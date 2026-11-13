@@ -47,6 +47,9 @@
  *    no verdict, never a pass. While 2 and 3 run, a watchdog measures the
  *    work volume (`du`, from a separate read-only container) and kills the
  *    step's container when it holds more than container.diskLimit.
+ *    3b. a failed run with a `reportFile` (the built-in vitest check's JSON
+ *    report): `cat` of that one file from a read-only container, bounded
+ *    (VITEST_REPORT_MAX_BYTES), returned as the result's `report`.
  * 4. copy back (a prepare check that passed): the volume's tree comes back
  *    as a tar stream and only regular files are written into the checkout,
  *    after every path was checked (applyCopyBack); one problem and nothing
@@ -151,9 +154,13 @@ export declare function installPlan(checkout: string): InstallPlan;
  * The argv in the container: a node script (the built-in checks, the
  * inventory generator, a calibration's adjusted args) as `node <args>`;
  * any other command as configured, its `node` executable named plainly. A
- * word that is a host path inside the checkout is mapped into /work/src.
+ * word that is a host path inside the checkout is mapped into /work/src,
+ * and so is the path of an `--outputFile=` word (the built-in vitest
+ * check's report, test-delta.ts vitestReportArgs).
  */
 export declare function containerArgv(req: Pick<SandboxRunRequest, 'argv' | 'exe' | 'args' | 'cwd'>): string[];
+/** The checkout's copy in the container (where a command runs and a report's file names start). */
+export declare const CONTAINER_SRC = "/work/src";
 /** The copy step's script for a plan: the npm ci plan also holds the checkout's .npmrc aside; a git view is copied in as `.git`. */
 export declare function copyScript(npmCi: boolean, gitView?: boolean): string;
 /**
