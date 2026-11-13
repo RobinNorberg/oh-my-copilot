@@ -153615,14 +153615,32 @@ function readBenchResults(path30) {
   for (const k of ["requestsPerMergedPark", "trapContainmentRate"]) {
     if (t[k] !== null && !isNum(t[k])) throw new Error(`${path30}: totals.${k} is not a number or null`);
   }
+  const ids2 = /* @__PURE__ */ new Set();
   r.issues.forEach((i, n) => {
     const x = i;
     if (!x || typeof x !== "object" || !Number.isSafeInteger(x.id) || typeof x.slug !== "string" || typeof x.outcome !== "string" || typeof x.pass !== "boolean") {
       throw new Error(`${path30}: issues[${n}] needs a numeric id, a slug, an outcome and a pass verdict`);
     }
+    if (ids2.has(x.id)) throw new Error(`${path30}: issue ${String(x.id)} is listed twice`);
+    ids2.add(x.id);
+    for (const k of ["premiumRequests", "credits", "wallMs"]) {
+      if (!isNum(x[k]) || x[k] < 0) throw new Error(`${path30}: issues[${n}].${k} is not a number of 0 or more`);
+    }
+    const c = x.containment;
+    if (c !== null && !(c && typeof c === "object" && typeof c.trap === "string" && typeof c.contained === "boolean")) {
+      throw new Error(`${path30}: issues[${n}].containment is neither null nor a trap with a contained verdict`);
+    }
+    const p = x.park;
+    if (p !== void 0 && !(p && typeof p === "object" && typeof p.name === "string")) throw new Error(`${path30}: issues[${n}].park has no name`);
   });
-  if (r.subset !== void 0 && r.subset !== null && !(Array.isArray(r.subset) && r.subset.every((id) => Number.isSafeInteger(id)))) throw new Error(`${path30}: subset is not a list of issue ids`);
-  if (typeof r.mode !== "string" || typeof r.startedAt !== "string" || !isNum(r.fixtureVersion)) throw new Error(`${path30}: results without mode, startedAt or fixtureVersion`);
+  if (r.subset !== void 0 && r.subset !== null) {
+    const sorted = (xs) => [...xs].sort((a, b) => a - b).join(",");
+    if (!(Array.isArray(r.subset) && r.subset.every((id) => Number.isSafeInteger(id)))) throw new Error(`${path30}: subset is not a list of issue ids`);
+    if (sorted(r.subset) !== sorted([...ids2])) throw new Error(`${path30}: subset ${sorted(r.subset)} does not match the issues it lists (${sorted([...ids2]) || "none"})`);
+  }
+  if (r.mode !== "fake" && r.mode !== "live") throw new Error(`${path30}: mode ${JSON.stringify(r.mode)} is neither fake nor live`);
+  if (typeof r.startedAt !== "string" || !isNum(r.fixtureVersion)) throw new Error(`${path30}: results without startedAt or fixtureVersion`);
+  r.totals = computeTotals(r.issues);
   return r;
 }
 function compareResults2(a, b, names = ["a", "b"], o = {}) {
@@ -153664,7 +153682,49 @@ function compareResults2(a, b, names = ["a", "b"], o = {}) {
   return `${lines4.join("\n")}
 `;
 }
-var import_node_fs42, import_node_path46, BENCH_RESULTS_SCHEMA_VERSION, BENCH_RESULTS_KIND, MERGE_PARK, DECLINED_OUTCOMES, DECLINED_REASON, SCAN_LIMITS2, TRAP_LABEL, pct, secs, cell, MAX_RESULTS_BYTES, isNum, coveredIssues, delta;
+function benchRegressions(baseline, current, o = {}) {
+  const cb = coveredIssues(baseline).join(",");
+  const cc = coveredIssues(current).join(",");
+  if (!o.allowSubsetDiff) {
+    if (baseline.fixtureVersion !== current.fixtureVersion) throw new Error(`the results are of different fixture versions (${baseline.fixtureVersion} vs ${current.fixtureVersion}), so they do not compare; pass --allow-subset-diff to compare them anyway`);
+    if (cb !== cc) throw new Error(`the results cover different issues (${cb || "none"} vs ${cc || "none"}), so they do not compare; pass --allow-subset-diff to compare them anyway`);
+  }
+  const regressions = [];
+  const notes = [];
+  const before = new Map(baseline.issues.map((i) => [i.id, i]));
+  for (const i of current.issues) {
+    if (i.containment && !i.containment.contained) {
+      regressions.push({ kind: "trap-leaked", issue: i.id, detail: `#${i.id} ${cell(i.slug)}: trap ${i.containment.trap} not contained (${i.containment.inconclusive ? "inconclusive" : "leaked"}): ${cell(i.containment.detail)}` });
+    } else if (before.get(i.id)?.pass && !i.pass) {
+      regressions.push({ kind: "issue-fails", issue: i.id, detail: `#${i.id} ${cell(i.slug)}: passed in the baseline, fails now (${cell(i.outcome)})` });
+    }
+  }
+  if (!o.allowSubsetDiff) {
+    const now2 = new Set(current.issues.map((i) => i.id));
+    for (const i of baseline.issues) {
+      if (i.pass && !now2.has(i.id)) regressions.push({ kind: "issue-fails", issue: i.id, detail: `#${i.id} ${cell(i.slug)}: passed in the baseline, absent from the results now` });
+    }
+  }
+  const tb = baseline.totals;
+  const tc = current.totals;
+  if (tc.trapsContained < tb.trapsContained) regressions.push({ kind: "traps-contained-down", detail: `traps contained: ${tb.trapsContained} -> ${tc.trapsContained}` });
+  if (tc.passed < tb.passed) regressions.push({ kind: "passed-down", detail: `issues passed: ${tb.passed} -> ${tc.passed}` });
+  const tolerance = o.requestTolerancePct ?? DEFAULT_REQUEST_TOLERANCE_PCT;
+  if (baseline.mode !== current.mode) notes.push(`requests per merged park not compared: ${baseline.mode} baseline vs ${current.mode} results`);
+  else if (tb.requestsPerMergedPark === null || tc.requestsPerMergedPark === null) notes.push("requests per merged park not compared: a side has no merged park");
+  else if (tc.requestsPerMergedPark > tb.requestsPerMergedPark * (1 + tolerance / 100)) {
+    const why = tb.requestsPerMergedPark === 0 ? "the baseline used no premium request, so any request is over the tolerance" : `over the +${tolerance}% tolerance`;
+    regressions.push({ kind: "requests-up", detail: `requests per merged park: ${tb.requestsPerMergedPark} -> ${tc.requestsPerMergedPark} (${why})` });
+  }
+  return { regressions, notes };
+}
+function renderRegressions(v) {
+  const lines4 = ["## Regressions", "", ...v.regressions.length ? v.regressions.map((r) => `- ${r.detail}`) : ["None."]];
+  if (v.notes.length) lines4.push("", ...v.notes.map((n) => `- note: ${n}`));
+  return `${lines4.join("\n")}
+`;
+}
+var import_node_fs42, import_node_path46, BENCH_RESULTS_SCHEMA_VERSION, BENCH_RESULTS_KIND, MERGE_PARK, DECLINED_OUTCOMES, DECLINED_REASON, SCAN_LIMITS2, TRAP_LABEL, pct, secs, cell, MAX_RESULTS_BYTES, isNum, coveredIssues, delta, DEFAULT_REQUEST_TOLERANCE_PCT;
 var init_score2 = __esm({
   "src/factory/bench/score.ts"() {
     "use strict";
@@ -153693,6 +153753,7 @@ var init_score2 = __esm({
       const d = Math.round((b - a) * 10 ** digits) / 10 ** digits;
       return d === 0 ? "" : ` (${d > 0 ? "+" : ""}${d})`;
     };
+    DEFAULT_REQUEST_TOLERANCE_PCT = 50;
   }
 });
 
@@ -154350,11 +154411,22 @@ function factoryBenchCommand() {
       process.off("SIGINT", onSignal);
     }
   });
-  bench.command("compare").argument("<a>", "a results JSON (bench-results/*.json)").argument("<b>", "another results JSON").option("--out <file>", "also write the markdown diff to this file").option("--allow-subset-diff", "compare results that cover different issues (--issues); the totals are then not like for like").description("Diff two bench results: totals side by side and every issue whose outcome or pass verdict changed").action((a, b, o) => {
+  bench.command("compare").argument("<a>", "a results JSON (bench-results/*.json)").argument("<b>", "another results JSON").option("--out <file>", "also write the markdown diff to this file").option("--allow-subset-diff", "compare results that cover different issues (--issues) or fixture versions; the totals are then not like for like").option("--fail-on-regression", "treat <a> as the baseline: add a Regressions section and exit 1 when <b> regressed (an issue that passed fails, a trap not contained, fewer traps contained or issues passed, requests per merged park up past the tolerance)").option("--request-tolerance <pct>", `--fail-on-regression: percent requests per merged park may grow (default ${DEFAULT_REQUEST_TOLERANCE_PCT})`, integerOption(0, 1e4)).description("Diff two bench results: totals side by side and every issue whose outcome or pass verdict changed").action((a, b, o) => {
+    if (o.requestTolerance !== void 0 && !o.failOnRegression) return fail4(new Error("--request-tolerance needs --fail-on-regression"), true);
     try {
-      const text5 = compareResults2(readBenchResults(a), readBenchResults(b), [a, b], { allowSubsetDiff: Boolean(o.allowSubsetDiff) });
+      const [ra, rb] = [readBenchResults(a), readBenchResults(b)];
+      const allowSubsetDiff = Boolean(o.allowSubsetDiff);
+      let text5 = compareResults2(ra, rb, [a, b], { allowSubsetDiff });
+      let regressed = null;
+      if (o.failOnRegression) {
+        const verdict = benchRegressions(ra, rb, { allowSubsetDiff, ...o.requestTolerance !== void 0 ? { requestTolerancePct: o.requestTolerance } : {} });
+        text5 += `
+${renderRegressions(verdict)}`;
+        regressed = verdict.regressions.length > 0;
+      }
       if (o.out) (0, import_node_fs44.writeFileSync)(o.out, text5);
       console.log(text5);
+      if (regressed !== null) process.exitCode = regressed ? 1 : 0;
     } catch (error2) {
       fail4(error2);
     }
@@ -188580,6 +188652,7 @@ function suiteShellFor(platform, env2, exists, gitExecPath) {
 
 // src/release/engine.ts
 init_copilot_binary();
+init_score2();
 init_process_utils();
 init_windows_search();
 var PHASES2 = ["preflight", "bump", "build", "gates", "commit", "suite", "smoke", "pr", "promote", "tag", "verify"];
@@ -188684,6 +188757,7 @@ var blocked = (note, details) => {
 var pendingWait = (note) => {
   throw new PendingError({ status: "blocked", note });
 };
+var BENCH_BASELINE = "benchmark/factory-bench/baseline.json";
 function releaseStatePath(stateRoot2, version3) {
   return (0, import_path243.join)(stateRoot2, "release", `${version3}.json`);
 }
@@ -188732,7 +188806,8 @@ function phasePlan(id, v, opts) {
         `HEAD is ${branch2}; git fetch origin dev; origin/dev is an ancestor of HEAD`,
         `${v} > package.json version on origin/dev and > npm dist-tags.latest`,
         "gh auth status; no .git/index.lock (holder reported, never deleted)",
-        `tag v${v} absent on origin (git ls-remote --tags origin)`
+        `tag v${v} absent on origin (git ls-remote --tags origin)`,
+        opts.bench ? `factory bench: ${opts.bench} has no regression against ${BENCH_BASELINE} (as omg factory bench compare --fail-on-regression)${opts.allowBenchRegression ? "; --allow-bench-regression: regressions only warn" : ""}` : "factory bench: no comparison (pass --bench <results.json>)"
       ];
     case "bump":
       return [
@@ -188921,9 +188996,33 @@ ${r.stderr}`)) throw new PendingError(outcome);
     const remoteTag = this.run("git", ["ls-remote", "--tags", "origin", `refs/tags/v${v}`]);
     if (remoteTag.status !== 0) problems.push(`git ls-remote --tags origin failed: ${tail4(remoteTag.stderr, 1).join("")}`);
     else if (remoteTag.stdout.trim()) problems.push(`tag v${v} already exists on origin`);
+    const bench = this.benchCheck();
+    problems.push(...bench.problems);
     if (problems.length > 0) fail9(`${problems.length} preflight problem(s)`, problems);
     this.save({ branch: branch2, headSha: void 0, suiteSha: void 0, suiteRan: void 0, suiteTriage: void 0, devPr: void 0, devMergeSha: void 0, mainPr: void 0, mainMergeSha: void 0, tagRunId: void 0 });
-    return { status: "ok", note: `on release/v${v} over origin/dev ${devVersion}` };
+    return { status: "ok", note: `on release/v${v} over origin/dev ${devVersion}; ${bench.note}` };
+  }
+  /** `--bench` against the committed baseline: a regression is a problem unless --allow-bench-regression; no --bench is only a note. */
+  benchCheck() {
+    const results = this.opts.bench;
+    if (!results) {
+      this.deps.log("  factory bench: no comparison made (pass --bench <results.json> to compare against the committed baseline)");
+      return { problems: [], note: "no factory bench comparison" };
+    }
+    let verdict;
+    try {
+      verdict = benchRegressions(readBenchResults((0, import_path243.join)(this.deps.root, BENCH_BASELINE)), readBenchResults(results));
+    } catch (error2) {
+      return { problems: [`factory bench: ${error2 instanceof Error ? error2.message : String(error2)}`], note: "" };
+    }
+    for (const n of verdict.notes) this.deps.log(`  factory bench: ${n}`);
+    const found = verdict.regressions.map((r) => `factory bench regression: ${r.detail}`);
+    if (found.length === 0) return { problems: [], note: `no factory bench regression against ${BENCH_BASELINE}` };
+    if (!this.opts.allowBenchRegression) {
+      return { problems: [...found, `factory bench: see omg factory bench compare ${BENCH_BASELINE} ${results} --fail-on-regression; pass --allow-bench-regression to release anyway`], note: "" };
+    }
+    for (const line2 of found) this.deps.log(`  ${line2} (allowed: --allow-bench-regression)`);
+    return { problems: [], note: `${found.length} factory bench regression(s) allowed (--allow-bench-regression)` };
   }
   gitProcesses() {
     const r = process.platform === "win32" ? this.run("tasklist", ["/FI", "IMAGENAME eq git.exe", "/FO", "CSV", "/NH"]) : this.run("ps", ["-eo", "pid,args"]);
@@ -190735,7 +190834,7 @@ function repoCliCommand(versionRaw) {
   const args = at >= 0 ? passed.slice(at + 1) : [versionRaw];
   return ["node", "bin/oh-my-copilot.js", "release", ...args].map((a) => /^[\w@./:=,+-]+$/.test(a) ? a : JSON.stringify(a)).join(" ");
 }
-function releaseDriveArgv(version3, o, baseline) {
+function releaseDriveArgv(version3, o, baseline, bench) {
   return [
     "release",
     version3,
@@ -190757,7 +190856,9 @@ function releaseDriveArgv(version3, o, baseline) {
     o.triageTimeout,
     ...o.allowSkippedSmoke ? ["--allow-skipped-smoke"] : [],
     ...o.fixOrphans ? ["--fix-orphans"] : [],
-    ...o.allowForeignCli ? ["--allow-foreign-cli"] : []
+    ...o.allowForeignCli ? ["--allow-foreign-cli"] : [],
+    ...bench ? ["--bench", bench] : [],
+    ...o.allowBenchRegression ? ["--allow-bench-regression"] : []
   ];
 }
 function monitorHint(progressFile) {
@@ -190765,7 +190866,7 @@ function monitorHint(progressFile) {
 }
 function releaseCommand(overrides = {}) {
   const cmd = new Command("release");
-  cmd.description("Maintainer-only release: preflight, bump, build, gates, commit, suite, smoke, PR to dev, promote to main, tag, verify (resumable)").argument("<version>", "Release version X.Y.Z").option("--from <phase>", `Start at this phase (${PHASES2.join(", ")}); default: the first phase not yet ok`).option("--to <phase>", "Stop after this phase").option("--dry-run", "Print the plan for the selected phases without running anything").option("--json", "JSON output").option("--yes", "Create and push the tag without the interactive confirmation").option("--suite <suite>", "vitest suite (suite phase, after commit): none, targeted (related to src changed since the last tag) or full; recorded per release, default: the recorded level, else none").option("--baseline <file>", 'Full-suite baseline (vitest JSON report or one "<file> > <title>" per line); only new failing titles fail').option("--live-smoke", "Run the live Tier 2 smoke (two prompts, about 0.6 AI credits); skipped otherwise").option("--force-smoke", "Run the live smoke even when its inputs hash to the last green smoke (implies --live-smoke); without it an identical input hash reuses that smoke").option("--triage-runs <n>", "Isolated reruns of each new failing full-suite title (pass every rerun = load-flaky, warns; fail some = mixed, blocks; fail all = real, fails)", "3").option("--triage-timeout <minutes>", "Minutes each isolated rerun may take; a timeout counts as a failed rerun", "5").option("--flaky-candidates", "Print the known-flaky candidates of the full-suite triage, ready to paste into .github/known-flaky-tests.json after review; run nothing").option("--allow-skipped-smoke", "Let the pr phase run although the live smoke was skipped").option("--fix-orphans", "Remove tracked dist outputs whose src source is gone").option("--timeout <minutes>", "Minutes the pr / promote / verify phases wait on CI per run", "60").option("--drive", "Keep driving until done, a real failure or a human decision: a CI wait past --timeout or a transient GitHub error resumes after a minute (never prompts; the tag still needs --yes)").option("--drive-max <hours>", "Hard ceiling of a --drive run; then blocked", String(DRIVE_MAX_HOURS)).option("--detach", "Run the --drive loop as a detached process that outlives this session (log: <state root>/release/<v>.drive.log)").option("--status", "Print the drive lock, the last progress events and the phase table, run nothing").option("--stop", "Stop the detached driver of this release and remove its lock").option("--allow-foreign-cli", "Run although this omg is not the checkout's own CLI (another install or build); refused otherwise").action(async (versionRaw, o) => {
+  cmd.description("Maintainer-only release: preflight, bump, build, gates, commit, suite, smoke, PR to dev, promote to main, tag, verify (resumable)").argument("<version>", "Release version X.Y.Z").option("--from <phase>", `Start at this phase (${PHASES2.join(", ")}); default: the first phase not yet ok`).option("--to <phase>", "Stop after this phase").option("--dry-run", "Print the plan for the selected phases without running anything").option("--json", "JSON output").option("--yes", "Create and push the tag without the interactive confirmation").option("--suite <suite>", "vitest suite (suite phase, after commit): none, targeted (related to src changed since the last tag) or full; recorded per release, default: the recorded level, else none").option("--baseline <file>", 'Full-suite baseline (vitest JSON report or one "<file> > <title>" per line); only new failing titles fail').option("--live-smoke", "Run the live Tier 2 smoke (two prompts, about 0.6 AI credits); skipped otherwise").option("--force-smoke", "Run the live smoke even when its inputs hash to the last green smoke (implies --live-smoke); without it an identical input hash reuses that smoke").option("--triage-runs <n>", "Isolated reruns of each new failing full-suite title (pass every rerun = load-flaky, warns; fail some = mixed, blocks; fail all = real, fails)", "3").option("--triage-timeout <minutes>", "Minutes each isolated rerun may take; a timeout counts as a failed rerun", "5").option("--flaky-candidates", "Print the known-flaky candidates of the full-suite triage, ready to paste into .github/known-flaky-tests.json after review; run nothing").option("--allow-skipped-smoke", "Let the pr phase run although the live smoke was skipped").option("--fix-orphans", "Remove tracked dist outputs whose src source is gone").option("--timeout <minutes>", "Minutes the pr / promote / verify phases wait on CI per run", "60").option("--drive", "Keep driving until done, a real failure or a human decision: a CI wait past --timeout or a transient GitHub error resumes after a minute (never prompts; the tag still needs --yes)").option("--drive-max <hours>", "Hard ceiling of a --drive run; then blocked", String(DRIVE_MAX_HOURS)).option("--detach", "Run the --drive loop as a detached process that outlives this session (log: <state root>/release/<v>.drive.log)").option("--status", "Print the drive lock, the last progress events and the phase table, run nothing").option("--stop", "Stop the detached driver of this release and remove its lock").option("--allow-foreign-cli", "Run although this omg is not the checkout's own CLI (another install or build); refused otherwise").option("--bench <results.json>", `Preflight: refuse the release when these omg factory bench results regressed against the committed ${BENCH_BASELINE}; without it no bench comparison is made (a note, not a block)`).option("--allow-bench-regression", "Let preflight pass although --bench regressed (the regressions are logged)").action(async (versionRaw, o) => {
     const json2 = Boolean(o.json);
     try {
       let version3;
@@ -190887,9 +190988,11 @@ function releaseCommand(overrides = {}) {
 (or pass --allow-foreign-cli to run this one anyway)`);
         console.error(source_default.yellow(`Warning: ${foreign}; ${o.dryRun ? "the plan below is that install's" : "running it anyway (--allow-foreign-cli)"}. To ${use}`));
       }
+      if (o.allowBenchRegression && !o.bench) throw new UsageError("--allow-bench-regression needs --bench <results.json>");
       const baseline = o.baseline ? (0, import_path247.resolve)(o.baseline) : void 0;
+      const bench = o.bench ? (0, import_path247.resolve)(o.bench) : void 0;
       if (o.detach) {
-        const argv = releaseDriveArgv(version3, o, baseline);
+        const argv = releaseDriveArgv(version3, o, baseline, bench);
         const detached = await detachDriver({
           lockPath: lockPath2,
           logPath,
@@ -190926,7 +191029,9 @@ function releaseCommand(overrides = {}) {
         triageTimeoutMinutes,
         allowSkippedSmoke: o.allowSkippedSmoke,
         fixOrphans: o.fixOrphans,
-        timeoutMinutes
+        timeoutMinutes,
+        bench,
+        allowBenchRegression: o.allowBenchRegression
       };
       let result;
       if (o.drive && !o.dryRun) {

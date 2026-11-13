@@ -70,6 +70,7 @@ describe('omg release CLI', () => {
     [['5.12.2', '--triage-runs', '2.5'], /--triage-runs must be a positive whole number/],
     [['5.12.2', '--triage-timeout', '0'], /--triage-timeout must be a positive number/],
     [['5.12.2', '--flaky-candidates', '--status'], /pass one of --status \/ --stop \/ --flaky-candidates/],
+    [['5.12.2', '--allow-bench-regression'], /--allow-bench-regression needs --bench <results.json>/],
   ])('usage error %j exits 2', async (argv, message) => {
     expect(await run(...argv, '--dry-run')).toBe(2);
     expect(err.join('\n')).toMatch(message);
@@ -228,6 +229,18 @@ describe('omg release CLI', () => {
       expect(await drive('5.12.2', '--detach', '--allow-foreign-cli')).toBe(0);
       expect(spawned[0].args[0]).toBe('/x/cli.cjs');
       expect(spawned[0].args).toContain('--allow-foreign-cli');
+    });
+
+    it('--detach keeps --bench (absolute) and --allow-bench-regression', async () => {
+      expect(await drive('5.12.2', '--detach', '--bench', 'r.json', '--allow-bench-regression')).toBe(0);
+      const args = spawned[0].args;
+      expect(args.slice(args.indexOf('--bench'), args.indexOf('--bench') + 2)).toEqual(['--bench', resolve('r.json')]);
+      expect(args).toContain('--allow-bench-regression');
+    });
+
+    it('--dry-run plans the bench comparison of --bench', async () => {
+      expect(await drive('5.12.2', '--dry-run', '--to', 'preflight', '--bench', 'r.json')).toBe(0);
+      expect(out.join('\n')).toContain(`factory bench: ${resolve('r.json')} has no regression against benchmark/factory-bench/baseline.json`);
     });
 
     it('--status prints the driver, the last events and the phase table; --stop kills it and emits blocked', async () => {

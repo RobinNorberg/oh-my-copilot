@@ -20,6 +20,7 @@ import { getOmcRoot } from '../../lib/worktree-paths.js';
 import { resolveBareExe } from '../../utils/windows-search.js';
 import { parseReleaseVersion, suiteShellFor } from '../../release/checks.js';
 import {
+  BENCH_BASELINE,
   defaultReleaseExec,
   defaultReleaseExecAsync,
   flakyCandidatesPath,
@@ -160,10 +161,11 @@ interface ReleaseCliOptions {
   from?: string; to?: string; dryRun?: boolean; json?: boolean; yes?: boolean; suite?: string; baseline?: string;
   liveSmoke?: boolean; forceSmoke?: boolean; triageRuns: string; triageTimeout: string; allowSkippedSmoke?: boolean; fixOrphans?: boolean; timeout: string;
   drive?: boolean; driveMax: string; detach?: boolean; status?: boolean; stop?: boolean; flakyCandidates?: boolean; allowForeignCli?: boolean;
+  bench?: string; allowBenchRegression?: boolean;
 }
 
 /** The detached driver's command line: this invocation with --drive and without --detach / --json. */
-export function releaseDriveArgv(version: string, o: ReleaseCliOptions, baseline?: string): string[] {
+export function releaseDriveArgv(version: string, o: ReleaseCliOptions, baseline?: string, bench?: string): string[] {
   return [
     'release', version, '--drive', '--drive-max', o.driveMax, '--timeout', o.timeout,
     ...(o.from ? ['--from', o.from] : []),
@@ -177,6 +179,8 @@ export function releaseDriveArgv(version: string, o: ReleaseCliOptions, baseline
     ...(o.allowSkippedSmoke ? ['--allow-skipped-smoke'] : []),
     ...(o.fixOrphans ? ['--fix-orphans'] : []),
     ...(o.allowForeignCli ? ['--allow-foreign-cli'] : []),
+    ...(bench ? ['--bench', bench] : []),
+    ...(o.allowBenchRegression ? ['--allow-bench-regression'] : []),
   ];
 }
 
@@ -210,6 +214,8 @@ export function releaseCommand(overrides: ReleaseCommandDeps = {}): Command {
     .option('--status', 'Print the drive lock, the last progress events and the phase table, run nothing')
     .option('--stop', 'Stop the detached driver of this release and remove its lock')
     .option('--allow-foreign-cli', "Run although this omg is not the checkout's own CLI (another install or build); refused otherwise")
+    .option('--bench <results.json>', `Preflight: refuse the release when these omg factory bench results regressed against the committed ${BENCH_BASELINE}; without it no bench comparison is made (a note, not a block)`)
+    .option('--allow-bench-regression', 'Let preflight pass although --bench regressed (the regressions are logged)')
     .action(async (versionRaw: string, o: ReleaseCliOptions) => {
       const json = Boolean(o.json);
       try {
@@ -330,9 +336,11 @@ export function releaseCommand(overrides: ReleaseCommandDeps = {}): Command {
           if (!o.dryRun && !o.allowForeignCli) throw new Error(`${foreign}; this release would run that install's release engine. Refused: ${use}\n(or pass --allow-foreign-cli to run this one anyway)`);
           console.error(chalk.yellow(`Warning: ${foreign}; ${o.dryRun ? "the plan below is that install's" : 'running it anyway (--allow-foreign-cli)'}. To ${use}`));
         }
+        if (o.allowBenchRegression && !o.bench) throw new UsageError('--allow-bench-regression needs --bench <results.json>');
         const baseline = o.baseline ? resolve(o.baseline) : undefined;
+        const bench = o.bench ? resolve(o.bench) : undefined;
         if (o.detach) {
-          const argv = releaseDriveArgv(version, o, baseline);
+          const argv = releaseDriveArgv(version, o, baseline, bench);
           const detached = await detachDriver({
             lockPath, logPath, argv, cwd: root, proc, sleep: deps.sleep, spawnImpl: overrides.spawnDriver,
             entry, statusCommand: `omg release ${version} --status`,
@@ -363,6 +371,8 @@ export function releaseCommand(overrides: ReleaseCommandDeps = {}): Command {
           allowSkippedSmoke: o.allowSkippedSmoke,
           fixOrphans: o.fixOrphans,
           timeoutMinutes,
+          bench,
+          allowBenchRegression: o.allowBenchRegression,
         };
         let result: ReleaseResult;
         if (o.drive && !o.dryRun) {

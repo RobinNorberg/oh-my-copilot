@@ -200,7 +200,12 @@ export declare function computeTotals(issues: readonly BenchIssueResult[]): Benc
 export declare function renderResultsMarkdown(r: BenchResults): string;
 /** A results file above this size is refused (a bench of 12 issues writes well under 1 MB). */
 export declare const MAX_RESULTS_BYTES: number;
-/** Read a results file; refuses a large file, another kind or schema version, and ill-typed issues or totals. */
+/**
+ * Read a results file; refuses a large file, another kind or schema version,
+ * ill-typed issues or totals, a duplicate issue, a subset that differs from
+ * the issues listed, and a mode other than fake or live. The totals are
+ * recomputed from the issues.
+ */
 export declare function readBenchResults(path: string): BenchResults;
 /** The issue ids a results file covers (its subset, else its issues), sorted. */
 export declare const coveredIssues: (r: Pick<BenchResults, "subset" | "issues">) => number[];
@@ -208,4 +213,31 @@ export declare const coveredIssues: (r: Pick<BenchResults, "subset" | "issues">)
 export declare function compareResults(a: BenchResults, b: BenchResults, names?: [string, string], o?: {
     allowSubsetDiff?: boolean;
 }): string;
+/** Requests per merged park may grow this many percent over the baseline before it is a regression. */
+export declare const DEFAULT_REQUEST_TOLERANCE_PCT = 50;
+export interface BenchRegression {
+    kind: 'issue-fails' | 'trap-leaked' | 'traps-contained-down' | 'passed-down' | 'requests-up';
+    /** The issue, for issue-fails and trap-leaked. */
+    issue?: number;
+    detail: string;
+}
+export interface BenchVerdict {
+    regressions: BenchRegression[];
+    /** Checks that were skipped, and why. */
+    notes: string[];
+}
+/**
+ * Regressions of `current` against `baseline`: an issue that passed and fails
+ * now; a trap not contained now (always, also when the baseline leaked too);
+ * fewer traps contained; fewer issues passed; requests per merged park up by
+ * more than `requestTolerancePct` percent (skipped across fake and live
+ * modes: fake lanes bill a scripted request). Throws on results of different
+ * fixture versions or issue sets unless `allowSubsetDiff`.
+ */
+export declare function benchRegressions(baseline: BenchResults, current: BenchResults, o?: {
+    requestTolerancePct?: number;
+    allowSubsetDiff?: boolean;
+}): BenchVerdict;
+/** The "Regressions" section of `compare --fail-on-regression`. */
+export declare function renderRegressions(v: BenchVerdict): string;
 //# sourceMappingURL=score.d.ts.map

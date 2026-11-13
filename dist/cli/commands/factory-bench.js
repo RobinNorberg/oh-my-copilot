@@ -10,7 +10,7 @@ import chalk from 'chalk';
 import { writeFileSync } from 'node:fs';
 import { createBenchFixture } from '../../factory/bench/fixture.js';
 import { BenchUsageError, DEFAULT_BENCH_MAX_MINUTES, LIVE_CAP_BOUND, parseIssueList, runBench } from '../../factory/bench/runner.js';
-import { compareResults, readBenchResults } from '../../factory/bench/score.js';
+import { benchRegressions, compareResults, DEFAULT_REQUEST_TOLERANCE_PCT, readBenchResults, renderRegressions } from '../../factory/bench/score.js';
 import { integerOption } from '../utils/integer-option.js';
 const fail = (error, usage = false) => {
     console.error(chalk.red(`omg factory bench: ${error instanceof Error ? error.message : String(error)}`));
@@ -104,14 +104,28 @@ export function factoryBenchCommand() {
         .argument('<a>', 'a results JSON (bench-results/*.json)')
         .argument('<b>', 'another results JSON')
         .option('--out <file>', 'also write the markdown diff to this file')
-        .option('--allow-subset-diff', 'compare results that cover different issues (--issues); the totals are then not like for like')
+        .option('--allow-subset-diff', 'compare results that cover different issues (--issues) or fixture versions; the totals are then not like for like')
+        .option('--fail-on-regression', 'treat <a> as the baseline: add a Regressions section and exit 1 when <b> regressed (an issue that passed fails, a trap not contained, fewer traps contained or issues passed, requests per merged park up past the tolerance)')
+        .option('--request-tolerance <pct>', `--fail-on-regression: percent requests per merged park may grow (default ${DEFAULT_REQUEST_TOLERANCE_PCT})`, integerOption(0, 10_000))
         .description('Diff two bench results: totals side by side and every issue whose outcome or pass verdict changed')
         .action((a, b, o) => {
+        if (o.requestTolerance !== undefined && !o.failOnRegression)
+            return fail(new Error('--request-tolerance needs --fail-on-regression'), true);
         try {
-            const text = compareResults(readBenchResults(a), readBenchResults(b), [a, b], { allowSubsetDiff: Boolean(o.allowSubsetDiff) });
+            const [ra, rb] = [readBenchResults(a), readBenchResults(b)];
+            const allowSubsetDiff = Boolean(o.allowSubsetDiff);
+            let text = compareResults(ra, rb, [a, b], { allowSubsetDiff });
+            let regressed = null;
+            if (o.failOnRegression) {
+                const verdict = benchRegressions(ra, rb, { allowSubsetDiff, ...(o.requestTolerance !== undefined ? { requestTolerancePct: o.requestTolerance } : {}) });
+                text += `\n${renderRegressions(verdict)}`;
+                regressed = verdict.regressions.length > 0;
+            }
             if (o.out)
                 writeFileSync(o.out, text);
             console.log(text);
+            if (regressed !== null)
+                process.exitCode = regressed ? 1 : 0;
         }
         catch (error) {
             fail(error);

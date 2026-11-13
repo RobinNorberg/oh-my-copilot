@@ -5,7 +5,9 @@
  *
  *   preflight  clean tree (release prose may be uncommitted), on release/v<v>
  *              containing origin/dev, version above dev's and npm's latest,
- *              gh authenticated, no .git/index.lock, tag not on origin
+ *              gh authenticated, no .git/index.lock, tag not on origin; with
+ *              --bench, no factory bench regression against the committed
+ *              baseline (BENCH_BASELINE) unless --allow-bench-regression
  *   bump       refuse without the CHANGELOG / release-body prose, then
  *              npm version + every version stamp + prompt projections
  *   build      npm run build, git add -f dist bridge, orphan + untracked
@@ -148,6 +150,10 @@ export interface ReleaseOptions {
     fixOrphans?: boolean;
     /** Total minutes the pr / promote / verify phases wait on CI per invocation. */
     timeoutMinutes?: number;
+    /** A factory bench results JSON preflight compares against BENCH_BASELINE (omitted: no comparison, not a block). */
+    bench?: string;
+    /** Let preflight pass although --bench regressed against the baseline. */
+    allowBenchRegression?: boolean;
     /**
      * Drive mode (src/release/drive.ts): a CI wait that outlives --timeout, or a
      * transient GitHub error, ends the run as pending (resumed by the drive loop)
@@ -201,6 +207,8 @@ export declare class PendingError extends Error {
     readonly outcome: PhaseOutcome;
     constructor(outcome: PhaseOutcome);
 }
+/** The committed factory bench baseline `--bench` results are compared against (repo-relative). */
+export declare const BENCH_BASELINE = "benchmark/factory-bench/baseline.json";
 export declare function releaseStatePath(stateRoot: string, version: string): string;
 /** Known-flaky candidates of the full-suite triage; the owner approves them into .github/known-flaky-tests.json by hand. */
 export declare function flakyCandidatesPath(stateRoot: string, version: string): string;
