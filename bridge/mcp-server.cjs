@@ -52265,6 +52265,7 @@ async function runContainerGate(req, s, runLabel2, deps) {
   const inspectImage = () => deps.exec(bin, ["image", "inspect", "--format", "{{.Id}}", s.image], { timeoutMs: PROBE_TIMEOUT_MS });
   let image = await inspectImage();
   if (image.status !== 0) {
+    if (/^sha256:[0-9a-f]{64}$/.test(s.image)) return unavailable(`the pinned gate image ${s.image} is no longer present (removed during the run?); start the run again so the image tag is resolved and pulled again`);
     log(`omg factory run: pulling the gate image ${s.image} with ${bin} (factory.run.sandbox.container.image); pin a digest there to fix what runs`);
     const pulled = await deps.exec(bin, ["pull", s.image], { timeoutMs: PULL_TIMEOUT_MS });
     if (pulled.status !== 0) return unavailable(`the gate image ${s.image} is not present and ${bin} pull failed (${firstLine(lastLines(pulled.tail)) || `exit ${pulled.status}`}); pull it yourself, set factory.run.sandbox.container.image, ${switchBack}`);
