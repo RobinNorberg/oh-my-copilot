@@ -32,6 +32,7 @@ All notable changes to oh-my-copilot will be documented in this file.
 ### Docs
 
 - **Inventory baseline needs no regeneration after a merge.** Checked locally: two branches that change different `src` files and each run `--write` leave `inventory/inventory-graph.json` unchanged, merge without conflict, and pass `--verify` with no regeneration. Explained in `docs/FIELD-TESTING.md`.
+- **Why `ship.prepare.build` refuses over personally ignored files.** `docs/REFERENCE.md` now explains that ignored files outside `node_modules/`, `.omg/` and `.omc/` (including ones from your global git ignore file) stop the build, quotes the error, and says how to fix it.
 
 # oh-my-copilot v5.27.0
 
