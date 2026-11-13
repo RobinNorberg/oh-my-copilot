@@ -1770,7 +1770,7 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
       expect(testLines.length).toBeGreaterThan(0);
       expect(testLines.some((d) => d.includes('Build'))).toBe(true);
       expect(testLines.every((d) => !/[\u001b@\n|]/.test(d) && d.startsWith("  `Build' ＠team"))).toBe(true);
-      expect(testLines.some((d) => d.includes("＠team [31m'quoted' ¦ pipe"))).toBe(true);
+      expect(testLines.some((d) => d.includes("'x' ＠team 'quoted' ¦ pipe"))).toBe(true);
     });
 
     it('--to suite and --to smoke prepare without pushing anything', async () => {
