@@ -60,9 +60,12 @@ export declare const GATE_TREE_FILE_MAX_BYTES: number;
  *
  * `copy` (GATE_TREE_COPY_WHY): each package dir is a copy of yours instead
  * of a link (`.bin` and workspace self-links stay links), so a tool that
- * opens a package dir itself (esbuild) never opens a junction.
+ * opens a package dir itself (esbuild) never opens a junction. It throws,
+ * before anything is copied, when the copy would pass a GATE_TREE_COPY_*
+ * bound or the checkout's volume lacks the space (copyPreflight), and at a
+ * bound while copying (copyGateDir; the partial tree is removed first).
  */
-export declare function linkNodeModules(root: string, checkout: string, warn?: (message: string) => void, workspaces?: readonly string[], copy?: boolean): string | null;
+export declare function linkNodeModules(root: string, checkout: string, warn?: (message: string) => void, workspaces?: readonly string[], copy?: boolean | Partial<GateTreeCopyLimits>): string | null;
 /**
  * Why a gate tree may be built as copies: in the Copilot OS sandbox on
  * Windows (its low-integrity token) a directory junction whose target the
@@ -77,6 +80,19 @@ export declare function linkNodeModules(root: string, checkout: string, warn?: (
  * granted fails the same way); only a real dir in the checkout works.
  */
 export declare const GATE_TREE_COPY_WHY = "the OS sandbox on Windows denies opening a package dir through the gate tree's junction with generic read access, which esbuild needs";
+/** L1 (review-546): the most bytes all copied trees of one linkNodeModules call may hold. */
+export declare const GATE_TREE_COPY_MAX_BYTES: number;
+/** L1 (review-546): the most files all copied trees of one linkNodeModules call may hold. */
+export declare const GATE_TREE_COPY_MAX_FILES = 200000;
+/** L1 (review-546): free space the destination volume keeps after the estimated copy. */
+export declare const GATE_TREE_COPY_FREE_MARGIN_BYTES: number;
+/** The bounds of a copied tree (the GATE_TREE_COPY_* constants; tests pass smaller ones), and the free space of a volume (statfs). */
+export interface GateTreeCopyLimits {
+    maxBytes: number;
+    maxFiles: number;
+    marginBytes: number;
+    freeBytes: (dir: string) => number | null;
+}
 /**
  * Remove what linkNodeModules made before the checkout is discarded: on
  * POSIX a symlink named node_modules is untracked for a `node_modules/`

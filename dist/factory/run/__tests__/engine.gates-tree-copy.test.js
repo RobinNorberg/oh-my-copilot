@@ -9,7 +9,29 @@
  */
 import { appendFileSync, existsSync, lstatSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+/** L2 (review-546): an error the copied tree's build throws (EBUSY, ENOSPC), injected into prepare.ts linkNodeModules. */
+const inject = vi.hoisted(() => ({ copyError: null, removeError: null }));
+vi.mock('../prepare.js', async (importOriginal) => {
+    const real = await importOriginal();
+    return {
+        ...real,
+        linkNodeModules: (...args) => {
+            if (args[4] && inject.copyError)
+                throw inject.copyError;
+            return real.linkNodeModules(...args);
+        },
+        unlinkNodeModules: (...args) => {
+            // Once, for the named checkout only (the calibration dirs' removals go through as usual).
+            const e = inject.removeError;
+            if (e && e.at.toLowerCase() === args[1].toLowerCase()) {
+                inject.removeError = null;
+                throw e.error;
+            }
+            return real.unlinkNodeModules(...args);
+        },
+    };
+});
 import { resolveShipConfig } from '../../../ship/config.js';
 import { GATE_SANDBOX_INCOMPATIBLE_GATE, runFactoryEngine } from '../engine.js';
 import { readFactoryState } from '../state.js';
@@ -17,7 +39,12 @@ import { lanesFor, LOCAL_ISSUE, localOpts, localWorld } from './engine-local-har
 import { commitFile, gitIn, review } from './fake-lanes.js';
 const T = 300_000;
 let w;
-afterEach(() => rmSync(w.dir, { recursive: true, force: true }));
+afterEach(() => {
+    inject.copyError = null;
+    inject.removeError = null;
+    rmSync(w.dir, { recursive: true, force: true });
+});
+const errno = (code, message) => Object.assign(new Error(`${code}: ${message}`), { code });
 const greet = () => commitFile('src/greet.js', 'export const greet = () => "hi";\n');
 const buildConfig = () => ({
     config: { ...resolveShipConfig(undefined), requiredChecks: ['Test'], advisoryChecks: [], prepareChecks: [], prepareBuild: { command: ['node', 'build.js'], outputs: ['dist'] } },
@@ -112,6 +139,81 @@ describe('copied gate tree (esbuild through a junction in the Windows OS sandbox
         expect(out.gate?.name, out.message).toBe('merge');
         expect(seen).toEqual(['gate:link', 'calibrate:link', 'gate:copy']);
         expect(readFactoryState(w.root, LOCAL_ISSUE).gateTreeCopy).toBe(true);
+    }, T);
+    it('L2: the copy cannot be built (ENOSPC): the run parks naming the error, does not record copying, and the checkout keeps its linked tree', async () => {
+        world();
+        inject.copyError = errno('ENOSPC', 'no space left on device, copyfile \'node_modules/zod/index.js\'');
+        let prep = '';
+        const s = sandbox((req, tree) => {
+            if (req.purpose === 'prepare')
+                prep = req.cwd;
+            return tree === 'link' ? DENIED : PASS;
+        });
+        const warnings = [];
+        const out = await runFactoryEngine(opts(lanesFor(w, [greet(), review('approve')]), { gateSandbox: s.run, warn: (m) => warnings.push(m) }));
+        expect(out.gate?.name, out.message).toBe(GATE_SANDBOX_INCOMPATIBLE_GATE);
+        const state = readFactoryState(w.root, LOCAL_ISSUE);
+        expect(state.gate?.reason).toMatch(/copied node_modules tree of .* could not be built \(ENOSPC: no space left on device/);
+        expect(state.gate?.reason).toMatch(/Free disk space or close the program holding the file/);
+        expect(state.gateTreeCopy).toBeUndefined();
+        expect(state.history.some((h) => /copies of yours from now on/.test(h.note ?? ''))).toBe(false);
+        expect(s.seen).toEqual(['prepare:link', 'calibrate:link']);
+        expect(warnings.join('\n')).toContain('ENOSPC');
+        // Rolled back: the checkout has its linked tree again; yours is untouched.
+        expect(treeKind(prep)).toBe('link');
+        expect(readFileSync(join(w.root, 'node_modules', 'zod', 'index.js'), 'utf-8')).toBe('yours\n');
+    }, T);
+    it('L2: the linked tree cannot be removed for the rebuild (EBUSY): the run parks naming the error, no copy recorded', async () => {
+        world();
+        const s = sandbox((req, tree) => {
+            // The prepare check's checkout: the switch's removal of its linked tree then meets a busy file.
+            if (req.purpose === 'prepare' && tree === 'link')
+                inject.removeError = { at: req.cwd, error: errno('EBUSY', 'resource busy or locked, unlink \'node_modules\\esbuild\\esbuild.exe\'') };
+            return tree === 'link' ? DENIED : PASS;
+        });
+        const out = await runFactoryEngine(opts(lanesFor(w, [greet(), review('approve')]), { gateSandbox: s.run }));
+        expect(out.gate?.name, out.message).toBe(GATE_SANDBOX_INCOMPATIBLE_GATE);
+        const state = readFactoryState(w.root, LOCAL_ISSUE);
+        expect(state.gate?.reason).toMatch(/could not be removed to be rebuilt as a copy \(EBUSY: resource busy or locked/);
+        expect(state.gateTreeCopy).toBeUndefined();
+        expect(s.seen).toEqual(['prepare:link', 'calibrate:link']);
+    }, T);
+    it('L2: after the switch, a later prepare whose copy cannot be built parks naming the error (no uncaught throw)', async () => {
+        world();
+        const s = sandbox((req, tree) => {
+            if (tree === 'link')
+                return DENIED;
+            if (req.purpose === 'calibrate') {
+                // The base passes on the copy, the head fails: a ci-fix round comes, and its prepare's copy meets a full disk.
+                inject.copyError = errno('ENOSPC', 'no space left on device, mkdir \'node_modules\\zod\'');
+                return PASS;
+            }
+            return FAIL;
+        });
+        const lanes = lanesFor(w, [greet(), review('approve'), commitFile('src/greet.js', 'export const greet = () => "hi!";\n'), review('approve')]);
+        const out = await runFactoryEngine(opts(lanes, { gateSandbox: s.run }));
+        expect(out.gate?.name, out.message).toBe(GATE_SANDBOX_INCOMPATIBLE_GATE);
+        expect(readFactoryState(w.root, LOCAL_ISSUE).gate?.reason).toMatch(/could not be built \(ENOSPC/);
+        expect(readFactoryState(w.root, LOCAL_ISSUE).gateTreeCopy).toBe(true);
+    }, T);
+    it('L2: the local gate: a copy that cannot be built parks with the error, not the stale base text', async () => {
+        world();
+        inject.copyError = errno('EBUSY', 'resource busy or locked, copyfile \'node_modules\\zod\\index.js\'');
+        const run = async (req) => {
+            if (!req.argv.includes('--test'))
+                return PASS;
+            return treeKind(req.cwd) === 'link' ? DENIED : PASS;
+        };
+        const noChecks = () => ({
+            config: { ...resolveShipConfig(undefined), requiredChecks: ['Test'], advisoryChecks: [], prepareChecks: [] },
+            known: [],
+        });
+        const out = await runFactoryEngine(opts(lanesFor(w, [greet(), review('approve')]), { gateConfig: noChecks, gateSandbox: run }));
+        expect(out.gate?.name, out.message).toBe(GATE_SANDBOX_INCOMPATIBLE_GATE);
+        const state = readFactoryState(w.root, LOCAL_ISSUE);
+        expect(state.gate?.reason).toMatch(/could not be built \(EBUSY/);
+        expect(state.gate?.reason).not.toMatch(/fails in the OS sandbox on the base/);
+        expect(state.gateTreeCopy).toBeUndefined();
     }, T);
     it('not Windows: the same output parks, nothing is copied', async () => {
         world();
