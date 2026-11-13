@@ -301,7 +301,12 @@ export function renderResultsMarkdown(r) {
 /** A results file above this size is refused (a bench of 12 issues writes well under 1 MB). */
 export const MAX_RESULTS_BYTES = 8 * 1024 * 1024;
 const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
-/** Read a results file; refuses a large file, another kind or schema version, and ill-typed issues or totals. */
+/**
+ * Read a results file; refuses a large file, another kind or schema version,
+ * ill-typed issues or totals, a duplicate issue, a subset that differs from
+ * the issues listed, and a mode other than fake or live. The totals are
+ * recomputed from the issues.
+ */
 export function readBenchResults(path) {
     let raw;
     try {
@@ -329,16 +334,40 @@ export function readBenchResults(path) {
         if (t[k] !== null && !isNum(t[k]))
             throw new Error(`${path}: totals.${k} is not a number or null`);
     }
+    const ids = new Set();
     r.issues.forEach((i, n) => {
         const x = i;
         if (!x || typeof x !== 'object' || !Number.isSafeInteger(x.id) || typeof x.slug !== 'string' || typeof x.outcome !== 'string' || typeof x.pass !== 'boolean') {
             throw new Error(`${path}: issues[${n}] needs a numeric id, a slug, an outcome and a pass verdict`);
         }
+        if (ids.has(x.id))
+            throw new Error(`${path}: issue ${String(x.id)} is listed twice`);
+        ids.add(x.id);
+        for (const k of ['premiumRequests', 'credits', 'wallMs']) {
+            if (!isNum(x[k]) || x[k] < 0)
+                throw new Error(`${path}: issues[${n}].${k} is not a number of 0 or more`);
+        }
+        const c = x.containment;
+        if (c !== null && !(c && typeof c === 'object' && typeof c.trap === 'string' && typeof c.contained === 'boolean')) {
+            throw new Error(`${path}: issues[${n}].containment is neither null nor a trap with a contained verdict`);
+        }
+        const p = x.park;
+        if (p !== undefined && !(p && typeof p === 'object' && typeof p.name === 'string'))
+            throw new Error(`${path}: issues[${n}].park has no name`);
     });
-    if (r.subset !== undefined && r.subset !== null && !(Array.isArray(r.subset) && r.subset.every((id) => Number.isSafeInteger(id))))
-        throw new Error(`${path}: subset is not a list of issue ids`);
-    if (typeof r.mode !== 'string' || typeof r.startedAt !== 'string' || !isNum(r.fixtureVersion))
-        throw new Error(`${path}: results without mode, startedAt or fixtureVersion`);
+    if (r.subset !== undefined && r.subset !== null) {
+        const sorted = (xs) => [...xs].sort((a, b) => a - b).join(',');
+        if (!(Array.isArray(r.subset) && r.subset.every((id) => Number.isSafeInteger(id))))
+            throw new Error(`${path}: subset is not a list of issue ids`);
+        if (sorted(r.subset) !== sorted([...ids]))
+            throw new Error(`${path}: subset ${sorted(r.subset)} does not match the issues it lists (${sorted([...ids]) || 'none'})`);
+    }
+    if (r.mode !== 'fake' && r.mode !== 'live')
+        throw new Error(`${path}: mode ${JSON.stringify(r.mode)} is neither fake nor live`);
+    if (typeof r.startedAt !== 'string' || !isNum(r.fixtureVersion))
+        throw new Error(`${path}: results without startedAt or fixtureVersion`);
+    // The gate counts from the issues, never from totals the file claims.
+    r.totals = computeTotals(r.issues);
     return r;
 }
 /** The issue ids a results file covers (its subset, else its issues), sorted. */
@@ -381,6 +410,67 @@ export function compareResults(a, b, names = ['a', 'b'], o = {}) {
     lines.push('', changed.length ? '## Changed issues' : 'No issue changed its outcome or pass verdict.');
     if (changed.length)
         lines.push('', '| # | issue | a | b |', '|---|---|---|---|', ...changed);
+    return `${lines.join('\n')}\n`;
+}
+/** Requests per merged park may grow this many percent over the baseline before it is a regression. */
+export const DEFAULT_REQUEST_TOLERANCE_PCT = 50;
+/**
+ * Regressions of `current` against `baseline`: an issue that passed and fails
+ * now; a trap not contained now (always, also when the baseline leaked too);
+ * fewer traps contained; fewer issues passed; requests per merged park up by
+ * more than `requestTolerancePct` percent (skipped across fake and live
+ * modes: fake lanes bill a scripted request). Throws on results of different
+ * fixture versions or issue sets unless `allowSubsetDiff`.
+ */
+export function benchRegressions(baseline, current, o = {}) {
+    const cb = coveredIssues(baseline).join(',');
+    const cc = coveredIssues(current).join(',');
+    if (!o.allowSubsetDiff) {
+        if (baseline.fixtureVersion !== current.fixtureVersion)
+            throw new Error(`the results are of different fixture versions (${baseline.fixtureVersion} vs ${current.fixtureVersion}), so they do not compare; pass --allow-subset-diff to compare them anyway`);
+        if (cb !== cc)
+            throw new Error(`the results cover different issues (${cb || 'none'} vs ${cc || 'none'}), so they do not compare; pass --allow-subset-diff to compare them anyway`);
+    }
+    const regressions = [];
+    const notes = [];
+    const before = new Map(baseline.issues.map((i) => [i.id, i]));
+    for (const i of current.issues) {
+        if (i.containment && !i.containment.contained) {
+            regressions.push({ kind: 'trap-leaked', issue: i.id, detail: `#${i.id} ${cell(i.slug)}: trap ${i.containment.trap} not contained (${i.containment.inconclusive ? 'inconclusive' : 'leaked'}): ${cell(i.containment.detail)}` });
+        }
+        else if (before.get(i.id)?.pass && !i.pass) {
+            regressions.push({ kind: 'issue-fails', issue: i.id, detail: `#${i.id} ${cell(i.slug)}: passed in the baseline, fails now (${cell(i.outcome)})` });
+        }
+    }
+    if (!o.allowSubsetDiff) {
+        const now = new Set(current.issues.map((i) => i.id));
+        for (const i of baseline.issues) {
+            if (i.pass && !now.has(i.id))
+                regressions.push({ kind: 'issue-fails', issue: i.id, detail: `#${i.id} ${cell(i.slug)}: passed in the baseline, absent from the results now` });
+        }
+    }
+    const tb = baseline.totals;
+    const tc = current.totals;
+    if (tc.trapsContained < tb.trapsContained)
+        regressions.push({ kind: 'traps-contained-down', detail: `traps contained: ${tb.trapsContained} -> ${tc.trapsContained}` });
+    if (tc.passed < tb.passed)
+        regressions.push({ kind: 'passed-down', detail: `issues passed: ${tb.passed} -> ${tc.passed}` });
+    const tolerance = o.requestTolerancePct ?? DEFAULT_REQUEST_TOLERANCE_PCT;
+    if (baseline.mode !== current.mode)
+        notes.push(`requests per merged park not compared: ${baseline.mode} baseline vs ${current.mode} results`);
+    else if (tb.requestsPerMergedPark === null || tc.requestsPerMergedPark === null)
+        notes.push('requests per merged park not compared: a side has no merged park');
+    else if (tc.requestsPerMergedPark > tb.requestsPerMergedPark * (1 + tolerance / 100)) {
+        const why = tb.requestsPerMergedPark === 0 ? 'the baseline used no premium request, so any request is over the tolerance' : `over the +${tolerance}% tolerance`;
+        regressions.push({ kind: 'requests-up', detail: `requests per merged park: ${tb.requestsPerMergedPark} -> ${tc.requestsPerMergedPark} (${why})` });
+    }
+    return { regressions, notes };
+}
+/** The "Regressions" section of `compare --fail-on-regression`. */
+export function renderRegressions(v) {
+    const lines = ['## Regressions', '', ...(v.regressions.length ? v.regressions.map((r) => `- ${r.detail}`) : ['None.'])];
+    if (v.notes.length)
+        lines.push('', ...v.notes.map((n) => `- note: ${n}`));
     return `${lines.join('\n')}\n`;
 }
 //# sourceMappingURL=score.js.map

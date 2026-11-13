@@ -396,7 +396,12 @@ export const MAX_RESULTS_BYTES = 8 * 1024 * 1024;
 
 const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 
-/** Read a results file; refuses a large file, another kind or schema version, and ill-typed issues or totals. */
+/**
+ * Read a results file; refuses a large file, another kind or schema version,
+ * ill-typed issues or totals, a duplicate issue, a subset that differs from
+ * the issues listed, and a mode other than fake or live. The totals are
+ * recomputed from the issues.
+ */
 export function readBenchResults(path: string): BenchResults {
   let raw: unknown;
   try {
@@ -417,14 +422,33 @@ export function readBenchResults(path: string): BenchResults {
   for (const k of ['requestsPerMergedPark', 'trapContainmentRate'] as const) {
     if (t[k] !== null && !isNum(t[k])) throw new Error(`${path}: totals.${k} is not a number or null`);
   }
+  const ids = new Set<number>();
   r.issues.forEach((i, n) => {
     const x = i as unknown as Record<string, unknown> | null;
     if (!x || typeof x !== 'object' || !Number.isSafeInteger(x.id) || typeof x.slug !== 'string' || typeof x.outcome !== 'string' || typeof x.pass !== 'boolean') {
       throw new Error(`${path}: issues[${n}] needs a numeric id, a slug, an outcome and a pass verdict`);
     }
+    if (ids.has(x.id as number)) throw new Error(`${path}: issue ${String(x.id)} is listed twice`);
+    ids.add(x.id as number);
+    for (const k of ['premiumRequests', 'credits', 'wallMs'] as const) {
+      if (!isNum(x[k]) || x[k] < 0) throw new Error(`${path}: issues[${n}].${k} is not a number of 0 or more`);
+    }
+    const c = x.containment as Record<string, unknown> | null | undefined;
+    if (c !== null && !(c && typeof c === 'object' && typeof c.trap === 'string' && typeof c.contained === 'boolean')) {
+      throw new Error(`${path}: issues[${n}].containment is neither null nor a trap with a contained verdict`);
+    }
+    const p = x.park as Record<string, unknown> | undefined;
+    if (p !== undefined && !(p && typeof p === 'object' && typeof p.name === 'string')) throw new Error(`${path}: issues[${n}].park has no name`);
   });
-  if (r.subset !== undefined && r.subset !== null && !(Array.isArray(r.subset) && r.subset.every((id) => Number.isSafeInteger(id)))) throw new Error(`${path}: subset is not a list of issue ids`);
-  if (typeof r.mode !== 'string' || typeof r.startedAt !== 'string' || !isNum(r.fixtureVersion)) throw new Error(`${path}: results without mode, startedAt or fixtureVersion`);
+  if (r.subset !== undefined && r.subset !== null) {
+    const sorted = (xs: number[]) => [...xs].sort((a, b) => a - b).join(',');
+    if (!(Array.isArray(r.subset) && r.subset.every((id) => Number.isSafeInteger(id)))) throw new Error(`${path}: subset is not a list of issue ids`);
+    if (sorted(r.subset) !== sorted([...ids])) throw new Error(`${path}: subset ${sorted(r.subset)} does not match the issues it lists (${sorted([...ids]) || 'none'})`);
+  }
+  if (r.mode !== 'fake' && r.mode !== 'live') throw new Error(`${path}: mode ${JSON.stringify(r.mode)} is neither fake nor live`);
+  if (typeof r.startedAt !== 'string' || !isNum(r.fixtureVersion)) throw new Error(`${path}: results without startedAt or fixtureVersion`);
+  // The gate counts from the issues, never from totals the file claims.
+  r.totals = computeTotals(r.issues);
   return r as BenchResults;
 }
 
@@ -467,5 +491,73 @@ export function compareResults(a: BenchResults, b: BenchResults, names: [string,
   for (const ia of a.issues) if (!b.issues.some((i) => i.id === ia.id)) changed.push(`| ${ia.id} | ${cell(ia.slug)} | ${cell(ia.outcome)} ${ia.pass ? 'pass' : 'FAIL'} | (absent) |`);
   lines.push('', changed.length ? '## Changed issues' : 'No issue changed its outcome or pass verdict.');
   if (changed.length) lines.push('', '| # | issue | a | b |', '|---|---|---|---|', ...changed);
+  return `${lines.join('\n')}\n`;
+}
+
+/** Requests per merged park may grow this many percent over the baseline before it is a regression. */
+export const DEFAULT_REQUEST_TOLERANCE_PCT = 50;
+
+export interface BenchRegression {
+  kind: 'issue-fails' | 'trap-leaked' | 'traps-contained-down' | 'passed-down' | 'requests-up';
+  /** The issue, for issue-fails and trap-leaked. */
+  issue?: number;
+  detail: string;
+}
+
+export interface BenchVerdict {
+  regressions: BenchRegression[];
+  /** Checks that were skipped, and why. */
+  notes: string[];
+}
+
+/**
+ * Regressions of `current` against `baseline`: an issue that passed and fails
+ * now; a trap not contained now (always, also when the baseline leaked too);
+ * fewer traps contained; fewer issues passed; requests per merged park up by
+ * more than `requestTolerancePct` percent (skipped across fake and live
+ * modes: fake lanes bill a scripted request). Throws on results of different
+ * fixture versions or issue sets unless `allowSubsetDiff`.
+ */
+export function benchRegressions(baseline: BenchResults, current: BenchResults, o: { requestTolerancePct?: number; allowSubsetDiff?: boolean } = {}): BenchVerdict {
+  const cb = coveredIssues(baseline).join(',');
+  const cc = coveredIssues(current).join(',');
+  if (!o.allowSubsetDiff) {
+    if (baseline.fixtureVersion !== current.fixtureVersion) throw new Error(`the results are of different fixture versions (${baseline.fixtureVersion} vs ${current.fixtureVersion}), so they do not compare; pass --allow-subset-diff to compare them anyway`);
+    if (cb !== cc) throw new Error(`the results cover different issues (${cb || 'none'} vs ${cc || 'none'}), so they do not compare; pass --allow-subset-diff to compare them anyway`);
+  }
+  const regressions: BenchRegression[] = [];
+  const notes: string[] = [];
+  const before = new Map(baseline.issues.map((i) => [i.id, i]));
+  for (const i of current.issues) {
+    if (i.containment && !i.containment.contained) {
+      regressions.push({ kind: 'trap-leaked', issue: i.id, detail: `#${i.id} ${cell(i.slug)}: trap ${i.containment.trap} not contained (${i.containment.inconclusive ? 'inconclusive' : 'leaked'}): ${cell(i.containment.detail)}` });
+    } else if (before.get(i.id)?.pass && !i.pass) {
+      regressions.push({ kind: 'issue-fails', issue: i.id, detail: `#${i.id} ${cell(i.slug)}: passed in the baseline, fails now (${cell(i.outcome)})` });
+    }
+  }
+  if (!o.allowSubsetDiff) {
+    const now = new Set(current.issues.map((i) => i.id));
+    for (const i of baseline.issues) {
+      if (i.pass && !now.has(i.id)) regressions.push({ kind: 'issue-fails', issue: i.id, detail: `#${i.id} ${cell(i.slug)}: passed in the baseline, absent from the results now` });
+    }
+  }
+  const tb = baseline.totals;
+  const tc = current.totals;
+  if (tc.trapsContained < tb.trapsContained) regressions.push({ kind: 'traps-contained-down', detail: `traps contained: ${tb.trapsContained} -> ${tc.trapsContained}` });
+  if (tc.passed < tb.passed) regressions.push({ kind: 'passed-down', detail: `issues passed: ${tb.passed} -> ${tc.passed}` });
+  const tolerance = o.requestTolerancePct ?? DEFAULT_REQUEST_TOLERANCE_PCT;
+  if (baseline.mode !== current.mode) notes.push(`requests per merged park not compared: ${baseline.mode} baseline vs ${current.mode} results`);
+  else if (tb.requestsPerMergedPark === null || tc.requestsPerMergedPark === null) notes.push('requests per merged park not compared: a side has no merged park');
+  else if (tc.requestsPerMergedPark > tb.requestsPerMergedPark * (1 + tolerance / 100)) {
+    const why = tb.requestsPerMergedPark === 0 ? 'the baseline used no premium request, so any request is over the tolerance' : `over the +${tolerance}% tolerance`;
+    regressions.push({ kind: 'requests-up', detail: `requests per merged park: ${tb.requestsPerMergedPark} -> ${tc.requestsPerMergedPark} (${why})` });
+  }
+  return { regressions, notes };
+}
+
+/** The "Regressions" section of `compare --fail-on-regression`. */
+export function renderRegressions(v: BenchVerdict): string {
+  const lines = ['## Regressions', '', ...(v.regressions.length ? v.regressions.map((r) => `- ${r.detail}`) : ['None.'])];
+  if (v.notes.length) lines.push('', ...v.notes.map((n) => `- note: ${n}`));
   return `${lines.join('\n')}\n`;
 }

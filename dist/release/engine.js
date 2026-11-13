@@ -5,7 +5,9 @@
  *
  *   preflight  clean tree (release prose may be uncommitted), on release/v<v>
  *              containing origin/dev, version above dev's and npm's latest,
- *              gh authenticated, no .git/index.lock, tag not on origin
+ *              gh authenticated, no .git/index.lock, tag not on origin; with
+ *              --bench, no factory bench regression against the committed
+ *              baseline (BENCH_BASELINE) unless --allow-bench-regression
  *   bump       refuse without the CHANGELOG / release-body prose, then
  *              npm version + every version stamp + prompt projections
  *   build      npm run build, git add -f dist bridge, orphan + untracked
@@ -55,6 +57,7 @@ import { checkName } from '../ship/check-name.js';
 import { parseFailingTests, TRANSIENT_GH_ERROR, watchGates } from '../ship/gates.js';
 import { classifyTriage, compareVersions, escapeRe, failingTitlesFromVitestJson, filePassedInReport, findDistOrphans, flakyCandidates, newFailures, outsideNodeLoad, parseBaselineTitles, releaseProseProblems, remoteTagTarget, SMOKE_INPUTS, smokeInputHash, smokeProblems, splitFailingTitle, stampVersion, tagTargetProblem, testPassedInReport, TRIAGE_CAP, TRIAGE_POOL, triageLine, VERSION_STAMPS, } from './checks.js';
 import { parseCopilotVersion, resolveCopilotBinary } from '../smoke/copilot-binary.js';
+import { benchRegressions, readBenchResults } from '../factory/bench/score.js';
 import { killProcessTree } from '../platform/process-utils.js';
 import { childEnv } from '../utils/windows-search.js';
 export const PHASES = ['preflight', 'bump', 'build', 'gates', 'commit', 'suite', 'smoke', 'pr', 'promote', 'tag', 'verify'];
@@ -190,6 +193,8 @@ const blocked = (note, details) => {
 const pendingWait = (note) => {
     throw new PendingError({ status: 'blocked', note });
 };
+/** The committed factory bench baseline `--bench` results are compared against (repo-relative). */
+export const BENCH_BASELINE = 'benchmark/factory-bench/baseline.json';
 export function releaseStatePath(stateRoot, version) {
     return join(stateRoot, 'release', `${version}.json`);
 }
@@ -251,6 +256,9 @@ export function phasePlan(id, v, opts) {
                 `${v} > package.json version on origin/dev and > npm dist-tags.latest`,
                 'gh auth status; no .git/index.lock (holder reported, never deleted)',
                 `tag v${v} absent on origin (git ls-remote --tags origin)`,
+                opts.bench
+                    ? `factory bench: ${opts.bench} has no regression against ${BENCH_BASELINE} (as omg factory bench compare --fail-on-regression)${opts.allowBenchRegression ? '; --allow-bench-regression: regressions only warn' : ''}`
+                    : 'factory bench: no comparison (pass --bench <results.json>)',
             ];
         case 'bump':
             return [
@@ -453,11 +461,39 @@ class Release {
             problems.push(`git ls-remote --tags origin failed: ${tail(remoteTag.stderr, 1).join('')}`);
         else if (remoteTag.stdout.trim())
             problems.push(`tag v${v} already exists on origin`);
+        const bench = this.benchCheck();
+        problems.push(...bench.problems);
         if (problems.length > 0)
             fail(`${problems.length} preflight problem(s)`, problems);
         // A fresh start never reuses the PRs, merges or tag run of an earlier attempt.
         this.save({ branch, headSha: undefined, suiteSha: undefined, suiteRan: undefined, suiteTriage: undefined, devPr: undefined, devMergeSha: undefined, mainPr: undefined, mainMergeSha: undefined, tagRunId: undefined });
-        return { status: 'ok', note: `on release/v${v} over origin/dev ${devVersion}` };
+        return { status: 'ok', note: `on release/v${v} over origin/dev ${devVersion}; ${bench.note}` };
+    }
+    /** `--bench` against the committed baseline: a regression is a problem unless --allow-bench-regression; no --bench is only a note. */
+    benchCheck() {
+        const results = this.opts.bench;
+        if (!results) {
+            this.deps.log('  factory bench: no comparison made (pass --bench <results.json> to compare against the committed baseline)');
+            return { problems: [], note: 'no factory bench comparison' };
+        }
+        let verdict;
+        try {
+            verdict = benchRegressions(readBenchResults(join(this.deps.root, BENCH_BASELINE)), readBenchResults(results));
+        }
+        catch (error) {
+            return { problems: [`factory bench: ${error instanceof Error ? error.message : String(error)}`], note: '' };
+        }
+        for (const n of verdict.notes)
+            this.deps.log(`  factory bench: ${n}`);
+        const found = verdict.regressions.map((r) => `factory bench regression: ${r.detail}`);
+        if (found.length === 0)
+            return { problems: [], note: `no factory bench regression against ${BENCH_BASELINE}` };
+        if (!this.opts.allowBenchRegression) {
+            return { problems: [...found, `factory bench: see omg factory bench compare ${BENCH_BASELINE} ${results} --fail-on-regression; pass --allow-bench-regression to release anyway`], note: '' };
+        }
+        for (const line of found)
+            this.deps.log(`  ${line} (allowed: --allow-bench-regression)`);
+        return { problems: [], note: `${found.length} factory bench regression(s) allowed (--allow-bench-regression)` };
     }
     gitProcesses() {
         const r = process.platform === 'win32'
