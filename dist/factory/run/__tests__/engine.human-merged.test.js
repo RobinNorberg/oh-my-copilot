@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { readShipState } from '../../../ship/state.js';
-import { EXIT_AWAITING_HUMAN } from '../engine.js';
-import { readFactoryState } from '../state.js';
-import { commitFile, ISSUE, PR, review } from './fake-lanes.js';
-import { asEngine, h, ledger, run, useEngineHarness } from './engine-harness.js';
+import { EXIT_AWAITING_HUMAN, runFactoryEngine } from '../engine.js';
+import { readFactoryState, requestFactoryCancel } from '../state.js';
+import { commitFile, FakeLanes, gitIn, ISSUE, PR, review } from './fake-lanes.js';
+import { asEngine, h, ledger, opts, run, useEngineHarness } from './engine-harness.js';
 useEngineHarness();
 /** A run parked at the merge gate (it has a PR and a ship state), then moved to `phase`/`gate` as the engine would have. */
 async function stoppedRun(mutate) {
@@ -112,6 +112,60 @@ describe('omg factory run: a stopped run whose PR a human merged', () => {
         const out = await done;
         expect(out.phase).toBe('cancelled');
         expect(lanes.started).toHaveLength(0);
+    });
+});
+describe('review 533b NEW-1: a lane cancelled without a clean tamper check is never laundered into a human merge', () => {
+    /** Cancel the run while its review lane runs; `during` runs at that poll (a lane's write). */
+    async function cancelDuringReview(during, over = {}) {
+        const lanes = new FakeLanes(h.root, [commitFile('a.ts'), review('approve')], [0, 50]);
+        if (over.cancelFails)
+            lanes.cancelFails = true;
+        let asked = false;
+        lanes.onRunningPoll = () => {
+            if (asked)
+                return;
+            asked = true;
+            during();
+            requestFactoryCancel(h.root, ISSUE, new Date().toISOString());
+        };
+        const out = await runFactoryEngine(opts(lanes));
+        expect(out.phase, out.message).toBe('cancelled');
+    }
+    /** Rerun after a human merged the PR: the outcome and the warnings. */
+    async function rerunMerged() {
+        h.gh.merged = true;
+        const warnings = [];
+        const { lanes, done } = run([], { warn: (m) => warnings.push(m) });
+        const out = await done;
+        expect(lanes.started).toHaveLength(0);
+        return { phase: out.phase ?? '', warnings: warnings.join('\n') };
+    }
+    it('a cancel whose tamper check found a change + merged PR: stays cancelled, a warning says why', async () => {
+        await cancelDuringReview(() => gitIn(h.root, 'branch', 'evil', 'HEAD'));
+        const lane = readFactoryState(h.root, ISSUE).lanes[1];
+        expect(lane).toMatchObject({ status: 'cancelled', tamperCheck: 'problems' });
+        const r = await rerunMerged();
+        expect(r.phase).toBe('cancelled');
+        expect(r.warnings).toContain(`not checked for a human merge: lane ${lane.id} was cancelled without a clean tamper check; inspect dev`);
+        expect(readFactoryState(h.root, ISSUE).history.some((e) => (e.note ?? '').includes('merged by a human'))).toBe(false);
+    });
+    it('a cancel that could not stop the lane (no compare) + merged PR: stays cancelled', async () => {
+        await cancelDuringReview(() => undefined, { cancelFails: true });
+        expect(readFactoryState(h.root, ISSUE).lanes[1]).toMatchObject({ status: 'cancelled', tamperCheck: 'skipped' });
+        expect((await rerunMerged()).phase).toBe('cancelled');
+    });
+    it('a clean cancel + merged PR: recorded merged', async () => {
+        await cancelDuringReview(() => undefined);
+        expect(readFactoryState(h.root, ISSUE).lanes[1]).toMatchObject({ status: 'cancelled', tamperCheck: 'clean' });
+        expect((await rerunMerged()).phase).toBe('merged');
+    });
+    it('an older state (a cancelled lane without tamperCheck, note says clean) + merged PR: stays cancelled', async () => {
+        await cancelDuringReview(() => undefined);
+        asEngine((s) => ({ ...s, lanes: s.lanes.map(({ tamperCheck: _t, ...l }) => l) }));
+        expect(readFactoryState(h.root, ISSUE).lanes[1].note).toBe('cancelled; tamper check clean');
+        const r = await rerunMerged();
+        expect(r.phase).toBe('cancelled');
+        expect(r.warnings).toMatch(/was cancelled without a clean tamper check/);
     });
 });
 //# sourceMappingURL=engine.human-merged.test.js.map

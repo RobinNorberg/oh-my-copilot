@@ -131179,7 +131179,7 @@ function shapeProblem2(s) {
   if (!Array.isArray(s.lanes) || !s.lanes.every((l) => {
     const x = l;
     const sbx = x?.sandbox;
-    return isStr2(x?.id) && isStr2(x.kind) && isStr2(x.status) && isStr2(x.startSha) && typeof x.maxCredits === "number" && (x.stopUnconfirmed === void 0 || typeof x.stopUnconfirmed === "boolean") && (sbx === void 0 || typeof sbx === "object" && sbx !== null && isStr2(sbx.mode) && isCount3(sbx.unsandboxedCalls) && (sbx.writeNetwork === void 0 || sbx.writeNetwork === "none" || sbx.writeNetwork === "registry"));
+    return isStr2(x?.id) && isStr2(x.kind) && isStr2(x.status) && isStr2(x.startSha) && typeof x.maxCredits === "number" && (x.stopUnconfirmed === void 0 || typeof x.stopUnconfirmed === "boolean") && (x.tamperCheck === void 0 || x.tamperCheck === "clean" || x.tamperCheck === "problems" || x.tamperCheck === "skipped") && (sbx === void 0 || typeof sbx === "object" && sbx !== null && isStr2(sbx.mode) && isCount3(sbx.unsandboxedCalls) && (sbx.writeNetwork === void 0 || sbx.writeNetwork === "none" || sbx.writeNetwork === "registry"));
   })) return "lanes";
   if (typeof s.retries !== "object" || s.retries === null || !Object.values(s.retries).every(isCount3)) return "retries";
   if (typeof s.lostStreak !== "object" || s.lostStreak === null) return "lostStreak";
@@ -139587,6 +139587,16 @@ function humanMergeCandidate(s) {
   if (s.phase === "cancelled" || s.phase === "failed") return true;
   return s.gate !== void 0 && !s.gate.name.endsWith("-tampered");
 }
+function laneTrustProblem(s) {
+  const inspect = `inspect ${s.base}`;
+  for (const l of s.lanes) {
+    if (l.kind === "coding-agent") continue;
+    if (l.stopUnconfirmed === true || l.status === "running") return `lane ${l.id} may still run (its stop was not confirmed); ${inspect}`;
+    if (l.status === "cancelled" && l.tamperCheck !== "clean") return `lane ${l.id} was cancelled without a clean tamper check; ${inspect}`;
+  }
+  if (s.gate?.name === "lane-unconfirmed") return `the run is parked at lane-unconfirmed (a lane may still run); ${inspect}`;
+  return null;
+}
 function previousStateText(s) {
   return s.gate ? `awaiting-human: ${s.gate.name}` : s.phase;
 }
@@ -139611,19 +139621,22 @@ function forgePrStateReader(forge, exec3, root2, repoUrl) {
         const base = forge.reviews.viewPr(pr).baseRefName;
         if (base !== s.base) throw new Error(`PR #${pr} was merged into ${base}, not the run's base ${s.base}`);
       }
-      return state;
+      return { state };
     }
     const head = s.head ?? "";
     if (!HEX4018.test(head)) throw new Error(`run ${label2} has no pushed head`);
     const replaced = replaceObjectsProblem(exec3, root2);
     if (replaced) throw new Error(replaced);
-    const r = exec3("git", ["merge-base", "--is-ancestor", head, `refs/heads/${s.base}`], { cwd: root2, env: TRUSTED_READ_ENV });
+    const t = exec3("git", ["rev-parse", "--verify", `refs/heads/${s.base}`], { cwd: root2, env: TRUSTED_READ_ENV });
+    const baseTip = t.stdout.trim();
+    if (t.status !== 0 || !HEX4018.test(baseTip)) throw new Error(`your ${s.base} could not be read (git rev-parse exit ${t.status})`);
+    const r = exec3("git", ["merge-base", "--is-ancestor", head, baseTip], { cwd: root2, env: TRUSTED_READ_ENV });
     if (r.status !== 0 && r.status !== 1) throw new Error(`git merge-base --is-ancestor failed (exit ${r.status}): ${r.stderr.trim()}`);
     const v = forge.reviews.viewPr(pr);
-    if (v.state === "CLOSED") return "CLOSED";
-    if (r.status === 1) return "OPEN";
+    if (v.state === "CLOSED") return { state: "CLOSED" };
+    if (r.status === 1) return { state: "OPEN" };
     if (v.headRefOid !== head || v.baseRefName !== s.base) throw new Error(`your ${s.base} contains the pushed head ${head.slice(0, 12)}, but the local PR store names ${v.headRefOid.slice(0, 12)} into ${v.baseRefName} for PR #${pr}`);
-    return "MERGED";
+    return { state: "MERGED", baseTip };
   };
 }
 function recordHumanMerge(root2, key, o) {
@@ -139636,20 +139649,22 @@ function recordHumanMerge(root2, key, o) {
     s = parseFactoryState(path30, key, bytes.toString("utf8"));
     if (!humanMergeCandidate(s)) return unchanged("not a stopped run with a PR");
     if (!verifyFactoryIntegrity(s)) return unchanged("the run state fails its integrity check");
+    const untrusted = laneTrustProblem(s);
+    if (untrusted) return { kind: "unchanged", key, reason: untrusted, untrusted: true };
     if (tamperHoldMessage(o.ledgerDir, root2)) return unchanged("a tamper hold is set on this checkout");
     if (!EngineLedger.open(o.ledgerDir, root2, key).matches(path30, bytes)) return unchanged("the run state is not the engine's last write");
   } catch (error2) {
     return unchanged(text3(error2));
   }
   const pr = s.pr;
-  let prState;
+  let read;
   try {
-    prState = o.readPrState(s);
+    read = o.readPrState(s);
   } catch (error2) {
     return { kind: "unchanged", key, reason: `PR #${pr} could not be read: ${text3(error2)}`, readFailed: true };
   }
-  if (prState === "CLOSED") return { kind: "closed", key, pr };
-  if (prState !== "MERGED") return unchanged(`PR #${pr} is open`);
+  if (read.state === "CLOSED") return { kind: "closed", key, pr };
+  if (read.state !== "MERGED") return unchanged(`PR #${pr} is open`);
   let owner;
   try {
     owner = acquireFactoryOwner(root2, key, o.now(), o.owner);
@@ -139661,7 +139676,7 @@ function recordHumanMerge(root2, key, o) {
     const previous = previousStateText(s);
     const now2 = o.now();
     const written = updateFactoryState(root2, key, (cur) => {
-      if (!cur || !humanMergeCandidate(cur) || cur.pr !== pr) throw new HumanMergeSkip("the run changed while it was read");
+      if (!cur || !humanMergeCandidate(cur) || laneTrustProblem(cur) || cur.pr !== pr) throw new HumanMergeSkip("the run changed while it was read");
       return markMergedByHuman(cur, now2);
     }, {
       verify: (bytes) => {
@@ -139670,7 +139685,7 @@ function recordHumanMerge(root2, key, o) {
       onWrite: (p, content2) => ledger.record(p, content2)
     });
     markShipMerged(root2, pr, ledger, now2);
-    return { kind: "merged", key, pr, previous, state: written };
+    return { kind: "merged", key, pr, previous, state: written, ...read.baseTip ? { baseTip: read.baseTip } : {} };
   } catch (error2) {
     return unchanged(text3(error2));
   } finally {
@@ -139685,9 +139700,9 @@ function recordHumanMerges(root2, runs, o) {
 function humanMergeLines(results) {
   const lines4 = [];
   for (const r of results) {
-    if (r.kind === "merged") lines4.push(`run ${runLabel(r.key)}: PR #${r.pr} was merged by a human after ${r.previous}; recorded the run as merged`);
+    if (r.kind === "merged") lines4.push(`run ${runLabel(r.key)}: PR #${r.pr} was merged by a human after ${r.previous}; recorded the run as merged${r.baseTip ? ` (your ${r.state.base} at ${r.baseTip})` : ""}`);
     else if (r.kind === "closed") lines4.push(`run ${runLabel(r.key)}: PR #${r.pr} was closed without merging; the run stays as it is`);
-    else if (r.readFailed) lines4.push(`run ${runLabel(r.key)}: not checked for a human merge: ${r.reason}`);
+    else if (r.readFailed || r.untrusted) lines4.push(`run ${runLabel(r.key)}: not checked for a human merge: ${r.reason}`);
   }
   return lines4;
 }
@@ -142551,9 +142566,14 @@ var init_engine = __esm({
        */
       humanMergedFirst(existing) {
         const pr = existing.pr;
+        const untrusted = laneTrustProblem(existing);
+        if (untrusted) {
+          this.o.warn?.(`omg factory run: not checked for a human merge: ${untrusted}`);
+          return null;
+        }
         let state;
         try {
-          state = this.forge ? forgePrStateReader(this.forge, this.exec, this.o.root, this.o.forge?.config.repo.url)(existing) : String(this.prHeadState(pr).state);
+          state = this.forge ? forgePrStateReader(this.forge, this.exec, this.o.root, this.o.forge?.config.repo.url)(existing).state : String(this.prHeadState(pr).state);
         } catch (error2) {
           this.o.warn?.(`omg factory run: PR #${pr} could not be read to check for a human merge: ${errText6(error2)}`);
           return null;
@@ -142668,7 +142688,7 @@ var init_engine = __esm({
           const parked = setGate({
             ...s,
             elapsedMs: s.elapsedMs + this.tick(),
-            lanes: s.lanes.map((l) => stopped.has(l.id) ? { ...l, status: "cancelled", endedAt: at, usage: stopped.get(l.id), note: "cancelled: engine state tampered" } : l)
+            lanes: s.lanes.map((l) => stopped.has(l.id) ? { ...l, status: "cancelled", endedAt: at, usage: stopped.get(l.id), note: "cancelled: engine state tampered", tamperCheck: "skipped" } : l)
           }, "state-tampered", reason, at);
           try {
             const { sealed, content: content2 } = overwriteFactoryState(this.o.root, this.key, parked);
@@ -142862,9 +142882,11 @@ var init_engine = __esm({
           cancelRequested: true,
           // A confirmed stop replaces a stale "not confirmed" note (the wall-time path leaves one on a running lane).
           lanes: s.lanes.map((l) => l.status === "running" ? {
+            // No compare runs here (the baselines were dropped above): the lane's tamper check is skipped.
             ...l,
             status: "cancelled",
             endedAt: at,
+            tamperCheck: "skipped",
             ...usage.has(l.id) ? { usage: usage.get(l.id) } : {},
             ...unconfirmed.has(l.id) ? { note: "cancelled; the cancel was not confirmed, so the lane may still run", stopUnconfirmed: true } : { stopUnconfirmed: false, ...l.note && /not confirmed|may still run/.test(l.note) ? { note: "cancelled; the stop was confirmed" } : {} }
           } : l)
@@ -145628,6 +145650,7 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
         let note;
         let usage = capUsage(maxCredits);
         let tampered = false;
+        let tamperCheck = "skipped";
         let userTamper;
         try {
           const c = await this.o.lanes.cancel(remoteId);
@@ -145636,6 +145659,7 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
             settleHeal(usage.credits);
             const { problems, after } = await this.importReady(() => this.laneProblems(kind, before, c.result, startRef, laneId), !laneSandboxEnforced(c.result.sandbox));
             tampered = problems.length > 0;
+            tamperCheck = tampered ? "problems" : "clean";
             if (this.privateRun() && problems.some(isUserRepoProblem)) userTamper = { problems, ...after ? { after } : {}, ...this.laneUserBefore(laneId, c.result.sandbox) ? { userBase: this.laneUserBefore(laneId, c.result.sandbox) } : {} };
             note = tampered ? `cancelled; tamper check: ${problems.slice(0, 5).join("; ")}` : "cancelled; tamper check clean";
           } else {
@@ -145646,7 +145670,7 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
           note = `cancelled; the cancel failed (${errText6(error2)}), so the tamper check was skipped`;
         }
         this.ledger.dropBaseline(laneId);
-        this.updateLane(laneId, { status: "cancelled", endedAt: this.iso(), usage, note, ...tampered && kind === "review" ? { verdict: "invalid" } : {} });
+        this.updateLane(laneId, { status: "cancelled", endedAt: this.iso(), usage, note, tamperCheck, ...tampered && kind === "review" ? { verdict: "invalid" } : {} });
         if (tampered) this.o.warn?.(`omg factory run: lane ${laneId} ${note}`);
         if (userTamper) await this.laneTampered(laneId, kind, userTamper.problems, before, userTamper.after, userTamper.userBase);
         await this.cancel();
@@ -145847,6 +145871,7 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
           await this.laneTampered(id, kind, problems, before, after, userBase);
           return { kind: "stopped" };
         }
+        if (status === "cancelled") this.updateLane(id, { tamperCheck: "clean" });
         this.ledger.setRecheck({ laneId: id, kind, snapshot: after });
         return { kind: "done", result, lane: this.state.lanes.find((l) => l.id === id), after };
       }

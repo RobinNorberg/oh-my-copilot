@@ -14,7 +14,8 @@
  * merged when refs/heads/<base> contains the head the engine pushed and the
  * store still names that head (forgePrStateReader, which also names the risk
  * left). A failed read changes nothing. A closed, unmerged PR changes nothing
- * either; the caller says so.
+ * either; the caller says so. A run with a lane the engine could not check
+ * (laneTrustProblem) is never read: the caller prints why.
  *
  * recordHumanMerge writes like the engine: under the run's owner file (a live
  * engine on the run: nothing is written), only when the state bytes are the
@@ -35,6 +36,28 @@ export function humanMergeCandidate(s) {
     if (s.phase === 'cancelled' || s.phase === 'failed')
         return true;
     return s.gate !== undefined && !s.gate.name.endsWith('-tampered');
+}
+/**
+ * Why a candidate's lanes keep it from a human-merge check, or null. A lane
+ * the engine cancelled without a clean tamper check (`problems`, `skipped`,
+ * or no record in an older state), a lane whose stop is unconfirmed, a lane
+ * still `running` or a lane-unconfirmed park: such a lane may have moved your
+ * base branch, so the run is not recorded as merged on any forge. The Copilot
+ * coding agent runs on GitHub, not in your checkout, and is not counted.
+ */
+export function laneTrustProblem(s) {
+    const inspect = `inspect ${s.base}`;
+    for (const l of s.lanes) {
+        if (l.kind === 'coding-agent')
+            continue;
+        if (l.stopUnconfirmed === true || l.status === 'running')
+            return `lane ${l.id} may still run (its stop was not confirmed); ${inspect}`;
+        if (l.status === 'cancelled' && l.tamperCheck !== 'clean')
+            return `lane ${l.id} was cancelled without a clean tamper check; ${inspect}`;
+    }
+    if (s.gate?.name === 'lane-unconfirmed')
+        return `the run is parked at lane-unconfirmed (a lane may still run); ${inspect}`;
+    return null;
 }
 /** The state before the merge, for the history note: `cancelled`, or `awaiting-human: fix-failed`. */
 export function previousStateText(s) {
@@ -59,9 +82,8 @@ export function markMergedByHuman(s, now) {
  * CLOSED). The store's MERGED is not required: it turns MERGED only after the
  * next run or poll syncs your base into the mirror, so it adds nothing to the
  * base check. Replace refs or grafts make every git read a lie: a read error.
- * What remains: a lane able to write your shared refs (refs/heads/<base>) and
- * the PR store could fake a merge of a stopped run; the engine's step-boundary
- * compare catches that while it watches the lane, not after a cancel.
+ * What remains: a lane that moved your base branch in a run cancelled without
+ * a clean tamper check; laneTrustProblem refuses such a run before this read.
  */
 export function forgePrStateReader(forge, exec, root, repoUrl) {
     return (s) => {
@@ -84,7 +106,7 @@ export function forgePrStateReader(forge, exec, root, repoUrl) {
                 if (base !== s.base)
                     throw new Error(`PR #${pr} was merged into ${base}, not the run's base ${s.base}`);
             }
-            return state;
+            return { state };
         }
         const head = s.head ?? '';
         if (!HEX40.test(head))
@@ -92,17 +114,22 @@ export function forgePrStateReader(forge, exec, root, repoUrl) {
         const replaced = replaceObjectsProblem(exec, root);
         if (replaced)
             throw new Error(replaced);
-        const r = exec('git', ['merge-base', '--is-ancestor', head, `refs/heads/${s.base}`], { cwd: root, env: TRUSTED_READ_ENV });
+        // One read of your base tip (the engine's allowed shape): the commit checked is the commit printed.
+        const t = exec('git', ['rev-parse', '--verify', `refs/heads/${s.base}`], { cwd: root, env: TRUSTED_READ_ENV });
+        const baseTip = t.stdout.trim();
+        if (t.status !== 0 || !HEX40.test(baseTip))
+            throw new Error(`your ${s.base} could not be read (git rev-parse exit ${t.status})`);
+        const r = exec('git', ['merge-base', '--is-ancestor', head, baseTip], { cwd: root, env: TRUSTED_READ_ENV });
         if (r.status !== 0 && r.status !== 1)
             throw new Error(`git merge-base --is-ancestor failed (exit ${r.status}): ${r.stderr.trim()}`);
         const v = forge.reviews.viewPr(pr);
         if (v.state === 'CLOSED')
-            return 'CLOSED';
+            return { state: 'CLOSED' };
         if (r.status === 1)
-            return 'OPEN';
+            return { state: 'OPEN' };
         if (v.headRefOid !== head || v.baseRefName !== s.base)
             throw new Error(`your ${s.base} contains the pushed head ${head.slice(0, 12)}, but the local PR store names ${v.headRefOid.slice(0, 12)} into ${v.baseRefName} for PR #${pr}`);
-        return 'MERGED';
+        return { state: 'MERGED', baseTip };
     };
 }
 /**
@@ -123,6 +150,9 @@ export function recordHumanMerge(root, key, o) {
             return unchanged('not a stopped run with a PR');
         if (!verifyFactoryIntegrity(s))
             return unchanged('the run state fails its integrity check');
+        const untrusted = laneTrustProblem(s);
+        if (untrusted)
+            return { kind: 'unchanged', key, reason: untrusted, untrusted: true };
         if (tamperHoldMessage(o.ledgerDir, root))
             return unchanged('a tamper hold is set on this checkout');
         if (!EngineLedger.open(o.ledgerDir, root, key).matches(path, bytes))
@@ -132,16 +162,16 @@ export function recordHumanMerge(root, key, o) {
         return unchanged(text(error));
     }
     const pr = s.pr;
-    let prState;
+    let read;
     try {
-        prState = o.readPrState(s);
+        read = o.readPrState(s);
     }
     catch (error) {
         return { kind: 'unchanged', key, reason: `PR #${pr} could not be read: ${text(error)}`, readFailed: true };
     }
-    if (prState === 'CLOSED')
+    if (read.state === 'CLOSED')
         return { kind: 'closed', key, pr };
-    if (prState !== 'MERGED')
+    if (read.state !== 'MERGED')
         return unchanged(`PR #${pr} is open`);
     let owner;
     try {
@@ -156,7 +186,7 @@ export function recordHumanMerge(root, key, o) {
         const previous = previousStateText(s);
         const now = o.now();
         const written = updateFactoryState(root, key, (cur) => {
-            if (!cur || !humanMergeCandidate(cur) || cur.pr !== pr)
+            if (!cur || !humanMergeCandidate(cur) || laneTrustProblem(cur) || cur.pr !== pr)
                 throw new HumanMergeSkip('the run changed while it was read');
             return markMergedByHuman(cur, now);
         }, {
@@ -165,7 +195,7 @@ export function recordHumanMerge(root, key, o) {
             onWrite: (p, content) => ledger.record(p, content),
         });
         markShipMerged(root, pr, ledger, now);
-        return { kind: 'merged', key, pr, previous, state: written };
+        return { kind: 'merged', key, pr, previous, state: written, ...(read.baseTip ? { baseTip: read.baseTip } : {}) };
     }
     catch (error) {
         return unchanged(text(error));
@@ -187,10 +217,10 @@ export function humanMergeLines(results) {
     const lines = [];
     for (const r of results) {
         if (r.kind === 'merged')
-            lines.push(`run ${runLabel(r.key)}: PR #${r.pr} was merged by a human after ${r.previous}; recorded the run as merged`);
+            lines.push(`run ${runLabel(r.key)}: PR #${r.pr} was merged by a human after ${r.previous}; recorded the run as merged${r.baseTip ? ` (your ${r.state.base} at ${r.baseTip})` : ''}`);
         else if (r.kind === 'closed')
             lines.push(`run ${runLabel(r.key)}: PR #${r.pr} was closed without merging; the run stays as it is`);
-        else if (r.readFailed)
+        else if (r.readFailed || r.untrusted)
             lines.push(`run ${runLabel(r.key)}: not checked for a human merge: ${r.reason}`);
     }
     return lines;

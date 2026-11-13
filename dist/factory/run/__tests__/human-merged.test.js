@@ -6,7 +6,7 @@ import { defaultExec } from '../../../ship/exec.js';
 import { createShipState, readShipState, transition, updateShipState } from '../../../ship/state.js';
 import { forgePrStateReader, humanMergeCandidate, humanMergeLines, markMergedByHuman, recordHumanMerge, recordHumanMerges } from '../human-merged.js';
 import { currentBytes, EngineLedger } from '../ledger.js';
-import { acquireFactoryOwner, createFactoryState, factoryStatePath, readFactoryState, updateFactoryState } from '../state.js';
+import { acquireFactoryOwner, createFactoryState, factoryStatePath, parseFactoryState, readFactoryState, updateFactoryState } from '../state.js';
 import { tamperHoldPath } from '../tamper-quarantine.js';
 import { gitIn } from './fake-lanes.js';
 const ISSUE = 505;
@@ -21,7 +21,9 @@ beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), 'omg-human-merged-'));
     root = join(dir, 'repo');
     ledgerDir = join(dir, 'ledger');
-    mkdirSync(join(root, '.git'), { recursive: true });
+    // A real repository: an empty .git dir is no git root, and the state would resolve to a .omg above the temp dir.
+    mkdirSync(root, { recursive: true });
+    gitIn(root, 'init', '-q', '-b', 'dev');
 });
 afterEach(() => {
     rmSync(dir, { recursive: true, force: true });
@@ -35,7 +37,7 @@ function engineState(mutate) {
 const cancelled = (s) => ({ ...s, phase: 'cancelled' });
 const fixFailed = (s) => ({ ...s, phase: 'fix', gate: { name: 'fix-failed', reason: 'the lane left no changes', at: NOW } });
 const reader = (state) => {
-    const f = Object.assign(() => { f.calls += 1; return state; }, { calls: 0 });
+    const f = Object.assign(() => { f.calls += 1; return { state }; }, { calls: 0 });
     f.calls = 0;
     return f;
 };
@@ -144,6 +146,39 @@ describe('recordHumanMerge: skipped runs', () => {
         expect(read.calls).toBe(0);
         expect(readFactoryState(root, ISSUE).gate?.name).toBe('lane-tampered');
     });
+    const lane = (over) => ({ id: 'L1', kind: 'implement', startSha: HEAD, status: 'cancelled', maxCredits: 5, startedAt: NOW, ...over });
+    it.each([
+        ['a lane cancelled with tamper problems', { tamperCheck: 'problems', note: 'cancelled; tamper check: refs/heads/dev moved' }, /lane L1 was cancelled without a clean tamper check; inspect dev/],
+        ['a lane cancelled with no compare (the resume-cancel path)', { tamperCheck: 'skipped', stopUnconfirmed: false }, /lane L1 was cancelled without a clean tamper check; inspect dev/],
+        ['a cancelled lane from an older state (no tamperCheck)', { note: 'cancelled; tamper check clean' }, /lane L1 was cancelled without a clean tamper check/],
+        ['a lane whose stop is unconfirmed', { tamperCheck: 'skipped', stopUnconfirmed: true }, /lane L1 may still run/],
+        ['a lane still running', { status: 'running' }, /lane L1 may still run/],
+    ])('%s + a merged PR: unchanged, no forge read, a line says why', (_name, over, why) => {
+        engineState((s) => ({ ...cancelled(s), lanes: [lane(over)] }));
+        const read = reader('MERGED');
+        const r = recordHumanMerge(root, ISSUE, opts(read));
+        expect(r).toMatchObject({ kind: 'unchanged', untrusted: true, reason: expect.stringMatching(why) });
+        expect(read.calls).toBe(0);
+        expect(readFactoryState(root, ISSUE).phase).toBe('cancelled');
+        expect(humanMergeLines([r])).toEqual([`run #${ISSUE}: not checked for a human merge: ${r.reason}`]);
+    });
+    it('a run parked at lane-unconfirmed is not read on the forge', () => {
+        engineState((s) => ({ ...s, phase: 'implement', gate: { name: 'lane-unconfirmed', reason: 'x', at: NOW } }));
+        const read = reader('MERGED');
+        expect(recordHumanMerge(root, ISSUE, opts(read))).toMatchObject({ kind: 'unchanged', untrusted: true, reason: expect.stringMatching(/parked at lane-unconfirmed/) });
+        expect(read.calls).toBe(0);
+    });
+    it('lanes cancelled with a clean tamper check (and a coding-agent lane) + a merged PR: merged', () => {
+        engineState((s) => ({ ...cancelled(s), lanes: [lane({ tamperCheck: 'clean' }), lane({ id: 'L2', kind: 'coding-agent' }), lane({ id: 'L3', status: 'completed' })] }));
+        expect(recordHumanMerge(root, ISSUE, opts(reader('MERGED'))).kind).toBe('merged');
+        expect(readFactoryState(root, ISSUE).phase).toBe('merged');
+    });
+    it('the state validator accepts only known tamperCheck values', () => {
+        const text = (tamperCheck) => JSON.stringify({ ...cancelled(createFactoryState({ issue: ISSUE, repoUrl: 'https://github.com/o/r', base: 'dev' }, NOW)), lanes: [{ ...lane({}), tamperCheck }] });
+        const path = factoryStatePath(root, ISSUE);
+        expect(() => parseFactoryState(path, ISSUE, text('maybe'))).toThrow(/field lanes/);
+        expect(parseFactoryState(path, ISSUE, text('skipped')).lanes[0].tamperCheck).toBe('skipped');
+    });
     it('a tamper hold on the checkout: unchanged, no forge read', () => {
         engineState(cancelled);
         mkdirSync(dirname(tamperHoldPath(ledgerDir, root)), { recursive: true });
@@ -159,7 +194,7 @@ describe('recordHumanMerge: skipped runs', () => {
         const read = () => {
             // Another engine write lands in the ledger while the forge is read.
             ledger().record(other, '{"x":1}');
-            return 'MERGED';
+            return { state: 'MERGED' };
         };
         expect(recordHumanMerge(root, ISSUE, opts(read)).kind).toBe('merged');
         expect(ledger().tracks(other)).toBe(true);
@@ -179,13 +214,22 @@ describe('forgePrStateReader', () => {
     });
     const noGit = () => { throw new Error('no git expected'); };
     it('GitHub and Azure DevOps: the adapter\'s PR state', () => {
-        expect(forgePrStateReader(forge('github', 'MERGED'), noGit, root, REPO)(run({}))).toBe('MERGED');
-        expect(forgePrStateReader(forge('azure-devops', 'CLOSED'), noGit, root, REPO)(run({ forgeKind: 'azure-devops' }))).toBe('CLOSED');
+        expect(forgePrStateReader(forge('github', 'MERGED'), noGit, root, REPO)(run({})).state).toBe('MERGED');
+        expect(forgePrStateReader(forge('azure-devops', 'CLOSED'), noGit, root, REPO)(run({ forgeKind: 'azure-devops' })).state).toBe('CLOSED');
         expect(() => forgePrStateReader(forge('github', 'WEIRD'), noGit, root, REPO)(run({}))).toThrow(/unknown state/);
     });
     it('GitHub: a PR merged into another base than the run\'s is a read error', () => {
         expect(() => forgePrStateReader(forge('github', 'MERGED', { base: 'main' }), noGit, root, REPO)(run({}))).toThrow(/merged into main, not the run's base dev/);
-        expect(forgePrStateReader(forge('github', 'OPEN', { base: 'main' }), noGit, root, REPO)(run({}))).toBe('OPEN');
+        expect(forgePrStateReader(forge('github', 'OPEN', { base: 'main' }), noGit, root, REPO)(run({})).state).toBe('OPEN');
+    });
+    it('Azure DevOps: a PR merged into another base than the run\'s is a read error, and recordHumanMerge changes nothing', () => {
+        const ado = run({ forgeKind: 'azure-devops' });
+        const readPrState = forgePrStateReader(forge('azure-devops', 'MERGED', { base: 'main' }), noGit, root, REPO);
+        expect(() => readPrState(ado)).toThrow(/merged into main, not the run's base dev/);
+        expect(forgePrStateReader(forge('azure-devops', 'MERGED'), noGit, root, REPO)(ado)).toEqual({ state: 'MERGED' });
+        engineState((s) => ({ ...cancelled(s), forgeKind: 'azure-devops' }));
+        expect(recordHumanMerge(root, ISSUE, opts(readPrState))).toMatchObject({ kind: 'unchanged', readFailed: true, reason: expect.stringMatching(/merged into main/) });
+        expect(readFactoryState(root, ISSUE).phase).toBe('cancelled');
     });
     it('a forge config that names another repository than the run\'s: a read error, and recordHumanMerge changes nothing', () => {
         const readPrState = forgePrStateReader(forge('github', 'MERGED'), noGit, root, 'https://github.com/o/other');
@@ -197,9 +241,12 @@ describe('forgePrStateReader', () => {
     describe('the local forge', () => {
         const MIRROR = join(tmpdir(), 'mirror.git');
         const local = run({ remote: 'omg-local', forgeKind: 'local', repoUrl: MIRROR });
-        /** git answers: no replace refs or grafts, merge-base exits `status`. */
+        const TIP = 'd'.repeat(40);
+        /** git answers: no replace refs or grafts, your base at TIP, merge-base exits `status`. */
         const git = (status, calls = []) => (cmd, args) => {
             calls.push([cmd, ...args]);
+            if (args[0] === 'rev-parse' && args[1] === '--verify')
+                return { status: 0, stdout: `${TIP}\n`, stderr: '' };
             if (args[0] === 'rev-parse')
                 return { status: 0, stdout: '.git\n', stderr: '' };
             if (args[0] === 'for-each-ref')
@@ -208,16 +255,28 @@ describe('forgePrStateReader', () => {
         };
         it('merged only when your base contains the pushed head and the store still names that head', () => {
             const calls = [];
-            expect(forgePrStateReader(forge('local', 'OPEN'), git(0, calls), root, MIRROR)(local)).toBe('MERGED');
-            expect(calls.find((c) => c[1] === 'merge-base')).toEqual(['git', 'merge-base', '--is-ancestor', HEAD, 'refs/heads/dev']);
-            expect(forgePrStateReader(forge('local', 'MERGED'), git(0), root, MIRROR)(local)).toBe('MERGED');
-            expect(forgePrStateReader(forge('local', 'MERGED'), git(1), root, MIRROR)(local)).toBe('OPEN');
-            expect(forgePrStateReader(forge('local', 'CLOSED'), git(1), root, MIRROR)(local)).toBe('CLOSED');
+            expect(forgePrStateReader(forge('local', 'OPEN'), git(0, calls), root, MIRROR)(local)).toEqual({ state: 'MERGED', baseTip: TIP });
+            // The tip read once is the commit checked (and printed).
+            expect(calls.find((c) => c[1] === 'rev-parse' && c[2] === '--verify')).toEqual(['git', 'rev-parse', '--verify', 'refs/heads/dev']);
+            expect(calls.find((c) => c[1] === 'merge-base')).toEqual(['git', 'merge-base', '--is-ancestor', HEAD, TIP]);
+            expect(forgePrStateReader(forge('local', 'MERGED'), git(0), root, MIRROR)(local).state).toBe('MERGED');
+            expect(forgePrStateReader(forge('local', 'MERGED'), git(1), root, MIRROR)(local).state).toBe('OPEN');
+            expect(forgePrStateReader(forge('local', 'CLOSED'), git(1), root, MIRROR)(local).state).toBe('CLOSED');
             expect(() => forgePrStateReader(forge('local', 'OPEN'), git(128), root, MIRROR)(local)).toThrow(/merge-base/);
         });
         it('a store record that names another head or base: a read error, never merged', () => {
             expect(() => forgePrStateReader(forge('local', 'MERGED', { head: 'c'.repeat(40) }), git(0), root, MIRROR)(local)).toThrow(/local PR store names cccccccccccc into dev/);
             expect(() => forgePrStateReader(forge('local', 'OPEN', { base: 'main' }), git(0), root, MIRROR)(local)).toThrow(/into main/);
+        });
+        it('your base cannot be read: a read error, never merged', () => {
+            const noTip = (cmd, args) => (args[0] === 'rev-parse' && args[1] === '--verify' ? { status: 1, stdout: '', stderr: '' } : git(0)(cmd, args));
+            expect(() => forgePrStateReader(forge('local', 'MERGED'), noTip, root, MIRROR)(local)).toThrow(/your dev could not be read/);
+        });
+        it('the recorded-merged line names the base tip the check read', () => {
+            engineState((s) => ({ ...cancelled(s), remote: 'omg-local', forgeKind: 'local', repoUrl: MIRROR }));
+            const r = recordHumanMerge(root, ISSUE, opts(forgePrStateReader(forge('local', 'OPEN'), git(0), root, MIRROR)));
+            expect(r).toMatchObject({ kind: 'merged', baseTip: TIP });
+            expect(humanMergeLines([r])).toEqual([`run #${ISSUE}: PR #${PR} was merged by a human after cancelled; recorded the run as merged (your dev at ${TIP})`]);
         });
         it('another mirror than the run\'s: a read error', () => {
             expect(() => forgePrStateReader(forge('local', 'MERGED'), git(0), root, join(tmpdir(), 'other.git'))(local)).toThrow(/finish or cancel the run/);
@@ -230,7 +289,7 @@ describe('forgePrStateReader', () => {
             const head = gitIn(root, 'rev-parse', 'HEAD').trim();
             const r = run({ remote: 'omg-local', forgeKind: 'local', repoUrl: MIRROR, head });
             const view = forge('local', 'MERGED', { head });
-            expect(forgePrStateReader(view, defaultExec, root, MIRROR)(r)).toBe('MERGED');
+            expect(forgePrStateReader(view, defaultExec, root, MIRROR)(r).state).toBe('MERGED');
             writeFileSync(join(root, '.git', 'info', 'grafts'), `${head}\n`);
             expect(() => forgePrStateReader(view, defaultExec, root, MIRROR)(r)).toThrow(/replace refs or grafts/);
         });

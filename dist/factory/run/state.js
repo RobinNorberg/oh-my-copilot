@@ -263,6 +263,7 @@ function shapeProblem(s) {
         const sbx = x?.sandbox;
         return isStr(x?.id) && isStr(x.kind) && isStr(x.status) && isStr(x.startSha) && typeof x.maxCredits === 'number'
             && (x.stopUnconfirmed === undefined || typeof x.stopUnconfirmed === 'boolean')
+            && (x.tamperCheck === undefined || x.tamperCheck === 'clean' || x.tamperCheck === 'problems' || x.tamperCheck === 'skipped')
             && (sbx === undefined || (typeof sbx === 'object' && sbx !== null && isStr(sbx.mode) && isCount(sbx.unsandboxedCalls)
                 && (sbx.writeNetwork === undefined || sbx.writeNetwork === 'none' || sbx.writeNetwork === 'registry')));
     }))

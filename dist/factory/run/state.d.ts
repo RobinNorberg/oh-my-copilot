@@ -85,6 +85,14 @@ export interface FactoryLaneRecord {
      * other paths): run clean / reset read the note.
      */
     stopUnconfirmed?: boolean;
+    /**
+     * The tamper check of a lane the engine cancelled: `clean` (it compared and
+     * found nothing), `problems` (it found a change), `skipped` (the stop was not
+     * confirmed, the cancel failed, or no compare ran). Absent (older states):
+     * not known to be clean, so a human-merge check skips the run
+     * (human-merged.ts).
+     */
+    tamperCheck?: 'clean' | 'problems' | 'skipped';
     /** The session's last event the engine saw (ISO, refreshed at most once a minute); status and park text name it. */
     lastEventAt?: string;
     startedAt: string;
