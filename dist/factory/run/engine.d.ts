@@ -302,6 +302,8 @@ export declare class StateTamperedError extends Error {
     readonly paths: string[];
     constructor(paths: string[]);
 }
+/** True when `next` is a parseable time later than `prev` (or `prev` is absent). Unparseable values are not newer. */
+export declare function isNewerEvent(next: string | undefined | null, prev: string | undefined | null): next is string;
 /** The last lines of `text`, redacted (token shapes), each made visible and one line, bounded: a gate's local `detail`. */
 export declare function parkTail(text: string): string;
 /**

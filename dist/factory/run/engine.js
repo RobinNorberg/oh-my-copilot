@@ -293,6 +293,16 @@ const HEX40 = /^[0-9a-f]{40}$/;
 const PARK_TAIL_LINES = 12;
 const PARK_TAIL_LINE_CHARS = 200;
 const PARK_TAIL_CHARS = 1_500;
+/** True when `next` is a parseable time later than `prev` (or `prev` is absent). Unparseable values are not newer. */
+export function isNewerEvent(next, prev) {
+    const n = next ? Date.parse(next) : NaN;
+    if (!Number.isFinite(n))
+        return false;
+    if (!prev)
+        return true;
+    const p = Date.parse(prev);
+    return !Number.isFinite(p) || n > p;
+}
 /** The last lines of `text`, redacted (token shapes), each made visible and one line, bounded: a gate's local `detail`. */
 export function parkTail(text) {
     const lines = redactGateOutput(text).split(/\r?\n/).map((l) => l.trim()).filter(Boolean).slice(-PARK_TAIL_LINES);
@@ -5932,7 +5942,7 @@ class FactoryEngine {
                 this.updateLane(id, { process: { pid: proc.pid, identity: proc.identity } });
             if (isTerminalLaneState(result.state))
                 break;
-            if (result.lastEventAt && result.lastEventAt !== lastEventAt) {
+            if (isNewerEvent(result.lastEventAt, lastEventAt)) {
                 lastEventAt = result.lastEventAt;
                 progressAt = this.clock();
                 // Persisted for `omg factory run status`, at most once a minute (every event would rewrite the state).
@@ -5950,7 +5960,7 @@ class FactoryEngine {
                 }
                 // The lane finished between our poll and the cancel, with a session event after the last one we saw: a normal
                 // completion (the tamper check and accept path below still run). Any doubt stays a stall.
-                if (confirmed.state === 'completed' && confirmed.lastEventAt && confirmed.lastEventAt !== lastEventAt) {
+                if (confirmed.state === 'completed' && isNewerEvent(confirmed.lastEventAt, lastEventAt)) {
                     result = confirmed;
                     break;
                 }
