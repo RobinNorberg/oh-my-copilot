@@ -100,7 +100,7 @@ import { ghDependsOn, ghIssueComment, ghIssueJson, ghIssueView, ghViewItem, gith
 import { isSatisfied, type DependencyForge } from '../check/score.js';
 import { outcomePosts, postedBefore, type OutcomeEvent } from './outcome.js';
 import { forgePrStateReader, humanMergeCandidate, laneTrustProblem, markMergedByHuman } from './human-merged.js';
-import { checkoutBranch, checkoutPath, checkoutWorker, defaultGateConfigLoader, FACTORY_CHECKOUT_TEAM, GATE_CACHE_DIRS, GATE_TREE_MARKER, gateTreeHasLinks, linkNodeModules, trustedNestedRels, unlinkNodeModules, type GateConfig, type GateConfigLoader } from './prepare.js';
+import { checkoutBranch, checkoutPath, checkoutWorker, defaultGateConfigLoader, FACTORY_CHECKOUT_TEAM, GATE_CACHE_DIRS, GATE_TREE_COPY_WHY, GATE_TREE_MARKER, gateTreeHasLinks, linkNodeModules, trustedNestedRels, unlinkNodeModules, type GateConfig, type GateConfigLoader } from './prepare.js';
 import { baseWorkspacePatterns } from './workspace-tree.js';
 import {
   canTransition,
@@ -636,6 +636,15 @@ interface GitTransportSettings { mode: WindowsGitTransportMode; container: GateC
 /** A base calibration's output that names git's failed transport, on Windows (the OS sandbox only). */
 export const windowsGitTransportFailure = (output: string | undefined, platform: NodeJS.Platform = process.platform): boolean =>
   platform === 'win32' && !!output?.includes(GIT_TRANSPORT_FAILURE);
+
+/**
+ * A base calibration's output that names esbuild's refused open of a package
+ * dir through the gate tree's junction, on Windows (the OS sandbox only;
+ * prepare.ts GATE_TREE_COPY_WHY): `Cannot read directory "node_modules/<pkg>":
+ * Access is denied.`
+ */
+export const windowsJunctionReadDenied = (output: string | undefined, platform: NodeJS.Platform = process.platform): boolean =>
+  platform === 'win32' && !!output && /Cannot read directory "[^"\r\n]*node_modules[\\/][^"\r\n]*": Access is denied\./.test(output);
 
 /** What the gate-sandbox-incompatible park of a failing base calibration tells the human to do. */
 export function sandboxIncompatibleAdvice(tail: string | undefined, platform: NodeJS.Platform = process.platform): string {
@@ -1454,8 +1463,32 @@ class FactoryEngine {
 
   /** linkNodeModules with the base's workspaces; a layout it does not support is a warning here (the base calibration parks on it). */
   private linkGateTree(path: string, baseSha?: string): void {
-    const problem = linkNodeModules(this.o.root, path, this.o.warn, this.baseWorkspaces(baseSha));
+    const problem = linkNodeModules(this.o.root, path, this.o.warn, this.baseWorkspaces(baseSha), this.state.gateTreeCopy === true);
     if (problem) this.o.warn?.(`omg factory run: ${problem}; a gate that fails in the sandbox parks at ${GATE_SANDBOX_INCOMPATIBLE_GATE}`);
+  }
+
+  /**
+   * After a base calibration failed in the OS sandbox on Windows opening a
+   * package dir through the gate tree's junction (windowsJunctionReadDenied):
+   * from now on this run's gate trees are copies of your node_modules
+   * (prepare.ts GATE_TREE_COPY_WHY), and the tree in `checkout` is rebuilt as
+   * one. The command stays in the sandbox; the copy is the checkout's own, so
+   * the PR's code can write only that. False (the caller keeps its park) when
+   * the run copies already or the rebuild fails.
+   */
+  private switchToGateTreeCopy(checkout: string): boolean {
+    if (this.state.gateTreeCopy || this.containerIsolated()) return false;
+    const note = `the gate's node_modules trees are copies of yours from now on, not links: ${GATE_TREE_COPY_WHY}`;
+    this.o.warn?.(`omg factory run: ${note}`);
+    this.save((x) => ({ ...x, gateTreeCopy: true, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note }] }));
+    try {
+      unlinkNodeModules(this.o.root, checkout);
+      this.linkGateTree(checkout);
+      return true;
+    } catch (error) {
+      this.o.warn?.(`omg factory run: could not rebuild the node_modules tree of ${checkout} as a copy (${oneLine(errText(error), 300)})`);
+      return false;
+    }
   }
 
   /**
@@ -3662,7 +3695,9 @@ class FactoryEngine {
    */
   private calibrationKey(baseSha: string, argv: readonly string[], where?: GateContainerSettings | 'plain'): string {
     const container = where === 'plain' ? undefined : this.gatesModeCache?.container ?? where;
-    return createHash('sha256').update(`${baseSha}\0${JSON.stringify(argv)}${container ? `\0container\0${container.runtime}\0${this.containerImageId ?? container.image}` : ''}${where === 'plain' ? '\0plain' : ''}`).digest('hex');
+    // The OS sandbox with the copied gate tree (switchToGateTreeCopy) is a calibration of its own: the linked one's failure does not hold.
+    const copied = !container && where !== 'plain' && this.state.gateTreeCopy ? '\0tree-copy' : '';
+    return createHash('sha256').update(`${baseSha}\0${JSON.stringify(argv)}${container ? `\0container\0${container.runtime}\0${this.containerImageId ?? container.image}` : ''}${where === 'plain' ? '\0plain' : ''}${copied}`).digest('hex');
   }
 
   /**
@@ -3803,6 +3838,9 @@ class FactoryEngine {
         if (r.credentialFilesReadable) this.noteCredentialFilesReadable(head);
         if (r.status === 0 && !r.timedOut) return { status: 0, stdout: redactGateOutput(r.output), stderr: '' };
         const park = await this.calibrateGate(c, at.baseSha, at.commonGitDir, PREPARE_CHECK_TIMEOUT_MS, label, head);
+        // The base failed opening a package dir through the gate tree's junction (esbuild on Windows): the same check
+        // again, still in the sandbox, on a copied tree; its failure then counts only against a base that passes there.
+        if (park?.junctionRead && this.switchToGateTreeCopy(path)) return this.prepareCheck(c, at);
         // The base cannot run in the OS sandbox on Windows (git transport): the gate container, else plainly, never a park by default.
         const fallback = park?.gitTransport ? await this.gitTransportFallback(at.commonGitDir) : null;
         if (fallback) {
@@ -3877,7 +3915,7 @@ class FactoryEngine {
    * without any sandbox ('plain': the trusted base's code, after a plain
    * failure of the head).
    */
-  private async calibrateGate(c: { argv: readonly string[]; exe: string; args: readonly string[]; kind?: PrepareCheckRun['kind'] }, baseSha: string, commonGitDir: string, timeoutMs: number, what: string, head: string, where?: GateContainerSettings | 'plain'): Promise<{ name: string; reason: string; gitTransport?: true } | null> {
+  private async calibrateGate(c: { argv: readonly string[]; exe: string; args: readonly string[]; kind?: PrepareCheckRun['kind'] }, baseSha: string, commonGitDir: string, timeoutMs: number, what: string, head: string, where?: GateContainerSettings | 'plain'): Promise<{ name: string; reason: string; gitTransport?: true; junctionRead?: true } | null> {
     // A calibration holds for the isolation it ran in: the gate container's (and its image, by id once a run reported it)
     // is keyed apart from the OS sandbox's and a plain run's.
     const plainRun = where === 'plain';
@@ -3903,6 +3941,7 @@ class FactoryEngine {
       name: GATE_SANDBOX_INCOMPATIBLE_GATE,
       reason: `${what} fails in ${placeName} on the base ${baseSha.slice(0, 12)} itself, so its failure on ${head.slice(0, 12)} is not counted (no ci-fix lane). ${advice}, then rerun ${this.resume}. ${ACK_WARNING}${cal.tail ? `; base output tail: ${cal.tail.slice(-1_500)}` : ''}`,
       ...(!container && !plainRun && cal.gitTransport ? { gitTransport: true as const } : {}),
+      ...(!container && !plainRun && cal.junctionRead ? { junctionRead: true as const } : {}),
     };
   }
 
@@ -3914,7 +3953,7 @@ class FactoryEngine {
    * `gitTransport`: it failed in the OS sandbox on Windows with git's
    * transport error anywhere in the output (the tail kept may not show it).
    */
-  private async runOnBase(c: { argv: readonly string[]; exe: string; args: readonly string[]; kind?: PrepareCheckRun['kind'] }, baseSha: string, commonGitDir: string, timeoutMs: number, where?: GateContainerSettings | 'plain'): Promise<{ ok: boolean; tail?: string; timedOut?: true; gitTransport?: true } | { notStarted: string }> {
+  private async runOnBase(c: { argv: readonly string[]; exe: string; args: readonly string[]; kind?: PrepareCheckRun['kind'] }, baseSha: string, commonGitDir: string, timeoutMs: number, where?: GateContainerSettings | 'plain'): Promise<{ ok: boolean; tail?: string; timedOut?: true; gitTransport?: true; junctionRead?: true } | { notStarted: string }> {
     const plainRun = where === 'plain';
     const fallbackContainer = plainRun ? undefined : where;
     const container = plainRun ? undefined : this.gatesModeCache?.container ?? fallbackContainer;
@@ -3933,7 +3972,8 @@ class FactoryEngine {
       // isolation "container": the container installs its own; your node_modules is never linked in (C1, review-499).
       if (!container) {
         // A workspace layout the gate does not support (Yarn PnP, a nested git repository, over the bounds) parks here, named.
-        const layout = linkNodeModules(this.o.root, dir, this.o.warn, this.baseWorkspaces(baseSha));
+        // The OS sandbox's copied tree once the run switched (switchToGateTreeCopy); a plain run keeps the links.
+        const layout = linkNodeModules(this.o.root, dir, this.o.warn, this.baseWorkspaces(baseSha), !plainRun && this.state.gateTreeCopy === true);
         if (layout) return { notStarted: visibleLine(layout) };
       }
       if (plainRun) {
@@ -3954,7 +3994,8 @@ class FactoryEngine {
       if (!r.ran) return { notStarted: r.reason };
       const tail = r.output.trim().slice(-2_000);
       const ok = r.status === 0 && !r.timedOut;
-      return { ok, ...(tail ? { tail } : {}), ...(r.timedOut ? { timedOut: true as const } : {}), ...(!ok && !container && windowsGitTransportFailure(r.output, this.gatePlatform) ? { gitTransport: true as const } : {}) };
+      const junctionRead = !ok && !container && !this.state.gateTreeCopy && windowsJunctionReadDenied(r.output, this.gatePlatform);
+      return { ok, ...(tail ? { tail } : {}), ...(r.timedOut ? { timedOut: true as const } : {}), ...(!ok && !container && windowsGitTransportFailure(r.output, this.gatePlatform) ? { gitTransport: true as const } : {}), ...(junctionRead ? { junctionRead: true as const } : {}) };
     } catch (error) {
       return { notStarted: errText(error).slice(0, 300) };
     } finally {
@@ -4357,6 +4398,12 @@ class FactoryEngine {
       ? { name: GATE_SANDBOX_INCOMPATIBLE_GATE, reason: `the local gate failed in the OS sandbox on ${head.slice(0, 12)}, and the run has no base to calibrate it on; the failure is not counted (no ci-fix lane); rerun ${this.resume}` }
       : await this.calibrateGate({ argv: gate, exe: target.exe, args: target.args }, base, common, timeoutMinutes * 60_000, `the local gate \`${gate.join(' ')}\``, head);
     if (!park) return true;
+    // The base failed opening a package dir through the gate tree's junction (esbuild on Windows): the gate again, still
+    // in the sandbox, on a copied tree (its FAILURE record goes, so the head is judged by that run).
+    if (park.junctionRead && this.switchToGateTreeCopy(checkout)) {
+      rmSync(localCheckRecordPath(stateDir, this.o.root, head), { force: true });
+      return this.ensureLocalGate(head);
+    }
     // The base cannot run in the OS sandbox on Windows (git transport): the gate container, else plainly, never a park by default.
     const fallback = 'gitTransport' in park && park.gitTransport ? await this.gitTransportFallback(common) : null;
     if (fallback && base && !('missing' in target)) {
