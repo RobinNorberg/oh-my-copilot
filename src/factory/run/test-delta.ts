@@ -117,8 +117,9 @@ export function readVitestReport(path: string, root: string): VitestRunSummary |
 /**
  * The head's failures against the base's, for a head run that failed:
  * - `park` (today's gate-sandbox-incompatible): no base report, no test
- *   passes on the base, no head report, or the head failed with no failing
- *   test or file in its report (something else failed: not attributable);
+ *   passes on the base, no head report, errors outside any test on both, or
+ *   the head failed with no failing test, file or error in its report
+ *   (something else failed: not attributable);
  * - `fail`: a test or file fails on the head that did not fail on the base
  *   (a new test counts: it never passed on the base);
  * - `pass`: every failure on the head failed on the base too (`excused`).
@@ -130,11 +131,30 @@ export type TestDeltaVerdict =
 
 const fileId = (file: string): string => `${file} (the file failed)`;
 
-export function testDeltaVerdict(base: VitestRunSummary | undefined, head: VitestRunSummary | null): TestDeltaVerdict {
+/** What an error outside every test is listed as. */
+export const UNHANDLED_ERRORS_ID = 'errors outside any test (vitest "Unhandled Errors")';
+
+/**
+ * vitest's summary line for errors outside every test (`Errors  1 error`).
+ * The JSON report does not hold them (it says `success: true`), but the exit
+ * code is 1. Read from the output tail: a head that forges the line only
+ * fails itself.
+ */
+export function vitestUnhandledErrors(output: string): boolean {
+  return /^\s*Errors\s+\d+\s+errors?\b/m.test(output);
+}
+
+/**
+ * `unhandled`: whether each run printed vitest's unhandled-errors summary
+ * (vitestUnhandledErrors). On the head only, it counts like a new failure;
+ * on both, the run parks (it cannot be told apart).
+ */
+export function testDeltaVerdict(base: VitestRunSummary | undefined, head: VitestRunSummary | null, unhandled: { head: boolean; base: boolean } = { head: false, base: false }): TestDeltaVerdict {
   if (!base) return { kind: 'park', why: 'the base run left no test report' };
   if (base.passed === 0) return { kind: 'park', why: 'no selected test passes on the base' };
   if (!head) return { kind: 'park', why: 'the head run left no test report' };
-  const onHead = [...head.failed, ...head.brokenFiles.map(fileId)];
+  if (unhandled.head && unhandled.base) return { kind: 'park', why: 'errors outside any test on the base and the head' };
+  const onHead = [...head.failed, ...head.brokenFiles.map(fileId), ...(unhandled.head ? [UNHANDLED_ERRORS_ID] : [])];
   if (onHead.length === 0) return { kind: 'park', why: 'the head run failed, but its report names no failing test' };
   const onBase = new Set([...base.failed, ...base.brokenFiles.map(fileId)]);
   const counted = onHead.filter((t) => !onBase.has(t));

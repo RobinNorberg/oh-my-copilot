@@ -72,7 +72,7 @@ import { driveGates } from './gates-driver.js';
 import { missingCheckHint, NO_CI_CHECKS_NOTE, noHeadChecksText, type GateHeadReads } from '../../ship/gates.js';
 import { ghBranchTip, ghCheckRunApps, ghCheckSuites, ghCommitCheckNames, ghRequiredCheckRules } from '../../forge/github/checks.js';
 import { ciFixPrompt, conflictFixPrompt, fenceFor, fenced, fixPrompt, implementPrompt, oneLine, reviewPrompt } from './prompts.js';
-import { BASE_FAILURES_MAX, readVitestReport, testDeltaVerdict, vitestReportArgs, vitestReportPath, type VitestRunSummary } from './test-delta.js';
+import { BASE_FAILURES_MAX, readVitestReport, testDeltaVerdict, vitestReportArgs, vitestReportPath, vitestUnhandledErrors, type VitestRunSummary } from './test-delta.js';
 import { decisionsViolation, loadTeamContext, pathsInDiff, pathsInText, type ReadAt, type TeamContext } from '../team/context.js';
 import { mergeComment, mergeDecision, type FactoryMergeDecision, type MergeView } from './merge-policy.js';
 import { autoMergeComment, autoMergeVerdict, baseInstallFiles, baseTestSetup as baseTestSetupOf, classifyChanges, committedMergeConfig, hasFrontmatter, isFrontmatterCandidate, parseChangedEntries, patchLines, resolveAutoMergeConfig, TEST_CONFIG_NAME, type ChangedEntry, type PatchLine } from './auto-merge.js';
@@ -3922,8 +3922,8 @@ class FactoryEngine {
    * on the base too are listed in a warning, a history note and one PR note
    * per head. Their names come from the trusted base's report.
    */
-  private judgeTestDelta(park: { baseTests?: VitestRunSummary }, headTests: VitestRunSummary | null, head: string, label: string, baseSha: string, status: number, output: string): PrepareCheckResult | null {
-    const v = testDeltaVerdict(park.baseTests, headTests);
+  private judgeTestDelta(park: { baseTests?: VitestRunSummary; baseUnhandled?: true }, headTests: VitestRunSummary | null, head: string, label: string, baseSha: string, status: number, output: string): PrepareCheckResult | null {
+    const v = testDeltaVerdict(park.baseTests, headTests, { head: vitestUnhandledErrors(output), base: park.baseUnhandled === true });
     if (v.kind === 'park') return null;
     const list = (ids: string[]) => `${ids.slice(0, 10).map((id) => visibleLine(id)).join('; ')}${ids.length > 10 ? `; and ${ids.length - 10} more` : ''}`;
     if (v.excused.length > 0) {
@@ -3954,7 +3954,7 @@ class FactoryEngine {
    * without any sandbox ('plain': the trusted base's code, after a plain
    * failure of the head).
    */
-  private async calibrateGate(c: { argv: readonly string[]; exe: string; args: readonly string[]; kind?: PrepareCheckRun['kind'] }, baseSha: string, commonGitDir: string, timeoutMs: number, what: string, head: string, where?: GateContainerSettings | 'plain'): Promise<{ name: string; reason: string; gitTransport?: true; junctionRead?: true; baseTests?: VitestRunSummary } | null> {
+  private async calibrateGate(c: { argv: readonly string[]; exe: string; args: readonly string[]; kind?: PrepareCheckRun['kind'] }, baseSha: string, commonGitDir: string, timeoutMs: number, what: string, head: string, where?: GateContainerSettings | 'plain'): Promise<{ name: string; reason: string; gitTransport?: true; junctionRead?: true; baseTests?: VitestRunSummary; baseUnhandled?: true } | null> {
     // A calibration holds for the isolation it ran in: the gate container's (and its image, by id once a run reported it)
     // is keyed apart from the OS sandbox's and a plain run's.
     const plainRun = where === 'plain';
@@ -3981,7 +3981,7 @@ class FactoryEngine {
       reason: `${what} fails in ${placeName} on the base ${baseSha.slice(0, 12)} itself, so its failure on ${head.slice(0, 12)} is not counted (no ci-fix lane). ${advice}, then rerun ${this.resume}. ${ACK_WARNING}${cal.tail ? `; base output tail: ${cal.tail.slice(-1_500)}` : ''}`,
       ...(!container && !plainRun && cal.gitTransport ? { gitTransport: true as const } : {}),
       ...(!container && !plainRun && cal.junctionRead ? { junctionRead: true as const } : {}),
-      ...(!container && !plainRun && cal.tests ? { baseTests: cal.tests } : {}),
+      ...(!container && !plainRun && cal.tests ? { baseTests: cal.tests, ...(vitestUnhandledErrors(cal.tail ?? '') ? { baseUnhandled: true as const } : {}) } : {}),
     };
   }
 
