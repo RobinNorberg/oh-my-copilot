@@ -4,6 +4,10 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A malformed `factory.run.sandbox` in the user config is refused.** An array, string or number there used to be read as an empty block, so `windowsGitTransport` and `isolation` silently fell back to their defaults. It now throws `user config: factory.run.sandbox must be an object`.
+
 ### Added
 
 - **Built-in prepare tests are judged per test against the base.** A test that cannot run in the OS sandbox on Windows (a process-tree kill, a hard link or junction outside the checkout) fails on the base too, and used to park every run that selected its file at `gate-sandbox-incompatible`. The built-in vitest check now writes a JSON report on the head and the base. Tests that fail on both are not counted; they are listed in a warning, a history note and a PR note. A test the base passed, a new test, a file that stops loading, an error outside any test or a missed coverage threshold on the head still fails the check and can start a ci-fix lane. A head that passed only because base failures were not counted never auto-merges. Without a usable report, when nothing passes on the base, or when the head's output shows a failure its report does not explain, the run parks as before. The same check runs in the Windows git-transport fallback: a head in the gate container is compared with the base in the same container, and a plain head with the base's plain run, never across. The base runs plainly before the head does, and only a base run made before any of the PR's code ran without a sandbox in this run is compared; a later one parks as before. A plain run shares your host with the PR's code, so a human must check such a head. A container base with a test report no longer makes later heads skip the container. So a check whose base fails plainly on a few tests no longer parks every run as "broken on the base". A file's own error (a failed hook) on the head, or vitest's import danger threshold line, counts as a failure. A head run with no vitest summary line parks.
