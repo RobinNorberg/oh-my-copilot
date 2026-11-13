@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { parseProgressLog } from '../../../lib/agent-progress.js';
 import { assertLaneCreditCap, DEFAULT_FACTORY_RUN_LIMITS, nextLaneCap, resolveFactoryRunLimits, runCreditsExceeded } from '../budget.js';
-import { ciFailureTail, GIT_TRANSPORT_SANDBOX_ADVICE, nodeModulesWriteDenied, sandboxIncompatibleAdvice, windowsJunctionReadDenied, ciFixPrompt, conflictFixPrompt, fenceFor, findPlanLink, fixPrompt, hasAcceptanceCriteria, implementPrompt, issueAuthorTrusted, oneLine, reviewPrompt } from '../engine.js';
+import { ciFailureTail, isNewerEvent, GIT_TRANSPORT_SANDBOX_ADVICE, nodeModulesWriteDenied, sandboxIncompatibleAdvice, windowsJunctionReadDenied, ciFixPrompt, conflictFixPrompt, fenceFor, findPlanLink, fixPrompt, hasAcceptanceCriteria, implementPrompt, issueAuthorTrusted, oneLine, reviewPrompt } from '../engine.js';
 import { ghRepoArg } from '../../../forge/github/gh.js';
 import { shipyardKeySearch } from '../../../forge/types.js';
 import { assertFactoryCommand, factoryGuardExec, FactorySafetyError, hardenedGitExec, type TrackerWriteContext } from '../exec.js';
@@ -1224,5 +1224,27 @@ describe('the prepare checkout\'s node_modules link', () => {
     expect(GIT_TRANSPORT_SANDBOX_ADVICE).toContain('no MSYS2 program starts in the sandbox');
     expect(GIT_TRANSPORT_SANDBOX_ADVICE).not.toContain('"ack"');
     expect(sandboxIncompatibleAdvice(tail, 'linux')).toContain('writeNetwork "registry"');
+  });
+});
+
+describe('isNewerEvent (lane stall check)', () => {
+  const T1 = '2026-01-01T00:00:00.000Z';
+  const T2 = '2026-01-01T00:01:00.000Z';
+  it('is true only for a later parseable time', () => {
+    expect(isNewerEvent(T2, T1)).toBe(true);
+    expect(isNewerEvent(T1, T1)).toBe(false);
+    expect(isNewerEvent(T1, T2)).toBe(false);
+  });
+  it('treats unparseable or missing next as not newer', () => {
+    expect(isNewerEvent('not a time', T1)).toBe(false);
+    expect(isNewerEvent('not a time', undefined)).toBe(false);
+    expect(isNewerEvent(undefined, T1)).toBe(false);
+  });
+  it('is true for a valid time with no previous', () => {
+    expect(isNewerEvent(T1, null)).toBe(true);
+    expect(isNewerEvent(T1, undefined)).toBe(true);
+  });
+  it('treats an unparseable previous time as absent', () => {
+    expect(isNewerEvent(T1, 'garbage')).toBe(true);
   });
 });
