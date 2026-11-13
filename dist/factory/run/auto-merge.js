@@ -759,6 +759,7 @@ export function autoMergeVerdict(i) {
         ...(i.run.unsandboxedGatesAck ? ['--allow-unsandboxed-gates'] : []),
         ...(i.run.gateChangeApproved ? ['--allow-gate-change'] : []),
         ...(i.run.secretAck && i.run.secretAck.length > 0 ? ['--allow-secret-shapes'] : []),
+        ...(i.run.gitTransportPlainHead ? ['the Windows git-transport fallback without a sandbox'] : []),
         ...(i.run.history.some((h) => /--allow-[a-z-]+/.test(h.note)) ? ['an --allow-* flag (run history)'] : []),
     ];
     check(flagged.length === 0 && !tamper, 'no secret-scan, tamper or sandbox park in this run', `this run parked at ${[...new Set(flagged)].join(', ') || 'a tamper or quarantine hold'}`);

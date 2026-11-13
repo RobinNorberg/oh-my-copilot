@@ -466,6 +466,15 @@ function samePathOrUnder(p, root) {
     return a === b || a.startsWith(b.endsWith(sep) ? b : b + sep);
 }
 /**
+ * The id of the gate image as the runtime has it now (`image inspect`, no
+ * pull), or undefined: no runtime, no such image, no id. The engine keys
+ * container calibrations by it before any container runs.
+ */
+export async function inspectGateImageId(s, exec = defaultContainerExec) {
+    const r = await exec(s.runtime, ['image', 'inspect', '--format', '{{.Id}}', s.image], { timeoutMs: PROBE_TIMEOUT_MS });
+    return r.status === 0 ? /^(sha256:[0-9a-f]{64})$/m.exec(r.tail.trim())?.[1] : undefined;
+}
+/**
  * Run one request in a container. Never throws. `unavailable`: nothing of the
  * PR ran and the container path cannot run it (no runtime, daemon or image,
  * an unsupported project); the engine parks at gate-container-unavailable.
