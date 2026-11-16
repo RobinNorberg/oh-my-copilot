@@ -11,6 +11,10 @@ All notable changes to oh-my-copilot will be documented in this file.
 - `scripts/skill-injector.mjs`, `scripts/budget-guard.mjs`, `scripts/verify-deliverables.mjs` and the drift marker in `templates/hooks/session-start.mjs` use a stdin session id in a path only when it passes the `validateSessionId()` allowlist; any other id takes the no-session (legacy) path instead of escaping `.omg/state/sessions/`.
 - Default MCP servers pin `exa-mcp-server@3.4.3` and `@playwright/mcp@0.0.85` instead of an unpinned and an `@latest` npx spec (Socket.dev finding).
 
+### Changed
+
+- **The npm package has no install script.** The `postinstall` hook and `scripts/postinstall-contained-fs.mjs` are gone, so supply-chain scanners no longer flag the package. Linux and Windows are unaffected. On macOS, `npm install` no longer builds the contained-fs addon; `omg graph` and `omg team` report the missing addon with the build command, `node scripts/build-contained-fs.mjs` run from the installed package directory. See [MIGRATION.md](docs/MIGRATION.md#unreleased-no-npm-install-script).
+
 # oh-my-copilot v5.28.0
 
 ## [5.28.0] - 2026-11-13

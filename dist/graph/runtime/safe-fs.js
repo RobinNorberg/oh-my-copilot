@@ -2,6 +2,7 @@ import { randomBytes } from "crypto";
 import { closeSync, constants as fsConstants, fstatSync, fsyncSync, openSync, readFileSync, writeSync, } from "fs";
 import { isAbsolute, normalize, posix, win32 } from "path";
 import { directoryOperations, containedFdPath, containedFsPlatformSupported } from "./contained-fd.js";
+import { getNativeContainedFs } from "./native-contained-fs.js";
 import { openOrCreateDirectoryAt, openExistingDirectoryAt } from "./run-dir.js";
 const NO_FOLLOW = process.platform === "win32" ? 0 : fsConstants.O_NOFOLLOW;
 const UNSAFE_CONTROL = /[\u0000-\u001f\u007f]/;
@@ -9,7 +10,17 @@ const WINDOWS_DEVICE_NAME = /^(?:con|prn|aux|nul|clock\$|com[1-9¹²³]|lpt[1-9�
 /** Fail closed before acquiring any run-scoped locks on unsupported platforms. */
 export function assertContainedFsSupported(platform = process.platform) {
     if (!containedFsPlatformSupported(platform)) {
-        throw new Error(`contained directory-FD traversal is unavailable on ${platform}; refusing pathname fallback`);
+        const base = `contained directory-FD traversal is unavailable on ${platform}; refusing pathname fallback`;
+        if (platform === "darwin" && process.platform === "darwin") {
+            try {
+                getNativeContainedFs();
+            }
+            catch (cause) {
+                const detail = cause instanceof Error ? cause.message : String(cause);
+                throw new Error(`${base}: ${detail}`, { cause });
+            }
+        }
+        throw new Error(base);
     }
 }
 /**
