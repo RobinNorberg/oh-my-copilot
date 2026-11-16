@@ -1174,7 +1174,8 @@ async function main() {
     } catch {}
 
     const directory = data.cwd || data.directory || process.cwd();
-    const sessionId = data.session_id || data.sessionId || "";
+    // Only an allowlisted id may become a path segment (mirrors persistent-mode.mjs).
+    const sessionId = sanitizeSessionId(data.session_id || data.sessionId || "");
     const omcRoot = await resolveOmcStateRoot(directory);
     const stateDir = join(omcRoot, "state");
 

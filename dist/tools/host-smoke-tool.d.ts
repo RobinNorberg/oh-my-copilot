@@ -27,13 +27,13 @@ declare const hostSmokeSchema: {
         team: "team";
         ultragoal: "ultragoal";
         skill: "skill";
-        smoke: "smoke";
-        all: "all";
         events: "events";
+        all: "all";
         "factory-run": "factory-run";
         "factory-run-fix": "factory-run-fix";
         continuation: "continuation";
         "prompt-context": "prompt-context";
+        smoke: "smoke";
         guardrail: "guardrail";
         delegate: "delegate";
         filetools: "filetools";

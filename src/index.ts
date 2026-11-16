@@ -393,7 +393,7 @@ export function createOmcSession(options?: OmcOptions): OmcSession {
         agents,
         mcpServers: {
           ...toSdkMcpFormat(externalMcpServers),
-          't': omcToolsServer as any
+          't': omcToolsServer
         },
         allowedTools,
         permissionMode: 'acceptEdits'
