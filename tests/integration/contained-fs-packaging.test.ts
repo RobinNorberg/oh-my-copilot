@@ -44,8 +44,8 @@ describe('contained-fs packaging (#4217)', () => {
     expect(files).toContain('native');
   });
 
-  it('build script supports --optional flag', () => {
+  it('build script is explicit: no --optional skip mode (no install script calls it)', () => {
     const content = readFileSync(resolve('scripts/build-contained-fs.mjs'), 'utf-8');
-    expect(content).toContain("process.argv.includes('--optional')");
+    expect(content).not.toContain("'--optional'");
   });
 });
