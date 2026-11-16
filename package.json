@@ -103,7 +103,7 @@
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.1.0",
     "@ast-grep/napi": "^0.31.0",
-    "@modelcontextprotocol/sdk": "^1.26.0",
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "@types/better-sqlite3": "^7.6.13",
     "ajv": "^8.17.1",
     "better-sqlite3": "^12.10.0",
@@ -113,7 +113,7 @@
     "safe-regex": "^2.1.1",
     "tsx": "^4.19.2",
     "vscode-languageserver-protocol": "^3.17.5",
-    "zod": "^3.23.8"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@anthropic-ai/sdk": "^0.78.0",

@@ -47,6 +47,12 @@ const buildConfig = {
   },
   // Prefer ESM entry points so UMD packages (e.g. jsonc-parser) get properly bundled
   mainFields: ['module', 'main'],
+  // zod 4: `zod` and `zod/v4` are the same module graph. Our code imports `zod`
+  // from lazily-initialised chunks while the MCP SDK imports `zod/v4` eagerly;
+  // esbuild drops the init call through zod's side-effect-free re-export files,
+  // so the SDK ran before zod initialised ("Class2 is not a constructor").
+  // Resolving both specifiers to one entry keeps a single init path.
+  alias: { 'zod/v4': 'zod' },
   // Externalize Node.js built-ins and native modules
   external: [
     'fs', 'path', 'os', 'util', 'stream', 'events',

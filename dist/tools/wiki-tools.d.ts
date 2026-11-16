@@ -11,15 +11,15 @@ export declare const wikiIngestTool: ToolDefinition<{
     title: z.ZodString;
     content: z.ZodString;
     tags: z.ZodArray<z.ZodString>;
-    category: z.ZodEnum<typeof WIKI_CATEGORIES>;
+    category: z.ZodEnum<z.core.util.ToEnum<(typeof WIKI_CATEGORIES)[number]>>;
     sources: z.ZodOptional<z.ZodArray<z.ZodString>>;
-    confidence: z.ZodOptional<z.ZodEnum<['high', 'medium', 'low']>>;
+    confidence: z.ZodOptional<z.ZodEnum<z.core.util.ToEnum<'high' | 'medium' | 'low'>>>;
     workingDirectory: z.ZodOptional<z.ZodString>;
 }>;
 export declare const wikiQueryTool: ToolDefinition<{
     query: z.ZodString;
     tags: z.ZodOptional<z.ZodArray<z.ZodString>>;
-    category: z.ZodOptional<z.ZodEnum<typeof WIKI_CATEGORIES>>;
+    category: z.ZodOptional<z.ZodEnum<z.core.util.ToEnum<(typeof WIKI_CATEGORIES)[number]>>>;
     limit: z.ZodOptional<z.ZodNumber>;
     workingDirectory: z.ZodOptional<z.ZodString>;
 }>;
@@ -30,7 +30,7 @@ export declare const wikiAddTool: ToolDefinition<{
     title: z.ZodString;
     content: z.ZodString;
     tags: z.ZodOptional<z.ZodArray<z.ZodString>>;
-    category: z.ZodOptional<z.ZodEnum<typeof WIKI_CATEGORIES>>;
+    category: z.ZodOptional<z.ZodEnum<z.core.util.ToEnum<(typeof WIKI_CATEGORIES)[number]>>>;
     workingDirectory: z.ZodOptional<z.ZodString>;
 }>;
 export declare const wikiListTool: ToolDefinition<{
@@ -48,14 +48,14 @@ export declare const wikiTools: (ToolDefinition<{
     title: z.ZodString;
     content: z.ZodString;
     tags: z.ZodArray<z.ZodString>;
-    category: z.ZodEnum<typeof WIKI_CATEGORIES>;
+    category: z.ZodEnum<z.core.util.ToEnum<(typeof WIKI_CATEGORIES)[number]>>;
     sources: z.ZodOptional<z.ZodArray<z.ZodString>>;
-    confidence: z.ZodOptional<z.ZodEnum<["high", "medium", "low"]>>;
+    confidence: z.ZodOptional<z.ZodEnum<z.core.util.ToEnum<"high" | "medium" | "low">>>;
     workingDirectory: z.ZodOptional<z.ZodString>;
 }> | ToolDefinition<{
     query: z.ZodString;
     tags: z.ZodOptional<z.ZodArray<z.ZodString>>;
-    category: z.ZodOptional<z.ZodEnum<typeof WIKI_CATEGORIES>>;
+    category: z.ZodOptional<z.ZodEnum<z.core.util.ToEnum<(typeof WIKI_CATEGORIES)[number]>>>;
     limit: z.ZodOptional<z.ZodNumber>;
     workingDirectory: z.ZodOptional<z.ZodString>;
 }> | ToolDefinition<{
@@ -64,7 +64,7 @@ export declare const wikiTools: (ToolDefinition<{
     title: z.ZodString;
     content: z.ZodString;
     tags: z.ZodOptional<z.ZodArray<z.ZodString>>;
-    category: z.ZodOptional<z.ZodEnum<typeof WIKI_CATEGORIES>>;
+    category: z.ZodOptional<z.ZodEnum<z.core.util.ToEnum<(typeof WIKI_CATEGORIES)[number]>>>;
     workingDirectory: z.ZodOptional<z.ZodString>;
 }> | ToolDefinition<{
     page: z.ZodString;

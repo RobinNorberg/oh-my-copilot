@@ -10,12 +10,12 @@ declare const STATE_TOOL_MODES: [string, ...string[]];
 declare const STATE_WRITE_MODES: [string, ...string[]];
 export declare function redactAutopilotPublicState(state: unknown): unknown;
 export declare const stateReadTool: ToolDefinition<{
-    mode: z.ZodEnum<typeof STATE_TOOL_MODES>;
+    mode: z.ZodEnum<z.core.util.ToEnum<(typeof STATE_TOOL_MODES)[number]>>;
     workingDirectory: z.ZodOptional<z.ZodString>;
     session_id: z.ZodOptional<z.ZodString>;
 }>;
 export declare const stateWriteTool: ToolDefinition<{
-    mode: z.ZodEnum<typeof STATE_WRITE_MODES>;
+    mode: z.ZodEnum<z.core.util.ToEnum<(typeof STATE_WRITE_MODES)[number]>>;
     active: z.ZodOptional<z.ZodBoolean>;
     iteration: z.ZodOptional<z.ZodNumber>;
     max_iterations: z.ZodOptional<z.ZodNumber>;
@@ -30,7 +30,7 @@ export declare const stateWriteTool: ToolDefinition<{
     session_id: z.ZodOptional<z.ZodString>;
 }>;
 export declare const stateClearTool: ToolDefinition<{
-    mode: z.ZodEnum<typeof STATE_TOOL_MODES>;
+    mode: z.ZodEnum<z.core.util.ToEnum<(typeof STATE_TOOL_MODES)[number]>>;
     workingDirectory: z.ZodOptional<z.ZodString>;
     session_id: z.ZodOptional<z.ZodString>;
 }>;
@@ -40,7 +40,7 @@ export declare const stateListActiveTool: ToolDefinition<{
     all: z.ZodOptional<z.ZodBoolean>;
 }>;
 export declare const stateGetStatusTool: ToolDefinition<{
-    mode: z.ZodOptional<z.ZodEnum<typeof STATE_TOOL_MODES>>;
+    mode: z.ZodOptional<z.ZodEnum<z.core.util.ToEnum<(typeof STATE_TOOL_MODES)[number]>>>;
     workingDirectory: z.ZodOptional<z.ZodString>;
     session_id: z.ZodOptional<z.ZodString>;
 }>;
@@ -48,11 +48,11 @@ export declare const stateGetStatusTool: ToolDefinition<{
  * All state tools for registration
  */
 export declare const stateTools: (ToolDefinition<{
-    mode: z.ZodEnum<typeof STATE_TOOL_MODES>;
+    mode: z.ZodEnum<z.core.util.ToEnum<(typeof STATE_TOOL_MODES)[number]>>;
     workingDirectory: z.ZodOptional<z.ZodString>;
     session_id: z.ZodOptional<z.ZodString>;
 }> | ToolDefinition<{
-    mode: z.ZodEnum<typeof STATE_WRITE_MODES>;
+    mode: z.ZodEnum<z.core.util.ToEnum<(typeof STATE_WRITE_MODES)[number]>>;
     active: z.ZodOptional<z.ZodBoolean>;
     iteration: z.ZodOptional<z.ZodNumber>;
     max_iterations: z.ZodOptional<z.ZodNumber>;
@@ -70,7 +70,7 @@ export declare const stateTools: (ToolDefinition<{
     session_id: z.ZodOptional<z.ZodString>;
     all: z.ZodOptional<z.ZodBoolean>;
 }> | ToolDefinition<{
-    mode: z.ZodOptional<z.ZodEnum<typeof STATE_TOOL_MODES>>;
+    mode: z.ZodOptional<z.ZodEnum<z.core.util.ToEnum<(typeof STATE_TOOL_MODES)[number]>>>;
     workingDirectory: z.ZodOptional<z.ZodString>;
     session_id: z.ZodOptional<z.ZodString>;
 }> | ToolDefinition<any>)[];

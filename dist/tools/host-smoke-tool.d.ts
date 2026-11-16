@@ -23,7 +23,23 @@ export declare const SMOKE_ALLOW_LIVE_ENV = "OMC_SMOKE_ALLOW_LIVE";
 export declare const SMOKE_ALLOW_ANY_ROOT_ENV = "OMC_SMOKE_ALLOW_ANY_ROOT";
 declare const hostSmokeSchema: {
     tier: z.ZodOptional<z.ZodNumber>;
-    scenarios: z.ZodOptional<z.ZodArray<z.ZodEnum<["smoke", "guardrail", "skill", "delegate", "filetools", "chain", "team", "factory-run", "factory-run-fix", "sandbox-lane", "continuation", "prompt-context", "events", "ultragoal", "all"]>, "many">>;
+    scenarios: z.ZodOptional<z.ZodArray<z.ZodEnum<{
+        team: "team";
+        ultragoal: "ultragoal";
+        skill: "skill";
+        smoke: "smoke";
+        all: "all";
+        events: "events";
+        "factory-run": "factory-run";
+        "factory-run-fix": "factory-run-fix";
+        continuation: "continuation";
+        "prompt-context": "prompt-context";
+        guardrail: "guardrail";
+        delegate: "delegate";
+        filetools: "filetools";
+        chain: "chain";
+        "sandbox-lane": "sandbox-lane";
+    }>>>;
     pluginRoot: z.ZodOptional<z.ZodString>;
     model: z.ZodOptional<z.ZodString>;
     maxCredits: z.ZodOptional<z.ZodNumber>;

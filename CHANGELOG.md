@@ -4,6 +4,10 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ## [Unreleased]
 
+### Security
+
+- Upgrade `zod` 3 → `^4.6.7` (fixes CVE-2023-54404 / GHSA-mrhx-c7xc-m3w5, memory exhaustion validating oversized constrained collections) and `@modelcontextprotocol/sdk` to `^1.32.2`; the production tree now holds a single zod 4. MCP tool schemas sent over `tools/list` are unchanged; zod validation messages (e.g. `python_repl` input errors) now use zod 4 wording.
+
 # oh-my-copilot v5.28.0
 
 ## [5.28.0] - 2026-11-13
