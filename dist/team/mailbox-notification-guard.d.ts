@@ -1,6 +1,7 @@
 import { type StrictDispatchReadResult, type TeamDispatchRequest } from "./dispatch-queue.js";
 import { type StrictCanonicalMailboxMessageReadResult } from "./team-ops.js";
 import { type TeamConfig, type TeamMailboxMessage, type TmuxServerIdentity } from "./types.js";
+import { getWorkerProviderLiveness } from "./worker-provider-liveness.js";
 export interface MailboxNotificationGuardInput {
     teamName: string;
     recipient: string;
@@ -72,7 +73,7 @@ export interface MailboxNotificationSecurityTuple {
     providerTarget: string;
     providerPaneId: string;
 }
-export type MailboxNotificationGuardReason = "mailbox_team_unavailable" | "mailbox_team_identity_mismatch" | "mailbox_request_missing" | "mailbox_dispatch_store_invalid" | "mailbox_request_ambiguous" | "mailbox_request_not_pending" | "mailbox_request_identity_mismatch" | "mailbox_target_missing" | "mailbox_target_metadata_mismatch" | "leader_pane_missing_deferred" | "mailbox_store_invalid" | "mailbox_message_missing" | "mailbox_message_ambiguous" | "mailbox_recipient_mismatch" | "mailbox_replay_suppressed" | "mailbox_provider_mismatch" | "mailbox_membership_unresolvable" | "mailbox_target_foreign";
+export type MailboxNotificationGuardReason = "mailbox_team_unavailable" | "mailbox_team_identity_mismatch" | "mailbox_request_missing" | "mailbox_dispatch_store_invalid" | "mailbox_request_ambiguous" | "mailbox_request_not_pending" | "mailbox_request_identity_mismatch" | "mailbox_target_missing" | "mailbox_target_metadata_mismatch" | "leader_pane_missing_deferred" | "mailbox_store_invalid" | "mailbox_message_missing" | "mailbox_message_ambiguous" | "mailbox_recipient_mismatch" | "mailbox_replay_suppressed" | "mailbox_provider_mismatch" | "mailbox_membership_unresolvable" | "mailbox_target_foreign" | "mailbox_provider_exited";
 export type MailboxNotificationGuardResult = {
     kind: "allow";
     target: MailboxNotificationTarget;
@@ -96,6 +97,7 @@ export interface MailboxNotificationGuardDependencies {
     readStrictDispatchRequest: (teamName: string, requestId: string, cwd: string) => Promise<StrictDispatchReadResult>;
     readStrictMailboxMessage: (teamName: string, workerName: string, messageId: string, cwd: string) => Promise<StrictCanonicalMailboxMessageReadResult>;
     verifyProviderOwnership: (target: MailboxNotificationTarget) => Promise<MailboxTargetOwnership>;
+    readWorkerProviderLiveness: typeof getWorkerProviderLiveness;
 }
 /**
  * Purely evaluates current strict durable evidence. It has no transport,

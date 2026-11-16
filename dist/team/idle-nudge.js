@@ -69,6 +69,7 @@ export class NudgeTracker {
             || sessionName.trim() !== sessionName
             || (authority.provider !== undefined && authority.provider !== provider)
             || typeof authority.getPaneOwnership !== 'function'
+            || typeof authority.getProviderLiveness !== 'function'
             || typeof authority.executeNudge !== 'function'
             || (provider === 'tmux'
                 && (!authority.tmuxServerIdentity || !isValidTmuxServerIdentity(authority.tmuxServerIdentity)))
@@ -113,7 +114,8 @@ export class NudgeTracker {
                 || (provider === 'cmux' && ownership.tmuxServerIdentity !== undefined)) {
                 continue;
             }
-            const idle = await isPaneIdle(ownership);
+            const idle = (await authority.getProviderLiveness(paneId)) !== 'dead'
+                && await isPaneIdle(ownership);
             if (!idle) {
                 // Pane is active — reset idle tracking
                 state.firstIdleAt = null;

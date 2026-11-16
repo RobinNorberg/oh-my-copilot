@@ -19,7 +19,7 @@ import { isValidTeamInstanceId, isValidTmuxServerIdentity, } from "./types.js";
 import { currentStrictProcessStartIdentity, isValidStrictProcessStartIdentity, observeProcessIdentity, } from "./team-owner-epoch.js";
 import { getNativeContainedFs } from "../graph/runtime/native-contained-fs.js";
 import { paneLineLooksLikeIdlePrompt } from "./pane-readiness.js";
-import { awaitWorkerLaunchAcknowledgement, awaitWorkerLaunchProviderStarted, buildProviderEnvironment, cleanupWorkerLaunchTransport, isWorkerLaunchAttemptAccepted, isWorkerLaunchAttemptCurrent, materializeWorkerLaunchTransport, prepareWorkerLaunchAttempt, retireAndCleanupCurrentWorkerLaunchAttempt, revokeWorkerLaunchAttempt, } from "./worker-launch-ack.js";
+import { awaitWorkerLaunchAcknowledgement, awaitWorkerLaunchProviderStarted, buildProviderEnvironment, cleanupWorkerLaunchTransport, isWorkerLaunchAttemptAccepted, isWorkerLaunchAttemptCurrent, materializeWorkerLaunchTransport, observeWorkerLaunchProvider, prepareWorkerLaunchAttempt, retireAndCleanupCurrentWorkerLaunchAttempt, revokeWorkerLaunchAttempt, } from "./worker-launch-ack.js";
 import { resolveRuntimeCliPath } from "./runtime-owner-client.js";
 import { buildPsmuxNamespacePath, disposePsmuxNamespace, isPsmux, psmuxNamespaceIsEmpty, runPsmuxVerifiedCommand, } from "./psmux-adapter.js";
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -3550,6 +3550,12 @@ async function startupContextIsActive(context, attemptAlreadyFenced = false) {
         (attemptAlreadyFenced ||
             (await isWorkerLaunchAttemptCurrent(context.attempt))));
 }
+// The pane outlives its provider: after an exit it shows the user's shell,
+// whose prompt can read as the provider's idle prompt. Only `dead` refuses
+// input; `unknown` (cmux, missing receipts) keeps the pane-text path.
+export async function startupProviderExited(context) {
+    return (await observeWorkerLaunchProvider(context.attempt)) === "dead";
+}
 export async function waitForStartupPaneReady(context, opts = {}) {
     if (context.ownership.paneId !== context.attempt.pane_id ||
         context.provider !== context.attempt.provider) {
@@ -3566,6 +3572,8 @@ export async function waitForStartupPaneReady(context, opts = {}) {
     while (Date.now() < deadline) {
         if (!(await startupContextIsActive(context, opts.attemptAlreadyFenced)))
             return { ok: false, reason: "attempt_inactive" };
+        if (await startupProviderExited(context))
+            return { ok: false, reason: "provider_exited" };
         const copyMode = await paneCopyModeObservation(context.ownership.paneId, context.ownership.tmuxServerIdentity);
         if (copyMode === null)
             return { ok: false, reason: "copy_mode_unknown" };
@@ -3634,6 +3642,8 @@ export async function waitForStartupPaneReady(context, opts = {}) {
 async function startupPaneSubmitBlockReason(context, attemptAlreadyFenced) {
     if (!(await startupContextIsActive(context, attemptAlreadyFenced)))
         return "attempt_inactive";
+    if (await startupProviderExited(context))
+        return "provider_exited";
     const copyMode = await paneCopyModeObservation(context.ownership.paneId, context.ownership.tmuxServerIdentity);
     if (copyMode === null)
         return "copy_mode_unknown";
@@ -3689,6 +3699,8 @@ export async function deliverStartupInbox(context, message, options = {}) {
 export async function probeStartupPaneActivity(context, options = {}) {
     if (!(await startupContextIsActive(context, options.attemptAlreadyFenced)))
         return "unknown";
+    if (await startupProviderExited(context))
+        return "dead";
     const membership = await verifyTeamTargetOwnership({
         provider: context.ownership.provider,
         providerTarget: context.ownership.providerTarget,
@@ -3723,6 +3735,8 @@ export async function probeStartupPaneActivity(context, options = {}) {
 }
 export async function retryStartupInboxSubmit(context, message, options = {}) {
     if (!(await startupContextIsActive(context, options.attemptAlreadyFenced)))
+        return "unavailable";
+    if (await startupProviderExited(context))
         return "unavailable";
     const copyMode = await paneCopyModeObservation(context.ownership.paneId, context.ownership.tmuxServerIdentity);
     if (copyMode !== false)

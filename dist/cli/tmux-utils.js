@@ -92,6 +92,10 @@ function assertSafeCmdValue(value) {
         throw new Error('Native Windows tmux command values cannot contain NUL, CR, or LF characters');
     }
 }
+// -u keeps -p/-F output locale-independent: a non-UTF-8 tmux client prints tabs as '_'.
+function tmuxGlobalArgs() {
+    return process.platform === 'win32' ? [] : ['-u'];
+}
 function resolveTmuxInvocation(args) {
     const resolvedBinary = resolveTmuxBinaryPath();
     if (process.platform === 'win32' && /\.(cmd|bat)$/i.test(resolvedBinary)) {
@@ -104,7 +108,7 @@ function resolveTmuxInvocation(args) {
     }
     return {
         command: resolvedBinary,
-        args,
+        args: [...tmuxGlobalArgs(), ...args],
     };
 }
 // Fork (psmux): `-S <socket>` argv is rewritten to psmux's private `-L`

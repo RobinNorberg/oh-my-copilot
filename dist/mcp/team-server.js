@@ -35,6 +35,7 @@ import { isProcessAlive } from '../platform/index.js';
 import { isValidTeamInstanceId, isValidTmuxServerIdentity } from '../team/types.js';
 import { providerForTeamTarget, sendToWorker } from '../team/tmux-session.js';
 import { readTeamConfig } from '../team/monitor.js';
+import { getWorkerProviderLiveness } from '../team/worker-provider-liveness.js';
 import { assertTeamInstanceUnderLock, createTeamInstanceBinding, withTeamInstanceLifecycleLock, } from '../team/team-instance.js';
 import { canonicalTeamCwd } from '../team/state-paths.js';
 import { getGlobalOmcStatePath } from '../utils/paths.js';
@@ -297,6 +298,7 @@ async function resolveNudgeAuthorityUnderLock(jobId, expected, panes) {
         return null;
     }
     const ownershipByPane = new Map();
+    const workerByPane = new Map();
     const artifactWorkerNames = new Set();
     for (const pane of panes.workers) {
         const worker = config.workers.find(candidate => candidate.name === pane.workerName);
@@ -305,6 +307,7 @@ async function resolveNudgeAuthorityUnderLock(jobId, expected, panes) {
         if (artifactWorkerNames.has(pane.workerName))
             return null;
         artifactWorkerNames.add(pane.workerName);
+        workerByPane.set(pane.paneId, worker);
         ownershipByPane.set(pane.paneId, {
             provider,
             providerTarget: config.tmux_session,
@@ -327,6 +330,12 @@ async function resolveNudgeAuthorityUnderLock(jobId, expected, panes) {
         provider,
         ...(tmuxServerIdentity ? { tmuxServerIdentity } : {}),
         getPaneOwnership: (paneId) => ownershipByPane.get(paneId),
+        getProviderLiveness: async (paneId) => {
+            const worker = workerByPane.get(paneId);
+            return worker
+                ? getWorkerProviderLiveness(config.name, expected.cwd, config.instance_id, worker)
+                : 'unknown';
+        },
         // The live caller replaces this placeholder with the lifecycle-locked
         // final validation + transport operation.
         executeNudge: async () => false,
@@ -358,6 +367,9 @@ async function executeLockedNudge(jobId, expected, expectedPanes, authority, pan
                 return false;
             const ownership = current.getPaneOwnership(paneId);
             if (!ownership)
+                return false;
+            // The provider can exit while this nudge waits for the lock, leaving a shell prompt in the pane.
+            if ((await current.getProviderLiveness(paneId)) === 'dead')
                 return false;
             // Config, reservation, and pane evidence above all cross async
             // boundaries. Re-read the original durable job synchronously under its
