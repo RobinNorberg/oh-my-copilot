@@ -1,23 +1,26 @@
-# oh-my-copilot v5.27.0
+# oh-my-copilot v5.28.0
 
-This release brings in 412 upstream oh-my-claudecode commits (dev through 330d5c391, #524), adapted to GitHub Copilot CLI. The factory features from 5.26.0 are unchanged.
+This release makes the software factory run end to end on Windows and hardens it from a night of live runs on its own backlog (five issues, all merged). See CHANGELOG.md for every change.
 
-Install with `npm install -g oh-my-copilot@5.27.0`, or from the plugin marketplace: `copilot plugin update oh-my-copilot@omc`.
+Install with `npm install -g oh-my-copilot@5.28.0`, or from the plugin marketplace: `copilot plugin update oh-my-copilot@omc`.
 
-## From upstream
+## Factory
 
-- Everything upstream shipped from 5.7.31 to 5.8.4 that applies to Copilot: team task-claim renewal for long-running tasks, Herdr panes for team launches, the `sdd` skill, playbook checks for user-level playbooks, keyword-detector fixes (the autopilot keyword now needs an explicit command), `$ARGUMENTS` substituted literally in commands, `--json` read correctly in subcommands, and Windows rename retries on `EPERM`/`EBUSY`/`EACCES`.
-- **Smaller inventory file.** The committed inventory is now a minimal provenance baseline (upstream #5017), so pull requests no longer conflict on it with every merge.
-- **Hooks run as `node` plus arguments** in the plugin manifest. The Copilot hook file is generated from it as before.
+- **`ship.prepare.build`:** prepare can rebuild committed build output (for example `dist/` and `bridge/`) in the gate sandbox and commit only the declared output directories.
+- **Windows:** checks that need git clone, fetch or push fall back to the gate container, then to a plain run that is never auto-merged (`factory.run.sandbox.windowsGitTransport: "strict"` keeps the old park). esbuild builds no longer park: the gate copies `node_modules` packages when the sandbox cannot open the junctions.
+- **Per-test verdict against the base:** tests that fail on the base too are listed and not counted, so a few sandbox-only failures no longer park every run. Such a head never auto-merges.
+- **Stalled lanes end on their own** after `factory.run.laneIdleMinutes` (default 15) without an event, and get a fresh retry.
+- **A PR that conflicts with its moved base goes back to prepare** instead of waiting for CI that never runs.
+- **A run whose PR a human merged is recorded as merged**, after a clean tamper check, instead of resuming lanes.
+- **Bench regression gate:** `omg factory bench compare --fail-on-regression` and `omg release --bench`; the committed baseline is a live 5.27.0 run (11 of 12 issues passed, 21 premium requests).
 
-## Fixed in the port
+## Fixed
 
-- `/oh-my-copilot:autopilot` and `/omg:autopilot` activate autopilot again (the upstream command check only knew the upstream name).
+- Check names, CI definition file names and release CI failing-test lines are made safe before they reach park reasons, merge reasons and forge comments.
+- A malformed `factory.run.sandbox` block in the user config is refused instead of ignored.
+- Plugin hooks keep working in a config folder shared with WSL or macOS.
 
 ## Caveats
 
-- **A custom `COPILOT_HOME`** now has its own `.claude.json` for the Claude MCP profile; the default `~/.copilot` still uses `~/.claude.json`.
-- **A config folder shared between WSL and Windows:** after WSL rewrites the cached plugin hook manifest, Claude Code hooks on Windows fail until a Windows-side install or `omg doctor` repair restores it. Copilot is not affected; it loads its own hook file.
-- **Herdr panes** have not been run on Windows (no Herdr binary was available).
-- The large team modules were reformatted to upstream's style, so their diff is mostly formatting.
+- **Windows sandbox gap:** a check that runs without the sandbox shares your host with the PR's code; such runs warn, leave a PR note and never auto-merge. See "Known gap: git transport in the Windows sandbox" in docs/REFERENCE.md.
 - **Test evidence:** this release was published with CI on the release commit, not the maintainer's local full test suite.
