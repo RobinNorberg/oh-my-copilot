@@ -376,14 +376,26 @@ function openMutationDb(lockPath) {
             }
         }
         db = new Database(dbPath);
-        db.exec('PRAGMA journal_mode = WAL');
+        // node:sqlite defaults to a 0 ms busy timeout; set it before the WAL
+        // switch, which itself needs a lock another connection may hold.
         db.exec('PRAGMA busy_timeout = 2000');
+        db.exec('PRAGMA journal_mode = WAL');
         db.exec('CREATE TABLE IF NOT EXISTS state_mutation_locks (lock_key TEXT PRIMARY KEY, version INTEGER NOT NULL, pid INTEGER NOT NULL, process_start TEXT NOT NULL, created_at TEXT NOT NULL, nonce TEXT NOT NULL)');
         return db;
     }
     catch (error) {
         if (process.env.OMC_LOCK_DEBUG)
             console.error(`[lock-debug] openMutationDb open/exec failed for ${lockPath}: ${error?.message}`);
+        // Contention while opening is transient: leave the backend available so
+        // acquireLockAt retries instead of falling back to the file lock for good.
+        const code = sqliteErrorCode(error);
+        if (code === 'SQLITE_BUSY' || code === 'SQLITE_LOCKED') {
+            try {
+                db?.close();
+            }
+            catch { /* best effort */ }
+            return null;
+        }
         // A constructor failure is just as unusable as a missing native module;
         // fail over to the owner-file backend rather than silently returning no
         // lock.  Keep the original detail for the remediation message.

@@ -125,6 +125,9 @@ export async function initJobDb(cwd) {
         ensureStateDir(cwd);
         const dbPath = getDbPath(cwd);
         const db = new Database(dbPath);
+        // node:sqlite defaults to a 0 ms busy timeout; keep better-sqlite3's 5 s
+        // so concurrent MCP servers sharing jobs.db wait instead of failing.
+        db.exec("PRAGMA busy_timeout = 5000");
         // Enable WAL mode for better concurrency (multiple MCP servers)
         db.exec("PRAGMA journal_mode = WAL");
         // Create tables

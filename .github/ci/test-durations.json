@@ -997,7 +997,6 @@
   "tests/integration/workflow-profile-keyword-activation.test.ts": 1716,
   "tests/integration/workflow-profile-lock-recovery.test.ts": 1256,
   "tests/integration/workflow-profile-stop-transition.test.ts": 43011,
-  "tests/lint/better-sqlite3-lockfloor.test.ts": 154,
   "tests/lint/cancel-signal-fixture-ttl.test.ts": 200,
   "tests/lint/ci-test-shards.test.ts": 992,
   "tests/lint/copilot-smoke-ci-workflow.test.ts": 113,

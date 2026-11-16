@@ -38274,12 +38274,20 @@ function openMutationDb(lockPath2) {
       }
     }
     db = new Database3(dbPath);
-    db.exec("PRAGMA journal_mode = WAL");
     db.exec("PRAGMA busy_timeout = 2000");
+    db.exec("PRAGMA journal_mode = WAL");
     db.exec("CREATE TABLE IF NOT EXISTS state_mutation_locks (lock_key TEXT PRIMARY KEY, version INTEGER NOT NULL, pid INTEGER NOT NULL, process_start TEXT NOT NULL, created_at TEXT NOT NULL, nonce TEXT NOT NULL)");
     return db;
   } catch (error62) {
     if (process.env.OMC_LOCK_DEBUG) console.error(`[lock-debug] openMutationDb open/exec failed for ${lockPath2}: ${error62?.message}`);
+    const code = sqliteErrorCode(error62);
+    if (code === "SQLITE_BUSY" || code === "SQLITE_LOCKED") {
+      try {
+        db?.close();
+      } catch {
+      }
+      return null;
+    }
     const detail = isNativeBindingError(error62) ? errorMessage(error62) : `SQLite backend initialization failed: ${errorMessage(error62)}`;
     sqliteBindingLoadError = nativeBindingDiagnostic(detail);
     try {
@@ -108974,6 +108982,7 @@ async function initJobDb(cwd) {
     ensureStateDir4(cwd);
     const dbPath = getDbPath(cwd);
     const db = new Database2(dbPath);
+    db.exec("PRAGMA busy_timeout = 5000");
     db.exec("PRAGMA journal_mode = WAL");
     db.exec(`
       -- Schema version tracking

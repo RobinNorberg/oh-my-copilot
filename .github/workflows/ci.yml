@@ -272,8 +272,8 @@ jobs:
         with:
           node-version: '26'
 
-      - name: Smoke-test node:sqlite on Node 26
-        run: node --no-warnings -e "const { DatabaseSync } = require('node:sqlite'); const db = new DatabaseSync(':memory:'); db.prepare('select 1 as ok').get(); db.close();"
+      - name: Test the node:sqlite loader on Node 26
+        run: npx vitest run src/lib/__tests__/node-sqlite.test.ts
 
   better-sqlite3-node26-windows:
     name: better-sqlite3 Node 26 (windows-2022)
@@ -290,8 +290,8 @@ jobs:
         with:
           node-version: '26'
 
-      - name: Smoke-test node:sqlite on Node 26
-        run: node --no-warnings -e "const { DatabaseSync } = require('node:sqlite'); const db = new DatabaseSync(':memory:'); db.prepare('select 1 as ok').get(); db.close();"
+      - name: Test the node:sqlite loader on Node 26
+        run: npx vitest run src/lib/__tests__/node-sqlite.test.ts
 
   # PreCompact restore runs the shipped dist/ from the Build job's
   # build-output (JS output is platform-independent); build:contained-fs

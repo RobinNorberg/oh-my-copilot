@@ -55,7 +55,7 @@ This guide covers all migration paths for oh-my-copilot. Find your current versi
 
 1. Upgrade Node.js to 22.13 or newer (`node --version`), then reinstall or update OMC (`omg update`, or update the plugin).
 2. Drop any `npm rebuild better-sqlite3` step from your setup scripts; it is no longer needed.
-3. On an older Node runtime the hooks still run, but state locking falls back to the owner-file lock and the job database is unavailable; `state_write` reports `The built-in node:sqlite module is unavailable` in that case.
+3. On an older Node runtime (including Node 22.0–22.12) the hooks still run, but state locking falls back to the owner-file lock and the job database is unavailable; `state_write` reports `The built-in node:sqlite module is unavailable` in that case.
 
 ---
 

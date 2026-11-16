@@ -306,6 +306,35 @@ describe('SQLite release (TypeScript backend)', () => {
         expect(result).toEqual({ acquired: true, value: true });
         expect(existsSync(lockPath)).toBe(false);
     }, 60_000);
+    it('keeps the SQLite backend when opening meets another connection\'s exclusive lock', async () => {
+        const { directory, statePath } = fixture('mode-state-lock-open-busy-');
+        process.env.NODE_ENV = 'test';
+        // A fresh module instance: the backend-unavailable flag is sticky per module.
+        vi.resetModules();
+        const io = await import('../mode-state-io.js');
+        const marker = join(directory, 'holder.ready');
+        const holderScript = `
+      const { DatabaseSync: Database } = require(process.argv[1]);
+      const db = new Database(process.argv[2]);
+      db.exec('BEGIN EXCLUSIVE');
+      require('fs').writeFileSync(process.argv[3], '');
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 3000);
+      db.exec('COMMIT');
+      db.close();
+    `;
+        const holder = spawn(process.execPath, ['--no-warnings', '-e', holderScript, 'node:sqlite', join(directory, '.state-mutation-locks.db'), marker], { stdio: 'ignore' });
+        children.push(holder);
+        const exited = new Promise(done => holder.once('exit', done));
+        const deadline = Date.now() + 20_000;
+        while (!existsSync(marker) && Date.now() < deadline)
+            await new Promise(done => setTimeout(done, 20));
+        expect(existsSync(marker)).toBe(true);
+        expect(io.withStateFileMutationLock(statePath, () => 'first')).toEqual({ acquired: true, value: 'first' });
+        expect(io.getStateMutationLockDiagnostic()).toBeNull();
+        await exited;
+        expect(io.withStateFileMutationLock(statePath, () => 'second')).toEqual({ acquired: true, value: 'second' });
+        expect(io.getStateMutationLockDiagnostic()).toBeNull();
+    }, 60_000);
 });
 describe('dead-owner reclaim rechecks the owner record before quarantine', () => {
     const DEAD_PID = 999999999;
