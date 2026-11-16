@@ -1,12 +1,15 @@
 /**
- * OMC Tools Server - In-process MCP server for custom tools
+ * OMC Tools Server - tool-name registry and stdio server config for Agent SDK hosts
  *
- * Exposes 18 custom tools (12 LSP, 2 AST, 1 python_repl, 3 skills) via the Claude Agent SDK's
- * createSdkMcpServer helper for local Node.js Agent SDK integrations. This is not a VS Code
- * extension host or CI runner by itself.
+ * Exposes the OMC custom tools (LSP, AST, python_repl, skills, state, ...) to
+ * local Node.js Agent SDK integrations as the "t" MCP server. The server is
+ * the shipped standalone stdio bundle (bridge/mcp-server.cjs), so this module
+ * needs no Agent SDK at runtime. This is not a VS Code extension host or CI
+ * runner by itself.
  */
 
-import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
+import { join } from "path";
+import { resolvePackageRoot } from "../smoke/copilot-session-env.js";
 import { lspTools } from "../tools/lsp-tools.js";
 import { astTools } from "../tools/ast-tools.js";
 import { pythonReplTool } from "../tools/python-repl/index.js";
@@ -57,28 +60,18 @@ const allTools: ToolDef[] = [
 // Read OMC_DISABLE_TOOLS once at startup and filter tools accordingly
 const enabledTools: ToolDef[] = filterDisabledTools(allTools);
 
-// Convert to SDK tool format
-// The SDK's tool() expects a ZodRawShape directly (not wrapped in z.object())
-const sdkTools = enabledTools.map(t =>
-  tool(
-    t.name,
-    t.description,
-    t.schema as Parameters<typeof tool>[2],
-    async (args: unknown) => await t.handler(args)
-  )
-);
-
 /**
- * In-process MCP server exposing all OMC custom tools
+ * Stdio MCP server config exposing all OMC custom tools via the shipped
+ * standalone server (bridge/mcp-server.cjs), for an Agent SDK `mcpServers`
+ * entry named "t".
  *
  * Tools will be available as mcp__t__<tool_name>.
  * Tools in disabled groups (via OMC_DISABLE_TOOLS) are excluded at startup.
  */
-export const omcToolsServer = createSdkMcpServer({
-  name: "t",
-  version: "1.0.0",
-  tools: sdkTools
-});
+export const omcToolsServer: { command: string; args: string[] } = {
+  command: process.execPath,
+  args: [join(resolvePackageRoot() ?? process.cwd(), "bridge", "mcp-server.cjs")],
+};
 
 /**
  * Tool names in MCP format for allowedTools configuration.

@@ -1,14 +1,15 @@
 /**
  * Agent node executor.
  *
- * Runs one GraphAgentNode attempt through the Claude Agent SDK. The SDK is
- * lazy-imported inside execute() so unit tests inject fakes and never require
- * network access; the injectable queryImpl mirrors `query` from
- * `@anthropic-ai/claude-agent-sdk`.
+ * Runs one GraphAgentNode attempt through the Claude Agent SDK. The SDK is an
+ * optional peer dependency that oh-my-copilot does not install: it is
+ * lazy-imported inside execute() only when no queryImpl is injected, and a
+ * missing install fails the node with an install hint. Unit tests inject
+ * fakes and never require network access; the injectable queryImpl mirrors
+ * `query` from `@anthropic-ai/claude-agent-sdk`.
  */
 
 import { childEnv } from "../../../utils/windows-search.js";
-import type { Options } from "@anthropic-ai/claude-agent-sdk";
 import type {
   NodeExecutionContext,
   NodeExecutionOutput,
@@ -25,6 +26,50 @@ import {
 export type AgentQueryImpl = (
   options: unknown,
 ) => AsyncIterable<unknown> | Promise<unknown>;
+
+/** Optional peer; a variable specifier keeps bundlers and tsc from resolving it. */
+const CLAUDE_AGENT_SDK = "@anthropic-ai/claude-agent-sdk";
+
+/** The slice of the SDK's `canUseTool` permission callback this executor uses. */
+type CanUseTool = (
+  toolName: string,
+  input: Record<string, unknown>,
+) => Promise<
+  | { behavior: "allow"; updatedInput: Record<string, unknown> }
+  | { behavior: "deny"; message: string; interrupt?: boolean }
+>;
+
+async function loadSdkQuery(): Promise<AgentQueryImpl> {
+  let sdk: { query?: unknown };
+  try {
+    sdk = (await import(CLAUDE_AGENT_SDK)) as { query?: unknown };
+  } catch (error) {
+    const code = isRecord(error) ? error.code : undefined;
+    const message = error instanceof Error ? error.message : String(error);
+    // Only the SDK itself missing gets the install hint; a broken install
+    // (a missing transitive module) surfaces its own error. Node reports
+    // ERR_MODULE_NOT_FOUND; vite-based runners say "Could not resolve".
+    const notFound =
+      code === "ERR_MODULE_NOT_FOUND" ||
+      code === "MODULE_NOT_FOUND" ||
+      /Cannot find (package|module)|Could not resolve/.test(message);
+    if (
+      notFound &&
+      (message.includes(`'${CLAUDE_AGENT_SDK}'`) ||
+        message.includes(`"${CLAUDE_AGENT_SDK}"`))
+    ) {
+      throw new Error(
+        `graph agent nodes need the optional peer dependency ${CLAUDE_AGENT_SDK}; ` +
+          `install it next to oh-my-copilot (npm install ${CLAUDE_AGENT_SDK})`,
+      );
+    }
+    throw error;
+  }
+  if (typeof sdk.query !== "function") {
+    throw new Error(`${CLAUDE_AGENT_SDK} does not export query()`);
+  }
+  return sdk.query as AgentQueryImpl;
+}
 
 const SUMMARY_LIMIT = 2000;
 
@@ -127,16 +172,9 @@ export class AgentNodeExecutor implements NodeExecutor {
     });
 
     try {
-      let queryFn: AgentQueryImpl;
-      if (this.queryImpl) {
-        queryFn = this.queryImpl;
-      } else {
-        const { query } = await import("@anthropic-ai/claude-agent-sdk");
-        queryFn = (options: unknown) =>
-          query(options as { prompt: string; options?: Options });
-      }
+      const queryFn: AgentQueryImpl = this.queryImpl ?? (await loadSdkQuery());
 
-      const canUseTool: NonNullable<Options["canUseTool"]> = async (
+      const canUseTool: CanUseTool = async (
         toolName,
         input,
       ) => {

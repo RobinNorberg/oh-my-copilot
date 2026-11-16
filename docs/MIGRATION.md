@@ -6,6 +6,7 @@ This guide covers all migration paths for oh-my-copilot. Find your current versi
 
 ## Table of Contents
 
+- [Unreleased: Claude Agent SDK Is an Optional Peer](#unreleased-claude-agent-sdk-is-an-optional-peer)
 - [Unreleased: Shipyard and Factory Chain Routes](#unreleased-shipyard-and-factory-chain-routes)
 - [Unreleased: omg factory run](#unreleased-omg-factory-run)
 - [Unreleased: Budget Unit Is AI Credits](#unreleased-budget-unit-is-ai-credits)
@@ -37,6 +38,24 @@ This guide covers all migration paths for oh-my-copilot. Find your current versi
 - [v2.x → v3.0: Package Rename & Auto-Activation](#v2x--v30-package-rename--auto-activation)
 - [v3.0 → v3.1: Notepad Wisdom & Enhanced Features](#v30--v31-notepad-wisdom--enhanced-features)
 - [v3.x → v4.0: Major Architecture Overhaul](#v3x--v40-major-architecture-overhaul)
+
+---
+
+## Unreleased: Claude Agent SDK Is an Optional Peer
+
+Applies only to Node.js code that imports oh-my-copilot as a library together with the Claude Agent SDK, and to `omg graph` runs with agent nodes. Copilot CLI use is unaffected.
+
+**What changed.**
+
+- `@anthropic-ai/claude-agent-sdk` is no longer a dependency. It is an optional peer dependency, so npm does not install it for you.
+- `omcToolsServer` (exported from `oh-my-copilot`) is now a stdio MCP server config, `{ command: process.execPath, args: ["<package>/bridge/mcp-server.cjs"] }`, instead of an in-process `createSdkMcpServer()` instance. It serves the same tools under the same `mcp__t__<tool>` names, plus `host_smoke` and the Copilot run tools, but not the interop tools that `OMC_INTEROP_TOOLS_ENABLED=1` used to add. `omcToolNames`, `getOmcToolNames()` and `createOmcSession()` keep their shapes.
+- Graph agent nodes load the SDK on first use. Without it the node fails with `graph agent nodes need the optional peer dependency @anthropic-ai/claude-agent-sdk; install it next to oh-my-copilot (npm install @anthropic-ai/claude-agent-sdk)`.
+
+**Who must act.**
+
+- **Library users who call the SDK's `query()`** (for example with `createOmcSession().queryOptions`): add `@anthropic-ai/claude-agent-sdk` to your own dependencies. You likely import it already.
+- **Code that used `omcToolsServer.instance`** or other in-process server fields: pass `omcToolsServer` as a `mcpServers` entry (it is a valid stdio config), or build your own server with the SDK's `createSdkMcpServer()`.
+- **`omg graph` with agent nodes:** run `npm install @anthropic-ai/claude-agent-sdk` where oh-my-copilot is installed.
 
 ---
 

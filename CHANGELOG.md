@@ -4,6 +4,10 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- **The package no longer depends on `@anthropic-ai/claude-agent-sdk`.** That SDK bundles a whole Claude Code CLI and the sharp native binaries, none of which a Copilot CLI user runs. Installing oh-my-copilot now pulls 19 fewer packages, and `bridge/cli.cjs` no longer bundles the SDK's code. The SDK is an optional peer dependency: graph agent nodes (`omg graph`) lazy-load it and fail with an install hint (`npm install @anthropic-ai/claude-agent-sdk`) when it is missing. `omcToolsServer` is now a stdio MCP config (`{ command, args }`) that launches the shipped `bridge/mcp-server.cjs`, not an in-process SDK server instance; `createOmcSession()` uses it unchanged as its `t` server. `@types/better-sqlite3` moved to devDependencies. See "Unreleased: Claude Agent SDK Is an Optional Peer" in docs/MIGRATION.md.
+
 ### Fixed
 
 - **A malformed `factory.run.sandbox` in the user config is refused.** An array, string or number there used to be read as an empty block, so `windowsGitTransport` and `isolation` silently fell back to their defaults. It now throws `user config: factory.run.sandbox must be an object`.

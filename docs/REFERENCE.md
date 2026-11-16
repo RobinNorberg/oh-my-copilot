@@ -2322,7 +2322,7 @@ Use OMC's terminal and library surfaces in non-interactive environments:
 - Keep state explicit for ephemeral runners by setting `OMC_STATE_DIR` when state must survive worktree deletion or checkout replacement.
 - Avoid interactive slash skills (`/oh-my-copilot:autopilot`, `/oh-my-copilot:ralph`, `/oh-my-copilot:execute`, `/oh-my-copilot:deep-interview`, `/oh-my-copilot:team`) in CI jobs; they require an active Claude Code session and user-visible conversation loop.
 - OMC does not currently provide a VS Code extension or VS Code-specific automation contract. The documented IDE path is to use Claude Code's own integrations, then install OMC through the Claude Code plugin surface.
-- Programmatic Agent SDK usage is supported through the exported TypeScript helpers and the in-process MCP server helpers in this package; it is a Node.js library surface, not an interactive plugin installer.
+- Programmatic Agent SDK usage is supported through the exported TypeScript helpers and the `omcToolsServer` stdio MCP config (it launches the shipped `bridge/mcp-server.cjs`); it is a Node.js library surface, not an interactive plugin installer. oh-my-copilot does not install `@anthropic-ai/claude-agent-sdk`: install it yourself next to oh-my-copilot to drive `createOmcSession()` queries or graph agent nodes (it is an optional peer dependency).
 
 ---
 
