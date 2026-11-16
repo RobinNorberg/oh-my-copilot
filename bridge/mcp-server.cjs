@@ -42839,7 +42839,7 @@ var init_shared_memory_tools = __esm({
       description: "Write a key-value pair to shared memory for cross-agent handoffs. Namespace by session group or pipeline run. Supports optional TTL for auto-expiry.",
       schema: {
         key: external_exports.string().min(1).max(128).describe("Key identifier (alphanumeric, hyphens, underscores, dots)"),
-        value: external_exports.unknown().describe("JSON-serializable value to store"),
+        value: external_exports.unknown().optional().describe("JSON-serializable value to store"),
         namespace: external_exports.string().min(1).max(128).describe("Namespace for grouping (e.g., team name, pipeline run ID, session group)"),
         ttl: external_exports.number().int().min(1).max(604800).optional().describe("Time-to-live in seconds (max 7 days). Omit for no expiry."),
         workingDirectory: external_exports.string().optional().describe("Working directory (defaults to cwd)")

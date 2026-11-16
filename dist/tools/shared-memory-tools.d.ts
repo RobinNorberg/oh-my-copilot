@@ -15,7 +15,7 @@ import { z } from 'zod';
 import type { ToolDefinition } from './types.js';
 export declare const sharedMemoryWriteTool: ToolDefinition<{
     key: z.ZodString;
-    value: z.ZodUnknown;
+    value: z.ZodOptional<z.ZodUnknown>;
     namespace: z.ZodString;
     ttl: z.ZodOptional<z.ZodNumber>;
     workingDirectory: z.ZodOptional<z.ZodString>;
@@ -40,7 +40,7 @@ export declare const sharedMemoryCleanupTool: ToolDefinition<{
 }>;
 export declare const sharedMemoryTools: (ToolDefinition<{
     key: z.ZodString;
-    value: z.ZodUnknown;
+    value: z.ZodOptional<z.ZodUnknown>;
     namespace: z.ZodString;
     ttl: z.ZodOptional<z.ZodNumber>;
     workingDirectory: z.ZodOptional<z.ZodString>;
