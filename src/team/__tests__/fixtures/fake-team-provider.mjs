@@ -1,5 +1,5 @@
 // Stand-in provider CLI for a team worker pane. It uses only what a real
-// worker sees: pane text, the stdin trigger, the inbox, the `omc team api`
+// worker sees: pane text, the stdin trigger, the inbox, the `omg team api`
 // commands rendered there, and the shutdown-ack file. No model or network.
 import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
@@ -50,7 +50,7 @@ const stdinLines = stdin[Symbol.asyncIterator]();
 const STEPS = [
   {
     name: 'banner',
-    run: () => { process.stdout.write('fake-claude for omc team tmux smoke\n\n'); },
+    run: () => { process.stdout.write('fake-claude for omg team tmux smoke\n\n'); },
   },
   {
     name: 'idle-prompt',

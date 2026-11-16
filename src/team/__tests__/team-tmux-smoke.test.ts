@@ -29,7 +29,7 @@ const OMC_CLI_ENTRY = join(REPO_ROOT, 'src', 'cli', 'index.ts');
 const TSX_LOADER_URL = pathToFileURL(join(REPO_ROOT, 'node_modules', 'tsx', 'dist', 'loader.mjs')).href;
 // Outside /tmp because provider preflight rejects binaries resolved there,
 // and outside bridge/ so a run never rewrites the tracked bundle.
-const SMOKE_CACHE = join(REPO_ROOT, 'node_modules', '.cache', 'omc-team-tmux-smoke');
+const SMOKE_CACHE = join(REPO_ROOT, 'node_modules', '.cache', 'omg-team-tmux-smoke');
 const RUNTIME_CLI_PATH = join(SMOKE_CACHE, 'bridge', 'runtime-cli.cjs');
 const SHUTDOWN_ACK_TIMEOUT_MS = 30_000;
 const execFileAsync = promisify(execFile);
@@ -161,7 +161,7 @@ describe.skipIf(!SMOKE_ENABLED)('team tmux smoke: fake claude worker lifecycle',
 
   beforeEach(async () => {
     // Short root: tmux socket paths must stay under the Darwin sun_path limit.
-    fixtureRoot = await mkdtemp(join(tmpdir(), 'omc-smoke-'));
+    fixtureRoot = await mkdtemp(join(tmpdir(), 'omg-smoke-'));
     runRoot = await mkdtemp(join(SMOKE_CACHE, 'run-'));
     const binDir = join(runRoot, 'bin');
     // Every runtime-cli process names its entry in argv. A per-run link gives
@@ -179,11 +179,11 @@ describe.skipIf(!SMOKE_ENABLED)('team tmux smoke: fake claude worker lifecycle',
     await symlink(RUNTIME_CLI_PATH, runtimeCliPath);
     await writeExecutable(join(binDir, 'claude'), [
       '#!/bin/sh',
-      // Login shells may reorder PATH (macOS path_helper); pin the omc shim.
+      // Login shells may reorder PATH (macOS path_helper); pin the omg shim.
       `export PATH=${shellQuote(binDir)}:"$PATH"`,
       `exec ${shellQuote(process.execPath)} --import ${shellQuote(TSX_LOADER_URL)} ${shellQuote(FAKE_PROVIDER)} --trace ${shellQuote(tracePath)} "$@"`,
     ]);
-    await writeExecutable(join(binDir, 'omc'), [
+    await writeExecutable(join(binDir, 'omg'), [
       '#!/bin/sh',
       `exec ${shellQuote(process.execPath)} --import ${shellQuote(TSX_LOADER_URL)} ${shellQuote(OMC_CLI_ENTRY)} "$@"`,
     ]);
@@ -194,7 +194,7 @@ describe.skipIf(!SMOKE_ENABLED)('team tmux smoke: fake claude worker lifecycle',
       XDG_CONFIG_HOME: join(home, '.config'),
       XDG_CACHE_HOME: join(home, '.cache'),
       XDG_DATA_HOME: join(home, '.local', 'share'),
-      COPILOT_HOME: join(home, '.claude'),
+      COPILOT_HOME: join(home, '.copilot'),
       OMC_STATE_DIR: join(fixtureRoot, 'state'),
       OMC_RUNTIME_CLI_PATH: runtimeCliPath,
       TMUX_TMPDIR: join(fixtureRoot, 'tmux'),
