@@ -14,10 +14,7 @@ cpSync(join(REPO_ROOT, 'templates', 'hooks'), TEMPLATE_HOOKS_ROOT, { recursive: 
 provisionStandaloneStateLockBridge(REPO_ROOT, join(TEMPLATE_HOOKS_ROOT, 'lib', 'state-lock.mjs'));
 const TEMPLATE_SCRIPT_PATH = join(TEMPLATE_HOOKS_ROOT, 'post-tool-use-failure.mjs');
 const WINDOWS_SIMULATION = `
-  import { createRequire } from 'node:module';
   import { pathToFileURL } from 'node:url';
-  const require = createRequire(process.argv[1]);
-  require('better-sqlite3');
   Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
   await import(pathToFileURL(process.argv[2]).href);
 `;
@@ -208,7 +205,7 @@ describe('post-tool-use-failure.mjs', () => {
       session_id: sessionId,
     }, {
       OMC_STATE_DIR: '',
-      OMC_TEST_BETTER_SQLITE3_LOAD_FAILURE: '1',
+      OMC_TEST_SQLITE_LOAD_FAILURE: '1',
     }, scriptPath);
     const state = JSON.parse(readFileSync(statePath, 'utf8')) as {
       tool_name: string;
@@ -264,7 +261,7 @@ describe('post-tool-use-failure.mjs', () => {
       const processStart = 'ticks:638933184000000001';
       const nonce = '123e4567-e89b-12d3-a456-426614174000';
       const setupScript = `
-        import Database from 'better-sqlite3';
+        import { DatabaseSync as Database } from 'node:sqlite';
         import { writeFileSync } from 'node:fs';
         import { resolve } from 'node:path';
         const lockPath = process.argv[1];
@@ -274,7 +271,7 @@ describe('post-tool-use-failure.mjs', () => {
         const nonce = process.argv[5];
         const createdAt = new Date().toISOString();
         const database = new Database(databasePath);
-        database.pragma('journal_mode = WAL');
+        database.exec('PRAGMA journal_mode = WAL');
         database.exec('CREATE TABLE IF NOT EXISTS state_mutation_locks (lock_key TEXT PRIMARY KEY, version INTEGER NOT NULL, pid INTEGER NOT NULL, process_start TEXT NOT NULL, created_at TEXT NOT NULL, nonce TEXT NOT NULL)');
         database.prepare('INSERT OR REPLACE INTO state_mutation_locks (lock_key, version, pid, process_start, created_at, nonce) VALUES (?, 1, ?, ?, ?, ?)')
           .run(resolve(lockPath), ownerPid, processStart, createdAt, nonce);
@@ -282,7 +279,7 @@ describe('post-tool-use-failure.mjs', () => {
         database.close();
       `;
       execFileSync(NODE, [
-        '--input-type=module', '-e', setupScript, lockPath, databasePath, String(process.pid), processStart, nonce,
+        '--no-warnings', '--input-type=module', '-e', setupScript, lockPath, databasePath, String(process.pid), processStart, nonce,
       ], { encoding: 'utf8', timeout: 10000 });
 
       const powershellPath = join(probeDirectory, 'powershell');
@@ -314,7 +311,7 @@ printf '638933184000000001\\n'
           NODE_ENV: 'test',
           OMC_STATE_DIR: '',
           OMC_TEST_FLOCK_AVAILABLE: '',
-          OMC_TEST_BETTER_SQLITE3_LOAD_FAILURE: '',
+          OMC_TEST_SQLITE_LOAD_FAILURE: '',
           PATH: `${probeDirectory}${delimiter}${process.env.PATH ?? ''}`,
         },
         timeout: 2500,
@@ -343,21 +340,21 @@ printf '638933184000000001\\n'
     const statePath = join(sessionStateDir, 'last-tool-error-state.json');
     const databasePath = join(stateRoot, '.state-mutation-locks.db');
     const createDatabaseScript = `
-      import Database from 'better-sqlite3';
+      import { DatabaseSync as Database } from 'node:sqlite';
       const database = new Database(process.argv[1]);
-      database.pragma('journal_mode = WAL');
+      database.exec('PRAGMA journal_mode = WAL');
       database.exec('CREATE TABLE IF NOT EXISTS state_mutation_locks (lock_key TEXT PRIMARY KEY, version INTEGER NOT NULL, pid INTEGER NOT NULL, process_start TEXT NOT NULL, created_at TEXT NOT NULL, nonce TEXT NOT NULL)');
       database.close();
     `;
-    execFileSync(NODE, ['--input-type=module', '-e', createDatabaseScript, databasePath], {
+    execFileSync(NODE, ['--no-warnings', '--input-type=module', '-e', createDatabaseScript, databasePath], {
       encoding: 'utf8',
       timeout: 10000,
     });
 
     const holderScript = `
-      import Database from 'better-sqlite3';
+      import { DatabaseSync as Database } from 'node:sqlite';
       const database = new Database(process.argv[1]);
-      database.pragma('journal_mode = WAL');
+      database.exec('PRAGMA journal_mode = WAL');
       database.exec('BEGIN IMMEDIATE');
       process.stdout.write('lock-acquired\\n');
       process.stdin.resume();
@@ -366,7 +363,7 @@ printf '638933184000000001\\n'
         database.close();
       });
     `;
-    const holder = spawn(NODE, ['--input-type=module', '-e', holderScript, databasePath], {
+    const holder = spawn(NODE, ['--no-warnings', '--input-type=module', '-e', holderScript, databasePath], {
       stdio: ['pipe', 'pipe', 'pipe'],
     });
     const holderExit = new Promise<void>((resolve) => holder.once('exit', () => resolve()));
@@ -405,7 +402,7 @@ printf '638933184000000001\\n'
           NODE_ENV: 'test',
           OMC_STATE_DIR: '',
           OMC_TEST_FLOCK_AVAILABLE: '',
-          OMC_TEST_BETTER_SQLITE3_LOAD_FAILURE: '',
+          OMC_TEST_SQLITE_LOAD_FAILURE: '',
         },
         timeout: 2500,
       }).trim();

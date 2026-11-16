@@ -50,7 +50,7 @@ autopilot: build a todo-app
 # If you enjoy the output, give the repo a ⭐ and tell a friend
 ```
 
-> **Requirements:** Node.js on PATH (every hook runs `node`; under Copilot a
+> **Requirements:** Node.js 22.13 or newer on PATH (every hook runs `node`; under Copilot a
 > hook that cannot start blocks the tool call). The host config directory is
 > `~/.copilot`, or `$COPILOT_HOME` when set; OMC follows Copilot's own
 > variable. Update with
@@ -58,14 +58,6 @@ autopilot: build a todo-app
 > then run `/omc-setup` again. Uninstall with
 > `copilot plugin uninstall oh-my-copilot@omc`.
 > [Getting Started](docs/GETTING-STARTED.md) covers every install path.
-
-> **Known npm warning:** `npm i -g oh-my-copilot@latest` may print `deprecated prebuild-install@7.1.3`.
-> This comes from the `better-sqlite3` native-addon dependency
-> (`better-sqlite3 -> prebuild-install`); `prebuild-install@7.1.3` is still the latest
-> published version, so there is no safe repo-side dependency bump to remove the
-> warning yet. Tracked upstream in
-> [Yeachan-Heo/oh-my-claudecode#2913](https://github.com/Yeachan-Heo/oh-my-claudecode/issues/2913);
-> it does not by itself mean the install failed.
 
 ### Not Sure Where to Start?
 
@@ -322,6 +314,7 @@ omg team shutdown fix-failing-tests
 ## Requirements
 
 - [Copilot CLI](https://github.com/github/copilot-cli) — `npm install -g @github/copilot`
+- Node.js 22.13 or newer (23.4 or newer on the 23 line). Node 20 is no longer supported: state locking uses the built-in `node:sqlite`.
 
 ---
 

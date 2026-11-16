@@ -2,18 +2,18 @@
  * Job State Database - SQLite-based persistent state for Codex/Gemini background jobs
  *
  * Provides a single shared database at .omg/state/jobs.db for both providers.
- * Uses better-sqlite3 with WAL mode for safe concurrent access from multiple
+ * Uses Node's built-in node:sqlite with WAL mode for safe concurrent access from multiple
  * MCP server instances. Only job metadata is stored here; prompt/response
  * content remains as files on disk.
  *
  * Follows the same patterns as src/hooks/swarm/state.ts:
- * - Dynamic import of better-sqlite3 with graceful fallback
+ * - Lazy load of node:sqlite with graceful fallback
  * - WAL mode for concurrency
  * - Schema versioning with migrations
  * - Per-worktree db instances keyed by resolved path
  * - All functions return false/null on failure (no throws)
  */
-import type BetterSqlite3 from "better-sqlite3";
+import { type SqliteDatabase } from "./node-sqlite.js";
 /**
  * Job status for background execution tracking
  */
@@ -66,9 +66,9 @@ export declare function isJobDbInitialized(cwd?: string): boolean;
  * Get the raw database instance for advanced use.
  *
  * @param cwd - Optional cwd to get specific instance
- * @returns The better-sqlite3 Database instance, or null if not initialized
+ * @returns The node:sqlite DatabaseSync instance, or null if not initialized
  */
-export declare function getJobDb(cwd?: string): BetterSqlite3.Database | null;
+export declare function getJobDb(cwd?: string): SqliteDatabase | null;
 /**
  * Insert or update a job record from a JobStatus object.
  * Maps camelCase JobStatus fields to snake_case database columns.

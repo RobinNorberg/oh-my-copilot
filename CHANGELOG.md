@@ -4,6 +4,10 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- **BREAKING: Node 20 is no longer supported; Node 22.13+ required (23.4+ on the 23 line).** State mutation locking and the job state database now use Node's built-in `node:sqlite` instead of the native `better-sqlite3` addon. `better-sqlite3` and `@types/better-sqlite3` are removed, so installs no longer pull the deprecated `prebuild-install` or `tar-fs`. Schemas and file locations are unchanged and existing database files open as before. `node:sqlite` loads only when a command needs a database, and its ExperimentalWarning is not printed. On an older Node the hooks fall back to the owner-file lock. engines: `^22.13.0 || ^23.4.0 || 24.x || 25.x || 26.x`. See docs/MIGRATION.md.
+
 # oh-my-copilot v5.28.0
 
 ## [5.28.0] - 2026-11-13

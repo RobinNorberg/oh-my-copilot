@@ -33,8 +33,8 @@ const PROMPTS_WITH_RALPH = [
 /**
  * The heavy mode survived the task-size step: its skill invocation is in the
  * context, or its state activation ran and failed. Activation runs only for
- * modes that are still resolved, and on machines without the better-sqlite3
- * binding the file-lock fallback can fail under load ("No ralph state was
+ * modes that are still resolved, and on machines without node:sqlite
+ * the file-lock fallback can fail under load ("No ralph state was
  * activated."), which says nothing about the task-size rules under test.
  */
 function expectModeKept(context: string, mode: string) {
@@ -164,7 +164,7 @@ describe("keyword-detector.mjs: OMC_JEV_TASK_SIZE_SLASH_ANYWHERE", () => {
    * Ralph was kept and its persisted state records the slash command as the
    * user's confirmation: no awaiting-confirmation window, which would make the
    * Stop hook skip ralph enforcement. Activation may fail under load without
-   * the better-sqlite3 binding (see expectModeKept); only then is no state checked.
+   * node:sqlite (see expectModeKept); only then is no state checked.
    */
   function expectConfirmedBySlash(output: Awaited<ReturnType<typeof run>>) {
     const context = output.hookSpecificOutput?.additionalContext ?? "";

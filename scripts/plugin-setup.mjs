@@ -7,17 +7,16 @@
 
 import { existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync, chmodSync, copyFileSync } from 'node:fs';
 import { execSync } from 'node:child_process';
-import { createRequire } from 'node:module';
 import { homedir } from 'node:os';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { getCopilotConfigDir } from './lib/config-dir.mjs';
 import { buildHudWrapper } from './lib/hud-wrapper-template.mjs';
 import { patchHooksManifestFile } from './lib/hook-command-normalizer.mjs';
+import { loadDatabaseSync } from './lib/node-sqlite.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const require = createRequire(import.meta.url);
 
 const CLAUDE_DIR = getCopilotConfigDir();
 const HUD_DIR = join(CLAUDE_DIR, 'hud');
@@ -142,21 +141,11 @@ try {
 //    very setup script (and any other lifecycle hooks).  Fixes #1113.
 const packageDir = join(__dirname, '..');
 const commanderCheck = join(packageDir, 'node_modules', 'commander');
-const betterSqliteBindingCheck = join(
-  packageDir,
-  'node_modules',
-  'better-sqlite3',
-  'build',
-  'Release',
-  'better_sqlite3.node',
-);
 
-function probeBetterSqliteBinding() {
+function probeNodeSqlite() {
   try {
-    const loaded = require('better-sqlite3');
-    const Database = typeof loaded === 'function' ? loaded : loaded?.default;
-    if (typeof Database !== 'function') return false;
-    const db = new Database(':memory:');
+    const DatabaseSync = loadDatabaseSync();
+    const db = new DatabaseSync(':memory:');
     db.close();
     return true;
   } catch {
@@ -179,37 +168,11 @@ if (!existsSync(commanderCheck)) {
   console.log('[OMC] Runtime dependencies already present');
 }
 
-// better-sqlite3 has a native install script.  The dependency bootstrap above
-// intentionally ignores package lifecycle scripts so it cannot recurse into
-// this setup entry point; rebuild this one native package explicitly instead.
-if (!existsSync(betterSqliteBindingCheck) && isPublishedPluginCache) {
-  console.log('[OMC] Building better-sqlite3 native binding...');
-  try {
-    execSync('npm rebuild better-sqlite3', {
-      cwd: packageDir,
-      stdio: 'pipe',
-      timeout: 60000,
-    });
-    if (existsSync(betterSqliteBindingCheck)) {
-      console.log('[OMC] better-sqlite3 native binding built successfully');
-    } else {
-      console.log('[OMC] Warning: npm rebuild completed without producing better_sqlite3.node; state mutation will use the file-lock fallback.');
-    }
-  } catch (e) {
-    console.log('[OMC] Warning: Could not build better-sqlite3 native binding:', e.message);
-    console.log('[OMC] State mutation will use the file-lock fallback until better-sqlite3 is rebuilt successfully.');
-  }
-} else if (!existsSync(betterSqliteBindingCheck)) {
-  console.log('[OMC] better-sqlite3 native binding is absent in the repository checkout; runtime state mutation will use the file-lock fallback.');
-}
-
-const betterSqliteBindingHealthy = probeBetterSqliteBinding();
-if (existsSync(betterSqliteBindingCheck) && !betterSqliteBindingHealthy) {
-  console.log('[OMC] Warning: better_sqlite3.node exists but could not be loaded; runtime state mutation will use the file-lock fallback until the native binding is rebuilt for this Node runtime.');
-}
-
-if (betterSqliteBindingHealthy) {
+// State mutation locking uses the built-in node:sqlite (Node 22.13+ / 23.4+); there is no
+// native addon to build.  On an older runtime it falls back to the owner-file lock.
+if (probeNodeSqlite()) {
   console.log('[OMC] Setup complete! Restart Claude Code to activate HUD.');
 } else {
-  console.log('[OMC] Setup complete with file-lock fallback (better-sqlite3 native binding unavailable). Restart Claude Code to activate HUD.');
+  console.log(`[OMC] Warning: the built-in node:sqlite module is unavailable on Node.js ${process.version} (needs 22.13 or newer); state mutation will use the file-lock fallback.`);
+  console.log('[OMC] Setup complete with file-lock fallback (node:sqlite unavailable). Restart Claude Code to activate HUD.');
 }

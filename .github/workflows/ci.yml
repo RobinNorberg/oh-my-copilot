@@ -87,7 +87,7 @@ jobs:
       - name: Install dependencies
         uses: ./.github/actions/deps
         with:
-          node-version: '20'
+          node-version: '22'
 
       - name: Type check
         run: npx tsc --noEmit
@@ -116,7 +116,7 @@ jobs:
       - name: Install dependencies
         uses: ./.github/actions/deps
         with:
-          node-version: '20'
+          node-version: '22'
 
       - name: Run functional tests
         run: npm test -- --run --shard=${{ matrix.shard }}/4 --reporter=default --reporter=blob --outputFile.blob="$RUNNER_TEMP/vitest-reports/blob-${{ matrix.shard }}.json"
@@ -149,7 +149,7 @@ jobs:
       - name: Install dependencies
         uses: ./.github/actions/deps
         with:
-          node-version: '20'
+          node-version: '22'
 
       - name: Download blob reports
         uses: actions/download-artifact@v4
@@ -206,10 +206,8 @@ jobs:
       - name: Install dependencies
         uses: ./.github/actions/deps
         with:
-          # better-sqlite3 12.10+ no longer ships a Node 20 Windows prebuild.
-          # Pin the runner with the supported VS 2022 toolchain so Node 20 users
-          # keep a tested source-build path instead of hiding the gap with Node 22.
-          node-version: '20'
+          # The lowest supported Node line (engines: ^22.13.0); node:sqlite is built in.
+          node-version: '22'
 
       # Scoped to the cross-platform path/encoding suites on a real Windows
       # runner. The ubuntu-only `test` job exercises POSIX separators, so
@@ -230,10 +228,10 @@ jobs:
           npx vitest run --fileParallelism=false "${files[@]}"
 
   # The statechart native suite spawns the CLI once per corpus case; each
-  # process pays its type transform. On the 20.x line there is no compile
-  # cache, which puts the 126-case cli.test far past any sane budget, so the
-  # Node 20 test job runs the suite's in-process files and this job runs the
-  # whole suite, cli.test included, on a stripping-native node.
+  # process pays its type transform, which puts the 126-case cli.test far past
+  # any sane budget on the Node 22 test job, so that job runs the suite's
+  # in-process files and this job runs the whole suite, cli.test included, on
+  # a stripping-native node.
   test-statechart-node24:
     name: Statechart suite (Node 24)
     needs: [evidence]
@@ -254,6 +252,11 @@ jobs:
 
   # Unrolled matrix: each job's literal `name:` is the check name `omg ship`
   # requires, so a job skipped by a job-level `if:` still reports under it.
+  # The jobs now smoke-test the built-in node:sqlite on the newest Node line.
+  # Their ids and names still say better-sqlite3 because `ship.requiredChecks`
+  # is read from the PR's base (.copilot/omg.jsonc, OMG_REPOSITORY_REQUIRED_CHECKS):
+  # renaming them in the same PR would leave that PR waiting on a check that
+  # never reports. Rename them in a follow-up once the base lists both names.
   better-sqlite3-node26-ubuntu:
     name: better-sqlite3 Node 26 (ubuntu-latest)
     needs: [evidence]
@@ -269,8 +272,8 @@ jobs:
         with:
           node-version: '26'
 
-      - name: Smoke-test native SQLite on Node 26
-        run: node -e "const Database = require('better-sqlite3'); const db = new Database(':memory:'); db.prepare('select 1 as ok').get(); db.close();"
+      - name: Smoke-test node:sqlite on Node 26
+        run: node --no-warnings -e "const { DatabaseSync } = require('node:sqlite'); const db = new DatabaseSync(':memory:'); db.prepare('select 1 as ok').get(); db.close();"
 
   better-sqlite3-node26-windows:
     name: better-sqlite3 Node 26 (windows-2022)
@@ -287,8 +290,8 @@ jobs:
         with:
           node-version: '26'
 
-      - name: Smoke-test native SQLite on Node 26
-        run: node -e "const Database = require('better-sqlite3'); const db = new Database(':memory:'); db.prepare('select 1 as ok').get(); db.close();"
+      - name: Smoke-test node:sqlite on Node 26
+        run: node --no-warnings -e "const { DatabaseSync } = require('node:sqlite'); const db = new DatabaseSync(':memory:'); db.prepare('select 1 as ok').get(); db.close();"
 
   # PreCompact restore runs the shipped dist/ from the Build job's
   # build-output (JS output is platform-independent); build:contained-fs
@@ -306,7 +309,7 @@ jobs:
       - name: Install dependencies
         uses: ./.github/actions/deps
         with:
-          node-version: '20'
+          node-version: '22'
 
       - name: Download build output
         uses: actions/download-artifact@v4
@@ -342,7 +345,7 @@ jobs:
       - name: Install dependencies
         uses: ./.github/actions/deps
         with:
-          node-version: '20'
+          node-version: '22'
 
       - name: Download build output
         uses: actions/download-artifact@v4
@@ -379,7 +382,7 @@ jobs:
       - name: Install dependencies
         uses: ./.github/actions/deps
         with:
-          node-version: '20'
+          node-version: '22'
 
       - name: Download build output
         uses: actions/download-artifact@v4
@@ -419,7 +422,7 @@ jobs:
       - name: Install dependencies
         uses: ./.github/actions/deps
         with:
-          node-version: '20'
+          node-version: '22'
 
       - name: Verify committed plugin shipping surface
         run: npm run plugin:shipping:verify
@@ -493,7 +496,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
 
       - name: Hold candidate generated changes
         env:
@@ -514,7 +517,7 @@ jobs:
       - name: Install dependencies
         uses: ./.github/actions/deps
         with:
-          node-version: '20'
+          node-version: '22'
 
       - name: Check for raw .omc path constructions
         run: node scripts/ci/check-multirepo-paths.mjs
@@ -532,7 +535,7 @@ jobs:
       - name: Install dependencies
         uses: ./.github/actions/deps
         with:
-          node-version: '20'
+          node-version: '22'
 
       - name: Check for raw .omc path constructions
         run: node scripts/ci/check-multirepo-paths.mjs
@@ -591,7 +594,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
 
       # The Build job's output replaces `npm ci` + `npm run build` here; pack
       # skips `prepack` (a rebuild) because the built tree is already in place.
@@ -968,7 +971,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
 
       # ── 2. Install Claude Code ────────────────────────────────────────────────
       # Keep Claude Code installed in CI so the upgrade path still runs in a

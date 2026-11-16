@@ -2,7 +2,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { getProcessStartIdentitySync } from '../../platform/process-utils.js';
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
 import { spawn } from 'node:child_process';
-import { createRequire } from 'node:module';
 import { basename, dirname, join, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { tmpdir } from 'node:os';
@@ -84,11 +83,11 @@ vi.mock('../../platform/process-utils.js', async (importOriginal) => {
     };
 });
 import { captureStateFileGeneration, clearStateFileLocked, getStateMutationLockFailureMessage, withStateFileMutationLock, } from '../mode-state-io.js';
+import { loadDatabaseSync } from '../node-sqlite.js';
 // @ts-expect-error Hook runtime source is intentionally JavaScript-only.
 import { withStateFileLockSync as withHookStateFileLockSync } from '../../../scripts/lib/state-lock.mjs';
 // @ts-expect-error Hook runtime source is intentionally JavaScript-only.
 import * as hookLock from '../../../scripts/lib/state-lock.mjs';
-const require = createRequire(import.meta.url);
 const directories = [];
 const children = [];
 function processStart() {
@@ -131,12 +130,12 @@ async function liveForeignOwner() {
     throw new Error('live child identity unavailable');
 }
 function seedRow(lockPath, seeded) {
-    const Database = require('better-sqlite3');
+    const Database = loadDatabaseSync();
     const db = new Database(join(dirname(lockPath), '.state-mutation-locks.db'));
     try {
         db.exec('CREATE TABLE IF NOT EXISTS state_mutation_locks (lock_key TEXT PRIMARY KEY, version INTEGER NOT NULL, pid INTEGER NOT NULL, process_start TEXT NOT NULL, created_at TEXT NOT NULL, nonce TEXT NOT NULL)');
         db.prepare('INSERT INTO state_mutation_locks (lock_key, version, pid, process_start, created_at, nonce) VALUES (?, 1, ?, ?, ?, ?)')
-            .run(resolve(realpathSync(dirname(lockPath)), basename(lockPath)), seeded.pid, seeded.processStart, seeded.createdAt, seeded.nonce);
+            .run(resolve(realpathSync(dirname(lockPath)), basename(lockPath)), ...[seeded.pid, seeded.processStart, seeded.createdAt, seeded.nonce]);
     }
     finally {
         db.close();
@@ -145,7 +144,7 @@ function seedRow(lockPath, seeded) {
 function useBackend(backend) {
     process.env.NODE_ENV = 'test';
     if (backend === 'ts-file')
-        process.env.OMC_TEST_BETTER_SQLITE3_LOAD_FAILURE = '1';
+        process.env.OMC_TEST_SQLITE_LOAD_FAILURE = '1';
     if (backend === 'mjs-file')
         process.env.OMC_TEST_FLOCK_AVAILABLE = '0';
 }
@@ -168,7 +167,7 @@ afterEach(() => {
     probeControl.pid = undefined;
     probeControl.onProbe = undefined;
     probeControl.identity = undefined;
-    delete process.env.OMC_TEST_BETTER_SQLITE3_LOAD_FAILURE;
+    delete process.env.OMC_TEST_SQLITE_LOAD_FAILURE;
     delete process.env.OMC_TEST_FLOCK_AVAILABLE;
     for (const child of children.splice(0))
         child.kill();
@@ -178,7 +177,7 @@ afterEach(() => {
 describe('state mutation lock fallback', () => {
     it('does not delete a replacement owner observed during stale reclamation', () => {
         process.env.NODE_ENV = 'test';
-        process.env.OMC_TEST_BETTER_SQLITE3_LOAD_FAILURE = '1';
+        process.env.OMC_TEST_SQLITE_LOAD_FAILURE = '1';
         const { directory, statePath, lockPath } = fixture('mode-state-lock-race-');
         mkdirSync(directory, { recursive: true });
         writeFileSync(lockPath, JSON.stringify(owner(999999999, '1')));
@@ -286,9 +285,9 @@ describe('SQLite release (TypeScript backend)', () => {
         process.env.NODE_ENV = 'test';
         const marker = join(directory, 'holder.ready');
         const holderScript = `
-      const Database = require(process.argv[1]);
+      const { DatabaseSync: Database } = require(process.argv[1]);
       const db = new Database(process.argv[2]);
-      db.pragma('busy_timeout = 10000');
+      db.exec('PRAGMA busy_timeout = 10000');
       db.exec('BEGIN IMMEDIATE');
       require('fs').writeFileSync(process.argv[3], '');
       Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 3000);
@@ -297,7 +296,7 @@ describe('SQLite release (TypeScript backend)', () => {
     `;
         let holder;
         const result = withStateFileMutationLock(statePath, () => {
-            holder = spawn(process.execPath, ['-e', holderScript, require.resolve('better-sqlite3'), join(directory, '.state-mutation-locks.db'), marker], { stdio: 'ignore' });
+            holder = spawn(process.execPath, ['--no-warnings', '-e', holderScript, 'node:sqlite', join(directory, '.state-mutation-locks.db'), marker], { stdio: 'ignore' });
             const deadline = Date.now() + 20_000;
             while (!existsSync(marker) && Date.now() < deadline)
                 Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);
@@ -320,7 +319,7 @@ describe('dead-owner reclaim rechecks the owner record before quarantine', () =>
         ['scripts/lib/state-lock.mjs', (statePath) => withHookStateFileLockSync(statePath, () => 'held')],
     ])('%s leaves a same-inode live replacement in place', (_twin, acquire) => {
         process.env.NODE_ENV = 'test';
-        process.env.OMC_TEST_BETTER_SQLITE3_LOAD_FAILURE = '1';
+        process.env.OMC_TEST_SQLITE_LOAD_FAILURE = '1';
         const directory = mkdtempSync(join(tmpdir(), 'mode-state-lock-reuse-'));
         directories.push(directory);
         const statePath = join(directory, 'state.json');
@@ -387,9 +386,9 @@ describe('SQLITE_BUSY while opening the lock database (scripts/lib/state-lock.mj
     // A rollback-journal EXCLUSIVE transaction makes the lock's journal_mode
     // switch answer SQLITE_BUSY once the busy timeout runs out.
     function holdLockDatabase(lockPath) {
-        const Database = require('better-sqlite3');
+        const Database = loadDatabaseSync();
         const holder = new Database(join(dirname(lockPath), '.state-mutation-locks.db'));
-        holder.pragma('journal_mode = DELETE');
+        holder.exec('PRAGMA journal_mode = DELETE');
         holder.exec('BEGIN EXCLUSIVE');
         return holder;
     }
@@ -400,17 +399,17 @@ describe('SQLITE_BUSY while opening the lock database (scripts/lib/state-lock.mj
         let clockReads = 0;
         // A frozen clock makes the first BUSY look early. Reads: probe deadline,
         // open start, then the post-BUSY check, where the holder lets go.
-        const testHooks = { nowMs: () => { clockReads += 1; if (clockReads === 3 && holder.open)
+        const testHooks = { nowMs: () => { clockReads += 1; if (clockReads === 3 && holder.isOpen)
                 holder.close(); return 1_000; } };
         const lock = hookLock.acquireStateFileLockAtPathSync(lockPath, 50, true, false, 50, 3000, Infinity, testHooks);
         try {
-            expect(holder.open).toBe(false);
+            expect(holder.isOpen).toBe(false);
             expect(lock).toBeTruthy();
         }
         finally {
             if (lock)
                 hookLock.releaseStateFileLockSync(lock);
-            if (holder.open)
+            if (holder.isOpen)
                 holder.close();
         }
     });

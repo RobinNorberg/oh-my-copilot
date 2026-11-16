@@ -58,7 +58,7 @@ afterEach(() => {
   vi.restoreAllMocks();
   while (created.length) rmSync(created.pop()!, { recursive: true, force: true });
   delete process.env.OMC_TEST_FLOCK_AVAILABLE;
-  delete process.env.OMC_TEST_BETTER_SQLITE3_LOAD_FAILURE;
+  delete process.env.OMC_TEST_SQLITE_LOAD_FAILURE;
 });
 
 describe.each(modules)('recoverable workflow mutation lock (%s)', (modulePath) => {
@@ -117,7 +117,7 @@ describe.each(modules)('recoverable workflow mutation lock (%s)', (modulePath) =
   it('serializes concurrent reclaimers without removing a live replacement', async () => {
     const { statePath, lockPath } = fixture();
     process.env.NODE_ENV = 'test';
-    process.env.OMC_TEST_BETTER_SQLITE3_LOAD_FAILURE = '1';
+    process.env.OMC_TEST_SQLITE_LOAD_FAILURE = '1';
     writeFileSync(lockPath, JSON.stringify(owner({ pid: 999999999, processStart: '1' })));
     const logPath = `${statePath}.critical.log`;
     const childScript = String.raw`
@@ -174,10 +174,10 @@ describe.each(modules)('recoverable workflow mutation lock (%s)', (modulePath) =
     expect(existsSync(lockPath)).toBe(false);
   });
 
-  it('uses the shipped owner-file fallback when better-sqlite3 cannot load', async () => {
+  it('uses the shipped owner-file fallback when node:sqlite cannot load', async () => {
     const { statePath, lockPath } = fixture();
     process.env.NODE_ENV = 'test';
-    process.env.OMC_TEST_BETTER_SQLITE3_LOAD_FAILURE = '1';
+    process.env.OMC_TEST_SQLITE_LOAD_FAILURE = '1';
     const lockApi = await import(`${pathToFileURL(join(root, 'scripts', 'lib', 'state-lock.mjs')).href}?unavailable=${randomUUID()}`) as {
       acquireStateFileLockSync(
         path: string, attempts?: number, requireExclusive?: boolean, bypassTestOverride?: boolean,
@@ -194,7 +194,7 @@ describe.each(modules)('recoverable workflow mutation lock (%s)', (modulePath) =
       processStartIdentity: (pid: number) => (pid === process.pid ? processStart() : null),
     });
     expect(lock).not.toBeNull();
-    expect(lockApi.getStateFileLockDiagnostic()).toContain('better_sqlite3.node');
+    expect(lockApi.getStateFileLockDiagnostic()).toContain('node:sqlite module is unavailable');
     expect(existsSync(join(dirname(statePath), '.state-mutation-locks.db'))).toBe(false);
     expect(existsSync(lockPath)).toBe(true);
     expect(lockApi.releaseStateFileLockSync(lock)).toBe(true);

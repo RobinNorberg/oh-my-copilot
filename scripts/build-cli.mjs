@@ -11,7 +11,7 @@ const sharedExternal = [
   'buffer', 'crypto', 'http', 'https', 'url',
   'child_process', 'assert', 'module', 'net', 'tls',
   'dns', 'readline', 'tty', 'worker_threads',
-  '@ast-grep/napi', 'better-sqlite3',
+  '@ast-grep/napi', 'node:sqlite',
   // Avoid bundling jsonc-parser's UMD internals
   'jsonc-parser',
 ];

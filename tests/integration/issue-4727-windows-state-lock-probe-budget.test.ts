@@ -12,7 +12,7 @@
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
-import Database from 'better-sqlite3';
+import { loadDatabaseSync, type SqliteDatabase } from '../../src/lib/node-sqlite.js';
 import { randomUUID } from 'crypto';
 import { afterAll, describe, expect, it, vi } from 'vitest';
 import { scaleTiming } from '../../src/__tests__/helpers/platform.js';
@@ -42,10 +42,12 @@ afterAll(() => {
   rmSync(tmpRoot, { recursive: true, force: true });
 });
 
-function openDb(): Database.Database {
+const Database = loadDatabaseSync();
+
+function openDb(): SqliteDatabase {
   const db = new Database(dbPath);
-  db.pragma('busy_timeout = 0');
-  db.pragma('journal_mode = WAL');
+  db.exec('PRAGMA busy_timeout = 0');
+  db.exec('PRAGMA journal_mode = WAL');
   db.exec('CREATE TABLE IF NOT EXISTS state_mutation_locks (lock_key TEXT PRIMARY KEY, version INTEGER NOT NULL, pid INTEGER NOT NULL, process_start TEXT NOT NULL, created_at TEXT NOT NULL, nonce TEXT NOT NULL)');
   return db;
 }

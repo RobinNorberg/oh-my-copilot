@@ -26,8 +26,8 @@ const PROMPTS_WITH_RALPH = [
 /**
  * The heavy mode survived the task-size step: its skill invocation is in the
  * context, or its state activation ran and failed. Activation runs only for
- * modes that are still resolved, and on machines without the better-sqlite3
- * binding the file-lock fallback can fail under load ("No ralph state was
+ * modes that are still resolved, and on machines without node:sqlite
+ * the file-lock fallback can fail under load ("No ralph state was
  * activated."), which says nothing about the task-size rules under test.
  */
 function expectModeKept(context: string, mode: string) {

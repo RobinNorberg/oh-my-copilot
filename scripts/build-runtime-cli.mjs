@@ -28,7 +28,7 @@ const buildConfig = {
     'buffer', 'crypto', 'http', 'https', 'url',
     'child_process', 'assert', 'module', 'net', 'tls',
     'dns', 'readline', 'tty', 'worker_threads',
-    '@ast-grep/napi', 'better-sqlite3',
+    '@ast-grep/napi', 'node:sqlite',
     // jsonc-parser has dynamic requires that don't bundle well; we use a custom parser
     'jsonc-parser',
   ],

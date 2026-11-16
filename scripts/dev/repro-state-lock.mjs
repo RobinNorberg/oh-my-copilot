@@ -7,7 +7,7 @@
 // Spawns `procs` worker processes that each acquire/increment/release a shared
 // counter `iterations` times. Children run with NODE_ENV=test
 // OMC_TEST_FLOCK_AVAILABLE=0 to force the owner-file fallback (the same path
-// taken when better-sqlite3 cannot load). Prints acquisitions vs. counter,
+// taken when node:sqlite cannot load). Prints acquisitions vs. counter,
 // overlaps, release/acquire failures, and a final RESULT line
 // (OK | MUTUAL EXCLUSION VIOLATED | LOCK STRANDED).
 //
@@ -49,7 +49,7 @@ if (role === 'worker') {
   const target = join(dir, 'state', 'counter.json');
   const log = join(dir, 'log.txt');
   writeFileSync(target, '0'); writeFileSync(log, '');
-  // Force the owner-file fallback (same path taken when better-sqlite3 cannot load).
+  // Force the owner-file fallback (same path taken when node:sqlite cannot load).
   const env = { ...process.env, NODE_ENV: 'test', OMC_TEST_FLOCK_AVAILABLE: '0' };
   const t0 = Date.now();
   await Promise.all(Array.from({ length: procs }, () => new Promise(resolve =>
