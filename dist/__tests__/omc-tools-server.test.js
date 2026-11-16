@@ -70,8 +70,10 @@ describe('omc-tools-server', () => {
         });
     });
     describe('omcToolsServer', () => {
-        it('should be defined', () => {
-            expect(omcToolsServer).toBeDefined();
+        it('is a stdio config that launches the shipped standalone server', () => {
+            expect(omcToolsServer.command).toBe(process.execPath);
+            expect(omcToolsServer.args).toHaveLength(1);
+            expect(omcToolsServer.args[0].replace(/\\/g, '/')).toMatch(/\/bridge\/mcp-server\.cjs$/);
         });
     });
 });
