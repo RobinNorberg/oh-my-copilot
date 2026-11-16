@@ -80,20 +80,20 @@ function zodTypeToJsonSchema(zodType) {
     // before `.describe()`, so the description sits on the wrapper and must be
     // carried onto the unwrapped schema.
     if (zodType instanceof z.ZodOptional) {
-        const inner = zodTypeToJsonSchema(zodType._def.innerType);
-        if (zodType._def.description)
-            inner.description = zodType._def.description;
+        const inner = zodTypeToJsonSchema(zodType.unwrap());
+        if (zodType.description)
+            inner.description = zodType.description;
         return inner;
     }
     if (zodType instanceof z.ZodDefault) {
-        const inner = zodTypeToJsonSchema(zodType._def.innerType);
-        inner.default = zodType._def.defaultValue();
-        if (zodType._def.description)
-            inner.description = zodType._def.description;
+        const inner = zodTypeToJsonSchema(zodType.unwrap());
+        inner.default = zodType.def.defaultValue;
+        if (zodType.description)
+            inner.description = zodType.description;
         return inner;
     }
     // Get description if available
-    const description = zodType._def.description;
+    const description = zodType.description;
     if (description) {
         result.description = description;
     }
@@ -102,20 +102,18 @@ function zodTypeToJsonSchema(zodType) {
         result.type = 'string';
     }
     else if (zodType instanceof z.ZodNumber) {
-        result.type = zodType._def.checks?.some((c) => c.kind === 'int')
-            ? 'integer'
-            : 'number';
+        result.type = zodType.isInt ? 'integer' : 'number';
     }
     else if (zodType instanceof z.ZodBoolean) {
         result.type = 'boolean';
     }
     else if (zodType instanceof z.ZodArray) {
         result.type = 'array';
-        result.items = zodTypeToJsonSchema(zodType._def.type);
+        result.items = zodTypeToJsonSchema(zodType.element);
     }
     else if (zodType instanceof z.ZodEnum) {
         result.type = 'string';
-        result.enum = zodType._def.values;
+        result.enum = zodType.options;
     }
     else if (zodType instanceof z.ZodObject) {
         return zodToJsonSchema(zodType);

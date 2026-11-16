@@ -132,7 +132,7 @@ This directory contains all TypeScript source code organized into modules:
 
 ### External
 
-Key packages by module: `zod` (tools, features), `@ast-grep/napi` (tools/ast), `vscode-languageserver-protocol` (tools/lsp), `chalk` (cli, hud). See root AGENTS.md for full dependency list.
+Key packages by module: `zod` (tools, features), `@ast-grep/napi` (tools/ast), none for tools/lsp (its LSP client and types are hand-written), `chalk` (cli, hud). See root AGENTS.md for full dependency list.
 
 ### MCP Runtime Notes
 

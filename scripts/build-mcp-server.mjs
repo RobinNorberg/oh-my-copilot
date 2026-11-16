@@ -47,6 +47,15 @@ const buildConfig = {
   },
   // Prefer ESM entry points so UMD packages (e.g. jsonc-parser) get properly bundled
   mainFields: ['module', 'main'],
+  // zod 4: `zod` and `zod/v4` are the same module graph. Our code imports `zod`
+  // from dynamically imported modules that esbuild wraps in lazy `__esm` init
+  // functions inside this single CJS file, while the MCP SDK imports `zod/v4`
+  // eagerly. Because zod's package.json has `"sideEffects": false`, esbuild drops
+  // the init call through its re-export files, so the SDK ran before zod
+  // initialised ("Class2 is not a constructor"). Resolving both specifiers to one
+  // entry keeps a single init path. `ignoreAnnotations: true` also works but is
+  // broader (disables all sideEffects pruning).
+  alias: { 'zod/v4': 'zod' },
   // Externalize Node.js built-ins and native modules
   external: [
     'fs', 'path', 'os', 'util', 'stream', 'events',

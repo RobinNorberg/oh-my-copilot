@@ -55,7 +55,7 @@ export declare const lspWorkspaceSymbolsTool: ToolDefinition<{
  */
 export declare const lspDiagnosticsTool: ToolDefinition<{
     file: z.ZodString;
-    severity: z.ZodOptional<z.ZodEnum<['error', 'warning', 'info', 'hint']>>;
+    severity: z.ZodOptional<z.ZodEnum<z.core.util.ToEnum<'error' | 'warning' | 'info' | 'hint'>>>;
 }>;
 /**
  * LSP Servers Tool - List available language servers
@@ -104,7 +104,7 @@ export declare const lspCodeActionResolveTool: ToolDefinition<{
  */
 export declare const lspDiagnosticsDirectoryTool: ToolDefinition<{
     directory: z.ZodString;
-    strategy: z.ZodOptional<z.ZodEnum<['tsc', 'lsp', 'auto']>>;
+    strategy: z.ZodOptional<z.ZodEnum<z.core.util.ToEnum<'tsc' | 'lsp' | 'auto'>>>;
 }>;
 /**
  * Get all LSP tool definitions
@@ -125,7 +125,7 @@ export declare const lspTools: (ToolDefinition<{
     file: z.ZodString;
 }> | ToolDefinition<{
     file: z.ZodString;
-    severity: z.ZodOptional<z.ZodEnum<["error", "warning", "info", "hint"]>>;
+    severity: z.ZodOptional<z.ZodEnum<z.core.util.ToEnum<"error" | "warning" | "info" | "hint">>>;
 }> | ToolDefinition<Record<string, never>> | ToolDefinition<{
     file: z.ZodString;
     line: z.ZodNumber;
@@ -146,6 +146,6 @@ export declare const lspTools: (ToolDefinition<{
     actionIndex: z.ZodNumber;
 }> | ToolDefinition<{
     directory: z.ZodString;
-    strategy: z.ZodOptional<z.ZodEnum<["tsc", "lsp", "auto"]>>;
+    strategy: z.ZodOptional<z.ZodEnum<z.core.util.ToEnum<"tsc" | "lsp" | "auto">>>;
 }>)[];
 //# sourceMappingURL=lsp-tools.d.ts.map

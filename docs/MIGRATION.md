@@ -7,6 +7,8 @@ This guide covers all migration paths for oh-my-copilot. Find your current versi
 ## Table of Contents
 
 - [Unreleased: Node 20 Dropped, Built-in node:sqlite](#unreleased-node-20-dropped-built-in-nodesqlite)
+- [Unreleased: Claude Agent SDK Is an Optional Peer](#unreleased-claude-agent-sdk-is-an-optional-peer)
+- [Unreleased: No npm Install Script](#unreleased-no-npm-install-script)
 - [Unreleased: Shipyard and Factory Chain Routes](#unreleased-shipyard-and-factory-chain-routes)
 - [Unreleased: omg factory run](#unreleased-omg-factory-run)
 - [Unreleased: Budget Unit Is AI Credits](#unreleased-budget-unit-is-ai-credits)
@@ -54,6 +56,45 @@ This guide covers all migration paths for oh-my-copilot. Find your current versi
 1. Upgrade Node.js to 22.13 or newer (`node --version`), then reinstall or update OMC (`omg update`, or update the plugin).
 2. Drop any `npm rebuild better-sqlite3` step from your setup scripts; it is no longer needed.
 3. On an older Node runtime the hooks still run, but state locking falls back to the owner-file lock and the job database is unavailable; `state_write` reports `The built-in node:sqlite module is unavailable` in that case.
+
+---
+
+## Unreleased: Claude Agent SDK Is an Optional Peer
+
+Applies only to Node.js code that imports oh-my-copilot as a library together with the Claude Agent SDK, and to `omg graph` runs with agent nodes. Copilot CLI use is unaffected.
+
+**What changed.**
+
+- `@anthropic-ai/claude-agent-sdk` is no longer a dependency. It is an optional peer dependency, so npm does not install it for you.
+- `omcToolsServer` (exported from `oh-my-copilot`) is now a stdio MCP server config, `{ command: process.execPath, args: ["<package>/bridge/mcp-server.cjs"] }`, instead of an in-process `createSdkMcpServer()` instance. It serves the same tools under the same `mcp__t__<tool>` names, plus `host_smoke` and the Copilot run tools, but not the interop tools that `OMC_INTEROP_TOOLS_ENABLED=1` used to add. `omcToolNames`, `getOmcToolNames()` and `createOmcSession()` keep their shapes; `omcToolNames` and `getOmcToolNames()` no longer list the interop tools either, so `allowedTools` names only tools the server serves. `omcToolsServer.args` is resolved when first read and throws when `bridge/mcp-server.cjs` cannot be found.
+- Graph agent nodes load the SDK on first use. Without it the node fails with `graph agent nodes need the optional peer dependency @anthropic-ai/claude-agent-sdk; install it next to oh-my-copilot in <package root> (npm install @anthropic-ai/claude-agent-sdk in that project, or npm install -g @anthropic-ai/claude-agent-sdk for a global install)`.
+
+**Who must act.**
+
+- **Library users who call the SDK's `query()`** (for example with `createOmcSession().queryOptions`): add `@anthropic-ai/claude-agent-sdk` to your own dependencies. You likely import it already.
+- **Code that used `omcToolsServer.instance`** or other in-process server fields: pass `omcToolsServer` as a `mcpServers` entry (it is a valid stdio config), or build your own server with the SDK's `createSdkMcpServer()`.
+- **`omg graph` with agent nodes:** run `npm install @anthropic-ai/claude-agent-sdk` where oh-my-copilot is installed (`npm install -g @anthropic-ai/claude-agent-sdk` for a global install). The SDK API the executor uses was tested on 0.1.77; the peer range is `^0.1.77`.
+
+## Unreleased: No npm Install Script
+
+The package no longer declares a `postinstall` script, and
+`scripts/postinstall-contained-fs.mjs` is removed. Supply-chain scanners such as
+Socket flag any install script.
+
+- **Linux and Windows:** nothing changes. The hook did nothing there.
+- **macOS:** `npm install` no longer tries to compile the contained-fs native
+  addon. `omg graph` and `omg team` need it on macOS; without it they stop with an
+  error that names the build command. Build it once per install (and again after
+  an upgrade or a Node major change) from the installed package directory:
+
+  ```sh
+  cd "$(npm root -g)/oh-my-copilot"
+  node scripts/build-contained-fs.mjs
+  ```
+
+  It needs Xcode Command Line Tools and Node headers (the node-gyp cache, or
+  `--headers=/absolute/path/to/include/node`). See
+  [graph-contained-filesystem.md](graph-contained-filesystem.md#building-and-shipping).
 
 ---
 
@@ -612,7 +653,8 @@ There is nothing to migrate: no config, command or skill changes.
   Xcode Command Line Tools are unavailable it prints a warning and you can
   build later with `node scripts/build-contained-fs.mjs` from the package
   root. On Linux and Windows it does nothing. The hook always exits 0, so it
-  never fails the install.
+  never fails the install. (Removed again later; see
+  [No npm Install Script](#unreleased-no-npm-install-script).)
 
 ---
 

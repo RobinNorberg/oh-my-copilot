@@ -83,8 +83,8 @@ function formatArtifactDescriptorLines(label: string, descriptor?: ArtifactDescr
 // ============================================================================
 
 export const interopSendTaskTool: ToolDefinition<{
-  target: z.ZodEnum<['omc', 'omx']>;
-  type: z.ZodEnum<['analyze', 'implement', 'review', 'test', 'custom']>;
+  target: z.ZodEnum<z.core.util.ToEnum<'omc' | 'omx'>>;
+  type: z.ZodEnum<z.core.util.ToEnum<'analyze' | 'implement' | 'review' | 'test' | 'custom'>>;
   description: z.ZodString;
   context: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
   files: z.ZodOptional<z.ZodArray<z.ZodString>>;
@@ -141,8 +141,8 @@ export const interopSendTaskTool: ToolDefinition<{
 // ============================================================================
 
 export const interopReadResultsTool: ToolDefinition<{
-  source: z.ZodOptional<z.ZodEnum<['omc', 'omx']>>;
-  status: z.ZodOptional<z.ZodEnum<['pending', 'in_progress', 'completed', 'failed']>>;
+  source: z.ZodOptional<z.ZodEnum<z.core.util.ToEnum<'omc' | 'omx'>>>;
+  status: z.ZodOptional<z.ZodEnum<z.core.util.ToEnum<'pending' | 'in_progress' | 'completed' | 'failed'>>>;
   limit: z.ZodOptional<z.ZodNumber>;
   workingDirectory: z.ZodOptional<z.ZodString>;
 }> = {
@@ -230,7 +230,7 @@ export const interopReadResultsTool: ToolDefinition<{
 // ============================================================================
 
 export const interopSendMessageTool: ToolDefinition<{
-  target: z.ZodEnum<['omc', 'omx']>;
+  target: z.ZodEnum<z.core.util.ToEnum<'omc' | 'omx'>>;
   content: z.ZodString;
   metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
   workingDirectory: z.ZodOptional<z.ZodString>;
@@ -279,7 +279,7 @@ export const interopSendMessageTool: ToolDefinition<{
 // ============================================================================
 
 export const interopReadMessagesTool: ToolDefinition<{
-  source: z.ZodOptional<z.ZodEnum<['omc', 'omx']>>;
+  source: z.ZodOptional<z.ZodEnum<z.core.util.ToEnum<'omc' | 'omx'>>>;
   unreadOnly: z.ZodOptional<z.ZodBoolean>;
   limit: z.ZodOptional<z.ZodNumber>;
   markAsRead: z.ZodOptional<z.ZodBoolean>;
@@ -550,7 +550,7 @@ export const interopReadOmxMessagesTool: ToolDefinition<{
 
 export const interopReadOmxTasksTool: ToolDefinition<{
   teamName: z.ZodString;
-  status: z.ZodOptional<z.ZodEnum<['pending', 'blocked', 'in_progress', 'completed', 'failed']>>;
+  status: z.ZodOptional<z.ZodEnum<z.core.util.ToEnum<'pending' | 'blocked' | 'in_progress' | 'completed' | 'failed'>>>;
   limit: z.ZodOptional<z.ZodNumber>;
   workingDirectory: z.ZodOptional<z.ZodString>;
 }> = {

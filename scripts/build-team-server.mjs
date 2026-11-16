@@ -20,6 +20,8 @@ const buildConfig = {
   target: 'node18',
   format: 'cjs',
   outfile,
+  // One zod entry for our code and the MCP SDK (see build-mcp-server.mjs).
+  alias: { 'zod/v4': 'zod' },
   // Inject import.meta.url polyfill for CJS format
   banner: {
     js: 'const importMetaUrl = require("url").pathToFileURL(__filename);',

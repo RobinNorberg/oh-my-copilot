@@ -8,7 +8,7 @@ import { z } from 'zod';
 import { ToolDefinition } from './types.js';
 export declare const traceTimelineTool: ToolDefinition<{
     sessionId: z.ZodOptional<z.ZodString>;
-    filter: z.ZodOptional<z.ZodEnum<['all', 'hooks', 'skills', 'agents', 'keywords', 'tools', 'modes']>>;
+    filter: z.ZodOptional<z.ZodEnum<z.core.util.ToEnum<'all' | 'hooks' | 'skills' | 'agents' | 'keywords' | 'tools' | 'modes'>>>;
     last: z.ZodOptional<z.ZodNumber>;
     workingDirectory: z.ZodOptional<z.ZodString>;
 }>;
@@ -30,7 +30,7 @@ export declare const traceTools: (ToolDefinition<{
     workingDirectory: z.ZodOptional<z.ZodString>;
 }> | ToolDefinition<{
     sessionId: z.ZodOptional<z.ZodString>;
-    filter: z.ZodOptional<z.ZodEnum<["all", "hooks", "skills", "agents", "keywords", "tools", "modes"]>>;
+    filter: z.ZodOptional<z.ZodEnum<z.core.util.ToEnum<"all" | "hooks" | "skills" | "agents" | "keywords" | "tools" | "modes">>>;
     last: z.ZodOptional<z.ZodNumber>;
     workingDirectory: z.ZodOptional<z.ZodString>;
 }> | ToolDefinition<{
