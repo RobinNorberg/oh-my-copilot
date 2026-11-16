@@ -64,6 +64,17 @@ export interface ShipConfig {
      * command, so a safety key: user config or the trusted base only.
      */
     prepareChecks?: string[][];
+    /**
+     * `ship.prepare.build`: an argv prepare runs after the base merge and
+     * before the checks, then commits the changes under `outputs` (repo-relative
+     * directories, for example dist) as a housekeeping commit; any other change
+     * fails prepare. `omg ship merge` accepts a housekeeping commit that changes
+     * only inventory/ and these outputs. A command, so a safety key.
+     */
+    prepareBuild?: {
+        command: string[];
+        outputs: string[];
+    };
 }
 export type ShipConfigInput = Partial<ShipConfig>;
 /**
@@ -199,6 +210,8 @@ export declare function resolveTrustedBases(trustedUser: unknown): string[];
  * `.copilot/omg.jsonc`; undefined = prepare auto-detects. For `omg factory check`.
  */
 export declare function trustedPrepareChecks(trustedUser: unknown, base: unknown): string[][] | undefined;
+/** ship.prepare.build as loadTrustedShipConfig resolves it (the same trusted `prepare` block as trustedPrepareChecks); undefined = no build. */
+export declare function trustedPrepareBuild(trustedUser: unknown, base: unknown): ShipConfig['prepareBuild'];
 /**
  * ship.requiredChecks as loadTrustedShipConfig resolves it (a safety key):
  * the user config at its default location, else the base's committed

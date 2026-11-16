@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { resolveShipConfig, type ShipConfig } from '../config.js';
-import { applySettle, CHECK_SETTLE_MS, evaluateChecks, NO_CI_CHECKS_NOTE, NO_WORKFLOWS_TRIGGERED, watchGates, type GateForge, type GateHeadReads, type GhCheck, type WorkflowRun } from '../gates.js';
+import { applySettle, CHECK_SETTLE_MS, evaluateChecks, NO_CI_CHECKS_NOTE, noHeadChecksText, NO_WORKFLOWS_TRIGGERED, watchGates, type GateForge, type GateHeadReads, type GhCheck, type WorkflowRun } from '../gates.js';
 import type { Exec } from '../exec.js';
 
 const HEAD = 'a'.repeat(40);
@@ -253,5 +253,18 @@ describe('review-493b fix round 2: no-CI needs no CI definition and a readable e
     expect(applySettle(green, DEFAULT, late, T0, reads({ suites: head, baseSuites: () => [{ status: 'queued', app: 'buildkite', runs: 0 }] }), HEAD).verdict).toBe('green');
     // An unreadable base suite list keeps the app blocking (fail closed).
     expect(applySettle(green, DEFAULT, late, T0, reads({ suites: head, baseSuites: () => undefined }), HEAD).verdict).toBe('pending');
+  });
+});
+
+describe('noHeadChecksText names (#507)', () => {
+  it('keeps CI definition file names on one line', () => {
+    const text = noHeadChecksText({ ciDefinitions: ['.github/workflows/a\nb\u001b[31m.yml\u2028x', '.github/workflows/ci.yml'] });
+    expect(text).not.toMatch(/[\n\u001b\u2028]/);
+    expect(text).toContain('.github/workflows/ci.yml');
+  });
+  it('keeps base check names on one line', () => {
+    const text = noHeadChecksText({ base: ['evil\nname\u001b[0m', 'build (ubuntu)'] });
+    expect(text).not.toMatch(/[\n\u001b]/);
+    expect(text).toContain('build (ubuntu)');
   });
 });

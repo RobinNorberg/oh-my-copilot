@@ -1,9 +1,9 @@
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, rmdirSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { GATE_TREE_MARKER, gateTreeHasLinks, linkNodeModules, trustedNestedRels, unlinkNodeModules } from '../prepare.js';
+import { GATE_TREE_COMPLETE, GATE_TREE_MARKER, gateTreeHasLinks, linkNodeModules, trustedNestedRels, unlinkNodeModules } from '../prepare.js';
 import { expandWorkspaceDirs, parseWorkspacePatterns, plainDirUnder, validWorkspaceRel, WORKSPACE_MAX_PACKAGES } from '../workspace-tree.js';
 
 // L3 (review-501): a hook run right after plainDirUnder answers, to swap a dir for a junction in that window.
@@ -136,7 +136,14 @@ describe('the gate node_modules tree in a workspace', () => {
     expect(existsSync(join(root, 'packages', 'a', 'node_modules', '.vite', 'results.json'))).toBe(false);
     // packages/b has no node_modules of yours: none is made.
     expect(existsSync(join(checkout, 'packages', 'b', 'node_modules'))).toBe(false);
-    expect(readFileSync(join(tree, GATE_TREE_MARKER), 'utf-8')).toBe('packages/a\n');
+    expect(readFileSync(join(tree, GATE_TREE_MARKER), 'utf-8')).toBe(`packages/a\n${GATE_TREE_COMPLETE}\n`);
+    // L3 (review-547): a crash while packages/a's tree was built (listed, no completion line): both trees are built again.
+    writeFileSync(join(tree, GATE_TREE_MARKER), 'packages/a\n');
+    try { unlinkSync(join(nested, 'left-pad')); } catch { rmdirSync(join(nested, 'left-pad')); }
+    expect(linkNodeModules(root, checkout, undefined, ['packages/*'])).toBeNull();
+    expect(real(join(nested, 'left-pad'))).toBe(real(join(root, 'packages', 'a', 'node_modules', 'left-pad')));
+    expect(existsSync(join(nested, '.vite', 'results.json'))).toBe(false);
+    expect(readFileSync(join(tree, GATE_TREE_MARKER), 'utf-8')).toBe(`packages/a\n${GATE_TREE_COMPLETE}\n`);
 
     expect(gateTreeHasLinks(checkout)).toBe(true);
     unlinkNodeModules(root, checkout);
@@ -337,7 +344,7 @@ describe('the gate node_modules tree in a workspace', () => {
     file(join(plain.root, 'packages', 'a', 'node_modules', 'dep', 'package.json'));
     expect(linkNodeModules(plain.root, plain.checkout)).toBeNull();
     expect(existsSync(join(plain.checkout, 'packages', 'a', 'node_modules'))).toBe(false);
-    expect(readFileSync(join(plain.checkout, 'node_modules', GATE_TREE_MARKER), 'utf-8')).toBe('');
+    expect(readFileSync(join(plain.checkout, 'node_modules', GATE_TREE_MARKER), 'utf-8')).toBe(`${GATE_TREE_COMPLETE}\n`);
     unlinkNodeModules(plain.root, plain.checkout);
   });
 });

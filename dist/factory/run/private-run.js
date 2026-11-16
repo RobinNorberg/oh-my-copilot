@@ -508,8 +508,11 @@ export function withImportLock(root, layout, label, fn, held) {
  * (file-lock's rule: stale only when old AND its pid is dead), so a first
  * seed fetch of a big repository is not stolen (review-483 L9).
  */
-export function withSeedLock(layout, fn) {
-    return withFileLockSync(join(layout.repoDir, 'import.lock'), fn, { timeoutMs: IMPORT_LOCK_WAIT_MS, staleLockMs: 60_000 });
+export const SEED_LOCK_STALE_MS = 60_000;
+export function withSeedLock(layout, fn, waitMs = IMPORT_LOCK_WAIT_MS) {
+    // Stale = older than the window AND the payload pid is not alive as seen by this waiting process (a missing or
+    // malformed payload is reaped on age alone). A live holder is never reaped, so the ~120 s bounded ls-remote + fetch hold is safe (#509).
+    return withFileLockSync(join(layout.repoDir, 'import.lock'), fn, { timeoutMs: waitMs, staleLockMs: SEED_LOCK_STALE_MS });
 }
 /** Remove the `<repoDir>/.trash-*` a failed removeRunDir left (the SLUG pattern cannot name one). */
 function sweepTrash(layout, warn) {

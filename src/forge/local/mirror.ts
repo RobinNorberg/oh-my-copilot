@@ -69,6 +69,8 @@ export const backlogListArgs = (commit: string, dir: string): string[] => ['ls-t
 export const backlogShowArgs = (commit: string, path: string): string[] => ['show', `${sha(commit)}:${path}`];
 /** Whether `head` is in `base` (a local PR is MERGED): `git merge-base --is-ancestor <head> <base>`, exit 0 yes, 1 no. */
 export const mergedArgs = (head: string, base: string): string[] => ['merge-base', '--is-ancestor', sha(head), sha(base)];
+/** Whether `head` merges cleanly into `base` (a local PR's mergeability): `git merge-tree --write-tree <head> <base>`, exit 0 clean, 1 conflicts. */
+export const mergeTreeArgs = (head: string, base: string): string[] => ['merge-tree', '--write-tree', sha(head), sha(base)];
 /**
  * The flags of lastStateChangeArgs, which both guards match exactly: `-G^state:` keeps only commits whose own
  * diff adds or removes a `state:` line (a merge commit has no diff here, so it never counts); `%H %P` also names the

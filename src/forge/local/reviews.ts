@@ -13,8 +13,8 @@ import { readFileSync } from 'fs';
 import { dirname, join } from 'path';
 import type { Exec } from '../../ship/exec.js';
 import { assertReviewHead } from '../review-feedback.js';
-import type { ForgePr, ForgeReviewFeedback, ForgeReviews } from '../types.js';
-import { isLocalBranchName, mergedArgs, readMirrorRef } from './mirror.js';
+import type { ForgePr, ForgeReviewFeedback, ForgeReviews, PrMergeability } from '../types.js';
+import { isLocalBranchName, mergedArgs, mergeTreeArgs, readMirrorRef } from './mirror.js';
 import { appendNoFollow, readLocalReviews, readPrStore, updatePrStore, writeAtomic, type LocalPr, type LocalReviewRecord } from './store.js';
 
 /** ship's TRUSTED_READ_ENV, by value (importing ship/exec.ts would load child_process into src/forge). */
@@ -131,6 +131,15 @@ export function localReviews(ctx: LocalReviewsContext): ForgeReviews & { refresh
     prHead(pr: number): { headRefOid: string; state: string } {
       const v = view(pr);
       return { headRefOid: v.headRefOid, state: v.state };
+    },
+    // The mirror's base (the base the engine synced and prepare merges): a head that already contains it is
+    // mergeable; else git's merge-tree decides (exit 1 conflicts); anything git cannot tell is unknown.
+    mergeability(pr: number): PrMergeability {
+      const v = view(pr);
+      if (v.state !== 'OPEN') return { state: 'unknown', headRefOid: v.headRefOid };
+      if (v.headRefOid === v.baseRefOid || isAncestor(ctx, v.baseRefOid, v.headRefOid) === true) return { state: 'mergeable', headRefOid: v.headRefOid };
+      const r = ctx.exec('git', mergeTreeArgs(v.headRefOid, v.baseRefOid), { cwd: ctx.root, env: TRUSTED_READ_ENV });
+      return { state: r.status === 0 ? 'mergeable' : r.status === 1 ? 'conflicting' : 'unknown', headRefOid: v.headRefOid };
     },
     markReady(pr: number): void {
       updatePrStore(ctx.storePath, (store) => {

@@ -32,6 +32,12 @@ export interface FactoryRunLimits {
     maxRunRequests?: number;
     /** Wall time of one lane (copilot_run timeoutMs; at most MAX_TIMEOUT_MS). */
     laneTimeoutMs: number;
+    /**
+     * No-progress timeout of one lane (factory.run.laneIdleMinutes): a running
+     * lane whose session emitted no event (tool call, message, usage) for this
+     * long is cancelled and ends `stalled`, a lane failure with the normal fresh retry.
+     */
+    laneIdleMs: number;
     /** Engine wall time across all invocations of one run. */
     maxRunWallTimeMs: number;
     /** Fresh retries of a failed lane per phase. */

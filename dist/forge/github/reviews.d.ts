@@ -7,7 +7,7 @@
  */
 import type { Exec, ExecResult } from '../../ship/exec.js';
 import type { PrView } from '../../ship/merge.js';
-import type { ForgePr, ForgeRepo, ForgeReviewFeedback, ForgeReviews } from '../types.js';
+import type { ForgePr, ForgeRepo, ForgeReviewFeedback, ForgeReviews, PrMergeability } from '../types.js';
 import { type ReviewTrust } from './graphql.js';
 /** `gh pr view --json` fields the merge step reads. */
 export declare const MERGE_VIEW_FIELDS = "number,state,isDraft,baseRefName,baseRefOid,headRefOid";
@@ -25,6 +25,12 @@ export declare function ghPrHead(exec: Exec, pr: number, cwd: string): {
     headRefOid: string;
     state: string;
 };
+/**
+ * `gh pr view <pr> --json headRefOid,mergeable,mergeStateStatus`: CONFLICTING
+ * (or a DIRTY merge state) is a conflict, MERGEABLE is clean, anything else
+ * (UNKNOWN while GitHub computes it lazily) is unknown. Throws on a failed read.
+ */
+export declare function ghPrMergeability(exec: Exec, pr: number, cwd: string): PrMergeability;
 /** The engine's review read: `gh pr view <pr> --json headRefOid,state`, fields unchecked. */
 export declare function ghPrHeadState(exec: Exec, pr: number, cwd: string): {
     headRefOid?: unknown;

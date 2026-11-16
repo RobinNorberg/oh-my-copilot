@@ -19,7 +19,7 @@ import { parseJsonc } from '../utils/jsonc.js';
 import { getConfigPaths, loadJsoncFile } from '../config/loader.js';
 import { LEGACY_PROJECT_CONFIG_FILE, resolveProjectConfigPath } from '../config/project-config-path.js';
 import { parseAzureDevOpsRepoUrl, urlHostAgrees } from '../providers/remote-url.js';
-import { TRUSTED_READ_ENV, type Exec } from './exec.js';
+import { isBuildOutputDir, TRUSTED_READ_ENV, type Exec } from './exec.js';
 
 export interface ShipConfig {
   /** Integration branch PRs target and `prepare` merges in. */
@@ -73,6 +73,14 @@ export interface ShipConfig {
    * command, so a safety key: user config or the trusted base only.
    */
   prepareChecks?: string[][];
+  /**
+   * `ship.prepare.build`: an argv prepare runs after the base merge and
+   * before the checks, then commits the changes under `outputs` (repo-relative
+   * directories, for example dist) as a housekeeping commit; any other change
+   * fails prepare. `omg ship merge` accepts a housekeeping commit that changes
+   * only inventory/ and these outputs. A command, so a safety key.
+   */
+  prepareBuild?: { command: string[]; outputs: string[] };
 }
 
 export type ShipConfigInput = Partial<ShipConfig>;
@@ -190,6 +198,16 @@ export function resolveShipConfig(input: unknown): ShipConfig {
     const argv = (a: unknown): a is string[] => Array.isArray(a) && a.length > 0 && a.every((x) => typeof x === 'string' && x.length > 0);
     if (checks !== undefined) {
       config.prepareChecks = Array.isArray(checks) && checks.every(argv) ? checks.map((a) => [...a]) : bad('prepare.checks', 'an array of argv arrays of non-empty strings, for example [["cargo", "check"]]');
+    }
+    const build = (raw.prepare as Record<string, unknown>).build;
+    if (build !== undefined) {
+      const want = '{ "command": ["npm", "run", "build"], "outputs": ["dist"] }: an argv and one or more repo-relative directories (no . or .. segment; not in inventory, .git, .github, .copilot, .omg, .omc or node_modules)';
+      const b = build as Record<string, unknown> | null;
+      if (!b || typeof b !== 'object' || Array.isArray(b) || !argv(b.command) || !Array.isArray(b.outputs) || b.outputs.length === 0) bad('prepare.build', want);
+      const outputs = (b!.outputs as unknown[]).map((o) => (typeof o === 'string' ? o.replace(/\/+$/, '') : o));
+      const okOutput = (o: unknown): o is string => typeof o === 'string' && isBuildOutputDir(o);
+      if (!outputs.every(okOutput)) bad('prepare.build', want);
+      config.prepareBuild = { command: [...(b!.command as string[])], outputs: [...new Set(outputs as string[])] };
     }
   }
   return config;
@@ -400,6 +418,12 @@ export function resolveTrustedBases(trustedUser: unknown): string[] {
 export function trustedPrepareChecks(trustedUser: unknown, base: unknown): string[][] | undefined {
   const prepare = shipBlock(trustedUser, 'user config (default location)').prepare ?? shipBlock(base, BASE_CONFIG_PATH).prepare;
   return resolveShipConfig({ prepare }).prepareChecks;
+}
+
+/** ship.prepare.build as loadTrustedShipConfig resolves it (the same trusted `prepare` block as trustedPrepareChecks); undefined = no build. */
+export function trustedPrepareBuild(trustedUser: unknown, base: unknown): ShipConfig['prepareBuild'] {
+  const prepare = shipBlock(trustedUser, 'user config (default location)').prepare ?? shipBlock(base, BASE_CONFIG_PATH).prepare;
+  return resolveShipConfig({ prepare }).prepareBuild;
 }
 
 /**

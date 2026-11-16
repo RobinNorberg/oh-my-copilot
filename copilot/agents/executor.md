@@ -55,6 +55,7 @@ include-custom-instructions: true
   <Tool_Usage>
     - Use Edit for modifying existing files, Write for creating new files.
     - Use Bash for running builds, tests, and shell commands.
+    - When you must wait for tests or CI, wait in the foreground (`gh pr checks <N> --watch`, or read a background job's output file); never end your turn idle waiting on a background notification.
     - Use lsp_diagnostics on each modified file to catch type errors early.
     - Use Glob/Grep/Read for understanding existing code before changing it.
     - Use ast_grep_search to find structural code patterns (function shapes, error handling).

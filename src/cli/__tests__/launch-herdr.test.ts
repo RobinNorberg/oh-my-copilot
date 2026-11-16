@@ -65,7 +65,8 @@ function expectDirectLaunch(args: string[]): void {
     return;
   }
   // fork: the host CLI binary (copilot by default), not a fixed "claude".
-  expect(execFileSync).toHaveBeenCalledWith(getHostCliBinary(), args, expect.anything());
+  expect(getHostCliBinary()).toBe("copilot");
+  expect(execFileSync).toHaveBeenCalledWith("copilot", args, expect.anything());
 }
 
 describe("runClaude herdr arm", () => {
@@ -77,6 +78,10 @@ describe("runClaude herdr arm", () => {
     process.env = { ...originalEnv };
     // Deterministic dispatch: env override beats plugin config everywhere.
     process.env.OMC_TEAM_MULTIPLEXER = "herdr";
+    // No host override: this test may itself run inside Claude Code or Copilot CLI.
+    delete process.env.COPILOT_CLI;
+    delete process.env.COPILOT_AGENT_SESSION_ID;
+    delete process.env.CLAUDE_CODE_ENTRYPOINT;
     // Keep the sensitive-env file transport out of the picture.
     delete process.env.ANTHROPIC_API_KEY;
     delete process.env.ANTHROPIC_AUTH_TOKEN;
@@ -107,14 +112,17 @@ describe("runClaude herdr arm", () => {
     );
     expect(herdrMocks.herdrRunPaneCommand).toHaveBeenCalledWith(
       "w9:p2",
-      expect.stringContaining(getHostCliBinary()),
+      expect.stringContaining("copilot"),
     );
+    // No host override (signals cleared in beforeEach): the fork's default host.
+    expect(getHostCliBinary()).toBe("copilot");
     expect(tmuxExec).not.toHaveBeenCalled();
 
     const printed = stdoutSpy.mock.calls
       .map((call: unknown[]) => call.join(" "))
       .join("\n");
-    expect(printed).toContain('Herdr workspace "test-session"');
+    expect(printed).toContain('copilot launched in Herdr workspace "test-session"');
+    expect(printed).not.toContain("Claude launched");
     expect(printed).toContain("herdr");
   });
 

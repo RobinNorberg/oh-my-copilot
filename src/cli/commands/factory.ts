@@ -44,6 +44,7 @@ import { visibleLine } from '../../forge/review-feedback.js';
 import { CopilotLaneBackend, type LaneBackend } from '../../factory/run/lane.js';
 import type { GateConfigLoader } from '../../factory/run/prepare.js';
 import { createSandboxRunner, type SandboxRunner } from '../../factory/run/sandbox-exec.js';
+import { inspectGateImageId } from '../../factory/run/container-gate.js';
 import { releaseTamperHold, tamperHoldMessage } from '../../factory/run/tamper-quarantine.js';
 import {
   acquireFactoryRepoOwnerForRun, defaultOwnerDeps, describeOwner, FactoryBusyError, FactoryTamperHoldError, factoryCancelRequested, factoryOwnerPath, factoryRepoOwnerPath, factoryStateDir, factoryStatePath, ownerFromOtherCheckout, ownerHolding, readFactoryState,
@@ -66,7 +67,9 @@ import { listenForgeRefusal } from '../../factory/setup/detect.js';
 import { factorySetupCommand } from './factory-setup.js';
 import { factoryBenchCommand } from './factory-bench.js';
 import { factoryBoardCommand } from './factory-board.js';
-import { factoryDashboardCommand } from './factory-dashboard.js';
+import { defaultDashboardDeps, factoryDashboardCommand } from './factory-dashboard.js';
+import { forgePrStateReader, humanMergeCandidate, humanMergeLines, recordHumanMerges, type PrStateRead } from '../../factory/run/human-merged.js';
+import { readRuns } from '../../factory/board/collect.js';
 import { factoryPrCommand } from './factory-pr.js';
 import { factoryPollCommand } from './factory-poll.js';
 import { defaultPollAutoStart, defaultPollHealScan } from '../../factory/poll.js';
@@ -284,7 +287,8 @@ export function renderFactoryRunState(state: FactoryRunState, o: { gate?: boolea
   lines.push(`lanes ${state.lanes.length}  run AI credits ${runCredits(state).toFixed(2)}  elapsed ${Math.round(state.elapsedMs / 60_000)} min`);
   for (const lane of state.lanes) {
     const credits = lane.usage ? `${lane.usage.credits.toFixed(2)}/${lane.maxCredits}` : `-/${lane.maxCredits}`;
-    lines.push(`  ${lane.id} ${lane.status}${lane.verdict ? ` ${lane.verdict}` : ''} credits ${credits}${lane.jobId ? ` job ${lane.jobId}` : ''}${lane.sandbox ? ` sandbox ${lane.sandbox.mode}` : ''}`);
+    lines.push(`  ${lane.id} ${lane.status}${lane.verdict ? ` ${lane.verdict}` : ''} credits ${credits}${lane.jobId ? ` job ${lane.jobId}` : ''}${lane.sandbox ? ` sandbox ${lane.sandbox.mode}` : ''}${lane.lastEventAt && (lane.status === 'running' || lane.status === 'stalled') ? ` last event ${lane.lastEventAt}` : ''}`);
+    if (lane.status === 'stalled' && lane.note) lines.push(chalk.yellow(`    ${plainText(lane.note)}`));
   }
   for (const h of state.history.slice(-5)) lines.push(chalk.gray(`  ${h.at} ${h.from ?? '-'} -> ${h.to}: ${h.note}`));
   return lines.join('\n');
@@ -638,7 +642,7 @@ export function factoryRunCommand(deps: FactoryRunDeps = defaultFactoryRunDeps):
                 ...(o.allowUnsandboxedLanes ? { allowUnsandboxedLanes: true } : {}),
                 ...(o.allowUnsandboxedGates ? { allowUnsandboxedGates: true } : {}),
                 ...(o.allowSecretShapes ? { allowSecretShapes: true } : {}),
-                ...(deps.gateSandbox && !o.dryRun ? { gateSandbox: deps.gateSandbox(root) } : {}),
+                ...(deps.gateSandbox && !o.dryRun ? { gateSandbox: deps.gateSandbox(root), gateImageId: (c) => inspectGateImageId(c) } : {}),
                 lanes: o.dryRun ? NO_LANES : deps.lanes(root),
                 ...(forge ? { forge } : {}),
                 ...(deps.ledgerDir ? { ledgerDir: deps.ledgerDir } : {}),
@@ -864,6 +868,10 @@ export function factoryRunCommand(deps: FactoryRunDeps = defaultFactoryRunDeps):
     .action((issueRaw: string | undefined, _o: unknown, c: Command) =>
       factoryGuarded(Boolean(c.optsWithGlobals().json), () => {
         const root = factoryRoot(exec);
+        const json = Boolean(c.optsWithGlobals().json);
+        // A stopped run whose PR a human merged is recorded as merged first (human-merged.ts); nothing else is written.
+        const healed = cliHumanMerges(deps, root, issueRaw === undefined ? readRuns(root, []).runs : singleRun(root, parseIssue(issueRaw)));
+        for (const line of healed) (json ? console.error : console.log)(plainText(line));
         if (issueRaw === undefined) {
           const live = liveFactoryRuns(root, deps.ledgerDir ?? defaultLedgerDir(), cliClaimRepo(deps, root, readOnlyForgeKind(deps, root, deps.base(root))));
           const label = (key: FactoryRunKey) => (typeof key === 'number' ? `#${key}` : key);
@@ -904,6 +912,36 @@ export function factoryRunCommand(deps: FactoryRunDeps = defaultFactoryRunDeps):
         return 0;
       }));
   return run;
+}
+
+/** The run of `key` as a one-entry list for recordHumanMerges (empty: no readable state; status reports that itself). */
+function singleRun(root: string, key: FactoryRunKey): Array<[FactoryRunKey, FactoryRunState]> {
+  try {
+    const s = readFactoryState(root, key);
+    return s ? [[key, s]] : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Record the stopped runs among `runs` whose PR a human merged (human-merged.ts), for `run status` and
+ * `dashboard`. The forge config is loaded without a fetch; it is loaded only when a candidate exists, and a
+ * failed load is one line and changes nothing. Returns the lines to print.
+ */
+export function cliHumanMerges(deps: Pick<FactoryRunDeps, 'exec' | 'base' | 'forge' | 'ledgerDir'>, root: string, runs: Iterable<[FactoryRunKey, FactoryRunState]>): string[] {
+  const candidates = [...runs].filter(([, s]) => humanMergeCandidate(s));
+  if (candidates.length === 0 || !deps.forge) return [];
+  let readPrState: PrStateRead;
+  try {
+    const loaded = deps.forge(root, deps.base(root), { dryRun: true });
+    const read = forgeReadExec(deps.exec, loaded.config, root);
+    const forge = createForge(read.exec, root, loaded.config, { ...read.options, local: { omgRoot: getOmcRoot(root) } });
+    readPrState = forgePrStateReader(forge, read.exec, root, loaded.config.repo.url);
+  } catch (error) {
+    return [`not checked for a human merge: the forge could not be loaded: ${error instanceof Error ? error.message : String(error)}`];
+  }
+  return humanMergeLines(recordHumanMerges(root, candidates, { readPrState, ledgerDir: deps.ledgerDir ?? defaultLedgerDir(), now: () => new Date().toISOString() }));
 }
 
 /** `omg factory enqueue` (shipyard ↔ factory design §3.2-§3.4); the command lives in src/factory/enqueue.ts. */
@@ -961,7 +999,7 @@ export function factoryCommand(): Command {
   cmd.addCommand(factoryEnqueueCommand(defaultFactoryCheckDeps(defaultFactoryRunDeps.base)));
   cmd.addCommand(factoryTriageCommand(defaultFactoryCheckDeps(defaultFactoryRunDeps.base)));
   cmd.addCommand(factoryBoardCommand(defaultFactoryCheckDeps(defaultFactoryRunDeps.base)));
-  cmd.addCommand(factoryDashboardCommand());
+  cmd.addCommand(factoryDashboardCommand({ ...defaultDashboardDeps, humanMerges: (root) => cliHumanMerges(defaultFactoryRunDeps, root, readRuns(root, []).runs) }));
   cmd.addCommand(factoryPrCommand(defaultFactoryCheckDeps(defaultFactoryRunDeps.base)));
   cmd.addCommand(factoryPollCommand({
     ...defaultFactoryCheckDeps(defaultFactoryRunDeps.base),

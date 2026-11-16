@@ -119,6 +119,7 @@ Rules:
 
 - Fire independent agent calls simultaneously -- never wait sequentially for independent work
 - Use `run_in_background: true` for long operations (installs, builds, test suites)
+- When you must wait for tests or CI, wait in the foreground (`gh pr checks <N> --watch`, or read the background job's output file); never idle on a background notification
 - Always pass the `model` parameter explicitly when delegating to agents
 - Read `docs/shared/agent-tiers.md` before first delegation to select correct agent tiers
 - Deliver the full implementation: no scope reduction, no partial completion, no deleting tests to make them pass
@@ -364,6 +365,7 @@ Why good: The falsified criterion stops governing, the measurement is preserved 
 - Quick status checks (git status, ls, pwd)
 - File reads and edits
 - Simple commands
+- Waiting for CI (`gh pr checks <N> --watch`) or for a background job you need now (read its output file): never idle on a background notification
 </Advanced>
 
 Original task:

@@ -1,9 +1,10 @@
 import { spawnSync } from 'node:child_process';
-import { appendFileSync, chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { appendFileSync, chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
+import { SEED_LOCK_STALE_MS, withSeedLock } from '../private-run.js';
 import { defaultExec, type Exec } from '../../../ship/exec.js';
 import { protectedChanges } from '../../../ship/merge.js';
 import { LANE_PROTECTED_PATHS } from '../lane-commit.js';
@@ -768,4 +769,27 @@ describe('lockfileUnchanged', () => {
     const empty = g(dir, [`--git-dir=${p.gitDir}`, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit-tree', emptyTree, '-m', 'empty']);
     expect(lockfileUnchanged(p, empty, empty, ctx)).toEqual({ policy: 'park', lockfiles: [], changed: [] });
   }, T);
+});
+
+describe('seed lock staleness (#509)', () => {
+  const age = (f: string): void => { const t = new Date(Date.now() - 10 * SEED_LOCK_STALE_MS); utimesSync(f, t, t); };
+
+  it('does not reap a lock older than the stale window while its holder pid is alive', () => {
+    const lay = privateRunLayout(join(dir, 'fw-live'), 'abcdef01', 'issue-1');
+    const lock = join(lay.repoDir, 'import.lock');
+    mkdirSync(lay.repoDir, { recursive: true });
+    writeFileSync(lock, JSON.stringify({ pid: process.pid, timestamp: Date.now() }));
+    age(lock);
+    expect(() => withSeedLock(lay, () => 'took', 200)).toThrow(/Failed to acquire/);
+    expect(existsSync(lock)).toBe(true);
+  });
+
+  it('takes over a lock older than the stale window whose holder pid is dead', () => {
+    const lay = privateRunLayout(join(dir, 'fw'), 'abcdef01', 'issue-1');
+    const lock = join(lay.repoDir, 'import.lock');
+    mkdirSync(lay.repoDir, { recursive: true });
+    writeFileSync(lock, JSON.stringify({ pid: 2_147_483_647, timestamp: Date.now() }));
+    age(lock);
+    expect(withSeedLock(lay, () => 'took', 2_000)).toBe('took');
+  });
 });

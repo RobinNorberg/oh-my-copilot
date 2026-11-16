@@ -358,6 +358,8 @@ export type CopilotRunSnapshot = {
   deniedPermissions?: Array<{ kind: string; reason: string }>;
   notes?: string[];
   eventsPath: string;
+  /** When the session last emitted an event (a tool call, a message, usage); null before the first one. Factory lanes stall on it. */
+  lastEventAt?: string | null;
   /**
    * The copilot runtime child once it started: its pid and start identity
    * (null when it could not be read). A caller that outlives a crash of this
@@ -439,6 +441,8 @@ interface Job {
   pidIdentity: string | null;
   startedAt: string;
   endedAt: string | null;
+  /** The session's last event (snapshot lastEventAt). */
+  lastEventAt: string | null;
   sessionId: string | null;
   finalText: string | null;
   error: string | null;
@@ -1096,6 +1100,7 @@ export class CopilotRunManager {
       pidIdentity: null,
       startedAt: new Date().toISOString(),
       endedAt: null,
+      lastEventAt: null,
       sessionId: null,
       finalText: null,
       error: null,
@@ -1463,6 +1468,7 @@ export class CopilotRunManager {
     const shutdown = new Promise<void>((r) => { onShutdown = r; });
     let eventsFd: number | null = null;
     const onEvent = (event: CopilotEvent) => {
+      job.lastEventAt = new Date().toISOString();
       if (eventsFd !== null) {
         try { writeSync(eventsFd, `${scrubTokens(JSON.stringify({ at: new Date().toISOString(), ...event }), job.secrets)}\n`); } catch { /* evidence only */ }
       }
@@ -1666,6 +1672,7 @@ export class CopilotRunManager {
       ...(job.denied.length ? { deniedPermissions: job.denied.map((d) => ({ kind: d.kind, reason: scrub(d.reason) })) } : {}),
       ...(notes.length ? { notes: notes.map(scrub) } : {}),
       eventsPath: job.eventsPath,
+      lastEventAt: job.lastEventAt,
       ...(job.pid ? { runtime: { pid: job.pid, identity: job.pidIdentity } } : {}),
       ...(job.sandbox ? { sandbox: { ...job.sandbox, host: { ...job.sandbox.host, capabilities: { ...job.sandbox.host.capabilities } } } } : {}),
     };

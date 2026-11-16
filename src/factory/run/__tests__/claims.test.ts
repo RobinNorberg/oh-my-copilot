@@ -203,6 +203,22 @@ describe('cross-clone run claims', () => {
     expect(factoryClaimHolder(ledger, URL, cloneB, 7, live(2))).toBeNull();
   });
 
+  it('a state its engine wrote that this omg cannot parse holds the claim and names the parser\'s reason, never a bare "does not parse"', () => {
+    runState(cloneA, 7, 'implement');
+    acquireFactoryClaim(ledger, URL, cloneA, 7, NOW, live(1)).park(NOW);
+    const path = factoryStatePath(cloneA, 7);
+    const record = (content: string) => { writeFileSync(path, content); EngineLedger.open(ledger, cloneA, 7).record(path, content); };
+    const sealed = JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>;
+    // A field this version shape-checks differently (an omg of another version wrote it): the field is named.
+    record(JSON.stringify({ ...sealed, gateCalibration: 5 }));
+    const malformed = busyOf(() => acquireFactoryClaim(ledger, URL, cloneB, 7, NOW, live(2)));
+    expect(malformed.message).toContain(`the run state in ${cloneA} is unreadable (it is malformed (field gateCalibration); an omg of another version may have written it)`);
+    record('{oops');
+    expect(factoryClaimHolder(ledger, URL, cloneB, 7, live(2))).toMatchObject({ state: 'unreadable', why: expect.stringMatching(/is unreadable \(it is not valid JSON: /) });
+    record(JSON.stringify({ ...sealed, issue: 8 }));
+    expect(factoryClaimHolder(ledger, URL, cloneB, 7, live(2))).toMatchObject({ state: 'unreadable', why: expect.stringMatching(/is unreadable \(it is not a factory run state for #7\)/) });
+  });
+
   it('a claim root must be a local absolute path: UNC, device, relative and control-character roots are refused before any stat, and never printed', () => {
     for (const bad of ['\\\\server\\share\\repo', '//server/share/repo', '\\\\?\\C:\\repo', '\\\\.\\C:\\repo', 'relative/repo', `${cloneA}\u001b[2J`, `${cloneA}\u202e`, '']) {
       expect(claimRoot(bad), JSON.stringify(bad)).toBeNull();

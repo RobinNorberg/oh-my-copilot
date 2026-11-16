@@ -491,7 +491,8 @@ describe('jev-compaction module: active compaction', () => {
         expect(omitSecretLines(s, pp)).toBe(s);
         best = Math.min(best, performance.now() - t0);
       }
-      expect(best).toBeLessThan(50);
+      // Linear scan of 1M chars; loose bound for shared CI runners. A quadratic regression would take seconds.
+      expect(best).toBeLessThan(250);
     }
     const calls = {
       3: ['mcp__fs__read', { path: '/'.repeat(1_000_000) }],

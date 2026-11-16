@@ -54,6 +54,7 @@
  */
 import { type Exec } from '../../ship/exec.js';
 import { type PrepareCheckRun } from '../../ship/prepare.js';
+import { type GateContainerSettings } from '../../copilot-run/sandbox.js';
 import { type SandboxRunner } from './sandbox-exec.js';
 import { type AzEntry } from '../../forge/ado/az-binary.js';
 import type { ForgeOptions, ResolvedForgeConfig } from '../../forge/types.js';
@@ -70,7 +71,13 @@ export { EXIT_BUSY };
 /** Conflict-fix lanes (distinct start heads) before base conflicts park at awaiting-human: merge-conflicts. */
 export declare const MAX_CONFLICT_FIX_ROUNDS = 2;
 /** merge's gate read may send the run back to gates this often per invocation before awaiting-human: gates-disagree. */
-export declare const MAX_MERGE_BOUNCES = 2; /** Lane waits are sliced so the cancel flag is seen within this long. */
+export declare const MAX_MERGE_BOUNCES = 2;
+/** Gates -> prepare returns for a PR that conflicts with its moved base, per run (across reruns), before awaiting-human: merge-conflicts. */
+export declare const MAX_CONFLICT_REPREPARES = 3;
+/** Reads of the forge's mergeability while it is unknown (GitHub computes it lazily after a push or a base move), MERGEABILITY_WAIT_MS apart. */
+export declare const MERGEABILITY_READS = 4;
+export declare const MERGEABILITY_WAIT_MS = 5000;
+/** Lane waits are sliced so the cancel flag is seen within this long. */
 export declare const DEFAULT_POLL_MS = 5000;
 /** A ci-heal run's inputs (src/factory/heal/implement.ts builds them from a sealed heal signature state). */
 export interface FactoryHealStart {
@@ -153,6 +160,22 @@ export interface FactoryEngineOptions {
     gateSandbox?: SandboxRunner;
     /** The trusted user config factory.run.sandbox.gates is read from (default: userConfigLayers().trustedUser); tests pass one. */
     gateSandboxUserConfig?: unknown;
+    /**
+     * The host the Windows git-transport fallback is decided for: its platform
+     * and Git for Windows' sh.exe the probe starts (default process.platform
+     * and gitForWindowsShell); tests pass one.
+     */
+    gitTransportHost?: {
+        platform: NodeJS.Platform;
+        shell: () => string | null;
+    };
+    /**
+     * The gate image's id now (container-gate.ts inspectGateImageId, no pull),
+     * read before the Windows git-transport fallback's first container run so
+     * a stored container calibration is found by it; omitted = learnt from the
+     * first container run (the CLI passes it).
+     */
+    gateImageId?: (c: GateContainerSettings) => Promise<string | undefined>;
     /** The trusted user config factory.merge.auto is read from (default: userConfigLayers().trustedUser); tests pass one. */
     autoMergeUserConfig?: unknown;
     now?: () => number;
@@ -285,6 +308,8 @@ export declare class StateTamperedError extends Error {
     readonly paths: string[];
     constructor(paths: string[]);
 }
+/** True when `next` is a parseable time later than `prev` (or `prev` is absent). Unparseable values are not newer. */
+export declare function isNewerEvent(next: string | undefined | null, prev: string | undefined | null): next is string;
 /** The last lines of `text`, redacted (token shapes), each made visible and one line, bounded: a gate's local `detail`. */
 export declare function parkTail(text: string): string;
 /**
@@ -307,6 +332,26 @@ export declare function ciFailureTail(failure: FactoryCiFailure): {
 export declare function nodeModulesWriteDenied(tail: string): string | undefined;
 /** The advice when the base's gate runs git's own transport, which cannot run in the Copilot sandbox on Windows. */
 export declare const GIT_TRANSPORT_SANDBOX_ADVICE = "Your gate runs git clone, fetch or push (also to a local path or a temp repository), which cannot run in the OS sandbox on Windows: git starts that transport through Git for Windows' sh.exe, and no MSYS2 program starts in the sandbox; the sandbox has no network either. Read-only git (rev-parse, ls-files, log) and git init, add and commit work. Make those tests skip the transport, run them outside prepare, or set factory.run.sandbox.isolation \"container\" (with an image that has git) in your user config";
+/** What git prints when its transport process (sh.exe running git-receive-pack / git-upload-pack) died. */
+export declare const GIT_TRANSPORT_FAILURE = "Could not read from remote repository";
+/**
+ * STATUS_DLL_INIT_FAILED (0xC0000142) as an exit status, unsigned and signed:
+ * an MSYS2 program in the Copilot sandbox on Windows. msys-2.0.dll's start
+ * makes a directory object under \BaseNamedObjects, which the sandbox's
+ * low-integrity token may not create (live 2026-11-12, Copilot CLI 1.0.105,
+ * Git for Windows 2.51.2: also with every path readable and with a copy of
+ * the runtime at another path). No filesystem grant or env var changes it.
+ */
+export declare const MSYS_DLL_INIT_FAILED: readonly number[];
+/** A base calibration's output that names git's failed transport, on Windows (the OS sandbox only). */
+export declare const windowsGitTransportFailure: (output: string | undefined, platform?: NodeJS.Platform) => boolean;
+/**
+ * A base calibration's output that names esbuild's refused open of a package
+ * dir through the gate tree's junction, on Windows (the OS sandbox only;
+ * prepare.ts GATE_TREE_COPY_WHY): `Cannot read directory "node_modules/<pkg>":
+ * Access is denied.`
+ */
+export declare const windowsJunctionReadDenied: (output: string | undefined, platform?: NodeJS.Platform) => boolean;
 /** What the gate-sandbox-incompatible park of a failing base calibration tells the human to do. */
 export declare function sandboxIncompatibleAdvice(tail: string | undefined, platform?: NodeJS.Platform): string;
 /**

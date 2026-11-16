@@ -85,7 +85,9 @@ const REVIEW = (key: string) => [HEAD_STATE, HEAD_STATE, comment('pr', PR, key, 
 /** One gates-loop read on a fixed head (checks, runs, the head re-read), then the driver's own head and runs read. */
 // The head's check suites (review-493 M-2): green needs each completed.
 const suites = (sha: string) => `gh ["api","--hostname","github.com","--method","GET","repos/o/r/commits/${sha}/check-suites?per_page=100&page=1"] cwd=<root>`;
-const GATES_GREEN = [HEAD_STATE, CHECKS, runList('<head>'), suites('<head>'), VIEW_HEAD, HEAD_STATE, runList('<head>')];
+// The gates entry first reads the PR's mergeability (a PR that conflicts with its moved base goes back to prepare).
+const MERGEABILITY = `gh ["pr","view","${PR}","--json","headRefOid,mergeable,mergeStateStatus"] cwd=<root>`;
+const GATES_GREEN = [MERGEABILITY, HEAD_STATE, CHECKS, runList('<head>'), suites('<head>'), VIEW_HEAD, HEAD_STATE, runList('<head>')];
 /** The merge park: the PR view, the merge-rule gate read on that head, the PR comment with the command (the item's gate comment and its read for a parent rollup follow). */
 const MERGE_PARK = (key: string) => [...OPEN_VIEW, REVIEW_READ, CHECKS, runList('<head>'), suites('<head>'), VIEW_HEAD, comment('pr', PR, key, 'merge')];
 
@@ -131,7 +133,7 @@ describe('gh argv baseline: factory engine (issue run)', () => {
       ...REVIEW(KEY),
       ...OPEN_VIEW, READY, ...OPEN_VIEW,
       // Pending, then failed: one watch per window, then the driver reads the runs and the failed job's log.
-      HEAD_STATE, CHECKS, runList('<red>'), suites('<red>'), VIEW_HEAD, CHECKS, runList('<red>'), suites('<red>'), VIEW_HEAD,
+      MERGEABILITY, HEAD_STATE, CHECKS, runList('<red>'), suites('<red>'), VIEW_HEAD, CHECKS, runList('<red>'), suites('<red>'), VIEW_HEAD,
       HEAD_STATE, runList('<red>'), 'gh ["run","view","--job","200","--log"] cwd=<root>',
       // The ci-fix push, a new review on the new head; prepare without a second `pr ready`.
       ...REVIEW(KEY),

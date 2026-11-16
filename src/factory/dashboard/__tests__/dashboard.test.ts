@@ -156,6 +156,16 @@ describe('omg factory dashboard command', () => {
     expect(process.exitCode).toBe(0);
   });
 
+  it('records human merges first (humanMerges dep) and prints its lines on stderr', async () => {
+    run(1, 'T', (s) => s);
+    const out: string[] = []; const err: string[] = [];
+    const seen: string[] = [];
+    await factoryDashboardCommand({ ...deps(out, err), humanMerges: (r) => { seen.push(r); return ['run #1: PR #2 was merged by a human after cancelled; recorded the run as merged']; } }).parseAsync(['--json'], { from: 'user' });
+    expect(seen).toEqual([root]);
+    expect(err).toContain('run #1: PR #2 was merged by a human after cancelled; recorded the run as merged');
+    expect(JSON.parse(out.join('')).schemaVersion).toBe(1);
+  });
+
   it('a bad --since exits with the usage code', async () => {
     const err: string[] = [];
     await factoryDashboardCommand(deps([], err)).parseAsync(['--since', 'bad'], { from: 'user' });

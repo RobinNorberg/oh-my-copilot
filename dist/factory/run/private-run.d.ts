@@ -248,5 +248,6 @@ export declare function withImportLock<T>(root: string, layout: PrivateRunLayout
  * (file-lock's rule: stale only when old AND its pid is dead), so a first
  * seed fetch of a big repository is not stolen (review-483 L9).
  */
-export declare function withSeedLock<T>(layout: PrivateRunLayout, fn: () => T): T;
+export declare const SEED_LOCK_STALE_MS = 60000;
+export declare function withSeedLock<T>(layout: PrivateRunLayout, fn: () => T, waitMs?: number): T;
 //# sourceMappingURL=private-run.d.ts.map

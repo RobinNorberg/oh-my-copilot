@@ -27,9 +27,11 @@ import { getOmcRoot } from '../../lib/worktree-paths.js';
 import { getProcessStartIdentitySync, isProcessAlive } from '../../platform/process-utils.js';
 import { stripAnsi } from '../../utils/string-width.js';
 import { sameRepo } from '../../ship/config.js';
+import { isBuildOutputDir } from '../../ship/exec.js';
 import { PROGRESS_STAGES } from '../../forge/types.js';
 import { LOCAL_REMOTE } from '../../forge/local/mirror.js';
 import { codingAgentRecordProblem } from './coding-agent-lane.js';
+import { vitestSummaryShapeOk } from './test-delta.js';
 export const FACTORY_PHASES = [
     'intake', 'plan', 'implement', 'publish', 'review', 'fix', 'prepare', 'conflict-fix', 'gates', 'ci-fix', 'merge', 'merged', 'cancelled', 'failed',
 ];
@@ -232,6 +234,12 @@ function shapeProblem(s) {
         return 'gate.detail';
     if (s.prepareChecks !== undefined && s.prepareChecks !== 'auto' && !(Array.isArray(s.prepareChecks) && s.prepareChecks.every((a) => Array.isArray(a) && a.length > 0 && a.every(isStr))))
         return 'prepareChecks';
+    if (s.prepareBuild !== undefined && s.prepareBuild !== 'none') {
+        const b = s.prepareBuild;
+        const strs = (v) => Array.isArray(v) && v.length > 0 && v.every(isStr);
+        if (typeof b !== 'object' || b === null || !strs(b.command) || !strs(b.outputs) || !b.outputs.every(isBuildOutputDir))
+            return 'prepareBuild';
+    }
     if (s.trackerStage !== undefined && !PROGRESS_STAGES.includes(s.trackerStage))
         return 'trackerStage';
     if (s.codingAgent !== undefined && (s.kind === 'ci-heal' || codingAgentRecordProblem(s.codingAgent) !== null))
@@ -256,6 +264,7 @@ function shapeProblem(s) {
         const sbx = x?.sandbox;
         return isStr(x?.id) && isStr(x.kind) && isStr(x.status) && isStr(x.startSha) && typeof x.maxCredits === 'number'
             && (x.stopUnconfirmed === undefined || typeof x.stopUnconfirmed === 'boolean')
+            && (x.tamperCheck === undefined || x.tamperCheck === 'clean' || x.tamperCheck === 'problems' || x.tamperCheck === 'skipped')
             && (sbx === undefined || (typeof sbx === 'object' && sbx !== null && isStr(sbx.mode) && isCount(sbx.unsandboxedCalls)
                 && (sbx.writeNetwork === undefined || sbx.writeNetwork === 'none' || sbx.writeNetwork === 'registry')));
     }))
@@ -266,6 +275,8 @@ function shapeProblem(s) {
         return 'lostStreak';
     if (typeof s.elapsedMs !== 'number' || !isCount(s.ciFixRounds))
         return 'elapsedMs/ciFixRounds';
+    if (s.conflictReprepares !== undefined && !isCount(s.conflictReprepares))
+        return 'conflictReprepares';
     if (!Array.isArray(s.history))
         return 'history';
     if (!isStr(s.createdAt) || !isStr(s.updatedAt))
@@ -310,14 +321,24 @@ function humanReviewShapeProblem(s) {
         return 'sandboxedPrepareHead';
     if (s.sandboxedGateHead !== undefined && (!isStr(s.sandboxedGateHead) || !HEX40.test(s.sandboxedGateHead)))
         return 'sandboxedGateHead';
+    if (s.gitTransportPlainHead !== undefined && (!isStr(s.gitTransportPlainHead) || !HEX40.test(s.gitTransportPlainHead)))
+        return 'gitTransportPlainHead';
+    if (s.testDeltaExcusedHead !== undefined && (!isStr(s.testDeltaExcusedHead) || !HEX40.test(s.testDeltaExcusedHead)))
+        return 'testDeltaExcusedHead';
+    if (s.plainHeadRan !== undefined && s.plainHeadRan !== true)
+        return 'plainHeadRan';
+    if (s.gateTreeCopy !== undefined && s.gateTreeCopy !== true)
+        return 'gateTreeCopy';
     // One admin dir name under <common>/worktrees (git makes it from the checkout's base name): no separator, nothing else.
     if (s.checkoutAdmin !== undefined && (!isStr(s.checkoutAdmin) || !/^[A-Za-z0-9._-]+$/.test(s.checkoutAdmin) || s.checkoutAdmin === '.' || s.checkoutAdmin === '..'))
         return 'checkoutAdmin';
     const cal = s.gateCalibration;
     if (cal !== undefined && (typeof cal !== 'object' || cal === null || Array.isArray(cal) || !Object.entries(cal).every(([k, v]) => {
         const e = v;
-        return HEX64.test(k) && typeof e === 'object' && e !== null && typeof e.ok === 'boolean' && (e.tail === undefined || isStr(e.tail))
-            && Object.keys(e).every((x) => x === 'ok' || x === 'tail');
+        return HEX64.test(k) && typeof e === 'object' && e !== null && typeof e.ok === 'boolean' && (e.tail === undefined || isStr(e.tail)) && (e.gitTransport === undefined || e.gitTransport === true) && (e.timedOut === undefined || e.timedOut === true)
+            && (e.junctionRead === undefined || e.junctionRead === true) && (e.tests === undefined || vitestSummaryShapeOk(e.tests))
+            && (e.beforePlainHead === undefined || e.beforePlainHead === true)
+            && Object.keys(e).every((x) => x === 'ok' || x === 'tail' || x === 'timedOut' || x === 'gitTransport' || x === 'junctionRead' || x === 'tests' || x === 'beforePlainHead');
     })))
         return 'gateCalibration';
     const lanes = s.lanes;

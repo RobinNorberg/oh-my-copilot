@@ -184,6 +184,12 @@ export declare function liveFactoryRuns(root: string, ledgerDir: string, claimRe
 };
 /** `omg factory run <issue>`, `run cancel|clean|status <issue>` (experimental; manual trigger only; merge is always human). */
 export declare function factoryRunCommand(deps?: FactoryRunDeps): Command;
+/**
+ * Record the stopped runs among `runs` whose PR a human merged (human-merged.ts), for `run status` and
+ * `dashboard`. The forge config is loaded without a fetch; it is loaded only when a candidate exists, and a
+ * failed load is one line and changes nothing. Returns the lines to print.
+ */
+export declare function cliHumanMerges(deps: Pick<FactoryRunDeps, 'exec' | 'base' | 'forge' | 'ledgerDir'>, root: string, runs: Iterable<[FactoryRunKey, FactoryRunState]>): string[];
 /** `omg factory enqueue` (shipyard ↔ factory design §3.2-§3.4); the command lives in src/factory/enqueue.ts. */
 export declare function factoryEnqueueCommand(deps: FactoryCheckDeps): Command;
 /**

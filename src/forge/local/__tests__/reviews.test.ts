@@ -51,6 +51,26 @@ describe('local reviews: symbolic links under the runtime root', () => {
   });
 });
 
+describe('local reviews: mergeability (real git merge-tree against the mirror base)', () => {
+  it('clean while the base has not moved or moved without touching the PR\'s files; conflicting when it did', () => {
+    const { r, calls } = reviews();
+    const n = r.createDraftPr({ base: 'main', head: 'factory/1-add', title: 'Add remove', bodyFile });
+    // The head contains the base: no merge-tree needed.
+    expect(r.mergeability!(n)).toEqual({ state: 'mergeable', headRefOid: head });
+    expect(calls.some((c) => c.args[0] === 'merge-tree')).toBe(false);
+    // The base moved without a conflict.
+    fx.write('other.md', 'x\n');
+    const clean = fx.commit('base: other');
+    fx.push(clean, 'main');
+    expect(r.mergeability!(n)).toEqual({ state: 'mergeable', headRefOid: head });
+    expect(calls.filter((c) => c.args[0] === 'merge-tree').at(-1)?.args).toEqual(['merge-tree', '--write-tree', head, clean]);
+    // The base moved into the PR's own file.
+    fx.write('src/remove.js', 'export const base = 1;\n');
+    fx.push(fx.commit('base: remove.js'), 'main');
+    expect(r.mergeability!(n)).toEqual({ state: 'conflicting', headRefOid: head });
+  });
+});
+
 describe('local reviews', () => {
   it('creates a draft PR from mirror refs, views it, marks it ready and comments', () => {
     const { r } = reviews();

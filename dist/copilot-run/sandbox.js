@@ -195,13 +195,15 @@ export const defaultGateImage = (nodeVersion = process.versions.node) => `node:$
  * argv word after the runtime's options) and holds only reference characters.
  */
 export function resolveGateIsolation(layers, nodeVersion = process.versions.node) {
-    const block = (config) => {
+    const block = (config, strict = false) => {
         const raw = config?.factory?.run?.sandbox;
+        if (strict && raw !== undefined && (raw === null || typeof raw !== 'object' || Array.isArray(raw)))
+            throw new Error('user config: factory.run.sandbox must be an object');
         return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
     };
     const base = block(layers.base);
     const ignoredBase = ['isolation', 'container'].filter((k) => base[k] !== undefined).map((k) => `factory.run.sandbox.${k}`);
-    const user = block(layers.user);
+    const user = block(layers.user, true);
     const bad = (key, want) => { throw new Error(`user config: factory.run.sandbox.${key} must be ${want}`); };
     const isolation = user.isolation === undefined ? 'copilot' : user.isolation === 'copilot' || user.isolation === 'container' ? user.isolation : bad('isolation', '"copilot" or "container"');
     const raw = user.container ?? {};
@@ -225,6 +227,31 @@ export function resolveGateIsolation(layers, nodeVersion = process.versions.node
     const diskLimit = c.diskLimit === undefined ? '10g' : typeof c.diskLimit === 'string' && /^[1-9]\d{0,5}[mg]$/i.test(c.diskLimit) ? c.diskLimit : bad('container.diskLimit', 'a size such as "10g" or "800m"');
     const container = { runtime, image, memory, cpus, pidsLimit: int('pidsLimit', 64, 65_536, 1_024), installTimeoutMinutes: int('installTimeoutMinutes', 1, 120, 15), diskLimit };
     return { isolation, ...(isolation === 'container' ? { container } : {}), ignoredBase };
+}
+/** The Windows git-transport fallback's image when the user names none: the full bookworm image, which has git. */
+export const defaultGitGateImage = (nodeVersion = process.versions.node) => `node:${nodeVersion.split('.')[0]}-bookworm`;
+/**
+ * `factory.run.sandbox.windowsGitTransport` from the USER config only (a
+ * base-committed value is ignored: `ignoredBase`), and the container the
+ * fallback tries first: the user's `factory.run.sandbox.container` settings,
+ * with an image that has git (defaultGitGateImage) unless the user names
+ * one. A malformed user value throws.
+ */
+export function resolveWindowsGitTransport(layers, nodeVersion = process.versions.node) {
+    const block = (config, strict = false) => {
+        const raw = config?.factory?.run?.sandbox;
+        if (strict && raw !== undefined && (raw === null || typeof raw !== 'object' || Array.isArray(raw)))
+            throw new Error('user config: factory.run.sandbox must be an object');
+        return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+    };
+    const user = block(layers.user, true);
+    const v = user.windowsGitTransport;
+    if (v !== undefined && v !== 'fallback' && v !== 'strict')
+        throw new Error('user config: factory.run.sandbox.windowsGitTransport must be "fallback" or "strict"');
+    const own = user.container;
+    const container = resolveGateIsolation({ user: { factory: { run: { sandbox: { isolation: 'container', ...(own !== undefined ? { container: own } : {}) } } } }, base: undefined }, nodeVersion).container;
+    const named = typeof own === 'object' && own !== null && own.image !== undefined;
+    return { mode: v ?? 'fallback', container: named ? container : { ...container, image: defaultGitGateImage(nodeVersion) }, ignoredBase: block(layers.base).windowsGitTransport !== undefined };
 }
 export const REGISTRY_HOSTS = ['registry.npmjs.org', '*.npmjs.org'];
 /** `real` (a realpath) is the realpath of `want`; false when `want` cannot be resolved. Case-folded on win32. */

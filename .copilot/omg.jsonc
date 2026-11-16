@@ -26,6 +26,14 @@
       "omg update + session-start hook",
       "Statechart suite (Node 24)"
     ],
+    // dist/ and bridge/ are committed, and CI's Build check fails on stale output: prepare rebuilds them after the base
+    // merge and commits only these directories as a housekeeping commit (a safety key, read like requiredChecks).
+    "prepare": {
+      "build": {
+        "command": ["npm", "run", "build"],
+        "outputs": ["dist", "bridge"]
+      }
+    },
     "base": "dev"
   },
   "factory": {

@@ -13,7 +13,7 @@ import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { getCopilotConfigDir } from './lib/config-dir.mjs';
 import { buildHudWrapper } from './lib/hud-wrapper-template.mjs';
-import { normalizeHooksDataForPlatform } from './lib/hook-command-normalizer.mjs';
+import { patchHooksManifestFile } from './lib/hook-command-normalizer.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -98,10 +98,13 @@ try {
 // Patch packaged plugin-cache hooks.json to keep plugin-provided hook commands
 // safe for the platform that is installing the plugin cache. Claude Code's
 // plugin loader reads hooks/hooks.json directly, so the source manifest remains
-// native Windows-spawnable (direct node -> run.cjs, no sh/find-node). During
-// setup from a published plugin cache on Unix/macOS, repair the cached manifest
-// back to the find-node.sh bootstrap so nvm/fnm users whose non-interactive hook
-// PATH lacks node keep working.
+// spawnable on every platform (direct node -> run.cjs, no sh/find-node). During
+// setup from a published plugin cache on Unix/macOS, the manifest keeps that
+// exec form when a bare `node` resolves from the standard system dirs alone
+// (the probe ignores this process's PATH), so a config dir shared with native
+// Windows keeps working. A node that only nvm/fnm/volta or a login shell puts
+// on PATH may be missing when a GUI-launched host spawns hooks, so then the
+// cached manifest is rewritten to the find-node.sh bootstrap.
 //
 // Keep stale cache self-healing for older manifests that used sh/find-node, an
 // accidentally baked absolute node path, or the Windows-safe direct node form.
@@ -122,16 +125,9 @@ try {
 //
 // Fixes issues #909, #899, #892, #869, #3121, #4042.
 try {
-  const hooksJsonPath = isPublishedPluginCache ? join(__dirname, '..', 'hooks', 'hooks.json') : null;
-  if (hooksJsonPath && existsSync(hooksJsonPath)) {
-    const data = JSON.parse(readFileSync(hooksJsonPath, 'utf-8'));
-    const patched = normalizeHooksDataForPlatform(data);
-
-    if (patched) {
-      writeFileSync(hooksJsonPath, JSON.stringify(data, null, 2) + '\n');
-      const platformLabel = process.platform === 'win32' ? 'direct node exec' : 'find-node.sh run.cjs';
-      console.log(`[OMC] Patched hooks.json to use ${platformLabel} hook commands`);
-    }
+  if (isPublishedPluginCache) {
+    const platformLabel = patchHooksManifestFile(join(__dirname, '..', 'hooks', 'hooks.json'));
+    if (platformLabel) console.log(`[OMC] Patched hooks.json to use ${platformLabel} hook commands`);
   }
 } catch (e) {
   console.log('[OMC] Warning: Could not patch hooks.json:', e.message);

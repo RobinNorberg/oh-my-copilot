@@ -22,6 +22,7 @@ import type { ShipVerdict } from '../../ship/state.js';
 import { type ForgeKind, type ProgressStage } from '../../forge/types.js';
 import { LOCAL_REMOTE } from '../../forge/local/mirror.js';
 import { type CodingAgentRunRecord } from './coding-agent-lane.js';
+import { type VitestRunSummary } from './test-delta.js';
 export declare const FACTORY_PHASES: readonly ["intake", "plan", "implement", "publish", "review", "fix", "prepare", "conflict-fix", "gates", "ci-fix", "merge", "merged", "cancelled", "failed"];
 export type FactoryPhase = (typeof FACTORY_PHASES)[number];
 export declare const TERMINAL_FACTORY_PHASES: readonly FactoryPhase[];
@@ -36,7 +37,8 @@ export declare const HEAL_DIAGNOSIS_GATE = "heal-diagnosis";
 export declare function healRunKey(sig8: string): FactoryRunKey;
 /** Every lane kind except review is a write lane. Each but coding-agent is also the phase that runs it; a coding-agent lane runs in the implement phase. */
 export type FactoryLaneKind = 'implement' | 'review' | 'fix' | 'conflict-fix' | 'ci-fix' | 'coding-agent';
-export type FactoryLaneStatus = 'running' | 'completed' | 'failed' | 'lost' | 'cancelled';
+/** `stalled`: the engine cancelled a lane whose session went quiet past factory.run.laneIdleMinutes (a failed lane). */
+export type FactoryLaneStatus = 'running' | 'completed' | 'failed' | 'stalled' | 'lost' | 'cancelled';
 export type FactoryLaneVerdict = 'approve' | 'changes-requested' | 'invalid';
 export interface FactoryLaneRecord {
     id: string;
@@ -84,6 +86,16 @@ export interface FactoryLaneRecord {
      * other paths): run clean / reset read the note.
      */
     stopUnconfirmed?: boolean;
+    /**
+     * The tamper check of a lane the engine cancelled: `clean` (it compared and
+     * found nothing), `problems` (it found a change), `skipped` (the stop was not
+     * confirmed, the cancel failed, or no compare ran). Absent (older states):
+     * not known to be clean, so a human-merge check skips the run
+     * (human-merged.ts).
+     */
+    tamperCheck?: 'clean' | 'problems' | 'skipped';
+    /** The session's last event the engine saw (ISO, refreshed at most once a minute); status and park text name it. */
+    lastEventAt?: string;
     startedAt: string;
     endedAt?: string;
 }
@@ -213,6 +225,15 @@ export interface FactoryRunState {
      * same value; a change mid-run parks at prepare-checks. Absent until then.
      */
     prepareChecks?: string[][] | 'auto';
+    /**
+     * The trusted ship.prepare.build this run first prepared with (`none` =
+     * unset), sealed like prepareChecks: a change mid-run parks at
+     * prepare-checks, and the merge rule accepts only these outputs.
+     */
+    prepareBuild?: {
+        command: string[];
+        outputs: string[];
+    } | 'none';
     repoUrl: string;
     base: string;
     branch: string;
@@ -250,12 +271,32 @@ export interface FactoryRunState {
     };
     /** merge -> gates returns so far; the cap holds across reruns. */
     mergeBounces?: number;
+    /** gates -> prepare returns for a PR that conflicts with its moved base (MAX_CONFLICT_REPREPARES); the cap holds across reruns. */
+    conflictReprepares?: number;
     /** The engine-owned prepare checkout's HEAD when the engine last left it. */
     checkoutHead?: string;
     /** The checkout head a prepare left after the PR's code ran in the OS sandbox there (a local gate start failure on it parks at gate-no-verdict). */
     sandboxedPrepareHead?: string;
     /** The head the local gate last ran on in the OS sandbox (the command was handed over): a later gate start failure on it parks at gate-no-verdict. Optional: older state files lack it. */
     sandboxedGateHead?: string;
+    /** The head a check last ran on WITHOUT any sandbox through the Windows git-transport fallback: such a run is never auto-merged. */
+    gitTransportPlainHead?: string;
+    /** The head whose built-in prepare tests passed only because tests that fail on the base too were not counted (test-delta.ts): such a run is never auto-merged. */
+    testDeltaExcusedHead?: string;
+    /**
+     * The PR's code ran WITHOUT any sandbox on your host at least once in this
+     * run (factory.run.sandbox.gates "unsandboxed", or the Windows
+     * git-transport fallback's plain run): a plain base calibration made from
+     * then on may be the head's doing (review-550 M1).
+     */
+    plainHeadRan?: true;
+    /**
+     * The run's gate node_modules trees are copies of yours, not links: a base
+     * calibration failed in the OS sandbox on Windows opening a package dir
+     * through a junction (prepare.ts GATE_TREE_COPY_WHY). Optional: older state
+     * files lack it.
+     */
+    gateTreeCopy?: true;
     /**
      * The name of the prepare checkout's admin dir under `<common>/worktrees/`,
      * as `worktree add` made it: a later invocation reads the checkout only
@@ -300,10 +341,22 @@ export interface FactoryRunState {
      * Base calibrations of a check in the sandbox (sandbox-exec.ts), keyed by
      * the sha256 of the base sha and the check's argv: whether the command
      * passes in the sandbox on the trusted base itself, and its output tail.
+     * `timedOut`: it did not finish (no verdict; never a held failure).
+     * `junctionRead`: it failed in the OS sandbox on Windows opening a package
+     * dir through the gate tree's junction (the engine then copies the tree).
+     * `tests`: the built-in vitest check's per-test result on the base
+     * (test-delta.ts), which the head's failures are judged against.
+     * `beforePlainHead`: a plain calibration made before the PR's code ran
+     * plainly in this run; only such a one may excuse a plain head's tests.
      */
     gateCalibration?: Record<string, {
         ok: boolean;
         tail?: string;
+        timedOut?: true;
+        gitTransport?: true;
+        junctionRead?: true;
+        tests?: VitestRunSummary;
+        beforePlainHead?: true;
     }>;
     /** The Copilot coding agent session of an issue run whose implementer is the agent (coding-agent-lane.ts); sealed, shape-checked on load. */
     codingAgent?: CodingAgentRunRecord;

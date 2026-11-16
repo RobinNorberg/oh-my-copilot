@@ -13,6 +13,7 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { ghHeadSha, ghJobLog, ghPrChecks, ghRerun, ghRunsForHead } from '../forge/github/checks.js';
+import { oneLine } from '../lib/one-line.js';
 import { CI_WORKFLOW, jobCheckNames } from './workflow.js';
 export const CHECK_FIELDS = 'name,state,bucket,link,workflow,event,startedAt,completedAt';
 export const RUN_FIELDS = 'databaseId,status,conclusion,workflowName,headSha';
@@ -106,7 +107,7 @@ export function noHeadChecksText(n) {
     if (n.ciDefinitions) {
         if (n.ciDefinitions.length === 0)
             return `nothing has reported a check for this head within ${window}, and the CI definitions in the base and head trees could not be read, so the gates do not assume this repository has no CI: ${causes}`;
-        const files = `${n.ciDefinitions.slice(0, 5).join(', ')}${n.ciDefinitions.length > 5 ? `, and ${n.ciDefinitions.length - 5} more` : ''}`;
+        const files = `${n.ciDefinitions.slice(0, 5).map((f) => oneLine(f)).join(', ')}${n.ciDefinitions.length > 5 ? `, and ${n.ciDefinitions.length - 5} more` : ''}`;
         return `this repository has CI definitions (${files}) but nothing reported for this commit within ${window} (the base commit reported no check either, as CI that runs only on pull requests leaves it): ${causes}`;
     }
     if (n.suites === 'present')
@@ -116,7 +117,7 @@ export function noHeadChecksText(n) {
     if (n.base === undefined) {
         return `nothing has reported a check for this head within ${window}, and the base commit's checks could not be read, so the gates do not assume this repository has no CI: Actions may be disabled, delayed, or the push did not trigger workflows`;
     }
-    const names = `${n.base.slice(0, 5).join(', ')}${n.base.length > 5 ? `, and ${n.base.length - 5} more` : ''}`;
+    const names = `${n.base.slice(0, 5).map((f) => oneLine(f)).join(', ')}${n.base.length > 5 ? `, and ${n.base.length - 5} more` : ''}`;
     return `the base commit ran CI (${names}) but nothing has reported for this head: Actions may be disabled, delayed, or the push did not trigger workflows`;
 }
 /**

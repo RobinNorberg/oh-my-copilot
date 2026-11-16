@@ -273,13 +273,14 @@ export const defaultGateImage = (nodeVersion: string = process.versions.node): s
  * argv word after the runtime's options) and holds only reference characters.
  */
 export function resolveGateIsolation(layers: Pick<GatesSandboxLayers, 'user' | 'base'>, nodeVersion: string = process.versions.node): { isolation: GateIsolation; container?: GateContainerSettings; ignoredBase: string[] } {
-  const block = (config: unknown): Record<string, unknown> => {
+  const block = (config: unknown, strict = false): Record<string, unknown> => {
     const raw = (config as { factory?: { run?: { sandbox?: unknown } } } | null | undefined)?.factory?.run?.sandbox;
+    if (strict && raw !== undefined && (raw === null || typeof raw !== 'object' || Array.isArray(raw))) throw new Error('user config: factory.run.sandbox must be an object');
     return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw as Record<string, unknown> : {};
   };
   const base = block(layers.base);
   const ignoredBase = (['isolation', 'container'] as const).filter((k) => base[k] !== undefined).map((k) => `factory.run.sandbox.${k}`);
-  const user = block(layers.user);
+  const user = block(layers.user, true);
   const bad = (key: string, want: string): never => { throw new Error(`user config: factory.run.sandbox.${key} must be ${want}`); };
   const isolation = user.isolation === undefined ? 'copilot' : user.isolation === 'copilot' || user.isolation === 'container' ? user.isolation : bad('isolation', '"copilot" or "container"');
   const raw = user.container ?? {};
@@ -300,6 +301,34 @@ export function resolveGateIsolation(layers: Pick<GatesSandboxLayers, 'user' | '
   const diskLimit = c.diskLimit === undefined ? '10g' : typeof c.diskLimit === 'string' && /^[1-9]\d{0,5}[mg]$/i.test(c.diskLimit) ? c.diskLimit : bad('container.diskLimit', 'a size such as "10g" or "800m"');
   const container: GateContainerSettings = { runtime, image, memory, cpus, pidsLimit: int('pidsLimit', 64, 65_536, 1_024), installTimeoutMinutes: int('installTimeoutMinutes', 1, 120, 15), diskLimit };
   return { isolation, ...(isolation === 'container' ? { container } : {}), ignoredBase };
+}
+
+/** The Windows git-transport fallback's image when the user names none: the full bookworm image, which has git. */
+export const defaultGitGateImage = (nodeVersion: string = process.versions.node): string => `node:${nodeVersion.split('.')[0]}-bookworm`;
+
+/** factory.run.sandbox.windowsGitTransport: "fallback" (default) or "strict" (keep the gate-sandbox-incompatible park). */
+export type WindowsGitTransportMode = 'fallback' | 'strict';
+
+/**
+ * `factory.run.sandbox.windowsGitTransport` from the USER config only (a
+ * base-committed value is ignored: `ignoredBase`), and the container the
+ * fallback tries first: the user's `factory.run.sandbox.container` settings,
+ * with an image that has git (defaultGitGateImage) unless the user names
+ * one. A malformed user value throws.
+ */
+export function resolveWindowsGitTransport(layers: Pick<GatesSandboxLayers, 'user' | 'base'>, nodeVersion: string = process.versions.node): { mode: WindowsGitTransportMode; container: GateContainerSettings; ignoredBase: boolean } {
+  const block = (config: unknown, strict = false): Record<string, unknown> => {
+    const raw = (config as { factory?: { run?: { sandbox?: unknown } } } | null | undefined)?.factory?.run?.sandbox;
+    if (strict && raw !== undefined && (raw === null || typeof raw !== 'object' || Array.isArray(raw))) throw new Error('user config: factory.run.sandbox must be an object');
+    return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw as Record<string, unknown> : {};
+  };
+  const user = block(layers.user, true);
+  const v = user.windowsGitTransport;
+  if (v !== undefined && v !== 'fallback' && v !== 'strict') throw new Error('user config: factory.run.sandbox.windowsGitTransport must be "fallback" or "strict"');
+  const own = user.container;
+  const container = resolveGateIsolation({ user: { factory: { run: { sandbox: { isolation: 'container', ...(own !== undefined ? { container: own } : {}) } } } }, base: undefined }, nodeVersion).container!;
+  const named = typeof own === 'object' && own !== null && (own as Record<string, unknown>).image !== undefined;
+  return { mode: v ?? 'fallback', container: named ? container : { ...container, image: defaultGitGateImage(nodeVersion) }, ignoredBase: block(layers.base).windowsGitTransport !== undefined };
 }
 
 // ---------------------------------------------------------------------------

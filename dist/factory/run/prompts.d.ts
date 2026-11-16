@@ -3,12 +3,12 @@
  * out of engine.ts unchanged (prompts.test.ts pins every prompt byte for
  * byte); engine.ts re-exports the public names.
  */
+import { oneLine } from '../../lib/one-line.js';
 import type { TeamContext } from '../team/context.js';
 import type { FactoryRunState } from './state.js';
 /** The review prompt's diff is cut at this many characters (copilot_run prompts are capped at 100k). */
 export declare const MAX_REVIEW_DIFF_CHARS = 60000;
-/** Untrusted text on one line: control and line-separator characters become spaces, then it is cut. */
-export declare function oneLine(text: string | undefined, max?: number): string;
+export { oneLine };
 /** A backtick fence longer than any backtick run in `content`, so the content cannot close it. */
 export declare function fenceFor(content: string): string;
 /** What the lane works for, in its prompt's first line. */

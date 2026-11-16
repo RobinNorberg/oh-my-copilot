@@ -60,6 +60,17 @@ describe('gates loop', () => {
         expect(out.gate?.reason?.endsWith(`; rerun ${resumeCommand(ISSUE)} to wait again, or ${cancelCommand(ISSUE)}`)).toBe(true);
         expect(readFactoryState(h.root, ISSUE).phase).toBe('gates');
     });
+    it('review-528 M2: the gates-timeout reason sanitises forge check names (newline, @mention, backticks, ANSI)', async () => {
+        const pending = pendingGates();
+        const evil = 'Build`\n@team \u001b[31mred';
+        h.gh.gates = [{ ...pending, checks: [...pending.checks, { ...pending.checks[0], name: evil }] }];
+        const { done } = run([commitFile('a.ts'), review('approve')], { limits: limits({ gatesTimeoutMs: 20 * 60_000 }) });
+        const out = await done;
+        expect(out.gate?.name).toBe('gates-timeout');
+        const reason = out.gate?.reason ?? '';
+        expect(reason).toContain('(pending: `Test`, `Build\' ＠team [31mred`, ');
+        expect(reason).not.toMatch(/[\n\u001b@]/);
+    });
 });
 describe('gates: ci-fix tampering, cancel and resume', () => {
     it('a ci-fix lane that changes shared git state parks at lane-tampered and nothing is pushed', async () => {

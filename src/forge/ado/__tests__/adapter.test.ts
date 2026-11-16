@@ -196,6 +196,13 @@ describe('ADO adapter, design §6 rows', () => {
     expect(() => adoWorld({ fixtures: odd }).forge.reviews.viewPr(17)).toThrow(/unknown status/);
   });
 
+  it('mergeability: mergeStatus conflicts / succeeded, anything else unknown, for lastMergeSourceCommit', () => {
+    const at = (mergeStatus: string | undefined) => adoWorld({ fixtures: variant(loadAdoFixtures(), 'git.pullRequests.GET.by-id.json', (s) => ({ ...s, mergeStatus })) }).forge.reviews.mergeability!(17);
+    expect(at('conflicts')).toEqual({ state: 'conflicting', headRefOid: HEAD });
+    expect(at('succeeded')).toEqual({ state: 'mergeable', headRefOid: HEAD });
+    for (const s of ['queued', 'notSet', 'failure', 'rejectedByPolicy', undefined]) expect(at(s).state).toBe('unknown');
+  });
+
   it('mark ready: PATCH {isDraft:false} only', () => {
     const { forge, calls } = adoWorld();
     forge.reviews.markReady(17);

@@ -42,6 +42,8 @@ export declare class FakeLanes implements LaneBackend {
     readonly cancelled: string[];
     /** Called on every wait() that still reports `running`. */
     onRunningPoll: (remoteId: string) => void;
+    /** The result's lastEventAt (the session's last event); undefined = the backend cannot tell (no idle check). */
+    lastEventAt: (remoteId: string) => string | null | undefined;
     private readonly jobs;
     /** `scripts` is consumed in start order; `runningPolls[i]` makes lane i report `running` that many times first. */
     /** '' for the first backend on a repository, then `-g2`, `-g3`, ... */
@@ -55,6 +57,8 @@ export declare class FakeLanes implements LaneBackend {
     wait(remoteId: string, _timeoutMs: number): Promise<LaneResult>;
     /** cancel() throws a plain error (the backend cannot tell whether the job stopped). */
     cancelFails: boolean;
+    /** 'completed': the job finished before cancel() reached it (its script runs; the terminal snapshot is completed). */
+    cancelFinds: 'completed' | undefined;
     cancel(remoteId: string): Promise<{
         supported: boolean;
         result: LaneResult;
@@ -132,6 +136,8 @@ export interface Harness {
         baseRefOid?: string;
         /** Heads `gh pr view` reports first, one per call (GitHub still showing an older push). */
         headSequence: string[];
+        /** `mergeable` answers of the mergeability read (`--json headRefOid,mergeable,...`), one per read, the last repeats (default MERGEABLE). */
+        mergeable?: string[];
         openPrs: number[];
         /** `gh pr ready` ran (the PR is no longer a draft). */
         ready: boolean;

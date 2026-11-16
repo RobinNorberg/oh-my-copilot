@@ -335,7 +335,7 @@ export function shipCommand(execImpl: Exec = defaultExec, loadShipConfig: ShipCo
   cmd
     .command('prepare <pr>')
     .description('Merge origin/<base> in (never rebase), run ship.prepare.checks or the tsc/lint/targeted tests the repository has, regenerate the inventory as the last commit')
-    .option('--no-checks', 'Skip the checks (merge + inventory only)')
+    .option('--no-checks', 'Skip the checks (merge + inventory only); a configured ship.prepare.build still runs, which runs the PR\'s build scripts unsandboxed')
     .option('--push', 'Plain push of the branch afterwards (never forced)')
     .option('--json', 'JSON output')
     .action((prRaw: string, o: { checks?: boolean; push?: boolean; json?: boolean }) =>
@@ -354,9 +354,13 @@ export function shipCommand(execImpl: Exec = defaultExec, loadShipConfig: ShipCo
         const { base: prBaseBranch, baseSha, repoUrl } = prBaseInfo(exec, pr);
         if (prBaseBranch !== state.base) throw new Error(`PR #${pr} targets ${prBaseBranch} on GitHub, but the ship run expects ${state.base}; re-run omg ship init ${pr} --force`);
         // ship.prepare.checks (a safety key) runs through the raw exec without a shell; unset = the built-ins the repository has.
-        const configured = o.checks === false ? undefined : loadShipConfig({ exec, root, base: state.base, baseSha, repoUrl }).prepareChecks;
+        // ship.prepare.build (the same trusted block) runs even with --no-checks: it is housekeeping like the inventory.
+        const shipConfig = loadShipConfig({ exec, root, base: state.base, baseSha, repoUrl });
+        const configured = o.checks === false ? undefined : shipConfig.prepareChecks;
         const commands = configured?.map((argv) => ({ argv, ...resolveLocalGateArgv(argv, { cwd: root, subject: 'the prepare check', configKey: 'ship.prepare.checks' }) }));
-        const result = runPrepare({ exec, cwd: root, base: state.base, branch: state.branch, reviewedSha, baseSha, repoUrl, checks: o.checks, push: o.push, commands, commandExec: execImpl });
+        const pb = shipConfig.prepareBuild;
+        const build = pb && { argv: pb.command, outputs: pb.outputs, ...resolveLocalGateArgv(pb.command, { cwd: root, subject: 'the prepare build', configKey: 'ship.prepare.build' }) };
+        const result = runPrepare({ exec, cwd: root, base: state.base, branch: state.branch, reviewedSha, baseSha, repoUrl, checks: o.checks, push: o.push, commands, build, commandExec: execImpl });
         const next = updateShipState(root, pr, (current) => {
           const s = current ?? state;
           const withCommits = { ...s, housekeepingCommits: [...s.housekeepingCommits, ...result.housekeepingCommits] };
@@ -559,7 +563,7 @@ export function shipCommand(execImpl: Exec = defaultExec, loadShipConfig: ShipCo
         const changedFiles = listChangedFiles(exec, root, prView.baseRefOid, prView.headRefOid);
         const reviewed = state.verdicts[state.verdicts.length - 1]?.sha;
         // The base was fetched and checked against baseRefOid by the strict config load above.
-        const since = readCommitsSinceReview(exec, root, reviewed, prView.headRefOid, prView.baseRefOid, state.housekeepingCommits);
+        const since = readCommitsSinceReview(exec, root, reviewed, prView.headRefOid, prView.baseRefOid, state.housekeepingCommits, config.prepareBuild?.outputs);
         const decision = decideMerge({
           state, pr: prView, gate, ...since, changedFiles,
           humanOverride: humanOverride(),

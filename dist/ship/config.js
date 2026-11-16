@@ -18,7 +18,7 @@ import { parseJsonc } from '../utils/jsonc.js';
 import { getConfigPaths, loadJsoncFile } from '../config/loader.js';
 import { LEGACY_PROJECT_CONFIG_FILE, resolveProjectConfigPath } from '../config/project-config-path.js';
 import { parseAzureDevOpsRepoUrl, urlHostAgrees } from '../providers/remote-url.js';
-import { TRUSTED_READ_ENV } from './exec.js';
+import { isBuildOutputDir, TRUSTED_READ_ENV } from './exec.js';
 /**
  * Every check oh-my-copilot's own CI reports on a PR to dev or main (ci.yml,
  * pr-check.yml); the jobs that consume the Build output start late (`needs:
@@ -138,6 +138,18 @@ export function resolveShipConfig(input) {
         const argv = (a) => Array.isArray(a) && a.length > 0 && a.every((x) => typeof x === 'string' && x.length > 0);
         if (checks !== undefined) {
             config.prepareChecks = Array.isArray(checks) && checks.every(argv) ? checks.map((a) => [...a]) : bad('prepare.checks', 'an array of argv arrays of non-empty strings, for example [["cargo", "check"]]');
+        }
+        const build = raw.prepare.build;
+        if (build !== undefined) {
+            const want = '{ "command": ["npm", "run", "build"], "outputs": ["dist"] }: an argv and one or more repo-relative directories (no . or .. segment; not in inventory, .git, .github, .copilot, .omg, .omc or node_modules)';
+            const b = build;
+            if (!b || typeof b !== 'object' || Array.isArray(b) || !argv(b.command) || !Array.isArray(b.outputs) || b.outputs.length === 0)
+                bad('prepare.build', want);
+            const outputs = b.outputs.map((o) => (typeof o === 'string' ? o.replace(/\/+$/, '') : o));
+            const okOutput = (o) => typeof o === 'string' && isBuildOutputDir(o);
+            if (!outputs.every(okOutput))
+                bad('prepare.build', want);
+            config.prepareBuild = { command: [...b.command], outputs: [...new Set(outputs)] };
         }
     }
     return config;
@@ -317,6 +329,11 @@ export function resolveTrustedBases(trustedUser) {
 export function trustedPrepareChecks(trustedUser, base) {
     const prepare = shipBlock(trustedUser, 'user config (default location)').prepare ?? shipBlock(base, BASE_CONFIG_PATH).prepare;
     return resolveShipConfig({ prepare }).prepareChecks;
+}
+/** ship.prepare.build as loadTrustedShipConfig resolves it (the same trusted `prepare` block as trustedPrepareChecks); undefined = no build. */
+export function trustedPrepareBuild(trustedUser, base) {
+    const prepare = shipBlock(trustedUser, 'user config (default location)').prepare ?? shipBlock(base, BASE_CONFIG_PATH).prepare;
+    return resolveShipConfig({ prepare }).prepareBuild;
 }
 /**
  * ship.requiredChecks as loadTrustedShipConfig resolves it (a safety key):

@@ -68,6 +68,8 @@ export class FakeLanes implements LaneBackend {
   readonly cancelled: string[] = [];
   /** Called on every wait() that still reports `running`. */
   onRunningPoll: (remoteId: string) => void = () => {};
+  /** The result's lastEventAt (the session's last event); undefined = the backend cannot tell (no idle check). */
+  lastEventAt: (remoteId: string) => string | null | undefined = () => undefined;
   private readonly jobs = new Map<string, FakeJob>();
 
   /** `scripts` is consumed in start order; `runningPolls[i]` makes lane i report `running` that many times first. */
@@ -108,7 +110,9 @@ export class FakeLanes implements LaneBackend {
   private result(job: FakeJob, remoteId: string, state: LaneState): LaneResult {
     const terminal = state !== 'running';
     const o = job.outcome ?? {};
+    const lastEventAt = this.lastEventAt(remoteId);
     return {
+      ...(lastEventAt !== undefined ? { lastEventAt } : {}),
       state,
       branch: job.ctx.branch || null,
       pr: null,
@@ -146,6 +150,8 @@ export class FakeLanes implements LaneBackend {
 
   /** cancel() throws a plain error (the backend cannot tell whether the job stopped). */
   cancelFails = false;
+  /** 'completed': the job finished before cancel() reached it (its script runs; the terminal snapshot is completed). */
+  cancelFinds: 'completed' | undefined = undefined;
 
   async cancel(remoteId: string): Promise<{ supported: boolean; result: LaneResult }> {
     this.cancelled.push(remoteId);
@@ -153,6 +159,10 @@ export class FakeLanes implements LaneBackend {
     const job = this.jobs.get(remoteId);
     // Like copilot_run after a restart: a job the backend does not know (or lost) is LaneLostError.
     if (!job || job.outcome?.lost) throw new LaneLostError(remoteId, `unknown job ${remoteId}`);
+    if (this.cancelFinds === 'completed') {
+      if (!job.outcome) job.outcome = job.script(job.ctx) ?? {};
+      return { supported: true, result: this.result(job, remoteId, 'completed') };
+    }
     job.outcome = { ...(job.outcome ?? {}), state: 'cancelled' };
     return { supported: true, result: this.result(job, remoteId, 'cancelled') };
   }
@@ -242,6 +252,8 @@ export interface Harness {
     baseRefOid?: string;
     /** Heads `gh pr view` reports first, one per call (GitHub still showing an older push). */
     headSequence: string[];
+    /** `mergeable` answers of the mergeability read (`--json headRefOid,mergeable,...`), one per read, the last repeats (default MERGEABLE). */
+    mergeable?: string[];
     openPrs: number[];
     /** `gh pr ready` ran (the PR is no longer a draft). */
     ready: boolean;
@@ -384,8 +396,13 @@ export function harness(prefix = 'omg-factory-run-'): Harness {
     if (key.startsWith(`gh pr view ${PR} --json `)) {
       const remote = bareRef(bare, `refs/heads/${h.gh.branch}`);
       const base = bareRef(bare, 'refs/heads/dev');
+      if (args[4] === 'headRefOid,mergeable,mergeStateStatus') {
+        const m = h.gh.mergeable ?? [];
+        const mergeable = (m.length > 1 ? m.shift() : m[0]) ?? 'MERGEABLE';
+        return ok(JSON.stringify({ headRefOid: h.gh.headOverride ?? remote, mergeable, mergeStateStatus: mergeable === 'CONFLICTING' ? 'DIRTY' : mergeable === 'MERGEABLE' ? 'CLEAN' : 'UNKNOWN' }));
+      }
       const headRefOid = h.gh.headSequence.shift() ?? h.gh.headOverride ?? remote;
-      return ok(JSON.stringify({ number: PR, headRefOid, state: h.gh.merged ? 'MERGED' : 'OPEN', isDraft: !h.gh.ready, baseRefName: 'dev', baseRefOid: h.gh.baseRefOid ?? base }));
+      return ok(JSON.stringify({ number: PR, headRefOid, state: h.gh.merged ? 'MERGED' : 'OPEN', isDraft: !h.gh.ready, baseRefName: 'dev', baseRefOid: h.gh.baseRefOid ?? base, headRefName: h.gh.branch, url: `${REPO_URL}/pull/${PR}` }));
     }
     if (key === `gh pr ready ${PR}`) {
       h.gh.ready = true;
