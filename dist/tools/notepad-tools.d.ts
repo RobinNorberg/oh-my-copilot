@@ -8,7 +8,7 @@ import { z } from 'zod';
 import { ToolDefinition } from './types.js';
 declare const SECTION_NAMES: [string, ...string[]];
 export declare const notepadReadTool: ToolDefinition<{
-    section: z.ZodOptional<z.ZodEnum<typeof SECTION_NAMES>>;
+    section: z.ZodOptional<z.ZodEnum<z.core.util.ToEnum<(typeof SECTION_NAMES)[number]>>>;
     workingDirectory: z.ZodOptional<z.ZodString>;
 }>;
 export declare const notepadWritePriorityTool: ToolDefinition<{
@@ -34,7 +34,7 @@ export declare const notepadStatsTool: ToolDefinition<{
  * All notepad tools for registration
  */
 export declare const notepadTools: (ToolDefinition<{
-    section: z.ZodOptional<z.ZodEnum<typeof SECTION_NAMES>>;
+    section: z.ZodOptional<z.ZodEnum<z.core.util.ToEnum<(typeof SECTION_NAMES)[number]>>>;
     workingDirectory: z.ZodOptional<z.ZodString>;
 }> | ToolDefinition<{
     content: z.ZodString;

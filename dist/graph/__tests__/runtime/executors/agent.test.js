@@ -2,10 +2,12 @@
  * Unit tests for the agent node executor. All SDK interactions go through
  * injected fakes — zero network in CI.
  */
+import { createRequire } from "node:module";
 import { describe, expect, it } from "vitest";
 import { sealGraphDescriptor } from "../../../descriptor.js";
 import { approvalDescriptor } from "../../fixtures.js";
 import { AgentNodeExecutor } from "../../../runtime/executors/agent.js";
+import { resolvePackageRoot } from "../../../../smoke/copilot-session-env.js";
 function makeContext(overrides) {
     const descriptor = sealGraphDescriptor(approvalDescriptor());
     const node = descriptor.nodes.find((n) => n.id === "entry");
@@ -56,6 +58,26 @@ describe("AgentNodeExecutor", () => {
         });
         expect(receivedOptions.options.env)
             .not.toHaveProperty("PARENT_SECRET_TOKEN");
+    });
+    // oh-my-copilot does not depend on @anthropic-ai/claude-agent-sdk, so the
+    // lazy import fails in a clean checkout and the node reports how to fix it.
+    // Skipped when a developer installed the peer: the real SDK must never run.
+    const sdkInstalled = (() => {
+        try {
+            createRequire(import.meta.url).resolve("@anthropic-ai/claude-agent-sdk");
+            return true;
+        }
+        catch {
+            return false;
+        }
+    })();
+    it.skipIf(sdkInstalled)("fails with an install hint when the optional SDK peer is absent", async () => {
+        const output = await new AgentNodeExecutor().execute(makeContext());
+        expect(output.outcome).toBe("failed");
+        expect(output.output_summary).toContain("optional peer dependency @anthropic-ai/claude-agent-sdk");
+        expect(output.output_summary).toContain("npm install @anthropic-ai/claude-agent-sdk");
+        expect(output.output_summary).toContain("npm install -g @anthropic-ai/claude-agent-sdk");
+        expect(output.output_summary).toContain(`next to oh-my-copilot in ${resolvePackageRoot()}`);
     });
     it("fails when the query throws", async () => {
         const executor = new AgentNodeExecutor(() => {

@@ -1079,7 +1079,7 @@ function publicStateForMode(mode: StateToolMode, state: unknown): unknown {
 // ============================================================================
 
 export const stateReadTool: ToolDefinition<{
-  mode: z.ZodEnum<typeof STATE_TOOL_MODES>;
+  mode: z.ZodEnum<z.core.util.ToEnum<(typeof STATE_TOOL_MODES)[number]>>;
   workingDirectory: z.ZodOptional<z.ZodString>;
   session_id: z.ZodOptional<z.ZodString>;
 }> = {
@@ -1246,7 +1246,7 @@ export const stateReadTool: ToolDefinition<{
 // ============================================================================
 
 export const stateWriteTool: ToolDefinition<{
-  mode: z.ZodEnum<typeof STATE_WRITE_MODES>;
+  mode: z.ZodEnum<z.core.util.ToEnum<(typeof STATE_WRITE_MODES)[number]>>;
   active: z.ZodOptional<z.ZodBoolean>;
   iteration: z.ZodOptional<z.ZodNumber>;
   max_iterations: z.ZodOptional<z.ZodNumber>;
@@ -1572,7 +1572,7 @@ function recoverAutopilotEmergencyTransactions(root: string, sessionId?: string)
 }
 
 export const stateClearTool: ToolDefinition<{
-  mode: z.ZodEnum<typeof STATE_TOOL_MODES>;
+  mode: z.ZodEnum<z.core.util.ToEnum<(typeof STATE_TOOL_MODES)[number]>>;
   workingDirectory: z.ZodOptional<z.ZodString>;
   session_id: z.ZodOptional<z.ZodString>;
 }> = {
@@ -2233,7 +2233,7 @@ export const stateListActiveTool: ToolDefinition<{
 // ============================================================================
 
 export const stateGetStatusTool: ToolDefinition<{
-  mode: z.ZodOptional<z.ZodEnum<typeof STATE_TOOL_MODES>>;
+  mode: z.ZodOptional<z.ZodEnum<z.core.util.ToEnum<(typeof STATE_TOOL_MODES)[number]>>>;
   workingDirectory: z.ZodOptional<z.ZodString>;
   session_id: z.ZodOptional<z.ZodString>;
 }> = {

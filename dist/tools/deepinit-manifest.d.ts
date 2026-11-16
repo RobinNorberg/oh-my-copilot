@@ -44,9 +44,16 @@ interface DiffResult {
     };
 }
 declare const deepinitManifestSchema: {
-    action: z.ZodEnum<["diff", "save", "check"]>;
+    action: z.ZodEnum<{
+        diff: "diff";
+        check: "check";
+        save: "save";
+    }>;
     workingDirectory: z.ZodOptional<z.ZodString>;
-    mode: z.ZodDefault<z.ZodOptional<z.ZodEnum<["incremental", "full"]>>>;
+    mode: z.ZodDefault<z.ZodOptional<z.ZodEnum<{
+        incremental: "incremental";
+        full: "full";
+    }>>>;
     dryRun: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
 };
 /**

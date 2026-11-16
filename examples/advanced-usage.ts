@@ -6,6 +6,7 @@
  * - Custom system prompts
  * - Context file injection
  * - MCP server configuration
+ * The Claude Agent SDK is an optional peer: run `npm install @anthropic-ai/claude-agent-sdk` yourself.
  */
 
 import {

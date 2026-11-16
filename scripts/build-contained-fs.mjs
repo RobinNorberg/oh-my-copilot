@@ -7,20 +7,16 @@ import { fileURLToPath } from 'node:url';
 
 // Build-time only. Runtime never invokes a compiler or downloads a binary.
 
-// Original behavior: darwin only, unless --optional or --force is passed
-const isOptional = process.argv.includes('--optional');
+// darwin only, unless --force is passed
 const isForceBuild = process.argv.includes('--force');
 
-// Skip on non-darwin platforms unless explicitly forced or optional
-if (process.platform !== 'darwin' && !isForceBuild && !isOptional) {
+// Skip on non-darwin platforms unless explicitly forced
+if (process.platform !== 'darwin' && !isForceBuild) {
   process.exit(0);
 }
 
-// Fail loudly if platform is unsupported AND not optional
+// Fail loudly if platform is unsupported
 if (!['darwin', 'linux'].includes(process.platform)) {
-  if (isOptional) {
-    process.exit(0);
-  }
   throw new Error('Unsupported native build platform');
 }
 
@@ -39,10 +35,6 @@ const candidates = [
 
 const headers = candidates.find(path => existsSync(join(path, 'node_api.h')));
 if (!headers) {
-  if (isOptional) {
-    // Graceful skip for optional builds
-    process.exit(0);
-  }
   throw new Error('Node development headers are required. Supply --headers=/absolute/path/to/include/node (node_api.h), or populate the node-gyp cache before building. No headers are downloaded by this script.');
 }
 

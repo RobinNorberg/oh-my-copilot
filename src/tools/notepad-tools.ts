@@ -32,7 +32,7 @@ const SECTION_NAMES: [string, ...string[]] = ['all', 'priority', 'working', 'man
 // ============================================================================
 
 export const notepadReadTool: ToolDefinition<{
-  section: z.ZodOptional<z.ZodEnum<typeof SECTION_NAMES>>;
+  section: z.ZodOptional<z.ZodEnum<z.core.util.ToEnum<(typeof SECTION_NAMES)[number]>>>;
   workingDirectory: z.ZodOptional<z.ZodString>;
 }> = {
   name: 'notepad_read',

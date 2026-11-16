@@ -22,7 +22,7 @@ export interface McpServerConfig {
 export function createExaServer(apiKey?: string): McpServerConfig {
   return {
     command: 'npx',
-    args: ['-y', 'exa-mcp-server'],
+    args: ['-y', 'exa-mcp-server@3.4.3'],
     env: apiKey ? { EXA_API_KEY: apiKey } : undefined
   };
 }
@@ -45,7 +45,7 @@ export function createContext7Server(): McpServerConfig {
 export function createPlaywrightServer(): McpServerConfig {
   return {
     command: 'npx',
-    args: ['-y', '@playwright/mcp@latest']
+    args: ['-y', '@playwright/mcp@0.0.85']
   };
 }
 

@@ -301,7 +301,7 @@ function formatMatch(
  */
 export const astGrepSearchTool: AstToolDefinition<{
   pattern: z.ZodString;
-  language: z.ZodEnum<[string, ...string[]]>;
+  language: z.ZodEnum<z.core.util.ToEnum<string>>;
   path: z.ZodOptional<z.ZodString>;
   context: z.ZodOptional<z.ZodNumber>;
   maxResults: z.ZodOptional<z.ZodNumber>;
@@ -456,7 +456,7 @@ Note: Patterns must be valid AST nodes for the language.`,
 export const astGrepReplaceTool: AstToolDefinition<{
   pattern: z.ZodString;
   replacement: z.ZodString;
-  language: z.ZodEnum<[string, ...string[]]>;
+  language: z.ZodEnum<z.core.util.ToEnum<string>>;
   path: z.ZodOptional<z.ZodString>;
   dryRun: z.ZodOptional<z.ZodBoolean>;
 }> = {

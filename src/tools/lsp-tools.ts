@@ -209,7 +209,7 @@ export const lspWorkspaceSymbolsTool: ToolDefinition<{
  */
 export const lspDiagnosticsTool: ToolDefinition<{
   file: z.ZodString;
-  severity: z.ZodOptional<z.ZodEnum<['error', 'warning', 'info', 'hint']>>;
+  severity: z.ZodOptional<z.ZodEnum<z.core.util.ToEnum<'error' | 'warning' | 'info' | 'hint'>>>;
 }> = {
   name: 'lsp_diagnostics',
   description: 'Get language server diagnostics (errors, warnings, hints) for a file. Useful for finding issues without running the compiler.',
@@ -446,7 +446,7 @@ export const lspCodeActionResolveTool: ToolDefinition<{
  */
 export const lspDiagnosticsDirectoryTool: ToolDefinition<{
   directory: z.ZodString;
-  strategy: z.ZodOptional<z.ZodEnum<['tsc', 'lsp', 'auto']>>;
+  strategy: z.ZodOptional<z.ZodEnum<z.core.util.ToEnum<'tsc' | 'lsp' | 'auto'>>>;
 }> = {
   name: 'lsp_diagnostics_directory',
   description: 'Run project-level diagnostics on a directory using tsc --noEmit (preferred) or LSP iteration (fallback). Useful for checking the entire codebase for errors.',

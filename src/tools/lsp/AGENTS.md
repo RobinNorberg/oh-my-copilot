@@ -109,7 +109,7 @@ npm test -- --grep "lsp"
 ### External
 | Package | Purpose |
 |---------|---------|
-| `vscode-languageserver-protocol` | LSP type definitions |
+| (none) | The LSP client and its protocol types are hand-written here; no LSP package |
 | `child_process` | Spawning language servers |
 | `fs`, `path` | File operations |
 
