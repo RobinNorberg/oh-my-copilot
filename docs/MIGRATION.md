@@ -6,6 +6,7 @@ This guide covers all migration paths for oh-my-copilot. Find your current versi
 
 ## Table of Contents
 
+- [Unreleased: No npm Install Script](#unreleased-no-npm-install-script)
 - [Unreleased: Shipyard and Factory Chain Routes](#unreleased-shipyard-and-factory-chain-routes)
 - [Unreleased: omg factory run](#unreleased-omg-factory-run)
 - [Unreleased: Budget Unit Is AI Credits](#unreleased-budget-unit-is-ai-credits)
@@ -37,6 +38,29 @@ This guide covers all migration paths for oh-my-copilot. Find your current versi
 - [v2.x → v3.0: Package Rename & Auto-Activation](#v2x--v30-package-rename--auto-activation)
 - [v3.0 → v3.1: Notepad Wisdom & Enhanced Features](#v30--v31-notepad-wisdom--enhanced-features)
 - [v3.x → v4.0: Major Architecture Overhaul](#v3x--v40-major-architecture-overhaul)
+
+---
+
+## Unreleased: No npm Install Script
+
+The package no longer declares a `postinstall` script, and
+`scripts/postinstall-contained-fs.mjs` is removed. Supply-chain scanners such as
+Socket flag any install script.
+
+- **Linux and Windows:** nothing changes. The hook did nothing there.
+- **macOS:** `npm install` no longer tries to compile the contained-fs native
+  addon. `omg graph` and `omg team` need it on macOS; without it they stop with an
+  error that names the build command. Build it once per install (and again after
+  an upgrade or a Node major change) from the installed package directory:
+
+  ```sh
+  cd "$(npm root -g)/oh-my-copilot"
+  node scripts/build-contained-fs.mjs
+  ```
+
+  It needs Xcode Command Line Tools and Node headers (the node-gyp cache, or
+  `--headers=/absolute/path/to/include/node`). See
+  [graph-contained-filesystem.md](graph-contained-filesystem.md#building-and-shipping).
 
 ---
 
@@ -595,7 +619,8 @@ There is nothing to migrate: no config, command or skill changes.
   Xcode Command Line Tools are unavailable it prints a warning and you can
   build later with `node scripts/build-contained-fs.mjs` from the package
   root. On Linux and Windows it does nothing. The hook always exits 0, so it
-  never fails the install.
+  never fails the install. (Removed again later; see
+  [No npm Install Script](#unreleased-no-npm-install-script).)
 
 ---
 

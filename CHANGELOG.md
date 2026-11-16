@@ -6,7 +6,11 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ### Security
 
-- Upgrade `zod` 3 → `^4.6.7` (fixes CVE-2023-54404 / GHSA-mrhx-c7xc-m3w5, memory exhaustion validating oversized constrained collections) and `@modelcontextprotocol/sdk` to `^1.32.2`; the production tree now holds a single zod 4. MCP tool schemas sent over `tools/list` are unchanged; zod validation messages (e.g. `python_repl` input errors) now use zod 4 wording.
+- Upgrade `zod` 3 → `^4.6.7` (fixes CVE-2023-54404 / GHSA-mrhx-c7xc-m3w5, memory exhaustion validating oversized constrained collections) and `@modelcontextprotocol/sdk` to `^1.32.2`; the production tree now holds a single zod 4. MCP tool schemas sent over `tools/list` are unchanged; zod validation messages (e.g. `python_repl` input errors) now use zod 4 wording, and numbers reject `Infinity` and unsafe integers.
+
+### Changed
+
+- **The npm package has no install script.** The `postinstall` hook and `scripts/postinstall-contained-fs.mjs` are gone, so supply-chain scanners no longer flag the package. Linux and Windows are unaffected. On macOS, `npm install` no longer builds the contained-fs addon; `omg graph` and `omg team` report the missing addon with the build command, `node scripts/build-contained-fs.mjs` run from the installed package directory. See [MIGRATION.md](docs/MIGRATION.md#unreleased-no-npm-install-script).
 
 # oh-my-copilot v5.28.0
 
