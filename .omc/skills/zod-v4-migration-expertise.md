@@ -40,3 +40,11 @@ console.log(Object.keys(z.enum(['a','b'])._def));     // v3: ['values'] → v4: 
 
 - `ZodEnum<['a','b']>` (tuple) → `ZodEnum<{a:'a', b:'b'}>` (record) — breaks explicit generic annotations
 - `z.record(z.unknown())` → `z.record(z.string(), z.unknown())` — key type now required
+
+### Behaviour changes found in this codebase
+
+- A bare `z.unknown()` / `z.any()` object field is now required; zod 3 accepted a missing key. Add `.optional()` where the field was optional (fixed in `shared-memory-tools.ts` `value`).
+- `.default(x).optional()` now applies the default when the key is missing (v3 left it undefined).
+- Issue code `invalid_enum_value` is now `invalid_value`.
+- Numbers reject `Infinity` and unsafe integers.
+- esbuild bundles: alias `'zod/v4': 'zod'` (see `scripts/build-mcp-server.mjs`, `build-cli.mjs`) so the MCP SDK and our code share one init path.

@@ -20,343 +20,101 @@ export declare const graphAgentNodeSchema: z.ZodObject<{
     instructions: z.ZodString;
     timeout_ms: z.ZodNumber;
     max_attempts: z.ZodNumber;
-    effect_policy: z.ZodDiscriminatedUnion<"policy", [z.ZodObject<{
+    effect_policy: z.ZodDiscriminatedUnion<[z.ZodObject<{
         policy: z.ZodLiteral<"side_effect_free">;
-    }, "strict", z.ZodTypeAny, {
-        policy: "side_effect_free";
-    }, {
-        policy: "side_effect_free";
-    }>, z.ZodObject<{
+    }, z.core.$strict>, z.ZodObject<{
         policy: z.ZodLiteral<"idempotent">;
         idempotency_key_template: z.ZodString;
-    }, "strict", z.ZodTypeAny, {
-        policy: "idempotent";
-        idempotency_key_template: string;
-    }, {
-        policy: "idempotent";
-        idempotency_key_template: string;
-    }>, z.ZodObject<{
+    }, z.core.$strict>, z.ZodObject<{
         policy: z.ZodLiteral<"reconcile">;
-    }, "strict", z.ZodTypeAny, {
-        policy: "reconcile";
-    }, {
-        policy: "reconcile";
-    }>]>;
+    }, z.core.$strict>], "policy">;
     id: z.ZodString;
     title: z.ZodString;
-}, "strict", z.ZodTypeAny, {
-    id: string;
-    title: string;
-    kind: "agent";
-    instructions: string;
-    timeout_ms: number;
-    max_attempts: number;
-    effect_policy: {
-        policy: "side_effect_free";
-    } | {
-        policy: "idempotent";
-        idempotency_key_template: string;
-    } | {
-        policy: "reconcile";
-    };
-}, {
-    id: string;
-    title: string;
-    kind: "agent";
-    instructions: string;
-    timeout_ms: number;
-    max_attempts: number;
-    effect_policy: {
-        policy: "side_effect_free";
-    } | {
-        policy: "idempotent";
-        idempotency_key_template: string;
-    } | {
-        policy: "reconcile";
-    };
-}>;
+}, z.core.$strict>;
 export declare const graphCommandNodeSchema: z.ZodObject<{
     kind: z.ZodLiteral<"command">;
     command: z.ZodString;
     timeout_ms: z.ZodNumber;
     max_attempts: z.ZodNumber;
-    effect_policy: z.ZodDiscriminatedUnion<"policy", [z.ZodObject<{
+    effect_policy: z.ZodDiscriminatedUnion<[z.ZodObject<{
         policy: z.ZodLiteral<"side_effect_free">;
-    }, "strict", z.ZodTypeAny, {
-        policy: "side_effect_free";
-    }, {
-        policy: "side_effect_free";
-    }>, z.ZodObject<{
+    }, z.core.$strict>, z.ZodObject<{
         policy: z.ZodLiteral<"idempotent">;
         idempotency_key_template: z.ZodString;
-    }, "strict", z.ZodTypeAny, {
-        policy: "idempotent";
-        idempotency_key_template: string;
-    }, {
-        policy: "idempotent";
-        idempotency_key_template: string;
-    }>, z.ZodObject<{
+    }, z.core.$strict>, z.ZodObject<{
         policy: z.ZodLiteral<"reconcile">;
-    }, "strict", z.ZodTypeAny, {
-        policy: "reconcile";
-    }, {
-        policy: "reconcile";
-    }>]>;
+    }, z.core.$strict>], "policy">;
     id: z.ZodString;
     title: z.ZodString;
-}, "strict", z.ZodTypeAny, {
-    id: string;
-    title: string;
-    kind: "command";
-    command: string;
-    timeout_ms: number;
-    max_attempts: number;
-    effect_policy: {
-        policy: "side_effect_free";
-    } | {
-        policy: "idempotent";
-        idempotency_key_template: string;
-    } | {
-        policy: "reconcile";
-    };
-}, {
-    id: string;
-    title: string;
-    kind: "command";
-    command: string;
-    timeout_ms: number;
-    max_attempts: number;
-    effect_policy: {
-        policy: "side_effect_free";
-    } | {
-        policy: "idempotent";
-        idempotency_key_template: string;
-    } | {
-        policy: "reconcile";
-    };
-}>;
+}, z.core.$strict>;
 export declare const graphHumanApprovalNodeSchema: z.ZodObject<{
     kind: z.ZodLiteral<"human-approval">;
     prompt: z.ZodString;
     id: z.ZodString;
     title: z.ZodString;
-}, "strict", z.ZodTypeAny, {
-    id: string;
-    title: string;
-    kind: "human-approval";
-    prompt: string;
-}, {
-    id: string;
-    title: string;
-    kind: "human-approval";
-    prompt: string;
-}>;
+}, z.core.$strict>;
 export declare const graphJoinNodeSchema: z.ZodObject<{
     kind: z.ZodLiteral<"join">;
     fan_out_node_id: z.ZodString;
-    input_branch_ids: z.ZodArray<z.ZodString, "many">;
+    input_branch_ids: z.ZodArray<z.ZodString>;
     id: z.ZodString;
     title: z.ZodString;
-}, "strict", z.ZodTypeAny, {
-    id: string;
-    title: string;
-    kind: "join";
-    fan_out_node_id: string;
-    input_branch_ids: string[];
-}, {
-    id: string;
-    title: string;
-    kind: "join";
-    fan_out_node_id: string;
-    input_branch_ids: string[];
-}>;
-export declare const graphNodeSchema: z.ZodDiscriminatedUnion<"kind", [z.ZodObject<{
+}, z.core.$strict>;
+export declare const graphNodeSchema: z.ZodDiscriminatedUnion<[z.ZodObject<{
     kind: z.ZodLiteral<"agent">;
     instructions: z.ZodString;
     timeout_ms: z.ZodNumber;
     max_attempts: z.ZodNumber;
-    effect_policy: z.ZodDiscriminatedUnion<"policy", [z.ZodObject<{
+    effect_policy: z.ZodDiscriminatedUnion<[z.ZodObject<{
         policy: z.ZodLiteral<"side_effect_free">;
-    }, "strict", z.ZodTypeAny, {
-        policy: "side_effect_free";
-    }, {
-        policy: "side_effect_free";
-    }>, z.ZodObject<{
+    }, z.core.$strict>, z.ZodObject<{
         policy: z.ZodLiteral<"idempotent">;
         idempotency_key_template: z.ZodString;
-    }, "strict", z.ZodTypeAny, {
-        policy: "idempotent";
-        idempotency_key_template: string;
-    }, {
-        policy: "idempotent";
-        idempotency_key_template: string;
-    }>, z.ZodObject<{
+    }, z.core.$strict>, z.ZodObject<{
         policy: z.ZodLiteral<"reconcile">;
-    }, "strict", z.ZodTypeAny, {
-        policy: "reconcile";
-    }, {
-        policy: "reconcile";
-    }>]>;
+    }, z.core.$strict>], "policy">;
     id: z.ZodString;
     title: z.ZodString;
-}, "strict", z.ZodTypeAny, {
-    id: string;
-    title: string;
-    kind: "agent";
-    instructions: string;
-    timeout_ms: number;
-    max_attempts: number;
-    effect_policy: {
-        policy: "side_effect_free";
-    } | {
-        policy: "idempotent";
-        idempotency_key_template: string;
-    } | {
-        policy: "reconcile";
-    };
-}, {
-    id: string;
-    title: string;
-    kind: "agent";
-    instructions: string;
-    timeout_ms: number;
-    max_attempts: number;
-    effect_policy: {
-        policy: "side_effect_free";
-    } | {
-        policy: "idempotent";
-        idempotency_key_template: string;
-    } | {
-        policy: "reconcile";
-    };
-}>, z.ZodObject<{
+}, z.core.$strict>, z.ZodObject<{
     kind: z.ZodLiteral<"command">;
     command: z.ZodString;
     timeout_ms: z.ZodNumber;
     max_attempts: z.ZodNumber;
-    effect_policy: z.ZodDiscriminatedUnion<"policy", [z.ZodObject<{
+    effect_policy: z.ZodDiscriminatedUnion<[z.ZodObject<{
         policy: z.ZodLiteral<"side_effect_free">;
-    }, "strict", z.ZodTypeAny, {
-        policy: "side_effect_free";
-    }, {
-        policy: "side_effect_free";
-    }>, z.ZodObject<{
+    }, z.core.$strict>, z.ZodObject<{
         policy: z.ZodLiteral<"idempotent">;
         idempotency_key_template: z.ZodString;
-    }, "strict", z.ZodTypeAny, {
-        policy: "idempotent";
-        idempotency_key_template: string;
-    }, {
-        policy: "idempotent";
-        idempotency_key_template: string;
-    }>, z.ZodObject<{
+    }, z.core.$strict>, z.ZodObject<{
         policy: z.ZodLiteral<"reconcile">;
-    }, "strict", z.ZodTypeAny, {
-        policy: "reconcile";
-    }, {
-        policy: "reconcile";
-    }>]>;
+    }, z.core.$strict>], "policy">;
     id: z.ZodString;
     title: z.ZodString;
-}, "strict", z.ZodTypeAny, {
-    id: string;
-    title: string;
-    kind: "command";
-    command: string;
-    timeout_ms: number;
-    max_attempts: number;
-    effect_policy: {
-        policy: "side_effect_free";
-    } | {
-        policy: "idempotent";
-        idempotency_key_template: string;
-    } | {
-        policy: "reconcile";
-    };
-}, {
-    id: string;
-    title: string;
-    kind: "command";
-    command: string;
-    timeout_ms: number;
-    max_attempts: number;
-    effect_policy: {
-        policy: "side_effect_free";
-    } | {
-        policy: "idempotent";
-        idempotency_key_template: string;
-    } | {
-        policy: "reconcile";
-    };
-}>, z.ZodObject<{
+}, z.core.$strict>, z.ZodObject<{
     kind: z.ZodLiteral<"human-approval">;
     prompt: z.ZodString;
     id: z.ZodString;
     title: z.ZodString;
-}, "strict", z.ZodTypeAny, {
-    id: string;
-    title: string;
-    kind: "human-approval";
-    prompt: string;
-}, {
-    id: string;
-    title: string;
-    kind: "human-approval";
-    prompt: string;
-}>, z.ZodObject<{
+}, z.core.$strict>, z.ZodObject<{
     kind: z.ZodLiteral<"join">;
     fan_out_node_id: z.ZodString;
-    input_branch_ids: z.ZodArray<z.ZodString, "many">;
+    input_branch_ids: z.ZodArray<z.ZodString>;
     id: z.ZodString;
     title: z.ZodString;
-}, "strict", z.ZodTypeAny, {
-    id: string;
-    title: string;
-    kind: "join";
-    fan_out_node_id: string;
-    input_branch_ids: string[];
-}, {
-    id: string;
-    title: string;
-    kind: "join";
-    fan_out_node_id: string;
-    input_branch_ids: string[];
-}>]>;
+}, z.core.$strict>], "kind">;
 export declare const graphFixedEdgeSchema: z.ZodObject<{
     kind: z.ZodLiteral<"fixed">;
     id: z.ZodString;
     from: z.ZodString;
     to: z.ZodString;
-}, "strict", z.ZodTypeAny, {
-    id: string;
-    kind: "fixed";
-    to: string;
-    from: string;
-}, {
-    id: string;
-    kind: "fixed";
-    to: string;
-    from: string;
-}>;
+}, z.core.$strict>;
 export declare const graphConditionalEdgeSchema: z.ZodObject<{
     kind: z.ZodLiteral<"conditional">;
     route: z.ZodString;
     id: z.ZodString;
     from: z.ZodString;
     to: z.ZodString;
-}, "strict", z.ZodTypeAny, {
-    id: string;
-    kind: "conditional";
-    route: string;
-    to: string;
-    from: string;
-}, {
-    id: string;
-    kind: "conditional";
-    route: string;
-    to: string;
-    from: string;
-}>;
+}, z.core.$strict>;
 export declare const graphFanOutEdgeSchema: z.ZodObject<{
     kind: z.ZodLiteral<"fan_out">;
     branch_id: z.ZodString;
@@ -364,21 +122,7 @@ export declare const graphFanOutEdgeSchema: z.ZodObject<{
     id: z.ZodString;
     from: z.ZodString;
     to: z.ZodString;
-}, "strict", z.ZodTypeAny, {
-    id: string;
-    kind: "fan_out";
-    to: string;
-    from: string;
-    branch_id: string;
-    owner_join_id: string;
-}, {
-    id: string;
-    kind: "fan_out";
-    to: string;
-    from: string;
-    branch_id: string;
-    owner_join_id: string;
-}>;
+}, z.core.$strict>;
 export declare const graphBackEdgeSchema: z.ZodObject<{
     kind: z.ZodLiteral<"back_edge">;
     route: z.ZodString;
@@ -386,577 +130,161 @@ export declare const graphBackEdgeSchema: z.ZodObject<{
     id: z.ZodString;
     from: z.ZodString;
     to: z.ZodString;
-}, "strict", z.ZodTypeAny, {
-    id: string;
-    kind: "back_edge";
-    route: string;
-    to: string;
-    from: string;
-    max_traversals: number;
-}, {
-    id: string;
-    kind: "back_edge";
-    route: string;
-    to: string;
-    from: string;
-    max_traversals: number;
-}>;
-export declare const graphEdgeSchema: z.ZodDiscriminatedUnion<"kind", [z.ZodObject<{
+}, z.core.$strict>;
+export declare const graphEdgeSchema: z.ZodDiscriminatedUnion<[z.ZodObject<{
     kind: z.ZodLiteral<"fixed">;
     id: z.ZodString;
     from: z.ZodString;
     to: z.ZodString;
-}, "strict", z.ZodTypeAny, {
-    id: string;
-    kind: "fixed";
-    to: string;
-    from: string;
-}, {
-    id: string;
-    kind: "fixed";
-    to: string;
-    from: string;
-}>, z.ZodObject<{
+}, z.core.$strict>, z.ZodObject<{
     kind: z.ZodLiteral<"conditional">;
     route: z.ZodString;
     id: z.ZodString;
     from: z.ZodString;
     to: z.ZodString;
-}, "strict", z.ZodTypeAny, {
-    id: string;
-    kind: "conditional";
-    route: string;
-    to: string;
-    from: string;
-}, {
-    id: string;
-    kind: "conditional";
-    route: string;
-    to: string;
-    from: string;
-}>, z.ZodObject<{
+}, z.core.$strict>, z.ZodObject<{
     kind: z.ZodLiteral<"fan_out">;
     branch_id: z.ZodString;
     owner_join_id: z.ZodString;
     id: z.ZodString;
     from: z.ZodString;
     to: z.ZodString;
-}, "strict", z.ZodTypeAny, {
-    id: string;
-    kind: "fan_out";
-    to: string;
-    from: string;
-    branch_id: string;
-    owner_join_id: string;
-}, {
-    id: string;
-    kind: "fan_out";
-    to: string;
-    from: string;
-    branch_id: string;
-    owner_join_id: string;
-}>, z.ZodObject<{
+}, z.core.$strict>, z.ZodObject<{
     kind: z.ZodLiteral<"back_edge">;
     route: z.ZodString;
     max_traversals: z.ZodNumber;
     id: z.ZodString;
     from: z.ZodString;
     to: z.ZodString;
-}, "strict", z.ZodTypeAny, {
-    id: string;
-    kind: "back_edge";
-    route: string;
-    to: string;
-    from: string;
-    max_traversals: number;
-}, {
-    id: string;
-    kind: "back_edge";
-    route: string;
-    to: string;
-    from: string;
-    max_traversals: number;
-}>]>;
+}, z.core.$strict>], "kind">;
 export declare const graphDescriptorSchema: z.ZodObject<{
     descriptor_version: z.ZodLiteral<1>;
     run_id: z.ZodString;
     revision_id: z.ZodString;
     goal: z.ZodString;
-    nodes: z.ZodArray<z.ZodDiscriminatedUnion<"kind", [z.ZodObject<{
+    nodes: z.ZodArray<z.ZodDiscriminatedUnion<[z.ZodObject<{
         kind: z.ZodLiteral<"agent">;
         instructions: z.ZodString;
         timeout_ms: z.ZodNumber;
         max_attempts: z.ZodNumber;
-        effect_policy: z.ZodDiscriminatedUnion<"policy", [z.ZodObject<{
+        effect_policy: z.ZodDiscriminatedUnion<[z.ZodObject<{
             policy: z.ZodLiteral<"side_effect_free">;
-        }, "strict", z.ZodTypeAny, {
-            policy: "side_effect_free";
-        }, {
-            policy: "side_effect_free";
-        }>, z.ZodObject<{
+        }, z.core.$strict>, z.ZodObject<{
             policy: z.ZodLiteral<"idempotent">;
             idempotency_key_template: z.ZodString;
-        }, "strict", z.ZodTypeAny, {
-            policy: "idempotent";
-            idempotency_key_template: string;
-        }, {
-            policy: "idempotent";
-            idempotency_key_template: string;
-        }>, z.ZodObject<{
+        }, z.core.$strict>, z.ZodObject<{
             policy: z.ZodLiteral<"reconcile">;
-        }, "strict", z.ZodTypeAny, {
-            policy: "reconcile";
-        }, {
-            policy: "reconcile";
-        }>]>;
+        }, z.core.$strict>], "policy">;
         id: z.ZodString;
         title: z.ZodString;
-    }, "strict", z.ZodTypeAny, {
-        id: string;
-        title: string;
-        kind: "agent";
-        instructions: string;
-        timeout_ms: number;
-        max_attempts: number;
-        effect_policy: {
-            policy: "side_effect_free";
-        } | {
-            policy: "idempotent";
-            idempotency_key_template: string;
-        } | {
-            policy: "reconcile";
-        };
-    }, {
-        id: string;
-        title: string;
-        kind: "agent";
-        instructions: string;
-        timeout_ms: number;
-        max_attempts: number;
-        effect_policy: {
-            policy: "side_effect_free";
-        } | {
-            policy: "idempotent";
-            idempotency_key_template: string;
-        } | {
-            policy: "reconcile";
-        };
-    }>, z.ZodObject<{
+    }, z.core.$strict>, z.ZodObject<{
         kind: z.ZodLiteral<"command">;
         command: z.ZodString;
         timeout_ms: z.ZodNumber;
         max_attempts: z.ZodNumber;
-        effect_policy: z.ZodDiscriminatedUnion<"policy", [z.ZodObject<{
+        effect_policy: z.ZodDiscriminatedUnion<[z.ZodObject<{
             policy: z.ZodLiteral<"side_effect_free">;
-        }, "strict", z.ZodTypeAny, {
-            policy: "side_effect_free";
-        }, {
-            policy: "side_effect_free";
-        }>, z.ZodObject<{
+        }, z.core.$strict>, z.ZodObject<{
             policy: z.ZodLiteral<"idempotent">;
             idempotency_key_template: z.ZodString;
-        }, "strict", z.ZodTypeAny, {
-            policy: "idempotent";
-            idempotency_key_template: string;
-        }, {
-            policy: "idempotent";
-            idempotency_key_template: string;
-        }>, z.ZodObject<{
+        }, z.core.$strict>, z.ZodObject<{
             policy: z.ZodLiteral<"reconcile">;
-        }, "strict", z.ZodTypeAny, {
-            policy: "reconcile";
-        }, {
-            policy: "reconcile";
-        }>]>;
+        }, z.core.$strict>], "policy">;
         id: z.ZodString;
         title: z.ZodString;
-    }, "strict", z.ZodTypeAny, {
-        id: string;
-        title: string;
-        kind: "command";
-        command: string;
-        timeout_ms: number;
-        max_attempts: number;
-        effect_policy: {
-            policy: "side_effect_free";
-        } | {
-            policy: "idempotent";
-            idempotency_key_template: string;
-        } | {
-            policy: "reconcile";
-        };
-    }, {
-        id: string;
-        title: string;
-        kind: "command";
-        command: string;
-        timeout_ms: number;
-        max_attempts: number;
-        effect_policy: {
-            policy: "side_effect_free";
-        } | {
-            policy: "idempotent";
-            idempotency_key_template: string;
-        } | {
-            policy: "reconcile";
-        };
-    }>, z.ZodObject<{
+    }, z.core.$strict>, z.ZodObject<{
         kind: z.ZodLiteral<"human-approval">;
         prompt: z.ZodString;
         id: z.ZodString;
         title: z.ZodString;
-    }, "strict", z.ZodTypeAny, {
-        id: string;
-        title: string;
-        kind: "human-approval";
-        prompt: string;
-    }, {
-        id: string;
-        title: string;
-        kind: "human-approval";
-        prompt: string;
-    }>, z.ZodObject<{
+    }, z.core.$strict>, z.ZodObject<{
         kind: z.ZodLiteral<"join">;
         fan_out_node_id: z.ZodString;
-        input_branch_ids: z.ZodArray<z.ZodString, "many">;
+        input_branch_ids: z.ZodArray<z.ZodString>;
         id: z.ZodString;
         title: z.ZodString;
-    }, "strict", z.ZodTypeAny, {
-        id: string;
-        title: string;
-        kind: "join";
-        fan_out_node_id: string;
-        input_branch_ids: string[];
-    }, {
-        id: string;
-        title: string;
-        kind: "join";
-        fan_out_node_id: string;
-        input_branch_ids: string[];
-    }>]>, "many">;
-    edges: z.ZodArray<z.ZodDiscriminatedUnion<"kind", [z.ZodObject<{
+    }, z.core.$strict>], "kind">>;
+    edges: z.ZodArray<z.ZodDiscriminatedUnion<[z.ZodObject<{
         kind: z.ZodLiteral<"fixed">;
         id: z.ZodString;
         from: z.ZodString;
         to: z.ZodString;
-    }, "strict", z.ZodTypeAny, {
-        id: string;
-        kind: "fixed";
-        to: string;
-        from: string;
-    }, {
-        id: string;
-        kind: "fixed";
-        to: string;
-        from: string;
-    }>, z.ZodObject<{
+    }, z.core.$strict>, z.ZodObject<{
         kind: z.ZodLiteral<"conditional">;
         route: z.ZodString;
         id: z.ZodString;
         from: z.ZodString;
         to: z.ZodString;
-    }, "strict", z.ZodTypeAny, {
-        id: string;
-        kind: "conditional";
-        route: string;
-        to: string;
-        from: string;
-    }, {
-        id: string;
-        kind: "conditional";
-        route: string;
-        to: string;
-        from: string;
-    }>, z.ZodObject<{
+    }, z.core.$strict>, z.ZodObject<{
         kind: z.ZodLiteral<"fan_out">;
         branch_id: z.ZodString;
         owner_join_id: z.ZodString;
         id: z.ZodString;
         from: z.ZodString;
         to: z.ZodString;
-    }, "strict", z.ZodTypeAny, {
-        id: string;
-        kind: "fan_out";
-        to: string;
-        from: string;
-        branch_id: string;
-        owner_join_id: string;
-    }, {
-        id: string;
-        kind: "fan_out";
-        to: string;
-        from: string;
-        branch_id: string;
-        owner_join_id: string;
-    }>, z.ZodObject<{
+    }, z.core.$strict>, z.ZodObject<{
         kind: z.ZodLiteral<"back_edge">;
         route: z.ZodString;
         max_traversals: z.ZodNumber;
         id: z.ZodString;
         from: z.ZodString;
         to: z.ZodString;
-    }, "strict", z.ZodTypeAny, {
-        id: string;
-        kind: "back_edge";
-        route: string;
-        to: string;
-        from: string;
-        max_traversals: number;
-    }, {
-        id: string;
-        kind: "back_edge";
-        route: string;
-        to: string;
-        from: string;
-        max_traversals: number;
-    }>]>, "many">;
-    entry_node_ids: z.ZodArray<z.ZodString, "many">;
+    }, z.core.$strict>], "kind">>;
+    entry_node_ids: z.ZodArray<z.ZodString>;
     concurrency_limit: z.ZodNumber;
     terminal_verification_node_id: z.ZodString;
     descriptor_hash: z.ZodOptional<z.ZodString>;
-}, "strict", z.ZodTypeAny, {
-    goal: string;
-    nodes: ({
-        id: string;
-        title: string;
-        kind: "agent";
-        instructions: string;
-        timeout_ms: number;
-        max_attempts: number;
-        effect_policy: {
-            policy: "side_effect_free";
-        } | {
-            policy: "idempotent";
-            idempotency_key_template: string;
-        } | {
-            policy: "reconcile";
-        };
-    } | {
-        id: string;
-        title: string;
-        kind: "command";
-        command: string;
-        timeout_ms: number;
-        max_attempts: number;
-        effect_policy: {
-            policy: "side_effect_free";
-        } | {
-            policy: "idempotent";
-            idempotency_key_template: string;
-        } | {
-            policy: "reconcile";
-        };
-    } | {
-        id: string;
-        title: string;
-        kind: "human-approval";
-        prompt: string;
-    } | {
-        id: string;
-        title: string;
-        kind: "join";
-        fan_out_node_id: string;
-        input_branch_ids: string[];
-    })[];
-    edges: ({
-        id: string;
-        kind: "fixed";
-        to: string;
-        from: string;
-    } | {
-        id: string;
-        kind: "conditional";
-        route: string;
-        to: string;
-        from: string;
-    } | {
-        id: string;
-        kind: "fan_out";
-        to: string;
-        from: string;
-        branch_id: string;
-        owner_join_id: string;
-    } | {
-        id: string;
-        kind: "back_edge";
-        route: string;
-        to: string;
-        from: string;
-        max_traversals: number;
-    })[];
-    descriptor_version: 1;
-    run_id: string;
-    revision_id: string;
-    entry_node_ids: string[];
-    concurrency_limit: number;
-    terminal_verification_node_id: string;
-    descriptor_hash?: string | undefined;
-}, {
-    goal: string;
-    nodes: ({
-        id: string;
-        title: string;
-        kind: "agent";
-        instructions: string;
-        timeout_ms: number;
-        max_attempts: number;
-        effect_policy: {
-            policy: "side_effect_free";
-        } | {
-            policy: "idempotent";
-            idempotency_key_template: string;
-        } | {
-            policy: "reconcile";
-        };
-    } | {
-        id: string;
-        title: string;
-        kind: "command";
-        command: string;
-        timeout_ms: number;
-        max_attempts: number;
-        effect_policy: {
-            policy: "side_effect_free";
-        } | {
-            policy: "idempotent";
-            idempotency_key_template: string;
-        } | {
-            policy: "reconcile";
-        };
-    } | {
-        id: string;
-        title: string;
-        kind: "human-approval";
-        prompt: string;
-    } | {
-        id: string;
-        title: string;
-        kind: "join";
-        fan_out_node_id: string;
-        input_branch_ids: string[];
-    })[];
-    edges: ({
-        id: string;
-        kind: "fixed";
-        to: string;
-        from: string;
-    } | {
-        id: string;
-        kind: "conditional";
-        route: string;
-        to: string;
-        from: string;
-    } | {
-        id: string;
-        kind: "fan_out";
-        to: string;
-        from: string;
-        branch_id: string;
-        owner_join_id: string;
-    } | {
-        id: string;
-        kind: "back_edge";
-        route: string;
-        to: string;
-        from: string;
-        max_traversals: number;
-    })[];
-    descriptor_version: 1;
-    run_id: string;
-    revision_id: string;
-    entry_node_ids: string[];
-    concurrency_limit: number;
-    terminal_verification_node_id: string;
-    descriptor_hash?: string | undefined;
-}>;
+}, z.core.$strict>;
 export declare const graphEvidenceReferenceSchema: z.ZodObject<{
-    kind: z.ZodEnum<["file", "command", "test", "human", "url"]>;
+    kind: z.ZodEnum<{
+        url: "url";
+        test: "test";
+        command: "command";
+        file: "file";
+        human: "human";
+    }>;
     ref: z.ZodString;
     summary: z.ZodOptional<z.ZodString>;
-}, "strict", z.ZodTypeAny, {
-    kind: "url" | "test" | "command" | "file" | "human";
-    ref: string;
-    summary?: string | undefined;
-}, {
-    kind: "url" | "test" | "command" | "file" | "human";
-    ref: string;
-    summary?: string | undefined;
-}>;
+}, z.core.$strict>;
 export declare const graphNodeResultSchema: z.ZodObject<{
-    outcome: z.ZodEnum<["succeeded", "failed"]>;
+    outcome: z.ZodEnum<{
+        failed: "failed";
+        succeeded: "succeeded";
+    }>;
     attempt_id: z.ZodString;
     route: z.ZodOptional<z.ZodString>;
     output_summary: z.ZodOptional<z.ZodString>;
     evidence_refs: z.ZodArray<z.ZodObject<{
-        kind: z.ZodEnum<["file", "command", "test", "human", "url"]>;
+        kind: z.ZodEnum<{
+            url: "url";
+            test: "test";
+            command: "command";
+            file: "file";
+            human: "human";
+        }>;
         ref: z.ZodString;
         summary: z.ZodOptional<z.ZodString>;
-    }, "strict", z.ZodTypeAny, {
-        kind: "url" | "test" | "command" | "file" | "human";
-        ref: string;
-        summary?: string | undefined;
-    }, {
-        kind: "url" | "test" | "command" | "file" | "human";
-        ref: string;
-        summary?: string | undefined;
-    }>, "many">;
+    }, z.core.$strict>>;
     external_idempotency_key: z.ZodOptional<z.ZodString>;
-}, "strict", z.ZodTypeAny, {
-    outcome: "failed" | "succeeded";
-    attempt_id: string;
-    evidence_refs: {
-        kind: "url" | "test" | "command" | "file" | "human";
-        ref: string;
-        summary?: string | undefined;
-    }[];
-    route?: string | undefined;
-    output_summary?: string | undefined;
-    external_idempotency_key?: string | undefined;
-}, {
-    outcome: "failed" | "succeeded";
-    attempt_id: string;
-    evidence_refs: {
-        kind: "url" | "test" | "command" | "file" | "human";
-        ref: string;
-        summary?: string | undefined;
-    }[];
-    route?: string | undefined;
-    output_summary?: string | undefined;
-    external_idempotency_key?: string | undefined;
-}>;
+}, z.core.$strict>;
 export declare const graphApprovalDecisionSchema: z.ZodObject<{
-    decision: z.ZodEnum<["approved", "denied"]>;
+    decision: z.ZodEnum<{
+        approved: "approved";
+        denied: "denied";
+    }>;
     evidence_refs: z.ZodArray<z.ZodObject<{
-        kind: z.ZodEnum<["file", "command", "test", "human", "url"]>;
+        kind: z.ZodEnum<{
+            url: "url";
+            test: "test";
+            command: "command";
+            file: "file";
+            human: "human";
+        }>;
         ref: z.ZodString;
         summary: z.ZodOptional<z.ZodString>;
-    }, "strict", z.ZodTypeAny, {
-        kind: "url" | "test" | "command" | "file" | "human";
-        ref: string;
-        summary?: string | undefined;
-    }, {
-        kind: "url" | "test" | "command" | "file" | "human";
-        ref: string;
-        summary?: string | undefined;
-    }>, "many">;
+    }, z.core.$strict>>;
     output_summary: z.ZodOptional<z.ZodString>;
-}, "strict", z.ZodTypeAny, {
-    decision: "approved" | "denied";
-    evidence_refs: {
-        kind: "url" | "test" | "command" | "file" | "human";
-        ref: string;
-        summary?: string | undefined;
-    }[];
-    output_summary?: string | undefined;
-}, {
-    decision: "approved" | "denied";
-    evidence_refs: {
-        kind: "url" | "test" | "command" | "file" | "human";
-        ref: string;
-        summary?: string | undefined;
-    }[];
-    output_summary?: string | undefined;
-}>;
+}, z.core.$strict>;
 /** Strict shape parse; throws `ZodError` by documented contract. */
 export declare function parseGraphDescriptorShape(input: unknown): GraphDescriptor;
 /** Strict shape parse; throws `ZodError` by documented contract. */

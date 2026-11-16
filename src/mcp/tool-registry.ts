@@ -127,19 +127,19 @@ function zodTypeToJsonSchema(zodType: z.ZodTypeAny): Record<string, unknown> {
   // description lives on the wrapper. Carry it onto the unwrapped schema instead
   // of dropping the parameter documentation MCP clients render.
   if (zodType instanceof z.ZodOptional) {
-    const inner = zodTypeToJsonSchema(zodType._def.innerType);
-    if (zodType._def?.description) inner.description = zodType._def.description;
+    const inner = zodTypeToJsonSchema(zodType.unwrap() as z.ZodTypeAny);
+    if (zodType.description) inner.description = zodType.description;
     return inner;
   }
 
   if (zodType instanceof z.ZodDefault) {
-    const inner = zodTypeToJsonSchema(zodType._def.innerType);
-    inner.default = zodType._def.defaultValue();
-    if (zodType._def?.description) inner.description = zodType._def.description;
+    const inner = zodTypeToJsonSchema(zodType.unwrap() as z.ZodTypeAny);
+    inner.default = zodType.def.defaultValue;
+    if (zodType.description) inner.description = zodType.description;
     return inner;
   }
 
-  const description = zodType._def?.description;
+  const description = zodType.description;
   if (description) {
     result.description = description;
   }
@@ -147,23 +147,21 @@ function zodTypeToJsonSchema(zodType: z.ZodTypeAny): Record<string, unknown> {
   if (zodType instanceof z.ZodString) {
     result.type = 'string';
   } else if (zodType instanceof z.ZodNumber) {
-    result.type = zodType._def?.checks?.some((c: { kind: string }) => c.kind === 'int')
-      ? 'integer'
-      : 'number';
+    result.type = zodType.isInt ? 'integer' : 'number';
   } else if (zodType instanceof z.ZodBoolean) {
     result.type = 'boolean';
   } else if (zodType instanceof z.ZodArray) {
     result.type = 'array';
-    result.items = zodType._def?.type ? zodTypeToJsonSchema(zodType._def.type) : { type: 'string' };
+    result.items = zodType.element ? zodTypeToJsonSchema(zodType.element as z.ZodTypeAny) : { type: 'string' };
   } else if (zodType instanceof z.ZodEnum) {
     result.type = 'string';
-    result.enum = zodType._def?.values;
+    result.enum = zodType.options;
   } else if (zodType instanceof z.ZodObject) {
     return zodToJsonSchema(zodType.shape);
   } else if (zodType instanceof z.ZodRecord) {
     result.type = 'object';
-    if (zodType._def?.valueType) {
-      result.additionalProperties = zodTypeToJsonSchema(zodType._def.valueType);
+    if (zodType.def.valueType) {
+      result.additionalProperties = zodTypeToJsonSchema(zodType.def.valueType as z.ZodTypeAny);
     }
   } else {
     result.type = 'string';
