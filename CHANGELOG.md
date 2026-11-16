@@ -7,7 +7,8 @@ All notable changes to oh-my-copilot will be documented in this file.
 ### Security
 
 - Stop hook (`scripts/persistent-mode.cjs`) allowlists the stdin session id before any path use, and the inline fallback of `resolveSessionStatePathsForHook()` (`scripts/lib/state-root.{cjs,mjs}`, `templates/hooks/lib/state-root.mjs`) rejects a session id outside the `validateSessionId()` allowlist; a traversal id could delete or write state files outside `.omg/state/sessions/` (Socket.dev finding).
-- `omg intake schedule` refuses a `--cron` value that is not five plain cron fields and a `--cwd` with control characters or `%` (or `"` on Windows), and single-quotes the cwd in the crontab line, so neither can inject crontab lines or shell text (Socket.dev finding).
+- `omg intake schedule` refuses a `--cron` value that is not five plain cron fields and a `--cwd` with control characters or `%` (or `"` on Windows), and single-quotes the cwd in the crontab line, so neither can inject crontab lines or shell text (Socket.dev finding). On unix the vixie-cron macros (`@daily`, `@hourly` and the rest, exact match) are still accepted, `--off` removes the entry without validating the cwd or cron value, and a Windows cwd ending in a backslash (`C:\`, a share root) has its trailing backslashes doubled so the closing quote stays a quote.
+- `scripts/skill-injector.mjs`, `scripts/budget-guard.mjs`, `scripts/verify-deliverables.mjs` and the drift marker in `templates/hooks/session-start.mjs` use a stdin session id in a path only when it passes the `validateSessionId()` allowlist; any other id takes the no-session (legacy) path instead of escaping `.omg/state/sessions/`.
 - Default MCP servers pin `exa-mcp-server@3.4.3` and `@playwright/mcp@0.0.85` instead of an unpinned and an `@latest` npx spec (Socket.dev finding).
 
 # oh-my-copilot v5.28.0

@@ -151,7 +151,10 @@ async function main() {
     const data = JSON.parse(input);
 
     const directory = data.cwd || data.directory || process.cwd();
-    const sessionId = data.session_id || data.sessionId || '';
+    // Same allowlist as validateSessionId() in src/lib/worktree-paths.ts: a raw id
+    // never reaches a path; anything else reads the legacy state as with no id.
+    const rawSessionId = data.session_id || data.sessionId || '';
+    const sessionId = typeof rawSessionId === 'string' && /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,255}$/.test(rawSessionId) ? rawSessionId : '';
     const omcRoot = await resolveOmcStateRoot(directory);
 
     // Load deliverable config

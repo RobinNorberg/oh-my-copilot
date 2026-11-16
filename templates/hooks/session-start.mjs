@@ -1143,7 +1143,7 @@ async function main() {
       try {
         const omcRoot = await resolveOmcStateRoot(directory);
         const stampPath = join(omcRoot, 'template-version.json');
-        const driftMarkerPath = join(omcRoot, 'state', `drift-warned-${sessionId || 'nosession'}.json`);
+        const driftMarkerPath = join(omcRoot, 'state', `drift-warned-${SESSION_ID_ALLOWLIST.test(sessionId) ? sessionId : 'nosession'}.json`);
         if (existsSync(stampPath) && !existsSync(driftMarkerPath)) {
           const stamp = readJsonFile(stampPath);
           if (stamp?.version && stamp.version !== currentVersion) {

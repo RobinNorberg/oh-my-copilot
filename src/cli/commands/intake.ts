@@ -205,7 +205,12 @@ export interface SchedulePlan {
 export function buildSchedulePlan(platform: 'linux' | 'darwin' | 'win32', expr: string, runCommand: string): SchedulePlan | { refused: string } {
   // Exactly five plain cron fields: anything else (a newline, '%', a sixth
   // field) would let the expression inject crontab lines or command text.
-  const fields = expr.trim().split(/[ \t]+/);
+  // On unix the vixie-cron macros (exact match) are accepted too.
+  const trimmed = expr.trim();
+  if (platform !== 'win32' && /^@(yearly|annually|monthly|weekly|daily|midnight|hourly)$/.test(trimmed)) {
+    return { platform: 'cron', crontabLine: `${trimmed} ${runCommand} ${CRONTAB_MARKER}` };
+  }
+  const fields = trimmed.split(/[ \t]+/);
   if (fields.length !== 5 || !fields.every((field) => /^[A-Za-z0-9*,/-]+$/.test(field))) {
     return { refused: `invalid cron expression: ${JSON.stringify(expr)}. Expected five fields such as "*/30 * * * *".` };
   }
@@ -246,7 +251,11 @@ export function buildScheduledCommand(cwd: string, platform: NodeJS.Platform = p
   if (/[\u0000-\u001f\u007f%]/.test(dir) || (platform === 'win32' && dir.includes('"'))) {
     throw new Error(`unsupported characters in --cwd for a scheduled entry: ${JSON.stringify(dir)}`);
   }
-  const quoted = platform === 'win32' ? `"${dir}"` : `'${dir.replace(/'/g, `'\\''`)}'`;
+  // Windows: trailing backslashes before the closing quote are doubled, or the
+  // C runtime reads `"C:\"` as an escaped quote.
+  const quoted = platform === 'win32'
+    ? `"${dir.replace(/(\\+)$/, '$1$1')}"`
+    : `'${dir.replace(/'/g, `'\\''`)}'`;
   return `omg intake run --headless --allow-docket-only --cwd ${quoted}`;
 }
 
@@ -308,6 +317,21 @@ export function runHeadlessIntake(options: { cwd?: string; hostBin?: string; all
 /** `omg intake schedule`: install or remove the host-native entry. */
 export function scheduleIntake(options: { cwd?: string; cron: string; off?: boolean }, runner: IntakeRunner = defaultIntakeRunner): HeadlessRunResult {
   const cwd = resolve(options.cwd ?? process.cwd());
+  // Removal only filters by marker / task name, so it runs before the run
+  // command and cron validation: --off works for any cwd or cron value.
+  if (options.off === true) {
+    if (process.platform === 'win32') {
+      runner('schtasks', ['/Delete', '/TN', TASK_NAME, '/F'], { cwd });
+      return { exitCode: 0, message: 'scheduled entry removed (or was already absent).' };
+    }
+    const current = runner('crontab', ['-l'], { cwd });
+    const existing = current.status === 0 ? current.stdout : '';
+    const write = runner('crontab', ['-'], { cwd, input: `${filterCrontabLines(existing, true)}\n` });
+    if (write.status !== 0) {
+      return { exitCode: 1, message: `intake schedule failed: crontab update did not take:\n${write.stderr.trim().slice(0, 400)}` };
+    }
+    return { exitCode: 0, message: 'scheduled entry removed from crontab.' };
+  }
   let runCommand: string;
   try {
     runCommand = buildScheduledCommand(cwd);
@@ -320,24 +344,15 @@ export function scheduleIntake(options: { cwd?: string; cron: string; off?: bool
   if (plan.platform === 'cron') {
     const current = runner('crontab', ['-l'], { cwd });
     const existing = current.status === 0 ? current.stdout : '';
-    const updated = filterCrontabLines(existing, options.off === true, plan.crontabLine);
+    const updated = filterCrontabLines(existing, false, plan.crontabLine);
     const write = runner('crontab', ['-'], { cwd, input: `${updated}\n` });
     if (write.status !== 0) {
       return { exitCode: 1, message: `intake schedule failed: crontab update did not take:\n${write.stderr.trim().slice(0, 400)}` };
     }
-    return {
-      exitCode: 0,
-      message: options.off
-        ? 'scheduled entry removed from crontab.'
-        : `scheduled entry installed in crontab:\n  ${plan.crontabLine}`,
-    };
+    return { exitCode: 0, message: `scheduled entry installed in crontab:\n  ${plan.crontabLine}` };
   }
 
-  const deleteFirst = runner('schtasks', ['/Delete', '/TN', TASK_NAME, '/F'], { cwd });
-  void deleteFirst;
-  if (options.off === true) {
-    return { exitCode: 0, message: 'scheduled entry removed (or was already absent).' };
-  }
+  runner('schtasks', ['/Delete', '/TN', TASK_NAME, '/F'], { cwd });
   const create = runner('schtasks', plan.schtaskArgs ?? [], { cwd });
   if (create.status !== 0) {
     return { exitCode: 1, message: `intake schedule failed: schtasks could not create the entry:\n${create.stderr.trim().slice(0, 400)}` };

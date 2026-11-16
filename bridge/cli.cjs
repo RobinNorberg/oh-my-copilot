@@ -150817,7 +150817,11 @@ function parseSimpleCron(expr) {
   return { kind: "unsupported" };
 }
 function buildSchedulePlan(platform, expr, runCommand2) {
-  const fields = expr.trim().split(/[ \t]+/);
+  const trimmed = expr.trim();
+  if (platform !== "win32" && /^@(yearly|annually|monthly|weekly|daily|midnight|hourly)$/.test(trimmed)) {
+    return { platform: "cron", crontabLine: `${trimmed} ${runCommand2} ${CRONTAB_MARKER}` };
+  }
+  const fields = trimmed.split(/[ \t]+/);
   if (fields.length !== 5 || !fields.every((field) => /^[A-Za-z0-9*,/-]+$/.test(field))) {
     return { refused: `invalid cron expression: ${JSON.stringify(expr)}. Expected five fields such as "*/30 * * * *".` };
   }
@@ -150845,7 +150849,7 @@ function buildScheduledCommand(cwd2, platform = process.platform) {
   if (/[\u0000-\u001f\u007f%]/.test(dir) || platform === "win32" && dir.includes('"')) {
     throw new Error(`unsupported characters in --cwd for a scheduled entry: ${JSON.stringify(dir)}`);
   }
-  const quoted = platform === "win32" ? `"${dir}"` : `'${dir.replace(/'/g, `'\\''`)}'`;
+  const quoted = platform === "win32" ? `"${dir.replace(/(\\+)$/, "$1$1")}"` : `'${dir.replace(/'/g, `'\\''`)}'`;
   return `omg intake run --headless --allow-docket-only --cwd ${quoted}`;
 }
 function runHeadlessIntake(options, runner = defaultIntakeRunner) {
@@ -150888,6 +150892,21 @@ ${(child.stderr || child.stdout).trim().slice(0, 600)}`
 }
 function scheduleIntake(options, runner = defaultIntakeRunner) {
   const cwd2 = (0, import_path213.resolve)(options.cwd ?? process.cwd());
+  if (options.off === true) {
+    if (process.platform === "win32") {
+      runner("schtasks", ["/Delete", "/TN", TASK_NAME, "/F"], { cwd: cwd2 });
+      return { exitCode: 0, message: "scheduled entry removed (or was already absent)." };
+    }
+    const current = runner("crontab", ["-l"], { cwd: cwd2 });
+    const existing = current.status === 0 ? current.stdout : "";
+    const write = runner("crontab", ["-"], { cwd: cwd2, input: `${filterCrontabLines(existing, true)}
+` });
+    if (write.status !== 0) {
+      return { exitCode: 1, message: `intake schedule failed: crontab update did not take:
+${write.stderr.trim().slice(0, 400)}` };
+    }
+    return { exitCode: 0, message: "scheduled entry removed from crontab." };
+  }
   let runCommand2;
   try {
     runCommand2 = buildScheduledCommand(cwd2);
@@ -150899,24 +150918,17 @@ function scheduleIntake(options, runner = defaultIntakeRunner) {
   if (plan.platform === "cron") {
     const current = runner("crontab", ["-l"], { cwd: cwd2 });
     const existing = current.status === 0 ? current.stdout : "";
-    const updated = filterCrontabLines(existing, options.off === true, plan.crontabLine);
+    const updated = filterCrontabLines(existing, false, plan.crontabLine);
     const write = runner("crontab", ["-"], { cwd: cwd2, input: `${updated}
 ` });
     if (write.status !== 0) {
       return { exitCode: 1, message: `intake schedule failed: crontab update did not take:
 ${write.stderr.trim().slice(0, 400)}` };
     }
-    return {
-      exitCode: 0,
-      message: options.off ? "scheduled entry removed from crontab." : `scheduled entry installed in crontab:
-  ${plan.crontabLine}`
-    };
+    return { exitCode: 0, message: `scheduled entry installed in crontab:
+  ${plan.crontabLine}` };
   }
-  const deleteFirst = runner("schtasks", ["/Delete", "/TN", TASK_NAME, "/F"], { cwd: cwd2 });
-  void deleteFirst;
-  if (options.off === true) {
-    return { exitCode: 0, message: "scheduled entry removed (or was already absent)." };
-  }
+  runner("schtasks", ["/Delete", "/TN", TASK_NAME, "/F"], { cwd: cwd2 });
   const create = runner("schtasks", plan.schtaskArgs ?? [], { cwd: cwd2 });
   if (create.status !== 0) {
     return { exitCode: 1, message: `intake schedule failed: schtasks could not create the entry:
