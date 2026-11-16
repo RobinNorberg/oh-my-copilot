@@ -127,8 +127,7 @@ Write concise release notes.`);
     expect(output.hookSpecificOutput?.additionalContext).toContain('### Release Notes (project)');
   });
 
-  it('injects a BOM-prefixed learned skill through the standalone fallback Worker path', () => {
-    const projectDir = makeTempDir('skill-injector-worker-project-');
+  function runStandaloneFallback(projectDir: string, sessionId: string) {
     const pluginRoot = makeTempDir('skill-injector-worker-plugin-');
     const scriptsDir = join(pluginRoot, 'scripts');
     const libDir = join(scriptsDir, 'lib');
@@ -149,22 +148,40 @@ Write concise release notes.`);
         }] }],
       },
     }));
-    writeLearnedSkill(projectDir, true);
-
-    const result = spawnSync(NODE, [join(scriptsDir, 'run.cjs'), join(scriptsDir, 'skill-injector.mjs')], {
+    return spawnSync(NODE, [join(scriptsDir, 'run.cjs'), join(scriptsDir, 'skill-injector.mjs')], {
       cwd: projectDir,
       encoding: 'utf-8',
       input: JSON.stringify({
         hook_event_name: 'UserPromptSubmit',
         cwd: projectDir,
-        session_id: 'worker-learned-skill',
+        session_id: sessionId,
         prompt: 'Please prepare release notes.',
       }),
-      env: { ...process.env, CLAUDE_PLUGIN_ROOT: pluginRoot, DISABLE_OMC: '', OMC_SKIP_HOOKS: '' },
+      env: { ...process.env, CLAUDE_PLUGIN_ROOT: pluginRoot, DISABLE_OMC: '', OMC_SKIP_HOOKS: '', OMC_SESSION_ID: '', OMC_STATE_DIR: '' },
       timeout: 15000,
     });
+  }
+
+  it('injects a BOM-prefixed learned skill through the standalone fallback Worker path', () => {
+    const projectDir = makeTempDir('skill-injector-worker-project-');
+    writeLearnedSkill(projectDir, true);
+
+    const result = runStandaloneFallback(projectDir, 'worker-learned-skill');
 
     expect(result.status).toBe(0);
     expect(JSON.parse(result.stdout).hookSpecificOutput.additionalContext).toContain('### Release Notes (project)');
+    expect(existsSync(join(projectDir, '.omg', 'state', 'sessions', 'worker-learned-skill', 'skill-sessions-fallback-state.json'))).toBe(true);
+  });
+
+  it('keeps a traversal session id out of the fallback state path (legacy file instead)', () => {
+    const projectDir = makeTempDir('skill-injector-traversal-project-');
+    writeLearnedSkill(projectDir);
+
+    const result = runStandaloneFallback(projectDir, '../../../escaped');
+
+    expect(result.status).toBe(0);
+    expect(JSON.parse(result.stdout).hookSpecificOutput.additionalContext).toContain('### Release Notes (project)');
+    expect(existsSync(join(projectDir, 'escaped'))).toBe(false);
+    expect(existsSync(join(projectDir, '.omg', 'state', 'skill-sessions-fallback.json'))).toBe(true);
   });
 });
