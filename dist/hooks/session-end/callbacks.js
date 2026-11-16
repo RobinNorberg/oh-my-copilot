@@ -2,7 +2,7 @@
  * Stop Hook Callbacks
  *
  * Provides configurable callback handlers for session end events.
- * Supports file logging, Telegram, and Discord notifications.
+ * Supports file logging, Telegram, Discord, and Slack notifications.
  */
 import { writeFileSync, mkdirSync } from 'fs';
 import { dirname, normalize } from 'path';
@@ -43,6 +43,10 @@ function normalizeDiscordTagList(tagList) {
 }
 function normalizeTelegramTagList(tagList) {
     return (tagList ?? []).map((tag) => tag.trim()).filter(Boolean).map((tag) => tag.startsWith('@') ? tag : `@${tag}`);
+}
+/** Slack tags use Slack's mention syntax (`<!here>`, `<@MEMBER_ID>`, `<!subteam^GROUP_ID>`) and are sent as given. */
+function normalizeSlackTagList(tagList) {
+    return (tagList ?? []).map((tag) => tag.trim()).filter(Boolean);
 }
 function prefixMessageWithTags(message, tags) {
     return tags.length === 0 ? message : `${tags.join(' ')}\n${message}`;
@@ -88,6 +92,17 @@ async function sendDiscord(config, message, signal, _idempotencyKey) {
     if (!response.ok)
         throw new Error(`Discord webhook error: ${response.status}`);
 }
+/** See sendTelegram: failed Slack delivery is terminal to avoid duplicate remote side effects. */
+async function sendSlack(config, message, signal) {
+    if (!config.webhookUrl)
+        return;
+    const url = new URL(config.webhookUrl);
+    if (url.protocol !== 'https:' || !(url.hostname === 'hooks.slack.com' || url.hostname.endsWith('.hooks.slack.com')))
+        return;
+    const response = await fetch(config.webhookUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: message }), signal });
+    if (!response.ok)
+        throw new Error(`Slack webhook error: ${response.status}`);
+}
 async function runLegacyCallbacks(metrics, options, signal) {
     const callbacks = getOMCConfig().stopHookCallbacks;
     if (!callbacks)
@@ -101,6 +116,8 @@ async function runLegacyCallbacks(metrics, options, signal) {
         work.push(sendTelegram(callbacks.telegram, prefixMessageWithTags(formatSessionSummary(metrics), normalizeTelegramTagList(callbacks.telegram.tagList)), signal, idempotencyKey));
     if (!skipPlatforms.has('discord') && callbacks.discord?.enabled)
         work.push(sendDiscord(callbacks.discord, prefixMessageWithTags(formatSessionSummary(metrics), normalizeDiscordTagList(callbacks.discord.tagList)), signal, idempotencyKey));
+    if (!skipPlatforms.has('slack') && callbacks.slack?.enabled)
+        work.push(sendSlack(callbacks.slack, prefixMessageWithTags(formatSessionSummary(metrics), normalizeSlackTagList(callbacks.slack.tagList)), signal));
     await Promise.all(work);
 }
 /** Backward-compatible callback entry point used by existing callers and tests. */
@@ -118,7 +135,7 @@ export async function triggerStopCallbacks(metrics, _input, options = {}) {
     }
 }
 function stringList(value) {
-    return Array.isArray(value) ? value.filter((item) => item === 'file' || item === 'telegram' || item === 'discord') : [];
+    return Array.isArray(value) ? value.filter((item) => item === 'file' || item === 'telegram' || item === 'discord' || item === 'slack') : [];
 }
 async function runWithinDeadline(deadlineAt, run) {
     const remaining = deadlineAt - Date.now();

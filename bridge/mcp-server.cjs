@@ -33766,6 +33766,12 @@ Error: ${sgLoadError}`
             };
           }
           const lang = toLangEnum(sg, language);
+          const multiCaptureNames = new Set(
+            Array.from(
+              pattern.matchAll(/(?<![\w$])\$\$\$([A-Z_][A-Z0-9_]*)(?![\w$])/g),
+              (m) => m[1]
+            )
+          );
           const changes = [];
           let totalReplacements = 0;
           for (const filePath of files) {
@@ -33782,18 +33788,20 @@ Error: ${sgLoadError}`
                 let finalReplacement = replacement;
                 const matchedText = match.text();
                 try {
-                  const metaVars = replacement.match(/\$\$?\$?[A-Z_][A-Z0-9_]*/g) || [];
-                  for (const metaVar of metaVars) {
-                    const varName = metaVar.replace(/^\$+/, "");
-                    const captured = match.getMatch(varName);
-                    if (captured) {
-                      const safeText = captured.text().replace(/\$/g, "$$$$");
-                      finalReplacement = finalReplacement.replaceAll(
-                        metaVar,
-                        safeText
-                      );
+                  finalReplacement = replacement.replace(
+                    /\$\$\$([A-Z_][A-Z0-9_]*)|\$\$?([A-Z_][A-Z0-9_]*)/g,
+                    (metaVar, multiName, singleName) => {
+                      if (multiName !== void 0 && multiCaptureNames.has(multiName)) {
+                        const nodes2 = match.getMultipleMatches(multiName);
+                        if (nodes2.length === 0) return "";
+                        return content.slice(
+                          nodes2[0].range().start.index,
+                          nodes2[nodes2.length - 1].range().end.index
+                        );
+                      }
+                      return match.getMatch(multiName ?? singleName)?.text() ?? metaVar;
                     }
-                  }
+                  );
                 } catch {
                 }
                 edits.push({
@@ -33804,9 +33812,15 @@ Error: ${sgLoadError}`
                   before: matchedText
                 });
               }
-              edits.sort((a, b) => b.start - a.start);
+              edits.sort((a, b) => a.start - b.start);
+              let keptEnd = 0;
+              const keptEdits = edits.filter((edit) => {
+                if (edit.start < keptEnd) return false;
+                keptEnd = edit.end;
+                return true;
+              });
               let newContent = content;
-              for (const edit of edits) {
+              for (const edit of keptEdits.reverse()) {
                 const before = newContent.slice(edit.start, edit.end);
                 newContent = newContent.slice(0, edit.start) + edit.replacement + newContent.slice(edit.end);
                 changes.push({
@@ -39652,7 +39666,10 @@ ${JSON.stringify(writtenState, null, 2)}
         session_id: external_exports.string().optional().describe("Explicit session ID to scope the listing. Overrides OMC_SESSION_ID when provided."),
         all: external_exports.boolean().optional().describe("When true, list active modes across all sessions (legacy + every session-scoped dir). Overrides the default current-session scope.")
       },
-      handler: async (args) => {
+      // Aggregate reads resolve a state path per session x mode. getGitTopLevel caches only hits, so a
+      // non-git cwd re-runs `git rev-parse` per resolution. The scope memoizes git probes and project ids
+      // for this call only.
+      handler: (args) => withWorktreePathRenderScope(async () => {
         const { workingDirectory, session_id, all } = args;
         try {
           const root = resolveStateWorkingDirectory(workingDirectory);
@@ -39779,7 +39796,7 @@ ${modeList}`
             isError: true
           };
         }
-      }
+      })
     };
     stateGetStatusTool = {
       name: "state_get_status",
@@ -39790,7 +39807,8 @@ ${modeList}`
         workingDirectory: external_exports.string().optional().describe("Working directory (defaults to cwd)"),
         session_id: external_exports.string().optional().describe("Session ID for session-scoped state isolation. When provided, the tool operates only within that session. When omitted, the tool aggregates legacy state plus all session-scoped state (may include other sessions).")
       },
-      handler: async (args) => {
+      // Same per-call git probe memo as state_list_active.
+      handler: (args) => withWorktreePathRenderScope(async () => {
         const { mode, workingDirectory, session_id } = args;
         try {
           const root = resolveStateWorkingDirectory(workingDirectory);
@@ -39931,7 +39949,7 @@ No active sessions for this mode.`);
             isError: true
           };
         }
-      }
+      })
     };
     stateMigrateNonGitTool = {
       name: "state_migrate_non_git",
@@ -40407,15 +40425,18 @@ function pruneOldEntries(directory, daysOld = DEFAULT_CONFIG3.workingMemoryDays)
       if (!workingMemory) {
         return { pruned: 0, remaining: 0 };
       }
-      const entryRegex = /### (\d{4}-\d{2}-\d{2} \d{2}:\d{2})\n([\s\S]*?)(?=### |$)/g;
+      const entryHeading = /^### (\d{4}-\d{2}-\d{2} \d{2}:\d{2})$/;
+      const preamble = [];
       const entries = [];
-      let match = entryRegex.exec(workingMemory);
-      while (match !== null) {
-        entries.push({
-          timestamp: match[1],
-          content: match[2].trim()
-        });
-        match = entryRegex.exec(workingMemory);
+      for (const line of workingMemory.split("\n")) {
+        const heading = entryHeading.exec(line);
+        if (heading) {
+          entries.push({ timestamp: heading[1], lines: [] });
+        } else if (entries.length > 0) {
+          entries[entries.length - 1].lines.push(line);
+        } else {
+          preamble.push(line);
+        }
       }
       const cutoff = /* @__PURE__ */ new Date();
       cutoff.setDate(cutoff.getDate() - daysOld);
@@ -40424,8 +40445,13 @@ function pruneOldEntries(directory, daysOld = DEFAULT_CONFIG3.workingMemoryDays)
         return entryDate >= cutoff;
       });
       const pruned = entries.length - kept.length;
-      const newContent = kept.map((entry) => `### ${entry.timestamp}
-${entry.content}`).join("\n\n");
+      const newContent = [
+        preamble.join("\n").trim(),
+        ...kept.map(
+          (entry) => `### ${entry.timestamp}
+${entry.lines.join("\n").trim()}`
+        )
+      ].filter(Boolean).join("\n\n");
       notepadContent = replaceSection(
         notepadContent,
         WORKING_MEMORY_HEADER,

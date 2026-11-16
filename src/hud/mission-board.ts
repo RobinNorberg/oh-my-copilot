@@ -2,6 +2,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameS
 import { join } from 'node:path';
 import { atomicWriteJsonSync } from '../lib/atomic-write.js';
 import { withFileLockSync } from '../lib/file-lock.js';
+import { parseJsonLines } from '../lib/jsonl.js';
 import {
   getOmcRoot,
   getProcessSessionId,
@@ -215,11 +216,7 @@ function newestTeamActivityMs(teamRoot: string): number {
 function readJsonLinesSafe<T>(path: string): T[] {
   if (!existsSync(path)) return [];
   try {
-    return readFileSync(path, 'utf-8')
-      .split('\n')
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .map((line) => JSON.parse(line) as T);
+    return parseJsonLines<T>(readFileSync(path, 'utf-8'));
   } catch {
     return [];
   }

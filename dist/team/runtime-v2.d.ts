@@ -265,7 +265,7 @@ export interface WorkerStartupEvidencePolicy {
     engagedPaneRecheckBudgetMs: number;
 }
 export declare function getWorkerStartupEvidencePolicy(agentType: CliAgentType): WorkerStartupEvidencePolicy;
-export declare function waitForStartupEvidenceBudget(hasEvidence: () => Promise<boolean>, budgetMs: number, delayMs?: number): Promise<boolean>;
+export declare function waitForStartupEvidenceBudget(hasEvidence: () => Promise<boolean>, budgetMs: number, delayMs?: number, providerExited?: () => Promise<boolean>): Promise<boolean>;
 /**
  * Settle worker startup evidence under a provider-aware policy.
  *

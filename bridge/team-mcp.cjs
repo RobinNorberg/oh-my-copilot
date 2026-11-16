@@ -10006,6 +10006,13 @@ var init_swallowed_error = __esm({
   }
 });
 
+// src/lib/jsonl.ts
+var init_jsonl = __esm({
+  "src/lib/jsonl.ts"() {
+    "use strict";
+  }
+});
+
 // src/team/mailbox-outstanding.ts
 var import_promises4, import_fs4, import_path6, ZERO_OUTSTANDING;
 var init_mailbox_outstanding = __esm({
@@ -10045,6 +10052,7 @@ var init_events = __esm({
     import_fs5 = require("fs");
     init_state_paths();
     init_swallowed_error();
+    init_jsonl();
     init_mailbox_outstanding();
   }
 });
@@ -13275,6 +13283,9 @@ function assertSafeCmdValue(value) {
     throw new Error("Native Windows tmux command values cannot contain NUL, CR, or LF characters");
   }
 }
+function tmuxGlobalArgs() {
+  return process.platform === "win32" ? [] : ["-u"];
+}
 function resolveTmuxInvocation(args) {
   const resolvedBinary = resolveTmuxBinaryPath();
   if (process.platform === "win32" && /\.(cmd|bat)$/i.test(resolvedBinary)) {
@@ -13287,7 +13298,7 @@ function resolveTmuxInvocation(args) {
   }
   return {
     command: resolvedBinary,
-    args
+    args: [...tmuxGlobalArgs(), ...args]
   };
 }
 function psmuxTranslation(args) {
@@ -15851,6 +15862,7 @@ __export(tmux_session_exports, {
   spawnWorkerInPane: () => spawnWorkerInPane,
   splitTeamWorkerPane: () => splitTeamWorkerPane,
   splitTeamWorkerPaneWithEvidence: () => splitTeamWorkerPaneWithEvidence,
+  startupProviderExited: () => startupProviderExited,
   strictIdentityUnavailableError: () => strictIdentityUnavailableError,
   tmuxServerGuardCondition: () => tmuxServerGuardCondition,
   tmuxServerGuardConditionPosix: () => tmuxServerGuardConditionPosix,
@@ -18972,6 +18984,9 @@ async function startupContextIsActive(context, attemptAlreadyFenced = false) {
     return false;
   return context.ownership.paneId === context.attempt.pane_id && context.provider === context.attempt.provider && await isWorkerLaunchAttemptAccepted(context.attempt) && (attemptAlreadyFenced || await isWorkerLaunchAttemptCurrent(context.attempt));
 }
+async function startupProviderExited(context) {
+  return await observeWorkerLaunchProvider(context.attempt) === "dead";
+}
 async function waitForStartupPaneReady(context, opts = {}) {
   if (context.ownership.paneId !== context.attempt.pane_id || context.provider !== context.attempt.provider) {
     return { ok: false, reason: "ownership_mismatch" };
@@ -18983,6 +18998,8 @@ async function waitForStartupPaneReady(context, opts = {}) {
   while (Date.now() < deadline) {
     if (!await startupContextIsActive(context, opts.attemptAlreadyFenced))
       return { ok: false, reason: "attempt_inactive" };
+    if (await startupProviderExited(context))
+      return { ok: false, reason: "provider_exited" };
     const copyMode = await paneCopyModeObservation(
       context.ownership.paneId,
       context.ownership.tmuxServerIdentity
@@ -19049,6 +19066,7 @@ async function waitForStartupPaneReady(context, opts = {}) {
 async function startupPaneSubmitBlockReason(context, attemptAlreadyFenced) {
   if (!await startupContextIsActive(context, attemptAlreadyFenced))
     return "attempt_inactive";
+  if (await startupProviderExited(context)) return "provider_exited";
   const copyMode = await paneCopyModeObservation(
     context.ownership.paneId,
     context.ownership.tmuxServerIdentity
@@ -19112,6 +19130,7 @@ async function deliverStartupInbox(context, message, options = {}) {
 async function probeStartupPaneActivity(context, options = {}) {
   if (!await startupContextIsActive(context, options.attemptAlreadyFenced))
     return "unknown";
+  if (await startupProviderExited(context)) return "dead";
   const membership = await verifyTeamTargetOwnership({
     provider: context.ownership.provider,
     providerTarget: context.ownership.providerTarget,
@@ -19140,6 +19159,7 @@ async function probeStartupPaneActivity(context, options = {}) {
 async function retryStartupInboxSubmit(context, message, options = {}) {
   if (!await startupContextIsActive(context, options.attemptAlreadyFenced))
     return "unavailable";
+  if (await startupProviderExited(context)) return "unavailable";
   const copyMode = await paneCopyModeObservation(
     context.ownership.paneId,
     context.ownership.tmuxServerIdentity
@@ -20278,6 +20298,37 @@ var init_team_ops = __esm({
   }
 });
 
+// src/team/worker-provider-liveness.ts
+async function getWorkerProviderLiveness(teamName, cwd, instanceId, worker) {
+  if (!instanceId || !worker.pane_id || !worker.launch_attempt_id)
+    return "unknown";
+  const provider = worker.launch_descriptor?.provider ?? worker.worker_cli;
+  if (!provider) return "unknown";
+  try {
+    const attempt = await loadWorkerLaunchAttempt({
+      cwd,
+      teamName,
+      instanceId,
+      workerName: worker.name,
+      paneId: worker.pane_id,
+      provider,
+      attemptId: worker.launch_attempt_id,
+      runtimeCliPath: resolveRuntimeCliPath()
+    });
+    if (!attempt) return "unknown";
+    return await observeWorkerLaunchProvider(attempt);
+  } catch {
+    return "unknown";
+  }
+}
+var init_worker_provider_liveness = __esm({
+  "src/team/worker-provider-liveness.ts"() {
+    "use strict";
+    init_runtime_owner_client();
+    init_worker_launch_ack();
+  }
+});
+
 // src/team/mailbox-notification-guard.ts
 var init_mailbox_notification_guard = __esm({
   "src/team/mailbox-notification-guard.ts"() {
@@ -20287,6 +20338,7 @@ var init_mailbox_notification_guard = __esm({
     init_types2();
     init_team_owner_epoch();
     init_worker_canonicalization();
+    init_worker_provider_liveness();
   }
 });
 
@@ -23157,6 +23209,7 @@ var init_runtime_v2 = __esm({
     init_host_signal();
     init_copilot_session_env();
     init_config_dir();
+    init_worker_provider_liveness();
     init_process_utils();
     init_team_instance();
     init_runtime_flags();
@@ -46335,7 +46388,7 @@ var NudgeTracker = class {
     if (!authority || typeof authority !== "object") return [];
     const sessionName2 = typeof authority.sessionName === "string" ? authority.sessionName : "";
     const provider = authority.provider ?? providerForTeamTarget(sessionName2);
-    if (!Array.isArray(paneIds) || provider !== "tmux" && provider !== "cmux" && provider !== "herdr" || sessionName2.length === 0 || !isValidTeamInstanceId(authority.instanceId) || sessionName2.trim() !== sessionName2 || authority.provider !== void 0 && authority.provider !== provider || typeof authority.getPaneOwnership !== "function" || typeof authority.executeNudge !== "function" || provider === "tmux" && (!authority.tmuxServerIdentity || !isValidTmuxServerIdentity(authority.tmuxServerIdentity)) || (provider === "cmux" || provider === "herdr") && authority.tmuxServerIdentity !== void 0) {
+    if (!Array.isArray(paneIds) || provider !== "tmux" && provider !== "cmux" && provider !== "herdr" || sessionName2.length === 0 || !isValidTeamInstanceId(authority.instanceId) || sessionName2.trim() !== sessionName2 || authority.provider !== void 0 && authority.provider !== provider || typeof authority.getPaneOwnership !== "function" || typeof authority.getProviderLiveness !== "function" || typeof authority.executeNudge !== "function" || provider === "tmux" && (!authority.tmuxServerIdentity || !isValidTmuxServerIdentity(authority.tmuxServerIdentity)) || (provider === "cmux" || provider === "herdr") && authority.tmuxServerIdentity !== void 0) {
       return [];
     }
     const now = Date.now();
@@ -46359,7 +46412,7 @@ var NudgeTracker = class {
       if (!ownership || ownership.paneId !== paneId || ownership.provider !== provider || ownership.providerTarget !== sessionName2 || provider === "tmux" && (!authority.tmuxServerIdentity || !ownership.tmuxServerIdentity || ownership.tmuxServerIdentity.socket_path !== authority.tmuxServerIdentity.socket_path || ownership.tmuxServerIdentity.server_pid !== authority.tmuxServerIdentity.server_pid || ownership.tmuxServerIdentity.process_started_at !== authority.tmuxServerIdentity.process_started_at) || provider === "cmux" && ownership.tmuxServerIdentity !== void 0) {
         continue;
       }
-      const idle = await isPaneIdle(ownership);
+      const idle = await authority.getProviderLiveness(paneId) !== "dead" && await isPaneIdle(ownership);
       if (!idle) {
         state.firstIdleAt = null;
         continue;
@@ -46577,6 +46630,7 @@ init_platform();
 init_types2();
 init_tmux_session();
 init_monitor();
+init_worker_provider_liveness();
 init_team_instance();
 init_state_paths();
 init_paths();
@@ -46785,12 +46839,14 @@ async function resolveNudgeAuthorityUnderLock(jobId, expected, panes) {
     return null;
   }
   const ownershipByPane = /* @__PURE__ */ new Map();
+  const workerByPane = /* @__PURE__ */ new Map();
   const artifactWorkerNames = /* @__PURE__ */ new Set();
   for (const pane of panes.workers) {
     const worker = config2.workers.find((candidate) => candidate.name === pane.workerName);
     if (!worker || worker.pane_id !== pane.paneId || worker.launch_attempt_id !== pane.launchAttemptId) return null;
     if (artifactWorkerNames.has(pane.workerName)) return null;
     artifactWorkerNames.add(pane.workerName);
+    workerByPane.set(pane.paneId, worker);
     ownershipByPane.set(pane.paneId, {
       provider,
       providerTarget: config2.tmux_session,
@@ -46812,6 +46868,10 @@ async function resolveNudgeAuthorityUnderLock(jobId, expected, panes) {
     provider,
     ...tmuxServerIdentity ? { tmuxServerIdentity } : {},
     getPaneOwnership: (paneId) => ownershipByPane.get(paneId),
+    getProviderLiveness: async (paneId) => {
+      const worker = workerByPane.get(paneId);
+      return worker ? getWorkerProviderLiveness(config2.name, expected.cwd, config2.instance_id, worker) : "unknown";
+    },
     // The live caller replaces this placeholder with the lifecycle-locked
     // final validation + transport operation.
     executeNudge: async () => false
@@ -46848,6 +46908,7 @@ async function executeLockedNudge(jobId, expected, expectedPanes, authority, pan
         if (!current || !sameNudgeAuthority(current, authority)) return false;
         const ownership = current.getPaneOwnership(paneId);
         if (!ownership) return false;
+        if (await current.getProviderLiveness(paneId) === "dead") return false;
         if (!readLockedNudgeJob(jobId, expected)) return false;
         const sent = current.provider === "tmux" ? await sendToWorker(current.sessionName, paneId, message, current.tmuxServerIdentity) : await sendToWorker(current.sessionName, paneId, message);
         if (!sent) return false;

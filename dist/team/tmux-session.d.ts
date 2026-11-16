@@ -421,8 +421,9 @@ export type StartupPaneReadyResult = {
     ok: true;
 } | {
     ok: false;
-    reason: "attempt_inactive" | "ownership_mismatch" | "copy_mode" | "copy_mode_unknown" | "capture_failed" | "selector_unsupported" | "selector_persistent" | "cursor_workspace_untrusted" | "codex_workspace_untrusted" | "pane_busy" | "readiness_timeout";
+    reason: "attempt_inactive" | "ownership_mismatch" | "copy_mode" | "copy_mode_unknown" | "capture_failed" | "selector_unsupported" | "selector_persistent" | "cursor_workspace_untrusted" | "codex_workspace_untrusted" | "pane_busy" | "provider_exited" | "readiness_timeout";
 };
+export declare function startupProviderExited(context: StartupPaneContext): Promise<boolean>;
 export declare function waitForStartupPaneReady(context: StartupPaneContext, opts?: WaitForPaneReadyOptions): Promise<StartupPaneReadyResult>;
 export declare function deliverStartupInbox(context: StartupPaneContext, message: string, options?: {
     attemptAlreadyFenced?: boolean;
@@ -440,7 +441,8 @@ export declare function deliverStartupInbox(context: StartupPaneContext, message
  *   trigger and is working, so resubmitting would duplicate the inbox. Callers
  *   must keep waiting for startup evidence instead of tearing the launch down.
  * - `unavailable` — the pane cannot be re-submitted into (inactive attempt,
- *   copy mode, capture failure, selector, or the trigger text is gone).
+ *   exited provider, copy mode, capture failure, selector, or the trigger
+ *   text is gone).
  */
 export type StartupInboxResubmitOutcome = "resubmitted" | "pane_busy" | "unavailable";
 /**

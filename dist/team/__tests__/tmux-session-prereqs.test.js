@@ -10,7 +10,9 @@ vi.mock('child_process', async (importOriginal) => {
 import { execFileSync } from 'child_process';
 import { validateTmux } from '../tmux-session.js';
 const mockedExecFileSync = vi.mocked(execFileSync);
+const originalPlatform = process.platform;
 afterEach(() => {
+    Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
     vi.restoreAllMocks();
 });
 describe('validateTmux', () => {
@@ -22,9 +24,10 @@ describe('validateTmux', () => {
         expect(mockedExecFileSync).not.toHaveBeenCalled();
     });
     it('probes tmux when context is absent', () => {
+        Object.defineProperty(process, 'platform', { value: 'linux', configurable: true });
         mockedExecFileSync.mockReturnValue(Buffer.from('tmux 3.4'));
         expect(() => validateTmux(false)).not.toThrow();
-        expect(mockedExecFileSync).toHaveBeenCalledWith('tmux', ['-V'], expect.objectContaining({
+        expect(mockedExecFileSync).toHaveBeenCalledWith('tmux', ['-u', '-V'], expect.objectContaining({
             encoding: 'utf-8',
             timeout: 5000,
             stdio: 'pipe',

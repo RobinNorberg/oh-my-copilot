@@ -43,6 +43,11 @@ const runtimeMocks = vi.hoisted(() => ({
   resumeTeam: vi.fn(),
   shutdownTeam: vi.fn(),
 }));
+const livenessMocks = vi.hoisted(() => ({
+  override: undefined as undefined | 'alive' | 'dead' | 'unknown',
+  sequence: [] as Array<'alive' | 'dead' | 'unknown'>,
+  calls: [] as Array<{ teamName: string; worker: { name: string; launch_attempt_id?: string } }>,
+}));
 const monitorMocks = vi.hoisted(() => ({
   readTeamConfig: vi.fn(),
   actualReadTeamConfig: undefined as undefined | ((teamName: string, cwd: string) => Promise<TeamConfig | null>),
@@ -103,6 +108,17 @@ vi.mock('../../team/runtime.js', async (importOriginal) => {
     ...actual,
     resumeTeam: runtimeMocks.resumeTeam,
     shutdownTeam: runtimeMocks.shutdownTeam,
+  };
+});
+
+vi.mock('../../team/worker-provider-liveness.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../team/worker-provider-liveness.js')>();
+  return {
+    ...actual,
+    getWorkerProviderLiveness: async (...args: Parameters<typeof actual.getWorkerProviderLiveness>) => {
+      livenessMocks.calls.push({ teamName: args[0], worker: args[3] });
+      return livenessMocks.sequence.shift() ?? livenessMocks.override ?? actual.getWorkerProviderLiveness(...args);
+    },
   };
 });
 
@@ -171,6 +187,18 @@ function publishTerminalJobResult(jobsDir: string, jobId: string, teamName: stri
 }
 function parseResponseText(text: string): Record<string, unknown> {
   return JSON.parse(text) as Record<string, unknown>;
+}
+
+// The provider-liveness nudge tests never send, so nothing else ends their
+// wait: poll until the scan has consulted liveness the expected number of
+// times, then publish a terminal result (see NUDGE_WAIT_TIMEOUT_MS).
+async function waitForLivenessCalls(count: number, timeoutMs: number): Promise<boolean> {
+  const giveUpAt = Date.now() + timeoutMs;
+  while (livenessMocks.calls.length < count) {
+    if (Date.now() >= giveUpAt) return false;
+    await new Promise<void>(r => setTimeout(r, 25));
+  }
+  return true;
 }
 
 function boundedSignal(signal: Promise<void>, timeoutMs: number): Promise<boolean> {
@@ -914,6 +942,89 @@ describe('team-server artifact convergence + scoped cleanup', () => {
       expect.any(String),
     );
     expect(tmuxMocks.sendToWorker.mock.calls[0]).toHaveLength(3);
+  });
+
+  it('handleWait does not nudge a worker whose provider has exited to a shell prompt', async () => {
+    const { handleWait } = await importTeamServerWithJobsDir(jobsDir);
+    const teamName = 'nudge-provider-exited-team';
+    const cwd = join(testRoot, 'workspace-nudge-provider-exited');
+    const fixture = await createActiveNudgeTeam(teamName, cwd, INSTANCE_ID, 'cmux');
+    const jobId = 'omc-nudgeexited';
+    writeFileSync(join(jobsDir, `${jobId}.json`), JSON.stringify(jobRecord(teamName, cwd, INSTANCE_ID)), 'utf-8');
+    writeFileSync(
+      join(jobsDir, `${jobId}-panes.json`),
+      JSON.stringify(paneArtifact(INSTANCE_ID, [fixture.paneId], fixture.leaderPaneId, fixture.sessionName)),
+      'utf-8',
+    );
+    tmuxMocks.captureOwnedTeamPane.mockResolvedValue(['$ claude', 'bye', '❯ '].join('\n'));
+    tmuxMocks.sendToWorker.mockResolvedValue(true);
+    livenessMocks.calls.length = 0;
+    livenessMocks.override = 'dead';
+
+    try {
+      const waitPromise = handleWait({
+        job_id: jobId,
+        timeout_ms: NUDGE_WAIT_TIMEOUT_MS,
+        nudge_delay_ms: 0,
+        nudge_max_count: 1,
+      });
+      const livenessObserved = await waitForLivenessCalls(1, NUDGE_WAIT_TIMEOUT_MS - 1_000);
+      publishTerminalJobResult(jobsDir, jobId, teamName);
+      const response = await waitPromise;
+      const payload = parseResponseText(response.content[0].text);
+
+      expect(livenessObserved).toBe(true);
+      expect(payload.status).toBe('completed');
+      expect(payload.nudges).toBeUndefined();
+      expect(tmuxMocks.sendToWorker).not.toHaveBeenCalled();
+      expect(livenessMocks.calls).toContainEqual({
+        teamName,
+        worker: expect.objectContaining({ name: 'worker-1', launch_attempt_id: 'attempt-1' }),
+      });
+    } finally {
+      livenessMocks.override = undefined;
+    }
+  });
+
+  it('handleWait does not nudge when the provider exits between the idle check and the locked send', async () => {
+    const { handleWait } = await importTeamServerWithJobsDir(jobsDir);
+    const teamName = 'nudge-provider-exits-late-team';
+    const cwd = join(testRoot, 'workspace-nudge-provider-exits-late');
+    const fixture = await createActiveNudgeTeam(teamName, cwd, INSTANCE_ID, 'cmux');
+    const jobId = 'omc-nudgelate';
+    writeFileSync(join(jobsDir, `${jobId}.json`), JSON.stringify(jobRecord(teamName, cwd, INSTANCE_ID)), 'utf-8');
+    writeFileSync(
+      join(jobsDir, `${jobId}-panes.json`),
+      JSON.stringify(paneArtifact(INSTANCE_ID, [fixture.paneId], fixture.leaderPaneId, fixture.sessionName)),
+      'utf-8',
+    );
+    tmuxMocks.captureOwnedTeamPane.mockResolvedValue(['$ claude', 'bye', '❯ '].join('\n'));
+    tmuxMocks.sendToWorker.mockResolvedValue(true);
+    livenessMocks.calls.length = 0;
+    livenessMocks.sequence = ['alive'];
+    livenessMocks.override = 'dead';
+
+    try {
+      const waitPromise = handleWait({
+        job_id: jobId,
+        timeout_ms: NUDGE_WAIT_TIMEOUT_MS,
+        nudge_delay_ms: 0,
+        nudge_max_count: 1,
+      });
+      // Call 1 is the idle scan ('alive'); call 2 is the locked re-check ('dead').
+      const lockedRecheckObserved = await waitForLivenessCalls(2, NUDGE_WAIT_TIMEOUT_MS - 1_000);
+      publishTerminalJobResult(jobsDir, jobId, teamName);
+      const response = await waitPromise;
+      const payload = parseResponseText(response.content[0].text);
+
+      expect(lockedRecheckObserved).toBe(true);
+      expect(payload.status).toBe('completed');
+      expect(payload.nudges).toBeUndefined();
+      expect(tmuxMocks.sendToWorker).not.toHaveBeenCalled();
+    } finally {
+      livenessMocks.sequence = [];
+      livenessMocks.override = undefined;
+    }
   });
 
   it('does not let child close overwrite a terminal artifact converged first', async () => {
