@@ -10,6 +10,7 @@ import {
 } from "fs";
 import { isAbsolute, normalize, posix, win32 } from "path";
 import { directoryOperations, type DirectoryOperations, containedFdPath, containedFsPlatformSupported } from "./contained-fd.js";
+import { getNativeContainedFs } from "./native-contained-fs.js";
 import { openOrCreateDirectoryAt, openExistingDirectoryAt } from "./run-dir.js";
 import type { RunDirHandle } from "./run-dir.js";
 
@@ -23,9 +24,16 @@ export function assertContainedFsSupported(
   platform: NodeJS.Platform = process.platform,
 ): void {
   if (!containedFsPlatformSupported(platform)) {
-    throw new Error(
-      `contained directory-FD traversal is unavailable on ${platform}; refusing pathname fallback`,
-    );
+    const base = `contained directory-FD traversal is unavailable on ${platform}; refusing pathname fallback`;
+    if (platform === "darwin" && process.platform === "darwin") {
+      try {
+        getNativeContainedFs();
+      } catch (cause) {
+        const detail = cause instanceof Error ? cause.message : String(cause);
+        throw new Error(`${base}: ${detail}`, { cause });
+      }
+    }
+    throw new Error(base);
   }
 }
 

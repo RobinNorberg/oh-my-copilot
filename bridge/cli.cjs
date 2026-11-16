@@ -89705,9 +89705,16 @@ var init_run_dir = __esm({
 // src/graph/runtime/safe-fs.ts
 function assertContainedFsSupported(platform = process.platform) {
   if (!containedFsPlatformSupported(platform)) {
-    throw new Error(
-      `contained directory-FD traversal is unavailable on ${platform}; refusing pathname fallback`
-    );
+    const base = `contained directory-FD traversal is unavailable on ${platform}; refusing pathname fallback`;
+    if (platform === "darwin" && process.platform === "darwin") {
+      try {
+        getNativeContainedFs();
+      } catch (cause) {
+        const detail = cause instanceof Error ? cause.message : String(cause);
+        throw new Error(`${base}: ${detail}`, { cause });
+      }
+    }
+    throw new Error(base);
   }
 }
 function assertSafeContainedFileName(fileName, platform = process.platform) {
@@ -89921,6 +89928,7 @@ var init_safe_fs = __esm({
     import_fs103 = require("fs");
     import_path123 = require("path");
     init_contained_fd();
+    init_native_contained_fs();
     init_run_dir();
     NO_FOLLOW = process.platform === "win32" ? 0 : import_fs103.constants.O_NOFOLLOW;
     UNSAFE_CONTROL = /[\u0000-\u001f\u007f]/;
