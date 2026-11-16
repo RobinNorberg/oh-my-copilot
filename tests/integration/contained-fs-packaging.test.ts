@@ -1,9 +1,9 @@
 /**
  * Regression test for #4217: Ensure contained-fs native module can be built and packaged
- * 
+ *
  * This test verifies that:
  * - The build scripts exist and are configured correctly
- * - The postinstall hook is defined 
+ * - The package declares no npm install script (the darwin addon is built on demand)
  * - Required files are in the package.json files array
  */
 
@@ -19,17 +19,14 @@ describe('contained-fs packaging (#4217)', () => {
     expect(packageJson.scripts['build:contained-fs']).toBeDefined();
   });
 
-  it('postinstall hook exists', () => {
-    expect(packageJson.scripts.postinstall).toBeDefined();
-    expect(packageJson.scripts.postinstall).toContain('postinstall-contained-fs');
+  it('declares no npm install script', () => {
+    for (const hook of ['preinstall', 'install', 'postinstall']) {
+      expect(packageJson.scripts[hook], hook).toBeUndefined();
+    }
   });
 
   it('native build script file exists', () => {
     expect(existsSync(resolve('scripts/build-contained-fs.mjs'))).toBe(true);
-  });
-
-  it('native postinstall wrapper file exists', () => {
-    expect(existsSync(resolve('scripts/postinstall-contained-fs.mjs'))).toBe(true);
   });
 
   it('verify-graph-contained-fs script exists', () => {
@@ -43,7 +40,6 @@ describe('contained-fs packaging (#4217)', () => {
   it('required files are in package.json files array', () => {
     const files = packageJson.files;
     expect(files).toContain('scripts/build-contained-fs.mjs');
-    expect(files).toContain('scripts/postinstall-contained-fs.mjs');
     expect(files).toContain('scripts/verify-graph-contained-fs.mjs');
     expect(files).toContain('native');
   });

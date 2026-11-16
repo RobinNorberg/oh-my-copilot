@@ -4,6 +4,10 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- **The npm package has no install script.** The `postinstall` hook and `scripts/postinstall-contained-fs.mjs` are gone, so supply-chain scanners no longer flag the package. Linux and Windows are unaffected. On macOS, `npm install` no longer builds the contained-fs addon; `omg graph` and `omg team` report the missing addon with the build command, `node scripts/build-contained-fs.mjs` run from the installed package directory. See [MIGRATION.md](docs/MIGRATION.md#unreleased-no-npm-install-script).
+
 ### Fixed
 
 - **A malformed `factory.run.sandbox` in the user config is refused.** An array, string or number there used to be read as an empty block, so `windowsGitTransport` and `isolation` silently fell back to their defaults. It now throws `user config: factory.run.sandbox must be an object`.

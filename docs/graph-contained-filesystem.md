@@ -43,6 +43,15 @@ If the native backend is absent or cannot load, graph commands fail before
 creating persistence state. Other commands do not require loading the addon.
 Install users do not need clang or Node headers when the archive contains it.
 
+The package has no npm install script, so `npm install` never compiles the addon.
+When an installed package lacks it on macOS, build it on demand from the
+installed package directory (the error names this command):
+
+```sh
+cd "$(npm root -g)/oh-my-copilot"
+node scripts/build-contained-fs.mjs
+```
+
 ## Reproducing the acceptance checks
 
 ```sh
