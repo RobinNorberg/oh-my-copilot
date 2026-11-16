@@ -3,6 +3,7 @@
  *
  * This example demonstrates how to use Oh-My-Copilot
  * with the Claude Agent SDK.
+ * The SDK is an optional peer: run `npm install @anthropic-ai/claude-agent-sdk` yourself.
  */
 
 // Note: In real usage, import from 'oh-my-copilot'

@@ -8,7 +8,9 @@
  * runner by itself.
  */
 
+import { existsSync } from "fs";
 import { join } from "path";
+import { fileURLToPath } from "url";
 import { resolvePackageRoot } from "../smoke/copilot-session-env.js";
 import { lspTools } from "../tools/lsp-tools.js";
 import { astTools } from "../tools/ast-tools.js";
@@ -19,7 +21,6 @@ import { notepadTools } from "../tools/notepad-tools.js";
 import { memoryTools } from "../tools/memory-tools.js";
 import { traceTools } from "../tools/trace-tools.js";
 import { sharedMemoryTools } from "../tools/shared-memory-tools.js";
-import { getInteropTools } from "../interop/mcp-bridge.js";
 import { deepinitManifestTool } from "../tools/deepinit-manifest.js";
 import { wikiTools } from "../tools/wiki-tools.js";
 import { TOOL_CATEGORIES, type ToolCategory } from "../constants/index.js";
@@ -36,11 +37,9 @@ interface ToolDef {
 }
 
 
-// Aggregate all custom tools with category metadata (full list, unfiltered)
-const interopToolsEnabled = process.env.OMC_INTEROP_TOOLS_ENABLED === '1';
-const interopTools: ToolDef[] = interopToolsEnabled
-  ? tagCategory(getInteropTools() as unknown as ToolDef[], TOOL_CATEGORIES.INTEROP)
-  : [];
+// Aggregate all custom tools with category metadata (full list, unfiltered).
+// Only tools the stdio server (bridge/mcp-server.cjs) serves belong here; it
+// does not serve the interop tools, so OMC_INTEROP_TOOLS_ENABLED adds none.
 
 const allTools: ToolDef[] = [
   ...tagCategory(lspTools as unknown as ToolDef[], TOOL_CATEGORIES.LSP),
@@ -54,11 +53,33 @@ const allTools: ToolDef[] = [
   ...tagCategory(sharedMemoryTools as unknown as ToolDef[], TOOL_CATEGORIES.SHARED_MEMORY),
   { ...(deepinitManifestTool as unknown as ToolDef), category: TOOL_CATEGORIES.DEEPINIT },
   ...tagCategory(wikiTools as unknown as ToolDef[], TOOL_CATEGORIES.WIKI),
-  ...interopTools,
 ];
 
 // Read OMC_DISABLE_TOOLS once at startup and filter tools accordingly
 const enabledTools: ToolDef[] = filterDisabledTools(allTools);
+
+/**
+ * Path of the shipped stdio server: <package root>/bridge/mcp-server.cjs, or
+ * the bridge two levels above this module (dist/mcp or src/mcp) when no
+ * package root is found. Throws when neither file exists.
+ */
+export function resolveOmcMcpServerPath(
+  packageRoot: string | null = resolvePackageRoot(),
+  moduleUrl: string | null = import.meta.url ?? null,
+): string {
+  const candidates: string[] = [];
+  if (packageRoot) candidates.push(join(packageRoot, "bridge", "mcp-server.cjs"));
+  try {
+    if (moduleUrl) candidates.push(fileURLToPath(new URL("../../bridge/mcp-server.cjs", moduleUrl)));
+  } catch { /* CJS bundle: no import.meta.url */ }
+  const found = candidates.find((candidate) => existsSync(candidate));
+  if (!found) {
+    throw new Error(
+      `oh-my-copilot MCP server bridge/mcp-server.cjs not found (looked in: ${candidates.join(", ") || "no candidate paths"}); reinstall oh-my-copilot`,
+    );
+  }
+  return found;
+}
 
 /**
  * Stdio MCP server config exposing all OMC custom tools via the shipped
@@ -68,9 +89,12 @@ const enabledTools: ToolDef[] = filterDisabledTools(allTools);
  * Tools will be available as mcp__t__<tool_name>.
  * Tools in disabled groups (via OMC_DISABLE_TOOLS) are excluded at startup.
  */
-export const omcToolsServer: { command: string; args: string[] } = {
+export const omcToolsServer: { command: string; readonly args: string[] } = {
   command: process.execPath,
-  args: [join(resolvePackageRoot() ?? process.cwd(), "bridge", "mcp-server.cjs")],
+  // Resolved on first read, so importing this module never throws.
+  get args() {
+    return [resolveOmcMcpServerPath()];
+  },
 };
 
 /**

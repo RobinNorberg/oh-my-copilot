@@ -9,6 +9,12 @@
  */
 export { DISABLE_TOOLS_GROUP_MAP, parseDisabledGroups } from "./disable-tools.js";
 /**
+ * Path of the shipped stdio server: <package root>/bridge/mcp-server.cjs, or
+ * the bridge two levels above this module (dist/mcp or src/mcp) when no
+ * package root is found. Throws when neither file exists.
+ */
+export declare function resolveOmcMcpServerPath(packageRoot?: string | null, moduleUrl?: string | null): string;
+/**
  * Stdio MCP server config exposing all OMC custom tools via the shipped
  * standalone server (bridge/mcp-server.cjs), for an Agent SDK `mcpServers`
  * entry named "t".
@@ -18,7 +24,7 @@ export { DISABLE_TOOLS_GROUP_MAP, parseDisabledGroups } from "./disable-tools.js
  */
 export declare const omcToolsServer: {
     command: string;
-    args: string[];
+    readonly args: string[];
 };
 /**
  * Tool names in MCP format for allowedTools configuration.

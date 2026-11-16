@@ -10,6 +10,7 @@
  */
 
 import { childEnv } from "../../../utils/windows-search.js";
+import { resolvePackageRoot } from "../../../smoke/copilot-session-env.js";
 import type {
   NodeExecutionContext,
   NodeExecutionOutput,
@@ -58,9 +59,12 @@ async function loadSdkQuery(): Promise<AgentQueryImpl> {
       (message.includes(`'${CLAUDE_AGENT_SDK}'`) ||
         message.includes(`"${CLAUDE_AGENT_SDK}"`))
     ) {
+      const root = resolvePackageRoot();
+      const where = root ? `next to oh-my-copilot in ${root}` : "next to oh-my-copilot";
       throw new Error(
         `graph agent nodes need the optional peer dependency ${CLAUDE_AGENT_SDK}; ` +
-          `install it next to oh-my-copilot (npm install ${CLAUDE_AGENT_SDK})`,
+          `install it ${where} (npm install ${CLAUDE_AGENT_SDK} in that project, ` +
+          `or npm install -g ${CLAUDE_AGENT_SDK} for a global install)`,
       );
     }
     throw error;
@@ -170,6 +174,8 @@ export class AgentNodeExecutor implements NodeExecutor {
         reject(new AgentTimeoutError(node.timeout_ms));
       }, node.timeout_ms);
     });
+    // The SDK load below may throw before the race awaits this promise.
+    timedOut.catch(() => {});
 
     try {
       const queryFn: AgentQueryImpl = this.queryImpl ?? (await loadSdkQuery());

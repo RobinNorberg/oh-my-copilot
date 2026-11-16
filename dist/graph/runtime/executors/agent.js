@@ -9,6 +9,7 @@
  * `query` from `@anthropic-ai/claude-agent-sdk`.
  */
 import { childEnv } from "../../../utils/windows-search.js";
+import { resolvePackageRoot } from "../../../smoke/copilot-session-env.js";
 import { buildAgentEnv, idempotencyKeyFor, READ_ONLY_AGENT_TOOLS, } from "./authority.js";
 /** Optional peer; a variable specifier keeps bundlers and tsc from resolving it. */
 const CLAUDE_AGENT_SDK = "@anthropic-ai/claude-agent-sdk";
@@ -29,8 +30,11 @@ async function loadSdkQuery() {
         if (notFound &&
             (message.includes(`'${CLAUDE_AGENT_SDK}'`) ||
                 message.includes(`"${CLAUDE_AGENT_SDK}"`))) {
+            const root = resolvePackageRoot();
+            const where = root ? `next to oh-my-copilot in ${root}` : "next to oh-my-copilot";
             throw new Error(`graph agent nodes need the optional peer dependency ${CLAUDE_AGENT_SDK}; ` +
-                `install it next to oh-my-copilot (npm install ${CLAUDE_AGENT_SDK})`);
+                `install it ${where} (npm install ${CLAUDE_AGENT_SDK} in that project, ` +
+                `or npm install -g ${CLAUDE_AGENT_SDK} for a global install)`);
         }
         throw error;
     }
@@ -127,6 +131,8 @@ export class AgentNodeExecutor {
                 reject(new AgentTimeoutError(node.timeout_ms));
             }, node.timeout_ms);
         });
+        // The SDK load below may throw before the race awaits this promise.
+        timedOut.catch(() => { });
         try {
             const queryFn = this.queryImpl ?? (await loadSdkQuery());
             const canUseTool = async (toolName, input) => {

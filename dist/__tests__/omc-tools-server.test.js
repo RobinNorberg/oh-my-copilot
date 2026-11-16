@@ -1,11 +1,15 @@
 import { describe, it, expect } from 'vitest';
-import { omcToolsServer, omcToolNames, getOmcToolNames } from '../mcp/omc-tools-server.js';
-const interopEnabled = process.env.OMC_INTEROP_TOOLS_ENABLED === '1';
-const totalTools = interopEnabled ? 58 : 50;
-const withoutLsp = interopEnabled ? 46 : 38;
-const withoutAst = interopEnabled ? 56 : 48;
-const withoutPython = interopEnabled ? 57 : 49;
-const withoutSkills = interopEnabled ? 55 : 47;
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
+import { pathToFileURL } from 'url';
+import { omcToolsServer, omcToolNames, getOmcToolNames, resolveOmcMcpServerPath, } from '../mcp/omc-tools-server.js';
+// The stdio server does not serve the interop tools, so they are never listed.
+const totalTools = 50;
+const withoutLsp = 38;
+const withoutAst = 48;
+const withoutPython = 49;
+const withoutSkills = 47;
 describe('omc-tools-server', () => {
     describe('omcToolNames', () => {
         it('should export expected tools total', () => {
@@ -63,10 +67,48 @@ describe('omc-tools-server', () => {
         it('supports includeInterop filter option', () => {
             const withInterop = getOmcToolNames({ includeInterop: true });
             const withoutInterop = getOmcToolNames({ includeInterop: false });
-            if (interopEnabled) {
-                expect(withInterop.some(n => n.includes('interop_'))).toBe(true);
-            }
+            expect(withInterop.some(n => n.includes('interop_'))).toBe(false);
             expect(withoutInterop.some(n => n.includes('interop_'))).toBe(false);
+        });
+    });
+    describe('resolveOmcMcpServerPath', () => {
+        function makeTree(withBridge) {
+            const root = mkdtempSync(join(tmpdir(), 'omc-mcp-path-'));
+            mkdirSync(join(root, 'dist', 'mcp'), { recursive: true });
+            if (withBridge) {
+                mkdirSync(join(root, 'bridge'));
+                writeFileSync(join(root, 'bridge', 'mcp-server.cjs'), '');
+            }
+            return root;
+        }
+        const moduleUrlIn = (root) => pathToFileURL(join(root, 'dist', 'mcp', 'omc-tools-server.js')).href;
+        it('uses the package root when it has the bridge', () => {
+            const root = makeTree(true);
+            try {
+                expect(resolveOmcMcpServerPath(root, null)).toBe(join(root, 'bridge', 'mcp-server.cjs'));
+            }
+            finally {
+                rmSync(root, { recursive: true, force: true });
+            }
+        });
+        it('falls back to the bridge two levels above the module when no package root is found', () => {
+            const root = makeTree(true);
+            try {
+                expect(resolveOmcMcpServerPath(null, moduleUrlIn(root))).toBe(join(root, 'bridge', 'mcp-server.cjs'));
+            }
+            finally {
+                rmSync(root, { recursive: true, force: true });
+            }
+        });
+        it('throws a clear error when no candidate exists', () => {
+            const root = makeTree(false);
+            try {
+                expect(() => resolveOmcMcpServerPath(null, moduleUrlIn(root))).toThrow('bridge/mcp-server.cjs not found');
+                expect(() => resolveOmcMcpServerPath(null, null)).toThrow('no candidate paths');
+            }
+            finally {
+                rmSync(root, { recursive: true, force: true });
+            }
         });
     });
     describe('omcToolsServer', () => {
