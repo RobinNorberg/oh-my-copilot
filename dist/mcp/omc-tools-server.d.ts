@@ -14,14 +14,6 @@ export { DISABLE_TOOLS_GROUP_MAP, parseDisabledGroups } from "./disable-tools.js
  * package root is found. Throws when neither file exists.
  */
 export declare function resolveOmcMcpServerPath(packageRoot?: string | null, moduleUrl?: string | null): string;
-/**
- * Stdio MCP server config exposing all OMC custom tools via the shipped
- * standalone server (bridge/mcp-server.cjs), for an Agent SDK `mcpServers`
- * entry named "t".
- *
- * Tools will be available as mcp__t__<tool_name>.
- * Tools in disabled groups (via OMC_DISABLE_TOOLS) are excluded at startup.
- */
 export declare const omcToolsServer: {
     command: string;
     readonly args: string[];
@@ -40,6 +32,7 @@ interface ToolNameFilterOptions {
     includeNotepad?: boolean;
     includeMemory?: boolean;
     includeTrace?: boolean;
+    /** @deprecated No effect: interop tools are not served by the stdio server. */
     includeInterop?: boolean;
     includeSharedMemory?: boolean;
     includeDeepinit?: boolean;

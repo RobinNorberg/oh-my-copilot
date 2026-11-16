@@ -4,8 +4,8 @@
  * Upstream ports re-add the SDK as a dependency and as static imports (see
  * .omc/skills/stale-main-dependency-reintroduction-expertise.md); a merge
  * that does so applies cleanly and builds, so only this test catches it.
- * The one allowed loader is src/graph/runtime/executors/agent.ts, which
- * lazy-imports the SDK through a variable specifier.
+ * Every src file is scanned: the lazy loader in src/graph/runtime/executors/agent.ts
+ * uses a variable specifier, which the static pattern does not match.
  */
 
 import { readdirSync, readFileSync } from "fs";
@@ -15,7 +15,6 @@ import { describe, expect, it } from "vitest";
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "../..");
 const SDK = "@anthropic-ai/claude-agent-sdk";
-const ALLOWED_LOADER = "src/graph/runtime/executors/agent.ts";
 
 const toPosix = (path: string): string => path.replace(/\\/g, "/");
 
@@ -37,7 +36,7 @@ const STATIC_LOAD = new RegExp(
 function sourceFiles(dir: string): string[] {
   return (readdirSync(join(REPO_ROOT, dir), { recursive: true }) as string[])
     .map((entry) => toPosix(join(dir, entry)))
-    .filter((path) => path.endsWith(".ts"));
+    .filter((path) => /\.[cm]?ts$/.test(path));
 }
 
 describe("no @anthropic-ai/claude-agent-sdk dependency", () => {
@@ -48,11 +47,11 @@ describe("no @anthropic-ai/claude-agent-sdk dependency", () => {
     >;
     expect(Object.keys(pkg.dependencies ?? {})).not.toContain(SDK);
     expect(Object.keys(pkg.optionalDependencies ?? {})).not.toContain(SDK);
+    expect(Object.keys(pkg.devDependencies ?? {})).not.toContain(SDK);
   });
 
-  it("only the graph agent executor loads the SDK, and never statically", () => {
+  it("no src file loads the SDK statically", () => {
     const offenders = sourceFiles("src")
-      .filter((path) => path !== ALLOWED_LOADER)
       .filter((path) => STATIC_LOAD.test(stripComments(readFileSync(join(REPO_ROOT, path), "utf8"))));
     expect(offenders).toEqual([]);
   });

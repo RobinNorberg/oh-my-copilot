@@ -148104,11 +148104,12 @@ function resolveOmcMcpServerPath(packageRoot2 = resolvePackageRoot(), moduleUrl 
   }
   return found;
 }
+var resolvedArgs;
 var omcToolsServer = {
   command: process.execPath,
   // Resolved on first read, so importing this module never throws.
   get args() {
-    return [resolveOmcMcpServerPath()];
+    return resolvedArgs ??= [resolveOmcMcpServerPath()];
   }
 };
 var omcToolNames = enabledTools.map((t) => `mcp__t__${t.name}`);

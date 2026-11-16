@@ -71,11 +71,12 @@ export function resolveOmcMcpServerPath(packageRoot = resolvePackageRoot(), modu
  * Tools will be available as mcp__t__<tool_name>.
  * Tools in disabled groups (via OMC_DISABLE_TOOLS) are excluded at startup.
  */
+let resolvedArgs;
 export const omcToolsServer = {
     command: process.execPath,
     // Resolved on first read, so importing this module never throws.
     get args() {
-        return [resolveOmcMcpServerPath()];
+        return (resolvedArgs ??= [resolveOmcMcpServerPath()]);
     },
 };
 /**

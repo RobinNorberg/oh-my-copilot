@@ -89,11 +89,12 @@ export function resolveOmcMcpServerPath(
  * Tools will be available as mcp__t__<tool_name>.
  * Tools in disabled groups (via OMC_DISABLE_TOOLS) are excluded at startup.
  */
+let resolvedArgs: string[] | undefined;
 export const omcToolsServer: { command: string; readonly args: string[] } = {
   command: process.execPath,
   // Resolved on first read, so importing this module never throws.
   get args() {
-    return [resolveOmcMcpServerPath()];
+    return (resolvedArgs ??= [resolveOmcMcpServerPath()]);
   },
 };
 
@@ -118,6 +119,7 @@ interface ToolNameFilterOptions {
   includeNotepad?: boolean;
   includeMemory?: boolean;
   includeTrace?: boolean;
+  /** @deprecated No effect: interop tools are not served by the stdio server. */
   includeInterop?: boolean;
   includeSharedMemory?: boolean;
   includeDeepinit?: boolean;
