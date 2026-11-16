@@ -183,8 +183,19 @@ export function parseSimpleCron(expr) {
 }
 /** Build the host-native registration plan from the parsed cron expression. */
 export function buildSchedulePlan(platform, expr, runCommand) {
+    // Exactly five plain cron fields: anything else (a newline, '%', a sixth
+    // field) would let the expression inject crontab lines or command text.
+    // On unix the vixie-cron macros (exact match) are accepted too.
+    const trimmed = expr.trim();
+    if (platform !== 'win32' && /^@(yearly|annually|monthly|weekly|daily|midnight|hourly)$/.test(trimmed)) {
+        return { platform: 'cron', crontabLine: `${trimmed} ${runCommand} ${CRONTAB_MARKER}` };
+    }
+    const fields = trimmed.split(/[ \t]+/);
+    if (fields.length !== 5 || !fields.every((field) => /^[A-Za-z0-9*,/-]+$/.test(field))) {
+        return { refused: `invalid cron expression: ${JSON.stringify(expr)}. Expected five fields such as "*/30 * * * *".` };
+    }
     if (platform !== 'win32') {
-        return { platform: 'cron', crontabLine: `${expr} ${runCommand} ${CRONTAB_MARKER}` };
+        return { platform: 'cron', crontabLine: `${fields.join(' ')} ${runCommand} ${CRONTAB_MARKER}` };
     }
     const parsed = parseSimpleCron(expr);
     if (parsed.kind === 'unsupported') {
@@ -208,8 +219,23 @@ export function filterCrontabLines(existing, remove, installLine) {
         kept.push(installLine);
     return kept.join('\n');
 }
-export function buildScheduledCommand(cwd) {
-    return `omg intake run --headless --allow-docket-only --cwd "${resolve(cwd)}"`;
+/**
+ * The command line the host scheduler runs. The cwd is quoted for the shell
+ * that runs it (sh for crontab, cmd for the omg shim under schtasks); a path
+ * the quoting cannot carry safely (control characters, '%', or '"' on
+ * Windows) is refused with an error.
+ */
+export function buildScheduledCommand(cwd, platform = process.platform) {
+    const dir = resolve(cwd);
+    if (/[\u0000-\u001f\u007f%]/.test(dir) || (platform === 'win32' && dir.includes('"'))) {
+        throw new Error(`unsupported characters in --cwd for a scheduled entry: ${JSON.stringify(dir)}`);
+    }
+    // Windows: trailing backslashes before the closing quote are doubled, or the
+    // C runtime reads `"C:\"` as an escaped quote.
+    const quoted = platform === 'win32'
+        ? `"${dir.replace(/(\\+)$/, '$1$1')}"`
+        : `'${dir.replace(/'/g, `'\\''`)}'`;
+    return `omg intake run --headless --allow-docket-only --cwd ${quoted}`;
 }
 /** `omg intake run --headless`: preconditions, lock, headless sweep, exit. */
 export function runHeadlessIntake(options, runner = defaultIntakeRunner) {
@@ -266,30 +292,42 @@ export function runHeadlessIntake(options, runner = defaultIntakeRunner) {
 /** `omg intake schedule`: install or remove the host-native entry. */
 export function scheduleIntake(options, runner = defaultIntakeRunner) {
     const cwd = resolve(options.cwd ?? process.cwd());
-    const runCommand = buildScheduledCommand(cwd);
+    // Removal only filters by marker / task name, so it runs before the run
+    // command and cron validation: --off works for any cwd or cron value.
+    if (options.off === true) {
+        if (process.platform === 'win32') {
+            runner('schtasks', ['/Delete', '/TN', TASK_NAME, '/F'], { cwd });
+            return { exitCode: 0, message: 'scheduled entry removed (or was already absent).' };
+        }
+        const current = runner('crontab', ['-l'], { cwd });
+        const existing = current.status === 0 ? current.stdout : '';
+        const write = runner('crontab', ['-'], { cwd, input: `${filterCrontabLines(existing, true)}\n` });
+        if (write.status !== 0) {
+            return { exitCode: 1, message: `intake schedule failed: crontab update did not take:\n${write.stderr.trim().slice(0, 400)}` };
+        }
+        return { exitCode: 0, message: 'scheduled entry removed from crontab.' };
+    }
+    let runCommand;
+    try {
+        runCommand = buildScheduledCommand(cwd);
+    }
+    catch (error) {
+        return { exitCode: 1, message: `intake schedule refused: ${error.message}` };
+    }
     const plan = buildSchedulePlan(process.platform, options.cron, runCommand);
     if ('refused' in plan)
         return { exitCode: 1, message: `intake schedule refused: ${plan.refused}` };
     if (plan.platform === 'cron') {
         const current = runner('crontab', ['-l'], { cwd });
         const existing = current.status === 0 ? current.stdout : '';
-        const updated = filterCrontabLines(existing, options.off === true, plan.crontabLine);
+        const updated = filterCrontabLines(existing, false, plan.crontabLine);
         const write = runner('crontab', ['-'], { cwd, input: `${updated}\n` });
         if (write.status !== 0) {
             return { exitCode: 1, message: `intake schedule failed: crontab update did not take:\n${write.stderr.trim().slice(0, 400)}` };
         }
-        return {
-            exitCode: 0,
-            message: options.off
-                ? 'scheduled entry removed from crontab.'
-                : `scheduled entry installed in crontab:\n  ${plan.crontabLine}`,
-        };
+        return { exitCode: 0, message: `scheduled entry installed in crontab:\n  ${plan.crontabLine}` };
     }
-    const deleteFirst = runner('schtasks', ['/Delete', '/TN', TASK_NAME, '/F'], { cwd });
-    void deleteFirst;
-    if (options.off === true) {
-        return { exitCode: 0, message: 'scheduled entry removed (or was already absent).' };
-    }
+    runner('schtasks', ['/Delete', '/TN', TASK_NAME, '/F'], { cwd });
     const create = runner('schtasks', plan.schtaskArgs ?? [], { cwd });
     if (create.status !== 0) {
         return { exitCode: 1, message: `intake schedule failed: schtasks could not create the entry:\n${create.stderr.trim().slice(0, 400)}` };
