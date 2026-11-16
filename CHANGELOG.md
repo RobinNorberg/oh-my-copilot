@@ -4,6 +4,12 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ## [Unreleased]
 
+### Security
+
+- Stop hook (`scripts/persistent-mode.cjs`) allowlists the stdin session id before any path use, and the inline fallback of `resolveSessionStatePathsForHook()` (`scripts/lib/state-root.{cjs,mjs}`, `templates/hooks/lib/state-root.mjs`) rejects a session id outside the `validateSessionId()` allowlist; a traversal id could delete or write state files outside `.omg/state/sessions/` (Socket.dev finding).
+- `omg intake schedule` refuses a `--cron` value that is not five plain cron fields and a `--cwd` with control characters or `%` (or `"` on Windows), and single-quotes the cwd in the crontab line, so neither can inject crontab lines or shell text (Socket.dev finding).
+- Default MCP servers pin `exa-mcp-server@3.4.3` and `@playwright/mcp@0.0.85` instead of an unpinned and an `@latest` npx spec (Socket.dev finding).
+
 ### Fixed
 
 - **A malformed `factory.run.sandbox` in the user config is refused.** An array, string or number there used to be read as an empty block, so `windowsGitTransport` and `isolation` silently fell back to their defaults. It now throws `user config: factory.run.sandbox must be an object`.

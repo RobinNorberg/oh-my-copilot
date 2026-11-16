@@ -150817,8 +150817,12 @@ function parseSimpleCron(expr) {
   return { kind: "unsupported" };
 }
 function buildSchedulePlan(platform, expr, runCommand2) {
+  const fields = expr.trim().split(/[ \t]+/);
+  if (fields.length !== 5 || !fields.every((field) => /^[A-Za-z0-9*,/-]+$/.test(field))) {
+    return { refused: `invalid cron expression: ${JSON.stringify(expr)}. Expected five fields such as "*/30 * * * *".` };
+  }
   if (platform !== "win32") {
-    return { platform: "cron", crontabLine: `${expr} ${runCommand2} ${CRONTAB_MARKER}` };
+    return { platform: "cron", crontabLine: `${fields.join(" ")} ${runCommand2} ${CRONTAB_MARKER}` };
   }
   const parsed2 = parseSimpleCron(expr);
   if (parsed2.kind === "unsupported") {
@@ -150836,8 +150840,13 @@ function filterCrontabLines(existing, remove, installLine) {
   if (!remove && installLine) kept.push(installLine);
   return kept.join("\n");
 }
-function buildScheduledCommand(cwd2) {
-  return `omg intake run --headless --allow-docket-only --cwd "${(0, import_path213.resolve)(cwd2)}"`;
+function buildScheduledCommand(cwd2, platform = process.platform) {
+  const dir = (0, import_path213.resolve)(cwd2);
+  if (/[\u0000-\u001f\u007f%]/.test(dir) || platform === "win32" && dir.includes('"')) {
+    throw new Error(`unsupported characters in --cwd for a scheduled entry: ${JSON.stringify(dir)}`);
+  }
+  const quoted = platform === "win32" ? `"${dir}"` : `'${dir.replace(/'/g, `'\\''`)}'`;
+  return `omg intake run --headless --allow-docket-only --cwd ${quoted}`;
 }
 function runHeadlessIntake(options, runner = defaultIntakeRunner) {
   const cwd2 = (0, import_path213.resolve)(options.cwd ?? process.cwd());
@@ -150879,7 +150888,12 @@ ${(child.stderr || child.stdout).trim().slice(0, 600)}`
 }
 function scheduleIntake(options, runner = defaultIntakeRunner) {
   const cwd2 = (0, import_path213.resolve)(options.cwd ?? process.cwd());
-  const runCommand2 = buildScheduledCommand(cwd2);
+  let runCommand2;
+  try {
+    runCommand2 = buildScheduledCommand(cwd2);
+  } catch (error2) {
+    return { exitCode: 1, message: `intake schedule refused: ${error2.message}` };
+  }
   const plan = buildSchedulePlan(process.platform, options.cron, runCommand2);
   if ("refused" in plan) return { exitCode: 1, message: `intake schedule refused: ${plan.refused}` };
   if (plan.platform === "cron") {
@@ -168970,7 +168984,7 @@ init_definitions();
 function createExaServer(apiKey) {
   return {
     command: "npx",
-    args: ["-y", "exa-mcp-server"],
+    args: ["-y", "exa-mcp-server@3.4.3"],
     env: apiKey ? { EXA_API_KEY: apiKey } : void 0
   };
 }
@@ -168983,7 +168997,7 @@ function createContext7Server() {
 function createPlaywrightServer() {
   return {
     command: "npx",
-    args: ["-y", "@playwright/mcp@latest"]
+    args: ["-y", "@playwright/mcp@0.0.85"]
   };
 }
 function createMemoryServer() {

