@@ -4,9 +4,9 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ## [Unreleased]
 
-### Fixed
+# oh-my-copilot v5.28.0
 
-- **A malformed `factory.run.sandbox` in the user config is refused.** An array, string or number there used to be read as an empty block, so `windowsGitTransport` and `isolation` silently fell back to their defaults. It now throws `user config: factory.run.sandbox must be an object`.
+## [5.28.0] - 2026-11-13
 
 ### Added
 
@@ -25,6 +25,8 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ### Fixed
 
+- **A malformed `factory.run.sandbox` in the user config is refused.** An array, string or number there used to be read as an empty block, so `windowsGitTransport` and `isolation` silently fell back to their defaults. It now throws `user config: factory.run.sandbox must be an object`.
+- **CI definition file names are made safe in the "no checks reported" park text.** The file names (read from the PR's tree) and the base check names are each put on one line (control characters and line breaks become spaces, 200 characters at most) before they reach the park reason, heartbeat, suggestions and forge comment.
 - **Release CI failing-test detail lines are made safe.** The check name and the test name on each `  <check>: <test>` line now go through the same sanitising as other check names (code span, no backticks, `@` mentions, pipes, control characters or line breaks; test name cut at 160 characters).
 - **Clearer factory gate message when the pinned image is gone.** If the pinned `sha256:` gate image id is removed mid-run, the container gate now says to restart the run instead of trying to `pull` an image id.
 - **A factory PR that conflicts with its moved base goes back to prepare.** GitHub runs no CI on a PR that conflicts with its base. When the base moved after prepare, the gates parked at `missing-checks` forever, and a rerun parked again. The gates now ask the forge first (on entry, on a rerun, and before a `missing-checks` or `no-workflows` park): GitHub `mergeable`, Azure DevOps `mergeStatus`, or `git merge-tree` on the local forge. A conflict for the pushed head sends the run back to prepare, which merges the base again and uses the conflict-fix lane for real conflicts. An unknown answer is read up to 4 times; still unknown, or a failed read, keeps the old behaviour. After 3 such returns in one run, the run parks at `merge-conflicts`.
@@ -37,6 +39,7 @@ All notable changes to oh-my-copilot will be documented in this file.
 ### Tests
 
 - **The local factory engine tests run as under a plain shell.** When the factory ran this suite in its gate env (`GIT_CONFIG_NOSYSTEM`, `GIT_CONFIG_GLOBAL`), the engine's two git paths read different git configs. On Git for Windows a checkout then looked changed, and 12 tests in `engine.gates-git-transport.test.ts` parked at `lane-tampered`. The test harness now drops these variables.
+- **The factory seed lock is never taken from a live holder.** New tests pin that the per-repository seed lock (60 s stale window) is reaped only when its holder's process is dead, so a fetch that holds it for up to about 120 s is safe. No lock constant changed.
 - **Loosened the jev-compaction linear-time bound.** The 1M-slash test now allows 250 ms instead of 50 ms, because shared CI runners measured about 51 ms. A quadratic regression would still take seconds.
 
 ### Docs
