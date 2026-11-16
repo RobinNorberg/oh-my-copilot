@@ -1,11 +1,16 @@
 /**
- * OMC Tools Server - In-process MCP server for custom tools
+ * OMC Tools Server - tool-name registry and stdio server config for Agent SDK hosts
  *
- * Exposes 18 custom tools (12 LSP, 2 AST, 1 python_repl, 3 skills) via the Claude Agent SDK's
- * createSdkMcpServer helper for local Node.js Agent SDK integrations. This is not a VS Code
- * extension host or CI runner by itself.
+ * Exposes the OMC custom tools (LSP, AST, python_repl, skills, state, ...) to
+ * local Node.js Agent SDK integrations as the "t" MCP server. The server is
+ * the shipped standalone stdio bundle (bridge/mcp-server.cjs), so this module
+ * needs no Agent SDK at runtime. This is not a VS Code extension host or CI
+ * runner by itself.
  */
-import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
+import { existsSync } from "fs";
+import { join } from "path";
+import { fileURLToPath } from "url";
+import { resolvePackageRoot } from "../smoke/copilot-session-env.js";
 import { lspTools } from "../tools/lsp-tools.js";
 import { astTools } from "../tools/ast-tools.js";
 import { pythonReplTool } from "../tools/python-repl/index.js";
@@ -15,17 +20,14 @@ import { notepadTools } from "../tools/notepad-tools.js";
 import { memoryTools } from "../tools/memory-tools.js";
 import { traceTools } from "../tools/trace-tools.js";
 import { sharedMemoryTools } from "../tools/shared-memory-tools.js";
-import { getInteropTools } from "../interop/mcp-bridge.js";
 import { deepinitManifestTool } from "../tools/deepinit-manifest.js";
 import { wikiTools } from "../tools/wiki-tools.js";
 import { TOOL_CATEGORIES } from "../constants/index.js";
 import { filterDisabledTools, tagCategory } from "./disable-tools.js";
 export { DISABLE_TOOLS_GROUP_MAP, parseDisabledGroups } from "./disable-tools.js";
-// Aggregate all custom tools with category metadata (full list, unfiltered)
-const interopToolsEnabled = process.env.OMC_INTEROP_TOOLS_ENABLED === '1';
-const interopTools = interopToolsEnabled
-    ? tagCategory(getInteropTools(), TOOL_CATEGORIES.INTEROP)
-    : [];
+// Aggregate all custom tools with category metadata (full list, unfiltered).
+// Only tools the stdio server (bridge/mcp-server.cjs) serves belong here; it
+// does not serve the interop tools, so OMC_INTEROP_TOOLS_ENABLED adds none.
 const allTools = [
     ...tagCategory(lspTools, TOOL_CATEGORIES.LSP),
     ...tagCategory(astTools, TOOL_CATEGORIES.AST),
@@ -38,24 +40,45 @@ const allTools = [
     ...tagCategory(sharedMemoryTools, TOOL_CATEGORIES.SHARED_MEMORY),
     { ...deepinitManifestTool, category: TOOL_CATEGORIES.DEEPINIT },
     ...tagCategory(wikiTools, TOOL_CATEGORIES.WIKI),
-    ...interopTools,
 ];
 // Read OMC_DISABLE_TOOLS once at startup and filter tools accordingly
 const enabledTools = filterDisabledTools(allTools);
-// Convert to SDK tool format
-// The SDK's tool() expects a ZodRawShape directly (not wrapped in z.object())
-const sdkTools = enabledTools.map(t => tool(t.name, t.description, t.schema, async (args) => await t.handler(args)));
 /**
- * In-process MCP server exposing all OMC custom tools
+ * Path of the shipped stdio server: <package root>/bridge/mcp-server.cjs, or
+ * the bridge two levels above this module (dist/mcp or src/mcp) when no
+ * package root is found. Throws when neither file exists.
+ */
+export function resolveOmcMcpServerPath(packageRoot = resolvePackageRoot(), moduleUrl = import.meta.url ?? null) {
+    const candidates = [];
+    if (packageRoot)
+        candidates.push(join(packageRoot, "bridge", "mcp-server.cjs"));
+    try {
+        if (moduleUrl)
+            candidates.push(fileURLToPath(new URL("../../bridge/mcp-server.cjs", moduleUrl)));
+    }
+    catch { /* CJS bundle: no import.meta.url */ }
+    const found = candidates.find((candidate) => existsSync(candidate));
+    if (!found) {
+        throw new Error(`oh-my-copilot MCP server bridge/mcp-server.cjs not found (looked in: ${candidates.join(", ") || "no candidate paths"}); reinstall oh-my-copilot`);
+    }
+    return found;
+}
+/**
+ * Stdio MCP server config exposing all OMC custom tools via the shipped
+ * standalone server (bridge/mcp-server.cjs), for an Agent SDK `mcpServers`
+ * entry named "t".
  *
  * Tools will be available as mcp__t__<tool_name>.
  * Tools in disabled groups (via OMC_DISABLE_TOOLS) are excluded at startup.
  */
-export const omcToolsServer = createSdkMcpServer({
-    name: "t",
-    version: "1.0.0",
-    tools: sdkTools
-});
+let resolvedArgs;
+export const omcToolsServer = {
+    command: process.execPath,
+    // Resolved on first read, so importing this module never throws.
+    get args() {
+        return (resolvedArgs ??= [resolveOmcMcpServerPath()]);
+    },
+};
 /**
  * Tool names in MCP format for allowedTools configuration.
  * Only includes tools that are enabled (not disabled via OMC_DISABLE_TOOLS).
