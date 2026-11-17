@@ -37857,6 +37857,47 @@ var init_payload_limits = __esm({
   }
 });
 
+// src/lib/node-sqlite.ts
+function isSqliteExperimentalWarning(warning, typeOrOptions) {
+  const type = typeof typeOrOptions === "string" ? typeOrOptions : typeOrOptions?.type ?? (warning instanceof Error ? warning.name : void 0);
+  const message4 = typeof warning === "string" ? warning : warning instanceof Error ? warning.message : "";
+  return type === "ExperimentalWarning" && message4.includes("SQLite");
+}
+function loadDatabaseSync() {
+  if (DatabaseCtor) return DatabaseCtor;
+  const originalEmitWarning = process.emitWarning;
+  process.emitWarning = function emitWarning(warning, ...rest) {
+    if (isSqliteExperimentalWarning(warning, rest[0])) return;
+    return originalEmitWarning.call(process, warning, ...rest);
+  };
+  try {
+    DatabaseCtor = require2("node:sqlite").DatabaseSync;
+  } finally {
+    process.emitWarning = originalEmitWarning;
+  }
+  return DatabaseCtor;
+}
+function sqliteErrorCode(error62) {
+  const { code, errcode } = error62 ?? {};
+  if (typeof errcode === "number") {
+    const primary = errcode & 255;
+    if (primary === 5) return "SQLITE_BUSY";
+    if (primary === 6) return "SQLITE_LOCKED";
+  }
+  return typeof code === "string" ? code : void 0;
+}
+var import_module2, require2, DatabaseCtor;
+var init_node_sqlite = __esm({
+  "src/lib/node-sqlite.ts"() {
+    "use strict";
+    import_module2 = require("module");
+    require2 = (0, import_module2.createRequire)(
+      importMetaUrl || (typeof __filename === "string" ? __filename : process.cwd() + "/")
+    );
+    DatabaseCtor = null;
+  }
+});
+
 // src/lib/runs-ledger.ts
 function isWatchedRunMode(modeName) {
   return WATCHED_RUN_MODES.includes(modeName);
@@ -38021,11 +38062,21 @@ function errorMessage(error62) {
 function nativeBindingDiagnostic(detail) {
   const normalizedDetail = detail?.split(/\r?\n/, 1)[0].replace(/\s+/g, " ").trim().slice(0, 240);
   const suffix = normalizedDetail ? ` Loader error: ${normalizedDetail}` : "";
-  return `better-sqlite3 native binding (${SQLITE_NATIVE_BINDING}) is unavailable. State mutation is using the file-lock fallback. ${SQLITE_NATIVE_BINDING_REMEDIATION}${suffix}`;
+  return `The built-in node:sqlite module is unavailable on Node.js ${process.version}. State mutation is using the file-lock fallback. ${SQLITE_REMEDIATION}${suffix}`;
 }
 function isNativeBindingError(error62) {
-  const message4 = errorMessage(error62);
-  return /better[_-]sqlite3(?:\.node)?|bindings(?:\.js)?|MODULE_NOT_FOUND|NODE_MODULE_VERSION|did not self-register|Could not locate the bindings file/i.test(message4);
+  return /node:sqlite|ERR_UNKNOWN_BUILTIN_MODULE|No such built-in module/i.test(errorMessage(error62));
+}
+function loadSqlite() {
+  if (!sqliteLoadAttempted) {
+    sqliteLoadAttempted = true;
+    try {
+      Database = loadDatabaseSync();
+    } catch (error62) {
+      sqliteBindingLoadError = nativeBindingDiagnostic(errorMessage(error62));
+    }
+  }
+  return Database;
 }
 function ownProcessStartIdentity() {
   if (ownProcessStartIdentityCache === null) {
@@ -38070,15 +38121,17 @@ function isStateMutationLockingSupported() {
   return !(process.env.NODE_ENV === "test" && process.env.OMC_TEST_STATE_LOCK_MODE === "none");
 }
 function sqliteConstructor() {
-  if (process.env.NODE_ENV === "test" && process.env.OMC_TEST_BETTER_SQLITE3_LOAD_FAILURE === "1") {
-    sqliteBindingLoadError = nativeBindingDiagnostic("simulated native binding load failure");
+  if (process.env.NODE_ENV === "test" && process.env.OMC_TEST_SQLITE_LOAD_FAILURE === "1") {
+    sqliteBindingLoadError = nativeBindingDiagnostic("simulated node:sqlite load failure");
     return null;
   }
-  return Database;
+  return loadSqlite();
 }
 function getStateMutationLockDiagnostic() {
-  if (process.env.NODE_ENV === "test" && process.env.OMC_TEST_BETTER_SQLITE3_LOAD_FAILURE === "1") {
-    sqliteBindingLoadError = nativeBindingDiagnostic("simulated native binding load failure");
+  if (process.env.NODE_ENV === "test" && process.env.OMC_TEST_SQLITE_LOAD_FAILURE === "1") {
+    sqliteBindingLoadError = nativeBindingDiagnostic("simulated node:sqlite load failure");
+  } else {
+    loadSqlite();
   }
   return sqliteBindingLoadError;
 }
@@ -38235,12 +38288,20 @@ function openMutationDb(lockPath2) {
       }
     }
     db = new Database3(dbPath);
-    db.pragma("journal_mode = WAL");
-    db.pragma("busy_timeout = 2000");
+    db.exec("PRAGMA busy_timeout = 2000");
+    db.exec("PRAGMA journal_mode = WAL");
     db.exec("CREATE TABLE IF NOT EXISTS state_mutation_locks (lock_key TEXT PRIMARY KEY, version INTEGER NOT NULL, pid INTEGER NOT NULL, process_start TEXT NOT NULL, created_at TEXT NOT NULL, nonce TEXT NOT NULL)");
     return db;
   } catch (error62) {
     if (process.env.OMC_LOCK_DEBUG) console.error(`[lock-debug] openMutationDb open/exec failed for ${lockPath2}: ${error62?.message}`);
+    const code = sqliteErrorCode(error62);
+    if (code === "SQLITE_BUSY" || code === "SQLITE_LOCKED") {
+      try {
+        db?.close();
+      } catch {
+      }
+      return null;
+    }
     const detail = isNativeBindingError(error62) ? errorMessage(error62) : `SQLite backend initialization failed: ${errorMessage(error62)}`;
     sqliteBindingLoadError = nativeBindingDiagnostic(detail);
     try {
@@ -38528,7 +38589,7 @@ function acquireLockAt(path30, attempts = 50, verified = { row: null, artifact: 
       db.close();
     } catch {
     }
-    const code = error62?.code;
+    const code = sqliteErrorCode(error62);
     if (process.env.OMC_LOCK_DEBUG) console.error(`[lock-debug] acquireLockAt caught-error ${path30} code=${code} msg=${error62?.message}`);
     if ((code === "SQLITE_BUSY" || code === "SQLITE_LOCKED") && attempts > 1) {
       Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
@@ -38572,7 +38633,7 @@ function releaseMutationLock(lock) {
   try {
     for (; ; ) {
       try {
-        lock.db.pragma(`busy_timeout = ${Math.max(1, Math.min(2e3, deadline - Date.now()))}`);
+        lock.db.exec(`PRAGMA busy_timeout = ${Math.max(1, Math.min(2e3, deadline - Date.now()))}`);
         lock.db.exec("BEGIN IMMEDIATE");
         const row = ownerFromRow(lock.db.prepare("SELECT version, pid, process_start, created_at, nonce FROM state_mutation_locks WHERE lock_key = ?").get(lock.key));
         const artifact = readLockOwner(lock.path);
@@ -38594,7 +38655,7 @@ function releaseMutationLock(lock) {
           lock.db.exec("ROLLBACK");
         } catch {
         }
-        const code = error62?.code;
+        const code = sqliteErrorCode(error62);
         if ((code === "SQLITE_BUSY" || code === "SQLITE_LOCKED") && Date.now() < deadline) {
           Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
           continue;
@@ -39798,35 +39859,22 @@ function clearModeStateFile(mode, directory, sessionId, expectedState, cleanupSn
   }
   return success2;
 }
-var import_fs28, import_path30, import_crypto5, import_module2, require2, SQLITE_NATIVE_BINDING, SQLITE_NATIVE_BINDING_REMEDIATION, Database, sqliteBindingLoadError, localLocks, lastMutationLockFailure, lastMutationLockFailureDetail, abandonedOwnNonces, INCONCLUSIVE_PROBE_RETRY_LIMIT, ownProcessStartIdentityCache, START_BOUND_PREFIX, START_BOUND_SLACK_MS, START_BOUND_ORIGIN_TOLERANCE_MS, ownStartBoundCache, RELEASE_BUSY_BUDGET_MS;
+var import_fs28, import_path30, import_crypto5, SQLITE_REMEDIATION, sqliteLoadAttempted, Database, sqliteBindingLoadError, localLocks, lastMutationLockFailure, lastMutationLockFailureDetail, abandonedOwnNonces, INCONCLUSIVE_PROBE_RETRY_LIMIT, ownProcessStartIdentityCache, START_BOUND_PREFIX, START_BOUND_SLACK_MS, START_BOUND_ORIGIN_TOLERANCE_MS, ownStartBoundCache, RELEASE_BUSY_BUDGET_MS;
 var init_mode_state_io = __esm({
   "src/lib/mode-state-io.ts"() {
     "use strict";
     import_fs28 = require("fs");
     import_path30 = require("path");
     import_crypto5 = require("crypto");
-    import_module2 = require("module");
     init_worktree_paths();
     init_process_utils();
     init_atomic_write();
+    init_node_sqlite();
     init_runs_ledger();
-    require2 = (0, import_module2.createRequire)(
-      importMetaUrl || (typeof __filename === "string" ? __filename : process.cwd() + "/")
-    );
-    SQLITE_NATIVE_BINDING = "better_sqlite3.node";
-    SQLITE_NATIVE_BINDING_REMEDIATION = "Run `npm rebuild better-sqlite3` in the OMC plugin directory, then restart Claude Code.";
+    SQLITE_REMEDIATION = "Use Node.js 22.13 or newer (node:sqlite), then restart Claude Code.";
+    sqliteLoadAttempted = false;
     Database = null;
     sqliteBindingLoadError = null;
-    try {
-      const loaded2 = require2("better-sqlite3");
-      const candidate = typeof loaded2 === "function" ? loaded2 : loaded2 && typeof loaded2 === "object" && "default" in loaded2 ? loaded2.default : null;
-      if (typeof candidate !== "function") {
-        throw new Error("better-sqlite3 did not export a Database constructor");
-      }
-      Database = candidate;
-    } catch (error62) {
-      sqliteBindingLoadError = nativeBindingDiagnostic(errorMessage(error62));
-    }
     localLocks = /* @__PURE__ */ new Map();
     lastMutationLockFailure = null;
     lastMutationLockFailureDetail = null;
@@ -52182,7 +52230,7 @@ var MIN_NODE_VERSION;
 var init_node_version = __esm({
   "src/utils/node-version.ts"() {
     "use strict";
-    MIN_NODE_VERSION = 20;
+    MIN_NODE_VERSION = 22;
   }
 });
 
@@ -109062,16 +109110,15 @@ async function initJobDb(cwd) {
   try {
     if (!Database2) {
       try {
-        const betterSqlite3 = await import("better-sqlite3");
-        Database2 = betterSqlite3.default;
+        Database2 = loadDatabaseSync();
       } catch (importError) {
         const errorMessage5 = importError instanceof Error ? importError.message : String(importError);
         console.error(
-          "[job-state-db] Failed to load better-sqlite3:",
+          "[job-state-db] Failed to load node:sqlite:",
           errorMessage5
         );
         console.error(
-          "[job-state-db] Install with: npm install better-sqlite3"
+          "[job-state-db] node:sqlite needs Node.js 22.13 or newer"
         );
         return false;
       }
@@ -109087,7 +109134,8 @@ async function initJobDb(cwd) {
     ensureStateDir4(cwd);
     const dbPath = getDbPath(cwd);
     const db = new Database2(dbPath);
-    db.pragma("journal_mode = WAL");
+    db.exec("PRAGMA busy_timeout = 5000");
+    db.exec("PRAGMA journal_mode = WAL");
     db.exec(`
       -- Schema version tracking
       CREATE TABLE IF NOT EXISTS schema_info (
@@ -109215,6 +109263,7 @@ var init_job_state_db = __esm({
     "use strict";
     import_fs106 = require("fs");
     import_path126 = require("path");
+    init_node_sqlite();
     init_worktree_paths();
     DB_SCHEMA_VERSION = 1;
     DEFAULT_CLEANUP_MAX_AGE_MS = 24 * 60 * 60 * 1e3;

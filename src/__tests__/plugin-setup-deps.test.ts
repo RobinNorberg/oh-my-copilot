@@ -36,9 +36,10 @@ describe('plugin-setup.mjs dependency installation', () => {
     expect(scriptContent).toContain("node_modules', 'commander'");
   });
 
-  it('checks for the better-sqlite3 native binding separately', () => {
-    expect(scriptContent).toContain("'better-sqlite3'");
-    expect(scriptContent).toContain("'better_sqlite3.node'");
+  it('probes the built-in node:sqlite instead of a native addon', () => {
+    expect(scriptContent).toContain("from './lib/node-sqlite.mjs'");
+    expect(scriptContent).not.toContain('better-sqlite3');
+    expect(scriptContent).not.toContain('npm rebuild');
   });
 
   it('runs npm install with --omit=dev flag', () => {
@@ -50,11 +51,6 @@ describe('plugin-setup.mjs dependency installation', () => {
     const installMatches = scriptContent.match(/npm install[^'"]+/g) || [];
     expect(installMatches.length).toBeGreaterThan(0);
     expect(installMatches.some(m => m.includes('--ignore-scripts'))).toBe(true);
-  });
-
-  it('rebuilds better-sqlite3 when its native binding is missing', () => {
-    expect(scriptContent).toContain('npm rebuild better-sqlite3');
-    expect(scriptContent).toContain('Could not build better-sqlite3 native binding');
   });
 
   it('sets a timeout on execSync to avoid hanging', () => {
@@ -71,7 +67,7 @@ describe('plugin-setup.mjs dependency installation', () => {
     expect(scriptContent).toContain('Could not install dependencies');
   });
 
-  it('reports a failed native rebuild while completing with the owner-file fallback', () => {
+  it('completes with the owner-file fallback when node:sqlite is unavailable', () => {
     const packageRoot = mkdtempSync(join(tmpdir(), 'omc-plugin-setup-fallback-'));
     const configDir = join(packageRoot, 'claude');
     const fakeHome = join(packageRoot, 'home');
@@ -84,7 +80,7 @@ describe('plugin-setup.mjs dependency installation', () => {
     mkdirSync(fakeBin, { recursive: true });
 
     cpSync(PLUGIN_SETUP_PATH, join(packageRoot, 'scripts', 'plugin-setup.mjs'));
-    for (const file of ['config-dir.mjs', 'config-dir.sh', 'hook-command-normalizer.mjs', 'hud-cache-wrapper.sh', 'hud-wrapper-template.mjs', 'hud-wrapper-template.txt']) {
+    for (const file of ['config-dir.mjs', 'config-dir.sh', 'hook-command-normalizer.mjs', 'hud-cache-wrapper.sh', 'hud-wrapper-template.mjs', 'hud-wrapper-template.txt', 'node-sqlite.mjs']) {
       cpSync(join(PACKAGE_ROOT, 'scripts', 'lib', file), join(packageRoot, 'scripts', 'lib', file));
     }
     cpSync(join(PACKAGE_ROOT, 'scripts', 'find-node.sh'), join(packageRoot, 'scripts', 'find-node.sh'));
@@ -102,7 +98,8 @@ describe('plugin-setup.mjs dependency installation', () => {
     const pathKey = Object.keys(process.env).find(key => key.toUpperCase() === 'PATH') ?? 'PATH';
 
     try {
-      const output = execFileSync(process.execPath, [join(packageRoot, 'scripts', 'plugin-setup.mjs')], {
+      // --no-experimental-sqlite removes the built-in, as on a Node runtime older than 22.13.
+      const output = execFileSync(process.execPath, ['--no-experimental-sqlite', join(packageRoot, 'scripts', 'plugin-setup.mjs')], {
         cwd: packageRoot,
         encoding: 'utf8',
         env: {
@@ -113,10 +110,9 @@ describe('plugin-setup.mjs dependency installation', () => {
         },
       });
 
-      expect(output).toContain('Could not build better-sqlite3 native binding');
-      expect(output).toContain('State mutation will use the file-lock fallback');
+      expect(output).toContain('node:sqlite module is unavailable');
+      expect(output).toContain('state mutation will use the file-lock fallback');
       expect(output).toContain('Setup complete with file-lock fallback');
-      expect(output).not.toContain('native binding built successfully');
     } finally {
       rmSync(packageRoot, { recursive: true, force: true });
     }

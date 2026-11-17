@@ -80,11 +80,11 @@ describe('keyword-detector.mjs mode-message dispatch', () => {
                 nonce: randomUUID(),
             }));
             const output = runKeywordDetector('ralph this task', cwd, sessionId, {
-                OMC_TEST_BETTER_SQLITE3_LOAD_FAILURE: '1',
+                OMC_TEST_SQLITE_LOAD_FAILURE: '1',
             });
             const context = output.hookSpecificOutput?.additionalContext ?? '';
             expect(context).toContain('[OMC STATE ERROR]');
-            expect(context).toContain('better_sqlite3.node');
+            expect(context).toContain('node:sqlite module is unavailable');
             expect(context).toContain('No ralph state was activated.');
             expect(existsSync(join(cwd, '.omg', 'state', 'sessions', sessionId, 'ralph-state.json'))).toBe(false);
             expect(existsSync(lockPath)).toBe(true);

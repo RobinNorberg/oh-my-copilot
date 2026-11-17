@@ -64,7 +64,7 @@ const buildConfig = {
     'dns', 'readline', 'tty', 'worker_threads',
     // Native modules that can't be bundled
     '@ast-grep/napi',
-    'better-sqlite3',
+    'node:sqlite', // built-in, loaded lazily (src/lib/node-sqlite.ts)
   ],
 };
 

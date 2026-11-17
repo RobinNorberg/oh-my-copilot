@@ -825,7 +825,7 @@ This prevents duplicate worker spawns and allows graceful recovery from lead fai
 | Aspect                  | Team (Native Claude Code 2.1.178+)                              | Swarm (Legacy SQLite)                  |
 | ----------------------- | ---------------------------------------------------------------- | -------------------------------------- |
 | **Storage**             | OMC state/handoffs plus Claude Code's current task-list surface   | SQLite in `.omg/state/swarm.db`        |
-| **Dependencies**        | `better-sqlite3` not needed                                      | Requires `better-sqlite3` npm package  |
+| **Dependencies**        | SQLite not needed                                                | Requires SQLite                        |
 | **Task claiming**       | Lead pre-assigns named workers through task-list/TodoWrite state  | SQLite IMMEDIATE transaction -- atomic |
 | **Race conditions**     | Possible if two agents claim same task (mitigate by pre-assigning) | None (SQLite transactions)             |
 | **Communication**       | Native implicit-team messages / conversation turns                | None (fire-and-forget agents)          |

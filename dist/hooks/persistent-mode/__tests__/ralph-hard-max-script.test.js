@@ -23,7 +23,7 @@ function stageInstalledTemplateHook(root) {
     for (const file of readdirSync(join(REPO_ROOT, 'templates', 'hooks', 'lib'))) {
         copyFileSync(join(REPO_ROOT, 'templates', 'hooks', 'lib', file), join(libDir, file));
     }
-    for (const file of ['config-dir.mjs', 'state-lock.mjs']) {
+    for (const file of ['config-dir.mjs', 'state-lock.mjs', 'node-sqlite.mjs']) {
         copyFileSync(join(REPO_ROOT, 'scripts', 'lib', file), join(libDir, file));
     }
     return join(hooksDir, 'persistent-mode.mjs');

@@ -6,6 +6,7 @@ This guide covers all migration paths for oh-my-copilot. Find your current versi
 
 ## Table of Contents
 
+- [Unreleased: Node 20 Dropped, Built-in node:sqlite](#unreleased-node-20-dropped-built-in-nodesqlite)
 - [Unreleased: Claude Agent SDK Is an Optional Peer](#unreleased-claude-agent-sdk-is-an-optional-peer)
 - [Unreleased: No npm Install Script](#unreleased-no-npm-install-script)
 - [Unreleased: Shipyard and Factory Chain Routes](#unreleased-shipyard-and-factory-chain-routes)
@@ -39,6 +40,22 @@ This guide covers all migration paths for oh-my-copilot. Find your current versi
 - [v2.x → v3.0: Package Rename & Auto-Activation](#v2x--v30-package-rename--auto-activation)
 - [v3.0 → v3.1: Notepad Wisdom & Enhanced Features](#v30--v31-notepad-wisdom--enhanced-features)
 - [v3.x → v4.0: Major Architecture Overhaul](#v3x--v40-major-architecture-overhaul)
+
+---
+
+## Unreleased: Node 20 Dropped, Built-in node:sqlite
+
+**Breaking.** Node 20 is no longer supported; Node 22.13+ required (or 23.4+ on the 23 line). `package.json` engines is now `^22.13.0 || ^23.4.0 || 24.x || 25.x || 26.x`.
+
+**What changed.** State mutation locking (`.state-mutation-locks.db`) and the job state database (`.omg/state/jobs.db`) use Node's built-in `node:sqlite` instead of the native `better-sqlite3` addon. `better-sqlite3` and `@types/better-sqlite3` are no longer dependencies, so installs no longer pull `prebuild-install` or `tar-fs`, and there is no native binding to rebuild.
+
+**Existing data.** Both files keep their schema and location. They are ordinary SQLite files, so databases written by earlier releases open unchanged.
+
+### Migration
+
+1. Upgrade Node.js to 22.13 or newer (`node --version`), then reinstall or update OMC (`omg update`, or update the plugin).
+2. Drop any `npm rebuild better-sqlite3` step from your setup scripts; it is no longer needed.
+3. On an older Node runtime (including Node 22.0–22.12) the hooks still run, but state locking falls back to the owner-file lock and the job database is unavailable; `state_write` reports `The built-in node:sqlite module is unavailable` in that case.
 
 ---
 
