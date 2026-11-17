@@ -9,7 +9,7 @@
  *   itself when the smoke report says the binary is missing.
  * - Tier 1 spends one prompt (AI credits) and runs only with OMC_LIVE_SMOKE=1.
  * - Tier 2 static (SDK introspection, no model call) runs whenever the copilot
- *   binary and the optional peer `@github/copilot-sdk` resolve; it skips itself
+ *   binary and the optional `@github/copilot-sdk` resolve; it skips itself
  *   otherwise. Tier 2 default scenarios (smoke, guardrail; ~0.6 AI credits)
  *   run only with OMC_LIVE_SMOKE=2.
  */

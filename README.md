@@ -58,6 +58,12 @@ autopilot: build a todo-app
 > then run `/omc-setup` again. Uninstall with
 > `copilot plugin uninstall oh-my-copilot@omc`.
 > [Getting Started](docs/GETTING-STARTED.md) covers every install path.
+>
+> **Optional SDKs:** oh-my-copilot does not install or declare either SDK. Headless
+> `omg team` workers (`--transport sdk`), `omg smoke copilot --tier 2` and
+> `copilot_run` need `npm i -g @github/copilot-sdk --omit=optional --ignore-scripts`;
+> `omg graph` agent nodes need `npm install -g @anthropic-ai/claude-agent-sdk`. See
+> [MIGRATION.md](docs/MIGRATION.md#unreleased-sdks-no-longer-declared-tsx-a-dev-dependency).
 
 ### Not Sure Where to Start?
 

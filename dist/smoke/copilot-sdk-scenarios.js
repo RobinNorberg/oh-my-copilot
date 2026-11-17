@@ -52,8 +52,10 @@ export const PLUGIN_NAME = 'oh-my-copilot';
 export const DELEGATE_AGENT = 'oh-my-copilot:architect';
 export const MIN_PROTOCOL_VERSION = 3;
 export const SDK_PACKAGE = '@github/copilot-sdk';
+/** oh-my-copilot does not declare the SDK, so every "not installed" message names this command. */
+export const SDK_INSTALL_COMMAND = `npm i -g ${SDK_PACKAGE} --omit=optional --ignore-scripts`;
 /** Lane B's CLI keys "pure skip" exit code 2 on this exact prefix. */
-export const SDK_MISSING_DETAIL = `${SDK_PACKAGE} not installed — npm i -g ${SDK_PACKAGE} --omit=optional --ignore-scripts`;
+export const SDK_MISSING_DETAIL = `${SDK_PACKAGE} not installed — ${SDK_INSTALL_COMMAND}`;
 /**
  * Never offered: our own `host_smoke` MCP tool (a smoke that can start a smoke).
  * MCP tools are named `<server>-<tool>` (server = the first `.mcp.json` key);

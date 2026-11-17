@@ -797,7 +797,7 @@ host_smoke(tier=0)
 host_smoke(tier=2, scenarios=[])   # SDK static checks, free
 ```
 
-Tier 2 needs the optional peer `@github/copilot-sdk` next to the package. Without it the `sdk.*` checks fail with an install hint and the report is marked `skipped`.
+Tier 2 needs `@github/copilot-sdk` (`npm i -g @github/copilot-sdk --omit=optional --ignore-scripts`), which oh-my-copilot does not install. Without it the `sdk.*` checks fail with an install hint and the report is marked `skipped`.
 
 See [DEVELOPERS.md](./DEVELOPERS.md#headless-smoke-against-a-local-build) for the check list and how to register a local build in Claude Code.
 

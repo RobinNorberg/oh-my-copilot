@@ -17,13 +17,21 @@ version() {
 }
 node=$(version node)
 # Node's built-in TypeScript loader refuses .ts files below node_modules
-# (ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING), so an npm-installed skill
-# must go through tsx even on a stripping-capable node.
+# (ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING), so a skill run in place from
+# an npm install needs Bun, Deno or a tsx on PATH. `omg setup` copies the
+# skill to the Copilot skills folder, outside node_modules.
+in_node_modules=
 case $self in
-  *node_modules*) node=0 ;;
+  *node_modules*) in_node_modules=1 node=0 ;;
 esac
+# Type stripping is unflagged from Node 22.18 and 23.6; Node 22.13 to 22.17 and
+# 23.4 to 23.5 (the rest of the supported range) need the flag. The flag stays
+# in process.execArgv, so the worker spawned with it strips types too.
 if [ "$node" -ge 23006000 ] || { [ "$node" -ge 22018000 ] && [ "$node" -lt 23000000 ]; }; then
   exec node --disable-warning=ExperimentalWarning "$entry" "$@"
+fi
+if [ "$node" -ge 22013000 ]; then
+  exec node --experimental-strip-types --disable-warning=ExperimentalWarning "$entry" "$@"
 fi
 if [ "$(version bun)" -ge 1001005 ]; then
   exec bun "$entry" "$@"
@@ -31,11 +39,11 @@ fi
 if [ "$(version deno)" -ge 2000000 ]; then
   exec deno run --quiet --no-prompt --allow-read --allow-write --allow-run --allow-env "$entry" "$@"
 fi
-# tsx is a production dependency, so an installed package ships a runtime for
-# nodes without type stripping (Node 20 is still in engines). tsx itself runs
-# on node, so the fallback applies only when a working node exists: with no
-# usable node, tsx cannot run either, and the launcher reports the supported
-# runtimes instead — the no-runtime PATH layouts the CLI suite exercises.
+# tsx is a devDependency: a repo checkout has it in node_modules/.bin, and a
+# user may have it on PATH. tsx itself runs on node, so the fallback applies
+# only when a working node exists: with no usable node, tsx cannot run either,
+# and the launcher reports the supported runtimes instead — the no-runtime
+# PATH layouts the CLI suite exercises.
 if node --version >/dev/null 2>&1; then
   repo_tsx="$(dirname "$entry")/../../../node_modules/.bin/tsx"
   if [ -x "$repo_tsx" ]; then
@@ -44,7 +52,10 @@ if node --version >/dev/null 2>&1; then
   if command -v tsx >/dev/null 2>&1; then
     exec tsx "$entry" "$@"
   fi
-  cd "$(dirname "$entry")" && exec npx --no-install tsx "$entry" "$@"
+  if [ -n "$in_node_modules" ]; then
+    echo "statechart cannot run from inside node_modules: Node does not strip TypeScript types there. Run 'omg setup' and use the copy in the Copilot skills folder, or install a runtime that can: npm install -g tsx, Bun 1.1.5 or later, or Deno 2.0 or later." >&2
+    exit 127
+  fi
 fi
-echo "statechart needs Node 22.18 to 22.x, Node 23.6 or later, Bun 1.1.5 or later, or Deno 2.0 or later." >&2
+echo "statechart needs Node 22.13 or later, Bun 1.1.5 or later, or Deno 2.0 or later." >&2
 exit 127

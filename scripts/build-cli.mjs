@@ -12,7 +12,7 @@ const sharedExternal = [
   'child_process', 'assert', 'module', 'net', 'tls',
   'dns', 'readline', 'tty', 'worker_threads',
   '@ast-grep/napi', 'node:sqlite',
-  // Optional peer, lazy-loaded by graph agent nodes; never bundle it
+  // Optional, undeclared package lazy-loaded by graph agent nodes; never bundle it
   '@anthropic-ai/claude-agent-sdk',
   // Avoid bundling jsonc-parser's UMD internals
   'jsonc-parser',
