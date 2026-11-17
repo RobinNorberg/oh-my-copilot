@@ -156,7 +156,11 @@ async function main() {
   }
 
   const cwd = typeof payload?.cwd === 'string' && payload.cwd ? payload.cwd : process.cwd();
-  const sessionId = typeof payload?.session_id === 'string' ? payload.session_id : undefined;
+  // Same allowlist as validateSessionId() in src/lib/worktree-paths.ts: a raw id
+  // never reaches a path; anything else reads the legacy state as with no id.
+  const sessionId = typeof payload?.session_id === 'string' && /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,255}$/.test(payload.session_id)
+    ? payload.session_id
+    : undefined;
 
   let stateRoot;
   try {

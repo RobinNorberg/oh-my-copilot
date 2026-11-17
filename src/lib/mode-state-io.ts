@@ -9,7 +9,6 @@
 import { closeSync, existsSync, fstatSync, fsyncSync, linkSync, mkdirSync, openSync, readFileSync, readdirSync, realpathSync, renameSync, statSync, unlinkSync, writeFileSync, writeSync } from 'fs';
 import { basename, dirname, join, resolve } from 'path';
 import { createHash, randomUUID } from 'crypto';
-import { createRequire } from 'module';
 import {
   getOmcRoot,
   probeGitTopLevel,
@@ -21,6 +20,7 @@ import {
 } from './worktree-paths.js';
 import { getProcessStartIdentitySync } from '../platform/process-utils.js';
 import { atomicWriteJsonSync, sameFileIdentity } from './atomic-write.js';
+import { loadDatabaseSync, sqliteErrorCode, type SqliteDatabase, type SqliteDatabaseConstructor } from './node-sqlite.js';
 import { observeModeStateActivation, observeModeStateClear, observeModeStateWrite } from './runs-ledger.js';
 
 /**
@@ -37,22 +37,17 @@ function omcRootFromStatePath(filePath: string): string | null {
 }
 
 type MutationLockOwner = { version: 1 | 2; pid: number; processStart: string; createdAt: string; nonce: string };
-type BetterSqlite3 = import('better-sqlite3').Database;
-type BetterSqlite3Constructor = new (path: string) => BetterSqlite3;
 type MutationLock =
-  | { backend: 'sqlite'; db: BetterSqlite3; key: string; path: string; owner: MutationLockOwner; depth: number }
+  | { backend: 'sqlite'; db: SqliteDatabase; key: string; path: string; owner: MutationLockOwner; depth: number }
   | { backend: 'file'; key: string; path: string; owner: MutationLockOwner; depth: number };
 
-// better-sqlite3 is externalized from plugin bundles and its native install
-// script may not have run in a Claude Code plugin cache. Keep loading optional
-// so mode state can use the owner-file lock fallback instead of failing import.
-const require = createRequire(
-  import.meta.url || (typeof __filename === 'string' ? __filename : process.cwd() + '/'),
-);
-const SQLITE_NATIVE_BINDING = 'better_sqlite3.node';
-const SQLITE_NATIVE_BINDING_REMEDIATION =
-  'Run `npm rebuild better-sqlite3` in the OMC plugin directory, then restart Claude Code.';
-let Database: BetterSqlite3Constructor | null = null;
+// node:sqlite is loaded lazily on the first lock (src/lib/node-sqlite.ts). It is missing on Node
+// runtimes older than 22.13 / 23.4; mode state then uses the owner-file lock fallback instead of
+// failing.
+const SQLITE_REMEDIATION =
+  'Use Node.js 22.13 or newer (node:sqlite), then restart Claude Code.';
+let sqliteLoadAttempted = false;
+let Database: SqliteDatabaseConstructor | null = null;
 let sqliteBindingLoadError: string | null = null;
 
 function errorMessage(error: unknown): string {
@@ -62,27 +57,23 @@ function errorMessage(error: unknown): string {
 function nativeBindingDiagnostic(detail?: string): string {
   const normalizedDetail = detail?.split(/\r?\n/, 1)[0].replace(/\s+/g, ' ').trim().slice(0, 240);
   const suffix = normalizedDetail ? ` Loader error: ${normalizedDetail}` : '';
-  return `better-sqlite3 native binding (${SQLITE_NATIVE_BINDING}) is unavailable. State mutation is using the file-lock fallback. ${SQLITE_NATIVE_BINDING_REMEDIATION}${suffix}`;
+  return `The built-in node:sqlite module is unavailable on Node.js ${process.version}. State mutation is using the file-lock fallback. ${SQLITE_REMEDIATION}${suffix}`;
 }
 
 function isNativeBindingError(error: unknown): boolean {
-  const message = errorMessage(error);
-  return /better[_-]sqlite3(?:\.node)?|bindings(?:\.js)?|MODULE_NOT_FOUND|NODE_MODULE_VERSION|did not self-register|Could not locate the bindings file/i.test(message);
+  return /node:sqlite|ERR_UNKNOWN_BUILTIN_MODULE|No such built-in module/i.test(errorMessage(error));
 }
 
-try {
-  const loaded = require('better-sqlite3') as unknown;
-  const candidate = typeof loaded === 'function'
-    ? loaded
-    : loaded && typeof loaded === 'object' && 'default' in loaded
-      ? loaded.default
-      : null;
-  if (typeof candidate !== 'function') {
-    throw new Error('better-sqlite3 did not export a Database constructor');
+function loadSqlite(): SqliteDatabaseConstructor | null {
+  if (!sqliteLoadAttempted) {
+    sqliteLoadAttempted = true;
+    try {
+      Database = loadDatabaseSync();
+    } catch (error) {
+      sqliteBindingLoadError = nativeBindingDiagnostic(errorMessage(error));
+    }
   }
-  Database = candidate as BetterSqlite3Constructor;
-} catch (error) {
-  sqliteBindingLoadError = nativeBindingDiagnostic(errorMessage(error));
+  return Database;
 }
 
 const localLocks = new Map<string, MutationLock>();
@@ -176,18 +167,20 @@ export function isStateMutationLockingSupported(): boolean {
   return !(process.env.NODE_ENV === 'test' && process.env.OMC_TEST_STATE_LOCK_MODE === 'none');
 }
 
-function sqliteConstructor(): BetterSqlite3Constructor | null {
-  if (process.env.NODE_ENV === 'test' && process.env.OMC_TEST_BETTER_SQLITE3_LOAD_FAILURE === '1') {
-    sqliteBindingLoadError = nativeBindingDiagnostic('simulated native binding load failure');
+function sqliteConstructor(): SqliteDatabaseConstructor | null {
+  if (process.env.NODE_ENV === 'test' && process.env.OMC_TEST_SQLITE_LOAD_FAILURE === '1') {
+    sqliteBindingLoadError = nativeBindingDiagnostic('simulated node:sqlite load failure');
     return null;
   }
-  return Database;
+  return loadSqlite();
 }
 
 /** Explain why SQLite coordination is unavailable, when that is the cause. */
 export function getStateMutationLockDiagnostic(): string | null {
-  if (process.env.NODE_ENV === 'test' && process.env.OMC_TEST_BETTER_SQLITE3_LOAD_FAILURE === '1') {
-    sqliteBindingLoadError = nativeBindingDiagnostic('simulated native binding load failure');
+  if (process.env.NODE_ENV === 'test' && process.env.OMC_TEST_SQLITE_LOAD_FAILURE === '1') {
+    sqliteBindingLoadError = nativeBindingDiagnostic('simulated node:sqlite load failure');
+  } else {
+    loadSqlite();
   }
   return sqliteBindingLoadError;
 }
@@ -374,10 +367,10 @@ function publishLockOwner(path: string, owner: MutationLockOwner): boolean {
   }
 }
 
-function openMutationDb(lockPath: string): BetterSqlite3 | null {
+function openMutationDb(lockPath: string): SqliteDatabase | null {
   const Database = sqliteConstructor();
   if (!Database) return null;
-  let db: BetterSqlite3 | null = null;
+  let db: SqliteDatabase | null = null;
   try {
     const dbPath = mutationDbPath(lockPath);
     for (const sidecar of [dbPath, `${dbPath}-wal`, `${dbPath}-shm`, `${dbPath}-journal`]) {
@@ -395,12 +388,21 @@ function openMutationDb(lockPath: string): BetterSqlite3 | null {
       }
     }
     db = new Database(dbPath);
-    db.pragma('journal_mode = WAL');
-    db.pragma('busy_timeout = 2000');
+    // node:sqlite defaults to a 0 ms busy timeout; set it before the WAL
+    // switch, which itself needs a lock another connection may hold.
+    db.exec('PRAGMA busy_timeout = 2000');
+    db.exec('PRAGMA journal_mode = WAL');
     db.exec('CREATE TABLE IF NOT EXISTS state_mutation_locks (lock_key TEXT PRIMARY KEY, version INTEGER NOT NULL, pid INTEGER NOT NULL, process_start TEXT NOT NULL, created_at TEXT NOT NULL, nonce TEXT NOT NULL)');
     return db;
   } catch (error) {
     if (process.env.OMC_LOCK_DEBUG) console.error(`[lock-debug] openMutationDb open/exec failed for ${lockPath}: ${(error as Error)?.message}`);
+    // Contention while opening is transient: leave the backend available so
+    // acquireLockAt retries instead of falling back to the file lock for good.
+    const code = sqliteErrorCode(error);
+    if (code === 'SQLITE_BUSY' || code === 'SQLITE_LOCKED') {
+      try { db?.close(); } catch { /* best effort */ }
+      return null;
+    }
     // A constructor failure is just as unusable as a missing native module;
     // fail over to the owner-file backend rather than silently returning no
     // lock.  Keep the original detail for the remediation message.
@@ -704,7 +706,7 @@ function acquireLockAt(path: string, attempts = 50, verified: VerifiedOwners = {
     // owner mid-transaction, not an integrity failure; retry within budget
     // the same way row/artifact contention does. Any other error still
     // fails closed immediately.
-    const code = (error as { code?: string } | null)?.code;
+    const code = sqliteErrorCode(error);
     if (process.env.OMC_LOCK_DEBUG) console.error(`[lock-debug] acquireLockAt caught-error ${path} code=${code} msg=${(error as Error)?.message}`);
     if ((code === 'SQLITE_BUSY' || code === 'SQLITE_LOCKED') && attempts > 1) {
       Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
@@ -756,7 +758,7 @@ function releaseMutationLock(lock: MutationLock | null): boolean {
   try {
     for (;;) {
       try {
-        lock.db.pragma(`busy_timeout = ${Math.max(1, Math.min(2000, deadline - Date.now()))}`);
+        lock.db.exec(`PRAGMA busy_timeout = ${Math.max(1, Math.min(2000, deadline - Date.now()))}`);
         lock.db.exec('BEGIN IMMEDIATE');
         const row = ownerFromRow(lock.db.prepare('SELECT version, pid, process_start, created_at, nonce FROM state_mutation_locks WHERE lock_key = ?').get(lock.key) as Record<string, unknown> | undefined);
         const artifact = readLockOwner(lock.path);
@@ -777,7 +779,7 @@ function releaseMutationLock(lock: MutationLock | null): boolean {
         return true;
       } catch (error) {
         try { lock.db.exec('ROLLBACK'); } catch { /* best effort */ }
-        const code = (error as { code?: string } | null)?.code;
+        const code = sqliteErrorCode(error);
         if ((code === 'SQLITE_BUSY' || code === 'SQLITE_LOCKED') && Date.now() < deadline) {
           Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
           continue;

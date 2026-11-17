@@ -638,16 +638,16 @@ describe('atomicWriteJson', () => {
     const lockPath = join(stateDirectory, 'last-tool-error.json.lock');
     const databasePath = join(stateDirectory, '.state-mutation-locks.db');
     const script = `
-      import Database from 'better-sqlite3';
+      import { DatabaseSync as Database } from 'node:sqlite';
       const database = new Database(process.argv[1]);
-      database.pragma('journal_mode = WAL');
+      database.exec('PRAGMA journal_mode = WAL');
       database.exec('CREATE TABLE IF NOT EXISTS state_mutation_locks (lock_key TEXT PRIMARY KEY, version INTEGER NOT NULL, pid INTEGER NOT NULL, process_start TEXT NOT NULL, created_at TEXT NOT NULL, nonce TEXT NOT NULL)');
       database.exec('BEGIN IMMEDIATE');
       process.stdout.write('locked\\n');
       process.stdin.once('end', () => { database.exec('ROLLBACK'); database.close(); });
       process.stdin.resume();
     `;
-    const holder = spawn(process.execPath, ['--input-type=module', '-e', script, databasePath], {
+    const holder = spawn(process.execPath, ['--no-warnings', '--input-type=module', '-e', script, databasePath], {
       stdio: ['pipe', 'pipe', 'pipe'],
     });
     let ready = false;
@@ -691,17 +691,16 @@ describe('atomicWriteJson', () => {
     // Concurrent first-time setup of the lock database can make journal_mode
     // return SQLITE_BUSY without SQLite ever running the busy handler.
     const script = `
-      import { createRequire } from 'node:module';
-      const Database = createRequire(process.argv[1])('better-sqlite3');
+      import { DatabaseSync as Database } from 'node:sqlite';
       const busyDelayMs = Number(process.argv[3]);
-      const pragma = Database.prototype.pragma;
+      const exec = Database.prototype.exec;
       let journalModeCalls = 0;
-      Database.prototype.pragma = function (source, ...rest) {
-        if (source === 'journal_mode = WAL' && ++journalModeCalls === 1) {
+      Database.prototype.exec = function (source, ...rest) {
+        if (source === 'PRAGMA journal_mode = WAL' && ++journalModeCalls === 1) {
           if (busyDelayMs > 0) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, busyDelayMs);
-          throw Object.assign(new Error('database is locked'), { code: 'SQLITE_BUSY' });
+          throw Object.assign(new Error('database is locked'), { code: 'ERR_SQLITE_ERROR', errcode: 5 });
         }
-        return pragma.call(this, source, ...rest);
+        return exec.call(this, source, ...rest);
       };
       const { acquireStateFileLockAtPathSync, getStateFileLockFailureKind, releaseStateFileLockSync } = await import(process.argv[1]);
       const lock = acquireStateFileLockAtPathSync(process.argv[2], Number(process.argv[4]), true, false, ${SQLITE_CONTENTION_BUSY_TIMEOUT_MS});
@@ -711,7 +710,7 @@ describe('atomicWriteJson', () => {
     `;
     const run = (busyDelayMs: number, name: string, attempts = 2) => JSON.parse(execFileSync(
       process.execPath,
-      ['--input-type=module', '-e', script, stateLockUrl, join(directory, name), String(busyDelayMs), String(attempts)],
+      ['--no-warnings', '--input-type=module', '-e', script, stateLockUrl, join(directory, name), String(busyDelayMs), String(attempts)],
       { encoding: 'utf8', env: { ...process.env, NODE_ENV: 'test' } },
     ));
 
@@ -733,16 +732,16 @@ describe('atomicWriteJson', () => {
     const heldLock = acquireStateFileLockAtPathSync(lockPath, 1, true, false, 75);
     expect(heldLock).not.toBeNull();
     const script = `
-      import Database from 'better-sqlite3';
+      import { DatabaseSync as Database } from 'node:sqlite';
       const database = new Database(process.argv[1]);
-      database.pragma('journal_mode = WAL');
+      database.exec('PRAGMA journal_mode = WAL');
       database.exec('CREATE TABLE IF NOT EXISTS state_mutation_locks (lock_key TEXT PRIMARY KEY, version INTEGER NOT NULL, pid INTEGER NOT NULL, process_start TEXT NOT NULL, created_at TEXT NOT NULL, nonce TEXT NOT NULL)');
       database.exec('BEGIN IMMEDIATE');
       process.stdout.write('locked\\n');
       process.stdin.once('end', () => { database.exec('ROLLBACK'); database.close(); });
       process.stdin.resume();
     `;
-    const holder = spawn(process.execPath, ['--input-type=module', '-e', script, databasePath], {
+    const holder = spawn(process.execPath, ['--no-warnings', '--input-type=module', '-e', script, databasePath], {
       stdio: ['pipe', 'pipe', 'pipe'],
     });
     let releaseAttempted = false;
@@ -805,10 +804,10 @@ describe('atomicWriteJson', () => {
     const databasePath = join(stateDirectory, '.state-mutation-locks.db');
     const markerPath = join(directory, 'writer-locked');
     const holderScript = `
-      import Database from 'better-sqlite3';
+      import { DatabaseSync as Database } from 'node:sqlite';
       import { writeFileSync } from 'node:fs';
       const database = new Database(process.argv[1]);
-      database.pragma('journal_mode = WAL');
+      database.exec('PRAGMA journal_mode = WAL');
       database.exec('CREATE TABLE IF NOT EXISTS state_mutation_locks (lock_key TEXT PRIMARY KEY, version INTEGER NOT NULL, pid INTEGER NOT NULL, process_start TEXT NOT NULL, created_at TEXT NOT NULL, nonce TEXT NOT NULL)');
       database.exec('BEGIN IMMEDIATE');
       writeFileSync(process.argv[2], 'locked');
@@ -823,7 +822,7 @@ describe('atomicWriteJson', () => {
     try {
       const startedAt = Date.now();
       const result = withStateFileLockAtPathSync(lockPath, () => {
-        holder = spawn(process.execPath, ['--input-type=module', '-e', holderScript, databasePath, markerPath], {
+        holder = spawn(process.execPath, ['--no-warnings', '--input-type=module', '-e', holderScript, databasePath, markerPath], {
           stdio: ['ignore', 'ignore', 'ignore'],
         });
         const waitDeadline = Date.now() + 1000;

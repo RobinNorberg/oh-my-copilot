@@ -65,7 +65,7 @@ The npm package exposes both `oh-my-copilot` and `omg`; examples prefer `omg` un
 ### Requirements
 
 - [GitHub Copilot CLI](https://github.com/github/copilot-cli) with a Copilot subscription, or [Claude Code](https://docs.anthropic.com/claude-code) with a Claude Max/Pro subscription or `ANTHROPIC_API_KEY`
-- Node.js on PATH (every hook and the MCP server run `node`; `omg doctor conflicts` checks it)
+- Node.js 22.13 or newer (23.4 or newer on the 23 line) on PATH (every hook and the MCP server run `node`; `omg doctor conflicts` checks it). Node 20 is not supported: state locking and the job database use the built-in `node:sqlite`.
 
 ---
 
@@ -1312,7 +1312,7 @@ What auto-merge does not protect against, and known limits:
 - A root `tests/` folder can hold fixtures that a build script loads. Those `.json`, `.txt` and `.md` files are still admitted.
 - On GitHub the merge is pinned to the head commit, not to the base. Turn on "Require branches to be up to date before merging". If the base moves anyway, the engine says so in the run history, on the PR and in the terminal.
 - The `tests` and `small` tiers stay off when the base root test config uses `projects`, `workspace` or `extends`, imports anything other than `vitest`, `vite` or Node builtins, or loads a file by a computed path. Package-level test configs in a monorepo are not read.
-- The `small` tier stays off when the base `package.json` install or publish scripts run a file from the repository, an interpreter, a script runner with flags, or a tool such as `npx`, `run-s` or `node-gyp`. It also stays off for npm, yarn or pnpm workspaces and for a root `binding.gyp`. The engine cannot follow what those scripts run. (This repository's own `postinstall` keeps the `small` tier off here.) Other tools that install scripts call are not followed: for example `patch-package` (reads `patches/`), `prisma generate` and `lefthook install`. A change to the files they read can fit `small`. Install scripts are read from the root `package.json` only.
+- The `small` tier stays off when the base `package.json` install or publish scripts run a file from the repository, an interpreter, a script runner with flags, or a tool such as `npx`, `run-s` or `node-gyp`. It also stays off for npm, yarn or pnpm workspaces and for a root `binding.gyp`. The engine cannot follow what those scripts run. Other tools that install scripts call are not followed: for example `patch-package` (reads `patches/`), `prisma generate` and `lefthook install`. A change to the files they read can fit `small`. Install scripts are read from the root `package.json` only.
 - `color.ui=always` in your git config makes the patch unreadable to the engine. The `tests` and `small` tiers then stay off.
 - A docs site with frontmatter on every page (Docusaurus, VitePress, Hugo) never gets the `docs` tier.
 
@@ -2322,7 +2322,7 @@ Use OMC's terminal and library surfaces in non-interactive environments:
 - Keep state explicit for ephemeral runners by setting `OMC_STATE_DIR` when state must survive worktree deletion or checkout replacement.
 - Avoid interactive slash skills (`/oh-my-copilot:autopilot`, `/oh-my-copilot:ralph`, `/oh-my-copilot:execute`, `/oh-my-copilot:deep-interview`, `/oh-my-copilot:team`) in CI jobs; they require an active Claude Code session and user-visible conversation loop.
 - OMC does not currently provide a VS Code extension or VS Code-specific automation contract. The documented IDE path is to use Claude Code's own integrations, then install OMC through the Claude Code plugin surface.
-- Programmatic Agent SDK usage is supported through the exported TypeScript helpers and the in-process MCP server helpers in this package; it is a Node.js library surface, not an interactive plugin installer.
+- Programmatic Agent SDK usage is supported through the exported TypeScript helpers and the `omcToolsServer` stdio MCP config (it launches the shipped `bridge/mcp-server.cjs`); it is a Node.js library surface, not an interactive plugin installer. oh-my-copilot does not install `@anthropic-ai/claude-agent-sdk`: install it yourself next to oh-my-copilot to drive `createOmcSession()` queries or graph agent nodes (it is an optional peer dependency).
 
 ---
 

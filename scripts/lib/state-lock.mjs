@@ -2,13 +2,14 @@ import { closeSync, fstatSync, fsyncSync, linkSync, mkdirSync, openSync, readFil
 import { basename, dirname, join, resolve } from 'path';
 import { randomUUID } from 'crypto';
 import { spawnSync } from 'child_process';
-import { createRequire } from 'module';
 import { performance } from 'perf_hooks';
+import { loadDatabaseSync, sqliteErrorCode } from './node-sqlite.mjs';
 
-const require = createRequire(import.meta.url);
-const SQLITE_NATIVE_BINDING = 'better_sqlite3.node';
-const SQLITE_NATIVE_BINDING_REMEDIATION =
-  'Run `npm rebuild better-sqlite3` in the OMC plugin directory, then restart Claude Code.';
+// node:sqlite is loaded lazily on the first lock (scripts/lib/node-sqlite.mjs). It is missing on
+// Node runtimes older than 22.13 / 23.4; state mutation then uses the owner-file lock fallback.
+const SQLITE_REMEDIATION =
+  'Use Node.js 22.13 or newer (node:sqlite), then restart Claude Code.';
+let sqliteLoadAttempted = false;
 let Database = null;
 let sqliteBindingLoadError = null;
 
@@ -19,20 +20,28 @@ function errorMessage(error) {
 function nativeBindingDiagnostic(detail) {
   const normalizedDetail = detail?.split(/\r?\n/, 1)[0].replace(/\s+/g, ' ').trim().slice(0, 240);
   const suffix = normalizedDetail ? ` Loader error: ${normalizedDetail}` : '';
-  return `better-sqlite3 native binding (${SQLITE_NATIVE_BINDING}) is unavailable. State mutation is using the file-lock fallback. ${SQLITE_NATIVE_BINDING_REMEDIATION}${suffix}`;
+  return `The built-in node:sqlite module is unavailable on Node.js ${process.version}. State mutation is using the file-lock fallback. ${SQLITE_REMEDIATION}${suffix}`;
 }
 
 function isNativeBindingError(error) {
-  return /better[_-]sqlite3(?:\.node)?|bindings(?:\.js)?|MODULE_NOT_FOUND|NODE_MODULE_VERSION|did not self-register|Could not locate the bindings file/i.test(errorMessage(error));
+  return /node:sqlite|ERR_UNKNOWN_BUILTIN_MODULE|No such built-in module/i.test(errorMessage(error));
 }
 
-try {
-  const loaded = require('better-sqlite3');
-  const candidate = typeof loaded === 'function' ? loaded : loaded?.default;
-  if (typeof candidate !== 'function') throw new Error('better-sqlite3 did not export a Database constructor');
-  Database = candidate;
-} catch (error) {
-  sqliteBindingLoadError = nativeBindingDiagnostic(errorMessage(error));
+function loadSqlite() {
+  if (!sqliteLoadAttempted) {
+    sqliteLoadAttempted = true;
+    try {
+      Database = loadDatabaseSync();
+    } catch (error) {
+      sqliteBindingLoadError = nativeBindingDiagnostic(errorMessage(error));
+    }
+  }
+  return Database;
+}
+
+function isSqliteBusy(error) {
+  const code = sqliteErrorCode(error);
+  return code === 'SQLITE_BUSY' || code === 'SQLITE_LOCKED';
 }
 
 const localLocks = new Map();
@@ -210,7 +219,7 @@ function canonicalKey(lockPath) {
 
 function stateFileLockingTestOverride() {
   if (process.env.NODE_ENV !== 'test') return null;
-  return process.env.OMC_TEST_FLOCK_AVAILABLE === '0' || process.env.OMC_TEST_BETTER_SQLITE3_LOAD_FAILURE === '1'
+  return process.env.OMC_TEST_FLOCK_AVAILABLE === '0' || process.env.OMC_TEST_SQLITE_LOAD_FAILURE === '1'
     ? false
     : null;
 }
@@ -403,7 +412,7 @@ function openMutationDb(lockPath, bypassTestOverride = false, busyTimeoutMs = 20
   // simulation (the emergency recovery claim) must still get the SQLite
   // backend, otherwise it retries into an 'unverifiable' failure and recovery
   // reports false with a perfectly healthy binding.
-  if ((!bypassTestOverride && stateFileLockingTestOverride() === false) || !Database) return null;
+  if ((!bypassTestOverride && stateFileLockingTestOverride() === false) || !loadSqlite()) return null;
   let db = null;
   try {
     const dbPath = mutationDbPath(lockPath);
@@ -417,12 +426,12 @@ function openMutationDb(lockPath, bypassTestOverride = false, busyTimeoutMs = 20
     }
     db = new Database(dbPath);
     const timeout = Number.isFinite(busyTimeoutMs) ? Math.max(0, Math.floor(busyTimeoutMs)) : 2000;
-    db.pragma(`busy_timeout = ${timeout}`);
-    db.pragma('journal_mode = WAL');
+    db.exec(`PRAGMA busy_timeout = ${timeout}`);
+    db.exec('PRAGMA journal_mode = WAL');
     db.exec('CREATE TABLE IF NOT EXISTS state_mutation_locks (lock_key TEXT PRIMARY KEY, version INTEGER NOT NULL, pid INTEGER NOT NULL, process_start TEXT NOT NULL, created_at TEXT NOT NULL, nonce TEXT NOT NULL)');
     return db;
   } catch (error) {
-    if (error?.code === 'SQLITE_BUSY' || error?.code === 'SQLITE_LOCKED') {
+    if (isSqliteBusy(error)) {
       try { db?.close(); } catch {}
       recordFailure('contention');
       return null;
@@ -443,8 +452,10 @@ function recordFailure(kind, detail, reason) {
 }
 
 export function getStateFileLockDiagnostic() {
-  if (process.env.NODE_ENV === 'test' && process.env.OMC_TEST_BETTER_SQLITE3_LOAD_FAILURE === '1') {
-    sqliteBindingLoadError = nativeBindingDiagnostic('simulated native binding load failure');
+  if (process.env.NODE_ENV === 'test' && process.env.OMC_TEST_SQLITE_LOAD_FAILURE === '1') {
+    sqliteBindingLoadError = nativeBindingDiagnostic('simulated node:sqlite load failure');
+  } else {
+    loadSqlite();
   }
   return sqliteBindingLoadError;
 }
@@ -709,8 +720,8 @@ function acquireStateFileLockAtPathWithDeadline(lockPath, attempts, requireExclu
   };
 
   if (!bypassTestOverride && stateFileLockingTestOverride() === false) {
-    if (process.env.OMC_TEST_BETTER_SQLITE3_LOAD_FAILURE === '1') {
-      sqliteBindingLoadError = nativeBindingDiagnostic('simulated native binding load failure');
+    if (process.env.OMC_TEST_SQLITE_LOAD_FAILURE === '1') {
+      sqliteBindingLoadError = nativeBindingDiagnostic('simulated node:sqlite load failure');
     }
     return acquireFileLock(lockPath, attempts, processProbeDeadline, operationDeadline, testHooks);
   }
@@ -791,7 +802,7 @@ function acquireStateFileLockAtPathWithDeadline(lockPath, attempts, requireExclu
     return null;
   }
   try {
-    db.pragma(`busy_timeout = ${boundedBusyTimeoutMs(busyTimeoutMs, operationDeadline)}`);
+    db.exec(`PRAGMA busy_timeout = ${boundedBusyTimeoutMs(busyTimeoutMs, operationDeadline)}`);
     db.exec('BEGIN IMMEDIATE');
     const row = selectRow();
     if (row) {
@@ -881,10 +892,10 @@ function acquireStateFileLockAtPathWithDeadline(lockPath, attempts, requireExclu
     try { db.exec('ROLLBACK'); } catch {}
     try { db.close(); } catch {}
     if (isNativeBindingError(error)) sqliteBindingLoadError = nativeBindingDiagnostic(errorMessage(error));
-    if (retry(error?.code) && attempts > 1) {
+    if (retry(sqliteErrorCode(error)) && attempts > 1) {
       return retryAcquisition();
     }
-    recordFailure(error?.code === 'SQLITE_BUSY' || error?.code === 'SQLITE_LOCKED' ? 'contention' : 'unverifiable');
+    recordFailure(isSqliteBusy(error) ? 'contention' : 'unverifiable');
     return null;
   }
 }
@@ -928,7 +939,7 @@ export function releaseStateFileLockSync(lock, operationDeadline = undefined) {
   try {
     for (;;) {
       try {
-        lock.db.pragma(`busy_timeout = ${Math.max(0, Math.min(lock.busyTimeoutMs ?? 2000, Math.floor(deadline - Date.now())))}`);
+        lock.db.exec(`PRAGMA busy_timeout = ${Math.max(0, Math.min(lock.busyTimeoutMs ?? 2000, Math.floor(deadline - Date.now())))}`);
         lock.db.exec('BEGIN IMMEDIATE');
         const row = lock.db.prepare('SELECT version, pid, process_start, created_at, nonce FROM state_mutation_locks WHERE lock_key = ?').get(lock.key);
         const current = readOwner(lock.path);
@@ -950,7 +961,7 @@ export function releaseStateFileLockSync(lock, operationDeadline = undefined) {
         return true;
       } catch (error) {
         try { lock.db.exec('ROLLBACK'); } catch {}
-        const busy = error?.code === 'SQLITE_BUSY' || error?.code === 'SQLITE_LOCKED';
+        const busy = isSqliteBusy(error);
         if (busy && Date.now() < deadline) {
           Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, Math.max(1, Math.min(10, Math.floor(deadline - Date.now()))));
           continue;
@@ -967,8 +978,8 @@ export function releaseStateFileLockSync(lock, operationDeadline = undefined) {
         }
         abandonedOwnNonces.add(lock.owner.nonce); // Fork fix: a failed release must not self-deadlock.
         localLocks.delete(lock.key);
-        recordFailure('unverifiable', `State mutation lock release failed for ${lock.path}: ${error?.code || 'unknown error'}`);
-        console.error(`[omc-lock] state_mutation_lock_release_failed: ${lock.path} ${error?.code || ''}`.trim());
+        recordFailure('unverifiable', `State mutation lock release failed for ${lock.path}: ${sqliteErrorCode(error) || 'unknown error'}`);
+        console.error(`[omc-lock] state_mutation_lock_release_failed: ${lock.path} ${sqliteErrorCode(error) || ''}`.trim());
         return false;
       }
     }

@@ -87,15 +87,15 @@ process.stdin.once('data', () => {
     };
 }
 function startSqliteMutationLockHolder(databasePath) {
-    const source = `import Database from 'better-sqlite3';
+    const source = `import { DatabaseSync as Database } from 'node:sqlite';
 const database = new Database(process.argv[1]);
-database.pragma('journal_mode = WAL');
+database.exec('PRAGMA journal_mode = WAL');
 database.exec('CREATE TABLE IF NOT EXISTS state_mutation_locks (lock_key TEXT PRIMARY KEY, version INTEGER NOT NULL, pid INTEGER NOT NULL, process_start TEXT NOT NULL, created_at TEXT NOT NULL, nonce TEXT NOT NULL)');
 database.exec('BEGIN IMMEDIATE');
 process.stdout.write('LOCKED');
 process.stdin.once('data', () => { database.exec('ROLLBACK'); database.close(); });
 process.stdin.resume();`;
-    const child = spawn(NODE, ['--input-type=module', '-e', source, databasePath], { stdio: ['pipe', 'pipe', 'pipe'] });
+    const child = spawn(NODE, ['--no-warnings', '--input-type=module', '-e', source, databasePath], { stdio: ['pipe', 'pipe', 'pipe'] });
     let output = '';
     const ready = new Promise((resolve, reject) => {
         let settled = false;

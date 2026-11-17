@@ -64,6 +64,7 @@ import {
   isWorkerLaunchAttemptAccepted,
   isWorkerLaunchAttemptCurrent,
   materializeWorkerLaunchTransport,
+  observeWorkerLaunchProvider,
   prepareWorkerLaunchAttempt,
   retireAndCleanupCurrentWorkerLaunchAttempt,
   revokeWorkerLaunchAttempt,
@@ -4876,6 +4877,7 @@ export type StartupPaneReadyResult =
         | "cursor_workspace_untrusted"
         | "codex_workspace_untrusted"
         | "pane_busy"
+        | "provider_exited"
         | "readiness_timeout";
     };
 
@@ -4925,6 +4927,15 @@ async function startupContextIsActive(
   );
 }
 
+// The pane outlives its provider: after an exit it shows the user's shell,
+// whose prompt can read as the provider's idle prompt. Only `dead` refuses
+// input; `unknown` (cmux, missing receipts) keeps the pane-text path.
+export async function startupProviderExited(
+  context: StartupPaneContext,
+): Promise<boolean> {
+  return (await observeWorkerLaunchProvider(context.attempt)) === "dead";
+}
+
 export async function waitForStartupPaneReady(
   context: StartupPaneContext,
   opts: WaitForPaneReadyOptions = {},
@@ -4949,6 +4960,8 @@ export async function waitForStartupPaneReady(
   while (Date.now() < deadline) {
     if (!(await startupContextIsActive(context, opts.attemptAlreadyFenced)))
       return { ok: false, reason: "attempt_inactive" };
+    if (await startupProviderExited(context))
+      return { ok: false, reason: "provider_exited" };
     const copyMode = await paneCopyModeObservation(
       context.ownership.paneId,
       context.ownership.tmuxServerIdentity,
@@ -5038,6 +5051,7 @@ async function startupPaneSubmitBlockReason(
 > {
   if (!(await startupContextIsActive(context, attemptAlreadyFenced)))
     return "attempt_inactive";
+  if (await startupProviderExited(context)) return "provider_exited";
   const copyMode = await paneCopyModeObservation(
     context.ownership.paneId,
     context.ownership.tmuxServerIdentity,
@@ -5116,7 +5130,8 @@ export async function deliverStartupInbox(
  *   trigger and is working, so resubmitting would duplicate the inbox. Callers
  *   must keep waiting for startup evidence instead of tearing the launch down.
  * - `unavailable` — the pane cannot be re-submitted into (inactive attempt,
- *   copy mode, capture failure, selector, or the trigger text is gone).
+ *   exited provider, copy mode, capture failure, selector, or the trigger
+ *   text is gone).
  */
 export type StartupInboxResubmitOutcome =
   | "resubmitted"
@@ -5137,6 +5152,7 @@ export async function probeStartupPaneActivity(
 ): Promise<StartupPaneActivity> {
   if (!(await startupContextIsActive(context, options.attemptAlreadyFenced)))
     return "unknown";
+  if (await startupProviderExited(context)) return "dead";
 
   const membership = await verifyTeamTargetOwnership({
     provider: context.ownership.provider,
@@ -5180,6 +5196,7 @@ export async function retryStartupInboxSubmit(
 ): Promise<StartupInboxResubmitOutcome> {
   if (!(await startupContextIsActive(context, options.attemptAlreadyFenced)))
     return "unavailable";
+  if (await startupProviderExited(context)) return "unavailable";
   const copyMode = await paneCopyModeObservation(
     context.ownership.paneId,
     context.ownership.tmuxServerIdentity,

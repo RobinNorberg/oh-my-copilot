@@ -29,21 +29,11 @@ declare const HookInputSchema: z.ZodObject<{
     prompt: z.ZodOptional<z.ZodString>;
     message: z.ZodOptional<z.ZodObject<{
         content: z.ZodOptional<z.ZodString>;
-    }, "strip", z.ZodTypeAny, {
-        content?: string | undefined;
-    }, {
-        content?: string | undefined;
-    }>>;
+    }, z.core.$strip>>;
     parts: z.ZodOptional<z.ZodArray<z.ZodObject<{
         type: z.ZodString;
         text: z.ZodOptional<z.ZodString>;
-    }, "strip", z.ZodTypeAny, {
-        type: string;
-        text?: string | undefined;
-    }, {
-        type: string;
-        text?: string | undefined;
-    }>, "many">>;
+    }, z.core.$strip>>>;
     model: z.ZodOptional<z.ZodString>;
     model_id: z.ZodOptional<z.ZodString>;
     modelId: z.ZodOptional<z.ZodString>;
@@ -53,89 +43,7 @@ declare const HookInputSchema: z.ZodObject<{
     stopReason: z.ZodOptional<z.ZodString>;
     user_requested: z.ZodOptional<z.ZodBoolean>;
     userRequested: z.ZodOptional<z.ZodBoolean>;
-}, "passthrough", z.ZodTypeAny, z.objectOutputType<{
-    tool_name: z.ZodOptional<z.ZodString>;
-    tool_input: z.ZodOptional<z.ZodUnknown>;
-    tool_response: z.ZodOptional<z.ZodUnknown>;
-    session_id: z.ZodOptional<z.ZodString>;
-    cwd: z.ZodOptional<z.ZodString>;
-    hook_event_name: z.ZodOptional<z.ZodString>;
-    toolName: z.ZodOptional<z.ZodString>;
-    toolInput: z.ZodOptional<z.ZodUnknown>;
-    toolOutput: z.ZodOptional<z.ZodUnknown>;
-    toolResponse: z.ZodOptional<z.ZodUnknown>;
-    sessionId: z.ZodOptional<z.ZodString>;
-    directory: z.ZodOptional<z.ZodString>;
-    hookEventName: z.ZodOptional<z.ZodString>;
-    prompt: z.ZodOptional<z.ZodString>;
-    message: z.ZodOptional<z.ZodObject<{
-        content: z.ZodOptional<z.ZodString>;
-    }, "strip", z.ZodTypeAny, {
-        content?: string | undefined;
-    }, {
-        content?: string | undefined;
-    }>>;
-    parts: z.ZodOptional<z.ZodArray<z.ZodObject<{
-        type: z.ZodString;
-        text: z.ZodOptional<z.ZodString>;
-    }, "strip", z.ZodTypeAny, {
-        type: string;
-        text?: string | undefined;
-    }, {
-        type: string;
-        text?: string | undefined;
-    }>, "many">>;
-    model: z.ZodOptional<z.ZodString>;
-    model_id: z.ZodOptional<z.ZodString>;
-    modelId: z.ZodOptional<z.ZodString>;
-    agent_name: z.ZodOptional<z.ZodString>;
-    agentName: z.ZodOptional<z.ZodString>;
-    stop_reason: z.ZodOptional<z.ZodString>;
-    stopReason: z.ZodOptional<z.ZodString>;
-    user_requested: z.ZodOptional<z.ZodBoolean>;
-    userRequested: z.ZodOptional<z.ZodBoolean>;
-}, z.ZodTypeAny, "passthrough">, z.objectInputType<{
-    tool_name: z.ZodOptional<z.ZodString>;
-    tool_input: z.ZodOptional<z.ZodUnknown>;
-    tool_response: z.ZodOptional<z.ZodUnknown>;
-    session_id: z.ZodOptional<z.ZodString>;
-    cwd: z.ZodOptional<z.ZodString>;
-    hook_event_name: z.ZodOptional<z.ZodString>;
-    toolName: z.ZodOptional<z.ZodString>;
-    toolInput: z.ZodOptional<z.ZodUnknown>;
-    toolOutput: z.ZodOptional<z.ZodUnknown>;
-    toolResponse: z.ZodOptional<z.ZodUnknown>;
-    sessionId: z.ZodOptional<z.ZodString>;
-    directory: z.ZodOptional<z.ZodString>;
-    hookEventName: z.ZodOptional<z.ZodString>;
-    prompt: z.ZodOptional<z.ZodString>;
-    message: z.ZodOptional<z.ZodObject<{
-        content: z.ZodOptional<z.ZodString>;
-    }, "strip", z.ZodTypeAny, {
-        content?: string | undefined;
-    }, {
-        content?: string | undefined;
-    }>>;
-    parts: z.ZodOptional<z.ZodArray<z.ZodObject<{
-        type: z.ZodString;
-        text: z.ZodOptional<z.ZodString>;
-    }, "strip", z.ZodTypeAny, {
-        type: string;
-        text?: string | undefined;
-    }, {
-        type: string;
-        text?: string | undefined;
-    }>, "many">>;
-    model: z.ZodOptional<z.ZodString>;
-    model_id: z.ZodOptional<z.ZodString>;
-    modelId: z.ZodOptional<z.ZodString>;
-    agent_name: z.ZodOptional<z.ZodString>;
-    agentName: z.ZodOptional<z.ZodString>;
-    stop_reason: z.ZodOptional<z.ZodString>;
-    stopReason: z.ZodOptional<z.ZodString>;
-    user_requested: z.ZodOptional<z.ZodBoolean>;
-    userRequested: z.ZodOptional<z.ZodBoolean>;
-}, z.ZodTypeAny, "passthrough">>;
+}, z.core.$loose>;
 /** Hooks where unknown fields are dropped (strict allowlist only) */
 declare const SENSITIVE_HOOKS: Set<string>;
 /** All known camelCase field names the system uses (post-normalization) */

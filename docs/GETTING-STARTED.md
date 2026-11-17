@@ -67,13 +67,6 @@ If you want `omg setup`, `omg update`, `omg team`, `omg ask`, etc. on your shell
 npm i -g oh-my-copilot@latest
 ```
 
-> **Known npm warning:** npm may print `deprecated prebuild-install@7.1.3` during this CLI install.
-> The warning currently comes from the upstream `better-sqlite3` native-addon dependency
-> (`better-sqlite3 -> prebuild-install`); `prebuild-install@7.1.3` is still the latest
-> published version, so there is no safe repo-side dependency bump or override to remove it
-> yet. The warning is tracked in [#2913](https://github.com/Yeachan-Heo/oh-my-claudecode/issues/2913)
-> and does not by itself mean the OMC CLI install failed.
-
 Both can be installed at the same time. The host config directory is `~/.copilot` by default; set `COPILOT_HOME` (Copilot CLI's own variable, which OMC also reads) to move it. The CLI auto-detects the plugin install and will not double-register skills under `~/.copilot/skills/` (if you previously hit the duplicate-skill bug, run `omg update` once on 4.11.7+ — it self-heals leftover standalone skills that the plugin now provides via `prunePluginDuplicateSkills`).
 
 ### Step 3: Run initial setup
@@ -90,7 +83,7 @@ After installation, run this in Claude Code:
 |------|-------------|
 | Host CLI | GitHub Copilot CLI or Claude Code |
 | Authentication | Copilot subscription, or Claude Max/Pro subscription / `ANTHROPIC_API_KEY` for Claude Code |
-| Node.js | On PATH (`omg doctor conflicts` checks it) |
+| Node.js | 22.13 or newer (23.4 or newer on the 23 line), on PATH (`omg doctor conflicts` checks it). Node 20 is not supported. |
 
 ### Choosing a setup scope
 

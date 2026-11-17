@@ -207,7 +207,7 @@ writeState('autopilot-state', state);
 ### External
 | Package | Purpose |
 |---------|---------|
-| `better-sqlite3` | Swarm task coordination |
+| `node:sqlite` (built-in) | State mutation locks, job state |
 | `fs`, `path` | State file operations |
 
 ## Hook Events

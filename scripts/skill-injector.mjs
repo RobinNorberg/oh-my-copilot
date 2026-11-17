@@ -448,7 +448,8 @@ function findMatchingSkillsFallback(prompt, directory, sessionId, omcRoot) {
       }
     }
 
-    const sessionData = state.sessions[sessionId];
+    const sessionKey = sessionId ?? 'unknown';
+    const sessionData = state.sessions[sessionKey];
     const alreadyInjected = new Set(
       sessionData && now - sessionData.timestamp <= FALLBACK_SESSION_TTL_MS
         ? (sessionData.injectedPaths ?? [])
@@ -462,8 +463,8 @@ function findMatchingSkillsFallback(prompt, directory, sessionId, omcRoot) {
 
     // Persist injected paths back to file so future process spawns skip them
     if (newMatches.length > 0) {
-      const existing = state.sessions[sessionId]?.injectedPaths ?? [];
-      state.sessions[sessionId] = {
+      const existing = state.sessions[sessionKey]?.injectedPaths ?? [];
+      state.sessions[sessionKey] = {
         injectedPaths: [...new Set([...existing, ...newMatches.map(s => s.path)])],
         timestamp: now,
       };
@@ -484,13 +485,13 @@ function findMatchingSkillsFallback(prompt, directory, sessionId, omcRoot) {
 function findMatchingSkills(prompt, directory, sessionId, omcRoot) {
   if (bridge) {
     // Use bridge (RECURSIVE discovery, persistent session cache)
-    const matches = bridge.matchSkillsForInjection(prompt, directory, sessionId, {
+    const matches = bridge.matchSkillsForInjection(prompt, directory, sessionId ?? 'unknown', {
       maxResults: MAX_SKILLS_PER_SESSION
     });
 
     // Mark as injected via bridge
     if (matches.length > 0) {
-      bridge.markSkillsInjected(sessionId, matches.map(s => s.path), directory);
+      bridge.markSkillsInjected(sessionId ?? 'unknown', matches.map(s => s.path), directory);
     }
 
     return matches;
@@ -582,7 +583,8 @@ async function main() {
 
     // Resolve session id: payload wins over env var (hook context)
     const rawSessionId = resolveHookSessionId(data);
-    const sessionId = validateSessionId(rawSessionId) ?? (data.session_id || data.sessionId || 'unknown');
+    // Only an allowlisted id reaches a path; anything else takes the legacy (no-session) path.
+    const sessionId = validateSessionId(rawSessionId);
 
     // Resolve OMC root (walk up from data.cwd looking for workspace markers)
     const omcRoot = resolveOmcRootSync(directory);
@@ -600,7 +602,7 @@ async function main() {
       try {
         const { recordSkillActivated } = await import('../dist/hooks/subagent-tracker/flow-tracer.js');
         for (const skill of matchingSkills) {
-          recordSkillActivated(directory, sessionId, skill.name, skill.scope || 'learned');
+          recordSkillActivated(directory, sessionId ?? 'unknown', skill.name, skill.scope || 'learned');
         }
       } catch { /* silent - trace is best-effort */ }
     }

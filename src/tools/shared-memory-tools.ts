@@ -52,7 +52,7 @@ function errorResponse(msg: string) {
 
 export const sharedMemoryWriteTool: ToolDefinition<{
   key: z.ZodString;
-  value: z.ZodUnknown;
+  value: z.ZodOptional<z.ZodUnknown>;
   namespace: z.ZodString;
   ttl: z.ZodOptional<z.ZodNumber>;
   workingDirectory: z.ZodOptional<z.ZodString>;
@@ -61,7 +61,7 @@ export const sharedMemoryWriteTool: ToolDefinition<{
   description: 'Write a key-value pair to shared memory for cross-agent handoffs. Namespace by session group or pipeline run. Supports optional TTL for auto-expiry.',
   schema: {
     key: z.string().min(1).max(128).describe('Key identifier (alphanumeric, hyphens, underscores, dots)'),
-    value: z.unknown().describe('JSON-serializable value to store'),
+    value: z.unknown().optional().describe('JSON-serializable value to store'),
     namespace: z.string().min(1).max(128).describe('Namespace for grouping (e.g., team name, pipeline run ID, session group)'),
     ttl: z.number().int().min(1).max(604800).optional().describe('Time-to-live in seconds (max 7 days). Omit for no expiry.'),
     workingDirectory: z.string().optional().describe('Working directory (defaults to cwd)'),

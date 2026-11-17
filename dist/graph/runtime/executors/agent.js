@@ -1,13 +1,48 @@
 /**
  * Agent node executor.
  *
- * Runs one GraphAgentNode attempt through the Claude Agent SDK. The SDK is
- * lazy-imported inside execute() so unit tests inject fakes and never require
- * network access; the injectable queryImpl mirrors `query` from
- * `@anthropic-ai/claude-agent-sdk`.
+ * Runs one GraphAgentNode attempt through the Claude Agent SDK. The SDK is an
+ * optional peer dependency that oh-my-copilot does not install: it is
+ * lazy-imported inside execute() only when no queryImpl is injected, and a
+ * missing install fails the node with an install hint. Unit tests inject
+ * fakes and never require network access; the injectable queryImpl mirrors
+ * `query` from `@anthropic-ai/claude-agent-sdk`.
  */
 import { childEnv } from "../../../utils/windows-search.js";
+import { resolvePackageRoot } from "../../../smoke/copilot-session-env.js";
 import { buildAgentEnv, idempotencyKeyFor, READ_ONLY_AGENT_TOOLS, } from "./authority.js";
+/** Optional peer; a variable specifier keeps bundlers and tsc from resolving it. */
+const CLAUDE_AGENT_SDK = "@anthropic-ai/claude-agent-sdk";
+async function loadSdkQuery() {
+    let sdk;
+    try {
+        sdk = (await import(CLAUDE_AGENT_SDK));
+    }
+    catch (error) {
+        const code = isRecord(error) ? error.code : undefined;
+        const message = error instanceof Error ? error.message : String(error);
+        // Only the SDK itself missing gets the install hint; a broken install
+        // (a missing transitive module) surfaces its own error. Node reports
+        // ERR_MODULE_NOT_FOUND; vite-based runners say "Could not resolve".
+        const notFound = code === "ERR_MODULE_NOT_FOUND" ||
+            code === "MODULE_NOT_FOUND" ||
+            /Cannot find (package|module)|Could not resolve/.test(message);
+        if (notFound &&
+            (message.includes(`'${CLAUDE_AGENT_SDK}'`) ||
+                message.includes(`"${CLAUDE_AGENT_SDK}"`))) {
+            const root = resolvePackageRoot();
+            const where = root ? `next to oh-my-copilot in ${root}` : "next to oh-my-copilot";
+            throw new Error(`graph agent nodes need the optional peer dependency ${CLAUDE_AGENT_SDK}; ` +
+                `install it ${where} (npm install ${CLAUDE_AGENT_SDK} in that project, ` +
+                `or npm install -g ${CLAUDE_AGENT_SDK} for a global install)`);
+        }
+        throw error;
+    }
+    if (typeof sdk.query !== "function") {
+        throw new Error(`${CLAUDE_AGENT_SDK} does not export query()`);
+    }
+    return sdk.query;
+}
 const SUMMARY_LIMIT = 2000;
 class AgentTimeoutError extends Error {
     timeoutMs;
@@ -96,15 +131,10 @@ export class AgentNodeExecutor {
                 reject(new AgentTimeoutError(node.timeout_ms));
             }, node.timeout_ms);
         });
+        // The SDK load below may throw before the race awaits this promise.
+        timedOut.catch(() => { });
         try {
-            let queryFn;
-            if (this.queryImpl) {
-                queryFn = this.queryImpl;
-            }
-            else {
-                const { query } = await import("@anthropic-ai/claude-agent-sdk");
-                queryFn = (options) => query(options);
-            }
+            const queryFn = this.queryImpl ?? (await loadSdkQuery());
             const canUseTool = async (toolName, input) => {
                 if (READ_ONLY_AGENT_TOOLS.includes(toolName)) {
                     return { behavior: "allow", updatedInput: input };

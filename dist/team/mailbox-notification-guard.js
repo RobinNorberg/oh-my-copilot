@@ -3,6 +3,7 @@ import { teamReadCanonicalMailboxMessageStrict, teamReadConfig, } from "./team-o
 import { isValidTeamInstanceId, isValidTmuxServerIdentity, } from "./types.js";
 import { isValidStrictProcessStartIdentity } from "./team-owner-epoch.js";
 import { canonicalizeWorkers } from "./worker-canonicalization.js";
+import { getWorkerProviderLiveness } from "./worker-provider-liveness.js";
 function hasExactText(value) {
     return typeof value === "string" && value !== "" && value === value.trim();
 }
@@ -368,6 +369,28 @@ export function mailboxNotificationSecurityTupleEquals(left, right) {
         left.providerPaneId === right.providerPaneId);
 }
 /**
+ * An exited provider leaves the user's shell in the pane, and a notification
+ * would be typed into it. Only proven death refuses; unknown keeps delivery.
+ */
+async function refuseExitedRecipient(result, config, cwd, readLiveness) {
+    if (result.kind !== "allow" ||
+        result.target.recipientRole !== "worker" ||
+        !config)
+        return result;
+    const worker = canonicalizeWorkers(config.workers).workers.find((candidate) => candidate.name === result.target.recipient);
+    if (!worker)
+        return result;
+    const liveness = await readLiveness(config.name, cwd, config.instance_id, worker);
+    if (liveness !== "dead")
+        return result;
+    return {
+        kind: "suppress",
+        reason: "mailbox_provider_exited",
+        safePendingRequest: result.request,
+        target: result.target,
+    };
+}
+/**
  * Reads current evidence through strict readers, then runs the pure evaluator.
  * The injected provider verifier must be read-only; this module has no way to
  * invoke a pane transport or write durable delivery markers.
@@ -382,12 +405,13 @@ export async function readCurrentMailboxNotificationGuard(input, cwd, dependenci
         readStrictDispatch(input.teamName, input.requestId, cwd).catch(() => ({ kind: "malformed_store", cause: "json" })),
         readStrictMailbox(input.teamName, input.recipient, input.messageId, cwd).catch(() => ({ kind: "malformed_store", cause: "json" })),
     ]);
+    const readLiveness = dependencies.readWorkerProviderLiveness ?? getWorkerProviderLiveness;
     const state = { config, dispatch, mailbox };
     const initial = evaluateMailboxNotificationGuard(input, state);
     if (initial.kind !== "suppress" ||
         initial.reason !== "mailbox_membership_unresolvable" ||
         !initial.target) {
-        return initial;
+        return refuseExitedRecipient(initial, config, cwd, readLiveness);
     }
     if (!config || !targetHasPersistedAuthority(config, initial.target))
         return initial;
@@ -401,6 +425,6 @@ export async function readCurrentMailboxNotificationGuard(input, cwd, dependenci
         })
             .catch(() => ({ kind: "unavailable" }))
         : { kind: "unavailable" };
-    return evaluateMailboxNotificationGuard(input, { ...state, ownership });
+    return refuseExitedRecipient(evaluateMailboxNotificationGuard(input, { ...state, ownership }), config, cwd, readLiveness);
 }
 //# sourceMappingURL=mailbox-notification-guard.js.map

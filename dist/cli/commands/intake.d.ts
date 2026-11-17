@@ -84,7 +84,13 @@ export declare function buildSchedulePlan(platform: 'linux' | 'darwin' | 'win32'
 /** Keep (remove=false) or drop (remove=true) the marked crontab lines. When
  * installing (remove=false), `installLine` is appended after the cleanup. */
 export declare function filterCrontabLines(existing: string, remove: boolean, installLine?: string): string;
-export declare function buildScheduledCommand(cwd: string): string;
+/**
+ * The command line the host scheduler runs. The cwd is quoted for the shell
+ * that runs it (sh for crontab, cmd for the omg shim under schtasks); a path
+ * the quoting cannot carry safely (control characters, '%', or '"' on
+ * Windows) is refused with an error.
+ */
+export declare function buildScheduledCommand(cwd: string, platform?: NodeJS.Platform): string;
 export interface HeadlessRunResult {
     exitCode: number;
     message: string;

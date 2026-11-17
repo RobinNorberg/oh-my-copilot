@@ -61,6 +61,9 @@ function getLegacyPlatformsCoveredByNotifications(enabledPlatforms) {
     if (enabledPlatforms.includes('discord')) {
         overlappingPlatforms.push('discord');
     }
+    if (enabledPlatforms.includes('slack')) {
+        overlappingPlatforms.push('slack');
+    }
     return overlappingPlatforms;
 }
 /**

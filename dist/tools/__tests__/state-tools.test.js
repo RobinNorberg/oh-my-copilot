@@ -279,7 +279,7 @@ describe('state-tools', () => {
         delete process.env.OMC_TEST_CONDITIONAL_CREATE_REPLACEMENT_BASE64;
         delete process.env.OMC_TEST_EMERGENCY_REPLACEMENT_PATH;
         delete process.env.OMC_TEST_EMERGENCY_REPLACEMENT_BASE64;
-        delete process.env.OMC_TEST_BETTER_SQLITE3_LOAD_FAILURE;
+        delete process.env.OMC_TEST_SQLITE_LOAD_FAILURE;
         artifactUnlinkFault.target = undefined;
     });
     describe('state_read', () => {
@@ -399,8 +399,8 @@ describe('state-tools', () => {
             const legacyPath = join(TEST_DIR, '.omg', 'state', 'ralph-state.json');
             expect(existsSync(legacyPath)).toBe(true);
         });
-        it('writes through the file-lock fallback when better-sqlite3 cannot load', async () => {
-            process.env.OMC_TEST_BETTER_SQLITE3_LOAD_FAILURE = '1';
+        it('writes through the file-lock fallback when node:sqlite cannot load', async () => {
+            process.env.OMC_TEST_SQLITE_LOAD_FAILURE = '1';
             const result = await stateWriteTool.handler({
                 mode: 'ralph',
                 active: true,
@@ -409,15 +409,15 @@ describe('state-tools', () => {
             });
             expect(result.isError).toBeUndefined();
             expect(result.content[0].text).toContain('Successfully wrote state');
-            expect(result.content[0].text).toContain('better_sqlite3.node');
-            expect(result.content[0].text).toContain('npm rebuild better-sqlite3');
+            expect(result.content[0].text).toContain('node:sqlite module is unavailable');
+            expect(result.content[0].text).toContain('Use Node.js 22.13 or newer');
             expect(JSON.parse(readFileSync(join(TEST_DIR, '.omg', 'state', 'ralph-state.json'), 'utf8'))).toMatchObject({
                 active: true,
                 iteration: 1,
             });
         });
         it('reports native-binding diagnostics separately from fallback lock contention', async () => {
-            process.env.OMC_TEST_BETTER_SQLITE3_LOAD_FAILURE = '1';
+            process.env.OMC_TEST_SQLITE_LOAD_FAILURE = '1';
             const statePath = join(TEST_DIR, '.omg', 'state', 'ralph-state.json');
             const lockPath = `${statePath}.mutation.lock`;
             writeFileSync(lockPath, liveLockOwner());
@@ -429,8 +429,8 @@ describe('state-tools', () => {
                 });
                 expect(result.isError).toBe(true);
                 expect(result.content[0].text).not.toContain('state mutation lock unavailable');
-                expect(result.content[0].text).toContain('better_sqlite3.node');
-                expect(result.content[0].text).toContain('npm rebuild better-sqlite3');
+                expect(result.content[0].text).toContain('node:sqlite module is unavailable');
+                expect(result.content[0].text).toContain('Use Node.js 22.13 or newer');
                 expect(result.content[0].text).toContain('contention');
             }
             finally {

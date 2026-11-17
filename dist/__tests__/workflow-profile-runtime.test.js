@@ -29,7 +29,7 @@ beforeAll(() => {
     for (const file of readdirSync(templateLibDir)) {
         copyFileSync(join(templateLibDir, file), join(libDir, file));
     }
-    for (const file of ['config-dir.mjs', 'state-lock.mjs']) {
+    for (const file of ['config-dir.mjs', 'state-lock.mjs', 'node-sqlite.mjs']) {
         copyFileSync(join(REPO_ROOT, 'scripts', 'lib', file), join(libDir, file));
     }
     templateModulePath = join(libDir, 'workflow-profile-runtime.mjs');

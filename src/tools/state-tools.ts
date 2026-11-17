@@ -1079,7 +1079,7 @@ function publicStateForMode(mode: StateToolMode, state: unknown): unknown {
 // ============================================================================
 
 export const stateReadTool: ToolDefinition<{
-  mode: z.ZodEnum<typeof STATE_TOOL_MODES>;
+  mode: z.ZodEnum<z.core.util.ToEnum<(typeof STATE_TOOL_MODES)[number]>>;
   workingDirectory: z.ZodOptional<z.ZodString>;
   session_id: z.ZodOptional<z.ZodString>;
 }> = {
@@ -1246,7 +1246,7 @@ export const stateReadTool: ToolDefinition<{
 // ============================================================================
 
 export const stateWriteTool: ToolDefinition<{
-  mode: z.ZodEnum<typeof STATE_WRITE_MODES>;
+  mode: z.ZodEnum<z.core.util.ToEnum<(typeof STATE_WRITE_MODES)[number]>>;
   active: z.ZodOptional<z.ZodBoolean>;
   iteration: z.ZodOptional<z.ZodNumber>;
   max_iterations: z.ZodOptional<z.ZodNumber>;
@@ -1572,7 +1572,7 @@ function recoverAutopilotEmergencyTransactions(root: string, sessionId?: string)
 }
 
 export const stateClearTool: ToolDefinition<{
-  mode: z.ZodEnum<typeof STATE_TOOL_MODES>;
+  mode: z.ZodEnum<z.core.util.ToEnum<(typeof STATE_TOOL_MODES)[number]>>;
   workingDirectory: z.ZodOptional<z.ZodString>;
   session_id: z.ZodOptional<z.ZodString>;
 }> = {
@@ -2065,7 +2065,10 @@ export const stateListActiveTool: ToolDefinition<{
     session_id: z.string().optional().describe('Explicit session ID to scope the listing. Overrides OMC_SESSION_ID when provided.'),
     all: z.boolean().optional().describe('When true, list active modes across all sessions (legacy + every session-scoped dir). Overrides the default current-session scope.'),
   },
-  handler: async (args) => {
+  // Aggregate reads resolve a state path per session x mode. getGitTopLevel caches only hits, so a
+  // non-git cwd re-runs `git rev-parse` per resolution. The scope memoizes git probes and project ids
+  // for this call only.
+  handler: (args) => withWorktreePathRenderScope(async () => {
     const { workingDirectory, session_id, all } = args;
 
     try {
@@ -2222,7 +2225,7 @@ export const stateListActiveTool: ToolDefinition<{
         isError: true
       };
     }
-  }
+  })
 };
 
 // ============================================================================
@@ -2230,7 +2233,7 @@ export const stateListActiveTool: ToolDefinition<{
 // ============================================================================
 
 export const stateGetStatusTool: ToolDefinition<{
-  mode: z.ZodOptional<z.ZodEnum<typeof STATE_TOOL_MODES>>;
+  mode: z.ZodOptional<z.ZodEnum<z.core.util.ToEnum<(typeof STATE_TOOL_MODES)[number]>>>;
   workingDirectory: z.ZodOptional<z.ZodString>;
   session_id: z.ZodOptional<z.ZodString>;
 }> = {
@@ -2242,7 +2245,8 @@ export const stateGetStatusTool: ToolDefinition<{
     workingDirectory: z.string().optional().describe('Working directory (defaults to cwd)'),
     session_id: z.string().optional().describe('Session ID for session-scoped state isolation. When provided, the tool operates only within that session. When omitted, the tool aggregates legacy state plus all session-scoped state (may include other sessions).'),
   },
-  handler: async (args) => {
+  // Same per-call git probe memo as state_list_active.
+  handler: (args) => withWorktreePathRenderScope(async () => {
     const { mode, workingDirectory, session_id } = args;
 
     try {
@@ -2406,7 +2410,7 @@ export const stateGetStatusTool: ToolDefinition<{
         isError: true
       };
     }
-  }
+  })
 };
 
 const stateMigrateNonGitTool: ToolDefinition<any> = {

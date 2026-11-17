@@ -26,22 +26,13 @@ describe('omc-tools-server interop gating', () => {
     expect(mod.omcToolNames.some((name) => name.includes('interop_'))).toBe(false);
   }, 15000);
 
-  it('registers interop tools when OMC_INTEROP_TOOLS_ENABLED=1', async () => {
+  // The stdio server (bridge/mcp-server.cjs) does not serve the interop
+  // tools, so listing them would allow tools that never exist.
+  it('does not register interop tools when OMC_INTEROP_TOOLS_ENABLED=1', async () => {
     process.env.OMC_INTEROP_TOOLS_ENABLED = '1';
     const mod = await importFresh();
 
-    expect(mod.omcToolNames).toContain('mcp__t__interop_send_task');
-    expect(mod.omcToolNames).toContain('mcp__t__interop_send_omx_message');
-  });
-
-  it('filters interop tools when includeInterop=false', async () => {
-    process.env.OMC_INTEROP_TOOLS_ENABLED = '1';
-    const mod = await importFresh();
-
-    const withInterop = mod.getOmcToolNames({ includeInterop: true });
-    const withoutInterop = mod.getOmcToolNames({ includeInterop: false });
-
-    expect(withInterop.some((name) => name.includes('interop_'))).toBe(true);
-    expect(withoutInterop.some((name) => name.includes('interop_'))).toBe(false);
+    expect(mod.omcToolNames.some((name) => name.includes('interop_'))).toBe(false);
+    expect(mod.getOmcToolNames({ includeInterop: true }).some((name) => name.includes('interop_'))).toBe(false);
   });
 });

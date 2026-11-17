@@ -80,11 +80,11 @@ describe('keyword-detector.mjs mode-message dispatch', () => {
                 nonce: randomUUID(),
             }));
             const output = runKeywordDetector('ralph this task', cwd, sessionId, {
-                OMC_TEST_BETTER_SQLITE3_LOAD_FAILURE: '1',
+                OMC_TEST_SQLITE_LOAD_FAILURE: '1',
             });
             const context = output.hookSpecificOutput?.additionalContext ?? '';
             expect(context).toContain('[OMC STATE ERROR]');
-            expect(context).toContain('better_sqlite3.node');
+            expect(context).toContain('node:sqlite module is unavailable');
             expect(context).toContain('No ralph state was activated.');
             expect(existsSync(join(cwd, '.omg', 'state', 'sessions', sessionId, 'ralph-state.json'))).toBe(false);
             expect(existsSync(lockPath)).toBe(true);
@@ -1402,12 +1402,29 @@ describe.each([
         'Here is the task:\nautopilot: deploy the app',
         'Here is the spec: a todo CLI with tests.\n\n/oh-my-copilot:autopilot',
         'Here is the spec: a todo CLI with tests.\n\n/omc:autopilot add tests',
+        'Please proceed (could you use autopilot to fix this)',
     ])('still activates autopilot for a command: %j', (prompt) => {
         expect(autopilotActivated(prompt)).toBe(true);
+    });
+    it.each([
+        'Please proceed (could you not use autopilot to fix this)',
+        'Do not use autopilot (could you check the logs)',
+        'The autopilot run failed (could you check the logs)',
+    ])('does not activate autopilot when negation or status overrides polite request in parentheses: %j', (prompt) => {
+        expect(autopilotActivated(prompt)).toBe(false);
     });
     it('still activates autopilot for a command that follows many pasted mentions', () => {
         const logs = Array.from({ length: 60 }, (_, i) => `step ${i} autopilot ok`).join('\n');
         expect(autopilotActivated(`${logs}\nplease use autopilot to fix this`)).toBe(true);
+    });
+    it('activates autopilot for polite request with comma-separated please', () => {
+        expect(autopilotActivated('Could you, please, use autopilot to fix this?')).toBe(true);
+    });
+    it('activates autopilot for polite request with parenthesized imperative', () => {
+        expect(autopilotActivated('Please proceed (do use autopilot to fix the parser)')).toBe(true);
+    });
+    it('activates autopilot for polite request with parenthesized auxiliary', () => {
+        expect(autopilotActivated('Please proceed (could you use autopilot to fix this)')).toBe(true);
     });
     it('arms no heavy mode from pasted text that mentions several of them', () => {
         const cwd = mkdtempSync(join(tmpdir(), 'keyword-detector-autopilot-others-'));

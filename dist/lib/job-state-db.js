@@ -2,12 +2,12 @@
  * Job State Database - SQLite-based persistent state for Codex/Gemini background jobs
  *
  * Provides a single shared database at .omg/state/jobs.db for both providers.
- * Uses better-sqlite3 with WAL mode for safe concurrent access from multiple
+ * Uses Node's built-in node:sqlite with WAL mode for safe concurrent access from multiple
  * MCP server instances. Only job metadata is stored here; prompt/response
  * content remains as files on disk.
  *
  * Follows the same patterns as src/hooks/swarm/state.ts:
- * - Dynamic import of better-sqlite3 with graceful fallback
+ * - Lazy load of node:sqlite with graceful fallback
  * - WAL mode for concurrency
  * - Schema versioning with migrations
  * - Per-worktree db instances keyed by resolved path
@@ -15,12 +15,13 @@
  */
 import { existsSync, mkdirSync, readdirSync, readFileSync } from "fs";
 import { join, resolve } from "path";
+import { loadDatabaseSync } from "./node-sqlite.js";
 import { getOmcRoot } from "./worktree-paths.js";
 // Schema version - bump when adding migrations
 const DB_SCHEMA_VERSION = 1;
 // Default max age for cleanup: 24 hours
 const DEFAULT_CLEANUP_MAX_AGE_MS = 24 * 60 * 60 * 1000;
-// Dynamic import for better-sqlite3 to handle environments where it's not installed
+// node:sqlite, loaded on first use (absent on Node runtimes older than 22.13 / 23.4)
 let Database = null;
 // Map of resolved worktree root path -> database instance (replaces singleton)
 const dbMap = new Map();
@@ -98,18 +99,17 @@ function rowToJobStatus(row) {
  */
 export async function initJobDb(cwd) {
     try {
-        // Dynamic import of better-sqlite3 (may not be installed)
+        // Lazy load of node:sqlite (unavailable before Node 22.13 / 23.4)
         if (!Database) {
             try {
-                const betterSqlite3 = await import("better-sqlite3");
-                Database = betterSqlite3.default;
+                Database = loadDatabaseSync();
             }
             catch (importError) {
                 const errorMessage = importError instanceof Error
                     ? importError.message
                     : String(importError);
-                console.error("[job-state-db] Failed to load better-sqlite3:", errorMessage);
-                console.error("[job-state-db] Install with: npm install better-sqlite3");
+                console.error("[job-state-db] Failed to load node:sqlite:", errorMessage);
+                console.error("[job-state-db] node:sqlite needs Node.js 22.13 or newer");
                 return false;
             }
         }
@@ -125,8 +125,11 @@ export async function initJobDb(cwd) {
         ensureStateDir(cwd);
         const dbPath = getDbPath(cwd);
         const db = new Database(dbPath);
+        // node:sqlite defaults to a 0 ms busy timeout; keep better-sqlite3's 5 s
+        // so concurrent MCP servers sharing jobs.db wait instead of failing.
+        db.exec("PRAGMA busy_timeout = 5000");
         // Enable WAL mode for better concurrency (multiple MCP servers)
-        db.pragma("journal_mode = WAL");
+        db.exec("PRAGMA journal_mode = WAL");
         // Create tables
         db.exec(`
       -- Schema version tracking
@@ -244,7 +247,7 @@ export function isJobDbInitialized(cwd) {
  * Get the raw database instance for advanced use.
  *
  * @param cwd - Optional cwd to get specific instance
- * @returns The better-sqlite3 Database instance, or null if not initialized
+ * @returns The node:sqlite DatabaseSync instance, or null if not initialized
  */
 export function getJobDb(cwd) {
     return getDb(cwd);
@@ -500,7 +503,7 @@ export function migrateFromJsonFiles(promptsDir, cwd) {
         const files = readdirSync(promptsDir);
         const statusFiles = files.filter((f) => f.includes("-status-") && f.endsWith(".json"));
         // Use a transaction for bulk import efficiency
-        const importAll = db.transaction(() => {
+        const importAll = () => {
             for (const file of statusFiles) {
                 try {
                     const content = readFileSync(join(promptsDir, file), "utf-8");
@@ -521,8 +524,19 @@ export function migrateFromJsonFiles(promptsDir, cwd) {
                     result.errors++;
                 }
             }
-        });
-        importAll();
+        };
+        db.exec("BEGIN");
+        try {
+            importAll();
+            db.exec("COMMIT");
+        }
+        catch (error) {
+            try {
+                db.exec("ROLLBACK");
+            }
+            catch { /* best effort */ }
+            throw error;
+        }
     }
     catch (error) {
         console.error("[job-state-db] Failed to migrate from JSON files:", error);
@@ -549,7 +563,7 @@ export function cleanupOldJobs(maxAgeMs = DEFAULT_CLEANUP_MAX_AGE_MS, cwd) {
         AND spawned_at < ?
     `);
         const info = stmt.run(cutoff);
-        return info.changes;
+        return Number(info.changes);
     }
     catch (error) {
         console.error("[job-state-db] Failed to cleanup old jobs:", error);

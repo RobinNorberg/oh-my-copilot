@@ -2,12 +2,12 @@
  * Job State Database - SQLite-based persistent state for Codex/Gemini background jobs
  *
  * Provides a single shared database at .omg/state/jobs.db for both providers.
- * Uses better-sqlite3 with WAL mode for safe concurrent access from multiple
+ * Uses Node's built-in node:sqlite with WAL mode for safe concurrent access from multiple
  * MCP server instances. Only job metadata is stored here; prompt/response
  * content remains as files on disk.
  *
  * Follows the same patterns as src/hooks/swarm/state.ts:
- * - Dynamic import of better-sqlite3 with graceful fallback
+ * - Lazy load of node:sqlite with graceful fallback
  * - WAL mode for concurrency
  * - Schema versioning with migrations
  * - Per-worktree db instances keyed by resolved path
@@ -16,7 +16,7 @@
 
 import { existsSync, mkdirSync, readdirSync, readFileSync } from "fs";
 import { join, resolve } from "path";
-import type BetterSqlite3 from "better-sqlite3";
+import { loadDatabaseSync, type SqliteDatabase, type SqliteDatabaseConstructor } from "./node-sqlite.js";
 import { getOmcRoot } from "./worktree-paths.js";
 
 /**
@@ -46,14 +46,11 @@ const DB_SCHEMA_VERSION = 1;
 // Default max age for cleanup: 24 hours
 const DEFAULT_CLEANUP_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
-// Type alias for the Database constructor
-type DatabaseConstructor = typeof BetterSqlite3;
-
-// Dynamic import for better-sqlite3 to handle environments where it's not installed
-let Database: DatabaseConstructor | null = null;
+// node:sqlite, loaded on first use (absent on Node runtimes older than 22.13 / 23.4)
+let Database: SqliteDatabaseConstructor | null = null;
 
 // Map of resolved worktree root path -> database instance (replaces singleton)
-const dbMap = new Map<string, BetterSqlite3.Database>();
+const dbMap = new Map<string, SqliteDatabase>();
 
 // Track the last cwd used for backward-compatible no-arg calls
 let _lastCwd: string | null = null;
@@ -62,7 +59,7 @@ let _lastCwd: string | null = null;
  * Get the database instance for a given cwd.
  * Falls back to the last initialized cwd if none provided.
  */
-function getDb(cwd?: string): BetterSqlite3.Database | null {
+function getDb(cwd?: string): SqliteDatabase | null {
   if (cwd) {
     const resolved = resolve(cwd);
     return dbMap.get(resolved) ?? null;
@@ -135,22 +132,21 @@ function rowToJobStatus(row: Record<string, unknown>): JobStatus {
  */
 export async function initJobDb(cwd: string): Promise<boolean> {
   try {
-    // Dynamic import of better-sqlite3 (may not be installed)
+    // Lazy load of node:sqlite (unavailable before Node 22.13 / 23.4)
     if (!Database) {
       try {
-        const betterSqlite3 = await import("better-sqlite3");
-        Database = betterSqlite3.default;
+        Database = loadDatabaseSync();
       } catch (importError: unknown) {
         const errorMessage =
           importError instanceof Error
             ? importError.message
             : String(importError);
         console.error(
-          "[job-state-db] Failed to load better-sqlite3:",
+          "[job-state-db] Failed to load node:sqlite:",
           errorMessage,
         );
         console.error(
-          "[job-state-db] Install with: npm install better-sqlite3",
+          "[job-state-db] node:sqlite needs Node.js 22.13 or newer",
         );
         return false;
       }
@@ -173,8 +169,12 @@ export async function initJobDb(cwd: string): Promise<boolean> {
 
     const db = new Database(dbPath);
 
+    // node:sqlite defaults to a 0 ms busy timeout; keep better-sqlite3's 5 s
+    // so concurrent MCP servers sharing jobs.db wait instead of failing.
+    db.exec("PRAGMA busy_timeout = 5000");
+
     // Enable WAL mode for better concurrency (multiple MCP servers)
-    db.pragma("journal_mode = WAL");
+    db.exec("PRAGMA journal_mode = WAL");
 
     // Create tables
     db.exec(`
@@ -294,9 +294,9 @@ export function isJobDbInitialized(cwd?: string): boolean {
  * Get the raw database instance for advanced use.
  *
  * @param cwd - Optional cwd to get specific instance
- * @returns The better-sqlite3 Database instance, or null if not initialized
+ * @returns The node:sqlite DatabaseSync instance, or null if not initialized
  */
-export function getJobDb(cwd?: string): BetterSqlite3.Database | null {
+export function getJobDb(cwd?: string): SqliteDatabase | null {
   return getDb(cwd);
 }
 
@@ -624,7 +624,7 @@ export function migrateFromJsonFiles(
     );
 
     // Use a transaction for bulk import efficiency
-    const importAll = db.transaction(() => {
+    const importAll = () => {
       for (const file of statusFiles) {
         try {
           const content = readFileSync(join(promptsDir, file), "utf-8");
@@ -645,9 +645,16 @@ export function migrateFromJsonFiles(
           result.errors++;
         }
       }
-    });
+    };
 
-    importAll();
+    db.exec("BEGIN");
+    try {
+      importAll();
+      db.exec("COMMIT");
+    } catch (error) {
+      try { db.exec("ROLLBACK"); } catch { /* best effort */ }
+      throw error;
+    }
   } catch (error) {
     console.error(
       "[job-state-db] Failed to migrate from JSON files:",
@@ -682,7 +689,7 @@ export function cleanupOldJobs(
         AND spawned_at < ?
     `);
     const info = stmt.run(cutoff);
-    return info.changes;
+    return Number(info.changes);
   } catch (error) {
     console.error("[job-state-db] Failed to cleanup old jobs:", error);
     return 0;

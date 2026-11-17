@@ -9,7 +9,12 @@ export declare const pythonReplTool: {
     name: string;
     description: string;
     schema: {
-        action: import("zod").ZodEnum<["execute", "interrupt", "reset", "get_state"]>;
+        action: import("zod").ZodEnum<{
+            execute: "execute";
+            interrupt: "interrupt";
+            reset: "reset";
+            get_state: "get_state";
+        }>;
         researchSessionID: import("zod").ZodString;
         code: import("zod").ZodOptional<import("zod").ZodString>;
         executionLabel: import("zod").ZodOptional<import("zod").ZodString>;
