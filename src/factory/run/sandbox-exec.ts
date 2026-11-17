@@ -60,7 +60,7 @@ import { getOmcRoot } from '../../lib/worktree-paths.js';
 import { TRUSTED_READ_ENV } from '../../ship/exec.js';
 import { redactSecrets } from '../heal/sanitize.js';
 import { resolveShimTarget, runtimePid, type PermissionResult, type SdkClientLike, type SdkSessionLike } from '../../smoke/copilot-sdk-driver.js';
-import { RUNTIME_MIN_MAX_CREDITS } from '../../smoke/copilot-sdk-scenarios.js';
+import { RUNTIME_MIN_MAX_CREDITS, SDK_INSTALL_COMMAND } from '../../smoke/copilot-sdk-scenarios.js';
 import { buildSessionEnv, loginIdentity } from '../../smoke/copilot-session-env.js';
 import { childEnv } from '../../utils/windows-search.js';
 
@@ -310,7 +310,7 @@ export async function runSandboxed(argv: readonly string[], o: SandboxExecOption
   try {
     mkdirSync(workDir, { recursive: true });
     const loaded = await deps.loadSdk().catch(() => null);
-    if (!loaded) return notStarted('@github/copilot-sdk is not installed or could not be loaded, so the sandbox cannot start');
+    if (!loaded) return notStarted(`@github/copilot-sdk is not installed or could not be loaded, so the sandbox cannot start (${SDK_INSTALL_COMMAND})`);
     const found = deps.resolveBin();
     const bin = found && deps.platform === 'win32' && /\.(cmd|bat|ps1)$/i.test(found) ? resolveShimTarget(found) : found;
     if (!bin) return notStarted(found ? `copilot shim ${found} names no .js/.exe target` : 'copilot CLI not found (PATH, COPILOT_CLI_PATH, WinGet), so the sandbox cannot start');

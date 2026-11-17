@@ -148,7 +148,7 @@ omg doctor
 ```
 
 Write the version down; it goes in every issue. `@github/copilot-sdk` is an
-optional peer: without it `omg smoke copilot --sdk-static` and every tier 2
+optional and not installed with oh-my-copilot: without it `omg smoke copilot --sdk-static` and every tier 2
 form exit 2 ("skipped"). Exit 2 is not a pass; report it as skipped.
 
 For team workers in panes (Step 3) install psmux 3.3.7 or later and check

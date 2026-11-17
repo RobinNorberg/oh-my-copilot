@@ -1,6 +1,6 @@
 /**
  * Tier 2 of `omg smoke copilot`: drive the installed Copilot CLI through
- * `@github/copilot-sdk` (an optional peer dependency, never bundled).
+ * `@github/copilot-sdk` (optional and not declared in package.json, never bundled).
  *
  * SDK resolution ({@link loadCopilotSdk}), first hit wins:
  * 1. `import('@github/copilot-sdk')` from this module: a local or project

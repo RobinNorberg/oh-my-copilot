@@ -6,6 +6,7 @@ This guide covers all migration paths for oh-my-copilot. Find your current versi
 
 ## Table of Contents
 
+- [Unreleased: SDKs No Longer Declared, tsx a Dev Dependency](#unreleased-sdks-no-longer-declared-tsx-a-dev-dependency)
 - [Unreleased: Node 20 Dropped, Built-in node:sqlite](#unreleased-node-20-dropped-built-in-nodesqlite)
 - [Unreleased: Claude Agent SDK Is an Optional Peer](#unreleased-claude-agent-sdk-is-an-optional-peer)
 - [Unreleased: No npm Install Script](#unreleased-no-npm-install-script)
@@ -59,7 +60,31 @@ This guide covers all migration paths for oh-my-copilot. Find your current versi
 
 ---
 
+## Unreleased: SDKs No Longer Declared, tsx a Dev Dependency
+
+Copilot CLI use without SDK features is unaffected; nothing is installed for you that was installed before.
+
+**What changed.** Socket.dev scores every package that `package.json` names, optional peers included, even though npm never installs an optional peer. So the package no longer names these:
+
+- `@anthropic-ai/claude-agent-sdk` (was an optional peer `^0.1.77`).
+- `@github/copilot-sdk` (was an optional peer `^1.0.16`; it brings `koffi`, which has an install script).
+- `tsx` moved from `dependencies` to `devDependencies` (it brings `esbuild`, which has an install script). A production install now holds 106 packages instead of 137.
+
+Code that uses the SDKs still loads them lazily, and fails with the install command when they are missing.
+
+**Who must install what.**
+
+| You use | Install | Where it is found |
+| --- | --- | --- |
+| `omg graph` agent nodes, or `createOmcSession()` with the SDK's `query()` | `npm install -g @anthropic-ai/claude-agent-sdk` next to a global oh-my-copilot, or `npm install @anthropic-ai/claude-agent-sdk` in the project that depends on oh-my-copilot | Node resolution from the oh-my-copilot package (its own and parent `node_modules`) |
+| `omg team --transport sdk` (the `auto` default under Copilot CLI), `omg smoke copilot --tier 2`, `copilot_run` jobs, `omg factory run` sandbox lanes and bench probes | `npm i -g @github/copilot-sdk --omit=optional --ignore-scripts` | Node resolution from the oh-my-copilot package, then the global root (`%APPDATA%/npm/node_modules` on Windows, then `npm root -g`) |
+| The `statechart` skill | Node 22.13 or later (22.13 to 22.17 and 23.4 to 23.5 run with `--experimental-strip-types`), Bun 1.1.5 or later, or Deno 2.0 or later | The launcher picks the runtime. Run in place from inside `node_modules`, Node refuses to strip types, so use the copy `omg setup` installs, or have Bun, Deno or a global `tsx` (`npm install -g tsx`) |
+
+Without `@github/copilot-sdk`, `--transport auto` keeps falling back to pane workers, as before.
+
 ## Unreleased: Claude Agent SDK Is an Optional Peer
+
+> Superseded by the section above: the SDK is no longer declared as a peer either, and the error now reads `graph agent nodes need @anthropic-ai/claude-agent-sdk, which oh-my-copilot does not install; ...`.
 
 Applies only to Node.js code that imports oh-my-copilot as a library together with the Claude Agent SDK, and to `omg graph` runs with agent nodes. Copilot CLI use is unaffected.
 
@@ -609,7 +634,7 @@ Details are in
 
 ### Optional SDK for tier 2
 
-`@github/copilot-sdk` is an optional peer dependency; installing
+`@github/copilot-sdk` is optional and not declared in package.json; installing
 oh-my-copilot never pulls it in. Install it only if you want tier 2:
 
 ```bash

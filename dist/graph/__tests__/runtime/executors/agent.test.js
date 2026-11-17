@@ -74,7 +74,7 @@ describe("AgentNodeExecutor", () => {
     it.skipIf(sdkInstalled)("fails with an install hint when the optional SDK peer is absent", async () => {
         const output = await new AgentNodeExecutor().execute(makeContext());
         expect(output.outcome).toBe("failed");
-        expect(output.output_summary).toContain("optional peer dependency @anthropic-ai/claude-agent-sdk");
+        expect(output.output_summary).toContain("need @anthropic-ai/claude-agent-sdk, which oh-my-copilot does not install");
         expect(output.output_summary).toContain("npm install @anthropic-ai/claude-agent-sdk");
         expect(output.output_summary).toContain("npm install -g @anthropic-ai/claude-agent-sdk");
         expect(output.output_summary).toContain(`next to oh-my-copilot in ${resolvePackageRoot()}`);

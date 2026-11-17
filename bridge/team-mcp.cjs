@@ -14295,7 +14295,7 @@ function canon(p, platform = process.platform) {
   const out = (0, import_path27.resolve)(p).split(import_path27.sep).join("/");
   return platform === "win32" ? out.toLowerCase() : out;
 }
-var import_fs24, import_path27, FACTORY_RUN_SCENARIOS, SANDBOX_LANE_SCENARIO, CLI_SCENARIOS, ALL_SCENARIOS, OPT_IN_SCENARIOS, KNOWN_SCENARIOS, DELEGATE_AGENT, SDK_PACKAGE, SDK_MISSING_DETAIL, NO_SHELL_OR_WRITE_TOOLS, NO_WRITE_TOOLS, denyAll, GUARDRAIL_COMMAND, FILETOOLS_DIR, FILETOOLS_FILES, FILETOOLS_MARKER, PROMPT_CONTEXT_PREFIX, EVENTS_MISSING_FILE, EVENTS_SHELL_TOKEN, FACTORY_RUN_FILE, FACTORY_RUN_ISSUE_BODY, SCENARIOS, NO_CASSETTE_SCENARIOS;
+var import_fs24, import_path27, FACTORY_RUN_SCENARIOS, SANDBOX_LANE_SCENARIO, CLI_SCENARIOS, ALL_SCENARIOS, OPT_IN_SCENARIOS, KNOWN_SCENARIOS, DELEGATE_AGENT, SDK_PACKAGE, SDK_INSTALL_COMMAND, SDK_MISSING_DETAIL, NO_SHELL_OR_WRITE_TOOLS, NO_WRITE_TOOLS, denyAll, GUARDRAIL_COMMAND, FILETOOLS_DIR, FILETOOLS_FILES, FILETOOLS_MARKER, PROMPT_CONTEXT_PREFIX, EVENTS_MISSING_FILE, EVENTS_SHELL_TOKEN, FACTORY_RUN_FILE, FACTORY_RUN_ISSUE_BODY, SCENARIOS, NO_CASSETTE_SCENARIOS;
 var init_copilot_sdk_scenarios = __esm({
   "src/smoke/copilot-sdk-scenarios.ts"() {
     "use strict";
@@ -14312,7 +14312,8 @@ var init_copilot_sdk_scenarios = __esm({
     KNOWN_SCENARIOS = [...ALL_SCENARIOS, ...OPT_IN_SCENARIOS];
     DELEGATE_AGENT = "oh-my-copilot:architect";
     SDK_PACKAGE = "@github/copilot-sdk";
-    SDK_MISSING_DETAIL = `${SDK_PACKAGE} not installed \u2014 npm i -g ${SDK_PACKAGE} --omit=optional --ignore-scripts`;
+    SDK_INSTALL_COMMAND = `npm i -g ${SDK_PACKAGE} --omit=optional --ignore-scripts`;
+    SDK_MISSING_DETAIL = `${SDK_PACKAGE} not installed \u2014 ${SDK_INSTALL_COMMAND}`;
     NO_SHELL_OR_WRITE_TOOLS = ["powershell", "shell", "create", "edit"];
     NO_WRITE_TOOLS = ["create", "edit"];
     denyAll = () => false;

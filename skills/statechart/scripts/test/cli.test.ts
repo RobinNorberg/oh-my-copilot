@@ -21,8 +21,8 @@ function run(
     view = path.join(dir, "view.mjs"),
     java = path.join(here, "java.ts"),
     // Route every CLI invocation through the production launcher: it picks
-    // the runtime per node (native stripping on 22.18+/23.6+, the repo's own
-    // tsx otherwise) with absolute paths, so the spawned CLI and its java.ts
+    // the runtime per node (native stripping on 22.18+/23.6+, flagged
+    // stripping on 22.13+, the repo's own tsx otherwise) with absolute paths, so the spawned CLI and its java.ts
     // shim behave identically on every node in the CI matrix.
     command = [path.join(here, "../statechart")],
     env = {},
@@ -182,7 +182,7 @@ for (const [what, bin] of [
     assert.equal(r.status, 127);
     assert.equal(
       r.stderr,
-      "statechart needs Node 22.18 to 22.x, Node 23.6 or later, Bun 1.1.5 or later, or Deno 2.0 or later.\n",
+      "statechart needs Node 22.13 or later, Bun 1.1.5 or later, or Deno 2.0 or later.\n",
     );
     assert.deepEqual(r.files, []);
   });
