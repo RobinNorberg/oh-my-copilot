@@ -30,7 +30,7 @@ import { ABSOLUTE_MAX_WORKERS, isValidTeamInstanceId, isValidTmuxServerIdentity,
 import { validateTeamName } from "./team-name.js";
 import { TASK_ID_SAFE_PATTERN, WORKER_NAME_SAFE_PATTERN } from "./contracts.js";
 import { buildValidatedWorkerLaunchDescriptor, clearResolvedPathCache, validateWorkerLaunchDescriptor, resolveValidatedBinaryPath, getWorkerEnv as getModelWorkerEnv, isPromptModeAgent, getPromptModeArgs, resolveDefaultWorkerModel, resolveExternalModelsDefaults, assertHeadlessSupported, resolveWorkerPermissionFlags, } from "./model-contract.js";
-import { createTeamSession, spawnOwnedWorkerInPane, deliverStartupInbox, probeStartupPaneActivity, retryStartupInboxSubmit, proveWorkerPaneOwnership, adoptWorkerPaneOwnership, getOwnedWorkerLiveness, captureOwnedTeamPane, workerPaneBelongsToOwnedProviderTarget, observeTmuxServerIdentity, killOwnedWorkerPane, verifyTeamTargetOwnership, observeTeamSessionTargetPresence, redactBoundedDiagnostic, killTeamSession, paneHasActiveTask, paneLooksReady, applyMainVerticalLayout, splitTeamWorkerPaneWithEvidence, TeamSessionCreationError, isHerdrSessionTarget, providerForTeamTarget, } from "./tmux-session.js";
+import { createTeamSession, spawnOwnedWorkerInPane, deliverStartupInbox, probeStartupPaneActivity, startupProviderExited, retryStartupInboxSubmit, proveWorkerPaneOwnership, adoptWorkerPaneOwnership, getOwnedWorkerLiveness, captureOwnedTeamPane, workerPaneBelongsToOwnedProviderTarget, observeTmuxServerIdentity, killOwnedWorkerPane, verifyTeamTargetOwnership, observeTeamSessionTargetPresence, redactBoundedDiagnostic, killTeamSession, paneHasActiveTask, paneLooksReady, applyMainVerticalLayout, splitTeamWorkerPaneWithEvidence, TeamSessionCreationError, isHerdrSessionTarget, providerForTeamTarget, } from "./tmux-session.js";
 import { herdrWorkspaceIdFromSessionTarget, herdrCloseWorkspace, herdrWorkspaceExists, } from "./herdr-session.js";
 import { composeInitialInbox, ensureWorkerStateDir, writeWorkerOverlay, generateTriggerMessage, generatePromptModeStartupPrompt, renderRecoveryContinuationInstruction, renderCursorWorkerGuidance, renderWorkerExitContract, } from "./worker-bootstrap.js";
 import { queueInboxInstruction } from "./mcp-comm.js";
@@ -76,13 +76,14 @@ export function buildStartupInboxTrigger(cwd, teamName, workerName, attemptId, p
 }
 import { currentProcessStartIdentity, isProcessIdentityDead, publishOwnerEpoch, readLatestOwnerEpoch, requireOwnerFence, requireOwnerProcessIdentity, } from "./team-owner-epoch.js";
 import { waitForRecoveryGateRecord, } from "./worker-activation-gate.js";
-import { isWorkerLaunchAttemptCurrent, isWorkerLaunchAttemptAccepted, loadCurrentWorkerLaunchAttempt, loadWorkerLaunchAttempt, observeWorkerLaunchProvider, retireAndCleanupCurrentWorkerLaunchAttempt, withWorkerLaunchAttemptFence, } from "./worker-launch-ack.js";
+import { isWorkerLaunchAttemptCurrent, isWorkerLaunchAttemptAccepted, loadCurrentWorkerLaunchAttempt, loadWorkerLaunchAttempt, retireAndCleanupCurrentWorkerLaunchAttempt, withWorkerLaunchAttemptFence, } from "./worker-launch-ack.js";
 import { isSdkTarget, launchSdkHost, readSdkSession, ringDoorbell, sdkPaneId, sdkTeamTarget, stopSdkHost, SDK_HOST_STOP_FLOOR_MS, } from "./sdk-transport.js";
 import { toCopilotModelId } from "./model-contract.js";
 import { loadCopilotSdk, resolveShimTarget, } from "../smoke/copilot-sdk-driver.js";
 import { detectHostCliSignal } from "../utils/host-signal.js";
 import { resolveDefaultPluginRoot } from "../smoke/copilot-session-env.js";
 import { getCopilotConfigDir } from "../utils/config-dir.js";
+import { getWorkerProviderLiveness } from "./worker-provider-liveness.js";
 import { isProcessIdentityLive } from "../platform/process-utils.js";
 import { activateTeamInstanceUnderLock, assertTeamInstanceUnderLock, buildTeamInstancePendingConfig, createTeamInstanceBinding, disposeTeamInstanceUnderLock, releaseFailedStartupReservationUnderLock, reserveTeamInstanceUnderLock, retryTeamInstanceDisposal, TeamInstanceError, withTeamInstanceLifecycleLock, } from "./team-instance.js";
 let runtimeOwnerRecoveryClient;
@@ -692,31 +693,6 @@ function configuredPaneOwnership(config, worker) {
     };
 }
 /**
- * Read provider execution health from the exact launch receipt.  A missing or
- * malformed attempt is deliberately unknown; pane liveness is not a provider
- * termination proof.
- */
-async function getWorkerProviderLiveness(teamName, cwd, instanceId, worker) {
-    if (!instanceId || !worker.pane_id || !worker.launch_attempt_id)
-        return "unknown";
-    const provider = worker.launch_descriptor?.provider ?? worker.worker_cli;
-    if (!provider)
-        return "unknown";
-    const attempt = await loadWorkerLaunchAttempt({
-        cwd,
-        teamName,
-        instanceId,
-        workerName: worker.name,
-        paneId: worker.pane_id,
-        provider,
-        attemptId: worker.launch_attempt_id,
-        runtimeCliPath: resolveRuntimeCliPath(),
-    }).catch(() => null);
-    if (!attempt)
-        return "unknown";
-    return observeWorkerLaunchProvider(attempt);
-}
-/**
  * Recovery only treats a positively dead provider as dead.  A live provider
  * remains protected even when its pane has disappeared, and unknown evidence
  * never authorizes replacement.
@@ -1008,27 +984,30 @@ export function getWorkerStartupEvidencePolicy(agentType) {
         engagedPaneRecheckBudgetMs: resolveEngagedPaneRecheckBudgetMs(policy.engagedPaneRecheckBudgetMs),
     };
 }
-export async function waitForStartupEvidenceBudget(hasEvidence, budgetMs, delayMs = WORKER_STARTUP_EVIDENCE_POLL_INTERVAL_MS) {
+export async function waitForStartupEvidenceBudget(hasEvidence, budgetMs, delayMs = WORKER_STARTUP_EVIDENCE_POLL_INTERVAL_MS, providerExited) {
     const deadline = Date.now() + Math.max(0, budgetMs);
     for (;;) {
         if (await hasEvidence())
             return true;
+        // An exited provider can write no further evidence. Evidence is read again after the exit is confirmed, since the provider may have written it while that check ran.
+        if (providerExited && (await providerExited()))
+            return hasEvidence();
         const remainingMs = deadline - Date.now();
         if (remainingMs <= 0)
             return false;
         await new Promise((resolve) => setTimeout(resolve, Math.min(delayMs, remainingMs)));
     }
 }
-async function waitForWorkerStartupEvidence(teamName, workerName, taskId, cwd, baseline, launchAttemptId, budgetMs, delayMs = WORKER_STARTUP_EVIDENCE_POLL_INTERVAL_MS) {
-    return waitForStartupEvidenceBudget(() => hasCurrentWorkerStartupEvidence(teamName, workerName, taskId, cwd, baseline, launchAttemptId), budgetMs, delayMs);
+async function waitForWorkerStartupEvidence(teamName, workerName, taskId, cwd, baseline, launchAttemptId, budgetMs, providerExited) {
+    return waitForStartupEvidenceBudget(() => hasCurrentWorkerStartupEvidence(teamName, workerName, taskId, cwd, baseline, launchAttemptId), budgetMs, WORKER_STARTUP_EVIDENCE_POLL_INTERVAL_MS, providerExited);
 }
-async function waitForWorkerStatusTransition(teamName, workerName, cwd, baselineFingerprint, launchAttemptId, budgetMs, delayMs = 250) {
+async function waitForWorkerStatusTransition(teamName, workerName, cwd, baselineFingerprint, launchAttemptId, budgetMs, providerExited) {
     return waitForStartupEvidenceBudget(async () => {
         const status = await readWorkerStatus(teamName, workerName, cwd);
         return (status.state !== "unknown" &&
             status.launch_attempt_id === launchAttemptId &&
             workerStatusStartupFingerprint(status) !== baselineFingerprint);
-    }, budgetMs, delayMs);
+    }, budgetMs, 250, providerExited);
 }
 /**
  * Settle worker startup evidence under a provider-aware policy.
@@ -1077,6 +1056,11 @@ function startupEvidenceMissingReason(paneBusy, agentType) {
         ? `${agentType}_startup_evidence_missing`
         : "worker_startup_evidence_missing";
     return paneBusy ? `${base}_pane_busy` : base;
+}
+async function startupEvidenceFailureReason(context, paneBusy, agentType) {
+    return (await startupProviderExited(context))
+        ? "provider_exited"
+        : startupEvidenceMissingReason(paneBusy, agentType);
 }
 const CLAIM_ERROR_CAPTURE_MAX = 16_384;
 const CLAIM_ERROR_JSON_LINES_MAX = 80;
@@ -1744,7 +1728,7 @@ async function spawnV2Worker(opts) {
             throw new Error(`worker_startup_cleanup_unverified:${opts.workerName}:${paneId}`);
     };
     const evidencePolicy = getWorkerStartupEvidencePolicy(opts.agentType);
-    const waitForCurrentEvidence = (budgetMs) => waitForWorkerStartupEvidence(opts.teamName, opts.workerName, opts.taskId, opts.cwd, startupBaseline, startupContext.attempt.attempt_id, budgetMs);
+    const waitForCurrentEvidence = (budgetMs) => waitForWorkerStartupEvidence(opts.teamName, opts.workerName, opts.taskId, opts.cwd, startupBaseline, startupContext.attempt.attempt_id, budgetMs, () => startupProviderExited(startupContext));
     const probeActivity = opts.agentType === "cursor" ||
         opts.agentType === "codex" ||
         opts.agentType === "copilot"
@@ -1800,7 +1784,7 @@ async function spawnV2Worker(opts) {
                                 : {
                                     ok: false,
                                     transport: "prompt_stdin",
-                                    reason: startupEvidenceMissingReason(settlement.paneBusy, opts.agentType),
+                                    reason: await startupEvidenceFailureReason(startupContext, settlement.paneBusy, opts.agentType),
                                 };
                         }
                         const attempted = await deliverStartupInbox(startupContext, triggerMessage, { attemptAlreadyFenced: true });
@@ -1826,7 +1810,7 @@ async function spawnV2Worker(opts) {
                             : {
                                 ok: false,
                                 transport: "tmux_send_keys",
-                                reason: startupEvidenceMissingReason(settlement.paneBusy),
+                                reason: await startupEvidenceFailureReason(startupContext, settlement.paneBusy),
                             };
                     },
                     deps: { writeWorkerInbox },
@@ -3805,8 +3789,8 @@ export async function executeRecoverDeadWorkerV2Owner(input) {
                     workerStatusStartupFingerprint(await readWorkerStatus(input.teamName, sagaInput.workerName, input.cwd));
                 const evidencePolicy = getWorkerStartupEvidencePolicy(pending.agentType);
                 const waitForCurrentEvidence = (budgetMs) => primaryTaskId && startupBaseline
-                    ? waitForWorkerStartupEvidence(input.teamName, sagaInput.workerName, primaryTaskId, input.cwd, startupBaseline, startupAttemptId, budgetMs)
-                    : waitForWorkerStatusTransition(input.teamName, sagaInput.workerName, input.cwd, statusBaseline, startupAttemptId, budgetMs);
+                    ? waitForWorkerStartupEvidence(input.teamName, sagaInput.workerName, primaryTaskId, input.cwd, startupBaseline, startupAttemptId, budgetMs, () => startupProviderExited(startupContext))
+                    : waitForWorkerStatusTransition(input.teamName, sagaInput.workerName, input.cwd, statusBaseline, startupAttemptId, budgetMs, () => startupProviderExited(startupContext));
                 const probeActivity = pending.agentType === "cursor" ||
                     pending.agentType === "codex" ||
                     pending.agentType === "copilot"
@@ -3902,7 +3886,7 @@ export async function executeRecoverDeadWorkerV2Owner(input) {
                         if (!settlement.settled)
                             return {
                                 ok: false,
-                                error: startupEvidenceMissingReason(settlement.paneBusy, pending.agentType),
+                                error: await startupEvidenceFailureReason(startupContext, settlement.paneBusy, pending.agentType),
                             };
                     }
                     else if (pending.promptMode) {
@@ -3948,7 +3932,7 @@ export async function executeRecoverDeadWorkerV2Owner(input) {
                                     : {
                                         ok: false,
                                         transport: "tmux_send_keys",
-                                        reason: startupEvidenceMissingReason(settlement.paneBusy),
+                                        reason: await startupEvidenceFailureReason(startupContext, settlement.paneBusy),
                                     };
                             },
                             deps: { writeWorkerInbox },
@@ -6471,10 +6455,15 @@ export async function monitorTeamV2(teamName, cwd, expectedInstanceId) {
         const sdkCapped = Boolean(sdkSession &&
             providerLiveness !== "dead" &&
             sdkSession.state === "capped");
+        // A dead provider leaves its shell prompt behind; that is not an idle worker.
         const paneSuggestsIdle = sdkSession
             ? alive &&
+                providerLiveness !== "dead" &&
                 ((sdkSession.state === "idle" && sdkSession.queued === 0) || sdkCapped)
-            : alive && paneLooksReady(paneCapture) && !paneHasActiveTask(paneCapture);
+            : alive &&
+                providerLiveness !== "dead" &&
+                paneLooksReady(paneCapture) &&
+                !paneHasActiveTask(paneCapture);
         const statusFresh = isFreshTimestamp(status.updated_at);
         const heartbeatFresh = isFreshTimestamp(heartbeat?.last_turn_at);
         const hasWorkStartEvidence = expectedTaskId !== "" && hasWorkerStatusProgress(status, expectedTaskId);

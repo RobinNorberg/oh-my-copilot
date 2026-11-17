@@ -35648,6 +35648,12 @@ Error: ${sgLoadError}`
             };
           }
           const lang = toLangEnum(sg, language);
+          const multiCaptureNames = new Set(
+            Array.from(
+              pattern.matchAll(/(?<![\w$])\$\$\$([A-Z_][A-Z0-9_]*)(?![\w$])/g),
+              (m) => m[1]
+            )
+          );
           const changes = [];
           let totalReplacements = 0;
           for (const filePath of files) {
@@ -35664,18 +35670,20 @@ Error: ${sgLoadError}`
                 let finalReplacement = replacement;
                 const matchedText = match.text();
                 try {
-                  const metaVars = replacement.match(/\$\$?\$?[A-Z_][A-Z0-9_]*/g) || [];
-                  for (const metaVar of metaVars) {
-                    const varName = metaVar.replace(/^\$+/, "");
-                    const captured = match.getMatch(varName);
-                    if (captured) {
-                      const safeText = captured.text().replace(/\$/g, "$$$$");
-                      finalReplacement = finalReplacement.replaceAll(
-                        metaVar,
-                        safeText
-                      );
+                  finalReplacement = replacement.replace(
+                    /\$\$\$([A-Z_][A-Z0-9_]*)|\$\$?([A-Z_][A-Z0-9_]*)/g,
+                    (metaVar, multiName, singleName) => {
+                      if (multiName !== void 0 && multiCaptureNames.has(multiName)) {
+                        const nodes2 = match.getMultipleMatches(multiName);
+                        if (nodes2.length === 0) return "";
+                        return content2.slice(
+                          nodes2[0].range().start.index,
+                          nodes2[nodes2.length - 1].range().end.index
+                        );
+                      }
+                      return match.getMatch(multiName ?? singleName)?.text() ?? metaVar;
                     }
-                  }
+                  );
                 } catch {
                 }
                 edits.push({
@@ -35686,9 +35694,15 @@ Error: ${sgLoadError}`
                   before: matchedText
                 });
               }
-              edits.sort((a, b) => b.start - a.start);
+              edits.sort((a, b) => a.start - b.start);
+              let keptEnd = 0;
+              const keptEdits = edits.filter((edit) => {
+                if (edit.start < keptEnd) return false;
+                keptEnd = edit.end;
+                return true;
+              });
               let newContent = content2;
-              for (const edit of edits) {
+              for (const edit of keptEdits.reverse()) {
                 const before = newContent.slice(edit.start, edit.end);
                 newContent = newContent.slice(0, edit.start) + edit.replacement + newContent.slice(edit.end);
                 changes.push({
@@ -47152,7 +47166,10 @@ ${JSON.stringify(writtenState, null, 2)}
         session_id: external_exports.string().optional().describe("Explicit session ID to scope the listing. Overrides OMC_SESSION_ID when provided."),
         all: external_exports.boolean().optional().describe("When true, list active modes across all sessions (legacy + every session-scoped dir). Overrides the default current-session scope.")
       },
-      handler: async (args) => {
+      // Aggregate reads resolve a state path per session x mode. getGitTopLevel caches only hits, so a
+      // non-git cwd re-runs `git rev-parse` per resolution. The scope memoizes git probes and project ids
+      // for this call only.
+      handler: (args) => withWorktreePathRenderScope(async () => {
         const { workingDirectory, session_id, all } = args;
         try {
           const root = resolveStateWorkingDirectory(workingDirectory);
@@ -47279,7 +47296,7 @@ ${modeList}`
             isError: true
           };
         }
-      }
+      })
     };
     stateGetStatusTool = {
       name: "state_get_status",
@@ -47290,7 +47307,8 @@ ${modeList}`
         workingDirectory: external_exports.string().optional().describe("Working directory (defaults to cwd)"),
         session_id: external_exports.string().optional().describe("Session ID for session-scoped state isolation. When provided, the tool operates only within that session. When omitted, the tool aggregates legacy state plus all session-scoped state (may include other sessions).")
       },
-      handler: async (args) => {
+      // Same per-call git probe memo as state_list_active.
+      handler: (args) => withWorktreePathRenderScope(async () => {
         const { mode, workingDirectory, session_id } = args;
         try {
           const root = resolveStateWorkingDirectory(workingDirectory);
@@ -47431,7 +47449,7 @@ No active sessions for this mode.`);
             isError: true
           };
         }
-      }
+      })
     };
     stateMigrateNonGitTool = {
       name: "state_migrate_non_git",
@@ -47739,15 +47757,18 @@ function pruneOldEntries(directory, daysOld = DEFAULT_CONFIG3.workingMemoryDays)
       if (!workingMemory) {
         return { pruned: 0, remaining: 0 };
       }
-      const entryRegex = /### (\d{4}-\d{2}-\d{2} \d{2}:\d{2})\n([\s\S]*?)(?=### |$)/g;
+      const entryHeading = /^### (\d{4}-\d{2}-\d{2} \d{2}:\d{2})$/;
+      const preamble = [];
       const entries = [];
-      let match = entryRegex.exec(workingMemory);
-      while (match !== null) {
-        entries.push({
-          timestamp: match[1],
-          content: match[2].trim()
-        });
-        match = entryRegex.exec(workingMemory);
+      for (const line2 of workingMemory.split("\n")) {
+        const heading = entryHeading.exec(line2);
+        if (heading) {
+          entries.push({ timestamp: heading[1], lines: [] });
+        } else if (entries.length > 0) {
+          entries[entries.length - 1].lines.push(line2);
+        } else {
+          preamble.push(line2);
+        }
       }
       const cutoff = /* @__PURE__ */ new Date();
       cutoff.setDate(cutoff.getDate() - daysOld);
@@ -47756,8 +47777,13 @@ function pruneOldEntries(directory, daysOld = DEFAULT_CONFIG3.workingMemoryDays)
         return entryDate >= cutoff;
       });
       const pruned = entries.length - kept.length;
-      const newContent = kept.map((entry2) => `### ${entry2.timestamp}
-${entry2.content}`).join("\n\n");
+      const newContent = [
+        preamble.join("\n").trim(),
+        ...kept.map(
+          (entry2) => `### ${entry2.timestamp}
+${entry2.lines.join("\n").trim()}`
+        )
+      ].filter(Boolean).join("\n\n");
       notepadContent = replaceSection(
         notepadContent,
         WORKING_MEMORY_HEADER,
@@ -56477,9 +56503,28 @@ function hasExplicitAutopilotInvocationContext(text6, position, keywordLength, k
   const sentenceEnd = AUTOPILOT_SENTENCE_END.exec(text6);
   const afterEnd = sentenceEnd === null ? "" : text6.slice(sentenceEnd.index + sentenceEnd[0].length, lineEnd);
   const nestedQuestion = sentenceEnd !== null && (sentenceEnd[0].length > 1 && !/^[ \t]*$/.test(afterEnd) || new RegExp("^[ \\t]+\\p{Ll}", "u").test(afterEnd));
-  if (sentenceEnd && sentenceEnd.index < lineEnd && sentenceEnd[0][0] === "?" && !nestedQuestion && !AUTOPILOT_REQUEST_START.test(clauseHead)) return false;
+  if (sentenceEnd && sentenceEnd.index < lineEnd && sentenceEnd[0][0] === "?" && !nestedQuestion && !AUTOPILOT_REQUEST_START.test(clauseHead) && !AUTOPILOT_ACTIVATION_BEFORE.test(tail6)) return false;
   if (AUTOPILOT_NEGATION_BEFORE.test(tail6) || AUTOPILOT_NEGATION_BEFORE.test(tail6.replace(AUTOPILOT_OPENING_DELIMITERS_AT_END, ""))) return false;
   if (AUTOPILOT_REFERENCE_LABEL_LINE.test(lineHead.replace(AUTOPILOT_MARKDOWN_MARKS, "").replace(AUTOPILOT_LIST_PREFIX, "").replace(/\s+$/, ""))) return false;
+  if (/^[ \t]+(?:run|test|build|deploy|check)[ \t]+(?:failed|passed|succeeded|completed|crashed|errored|hung)(?![\p{L}\d])[ \t]*\([^)]*(?:could|would|check|why|what|logs|error|reason|because)\s*\)/iu.test(afterKeyword)) return false;
+  const sentenceText = text6.slice(lineStart, lineEnd).replace(/\s+$/, "");
+  if (sentenceText.endsWith(")")) {
+    const parenStart = sentenceText.lastIndexOf("(");
+    if (parenStart >= 0) {
+      const parenContent = sentenceText.slice(parenStart + 1, -1);
+      const keywordStartInSentence = position - lineStart;
+      const keywordEndInSentence = keywordStartInSentence + keywordLength;
+      const keywordInsideParens = keywordStartInSentence > parenStart && keywordEndInSentence < sentenceText.length - 1;
+      if (keywordInsideParens) {
+        if (AUTOPILOT_REQUEST_START.test("(" + parenContent)) return true;
+        const endsWithQuestion = /\?[ \t]*$/.test(parenContent);
+        const startsWithQuestion = AUTOPILOT_QUESTION_START.test("(" + parenContent);
+        if (endsWithQuestion || startsWithQuestion) {
+          return false;
+        }
+      }
+    }
+  }
   if (AUTOPILOT_NON_ENGLISH_LINE.test(text6.slice(lineStart, Math.min(lineEnd, lineStart + 400)))) return true;
   const isHardwareAlias = /^(?:full\s*auto|fullsend)$/i.test((keywordText || "").trim());
   if (leadingPrefix) {
@@ -56517,7 +56562,7 @@ function findActionableAutopilotAliasMatch(text6, pattern) {
     }
     const { start: lineStart, end: lineEnd } = getLineBounds(text6, match.index);
     let previousLine = "";
-    for (let end = lineStart - 1; end > 0 && !previousLine.trim(); ) {
+    for (let end = lineStart - 1; end > 0 && (!previousLine.trim() || AUTOPILOT_THEMATIC_BREAK.test(previousLine)); ) {
       const start = text6.lastIndexOf("\n", end - 1) + 1;
       previousLine = text6.slice(start, end);
       end = start - 1;
@@ -56676,7 +56721,7 @@ function applyRalplanGate(keywords, text6) {
   }
   return { keywords: filtered, gateApplied: true, gatedKeywords: executionKeywords };
 }
-var AUTOPILOT_ALIAS_PATTERN, AUTOPILOT_OTHER_PATTERN, KEYWORD_PATTERNS, OUROBOROS_BRAND_AT_START, KEYWORD_SKIP_PREDICATES, KEYWORD_PRIORITY, RETIRED_WORKFLOW_SLASH_PATTERN, CANONICAL_WORKFLOW_SLASH_SKILLS, SLASH_SKILL_TO_KEYWORD_TYPE, WORKFLOW_SLASH_PATTERN, PASTED_MAGIC_KEYWORD_HEADER_PATTERN, ROLE_BOUNDARY_PATTERN, SKILL_TRANSCRIPT_LINE_PATTERN, USER_REQUEST_LINE_PATTERN, SHELL_TRANSCRIPT_LINE_PATTERN, GIT_DIFF_START_PATTERNS, GIT_DIFF_CONTINUATION_PATTERNS, NON_LATIN_SCRIPT_PATTERN, PATH_SEGMENT_CHARS, FILE_PATH_PATTERN, INFORMATIONAL_INTENT_PATTERNS2, STRONG_HELP_QUERY_PATTERN, MULTILINGUAL_HELP_REQUEST_PATTERN, ENGLISH_HELP_REQUEST_PATTERN, TASK_ACTION_VERB_PATTERN, RESULTS_REPORTING_REQUEST_PATTERN, INFORMATIONAL_CONTEXT_WINDOW2, QUOTED_SPAN_PATTERN, REFERENCE_META_PATTERNS, REFERENCE_EXPLANATION_PATTERNS, QUESTION_FOLLOWUP_PATTERNS, MODE_REFERENCE_PATTERN, AUTOPILOT_COMMAND_VERBS, AUTOPILOT_HYPHENATED_VERB, AUTOPILOT_COMMAND_WORD, AUTOPILOT_STATUS_CONTINUATION, AUTOPILOT_NOT_A_COMMAND_AFTER, AUTOPILOT_NON_COMMAND_WORDS, AUTOPILOT_LEADING_STATUS, AUTOPILOT_COMMAND_AFTER, AUTOPILOT_COLON_VERB, AUTOPILOT_ALONE_ON_LINE, AUTOPILOT_NEGATION_BEFORE, AUTOPILOT_OPENING_DELIMITERS_AT_END, AUTOPILOT_QUESTION_START, AUTOPILOT_REQUEST_START, AUTOPILOT_SENTENCE_END, AUTOPILOT_MARKDOWN_MARKS, AUTOPILOT_LIST_PREFIX, AUTOPILOT_REFERENCE_LABEL_LINE, AUTOPILOT_REFERENCE_HEADING, AUTOPILOT_NOUN_USE_BEFORE, AUTOPILOT_COMMIT_LINE_BEFORE, AUTOPILOT_NON_ENGLISH_LINE, AUTOPILOT_FOREIGN_VERB_BEFORE, AUTOPILOT_ACTIVATION_BEFORE, AUTOPILOT_KEEP_USING_BEFORE, AUTOPILOT_TURN_BEFORE, AUTOPILOT_ON_AFTER, AUTOPILOT_NAMESPACE_PREFIX, AUTOPILOT_MAX_MATCHES, AUTOPILOT_CONTEXT_WINDOW, CODE_EDITING_KEYWORDS, NO_IMPLEMENT_PATTERN, EXECUTION_GATE_KEYWORDS, GATE_BYPASS_PREFIXES, WELL_SPECIFIED_SIGNALS;
+var AUTOPILOT_ALIAS_PATTERN, AUTOPILOT_OTHER_PATTERN, KEYWORD_PATTERNS, OUROBOROS_BRAND_AT_START, KEYWORD_SKIP_PREDICATES, KEYWORD_PRIORITY, RETIRED_WORKFLOW_SLASH_PATTERN, CANONICAL_WORKFLOW_SLASH_SKILLS, SLASH_SKILL_TO_KEYWORD_TYPE, WORKFLOW_SLASH_PATTERN, PASTED_MAGIC_KEYWORD_HEADER_PATTERN, ROLE_BOUNDARY_PATTERN, SKILL_TRANSCRIPT_LINE_PATTERN, USER_REQUEST_LINE_PATTERN, SHELL_TRANSCRIPT_LINE_PATTERN, GIT_DIFF_START_PATTERNS, GIT_DIFF_CONTINUATION_PATTERNS, NON_LATIN_SCRIPT_PATTERN, PATH_SEGMENT_CHARS, FILE_PATH_PATTERN, INFORMATIONAL_INTENT_PATTERNS2, STRONG_HELP_QUERY_PATTERN, MULTILINGUAL_HELP_REQUEST_PATTERN, ENGLISH_HELP_REQUEST_PATTERN, TASK_ACTION_VERB_PATTERN, RESULTS_REPORTING_REQUEST_PATTERN, INFORMATIONAL_CONTEXT_WINDOW2, QUOTED_SPAN_PATTERN, REFERENCE_META_PATTERNS, REFERENCE_EXPLANATION_PATTERNS, QUESTION_FOLLOWUP_PATTERNS, MODE_REFERENCE_PATTERN, AUTOPILOT_COMMAND_VERBS, AUTOPILOT_HYPHENATED_VERB, AUTOPILOT_COMMAND_WORD, AUTOPILOT_STATUS_CONTINUATION, AUTOPILOT_NOT_A_COMMAND_AFTER, AUTOPILOT_NON_COMMAND_WORDS, AUTOPILOT_LEADING_STATUS, AUTOPILOT_COMMAND_AFTER, AUTOPILOT_COLON_VERB, AUTOPILOT_ALONE_ON_LINE, AUTOPILOT_NEGATION_BEFORE, AUTOPILOT_OPENING_DELIMITERS_AT_END, AUTOPILOT_QUESTION_START, AUTOPILOT_REQUEST_START, AUTOPILOT_SENTENCE_END, AUTOPILOT_MARKDOWN_MARKS, AUTOPILOT_LIST_PREFIX, AUTOPILOT_REFERENCE_LABEL_LINE, AUTOPILOT_REFERENCE_HEADING, AUTOPILOT_NOUN_USE_BEFORE, AUTOPILOT_COMMIT_LINE_BEFORE, AUTOPILOT_NON_ENGLISH_LINE, AUTOPILOT_FOREIGN_VERB_BEFORE, AUTOPILOT_ACTIVATION_BEFORE, AUTOPILOT_KEEP_USING_BEFORE, AUTOPILOT_TURN_BEFORE, AUTOPILOT_ON_AFTER, AUTOPILOT_NAMESPACE_PREFIX, AUTOPILOT_THEMATIC_BREAK, AUTOPILOT_MAX_MATCHES, AUTOPILOT_CONTEXT_WINDOW, CODE_EDITING_KEYWORDS, NO_IMPLEMENT_PATTERN, EXECUTION_GATE_KEYWORDS, GATE_BYPASS_PREFIXES, WELL_SPECIFIED_SIGNALS;
 var init_keyword_detector = __esm({
   "src/hooks/keyword-detector/index.ts"() {
     "use strict";
@@ -56827,7 +56872,7 @@ var init_keyword_detector = __esm({
     AUTOPILOT_ALONE_ON_LINE = /^[ \t]*[.!]?[ \t]*(?:\r?\n|$)/;
     AUTOPILOT_NEGATION_BEFORE = /(?<![\p{L}\d])(?:(?:don|doesn|didn|shouldn|couldn|wouldn|can|won|mustn|isn|aren|shan|needn)['’]?t|cannot|do\s+not|never|not|without)\s+(?!(?:just|only|simply|merely|also|solely|stop|quit|forget|fail|hesitat\w*|delay\w*|wait\w*|paus\w*|ask\w*)(?![\p{L}\d]))(?:(?!(?:so|but|and|then|instead|because|now|mind)(?![\p{L}]))[\p{L}'’]+\s+){0,4}$/iu;
     AUTOPILOT_OPENING_DELIMITERS_AT_END = /["'“”‘’`*_([{<]+$/;
-    AUTOPILOT_QUESTION_START = /^[ \t]*(?:[-*+>#]+[ \t]+|\d+[.)][ \t]+|\[[ xX]\][ \t]+|["'“‘([*_`])*(?!(?:can|could|would|will)\s+you(?![\p{L}\d]))(?!do\s+not(?![\p{L}\d]))(?:did|does|do|is|are|was|were|has|have|had|can|could|should|would|will|may|might|must|shall|what|why|how|when|where|who|which)(?![\p{L}\d])/iu;
+    AUTOPILOT_QUESTION_START = /^[ \t]*(?:[-*+>#]+[ \t]+|\d+[.)][ \t]+|\[[ xX]\][ \t]+|["'“‘([*_`])*(?!(?:can|could|would|will)\s+you(?![\p{L}\d]))(?!do\s+not(?![\p{L}\d]))(?!do\s+(?:use|run|start|enable|activate|invoke|trigger|launch|engage|initiate|begin|kick\s+off|fire\s+up|spin\s+up|turn\s+on|switch\s+to|go(?:\s+with|\s+for)?|set)\s)(?:did|does|do|is|are|was|were|has|have|had|can|could|should|would|will|may|might|must|shall|what|why|how|when|where|who|which)(?![\p{L}\d])/iu;
     AUTOPILOT_REQUEST_START = /^[ \t]*(?:[-*+>#]+[ \t]+|\d+[.)][ \t]+|\[[ xX]\][ \t]+|["'“‘([*_`])*(?:please[ ,]+)?(?:can|could|would|will)\s+you(?![\p{L}\d])/iu;
     AUTOPILOT_SENTENCE_END = /(?<=\S)[.!?][)\]}"'*_\u201D\u2019]*(?=\s|$)/g;
     AUTOPILOT_MARKDOWN_MARKS = /[*_`#>]+/g;
@@ -56838,11 +56883,12 @@ var init_keyword_detector = __esm({
     AUTOPILOT_COMMIT_LINE_BEFORE = /(?<![\p{L}\d])[0-9a-f]{7,40}\s+$/iu;
     AUTOPILOT_NON_ENGLISH_LINE = new RegExp("[\\p{Script=Hangul}\\p{Script=Hiragana}\\p{Script=Katakana}\\p{Script=Han}\\p{Script=Thai}]|(?![A-Za-z])\\p{L}", "u");
     AUTOPILOT_FOREIGN_VERB_BEFORE = /(?<![\p{L}\d])(?:usa|usar|utiliza|utilizar|activa|activar|ejecuta|ejecutar|inicia|iniciar|lanza|utilise|utiliser|active|lance|lancer|nutze|nutzen|benutze|verwende|starte|aktiviere|attiva|avvia|ative|inicie|execute)\s+(?:(?:el|la|le|il|der|die|das)\s+)?$/iu;
-    AUTOPILOT_ACTIVATION_BEFORE = /(?<![\p{L}\d])(?:(?:please|let['’]?s|i\s+(?:want|need|would\s+like)(?:\s+to)?)\s+(?:(?:use|run|start|enable|activate|invoke|trigger|launch|engage|initiate|begin|kick\s+off|fire\s+up|spin\s+up|turn\s+on|switch\s+to|go(?:\s+with|\s+for)?|set)\s+)?|(?:use|run|start|enable|activate|invoke|trigger|launch|engage|initiate|begin|kick\s+off|fire\s+up|spin\s+up|turn\s+on|switch\s+to|go(?:\s+with|\s+for)?|set)\s+)(?:(?:the|a|my|our|your)\s+)?$/iu;
+    AUTOPILOT_ACTIVATION_BEFORE = /(?<![\p{L}\d])(?:(?:please|let['']?s|i\s+(?:want|need|would\s+like)(?:\s+to)?)[\s,]+(?:(?:use|run|start|enable|activate|invoke|trigger|launch|engage|initiate|begin|kick\s+off|fire\s+up|spin\s+up|turn\s+on|switch\s+to|go(?:\s+with|\s+for)?|set)\s+)?|(?:use|run|start|enable|activate|invoke|trigger|launch|engage|initiate|begin|kick\s+off|fire\s+up|spin\s+up|turn\s+on|switch\s+to|go(?:\s+with|\s+for)?|set)\s+)(?:(?:the|a|my|our|your)\s+)?$/iu;
     AUTOPILOT_KEEP_USING_BEFORE = /(?<![\p{L}\d])(?:don['’]?t|do\s+not|never)\s+(?:ever\s+)?(?:stop|quit)\s+using\s+$/iu;
     AUTOPILOT_TURN_BEFORE = /(?<![\p{L}\d])(?:turn|switch)\s+(?:the\s+|a\s+|my\s+|our\s+|your\s+)?$/iu;
     AUTOPILOT_ON_AFTER = /^[ \t]+on(?![\p{L}\d])/iu;
     AUTOPILOT_NAMESPACE_PREFIX = /^\s*\/?(?:oh-my-(?:claudecode|codex|copilot)|omc|omg):\s*$/i;
+    AUTOPILOT_THEMATIC_BREAK = /^[ \t]*(?:(?:[-_*])[ \t]*){3,}$/;
     AUTOPILOT_MAX_MATCHES = 1e3;
     AUTOPILOT_CONTEXT_WINDOW = 2e3;
     CODE_EDITING_KEYWORDS = /* @__PURE__ */ new Set(["autopilot", "ralph", "tdd"]);
@@ -61692,6 +61738,28 @@ var init_boulder_state = __esm({
   }
 });
 
+// src/lib/jsonl.ts
+function parseJsonLines(raw) {
+  const out = [];
+  for (const line2 of raw.split("\n")) {
+    const trimmed = line2.trim();
+    if (!trimmed) continue;
+    let value;
+    try {
+      value = JSON.parse(trimmed);
+    } catch {
+      continue;
+    }
+    if (typeof value === "object" && value !== null && !Array.isArray(value)) out.push(value);
+  }
+  return out;
+}
+var init_jsonl = __esm({
+  "src/lib/jsonl.ts"() {
+    "use strict";
+  }
+});
+
 // src/utils/string-width.ts
 function isCJKCharacter(codePoint2) {
   return (
@@ -61937,7 +62005,7 @@ function newestTeamActivityMs(teamRoot) {
 function readJsonLinesSafe(path30) {
   if (!(0, import_node_fs10.existsSync)(path30)) return [];
   try {
-    return (0, import_node_fs10.readFileSync)(path30, "utf-8").split("\n").map((line2) => line2.trim()).filter(Boolean).map((line2) => JSON.parse(line2));
+    return parseJsonLines((0, import_node_fs10.readFileSync)(path30, "utf-8"));
   } catch {
     return [];
   }
@@ -62364,6 +62432,7 @@ var init_mission_board = __esm({
     import_node_path12 = require("node:path");
     init_atomic_write();
     init_file_lock();
+    init_jsonl();
     init_worktree_paths();
     init_string_width();
     init_worker_canonicalization();
@@ -73124,6 +73193,9 @@ function assertSafeCmdValue(value) {
     throw new Error("Native Windows tmux command values cannot contain NUL, CR, or LF characters");
   }
 }
+function tmuxGlobalArgs() {
+  return process.platform === "win32" ? [] : ["-u"];
+}
 function resolveTmuxInvocation(args) {
   const resolvedBinary = resolveTmuxBinaryPath();
   if (process.platform === "win32" && /\.(cmd|bat)$/i.test(resolvedBinary)) {
@@ -73136,7 +73208,7 @@ function resolveTmuxInvocation(args) {
   }
   return {
     command: resolvedBinary,
-    args
+    args: [...tmuxGlobalArgs(), ...args]
   };
 }
 function psmuxTranslation(args) {
@@ -79449,6 +79521,7 @@ __export(tmux_session_exports, {
   spawnWorkerInPane: () => spawnWorkerInPane,
   splitTeamWorkerPane: () => splitTeamWorkerPane,
   splitTeamWorkerPaneWithEvidence: () => splitTeamWorkerPaneWithEvidence,
+  startupProviderExited: () => startupProviderExited,
   strictIdentityUnavailableError: () => strictIdentityUnavailableError,
   tmuxServerGuardCondition: () => tmuxServerGuardCondition,
   tmuxServerGuardConditionPosix: () => tmuxServerGuardConditionPosix,
@@ -82570,6 +82643,9 @@ async function startupContextIsActive(context, attemptAlreadyFenced = false) {
     return false;
   return context.ownership.paneId === context.attempt.pane_id && context.provider === context.attempt.provider && await isWorkerLaunchAttemptAccepted(context.attempt) && (attemptAlreadyFenced || await isWorkerLaunchAttemptCurrent(context.attempt));
 }
+async function startupProviderExited(context) {
+  return await observeWorkerLaunchProvider(context.attempt) === "dead";
+}
 async function waitForStartupPaneReady(context, opts = {}) {
   if (context.ownership.paneId !== context.attempt.pane_id || context.provider !== context.attempt.provider) {
     return { ok: false, reason: "ownership_mismatch" };
@@ -82581,6 +82657,8 @@ async function waitForStartupPaneReady(context, opts = {}) {
   while (Date.now() < deadline) {
     if (!await startupContextIsActive(context, opts.attemptAlreadyFenced))
       return { ok: false, reason: "attempt_inactive" };
+    if (await startupProviderExited(context))
+      return { ok: false, reason: "provider_exited" };
     const copyMode = await paneCopyModeObservation(
       context.ownership.paneId,
       context.ownership.tmuxServerIdentity
@@ -82647,6 +82725,7 @@ async function waitForStartupPaneReady(context, opts = {}) {
 async function startupPaneSubmitBlockReason(context, attemptAlreadyFenced) {
   if (!await startupContextIsActive(context, attemptAlreadyFenced))
     return "attempt_inactive";
+  if (await startupProviderExited(context)) return "provider_exited";
   const copyMode = await paneCopyModeObservation(
     context.ownership.paneId,
     context.ownership.tmuxServerIdentity
@@ -82710,6 +82789,7 @@ async function deliverStartupInbox(context, message4, options = {}) {
 async function probeStartupPaneActivity(context, options = {}) {
   if (!await startupContextIsActive(context, options.attemptAlreadyFenced))
     return "unknown";
+  if (await startupProviderExited(context)) return "dead";
   const membership = await verifyTeamTargetOwnership({
     provider: context.ownership.provider,
     providerTarget: context.ownership.providerTarget,
@@ -82738,6 +82818,7 @@ async function probeStartupPaneActivity(context, options = {}) {
 async function retryStartupInboxSubmit(context, message4, options = {}) {
   if (!await startupContextIsActive(context, options.attemptAlreadyFenced))
     return "unavailable";
+  if (await startupProviderExited(context)) return "unavailable";
   const copyMode = await paneCopyModeObservation(
     context.ownership.paneId,
     context.ownership.tmuxServerIdentity
@@ -86280,6 +86361,9 @@ function normalizeDiscordTagList(tagList) {
 function normalizeTelegramTagList(tagList) {
   return (tagList ?? []).map((tag) => tag.trim()).filter(Boolean).map((tag) => tag.startsWith("@") ? tag : `@${tag}`);
 }
+function normalizeSlackTagList(tagList) {
+  return (tagList ?? []).map((tag) => tag.trim()).filter(Boolean);
+}
 function prefixMessageWithTags(message4, tags) {
   return tags.length === 0 ? message4 : `${tags.join(" ")}
 ${message4}`;
@@ -86310,6 +86394,13 @@ async function sendDiscord2(config2, message4, signal, _idempotencyKey) {
   const response = await fetch(config2.webhookUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ content: message4 }), signal });
   if (!response.ok) throw new Error(`Discord webhook error: ${response.status}`);
 }
+async function sendSlack2(config2, message4, signal) {
+  if (!config2.webhookUrl) return;
+  const url2 = new URL(config2.webhookUrl);
+  if (url2.protocol !== "https:" || !(url2.hostname === "hooks.slack.com" || url2.hostname.endsWith(".hooks.slack.com"))) return;
+  const response = await fetch(config2.webhookUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: message4 }), signal });
+  if (!response.ok) throw new Error(`Slack webhook error: ${response.status}`);
+}
 async function runLegacyCallbacks(metrics, options, signal) {
   const callbacks = getOMCConfig().stopHookCallbacks;
   if (!callbacks) return;
@@ -86319,10 +86410,11 @@ async function runLegacyCallbacks(metrics, options, signal) {
   if (!skipPlatforms.has("file") && callbacks.file?.enabled && callbacks.file.path) work.push(writeToFile(callbacks.file, formatSessionSummary(metrics, callbacks.file.format || "markdown"), metrics.session_id, idempotencyKey));
   if (!skipPlatforms.has("telegram") && callbacks.telegram?.enabled) work.push(sendTelegram2(callbacks.telegram, prefixMessageWithTags(formatSessionSummary(metrics), normalizeTelegramTagList(callbacks.telegram.tagList)), signal, idempotencyKey));
   if (!skipPlatforms.has("discord") && callbacks.discord?.enabled) work.push(sendDiscord2(callbacks.discord, prefixMessageWithTags(formatSessionSummary(metrics), normalizeDiscordTagList(callbacks.discord.tagList)), signal, idempotencyKey));
+  if (!skipPlatforms.has("slack") && callbacks.slack?.enabled) work.push(sendSlack2(callbacks.slack, prefixMessageWithTags(formatSessionSummary(metrics), normalizeSlackTagList(callbacks.slack.tagList)), signal));
   await Promise.all(work);
 }
 function stringList(value) {
-  return Array.isArray(value) ? value.filter((item) => item === "file" || item === "telegram" || item === "discord") : [];
+  return Array.isArray(value) ? value.filter((item) => item === "file" || item === "telegram" || item === "discord" || item === "slack") : [];
 }
 async function runWithinDeadline(deadlineAt, run3) {
   const remaining = deadlineAt - Date.now();
@@ -87999,8 +88091,7 @@ async function readTeamEvents(teamName, cwd) {
   const p = absPath(cwd, TeamPaths.events(teamName));
   if (!(0, import_fs89.existsSync)(p)) return [];
   try {
-    const raw = await (0, import_promises16.readFile)(p, "utf8");
-    return raw.trim().split("\n").filter(Boolean).map((line2) => JSON.parse(line2));
+    return parseJsonLines(await (0, import_promises16.readFile)(p, "utf8"));
   } catch {
     return [];
   }
@@ -88069,6 +88160,7 @@ var init_events = __esm({
     import_fs89 = require("fs");
     init_state_paths();
     init_swallowed_error();
+    init_jsonl();
     init_mailbox_outstanding();
   }
 });
@@ -88924,6 +89016,37 @@ var init_dispatch_queue = __esm({
   }
 });
 
+// src/team/worker-provider-liveness.ts
+async function getWorkerProviderLiveness(teamName, cwd, instanceId, worker) {
+  if (!instanceId || !worker.pane_id || !worker.launch_attempt_id)
+    return "unknown";
+  const provider = worker.launch_descriptor?.provider ?? worker.worker_cli;
+  if (!provider) return "unknown";
+  try {
+    const attempt = await loadWorkerLaunchAttempt({
+      cwd,
+      teamName,
+      instanceId,
+      workerName: worker.name,
+      paneId: worker.pane_id,
+      provider,
+      attemptId: worker.launch_attempt_id,
+      runtimeCliPath: resolveRuntimeCliPath()
+    });
+    if (!attempt) return "unknown";
+    return await observeWorkerLaunchProvider(attempt);
+  } catch {
+    return "unknown";
+  }
+}
+var init_worker_provider_liveness = __esm({
+  "src/team/worker-provider-liveness.ts"() {
+    "use strict";
+    init_runtime_owner_client();
+    init_worker_launch_ack();
+  }
+});
+
 // src/team/mailbox-notification-guard.ts
 function hasExactText(value) {
   return typeof value === "string" && value !== "" && value === value.trim();
@@ -89217,6 +89340,27 @@ function evaluateMailboxNotificationGuard(input2, state) {
 function mailboxNotificationSecurityTupleEquals(left, right) {
   return left.configName === right.configName && left.configInstanceId === right.configInstanceId && left.configProviderTarget === right.configProviderTarget && left.configTmuxServerSocketPath === right.configTmuxServerSocketPath && left.configTmuxServerPid === right.configTmuxServerPid && left.configTmuxServerProcessStartedAt === right.configTmuxServerProcessStartedAt && left.recipient === right.recipient && left.recipientRole === right.recipientRole && left.canonicalPaneId === right.canonicalPaneId && left.canonicalWorkerIndex === right.canonicalWorkerIndex && left.requestId === right.requestId && left.requestKind === right.requestKind && left.requestTeamName === right.requestTeamName && left.requestRecipient === right.requestRecipient && left.requestMessageId === right.requestMessageId && left.requestTriggerMessage === right.requestTriggerMessage && left.requestPaneId === right.requestPaneId && left.requestWorkerIndex === right.requestWorkerIndex && left.requestTransportPreference === right.requestTransportPreference && left.requestFallbackAllowed === right.requestFallbackAllowed && left.requestStatus === right.requestStatus && left.mailboxOwner === right.mailboxOwner && left.mailboxMessageId === right.mailboxMessageId && left.mailboxRecipient === right.mailboxRecipient && left.provider === right.provider && left.providerTarget === right.providerTarget && left.providerPaneId === right.providerPaneId;
 }
+async function refuseExitedRecipient(result, config2, cwd, readLiveness) {
+  if (result.kind !== "allow" || result.target.recipientRole !== "worker" || !config2)
+    return result;
+  const worker = canonicalizeWorkers(config2.workers).workers.find(
+    (candidate) => candidate.name === result.target.recipient
+  );
+  if (!worker) return result;
+  const liveness = await readLiveness(
+    config2.name,
+    cwd,
+    config2.instance_id,
+    worker
+  );
+  if (liveness !== "dead") return result;
+  return {
+    kind: "suppress",
+    reason: "mailbox_provider_exited",
+    safePendingRequest: result.request,
+    target: result.target
+  };
+}
 async function readCurrentMailboxNotificationGuard(input2, cwd, dependencies = {}) {
   const readConfig2 = dependencies.readConfig ?? teamReadConfig;
   const readStrictDispatch = dependencies.readStrictDispatchRequest ?? readDispatchRequestStrict;
@@ -89233,10 +89377,11 @@ async function readCurrentMailboxNotificationGuard(input2, cwd, dependencies = {
       cwd
     ).catch(() => ({ kind: "malformed_store", cause: "json" }))
   ]);
+  const readLiveness = dependencies.readWorkerProviderLiveness ?? getWorkerProviderLiveness;
   const state = { config: config2, dispatch, mailbox };
   const initial = evaluateMailboxNotificationGuard(input2, state);
   if (initial.kind !== "suppress" || initial.reason !== "mailbox_membership_unresolvable" || !initial.target) {
-    return initial;
+    return refuseExitedRecipient(initial, config2, cwd, readLiveness);
   }
   if (!config2 || !targetHasPersistedAuthority(config2, initial.target))
     return initial;
@@ -89244,7 +89389,12 @@ async function readCurrentMailboxNotificationGuard(input2, cwd, dependencies = {
     ...initial.target,
     ...initial.target.tmuxServerIdentity ? { tmuxServerIdentity: { ...initial.target.tmuxServerIdentity } } : {}
   }).catch(() => ({ kind: "unavailable" })) : { kind: "unavailable" };
-  return evaluateMailboxNotificationGuard(input2, { ...state, ownership });
+  return refuseExitedRecipient(
+    evaluateMailboxNotificationGuard(input2, { ...state, ownership }),
+    config2,
+    cwd,
+    readLiveness
+  );
 }
 var init_mailbox_notification_guard = __esm({
   "src/team/mailbox-notification-guard.ts"() {
@@ -89254,6 +89404,7 @@ var init_mailbox_notification_guard = __esm({
     init_types9();
     init_team_owner_epoch();
     init_worker_canonicalization();
+    init_worker_provider_liveness();
   }
 });
 
@@ -98950,24 +99101,6 @@ function configuredPaneOwnership(config2, worker) {
     ...identity ? { tmuxServerIdentity: identity } : {}
   };
 }
-async function getWorkerProviderLiveness(teamName, cwd, instanceId, worker) {
-  if (!instanceId || !worker.pane_id || !worker.launch_attempt_id)
-    return "unknown";
-  const provider = worker.launch_descriptor?.provider ?? worker.worker_cli;
-  if (!provider) return "unknown";
-  const attempt = await loadWorkerLaunchAttempt({
-    cwd,
-    teamName,
-    instanceId,
-    workerName: worker.name,
-    paneId: worker.pane_id,
-    provider,
-    attemptId: worker.launch_attempt_id,
-    runtimeCliPath: resolveRuntimeCliPath()
-  }).catch(() => null);
-  if (!attempt) return "unknown";
-  return observeWorkerLaunchProvider(attempt);
-}
 async function getWorkerExecutionLiveness(teamName, cwd, instanceId, worker) {
   const providerLiveness = await getWorkerProviderLiveness(
     teamName,
@@ -99166,10 +99299,11 @@ function getWorkerStartupEvidencePolicy(agentType) {
     )
   };
 }
-async function waitForStartupEvidenceBudget(hasEvidence, budgetMs, delayMs = WORKER_STARTUP_EVIDENCE_POLL_INTERVAL_MS) {
+async function waitForStartupEvidenceBudget(hasEvidence, budgetMs, delayMs = WORKER_STARTUP_EVIDENCE_POLL_INTERVAL_MS, providerExited) {
   const deadline = Date.now() + Math.max(0, budgetMs);
   for (; ; ) {
     if (await hasEvidence()) return true;
+    if (providerExited && await providerExited()) return hasEvidence();
     const remainingMs = deadline - Date.now();
     if (remainingMs <= 0) return false;
     await new Promise(
@@ -99177,7 +99311,7 @@ async function waitForStartupEvidenceBudget(hasEvidence, budgetMs, delayMs = WOR
     );
   }
 }
-async function waitForWorkerStartupEvidence(teamName, workerName, taskId, cwd, baseline, launchAttemptId, budgetMs, delayMs = WORKER_STARTUP_EVIDENCE_POLL_INTERVAL_MS) {
+async function waitForWorkerStartupEvidence(teamName, workerName, taskId, cwd, baseline, launchAttemptId, budgetMs, providerExited) {
   return waitForStartupEvidenceBudget(
     () => hasCurrentWorkerStartupEvidence(
       teamName,
@@ -99188,17 +99322,19 @@ async function waitForWorkerStartupEvidence(teamName, workerName, taskId, cwd, b
       launchAttemptId
     ),
     budgetMs,
-    delayMs
+    WORKER_STARTUP_EVIDENCE_POLL_INTERVAL_MS,
+    providerExited
   );
 }
-async function waitForWorkerStatusTransition(teamName, workerName, cwd, baselineFingerprint, launchAttemptId, budgetMs, delayMs = 250) {
+async function waitForWorkerStatusTransition(teamName, workerName, cwd, baselineFingerprint, launchAttemptId, budgetMs, providerExited) {
   return waitForStartupEvidenceBudget(
     async () => {
       const status = await readWorkerStatus(teamName, workerName, cwd);
       return status.state !== "unknown" && status.launch_attempt_id === launchAttemptId && workerStatusStartupFingerprint(status) !== baselineFingerprint;
     },
     budgetMs,
-    delayMs
+    250,
+    providerExited
   );
 }
 async function settleStartupEvidence(policy, waitForCurrentEvidence, resubmit, probeActivity) {
@@ -99229,6 +99365,9 @@ async function settleStartupEvidence(policy, waitForCurrentEvidence, resubmit, p
 function startupEvidenceMissingReason(paneBusy, agentType) {
   const base = agentType ? `${agentType}_startup_evidence_missing` : "worker_startup_evidence_missing";
   return paneBusy ? `${base}_pane_busy` : base;
+}
+async function startupEvidenceFailureReason(context, paneBusy, agentType) {
+  return await startupProviderExited(context) ? "provider_exited" : startupEvidenceMissingReason(paneBusy, agentType);
 }
 function normalizePaneLine(line2) {
   return line2.replace(/[\u0000-\u001F\u007F-\u009F]/g, " ").replace(/[ \t]+/g, " ").trim();
@@ -99860,7 +99999,8 @@ async function spawnV2Worker(opts) {
     opts.cwd,
     startupBaseline,
     startupContext.attempt.attempt_id,
-    budgetMs
+    budgetMs,
+    () => startupProviderExited(startupContext)
   );
   const probeActivity = opts.agentType === "cursor" || opts.agentType === "codex" || opts.agentType === "copilot" ? () => probeStartupPaneActivity(startupContext, {
     attemptAlreadyFenced: true
@@ -99912,7 +100052,8 @@ async function spawnV2Worker(opts) {
                 } : {
                   ok: false,
                   transport: "prompt_stdin",
-                  reason: startupEvidenceMissingReason(
+                  reason: await startupEvidenceFailureReason(
+                    startupContext,
                     settlement2.paneBusy,
                     opts.agentType
                   )
@@ -99943,7 +100084,10 @@ async function spawnV2Worker(opts) {
               } : {
                 ok: false,
                 transport: "tmux_send_keys",
-                reason: startupEvidenceMissingReason(settlement.paneBusy)
+                reason: await startupEvidenceFailureReason(
+                  startupContext,
+                  settlement.paneBusy
+                )
               };
             },
             deps: { writeWorkerInbox }
@@ -101989,14 +102133,16 @@ async function executeRecoverDeadWorkerV2Owner(input2) {
           input2.cwd,
           startupBaseline,
           startupAttemptId,
-          budgetMs
+          budgetMs,
+          () => startupProviderExited(startupContext)
         ) : waitForWorkerStatusTransition(
           input2.teamName,
           sagaInput2.workerName,
           input2.cwd,
           statusBaseline,
           startupAttemptId,
-          budgetMs
+          budgetMs,
+          () => startupProviderExited(startupContext)
         );
         const probeActivity = pending.agentType === "cursor" || pending.agentType === "codex" || pending.agentType === "copilot" ? () => probeStartupPaneActivity(startupContext, {
           attemptAlreadyFenced: true
@@ -102121,7 +102267,8 @@ ${recoveryContract}` : ""}`;
               if (!settlement.settled)
                 return {
                   ok: false,
-                  error: startupEvidenceMissingReason(
+                  error: await startupEvidenceFailureReason(
+                    startupContext,
                     settlement.paneBusy,
                     pending.agentType
                   )
@@ -102172,7 +102319,8 @@ ${recoveryContract}` : ""}`;
                   } : {
                     ok: false,
                     transport: "tmux_send_keys",
-                    reason: startupEvidenceMissingReason(
+                    reason: await startupEvidenceFailureReason(
+                      startupContext,
                       settlement.paneBusy
                     )
                   };
@@ -104462,7 +104610,7 @@ async function monitorTeamV2(teamName, cwd, expectedInstanceId) {
     const sdkCapped = Boolean(
       sdkSession && providerLiveness !== "dead" && sdkSession.state === "capped"
     );
-    const paneSuggestsIdle = sdkSession ? alive && (sdkSession.state === "idle" && sdkSession.queued === 0 || sdkCapped) : alive && paneLooksReady(paneCapture) && !paneHasActiveTask(paneCapture);
+    const paneSuggestsIdle = sdkSession ? alive && providerLiveness !== "dead" && (sdkSession.state === "idle" && sdkSession.queued === 0 || sdkCapped) : alive && providerLiveness !== "dead" && paneLooksReady(paneCapture) && !paneHasActiveTask(paneCapture);
     const statusFresh = isFreshTimestamp2(status.updated_at);
     const heartbeatFresh = isFreshTimestamp2(heartbeat?.last_turn_at);
     const hasWorkStartEvidence = expectedTaskId !== "" && hasWorkerStatusProgress(status, expectedTaskId);
@@ -105690,6 +105838,7 @@ var init_runtime_v2 = __esm({
     init_host_signal();
     init_copilot_session_env();
     init_config_dir();
+    init_worker_provider_liveness();
     init_process_utils();
     init_team_instance();
     init_runtime_flags();
@@ -107698,6 +107847,9 @@ function getLegacyPlatformsCoveredByNotifications(enabledPlatforms) {
   }
   if (enabledPlatforms.includes("discord")) {
     overlappingPlatforms.push("discord");
+  }
+  if (enabledPlatforms.includes("slack")) {
+    overlappingPlatforms.push("slack");
   }
   return overlappingPlatforms;
 }
@@ -188314,13 +188466,19 @@ Note:
     console.log("");
     return;
   }
-  await teleportCommand(ref, {
+  const result = await teleportCommand(ref, {
     worktree: true,
     // Always create worktree
     worktreePath: options.path,
     base: options.base,
     json: options.json
   });
+  if (!result.success) {
+    if (options.json) {
+      console.log(JSON.stringify({ success: false, error: result.error }));
+    }
+    process.exitCode = 1;
+  }
 });
 teleportCmd.command("list").description("List existing worktrees in ~/Workspace/omc-worktrees/").option("--json", "Output as JSON").action(async (_options, command) => {
   await teleportListCommand({ json: command.optsWithGlobals().json });

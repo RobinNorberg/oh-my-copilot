@@ -127,6 +127,11 @@ function assertSafeCmdValue(value: string): void {
   }
 }
 
+// -u keeps -p/-F output locale-independent: a non-UTF-8 tmux client prints tabs as '_'.
+function tmuxGlobalArgs(): string[] {
+  return process.platform === 'win32' ? [] : ['-u'];
+}
+
 function resolveTmuxInvocation(args: string[]): TmuxCommandInvocation {
   const resolvedBinary = resolveTmuxBinaryPath();
   if (process.platform === 'win32' && /\.(cmd|bat)$/i.test(resolvedBinary)) {
@@ -140,7 +145,7 @@ function resolveTmuxInvocation(args: string[]): TmuxCommandInvocation {
 
   return {
     command: resolvedBinary,
-    args,
+    args: [...tmuxGlobalArgs(), ...args],
   };
 }
 
