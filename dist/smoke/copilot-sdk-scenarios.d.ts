@@ -54,6 +54,8 @@ export declare const PLUGIN_NAME = "oh-my-copilot";
 export declare const DELEGATE_AGENT = "oh-my-copilot:architect";
 export declare const MIN_PROTOCOL_VERSION = 3;
 export declare const SDK_PACKAGE = "@github/copilot-sdk";
+/** oh-my-copilot does not declare the SDK, so every "not installed" message names this command. */
+export declare const SDK_INSTALL_COMMAND = "npm i -g @github/copilot-sdk --omit=optional --ignore-scripts";
 /** Lane B's CLI keys "pure skip" exit code 2 on this exact prefix. */
 export declare const SDK_MISSING_DETAIL = "@github/copilot-sdk not installed \u2014 npm i -g @github/copilot-sdk --omit=optional --ignore-scripts";
 /**

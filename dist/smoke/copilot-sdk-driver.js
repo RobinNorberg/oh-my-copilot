@@ -1,6 +1,6 @@
 /**
  * Tier 2 of `omg smoke copilot`: drive the installed Copilot CLI through
- * `@github/copilot-sdk` (an optional peer dependency, never bundled).
+ * `@github/copilot-sdk` (optional and not declared in package.json, never bundled).
  *
  * SDK resolution ({@link loadCopilotSdk}), first hit wins:
  * 1. `import('@github/copilot-sdk')` from this module: a local or project
@@ -211,7 +211,7 @@ export async function loadCopilotSdk(env = process.env, spawnSync = nodeSpawnSyn
     return found ? withCassette(found, env) : null;
 }
 async function findCopilotSdk(env, spawnSync) {
-    const spec = SDK_PACKAGE; // a variable keeps tsc from resolving the optional peer at build time
+    const spec = SDK_PACKAGE; // a variable keeps tsc and esbuild from resolving the optional package at build time
     try {
         const mod = await import(spec);
         if (isSdkModule(mod))

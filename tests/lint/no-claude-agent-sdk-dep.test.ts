@@ -1,5 +1,8 @@
 /**
- * Guard: @anthropic-ai/claude-agent-sdk stays an optional peer (PR #558).
+ * Guard: @anthropic-ai/claude-agent-sdk stays out of package.json (PR #558),
+ * and so does @github/copilot-sdk. Socket.dev scores every declared package,
+ * optional peers included, so both SDKs are loaded lazily and installed by the
+ * users who need them.
  *
  * Upstream ports re-add the SDK as a dependency and as static imports (see
  * .omc/skills/stale-main-dependency-reintroduction-expertise.md); a merge
@@ -15,6 +18,15 @@ import { describe, expect, it } from "vitest";
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "../..");
 const SDK = "@anthropic-ai/claude-agent-sdk";
+const COPILOT_SDK = "@github/copilot-sdk";
+const DEPENDENCY_FIELDS = ["dependencies", "optionalDependencies", "peerDependencies", "peerDependenciesMeta"];
+
+function readPackageJson(): Record<string, Record<string, unknown> | undefined> {
+  return JSON.parse(readFileSync(join(REPO_ROOT, "package.json"), "utf8")) as Record<
+    string,
+    Record<string, unknown> | undefined
+  >;
+}
 
 const toPosix = (path: string): string => path.replace(/\\/g, "/");
 
@@ -40,14 +52,18 @@ function sourceFiles(dir: string): string[] {
 }
 
 describe("no @anthropic-ai/claude-agent-sdk dependency", () => {
-  it("package.json lists the SDK only as a peer", () => {
-    const pkg = JSON.parse(readFileSync(join(REPO_ROOT, "package.json"), "utf8")) as Record<
-      string,
-      Record<string, string> | undefined
-    >;
-    expect(Object.keys(pkg.dependencies ?? {})).not.toContain(SDK);
-    expect(Object.keys(pkg.optionalDependencies ?? {})).not.toContain(SDK);
-    expect(Object.keys(pkg.devDependencies ?? {})).not.toContain(SDK);
+  it("package.json does not declare the Claude Agent SDK in any dependency field", () => {
+    const pkg = readPackageJson();
+    for (const field of [...DEPENDENCY_FIELDS, "devDependencies"]) {
+      expect(Object.keys(pkg[field] ?? {}), field).not.toContain(SDK);
+    }
+  });
+
+  it("package.json does not declare @github/copilot-sdk as a dependency or peer", () => {
+    const pkg = readPackageJson();
+    for (const field of DEPENDENCY_FIELDS) {
+      expect(Object.keys(pkg[field] ?? {}), field).not.toContain(COPILOT_SDK);
+    }
   });
 
   it("no src file loads the SDK statically", () => {

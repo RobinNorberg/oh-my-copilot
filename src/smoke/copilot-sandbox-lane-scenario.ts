@@ -47,6 +47,7 @@ import {
   SANDBOX_LANE_FILE,
   SANDBOX_PROBE_SCRIPT,
   SANDBOX_REVIEW_FILE,
+  SDK_INSTALL_COMMAND,
   type SandboxCanaryRecord,
   type SandboxLaneEvidence,
   type SandboxLaneRecord,
@@ -215,7 +216,7 @@ async function probeSandboxHost(input: Pick<SandboxLaneScenarioInput, 'env' | 'b
   delete env[SANDBOX_KILL_ENV];
   let loaded: LoadedSdk | null;
   try { loaded = await defaultCopilotRunDeps(env).loadSdk(); } catch (err) { return unsupported(`loading the SDK failed: ${errText(err)}`); }
-  if (!loaded) return unsupported('the @github/copilot-sdk package is not installed');
+  if (!loaded) return unsupported(`the @github/copilot-sdk package is not installed (${SDK_INSTALL_COMMAND})`);
   const { CopilotClient, RuntimeConnection } = loaded.module;
   const client = new CopilotClient({
     connection: RuntimeConnection.forStdio({ path: input.bin, args: ['--max-ai-credits', String(RUNTIME_MIN_MAX_CREDITS)], env }),

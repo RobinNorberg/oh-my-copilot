@@ -15,7 +15,7 @@ import { defaultCopilotRunDeps, type CopilotRunDeps } from '../../copilot-run/jo
 import { allowlistSessionEnv, sessionGitHubToken } from '../../copilot-run/sandbox.js';
 import { errText, withTimeout } from '../../copilot-run/timeout.js';
 import { resolveShimTarget, runtimePid, type SdkClientLike, type SdkSessionLike } from '../../smoke/copilot-sdk-driver.js';
-import { RUNTIME_MIN_MAX_CREDITS } from '../../smoke/copilot-sdk-scenarios.js';
+import { RUNTIME_MIN_MAX_CREDITS, SDK_INSTALL_COMMAND } from '../../smoke/copilot-sdk-scenarios.js';
 import { buildSessionEnv, loginIdentity } from '../../smoke/copilot-session-env.js';
 import { hasExited } from '../../smoke/process-utils.js';
 import { childEnv } from '../../utils/windows-search.js';
@@ -68,7 +68,7 @@ export async function probeLaneModel(jobRoot: string, deps: Pick<CopilotRunDeps,
   try {
     mkdirSync(workDir, { recursive: true });
     const loaded = await deps.loadSdk().catch(() => null);
-    if (!loaded) return none('@github/copilot-sdk is not installed or could not be loaded');
+    if (!loaded) return none(`@github/copilot-sdk is not installed or could not be loaded (${SDK_INSTALL_COMMAND})`);
     const found = deps.resolveBin();
     const bin = found && deps.platform === 'win32' && /\.(cmd|bat|ps1)$/i.test(found) ? resolveShimTarget(found) : found;
     if (!bin) return none('the copilot CLI was not found');

@@ -2,7 +2,7 @@
  * Agent node executor.
  *
  * Runs one GraphAgentNode attempt through the Claude Agent SDK. The SDK is an
- * optional peer dependency that oh-my-copilot does not install: it is
+ * optional package that oh-my-copilot does not declare or install: it is
  * lazy-imported inside execute() only when no queryImpl is injected, and a
  * missing install fails the node with an install hint. Unit tests inject
  * fakes and never require network access; the injectable queryImpl mirrors
@@ -11,7 +11,7 @@
 import { childEnv } from "../../../utils/windows-search.js";
 import { resolvePackageRoot } from "../../../smoke/copilot-session-env.js";
 import { buildAgentEnv, idempotencyKeyFor, READ_ONLY_AGENT_TOOLS, } from "./authority.js";
-/** Optional peer; a variable specifier keeps bundlers and tsc from resolving it. */
+/** Optional, undeclared package; a variable specifier keeps bundlers and tsc from resolving it. */
 const CLAUDE_AGENT_SDK = "@anthropic-ai/claude-agent-sdk";
 async function loadSdkQuery() {
     let sdk;
@@ -32,7 +32,7 @@ async function loadSdkQuery() {
                 message.includes(`"${CLAUDE_AGENT_SDK}"`))) {
             const root = resolvePackageRoot();
             const where = root ? `next to oh-my-copilot in ${root}` : "next to oh-my-copilot";
-            throw new Error(`graph agent nodes need the optional peer dependency ${CLAUDE_AGENT_SDK}; ` +
+            throw new Error(`graph agent nodes need ${CLAUDE_AGENT_SDK}, which oh-my-copilot does not install; ` +
                 `install it ${where} (npm install ${CLAUDE_AGENT_SDK} in that project, ` +
                 `or npm install -g ${CLAUDE_AGENT_SDK} for a global install)`);
         }

@@ -4,6 +4,14 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ## [Unreleased]
 
+# oh-my-copilot v5.29.1
+
+## [5.29.1] - 2026-11-17
+
+### Changed
+
+- **`@anthropic-ai/claude-agent-sdk` and `@github/copilot-sdk` are no longer declared as optional peers, and `tsx` moved to devDependencies.** Socket.dev scores every package `package.json` names, optional peers included, and these three carried the remaining dependency alerts (the Claude SDK's eval, shell, license and AI-anomaly alerts; `koffi`'s install script and network access via the Copilot SDK; `esbuild`'s install script via `tsx`). A production install holds 106 packages instead of 137, with no `esbuild`, `koffi` or either SDK. Both SDKs are still lazy-loaded, and every place that needs one fails with the install command: `npm i -g @github/copilot-sdk --omit=optional --ignore-scripts` (SDK team transport, smoke tier 2, `copilot_run`, factory sandbox lanes and bench probes; found next to oh-my-copilot or in the global npm root) and `npm install -g @anthropic-ai/claude-agent-sdk` (graph agent nodes). The `statechart` skill launcher no longer needs `tsx`: Node 22.13 to 22.17 and 23.4 to 23.5 run it with `--experimental-strip-types`; a copy run in place inside `node_modules` (where Node refuses to strip types) uses Bun, Deno or a `tsx` on PATH, or says to use the `omg setup` copy. `tests/lint/no-claude-agent-sdk-dep.test.ts` now fails when either SDK returns to any dependency or peer field. See docs/MIGRATION.md.
+
 # oh-my-copilot v5.29.0
 
 ## [5.29.0] - 2026-11-17
