@@ -1,31 +1,17 @@
-# oh-my-copilot v5.29.0
+# oh-my-copilot v5.29.1
 
-This release cuts the package's supply-chain surface (Socket.dev flagged 5.27.0 at 58/100 on supply chain) and brings in 14 upstream fixes. See CHANGELOG.md for every change.
+A packaging release: the published package no longer declares the two optional SDKs as peers, and `tsx` is a dev dependency. Socket.dev scores declared peers as dependencies, so this clears the SDK, `koffi` and `esbuild` alerts from the package's dependency list. See CHANGELOG.md.
 
-Install with `npm install -g oh-my-copilot@5.29.0`, or from the plugin marketplace: `copilot plugin update oh-my-copilot@omc`.
+Install with `npm install -g oh-my-copilot@5.29.1`, or from the plugin marketplace: `copilot plugin update oh-my-copilot@omc`.
 
-## Breaking
+## Changed
 
-- **Node 22.13+ is required (23.4+ on the 23 line); Node 20 is no longer supported.** State locking and the job database now use Node's built-in `node:sqlite` instead of the native `better-sqlite3` addon. Existing database files open as before.
-
-## Smaller, safer install
-
-- **No Claude Agent SDK dependency.** It bundled a whole Claude Code CLI and the sharp native binaries. It is now an optional peer that only `omg graph` agent nodes load, with an install hint when it is missing. 22 fewer packages are installed.
-- **No npm install script.** On macOS the optional contained-fs addon is built on request (`node scripts/build-contained-fs.mjs` from the installed package); `omg graph` and `omg team` name that command when it is missing.
-- **No native SQLite addon,** so no deprecated `prebuild-install` or `tar-fs` either.
-- **zod 4.6.7** fixes CVE-2023-54404 (memory exhaustion). MCP tool schemas are unchanged; zod's validation messages are worded differently.
-- The unused `vscode-languageserver-protocol` dependency is removed, and the default MCP servers pin `exa-mcp-server` and `@playwright/mcp`.
-
-## Security fixes
-
-- Hook scripts no longer use an unchecked session id in file paths; a crafted id could read, write or delete files outside `.omg/state/sessions/`.
-- `omg intake schedule` validates `--cron` and quotes `--cwd`, so neither can inject crontab lines or shell text.
-
-## From upstream
-
-- Upstream oh-my-claudecode dev through f11ded4c0: exited team workers are no longer nudged, tmux `-u` for non-UTF-8 locales, torn event logs are kept, `ast_grep_replace` fixes, notepad and session-end fixes.
+- **`@anthropic-ai/claude-agent-sdk` and `@github/copilot-sdk` are no longer declared.** Both are still loaded on demand when you use the features that need them, and each "not installed" message names the install command:
+  - Copilot SDK (SDK teams, `copilot_run`, smoke tier 2, factory sandbox): `npm i -g @github/copilot-sdk --omit=optional --ignore-scripts`. `--transport auto` still falls back to panes without it.
+  - Claude Agent SDK (only `omg graph` agent nodes): install it next to oh-my-copilot.
+- **`tsx` is a dev dependency.** The statechart skill strips TypeScript with Node itself (`--experimental-strip-types` on Node 22.13–22.17 and 23.4–23.5, natively on newer versions). A copy run from inside `node_modules` needs Bun, Deno or `tsx` on PATH; the copies `omg setup` and the plugin install use are not affected.
+- The published package now has 8 runtime dependencies (106 production packages in the lock, down from 137).
 
 ## Caveats
 
-- **macOS:** after installing, build the contained-fs addon once if you use `omg graph` or tmux teams.
 - **Test evidence:** this release was published with CI on the release commit, not the maintainer's local full test suite.
