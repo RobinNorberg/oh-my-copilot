@@ -22,6 +22,7 @@
     "grok-4.6",
     "kimi-k3"
   ],
+  "unconfirmedModels": ["claude-fable-5.2", "gpt-6.2-astra"],
   "tiers": {
     "opus": ["claude-opus-5.5", "gpt-6.1-sol", "claude-sonnet-5.5", "mai-code-2"],
     "sonnet": ["mai-code-2", "claude-sonnet-5.5", "mai-code-2-flash"],

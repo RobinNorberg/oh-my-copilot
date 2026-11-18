@@ -60,8 +60,14 @@ export declare function mergeSubagentModels(settings: Record<string, unknown>, o
  * `overrides` is removed again, so going back to `balanced` restores the agent
  * defaults. Without a record nothing is removed, and a value the user changed
  * is left alone.
+ *
+ * `unavailableTiers` (resolveAgentModelPlan) names agents whose tier alias
+ * resolves to no model. Their entry's `model` is removed when it is one of
+ * that tier's ids (or the tier's first id before v5.30), i.e. what an earlier
+ * setup wrote for the alias, so the agent really inherits the session model;
+ * any other value is left alone.
  */
-export declare function syncCopilotAgentModels(settingsFile: string, overrides: Record<string, string>, profileEntries?: Record<string, string>, recordFile?: string): {
+export declare function syncCopilotAgentModels(settingsFile: string, overrides: Record<string, string>, profileEntries?: Record<string, string>, recordFile?: string, unavailableTiers?: Record<string, string[]>): {
     written: string[];
     removed: string[];
     error?: string;

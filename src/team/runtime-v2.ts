@@ -359,8 +359,17 @@ import {
   withTeamInstanceLifecycleLock,
 } from "./team-instance.js";
 
-/** A tier alias resolves against the plan's catalogue (read once per process); none offered means no model. */
-async function resolveSdkWorkerModel(model: string): Promise<string | undefined> {
+/**
+ * The SDK worker's model: an explicit `sdk.model` as is (the catalogue is not
+ * read), else the descriptor model, whose tier alias resolves against the
+ * plan's catalogue (read once per process); none offered means no model.
+ */
+export async function resolveSdkWorkerModel(
+  sdkModel: string | undefined,
+  model: string | null | undefined,
+): Promise<string | undefined> {
+  if (sdkModel !== undefined) return sdkModel;
+  if (!model) return undefined;
   const catalogue =
     copilotTierModels(model).length > 0 ? await teamCopilotCatalogue() : null;
   const resolved = resolveCopilotModel(model, catalogue);
@@ -2512,10 +2521,10 @@ async function spawnSdkV2Worker(
       startupFailureReason: `sdk_copilot_shim_unresolved:${binary}`,
     };
   }
-  const descriptorModel = opts.launchDescriptor.model
-    ? await resolveSdkWorkerModel(opts.launchDescriptor.model)
-    : undefined;
-  const model = sdk.model ?? descriptorModel;
+  const model = await resolveSdkWorkerModel(
+    sdk.model,
+    opts.launchDescriptor.model,
+  );
   const workerCwd = opts.workerCwd ?? opts.cwd;
   const launch = await launchSdkHost({
     leaderCwd: opts.cwd,
@@ -7045,6 +7054,18 @@ export async function startTeamV2(
     throw new Error(`cli_binary_preflight_failed:${missing}`);
   }
 
+  // Read once per team start, before the lifecycle lock (a live read can take
+  // up to FETCH_DEADLINE_MS), and only when a Copilot worker names a tier
+  // alias: the alias then resolves to the first tier model the plan offers.
+  const copilotCatalogue = [...startupAssignments.values()].some(
+    (a) =>
+      a.agentType === "copilot" &&
+      typeof a.model === "string" &&
+      copilotTierModels(a.model).length > 0,
+  )
+    ? await teamCopilotCatalogue()
+    : null;
+
   // Clean up any stale reservations from dead processes BEFORE acquiring the lifecycle lock.
   // This prevents nested lock acquisition and ensures old dead-owner reservations don't block startup.
   try {
@@ -7176,16 +7197,6 @@ export async function startTeamV2(
           throw startupCleanupIncompleteError(error);
         throw error;
       }
-      // Read once per team start, only when a Copilot worker names a tier alias:
-      // the alias then resolves to the first tier model the plan offers.
-      const copilotCatalogue = [...startupAssignments.values()].some(
-        (a) =>
-          a.agentType === "copilot" &&
-          typeof a.model === "string" &&
-          copilotTierModels(a.model).length > 0,
-      )
-        ? await teamCopilotCatalogue()
-        : null;
       for (let i = 0; i < workerNames.length; i++) {
         const workerName = workerNames[i]!;
         const taskIndex = startupByWorker.get(workerName);

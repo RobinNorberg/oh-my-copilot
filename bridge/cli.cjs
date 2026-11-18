@@ -8114,7 +8114,7 @@ var init_process_utils = __esm({
     import_path9 = require("path");
     import_util = require("util");
     fsPromises = __toESM(require("fs/promises"), 1);
-    execFileAsync = (0, import_util.promisify)(import_child_process.execFile);
+    execFileAsync = ((...args) => (0, import_util.promisify)(import_child_process.execFile)(...args));
   }
 });
 
@@ -57230,6 +57230,7 @@ var init_copilot_models = __esm({
         "grok-4.6",
         "kimi-k3"
       ],
+      unconfirmedModels: ["claude-fable-5.2", "gpt-6.2-astra"],
       tiers: {
         opus: ["claude-opus-5.5", "gpt-6.1-sol", "claude-sonnet-5.5", "mai-code-2"],
         sonnet: ["mai-code-2", "claude-sonnet-5.5", "mai-code-2-flash"],
@@ -57340,7 +57341,10 @@ function resolveCopilotModel(model, catalogue) {
   const tier = model.toLowerCase();
   if (!Object.hasOwn(COPILOT_TIER_MODELS, tier)) return { model: toCopilotModelId(model), status: "passthrough" };
   const ids2 = COPILOT_TIER_MODELS[tier];
-  if (!catalogue) return { model: ids2[0], tier, status: "unverified" };
+  if (!catalogue) {
+    const confirmed = ids2.find((id) => !COPILOT_UNCONFIRMED_MODELS.has(id));
+    return confirmed ? { model: confirmed, tier, status: "unverified" } : { model: void 0, tier, status: "unavailable" };
+  }
   const hit2 = ids2.find((id) => catalogue.has(id));
   return hit2 ? { model: hit2, tier, status: "available" } : { model: void 0, tier, status: "unavailable" };
 }
@@ -57356,7 +57360,7 @@ function toCopilotModelId(model) {
 function warnUnavailableCopilotTier(tier, warn = (line2) => console.warn(line2)) {
   if (warnedUnavailableTiers.has(tier)) return;
   warnedUnavailableTiers.add(tier);
-  warn(`[omg] your Copilot plan offers no model of tier "${tier}" (${copilotTierModels(tier).join(", ")}); passing no model, the session default applies`);
+  warn(`[omg] your Copilot plan offers no confirmed model of tier "${tier}" (${copilotTierModels(tier).join(", ")}); passing no model, the session default applies`);
 }
 function resolveWorkerPermissionFlags(agentType, perms) {
   if (agentType !== "copilot" || !perms) return [];
@@ -57567,7 +57571,7 @@ function getPromptModeArgs(agentType, instruction) {
   }
   return [instruction];
 }
-var import_path67, import_os11, resolvedPathCache, UNTRUSTED_PATH_PATTERNS, UNTRUSTED_WINDOWS_PATH_PATTERNS, COPILOT_WORKER_BASE_FLAGS, COPILOT_TIER_MODELS, warnedUnavailableTiers, CONTRACTS, WORKER_MODEL_ENV_ALLOWLIST, CLAUDE_WORKER_ENV_ALLOWLIST;
+var import_path67, import_os11, resolvedPathCache, UNTRUSTED_PATH_PATTERNS, UNTRUSTED_WINDOWS_PATH_PATTERNS, COPILOT_WORKER_BASE_FLAGS, COPILOT_TIER_MODELS, COPILOT_UNCONFIRMED_MODELS, warnedUnavailableTiers, CONTRACTS, WORKER_MODEL_ENV_ALLOWLIST, CLAUDE_WORKER_ENV_ALLOWLIST;
 var init_model_contract = __esm({
   "src/team/model-contract.ts"() {
     "use strict";
@@ -57593,6 +57597,7 @@ var init_model_contract = __esm({
     ];
     COPILOT_WORKER_BASE_FLAGS = ["--allow-all-tools", "--allow-all-paths", "--allow-all-urls", "--no-ask-user"];
     COPILOT_TIER_MODELS = copilot_models_default.tiers;
+    COPILOT_UNCONFIRMED_MODELS = new Set(copilot_models_default.unconfirmedModels);
     warnedUnavailableTiers = /* @__PURE__ */ new Set();
     CONTRACTS = {
       claude: {
@@ -57906,9 +57911,9 @@ function modelOf(settings, name) {
   const entry2 = agents?.[`${COPILOT_PLUGIN_AGENT_PREFIX}${name}`];
   return isRecord4(entry2) ? entry2.model : void 0;
 }
-function syncCopilotAgentModels(settingsFile, overrides, profileEntries = {}, recordFile) {
+function syncCopilotAgentModels(settingsFile, overrides, profileEntries = {}, recordFile, unavailableTiers = {}) {
   const recorded = recordFile ? readProfileRecord(recordFile) : {};
-  if (Object.keys(overrides).length === 0 && Object.keys(recorded).length === 0) return { written: [], removed: [] };
+  if (Object.keys(overrides).length === 0 && Object.keys(recorded).length === 0 && Object.keys(unavailableTiers).length === 0) return { written: [], removed: [] };
   let current = {};
   if ((0, import_fs55.existsSync)(settingsFile)) {
     try {
@@ -57920,6 +57925,13 @@ function syncCopilotAgentModels(settingsFile, overrides, profileEntries = {}, re
   }
   const base = current;
   const removed = Object.keys(recorded).filter((name) => !(name in overrides) && modelOf(base, name) === recorded[name]);
+  for (const [tier, names] of Object.entries(unavailableTiers)) {
+    const tierIds = /* @__PURE__ */ new Set([...copilotTierModels(tier), ...PREVIOUS_TIER_FIRST_IDS[tier] ? [PREVIOUS_TIER_FIRST_IDS[tier]] : []]);
+    for (const name of names) {
+      const current2 = modelOf(base, name);
+      if (!(name in overrides) && !removed.includes(name) && typeof current2 === "string" && tierIds.has(current2)) removed.push(name);
+    }
+  }
   let afterRemoval = base;
   if (removed.length > 0) {
     const subagents = { ...base.subagents };
@@ -57948,7 +57960,7 @@ function syncCopilotAgentModels(settingsFile, overrides, profileEntries = {}, re
   if (!changed && removed.length === 0) return { written: [], removed };
   return { written: changed ? Object.keys(overrides) : [], removed };
 }
-var import_fs55, COPILOT_PLUGIN_AGENT_PREFIX, KNOWN_MODELS, toAgentName;
+var import_fs55, COPILOT_PLUGIN_AGENT_PREFIX, KNOWN_MODELS, PREVIOUS_TIER_FIRST_IDS, toAgentName;
 var init_copilot_agent_models = __esm({
   "src/installer/copilot-agent-models.ts"() {
     "use strict";
@@ -57959,6 +57971,12 @@ var init_copilot_agent_models = __esm({
     init_copilot_models();
     COPILOT_PLUGIN_AGENT_PREFIX = "oh-my-copilot:";
     KNOWN_MODELS = new Set(copilot_models_default.knownModels);
+    PREVIOUS_TIER_FIRST_IDS = {
+      opus: "claude-opus-5.5",
+      sonnet: "claude-sonnet-5.5",
+      haiku: "claude-haiku-5.5",
+      fable: "claude-opus-5.5"
+    };
     toAgentName = (configKey) => configKey.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`);
   }
 });
@@ -63413,6 +63431,10 @@ var init_copilot_binary = __esm({
 });
 
 // src/copilot-run/model-catalogue.ts
+function redactCatalogueDetail(text6, env2 = process.env) {
+  const clean = scrubTokens(text6, secretValues(env2)).replace(/\s+/g, " ").trim();
+  return clean.length > DETAIL_MAX_CHARS ? `${clean.slice(0, DETAIL_MAX_CHARS - 3)}...` : clean;
+}
 function copilotCatalogueCacheFile() {
   return (0, import_node_path14.join)(getGlobalOmcStateRoot(), "copilot-models-cache.json");
 }
@@ -63465,7 +63487,13 @@ async function loadCopilotCatalogueWith(deps) {
     }
     return { catalogue: new Set(outcome.models), source: "live", detail: `listModels() offers ${outcome.models.length} models` };
   }
-  const why = "error" in outcome ? outcome.error : "listModels() returned no models";
+  const why = redactCatalogueDetail("error" in outcome ? outcome.error : "listModels() returned no models", deps.env);
+  const latest2 = readCatalogueCache(deps.file, deps.now(), deps.ttlMs, deps.failureTtlMs);
+  const latestFetchedAt = latest2.fetchedAt ? Date.parse(latest2.fetchedAt) : NaN;
+  if (Number.isFinite(latestFetchedAt) && latestFetchedAt > now2) {
+    if (latest2.fresh) return { catalogue: new Set(latest2.fresh), source: "cache", detail: `cached in ${deps.file}` };
+    return fromStale(`the Copilot model catalogue could not be read (${why})`);
+  }
   try {
     (0, import_node_fs12.mkdirSync)((0, import_node_path14.dirname)(deps.file), { recursive: true });
     atomicWriteJsonSync(deps.file, {
@@ -63483,24 +63511,49 @@ function readCopilotCatalogueCacheOnly(file2, now2) {
   if (cache2.stale) return { catalogue: new Set(cache2.stale), source: "stale-cache", detail: `stale cache in ${file2}` };
   return { catalogue: null, source: "none", detail: `no cached Copilot model catalogue in ${file2}` };
 }
+function defaultFetchDeps() {
+  const env2 = process.env;
+  return {
+    env: env2,
+    platform: process.platform,
+    loadSdk: () => loadCopilotSdk(env2, cappedSpawnSync),
+    resolveBin: () => resolveCopilotBinary(void 0, env2).bin,
+    userConfigDir: () => getCopilotConfigDir(),
+    killTree: (pid) => killProcessTree2(pid, import_node_child_process4.spawnSync),
+    tmpRoot: (0, import_node_os4.tmpdir)()
+  };
+}
+async function stopCatalogueClient(client, killTree, boundMs) {
+  const end = Date.now() + boundMs;
+  try {
+    await withTimeout(Promise.resolve().then(() => client.stop()), boundMs, "client.stop()");
+  } catch {
+    try {
+      await withTimeout(Promise.resolve().then(() => client.forceStop?.()), Math.max(1, end - Date.now()), "client.forceStop()");
+    } catch {
+    }
+  }
+  const proc = client.cliProcess;
+  const pid = runtimePid(client);
+  if (proc && pid && !hasExited(proc)) {
+    try {
+      killTree(pid);
+    } catch {
+    }
+  }
+}
 async function fetchCopilotCatalogue(opts = {}) {
   hardenWindowsExeSearch();
-  const hostEnv = process.env;
-  const deps = {
-    env: hostEnv,
-    platform: process.platform,
-    loadSdk: () => loadCopilotSdk(hostEnv, import_node_child_process4.spawnSync),
-    resolveBin: () => resolveCopilotBinary(void 0, hostEnv).bin,
-    userConfigDir: () => getCopilotConfigDir(),
-    killTree: (pid) => killProcessTree2(pid, import_node_child_process4.spawnSync)
-  };
-  const jobRoot = (0, import_node_path14.join)((0, import_node_os4.tmpdir)(), "omg-model-catalogue");
+  const deps = { ...defaultFetchDeps(), ...opts.deps };
+  const jobRoot = (0, import_node_path14.join)(deps.tmpRoot, "omg-model-catalogue");
   const jobHome = (0, import_node_path14.join)(jobRoot, `list-${(0, import_node_crypto6.randomBytes)(4).toString("hex")}`);
   const workDir = (0, import_node_path14.join)(jobHome, "work");
   let client = null;
-  try {
+  let cancelled = false;
+  const read = async () => {
     (0, import_node_fs12.mkdirSync)(workDir, { recursive: true });
     const loaded2 = await deps.loadSdk().catch(() => null);
+    if (cancelled) return { error: "cancelled" };
     if (!loaded2) return { error: `@github/copilot-sdk is not installed or could not be loaded (${SDK_INSTALL_COMMAND})` };
     const found = opts.cliPath && (0, import_node_fs12.existsSync)(opts.cliPath) ? opts.cliPath : deps.resolveBin();
     const bin = found && deps.platform === "win32" && /\.(cmd|bat|ps1)$/i.test(found) ? resolveShimTarget(found) : found;
@@ -63519,30 +63572,19 @@ async function fetchCopilotCatalogue(opts = {}) {
       workingDirectory: workDir
     });
     client = c;
-    await withTimeout(c.start(), opts.startTimeoutMs ?? START_TIMEOUT_MS2, "client.start()");
-    const models = await withTimeout(c.listModels(), opts.listTimeoutMs ?? LIST_TIMEOUT_MS, "listModels()");
-    return { models: catalogueFromListModels(models) };
+    await c.start();
+    return { models: catalogueFromListModels(await c.listModels()) };
+  };
+  let result;
+  try {
+    result = await withTimeout(read(), opts.deadlineMs ?? FETCH_DEADLINE_MS, "reading the Copilot model catalogue");
   } catch (error62) {
-    return { error: errText(error62) };
-  } finally {
-    if (client) {
-      try {
-        await withTimeout(client.stop(), STOP_TIMEOUT_MS2, "client.stop()");
-      } catch {
-        try {
-          await withTimeout(client.forceStop?.() ?? Promise.resolve(), STOP_TIMEOUT_MS2, "client.forceStop()");
-        } catch {
-        }
-      }
-      const proc = client.cliProcess;
-      const pid = runtimePid(client);
-      if (proc && pid && !hasExited(proc)) {
-        try {
-          deps.killTree(pid);
-        } catch {
-        }
-      }
-    }
+    result = { error: errText(error62) };
+  }
+  cancelled = true;
+  const started = client;
+  const done = (async () => {
+    if (started) await stopCatalogueClient(started, deps.killTree, opts.cleanupMs ?? CLEANUP_BOUND_MS);
     try {
       (0, import_node_fs12.rmSync)(jobHome, { recursive: true, force: true });
     } catch {
@@ -63551,10 +63593,12 @@ async function fetchCopilotCatalogue(opts = {}) {
       (0, import_node_fs12.rmdirSync)(jobRoot);
     } catch {
     }
-  }
+  })();
+  opts.onCleanup?.(done);
+  return result;
 }
 function loadCopilotCatalogue() {
-  memo2 ??= source.load().catch((error62) => ({ catalogue: null, source: "none", detail: errText(error62) }));
+  memo2 ??= source.load().catch((error62) => ({ catalogue: null, source: "none", detail: redactCatalogueDetail(errText(error62)) }));
   return memo2;
 }
 function readCachedCopilotCatalogue() {
@@ -63568,11 +63612,11 @@ async function teamCopilotCatalogue(warn = (line2) => console.warn(line2)) {
   const result = await loadCopilotCatalogue();
   if (!result.catalogue && !warnedUnreadable) {
     warnedUnreadable = true;
-    warn(`[omg] ${result.detail}; Copilot tier aliases use each tier's first model`);
+    warn(`[omg] ${result.detail}; Copilot tier aliases use each tier's first confirmed model`);
   }
   return result.catalogue;
 }
-var import_node_child_process4, import_node_crypto6, import_node_fs12, import_node_os4, import_node_path14, CATALOGUE_TTL_MS, CATALOGUE_FAILURE_TTL_MS, START_TIMEOUT_MS2, LIST_TIMEOUT_MS, STOP_TIMEOUT_MS2, defaultSource, source, memo2, warnedUnreadable;
+var import_node_child_process4, import_node_crypto6, import_node_fs12, import_node_os4, import_node_path14, CATALOGUE_TTL_MS, CATALOGUE_FAILURE_TTL_MS, FETCH_DEADLINE_MS, CLEANUP_BOUND_MS, NPM_ROOT_TIMEOUT_MS, DETAIL_MAX_CHARS, cappedSpawnSync, defaultSource, source, memo2, warnedUnreadable;
 var init_model_catalogue = __esm({
   "src/copilot-run/model-catalogue.ts"() {
     "use strict";
@@ -63594,9 +63638,11 @@ var init_model_catalogue = __esm({
     init_config_dir();
     CATALOGUE_TTL_MS = 24 * 60 * 60 * 1e3;
     CATALOGUE_FAILURE_TTL_MS = 60 * 60 * 1e3;
-    START_TIMEOUT_MS2 = 15e3;
-    LIST_TIMEOUT_MS = 5e3;
-    STOP_TIMEOUT_MS2 = 5e3;
+    FETCH_DEADLINE_MS = 2e4;
+    CLEANUP_BOUND_MS = 5e3;
+    NPM_ROOT_TIMEOUT_MS = 3e3;
+    DETAIL_MAX_CHARS = 300;
+    cappedSpawnSync = ((command, a, b) => Array.isArray(a) ? (0, import_node_child_process4.spawnSync)(command, a, { ...b, timeout: NPM_ROOT_TIMEOUT_MS }) : (0, import_node_child_process4.spawnSync)(command, { ...a, timeout: NPM_ROOT_TIMEOUT_MS }));
     defaultSource = {
       load: () => loadCopilotCatalogueWith({ file: copilotCatalogueCacheFile(), now: Date.now, fetch: () => fetchCopilotCatalogue() }),
       readCached: () => readCopilotCatalogueCacheOnly(copilotCatalogueCacheFile(), Date.now())
@@ -65344,6 +65390,7 @@ function syncPersistedSetupVersion(options) {
   return true;
 }
 async function loadSetupCopilotCatalogue() {
+  if (isProjectScopedPlugin()) return void 0;
   try {
     const userConfig = loadJsoncFile(getConfigPaths().user);
     if (!usesCopilotTierAliases(userConfig?.agents, userConfig?.modelProfile)) return void 0;
@@ -65646,16 +65693,16 @@ function install(options = {}) {
         const userConfig = loadJsoncFile(getConfigPaths().user);
         const usesTiers = usesCopilotTierAliases(userConfig?.agents, userConfig?.modelProfile);
         const catalogue = usesTiers ? options.copilotModelCatalogue ?? readCachedCopilotCatalogue() : void 0;
-        if (catalogue && !catalogue.catalogue) log3(`  Note: ${catalogue.detail}; tier aliases use each tier's first Copilot model`);
+        if (catalogue && !catalogue.catalogue) log3(`  Note: ${catalogue.detail}; tier aliases use each tier's first confirmed Copilot model`);
         const { overrides, skipped, profileEntries, profileProblem, unavailableTiers } = resolveAgentModelPlan(userConfig?.agents, userConfig?.modelProfile, catalogue?.catalogue);
         if (profileProblem) log3(`  Warning: ${profileProblem}`);
         for (const [tier, names] of Object.entries(unavailableTiers)) {
-          log3(`  Warning: your Copilot plan offers no model of tier "${tier}" (${copilotTierModels(tier).join(", ")}); ${names.join(", ")} inherit(s) the session model`);
+          log3(`  Warning: your Copilot plan offers no confirmed model of tier "${tier}" (${copilotTierModels(tier).join(", ")}); ${names.join(", ")} inherit(s) the session model`);
         }
         for (const entry2 of skipped) log3(`  Warning: agents.${entry2} is not a known Copilot model or tier alias; not synced`);
-        const { written, removed, error: error62 } = syncCopilotAgentModels(SETTINGS_FILE, overrides, profileEntries, (0, import_path76.join)(COPILOT_HOME, ".omg-profile-models.json"));
+        const { written, removed, error: error62 } = syncCopilotAgentModels(SETTINGS_FILE, overrides, profileEntries, (0, import_path76.join)(COPILOT_HOME, ".omg-profile-models.json"), unavailableTiers);
         if (error62) log3(`  Warning: per-agent model overrides not synced: ${error62}`);
-        if (removed.length > 0) log3(`  Removed ${removed.length} per-agent model override(s) the model profile wrote earlier`);
+        if (removed.length > 0) log3(`  Removed ${removed.length} per-agent model override(s) omg wrote earlier (model profile, or a tier your plan no longer offers)`);
         if (written.length > 0) log3(`  Synced ${written.length} per-agent model override(s) to settings.json subagents.agents`);
       } catch {
         log3("  Warning: Could not sync per-agent model overrides (non-fatal)");
@@ -98922,6 +98969,7 @@ __export(runtime_v2_exports, {
   resolveCommittedRecoveryPaneAttempt: () => resolveCommittedRecoveryPaneAttempt,
   resolveSdkDefaultWorktreeMode: () => resolveSdkDefaultWorktreeMode,
   resolveSdkTeamSettings: () => resolveSdkTeamSettings,
+  resolveSdkWorkerModel: () => resolveSdkWorkerModel,
   resolveTaskAssignment: () => resolveTaskAssignment,
   resolveTeamTransport: () => resolveTeamTransport,
   resumeTeamV2: () => resumeTeamV2,
@@ -98947,7 +98995,9 @@ function buildStartupInboxTrigger(cwd, teamName, workerName, attemptId, platform
   if (platform !== "win32" || message4.length <= 200) return message4;
   return `Read workers/${workerName}/inbox.md under the OMC_TEAM_STATE_ROOT environment variable; execute now, report concrete progress.${suffix}`;
 }
-async function resolveSdkWorkerModel(model) {
+async function resolveSdkWorkerModel(sdkModel, model) {
+  if (sdkModel !== void 0) return sdkModel;
+  if (!model) return void 0;
   const catalogue = copilotTierModels(model).length > 0 ? await teamCopilotCatalogue() : null;
   const resolved = resolveCopilotModel(model, catalogue);
   if (!resolved.model && resolved.tier) warnUnavailableCopilotTier(resolved.tier);
@@ -100002,8 +100052,10 @@ async function spawnSdkV2Worker(opts, sdk) {
       startupFailureReason: `sdk_copilot_shim_unresolved:${binary}`
     };
   }
-  const descriptorModel = opts.launchDescriptor.model ? await resolveSdkWorkerModel(opts.launchDescriptor.model) : void 0;
-  const model = sdk.model ?? descriptorModel;
+  const model = await resolveSdkWorkerModel(
+    sdk.model,
+    opts.launchDescriptor.model
+  );
   const workerCwd = opts.workerCwd ?? opts.cwd;
   const launch = await launchSdkHost({
     leaderCwd: opts.cwd,
@@ -103240,6 +103292,9 @@ async function startTeamV2(config2) {
     const missing = missingBinaryReasons.map(({ agentType, reason }) => `${agentType}:${reason}`).join(";");
     throw new Error(`cli_binary_preflight_failed:${missing}`);
   }
+  const copilotCatalogue = [...startupAssignments.values()].some(
+    (a) => a.agentType === "copilot" && typeof a.model === "string" && copilotTierModels(a.model).length > 0
+  ) ? await teamCopilotCatalogue() : null;
   try {
     await cleanupStaleReservations(sanitized, leaderCwd);
   } catch {
@@ -103337,9 +103392,6 @@ async function startTeamV2(config2) {
           throw startupCleanupIncompleteError(error62);
         throw error62;
       }
-      const copilotCatalogue = [...startupAssignments.values()].some(
-        (a) => a.agentType === "copilot" && typeof a.model === "string" && copilotTierModels(a.model).length > 0
-      ) ? await teamCopilotCatalogue() : null;
       for (let i = 0; i < workerNames.length; i++) {
         const workerName = workerNames[i];
         const taskIndex = startupByWorker.get(workerName);
@@ -124046,7 +124098,7 @@ function defaultCopilotRunDeps(env2 = process.env) {
     killTree: (pid) => killProcessTree2(pid, import_node_child_process18.spawnSync)
   };
 }
-var import_node_child_process18, import_node_crypto20, import_node_fs33, import_node_os11, import_node_path38, DEFAULT_TIMEOUT_MS3, MAX_TIMEOUT_MS, DEFAULT_MAX_CREDITS, MAX_RUNNING_JOBS, MAX_PROMPT_CHARS, WORKTREE_TEAM, MCP_SERVER, START_TIMEOUT_MS3, RPC_TIMEOUT_MS2, ABORT_GRACE_MS2, SHUTDOWN_GRACE_MS2, STOP_TIMEOUT_MS3, SERVER_EXIT_GRACE_MS, GIT_TIMEOUT_MS4, DENIED_LOG_MAX, JOB_ID, MAX_START_REF_CHARS, STOP_CONTINUATION_SKIP_TOKEN, PROJECT_MEMORY_SKIP_TOKEN, CopilotRunError, REVIEW_SHELL_DENY_PATTERNS, IDENTITY_TIMEOUT_MS, sleep7, isTerminal, git2, lines, JOB_REF_PREFIX, PLAIN_REF, CopilotRunManager;
+var import_node_child_process18, import_node_crypto20, import_node_fs33, import_node_os11, import_node_path38, DEFAULT_TIMEOUT_MS3, MAX_TIMEOUT_MS, DEFAULT_MAX_CREDITS, MAX_RUNNING_JOBS, MAX_PROMPT_CHARS, WORKTREE_TEAM, MCP_SERVER, START_TIMEOUT_MS2, RPC_TIMEOUT_MS2, ABORT_GRACE_MS2, SHUTDOWN_GRACE_MS2, STOP_TIMEOUT_MS2, SERVER_EXIT_GRACE_MS, GIT_TIMEOUT_MS4, DENIED_LOG_MAX, JOB_ID, MAX_START_REF_CHARS, STOP_CONTINUATION_SKIP_TOKEN, PROJECT_MEMORY_SKIP_TOKEN, CopilotRunError, REVIEW_SHELL_DENY_PATTERNS, IDENTITY_TIMEOUT_MS, sleep7, isTerminal, git2, lines, JOB_REF_PREFIX, PLAIN_REF, CopilotRunManager;
 var init_job = __esm({
   "src/copilot-run/job.ts"() {
     "use strict";
@@ -124085,11 +124137,11 @@ var init_job = __esm({
     MAX_PROMPT_CHARS = 1e5;
     WORKTREE_TEAM = "copilot-run";
     MCP_SERVER = "t";
-    START_TIMEOUT_MS3 = 6e4;
+    START_TIMEOUT_MS2 = 6e4;
     RPC_TIMEOUT_MS2 = 3e4;
     ABORT_GRACE_MS2 = 1e4;
     SHUTDOWN_GRACE_MS2 = 2e3;
-    STOP_TIMEOUT_MS3 = 15e3;
+    STOP_TIMEOUT_MS2 = 15e3;
     SERVER_EXIT_GRACE_MS = 3e3;
     GIT_TIMEOUT_MS4 = 3e4;
     DENIED_LOG_MAX = 50;
@@ -124459,7 +124511,7 @@ var init_job = __esm({
         const job = this.find(jobId);
         if (!isTerminal(job.status)) {
           job.requestStop("cancelled");
-          await settleWithin(job.done, ABORT_GRACE_MS2 + STOP_TIMEOUT_MS3 + RPC_TIMEOUT_MS2);
+          await settleWithin(job.done, ABORT_GRACE_MS2 + STOP_TIMEOUT_MS2 + RPC_TIMEOUT_MS2);
         }
         return this.snapshot(job);
       }
@@ -124784,7 +124836,7 @@ var init_job = __esm({
         let pid;
         let outcome = "failed";
         try {
-          await withTimeout(Promise.race([client.start(), job.stopped]), START_TIMEOUT_MS3, "client.start()");
+          await withTimeout(Promise.race([client.start(), job.stopped]), START_TIMEOUT_MS2, "client.start()");
           pid = runtimePid(client);
           job.pid = pid;
           if (pid) {
@@ -124863,14 +124915,14 @@ var init_job = __esm({
           }
           let stopped = false;
           try {
-            await withTimeout(client.stop(), STOP_TIMEOUT_MS3, "client.stop()");
+            await withTimeout(client.stop(), STOP_TIMEOUT_MS2, "client.stop()");
             stopped = true;
           } catch {
           }
           if (!stopped) {
             if (pid && deps.isAlive(pid)) deps.killTree(pid);
             try {
-              await withTimeout(client.forceStop?.() ?? Promise.resolve(), STOP_TIMEOUT_MS3, "client.forceStop()");
+              await withTimeout(client.forceStop?.() ?? Promise.resolve(), STOP_TIMEOUT_MS2, "client.forceStop()");
             } catch {
             }
           }
@@ -130146,7 +130198,7 @@ async function runSandboxed(argv, o, deps) {
       workingDirectory: workDir
     });
     client = c;
-    await withTimeout(c.start(), START_TIMEOUT_MS4, "client.start()");
+    await withTimeout(c.start(), START_TIMEOUT_MS3, "client.start()");
     pid = runtimePid(c);
     const pluginRoot = deps.pluginRoot();
     const realHome = (deps.realHome ?? (() => (0, import_node_os12.userInfo)().homedir))();
@@ -130279,7 +130331,7 @@ timed out after ${o.timeoutMs} ms`), timedOut: true, ...marked };
       }
       let stopped = false;
       try {
-        await withTimeout(client.stop(), STOP_TIMEOUT_MS4, "client.stop()");
+        await withTimeout(client.stop(), STOP_TIMEOUT_MS3, "client.stop()");
         stopped = true;
       } catch {
       }
@@ -130291,7 +130343,7 @@ timed out after ${o.timeoutMs} ms`), timedOut: true, ...marked };
           }
         }
         try {
-          await withTimeout(client.forceStop?.() ?? Promise.resolve(), STOP_TIMEOUT_MS4, "client.forceStop()");
+          await withTimeout(client.forceStop?.() ?? Promise.resolve(), STOP_TIMEOUT_MS3, "client.forceStop()");
         } catch {
         }
       }
@@ -130363,7 +130415,7 @@ function gateEnv(env2, home) {
     GCM_INTERACTIVE: "never"
   };
 }
-var import_node_crypto22, import_node_fs35, import_node_os12, import_node_path40, SANDBOX_OUTPUT_TAIL_CHARS, START_TIMEOUT_MS4, RPC_TIMEOUT_MS3, STOP_TIMEOUT_MS4, CANCEL_GRACE_MS, ATTEST_WAIT_MS, CREDENTIAL_FILES_READABLE_NOTE, MARKER_PREFIX, SHELL_OUTPUT_BYTES, SHELL_OUTPUT_LINES, SHELL_LINE_CHARS, sandboxCommandMaxChars, SIZING_MARKER, tail, sandboxJobRoot, GATE_ENV_KEPT;
+var import_node_crypto22, import_node_fs35, import_node_os12, import_node_path40, SANDBOX_OUTPUT_TAIL_CHARS, START_TIMEOUT_MS3, RPC_TIMEOUT_MS3, STOP_TIMEOUT_MS3, CANCEL_GRACE_MS, ATTEST_WAIT_MS, CREDENTIAL_FILES_READABLE_NOTE, MARKER_PREFIX, SHELL_OUTPUT_BYTES, SHELL_OUTPUT_LINES, SHELL_LINE_CHARS, sandboxCommandMaxChars, SIZING_MARKER, tail, sandboxJobRoot, GATE_ENV_KEPT;
 var init_sandbox_exec = __esm({
   "src/factory/run/sandbox-exec.ts"() {
     "use strict";
@@ -130384,9 +130436,9 @@ var init_sandbox_exec = __esm({
     init_copilot_session_env();
     init_windows_search();
     SANDBOX_OUTPUT_TAIL_CHARS = 8e3;
-    START_TIMEOUT_MS4 = 6e4;
+    START_TIMEOUT_MS3 = 6e4;
     RPC_TIMEOUT_MS3 = 3e4;
-    STOP_TIMEOUT_MS4 = 15e3;
+    STOP_TIMEOUT_MS3 = 15e3;
     CANCEL_GRACE_MS = 5e3;
     ATTEST_WAIT_MS = 2e3;
     CREDENTIAL_FILES_READABLE_NOTE = "sandboxed; credential files readable on this host";
@@ -149905,7 +149957,7 @@ async function probeLaneModel(jobRoot, deps = defaultCopilotRunDeps()) {
       workingDirectory: workDir
     });
     client = c;
-    await withTimeout(c.start(), START_TIMEOUT_MS5, "client.start()");
+    await withTimeout(c.start(), START_TIMEOUT_MS4, "client.start()");
     const models = await withTimeout(c.listModels(), RPC_TIMEOUT_MS4, "listModels()");
     session = await withTimeout(c.createSession({
       onPermissionRequest: () => ({ kind: "reject" }),
@@ -149969,7 +150021,7 @@ async function probeLaneModel(jobRoot, deps = defaultCopilotRunDeps()) {
     }
   }
 }
-var import_node_crypto25, import_node_fs43, import_node_path47, START_TIMEOUT_MS5, RPC_TIMEOUT_MS4;
+var import_node_crypto25, import_node_fs43, import_node_path47, START_TIMEOUT_MS4, RPC_TIMEOUT_MS4;
 var init_model_probe = __esm({
   "src/factory/bench/model-probe.ts"() {
     "use strict";
@@ -149984,7 +150036,7 @@ var init_model_probe = __esm({
     init_copilot_session_env();
     init_process_utils2();
     init_windows_search();
-    START_TIMEOUT_MS5 = 6e4;
+    START_TIMEOUT_MS4 = 6e4;
     RPC_TIMEOUT_MS4 = 3e4;
   }
 });
@@ -155637,7 +155689,7 @@ async function runSdkHost(spec, deps) {
     ...spec.model ? { model: spec.model } : {}
   }), RPC_TIMEOUT_MS5, "createSession()");
   try {
-    await withTimeout5(client.start(), START_TIMEOUT_MS6, "client.start()");
+    await withTimeout5(client.start(), START_TIMEOUT_MS5, "client.start()");
     session.runtime_pid = runtimePid(client) ?? null;
     session.runtime_start_identity = session.runtime_pid ? deps.startIdentity(session.runtime_pid) : null;
     mark("client_started_at");
@@ -155772,14 +155824,14 @@ async function runSdkHost(spec, deps) {
     }
     let stopped = false;
     try {
-      await withTimeout5(client.stop(), STOP_TIMEOUT_MS5, "client.stop()");
+      await withTimeout5(client.stop(), STOP_TIMEOUT_MS4, "client.stop()");
       stopped = true;
     } catch {
     }
     if (!stopped) {
       if (pid && deps.isAlive(pid)) deps.killTree(pid);
       try {
-        await withTimeout5(client.forceStop?.() ?? Promise.resolve(), STOP_TIMEOUT_MS5, "forceStop()");
+        await withTimeout5(client.forceStop?.() ?? Promise.resolve(), STOP_TIMEOUT_MS4, "forceStop()");
       } catch {
       }
     }
@@ -155843,7 +155895,7 @@ async function runSdkHostMain(specPath, loadInProcessTools) {
   }
   process.exit(code);
 }
-var import_node_fs48, import_promises29, import_node_crypto27, import_node_child_process21, import_node_path51, DECISION_TIMEOUT_MS, START_TIMEOUT_MS6, RPC_TIMEOUT_MS5, ABORT_GRACE_MS3, SHUTDOWN_GRACE_MS3, STOP_TIMEOUT_MS5, TOOL_CLEANUP_TIMEOUT_MS, PERMISSION_LOG_MAX, CREDENTIAL_READ_TIMEOUT_MS, STOP_SIGNALS, TURN_USAGE_MAX, tokenCount, TimeoutError2, sleep11, errText8, WORKER_CREDENTIAL_RESET, WORKER_GIT_CONFIG;
+var import_node_fs48, import_promises29, import_node_crypto27, import_node_child_process21, import_node_path51, DECISION_TIMEOUT_MS, START_TIMEOUT_MS5, RPC_TIMEOUT_MS5, ABORT_GRACE_MS3, SHUTDOWN_GRACE_MS3, STOP_TIMEOUT_MS4, TOOL_CLEANUP_TIMEOUT_MS, PERMISSION_LOG_MAX, CREDENTIAL_READ_TIMEOUT_MS, STOP_SIGNALS, TURN_USAGE_MAX, tokenCount, TimeoutError2, sleep11, errText8, WORKER_CREDENTIAL_RESET, WORKER_GIT_CONFIG;
 var init_sdk_host = __esm({
   "src/team/sdk-host.ts"() {
     "use strict";
@@ -155862,11 +155914,11 @@ var init_sdk_host = __esm({
     init_sdk_policy();
     init_sdk_transport();
     DECISION_TIMEOUT_MS = 15e3;
-    START_TIMEOUT_MS6 = 6e4;
+    START_TIMEOUT_MS5 = 6e4;
     RPC_TIMEOUT_MS5 = 3e4;
     ABORT_GRACE_MS3 = 1e4;
     SHUTDOWN_GRACE_MS3 = 2e3;
-    STOP_TIMEOUT_MS5 = 15e3;
+    STOP_TIMEOUT_MS4 = 15e3;
     TOOL_CLEANUP_TIMEOUT_MS = 5e3;
     PERMISSION_LOG_MAX = 200;
     CREDENTIAL_READ_TIMEOUT_MS = 5e3;

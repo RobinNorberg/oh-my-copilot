@@ -28623,7 +28623,7 @@ var init_process_utils = __esm({
     import_path7 = require("path");
     import_util9 = require("util");
     fsPromises = __toESM(require("fs/promises"), 1);
-    execFileAsync = (0, import_util9.promisify)(import_child_process.execFile);
+    execFileAsync = ((...args) => (0, import_util9.promisify)(import_child_process.execFile)(...args));
   }
 });
 
@@ -45907,6 +45907,7 @@ var init_copilot_models = __esm({
         "grok-4.6",
         "kimi-k3"
       ],
+      unconfirmedModels: ["claude-fable-5.2", "gpt-6.2-astra"],
       tiers: {
         opus: ["claude-opus-5.5", "gpt-6.1-sol", "claude-sonnet-5.5", "mai-code-2"],
         sonnet: ["mai-code-2", "claude-sonnet-5.5", "mai-code-2-flash"],
@@ -45918,7 +45919,7 @@ var init_copilot_models = __esm({
 });
 
 // src/team/model-contract.ts
-var import_path54, import_os6, COPILOT_TIER_MODELS;
+var import_path54, import_os6, COPILOT_TIER_MODELS, COPILOT_UNCONFIRMED_MODELS;
 var init_model_contract = __esm({
   "src/team/model-contract.ts"() {
     "use strict";
@@ -45932,6 +45933,7 @@ var init_model_contract = __esm({
     init_executable_resolution();
     init_copilot_models();
     COPILOT_TIER_MODELS = copilot_models_default.tiers;
+    COPILOT_UNCONFIRMED_MODELS = new Set(copilot_models_default.unconfirmedModels);
   }
 });
 

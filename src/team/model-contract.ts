@@ -257,6 +257,12 @@ export const COPILOT_WORKER_BASE_FLAGS = ['--allow-all-tools', '--allow-all-path
 /** Ordered Copilot model fallback list per bare tier alias (src/config/copilot-models.json). */
 const COPILOT_TIER_MODELS = copilotModels.tiers as Record<string, string[]>;
 
+/**
+ * Tier ids inferred from naming, never seen in a live listModels(). Without a
+ * catalogue they are not requested; a catalogue that lists one confirms it.
+ */
+export const COPILOT_UNCONFIRMED_MODELS: ReadonlySet<string> = new Set(copilotModels.unconfirmedModels);
+
 export interface CopilotModelResolution {
   /** The Copilot model to request; undefined means pass none (inherit the session model). */
   model: string | undefined;
@@ -264,8 +270,9 @@ export interface CopilotModelResolution {
   tier?: string;
   /**
    * `passthrough`: not a tier alias. `available`: the first tier model the
-   * catalogue offers. `unverified`: no catalogue, the tier's first model.
-   * `unavailable`: the catalogue offers no model of the tier.
+   * catalogue offers. `unverified`: no catalogue, the tier's first confirmed
+   * model. `unavailable`: the catalogue offers no model of the tier, or there
+   * is no catalogue and every tier model is unconfirmed.
    */
   status: 'passthrough' | 'available' | 'unverified' | 'unavailable';
 }
@@ -274,13 +281,16 @@ export interface CopilotModelResolution {
  * Resolve a model value for Copilot. A bare tier alias (any case) becomes the
  * first model of its fallback list that `catalogue` (the plan's model ids)
  * offers, or no model when it offers none; without a catalogue it is the
- * tier's first id. Everything else goes through toCopilotModelId's id rewrite.
+ * tier's first id not in COPILOT_UNCONFIRMED_MODELS, or no model when all are. Everything else goes through toCopilotModelId's id rewrite.
  */
 export function resolveCopilotModel(model: string, catalogue?: ReadonlySet<string> | null): CopilotModelResolution {
   const tier = model.toLowerCase();
   if (!Object.hasOwn(COPILOT_TIER_MODELS, tier)) return { model: toCopilotModelId(model), status: 'passthrough' };
   const ids = COPILOT_TIER_MODELS[tier];
-  if (!catalogue) return { model: ids[0], tier, status: 'unverified' };
+  if (!catalogue) {
+    const confirmed = ids.find((id) => !COPILOT_UNCONFIRMED_MODELS.has(id));
+    return confirmed ? { model: confirmed, tier, status: 'unverified' } : { model: undefined, tier, status: 'unavailable' };
+  }
   const hit = ids.find((id) => catalogue.has(id));
   return hit ? { model: hit, tier, status: 'available' } : { model: undefined, tier, status: 'unavailable' };
 }
@@ -310,11 +320,11 @@ export function toCopilotModelId(model: string): string {
 
 const warnedUnavailableTiers = new Set<string>();
 
-/** One stderr line per tier per process: no model of the tier is on the plan, so the worker inherits. */
+/** One stderr line per tier per process: no (confirmed) model of the tier is on the plan, so the worker inherits. */
 export function warnUnavailableCopilotTier(tier: string, warn: (line: string) => void = (line) => console.warn(line)): void {
   if (warnedUnavailableTiers.has(tier)) return;
   warnedUnavailableTiers.add(tier);
-  warn(`[omg] your Copilot plan offers no model of tier "${tier}" (${copilotTierModels(tier).join(', ')}); passing no model, the session default applies`);
+  warn(`[omg] your Copilot plan offers no confirmed model of tier "${tier}" (${copilotTierModels(tier).join(', ')}); passing no model, the session default applies`);
 }
 
 /**

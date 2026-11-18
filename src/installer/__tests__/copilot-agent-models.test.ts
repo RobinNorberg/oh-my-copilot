@@ -269,8 +269,45 @@ describe('tier aliases against the plan catalogue', () => {
     expect(plan.unavailableTiers.haiku).not.toContain('explore');
   });
 
-  it('an unknown catalogue keeps the first id of each tier', () => {
-    expect(resolveAgentModelPlan({ planner: { model: 'fable' } }, undefined, null).overrides).toEqual({ planner: 'claude-fable-5.2' });
+  it('an unknown catalogue keeps the first confirmed id of each tier; fable has none', () => {
+    const plan = resolveAgentModelPlan({ planner: { model: 'fable' }, executor: { model: 'opus' } }, undefined, null);
+    expect(plan.overrides).toEqual({ executor: 'claude-opus-5.5' });
+    expect(plan.unavailableTiers).toEqual({ fable: ['planner'] });
+  });
+
+  it('removes a stale override an earlier setup wrote for a tier the plan cannot use', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omg-agent-models-'));
+    try {
+      const file = join(dir, 'settings.json');
+      // v5.29.1 wrote fable's first id, claude-opus-5.5; a user-chosen id for another agent stays.
+      writeFileSync(file, JSON.stringify({
+        theme: 'dark',
+        subagents: { agents: {
+          'oh-my-copilot:planner': { model: 'claude-opus-5.5', effort: 'high' },
+          'oh-my-copilot:critic': { model: 'claude-fable-5.2' },
+          'oh-my-copilot:architect': { model: 'gpt-6-luna' },
+        } },
+      }));
+      const plan = resolveAgentModelPlan(
+        { planner: { model: 'fable' }, critic: { model: 'fable' }, architect: { model: 'fable' } },
+        undefined,
+        new Set(['claude-sonnet-5.5']),
+      );
+      expect(plan.unavailableTiers).toEqual({ fable: ['planner', 'critic', 'architect'] });
+      const result = syncCopilotAgentModels(file, plan.overrides, plan.profileEntries, join(dir, 'record.json'), plan.unavailableTiers);
+      expect(result.removed.sort()).toEqual(['critic', 'planner']);
+      expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual({
+        theme: 'dark',
+        subagents: { agents: {
+          'oh-my-copilot:planner': { effort: 'high' },
+          'oh-my-copilot:architect': { model: 'gpt-6-luna' },
+        } },
+      });
+      // Nothing left to remove: no further write.
+      expect(syncCopilotAgentModels(file, plan.overrides, plan.profileEntries, join(dir, 'record.json'), plan.unavailableTiers)).toEqual({ written: [], removed: [] });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it('usesCopilotTierAliases tells whether the catalogue matters', () => {

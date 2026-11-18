@@ -6698,6 +6698,7 @@ var init_copilot_models = __esm({
         "grok-4.6",
         "kimi-k3"
       ],
+      unconfirmedModels: ["claude-fable-5.2", "gpt-6.2-astra"],
       tiers: {
         opus: ["claude-opus-5.5", "gpt-6.1-sol", "claude-sonnet-5.5", "mai-code-2"],
         sonnet: ["mai-code-2", "claude-sonnet-5.5", "mai-code-2-flash"],
@@ -6808,7 +6809,10 @@ function resolveCopilotModel(model, catalogue) {
   const tier = model.toLowerCase();
   if (!Object.hasOwn(COPILOT_TIER_MODELS, tier)) return { model: toCopilotModelId(model), status: "passthrough" };
   const ids = COPILOT_TIER_MODELS[tier];
-  if (!catalogue) return { model: ids[0], tier, status: "unverified" };
+  if (!catalogue) {
+    const confirmed = ids.find((id) => !COPILOT_UNCONFIRMED_MODELS.has(id));
+    return confirmed ? { model: confirmed, tier, status: "unverified" } : { model: void 0, tier, status: "unavailable" };
+  }
   const hit = ids.find((id) => catalogue.has(id));
   return hit ? { model: hit, tier, status: "available" } : { model: void 0, tier, status: "unavailable" };
 }
@@ -6824,7 +6828,7 @@ function toCopilotModelId(model) {
 function warnUnavailableCopilotTier(tier, warn = (line) => console.warn(line)) {
   if (warnedUnavailableTiers.has(tier)) return;
   warnedUnavailableTiers.add(tier);
-  warn(`[omg] your Copilot plan offers no model of tier "${tier}" (${copilotTierModels(tier).join(", ")}); passing no model, the session default applies`);
+  warn(`[omg] your Copilot plan offers no confirmed model of tier "${tier}" (${copilotTierModels(tier).join(", ")}); passing no model, the session default applies`);
 }
 function resolveWorkerPermissionFlags(agentType, perms) {
   if (agentType !== "copilot" || !perms) return [];
@@ -7024,7 +7028,7 @@ function getPromptModeArgs(agentType, instruction) {
   }
   return [instruction];
 }
-var import_path21, import_os5, resolvedPathCache, UNTRUSTED_PATH_PATTERNS, UNTRUSTED_WINDOWS_PATH_PATTERNS, COPILOT_WORKER_BASE_FLAGS, COPILOT_TIER_MODELS, warnedUnavailableTiers, CONTRACTS, WORKER_MODEL_ENV_ALLOWLIST, CLAUDE_WORKER_ENV_ALLOWLIST;
+var import_path21, import_os5, resolvedPathCache, UNTRUSTED_PATH_PATTERNS, UNTRUSTED_WINDOWS_PATH_PATTERNS, COPILOT_WORKER_BASE_FLAGS, COPILOT_TIER_MODELS, COPILOT_UNCONFIRMED_MODELS, warnedUnavailableTiers, CONTRACTS, WORKER_MODEL_ENV_ALLOWLIST, CLAUDE_WORKER_ENV_ALLOWLIST;
 var init_model_contract = __esm({
   "src/team/model-contract.ts"() {
     "use strict";
@@ -7050,6 +7054,7 @@ var init_model_contract = __esm({
     ];
     COPILOT_WORKER_BASE_FLAGS = ["--allow-all-tools", "--allow-all-paths", "--allow-all-urls", "--no-ask-user"];
     COPILOT_TIER_MODELS = copilot_models_default.tiers;
+    COPILOT_UNCONFIRMED_MODELS = new Set(copilot_models_default.unconfirmedModels);
     warnedUnavailableTiers = /* @__PURE__ */ new Set();
     CONTRACTS = {
       claude: {
@@ -8304,7 +8309,7 @@ var init_process_utils = __esm({
     import_path24 = require("path");
     import_util2 = require("util");
     fsPromises = __toESM(require("fs/promises"), 1);
-    execFileAsync2 = (0, import_util2.promisify)(import_child_process6.execFile);
+    execFileAsync2 = ((...args) => (0, import_util2.promisify)(import_child_process6.execFile)(...args));
   }
 });
 
@@ -21309,6 +21314,19 @@ var init_sdk_policy = __esm({
 });
 
 // src/copilot-run/sandbox.ts
+function envValue2(env, name) {
+  const key = Object.keys(env).find((k) => k.toUpperCase() === name);
+  const value = key === void 0 ? void 0 : env[key];
+  return typeof value === "string" && value.trim() !== "" ? value : void 0;
+}
+function secretValues(env) {
+  return ["COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"].map((n) => envValue2(env, n)).filter((v) => v !== void 0 && v.length >= 8);
+}
+function scrubTokens(text2, secrets) {
+  let out = text2;
+  for (const s of secrets) out = out.split(s).join("[redacted]");
+  return out.replace(TOKEN_PATTERN, "[redacted]");
+}
 function relocatedProfileEnv(jobHome) {
   const profile = (0, import_node_path15.join)(jobHome, "profile");
   const tmp = (0, import_node_path15.join)(jobHome, "tmp");
@@ -21335,7 +21353,7 @@ function allowlistSessionEnv(env, jobHome) {
   }
   return { ...out, ...relocatedProfileEnv(jobHome) };
 }
-var import_node_path15, DEFAULT_SANDBOX_SETTINGS, SESSION_ENV_ALLOWLIST;
+var import_node_path15, DEFAULT_SANDBOX_SETTINGS, SESSION_ENV_ALLOWLIST, TOKEN_PATTERN;
 var init_sandbox = __esm({
   "src/copilot-run/sandbox.ts"() {
     "use strict";
@@ -21393,6 +21411,7 @@ var init_sandbox = __esm({
       // are denied, so the effect is breakage or shared read state, never escalation.
       "LOCALAPPDATA"
     ];
+    TOKEN_PATTERN = /\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})/g;
   }
 });
 
@@ -23349,6 +23368,10 @@ var init_copilot_binary = __esm({
 });
 
 // src/copilot-run/model-catalogue.ts
+function redactCatalogueDetail(text2, env = process.env) {
+  const clean = scrubTokens(text2, secretValues(env)).replace(/\s+/g, " ").trim();
+  return clean.length > DETAIL_MAX_CHARS ? `${clean.slice(0, DETAIL_MAX_CHARS - 3)}...` : clean;
+}
 function copilotCatalogueCacheFile() {
   return (0, import_node_path16.join)(getGlobalOmcStateRoot(), "copilot-models-cache.json");
 }
@@ -23401,7 +23424,13 @@ async function loadCopilotCatalogueWith(deps) {
     }
     return { catalogue: new Set(outcome.models), source: "live", detail: `listModels() offers ${outcome.models.length} models` };
   }
-  const why = "error" in outcome ? outcome.error : "listModels() returned no models";
+  const why = redactCatalogueDetail("error" in outcome ? outcome.error : "listModels() returned no models", deps.env);
+  const latest = readCatalogueCache(deps.file, deps.now(), deps.ttlMs, deps.failureTtlMs);
+  const latestFetchedAt = latest.fetchedAt ? Date.parse(latest.fetchedAt) : NaN;
+  if (Number.isFinite(latestFetchedAt) && latestFetchedAt > now) {
+    if (latest.fresh) return { catalogue: new Set(latest.fresh), source: "cache", detail: `cached in ${deps.file}` };
+    return fromStale(`the Copilot model catalogue could not be read (${why})`);
+  }
   try {
     (0, import_node_fs15.mkdirSync)((0, import_node_path16.dirname)(deps.file), { recursive: true });
     atomicWriteJsonSync(deps.file, {
@@ -23419,24 +23448,49 @@ function readCopilotCatalogueCacheOnly(file, now) {
   if (cache.stale) return { catalogue: new Set(cache.stale), source: "stale-cache", detail: `stale cache in ${file}` };
   return { catalogue: null, source: "none", detail: `no cached Copilot model catalogue in ${file}` };
 }
+function defaultFetchDeps() {
+  const env = process.env;
+  return {
+    env,
+    platform: process.platform,
+    loadSdk: () => loadCopilotSdk(env, cappedSpawnSync),
+    resolveBin: () => resolveCopilotBinary(void 0, env).bin,
+    userConfigDir: () => getCopilotConfigDir(),
+    killTree: (pid) => killProcessTree2(pid, import_node_child_process8.spawnSync),
+    tmpRoot: (0, import_node_os4.tmpdir)()
+  };
+}
+async function stopCatalogueClient(client, killTree, boundMs) {
+  const end = Date.now() + boundMs;
+  try {
+    await withTimeout(Promise.resolve().then(() => client.stop()), boundMs, "client.stop()");
+  } catch {
+    try {
+      await withTimeout(Promise.resolve().then(() => client.forceStop?.()), Math.max(1, end - Date.now()), "client.forceStop()");
+    } catch {
+    }
+  }
+  const proc = client.cliProcess;
+  const pid = runtimePid(client);
+  if (proc && pid && !hasExited(proc)) {
+    try {
+      killTree(pid);
+    } catch {
+    }
+  }
+}
 async function fetchCopilotCatalogue(opts = {}) {
   hardenWindowsExeSearch();
-  const hostEnv = process.env;
-  const deps = {
-    env: hostEnv,
-    platform: process.platform,
-    loadSdk: () => loadCopilotSdk(hostEnv, import_node_child_process8.spawnSync),
-    resolveBin: () => resolveCopilotBinary(void 0, hostEnv).bin,
-    userConfigDir: () => getCopilotConfigDir(),
-    killTree: (pid) => killProcessTree2(pid, import_node_child_process8.spawnSync)
-  };
-  const jobRoot = (0, import_node_path16.join)((0, import_node_os4.tmpdir)(), "omg-model-catalogue");
+  const deps = { ...defaultFetchDeps(), ...opts.deps };
+  const jobRoot = (0, import_node_path16.join)(deps.tmpRoot, "omg-model-catalogue");
   const jobHome = (0, import_node_path16.join)(jobRoot, `list-${(0, import_node_crypto10.randomBytes)(4).toString("hex")}`);
   const workDir = (0, import_node_path16.join)(jobHome, "work");
   let client = null;
-  try {
+  let cancelled = false;
+  const read = async () => {
     (0, import_node_fs15.mkdirSync)(workDir, { recursive: true });
     const loaded2 = await deps.loadSdk().catch(() => null);
+    if (cancelled) return { error: "cancelled" };
     if (!loaded2) return { error: `@github/copilot-sdk is not installed or could not be loaded (${SDK_INSTALL_COMMAND})` };
     const found = opts.cliPath && (0, import_node_fs15.existsSync)(opts.cliPath) ? opts.cliPath : deps.resolveBin();
     const bin = found && deps.platform === "win32" && /\.(cmd|bat|ps1)$/i.test(found) ? resolveShimTarget(found) : found;
@@ -23455,30 +23509,19 @@ async function fetchCopilotCatalogue(opts = {}) {
       workingDirectory: workDir
     });
     client = c;
-    await withTimeout(c.start(), opts.startTimeoutMs ?? START_TIMEOUT_MS, "client.start()");
-    const models = await withTimeout(c.listModels(), opts.listTimeoutMs ?? LIST_TIMEOUT_MS, "listModels()");
-    return { models: catalogueFromListModels(models) };
+    await c.start();
+    return { models: catalogueFromListModels(await c.listModels()) };
+  };
+  let result;
+  try {
+    result = await withTimeout(read(), opts.deadlineMs ?? FETCH_DEADLINE_MS, "reading the Copilot model catalogue");
   } catch (error) {
-    return { error: errText(error) };
-  } finally {
-    if (client) {
-      try {
-        await withTimeout(client.stop(), STOP_TIMEOUT_MS, "client.stop()");
-      } catch {
-        try {
-          await withTimeout(client.forceStop?.() ?? Promise.resolve(), STOP_TIMEOUT_MS, "client.forceStop()");
-        } catch {
-        }
-      }
-      const proc = client.cliProcess;
-      const pid = runtimePid(client);
-      if (proc && pid && !hasExited(proc)) {
-        try {
-          deps.killTree(pid);
-        } catch {
-        }
-      }
-    }
+    result = { error: errText(error) };
+  }
+  cancelled = true;
+  const started = client;
+  const done = (async () => {
+    if (started) await stopCatalogueClient(started, deps.killTree, opts.cleanupMs ?? CLEANUP_BOUND_MS);
     try {
       (0, import_node_fs15.rmSync)(jobHome, { recursive: true, force: true });
     } catch {
@@ -23487,21 +23530,23 @@ async function fetchCopilotCatalogue(opts = {}) {
       (0, import_node_fs15.rmdirSync)(jobRoot);
     } catch {
     }
-  }
+  })();
+  opts.onCleanup?.(done);
+  return result;
 }
 function loadCopilotCatalogue() {
-  memo ??= source.load().catch((error) => ({ catalogue: null, source: "none", detail: errText(error) }));
+  memo ??= source.load().catch((error) => ({ catalogue: null, source: "none", detail: redactCatalogueDetail(errText(error)) }));
   return memo;
 }
 async function teamCopilotCatalogue(warn = (line) => console.warn(line)) {
   const result = await loadCopilotCatalogue();
   if (!result.catalogue && !warnedUnreadable) {
     warnedUnreadable = true;
-    warn(`[omg] ${result.detail}; Copilot tier aliases use each tier's first model`);
+    warn(`[omg] ${result.detail}; Copilot tier aliases use each tier's first confirmed model`);
   }
   return result.catalogue;
 }
-var import_node_child_process8, import_node_crypto10, import_node_fs15, import_node_os4, import_node_path16, CATALOGUE_TTL_MS, CATALOGUE_FAILURE_TTL_MS, START_TIMEOUT_MS, LIST_TIMEOUT_MS, STOP_TIMEOUT_MS, defaultSource, source, memo, warnedUnreadable;
+var import_node_child_process8, import_node_crypto10, import_node_fs15, import_node_os4, import_node_path16, CATALOGUE_TTL_MS, CATALOGUE_FAILURE_TTL_MS, FETCH_DEADLINE_MS, CLEANUP_BOUND_MS, NPM_ROOT_TIMEOUT_MS, DETAIL_MAX_CHARS, cappedSpawnSync, defaultSource, source, memo, warnedUnreadable;
 var init_model_catalogue = __esm({
   "src/copilot-run/model-catalogue.ts"() {
     "use strict";
@@ -23523,9 +23568,11 @@ var init_model_catalogue = __esm({
     init_config_dir();
     CATALOGUE_TTL_MS = 24 * 60 * 60 * 1e3;
     CATALOGUE_FAILURE_TTL_MS = 60 * 60 * 1e3;
-    START_TIMEOUT_MS = 15e3;
-    LIST_TIMEOUT_MS = 5e3;
-    STOP_TIMEOUT_MS = 5e3;
+    FETCH_DEADLINE_MS = 2e4;
+    CLEANUP_BOUND_MS = 5e3;
+    NPM_ROOT_TIMEOUT_MS = 3e3;
+    DETAIL_MAX_CHARS = 300;
+    cappedSpawnSync = ((command, a, b) => Array.isArray(a) ? (0, import_node_child_process8.spawnSync)(command, a, { ...b, timeout: NPM_ROOT_TIMEOUT_MS }) : (0, import_node_child_process8.spawnSync)(command, { ...a, timeout: NPM_ROOT_TIMEOUT_MS }));
     defaultSource = {
       load: () => loadCopilotCatalogueWith({ file: copilotCatalogueCacheFile(), now: Date.now, fetch: () => fetchCopilotCatalogue() }),
       readCached: () => readCopilotCatalogueCacheOnly(copilotCatalogueCacheFile(), Date.now())
@@ -23953,7 +24000,9 @@ function buildStartupInboxTrigger(cwd, teamName, workerName, attemptId, platform
   if (platform !== "win32" || message.length <= 200) return message;
   return `Read workers/${workerName}/inbox.md under the OMC_TEAM_STATE_ROOT environment variable; execute now, report concrete progress.${suffix}`;
 }
-async function resolveSdkWorkerModel(model) {
+async function resolveSdkWorkerModel(sdkModel, model) {
+  if (sdkModel !== void 0) return sdkModel;
+  if (!model) return void 0;
   const catalogue = copilotTierModels(model).length > 0 ? await teamCopilotCatalogue() : null;
   const resolved = resolveCopilotModel(model, catalogue);
   if (!resolved.model && resolved.tier) warnUnavailableCopilotTier(resolved.tier);
@@ -24863,8 +24912,10 @@ async function spawnSdkV2Worker(opts, sdk) {
       startupFailureReason: `sdk_copilot_shim_unresolved:${binary}`
     };
   }
-  const descriptorModel = opts.launchDescriptor.model ? await resolveSdkWorkerModel(opts.launchDescriptor.model) : void 0;
-  const model = sdk.model ?? descriptorModel;
+  const model = await resolveSdkWorkerModel(
+    sdk.model,
+    opts.launchDescriptor.model
+  );
   const workerCwd = opts.workerCwd ?? opts.cwd;
   const launch = await launchSdkHost({
     leaderCwd: opts.cwd,
@@ -28101,6 +28152,9 @@ async function startTeamV2(config) {
     const missing = missingBinaryReasons.map(({ agentType, reason }) => `${agentType}:${reason}`).join(";");
     throw new Error(`cli_binary_preflight_failed:${missing}`);
   }
+  const copilotCatalogue = [...startupAssignments.values()].some(
+    (a) => a.agentType === "copilot" && typeof a.model === "string" && copilotTierModels(a.model).length > 0
+  ) ? await teamCopilotCatalogue() : null;
   try {
     await cleanupStaleReservations(sanitized, leaderCwd);
   } catch {
@@ -28198,9 +28252,6 @@ async function startTeamV2(config) {
           throw startupCleanupIncompleteError(error);
         throw error;
       }
-      const copilotCatalogue = [...startupAssignments.values()].some(
-        (a) => a.agentType === "copilot" && typeof a.model === "string" && copilotTierModels(a.model).length > 0
-      ) ? await teamCopilotCatalogue() : null;
       for (let i = 0; i < workerNames.length; i++) {
         const workerName = workerNames[i];
         const taskIndex = startupByWorker.get(workerName);

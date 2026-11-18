@@ -29,6 +29,12 @@ export declare function buildStartupInboxTrigger(cwd: string, teamName: string, 
 import type { RecoverDeadWorkerV2Result } from "./types.js";
 import { type SdkSessionFile } from "./sdk-transport.js";
 import { type HostCliType } from "../utils/host-signal.js";
+/**
+ * The SDK worker's model: an explicit `sdk.model` as is (the catalogue is not
+ * read), else the descriptor model, whose tier alias resolves against the
+ * plan's catalogue (read once per process); none offered means no model.
+ */
+export declare function resolveSdkWorkerModel(sdkModel: string | undefined, model: string | null | undefined): Promise<string | undefined>;
 export interface RecoverDeadWorkerV2Options {
     workerName: string;
     requestId?: string;

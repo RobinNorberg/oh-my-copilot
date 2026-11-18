@@ -2151,6 +2151,9 @@ export function mergeClaudeMd(existingContent, omcContent, version) {
  * tier alias. Undefined otherwise; never throws.
  */
 export async function loadSetupCopilotCatalogue() {
+    // install() skips the override sync for a project-scoped plugin, so no read is needed.
+    if (isProjectScopedPlugin())
+        return undefined;
     try {
         const userConfig = loadJsoncFile(getConfigPaths().user);
         if (!usesCopilotTierAliases(userConfig?.agents, userConfig?.modelProfile))
@@ -2546,20 +2549,20 @@ export function install(options = {}) {
                 const usesTiers = usesCopilotTierAliases(userConfig?.agents, userConfig?.modelProfile);
                 const catalogue = usesTiers ? (options.copilotModelCatalogue ?? readCachedCopilotCatalogue()) : undefined;
                 if (catalogue && !catalogue.catalogue)
-                    log(`  Note: ${catalogue.detail}; tier aliases use each tier's first Copilot model`);
+                    log(`  Note: ${catalogue.detail}; tier aliases use each tier's first confirmed Copilot model`);
                 const { overrides, skipped, profileEntries, profileProblem, unavailableTiers } = resolveAgentModelPlan(userConfig?.agents, userConfig?.modelProfile, catalogue?.catalogue);
                 if (profileProblem)
                     log(`  Warning: ${profileProblem}`);
                 for (const [tier, names] of Object.entries(unavailableTiers)) {
-                    log(`  Warning: your Copilot plan offers no model of tier "${tier}" (${copilotTierModels(tier).join(', ')}); ${names.join(', ')} inherit(s) the session model`);
+                    log(`  Warning: your Copilot plan offers no confirmed model of tier "${tier}" (${copilotTierModels(tier).join(', ')}); ${names.join(', ')} inherit(s) the session model`);
                 }
                 for (const entry of skipped)
                     log(`  Warning: agents.${entry} is not a known Copilot model or tier alias; not synced`);
-                const { written, removed, error } = syncCopilotAgentModels(SETTINGS_FILE, overrides, profileEntries, join(COPILOT_HOME, '.omg-profile-models.json'));
+                const { written, removed, error } = syncCopilotAgentModels(SETTINGS_FILE, overrides, profileEntries, join(COPILOT_HOME, '.omg-profile-models.json'), unavailableTiers);
                 if (error)
                     log(`  Warning: per-agent model overrides not synced: ${error}`);
                 if (removed.length > 0)
-                    log(`  Removed ${removed.length} per-agent model override(s) the model profile wrote earlier`);
+                    log(`  Removed ${removed.length} per-agent model override(s) omg wrote earlier (model profile, or a tier your plan no longer offers)`);
                 if (written.length > 0)
                     log(`  Synced ${written.length} per-agent model override(s) to settings.json subagents.agents`);
             }

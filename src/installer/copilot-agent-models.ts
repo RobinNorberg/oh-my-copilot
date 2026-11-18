@@ -22,6 +22,17 @@ export const COPILOT_PLUGIN_AGENT_PREFIX = 'oh-my-copilot:';
 
 const KNOWN_MODELS = new Set<string>(copilotModels.knownModels);
 
+/**
+ * First id of each tier before the MAI Code 2 tiers (v5.29.1 and older): an
+ * earlier `omg setup` may have written it for a tier alias.
+ */
+const PREVIOUS_TIER_FIRST_IDS: Record<string, string> = {
+  opus: 'claude-opus-5.5',
+  sonnet: 'claude-sonnet-5.5',
+  haiku: 'claude-haiku-5.5',
+  fable: 'claude-opus-5.5',
+};
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -171,15 +182,22 @@ function modelOf(settings: Record<string, unknown>, name: string): unknown {
  * `overrides` is removed again, so going back to `balanced` restores the agent
  * defaults. Without a record nothing is removed, and a value the user changed
  * is left alone.
+ *
+ * `unavailableTiers` (resolveAgentModelPlan) names agents whose tier alias
+ * resolves to no model. Their entry's `model` is removed when it is one of
+ * that tier's ids (or the tier's first id before v5.30), i.e. what an earlier
+ * setup wrote for the alias, so the agent really inherits the session model;
+ * any other value is left alone.
  */
 export function syncCopilotAgentModels(
   settingsFile: string,
   overrides: Record<string, string>,
   profileEntries: Record<string, string> = {},
   recordFile?: string,
+  unavailableTiers: Record<string, string[]> = {},
 ): { written: string[]; removed: string[]; error?: string } {
   const recorded = recordFile ? readProfileRecord(recordFile) : {};
-  if (Object.keys(overrides).length === 0 && Object.keys(recorded).length === 0) return { written: [], removed: [] };
+  if (Object.keys(overrides).length === 0 && Object.keys(recorded).length === 0 && Object.keys(unavailableTiers).length === 0) return { written: [], removed: [] };
   let current: unknown = {};
   if (existsSync(settingsFile)) {
     try {
@@ -192,6 +210,13 @@ export function syncCopilotAgentModels(
   const base = current as Record<string, unknown>;
 
   const removed = Object.keys(recorded).filter(name => !(name in overrides) && modelOf(base, name) === recorded[name]);
+  for (const [tier, names] of Object.entries(unavailableTiers)) {
+    const tierIds = new Set<string>([...copilotTierModels(tier), ...(PREVIOUS_TIER_FIRST_IDS[tier] ? [PREVIOUS_TIER_FIRST_IDS[tier]] : [])]);
+    for (const name of names) {
+      const current = modelOf(base, name);
+      if (!(name in overrides) && !removed.includes(name) && typeof current === 'string' && tierIds.has(current)) removed.push(name);
+    }
+  }
   let afterRemoval = base;
   if (removed.length > 0) {
     const subagents = { ...(base.subagents as Record<string, unknown>) };
