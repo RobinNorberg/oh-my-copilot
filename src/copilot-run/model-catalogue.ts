@@ -24,7 +24,7 @@ import { errText, withTimeout } from './timeout.js';
 // Static, not lazy: bundlers keep only the names used here, while a dynamic import keeps whole modules.
 // Not copilot-run/job.ts: it reaches src/factory/**, which the team bundle must not (tests/lint/team-bundle-no-native).
 import { allowlistSessionEnv, scrubTokens, secretValues } from './sandbox.js';
-import { loadCopilotSdk, resolveShimTarget, runtimePid, type LoadedSdk, type SdkClientLike } from '../smoke/copilot-sdk-driver.js';
+import { loadCopilotSdk, resolveShimTarget, rethrowSdkStartError, runtimePid, type LoadedSdk, type SdkClientLike } from '../smoke/copilot-sdk-driver.js';
 import { RUNTIME_MIN_MAX_CREDITS, SDK_INSTALL_COMMAND } from '../smoke/copilot-sdk-scenarios.js';
 import { buildSessionEnv, loginIdentity } from '../smoke/copilot-session-env.js';
 import { hasExited, killProcessTree, type SpawnSyncFn } from '../smoke/process-utils.js';
@@ -289,7 +289,7 @@ export async function fetchCopilotCatalogue(opts: {
       workingDirectory: workDir,
     });
     client = c;
-    await c.start();
+    await c.start().catch(rethrowSdkStartError);
     return { models: catalogueFromListModels(await c.listModels()) };
   };
   let result: { models: string[] } | { error: string };
