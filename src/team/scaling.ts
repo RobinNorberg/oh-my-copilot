@@ -23,8 +23,10 @@ import {
   resolveValidatedBinaryPath,
   validateWorkerLaunchDescriptor,
   resolveWorkerPermissionFlags,
+  copilotTierModels,
   type CliAgentType,
 } from "./model-contract.js";
+import { teamCopilotCatalogue } from "../copilot-run/model-catalogue.js";
 import { loadConfig } from "../config/loader.js";
 import { getHostCliType } from "../utils/host-detection.js";
 import { CANONICAL_TEAM_ROLES } from "../shared/types.js";
@@ -1260,11 +1262,18 @@ export async function scaleUpOwned(
               workerAgentType,
               loadConfig().permissions,
             );
+            const copilotCatalogue =
+              workerAgentType === "copilot" &&
+              workerModel &&
+              copilotTierModels(workerModel).length > 0
+                ? await teamCopilotCatalogue()
+                : null;
             const [, ...args] = buildWorkerArgv(workerAgentType, {
               teamName: sanitized,
               workerName,
               cwd: workerCwd,
               resolvedBinaryPath: launchBinary,
+              ...(copilotCatalogue ? { copilotCatalogue } : {}),
               ...(workerModel ? { model: workerModel } : {}),
               ...(workerReasoningEffort
                 ? { reasoningEffort: workerReasoningEffort }

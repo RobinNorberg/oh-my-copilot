@@ -181,25 +181,62 @@ export function shouldUseClaudeBareMode(env = process.env) {
  * (self-continuation races the inbox protocol) and no COPILOT_ALLOW_ALL.
  */
 export const COPILOT_WORKER_BASE_FLAGS = ['--allow-all-tools', '--allow-all-paths', '--allow-all-urls', '--no-ask-user'];
-/** First-choice Copilot model per bare tier alias (src/config/copilot-models.json). */
-const COPILOT_TIER_ALIAS_MODELS = Object.fromEntries(Object.entries(copilotModels.tiers).map(([tier, ids]) => [tier, ids[0]]));
+/** Ordered Copilot model fallback list per bare tier alias (src/config/copilot-models.json). */
+const COPILOT_TIER_MODELS = copilotModels.tiers;
+/**
+ * Tier ids inferred from naming, never seen in a live listModels(). Without a
+ * catalogue they are not requested; a catalogue that lists one confirms it.
+ */
+export const COPILOT_UNCONFIRMED_MODELS = new Set(copilotModels.unconfirmedModels);
+/**
+ * Resolve a model value for Copilot. A bare tier alias (any case) becomes the
+ * first model of its fallback list that `catalogue` (the plan's model ids)
+ * offers, or no model when it offers none; without a catalogue it is the
+ * tier's first id not in COPILOT_UNCONFIRMED_MODELS, or no model when all are.
+ * Everything else goes through toCopilotModelId's id rewrite.
+ */
+export function resolveCopilotModel(model, catalogue) {
+    const tier = model.toLowerCase();
+    if (!Object.hasOwn(COPILOT_TIER_MODELS, tier))
+        return { model: toCopilotModelId(model), status: 'passthrough' };
+    const ids = COPILOT_TIER_MODELS[tier];
+    if (!catalogue) {
+        const confirmed = ids.find((id) => !COPILOT_UNCONFIRMED_MODELS.has(id));
+        return confirmed ? { model: confirmed, tier, status: 'unverified' } : { model: undefined, tier, status: 'unavailable' };
+    }
+    const hit = ids.find((id) => catalogue.has(id));
+    return hit ? { model: hit, tier, status: 'available' } : { model: undefined, tier, status: 'unavailable' };
+}
+/** The fallback list of a tier alias, for warnings. */
+export function copilotTierModels(tier) {
+    return COPILOT_TIER_MODELS[tier.toLowerCase()] ?? [];
+}
 /**
  * Copilot lists dotted Claude model IDs (claude-opus-4.8) while the tier
  * defaults are dashed (claude-opus-4-8). Rewrites that shape (keeping a
  * trailing variant such as -fast), drops a `[1m]` context suffix and an
- * 8-digit date stamp, and maps bare tier aliases through the model table.
+ * 8-digit date stamp, and maps bare tier aliases to the tier's first model
+ * (resolveCopilotModel picks by plan availability instead).
  * Anything else passes through unchanged.
  */
 export function toCopilotModelId(model) {
     const key = model.toLowerCase();
-    if (Object.hasOwn(COPILOT_TIER_ALIAS_MODELS, key))
-        return COPILOT_TIER_ALIAS_MODELS[key];
+    if (Object.hasOwn(COPILOT_TIER_MODELS, key))
+        return COPILOT_TIER_MODELS[key][0];
     if (!/^claude-/.test(model))
         return model;
     return model
         .replace(/\[1m\]$/i, '')
         .replace(/-\d{8}$/, '')
         .replace(/^(claude-[a-z]+)-(\d+)-(\d+)(?=$|-[a-z])/, '$1-$2.$3');
+}
+const warnedUnavailableTiers = new Set();
+/** One stderr line per tier per process: no (confirmed) model of the tier is on the plan, so the worker inherits. */
+export function warnUnavailableCopilotTier(tier, warn = (line) => console.warn(line)) {
+    if (warnedUnavailableTiers.has(tier))
+        return;
+    warnedUnavailableTiers.add(tier);
+    warn(`[omg] your Copilot plan offers no confirmed model of tier "${tier}" (${copilotTierModels(tier).join(', ')}); passing no model, the session default applies`);
 }
 /**
  * Deny flags forwarded from `permissions.workerDenyTools` / `workerDenyUrls`.
@@ -251,10 +288,15 @@ const CONTRACTS = {
         // explicit allow set instead, and permissions.workerDenyTools/Urls arrive via
         // extraFlags (deny rules win over allow rules in Copilot). Copilot has no verified
         // reasoning-effort flag, so per-role reasoningEffort (upstream #4206) is not forwarded.
-        buildLaunchArgs(model, _reasoningEffort, extraFlags = []) {
+        buildLaunchArgs(model, _reasoningEffort, extraFlags = [], copilotCatalogue) {
             const args = [...COPILOT_WORKER_BASE_FLAGS];
-            if (model)
-                args.push('--model', toCopilotModelId(model));
+            if (model) {
+                const resolved = resolveCopilotModel(model, copilotCatalogue);
+                if (resolved.model)
+                    args.push('--model', resolved.model);
+                else if (resolved.tier)
+                    warnUnavailableCopilotTier(resolved.tier);
+            }
             return [...args, ...extraFlags];
         },
         parseOutput(rawOutput) {
@@ -445,7 +487,7 @@ export function resolveValidatedBinaryPath(agentType) {
     return resolveCliBinaryPath(contract.binary);
 }
 export function buildLaunchArgs(agentType, config) {
-    return getContract(agentType).buildLaunchArgs(config.model, config.reasoningEffort, config.extraFlags);
+    return getContract(agentType).buildLaunchArgs(config.model, config.reasoningEffort, config.extraFlags, config.copilotCatalogue);
 }
 export function buildWorkerArgv(agentType, config) {
     validateTeamName(config.teamName);

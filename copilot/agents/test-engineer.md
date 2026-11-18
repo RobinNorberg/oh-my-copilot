@@ -1,7 +1,7 @@
 ---
 name: test-engineer
 description: Test strategy, integration/e2e coverage, flaky test hardening, TDD workflows
-models: ["claude-sonnet-5.5","gpt-6-astra","claude-haiku-5.5"]
+models: ["mai-code-2","claude-sonnet-5.5","mai-code-2-flash"]
 include-custom-instructions: true
 ---
 

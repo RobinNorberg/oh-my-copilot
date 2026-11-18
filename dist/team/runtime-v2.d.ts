@@ -30,6 +30,12 @@ import type { RecoverDeadWorkerV2Result } from "./types.js";
 import { type SdkSessionFile } from "./sdk-transport.js";
 import { type LoadedSdk } from "../smoke/copilot-sdk-driver.js";
 import { type HostCliType } from "../utils/host-signal.js";
+/**
+ * The SDK worker's model: an explicit `sdk.model` as is (the catalogue is not
+ * read), else the descriptor model, whose tier alias resolves against the
+ * plan's catalogue (read once per process); none offered means no model.
+ */
+export declare function resolveSdkWorkerModel(sdkModel: string | undefined, model: string | null | undefined): Promise<string | undefined>;
 export interface RecoverDeadWorkerV2Options {
     workerName: string;
     requestId?: string;
@@ -375,6 +381,10 @@ export declare function resolveSdkDefaultWorktreeMode(input: {
  * AI credits, and the Copilot runtime floors `--max-ai-credits` at 30.
  */
 export declare const DEFAULT_SDK_MAX_CREDITS_PER_WORKER = 50;
+export declare function needsTeamCopilotCatalogue(assignments: Iterable<{
+    agentType?: string;
+    model?: unknown;
+}>, sdkModelPinned: boolean): boolean;
 export declare function resolveSdkTeamSettings(pluginCfg: PluginConfig): SdkTeamSettings;
 interface RecoveryOwnerFinalizationDeps {
     readRevisionedConfig: (teamName: string, cwd: string) => Promise<{

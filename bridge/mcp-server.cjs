@@ -28623,7 +28623,7 @@ var init_process_utils = __esm({
     import_path7 = require("path");
     import_util9 = require("util");
     fsPromises = __toESM(require("fs/promises"), 1);
-    execFileAsync = (0, import_util9.promisify)(import_child_process.execFile);
+    execFileAsync = ((...args) => (0, import_util9.promisify)(import_child_process.execFile)(...args));
   }
 });
 
@@ -45889,24 +45889,37 @@ var init_copilot_models = __esm({
         "claude-opus-5.5",
         "claude-haiku-5.5",
         "claude-haiku-4.5",
+        "claude-sonnet-5",
+        "claude-fable-5.2",
         "gpt-6.1-sol",
+        "gpt-6.2-astra",
+        "gpt-6.1-terra",
         "gpt-6-astra",
         "gpt-6-luna",
+        "gpt-5.6-luna",
         "gpt-5.3-codex",
-        "gemini-3.8-flash"
+        "gemini-3.8-flash",
+        "gemini-4-hydrogen",
+        "mai-code-2",
+        "mai-code-2-flash",
+        "mai-code-1.1-flash",
+        "grok-4.7",
+        "grok-4.6",
+        "kimi-k3"
       ],
+      unconfirmedModels: ["claude-fable-5.2", "gpt-6.2-astra"],
       tiers: {
-        opus: ["claude-opus-5.5", "gpt-6.1-sol", "claude-sonnet-5.5"],
-        sonnet: ["claude-sonnet-5.5", "gpt-6-astra", "claude-haiku-5.5"],
-        haiku: ["claude-haiku-5.5", "gpt-6-luna", "claude-haiku-4.5", "gemini-3.8-flash"],
-        fable: ["claude-opus-5.5", "gpt-6.1-sol", "claude-sonnet-5.5"]
+        opus: ["claude-opus-5.5", "gpt-6.1-sol", "claude-sonnet-5.5", "mai-code-2"],
+        sonnet: ["mai-code-2", "claude-sonnet-5.5", "mai-code-2-flash"],
+        haiku: ["mai-code-2-flash", "claude-haiku-5.5", "gpt-6-luna"],
+        fable: ["claude-fable-5.2", "gpt-6.2-astra"]
       }
     };
   }
 });
 
 // src/team/model-contract.ts
-var import_path54, import_os6, COPILOT_TIER_ALIAS_MODELS;
+var import_path54, import_os6, COPILOT_TIER_MODELS, COPILOT_UNCONFIRMED_MODELS;
 var init_model_contract = __esm({
   "src/team/model-contract.ts"() {
     "use strict";
@@ -45919,9 +45932,8 @@ var init_model_contract = __esm({
     init_host_signal();
     init_executable_resolution();
     init_copilot_models();
-    COPILOT_TIER_ALIAS_MODELS = Object.fromEntries(
-      Object.entries(copilot_models_default.tiers).map(([tier, ids]) => [tier, ids[0]])
-    );
+    COPILOT_TIER_MODELS = copilot_models_default.tiers;
+    COPILOT_UNCONFIRMED_MODELS = new Set(copilot_models_default.unconfirmedModels);
   }
 });
 

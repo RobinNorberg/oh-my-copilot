@@ -1,7 +1,7 @@
 ---
 name: verifier
 description: Verification strategy, evidence-based completion checks, test adequacy
-models: ["claude-sonnet-5.5","gpt-6-astra","claude-haiku-5.5"]
+models: ["mai-code-2","claude-sonnet-5.5","mai-code-2-flash"]
 tools: ["view","rg","grep","glob","bash","powershell","read_bash","read_powershell","web_fetch","task","list_agents","read_agent","skill","ask_user","update_todo","t/*"]
 include-custom-instructions: true
 ---

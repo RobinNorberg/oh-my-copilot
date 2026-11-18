@@ -9,7 +9,10 @@ import { win32 } from 'path';
 import { promisify } from 'util';
 import * as fsPromises from 'fs/promises';
 
-const execFileAsync = promisify(execFile);
+// Promisified per call, not at import: reading the execFile export at module
+// load breaks every importer whose tests vi.mock('child_process') without it.
+const execFileAsync = ((...args: unknown[]) =>
+  (promisify(execFile) as (...a: unknown[]) => unknown)(...args)) as typeof execFile.__promisify__;
 
 export interface OwnedProcessGroup {
   pid: number;

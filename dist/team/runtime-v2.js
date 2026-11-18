@@ -78,7 +78,8 @@ import { currentProcessStartIdentity, isProcessIdentityDead, publishOwnerEpoch, 
 import { waitForRecoveryGateRecord, } from "./worker-activation-gate.js";
 import { isWorkerLaunchAttemptCurrent, isWorkerLaunchAttemptAccepted, loadCurrentWorkerLaunchAttempt, loadWorkerLaunchAttempt, retireAndCleanupCurrentWorkerLaunchAttempt, withWorkerLaunchAttemptFence, } from "./worker-launch-ack.js";
 import { isSdkTarget, launchSdkHost, readSdkSession, ringDoorbell, sdkPaneId, sdkTeamTarget, stopSdkHost, SDK_HOST_STOP_FLOOR_MS, } from "./sdk-transport.js";
-import { toCopilotModelId } from "./model-contract.js";
+import { copilotTierModels, resolveCopilotModel, warnUnavailableCopilotTier, } from "./model-contract.js";
+import { teamCopilotCatalogue } from "../copilot-run/model-catalogue.js";
 import { loadCopilotSdk, memoSdkProtocolProbe, PROBE_TIMEOUT_REASON, resolveShimTarget, } from "../smoke/copilot-sdk-driver.js";
 import { detectHostCliSignal } from "../utils/host-signal.js";
 import { resolveDefaultPluginRoot } from "../smoke/copilot-session-env.js";
@@ -86,6 +87,22 @@ import { getCopilotConfigDir } from "../utils/config-dir.js";
 import { getWorkerProviderLiveness } from "./worker-provider-liveness.js";
 import { isProcessIdentityLive } from "../platform/process-utils.js";
 import { activateTeamInstanceUnderLock, assertTeamInstanceUnderLock, buildTeamInstancePendingConfig, createTeamInstanceBinding, disposeTeamInstanceUnderLock, releaseFailedStartupReservationUnderLock, reserveTeamInstanceUnderLock, retryTeamInstanceDisposal, TeamInstanceError, withTeamInstanceLifecycleLock, } from "./team-instance.js";
+/**
+ * The SDK worker's model: an explicit `sdk.model` as is (the catalogue is not
+ * read), else the descriptor model, whose tier alias resolves against the
+ * plan's catalogue (read once per process); none offered means no model.
+ */
+export async function resolveSdkWorkerModel(sdkModel, model) {
+    if (sdkModel !== undefined)
+        return sdkModel;
+    if (!model)
+        return undefined;
+    const catalogue = copilotTierModels(model).length > 0 ? await teamCopilotCatalogue() : null;
+    const resolved = resolveCopilotModel(model, catalogue);
+    if (!resolved.model && resolved.tier)
+        warnUnavailableCopilotTier(resolved.tier);
+    return resolved.model;
+}
 let runtimeOwnerRecoveryClient;
 /** Runtime integration point; production may bind its owner client after startup. */
 export function setRuntimeOwnerRecoveryClient(client) {
@@ -1387,6 +1404,15 @@ export function resolveSdkDefaultWorktreeMode(input) {
  * AI credits, and the Copilot runtime floors `--max-ai-credits` at 30.
  */
 export const DEFAULT_SDK_MAX_CREDITS_PER_WORKER = 50;
+export function needsTeamCopilotCatalogue(assignments, sdkModelPinned) {
+    if (sdkModelPinned)
+        return false;
+    for (const a of assignments) {
+        if (a.agentType === "copilot" && typeof a.model === "string" && copilotTierModels(a.model).length > 0)
+            return true;
+    }
+    return false;
+}
 export function resolveSdkTeamSettings(pluginCfg) {
     const sdk = pluginCfg.team?.sdk ?? {};
     const envNumber = (key) => {
@@ -1480,10 +1506,7 @@ async function spawnSdkV2Worker(opts, sdk) {
             startupFailureReason: `sdk_copilot_shim_unresolved:${binary}`,
         };
     }
-    const descriptorModel = opts.launchDescriptor.model
-        ? toCopilotModelId(opts.launchDescriptor.model)
-        : undefined;
-    const model = sdk.model ?? descriptorModel;
+    const model = await resolveSdkWorkerModel(sdk.model, opts.launchDescriptor.model);
     const workerCwd = opts.workerCwd ?? opts.cwd;
     const launch = await launchSdkHost({
         leaderCwd: opts.cwd,
@@ -4614,6 +4637,12 @@ export async function startTeamV2(config) {
             .join(";");
         throw new Error(`cli_binary_preflight_failed:${missing}`);
     }
+    // Read once per team start, before the lifecycle lock (a live read can take
+    // up to FETCH_DEADLINE_MS), and only when a Copilot worker names a tier
+    // alias: the alias then resolves to the first tier model the plan offers.
+    const copilotCatalogue = needsTeamCopilotCatalogue(startupAssignments.values(), sdkMode && !!sdkSettings?.model)
+        ? await teamCopilotCatalogue()
+        : null;
     // Clean up any stale reservations from dead processes BEFORE acquiring the lifecycle lock.
     // This prevents nested lock acquisition and ensures old dead-owner reservations don't block startup.
     try {
@@ -4750,6 +4779,7 @@ export async function startTeamV2(config) {
                     resolvedBinaryPath: binary,
                     model: assignment.model,
                     reasoningEffort: assignment.reasoningEffort,
+                    copilotCatalogue,
                     ...(permissionFlags.length > 0
                         ? { extraFlags: permissionFlags }
                         : {}),
