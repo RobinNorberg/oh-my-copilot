@@ -4,6 +4,10 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ## [Unreleased]
 
+# oh-my-copilot v5.29.2
+
+## [5.29.2] - 2026-11-18
+
 ### Added
 
 - **Microsoft MAI Code 2 models in the Copilot tiers.** `sonnet` now starts with `mai-code-2` (then `claude-sonnet-5.5`, `mai-code-2-flash`), `haiku` with `mai-code-2-flash` (then `claude-haiku-5.5`, `gpt-6-luna`), and `opus` gains `mai-code-2` as its last fallback. `knownModels` adds the ids a live `listModels()` showed on 2026-11-18 (`mai-code-2`, `mai-code-2-flash`, `mai-code-1.1-flash`, `claude-sonnet-5`, `gpt-5.6-luna`, `gpt-6.1-terra`, `grok-4.7`, `grok-4.6`, `kimi-k3`, `gemini-4-hydrogen`) plus `claude-fable-5.2` and `gpt-6.2-astra`, whose ids follow the naming pattern but were not confirmed on that account. The generated `copilot/agents/*.md` carry the new `models:` lists. See "Copilot model tiers" in docs/REFERENCE.md.
