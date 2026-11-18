@@ -470,7 +470,7 @@ export function factoryRunCommand(deps = defaultFactoryRunDeps) {
         .option('--allow-secret-shapes', 'Accept the secret-shaped content (the key or token shapes, by path and kind, the park named) that parked a lane commit at secret-shaped-content, for that lane commit only: you checked they are test fixtures, not real secrets; a new path or kind parks again')
         .option('--parallel <n>', 'With --next and factory.run.maxConcurrent above 1 (factory.run.layout "private"): run up to min(n, maxConcurrent) runs at once, each its own `omg factory run --next` process; a slot is refilled when a run ends, until nothing is runnable or Ctrl+C', integerOption(1, 64))
         .option('--max-requests <n>', 'Start no further lane in this run once its lanes recorded n premium requests, or when a lane\'s usage is unknown (the run parks at budget); the lane in flight when the cap is reached finishes, so the run can end above n by that one lane', integerOption(1, 10_000))
-        .option('--model <id>', 'Start every lane (implement, review, fix, ci-fix) on this Copilot model id instead of factory.run.laneModel or the Copilot default model; an id not in the known model list is refused')
+        .option('--model <id>', 'Start every lane (implement, review, fix, ci-fix, conflict-fix) on this Copilot model id instead of factory.run.laneModel or the Copilot default model; an id not in the known model list is refused')
         .option('--json', 'JSON output')
         .action((issueRaw, o) => factoryGuarded(Boolean(o.json), async () => {
         if (o.next && issueRaw !== undefined)

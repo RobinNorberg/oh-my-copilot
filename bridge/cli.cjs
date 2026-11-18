@@ -127364,6 +127364,7 @@ function humanReviewShapeProblem(s) {
   if (s.testDeltaExcusedHead !== void 0 && (!isStr2(s.testDeltaExcusedHead) || !HEX409.test(s.testDeltaExcusedHead))) return "testDeltaExcusedHead";
   if (s.plainHeadRan !== void 0 && s.plainHeadRan !== true) return "plainHeadRan";
   if (s.gateTreeCopy !== void 0 && s.gateTreeCopy !== true) return "gateTreeCopy";
+  if (s.laneModel !== void 0 && s.laneModel !== null && !isStr2(s.laneModel)) return "laneModel";
   if (s.checkoutAdmin !== void 0 && (!isStr2(s.checkoutAdmin) || !/^[A-Za-z0-9._-]+$/.test(s.checkoutAdmin) || s.checkoutAdmin === "." || s.checkoutAdmin === "..")) return "checkoutAdmin";
   const cal = s.gateCalibration;
   if (cal !== void 0 && (typeof cal !== "object" || cal === null || Array.isArray(cal) || !Object.entries(cal).every(([k, v]) => {
@@ -139001,6 +139002,13 @@ var init_engine = __esm({
         if (tookOver) notes.push(`took over from dead owner pid ${tookOver.pid} on ${tookOver.hostname}`);
         if (s.gate) notes.push(`rerun after awaiting-human: ${s.gate.name}`);
         if (s.gate) this.resumedFromPark = true;
+        const nowModel = this.o.limits.laneModel ?? null;
+        if (s.laneModel !== void 0 && s.laneModel !== nowModel) {
+          const what = (m) => m ?? "Copilot's default model";
+          const note = `lane model changed on resume: the run's first lane used ${what(s.laneModel)}, this invocation starts lanes on ${what(nowModel)}`;
+          notes.push(note);
+          this.o.warn?.(`omg factory run: ${note}`);
+        }
         const { gate: _gate, ...rest } = s;
         const history = notes.map((note) => ({ at, from: s.phase, to: s.phase, note }));
         return { ...rest, retries: s.gate ? {} : s.retries, updatedAt: at, history: [...s.history, ...history] };
@@ -142532,7 +142540,7 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
         try {
           this.ledger.setBaseline(id, before);
           if (userBefore) this.ledger.setBaseline(userBaselineKey(id), userBefore);
-          this.save((s) => ({ ...s, lanes: [...s.lanes, record3] }));
+          this.save((s) => ({ ...s, lanes: [...s.lanes, record3], ...s.laneModel === void 0 ? { laneModel: model ?? null } : {} }));
         } catch (error62) {
           settleHeal(0);
           throw error62;
@@ -142626,6 +142634,9 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
         const usage = usageOf(result);
         settleHeal(usage.credits);
         const status = stalled ? "stalled" : result.state === "completed" ? "completed" : result.state === "cancelled" ? "cancelled" : "failed";
+        const modelMismatch = model && result.model && result.model !== model ? `lane ${id} asked for model ${model}, the session reported ${result.model}` : void 0;
+        if (modelMismatch) this.save((x) => ({ ...x, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: modelMismatch }] }));
+        const laneNote = [result.error, modelMismatch].filter(Boolean).join("; ");
         this.updateLane(id, {
           status,
           usage,
@@ -142633,7 +142644,7 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
           ...result.headSha ? { endSha: result.headSha } : {},
           // The private layout keeps the engine's own record of the worktree it made (acceptWriteLane compares the backend's with it).
           ...result.worktree && !laneTree2 ? { worktree: result.worktree } : {},
-          ...result.error ? { note: result.error } : {},
+          ...laneNote ? { note: laneNote } : {},
           ...result.sandbox ? { sandbox: result.sandbox } : {},
           ...result.model ? { model: result.model } : {}
         });
@@ -150379,10 +150390,13 @@ function computeTotals(issues) {
     wallMs: sum((i) => i.wallMs)
   };
 }
+function laneModelMismatches(issues, laneModel) {
+  return issues.flatMap((issue2) => issue2.lanes.filter((l) => l.model && l.model !== laneModel).map((l) => `#${issue2.id} lane ${l.id}: asked for model ${laneModel}, the session reported ${l.model}`));
+}
 function modelLabel(m) {
   if (!m || m.id === null) return "default";
   const x = m.multiplier !== null ? `${m.multiplier}x` : null;
-  return m.explicit ? `${m.id} (--model${x ? `, ${x}` : ""})` : `default ${m.id}${x ? ` (${x})` : ""}`;
+  return m.explicit ? `${m.id} (${m.source === "user config" ? "user config" : "--model"}${x ? `, ${x}` : ""})` : `default ${m.id}${x ? ` (${x})` : ""}`;
 }
 function renderResultsMarkdown(r) {
   const t = r.totals;
@@ -150465,7 +150479,7 @@ function readBenchResults(path30) {
   }
   if (r.mode !== "fake" && r.mode !== "live") throw new Error(`${path30}: mode ${JSON.stringify(r.mode)} is neither fake nor live`);
   const m = r.model;
-  if (m !== void 0 && m !== null && !(typeof m === "object" && (m.id === null || typeof m.id === "string") && (m.multiplier === null || isNum(m.multiplier)) && typeof m.explicit === "boolean")) {
+  if (m !== void 0 && m !== null && !(typeof m === "object" && (m.id === null || typeof m.id === "string") && (m.multiplier === null || isNum(m.multiplier)) && typeof m.explicit === "boolean" && (m.source === void 0 || m.source === "--model" || m.source === "user config"))) {
     throw new Error(`${path30}: model is neither null nor { id, multiplier, explicit }`);
   }
   if (typeof r.startedAt !== "string" || !isNum(r.fixtureVersion)) throw new Error(`${path30}: results without startedAt or fixtureVersion`);
@@ -150795,13 +150809,23 @@ async function runBench(o) {
   const subset = benchSubset(o.issues);
   const selected = BENCH_ISSUES.filter((i) => !subset || subset.includes(i.id));
   const inScope = (id) => selected.some((i) => i.id === id);
+  const trustedUser = o.trustedUser !== void 0 ? o.trustedUser : userConfigLayers().trustedUser;
   let laneModel;
+  let laneModelSource;
   try {
-    laneModel = o.model === void 0 ? void 0 : checkLaneModel(o.model, "--model");
+    const userLaneModel = trustedUser?.factory?.run?.laneModel;
+    if (o.model !== void 0) {
+      laneModel = checkLaneModel(o.model, "--model");
+      laneModelSource = "--model";
+    } else if (userLaneModel !== void 0) {
+      laneModel = checkLaneModel(userLaneModel, "user config: factory.run.laneModel");
+      laneModelSource = "user config";
+    }
   } catch (error62) {
     throw new BenchUsageError(error62 instanceof Error ? error62.message : String(error62));
   }
-  let modelUsed = laneModel ? { id: laneModel, multiplier: null, explicit: true } : null;
+  const modelFlag = laneModelSource === "user config" ? "factory.run.laneModel" : "--model";
+  let modelUsed = laneModel && laneModelSource ? { id: laneModel, multiplier: null, explicit: true, source: laneModelSource } : null;
   if (o.mode === "live") {
     if (o.maxRequests === void 0) throw new BenchUsageError("--live needs --max-requests <n>: the bench never spends premium requests without an explicit cap");
   } else if (parallel !== 1) {
@@ -150878,7 +150902,6 @@ async function runBench(o) {
       }
     }
   } else {
-    const trustedUser = o.trustedUser !== void 0 ? o.trustedUser : userConfigLayers().trustedUser;
     const baseConfig = fixtureBaseConfig(meta3);
     const sandboxRefusal = liveSandboxRefusal(trustedUser, baseConfig);
     if (sandboxRefusal) throw new BenchUsageError(sandboxRefusal);
@@ -150892,9 +150915,9 @@ async function runBench(o) {
     config2 = loadFactoryForgeConfig(factoryGuardExec(defaultExec), meta3.root, meta3.base, trustedUser, void 0).config;
     if (config2.kind !== "local") throw new BenchUsageError(`the fixture resolves to the ${config2.kind} forge (your user config's factory.forge?); the bench needs the local forge`);
     const model = await (o.modelProbe ?? ((m) => probeLaneModel((0, import_node_path49.join)(benchDir, "model-probe"), void 0, m)))(laneModel);
-    if (laneModel && !(model.explicit && model.model === laneModel)) throw new BenchUsageError(`the model probe did not check --model ${laneModel} (it reported ${model.model ?? "no model"}); the bench does not start an unchecked --model`);
-    modelUsed = { id: model.model, multiplier: model.multiplier, explicit: Boolean(model.explicit) };
-    const modelLine = `lanes' ${model.explicit ? "Copilot model (--model)" : "default Copilot model"}: ${model.model ?? "unknown"}; premium multiplier: ${model.multiplier ?? "unknown"} (${model.detail})`;
+    if (laneModel && !(model.explicit && model.model === laneModel)) throw new BenchUsageError(`the model probe did not check ${modelFlag} ${laneModel} (it reported ${model.model ?? "no model"}); the bench does not start an unchecked ${modelFlag}`);
+    modelUsed = { id: model.model, multiplier: model.multiplier, explicit: Boolean(model.explicit), ...laneModelSource ? { source: laneModelSource } : {} };
+    const modelLine = `lanes' ${model.explicit ? `Copilot model (${modelFlag})` : "default Copilot model"}: ${model.model ?? "unknown"}; premium multiplier: ${model.multiplier ?? "unknown"} (${model.detail})`;
     (o.announce ?? log3)(modelLine);
     notes.push(modelLine);
     if (model.multiplier === null) notes.push("the multiplier is unknown: a lane without session.shutdown totals counts its user calls once each, which undercounts a model above 1x");
@@ -151021,6 +151044,7 @@ async function runBench(o) {
   const mirror = config2.repo.url;
   const issues = [];
   for (const issue2 of selected) issues.push(await scoreIssue(issue2, { meta: meta3, benchDir, mirror, runner, buckets, log: log3, error: errors.get(issue2.id) }));
+  if (laneModel) notes.push(...laneModelMismatches(issues, laneModel));
   const results = {
     schemaVersion: BENCH_RESULTS_SCHEMA_VERSION,
     kind: BENCH_RESULTS_KIND,
@@ -152085,7 +152109,7 @@ function printOutcome2(json3, outcome, next) {
 function factoryRunCommand(deps = defaultFactoryRunDeps) {
   const exec3 = factoryGuardExec(deps.exec);
   const run3 = new Command("run");
-  run3.description("Experimental: drive one issue through implement -> draft PR -> independent review / fix rounds -> prepare -> CI gates, then park for the human merge").argument("[issue]", "the item number: a GitHub issue, an Azure DevOps work item or a local backlog item").option("--next", "Run the next runnable item (omg factory check order: priority, then id); exit 0 when nothing is runnable").option("--parent <spec>", "With --next: pick among the children of this spec item instead of factory.intake.source").option("--dry-run", "Resolve the issue and plan and print the next step; no state, lanes or pushes").option("--allow-gate-change", "Local forge: accept the one change to the local gate's definition (package.json script, package-manager config or gate file) that parked the run at gate-definition-changed; a later change parks again").option("--allow-unsandboxed-lanes", "Accept, for the parked head only, that write lanes ran without the enforced sandbox (the run parked at human-review for it): you checked the threads and reviews of the PR yourself; a new head parks again").option("--allow-unsandboxed-gates", "Accept, for the parked head only, that prepare's checks and the local gate run the PR's code WITHOUT the OS sandbox, as you (the run parked at gates-unsandboxed for it): you reviewed the diff yourself; a new head parks again").option("--allow-secret-shapes", "Accept the secret-shaped content (the key or token shapes, by path and kind, the park named) that parked a lane commit at secret-shaped-content, for that lane commit only: you checked they are test fixtures, not real secrets; a new path or kind parks again").option("--parallel <n>", 'With --next and factory.run.maxConcurrent above 1 (factory.run.layout "private"): run up to min(n, maxConcurrent) runs at once, each its own `omg factory run --next` process; a slot is refilled when a run ends, until nothing is runnable or Ctrl+C', integerOption(1, 64)).option("--max-requests <n>", "Start no further lane in this run once its lanes recorded n premium requests, or when a lane's usage is unknown (the run parks at budget); the lane in flight when the cap is reached finishes, so the run can end above n by that one lane", integerOption(1, 1e4)).option("--model <id>", "Start every lane (implement, review, fix, ci-fix) on this Copilot model id instead of factory.run.laneModel or the Copilot default model; an id not in the known model list is refused").option("--json", "JSON output").action((issueRaw, o) => factoryGuarded(Boolean(o.json), async () => {
+  run3.description("Experimental: drive one issue through implement -> draft PR -> independent review / fix rounds -> prepare -> CI gates, then park for the human merge").argument("[issue]", "the item number: a GitHub issue, an Azure DevOps work item or a local backlog item").option("--next", "Run the next runnable item (omg factory check order: priority, then id); exit 0 when nothing is runnable").option("--parent <spec>", "With --next: pick among the children of this spec item instead of factory.intake.source").option("--dry-run", "Resolve the issue and plan and print the next step; no state, lanes or pushes").option("--allow-gate-change", "Local forge: accept the one change to the local gate's definition (package.json script, package-manager config or gate file) that parked the run at gate-definition-changed; a later change parks again").option("--allow-unsandboxed-lanes", "Accept, for the parked head only, that write lanes ran without the enforced sandbox (the run parked at human-review for it): you checked the threads and reviews of the PR yourself; a new head parks again").option("--allow-unsandboxed-gates", "Accept, for the parked head only, that prepare's checks and the local gate run the PR's code WITHOUT the OS sandbox, as you (the run parked at gates-unsandboxed for it): you reviewed the diff yourself; a new head parks again").option("--allow-secret-shapes", "Accept the secret-shaped content (the key or token shapes, by path and kind, the park named) that parked a lane commit at secret-shaped-content, for that lane commit only: you checked they are test fixtures, not real secrets; a new path or kind parks again").option("--parallel <n>", 'With --next and factory.run.maxConcurrent above 1 (factory.run.layout "private"): run up to min(n, maxConcurrent) runs at once, each its own `omg factory run --next` process; a slot is refilled when a run ends, until nothing is runnable or Ctrl+C', integerOption(1, 64)).option("--max-requests <n>", "Start no further lane in this run once its lanes recorded n premium requests, or when a lane's usage is unknown (the run parks at budget); the lane in flight when the cap is reached finishes, so the run can end above n by that one lane", integerOption(1, 1e4)).option("--model <id>", "Start every lane (implement, review, fix, ci-fix, conflict-fix) on this Copilot model id instead of factory.run.laneModel or the Copilot default model; an id not in the known model list is refused").option("--json", "JSON output").action((issueRaw, o) => factoryGuarded(Boolean(o.json), async () => {
     if (o.next && issueRaw !== void 0) throw new FactoryUsageError("--next takes no issue: it picks the next runnable item");
     if (o.parent !== void 0 && !o.next) throw new FactoryUsageError("--parent applies to --next");
     let parent;

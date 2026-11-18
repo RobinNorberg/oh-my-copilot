@@ -330,6 +330,8 @@ function humanReviewShapeProblem(s) {
         return 'plainHeadRan';
     if (s.gateTreeCopy !== undefined && s.gateTreeCopy !== true)
         return 'gateTreeCopy';
+    if (s.laneModel !== undefined && s.laneModel !== null && !isStr(s.laneModel))
+        return 'laneModel';
     // One admin dir name under <common>/worktrees (git makes it from the checkout's base name): no separator, nothing else.
     if (s.checkoutAdmin !== undefined && (!isStr(s.checkoutAdmin) || !/^[A-Za-z0-9._-]+$/.test(s.checkoutAdmin) || s.checkoutAdmin === '.' || s.checkoutAdmin === '..'))
         return 'checkoutAdmin';

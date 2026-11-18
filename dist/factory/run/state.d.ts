@@ -304,6 +304,13 @@ export interface FactoryRunState {
      */
     gateTreeCopy?: true;
     /**
+     * The lane model the run's first lane was asked for (factory.run.laneModel
+     * or `--model`; null: Copilot's default). Informational only: a resumed
+     * invocation with a different model gets a warning, and this value never
+     * picks the model. Optional: older state files lack it.
+     */
+    laneModel?: string | null;
+    /**
      * The name of the prepare checkout's admin dir under `<common>/worktrees/`,
      * as `worktree add` made it: a later invocation reads the checkout only
      * through that admin dir, never another one its `.git` file names.

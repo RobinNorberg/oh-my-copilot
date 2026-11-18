@@ -257,12 +257,16 @@ const pct = (r) => (r === null ? '-' : `${Math.round(r * 100)}%`);
 const secs = (ms) => `${Math.round(ms / 1000)} s`;
 /** Untrusted text (park reasons come from lane output) in one markdown table cell. */
 const cell = (s) => s.replace(/[\r\n]+/g, ' ').replace(/\|/g, '\\|').replace(/[<>]/g, (c) => (c === '<' ? '&lt;' : '&gt;')).slice(0, 160);
+/** Lanes whose session reported another model than the bench's lane model (a run state keeps the reported one). */
+export function laneModelMismatches(issues, laneModel) {
+    return issues.flatMap((issue) => issue.lanes.filter((l) => l.model && l.model !== laneModel).map((l) => `#${issue.id} lane ${l.id}: asked for model ${laneModel}, the session reported ${l.model}`));
+}
 /** The results' lane model for a header: `mai-code-2 (--model, 1x)`, `default gpt-x (1x)`, or `default` when not known. */
 export function modelLabel(m) {
     if (!m || m.id === null)
         return 'default';
     const x = m.multiplier !== null ? `${m.multiplier}x` : null;
-    return m.explicit ? `${m.id} (--model${x ? `, ${x}` : ''})` : `default ${m.id}${x ? ` (${x})` : ''}`;
+    return m.explicit ? `${m.id} (${m.source === 'user config' ? 'user config' : '--model'}${x ? `, ${x}` : ''})` : `default ${m.id}${x ? ` (${x})` : ''}`;
 }
 export function renderResultsMarkdown(r) {
     const t = r.totals;
@@ -372,7 +376,7 @@ export function readBenchResults(path) {
     if (r.mode !== 'fake' && r.mode !== 'live')
         throw new Error(`${path}: mode ${JSON.stringify(r.mode)} is neither fake nor live`);
     const m = r.model;
-    if (m !== undefined && m !== null && !(typeof m === 'object' && (m.id === null || typeof m.id === 'string') && (m.multiplier === null || isNum(m.multiplier)) && typeof m.explicit === 'boolean')) {
+    if (m !== undefined && m !== null && !(typeof m === 'object' && (m.id === null || typeof m.id === 'string') && (m.multiplier === null || isNum(m.multiplier)) && typeof m.explicit === 'boolean' && (m.source === undefined || m.source === '--model' || m.source === 'user config'))) {
         throw new Error(`${path}: model is neither null nor { id, multiplier, explicit }`);
     }
     if (typeof r.startedAt !== 'string' || !isNum(r.fixtureVersion))

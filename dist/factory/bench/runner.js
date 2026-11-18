@@ -54,7 +54,7 @@ import { fillPlaceholders, readFixtureMeta, removeBenchDir } from './fixture.js'
 import { multiplierRefusal, probeLaneModel } from './model-probe.js';
 import { BENCH_ISSUES } from './seed/issues.js';
 import { ACCEPTANCE_TEST_PATH, BENCH_FIXTURE_VERSION } from './seed/project.js';
-import { BENCH_RESULTS_KIND, BENCH_RESULTS_SCHEMA_VERSION, computeTotals, issuePasses, laneUsage, outcomeOf, phaseTimes, renderResultsMarkdown, trapContainment, trapVerdict, } from './score.js';
+import { BENCH_RESULTS_KIND, BENCH_RESULTS_SCHEMA_VERSION, computeTotals, issuePasses, laneModelMismatches, laneUsage, outcomeOf, phaseTimes, renderResultsMarkdown, trapContainment, trapVerdict, } from './score.js';
 /** The fewest premium requests a run spends (an implement and a review lane): the headroom a live start needs. */
 export const MIN_RUN_REQUESTS = 2;
 export const DEFAULT_BENCH_MAX_MINUTES = 240;
@@ -380,15 +380,29 @@ export async function runBench(o) {
     const subset = benchSubset(o.issues);
     const selected = BENCH_ISSUES.filter((i) => !subset || subset.includes(i.id));
     const inScope = (id) => selected.some((i) => i.id === id);
+    const trustedUser = o.trustedUser !== undefined ? o.trustedUser : userConfigLayers().trustedUser;
+    // The effective lane model: --model, else the trusted user config's factory.run.laneModel (what a live
+    // `omg factory run` child reads itself). The bench probes it and passes it to every child as --model,
+    // so the probe and the lanes cannot disagree.
     let laneModel;
+    let laneModelSource;
     try {
-        laneModel = o.model === undefined ? undefined : checkLaneModel(o.model, '--model');
+        const userLaneModel = trustedUser?.factory?.run?.laneModel;
+        if (o.model !== undefined) {
+            laneModel = checkLaneModel(o.model, '--model');
+            laneModelSource = '--model';
+        }
+        else if (userLaneModel !== undefined) {
+            laneModel = checkLaneModel(userLaneModel, 'user config: factory.run.laneModel');
+            laneModelSource = 'user config';
+        }
     }
     catch (error) {
         throw new BenchUsageError(error instanceof Error ? error.message : String(error));
     }
+    const modelFlag = laneModelSource === 'user config' ? 'factory.run.laneModel' : '--model';
     /** The lanes' model as the results record it (null: not named and not probed). */
-    let modelUsed = laneModel ? { id: laneModel, multiplier: null, explicit: true } : null;
+    let modelUsed = laneModel && laneModelSource ? { id: laneModel, multiplier: null, explicit: true, source: laneModelSource } : null;
     if (o.mode === 'live') {
         if (o.maxRequests === undefined)
             throw new BenchUsageError('--live needs --max-requests <n>: the bench never spends premium requests without an explicit cap');
@@ -457,7 +471,6 @@ export async function runBench(o) {
         }
     }
     else {
-        const trustedUser = o.trustedUser !== undefined ? o.trustedUser : userConfigLayers().trustedUser;
         const baseConfig = fixtureBaseConfig(meta);
         const sandboxRefusal = liveSandboxRefusal(trustedUser, baseConfig);
         if (sandboxRefusal)
@@ -475,9 +488,9 @@ export async function runBench(o) {
         const model = await (o.modelProbe ?? ((m) => probeLaneModel(join(benchDir, 'model-probe'), undefined, m)))(laneModel);
         // A probe that ignored the explicit model must not pass its default off as it.
         if (laneModel && !(model.explicit && model.model === laneModel))
-            throw new BenchUsageError(`the model probe did not check --model ${laneModel} (it reported ${model.model ?? 'no model'}); the bench does not start an unchecked --model`);
-        modelUsed = { id: model.model, multiplier: model.multiplier, explicit: Boolean(model.explicit) };
-        const modelLine = `lanes' ${model.explicit ? 'Copilot model (--model)' : 'default Copilot model'}: ${model.model ?? 'unknown'}; premium multiplier: ${model.multiplier ?? 'unknown'} (${model.detail})`;
+            throw new BenchUsageError(`the model probe did not check ${modelFlag} ${laneModel} (it reported ${model.model ?? 'no model'}); the bench does not start an unchecked ${modelFlag}`);
+        modelUsed = { id: model.model, multiplier: model.multiplier, explicit: Boolean(model.explicit), ...(laneModelSource ? { source: laneModelSource } : {}) };
+        const modelLine = `lanes' ${model.explicit ? `Copilot model (${modelFlag})` : 'default Copilot model'}: ${model.model ?? 'unknown'}; premium multiplier: ${model.multiplier ?? 'unknown'} (${model.detail})`;
         (o.announce ?? log)(modelLine);
         notes.push(modelLine);
         if (model.multiplier === null)
@@ -628,6 +641,8 @@ export async function runBench(o) {
     const issues = [];
     for (const issue of selected)
         issues.push(await scoreIssue(issue, { meta, benchDir, mirror, runner, buckets, log, error: errors.get(issue.id) }));
+    if (laneModel)
+        notes.push(...laneModelMismatches(issues, laneModel));
     const results = {
         schemaVersion: BENCH_RESULTS_SCHEMA_VERSION,
         kind: BENCH_RESULTS_KIND,

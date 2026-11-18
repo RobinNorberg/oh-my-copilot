@@ -65326,6 +65326,7 @@ function humanReviewShapeProblem(s) {
   if (s.testDeltaExcusedHead !== void 0 && (!isStr2(s.testDeltaExcusedHead) || !HEX409.test(s.testDeltaExcusedHead))) return "testDeltaExcusedHead";
   if (s.plainHeadRan !== void 0 && s.plainHeadRan !== true) return "plainHeadRan";
   if (s.gateTreeCopy !== void 0 && s.gateTreeCopy !== true) return "gateTreeCopy";
+  if (s.laneModel !== void 0 && s.laneModel !== null && !isStr2(s.laneModel)) return "laneModel";
   if (s.checkoutAdmin !== void 0 && (!isStr2(s.checkoutAdmin) || !/^[A-Za-z0-9._-]+$/.test(s.checkoutAdmin) || s.checkoutAdmin === "." || s.checkoutAdmin === "..")) return "checkoutAdmin";
   const cal = s.gateCalibration;
   if (cal !== void 0 && (typeof cal !== "object" || cal === null || Array.isArray(cal) || !Object.entries(cal).every(([k, v]) => {
@@ -75972,6 +75973,13 @@ var init_engine = __esm({
         if (tookOver) notes.push(`took over from dead owner pid ${tookOver.pid} on ${tookOver.hostname}`);
         if (s.gate) notes.push(`rerun after awaiting-human: ${s.gate.name}`);
         if (s.gate) this.resumedFromPark = true;
+        const nowModel = this.o.limits.laneModel ?? null;
+        if (s.laneModel !== void 0 && s.laneModel !== nowModel) {
+          const what = (m) => m ?? "Copilot's default model";
+          const note = `lane model changed on resume: the run's first lane used ${what(s.laneModel)}, this invocation starts lanes on ${what(nowModel)}`;
+          notes.push(note);
+          this.o.warn?.(`omg factory run: ${note}`);
+        }
         const { gate: _gate, ...rest } = s;
         const history = notes.map((note) => ({ at, from: s.phase, to: s.phase, note }));
         return { ...rest, retries: s.gate ? {} : s.retries, updatedAt: at, history: [...s.history, ...history] };
@@ -79503,7 +79511,7 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
         try {
           this.ledger.setBaseline(id, before);
           if (userBefore) this.ledger.setBaseline(userBaselineKey(id), userBefore);
-          this.save((s) => ({ ...s, lanes: [...s.lanes, record3] }));
+          this.save((s) => ({ ...s, lanes: [...s.lanes, record3], ...s.laneModel === void 0 ? { laneModel: model ?? null } : {} }));
         } catch (error62) {
           settleHeal(0);
           throw error62;
@@ -79597,6 +79605,9 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
         const usage = usageOf(result);
         settleHeal(usage.credits);
         const status = stalled ? "stalled" : result.state === "completed" ? "completed" : result.state === "cancelled" ? "cancelled" : "failed";
+        const modelMismatch = model && result.model && result.model !== model ? `lane ${id} asked for model ${model}, the session reported ${result.model}` : void 0;
+        if (modelMismatch) this.save((x) => ({ ...x, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: modelMismatch }] }));
+        const laneNote = [result.error, modelMismatch].filter(Boolean).join("; ");
         this.updateLane(id, {
           status,
           usage,
@@ -79604,7 +79615,7 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
           ...result.headSha ? { endSha: result.headSha } : {},
           // The private layout keeps the engine's own record of the worktree it made (acceptWriteLane compares the backend's with it).
           ...result.worktree && !laneTree2 ? { worktree: result.worktree } : {},
-          ...result.error ? { note: result.error } : {},
+          ...laneNote ? { note: laneNote } : {},
           ...result.sandbox ? { sandbox: result.sandbox } : {},
           ...result.model ? { model: result.model } : {}
         });

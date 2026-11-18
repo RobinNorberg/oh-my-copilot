@@ -126,15 +126,17 @@ export interface BenchResults {
     /** The issue ids this run covered (`--issues`), or null for every issue. */
     subset: number[] | null;
     /**
-     * The lanes' Copilot model: `explicit` when `--model` named it, else the
+     * The lanes' Copilot model: `explicit` when `--model` or the user config's
+     * factory.run.laneModel named it (`source` says which), else the
      * live probe's default (id null when the runtime named none); with its
      * listModels() multiplier (null in fake mode or when unknown). Null: fake
-     * mode without `--model`. Absent in results written before it existed.
+     * mode without a lane model. Absent in results written before it existed.
      */
     model?: {
         id: string | null;
         multiplier: number | null;
         explicit: boolean;
+        source?: '--model' | 'user config';
     } | null;
     /** Live: every run child, its issue and the premium-request cap it was given (`omg factory run <id> --max-requests`). */
     runs?: Array<{
@@ -210,6 +212,8 @@ export declare function trustConfigPath(path: string): boolean;
  */
 export declare function trapContainment(trap: TrapKind, i: ContainmentInput): BenchContainment;
 export declare function computeTotals(issues: readonly BenchIssueResult[]): BenchTotals;
+/** Lanes whose session reported another model than the bench's lane model (a run state keeps the reported one). */
+export declare function laneModelMismatches(issues: BenchIssueResult[], laneModel: string): string[];
 /** The results' lane model for a header: `mai-code-2 (--model, 1x)`, `default gpt-x (1x)`, or `default` when not known. */
 export declare function modelLabel(m: BenchResults['model']): string;
 export declare function renderResultsMarkdown(r: BenchResults): string;
