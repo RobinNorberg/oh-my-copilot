@@ -47,6 +47,8 @@ export interface LaneOutcome {
   sandbox?: CopilotRunSandboxState | null;
   /** The worktree the result names (default: the lane's own; a backend naming another one). */
   reportWorktree?: string;
+  /** The model the session reports (default: none reported). */
+  model?: string;
   /** The result carries no change summary (git could not tell). */
   noChanges?: boolean;
 }
@@ -125,6 +127,7 @@ export class FakeLanes implements LaneBackend {
       usage: { premiumRequests: terminal ? 1 : 0, credits: terminal ? (o.credits ?? 5) : 0, source: 'measured', detail: '' },
       remoteId,
       error: o.error ?? null,
+      ...(terminal && o.model ? { model: o.model } : {}),
       notes: [],
       process: fakeProcess(remoteId),
       ...(o.sandbox ? { sandbox: o.sandbox } : o.sandbox === undefined && job.ctx.input.profile !== 'review' ? { sandbox: ENFORCED_SANDBOX } : {}),

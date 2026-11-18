@@ -1835,6 +1835,14 @@ class FactoryEngine {
             notes.push(`rerun after awaiting-human: ${s.gate.name}`);
         if (s.gate)
             this.resumedFromPark = true;
+        // The recorded model is informational: this invocation's laneModel (user config / --model) still picks the lanes' model.
+        const nowModel = this.o.limits.laneModel ?? null;
+        if (s.laneModel !== undefined && s.laneModel !== nowModel) {
+            const what = (m) => m ?? "Copilot's default model";
+            const note = `lane model changed on resume: the run's first lane used ${what(s.laneModel)}, this invocation starts lanes on ${what(nowModel)}`;
+            notes.push(note);
+            this.o.warn?.(`omg factory run: ${note}`);
+        }
         const { gate: _gate, ...rest } = s;
         const history = notes.map((note) => ({ at, from: s.phase, to: s.phase, note }));
         // A rerun after a gate gets its retries back for the phase it re-evaluates.
@@ -5973,13 +5981,15 @@ class FactoryEngine {
         }
         this.ledger.setRecheck(undefined);
         const startedAt = this.iso();
-        const record = { id, kind, startSha: startRef, status: 'running', maxCredits: cap.cap, startedAt, ...(laneTree ? { worktree: laneTree } : {}) };
+        const model = this.o.limits.laneModel;
+        const record = { id, kind, startSha: startRef, status: 'running', maxCredits: cap.cap, startedAt, ...(model ? { model } : {}), ...(laneTree ? { worktree: laneTree } : {}) };
         // The baseline is persisted before the lane exists, so a lost lane or a resume compares against it.
         try {
             this.ledger.setBaseline(id, before);
             if (userBefore)
                 this.ledger.setBaseline(userBaselineKey(id), userBefore);
-            this.save((s) => ({ ...s, lanes: [...s.lanes, record] }));
+            // The first lane's model is kept for the resume warning only (informational: it never picks the model).
+            this.save((s) => ({ ...s, lanes: [...s.lanes, record], ...(s.laneModel === undefined ? { laneModel: model ?? null } : {}) }));
         }
         catch (error) {
             // No lane started: the heal reservation is released before the step fails.
@@ -5991,6 +6001,8 @@ class FactoryEngine {
             ({ remoteId } = await this.o.lanes.start({
                 laneId: id, cwd: this.o.root, baseRef: startRef, prompt, profile, timeoutMs: this.o.limits.laneTimeoutMs, maxCredits: cap.cap, ledgerTag: { role: kind, run: runSlug(this.key) },
                 ...(profile === 'write' ? { engineCommits: true } : {}),
+                // factory.run.laneModel / --model: every lane kind (implement, review, fix, ci-fix, conflict-fix) starts on it.
+                ...(model ? { model } : {}),
                 ...(priv && laneTree ? { worktree: { path: laneTree, commonGitDir: priv.repo.gitDir }, jobRoot: priv.layout.jobs, deniedPaths: priv.deniedFor(laneTree), beforeHostGit: () => priv.problem() } : {}),
             }));
         }
@@ -6082,6 +6094,11 @@ class FactoryEngine {
         const usage = usageOf(result);
         settleHeal(usage.credits);
         const status = stalled ? 'stalled' : result.state === 'completed' ? 'completed' : result.state === 'cancelled' ? 'cancelled' : 'failed';
+        // The session ran on another model than the one asked for: kept on the lane and in the history (the record's model is the reported one).
+        const modelMismatch = model && result.model && result.model !== model ? `lane ${id} asked for model ${model}, the session reported ${result.model}` : undefined;
+        if (modelMismatch)
+            this.save((x) => ({ ...x, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: modelMismatch }] }));
+        const laneNote = [result.error, modelMismatch].filter(Boolean).join('; ');
         this.updateLane(id, {
             status,
             usage,
@@ -6089,8 +6106,9 @@ class FactoryEngine {
             ...(result.headSha ? { endSha: result.headSha } : {}),
             // The private layout keeps the engine's own record of the worktree it made (acceptWriteLane compares the backend's with it).
             ...(result.worktree && !laneTree ? { worktree: result.worktree } : {}),
-            ...(result.error ? { note: result.error } : {}),
+            ...(laneNote ? { note: laneNote } : {}),
             ...(result.sandbox ? { sandbox: result.sandbox } : {}),
+            ...(result.model ? { model: result.model } : {}),
         });
         if (status === 'completed')
             this.save((x) => ({ ...x, lostStreak: { ...x.lostStreak, [kind]: 0 } }));

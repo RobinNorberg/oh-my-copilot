@@ -141,6 +141,20 @@ describe('omg factory run CLI', () => {
         expect(out.join('\n')).toMatch(/below the Copilot CLI minimum/);
         expect(readFactoryState(h.root, ISSUE)).toBeNull();
     });
+    it('--model: an unknown id exits 2 before anything runs; a known id starts every lane on it, over factory.run.laneModel, and status shows it', async () => {
+        lanes = new FakeLanes(h.root, []);
+        expect(await cli(deps(), String(ISSUE), '--model', 'not-a-model')).toBe(2);
+        expect(out.join('\n')).toMatch(/--model "not-a-model" is not a known Copilot model id; known ids: .*mai-code-2/);
+        expect(readFactoryState(h.root, ISSUE)).toBeNull();
+        lanes = new FakeLanes(h.root, [commitFile('a.ts'), review('approve')]);
+        const configured = deps({ limits: () => resolveFactoryRunLimits({ factory: { run: { laneModel: 'claude-sonnet-5.5' } } }, undefined) });
+        expect(await cli(configured, String(ISSUE), '--model', 'mai-code-2')).toBe(0);
+        expect(lanes.started.map((s) => s.model)).toEqual(['mai-code-2', 'mai-code-2']);
+        expect(readFactoryState(h.root, ISSUE).lanes.map((l) => l.model)).toEqual(['mai-code-2', 'mai-code-2']);
+        out = [];
+        expect(await cli(configured, 'status', String(ISSUE))).toBe(0);
+        expect(out.join('\n')).toMatch(/implement-1 completed credits \S+ model mai-code-2/);
+    }, ENGINE_FLOW_TIMEOUT_MS);
     describe('--next (shipyard ↔ factory design §3.5)', () => {
         /** Tracker items by id; #7 keeps the harness issue's title and body unless given. */
         let items;

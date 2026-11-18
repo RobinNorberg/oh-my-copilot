@@ -95,6 +95,8 @@ export class BenchFakeLanes {
             notes: [],
             process: fakeProcess(remoteId),
             ...(review ? {} : { sandbox: ENFORCED }),
+            // Like copilot_run's snapshot.model: the session runs on the model it was started with.
+            ...(job.input.model ? { model: job.input.model } : {}),
         };
     }
     async poll(remoteId) {

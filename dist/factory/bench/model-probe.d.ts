@@ -1,11 +1,14 @@
 /**
  * `omg factory bench run --live`: which Copilot model the lanes will use and
- * its premium multiplier, read before any child starts. Lanes pass no model
- * (engine.ts), so they get the runtime's default for a fresh job home with
- * only the login identity. The probe starts the runtime the same way (no
- * user profile, the session env allowlist), reads `listModels()` and the
- * current model of a new session, and ends: no prompt is ever sent, so no
- * model turn runs. Never throws: what it could not read is `null` with why.
+ * its premium multiplier, read before any child starts. Without `--model`
+ * lanes pass no model (engine.ts), so they get the runtime's default for a
+ * fresh job home with only the login identity. The probe starts the runtime
+ * the same way (no user profile, the session env allowlist), reads
+ * `listModels()` and the current model of a new session, and ends: no prompt
+ * is ever sent, so no model turn runs. With `--model <id>` it reads only
+ * `listModels()` (no session): that id's multiplier, and the ids the account
+ * offers (`offered`) so the runner can refuse an id it does not offer. Never
+ * throws: what it could not read is `null` with why.
  */
 import { type CopilotRunDeps } from '../../copilot-run/job.js';
 export interface BenchModelInfo {
@@ -15,8 +18,13 @@ export interface BenchModelInfo {
     multiplier: number | null;
     /** What was read, or why not. */
     detail: string;
+    /** The lanes' model was named (`--model`), not the runtime's default. */
+    explicit?: true;
+    /** With an explicit model: the ids listModels() offers (absent when it could not be read). */
+    offered?: string[];
 }
-export type BenchModelProbe = () => Promise<BenchModelInfo>;
+/** `model`: the explicit lane model (`--model`); absent = the runtime's default. */
+export type BenchModelProbe = (model?: string) => Promise<BenchModelInfo>;
 type ModelEntry = {
     id?: unknown;
     billing?: {
@@ -32,6 +40,6 @@ export declare function modelMultiplier(models: readonly ModelEntry[], model: st
  * `--allow-multiplier`, given after checking the default model by hand.
  */
 export declare function multiplierRefusal(info: BenchModelInfo, allow: number | undefined): string | null;
-export declare function probeLaneModel(jobRoot: string, deps?: Pick<CopilotRunDeps, 'env' | 'platform' | 'loadSdk' | 'resolveBin' | 'userConfigDir' | 'killTree'>): Promise<BenchModelInfo>;
+export declare function probeLaneModel(jobRoot: string, deps?: Pick<CopilotRunDeps, 'env' | 'platform' | 'loadSdk' | 'resolveBin' | 'userConfigDir' | 'killTree'>, requested?: string): Promise<BenchModelInfo>;
 export {};
 //# sourceMappingURL=model-probe.d.ts.map

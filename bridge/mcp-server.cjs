@@ -63674,13 +63674,14 @@ function runCreditsExceeded(state, limits) {
   const spent = runCredits(state);
   return spent >= limits.maxRunCredits ? `run spent ${spent.toFixed(2)} AI credits, at or above factory.run.maxRunCredits ${limits.maxRunCredits}` : null;
 }
-var DEFAULT_FACTORY_RUN_LIMITS;
+var DEFAULT_FACTORY_RUN_LIMITS, KNOWN_LANE_MODELS;
 var init_budget = __esm({
   "src/factory/run/budget.ts"() {
     "use strict";
     init_copilot_sdk_scenarios();
     init_job();
     init_config2();
+    init_copilot_models();
     DEFAULT_FACTORY_RUN_LIMITS = Object.freeze({
       laneMaxCredits: RUNTIME_MIN_MAX_CREDITS,
       laneTimeoutMs: 30 * 6e4,
@@ -63692,6 +63693,7 @@ var init_budget = __esm({
       maxCiFixRounds: 1,
       gatesTimeoutMs: 90 * 6e4
     });
+    KNOWN_LANE_MODELS = copilot_models_default.knownModels;
   }
 });
 
@@ -65298,7 +65300,7 @@ function shapeProblem2(s) {
   if (!Array.isArray(s.lanes) || !s.lanes.every((l) => {
     const x = l;
     const sbx = x?.sandbox;
-    return isStr2(x?.id) && isStr2(x.kind) && isStr2(x.status) && isStr2(x.startSha) && typeof x.maxCredits === "number" && (x.stopUnconfirmed === void 0 || typeof x.stopUnconfirmed === "boolean") && (x.tamperCheck === void 0 || x.tamperCheck === "clean" || x.tamperCheck === "problems" || x.tamperCheck === "skipped") && (sbx === void 0 || typeof sbx === "object" && sbx !== null && isStr2(sbx.mode) && isCount3(sbx.unsandboxedCalls) && (sbx.writeNetwork === void 0 || sbx.writeNetwork === "none" || sbx.writeNetwork === "registry"));
+    return isStr2(x?.id) && isStr2(x.kind) && isStr2(x.status) && isStr2(x.startSha) && typeof x.maxCredits === "number" && (x.stopUnconfirmed === void 0 || typeof x.stopUnconfirmed === "boolean") && (x.model === void 0 || isStr2(x.model)) && (x.tamperCheck === void 0 || x.tamperCheck === "clean" || x.tamperCheck === "problems" || x.tamperCheck === "skipped") && (sbx === void 0 || typeof sbx === "object" && sbx !== null && isStr2(sbx.mode) && isCount3(sbx.unsandboxedCalls) && (sbx.writeNetwork === void 0 || sbx.writeNetwork === "none" || sbx.writeNetwork === "registry"));
   })) return "lanes";
   if (typeof s.retries !== "object" || s.retries === null || !Object.values(s.retries).every(isCount3)) return "retries";
   if (typeof s.lostStreak !== "object" || s.lostStreak === null) return "lostStreak";
@@ -65324,6 +65326,7 @@ function humanReviewShapeProblem(s) {
   if (s.testDeltaExcusedHead !== void 0 && (!isStr2(s.testDeltaExcusedHead) || !HEX409.test(s.testDeltaExcusedHead))) return "testDeltaExcusedHead";
   if (s.plainHeadRan !== void 0 && s.plainHeadRan !== true) return "plainHeadRan";
   if (s.gateTreeCopy !== void 0 && s.gateTreeCopy !== true) return "gateTreeCopy";
+  if (s.laneModel !== void 0 && s.laneModel !== null && !isStr2(s.laneModel)) return "laneModel";
   if (s.checkoutAdmin !== void 0 && (!isStr2(s.checkoutAdmin) || !/^[A-Za-z0-9._-]+$/.test(s.checkoutAdmin) || s.checkoutAdmin === "." || s.checkoutAdmin === "..")) return "checkoutAdmin";
   const cal = s.gateCalibration;
   if (cal !== void 0 && (typeof cal !== "object" || cal === null || Array.isArray(cal) || !Object.entries(cal).every(([k, v]) => {
@@ -75970,6 +75973,13 @@ var init_engine = __esm({
         if (tookOver) notes.push(`took over from dead owner pid ${tookOver.pid} on ${tookOver.hostname}`);
         if (s.gate) notes.push(`rerun after awaiting-human: ${s.gate.name}`);
         if (s.gate) this.resumedFromPark = true;
+        const nowModel = this.o.limits.laneModel ?? null;
+        if (s.laneModel !== void 0 && s.laneModel !== nowModel) {
+          const what = (m) => m ?? "Copilot's default model";
+          const note = `lane model changed on resume: the run's first lane used ${what(s.laneModel)}, this invocation starts lanes on ${what(nowModel)}`;
+          notes.push(note);
+          this.o.warn?.(`omg factory run: ${note}`);
+        }
         const { gate: _gate, ...rest } = s;
         const history = notes.map((note) => ({ at, from: s.phase, to: s.phase, note }));
         return { ...rest, retries: s.gate ? {} : s.retries, updatedAt: at, history: [...s.history, ...history] };
@@ -79496,11 +79506,12 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
         }
         this.ledger.setRecheck(void 0);
         const startedAt = this.iso();
-        const record3 = { id, kind, startSha: startRef, status: "running", maxCredits: cap.cap, startedAt, ...laneTree2 ? { worktree: laneTree2 } : {} };
+        const model = this.o.limits.laneModel;
+        const record3 = { id, kind, startSha: startRef, status: "running", maxCredits: cap.cap, startedAt, ...model ? { model } : {}, ...laneTree2 ? { worktree: laneTree2 } : {} };
         try {
           this.ledger.setBaseline(id, before);
           if (userBefore) this.ledger.setBaseline(userBaselineKey(id), userBefore);
-          this.save((s) => ({ ...s, lanes: [...s.lanes, record3] }));
+          this.save((s) => ({ ...s, lanes: [...s.lanes, record3], ...s.laneModel === void 0 ? { laneModel: model ?? null } : {} }));
         } catch (error62) {
           settleHeal(0);
           throw error62;
@@ -79517,6 +79528,8 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
             maxCredits: cap.cap,
             ledgerTag: { role: kind, run: runSlug(this.key) },
             ...profile === "write" ? { engineCommits: true } : {},
+            // factory.run.laneModel / --model: every lane kind (implement, review, fix, ci-fix, conflict-fix) starts on it.
+            ...model ? { model } : {},
             ...priv && laneTree2 ? { worktree: { path: laneTree2, commonGitDir: priv.repo.gitDir }, jobRoot: priv.layout.jobs, deniedPaths: priv.deniedFor(laneTree2), beforeHostGit: () => priv.problem() } : {}
           }));
         } catch (error62) {
@@ -79592,6 +79605,9 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
         const usage = usageOf(result);
         settleHeal(usage.credits);
         const status = stalled ? "stalled" : result.state === "completed" ? "completed" : result.state === "cancelled" ? "cancelled" : "failed";
+        const modelMismatch = model && result.model && result.model !== model ? `lane ${id} asked for model ${model}, the session reported ${result.model}` : void 0;
+        if (modelMismatch) this.save((x) => ({ ...x, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: modelMismatch }] }));
+        const laneNote = [result.error, modelMismatch].filter(Boolean).join("; ");
         this.updateLane(id, {
           status,
           usage,
@@ -79599,8 +79615,9 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
           ...result.headSha ? { endSha: result.headSha } : {},
           // The private layout keeps the engine's own record of the worktree it made (acceptWriteLane compares the backend's with it).
           ...result.worktree && !laneTree2 ? { worktree: result.worktree } : {},
-          ...result.error ? { note: result.error } : {},
-          ...result.sandbox ? { sandbox: result.sandbox } : {}
+          ...laneNote ? { note: laneNote } : {},
+          ...result.sandbox ? { sandbox: result.sandbox } : {},
+          ...result.model ? { model: result.model } : {}
         });
         if (status === "completed") this.save((x) => ({ ...x, lostStreak: { ...x.lostStreak, [kind]: 0 } }));
         this.progress.emit(`lane-${kind}`, status === "completed" ? "ok" : "fail", `lane ${id} ${stalled ? "stalled" : result.state}, ${usage.credits.toFixed(2)} AI credits`, { ...this.fields(), lane: id, job: remoteId });

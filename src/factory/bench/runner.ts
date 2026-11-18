@@ -42,7 +42,7 @@ import { parseJsonc } from '../../utils/jsonc.js';
 import { checkEnvFor, forgeReadExec, localBase, readForgeOptions } from '../check/cli.js';
 import { checkItems, type CheckResult } from '../check/score.js';
 import { defaultPollAutoStart, pollParallel, type PollAutoStart } from '../poll.js';
-import { DEFAULT_FACTORY_RUN_LIMITS, laneRequestsUnknown } from '../run/budget.js';
+import { checkLaneModel, DEFAULT_FACTORY_RUN_LIMITS, laneRequestsUnknown } from '../run/budget.js';
 import { runFactoryEngine } from '../run/engine.js';
 import { factoryForgeOptions, loadFactoryForgeConfig } from '../run/forge-roots.js';
 import { defaultLedgerDir } from '../run/ledger.js';
@@ -57,7 +57,7 @@ import { multiplierRefusal, probeLaneModel, type BenchModelProbe } from './model
 import { BENCH_ISSUES, type BenchIssue } from './seed/issues.js';
 import { ACCEPTANCE_TEST_PATH, BENCH_FIXTURE_VERSION } from './seed/project.js';
 import {
-  BENCH_RESULTS_KIND, BENCH_RESULTS_SCHEMA_VERSION, computeTotals, issuePasses, laneUsage, outcomeOf, phaseTimes, renderResultsMarkdown, trapContainment, trapVerdict,
+  BENCH_RESULTS_KIND, BENCH_RESULTS_SCHEMA_VERSION, computeTotals, issuePasses, laneModelMismatches, laneUsage, outcomeOf, phaseTimes, renderResultsMarkdown, trapContainment, trapVerdict,
   type BenchAcceptance, type BenchIssueResult, type BenchResults,
 } from './score.js';
 
@@ -96,7 +96,14 @@ export interface BenchRunOptions {
   liveStart?: PollAutoStart;
   /** Live: usage recorded in the fixture's budget ledger (default: the ledger file; an unreadable ledger throws). */
   ledger?: (root: string) => LedgerSnapshot;
-  /** Live: the lanes' default Copilot model and multiplier (default: probeLaneModel, no model turn). */
+  /**
+   * The Copilot model every lane starts on (`--model`; a known model id):
+   * fake runs pass it to the engine, live runs pass `--model` to each
+   * `omg factory run` child. Absent: the trusted user config's
+   * factory.run.laneModel, else Copilot's default model.
+   */
+  model?: string;
+  /** Live: the lanes' Copilot model (the effective lane model, else the default) and multiplier (default: probeLaneModel, no model turn). */
   modelProbe?: BenchModelProbe;
   /** Live: the highest premium multiplier the lanes' model may have (a known one above 1 is refused without it). */
   allowMultiplier?: number;
@@ -104,7 +111,7 @@ export interface BenchRunOptions {
   announce?: (message: string) => void;
   /** The runner of the acceptance gate (default: fake plain processes; live the gate sandbox). */
   acceptanceRunner?: SandboxRunner;
-  /** Live: the trusted user config (default: userConfigLayers().trustedUser). */
+  /** The trusted user config (default: userConfigLayers().trustedUser); fake runs read only its factory.run.laneModel. */
   trustedUser?: unknown;
   /** Live: subscribe the run children to the bench's stop signal (the CLI forwards Ctrl+C). */
   signals?: (forward: (signal: NodeJS.Signals) => void) => () => void;
@@ -394,6 +401,27 @@ export async function runBench(o: BenchRunOptions): Promise<BenchRunOutput> {
   const subset = benchSubset(o.issues);
   const selected = BENCH_ISSUES.filter((i) => !subset || subset.includes(i.id));
   const inScope = (id: number) => selected.some((i) => i.id === id);
+  const trustedUser = o.trustedUser !== undefined ? o.trustedUser : userConfigLayers().trustedUser;
+  // The effective lane model: --model, else the trusted user config's factory.run.laneModel (what a live
+  // `omg factory run` child reads itself). The bench probes it and passes it to every child as --model,
+  // so the probe and the lanes cannot disagree.
+  let laneModel: string | undefined;
+  let laneModelSource: '--model' | 'user config' | undefined;
+  try {
+    const userLaneModel = (trustedUser as { factory?: { run?: { laneModel?: unknown } } } | null | undefined)?.factory?.run?.laneModel;
+    if (o.model !== undefined) {
+      laneModel = checkLaneModel(o.model, '--model');
+      laneModelSource = '--model';
+    } else if (userLaneModel !== undefined) {
+      laneModel = checkLaneModel(userLaneModel, 'user config: factory.run.laneModel');
+      laneModelSource = 'user config';
+    }
+  } catch (error) {
+    throw new BenchUsageError(error instanceof Error ? error.message : String(error));
+  }
+  const modelFlag = laneModelSource === 'user config' ? 'factory.run.laneModel' : '--model';
+  /** The lanes' model as the results record it (null: not named and not probed). */
+  let modelUsed: BenchResults['model'] = laneModel && laneModelSource ? { id: laneModel, multiplier: null, explicit: true, source: laneModelSource } : null;
   if (o.mode === 'live') {
     if (o.maxRequests === undefined) throw new BenchUsageError('--live needs --max-requests <n>: the bench never spends premium requests without an explicit cap');
   } else if (parallel !== 1) {
@@ -432,7 +460,7 @@ export async function runBench(o: BenchRunOptions): Promise<BenchRunOutput> {
       log(`#${issue.id} ${issue.slug}: running${maxRunRequests !== undefined ? ` (cap ${maxRunRequests} requests)` : ''}`);
       try {
         const out = await runFactoryEngine({
-          root: meta.root, issue: issue.id, exec: defaultExec, base: meta.base, limits: { ...DEFAULT_FACTORY_RUN_LIMITS, ...(maxRunRequests !== undefined ? { maxRunRequests } : {}) },
+          root: meta.root, issue: issue.id, exec: defaultExec, base: meta.base, limits: { ...DEFAULT_FACTORY_RUN_LIMITS, ...(maxRunRequests !== undefined ? { maxRunRequests } : {}), ...(laneModel ? { laneModel } : {}) },
           lanes: new BenchFakeLanes(meta.root, issue.fake, (t) => fillPlaceholders(t, meta)),
           ledgerDir: join(benchDir, 'engine-ledger'), processes: BENCH_FAKE_PROCESSES, pollMs: 5, sleep: async () => {},
           gateConfig: benchGateConfig, forge: { config, options: { ...factoryForgeOptions(meta.root), stateDir: join(benchDir, 'forge-state') } },
@@ -446,7 +474,6 @@ export async function runBench(o: BenchRunOptions): Promise<BenchRunOutput> {
       }
     }
   } else {
-    const trustedUser = o.trustedUser !== undefined ? o.trustedUser : userConfigLayers().trustedUser;
     const baseConfig = fixtureBaseConfig(meta);
     const sandboxRefusal = liveSandboxRefusal(trustedUser, baseConfig);
     if (sandboxRefusal) throw new BenchUsageError(sandboxRefusal);
@@ -459,8 +486,11 @@ export async function runBench(o: BenchRunOptions): Promise<BenchRunOutput> {
     config = loadFactoryForgeConfig(factoryGuardExec(defaultExec), meta.root, meta.base, trustedUser, undefined).config;
     if (config.kind !== 'local') throw new BenchUsageError(`the fixture resolves to the ${config.kind} forge (your user config's factory.forge?); the bench needs the local forge`);
     // The lanes' model and its multiplier, before anything is spent (read-only, no model turn).
-    const model = await (o.modelProbe ?? (() => probeLaneModel(join(benchDir, 'model-probe'))))();
-    const modelLine = `lanes' default Copilot model: ${model.model ?? 'unknown'}; premium multiplier: ${model.multiplier ?? 'unknown'} (${model.detail})`;
+    const model = await (o.modelProbe ?? ((m?: string) => probeLaneModel(join(benchDir, 'model-probe'), undefined, m)))(laneModel);
+    // A probe that ignored the explicit model must not pass its default off as it.
+    if (laneModel && !(model.explicit && model.model === laneModel)) throw new BenchUsageError(`the model probe did not check ${modelFlag} ${laneModel} (it reported ${model.model ?? 'no model'}); the bench does not start an unchecked ${modelFlag}`);
+    modelUsed = { id: model.model, multiplier: model.multiplier, explicit: Boolean(model.explicit), ...(laneModelSource ? { source: laneModelSource } : {}) };
+    const modelLine = `lanes' ${model.explicit ? `Copilot model (${modelFlag})` : 'default Copilot model'}: ${model.model ?? 'unknown'}; premium multiplier: ${model.multiplier ?? 'unknown'} (${model.detail})`;
     (o.announce ?? log)(modelLine);
     notes.push(modelLine);
     if (model.multiplier === null) notes.push('the multiplier is unknown: a lane without session.shutdown totals counts its user calls once each, which undercounts a model above 1x');
@@ -533,8 +563,9 @@ export async function runBench(o: BenchRunOptions): Promise<BenchRunOutput> {
         const c = capReason();
         if ('stop' in c) { stopped = c.stop; break; }
         runs.set(next, { allot: c.allot, running: true });
-        log(`#${next}: omg factory run ${next} --max-requests ${c.allot}`);
-        const p: Promise<void> = start({ root: meta.root, issue: next, args: ['--max-requests', String(c.allot)] }).then(async (r) => {
+        const args = ['--max-requests', String(c.allot), ...(laneModel ? ['--model', laneModel] : [])];
+        log(`#${next}: omg factory run ${next} ${args.join(' ')}`);
+        const p: Promise<void> = start({ root: meta.root, issue: next, args }).then(async (r) => {
           log(`#${next}: exit ${r.exitCode}: ${r.message.split('\n')[0].slice(0, 200)}`);
           runsLog.push({ issue: next, maxRequests: c.allot, exitCode: r.exitCode, message: r.message.split('\n')[0].slice(0, 300) });
           if (r.exitCode === 6) {
@@ -580,6 +611,7 @@ export async function runBench(o: BenchRunOptions): Promise<BenchRunOutput> {
   const mirror = config.repo.url;
   const issues: BenchIssueResult[] = [];
   for (const issue of selected) issues.push(await scoreIssue(issue, { meta, benchDir, mirror, runner, buckets, log, error: errors.get(issue.id) }));
+  if (laneModel) notes.push(...laneModelMismatches(issues, laneModel));
   const results: BenchResults = {
     schemaVersion: BENCH_RESULTS_SCHEMA_VERSION,
     kind: BENCH_RESULTS_KIND,
@@ -590,6 +622,7 @@ export async function runBench(o: BenchRunOptions): Promise<BenchRunOutput> {
     finishedAt: now().toISOString(),
     caps: { maxRequests: o.maxRequests ?? null, maxCredits: o.maxCredits ?? null, maxMinutes, parallel },
     subset,
+    model: modelUsed,
     ...(o.mode === 'live' ? { runs: runsLog } : {}),
     stopped,
     ledger: ledgerUsed,

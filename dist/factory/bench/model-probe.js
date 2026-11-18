@@ -1,11 +1,14 @@
 /**
  * `omg factory bench run --live`: which Copilot model the lanes will use and
- * its premium multiplier, read before any child starts. Lanes pass no model
- * (engine.ts), so they get the runtime's default for a fresh job home with
- * only the login identity. The probe starts the runtime the same way (no
- * user profile, the session env allowlist), reads `listModels()` and the
- * current model of a new session, and ends: no prompt is ever sent, so no
- * model turn runs. Never throws: what it could not read is `null` with why.
+ * its premium multiplier, read before any child starts. Without `--model`
+ * lanes pass no model (engine.ts), so they get the runtime's default for a
+ * fresh job home with only the login identity. The probe starts the runtime
+ * the same way (no user profile, the session env allowlist), reads
+ * `listModels()` and the current model of a new session, and ends: no prompt
+ * is ever sent, so no model turn runs. With `--model <id>` it reads only
+ * `listModels()` (no session): that id's multiplier, and the ids the account
+ * offers (`offered`) so the runner can refuse an id it does not offer. Never
+ * throws: what it could not read is `null` with why.
  */
 import { randomBytes } from 'node:crypto';
 import { mkdirSync, rmdirSync, rmSync, writeFileSync } from 'node:fs';
@@ -32,6 +35,20 @@ export function modelMultiplier(models, model) {
  * `--allow-multiplier`, given after checking the default model by hand.
  */
 export function multiplierRefusal(info, allow) {
+    if (info.explicit) {
+        if (!info.offered)
+            return `the lanes' Copilot model ${info.model ?? '(none)'} could not be checked against your account's models (${info.detail}); the bench does not start an unchecked --model`;
+        if (!info.model || !info.offered.includes(info.model))
+            return `--model ${info.model ?? '(none)'} is not offered to your account by Copilot; listModels() offers: ${info.offered.join(', ') || '(none)'}`;
+        if (info.multiplier === null) {
+            if (allow !== undefined)
+                return null;
+            return `the lanes' Copilot model ${info.model} has no known premium multiplier (${info.detail}); check it by hand (/model in an interactive copilot), then rerun with --allow-multiplier <its multiplier, rounded up>`;
+        }
+        if (info.multiplier <= 1 || (allow !== undefined && allow >= info.multiplier))
+            return null;
+        return `the lanes' Copilot model ${info.model} (--model) bills ${info.multiplier}x premium requests per call; rerun with --allow-multiplier ${Math.ceil(info.multiplier)} to accept it, or pick a cheaper --model`;
+    }
     if (info.multiplier === null) {
         if (allow !== undefined)
             return null;
@@ -43,8 +60,8 @@ export function multiplierRefusal(info, allow) {
         return null;
     return `the lanes' default Copilot model ${info.model ?? '(unnamed)'} bills ${info.multiplier}x premium requests per call; rerun with --allow-multiplier ${Math.ceil(info.multiplier)} to accept it, or pick a cheaper default model in Copilot`;
 }
-export async function probeLaneModel(jobRoot, deps = defaultCopilotRunDeps()) {
-    const none = (detail) => ({ model: null, multiplier: null, detail });
+export async function probeLaneModel(jobRoot, deps = defaultCopilotRunDeps(), requested) {
+    const none = (detail) => (requested ? { model: requested, multiplier: null, detail, explicit: true } : { model: null, multiplier: null, detail });
     const jobHome = join(jobRoot, `model-probe-${randomBytes(4).toString('hex')}`);
     const workDir = join(jobHome, 'work');
     let client = null;
@@ -74,6 +91,16 @@ export async function probeLaneModel(jobRoot, deps = defaultCopilotRunDeps()) {
         client = c;
         await withTimeout(c.start().catch(rethrowSdkStartError), START_TIMEOUT_MS, 'client.start()');
         const models = (await withTimeout(c.listModels(), RPC_TIMEOUT_MS, 'listModels()'));
+        if (requested) {
+            // An explicit lane model: the account's list and that id's multiplier; no session is made.
+            const list = Array.isArray(models) ? models : [];
+            const offered = list.map((m) => m.id).filter((id) => typeof id === 'string');
+            const multiplier = modelMultiplier(list, requested);
+            return {
+                model: requested, multiplier, explicit: true, offered,
+                detail: !offered.includes(requested) ? `listModels() does not offer ${requested}` : multiplier === null ? `listModels() gives no billing multiplier for ${requested}` : `listModels() billing.multiplier of ${requested}`,
+            };
+        }
         // A session with no tools and every permission refused; it is never sent a prompt.
         session = await withTimeout(c.createSession({
             onPermissionRequest: () => ({ kind: 'reject' }),

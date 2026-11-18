@@ -29,6 +29,8 @@ export interface LaneOutcome {
     sandbox?: CopilotRunSandboxState | null;
     /** The worktree the result names (default: the lane's own; a backend naming another one). */
     reportWorktree?: string;
+    /** The model the session reports (default: none reported). */
+    model?: string;
     /** The result carries no change summary (git could not tell). */
     noChanges?: boolean;
 }

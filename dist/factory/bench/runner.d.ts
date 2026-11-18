@@ -66,7 +66,14 @@ export interface BenchRunOptions {
     liveStart?: PollAutoStart;
     /** Live: usage recorded in the fixture's budget ledger (default: the ledger file; an unreadable ledger throws). */
     ledger?: (root: string) => LedgerSnapshot;
-    /** Live: the lanes' default Copilot model and multiplier (default: probeLaneModel, no model turn). */
+    /**
+     * The Copilot model every lane starts on (`--model`; a known model id):
+     * fake runs pass it to the engine, live runs pass `--model` to each
+     * `omg factory run` child. Absent: the trusted user config's
+     * factory.run.laneModel, else Copilot's default model.
+     */
+    model?: string;
+    /** Live: the lanes' Copilot model (the effective lane model, else the default) and multiplier (default: probeLaneModel, no model turn). */
     modelProbe?: BenchModelProbe;
     /** Live: the highest premium multiplier the lanes' model may have (a known one above 1 is refused without it). */
     allowMultiplier?: number;
@@ -74,7 +81,7 @@ export interface BenchRunOptions {
     announce?: (message: string) => void;
     /** The runner of the acceptance gate (default: fake plain processes; live the gate sandbox). */
     acceptanceRunner?: SandboxRunner;
-    /** Live: the trusted user config (default: userConfigLayers().trustedUser). */
+    /** The trusted user config (default: userConfigLayers().trustedUser); fake runs read only its factory.run.laneModel. */
     trustedUser?: unknown;
     /** Live: subscribe the run children to the bench's stop signal (the CLI forwards Ctrl+C). */
     signals?: (forward: (signal: NodeJS.Signals) => void) => () => void;

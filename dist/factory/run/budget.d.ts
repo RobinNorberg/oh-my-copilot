@@ -50,8 +50,22 @@ export interface FactoryRunLimits {
     maxCiFixRounds: number;
     /** Overall bound of one gates phase across its watch windows (factory.run.gatesTimeoutMinutes). */
     gatesTimeoutMs: number;
+    /**
+     * The Copilot model every lane session starts on (factory.run.laneModel in
+     * the trusted user config, or `omg factory run --model`); absent = no model
+     * is passed and the lanes run on Copilot's default model.
+     */
+    laneModel?: string;
 }
 export declare const DEFAULT_FACTORY_RUN_LIMITS: Readonly<FactoryRunLimits>;
+/** The Copilot model ids a lane model may name (src/config/copilot-models.json knownModels). */
+export declare const KNOWN_LANE_MODELS: readonly string[];
+/**
+ * A lane model id (factory.run.laneModel, `--model`): returned when it is in
+ * KNOWN_LANE_MODELS, else throws naming the known ids. An unknown id is
+ * refused, never passed on: Copilot would reject or misbill it at the first lane.
+ */
+export declare function checkLaneModel(value: unknown, source: string): string;
 export interface LoadedFactoryRunLimits {
     limits: FactoryRunLimits;
     warnings: string[];
