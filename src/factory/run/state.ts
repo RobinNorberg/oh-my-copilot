@@ -294,6 +294,13 @@ export interface FactoryRunState {
    */
   gateTreeCopy?: true;
   /**
+   * The lane model the run's first lane was asked for (factory.run.laneModel
+   * or `--model`; null: Copilot's default). Informational only: a resumed
+   * invocation with a different model gets a warning, and this value never
+   * picks the model. Optional: older state files lack it.
+   */
+  laneModel?: string | null;
+  /**
    * The name of the prepare checkout's admin dir under `<common>/worktrees/`,
    * as `worktree add` made it: a later invocation reads the checkout only
    * through that admin dir, never another one its `.git` file names.
@@ -678,6 +685,7 @@ function humanReviewShapeProblem(s: Record<string, unknown>): string | null {
   if (s.testDeltaExcusedHead !== undefined && (!isStr(s.testDeltaExcusedHead) || !HEX40.test(s.testDeltaExcusedHead))) return 'testDeltaExcusedHead';
   if (s.plainHeadRan !== undefined && s.plainHeadRan !== true) return 'plainHeadRan';
   if (s.gateTreeCopy !== undefined && s.gateTreeCopy !== true) return 'gateTreeCopy';
+  if (s.laneModel !== undefined && s.laneModel !== null && !isStr(s.laneModel)) return 'laneModel';
   // One admin dir name under <common>/worktrees (git makes it from the checkout's base name): no separator, nothing else.
   if (s.checkoutAdmin !== undefined && (!isStr(s.checkoutAdmin) || !/^[A-Za-z0-9._-]+$/.test(s.checkoutAdmin) || s.checkoutAdmin === '.' || s.checkoutAdmin === '..')) return 'checkoutAdmin';
   const cal = s.gateCalibration as Record<string, unknown> | undefined;

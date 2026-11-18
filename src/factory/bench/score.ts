@@ -143,12 +143,13 @@ export interface BenchResults {
   /** The issue ids this run covered (`--issues`), or null for every issue. */
   subset: number[] | null;
   /**
-   * The lanes' Copilot model: `explicit` when `--model` named it, else the
+   * The lanes' Copilot model: `explicit` when `--model` or the user config's
+   * factory.run.laneModel named it (`source` says which), else the
    * live probe's default (id null when the runtime named none); with its
    * listModels() multiplier (null in fake mode or when unknown). Null: fake
-   * mode without `--model`. Absent in results written before it existed.
+   * mode without a lane model. Absent in results written before it existed.
    */
-  model?: { id: string | null; multiplier: number | null; explicit: boolean } | null;
+  model?: { id: string | null; multiplier: number | null; explicit: boolean; source?: '--model' | 'user config' } | null;
   /** Live: every run child, its issue and the premium-request cap it was given (`omg factory run <id> --max-requests`). */
   runs?: Array<{ issue: number; maxRequests: number; exitCode: number; message: string }>;
   /** Why the runner stopped before every issue was terminal or parked, else null. */
@@ -364,11 +365,16 @@ const secs = (ms: number): string => `${Math.round(ms / 1000)} s`;
 /** Untrusted text (park reasons come from lane output) in one markdown table cell. */
 const cell = (s: string): string => s.replace(/[\r\n]+/g, ' ').replace(/\|/g, '\\|').replace(/[<>]/g, (c) => (c === '<' ? '&lt;' : '&gt;')).slice(0, 160);
 
+/** Lanes whose session reported another model than the bench's lane model (a run state keeps the reported one). */
+export function laneModelMismatches(issues: BenchIssueResult[], laneModel: string): string[] {
+  return issues.flatMap((issue) => issue.lanes.filter((l) => l.model && l.model !== laneModel).map((l) => `#${issue.id} lane ${l.id}: asked for model ${laneModel}, the session reported ${l.model}`));
+}
+
 /** The results' lane model for a header: `mai-code-2 (--model, 1x)`, `default gpt-x (1x)`, or `default` when not known. */
 export function modelLabel(m: BenchResults['model']): string {
   if (!m || m.id === null) return 'default';
   const x = m.multiplier !== null ? `${m.multiplier}x` : null;
-  return m.explicit ? `${m.id} (--model${x ? `, ${x}` : ''})` : `default ${m.id}${x ? ` (${x})` : ''}`;
+  return m.explicit ? `${m.id} (${m.source === 'user config' ? 'user config' : '--model'}${x ? `, ${x}` : ''})` : `default ${m.id}${x ? ` (${x})` : ''}`;
 }
 
 export function renderResultsMarkdown(r: BenchResults): string {
@@ -463,7 +469,7 @@ export function readBenchResults(path: string): BenchResults {
   }
   if (r.mode !== 'fake' && r.mode !== 'live') throw new Error(`${path}: mode ${JSON.stringify(r.mode)} is neither fake nor live`);
   const m = r.model as Record<string, unknown> | null | undefined;
-  if (m !== undefined && m !== null && !(typeof m === 'object' && (m.id === null || typeof m.id === 'string') && (m.multiplier === null || isNum(m.multiplier)) && typeof m.explicit === 'boolean')) {
+  if (m !== undefined && m !== null && !(typeof m === 'object' && (m.id === null || typeof m.id === 'string') && (m.multiplier === null || isNum(m.multiplier)) && typeof m.explicit === 'boolean' && (m.source === undefined || m.source === '--model' || m.source === 'user config'))) {
     throw new Error(`${path}: model is neither null nor { id, multiplier, explicit }`);
   }
   if (typeof r.startedAt !== 'string' || !isNum(r.fixtureVersion)) throw new Error(`${path}: results without startedAt or fixtureVersion`);

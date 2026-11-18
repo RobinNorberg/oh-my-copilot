@@ -13,7 +13,7 @@ import { checkLaneModel, resolveFactoryRunLimits } from '../../run/budget.js';
 import { createBenchFixture, removeBenchDir } from '../fixture.js';
 import { multiplierRefusal, probeLaneModel, type BenchModelProbe } from '../model-probe.js';
 import { BenchUsageError, runBench } from '../runner.js';
-import { BENCH_RESULTS_KIND, BENCH_RESULTS_SCHEMA_VERSION, compareResults, computeTotals, modelLabel, readBenchResults, renderResultsMarkdown, type BenchResults } from '../score.js';
+import { BENCH_RESULTS_KIND, BENCH_RESULTS_SCHEMA_VERSION, compareResults, computeTotals, laneModelMismatches, modelLabel, readBenchResults, renderResultsMarkdown, type BenchResults } from '../score.js';
 
 const NODE_MODULES = resolve(fileURLToPath(new URL('.', import.meta.url)), '..', '..', '..', '..', 'node_modules');
 
@@ -102,9 +102,9 @@ describe('omg factory bench run --model (live runner, injected child and probe)'
     expect(probed).toEqual(['mai-code-2']);
     expect(args).toEqual([['--max-requests', '10', '--model', 'mai-code-2']]);
     expect(lines[0]).toBe('lanes\' Copilot model (--model): mai-code-2; premium multiplier: 1 (listModels() billing.multiplier of mai-code-2)');
-    expect(out.results.model).toEqual({ id: 'mai-code-2', multiplier: 1, explicit: true });
+    expect(out.results.model).toEqual({ id: 'mai-code-2', multiplier: 1, explicit: true, source: '--model' });
     const read = readBenchResults(out.jsonPath);
-    expect(read.model).toEqual({ id: 'mai-code-2', multiplier: 1, explicit: true });
+    expect(read.model).toEqual({ id: 'mai-code-2', multiplier: 1, explicit: true, source: '--model' });
     const text = compareResults(read, { ...read, model: { id: 'claude-sonnet-5.5', multiplier: 1, explicit: false } });
     expect(text).toContain('lane model mai-code-2 (--model, 1x))');
     expect(text).toContain('lane model default claude-sonnet-5.5 (1x))');
@@ -134,6 +134,65 @@ describe('omg factory bench run --model (live runner, injected child and probe)'
     expect(probed).toEqual([undefined]);
     expect(args).toEqual([['--max-requests', '10']]);
     expect(out.results.model).toEqual({ id: 'test-model', multiplier: 1, explicit: false });
+  });
+
+  it('without --model takes the trusted user config\'s factory.run.laneModel: probes it, passes it to each child, records source user config', async () => {
+    const bench = fixture();
+    const args: string[][] = [];
+    const probed: Array<string | undefined> = [];
+    const lines: string[] = [];
+    const out = await runBench({
+      dir: bench, mode: 'live', maxRequests: 10, issues: [1], outDir: join(dir, 'out'), trustedUser: { factory: { run: { laneModel: 'claude-opus-5.5' } } }, ledger: () => ({ premiumRequests: 0, credits: 0 }),
+      modelProbe: async (m) => { probed.push(m); return explicitProbe(['claude-opus-5.5'])(m); },
+      announce: (m) => lines.push(m),
+      liveStart: async (o) => { args.push([...(o.args ?? [])]); return { exitCode: 4, parsed: true, next: null, message: 'merge' }; },
+    });
+    expect(probed).toEqual(['claude-opus-5.5']);
+    expect(args).toEqual([['--max-requests', '10', '--model', 'claude-opus-5.5']]);
+    expect(lines[0]).toMatch(/^lanes' Copilot model \(factory\.run\.laneModel\): claude-opus-5\.5;/);
+    expect(out.results.model).toEqual({ id: 'claude-opus-5.5', multiplier: 1, explicit: true, source: 'user config' });
+    expect(readBenchResults(out.jsonPath).model).toEqual({ id: 'claude-opus-5.5', multiplier: 1, explicit: true, source: 'user config' });
+    expect(modelLabel(out.results.model)).toBe('claude-opus-5.5 (user config, 1x)');
+  });
+
+  it('--model wins over the user config; an unknown user-config laneModel is refused before any child', async () => {
+    const bench = fixture();
+    const args: string[][] = [];
+    const probed: Array<string | undefined> = [];
+    const base = { dir: bench, mode: 'live' as const, maxRequests: 10, issues: [1], outDir: join(dir, 'out'), ledger: () => ({ premiumRequests: 0, credits: 0 }), announce: () => {} };
+    const out = await runBench({
+      ...base, model: 'mai-code-2', trustedUser: { factory: { run: { laneModel: 'claude-opus-5.5' } } },
+      modelProbe: async (m) => { probed.push(m); return explicitProbe(['mai-code-2'])(m); },
+      liveStart: async (o) => { args.push([...(o.args ?? [])]); return { exitCode: 4, parsed: true, next: null, message: 'merge' }; },
+    });
+    expect(probed).toEqual(['mai-code-2']);
+    expect(args).toEqual([['--max-requests', '10', '--model', 'mai-code-2']]);
+    expect(out.results.model).toMatchObject({ id: 'mai-code-2', source: '--model' });
+    const start = vi.fn(async () => ({ exitCode: 4, parsed: true, next: null, message: 'merge' }));
+    await expect(runBench({ ...base, trustedUser: { factory: { run: { laneModel: 'gpt-nope' } } }, modelProbe: explicitProbe(['gpt-nope']), liveStart: start })).rejects.toThrow(/user config: factory\.run\.laneModel "gpt-nope" is not a known Copilot model id/);
+    await expect(runBench({ ...base, trustedUser: { factory: { run: { laneModel: 'claude-opus-5.5' } } }, modelProbe: async () => ({ model: 'default-model', multiplier: 1, detail: 'x' }), liveStart: start })).rejects.toThrow(/did not check factory\.run\.laneModel claude-opus-5\.5/);
+    expect(start).not.toHaveBeenCalled();
+  });
+
+  it('the fake path runs every lane on the user config\'s laneModel', async () => {
+    const bench = fixture();
+    const out = await runBench({ dir: bench, mode: 'fake', issues: [1], outDir: join(dir, 'out'), trustedUser: { factory: { run: { laneModel: 'claude-opus-5.5' } } } });
+    expect(out.results.model).toEqual({ id: 'claude-opus-5.5', multiplier: null, explicit: true, source: 'user config' });
+    const lanes = out.results.issues.flatMap((i) => i.lanes);
+    expect(lanes.length).toBeGreaterThan(0);
+    expect(lanes.every((l) => l.model === 'claude-opus-5.5')).toBe(true);
+    expect(out.results.notes.filter((n) => n.includes('the session reported'))).toEqual([]);
+  });
+});
+
+describe('lane model mismatches', () => {
+  it('lists each lane whose session reported another model than the bench asked for', () => {
+    const lane = (id: string, model?: string) => ({ id, kind: 'implement', premiumRequests: 1, credits: 0, source: 'none', ...(model ? { model } : {}) });
+    const issues = [
+      { id: 1, lanes: [lane('r1-implement-1', 'mai-code-2'), lane('r1-review-1', 'gpt-5.5-mini')] },
+      { id: 2, lanes: [lane('r2-implement-1')] },
+    ] as never;
+    expect(laneModelMismatches(issues, 'mai-code-2')).toEqual(['#1 lane r1-review-1: asked for model mai-code-2, the session reported gpt-5.5-mini']);
   });
 });
 

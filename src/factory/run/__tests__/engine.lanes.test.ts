@@ -29,6 +29,42 @@ describe('omg factory run engine (fake lanes, real git, scripted gh)', () => {
     expect(readFactoryState(h.root, ISSUE)!.lanes.map((l) => l.model)).toEqual(['mai-code-2', 'mai-code-2', 'mai-code-2', 'mai-code-2']);
   });
 
+  it('records the first lane\'s model; a resume on another model warns and notes it, and the stored value never picks the model', async () => {
+    const first = run([noCommit, noCommit], { limits: limits({ laneModel: 'mai-code-2' }) });
+    expect((await first.done).gate?.name).toBe('implement-failed');
+    expect(readFactoryState(h.root, ISSUE)!.laneModel).toBe('mai-code-2');
+    const warnings: string[] = [];
+    const second = run([commitFile('a.ts'), review('approve')], { limits: limits({ laneModel: 'claude-opus-5.5' }), warn: (m) => warnings.push(m) });
+    await second.done;
+    const note = "lane model changed on resume: the run's first lane used mai-code-2, this invocation starts lanes on claude-opus-5.5";
+    expect(warnings).toContain(`omg factory run: ${note}`);
+    const state = readFactoryState(h.root, ISSUE)!;
+    expect(state.history.map((x) => x.note)).toContain(note);
+    // This invocation's model starts the lanes; the stored first-lane model stays as it was.
+    expect(second.lanes.started.every((s) => s.model === 'claude-opus-5.5')).toBe(true);
+    expect(state.laneModel).toBe('mai-code-2');
+  });
+
+  it('a resume on the default after a lane model warns too; the same model does not', async () => {
+    const first = run([noCommit, noCommit], { limits: limits({ laneModel: 'mai-code-2' }) });
+    await first.done;
+    const warnings: string[] = [];
+    const second = run([commitFile('a.ts'), review('approve')], { warn: (m) => warnings.push(m) });
+    await second.done;
+    expect(warnings.filter((w) => w.includes('lane model changed on resume'))).toEqual(["omg factory run: lane model changed on resume: the run's first lane used mai-code-2, this invocation starts lanes on Copilot's default model"]);
+    expect(second.lanes.started.every((s) => !('model' in s))).toBe(true);
+  });
+
+  it('a session reporting another model than requested gets a lane note and a history note', async () => {
+    const { done } = run([(ctx) => ({ ...commitFile('a.ts')(ctx), model: 'gpt-5.5-mini' }), review('approve')], { limits: limits({ laneModel: 'mai-code-2' }) });
+    await done;
+    const state = readFactoryState(h.root, ISSUE)!;
+    const note = `lane issue-${ISSUE}-implement-1 asked for model mai-code-2, the session reported gpt-5.5-mini`;
+    expect(state.lanes[0]).toMatchObject({ model: 'gpt-5.5-mini', note });
+    expect(state.history.map((x) => x.note)).toContain(note);
+    expect(state.lanes[1].note ?? '').not.toContain('the session reported');
+  });
+
   it('without a lane model no lane start carries a model and no lane record names one', async () => {
     const { lanes, done } = run([commitFile('a.ts'), review('approve')]);
     await done;
