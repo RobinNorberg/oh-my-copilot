@@ -333,8 +333,10 @@ import {
 import { toCopilotModelId } from "./model-contract.js";
 import {
   loadCopilotSdk,
+  probeSdkProtocol,
   resolveShimTarget,
 } from "../smoke/copilot-sdk-driver.js";
+import { resolveCopilotBinary } from "../smoke/copilot-binary.js";
 import { detectHostCliSignal, type HostCliType } from "../utils/host-signal.js";
 import { resolveDefaultPluginRoot } from "../smoke/copilot-session-env.js";
 import { getCopilotConfigDir } from "../utils/config-dir.js";
@@ -1492,8 +1494,8 @@ export interface StartTeamV2Config {
    * passes `auto`; programmatic callers keep the historical `pane`.
    */
   defaultTransport?: TeamTransportSetting;
-  /** Test seam: whether `@github/copilot-sdk` resolves (only asked for `auto`). */
-  sdkAvailable?: () => Promise<boolean>;
+  /** Test seam: whether `@github/copilot-sdk` resolves (only asked for `auto`); a string is a protocol mismatch. */
+  sdkAvailable?: () => Promise<boolean | string>;
 }
 
 // ---------------------------------------------------------------------------
@@ -2200,8 +2202,8 @@ export interface TeamTransportDecision {
  * team is one the sdk transport rejects: `--auto-merge`, a non-copilot
  * worker, an explicitly assigned reviewer-contract role (its verdict file is
  * only read after the provider exits, and an sdk host never exits between
- * turns), or `@github/copilot-sdk` not installed. An explicit `sdk` keeps
- * failing loudly on those.
+ * turns), `@github/copilot-sdk` not installed, or an SDK whose protocol the
+ * installed CLI does not speak. An explicit `sdk` keeps failing loudly on those.
  */
 export async function resolveTeamTransport(input: {
   requested: TeamTransportSetting;
@@ -2210,7 +2212,8 @@ export async function resolveTeamTransport(input: {
   autoMerge: boolean;
   agentTypes: readonly string[];
   explicitContractRoles: readonly string[];
-  sdkAvailable: () => Promise<boolean>;
+  /** A string: why the SDK cannot drive the installed CLI (a protocol mismatch). */
+  sdkAvailable: () => Promise<boolean | string>;
 }): Promise<TeamTransportDecision> {
   const { requested } = input;
   if (requested !== "auto") return { transport: requested, requested };
@@ -2235,9 +2238,24 @@ export async function resolveTeamTransport(input: {
     return pane(
       `contract_roles:${[...new Set(input.explicitContractRoles)].join(",")}`,
     );
-  if (!(await input.sdkAvailable().catch(() => false)))
-    return pane("copilot_sdk_not_installed");
+  const sdk = await input.sdkAvailable().catch(() => false);
+  if (typeof sdk === "string")
+    return pane(`copilot_sdk_protocol_mismatch: ${sdk}`);
+  if (!sdk) return pane("copilot_sdk_not_installed");
   return { transport: "sdk", requested };
+}
+
+/**
+ * `auto`'s default SDK check: the SDK resolves, and a start/stop handshake on
+ * the Copilot CLI (no session, no prompt) reports no protocol mismatch.
+ */
+async function defaultSdkAvailable(): Promise<boolean | string> {
+  const loaded = await loadCopilotSdk();
+  if (!loaded) return false;
+  const found = resolveCopilotBinary(undefined, process.env).bin;
+  const bin =
+    found && /\.(cmd|bat|ps1)$/i.test(found) ? resolveShimTarget(found) : found;
+  return bin ? ((await probeSdkProtocol(loaded, bin)) ?? true) : true;
 }
 
 /**
@@ -6941,8 +6959,7 @@ export async function startTeamV2(
         ? [a.role]
         : [],
     ),
-    sdkAvailable:
-      config.sdkAvailable ?? (async () => (await loadCopilotSdk()) !== null),
+    sdkAvailable: config.sdkAvailable ?? defaultSdkAvailable,
   });
   if (
     transportDecision.requested === "auto" &&

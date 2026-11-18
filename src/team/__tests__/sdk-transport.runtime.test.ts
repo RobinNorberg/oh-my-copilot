@@ -257,6 +257,7 @@ describe('resolveTeamTransport', () => {
     [{ explicitContractRoles: ['critic', 'critic'] }, 'contract_roles:critic'],
     [{ sdkAvailable: async () => false }, 'copilot_sdk_not_installed'],
     [{ sdkAvailable: async () => { throw new Error('boom'); } }, 'copilot_sdk_not_installed'],
+    [{ sdkAvailable: async () => 'speaks protocol 4' }, 'copilot_sdk_protocol_mismatch: speaks protocol 4'],
   ])('auto falls back to pane for %j', async (over, reason) => {
     expect(await resolveTeamTransport({ ...base, ...over })).toEqual({ transport: 'pane', requested: 'auto', fallbackReason: reason });
   });

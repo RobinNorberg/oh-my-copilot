@@ -252,8 +252,8 @@ export interface StartTeamV2Config {
      * passes `auto`; programmatic callers keep the historical `pane`.
      */
     defaultTransport?: TeamTransportSetting;
-    /** Test seam: whether `@github/copilot-sdk` resolves (only asked for `auto`). */
-    sdkAvailable?: () => Promise<boolean>;
+    /** Test seam: whether `@github/copilot-sdk` resolves (only asked for `auto`); a string is a protocol mismatch. */
+    sdkAvailable?: () => Promise<boolean | string>;
 }
 export interface WorkerStartupEvidencePolicy {
     initialBudgetMs: number;
@@ -318,8 +318,8 @@ export interface TeamTransportDecision {
  * team is one the sdk transport rejects: `--auto-merge`, a non-copilot
  * worker, an explicitly assigned reviewer-contract role (its verdict file is
  * only read after the provider exits, and an sdk host never exits between
- * turns), or `@github/copilot-sdk` not installed. An explicit `sdk` keeps
- * failing loudly on those.
+ * turns), `@github/copilot-sdk` not installed, or an SDK whose protocol the
+ * installed CLI does not speak. An explicit `sdk` keeps failing loudly on those.
  */
 export declare function resolveTeamTransport(input: {
     requested: TeamTransportSetting;
@@ -328,7 +328,8 @@ export declare function resolveTeamTransport(input: {
     autoMerge: boolean;
     agentTypes: readonly string[];
     explicitContractRoles: readonly string[];
-    sdkAvailable: () => Promise<boolean>;
+    /** A string: why the SDK cannot drive the installed CLI (a protocol mismatch). */
+    sdkAvailable: () => Promise<boolean | string>;
 }): Promise<TeamTransportDecision>;
 /**
  * Run startup launches with at most `concurrency` in flight. `record` sees

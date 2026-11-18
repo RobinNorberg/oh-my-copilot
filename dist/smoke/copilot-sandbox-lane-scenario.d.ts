@@ -28,7 +28,7 @@
  */
 import { type SandboxHostRecord } from '../copilot-run/sandbox.js';
 import { type LaneBackend } from '../factory/run/lane.js';
-import type { LoadedSdk } from './copilot-sdk-driver.js';
+import { type LoadedSdk } from './copilot-sdk-driver.js';
 import { type SandboxCanaryRecord, type ScenarioRun } from './copilot-sdk-scenarios.js';
 /** A lane wall time that fits one probe command or a short review with its tool turns. */
 export declare const SANDBOX_LANE_TIMEOUT_MS = 300000;

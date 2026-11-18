@@ -11,8 +11,12 @@ import {
   globalModuleRoots,
   prepareFiletools,
   importFromDir,
+  LAST_PROTOCOL3_CLI,
+  probeSdkProtocol,
   resolveShimTarget,
+  rethrowSdkStartError,
   runSdkTier,
+  sdkProtocolMismatch,
   runtimeCreditCap,
   scenarioPlaceholderDirs,
   satisfiesSdkRange,
@@ -116,6 +120,9 @@ function scenarioOf(prompt: string): Scenario {
   if (!hit) throw new Error(`unexpected prompt ${prompt}`);
   return hit;
 }
+
+/** SDK 1.0.34's `client.start()` refusal against CLI 1.0.113+. */
+const PROTOCOL_MISMATCH = 'SDK protocol version mismatch: SDK supports versions 3-3, but server reports version 4. Please update your SDK or server to ensure compatibility.';
 
 /** A fake @github/copilot-sdk: static RPCs answer from the fake plugin root; prompts replay fixture JSONL. */
 function fakeSdk(opts: FakeOptions = {}): { loaded: LoadedSdk; rec: FakeRecord } {
@@ -668,6 +675,14 @@ describe('runSdkTier (fake SDK)', () => {
     expect(rec.ops).toEqual(['start', 'stop']);
   });
 
+  it('a protocol mismatch at start names both versions and the fix', async () => {
+    const { loaded } = fakeSdk({ startError: PROTOCOL_MISMATCH });
+    const result = await runSdkTier(input(loaded, { scenarios: ['smoke'] }));
+    const detail = byId(result.checks)['sdk.runtime'].detail;
+    expect(detail).toContain('Copilot SDK/CLI protocol mismatch: @github/copilot-sdk speaks protocol 3, the Copilot CLI speaks protocol 4.');
+    expect(detail).toContain(`or use @github/copilot <=${LAST_PROTOCOL3_CLI}`);
+  });
+
   it('uses a listed cheap model explicitly and records it', async () => {
     const { loaded, rec } = fakeSdk({ models: ['auto', 'claude-opus-5-5', 'gpt-5-mini'] });
     const result = await runSdkTier(input(loaded, { scenarios: ['smoke'] }));
@@ -1130,3 +1145,36 @@ function fakeSdkFor() {
   out.loaded = { ...inner.loaded, module: { ...inner.loaded.module, CopilotClient: HomeClient as unknown as CopilotSdkModule['CopilotClient'] } };
   return out;
 }
+
+describe('SDK protocol mismatch', () => {
+  it('parses the SDK handshake refusal and ignores other errors', () => {
+    expect(sdkProtocolMismatch(new Error(PROTOCOL_MISMATCH))).toEqual({ sdkMin: 3, sdkMax: 3, server: 4 });
+    expect(sdkProtocolMismatch(new Error('SDK protocol version mismatch: SDK supports versions 3-3, but server does not report a protocol version.'))).toEqual({ sdkMin: 3, sdkMax: 3, server: null });
+    expect(sdkProtocolMismatch(new Error('spawn EACCES'))).toBeNull();
+  });
+
+  it('rethrows a mismatch with both versions and the fix, anything else unchanged', () => {
+    const original = new Error(PROTOCOL_MISMATCH);
+    let thrown: unknown;
+    try { rethrowSdkStartError(original); } catch (err) { thrown = err; }
+    expect((thrown as Error).message).toBe(
+      'Copilot SDK/CLI protocol mismatch: @github/copilot-sdk speaks protocol 3, the Copilot CLI speaks protocol 4. '
+      + `Update @github/copilot-sdk when a version supporting protocol 4 is available, or use @github/copilot <=${LAST_PROTOCOL3_CLI} (npm i -g @github/copilot@${LAST_PROTOCOL3_CLI}).`,
+    );
+    expect((thrown as Error).cause).toBe(original);
+    const older = 'SDK protocol version mismatch: SDK supports versions 3-4, but server reports version 2. Please update.';
+    expect(() => rethrowSdkStartError(new Error(older))).toThrow('speaks protocols 3-4, the Copilot CLI speaks protocol 2. Update the Copilot CLI');
+    const other = new Error('spawn EACCES');
+    expect(() => rethrowSdkStartError(other)).toThrow(other);
+  });
+
+  it('probeSdkProtocol reports a mismatch, passes a clean handshake and other start errors, and always stops', async () => {
+    const mismatch = fakeSdk({ startError: PROTOCOL_MISMATCH });
+    expect(await probeSdkProtocol(mismatch.loaded, 'copilot')).toMatch(/^Copilot SDK\/CLI protocol mismatch: .*speaks protocol 4\./);
+    expect(mismatch.rec.ops).toEqual(['start', 'stop']);
+    const ok = fakeSdk();
+    expect(await probeSdkProtocol(ok.loaded, 'copilot')).toBeNull();
+    expect(ok.rec.ops).toEqual(['start', 'stop']);
+    expect(await probeSdkProtocol(fakeSdk({ startError: 'spawn EACCES' }).loaded, 'copilot')).toBeNull();
+  });
+});

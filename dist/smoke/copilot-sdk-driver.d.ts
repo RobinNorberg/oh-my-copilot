@@ -198,6 +198,28 @@ export declare function loadCopilotSdk(env?: NodeJS.ProcessEnv, spawnSync?: Spaw
 export declare const DEFAULT_SCENARIO_TIMEOUT_MS = 120000;
 /** The runtime child's pid: the SDK keeps it on the private `cliProcess` (SDK 1.0.16). */
 export declare function runtimePid(client: SdkClientLike): number | undefined;
+/**
+ * The last `@github/copilot` release that speaks SDK protocol 3: 1.0.113
+ * moved to protocol 4 while the newest SDK (1.0.34) still accepts 3 only.
+ */
+export declare const LAST_PROTOCOL3_CLI = "1.0.112";
+/** The SDK's `client.start()` handshake refusal, parsed (null: some other error). */
+export declare function sdkProtocolMismatch(err: unknown): {
+    sdkMin: number;
+    sdkMax: number;
+    server: number | null;
+} | null;
+/**
+ * The `.catch` for `client.start()`: rethrows a protocol mismatch as an error
+ * naming both versions and the fix, anything else unchanged.
+ */
+export declare function rethrowSdkStartError(err: unknown): never;
+/**
+ * Starts and stops a runtime on `bin` (no session, no prompt) and returns the
+ * explained protocol mismatch, or null when the handshake passes or fails for
+ * any other reason (the real launch reports those).
+ */
+export declare function probeSdkProtocol(loaded: LoadedSdk, bin: string, env?: NodeJS.ProcessEnv): Promise<string | null>;
 export declare function prepareSdkProject(spawnSync: SpawnSyncFn, projectDir: string, remoteDir: string, env: NodeJS.ProcessEnv): string | null;
 /**
  * filetools: the fixture under the sandbox project (notes.txt, a README.md

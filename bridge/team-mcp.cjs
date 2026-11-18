@@ -22319,6 +22319,17 @@ var init_copilot_sdk_driver = __esm({
   }
 });
 
+// src/smoke/copilot-binary.ts
+var import_fs41, import_path47;
+var init_copilot_binary = __esm({
+  "src/smoke/copilot-binary.ts"() {
+    "use strict";
+    import_fs41 = require("fs");
+    import_path47 = require("path");
+    init_executable_resolution();
+  }
+});
+
 // src/team/runtime-v2.ts
 function workerInstructionStateRoot(cwd, teamName, platform = process.platform) {
   return platform === "win32" ? teamStateRoot(cwd, teamName) : "$OMC_TEAM_STATE_ROOT";
@@ -22687,7 +22698,7 @@ async function shutdownTeamV2(teamName, cwd, options = {}) {
   };
   if (!config2) {
     const cleanupSafety = inspectTeamWorktreeCleanupSafety(sanitized, cwd);
-    if (cleanupSafety.hasEvidence || (0, import_fs41.existsSync)(absPath(cwd, TeamPaths.root(sanitized)))) {
+    if (cleanupSafety.hasEvidence || (0, import_fs42.existsSync)(absPath(cwd, TeamPaths.root(sanitized)))) {
       process.stderr.write(
         "[team/runtime-v2] preserving team state because config is missing and worktree cleanup evidence remains\n"
       );
@@ -23154,12 +23165,12 @@ If you accept, exit your session. If you reject, remain active for task work and
     }
   );
 }
-var import_path47, import_fs41, import_promises15, import_node_crypto8, orchestratorByTeam, cadenceByTeam, TEAM_INSTANCE_FINAL_DISPOSAL_AUTHORIZATION;
+var import_path48, import_fs42, import_promises15, import_node_crypto8, orchestratorByTeam, cadenceByTeam, TEAM_INSTANCE_FINAL_DISPOSAL_AUTHORIZATION;
 var init_runtime_v2 = __esm({
   "src/team/runtime-v2.ts"() {
     "use strict";
-    import_path47 = require("path");
-    import_fs41 = require("fs");
+    import_path48 = require("path");
+    import_fs42 = require("fs");
     import_promises15 = require("fs/promises");
     init_state_paths();
     init_worktree_paths();
@@ -23207,6 +23218,7 @@ var init_runtime_v2 = __esm({
     init_sdk_transport();
     init_model_contract();
     init_copilot_sdk_driver();
+    init_copilot_binary();
     init_host_signal();
     init_copilot_session_env();
     init_config_dir();
@@ -46339,10 +46351,10 @@ var StdioServerTransport = class {
 // src/mcp/team-server.ts
 var import_node_crypto9 = require("node:crypto");
 var import_child_process11 = require("child_process");
-var import_path49 = require("path");
+var import_path50 = require("path");
 var import_url9 = require("url");
 init_omc_cli_rendering();
-var import_fs43 = require("fs");
+var import_fs44 = require("fs");
 var import_promises16 = require("fs/promises");
 init_team_name();
 init_runtime_v2();
@@ -46458,16 +46470,16 @@ var NudgeTracker = class {
 };
 
 // src/mcp/team-job-convergence.ts
-var import_fs42 = require("fs");
-var import_path48 = require("path");
+var import_fs43 = require("fs");
+var import_path49 = require("path");
 init_types2();
 init_team_name();
 function readResultArtifact(omcJobsDir, jobId) {
-  const artifactPath = (0, import_path48.join)(omcJobsDir, `${jobId}-result.json`);
-  if (!(0, import_fs42.existsSync)(artifactPath)) return { kind: "none" };
+  const artifactPath = (0, import_path49.join)(omcJobsDir, `${jobId}-result.json`);
+  if (!(0, import_fs43.existsSync)(artifactPath)) return { kind: "none" };
   let raw;
   try {
-    raw = (0, import_fs42.readFileSync)(artifactPath, "utf-8");
+    raw = (0, import_fs43.readFileSync)(artifactPath, "utf-8");
   } catch (error62) {
     if (error62.code === "ENOENT") return { kind: "none" };
     const message = `Failed to read result artifact at ${artifactPath}: ${error62 instanceof Error ? error62.message : String(error62)}`;
@@ -46569,10 +46581,10 @@ function convergeJobWithResultArtifact(job, jobId, omcJobsDir) {
   };
 }
 function resultArtifactIdentityError(job, jobId, omcJobsDir) {
-  const artifactPath = (0, import_path48.join)(omcJobsDir, `${jobId}-result.json`);
+  const artifactPath = (0, import_path49.join)(omcJobsDir, `${jobId}-result.json`);
   let raw;
   try {
-    raw = (0, import_fs42.readFileSync)(artifactPath, "utf-8");
+    raw = (0, import_fs43.readFileSync)(artifactPath, "utf-8");
   } catch (error62) {
     if (error62.code === "ENOENT") return null;
     return `cleanup_result_evidence_unreadable:${error62 instanceof Error ? error62.message : String(error62)}`;
@@ -46587,7 +46599,7 @@ function resultArtifactIdentityError(job, jobId, omcJobsDir) {
 }
 function readMatchingTerminalArtifact(job, jobId, omcJobsDir) {
   try {
-    const raw = (0, import_fs42.readFileSync)((0, import_path48.join)(omcJobsDir, `${jobId}-result.json`), "utf-8");
+    const raw = (0, import_fs43.readFileSync)((0, import_path49.join)(omcJobsDir, `${jobId}-result.json`), "utf-8");
     const parsed = JSON.parse(raw);
     if (parsed.status !== "completed" && parsed.status !== "failed" || parsed.instanceId !== job.instanceId || !isValidTeamInstanceId(parsed.instanceId)) return null;
     return { status: parsed.status, raw };
@@ -46735,10 +46747,10 @@ function persistJob(jobId, job) {
   }
 }
 function loadJobFromDisk(jobId) {
-  const path5 = (0, import_path49.join)(OMC_JOBS_DIR, `${jobId}.json`);
+  const path5 = (0, import_path50.join)(OMC_JOBS_DIR, `${jobId}.json`);
   let content;
   try {
-    content = (0, import_fs43.readFileSync)(path5, "utf-8");
+    content = (0, import_fs44.readFileSync)(path5, "utf-8");
   } catch (error62) {
     if (error62.code === "ENOENT") return void 0;
     throw new Error(`Unreadable job file: ${jobId} (${error62 instanceof Error ? error62.message : String(error62)})`);
@@ -46758,7 +46770,7 @@ function getJob(jobId) {
   return loadJobFromDisk(jobId);
 }
 async function loadPaneIds(jobId, instanceId) {
-  const p = (0, import_path49.join)(OMC_JOBS_DIR, `${jobId}-panes.json`);
+  const p = (0, import_path50.join)(OMC_JOBS_DIR, `${jobId}-panes.json`);
   try {
     const parsed = JSON.parse(await (0, import_promises16.readFile)(p, "utf-8"));
     if (!isValidTeamPaneArtifact(parsed, instanceId)) return null;
@@ -46929,18 +46941,18 @@ function validateJobId(job_id) {
   }
 }
 function jobLockPath(jobId) {
-  return (0, import_path49.join)(OMC_JOBS_DIR, `.${jobId}.lock`);
+  return (0, import_path50.join)(OMC_JOBS_DIR, `.${jobId}.lock`);
 }
 function persistJobUnlocked(jobId, job) {
-  if (!(0, import_fs43.existsSync)(OMC_JOBS_DIR)) (0, import_fs43.mkdirSync)(OMC_JOBS_DIR, { recursive: true });
-  const targetPath = (0, import_path49.join)(OMC_JOBS_DIR, `${jobId}.json`);
+  if (!(0, import_fs44.existsSync)(OMC_JOBS_DIR)) (0, import_fs44.mkdirSync)(OMC_JOBS_DIR, { recursive: true });
+  const targetPath = (0, import_path50.join)(OMC_JOBS_DIR, `${jobId}.json`);
   const tempPath = `${targetPath}.tmp.${process.pid}.${(0, import_node_crypto9.randomUUID)()}`;
   try {
-    (0, import_fs43.writeFileSync)(tempPath, JSON.stringify(job), { encoding: "utf-8", mode: 384 });
-    (0, import_fs43.renameSync)(tempPath, targetPath);
+    (0, import_fs44.writeFileSync)(tempPath, JSON.stringify(job), { encoding: "utf-8", mode: 384 });
+    (0, import_fs44.renameSync)(tempPath, targetPath);
   } finally {
     try {
-      (0, import_fs43.unlinkSync)(tempPath);
+      (0, import_fs44.unlinkSync)(tempPath);
     } catch {
     }
   }
@@ -47070,10 +47082,10 @@ async function handleStart(args) {
       "team_start_unsafe_runtime_v1: instance-bound provider cleanup requires runtime v2; set OMC_RUNTIME_V2=1"
     );
   }
-  const cwd = (0, import_path49.resolve)(input2.cwd);
+  const cwd = (0, import_path50.resolve)(input2.cwd);
   const jobId = `omc-${Date.now().toString(36)}${(0, import_node_crypto9.randomUUID)().slice(0, 8)}`;
   const instanceId = (0, import_node_crypto9.randomUUID)();
-  const runtimeCliPath = (0, import_path49.join)(__ownDir, "runtime-cli.cjs");
+  const runtimeCliPath = (0, import_path50.join)(__ownDir, "runtime-cli.cjs");
   const job = {
     status: "running",
     startedAt: Date.now(),
@@ -47350,7 +47362,7 @@ async function handleCleanup(args) {
   if (resultEvidenceError) return blockCleanup(resultEvidenceError);
   const panes = await loadPaneIds(job_id, job.instanceId);
   if (!panes) {
-    const reason = (0, import_fs43.existsSync)((0, import_path49.join)(OMC_JOBS_DIR, `${job_id}-panes.json`)) ? "cleanup_panes_evidence_corrupt" : "cleanup_panes_evidence_missing";
+    const reason = (0, import_fs44.existsSync)((0, import_path50.join)(OMC_JOBS_DIR, `${job_id}-panes.json`)) ? "cleanup_panes_evidence_corrupt" : "cleanup_panes_evidence_missing";
     return blockCleanup(reason);
   }
   try {

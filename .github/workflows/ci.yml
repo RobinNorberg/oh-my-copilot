@@ -745,7 +745,13 @@ jobs:
     env:
       # `npm i -g @github/copilot` is the CLI's documented npm install; its
       # loader runs the native @github/copilot-linux-x64 binary.
-      SMOKE_CLI_DIST_TAG: latest
+      # Pinned: CLI 1.0.113+ speaks SDK protocol 4, and the newest
+      # @github/copilot-sdk (1.0.34) still supports protocol 3 only, so every
+      # sdk.* check fails with "SDK protocol version mismatch". 1.0.112 is the
+      # last protocol-3 CLI (SDK start() handshake probe; run 44110098147
+      # reports "runtime 1.0.112, protocol 3"). Back to `latest` once an SDK
+      # release supports protocol 4.
+      SMOKE_CLI_DIST_TAG: '1.0.112'
       SMOKE_SDK_RANGE: '^1.0.16'
       SMOKE_OPT_IN: ${{ github.event_name == 'workflow_dispatch' && inputs.smoke_scenarios || (github.event_name == 'push' && github.ref_type == 'tag' && vars.COPILOT_SMOKE_OPT_IN) || '' }}
     steps:

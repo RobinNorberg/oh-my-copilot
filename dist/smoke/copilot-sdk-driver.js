@@ -20,9 +20,9 @@
  */
 import { spawnSync as nodeSpawnSync } from 'child_process';
 import { randomBytes, randomUUID } from 'crypto';
-import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'fs';
 import { createRequire } from 'module';
-import { userInfo } from 'os';
+import { tmpdir, userInfo } from 'os';
 import { dirname, isAbsolute, join, relative, resolve } from 'path';
 import { pathToFileURL } from 'url';
 import { allowlistSessionEnv, applySandboxConfig, buildSandboxConfig, DEFAULT_SANDBOX_SETTINGS, gitForWindowsShell, laneToolPaths, missingSandboxEnv, probeHostSupport, readEnforcement, } from '../copilot-run/sandbox.js';
@@ -294,6 +294,66 @@ export function runtimePid(client) {
     const pid = client.cliProcess?.pid;
     return typeof pid === 'number' && pid > 0 ? pid : undefined;
 }
+/**
+ * The last `@github/copilot` release that speaks SDK protocol 3: 1.0.113
+ * moved to protocol 4 while the newest SDK (1.0.34) still accepts 3 only.
+ */
+export const LAST_PROTOCOL3_CLI = '1.0.112';
+/** The SDK's `client.start()` handshake refusal, parsed (null: some other error). */
+export function sdkProtocolMismatch(err) {
+    const m = /SDK protocol version mismatch: SDK supports versions (\d+)-(\d+), but server (?:reports version (\d+)|does not report)/.exec(errText(err));
+    return m ? { sdkMin: Number(m[1]), sdkMax: Number(m[2]), server: m[3] === undefined ? null : Number(m[3]) } : null;
+}
+/**
+ * The `.catch` for `client.start()`: rethrows a protocol mismatch as an error
+ * naming both versions and the fix, anything else unchanged.
+ */
+export function rethrowSdkStartError(err) {
+    const m = sdkProtocolMismatch(err);
+    if (!m)
+        throw err;
+    const sdk = m.sdkMin === m.sdkMax ? `protocol ${m.sdkMax}` : `protocols ${m.sdkMin}-${m.sdkMax}`;
+    const fix = m.server !== null && m.server > m.sdkMax
+        ? `Update ${SDK_PACKAGE} when a version supporting protocol ${m.server} is available, or use @github/copilot <=${LAST_PROTOCOL3_CLI} (npm i -g @github/copilot@${LAST_PROTOCOL3_CLI}).`
+        : `Update the Copilot CLI (npm i -g @github/copilot) or use a ${SDK_PACKAGE} that matches it.`;
+    throw new Error(`Copilot SDK/CLI protocol mismatch: ${SDK_PACKAGE} speaks ${sdk}, the Copilot CLI ${m.server === null ? 'reports no protocol version' : `speaks protocol ${m.server}`}. ${fix}`, { cause: err });
+}
+/**
+ * Starts and stops a runtime on `bin` (no session, no prompt) and returns the
+ * explained protocol mismatch, or null when the handshake passes or fails for
+ * any other reason (the real launch reports those).
+ */
+export async function probeSdkProtocol(loaded, bin, env = process.env) {
+    const home = mkdtempSync(join(tmpdir(), 'omg-sdk-probe-'));
+    const { CopilotClient, RuntimeConnection } = loaded.module;
+    const client = new CopilotClient({
+        connection: RuntimeConnection.forStdio({ path: bin, args: [], env: { ...env, COPILOT_HOME: home } }),
+        baseDirectory: home,
+        workingDirectory: home,
+    });
+    try {
+        await withTimeout(client.start().catch(rethrowSdkStartError), START_TIMEOUT_MS, 'client.start()');
+        return null;
+    }
+    catch (err) {
+        return sdkProtocolMismatch(err.cause) ? errText(err) : null;
+    }
+    finally {
+        try {
+            await withTimeout(client.stop(), STOP_TIMEOUT_MS, 'client.stop()');
+        }
+        catch {
+            try {
+                await client.forceStop?.();
+            }
+            catch { /* gone */ }
+        }
+        try {
+            rmSync(home, { recursive: true, force: true });
+        }
+        catch { /* best effort */ }
+    }
+}
 function pidAlive(pid) {
     try {
         process.kill(pid, 0);
@@ -472,10 +532,10 @@ export async function runSdkTier(input) {
     let wedged = false;
     try {
         try {
-            await withTimeout(client.start(), START_TIMEOUT_MS, 'client.start()');
+            await withTimeout(client.start().catch(rethrowSdkStartError), START_TIMEOUT_MS, 'client.start()');
         }
         catch (err) {
-            checks.push(...failedTier2Checks(input.scenarios, `runtime did not start (${bin}): ${excerpt(errText(err), 200)}`, 'after-available'));
+            checks.push(...failedTier2Checks(input.scenarios, `runtime did not start (${bin}): ${excerpt(errText(err), 400)}`, 'after-available'));
             return { checks, sdk: sdkInfo, events };
         }
         pid = runtimePid(client);
@@ -859,7 +919,7 @@ async function sandboxSpawnCanary(loaded, bin, input, host) {
     let session;
     const sandboxed = new Map();
     try {
-        await withTimeout(client.start(), START_TIMEOUT_MS, 'canary client.start()');
+        await withTimeout(client.start().catch(rethrowSdkStartError), START_TIMEOUT_MS, 'canary client.start()');
         session = await withTimeout(client.createSession({
             onPermissionRequest: () => reject('omg smoke: the spawn canary grants nothing'),
             onEvent: (e) => { if (e.type === 'tool.execution_complete')
