@@ -62949,8 +62949,8 @@ async function runSdkTier(input2) {
     const models = await rpc(() => client.listModels(), "listModels()");
     const choice = chooseModel(models.ok ? models.value.map((m) => String(m.id)) : [], input2.model);
     sdkInfo.model = choice.label;
-    const modelLabel = `${choice.label} (${choice.note})`;
-    checks.push(evaluateSdkRuntime(status, input2.binVersion, modelLabel));
+    const modelLabel2 = `${choice.label} (${choice.note})`;
+    checks.push(evaluateSdkRuntime(status, input2.binVersion, modelLabel2));
     checks.push(...await staticChecks(client, input2, loaded2, bin));
     let stopReason;
     const order = ["team", "chain"];
@@ -63051,7 +63051,7 @@ async function runSdkTier(input2) {
         budget: input2.maxCredits - total.credits,
         eventsPath: path30,
         ...choice.model ? { model: choice.model } : {}
-      }) : await runScenario(client, input2, name, choice.model, modelLabel, path30, input2.maxCredits - total.credits);
+      }) : await runScenario(client, input2, name, choice.model, modelLabel2, path30, input2.maxCredits - total.credits);
       entries.push({ name, run: run3, start });
       const cost = runCost(run3);
       total.premiumRequests += cost.premiumRequests;
@@ -63328,7 +63328,7 @@ async function closeSession(client, session, keepHome) {
     }
   }
 }
-async function runScenario(client, input2, name, model, modelLabel, eventsPath, budget) {
+async function runScenario(client, input2, name, model, modelLabel2, eventsPath, budget) {
   const spec = SCENARIOS[name];
   const permitCtx = { projectDir: input2.projectDir, pluginRoot: input2.root, ...input2.platform ? { platform: input2.platform } : {} };
   const recorded = [];
@@ -63425,7 +63425,7 @@ async function runScenario(client, input2, name, model, modelLabel, eventsPath, 
     ...error62 ? { error: error62 } : {},
     ...name === "guardrail" ? { remoteRefs: remoteRefs(input2.spawnSync, input2.remoteDir, input2.env) } : {},
     ...probe ? { filetools: collectFiletools(input2.projectDir, probe) } : {},
-    model: modelLabel,
+    model: modelLabel2,
     maxCredits: input2.maxCredits,
     budget,
     capped: capped3,
@@ -125138,6 +125138,12 @@ function checked(key, value, source2) {
   if (!ok2) throw new Error(`${source2}: factory.run.${key} must be a non-negative ${spec.integer ? "integer" : "number"}`);
   return value * spec.scale;
 }
+function checkLaneModel(value, source2) {
+  if (typeof value !== "string" || !value.trim()) throw new Error(`${source2} must be a Copilot model id (one of ${KNOWN_LANE_MODELS.join(", ")})`);
+  const id = value.trim();
+  if (!KNOWN_LANE_MODELS.includes(id)) throw new Error(`${source2} ${JSON.stringify(id)} is not a known Copilot model id; known ids: ${KNOWN_LANE_MODELS.join(", ")}`);
+  return id;
+}
 function resolveFactoryRunLimits(trustedUser, project) {
   const warnings = [];
   const limits = { ...DEFAULT_FACTORY_RUN_LIMITS };
@@ -125150,7 +125156,9 @@ function resolveFactoryRunLimits(trustedUser, project) {
   for (const key of Object.keys(KEYS2)) {
     if (user[key] !== void 0) set2(KEYS2[key].field, checked(key, user[key], "user config"));
   }
+  if (user.laneModel !== void 0) limits.laneModel = checkLaneModel(user.laneModel, "user config: factory.run.laneModel");
   const proj = runBlock(project, "project config");
+  if (proj.laneModel !== void 0) warnings.push("omg factory run: ignoring factory.run.laneModel from the working-tree project config; set it in your user config or pass --model");
   const projFix = shipMaxFixRounds(project);
   const tighten = (key, raw, label2 = `factory.run.${key}`) => {
     const value = checked(key, raw, "project config");
@@ -125221,13 +125229,14 @@ function runCreditsExceeded(state, limits) {
   const spent = runCredits(state);
   return spent >= limits.maxRunCredits ? `run spent ${spent.toFixed(2)} AI credits, at or above factory.run.maxRunCredits ${limits.maxRunCredits}` : null;
 }
-var DEFAULT_FACTORY_RUN_LIMITS, KEYS2;
+var DEFAULT_FACTORY_RUN_LIMITS, KEYS2, KNOWN_LANE_MODELS;
 var init_budget = __esm({
   "src/factory/run/budget.ts"() {
     "use strict";
     init_copilot_sdk_scenarios();
     init_job();
     init_config2();
+    init_copilot_models();
     DEFAULT_FACTORY_RUN_LIMITS = Object.freeze({
       laneMaxCredits: RUNTIME_MIN_MAX_CREDITS,
       laneTimeoutMs: 30 * 6e4,
@@ -125250,6 +125259,7 @@ var init_budget = __esm({
       maxCiFixRounds: { field: "maxCiFixRounds", scale: 1, integer: true },
       gatesTimeoutMinutes: { field: "gatesTimeoutMs", scale: 6e4, integer: false }
     };
+    KNOWN_LANE_MODELS = copilot_models_default.knownModels;
   }
 });
 
@@ -127328,7 +127338,7 @@ function shapeProblem2(s) {
   if (!Array.isArray(s.lanes) || !s.lanes.every((l) => {
     const x = l;
     const sbx = x?.sandbox;
-    return isStr2(x?.id) && isStr2(x.kind) && isStr2(x.status) && isStr2(x.startSha) && typeof x.maxCredits === "number" && (x.stopUnconfirmed === void 0 || typeof x.stopUnconfirmed === "boolean") && (x.tamperCheck === void 0 || x.tamperCheck === "clean" || x.tamperCheck === "problems" || x.tamperCheck === "skipped") && (sbx === void 0 || typeof sbx === "object" && sbx !== null && isStr2(sbx.mode) && isCount3(sbx.unsandboxedCalls) && (sbx.writeNetwork === void 0 || sbx.writeNetwork === "none" || sbx.writeNetwork === "registry"));
+    return isStr2(x?.id) && isStr2(x.kind) && isStr2(x.status) && isStr2(x.startSha) && typeof x.maxCredits === "number" && (x.stopUnconfirmed === void 0 || typeof x.stopUnconfirmed === "boolean") && (x.model === void 0 || isStr2(x.model)) && (x.tamperCheck === void 0 || x.tamperCheck === "clean" || x.tamperCheck === "problems" || x.tamperCheck === "skipped") && (sbx === void 0 || typeof sbx === "object" && sbx !== null && isStr2(sbx.mode) && isCount3(sbx.unsandboxedCalls) && (sbx.writeNetwork === void 0 || sbx.writeNetwork === "none" || sbx.writeNetwork === "registry"));
   })) return "lanes";
   if (typeof s.retries !== "object" || s.retries === null || !Object.values(s.retries).every(isCount3)) return "retries";
   if (typeof s.lostStreak !== "object" || s.lostStreak === null) return "lostStreak";
@@ -142517,7 +142527,8 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
         }
         this.ledger.setRecheck(void 0);
         const startedAt = this.iso();
-        const record3 = { id, kind, startSha: startRef, status: "running", maxCredits: cap.cap, startedAt, ...laneTree2 ? { worktree: laneTree2 } : {} };
+        const model = this.o.limits.laneModel;
+        const record3 = { id, kind, startSha: startRef, status: "running", maxCredits: cap.cap, startedAt, ...model ? { model } : {}, ...laneTree2 ? { worktree: laneTree2 } : {} };
         try {
           this.ledger.setBaseline(id, before);
           if (userBefore) this.ledger.setBaseline(userBaselineKey(id), userBefore);
@@ -142538,6 +142549,8 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
             maxCredits: cap.cap,
             ledgerTag: { role: kind, run: runSlug(this.key) },
             ...profile === "write" ? { engineCommits: true } : {},
+            // factory.run.laneModel / --model: every lane kind (implement, review, fix, ci-fix, conflict-fix) starts on it.
+            ...model ? { model } : {},
             ...priv && laneTree2 ? { worktree: { path: laneTree2, commonGitDir: priv.repo.gitDir }, jobRoot: priv.layout.jobs, deniedPaths: priv.deniedFor(laneTree2), beforeHostGit: () => priv.problem() } : {}
           }));
         } catch (error62) {
@@ -142621,7 +142634,8 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
           // The private layout keeps the engine's own record of the worktree it made (acceptWriteLane compares the backend's with it).
           ...result.worktree && !laneTree2 ? { worktree: result.worktree } : {},
           ...result.error ? { note: result.error } : {},
-          ...result.sandbox ? { sandbox: result.sandbox } : {}
+          ...result.sandbox ? { sandbox: result.sandbox } : {},
+          ...result.model ? { model: result.model } : {}
         });
         if (status === "completed") this.save((x) => ({ ...x, lostStreak: { ...x.lostStreak, [kind]: 0 } }));
         this.progress.emit(`lane-${kind}`, status === "completed" ? "ok" : "fail", `lane ${id} ${stalled ? "stalled" : result.state}, ${usage.credits.toFixed(2)} AI credits`, { ...this.fields(), lane: id, job: remoteId });
@@ -150020,7 +150034,9 @@ ${block2}
           error: job.done?.error ?? null,
           notes: [],
           process: fakeProcess(remoteId),
-          ...review ? {} : { sandbox: ENFORCED }
+          ...review ? {} : { sandbox: ENFORCED },
+          // Like copilot_run's snapshot.model: the session runs on the model it was started with.
+          ...job.input.model ? { model: job.input.model } : {}
         };
       }
       async poll(remoteId) {
@@ -150055,6 +150071,16 @@ function modelMultiplier(models, model) {
   return typeof m === "number" && Number.isFinite(m) && m >= 0 ? m : null;
 }
 function multiplierRefusal(info, allow) {
+  if (info.explicit) {
+    if (!info.offered) return `the lanes' Copilot model ${info.model ?? "(none)"} could not be checked against your account's models (${info.detail}); the bench does not start an unchecked --model`;
+    if (!info.model || !info.offered.includes(info.model)) return `--model ${info.model ?? "(none)"} is not offered to your account by Copilot; listModels() offers: ${info.offered.join(", ") || "(none)"}`;
+    if (info.multiplier === null) {
+      if (allow !== void 0) return null;
+      return `the lanes' Copilot model ${info.model} has no known premium multiplier (${info.detail}); check it by hand (/model in an interactive copilot), then rerun with --allow-multiplier <its multiplier, rounded up>`;
+    }
+    if (info.multiplier <= 1 || allow !== void 0 && allow >= info.multiplier) return null;
+    return `the lanes' Copilot model ${info.model} (--model) bills ${info.multiplier}x premium requests per call; rerun with --allow-multiplier ${Math.ceil(info.multiplier)} to accept it, or pick a cheaper --model`;
+  }
   if (info.multiplier === null) {
     if (allow !== void 0) return null;
     return `the lanes' default Copilot model ${info.model ?? "(unknown)"} has no known premium multiplier (${info.detail}); check the default Copilot model by hand (/model in an interactive copilot), then rerun with --allow-multiplier <its multiplier, rounded up>`;
@@ -150063,8 +150089,8 @@ function multiplierRefusal(info, allow) {
   if (allow !== void 0 && allow >= info.multiplier) return null;
   return `the lanes' default Copilot model ${info.model ?? "(unnamed)"} bills ${info.multiplier}x premium requests per call; rerun with --allow-multiplier ${Math.ceil(info.multiplier)} to accept it, or pick a cheaper default model in Copilot`;
 }
-async function probeLaneModel(jobRoot, deps = defaultCopilotRunDeps()) {
-  const none = (detail) => ({ model: null, multiplier: null, detail });
+async function probeLaneModel(jobRoot, deps = defaultCopilotRunDeps(), requested) {
+  const none = (detail) => requested ? { model: requested, multiplier: null, detail, explicit: true } : { model: null, multiplier: null, detail };
   const jobHome = (0, import_node_path47.join)(jobRoot, `model-probe-${(0, import_node_crypto25.randomBytes)(4).toString("hex")}`);
   const workDir = (0, import_node_path47.join)(jobHome, "work");
   let client = null;
@@ -150093,6 +150119,18 @@ async function probeLaneModel(jobRoot, deps = defaultCopilotRunDeps()) {
     client = c;
     await withTimeout(c.start().catch(rethrowSdkStartError), START_TIMEOUT_MS4, "client.start()");
     const models = await withTimeout(c.listModels(), RPC_TIMEOUT_MS4, "listModels()");
+    if (requested) {
+      const list3 = Array.isArray(models) ? models : [];
+      const offered = list3.map((m) => m.id).filter((id) => typeof id === "string");
+      const multiplier2 = modelMultiplier(list3, requested);
+      return {
+        model: requested,
+        multiplier: multiplier2,
+        explicit: true,
+        offered,
+        detail: !offered.includes(requested) ? `listModels() does not offer ${requested}` : multiplier2 === null ? `listModels() gives no billing multiplier for ${requested}` : `listModels() billing.multiplier of ${requested}`
+      };
+    }
     session = await withTimeout(c.createSession({
       onPermissionRequest: () => ({ kind: "reject" }),
       pluginDirectories: [],
@@ -150191,7 +150229,8 @@ function laneUsage(state) {
     kind: l.role ?? l.kind,
     premiumRequests: l.usage?.premiumRequests ?? 0,
     credits: l.usage?.credits ?? 0,
-    source: l.usage?.source ?? "none"
+    source: l.usage?.source ?? "none",
+    ...l.model ? { model: l.model } : {}
   }));
 }
 function phaseTimes(state) {
@@ -150340,12 +150379,17 @@ function computeTotals(issues) {
     wallMs: sum((i) => i.wallMs)
   };
 }
+function modelLabel(m) {
+  if (!m || m.id === null) return "default";
+  const x = m.multiplier !== null ? `${m.multiplier}x` : null;
+  return m.explicit ? `${m.id} (--model${x ? `, ${x}` : ""})` : `default ${m.id}${x ? ` (${x})` : ""}`;
+}
 function renderResultsMarkdown(r) {
   const t = r.totals;
   const lines4 = [
     `# omg factory bench (${r.mode})`,
     "",
-    `${r.startedAt} -> ${r.finishedAt}; omg ${r.omgVersion}; fixture v${r.fixtureVersion}${r.stopped ? `; stopped early: ${r.stopped}` : ""}`,
+    `${r.startedAt} -> ${r.finishedAt}; omg ${r.omgVersion}; fixture v${r.fixtureVersion}; lane model ${cell(modelLabel(r.model))}${r.stopped ? `; stopped early: ${r.stopped}` : ""}`,
     "",
     `- Pass rate: ${t.passed}/${t.issues} (${pct(t.passRate)})`,
     `- Merged parks: ${t.mergedParks} (hidden acceptance green: ${t.acceptancePassed})`,
@@ -150420,6 +150464,10 @@ function readBenchResults(path30) {
     if (sorted(r.subset) !== sorted([...ids2])) throw new Error(`${path30}: subset ${sorted(r.subset)} does not match the issues it lists (${sorted([...ids2]) || "none"})`);
   }
   if (r.mode !== "fake" && r.mode !== "live") throw new Error(`${path30}: mode ${JSON.stringify(r.mode)} is neither fake nor live`);
+  const m = r.model;
+  if (m !== void 0 && m !== null && !(typeof m === "object" && (m.id === null || typeof m.id === "string") && (m.multiplier === null || isNum(m.multiplier)) && typeof m.explicit === "boolean")) {
+    throw new Error(`${path30}: model is neither null nor { id, multiplier, explicit }`);
+  }
   if (typeof r.startedAt !== "string" || !isNum(r.fixtureVersion)) throw new Error(`${path30}: results without startedAt or fixtureVersion`);
   r.totals = computeTotals(r.issues);
   return r;
@@ -150430,8 +150478,9 @@ function compareResults2(a, b, names = ["a", "b"], o = {}) {
   if (ca !== cb && !o.allowSubsetDiff) {
     throw new Error(`the results cover different issues (${ca || "none"} vs ${cb || "none"}), so their totals do not compare; pass --allow-subset-diff to compare them anyway`);
   }
-  const lines4 = [`# omg factory bench compare`, "", `- a: ${names[0]} (${a.mode}, ${a.startedAt}, fixture v${a.fixtureVersion})`, `- b: ${names[1]} (${b.mode}, ${b.startedAt}, fixture v${b.fixtureVersion})`];
+  const lines4 = [`# omg factory bench compare`, "", `- a: ${names[0]} (${a.mode}, ${a.startedAt}, fixture v${a.fixtureVersion}, lane model ${cell(modelLabel(a.model))})`, `- b: ${names[1]} (${b.mode}, ${b.startedAt}, fixture v${b.fixtureVersion}, lane model ${cell(modelLabel(b.model))})`];
   if (ca !== cb) lines4.push("", `Warning: the results cover different issues (${ca} vs ${cb}); the totals are not like for like.`);
+  if (modelLabel(a.model) !== modelLabel(b.model)) lines4.push("", `Note: the lane models differ (${cell(modelLabel(a.model))} vs ${cell(modelLabel(b.model))}).`);
   if (a.fixtureVersion !== b.fixtureVersion) lines4.push("", `Warning: fixture versions differ (${a.fixtureVersion} vs ${b.fixtureVersion}); the issues are not the same.`);
   const ta = a.totals;
   const tb = b.totals;
@@ -150746,6 +150795,13 @@ async function runBench(o) {
   const subset = benchSubset(o.issues);
   const selected = BENCH_ISSUES.filter((i) => !subset || subset.includes(i.id));
   const inScope = (id) => selected.some((i) => i.id === id);
+  let laneModel;
+  try {
+    laneModel = o.model === void 0 ? void 0 : checkLaneModel(o.model, "--model");
+  } catch (error62) {
+    throw new BenchUsageError(error62 instanceof Error ? error62.message : String(error62));
+  }
+  let modelUsed = laneModel ? { id: laneModel, multiplier: null, explicit: true } : null;
   if (o.mode === "live") {
     if (o.maxRequests === void 0) throw new BenchUsageError("--live needs --max-requests <n>: the bench never spends premium requests without an explicit cap");
   } else if (parallel !== 1) {
@@ -150798,7 +150854,7 @@ async function runBench(o) {
           issue: issue2.id,
           exec: defaultExec,
           base: meta3.base,
-          limits: { ...DEFAULT_FACTORY_RUN_LIMITS, ...maxRunRequests !== void 0 ? { maxRunRequests } : {} },
+          limits: { ...DEFAULT_FACTORY_RUN_LIMITS, ...maxRunRequests !== void 0 ? { maxRunRequests } : {}, ...laneModel ? { laneModel } : {} },
           lanes: new BenchFakeLanes(meta3.root, issue2.fake, (t) => fillPlaceholders(t, meta3)),
           ledgerDir: (0, import_node_path49.join)(benchDir, "engine-ledger"),
           processes: BENCH_FAKE_PROCESSES,
@@ -150835,8 +150891,10 @@ async function runBench(o) {
     }
     config2 = loadFactoryForgeConfig(factoryGuardExec(defaultExec), meta3.root, meta3.base, trustedUser, void 0).config;
     if (config2.kind !== "local") throw new BenchUsageError(`the fixture resolves to the ${config2.kind} forge (your user config's factory.forge?); the bench needs the local forge`);
-    const model = await (o.modelProbe ?? (() => probeLaneModel((0, import_node_path49.join)(benchDir, "model-probe"))))();
-    const modelLine = `lanes' default Copilot model: ${model.model ?? "unknown"}; premium multiplier: ${model.multiplier ?? "unknown"} (${model.detail})`;
+    const model = await (o.modelProbe ?? ((m) => probeLaneModel((0, import_node_path49.join)(benchDir, "model-probe"), void 0, m)))(laneModel);
+    if (laneModel && !(model.explicit && model.model === laneModel)) throw new BenchUsageError(`the model probe did not check --model ${laneModel} (it reported ${model.model ?? "no model"}); the bench does not start an unchecked --model`);
+    modelUsed = { id: model.model, multiplier: model.multiplier, explicit: Boolean(model.explicit) };
+    const modelLine = `lanes' ${model.explicit ? "Copilot model (--model)" : "default Copilot model"}: ${model.model ?? "unknown"}; premium multiplier: ${model.multiplier ?? "unknown"} (${model.detail})`;
     (o.announce ?? log3)(modelLine);
     notes.push(modelLine);
     if (model.multiplier === null) notes.push("the multiplier is unknown: a lane without session.shutdown totals counts its user calls once each, which undercounts a model above 1x");
@@ -150909,8 +150967,9 @@ async function runBench(o) {
           break;
         }
         runs.set(next, { allot: c.allot, running: true });
-        log3(`#${next}: omg factory run ${next} --max-requests ${c.allot}`);
-        const p = start({ root: meta3.root, issue: next, args: ["--max-requests", String(c.allot)] }).then(async (r) => {
+        const args = ["--max-requests", String(c.allot), ...laneModel ? ["--model", laneModel] : []];
+        log3(`#${next}: omg factory run ${next} ${args.join(" ")}`);
+        const p = start({ root: meta3.root, issue: next, args }).then(async (r) => {
           log3(`#${next}: exit ${r.exitCode}: ${r.message.split("\n")[0].slice(0, 200)}`);
           runsLog.push({ issue: next, maxRequests: c.allot, exitCode: r.exitCode, message: r.message.split("\n")[0].slice(0, 300) });
           if (r.exitCode === 6) {
@@ -150972,6 +151031,7 @@ async function runBench(o) {
     finishedAt: now2().toISOString(),
     caps: { maxRequests: o.maxRequests ?? null, maxCredits: o.maxCredits ?? null, maxMinutes, parallel },
     subset,
+    model: modelUsed,
     ...o.mode === "live" ? { runs: runsLog } : {},
     stopped,
     ledger: ledgerUsed,
@@ -151137,7 +151197,7 @@ function factoryBenchCommand() {
       fail4(error62);
     }
   });
-  bench.command("run").argument("<dir>", "the fixture directory (omg factory bench init)").option("--fake", "scripted lanes, no Copilot and no cost: proves the harness, scoring and trap expectations").option("--live", 'real Copilot lanes through omg factory run <id> in the fixture repository; needs --max-requests and the gate sandbox enforced (factory.run.sandbox.gates "enforced", or isolation "container" and gates not "unsandboxed")').option("--max-requests <n>", `the premium-request cap: ${LIVE_CAP_BOUND}`, integerOption(1, 1e4)).option("--max-credits <n>", "--live: no run starts once this many AI credits are recorded (a soft stop: runs in flight finish)", integerOption(1, 1e6)).option("--max-minutes <n>", `no run starts after this many minutes (default ${DEFAULT_BENCH_MAX_MINUTES})`, integerOption(1, 24 * 60)).option("--parallel <n>", '--live: up to n runs at once (needs factory.run.maxConcurrent above 1 and layout "private" in your user config)', integerOption(1, 16)).option("--allow-multiplier <n>", "--live: accept a default Copilot model that bills up to n premium requests per call (without it: refused above 1, or when Copilot does not report the model or multiplier)", integerOption(1, 1e3)).option("--issues <ids>", "run only these issues (comma-separated ids, e.g. 2,6,9,10); the results record the subset").option("--out <dir>", "results directory (default ./bench-results)").option("--json", "print the results JSON instead of the summary").description("Run the factory over the fixture until every issue is parked, finished or not runnable, then score it").action(async (dir, o) => {
+  bench.command("run").argument("<dir>", "the fixture directory (omg factory bench init)").option("--fake", "scripted lanes, no Copilot and no cost: proves the harness, scoring and trap expectations").option("--live", 'real Copilot lanes through omg factory run <id> in the fixture repository; needs --max-requests and the gate sandbox enforced (factory.run.sandbox.gates "enforced", or isolation "container" and gates not "unsandboxed")').option("--max-requests <n>", `the premium-request cap: ${LIVE_CAP_BOUND}`, integerOption(1, 1e4)).option("--max-credits <n>", "--live: no run starts once this many AI credits are recorded (a soft stop: runs in flight finish)", integerOption(1, 1e6)).option("--max-minutes <n>", `no run starts after this many minutes (default ${DEFAULT_BENCH_MAX_MINUTES})`, integerOption(1, 24 * 60)).option("--parallel <n>", '--live: up to n runs at once (needs factory.run.maxConcurrent above 1 and layout "private" in your user config)', integerOption(1, 16)).option("--allow-multiplier <n>", "--live: accept a lane model (the default, or --model) that bills up to n premium requests per call (without it: refused above 1, or when Copilot does not report the model or multiplier)", integerOption(1, 1e3)).option("--model <id>", "start every lane on this Copilot model id (a known model id): --fake passes it to the engine, --live passes --model to each omg factory run and checks THIS model against your account (refused when listModels() does not offer it) and its multiplier; the results record it").option("--issues <ids>", "run only these issues (comma-separated ids, e.g. 2,6,9,10); the results record the subset").option("--out <dir>", "results directory (default ./bench-results)").option("--json", "print the results JSON instead of the summary").description("Run the factory over the fixture until every issue is parked, finished or not runnable, then score it").action(async (dir, o) => {
     if (Boolean(o.fake) === Boolean(o.live)) return fail4(new Error("pass exactly one of --fake and --live"), true);
     let issues;
     try {
@@ -151165,6 +151225,7 @@ function factoryBenchCommand() {
         ...o.out ? { outDir: o.out } : {},
         ...issues ? { issues } : {},
         ...o.allowMultiplier !== void 0 ? { allowMultiplier: o.allowMultiplier } : {},
+        ...o.model !== void 0 ? { model: o.model } : {},
         log: (m) => {
           if (!o.json) console.error(source_default.gray(m));
         },
@@ -151885,7 +151946,7 @@ function renderFactoryRunState(state, o = {}) {
   lines4.push(`lanes ${state.lanes.length}  run AI credits ${runCredits(state).toFixed(2)}  elapsed ${Math.round(state.elapsedMs / 6e4)} min`);
   for (const lane of state.lanes) {
     const credits = lane.usage ? `${lane.usage.credits.toFixed(2)}/${lane.maxCredits}` : `-/${lane.maxCredits}`;
-    lines4.push(`  ${lane.id} ${lane.status}${lane.verdict ? ` ${lane.verdict}` : ""} credits ${credits}${lane.jobId ? ` job ${lane.jobId}` : ""}${lane.sandbox ? ` sandbox ${lane.sandbox.mode}` : ""}${lane.lastEventAt && (lane.status === "running" || lane.status === "stalled") ? ` last event ${lane.lastEventAt}` : ""}`);
+    lines4.push(`  ${lane.id} ${lane.status}${lane.verdict ? ` ${lane.verdict}` : ""} credits ${credits}${lane.model ? ` model ${plainText(lane.model)}` : ""}${lane.jobId ? ` job ${lane.jobId}` : ""}${lane.sandbox ? ` sandbox ${lane.sandbox.mode}` : ""}${lane.lastEventAt && (lane.status === "running" || lane.status === "stalled") ? ` last event ${lane.lastEventAt}` : ""}`);
     if (lane.status === "stalled" && lane.note) lines4.push(source_default.yellow(`    ${plainText(lane.note)}`));
   }
   for (const h of state.history.slice(-5)) lines4.push(source_default.gray(`  ${h.at} ${h.from ?? "-"} -> ${h.to}: ${h.note}`));
@@ -152024,7 +152085,7 @@ function printOutcome2(json3, outcome, next) {
 function factoryRunCommand(deps = defaultFactoryRunDeps) {
   const exec3 = factoryGuardExec(deps.exec);
   const run3 = new Command("run");
-  run3.description("Experimental: drive one issue through implement -> draft PR -> independent review / fix rounds -> prepare -> CI gates, then park for the human merge").argument("[issue]", "the item number: a GitHub issue, an Azure DevOps work item or a local backlog item").option("--next", "Run the next runnable item (omg factory check order: priority, then id); exit 0 when nothing is runnable").option("--parent <spec>", "With --next: pick among the children of this spec item instead of factory.intake.source").option("--dry-run", "Resolve the issue and plan and print the next step; no state, lanes or pushes").option("--allow-gate-change", "Local forge: accept the one change to the local gate's definition (package.json script, package-manager config or gate file) that parked the run at gate-definition-changed; a later change parks again").option("--allow-unsandboxed-lanes", "Accept, for the parked head only, that write lanes ran without the enforced sandbox (the run parked at human-review for it): you checked the threads and reviews of the PR yourself; a new head parks again").option("--allow-unsandboxed-gates", "Accept, for the parked head only, that prepare's checks and the local gate run the PR's code WITHOUT the OS sandbox, as you (the run parked at gates-unsandboxed for it): you reviewed the diff yourself; a new head parks again").option("--allow-secret-shapes", "Accept the secret-shaped content (the key or token shapes, by path and kind, the park named) that parked a lane commit at secret-shaped-content, for that lane commit only: you checked they are test fixtures, not real secrets; a new path or kind parks again").option("--parallel <n>", 'With --next and factory.run.maxConcurrent above 1 (factory.run.layout "private"): run up to min(n, maxConcurrent) runs at once, each its own `omg factory run --next` process; a slot is refilled when a run ends, until nothing is runnable or Ctrl+C', integerOption(1, 64)).option("--max-requests <n>", "Start no further lane in this run once its lanes recorded n premium requests, or when a lane's usage is unknown (the run parks at budget); the lane in flight when the cap is reached finishes, so the run can end above n by that one lane", integerOption(1, 1e4)).option("--json", "JSON output").action((issueRaw, o) => factoryGuarded(Boolean(o.json), async () => {
+  run3.description("Experimental: drive one issue through implement -> draft PR -> independent review / fix rounds -> prepare -> CI gates, then park for the human merge").argument("[issue]", "the item number: a GitHub issue, an Azure DevOps work item or a local backlog item").option("--next", "Run the next runnable item (omg factory check order: priority, then id); exit 0 when nothing is runnable").option("--parent <spec>", "With --next: pick among the children of this spec item instead of factory.intake.source").option("--dry-run", "Resolve the issue and plan and print the next step; no state, lanes or pushes").option("--allow-gate-change", "Local forge: accept the one change to the local gate's definition (package.json script, package-manager config or gate file) that parked the run at gate-definition-changed; a later change parks again").option("--allow-unsandboxed-lanes", "Accept, for the parked head only, that write lanes ran without the enforced sandbox (the run parked at human-review for it): you checked the threads and reviews of the PR yourself; a new head parks again").option("--allow-unsandboxed-gates", "Accept, for the parked head only, that prepare's checks and the local gate run the PR's code WITHOUT the OS sandbox, as you (the run parked at gates-unsandboxed for it): you reviewed the diff yourself; a new head parks again").option("--allow-secret-shapes", "Accept the secret-shaped content (the key or token shapes, by path and kind, the park named) that parked a lane commit at secret-shaped-content, for that lane commit only: you checked they are test fixtures, not real secrets; a new path or kind parks again").option("--parallel <n>", 'With --next and factory.run.maxConcurrent above 1 (factory.run.layout "private"): run up to min(n, maxConcurrent) runs at once, each its own `omg factory run --next` process; a slot is refilled when a run ends, until nothing is runnable or Ctrl+C', integerOption(1, 64)).option("--max-requests <n>", "Start no further lane in this run once its lanes recorded n premium requests, or when a lane's usage is unknown (the run parks at budget); the lane in flight when the cap is reached finishes, so the run can end above n by that one lane", integerOption(1, 1e4)).option("--model <id>", "Start every lane (implement, review, fix, ci-fix) on this Copilot model id instead of factory.run.laneModel or the Copilot default model; an id not in the known model list is refused").option("--json", "JSON output").action((issueRaw, o) => factoryGuarded(Boolean(o.json), async () => {
     if (o.next && issueRaw !== void 0) throw new FactoryUsageError("--next takes no issue: it picks the next runnable item");
     if (o.parent !== void 0 && !o.next) throw new FactoryUsageError("--parent applies to --next");
     let parent;
@@ -152033,11 +152094,17 @@ function factoryRunCommand(deps = defaultFactoryRunDeps) {
     } catch (error62) {
       throw new FactoryUsageError(error62 instanceof Error ? error62.message : String(error62));
     }
+    let laneModel;
+    try {
+      laneModel = o.model === void 0 ? void 0 : checkLaneModel(o.model, "--model");
+    } catch (error62) {
+      throw new FactoryUsageError(error62 instanceof Error ? error62.message : String(error62));
+    }
     let issue2 = o.next ? void 0 : parseIssue(issueRaw);
     const root = factoryRoot(exec3);
     const loadedLimits = deps.limits(root);
     for (const w of loadedLimits.warnings) console.error(source_default.yellow(w));
-    const limits = o.maxRequests !== void 0 ? { ...loadedLimits.limits, maxRunRequests: o.maxRequests } : loadedLimits.limits;
+    const limits = { ...loadedLimits.limits, ...o.maxRequests !== void 0 ? { maxRunRequests: o.maxRequests } : {}, ...laneModel ? { laneModel } : {} };
     const base = deps.base(root);
     let claimRepo = null;
     const warnShallow = shallowWarnOnce();
@@ -152067,7 +152134,7 @@ function factoryRunCommand(deps = defaultFactoryRunDeps) {
       if (o.dryRun) throw new FactoryUsageError("--parallel starts real runs; it does not combine with --dry-run");
       if (o.maxRequests !== void 0) throw new FactoryUsageError("--max-requests caps one run; it does not combine with --parallel");
       if (!slotMode) throw new FactoryUsageError('--parallel needs factory.run.maxConcurrent above 1 and factory.run.layout: "private"; parallel runs are an opt-in of your user config (factory.run.maxConcurrent, maxInFlightCredits or layout "private" there), and only then can the .copilot/omg.jsonc committed on a trusted base supply the other key');
-      return runParallel(deps, root, Math.min(o.parallel, par.settings.maxConcurrent), parent, Boolean(o.json));
+      return runParallel(deps, root, Math.min(o.parallel, par.settings.maxConcurrent), parent, Boolean(o.json), laneModel);
     }
     const creditLimit = slotMode ? par.settings.maxInFlightCredits ?? limits.laneMaxCredits * par.settings.maxConcurrent : par?.settings.maxInFlightCredits;
     let signals = 0;
@@ -152174,7 +152241,7 @@ function factoryRunCommand(deps = defaultFactoryRunDeps) {
       held?.release();
     }
   }));
-  async function runParallel(deps2, root, n, parent, json3) {
+  async function runParallel(deps2, root, n, parent, json3, laneModel) {
     const forwards = /* @__PURE__ */ new Set();
     let stops = 0;
     const stoppers = /* @__PURE__ */ new Set();
@@ -152189,7 +152256,7 @@ function factoryRunCommand(deps = defaultFactoryRunDeps) {
     const sigterm = () => onSignal("SIGTERM");
     process.on("SIGINT", sigint);
     process.on("SIGTERM", sigterm);
-    const args = parent !== void 0 ? ["--parent", String(parent)] : [];
+    const args = [...parent !== void 0 ? ["--parent", String(parent)] : [], ...laneModel ? ["--model", laneModel] : []];
     const signals = (forward) => {
       forwards.add(forward);
       return () => {

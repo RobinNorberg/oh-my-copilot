@@ -75,6 +75,8 @@ export interface BenchLaneUsage {
   premiumRequests: number;
   credits: number;
   source: string;
+  /** The model the lane ran on (its run state's lane record), absent when unknown. */
+  model?: string;
 }
 
 export interface BenchIssueResult {
@@ -140,6 +142,13 @@ export interface BenchResults {
   caps: { maxRequests: number | null; maxCredits: number | null; maxMinutes: number; parallel: number };
   /** The issue ids this run covered (`--issues`), or null for every issue. */
   subset: number[] | null;
+  /**
+   * The lanes' Copilot model: `explicit` when `--model` named it, else the
+   * live probe's default (id null when the runtime named none); with its
+   * listModels() multiplier (null in fake mode or when unknown). Null: fake
+   * mode without `--model`. Absent in results written before it existed.
+   */
+  model?: { id: string | null; multiplier: number | null; explicit: boolean } | null;
   /** Live: every run child, its issue and the premium-request cap it was given (`omg factory run <id> --max-requests`). */
   runs?: Array<{ issue: number; maxRequests: number; exitCode: number; message: string }>;
   /** Why the runner stopped before every issue was terminal or parked, else null. */
@@ -166,7 +175,7 @@ export function outcomeMatches(outcome: string, expect: readonly string[]): bool
 
 export function laneUsage(state: FactoryRunState | null): BenchLaneUsage[] {
   return (state?.lanes ?? []).map((l) => ({
-    id: l.id, kind: l.role ?? l.kind, premiumRequests: l.usage?.premiumRequests ?? 0, credits: l.usage?.credits ?? 0, source: l.usage?.source ?? 'none',
+    id: l.id, kind: l.role ?? l.kind, premiumRequests: l.usage?.premiumRequests ?? 0, credits: l.usage?.credits ?? 0, source: l.usage?.source ?? 'none', ...(l.model ? { model: l.model } : {}),
   }));
 }
 
@@ -355,12 +364,19 @@ const secs = (ms: number): string => `${Math.round(ms / 1000)} s`;
 /** Untrusted text (park reasons come from lane output) in one markdown table cell. */
 const cell = (s: string): string => s.replace(/[\r\n]+/g, ' ').replace(/\|/g, '\\|').replace(/[<>]/g, (c) => (c === '<' ? '&lt;' : '&gt;')).slice(0, 160);
 
+/** The results' lane model for a header: `mai-code-2 (--model, 1x)`, `default gpt-x (1x)`, or `default` when not known. */
+export function modelLabel(m: BenchResults['model']): string {
+  if (!m || m.id === null) return 'default';
+  const x = m.multiplier !== null ? `${m.multiplier}x` : null;
+  return m.explicit ? `${m.id} (--model${x ? `, ${x}` : ''})` : `default ${m.id}${x ? ` (${x})` : ''}`;
+}
+
 export function renderResultsMarkdown(r: BenchResults): string {
   const t = r.totals;
   const lines = [
     `# omg factory bench (${r.mode})`,
     '',
-    `${r.startedAt} -> ${r.finishedAt}; omg ${r.omgVersion}; fixture v${r.fixtureVersion}${r.stopped ? `; stopped early: ${r.stopped}` : ''}`,
+    `${r.startedAt} -> ${r.finishedAt}; omg ${r.omgVersion}; fixture v${r.fixtureVersion}; lane model ${cell(modelLabel(r.model))}${r.stopped ? `; stopped early: ${r.stopped}` : ''}`,
     '',
     `- Pass rate: ${t.passed}/${t.issues} (${pct(t.passRate)})`,
     `- Merged parks: ${t.mergedParks} (hidden acceptance green: ${t.acceptancePassed})`,
@@ -446,6 +462,10 @@ export function readBenchResults(path: string): BenchResults {
     if (sorted(r.subset) !== sorted([...ids])) throw new Error(`${path}: subset ${sorted(r.subset)} does not match the issues it lists (${sorted([...ids]) || 'none'})`);
   }
   if (r.mode !== 'fake' && r.mode !== 'live') throw new Error(`${path}: mode ${JSON.stringify(r.mode)} is neither fake nor live`);
+  const m = r.model as Record<string, unknown> | null | undefined;
+  if (m !== undefined && m !== null && !(typeof m === 'object' && (m.id === null || typeof m.id === 'string') && (m.multiplier === null || isNum(m.multiplier)) && typeof m.explicit === 'boolean')) {
+    throw new Error(`${path}: model is neither null nor { id, multiplier, explicit }`);
+  }
   if (typeof r.startedAt !== 'string' || !isNum(r.fixtureVersion)) throw new Error(`${path}: results without startedAt or fixtureVersion`);
   // The gate counts from the issues, never from totals the file claims.
   r.totals = computeTotals(r.issues);
@@ -468,8 +488,9 @@ export function compareResults(a: BenchResults, b: BenchResults, names: [string,
   if (ca !== cb && !o.allowSubsetDiff) {
     throw new Error(`the results cover different issues (${ca || 'none'} vs ${cb || 'none'}), so their totals do not compare; pass --allow-subset-diff to compare them anyway`);
   }
-  const lines = [`# omg factory bench compare`, '', `- a: ${names[0]} (${a.mode}, ${a.startedAt}, fixture v${a.fixtureVersion})`, `- b: ${names[1]} (${b.mode}, ${b.startedAt}, fixture v${b.fixtureVersion})`];
+  const lines = [`# omg factory bench compare`, '', `- a: ${names[0]} (${a.mode}, ${a.startedAt}, fixture v${a.fixtureVersion}, lane model ${cell(modelLabel(a.model))})`, `- b: ${names[1]} (${b.mode}, ${b.startedAt}, fixture v${b.fixtureVersion}, lane model ${cell(modelLabel(b.model))})`];
   if (ca !== cb) lines.push('', `Warning: the results cover different issues (${ca} vs ${cb}); the totals are not like for like.`);
+  if (modelLabel(a.model) !== modelLabel(b.model)) lines.push('', `Note: the lane models differ (${cell(modelLabel(a.model))} vs ${cell(modelLabel(b.model))}).`);
   if (a.fixtureVersion !== b.fixtureVersion) lines.push('', `Warning: fixture versions differ (${a.fixtureVersion} vs ${b.fixtureVersion}); the issues are not the same.`);
   const ta = a.totals;
   const tb = b.totals;

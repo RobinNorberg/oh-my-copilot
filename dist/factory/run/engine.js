@@ -5973,7 +5973,8 @@ class FactoryEngine {
         }
         this.ledger.setRecheck(undefined);
         const startedAt = this.iso();
-        const record = { id, kind, startSha: startRef, status: 'running', maxCredits: cap.cap, startedAt, ...(laneTree ? { worktree: laneTree } : {}) };
+        const model = this.o.limits.laneModel;
+        const record = { id, kind, startSha: startRef, status: 'running', maxCredits: cap.cap, startedAt, ...(model ? { model } : {}), ...(laneTree ? { worktree: laneTree } : {}) };
         // The baseline is persisted before the lane exists, so a lost lane or a resume compares against it.
         try {
             this.ledger.setBaseline(id, before);
@@ -5991,6 +5992,8 @@ class FactoryEngine {
             ({ remoteId } = await this.o.lanes.start({
                 laneId: id, cwd: this.o.root, baseRef: startRef, prompt, profile, timeoutMs: this.o.limits.laneTimeoutMs, maxCredits: cap.cap, ledgerTag: { role: kind, run: runSlug(this.key) },
                 ...(profile === 'write' ? { engineCommits: true } : {}),
+                // factory.run.laneModel / --model: every lane kind (implement, review, fix, ci-fix, conflict-fix) starts on it.
+                ...(model ? { model } : {}),
                 ...(priv && laneTree ? { worktree: { path: laneTree, commonGitDir: priv.repo.gitDir }, jobRoot: priv.layout.jobs, deniedPaths: priv.deniedFor(laneTree), beforeHostGit: () => priv.problem() } : {}),
             }));
         }
@@ -6091,6 +6094,7 @@ class FactoryEngine {
             ...(result.worktree && !laneTree ? { worktree: result.worktree } : {}),
             ...(result.error ? { note: result.error } : {}),
             ...(result.sandbox ? { sandbox: result.sandbox } : {}),
+            ...(result.model ? { model: result.model } : {}),
         });
         if (status === 'completed')
             this.save((x) => ({ ...x, lostStreak: { ...x.lostStreak, [kind]: 0 } }));

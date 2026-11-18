@@ -17,6 +17,19 @@ describe('omg factory run engine (fake lanes, real git, scripted gh)', () => {
         expect(state.plan).toMatchObject({ source: 'link', path: 'docs/plan.md', blob: gitIn(h.root, 'rev-parse', 'origin/dev:docs/plan.md') });
         expect(lanes.started[0].prompt).toContain('Add greet().');
     });
+    it('factory.run.laneModel starts every lane kind (implement, review, fix, review) on it and records it per lane; unset passes no model', async () => {
+        const finding = { severity: 'major', file: 'src/greet.ts', line: 1, summary: 'greet must return hi' };
+        const { lanes, done } = run([commitFile('src/greet.ts', 'x\n'), review('request-changes', [finding]), commitFile('src/greet.ts', 'hi\n'), review('approve')], { limits: limits({ laneModel: 'mai-code-2' }) });
+        expect((await done).gate?.name).toBe('merge');
+        expect(lanes.started.map((s) => [s.laneId.replace(`issue-${ISSUE}-`, ''), s.model])).toEqual([['implement-1', 'mai-code-2'], ['review-1', 'mai-code-2'], ['fix-1', 'mai-code-2'], ['review-2', 'mai-code-2']]);
+        expect(readFactoryState(h.root, ISSUE).lanes.map((l) => l.model)).toEqual(['mai-code-2', 'mai-code-2', 'mai-code-2', 'mai-code-2']);
+    });
+    it('without a lane model no lane start carries a model and no lane record names one', async () => {
+        const { lanes, done } = run([commitFile('a.ts'), review('approve')]);
+        await done;
+        expect(lanes.started.every((s) => !('model' in s))).toBe(true);
+        expect(readFactoryState(h.root, ISSUE).lanes.every((l) => !('model' in l))).toBe(true);
+    });
     it('a lane without commits gets one fresh retry, then implement-failed', async () => {
         const { lanes, done } = run([noCommit, noCommit]);
         const out = await done;

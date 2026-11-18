@@ -63,6 +63,12 @@ export interface FactoryLaneRecord {
     status: FactoryLaneStatus;
     /** The AI-credit cap the lane was started with. */
     maxCredits: number;
+    /**
+     * The Copilot model the lane started on (factory.run.laneModel or
+     * `--model`), replaced by the model the session reported when it ended.
+     * Absent: no model was passed and the session reported none.
+     */
+    model?: string;
     /** AI Credits is the unit; premiumRequests is legacy, kept for older readers. */
     usage?: {
         credits: number;

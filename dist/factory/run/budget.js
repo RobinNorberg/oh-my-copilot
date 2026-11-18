@@ -19,6 +19,7 @@
 import { RUNTIME_MIN_MAX_CREDITS } from '../../smoke/copilot-sdk-scenarios.js';
 import { MAX_TIMEOUT_MS } from '../../copilot-run/job.js';
 import { DEFAULT_SHIP_CONFIG, trustedUserConfigPath } from '../../ship/config.js';
+import copilotModels from '../../config/copilot-models.json' with { type: 'json' };
 export { RUNTIME_MIN_MAX_CREDITS };
 export const DEFAULT_FACTORY_RUN_LIMITS = Object.freeze({
     laneMaxCredits: RUNTIME_MIN_MAX_CREDITS,
@@ -66,6 +67,21 @@ function checked(key, value, source) {
         throw new Error(`${source}: factory.run.${key} must be a non-negative ${spec.integer ? 'integer' : 'number'}`);
     return value * spec.scale;
 }
+/** The Copilot model ids a lane model may name (src/config/copilot-models.json knownModels). */
+export const KNOWN_LANE_MODELS = copilotModels.knownModels;
+/**
+ * A lane model id (factory.run.laneModel, `--model`): returned when it is in
+ * KNOWN_LANE_MODELS, else throws naming the known ids. An unknown id is
+ * refused, never passed on: Copilot would reject or misbill it at the first lane.
+ */
+export function checkLaneModel(value, source) {
+    if (typeof value !== 'string' || !value.trim())
+        throw new Error(`${source} must be a Copilot model id (one of ${KNOWN_LANE_MODELS.join(', ')})`);
+    const id = value.trim();
+    if (!KNOWN_LANE_MODELS.includes(id))
+        throw new Error(`${source} ${JSON.stringify(id)} is not a known Copilot model id; known ids: ${KNOWN_LANE_MODELS.join(', ')}`);
+    return id;
+}
 /**
  * Resolve the limits: defaults < trusted user config (`factory.run`, and
  * `ship.maxFixRounds`), then the working-tree project config, which may only
@@ -84,7 +100,12 @@ export function resolveFactoryRunLimits(trustedUser, project) {
         if (user[key] !== undefined)
             set(KEYS[key].field, checked(key, user[key], 'user config'));
     }
+    if (user.laneModel !== undefined)
+        limits.laneModel = checkLaneModel(user.laneModel, 'user config: factory.run.laneModel');
     const proj = runBlock(project, 'project config');
+    // The lanes' model changes what a run bills: only the trusted user config (or --model) sets it.
+    if (proj.laneModel !== undefined)
+        warnings.push('omg factory run: ignoring factory.run.laneModel from the working-tree project config; set it in your user config or pass --model');
     const projFix = shipMaxFixRounds(project);
     const tighten = (key, raw, label = `factory.run.${key}`) => {
         const value = checked(key, raw, 'project config');

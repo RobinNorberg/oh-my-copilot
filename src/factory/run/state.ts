@@ -79,6 +79,12 @@ export interface FactoryLaneRecord {
   status: FactoryLaneStatus;
   /** The AI-credit cap the lane was started with. */
   maxCredits: number;
+  /**
+   * The Copilot model the lane started on (factory.run.laneModel or
+   * `--model`), replaced by the model the session reported when it ended.
+   * Absent: no model was passed and the session reported none.
+   */
+  model?: string;
   /** AI Credits is the unit; premiumRequests is legacy, kept for older readers. */
   usage?: { credits: number; premiumRequests: number; source: 'measured' | 'estimated' };
   verdict?: FactoryLaneVerdict;
@@ -618,6 +624,7 @@ function shapeProblem(s: Record<string, unknown>): string | null {
     const sbx = x?.sandbox as Record<string, unknown> | undefined;
     return isStr(x?.id) && isStr(x.kind) && isStr(x.status) && isStr(x.startSha) && typeof x.maxCredits === 'number'
       && (x.stopUnconfirmed === undefined || typeof x.stopUnconfirmed === 'boolean')
+      && (x.model === undefined || isStr(x.model))
       && (x.tamperCheck === undefined || x.tamperCheck === 'clean' || x.tamperCheck === 'problems' || x.tamperCheck === 'skipped')
       && (sbx === undefined || (typeof sbx === 'object' && sbx !== null && isStr(sbx.mode) && isCount(sbx.unsandboxedCalls)
         && (sbx.writeNetwork === undefined || sbx.writeNetwork === 'none' || sbx.writeNetwork === 'registry')));

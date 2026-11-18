@@ -66,7 +66,13 @@ export interface BenchRunOptions {
     liveStart?: PollAutoStart;
     /** Live: usage recorded in the fixture's budget ledger (default: the ledger file; an unreadable ledger throws). */
     ledger?: (root: string) => LedgerSnapshot;
-    /** Live: the lanes' default Copilot model and multiplier (default: probeLaneModel, no model turn). */
+    /**
+     * The Copilot model every lane starts on (`--model`; a known model id):
+     * fake runs pass it to the engine, live runs pass `--model` to each
+     * `omg factory run` child. Absent: Copilot's default model.
+     */
+    model?: string;
+    /** Live: the lanes' Copilot model (the explicit `model`, else the default) and multiplier (default: probeLaneModel, no model turn). */
     modelProbe?: BenchModelProbe;
     /** Live: the highest premium multiplier the lanes' model may have (a known one above 1 is refused without it). */
     allowMultiplier?: number;
