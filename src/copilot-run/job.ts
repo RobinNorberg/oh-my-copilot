@@ -60,6 +60,7 @@ import { resolveCopilotBinary } from '../smoke/copilot-binary.js';
 import {
   loadCopilotSdk,
   resolveShimTarget,
+  rethrowSdkStartError,
   runtimePid,
   type LoadedSdk,
   type PermissionResult,
@@ -1540,7 +1541,7 @@ export class CopilotRunManager {
     let outcome: CopilotRunStatus = 'failed';
     try {
       // A stop (cancel, server exit) during a slow start goes straight to the teardown.
-      await withTimeout(Promise.race([client.start(), job.stopped]), START_TIMEOUT_MS, 'client.start()');
+      await withTimeout(Promise.race([client.start().catch(rethrowSdkStartError), job.stopped]), START_TIMEOUT_MS, 'client.start()');
       pid = runtimePid(client);
       job.pid = pid;
       if (pid) {

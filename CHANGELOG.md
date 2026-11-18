@@ -4,6 +4,10 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Known issue: Copilot CLI ≥ 1.0.113 needs a newer Copilot SDK.** CLI 1.0.113 speaks SDK protocol 4, and `@github/copilot-sdk` up to 1.0.34 speaks protocol 3 only, so every SDK `client.start()` failed with a bare `SDK protocol version mismatch`. omg now names both versions and the fix (`Update @github/copilot-sdk when a version supporting protocol 4 is available, or use @github/copilot <=1.0.112`) in sdk team hosts, `copilot_run`, `omg smoke copilot` tier 2, factory sandbox lanes and bench model probes, and `omg team --transport auto` runs a start/stop handshake (no session, no prompt) and falls back to pane workers on a mismatch (`copilot_sdk_protocol_mismatch`). CI's tier-2 smoke pins `@github/copilot@1.0.112` until a protocol-4 SDK ships. See docs/REFERENCE.md.
+
 # oh-my-copilot v5.29.1
 
 ## [5.29.1] - 2026-11-17

@@ -26,7 +26,7 @@ import { atomicWriteJson } from '../lib/atomic-write.js';
 import { ledgerPath, NANO_AIU_PER_CREDIT, recordUsage } from '../budget/ledger.js';
 import { RUNTIME_MIN_MAX_CREDITS, usageCredits } from '../smoke/copilot-sdk-scenarios.js';
 import { buildSessionEnv, isCredentialEnvKey, loginIdentity } from '../smoke/copilot-session-env.js';
-import { runtimePid, } from '../smoke/copilot-sdk-driver.js';
+import { rethrowSdkStartError, runtimePid, } from '../smoke/copilot-sdk-driver.js';
 import { hostGitHardeningArgs } from './git-worktree.js';
 import { loadWorkerLaunchAttempt } from './worker-launch-ack.js';
 import { buildSdkExcludedTools, decideSdkPermission } from './sdk-policy.js';
@@ -737,7 +737,7 @@ export async function runSdkHost(spec, deps) {
         ...(spec.model ? { model: spec.model } : {}),
     }), RPC_TIMEOUT_MS, 'createSession()');
     try {
-        await withTimeout(client.start(), START_TIMEOUT_MS, 'client.start()');
+        await withTimeout(client.start().catch(rethrowSdkStartError), START_TIMEOUT_MS, 'client.start()');
         session.runtime_pid = runtimePid(client) ?? null;
         // The leader's last-resort kill checks this identity, never a bare pid.
         session.runtime_start_identity = session.runtime_pid ? deps.startIdentity(session.runtime_pid) : null;

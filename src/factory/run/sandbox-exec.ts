@@ -59,7 +59,7 @@ import { errText, withTimeout } from '../../copilot-run/timeout.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
 import { TRUSTED_READ_ENV } from '../../ship/exec.js';
 import { redactSecrets } from '../heal/sanitize.js';
-import { resolveShimTarget, runtimePid, type PermissionResult, type SdkClientLike, type SdkSessionLike } from '../../smoke/copilot-sdk-driver.js';
+import { resolveShimTarget, rethrowSdkStartError, runtimePid, type PermissionResult, type SdkClientLike, type SdkSessionLike } from '../../smoke/copilot-sdk-driver.js';
 import { RUNTIME_MIN_MAX_CREDITS, SDK_INSTALL_COMMAND } from '../../smoke/copilot-sdk-scenarios.js';
 import { buildSessionEnv, loginIdentity } from '../../smoke/copilot-session-env.js';
 import { childEnv } from '../../utils/windows-search.js';
@@ -336,7 +336,7 @@ export async function runSandboxed(argv: readonly string[], o: SandboxExecOption
       workingDirectory: workDir,
     });
     client = c;
-    await withTimeout(c.start(), START_TIMEOUT_MS, 'client.start()');
+    await withTimeout(c.start().catch(rethrowSdkStartError), START_TIMEOUT_MS, 'client.start()');
     pid = runtimePid(c);
     const pluginRoot = deps.pluginRoot();
     const realHome = (deps.realHome ?? (() => userInfo().homedir))();

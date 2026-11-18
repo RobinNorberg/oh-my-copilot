@@ -97666,15 +97666,21 @@ var init_run = __esm({
 var copilot_sdk_driver_exports = {};
 __export(copilot_sdk_driver_exports, {
   DEFAULT_SCENARIO_TIMEOUT_MS: () => DEFAULT_SCENARIO_TIMEOUT_MS,
+  LAST_PROTOCOL3_CLI: () => LAST_PROTOCOL3_CLI,
+  PROBE_START_TIMEOUT_MS: () => PROBE_START_TIMEOUT_MS,
+  PROBE_TIMEOUT_REASON: () => PROBE_TIMEOUT_REASON,
   RUNTIME_WEDGED_DETAIL: () => RUNTIME_WEDGED_DETAIL,
   SDK_MIN_VERSION: () => SDK_MIN_VERSION,
   collectFiletools: () => collectFiletools,
   globalModuleRoots: () => globalModuleRoots,
   importFromDir: () => importFromDir,
   loadCopilotSdk: () => loadCopilotSdk,
+  memoSdkProtocolProbe: () => memoSdkProtocolProbe,
   prepareFiletools: () => prepareFiletools,
   prepareSdkProject: () => prepareSdkProject,
+  probeSdkProtocol: () => probeSdkProtocol,
   resolveShimTarget: () => resolveShimTarget,
+  rethrowSdkStartError: () => rethrowSdkStartError,
   runSdkTier: () => runSdkTier,
   runtimeCreditCap: () => runtimeCreditCap,
   runtimePid: () => runtimePid,
@@ -97682,7 +97688,8 @@ __export(copilot_sdk_driver_exports, {
   sandboxCanaryLaunched: () => sandboxCanaryLaunched,
   satisfiesSdkRange: () => satisfiesSdkRange,
   scenarioPlaceholderDirs: () => scenarioPlaceholderDirs,
-  sdkCreateSessionAcceptsSandbox: () => sdkCreateSessionAcceptsSandbox
+  sdkCreateSessionAcceptsSandbox: () => sdkCreateSessionAcceptsSandbox,
+  sdkProtocolMismatch: () => sdkProtocolMismatch
 });
 function sdkCreateSessionAcceptsSandbox(loaded2) {
   try {
@@ -97866,6 +97873,85 @@ function runtimePid(client) {
   const pid = client.cliProcess?.pid;
   return typeof pid === "number" && pid > 0 ? pid : void 0;
 }
+function sdkProtocolMismatch(err) {
+  const m = /SDK protocol version mismatch: SDK supports versions (\d+)-(\d+), but server (?:reports version (\d+)|does not report)/.exec(errText2(err));
+  return m ? { sdkMin: Number(m[1]), sdkMax: Number(m[2]), server: m[3] === void 0 ? null : Number(m[3]) } : null;
+}
+function rethrowSdkStartError(err) {
+  const m = sdkProtocolMismatch(err);
+  if (!m) throw err;
+  const sdk = m.sdkMin === m.sdkMax ? `protocol ${m.sdkMax}` : `protocols ${m.sdkMin}-${m.sdkMax}`;
+  const olderCli = m.sdkMax === 3 ? `use @github/copilot <=${LAST_PROTOCOL3_CLI} (npm i -g @github/copilot@${LAST_PROTOCOL3_CLI})` : `use an older @github/copilot that speaks protocol ${m.sdkMax}`;
+  const fix = m.server !== null && m.server > m.sdkMax ? `Update ${SDK_PACKAGE} when a version supporting protocol ${m.server} is available, or ${olderCli}.` : `Update the Copilot CLI (npm i -g @github/copilot) or use a ${SDK_PACKAGE} that matches it.`;
+  throw new Error(
+    `Copilot SDK/CLI protocol mismatch: ${SDK_PACKAGE} speaks ${sdk}, the Copilot CLI ${m.server === null ? "reports no protocol version" : `speaks protocol ${m.server}`}. ${fix}`,
+    { cause: err }
+  );
+}
+async function probeSdkProtocol(loaded2, bin, opts = {}) {
+  const stopMs = opts.stopTimeoutMs ?? PROBE_STOP_TIMEOUT_MS;
+  const killTree = opts.killTree ?? ((pid) => killProcessTree2(pid, import_child_process29.spawnSync));
+  const home = (0, import_fs100.mkdtempSync)((0, import_path119.join)((0, import_os21.tmpdir)(), "omg-sdk-probe-"));
+  let client;
+  try {
+    const env2 = childEnv(allowlistSessionEnv(buildSessionEnv(opts.env ?? process.env, home, { session: false }), home));
+    (0, import_fs100.mkdirSync)(env2.XDG_CONFIG_HOME, { recursive: true });
+    (0, import_fs100.mkdirSync)((0, import_path119.dirname)(env2.GIT_CONFIG_GLOBAL), { recursive: true });
+    (0, import_fs100.mkdirSync)(env2.TEMP, { recursive: true });
+    const { CopilotClient, RuntimeConnection } = loaded2.module;
+    client = new CopilotClient({
+      connection: RuntimeConnection.forStdio({ path: bin, args: [], env: env2 }),
+      baseDirectory: home,
+      workingDirectory: home
+    });
+    await withTimeout2(client.start().catch(rethrowSdkStartError), opts.startTimeoutMs ?? PROBE_START_TIMEOUT_MS, "client.start()");
+    return null;
+  } catch (err) {
+    if (err instanceof TimeoutError) return `${PROBE_TIMEOUT_REASON}: ${err.message} (${bin})`;
+    return sdkProtocolMismatch(err instanceof Error ? err.cause : void 0) ? errText2(err) : null;
+  } finally {
+    if (client) {
+      const proc = client.cliProcess;
+      const pid = runtimePid(client);
+      try {
+        await withTimeout2(client.stop(), stopMs, "client.stop()");
+      } catch {
+        try {
+          await withTimeout2(client.forceStop?.() ?? Promise.resolve(), stopMs, "client.forceStop()");
+        } catch {
+        }
+      }
+      if (proc && pid && !hasExited(proc)) {
+        try {
+          killTree(pid);
+        } catch {
+        }
+      }
+    }
+    try {
+      (0, import_fs100.rmSync)(home, { recursive: true, force: true });
+    } catch {
+    }
+  }
+}
+async function memoSdkProtocolProbe(loaded2, bin, probe = probeSdkProtocol) {
+  let key;
+  try {
+    const real2 = (0, import_fs100.realpathSync)(bin);
+    const st = (0, import_fs100.statSync)(real2);
+    key = `${real2}\0${st.size}\0${st.mtimeMs}\0${loaded2.version ?? ""}`;
+  } catch {
+    return probe(loaded2, bin);
+  }
+  let pending = probeMemo.get(key);
+  if (!pending) {
+    pending = probe(loaded2, bin).catch(() => null);
+    probeMemo.set(key, pending);
+  }
+  const result = await pending;
+  if (result?.startsWith(PROBE_TIMEOUT_REASON)) probeMemo.delete(key);
+  return result;
+}
 function pidAlive(pid) {
   try {
     process.kill(pid, 0);
@@ -98030,9 +98116,9 @@ async function runSdkTier(input2) {
   let wedged = false;
   try {
     try {
-      await withTimeout2(client.start(), START_TIMEOUT_MS, "client.start()");
+      await withTimeout2(client.start().catch(rethrowSdkStartError), START_TIMEOUT_MS, "client.start()");
     } catch (err) {
-      checks.push(...failedTier2Checks(input2.scenarios, `runtime did not start (${bin}): ${excerpt(errText2(err), 200)}`, "after-available"));
+      checks.push(...failedTier2Checks(input2.scenarios, `runtime did not start (${bin}): ${excerpt(errText2(err), 400)}`, "after-available"));
       return { checks, sdk: sdkInfo, events };
     }
     pid = runtimePid(client);
@@ -98328,7 +98414,7 @@ async function sandboxSpawnCanary(loaded2, bin, input2, host) {
   let session;
   const sandboxed = /* @__PURE__ */ new Map();
   try {
-    await withTimeout2(client.start(), START_TIMEOUT_MS, "canary client.start()");
+    await withTimeout2(client.start().catch(rethrowSdkStartError), START_TIMEOUT_MS, "canary client.start()");
     session = await withTimeout2(client.createSession({
       onPermissionRequest: () => reject("omg smoke: the spawn canary grants nothing"),
       onEvent: (e) => {
@@ -98527,7 +98613,7 @@ async function runScenario(client, input2, name, model, modelLabel, eventsPath, 
     wedged
   };
 }
-var import_child_process29, import_crypto30, import_fs100, import_module3, import_os21, import_path119, import_url15, SDK_MIN_VERSION, DEFAULT_SCENARIO_TIMEOUT_MS, START_TIMEOUT_MS, RPC_TIMEOUT_MS, MCP_CONNECT_WAIT_MS, ABORT_GRACE_MS, SHUTDOWN_GRACE_MS, STOP_TIMEOUT_MS, TimeoutError, sleep6, reject, RUNTIME_WEDGED_DETAIL;
+var import_child_process29, import_crypto30, import_fs100, import_module3, import_os21, import_path119, import_url15, SDK_MIN_VERSION, DEFAULT_SCENARIO_TIMEOUT_MS, START_TIMEOUT_MS, RPC_TIMEOUT_MS, MCP_CONNECT_WAIT_MS, ABORT_GRACE_MS, SHUTDOWN_GRACE_MS, STOP_TIMEOUT_MS, TimeoutError, sleep6, LAST_PROTOCOL3_CLI, PROBE_START_TIMEOUT_MS, PROBE_STOP_TIMEOUT_MS, PROBE_TIMEOUT_REASON, probeMemo, reject, RUNTIME_WEDGED_DETAIL;
 var init_copilot_sdk_driver = __esm({
   "src/smoke/copilot-sdk-driver.ts"() {
     "use strict";
@@ -98542,6 +98628,8 @@ var init_copilot_sdk_driver = __esm({
     init_copilot_session_eval();
     init_copilot_sdk_scenarios();
     init_process_utils2();
+    init_copilot_session_env();
+    init_windows_search();
     init_handler();
     init_run();
     SDK_MIN_VERSION = "1.0.16";
@@ -98557,6 +98645,11 @@ var init_copilot_sdk_driver = __esm({
     sleep6 = (ms2) => new Promise((r) => {
       setTimeout(r, ms2);
     });
+    LAST_PROTOCOL3_CLI = "1.0.112";
+    PROBE_START_TIMEOUT_MS = 15e3;
+    PROBE_STOP_TIMEOUT_MS = 5e3;
+    PROBE_TIMEOUT_REASON = "copilot_sdk_probe_timeout";
+    probeMemo = /* @__PURE__ */ new Map();
     reject = (feedback) => ({ kind: "reject", feedback });
     RUNTIME_WEDGED_DETAIL = "skipped: runtime unresponsive after a scenario timeout";
   }
@@ -98572,6 +98665,7 @@ __export(runtime_v2_exports, {
   claimErrorLineFromPane: () => claimErrorLineFromPane,
   cleanupAbandonedTeamState: () => cleanupAbandonedTeamState,
   cleanupStaleReservations: () => cleanupStaleReservations,
+  defaultSdkAvailable: () => defaultSdkAvailable,
   executeRecoverDeadWorkerV2Owner: () => executeRecoverDeadWorkerV2Owner,
   finalizeRecoveryOwnerResult: () => finalizeRecoveryOwnerResult,
   findActiveTeamsV2: () => findActiveTeamsV2,
@@ -99509,9 +99603,26 @@ async function resolveTeamTransport(input2) {
     return pane(
       `contract_roles:${[...new Set(input2.explicitContractRoles)].join(",")}`
     );
-  if (!await input2.sdkAvailable().catch(() => false))
-    return pane("copilot_sdk_not_installed");
+  const sdk = await input2.sdkAvailable().catch(() => false);
+  if (typeof sdk === "string")
+    return pane(
+      sdk.startsWith(PROBE_TIMEOUT_REASON) ? sdk : `copilot_sdk_protocol_mismatch: ${sdk}`
+    );
+  if (!sdk) return pane("copilot_sdk_not_installed");
   return { transport: "sdk", requested };
+}
+async function defaultSdkAvailable(deps = {}) {
+  const loaded2 = await (deps.load ?? (() => loadCopilotSdk()))();
+  if (!loaded2) return false;
+  let found;
+  try {
+    found = (deps.resolveBin ?? (() => resolveValidatedBinaryPath("copilot")))();
+  } catch {
+    return true;
+  }
+  const bin = found && /\.(cmd|bat|ps1)$/i.test(found) ? resolveShimTarget(found) : found;
+  if (!bin) return true;
+  return await (deps.probe ?? memoSdkProtocolProbe)(loaded2, bin) ?? true;
 }
 async function runBoundedLaunches(jobs, concurrency, launch, record3) {
   const width = Math.max(
@@ -102844,7 +102955,7 @@ async function startTeamV2(config2) {
     explicitContractRoles: [...startupAssignments].flatMap(
       ([workerName, a]) => a.role && shouldInjectContract(a.role, a.agentType) && !inferredContractRoles.has(workerName) ? [a.role] : []
     ),
-    sdkAvailable: config2.sdkAvailable ?? (async () => await loadCopilotSdk() !== null)
+    sdkAvailable: config2.sdkAvailable ?? (() => defaultSdkAvailable())
   });
   if (transportDecision.requested === "auto" && transportDecision.fallbackReason && !transportDecision.fallbackReason.startsWith("host_")) {
     process.stderr.write(
@@ -124511,7 +124622,7 @@ var init_job = __esm({
         let pid;
         let outcome = "failed";
         try {
-          await withTimeout3(Promise.race([client.start(), job.stopped]), START_TIMEOUT_MS2, "client.start()");
+          await withTimeout3(Promise.race([client.start().catch(rethrowSdkStartError), job.stopped]), START_TIMEOUT_MS2, "client.start()");
           pid = runtimePid(client);
           job.pid = pid;
           if (pid) {
@@ -129873,7 +129984,7 @@ async function runSandboxed(argv, o, deps) {
       workingDirectory: workDir
     });
     client = c;
-    await withTimeout3(c.start(), START_TIMEOUT_MS3, "client.start()");
+    await withTimeout3(c.start().catch(rethrowSdkStartError), START_TIMEOUT_MS3, "client.start()");
     pid = runtimePid(c);
     const pluginRoot = deps.pluginRoot();
     const realHome = (deps.realHome ?? (() => (0, import_node_os11.userInfo)().homedir))();
@@ -149632,7 +149743,7 @@ async function probeLaneModel(jobRoot, deps = defaultCopilotRunDeps()) {
       workingDirectory: workDir
     });
     client = c;
-    await withTimeout3(c.start(), START_TIMEOUT_MS4, "client.start()");
+    await withTimeout3(c.start().catch(rethrowSdkStartError), START_TIMEOUT_MS4, "client.start()");
     const models = await withTimeout3(c.listModels(), RPC_TIMEOUT_MS4, "listModels()");
     session = await withTimeout3(c.createSession({
       onPermissionRequest: () => ({ kind: "reject" }),
@@ -153144,7 +153255,7 @@ async function probeSandboxHost(input2, cwd) {
     workingDirectory: cwd
   });
   try {
-    await withTimeout4(client.start(), CANARY_RPC_TIMEOUT_MS, "client.start()");
+    await withTimeout4(client.start().catch(rethrowSdkStartError), CANARY_RPC_TIMEOUT_MS, "client.start()");
     return await probeHostSupport(client, CANARY_RPC_TIMEOUT_MS);
   } catch (err) {
     return unsupported(`the host probe could not start the runtime: ${errText7(err)}`);
@@ -153446,6 +153557,7 @@ var init_copilot_sandbox_lane_scenario = __esm({
     init_lane();
     init_exec();
     init_copilot_factory_run_scenario();
+    init_copilot_sdk_driver();
     init_copilot_sdk_scenarios();
     init_copilot_session_eval();
     SANDBOX_LANE_TIMEOUT_MS = 3e5;
@@ -155364,7 +155476,7 @@ async function runSdkHost(spec, deps) {
     ...spec.model ? { model: spec.model } : {}
   }), RPC_TIMEOUT_MS5, "createSession()");
   try {
-    await withTimeout5(client.start(), START_TIMEOUT_MS5, "client.start()");
+    await withTimeout5(client.start().catch(rethrowSdkStartError), START_TIMEOUT_MS5, "client.start()");
     session.runtime_pid = runtimePid(client) ?? null;
     session.runtime_start_identity = session.runtime_pid ? deps.startIdentity(session.runtime_pid) : null;
     mark("client_started_at");

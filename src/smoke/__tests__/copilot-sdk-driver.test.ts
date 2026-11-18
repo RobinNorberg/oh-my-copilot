@@ -11,8 +11,14 @@ import {
   globalModuleRoots,
   prepareFiletools,
   importFromDir,
+  LAST_PROTOCOL3_CLI,
+  memoSdkProtocolProbe,
+  PROBE_TIMEOUT_REASON,
+  probeSdkProtocol,
   resolveShimTarget,
+  rethrowSdkStartError,
   runSdkTier,
+  sdkProtocolMismatch,
   runtimeCreditCap,
   scenarioPlaceholderDirs,
   satisfiesSdkRange,
@@ -116,6 +122,9 @@ function scenarioOf(prompt: string): Scenario {
   if (!hit) throw new Error(`unexpected prompt ${prompt}`);
   return hit;
 }
+
+/** SDK 1.0.34's `client.start()` refusal against CLI 1.0.113+. */
+const PROTOCOL_MISMATCH = 'SDK protocol version mismatch: SDK supports versions 3-3, but server reports version 4. Please update your SDK or server to ensure compatibility.';
 
 /** A fake @github/copilot-sdk: static RPCs answer from the fake plugin root; prompts replay fixture JSONL. */
 function fakeSdk(opts: FakeOptions = {}): { loaded: LoadedSdk; rec: FakeRecord } {
@@ -668,6 +677,14 @@ describe('runSdkTier (fake SDK)', () => {
     expect(rec.ops).toEqual(['start', 'stop']);
   });
 
+  it('a protocol mismatch at start names both versions and the fix', async () => {
+    const { loaded } = fakeSdk({ startError: PROTOCOL_MISMATCH });
+    const result = await runSdkTier(input(loaded, { scenarios: ['smoke'] }));
+    const detail = byId(result.checks)['sdk.runtime'].detail;
+    expect(detail).toContain('Copilot SDK/CLI protocol mismatch: @github/copilot-sdk speaks protocol 3, the Copilot CLI speaks protocol 4.');
+    expect(detail).toContain(`or use @github/copilot <=${LAST_PROTOCOL3_CLI}`);
+  });
+
   it('uses a listed cheap model explicitly and records it', async () => {
     const { loaded, rec } = fakeSdk({ models: ['auto', 'claude-opus-5-5', 'gpt-5-mini'] });
     const result = await runSdkTier(input(loaded, { scenarios: ['smoke'] }));
@@ -1130,3 +1147,104 @@ function fakeSdkFor() {
   out.loaded = { ...inner.loaded, module: { ...inner.loaded.module, CopilotClient: HomeClient as unknown as CopilotSdkModule['CopilotClient'] } };
   return out;
 }
+
+describe('SDK protocol mismatch', () => {
+  it('parses the SDK handshake refusal and ignores other errors', () => {
+    expect(sdkProtocolMismatch(new Error(PROTOCOL_MISMATCH))).toEqual({ sdkMin: 3, sdkMax: 3, server: 4 });
+    expect(sdkProtocolMismatch(new Error('SDK protocol version mismatch: SDK supports versions 3-3, but server does not report a protocol version.'))).toEqual({ sdkMin: 3, sdkMax: 3, server: null });
+    expect(sdkProtocolMismatch(new Error('spawn EACCES'))).toBeNull();
+  });
+
+  it('rethrows a mismatch with both versions and the fix, anything else unchanged', () => {
+    const original = new Error(PROTOCOL_MISMATCH);
+    let thrown: unknown;
+    try { rethrowSdkStartError(original); } catch (err) { thrown = err; }
+    expect((thrown as Error).message).toBe(
+      'Copilot SDK/CLI protocol mismatch: @github/copilot-sdk speaks protocol 3, the Copilot CLI speaks protocol 4. '
+      + `Update @github/copilot-sdk when a version supporting protocol 4 is available, or use @github/copilot <=${LAST_PROTOCOL3_CLI} (npm i -g @github/copilot@${LAST_PROTOCOL3_CLI}).`,
+    );
+    expect((thrown as Error).cause).toBe(original);
+    const older = 'SDK protocol version mismatch: SDK supports versions 3-4, but server reports version 2. Please update.';
+    expect(() => rethrowSdkStartError(new Error(older))).toThrow('speaks protocols 3-4, the Copilot CLI speaks protocol 2. Update the Copilot CLI');
+    const other = new Error('spawn EACCES');
+    expect(() => rethrowSdkStartError(other)).toThrow(other);
+  });
+
+  it('probeSdkProtocol reports a mismatch, passes a clean handshake and other start errors, and always stops', async () => {
+    const mismatch = fakeSdk({ startError: PROTOCOL_MISMATCH });
+    expect(await probeSdkProtocol(mismatch.loaded, 'copilot')).toMatch(/^Copilot SDK\/CLI protocol mismatch: .*speaks protocol 4\./);
+    expect(mismatch.rec.ops).toEqual(['start', 'stop']);
+    const ok = fakeSdk();
+    expect(await probeSdkProtocol(ok.loaded, 'copilot')).toBeNull();
+    expect(ok.rec.ops).toEqual(['start', 'stop']);
+    expect(await probeSdkProtocol(fakeSdk({ startError: 'spawn EACCES' }).loaded, 'copilot')).toBeNull();
+  });
+
+  it('names an older CLI by protocol when the SDK tops out above protocol 3', () => {
+    const newer = 'SDK protocol version mismatch: SDK supports versions 3-4, but server reports version 5. Please update.';
+    let thrown: unknown;
+    try { rethrowSdkStartError(new Error(newer)); } catch (err) { thrown = err; }
+    expect((thrown as Error).message).toContain('or use an older @github/copilot that speaks protocol 4.');
+    expect((thrown as Error).message).not.toContain(LAST_PROTOCOL3_CLI);
+  });
+
+  it('probeSdkProtocol gives the runtime the allowlisted env: no tokens, no auto-update', async () => {
+    const ok = fakeSdk();
+    const env = { PATH: process.env.PATH, GH_TOKEN: 'gho_x', GITHUB_TOKEN: 'ghs_x', COPILOT_GITHUB_TOKEN: 'cgt_x', SECRET_THING: 'x' };
+    expect(await probeSdkProtocol(ok.loaded, 'copilot', { env })).toBeNull();
+    const childEnv = ok.rec.connection!.env as NodeJS.ProcessEnv;
+    for (const k of ['GH_TOKEN', 'GITHUB_TOKEN', 'COPILOT_GITHUB_TOKEN', 'SECRET_THING']) expect(childEnv[k], k).toBeUndefined();
+    expect(childEnv.COPILOT_AUTO_UPDATE).toBe('false');
+    expect(childEnv.COPILOT_HOME).toBe(ok.rec.clientOptions!.baseDirectory);
+    expect(existsSync(ok.rec.clientOptions!.baseDirectory)).toBe(false);
+  });
+
+  it('probeSdkProtocol bounds a hung start(), stops, kills the runtime tree and removes its home', async () => {
+    const rec: { ops: string[]; home?: string; env?: NodeJS.ProcessEnv } = { ops: [] };
+    class HungClient {
+      cliProcess: { pid: number; exitCode: number | null } | null = { pid: 4242, exitCode: null };
+      constructor(o: SdkClientOptions) { rec.home = o.baseDirectory; }
+      start() { rec.ops.push('start'); return new Promise<void>(() => {}); }
+      stop() { rec.ops.push('stop'); return new Promise<never>(() => {}); }
+      forceStop() { rec.ops.push('forceStop'); return new Promise<void>(() => {}); }
+    }
+    const loaded = { ...fakeSdk().loaded, module: { ...fakeSdk().loaded.module, CopilotClient: HungClient as unknown as CopilotSdkModule['CopilotClient'] } };
+    const killed: number[] = [];
+    const t0 = Date.now();
+    const reason = await probeSdkProtocol(loaded, 'copilot', { startTimeoutMs: 50, stopTimeoutMs: 20, killTree: (pid) => killed.push(pid) });
+    expect(Date.now() - t0).toBeLessThan(2_000);
+    expect(reason).toMatch(new RegExp(`^${PROBE_TIMEOUT_REASON}: client\\.start\\(\\) timed out after 50 ms`));
+    expect(rec.ops).toEqual(['start', 'stop', 'forceStop']);
+    expect(killed).toEqual([4242]);
+    expect(existsSync(rec.home!)).toBe(false);
+  });
+
+  it('probeSdkProtocol removes its home when the client constructor throws', async () => {
+    let home = '';
+    const loaded = { ...fakeSdk().loaded, module: { ...fakeSdk().loaded.module, CopilotClient: function Boom(o: SdkClientOptions) { home = o.baseDirectory; throw new Error('ctor'); } as unknown as CopilotSdkModule['CopilotClient'] } };
+    expect(await probeSdkProtocol(loaded, 'copilot')).toBeNull();
+    expect(home).not.toBe('');
+    expect(existsSync(home)).toBe(false);
+  });
+
+  it('memoSdkProtocolProbe probes once per binary state and SDK version, and does not keep a timeout', async () => {
+    const bin = join(root, 'copilot-bin');
+    writeFileSync(bin, 'v1');
+    const { loaded } = fakeSdk();
+    const probe = vi.fn(async () => 'mismatch');
+    expect(await memoSdkProtocolProbe(loaded, bin, probe)).toBe('mismatch');
+    expect(await memoSdkProtocolProbe(loaded, bin, probe)).toBe('mismatch');
+    expect(probe).toHaveBeenCalledTimes(1);
+    await memoSdkProtocolProbe({ ...loaded, version: '9.9.9-other' }, bin, probe);
+    expect(probe).toHaveBeenCalledTimes(2);
+    writeFileSync(bin, 'v2 longer');
+    await memoSdkProtocolProbe(loaded, bin, probe);
+    expect(probe).toHaveBeenCalledTimes(3);
+    const slow = join(root, 'copilot-slow');
+    writeFileSync(slow, 'x');
+    const timeout = vi.fn(async () => `${PROBE_TIMEOUT_REASON}: client.start() timed out`);
+    await memoSdkProtocolProbe(loaded, slow, timeout);
+    await memoSdkProtocolProbe(loaded, slow, timeout);
+    expect(timeout).toHaveBeenCalledTimes(2);
+  });
+});

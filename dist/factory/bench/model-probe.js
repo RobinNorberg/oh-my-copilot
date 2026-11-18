@@ -13,7 +13,7 @@ import { dirname, join } from 'node:path';
 import { defaultCopilotRunDeps } from '../../copilot-run/job.js';
 import { allowlistSessionEnv, sessionGitHubToken } from '../../copilot-run/sandbox.js';
 import { errText, withTimeout } from '../../copilot-run/timeout.js';
-import { resolveShimTarget, runtimePid } from '../../smoke/copilot-sdk-driver.js';
+import { resolveShimTarget, rethrowSdkStartError, runtimePid } from '../../smoke/copilot-sdk-driver.js';
 import { RUNTIME_MIN_MAX_CREDITS, SDK_INSTALL_COMMAND } from '../../smoke/copilot-sdk-scenarios.js';
 import { buildSessionEnv, loginIdentity } from '../../smoke/copilot-session-env.js';
 import { hasExited } from '../../smoke/process-utils.js';
@@ -72,7 +72,7 @@ export async function probeLaneModel(jobRoot, deps = defaultCopilotRunDeps()) {
             workingDirectory: workDir,
         });
         client = c;
-        await withTimeout(c.start(), START_TIMEOUT_MS, 'client.start()');
+        await withTimeout(c.start().catch(rethrowSdkStartError), START_TIMEOUT_MS, 'client.start()');
         const models = (await withTimeout(c.listModels(), RPC_TIMEOUT_MS, 'listModels()'));
         // A session with no tools and every permission refused; it is never sent a prompt.
         session = await withTimeout(c.createSession({

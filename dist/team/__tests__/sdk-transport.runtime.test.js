@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync, existsSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { DEFAULT_SDK_LAUNCH_CONCURRENCY, isExplicitTaskRoleAssignment, resolveSdkTeamSettings, resolveTeamTransport, runBoundedLaunches, startTeamV2, } from '../runtime-v2.js';
+import { DEFAULT_SDK_LAUNCH_CONCURRENCY, defaultSdkAvailable, isExplicitTaskRoleAssignment, resolveSdkTeamSettings, resolveTeamTransport, runBoundedLaunches, startTeamV2, } from '../runtime-v2.js';
 describe('runBoundedLaunches', () => {
     const deferred = () => {
         let resolve;
@@ -229,8 +229,34 @@ describe('resolveTeamTransport', () => {
         [{ explicitContractRoles: ['critic', 'critic'] }, 'contract_roles:critic'],
         [{ sdkAvailable: async () => false }, 'copilot_sdk_not_installed'],
         [{ sdkAvailable: async () => { throw new Error('boom'); } }, 'copilot_sdk_not_installed'],
+        [{ sdkAvailable: async () => 'speaks protocol 4' }, 'copilot_sdk_protocol_mismatch: speaks protocol 4'],
+        [{ sdkAvailable: async () => 'copilot_sdk_probe_timeout: client.start() timed out' }, 'copilot_sdk_probe_timeout: client.start() timed out'],
     ])('auto falls back to pane for %j', async (over, reason) => {
         expect(await resolveTeamTransport({ ...base, ...over })).toEqual({ transport: 'pane', requested: 'auto', fallbackReason: reason });
+    });
+});
+describe('defaultSdkAvailable', () => {
+    const loaded = { module: {}, version: '1.0.34', from: 'test' };
+    const load = async () => loaded;
+    it('is false without the SDK and never probes', async () => {
+        const probe = vi.fn(async () => null);
+        expect(await defaultSdkAvailable({ load: async () => null, resolveBin: () => 'copilot', probe })).toBe(false);
+        expect(probe).not.toHaveBeenCalled();
+    });
+    it('skips the probe when the CLI does not resolve', async () => {
+        const probe = vi.fn(async () => 'mismatch');
+        expect(await defaultSdkAvailable({ load, resolveBin: () => null, probe })).toBe(true);
+        expect(await defaultSdkAvailable({ load, resolveBin: () => { throw new Error('copilot not found'); }, probe })).toBe(true);
+        expect(probe).not.toHaveBeenCalled();
+    });
+    it('passes the probe answer through: a mismatch or timeout string, else true', async () => {
+        expect(await defaultSdkAvailable({ load, resolveBin: () => '/bin/copilot', probe: async () => 'Copilot SDK/CLI protocol mismatch: x' }))
+            .toBe('Copilot SDK/CLI protocol mismatch: x');
+        expect(await defaultSdkAvailable({ load, resolveBin: () => '/bin/copilot', probe: async () => 'copilot_sdk_probe_timeout: y' }))
+            .toBe('copilot_sdk_probe_timeout: y');
+        const probe = vi.fn(async () => null);
+        expect(await defaultSdkAvailable({ load, resolveBin: () => '/bin/copilot', probe })).toBe(true);
+        expect(probe).toHaveBeenCalledWith(loaded, '/bin/copilot');
     });
 });
 describe('startTeamV2 transport auto', () => {
