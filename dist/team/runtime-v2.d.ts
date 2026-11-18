@@ -368,6 +368,10 @@ export declare function resolveSdkDefaultWorktreeMode(input: {
  * AI credits, and the Copilot runtime floors `--max-ai-credits` at 30.
  */
 export declare const DEFAULT_SDK_MAX_CREDITS_PER_WORKER = 50;
+export declare function needsTeamCopilotCatalogue(assignments: Iterable<{
+    agentType?: string;
+    model?: unknown;
+}>, sdkModelPinned: boolean): boolean;
 export declare function resolveSdkTeamSettings(pluginCfg: PluginConfig): SdkTeamSettings;
 interface RecoveryOwnerFinalizationDeps {
     readRevisionedConfig: (teamName: string, cwd: string) => Promise<{

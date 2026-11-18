@@ -15,7 +15,7 @@
 
 import { spawnSync, type SpawnSyncOptions } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, rmdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { atomicWriteJsonSync } from '../lib/atomic-write.js';
@@ -47,6 +47,7 @@ export const CATALOGUE_TTL_MS = 24 * 60 * 60 * 1000;
 export const CATALOGUE_FAILURE_TTL_MS = 60 * 60 * 1000;
 /** The whole live read (SDK lookup, runtime start, listModels()) answers within this. */
 export const FETCH_DEADLINE_MS = 20_000;
+const STALE_JOB_DIR_MS = 60 * 60 * 1000;
 /** stop(), forceStop() and the tree kill after a read, together; runs detached from the caller. */
 export const CLEANUP_BOUND_MS = 5_000;
 /** `npm root -g` (the last SDK lookup) is synchronous, so it is capped instead of raced. */
@@ -151,17 +152,17 @@ export async function loadCopilotCatalogueWith(deps: CatalogueLoadDeps): Promise
   if ('models' in outcome && outcome.models.length > 0) {
     try {
       mkdirSync(dirname(deps.file), { recursive: true });
-      atomicWriteJsonSync(deps.file, { fetchedAt: new Date(now).toISOString(), models: outcome.models });
+      atomicWriteJsonSync(deps.file, { fetchedAt: new Date(deps.now()).toISOString(), models: outcome.models });
     } catch { /* an unwritable state dir only costs the next command a live read */ }
     return { catalogue: new Set(outcome.models), source: 'live', detail: `listModels() offers ${outcome.models.length} models` };
   }
   const why = redactCatalogueDetail('error' in outcome ? outcome.error : 'listModels() returned no models', deps.env);
-  // Another command may have cached a catalogue while this read ran: keep (and use) it.
+  // Another command may have cached a catalogue while this read ran (even one
+  // that started earlier than this command): keep and use it.
   const latest = readCatalogueCache(deps.file, deps.now(), deps.ttlMs, deps.failureTtlMs);
-  const latestFetchedAt = latest.fetchedAt ? Date.parse(latest.fetchedAt) : NaN;
-  if (Number.isFinite(latestFetchedAt) && latestFetchedAt > now) {
-    if (latest.fresh) return { catalogue: new Set(latest.fresh), source: 'cache', detail: `cached in ${deps.file}` };
-    return fromStale(`the Copilot model catalogue could not be read (${why})`);
+  if (latest.fresh) return { catalogue: new Set(latest.fresh), source: 'cache', detail: `cached in ${deps.file}` };
+  if (latest.stale && latest.fetchedAt !== cache.fetchedAt) {
+    return { catalogue: new Set(latest.stale), source: 'stale-cache', detail: `the Copilot model catalogue could not be read (${why}); using the stale cached catalogue` };
   }
   try {
     mkdirSync(dirname(deps.file), { recursive: true });
@@ -227,6 +228,19 @@ async function stopCatalogueClient(client: SdkClientLike, killTree: (pid: number
   }
 }
 
+/** Remove `list-*` job homes older than an hour (left by a killed command). Best effort. */
+function sweepStaleJobDirs(jobRoot: string): void {
+  try {
+    for (const name of readdirSync(jobRoot)) {
+      if (!name.startsWith('list-')) continue;
+      const dir = join(jobRoot, name);
+      try {
+        if (Date.now() - statSync(dir).mtimeMs > STALE_JOB_DIR_MS) rmSync(dir, { recursive: true, force: true });
+      } catch { /* raced or gone */ }
+    }
+  } catch { /* no job root yet */ }
+}
+
 /**
  * The live read: start the Copilot runtime in a throwaway job home with only
  * the login identity, call listModels(), stop it. No session, no prompt.
@@ -248,6 +262,7 @@ export async function fetchCopilotCatalogue(opts: {
   hardenWindowsExeSearch();
   const deps: CatalogueFetchDeps = { ...defaultFetchDeps(), ...opts.deps };
   const jobRoot = join(deps.tmpRoot, 'omg-model-catalogue');
+  sweepStaleJobDirs(jobRoot);
   const jobHome = join(jobRoot, `list-${randomBytes(4).toString('hex')}`);
   const workDir = join(jobHome, 'work');
   let client: SdkClientLike | null = null;

@@ -2379,6 +2379,17 @@ export function resolveSdkDefaultWorktreeMode(input: {
  */
 export const DEFAULT_SDK_MAX_CREDITS_PER_WORKER = 50;
 
+export function needsTeamCopilotCatalogue(
+  assignments: Iterable<{ agentType?: string; model?: unknown }>,
+  sdkModelPinned: boolean,
+): boolean {
+  if (sdkModelPinned) return false;
+  for (const a of assignments) {
+    if (a.agentType === "copilot" && typeof a.model === "string" && copilotTierModels(a.model).length > 0) return true;
+  }
+  return false;
+}
+
 export function resolveSdkTeamSettings(
   pluginCfg: PluginConfig,
 ): SdkTeamSettings {
@@ -7057,11 +7068,9 @@ export async function startTeamV2(
   // Read once per team start, before the lifecycle lock (a live read can take
   // up to FETCH_DEADLINE_MS), and only when a Copilot worker names a tier
   // alias: the alias then resolves to the first tier model the plan offers.
-  const copilotCatalogue = [...startupAssignments.values()].some(
-    (a) =>
-      a.agentType === "copilot" &&
-      typeof a.model === "string" &&
-      copilotTierModels(a.model).length > 0,
+  const copilotCatalogue = needsTeamCopilotCatalogue(
+    startupAssignments.values(),
+    sdkMode && !!sdkSettings?.model,
   )
     ? await teamCopilotCatalogue()
     : null;

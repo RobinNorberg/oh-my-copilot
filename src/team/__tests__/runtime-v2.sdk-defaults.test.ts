@@ -7,6 +7,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { PluginConfig } from '../../shared/types.js';
 import {
   DEFAULT_SDK_MAX_CREDITS_PER_WORKER,
+  needsTeamCopilotCatalogue,
   resolveBlockerTimeoutMs,
   resolveSdkDefaultWorktreeMode,
   resolveSdkTeamSettings,
@@ -82,5 +83,18 @@ describe('resolveBlockerTimeoutMs', () => {
 
   it.each([0, -5, 'ten', Number.NaN])('rejects %s', (value) => {
     expect(() => resolveBlockerTimeoutMs(withTimeout(value))).toThrow(/^invalid_team_sdk_config:blockerTimeoutMinutes/);
+  });
+});
+
+describe('needsTeamCopilotCatalogue', () => {
+  const tier = [{ agentType: 'copilot', model: 'sonnet' }];
+
+  it('reads for a copilot tier alias', () => {
+    expect(needsTeamCopilotCatalogue(tier, false)).toBe(true);
+  });
+
+  it('skips when an explicit sdk model is set, or no copilot worker names a tier', () => {
+    expect(needsTeamCopilotCatalogue(tier, true)).toBe(false);
+    expect(needsTeamCopilotCatalogue([{ agentType: 'claude', model: 'sonnet' }, { agentType: 'copilot', model: 'gpt-5-mini' }], false)).toBe(false);
   });
 });

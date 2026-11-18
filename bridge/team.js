@@ -24620,7 +24620,7 @@ var init_copilot_binary = __esm({
 // src/copilot-run/model-catalogue.ts
 import { spawnSync as spawnSync7 } from "node:child_process";
 import { randomBytes as randomBytes3 } from "node:crypto";
-import { existsSync as existsSync44, mkdirSync as mkdirSync13, readFileSync as readFileSync31, rmdirSync as rmdirSync2, rmSync as rmSync8, writeFileSync as writeFileSync12 } from "node:fs";
+import { existsSync as existsSync44, mkdirSync as mkdirSync13, readdirSync as readdirSync19, readFileSync as readFileSync31, rmdirSync as rmdirSync2, rmSync as rmSync8, statSync as statSync9, writeFileSync as writeFileSync12 } from "node:fs";
 import { tmpdir as tmpdir7 } from "node:os";
 import { dirname as dirname38, join as join52 } from "node:path";
 function redactCatalogueDetail(text2, env = process.env) {
@@ -24674,17 +24674,16 @@ async function loadCopilotCatalogueWith(deps) {
   if ("models" in outcome && outcome.models.length > 0) {
     try {
       mkdirSync13(dirname38(deps.file), { recursive: true });
-      atomicWriteJsonSync(deps.file, { fetchedAt: new Date(now).toISOString(), models: outcome.models });
+      atomicWriteJsonSync(deps.file, { fetchedAt: new Date(deps.now()).toISOString(), models: outcome.models });
     } catch {
     }
     return { catalogue: new Set(outcome.models), source: "live", detail: `listModels() offers ${outcome.models.length} models` };
   }
   const why = redactCatalogueDetail("error" in outcome ? outcome.error : "listModels() returned no models", deps.env);
   const latest = readCatalogueCache(deps.file, deps.now(), deps.ttlMs, deps.failureTtlMs);
-  const latestFetchedAt = latest.fetchedAt ? Date.parse(latest.fetchedAt) : NaN;
-  if (Number.isFinite(latestFetchedAt) && latestFetchedAt > now) {
-    if (latest.fresh) return { catalogue: new Set(latest.fresh), source: "cache", detail: `cached in ${deps.file}` };
-    return fromStale(`the Copilot model catalogue could not be read (${why})`);
+  if (latest.fresh) return { catalogue: new Set(latest.fresh), source: "cache", detail: `cached in ${deps.file}` };
+  if (latest.stale && latest.fetchedAt !== cache.fetchedAt) {
+    return { catalogue: new Set(latest.stale), source: "stale-cache", detail: `the Copilot model catalogue could not be read (${why}); using the stale cached catalogue` };
   }
   try {
     mkdirSync13(dirname38(deps.file), { recursive: true });
@@ -24734,10 +24733,24 @@ async function stopCatalogueClient(client, killTree, boundMs) {
     }
   }
 }
+function sweepStaleJobDirs(jobRoot) {
+  try {
+    for (const name of readdirSync19(jobRoot)) {
+      if (!name.startsWith("list-")) continue;
+      const dir = join52(jobRoot, name);
+      try {
+        if (Date.now() - statSync9(dir).mtimeMs > STALE_JOB_DIR_MS) rmSync8(dir, { recursive: true, force: true });
+      } catch {
+      }
+    }
+  } catch {
+  }
+}
 async function fetchCopilotCatalogue(opts = {}) {
   hardenWindowsExeSearch();
   const deps = { ...defaultFetchDeps(), ...opts.deps };
   const jobRoot = join52(deps.tmpRoot, "omg-model-catalogue");
+  sweepStaleJobDirs(jobRoot);
   const jobHome = join52(jobRoot, `list-${randomBytes3(4).toString("hex")}`);
   const workDir = join52(jobHome, "work");
   let client = null;
@@ -24801,7 +24814,7 @@ async function teamCopilotCatalogue(warn = (line) => console.warn(line)) {
   }
   return result.catalogue;
 }
-var CATALOGUE_TTL_MS, CATALOGUE_FAILURE_TTL_MS, FETCH_DEADLINE_MS, CLEANUP_BOUND_MS, NPM_ROOT_TIMEOUT_MS, DETAIL_MAX_CHARS, cappedSpawnSync, defaultSource, source, memo, warnedUnreadable;
+var CATALOGUE_TTL_MS, CATALOGUE_FAILURE_TTL_MS, FETCH_DEADLINE_MS, STALE_JOB_DIR_MS, CLEANUP_BOUND_MS, NPM_ROOT_TIMEOUT_MS, DETAIL_MAX_CHARS, cappedSpawnSync, defaultSource, source, memo, warnedUnreadable;
 var init_model_catalogue = __esm({
   "src/copilot-run/model-catalogue.ts"() {
     "use strict";
@@ -24819,6 +24832,7 @@ var init_model_catalogue = __esm({
     CATALOGUE_TTL_MS = 24 * 60 * 60 * 1e3;
     CATALOGUE_FAILURE_TTL_MS = 60 * 60 * 1e3;
     FETCH_DEADLINE_MS = 2e4;
+    STALE_JOB_DIR_MS = 60 * 60 * 1e3;
     CLEANUP_BOUND_MS = 5e3;
     NPM_ROOT_TIMEOUT_MS = 3e3;
     DETAIL_MAX_CHARS = 300;
@@ -25002,6 +25016,7 @@ __export(runtime_v2_exports, {
   isExplicitTaskRoleAssignment: () => isExplicitTaskRoleAssignment,
   isRuntimeV2Enabled: () => isRuntimeV2Enabled,
   monitorTeamV2: () => monitorTeamV2,
+  needsTeamCopilotCatalogue: () => needsTeamCopilotCatalogue,
   prepareRecoveryOwnerBootstrap: () => prepareRecoveryOwnerBootstrap,
   processCliWorkerVerdicts: () => processCliWorkerVerdicts,
   promptModeRecoveryRequiresProgressEvidence: () => promptModeRecoveryRequiresProgressEvidence,
@@ -26025,6 +26040,13 @@ function resolveSdkDefaultWorktreeMode(input) {
     };
   }
   return { mode: "disabled" };
+}
+function needsTeamCopilotCatalogue(assignments, sdkModelPinned) {
+  if (sdkModelPinned) return false;
+  for (const a of assignments) {
+    if (a.agentType === "copilot" && typeof a.model === "string" && copilotTierModels(a.model).length > 0) return true;
+  }
+  return false;
 }
 function resolveSdkTeamSettings(pluginCfg) {
   const sdk = pluginCfg.team?.sdk ?? {};
@@ -29354,8 +29376,9 @@ async function startTeamV2(config) {
     const missing = missingBinaryReasons.map(({ agentType, reason }) => `${agentType}:${reason}`).join(";");
     throw new Error(`cli_binary_preflight_failed:${missing}`);
   }
-  const copilotCatalogue = [...startupAssignments.values()].some(
-    (a) => a.agentType === "copilot" && typeof a.model === "string" && copilotTierModels(a.model).length > 0
+  const copilotCatalogue = needsTeamCopilotCatalogue(
+    startupAssignments.values(),
+    sdkMode && !!sdkSettings?.model
   ) ? await teamCopilotCatalogue() : null;
   try {
     await cleanupStaleReservations(sanitized, leaderCwd);
@@ -33693,7 +33716,7 @@ init_paths();
 
 // src/planning/artifacts.ts
 init_worktree_paths();
-import { readdirSync as readdirSync19, readFileSync as readFileSync33, existsSync as existsSync47 } from "fs";
+import { readdirSync as readdirSync20, readFileSync as readFileSync33, existsSync as existsSync47 } from "fs";
 import { join as join57 } from "path";
 
 // src/planning/artifact-names.ts
@@ -33852,7 +33875,7 @@ function readPlanningArtifacts(cwd) {
       continue;
     }
     try {
-      entries = readdirSync19(plansDir);
+      entries = readdirSync20(plansDir);
     } catch {
       continue;
     }

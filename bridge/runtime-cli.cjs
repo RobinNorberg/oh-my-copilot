@@ -23419,17 +23419,16 @@ async function loadCopilotCatalogueWith(deps) {
   if ("models" in outcome && outcome.models.length > 0) {
     try {
       (0, import_node_fs15.mkdirSync)((0, import_node_path16.dirname)(deps.file), { recursive: true });
-      atomicWriteJsonSync(deps.file, { fetchedAt: new Date(now).toISOString(), models: outcome.models });
+      atomicWriteJsonSync(deps.file, { fetchedAt: new Date(deps.now()).toISOString(), models: outcome.models });
     } catch {
     }
     return { catalogue: new Set(outcome.models), source: "live", detail: `listModels() offers ${outcome.models.length} models` };
   }
   const why = redactCatalogueDetail("error" in outcome ? outcome.error : "listModels() returned no models", deps.env);
   const latest = readCatalogueCache(deps.file, deps.now(), deps.ttlMs, deps.failureTtlMs);
-  const latestFetchedAt = latest.fetchedAt ? Date.parse(latest.fetchedAt) : NaN;
-  if (Number.isFinite(latestFetchedAt) && latestFetchedAt > now) {
-    if (latest.fresh) return { catalogue: new Set(latest.fresh), source: "cache", detail: `cached in ${deps.file}` };
-    return fromStale(`the Copilot model catalogue could not be read (${why})`);
+  if (latest.fresh) return { catalogue: new Set(latest.fresh), source: "cache", detail: `cached in ${deps.file}` };
+  if (latest.stale && latest.fetchedAt !== cache.fetchedAt) {
+    return { catalogue: new Set(latest.stale), source: "stale-cache", detail: `the Copilot model catalogue could not be read (${why}); using the stale cached catalogue` };
   }
   try {
     (0, import_node_fs15.mkdirSync)((0, import_node_path16.dirname)(deps.file), { recursive: true });
@@ -23479,10 +23478,24 @@ async function stopCatalogueClient(client, killTree, boundMs) {
     }
   }
 }
+function sweepStaleJobDirs(jobRoot) {
+  try {
+    for (const name of (0, import_node_fs15.readdirSync)(jobRoot)) {
+      if (!name.startsWith("list-")) continue;
+      const dir = (0, import_node_path16.join)(jobRoot, name);
+      try {
+        if (Date.now() - (0, import_node_fs15.statSync)(dir).mtimeMs > STALE_JOB_DIR_MS) (0, import_node_fs15.rmSync)(dir, { recursive: true, force: true });
+      } catch {
+      }
+    }
+  } catch {
+  }
+}
 async function fetchCopilotCatalogue(opts = {}) {
   hardenWindowsExeSearch();
   const deps = { ...defaultFetchDeps(), ...opts.deps };
   const jobRoot = (0, import_node_path16.join)(deps.tmpRoot, "omg-model-catalogue");
+  sweepStaleJobDirs(jobRoot);
   const jobHome = (0, import_node_path16.join)(jobRoot, `list-${(0, import_node_crypto10.randomBytes)(4).toString("hex")}`);
   const workDir = (0, import_node_path16.join)(jobHome, "work");
   let client = null;
@@ -23546,7 +23559,7 @@ async function teamCopilotCatalogue(warn = (line) => console.warn(line)) {
   }
   return result.catalogue;
 }
-var import_node_child_process8, import_node_crypto10, import_node_fs15, import_node_os4, import_node_path16, CATALOGUE_TTL_MS, CATALOGUE_FAILURE_TTL_MS, FETCH_DEADLINE_MS, CLEANUP_BOUND_MS, NPM_ROOT_TIMEOUT_MS, DETAIL_MAX_CHARS, cappedSpawnSync, defaultSource, source, memo, warnedUnreadable;
+var import_node_child_process8, import_node_crypto10, import_node_fs15, import_node_os4, import_node_path16, CATALOGUE_TTL_MS, CATALOGUE_FAILURE_TTL_MS, FETCH_DEADLINE_MS, STALE_JOB_DIR_MS, CLEANUP_BOUND_MS, NPM_ROOT_TIMEOUT_MS, DETAIL_MAX_CHARS, cappedSpawnSync, defaultSource, source, memo, warnedUnreadable;
 var init_model_catalogue = __esm({
   "src/copilot-run/model-catalogue.ts"() {
     "use strict";
@@ -23569,6 +23582,7 @@ var init_model_catalogue = __esm({
     CATALOGUE_TTL_MS = 24 * 60 * 60 * 1e3;
     CATALOGUE_FAILURE_TTL_MS = 60 * 60 * 1e3;
     FETCH_DEADLINE_MS = 2e4;
+    STALE_JOB_DIR_MS = 60 * 60 * 1e3;
     CLEANUP_BOUND_MS = 5e3;
     NPM_ROOT_TIMEOUT_MS = 3e3;
     DETAIL_MAX_CHARS = 300;
@@ -24823,6 +24837,13 @@ function resolveSdkDefaultWorktreeMode(input) {
     };
   }
   return { mode: "disabled" };
+}
+function needsTeamCopilotCatalogue(assignments, sdkModelPinned) {
+  if (sdkModelPinned) return false;
+  for (const a of assignments) {
+    if (a.agentType === "copilot" && typeof a.model === "string" && copilotTierModels(a.model).length > 0) return true;
+  }
+  return false;
 }
 function resolveSdkTeamSettings(pluginCfg) {
   const sdk = pluginCfg.team?.sdk ?? {};
@@ -28152,8 +28173,9 @@ async function startTeamV2(config) {
     const missing = missingBinaryReasons.map(({ agentType, reason }) => `${agentType}:${reason}`).join(";");
     throw new Error(`cli_binary_preflight_failed:${missing}`);
   }
-  const copilotCatalogue = [...startupAssignments.values()].some(
-    (a) => a.agentType === "copilot" && typeof a.model === "string" && copilotTierModels(a.model).length > 0
+  const copilotCatalogue = needsTeamCopilotCatalogue(
+    startupAssignments.values(),
+    sdkMode && !!sdkSettings?.model
   ) ? await teamCopilotCatalogue() : null;
   try {
     await cleanupStaleReservations(sanitized, leaderCwd);

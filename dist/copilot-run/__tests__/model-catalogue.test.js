@@ -148,6 +148,21 @@ describe('failure details and concurrent reads', () => {
         expect([...result.catalogue]).toEqual(['mai-code-2']);
         expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual({ fetchedAt: new Date(T0 + 5_000).toISOString(), models: ['mai-code-2'] });
     });
+    it('a failed read keeps a catalogue cached by a command whose read started EARLIER', async () => {
+        const file = cacheFile();
+        const result = await loadCopilotCatalogueWith({
+            file,
+            now: () => T0 + 10_000,
+            fetch: async () => {
+                // The other command started at T0 (before this one) and finished meanwhile.
+                await loadCopilotCatalogueWith({ file, now: () => T0, fetch: async () => ({ models: ['mai-code-2'] }) });
+                return { error: 'timed out' };
+            },
+        });
+        expect(result).toMatchObject({ source: 'cache' });
+        expect([...result.catalogue]).toEqual(['mai-code-2']);
+        expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual({ fetchedAt: new Date(T0).toISOString(), models: ['mai-code-2'] });
+    });
 });
 describe('fetchCopilotCatalogue with a fake SDK', () => {
     const fakeSdk = (client) => {

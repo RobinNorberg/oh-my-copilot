@@ -1377,6 +1377,15 @@ export function resolveSdkDefaultWorktreeMode(input) {
  * AI credits, and the Copilot runtime floors `--max-ai-credits` at 30.
  */
 export const DEFAULT_SDK_MAX_CREDITS_PER_WORKER = 50;
+export function needsTeamCopilotCatalogue(assignments, sdkModelPinned) {
+    if (sdkModelPinned)
+        return false;
+    for (const a of assignments) {
+        if (a.agentType === "copilot" && typeof a.model === "string" && copilotTierModels(a.model).length > 0)
+            return true;
+    }
+    return false;
+}
 export function resolveSdkTeamSettings(pluginCfg) {
     const sdk = pluginCfg.team?.sdk ?? {};
     const envNumber = (key) => {
@@ -4604,9 +4613,7 @@ export async function startTeamV2(config) {
     // Read once per team start, before the lifecycle lock (a live read can take
     // up to FETCH_DEADLINE_MS), and only when a Copilot worker names a tier
     // alias: the alias then resolves to the first tier model the plan offers.
-    const copilotCatalogue = [...startupAssignments.values()].some((a) => a.agentType === "copilot" &&
-        typeof a.model === "string" &&
-        copilotTierModels(a.model).length > 0)
+    const copilotCatalogue = needsTeamCopilotCatalogue(startupAssignments.values(), sdkMode && !!sdkSettings?.model)
         ? await teamCopilotCatalogue()
         : null;
     // Clean up any stale reservations from dead processes BEFORE acquiring the lifecycle lock.

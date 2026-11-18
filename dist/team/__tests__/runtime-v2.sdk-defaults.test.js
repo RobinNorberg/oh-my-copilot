@@ -3,7 +3,7 @@
  * worktree default for SDK teams, and the optional blocker timeout.
  */
 import { describe, expect, it, vi } from 'vitest';
-import { DEFAULT_SDK_MAX_CREDITS_PER_WORKER, resolveBlockerTimeoutMs, resolveSdkDefaultWorktreeMode, resolveSdkTeamSettings, } from '../runtime-v2.js';
+import { DEFAULT_SDK_MAX_CREDITS_PER_WORKER, needsTeamCopilotCatalogue, resolveBlockerTimeoutMs, resolveSdkDefaultWorktreeMode, resolveSdkTeamSettings, } from '../runtime-v2.js';
 describe('resolveSdkTeamSettings compactProtocol', () => {
     const withCompact = (value) => ({ team: { sdk: { compactProtocol: value } } });
     it('defaults to false and passes a boolean through', () => {
@@ -64,6 +64,16 @@ describe('resolveBlockerTimeoutMs', () => {
     });
     it.each([0, -5, 'ten', Number.NaN])('rejects %s', (value) => {
         expect(() => resolveBlockerTimeoutMs(withTimeout(value))).toThrow(/^invalid_team_sdk_config:blockerTimeoutMinutes/);
+    });
+});
+describe('needsTeamCopilotCatalogue', () => {
+    const tier = [{ agentType: 'copilot', model: 'sonnet' }];
+    it('reads for a copilot tier alias', () => {
+        expect(needsTeamCopilotCatalogue(tier, false)).toBe(true);
+    });
+    it('skips when an explicit sdk model is set, or no copilot worker names a tier', () => {
+        expect(needsTeamCopilotCatalogue(tier, true)).toBe(false);
+        expect(needsTeamCopilotCatalogue([{ agentType: 'claude', model: 'sonnet' }, { agentType: 'copilot', model: 'gpt-5-mini' }], false)).toBe(false);
     });
 });
 //# sourceMappingURL=runtime-v2.sdk-defaults.test.js.map

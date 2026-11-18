@@ -192,7 +192,8 @@ export const COPILOT_UNCONFIRMED_MODELS = new Set(copilotModels.unconfirmedModel
  * Resolve a model value for Copilot. A bare tier alias (any case) becomes the
  * first model of its fallback list that `catalogue` (the plan's model ids)
  * offers, or no model when it offers none; without a catalogue it is the
- * tier's first id not in COPILOT_UNCONFIRMED_MODELS, or no model when all are. Everything else goes through toCopilotModelId's id rewrite.
+ * tier's first id not in COPILOT_UNCONFIRMED_MODELS, or no model when all are.
+ * Everything else goes through toCopilotModelId's id rewrite.
  */
 export function resolveCopilotModel(model, catalogue) {
     const tier = model.toLowerCase();

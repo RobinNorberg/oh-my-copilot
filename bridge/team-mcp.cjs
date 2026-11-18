@@ -22303,7 +22303,7 @@ var init_copilot_binary = __esm({
 });
 
 // src/copilot-run/model-catalogue.ts
-var CATALOGUE_TTL_MS, CATALOGUE_FAILURE_TTL_MS;
+var CATALOGUE_TTL_MS, CATALOGUE_FAILURE_TTL_MS, STALE_JOB_DIR_MS;
 var init_model_catalogue = __esm({
   "src/copilot-run/model-catalogue.ts"() {
     "use strict";
@@ -22320,6 +22320,7 @@ var init_model_catalogue = __esm({
     init_config_dir();
     CATALOGUE_TTL_MS = 24 * 60 * 60 * 1e3;
     CATALOGUE_FAILURE_TTL_MS = 60 * 60 * 1e3;
+    STALE_JOB_DIR_MS = 60 * 60 * 1e3;
   }
 });
 
