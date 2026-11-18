@@ -4,13 +4,16 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **An explicit model for factory lanes.** `factory.run.laneModel` in the user config, or `omg factory run --model <id>`, starts every lane on that Copilot model: implement, review, fix, CI-fix and conflict-fix lanes. Before, lanes passed no model and ran on Copilot's default. An id outside `knownModels` is refused, and the working-tree project config cannot set it. Each lane record in the run state stores the model, and `omg factory run status` shows it. `omg factory bench run --model <id>` passes the model to each run. With `--live`, it checks that model against the account's `listModels()`: it refuses an id the account does not offer and lists the offered ids, then applies `--allow-multiplier` to that model's multiplier. The results JSON, its summary and the `bench compare` header record the lane model. Without `--model`, `bench run` probes and passes on `factory.run.laneModel` from the user config, so the bench and its runs always check and use the same model. The run state records the first lane's model and warns (with a history note) when a resumed run uses a different one, and a lane whose session reports another model than requested gets a note. Without a model, nothing changes. See docs/REFERENCE.md.
+
 # oh-my-copilot v5.29.2
 
 ## [5.29.2] - 2026-11-18
 
 ### Added
 
-- **An explicit model for factory lanes.** `factory.run.laneModel` in the user config, or `omg factory run --model <id>`, starts every lane on that Copilot model: implement, review, fix, CI-fix and conflict-fix lanes. Before, lanes passed no model and ran on Copilot's default. An id outside `knownModels` is refused, and the working-tree project config cannot set it. Each lane record in the run state stores the model, and `omg factory run status` shows it. `omg factory bench run --model <id>` passes the model to each run. With `--live`, it checks that model against the account's `listModels()`: it refuses an id the account does not offer and lists the offered ids, then applies `--allow-multiplier` to that model's multiplier. The results JSON, its summary and the `bench compare` header record the lane model. Without a model, nothing changes. See docs/REFERENCE.md.
 - **Microsoft MAI Code 2 models in the Copilot tiers.** `sonnet` now starts with `mai-code-2` (then `claude-sonnet-5.5`, `mai-code-2-flash`), `haiku` with `mai-code-2-flash` (then `claude-haiku-5.5`, `gpt-6-luna`), and `opus` gains `mai-code-2` as its last fallback. `knownModels` adds the ids a live `listModels()` showed on 2026-11-18 (`mai-code-2`, `mai-code-2-flash`, `mai-code-1.1-flash`, `claude-sonnet-5`, `gpt-5.6-luna`, `gpt-6.1-terra`, `grok-4.7`, `grok-4.6`, `kimi-k3`, `gemini-4-hydrogen`) plus `claude-fable-5.2` and `gpt-6.2-astra`, whose ids follow the naming pattern but were not confirmed on that account. The generated `copilot/agents/*.md` carry the new `models:` lists. See "Copilot model tiers" in docs/REFERENCE.md.
 
 ### Changed
