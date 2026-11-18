@@ -78,14 +78,31 @@ import { currentProcessStartIdentity, isProcessIdentityDead, publishOwnerEpoch, 
 import { waitForRecoveryGateRecord, } from "./worker-activation-gate.js";
 import { isWorkerLaunchAttemptCurrent, isWorkerLaunchAttemptAccepted, loadCurrentWorkerLaunchAttempt, loadWorkerLaunchAttempt, retireAndCleanupCurrentWorkerLaunchAttempt, withWorkerLaunchAttemptFence, } from "./worker-launch-ack.js";
 import { isSdkTarget, launchSdkHost, readSdkSession, ringDoorbell, sdkPaneId, sdkTeamTarget, stopSdkHost, SDK_HOST_STOP_FLOOR_MS, } from "./sdk-transport.js";
-import { toCopilotModelId } from "./model-contract.js";
-import { loadCopilotSdk, resolveShimTarget, } from "../smoke/copilot-sdk-driver.js";
+import { copilotTierModels, resolveCopilotModel, warnUnavailableCopilotTier, } from "./model-contract.js";
+import { teamCopilotCatalogue } from "../copilot-run/model-catalogue.js";
+import { loadCopilotSdk, memoSdkProtocolProbe, PROBE_TIMEOUT_REASON, resolveShimTarget, } from "../smoke/copilot-sdk-driver.js";
 import { detectHostCliSignal } from "../utils/host-signal.js";
 import { resolveDefaultPluginRoot } from "../smoke/copilot-session-env.js";
 import { getCopilotConfigDir } from "../utils/config-dir.js";
 import { getWorkerProviderLiveness } from "./worker-provider-liveness.js";
 import { isProcessIdentityLive } from "../platform/process-utils.js";
 import { activateTeamInstanceUnderLock, assertTeamInstanceUnderLock, buildTeamInstancePendingConfig, createTeamInstanceBinding, disposeTeamInstanceUnderLock, releaseFailedStartupReservationUnderLock, reserveTeamInstanceUnderLock, retryTeamInstanceDisposal, TeamInstanceError, withTeamInstanceLifecycleLock, } from "./team-instance.js";
+/**
+ * The SDK worker's model: an explicit `sdk.model` as is (the catalogue is not
+ * read), else the descriptor model, whose tier alias resolves against the
+ * plan's catalogue (read once per process); none offered means no model.
+ */
+export async function resolveSdkWorkerModel(sdkModel, model) {
+    if (sdkModel !== undefined)
+        return sdkModel;
+    if (!model)
+        return undefined;
+    const catalogue = copilotTierModels(model).length > 0 ? await teamCopilotCatalogue() : null;
+    const resolved = resolveCopilotModel(model, catalogue);
+    if (!resolved.model && resolved.tier)
+        warnUnavailableCopilotTier(resolved.tier);
+    return resolved.model;
+}
 let runtimeOwnerRecoveryClient;
 /** Runtime integration point; production may bind its owner client after startup. */
 export function setRuntimeOwnerRecoveryClient(client) {
@@ -1235,8 +1252,8 @@ export const DEFAULT_SDK_LAUNCH_CONCURRENCY = 4;
  * team is one the sdk transport rejects: `--auto-merge`, a non-copilot
  * worker, an explicitly assigned reviewer-contract role (its verdict file is
  * only read after the provider exits, and an sdk host never exits between
- * turns), or `@github/copilot-sdk` not installed. An explicit `sdk` keeps
- * failing loudly on those.
+ * turns), `@github/copilot-sdk` not installed, or an SDK whose protocol the
+ * installed CLI does not speak. An explicit `sdk` keeps failing loudly on those.
  */
 export async function resolveTeamTransport(input) {
     const { requested } = input;
@@ -1262,9 +1279,36 @@ export async function resolveTeamTransport(input) {
         return pane(`non_copilot_workers:${foreign.join(",")}`);
     if (input.explicitContractRoles.length > 0)
         return pane(`contract_roles:${[...new Set(input.explicitContractRoles)].join(",")}`);
-    if (!(await input.sdkAvailable().catch(() => false)))
+    const sdk = await input.sdkAvailable().catch(() => false);
+    if (typeof sdk === "string")
+        return pane(sdk.startsWith(PROBE_TIMEOUT_REASON)
+            ? sdk
+            : `copilot_sdk_protocol_mismatch: ${sdk}`);
+    if (!sdk)
         return pane("copilot_sdk_not_installed");
     return { transport: "sdk", requested };
+}
+/**
+ * `auto`'s default SDK check: the SDK resolves, and a start/stop handshake on
+ * the Copilot CLI the sdk workers would launch (no session, no prompt)
+ * reports no protocol mismatch and does not hang. A CLI that does not
+ * resolve skips the probe: the launch reports it.
+ */
+export async function defaultSdkAvailable(deps = {}) {
+    const loaded = await (deps.load ?? (() => loadCopilotSdk()))();
+    if (!loaded)
+        return false;
+    let found;
+    try {
+        found = (deps.resolveBin ?? (() => resolveValidatedBinaryPath("copilot")))();
+    }
+    catch {
+        return true;
+    }
+    const bin = found && /\.(cmd|bat|ps1)$/i.test(found) ? resolveShimTarget(found) : found;
+    if (!bin)
+        return true;
+    return (await (deps.probe ?? memoSdkProtocolProbe)(loaded, bin)) ?? true;
 }
 /**
  * Run startup launches with at most `concurrency` in flight. `record` sees
@@ -1360,6 +1404,15 @@ export function resolveSdkDefaultWorktreeMode(input) {
  * AI credits, and the Copilot runtime floors `--max-ai-credits` at 30.
  */
 export const DEFAULT_SDK_MAX_CREDITS_PER_WORKER = 50;
+export function needsTeamCopilotCatalogue(assignments, sdkModelPinned) {
+    if (sdkModelPinned)
+        return false;
+    for (const a of assignments) {
+        if (a.agentType === "copilot" && typeof a.model === "string" && copilotTierModels(a.model).length > 0)
+            return true;
+    }
+    return false;
+}
 export function resolveSdkTeamSettings(pluginCfg) {
     const sdk = pluginCfg.team?.sdk ?? {};
     const envNumber = (key) => {
@@ -1453,10 +1506,7 @@ async function spawnSdkV2Worker(opts, sdk) {
             startupFailureReason: `sdk_copilot_shim_unresolved:${binary}`,
         };
     }
-    const descriptorModel = opts.launchDescriptor.model
-        ? toCopilotModelId(opts.launchDescriptor.model)
-        : undefined;
-    const model = sdk.model ?? descriptorModel;
+    const model = await resolveSdkWorkerModel(sdk.model, opts.launchDescriptor.model);
     const workerCwd = opts.workerCwd ?? opts.cwd;
     const launch = await launchSdkHost({
         leaderCwd: opts.cwd,
@@ -4517,7 +4567,7 @@ export async function startTeamV2(config) {
             !inferredContractRoles.has(workerName)
             ? [a.role]
             : []),
-        sdkAvailable: config.sdkAvailable ?? (async () => (await loadCopilotSdk()) !== null),
+        sdkAvailable: config.sdkAvailable ?? (() => defaultSdkAvailable()),
     });
     if (transportDecision.requested === "auto" &&
         transportDecision.fallbackReason &&
@@ -4587,6 +4637,12 @@ export async function startTeamV2(config) {
             .join(";");
         throw new Error(`cli_binary_preflight_failed:${missing}`);
     }
+    // Read once per team start, before the lifecycle lock (a live read can take
+    // up to FETCH_DEADLINE_MS), and only when a Copilot worker names a tier
+    // alias: the alias then resolves to the first tier model the plan offers.
+    const copilotCatalogue = needsTeamCopilotCatalogue(startupAssignments.values(), sdkMode && !!sdkSettings?.model)
+        ? await teamCopilotCatalogue()
+        : null;
     // Clean up any stale reservations from dead processes BEFORE acquiring the lifecycle lock.
     // This prevents nested lock acquisition and ensures old dead-owner reservations don't block startup.
     try {
@@ -4723,6 +4779,7 @@ export async function startTeamV2(config) {
                     resolvedBinaryPath: binary,
                     model: assignment.model,
                     reasoningEffort: assignment.reasoningEffort,
+                    copilotCatalogue,
                     ...(permissionFlags.length > 0
                         ? { extraFlags: permissionFlags }
                         : {}),

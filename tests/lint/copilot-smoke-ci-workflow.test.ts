@@ -85,6 +85,18 @@ describe("copilot smoke CI workflow", () => {
     expect(steps.indexOf(step("Build"))).toBeLessThan(steps.indexOf(step("Tier 2 static checks (no model call)")));
   });
 
+  it("installs the CLI at `latest` or an exact version, and says why when pinned", () => {
+    const line = job.match(/^ {6}SMOKE_CLI_DIST_TAG: '([^']+)'$/m);
+    expect(line, "smoke job env must set SMOKE_CLI_DIST_TAG").toBeTruthy();
+    const tag = line![1];
+    expect(tag).toMatch(/^(latest|\d+\.\d+\.\d+)$/);
+    if (tag !== "latest") {
+      // The comment block directly above the pin.
+      const before = job.slice(0, line!.index).split("\n").slice(-12).join("\n");
+      expect(before, "a pinned CLI needs a nearby comment naming the protocol reason").toMatch(/^ {6}#.*protocol/im);
+    }
+  });
+
   it("isolates COPILOT_HOME and TMPDIR under the runner temp", () => {
     const prep = step("Prepare isolated smoke dirs");
     expect(prep.run).toContain('SMOKE_ROOT="$RUNNER_TEMP/copilot-smoke"');

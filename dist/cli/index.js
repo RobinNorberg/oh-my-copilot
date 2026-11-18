@@ -19,7 +19,7 @@ import { OMC_PLUGIN_ROOT_ENV } from '../lib/env-vars.js';
 import { loadConfig, getConfigPaths, } from '../config/loader.js';
 import { createOmcSession } from '../index.js';
 import { checkForUpdates, performUpdate, formatUpdateNotification, getInstalledVersion, reconcileUpdateRuntime, CONFIG_FILE, } from '../features/auto-update.js';
-import { install as installOmc, isInstalled, getInstallInfo } from '../installer/index.js';
+import { install as installOmc, isInstalled, getInstallInfo, loadSetupCopilotCatalogue, } from '../installer/index.js';
 import { waitCommand, waitStatusCommand, waitDaemonCommand, waitDetectCommand } from './commands/wait.js';
 import { doctorConflictsCommand } from './commands/doctor-conflicts.js';
 import { ralphCommand } from './commands/ralph.js';
@@ -852,10 +852,12 @@ Examples:
         return;
     }
     // Run installation
+    const copilotModelCatalogue = await loadSetupCopilotCatalogue();
     const result = installOmc({
         force: options.force,
         verbose: !options.quiet,
-        skipCopilotCheck: options.skipCopilotCheck
+        skipCopilotCheck: options.skipCopilotCheck,
+        copilotModelCatalogue
     });
     if (result.success) {
         if (!options.quiet) {
@@ -1388,10 +1390,12 @@ Examples:
     if (pluginDirMode && !options.quiet) {
         console.log(chalk.gray('Dev plugin-dir mode: skipping agent/skill sync (plugin provides them via --plugin-dir)'));
     }
+    const copilotModelCatalogue = await loadSetupCopilotCatalogue();
     const result = installOmc({
         force: !!options.force,
         verbose: !options.quiet,
         skipCopilotCheck: true,
+        copilotModelCatalogue,
         forceHooks: !!options.forceHooks,
         noPlugin: useLocalBundledSkills,
         pluginDirMode,

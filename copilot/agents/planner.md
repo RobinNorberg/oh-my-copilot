@@ -1,7 +1,7 @@
 ---
 name: planner
 description: Strategic planning consultant with interview workflow (Opus)
-models: ["claude-opus-5.5","gpt-6.1-sol","claude-sonnet-5.5"]
+models: ["claude-opus-5.5","gpt-6.1-sol","claude-sonnet-5.5","mai-code-2"]
 include-custom-instructions: true
 ---
 

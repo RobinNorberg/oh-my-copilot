@@ -28,7 +28,14 @@ import { type RecoverDeadWorkerOwnerInput } from "./runtime-owner-client.js";
 export declare function buildStartupInboxTrigger(cwd: string, teamName: string, workerName: string, attemptId: string, platform?: NodeJS.Platform): string;
 import type { RecoverDeadWorkerV2Result } from "./types.js";
 import { type SdkSessionFile } from "./sdk-transport.js";
+import { type LoadedSdk } from "../smoke/copilot-sdk-driver.js";
 import { type HostCliType } from "../utils/host-signal.js";
+/**
+ * The SDK worker's model: an explicit `sdk.model` as is (the catalogue is not
+ * read), else the descriptor model, whose tier alias resolves against the
+ * plan's catalogue (read once per process); none offered means no model.
+ */
+export declare function resolveSdkWorkerModel(sdkModel: string | undefined, model: string | null | undefined): Promise<string | undefined>;
 export interface RecoverDeadWorkerV2Options {
     workerName: string;
     requestId?: string;
@@ -252,8 +259,8 @@ export interface StartTeamV2Config {
      * passes `auto`; programmatic callers keep the historical `pane`.
      */
     defaultTransport?: TeamTransportSetting;
-    /** Test seam: whether `@github/copilot-sdk` resolves (only asked for `auto`). */
-    sdkAvailable?: () => Promise<boolean>;
+    /** Test seam: whether `@github/copilot-sdk` resolves (only asked for `auto`); a string is a protocol mismatch. */
+    sdkAvailable?: () => Promise<boolean | string>;
 }
 export interface WorkerStartupEvidencePolicy {
     initialBudgetMs: number;
@@ -318,8 +325,8 @@ export interface TeamTransportDecision {
  * team is one the sdk transport rejects: `--auto-merge`, a non-copilot
  * worker, an explicitly assigned reviewer-contract role (its verdict file is
  * only read after the provider exits, and an sdk host never exits between
- * turns), or `@github/copilot-sdk` not installed. An explicit `sdk` keeps
- * failing loudly on those.
+ * turns), `@github/copilot-sdk` not installed, or an SDK whose protocol the
+ * installed CLI does not speak. An explicit `sdk` keeps failing loudly on those.
  */
 export declare function resolveTeamTransport(input: {
     requested: TeamTransportSetting;
@@ -328,8 +335,20 @@ export declare function resolveTeamTransport(input: {
     autoMerge: boolean;
     agentTypes: readonly string[];
     explicitContractRoles: readonly string[];
-    sdkAvailable: () => Promise<boolean>;
+    /** A string: why the SDK cannot drive the installed CLI (a protocol mismatch). */
+    sdkAvailable: () => Promise<boolean | string>;
 }): Promise<TeamTransportDecision>;
+/**
+ * `auto`'s default SDK check: the SDK resolves, and a start/stop handshake on
+ * the Copilot CLI the sdk workers would launch (no session, no prompt)
+ * reports no protocol mismatch and does not hang. A CLI that does not
+ * resolve skips the probe: the launch reports it.
+ */
+export declare function defaultSdkAvailable(deps?: {
+    load?: () => Promise<LoadedSdk | null>;
+    resolveBin?: () => string | null;
+    probe?: (loaded: LoadedSdk, bin: string) => Promise<string | null>;
+}): Promise<boolean | string>;
 /**
  * Run startup launches with at most `concurrency` in flight. `record` sees
  * every successful outcome in job order: immediately after each launch when
@@ -362,6 +381,10 @@ export declare function resolveSdkDefaultWorktreeMode(input: {
  * AI credits, and the Copilot runtime floors `--max-ai-credits` at 30.
  */
 export declare const DEFAULT_SDK_MAX_CREDITS_PER_WORKER = 50;
+export declare function needsTeamCopilotCatalogue(assignments: Iterable<{
+    agentType?: string;
+    model?: unknown;
+}>, sdkModelPinned: boolean): boolean;
 export declare function resolveSdkTeamSettings(pluginCfg: PluginConfig): SdkTeamSettings;
 interface RecoveryOwnerFinalizationDeps {
     readRevisionedConfig: (teamName: string, cwd: string) => Promise<{

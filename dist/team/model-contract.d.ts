@@ -5,7 +5,8 @@ export interface CliAgentContract {
     agentType: CliAgentType;
     binary: string;
     installInstructions: string;
-    buildLaunchArgs(model?: string, reasoningEffort?: string, extraFlags?: string[]): string[];
+    /** `copilotCatalogue`: the plan's Copilot model ids (copilot only; see resolveCopilotModel). */
+    buildLaunchArgs(model?: string, reasoningEffort?: string, extraFlags?: string[], copilotCatalogue?: ReadonlySet<string> | null): string[];
     parseOutput(rawOutput: string): string;
     /** Whether this agent supports a prompt/headless mode that bypasses TUI input */
     supportsPromptMode?: boolean;
@@ -30,6 +31,12 @@ export interface WorkerLaunchConfig {
      * Consumed by the worker-completion handler in runtime-v2.
      */
     output_file?: string;
+    /**
+     * The plan's Copilot model ids (copilot-run/model-catalogue.ts). A tier alias
+     * then resolves to the first offered tier model, or no `--model` when none is
+     * offered; absent or null keeps each tier's first id.
+     */
+    copilotCatalogue?: ReadonlySet<string> | null;
 }
 /** @deprecated Backward-compat shim for older team API consumers. */
 export interface CliBinaryValidation {
@@ -70,13 +77,44 @@ export declare function shouldUseClaudeBareMode(env?: NodeJS.ProcessEnv): boolea
  */
 export declare const COPILOT_WORKER_BASE_FLAGS: readonly ["--allow-all-tools", "--allow-all-paths", "--allow-all-urls", "--no-ask-user"];
 /**
+ * Tier ids inferred from naming, never seen in a live listModels(). Without a
+ * catalogue they are not requested; a catalogue that lists one confirms it.
+ */
+export declare const COPILOT_UNCONFIRMED_MODELS: ReadonlySet<string>;
+export interface CopilotModelResolution {
+    /** The Copilot model to request; undefined means pass none (inherit the session model). */
+    model: string | undefined;
+    /** The tier alias the input named, if any. */
+    tier?: string;
+    /**
+     * `passthrough`: not a tier alias. `available`: the first tier model the
+     * catalogue offers. `unverified`: no catalogue, the tier's first confirmed
+     * model. `unavailable`: the catalogue offers no model of the tier, or there
+     * is no catalogue and every tier model is unconfirmed.
+     */
+    status: 'passthrough' | 'available' | 'unverified' | 'unavailable';
+}
+/**
+ * Resolve a model value for Copilot. A bare tier alias (any case) becomes the
+ * first model of its fallback list that `catalogue` (the plan's model ids)
+ * offers, or no model when it offers none; without a catalogue it is the
+ * tier's first id not in COPILOT_UNCONFIRMED_MODELS, or no model when all are.
+ * Everything else goes through toCopilotModelId's id rewrite.
+ */
+export declare function resolveCopilotModel(model: string, catalogue?: ReadonlySet<string> | null): CopilotModelResolution;
+/** The fallback list of a tier alias, for warnings. */
+export declare function copilotTierModels(tier: string): readonly string[];
+/**
  * Copilot lists dotted Claude model IDs (claude-opus-4.8) while the tier
  * defaults are dashed (claude-opus-4-8). Rewrites that shape (keeping a
  * trailing variant such as -fast), drops a `[1m]` context suffix and an
- * 8-digit date stamp, and maps bare tier aliases through the model table.
+ * 8-digit date stamp, and maps bare tier aliases to the tier's first model
+ * (resolveCopilotModel picks by plan availability instead).
  * Anything else passes through unchanged.
  */
 export declare function toCopilotModelId(model: string): string;
+/** One stderr line per tier per process: no (confirmed) model of the tier is on the plan, so the worker inherits. */
+export declare function warnUnavailableCopilotTier(tier: string, warn?: (line: string) => void): void;
 /**
  * Deny flags forwarded from `permissions.workerDenyTools` / `workerDenyUrls`.
  * Only Copilot workers enforce them; other providers get [] (their vendor

@@ -13,7 +13,8 @@ import { join, resolve } from "path";
 import { mkdir, readFile, rm } from "fs/promises";
 import { existsSync } from "node:fs";
 import { randomUUID } from "node:crypto";
-import { buildWorkerArgv, clearResolvedPathCache, getWorkerEnv as getModelWorkerEnv, resolveDefaultWorkerModel, assertHeadlessSupported, resolveValidatedBinaryPath, validateWorkerLaunchDescriptor, resolveWorkerPermissionFlags, } from "./model-contract.js";
+import { buildWorkerArgv, clearResolvedPathCache, getWorkerEnv as getModelWorkerEnv, resolveDefaultWorkerModel, assertHeadlessSupported, resolveValidatedBinaryPath, validateWorkerLaunchDescriptor, resolveWorkerPermissionFlags, copilotTierModels, } from "./model-contract.js";
+import { teamCopilotCatalogue } from "../copilot-run/model-catalogue.js";
 import { loadConfig } from "../config/loader.js";
 import { getHostCliType } from "../utils/host-detection.js";
 import { CANONICAL_TEAM_ROLES } from "../shared/types.js";
@@ -866,11 +867,17 @@ export async function scaleUpOwned(teamName, count, agentType, tasks, cwd, env =
                 let launchArgs;
                 try {
                     const permissionFlags = resolveWorkerPermissionFlags(workerAgentType, loadConfig().permissions);
+                    const copilotCatalogue = workerAgentType === "copilot" &&
+                        workerModel &&
+                        copilotTierModels(workerModel).length > 0
+                        ? await teamCopilotCatalogue()
+                        : null;
                     const [, ...args] = buildWorkerArgv(workerAgentType, {
                         teamName: sanitized,
                         workerName,
                         cwd: workerCwd,
                         resolvedBinaryPath: launchBinary,
+                        ...(copilotCatalogue ? { copilotCatalogue } : {}),
                         ...(workerModel ? { model: workerModel } : {}),
                         ...(workerReasoningEffort
                             ? { reasoningEffort: workerReasoningEffort }

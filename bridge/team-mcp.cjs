@@ -12756,24 +12756,37 @@ var init_copilot_models = __esm({
         "claude-opus-5.5",
         "claude-haiku-5.5",
         "claude-haiku-4.5",
+        "claude-sonnet-5",
+        "claude-fable-5.2",
         "gpt-6.1-sol",
+        "gpt-6.2-astra",
+        "gpt-6.1-terra",
         "gpt-6-astra",
         "gpt-6-luna",
+        "gpt-5.6-luna",
         "gpt-5.3-codex",
-        "gemini-3.8-flash"
+        "gemini-3.8-flash",
+        "gemini-4-hydrogen",
+        "mai-code-2",
+        "mai-code-2-flash",
+        "mai-code-1.1-flash",
+        "grok-4.7",
+        "grok-4.6",
+        "kimi-k3"
       ],
+      unconfirmedModels: ["claude-fable-5.2", "gpt-6.2-astra"],
       tiers: {
-        opus: ["claude-opus-5.5", "gpt-6.1-sol", "claude-sonnet-5.5"],
-        sonnet: ["claude-sonnet-5.5", "gpt-6-astra", "claude-haiku-5.5"],
-        haiku: ["claude-haiku-5.5", "gpt-6-luna", "claude-haiku-4.5", "gemini-3.8-flash"],
-        fable: ["claude-opus-5.5", "gpt-6.1-sol", "claude-sonnet-5.5"]
+        opus: ["claude-opus-5.5", "gpt-6.1-sol", "claude-sonnet-5.5", "mai-code-2"],
+        sonnet: ["mai-code-2", "claude-sonnet-5.5", "mai-code-2-flash"],
+        haiku: ["mai-code-2-flash", "claude-haiku-5.5", "gpt-6-luna"],
+        fable: ["claude-fable-5.2", "gpt-6.2-astra"]
       }
     };
   }
 });
 
 // src/team/model-contract.ts
-var import_path20, import_os4, COPILOT_TIER_ALIAS_MODELS;
+var import_path20, import_os4, COPILOT_TIER_MODELS, COPILOT_UNCONFIRMED_MODELS;
 var init_model_contract = __esm({
   "src/team/model-contract.ts"() {
     "use strict";
@@ -12786,9 +12799,8 @@ var init_model_contract = __esm({
     init_host_signal();
     init_executable_resolution();
     init_copilot_models();
-    COPILOT_TIER_ALIAS_MODELS = Object.fromEntries(
-      Object.entries(copilot_models_default.tiers).map(([tier, ids]) => [tier, ids[0]])
-    );
+    COPILOT_TIER_MODELS = copilot_models_default.tiers;
+    COPILOT_UNCONFIRMED_MODELS = new Set(copilot_models_default.unconfirmedModels);
   }
 });
 
@@ -13752,7 +13764,7 @@ var init_process_utils = __esm({
     import_path23 = require("path");
     import_util10 = require("util");
     fsPromises = __toESM(require("fs/promises"), 1);
-    execFileAsync2 = (0, import_util10.promisify)(import_child_process6.execFile);
+    execFileAsync2 = ((...args) => (0, import_util10.promisify)(import_child_process6.execFile)(...args));
   }
 });
 
@@ -21649,50 +21661,10 @@ var init_merge_orchestrator = __esm({
   }
 });
 
-// src/team/scaling.ts
-var import_path38, import_promises14;
-var init_scaling = __esm({
-  "src/team/scaling.ts"() {
+// src/copilot-run/timeout.ts
+var init_timeout = __esm({
+  "src/copilot-run/timeout.ts"() {
     "use strict";
-    import_path38 = require("path");
-    import_promises14 = require("fs/promises");
-    init_model_contract();
-    init_loader();
-    init_host_detection();
-    init_types();
-    init_types3();
-    init_role_router();
-    init_team_ops();
-    init_types2();
-    init_monitor();
-    init_tmux_session();
-    init_herdr_session();
-    init_state_paths();
-    init_worker_bootstrap();
-    init_sdk_transport();
-    init_git_worktree();
-    init_worktree_paths();
-    init_team_owner_epoch();
-    init_runtime_owner_client();
-    init_worker_launch_ack();
-    init_team_instance();
-  }
-});
-
-// src/team/recovery-saga.ts
-var init_recovery_saga = __esm({
-  "src/team/recovery-saga.ts"() {
-    "use strict";
-    init_recovery_request_store();
-  }
-});
-
-// src/team/worker-activation-gate.ts
-var init_worker_activation_gate = __esm({
-  "src/team/worker-activation-gate.ts"() {
-    "use strict";
-    init_worker_launch_ack();
-    init_process_utils();
   }
 });
 
@@ -21958,13 +21930,13 @@ var init_routes = __esm({
 });
 
 // src/forge/ado/guard.ts
-var import_fs33, import_os8, import_path39, MAX_BODY_BYTES;
+var import_fs33, import_os8, import_path38, MAX_BODY_BYTES;
 var init_guard = __esm({
   "src/forge/ado/guard.ts"() {
     "use strict";
     import_fs33 = require("fs");
     import_os8 = require("os");
-    import_path39 = require("path");
+    import_path38 = require("path");
     init_routes();
     MAX_BODY_BYTES = 1024 * 1024;
   }
@@ -21984,13 +21956,13 @@ var init_exec = __esm({
 });
 
 // src/ship/config.ts
-var import_fs34, import_os9, import_path40, OMG_REPOSITORY_REQUIRED_CHECKS, DEFAULT_SHIP_CONFIG;
+var import_fs34, import_os9, import_path39, OMG_REPOSITORY_REQUIRED_CHECKS, DEFAULT_SHIP_CONFIG;
 var init_config2 = __esm({
   "src/ship/config.ts"() {
     "use strict";
     import_fs34 = require("fs");
     import_os9 = require("os");
-    import_path40 = require("path");
+    import_path39 = require("path");
     init_jsonc();
     init_loader();
     init_project_config_path();
@@ -22127,12 +22099,12 @@ var init_process_utils2 = __esm({
 });
 
 // src/lib/version.ts
-var import_fs35, import_path41, import_url7;
+var import_fs35, import_path40, import_url7;
 var init_version = __esm({
   "src/lib/version.ts"() {
     "use strict";
     import_fs35 = require("fs");
-    import_path41 = require("path");
+    import_path40 = require("path");
     import_url7 = require("url");
   }
 });
@@ -22226,12 +22198,12 @@ var init_redact = __esm({
 });
 
 // src/smoke/replay/cassette.ts
-var import_fs36, import_path42;
+var import_fs36, import_path41;
 var init_cassette = __esm({
   "src/smoke/replay/cassette.ts"() {
     "use strict";
     import_fs36 = require("fs");
-    import_path42 = require("path");
+    import_path41 = require("path");
     init_atomic_write();
     init_redact();
   }
@@ -22247,12 +22219,12 @@ var init_append_no_follow = __esm({
 });
 
 // src/smoke/replay/matcher.ts
-var import_fs37, import_path43;
+var import_fs37, import_path42;
 var init_matcher = __esm({
   "src/smoke/replay/matcher.ts"() {
     "use strict";
     import_fs37 = require("fs");
-    import_path43 = require("path");
+    import_path42 = require("path");
     init_append_no_follow();
   }
 });
@@ -22268,13 +22240,13 @@ var init_normalize = __esm({
 });
 
 // src/smoke/replay/handler.ts
-var import_fs38, import_os10, import_path44;
+var import_fs38, import_os10, import_path43;
 var init_handler = __esm({
   "src/smoke/replay/handler.ts"() {
     "use strict";
     import_fs38 = require("fs");
     import_os10 = require("os");
-    import_path44 = require("path");
+    import_path43 = require("path");
     init_version();
     init_copilot_session_env();
     init_cassette();
@@ -22285,12 +22257,12 @@ var init_handler = __esm({
 });
 
 // src/smoke/replay/run.ts
-var import_fs39, import_path45;
+var import_fs39, import_path44;
 var init_run = __esm({
   "src/smoke/replay/run.ts"() {
     "use strict";
     import_fs39 = require("fs");
-    import_path45 = require("path");
+    import_path44 = require("path");
     init_copilot_session_env();
     init_cassette();
     init_handler();
@@ -22299,7 +22271,7 @@ var init_run = __esm({
 });
 
 // src/smoke/copilot-sdk-driver.ts
-var import_child_process10, import_crypto11, import_fs40, import_module, import_os11, import_path46, import_url8;
+var import_child_process10, import_crypto11, import_fs40, import_module, import_os11, import_path45, import_url8;
 var init_copilot_sdk_driver = __esm({
   "src/smoke/copilot-sdk-driver.ts"() {
     "use strict";
@@ -22308,14 +22280,97 @@ var init_copilot_sdk_driver = __esm({
     import_fs40 = require("fs");
     import_module = require("module");
     import_os11 = require("os");
-    import_path46 = require("path");
+    import_path45 = require("path");
     import_url8 = require("url");
     init_sandbox();
     init_copilot_session_eval();
     init_copilot_sdk_scenarios();
     init_process_utils2();
+    init_copilot_session_env();
+    init_windows_search();
     init_handler();
     init_run();
+  }
+});
+
+// src/smoke/copilot-binary.ts
+var import_fs41, import_path46;
+var init_copilot_binary = __esm({
+  "src/smoke/copilot-binary.ts"() {
+    "use strict";
+    import_fs41 = require("fs");
+    import_path46 = require("path");
+    init_executable_resolution();
+  }
+});
+
+// src/copilot-run/model-catalogue.ts
+var CATALOGUE_TTL_MS, CATALOGUE_FAILURE_TTL_MS, STALE_JOB_DIR_MS;
+var init_model_catalogue = __esm({
+  "src/copilot-run/model-catalogue.ts"() {
+    "use strict";
+    init_atomic_write();
+    init_paths();
+    init_timeout();
+    init_sandbox();
+    init_copilot_sdk_driver();
+    init_copilot_sdk_scenarios();
+    init_copilot_session_env();
+    init_process_utils2();
+    init_windows_search();
+    init_copilot_binary();
+    init_config_dir();
+    CATALOGUE_TTL_MS = 24 * 60 * 60 * 1e3;
+    CATALOGUE_FAILURE_TTL_MS = 60 * 60 * 1e3;
+    STALE_JOB_DIR_MS = 60 * 60 * 1e3;
+  }
+});
+
+// src/team/scaling.ts
+var import_path47, import_promises14;
+var init_scaling = __esm({
+  "src/team/scaling.ts"() {
+    "use strict";
+    import_path47 = require("path");
+    import_promises14 = require("fs/promises");
+    init_model_contract();
+    init_model_catalogue();
+    init_loader();
+    init_host_detection();
+    init_types();
+    init_types3();
+    init_role_router();
+    init_team_ops();
+    init_types2();
+    init_monitor();
+    init_tmux_session();
+    init_herdr_session();
+    init_state_paths();
+    init_worker_bootstrap();
+    init_sdk_transport();
+    init_git_worktree();
+    init_worktree_paths();
+    init_team_owner_epoch();
+    init_runtime_owner_client();
+    init_worker_launch_ack();
+    init_team_instance();
+  }
+});
+
+// src/team/recovery-saga.ts
+var init_recovery_saga = __esm({
+  "src/team/recovery-saga.ts"() {
+    "use strict";
+    init_recovery_request_store();
+  }
+});
+
+// src/team/worker-activation-gate.ts
+var init_worker_activation_gate = __esm({
+  "src/team/worker-activation-gate.ts"() {
+    "use strict";
+    init_worker_launch_ack();
+    init_process_utils();
   }
 });
 
@@ -22687,7 +22742,7 @@ async function shutdownTeamV2(teamName, cwd, options = {}) {
   };
   if (!config2) {
     const cleanupSafety = inspectTeamWorktreeCleanupSafety(sanitized, cwd);
-    if (cleanupSafety.hasEvidence || (0, import_fs41.existsSync)(absPath(cwd, TeamPaths.root(sanitized)))) {
+    if (cleanupSafety.hasEvidence || (0, import_fs42.existsSync)(absPath(cwd, TeamPaths.root(sanitized)))) {
       process.stderr.write(
         "[team/runtime-v2] preserving team state because config is missing and worktree cleanup evidence remains\n"
       );
@@ -23154,12 +23209,12 @@ If you accept, exit your session. If you reject, remain active for task work and
     }
   );
 }
-var import_path47, import_fs41, import_promises15, import_node_crypto8, orchestratorByTeam, cadenceByTeam, TEAM_INSTANCE_FINAL_DISPOSAL_AUTHORIZATION;
+var import_path48, import_fs42, import_promises15, import_node_crypto8, orchestratorByTeam, cadenceByTeam, TEAM_INSTANCE_FINAL_DISPOSAL_AUTHORIZATION;
 var init_runtime_v2 = __esm({
   "src/team/runtime-v2.ts"() {
     "use strict";
-    import_path47 = require("path");
-    import_fs41 = require("fs");
+    import_path48 = require("path");
+    import_fs42 = require("fs");
     import_promises15 = require("fs/promises");
     init_state_paths();
     init_worktree_paths();
@@ -23206,6 +23261,7 @@ var init_runtime_v2 = __esm({
     init_worker_launch_ack();
     init_sdk_transport();
     init_model_contract();
+    init_model_catalogue();
     init_copilot_sdk_driver();
     init_host_signal();
     init_copilot_session_env();
@@ -46339,10 +46395,10 @@ var StdioServerTransport = class {
 // src/mcp/team-server.ts
 var import_node_crypto9 = require("node:crypto");
 var import_child_process11 = require("child_process");
-var import_path49 = require("path");
+var import_path50 = require("path");
 var import_url9 = require("url");
 init_omc_cli_rendering();
-var import_fs43 = require("fs");
+var import_fs44 = require("fs");
 var import_promises16 = require("fs/promises");
 init_team_name();
 init_runtime_v2();
@@ -46458,16 +46514,16 @@ var NudgeTracker = class {
 };
 
 // src/mcp/team-job-convergence.ts
-var import_fs42 = require("fs");
-var import_path48 = require("path");
+var import_fs43 = require("fs");
+var import_path49 = require("path");
 init_types2();
 init_team_name();
 function readResultArtifact(omcJobsDir, jobId) {
-  const artifactPath = (0, import_path48.join)(omcJobsDir, `${jobId}-result.json`);
-  if (!(0, import_fs42.existsSync)(artifactPath)) return { kind: "none" };
+  const artifactPath = (0, import_path49.join)(omcJobsDir, `${jobId}-result.json`);
+  if (!(0, import_fs43.existsSync)(artifactPath)) return { kind: "none" };
   let raw;
   try {
-    raw = (0, import_fs42.readFileSync)(artifactPath, "utf-8");
+    raw = (0, import_fs43.readFileSync)(artifactPath, "utf-8");
   } catch (error62) {
     if (error62.code === "ENOENT") return { kind: "none" };
     const message = `Failed to read result artifact at ${artifactPath}: ${error62 instanceof Error ? error62.message : String(error62)}`;
@@ -46569,10 +46625,10 @@ function convergeJobWithResultArtifact(job, jobId, omcJobsDir) {
   };
 }
 function resultArtifactIdentityError(job, jobId, omcJobsDir) {
-  const artifactPath = (0, import_path48.join)(omcJobsDir, `${jobId}-result.json`);
+  const artifactPath = (0, import_path49.join)(omcJobsDir, `${jobId}-result.json`);
   let raw;
   try {
-    raw = (0, import_fs42.readFileSync)(artifactPath, "utf-8");
+    raw = (0, import_fs43.readFileSync)(artifactPath, "utf-8");
   } catch (error62) {
     if (error62.code === "ENOENT") return null;
     return `cleanup_result_evidence_unreadable:${error62 instanceof Error ? error62.message : String(error62)}`;
@@ -46587,7 +46643,7 @@ function resultArtifactIdentityError(job, jobId, omcJobsDir) {
 }
 function readMatchingTerminalArtifact(job, jobId, omcJobsDir) {
   try {
-    const raw = (0, import_fs42.readFileSync)((0, import_path48.join)(omcJobsDir, `${jobId}-result.json`), "utf-8");
+    const raw = (0, import_fs43.readFileSync)((0, import_path49.join)(omcJobsDir, `${jobId}-result.json`), "utf-8");
     const parsed = JSON.parse(raw);
     if (parsed.status !== "completed" && parsed.status !== "failed" || parsed.instanceId !== job.instanceId || !isValidTeamInstanceId(parsed.instanceId)) return null;
     return { status: parsed.status, raw };
@@ -46735,10 +46791,10 @@ function persistJob(jobId, job) {
   }
 }
 function loadJobFromDisk(jobId) {
-  const path5 = (0, import_path49.join)(OMC_JOBS_DIR, `${jobId}.json`);
+  const path5 = (0, import_path50.join)(OMC_JOBS_DIR, `${jobId}.json`);
   let content;
   try {
-    content = (0, import_fs43.readFileSync)(path5, "utf-8");
+    content = (0, import_fs44.readFileSync)(path5, "utf-8");
   } catch (error62) {
     if (error62.code === "ENOENT") return void 0;
     throw new Error(`Unreadable job file: ${jobId} (${error62 instanceof Error ? error62.message : String(error62)})`);
@@ -46758,7 +46814,7 @@ function getJob(jobId) {
   return loadJobFromDisk(jobId);
 }
 async function loadPaneIds(jobId, instanceId) {
-  const p = (0, import_path49.join)(OMC_JOBS_DIR, `${jobId}-panes.json`);
+  const p = (0, import_path50.join)(OMC_JOBS_DIR, `${jobId}-panes.json`);
   try {
     const parsed = JSON.parse(await (0, import_promises16.readFile)(p, "utf-8"));
     if (!isValidTeamPaneArtifact(parsed, instanceId)) return null;
@@ -46929,18 +46985,18 @@ function validateJobId(job_id) {
   }
 }
 function jobLockPath(jobId) {
-  return (0, import_path49.join)(OMC_JOBS_DIR, `.${jobId}.lock`);
+  return (0, import_path50.join)(OMC_JOBS_DIR, `.${jobId}.lock`);
 }
 function persistJobUnlocked(jobId, job) {
-  if (!(0, import_fs43.existsSync)(OMC_JOBS_DIR)) (0, import_fs43.mkdirSync)(OMC_JOBS_DIR, { recursive: true });
-  const targetPath = (0, import_path49.join)(OMC_JOBS_DIR, `${jobId}.json`);
+  if (!(0, import_fs44.existsSync)(OMC_JOBS_DIR)) (0, import_fs44.mkdirSync)(OMC_JOBS_DIR, { recursive: true });
+  const targetPath = (0, import_path50.join)(OMC_JOBS_DIR, `${jobId}.json`);
   const tempPath = `${targetPath}.tmp.${process.pid}.${(0, import_node_crypto9.randomUUID)()}`;
   try {
-    (0, import_fs43.writeFileSync)(tempPath, JSON.stringify(job), { encoding: "utf-8", mode: 384 });
-    (0, import_fs43.renameSync)(tempPath, targetPath);
+    (0, import_fs44.writeFileSync)(tempPath, JSON.stringify(job), { encoding: "utf-8", mode: 384 });
+    (0, import_fs44.renameSync)(tempPath, targetPath);
   } finally {
     try {
-      (0, import_fs43.unlinkSync)(tempPath);
+      (0, import_fs44.unlinkSync)(tempPath);
     } catch {
     }
   }
@@ -47070,10 +47126,10 @@ async function handleStart(args) {
       "team_start_unsafe_runtime_v1: instance-bound provider cleanup requires runtime v2; set OMC_RUNTIME_V2=1"
     );
   }
-  const cwd = (0, import_path49.resolve)(input2.cwd);
+  const cwd = (0, import_path50.resolve)(input2.cwd);
   const jobId = `omc-${Date.now().toString(36)}${(0, import_node_crypto9.randomUUID)().slice(0, 8)}`;
   const instanceId = (0, import_node_crypto9.randomUUID)();
-  const runtimeCliPath = (0, import_path49.join)(__ownDir, "runtime-cli.cjs");
+  const runtimeCliPath = (0, import_path50.join)(__ownDir, "runtime-cli.cjs");
   const job = {
     status: "running",
     startedAt: Date.now(),
@@ -47350,7 +47406,7 @@ async function handleCleanup(args) {
   if (resultEvidenceError) return blockCleanup(resultEvidenceError);
   const panes = await loadPaneIds(job_id, job.instanceId);
   if (!panes) {
-    const reason = (0, import_fs43.existsSync)((0, import_path49.join)(OMC_JOBS_DIR, `${job_id}-panes.json`)) ? "cleanup_panes_evidence_corrupt" : "cleanup_panes_evidence_missing";
+    const reason = (0, import_fs44.existsSync)((0, import_path50.join)(OMC_JOBS_DIR, `${job_id}-panes.json`)) ? "cleanup_panes_evidence_corrupt" : "cleanup_panes_evidence_missing";
     return blockCleanup(reason);
   }
   try {

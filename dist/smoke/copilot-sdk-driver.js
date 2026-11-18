@@ -20,15 +20,17 @@
  */
 import { spawnSync as nodeSpawnSync } from 'child_process';
 import { randomBytes, randomUUID } from 'crypto';
-import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'fs';
 import { createRequire } from 'module';
-import { userInfo } from 'os';
+import { tmpdir, userInfo } from 'os';
 import { dirname, isAbsolute, join, relative, resolve } from 'path';
 import { pathToFileURL } from 'url';
 import { allowlistSessionEnv, applySandboxConfig, buildSandboxConfig, DEFAULT_SANDBOX_SETTINGS, gitForWindowsShell, laneToolPaths, missingSandboxEnv, probeHostSupport, readEnforcement, } from '../copilot-run/sandbox.js';
 import { excerpt } from './copilot-session-eval.js';
 import { chooseModel, CLI_SCENARIOS, FACTORY_RUN_SCENARIOS, CREDIT_CAP_SKIP_DETAIL, evaluateReplay, evaluateScenario, evaluateSdkAgents, evaluateSdkMcp, evaluateSdkPlugins, evaluateSdkRuntime, evaluateSdkSandbox, evaluateSdkSkills, evaluateSdkToolsExcluded, failedTier2Checks, FILETOOLS_FILES, FILETOOLS_MARKER, KNOWN_SCENARIOS, probeHooksJson, hostSmokeToolName, runCost, RUNTIME_MIN_MAX_CREDITS, SCENARIOS, scenarioExcludedTools, SANDBOX_LANE_SCENARIO, SDK_MISSING_DETAIL, SDK_PACKAGE, SDK_STATIC_IDS, skippedScenarioChecks, sliceLogByTime, usageCredits, } from './copilot-sdk-scenarios.js';
-import { killProcessTree } from './process-utils.js';
+import { hasExited, killProcessTree } from './process-utils.js';
+import { buildSessionEnv } from './copilot-session-env.js';
+import { childEnv } from '../utils/windows-search.js';
 import { withCassette } from './replay/handler.js';
 import { cassetteEnv, finalizeRecording, hasCassette, keepFailedParts, platformTag, replayOutcome, scenarioCassetteDir, scenarioStateDir, storedRunOrder, } from './replay/run.js';
 /**
@@ -294,6 +296,122 @@ export function runtimePid(client) {
     const pid = client.cliProcess?.pid;
     return typeof pid === 'number' && pid > 0 ? pid : undefined;
 }
+/**
+ * The last `@github/copilot` release that speaks SDK protocol 3: 1.0.113
+ * moved to protocol 4 while the newest SDK (1.0.34) still accepts 3 only.
+ */
+export const LAST_PROTOCOL3_CLI = '1.0.112';
+/** The SDK's `client.start()` handshake refusal, parsed (null: some other error). */
+export function sdkProtocolMismatch(err) {
+    const m = /SDK protocol version mismatch: SDK supports versions (\d+)-(\d+), but server (?:reports version (\d+)|does not report)/.exec(errText(err));
+    return m ? { sdkMin: Number(m[1]), sdkMax: Number(m[2]), server: m[3] === undefined ? null : Number(m[3]) } : null;
+}
+/**
+ * The `.catch` for `client.start()`: rethrows a protocol mismatch as an error
+ * naming both versions and the fix, anything else unchanged.
+ */
+export function rethrowSdkStartError(err) {
+    const m = sdkProtocolMismatch(err);
+    if (!m)
+        throw err;
+    const sdk = m.sdkMin === m.sdkMax ? `protocol ${m.sdkMax}` : `protocols ${m.sdkMin}-${m.sdkMax}`;
+    // LAST_PROTOCOL3_CLI is only the fix while the SDK tops out at protocol 3.
+    const olderCli = m.sdkMax === 3
+        ? `use @github/copilot <=${LAST_PROTOCOL3_CLI} (npm i -g @github/copilot@${LAST_PROTOCOL3_CLI})`
+        : `use an older @github/copilot that speaks protocol ${m.sdkMax}`;
+    const fix = m.server !== null && m.server > m.sdkMax
+        ? `Update ${SDK_PACKAGE} when a version supporting protocol ${m.server} is available, or ${olderCli}.`
+        : `Update the Copilot CLI (npm i -g @github/copilot) or use a ${SDK_PACKAGE} that matches it.`;
+    throw new Error(`Copilot SDK/CLI protocol mismatch: ${SDK_PACKAGE} speaks ${sdk}, the Copilot CLI ${m.server === null ? 'reports no protocol version' : `speaks protocol ${m.server}`}. ${fix}`, { cause: err });
+}
+/** The probe's own start bound: a handshake answers in seconds, and `auto` must not wait a launch's minute. */
+export const PROBE_START_TIMEOUT_MS = 15_000;
+const PROBE_STOP_TIMEOUT_MS = 5_000;
+/** Prefix of probeSdkProtocol's answer when the handshake did not finish in time. */
+export const PROBE_TIMEOUT_REASON = 'copilot_sdk_probe_timeout';
+/**
+ * Starts and stops a runtime on `bin` (no session, no prompt) and returns the
+ * explained protocol mismatch, `copilot_sdk_probe_timeout: ...` when start()
+ * hangs, or null when the handshake passes or fails for any other reason (the
+ * real launch reports those). The runtime gets the session env allowlist in a
+ * throwaway home with no login identity: a handshake needs no credential.
+ */
+export async function probeSdkProtocol(loaded, bin, opts = {}) {
+    const stopMs = opts.stopTimeoutMs ?? PROBE_STOP_TIMEOUT_MS;
+    const killTree = opts.killTree ?? ((pid) => killProcessTree(pid, nodeSpawnSync));
+    const home = mkdtempSync(join(tmpdir(), 'omg-sdk-probe-'));
+    let client;
+    try {
+        const env = childEnv(allowlistSessionEnv(buildSessionEnv(opts.env ?? process.env, home, { session: false }), home));
+        mkdirSync(env.XDG_CONFIG_HOME, { recursive: true });
+        mkdirSync(dirname(env.GIT_CONFIG_GLOBAL), { recursive: true });
+        mkdirSync(env.TEMP, { recursive: true });
+        const { CopilotClient, RuntimeConnection } = loaded.module;
+        client = new CopilotClient({
+            connection: RuntimeConnection.forStdio({ path: bin, args: [], env }),
+            baseDirectory: home,
+            workingDirectory: home,
+        });
+        await withTimeout(client.start().catch(rethrowSdkStartError), opts.startTimeoutMs ?? PROBE_START_TIMEOUT_MS, 'client.start()');
+        return null;
+    }
+    catch (err) {
+        if (err instanceof TimeoutError)
+            return `${PROBE_TIMEOUT_REASON}: ${err.message} (${bin})`;
+        return sdkProtocolMismatch(err instanceof Error ? err.cause : undefined) ? errText(err) : null;
+    }
+    finally {
+        if (client) {
+            // Read before stop() clears it: the runtime this probe spawned (also when start() hung after spawning).
+            const proc = client.cliProcess;
+            const pid = runtimePid(client);
+            try {
+                await withTimeout(client.stop(), stopMs, 'client.stop()');
+            }
+            catch {
+                try {
+                    await withTimeout(client.forceStop?.() ?? Promise.resolve(), stopMs, 'client.forceStop()');
+                }
+                catch { /* gone */ }
+            }
+            if (proc && pid && !hasExited(proc)) {
+                try {
+                    killTree(pid);
+                }
+                catch { /* gone */ }
+            }
+        }
+        try {
+            rmSync(home, { recursive: true, force: true });
+        }
+        catch { /* best effort */ }
+    }
+}
+const probeMemo = new Map();
+/**
+ * probeSdkProtocol, memoized per process by the binary's realpath, size and
+ * mtime and the SDK version. A timeout is not kept (it may be transient).
+ */
+export async function memoSdkProtocolProbe(loaded, bin, probe = probeSdkProtocol) {
+    let key;
+    try {
+        const real = realpathSync(bin);
+        const st = statSync(real);
+        key = `${real}\0${st.size}\0${st.mtimeMs}\0${loaded.version ?? ''}`;
+    }
+    catch {
+        return probe(loaded, bin);
+    }
+    let pending = probeMemo.get(key);
+    if (!pending) {
+        pending = probe(loaded, bin).catch(() => null);
+        probeMemo.set(key, pending);
+    }
+    const result = await pending;
+    if (result?.startsWith(PROBE_TIMEOUT_REASON))
+        probeMemo.delete(key);
+    return result;
+}
 function pidAlive(pid) {
     try {
         process.kill(pid, 0);
@@ -472,10 +590,10 @@ export async function runSdkTier(input) {
     let wedged = false;
     try {
         try {
-            await withTimeout(client.start(), START_TIMEOUT_MS, 'client.start()');
+            await withTimeout(client.start().catch(rethrowSdkStartError), START_TIMEOUT_MS, 'client.start()');
         }
         catch (err) {
-            checks.push(...failedTier2Checks(input.scenarios, `runtime did not start (${bin}): ${excerpt(errText(err), 200)}`, 'after-available'));
+            checks.push(...failedTier2Checks(input.scenarios, `runtime did not start (${bin}): ${excerpt(errText(err), 400)}`, 'after-available'));
             return { checks, sdk: sdkInfo, events };
         }
         pid = runtimePid(client);
@@ -859,7 +977,7 @@ async function sandboxSpawnCanary(loaded, bin, input, host) {
     let session;
     const sandboxed = new Map();
     try {
-        await withTimeout(client.start(), START_TIMEOUT_MS, 'canary client.start()');
+        await withTimeout(client.start().catch(rethrowSdkStartError), START_TIMEOUT_MS, 'canary client.start()');
         session = await withTimeout(client.createSession({
             onPermissionRequest: () => reject('omg smoke: the spawn canary grants nothing'),
             onEvent: (e) => { if (e.type === 'tool.execution_complete')

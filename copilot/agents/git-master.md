@@ -1,7 +1,7 @@
 ---
 name: git-master
 description: Git expert for atomic commits, rebasing, and history management with style detection
-models: ["claude-sonnet-5.5","gpt-6-astra","claude-haiku-5.5"]
+models: ["mai-code-2","claude-sonnet-5.5","mai-code-2-flash"]
 include-custom-instructions: true
 ---
 

@@ -7,7 +7,9 @@ import { readFileSync } from 'fs';
 import { win32 } from 'path';
 import { promisify } from 'util';
 import * as fsPromises from 'fs/promises';
-const execFileAsync = promisify(execFile);
+// Promisified per call, not at import: reading the execFile export at module
+// load breaks every importer whose tests vi.mock('child_process') without it.
+const execFileAsync = ((...args) => promisify(execFile)(...args));
 function processGroupIdSync(pid) {
     if (!Number.isInteger(pid) || pid <= 0)
         return null;

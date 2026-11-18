@@ -198,6 +198,45 @@ export declare function loadCopilotSdk(env?: NodeJS.ProcessEnv, spawnSync?: Spaw
 export declare const DEFAULT_SCENARIO_TIMEOUT_MS = 120000;
 /** The runtime child's pid: the SDK keeps it on the private `cliProcess` (SDK 1.0.16). */
 export declare function runtimePid(client: SdkClientLike): number | undefined;
+/**
+ * The last `@github/copilot` release that speaks SDK protocol 3: 1.0.113
+ * moved to protocol 4 while the newest SDK (1.0.34) still accepts 3 only.
+ */
+export declare const LAST_PROTOCOL3_CLI = "1.0.112";
+/** The SDK's `client.start()` handshake refusal, parsed (null: some other error). */
+export declare function sdkProtocolMismatch(err: unknown): {
+    sdkMin: number;
+    sdkMax: number;
+    server: number | null;
+} | null;
+/**
+ * The `.catch` for `client.start()`: rethrows a protocol mismatch as an error
+ * naming both versions and the fix, anything else unchanged.
+ */
+export declare function rethrowSdkStartError(err: unknown): never;
+/** The probe's own start bound: a handshake answers in seconds, and `auto` must not wait a launch's minute. */
+export declare const PROBE_START_TIMEOUT_MS = 15000;
+/** Prefix of probeSdkProtocol's answer when the handshake did not finish in time. */
+export declare const PROBE_TIMEOUT_REASON = "copilot_sdk_probe_timeout";
+export interface SdkProtocolProbeOptions {
+    env?: NodeJS.ProcessEnv;
+    startTimeoutMs?: number;
+    stopTimeoutMs?: number;
+    killTree?: (pid: number) => void;
+}
+/**
+ * Starts and stops a runtime on `bin` (no session, no prompt) and returns the
+ * explained protocol mismatch, `copilot_sdk_probe_timeout: ...` when start()
+ * hangs, or null when the handshake passes or fails for any other reason (the
+ * real launch reports those). The runtime gets the session env allowlist in a
+ * throwaway home with no login identity: a handshake needs no credential.
+ */
+export declare function probeSdkProtocol(loaded: LoadedSdk, bin: string, opts?: SdkProtocolProbeOptions): Promise<string | null>;
+/**
+ * probeSdkProtocol, memoized per process by the binary's realpath, size and
+ * mtime and the SDK version. A timeout is not kept (it may be transient).
+ */
+export declare function memoSdkProtocolProbe(loaded: LoadedSdk, bin: string, probe?: (loaded: LoadedSdk, bin: string) => Promise<string | null>): Promise<string | null>;
 export declare function prepareSdkProject(spawnSync: SpawnSyncFn, projectDir: string, remoteDir: string, env: NodeJS.ProcessEnv): string | null;
 /**
  * filetools: the fixture under the sandbox project (notes.txt, a README.md

@@ -639,9 +639,9 @@ describe('model-contract', () => {
             expect(toCopilotModelId('claude-sonnet-5[1m]')).toBe('claude-sonnet-5');
             // First column of the tiers in src/config/copilot-models.json.
             expect(toCopilotModelId('opus')).toBe('claude-opus-5.5');
-            expect(toCopilotModelId('sonnet')).toBe('claude-sonnet-5.5');
-            expect(toCopilotModelId('haiku')).toBe('claude-haiku-5.5');
-            expect(toCopilotModelId('fable')).toBe('claude-opus-5.5');
+            expect(toCopilotModelId('sonnet')).toBe('mai-code-2');
+            expect(toCopilotModelId('haiku')).toBe('mai-code-2-flash');
+            expect(toCopilotModelId('fable')).toBe('claude-fable-5.2');
             expect(toCopilotModelId('Opus')).toBe('claude-opus-5.5');
             expect(toCopilotModelId('gpt-5.4-mini')).toBe('gpt-5.4-mini');
         });

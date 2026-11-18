@@ -9,7 +9,7 @@
 import { copyFileSync, existsSync, readFileSync } from 'fs';
 import { atomicWriteJsonSync } from '../lib/atomic-write.js';
 import type { PluginConfig } from '../shared/types.js';
-import { toCopilotModelId } from '../team/model-contract.js';
+import { copilotTierModels, resolveCopilotModel } from '../team/model-contract.js';
 import { AGENT_TIERS, parseModelProfile, profileAgentModels } from '../features/model-routing/profiles.js';
 import copilotModels from '../config/copilot-models.json' with { type: 'json' };
 
@@ -22,6 +22,17 @@ export const COPILOT_PLUGIN_AGENT_PREFIX = 'oh-my-copilot:';
 
 const KNOWN_MODELS = new Set<string>(copilotModels.knownModels);
 
+/**
+ * First id of each tier before the MAI Code 2 tiers (v5.29.1 and older): an
+ * earlier `omg setup` may have written it for a tier alias.
+ */
+const PREVIOUS_TIER_FIRST_IDS: Record<string, string> = {
+  opus: 'claude-opus-5.5',
+  sonnet: 'claude-sonnet-5.5',
+  haiku: 'claude-haiku-5.5',
+  fable: 'claude-opus-5.5',
+};
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -32,8 +43,9 @@ const toAgentName = (configKey: string): string =>
 
 /**
  * Explicit `agents.<name>.model` overrides as { agentName: copilotModelId }.
- * Values go through toCopilotModelId (tier aliases in any case resolve to the
- * tier's first Copilot id; dashed Claude Code ids become dotted) and are kept
+ * Values go through resolveCopilotModel (tier aliases in any case resolve to the
+ * first tier model `catalogue` offers, or the tier's first id without one;
+ * dashed Claude Code ids become dotted) and are kept
  * only when the result is in copilot-models.json knownModels; everything else
  * (`inherit`, unlisted ids such as claude-opus-4-8) lands in `skipped`.
  * `omc` is the orchestrator, not a delegatable agent. A `modelProfile`
@@ -43,8 +55,9 @@ const toAgentName = (configKey: string): string =>
 export function resolveAgentModelOverrides(
   agents: PluginConfig['agents'] | undefined,
   modelProfile?: unknown,
+  catalogue?: ReadonlySet<string> | null,
 ): { overrides: Record<string, string>; skipped: string[] } {
-  const { overrides, skipped } = resolveAgentModelPlan(agents, modelProfile);
+  const { overrides, skipped } = resolveAgentModelPlan(agents, modelProfile, catalogue);
   return { overrides, skipped };
 }
 
@@ -53,19 +66,35 @@ export function resolveAgentModelOverrides(
  * `overrides` that only the profile set. An explicit per-agent value of any kind
  * (valid, `inherit`, empty, invalid) removes the profile's entry for that agent
  * before the value is validated.
+ *
+ * `catalogue` is the plan's Copilot model ids (copilot-run/model-catalogue.ts).
+ * A tier alias none of whose models it offers writes no override (the agent
+ * inherits the session model) and lands in `unavailableTiers` as
+ * { tier: agent names }.
  */
 export function resolveAgentModelPlan(
   agents: PluginConfig['agents'] | undefined,
   modelProfile?: unknown,
-): { overrides: Record<string, string>; skipped: string[]; profileEntries: Record<string, string>; profileProblem?: string } {
+  catalogue?: ReadonlySet<string> | null,
+): {
+  overrides: Record<string, string>;
+  skipped: string[];
+  profileEntries: Record<string, string>;
+  profileProblem?: string;
+  unavailableTiers: Record<string, string[]>;
+} {
   const overrides: Record<string, string> = {};
   const profileEntries: Record<string, string> = {};
   const skipped: string[] = [];
+  const unavailableTiers: Record<string, string[]> = {};
+  const noteUnavailable = (tier: string, agent: string) => { (unavailableTiers[tier] ??= []).push(agent); };
   const profile = parseModelProfile(modelProfile);
   const profileProblem = modelProfile !== undefined && !profile ? `modelProfile ${JSON.stringify(modelProfile)} is not quality-first, balanced or economy; no profile applied` : undefined;
   if (profile) {
     for (const [name, tier] of Object.entries(profileAgentModels(profile))) {
-      overrides[name] = toCopilotModelId(tier);
+      const resolved = resolveCopilotModel(tier, catalogue);
+      if (!resolved.model) { noteUnavailable(tier, name); continue; }
+      overrides[name] = resolved.model;
       profileEntries[name] = overrides[name];
     }
   }
@@ -73,17 +102,33 @@ export function resolveAgentModelPlan(
     if (key === 'omc' || value?.model === undefined) continue;
     delete overrides[toAgentName(key)];
     delete profileEntries[toAgentName(key)];
+    for (const tier of Object.keys(unavailableTiers)) {
+      unavailableTiers[tier] = unavailableTiers[tier].filter((name) => name !== toAgentName(key));
+      if (unavailableTiers[tier].length === 0) delete unavailableTiers[tier];
+    }
     if (typeof value.model !== 'string') {
       skipped.push(`${key}: ${JSON.stringify(value.model)}`);
       continue;
     }
     const model = value.model.trim();
     if (!model) continue;
-    const resolved = toCopilotModelId(model);
-    if (KNOWN_MODELS.has(resolved)) overrides[toAgentName(key)] = resolved;
+    const resolved = resolveCopilotModel(model, catalogue);
+    if (resolved.status === 'unavailable') noteUnavailable(resolved.tier!, toAgentName(key));
+    else if (resolved.model && KNOWN_MODELS.has(resolved.model)) overrides[toAgentName(key)] = resolved.model;
     else skipped.push(`${key}: "${model}"`);
   }
-  return { overrides, skipped, profileEntries, profileProblem };
+  return { overrides, skipped, profileEntries, profileProblem, unavailableTiers };
+}
+
+/**
+ * Whether the plan for these settings names any tier alias, i.e. whether
+ * reading the Copilot catalogue can change what `omg setup` writes.
+ */
+export function usesCopilotTierAliases(agents: PluginConfig['agents'] | undefined, modelProfile?: unknown): boolean {
+  const profile = parseModelProfile(modelProfile);
+  if (profile && Object.keys(profileAgentModels(profile)).length > 0) return true;
+  return Object.entries(agents ?? {}).some(([key, value]) =>
+    key !== 'omc' && typeof value?.model === 'string' && copilotTierModels(value.model.trim()).length > 0);
 }
 
 /** Pure merge: sets `subagents.agents[prefix+name].model`, keeps every other key. */
@@ -137,15 +182,22 @@ function modelOf(settings: Record<string, unknown>, name: string): unknown {
  * `overrides` is removed again, so going back to `balanced` restores the agent
  * defaults. Without a record nothing is removed, and a value the user changed
  * is left alone.
+ *
+ * `unavailableTiers` (resolveAgentModelPlan) names agents whose tier alias
+ * resolves to no model. Their entry's `model` is removed when it is one of
+ * that tier's ids (or the tier's first id before v5.30), i.e. what an earlier
+ * setup wrote for the alias, so the agent really inherits the session model;
+ * any other value is left alone.
  */
 export function syncCopilotAgentModels(
   settingsFile: string,
   overrides: Record<string, string>,
   profileEntries: Record<string, string> = {},
   recordFile?: string,
+  unavailableTiers: Record<string, string[]> = {},
 ): { written: string[]; removed: string[]; error?: string } {
   const recorded = recordFile ? readProfileRecord(recordFile) : {};
-  if (Object.keys(overrides).length === 0 && Object.keys(recorded).length === 0) return { written: [], removed: [] };
+  if (Object.keys(overrides).length === 0 && Object.keys(recorded).length === 0 && Object.keys(unavailableTiers).length === 0) return { written: [], removed: [] };
   let current: unknown = {};
   if (existsSync(settingsFile)) {
     try {
@@ -158,6 +210,13 @@ export function syncCopilotAgentModels(
   const base = current as Record<string, unknown>;
 
   const removed = Object.keys(recorded).filter(name => !(name in overrides) && modelOf(base, name) === recorded[name]);
+  for (const [tier, names] of Object.entries(unavailableTiers)) {
+    const tierIds = new Set<string>([...copilotTierModels(tier), ...(PREVIOUS_TIER_FIRST_IDS[tier] ? [PREVIOUS_TIER_FIRST_IDS[tier]] : [])]);
+    for (const name of names) {
+      const current = modelOf(base, name);
+      if (!(name in overrides) && !removed.includes(name) && typeof current === 'string' && tierIds.has(current)) removed.push(name);
+    }
+  }
   let afterRemoval = base;
   if (removed.length > 0) {
     const subagents = { ...(base.subagents as Record<string, unknown>) };

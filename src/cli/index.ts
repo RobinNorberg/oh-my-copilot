@@ -35,7 +35,8 @@ import {
 import {
   install as installOmc,
   isInstalled,
-  getInstallInfo
+  getInstallInfo,
+  loadSetupCopilotCatalogue,
 } from '../installer/index.js';
 import {
   waitCommand,
@@ -949,10 +950,12 @@ Examples:
     }
 
     // Run installation
+    const copilotModelCatalogue = await loadSetupCopilotCatalogue();
     const result = installOmc({
       force: options.force,
       verbose: !options.quiet,
-      skipCopilotCheck: options.skipCopilotCheck
+      skipCopilotCheck: options.skipCopilotCheck,
+      copilotModelCatalogue
     });
 
     if (result.success) {
@@ -1520,10 +1523,12 @@ Examples:
       console.log(chalk.gray('Dev plugin-dir mode: skipping agent/skill sync (plugin provides them via --plugin-dir)'));
     }
 
+    const copilotModelCatalogue = await loadSetupCopilotCatalogue();
     const result = installOmc({
       force: !!options.force,
       verbose: !options.quiet,
       skipCopilotCheck: true,
+      copilotModelCatalogue,
       forceHooks: !!options.forceHooks,
       noPlugin: useLocalBundledSkills,
       pluginDirMode,
