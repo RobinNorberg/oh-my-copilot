@@ -4,6 +4,15 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Microsoft MAI Code 2 models in the Copilot tiers.** `sonnet` now starts with `mai-code-2` (then `claude-sonnet-5.5`, `mai-code-2-flash`), `haiku` with `mai-code-2-flash` (then `claude-haiku-5.5`, `gpt-6-luna`), and `opus` gains `mai-code-2` as its last fallback. `knownModels` adds the ids a live `listModels()` showed on 2026-11-18 (`mai-code-2`, `mai-code-2-flash`, `mai-code-1.1-flash`, `claude-sonnet-5`, `gpt-5.6-luna`, `gpt-6.1-terra`, `grok-4.7`, `grok-4.6`, `kimi-k3`, `gemini-4-hydrogen`) plus `claude-fable-5.2` and `gpt-6.2-astra`, whose ids follow the naming pattern but were not confirmed on that account. The generated `copilot/agents/*.md` carry the new `models:` lists. See "Copilot model tiers" in docs/REFERENCE.md.
+
+### Changed
+
+- **`fable` is now `claude-fable-5.2`, then `gpt-6.2-astra`.** It no longer falls back to the Opus list; a plan without either model gets no model for that tier (see the next entry).
+- **Tier aliases resolve to a model your Copilot plan offers.** `agents.<name>.model` and `modelProfile` overrides synced by `omg setup`, and the `--model` of Copilot team workers, used to take the first id of the tier even when the plan lacks it (Copilot Pro has no `claude-opus-5.5`, `gpt-6.1-sol` or fable models). They now take the first tier model in the plan's catalogue, read with the Copilot SDK's `listModels()` (no session, no prompt) and cached for 24 h in `~/.omg/state/copilot-models-cache.json`; a failed read is remembered for 1 h, and the live read times out after 15 s (start) + 5 s (`listModels()`). `omg setup` / `omg install` read it only when the user config names a tier alias; postinstall and auto-update use the cache only; `omg team` reads it once, only for Copilot workers on a tier alias. When no tier model is offered, no override is written and no `--model` is passed, so the agent or worker inherits the session model, with one warning per tier. When the catalogue cannot be read and no stale cache exists, each tier's first id is used as before, and omg says so once.
+
 # oh-my-copilot v5.29.1
 
 ## [5.29.1] - 2026-11-17

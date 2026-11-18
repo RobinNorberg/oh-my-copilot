@@ -7,6 +7,7 @@ import {
   resolveAgentModelOverrides,
   resolveAgentModelPlan,
   syncCopilotAgentModels,
+  usesCopilotTierAliases,
 } from '../copilot-agent-models.js';
 
 describe('resolveAgentModelOverrides', () => {
@@ -22,7 +23,7 @@ describe('resolveAgentModelOverrides', () => {
       overrides: {
         executor: 'claude-opus-5.5',
         'security-reviewer': 'claude-haiku-4.5',
-        writer: 'claude-sonnet-5.5',
+        writer: 'mai-code-2',
       },
       skipped: ['critic: "some-other-model"'],
     });
@@ -139,9 +140,9 @@ describe('resolveAgentModelOverrides with a modelProfile', () => {
     const { overrides, skipped } = resolveAgentModelOverrides({ architect: { model: 'opus' } }, 'economy');
     expect(skipped).toEqual([]);
     expect(overrides.architect).toBe('claude-opus-5.5');
-    expect(overrides.critic).toBe('claude-sonnet-5.5');
-    expect(overrides.executor).toBe('claude-haiku-5.5');
-    expect(overrides.explore).toBe('claude-haiku-5.5');
+    expect(overrides.critic).toBe('mai-code-2');
+    expect(overrides.executor).toBe('mai-code-2-flash');
+    expect(overrides.explore).toBe('mai-code-2-flash');
   });
 
   it('reports an unknown profile and applies none', () => {
@@ -167,7 +168,7 @@ describe('model profile entries are reversible', () => {
   it('economy then balanced leaves no profile entry and keeps a user-edited one', () => withDir((dir) => {
     writeFileSync(join(dir, 'settings.json'), JSON.stringify({ theme: 'dark' }));
     sync(dir, undefined, 'economy');
-    expect(modelOf(dir, 'executor')).toBe('claude-haiku-5.5');
+    expect(modelOf(dir, 'executor')).toBe('mai-code-2-flash');
     const settings = JSON.parse(readFileSync(join(dir, 'settings.json'), 'utf8'));
     settings.subagents.agents['oh-my-copilot:explore'].model = 'claude-opus-5.5'; // user edit
     writeFileSync(join(dir, 'settings.json'), JSON.stringify(settings));
@@ -184,7 +185,7 @@ describe('model profile entries are reversible', () => {
     sync(dir, undefined, 'economy');
     sync(dir, undefined, 'quality-first');
     expect(modelOf(dir, 'executor')).toBe('claude-opus-5.5');
-    expect(modelOf(dir, 'explore')).toBe('claude-sonnet-5.5');
+    expect(modelOf(dir, 'explore')).toBe('mai-code-2');
     sync(dir, undefined, undefined);
     expect(modelOf(dir, 'executor')).toBeUndefined();
   }));
@@ -200,7 +201,7 @@ describe('model profile entries are reversible', () => {
     sync(dir, undefined, 'economy');
     rmSync(join(dir, 'record.json'));
     expect(sync(dir, undefined, 'balanced').removed).toEqual([]);
-    expect(modelOf(dir, 'executor')).toBe('claude-haiku-5.5');
+    expect(modelOf(dir, 'executor')).toBe('mai-code-2-flash');
   }));
 
   it('a failing settings write leaves the record listing every entry still in settings', () => withDir((dir) => {
@@ -235,7 +236,49 @@ describe('model profile entries are reversible', () => {
     expect(plan.overrides).not.toHaveProperty('writer');
     expect(plan.overrides).not.toHaveProperty('critic');
     expect(plan.profileEntries).not.toHaveProperty('executor');
-    expect(plan.overrides.explore).toBe('claude-haiku-5.5');
+    expect(plan.overrides.explore).toBe('mai-code-2-flash');
     expect(plan.skipped).toEqual(['executor: "inherit"', 'critic: "bogus"']);
+  });
+});
+
+describe('tier aliases against the plan catalogue', () => {
+  it('resolves each tier to the first model the plan offers', () => {
+    const pro = new Set(['claude-sonnet-5.5', 'mai-code-2', 'mai-code-2-flash', 'claude-haiku-5.5']);
+    const plan = resolveAgentModelPlan({ architect: { model: 'opus' } }, 'economy', pro);
+    expect(plan.overrides.architect).toBe('claude-sonnet-5.5');
+    expect(plan.overrides.critic).toBe('mai-code-2');
+    expect(plan.overrides.explore).toBe('mai-code-2-flash');
+    expect(plan.unavailableTiers).toEqual({});
+  });
+
+  it('writes no override for a tier the plan cannot use and reports it', () => {
+    const pro = new Set(['claude-sonnet-5.5', 'mai-code-2']);
+    const plan = resolveAgentModelPlan({ planner: { model: 'fable' }, executor: { model: 'opus' } }, undefined, pro);
+    expect(plan.overrides).toEqual({ executor: 'claude-sonnet-5.5' });
+    expect(plan.skipped).toEqual([]);
+    expect(plan.unavailableTiers).toEqual({ fable: ['planner'] });
+  });
+
+  it('a profile tier the plan cannot use leaves those agents on the session model', () => {
+    const plan = resolveAgentModelPlan({ explore: { model: 'gpt-6-luna' } }, 'economy', new Set(['mai-code-2']));
+    expect(plan.overrides.critic).toBe('mai-code-2');
+    expect(plan.overrides).not.toHaveProperty('executor');
+    expect(plan.profileEntries).not.toHaveProperty('executor');
+    expect(plan.overrides.explore).toBe('gpt-6-luna');
+    expect(plan.unavailableTiers.haiku).toContain('executor');
+    expect(plan.unavailableTiers.haiku).not.toContain('explore');
+  });
+
+  it('an unknown catalogue keeps the first id of each tier', () => {
+    expect(resolveAgentModelPlan({ planner: { model: 'fable' } }, undefined, null).overrides).toEqual({ planner: 'claude-fable-5.2' });
+  });
+
+  it('usesCopilotTierAliases tells whether the catalogue matters', () => {
+    expect(usesCopilotTierAliases(undefined, undefined)).toBe(false);
+    expect(usesCopilotTierAliases(undefined, 'balanced')).toBe(false);
+    expect(usesCopilotTierAliases(undefined, 'economy')).toBe(true);
+    expect(usesCopilotTierAliases({ executor: { model: 'claude-sonnet-5.5' } })).toBe(false);
+    expect(usesCopilotTierAliases({ executor: { model: ' Opus ' } })).toBe(true);
+    expect(usesCopilotTierAliases({ omc: { model: 'opus' } })).toBe(false);
   });
 });

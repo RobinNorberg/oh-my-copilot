@@ -7,15 +7,16 @@ import type { PluginConfig } from '../shared/types.js';
 export declare const COPILOT_PLUGIN_AGENT_PREFIX = "oh-my-copilot:";
 /**
  * Explicit `agents.<name>.model` overrides as { agentName: copilotModelId }.
- * Values go through toCopilotModelId (tier aliases in any case resolve to the
- * tier's first Copilot id; dashed Claude Code ids become dotted) and are kept
+ * Values go through resolveCopilotModel (tier aliases in any case resolve to the
+ * first tier model `catalogue` offers, or the tier's first id without one;
+ * dashed Claude Code ids become dotted) and are kept
  * only when the result is in copilot-models.json knownModels; everything else
  * (`inherit`, unlisted ids such as claude-opus-4-8) lands in `skipped`.
  * `omc` is the orchestrator, not a delegatable agent. A `modelProfile`
  * (features/model-routing/profiles.ts) sets every agent first; explicit
  * per-agent values win over it.
  */
-export declare function resolveAgentModelOverrides(agents: PluginConfig['agents'] | undefined, modelProfile?: unknown): {
+export declare function resolveAgentModelOverrides(agents: PluginConfig['agents'] | undefined, modelProfile?: unknown, catalogue?: ReadonlySet<string> | null): {
     overrides: Record<string, string>;
     skipped: string[];
 };
@@ -24,13 +25,24 @@ export declare function resolveAgentModelOverrides(agents: PluginConfig['agents'
  * `overrides` that only the profile set. An explicit per-agent value of any kind
  * (valid, `inherit`, empty, invalid) removes the profile's entry for that agent
  * before the value is validated.
+ *
+ * `catalogue` is the plan's Copilot model ids (copilot-run/model-catalogue.ts).
+ * A tier alias none of whose models it offers writes no override (the agent
+ * inherits the session model) and lands in `unavailableTiers` as
+ * { tier: agent names }.
  */
-export declare function resolveAgentModelPlan(agents: PluginConfig['agents'] | undefined, modelProfile?: unknown): {
+export declare function resolveAgentModelPlan(agents: PluginConfig['agents'] | undefined, modelProfile?: unknown, catalogue?: ReadonlySet<string> | null): {
     overrides: Record<string, string>;
     skipped: string[];
     profileEntries: Record<string, string>;
     profileProblem?: string;
+    unavailableTiers: Record<string, string[]>;
 };
+/**
+ * Whether the plan for these settings names any tier alias, i.e. whether
+ * reading the Copilot catalogue can change what `omg setup` writes.
+ */
+export declare function usesCopilotTierAliases(agents: PluginConfig['agents'] | undefined, modelProfile?: unknown): boolean;
 /** Pure merge: sets `subagents.agents[prefix+name].model`, keeps every other key. */
 export declare function mergeSubagentModels(settings: Record<string, unknown>, overrides: Record<string, string>): {
     settings: Record<string, unknown>;

@@ -66,7 +66,7 @@ export default defineConfig({
     // Files start longest first and CI shards (`--shard=<i>/<n>`) split by
     // measured file duration (a Windows table on win32).
     sequence: { sequencer: DurationSequencer },
-    setupFiles: ['src/__tests__/setup/clear-copilot-home.ts', 'src/__tests__/setup/stub-skill-list-probe.ts'],
+    setupFiles: ['src/__tests__/setup/clear-copilot-home.ts', 'src/__tests__/setup/stub-skill-list-probe.ts', 'src/__tests__/setup/stub-copilot-catalogue.ts'],
     globalSetup: ['src/__tests__/setup/global-state-guard.ts'],
     // Test-only seams (for example the conditional-clear replacement hooks in
     // src/lib/mode-state-io.ts) run only when NODE_ENV is 'test'. Pin it so an

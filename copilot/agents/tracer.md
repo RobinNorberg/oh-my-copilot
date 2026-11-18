@@ -1,7 +1,7 @@
 ---
 name: tracer
 description: Evidence-driven causal tracing with competing hypotheses, evidence for/against, uncertainty tracking, and next-probe recommendations
-models: ["claude-sonnet-5.5","gpt-6-astra","claude-haiku-5.5"]
+models: ["mai-code-2","claude-sonnet-5.5","mai-code-2-flash"]
 include-custom-instructions: true
 ---
 

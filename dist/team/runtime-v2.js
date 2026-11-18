@@ -78,7 +78,8 @@ import { currentProcessStartIdentity, isProcessIdentityDead, publishOwnerEpoch, 
 import { waitForRecoveryGateRecord, } from "./worker-activation-gate.js";
 import { isWorkerLaunchAttemptCurrent, isWorkerLaunchAttemptAccepted, loadCurrentWorkerLaunchAttempt, loadWorkerLaunchAttempt, retireAndCleanupCurrentWorkerLaunchAttempt, withWorkerLaunchAttemptFence, } from "./worker-launch-ack.js";
 import { isSdkTarget, launchSdkHost, readSdkSession, ringDoorbell, sdkPaneId, sdkTeamTarget, stopSdkHost, SDK_HOST_STOP_FLOOR_MS, } from "./sdk-transport.js";
-import { toCopilotModelId } from "./model-contract.js";
+import { copilotTierModels, resolveCopilotModel, warnUnavailableCopilotTier, } from "./model-contract.js";
+import { teamCopilotCatalogue } from "../copilot-run/model-catalogue.js";
 import { loadCopilotSdk, resolveShimTarget, } from "../smoke/copilot-sdk-driver.js";
 import { detectHostCliSignal } from "../utils/host-signal.js";
 import { resolveDefaultPluginRoot } from "../smoke/copilot-session-env.js";
@@ -86,6 +87,14 @@ import { getCopilotConfigDir } from "../utils/config-dir.js";
 import { getWorkerProviderLiveness } from "./worker-provider-liveness.js";
 import { isProcessIdentityLive } from "../platform/process-utils.js";
 import { activateTeamInstanceUnderLock, assertTeamInstanceUnderLock, buildTeamInstancePendingConfig, createTeamInstanceBinding, disposeTeamInstanceUnderLock, releaseFailedStartupReservationUnderLock, reserveTeamInstanceUnderLock, retryTeamInstanceDisposal, TeamInstanceError, withTeamInstanceLifecycleLock, } from "./team-instance.js";
+/** A tier alias resolves against the plan's catalogue (read once per process); none offered means no model. */
+async function resolveSdkWorkerModel(model) {
+    const catalogue = copilotTierModels(model).length > 0 ? await teamCopilotCatalogue() : null;
+    const resolved = resolveCopilotModel(model, catalogue);
+    if (!resolved.model && resolved.tier)
+        warnUnavailableCopilotTier(resolved.tier);
+    return resolved.model;
+}
 let runtimeOwnerRecoveryClient;
 /** Runtime integration point; production may bind its owner client after startup. */
 export function setRuntimeOwnerRecoveryClient(client) {
@@ -1454,7 +1463,7 @@ async function spawnSdkV2Worker(opts, sdk) {
         };
     }
     const descriptorModel = opts.launchDescriptor.model
-        ? toCopilotModelId(opts.launchDescriptor.model)
+        ? await resolveSdkWorkerModel(opts.launchDescriptor.model)
         : undefined;
     const model = sdk.model ?? descriptorModel;
     const workerCwd = opts.workerCwd ?? opts.cwd;
@@ -4682,6 +4691,13 @@ export async function startTeamV2(config) {
                     throw startupCleanupIncompleteError(error);
                 throw error;
             }
+            // Read once per team start, only when a Copilot worker names a tier alias:
+            // the alias then resolves to the first tier model the plan offers.
+            const copilotCatalogue = [...startupAssignments.values()].some((a) => a.agentType === "copilot" &&
+                typeof a.model === "string" &&
+                copilotTierModels(a.model).length > 0)
+                ? await teamCopilotCatalogue()
+                : null;
             for (let i = 0; i < workerNames.length; i++) {
                 const workerName = workerNames[i];
                 const taskIndex = startupByWorker.get(workerName);
@@ -4723,6 +4739,7 @@ export async function startTeamV2(config) {
                     resolvedBinaryPath: binary,
                     model: assignment.model,
                     reasoningEffort: assignment.reasoningEffort,
+                    copilotCatalogue,
                     ...(permissionFlags.length > 0
                         ? { extraFlags: permissionFlags }
                         : {}),

@@ -1,7 +1,7 @@
 ---
 name: designer
 description: UI/UX Designer-Developer for stunning interfaces (Sonnet)
-models: ["claude-sonnet-5.5","gpt-6-astra","claude-haiku-5.5"]
+models: ["mai-code-2","claude-sonnet-5.5","mai-code-2-flash"]
 include-custom-instructions: true
 ---
 

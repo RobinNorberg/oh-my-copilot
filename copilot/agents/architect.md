@@ -1,7 +1,7 @@
 ---
 name: architect
 description: Strategic Architecture & Debugging Advisor (Opus, READ-ONLY)
-models: ["claude-opus-5.5","gpt-6.1-sol","claude-sonnet-5.5"]
+models: ["claude-opus-5.5","gpt-6.1-sol","claude-sonnet-5.5","mai-code-2"]
 tools: ["view","rg","grep","glob","bash","powershell","read_bash","read_powershell","web_fetch","task","list_agents","read_agent","skill","ask_user","update_todo","t/*"]
 include-custom-instructions: true
 ---

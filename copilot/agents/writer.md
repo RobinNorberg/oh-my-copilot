@@ -1,7 +1,7 @@
 ---
 name: writer
 description: Technical documentation writer for README, API docs, and comments (Haiku)
-models: ["claude-haiku-5.5","gpt-6-luna","claude-haiku-4.5","gemini-3.8-flash"]
+models: ["mai-code-2-flash","claude-haiku-5.5","gpt-6-luna"]
 include-custom-instructions: true
 ---
 

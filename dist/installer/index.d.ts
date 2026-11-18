@@ -7,6 +7,7 @@
  * Cross-platform support via Node.js-based hook scripts (.mjs).
  * Bash hook scripts were removed in v3.9.0.
  */
+import { type CopilotCatalogueResult } from '../copilot-run/model-catalogue.js';
 /** Claude Code configuration directory */
 export declare const COPILOT_HOME: string;
 /** @deprecated Renamed to {@link COPILOT_HOME}; kept as a legacy alias for API compatibility. */
@@ -61,6 +62,12 @@ export interface InstallOptions {
      * `noPlugin` (the CLI gives `noPlugin` precedence).
      */
     pluginDirMode?: boolean;
+    /**
+     * The plan's Copilot model catalogue, read by the async CLI command
+     * (`omg setup` / `omg install`) so tier-alias overrides resolve to models the
+     * plan offers. Absent: the cached catalogue only (no runtime is started).
+     */
+    copilotModelCatalogue?: CopilotCatalogueResult;
 }
 /**
  * Read hudEnabled from .omc-config.json without importing auto-update
@@ -232,6 +239,12 @@ export declare function mergeClaudeMd(existingContent: string | null, omcContent
 /**
  * Install OMC agents, commands, skills, and hooks
  */
+/**
+ * For `omg setup` / `omg install`: the plan's Copilot model catalogue (24 h
+ * cache, else a quick listModels() read), only when the user config names a
+ * tier alias. Undefined otherwise; never throws.
+ */
+export declare function loadSetupCopilotCatalogue(): Promise<CopilotCatalogueResult | undefined>;
 export declare function install(options?: InstallOptions): InstallResult;
 /**
  * Check if OMC is already installed

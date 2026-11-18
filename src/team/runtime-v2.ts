@@ -330,7 +330,13 @@ import {
   SDK_HOST_STOP_FLOOR_MS,
   type SdkSessionFile,
 } from "./sdk-transport.js";
-import { toCopilotModelId } from "./model-contract.js";
+import {
+  copilotTierModels,
+  resolveCopilotModel,
+  warnUnavailableCopilotTier,
+} from "./model-contract.js";
+import { teamCopilotCatalogue } from "../copilot-run/model-catalogue.js";
+
 import {
   loadCopilotSdk,
   resolveShimTarget,
@@ -352,6 +358,15 @@ import {
   TeamInstanceError,
   withTeamInstanceLifecycleLock,
 } from "./team-instance.js";
+
+/** A tier alias resolves against the plan's catalogue (read once per process); none offered means no model. */
+async function resolveSdkWorkerModel(model: string): Promise<string | undefined> {
+  const catalogue =
+    copilotTierModels(model).length > 0 ? await teamCopilotCatalogue() : null;
+  const resolved = resolveCopilotModel(model, catalogue);
+  if (!resolved.model && resolved.tier) warnUnavailableCopilotTier(resolved.tier);
+  return resolved.model;
+}
 
 export interface RecoverDeadWorkerV2Options {
   workerName: string;
@@ -2498,7 +2513,7 @@ async function spawnSdkV2Worker(
     };
   }
   const descriptorModel = opts.launchDescriptor.model
-    ? toCopilotModelId(opts.launchDescriptor.model)
+    ? await resolveSdkWorkerModel(opts.launchDescriptor.model)
     : undefined;
   const model = sdk.model ?? descriptorModel;
   const workerCwd = opts.workerCwd ?? opts.cwd;
@@ -7161,6 +7176,16 @@ export async function startTeamV2(
           throw startupCleanupIncompleteError(error);
         throw error;
       }
+      // Read once per team start, only when a Copilot worker names a tier alias:
+      // the alias then resolves to the first tier model the plan offers.
+      const copilotCatalogue = [...startupAssignments.values()].some(
+        (a) =>
+          a.agentType === "copilot" &&
+          typeof a.model === "string" &&
+          copilotTierModels(a.model).length > 0,
+      )
+        ? await teamCopilotCatalogue()
+        : null;
       for (let i = 0; i < workerNames.length; i++) {
         const workerName = workerNames[i]!;
         const taskIndex = startupByWorker.get(workerName);
@@ -7223,6 +7248,7 @@ export async function startTeamV2(
             resolvedBinaryPath: binary,
             model: assignment.model,
             reasoningEffort: assignment.reasoningEffort,
+            copilotCatalogue,
             ...(permissionFlags.length > 0
               ? { extraFlags: permissionFlags }
               : {}),

@@ -125,6 +125,7 @@ vi.mock('../model-contract.js', () => ({
     validateWorkerLaunchDescriptor: modelContractMocks.validateWorkerLaunchDescriptor,
     resolveWorkerPermissionFlags: modelContractMocks.resolveWorkerPermissionFlags,
     assertHeadlessSupported: () => { },
+    copilotTierModels: () => [],
     isHeadlessSupportedOnPlatform: () => true,
 }));
 vi.mock('../team-ops.js', () => ({
