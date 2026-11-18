@@ -42,6 +42,14 @@ function hardenWindowsExeSearch() {
   }
   process.env[VARIABLE] = "1";
 }
+function childEnv(env) {
+  const out = {};
+  for (const [key, value] of Object.entries(env)) {
+    if (process.platform !== "win32" || !isVariable(key)) out[key] = value;
+  }
+  if (process.platform === "win32") out[VARIABLE] = "1";
+  return out;
+}
 function envValue(env, name) {
   const key = Object.keys(env).find((k) => k.toUpperCase() === name);
   const value = key === void 0 ? void 0 : env[key];
@@ -3415,7 +3423,7 @@ async function withProcessIdentityFileLock(lockPath, fn, timeoutMs = 1e4) {
           continue;
         }
         if (Date.now() >= deadline) throw new Error("process_identity_lock_timeout");
-        await new Promise((resolve21) => setTimeout(resolve21, 25));
+        await new Promise((resolve22) => setTimeout(resolve22, 25));
         continue;
       }
       try {
@@ -3436,7 +3444,7 @@ async function withProcessIdentityFileLock(lockPath, fn, timeoutMs = 1e4) {
           }
         }
         if (Date.now() >= deadline) throw new Error("process_identity_lock_timeout");
-        await new Promise((resolve21) => setTimeout(resolve21, 25));
+        await new Promise((resolve22) => setTimeout(resolve22, 25));
       }
     }
     return await fn();
@@ -8302,7 +8310,7 @@ async function renameWithRetry(tempPath, filePath, maxAttempts = 10, delayMs = 3
       }
       lastError = error;
       if (attempt < maxAttempts - 1) {
-        await new Promise((resolve21) => setTimeout(resolve21, delayMs));
+        await new Promise((resolve22) => setTimeout(resolve22, delayMs));
       }
     }
   }
@@ -8767,7 +8775,7 @@ function withFileLockSync(lockPath, fn, opts) {
   }
 }
 function sleep(ms) {
-  return new Promise((resolve21) => setTimeout(resolve21, ms));
+  return new Promise((resolve22) => setTimeout(resolve22, ms));
 }
 async function acquireFileLock(lockPath, opts) {
   const staleLockMs = opts?.staleLockMs ?? DEFAULT_STALE_LOCK_MS;
@@ -8968,9 +8976,11 @@ var init_host_load_gate = __esm({
 });
 
 // src/copilot-run/names.ts
+var COPILOT_RUN_ALLOW_ENV;
 var init_names = __esm({
   "src/copilot-run/names.ts"() {
     "use strict";
+    COPILOT_RUN_ALLOW_ENV = "OMG_COPILOT_RUN_ALLOW";
   }
 });
 
@@ -9237,6 +9247,10 @@ function isCredentialEnvKey(key) {
   const upper = key.toUpperCase();
   return CREDENTIAL_ENV.includes(upper) || SECRET_NAME.test(upper) || upper.startsWith("GIT_CONFIG") || upper.startsWith("GCM_");
 }
+function isStrippedEnvKey(key) {
+  const upper = process.platform === "win32" ? key.toUpperCase() : key;
+  return STRIPPED_ENV_EXACT.includes(upper) || STRIPPED_ENV_PREFIXES.some((p) => upper.startsWith(p));
+}
 function resolveDefaultPluginRoot(env = process.env) {
   const fromEnv = env[OMC_PLUGIN_ROOT_ENV]?.trim();
   if (fromEnv) return (0, import_path29.resolve)(fromEnv);
@@ -9284,7 +9298,21 @@ function cassetteRuntimeEnv(env, mode) {
   out.COPILOT_CLI_DISABLE_WEBSOCKET_RESPONSES = "1";
   return out;
 }
-var import_fs27, import_path29, import_url4, CREDENTIAL_ENV, SECRET_NAME, CASSETTE_ENV, HMAC_KEY_ENV, REPLAY_HMAC_KEY;
+function buildSessionEnv(base, home, opts = {}) {
+  const env = {};
+  const replay = isReplayEnv(base);
+  for (const [key, value] of Object.entries(base)) {
+    if (isStrippedEnvKey(key)) continue;
+    if (replay && (isCredentialEnvKey(key) || key.toUpperCase() === HMAC_KEY_ENV)) continue;
+    if (opts.hasLogin && LOGIN_SHADOWING_TOKENS.includes(key.toUpperCase())) continue;
+    env[key] = value;
+  }
+  env.COPILOT_HOME = home;
+  Object.assign(env, SMOKE_SET_ENV);
+  if (opts.session) Object.assign(env, SESSION_SET_ENV);
+  return env;
+}
+var import_fs27, import_path29, import_url4, STRIPPED_ENV_EXACT, STRIPPED_ENV_PREFIXES, LOGIN_SHADOWING_TOKENS, SMOKE_SET_ENV, SESSION_SET_ENV, CREDENTIAL_ENV, SECRET_NAME, CASSETTE_ENV, HMAC_KEY_ENV, REPLAY_HMAC_KEY;
 var init_copilot_session_env = __esm({
   "src/smoke/copilot-session-env.ts"() {
     "use strict";
@@ -9295,6 +9323,25 @@ var init_copilot_session_env = __esm({
     init_env_vars();
     init_jsonc();
     init_copilot_sdk_scenarios();
+    STRIPPED_ENV_EXACT = [
+      "DISABLE_OMC",
+      "CLAUDECODE",
+      "CLAUDE_SESSION_ID",
+      "CLAUDE_PLUGIN_ROOT",
+      "NODE_OPTIONS",
+      "COPILOT_HOME",
+      "COPILOT_OFFLINE",
+      "COPILOT_MODEL",
+      COPILOT_RUN_ALLOW_ENV
+    ];
+    STRIPPED_ENV_PREFIXES = ["OMC_", "CLAUDE_CODE_", "COPILOT_PROVIDER_"];
+    LOGIN_SHADOWING_TOKENS = ["GH_TOKEN", "GITHUB_TOKEN"];
+    SMOKE_SET_ENV = {
+      COPILOT_ALLOW_ALL: "false",
+      COPILOT_AUTO_UPDATE: "false",
+      NO_COLOR: "1"
+    };
+    SESSION_SET_ENV = { OMC_HOOK_FAIL_CLOSED: "1" };
     CREDENTIAL_ENV = [
       "GH_TOKEN",
       "GITHUB_TOKEN",
@@ -9496,7 +9543,7 @@ function canonicalAuthorityDigest(input) {
   return (0, import_node_crypto5.createHash)("sha256").update(payload, "utf8").digest("hex");
 }
 function sleep2(ms) {
-  return new Promise((resolve21) => setTimeout(resolve21, ms));
+  return new Promise((resolve22) => setTimeout(resolve22, ms));
 }
 function isExactText(value) {
   return typeof value === "string" && value.length > 0 && value === value.trim();
@@ -10959,11 +11006,11 @@ async function runWorkerLaunchBootstrap(value) {
       let resolveCompletion;
       let resolveWindowsReady;
       let resolveWindowsTerminal;
-      const windowsReady = new Promise((resolve21) => {
-        resolveWindowsReady = resolve21;
+      const windowsReady = new Promise((resolve22) => {
+        resolveWindowsReady = resolve22;
       });
-      const windowsTerminal = new Promise((resolve21) => {
-        resolveWindowsTerminal = resolve21;
+      const windowsTerminal = new Promise((resolve22) => {
+        resolveWindowsTerminal = resolve22;
       });
       if (process.platform === "win32") child.stderr?.resume();
       if (providerGate) {
@@ -10979,9 +11026,9 @@ async function runWorkerLaunchBootstrap(value) {
         });
       }
       let windowsTerminationProofWrite = Promise.resolve();
-      const windowsStdoutClosed = new Promise((resolve21) => {
-        if (process.platform !== "win32" || !child.stdout) resolve21();
-        else child.stdout.once("close", () => resolve21());
+      const windowsStdoutClosed = new Promise((resolve22) => {
+        if (process.platform !== "win32" || !child.stdout) resolve22();
+        else child.stdout.once("close", () => resolve22());
       });
       if (process.platform === "win32" && child.stdout) {
         let buffered = "";
@@ -11031,8 +11078,8 @@ async function runWorkerLaunchBootstrap(value) {
           }
         });
       }
-      const completion = new Promise((resolve21) => {
-        resolveCompletion = resolve21;
+      const completion = new Promise((resolve22) => {
+        resolveCompletion = resolve22;
         child.once(process.platform === "win32" ? "close" : "exit", async (exitCode, signal) => {
           if (settled && process.platform === "win32" || childExitObserved) return;
           childExitObserved = true;
@@ -11091,7 +11138,7 @@ async function runWorkerLaunchBootstrap(value) {
             written_at: (/* @__PURE__ */ new Date()).toISOString()
           }).catch(() => void 0);
           await invocation.cleanup().catch(() => void 0);
-          resolve21(gateCleanupRequired ? cleanupVerified ? { outcome: "provider_spawn_failed" } : { outcome: "provider_cleanup_unverified" } : cleanupVerified ? { outcome: "ran", exitCode: effectiveExitCode, signal: effectiveSignal } : { outcome: "provider_cleanup_unverified" });
+          resolve22(gateCleanupRequired ? cleanupVerified ? { outcome: "provider_spawn_failed" } : { outcome: "provider_cleanup_unverified" } : cleanupVerified ? { outcome: "ran", exitCode: effectiveExitCode, signal: effectiveSignal } : { outcome: "provider_cleanup_unverified" });
         });
         child.once("error", async () => {
           if (settled) return;
@@ -11109,7 +11156,7 @@ async function runWorkerLaunchBootstrap(value) {
             written_at: (/* @__PURE__ */ new Date()).toISOString()
           }).catch(() => void 0);
           await invocation.cleanup().catch(() => void 0);
-          resolve21({ outcome: "provider_spawn_failed" });
+          resolve22({ outcome: "provider_spawn_failed" });
         });
       });
       const terminateProvider = async () => {
@@ -11144,7 +11191,7 @@ async function runWorkerLaunchBootstrap(value) {
           }
           return await Promise.race([
             windowsTerminal,
-            new Promise((resolve21) => setTimeout(() => resolve21(false), 5e3))
+            new Promise((resolve22) => setTimeout(() => resolve22(false), 5e3))
           ]);
         }
         if (child.pid && providerStartIdentity && launchGroup) {
@@ -11156,11 +11203,11 @@ async function runWorkerLaunchBootstrap(value) {
             force: true
           });
           await terminationResult;
-          const completed = await new Promise((resolve21) => {
-            const timer = setTimeout(() => resolve21(false), 2e3);
+          const completed = await new Promise((resolve22) => {
+            const timer = setTimeout(() => resolve22(false), 2e3);
             void completion.then((result) => {
               clearTimeout(timer);
-              resolve21(result.outcome !== "provider_cleanup_unverified");
+              resolve22(result.outcome !== "provider_cleanup_unverified");
             });
           });
           return completed;
@@ -11179,20 +11226,20 @@ async function runWorkerLaunchBootstrap(value) {
           if (!providerGate || providerGate.destroyed) return false;
           let callbackCalled = false;
           let callbackError = false;
-          const closeResultPromise = new Promise((resolve21) => {
-            providerGateOperationResolve = resolve21;
+          const closeResultPromise = new Promise((resolve22) => {
+            providerGateOperationResolve = resolve22;
             const finish = (error) => {
               providerGateError ??= error ?? null;
               providerGateOperationResolve = null;
               callbackCalled = true;
               callbackError = providerGateError !== null;
-              resolve21(!callbackError);
+              resolve22(!callbackError);
             };
             try {
               providerGate.end(finish);
             } catch {
               providerGateOperationResolve = null;
-              resolve21(false);
+              resolve22(false);
             }
           });
           providerGateOperationPromise = closeResultPromise;
@@ -11216,8 +11263,8 @@ async function runWorkerLaunchBootstrap(value) {
         if (providerGateReleased) return providerGateError === null;
         if (providerGateReleaseAttempted || providerGateClosed || !providerGate || providerGate.destroyed) return false;
         providerGateReleaseAttempted = true;
-        const releasePromise = new Promise((resolve21) => {
-          providerGateOperationResolve = resolve21;
+        const releasePromise = new Promise((resolve22) => {
+          providerGateOperationResolve = resolve22;
           try {
             providerGate.end("release\n", (error) => {
               providerGateError ??= error ?? null;
@@ -11227,11 +11274,11 @@ async function runWorkerLaunchBootstrap(value) {
                 providerGateReleased = true;
                 terminateProviderOnGateError = null;
               }
-              resolve21(released);
+              resolve22(released);
             });
           } catch {
             providerGateOperationResolve = null;
-            resolve21(false);
+            resolve22(false);
           }
         });
         providerGateOperationPromise = releasePromise;
@@ -11260,9 +11307,9 @@ async function runWorkerLaunchBootstrap(value) {
           for (const signal of cleanupSignals) process.removeListener(signal, onBootstrapSignal);
         });
       }
-      const spawned = await new Promise((resolve21) => {
-        child.once("spawn", () => resolve21(true));
-        child.once("error", () => resolve21(false));
+      const spawned = await new Promise((resolve22) => {
+        child.once("spawn", () => resolve22(true));
+        child.once("error", () => resolve22(false));
       });
       if (!spawned) {
         await completion;
@@ -11271,7 +11318,7 @@ async function runWorkerLaunchBootstrap(value) {
       if (process.platform === "win32") {
         const ready = await Promise.race([
           windowsReady,
-          new Promise((resolve21) => setTimeout(() => resolve21(false), 1e4))
+          new Promise((resolve22) => setTimeout(() => resolve22(false), 1e4))
         ]);
         if (!ready || !providerPid || !providerStartIdentity || settled) {
           return cleanupProvider("provider_spawn_failed");
@@ -11306,7 +11353,7 @@ async function runWorkerLaunchBootstrap(value) {
         if (!await releaseProviderGate() || providerGateError !== null) {
           return cleanupProvider("provider_spawn_failed");
         }
-        if (!spec.release_after_spawn) await new Promise((resolve21) => setTimeout(resolve21, 75));
+        if (!spec.release_after_spawn) await new Promise((resolve22) => setTimeout(resolve22, 75));
         if (settled) return { completion };
       }
       if (invocation.completionPath && (0, import_node_fs6.existsSync)(invocation.completionPath)) {
@@ -16496,7 +16543,7 @@ async function withDispatchLock(teamName, cwd, fn) {
         );
       }
       const jitter = 0.5 + Math.random() * 0.5;
-      await new Promise((resolve21) => setTimeout(resolve21, Math.floor(pollMs * jitter)));
+      await new Promise((resolve22) => setTimeout(resolve22, Math.floor(pollMs * jitter)));
       pollMs = Math.min(pollMs * 2, DISPATCH_LOCK_MAX_POLL_MS);
     }
   }
@@ -17152,7 +17199,7 @@ async function writeAtomic2(path5, data) {
         const delay = WIN32_RENAME_RETRY_DELAYS_MS[attempt];
         const code = error.code ?? "";
         if (process.platform !== "win32" || delay === void 0 || !WIN32_RENAME_RETRY_CODES.has(code)) throw error;
-        await new Promise((resolve21) => setTimeout(resolve21, delay));
+        await new Promise((resolve22) => setTimeout(resolve22, delay));
       }
     }
   } finally {
@@ -20668,8 +20715,8 @@ ${dirtyFiles.map((f) => `- \`${f}\``).join("\n")}`;
               return false;
             }
           })(),
-          new Promise((resolve21) => {
-            const t = setTimeout(() => resolve21(false), remaining);
+          new Promise((resolve22) => {
+            const t = setTimeout(() => resolve22(false), remaining);
             if (typeof t.unref === "function") t.unref();
           })
         ]);
@@ -20946,7 +20993,7 @@ async function waitForRecoveryGateRecord(path5, expected, timeoutMs, pollInterva
       if (value.recovery_id === expected.recovery_id && value.worker_name === expected.worker_name && value.replacement_generation === expected.replacement_generation && value.pane_attempt_id === expected.pane_attempt_id && value.launch_attempt_id === expected.launch_attempt_id && value.launch_nonce === expected.launch_nonce) return true;
     } catch {
     }
-    await new Promise((resolve21) => setTimeout(resolve21, pollIntervalMs));
+    await new Promise((resolve22) => setTimeout(resolve22, pollIntervalMs));
   }
   return false;
 }
@@ -21009,7 +21056,7 @@ async function runWorkerActivationGate(gate) {
     let supervisorTimer;
     let terminationResult = null;
     let finishCompletion;
-    const completion = new Promise((resolve21) => {
+    const completion = new Promise((resolve22) => {
       const finish = async (result, terminal) => {
         if (settled) return;
         settled = true;
@@ -21025,7 +21072,7 @@ async function runWorkerActivationGate(gate) {
         } catch {
         }
         await invocation.cleanup().catch(() => void 0);
-        resolve21(result);
+        resolve22(result);
       };
       finishCompletion = finish;
       child.once("exit", async (exitCode, signal) => {
@@ -21056,11 +21103,11 @@ async function runWorkerActivationGate(gate) {
           force: true
         });
         const terminated = await terminationResult === "terminated";
-        const completed2 = await new Promise((resolve21) => {
-          const timer = setTimeout(() => resolve21(false), 2e3);
+        const completed2 = await new Promise((resolve22) => {
+          const timer = setTimeout(() => resolve22(false), 2e3);
           void completion.then((result) => {
             clearTimeout(timer);
-            resolve21(result.outcome !== "provider_cleanup_unverified");
+            resolve22(result.outcome !== "provider_cleanup_unverified");
           });
         });
         return terminated && completed2;
@@ -21077,15 +21124,15 @@ async function runWorkerActivationGate(gate) {
         }
       } catch {
       }
-      const completed = await new Promise((resolve21) => {
-        const timer = setTimeout(() => resolve21(false), 2e3);
+      const completed = await new Promise((resolve22) => {
+        const timer = setTimeout(() => resolve22(false), 2e3);
         void completion.then(() => {
           clearTimeout(timer);
-          resolve21(true);
+          resolve22(true);
         });
         if (settled) {
           clearTimeout(timer);
-          resolve21(true);
+          resolve22(true);
         }
       });
       return completed;
@@ -21101,9 +21148,9 @@ async function runWorkerActivationGate(gate) {
         for (const signal of cleanupSignals) process.removeListener(signal, onGateSignal);
       });
     }
-    const spawned = await new Promise((resolve21) => {
-      child.once("spawn", () => resolve21(true));
-      child.once("error", () => resolve21(false));
+    const spawned = await new Promise((resolve22) => {
+      child.once("spawn", () => resolve22(true));
+      child.once("error", () => resolve22(false));
     });
     if (!spawned) {
       const failed = await completion;
@@ -21129,7 +21176,7 @@ async function runWorkerActivationGate(gate) {
           return { outcome: "provider_cleanup_unverified" };
         }
       }
-      await new Promise((resolve21) => setTimeout(resolve21, 150));
+      await new Promise((resolve22) => setTimeout(resolve22, 150));
       if (settled) return await completion;
       const reboundIdentity = getProcessStartIdentitySync(providerPid);
       if (!reboundIdentity || reboundIdentity !== providerStartIdentity || !isProcessAlive(providerPid)) {
@@ -21600,10 +21647,37 @@ var init_sdk_policy = __esm({
 });
 
 // src/copilot-run/sandbox.ts
-var DEFAULT_SANDBOX_SETTINGS;
+function relocatedProfileEnv(jobHome) {
+  const profile = (0, import_node_path16.join)(jobHome, "profile");
+  const tmp = (0, import_node_path16.join)(jobHome, "tmp");
+  return {
+    TEMP: tmp,
+    TMP: tmp,
+    TMPDIR: tmp,
+    USERPROFILE: profile,
+    HOME: profile,
+    XDG_CONFIG_HOME: (0, import_node_path16.join)(profile, ".config"),
+    GIT_CONFIG_GLOBAL: (0, import_node_path16.join)(jobHome, "git", "config"),
+    NODE_DISABLE_COMPILE_CACHE: "1",
+    // The runtime's cache would follow the host LOCALAPPDATA (allowlisted for MXC): keep it, and the sandboxed MCP cache grant
+    // anchored on it, in the job home but outside the lane-writable profile: the runtime loads code from its pkg dir.
+    COPILOT_CACHE_HOME: (0, import_node_path16.join)(jobHome, ".cache", "copilot")
+  };
+}
+function allowlistSessionEnv(env, jobHome) {
+  const allow = new Set([...SESSION_ENV_ALLOWLIST, ...Object.keys(SMOKE_SET_ENV), "COPILOT_HOME"].map((k) => k.toUpperCase()));
+  const out = {};
+  for (const [key, value] of Object.entries(env)) {
+    const upper = key.toUpperCase();
+    if (allow.has(upper) || upper.startsWith("LC_") || upper.startsWith("OMC_")) out[key] = value;
+  }
+  return { ...out, ...relocatedProfileEnv(jobHome) };
+}
+var import_node_path16, DEFAULT_SANDBOX_SETTINGS, SESSION_ENV_ALLOWLIST;
 var init_sandbox = __esm({
   "src/copilot-run/sandbox.ts"() {
     "use strict";
+    import_node_path16 = require("node:path");
     init_config2();
     init_project_config_path();
     init_copilot_session_env();
@@ -21621,10 +21695,70 @@ var init_sandbox = __esm({
       extraReadonlyPaths: [],
       extraReadwritePaths: []
     });
+    SESSION_ENV_ALLOWLIST = [
+      // TEMP, TMP and TMPDIR are not passed: relocatedProfileEnv points them at the job's own temp dir.
+      "PATH",
+      "PATHEXT",
+      "SystemRoot",
+      "windir",
+      "ComSpec",
+      "LANG",
+      // Non-secret OS variables shells and git expect.
+      "SystemDrive",
+      "ProgramFiles",
+      "ProgramFiles(x86)",
+      "ProgramW6432",
+      "ProgramData",
+      "CommonProgramFiles",
+      // The runtime reaches Copilot through a proxy and a private CA with these; the shells inherit them (proxyCaEnv).
+      "HTTPS_PROXY",
+      "HTTP_PROXY",
+      "NO_PROXY",
+      "NODE_EXTRA_CA_CERTS",
+      "SSL_CERT_FILE",
+      "SSL_CERT_DIR",
+      "NUMBER_OF_PROCESSORS",
+      "PROCESSOR_ARCHITECTURE",
+      "OS",
+      "USERNAME",
+      "USER",
+      "LOGNAME",
+      "TERM",
+      "TZ",
+      // A path, not a secret: the Windows sandbox needs it (MXC_REQUIRED_ENV) and grants %LOCALAPPDATA%\Programs read-only from it.
+      // The HOST value is kept on purpose: per-user tools on PATH live under Programs. Lane-launched code that resolves host
+      // paths from it (python-repl/paths.ts, utils/paths.ts getDataDir/getStateDir) finds them, but sandboxed writes there
+      // are denied, so the effect is breakage or shared read state, never escalation.
+      "LOCALAPPDATA"
+    ];
   }
 });
 
 // src/smoke/process-utils.ts
+function killProcessTree2(pid, spawnSyncFn, platform = process.platform, killFn = (p, sig) => {
+  process.kill(p, sig);
+}) {
+  if (!pid) return;
+  if (platform === "win32") {
+    try {
+      spawnSyncFn("taskkill", ["/PID", String(pid), "/T", "/F"], { stdio: "ignore", windowsHide: true, timeout: 1e4 });
+    } catch {
+    }
+    return;
+  }
+  try {
+    killFn(-pid, "SIGKILL");
+    return;
+  } catch {
+  }
+  try {
+    killFn(pid, "SIGKILL");
+  } catch {
+  }
+}
+function hasExited(child) {
+  return child.exitCode !== null && child.exitCode !== void 0 || child.signalCode !== null && child.signalCode !== void 0;
+}
 var DEFAULT_MAX_OUTPUT;
 var init_process_utils2 = __esm({
   "src/smoke/process-utils.ts"() {
@@ -21672,7 +21806,7 @@ var init_version = __esm({
 });
 
 // src/smoke/replay/redact.ts
-function userHomePatterns(win, pct, posix2, posixFlags) {
+function userHomePatterns(win, pct, posix3, posixFlags) {
   return [
     // The separator spelling is captured once, so `\n` after an escaped `\\` is not taken for a tail separator.
     // `\` doubles per JSON level, so any run of backslashes is a separator. The one after `Users` may be either
@@ -21681,7 +21815,7 @@ function userHomePatterns(win, pct, posix2, posixFlags) {
     // Percent-encoded (`file:///c%3A/Users/...`, `C%3A%5CUsers%5C...`, `%2Fhome%2Fname`).
     new RegExp(String.raw`(?<head>(?:\b[A-Za-z]%3A${PCT_SEP}Users|%2F(?:home|Users))${PCT_SEP}(?!<user>)${pct})(?:${PCT_SEP}${PCT_SEG})*`, "gi"),
     // POSIX, Git Bash (`/c/Users/...`) and WSL (`/mnt/c/Users/...`).
-    new RegExp(String.raw`(?<head>(?<![\w.$}-])\/(?:home|Users|(?:mnt\/)?[A-Za-z]\/Users)\/(?!<user>)${posix2})(?:\/${POSIX_SEG})*`, posixFlags)
+    new RegExp(String.raw`(?<head>(?<![\w.$}-])\/(?:home|Users|(?:mnt\/)?[A-Za-z]\/Users)\/(?!<user>)${posix3})(?:\/${POSIX_SEG})*`, posixFlags)
   ];
 }
 function knownUserHomePatterns(user) {
@@ -22982,11 +23116,11 @@ function replayResponse(res, dirs) {
   return new Response([204, 205, 304].includes(res.status) ? null : body, { status: res.status, headers });
 }
 function deferred() {
-  let resolve21;
+  let resolve22;
   const promise = new Promise((r) => {
-    resolve21 = r;
+    resolve22 = r;
   });
-  return { promise, resolve: resolve21 };
+  return { promise, resolve: resolve22 };
 }
 function createRecordingHandler(Base, recorderOf) {
   class RecordingHandler extends Base {
@@ -23502,6 +23636,10 @@ function withTimeout(promise, ms, label) {
 function errText(err) {
   return err instanceof Error ? err.message : String(err);
 }
+function runtimePid(client) {
+  const pid = client.cliProcess?.pid;
+  return typeof pid === "number" && pid > 0 ? pid : void 0;
+}
 function sdkProtocolMismatch(err) {
   const m = /SDK protocol version mismatch: SDK supports versions (\d+)-(\d+), but server (?:reports version (\d+)|does not report)/.exec(errText(err));
   return m ? { sdkMin: Number(m[1]), sdkMax: Number(m[2]), server: m[3] === void 0 ? null : Number(m[3]) } : null;
@@ -23510,32 +23648,51 @@ function rethrowSdkStartError(err) {
   const m = sdkProtocolMismatch(err);
   if (!m) throw err;
   const sdk = m.sdkMin === m.sdkMax ? `protocol ${m.sdkMax}` : `protocols ${m.sdkMin}-${m.sdkMax}`;
-  const fix = m.server !== null && m.server > m.sdkMax ? `Update ${SDK_PACKAGE} when a version supporting protocol ${m.server} is available, or use @github/copilot <=${LAST_PROTOCOL3_CLI} (npm i -g @github/copilot@${LAST_PROTOCOL3_CLI}).` : `Update the Copilot CLI (npm i -g @github/copilot) or use a ${SDK_PACKAGE} that matches it.`;
+  const olderCli = m.sdkMax === 3 ? `use @github/copilot <=${LAST_PROTOCOL3_CLI} (npm i -g @github/copilot@${LAST_PROTOCOL3_CLI})` : `use an older @github/copilot that speaks protocol ${m.sdkMax}`;
+  const fix = m.server !== null && m.server > m.sdkMax ? `Update ${SDK_PACKAGE} when a version supporting protocol ${m.server} is available, or ${olderCli}.` : `Update the Copilot CLI (npm i -g @github/copilot) or use a ${SDK_PACKAGE} that matches it.`;
   throw new Error(
     `Copilot SDK/CLI protocol mismatch: ${SDK_PACKAGE} speaks ${sdk}, the Copilot CLI ${m.server === null ? "reports no protocol version" : `speaks protocol ${m.server}`}. ${fix}`,
     { cause: err }
   );
 }
-async function probeSdkProtocol(loaded2, bin, env = process.env) {
+async function probeSdkProtocol(loaded2, bin, opts = {}) {
+  const stopMs = opts.stopTimeoutMs ?? PROBE_STOP_TIMEOUT_MS;
+  const killTree = opts.killTree ?? ((pid) => killProcessTree2(pid, import_child_process10.spawnSync));
   const home = (0, import_fs42.mkdtempSync)((0, import_path47.join)((0, import_os12.tmpdir)(), "omg-sdk-probe-"));
-  const { CopilotClient, RuntimeConnection } = loaded2.module;
-  const client = new CopilotClient({
-    connection: RuntimeConnection.forStdio({ path: bin, args: [], env: { ...env, COPILOT_HOME: home } }),
-    baseDirectory: home,
-    workingDirectory: home
-  });
+  let client;
   try {
-    await withTimeout(client.start().catch(rethrowSdkStartError), START_TIMEOUT_MS, "client.start()");
+    const env = childEnv(allowlistSessionEnv(buildSessionEnv(opts.env ?? process.env, home, { session: false }), home));
+    (0, import_fs42.mkdirSync)(env.XDG_CONFIG_HOME, { recursive: true });
+    (0, import_fs42.mkdirSync)((0, import_path47.dirname)(env.GIT_CONFIG_GLOBAL), { recursive: true });
+    (0, import_fs42.mkdirSync)(env.TEMP, { recursive: true });
+    const { CopilotClient, RuntimeConnection } = loaded2.module;
+    client = new CopilotClient({
+      connection: RuntimeConnection.forStdio({ path: bin, args: [], env }),
+      baseDirectory: home,
+      workingDirectory: home
+    });
+    await withTimeout(client.start().catch(rethrowSdkStartError), opts.startTimeoutMs ?? PROBE_START_TIMEOUT_MS, "client.start()");
     return null;
   } catch (err) {
-    return sdkProtocolMismatch(err.cause) ? errText(err) : null;
+    if (err instanceof TimeoutError) return `${PROBE_TIMEOUT_REASON}: ${err.message} (${bin})`;
+    return sdkProtocolMismatch(err instanceof Error ? err.cause : void 0) ? errText(err) : null;
   } finally {
-    try {
-      await withTimeout(client.stop(), STOP_TIMEOUT_MS, "client.stop()");
-    } catch {
+    if (client) {
+      const proc = client.cliProcess;
+      const pid = runtimePid(client);
       try {
-        await client.forceStop?.();
+        await withTimeout(client.stop(), stopMs, "client.stop()");
       } catch {
+        try {
+          await withTimeout(client.forceStop?.() ?? Promise.resolve(), stopMs, "client.forceStop()");
+        } catch {
+        }
+      }
+      if (proc && pid && !hasExited(proc)) {
+        try {
+          killTree(pid);
+        } catch {
+        }
       }
     }
     try {
@@ -23544,7 +23701,25 @@ async function probeSdkProtocol(loaded2, bin, env = process.env) {
     }
   }
 }
-var import_child_process10, import_crypto11, import_fs42, import_module, import_os12, import_path47, import_url8, SDK_MIN_VERSION, START_TIMEOUT_MS, STOP_TIMEOUT_MS, TimeoutError, LAST_PROTOCOL3_CLI;
+async function memoSdkProtocolProbe(loaded2, bin, probe = probeSdkProtocol) {
+  let key;
+  try {
+    const real = (0, import_fs42.realpathSync)(bin);
+    const st = (0, import_fs42.statSync)(real);
+    key = `${real}\0${st.size}\0${st.mtimeMs}\0${loaded2.version ?? ""}`;
+  } catch {
+    return probe(loaded2, bin);
+  }
+  let pending = probeMemo.get(key);
+  if (!pending) {
+    pending = probe(loaded2, bin).catch(() => null);
+    probeMemo.set(key, pending);
+  }
+  const result = await pending;
+  if (result?.startsWith(PROBE_TIMEOUT_REASON)) probeMemo.delete(key);
+  return result;
+}
+var import_child_process10, import_crypto11, import_fs42, import_module, import_os12, import_path47, import_url8, SDK_MIN_VERSION, TimeoutError, LAST_PROTOCOL3_CLI, PROBE_START_TIMEOUT_MS, PROBE_STOP_TIMEOUT_MS, PROBE_TIMEOUT_REASON, probeMemo;
 var init_copilot_sdk_driver = __esm({
   "src/smoke/copilot-sdk-driver.ts"() {
     "use strict";
@@ -23559,51 +23734,18 @@ var init_copilot_sdk_driver = __esm({
     init_copilot_session_eval();
     init_copilot_sdk_scenarios();
     init_process_utils2();
+    init_copilot_session_env();
+    init_windows_search();
     init_handler();
     init_run();
     SDK_MIN_VERSION = "1.0.16";
-    START_TIMEOUT_MS = 6e4;
-    STOP_TIMEOUT_MS = 15e3;
     TimeoutError = class extends Error {
     };
     LAST_PROTOCOL3_CLI = "1.0.112";
-  }
-});
-
-// src/smoke/copilot-binary.ts
-function resolveCopilotBinary(override, env, deps = {}) {
-  const exists = deps.existsSync ?? import_fs43.existsSync;
-  const resolve21 = deps.resolveExecutable ?? ((name) => resolveExecutable(name));
-  const list = deps.readdirSync ?? ((p) => (0, import_fs43.readdirSync)(p));
-  const platform = deps.platform ?? process.platform;
-  if (override) {
-    if (exists(override)) return { bin: override, source: "override" };
-    const found = resolve21(override);
-    return found ? { bin: found, source: "override" } : { bin: null, source: null };
-  }
-  const onPath = resolve21("copilot");
-  if (onPath) return { bin: onPath, source: "path" };
-  const envPath = env.COPILOT_CLI_PATH?.trim();
-  if (envPath && exists(envPath)) return { bin: envPath, source: "COPILOT_CLI_PATH" };
-  if (platform === "win32" && env.LOCALAPPDATA) {
-    const packagesDir = (0, import_path48.join)(env.LOCALAPPDATA, "Microsoft", "WinGet", "Packages");
-    try {
-      for (const entry of list(packagesDir).filter((name) => /^GitHub\.Copilot/i.test(name)).sort()) {
-        const candidate = (0, import_path48.join)(packagesDir, entry, "copilot.exe");
-        if (exists(candidate)) return { bin: candidate, source: "winget" };
-      }
-    } catch {
-    }
-  }
-  return { bin: null, source: null };
-}
-var import_fs43, import_path48;
-var init_copilot_binary = __esm({
-  "src/smoke/copilot-binary.ts"() {
-    "use strict";
-    import_fs43 = require("fs");
-    import_path48 = require("path");
-    init_executable_resolution();
+    PROBE_START_TIMEOUT_MS = 15e3;
+    PROBE_STOP_TIMEOUT_MS = 5e3;
+    PROBE_TIMEOUT_REASON = "copilot_sdk_probe_timeout";
+    probeMemo = /* @__PURE__ */ new Map();
   }
 });
 
@@ -24166,7 +24308,7 @@ async function waitForStartupEvidenceBudget(hasEvidence, budgetMs, delayMs = WOR
     const remainingMs = deadline - Date.now();
     if (remainingMs <= 0) return false;
     await new Promise(
-      (resolve21) => setTimeout(resolve21, Math.min(delayMs, remainingMs))
+      (resolve22) => setTimeout(resolve22, Math.min(delayMs, remainingMs))
     );
   }
 }
@@ -24369,16 +24511,24 @@ async function resolveTeamTransport(input) {
     );
   const sdk = await input.sdkAvailable().catch(() => false);
   if (typeof sdk === "string")
-    return pane(`copilot_sdk_protocol_mismatch: ${sdk}`);
+    return pane(
+      sdk.startsWith(PROBE_TIMEOUT_REASON) ? sdk : `copilot_sdk_protocol_mismatch: ${sdk}`
+    );
   if (!sdk) return pane("copilot_sdk_not_installed");
   return { transport: "sdk", requested };
 }
-async function defaultSdkAvailable() {
-  const loaded2 = await loadCopilotSdk();
+async function defaultSdkAvailable(deps = {}) {
+  const loaded2 = await (deps.load ?? (() => loadCopilotSdk()))();
   if (!loaded2) return false;
-  const found = resolveCopilotBinary(void 0, process.env).bin;
+  let found;
+  try {
+    found = (deps.resolveBin ?? (() => resolveValidatedBinaryPath("copilot")))();
+  } catch {
+    return true;
+  }
   const bin = found && /\.(cmd|bat|ps1)$/i.test(found) ? resolveShimTarget(found) : found;
-  return bin ? await probeSdkProtocol(loaded2, bin) ?? true : true;
+  if (!bin) return true;
+  return await (deps.probe ?? memoSdkProtocolProbe)(loaded2, bin) ?? true;
 }
 async function runBoundedLaunches(jobs, concurrency, launch, record) {
   const width = Math.max(
@@ -25033,7 +25183,7 @@ async function recordRecoveryPaneRollbackFailure(input, recoveryId, pending, rea
     )
   );
   const candidate = `${path5}.candidate.${process.pid}.${(0, import_node_crypto11.randomUUID)()}`;
-  await (0, import_promises19.mkdir)((0, import_path49.join)(path5, ".."), { recursive: true });
+  await (0, import_promises19.mkdir)((0, import_path48.join)(path5, ".."), { recursive: true });
   const handle = await (0, import_promises19.open)(candidate, "wx", 384);
   try {
     await handle.writeFile(
@@ -25078,7 +25228,7 @@ async function recordUnaddressableRecoveryPaneFailure(input, recoveryId, paneAtt
     )
   );
   const candidate = `${path5}.candidate.${process.pid}.${(0, import_node_crypto11.randomUUID)()}`;
-  await (0, import_promises19.mkdir)((0, import_path49.join)(path5, ".."), { recursive: true });
+  await (0, import_promises19.mkdir)((0, import_path48.join)(path5, ".."), { recursive: true });
   const handle = await (0, import_promises19.open)(candidate, "wx", 384);
   const boundedSplit = split ? {
     ...split,
@@ -25478,7 +25628,7 @@ async function readOrCreateRecoveryAttempt(input, recoveryId, replacementGenerat
     adoption_token: (0, import_node_crypto11.randomUUID)(),
     created_at: (/* @__PURE__ */ new Date()).toISOString()
   };
-  await (0, import_promises19.mkdir)((0, import_path49.join)(path5, ".."), { recursive: true });
+  await (0, import_promises19.mkdir)((0, import_path48.join)(path5, ".."), { recursive: true });
   const candidate = `${path5}.candidate.${process.pid}.${(0, import_node_crypto11.randomUUID)()}`;
   const candidateHandle = await (0, import_promises19.open)(candidate, "wx", 384);
   try {
@@ -25508,14 +25658,14 @@ async function readOrCreateRecoveryAttempt(input, recoveryId, replacementGenerat
   }
 }
 function waitForBootstrapRecoveryEvidence(delayMs, signal) {
-  return new Promise((resolve21, reject) => {
+  return new Promise((resolve22, reject) => {
     if (signal?.aborted) {
       reject(signal.reason ?? new Error("bootstrap_recovery_evidence_aborted"));
       return;
     }
     const timer = setTimeout(() => {
       signal?.removeEventListener("abort", onAbort);
-      resolve21();
+      resolve22();
     }, delayMs);
     const onAbort = () => {
       clearTimeout(timer);
@@ -26911,7 +27061,7 @@ async function executeRecoverDeadWorkerV2Owner(input) {
           launch_nonce: pending.startupContext.attempt.nonce,
           written_at: (/* @__PURE__ */ new Date()).toISOString()
         };
-        await (0, import_promises19.mkdir)((0, import_path49.join)(pending.gate.activatePath, ".."), { recursive: true });
+        await (0, import_promises19.mkdir)((0, import_path48.join)(pending.gate.activatePath, ".."), { recursive: true });
         await (0, import_promises19.writeFile)(
           pending.gate.activatePath,
           JSON.stringify(record),
@@ -27112,7 +27262,7 @@ ${recoveryContract}` : ""}`;
           const launchedRecord = JSON.parse(
             await (0, import_promises19.readFile)(launchedPath, "utf8")
           );
-          providerLive = Number.isInteger(launchedRecord.provider_pid) && typeof launchedRecord.provider_start_identity === "string" && (launchedRecord.supervisor_completion_path === void 0 || typeof launchedRecord.supervisor_completion_path === "string" && launchedRecord.supervisor_completion_path.trim().length > 0 && !(0, import_fs44.existsSync)(launchedRecord.supervisor_completion_path)) && await isProcessIdentityLive(
+          providerLive = Number.isInteger(launchedRecord.provider_pid) && typeof launchedRecord.provider_start_identity === "string" && (launchedRecord.supervisor_completion_path === void 0 || typeof launchedRecord.supervisor_completion_path === "string" && launchedRecord.supervisor_completion_path.trim().length > 0 && !(0, import_fs43.existsSync)(launchedRecord.supervisor_completion_path)) && await isProcessIdentityLive(
             launchedRecord.provider_pid,
             launchedRecord.provider_start_identity,
             Date.now() + 1e3
@@ -27243,7 +27393,7 @@ async function rollbackUnpersistedNativeWorktreeStartup(teamName, cwd, cause, in
   const writeFailureMarker = async (extra = {}) => {
     await (0, import_promises19.mkdir)(teamRoot, { recursive: true });
     await (0, import_promises19.writeFile)(
-      (0, import_path49.join)(teamRoot, "startup-failure.json"),
+      (0, import_path48.join)(teamRoot, "startup-failure.json"),
       JSON.stringify(
         {
           reason: "startup_failed_before_config_persisted",
@@ -27281,7 +27431,7 @@ async function rollbackUnpersistedNativeWorktreeStartup(teamName, cwd, cause, in
       }
     }
     await (0, import_promises19.rm)(teamRoot, { recursive: true, force: true });
-    if ((0, import_fs44.existsSync)(teamRoot)) {
+    if ((0, import_fs43.existsSync)(teamRoot)) {
       await writeFailureMarker({
         rollback_error: "startup_state_removal_unverified"
       });
@@ -27308,7 +27458,7 @@ async function writeStartedStartupRollbackEvidence(args) {
   const teamRoot = absPath(args.cwd, TeamPaths.root(args.teamName));
   await (0, import_promises19.mkdir)(teamRoot, { recursive: true });
   await (0, import_promises19.writeFile)(
-    (0, import_path49.join)(teamRoot, "startup-failure.json"),
+    (0, import_path48.join)(teamRoot, "startup-failure.json"),
     JSON.stringify(
       {
         reason: args.markerReason ?? "startup_rollback_cleanup_incomplete",
@@ -27579,7 +27729,7 @@ async function startTeamV2(config) {
   }
   const instance = createTeamInstanceBinding({
     teamName: sanitized,
-    cwd: (0, import_path49.resolve)(config.cwd),
+    cwd: (0, import_path48.resolve)(config.cwd),
     ...config.instanceId !== void 0 ? { instanceId: config.instanceId } : {}
   });
   const leaderCwd = instance.cwd;
@@ -27711,7 +27861,7 @@ async function startTeamV2(config) {
     explicitContractRoles: [...startupAssignments].flatMap(
       ([workerName, a]) => a.role && shouldInjectContract(a.role, a.agentType) && !inferredContractRoles.has(workerName) ? [a.role] : []
     ),
-    sdkAvailable: config.sdkAvailable ?? defaultSdkAvailable
+    sdkAvailable: config.sdkAvailable ?? (() => defaultSdkAvailable())
   });
   if (transportDecision.requested === "auto" && transportDecision.fallbackReason && !transportDecision.fallbackReason.startsWith("host_")) {
     process.stderr.write(
@@ -27804,7 +27954,7 @@ async function startTeamV2(config) {
     try {
       const pendingConfig = buildTeamInstancePendingConfig(instance);
       const pendingConfigPath = absPath(leaderCwd, TeamPaths.config(sanitized));
-      await (0, import_promises19.mkdir)((0, import_path49.join)(pendingConfigPath, ".."), { recursive: true });
+      await (0, import_promises19.mkdir)((0, import_path48.join)(pendingConfigPath, ".."), { recursive: true });
       await (0, import_promises19.writeFile)(
         pendingConfigPath,
         JSON.stringify(pendingConfig, null, 2),
@@ -27825,7 +27975,7 @@ async function startTeamV2(config) {
         recursive: true
       });
       await (0, import_promises19.mkdir)(
-        (0, import_path49.join)(getOmcRoot(leaderCwd), "state", "team", sanitized, "mailbox"),
+        (0, import_path48.join)(getOmcRoot(leaderCwd), "state", "team", sanitized, "mailbox"),
         { recursive: true }
       );
       for (let i = 0; i < config.tasks.length; i++) {
@@ -29535,7 +29685,7 @@ async function monitorTeamV2(teamName, cwd, expectedInstanceId) {
     }
   }
   const leaderInbox = await readLeaderInbox(
-    (0, import_path49.dirname)(absPath(cwd, TeamPaths.mailbox(sanitized, "leader-fixed")))
+    (0, import_path48.dirname)(absPath(cwd, TeamPaths.mailbox(sanitized, "leader-fixed")))
   );
   if (leaderInbox.length > 0) {
     const sdkTeam = config.workers.some(
@@ -29702,7 +29852,7 @@ async function cleanupStaleReservations(teamName, cwd) {
           cwd,
           TeamPaths.teamInstanceReservation(workspaceHash, sanitized)
         );
-        if (!(0, import_fs44.existsSync)(reservationPath2)) return;
+        if (!(0, import_fs43.existsSync)(reservationPath2)) return;
         const contentStr = await (0, import_promises19.readFile)(reservationPath2, "utf-8");
         const reservation = JSON.parse(contentStr);
         if (!(reservation && typeof reservation === "object" && !Array.isArray(reservation) && "owner" in reservation && typeof reservation.owner === "object")) {
@@ -30019,7 +30169,7 @@ async function shutdownTeamV2(teamName, cwd, options = {}) {
   };
   if (!config) {
     const cleanupSafety = inspectTeamWorktreeCleanupSafety(sanitized, cwd);
-    if (cleanupSafety.hasEvidence || (0, import_fs44.existsSync)(absPath(cwd, TeamPaths.root(sanitized)))) {
+    if (cleanupSafety.hasEvidence || (0, import_fs43.existsSync)(absPath(cwd, TeamPaths.root(sanitized)))) {
       process.stderr.write(
         "[team/runtime-v2] preserving team state because config is missing and worktree cleanup evidence remains\n"
       );
@@ -30486,12 +30636,12 @@ If you accept, exit your session. If you reject, remain active for task work and
     }
   );
 }
-var import_path49, import_fs44, import_promises19, import_perf_hooks, import_node_child_process9, import_node_crypto11, orchestratorByTeam, cadenceByTeam, MONITOR_SIGNAL_STALE_MS, WORKER_STARTUP_EVIDENCE_POLL_INTERVAL_MS, WORKER_STARTUP_EVIDENCE_POLICIES, ENGAGED_PANE_RECHECK_TIMEOUT_ENV, MAX_ENGAGED_PANE_RECHECK_BUDGET_MS, CLAIM_ERROR_CAPTURE_MAX, CLAIM_ERROR_JSON_LINES_MAX, CLAIM_ERROR_LINE_MAX, CLAIM_ERROR_CODES, DEFAULT_SDK_LAUNCH_CONCURRENCY, DEFAULT_SDK_MAX_CREDITS_PER_WORKER, pendingRecoveryPanes, BOOTSTRAP_RECOVERY_EVIDENCE_POLL_MS, BOOTSTRAP_RECOVERY_EVIDENCE_MAX_WAIT_MS, TEAM_INSTANCE_FINAL_DISPOSAL_AUTHORIZATION, CURSOR_RUNTIME_POLICY_SKIP_REASON, CURSOR_RUNTIME_POLICY_SKIP_PROVENANCE, CURSOR_DELEGATION_EVIDENCE_LINE;
+var import_path48, import_fs43, import_promises19, import_perf_hooks, import_node_child_process9, import_node_crypto11, orchestratorByTeam, cadenceByTeam, MONITOR_SIGNAL_STALE_MS, WORKER_STARTUP_EVIDENCE_POLL_INTERVAL_MS, WORKER_STARTUP_EVIDENCE_POLICIES, ENGAGED_PANE_RECHECK_TIMEOUT_ENV, MAX_ENGAGED_PANE_RECHECK_BUDGET_MS, CLAIM_ERROR_CAPTURE_MAX, CLAIM_ERROR_JSON_LINES_MAX, CLAIM_ERROR_LINE_MAX, CLAIM_ERROR_CODES, DEFAULT_SDK_LAUNCH_CONCURRENCY, DEFAULT_SDK_MAX_CREDITS_PER_WORKER, pendingRecoveryPanes, BOOTSTRAP_RECOVERY_EVIDENCE_POLL_MS, BOOTSTRAP_RECOVERY_EVIDENCE_MAX_WAIT_MS, TEAM_INSTANCE_FINAL_DISPOSAL_AUTHORIZATION, CURSOR_RUNTIME_POLICY_SKIP_REASON, CURSOR_RUNTIME_POLICY_SKIP_PROVENANCE, CURSOR_DELEGATION_EVIDENCE_LINE;
 var init_runtime_v2 = __esm({
   "src/team/runtime-v2.ts"() {
     "use strict";
-    import_path49 = require("path");
-    import_fs44 = require("fs");
+    import_path48 = require("path");
+    import_fs43 = require("fs");
     import_promises19 = require("fs/promises");
     import_perf_hooks = require("perf_hooks");
     init_state_paths();
@@ -30541,7 +30691,6 @@ var init_runtime_v2 = __esm({
     init_sdk_transport();
     init_model_contract();
     init_copilot_sdk_driver();
-    init_copilot_binary();
     init_host_signal();
     init_copilot_session_env();
     init_config_dir();
@@ -30688,9 +30837,9 @@ __export(runtime_cli_exports, {
 module.exports = __toCommonJS(runtime_cli_exports);
 init_windows_search();
 var import_node_crypto12 = require("node:crypto");
-var import_fs45 = require("fs");
+var import_fs44 = require("fs");
 var import_promises20 = require("fs/promises");
-var import_path50 = require("path");
+var import_path49 = require("path");
 init_events();
 
 // src/team/leader-nudge-guidance.ts
@@ -31249,7 +31398,7 @@ async function waitForSentinelReadiness(options = {}) {
   }
   const deadline = startedAt + timeoutMs;
   while (Date.now() < deadline) {
-    await new Promise((resolve21) => setTimeout(resolve21, pollIntervalMs));
+    await new Promise((resolve22) => setTimeout(resolve22, pollIntervalMs));
     attempts += 1;
     latest = checkSentinelReadiness(options);
     if (latest.ready) {
@@ -31341,7 +31490,7 @@ function areAllAuthoritativeWorkersDead(refresh, workers) {
   return classifyAllDeadRecoveryEvidence(refresh, workers, true) === "all_dead";
 }
 function validateCanonicalRecoveryIntent(teamName, cwd, pathRecoveryId, path5) {
-  const intent = parseRecoveryIntent((0, import_fs45.readFileSync)(path5, "utf8"));
+  const intent = parseRecoveryIntent((0, import_fs44.readFileSync)(path5, "utf8"));
   if (intent.team_name !== teamName || intent.recovery_id !== pathRecoveryId) throw new Error("invalid_persisted_state");
   const reservation = readRecoveryRequestReservation(cwd, intent.request_id);
   const workspaceHash = (0, import_node_crypto12.createHash)("sha256").update(cwd).digest("hex");
@@ -31376,14 +31525,14 @@ async function processPendingRecoveryIntents(teamName, cwd, execute = handleReco
   const root = absPath(cwd, TeamPaths.recoveryIntents(teamName));
   let names;
   try {
-    names = (0, import_fs45.readdirSync)(root).filter((name) => name.endsWith(".json")).sort();
+    names = (0, import_fs44.readdirSync)(root).filter((name) => name.endsWith(".json")).sort();
   } catch {
     return;
   }
   for (const name of names) {
-    const path5 = (0, import_path50.join)(root, name);
+    const path5 = (0, import_path49.join)(root, name);
     try {
-      const pathRecoveryId = (0, import_path50.basename)(name, ".json");
+      const pathRecoveryId = (0, import_path49.basename)(name, ".json");
       const intent = validateCanonicalRecoveryIntent(teamName, cwd, pathRecoveryId, path5);
       if (intent.instance_id.toLowerCase() !== normalizedExpectedInstanceId) continue;
       if (!await assertRuntimeInstance(teamName, cwd, normalizedExpectedInstanceId)) continue;
@@ -31453,17 +31602,17 @@ async function updateAllDeadRecoveryGrace(teamName, cwd, evidence, nowMs = Date.
 }
 function canonicalRecoveryIntentEntryId(name, path5) {
   if (!name.endsWith(".json")) return null;
-  const recoveryId = (0, import_path50.basename)(name, ".json");
+  const recoveryId = (0, import_path49.basename)(name, ".json");
   if (name !== `${recoveryId}.json` || !isSafeRecoveryRequestId(recoveryId)) return null;
   try {
-    return (0, import_fs45.lstatSync)(path5).isFile() ? recoveryId : null;
+    return (0, import_fs44.lstatSync)(path5).isFile() ? recoveryId : null;
   } catch {
     return null;
   }
 }
 function hasVerifiedTerminalRepairForMalformedIntent(teamName, cwd, recoveryId, path5) {
   try {
-    const raw = JSON.parse((0, import_fs45.readFileSync)(path5, "utf8"));
+    const raw = JSON.parse((0, import_fs44.readFileSync)(path5, "utf8"));
     if (raw.team_name !== teamName || raw.recovery_id !== recoveryId || typeof raw.request_id !== "string" || !isSafeRecoveryRequestId(raw.request_id) || typeof raw.worker_name !== "string" || raw.worker_name.length === 0) return false;
     const final = readRecoveryFinalState(cwd, raw.request_id);
     return final.kind === "valid" && final.final.recovery_id === recoveryId && final.final.team_name === teamName && final.final.worker_name === raw.worker_name;
@@ -31473,7 +31622,7 @@ function hasVerifiedTerminalRepairForMalformedIntent(teamName, cwd, recoveryId, 
 }
 function malformedIntentMayPredateDeadline(path5, deadlineAt) {
   try {
-    const metadata = (0, import_fs45.lstatSync)(path5);
+    const metadata = (0, import_fs44.lstatSync)(path5);
     if (Number.isFinite(metadata.mtimeMs) && metadata.mtimeMs <= deadlineAt) return true;
     if (Number.isFinite(metadata.birthtimeMs) && metadata.birthtimeMs > 0) {
       return metadata.birthtimeMs <= deadlineAt;
@@ -31488,14 +31637,14 @@ function canonicalRecoveryAdmissionEntryId(name, path5) {
   const requestId = name.slice(0, -".pending.json".length);
   if (name !== `${requestId}.pending.json` || !isSafeRecoveryRequestId(requestId)) return null;
   try {
-    return (0, import_fs45.lstatSync)(path5).isFile() ? requestId : null;
+    return (0, import_fs44.lstatSync)(path5).isFile() ? requestId : null;
   } catch {
     return null;
   }
 }
 function malformedAdmissionMayPredateDeadline(path5, deadlineAt) {
   try {
-    const metadata = (0, import_fs45.lstatSync)(path5);
+    const metadata = (0, import_fs44.lstatSync)(path5);
     if (!metadata.isFile()) return true;
     if (Number.isFinite(metadata.mtimeMs) && metadata.mtimeMs <= deadlineAt) return true;
     if (Number.isFinite(metadata.birthtimeMs) && metadata.birthtimeMs > 0) {
@@ -31512,12 +31661,12 @@ function hasPendingRecoveryIntentBeforeDeadline(teamName, cwd, deadlineAt, expec
   const root = absPath(cwd, TeamPaths.recoveryIntents(teamName));
   let names;
   try {
-    names = (0, import_fs45.readdirSync)(root).filter((name) => name.endsWith(".json"));
+    names = (0, import_fs44.readdirSync)(root).filter((name) => name.endsWith(".json"));
   } catch {
     return false;
   }
   for (const name of names) {
-    const path5 = (0, import_path50.join)(root, name);
+    const path5 = (0, import_path49.join)(root, name);
     const recoveryId = canonicalRecoveryIntentEntryId(name, path5);
     if (!recoveryId) continue;
     try {
@@ -31539,12 +31688,12 @@ function hasPendingRecoveryAdmissionBeforeDeadline(teamName, cwd, deadlineAt, ex
   const root = absPath(cwd, TeamPaths.recoveryRequestsRoot());
   let names;
   try {
-    names = (0, import_fs45.readdirSync)(root).filter((name) => name.endsWith(".pending.json"));
+    names = (0, import_fs44.readdirSync)(root).filter((name) => name.endsWith(".pending.json"));
   } catch {
     return false;
   }
   for (const name of names) {
-    const path5 = (0, import_path50.join)(root, name);
+    const path5 = (0, import_path49.join)(root, name);
     const requestId = canonicalRecoveryAdmissionEntryId(name, path5);
     if (!requestId) continue;
     try {
@@ -31622,7 +31771,7 @@ async function runPersistentRecoveryOwnerLoop(input, options = {}) {
   const reconcileServices = options.reconcileServices ?? reconcileCommittedTeamServices;
   const monitor = options.monitor ?? monitorTeamV2;
   const sleep4 = options.sleep ?? (async (ms) => {
-    await new Promise((resolve21) => setTimeout(resolve21, ms));
+    await new Promise((resolve22) => setTimeout(resolve22, ms));
   });
   const shutdown = options.shutdown ?? shutdownTeamV2;
   let iteration = 0;
@@ -31763,7 +31912,7 @@ async function writeResultArtifact(output, finishedAt, jobId = process.env.OMC_J
   if (!output.instanceId || !isValidTeamInstanceId(output.instanceId)) {
     throw new Error("result_artifact_instance_identity_missing");
   }
-  const resultPath = (0, import_path50.join)(omcJobsDir, `${jobId}-result.json`);
+  const resultPath = (0, import_path49.join)(omcJobsDir, `${jobId}-result.json`);
   const tmpPath = `${resultPath}.tmp`;
   await (0, import_promises20.writeFile)(
     tmpPath,
@@ -31838,7 +31987,7 @@ async function writePanesFile(jobId, instanceId, teamName, cwd, paneIds, leaderP
     if (authoritativePaneIds.some((paneId) => !paneIds.includes(paneId))) {
       throw new Error("pane_artifact_missing_runtime_pane");
     }
-    const panesPath = (0, import_path50.join)(omcJobsDir, `${jobId}-panes.json`);
+    const panesPath = (0, import_path49.join)(omcJobsDir, `${jobId}-panes.json`);
     await (0, import_promises20.writeFile)(
       panesPath + ".tmp",
       JSON.stringify({
@@ -31876,7 +32025,7 @@ function isTerseFinalSummary(summary) {
 function readTaskOutputFallback(outputsDir, teamName, taskId) {
   let entries;
   try {
-    entries = (0, import_fs45.readdirSync)(outputsDir);
+    entries = (0, import_fs44.readdirSync)(outputsDir);
   } catch {
     return null;
   }
@@ -31885,16 +32034,16 @@ function readTaskOutputFallback(outputsDir, teamName, taskId) {
   if (candidates.length === 0) return null;
   let newest = null;
   for (const name of candidates) {
-    const full = (0, import_path50.join)(outputsDir, name);
+    const full = (0, import_path49.join)(outputsDir, name);
     try {
-      const mtime = (0, import_fs45.statSync)(full).mtimeMs;
+      const mtime = (0, import_fs44.statSync)(full).mtimeMs;
       if (!newest || mtime > newest.mtime) newest = { path: full, mtime };
     } catch {
     }
   }
   if (!newest) return null;
   try {
-    const content = (0, import_fs45.readFileSync)(newest.path, "utf-8").trim();
+    const content = (0, import_fs44.readFileSync)(newest.path, "utf-8").trim();
     if (content.length === 0) return null;
     return content.length > MAX_FALLBACK_SUMMARY_CHARS ? content.slice(0, MAX_FALLBACK_SUMMARY_CHARS) + "\n... (truncated)" : content;
   } catch {
@@ -31902,14 +32051,14 @@ function readTaskOutputFallback(outputsDir, teamName, taskId) {
   }
 }
 function collectTaskResults(stateRoot) {
-  const tasksDir = (0, import_path50.join)(stateRoot, "tasks");
-  const teamName = (0, import_path50.basename)(stateRoot);
-  const outputsDir = (0, import_path50.join)(stateRoot, "..", "..", "..", "outputs");
+  const tasksDir = (0, import_path49.join)(stateRoot, "tasks");
+  const teamName = (0, import_path49.basename)(stateRoot);
+  const outputsDir = (0, import_path49.join)(stateRoot, "..", "..", "..", "outputs");
   try {
-    const files = (0, import_fs45.readdirSync)(tasksDir).filter((f) => f.endsWith(".json"));
+    const files = (0, import_fs44.readdirSync)(tasksDir).filter((f) => f.endsWith(".json"));
     return files.map((f) => {
       try {
-        const raw = (0, import_fs45.readFileSync)((0, import_path50.join)(tasksDir, f), "utf-8");
+        const raw = (0, import_fs44.readFileSync)((0, import_path49.join)(tasksDir, f), "utf-8");
         const task = JSON.parse(raw);
         const taskId = task.id ?? f.replace(".json", "");
         let summary = task.result ?? task.summary ?? "";
@@ -31944,8 +32093,8 @@ function createRuntimeStartupShutdownBarrier() {
   let settled = false;
   let requested = false;
   let resolveCompletion;
-  const completion = new Promise((resolve21) => {
-    resolveCompletion = resolve21;
+  const completion = new Promise((resolve22) => {
+    resolveCompletion = resolve22;
   });
   return {
     requestShutdown: () => {
@@ -32255,7 +32404,7 @@ async function main() {
     if (snap.allTasksTerminal) {
       const hasFailures = snap.tasks.failed > 0;
       if (!hasFailures) {
-        const sentinelLogPath = (0, import_path50.join)(cwd, "sentinel_stop.jsonl");
+        const sentinelLogPath = (0, import_path49.join)(cwd, "sentinel_stop.jsonl");
         const gateResult = await waitForSentinelReadiness({
           workspace: cwd,
           logPath: sentinelLogPath,

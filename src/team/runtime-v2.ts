@@ -333,10 +333,11 @@ import {
 import { toCopilotModelId } from "./model-contract.js";
 import {
   loadCopilotSdk,
-  probeSdkProtocol,
+  memoSdkProtocolProbe,
+  PROBE_TIMEOUT_REASON,
+  type LoadedSdk,
   resolveShimTarget,
 } from "../smoke/copilot-sdk-driver.js";
-import { resolveCopilotBinary } from "../smoke/copilot-binary.js";
 import { detectHostCliSignal, type HostCliType } from "../utils/host-signal.js";
 import { resolveDefaultPluginRoot } from "../smoke/copilot-session-env.js";
 import { getCopilotConfigDir } from "../utils/config-dir.js";
@@ -2240,22 +2241,40 @@ export async function resolveTeamTransport(input: {
     );
   const sdk = await input.sdkAvailable().catch(() => false);
   if (typeof sdk === "string")
-    return pane(`copilot_sdk_protocol_mismatch: ${sdk}`);
+    return pane(
+      sdk.startsWith(PROBE_TIMEOUT_REASON)
+        ? sdk
+        : `copilot_sdk_protocol_mismatch: ${sdk}`,
+    );
   if (!sdk) return pane("copilot_sdk_not_installed");
   return { transport: "sdk", requested };
 }
 
 /**
  * `auto`'s default SDK check: the SDK resolves, and a start/stop handshake on
- * the Copilot CLI (no session, no prompt) reports no protocol mismatch.
+ * the Copilot CLI the sdk workers would launch (no session, no prompt)
+ * reports no protocol mismatch and does not hang. A CLI that does not
+ * resolve skips the probe: the launch reports it.
  */
-async function defaultSdkAvailable(): Promise<boolean | string> {
-  const loaded = await loadCopilotSdk();
+export async function defaultSdkAvailable(
+  deps: {
+    load?: () => Promise<LoadedSdk | null>;
+    resolveBin?: () => string | null;
+    probe?: (loaded: LoadedSdk, bin: string) => Promise<string | null>;
+  } = {},
+): Promise<boolean | string> {
+  const loaded = await (deps.load ?? (() => loadCopilotSdk()))();
   if (!loaded) return false;
-  const found = resolveCopilotBinary(undefined, process.env).bin;
+  let found: string | null;
+  try {
+    found = (deps.resolveBin ?? (() => resolveValidatedBinaryPath("copilot")))();
+  } catch {
+    return true;
+  }
   const bin =
     found && /\.(cmd|bat|ps1)$/i.test(found) ? resolveShimTarget(found) : found;
-  return bin ? ((await probeSdkProtocol(loaded, bin)) ?? true) : true;
+  if (!bin) return true;
+  return (await (deps.probe ?? memoSdkProtocolProbe)(loaded, bin)) ?? true;
 }
 
 /**
@@ -6959,7 +6978,7 @@ export async function startTeamV2(
         ? [a.role]
         : [],
     ),
-    sdkAvailable: config.sdkAvailable ?? defaultSdkAvailable,
+    sdkAvailable: config.sdkAvailable ?? (() => defaultSdkAvailable()),
   });
   if (
     transportDecision.requested === "auto" &&

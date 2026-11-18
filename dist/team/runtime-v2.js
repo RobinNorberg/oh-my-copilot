@@ -79,8 +79,7 @@ import { waitForRecoveryGateRecord, } from "./worker-activation-gate.js";
 import { isWorkerLaunchAttemptCurrent, isWorkerLaunchAttemptAccepted, loadCurrentWorkerLaunchAttempt, loadWorkerLaunchAttempt, retireAndCleanupCurrentWorkerLaunchAttempt, withWorkerLaunchAttemptFence, } from "./worker-launch-ack.js";
 import { isSdkTarget, launchSdkHost, readSdkSession, ringDoorbell, sdkPaneId, sdkTeamTarget, stopSdkHost, SDK_HOST_STOP_FLOOR_MS, } from "./sdk-transport.js";
 import { toCopilotModelId } from "./model-contract.js";
-import { loadCopilotSdk, probeSdkProtocol, resolveShimTarget, } from "../smoke/copilot-sdk-driver.js";
-import { resolveCopilotBinary } from "../smoke/copilot-binary.js";
+import { loadCopilotSdk, memoSdkProtocolProbe, PROBE_TIMEOUT_REASON, resolveShimTarget, } from "../smoke/copilot-sdk-driver.js";
 import { detectHostCliSignal } from "../utils/host-signal.js";
 import { resolveDefaultPluginRoot } from "../smoke/copilot-session-env.js";
 import { getCopilotConfigDir } from "../utils/config-dir.js";
@@ -1265,22 +1264,34 @@ export async function resolveTeamTransport(input) {
         return pane(`contract_roles:${[...new Set(input.explicitContractRoles)].join(",")}`);
     const sdk = await input.sdkAvailable().catch(() => false);
     if (typeof sdk === "string")
-        return pane(`copilot_sdk_protocol_mismatch: ${sdk}`);
+        return pane(sdk.startsWith(PROBE_TIMEOUT_REASON)
+            ? sdk
+            : `copilot_sdk_protocol_mismatch: ${sdk}`);
     if (!sdk)
         return pane("copilot_sdk_not_installed");
     return { transport: "sdk", requested };
 }
 /**
  * `auto`'s default SDK check: the SDK resolves, and a start/stop handshake on
- * the Copilot CLI (no session, no prompt) reports no protocol mismatch.
+ * the Copilot CLI the sdk workers would launch (no session, no prompt)
+ * reports no protocol mismatch and does not hang. A CLI that does not
+ * resolve skips the probe: the launch reports it.
  */
-async function defaultSdkAvailable() {
-    const loaded = await loadCopilotSdk();
+export async function defaultSdkAvailable(deps = {}) {
+    const loaded = await (deps.load ?? (() => loadCopilotSdk()))();
     if (!loaded)
         return false;
-    const found = resolveCopilotBinary(undefined, process.env).bin;
+    let found;
+    try {
+        found = (deps.resolveBin ?? (() => resolveValidatedBinaryPath("copilot")))();
+    }
+    catch {
+        return true;
+    }
     const bin = found && /\.(cmd|bat|ps1)$/i.test(found) ? resolveShimTarget(found) : found;
-    return bin ? ((await probeSdkProtocol(loaded, bin)) ?? true) : true;
+    if (!bin)
+        return true;
+    return (await (deps.probe ?? memoSdkProtocolProbe)(loaded, bin)) ?? true;
 }
 /**
  * Run startup launches with at most `concurrency` in flight. `record` sees
@@ -4533,7 +4544,7 @@ export async function startTeamV2(config) {
             !inferredContractRoles.has(workerName)
             ? [a.role]
             : []),
-        sdkAvailable: config.sdkAvailable ?? defaultSdkAvailable,
+        sdkAvailable: config.sdkAvailable ?? (() => defaultSdkAvailable()),
     });
     if (transportDecision.requested === "auto" &&
         transportDecision.fallbackReason &&

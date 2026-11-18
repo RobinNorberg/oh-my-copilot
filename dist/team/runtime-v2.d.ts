@@ -28,6 +28,7 @@ import { type RecoverDeadWorkerOwnerInput } from "./runtime-owner-client.js";
 export declare function buildStartupInboxTrigger(cwd: string, teamName: string, workerName: string, attemptId: string, platform?: NodeJS.Platform): string;
 import type { RecoverDeadWorkerV2Result } from "./types.js";
 import { type SdkSessionFile } from "./sdk-transport.js";
+import { type LoadedSdk } from "../smoke/copilot-sdk-driver.js";
 import { type HostCliType } from "../utils/host-signal.js";
 export interface RecoverDeadWorkerV2Options {
     workerName: string;
@@ -331,6 +332,17 @@ export declare function resolveTeamTransport(input: {
     /** A string: why the SDK cannot drive the installed CLI (a protocol mismatch). */
     sdkAvailable: () => Promise<boolean | string>;
 }): Promise<TeamTransportDecision>;
+/**
+ * `auto`'s default SDK check: the SDK resolves, and a start/stop handshake on
+ * the Copilot CLI the sdk workers would launch (no session, no prompt)
+ * reports no protocol mismatch and does not hang. A CLI that does not
+ * resolve skips the probe: the launch reports it.
+ */
+export declare function defaultSdkAvailable(deps?: {
+    load?: () => Promise<LoadedSdk | null>;
+    resolveBin?: () => string | null;
+    probe?: (loaded: LoadedSdk, bin: string) => Promise<string | null>;
+}): Promise<boolean | string>;
 /**
  * Run startup launches with at most `concurrency` in flight. `record` sees
  * every successful outcome in job order: immediately after each launch when

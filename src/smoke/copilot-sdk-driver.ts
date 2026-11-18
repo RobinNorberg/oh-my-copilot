@@ -21,7 +21,7 @@
 
 import { spawnSync as nodeSpawnSync } from 'child_process';
 import { randomBytes, randomUUID } from 'crypto';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'fs';
 import { createRequire } from 'module';
 import { tmpdir, userInfo } from 'os';
 import { dirname, isAbsolute, join, relative, resolve } from 'path';
@@ -81,7 +81,9 @@ import {
   type ScenarioRun,
   type SdkSandboxProbe,
 } from './copilot-sdk-scenarios.js';
-import { killProcessTree, type SpawnSyncFn } from './process-utils.js';
+import { hasExited, killProcessTree, type SpawnSyncFn } from './process-utils.js';
+import { buildSessionEnv } from './copilot-session-env.js';
+import { childEnv } from '../utils/windows-search.js';
 import { withCassette, type CassetteMode, type CopilotRequestHandlerCtor } from './replay/handler.js';
 import {
   cassetteEnv,
@@ -443,8 +445,12 @@ export function rethrowSdkStartError(err: unknown): never {
   const m = sdkProtocolMismatch(err);
   if (!m) throw err;
   const sdk = m.sdkMin === m.sdkMax ? `protocol ${m.sdkMax}` : `protocols ${m.sdkMin}-${m.sdkMax}`;
+  // LAST_PROTOCOL3_CLI is only the fix while the SDK tops out at protocol 3.
+  const olderCli = m.sdkMax === 3
+    ? `use @github/copilot <=${LAST_PROTOCOL3_CLI} (npm i -g @github/copilot@${LAST_PROTOCOL3_CLI})`
+    : `use an older @github/copilot that speaks protocol ${m.sdkMax}`;
   const fix = m.server !== null && m.server > m.sdkMax
-    ? `Update ${SDK_PACKAGE} when a version supporting protocol ${m.server} is available, or use @github/copilot <=${LAST_PROTOCOL3_CLI} (npm i -g @github/copilot@${LAST_PROTOCOL3_CLI}).`
+    ? `Update ${SDK_PACKAGE} when a version supporting protocol ${m.server} is available, or ${olderCli}.`
     : `Update the Copilot CLI (npm i -g @github/copilot) or use a ${SDK_PACKAGE} that matches it.`;
   throw new Error(
     `Copilot SDK/CLI protocol mismatch: ${SDK_PACKAGE} speaks ${sdk}, the Copilot CLI ${m.server === null ? 'reports no protocol version' : `speaks protocol ${m.server}`}. ${fix}`,
@@ -452,28 +458,90 @@ export function rethrowSdkStartError(err: unknown): never {
   );
 }
 
+/** The probe's own start bound: a handshake answers in seconds, and `auto` must not wait a launch's minute. */
+export const PROBE_START_TIMEOUT_MS = 15_000;
+const PROBE_STOP_TIMEOUT_MS = 5_000;
+/** Prefix of probeSdkProtocol's answer when the handshake did not finish in time. */
+export const PROBE_TIMEOUT_REASON = 'copilot_sdk_probe_timeout';
+
+export interface SdkProtocolProbeOptions {
+  env?: NodeJS.ProcessEnv;
+  startTimeoutMs?: number;
+  stopTimeoutMs?: number;
+  killTree?: (pid: number) => void;
+}
+
 /**
  * Starts and stops a runtime on `bin` (no session, no prompt) and returns the
- * explained protocol mismatch, or null when the handshake passes or fails for
- * any other reason (the real launch reports those).
+ * explained protocol mismatch, `copilot_sdk_probe_timeout: ...` when start()
+ * hangs, or null when the handshake passes or fails for any other reason (the
+ * real launch reports those). The runtime gets the session env allowlist in a
+ * throwaway home with no login identity: a handshake needs no credential.
  */
-export async function probeSdkProtocol(loaded: LoadedSdk, bin: string, env: NodeJS.ProcessEnv = process.env): Promise<string | null> {
+export async function probeSdkProtocol(loaded: LoadedSdk, bin: string, opts: SdkProtocolProbeOptions = {}): Promise<string | null> {
+  const stopMs = opts.stopTimeoutMs ?? PROBE_STOP_TIMEOUT_MS;
+  const killTree = opts.killTree ?? ((pid: number) => killProcessTree(pid, nodeSpawnSync));
   const home = mkdtempSync(join(tmpdir(), 'omg-sdk-probe-'));
-  const { CopilotClient, RuntimeConnection } = loaded.module;
-  const client = new CopilotClient({
-    connection: RuntimeConnection.forStdio({ path: bin, args: [], env: { ...env, COPILOT_HOME: home } }),
-    baseDirectory: home,
-    workingDirectory: home,
-  });
+  let client: SdkClientLike | undefined;
   try {
-    await withTimeout(client.start().catch(rethrowSdkStartError), START_TIMEOUT_MS, 'client.start()');
+    const env = childEnv(allowlistSessionEnv(buildSessionEnv(opts.env ?? process.env, home, { session: false }), home));
+    mkdirSync(env.XDG_CONFIG_HOME!, { recursive: true });
+    mkdirSync(dirname(env.GIT_CONFIG_GLOBAL!), { recursive: true });
+    mkdirSync(env.TEMP!, { recursive: true });
+    const { CopilotClient, RuntimeConnection } = loaded.module;
+    client = new CopilotClient({
+      connection: RuntimeConnection.forStdio({ path: bin, args: [], env }),
+      baseDirectory: home,
+      workingDirectory: home,
+    });
+    await withTimeout(client.start().catch(rethrowSdkStartError), opts.startTimeoutMs ?? PROBE_START_TIMEOUT_MS, 'client.start()');
     return null;
   } catch (err) {
-    return sdkProtocolMismatch((err as Error).cause) ? errText(err) : null;
+    if (err instanceof TimeoutError) return `${PROBE_TIMEOUT_REASON}: ${err.message} (${bin})`;
+    return sdkProtocolMismatch(err instanceof Error ? err.cause : undefined) ? errText(err) : null;
   } finally {
-    try { await withTimeout(client.stop(), STOP_TIMEOUT_MS, 'client.stop()'); } catch { try { await client.forceStop?.(); } catch { /* gone */ } }
+    if (client) {
+      // Read before stop() clears it: the runtime this probe spawned (also when start() hung after spawning).
+      const proc = (client as unknown as { cliProcess?: { exitCode?: number | null; signalCode?: NodeJS.Signals | null } | null }).cliProcess;
+      const pid = runtimePid(client);
+      try { await withTimeout(client.stop(), stopMs, 'client.stop()'); } catch {
+        try { await withTimeout(client.forceStop?.() ?? Promise.resolve(), stopMs, 'client.forceStop()'); } catch { /* gone */ }
+      }
+      if (proc && pid && !hasExited(proc)) {
+        try { killTree(pid); } catch { /* gone */ }
+      }
+    }
     try { rmSync(home, { recursive: true, force: true }); } catch { /* best effort */ }
   }
+}
+
+const probeMemo = new Map<string, Promise<string | null>>();
+
+/**
+ * probeSdkProtocol, memoized per process by the binary's realpath, size and
+ * mtime and the SDK version. A timeout is not kept (it may be transient).
+ */
+export async function memoSdkProtocolProbe(
+  loaded: LoadedSdk,
+  bin: string,
+  probe: (loaded: LoadedSdk, bin: string) => Promise<string | null> = probeSdkProtocol,
+): Promise<string | null> {
+  let key: string;
+  try {
+    const real = realpathSync(bin);
+    const st = statSync(real);
+    key = `${real}\0${st.size}\0${st.mtimeMs}\0${loaded.version ?? ''}`;
+  } catch {
+    return probe(loaded, bin);
+  }
+  let pending = probeMemo.get(key);
+  if (!pending) {
+    pending = probe(loaded, bin).catch(() => null);
+    probeMemo.set(key, pending);
+  }
+  const result = await pending;
+  if (result?.startsWith(PROBE_TIMEOUT_REASON)) probeMemo.delete(key);
+  return result;
 }
 
 function pidAlive(pid: number): boolean {
