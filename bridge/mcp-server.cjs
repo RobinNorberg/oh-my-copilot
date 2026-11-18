@@ -52228,6 +52228,21 @@ function runtimePid(client) {
   const pid = client.cliProcess?.pid;
   return typeof pid === "number" && pid > 0 ? pid : void 0;
 }
+function sdkProtocolMismatch(err) {
+  const m = /SDK protocol version mismatch: SDK supports versions (\d+)-(\d+), but server (?:reports version (\d+)|does not report)/.exec(errText2(err));
+  return m ? { sdkMin: Number(m[1]), sdkMax: Number(m[2]), server: m[3] === void 0 ? null : Number(m[3]) } : null;
+}
+function rethrowSdkStartError(err) {
+  const m = sdkProtocolMismatch(err);
+  if (!m) throw err;
+  const sdk = m.sdkMin === m.sdkMax ? `protocol ${m.sdkMax}` : `protocols ${m.sdkMin}-${m.sdkMax}`;
+  const olderCli = m.sdkMax === 3 ? `use @github/copilot <=${LAST_PROTOCOL3_CLI} (npm i -g @github/copilot@${LAST_PROTOCOL3_CLI})` : `use an older @github/copilot that speaks protocol ${m.sdkMax}`;
+  const fix = m.server !== null && m.server > m.sdkMax ? `Update ${SDK_PACKAGE} when a version supporting protocol ${m.server} is available, or ${olderCli}.` : `Update the Copilot CLI (npm i -g @github/copilot) or use a ${SDK_PACKAGE} that matches it.`;
+  throw new Error(
+    `Copilot SDK/CLI protocol mismatch: ${SDK_PACKAGE} speaks ${sdk}, the Copilot CLI ${m.server === null ? "reports no protocol version" : `speaks protocol ${m.server}`}. ${fix}`,
+    { cause: err }
+  );
+}
 function pidAlive(pid) {
   try {
     process.kill(pid, 0);
@@ -52392,9 +52407,9 @@ async function runSdkTier(input2) {
   let wedged = false;
   try {
     try {
-      await withTimeout2(client.start(), START_TIMEOUT_MS, "client.start()");
+      await withTimeout2(client.start().catch(rethrowSdkStartError), START_TIMEOUT_MS, "client.start()");
     } catch (err) {
-      checks.push(...failedTier2Checks(input2.scenarios, `runtime did not start (${bin}): ${excerpt(errText2(err), 200)}`, "after-available"));
+      checks.push(...failedTier2Checks(input2.scenarios, `runtime did not start (${bin}): ${excerpt(errText2(err), 400)}`, "after-available"));
       return { checks, sdk: sdkInfo, events };
     }
     pid = runtimePid(client);
@@ -52690,7 +52705,7 @@ async function sandboxSpawnCanary(loaded2, bin, input2, host) {
   let session;
   const sandboxed = /* @__PURE__ */ new Map();
   try {
-    await withTimeout2(client.start(), START_TIMEOUT_MS, "canary client.start()");
+    await withTimeout2(client.start().catch(rethrowSdkStartError), START_TIMEOUT_MS, "canary client.start()");
     session = await withTimeout2(client.createSession({
       onPermissionRequest: () => reject("omg smoke: the spawn canary grants nothing"),
       onEvent: (e) => {
@@ -52889,7 +52904,7 @@ async function runScenario(client, input2, name, model, modelLabel, eventsPath, 
     wedged
   };
 }
-var import_child_process17, import_crypto13, import_fs55, import_module3, import_os11, import_path68, import_url10, SDK_MIN_VERSION, DEFAULT_SCENARIO_TIMEOUT_MS, START_TIMEOUT_MS, RPC_TIMEOUT_MS, MCP_CONNECT_WAIT_MS, ABORT_GRACE_MS, SHUTDOWN_GRACE_MS, STOP_TIMEOUT_MS, TimeoutError, sleep4, reject, RUNTIME_WEDGED_DETAIL;
+var import_child_process17, import_crypto13, import_fs55, import_module3, import_os11, import_path68, import_url10, SDK_MIN_VERSION, DEFAULT_SCENARIO_TIMEOUT_MS, START_TIMEOUT_MS, RPC_TIMEOUT_MS, MCP_CONNECT_WAIT_MS, ABORT_GRACE_MS, SHUTDOWN_GRACE_MS, STOP_TIMEOUT_MS, TimeoutError, sleep4, LAST_PROTOCOL3_CLI, reject, RUNTIME_WEDGED_DETAIL;
 var init_copilot_sdk_driver = __esm({
   "src/smoke/copilot-sdk-driver.ts"() {
     "use strict";
@@ -52904,6 +52919,8 @@ var init_copilot_sdk_driver = __esm({
     init_copilot_session_eval();
     init_copilot_sdk_scenarios();
     init_process_utils2();
+    init_copilot_session_env();
+    init_windows_search();
     init_handler();
     init_run();
     SDK_MIN_VERSION = "1.0.16";
@@ -52919,6 +52936,7 @@ var init_copilot_sdk_driver = __esm({
     sleep4 = (ms) => new Promise((r) => {
       setTimeout(r, ms);
     });
+    LAST_PROTOCOL3_CLI = "1.0.112";
     reject = (feedback) => ({ kind: "reject", feedback });
     RUNTIME_WEDGED_DETAIL = "skipped: runtime unresponsive after a scenario timeout";
   }
@@ -63463,7 +63481,7 @@ var init_job = __esm({
         let pid;
         let outcome = "failed";
         try {
-          await withTimeout3(Promise.race([client.start(), job.stopped]), START_TIMEOUT_MS2, "client.start()");
+          await withTimeout3(Promise.race([client.start().catch(rethrowSdkStartError), job.stopped]), START_TIMEOUT_MS2, "client.start()");
           pid = runtimePid(client);
           job.pid = pid;
           if (pid) {
@@ -68185,7 +68203,7 @@ async function runSandboxed(argv, o, deps) {
       workingDirectory: workDir
     });
     client = c;
-    await withTimeout3(c.start(), START_TIMEOUT_MS3, "client.start()");
+    await withTimeout3(c.start().catch(rethrowSdkStartError), START_TIMEOUT_MS3, "client.start()");
     pid = runtimePid(c);
     const pluginRoot = deps.pluginRoot();
     const realHome = (deps.realHome ?? (() => (0, import_node_os7.userInfo)().homedir))();
@@ -82953,7 +82971,7 @@ async function probeSandboxHost(input2, cwd) {
     workingDirectory: cwd
   });
   try {
-    await withTimeout4(client.start(), CANARY_RPC_TIMEOUT_MS, "client.start()");
+    await withTimeout4(client.start().catch(rethrowSdkStartError), CANARY_RPC_TIMEOUT_MS, "client.start()");
     return await probeHostSupport(client, CANARY_RPC_TIMEOUT_MS);
   } catch (err) {
     return unsupported(`the host probe could not start the runtime: ${errText7(err)}`);
@@ -83255,6 +83273,7 @@ var init_copilot_sandbox_lane_scenario = __esm({
     init_lane();
     init_exec();
     init_copilot_factory_run_scenario();
+    init_copilot_sdk_driver();
     init_copilot_sdk_scenarios();
     init_copilot_session_eval();
     SANDBOX_LANE_TIMEOUT_MS = 3e5;

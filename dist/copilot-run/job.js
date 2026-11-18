@@ -55,7 +55,7 @@ import { getProcessStartIdentity } from '../platform/process-utils.js';
 import { configuredProtectedPaths } from '../ship/config.js';
 import { PROTECTED_PATHS, protectedChanges } from '../ship/merge.js';
 import { resolveCopilotBinary } from '../smoke/copilot-binary.js';
-import { loadCopilotSdk, resolveShimTarget, runtimePid, } from '../smoke/copilot-sdk-driver.js';
+import { loadCopilotSdk, resolveShimTarget, rethrowSdkStartError, runtimePid, } from '../smoke/copilot-sdk-driver.js';
 import { RUNTIME_MIN_MAX_CREDITS, usageCredits } from '../smoke/copilot-sdk-scenarios.js';
 import { buildSessionEnv, isCredentialEnvKey, loginIdentity, resolveDefaultPluginRoot } from '../smoke/copilot-session-env.js';
 import { killProcessTree } from '../smoke/process-utils.js';
@@ -1428,7 +1428,7 @@ export class CopilotRunManager {
         let outcome = 'failed';
         try {
             // A stop (cancel, server exit) during a slow start goes straight to the teardown.
-            await withTimeout(Promise.race([client.start(), job.stopped]), START_TIMEOUT_MS, 'client.start()');
+            await withTimeout(Promise.race([client.start().catch(rethrowSdkStartError), job.stopped]), START_TIMEOUT_MS, 'client.start()');
             pid = runtimePid(client);
             job.pid = pid;
             if (pid) {

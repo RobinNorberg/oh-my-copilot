@@ -30,6 +30,7 @@ import type { CopilotEvent } from '../smoke/copilot-session-eval.js';
 import { RUNTIME_MIN_MAX_CREDITS, usageCredits } from '../smoke/copilot-sdk-scenarios.js';
 import { buildSessionEnv, isCredentialEnvKey, loginIdentity } from '../smoke/copilot-session-env.js';
 import {
+  rethrowSdkStartError,
   runtimePid,
   type LoadedSdk,
   type SdkClientLike,
@@ -768,7 +769,7 @@ export async function runSdkHost(spec: SdkHostSpec, deps: SdkHostDeps): Promise<
   }), RPC_TIMEOUT_MS, 'createSession()');
 
   try {
-    await withTimeout(client.start(), START_TIMEOUT_MS, 'client.start()');
+    await withTimeout(client.start().catch(rethrowSdkStartError), START_TIMEOUT_MS, 'client.start()');
     session.runtime_pid = runtimePid(client) ?? null;
     // The leader's last-resort kill checks this identity, never a bare pid.
     session.runtime_start_identity = session.runtime_pid ? deps.startIdentity(session.runtime_pid) : null;

@@ -38,7 +38,7 @@ import { commitLaneWork, laneCommitMessage } from '../factory/run/lane-commit.js
 import { CopilotLaneBackend, isTerminalLaneState, type LaneBackend, type LaneResult } from '../factory/run/lane.js';
 import { defaultExec } from '../ship/exec.js';
 import { prepareFactoryRepo } from './copilot-factory-run-scenario.js';
-import type { LoadedSdk, SdkClientLike, SdkClientOptions, SdkSessionConfig, SdkSessionLike } from './copilot-sdk-driver.js';
+import { rethrowSdkStartError, type LoadedSdk, type SdkClientLike, type SdkClientOptions, type SdkSessionConfig, type SdkSessionLike } from './copilot-sdk-driver.js';
 import {
   laneModelLabel,
   parseSandboxProbe,
@@ -224,7 +224,7 @@ async function probeSandboxHost(input: Pick<SandboxLaneScenarioInput, 'env' | 'b
     workingDirectory: cwd,
   });
   try {
-    await withTimeout(client.start(), CANARY_RPC_TIMEOUT_MS, 'client.start()');
+    await withTimeout(client.start().catch(rethrowSdkStartError), CANARY_RPC_TIMEOUT_MS, 'client.start()');
     return await probeHostSupport(client, CANARY_RPC_TIMEOUT_MS);
   } catch (err) {
     return unsupported(`the host probe could not start the runtime: ${errText(err)}`);

@@ -37,6 +37,7 @@ import { commitLaneWork, laneCommitMessage } from '../factory/run/lane-commit.js
 import { CopilotLaneBackend, isTerminalLaneState } from '../factory/run/lane.js';
 import { defaultExec } from '../ship/exec.js';
 import { prepareFactoryRepo } from './copilot-factory-run-scenario.js';
+import { rethrowSdkStartError } from './copilot-sdk-driver.js';
 import { laneModelLabel, parseSandboxProbe, RUNTIME_MIN_MAX_CREDITS, SANDBOX_CANARY_FILE, SANDBOX_LANE_FILE, SANDBOX_PROBE_SCRIPT, SANDBOX_REVIEW_FILE, SDK_INSTALL_COMMAND, } from './copilot-sdk-scenarios.js';
 import { excerpt, parseJsonl } from './copilot-session-eval.js';
 /** A lane wall time that fits one probe command or a short review with its tool turns. */
@@ -168,7 +169,7 @@ async function probeSandboxHost(input, cwd) {
         workingDirectory: cwd,
     });
     try {
-        await withTimeout(client.start(), CANARY_RPC_TIMEOUT_MS, 'client.start()');
+        await withTimeout(client.start().catch(rethrowSdkStartError), CANARY_RPC_TIMEOUT_MS, 'client.start()');
         return await probeHostSupport(client, CANARY_RPC_TIMEOUT_MS);
     }
     catch (err) {

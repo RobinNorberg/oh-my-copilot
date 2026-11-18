@@ -217,6 +217,30 @@ describe('fetchCopilotCatalogue with a fake SDK', () => {
         expect(send).not.toHaveBeenCalled();
         expect(existsSync(join(root, 'omg-model-catalogue'))).toBe(false);
     });
+    it('a protocol mismatch on start() is a failed read with the clear message, cached and resolving like any failed read', async () => {
+        const sdk = fakeSdk({
+            start: async () => { throw new Error('SDK protocol version mismatch: SDK supports versions 3-3, but server reports version 4'); },
+            listModels: async () => [],
+            stop: async () => [],
+        });
+        const { root, deps } = depsFor(sdk.loadSdk);
+        let cleanup;
+        const fetched = await fetchCopilotCatalogue({ deps, onCleanup: (done) => { cleanup = done; } });
+        await cleanup;
+        expect(fetched).toEqual({ error: expect.stringContaining('Copilot SDK/CLI protocol mismatch') });
+        expect(fetched).toEqual({ error: expect.stringContaining('protocol 4') });
+        expect(sdk.calls).not.toContain('listModels');
+        const file = join(root, 'catalogue.json');
+        const first = await loadCopilotCatalogueWith({ file, now: () => T0, fetch: async () => fetched });
+        expect(first.catalogue).toBeNull();
+        expect(first.source).toBe('none');
+        expect(first.detail).toContain('protocol mismatch');
+        const fetchAgain = vi.fn(async () => ({ models: ['x'] }));
+        const second = await loadCopilotCatalogueWith({ file, now: () => T0 + 1000, fetch: fetchAgain });
+        expect(fetchAgain).not.toHaveBeenCalled();
+        expect(second.catalogue).toBeNull();
+        expect(second.detail).toContain('protocol mismatch');
+    });
     it('answers by the overall deadline and bounds a hanging cleanup without blocking the caller', async () => {
         const forceStop = vi.fn(async () => { });
         const sdk = fakeSdk({
