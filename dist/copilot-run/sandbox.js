@@ -537,6 +537,8 @@ export function buildSandboxConfig(profile, ctx, host) {
     // sandbox, while the runtime loads code from it, so it is never lane-writable. The runtime has unpacked it by the time
     // the config is built (after getStatus); a missing dir is not named.
     const pkgCache = [join(relocated.COPILOT_CACHE_HOME, 'pkg')].filter(existsSync);
+    // The sandboxed MCP server starts from the lane plugin dir; the lane never writes it (its hooks file is the lane's hook registration).
+    const plugin = [ctx.pluginRoot, ...(ctx.lanePluginRoot ? [ctx.lanePluginRoot] : [])];
     // The unsandboxed runtime runs git in the worktree too: a lane that rewrote the worktree's `.git` gitfile or
     // the admin dir's commondir or config.worktree would point that git at its own config (core.fsmonitor, a filter
     // driver). The sandbox keeps a read-only file nested in a read-write dir read-only, rename-over and delete
@@ -560,7 +562,7 @@ export function buildSandboxConfig(profile, ctx, host) {
             ...common,
             userPolicy: {
                 filesystem: {
-                    readonlyPaths: [ctx.worktree, ctx.commonGitDir, ctx.pluginRoot, gitConfigDir, ...pkgCache, ...gitLinks, ...tools, ...settings.extraReadonlyPaths],
+                    readonlyPaths: [ctx.worktree, ctx.commonGitDir, ...plugin, gitConfigDir, ...pkgCache, ...gitLinks, ...tools, ...settings.extraReadonlyPaths],
                     readwritePaths: [...laneHome, ...settings.extraReadwritePaths],
                 },
                 network: { allowOutbound: false, allowLocalNetwork: false },
@@ -600,7 +602,7 @@ export function buildSandboxConfig(profile, ctx, host) {
     }
     const filesystem = {
         readwritePaths: [ctx.worktree, ...laneHome, ...(ctx.hostCommits ? [] : laneGitWritePaths(ctx)), ...settings.extraReadwritePaths],
-        readonlyPaths: [ctx.commonGitDir, ctx.pluginRoot, gitConfigDir, ...pkgCache, ...gitLinks, ...(nm ? [nm] : []), ...nested, ...tools, ...settings.extraReadonlyPaths],
+        readonlyPaths: [ctx.commonGitDir, ...plugin, gitConfigDir, ...pkgCache, ...gitLinks, ...(nm ? [nm] : []), ...nested, ...tools, ...settings.extraReadonlyPaths],
     };
     if (host.capabilities.denied_paths === true) {
         // Git's plaintext credential stores (~/.git-credentials, XDG), the credential-cache daemon's socket dir, and the

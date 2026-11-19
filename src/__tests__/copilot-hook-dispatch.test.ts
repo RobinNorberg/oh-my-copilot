@@ -704,6 +704,19 @@ describe('lane hook set (OMC_LANE_HOOKS=minimal)', () => {
     expect(result.stdout).toContain('deny');
   });
 
+  it('OMC_LANE_PLUGIN_MIRROR=1 (the lane plugin dir) points CLAUDE_PLUGIN_ROOT back at the dispatcher\'s own plugin root; without it the host value stays', () => {
+    const root = probePlugin();
+    const probe = join(root, 'scripts', 'root-probe.cjs');
+    const out = join(tempDir('omg-dispatch-root-'), 'root.txt');
+    writeFileSync(probe, `require('fs').writeFileSync(${JSON.stringify(out)}, process.env.CLAUDE_PLUGIN_ROOT || '');`);
+    const mirrored = runDispatch(root, 'PreToolUse', [['root-probe.cjs']], {}, { ...LANE, OMC_LANE_PLUGIN_MIRROR: '1' });
+    expect(mirrored.status, mirrored.stderr).toBe(0);
+    expect(readFileSync(out, 'utf8')).toBe(REPO_ROOT);
+    const plain = runDispatch(root, 'PreToolUse', [['root-probe.cjs']], {}, LANE);
+    expect(plain.status, plain.stderr).toBe(0);
+    expect(readFileSync(out, 'utf8')).toBe(root);
+  });
+
   it('without the variable (or another value) a dropped event still runs every hook', () => {
     const root = probePlugin();
     for (const extra of [{}, { OMC_LANE_HOOKS: '1' }] as Array<Record<string, string>>) {

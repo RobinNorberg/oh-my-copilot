@@ -111,6 +111,14 @@ const { hardenWindowsExeSearch } = require('../lib/windows-search.cjs');
 hardenWindowsExeSearch();
 
 const SCRIPTS_DIR = path.join(__dirname, '..');
+
+// Lane plugin dir (src/copilot-run/lane-plugin.ts): the CLI set CLAUDE_PLUGIN_ROOT
+// to the engine's mirror of the plugin. Node loaded this file by its real path,
+// so its own plugin root is the real one: run.cjs then routes the kept guards
+// as in the real plugin (worker eligibility checks the hook against that root).
+if (require.main === module && process.env.OMC_LANE_PLUGIN_MIRROR === '1') {
+  process.env.CLAUDE_PLUGIN_ROOT = path.resolve(SCRIPTS_DIR, '..');
+}
 const RUN_CJS = path.join(SCRIPTS_DIR, 'run.cjs');
 const ADAPTER = path.join(SCRIPTS_DIR, 'lib', 'copilot-hook-adapter.cjs');
 const HOOK_SEPARATOR = '--';

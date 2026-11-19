@@ -65,6 +65,7 @@ import { reviewShellAllowlist } from '../team/shell-allowlist.js';
 import { getCopilotConfigDir } from '../utils/config-dir.js';
 import { COPILOT_RUN_ALLOW_ENV } from './names.js';
 import { REVIEW_READ_TOOLS, REVIEW_SHELL_TOOLS, SANDBOX_KILL_ENV, allowlistSessionEnv, laneToolPaths, loadSandboxSettings, missingSandboxEnv, proxyCaEnv, scrubTokens, secretValues, sessionGitHubToken, } from './sandbox.js';
+import { LANE_PLUGIN_DIR, prepareLanePluginDir, removeLanePluginDir, sweepStaleLanePluginDirs } from './lane-plugin.js';
 import { SessionSandboxController, sandboxBypassDenial } from './sandbox-session.js';
 import { errText, withTimeout } from './timeout.js';
 export const DEFAULT_TIMEOUT_MS = 15 * 60_000;
@@ -1135,7 +1136,9 @@ export class CopilotRunManager {
                     + 'Merge or discard the changes yourself (commit them and merge the branch, or delete them), then call cleanup again.');
             }
             job.cleanedUp = true;
+            // A lane plugin dir a failed teardown left (links into the plugin) goes link-safe first; if it stays, so does the job dir.
             try {
+                removeLanePluginDir(join(job.home, LANE_PLUGIN_DIR));
                 rmSync(job.jobDir, { recursive: true, force: true });
             }
             catch { /* evidence only */ }
@@ -1294,6 +1297,50 @@ export class CopilotRunManager {
             scrubLaneCredentials(env, scrubDir);
             env.GIT_CONFIG_GLOBAL = identityConfig;
         }
+        // The lane registers only the lane hook set (lane-plugin.ts), from a dir in the job home that is never
+        // lane-writable, made before the runtime starts. Any problem: the full plugin, whose dispatcher still skips the rest.
+        let sessionPluginRoot = pluginRoot;
+        if (job.minimalHooks) {
+            // A crashed engine's mirror, or one a finished job here failed to remove (links into the plugin), goes link-safe first.
+            const swept = sweepStaleLanePluginDirs(dirname(job.jobDir), deps.isAlive, (id) => {
+                const other = this.jobs.get(id);
+                return other !== undefined && !isTerminal(other.status);
+            });
+            for (const failure of swept.failed)
+                job.notes.push(`a stale lane plugin dir was not removed: ${failure}`);
+            try {
+                sessionPluginRoot = prepareLanePluginDir(pluginRoot, join(job.home, LANE_PLUGIN_DIR));
+            }
+            catch (err) {
+                job.notes.push(`lane hook registration fell back to the full plugin hooks: ${errText(err)}`);
+            }
+        }
+        const lanePluginRoot = sessionPluginRoot === pluginRoot ? undefined : sessionPluginRoot;
+        // The lane plugin dir holds links into the plugin: removed link-safe (never a recursive rm), and a failure
+        // is a note, never a throw that skips the rest of the teardown. False: it is still there.
+        const removeLaneDir = () => {
+            if (!lanePluginRoot)
+                return true;
+            try {
+                removeLanePluginDir(lanePluginRoot);
+                return true;
+            }
+            catch (err) {
+                job.notes.push(`the lane plugin dir ${lanePluginRoot} was not removed (the next lane removes it): ${errText(err)}`);
+                return false;
+            }
+        };
+        const releaseDirs = () => {
+            if (scrubDir) {
+                try {
+                    rmSync(scrubDir, { recursive: true, force: true });
+                }
+                catch (err) {
+                    job.notes.push(`the credential scrub dir ${scrubDir} was not removed: ${errText(err)}`);
+                }
+            }
+            return removeLaneDir();
+        };
         const policy = {
             cwd: job.workCwd,
             // The job's temp dir only: the runtime's file tools run unsandboxed and must not reach events.jsonl, nor what
@@ -1325,6 +1372,7 @@ export class CopilotRunManager {
                     commonGitDir: commonRaw ? resolve(commonRaw) : resolve(top, '.git'),
                     ...(gitDirRaw ? { gitDir: resolve(gitDirRaw) } : {}),
                     pluginRoot,
+                    ...(lanePluginRoot ? { lanePluginRoot } : {}),
                     jobHome: job.home,
                     jobDir: job.jobDir,
                     realHome,
@@ -1445,11 +1493,19 @@ export class CopilotRunManager {
         };
         const { CopilotClient, RuntimeConnection } = loaded.module;
         const cap = Math.max(RUNTIME_MIN_MAX_CREDITS, Math.ceil(job.maxCredits));
-        const client = new CopilotClient({
-            connection: RuntimeConnection.forStdio({ path: bin, args: ['--max-ai-credits', String(cap)], env }),
-            baseDirectory: job.home,
-            workingDirectory: job.workCwd,
-        });
+        let client;
+        try {
+            client = new CopilotClient({
+                connection: RuntimeConnection.forStdio({ path: bin, args: ['--max-ai-credits', String(cap)], env }),
+                baseDirectory: job.home,
+                workingDirectory: job.workCwd,
+            });
+        }
+        catch (err) {
+            releaseDirs();
+            job.error = `runtime client: ${errText(err)}`;
+            return 'failed';
+        }
         // events.jsonl is opened once, before the runtime starts (client.start()),
         // and written only through this fd: O_EXCL refuses a name that already
         // exists (a planted link included), and a later rename or replace of the
@@ -1458,8 +1514,7 @@ export class CopilotRunManager {
             eventsFd = openAppendExclusive(job.eventsPath);
         }
         catch (err) {
-            if (scrubDir)
-                rmSync(scrubDir, { recursive: true, force: true });
+            releaseDirs();
             job.error = `events log ${job.eventsPath}: ${errText(err)}`;
             return 'failed';
         }
@@ -1488,7 +1543,7 @@ export class CopilotRunManager {
                 session = await withTimeout(client.createSession({
                     onPermissionRequest,
                     onEvent,
-                    pluginDirectories: [pluginRoot],
+                    pluginDirectories: [sessionPluginRoot],
                     workingDirectory: job.workCwd,
                     disabledMcpServers: ['github-mcp-server'],
                     // The explicit Copilot credential over the session RPC, never in the env shell children inherit.
@@ -1582,13 +1637,13 @@ export class CopilotRunManager {
             eventsFd = null;
             if (fd !== null)
                 closeSync(fd);
-            if (scrubDir)
-                rmSync(scrubDir, { recursive: true, force: true });
+            // Before the job home is kept or deleted: no links into the plugin are left in it.
+            const laneDirGone = releaseDirs();
             // The final totals: a few retries if a hook holds the ledger lock.
             for (let i = 0; i < 10 && !this.recordBudget(job, 200); i++)
                 await sleep(50);
             // The per-job COPILOT_HOME holds the session state and logs; kept when the job did not complete.
-            if (outcome === 'completed') {
+            if (outcome === 'completed' && laneDirGone) {
                 try {
                     rmSync(job.home, { recursive: true, force: true });
                 }
