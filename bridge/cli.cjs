@@ -59908,6 +59908,7 @@ function buildSandboxConfig(profile, ctx, host) {
   const relocated = relocatedProfileEnv(ctx.jobHome);
   const laneHome = [relocated.TEMP, relocated.USERPROFILE];
   const gitConfigDir = (0, import_node_path13.dirname)(relocated.GIT_CONFIG_GLOBAL);
+  const pkgCache = [(0, import_node_path13.join)(relocated.COPILOT_CACHE_HOME, "pkg")].filter(import_node_fs11.existsSync);
   const own3 = ctx.hostCommits ? null : ownGitDir(ctx);
   const gitLinks = [(0, import_node_path13.join)(ctx.worktree, ".git"), ...own3 ? ["commondir", "gitdir", "config.worktree"].map((f) => (0, import_node_path13.join)(own3, f)) : []].map(existingFile).filter((p) => p !== null);
   const common = {
@@ -59924,7 +59925,7 @@ function buildSandboxConfig(profile, ctx, host) {
       ...common,
       userPolicy: {
         filesystem: {
-          readonlyPaths: [ctx.worktree, ctx.commonGitDir, ctx.pluginRoot, gitConfigDir, ...gitLinks, ...tools, ...settings.extraReadonlyPaths],
+          readonlyPaths: [ctx.worktree, ctx.commonGitDir, ctx.pluginRoot, gitConfigDir, ...pkgCache, ...gitLinks, ...tools, ...settings.extraReadonlyPaths],
           readwritePaths: [...laneHome, ...settings.extraReadwritePaths]
         },
         network: { allowOutbound: false, allowLocalNetwork: false }
@@ -59957,7 +59958,7 @@ function buildSandboxConfig(profile, ctx, host) {
   }
   const filesystem = {
     readwritePaths: [ctx.worktree, ...laneHome, ...ctx.hostCommits ? [] : laneGitWritePaths(ctx), ...settings.extraReadwritePaths],
-    readonlyPaths: [ctx.commonGitDir, ctx.pluginRoot, gitConfigDir, ...gitLinks, ...nm ? [nm] : [], ...nested, ...tools, ...settings.extraReadonlyPaths]
+    readonlyPaths: [ctx.commonGitDir, ctx.pluginRoot, gitConfigDir, ...pkgCache, ...gitLinks, ...nm ? [nm] : [], ...nested, ...tools, ...settings.extraReadonlyPaths]
   };
   if (host.capabilities.denied_paths === true) {
     filesystem.deniedPaths = [
@@ -132692,11 +132693,11 @@ function noInstallRule(lane) {
   if (!lane?.sandboxed || lane.writeNetwork !== "none") return [];
   return [`The sandbox has no network access: never run \`npm install\`, \`npm ci\` or any other package install.${lane.nodeModulesReady ? " The dependencies are already installed in node_modules." : ""} If a command fails because a dependency is missing, report it in your final message instead of installing it.`];
 }
-function implementPrompt(s, team, scripts = [], lane = null) {
+function implementPrompt(s, team, scripts = [], lane = null, guides = []) {
   return [
     `You are the implementer for ${subject(s)}`,
     "",
-    "Implement the change described below in this worktree, following the repository's standards (read its AGENTS.md / CLAUDE.md / CONTRIBUTING.md).",
+    `Implement the change described below in this worktree, following the repository's standards${guides.length > 0 ? ` (read its ${guides.join(" / ")})` : ""}.`,
     "Add or update tests for the change and run the relevant ones.",
     ...scriptsLine(scripts),
     FOREGROUND_WAIT_RULE,
@@ -132858,7 +132859,7 @@ function reviewPrompt(s, head, diff, standards = [], team) {
     fence2
   ].join("\n");
 }
-var MAX_CI_DETAIL_CHARS, MAX_REVIEW_DIFF_CHARS, MAX_STANDARDS_FILES, WRITE_LANE_GIT_RULES, subject, planLabel, untrustedText, LANE_SCRIPT_NAMES, scriptsLine, FOREGROUND_WAIT_RULE, planSection, MAX_HUMAN_FEEDBACK_CHARS;
+var MAX_CI_DETAIL_CHARS, MAX_REVIEW_DIFF_CHARS, MAX_STANDARDS_FILES, WRITE_LANE_GIT_RULES, subject, planLabel, untrustedText, LANE_SCRIPT_NAMES, scriptsLine, FOREGROUND_WAIT_RULE, REPO_GUIDE_FILES, planSection, MAX_HUMAN_FEEDBACK_CHARS;
 var init_prompts2 = __esm({
   "src/factory/run/prompts.ts"() {
     "use strict";
@@ -132880,6 +132881,7 @@ var init_prompts2 = __esm({
     LANE_SCRIPT_NAMES = ["format", "format:check", "prettier", "lint"];
     scriptsLine = (scripts) => scripts.length > 0 ? [`Before you finish, run the repository's own ${scripts.map((n) => `\`npm run ${n}\``).join(", ")} (scripts in its package.json) and fix what they report.`] : [];
     FOREGROUND_WAIT_RULE = "Run CI and test waits in the foreground; never idle waiting for a background notification.";
+    REPO_GUIDE_FILES = ["AGENTS.md", "CLAUDE.md", "CONTRIBUTING.md"];
     planSection = (s) => [`## Plan (${planLabel(s)})`, "", s.plan?.text ?? ""];
     MAX_HUMAN_FEEDBACK_CHARS = 4e4;
   }
@@ -137936,6 +137938,7 @@ var init_engine = __esm({
     init_process_utils();
     init_lane();
     init_job();
+    init_sanitize();
     init_lane_commit();
     init_lane_procs();
     init_tamper_quarantine();
@@ -139061,6 +139064,7 @@ var init_engine = __esm({
         }
         if (this.o.allowSecretShapes) {
           if (existing?.gate?.name === SECRET_SHAPES_GATE && existing.pendingCommit?.secretFindings?.length) this.secretShapesAllowed = true;
+          else if (existing?.gate?.name === SECRET_SHAPES_GATE && existing.phase === "intake") this.o.warn?.(`omg factory run: --allow-secret-shapes is ignored: the run for ${this.what} is parked because its own text holds secret-shaped content; edit the item instead`);
           else this.o.warn?.(`omg factory run: --allow-secret-shapes is ignored: the run for ${this.what} is not parked at awaiting-human: ${SECRET_SHAPES_GATE}`);
         }
         const replaced = replaceObjectsProblem(this.exec, this.o.root);
@@ -139613,9 +139617,23 @@ var init_engine = __esm({
 ${item.acceptance}
 ` : item.body;
         const planLink = findPlanLink(item.body, item.comments, item.authorTrusted);
+        if (this.issueTextSecretPark(noun, item.title, body)) return;
         if (this.foreignPr(item.repoUrl)) return;
         if (this.blockedBy(item.dependsOn, item.repoUrl)) return;
         this.save((s) => moveTo({ ...s, repoUrl: item.repoUrl, issueTitle: item.title, issueBody: body, ...planLink ? { planLink } : {} }, "plan", `${noun} ${item.url}`, this.iso()));
+      }
+      /**
+       * The lane commit's secret scan, run on the item's own title and body before
+       * any lane: a lane given a key in its plan copies it into the change. Parks
+       * in intake (a rerun reads the edited item again); names the kinds, never a value.
+       */
+      issueTextSecretPark(noun, title, body) {
+        const kinds = secretShapeKinds(`${title}
+${body}`);
+        if (kinds.length === 0) return false;
+        this.gate(SECRET_SHAPES_GATE, `the ${noun} text itself (title or body) holds secret-shaped content (${kinds.join(", ")}), so no lane started: a lane would copy it into the change. Remove it from the ${noun} (rotate the key or token if it is real) and rerun ${this.resume}, or ${cancelCommand(this.key)}`);
+        this.progress.emit("intake", "fail", `secret-shaped content in the ${noun} text`);
+        return true;
       }
       async intake() {
         if (this.state.kind === "ci-heal") return this.healIntake();
@@ -139640,6 +139658,7 @@ ${item.acceptance}
         }
         const body = typeof v.body === "string" ? v.body : "";
         const planLink = findPlanLink(body, Array.isArray(v.comments) ? v.comments : [], issueAuthorTrusted(v));
+        if (this.issueTextSecretPark("issue", typeof v.title === "string" ? v.title : "", body)) return;
         if (this.foreignPr(m[1])) return;
         if (this.blockedBy(ghDependsOn(body), m[1])) return;
         this.save((s) => moveTo({ ...s, repoUrl: m[1], issueTitle: typeof v.title === "string" ? v.title : "", issueBody: body, ...planLink ? { planLink } : {} }, "plan", `issue ${url2}`, this.iso()));
@@ -139734,7 +139753,15 @@ ${item.acceptance}
           return this.gate(PARALLEL_LAYOUT_GATE, `this run started as one of several parallel runs (factory.run.maxConcurrent ${this.o.parallel.maxConcurrent}), but factory.run.layout resolved to "shared" at the base ${baseSha.slice(0, 12)}; parallel runs need factory.run.layout: "private". No lane has started: set factory.run.layout "private" in your user config, or factory.run.maxConcurrent 1, then rerun ${this.resume}`);
         }
         if (undecided && this.layoutChoice === "private" && !await this.setupPrivate(baseSha)) return;
-        const out = await this.runLane("implement", baseSha, "write", implementPrompt(this.state, this.teamContext(this.readAt(baseSha), pathsInText(this.state.plan?.text ?? "")), this.laneScripts(), this.laneEnvironment()), "implement");
+        const read = this.readAt(baseSha);
+        const guides = REPO_GUIDE_FILES.filter((p) => {
+          try {
+            return read(p) !== void 0;
+          } catch {
+            return false;
+          }
+        });
+        const out = await this.runLane("implement", baseSha, "write", implementPrompt(this.state, this.teamContext(read, pathsInText(this.state.plan?.text ?? "")), this.laneScripts(), this.laneEnvironment(), guides), "implement");
         if (out.kind === "done") await this.acceptWriteLane(out, "implement", baseSha);
       }
       async fix() {
