@@ -6,7 +6,8 @@
  * It mirrors the plugin root: every directory is a junction (a symlink off
  * Windows) to the real one, so skills, agents, commands and scripts are the
  * shipped ones and the CLI's `${CLAUDE_PLUGIN_ROOT}` paths resolve through
- * the links. Of the files, only the manifest (`plugin.json`) and the files it
+ * the links. Runtime-state and VCS dirs (`.git`, `.omc`, `.omg`, `.copilot`)
+ * and any dir holding the mirror itself are not linked. Of the files, only the manifest (`plugin.json`) and the files it
  * names (`.mcp.json`) are copied; every other file is left out (the CLI reads
  * none of them, and a file symlink needs a privilege on Windows). The hooks
  * file the manifest names is generated: the shipped entries of
@@ -28,7 +29,7 @@
  * events), never a plugin without its guards.
  */
 import { copyFileSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, realpathSync, rmdirSync, statSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
-import { isAbsolute, join, normalize, sep } from 'node:path';
+import { isAbsolute, join, normalize, relative, sep } from 'node:path';
 /** The events a lane registers: the PreToolUse guards and the PermissionRequest handler (as LANE_HOOK_EVENTS in scripts/copilot/dispatch.cjs). */
 export const LANE_HOOK_EVENTS = ['PreToolUse', 'PermissionRequest'];
 /** Set in each generated hook entry's env: dispatch.cjs then resets CLAUDE_PLUGIN_ROOT to its own plugin root. */
@@ -39,6 +40,13 @@ export const LANE_PLUGIN_DIR = 'lane-plugin';
 export const LANE_PLUGIN_MARKER = '.omg-lane-plugin.json';
 const MARKER_KIND = 'omg-lane-plugin';
 const JOB_ID = /^cr-[0-9a-f]{12}$/;
+/** Runtime-state and VCS dirs: never plugin content, and `.omc`/`.omg` hold the job dirs (and so the mirror) themselves. */
+const SKIPPED_DIRS = new Set(['.git', '.omc', '.omg', '.copilot']);
+/** Whether `path` is `dir` or inside it (path.relative compares case-insensitively on Windows). */
+function within(path, dir) {
+    const rel = relative(dir, path);
+    return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel));
+}
 /** The lane hooks file from the shipped one: only {@link LANE_HOOK_EVENTS}, each entry tagged with {@link LANE_PLUGIN_MIRROR_ENV}. */
 export function buildLaneHooksFile(shipped) {
     const hooks = {};
@@ -84,25 +92,30 @@ function manifestFiles(root, manifest, hooks) {
 }
 /**
  * Mirror `src` into the existing empty dir `dst`: directories as junctions to
- * their real path, the files in `copy` copied, every other file left out. The
+ * their real path, the files in `copy` copied, every other file left out.
+ * {@link SKIPPED_DIRS} and any dir whose real path holds `destReal` (the
+ * mirror itself: a link there would be a cycle) are left out too. The
  * directory named by `keep[0]` is mirrored one level deeper (a real dir); the
  * file `keep[0]` (the last segment) is left for the caller.
  */
-function mirror(src, dst, keep, copy) {
+function mirror(src, dst, keep, copy, destReal) {
     for (const ent of readdirSync(src, { withFileTypes: true })) {
-        if (ent.name === '.git')
+        if (SKIPPED_DIRS.has(ent.name))
             continue;
         const from = join(src, ent.name);
         const to = join(dst, ent.name);
         if (ent.name === keep[0]) {
             if (keep.length > 1) {
                 mkdirSync(to);
-                mirror(from, to, keep.slice(1), new Set());
+                mirror(from, to, keep.slice(1), new Set(), destReal);
             }
             continue;
         }
-        if (statSync(from).isDirectory())
-            symlinkSync(realpathSync(from), to, 'junction');
+        if (statSync(from).isDirectory()) {
+            const target = realpathSync(from);
+            if (!within(destReal, target))
+                symlinkSync(target, to, 'junction');
+        }
         else if (copy.has(ent.name))
             copyFileSync(from, to);
     }
@@ -124,7 +137,7 @@ export function prepareLanePluginDir(pluginRoot, dest, ownerPid = process.pid) {
     try {
         // First, so a crash at any later point leaves a dir the sweep recognises.
         writeFileSync(join(dest, LANE_PLUGIN_MARKER), `${JSON.stringify({ kind: MARKER_KIND, pid: ownerPid })}\n`, { flag: 'wx' });
-        mirror(root, dest, segments, copy);
+        mirror(root, dest, segments, copy, realpathSync(dest));
         writeFileSync(join(dest, ...segments), `${JSON.stringify(lane, null, 2)}\n`, { flag: 'wx' });
         // Read back what the runtime will read.
         const written = JSON.parse(readFileSync(join(dest, ...segments), 'utf8'));

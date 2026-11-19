@@ -24128,49 +24128,49 @@ var require_fast_uri = __commonJS({
       schemelessOptions.skipEscape = true;
       return serialize(resolved, schemelessOptions);
     }
-    function resolveComponent(base, relative38, options, skipNormalization) {
+    function resolveComponent(base, relative39, options, skipNormalization) {
       const target = {};
       if (!skipNormalization) {
         base = parse13(serialize(base, options), options);
-        relative38 = parse13(serialize(relative38, options), options);
+        relative39 = parse13(serialize(relative39, options), options);
       }
       options = options || {};
-      if (!options.tolerant && relative38.scheme) {
-        target.scheme = relative38.scheme;
-        target.userinfo = relative38.userinfo;
-        target.host = relative38.host;
-        target.port = relative38.port;
-        target.path = removeDotSegments(relative38.path || "");
-        target.query = relative38.query;
+      if (!options.tolerant && relative39.scheme) {
+        target.scheme = relative39.scheme;
+        target.userinfo = relative39.userinfo;
+        target.host = relative39.host;
+        target.port = relative39.port;
+        target.path = removeDotSegments(relative39.path || "");
+        target.query = relative39.query;
       } else {
-        if (relative38.userinfo !== void 0 || relative38.host !== void 0 || relative38.port !== void 0) {
-          target.userinfo = relative38.userinfo;
-          target.host = relative38.host;
-          target.port = relative38.port;
-          target.path = removeDotSegments(relative38.path || "");
-          target.query = relative38.query;
+        if (relative39.userinfo !== void 0 || relative39.host !== void 0 || relative39.port !== void 0) {
+          target.userinfo = relative39.userinfo;
+          target.host = relative39.host;
+          target.port = relative39.port;
+          target.path = removeDotSegments(relative39.path || "");
+          target.query = relative39.query;
         } else {
-          if (!relative38.path) {
+          if (!relative39.path) {
             target.path = base.path;
-            if (relative38.query !== void 0) {
-              target.query = relative38.query;
+            if (relative39.query !== void 0) {
+              target.query = relative39.query;
             } else {
               target.query = base.query;
             }
           } else {
-            if (relative38.path[0] === "/") {
-              target.path = removeDotSegments(relative38.path);
+            if (relative39.path[0] === "/") {
+              target.path = removeDotSegments(relative39.path);
             } else {
               if ((base.userinfo !== void 0 || base.host !== void 0 || base.port !== void 0) && !base.path) {
-                target.path = "/" + relative38.path;
+                target.path = "/" + relative39.path;
               } else if (!base.path) {
-                target.path = relative38.path;
+                target.path = relative39.path;
               } else {
-                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative38.path;
+                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative39.path;
               }
               target.path = removeDotSegments(target.path);
             }
-            target.query = relative38.query;
+            target.query = relative39.query;
           }
           target.userinfo = base.userinfo;
           target.host = base.host;
@@ -24178,7 +24178,7 @@ var require_fast_uri = __commonJS({
         }
         target.scheme = base.scheme;
       }
-      target.fragment = relative38.fragment;
+      target.fragment = relative39.fragment;
       return target;
     }
     function equal(uriA, uriB, options) {
@@ -62269,6 +62269,10 @@ var init_shell_allowlist = __esm({
 });
 
 // src/copilot-run/lane-plugin.ts
+function within(path15, dir) {
+  const rel = (0, import_node_path13.relative)(dir, path15);
+  return rel === "" || !rel.startsWith("..") && !(0, import_node_path13.isAbsolute)(rel);
+}
 function buildLaneHooksFile(shipped) {
   const hooks = {};
   for (const event of LANE_HOOK_EVENTS) {
@@ -62302,20 +62306,22 @@ function manifestFiles(root, manifest, hooks) {
   }
   return files;
 }
-function mirror(src, dst, keep, copy) {
+function mirror(src, dst, keep, copy, destReal) {
   for (const ent of (0, import_node_fs12.readdirSync)(src, { withFileTypes: true })) {
-    if (ent.name === ".git") continue;
+    if (SKIPPED_DIRS.has(ent.name)) continue;
     const from = (0, import_node_path13.join)(src, ent.name);
     const to = (0, import_node_path13.join)(dst, ent.name);
     if (ent.name === keep[0]) {
       if (keep.length > 1) {
         (0, import_node_fs12.mkdirSync)(to);
-        mirror(from, to, keep.slice(1), /* @__PURE__ */ new Set());
+        mirror(from, to, keep.slice(1), /* @__PURE__ */ new Set(), destReal);
       }
       continue;
     }
-    if ((0, import_node_fs12.statSync)(from).isDirectory()) (0, import_node_fs12.symlinkSync)((0, import_node_fs12.realpathSync)(from), to, "junction");
-    else if (copy.has(ent.name)) (0, import_node_fs12.copyFileSync)(from, to);
+    if ((0, import_node_fs12.statSync)(from).isDirectory()) {
+      const target = (0, import_node_fs12.realpathSync)(from);
+      if (!within(destReal, target)) (0, import_node_fs12.symlinkSync)(target, to, "junction");
+    } else if (copy.has(ent.name)) (0, import_node_fs12.copyFileSync)(from, to);
   }
 }
 function prepareLanePluginDir(pluginRoot, dest, ownerPid = process.pid) {
@@ -62328,7 +62334,7 @@ function prepareLanePluginDir(pluginRoot, dest, ownerPid = process.pid) {
   try {
     (0, import_node_fs12.writeFileSync)((0, import_node_path13.join)(dest, LANE_PLUGIN_MARKER), `${JSON.stringify({ kind: MARKER_KIND, pid: ownerPid })}
 `, { flag: "wx" });
-    mirror(root, dest, segments2, copy);
+    mirror(root, dest, segments2, copy, (0, import_node_fs12.realpathSync)(dest));
     (0, import_node_fs12.writeFileSync)((0, import_node_path13.join)(dest, ...segments2), `${JSON.stringify(lane, null, 2)}
 `, { flag: "wx" });
     const written = JSON.parse((0, import_node_fs12.readFileSync)((0, import_node_path13.join)(dest, ...segments2), "utf8"));
@@ -62422,7 +62428,7 @@ function sweepStaleLanePluginDirs(jobRoot, isAlive, ownJobLive) {
   }
   return { removed, failed };
 }
-var import_node_fs12, import_node_path13, LANE_HOOK_EVENTS, LANE_PLUGIN_MIRROR_ENV, LANE_PLUGIN_DIR, LANE_PLUGIN_MARKER, MARKER_KIND, JOB_ID;
+var import_node_fs12, import_node_path13, LANE_HOOK_EVENTS, LANE_PLUGIN_MIRROR_ENV, LANE_PLUGIN_DIR, LANE_PLUGIN_MARKER, MARKER_KIND, JOB_ID, SKIPPED_DIRS;
 var init_lane_plugin = __esm({
   "src/copilot-run/lane-plugin.ts"() {
     "use strict";
@@ -62434,6 +62440,7 @@ var init_lane_plugin = __esm({
     LANE_PLUGIN_MARKER = ".omg-lane-plugin.json";
     MARKER_KIND = "omg-lane-plugin";
     JOB_ID = /^cr-[0-9a-f]{12}$/;
+    SKIPPED_DIRS = /* @__PURE__ */ new Set([".git", ".omc", ".omg", ".copilot"]);
   }
 });
 
@@ -65277,7 +65284,7 @@ function vitestReportPath(dir) {
 function vitestReportArgs(path15) {
   return ["--reporter=default", "--reporter=json", `--outputFile=${path15}`, "--coverage.enabled=false"];
 }
-function relative28(name, root) {
+function relative29(name, root) {
   const n = slash(name);
   const r = slash(root).replace(/\/+$/, "");
   return n.toLowerCase().startsWith(`${r.toLowerCase()}/`) ? n.slice(r.length + 1) : n;
@@ -65297,7 +65304,7 @@ function parseVitestReport(text3, root) {
   const failedFiles = /* @__PURE__ */ new Set();
   for (const f of files) {
     if (typeof f !== "object" || f === null || typeof f.name !== "string" || !Array.isArray(f.assertionResults)) return null;
-    const file2 = relative28(f.name, root);
+    const file2 = relative29(f.name, root);
     let own2 = 0;
     for (const a of f.assertionResults) {
       if (typeof a !== "object" || a === null || typeof a.title !== "string") return null;
@@ -71786,7 +71793,7 @@ function resolveAzEntry(deps) {
   }
   return { command: python, prefix: AZ_PYTHON_PREFIX, env: { AZ_INSTALLER: "MSI" } };
 }
-var import_path109, AZ_PYTHON_PREFIX, AzBinaryError, fold3, within, trustedPath, posixWithin, posixTrusted;
+var import_path109, AZ_PYTHON_PREFIX, AzBinaryError, fold3, within2, trustedPath, posixWithin, posixTrusted;
 var init_az_binary = __esm({
   "src/forge/ado/az-binary.ts"() {
     "use strict";
@@ -71799,11 +71806,11 @@ var init_az_binary = __esm({
       }
     };
     fold3 = (p) => import_path109.win32.resolve(p).replace(/[\\/]+$/, "").toLowerCase();
-    within = (dir, root) => {
+    within2 = (dir, root) => {
       const d = fold3(dir), r = fold3(root);
       return d === r || d.startsWith(`${r}\\`);
     };
-    trustedPath = (path15, roots) => !import_path109.win32.resolve(path15).split("\\").some((s) => s.toLowerCase() === "node_modules") && !roots.some((root) => within(path15, root));
+    trustedPath = (path15, roots) => !import_path109.win32.resolve(path15).split("\\").some((s) => s.toLowerCase() === "node_modules") && !roots.some((root) => within2(path15, root));
     posixWithin = (path15, root) => {
       const p = import_path109.posix.resolve(path15), r = import_path109.posix.resolve(root);
       return p === r || p.startsWith(r === "/" ? "/" : `${r}/`);

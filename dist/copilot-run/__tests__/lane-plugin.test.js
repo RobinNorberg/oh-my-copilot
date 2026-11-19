@@ -82,6 +82,39 @@ describe('lane plugin dir', () => {
         // The shipped file is untouched.
         expect(Object.keys(JSON.parse(readFileSync(join(plugin, 'copilot', 'hooks.json'), 'utf8')).hooks).length).toBeGreaterThan(2);
     });
+    it.each([
+        ['in the plugin .omc state dir (the repo is the plugin root)', ['.omc', 'state', 'copilot-run', 'cr-aaaaaaaaaaaa', 'home']],
+        ['in a plugin dir with another name', ['jobs', 'cr-aaaaaaaaaaaa', 'home']],
+    ])('a mirror %s links no runtime-state dir and nothing that holds the mirror', (_name, parent) => {
+        const plugin = fixturePlugin();
+        for (const dir of ['.omc', '.omg', '.copilot']) {
+            mkdirSync(join(plugin, dir), { recursive: true });
+            writeFileSync(join(plugin, dir, 'x'), 'state');
+        }
+        mkdirSync(join(plugin, ...parent), { recursive: true });
+        const dest = prepareLanePluginDir(plugin, join(plugin, ...parent, LANE_PLUGIN_DIR));
+        for (const dir of ['.omc', '.omg', '.copilot', '.git', parent[0]])
+            expect(existsSync(join(dest, dir)), dir).toBe(false);
+        const destReal = realpathSync(dest);
+        const links = [];
+        const walk = (d) => {
+            for (const ent of readdirSync(d, { withFileTypes: true })) {
+                const path = join(d, ent.name);
+                if (lstatSync(path).isSymbolicLink())
+                    links.push(realpathSync(path));
+                else if (ent.isDirectory())
+                    walk(path);
+            }
+        };
+        walk(dest);
+        expect(links.length).toBeGreaterThan(0);
+        for (const target of links)
+            expect(isUnderRoot(destReal, target, process.platform), target).toBe(false);
+        // The content dirs are still linked.
+        expect(lstatSync(join(dest, 'skills')).isSymbolicLink()).toBe(true);
+        removeLanePluginDir(dest);
+        expect(readFileSync(join(plugin, '.omc', 'x'), 'utf8')).toBe('state');
+    });
     it('removing the lane dir leaves the plugin intact', () => {
         const plugin = fixturePlugin();
         const before = fingerprint(plugin);

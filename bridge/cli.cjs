@@ -57300,9 +57300,9 @@ function getTrustedPrefixes() {
 function isTrustedPrefix(resolvedPath) {
   const flavor = pathFlavor();
   return getTrustedPrefixes().some((prefix) => {
-    const relative49 = flavor.relative(prefix, resolvedPath);
-    if (relative49 === "") return true;
-    return !relative49.startsWith("..") && !flavor.isAbsolute(relative49);
+    const relative50 = flavor.relative(prefix, resolvedPath);
+    if (relative50 === "") return true;
+    return !relative50.startsWith("..") && !flavor.isAbsolute(relative50);
   });
 }
 function assertBinaryName(binary) {
@@ -123776,6 +123776,10 @@ var init_shell_allowlist = __esm({
 });
 
 // src/copilot-run/lane-plugin.ts
+function within(path30, dir) {
+  const rel = (0, import_node_path38.relative)(dir, path30);
+  return rel === "" || !rel.startsWith("..") && !(0, import_node_path38.isAbsolute)(rel);
+}
 function buildLaneHooksFile(shipped) {
   const hooks = {};
   for (const event of LANE_HOOK_EVENTS) {
@@ -123809,20 +123813,22 @@ function manifestFiles(root, manifest, hooks) {
   }
   return files;
 }
-function mirror(src, dst, keep, copy) {
+function mirror(src, dst, keep, copy, destReal) {
   for (const ent of (0, import_node_fs33.readdirSync)(src, { withFileTypes: true })) {
-    if (ent.name === ".git") continue;
+    if (SKIPPED_DIRS.has(ent.name)) continue;
     const from = (0, import_node_path38.join)(src, ent.name);
     const to = (0, import_node_path38.join)(dst, ent.name);
     if (ent.name === keep[0]) {
       if (keep.length > 1) {
         (0, import_node_fs33.mkdirSync)(to);
-        mirror(from, to, keep.slice(1), /* @__PURE__ */ new Set());
+        mirror(from, to, keep.slice(1), /* @__PURE__ */ new Set(), destReal);
       }
       continue;
     }
-    if ((0, import_node_fs33.statSync)(from).isDirectory()) (0, import_node_fs33.symlinkSync)((0, import_node_fs33.realpathSync)(from), to, "junction");
-    else if (copy.has(ent.name)) (0, import_node_fs33.copyFileSync)(from, to);
+    if ((0, import_node_fs33.statSync)(from).isDirectory()) {
+      const target = (0, import_node_fs33.realpathSync)(from);
+      if (!within(destReal, target)) (0, import_node_fs33.symlinkSync)(target, to, "junction");
+    } else if (copy.has(ent.name)) (0, import_node_fs33.copyFileSync)(from, to);
   }
 }
 function prepareLanePluginDir(pluginRoot, dest, ownerPid = process.pid) {
@@ -123835,7 +123841,7 @@ function prepareLanePluginDir(pluginRoot, dest, ownerPid = process.pid) {
   try {
     (0, import_node_fs33.writeFileSync)((0, import_node_path38.join)(dest, LANE_PLUGIN_MARKER), `${JSON.stringify({ kind: MARKER_KIND, pid: ownerPid })}
 `, { flag: "wx" });
-    mirror(root, dest, segments2, copy);
+    mirror(root, dest, segments2, copy, (0, import_node_fs33.realpathSync)(dest));
     (0, import_node_fs33.writeFileSync)((0, import_node_path38.join)(dest, ...segments2), `${JSON.stringify(lane, null, 2)}
 `, { flag: "wx" });
     const written = JSON.parse((0, import_node_fs33.readFileSync)((0, import_node_path38.join)(dest, ...segments2), "utf8"));
@@ -123929,7 +123935,7 @@ function sweepStaleLanePluginDirs(jobRoot, isAlive, ownJobLive) {
   }
   return { removed, failed: failed3 };
 }
-var import_node_fs33, import_node_path38, LANE_HOOK_EVENTS, LANE_PLUGIN_MIRROR_ENV, LANE_PLUGIN_DIR, LANE_PLUGIN_MARKER, MARKER_KIND, JOB_ID;
+var import_node_fs33, import_node_path38, LANE_HOOK_EVENTS, LANE_PLUGIN_MIRROR_ENV, LANE_PLUGIN_DIR, LANE_PLUGIN_MARKER, MARKER_KIND, JOB_ID, SKIPPED_DIRS;
 var init_lane_plugin = __esm({
   "src/copilot-run/lane-plugin.ts"() {
     "use strict";
@@ -123941,6 +123947,7 @@ var init_lane_plugin = __esm({
     LANE_PLUGIN_MARKER = ".omg-lane-plugin.json";
     MARKER_KIND = "omg-lane-plugin";
     JOB_ID = /^cr-[0-9a-f]{12}$/;
+    SKIPPED_DIRS = /* @__PURE__ */ new Set([".git", ".omc", ".omg", ".copilot"]);
   }
 });
 
@@ -127315,7 +127322,7 @@ function vitestReportPath(dir) {
 function vitestReportArgs(path30) {
   return ["--reporter=default", "--reporter=json", `--outputFile=${path30}`, "--coverage.enabled=false"];
 }
-function relative37(name, root) {
+function relative38(name, root) {
   const n = slash(name);
   const r = slash(root).replace(/\/+$/, "");
   return n.toLowerCase().startsWith(`${r.toLowerCase()}/`) ? n.slice(r.length + 1) : n;
@@ -127335,7 +127342,7 @@ function parseVitestReport(text6, root) {
   const failedFiles = /* @__PURE__ */ new Set();
   for (const f of files) {
     if (typeof f !== "object" || f === null || typeof f.name !== "string" || !Array.isArray(f.assertionResults)) return null;
-    const file2 = relative37(f.name, root);
+    const file2 = relative38(f.name, root);
     let own3 = 0;
     for (const a of f.assertionResults) {
       if (typeof a !== "object" || a === null || typeof a.title !== "string") return null;
@@ -134328,7 +134335,7 @@ function resolveAzEntry(deps) {
   }
   return { command: python, prefix: AZ_PYTHON_PREFIX, env: { AZ_INSTALLER: "MSI" } };
 }
-var import_path190, AZ_PYTHON_PREFIX, AzBinaryError, fold4, within, trustedPath, posixWithin, posixTrusted;
+var import_path190, AZ_PYTHON_PREFIX, AzBinaryError, fold4, within2, trustedPath, posixWithin, posixTrusted;
 var init_az_binary = __esm({
   "src/forge/ado/az-binary.ts"() {
     "use strict";
@@ -134341,11 +134348,11 @@ var init_az_binary = __esm({
       }
     };
     fold4 = (p) => import_path190.win32.resolve(p).replace(/[\\/]+$/, "").toLowerCase();
-    within = (dir, root) => {
+    within2 = (dir, root) => {
       const d = fold4(dir), r = fold4(root);
       return d === r || d.startsWith(`${r}\\`);
     };
-    trustedPath = (path30, roots) => !import_path190.win32.resolve(path30).split("\\").some((s) => s.toLowerCase() === "node_modules") && !roots.some((root) => within(path30, root));
+    trustedPath = (path30, roots) => !import_path190.win32.resolve(path30).split("\\").some((s) => s.toLowerCase() === "node_modules") && !roots.some((root) => within2(path30, root));
     posixWithin = (path30, root) => {
       const p = import_path190.posix.resolve(path30), r = import_path190.posix.resolve(root);
       return p === r || p.startsWith(r === "/" ? "/" : `${r}/`);
