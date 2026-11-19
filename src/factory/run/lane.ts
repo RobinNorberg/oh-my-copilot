@@ -77,6 +77,13 @@ export interface LaneStartInput {
   deniedPaths?: string[];
   /** Private layout: privateRepoProblem, run right before the backend's host git reads the worktree after the session. */
   beforeHostGit?: () => string | null;
+  /**
+   * The local backend, a write lane in the OS sandbox on Windows: readies the
+   * lane worktree before its runtime starts (prepare.ts
+   * prepareLaneNodeModules); a non-null problem fails the lane before any
+   * session starts.
+   */
+  beforeSandboxedSession?: (worktree: string) => string | null;
   /** Cloud backends only. */
   customAgent?: string;
   timeoutMs: number;
@@ -129,8 +136,18 @@ export interface LaneProcess {
   identity: string | null;
 }
 
+/** The OS sandbox a write lane will start in, from its settings (CopilotRunManager.sandboxIntent). */
+export interface LaneSandboxIntent {
+  sandboxed: boolean;
+  writeNetwork: 'none' | 'registry';
+  /** The Windows sandbox: beforeSandboxedSession runs. */
+  windowsCopy: boolean;
+}
+
 export interface LaneBackend {
   readonly kind: LaneBackendKind;
+  /** The sandbox a write lane in `root` will start in (the engine's prompts say what it allows); absent or null: not known. */
+  laneSandbox?(root: string): LaneSandboxIntent | null;
   start(input: LaneStartInput): Promise<{ remoteId: string }>;
   /** Current result without waiting; idempotent. */
   poll(remoteId: string): Promise<LaneResult>;
@@ -153,7 +170,7 @@ export class LaneLostError extends Error {
 export const TERMINAL_LANE_STATES: readonly LaneState[] = ['completed', 'failed', 'timeout', 'cancelled'];
 export const isTerminalLaneState = (state: LaneState): boolean => TERMINAL_LANE_STATES.includes(state);
 
-export type LaneJobManager = Pick<CopilotRunManager, 'start' | 'status' | 'wait' | 'cancel'>;
+export type LaneJobManager = Pick<CopilotRunManager, 'start' | 'status' | 'wait' | 'cancel'> & Partial<Pick<CopilotRunManager, 'sandboxIntent'>>;
 
 export interface CopilotLaneBackendOptions {
   /**
@@ -178,6 +195,10 @@ export class CopilotLaneBackend implements LaneBackend {
 
   constructor(private readonly manager: LaneJobManager, private readonly options: CopilotLaneBackendOptions) {}
 
+  laneSandbox(root: string): LaneSandboxIntent | null {
+    return this.manager.sandboxIntent?.({ root, scope: 'factory' }) ?? null;
+  }
+
   async start(input: LaneStartInput): Promise<{ remoteId: string }> {
     const snap = this.manager.start(
       {
@@ -192,7 +213,8 @@ export class CopilotLaneBackend implements LaneBackend {
       },
       { allowLive: this.options.allowLive, disableStopContinuations: true, ledgerKey: `factory-lane:${input.laneId}`, ...(input.ledgerTag ? { ledgerTag: { kind: 'factory-lane' as const, ...input.ledgerTag } } : {}), sandboxScope: 'factory', ...(input.scrubCredentials ? { scrubCredentials: true } : {}), ...(input.engineCommits ? { hostCommits: true } : {}),
         ...(input.worktree ? { worktree: input.worktree } : {}), ...(input.jobRoot ? { jobRoot: input.jobRoot } : {}),
-        ...(input.deniedPaths ? { deniedPaths: input.deniedPaths } : {}), ...(input.beforeHostGit ? { beforeHostGit: input.beforeHostGit } : {}) },
+        ...(input.deniedPaths ? { deniedPaths: input.deniedPaths } : {}), ...(input.beforeHostGit ? { beforeHostGit: input.beforeHostGit } : {}),
+        ...(input.beforeSandboxedSession ? { beforeSandboxedSession: input.beforeSandboxedSession } : {}) },
     );
     return { remoteId: snap.jobId };
   }

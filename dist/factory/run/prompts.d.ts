@@ -33,8 +33,20 @@ export declare const LANE_SCRIPT_NAMES: readonly string[];
  * the script bodies never reach a prompt. Unreadable or absent = none.
  */
 export declare function laneScripts(packageJson: string | undefined): string[];
-export declare function implementPrompt(s: FactoryRunState, team?: TeamContext, scripts?: readonly string[]): string;
-export declare function fixPrompt(s: FactoryRunState, round: number, scripts?: readonly string[]): string;
+/**
+ * What a write lane's session will have, from the sandbox settings it starts
+ * with (the engine asks the lane backend before the prompt is built; null:
+ * not known, or no OS sandbox).
+ */
+export interface LaneEnvironment {
+    /** The settings put the session in the OS sandbox (sandbox.enabled, no OMG_SANDBOX=off). */
+    sandboxed: boolean;
+    writeNetwork: 'none' | 'registry';
+    /** The engine gives the worktree a copy of your node_modules before the session (Windows). */
+    nodeModulesReady: boolean;
+}
+export declare function implementPrompt(s: FactoryRunState, team?: TeamContext, scripts?: readonly string[], lane?: LaneEnvironment | null): string;
+export declare function fixPrompt(s: FactoryRunState, round: number, scripts?: readonly string[], lane?: LaneEnvironment | null): string;
 export declare const planSection: (s: FactoryRunState) => string[];
 /** The human review comments in one fix prompt are cut at this many characters in total. */
 export declare const MAX_HUMAN_FEEDBACK_CHARS = 40000;
@@ -53,10 +65,10 @@ export interface HumanFeedbackThread {
  * `<U+XXXX>`, control characters dropped, the whole block fenced, its total
  * capped. `file` is display text only; the engine never opens it.
  */
-export declare function humanFixPrompt(s: FactoryRunState, round: number, threads: readonly HumanFeedbackThread[], changesRequestedBy?: readonly string[], scripts?: readonly string[]): string;
+export declare function humanFixPrompt(s: FactoryRunState, round: number, threads: readonly HumanFeedbackThread[], changesRequestedBy?: readonly string[], scripts?: readonly string[], lane?: LaneEnvironment | null): string;
 /** `conflicted`: the files the engine's merge left conflict markers in (conflictFixStart), else the ones prepare reported. */
-export declare function conflictFixPrompt(s: FactoryRunState, conflicted?: readonly string[]): string;
-export declare function ciFixPrompt(s: FactoryRunState): string;
+export declare function conflictFixPrompt(s: FactoryRunState, conflicted?: readonly string[], lane?: LaneEnvironment | null): string;
+export declare function ciFixPrompt(s: FactoryRunState, lane?: LaneEnvironment | null): string;
 /**
  * The review lane's prompt. `standards` (the files under docs/standards/ on
  * the base commit) switches on the two-axis review: spec and standards, each

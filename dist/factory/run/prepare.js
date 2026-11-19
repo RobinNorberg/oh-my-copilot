@@ -12,7 +12,7 @@
  * in it with push off, and the engine pushes the result itself.
  */
 import { copyFileSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmdirSync, statfsSync, statSync, symlinkSync, unlinkSync, writeFileSync } from 'fs';
-import { basename, join, posix, win32 } from 'path';
+import { basename, join, posix, relative, win32 } from 'path';
 import { loadBaseKnownFlaky, loadTrustedShipConfig, userConfigLayers } from '../../ship/config.js';
 import { getBranchName, getWorktreePath } from '../../team/git-worktree.js';
 import { runSlug } from './state.js';
@@ -51,6 +51,20 @@ function gateTreeIncomplete(target) {
         if (!m.isFile() || m.size > 64 * 1024)
             return false;
         return !readFileSync(join(target, GATE_TREE_MARKER), 'utf-8').split('\n').includes(GATE_TREE_COMPLETE);
+    }
+    catch {
+        return false;
+    }
+}
+/** `target` is a real dir holding the engine's marker with the completion line (a tree linkNodeModules finished). */
+function gateTreeComplete(target) {
+    try {
+        if (!lstatSync(target).isDirectory())
+            return false;
+        const m = lstatSync(join(target, GATE_TREE_MARKER));
+        if (!m.isFile() || m.size > 64 * 1024)
+            return false;
+        return readFileSync(join(target, GATE_TREE_MARKER), 'utf-8').split('\n').includes(GATE_TREE_COMPLETE);
     }
     catch {
         return false;
@@ -188,6 +202,110 @@ export function linkNodeModules(root, checkout, warn, workspaces = [], copy = fa
     }
     nestedTrees.set(checkout, built);
     return ws.problem;
+}
+/**
+ * A lane worktree's own node_modules for the OS sandbox on Windows
+ * (GATE_TREE_COPY_WHY: a package dir opened through a junction is denied,
+ * so a lane's `npm test` fails with "Access is denied"): linkNodeModules'
+ * copied tree in `worktree`, the same build the gates use, from your
+ * node_modules at `root` (only read). Once per worktree: a complete tree
+ * already there is reused, a cut-off one is built again. Your node_modules,
+ * and the target of any link, is never written or removed: an existing
+ * `<worktree>/node_modules` link is unlinked only when it resolves to yours
+ * (the link itself, never followed), and a link elsewhere refuses.
+ *
+ * `ignored(paths)`: whether git ignores every one of the tree dirs
+ * (`node_modules`, `<pkg>/node_modules`, which need not exist yet) in the
+ * worktree. It is asked before anything is copied: a tree git would list as
+ * untracked is not built (a warning says so; the engine's lane commit
+ * refuses a worktree with a junction in it), so the lane runs as before.
+ * Returns why the lane must not start (the copy over its bounds or the free
+ * space, a foreign link), else null.
+ */
+export function prepareLaneNodeModules(root, worktree, o) {
+    const target = join(worktree, 'node_modules');
+    if (!existsSync(join(root, 'node_modules')))
+        return null;
+    if (isLink(target) && !sameDir(target, join(root, 'node_modules')))
+        return `${target} is a link the engine did not make, so the lane's node_modules is not prepared`;
+    // A real dir with no cut-off marker: a tree already built here (reused), or the repository's own (the lane's).
+    const building = !existsSync(target) || isLink(target) || gateTreeIncomplete(target);
+    if (building) {
+        // The dirs linkNodeModules may build: the root tree and each workspace package whose node_modules you have.
+        const nested = (o.workspaces?.length ? expandWorkspaceDirs(root, o.workspaces).dirs : []).filter((rel) => {
+            const yours = plainDirUnder(root, rel);
+            return yours !== null && existsSync(join(yours, 'node_modules'));
+        });
+        const rels = ['node_modules', ...nested.map((rel) => `${rel}/node_modules`)];
+        let ignored = false;
+        try {
+            ignored = o.ignored(rels);
+        }
+        catch { /* unknown: treated as not ignored */ }
+        if (!ignored) {
+            // A cut-off tree goes (its links unlinked, never followed); a link to yours stays as it was.
+            if (!isLink(target) && existsSync(target))
+                unlinkNodeModules(root, worktree);
+            o.warn?.(`omg factory run: git does not ignore ${rels.join(', ')} in ${worktree}, so the lane gets no copied node_modules (the lane commit refuses links in its worktree); add node_modules to .gitignore`);
+            return null;
+        }
+    }
+    let problem;
+    try {
+        problem = linkNodeModules(root, worktree, o.warn, o.workspaces ?? [], o.copy ?? true);
+    }
+    catch (error) {
+        return `the copied node_modules tree of the lane worktree ${worktree} could not be built (${error instanceof Error ? error.message : String(error)})`;
+    }
+    finally {
+        // The in-process record serves the gate checkouts; a lane tree is found by its marker (settleLaneNodeModules), and the
+        // lane worktree's own removal unlinks every link in it, so nothing keeps the entry for the lifetime of the engine.
+        nestedTrees.delete(worktree);
+    }
+    if (problem)
+        o.warn?.(`omg factory run: ${problem}; the lane's node_modules tree leaves it out`);
+    let st;
+    try {
+        st = lstatSync(target);
+    }
+    catch {
+        return null;
+    }
+    if (st.isSymbolicLink() || !st.isDirectory())
+        return `${target} is not a real directory after its preparation, so the lane would fail in the sandbox`;
+    return null;
+}
+/**
+ * Before the engine commits a lane worktree: a copied tree
+ * prepareLaneNodeModules built there (its marker with the completion line)
+ * must still be ignored by git as the lane left the worktree, since the
+ * lane may have changed .gitignore. `ignored(paths)` is the commit's own
+ * check (lane-commit.ts). A tree that is not is removed, every link
+ * unlinked first, never followed (unlinkNodeModules), so the commit neither
+ * refuses its links nor stages the copy. Returns what was removed, or null.
+ * A removal error throws (the commit then refuses the links that are left).
+ */
+export function settleLaneNodeModules(root, worktree, ignored) {
+    const target = join(worktree, 'node_modules');
+    try {
+        if (!lstatSync(target).isDirectory())
+            return null;
+    }
+    catch {
+        return null;
+    }
+    if (sameDir(target, join(root, 'node_modules')) || !gateTreeComplete(target))
+        return null;
+    const rels = ['node_modules', ...nestedTreeDirs(worktree).map((nm) => relative(worktree, nm).split(/[\\/]/).join('/'))];
+    let still = false;
+    try {
+        still = ignored(rels);
+    }
+    catch { /* unknown: treated as not ignored */ }
+    if (still)
+        return null;
+    unlinkNodeModules(root, worktree);
+    return `git no longer ignores ${rels.join(', ')} in ${worktree} (the lane changed the ignore rules), so the engine removed its copied node_modules before the lane commit`;
 }
 /** The nested trees linkNodeModules built in this process, per checkout (the marker may be gone; review-490 M3). */
 const nestedTrees = new Map();

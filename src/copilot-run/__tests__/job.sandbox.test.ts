@@ -373,6 +373,71 @@ describe('copilot_run sandbox permissions and env', () => {
   });
 });
 
+describe('copilot_run beforeSandboxedSession (the Windows OS sandbox)', () => {
+  const winEnv = { SystemRoot: 'C:\Windows', LOCALAPPDATA: 'C:\Users\real\AppData\Local' };
+
+  it('win32 with the sandbox on: called once inside start(), with the job worktree, before the runtime starts and before the job timeout runs', async () => {
+    const seen: { path: string; connections: number; elapsed: number }[] = [];
+    const m = manager('idle', 'supported', { platform: 'win32' }, winEnv);
+    const t0 = Date.now();
+    // A copy slower than the job's timeout: the timeout is armed only after it, so the job still completes.
+    const started = m.start({ prompt: 'implement', cwd: repo, timeoutMs: 400 }, { beforeSandboxedSession: (wt) => {
+      const until = Date.now() + 600;
+      while (Date.now() < until) { /* the synchronous copy */ }
+      seen.push({ path: wt, connections: calls.connections.length, elapsed: Date.now() - t0 });
+      return null;
+    } });
+    // Called synchronously, before start() returned (the caller's idle clock starts after it).
+    expect(seen).toHaveLength(1);
+    const done = await m.wait(started.jobId, 10_000);
+    expect(done.status).toBe('completed');
+    expect(seen).toEqual([{ path: (started.worktree as { path: string }).path, connections: 0, elapsed: seen[0].elapsed }]);
+    expect(calls.prompts).toEqual(['implement']);
+  });
+
+  it.each<[string, (wt: string) => string | null]>([
+    ['a problem', () => 'the copy is over its bounds'],
+    ['a throw', () => { throw new Error('the copy is over its bounds'); }],
+  ])('win32: %s fails the job with worktree-unprepared; no runtime or session is started', async (_what, hook) => {
+    const m = manager('idle', 'supported', { platform: 'win32' }, winEnv);
+    const done = await m.wait(m.start({ prompt: 'implement', cwd: repo }, { beforeSandboxedSession: hook }).jobId, 10_000);
+    expect(done.status).toBe('failed');
+    expect(done.error).toMatch(/^worktree-unprepared: the copy is over its bounds; no session was started/);
+    expect(calls.connections).toHaveLength(0);
+    expect(calls.sessions).toHaveLength(0);
+    expect(calls.prompts).toHaveLength(0);
+  });
+
+  it('not called off Windows, on Windows with the sandbox switched off (config or OMG_SANDBOX=off), nor for a review job', async () => {
+    let called = 0;
+    const hook = () => { called += 1; return 'unexpected'; };
+    const linux = manager('idle', 'supported', { platform: 'linux' });
+    expect((await linux.wait(linux.start({ prompt: 'implement', cwd: repo }, { beforeSandboxedSession: hook }).jobId, 10_000)).status).toBe('completed');
+    const off = manager('idle', 'supported', { platform: 'win32', sandboxSettings: settings({ enabled: false }) }, winEnv);
+    expect((await off.wait(off.start({ prompt: 'implement', cwd: repo }, { beforeSandboxedSession: hook }).jobId, 10_000)).status).toBe('completed');
+    const killed = manager('idle', 'supported', { platform: 'win32' }, { ...winEnv, OMG_SANDBOX: 'off' });
+    expect((await killed.wait(killed.start({ prompt: 'implement', cwd: repo }, { beforeSandboxedSession: hook }).jobId, 10_000)).status).toBe('completed');
+    const review = manager('idle', 'supported', { platform: 'win32' }, winEnv);
+    expect((await review.wait(review.start({ prompt: 'review', cwd: repo, profile: 'review' }, { beforeSandboxedSession: hook }).jobId, 10_000)).status).toBe('completed');
+    expect(called).toBe(0);
+  });
+
+  it('decided from the settings, before any host probe: a Windows host that then cannot sandbox still had the hook run', async () => {
+    let called = 0;
+    const m = manager('idle', 'unsupported', { platform: 'win32', sandboxSettings: settings({ writeUnsandboxed: 'detect-only' }) }, winEnv);
+    expect((await m.wait(m.start({ prompt: 'implement', cwd: repo }, { beforeSandboxedSession: () => { called += 1; return null; } }).jobId, 10_000)).status).toBe('completed');
+    expect(called).toBe(1);
+  });
+
+  it('sandboxIntent: the settings alone (enabled, kill switch, writeNetwork, Windows)', () => {
+    const at = (platform: NodeJS.Platform, over: Partial<SandboxSettings>, env: NodeJS.ProcessEnv = winEnv) => manager('idle', 'supported', { platform, sandboxSettings: settings(over) }, env).sandboxIntent({ root: repo, scope: 'factory' });
+    expect(at('win32', {})).toEqual({ sandboxed: true, writeNetwork: 'none', windowsCopy: true });
+    expect(at('linux', { writeNetwork: 'registry' })).toEqual({ sandboxed: true, writeNetwork: 'registry', windowsCopy: false });
+    expect(at('win32', { enabled: false })).toEqual({ sandboxed: false, writeNetwork: 'none', windowsCopy: false });
+    expect(at('win32', {}, { ...winEnv, OMG_SANDBOX: 'off' })).toEqual({ sandboxed: false, writeNetwork: 'none', windowsCopy: false });
+  });
+});
+
 describe('copilot_run git link files', () => {
   it('extensions.worktreeConfig: creates the job admin dir\'s config.worktree so the write policy keeps it read-only', async () => {
     gitIn(repo, 'config', 'extensions.worktreeConfig', 'true');

@@ -1,4 +1,4 @@
-import { appendFileSync, existsSync } from 'node:fs';
+import { appendFileSync, existsSync, lstatSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { readShipState } from '../../../ship/state.js';
@@ -62,6 +62,86 @@ describe('omg factory run engine (fake lanes, real git, scripted gh)', () => {
         await done;
         expect(lanes.started.every((s) => !('model' in s))).toBe(true);
         expect(readFactoryState(h.root, ISSUE).lanes.every((l) => !('model' in l))).toBe(true);
+    });
+    it('every write lane start carries beforeSandboxedSession (a review lane none): it copies your node_modules into the lane worktree (git-ignored, its .bin a link), the commit succeeds, yours untouched', async () => {
+        mkdirSync(join(h.root, 'node_modules', 'pkg'), { recursive: true });
+        mkdirSync(join(h.root, 'node_modules', '.bin'), { recursive: true });
+        writeFileSync(join(h.root, 'node_modules', 'pkg', 'index.js'), 'yours\n');
+        writeFileSync(join(h.root, 'node_modules', '.bin', 'pkg'), 'shim\n');
+        const seen = [];
+        const prepared = (ctx) => {
+            seen.push(ctx.input.beforeSandboxedSession(ctx.worktree));
+            const nm = join(ctx.worktree, 'node_modules');
+            expect(lstatSync(nm).isSymbolicLink()).toBe(false);
+            expect(lstatSync(join(nm, 'pkg')).isSymbolicLink()).toBe(false);
+            // A junction (Windows) or dir symlink in the ignored copy: the commit's link check skips the ignored tree.
+            expect(lstatSync(join(nm, '.bin')).isSymbolicLink()).toBe(true);
+            writeFileSync(join(nm, 'pkg', 'index.js'), 'the lane\'s copy\n');
+            return commitFile('a.ts')(ctx);
+        };
+        const { lanes, done } = run([prepared, review('approve')]);
+        expect((await done).gate?.name).toBe('merge');
+        expect(seen).toEqual([null]);
+        expect(lanes.started.map((s) => [s.profile ?? 'write', typeof s.beforeSandboxedSession])).toEqual([['write', 'function'], ['review', 'undefined']]);
+        expect(readFileSync(join(h.root, 'node_modules', 'pkg', 'index.js'), 'utf-8')).toBe('yours\n');
+        expect(readFileSync(join(h.root, 'node_modules', '.bin', 'pkg'), 'utf-8')).toBe('shim\n');
+        // The tree is not part of the lane's commit.
+        expect(gitIn(h.root, 'ls-tree', '-r', '--name-only', readFactoryState(h.root, ISSUE).head)).not.toContain('node_modules');
+    });
+    it('a lane that stops git ignoring node_modules: the engine removes its copy before the commit (link-safe), the commit has no node_modules and is not refused', async () => {
+        mkdirSync(join(h.root, 'node_modules', 'pkg'), { recursive: true });
+        mkdirSync(join(h.root, 'node_modules', '.bin'), { recursive: true });
+        writeFileSync(join(h.root, 'node_modules', 'pkg', 'index.js'), 'yours\n');
+        writeFileSync(join(h.root, 'node_modules', '.bin', 'pkg'), 'shim\n');
+        let tree = '';
+        const unignores = (ctx) => {
+            expect(ctx.input.beforeSandboxedSession(ctx.worktree)).toBeNull();
+            tree = join(ctx.worktree, 'node_modules');
+            expect(existsSync(join(tree, 'pkg', 'index.js'))).toBe(true);
+            writeFileSync(join(ctx.worktree, '.gitignore'), '.omg/\n');
+            return commitFile('a.ts')(ctx);
+        };
+        const warnings = [];
+        const { done } = run([unignores, review('approve')], { warn: (m) => warnings.push(m) });
+        expect((await done).gate?.name).toBe('merge');
+        expect(existsSync(tree)).toBe(false);
+        expect(warnings.join('\n')).toMatch(/git no longer ignores node_modules .* removed its copied node_modules before the lane commit/);
+        const files = gitIn(h.root, 'ls-tree', '-r', '--name-only', readFactoryState(h.root, ISSUE).head);
+        expect(files).not.toContain('node_modules');
+        expect(files).toContain('.gitignore');
+        expect(readFileSync(join(h.root, 'node_modules', 'pkg', 'index.js'), 'utf-8')).toBe('yours\n');
+        expect(readFileSync(join(h.root, 'node_modules', '.bin', 'pkg'), 'utf-8')).toBe('shim\n');
+    });
+    it('the write prompts follow the backend\'s sandbox reading: no network on Windows forbids installs and names the copied deps; the review prompt never', async () => {
+        const RULE = 'never run `npm install`, `npm ci` or any other package install';
+        const READY = 'The dependencies are already installed in node_modules.';
+        mkdirSync(join(h.root, 'node_modules'), { recursive: true });
+        const lanes = new FakeLanes(h.root, [commitFile('a.ts'), review('approve')]);
+        lanes.laneSandbox = () => ({ sandboxed: true, writeNetwork: 'none', windowsCopy: true });
+        await runFactoryEngine(opts(lanes));
+        const [copied, copiedReview] = lanes.started;
+        expect(copied.prompt).toContain(RULE);
+        expect(copied.prompt).toContain(READY);
+        expect(copiedReview.prompt).not.toContain('package install');
+    });
+    it('no network without a copy (not Windows): installs forbidden, nothing claimed about node_modules', async () => {
+        const RULE = 'never run `npm install`, `npm ci` or any other package install';
+        const lanes = new FakeLanes(h.root, [commitFile('a.ts'), review('approve')]);
+        lanes.laneSandbox = () => ({ sandboxed: true, writeNetwork: 'none', windowsCopy: false });
+        await runFactoryEngine(opts(lanes));
+        expect(lanes.started[0].prompt).toContain(RULE);
+        expect(lanes.started[0].prompt).not.toContain('already installed');
+    });
+    it('writeNetwork "registry": no rule in the write prompt', async () => {
+        const lanes = new FakeLanes(h.root, [commitFile('a.ts'), review('approve')]);
+        lanes.laneSandbox = () => ({ sandboxed: true, writeNetwork: 'registry', windowsCopy: true });
+        await runFactoryEngine(opts(lanes));
+        expect(lanes.started[0].prompt).not.toContain('package install');
+    });
+    it('a backend that cannot tell (no laneSandbox): no rule in any prompt', async () => {
+        const { lanes, done } = run([commitFile('a.ts'), review('approve')]);
+        await done;
+        expect(lanes.started.every((s) => !s.prompt.includes('package install'))).toBe(true);
     });
     it('a lane without commits gets one fresh retry, then implement-failed', async () => {
         const { lanes, done } = run([noCommit, noCommit]);
