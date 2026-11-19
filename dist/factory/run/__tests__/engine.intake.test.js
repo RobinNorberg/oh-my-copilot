@@ -34,6 +34,33 @@ describe('omg factory run engine (fake lanes, real git, scripted gh)', () => {
             expect((await done).gate?.name).toBe('secret-shaped-content');
             expect(lanes.started).toEqual([]);
         });
+        it('a key in the linked omg-plan file parks at plan before any lane, naming the kind and the file, never the value', async () => {
+            writeFileSync(join(h.root, 'docs', 'plan.md'), `# Plan\n\nUse ${key} for deploys.\n`);
+            gitIn(h.root, 'add', '.');
+            gitIn(h.root, 'commit', '-q', '-m', 'plan with a key');
+            gitIn(h.root, 'push', '-q', 'origin', 'dev');
+            h.gh.issue.body = 'see plan';
+            h.gh.issue.comments = [{ body: 'omg-plan: docs/plan.md', authorAssociation: 'MEMBER' }];
+            const { lanes, done } = run([commitFile('src/greet.ts', 'x\n'), review('approve')]);
+            const out = await done;
+            expect(out.gate?.name).toBe('secret-shaped-content');
+            expect(lanes.started).toEqual([]);
+            const parked = readFactoryState(h.root, ISSUE);
+            expect(parked.phase).toBe('plan');
+            expect(parked.plan).toBeUndefined();
+            expect(parked.gate?.reason).toContain('linked plan file docs/plan.md holds secret-shaped content (aws-access-key)');
+            expect(JSON.stringify(parked)).not.toContain(key);
+            expect(out.message ?? '').not.toContain(key);
+        });
+        it('--dry-run predicts the intake park, kinds only', async () => {
+            h.gh.issue.body = `Needs ${key}.\n\n## Acceptance criteria\n\n- greet() returns hi\n`;
+            const out = await run([], { dryRun: true }).done;
+            expect(out.exitCode).toBe(0);
+            expect(out.plan).toMatchObject({ next: 'awaiting-human', reason: 'secret-shaped-content' });
+            expect(out.message).toContain('(aws-access-key)');
+            expect(out.message).not.toContain(key);
+            expect(readFactoryState(h.root, ISSUE)).toBeNull();
+        });
     });
     describe('repository guide files in the implement prompt', () => {
         it('names only the guide files the base has, and none when it has none', async () => {

@@ -74698,6 +74698,9 @@ function dryLayoutNote(o, exec, local) {
     return `; but ${errText6(error62)}, so the run would park at awaiting-human: ${PRIVATE_STORE_GATE}`;
   }
 }
+function drySecretPark(noun, kinds, caps) {
+  return { exitCode: 0, phase: null, state: null, message: `dry run: the ${noun} text itself (title or body) holds secret-shaped content (${kinds.join(", ")}); the run would stop at awaiting-human: ${SECRET_SHAPES_GATE} before any lane`, plan: { next: "awaiting-human", reason: SECRET_SHAPES_GATE, ...caps } };
+}
 function dryRun(o) {
   const holder = busyHolder(o, engineRunKey(o));
   if (holder) return { exitCode: EXIT_BUSY, phase: null, state: null, busy: true, message: `dry run: ${holder}; a real run now would exit busy (${EXIT_BUSY}) without touching anything` };
@@ -74753,6 +74756,15 @@ function dryRun(o) {
     const branch2 = factoryBranch(key);
     const open4 = forge.reviews.findOpenPrForBranch(branch2);
     if (open4 !== void 0) return { exitCode: 0, phase: null, state: null, message: `dry run: open PR #${open4} already uses ${branch2}; the run would stop at awaiting-human: pr-exists`, plan: { next: "awaiting-human", reason: "pr-exists", ...caps } };
+    const itemBody = item.acceptance ? `${item.body.trim()}
+
+## Acceptance criteria
+
+${item.acceptance}
+` : item.body;
+    const itemKinds = secretShapeKinds(`${item.title}
+${itemBody}`);
+    if (itemKinds.length > 0) return drySecretPark(terms.item, itemKinds, caps);
     const link2 = findPlanLink(item.body, item.comments, item.authorTrusted);
     const source2 = link2 ? `omg-plan ${link2}` : item.acceptance ? terms.acceptance : hasAcceptanceCriteria(item.body) ? `${terms.body} (Acceptance criteria)` : void 0;
     let gateProblem;
@@ -74777,6 +74789,9 @@ function dryRun(o) {
   if (typeof v !== "object" || v === null) throw new FactoryStepError(`gh issue view ${o.issue} returned no JSON object`);
   const body = typeof v.body === "string" ? v.body : "";
   if (v.state !== "OPEN") return { exitCode: 0, phase: null, state: null, message: "dry run: the issue is closed; the run would be cancelled", plan: { next: "cancelled", ...caps } };
+  const issueKinds = secretShapeKinds(`${typeof v.title === "string" ? v.title : ""}
+${body}`);
+  if (issueKinds.length > 0) return drySecretPark("issue", issueKinds, caps);
   const link = findPlanLink(body, Array.isArray(v.comments) ? v.comments : [], issueAuthorTrusted(v));
   const source = link ? `omg-plan ${link}` : hasAcceptanceCriteria(body) ? "issue body (Acceptance criteria)" : void 0;
   const repoUrl = typeof v.url === "string" ? v.url.replace(/\/issues\/\d+$/, "") : "";
@@ -76035,7 +76050,7 @@ var init_engine = __esm({
         }
         if (this.o.allowSecretShapes) {
           if (existing?.gate?.name === SECRET_SHAPES_GATE && existing.pendingCommit?.secretFindings?.length) this.secretShapesAllowed = true;
-          else if (existing?.gate?.name === SECRET_SHAPES_GATE && existing.phase === "intake") this.o.warn?.(`omg factory run: --allow-secret-shapes is ignored: the run for ${this.what} is parked because its own text holds secret-shaped content; edit the item instead`);
+          else if (existing?.gate?.name === SECRET_SHAPES_GATE && (existing.phase === "intake" || existing.phase === "plan")) this.o.warn?.(`omg factory run: --allow-secret-shapes is ignored: the run for ${this.what} is parked because its own text or linked plan file holds secret-shaped content; edit the item or the plan file instead`);
           else this.o.warn?.(`omg factory run: --allow-secret-shapes is ignored: the run for ${this.what} is not parked at awaiting-human: ${SECRET_SHAPES_GATE}`);
         }
         const replaced = replaceObjectsProblem(this.exec, this.o.root);
@@ -76646,6 +76661,12 @@ ${body}`);
           const text3 = readBaseFile(this.exec, this.o.root, baseSha, s.planLink);
           if (text3 === null || !text3.trim()) {
             this.gate("needs-plan", `omg-plan ${s.planLink} is missing or empty on ${s.base} at ${baseSha.slice(0, 12)}`);
+            return;
+          }
+          const planKinds = secretShapeKinds(text3);
+          if (planKinds.length > 0) {
+            this.gate(SECRET_SHAPES_GATE, `the linked plan file ${s.planLink} holds secret-shaped content (${planKinds.join(", ")}), so no lane started: a lane would copy it into the change. Remove it from the plan file on ${s.base} (rotate the key or token if it is real) and rerun ${this.resume}, or ${cancelCommand(this.key)}`);
+            this.progress.emit("plan", "fail", "secret-shaped content in the linked plan file");
             return;
           }
           const blob = this.run(["rev-parse", "--verify", `${baseSha}:${s.planLink}`], "git", TRUSTED_READ_ENV).trim();

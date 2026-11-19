@@ -30,6 +30,8 @@ export declare class AdoModel {
     revConflicts: number;
     /** The recorded item's predecessor #40 (Dependency-Reverse): dropped (none), open, or open with its factory PR completed into dev. */
     predecessor: 'none' | 'open' | 'merged';
+    /** Replaces the work item's Acceptance Criteria field text when set. */
+    acceptance?: string;
     /** The run's branch (a ci-heal run pushes factory/heal-<sig8>). */
     branch: string;
     constructor(h: Harness);

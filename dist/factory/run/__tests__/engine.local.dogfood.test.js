@@ -276,4 +276,28 @@ describe('F39 + F40: --dry-run applies the pr-exists gate and probes the gate ex
         expect(w.gateRuns).toEqual([]);
     });
 });
+describe('a key in a local backlog item parks at intake before any lane', () => {
+    it('names the kind, never the value', async () => {
+        w = localWorld();
+        const key = `AKIA${'ABCDEFGHIJKLMNOP'}`;
+        writeFileSync(join(w.root, '.copilot', 'backlog', `${LOCAL_ISSUE}-add-greet.md`), `---
+title: Add greet()
+labels: [factory]
+---
+Use ${key}.
+
+## Acceptance
+- [ ] greet() returns hi
+`);
+        gitIn(w.root, 'add', '.');
+        gitIn(w.root, 'commit', '-q', '-m', 'item with a key');
+        const lanes = lanesFor(w, [greet(), review('approve')]);
+        const out = await runFactoryEngine(localOpts(w, lanes));
+        expect(out.gate?.name, out.message).toBe('secret-shaped-content');
+        expect(lanes.started).toEqual([]);
+        const parked = readFactoryState(w.root, LOCAL_ISSUE);
+        expect(parked.phase).toBe('intake');
+        expect(JSON.stringify(parked)).not.toContain(key);
+    }, MULTI_RUN_MS);
+});
 //# sourceMappingURL=engine.local.dogfood.test.js.map
