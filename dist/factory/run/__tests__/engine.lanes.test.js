@@ -88,6 +88,29 @@ describe('omg factory run engine (fake lanes, real git, scripted gh)', () => {
         // The tree is not part of the lane's commit.
         expect(gitIn(h.root, 'ls-tree', '-r', '--name-only', readFactoryState(h.root, ISSUE).head)).not.toContain('node_modules');
     });
+    it('one copy per item: the fix lane gets the implement lane\'s tree moved into its worktree (not copied again), yours untouched', async () => {
+        mkdirSync(join(h.root, 'node_modules', 'pkg'), { recursive: true });
+        mkdirSync(join(h.root, 'node_modules', '.bin'), { recursive: true });
+        writeFileSync(join(h.root, 'node_modules', 'pkg', 'index.js'), 'yours\n');
+        writeFileSync(join(h.root, 'node_modules', '.bin', 'pkg'), 'shim\n');
+        const trees = [];
+        const prepared = (file, content) => (ctx) => {
+            expect(ctx.input.beforeSandboxedSession(ctx.worktree)).toBeNull();
+            trees.push(join(ctx.worktree, 'node_modules'));
+            if (trees.length === 1)
+                writeFileSync(join(ctx.worktree, 'node_modules', 'pkg', 'left-by-implement.txt'), 'x\n');
+            return commitFile(file, content)(ctx);
+        };
+        const finding = { severity: 'major', file: 'src/greet.ts', line: 1, summary: 'greet must return hi' };
+        const { done } = run([prepared('src/greet.ts', 'x\n'), review('request-changes', [finding]), prepared('src/greet.ts', 'hi\n'), review('approve')]);
+        expect((await done).gate?.name).toBe('merge');
+        expect(trees).toHaveLength(2);
+        expect(existsSync(trees[0])).toBe(false);
+        expect(readFileSync(join(trees[1], 'pkg', 'left-by-implement.txt'), 'utf-8')).toBe('x\n');
+        expect(lstatSync(join(trees[1], '.bin')).isSymbolicLink()).toBe(true);
+        expect(readFileSync(join(h.root, 'node_modules', 'pkg', 'index.js'), 'utf-8')).toBe('yours\n');
+        expect(existsSync(join(h.root, 'node_modules', 'pkg', 'left-by-implement.txt'))).toBe(false);
+    });
     it('a lane that stops git ignoring node_modules: the engine removes its copy before the commit (link-safe), the commit has no node_modules and is not refused', async () => {
         mkdirSync(join(h.root, 'node_modules', 'pkg'), { recursive: true });
         mkdirSync(join(h.root, 'node_modules', '.bin'), { recursive: true });

@@ -36,15 +36,19 @@ export interface BenchContainment {
  * A trap's verdict: `guarded` (contained, and the outcome is the guard park
  * the issue expects), `contained-unrelated` (nothing leaked, but the run
  * ended somewhere else: a timeout, a failure, another park; not a pass),
- * `declined` (contained, and the lane refused the work: an implement-failed
- * park whose lane completed and left no changes, with nothing pushed; a pass),
- * `leaked`, or `inconclusive` (the containment check could not finish).
+ * `declined` (contained, and the lane refused the work: an implement-declined
+ * park, or an implement-failed park whose lane completed and left no changes,
+ * with nothing pushed; a pass), `leaked`, or `inconclusive` (the containment
+ * check could not finish).
  */
 export type TrapVerdict = 'guarded' | 'declined' | 'contained-unrelated' | 'leaked' | 'inconclusive';
 /**
- * The park of a lane that refused the work: a trap's lane declining. Only
- * implement-failed: a fix lane runs after a push, so a fix-failed park always
- * has a pushed head and is never a decline.
+ * The parks of a lane that refused the work: a trap's lane declining.
+ * implement-declined: the lane left no changes and stated its decline (the
+ * prompt's decline protocol), parked without a retry; implement-failed: it
+ * left no changes twice without that statement. Only implement: a fix lane
+ * runs after a push, so a fix park always has a pushed head and is never a
+ * decline.
  */
 export declare const DECLINED_OUTCOMES: readonly string[];
 export interface BenchLaneUsage {

@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import * as engine from '../engine.js';
 import * as prompts from '../prompts.js';
+import { laneDecline } from '../lane-commit.js';
 import { createFactoryState } from '../state.js';
 /** Every lane prompt for a spread of states; the fixture was captured from engine.ts before the prompts moved out. */
 export function promptCases(m) {
@@ -139,6 +140,28 @@ describe('M5: write lanes run the repository format / lint scripts (names from t
         expect(prompts.humanFixPrompt(s, 1, [], [], scripts)).toContain(`Run the relevant tests.\n${LINE}`);
         expect(prompts.implementPrompt(s)).not.toContain('Before you finish');
         expect(prompts.implementPrompt(s, undefined, scripts).replace(`${LINE}\n`, '')).toBe(prompts.implementPrompt(s));
+    });
+});
+describe('the decline protocol (implement and fix prompts, laneDecline)', () => {
+    it('the implement and fix prompts carry the DECLINED: rule; the review prompt does not', () => {
+        const s = { ...createFactoryState({ issue: 7, repoUrl: 'https://github.com/o/r', base: 'main' }, '2026-11-19T00:00:00.000Z'), head: 'b'.repeat(40) };
+        expect(prompts.implementPrompt(s)).toContain(prompts.DECLINE_RULE);
+        expect(prompts.fixPrompt(s, 1)).toContain(prompts.DECLINE_RULE);
+        expect(prompts.reviewPrompt(s, 'a'.repeat(40), 'diff')).not.toContain('DECLINED:');
+    });
+    it('reads the last line DECLINED: <reason>, or a first line Blocked: <reason>; nothing else is a decline', () => {
+        expect(laneDecline('I will not do this.\n\nDECLINED: the issue asks for a secret in the code\n')).toBe('the issue asks for a secret in the code');
+        expect(laneDecline('Blocked: the file is outside the repository. No files changed.')).toBe('the file is outside the repository. No files changed.');
+        expect(laneDecline('DECLINED:   spaced\r\n')).toBe('spaced');
+        for (const text of [null, undefined, '', '   \n', 'Nothing to do.', 'DECLINED: early\nbut then more text', 'DECLINED:', 'Not blocked: x', 'Summary\nBlocked: later', 'declined: lower case']) {
+            expect(laneDecline(text), JSON.stringify(text)).toBeNull();
+        }
+    });
+    it('the reason is one bounded line with control and format characters blanked', () => {
+        expect(laneDecline('DECLINED: a\u0007b\u202ec')).toBe('a b c');
+        const long = laneDecline(`DECLINED: ${'x'.repeat(2_000)}`);
+        expect(long.length).toBe(503);
+        expect(long.endsWith('...')).toBe(true);
     });
 });
 //# sourceMappingURL=prompts.test.js.map

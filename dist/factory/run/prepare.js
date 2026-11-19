@@ -11,7 +11,7 @@
  * (`git worktree add -B <branch> <path> <sha>`); ship's runPrepare then runs
  * in it with push off, and the engine pushes the result itself.
  */
-import { copyFileSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmdirSync, statfsSync, statSync, symlinkSync, unlinkSync, writeFileSync } from 'fs';
+import { copyFileSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmdirSync, statfsSync, statSync, symlinkSync, unlinkSync, writeFileSync } from 'fs';
 import { basename, join, posix, relative, win32 } from 'path';
 import { loadBaseKnownFlaky, loadTrustedShipConfig, userConfigLayers } from '../../ship/config.js';
 import { getBranchName, getWorktreePath } from '../../team/git-worktree.js';
@@ -221,6 +221,10 @@ export function linkNodeModules(root, checkout, warn, workspaces = [], copy = fa
  * refuses a worktree with a junction in it), so the lane runs as before.
  * Returns why the lane must not start (the copy over its bounds or the free
  * space, a foreign link), else null.
+ *
+ * `reuseFrom`: earlier lane worktrees of the same work item, most recent
+ * first; a complete tree there is moved here instead of a new copy
+ * (adoptLaneTree, with its checks and trust argument).
  */
 export function prepareLaneNodeModules(root, worktree, o) {
     const target = join(worktree, 'node_modules');
@@ -249,6 +253,9 @@ export function prepareLaneNodeModules(root, worktree, o) {
             o.warn?.(`omg factory run: git does not ignore ${rels.join(', ')} in ${worktree}, so the lane gets no copied node_modules (the lane commit refuses links in its worktree); add node_modules to .gitignore`);
             return null;
         }
+        // Only a root tree moves (a workspace layout's nested trees are copied as before), and only into an empty spot.
+        if (nested.length === 0 && !existsSync(target) && !isLink(target) && adoptLaneTree(root, worktree, o.reuseFrom ?? [], o.warn))
+            return null;
     }
     let problem;
     try {
@@ -274,6 +281,114 @@ export function prepareLaneNodeModules(root, worktree, o) {
     if (st.isSymbolicLink() || !st.isDirectory())
         return `${target} is not a real directory after its preparation, so the lane would fail in the sandbox`;
     return null;
+}
+/**
+ * One copied node_modules per work item instead of one per lane
+ * (prepareLaneNodeModules `reuseFrom`): the complete tree of an earlier,
+ * completed lane of the same run is MOVED (renamed, never hard-linked or
+ * linked) into the new lane's worktree, so the copy is paid once per item.
+ * `from`: the earlier lanes' worktrees, most recent first; the first one
+ * holding a complete tree is tried, and a failed rename (another volume, a
+ * file still open) builds a fresh copy as before.
+ *
+ * Trust: the moved tree was writable by the earlier lane, so a lane of the
+ * same item may find what the earlier one left in it (a changed package
+ * file). That is the same trust the item's lanes already share: the next
+ * lane starts from the earlier lane's committed code, runs in the same OS
+ * sandbox, and the gates and your checkout never use a lane's tree (the
+ * gates build their own copy from yours). What could reach beyond the
+ * sandbox is refused: the moved tree must hold only plain dirs and files
+ * plus links to exactly the same entry of your node_modules (the `.bin`
+ * link the build makes), checked by a walk that never follows a link; a
+ * link anywhere else (planted by the lane, or a build-time link into the
+ * old worktree that the move would leave dangling) fails it. Every
+ * top-level file of yours (`.package-lock.json`) must be byte-equal in the
+ * tree, so a tree an `npm install` changed, or yours changed since, is not
+ * reused. A tree that fails is removed (links unlinked, never followed) and
+ * a fresh copy is built. Never a link into your node_modules is followed or
+ * removed: the source is taken only when it is a real dir.
+ */
+function adoptLaneTree(root, worktree, from, warn) {
+    const target = join(worktree, 'node_modules');
+    for (const prev of from) {
+        const src = join(prev, 'node_modules');
+        if (sameDir(prev, worktree) || isLink(src) || !gateTreeComplete(src) || sameDir(src, join(root, 'node_modules')))
+            continue;
+        // A marker that names nested workspace trees: those stay with their worktree, so the tree is not taken.
+        try {
+            if (readFileSync(join(src, GATE_TREE_MARKER), 'utf-8').split('\n').some((l) => l !== '' && l !== GATE_TREE_COMPLETE))
+                return false;
+        }
+        catch {
+            return false;
+        }
+        try {
+            renameSync(src, target);
+        }
+        catch {
+            return false;
+        }
+        let problem;
+        try {
+            problem = treeMoved(target, worktree, '') ?? adoptedTreeProblem(root, target);
+        }
+        catch (error) {
+            problem = error instanceof Error ? error.message : String(error);
+        }
+        if (!problem)
+            return true;
+        warn?.(`omg factory run: the node_modules tree of the earlier lane worktree ${prev} is not reused (${problem}); a fresh copy is built`);
+        try {
+            if (lstatSync(target).isDirectory())
+                removeGateTree(target);
+        }
+        catch { /* the build below refuses what is left */ }
+        return false;
+    }
+    return false;
+}
+/** Why a moved lane tree must not be reused (adoptLaneTree), or null: a walk that never follows a link. */
+function adoptedTreeProblem(root, tree) {
+    const yours = join(root, 'node_modules');
+    for (const e of readdirSync(yours, { withFileTypes: true })) {
+        if (e.name === GATE_TREE_MARKER || !e.isFile())
+            continue;
+        const mine = join(yours, e.name);
+        if (statSync(mine).size > GATE_TREE_FILE_MAX_BYTES)
+            continue;
+        let theirs;
+        try {
+            if (!lstatSync(join(tree, e.name)).isFile())
+                return `node_modules/${e.name} is not a plain file`;
+            theirs = readFileSync(join(tree, e.name));
+        }
+        catch {
+            return `node_modules/${e.name} is missing`;
+        }
+        if (!theirs.equals(readFileSync(mine)))
+            return `node_modules/${e.name} differs from yours`;
+    }
+    const walk = (dir, rel) => {
+        for (const e of readdirSync(dir, { withFileTypes: true })) {
+            const p = join(dir, e.name);
+            const r = rel ? `${rel}/${e.name}` : e.name;
+            // A dir is entered only after its own lstat says it is a plain dir (a junction may be reported as a dir).
+            const st = e.isFile() ? e : lstatSync(p);
+            if (st.isSymbolicLink()) {
+                if (!sameDir(p, join(yours, ...r.split('/'))))
+                    return `node_modules/${r} is a link to somewhere other than the same entry of your node_modules`;
+            }
+            else if (st.isDirectory()) {
+                const inner = walk(p, r);
+                if (inner)
+                    return inner;
+            }
+            else if (!st.isFile())
+                return `node_modules/${r} is neither a file, a dir nor a link`;
+        }
+        return null;
+    };
+    return walk(tree, '');
 }
 /**
  * Before the engine commits a lane worktree: a copied tree

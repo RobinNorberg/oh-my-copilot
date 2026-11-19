@@ -11,6 +11,13 @@ export declare const MAX_REVIEW_DIFF_CHARS = 60000;
 export { oneLine };
 /** A backtick fence longer than any backtick run in `content`, so the content cannot close it. */
 export declare function fenceFor(content: string): string;
+/**
+ * The decline protocol of the implement and fix prompts: a lane that refuses
+ * the task on purpose says so in a fixed last line (laneDecline in
+ * lane-commit.ts reads it), so the engine parks without a fresh retry that
+ * would get the same prompt and decline again.
+ */
+export declare const DECLINE_RULE = "If you refuse this task on purpose, or cannot do it, make NO changes and end your final message with one line `DECLINED: <reason>`. The engine then stops for a human instead of running the same task again.";
 /** What the lane works for, in its prompt's first line. */
 export declare const subject: (s: FactoryRunState) => string;
 export declare const planLabel: (s: FactoryRunState) => string;

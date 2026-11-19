@@ -108,7 +108,7 @@ import { getGlobalOmcStatePath } from '../../utils/paths.js';
 import { isProcessAlive, isProcessIdentityLive, terminateOwnedProcessTree } from '../../platform/process-utils.js';
 import { isTerminalLaneState, LaneLostError } from './lane.js';
 import { jobRefProblem } from '../../copilot-run/job.js';
-import { CI_TREE_PATHS, commitLaneWork, conflictFixStart, LANE_PROTECTED_PATHS, laneCommitMessage, pathGlobMatches } from './lane-commit.js';
+import { CI_TREE_PATHS, commitLaneWork, conflictFixStart, LANE_DECLINED, LANE_PROTECTED_PATHS, laneCommitMessage, laneDecline, pathGlobMatches } from './lane-commit.js';
 import { proveLaneTreeGone } from './lane-procs.js';
 import { quarantineTamper, RELEASE_TAMPER_COMMAND, STILL_ACTIVE, tamperHoldMessage, tamperHoldPath, writeTamperHold } from './tamper-quarantine.js';
 import { currentBytes, defaultLedgerDir, EngineLedger, emptyHooksDir, userBaselineKey } from './ledger.js';
@@ -1250,7 +1250,13 @@ class FactoryEngine {
             const listed = new Set(out.split('\0').filter(Boolean).map((p) => p.replace(/\/$/, '')));
             return paths.every((p) => listed.has(p));
         };
-        return prepareLaneNodeModules(this.o.root, worktree, { workspaces: this.baseWorkspaces(), ...(this.o.warn ? { warn: this.o.warn } : {}), ignored });
+        // One copy per item: the tree of this run's latest completed lane moves here (prepare.ts adoptLaneTree, its trust argument).
+        // Only a completed lane's (its process tree is proven gone before its commit; a failed, stalled or lost one may still
+        // write), never the one a parked commit will commit again.
+        const reuseFrom = this.state.lanes
+            .filter((l) => l.worktree && l.status === 'completed' && l.id !== this.state.pendingCommit?.laneId && !samePath(l.worktree, worktree))
+            .map((l) => l.worktree).reverse();
+        return prepareLaneNodeModules(this.o.root, worktree, { workspaces: this.baseWorkspaces(), ...(this.o.warn ? { warn: this.o.warn } : {}), ignored, reuseFrom });
     }
     /**
      * Right before the lane commit: the copied tree prepareLaneTree built must
@@ -2595,7 +2601,7 @@ class FactoryEngine {
         const priv = this.privateRun();
         await this.commitWriteLane({
             laneId: lane.id, key, start, parents: [...parents], worktree: result.worktree, branch: priv ? null : result.branch, message: laneCommitMessage(title, result.finalText),
-        });
+        }, laneDecline(result.finalText));
     }
     /** --allow-secret-shapes answered this invocation's secret-shaped-content park (start()). */
     secretShapesAllowed = false;
@@ -2610,7 +2616,7 @@ class FactoryEngine {
      * goes on, a positively seen survivor parks lane-unconfirmed), then the
      * shared state is re-compared, then the commit.
      */
-    async commitWriteLane(p) {
+    async commitWriteLane(p, declined = null) {
         const lane = this.state.lanes.find((l) => l.id === p.laneId);
         if (!lane)
             throw new FactoryStepError(`the lane ${p.laneId} of the pending commit is not in the run state`);
@@ -2664,6 +2670,12 @@ class FactoryEngine {
                 return this.gate('protected-paths', `lane ${p.laneId}: ${commit.reason}; nothing was committed or pushed. Rerun ${this.resume} to run the step again (the lane must leave those paths alone), or stop with ${cancelCommand(this.key)}`);
             if (commit.refusal === 'gitlink' || commit.refusal === 'escaped')
                 return this.gate('sandbox-escaped', `${kind} lane ${p.laneId}: ${commit.reason}; nothing was committed or pushed`);
+            // A lane that left no changes and said it declined the work parks at once: its fresh retry would get the same
+            // prompt and decline again. The reason is the lane's own text, so only the park's local detail carries it.
+            // (Not kept in pendingCommit: a rerun of a parked pending commit that turns out empty gets the usual retry.)
+            if (commit.refusal === 'empty' && declined !== null) {
+                return this.gate(`${kind}-declined`, `lane ${p.laneId}: ${LANE_DECLINED}, so it was not retried; its stated reason is in the park detail (omg factory run status). Sharpen the plan or the ${this.state.kind === 'ci-heal' ? 'diagnosis' : 'issue'}, then rerun ${this.resume}, or stop with ${cancelCommand(this.key)}`, parkTail(declined));
+            }
             return this.laneFailed(p.key, kind, `lane ${p.laneId}: ${commit.reason}`);
         }
         // The engine's own commit moved the lane's branch and worktree HEAD: the new baseline of the recheck.

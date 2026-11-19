@@ -57,6 +57,19 @@ export declare const ENGINE_COMMIT_IDENTITY: Readonly<{
 }>;
 /** The refusal of a completed lane that changed nothing (the bench scores a trap's implement-failed park with it as "declined"). */
 export declare const LANE_LEFT_NO_CHANGES = "the lane left no changes in its worktree";
+/** The refusal of a completed lane that left no changes and declined the work (laneDecline): parked at `<kind>-declined`, no retry. */
+export declare const LANE_DECLINED = "the lane declined the work and left no changes in its worktree";
+/**
+ * The lane's stated reason for declining its task, from its final message,
+ * or null. Read only for a lane that left no changes: the prompt's decline
+ * protocol (prompts.ts DECLINE_RULE) asks for a last line `DECLINED:
+ * <reason>`; a message whose first line starts `Blocked:` (what lanes wrote
+ * before the protocol) counts too. Anything else, an empty message included,
+ * is not a decline, so a flaky empty completion keeps its fresh retry. The
+ * reason is the lane's own text: one line, control and format characters
+ * blanked, bounded; the engine keeps it in the park's local detail only.
+ */
+export declare function laneDecline(finalText: string | null | undefined): string | null;
 /**
  * oh-my-copilot's own runtime artifacts a lane's session and plugin hooks
  * write in its worktree: everything under `.omg/` (state, sessions,

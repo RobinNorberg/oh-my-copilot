@@ -30,6 +30,13 @@ const WRITE_LANE_GIT_RULES = [
     'Do NOT push, open a pull request, or change git config, hooks or refs.',
     'On Windows, call repo-local scripts as `.\\name` (`.\\gradlew`, `.\\build.bat`): a bare name does not search the worktree.',
 ];
+/**
+ * The decline protocol of the implement and fix prompts: a lane that refuses
+ * the task on purpose says so in a fixed last line (laneDecline in
+ * lane-commit.ts reads it), so the engine parks without a fresh retry that
+ * would get the same prompt and decline again.
+ */
+export const DECLINE_RULE = 'If you refuse this task on purpose, or cannot do it, make NO changes and end your final message with one line `DECLINED: <reason>`. The engine then stops for a human instead of running the same task again.';
 /** What the lane works for, in its prompt's first line. */
 export const subject = (s) => (s.kind === 'ci-heal'
     ? `the CI self-heal of failure signature ${s.heal?.sig8} on ${s.base}`
@@ -112,6 +119,7 @@ export function implementPrompt(s, team, scripts = [], lane = null) {
         ...noInstallRule(lane),
         ...WRITE_LANE_GIT_RULES,
         'Do not edit .github/, .copilot/, .omg/skills/, .omc/skills/, AGENTS.md or CLAUDE.md: the engine refuses to commit a change there.',
+        DECLINE_RULE,
         '',
         `## Plan (${planLabel(s)})`,
         '',
@@ -130,6 +138,7 @@ export function fixPrompt(s, round, scripts = [], lane = null) {
         FOREGROUND_WAIT_RULE,
         ...noInstallRule(lane),
         ...WRITE_LANE_GIT_RULES,
+        DECLINE_RULE,
         '',
         '## Review findings',
         '',
