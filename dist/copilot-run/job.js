@@ -943,6 +943,7 @@ export class CopilotRunManager {
             external,
             deniedPaths: [...(options.deniedPaths ?? [])],
             beforeHostGit: options.beforeHostGit ?? null,
+            beforeSandboxedSession: options.beforeSandboxedSession ?? null,
             pid: undefined,
             pidIdentity: null,
             startedAt: new Date().toISOString(),
@@ -1440,6 +1441,18 @@ export class CopilotRunManager {
             // The sandbox is decided before the session exists: a refused job creates none.
             const sandboxConfig = job.stopReason ? null : await sandbox.decide(client, loaded);
             job.sandbox = sandbox.state;
+            // The OS sandbox on Windows: the caller readies the worktree for it (a real node_modules) before any session exists.
+            if (sandboxConfig && deps.platform === 'win32' && job.worktree && job.beforeSandboxedSession && !job.stopReason) {
+                let unprepared;
+                try {
+                    unprepared = job.beforeSandboxedSession(job.worktree.path);
+                }
+                catch (err) {
+                    unprepared = errText(err);
+                }
+                if (unprepared)
+                    throw new Error(`worktree-unprepared: ${unprepared}; no session was started`);
+            }
             const refused = () => job.sandbox?.mode === 'refused' && sandboxConfig === null;
             if (!job.stopReason && !refused()) {
                 const atCreate = sandbox.atCreate(loaded, sandboxConfig);

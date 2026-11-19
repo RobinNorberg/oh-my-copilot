@@ -343,6 +343,40 @@ describe('copilot_run sandbox permissions and env', () => {
         await m.cancel(started.jobId);
     });
 });
+describe('copilot_run beforeSandboxedSession (the Windows OS sandbox)', () => {
+    const winEnv = { SystemRoot: 'C:\\Windows', LOCALAPPDATA: 'C:\\Users\\real\\AppData\\Local' };
+    it('win32 with a sandbox config: called once with the job worktree before the session is created', async () => {
+        const seen = [];
+        const m = manager('idle', 'supported', { platform: 'win32' }, winEnv);
+        const started = m.start({ prompt: 'implement', cwd: repo }, { beforeSandboxedSession: (wt) => { seen.push({ path: wt, sessions: calls.sessions.length }); return null; } });
+        const done = await m.wait(started.jobId, 10_000);
+        expect(done.status).toBe('completed');
+        expect(seen).toEqual([{ path: started.worktree.path, sessions: 0 }]);
+        expect(calls.prompts).toEqual(['implement']);
+    });
+    it.each([
+        ['a problem', () => 'the copy is over its bounds'],
+        ['a throw', () => { throw new Error('the copy is over its bounds'); }],
+    ])('win32: %s fails the job with worktree-unprepared and creates no session', async (_what, hook) => {
+        const m = manager('idle', 'supported', { platform: 'win32' }, winEnv);
+        const done = await m.wait(m.start({ prompt: 'implement', cwd: repo }, { beforeSandboxedSession: hook }).jobId, 10_000);
+        expect(done.status).toBe('failed');
+        expect(done.error).toMatch(/^worktree-unprepared: the copy is over its bounds; no session was started/);
+        expect(calls.sessions).toHaveLength(0);
+        expect(calls.prompts).toHaveLength(0);
+    });
+    it('not called off Windows, nor on Windows with the sandbox switched off or unsupported', async () => {
+        let called = 0;
+        const hook = () => { called += 1; return 'unexpected'; };
+        const linux = manager('idle', 'supported', { platform: 'linux' });
+        expect((await linux.wait(linux.start({ prompt: 'implement', cwd: repo }, { beforeSandboxedSession: hook }).jobId, 10_000)).status).toBe('completed');
+        const off = manager('idle', 'supported', { platform: 'win32', sandboxSettings: settings({ enabled: false }) }, winEnv);
+        expect((await off.wait(off.start({ prompt: 'implement', cwd: repo }, { beforeSandboxedSession: hook }).jobId, 10_000)).status).toBe('completed');
+        const unsupported = manager('idle', 'unsupported', { platform: 'win32', sandboxSettings: settings({ writeUnsandboxed: 'detect-only' }) }, winEnv);
+        expect((await unsupported.wait(unsupported.start({ prompt: 'implement', cwd: repo }, { beforeSandboxedSession: hook }).jobId, 10_000)).status).toBe('completed');
+        expect(called).toBe(0);
+    });
+});
 describe('copilot_run git link files', () => {
     it('extensions.worktreeConfig: creates the job admin dir\'s config.worktree so the write policy keeps it read-only', async () => {
         gitIn(repo, 'config', 'extensions.worktreeConfig', 'true');

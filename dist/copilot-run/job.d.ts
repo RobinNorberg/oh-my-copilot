@@ -128,6 +128,15 @@ export interface CopilotRunStartOptions {
      * fails the job as sandbox-escaped and no host git runs in it.
      */
     beforeHostGit?: () => string | null;
+    /**
+     * Called once the session's OS sandbox is decided on Windows (a config to
+     * apply), before the session exists, with the job's worktree: the caller
+     * makes it usable in that sandbox (omg factory run: a real copy of your
+     * node_modules, as the sandbox cannot open a package dir through a
+     * junction). A non-null problem, or a throw, fails the job and no session
+     * is created.
+     */
+    beforeSandboxedSession?: (worktree: string) => string | null;
 }
 /**
  * A credential-free session env, in place. Removed: GitHub tokens

@@ -13,7 +13,7 @@
  */
 
 import { copyFileSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmdirSync, statfsSync, statSync, symlinkSync, unlinkSync, writeFileSync } from 'fs';
-import { basename, join, posix, win32 } from 'path';
+import { basename, join, posix, relative, win32 } from 'path';
 import { loadBaseKnownFlaky, loadTrustedShipConfig, userConfigLayers, type KnownFlakyTest, type ShipConfig } from '../../ship/config.js';
 import type { Exec } from '../../ship/exec.js';
 import { getBranchName, getWorktreePath } from '../../team/git-worktree.js';
@@ -170,6 +170,50 @@ export function linkNodeModules(root: string, checkout: string, warn?: (message:
   }
   nestedTrees.set(checkout, built);
   return ws.problem;
+}
+
+/**
+ * A lane worktree's own node_modules for the OS sandbox on Windows
+ * (GATE_TREE_COPY_WHY: a package dir opened through a junction is denied,
+ * so a lane's `npm test` fails with "Access is denied"): linkNodeModules'
+ * copied tree in `worktree`, the same build the gates use, from your
+ * node_modules at `root` (only read). Once per worktree: a complete tree
+ * already there is reused, a cut-off one is built again. Your node_modules,
+ * and the target of any link, is never written or removed: an existing
+ * `<worktree>/node_modules` link is unlinked only when it resolves to yours
+ * (the link itself, never followed), and a link elsewhere refuses.
+ *
+ * `ignored(paths)`: whether git ignores every one of the tree paths
+ * (`node_modules`, `<pkg>/node_modules`) in the worktree. A tree git would
+ * list as untracked is removed again (the engine's lane commit refuses a
+ * worktree with a junction in it), so the lane runs as before. Returns why
+ * the lane must not start (the copy over its bounds or the free space, a
+ * foreign link), else null.
+ */
+export function prepareLaneNodeModules(root: string, worktree: string, o: { workspaces?: readonly string[]; warn?: (message: string) => void; ignored: (paths: string[]) => boolean; copy?: true | Partial<GateTreeCopyLimits> }): string | null {
+  const target = join(worktree, 'node_modules');
+  if (!existsSync(join(root, 'node_modules'))) return null;
+  if (isLink(target) && !sameDir(target, join(root, 'node_modules'))) return `${target} is a link the engine did not make, so the lane's node_modules is not prepared`;
+  let problem: string | null;
+  try {
+    problem = linkNodeModules(root, worktree, o.warn, o.workspaces ?? [], o.copy ?? true);
+  } catch (error) {
+    return `the copied node_modules tree of the lane worktree ${worktree} could not be built (${error instanceof Error ? error.message : String(error)})`;
+  }
+  if (problem) o.warn?.(`omg factory run: ${problem}; the lane's node_modules tree leaves it out`);
+  let st;
+  try { st = lstatSync(target); } catch { return null; }
+  if (st.isSymbolicLink() || !st.isDirectory()) return `${target} is not a real directory after its preparation, so the lane would fail in the sandbox`;
+  // Only the engine's own tree is checked against the ignore rules; a node_modules the repository tracks is the lane's.
+  if (!existsSync(join(target, GATE_TREE_MARKER))) return null;
+  const rels = ['node_modules', ...nestedTreeDirs(worktree).map((nm) => relative(worktree, nm).split(/[\\/]/).join('/'))];
+  let ignored = false;
+  try { ignored = o.ignored(rels); } catch { /* unknown: treated as not ignored */ }
+  if (!ignored) {
+    unlinkNodeModules(root, worktree);
+    o.warn?.(`omg factory run: git does not ignore ${rels.join(', ')} in ${worktree}, so the lane gets no copied node_modules (the lane commit refuses links in its worktree); add node_modules to .gitignore`);
+  }
+  return null;
 }
 
 /** The nested trees linkNodeModules built in this process, per checkout (the marker may be gone; review-490 M3). */

@@ -76,6 +76,12 @@ export interface LaneStartInput {
     deniedPaths?: string[];
     /** Private layout: privateRepoProblem, run right before the backend's host git reads the worktree after the session. */
     beforeHostGit?: () => string | null;
+    /**
+     * The local backend, the OS sandbox on Windows: readies the lane worktree
+     * before its session (prepare.ts prepareLaneNodeModules); a non-null problem
+     * fails the lane before any session starts.
+     */
+    beforeSandboxedSession?: (worktree: string) => string | null;
     /** Cloud backends only. */
     customAgent?: string;
     timeoutMs: number;

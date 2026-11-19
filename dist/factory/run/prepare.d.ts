@@ -72,6 +72,30 @@ export declare const GATE_TREE_FILE_MAX_BYTES: number;
  */
 export declare function linkNodeModules(root: string, checkout: string, warn?: (message: string) => void, workspaces?: readonly string[], copy?: boolean | Partial<GateTreeCopyLimits>): string | null;
 /**
+ * A lane worktree's own node_modules for the OS sandbox on Windows
+ * (GATE_TREE_COPY_WHY: a package dir opened through a junction is denied,
+ * so a lane's `npm test` fails with "Access is denied"): linkNodeModules'
+ * copied tree in `worktree`, the same build the gates use, from your
+ * node_modules at `root` (only read). Once per worktree: a complete tree
+ * already there is reused, a cut-off one is built again. Your node_modules,
+ * and the target of any link, is never written or removed: an existing
+ * `<worktree>/node_modules` link is unlinked only when it resolves to yours
+ * (the link itself, never followed), and a link elsewhere refuses.
+ *
+ * `ignored(paths)`: whether git ignores every one of the tree paths
+ * (`node_modules`, `<pkg>/node_modules`) in the worktree. A tree git would
+ * list as untracked is removed again (the engine's lane commit refuses a
+ * worktree with a junction in it), so the lane runs as before. Returns why
+ * the lane must not start (the copy over its bounds or the free space, a
+ * foreign link), else null.
+ */
+export declare function prepareLaneNodeModules(root: string, worktree: string, o: {
+    workspaces?: readonly string[];
+    warn?: (message: string) => void;
+    ignored: (paths: string[]) => boolean;
+    copy?: true | Partial<GateTreeCopyLimits>;
+}): string | null;
+/**
  * Why a gate tree may be built as copies: in the Copilot OS sandbox on
  * Windows (its low-integrity token) a directory junction whose target the
  * sandbox may only read cannot be opened as a whole with generic read access

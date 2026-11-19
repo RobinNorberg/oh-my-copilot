@@ -101,7 +101,7 @@ import { ghDependsOn, ghIssueComment, ghIssueJson, ghIssueView, ghViewItem, gith
 import { isSatisfied, type DependencyForge } from '../check/score.js';
 import { outcomePosts, postedBefore, type OutcomeEvent } from './outcome.js';
 import { forgePrStateReader, humanMergeCandidate, laneTrustProblem, markMergedByHuman } from './human-merged.js';
-import { checkoutBranch, checkoutPath, checkoutWorker, defaultGateConfigLoader, FACTORY_CHECKOUT_TEAM, GATE_CACHE_DIRS, GATE_TREE_COPY_WHY, GATE_TREE_MARKER, gateTreeHasLinks, linkNodeModules, trustedNestedRels, unlinkNodeModules, type GateConfig, type GateConfigLoader } from './prepare.js';
+import { checkoutBranch, checkoutPath, checkoutWorker, defaultGateConfigLoader, FACTORY_CHECKOUT_TEAM, GATE_CACHE_DIRS, GATE_TREE_COPY_WHY, GATE_TREE_MARKER, gateTreeHasLinks, linkNodeModules, prepareLaneNodeModules, trustedNestedRels, unlinkNodeModules, type GateConfig, type GateConfigLoader } from './prepare.js';
 import { baseWorkspacePatterns } from './workspace-tree.js';
 import {
   canTransition,
@@ -1505,6 +1505,21 @@ class FactoryEngine {
     }
     if (problem) this.o.warn?.(`omg factory run: ${problem}; a gate that fails in the sandbox parks at ${GATE_SANDBOX_INCOMPATIBLE_GATE}`);
     return null;
+  }
+
+  /**
+   * A lane worktree about to run in the OS sandbox on Windows gets a copy of
+   * your node_modules (prepareLaneNodeModules, the gates' copied tree:
+   * GATE_TREE_COPY_WHY), so the lane's tests open no junction. Its git
+   * ignore check is hardened host git in the worktree with its recorded links.
+   */
+  private prepareLaneTree(worktree: string): string | null {
+    const ignored = (paths: string[]): boolean => {
+      const out = runHostGit(worktree, [...worktreeGitDirArgs(worktree), '--no-optional-locks', 'ls-files', '-z', '--others', '--ignored', '--exclude-standard', '--directory', '--', ...paths], PRIVATE_GIT_TIMEOUT_MS);
+      const listed = new Set(out.split('\0').filter(Boolean).map((p) => p.replace(/\/$/, '')));
+      return paths.every((p) => listed.has(p));
+    };
+    return prepareLaneNodeModules(this.o.root, worktree, { workspaces: this.baseWorkspaces(), ...(this.o.warn ? { warn: this.o.warn } : {}), ignored });
   }
 
   /** The gate-sandbox-incompatible park of a copied tree linkGateTree could not build (`why`). */
@@ -5805,6 +5820,8 @@ class FactoryEngine {
         ...(profile === 'write' ? { engineCommits: true } : {}),
         // factory.run.laneModel / --model: every lane kind (implement, review, fix, ci-fix, conflict-fix) starts on it.
         ...(model ? { model } : {}),
+        // The OS sandbox on Windows denies opening a package dir through a junction: the lane gets a copied node_modules.
+        beforeSandboxedSession: (wt: string) => this.prepareLaneTree(wt),
         ...(priv && laneTree ? { worktree: { path: laneTree, commonGitDir: priv.repo.gitDir }, jobRoot: priv.layout.jobs, deniedPaths: priv.deniedFor(laneTree), beforeHostGit: () => priv.problem() } : {}),
       }));
     } catch (error) {

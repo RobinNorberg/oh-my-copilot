@@ -77,6 +77,12 @@ export interface LaneStartInput {
   deniedPaths?: string[];
   /** Private layout: privateRepoProblem, run right before the backend's host git reads the worktree after the session. */
   beforeHostGit?: () => string | null;
+  /**
+   * The local backend, the OS sandbox on Windows: readies the lane worktree
+   * before its session (prepare.ts prepareLaneNodeModules); a non-null problem
+   * fails the lane before any session starts.
+   */
+  beforeSandboxedSession?: (worktree: string) => string | null;
   /** Cloud backends only. */
   customAgent?: string;
   timeoutMs: number;
@@ -192,7 +198,8 @@ export class CopilotLaneBackend implements LaneBackend {
       },
       { allowLive: this.options.allowLive, disableStopContinuations: true, ledgerKey: `factory-lane:${input.laneId}`, ...(input.ledgerTag ? { ledgerTag: { kind: 'factory-lane' as const, ...input.ledgerTag } } : {}), sandboxScope: 'factory', ...(input.scrubCredentials ? { scrubCredentials: true } : {}), ...(input.engineCommits ? { hostCommits: true } : {}),
         ...(input.worktree ? { worktree: input.worktree } : {}), ...(input.jobRoot ? { jobRoot: input.jobRoot } : {}),
-        ...(input.deniedPaths ? { deniedPaths: input.deniedPaths } : {}), ...(input.beforeHostGit ? { beforeHostGit: input.beforeHostGit } : {}) },
+        ...(input.deniedPaths ? { deniedPaths: input.deniedPaths } : {}), ...(input.beforeHostGit ? { beforeHostGit: input.beforeHostGit } : {}),
+        ...(input.beforeSandboxedSession ? { beforeSandboxedSession: input.beforeSandboxedSession } : {}) },
     );
     return { remoteId: snap.jobId };
   }

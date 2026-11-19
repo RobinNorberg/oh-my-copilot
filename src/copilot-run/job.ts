@@ -215,6 +215,15 @@ export interface CopilotRunStartOptions {
    * fails the job as sandbox-escaped and no host git runs in it.
    */
   beforeHostGit?: () => string | null;
+  /**
+   * Called once the session's OS sandbox is decided on Windows (a config to
+   * apply), before the session exists, with the job's worktree: the caller
+   * makes it usable in that sandbox (omg factory run: a real copy of your
+   * node_modules, as the sandbox cannot open a package dir through a
+   * junction). A non-null problem, or a throw, fails the job and no session
+   * is created.
+   */
+  beforeSandboxedSession?: (worktree: string) => string | null;
 }
 
 /**
@@ -436,6 +445,8 @@ interface Job {
   /** CopilotRunStartOptions.deniedPaths / beforeHostGit. */
   deniedPaths: string[];
   beforeHostGit: (() => string | null) | null;
+  /** CopilotRunStartOptions.beforeSandboxedSession. */
+  beforeSandboxedSession: ((worktree: string) => string | null) | null;
   /** The runtime's pid once the client started (stopAll's kill fallback). */
   pid: number | undefined;
   /** The runtime's start identity once read (null: not read or unknown). */
@@ -1097,6 +1108,7 @@ export class CopilotRunManager {
       external,
       deniedPaths: [...(options.deniedPaths ?? [])],
       beforeHostGit: options.beforeHostGit ?? null,
+      beforeSandboxedSession: options.beforeSandboxedSession ?? null,
       pid: undefined,
       pidIdentity: null,
       startedAt: new Date().toISOString(),
@@ -1553,6 +1565,12 @@ export class CopilotRunManager {
       // The sandbox is decided before the session exists: a refused job creates none.
       const sandboxConfig = job.stopReason ? null : await sandbox.decide(client, loaded);
       job.sandbox = sandbox.state;
+      // The OS sandbox on Windows: the caller readies the worktree for it (a real node_modules) before any session exists.
+      if (sandboxConfig && deps.platform === 'win32' && job.worktree && job.beforeSandboxedSession && !job.stopReason) {
+        let unprepared: string | null;
+        try { unprepared = job.beforeSandboxedSession(job.worktree.path); } catch (err) { unprepared = errText(err); }
+        if (unprepared) throw new Error(`worktree-unprepared: ${unprepared}; no session was started`);
+      }
       const refused = () => job.sandbox?.mode === 'refused' && sandboxConfig === null;
       if (!job.stopReason && !refused()) {
         const atCreate = sandbox.atCreate(loaded, sandboxConfig);

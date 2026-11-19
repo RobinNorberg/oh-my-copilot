@@ -1,4 +1,4 @@
-import { appendFileSync, existsSync } from 'node:fs';
+import { appendFileSync, existsSync, lstatSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
@@ -70,6 +70,27 @@ describe('omg factory run engine (fake lanes, real git, scripted gh)', () => {
     await done;
     expect(lanes.started.every((s) => !('model' in s))).toBe(true);
     expect(readFactoryState(h.root, ISSUE)!.lanes.every((l) => !('model' in l))).toBe(true);
+  });
+
+  it('every lane start carries beforeSandboxedSession: it copies your node_modules into the lane worktree (git-ignored), yours untouched', async () => {
+    mkdirSync(join(h.root, 'node_modules', 'pkg'), { recursive: true });
+    writeFileSync(join(h.root, 'node_modules', 'pkg', 'index.js'), 'yours\n');
+    const seen: (string | null)[] = [];
+    const prepared: LaneScript = (ctx) => {
+      seen.push(ctx.input.beforeSandboxedSession!(ctx.worktree));
+      const nm = join(ctx.worktree, 'node_modules');
+      expect(lstatSync(nm).isSymbolicLink()).toBe(false);
+      expect(lstatSync(join(nm, 'pkg')).isSymbolicLink()).toBe(false);
+      writeFileSync(join(nm, 'pkg', 'index.js'), 'the lane\'s copy\n');
+      return commitFile('a.ts')(ctx);
+    };
+    const { lanes, done } = run([prepared, review('approve')]);
+    expect((await done).gate?.name).toBe('merge');
+    expect(seen).toEqual([null]);
+    expect(lanes.started.every((s) => typeof s.beforeSandboxedSession === 'function')).toBe(true);
+    expect(readFileSync(join(h.root, 'node_modules', 'pkg', 'index.js'), 'utf-8')).toBe('yours\n');
+    // The tree is not part of the lane's commit.
+    expect(gitIn(h.root, 'ls-tree', '-r', '--name-only', readFactoryState(h.root, ISSUE)!.head!)).not.toContain('node_modules');
   });
 
   it('a lane without commits gets one fresh retry, then implement-failed', async () => {
