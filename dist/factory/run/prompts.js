@@ -101,11 +101,18 @@ function noInstallRule(lane) {
         return [];
     return [`The sandbox has no network access: never run \`npm install\`, \`npm ci\` or any other package install.${lane.nodeModulesReady ? ' The dependencies are already installed in node_modules.' : ''} If a command fails because a dependency is missing, report it in your final message instead of installing it.`];
 }
-export function implementPrompt(s, team, scripts = [], lane = null) {
+/** The repository guide files the implement prompt names, when the lane's base has them. */
+export const REPO_GUIDE_FILES = ['AGENTS.md', 'CLAUDE.md', 'CONTRIBUTING.md'];
+/**
+ * `guides`: those of REPO_GUIDE_FILES the lane's base has (the engine reads the
+ * base tree). Only these are named: a lane told to read a missing file spends
+ * a tool call failing on it.
+ */
+export function implementPrompt(s, team, scripts = [], lane = null, guides = []) {
     return [
         `You are the implementer for ${subject(s)}`,
         '',
-        'Implement the change described below in this worktree, following the repository\'s standards (read its AGENTS.md / CLAUDE.md / CONTRIBUTING.md).',
+        `Implement the change described below in this worktree, following the repository's standards${guides.length > 0 ? ` (read its ${guides.join(' / ')})` : ''}.`,
         'Add or update tests for the change and run the relevant ones.',
         ...scriptsLine(scripts),
         FOREGROUND_WAIT_RULE,

@@ -45,7 +45,14 @@ export interface LaneEnvironment {
     /** The engine gives the worktree a copy of your node_modules before the session (Windows). */
     nodeModulesReady: boolean;
 }
-export declare function implementPrompt(s: FactoryRunState, team?: TeamContext, scripts?: readonly string[], lane?: LaneEnvironment | null): string;
+/** The repository guide files the implement prompt names, when the lane's base has them. */
+export declare const REPO_GUIDE_FILES: readonly string[];
+/**
+ * `guides`: those of REPO_GUIDE_FILES the lane's base has (the engine reads the
+ * base tree). Only these are named: a lane told to read a missing file spends
+ * a tool call failing on it.
+ */
+export declare function implementPrompt(s: FactoryRunState, team?: TeamContext, scripts?: readonly string[], lane?: LaneEnvironment | null, guides?: readonly string[]): string;
 export declare function fixPrompt(s: FactoryRunState, round: number, scripts?: readonly string[], lane?: LaneEnvironment | null): string;
 export declare const planSection: (s: FactoryRunState) => string[];
 /** The human review comments in one fix prompt are cut at this many characters in total. */

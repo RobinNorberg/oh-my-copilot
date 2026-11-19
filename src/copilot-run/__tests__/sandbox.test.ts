@@ -206,6 +206,32 @@ describe('buildSandboxConfig', () => {
     expect(buildSandboxConfig('review', ctx, host()).allowDevToolAccess).toBe(false);
   });
 
+  it('grants the runtime package cache read-only in both profiles once it exists, never read-write', () => {
+    const pkg = join(allowlistSessionEnv({}, ctx.jobHome).COPILOT_CACHE_HOME!, 'pkg');
+    const rg = join(pkg, 'win32-x64', '1.0.107', 'ripgrep', 'bin', 'win32-x64', 'rg.exe');
+    const variants = [ctx, { ...ctx, hostCommits: true }];
+    // Not unpacked yet: not named (the host may refuse a missing path).
+    for (const c of variants) {
+      for (const profile of ['review', 'write'] as const) expect(buildSandboxConfig(profile, c, host()).userPolicy.filesystem.readonlyPaths).not.toContain(pkg);
+    }
+    mkdirSync(dirname(rg), { recursive: true });
+    writeFileSync(rg, '');
+    try {
+      for (const c of variants) {
+        for (const profile of ['review', 'write'] as const) {
+          const { readonlyPaths, readwritePaths } = buildSandboxConfig(profile, c, host()).userPolicy.filesystem;
+          expect(readonlyPaths).toContain(pkg);
+          // The runtime loads code from it: no read-write grant covers the cache or the bundled ripgrep.
+          for (const p of readwritePaths) {
+            for (const target of [pkg, rg]) expect(target === p || target.startsWith(`${p}${sep}`), `${target} under ${p}`).toBe(false);
+          }
+        }
+      }
+    } finally {
+      rmSync(join(ctx.jobHome, '.cache'), { recursive: true, force: true });
+    }
+  });
+
   it('grants a CA bundle dir read-only in both profiles, never a root or a dir holding the real home', () => {
     const ca = join(root, 'certs');
     for (const profile of ['review', 'write'] as const) {
