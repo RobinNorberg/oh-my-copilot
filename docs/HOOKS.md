@@ -201,6 +201,17 @@ The dispatcher parses stdin once and passes the object through `normalizeHookPay
 
 Copilot has no model channel for a Stop that does not block. When the merged Stop output carries a `systemMessage` (the budget-guard 90% warning, for example) and no block, the dispatcher removes it and stores it in `$COPILOT_HOME/projects/.omg-pending-context/<sessionId>.json`. The next UserPromptSubmit of that session prepends it to its `additionalContext`, which Copilot injects (confirmed live on 1.0.91), and deletes the file. A blocking Stop gets the message appended to its block reason instead. The file is keyed by session id under the per-user config dir, like `context-guard-stop`'s retry guard, so a prompt pays no git probe for it. A subagent's Stop carries the child session id next to the parent's `transcript_path`; the child gets no later prompt, so nothing is stored for it. SessionEnd deletes pending files older than 24 hours.
 
+### Lane hook set
+
+Factory lanes (`omg factory run`, copilot_run `minimalHooks`) run a reduced hook set. The engine sets `OMC_LANE_HOOKS=minimal` in the lane runtime's env. The hook processes inherit it, and nothing in the lane's worktree can set or unset it. Under it the dispatcher runs only these events:
+
+| Event | Hooks | Why kept |
+|---|---|---|
+| PreToolUse | `pre-tool-enforcer.mjs`, `git-guardrails.mjs` | tool guards |
+| PermissionRequest | `permission-handler.mjs` | permission decisions |
+
+Every other event (SessionStart, UserPromptSubmit, PostToolUse, PostToolUseFailure, SubagentStart, SubagentStop, PreCompact, Stop, SessionEnd, Notification) reads stdin to its end and exits 0 with no output. No hook script, `run.cjs` or payload library loads, so the event costs only the node start (about 75 ms on Windows). Without the variable, or with any other value, every event runs as before.
+
 ## Hook Categories
 
 OMC hooks fall into four categories:
