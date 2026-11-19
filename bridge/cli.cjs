@@ -123892,6 +123892,7 @@ __export(job_exports, {
   CopilotRunManager: () => CopilotRunManager,
   DEFAULT_MAX_CREDITS: () => DEFAULT_MAX_CREDITS,
   DEFAULT_TIMEOUT_MS: () => DEFAULT_TIMEOUT_MS3,
+  LANE_HOOKS_MINIMAL: () => LANE_HOOKS_MINIMAL,
   MAX_PROMPT_CHARS: () => MAX_PROMPT_CHARS,
   MAX_RUNNING_JOBS: () => MAX_RUNNING_JOBS,
   MAX_TIMEOUT_MS: () => MAX_TIMEOUT_MS,
@@ -124233,7 +124234,7 @@ function defaultCopilotRunDeps(env2 = process.env) {
     killTree: (pid) => killProcessTree2(pid, import_node_child_process18.spawnSync)
   };
 }
-var import_node_child_process18, import_node_crypto20, import_node_fs33, import_node_os11, import_node_path38, DEFAULT_TIMEOUT_MS3, MAX_TIMEOUT_MS, DEFAULT_MAX_CREDITS, MAX_RUNNING_JOBS, MAX_PROMPT_CHARS, WORKTREE_TEAM, MCP_SERVER, START_TIMEOUT_MS2, RPC_TIMEOUT_MS2, ABORT_GRACE_MS2, SHUTDOWN_GRACE_MS2, STOP_TIMEOUT_MS2, SERVER_EXIT_GRACE_MS, GIT_TIMEOUT_MS4, DENIED_LOG_MAX, JOB_ID, MAX_START_REF_CHARS, STOP_CONTINUATION_SKIP_TOKEN, PROJECT_MEMORY_SKIP_TOKEN, CopilotRunError, REVIEW_SHELL_DENY_PATTERNS, IDENTITY_TIMEOUT_MS, sleep7, isTerminal, git2, lines, JOB_REF_PREFIX, PLAIN_REF, CopilotRunManager;
+var import_node_child_process18, import_node_crypto20, import_node_fs33, import_node_os11, import_node_path38, DEFAULT_TIMEOUT_MS3, MAX_TIMEOUT_MS, DEFAULT_MAX_CREDITS, MAX_RUNNING_JOBS, MAX_PROMPT_CHARS, WORKTREE_TEAM, MCP_SERVER, START_TIMEOUT_MS2, RPC_TIMEOUT_MS2, ABORT_GRACE_MS2, SHUTDOWN_GRACE_MS2, STOP_TIMEOUT_MS2, SERVER_EXIT_GRACE_MS, GIT_TIMEOUT_MS4, DENIED_LOG_MAX, JOB_ID, MAX_START_REF_CHARS, STOP_CONTINUATION_SKIP_TOKEN, PROJECT_MEMORY_SKIP_TOKEN, LANE_HOOKS_MINIMAL, CopilotRunError, REVIEW_SHELL_DENY_PATTERNS, IDENTITY_TIMEOUT_MS, sleep7, isTerminal, git2, lines, JOB_REF_PREFIX, PLAIN_REF, CopilotRunManager;
 var init_job = __esm({
   "src/copilot-run/job.ts"() {
     "use strict";
@@ -124284,6 +124285,7 @@ var init_job = __esm({
     MAX_START_REF_CHARS = 256;
     STOP_CONTINUATION_SKIP_TOKEN = "persistent-mode,workflow-drift-guard,code-simplifier";
     PROJECT_MEMORY_SKIP_TOKEN = "project-memory-session,project-memory-posttool";
+    LANE_HOOKS_MINIMAL = "minimal";
     CopilotRunError = class extends Error {
     };
     REVIEW_SHELL_DENY_PATTERNS = [
@@ -124539,6 +124541,7 @@ var init_job = __esm({
           startRef,
           disableStopContinuations: options.disableStopContinuations === true,
           scrubCredentials: options.scrubCredentials === true,
+          minimalHooks: options.minimalHooks === true,
           hostCommits: options.hostCommits === true,
           ledgerKey: options.ledgerKey ?? `copilot-run:${id}`,
           ledgerTag: options.ledgerTag ?? null,
@@ -124829,6 +124832,7 @@ var init_job = __esm({
         delete env2[COPILOT_RUN_ALLOW_ENV];
         const skipHooks = [...job.disableStopContinuations ? [STOP_CONTINUATION_SKIP_TOKEN] : [], ...job.hostCommits ? [PROJECT_MEMORY_SKIP_TOKEN] : []];
         if (skipHooks.length > 0) env2.OMC_SKIP_HOOKS = skipHooks.join(",");
+        if (job.minimalHooks) env2.OMC_LANE_HOOKS = LANE_HOOKS_MINIMAL;
         let scrubDir = null;
         if (job.scrubCredentials) {
           if (ident.loggedInUsers === void 0 && !gitHubToken) {
@@ -136779,6 +136783,7 @@ var init_lane = __esm({
           {
             allowLive: this.options.allowLive,
             disableStopContinuations: true,
+            minimalHooks: true,
             ledgerKey: `factory-lane:${input2.laneId}`,
             ...input2.ledgerTag ? { ledgerTag: { kind: "factory-lane", ...input2.ledgerTag } } : {},
             sandboxScope: "factory",

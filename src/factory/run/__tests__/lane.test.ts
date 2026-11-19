@@ -60,6 +60,8 @@ describe('CopilotLaneBackend', () => {
     const env = calls.connections[0].env!;
     expect(env.OMG_COPILOT_RUN_ALLOW).toBeUndefined();
     expect(env.OMC_SKIP_HOOKS).toBe(STOP_CONTINUATION_SKIP_TOKEN);
+    // Only the lane hook set runs (scripts/copilot/dispatch.cjs LANE_HOOK_EVENTS).
+    expect(env.OMC_LANE_HOOKS).toBe('minimal');
 
     // The spend is attributed to the lane, not to the job id.
     const { sessions } = readLedger(ledgerPath(repo));
@@ -102,7 +104,7 @@ describe('CopilotLaneBackend', () => {
     const { remoteId } = await lanes.start(input({ profile: 'review', model: 'gpt-test' }));
     const result = await lanes.wait(remoteId, 10_000);
     expect(started[0][0]).toMatchObject({ isolation: 'worktree', startRef: 'main', profile: 'review', model: 'gpt-test', timeoutMs: 60_000, maxCredits: 30 });
-    expect(started[0][1]).toEqual({ allowLive: true, disableStopContinuations: true, ledgerKey: 'factory-lane:implement-1', sandboxScope: 'factory' });
+    expect(started[0][1]).toEqual({ allowLive: true, disableStopContinuations: true, minimalHooks: true, ledgerKey: 'factory-lane:implement-1', sandboxScope: 'factory' });
     expect(result.sandbox?.mode).toBe('enforced');
     // The model the session ran on (copilot_run snapshot.model) reaches the lane result.
     expect(result.model).toBe('gpt-test');
