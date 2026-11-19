@@ -301,6 +301,51 @@ describe('copilot_run allowLive and session env', () => {
     expect(plain.OMC_LANE_HOOKS).toBeUndefined();
   });
 
+  it('minimalHooks: the lane session loads the lane plugin dir (only the kept hook events); other sessions load the plugin root', async () => {
+    const plugin = join(root, 'plugin');
+    mkdirSync(join(plugin, 'copilot'), { recursive: true });
+    writeFileSync(join(plugin, 'plugin.json'), JSON.stringify({ name: 'p', hooks: './copilot/hooks.json' }));
+    const entry = (event: string) => [{ type: 'command', exec: 'node', args: [event], env: { OMC_HOOK_EVENT: event } }];
+    writeFileSync(join(plugin, 'copilot', 'hooks.json'), JSON.stringify({ version: 1, hooks: Object.fromEntries(['PreToolUse', 'PermissionRequest', 'SessionStart', 'PostToolUse', 'Notification'].map((e) => [e, entry(e)])) }));
+    const seen: string[][] = [];
+    const deps = { ...fakeDeps(root, 'idle', calls, { OMG_COPILOT_RUN_ALLOW: '1' }), pluginRoot: () => plugin };
+    const inner = deps.loadSdk;
+    // What the runtime would read at createSession: the hooks file of each plugin dir.
+    deps.loadSdk = async () => {
+      const loaded = await inner();
+      const Client = loaded!.module.CopilotClient;
+      class Recording extends (Client as unknown as new (o: unknown) => { createSession(cfg: { pluginDirectories?: string[] }): Promise<unknown> }) {
+        async createSession(cfg: { pluginDirectories?: string[] }) {
+          for (const dir of cfg.pluginDirectories ?? []) seen.push(Object.keys((JSON.parse(readFileSync(join(dir, 'copilot', 'hooks.json'), 'utf8')) as { hooks: object }).hooks));
+          return super.createSession(cfg);
+        }
+      }
+      return { ...loaded!, module: { ...loaded!.module, CopilotClient: Recording as never } };
+    };
+    const m = new CopilotRunManager(deps);
+    const lane = await m.wait(m.start({ prompt: 'a', cwd: repo }, { minimalHooks: true }).jobId, 10_000);
+    await m.wait(m.start({ prompt: 'b', cwd: repo }).jobId, 10_000);
+    const [laneDirs, plainDirs] = calls.sessions.map((s) => s.pluginDirectories!);
+    expect(laneDirs).toHaveLength(1);
+    expect(laneDirs![0]).not.toBe(plugin);
+    expect(laneDirs![0]!.endsWith(join('home', 'lane-plugin'))).toBe(true);
+    expect(plainDirs).toEqual([plugin]);
+    expect(seen).toEqual([['PreToolUse', 'PermissionRequest'], ['PreToolUse', 'PermissionRequest', 'SessionStart', 'PostToolUse', 'Notification']]);
+    expect(lane.notes ?? []).not.toEqual(expect.arrayContaining([expect.stringContaining('lane hook registration')]));
+    // Removed with the session; the plugin is untouched.
+    expect(existsSync(laneDirs![0]!)).toBe(false);
+    expect(existsSync(join(plugin, 'copilot', 'hooks.json'))).toBe(true);
+  });
+
+  it('minimalHooks fails closed: a plugin the lane dir cannot be made from loads whole (every hook registered), with a note', async () => {
+    const m = manager('idle');
+    const done = await m.wait(m.start({ prompt: 'a', cwd: repo }, { minimalHooks: true }).jobId, 10_000);
+    expect(calls.sessions[0]!.pluginDirectories).toEqual(['/plugin']);
+    expect(done.notes).toEqual(expect.arrayContaining([expect.stringContaining('lane hook registration fell back to the full plugin hooks')]));
+    // The dispatcher fast path still applies.
+    expect(calls.connections[0]!.env!.OMC_LANE_HOOKS).toBe(LANE_HOOKS_MINIMAL);
+  });
+
   it('scrubCredentials: no GitHub tokens or other secrets, an empty gh config, no git credential helper; COPILOT_GITHUB_TOKEN still reaches the session', async () => {
     const secrets = {
       GH_TOKEN: 'ghp_x', GITHUB_TOKEN: 'ghs_x', GH_ENTERPRISE_TOKEN: 'e', GITHUB_ENTERPRISE_TOKEN: 'e', NPM_TOKEN: 'n', AWS_SECRET_ACCESS_KEY: 'a',

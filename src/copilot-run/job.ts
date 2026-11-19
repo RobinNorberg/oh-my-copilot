@@ -115,6 +115,7 @@ import {
   type SandboxScope,
   type SandboxSettings,
 } from './sandbox.js';
+import { LANE_PLUGIN_DIR, prepareLanePluginDir } from './lane-plugin.js';
 import { SessionSandboxController, sandboxBypassDenial } from './sandbox-session.js';
 import { errText, withTimeout } from './timeout.js';
 
@@ -1436,6 +1437,17 @@ export class CopilotRunManager {
       scrubLaneCredentials(env, scrubDir);
       env.GIT_CONFIG_GLOBAL = identityConfig;
     }
+    // The lane registers only the lane hook set (lane-plugin.ts), from a dir in the job home that is never
+    // lane-writable, made before the runtime starts. Any problem: the full plugin, whose dispatcher still skips the rest.
+    let sessionPluginRoot = pluginRoot;
+    if (job.minimalHooks) {
+      try {
+        sessionPluginRoot = prepareLanePluginDir(pluginRoot, join(job.home, LANE_PLUGIN_DIR));
+      } catch (err) {
+        job.notes.push(`lane hook registration fell back to the full plugin hooks: ${errText(err)}`);
+      }
+    }
+    const lanePluginRoot = sessionPluginRoot === pluginRoot ? undefined : sessionPluginRoot;
 
     const policy = {
       cwd: job.workCwd,
@@ -1468,6 +1480,7 @@ export class CopilotRunManager {
           commonGitDir: commonRaw ? resolve(commonRaw) : resolve(top, '.git'),
           ...(gitDirRaw ? { gitDir: resolve(gitDirRaw) } : {}),
           pluginRoot,
+          ...(lanePluginRoot ? { lanePluginRoot } : {}),
           jobHome: job.home,
           jobDir: job.jobDir,
           realHome,
@@ -1585,6 +1598,7 @@ export class CopilotRunManager {
       eventsFd = openAppendExclusive(job.eventsPath);
     } catch (err) {
       if (scrubDir) rmSync(scrubDir, { recursive: true, force: true });
+      if (lanePluginRoot) rmSync(lanePluginRoot, { recursive: true, force: true });
       job.error = `events log ${job.eventsPath}: ${errText(err)}`;
       return 'failed';
     }
@@ -1613,7 +1627,7 @@ export class CopilotRunManager {
         session = await withTimeout(client.createSession({
           onPermissionRequest,
           onEvent,
-          pluginDirectories: [pluginRoot],
+          pluginDirectories: [sessionPluginRoot],
           workingDirectory: job.workCwd,
           disabledMcpServers: ['github-mcp-server'],
           // The explicit Copilot credential over the session RPC, never in the env shell children inherit.
@@ -1680,6 +1694,8 @@ export class CopilotRunManager {
       eventsFd = null;
       if (fd !== null) closeSync(fd);
       if (scrubDir) rmSync(scrubDir, { recursive: true, force: true });
+      // The lane plugin dir holds links into the plugin: never left in a kept job home (rmSync removes a link, not its target).
+      if (lanePluginRoot) rmSync(lanePluginRoot, { recursive: true, force: true });
       // The final totals: a few retries if a hook holds the ledger lock.
       for (let i = 0; i < 10 && !this.recordBudget(job, 200); i++) await sleep(50);
       // The per-job COPILOT_HOME holds the session state and logs; kept when the job did not complete.

@@ -212,6 +212,17 @@ Factory lanes (`omg factory run`, copilot_run `minimalHooks`) run a reduced hook
 
 Every other event (SessionStart, UserPromptSubmit, PostToolUse, PostToolUseFailure, SubagentStart, SubagentStop, PreCompact, Stop, SessionEnd, Notification) reads stdin to its end and exits 0 with no output. No hook script, `run.cjs` or payload library loads, so the event costs only the node start (about 75 ms on Windows). Without the variable, or with any other value, every event runs as before.
 
+**Lane hook registration.** A skipped event still costs a process: the Copilot CLI spawns one for every event the plugin registers, about 0.6 to 1.0 s each under lane load. So a lane session also registers only the kept events. Before the lane runtime starts, the engine builds a lane plugin dir in the job home (`<job dir>/home/lane-plugin`, `src/copilot-run/lane-plugin.ts`) and the session loads it in place of the plugin root:
+
+- It mirrors the plugin root. Every directory is a link to the real one (a junction on Windows), and every top-level file is a copy. The manifest, skills, agents, commands and MCP config are therefore the shipped ones.
+- Only the hooks file that `plugin.json` names (`copilot/hooks.json`) is generated. It holds the shipped PreToolUse and PermissionRequest entries unchanged, plus `OMC_LANE_PLUGIN_MIRROR=1` in each entry's env.
+- The CLI sets `CLAUDE_PLUGIN_ROOT` to the lane dir. Under `OMC_LANE_PLUGIN_MIRROR=1`, the dispatcher sets `CLAUDE_PLUGIN_ROOT` back to its own plugin root. `run.cjs` then routes the kept guards as in the real plugin.
+- The lane cannot change it. The dir is outside the worktree and outside the lane-writable temp and profile dirs, and the OS sandbox grants it read-only in both profiles. The runtime's write tool approves only paths in the worktree and the job's temp dir. (An unsandboxed `detect-only` lane can write wherever your account can, the plugin root included, as before.)
+- It fails closed. If the dir cannot be built (no root `plugin.json`, no hooks file, a kept event missing, a path that leaves the plugin, a dir that already exists), the session loads the full plugin and the job records a note. The `OMC_LANE_HOOKS=minimal` fast path above still applies.
+- It is removed when the session ends, before the job home is kept or deleted. Removing it unlinks the links and never touches their targets.
+
+Other sessions load the plugin root as before. To see what the CLI registers for a plugin dir without starting a session, start the runtime with `--plugin-dir <dir>` and call the SDK's `rpc.hooks.discover()`. The plugin root lists 14 hook rows over 12 events; a lane plugin dir lists 3 (`preToolUse` ×2, `permissionRequest`).
+
 ## Hook Categories
 
 OMC hooks fall into four categories:
