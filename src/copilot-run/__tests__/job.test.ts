@@ -2,7 +2,7 @@ import { execFileSync, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   CopilotRunManager,
@@ -32,6 +32,19 @@ import {
 } from '../../team/git-worktree.js';
 import { copilotRunStartTool, setCopilotRunManagerForTests } from '../../tools/copilot-run-tools.js';
 import { SANDBOX_KILL_ENV } from '../sandbox.js';
+
+// A test sets this to make the lane plugin dir's removal throw (the teardown must still finish).
+const lanePluginFault = vi.hoisted(() => ({ removeThrows: false }));
+vi.mock('../lane-plugin.js', async (importOriginal) => {
+  const real = await importOriginal<typeof import('../lane-plugin.js')>();
+  return {
+    ...real,
+    removeLanePluginDir: (path: string) => {
+      if (lanePluginFault.removeThrows) throw new Error('EBUSY: injected');
+      real.removeLanePluginDir(path);
+    },
+  };
+});
 
 /** What host status reports for the stat-dirty CRLF file (no eol attribute applies there; trimmed). */
 const EOL_STATUS = 'M a.txt';
@@ -304,6 +317,9 @@ describe('copilot_run allowLive and session env', () => {
   it('minimalHooks: the lane session loads the lane plugin dir (only the kept hook events); other sessions load the plugin root', async () => {
     const plugin = join(root, 'plugin');
     mkdirSync(join(plugin, 'copilot'), { recursive: true });
+    // A linked subdir in the mirror: its removal must leave the target.
+    mkdirSync(join(plugin, 'skills', 'a'), { recursive: true });
+    writeFileSync(join(plugin, 'skills', 'a', 'SKILL.md'), 'skill');
     writeFileSync(join(plugin, 'plugin.json'), JSON.stringify({ name: 'p', hooks: './copilot/hooks.json' }));
     const entry = (event: string) => [{ type: 'command', exec: 'node', args: [event], env: { OMC_HOOK_EVENT: event } }];
     writeFileSync(join(plugin, 'copilot', 'hooks.json'), JSON.stringify({ version: 1, hooks: Object.fromEntries(['PreToolUse', 'PermissionRequest', 'SessionStart', 'PostToolUse', 'Notification'].map((e) => [e, entry(e)])) }));
@@ -335,6 +351,36 @@ describe('copilot_run allowLive and session env', () => {
     // Removed with the session; the plugin is untouched.
     expect(existsSync(laneDirs![0]!)).toBe(false);
     expect(existsSync(join(plugin, 'copilot', 'hooks.json'))).toBe(true);
+    expect(readFileSync(join(plugin, 'skills', 'a', 'SKILL.md'), 'utf8')).toBe('skill');
+  });
+
+  it('minimalHooks: a lane plugin dir removal that throws is a note; the job still returns its outcome and keeps its home', async () => {
+    const plugin = join(root, 'plugin');
+    mkdirSync(join(plugin, 'copilot'), { recursive: true });
+    mkdirSync(join(plugin, 'skills', 'a'), { recursive: true });
+    writeFileSync(join(plugin, 'skills', 'a', 'SKILL.md'), 'skill');
+    writeFileSync(join(plugin, 'plugin.json'), JSON.stringify({ name: 'p', hooks: './copilot/hooks.json' }));
+    const entry = (event: string) => [{ type: 'command', exec: 'node', args: [event] }];
+    writeFileSync(join(plugin, 'copilot', 'hooks.json'), JSON.stringify({ version: 1, hooks: { PreToolUse: entry('PreToolUse'), PermissionRequest: entry('PermissionRequest') } }));
+    const m = new CopilotRunManager({ ...fakeDeps(root, 'idle', calls, { OMG_COPILOT_RUN_ALLOW: '1' }), pluginRoot: () => plugin });
+    lanePluginFault.removeThrows = true;
+    let done;
+    try {
+      done = await m.wait(m.start({ prompt: 'a', cwd: repo }, { minimalHooks: true }).jobId, 10_000);
+    } finally {
+      lanePluginFault.removeThrows = false;
+    }
+    expect(done.status).toBe('completed');
+    expect(done.notes).toEqual(expect.arrayContaining([expect.stringContaining('was not removed (the next lane removes it): EBUSY: injected')]));
+    // The home with the mirror is kept (no recursive rm over it); the next lane sweeps the mirror.
+    const laneDir = calls.sessions[0]!.pluginDirectories![0]!;
+    expect(existsSync(laneDir)).toBe(true);
+    expect(readFileSync(join(plugin, 'skills', 'a', 'SKILL.md'), 'utf8')).toBe('skill');
+    // The next lane sweeps the finished job's mirror, link-safe.
+    const next = await m.wait(m.start({ prompt: 'b', cwd: repo }, { minimalHooks: true }).jobId, 10_000);
+    expect(next.status).toBe('completed');
+    expect(existsSync(laneDir)).toBe(false);
+    expect(readFileSync(join(plugin, 'skills', 'a', 'SKILL.md'), 'utf8')).toBe('skill');
   });
 
   it('minimalHooks fails closed: a plugin the lane dir cannot be made from loads whole (every hook registered), with a note', async () => {
