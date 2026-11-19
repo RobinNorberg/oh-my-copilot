@@ -30,6 +30,8 @@ export function promptCases(m) {
         warnings: [],
     };
     const decisionsOnly = { routes: [], decisions: { lines: ['- one'], truncated: false }, warnings: [] };
+    const noNetworkReady = { sandboxed: true, writeNetwork: 'none', nodeModulesReady: true };
+    const noNetwork = { ...noNetworkReady, nodeModulesReady: false };
     return {
         implementGh: m.implementPrompt(gh),
         implementLocal: m.implementPrompt(local),
@@ -61,6 +63,13 @@ export function promptCases(m) {
         implementTeamDecisionsOnly: m.implementPrompt(local, decisionsOnly),
         reviewTeam: m.reviewPrompt(gh, h, diff, undefined, team),
         reviewTeamStandards: m.reviewPrompt(local, h, diff, ['docs/standards/code.md'], decisionsOnly),
+        // The no-install rule: a sandboxed lane without network, with the copied node_modules (Windows) and without it.
+        implementNoNetworkReady: m.implementPrompt(gh, undefined, [], noNetworkReady),
+        implementNoNetwork: m.implementPrompt(gh, undefined, [], noNetwork),
+        fixNoNetworkReady: m.fixPrompt(findings, 1, [], noNetworkReady),
+        conflictNoNetwork: m.conflictFixPrompt(gh, ['x.ts'], noNetwork),
+        ciNoNetworkReady: m.ciFixPrompt(ciLocal, noNetworkReady),
+        humanFixNoNetworkReady: prompts.humanFixPrompt(local, 1, [], ['dana'], [], noNetworkReady),
     };
 }
 const fixture = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'prompts.snapshot.json'), 'utf8'));
@@ -73,6 +82,43 @@ describe('lane prompts are byte-identical to the pre-move engine output', () => 
     }
     it('covers every case', () => {
         expect(Object.keys(viaPrompts).sort()).toEqual(Object.keys(fixture).sort());
+    });
+});
+describe('the no-install rule follows the lane\'s sandbox settings', () => {
+    const s = { ...createFactoryState({ issue: 7, repoUrl: 'https://github.com/o/r', base: 'main' }, '2026-11-19T00:00:00.000Z'), head: 'b'.repeat(40), baseSha: 'c'.repeat(40) };
+    const RULE = 'never run `npm install`, `npm ci` or any other package install';
+    const READY = 'The dependencies are already installed in node_modules.';
+    const ready = { sandboxed: true, writeNetwork: 'none', nodeModulesReady: true };
+    const write = (lane) => [
+        prompts.implementPrompt(s, undefined, [], lane),
+        prompts.fixPrompt(s, 1, [], lane),
+        prompts.humanFixPrompt(s, 1, [], [], [], lane),
+        prompts.conflictFixPrompt(s, ['a.ts'], lane),
+        prompts.ciFixPrompt(s, lane),
+    ];
+    it('sandboxed, writeNetwork "none", node_modules copied: every write prompt forbids installs and says the deps are there', () => {
+        for (const p of write(ready)) {
+            expect(p).toContain(RULE);
+            expect(p).toContain(READY);
+            expect(p).toContain('report it in your final message instead of installing it');
+        }
+    });
+    it('sandboxed, writeNetwork "none", no copy (not Windows): installs forbidden, nothing claimed about node_modules', () => {
+        for (const p of write({ ...ready, nodeModulesReady: false })) {
+            expect(p).toContain(RULE);
+            expect(p).not.toContain(READY);
+        }
+    });
+    it('writeNetwork "registry", the sandbox off, or not known: no rule (each prompt is the one without it)', () => {
+        const plain = write(null);
+        for (const lane of [{ ...ready, writeNetwork: 'registry' }, { ...ready, sandboxed: false }, null]) {
+            expect(write(lane)).toEqual(plain);
+        }
+        for (const p of plain)
+            expect(p).not.toContain('package install');
+    });
+    it('the review prompt never carries it (its shell is read-only and it runs no package script)', () => {
+        expect(prompts.reviewPrompt(s, 'a'.repeat(40), 'diff')).not.toContain('package install');
     });
 });
 describe('M5: write lanes run the repository format / lint scripts (names from the base package.json)', () => {

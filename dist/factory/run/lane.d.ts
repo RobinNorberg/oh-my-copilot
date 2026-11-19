@@ -77,9 +77,10 @@ export interface LaneStartInput {
     /** Private layout: privateRepoProblem, run right before the backend's host git reads the worktree after the session. */
     beforeHostGit?: () => string | null;
     /**
-     * The local backend, the OS sandbox on Windows: readies the lane worktree
-     * before its session (prepare.ts prepareLaneNodeModules); a non-null problem
-     * fails the lane before any session starts.
+     * The local backend, a write lane in the OS sandbox on Windows: readies the
+     * lane worktree before its runtime starts (prepare.ts
+     * prepareLaneNodeModules); a non-null problem fails the lane before any
+     * session starts.
      */
     beforeSandboxedSession?: (worktree: string) => string | null;
     /** Cloud backends only. */
@@ -130,8 +131,17 @@ export interface LaneProcess {
     /** Start identity (pid-reuse guard, platform/process-utils.ts); null when it could not be read. */
     identity: string | null;
 }
+/** The OS sandbox a write lane will start in, from its settings (CopilotRunManager.sandboxIntent). */
+export interface LaneSandboxIntent {
+    sandboxed: boolean;
+    writeNetwork: 'none' | 'registry';
+    /** The Windows sandbox: beforeSandboxedSession runs. */
+    windowsCopy: boolean;
+}
 export interface LaneBackend {
     readonly kind: LaneBackendKind;
+    /** The sandbox a write lane in `root` will start in (the engine's prompts say what it allows); absent or null: not known. */
+    laneSandbox?(root: string): LaneSandboxIntent | null;
     start(input: LaneStartInput): Promise<{
         remoteId: string;
     }>;
@@ -153,7 +163,7 @@ export declare class LaneLostError extends Error {
 }
 export declare const TERMINAL_LANE_STATES: readonly LaneState[];
 export declare const isTerminalLaneState: (state: LaneState) => boolean;
-export type LaneJobManager = Pick<CopilotRunManager, 'start' | 'status' | 'wait' | 'cancel'>;
+export type LaneJobManager = Pick<CopilotRunManager, 'start' | 'status' | 'wait' | 'cancel'> & Partial<Pick<CopilotRunManager, 'sandboxIntent'>>;
 export interface CopilotLaneBackendOptions {
     /**
      * The caller's explicit opt-in to live, billed sessions (`omg factory run`
@@ -167,6 +177,7 @@ export declare class CopilotLaneBackend implements LaneBackend {
     private readonly options;
     readonly kind: "local-sdk";
     constructor(manager: LaneJobManager, options: CopilotLaneBackendOptions);
+    laneSandbox(root: string): LaneSandboxIntent | null;
     start(input: LaneStartInput): Promise<{
         remoteId: string;
     }>;

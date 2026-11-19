@@ -666,6 +666,20 @@ export class CopilotRunManager {
     constructor(deps) {
         this.deps = deps;
     }
+    /**
+     * The OS sandbox a job in `root` gets from its settings alone, before any
+     * host probe: `sandboxed` when sandbox.enabled is on and OMG_SANDBOX is not
+     * "off" (a host that then cannot sandbox refuses the session, or runs it
+     * detect-only), with its writeNetwork; `windowsCopy` when that sandbox is
+     * the Windows one (beforeSandboxedSession runs). A settings object, or the
+     * repository root to load the settings of `scope` from (a malformed block
+     * throws, as start() refuses it).
+     */
+    sandboxIntent(from) {
+        const settings = 'enabled' in from ? from : (this.deps.sandboxSettings ?? loadSandboxSettings)(from.root, from.scope).settings;
+        const sandboxed = settings.enabled && this.deps.env[SANDBOX_KILL_ENV] !== 'off';
+        return { sandboxed, writeNetwork: settings.writeNetwork, windowsCopy: sandboxed && this.deps.platform === 'win32' };
+    }
     /** Validate, ask the budget governor, prepare the worktree, and start the session in the background. */
     start(input, options = {}) {
         if (options.allowLive !== true && this.deps.env[COPILOT_RUN_ALLOW_ENV] !== '1') {
@@ -943,7 +957,7 @@ export class CopilotRunManager {
             external,
             deniedPaths: [...(options.deniedPaths ?? [])],
             beforeHostGit: options.beforeHostGit ?? null,
-            beforeSandboxedSession: options.beforeSandboxedSession ?? null,
+            unprepared: null,
             pid: undefined,
             pidIdentity: null,
             startedAt: new Date().toISOString(),
@@ -966,6 +980,17 @@ export class CopilotRunManager {
             done: Promise.resolve(),
         };
         this.jobs.set(id, job);
+        // The OS sandbox on Windows (a write job): the caller readies the worktree now, synchronously, so nothing can stop
+        // the job mid-way and neither the job's timeout below nor the caller's idle clock (it starts once start() returns) runs.
+        const intent = this.sandboxIntent(sandboxSettings);
+        if (options.beforeSandboxedSession && worktree && profile !== 'review' && intent.windowsCopy) {
+            try {
+                job.unprepared = options.beforeSandboxedSession(worktree.path);
+            }
+            catch (err) {
+                job.unprepared = errText(err);
+            }
+        }
         const timer = setTimeout(() => job.requestStop('timeout'), timeoutMs);
         timer.unref?.();
         // The status turns terminal only after the teardown and the change summary.
@@ -1204,6 +1229,10 @@ export class CopilotRunManager {
     async run(job) {
         const { deps } = this;
         mkdirSync(job.home, { recursive: true });
+        if (job.unprepared) {
+            job.error = `worktree-unprepared: ${job.unprepared}; no session was started`;
+            return 'failed';
+        }
         // A cassette that cannot be applied throws (withCassette): report it, never fall back to a plain client.
         let loadError;
         const loaded = await deps.loadSdk().catch((err) => { loadError = `loading @github/copilot-sdk failed: ${errText(err)}`; return null; });
@@ -1441,18 +1470,6 @@ export class CopilotRunManager {
             // The sandbox is decided before the session exists: a refused job creates none.
             const sandboxConfig = job.stopReason ? null : await sandbox.decide(client, loaded);
             job.sandbox = sandbox.state;
-            // The OS sandbox on Windows: the caller readies the worktree for it (a real node_modules) before any session exists.
-            if (sandboxConfig && deps.platform === 'win32' && job.worktree && job.beforeSandboxedSession && !job.stopReason) {
-                let unprepared;
-                try {
-                    unprepared = job.beforeSandboxedSession(job.worktree.path);
-                }
-                catch (err) {
-                    unprepared = errText(err);
-                }
-                if (unprepared)
-                    throw new Error(`worktree-unprepared: ${unprepared}; no session was started`);
-            }
             const refused = () => job.sandbox?.mode === 'refused' && sandboxConfig === null;
             if (!job.stopReason && !refused()) {
                 const atCreate = sandbox.atCreate(loaded, sandboxConfig);

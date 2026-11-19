@@ -42,6 +42,9 @@ export class CopilotLaneBackend {
         this.manager = manager;
         this.options = options;
     }
+    laneSandbox(root) {
+        return this.manager.sandboxIntent?.({ root, scope: 'factory' }) ?? null;
+    }
     async start(input) {
         const snap = this.manager.start({
             prompt: input.prompt,

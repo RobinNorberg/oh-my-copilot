@@ -89,7 +89,7 @@ import { ghDependsOn, ghIssueComment, ghIssueJson, ghIssueView, ghViewItem, gith
 import { isSatisfied } from '../check/score.js';
 import { outcomePosts, postedBefore } from './outcome.js';
 import { forgePrStateReader, humanMergeCandidate, laneTrustProblem, markMergedByHuman } from './human-merged.js';
-import { checkoutBranch, checkoutPath, checkoutWorker, defaultGateConfigLoader, FACTORY_CHECKOUT_TEAM, GATE_CACHE_DIRS, GATE_TREE_COPY_WHY, GATE_TREE_MARKER, gateTreeHasLinks, linkNodeModules, prepareLaneNodeModules, trustedNestedRels, unlinkNodeModules } from './prepare.js';
+import { checkoutBranch, checkoutPath, checkoutWorker, defaultGateConfigLoader, FACTORY_CHECKOUT_TEAM, GATE_CACHE_DIRS, GATE_TREE_COPY_WHY, GATE_TREE_MARKER, gateTreeHasLinks, linkNodeModules, prepareLaneNodeModules, settleLaneNodeModules, trustedNestedRels, unlinkNodeModules } from './prepare.js';
 import { baseWorkspacePatterns } from './workspace-tree.js';
 import { canTransition, createShipState, transition, latestVerdict, parseShipState, recordVerdict, shipStatePath, updateShipState, verifyShipIntegrity, } from '../../ship/state.js';
 import { ghReviewFeedback } from '../../forge/github/reviews.js';
@@ -1237,18 +1237,60 @@ class FactoryEngine {
         return null;
     }
     /**
-     * A lane worktree about to run in the OS sandbox on Windows gets a copy of
-     * your node_modules (prepareLaneNodeModules, the gates' copied tree:
-     * GATE_TREE_COPY_WHY), so the lane's tests open no junction. Its git
-     * ignore check is hardened host git in the worktree with its recorded links.
+     * A write lane worktree about to run in the OS sandbox on Windows gets a
+     * copy of your node_modules (prepareLaneNodeModules, the gates' copied
+     * tree: GATE_TREE_COPY_WHY), so the lane's tests open no junction. Its git
+     * ignore check runs before anything is copied (the dirs need not exist):
+     * hardened host git `check-ignore --no-index` in the worktree with its
+     * recorded links (its exit 1, none ignored, throws: not ignored).
      */
     prepareLaneTree(worktree) {
+        const ignored = (paths) => {
+            const out = runHostGit(worktree, [...worktreeGitDirArgs(worktree), '--no-optional-locks', 'check-ignore', '--no-index', '-z', '--stdin'], PRIVATE_GIT_TIMEOUT_MS, process.env, paths.map((p) => `${p}/\0`).join(''));
+            const listed = new Set(out.split('\0').filter(Boolean).map((p) => p.replace(/\/$/, '')));
+            return paths.every((p) => listed.has(p));
+        };
+        return prepareLaneNodeModules(this.o.root, worktree, { workspaces: this.baseWorkspaces(), ...(this.o.warn ? { warn: this.o.warn } : {}), ignored });
+    }
+    /**
+     * Right before the lane commit: the copied tree prepareLaneTree built must
+     * still be ignored as the lane left its .gitignore (settleLaneNodeModules),
+     * by the commit's own check (`ls-files --others --ignored`, lane-commit.ts).
+     * A removal error only warns: the commit then refuses the links left.
+     */
+    settleLaneTree(worktree) {
         const ignored = (paths) => {
             const out = runHostGit(worktree, [...worktreeGitDirArgs(worktree), '--no-optional-locks', 'ls-files', '-z', '--others', '--ignored', '--exclude-standard', '--directory', '--', ...paths], PRIVATE_GIT_TIMEOUT_MS);
             const listed = new Set(out.split('\0').filter(Boolean).map((p) => p.replace(/\/$/, '')));
             return paths.every((p) => listed.has(p));
         };
-        return prepareLaneNodeModules(this.o.root, worktree, { workspaces: this.baseWorkspaces(), ...(this.o.warn ? { warn: this.o.warn } : {}), ignored });
+        try {
+            const removed = settleLaneNodeModules(this.o.root, worktree, ignored);
+            if (removed)
+                this.o.warn?.(`omg factory run: ${removed}`);
+        }
+        catch (error) {
+            this.o.warn?.(`omg factory run: the copied node_modules of ${worktree} is no longer ignored by git and could not be removed (${errText(error)}); the lane commit refuses its links`);
+        }
+    }
+    /**
+     * What a write lane's prompt may say about its sandbox: the lane backend's
+     * reading of the sandbox settings (null: a backend that cannot tell, such
+     * as a cloud agent, or unreadable settings: the prompt says nothing). The
+     * dependencies are named ready only where prepareLaneTree copies your
+     * node_modules into the worktree.
+     */
+    laneEnvironment() {
+        let intent;
+        try {
+            intent = this.o.lanes.laneSandbox?.(this.o.root) ?? null;
+        }
+        catch {
+            intent = null;
+        }
+        if (!intent)
+            return null;
+        return { sandboxed: intent.sandboxed, writeNetwork: intent.writeNetwork, nodeModulesReady: intent.windowsCopy && existsSync(join(this.o.root, 'node_modules')) };
     }
     /** The gate-sandbox-incompatible park of a copied tree linkGateTree could not build (`why`). */
     treeCopyPark(why) {
@@ -2502,7 +2544,7 @@ class FactoryEngine {
         }
         if (undecided && this.layoutChoice === 'private' && !(await this.setupPrivate(baseSha)))
             return;
-        const out = await this.runLane('implement', baseSha, 'write', implementPrompt(this.state, this.teamContext(this.readAt(baseSha), pathsInText(this.state.plan?.text ?? '')), this.laneScripts()), 'implement');
+        const out = await this.runLane('implement', baseSha, 'write', implementPrompt(this.state, this.teamContext(this.readAt(baseSha), pathsInText(this.state.plan?.text ?? '')), this.laneScripts(), this.laneEnvironment()), 'implement');
         if (out.kind === 'done')
             await this.acceptWriteLane(out, 'implement', baseSha);
     }
@@ -2514,7 +2556,7 @@ class FactoryEngine {
         if (this.isHumanRound(head, ship))
             return this.humanFix(this.state.pr, head, ship);
         const round = ship?.fixRounds ?? 0;
-        const out = await this.runLane('fix', head, 'write', fixPrompt(this.state, round, this.laneScripts()), `fix@${round}`);
+        const out = await this.runLane('fix', head, 'write', fixPrompt(this.state, round, this.laneScripts(), this.laneEnvironment()), `fix@${round}`);
         if (out.kind === 'done')
             await this.acceptWriteLane(out, `fix@${round}`, head);
     }
@@ -2604,6 +2646,8 @@ class FactoryEngine {
         const secretAllowPaths = this.secretAllowPaths();
         // The private repository is checked right before the engine's git runs there (review-481 g).
         priv?.assert();
+        // A lane that changed .gitignore can leave the engine's copied node_modules unignored: removed, not committed or blamed.
+        this.settleLaneTree(p.worktree);
         const commit = commitLaneWork({
             worktree: p.worktree, start: p.start, parents: p.parents, repoRoot: priv ? priv.repo.repo : this.o.root, branch: priv ? null : p.branch, message: p.message, extraProtected,
             secretAck: (p.secretAck ?? []), secretAllowPaths,
@@ -4407,7 +4451,7 @@ class FactoryEngine {
             throw new FactoryStepError(`the engine merge for the conflict-fix lane failed: ${errText(error)}`);
         }
         const conflicted = merged.conflicted.length > 0 ? merged.conflicted : this.state.conflicts ?? [];
-        const out = await this.runLane('conflict-fix', merged.sha, 'write', conflictFixPrompt(this.state, conflicted), key);
+        const out = await this.runLane('conflict-fix', merged.sha, 'write', conflictFixPrompt(this.state, conflicted, this.laneEnvironment()), key);
         if (out.kind === 'done')
             await this.acceptWriteLane(out, key, merged.sha, [head, baseSha]);
     }
@@ -4416,7 +4460,7 @@ class FactoryEngine {
         if (!f || !HEX40.test(f.startSha))
             throw new FactoryStepError('ci-fix needs the failure it fixes');
         const key = `ci-fix@${this.state.ciFixRounds}`;
-        const out = await this.runLane('ci-fix', f.startSha, 'write', ciFixPrompt(this.state), key);
+        const out = await this.runLane('ci-fix', f.startSha, 'write', ciFixPrompt(this.state, this.laneEnvironment()), key);
         if (out.kind === 'done')
             await this.acceptWriteLane(out, key, f.startSha);
     }
@@ -6017,8 +6061,9 @@ class FactoryEngine {
                 ...(profile === 'write' ? { engineCommits: true } : {}),
                 // factory.run.laneModel / --model: every lane kind (implement, review, fix, ci-fix, conflict-fix) starts on it.
                 ...(model ? { model } : {}),
-                // The OS sandbox on Windows denies opening a package dir through a junction: the lane gets a copied node_modules.
-                beforeSandboxedSession: (wt) => this.prepareLaneTree(wt),
+                // The OS sandbox on Windows denies opening a package dir through a junction: a write lane gets a copied node_modules
+                // (a review lane's shell is read-only, so it runs no test and needs none).
+                ...(profile === 'write' ? { beforeSandboxedSession: (wt) => this.prepareLaneTree(wt) } : {}),
                 ...(priv && laneTree ? { worktree: { path: laneTree, commonGitDir: priv.repo.gitDir }, jobRoot: priv.layout.jobs, deniedPaths: priv.deniedFor(laneTree), beforeHostGit: () => priv.problem() } : {}),
             }));
         }
@@ -6948,7 +6993,7 @@ class FactoryEngine {
             this.save((x) => ({ ...x, humanReview: { seenAt: this.iso(), head, digest, threadIds } }));
         const round = current.fixRounds;
         const before = this.state.lanes.length;
-        const out = await this.runLane('fix', head, 'write', humanFixPrompt(this.state, round, open, by, this.laneScripts()), `fix@${round}`);
+        const out = await this.runLane('fix', head, 'write', humanFixPrompt(this.state, round, open, by, this.laneScripts(), this.laneEnvironment()), `fix@${round}`);
         const lane = this.state.lanes[before];
         if (lane?.kind === 'fix')
             this.updateLane(lane.id, { feedback: { source: 'human', forge: this.forge?.kind ?? 'github', items: open.length } });

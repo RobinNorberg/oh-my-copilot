@@ -82,12 +82,13 @@ export declare function linkNodeModules(root: string, checkout: string, warn?: (
  * `<worktree>/node_modules` link is unlinked only when it resolves to yours
  * (the link itself, never followed), and a link elsewhere refuses.
  *
- * `ignored(paths)`: whether git ignores every one of the tree paths
- * (`node_modules`, `<pkg>/node_modules`) in the worktree. A tree git would
- * list as untracked is removed again (the engine's lane commit refuses a
- * worktree with a junction in it), so the lane runs as before. Returns why
- * the lane must not start (the copy over its bounds or the free space, a
- * foreign link), else null.
+ * `ignored(paths)`: whether git ignores every one of the tree dirs
+ * (`node_modules`, `<pkg>/node_modules`, which need not exist yet) in the
+ * worktree. It is asked before anything is copied: a tree git would list as
+ * untracked is not built (a warning says so; the engine's lane commit
+ * refuses a worktree with a junction in it), so the lane runs as before.
+ * Returns why the lane must not start (the copy over its bounds or the free
+ * space, a foreign link), else null.
  */
 export declare function prepareLaneNodeModules(root: string, worktree: string, o: {
     workspaces?: readonly string[];
@@ -95,6 +96,17 @@ export declare function prepareLaneNodeModules(root: string, worktree: string, o
     ignored: (paths: string[]) => boolean;
     copy?: true | Partial<GateTreeCopyLimits>;
 }): string | null;
+/**
+ * Before the engine commits a lane worktree: a copied tree
+ * prepareLaneNodeModules built there (its marker with the completion line)
+ * must still be ignored by git as the lane left the worktree, since the
+ * lane may have changed .gitignore. `ignored(paths)` is the commit's own
+ * check (lane-commit.ts). A tree that is not is removed, every link
+ * unlinked first, never followed (unlinkNodeModules), so the commit neither
+ * refuses its links nor stages the copy. Returns what was removed, or null.
+ * A removal error throws (the commit then refuses the links that are left).
+ */
+export declare function settleLaneNodeModules(root: string, worktree: string, ignored: (paths: string[]) => boolean): string | null;
 /**
  * Why a gate tree may be built as copies: in the Copilot OS sandbox on
  * Windows (its low-integrity token) a directory junction whose target the
