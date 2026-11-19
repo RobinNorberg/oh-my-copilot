@@ -2,7 +2,18 @@ import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, realpathSync, rmdirSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+
+// Lets one test make prepare.ts's unlinkSync throw for one path (a read-only or busy file); every other call goes to the real one.
+const unlinkFault = vi.hoisted(() => ({ name: undefined as string | undefined }));
+vi.mock('fs', async (importOriginal) => {
+  const real = await importOriginal<typeof import('fs')>();
+  const unlinkSync: typeof real.unlinkSync = (p) => {
+    if (unlinkFault.name !== undefined && String(p).endsWith(unlinkFault.name)) throw Object.assign(new Error(`EPERM: operation not permitted, unlink '${String(p)}'`), { code: 'EPERM' });
+    return real.unlinkSync(p);
+  };
+  return { ...real, default: { ...real, unlinkSync }, unlinkSync };
+});
 
 import { GATE_TREE_COMPLETE, GATE_TREE_MARKER, nestedTreeDirs, prepareLaneNodeModules, settleLaneNodeModules, unlinkNodeModules } from '../prepare.js';
 
@@ -263,6 +274,29 @@ describe('prepareLaneNodeModules reuseFrom (one copy per work item)', () => {
       expect(readFileSync(join(outside, 'secret.txt'), 'utf-8')).toBe('secret\n');
       expect(fingerprint(store)).toEqual(before);
     }
+  });
+
+  it('a rejected tree that cannot be removed (a planted file the removal cannot delete): the lane fails with the reason, nothing is built over the leftovers', () => {
+    const { root, worktree, store, next, outside } = built();
+    const before = fingerprint(store);
+    symlinkSync(outside, join(worktree, 'node_modules', 'vitest', 'dist', 'evil'), linkType);
+    writeFileSync(join(worktree, 'node_modules', 'vitest', 'planted-read-only.txt'), 'x\n');
+    const notes: string[] = [];
+    unlinkFault.name = 'planted-read-only.txt';
+    let problem: string | null;
+    try {
+      problem = prepareLaneNodeModules(root, next, { ignored: ignoredAll, reuseFrom: [worktree], warn: (m) => notes.push(m) });
+    } finally {
+      unlinkFault.name = undefined;
+    }
+    expect(problem).toMatch(/is not reused \(node_modules\/vitest\/dist\/evil is a link .*\), and it could not be removed from .* \(EPERM: operation not permitted/);
+    expect(notes.join('\n')).not.toMatch(/a fresh copy is built/);
+    // The leftovers are not taken as a tree: no completion marker was written over them, the planted link went first.
+    expect(readFileSync(join(next, 'node_modules', 'vitest', 'planted-read-only.txt'), 'utf-8')).toBe('x\n');
+    expect(existsSync(join(next, 'node_modules', GATE_TREE_MARKER))).toBe(false);
+    expect(existsSync(join(next, 'node_modules', 'vitest', 'dist', 'evil'))).toBe(false);
+    expect(fingerprint(outside)).toEqual([`F secret.txt ${createHash('sha256').update('secret\n').digest('hex')}`]);
+    expect(fingerprint(store)).toEqual(before);
   });
 
   it('never takes a link to yours, a cut-off tree or one that names nested workspace trees; each stays where it was', () => {

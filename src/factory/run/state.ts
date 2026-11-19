@@ -105,6 +105,13 @@ export interface FactoryLaneRecord {
    */
   stopUnconfirmed?: boolean;
   /**
+   * The engine's commit of this write lane landed and its process tree was
+   * proven gone before it (not `unproven`): only such a lane's copied
+   * node_modules may move into a later lane of the run (prepare.ts
+   * adoptLaneTree). Absent: never reused.
+   */
+  treeReusable?: true;
+  /**
    * The tamper check of a lane the engine cancelled: `clean` (it compared and
    * found nothing), `problems` (it found a change), `skipped` (the stop was not
    * confirmed, the cancel failed, or no compare ran). Absent (older states):
@@ -631,6 +638,7 @@ function shapeProblem(s: Record<string, unknown>): string | null {
     const sbx = x?.sandbox as Record<string, unknown> | undefined;
     return isStr(x?.id) && isStr(x.kind) && isStr(x.status) && isStr(x.startSha) && typeof x.maxCredits === 'number'
       && (x.stopUnconfirmed === undefined || typeof x.stopUnconfirmed === 'boolean')
+      && (x.treeReusable === undefined || x.treeReusable === true)
       && (x.model === undefined || isStr(x.model))
       && (x.tamperCheck === undefined || x.tamperCheck === 'clean' || x.tamperCheck === 'problems' || x.tamperCheck === 'skipped')
       && (sbx === undefined || (typeof sbx === 'object' && sbx !== null && isStr(sbx.mode) && isCount(sbx.unsandboxedCalls)

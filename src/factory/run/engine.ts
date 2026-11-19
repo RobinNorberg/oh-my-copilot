@@ -1521,11 +1521,11 @@ class FactoryEngine {
       const listed = new Set(out.split('\0').filter(Boolean).map((p) => p.replace(/\/$/, '')));
       return paths.every((p) => listed.has(p));
     };
-    // One copy per item: the tree of this run's latest completed lane moves here (prepare.ts adoptLaneTree, its trust argument).
-    // Only a completed lane's (its process tree is proven gone before its commit; a failed, stalled or lost one may still
-    // write), never the one a parked commit will commit again.
+    // One copy per item: the tree of this run's latest committed lane moves here (prepare.ts adoptLaneTree, its trust argument).
+    // Only from a lane whose engine commit landed after its process tree was proven gone (treeReusable): never a failed,
+    // stalled or lost lane, one whose commit was refused or is parked to be retried, or one a survivor may still write.
     const reuseFrom = this.state.lanes
-      .filter((l) => l.worktree && l.status === 'completed' && l.id !== this.state.pendingCommit?.laneId && !samePath(l.worktree, worktree))
+      .filter((l) => l.worktree && l.treeReusable === true && l.id !== this.state.pendingCommit?.laneId && !samePath(l.worktree, worktree))
       .map((l) => l.worktree!).reverse();
     return prepareLaneNodeModules(this.o.root, worktree, { workspaces: this.baseWorkspaces(), ...(this.o.warn ? { warn: this.o.warn } : {}), ignored, reuseFrom });
   }
@@ -2806,7 +2806,7 @@ class FactoryEngine {
     // The engine's own commit moved the lane's branch and worktree HEAD: the new baseline of the recheck.
     this.rebaseRecheck();
     const head = commit.sha;
-    this.updateLane(p.laneId, { endSha: head, ...(commit.notes.length > 0 ? { note: commit.notes.join('; ') } : {}) });
+    this.updateLane(p.laneId, { endSha: head, ...(commit.notes.length > 0 ? { note: commit.notes.join('; ') } : {}), ...(proof.kind === 'gone' ? { treeReusable: true as const } : {}) });
     // A detect-only lane after the PR exists (fix, conflict-fix, ci-fix) is recorded in a PR comment; the first one is in the PR body.
     if (lane.sandbox?.mode === 'detect-only' && this.state.pr) {
       this.commentOnce('pr', `detect-only@${p.laneId}`, 'sandbox', `**Sandbox: detect-only.** ${kind} lane ${p.laneId} ran without an OS sandbox (\`writeUnsandboxed: "detect-only"\`).\n`);
