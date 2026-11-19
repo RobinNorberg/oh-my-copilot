@@ -91,8 +91,9 @@ if (laneSkip && process.stdin && !process.stdin.isTTY) {
  * (the PreToolUse guards and the PermissionRequest handler). Every other event
  * drains stdin and exits 0 with no output before any hook, run.cjs or payload
  * library loads. The engine sets the variable in the runtime env of factory
- * lanes (copilot_run `minimalHooks`); hook processes inherit it, and nothing in
- * the lane's worktree can set or unset it.
+ * lanes (copilot_run `minimalHooks`); hook processes inherit it, and the lane's
+ * shells and any nested copilot sessions inherit it too. It can only drop
+ * events, never the kept guards.
  *
  * Claude Code never runs this file (hooks/hooks.json is untouched).
  */

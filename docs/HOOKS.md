@@ -203,7 +203,7 @@ Copilot has no model channel for a Stop that does not block. When the merged Sto
 
 ### Lane hook set
 
-Factory lanes (`omg factory run`, copilot_run `minimalHooks`) run a reduced hook set. The engine sets `OMC_LANE_HOOKS=minimal` in the lane runtime's env. The hook processes inherit it, and nothing in the lane's worktree can set or unset it. Under it the dispatcher runs only these events:
+Factory lanes (`omg factory run`, copilot_run `minimalHooks`) run a reduced hook set. The engine sets `OMC_LANE_HOOKS=minimal` in the lane runtime's env. The hook processes inherit it, and the lane's shells and any nested copilot sessions inherit it too; it can only drop events, never the kept guards. Under it the dispatcher runs only these events:
 
 | Event | Hooks | Why kept |
 |---|---|---|
