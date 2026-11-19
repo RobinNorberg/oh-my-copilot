@@ -205,6 +205,8 @@ export interface SandboxPolicyContext {
     /** The session's own git dir (`<commonGitDir>/worktrees/<name>` for a linked worktree). */
     gitDir?: string;
     pluginRoot: string;
+    /** The lane plugin dir the session loads in place of pluginRoot (lane-plugin.ts): read-only, like pluginRoot. */
+    lanePluginRoot?: string;
     /** The job's COPILOT_HOME (and relocated profile). */
     jobHome: string;
     /** The job's state directory (events, home). */
