@@ -69,25 +69,27 @@ export const LANE_LEFT_NO_CHANGES = 'the lane left no changes in its worktree';
 /** The refusal of a completed lane that left no changes and declined the work (laneDecline): parked at `<kind>-declined`, no retry. */
 export const LANE_DECLINED = 'the lane declined the work and left no changes in its worktree';
 const DECLINE_LINE = /^DECLINED:\s*(\S.*)$/;
-const BLOCKED_FIRST_LINE = /^Blocked:\s*(\S.*)$/;
+/** Markdown a model wraps a line in (`code`, **bold**, _italic_): stripped from both ends before the match. */
+const LINE_WRAPPING = /^[\s`*_]+|[\s`*_]+$/g;
 const MAX_DECLINE_CHARS = 500;
 /**
  * The lane's stated reason for declining its task, from its final message,
  * or null. Read only for a lane that left no changes: the prompt's decline
  * protocol (prompts.ts DECLINE_RULE) asks for a last line `DECLINED:
- * <reason>`; a message whose first line starts `Blocked:` (what lanes wrote
- * before the protocol) counts too. Anything else, an empty message included,
- * is not a decline, so a flaky empty completion keeps its fresh retry. The
+ * <reason>`, matched after backticks, `*`, `_` and whitespace are stripped
+ * from both ends of the line. Anything else is not a decline, so it keeps
+ * its fresh retry: an empty message, and a `Blocked:` line too (lanes write
+ * one for a transient environment problem). The
  * reason is the lane's own text: one line, control and format characters
  * blanked, bounded; the engine keeps it in the park's local detail only.
  */
 export function laneDecline(finalText) {
     if (typeof finalText !== 'string')
         return null;
-    const lines = finalText.replace(/\r\n?/g, '\n').split('\n').map((l) => l.trim()).filter(Boolean);
+    const lines = finalText.replace(/\r\n?/g, '\n').split('\n').map((l) => l.replace(LINE_WRAPPING, '')).filter(Boolean);
     if (lines.length === 0)
         return null;
-    const hit = DECLINE_LINE.exec(lines[lines.length - 1]) ?? BLOCKED_FIRST_LINE.exec(lines[0]);
+    const hit = DECLINE_LINE.exec(lines[lines.length - 1]);
     if (!hit)
         return null;
     const reason = hit[1].replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu, ' ').replace(/\s+/g, ' ').trim();

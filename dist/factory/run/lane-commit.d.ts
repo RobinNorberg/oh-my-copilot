@@ -63,9 +63,10 @@ export declare const LANE_DECLINED = "the lane declined the work and left no cha
  * The lane's stated reason for declining its task, from its final message,
  * or null. Read only for a lane that left no changes: the prompt's decline
  * protocol (prompts.ts DECLINE_RULE) asks for a last line `DECLINED:
- * <reason>`; a message whose first line starts `Blocked:` (what lanes wrote
- * before the protocol) counts too. Anything else, an empty message included,
- * is not a decline, so a flaky empty completion keeps its fresh retry. The
+ * <reason>`, matched after backticks, `*`, `_` and whitespace are stripped
+ * from both ends of the line. Anything else is not a decline, so it keeps
+ * its fresh retry: an empty message, and a `Blocked:` line too (lanes write
+ * one for a transient environment problem). The
  * reason is the lane's own text: one line, control and format characters
  * blanked, bounded; the engine keeps it in the park's local detail only.
  */

@@ -23,6 +23,8 @@ type HookResult = { script: string; stdout: string; exitCode: number };
 type Merged = { stdout: string; exitCode: number; stderr: string };
 const dispatcher = createRequire(import.meta.url)(DISPATCH) as {
   HOOK_SEPARATOR: string;
+  LANE_HOOK_EVENTS: Set<string>;
+  laneSkipsEvent(event: string, env?: NodeJS.ProcessEnv): boolean;
   parseDispatchArgv(argv: string[]): { event: string; hooks: Array<{ script: string; args: string[] }> };
   encodeDispatchArgv(event: string, hooks: Array<{ script: string; args?: string[] }>): string[];
   mergeExitCodes(codes: number[]): number;
@@ -51,7 +53,7 @@ function cleanEnv(extra: Record<string, string>): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...process.env };
   for (const key of [
     'OMC_HOOK_EVENT', 'OMC_HOOK_FAIL_CLOSED', 'OMC_HOOK_STRICT', 'OMC_COPILOT_HOOK_WORKER', 'OMC_COPILOT_HOOK_DISPATCH',
-    'OMC_SESSION_OWNER_PID', 'OMC_DEBUG_HOOKS', 'OMC_DEBUG', 'NODE_ENV', 'OMC_STATE_DIR', 'OMC_SESSION_END_BUDGET_MS',
+    'OMC_SESSION_OWNER_PID', 'OMC_LANE_HOOKS', 'OMC_DEBUG_HOOKS', 'OMC_DEBUG', 'NODE_ENV', 'OMC_STATE_DIR', 'OMC_SESSION_END_BUDGET_MS',
   ]) delete env[key];
   return { ...env, ...extra };
 }
@@ -280,7 +282,7 @@ function probePlugin(): string {
   mkdirSync(join(root, 'scripts'), { recursive: true });
   mkdirSync(join(root, 'hooks'), { recursive: true });
   writeFileSync(join(root, 'scripts', 'run.cjs'), '// plugin-root marker');
-  for (const name of ['context-guard-stop.mjs', 'budget-guard.mjs', 'persistent-mode.mjs', 'not-audited.mjs', 'subagent-tracker.mjs', 'pre-tool-enforcer.mjs', 'prompt-probe.mjs']) {
+  for (const name of ['context-guard-stop.mjs', 'budget-guard.mjs', 'persistent-mode.mjs', 'not-audited.mjs', 'subagent-tracker.mjs', 'pre-tool-enforcer.mjs', 'prompt-probe.mjs', 'permission-handler.mjs']) {
     copyFileSync(PROBE, join(root, 'scripts', name));
   }
   const command = (script: string) => `node "\${CLAUDE_PLUGIN_ROOT}"/scripts/run.cjs "\${CLAUDE_PLUGIN_ROOT}"/scripts/${script}`;
@@ -619,6 +621,97 @@ describe('dispatch systemMessage handoff (Stop -> next UserPromptSubmit)', () =>
     expect(end.status, end.stderr).toBe(0);
     expect(existsSync(stale)).toBe(false);
     expect(existsSync(fresh)).toBe(true);
+  }, 60_000);
+});
+
+describe('lane hook set (OMC_LANE_HOOKS=minimal)', () => {
+  const LANE = { OMC_LANE_HOOKS: 'minimal' };
+  const block = { decision: 'block', reason: 'should not run' };
+
+  it('keeps only the PreToolUse guards and the PermissionRequest handler', () => {
+    expect([...dispatcher.LANE_HOOK_EVENTS].sort()).toEqual(['PermissionRequest', 'PreToolUse']);
+    expect(dispatcher.laneSkipsEvent('Stop', LANE)).toBe(true);
+    expect(dispatcher.laneSkipsEvent('PreToolUse', LANE)).toBe(false);
+    // Only the exact value turns it on; outside a lane every event runs.
+    expect(dispatcher.laneSkipsEvent('Stop', { OMC_LANE_HOOKS: '1' })).toBe(false);
+    expect(dispatcher.laneSkipsEvent('Stop', {})).toBe(false);
+  });
+
+  it('every security hook of the generated manifest sits in a kept event', () => {
+    const manifest = JSON.parse(readFileSync(join(REPO_ROOT, 'copilot', 'hooks.json'), 'utf8')) as {
+      hooks: Record<string, Array<{ args: string[] }>>;
+    };
+    const kept = Object.entries(manifest.hooks)
+      .filter(([event]) => dispatcher.LANE_HOOK_EVENTS.has(event))
+      .flatMap(([, entries]) => entries.flatMap((entry) => entry.args.map((arg) => basename(arg))));
+    expect(kept).toEqual(expect.arrayContaining(['pre-tool-enforcer.mjs', 'git-guardrails.mjs', 'permission-handler.mjs']));
+  });
+
+  it('the scripts on dropped events are exactly the audited advisory set', () => {
+    const manifest = JSON.parse(readFileSync(join(REPO_ROOT, 'copilot', 'hooks.json'), 'utf8')) as {
+      hooks: Record<string, Array<{ args: string[] }>>;
+    };
+    const dropped: Record<string, string[]> = {};
+    for (const [event, entries] of Object.entries(manifest.hooks)) {
+      if (dispatcher.LANE_HOOK_EVENTS.has(event)) continue;
+      dropped[event] = entries.flatMap((entry) => entry.args.filter((arg) => arg.endsWith('.mjs')).map((arg) => basename(arg)));
+    }
+    // Audited as advisory (context, bookkeeping, notifications), so a lane may skip them.
+    // A hook added later to a dropped event fails this test until someone classifies it:
+    // list it here if it is advisory, or move it to a kept event (and LANE_HOOK_EVENTS) if
+    // it is a guard.
+    expect(dropped).toEqual({
+      UserPromptSubmit: ['keyword-detector.mjs', 'skill-injector.mjs', 'premium-budget.mjs'],
+      SessionStart: ['session-start.mjs', 'project-memory-session.mjs', 'wiki-session-start.mjs', 'stale-run-reporter.mjs', 'runs-reconciler.mjs', 'premium-budget.mjs'],
+      PostToolUse: ['post-tool-verifier.mjs', 'project-memory-posttool.mjs', 'post-tool-rules-injector.mjs', 'post-tool-directory-context-injector.mjs'],
+      PostToolUseFailure: ['post-tool-use-failure.mjs'],
+      SubagentStart: ['subagent-tracker.mjs'],
+      SubagentStop: ['subagent-tracker.mjs', 'verify-deliverables.mjs'],
+      PreCompact: ['pre-compact.mjs', 'project-memory-precompact.mjs', 'wiki-pre-compact.mjs'],
+      Stop: ['context-guard-stop.mjs', 'workflow-drift-guard.mjs', 'persistent-mode.mjs', 'budget-guard.mjs', 'premium-budget.mjs', 'code-simplifier.mjs'],
+      SessionEnd: ['session-end.mjs', 'wiki-session-end.mjs'],
+      Notification: ['notification.mjs'],
+    });
+  });
+
+  it.each(['Stop', 'UserPromptSubmit', 'SubagentStart'])('%s runs no hook and prints nothing', (event) => {
+    const root = probePlugin();
+    const scripts = event === 'Stop' ? STOP_SCRIPTS : event === 'SubagentStart' ? [['subagent-tracker.mjs', 'start']] : [['prompt-probe.mjs']];
+    const hooks = Object.fromEntries(scripts.map(([script]) => [script, { stdout: block }]));
+    const result = runDispatch(root, event, scripts, { hooks }, LANE);
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toBe('');
+    expect(result.traces).toEqual([]);
+  });
+
+  it('PreToolUse still runs its guard and its deny reaches the host', () => {
+    const root = probePlugin();
+    const deny = { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: 'guarded' } };
+    const result = runDispatch(root, 'PreToolUse', [['pre-tool-enforcer.mjs']], { hooks: { 'pre-tool-enforcer.mjs': { stdout: deny } } }, LANE);
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.traces.map((t) => t.name)).toEqual(['pre-tool-enforcer.mjs']);
+    expect(result.stdout).toContain('guarded');
+    expect(result.stdout).toContain('deny');
+  });
+
+  it('PermissionRequest still runs its handler and its decision reaches the host', () => {
+    const root = probePlugin();
+    const deny = { hookSpecificOutput: { hookEventName: 'PermissionRequest', decision: { behavior: 'deny', message: 'guarded-permission' } } };
+    const result = runDispatch(root, 'PermissionRequest', [['permission-handler.mjs']], { hooks: { 'permission-handler.mjs': { stdout: deny } } }, LANE);
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.traces.map((t) => t.name)).toEqual(['permission-handler.mjs']);
+    expect(result.stdout).toContain('guarded-permission');
+    expect(result.stdout).toContain('deny');
+  });
+
+  it('without the variable (or another value) a dropped event still runs every hook', () => {
+    const root = probePlugin();
+    for (const extra of [{}, { OMC_LANE_HOOKS: '1' }] as Array<Record<string, string>>) {
+      const result = runDispatch(root, 'Stop', STOP_SCRIPTS, { hooks: { 'budget-guard.mjs': { stdout: block } } }, extra);
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.traces.map((t) => t.name)).toEqual(STOP_SCRIPTS.map(([script]) => script));
+      expect(JSON.parse(result.stdout)).toMatchObject(block);
+    }
   }, 60_000);
 });
 

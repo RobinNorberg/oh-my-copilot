@@ -31,12 +31,12 @@ const WRITE_LANE_GIT_RULES = [
     'On Windows, call repo-local scripts as `.\\name` (`.\\gradlew`, `.\\build.bat`): a bare name does not search the worktree.',
 ];
 /**
- * The decline protocol of the implement and fix prompts: a lane that refuses
+ * The decline protocol of every write lane prompt: a lane that refuses
  * the task on purpose says so in a fixed last line (laneDecline in
  * lane-commit.ts reads it), so the engine parks without a fresh retry that
  * would get the same prompt and decline again.
  */
-export const DECLINE_RULE = 'If you refuse this task on purpose, or cannot do it, make NO changes and end your final message with one line `DECLINED: <reason>`. The engine then stops for a human instead of running the same task again.';
+export const DECLINE_RULE = 'Use DECLINED only when you deliberately refuse this task or it is impossible as specified: then make NO changes and end your final message with one line `DECLINED: <reason>`, and the engine stops for a human instead of running the same task again. Never use it for an environment or tool failure (tests that cannot run, a denied command, a missing tool): report that normally.';
 /** What the lane works for, in its prompt's first line. */
 export const subject = (s) => (s.kind === 'ci-heal'
     ? `the CI self-heal of failure signature ${s.heal?.sig8} on ${s.base}`
@@ -108,11 +108,18 @@ function noInstallRule(lane) {
         return [];
     return [`The sandbox has no network access: never run \`npm install\`, \`npm ci\` or any other package install.${lane.nodeModulesReady ? ' The dependencies are already installed in node_modules.' : ''} If a command fails because a dependency is missing, report it in your final message instead of installing it.`];
 }
-export function implementPrompt(s, team, scripts = [], lane = null) {
+/** The repository guide files the implement prompt names, when the lane's base has them. */
+export const REPO_GUIDE_FILES = ['AGENTS.md', 'CLAUDE.md', 'CONTRIBUTING.md'];
+/**
+ * `guides`: those of REPO_GUIDE_FILES the lane's base has (the engine reads the
+ * base tree). Only these are named: a lane told to read a missing file spends
+ * a tool call failing on it.
+ */
+export function implementPrompt(s, team, scripts = [], lane = null, guides = []) {
     return [
         `You are the implementer for ${subject(s)}`,
         '',
-        'Implement the change described below in this worktree, following the repository\'s standards (read its AGENTS.md / CLAUDE.md / CONTRIBUTING.md).',
+        `Implement the change described below in this worktree, following the repository's standards${guides.length > 0 ? ` (read its ${guides.join(' / ')})` : ''}.`,
         'Add or update tests for the change and run the relevant ones.',
         ...scriptsLine(scripts),
         FOREGROUND_WAIT_RULE,
@@ -186,6 +193,7 @@ export function humanFixPrompt(s, round, threads, changesRequestedBy = [], scrip
         ...noInstallRule(lane),
         ...WRITE_LANE_GIT_RULES,
         'Do not edit .github/, .copilot/, .omg/skills/, .omc/skills/, AGENTS.md or CLAUDE.md: the engine refuses to commit a change there.',
+        DECLINE_RULE,
         '',
         '## Human review comments',
         '',
@@ -207,6 +215,7 @@ export function conflictFixPrompt(s, conflicted = s.conflicts ?? [], lane = null
         ...noInstallRule(lane),
         ...WRITE_LANE_GIT_RULES,
         'Do not edit .github/, .copilot/, .omg/skills/, .omc/skills/, AGENTS.md or CLAUDE.md: the engine refuses to commit a change there.',
+        DECLINE_RULE,
         '',
         '## Files that conflicted',
         '',
@@ -240,6 +249,7 @@ export function ciFixPrompt(s, lane = null) {
         ...noInstallRule(lane),
         ...WRITE_LANE_GIT_RULES,
         'Do not edit .github/, .copilot/, .omg/skills/, .omc/skills/, AGENTS.md or CLAUDE.md: the engine refuses to commit a change there.',
+        DECLINE_RULE,
         '',
         '## Failing checks',
         '',

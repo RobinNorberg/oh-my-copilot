@@ -104,6 +104,13 @@ export const STOP_CONTINUATION_SKIP_TOKEN = 'persistent-mode,workflow-drift-guar
  * runtime files anyway (lane-commit.ts isOmcRuntimePath).
  */
 export const PROJECT_MEMORY_SKIP_TOKEN = 'project-memory-session,project-memory-posttool';
+/**
+ * OMC_LANE_HOOKS value that limits a session's plugin hooks to the lane hook
+ * set: scripts/copilot/dispatch.cjs runs only the PreToolUse guards and the
+ * PermissionRequest handler, and every other event exits before any hook
+ * loads. Set by the engine in the runtime env, which the session cannot change.
+ */
+export const LANE_HOOKS_MINIMAL = 'minimal';
 export class CopilotRunError extends Error {
 }
 /**
@@ -935,6 +942,7 @@ export class CopilotRunManager {
             startRef,
             disableStopContinuations: options.disableStopContinuations === true,
             scrubCredentials: options.scrubCredentials === true,
+            minimalHooks: options.minimalHooks === true,
             hostCommits: options.hostCommits === true,
             ledgerKey: options.ledgerKey ?? `copilot-run:${id}`,
             ledgerTag: options.ledgerTag ?? null,
@@ -1271,6 +1279,8 @@ export class CopilotRunManager {
         const skipHooks = [...(job.disableStopContinuations ? [STOP_CONTINUATION_SKIP_TOKEN] : []), ...(job.hostCommits ? [PROJECT_MEMORY_SKIP_TOKEN] : [])];
         if (skipHooks.length > 0)
             env.OMC_SKIP_HOOKS = skipHooks.join(',');
+        if (job.minimalHooks)
+            env.OMC_LANE_HOOKS = LANE_HOOKS_MINIMAL;
         let scrubDir = null;
         if (job.scrubCredentials) {
             // COPILOT_GITHUB_TOKEN reaches the session over RPC (gitHubToken), never through the allowlisted env.

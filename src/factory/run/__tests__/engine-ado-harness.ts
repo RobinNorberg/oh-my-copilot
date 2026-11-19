@@ -39,6 +39,8 @@ export class AdoModel {
   revConflicts = 0;
   /** The recorded item's predecessor #40 (Dependency-Reverse): dropped (none), open, or open with its factory PR completed into dev. */
   predecessor: 'none' | 'open' | 'merged' = 'none';
+  /** Replaces the work item's Acceptance Criteria field text when set. */
+  acceptance?: string;
   /** The run's branch (a ci-heal run pushes factory/heal-<sig8>). */
   branch = `factory/issue-${ISSUE}`;
 
@@ -87,7 +89,7 @@ export class AdoModel {
         item.id = ISSUE;
         item.fields['System.Title'] = 'Add greet()';
         item.fields['System.Description'] = '<div>A greeting helper.</div>';
-        item.fields['Microsoft.VSTS.Common.AcceptanceCriteria'] = '<ul><li>greet() returns hi</li></ul>';
+        item.fields['Microsoft.VSTS.Common.AcceptanceCriteria'] = this.acceptance ?? '<ul><li>greet() returns hi</li></ul>';
         item._links.html.href = `https://dev.azure.com/contoso/Web/_workitems/edit/${ISSUE}`;
         if (this.predecessor === 'none') item.relations = item.relations.filter((r: { rel: string }) => r.rel !== 'System.LinkTypes.Dependency-Reverse');
         return ok(item);

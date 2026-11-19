@@ -157,6 +157,14 @@ export const STOP_CONTINUATION_SKIP_TOKEN = 'persistent-mode,workflow-drift-guar
  */
 export const PROJECT_MEMORY_SKIP_TOKEN = 'project-memory-session,project-memory-posttool';
 
+/**
+ * OMC_LANE_HOOKS value that limits a session's plugin hooks to the lane hook
+ * set: scripts/copilot/dispatch.cjs runs only the PreToolUse guards and the
+ * PermissionRequest handler, and every other event exits before any hook
+ * loads. Set by the engine in the runtime env, which the session cannot change.
+ */
+export const LANE_HOOKS_MINIMAL = 'minimal';
+
 export type CopilotRunIsolation = 'worktree' | 'none';
 export type CopilotRunStatus = 'starting' | 'running' | 'completed' | 'failed' | 'timeout' | 'cancelled';
 /** `write` (default): the worker policy. `review`: no write tool, and no git command that moves or rewrites the tree. */
@@ -190,6 +198,8 @@ export interface CopilotRunStartOptions {
   sandboxScope?: SandboxScope;
   /** Start the session with a credential-free env ({@link scrubLaneCredentials}). */
   scrubCredentials?: boolean;
+  /** Run only the lane hook set ({@link LANE_HOOKS_MINIMAL}): the PreToolUse guards and the PermissionRequest handler. */
+  minimalHooks?: boolean;
   /**
    * The caller commits the session's changes after the job (omg factory run):
    * a write session's sandbox keeps the whole common git dir read-only, so it
@@ -414,6 +424,7 @@ interface Job {
   startRef: string | null;
   disableStopContinuations: boolean;
   scrubCredentials: boolean;
+  minimalHooks: boolean;
   hostCommits: boolean;
   /** Budget ledger record key. */
   ledgerKey: string;
@@ -1103,6 +1114,7 @@ export class CopilotRunManager {
       startRef,
       disableStopContinuations: options.disableStopContinuations === true,
       scrubCredentials: options.scrubCredentials === true,
+      minimalHooks: options.minimalHooks === true,
       hostCommits: options.hostCommits === true,
       ledgerKey: options.ledgerKey ?? `copilot-run:${id}`,
       ledgerTag: options.ledgerTag ?? null,
@@ -1410,6 +1422,7 @@ export class CopilotRunManager {
     // OMC_* from the caller is stripped above, so this is the session's only skip list.
     const skipHooks = [...(job.disableStopContinuations ? [STOP_CONTINUATION_SKIP_TOKEN] : []), ...(job.hostCommits ? [PROJECT_MEMORY_SKIP_TOKEN] : [])];
     if (skipHooks.length > 0) env.OMC_SKIP_HOOKS = skipHooks.join(',');
+    if (job.minimalHooks) env.OMC_LANE_HOOKS = LANE_HOOKS_MINIMAL;
     let scrubDir: string | null = null;
     if (job.scrubCredentials) {
       // COPILOT_GITHUB_TOKEN reaches the session over RPC (gitHubToken), never through the allowlisted env.

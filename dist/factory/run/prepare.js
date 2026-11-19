@@ -254,8 +254,14 @@ export function prepareLaneNodeModules(root, worktree, o) {
             return null;
         }
         // Only a root tree moves (a workspace layout's nested trees are copied as before), and only into an empty spot.
-        if (nested.length === 0 && !existsSync(target) && !isLink(target) && adoptLaneTree(root, worktree, o.reuseFrom ?? [], o.warn))
-            return null;
+        if (nested.length === 0 && !existsSync(target) && !isLink(target)) {
+            const adopted = adoptLaneTree(root, worktree, o.reuseFrom ?? [], o.warn);
+            if (adopted === true)
+                return null;
+            // A rejected tree that could not be removed (a busy or read-only file): never built over, the lane fails.
+            if (typeof adopted === 'string')
+                return adopted;
+        }
     }
     let problem;
     try {
@@ -305,7 +311,9 @@ export function prepareLaneNodeModules(root, worktree, o) {
  * top-level file of yours (`.package-lock.json`) must be byte-equal in the
  * tree, so a tree an `npm install` changed, or yours changed since, is not
  * reused. A tree that fails is removed (links unlinked, never followed) and
- * a fresh copy is built. Never a link into your node_modules is followed or
+ * a fresh copy is built; when anything of it is left (a busy or read-only
+ * file), the reason is returned and the lane fails (worktree-unprepared),
+ * never building over the leftovers. Never a link into your node_modules is followed or
  * removed: the source is taken only when it is a real dir.
  */
 function adoptLaneTree(root, worktree, from, warn) {
@@ -337,12 +345,24 @@ function adoptLaneTree(root, worktree, from, warn) {
         }
         if (!problem)
             return true;
-        warn?.(`omg factory run: the node_modules tree of the earlier lane worktree ${prev} is not reused (${problem}); a fresh copy is built`);
+        let removal = '';
         try {
             if (lstatSync(target).isDirectory())
                 removeGateTree(target);
         }
-        catch { /* the build below refuses what is left */ }
+        catch (error) {
+            removal = error instanceof Error ? error.message : String(error);
+        }
+        let left = true;
+        try {
+            lstatSync(target);
+        }
+        catch {
+            left = false;
+        }
+        if (left)
+            return `the node_modules tree moved from the earlier lane worktree ${prev} is not reused (${problem}), and it could not be removed from ${target} (${removal || 'it is not a plain dir'}); remove it by hand, then rerun`;
+        warn?.(`omg factory run: the node_modules tree of the earlier lane worktree ${prev} is not reused (${problem}); a fresh copy is built`);
         return false;
     }
     return false;

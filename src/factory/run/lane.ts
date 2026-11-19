@@ -211,7 +211,7 @@ export class CopilotLaneBackend implements LaneBackend {
         maxCredits: input.maxCredits,
         ...(input.model ? { model: input.model } : {}),
       },
-      { allowLive: this.options.allowLive, disableStopContinuations: true, ledgerKey: `factory-lane:${input.laneId}`, ...(input.ledgerTag ? { ledgerTag: { kind: 'factory-lane' as const, ...input.ledgerTag } } : {}), sandboxScope: 'factory', ...(input.scrubCredentials ? { scrubCredentials: true } : {}), ...(input.engineCommits ? { hostCommits: true } : {}),
+      { allowLive: this.options.allowLive, disableStopContinuations: true, minimalHooks: true, ledgerKey: `factory-lane:${input.laneId}`, ...(input.ledgerTag ? { ledgerTag: { kind: 'factory-lane' as const, ...input.ledgerTag } } : {}), sandboxScope: 'factory', ...(input.scrubCredentials ? { scrubCredentials: true } : {}), ...(input.engineCommits ? { hostCommits: true } : {}),
         ...(input.worktree ? { worktree: input.worktree } : {}), ...(input.jobRoot ? { jobRoot: input.jobRoot } : {}),
         ...(input.deniedPaths ? { deniedPaths: input.deniedPaths } : {}), ...(input.beforeHostGit ? { beforeHostGit: input.beforeHostGit } : {}),
         ...(input.beforeSandboxedSession ? { beforeSandboxedSession: input.beforeSandboxedSession } : {}) },

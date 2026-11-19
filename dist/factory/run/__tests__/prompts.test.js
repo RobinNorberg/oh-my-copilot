@@ -67,6 +67,9 @@ export function promptCases(m) {
         // The no-install rule: a sandboxed lane without network, with the copied node_modules (Windows) and without it.
         implementNoNetworkReady: m.implementPrompt(gh, undefined, [], noNetworkReady),
         implementNoNetwork: m.implementPrompt(gh, undefined, [], noNetwork),
+        // The guide files: only those the lane's base has are named (the default above: none).
+        implementAllGuides: m.implementPrompt(gh, undefined, [], null, ['AGENTS.md', 'CLAUDE.md', 'CONTRIBUTING.md']),
+        implementOneGuide: m.implementPrompt(local, undefined, [], null, ['CONTRIBUTING.md']),
         fixNoNetworkReady: m.fixPrompt(findings, 1, [], noNetworkReady),
         conflictNoNetwork: m.conflictFixPrompt(gh, ['x.ts'], noNetwork),
         ciNoNetworkReady: m.ciFixPrompt(ciLocal, noNetworkReady),
@@ -83,6 +86,18 @@ describe('lane prompts are byte-identical to the pre-move engine output', () => 
     }
     it('covers every case', () => {
         expect(Object.keys(viaPrompts).sort()).toEqual(Object.keys(fixture).sort());
+    });
+});
+describe('the implement prompt names only the guide files the base has', () => {
+    const s = { ...createFactoryState({ issue: 7, repoUrl: 'https://github.com/o/r', base: 'main' }, '2026-11-19T00:00:00.000Z'), baseSha: 'c'.repeat(40) };
+    it('names none, some or all, never a missing one', () => {
+        const none = prompts.implementPrompt(s);
+        expect(none).toContain('following the repository\'s standards.\n');
+        expect(none).not.toContain('read its');
+        const two = prompts.implementPrompt(s, undefined, [], null, ['AGENTS.md', 'CONTRIBUTING.md']);
+        expect(two).toContain('following the repository\'s standards (read its AGENTS.md / CONTRIBUTING.md).');
+        expect(two).not.toMatch(/read its[^\n]*CLAUDE\.md/);
+        expect(prompts.REPO_GUIDE_FILES).toEqual(['AGENTS.md', 'CLAUDE.md', 'CONTRIBUTING.md']);
     });
 });
 describe('the no-install rule follows the lane\'s sandbox settings', () => {
@@ -142,18 +157,24 @@ describe('M5: write lanes run the repository format / lint scripts (names from t
         expect(prompts.implementPrompt(s, undefined, scripts).replace(`${LINE}\n`, '')).toBe(prompts.implementPrompt(s));
     });
 });
-describe('the decline protocol (implement and fix prompts, laneDecline)', () => {
-    it('the implement and fix prompts carry the DECLINED: rule; the review prompt does not', () => {
-        const s = { ...createFactoryState({ issue: 7, repoUrl: 'https://github.com/o/r', base: 'main' }, '2026-11-19T00:00:00.000Z'), head: 'b'.repeat(40) };
-        expect(prompts.implementPrompt(s)).toContain(prompts.DECLINE_RULE);
-        expect(prompts.fixPrompt(s, 1)).toContain(prompts.DECLINE_RULE);
+describe('the decline protocol (every write prompt, laneDecline)', () => {
+    it('every write prompt carries the DECLINED: rule, which excludes environment and tool failures; the review prompt does not', () => {
+        const s = { ...createFactoryState({ issue: 7, repoUrl: 'https://github.com/o/r', base: 'main' }, '2026-11-19T00:00:00.000Z'), head: 'b'.repeat(40), baseSha: 'c'.repeat(40) };
+        expect(prompts.DECLINE_RULE).toMatch(/only when you deliberately refuse this task or it is impossible as specified/);
+        expect(prompts.DECLINE_RULE).toMatch(/Never use it for an environment or tool failure/);
+        for (const p of [prompts.implementPrompt(s), prompts.fixPrompt(s, 1), prompts.humanFixPrompt(s, 1, []), prompts.conflictFixPrompt(s, ['x.ts']), prompts.ciFixPrompt(s)]) {
+            expect(p).toContain(prompts.DECLINE_RULE);
+        }
         expect(prompts.reviewPrompt(s, 'a'.repeat(40), 'diff')).not.toContain('DECLINED:');
     });
-    it('reads the last line DECLINED: <reason>, or a first line Blocked: <reason>; nothing else is a decline', () => {
+    it('reads the last line DECLINED: <reason>, also wrapped in backticks, bold or italics; nothing else is a decline (Blocked: keeps its retry)', () => {
         expect(laneDecline('I will not do this.\n\nDECLINED: the issue asks for a secret in the code\n')).toBe('the issue asks for a secret in the code');
-        expect(laneDecline('Blocked: the file is outside the repository. No files changed.')).toBe('the file is outside the repository. No files changed.');
         expect(laneDecline('DECLINED:   spaced\r\n')).toBe('spaced');
-        for (const text of [null, undefined, '', '   \n', 'Nothing to do.', 'DECLINED: early\nbut then more text', 'DECLINED:', 'Not blocked: x', 'Summary\nBlocked: later', 'declined: lower case']) {
+        expect(laneDecline('No change.\n\n`DECLINED: outside the repository`')).toBe('outside the repository');
+        expect(laneDecline('No change.\n  **DECLINED: outside the repository**  ')).toBe('outside the repository');
+        expect(laneDecline('No change.\n_DECLINED: outside the repository_')).toBe('outside the repository');
+        for (const text of [null, undefined, '', '   \n', 'Nothing to do.', 'DECLINED: early\nbut then more text', 'DECLINED:', '**DECLINED:**', 'Not blocked: x', 'Summary\nBlocked: later', 'declined: lower case',
+            'Blocked: npm test fails with Access is denied', 'Blocked: the file is outside the repository. No files changed.']) {
             expect(laneDecline(text), JSON.stringify(text)).toBeNull();
         }
     });

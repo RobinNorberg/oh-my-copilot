@@ -70,7 +70,7 @@ import { buildGitView, GIT_VIEW_MAX_BYTES, GIT_VIEW_MAX_OBJECTS } from './git-vi
 import { driveGates } from './gates-driver.js';
 import { missingCheckHint, NO_CI_CHECKS_NOTE, noHeadChecksText } from '../../ship/gates.js';
 import { ghBranchTip, ghCheckRunApps, ghCheckSuites, ghCommitCheckNames, ghRequiredCheckRules } from '../../forge/github/checks.js';
-import { ciFixPrompt, conflictFixPrompt, fenceFor, fenced, fixPrompt, implementPrompt, oneLine, reviewPrompt } from './prompts.js';
+import { ciFixPrompt, conflictFixPrompt, fenceFor, fenced, fixPrompt, implementPrompt, oneLine, REPO_GUIDE_FILES, reviewPrompt } from './prompts.js';
 import { BASE_FAILURES_MAX, headRunSignals, parseVitestReport, readVitestReport, testDeltaVerdict, testIdText, vitestOutputFailures, vitestReportArgs, vitestReportPath } from './test-delta.js';
 import { decisionsViolation, loadTeamContext, pathsInDiff, pathsInText } from '../team/context.js';
 import { mergeComment, mergeDecision } from './merge-policy.js';
@@ -108,6 +108,7 @@ import { getGlobalOmcStatePath } from '../../utils/paths.js';
 import { isProcessAlive, isProcessIdentityLive, terminateOwnedProcessTree } from '../../platform/process-utils.js';
 import { isTerminalLaneState, LaneLostError } from './lane.js';
 import { jobRefProblem } from '../../copilot-run/job.js';
+import { secretShapeKinds } from '../heal/sanitize.js';
 import { CI_TREE_PATHS, commitLaneWork, conflictFixStart, LANE_DECLINED, LANE_PROTECTED_PATHS, laneCommitMessage, laneDecline, pathGlobMatches } from './lane-commit.js';
 import { proveLaneTreeGone } from './lane-procs.js';
 import { quarantineTamper, RELEASE_TAMPER_COMMAND, STILL_ACTIVE, tamperHoldMessage, tamperHoldPath, writeTamperHold } from './tamper-quarantine.js';
@@ -1250,11 +1251,11 @@ class FactoryEngine {
             const listed = new Set(out.split('\0').filter(Boolean).map((p) => p.replace(/\/$/, '')));
             return paths.every((p) => listed.has(p));
         };
-        // One copy per item: the tree of this run's latest completed lane moves here (prepare.ts adoptLaneTree, its trust argument).
-        // Only a completed lane's (its process tree is proven gone before its commit; a failed, stalled or lost one may still
-        // write), never the one a parked commit will commit again.
+        // One copy per item: the tree of this run's latest committed lane moves here (prepare.ts adoptLaneTree, its trust argument).
+        // Only from a lane whose engine commit landed after its process tree was proven gone (treeReusable): never a failed,
+        // stalled or lost lane, one whose commit was refused or is parked to be retried, or one a survivor may still write.
         const reuseFrom = this.state.lanes
-            .filter((l) => l.worktree && l.status === 'completed' && l.id !== this.state.pendingCommit?.laneId && !samePath(l.worktree, worktree))
+            .filter((l) => l.worktree && l.treeReusable === true && l.id !== this.state.pendingCommit?.laneId && !samePath(l.worktree, worktree))
             .map((l) => l.worktree).reverse();
         return prepareLaneNodeModules(this.o.root, worktree, { workspaces: this.baseWorkspaces(), ...(this.o.warn ? { warn: this.o.warn } : {}), ignored, reuseFrom });
     }
@@ -1767,6 +1768,8 @@ class FactoryEngine {
         if (this.o.allowSecretShapes) {
             if (existing?.gate?.name === SECRET_SHAPES_GATE && existing.pendingCommit?.secretFindings?.length)
                 this.secretShapesAllowed = true;
+            else if (existing?.gate?.name === SECRET_SHAPES_GATE && (existing.phase === 'intake' || existing.phase === 'plan'))
+                this.o.warn?.(`omg factory run: --allow-secret-shapes is ignored: the run for ${this.what} is parked because its own text or linked plan file holds secret-shaped content; edit the item or the plan file instead`);
             else
                 this.o.warn?.(`omg factory run: --allow-secret-shapes is ignored: the run for ${this.what} is not parked at awaiting-human: ${SECRET_SHAPES_GATE}`);
         }
@@ -2399,11 +2402,26 @@ class FactoryEngine {
         }
         const body = item.acceptance ? `${item.body.trim()}\n\n## Acceptance criteria\n\n${item.acceptance}\n` : item.body;
         const planLink = findPlanLink(item.body, item.comments, item.authorTrusted);
+        if (this.issueTextSecretPark(noun, item.title, body))
+            return;
         if (this.foreignPr(item.repoUrl))
             return;
         if (this.blockedBy(item.dependsOn, item.repoUrl))
             return;
         this.save((s) => moveTo({ ...s, repoUrl: item.repoUrl, issueTitle: item.title, issueBody: body, ...(planLink ? { planLink } : {}) }, 'plan', `${noun} ${item.url}`, this.iso()));
+    }
+    /**
+     * The lane commit's secret scan, run on the item's own title and body before
+     * any lane: a lane given a key in its plan copies it into the change. Parks
+     * in intake (a rerun reads the edited item again); names the kinds, never a value.
+     */
+    issueTextSecretPark(noun, title, body) {
+        const kinds = secretShapeKinds(`${title}\n${body}`);
+        if (kinds.length === 0)
+            return false;
+        this.gate(SECRET_SHAPES_GATE, `the ${noun} text itself (title or body) holds secret-shaped content (${kinds.join(', ')}), so no lane started: a lane would copy it into the change. Remove it from the ${noun} (rotate the key or token if it is real) and rerun ${this.resume}, or ${cancelCommand(this.key)}`);
+        this.progress.emit('intake', 'fail', `secret-shaped content in the ${noun} text`);
+        return true;
     }
     async intake() {
         if (this.state.kind === 'ci-heal')
@@ -2434,6 +2452,8 @@ class FactoryEngine {
         }
         const body = typeof v.body === 'string' ? v.body : '';
         const planLink = findPlanLink(body, Array.isArray(v.comments) ? v.comments : [], issueAuthorTrusted(v));
+        if (this.issueTextSecretPark('issue', typeof v.title === 'string' ? v.title : '', body))
+            return;
         if (this.foreignPr(m[1]))
             return;
         if (this.blockedBy(ghDependsOn(body), m[1]))
@@ -2453,6 +2473,12 @@ class FactoryEngine {
             const text = readBaseFile(this.exec, this.o.root, baseSha, s.planLink);
             if (text === null || !text.trim()) {
                 this.gate('needs-plan', `omg-plan ${s.planLink} is missing or empty on ${s.base} at ${baseSha.slice(0, 12)}`);
+                return;
+            }
+            const planKinds = secretShapeKinds(text);
+            if (planKinds.length > 0) {
+                this.gate(SECRET_SHAPES_GATE, `the linked plan file ${s.planLink} holds secret-shaped content (${planKinds.join(', ')}), so no lane started: a lane would copy it into the change. Remove it from the plan file on ${s.base} (rotate the key or token if it is real) and rerun ${this.resume}, or ${cancelCommand(this.key)}`);
+                this.progress.emit('plan', 'fail', 'secret-shaped content in the linked plan file');
                 return;
             }
             const blob = this.run(['rev-parse', '--verify', `${baseSha}:${s.planLink}`], 'git', TRUSTED_READ_ENV).trim();
@@ -2550,7 +2576,15 @@ class FactoryEngine {
         }
         if (undecided && this.layoutChoice === 'private' && !(await this.setupPrivate(baseSha)))
             return;
-        const out = await this.runLane('implement', baseSha, 'write', implementPrompt(this.state, this.teamContext(this.readAt(baseSha), pathsInText(this.state.plan?.text ?? '')), this.laneScripts(), this.laneEnvironment()), 'implement');
+        const read = this.readAt(baseSha);
+        // Name only the guide files the base has: the lane worktree checks it out.
+        const guides = REPO_GUIDE_FILES.filter((p) => { try {
+            return read(p) !== undefined;
+        }
+        catch {
+            return false;
+        } });
+        const out = await this.runLane('implement', baseSha, 'write', implementPrompt(this.state, this.teamContext(read, pathsInText(this.state.plan?.text ?? '')), this.laneScripts(), this.laneEnvironment(), guides), 'implement');
         if (out.kind === 'done')
             await this.acceptWriteLane(out, 'implement', baseSha);
     }
@@ -2681,7 +2715,7 @@ class FactoryEngine {
         // The engine's own commit moved the lane's branch and worktree HEAD: the new baseline of the recheck.
         this.rebaseRecheck();
         const head = commit.sha;
-        this.updateLane(p.laneId, { endSha: head, ...(commit.notes.length > 0 ? { note: commit.notes.join('; ') } : {}) });
+        this.updateLane(p.laneId, { endSha: head, ...(commit.notes.length > 0 ? { note: commit.notes.join('; ') } : {}), ...(proof.kind === 'gone' ? { treeReusable: true } : {}) });
         // A detect-only lane after the PR exists (fix, conflict-fix, ci-fix) is recorded in a PR comment; the first one is in the PR body.
         if (lane.sandbox?.mode === 'detect-only' && this.state.pr) {
             this.commentOnce('pr', `detect-only@${p.laneId}`, 'sandbox', `**Sandbox: detect-only.** ${kind} lane ${p.laneId} ran without an OS sandbox (\`writeUnsandboxed: "detect-only"\`).\n`);
@@ -7142,6 +7176,10 @@ function dryLayoutNote(o, exec, local) {
         return `; but ${errText(error)}, so the run would park at awaiting-human: ${PRIVATE_STORE_GATE}`;
     }
 }
+/** The real run's intake park on secret-shaped item text, predicted: kinds only, never a value. */
+function drySecretPark(noun, kinds, caps) {
+    return { exitCode: 0, phase: null, state: null, message: `dry run: the ${noun} text itself (title or body) holds secret-shaped content (${kinds.join(', ')}); the run would stop at awaiting-human: ${SECRET_SHAPES_GATE} before any lane`, plan: { next: 'awaiting-human', reason: SECRET_SHAPES_GATE, ...caps } };
+}
 function dryRun(o) {
     const holder = busyHolder(o, engineRunKey(o));
     if (holder)
@@ -7204,6 +7242,16 @@ function dryRun(o) {
         const open = forge.reviews.findOpenPrForBranch(branch);
         if (open !== undefined)
             return { exitCode: 0, phase: null, state: null, message: `dry run: open PR #${open} already uses ${branch}; the run would stop at awaiting-human: pr-exists`, plan: { next: 'awaiting-human', reason: 'pr-exists', ...caps } };
+        const itemBody = item.acceptance ? `${item.body.trim()}
+
+## Acceptance criteria
+
+${item.acceptance}
+` : item.body;
+        const itemKinds = secretShapeKinds(`${item.title}
+${itemBody}`);
+        if (itemKinds.length > 0)
+            return drySecretPark(terms.item, itemKinds, caps);
         const link = findPlanLink(item.body, item.comments, item.authorTrusted);
         const source = link ? `omg-plan ${link}` : item.acceptance ? terms.acceptance : hasAcceptanceCriteria(item.body) ? `${terms.body} (Acceptance criteria)` : undefined;
         // The local gate's executable, probed by the resolver the real gate run uses, without spawning it (dogfood F40).
@@ -7237,6 +7285,10 @@ function dryRun(o) {
     const body = typeof v.body === 'string' ? v.body : '';
     if (v.state !== 'OPEN')
         return { exitCode: 0, phase: null, state: null, message: 'dry run: the issue is closed; the run would be cancelled', plan: { next: 'cancelled', ...caps } };
+    const issueKinds = secretShapeKinds(`${typeof v.title === 'string' ? v.title : ''}
+${body}`);
+    if (issueKinds.length > 0)
+        return drySecretPark('issue', issueKinds, caps);
     const link = findPlanLink(body, Array.isArray(v.comments) ? v.comments : [], issueAuthorTrusted(v));
     const source = link ? `omg-plan ${link}` : hasAcceptanceCriteria(body) ? 'issue body (Acceptance criteria)' : undefined;
     const repoUrl = typeof v.url === 'string' ? v.url.replace(/\/issues\/\d+$/, '') : '';

@@ -27,6 +27,18 @@ describe('engine-side commit of a write lane', () => {
         expect(readFactoryState(h.root, ISSUE).lanes.filter((l) => l.kind === 'implement')).toHaveLength(1);
         expect(remoteHead(h)).toBeNull();
     });
+    it('a bold-wrapped DECLINED line is a decline; a Blocked: line alone (an environment problem) is not: it keeps its fresh retry', async () => {
+        const bold = () => ({ finalText: 'Nothing changed.\n\n**DECLINED: the file is outside this repository**' });
+        const out = await run([bold]).done;
+        expect(out.gate?.name, out.message).toBe('implement-declined');
+        expect(out.gate?.detail).toBe('the file is outside this repository');
+    });
+    it('a lane whose final message starts Blocked: (no DECLINED line) is retried, then parks implement-failed', async () => {
+        const blocked = () => ({ finalText: 'Blocked: npm test fails with Access is denied' });
+        const out = await run([blocked, blocked]).done;
+        expect(out.gate?.name, out.message).toBe('implement-failed');
+        expect(readFactoryState(h.root, ISSUE).lanes.filter((l) => l.kind === 'implement')).toHaveLength(2);
+    });
     it('a decline statement on a lane that changed files is not a decline: the change is committed', async () => {
         const changing = ({ worktree }) => {
             writeFileSync(join(worktree, 'a.ts'), 'a\n');

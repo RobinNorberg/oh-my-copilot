@@ -71,7 +71,7 @@ import { buildGitView, GIT_VIEW_MAX_BYTES, GIT_VIEW_MAX_OBJECTS, type GitViewSou
 import { driveGates } from './gates-driver.js';
 import { missingCheckHint, NO_CI_CHECKS_NOTE, noHeadChecksText, type GateHeadReads } from '../../ship/gates.js';
 import { ghBranchTip, ghCheckRunApps, ghCheckSuites, ghCommitCheckNames, ghRequiredCheckRules } from '../../forge/github/checks.js';
-import { ciFixPrompt, conflictFixPrompt, fenceFor, fenced, fixPrompt, implementPrompt, oneLine, reviewPrompt, type LaneEnvironment } from './prompts.js';
+import { ciFixPrompt, conflictFixPrompt, fenceFor, fenced, fixPrompt, implementPrompt, oneLine, REPO_GUIDE_FILES, reviewPrompt, type LaneEnvironment } from './prompts.js';
 import { BASE_FAILURES_MAX, headRunSignals, parseVitestReport, readVitestReport, testDeltaVerdict, testIdText, vitestOutputFailures, vitestReportArgs, vitestReportPath, type VitestRunSummary } from './test-delta.js';
 import { decisionsViolation, loadTeamContext, pathsInDiff, pathsInText, type ReadAt, type TeamContext } from '../team/context.js';
 import { mergeComment, mergeDecision, type FactoryMergeDecision, type MergeView } from './merge-policy.js';
@@ -133,6 +133,7 @@ import { getGlobalOmcStatePath } from '../../utils/paths.js';
 import { isProcessAlive, isProcessIdentityLive, terminateOwnedProcessTree } from '../../platform/process-utils.js';
 import { isTerminalLaneState, LaneLostError, type LaneBackend, type LaneProcess, type LaneProfile, type LaneResult } from './lane.js';
 import { jobRefProblem } from '../../copilot-run/job.js';
+import { secretShapeKinds } from '../heal/sanitize.js';
 import { CI_TREE_PATHS, commitLaneWork, conflictFixStart, LANE_DECLINED, LANE_PROTECTED_PATHS, laneCommitMessage, laneDecline, pathGlobMatches, type SecretFinding } from './lane-commit.js';
 import { proveLaneTreeGone, type LaneTreeProof } from './lane-procs.js';
 import { quarantineTamper, RELEASE_TAMPER_COMMAND, STILL_ACTIVE, tamperHoldMessage, tamperHoldPath, writeTamperHold } from './tamper-quarantine.js';
@@ -1997,6 +1998,7 @@ class FactoryEngine {
     // --allow-secret-shapes answers one secret-shaped-content park (its lane commit's findings), never in advance.
     if (this.o.allowSecretShapes) {
       if (existing?.gate?.name === SECRET_SHAPES_GATE && existing.pendingCommit?.secretFindings?.length) this.secretShapesAllowed = true;
+      else if (existing?.gate?.name === SECRET_SHAPES_GATE && (existing.phase === 'intake' || existing.phase === 'plan')) this.o.warn?.(`omg factory run: --allow-secret-shapes is ignored: the run for ${this.what} is parked because its own text or linked plan file holds secret-shaped content; edit the item or the plan file instead`);
       else this.o.warn?.(`omg factory run: --allow-secret-shapes is ignored: the run for ${this.what} is not parked at awaiting-human: ${SECRET_SHAPES_GATE}`);
     }
     // Replace refs or grafts in the shared git dir: refused before a run starts, parked on a resume.
@@ -2551,9 +2553,23 @@ class FactoryEngine {
     }
     const body = item.acceptance ? `${item.body.trim()}\n\n## Acceptance criteria\n\n${item.acceptance}\n` : item.body;
     const planLink = findPlanLink(item.body, item.comments, item.authorTrusted);
+    if (this.issueTextSecretPark(noun, item.title, body)) return;
     if (this.foreignPr(item.repoUrl)) return;
     if (this.blockedBy(item.dependsOn, item.repoUrl)) return;
     this.save((s) => moveTo({ ...s, repoUrl: item.repoUrl, issueTitle: item.title, issueBody: body, ...(planLink ? { planLink } : {}) }, 'plan', `${noun} ${item.url}`, this.iso()));
+  }
+
+  /**
+   * The lane commit's secret scan, run on the item's own title and body before
+   * any lane: a lane given a key in its plan copies it into the change. Parks
+   * in intake (a rerun reads the edited item again); names the kinds, never a value.
+   */
+  private issueTextSecretPark(noun: string, title: string, body: string): boolean {
+    const kinds = secretShapeKinds(`${title}\n${body}`);
+    if (kinds.length === 0) return false;
+    this.gate(SECRET_SHAPES_GATE, `the ${noun} text itself (title or body) holds secret-shaped content (${kinds.join(', ')}), so no lane started: a lane would copy it into the change. Remove it from the ${noun} (rotate the key or token if it is real) and rerun ${this.resume}, or ${cancelCommand(this.key)}`);
+    this.progress.emit('intake', 'fail', `secret-shaped content in the ${noun} text`);
+    return true;
   }
 
   private async intake(): Promise<void> {
@@ -2580,6 +2596,7 @@ class FactoryEngine {
     }
     const body = typeof v.body === 'string' ? v.body : '';
     const planLink = findPlanLink(body, Array.isArray(v.comments) ? v.comments : [], issueAuthorTrusted(v));
+    if (this.issueTextSecretPark('issue', typeof v.title === 'string' ? v.title : '', body)) return;
     if (this.foreignPr(m[1])) return;
     if (this.blockedBy(ghDependsOn(body), m[1])) return;
     this.save((s) => moveTo({ ...s, repoUrl: m[1], issueTitle: typeof v.title === 'string' ? v.title : '', issueBody: body, ...(planLink ? { planLink } : {}) }, 'plan', `issue ${url}`, this.iso()));
@@ -2597,6 +2614,12 @@ class FactoryEngine {
       const text = readBaseFile(this.exec, this.o.root, baseSha, s.planLink);
       if (text === null || !text.trim()) {
         this.gate('needs-plan', `omg-plan ${s.planLink} is missing or empty on ${s.base} at ${baseSha.slice(0, 12)}`);
+        return;
+      }
+      const planKinds = secretShapeKinds(text);
+      if (planKinds.length > 0) {
+        this.gate(SECRET_SHAPES_GATE, `the linked plan file ${s.planLink} holds secret-shaped content (${planKinds.join(', ')}), so no lane started: a lane would copy it into the change. Remove it from the plan file on ${s.base} (rotate the key or token if it is real) and rerun ${this.resume}, or ${cancelCommand(this.key)}`);
+        this.progress.emit('plan', 'fail', 'secret-shaped content in the linked plan file');
         return;
       }
       const blob = this.run(['rev-parse', '--verify', `${baseSha}:${s.planLink}`], 'git', TRUSTED_READ_ENV).trim();
@@ -2682,7 +2705,10 @@ class FactoryEngine {
       return this.gate(PARALLEL_LAYOUT_GATE, `this run started as one of several parallel runs (factory.run.maxConcurrent ${this.o.parallel.maxConcurrent}), but factory.run.layout resolved to "shared" at the base ${baseSha.slice(0, 12)}; parallel runs need factory.run.layout: "private". No lane has started: set factory.run.layout "private" in your user config, or factory.run.maxConcurrent 1, then rerun ${this.resume}`);
     }
     if (undecided && this.layoutChoice === 'private' && !(await this.setupPrivate(baseSha))) return;
-    const out = await this.runLane('implement', baseSha, 'write', implementPrompt(this.state, this.teamContext(this.readAt(baseSha), pathsInText(this.state.plan?.text ?? '')), this.laneScripts(), this.laneEnvironment()), 'implement');
+    const read = this.readAt(baseSha);
+    // Name only the guide files the base has: the lane worktree checks it out.
+    const guides = REPO_GUIDE_FILES.filter((p) => { try { return read(p) !== undefined; } catch { return false; } });
+    const out = await this.runLane('implement', baseSha, 'write', implementPrompt(this.state, this.teamContext(read, pathsInText(this.state.plan?.text ?? '')), this.laneScripts(), this.laneEnvironment(), guides), 'implement');
     if (out.kind === 'done') await this.acceptWriteLane(out, 'implement', baseSha);
   }
 
@@ -6880,6 +6906,11 @@ function dryLayoutNote(o: FactoryEngineOptions, exec: Exec | null, local: boolea
   }
 }
 
+/** The real run's intake park on secret-shaped item text, predicted: kinds only, never a value. */
+function drySecretPark(noun: string, kinds: string[], caps: { laneMaxCredits: number; maxRunCredits?: number }): FactoryRunOutcome {
+  return { exitCode: 0, phase: null, state: null, message: `dry run: the ${noun} text itself (title or body) holds secret-shaped content (${kinds.join(', ')}); the run would stop at awaiting-human: ${SECRET_SHAPES_GATE} before any lane`, plan: { next: 'awaiting-human', reason: SECRET_SHAPES_GATE, ...caps } };
+}
+
 function dryRun(o: FactoryEngineOptions): FactoryRunOutcome {
   const holder = busyHolder(o, engineRunKey(o));
   if (holder) return { exitCode: EXIT_BUSY, phase: null, state: null, busy: true, message: `dry run: ${holder}; a real run now would exit busy (${EXIT_BUSY}) without touching anything` };
@@ -6936,6 +6967,15 @@ function dryRun(o: FactoryEngineOptions): FactoryRunOutcome {
     const branch = factoryBranch(key);
     const open = forge.reviews.findOpenPrForBranch(branch);
     if (open !== undefined) return { exitCode: 0, phase: null, state: null, message: `dry run: open PR #${open} already uses ${branch}; the run would stop at awaiting-human: pr-exists`, plan: { next: 'awaiting-human', reason: 'pr-exists', ...caps } };
+    const itemBody = item.acceptance ? `${item.body.trim()}
+
+## Acceptance criteria
+
+${item.acceptance}
+` : item.body;
+    const itemKinds = secretShapeKinds(`${item.title}
+${itemBody}`);
+    if (itemKinds.length > 0) return drySecretPark(terms.item, itemKinds, caps);
     const link = findPlanLink(item.body, item.comments, item.authorTrusted);
     const source = link ? `omg-plan ${link}` : item.acceptance ? terms.acceptance : hasAcceptanceCriteria(item.body) ? `${terms.body} (Acceptance criteria)` : undefined;
     // The local gate's executable, probed by the resolver the real gate run uses, without spawning it (dogfood F40).
@@ -6954,7 +6994,7 @@ function dryRun(o: FactoryEngineOptions): FactoryRunOutcome {
   }
   const res = ghIssueView(exec, o.issue!, o.root);
   if (res.status !== 0) throw new FactoryStepError(`gh issue view ${o.issue} failed: ${res.stderr.trim()}`);
-  let v: { body?: unknown; state?: unknown; url?: unknown; author?: unknown; comments?: IssueComment[] };
+  let v: { title?: unknown; body?: unknown; state?: unknown; url?: unknown; author?: unknown; comments?: IssueComment[] };
   try {
     v = JSON.parse(res.stdout) as typeof v;
   } catch {
@@ -6963,6 +7003,9 @@ function dryRun(o: FactoryEngineOptions): FactoryRunOutcome {
   if (typeof v !== 'object' || v === null) throw new FactoryStepError(`gh issue view ${o.issue} returned no JSON object`);
   const body = typeof v.body === 'string' ? v.body : '';
   if (v.state !== 'OPEN') return { exitCode: 0, phase: null, state: null, message: 'dry run: the issue is closed; the run would be cancelled', plan: { next: 'cancelled', ...caps } };
+  const issueKinds = secretShapeKinds(`${typeof v.title === 'string' ? v.title : ''}
+${body}`);
+  if (issueKinds.length > 0) return drySecretPark('issue', issueKinds, caps);
   const link = findPlanLink(body, Array.isArray(v.comments) ? v.comments : [], issueAuthorTrusted(v));
   const source = link ? `omg-plan ${link}` : hasAcceptanceCriteria(body) ? 'issue body (Acceptance criteria)' : undefined;
   const repoUrl = typeof v.url === 'string' ? v.url.replace(/\/issues\/\d+$/, '') : '';

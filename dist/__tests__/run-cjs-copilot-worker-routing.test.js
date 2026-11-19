@@ -74,7 +74,7 @@ process.stdin.on('end', () => {
 `;
 function hostEnv(extra) {
     const env = { ...process.env, ...extra };
-    for (const key of ['OMC_HOOK_EVENT', 'OMC_HOOK_FAIL_CLOSED', 'OMC_COPILOT_HOOK_WORKER', 'OMC_SESSION_OWNER_PID', 'NODE_ENV']) {
+    for (const key of ['OMC_HOOK_EVENT', 'OMC_HOOK_FAIL_CLOSED', 'OMC_COPILOT_HOOK_WORKER', 'OMC_SESSION_OWNER_PID', 'OMC_LANE_HOOKS', 'NODE_ENV']) {
         if (!(key in extra))
             delete env[key];
     }

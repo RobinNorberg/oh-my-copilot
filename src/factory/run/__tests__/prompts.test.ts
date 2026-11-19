@@ -69,6 +69,9 @@ export function promptCases(m: Pick<typeof prompts, 'implementPrompt' | 'fixProm
     // The no-install rule: a sandboxed lane without network, with the copied node_modules (Windows) and without it.
     implementNoNetworkReady: m.implementPrompt(gh, undefined, [], noNetworkReady),
     implementNoNetwork: m.implementPrompt(gh, undefined, [], noNetwork),
+    // The guide files: only those the lane's base has are named (the default above: none).
+    implementAllGuides: m.implementPrompt(gh, undefined, [], null, ['AGENTS.md', 'CLAUDE.md', 'CONTRIBUTING.md']),
+    implementOneGuide: m.implementPrompt(local, undefined, [], null, ['CONTRIBUTING.md']),
     fixNoNetworkReady: m.fixPrompt(findings, 1, [], noNetworkReady),
     conflictNoNetwork: m.conflictFixPrompt(gh, ['x.ts'], noNetwork),
     ciNoNetworkReady: m.ciFixPrompt(ciLocal, noNetworkReady),
@@ -87,6 +90,19 @@ describe('lane prompts are byte-identical to the pre-move engine output', () => 
   }
   it('covers every case', () => {
     expect(Object.keys(viaPrompts).sort()).toEqual(Object.keys(fixture).sort());
+  });
+});
+
+describe('the implement prompt names only the guide files the base has', () => {
+  const s: FactoryRunState = { ...createFactoryState({ issue: 7, repoUrl: 'https://github.com/o/r', base: 'main' }, '2026-11-19T00:00:00.000Z'), baseSha: 'c'.repeat(40) };
+  it('names none, some or all, never a missing one', () => {
+    const none = prompts.implementPrompt(s);
+    expect(none).toContain('following the repository\'s standards.\n');
+    expect(none).not.toContain('read its');
+    const two = prompts.implementPrompt(s, undefined, [], null, ['AGENTS.md', 'CONTRIBUTING.md']);
+    expect(two).toContain('following the repository\'s standards (read its AGENTS.md / CONTRIBUTING.md).');
+    expect(two).not.toMatch(/read its[^\n]*CLAUDE\.md/);
+    expect(prompts.REPO_GUIDE_FILES).toEqual(['AGENTS.md', 'CLAUDE.md', 'CONTRIBUTING.md']);
   });
 });
 
