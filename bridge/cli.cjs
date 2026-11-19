@@ -123785,42 +123785,151 @@ function buildLaneHooksFile(shipped) {
   }
   return { ...shipped, hooks };
 }
-function hooksPathSegments(manifest) {
-  const raw = manifest.hooks;
-  if (typeof raw !== "string" || raw.trim() === "") throw new Error("plugin.json names no hooks file");
-  const rel = (0, import_node_path38.normalize)(raw);
-  const segments2 = rel.split(import_node_path38.sep).filter((s) => s !== "" && s !== ".");
-  if ((0, import_node_path38.isAbsolute)(raw) || segments2.length === 0 || segments2.includes("..")) throw new Error(`plugin.json hooks path ${raw} is not inside the plugin`);
+function pathSegments(raw, what) {
+  if (typeof raw !== "string" || raw.trim() === "") throw new Error(`plugin.json names no ${what}`);
+  const segments2 = (0, import_node_path38.normalize)(raw).split(import_node_path38.sep).filter((s) => s !== "" && s !== ".");
+  if ((0, import_node_path38.isAbsolute)(raw) || segments2.length === 0 || segments2.includes("..")) throw new Error(`plugin.json ${what} path ${raw} is not inside the plugin`);
   return segments2;
 }
-function mirror(src, dst, keep) {
-  (0, import_node_fs33.mkdirSync)(dst);
+function manifestFiles(root, manifest, hooks) {
+  const files = /* @__PURE__ */ new Set(["plugin.json"]);
+  for (const [key, value] of Object.entries(manifest)) {
+    if (typeof value !== "string" || !/^\.{0,2}[/\\]/.test(value)) continue;
+    let segments2;
+    try {
+      segments2 = pathSegments(value, key);
+    } catch {
+      continue;
+    }
+    if (segments2.length !== 1 || segments2[0] === hooks[0]) continue;
+    try {
+      if ((0, import_node_fs33.statSync)((0, import_node_path38.join)(root, segments2[0])).isFile()) files.add(segments2[0]);
+    } catch {
+    }
+  }
+  return files;
+}
+function mirror(src, dst, keep, copy) {
   for (const ent of (0, import_node_fs33.readdirSync)(src, { withFileTypes: true })) {
     if (ent.name === ".git") continue;
     const from = (0, import_node_path38.join)(src, ent.name);
     const to = (0, import_node_path38.join)(dst, ent.name);
     if (ent.name === keep[0]) {
-      if (keep.length > 1) mirror(from, to, keep.slice(1));
+      if (keep.length > 1) {
+        (0, import_node_fs33.mkdirSync)(to);
+        mirror(from, to, keep.slice(1), /* @__PURE__ */ new Set());
+      }
       continue;
     }
     if ((0, import_node_fs33.statSync)(from).isDirectory()) (0, import_node_fs33.symlinkSync)((0, import_node_fs33.realpathSync)(from), to, "junction");
-    else (0, import_node_fs33.copyFileSync)(from, to);
+    else if (copy.has(ent.name)) (0, import_node_fs33.copyFileSync)(from, to);
   }
 }
-function prepareLanePluginDir(pluginRoot, dest) {
+function prepareLanePluginDir(pluginRoot, dest, ownerPid = process.pid) {
   const root = (0, import_node_fs33.realpathSync)(pluginRoot);
   const manifest = JSON.parse((0, import_node_fs33.readFileSync)((0, import_node_path38.join)(root, "plugin.json"), "utf8"));
-  const segments2 = hooksPathSegments(manifest);
+  const segments2 = pathSegments(manifest.hooks, "hooks file");
   const lane = buildLaneHooksFile(JSON.parse((0, import_node_fs33.readFileSync)((0, import_node_path38.join)(root, ...segments2), "utf8")));
-  mirror(root, dest, segments2);
-  (0, import_node_fs33.writeFileSync)((0, import_node_path38.join)(dest, ...segments2), `${JSON.stringify(lane, null, 2)}
+  const copy = manifestFiles(root, manifest, segments2);
+  (0, import_node_fs33.mkdirSync)(dest);
+  try {
+    (0, import_node_fs33.writeFileSync)((0, import_node_path38.join)(dest, LANE_PLUGIN_MARKER), `${JSON.stringify({ kind: MARKER_KIND, pid: ownerPid })}
 `, { flag: "wx" });
-  const written = JSON.parse((0, import_node_fs33.readFileSync)((0, import_node_path38.join)(dest, ...segments2), "utf8"));
-  const events = Object.keys(written.hooks ?? {}).sort();
-  if (events.join(",") !== [...LANE_HOOK_EVENTS].sort().join(",")) throw new Error(`the lane hooks file lists ${events.join(", ")}`);
+    mirror(root, dest, segments2, copy);
+    (0, import_node_fs33.writeFileSync)((0, import_node_path38.join)(dest, ...segments2), `${JSON.stringify(lane, null, 2)}
+`, { flag: "wx" });
+    const written = JSON.parse((0, import_node_fs33.readFileSync)((0, import_node_path38.join)(dest, ...segments2), "utf8"));
+    const events = Object.keys(written.hooks ?? {}).sort();
+    if (events.join(",") !== [...LANE_HOOK_EVENTS].sort().join(",")) throw new Error(`the lane hooks file lists ${events.join(", ")}`);
+  } catch (err) {
+    try {
+      removeLanePluginDir(dest);
+    } catch {
+    }
+    throw err;
+  }
   return dest;
 }
-var import_node_fs33, import_node_path38, LANE_HOOK_EVENTS, LANE_PLUGIN_MIRROR_ENV, LANE_PLUGIN_DIR;
+function isLink(path30, isSymbolicLink2) {
+  if (isSymbolicLink2) return true;
+  try {
+    (0, import_node_fs33.readlinkSync)(path30);
+    return true;
+  } catch {
+    return false;
+  }
+}
+function unlinkLink(path30) {
+  try {
+    (0, import_node_fs33.unlinkSync)(path30);
+  } catch (err) {
+    const code = err.code;
+    if (code !== "EPERM" && code !== "EISDIR" && code !== "EACCES") throw err;
+    (0, import_node_fs33.rmdirSync)(path30);
+  }
+}
+function removeLanePluginDir(path30) {
+  let st;
+  try {
+    st = (0, import_node_fs33.lstatSync)(path30);
+  } catch (err) {
+    if (err.code === "ENOENT") return;
+    throw err;
+  }
+  if (isLink(path30, st.isSymbolicLink())) {
+    unlinkLink(path30);
+    return;
+  }
+  if (st.isDirectory()) {
+    for (const name of (0, import_node_fs33.readdirSync)(path30)) removeLanePluginDir((0, import_node_path38.join)(path30, name));
+    (0, import_node_fs33.rmdirSync)(path30);
+    return;
+  }
+  (0, import_node_fs33.unlinkSync)(path30);
+}
+function isRealDir(path30) {
+  try {
+    const st = (0, import_node_fs33.lstatSync)(path30);
+    return st.isDirectory() && !isLink(path30, st.isSymbolicLink());
+  } catch {
+    return false;
+  }
+}
+function markerPid(dir) {
+  const marker = (0, import_node_path38.join)(dir, LANE_PLUGIN_MARKER);
+  try {
+    if (!(0, import_node_fs33.lstatSync)(marker).isFile()) return null;
+    const data = JSON.parse((0, import_node_fs33.readFileSync)(marker, "utf8"));
+    return data.kind === MARKER_KIND && Number.isInteger(data.pid) ? data.pid : null;
+  } catch {
+    return null;
+  }
+}
+function sweepStaleLanePluginDirs(jobRoot, isAlive, ownJobLive) {
+  const removed = [];
+  const failed3 = [];
+  let ids2;
+  try {
+    ids2 = (0, import_node_fs33.readdirSync)(jobRoot).filter((name) => JOB_ID.test(name));
+  } catch {
+    return { removed, failed: failed3 };
+  }
+  for (const id of ids2) {
+    const home = (0, import_node_path38.join)(jobRoot, id, "home");
+    const dir = (0, import_node_path38.join)(home, LANE_PLUGIN_DIR);
+    if (!isRealDir((0, import_node_path38.join)(jobRoot, id)) || !isRealDir(home) || !isRealDir(dir)) continue;
+    const pid = markerPid(dir);
+    if (pid === null || (pid === process.pid ? ownJobLive(id) : isAlive(pid))) continue;
+    try {
+      removeLanePluginDir(dir);
+      removed.push(dir);
+    } catch (err) {
+      failed3.push(`${dir}: ${err.message}`);
+    }
+  }
+  return { removed, failed: failed3 };
+}
+var import_node_fs33, import_node_path38, LANE_HOOK_EVENTS, LANE_PLUGIN_MIRROR_ENV, LANE_PLUGIN_DIR, LANE_PLUGIN_MARKER, MARKER_KIND, JOB_ID;
 var init_lane_plugin = __esm({
   "src/copilot-run/lane-plugin.ts"() {
     "use strict";
@@ -123829,6 +123938,9 @@ var init_lane_plugin = __esm({
     LANE_HOOK_EVENTS = ["PreToolUse", "PermissionRequest"];
     LANE_PLUGIN_MIRROR_ENV = "OMC_LANE_PLUGIN_MIRROR";
     LANE_PLUGIN_DIR = "lane-plugin";
+    LANE_PLUGIN_MARKER = ".omg-lane-plugin.json";
+    MARKER_KIND = "omg-lane-plugin";
+    JOB_ID = /^cr-[0-9a-f]{12}$/;
   }
 });
 
@@ -124305,7 +124417,7 @@ function defaultCopilotRunDeps(env2 = process.env) {
     killTree: (pid) => killProcessTree2(pid, import_node_child_process18.spawnSync)
   };
 }
-var import_node_child_process18, import_node_crypto20, import_node_fs34, import_node_os11, import_node_path39, DEFAULT_TIMEOUT_MS3, MAX_TIMEOUT_MS, DEFAULT_MAX_CREDITS, MAX_RUNNING_JOBS, MAX_PROMPT_CHARS, WORKTREE_TEAM, MCP_SERVER, START_TIMEOUT_MS2, RPC_TIMEOUT_MS2, ABORT_GRACE_MS2, SHUTDOWN_GRACE_MS2, STOP_TIMEOUT_MS2, SERVER_EXIT_GRACE_MS, GIT_TIMEOUT_MS4, DENIED_LOG_MAX, JOB_ID, MAX_START_REF_CHARS, STOP_CONTINUATION_SKIP_TOKEN, PROJECT_MEMORY_SKIP_TOKEN, LANE_HOOKS_MINIMAL, CopilotRunError, REVIEW_SHELL_DENY_PATTERNS, IDENTITY_TIMEOUT_MS, sleep7, isTerminal, git2, lines, JOB_REF_PREFIX, PLAIN_REF, CopilotRunManager;
+var import_node_child_process18, import_node_crypto20, import_node_fs34, import_node_os11, import_node_path39, DEFAULT_TIMEOUT_MS3, MAX_TIMEOUT_MS, DEFAULT_MAX_CREDITS, MAX_RUNNING_JOBS, MAX_PROMPT_CHARS, WORKTREE_TEAM, MCP_SERVER, START_TIMEOUT_MS2, RPC_TIMEOUT_MS2, ABORT_GRACE_MS2, SHUTDOWN_GRACE_MS2, STOP_TIMEOUT_MS2, SERVER_EXIT_GRACE_MS, GIT_TIMEOUT_MS4, DENIED_LOG_MAX, JOB_ID2, MAX_START_REF_CHARS, STOP_CONTINUATION_SKIP_TOKEN, PROJECT_MEMORY_SKIP_TOKEN, LANE_HOOKS_MINIMAL, CopilotRunError, REVIEW_SHELL_DENY_PATTERNS, IDENTITY_TIMEOUT_MS, sleep7, isTerminal, git2, lines, JOB_REF_PREFIX, PLAIN_REF, CopilotRunManager;
 var init_job = __esm({
   "src/copilot-run/job.ts"() {
     "use strict";
@@ -124353,7 +124465,7 @@ var init_job = __esm({
     SERVER_EXIT_GRACE_MS = 3e3;
     GIT_TIMEOUT_MS4 = 3e4;
     DENIED_LOG_MAX = 50;
-    JOB_ID = /^cr-[0-9a-f]{12}$/;
+    JOB_ID2 = /^cr-[0-9a-f]{12}$/;
     MAX_START_REF_CHARS = 256;
     STOP_CONTINUATION_SKIP_TOKEN = "persistent-mode,workflow-drift-guard,code-simplifier";
     PROJECT_MEMORY_SKIP_TOKEN = "project-memory-session,project-memory-posttool";
@@ -124786,6 +124898,7 @@ var init_job = __esm({
           }
           job.cleanedUp = true;
           try {
+            removeLanePluginDir((0, import_node_path39.join)(job.home, LANE_PLUGIN_DIR));
             (0, import_node_fs34.rmSync)(job.jobDir, { recursive: true, force: true });
           } catch {
           }
@@ -124842,7 +124955,7 @@ var init_job = __esm({
         }
       }
       find(jobId) {
-        if (typeof jobId !== "string" || !JOB_ID.test(jobId)) throw new CopilotRunError(`Invalid jobId ${JSON.stringify(jobId)}.`);
+        if (typeof jobId !== "string" || !JOB_ID2.test(jobId)) throw new CopilotRunError(`Invalid jobId ${JSON.stringify(jobId)}.`);
         const job = this.jobs.get(jobId);
         if (!job) throw new CopilotRunError(`No copilot_run job ${jobId} in this MCP server (jobs live in the server process and end with it).`);
         return job;
@@ -124918,6 +125031,11 @@ var init_job = __esm({
         }
         let sessionPluginRoot = pluginRoot;
         if (job.minimalHooks) {
+          const swept2 = sweepStaleLanePluginDirs((0, import_node_path39.dirname)(job.jobDir), deps.isAlive, (id) => {
+            const other = this.jobs.get(id);
+            return other !== void 0 && !isTerminal(other.status);
+          });
+          for (const failure5 of swept2.failed) job.notes.push(`a stale lane plugin dir was not removed: ${failure5}`);
           try {
             sessionPluginRoot = prepareLanePluginDir(pluginRoot, (0, import_node_path39.join)(job.home, LANE_PLUGIN_DIR));
           } catch (err) {
@@ -124925,6 +125043,26 @@ var init_job = __esm({
           }
         }
         const lanePluginRoot = sessionPluginRoot === pluginRoot ? void 0 : sessionPluginRoot;
+        const removeLaneDir = () => {
+          if (!lanePluginRoot) return true;
+          try {
+            removeLanePluginDir(lanePluginRoot);
+            return true;
+          } catch (err) {
+            job.notes.push(`the lane plugin dir ${lanePluginRoot} was not removed (the next lane removes it): ${errText(err)}`);
+            return false;
+          }
+        };
+        const releaseDirs = () => {
+          if (scrubDir) {
+            try {
+              (0, import_node_fs34.rmSync)(scrubDir, { recursive: true, force: true });
+            } catch (err) {
+              job.notes.push(`the credential scrub dir ${scrubDir} was not removed: ${errText(err)}`);
+            }
+          }
+          return removeLaneDir();
+        };
         const policy = {
           cwd: job.workCwd,
           // The job's temp dir only: the runtime's file tools run unsandboxed and must not reach events.jsonl, nor what
@@ -125068,16 +125206,22 @@ var init_job = __esm({
         };
         const { CopilotClient, RuntimeConnection } = loaded2.module;
         const cap = Math.max(RUNTIME_MIN_MAX_CREDITS, Math.ceil(job.maxCredits));
-        const client = new CopilotClient({
-          connection: RuntimeConnection.forStdio({ path: bin, args: ["--max-ai-credits", String(cap)], env: env2 }),
-          baseDirectory: job.home,
-          workingDirectory: job.workCwd
-        });
+        let client;
+        try {
+          client = new CopilotClient({
+            connection: RuntimeConnection.forStdio({ path: bin, args: ["--max-ai-credits", String(cap)], env: env2 }),
+            baseDirectory: job.home,
+            workingDirectory: job.workCwd
+          });
+        } catch (err) {
+          releaseDirs();
+          job.error = `runtime client: ${errText(err)}`;
+          return "failed";
+        }
         try {
           eventsFd = openAppendExclusive(job.eventsPath);
         } catch (err) {
-          if (scrubDir) (0, import_node_fs34.rmSync)(scrubDir, { recursive: true, force: true });
-          if (lanePluginRoot) (0, import_node_fs34.rmSync)(lanePluginRoot, { recursive: true, force: true });
+          releaseDirs();
           job.error = `events log ${job.eventsPath}: ${errText(err)}`;
           return "failed";
         }
@@ -125179,10 +125323,9 @@ var init_job = __esm({
           const fd = eventsFd;
           eventsFd = null;
           if (fd !== null) (0, import_node_fs34.closeSync)(fd);
-          if (scrubDir) (0, import_node_fs34.rmSync)(scrubDir, { recursive: true, force: true });
-          if (lanePluginRoot) (0, import_node_fs34.rmSync)(lanePluginRoot, { recursive: true, force: true });
+          const laneDirGone = releaseDirs();
           for (let i = 0; i < 10 && !this.recordBudget(job, 200); i++) await sleep7(50);
-          if (outcome === "completed") {
+          if (outcome === "completed" && laneDirGone) {
             try {
               (0, import_node_fs34.rmSync)(job.home, { recursive: true, force: true });
             } catch {
@@ -128162,7 +128305,7 @@ function gateTreeComplete(target) {
     return false;
   }
 }
-function unlinkLink(p) {
+function unlinkLink2(p) {
   try {
     (0, import_fs156.unlinkSync)(p);
   } catch {
@@ -128183,7 +128326,7 @@ function linkNodeModules(root, checkout, warn, workspaces = [], copy = false) {
   }
   if (present && gateTreeIncomplete(target)) {
     unlinkNodeModules(root, checkout);
-    present = (0, import_fs156.existsSync)(target) || isLink(target);
+    present = (0, import_fs156.existsSync)(target) || isLink2(target);
   }
   if (present) return ws.problem;
   const trees = [{ src: source2, to: target, rel: "" }];
@@ -128191,9 +128334,9 @@ function linkNodeModules(root, checkout, warn, workspaces = [], copy = false) {
     const yours = plainDirUnder(root, rel);
     const src = yours ? (0, import_path181.join)(yours, "node_modules") : null;
     const dir = plainDirUnder(checkout, rel);
-    if (!src || !dir || isLink(src) || !(0, import_fs156.existsSync)(src) || !(0, import_fs156.statSync)(src).isDirectory()) continue;
+    if (!src || !dir || isLink2(src) || !(0, import_fs156.existsSync)(src) || !(0, import_fs156.statSync)(src).isDirectory()) continue;
     const nested = (0, import_path181.join)(dir, "node_modules");
-    if ((0, import_fs156.existsSync)(nested) || isLink(nested)) continue;
+    if ((0, import_fs156.existsSync)(nested) || isLink2(nested)) continue;
     trees.push({ src, to: nested, rel });
   }
   const built = [];
@@ -128240,8 +128383,8 @@ function linkNodeModules(root, checkout, warn, workspaces = [], copy = false) {
 function prepareLaneNodeModules(root, worktree, o) {
   const target = (0, import_path181.join)(worktree, "node_modules");
   if (!(0, import_fs156.existsSync)((0, import_path181.join)(root, "node_modules"))) return null;
-  if (isLink(target) && !sameDir(target, (0, import_path181.join)(root, "node_modules"))) return `${target} is a link the engine did not make, so the lane's node_modules is not prepared`;
-  const building = !(0, import_fs156.existsSync)(target) || isLink(target) || gateTreeIncomplete(target);
+  if (isLink2(target) && !sameDir(target, (0, import_path181.join)(root, "node_modules"))) return `${target} is a link the engine did not make, so the lane's node_modules is not prepared`;
+  const building = !(0, import_fs156.existsSync)(target) || isLink2(target) || gateTreeIncomplete(target);
   if (building) {
     const nested = (o.workspaces?.length ? expandWorkspaceDirs(root, o.workspaces).dirs : []).filter((rel) => {
       const yours = plainDirUnder(root, rel);
@@ -128254,11 +128397,11 @@ function prepareLaneNodeModules(root, worktree, o) {
     } catch {
     }
     if (!ignored) {
-      if (!isLink(target) && (0, import_fs156.existsSync)(target)) unlinkNodeModules(root, worktree);
+      if (!isLink2(target) && (0, import_fs156.existsSync)(target)) unlinkNodeModules(root, worktree);
       o.warn?.(`omg factory run: git does not ignore ${rels.join(", ")} in ${worktree}, so the lane gets no copied node_modules (the lane commit refuses links in its worktree); add node_modules to .gitignore`);
       return null;
     }
-    if (nested.length === 0 && !(0, import_fs156.existsSync)(target) && !isLink(target)) {
+    if (nested.length === 0 && !(0, import_fs156.existsSync)(target) && !isLink2(target)) {
       const adopted = adoptLaneTree(root, worktree, o.reuseFrom ?? [], o.warn);
       if (adopted === true) return null;
       if (typeof adopted === "string") return adopted;
@@ -128286,7 +128429,7 @@ function adoptLaneTree(root, worktree, from, warn) {
   const target = (0, import_path181.join)(worktree, "node_modules");
   for (const prev of from) {
     const src = (0, import_path181.join)(prev, "node_modules");
-    if (sameDir(prev, worktree) || isLink(src) || !gateTreeComplete(src) || sameDir(src, (0, import_path181.join)(root, "node_modules"))) continue;
+    if (sameDir(prev, worktree) || isLink2(src) || !gateTreeComplete(src) || sameDir(src, (0, import_path181.join)(root, "node_modules"))) continue;
     try {
       if ((0, import_fs156.readFileSync)((0, import_path181.join)(src, GATE_TREE_MARKER), "utf-8").split("\n").some((l) => l !== "" && l !== GATE_TREE_COMPLETE)) return false;
     } catch {
@@ -128371,7 +128514,7 @@ function settleLaneNodeModules(root, worktree, ignored) {
   unlinkNodeModules(root, worktree);
   return `git no longer ignores ${rels.join(", ")} in ${worktree} (the lane changed the ignore rules), so the engine removed its copied node_modules before the lane commit`;
 }
-function isLink(p) {
+function isLink2(p) {
   try {
     return (0, import_fs156.lstatSync)(p).isSymbolicLink();
   } catch {
@@ -128422,7 +128565,7 @@ function buildGateTree(source2, target, root, checkout, label2, warn, copy) {
       continue;
     }
     if (!st.isDirectory()) continue;
-    if (e.name.startsWith("@") && !isLink(from)) {
+    if (e.name.startsWith("@") && !isLink2(from)) {
       const children = (0, import_fs156.readdirSync)(from);
       if (children.some((c) => !("keep" in workspaceLinkTarget((0, import_path181.join)(from, c), root, checkout)))) {
         spend(copy, 0);
@@ -128468,7 +128611,7 @@ function copiedAt(real2, budget) {
   return best.rel ? (0, import_path181.join)(best.to, best.rel) : best.to;
 }
 function copyGateEntry(from, to, budget) {
-  if (isLink(from)) {
+  if (isLink2(from)) {
     let at = null;
     try {
       at = copiedAt(import_fs156.realpathSync.native(from), budget);
@@ -128524,7 +128667,7 @@ function unlinkOwnLink(root, link6) {
   } catch {
     return false;
   }
-  unlinkLink(link6);
+  unlinkLink2(link6);
   return true;
 }
 function removeGateTree(dir) {
@@ -128532,7 +128675,7 @@ function removeGateTree(dir) {
     for (const name of (0, import_fs156.readdirSync)(d)) {
       const p = (0, import_path181.join)(d, name);
       const st = (0, import_fs156.lstatSync)(p);
-      if (st.isSymbolicLink()) unlinkLink(p);
+      if (st.isSymbolicLink()) unlinkLink2(p);
       else if (st.isDirectory()) walk(p);
       else (0, import_fs156.unlinkSync)(p);
     }
@@ -128565,7 +128708,7 @@ function unlinkTreeLinks(dir) {
   for (const name of (0, import_fs156.readdirSync)(dir)) {
     const p = (0, import_path181.join)(dir, name);
     const st = (0, import_fs156.lstatSync)(p);
-    if (st.isSymbolicLink()) unlinkLink(p);
+    if (st.isSymbolicLink()) unlinkLink2(p);
     else if (st.isDirectory()) unlinkTreeLinks(p);
   }
 }
@@ -129906,7 +130049,7 @@ function dropImportRef(userGitDir, run3, n, sha3, ctx) {
   if (!SHA2.test(sha3)) throw new PrivateStoreError("dropping the import ref needs its full sha");
   if (!deleteImportRef(ctx, userGitDir, ref, sha3)) throw new PrivateStoreError(`import ref left (${ref})`);
 }
-function unlinkLink2(p) {
+function unlinkLink3(p) {
   try {
     (0, import_fs159.unlinkSync)(p);
   } catch {
@@ -129934,7 +130077,7 @@ function removeRunDir(dir, work, platform = process.platform, seam = {}) {
   if (!under(d, work, platform) || sameFsPath(d, work)) throw new PrivateStoreError(`${d} is not under the private work root ${(0, import_path184.resolve)(work)}`);
   if (!lexists2(d)) return;
   if ((0, import_fs159.lstatSync)(d).isSymbolicLink()) {
-    unlinkLink2(d);
+    unlinkLink3(d);
     return;
   }
   const trash = (0, import_path184.join)((0, import_path184.dirname)(d), `.trash-${(0, import_crypto48.randomBytes)(8).toString("hex")}`);
@@ -129945,7 +130088,7 @@ function removeRunDir(dir, work, platform = process.platform, seam = {}) {
   }
   const top = (0, import_fs159.lstatSync)(trash, { bigint: true });
   if (top.isSymbolicLink() || !top.isDirectory()) throw new PrivateStoreError(`${trash} is not a plain directory; nothing removed`);
-  walkNoFollow(trash, top, seam, { onLink: unlinkLink2 });
+  walkNoFollow(trash, top, seam, { onLink: unlinkLink3 });
   walkNoFollow(trash, top, seam, { onLink: () => {
     throw new PrivateStoreError(`a link remains under ${trash} after unlinking; nothing removed`);
   } });
@@ -134474,7 +134617,7 @@ function adoCi(ctx, pipeline) {
       });
     },
     jobLog(jobId) {
-      const m = JOB_ID2.exec(jobId);
+      const m = JOB_ID3.exec(jobId);
       if (!m) throw new Error(`job id ${JSON.stringify(jobId)} is not <buildId>:<timeline record id>`);
       const records2 = buildTimeline(ctx, m[1]);
       const job = records2.find((r) => sameId(r.id, m[2]));
@@ -134495,7 +134638,7 @@ function adoCi(ctx, pipeline) {
     rerunIntent: (runId) => `Rerun failed jobs on ${adoBuildUrl(ctx.repo, runId)}`
   };
 }
-var BUILD_ID, HEX4016, JOB_ID2, PUSH_REASONS, JOB_CONCLUSION, branchName, sameId, byOrder, fold5;
+var BUILD_ID, HEX4016, JOB_ID3, PUSH_REASONS, JOB_CONCLUSION, branchName, sameId, byOrder, fold5;
 var init_ci = __esm({
   "src/forge/ado/ci.ts"() {
     "use strict";
@@ -134504,7 +134647,7 @@ var init_ci = __esm({
     init_invoke();
     BUILD_ID = /^[1-9]\d{0,9}$/;
     HEX4016 = /^[0-9a-f]{40}$/;
-    JOB_ID2 = /^([1-9]\d{0,9}):([0-9a-f-]{36})$/i;
+    JOB_ID3 = /^([1-9]\d{0,9}):([0-9a-f-]{36})$/i;
     PUSH_REASONS = /* @__PURE__ */ new Set(["individualCI", "batchedCI"]);
     JOB_CONCLUSION = {
       succeeded: "success",
@@ -136651,7 +136794,7 @@ function assertLocalGateCommand(recorded, configured, checkout, expectedCheckout
   }
   const real2 = realOrResolved(checkout);
   for (const p of [checkout, expectedCheckout]) {
-    if (isLink2(p)) throw new FactorySafetyError(`omg factory run refuses the local gate in ${checkout} (really ${real2}): ${p} is a junction or symlink, never the engine's prepare checkout`);
+    if (isLink3(p)) throw new FactorySafetyError(`omg factory run refuses the local gate in ${checkout} (really ${real2}): ${p} is a junction or symlink, never the engine's prepare checkout`);
   }
   if (!sameFsPath(real2, realOrResolved(expectedCheckout))) throw new FactorySafetyError(`omg factory run refuses the local gate in ${checkout} (really ${real2}): it runs only in the engine's prepare checkout ${expectedCheckout}`);
 }
@@ -136825,7 +136968,7 @@ function gateDefinition(sources, read) {
     return [s.path, s.scripts.map((k) => [k, Object.prototype.hasOwnProperty.call(scripts, k) ? scripts[k] : null])];
   }));
 }
-var import_child_process47, import_fs168, import_os37, import_path194, LOCAL_GATE_TAIL_CHARS, LOCAL_GATE_STALE_GRACE_MS, STREAM_KEEP_CHARS, KILL_DEADLINE_MS, EXIT_DRAIN_MS, NODE_SCRIPTS2, npmCliHint, keepTail, defaultLocalGateRunner, realOrResolved, isLink2, runIdAt, tailOf, NPM_TEST, NPM_RUN, PM_CONFIG_FILES, DIR_FLAGS, CONFIG_FLAGS, WORKSPACE_FLAGS, PM_NON_SCRIPT, VALUE_FLAGS, npxUnresolved, describeGateSources;
+var import_child_process47, import_fs168, import_os37, import_path194, LOCAL_GATE_TAIL_CHARS, LOCAL_GATE_STALE_GRACE_MS, STREAM_KEEP_CHARS, KILL_DEADLINE_MS, EXIT_DRAIN_MS, NODE_SCRIPTS2, npmCliHint, keepTail, defaultLocalGateRunner, realOrResolved, isLink3, runIdAt, tailOf, NPM_TEST, NPM_RUN, PM_CONFIG_FILES, DIR_FLAGS, CONFIG_FLAGS, WORKSPACE_FLAGS, PM_NON_SCRIPT, VALUE_FLAGS, npxUnresolved, describeGateSources;
 var init_local_gate = __esm({
   "src/factory/run/local-gate.ts"() {
     "use strict";
@@ -136877,7 +137020,7 @@ var init_local_gate = __esm({
         return (0, import_path194.resolve)(p);
       }
     };
-    isLink2 = (p) => {
+    isLink3 = (p) => {
       try {
         return (0, import_fs168.lstatSync)(p).isSymbolicLink();
       } catch {

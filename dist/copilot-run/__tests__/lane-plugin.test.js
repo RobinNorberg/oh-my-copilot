@@ -1,10 +1,11 @@
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { LANE_HOOK_EVENTS, LANE_PLUGIN_DIR, LANE_PLUGIN_MIRROR_ENV, buildLaneHooksFile, prepareLanePluginDir } from '../lane-plugin.js';
+import { LANE_HOOK_EVENTS, LANE_PLUGIN_DIR, LANE_PLUGIN_MARKER, LANE_PLUGIN_MIRROR_ENV, buildLaneHooksFile, prepareLanePluginDir, removeLanePluginDir, sweepStaleLanePluginDirs, } from '../lane-plugin.js';
 import { DEFAULT_SANDBOX_SETTINGS, buildSandboxConfig, relocatedProfileEnv } from '../sandbox.js';
 import { isUnderRoot } from '../../team/sdk-policy.js';
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
@@ -12,7 +13,25 @@ const dispatcher = createRequire(import.meta.url)(join(REPO_ROOT, 'scripts', 'co
 const shippedHooks = () => JSON.parse(readFileSync(join(REPO_ROOT, 'copilot', 'hooks.json'), 'utf8'));
 let root;
 beforeEach(() => { root = mkdtempSync(join(tmpdir(), 'omg-lane-plugin-')); });
-afterEach(() => { rmSync(root, { recursive: true, force: true }); });
+// Link-safe, as the engine: the fixtures hold junctions.
+afterEach(() => { removeLanePluginDir(root); });
+/** Every file under `dir` (following no link) with a hash of its content. */
+function fingerprint(dir) {
+    const out = {};
+    const walk = (d, rel) => {
+        for (const ent of readdirSync(d, { withFileTypes: true })) {
+            const r = rel ? `${rel}/${ent.name}` : ent.name;
+            if (ent.isDirectory())
+                walk(join(d, ent.name), r);
+            else
+                out[r] = createHash('sha256').update(readFileSync(join(d, ent.name))).digest('hex');
+        }
+    };
+    walk(dir, '');
+    return out;
+}
+/** A dir link: a junction on Windows, a symlink elsewhere. */
+const linkDir = (target, path) => symlinkSync(target, path, process.platform === 'win32' ? 'junction' : 'dir');
 /** A plugin shaped like the shipped one: root manifest, copilot/hooks.json + copilot/agents, skills, scripts, .mcp.json. */
 function fixturePlugin(hooks = shippedHooks()) {
     const plugin = join(root, 'plugin');
@@ -24,6 +43,7 @@ function fixturePlugin(hooks = shippedHooks()) {
     writeFileSync(join(plugin, 'skills', 'a', 'SKILL.md'), 'skill');
     writeFileSync(join(plugin, 'scripts', 'copilot', 'dispatch.cjs'), '// dispatcher');
     writeFileSync(join(plugin, '.mcp.json'), '{"mcpServers":{}}');
+    writeFileSync(join(plugin, 'README.md'), 'readme');
     return plugin;
 }
 describe('lane plugin dir', () => {
@@ -47,6 +67,9 @@ describe('lane plugin dir', () => {
         expect(prepareLanePluginDir(plugin, dest)).toBe(dest);
         expect(readFileSync(join(dest, 'plugin.json'), 'utf8')).toBe(readFileSync(join(plugin, 'plugin.json'), 'utf8'));
         expect(readFileSync(join(dest, '.mcp.json'), 'utf8')).toBe(readFileSync(join(plugin, '.mcp.json'), 'utf8'));
+        // Only the manifest files are copied; other top-level files are left out. The marker names this process.
+        expect(existsSync(join(dest, 'README.md'))).toBe(false);
+        expect(JSON.parse(readFileSync(join(dest, LANE_PLUGIN_MARKER), 'utf8'))).toEqual({ kind: 'omg-lane-plugin', pid: process.pid });
         // Directories are links to the real ones; the hooks file's own dir is a real dir.
         for (const dir of ['skills', 'scripts', '.claude-plugin', join('copilot', 'agents')]) {
             expect(lstatSync(join(dest, dir)).isSymbolicLink(), dir).toBe(true);
@@ -61,13 +84,65 @@ describe('lane plugin dir', () => {
     });
     it('removing the lane dir leaves the plugin intact', () => {
         const plugin = fixturePlugin();
+        const before = fingerprint(plugin);
         const dest = join(root, LANE_PLUGIN_DIR);
         prepareLanePluginDir(plugin, dest);
-        rmSync(dest, { recursive: true, force: true });
+        removeLanePluginDir(dest);
         expect(existsSync(dest)).toBe(false);
-        for (const f of [join('skills', 'a', 'SKILL.md'), join('copilot', 'agents', 'x.md'), join('scripts', 'copilot', 'dispatch.cjs'), join('copilot', 'hooks.json')]) {
-            expect(existsSync(join(plugin, f)), f).toBe(true);
-        }
+        expect(fingerprint(plugin)).toEqual(before);
+        expect(Object.keys(before)).toEqual(expect.arrayContaining(['skills/a/SKILL.md', 'copilot/agents/x.md', 'scripts/copilot/dispatch.cjs', 'copilot/hooks.json']));
+        // A missing dir is a no-op.
+        expect(() => removeLanePluginDir(dest)).not.toThrow();
+    });
+    it('the remover unlinks nested links and never enters them: their targets stay intact', () => {
+        const target = join(root, 'target');
+        mkdirSync(join(target, 'deep'), { recursive: true });
+        writeFileSync(join(target, 'a.txt'), 'a');
+        writeFileSync(join(target, 'deep', 'b.txt'), 'b');
+        const before = fingerprint(target);
+        const tree = join(root, 'tree');
+        mkdirSync(join(tree, 'real', 'deeper'), { recursive: true });
+        writeFileSync(join(tree, 'real', 'f.txt'), 'f');
+        linkDir(target, join(tree, 'top-link'));
+        linkDir(target, join(tree, 'real', 'deeper', 'nested-link'));
+        if (process.platform !== 'win32')
+            symlinkSync(join(target, 'a.txt'), join(tree, 'real', 'file-link'));
+        removeLanePluginDir(tree);
+        expect(existsSync(tree)).toBe(false);
+        expect(fingerprint(target)).toEqual(before);
+    });
+    it('a build that fails after the dir is made removes the partial dir (link-safe) and leaves the plugin intact', () => {
+        const plugin = fixturePlugin();
+        // A dangling link in the plugin root: the mirror throws on it, after links before it are made.
+        linkDir(join(root, 'nowhere'), join(plugin, 'zz-dangling'));
+        const before = fingerprint(join(plugin, 'skills'));
+        const dest = join(root, 'out');
+        expect(() => prepareLanePluginDir(plugin, dest)).toThrow('ENOENT');
+        expect(existsSync(dest)).toBe(false);
+        expect(fingerprint(join(plugin, 'skills'))).toEqual(before);
+    });
+    it("the sweep removes a dead engine's mirror link-safe; it keeps a live one, an own live job's, and dirs that are not ours", () => {
+        const plugin = fixturePlugin();
+        const before = fingerprint(plugin);
+        const jobRoot = join(root, 'copilot-run');
+        const at = (id) => { mkdirSync(join(jobRoot, id, 'home'), { recursive: true }); return join(jobRoot, id, 'home', LANE_PLUGIN_DIR); };
+        const stale = prepareLanePluginDir(plugin, at('cr-aaaaaaaaaaaa'), 999_001);
+        const live = prepareLanePluginDir(plugin, at('cr-bbbbbbbbbbbb'), 999_002);
+        const ownLive = prepareLanePluginDir(plugin, at('cr-cccccccccccc'));
+        const ownDone = prepareLanePluginDir(plugin, at('cr-dddddddddddd'));
+        const unmarked = prepareLanePluginDir(plugin, at('cr-eeeeeeeeeeee'), 999_001);
+        rmSync(join(unmarked, LANE_PLUGIN_MARKER));
+        const foreign = prepareLanePluginDir(plugin, at('not-a-job'), 999_001);
+        const result = sweepStaleLanePluginDirs(jobRoot, (pid) => pid === 999_002, (id) => id === 'cr-cccccccccccc');
+        expect(result.failed).toEqual([]);
+        expect(result.removed.sort()).toEqual([stale, ownDone].sort());
+        for (const gone of [stale, ownDone])
+            expect(existsSync(gone)).toBe(false);
+        for (const kept of [live, ownLive, unmarked, foreign])
+            expect(existsSync(kept)).toBe(true);
+        expect(fingerprint(plugin)).toEqual(before);
+        // A missing job root is no error.
+        expect(sweepStaleLanePluginDirs(join(root, 'missing'), () => false, () => false)).toEqual({ removed: [], failed: [] });
     });
     it.each([
         ['a kept event is missing', () => fixturePlugin({ hooks: { PreToolUse: shippedHooks().hooks.PreToolUse } }), 'no PermissionRequest entry'],
