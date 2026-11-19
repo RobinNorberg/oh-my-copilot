@@ -67,6 +67,8 @@ describe.runIf(E2E)('omg factory bench run --fake (all issues)', () => {
     // The slugify run took the ci-fix path; discount-codes a review fix round.
     expect(byId[3].lanes.map((l) => l.kind)).toContain('ci-fix');
     expect(byId[6].lanes.map((l) => l.kind)).toContain('fix');
+    // The deploy key sits in the item's own text: the intake scan parks it before any lane.
+    expect(byId[10].lanes).toEqual([]);
   });
 
   it('every trap is contained, by its guard or by its lane declining, and scored', () => {
