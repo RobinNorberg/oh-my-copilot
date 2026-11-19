@@ -1,8 +1,19 @@
 import { createHash } from 'node:crypto';
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, rmdirSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, realpathSync, rmdirSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+
+// Lets one test make prepare.ts's unlinkSync throw for one path (a read-only or busy file); every other call goes to the real one.
+const unlinkFault = vi.hoisted(() => ({ name: undefined as string | undefined }));
+vi.mock('fs', async (importOriginal) => {
+  const real = await importOriginal<typeof import('fs')>();
+  const unlinkSync: typeof real.unlinkSync = (p) => {
+    if (unlinkFault.name !== undefined && String(p).endsWith(unlinkFault.name)) throw Object.assign(new Error(`EPERM: operation not permitted, unlink '${String(p)}'`), { code: 'EPERM' });
+    return real.unlinkSync(p);
+  };
+  return { ...real, default: { ...real, unlinkSync }, unlinkSync };
+});
 
 import { GATE_TREE_COMPLETE, GATE_TREE_MARKER, nestedTreeDirs, prepareLaneNodeModules, settleLaneNodeModules, unlinkNodeModules } from '../prepare.js';
 
@@ -203,6 +214,117 @@ describe('prepareLaneNodeModules (the lane worktree in the Windows OS sandbox)',
     expect(readFileSync(join(other.worktree, 'node_modules', 'own.js'), 'utf-8')).toBe('own\n');
   });
 });
+
+describe('prepareLaneNodeModules reuseFrom (one copy per work item)', () => {
+  /** setup() plus a top-level file in yours, a built tree in the earlier lane worktree, and an empty next lane worktree. */
+  function built(): { root: string; worktree: string; store: string; next: string; outside: string } {
+    const s = setup();
+    writeFileSync(join(s.store, '.package-lock.json'), '{"lockfileVersion":3}\n');
+    expect(prepareLaneNodeModules(s.root, s.worktree, { ignored: ignoredAll })).toBeNull();
+    const next = join(s.worktree, '..', 'lane-2');
+    mkdirSync(next);
+    const outside = join(s.worktree, '..', 'outside');
+    mkdirSync(outside);
+    writeFileSync(join(outside, 'secret.txt'), 'secret\n');
+    return { ...s, next, outside };
+  }
+
+  it('moves the earlier lane\'s complete tree (no new copy), the earlier worktree loses it, and yours is untouched', () => {
+    const { root, worktree, store, next } = built();
+    const before = fingerprint(store);
+    const tree = fingerprint(join(worktree, 'node_modules'));
+    // A write the earlier lane left in its copy goes along: the same item's lanes share it.
+    writeFileSync(join(worktree, 'node_modules', 'vitest', 'left.txt'), 'left\n');
+    expect(prepareLaneNodeModules(root, next, { ignored: ignoredAll, reuseFrom: [worktree], copy: { maxFiles: 1 } })).toBeNull();
+    expect(existsSync(join(worktree, 'node_modules'))).toBe(false);
+    expect(readFileSync(join(next, 'node_modules', 'vitest', 'left.txt'), 'utf-8')).toBe('left\n');
+    expect(fingerprint(join(next, 'node_modules')).filter((l) => !l.includes('left.txt'))).toEqual(tree);
+    expect(lstatSync(join(next, 'node_modules', '.bin')).isSymbolicLink()).toBe(true);
+    expect(fingerprint(store)).toEqual(before);
+  });
+
+  it('a link the earlier lane planted anywhere in its tree: not reused; the moved tree is removed with the link unlinked (never followed), and a fresh copy is built', () => {
+    const { root, worktree, store, next, outside } = built();
+    const before = fingerprint(store);
+    const outsideBefore = fingerprint(outside);
+    symlinkSync(outside, join(worktree, 'node_modules', 'vitest', 'dist', 'evil'), linkType);
+    const notes: string[] = [];
+    expect(prepareLaneNodeModules(root, next, { ignored: ignoredAll, reuseFrom: [worktree], warn: (m) => notes.push(m) })).toBeNull();
+    expect(notes.join('\n')).toMatch(/is not reused \(node_modules\/vitest\/dist\/evil is a link to somewhere other than/);
+    expect(existsSync(join(next, 'node_modules', 'vitest', 'dist', 'evil'))).toBe(false);
+    expect(readFileSync(join(next, 'node_modules', GATE_TREE_MARKER), 'utf-8').split('\n')).toContain(GATE_TREE_COMPLETE);
+    expect(fingerprint(outside)).toEqual(outsideBefore);
+    expect(fingerprint(store)).toEqual(before);
+  });
+
+  it('a top-level link re-pointed elsewhere, or a top-level file that differs from yours (an npm install, yours changed): a fresh copy', () => {
+    for (const tamper of ['bin', 'lock'] as const) {
+      const { root, worktree, store, next, outside } = built();
+      const before = fingerprint(store);
+      const nm = join(worktree, 'node_modules');
+      if (tamper === 'bin') {
+        unlinkSync(join(nm, '.bin'));
+        symlinkSync(outside, join(nm, '.bin'), linkType);
+      } else writeFileSync(join(nm, '.package-lock.json'), '{"lockfileVersion":3,"changed":true}\n');
+      const notes: string[] = [];
+      expect(prepareLaneNodeModules(root, next, { ignored: ignoredAll, reuseFrom: [worktree], warn: (m) => notes.push(m) })).toBeNull();
+      expect(notes.join('\n'), tamper).toMatch(tamper === 'bin' ? /node_modules\/\.bin is a link/ : /node_modules\/\.package-lock\.json differs from yours/);
+      expect(readFileSync(join(next, 'node_modules', '.package-lock.json'), 'utf-8')).toBe('{"lockfileVersion":3}\n');
+      expect(sameTarget(join(next, 'node_modules', '.bin'), join(store, '.bin'))).toBe(true);
+      expect(readFileSync(join(outside, 'secret.txt'), 'utf-8')).toBe('secret\n');
+      expect(fingerprint(store)).toEqual(before);
+    }
+  });
+
+  it('a rejected tree that cannot be removed (a planted file the removal cannot delete): the lane fails with the reason, nothing is built over the leftovers', () => {
+    const { root, worktree, store, next, outside } = built();
+    const before = fingerprint(store);
+    symlinkSync(outside, join(worktree, 'node_modules', 'vitest', 'dist', 'evil'), linkType);
+    writeFileSync(join(worktree, 'node_modules', 'vitest', 'planted-read-only.txt'), 'x\n');
+    const notes: string[] = [];
+    unlinkFault.name = 'planted-read-only.txt';
+    let problem: string | null;
+    try {
+      problem = prepareLaneNodeModules(root, next, { ignored: ignoredAll, reuseFrom: [worktree], warn: (m) => notes.push(m) });
+    } finally {
+      unlinkFault.name = undefined;
+    }
+    expect(problem).toMatch(/is not reused \(node_modules\/vitest\/dist\/evil is a link .*\), and it could not be removed from .* \(EPERM: operation not permitted/);
+    expect(notes.join('\n')).not.toMatch(/a fresh copy is built/);
+    // The leftovers are not taken as a tree: no completion marker was written over them, the planted link went first.
+    expect(readFileSync(join(next, 'node_modules', 'vitest', 'planted-read-only.txt'), 'utf-8')).toBe('x\n');
+    expect(existsSync(join(next, 'node_modules', GATE_TREE_MARKER))).toBe(false);
+    expect(existsSync(join(next, 'node_modules', 'vitest', 'dist', 'evil'))).toBe(false);
+    expect(fingerprint(outside)).toEqual([`F secret.txt ${createHash('sha256').update('secret\n').digest('hex')}`]);
+    expect(fingerprint(store)).toEqual(before);
+  });
+
+  it('never takes a link to yours, a cut-off tree or one that names nested workspace trees; each stays where it was', () => {
+    const { root, worktree, store, next } = built();
+    const before = fingerprint(store);
+    const nm = join(worktree, 'node_modules');
+    writeFileSync(join(nm, GATE_TREE_MARKER), `packages/a\n${GATE_TREE_COMPLETE}\n`);
+    expect(prepareLaneNodeModules(root, next, { ignored: ignoredAll, reuseFrom: [worktree] })).toBeNull();
+    expect(existsSync(join(nm, 'vitest'))).toBe(true);
+    unlinkNodeModules(root, next);
+    writeFileSync(join(nm, GATE_TREE_MARKER), '');
+    expect(prepareLaneNodeModules(root, next, { ignored: ignoredAll, reuseFrom: [worktree] })).toBeNull();
+    expect(existsSync(join(nm, 'vitest'))).toBe(true);
+    unlinkNodeModules(root, next);
+    removeDir(nm);
+    symlinkSync(join(root, 'node_modules'), nm, linkType);
+    expect(prepareLaneNodeModules(root, next, { ignored: ignoredAll, reuseFrom: [worktree] })).toBeNull();
+    expect(lstatSync(nm).isSymbolicLink()).toBe(true);
+    expect(lstatSync(join(next, 'node_modules')).isSymbolicLink()).toBe(false);
+    expect(fingerprint(store)).toEqual(before);
+  });
+});
+
+/** Both paths resolve to the same dir (a link followed for the comparison only). */
+function sameTarget(a: string, b: string): boolean {
+  const fold = (p: string) => (process.platform === 'win32' ? realpathSync.native(p).toLowerCase() : realpathSync.native(p));
+  return fold(a) === fold(b);
+}
 
 describe('settleLaneNodeModules (before the lane commit)', () => {
   it('the copy still ignored: kept; no longer ignored: removed, links unlinked first, yours untouched', () => {

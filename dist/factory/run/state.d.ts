@@ -93,6 +93,13 @@ export interface FactoryLaneRecord {
      */
     stopUnconfirmed?: boolean;
     /**
+     * The engine's commit of this write lane landed and its process tree was
+     * proven gone before it (not `unproven`): only such a lane's copied
+     * node_modules may move into a later lane of the run (prepare.ts
+     * adoptLaneTree). Absent: never reused.
+     */
+    treeReusable?: true;
+    /**
      * The tamper check of a lane the engine cancelled: `clean` (it compared and
      * found nothing), `problems` (it found a change), `skipped` (the stop was not
      * confirmed, the cancel failed, or no compare ran). Absent (older states):

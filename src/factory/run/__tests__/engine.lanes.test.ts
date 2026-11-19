@@ -6,7 +6,7 @@ import { readShipState } from '../../../ship/state.js';
 import { runFactoryEngine } from '../engine.js';
 import { factoryStatePath, readFactoryState } from '../state.js';
 import { commitFile, FakeLanes, gitIn, ISSUE, noCommit, PR, remoteHead, review, type LaneScript } from './fake-lanes.js';
-import { h, useEngineHarness, limits, opts, run } from './engine-harness.js';
+import { h, useEngineHarness, limits, opts, procs, run } from './engine-harness.js';
 
 useEngineHarness();
 
@@ -96,6 +96,77 @@ describe('omg factory run engine (fake lanes, real git, scripted gh)', () => {
     expect(readFileSync(join(h.root, 'node_modules', '.bin', 'pkg'), 'utf-8')).toBe('shim\n');
     // The tree is not part of the lane's commit.
     expect(gitIn(h.root, 'ls-tree', '-r', '--name-only', readFactoryState(h.root, ISSUE)!.head!)).not.toContain('node_modules');
+  });
+
+  it('one copy per item: the fix lane gets the implement lane\'s tree moved into its worktree (not copied again), yours untouched', async () => {
+    mkdirSync(join(h.root, 'node_modules', 'pkg'), { recursive: true });
+    mkdirSync(join(h.root, 'node_modules', '.bin'), { recursive: true });
+    writeFileSync(join(h.root, 'node_modules', 'pkg', 'index.js'), 'yours\n');
+    writeFileSync(join(h.root, 'node_modules', '.bin', 'pkg'), 'shim\n');
+    const trees: string[] = [];
+    const prepared = (file: string, content: string): LaneScript => (ctx) => {
+      expect(ctx.input.beforeSandboxedSession!(ctx.worktree)).toBeNull();
+      trees.push(join(ctx.worktree, 'node_modules'));
+      if (trees.length === 1) writeFileSync(join(ctx.worktree, 'node_modules', 'pkg', 'left-by-implement.txt'), 'x\n');
+      return commitFile(file, content)(ctx);
+    };
+    const finding = { severity: 'major', file: 'src/greet.ts', line: 1, summary: 'greet must return hi' };
+    const { done } = run([prepared('src/greet.ts', 'x\n'), review('request-changes', [finding]), prepared('src/greet.ts', 'hi\n'), review('approve')]);
+    expect((await done).gate?.name).toBe('merge');
+    expect(trees).toHaveLength(2);
+    expect(existsSync(trees[0])).toBe(false);
+    expect(readFileSync(join(trees[1], 'pkg', 'left-by-implement.txt'), 'utf-8')).toBe('x\n');
+    expect(lstatSync(join(trees[1], '.bin')).isSymbolicLink()).toBe(true);
+    expect(readFileSync(join(h.root, 'node_modules', 'pkg', 'index.js'), 'utf-8')).toBe('yours\n');
+    expect(existsSync(join(h.root, 'node_modules', 'pkg', 'left-by-implement.txt'))).toBe(false);
+  });
+
+  describe('one copy per item: only from a lane whose commit landed with its process tree proven gone', () => {
+    const yours = () => {
+      mkdirSync(join(h.root, 'node_modules', 'pkg'), { recursive: true });
+      writeFileSync(join(h.root, 'node_modules', 'pkg', 'index.js'), 'yours\n');
+    };
+    const prepare = (trees: string[], then: LaneScript): LaneScript => (ctx) => {
+      expect(ctx.input.beforeSandboxedSession!(ctx.worktree)).toBeNull();
+      trees.push(join(ctx.worktree, 'node_modules'));
+      return then(ctx);
+    };
+    const finding = { severity: 'major', file: 'src/greet.ts', line: 1, summary: 'greet must return hi' };
+
+    it('a lane whose commit was refused (empty, then retried) is not adopted: the retry gets a fresh copy, the refused tree stays', async () => {
+      yours();
+      const trees: string[] = [];
+      const { done } = run([prepare(trees, noCommit), prepare(trees, commitFile('a.ts')), review('approve')]);
+      expect((await done).gate?.name).toBe('merge');
+      expect(trees).toHaveLength(2);
+      expect(existsSync(trees[0])).toBe(true);
+      expect(existsSync(trees[1])).toBe(true);
+      const lanes = readFactoryState(h.root, ISSUE)!.lanes.filter((l) => l.kind === 'implement');
+      expect(lanes.map((l) => [l.status, l.treeReusable])).toEqual([['completed', undefined], ['completed', true]]);
+    });
+
+    it('a lane whose process tree was not proven gone (unproven) is committed but not adopted: the fix lane gets a fresh copy', async () => {
+      yours();
+      procs.tree = { kind: 'unproven', why: 'the process listing failed' };
+      const trees: string[] = [];
+      const { done } = run([prepare(trees, commitFile('src/greet.ts', 'x\n')), review('request-changes', [finding]), prepare(trees, commitFile('src/greet.ts', 'hi\n')), review('approve')]);
+      expect((await done).gate?.name).toBe('merge');
+      expect(trees).toHaveLength(2);
+      expect(existsSync(trees[0])).toBe(true);
+      expect(existsSync(trees[1])).toBe(true);
+      expect(readFactoryState(h.root, ISSUE)!.lanes.filter((l) => l.kind !== 'review').map((l) => l.treeReusable)).toEqual([undefined, undefined]);
+    });
+
+    it('the lane of a parked pending commit is not reusable until its commit lands', async () => {
+      procs.tree = { kind: 'survivors', pids: [4711] };
+      expect((await run([commitFile('a.ts')]).done).gate?.name).toBe('lane-unconfirmed');
+      const pending = readFactoryState(h.root, ISSUE)!;
+      expect(pending.pendingCommit?.laneId).toBe(pending.lanes[0].id);
+      expect(pending.lanes[0].treeReusable).toBeUndefined();
+      procs.tree = { kind: 'gone', killed: [] };
+      expect((await run([review('approve')]).done).gate?.name).toBe('merge');
+      expect(readFactoryState(h.root, ISSUE)!.lanes[0].treeReusable).toBe(true);
+    });
   });
 
   it('a lane that stops git ignoring node_modules: the engine removes its copy before the commit (link-safe), the commit has no node_modules and is not refused', async () => {

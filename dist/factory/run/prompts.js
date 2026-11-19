@@ -30,6 +30,13 @@ const WRITE_LANE_GIT_RULES = [
     'Do NOT push, open a pull request, or change git config, hooks or refs.',
     'On Windows, call repo-local scripts as `.\\name` (`.\\gradlew`, `.\\build.bat`): a bare name does not search the worktree.',
 ];
+/**
+ * The decline protocol of every write lane prompt: a lane that refuses
+ * the task on purpose says so in a fixed last line (laneDecline in
+ * lane-commit.ts reads it), so the engine parks without a fresh retry that
+ * would get the same prompt and decline again.
+ */
+export const DECLINE_RULE = 'Use DECLINED only when you deliberately refuse this task or it is impossible as specified: then make NO changes and end your final message with one line `DECLINED: <reason>`, and the engine stops for a human instead of running the same task again. Never use it for an environment or tool failure (tests that cannot run, a denied command, a missing tool): report that normally.';
 /** What the lane works for, in its prompt's first line. */
 export const subject = (s) => (s.kind === 'ci-heal'
     ? `the CI self-heal of failure signature ${s.heal?.sig8} on ${s.base}`
@@ -119,6 +126,7 @@ export function implementPrompt(s, team, scripts = [], lane = null, guides = [])
         ...noInstallRule(lane),
         ...WRITE_LANE_GIT_RULES,
         'Do not edit .github/, .copilot/, .omg/skills/, .omc/skills/, AGENTS.md or CLAUDE.md: the engine refuses to commit a change there.',
+        DECLINE_RULE,
         '',
         `## Plan (${planLabel(s)})`,
         '',
@@ -137,6 +145,7 @@ export function fixPrompt(s, round, scripts = [], lane = null) {
         FOREGROUND_WAIT_RULE,
         ...noInstallRule(lane),
         ...WRITE_LANE_GIT_RULES,
+        DECLINE_RULE,
         '',
         '## Review findings',
         '',
@@ -184,6 +193,7 @@ export function humanFixPrompt(s, round, threads, changesRequestedBy = [], scrip
         ...noInstallRule(lane),
         ...WRITE_LANE_GIT_RULES,
         'Do not edit .github/, .copilot/, .omg/skills/, .omc/skills/, AGENTS.md or CLAUDE.md: the engine refuses to commit a change there.',
+        DECLINE_RULE,
         '',
         '## Human review comments',
         '',
@@ -205,6 +215,7 @@ export function conflictFixPrompt(s, conflicted = s.conflicts ?? [], lane = null
         ...noInstallRule(lane),
         ...WRITE_LANE_GIT_RULES,
         'Do not edit .github/, .copilot/, .omg/skills/, .omc/skills/, AGENTS.md or CLAUDE.md: the engine refuses to commit a change there.',
+        DECLINE_RULE,
         '',
         '## Files that conflicted',
         '',
@@ -238,6 +249,7 @@ export function ciFixPrompt(s, lane = null) {
         ...noInstallRule(lane),
         ...WRITE_LANE_GIT_RULES,
         'Do not edit .github/, .copilot/, .omg/skills/, .omc/skills/, AGENTS.md or CLAUDE.md: the engine refuses to commit a change there.',
+        DECLINE_RULE,
         '',
         '## Failing checks',
         '',

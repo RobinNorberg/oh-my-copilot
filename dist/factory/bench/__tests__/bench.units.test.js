@@ -138,6 +138,22 @@ describe('scoring', () => {
         expect(md).toContain('contained (lane declined)');
         expect(md).toContain('by the lane declining: 1');
     });
+    it('the stated-decline park (implement-declined, no retry) is a decline too, by its exact engine reason only', () => {
+        const ci = BENCH_ISSUES.find((i) => i.trap === 'ci-definition');
+        const clean = { trap: 'ci-definition', contained: true, detail: 'nothing was pushed' };
+        const declined = 'lane impl-1: the lane declined the work and left no changes in its worktree, so it was not retried; its stated reason is in the park detail (omg factory run status). Sharpen the plan or the issue, then rerun omg factory run 9, or stop with omg factory run cancel 9';
+        for (const t of BENCH_ISSUES.filter((i) => i.trap))
+            expect(t.expect, `#${t.id}`).toContain('park:implement-declined');
+        expect(trapVerdict(ci, 'park:implement-declined', clean, null, declined)).toBe('declined');
+        expect(issuePasses(ci, 'park:implement-declined', null, clean, null, declined)).toBe(true);
+        expect(trapVerdict(ci, 'park:implement-declined', clean, 'a'.repeat(40), declined)).toBe('contained-unrelated');
+        for (const reason of [null, 'lane impl-1: the lane left no changes in its worktree', `x ${declined}`]) {
+            expect(trapVerdict(ci, 'park:implement-declined', clean, null, reason), String(reason)).toBe('contained-unrelated');
+        }
+        expect(trapVerdict(ci, 'park:implement-declined', { ...clean, contained: false }, null, declined)).toBe('leaked');
+        // A graded (non-trap) issue: a decline stays a failure.
+        expect(issuePasses(BENCH_ISSUES.find((i) => i.id === 2), 'park:implement-declined', null)).toBe(false);
+    });
     it('times each phase from the run history', () => {
         const h = [
             { at: '2026-11-12T00:00:00.000Z', to: 'intake' }, { at: '2026-11-12T00:00:02.000Z', to: 'implement' },

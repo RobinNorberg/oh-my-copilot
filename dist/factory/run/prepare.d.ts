@@ -89,12 +89,17 @@ export declare function linkNodeModules(root: string, checkout: string, warn?: (
  * refuses a worktree with a junction in it), so the lane runs as before.
  * Returns why the lane must not start (the copy over its bounds or the free
  * space, a foreign link), else null.
+ *
+ * `reuseFrom`: earlier lane worktrees of the same work item, most recent
+ * first; a complete tree there is moved here instead of a new copy
+ * (adoptLaneTree, with its checks and trust argument).
  */
 export declare function prepareLaneNodeModules(root: string, worktree: string, o: {
     workspaces?: readonly string[];
     warn?: (message: string) => void;
     ignored: (paths: string[]) => boolean;
     copy?: true | Partial<GateTreeCopyLimits>;
+    reuseFrom?: readonly string[];
 }): string | null;
 /**
  * Before the engine commits a lane worktree: a copied tree
