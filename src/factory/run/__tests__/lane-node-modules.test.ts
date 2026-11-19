@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { GATE_TREE_MARKER, prepareLaneNodeModules, unlinkNodeModules } from '../prepare.js';
+import { GATE_TREE_COMPLETE, GATE_TREE_MARKER, nestedTreeDirs, prepareLaneNodeModules, settleLaneNodeModules, unlinkNodeModules } from '../prepare.js';
 
 const linkType = process.platform === 'win32' ? 'junction' : 'dir';
 const dirs: string[] = [];
@@ -133,14 +133,62 @@ describe('prepareLaneNodeModules (the lane worktree in the Windows OS sandbox)',
     expect(fingerprint(store)).toEqual(before);
   });
 
-  it('a tree git would not ignore is removed again with a warning (the lane commit refuses links), and the lane still starts', () => {
+  it('a tree git would not ignore is never built (asked before any copy), with a warning, and the lane still starts', () => {
     const { root, worktree, store } = setup();
     const before = fingerprint(store);
     const notes: string[] = [];
-    expect(prepareLaneNodeModules(root, worktree, { ignored: () => false, warn: (m) => notes.push(m) })).toBeNull();
+    let copiedWhenAsked = true;
+    expect(prepareLaneNodeModules(root, worktree, { ignored: () => { copiedWhenAsked = existsSync(join(worktree, 'node_modules')); return false; }, warn: (m) => notes.push(m) })).toBeNull();
+    expect(copiedWhenAsked).toBe(false);
     expect(existsSync(join(worktree, 'node_modules'))).toBe(false);
     expect(notes.join('\n')).toMatch(/git does not ignore node_modules .*add node_modules to \.gitignore/);
     expect(fingerprint(store)).toEqual(before);
+  });
+
+  it('a cut-off copy (marker without the completion line) is removed and built again; links in it are unlinked, never followed', () => {
+    const { root, worktree, store } = setup();
+    const before = fingerprint(store);
+    expect(prepareLaneNodeModules(root, worktree, { ignored: ignoredAll })).toBeNull();
+    const nm = join(worktree, 'node_modules');
+    // A crash mid-copy: the completion line is missing and a package is half there.
+    writeFileSync(join(nm, GATE_TREE_MARKER), '');
+    rmSync(join(nm, 'vitest', 'dist'), { recursive: true });
+    expect(prepareLaneNodeModules(root, worktree, { ignored: ignoredAll })).toBeNull();
+    expect(readFileSync(join(nm, 'vitest', 'dist', 'index.js'), 'utf-8')).toBe('export {};\n');
+    expect(readFileSync(join(nm, GATE_TREE_MARKER), 'utf-8').split('\n')).toContain(GATE_TREE_COMPLETE);
+    expect(lstatSync(join(nm, '.bin')).isSymbolicLink()).toBe(true);
+    expect(fingerprint(store)).toEqual(before);
+  });
+
+  it('workspaces: each package with a node_modules of yours gets its own copy; every tree is asked about first, and none is kept in the in-process record', () => {
+    const { root, worktree } = setup();
+    for (const base of [root, worktree]) {
+      mkdirSync(join(base, 'packages', 'a'), { recursive: true });
+      writeFileSync(join(base, 'packages', 'a', 'package.json'), '{"name":"a"}\n');
+    }
+    mkdirSync(join(root, 'packages', 'a', 'node_modules', 'dep'), { recursive: true });
+    writeFileSync(join(root, 'packages', 'a', 'node_modules', 'dep', 'index.js'), 'dep\n');
+    const asked: string[][] = [];
+    expect(prepareLaneNodeModules(root, worktree, { workspaces: ['packages/*'], ignored: (p) => { asked.push(p); return true; } })).toBeNull();
+    expect(asked).toEqual([['node_modules', 'packages/a/node_modules']]);
+    const nested = join(worktree, 'packages', 'a', 'node_modules');
+    expect(lstatSync(join(nested, 'dep')).isSymbolicLink()).toBe(false);
+    expect(readFileSync(join(nested, 'dep', 'index.js'), 'utf-8')).toBe('dep\n');
+    // The marker names the nested tree; without it nothing in this process remembers the lane worktree's trees.
+    expect(nestedTreeDirs(worktree)).toEqual([nested]);
+    const marker = readFileSync(join(worktree, 'node_modules', GATE_TREE_MARKER), 'utf-8');
+    writeFileSync(join(worktree, 'node_modules', GATE_TREE_MARKER), '');
+    expect(nestedTreeDirs(worktree)).toEqual([]);
+    writeFileSync(join(worktree, 'node_modules', GATE_TREE_MARKER), marker);
+    // A nested tree git would not ignore: nothing is built.
+    const other = setup();
+    for (const base of [other.root, other.worktree]) {
+      mkdirSync(join(base, 'packages', 'a'), { recursive: true });
+      writeFileSync(join(base, 'packages', 'a', 'package.json'), '{"name":"a"}\n');
+    }
+    mkdirSync(join(other.root, 'packages', 'a', 'node_modules'), { recursive: true });
+    expect(prepareLaneNodeModules(other.root, other.worktree, { workspaces: ['packages/*'], ignored: (p) => !p.includes('packages/a/node_modules') })).toBeNull();
+    expect(existsSync(join(other.worktree, 'node_modules'))).toBe(false);
   });
 
   it('nothing to do without your node_modules; a node_modules the repository has itself is left alone', () => {
@@ -152,6 +200,35 @@ describe('prepareLaneNodeModules (the lane worktree in the Windows OS sandbox)',
     mkdirSync(join(other.worktree, 'node_modules'));
     writeFileSync(join(other.worktree, 'node_modules', 'own.js'), 'own\n');
     expect(prepareLaneNodeModules(other.root, other.worktree, { ignored: () => false })).toBeNull();
+    expect(readFileSync(join(other.worktree, 'node_modules', 'own.js'), 'utf-8')).toBe('own\n');
+  });
+});
+
+describe('settleLaneNodeModules (before the lane commit)', () => {
+  it('the copy still ignored: kept; no longer ignored: removed, links unlinked first, yours untouched', () => {
+    const { root, worktree, store } = setup();
+    const before = fingerprint(store);
+    expect(prepareLaneNodeModules(root, worktree, { ignored: ignoredAll })).toBeNull();
+    const asked: string[][] = [];
+    expect(settleLaneNodeModules(root, worktree, (p) => { asked.push(p); return true; })).toBeNull();
+    expect(asked).toEqual([['node_modules']]);
+    expect(existsSync(join(worktree, 'node_modules', GATE_TREE_MARKER))).toBe(true);
+    expect(settleLaneNodeModules(root, worktree, () => false)).toMatch(/git no longer ignores node_modules .* removed its copied node_modules/);
+    expect(existsSync(join(worktree, 'node_modules'))).toBe(false);
+    expect(fingerprint(store)).toEqual(before);
+  });
+
+  it('leaves alone what the engine did not finish building: no node_modules, a link, a dir without the completion line', () => {
+    const { root, worktree } = setup();
+    const never = (): boolean => { throw new Error('not asked'); };
+    expect(settleLaneNodeModules(root, worktree, never)).toBeNull();
+    symlinkSync(join(root, 'node_modules'), join(worktree, 'node_modules'), linkType);
+    expect(settleLaneNodeModules(root, worktree, never)).toBeNull();
+    expect(lstatSync(join(worktree, 'node_modules')).isSymbolicLink()).toBe(true);
+    const other = setup();
+    mkdirSync(join(other.worktree, 'node_modules'));
+    writeFileSync(join(other.worktree, 'node_modules', 'own.js'), 'own\n');
+    expect(settleLaneNodeModules(other.root, other.worktree, never)).toBeNull();
     expect(readFileSync(join(other.worktree, 'node_modules', 'own.js'), 'utf-8')).toBe('own\n');
   });
 });

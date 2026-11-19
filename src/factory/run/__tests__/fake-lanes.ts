@@ -23,7 +23,7 @@ import { defaultLocalGateRunner, type LocalGateRunner } from '../local-gate.js';
 import type { GateConfigLoader } from '../prepare.js';
 import type { SandboxRunner } from '../sandbox-exec.js';
 import { REVIEW_FEEDBACK_QUERY } from '../../../forge/github/graphql.js';
-import { LaneLostError, type LaneBackend, type LaneProcess, type LaneResult, type LaneStartInput, type LaneState } from '../lane.js';
+import { LaneLostError, type LaneBackend, type LaneProcess, type LaneResult, type LaneSandboxIntent, type LaneStartInput, type LaneState } from '../lane.js';
 
 export { gitIn };
 
@@ -72,6 +72,8 @@ export class FakeLanes implements LaneBackend {
   onRunningPoll: (remoteId: string) => void = () => {};
   /** The result's lastEventAt (the session's last event); undefined = the backend cannot tell (no idle check). */
   lastEventAt: (remoteId: string) => string | null | undefined = () => undefined;
+  /** LaneBackend.laneSandbox: the sandbox the engine's write prompts describe (unset: not known, no rule). */
+  laneSandbox?: (root: string) => LaneSandboxIntent | null;
   private readonly jobs = new Map<string, FakeJob>();
 
   /** `scripts` is consumed in start order; `runningPolls[i]` makes lane i report `running` that many times first. */
