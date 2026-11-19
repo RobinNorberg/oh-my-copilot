@@ -17,6 +17,29 @@ describe('engine-side commit of a write lane', () => {
     expect(out.gate?.name, out.message).toBe('implement-failed');
     expect(out.gate?.reason).toMatch(/left no changes/);
     expect(remoteHead(h)).toBeNull();
+    // An empty completion without a decline statement gets its one fresh retry.
+    expect(readFactoryState(h.root, ISSUE)!.lanes.filter((l) => l.kind === 'implement')).toHaveLength(2);
+  });
+
+  it('a lane that left no changes and declined (the DECLINED: line) parks at implement-declined at once: no retry, the reason only in the local detail', async () => {
+    const declining: LaneScript = () => ({ finalText: 'I will not put a credential into the code.\n\nDECLINED: the issue asks for a secret in the source' });
+    const out = await run([declining, declining]).done;
+    expect(out.gate?.name, out.message).toBe('implement-declined');
+    expect(out.gate?.reason).toMatch(/^lane \S+: the lane declined the work and left no changes in its worktree, so it was not retried;/);
+    expect(out.gate?.reason).not.toContain('credential');
+    expect(out.gate?.detail).toBe('the issue asks for a secret in the source');
+    expect(readFactoryState(h.root, ISSUE)!.lanes.filter((l) => l.kind === 'implement')).toHaveLength(1);
+    expect(remoteHead(h)).toBeNull();
+  });
+
+  it('a decline statement on a lane that changed files is not a decline: the change is committed', async () => {
+    const changing: LaneScript = ({ worktree }) => {
+      writeFileSync(join(worktree, 'a.ts'), 'a\n');
+      return { finalText: 'Added a.ts.\n\nDECLINED: partly' };
+    };
+    const out = await run([changing, review('approve')]).done;
+    expect(out.gate?.name, out.message).not.toBe('implement-declined');
+    expect(remoteHead(h)).not.toBeNull();
   });
 
   it('a lane that committed itself fails: write lanes leave their changes uncommitted', async () => {
