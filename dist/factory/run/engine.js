@@ -89,7 +89,7 @@ import { ghDependsOn, ghIssueComment, ghIssueJson, ghIssueView, ghViewItem, gith
 import { isSatisfied } from '../check/score.js';
 import { outcomePosts, postedBefore } from './outcome.js';
 import { forgePrStateReader, humanMergeCandidate, laneTrustProblem, markMergedByHuman } from './human-merged.js';
-import { checkoutBranch, checkoutPath, checkoutWorker, defaultGateConfigLoader, FACTORY_CHECKOUT_TEAM, GATE_CACHE_DIRS, GATE_TREE_COPY_WHY, GATE_TREE_MARKER, gateTreeHasLinks, linkNodeModules, prepareLaneNodeModules, settleLaneNodeModules, trustedNestedRels, unlinkNodeModules } from './prepare.js';
+import { checkoutBranch, checkoutPath, checkoutWorker, defaultGateConfigLoader, FACTORY_CHECKOUT_TEAM, GATE_CACHE_DIRS, GATE_TREE_COPY_WHY, GATE_TREE_MARKER, gateTreeHasLinks, linkNodeModules, prepareLaneNodeModulesAsync, settleLaneNodeModules, trustedNestedRels, unlinkNodeModules } from './prepare.js';
 import { baseWorkspacePatterns } from './workspace-tree.js';
 import { canTransition, createShipState, transition, latestVerdict, parseShipState, recordVerdict, shipStatePath, updateShipState, verifyShipIntegrity, } from '../../ship/state.js';
 import { ghReviewFeedback } from '../../forge/github/reviews.js';
@@ -1239,7 +1239,7 @@ class FactoryEngine {
     }
     /**
      * A write lane worktree about to run in the OS sandbox on Windows gets a
-     * copy of your node_modules (prepareLaneNodeModules, the gates' copied
+     * copy of your node_modules (prepareLaneNodeModulesAsync, the gates' copied
      * tree: GATE_TREE_COPY_WHY), so the lane's tests open no junction. Its git
      * ignore check runs before anything is copied (the dirs need not exist):
      * hardened host git `check-ignore --no-index` in the worktree with its
@@ -1257,7 +1257,7 @@ class FactoryEngine {
         const reuseFrom = this.state.lanes
             .filter((l) => l.worktree && l.treeReusable === true && l.id !== this.state.pendingCommit?.laneId && !samePath(l.worktree, worktree))
             .map((l) => l.worktree).reverse();
-        return prepareLaneNodeModules(this.o.root, worktree, { workspaces: this.baseWorkspaces(), ...(this.o.warn ? { warn: this.o.warn } : {}), ignored, reuseFrom });
+        return prepareLaneNodeModulesAsync(this.o.root, worktree, { workspaces: this.baseWorkspaces(), ...(this.o.warn ? { warn: this.o.warn } : {}), ignored, reuseFrom });
     }
     /**
      * Right before the lane commit: the copied tree prepareLaneTree built must

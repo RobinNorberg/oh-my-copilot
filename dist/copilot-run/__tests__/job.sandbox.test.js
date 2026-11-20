@@ -377,6 +377,62 @@ describe('copilot_run beforeSandboxedSession (the Windows OS sandbox)', () => {
             timers.mockRestore();
         }
     });
+    it('win32, an async hook: start() returns at once, timers run during it, the runtime starts and the job timeout is armed only after it; prepared() settles with it', async () => {
+        const m = manager('idle', 'supported', { platform: 'win32' }, winEnv);
+        const order = [];
+        let finish;
+        const started = m.start({ prompt: 'implement', cwd: repo, timeoutMs: 300 }, { beforeSandboxedSession: () => {
+                order.push('hook');
+                return new Promise((r) => { finish = r; });
+            } });
+        order.push('start returned');
+        let ready = false;
+        void m.prepared(started.jobId).then(() => { ready = true; });
+        // The event loop is free: a timer fires while the worktree is readied, longer than the job's timeout.
+        await new Promise((r) => setTimeout(r, 500));
+        order.push(`timer: ${calls.connections.length} connections, ready ${ready}`);
+        expect(m.status(started.jobId).status).toBe('starting');
+        finish(null);
+        await m.prepared(started.jobId);
+        const done = await m.wait(started.jobId, 10_000);
+        expect(order).toEqual(['hook', 'start returned', 'timer: 0 connections, ready false']);
+        // The 300 ms timeout was armed after the hook, so the job was not stopped by it.
+        expect(done.status).toBe('completed');
+        expect(calls.prompts).toEqual(['implement']);
+    });
+    it.each([
+        ['a problem', async () => 'the copy is over its bounds'],
+        ['a rejection', async () => { throw new Error('the copy is over its bounds'); }],
+    ])('win32, an async hook: %s fails the job with worktree-unprepared; no runtime or session is started', async (_what, hook) => {
+        const m = manager('idle', 'supported', { platform: 'win32' }, winEnv);
+        const started = m.start({ prompt: 'implement', cwd: repo }, { beforeSandboxedSession: hook });
+        await expect(m.prepared(started.jobId)).resolves.toBeUndefined();
+        const done = await m.wait(started.jobId, 10_000);
+        expect(done.status).toBe('failed');
+        expect(done.error).toMatch(/^worktree-unprepared: the copy is over its bounds; no session was started/);
+        expect(calls.connections).toHaveLength(0);
+        expect(calls.sessions).toHaveLength(0);
+    });
+    it('win32, a non-native thenable hook is awaited like a promise: its problem fails the job; no runtime is started', async () => {
+        const m = manager('idle', 'supported', { platform: 'win32' }, winEnv);
+        const thenable = { then: (ok, _fail) => { setTimeout(() => ok?.('the copy is over its bounds'), 20); return thenable; } };
+        const started = m.start({ prompt: 'implement', cwd: repo }, { beforeSandboxedSession: () => thenable });
+        expect(m.status(started.jobId).status).toBe('starting');
+        await m.prepared(started.jobId);
+        const done = await m.wait(started.jobId, 10_000);
+        expect(done.status).toBe('failed');
+        expect(done.error).toMatch(/^worktree-unprepared: the copy is over its bounds; no session was started/);
+        expect(calls.connections).toHaveLength(0);
+    });
+    it('win32, an async hook: a cancel while the worktree is readied ends the job cancelled once it settles; no runtime is started', async () => {
+        const m = manager('idle', 'supported', { platform: 'win32' }, winEnv);
+        let finish;
+        const started = m.start({ prompt: 'implement', cwd: repo }, { beforeSandboxedSession: () => new Promise((r) => { finish = r; }) });
+        const cancelled = m.cancel(started.jobId);
+        finish(null);
+        expect((await cancelled).status).toBe('cancelled');
+        expect(calls.connections).toHaveLength(0);
+    });
     it.each([
         ['a problem', () => 'the copy is over its bounds'],
         ['a throw', () => { throw new Error('the copy is over its bounds'); }],

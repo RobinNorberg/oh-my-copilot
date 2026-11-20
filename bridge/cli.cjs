@@ -124812,20 +124812,36 @@ var init_job = __esm({
           stopReason: null,
           requestStop: (reason) => requestStop(reason),
           stopped,
+          prepared: Promise.resolve(),
           done: Promise.resolve()
         };
         this.jobs.set(id, job);
         const intent = this.sandboxIntent(sandboxSettings);
+        let preparing = null;
         if (options.beforeSandboxedSession && worktree && profile !== "review" && intent.windowsCopy) {
           try {
-            job.unprepared = options.beforeSandboxedSession(worktree.path);
+            const ready = options.beforeSandboxedSession(worktree.path);
+            if (ready != null && typeof ready.then === "function") preparing = Promise.resolve(ready).then((problem) => {
+              job.unprepared = problem;
+            }, (err) => {
+              job.unprepared = errText(err);
+            });
+            else job.unprepared = ready;
           } catch (err) {
             job.unprepared = errText(err);
           }
         }
-        const timer = setTimeout(() => job.requestStop("timeout"), timeoutMs);
-        timer.unref?.();
-        job.done = this.run(job).catch((err) => {
+        let timer;
+        const arm = () => {
+          timer = setTimeout(() => job.requestStop("timeout"), timeoutMs);
+          timer.unref?.();
+        };
+        if (preparing) job.prepared = preparing;
+        else arm();
+        job.done = (preparing ? preparing.then(() => {
+          arm();
+          return this.run(job);
+        }) : this.run(job)).catch((err) => {
           job.error ??= errText(err);
           return "failed";
         }).then((outcome) => {
@@ -124888,6 +124904,10 @@ var init_job = __esm({
       }
       status(jobId) {
         return this.snapshot(this.find(jobId));
+      }
+      /** Settles once the job's worktree is readied (an async beforeSandboxedSession); at once otherwise. Never rejects. */
+      prepared(jobId) {
+        return this.find(jobId).prepared;
       }
       /** Wait until the job ends or `timeoutMs` passes; the snapshot says which. */
       async wait(jobId, timeoutMs) {
@@ -125031,6 +125051,8 @@ var init_job = __esm({
           job.error = `worktree-unprepared: ${job.unprepared}; no session was started`;
           return "failed";
         }
+        const early = job.stopReason;
+        if (early === "cancelled") return "cancelled";
         let loadError;
         const loaded2 = await deps.loadSdk().catch((err) => {
           loadError = `loading @github/copilot-sdk failed: ${errText(err)}`;
@@ -128357,7 +128379,68 @@ function unlinkLink2(p) {
     (0, import_fs156.rmdirSync)(p);
   }
 }
+function runTreeSteps(steps) {
+  let failure5 = null;
+  for (; ; ) {
+    const r = failure5 ? steps.throw(failure5.error) : steps.next();
+    failure5 = null;
+    if (r.done) return r.value;
+    const s = r.value;
+    if (typeof s === "object") {
+      try {
+        (0, import_fs156.copyFileSync)(s.copy, s.to);
+      } catch (error62) {
+        failure5 = { error: error62 };
+      }
+    }
+  }
+}
+async function runTreeStepsAsync(steps) {
+  const pending = /* @__PURE__ */ new Set();
+  const failed3 = { first: null };
+  let reported = false;
+  const settle2 = async () => {
+    while (pending.size > 0) await Promise.race(pending);
+  };
+  let slice = Date.now();
+  for (; ; ) {
+    let r;
+    try {
+      if (failed3.first && !reported) {
+        reported = true;
+        r = steps.throw(failed3.first.error);
+      } else r = steps.next();
+    } catch (error62) {
+      await settle2();
+      throw error62;
+    }
+    if (r.done) {
+      await settle2();
+      if (failed3.first && !reported) throw failed3.first.error;
+      return r.value;
+    }
+    const s = r.value;
+    if (s === DRAIN || s === SETTLE) await settle2();
+    if (s === SETTLE) reported = true;
+    else if (typeof s === "object") {
+      while (pending.size >= TREE_COPY_CONCURRENCY) await Promise.race(pending);
+      const p = (0, import_promises27.copyFile)(s.copy, s.to).catch((error62) => {
+        failed3.first ??= { error: error62 };
+      }).finally(() => {
+        pending.delete(p);
+      });
+      pending.add(p);
+    }
+    if (Date.now() - slice >= TREE_STEP_SLICE_MS) {
+      await new Promise((resolve94) => setImmediate(resolve94));
+      slice = Date.now();
+    }
+  }
+}
 function linkNodeModules(root, checkout, warn, workspaces = [], copy = false) {
+  return runTreeSteps(linkNodeModulesSteps(root, checkout, warn, workspaces, copy));
+}
+function* linkNodeModulesSteps(root, checkout, warn, workspaces, copy) {
   const source2 = (0, import_path181.join)(root, "node_modules");
   const target = (0, import_path181.join)(checkout, "node_modules");
   if (!(0, import_fs156.existsSync)(checkout)) return null;
@@ -128370,7 +128453,7 @@ function linkNodeModules(root, checkout, warn, workspaces = [], copy = false) {
     present = false;
   }
   if (present && gateTreeIncomplete(target)) {
-    unlinkNodeModules(root, checkout);
+    yield* unlinkNodeModulesSteps(root, checkout);
     present = (0, import_fs156.existsSync)(target) || isLink2(target);
   }
   if (present) return ws.problem;
@@ -128390,7 +128473,7 @@ function linkNodeModules(root, checkout, warn, workspaces = [], copy = false) {
     const limits = { ...DEFAULT_COPY_LIMITS, ...copy === true ? {} : copy };
     const roots = trees.map((t) => ({ real: import_fs156.realpathSync.native(t.src), to: t.to }));
     const dry = { bytes: 0, files: 0, roots, limits, dry: true };
-    for (const t of trees) buildGateTree(t.src, t.to, root, checkout, t.rel ? `${t.rel}/` : "", void 0, dry);
+    for (const t of trees) yield* buildGateTree(t.src, t.to, root, checkout, t.rel ? `${t.rel}/` : "", void 0, dry);
     const free = limits.freeBytes(checkout);
     if (free !== null && free < dry.bytes + limits.marginBytes) throw new Error(`the copied gate node_modules tree needs ${dry.bytes} bytes plus a ${limits.marginBytes}-byte margin on the volume of ${checkout}, which has ${free} bytes free, so it is not copied`);
     budget = { bytes: 0, files: 0, roots, limits, dry: false };
@@ -128402,22 +128485,24 @@ function linkNodeModules(root, checkout, warn, workspaces = [], copy = false) {
         (0, import_fs156.writeFileSync)((0, import_path181.join)(target, GATE_TREE_MARKER), built.map((r) => `${r}
 `).join(""));
       }
-      buildGateTree(t.src, t.to, root, checkout, t.rel ? `${t.rel}/` : "", warn, budget);
+      yield* buildGateTree(t.src, t.to, root, checkout, t.rel ? `${t.rel}/` : "", warn, budget);
     }
+    yield DRAIN;
     (0, import_fs156.writeFileSync)((0, import_path181.join)(target, GATE_TREE_MARKER), [...built, GATE_TREE_COMPLETE].map((r) => `${r}
 `).join(""));
     const moved = treeMoved(target, checkout, "");
     if (moved) throw new Error(moved);
   } catch (error62) {
+    yield SETTLE;
     for (const rel of built) {
       const dir = plainDirUnder(checkout, rel);
       if (dir) try {
-        if ((0, import_fs156.lstatSync)((0, import_path181.join)(dir, "node_modules")).isDirectory()) removeGateTree((0, import_path181.join)(dir, "node_modules"));
+        if ((0, import_fs156.lstatSync)((0, import_path181.join)(dir, "node_modules")).isDirectory()) yield* removeGateTreeSteps((0, import_path181.join)(dir, "node_modules"));
       } catch {
       }
     }
     try {
-      if ((0, import_fs156.lstatSync)(target).isDirectory()) removeGateTree(target);
+      if ((0, import_fs156.lstatSync)(target).isDirectory()) yield* removeGateTreeSteps(target);
     } catch {
     }
     throw error62;
@@ -128425,7 +128510,12 @@ function linkNodeModules(root, checkout, warn, workspaces = [], copy = false) {
   nestedTrees.set(checkout, built);
   return ws.problem;
 }
-function prepareLaneNodeModules(root, worktree, o) {
+function prepareLaneNodeModulesAsync(root, worktree, o) {
+  const run3 = laneTreeQueue.then(() => runTreeStepsAsync(prepareLaneSteps(root, worktree, o)));
+  laneTreeQueue = run3.then(() => void 0, () => void 0);
+  return run3;
+}
+function* prepareLaneSteps(root, worktree, o) {
   const target = (0, import_path181.join)(worktree, "node_modules");
   if (!(0, import_fs156.existsSync)((0, import_path181.join)(root, "node_modules"))) return null;
   if (isLink2(target) && !sameDir(target, (0, import_path181.join)(root, "node_modules"))) return `${target} is a link the engine did not make, so the lane's node_modules is not prepared`;
@@ -128442,19 +128532,19 @@ function prepareLaneNodeModules(root, worktree, o) {
     } catch {
     }
     if (!ignored) {
-      if (!isLink2(target) && (0, import_fs156.existsSync)(target)) unlinkNodeModules(root, worktree);
+      if (!isLink2(target) && (0, import_fs156.existsSync)(target)) yield* unlinkNodeModulesSteps(root, worktree);
       o.warn?.(`omg factory run: git does not ignore ${rels.join(", ")} in ${worktree}, so the lane gets no copied node_modules (the lane commit refuses links in its worktree); add node_modules to .gitignore`);
       return null;
     }
     if (nested.length === 0 && !(0, import_fs156.existsSync)(target) && !isLink2(target)) {
-      const adopted = adoptLaneTree(root, worktree, o.reuseFrom ?? [], o.warn);
+      const adopted = yield* adoptLaneTree(root, worktree, o.reuseFrom ?? [], o.warn);
       if (adopted === true) return null;
       if (typeof adopted === "string") return adopted;
     }
   }
   let problem;
   try {
-    problem = linkNodeModules(root, worktree, o.warn, o.workspaces ?? [], o.copy ?? true);
+    problem = yield* linkNodeModulesSteps(root, worktree, o.warn, o.workspaces ?? [], o.copy ?? true);
   } catch (error62) {
     return `the copied node_modules tree of the lane worktree ${worktree} could not be built (${error62 instanceof Error ? error62.message : String(error62)})`;
   } finally {
@@ -128470,7 +128560,7 @@ function prepareLaneNodeModules(root, worktree, o) {
   if (st.isSymbolicLink() || !st.isDirectory()) return `${target} is not a real directory after its preparation, so the lane would fail in the sandbox`;
   return null;
 }
-function adoptLaneTree(root, worktree, from, warn) {
+function* adoptLaneTree(root, worktree, from, warn) {
   const target = (0, import_path181.join)(worktree, "node_modules");
   for (const prev of from) {
     const src = (0, import_path181.join)(prev, "node_modules");
@@ -128487,14 +128577,14 @@ function adoptLaneTree(root, worktree, from, warn) {
     }
     let problem;
     try {
-      problem = treeMoved(target, worktree, "") ?? adoptedTreeProblem(root, target);
+      problem = treeMoved(target, worktree, "") ?? (yield* adoptedTreeProblem(root, target));
     } catch (error62) {
       problem = error62 instanceof Error ? error62.message : String(error62);
     }
     if (!problem) return true;
     let removal = "";
     try {
-      if ((0, import_fs156.lstatSync)(target).isDirectory()) removeGateTree(target);
+      if ((0, import_fs156.lstatSync)(target).isDirectory()) yield* removeGateTreeSteps(target);
     } catch (error62) {
       removal = error62 instanceof Error ? error62.message : String(error62);
     }
@@ -128510,7 +128600,7 @@ function adoptLaneTree(root, worktree, from, warn) {
   }
   return false;
 }
-function adoptedTreeProblem(root, tree) {
+function* adoptedTreeProblem(root, tree) {
   const yours = (0, import_path181.join)(root, "node_modules");
   for (const e of (0, import_fs156.readdirSync)(yours, { withFileTypes: true })) {
     if (e.name === GATE_TREE_MARKER || !e.isFile()) continue;
@@ -128525,21 +128615,22 @@ function adoptedTreeProblem(root, tree) {
     }
     if (!theirs.equals((0, import_fs156.readFileSync)(mine))) return `node_modules/${e.name} differs from yours`;
   }
-  const walk = (dir, rel) => {
+  const walk = function* (dir, rel) {
     for (const e of (0, import_fs156.readdirSync)(dir, { withFileTypes: true })) {
+      yield;
       const p = (0, import_path181.join)(dir, e.name);
       const r = rel ? `${rel}/${e.name}` : e.name;
       const st = e.isFile() ? e : (0, import_fs156.lstatSync)(p);
       if (st.isSymbolicLink()) {
         if (!sameDir(p, (0, import_path181.join)(yours, ...r.split("/")))) return `node_modules/${r} is a link to somewhere other than the same entry of your node_modules`;
       } else if (st.isDirectory()) {
-        const inner = walk(p, r);
+        const inner = yield* walk(p, r);
         if (inner) return inner;
       } else if (!st.isFile()) return `node_modules/${r} is neither a file, a dir nor a link`;
     }
     return null;
   };
-  return walk(tree, "");
+  return yield* walk(tree, "");
 }
 function settleLaneNodeModules(root, worktree, ignored) {
   const target = (0, import_path181.join)(worktree, "node_modules");
@@ -128566,7 +128657,7 @@ function isLink2(p) {
     return false;
   }
 }
-function buildGateTree(source2, target, root, checkout, label2, warn, copy) {
+function* buildGateTree(source2, target, root, checkout, label2, warn, copy) {
   const dry = copy?.dry === true;
   if (!dry) {
     (0, import_fs156.mkdirSync)(target);
@@ -128581,17 +128672,18 @@ function buildGateTree(source2, target, root, checkout, label2, warn, copy) {
     (0, import_fs156.writeFileSync)((0, import_path181.join)(target, GATE_TREE_MARKER), "");
     for (const name of GATE_CACHE_DIRS) (0, import_fs156.mkdirSync)((0, import_path181.join)(target, name));
   }
-  const place = (from, to) => {
+  const place = function* (from, to) {
     const w = workspaceLinkTarget(from, root, checkout);
     if ("skip" in w) {
       warn?.(`omg factory run: ${w.skip}, so it is left out of the gate's node_modules tree ${target}`);
       return;
     }
-    if (copy && !("to" in w) && (0, import_path181.basename)(from) !== ".bin") return copyGateEntry(from, to, copy);
+    if (copy && !("to" in w) && (0, import_path181.basename)(from) !== ".bin") return yield* copyGateEntry(from, to, copy);
     spend(copy, 0);
     if (!dry) (0, import_fs156.symlinkSync)("to" in w ? w.to : from, to, linkType());
   };
   for (const e of (0, import_fs156.readdirSync)(source2, { withFileTypes: true })) {
+    yield;
     if (e.name === GATE_TREE_MARKER || GATE_CACHE_DIRS.includes(e.name)) continue;
     const from = (0, import_path181.join)(source2, e.name);
     let st;
@@ -128606,7 +128698,7 @@ function buildGateTree(source2, target, root, checkout, label2, warn, copy) {
         continue;
       }
       spend(copy, st.size);
-      if (!dry) (0, import_fs156.copyFileSync)(from, (0, import_path181.join)(target, e.name));
+      if (!dry) yield { copy: from, to: (0, import_path181.join)(target, e.name) };
       continue;
     }
     if (!st.isDirectory()) continue;
@@ -128621,14 +128713,15 @@ function buildGateTree(source2, target, root, checkout, label2, warn, copy) {
           } catch {
             continue;
           }
-          place((0, import_path181.join)(from, c), (0, import_path181.join)(target, e.name, c));
+          yield* place((0, import_path181.join)(from, c), (0, import_path181.join)(target, e.name, c));
         }
         continue;
       }
     }
-    place(from, (0, import_path181.join)(target, e.name));
+    yield* place(from, (0, import_path181.join)(target, e.name));
   }
   if (dry) return;
+  yield DRAIN;
   const after = treeMoved(target, checkout, label2);
   if (after) throw new Error(after);
 }
@@ -128655,7 +128748,7 @@ function copiedAt(real2, budget) {
   if (first === ".bin" || first === GATE_TREE_MARKER || GATE_CACHE_DIRS.includes(first)) return null;
   return best.rel ? (0, import_path181.join)(best.to, best.rel) : best.to;
 }
-function copyGateEntry(from, to, budget) {
+function* copyGateEntry(from, to, budget) {
   if (isLink2(from)) {
     let at = null;
     try {
@@ -128668,12 +128761,13 @@ function copyGateEntry(from, to, budget) {
       return;
     }
   }
-  copyGateDir(from, to, budget);
+  yield* copyGateDir(from, to, budget);
 }
-function copyGateDir(from, to, budget) {
+function* copyGateDir(from, to, budget) {
   spend(budget, 0);
   if (!budget.dry) (0, import_fs156.mkdirSync)(to);
   for (const e of (0, import_fs156.readdirSync)(from, { withFileTypes: true })) {
+    yield;
     const s = (0, import_path181.join)(from, e.name);
     const d = (0, import_path181.join)(to, e.name);
     if (e.isSymbolicLink()) {
@@ -128686,11 +128780,11 @@ function copyGateDir(from, to, budget) {
       }
       spend(budget, 0);
       if (!budget.dry) (0, import_fs156.symlinkSync)(copiedAt(real2, budget) ?? real2, d, linkType());
-    } else if (e.isDirectory()) copyGateDir(s, d, budget);
+    } else if (e.isDirectory()) yield* copyGateDir(s, d, budget);
     else if (e.isFile()) {
       const size = (0, import_fs156.statSync)(s).size;
       spend(budget, size);
-      if (!budget.dry) (0, import_fs156.copyFileSync)(s, d);
+      if (!budget.dry) yield { copy: s, to: d };
     }
   }
 }
@@ -128715,24 +128809,28 @@ function unlinkOwnLink(root, link6) {
   unlinkLink2(link6);
   return true;
 }
-function removeGateTree(dir) {
-  const walk = (d) => {
+function* removeGateTreeSteps(dir) {
+  const walk = function* (d) {
     for (const name of (0, import_fs156.readdirSync)(d)) {
+      yield;
       const p = (0, import_path181.join)(d, name);
       const st = (0, import_fs156.lstatSync)(p);
       if (st.isSymbolicLink()) unlinkLink2(p);
-      else if (st.isDirectory()) walk(p);
+      else if (st.isDirectory()) yield* walk(p);
       else (0, import_fs156.unlinkSync)(p);
     }
     (0, import_fs156.rmdirSync)(d);
   };
-  walk(dir);
+  yield* walk(dir);
 }
 function unlinkNodeModules(root, checkout) {
+  runTreeSteps(unlinkNodeModulesSteps(root, checkout));
+}
+function* unlinkNodeModulesSteps(root, checkout) {
   const target = (0, import_path181.join)(checkout, "node_modules");
   for (const nm of nestedTreeDirs(checkout)) {
-    unlinkTreeLinks(nm);
-    if ((0, import_fs156.existsSync)((0, import_path181.join)(nm, GATE_TREE_MARKER))) removeGateTree(nm);
+    yield* unlinkTreeLinks(nm);
+    if ((0, import_fs156.existsSync)((0, import_path181.join)(nm, GATE_TREE_MARKER))) yield* removeGateTreeSteps(nm);
   }
   nestedTrees.delete(checkout);
   let st;
@@ -128746,15 +128844,16 @@ function unlinkNodeModules(root, checkout) {
     return;
   }
   if (!st.isDirectory() || sameDir(target, (0, import_path181.join)(root, "node_modules"))) return;
-  unlinkTreeLinks(target);
-  if ((0, import_fs156.existsSync)((0, import_path181.join)(target, GATE_TREE_MARKER))) removeGateTree(target);
+  yield* unlinkTreeLinks(target);
+  if ((0, import_fs156.existsSync)((0, import_path181.join)(target, GATE_TREE_MARKER))) yield* removeGateTreeSteps(target);
 }
-function unlinkTreeLinks(dir) {
+function* unlinkTreeLinks(dir) {
   for (const name of (0, import_fs156.readdirSync)(dir)) {
+    yield;
     const p = (0, import_path181.join)(dir, name);
     const st = (0, import_fs156.lstatSync)(p);
     if (st.isSymbolicLink()) unlinkLink2(p);
-    else if (st.isDirectory()) unlinkTreeLinks(p);
+    else if (st.isDirectory()) yield* unlinkTreeLinks(p);
   }
 }
 function gateTreeHasLinks(checkout) {
@@ -128839,11 +128938,12 @@ function sameDir(a, b) {
     return false;
   }
 }
-var import_fs156, import_path181, FACTORY_CHECKOUT_TEAM, checkoutWorker, GATE_CACHE_DIRS, GATE_TREE_MARKER, GATE_TREE_COMPLETE, GATE_TREE_FILE_MAX_BYTES, nestedTrees, linkType, GATE_TREE_COPY_WHY, GATE_TREE_COPY_MAX_BYTES, GATE_TREE_COPY_MAX_FILES, GATE_TREE_COPY_FREE_MARGIN_BYTES, DEFAULT_COPY_LIMITS, defaultGateConfigLoader;
+var import_fs156, import_promises27, import_path181, FACTORY_CHECKOUT_TEAM, checkoutWorker, GATE_CACHE_DIRS, GATE_TREE_MARKER, GATE_TREE_COMPLETE, GATE_TREE_FILE_MAX_BYTES, DRAIN, SETTLE, TREE_COPY_CONCURRENCY, TREE_STEP_SLICE_MS, laneTreeQueue, nestedTrees, linkType, GATE_TREE_COPY_WHY, GATE_TREE_COPY_MAX_BYTES, GATE_TREE_COPY_MAX_FILES, GATE_TREE_COPY_FREE_MARGIN_BYTES, DEFAULT_COPY_LIMITS, defaultGateConfigLoader;
 var init_prepare = __esm({
   "src/factory/run/prepare.ts"() {
     "use strict";
     import_fs156 = require("fs");
+    import_promises27 = require("fs/promises");
     import_path181 = require("path");
     init_config2();
     init_git_worktree();
@@ -128855,6 +128955,11 @@ var init_prepare = __esm({
     GATE_TREE_MARKER = ".omg-gate-tree";
     GATE_TREE_COMPLETE = ".omg-complete";
     GATE_TREE_FILE_MAX_BYTES = 16 * 1024 * 1024;
+    DRAIN = /* @__PURE__ */ Symbol("drain");
+    SETTLE = /* @__PURE__ */ Symbol("settle");
+    TREE_COPY_CONCURRENCY = 4;
+    TREE_STEP_SLICE_MS = 8;
+    laneTreeQueue = Promise.resolve();
     nestedTrees = /* @__PURE__ */ new Map();
     linkType = () => process.platform === "win32" ? "junction" : "dir";
     GATE_TREE_COPY_WHY = "the OS sandbox on Windows denies opening a package dir through the gate tree's junction with generic read access, which esbuild needs";
@@ -137150,6 +137255,7 @@ var init_lane = __esm({
             ...input2.beforeSandboxedSession ? { beforeSandboxedSession: input2.beforeSandboxedSession } : {}
           }
         );
+        await this.manager.prepared?.(snap.jobId);
         return { remoteId: snap.jobId };
       }
       async poll(remoteId) {
@@ -138974,7 +139080,7 @@ var init_engine = __esm({
       }
       /**
        * A write lane worktree about to run in the OS sandbox on Windows gets a
-       * copy of your node_modules (prepareLaneNodeModules, the gates' copied
+       * copy of your node_modules (prepareLaneNodeModulesAsync, the gates' copied
        * tree: GATE_TREE_COPY_WHY), so the lane's tests open no junction. Its git
        * ignore check runs before anything is copied (the dirs need not exist):
        * hardened host git `check-ignore --no-index` in the worktree with its
@@ -138987,7 +139093,7 @@ var init_engine = __esm({
           return paths.every((p) => listed2.has(p));
         };
         const reuseFrom = this.state.lanes.filter((l) => l.worktree && l.treeReusable === true && l.id !== this.state.pendingCommit?.laneId && !samePath2(l.worktree, worktree)).map((l) => l.worktree).reverse();
-        return prepareLaneNodeModules(this.o.root, worktree, { workspaces: this.baseWorkspaces(), ...this.o.warn ? { warn: this.o.warn } : {}, ignored, reuseFrom });
+        return prepareLaneNodeModulesAsync(this.o.root, worktree, { workspaces: this.baseWorkspaces(), ...this.o.warn ? { warn: this.o.warn } : {}, ignored, reuseFrom });
       }
       /**
        * Right before the lane commit: the copied tree prepareLaneTree built must
@@ -146044,7 +146150,7 @@ var init_cli2 = __esm({
 
 // src/cli/commands/factory-check.ts
 async function ttyConfirm(question) {
-  const rl = (0, import_promises27.createInterface)({ input: process.stdin, output: process.stderr });
+  const rl = (0, import_promises28.createInterface)({ input: process.stdin, output: process.stderr });
   try {
     return /^y(?:es)?$/i.test((await rl.question(`${question} [y/N] `)).trim());
   } finally {
@@ -146079,14 +146185,14 @@ function factoryCheckCommand(deps) {
     }
   });
 }
-var import_fs175, import_promises27;
+var import_fs175, import_promises28;
 var init_factory_check = __esm({
   "src/cli/commands/factory-check.ts"() {
     "use strict";
     init_esm();
     init_source();
     import_fs175 = require("fs");
-    import_promises27 = require("readline/promises");
+    import_promises28 = require("readline/promises");
     init_project_config_path();
     init_cli();
     init_state6();
@@ -148246,7 +148352,7 @@ var init_progress_pick = __esm({
 // src/cli/commands/factory-setup.ts
 function ttyPrompter() {
   const ask = async (q) => {
-    const rl = (0, import_promises28.createInterface)({ input: process.stdin, output: process.stderr });
+    const rl = (0, import_promises29.createInterface)({ input: process.stdin, output: process.stderr });
     try {
       return (await rl.question(q)).trim();
     } finally {
@@ -148558,14 +148664,14 @@ function factorySetupCommand(deps = defaultFactorySetupDeps) {
     process.exitCode = result.exitCode;
   });
 }
-var import_fs181, import_promises28, defaultFactorySetupDeps, TERMINAL_SEQUENCE, plainText2, list2, readConfig, redactFor;
+var import_fs181, import_promises29, defaultFactorySetupDeps, TERMINAL_SEQUENCE, plainText2, list2, readConfig, redactFor;
 var init_factory_setup = __esm({
   "src/cli/commands/factory-setup.ts"() {
     "use strict";
     init_source();
     init_esm();
     import_fs181 = require("fs");
-    import_promises28 = require("readline/promises");
+    import_promises29 = require("readline/promises");
     init_project_config_path();
     init_az_binary();
     init_config5();
@@ -155966,9 +156072,9 @@ function identityOf2(a) {
   };
 }
 async function writeExclusive(path30, value) {
-  await (0, import_promises29.mkdir)((0, import_node_path52.dirname)(path30), { recursive: true });
+  await (0, import_promises30.mkdir)((0, import_node_path52.dirname)(path30), { recursive: true });
   const candidate = `${path30}.candidate.${process.pid}.${(0, import_node_crypto27.randomUUID)()}`;
-  const handle = await (0, import_promises29.open)(candidate, "wx", 384);
+  const handle = await (0, import_promises30.open)(candidate, "wx", 384);
   try {
     await handle.writeFile(JSON.stringify(value), "utf8");
     await handle.sync();
@@ -155976,17 +156082,17 @@ async function writeExclusive(path30, value) {
     await handle.close();
   }
   try {
-    await (0, import_promises29.link)(candidate, path30);
+    await (0, import_promises30.link)(candidate, path30);
     return true;
   } catch {
     return false;
   } finally {
-    await (0, import_promises29.unlink)(candidate).catch(() => void 0);
+    await (0, import_promises30.unlink)(candidate).catch(() => void 0);
   }
 }
 async function readJsonFile3(path30) {
   try {
-    const value = JSON.parse(await (0, import_promises29.readFile)(path30, "utf8"));
+    const value = JSON.parse(await (0, import_promises30.readFile)(path30, "utf8"));
     return value && typeof value === "object" && !Array.isArray(value) ? value : null;
   } catch {
     return null;
@@ -156698,12 +156804,12 @@ async function runSdkHostMain(specPath, loadInProcessTools) {
   }
   process.exit(code);
 }
-var import_node_fs49, import_promises29, import_node_crypto27, import_node_child_process21, import_node_path52, DECISION_TIMEOUT_MS, START_TIMEOUT_MS5, RPC_TIMEOUT_MS5, ABORT_GRACE_MS3, SHUTDOWN_GRACE_MS3, STOP_TIMEOUT_MS4, TOOL_CLEANUP_TIMEOUT_MS, PERMISSION_LOG_MAX, CREDENTIAL_READ_TIMEOUT_MS, STOP_SIGNALS, TURN_USAGE_MAX, tokenCount, TimeoutError2, sleep11, errText8, WORKER_CREDENTIAL_RESET, WORKER_GIT_CONFIG;
+var import_node_fs49, import_promises30, import_node_crypto27, import_node_child_process21, import_node_path52, DECISION_TIMEOUT_MS, START_TIMEOUT_MS5, RPC_TIMEOUT_MS5, ABORT_GRACE_MS3, SHUTDOWN_GRACE_MS3, STOP_TIMEOUT_MS4, TOOL_CLEANUP_TIMEOUT_MS, PERMISSION_LOG_MAX, CREDENTIAL_READ_TIMEOUT_MS, STOP_SIGNALS, TURN_USAGE_MAX, tokenCount, TimeoutError2, sleep11, errText8, WORKER_CREDENTIAL_RESET, WORKER_GIT_CONFIG;
 var init_sdk_host = __esm({
   "src/team/sdk-host.ts"() {
     "use strict";
     import_node_fs49 = require("node:fs");
-    import_promises29 = require("node:fs/promises");
+    import_promises30 = require("node:fs/promises");
     import_node_crypto27 = require("node:crypto");
     import_node_child_process21 = require("node:child_process");
     import_node_path52 = require("node:path");
@@ -156839,7 +156945,7 @@ async function readClaudeGoalSnapshotInput(raw, cwd = process.cwd()) {
       throw new ClaudeGoalSnapshotError(`Claude goal snapshot is neither valid JSON nor a readable path: ${trimmed}`);
     }
     try {
-      return parseClaudeGoalSnapshot(JSON.parse(await (0, import_promises30.readFile)(path30, "utf-8")));
+      return parseClaudeGoalSnapshot(JSON.parse(await (0, import_promises31.readFile)(path30, "utf-8")));
     } catch (error62) {
       throw new ClaudeGoalSnapshotError(`Claude goal snapshot path does not contain valid JSON: ${trimmed}${error62 instanceof Error ? ` (${error62.message})` : ""}`);
     }
@@ -156876,12 +156982,12 @@ function formatClaudeGoalReconciliation(reconciliation) {
   const parts = [...reconciliation.errors, ...reconciliation.warnings];
   return parts.join(" ");
 }
-var import_node_fs51, import_promises30, import_node_path54, ClaudeGoalSnapshotError;
+var import_node_fs51, import_promises31, import_node_path54, ClaudeGoalSnapshotError;
 var init_claude_goal_snapshot = __esm({
   "src/goal-workflows/claude-goal-snapshot.ts"() {
     "use strict";
     import_node_fs51 = require("node:fs");
-    import_promises30 = require("node:fs/promises");
+    import_promises31 = require("node:fs/promises");
     import_node_path54 = require("node:path");
     ClaudeGoalSnapshotError = class extends Error {
     };
@@ -156909,7 +157015,7 @@ function ultragoalLedgerPath(cwd, planId) {
 async function listUltragoalPlanIds(cwd) {
   const dir = (0, import_node_path55.join)(getOmcRoot(cwd), "ultragoal", ULTRAGOAL_PLANS_SUBDIR);
   try {
-    const entries = await (0, import_promises31.readdir)(dir, { withFileTypes: true });
+    const entries = await (0, import_promises32.readdir)(dir, { withFileTypes: true });
     return entries.filter((entry2) => entry2.isDirectory()).filter((entry2) => /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(entry2.name)).map((entry2) => entry2.name).sort();
   } catch {
     return [];
@@ -156963,7 +157069,7 @@ async function snapshotObjectiveMapsToUltragoalPlan(cwd, snapshotObjective, plan
   if (textMentionsUltragoalPlanArtifact(actual)) return true;
   if (actual.length < 24) return false;
   try {
-    const brief = normalizeObjective2(await (0, import_promises31.readFile)(ultragoalBriefPath(cwd, planId), "utf-8")).toLowerCase();
+    const brief = normalizeObjective2(await (0, import_promises32.readFile)(ultragoalBriefPath(cwd, planId), "utf-8")).toLowerCase();
     if (!brief || brief.length < 24) return false;
     return brief.includes(actual) || actual.includes(brief);
   } catch {
@@ -157042,16 +157148,16 @@ function normalizeGoalId(title, index) {
   return `G${String(index + 1).padStart(3, "0")}${slug ? `-${slug}` : ""}`;
 }
 async function appendLedger(cwd, entry2, planId) {
-  await (0, import_promises31.mkdir)(ultragoalDir(cwd, planId), { recursive: true });
+  await (0, import_promises32.mkdir)(ultragoalDir(cwd, planId), { recursive: true });
   const path30 = ultragoalLedgerPath(cwd, planId);
-  await (0, import_promises31.appendFile)(path30, `${JSON.stringify(entry2)}
+  await (0, import_promises32.appendFile)(path30, `${JSON.stringify(entry2)}
 `);
 }
 async function readUltragoalPlan(cwd, planId) {
   const path30 = ultragoalGoalsPath(cwd, planId);
   let raw;
   try {
-    raw = await (0, import_promises31.readFile)(path30, "utf-8");
+    raw = await (0, import_promises32.readFile)(path30, "utf-8");
   } catch {
     const hint = planId ? `Pass --plan-id ${planId} to a previously-created plan, or run \`omg ultragoal create-goals --plan-id ${planId} ...\`.` : "Run `omg ultragoal create-goals ...` first.";
     throw new UltragoalError(`No ultragoal plan found at ${repoRelative(cwd, path30)}. ${hint}`);
@@ -157064,8 +157170,8 @@ async function readUltragoalPlan(cwd, planId) {
   return parsed2;
 }
 async function writePlan(cwd, plan) {
-  await (0, import_promises31.mkdir)(ultragoalDir(cwd, plan.planId), { recursive: true });
-  await (0, import_promises31.writeFile)(ultragoalGoalsPath(cwd, plan.planId), `${JSON.stringify(plan, null, 2)}
+  await (0, import_promises32.mkdir)(ultragoalDir(cwd, plan.planId), { recursive: true });
+  await (0, import_promises32.writeFile)(ultragoalGoalsPath(cwd, plan.planId), `${JSON.stringify(plan, null, 2)}
 `);
 }
 async function createUltragoalPlan(cwd, options) {
@@ -157106,19 +157212,19 @@ async function createUltragoalPlan(cwd, options) {
     goals: candidates
   };
   if (plan.claudeGoalMode === "aggregate") plan.claudeObjective = aggregateClaudeObjective(candidates, planId);
-  await (0, import_promises31.mkdir)(ultragoalDir(cwd, planId), { recursive: true });
-  await (0, import_promises31.rm)((0, import_node_path55.join)(ultragoalDir(cwd, planId), "omg-goal.json"), { force: true });
-  await (0, import_promises31.writeFile)(ultragoalBriefPath(cwd, planId), options.brief.endsWith("\n") ? options.brief : `${options.brief}
+  await (0, import_promises32.mkdir)(ultragoalDir(cwd, planId), { recursive: true });
+  await (0, import_promises32.rm)((0, import_node_path55.join)(ultragoalDir(cwd, planId), "omg-goal.json"), { force: true });
+  await (0, import_promises32.writeFile)(ultragoalBriefPath(cwd, planId), options.brief.endsWith("\n") ? options.brief : `${options.brief}
 `);
   await writePlan(cwd, plan);
-  await (0, import_promises31.writeFile)(ultragoalLedgerPath(cwd, planId), "");
+  await (0, import_promises32.writeFile)(ultragoalLedgerPath(cwd, planId), "");
   await appendLedger(cwd, { ts: now2, event: "plan_created", message: `${candidates.length} goal(s) created` }, planId);
   if (planId) await recordUltragoalStatePlanId(cwd, planId);
   return plan;
 }
 async function readActiveUltragoalState(path30) {
   try {
-    const state = JSON.parse(await (0, import_promises31.readFile)(path30, "utf-8"));
+    const state = JSON.parse(await (0, import_promises32.readFile)(path30, "utf-8"));
     return state && typeof state === "object" && state.active === true ? state : null;
   } catch {
     return null;
@@ -157141,7 +157247,7 @@ async function recordUltragoalStatePlanId(cwd, planId, env2 = process.env) {
     else {
       let sessions = [];
       try {
-        sessions = (await (0, import_promises31.readdir)((0, import_node_path55.join)(stateDir, "sessions"), { withFileTypes: true })).filter((entry2) => entry2.isDirectory() && STATE_SESSION_ID_PATTERN.test(entry2.name)).map((entry2) => (0, import_node_path55.join)(stateDir, "sessions", entry2.name, "ultragoal-state.json"));
+        sessions = (await (0, import_promises32.readdir)((0, import_node_path55.join)(stateDir, "sessions"), { withFileTypes: true })).filter((entry2) => entry2.isDirectory() && STATE_SESSION_ID_PATTERN.test(entry2.name)).map((entry2) => (0, import_node_path55.join)(stateDir, "sessions", entry2.name, "ultragoal-state.json"));
       } catch {
       }
       const active = [];
@@ -157536,12 +157642,12 @@ function buildAggregateClaudeGoalInstruction(goal, plan) {
     goal.objective
   ].filter((line2) => line2 !== null).join("\n");
 }
-var import_node_fs52, import_promises31, import_node_path55, ULTRAGOAL_DIR, ULTRAGOAL_BRIEF, ULTRAGOAL_GOALS, ULTRAGOAL_LEDGER, ULTRAGOAL_PLANS_SUBDIR, UltragoalError, STATE_SESSION_ID_PATTERN;
+var import_node_fs52, import_promises32, import_node_path55, ULTRAGOAL_DIR, ULTRAGOAL_BRIEF, ULTRAGOAL_GOALS, ULTRAGOAL_LEDGER, ULTRAGOAL_PLANS_SUBDIR, UltragoalError, STATE_SESSION_ID_PATTERN;
 var init_artifacts = __esm({
   "src/ultragoal/artifacts.ts"() {
     "use strict";
     import_node_fs52 = require("node:fs");
-    import_promises31 = require("node:fs/promises");
+    import_promises32 = require("node:fs/promises");
     import_node_path55 = require("node:path");
     init_claude_goal_snapshot();
     init_atomic_write();
@@ -165402,8 +165508,8 @@ async function mainImpl(watchMode = false, skipInit = false) {
     }
     try {
       const updateCacheFile = getUpdateCheckCachePath();
-      await (0, import_promises36.access)(updateCacheFile);
-      const content2 = await (0, import_promises36.readFile)(updateCacheFile, "utf-8");
+      await (0, import_promises37.access)(updateCacheFile);
+      const content2 = await (0, import_promises37.readFile)(updateCacheFile, "utf-8");
       const cached2 = JSON.parse(content2);
       const cachedUpdate = resolveCachedOmcUpdate(
         cached2,
@@ -165564,7 +165670,7 @@ async function mainImpl(watchMode = false, skipInit = false) {
 function main2(watchMode = false, skipInit = false) {
   return withWorktreePathRenderScope(() => mainImpl(watchMode, skipInit));
 }
-var import_fs222, import_promises36, import_path253, import_child_process64, import_url27, HUD_SCRIPT_NAMES, HUD_COMMAND_MARKERS, SAME_WINDOW_TOLERANCE_MS, lastSummarySpawnTimestamp, summaryProcessPid;
+var import_fs222, import_promises37, import_path253, import_child_process64, import_url27, HUD_SCRIPT_NAMES, HUD_COMMAND_MARKERS, SAME_WINDOW_TOLERANCE_MS, lastSummarySpawnTimestamp, summaryProcessPid;
 var init_hud = __esm({
   "src/hud/index.ts"() {
     "use strict";
@@ -165589,7 +165695,7 @@ var init_hud = __esm({
     init_auto_update();
     init_worktree_paths();
     import_fs222 = require("fs");
-    import_promises36 = require("fs/promises");
+    import_promises37 = require("fs/promises");
     import_path253 = require("path");
     import_child_process64 = require("child_process");
     import_url27 = require("url");
@@ -181006,12 +181112,12 @@ function sleep12(ms2) {
 }
 
 // src/cli/commands/ultragoal.ts
-var import_promises33 = require("node:fs/promises");
+var import_promises34 = require("node:fs/promises");
 init_claude_goal_snapshot();
 init_artifacts();
 
 // src/ultragoal/goal-record.ts
-var import_promises32 = require("node:fs/promises");
+var import_promises33 = require("node:fs/promises");
 var import_node_path56 = require("node:path");
 init_atomic_write();
 init_artifacts();
@@ -181023,7 +181129,7 @@ function omgGoalRecordPath(cwd, planId) {
 async function readOmgGoalRecord(cwd, planId) {
   let raw;
   try {
-    raw = await (0, import_promises32.readFile)(omgGoalRecordPath(cwd, planId), "utf-8");
+    raw = await (0, import_promises33.readFile)(omgGoalRecordPath(cwd, planId), "utf-8");
   } catch {
     return null;
   }
@@ -181073,7 +181179,7 @@ async function startOmgGoal(cwd, options) {
   });
   if (previous?.objective === objective && previous.status === "complete") {
     const path30 = omgGoalRecordPath(cwd, options.planId);
-    await (0, import_promises32.rename)(path30, path30.replace(/\.json$/, `.${now2.replace(/[:.]/g, "-")}.json`));
+    await (0, import_promises33.rename)(path30, path30.replace(/\.json$/, `.${now2.replace(/[:.]/g, "-")}.json`));
     previous = null;
   }
   const kept = new Map((previous?.objective === objective ? previous.criteria : []).map((criterion) => [criterion.text, criterion]));
@@ -181277,7 +181383,7 @@ async function readJsonInput(raw) {
   try {
     const trimmed = raw.trim();
     if (trimmed.startsWith("{") || trimmed.startsWith("[")) return JSON.parse(trimmed);
-    return JSON.parse(await (0, import_promises33.readFile)(trimmed, "utf-8"));
+    return JSON.parse(await (0, import_promises34.readFile)(trimmed, "utf-8"));
   } catch (error62) {
     const message4 = error62 instanceof Error ? error62.message : String(error62);
     throw new UltragoalError(`Invalid --quality-gate-json: ${message4}`);
@@ -181295,7 +181401,7 @@ async function ultragoalCommand(args) {
     }
     if (command === "create" || command === "create-goals") {
       const briefFile = readValue(rest, "--brief-file");
-      const brief = readValue(rest, "--brief") ?? (briefFile ? await (0, import_promises33.readFile)(briefFile, "utf-8") : void 0) ?? (hasFlag2(rest, "--from-stdin") ? await readStdin2() : void 0) ?? positionalText(rest);
+      const brief = readValue(rest, "--brief") ?? (briefFile ? await (0, import_promises34.readFile)(briefFile, "utf-8") : void 0) ?? (hasFlag2(rest, "--from-stdin") ? await readStdin2() : void 0) ?? positionalText(rest);
       if (!brief.trim()) throw new UltragoalError("Missing brief text. Pass --brief, --brief-file, --from-stdin, or positional text.");
       const goals = readRepeated(rest, "--goal").map(parseGoalArg);
       const plan = await createUltragoalPlan(cwd, {
@@ -183869,7 +183975,7 @@ async function interopCommand(options = {}) {
 // src/cli/ask.ts
 var import_child_process59 = require("child_process");
 var import_fs204 = require("fs");
-var import_promises34 = require("fs/promises");
+var import_promises35 = require("fs/promises");
 var import_os47 = require("os");
 var import_path232 = require("path");
 var import_url24 = require("url");
@@ -183943,12 +184049,12 @@ async function resolveAgentPromptContent(role, promptsDir) {
   }
   const promptPath = (0, import_path232.join)(promptsDir, `${normalizedRole}.md`);
   if (!(0, import_fs204.existsSync)(promptPath)) {
-    const files = await (0, import_promises34.readdir)(promptsDir).catch(() => []);
+    const files = await (0, import_promises35.readdir)(promptsDir).catch(() => []);
     const availableRoles = files.filter((file2) => file2.endsWith(".md")).map((file2) => file2.slice(0, -3)).sort();
     const availableSuffix = availableRoles.length > 0 ? ` Available roles: ${availableRoles.join(", ")}.` : "";
     throw new Error(`[ask] --agent-prompt role "${normalizedRole}" not found in ${promptsDir}.${availableSuffix}`);
   }
-  const content2 = (await (0, import_promises34.readFile)(promptPath, "utf-8")).trim();
+  const content2 = (await (0, import_promises35.readFile)(promptPath, "utf-8")).trim();
   if (!content2) {
     throw new Error(`[ask] --agent-prompt role "${normalizedRole}" is empty: ${promptPath}`);
   }
@@ -187362,7 +187468,7 @@ init_esm();
 init_source();
 var import_fs211 = require("fs");
 var import_path242 = require("path");
-var import_promises35 = require("readline/promises");
+var import_promises36 = require("readline/promises");
 init_config2();
 init_worktree_paths();
 init_windows_search();
@@ -187408,7 +187514,7 @@ async function ttyConfirm2(question) {
     console.error("No interactive terminal to confirm on; pass --yes to confirm the tag without a prompt.");
     return false;
   }
-  const rl = (0, import_promises35.createInterface)({ input: process.stdin, output: process.stderr });
+  const rl = (0, import_promises36.createInterface)({ input: process.stdin, output: process.stderr });
   try {
     return /^y(?:es)?$/i.test((await rl.question(`${question} [y/N] `)).trim());
   } finally {

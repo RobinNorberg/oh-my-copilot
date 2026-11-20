@@ -1043,24 +1043,40 @@ export class CopilotRunManager {
             stopReason: null,
             requestStop: (reason) => requestStop(reason),
             stopped,
+            prepared: Promise.resolve(),
             done: Promise.resolve(),
         };
         this.jobs.set(id, job);
-        // The OS sandbox on Windows (a write job): the caller readies the worktree now, synchronously, so nothing can stop
-        // the job mid-way and neither the job's timeout below nor the caller's idle clock (it starts once start() returns) runs.
+        // The OS sandbox on Windows (a write job): the caller readies the worktree now, before the job's timeout below is
+        // armed and before the runtime starts. A synchronous hook runs before start() returns; an async one (a promise)
+        // keeps the event loop free, and the job's timeout and run wait for it (job.prepared, which the caller awaits
+        // before its own idle clock starts: prepared()).
         const intent = this.sandboxIntent(sandboxSettings);
+        let preparing = null;
         if (options.beforeSandboxedSession && worktree && profile !== 'review' && intent.windowsCopy) {
             try {
-                job.unprepared = options.beforeSandboxedSession(worktree.path);
+                const ready = options.beforeSandboxedSession(worktree.path);
+                // Any thenable (not only a native Promise) is awaited; Promise.resolve adopts it.
+                if (ready != null && typeof ready.then === 'function')
+                    preparing = Promise.resolve(ready).then((problem) => { job.unprepared = problem; }, (err) => { job.unprepared = errText(err); });
+                else
+                    job.unprepared = ready;
             }
             catch (err) {
                 job.unprepared = errText(err);
             }
         }
-        const timer = setTimeout(() => job.requestStop('timeout'), timeoutMs);
-        timer.unref?.();
+        let timer;
+        const arm = () => {
+            timer = setTimeout(() => job.requestStop('timeout'), timeoutMs);
+            timer.unref?.();
+        };
+        if (preparing)
+            job.prepared = preparing;
+        else
+            arm();
         // The status turns terminal only after the teardown and the change summary.
-        job.done = this.run(job)
+        job.done = (preparing ? preparing.then(() => { arm(); return this.run(job); }) : this.run(job))
             .catch((err) => { job.error ??= errText(err); return 'failed'; })
             .then((outcome) => {
             clearTimeout(timer);
@@ -1135,6 +1151,10 @@ export class CopilotRunManager {
     }
     status(jobId) {
         return this.snapshot(this.find(jobId));
+    }
+    /** Settles once the job's worktree is readied (an async beforeSandboxedSession); at once otherwise. Never rejects. */
+    prepared(jobId) {
+        return this.find(jobId).prepared;
     }
     /** Wait until the job ends or `timeoutMs` passes; the snapshot says which. */
     async wait(jobId, timeoutMs) {
@@ -1301,6 +1321,10 @@ export class CopilotRunManager {
             job.error = `worktree-unprepared: ${job.unprepared}; no session was started`;
             return 'failed';
         }
+        // Cancelled while an async beforeSandboxedSession readied the worktree: no runtime is started for it.
+        const early = job.stopReason;
+        if (early === 'cancelled')
+            return 'cancelled';
         // A cassette that cannot be applied throws (withCassette): report it, never fall back to a plain client.
         let loadError;
         const loaded = await deps.loadSdk().catch((err) => { loadError = `loading @github/copilot-sdk failed: ${errText(err)}`; return null; });

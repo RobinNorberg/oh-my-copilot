@@ -34,7 +34,8 @@ export interface LaneOutcome {
     /** The result carries no change summary (git could not tell). */
     noChanges?: boolean;
 }
-export type LaneScript = (ctx: LaneCtx) => LaneOutcome | void;
+/** A script may be async (a lane that awaits its beforeSandboxedSession). */
+export type LaneScript = (ctx: LaneCtx) => LaneOutcome | void | Promise<LaneOutcome | void>;
 export declare class FakeLanes implements LaneBackend {
     private readonly root;
     private readonly scripts;

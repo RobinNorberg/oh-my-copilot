@@ -63323,20 +63323,36 @@ var init_job = __esm({
           stopReason: null,
           requestStop: (reason) => requestStop(reason),
           stopped,
+          prepared: Promise.resolve(),
           done: Promise.resolve()
         };
         this.jobs.set(id, job);
         const intent = this.sandboxIntent(sandboxSettings);
+        let preparing = null;
         if (options.beforeSandboxedSession && worktree && profile !== "review" && intent.windowsCopy) {
           try {
-            job.unprepared = options.beforeSandboxedSession(worktree.path);
+            const ready = options.beforeSandboxedSession(worktree.path);
+            if (ready != null && typeof ready.then === "function") preparing = Promise.resolve(ready).then((problem) => {
+              job.unprepared = problem;
+            }, (err) => {
+              job.unprepared = errText4(err);
+            });
+            else job.unprepared = ready;
           } catch (err) {
             job.unprepared = errText4(err);
           }
         }
-        const timer = setTimeout(() => job.requestStop("timeout"), timeoutMs);
-        timer.unref?.();
-        job.done = this.run(job).catch((err) => {
+        let timer;
+        const arm = () => {
+          timer = setTimeout(() => job.requestStop("timeout"), timeoutMs);
+          timer.unref?.();
+        };
+        if (preparing) job.prepared = preparing;
+        else arm();
+        job.done = (preparing ? preparing.then(() => {
+          arm();
+          return this.run(job);
+        }) : this.run(job)).catch((err) => {
           job.error ??= errText4(err);
           return "failed";
         }).then((outcome) => {
@@ -63399,6 +63415,10 @@ var init_job = __esm({
       }
       status(jobId) {
         return this.snapshot(this.find(jobId));
+      }
+      /** Settles once the job's worktree is readied (an async beforeSandboxedSession); at once otherwise. Never rejects. */
+      prepared(jobId) {
+        return this.find(jobId).prepared;
       }
       /** Wait until the job ends or `timeoutMs` passes; the snapshot says which. */
       async wait(jobId, timeoutMs) {
@@ -63542,6 +63562,8 @@ var init_job = __esm({
           job.error = `worktree-unprepared: ${job.unprepared}; no session was started`;
           return "failed";
         }
+        const early = job.stopReason;
+        if (early === "cancelled") return "cancelled";
         let loadError;
         const loaded2 = await deps.loadSdk().catch((err) => {
           loadError = `loading @github/copilot-sdk failed: ${errText4(err)}`;
@@ -66268,7 +66290,68 @@ function unlinkLink2(p) {
     (0, import_fs83.rmdirSync)(p);
   }
 }
+function runTreeSteps(steps) {
+  let failure3 = null;
+  for (; ; ) {
+    const r = failure3 ? steps.throw(failure3.error) : steps.next();
+    failure3 = null;
+    if (r.done) return r.value;
+    const s = r.value;
+    if (typeof s === "object") {
+      try {
+        (0, import_fs83.copyFileSync)(s.copy, s.to);
+      } catch (error62) {
+        failure3 = { error: error62 };
+      }
+    }
+  }
+}
+async function runTreeStepsAsync(steps) {
+  const pending = /* @__PURE__ */ new Set();
+  const failed = { first: null };
+  let reported = false;
+  const settle2 = async () => {
+    while (pending.size > 0) await Promise.race(pending);
+  };
+  let slice = Date.now();
+  for (; ; ) {
+    let r;
+    try {
+      if (failed.first && !reported) {
+        reported = true;
+        r = steps.throw(failed.first.error);
+      } else r = steps.next();
+    } catch (error62) {
+      await settle2();
+      throw error62;
+    }
+    if (r.done) {
+      await settle2();
+      if (failed.first && !reported) throw failed.first.error;
+      return r.value;
+    }
+    const s = r.value;
+    if (s === DRAIN || s === SETTLE) await settle2();
+    if (s === SETTLE) reported = true;
+    else if (typeof s === "object") {
+      while (pending.size >= TREE_COPY_CONCURRENCY) await Promise.race(pending);
+      const p = (0, import_promises7.copyFile)(s.copy, s.to).catch((error62) => {
+        failed.first ??= { error: error62 };
+      }).finally(() => {
+        pending.delete(p);
+      });
+      pending.add(p);
+    }
+    if (Date.now() - slice >= TREE_STEP_SLICE_MS) {
+      await new Promise((resolve63) => setImmediate(resolve63));
+      slice = Date.now();
+    }
+  }
+}
 function linkNodeModules(root, checkout, warn, workspaces = [], copy = false) {
+  return runTreeSteps(linkNodeModulesSteps(root, checkout, warn, workspaces, copy));
+}
+function* linkNodeModulesSteps(root, checkout, warn, workspaces, copy) {
   const source = (0, import_path100.join)(root, "node_modules");
   const target = (0, import_path100.join)(checkout, "node_modules");
   if (!(0, import_fs83.existsSync)(checkout)) return null;
@@ -66281,7 +66364,7 @@ function linkNodeModules(root, checkout, warn, workspaces = [], copy = false) {
     present = false;
   }
   if (present && gateTreeIncomplete(target)) {
-    unlinkNodeModules(root, checkout);
+    yield* unlinkNodeModulesSteps(root, checkout);
     present = (0, import_fs83.existsSync)(target) || isLink2(target);
   }
   if (present) return ws.problem;
@@ -66301,7 +66384,7 @@ function linkNodeModules(root, checkout, warn, workspaces = [], copy = false) {
     const limits = { ...DEFAULT_COPY_LIMITS, ...copy === true ? {} : copy };
     const roots = trees.map((t) => ({ real: import_fs83.realpathSync.native(t.src), to: t.to }));
     const dry = { bytes: 0, files: 0, roots, limits, dry: true };
-    for (const t of trees) buildGateTree(t.src, t.to, root, checkout, t.rel ? `${t.rel}/` : "", void 0, dry);
+    for (const t of trees) yield* buildGateTree(t.src, t.to, root, checkout, t.rel ? `${t.rel}/` : "", void 0, dry);
     const free = limits.freeBytes(checkout);
     if (free !== null && free < dry.bytes + limits.marginBytes) throw new Error(`the copied gate node_modules tree needs ${dry.bytes} bytes plus a ${limits.marginBytes}-byte margin on the volume of ${checkout}, which has ${free} bytes free, so it is not copied`);
     budget = { bytes: 0, files: 0, roots, limits, dry: false };
@@ -66313,22 +66396,24 @@ function linkNodeModules(root, checkout, warn, workspaces = [], copy = false) {
         (0, import_fs83.writeFileSync)((0, import_path100.join)(target, GATE_TREE_MARKER), built.map((r) => `${r}
 `).join(""));
       }
-      buildGateTree(t.src, t.to, root, checkout, t.rel ? `${t.rel}/` : "", warn, budget);
+      yield* buildGateTree(t.src, t.to, root, checkout, t.rel ? `${t.rel}/` : "", warn, budget);
     }
+    yield DRAIN;
     (0, import_fs83.writeFileSync)((0, import_path100.join)(target, GATE_TREE_MARKER), [...built, GATE_TREE_COMPLETE].map((r) => `${r}
 `).join(""));
     const moved = treeMoved(target, checkout, "");
     if (moved) throw new Error(moved);
   } catch (error62) {
+    yield SETTLE;
     for (const rel of built) {
       const dir = plainDirUnder(checkout, rel);
       if (dir) try {
-        if ((0, import_fs83.lstatSync)((0, import_path100.join)(dir, "node_modules")).isDirectory()) removeGateTree((0, import_path100.join)(dir, "node_modules"));
+        if ((0, import_fs83.lstatSync)((0, import_path100.join)(dir, "node_modules")).isDirectory()) yield* removeGateTreeSteps((0, import_path100.join)(dir, "node_modules"));
       } catch {
       }
     }
     try {
-      if ((0, import_fs83.lstatSync)(target).isDirectory()) removeGateTree(target);
+      if ((0, import_fs83.lstatSync)(target).isDirectory()) yield* removeGateTreeSteps(target);
     } catch {
     }
     throw error62;
@@ -66336,7 +66421,12 @@ function linkNodeModules(root, checkout, warn, workspaces = [], copy = false) {
   nestedTrees.set(checkout, built);
   return ws.problem;
 }
-function prepareLaneNodeModules(root, worktree, o) {
+function prepareLaneNodeModulesAsync(root, worktree, o) {
+  const run3 = laneTreeQueue.then(() => runTreeStepsAsync(prepareLaneSteps(root, worktree, o)));
+  laneTreeQueue = run3.then(() => void 0, () => void 0);
+  return run3;
+}
+function* prepareLaneSteps(root, worktree, o) {
   const target = (0, import_path100.join)(worktree, "node_modules");
   if (!(0, import_fs83.existsSync)((0, import_path100.join)(root, "node_modules"))) return null;
   if (isLink2(target) && !sameDir(target, (0, import_path100.join)(root, "node_modules"))) return `${target} is a link the engine did not make, so the lane's node_modules is not prepared`;
@@ -66353,19 +66443,19 @@ function prepareLaneNodeModules(root, worktree, o) {
     } catch {
     }
     if (!ignored) {
-      if (!isLink2(target) && (0, import_fs83.existsSync)(target)) unlinkNodeModules(root, worktree);
+      if (!isLink2(target) && (0, import_fs83.existsSync)(target)) yield* unlinkNodeModulesSteps(root, worktree);
       o.warn?.(`omg factory run: git does not ignore ${rels.join(", ")} in ${worktree}, so the lane gets no copied node_modules (the lane commit refuses links in its worktree); add node_modules to .gitignore`);
       return null;
     }
     if (nested.length === 0 && !(0, import_fs83.existsSync)(target) && !isLink2(target)) {
-      const adopted = adoptLaneTree(root, worktree, o.reuseFrom ?? [], o.warn);
+      const adopted = yield* adoptLaneTree(root, worktree, o.reuseFrom ?? [], o.warn);
       if (adopted === true) return null;
       if (typeof adopted === "string") return adopted;
     }
   }
   let problem;
   try {
-    problem = linkNodeModules(root, worktree, o.warn, o.workspaces ?? [], o.copy ?? true);
+    problem = yield* linkNodeModulesSteps(root, worktree, o.warn, o.workspaces ?? [], o.copy ?? true);
   } catch (error62) {
     return `the copied node_modules tree of the lane worktree ${worktree} could not be built (${error62 instanceof Error ? error62.message : String(error62)})`;
   } finally {
@@ -66381,7 +66471,7 @@ function prepareLaneNodeModules(root, worktree, o) {
   if (st.isSymbolicLink() || !st.isDirectory()) return `${target} is not a real directory after its preparation, so the lane would fail in the sandbox`;
   return null;
 }
-function adoptLaneTree(root, worktree, from, warn) {
+function* adoptLaneTree(root, worktree, from, warn) {
   const target = (0, import_path100.join)(worktree, "node_modules");
   for (const prev of from) {
     const src = (0, import_path100.join)(prev, "node_modules");
@@ -66398,14 +66488,14 @@ function adoptLaneTree(root, worktree, from, warn) {
     }
     let problem;
     try {
-      problem = treeMoved(target, worktree, "") ?? adoptedTreeProblem(root, target);
+      problem = treeMoved(target, worktree, "") ?? (yield* adoptedTreeProblem(root, target));
     } catch (error62) {
       problem = error62 instanceof Error ? error62.message : String(error62);
     }
     if (!problem) return true;
     let removal = "";
     try {
-      if ((0, import_fs83.lstatSync)(target).isDirectory()) removeGateTree(target);
+      if ((0, import_fs83.lstatSync)(target).isDirectory()) yield* removeGateTreeSteps(target);
     } catch (error62) {
       removal = error62 instanceof Error ? error62.message : String(error62);
     }
@@ -66421,7 +66511,7 @@ function adoptLaneTree(root, worktree, from, warn) {
   }
   return false;
 }
-function adoptedTreeProblem(root, tree) {
+function* adoptedTreeProblem(root, tree) {
   const yours = (0, import_path100.join)(root, "node_modules");
   for (const e of (0, import_fs83.readdirSync)(yours, { withFileTypes: true })) {
     if (e.name === GATE_TREE_MARKER || !e.isFile()) continue;
@@ -66436,21 +66526,22 @@ function adoptedTreeProblem(root, tree) {
     }
     if (!theirs.equals((0, import_fs83.readFileSync)(mine))) return `node_modules/${e.name} differs from yours`;
   }
-  const walk = (dir, rel) => {
+  const walk = function* (dir, rel) {
     for (const e of (0, import_fs83.readdirSync)(dir, { withFileTypes: true })) {
+      yield;
       const p = (0, import_path100.join)(dir, e.name);
       const r = rel ? `${rel}/${e.name}` : e.name;
       const st = e.isFile() ? e : (0, import_fs83.lstatSync)(p);
       if (st.isSymbolicLink()) {
         if (!sameDir(p, (0, import_path100.join)(yours, ...r.split("/")))) return `node_modules/${r} is a link to somewhere other than the same entry of your node_modules`;
       } else if (st.isDirectory()) {
-        const inner = walk(p, r);
+        const inner = yield* walk(p, r);
         if (inner) return inner;
       } else if (!st.isFile()) return `node_modules/${r} is neither a file, a dir nor a link`;
     }
     return null;
   };
-  return walk(tree, "");
+  return yield* walk(tree, "");
 }
 function settleLaneNodeModules(root, worktree, ignored) {
   const target = (0, import_path100.join)(worktree, "node_modules");
@@ -66477,7 +66568,7 @@ function isLink2(p) {
     return false;
   }
 }
-function buildGateTree(source, target, root, checkout, label, warn, copy) {
+function* buildGateTree(source, target, root, checkout, label, warn, copy) {
   const dry = copy?.dry === true;
   if (!dry) {
     (0, import_fs83.mkdirSync)(target);
@@ -66492,17 +66583,18 @@ function buildGateTree(source, target, root, checkout, label, warn, copy) {
     (0, import_fs83.writeFileSync)((0, import_path100.join)(target, GATE_TREE_MARKER), "");
     for (const name of GATE_CACHE_DIRS) (0, import_fs83.mkdirSync)((0, import_path100.join)(target, name));
   }
-  const place = (from, to) => {
+  const place = function* (from, to) {
     const w = workspaceLinkTarget(from, root, checkout);
     if ("skip" in w) {
       warn?.(`omg factory run: ${w.skip}, so it is left out of the gate's node_modules tree ${target}`);
       return;
     }
-    if (copy && !("to" in w) && (0, import_path100.basename)(from) !== ".bin") return copyGateEntry(from, to, copy);
+    if (copy && !("to" in w) && (0, import_path100.basename)(from) !== ".bin") return yield* copyGateEntry(from, to, copy);
     spend(copy, 0);
     if (!dry) (0, import_fs83.symlinkSync)("to" in w ? w.to : from, to, linkType());
   };
   for (const e of (0, import_fs83.readdirSync)(source, { withFileTypes: true })) {
+    yield;
     if (e.name === GATE_TREE_MARKER || GATE_CACHE_DIRS.includes(e.name)) continue;
     const from = (0, import_path100.join)(source, e.name);
     let st;
@@ -66517,7 +66609,7 @@ function buildGateTree(source, target, root, checkout, label, warn, copy) {
         continue;
       }
       spend(copy, st.size);
-      if (!dry) (0, import_fs83.copyFileSync)(from, (0, import_path100.join)(target, e.name));
+      if (!dry) yield { copy: from, to: (0, import_path100.join)(target, e.name) };
       continue;
     }
     if (!st.isDirectory()) continue;
@@ -66532,14 +66624,15 @@ function buildGateTree(source, target, root, checkout, label, warn, copy) {
           } catch {
             continue;
           }
-          place((0, import_path100.join)(from, c), (0, import_path100.join)(target, e.name, c));
+          yield* place((0, import_path100.join)(from, c), (0, import_path100.join)(target, e.name, c));
         }
         continue;
       }
     }
-    place(from, (0, import_path100.join)(target, e.name));
+    yield* place(from, (0, import_path100.join)(target, e.name));
   }
   if (dry) return;
+  yield DRAIN;
   const after = treeMoved(target, checkout, label);
   if (after) throw new Error(after);
 }
@@ -66566,7 +66659,7 @@ function copiedAt(real2, budget) {
   if (first === ".bin" || first === GATE_TREE_MARKER || GATE_CACHE_DIRS.includes(first)) return null;
   return best.rel ? (0, import_path100.join)(best.to, best.rel) : best.to;
 }
-function copyGateEntry(from, to, budget) {
+function* copyGateEntry(from, to, budget) {
   if (isLink2(from)) {
     let at = null;
     try {
@@ -66579,12 +66672,13 @@ function copyGateEntry(from, to, budget) {
       return;
     }
   }
-  copyGateDir(from, to, budget);
+  yield* copyGateDir(from, to, budget);
 }
-function copyGateDir(from, to, budget) {
+function* copyGateDir(from, to, budget) {
   spend(budget, 0);
   if (!budget.dry) (0, import_fs83.mkdirSync)(to);
   for (const e of (0, import_fs83.readdirSync)(from, { withFileTypes: true })) {
+    yield;
     const s = (0, import_path100.join)(from, e.name);
     const d = (0, import_path100.join)(to, e.name);
     if (e.isSymbolicLink()) {
@@ -66597,11 +66691,11 @@ function copyGateDir(from, to, budget) {
       }
       spend(budget, 0);
       if (!budget.dry) (0, import_fs83.symlinkSync)(copiedAt(real2, budget) ?? real2, d, linkType());
-    } else if (e.isDirectory()) copyGateDir(s, d, budget);
+    } else if (e.isDirectory()) yield* copyGateDir(s, d, budget);
     else if (e.isFile()) {
       const size = (0, import_fs83.statSync)(s).size;
       spend(budget, size);
-      if (!budget.dry) (0, import_fs83.copyFileSync)(s, d);
+      if (!budget.dry) yield { copy: s, to: d };
     }
   }
 }
@@ -66626,24 +66720,28 @@ function unlinkOwnLink(root, link) {
   unlinkLink2(link);
   return true;
 }
-function removeGateTree(dir) {
-  const walk = (d) => {
+function* removeGateTreeSteps(dir) {
+  const walk = function* (d) {
     for (const name of (0, import_fs83.readdirSync)(d)) {
+      yield;
       const p = (0, import_path100.join)(d, name);
       const st = (0, import_fs83.lstatSync)(p);
       if (st.isSymbolicLink()) unlinkLink2(p);
-      else if (st.isDirectory()) walk(p);
+      else if (st.isDirectory()) yield* walk(p);
       else (0, import_fs83.unlinkSync)(p);
     }
     (0, import_fs83.rmdirSync)(d);
   };
-  walk(dir);
+  yield* walk(dir);
 }
 function unlinkNodeModules(root, checkout) {
+  runTreeSteps(unlinkNodeModulesSteps(root, checkout));
+}
+function* unlinkNodeModulesSteps(root, checkout) {
   const target = (0, import_path100.join)(checkout, "node_modules");
   for (const nm of nestedTreeDirs(checkout)) {
-    unlinkTreeLinks(nm);
-    if ((0, import_fs83.existsSync)((0, import_path100.join)(nm, GATE_TREE_MARKER))) removeGateTree(nm);
+    yield* unlinkTreeLinks(nm);
+    if ((0, import_fs83.existsSync)((0, import_path100.join)(nm, GATE_TREE_MARKER))) yield* removeGateTreeSteps(nm);
   }
   nestedTrees.delete(checkout);
   let st;
@@ -66657,15 +66755,16 @@ function unlinkNodeModules(root, checkout) {
     return;
   }
   if (!st.isDirectory() || sameDir(target, (0, import_path100.join)(root, "node_modules"))) return;
-  unlinkTreeLinks(target);
-  if ((0, import_fs83.existsSync)((0, import_path100.join)(target, GATE_TREE_MARKER))) removeGateTree(target);
+  yield* unlinkTreeLinks(target);
+  if ((0, import_fs83.existsSync)((0, import_path100.join)(target, GATE_TREE_MARKER))) yield* removeGateTreeSteps(target);
 }
-function unlinkTreeLinks(dir) {
+function* unlinkTreeLinks(dir) {
   for (const name of (0, import_fs83.readdirSync)(dir)) {
+    yield;
     const p = (0, import_path100.join)(dir, name);
     const st = (0, import_fs83.lstatSync)(p);
     if (st.isSymbolicLink()) unlinkLink2(p);
-    else if (st.isDirectory()) unlinkTreeLinks(p);
+    else if (st.isDirectory()) yield* unlinkTreeLinks(p);
   }
 }
 function gateTreeHasLinks(checkout) {
@@ -66750,11 +66849,12 @@ function sameDir(a, b) {
     return false;
   }
 }
-var import_fs83, import_path100, FACTORY_CHECKOUT_TEAM, checkoutWorker, GATE_CACHE_DIRS, GATE_TREE_MARKER, GATE_TREE_COMPLETE, GATE_TREE_FILE_MAX_BYTES, nestedTrees, linkType, GATE_TREE_COPY_WHY, GATE_TREE_COPY_MAX_BYTES, GATE_TREE_COPY_MAX_FILES, GATE_TREE_COPY_FREE_MARGIN_BYTES, DEFAULT_COPY_LIMITS, defaultGateConfigLoader;
+var import_fs83, import_promises7, import_path100, FACTORY_CHECKOUT_TEAM, checkoutWorker, GATE_CACHE_DIRS, GATE_TREE_MARKER, GATE_TREE_COMPLETE, GATE_TREE_FILE_MAX_BYTES, DRAIN, SETTLE, TREE_COPY_CONCURRENCY, TREE_STEP_SLICE_MS, laneTreeQueue, nestedTrees, linkType, GATE_TREE_COPY_WHY, GATE_TREE_COPY_MAX_BYTES, GATE_TREE_COPY_MAX_FILES, GATE_TREE_COPY_FREE_MARGIN_BYTES, DEFAULT_COPY_LIMITS, defaultGateConfigLoader;
 var init_prepare = __esm({
   "src/factory/run/prepare.ts"() {
     "use strict";
     import_fs83 = require("fs");
+    import_promises7 = require("fs/promises");
     import_path100 = require("path");
     init_config2();
     init_git_worktree();
@@ -66766,6 +66866,11 @@ var init_prepare = __esm({
     GATE_TREE_MARKER = ".omg-gate-tree";
     GATE_TREE_COMPLETE = ".omg-complete";
     GATE_TREE_FILE_MAX_BYTES = 16 * 1024 * 1024;
+    DRAIN = /* @__PURE__ */ Symbol("drain");
+    SETTLE = /* @__PURE__ */ Symbol("settle");
+    TREE_COPY_CONCURRENCY = 4;
+    TREE_STEP_SLICE_MS = 8;
+    laneTreeQueue = Promise.resolve();
     nestedTrees = /* @__PURE__ */ new Map();
     linkType = () => process.platform === "win32" ? "junction" : "dir";
     GATE_TREE_COPY_WHY = "the OS sandbox on Windows denies opening a package dir through the gate tree's junction with generic read access, which esbuild needs";
@@ -74324,6 +74429,7 @@ var init_lane = __esm({
             ...input2.beforeSandboxedSession ? { beforeSandboxedSession: input2.beforeSandboxedSession } : {}
           }
         );
+        await this.manager.prepared?.(snap.jobId);
         return { remoteId: snap.jobId };
       }
       async poll(remoteId) {
@@ -75945,7 +76051,7 @@ var init_engine = __esm({
       }
       /**
        * A write lane worktree about to run in the OS sandbox on Windows gets a
-       * copy of your node_modules (prepareLaneNodeModules, the gates' copied
+       * copy of your node_modules (prepareLaneNodeModulesAsync, the gates' copied
        * tree: GATE_TREE_COPY_WHY), so the lane's tests open no junction. Its git
        * ignore check runs before anything is copied (the dirs need not exist):
        * hardened host git `check-ignore --no-index` in the worktree with its
@@ -75958,7 +76064,7 @@ var init_engine = __esm({
           return paths.every((p) => listed.has(p));
         };
         const reuseFrom = this.state.lanes.filter((l) => l.worktree && l.treeReusable === true && l.id !== this.state.pendingCommit?.laneId && !samePath2(l.worktree, worktree)).map((l) => l.worktree).reverse();
-        return prepareLaneNodeModules(this.o.root, worktree, { workspaces: this.baseWorkspaces(), ...this.o.warn ? { warn: this.o.warn } : {}, ignored, reuseFrom });
+        return prepareLaneNodeModulesAsync(this.o.root, worktree, { workspaces: this.baseWorkspaces(), ...this.o.warn ? { warn: this.o.warn } : {}, ignored, reuseFrom });
       }
       /**
        * Right before the lane commit: the copied tree prepareLaneTree built must
@@ -81139,13 +81245,13 @@ var init_cli2 = __esm({
 });
 
 // src/cli/commands/factory-check.ts
-var import_fs102, import_promises7;
+var import_fs102, import_promises8;
 var init_factory_check = __esm({
   "src/cli/commands/factory-check.ts"() {
     "use strict";
     init_esm();
     import_fs102 = require("fs");
-    import_promises7 = require("readline/promises");
+    import_promises8 = require("readline/promises");
     init_project_config_path();
     init_cli();
     init_state5();
@@ -81598,13 +81704,13 @@ var init_redact3 = __esm({
 });
 
 // src/cli/commands/factory-setup.ts
-var import_fs108, import_promises8, defaultFactorySetupDeps;
+var import_fs108, import_promises9, defaultFactorySetupDeps;
 var init_factory_setup = __esm({
   "src/cli/commands/factory-setup.ts"() {
     "use strict";
     init_esm();
     import_fs108 = require("fs");
-    import_promises8 = require("readline/promises");
+    import_promises9 = require("readline/promises");
     init_project_config_path();
     init_az_binary();
     init_config3();

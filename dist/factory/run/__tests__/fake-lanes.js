@@ -107,7 +107,7 @@ export class FakeLanes {
             return this.result(job, remoteId, 'running');
         }
         if (!job.outcome)
-            job.outcome = job.script(job.ctx) ?? {};
+            job.outcome = (await job.script(job.ctx)) ?? {};
         if (job.outcome.lost)
             throw new LaneLostError(remoteId, 'job lost');
         return this.result(job, remoteId, job.outcome.state ?? 'completed');
@@ -126,7 +126,7 @@ export class FakeLanes {
             throw new LaneLostError(remoteId, `unknown job ${remoteId}`);
         if (this.cancelFinds === 'completed') {
             if (!job.outcome)
-                job.outcome = job.script(job.ctx) ?? {};
+                job.outcome = (await job.script(job.ctx)) ?? {};
             return { supported: true, result: this.result(job, remoteId, 'completed') };
         }
         job.outcome = { ...(job.outcome ?? {}), state: 'cancelled' };

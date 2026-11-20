@@ -128,6 +128,30 @@ describe('CopilotLaneBackend', () => {
     expect(started[0][1]).toMatchObject({ ledgerKey: 'factory-lane:implement-1', ledgerTag: { kind: 'factory-lane', role: 'review', run: 'issue-7' } });
   });
 
+  it('start() returns only once the job\'s worktree is readied (manager.prepared), so the engine\'s idle clock starts after an async copy', async () => {
+    const real = managerFor('idle');
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    const asked: string[] = [];
+    const spy: LaneJobManager = {
+      start: (...args) => real.start(...args),
+      status: (id) => real.status(id),
+      wait: (id, ms) => real.wait(id, ms),
+      cancel: (id) => real.cancel(id),
+      prepared: (id) => { asked.push(id); return gate; },
+    };
+    const lanes = new CopilotLaneBackend(spy, { allowLive: true });
+    let returned = false;
+    const starting = lanes.start(input()).then((r) => { returned = true; return r; });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(asked).toHaveLength(1);
+    expect(returned).toBe(false);
+    release();
+    const { remoteId } = await starting;
+    expect(remoteId).toBe(asked[0]);
+    await lanes.wait(remoteId, 10_000);
+  });
+
   it('passes engineCommits through as the job\'s hostCommits', async () => {
     const started: Array<Parameters<LaneJobManager['start']>> = [];
     const real = managerFor('idle');

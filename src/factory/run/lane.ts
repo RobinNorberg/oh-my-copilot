@@ -83,7 +83,7 @@ export interface LaneStartInput {
    * prepareLaneNodeModules); a non-null problem fails the lane before any
    * session starts.
    */
-  beforeSandboxedSession?: (worktree: string) => string | null;
+  beforeSandboxedSession?: (worktree: string) => string | null | Promise<string | null>;
   /** Cloud backends only. */
   customAgent?: string;
   timeoutMs: number;
@@ -170,7 +170,7 @@ export class LaneLostError extends Error {
 export const TERMINAL_LANE_STATES: readonly LaneState[] = ['completed', 'failed', 'timeout', 'cancelled'];
 export const isTerminalLaneState = (state: LaneState): boolean => TERMINAL_LANE_STATES.includes(state);
 
-export type LaneJobManager = Pick<CopilotRunManager, 'start' | 'status' | 'wait' | 'cancel'> & Partial<Pick<CopilotRunManager, 'sandboxIntent'>>;
+export type LaneJobManager = Pick<CopilotRunManager, 'start' | 'status' | 'wait' | 'cancel'> & Partial<Pick<CopilotRunManager, 'sandboxIntent' | 'prepared'>>;
 
 export interface CopilotLaneBackendOptions {
   /**
@@ -216,6 +216,8 @@ export class CopilotLaneBackend implements LaneBackend {
         ...(input.deniedPaths ? { deniedPaths: input.deniedPaths } : {}), ...(input.beforeHostGit ? { beforeHostGit: input.beforeHostGit } : {}),
         ...(input.beforeSandboxedSession ? { beforeSandboxedSession: input.beforeSandboxedSession } : {}) },
     );
+    // An async beforeSandboxedSession: the lane counts as started (the engine's idle clock) only once its worktree is ready.
+    await this.manager.prepared?.(snap.jobId);
     return { remoteId: snap.jobId };
   }
 

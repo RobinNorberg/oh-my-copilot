@@ -12,6 +12,7 @@
  * in it with push off, and the engine pushes the result itself.
  */
 import { copyFileSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmdirSync, statfsSync, statSync, symlinkSync, unlinkSync, writeFileSync } from 'fs';
+import { copyFile } from 'fs/promises';
 import { basename, join, posix, relative, win32 } from 'path';
 import { loadBaseKnownFlaky, loadTrustedShipConfig, userConfigLayers } from '../../ship/config.js';
 import { getBranchName, getWorktreePath } from '../../team/git-worktree.js';
@@ -81,6 +82,87 @@ function unlinkLink(p) {
         rmdirSync(p);
     }
 }
+const DRAIN = Symbol('drain');
+const SETTLE = Symbol('settle');
+/** Runs tree steps synchronously: every copy is copyFileSync at its step, and its error is thrown into the body there. */
+function runTreeSteps(steps) {
+    let failure = null;
+    for (;;) {
+        const r = failure ? steps.throw(failure.error) : steps.next();
+        failure = null;
+        if (r.done)
+            return r.value;
+        const s = r.value;
+        if (typeof s === 'object') {
+            try {
+                copyFileSync(s.copy, s.to);
+            }
+            catch (error) {
+                failure = { error };
+            }
+        }
+    }
+}
+/** File copies in flight at once (runTreeStepsAsync): the libuv threadpool's default size, so the engine's other async fs, dns and zlib work never waits behind a full queue of copies. */
+const TREE_COPY_CONCURRENCY = 4;
+/** The longest the async runner keeps the event loop between turns it gives back (ms). */
+const TREE_STEP_SLICE_MS = 8;
+/**
+ * Runs tree steps without holding the event loop: a turn is given back
+ * (setImmediate) once TREE_STEP_SLICE_MS of synchronous steps have run, and
+ * files are copied by fs.promises, at most TREE_COPY_CONCURRENCY at once. A
+ * copy's error is thrown into the body at its next step; later ones are
+ * dropped (the body is already failing). Every copy has settled before the
+ * result or the body's error is returned.
+ */
+async function runTreeStepsAsync(steps) {
+    const pending = new Set();
+    // A holder, as the copies set it from their callbacks.
+    const failed = { first: null };
+    let reported = false;
+    const settle = async () => { while (pending.size > 0)
+        await Promise.race(pending); };
+    let slice = Date.now();
+    for (;;) {
+        let r;
+        try {
+            if (failed.first && !reported) {
+                reported = true;
+                r = steps.throw(failed.first.error);
+            }
+            else
+                r = steps.next();
+        }
+        catch (error) {
+            await settle();
+            throw error;
+        }
+        if (r.done) {
+            await settle();
+            // A body always drains before it returns; a copy that failed after that is never left unseen.
+            if (failed.first && !reported)
+                throw failed.first.error;
+            return r.value;
+        }
+        const s = r.value;
+        if (s === DRAIN || s === SETTLE)
+            await settle();
+        if (s === SETTLE)
+            reported = true;
+        else if (typeof s === 'object') {
+            while (pending.size >= TREE_COPY_CONCURRENCY)
+                await Promise.race(pending);
+            const p = copyFile(s.copy, s.to)
+                .catch((error) => { failed.first ??= { error }; })
+                .finally(() => { pending.delete(p); });
+            pending.add(p);
+        }
+        if (Date.now() - slice >= TREE_STEP_SLICE_MS) {
+            await new Promise((resolve) => setImmediate(resolve));
+            slice = Date.now();
+        }
+    }
+}
 /**
  * Give the prepare checkout (or a calibration dir) your node_modules so
  * prepare's tsc / eslint / vitest find their packages: a real
@@ -115,6 +197,10 @@ function unlinkLink(p) {
  * found without it is removed and built again.
  */
 export function linkNodeModules(root, checkout, warn, workspaces = [], copy = false) {
+    return runTreeSteps(linkNodeModulesSteps(root, checkout, warn, workspaces, copy));
+}
+/** linkNodeModules as tree steps (runTreeSteps, runTreeStepsAsync). */
+function* linkNodeModulesSteps(root, checkout, warn, workspaces, copy) {
     const source = join(root, 'node_modules');
     const target = join(checkout, 'node_modules');
     if (!existsSync(checkout))
@@ -132,7 +218,7 @@ export function linkNodeModules(root, checkout, warn, workspaces = [], copy = fa
     }
     // L3 (review-547): a tree whose marker lacks the completion line was cut off mid-build (a crash): removed and built again.
     if (present && gateTreeIncomplete(target)) {
-        unlinkNodeModules(root, checkout);
+        yield* unlinkNodeModulesSteps(root, checkout);
         present = existsSync(target) || isLink(target);
     }
     if (present)
@@ -160,7 +246,7 @@ export function linkNodeModules(root, checkout, warn, workspaces = [], copy = fa
         const roots = trees.map((t) => ({ real: realpathSync.native(t.src), to: t.to }));
         const dry = { bytes: 0, files: 0, roots, limits, dry: true };
         for (const t of trees)
-            buildGateTree(t.src, t.to, root, checkout, t.rel ? `${t.rel}/` : '', undefined, dry);
+            yield* buildGateTree(t.src, t.to, root, checkout, t.rel ? `${t.rel}/` : '', undefined, dry);
         const free = limits.freeBytes(checkout);
         if (free !== null && free < dry.bytes + limits.marginBytes)
             throw new Error(`the copied gate node_modules tree needs ${dry.bytes} bytes plus a ${limits.marginBytes}-byte margin on the volume of ${checkout}, which has ${free} bytes free, so it is not copied`);
@@ -173,8 +259,10 @@ export function linkNodeModules(root, checkout, warn, workspaces = [], copy = fa
                 // Listed before it is built, so a crash mid-build leaves it named for the removal (L3, review-547).
                 writeFileSync(join(target, GATE_TREE_MARKER), built.map((r) => `${r}\n`).join(''));
             }
-            buildGateTree(t.src, t.to, root, checkout, t.rel ? `${t.rel}/` : '', warn, budget);
+            yield* buildGateTree(t.src, t.to, root, checkout, t.rel ? `${t.rel}/` : '', warn, budget);
         }
+        // Every file copy has landed before the completion line says the tree is whole.
+        yield DRAIN;
         // The marker lists the nested trees for the removal and the sandbox's grant check (both re-validate every line);
         // its completion line is the last write of the build (L3, review-547).
         writeFileSync(join(target, GATE_TREE_MARKER), [...built, GATE_TREE_COMPLETE].map((r) => `${r}\n`).join(''));
@@ -183,19 +271,21 @@ export function linkNodeModules(root, checkout, warn, workspaces = [], copy = fa
             throw new Error(moved);
     }
     catch (error) {
+        // No file copy is still writing into the tree while it is removed (a later copy error is dropped: this one is thrown).
+        yield SETTLE;
         for (const rel of built) {
             const dir = plainDirUnder(checkout, rel);
             if (dir)
                 try {
                     if (lstatSync(join(dir, 'node_modules')).isDirectory())
-                        removeGateTree(join(dir, 'node_modules'));
+                        yield* removeGateTreeSteps(join(dir, 'node_modules'));
                 }
                 catch { /* the caller's link-safe removal */ }
         }
         // Only a real dir (L3: the tree may be gone, or a link someone swapped in, which is never walked).
         try {
             if (lstatSync(target).isDirectory())
-                removeGateTree(target);
+                yield* removeGateTreeSteps(target);
         }
         catch { /* gone */ }
         throw error;
@@ -227,6 +317,28 @@ export function linkNodeModules(root, checkout, warn, workspaces = [], copy = fa
  * (adoptLaneTree, with its checks and trust argument).
  */
 export function prepareLaneNodeModules(root, worktree, o) {
+    return runTreeSteps(prepareLaneSteps(root, worktree, o));
+}
+/**
+ * prepareLaneNodeModules without blocking the event loop: the same steps,
+ * checks and result, but the walk gives the event loop a turn every few
+ * milliseconds and files are copied by fs.promises, a bounded number at a
+ * time (runTreeStepsAsync), so the engine's other lanes, its heartbeats and
+ * timers keep running while a lane's tree is copied. Every copy has landed
+ * before the tree's completion line is written and before a cut-off tree is
+ * removed. Within one engine process one preparation runs at a time (the
+ * next waits), so each one's free-space check still sees the space the one
+ * before it took, as when they were synchronous; the parallel supervisor's
+ * child engines each have their own queue.
+ */
+export function prepareLaneNodeModulesAsync(root, worktree, o) {
+    const run = laneTreeQueue.then(() => runTreeStepsAsync(prepareLaneSteps(root, worktree, o)));
+    laneTreeQueue = run.then(() => undefined, () => undefined);
+    return run;
+}
+/** The lane preparation before the next one (prepareLaneNodeModulesAsync). */
+let laneTreeQueue = Promise.resolve();
+function* prepareLaneSteps(root, worktree, o) {
     const target = join(worktree, 'node_modules');
     if (!existsSync(join(root, 'node_modules')))
         return null;
@@ -249,13 +361,13 @@ export function prepareLaneNodeModules(root, worktree, o) {
         if (!ignored) {
             // A cut-off tree goes (its links unlinked, never followed); a link to yours stays as it was.
             if (!isLink(target) && existsSync(target))
-                unlinkNodeModules(root, worktree);
+                yield* unlinkNodeModulesSteps(root, worktree);
             o.warn?.(`omg factory run: git does not ignore ${rels.join(', ')} in ${worktree}, so the lane gets no copied node_modules (the lane commit refuses links in its worktree); add node_modules to .gitignore`);
             return null;
         }
         // Only a root tree moves (a workspace layout's nested trees are copied as before), and only into an empty spot.
         if (nested.length === 0 && !existsSync(target) && !isLink(target)) {
-            const adopted = adoptLaneTree(root, worktree, o.reuseFrom ?? [], o.warn);
+            const adopted = yield* adoptLaneTree(root, worktree, o.reuseFrom ?? [], o.warn);
             if (adopted === true)
                 return null;
             // A rejected tree that could not be removed (a busy or read-only file): never built over, the lane fails.
@@ -265,7 +377,7 @@ export function prepareLaneNodeModules(root, worktree, o) {
     }
     let problem;
     try {
-        problem = linkNodeModules(root, worktree, o.warn, o.workspaces ?? [], o.copy ?? true);
+        problem = yield* linkNodeModulesSteps(root, worktree, o.warn, o.workspaces ?? [], o.copy ?? true);
     }
     catch (error) {
         return `the copied node_modules tree of the lane worktree ${worktree} could not be built (${error instanceof Error ? error.message : String(error)})`;
@@ -316,7 +428,7 @@ export function prepareLaneNodeModules(root, worktree, o) {
  * never building over the leftovers. Never a link into your node_modules is followed or
  * removed: the source is taken only when it is a real dir.
  */
-function adoptLaneTree(root, worktree, from, warn) {
+function* adoptLaneTree(root, worktree, from, warn) {
     const target = join(worktree, 'node_modules');
     for (const prev of from) {
         const src = join(prev, 'node_modules');
@@ -338,7 +450,7 @@ function adoptLaneTree(root, worktree, from, warn) {
         }
         let problem;
         try {
-            problem = treeMoved(target, worktree, '') ?? adoptedTreeProblem(root, target);
+            problem = treeMoved(target, worktree, '') ?? (yield* adoptedTreeProblem(root, target));
         }
         catch (error) {
             problem = error instanceof Error ? error.message : String(error);
@@ -348,7 +460,7 @@ function adoptLaneTree(root, worktree, from, warn) {
         let removal = '';
         try {
             if (lstatSync(target).isDirectory())
-                removeGateTree(target);
+                yield* removeGateTreeSteps(target);
         }
         catch (error) {
             removal = error instanceof Error ? error.message : String(error);
@@ -368,7 +480,7 @@ function adoptLaneTree(root, worktree, from, warn) {
     return false;
 }
 /** Why a moved lane tree must not be reused (adoptLaneTree), or null: a walk that never follows a link. */
-function adoptedTreeProblem(root, tree) {
+function* adoptedTreeProblem(root, tree) {
     const yours = join(root, 'node_modules');
     for (const e of readdirSync(yours, { withFileTypes: true })) {
         if (e.name === GATE_TREE_MARKER || !e.isFile())
@@ -388,8 +500,9 @@ function adoptedTreeProblem(root, tree) {
         if (!theirs.equals(readFileSync(mine)))
             return `node_modules/${e.name} differs from yours`;
     }
-    const walk = (dir, rel) => {
+    const walk = function* (dir, rel) {
         for (const e of readdirSync(dir, { withFileTypes: true })) {
+            yield;
             const p = join(dir, e.name);
             const r = rel ? `${rel}/${e.name}` : e.name;
             // A dir is entered only after its own lstat says it is a plain dir (a junction may be reported as a dir).
@@ -399,7 +512,7 @@ function adoptedTreeProblem(root, tree) {
                     return `node_modules/${r} is a link to somewhere other than the same entry of your node_modules`;
             }
             else if (st.isDirectory()) {
-                const inner = walk(p, r);
+                const inner = yield* walk(p, r);
                 if (inner)
                     return inner;
             }
@@ -408,7 +521,7 @@ function adoptedTreeProblem(root, tree) {
         }
         return null;
     };
-    return walk(tree, '');
+    return yield* walk(tree, '');
 }
 /**
  * Before the engine commits a lane worktree: a copied tree
@@ -463,7 +576,7 @@ const linkType = () => (process.platform === 'win32' ? 'junction' : 'dir');
  * (a budget): every dir but `.bin` and the workspace self-links is copied
  * (copyGateDir).
  */
-function buildGateTree(source, target, root, checkout, label, warn, copy) {
+function* buildGateTree(source, target, root, checkout, label, warn, copy) {
     // A dry budget (linkNodeModules' preflight) walks and counts exactly as below and writes nothing.
     const dry = copy?.dry === true;
     if (!dry) {
@@ -482,19 +595,20 @@ function buildGateTree(source, target, root, checkout, label, warn, copy) {
         for (const name of GATE_CACHE_DIRS)
             mkdirSync(join(target, name));
     }
-    const place = (from, to) => {
+    const place = function* (from, to) {
         const w = workspaceLinkTarget(from, root, checkout);
         if ('skip' in w) {
             warn?.(`omg factory run: ${w.skip}, so it is left out of the gate's node_modules tree ${target}`);
             return;
         }
         if (copy && !('to' in w) && basename(from) !== '.bin')
-            return copyGateEntry(from, to, copy);
+            return yield* copyGateEntry(from, to, copy);
         spend(copy, 0);
         if (!dry)
             symlinkSync('to' in w ? w.to : from, to, linkType());
     };
     for (const e of readdirSync(source, { withFileTypes: true })) {
+        yield;
         if (e.name === GATE_TREE_MARKER || GATE_CACHE_DIRS.includes(e.name))
             continue;
         const from = join(source, e.name);
@@ -513,7 +627,7 @@ function buildGateTree(source, target, root, checkout, label, warn, copy) {
             // A copy, never a link: a hard link would hand the PR's code your file to write.
             spend(copy, st.size);
             if (!dry)
-                copyFileSync(from, join(target, e.name));
+                yield { copy: from, to: join(target, e.name) };
             continue;
         }
         if (!st.isDirectory())
@@ -532,15 +646,17 @@ function buildGateTree(source, target, root, checkout, label, warn, copy) {
                     catch {
                         continue;
                     }
-                    place(join(from, c), join(target, e.name, c));
+                    yield* place(join(from, c), join(target, e.name, c));
                 }
                 continue;
             }
         }
-        place(from, join(target, e.name));
+        yield* place(from, join(target, e.name));
     }
     if (dry)
         return;
+    // The check below runs after the last write has landed.
+    yield DRAIN;
     // L3 residual (review-501b): the same check after the last write; a swap during the build fails it (the caller removes, link-safe).
     const after = treeMoved(target, checkout, label);
     if (after)
@@ -622,7 +738,7 @@ function copiedAt(real, budget) {
     return best.rel ? join(best.to, best.rel) : best.to;
 }
 /** A top-level package entry of a copied tree: a link into a copied tree becomes a link to that copy (copiedAt), anything else a copy (copyGateDir). */
-function copyGateEntry(from, to, budget) {
+function* copyGateEntry(from, to, budget) {
     if (isLink(from)) {
         let at = null;
         try {
@@ -636,7 +752,7 @@ function copyGateEntry(from, to, budget) {
             return;
         }
     }
-    copyGateDir(from, to, budget);
+    yield* copyGateDir(from, to, budget);
 }
 /**
  * A copy of your package dir `from` at `to`: dirs made, files copied (never
@@ -645,14 +761,15 @@ function copyGateEntry(from, to, budget) {
  * link inside it points at the copy of its target when that lies in a tree
  * being copied (copiedAt; the PR's code can write that copy anyway), else at
  * the same target as yours (never followed, never copied). A file link or a
- * dangling one is left out. Nothing of yours is written. Synchronous, like
- * the tree build around it.
+ * dangling one is left out. Nothing of yours is written. File copies are yielded
+ * steps (runTreeSteps, runTreeStepsAsync).
  */
-function copyGateDir(from, to, budget) {
+function* copyGateDir(from, to, budget) {
     spend(budget, 0);
     if (!budget.dry)
         mkdirSync(to);
     for (const e of readdirSync(from, { withFileTypes: true })) {
+        yield;
         const s = join(from, e.name);
         const d = join(to, e.name);
         if (e.isSymbolicLink()) {
@@ -670,12 +787,12 @@ function copyGateDir(from, to, budget) {
                 symlinkSync(copiedAt(real, budget) ?? real, d, linkType());
         }
         else if (e.isDirectory())
-            copyGateDir(s, d, budget);
+            yield* copyGateDir(s, d, budget);
         else if (e.isFile()) {
             const size = statSync(s).size;
             spend(budget, size);
             if (!budget.dry)
-                copyFileSync(s, d);
+                yield { copy: s, to: d };
         }
     }
 }
@@ -709,23 +826,25 @@ function unlinkOwnLink(root, link) {
  * Remove a node_modules tree linkNodeModules built, never through a link:
  * every symlink and junction at any depth is unlinked first (the PR's code
  * may have planted one in a cache dir), then files and dirs bottom up. A
- * dir is read only after an lstat says it is a plain directory.
+ * dir is read only after an lstat says it is a plain directory. As tree
+ * steps (runTreeSteps for the synchronous callers).
  */
-function removeGateTree(dir) {
-    const walk = (d) => {
+function* removeGateTreeSteps(dir) {
+    const walk = function* (d) {
         for (const name of readdirSync(d)) {
+            yield;
             const p = join(d, name);
             const st = lstatSync(p);
             if (st.isSymbolicLink())
                 unlinkLink(p);
             else if (st.isDirectory())
-                walk(p);
+                yield* walk(p);
             else
                 unlinkSync(p);
         }
         rmdirSync(d);
     };
-    walk(dir);
+    yield* walk(dir);
 }
 /**
  * Remove what linkNodeModules made before the checkout is discarded: on
@@ -739,12 +858,16 @@ function removeGateTree(dir) {
  * and dirty check.
  */
 export function unlinkNodeModules(root, checkout) {
+    runTreeSteps(unlinkNodeModulesSteps(root, checkout));
+}
+/** unlinkNodeModules as tree steps (a lane's cut-off or not-ignored tree goes without holding the event loop). */
+function* unlinkNodeModulesSteps(root, checkout) {
     const target = join(checkout, 'node_modules');
     // The nested workspace trees first (the root's marker names them): every link unlinked, never followed.
     for (const nm of nestedTreeDirs(checkout)) {
-        unlinkTreeLinks(nm);
+        yield* unlinkTreeLinks(nm);
         if (existsSync(join(nm, GATE_TREE_MARKER)))
-            removeGateTree(nm);
+            yield* removeGateTreeSteps(nm);
     }
     nestedTrees.delete(checkout);
     let st;
@@ -763,19 +886,20 @@ export function unlinkNodeModules(root, checkout) {
     // M3 (review-490): a real node_modules dir in an engine checkout is treated as the engine's tree whether or not the
     // marker is still there (the PR's code can delete it): every link at any depth goes first, never followed. The
     // marker only decides whether the rest goes too; without it the caller's own (link-safe) removal takes the files.
-    unlinkTreeLinks(target);
+    yield* unlinkTreeLinks(target);
     if (existsSync(join(target, GATE_TREE_MARKER)))
-        removeGateTree(target);
+        yield* removeGateTreeSteps(target);
 }
 /** Unlink every symlink and junction under `dir` at any depth, never following one; files and dirs stay. */
-function unlinkTreeLinks(dir) {
+function* unlinkTreeLinks(dir) {
     for (const name of readdirSync(dir)) {
+        yield;
         const p = join(dir, name);
         const st = lstatSync(p);
         if (st.isSymbolicLink())
             unlinkLink(p);
         else if (st.isDirectory())
-            unlinkTreeLinks(p);
+            yield* unlinkTreeLinks(p);
     }
 }
 /**
