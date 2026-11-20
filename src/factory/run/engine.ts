@@ -5891,7 +5891,7 @@ class FactoryEngine {
       this.ledger.setBaseline(id, before);
       if (userBefore) this.ledger.setBaseline(userBaselineKey(id), userBefore);
       // The first lane's model and the per-kind map are kept for the resume warning and status only (informational: they never pick a model).
-      this.save((s) => ({ ...s, lanes: [...s.lanes, record], ...(s.laneModel === undefined ? { laneModel: model ?? null, laneModels: resolvedLaneModels(this.o.limits) } : {}) }));
+      this.save((s) => ({ ...s, lanes: [...s.lanes, record], ...(s.laneModel === undefined ? { laneModel: model ?? null, laneModels: resolvedLaneModels(this.o.limits) } : s.laneModels === undefined ? { laneModels: resolvedLaneModels(this.o.limits) } : {}) }));
     } catch (error) {
       // No lane started: the heal reservation is released before the step fails.
       settleHeal(0);

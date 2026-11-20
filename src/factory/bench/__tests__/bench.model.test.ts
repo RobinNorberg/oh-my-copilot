@@ -273,6 +273,13 @@ describe('omg factory bench run --review-model (live runner, injected child and 
     expect(out.results.laneModels).toEqual({ review: { id: 'claude-opus-5.5', multiplier: 10, source: '--review-model' } });
   });
 
+  it('a per-kind model with an unknown multiplier accepted via --allow-multiplier gets the undercount note', async () => {
+    const bench = fixture();
+    const base = { dir: bench, mode: 'live' as const, model: 'mai-code-2', maxRequests: 10, issues: [1], outDir: join(dir, 'out'), trustedUser: null, ledger: () => ({ premiumRequests: 0, credits: 0 }), liveStart: async () => merge, announce: () => {}, allowMultiplier: 10 };
+    const out = await runBench({ ...base, reviewModel: 'mai-code-2-flash', modelProbe: probeWith(['mai-code-2', 'mai-code-2-flash'], { 'mai-code-2-flash': null }) });
+    expect(out.results.notes.filter((n) => n.includes('multiplier is unknown'))).toEqual([expect.stringContaining("the review lanes' multiplier is unknown")]);
+  });
+
   it('the fake path starts review lanes on --review-model and the rest on the base model', async () => {
     const bench = fixture();
     const out = await runBench({ dir: bench, mode: 'fake', issues: [1], outDir: join(dir, 'out'), reviewModel: 'mai-code-2-flash', trustedUser: { factory: { run: { laneModel: 'mai-code-2' } } } });
@@ -325,6 +332,18 @@ describe('results recording', () => {
     expect(() => readBenchResults(path)).toThrow(/model is neither null nor \{ id, multiplier, explicit \}/);
     writeFileSync(path, JSON.stringify(results({ model: null })));
     expect(readBenchResults(path).model).toBeNull();
+  });
+
+  it('readBenchResults reads an older results file without laneModels and labels it by its base model', () => {
+    const path = join(dir, 'old.json');
+    const old = results({ model: { id: 'mai-code-2', multiplier: 1, explicit: true } }) as unknown as Record<string, unknown>;
+    delete old.laneModels;
+    writeFileSync(path, JSON.stringify(old));
+    const read = readBenchResults(path);
+    expect(read.laneModels).toBeUndefined();
+    expect(modelsLabel(read)).toBe(modelLabel(read.model));
+    expect(modelsLabel(read)).toBe('mai-code-2 (--model, 1x)');
+    expect(compareResults(read, read)).toContain('lane model mai-code-2 (--model, 1x))');
   });
 
   it('readBenchResults refuses an ill-typed laneModels', () => {

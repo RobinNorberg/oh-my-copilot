@@ -82,6 +82,19 @@ describe('omg factory run engine (fake lanes, real git, scripted gh)', () => {
     expect(readFactoryState(h.root, ISSUE)!.laneModels).toMatchObject({ implement: null, review: 'mai-code-2-flash' });
   });
 
+  it('a run started before laneModels existed (laneModel recorded, no per-kind map) gets the map on its next lane', async () => {
+    const first = run([noCommit, noCommit], { limits: limits({ laneModel: 'mai-code-2', laneModels: { review: 'mai-code-2-flash' } }) });
+    await first.done;
+    const path = factoryStatePath(h.root, ISSUE);
+    const old = JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>;
+    delete old.laneModels;
+    writeFileSync(path, JSON.stringify(old));
+    expect(readFactoryState(h.root, ISSUE)!.laneModels).toBeUndefined();
+    const second = run([commitFile('a.ts'), review('approve')], { limits: limits({ laneModel: 'mai-code-2', laneModels: { review: 'mai-code-2-flash' } }) });
+    await second.done;
+    expect(readFactoryState(h.root, ISSUE)!.laneModels).toMatchObject({ implement: 'mai-code-2', review: 'mai-code-2-flash' });
+  });
+
   it('a resume with another review model warns per kind; the unchanged kinds are not named', async () => {
     const first = run([noCommit, noCommit], { limits: limits({ laneModel: 'mai-code-2', laneModels: { review: 'mai-code-2-flash' } }) });
     await first.done;
