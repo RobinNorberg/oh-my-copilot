@@ -63957,6 +63957,29 @@ var init_job = __esm({
 });
 
 // src/factory/run/budget.ts
+function laneModelKind(kind) {
+  switch (kind) {
+    case "implement":
+      return "implement";
+    case "review":
+      return "review";
+    case "fix":
+      return "fix";
+    case "ci-fix":
+      return "ciFix";
+    case "conflict-fix":
+      return "conflictFix";
+    default:
+      return null;
+  }
+}
+function laneModelFor(limits, kind) {
+  const key = laneModelKind(kind);
+  return (key ? limits.laneModels?.[key] : void 0) ?? limits.laneModel;
+}
+function resolvedLaneModels(limits) {
+  return Object.fromEntries(LANE_MODEL_KINDS.map((k) => [k, limits.laneModels?.[k] ?? limits.laneModel ?? null]));
+}
 function assertLaneCreditCap(limits) {
   const cap = limits?.laneMaxCredits;
   if (typeof cap !== "number" || !Number.isFinite(cap)) {
@@ -64000,7 +64023,7 @@ function runCreditsExceeded(state, limits) {
   const spent = runCredits(state);
   return spent >= limits.maxRunCredits ? `run spent ${spent.toFixed(2)} AI credits, at or above factory.run.maxRunCredits ${limits.maxRunCredits}` : null;
 }
-var DEFAULT_FACTORY_RUN_LIMITS, KNOWN_LANE_MODELS;
+var LANE_MODEL_KINDS, DEFAULT_FACTORY_RUN_LIMITS, KNOWN_LANE_MODELS;
 var init_budget = __esm({
   "src/factory/run/budget.ts"() {
     "use strict";
@@ -64008,6 +64031,7 @@ var init_budget = __esm({
     init_job();
     init_config2();
     init_copilot_models();
+    LANE_MODEL_KINDS = ["implement", "review", "fix", "ciFix", "conflictFix"];
     DEFAULT_FACTORY_RUN_LIMITS = Object.freeze({
       laneMaxCredits: RUNTIME_MIN_MAX_CREDITS,
       laneTimeoutMs: 30 * 6e4,
@@ -65653,6 +65677,7 @@ function humanReviewShapeProblem(s) {
   if (s.plainHeadRan !== void 0 && s.plainHeadRan !== true) return "plainHeadRan";
   if (s.gateTreeCopy !== void 0 && s.gateTreeCopy !== true) return "gateTreeCopy";
   if (s.laneModel !== void 0 && s.laneModel !== null && !isStr2(s.laneModel)) return "laneModel";
+  if (s.laneModels !== void 0 && (typeof s.laneModels !== "object" || s.laneModels === null || Array.isArray(s.laneModels) || !Object.entries(s.laneModels).every(([k, v]) => ["implement", "review", "fix", "ciFix", "conflictFix"].includes(k) && (v === null || isStr2(v))))) return "laneModels";
   if (s.checkoutAdmin !== void 0 && (!isStr2(s.checkoutAdmin) || !/^[A-Za-z0-9._-]+$/.test(s.checkoutAdmin) || s.checkoutAdmin === "." || s.checkoutAdmin === "..")) return "checkoutAdmin";
   const cal = s.gateCalibration;
   if (cal !== void 0 && (typeof cal !== "object" || cal === null || Array.isArray(cal) || !Object.entries(cal).every(([k, v]) => {
@@ -76618,10 +76643,16 @@ var init_engine = __esm({
         if (tookOver) notes.push(`took over from dead owner pid ${tookOver.pid} on ${tookOver.hostname}`);
         if (s.gate) notes.push(`rerun after awaiting-human: ${s.gate.name}`);
         if (s.gate) this.resumedFromPark = true;
-        const nowModel = this.o.limits.laneModel ?? null;
-        if (s.laneModel !== void 0 && s.laneModel !== nowModel) {
-          const what = (m) => m ?? "Copilot's default model";
-          const note = `lane model changed on resume: the run's first lane used ${what(s.laneModel)}, this invocation starts lanes on ${what(nowModel)}`;
+        const what = (m) => m ?? "Copilot's default model";
+        const nowModels = resolvedLaneModels(this.o.limits);
+        const before = s.laneModels ?? (s.laneModel !== void 0 ? Object.fromEntries(LANE_MODEL_KINDS.map((k) => [k, s.laneModel ?? null])) : void 0);
+        const changed = before ? LANE_MODEL_KINDS.filter((k) => (before[k] ?? null) !== nowModels[k]) : [];
+        if (before && changed.length === LANE_MODEL_KINDS.length && new Set(changed.map((k) => before[k] ?? null)).size === 1 && new Set(changed.map((k) => nowModels[k])).size === 1) {
+          const note = `lane model changed on resume: the run's first lane used ${what(before[changed[0]] ?? null)}, this invocation starts lanes on ${what(nowModels[changed[0]])}`;
+          notes.push(note);
+          this.o.warn?.(`omg factory run: ${note}`);
+        } else if (before && changed.length) {
+          const note = `lane models changed on resume: ${changed.map((k) => `${k} ${what(before[k] ?? null)} -> ${what(nowModels[k])}`).join("; ")}`;
           notes.push(note);
           this.o.warn?.(`omg factory run: ${note}`);
         }
@@ -80184,12 +80215,12 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
         }
         this.ledger.setRecheck(void 0);
         const startedAt = this.iso();
-        const model = this.o.limits.laneModel;
+        const model = laneModelFor(this.o.limits, kind);
         const record3 = { id, kind, startSha: startRef, status: "running", maxCredits: cap.cap, startedAt, ...model ? { model } : {}, ...laneTree2 ? { worktree: laneTree2 } : {} };
         try {
           this.ledger.setBaseline(id, before);
           if (userBefore) this.ledger.setBaseline(userBaselineKey(id), userBefore);
-          this.save((s) => ({ ...s, lanes: [...s.lanes, record3], ...s.laneModel === void 0 ? { laneModel: model ?? null } : {} }));
+          this.save((s) => ({ ...s, lanes: [...s.lanes, record3], ...s.laneModel === void 0 ? { laneModel: model ?? null, laneModels: resolvedLaneModels(this.o.limits) } : s.laneModels === void 0 ? { laneModels: resolvedLaneModels(this.o.limits) } : {} }));
         } catch (error62) {
           settleHeal(0);
           throw error62;
@@ -80206,7 +80237,7 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
             maxCredits: cap.cap,
             ledgerTag: { role: kind, run: runSlug(this.key) },
             ...profile === "write" ? { engineCommits: true } : {},
-            // factory.run.laneModel / --model: every lane kind (implement, review, fix, ci-fix, conflict-fix) starts on it.
+            // factory.run.laneModels[kind] / --review-model, else factory.run.laneModel / --model (laneModelFor).
             ...model ? { model } : {},
             // The OS sandbox on Windows denies opening a package dir through a junction: a write lane gets a copied node_modules
             // (a review lane's shell is read-only, so it runs no test and needs none).

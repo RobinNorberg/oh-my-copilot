@@ -56,17 +56,18 @@ export function modelMultiplier(models: readonly ModelEntry[], model: string): n
  * needs `--allow-multiplier` at or above it (one lane then costs that many
  * premium requests). An unknown model or multiplier fails closed: it needs
  * `--allow-multiplier`, given after checking the default model by hand.
+ * `flag` names where an explicit model came from in the messages.
  */
-export function multiplierRefusal(info: BenchModelInfo, allow: number | undefined): string | null {
+export function multiplierRefusal(info: BenchModelInfo, allow: number | undefined, flag = '--model'): string | null {
   if (info.explicit) {
-    if (!info.offered) return `the lanes' Copilot model ${info.model ?? '(none)'} could not be checked against your account's models (${info.detail}); the bench does not start an unchecked --model`;
-    if (!info.model || !info.offered.includes(info.model)) return `--model ${info.model ?? '(none)'} is not offered to your account by Copilot; listModels() offers: ${info.offered.join(', ') || '(none)'}`;
+    if (!info.offered) return `the lanes' Copilot model ${info.model ?? '(none)'} could not be checked against your account's models (${info.detail}); the bench does not start an unchecked ${flag}`;
+    if (!info.model || !info.offered.includes(info.model)) return `${flag} ${info.model ?? '(none)'} is not offered to your account by Copilot; listModels() offers: ${info.offered.join(', ') || '(none)'}`;
     if (info.multiplier === null) {
       if (allow !== undefined) return null;
       return `the lanes' Copilot model ${info.model} has no known premium multiplier (${info.detail}); check it by hand (/model in an interactive copilot), then rerun with --allow-multiplier <its multiplier, rounded up>`;
     }
     if (info.multiplier <= 1 || (allow !== undefined && allow >= info.multiplier)) return null;
-    return `the lanes' Copilot model ${info.model} (--model) bills ${info.multiplier}x premium requests per call; rerun with --allow-multiplier ${Math.ceil(info.multiplier)} to accept it, or pick a cheaper --model`;
+    return `the lanes' Copilot model ${info.model} (${flag}) bills ${info.multiplier}x premium requests per call; rerun with --allow-multiplier ${Math.ceil(info.multiplier)} to accept it, or pick a cheaper ${flag}`;
   }
   if (info.multiplier === null) {
     if (allow !== undefined) return null;

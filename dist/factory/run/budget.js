@@ -21,6 +21,44 @@ import { MAX_TIMEOUT_MS } from '../../copilot-run/job.js';
 import { DEFAULT_SHIP_CONFIG, trustedUserConfigPath } from '../../ship/config.js';
 import copilotModels from '../../config/copilot-models.json' with { type: 'json' };
 export { RUNTIME_MIN_MAX_CREDITS };
+/** The lane-kind keys of factory.run.laneModels. */
+export const LANE_MODEL_KINDS = ['implement', 'review', 'fix', 'ciFix', 'conflictFix'];
+/** The laneModels key of a lane kind (null: a kind that starts no Copilot session, the coding agent). */
+export function laneModelKind(kind) {
+    switch (kind) {
+        case 'implement': return 'implement';
+        case 'review': return 'review';
+        case 'fix': return 'fix';
+        case 'ci-fix': return 'ciFix';
+        case 'conflict-fix': return 'conflictFix';
+        default: return null;
+    }
+}
+/** The model a lane of `kind` starts on: laneModels[kind] ?? laneModel; undefined = Copilot's default. */
+export function laneModelFor(limits, kind) {
+    const key = laneModelKind(kind);
+    return (key ? limits.laneModels?.[key] : undefined) ?? limits.laneModel;
+}
+/** Every lane kind's resolved model (null: Copilot's default), in LANE_MODEL_KINDS order. */
+export function resolvedLaneModels(limits) {
+    return Object.fromEntries(LANE_MODEL_KINDS.map((k) => [k, limits.laneModels?.[k] ?? limits.laneModel ?? null]));
+}
+/**
+ * factory.run.laneModels from the trusted user config: an object whose keys
+ * are LANE_MODEL_KINDS and whose values are known model ids (checkLaneModel).
+ */
+export function checkLaneModels(value, source) {
+    if (typeof value !== 'object' || value === null || Array.isArray(value))
+        throw new Error(`${source} must be an object with any of ${LANE_MODEL_KINDS.join(', ')}`);
+    const out = {};
+    for (const [key, id] of Object.entries(value)) {
+        if (!LANE_MODEL_KINDS.includes(key))
+            throw new Error(`${source}.${key} is not a lane kind; use any of ${LANE_MODEL_KINDS.join(', ')}`);
+        if (id !== undefined)
+            out[key] = checkLaneModel(id, `${source}.${key}`);
+    }
+    return out;
+}
 export const DEFAULT_FACTORY_RUN_LIMITS = Object.freeze({
     laneMaxCredits: RUNTIME_MIN_MAX_CREDITS,
     laneTimeoutMs: 30 * 60_000,
@@ -102,10 +140,17 @@ export function resolveFactoryRunLimits(trustedUser, project) {
     }
     if (user.laneModel !== undefined)
         limits.laneModel = checkLaneModel(user.laneModel, 'user config: factory.run.laneModel');
+    if (user.laneModels !== undefined) {
+        const models = checkLaneModels(user.laneModels, 'user config: factory.run.laneModels');
+        if (Object.keys(models).length)
+            limits.laneModels = models;
+    }
     const proj = runBlock(project, 'project config');
-    // The lanes' model changes what a run bills: only the trusted user config (or --model) sets it.
+    // The lanes' model changes what a run bills: only the trusted user config (or --model / --review-model) sets it.
     if (proj.laneModel !== undefined)
         warnings.push('omg factory run: ignoring factory.run.laneModel from the working-tree project config; set it in your user config or pass --model');
+    if (proj.laneModels !== undefined)
+        warnings.push('omg factory run: ignoring factory.run.laneModels from the working-tree project config; set it in your user config or pass --review-model');
     const projFix = shipMaxFixRounds(project);
     const tighten = (key, raw, label = `factory.run.${key}`) => {
         const value = checked(key, raw, 'project config');

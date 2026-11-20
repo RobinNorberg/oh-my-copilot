@@ -43,8 +43,9 @@ export function factoryBenchCommand() {
         .option('--max-credits <n>', '--live: no run starts once this many AI credits are recorded (a soft stop: runs in flight finish)', integerOption(1, 1_000_000))
         .option('--max-minutes <n>', `no run starts after this many minutes (default ${DEFAULT_BENCH_MAX_MINUTES})`, integerOption(1, 24 * 60))
         .option('--parallel <n>', '--live: up to n runs at once (needs factory.run.maxConcurrent above 1 and layout "private" in your user config)', integerOption(1, 16))
-        .option('--allow-multiplier <n>', '--live: accept a lane model (the default, or --model) that bills up to n premium requests per call (without it: refused above 1, or when Copilot does not report the model or multiplier)', integerOption(1, 1_000))
-        .option('--model <id>', 'start every lane on this Copilot model id (a known model id): --fake passes it to the engine, --live passes --model to each omg factory run and checks THIS model against your account (refused when listModels() does not offer it) and its multiplier; the results record it')
+        .option('--allow-multiplier <n>', '--live: accept lane models (the default, --model, --review-model or factory.run.laneModels) that bill up to n premium requests per call (without it: refused above 1, or when Copilot does not report the model or multiplier)', integerOption(1, 1_000))
+        .option('--model <id>', 'start every lane without its own factory.run.laneModels entry on this Copilot model id (a known model id): --fake passes it to the engine, --live passes --model to each omg factory run and checks THIS model against your account (refused when listModels() does not offer it) and its multiplier; the results record it')
+        .option('--review-model <id>', 'start review lanes on this Copilot model id (a known model id), e.g. a cheaper one than the implement lanes: passed on like --model, and --live checks it against your account and --allow-multiplier too; the results record it per lane kind')
         .option('--issues <ids>', 'run only these issues (comma-separated ids, e.g. 2,6,9,10); the results record the subset')
         .option('--out <dir>', 'results directory (default ./bench-results)')
         .option('--json', 'print the results JSON instead of the summary')
@@ -77,6 +78,7 @@ export function factoryBenchCommand() {
                 ...(o.parallel !== undefined ? { parallel: o.parallel } : {}), ...(o.out ? { outDir: o.out } : {}), ...(issues ? { issues } : {}),
                 ...(o.allowMultiplier !== undefined ? { allowMultiplier: o.allowMultiplier } : {}),
                 ...(o.model !== undefined ? { model: o.model } : {}),
+                ...(o.reviewModel !== undefined ? { reviewModel: o.reviewModel } : {}),
                 log: (m) => { if (!o.json)
                     console.error(chalk.gray(m)); },
                 // The lanes' model and multiplier, before any run starts (also with --json: stderr).

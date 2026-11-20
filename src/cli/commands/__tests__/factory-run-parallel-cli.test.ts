@@ -115,6 +115,14 @@ describe('omg factory run with factory.run.maxConcurrent', () => {
     expect(process.listeners('SIGINT').filter((l) => !before.has(l))).toEqual([]);
   });
 
+  it('--review-model is forwarded to every child next to --model and --parent', async () => {
+    const seen: Array<readonly string[]> = [];
+    const d = deps({ ...parallel(2, 'private'), parallelChild: async ({ args }) => { seen.push(args); return { exitCode: 0, parsed: true, next: null, message: 'nothing runnable' }; } });
+    await cli(d, '--next', '--parallel', '2', '--parent', '42', '--model', 'mai-code-2', '--review-model', 'mai-code-2-flash');
+    expect(seen.length).toBeGreaterThan(0);
+    for (const args of seen) expect(args).toEqual(['--parent', '42', '--model', 'mai-code-2', '--review-model', 'mai-code-2-flash']);
+  });
+
   it('review-487 L-1: with no opt-in in the user config nothing is read (no git, no forge kind); the base layer is read at the sha the remote holds, never at a planted tracking ref', () => {
     const calls: string[] = [];
     // origin as the forge config's repository (review-487b BLOCK-2: the remote check before the base read); the local bare repo serves it.

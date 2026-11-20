@@ -73,6 +73,12 @@ export interface BenchRunOptions {
      * factory.run.laneModel, else Copilot's default model.
      */
     model?: string;
+    /**
+     * The Copilot model review lanes start on (`--review-model`; a known model
+     * id), over the user config's factory.run.laneModels.review and `model`:
+     * fake runs pass it to the engine, live runs pass `--review-model` to each child.
+     */
+    reviewModel?: string;
     /** Live: the lanes' Copilot model (the effective lane model, else the default) and multiplier (default: probeLaneModel, no model turn). */
     modelProbe?: BenchModelProbe;
     /** Live: the highest premium multiplier the lanes' model may have (a known one above 1 is refused without it). */
@@ -81,7 +87,7 @@ export interface BenchRunOptions {
     announce?: (message: string) => void;
     /** The runner of the acceptance gate (default: fake plain processes; live the gate sandbox). */
     acceptanceRunner?: SandboxRunner;
-    /** The trusted user config (default: userConfigLayers().trustedUser); fake runs read only its factory.run.laneModel. */
+    /** The trusted user config (default: userConfigLayers().trustedUser); fake runs read only its factory.run.laneModel and laneModels. */
     trustedUser?: unknown;
     /** Live: subscribe the run children to the bench's stop signal (the CLI forwards Ctrl+C). */
     signals?: (forward: (signal: NodeJS.Signals) => void) => () => void;

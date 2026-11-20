@@ -318,6 +318,14 @@ export interface FactoryRunState {
      */
     laneModel?: string | null;
     /**
+     * Every lane kind's model as the run's first lane resolved it
+     * (factory.run.laneModels[kind] ?? laneModel; null: Copilot's default),
+     * keyed implement, review, fix, ciFix, conflictFix. Informational like
+     * laneModel: the resume warning compares it per kind and `run status`
+     * shows it. Optional: older state files lack it.
+     */
+    laneModels?: Partial<Record<'implement' | 'review' | 'fix' | 'ciFix' | 'conflictFix', string | null>>;
+    /**
      * The name of the prepare checkout's admin dir under `<common>/worktrees/`,
      * as `worktree add` made it: a later invocation reads the checkout only
      * through that admin dir, never another one its `.git` file names.

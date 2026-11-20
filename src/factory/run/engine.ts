@@ -123,7 +123,7 @@ import { humanFixPrompt, laneScripts } from './prompts.js';
 import { lockPathFor } from '../../lib/file-lock.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
 import { checkDiagnosis } from '../heal/diagnosis-output.js';
-import { assertLaneCreditCap, nextLaneCap, runCredits, runCreditsExceeded, type FactoryRunLimits } from './budget.js';
+import { assertLaneCreditCap, LANE_MODEL_KINDS, laneModelFor, nextLaneCap, resolvedLaneModels, runCredits, runCreditsExceeded, type FactoryRunLimits } from './budget.js';
 import { FactorySafetyError, factoryGuardExec, hardenedGitExec, sameFsPath, type GithubReadContext } from './exec.js';
 import { createGateProcTracker, gateProcsPath, liveGateProcs, reapGateProcs, sweepGateProcs } from './gate-procs.js';
 import { assertFactoryForgeOptions, EXIT_FORGE_UNAVAILABLE, FactoryForgeUnavailableError, localRemoteMismatch, syncLocalMirror } from './forge-roots.js';
@@ -2106,11 +2106,19 @@ class FactoryEngine {
     if (tookOver) notes.push(`took over from dead owner pid ${tookOver.pid} on ${tookOver.hostname}`);
     if (s.gate) notes.push(`rerun after awaiting-human: ${s.gate.name}`);
     if (s.gate) this.resumedFromPark = true;
-    // The recorded model is informational: this invocation's laneModel (user config / --model) still picks the lanes' model.
-    const nowModel = this.o.limits.laneModel ?? null;
-    if (s.laneModel !== undefined && s.laneModel !== nowModel) {
-      const what = (m: string | null) => m ?? "Copilot's default model";
-      const note = `lane model changed on resume: the run's first lane used ${what(s.laneModel)}, this invocation starts lanes on ${what(nowModel)}`;
+    // The recorded models are informational: this invocation's laneModel / laneModels (user config, --model,
+    // --review-model) still pick the lanes' models. Compared per lane kind; a state from before laneModels
+    // recorded one model for every kind.
+    const what = (m: string | null) => m ?? "Copilot's default model";
+    const nowModels = resolvedLaneModels(this.o.limits);
+    const before = s.laneModels ?? (s.laneModel !== undefined ? Object.fromEntries(LANE_MODEL_KINDS.map((k) => [k, s.laneModel ?? null])) : undefined);
+    const changed = before ? LANE_MODEL_KINDS.filter((k) => (before[k] ?? null) !== nowModels[k]) : [];
+    if (before && changed.length === LANE_MODEL_KINDS.length && new Set(changed.map((k) => before[k] ?? null)).size === 1 && new Set(changed.map((k) => nowModels[k])).size === 1) {
+      const note = `lane model changed on resume: the run's first lane used ${what(before[changed[0]] ?? null)}, this invocation starts lanes on ${what(nowModels[changed[0]])}`;
+      notes.push(note);
+      this.o.warn?.(`omg factory run: ${note}`);
+    } else if (before && changed.length) {
+      const note = `lane models changed on resume: ${changed.map((k) => `${k} ${what(before[k] ?? null)} -> ${what(nowModels[k])}`).join('; ')}`;
       notes.push(note);
       this.o.warn?.(`omg factory run: ${note}`);
     }
@@ -5876,14 +5884,14 @@ class FactoryEngine {
     }
     this.ledger.setRecheck(undefined);
     const startedAt = this.iso();
-    const model = this.o.limits.laneModel;
+    const model = laneModelFor(this.o.limits, kind);
     const record: FactoryLaneRecord = { id, kind, startSha: startRef, status: 'running', maxCredits: cap.cap, startedAt, ...(model ? { model } : {}), ...(laneTree ? { worktree: laneTree } : {}) };
     // The baseline is persisted before the lane exists, so a lost lane or a resume compares against it.
     try {
       this.ledger.setBaseline(id, before);
       if (userBefore) this.ledger.setBaseline(userBaselineKey(id), userBefore);
-      // The first lane's model is kept for the resume warning only (informational: it never picks the model).
-      this.save((s) => ({ ...s, lanes: [...s.lanes, record], ...(s.laneModel === undefined ? { laneModel: model ?? null } : {}) }));
+      // The first lane's model and the per-kind map are kept for the resume warning and status only (informational: they never pick a model).
+      this.save((s) => ({ ...s, lanes: [...s.lanes, record], ...(s.laneModel === undefined ? { laneModel: model ?? null, laneModels: resolvedLaneModels(this.o.limits) } : s.laneModels === undefined ? { laneModels: resolvedLaneModels(this.o.limits) } : {}) }));
     } catch (error) {
       // No lane started: the heal reservation is released before the step fails.
       settleHeal(0);
@@ -5894,7 +5902,7 @@ class FactoryEngine {
       ({ remoteId } = await this.o.lanes.start({
         laneId: id, cwd: this.o.root, baseRef: startRef, prompt, profile, timeoutMs: this.o.limits.laneTimeoutMs, maxCredits: cap.cap, ledgerTag: { role: kind, run: runSlug(this.key) },
         ...(profile === 'write' ? { engineCommits: true } : {}),
-        // factory.run.laneModel / --model: every lane kind (implement, review, fix, ci-fix, conflict-fix) starts on it.
+        // factory.run.laneModels[kind] / --review-model, else factory.run.laneModel / --model (laneModelFor).
         ...(model ? { model } : {}),
         // The OS sandbox on Windows denies opening a package dir through a junction: a write lane gets a copied node_modules
         // (a review lane's shell is read-only, so it runs no test and needs none).

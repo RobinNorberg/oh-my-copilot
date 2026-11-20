@@ -9,11 +9,11 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { checkLaneModel, resolveFactoryRunLimits } from '../../run/budget.js';
+import { checkLaneModel, laneModelFor, nextLaneCap, resolvedLaneModels, resolveFactoryRunLimits, runCredits, runRequests } from '../../run/budget.js';
 import { createBenchFixture, removeBenchDir } from '../fixture.js';
 import { multiplierRefusal, probeLaneModel, type BenchModelProbe } from '../model-probe.js';
 import { BenchUsageError, runBench } from '../runner.js';
-import { BENCH_RESULTS_KIND, BENCH_RESULTS_SCHEMA_VERSION, compareResults, computeTotals, laneModelMismatches, modelLabel, readBenchResults, renderResultsMarkdown, type BenchResults } from '../score.js';
+import { BENCH_RESULTS_KIND, BENCH_RESULTS_SCHEMA_VERSION, compareResults, computeTotals, laneModelMismatches, modelLabel, modelsLabel, readBenchResults, renderResultsMarkdown, type BenchResults } from '../score.js';
 
 const NODE_MODULES = resolve(fileURLToPath(new URL('.', import.meta.url)), '..', '..', '..', '..', 'node_modules');
 
@@ -38,6 +38,40 @@ describe('factory.run.laneModel (budget.ts)', () => {
     expect(fromProject.limits.laneModel).toBeUndefined();
     expect(fromProject.warnings.join('\n')).toMatch(/ignoring factory\.run\.laneModel from the working-tree project config/);
     expect(checkLaneModel(' mai-code-2 ', '--model')).toBe('mai-code-2');
+  });
+});
+
+describe('factory.run.laneModels (budget.ts)', () => {
+  it('resolves laneModels[kind] ?? laneModel ?? none per lane kind', () => {
+    const { limits } = resolveFactoryRunLimits({ factory: { run: { laneModel: 'mai-code-2', laneModels: { review: 'mai-code-2-flash', conflictFix: 'claude-sonnet-5.5' } } } }, undefined);
+    expect(limits.laneModels).toEqual({ review: 'mai-code-2-flash', conflictFix: 'claude-sonnet-5.5' });
+    expect(['implement', 'review', 'fix', 'ci-fix', 'conflict-fix'].map((k) => laneModelFor(limits, k as never))).toEqual(['mai-code-2', 'mai-code-2-flash', 'mai-code-2', 'mai-code-2', 'claude-sonnet-5.5']);
+    expect(resolvedLaneModels(limits)).toEqual({ implement: 'mai-code-2', review: 'mai-code-2-flash', fix: 'mai-code-2', ciFix: 'mai-code-2', conflictFix: 'claude-sonnet-5.5' });
+    expect(resolvedLaneModels({ laneModels: { review: 'mai-code-2-flash' } })).toEqual({ implement: null, review: 'mai-code-2-flash', fix: null, ciFix: null, conflictFix: null });
+    expect(laneModelFor({ laneModels: { review: 'mai-code-2-flash' } }, 'implement')).toBeUndefined();
+    expect(resolveFactoryRunLimits(undefined, undefined).limits.laneModels).toBeUndefined();
+    expect(resolveFactoryRunLimits({ factory: { run: { laneModels: {} } } }, undefined).limits.laneModels).toBeUndefined();
+  });
+
+  it('refuses an unknown id, an unknown kind and a non-object; the project config cannot set it', () => {
+    expect(() => resolveFactoryRunLimits({ factory: { run: { laneModels: { review: 'gpt-nope' } } } }, undefined)).toThrow(/factory\.run\.laneModels\.review "gpt-nope" is not a known Copilot model id; known ids: .*mai-code-2/);
+    expect(() => resolveFactoryRunLimits({ factory: { run: { laneModels: { 'ci-fix': 'mai-code-2' } } } }, undefined)).toThrow(/laneModels\.ci-fix is not a lane kind; use any of implement, review, fix, ciFix, conflictFix/);
+    expect(() => resolveFactoryRunLimits({ factory: { run: { laneModels: 'mai-code-2' } } }, undefined)).toThrow(/laneModels must be an object/);
+    const fromProject = resolveFactoryRunLimits({ factory: { run: { laneModel: 'mai-code-2' } } }, { factory: { run: { laneModels: { implement: 'claude-opus-5.5' } } } });
+    expect(fromProject.limits.laneModels).toBeUndefined();
+    expect(laneModelFor(fromProject.limits, 'implement')).toBe('mai-code-2');
+    expect(fromProject.warnings.join('\n')).toMatch(/ignoring factory\.run\.laneModels from the working-tree project config/);
+  });
+
+  it('budget accounting sums each lane\'s own recorded usage, whatever model it ran on', () => {
+    const lane = (id: string, model: string, credits: number, premiumRequests: number) => ({ id, kind: 'implement' as const, startSha: 'x', status: 'completed' as const, maxCredits: 30, startedAt: '', model, usage: { credits, premiumRequests, source: 'measured' as const } });
+    // An implement lane on a 1x model and two review lanes on a 0.33x model: no run-wide multiplier is applied.
+    const state = { lanes: [lane('i', 'mai-code-2', 4, 3), lane('r1', 'mai-code-2-flash', 0.5, 0.33), lane('r2', 'mai-code-2-flash', 0.5, 0.33)] };
+    expect(runCredits(state)).toBe(5);
+    expect(runRequests(state)).toBeCloseTo(3.66);
+    const { limits } = resolveFactoryRunLimits(undefined, undefined);
+    expect(nextLaneCap(state, { ...limits, maxRunRequests: 4 })).toMatchObject({ ok: true });
+    expect(nextLaneCap(state, { ...limits, maxRunRequests: 3.5 })).toMatchObject({ ok: false });
   });
 });
 
@@ -185,7 +219,87 @@ describe('omg factory bench run --model (live runner, injected child and probe)'
   });
 });
 
+describe('omg factory bench run --review-model (live runner, injected child and probe)', () => {
+  const fixture = () => {
+    const bench = join(dir, 'b');
+    createBenchFixture(bench, { nodeModules: NODE_MODULES });
+    return bench;
+  };
+  const probeWith = (offered: string[], multipliers: Record<string, number | null> = {}): BenchModelProbe => async (m) => ({ model: m ?? null, multiplier: m && m in multipliers ? multipliers[m] : 1, detail: `listModels() billing.multiplier of ${m}`, explicit: true, offered });
+  const merge = { exitCode: 4, parsed: true, next: null, message: 'merge' };
+
+  it('probes every distinct model, passes --review-model to each child, and records the per-kind models in the results, summary and compare header', async () => {
+    const bench = fixture();
+    const args: string[][] = [];
+    const probed: Array<string | undefined> = [];
+    const lines: string[] = [];
+    const out = await runBench({
+      dir: bench, mode: 'live', model: 'mai-code-2', reviewModel: 'mai-code-2-flash', maxRequests: 10, issues: [1], outDir: join(dir, 'out'), ledger: () => ({ premiumRequests: 0, credits: 0 }),
+      trustedUser: { factory: { run: { laneModels: { fix: 'mai-code-2', conflictFix: 'claude-sonnet-5.5' } } } },
+      modelProbe: async (m) => { probed.push(m); return probeWith(['mai-code-2', 'mai-code-2-flash', 'claude-sonnet-5.5'], { 'mai-code-2-flash': 0.33 })(m); },
+      announce: (m) => lines.push(m),
+      liveStart: async (o) => { args.push([...(o.args ?? [])]); return merge; },
+    });
+    // The base model, then each other distinct one once (fix's mai-code-2 is the base, not probed again).
+    expect(probed).toEqual(['mai-code-2', 'mai-code-2-flash', 'claude-sonnet-5.5']);
+    expect(args).toEqual([['--max-requests', '10', '--model', 'mai-code-2', '--review-model', 'mai-code-2-flash']]);
+    expect(lines[1]).toBe("review lanes' Copilot model (--review-model): mai-code-2-flash; premium multiplier: 0.33 (listModels() billing.multiplier of mai-code-2-flash)");
+    expect(lines[2]).toMatch(/^conflictFix lanes' Copilot model \(factory\.run\.laneModels\.conflictFix\): claude-sonnet-5\.5;/);
+    const expected = { review: { id: 'mai-code-2-flash', multiplier: 0.33, source: '--review-model' }, fix: { id: 'mai-code-2', multiplier: 1, source: 'user config' }, conflictFix: { id: 'claude-sonnet-5.5', multiplier: 1, source: 'user config' } };
+    expect(out.results.laneModels).toEqual(expected);
+    const read = readBenchResults(out.jsonPath);
+    expect(read.laneModels).toEqual(expected);
+    const label = 'mai-code-2 (--model, 1x); review mai-code-2-flash (--review-model, 0.33x); fix mai-code-2 (user config, 1x); conflictFix claude-sonnet-5.5 (user config, 1x)';
+    expect(modelsLabel(read)).toBe(label);
+    expect(renderResultsMarkdown(read)).toContain(`lane model ${label}`);
+    const text = compareResults(read, { ...read, laneModels: undefined });
+    expect(text).toContain(`lane model ${label})`);
+    expect(text).toContain('lane model mai-code-2 (--model, 1x))');
+    expect(text).toContain('Note: the lane models differ');
+  });
+
+  it('refuses before any child when the review model is not offered (listing the offered ids), unknown, unchecked, or above --allow-multiplier', async () => {
+    const bench = fixture();
+    const start = vi.fn(async () => merge);
+    const base = { dir: bench, mode: 'live' as const, model: 'mai-code-2', maxRequests: 10, issues: [1], outDir: join(dir, 'out'), trustedUser: null, ledger: () => ({ premiumRequests: 0, credits: 0 }), liveStart: start, announce: () => {} };
+    await expect(runBench({ ...base, reviewModel: 'mai-code-2-flash', modelProbe: probeWith(['mai-code-2', 'gpt-6-luna']) })).rejects.toThrow('--review-model mai-code-2-flash is not offered to your account by Copilot; listModels() offers: mai-code-2, gpt-6-luna');
+    await expect(runBench({ ...base, reviewModel: 'claude-opus-5.5', modelProbe: probeWith(['mai-code-2', 'claude-opus-5.5'], { 'claude-opus-5.5': 10 }) })).rejects.toThrow(/claude-opus-5\.5 \(--review-model\) bills 10x .*--allow-multiplier 10 .*cheaper --review-model/);
+    await expect(runBench({ ...base, reviewModel: 'gpt-nope', modelProbe: probeWith(['gpt-nope']) })).rejects.toThrow(/--review-model "gpt-nope" is not a known Copilot model id/);
+    await expect(runBench({ ...base, reviewModel: 'mai-code-2-flash', modelProbe: async (m) => (m === 'mai-code-2' ? probeWith(['mai-code-2'])(m) : { model: 'default-model', multiplier: 1, detail: 'x' }) })).rejects.toThrow(/did not check --review-model mai-code-2-flash/);
+    await expect(runBench({ ...base, trustedUser: { factory: { run: { laneModels: { review: 'gpt-nope' } } } }, modelProbe: probeWith(['mai-code-2']) })).rejects.toThrow(/user config: factory\.run\.laneModels\.review "gpt-nope"/);
+    expect(start).not.toHaveBeenCalled();
+    // --allow-multiplier is applied per model: the 10x review model passes with 10, while the base stays 1x.
+    const out = await runBench({ ...base, reviewModel: 'claude-opus-5.5', allowMultiplier: 10, modelProbe: probeWith(['mai-code-2', 'claude-opus-5.5'], { 'claude-opus-5.5': 10 }) });
+    expect(out.results.laneModels).toEqual({ review: { id: 'claude-opus-5.5', multiplier: 10, source: '--review-model' } });
+  });
+
+  it('a per-kind model with an unknown multiplier accepted via --allow-multiplier gets the undercount note', async () => {
+    const bench = fixture();
+    const base = { dir: bench, mode: 'live' as const, model: 'mai-code-2', maxRequests: 10, issues: [1], outDir: join(dir, 'out'), trustedUser: null, ledger: () => ({ premiumRequests: 0, credits: 0 }), liveStart: async () => merge, announce: () => {}, allowMultiplier: 10 };
+    const out = await runBench({ ...base, reviewModel: 'mai-code-2-flash', modelProbe: probeWith(['mai-code-2', 'mai-code-2-flash'], { 'mai-code-2-flash': null }) });
+    expect(out.results.notes.filter((n) => n.includes('multiplier is unknown'))).toEqual([expect.stringContaining("the review lanes' multiplier is unknown")]);
+  });
+
+  it('the fake path starts review lanes on --review-model and the rest on the base model', async () => {
+    const bench = fixture();
+    const out = await runBench({ dir: bench, mode: 'fake', issues: [1], outDir: join(dir, 'out'), reviewModel: 'mai-code-2-flash', trustedUser: { factory: { run: { laneModel: 'mai-code-2' } } } });
+    expect(out.results.laneModels).toEqual({ review: { id: 'mai-code-2-flash', multiplier: null, source: '--review-model' } });
+    const lanes = out.results.issues.flatMap((i) => i.lanes);
+    expect(lanes.some((l) => l.kind === 'review')).toBe(true);
+    expect(lanes.every((l) => l.model === (l.kind === 'review' ? 'mai-code-2-flash' : 'mai-code-2'))).toBe(true);
+    expect(out.results.notes.filter((n) => n.includes('the session reported'))).toEqual([]);
+  });
+});
+
 describe('lane model mismatches', () => {
+  it('compares each lane against its own kind\'s model', () => {
+    const lane = (id: string, kind: string, model?: string) => ({ id, kind, premiumRequests: 1, credits: 0, source: 'none', ...(model ? { model } : {}) });
+    const issues = [{ id: 1, lanes: [lane('r1-implement-1', 'implement', 'mai-code-2'), lane('r1-review-1', 'review', 'mai-code-2-flash'), lane('r1-review-2', 'review', 'mai-code-2')] }] as never;
+    expect(laneModelMismatches(issues, (k) => (k === 'review' ? 'mai-code-2-flash' : 'mai-code-2'))).toEqual(['#1 lane r1-review-2: asked for model mai-code-2-flash, the session reported mai-code-2']);
+    // A kind on the default model is not checked.
+    expect(laneModelMismatches(issues, (k) => (k === 'review' ? 'mai-code-2-flash' : undefined))).toEqual(['#1 lane r1-review-2: asked for model mai-code-2-flash, the session reported mai-code-2']);
+  });
+
   it('lists each lane whose session reported another model than the bench asked for', () => {
     const lane = (id: string, model?: string) => ({ id, kind: 'implement', premiumRequests: 1, credits: 0, source: 'none', ...(model ? { model } : {}) });
     const issues = [
@@ -218,5 +332,27 @@ describe('results recording', () => {
     expect(() => readBenchResults(path)).toThrow(/model is neither null nor \{ id, multiplier, explicit \}/);
     writeFileSync(path, JSON.stringify(results({ model: null })));
     expect(readBenchResults(path).model).toBeNull();
+  });
+
+  it('readBenchResults reads an older results file without laneModels and labels it by its base model', () => {
+    const path = join(dir, 'old.json');
+    const old = results({ model: { id: 'mai-code-2', multiplier: 1, explicit: true } }) as unknown as Record<string, unknown>;
+    delete old.laneModels;
+    writeFileSync(path, JSON.stringify(old));
+    const read = readBenchResults(path);
+    expect(read.laneModels).toBeUndefined();
+    expect(modelsLabel(read)).toBe(modelLabel(read.model));
+    expect(modelsLabel(read)).toBe('mai-code-2 (--model, 1x)');
+    expect(compareResults(read, read)).toContain('lane model mai-code-2 (--model, 1x))');
+  });
+
+  it('readBenchResults refuses an ill-typed laneModels', () => {
+    const path = join(dir, 'bad.json');
+    writeFileSync(path, JSON.stringify(results({ laneModels: { 'ci-fix': { id: 'mai-code-2', multiplier: 1, source: 'user config' } } as never })));
+    expect(() => readBenchResults(path)).toThrow(/laneModels is not a map of lane kind to \{ id, multiplier, source \}/);
+    writeFileSync(path, JSON.stringify(results({ laneModels: { review: { id: 'mai-code-2-flash', multiplier: null, source: '--model' } } as never })));
+    expect(() => readBenchResults(path)).toThrow(/laneModels is not a map/);
+    writeFileSync(path, JSON.stringify(results({ laneModels: { review: { id: 'mai-code-2-flash', multiplier: null, source: '--review-model' } } })));
+    expect(readBenchResults(path).laneModels).toEqual({ review: { id: 'mai-code-2-flash', multiplier: null, source: '--review-model' } });
   });
 });

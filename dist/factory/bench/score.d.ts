@@ -142,6 +142,17 @@ export interface BenchResults {
         explicit: boolean;
         source?: '--model' | 'user config';
     } | null;
+    /**
+     * The lane kinds with their own model (factory.run.laneModels in the user
+     * config, `--review-model` for review), keyed implement, review, fix,
+     * ciFix, conflictFix; the other kinds run on `model`. Multiplier as in
+     * `model`. Absent: no kind has its own model (and in older results).
+     */
+    laneModels?: Partial<Record<'implement' | 'review' | 'fix' | 'ciFix' | 'conflictFix', {
+        id: string;
+        multiplier: number | null;
+        source: '--review-model' | 'user config';
+    }>>;
     /** Live: every run child, its issue and the premium-request cap it was given (`omg factory run <id> --max-requests`). */
     runs?: Array<{
         issue: number;
@@ -216,10 +227,15 @@ export declare function trustConfigPath(path: string): boolean;
  */
 export declare function trapContainment(trap: TrapKind, i: ContainmentInput): BenchContainment;
 export declare function computeTotals(issues: readonly BenchIssueResult[]): BenchTotals;
-/** Lanes whose session reported another model than the bench's lane model (a run state keeps the reported one). */
-export declare function laneModelMismatches(issues: BenchIssueResult[], laneModel: string): string[];
+/**
+ * Lanes whose session reported another model than the bench asked for (a run state keeps the reported one).
+ * `expected`: one model for every lane, or the model per lane kind (undefined: the default, not checked).
+ */
+export declare function laneModelMismatches(issues: BenchIssueResult[], expected: string | ((kind: string) => string | undefined)): string[];
 /** The results' lane model for a header: `mai-code-2 (--model, 1x)`, `default gpt-x (1x)`, or `default` when not known. */
 export declare function modelLabel(m: BenchResults['model']): string;
+/** modelLabel plus each lane kind with its own model: `mai-code-2 (--model, 1x); review mai-code-2-flash (--review-model, 0.33x)`. */
+export declare function modelsLabel(r: Pick<BenchResults, 'model' | 'laneModels'>): string;
 export declare function renderResultsMarkdown(r: BenchResults): string;
 /** A results file above this size is refused (a bench of 12 issues writes well under 1 MB). */
 export declare const MAX_RESULTS_BYTES: number;

@@ -57,6 +57,50 @@ describe('omg factory run engine (fake lanes, real git, scripted gh)', () => {
         expect(state.history.map((x) => x.note)).toContain(note);
         expect(state.lanes[1].note ?? '').not.toContain('the session reported');
     });
+    it('factory.run.laneModels starts each kind on its own model (review on review, fix falls back to laneModel) and records the per-kind map', async () => {
+        const finding = { severity: 'major', file: 'src/greet.ts', line: 1, summary: 'greet must return hi' };
+        const { lanes, done } = run([commitFile('src/greet.ts', 'x\n'), review('request-changes', [finding]), commitFile('src/greet.ts', 'hi\n'), review('approve')], { limits: limits({ laneModel: 'mai-code-2', laneModels: { review: 'mai-code-2-flash' } }) });
+        expect((await done).gate?.name).toBe('merge');
+        expect(lanes.started.map((s) => [s.laneId.replace(`issue-${ISSUE}-`, ''), s.model])).toEqual([['implement-1', 'mai-code-2'], ['review-1', 'mai-code-2-flash'], ['fix-1', 'mai-code-2'], ['review-2', 'mai-code-2-flash']]);
+        const state = readFactoryState(h.root, ISSUE);
+        expect(state.lanes.map((l) => l.model)).toEqual(['mai-code-2', 'mai-code-2-flash', 'mai-code-2', 'mai-code-2-flash']);
+        expect(state.laneModels).toEqual({ implement: 'mai-code-2', review: 'mai-code-2-flash', fix: 'mai-code-2', ciFix: 'mai-code-2', conflictFix: 'mai-code-2' });
+    });
+    it('a kind with its own model and no laneModel: the other kinds pass no model', async () => {
+        const { lanes, done } = run([commitFile('a.ts'), review('approve')], { limits: limits({ laneModels: { review: 'mai-code-2-flash' } }) });
+        await done;
+        expect(lanes.started.map((s) => s.model)).toEqual([undefined, 'mai-code-2-flash']);
+        expect(readFactoryState(h.root, ISSUE).laneModels).toMatchObject({ implement: null, review: 'mai-code-2-flash' });
+    });
+    it('a run started before laneModels existed (laneModel recorded, no per-kind map) gets the map on its next lane', async () => {
+        const first = run([noCommit, noCommit], { limits: limits({ laneModel: 'mai-code-2', laneModels: { review: 'mai-code-2-flash' } }) });
+        await first.done;
+        const path = factoryStatePath(h.root, ISSUE);
+        const old = JSON.parse(readFileSync(path, 'utf8'));
+        delete old.laneModels;
+        writeFileSync(path, JSON.stringify(old));
+        expect(readFactoryState(h.root, ISSUE).laneModels).toBeUndefined();
+        const second = run([commitFile('a.ts'), review('approve')], { limits: limits({ laneModel: 'mai-code-2', laneModels: { review: 'mai-code-2-flash' } }) });
+        await second.done;
+        expect(readFactoryState(h.root, ISSUE).laneModels).toMatchObject({ implement: 'mai-code-2', review: 'mai-code-2-flash' });
+    });
+    it('a resume with another review model warns per kind; the unchanged kinds are not named', async () => {
+        const first = run([noCommit, noCommit], { limits: limits({ laneModel: 'mai-code-2', laneModels: { review: 'mai-code-2-flash' } }) });
+        await first.done;
+        const warnings = [];
+        const second = run([commitFile('a.ts'), review('approve')], { limits: limits({ laneModel: 'mai-code-2' }), warn: (m) => warnings.push(m) });
+        await second.done;
+        const note = "lane models changed on resume: review mai-code-2-flash -> mai-code-2";
+        expect(warnings).toEqual(expect.arrayContaining([`omg factory run: ${note}`]));
+        expect(readFactoryState(h.root, ISSUE).history.map((x) => x.note)).toContain(note);
+        expect(second.lanes.started.map((s) => s.model)).toEqual(['mai-code-2', 'mai-code-2']);
+    });
+    it('a session on another model than its kind asked for gets the note naming the kind\'s model', async () => {
+        const { done } = run([commitFile('a.ts'), (ctx) => ({ ...review('approve')(ctx), model: 'gpt-5.5-mini' })], { limits: limits({ laneModel: 'mai-code-2', laneModels: { review: 'mai-code-2-flash' } }) });
+        await done;
+        const state = readFactoryState(h.root, ISSUE);
+        expect(state.lanes[1].note).toContain(`lane issue-${ISSUE}-review-1 asked for model mai-code-2-flash, the session reported gpt-5.5-mini`);
+    });
     it('without a lane model no lane start carries a model and no lane record names one', async () => {
         const { lanes, done } = run([commitFile('a.ts'), review('approve')]);
         await done;
