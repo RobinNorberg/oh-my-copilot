@@ -235,8 +235,11 @@ export interface CopilotRunStartOptions {
    * your node_modules, as the sandbox cannot open a package dir through a
    * junction). A non-null problem, or a throw, fails the job and no runtime
    * or session is started. Not called for a review job (its shell is read-only).
+   * A promise keeps the event loop free while the worktree is readied: the
+   * job's timeout is armed and the runtime started only once it settles, and
+   * prepared(jobId) settles with it (a caller starts its idle clock after).
    */
-  beforeSandboxedSession?: (worktree: string) => string | null;
+  beforeSandboxedSession?: (worktree: string) => string | null | Promise<string | null>;
 }
 
 /**
@@ -484,6 +487,8 @@ interface Job {
   stopReason: CopilotRunStopReason | null;
   requestStop: (reason: CopilotRunStopReason) => void;
   stopped: Promise<void>;
+  /** Settles once beforeSandboxedSession has readied the worktree (at once when it ran synchronously or not at all). */
+  prepared: Promise<void>;
   done: Promise<void>;
 }
 
@@ -1158,19 +1163,32 @@ export class CopilotRunManager {
       stopReason: null,
       requestStop: (reason) => requestStop(reason),
       stopped,
+      prepared: Promise.resolve(),
       done: Promise.resolve(),
     };
     this.jobs.set(id, job);
-    // The OS sandbox on Windows (a write job): the caller readies the worktree now, synchronously, so nothing can stop
-    // the job mid-way and neither the job's timeout below nor the caller's idle clock (it starts once start() returns) runs.
+    // The OS sandbox on Windows (a write job): the caller readies the worktree now, before the job's timeout below is
+    // armed and before the runtime starts. A synchronous hook runs before start() returns; an async one (a promise)
+    // keeps the event loop free, and the job's timeout and run wait for it (job.prepared, which the caller awaits
+    // before its own idle clock starts: prepared()).
     const intent = this.sandboxIntent(sandboxSettings);
+    let preparing: Promise<void> | null = null;
     if (options.beforeSandboxedSession && worktree && profile !== 'review' && intent.windowsCopy) {
-      try { job.unprepared = options.beforeSandboxedSession(worktree.path); } catch (err) { job.unprepared = errText(err); }
+      try {
+        const ready = options.beforeSandboxedSession(worktree.path);
+        if (ready instanceof Promise) preparing = ready.then((problem) => { job.unprepared = problem; }, (err: unknown) => { job.unprepared = errText(err); });
+        else job.unprepared = ready;
+      } catch (err) { job.unprepared = errText(err); }
     }
-    const timer = setTimeout(() => job.requestStop('timeout'), timeoutMs);
-    timer.unref?.();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const arm = (): void => {
+      timer = setTimeout(() => job.requestStop('timeout'), timeoutMs);
+      timer.unref?.();
+    };
+    if (preparing) job.prepared = preparing;
+    else arm();
     // The status turns terminal only after the teardown and the change summary.
-    job.done = this.run(job)
+    job.done = (preparing ? preparing.then(() => { arm(); return this.run(job); }) : this.run(job))
       .catch((err): CopilotRunStatus => { job.error ??= errText(err); return 'failed'; })
       .then((outcome) => {
         clearTimeout(timer);
@@ -1234,6 +1252,11 @@ export class CopilotRunManager {
 
   status(jobId: string): CopilotRunSnapshot {
     return this.snapshot(this.find(jobId));
+  }
+
+  /** Settles once the job's worktree is readied (an async beforeSandboxedSession); at once otherwise. Never rejects. */
+  prepared(jobId: string): Promise<void> {
+    return this.find(jobId).prepared;
   }
 
   /** Wait until the job ends or `timeoutMs` passes; the snapshot says which. */
@@ -1390,6 +1413,9 @@ export class CopilotRunManager {
       job.error = `worktree-unprepared: ${job.unprepared}; no session was started`;
       return 'failed';
     }
+    // Cancelled while an async beforeSandboxedSession readied the worktree: no runtime is started for it.
+    const early: CopilotRunStopReason | null = job.stopReason;
+    if (early === 'cancelled') return 'cancelled';
     // A cassette that cannot be applied throws (withCassette): report it, never fall back to a plain client.
     let loadError: string | undefined;
     const loaded = await deps.loadSdk().catch((err: unknown) => { loadError = `loading @github/copilot-sdk failed: ${errText(err)}`; return null; });

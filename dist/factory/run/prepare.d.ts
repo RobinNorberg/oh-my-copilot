@@ -94,13 +94,27 @@ export declare function linkNodeModules(root: string, checkout: string, warn?: (
  * first; a complete tree there is moved here instead of a new copy
  * (adoptLaneTree, with its checks and trust argument).
  */
-export declare function prepareLaneNodeModules(root: string, worktree: string, o: {
+export declare function prepareLaneNodeModules(root: string, worktree: string, o: LaneTreeOptions): string | null;
+/**
+ * prepareLaneNodeModules without blocking the event loop: the same steps,
+ * checks and result, but the walk gives the event loop a turn every few
+ * milliseconds and files are copied by fs.promises, a bounded number at a
+ * time (runTreeStepsAsync), so the engine's other lanes, its heartbeats and
+ * timers keep running while a lane's tree is copied. Every copy has landed
+ * before the tree's completion line is written and before a cut-off tree is
+ * removed. One preparation runs at a time in a process (the next waits), so
+ * each one's free-space check still sees the space the one before it took,
+ * as when they were synchronous.
+ */
+export declare function prepareLaneNodeModulesAsync(root: string, worktree: string, o: LaneTreeOptions): Promise<string | null>;
+/** The options of prepareLaneNodeModules. */
+export interface LaneTreeOptions {
     workspaces?: readonly string[];
     warn?: (message: string) => void;
     ignored: (paths: string[]) => boolean;
     copy?: true | Partial<GateTreeCopyLimits>;
     reuseFrom?: readonly string[];
-}): string | null;
+}
 /**
  * Before the engine commits a lane worktree: a copied tree
  * prepareLaneNodeModules built there (its marker with the completion line)

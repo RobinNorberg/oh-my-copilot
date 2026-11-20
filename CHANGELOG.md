@@ -2,6 +2,12 @@
 
 All notable changes to oh-my-copilot will be documented in this file.
 
+## [Unreleased]
+
+### Changed
+
+- **A lane's node_modules copy no longer stalls the factory engine.** On Windows in the OS sandbox, the copy of your node_modules a write lane gets ran synchronously, so the engine's event loop stopped for the whole copy (12 to 33 s for this repository's node_modules on a loaded machine): other lanes' event handling, heartbeats and timers waited. The lane copy is now asynchronous. The walk gives the event loop a turn every few milliseconds, and files are copied with `fs.promises`, 16 at a time. The same copy here took about 5.7 s, and the event loop was never held for more than 40 ms. Every guarantee is kept: the copy is made before the lane's runtime starts and before its timeout and idle clock run, with the same bounds and free-space check, and the same checks on links, the git ignore check and the workspace trees. Every file copy has landed before the tree is marked complete, and before a cut-off tree is removed. A failure still fails the lane with `worktree-unprepared: ...; no session was started`. One lane copy runs at a time, so each free-space check sees the space the one before it took. A lane cancelled during its copy ends cancelled without starting a runtime. The gates' copied trees are still built synchronously.
+
 # oh-my-copilot v5.30.0
 
 ## [5.30.0] - 2026-11-20

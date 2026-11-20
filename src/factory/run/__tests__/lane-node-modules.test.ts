@@ -14,8 +14,18 @@ vi.mock('fs', async (importOriginal) => {
   };
   return { ...real, default: { ...real, unlinkSync }, unlinkSync };
 });
+// Lets one test make the async copy (fs/promises copyFile) fail for one source path (a busy file).
+const copyFault = vi.hoisted(() => ({ name: undefined as string | undefined }));
+vi.mock('fs/promises', async (importOriginal) => {
+  const real = await importOriginal<typeof import('fs/promises')>();
+  const copyFile: typeof real.copyFile = async (src, dest, mode) => {
+    if (copyFault.name !== undefined && String(src).endsWith(copyFault.name)) throw Object.assign(new Error(`EBUSY: resource busy or locked, copyfile '${String(src)}'`), { code: 'EBUSY' });
+    return real.copyFile(src, dest, mode);
+  };
+  return { ...real, default: { ...real, copyFile }, copyFile };
+});
 
-import { GATE_TREE_COMPLETE, GATE_TREE_MARKER, nestedTreeDirs, prepareLaneNodeModules, settleLaneNodeModules, unlinkNodeModules } from '../prepare.js';
+import { GATE_TREE_COMPLETE, GATE_TREE_MARKER, nestedTreeDirs, prepareLaneNodeModules, prepareLaneNodeModulesAsync, settleLaneNodeModules, unlinkNodeModules } from '../prepare.js';
 
 const linkType = process.platform === 'win32' ? 'junction' : 'dir';
 const dirs: string[] = [];
@@ -36,6 +46,7 @@ function removeDir(dir: string): void {
 }
 
 afterEach(() => {
+  copyFault.name = undefined;
   for (const d of dirs.splice(0)) removeDir(d);
 });
 
@@ -352,5 +363,97 @@ describe('settleLaneNodeModules (before the lane commit)', () => {
     writeFileSync(join(other.worktree, 'node_modules', 'own.js'), 'own\n');
     expect(settleLaneNodeModules(other.root, other.worktree, never)).toBeNull();
     expect(readFileSync(join(other.worktree, 'node_modules', 'own.js'), 'utf-8')).toBe('own\n');
+  });
+});
+
+describe('prepareLaneNodeModulesAsync (the copy without blocking the event loop)', () => {
+  /** setup() plus `packages` generated packages of 2 dirs and 20 files each in yours, and a second empty lane worktree. */
+  function generated(packages = 60): { root: string; worktree: string; store: string; other: string } {
+    const s = setup();
+    for (let p = 0; p < packages; p += 1) {
+      for (const sub of ['lib', 'lib/inner']) {
+        mkdirSync(join(s.store, `pkg-${p}`, sub), { recursive: true });
+        for (let f = 0; f < 10; f += 1) writeFileSync(join(s.store, `pkg-${p}`, sub, `f${f}.js`), `module.exports = ${p * 100 + f};\n`);
+      }
+    }
+    const other = join(s.worktree, '..', 'lane-other');
+    mkdirSync(other);
+    return { ...s, other };
+  }
+
+  it('the same tree as the synchronous build, and timers fire while it is copied (the event loop is never held for the whole copy)', async () => {
+    const { root, worktree, store, other } = generated();
+    const before = fingerprint(store);
+    expect(prepareLaneNodeModules(root, other, { ignored: ignoredAll })).toBeNull();
+    const nm = join(worktree, 'node_modules');
+    // A timer callback that finds the tree begun but not complete ran in the middle of the copy.
+    const seen: string[] = [];
+    const tick = setInterval(() => {
+      if (!existsSync(join(nm, GATE_TREE_MARKER))) return seen.push('before');
+      seen.push(readFileSync(join(nm, GATE_TREE_MARKER), 'utf-8').includes(GATE_TREE_COMPLETE) ? 'complete' : 'copying');
+    }, 1);
+    let result: string | null;
+    try {
+      result = await prepareLaneNodeModulesAsync(root, worktree, { ignored: ignoredAll });
+    } finally {
+      clearInterval(tick);
+    }
+    expect(result).toBeNull();
+    expect(seen).toContain('copying');
+    expect(fingerprint(nm)).toEqual(fingerprint(join(other, 'node_modules')));
+    expect(readFileSync(join(nm, GATE_TREE_MARKER), 'utf-8').split('\n')).toContain(GATE_TREE_COMPLETE);
+    expect(lstatSync(join(nm, '.bin')).isSymbolicLink()).toBe(true);
+    expect(fingerprint(store)).toEqual(before);
+  });
+
+  it('a file copy that fails mid-tree: every copy settles, the cut-off tree is removed, the reason is returned (the lane does not start), yours untouched', async () => {
+    const { root, worktree, store } = generated(20);
+    const before = fingerprint(store);
+    copyFault.name = join('pkg-7', 'lib', 'f3.js');
+    const why = await prepareLaneNodeModulesAsync(root, worktree, { ignored: ignoredAll });
+    expect(why).toMatch(/the copied node_modules tree of the lane worktree .* could not be built \(EBUSY: resource busy or locked/);
+    expect(existsSync(join(worktree, 'node_modules'))).toBe(false);
+    expect(fingerprint(store)).toEqual(before);
+    // The next preparation builds it whole.
+    copyFault.name = undefined;
+    expect(await prepareLaneNodeModulesAsync(root, worktree, { ignored: ignoredAll })).toBeNull();
+    expect(readFileSync(join(worktree, 'node_modules', 'pkg-7', 'lib', 'f3.js'), 'utf-8')).toBe('module.exports = 703;\n');
+  });
+
+  it('over its bounds: the dry walk refuses before anything is copied, nothing is left, yours untouched', async () => {
+    const { root, worktree, store } = generated(5);
+    const before = fingerprint(store);
+    const why = await prepareLaneNodeModulesAsync(root, worktree, { ignored: ignoredAll, copy: { maxFiles: 20 } });
+    expect(why).toMatch(/could not be built \(.*over 20 entries/);
+    expect(existsSync(join(worktree, 'node_modules'))).toBe(false);
+    expect(fingerprint(store)).toEqual(before);
+  });
+
+  it('a cut-off copy is removed and built again; the earlier lane\'s tree is moved (reuseFrom), as in the synchronous build', async () => {
+    const { root, worktree, store, other } = generated(5);
+    const before = fingerprint(store);
+    expect(await prepareLaneNodeModulesAsync(root, worktree, { ignored: ignoredAll })).toBeNull();
+    const nm = join(worktree, 'node_modules');
+    writeFileSync(join(nm, GATE_TREE_MARKER), '');
+    rmSync(join(nm, 'pkg-2', 'lib'), { recursive: true });
+    expect(await prepareLaneNodeModulesAsync(root, worktree, { ignored: ignoredAll })).toBeNull();
+    expect(readFileSync(join(nm, 'pkg-2', 'lib', 'f1.js'), 'utf-8')).toBe('module.exports = 201;\n');
+    const tree = fingerprint(nm);
+    expect(await prepareLaneNodeModulesAsync(root, other, { ignored: ignoredAll, reuseFrom: [worktree], copy: { maxFiles: 1 } })).toBeNull();
+    expect(existsSync(nm)).toBe(false);
+    expect(fingerprint(join(other, 'node_modules'))).toEqual(tree);
+    expect(fingerprint(store)).toEqual(before);
+  });
+
+  it('one preparation at a time: the second starts (its ignore check) only after the first tree is complete', async () => {
+    const { root, worktree, other } = generated(10);
+    const firstDone: boolean[] = [];
+    const a = prepareLaneNodeModulesAsync(root, worktree, { ignored: ignoredAll });
+    const b = prepareLaneNodeModulesAsync(root, other, { ignored: () => {
+      firstDone.push(readFileSync(join(worktree, 'node_modules', GATE_TREE_MARKER), 'utf-8').includes(GATE_TREE_COMPLETE));
+      return true;
+    } });
+    expect(await Promise.all([a, b])).toEqual([null, null]);
+    expect(firstDone).toEqual([true]);
   });
 });

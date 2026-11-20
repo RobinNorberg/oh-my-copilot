@@ -53,7 +53,8 @@ export interface LaneOutcome {
   noChanges?: boolean;
 }
 
-export type LaneScript = (ctx: LaneCtx) => LaneOutcome | void;
+/** A script may be async (a lane that awaits its beforeSandboxedSession). */
+export type LaneScript = (ctx: LaneCtx) => LaneOutcome | void | Promise<LaneOutcome | void>;
 
 const generations = new Map<string, number>();
 
@@ -148,7 +149,7 @@ export class FakeLanes implements LaneBackend {
       this.onRunningPoll(remoteId);
       return this.result(job, remoteId, 'running');
     }
-    if (!job.outcome) job.outcome = job.script(job.ctx) ?? {};
+    if (!job.outcome) job.outcome = (await job.script(job.ctx)) ?? {};
     if (job.outcome.lost) throw new LaneLostError(remoteId, 'job lost');
     return this.result(job, remoteId, job.outcome.state ?? 'completed');
   }
@@ -165,7 +166,7 @@ export class FakeLanes implements LaneBackend {
     // Like copilot_run after a restart: a job the backend does not know (or lost) is LaneLostError.
     if (!job || job.outcome?.lost) throw new LaneLostError(remoteId, `unknown job ${remoteId}`);
     if (this.cancelFinds === 'completed') {
-      if (!job.outcome) job.outcome = job.script(job.ctx) ?? {};
+      if (!job.outcome) job.outcome = (await job.script(job.ctx)) ?? {};
       return { supported: true, result: this.result(job, remoteId, 'completed') };
     }
     job.outcome = { ...(job.outcome ?? {}), state: 'cancelled' };

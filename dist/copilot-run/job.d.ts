@@ -146,8 +146,11 @@ export interface CopilotRunStartOptions {
      * your node_modules, as the sandbox cannot open a package dir through a
      * junction). A non-null problem, or a throw, fails the job and no runtime
      * or session is started. Not called for a review job (its shell is read-only).
+     * A promise keeps the event loop free while the worktree is readied: the
+     * job's timeout is armed and the runtime started only once it settles, and
+     * prepared(jobId) settles with it (a caller starts its idle clock after).
      */
-    beforeSandboxedSession?: (worktree: string) => string | null;
+    beforeSandboxedSession?: (worktree: string) => string | null | Promise<string | null>;
 }
 /**
  * A credential-free session env, in place. Removed: GitHub tokens
@@ -416,6 +419,8 @@ export declare class CopilotRunManager {
     /** Validate, ask the budget governor, prepare the worktree, and start the session in the background. */
     start(input: CopilotRunStartInput, options?: CopilotRunStartOptions): CopilotRunSnapshot;
     status(jobId: string): CopilotRunSnapshot;
+    /** Settles once the job's worktree is readied (an async beforeSandboxedSession); at once otherwise. Never rejects. */
+    prepared(jobId: string): Promise<void>;
     /** Wait until the job ends or `timeoutMs` passes; the snapshot says which. */
     wait(jobId: string, timeoutMs: number): Promise<CopilotRunSnapshot>;
     /** Abort the session and wait (bounded) for the teardown. */
