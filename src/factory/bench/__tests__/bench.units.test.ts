@@ -371,6 +371,8 @@ describe('fixture', () => {
     expect(readFixtureMeta(join(dir, 'b'))).toEqual(meta);
     expect(git(meta.root, 'rev-parse', 'HEAD')).toBe(meta.baseSha);
     expect(git(meta.root, 'status', '--porcelain')).toBe('');
+    // The engine's prepare merge (#15 after #14 lands) commits with the repository's identity: a CI runner has no global one.
+    expect([git(meta.root, 'config', '--local', '--get', 'user.name'), git(meta.root, 'config', '--local', '--get', 'user.email')]).toEqual(['omg-bench', 'omg-bench@localhost']);
     expect(git(meta.root, 'show', `${meta.baseSha}:.copilot/omg.jsonc`)).toBe(BENCH_OMG_JSONC.trimEnd());
     const backlog = git(meta.root, 'ls-tree', '--name-only', `${meta.baseSha}:.copilot/backlog`).split('\n');
     expect(backlog).toHaveLength(BENCH_ISSUES.length);

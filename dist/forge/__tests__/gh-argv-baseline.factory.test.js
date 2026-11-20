@@ -71,8 +71,12 @@ const suites = (sha) => `gh ["api","--hostname","github.com","--method","GET","r
 // The gates entry first reads the PR's mergeability (a PR that conflicts with its moved base goes back to prepare).
 const MERGEABILITY = `gh ["pr","view","${PR}","--json","headRefOid,mergeable,mergeStateStatus"] cwd=<root>`;
 const GATES_GREEN = [MERGEABILITY, HEAD_STATE, CHECKS, runList('<head>'), suites('<head>'), VIEW_HEAD, HEAD_STATE, runList('<head>')];
-/** The merge park: the PR view, the merge-rule gate read on that head, the PR comment with the command (the item's gate comment and its read for a parent rollup follow). */
-const MERGE_PARK = (key) => [...OPEN_VIEW, REVIEW_READ, CHECKS, runList('<head>'), suites('<head>'), VIEW_HEAD, comment('pr', PR, key, 'merge')];
+/**
+ * The merge park: the PR view, the human-review read, merge()'s own mergeability read (a base that moved under a
+ * parked merge sends the PR back to prepare, as gates does), the merge-rule gate read on that head, the PR comment
+ * with the command (the item's gate comment and its read for a parent rollup follow).
+ */
+const MERGE_PARK = (key) => [...OPEN_VIEW, REVIEW_READ, MERGEABILITY, CHECKS, runList('<head>'), suites('<head>'), VIEW_HEAD, comment('pr', PR, key, 'merge')];
 /** The review-feedback query as literal text: any change to REVIEW_FEEDBACK_QUERY must break this test (the query is part of the pinned gh argv). */
 const PINNED_REVIEW_FEEDBACK_QUERY = 'query($owner:String!,$name:String!,$number:Int!){viewer{login} repository(owner:$owner,name:$name){viewerPermission collaborators(first:100){pageInfo{hasNextPage} edges{permission node{login}}} pullRequest(number:$number){headRefOid latestReviews(first:50){pageInfo{hasNextPage} nodes{id state submittedAt body author{__typename login} commit{oid}}} latestOpinionatedReviews(first:50){pageInfo{hasNextPage} nodes{state submittedAt body author{__typename login} commit{oid}}} reviewRequests(first:20){pageInfo{hasNextPage} nodes{requestedReviewer{__typename ... on User{login} ... on Bot{login} ... on Mannequin{login} ... on Team{slug}}}} reviewThreads(first:100){pageInfo{hasNextPage} nodes{id isResolved isOutdated resolvedBy{login} comments(first:20){pageInfo{hasNextPage} nodes{body path line originalLine createdAt author{__typename login}}}}}}}}';
 /** The merge step's human review read of the run's sealed repository: a GitHub run without a forge config (issue or ci-heal) reads it too (PR #471 HIGH-2). */

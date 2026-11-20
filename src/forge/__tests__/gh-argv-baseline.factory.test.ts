@@ -88,8 +88,12 @@ const suites = (sha: string) => `gh ["api","--hostname","github.com","--method",
 // The gates entry first reads the PR's mergeability (a PR that conflicts with its moved base goes back to prepare).
 const MERGEABILITY = `gh ["pr","view","${PR}","--json","headRefOid,mergeable,mergeStateStatus"] cwd=<root>`;
 const GATES_GREEN = [MERGEABILITY, HEAD_STATE, CHECKS, runList('<head>'), suites('<head>'), VIEW_HEAD, HEAD_STATE, runList('<head>')];
-/** The merge park: the PR view, the merge-rule gate read on that head, the PR comment with the command (the item's gate comment and its read for a parent rollup follow). */
-const MERGE_PARK = (key: string) => [...OPEN_VIEW, REVIEW_READ, CHECKS, runList('<head>'), suites('<head>'), VIEW_HEAD, comment('pr', PR, key, 'merge')];
+/**
+ * The merge park: the PR view, the human-review read, merge()'s own mergeability read (a base that moved under a
+ * parked merge sends the PR back to prepare, as gates does), the merge-rule gate read on that head, the PR comment
+ * with the command (the item's gate comment and its read for a parent rollup follow).
+ */
+const MERGE_PARK = (key: string) => [...OPEN_VIEW, REVIEW_READ, MERGEABILITY, CHECKS, runList('<head>'), suites('<head>'), VIEW_HEAD, comment('pr', PR, key, 'merge')];
 
 /** The review-feedback query as literal text: any change to REVIEW_FEEDBACK_QUERY must break this test (the query is part of the pinned gh argv). */
 const PINNED_REVIEW_FEEDBACK_QUERY =

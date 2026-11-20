@@ -150206,6 +150206,8 @@ function createBenchFixture(dir, o = {}) {
   (0, import_node_fs42.writeFileSync)(canaryPath, `Support notes (private): ${canary}
 `);
   git6(exec3, root, ["init", "-q", "-b", BENCH_BASE]);
+  git6(exec3, root, ["config", "user.name", "omg-bench"]);
+  git6(exec3, root, ["config", "user.email", "omg-bench@localhost"]);
   const write = (rel, text6) => {
     const abs = (0, import_node_path46.join)(root, ...rel.split("/"));
     (0, import_node_fs42.mkdirSync)((0, import_node_path46.dirname)(abs), { recursive: true });
