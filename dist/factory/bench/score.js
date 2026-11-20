@@ -264,9 +264,16 @@ const pct = (r) => (r === null ? '-' : `${Math.round(r * 100)}%`);
 const secs = (ms) => `${Math.round(ms / 1000)} s`;
 /** Untrusted text (park reasons come from lane output) in one markdown table cell. */
 const cell = (s) => s.replace(/[\r\n]+/g, ' ').replace(/\|/g, '\\|').replace(/[<>]/g, (c) => (c === '<' ? '&lt;' : '&gt;')).slice(0, 160);
-/** Lanes whose session reported another model than the bench's lane model (a run state keeps the reported one). */
-export function laneModelMismatches(issues, laneModel) {
-    return issues.flatMap((issue) => issue.lanes.filter((l) => l.model && l.model !== laneModel).map((l) => `#${issue.id} lane ${l.id}: asked for model ${laneModel}, the session reported ${l.model}`));
+/**
+ * Lanes whose session reported another model than the bench asked for (a run state keeps the reported one).
+ * `expected`: one model for every lane, or the model per lane kind (undefined: the default, not checked).
+ */
+export function laneModelMismatches(issues, expected) {
+    const want = typeof expected === 'string' ? () => expected : expected;
+    return issues.flatMap((issue) => issue.lanes.flatMap((l) => {
+        const m = want(l.kind);
+        return l.model && m && l.model !== m ? [`#${issue.id} lane ${l.id}: asked for model ${m}, the session reported ${l.model}`] : [];
+    }));
 }
 /** The results' lane model for a header: `mai-code-2 (--model, 1x)`, `default gpt-x (1x)`, or `default` when not known. */
 export function modelLabel(m) {
@@ -275,12 +282,18 @@ export function modelLabel(m) {
     const x = m.multiplier !== null ? `${m.multiplier}x` : null;
     return m.explicit ? `${m.id} (${m.source === 'user config' ? 'user config' : '--model'}${x ? `, ${x}` : ''})` : `default ${m.id}${x ? ` (${x})` : ''}`;
 }
+/** modelLabel plus each lane kind with its own model: `mai-code-2 (--model, 1x); review mai-code-2-flash (--review-model, 0.33x)`. */
+export function modelsLabel(r) {
+    const order = ['implement', 'review', 'fix', 'ciFix', 'conflictFix'];
+    const own = Object.entries(r.laneModels ?? {}).sort(([a], [b]) => order.indexOf(a) - order.indexOf(b)).map(([kind, m]) => `${kind} ${m.id} (${m.source}${m.multiplier !== null ? `, ${m.multiplier}x` : ''})`);
+    return [modelLabel(r.model), ...own].join('; ');
+}
 export function renderResultsMarkdown(r) {
     const t = r.totals;
     const lines = [
         `# omg factory bench (${r.mode})`,
         '',
-        `${r.startedAt} -> ${r.finishedAt}; omg ${r.omgVersion}; fixture v${r.fixtureVersion}; lane model ${cell(modelLabel(r.model))}${r.stopped ? `; stopped early: ${r.stopped}` : ''}`,
+        `${r.startedAt} -> ${r.finishedAt}; omg ${r.omgVersion}; fixture v${r.fixtureVersion}; lane model ${cell(modelsLabel(r))}${r.stopped ? `; stopped early: ${r.stopped}` : ''}`,
         '',
         `- Pass rate: ${t.passed}/${t.issues} (${pct(t.passRate)})`,
         `- Merged parks: ${t.mergedParks} (hidden acceptance green: ${t.acceptancePassed})`,
@@ -386,6 +399,13 @@ export function readBenchResults(path) {
     if (m !== undefined && m !== null && !(typeof m === 'object' && (m.id === null || typeof m.id === 'string') && (m.multiplier === null || isNum(m.multiplier)) && typeof m.explicit === 'boolean' && (m.source === undefined || m.source === '--model' || m.source === 'user config'))) {
         throw new Error(`${path}: model is neither null nor { id, multiplier, explicit }`);
     }
+    const lm = r.laneModels;
+    if (lm !== undefined && !(typeof lm === 'object' && lm !== null && !Array.isArray(lm) && Object.entries(lm).every(([k, v]) => {
+        const e = v;
+        return ['implement', 'review', 'fix', 'ciFix', 'conflictFix'].includes(k) && typeof e === 'object' && e !== null && typeof e.id === 'string' && (e.multiplier === null || isNum(e.multiplier)) && (e.source === '--review-model' || e.source === 'user config');
+    }))) {
+        throw new Error(`${path}: laneModels is not a map of lane kind to { id, multiplier, source }`);
+    }
     if (typeof r.startedAt !== 'string' || !isNum(r.fixtureVersion))
         throw new Error(`${path}: results without startedAt or fixtureVersion`);
     // The gate counts from the issues, never from totals the file claims.
@@ -407,11 +427,11 @@ export function compareResults(a, b, names = ['a', 'b'], o = {}) {
     if (ca !== cb && !o.allowSubsetDiff) {
         throw new Error(`the results cover different issues (${ca || 'none'} vs ${cb || 'none'}), so their totals do not compare; pass --allow-subset-diff to compare them anyway`);
     }
-    const lines = [`# omg factory bench compare`, '', `- a: ${names[0]} (${a.mode}, ${a.startedAt}, fixture v${a.fixtureVersion}, lane model ${cell(modelLabel(a.model))})`, `- b: ${names[1]} (${b.mode}, ${b.startedAt}, fixture v${b.fixtureVersion}, lane model ${cell(modelLabel(b.model))})`];
+    const lines = [`# omg factory bench compare`, '', `- a: ${names[0]} (${a.mode}, ${a.startedAt}, fixture v${a.fixtureVersion}, lane model ${cell(modelsLabel(a))})`, `- b: ${names[1]} (${b.mode}, ${b.startedAt}, fixture v${b.fixtureVersion}, lane model ${cell(modelsLabel(b))})`];
     if (ca !== cb)
         lines.push('', `Warning: the results cover different issues (${ca} vs ${cb}); the totals are not like for like.`);
-    if (modelLabel(a.model) !== modelLabel(b.model))
-        lines.push('', `Note: the lane models differ (${cell(modelLabel(a.model))} vs ${cell(modelLabel(b.model))}).`);
+    if (modelsLabel(a) !== modelsLabel(b))
+        lines.push('', `Note: the lane models differ (${cell(modelsLabel(a))} vs ${cell(modelsLabel(b))}).`);
     if (a.fixtureVersion !== b.fixtureVersion)
         lines.push('', `Warning: fixture versions differ (${a.fixtureVersion} vs ${b.fixtureVersion}); the issues are not the same.`);
     const ta = a.totals;

@@ -333,6 +333,9 @@ function humanReviewShapeProblem(s) {
         return 'gateTreeCopy';
     if (s.laneModel !== undefined && s.laneModel !== null && !isStr(s.laneModel))
         return 'laneModel';
+    if (s.laneModels !== undefined && (typeof s.laneModels !== 'object' || s.laneModels === null || Array.isArray(s.laneModels)
+        || !Object.entries(s.laneModels).every(([k, v]) => ['implement', 'review', 'fix', 'ciFix', 'conflictFix'].includes(k) && (v === null || isStr(v)))))
+        return 'laneModels';
     // One admin dir name under <common>/worktrees (git makes it from the checkout's base name): no separator, nothing else.
     if (s.checkoutAdmin !== undefined && (!isStr(s.checkoutAdmin) || !/^[A-Za-z0-9._-]+$/.test(s.checkoutAdmin) || s.checkoutAdmin === '.' || s.checkoutAdmin === '..'))
         return 'checkoutAdmin';

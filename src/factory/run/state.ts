@@ -308,6 +308,14 @@ export interface FactoryRunState {
    */
   laneModel?: string | null;
   /**
+   * Every lane kind's model as the run's first lane resolved it
+   * (factory.run.laneModels[kind] ?? laneModel; null: Copilot's default),
+   * keyed implement, review, fix, ciFix, conflictFix. Informational like
+   * laneModel: the resume warning compares it per kind and `run status`
+   * shows it. Optional: older state files lack it.
+   */
+  laneModels?: Partial<Record<'implement' | 'review' | 'fix' | 'ciFix' | 'conflictFix', string | null>>;
+  /**
    * The name of the prepare checkout's admin dir under `<common>/worktrees/`,
    * as `worktree add` made it: a later invocation reads the checkout only
    * through that admin dir, never another one its `.git` file names.
@@ -694,6 +702,8 @@ function humanReviewShapeProblem(s: Record<string, unknown>): string | null {
   if (s.plainHeadRan !== undefined && s.plainHeadRan !== true) return 'plainHeadRan';
   if (s.gateTreeCopy !== undefined && s.gateTreeCopy !== true) return 'gateTreeCopy';
   if (s.laneModel !== undefined && s.laneModel !== null && !isStr(s.laneModel)) return 'laneModel';
+  if (s.laneModels !== undefined && (typeof s.laneModels !== 'object' || s.laneModels === null || Array.isArray(s.laneModels)
+    || !Object.entries(s.laneModels).every(([k, v]) => ['implement', 'review', 'fix', 'ciFix', 'conflictFix'].includes(k) && (v === null || isStr(v))))) return 'laneModels';
   // One admin dir name under <common>/worktrees (git makes it from the checkout's base name): no separator, nothing else.
   if (s.checkoutAdmin !== undefined && (!isStr(s.checkoutAdmin) || !/^[A-Za-z0-9._-]+$/.test(s.checkoutAdmin) || s.checkoutAdmin === '.' || s.checkoutAdmin === '..')) return 'checkoutAdmin';
   const cal = s.gateCalibration as Record<string, unknown> | undefined;

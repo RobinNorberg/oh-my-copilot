@@ -2,6 +2,12 @@
 
 All notable changes to oh-my-copilot will be documented in this file.
 
+## [Unreleased]
+
+### Added
+
+- **A model per factory lane kind.** `factory.run.laneModels` in the user config sets a Copilot model for one lane kind (`implement`, `review`, `fix`, `ciFix`, `conflictFix`), so review lanes can run a cheaper model (for example `mai-code-2-flash`) while implement lanes stay on `mai-code-2`. Each lane starts on `laneModels[kind]`, else `factory.run.laneModel` (or `--model`), else Copilot's default. The trust rules are those of `laneModel`: ids must be in `knownModels`, and the working-tree project config cannot set it. `omg factory run --review-model <id>` and `omg factory bench run --review-model <id>` set the review model for one run (passed on to `--parallel` and bench children). The run state records the per-kind map, `omg factory run status` shows it, and a resumed run warns per changed kind. A live bench checks every distinct lane model against the account's `listModels()` and applies `--allow-multiplier` to each one's own multiplier; the results JSON (`laneModels`), its summary and the `bench compare` header show the per-kind models. Budget accounting already counts each lane's own recorded usage, so a cheaper review model lowers the run's measured total. See docs/REFERENCE.md.
+
 # oh-my-copilot v5.30.0
 
 ## [5.30.0] - 2026-11-20

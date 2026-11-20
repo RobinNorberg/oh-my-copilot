@@ -155,6 +155,21 @@ describe('omg factory run CLI', () => {
         expect(await cli(configured, 'status', String(ISSUE))).toBe(0);
         expect(out.join('\n')).toMatch(/implement-1 completed credits \S+ model mai-code-2/);
     }, ENGINE_FLOW_TIMEOUT_MS);
+    it('--review-model: an unknown id exits 2; a known one starts review lanes on it over factory.run.laneModels.review, the rest on --model, and status shows the per-kind models', async () => {
+        lanes = new FakeLanes(h.root, []);
+        expect(await cli(deps(), String(ISSUE), '--review-model', 'nope')).toBe(2);
+        expect(out.join('\n')).toMatch(/--review-model "nope" is not a known Copilot model id/);
+        expect(readFactoryState(h.root, ISSUE)).toBeNull();
+        lanes = new FakeLanes(h.root, [commitFile('a.ts'), review('approve')]);
+        const configured = deps({ limits: () => resolveFactoryRunLimits({ factory: { run: { laneModel: 'claude-sonnet-5.5', laneModels: { review: 'claude-haiku-5.5', fix: 'gpt-6-luna' } } } }, undefined) });
+        expect(await cli(configured, String(ISSUE), '--model', 'mai-code-2', '--review-model', 'mai-code-2-flash')).toBe(0);
+        expect(lanes.started.map((s) => s.model)).toEqual(['mai-code-2', 'mai-code-2-flash']);
+        expect(readFactoryState(h.root, ISSUE).laneModels).toEqual({ implement: 'mai-code-2', review: 'mai-code-2-flash', fix: 'gpt-6-luna', ciFix: 'mai-code-2', conflictFix: 'mai-code-2' });
+        out = [];
+        expect(await cli(configured, 'status', String(ISSUE))).toBe(0);
+        expect(out.join('\n')).toContain('lane models: implement mai-code-2, review mai-code-2-flash, fix gpt-6-luna, ciFix mai-code-2, conflictFix mai-code-2');
+        expect(out.join('\n')).toMatch(/review-1 completed .*model mai-code-2-flash/);
+    }, ENGINE_FLOW_TIMEOUT_MS);
     describe('--next (shipyard ↔ factory design §3.5)', () => {
         /** Tracker items by id; #7 keeps the harness issue's title and body unless given. */
         let items;

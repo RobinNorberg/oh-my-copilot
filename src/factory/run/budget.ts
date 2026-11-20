@@ -59,9 +59,58 @@ export interface FactoryRunLimits {
   /**
    * The Copilot model every lane session starts on (factory.run.laneModel in
    * the trusted user config, or `omg factory run --model`); absent = no model
-   * is passed and the lanes run on Copilot's default model.
+   * is passed and the lanes run on Copilot's default model. A kind with its
+   * own entry in laneModels starts on that one instead.
    */
   laneModel?: string;
+  /**
+   * Per-lane-kind models (factory.run.laneModels in the trusted user config,
+   * `--review-model` for review): a lane starts on laneModels[kind], else
+   * laneModel, else Copilot's default model (laneModelFor).
+   */
+  laneModels?: LaneModels;
+}
+
+/** The lane-kind keys of factory.run.laneModels. */
+export const LANE_MODEL_KINDS = ['implement', 'review', 'fix', 'ciFix', 'conflictFix'] as const;
+export type LaneModelKind = (typeof LANE_MODEL_KINDS)[number];
+export type LaneModels = Partial<Record<LaneModelKind, string>>;
+
+/** The laneModels key of a lane kind (null: a kind that starts no Copilot session, the coding agent). */
+export function laneModelKind(kind: FactoryRunState['lanes'][number]['kind']): LaneModelKind | null {
+  switch (kind) {
+    case 'implement': return 'implement';
+    case 'review': return 'review';
+    case 'fix': return 'fix';
+    case 'ci-fix': return 'ciFix';
+    case 'conflict-fix': return 'conflictFix';
+    default: return null;
+  }
+}
+
+/** The model a lane of `kind` starts on: laneModels[kind] ?? laneModel; undefined = Copilot's default. */
+export function laneModelFor(limits: Pick<FactoryRunLimits, 'laneModel' | 'laneModels'>, kind: FactoryRunState['lanes'][number]['kind']): string | undefined {
+  const key = laneModelKind(kind);
+  return (key ? limits.laneModels?.[key] : undefined) ?? limits.laneModel;
+}
+
+/** Every lane kind's resolved model (null: Copilot's default), in LANE_MODEL_KINDS order. */
+export function resolvedLaneModels(limits: Pick<FactoryRunLimits, 'laneModel' | 'laneModels'>): Record<LaneModelKind, string | null> {
+  return Object.fromEntries(LANE_MODEL_KINDS.map((k) => [k, limits.laneModels?.[k] ?? limits.laneModel ?? null])) as Record<LaneModelKind, string | null>;
+}
+
+/**
+ * factory.run.laneModels from the trusted user config: an object whose keys
+ * are LANE_MODEL_KINDS and whose values are known model ids (checkLaneModel).
+ */
+export function checkLaneModels(value: unknown, source: string): LaneModels {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) throw new Error(`${source} must be an object with any of ${LANE_MODEL_KINDS.join(', ')}`);
+  const out: LaneModels = {};
+  for (const [key, id] of Object.entries(value)) {
+    if (!(LANE_MODEL_KINDS as readonly string[]).includes(key)) throw new Error(`${source}.${key} is not a lane kind; use any of ${LANE_MODEL_KINDS.join(', ')}`);
+    if (id !== undefined) out[key as LaneModelKind] = checkLaneModel(id, `${source}.${key}`);
+  }
+  return out;
 }
 
 export const DEFAULT_FACTORY_RUN_LIMITS: Readonly<FactoryRunLimits> = Object.freeze({
@@ -149,9 +198,14 @@ export function resolveFactoryRunLimits(trustedUser: unknown, project: unknown):
     if (user[key] !== undefined) set(KEYS[key].field, checked(key, user[key], 'user config'));
   }
   if (user.laneModel !== undefined) limits.laneModel = checkLaneModel(user.laneModel, 'user config: factory.run.laneModel');
+  if (user.laneModels !== undefined) {
+    const models = checkLaneModels(user.laneModels, 'user config: factory.run.laneModels');
+    if (Object.keys(models).length) limits.laneModels = models;
+  }
   const proj = runBlock(project, 'project config');
-  // The lanes' model changes what a run bills: only the trusted user config (or --model) sets it.
+  // The lanes' model changes what a run bills: only the trusted user config (or --model / --review-model) sets it.
   if (proj.laneModel !== undefined) warnings.push('omg factory run: ignoring factory.run.laneModel from the working-tree project config; set it in your user config or pass --model');
+  if (proj.laneModels !== undefined) warnings.push('omg factory run: ignoring factory.run.laneModels from the working-tree project config; set it in your user config or pass --review-model');
   const projFix = shipMaxFixRounds(project);
   const tighten = (key: LimitKey, raw: unknown, label = `factory.run.${key}`) => {
     const value = checked(key, raw, 'project config');
