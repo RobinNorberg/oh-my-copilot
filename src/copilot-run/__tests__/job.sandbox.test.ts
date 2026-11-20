@@ -377,22 +377,34 @@ describe('copilot_run beforeSandboxedSession (the Windows OS sandbox)', () => {
   const winEnv = { SystemRoot: 'C:\Windows', LOCALAPPDATA: 'C:\Users\real\AppData\Local' };
 
   it('win32 with the sandbox on: called once inside start(), with the job worktree, before the runtime starts and before the job timeout runs', async () => {
-    const seen: { path: string; connections: number; elapsed: number }[] = [];
-    const m = manager('idle', 'supported', { platform: 'win32' }, winEnv);
-    const t0 = Date.now();
-    // A copy slower than the job's timeout: the timeout is armed only after it, so the job still completes.
-    const started = m.start({ prompt: 'implement', cwd: repo, timeoutMs: 400 }, { beforeSandboxedSession: (wt) => {
-      const until = Date.now() + 600;
-      while (Date.now() < until) { /* the synchronous copy */ }
-      seen.push({ path: wt, connections: calls.connections.length, elapsed: Date.now() - t0 });
-      return null;
-    } });
-    // Called synchronously, before start() returned (the caller's idle clock starts after it).
-    expect(seen).toHaveLength(1);
-    const done = await m.wait(started.jobId, 10_000);
-    expect(done.status).toBe('completed');
-    expect(seen).toEqual([{ path: (started.worktree as { path: string }).path, connections: 0, elapsed: seen[0].elapsed }]);
-    expect(calls.prompts).toEqual(['implement']);
+    // Ordering, not wall time: record when the copy runs and when the job's timeout timer is armed
+    // (the setTimeout carrying this job's unique timeoutMs), so host load cannot flip the result.
+    const timeoutMs = 123_457;
+    const order: string[] = [];
+    const seen: { path: string; connections: number }[] = [];
+    const realSetTimeout = globalThis.setTimeout;
+    const timers = vi.spyOn(globalThis, 'setTimeout').mockImplementation(((...args: Parameters<typeof setTimeout>) => {
+      if (args[1] === timeoutMs) order.push('job timeout armed');
+      return realSetTimeout(...args);
+    }) as typeof setTimeout);
+    try {
+      const m = manager('idle', 'supported', { platform: 'win32' }, winEnv);
+      const started = m.start({ prompt: 'implement', cwd: repo, timeoutMs }, { beforeSandboxedSession: (wt) => {
+        order.push('copy');
+        seen.push({ path: wt, connections: calls.connections.length });
+        return null;
+      } });
+      order.push('start() returned');
+      // Called once, synchronously inside start() (the caller's idle clock starts after it),
+      // before the runtime connected and before the job's timeout was armed.
+      expect(order).toEqual(['copy', 'job timeout armed', 'start() returned']);
+      const done = await m.wait(started.jobId, 10_000);
+      expect(done.status).toBe('completed');
+      expect(seen).toEqual([{ path: (started.worktree as { path: string }).path, connections: 0 }]);
+      expect(calls.prompts).toEqual(['implement']);
+    } finally {
+      timers.mockRestore();
+    }
   });
 
   it.each<[string, (wt: string) => string | null]>([
