@@ -150,7 +150,7 @@ export interface CopilotRunStartOptions {
      * job's timeout is armed and the runtime started only once it settles, and
      * prepared(jobId) settles with it (a caller starts its idle clock after).
      */
-    beforeSandboxedSession?: (worktree: string) => string | null | Promise<string | null>;
+    beforeSandboxedSession?: (worktree: string) => string | null | PromiseLike<string | null>;
 }
 /**
  * A credential-free session env, in place. Removed: GitHub tokens

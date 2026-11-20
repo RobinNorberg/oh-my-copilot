@@ -124784,7 +124784,7 @@ var init_job = __esm({
         if (options.beforeSandboxedSession && worktree && profile !== "review" && intent.windowsCopy) {
           try {
             const ready = options.beforeSandboxedSession(worktree.path);
-            if (ready instanceof Promise) preparing = ready.then((problem) => {
+            if (ready != null && typeof ready.then === "function") preparing = Promise.resolve(ready).then((problem) => {
               job.unprepared = problem;
             }, (err) => {
               job.unprepared = errText(err);
@@ -128415,7 +128415,7 @@ function* linkNodeModulesSteps(root, checkout, warn, workspaces, copy) {
     present = false;
   }
   if (present && gateTreeIncomplete(target)) {
-    unlinkNodeModules(root, checkout);
+    yield* unlinkNodeModulesSteps(root, checkout);
     present = (0, import_fs156.existsSync)(target) || isLink2(target);
   }
   if (present) return ws.problem;
@@ -128494,7 +128494,7 @@ function* prepareLaneSteps(root, worktree, o) {
     } catch {
     }
     if (!ignored) {
-      if (!isLink2(target) && (0, import_fs156.existsSync)(target)) unlinkNodeModules(root, worktree);
+      if (!isLink2(target) && (0, import_fs156.existsSync)(target)) yield* unlinkNodeModulesSteps(root, worktree);
       o.warn?.(`omg factory run: git does not ignore ${rels.join(", ")} in ${worktree}, so the lane gets no copied node_modules (the lane commit refuses links in its worktree); add node_modules to .gitignore`);
       return null;
     }
@@ -128771,9 +128771,6 @@ function unlinkOwnLink(root, link6) {
   unlinkLink2(link6);
   return true;
 }
-function removeGateTree(dir) {
-  runTreeSteps(removeGateTreeSteps(dir));
-}
 function* removeGateTreeSteps(dir) {
   const walk = function* (d) {
     for (const name of (0, import_fs156.readdirSync)(d)) {
@@ -128789,10 +128786,13 @@ function* removeGateTreeSteps(dir) {
   yield* walk(dir);
 }
 function unlinkNodeModules(root, checkout) {
+  runTreeSteps(unlinkNodeModulesSteps(root, checkout));
+}
+function* unlinkNodeModulesSteps(root, checkout) {
   const target = (0, import_path181.join)(checkout, "node_modules");
   for (const nm of nestedTreeDirs(checkout)) {
-    unlinkTreeLinks(nm);
-    if ((0, import_fs156.existsSync)((0, import_path181.join)(nm, GATE_TREE_MARKER))) removeGateTree(nm);
+    yield* unlinkTreeLinks(nm);
+    if ((0, import_fs156.existsSync)((0, import_path181.join)(nm, GATE_TREE_MARKER))) yield* removeGateTreeSteps(nm);
   }
   nestedTrees.delete(checkout);
   let st;
@@ -128806,15 +128806,16 @@ function unlinkNodeModules(root, checkout) {
     return;
   }
   if (!st.isDirectory() || sameDir(target, (0, import_path181.join)(root, "node_modules"))) return;
-  unlinkTreeLinks(target);
-  if ((0, import_fs156.existsSync)((0, import_path181.join)(target, GATE_TREE_MARKER))) removeGateTree(target);
+  yield* unlinkTreeLinks(target);
+  if ((0, import_fs156.existsSync)((0, import_path181.join)(target, GATE_TREE_MARKER))) yield* removeGateTreeSteps(target);
 }
-function unlinkTreeLinks(dir) {
+function* unlinkTreeLinks(dir) {
   for (const name of (0, import_fs156.readdirSync)(dir)) {
+    yield;
     const p = (0, import_path181.join)(dir, name);
     const st = (0, import_fs156.lstatSync)(p);
     if (st.isSymbolicLink()) unlinkLink2(p);
-    else if (st.isDirectory()) unlinkTreeLinks(p);
+    else if (st.isDirectory()) yield* unlinkTreeLinks(p);
   }
 }
 function gateTreeHasLinks(checkout) {
@@ -128918,7 +128919,7 @@ var init_prepare = __esm({
     GATE_TREE_FILE_MAX_BYTES = 16 * 1024 * 1024;
     DRAIN = /* @__PURE__ */ Symbol("drain");
     SETTLE = /* @__PURE__ */ Symbol("settle");
-    TREE_COPY_CONCURRENCY = 16;
+    TREE_COPY_CONCURRENCY = 4;
     TREE_STEP_SLICE_MS = 8;
     laneTreeQueue = Promise.resolve();
     nestedTrees = /* @__PURE__ */ new Map();

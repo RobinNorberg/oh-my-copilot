@@ -399,6 +399,17 @@ describe('copilot_run beforeSandboxedSession (the Windows OS sandbox)', () => {
         expect(calls.connections).toHaveLength(0);
         expect(calls.sessions).toHaveLength(0);
     });
+    it('win32, a non-native thenable hook is awaited like a promise: its problem fails the job; no runtime is started', async () => {
+        const m = manager('idle', 'supported', { platform: 'win32' }, winEnv);
+        const thenable = { then: (ok, _fail) => { setTimeout(() => ok?.('the copy is over its bounds'), 20); return thenable; } };
+        const started = m.start({ prompt: 'implement', cwd: repo }, { beforeSandboxedSession: () => thenable });
+        expect(m.status(started.jobId).status).toBe('starting');
+        await m.prepared(started.jobId);
+        const done = await m.wait(started.jobId, 10_000);
+        expect(done.status).toBe('failed');
+        expect(done.error).toMatch(/^worktree-unprepared: the copy is over its bounds; no session was started/);
+        expect(calls.connections).toHaveLength(0);
+    });
     it('win32, an async hook: a cancel while the worktree is readied ends the job cancelled once it settles; no runtime is started', async () => {
         const m = manager('idle', 'supported', { platform: 'win32' }, winEnv);
         let finish;

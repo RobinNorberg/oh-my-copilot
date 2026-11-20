@@ -14,12 +14,38 @@ vi.mock('fs', async (importOriginal) => {
   };
   return { ...real, default: { ...real, unlinkSync }, unlinkSync };
 });
-// Lets one test make the async copy (fs/promises copyFile) fail for one source path (a busy file).
-const copyFault = vi.hoisted(() => ({ name: undefined as string | undefined }));
+// Lets a test make the async copy (fs/promises copyFile) fail for one source path (a busy file), and hold a copy in
+// flight: `hold` holds the first copy whose source includes it until `release` settles (then it really copies and its
+// destination goes to `landed`); `faultNext` fails the first copy started after the held one; `holdFault` makes the
+// failing copy itself wait for `release` before it rejects; `onFault` runs as a copy fails.
+const copyFault = vi.hoisted(() => ({
+  name: undefined as string | undefined,
+  hold: undefined as string | undefined,
+  faultNext: false,
+  holdFault: false,
+  release: Promise.resolve(),
+  onFault: undefined as (() => void) | undefined,
+  holding: false,
+  landed: [] as string[],
+}));
 vi.mock('fs/promises', async (importOriginal) => {
   const real = await importOriginal<typeof import('fs/promises')>();
   const copyFile: typeof real.copyFile = async (src, dest, mode) => {
-    if (copyFault.name !== undefined && String(src).endsWith(copyFault.name)) throw Object.assign(new Error(`EBUSY: resource busy or locked, copyfile '${String(src)}'`), { code: 'EBUSY' });
+    const f = copyFault;
+    if (f.hold !== undefined && !f.holding && String(src).includes(f.hold)) {
+      f.holding = true;
+      await f.release;
+      await real.copyFile(src, dest, mode);
+      f.landed.push(String(dest));
+      return;
+    }
+    if ((f.name !== undefined && String(src).endsWith(f.name)) || (f.faultNext && f.holding)) {
+      f.faultNext = false;
+      f.name = undefined;
+      f.onFault?.();
+      if (f.holdFault) await f.release;
+      throw Object.assign(new Error(`EBUSY: resource busy or locked, copyfile '${String(src)}'`), { code: 'EBUSY' });
+    }
     return real.copyFile(src, dest, mode);
   };
   return { ...real, default: { ...real, copyFile }, copyFile };
@@ -46,7 +72,7 @@ function removeDir(dir: string): void {
 }
 
 afterEach(() => {
-  copyFault.name = undefined;
+  Object.assign(copyFault, { name: undefined, hold: undefined, faultNext: false, holdFault: false, release: Promise.resolve(), onFault: undefined, holding: false, landed: [] });
   for (const d of dirs.splice(0)) removeDir(d);
 });
 
@@ -418,6 +444,73 @@ describe('prepareLaneNodeModulesAsync (the copy without blocking the event loop)
     copyFault.name = undefined;
     expect(await prepareLaneNodeModulesAsync(root, worktree, { ignored: ignoredAll })).toBeNull();
     expect(readFileSync(join(worktree, 'node_modules', 'pkg-7', 'lib', 'f3.js'), 'utf-8')).toBe('module.exports = 703;\n');
+  });
+
+  it('a copy fails while another is still in flight: the cut-off tree is removed only after that copy has landed (no copy writes into a removed tree)', async () => {
+    const { root, worktree, store } = generated(20);
+    const before = fingerprint(store);
+    let releasedAt = 0;
+    let release!: () => void;
+    copyFault.release = new Promise<void>((r) => { release = r; });
+    // The first package file copied is held; the next copy started fails at once, mid-walk.
+    copyFault.hold = 'pkg-';
+    copyFault.faultNext = true;
+    copyFault.onFault = () => { setTimeout(() => { releasedAt = Date.now(); release(); }, 200); };
+    const why = await prepareLaneNodeModulesAsync(root, worktree, { ignored: ignoredAll });
+    const returnedAt = Date.now();
+    expect(why).toMatch(/the copied node_modules tree of the lane worktree .* could not be built \(EBUSY: resource busy or locked/);
+    expect(releasedAt).toBeGreaterThan(0);
+    expect(returnedAt).toBeGreaterThanOrEqual(releasedAt);
+    // The held copy landed in the tree (it was still there), and the removal took it afterwards.
+    expect(copyFault.landed).toHaveLength(1);
+    expect(existsSync(copyFault.landed[0])).toBe(false);
+    expect(existsSync(join(worktree, 'node_modules'))).toBe(false);
+    expect(fingerprint(store)).toEqual(before);
+  });
+
+  it('the last copy to settle fails (seen when the build drains): the same reason, and nothing is left', async () => {
+    const { root, worktree, store } = generated(5);
+    const before = fingerprint(store);
+    let release!: () => void;
+    copyFault.release = new Promise<void>((r) => { release = r; });
+    // The failing copy rejects only after the walk is long done, so the body learns of it at its drain.
+    copyFault.name = join('pkg-3', 'lib', 'f3.js');
+    copyFault.holdFault = true;
+    const timer = setTimeout(() => release(), 300);
+    try {
+      const why = await prepareLaneNodeModulesAsync(root, worktree, { ignored: ignoredAll });
+      expect(why).toMatch(/the copied node_modules tree of the lane worktree .* could not be built \(EBUSY: resource busy or locked/);
+    } finally {
+      clearTimeout(timer);
+    }
+    expect(existsSync(join(worktree, 'node_modules'))).toBe(false);
+    expect(fingerprint(store)).toEqual(before);
+  });
+
+  it('a cut-off tree the git ignore check refuses is removed without holding the event loop (timers fire mid-removal); yours untouched', async () => {
+    const { root, worktree, store } = generated(60);
+    const before = fingerprint(store);
+    expect(prepareLaneNodeModules(root, worktree, { ignored: ignoredAll })).toBeNull();
+    const nm = join(worktree, 'node_modules');
+    writeFileSync(join(nm, GATE_TREE_MARKER), '');
+    const total = readdirSync(nm).filter((n) => n.startsWith('pkg-')).length;
+    const seen: number[] = [];
+    const tick = setInterval(() => {
+      try { seen.push(readdirSync(nm).filter((n) => n.startsWith('pkg-')).length); } catch { /* gone */ }
+    }, 1);
+    let result: string | null;
+    const warned: string[] = [];
+    try {
+      result = await prepareLaneNodeModulesAsync(root, worktree, { ignored: () => false, warn: (m) => warned.push(m) });
+    } finally {
+      clearInterval(tick);
+    }
+    expect(result).toBeNull();
+    expect(warned.join('\n')).toMatch(/git does not ignore node_modules/);
+    // A timer ran while some, not all, package dirs were gone.
+    expect(seen.some((n) => n > 0 && n < total)).toBe(true);
+    expect(existsSync(nm)).toBe(false);
+    expect(fingerprint(store)).toEqual(before);
   });
 
   it('over its bounds: the dry walk refuses before anything is copied, nothing is left, yours untouched', async () => {

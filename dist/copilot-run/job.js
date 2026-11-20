@@ -999,8 +999,9 @@ export class CopilotRunManager {
         if (options.beforeSandboxedSession && worktree && profile !== 'review' && intent.windowsCopy) {
             try {
                 const ready = options.beforeSandboxedSession(worktree.path);
-                if (ready instanceof Promise)
-                    preparing = ready.then((problem) => { job.unprepared = problem; }, (err) => { job.unprepared = errText(err); });
+                // Any thenable (not only a native Promise) is awaited; Promise.resolve adopts it.
+                if (ready != null && typeof ready.then === 'function')
+                    preparing = Promise.resolve(ready).then((problem) => { job.unprepared = problem; }, (err) => { job.unprepared = errText(err); });
                 else
                     job.unprepared = ready;
             }

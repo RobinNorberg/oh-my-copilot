@@ -102,9 +102,10 @@ export declare function prepareLaneNodeModules(root: string, worktree: string, o
  * time (runTreeStepsAsync), so the engine's other lanes, its heartbeats and
  * timers keep running while a lane's tree is copied. Every copy has landed
  * before the tree's completion line is written and before a cut-off tree is
- * removed. One preparation runs at a time in a process (the next waits), so
- * each one's free-space check still sees the space the one before it took,
- * as when they were synchronous.
+ * removed. Within one engine process one preparation runs at a time (the
+ * next waits), so each one's free-space check still sees the space the one
+ * before it took, as when they were synchronous; the parallel supervisor's
+ * child engines each have their own queue.
  */
 export declare function prepareLaneNodeModulesAsync(root: string, worktree: string, o: LaneTreeOptions): Promise<string | null>;
 /** The options of prepareLaneNodeModules. */

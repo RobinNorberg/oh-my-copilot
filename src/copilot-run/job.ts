@@ -239,7 +239,7 @@ export interface CopilotRunStartOptions {
    * job's timeout is armed and the runtime started only once it settles, and
    * prepared(jobId) settles with it (a caller starts its idle clock after).
    */
-  beforeSandboxedSession?: (worktree: string) => string | null | Promise<string | null>;
+  beforeSandboxedSession?: (worktree: string) => string | null | PromiseLike<string | null>;
 }
 
 /**
@@ -1176,8 +1176,9 @@ export class CopilotRunManager {
     if (options.beforeSandboxedSession && worktree && profile !== 'review' && intent.windowsCopy) {
       try {
         const ready = options.beforeSandboxedSession(worktree.path);
-        if (ready instanceof Promise) preparing = ready.then((problem) => { job.unprepared = problem; }, (err: unknown) => { job.unprepared = errText(err); });
-        else job.unprepared = ready;
+        // Any thenable (not only a native Promise) is awaited; Promise.resolve adopts it.
+        if (ready != null && typeof (ready as PromiseLike<unknown>).then === 'function') preparing = Promise.resolve(ready).then((problem) => { job.unprepared = problem; }, (err: unknown) => { job.unprepared = errText(err); });
+        else job.unprepared = ready as string | null;
       } catch (err) { job.unprepared = errText(err); }
     }
     let timer: ReturnType<typeof setTimeout> | undefined;

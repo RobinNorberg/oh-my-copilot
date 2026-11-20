@@ -103,8 +103,8 @@ function runTreeSteps(steps) {
         }
     }
 }
-/** File copies in flight at once (runTreeStepsAsync). */
-const TREE_COPY_CONCURRENCY = 16;
+/** File copies in flight at once (runTreeStepsAsync): the libuv threadpool's default size, so the engine's other async fs, dns and zlib work never waits behind a full queue of copies. */
+const TREE_COPY_CONCURRENCY = 4;
 /** The longest the async runner keeps the event loop between turns it gives back (ms). */
 const TREE_STEP_SLICE_MS = 8;
 /**
@@ -218,7 +218,7 @@ function* linkNodeModulesSteps(root, checkout, warn, workspaces, copy) {
     }
     // L3 (review-547): a tree whose marker lacks the completion line was cut off mid-build (a crash): removed and built again.
     if (present && gateTreeIncomplete(target)) {
-        unlinkNodeModules(root, checkout);
+        yield* unlinkNodeModulesSteps(root, checkout);
         present = existsSync(target) || isLink(target);
     }
     if (present)
@@ -326,9 +326,10 @@ export function prepareLaneNodeModules(root, worktree, o) {
  * time (runTreeStepsAsync), so the engine's other lanes, its heartbeats and
  * timers keep running while a lane's tree is copied. Every copy has landed
  * before the tree's completion line is written and before a cut-off tree is
- * removed. One preparation runs at a time in a process (the next waits), so
- * each one's free-space check still sees the space the one before it took,
- * as when they were synchronous.
+ * removed. Within one engine process one preparation runs at a time (the
+ * next waits), so each one's free-space check still sees the space the one
+ * before it took, as when they were synchronous; the parallel supervisor's
+ * child engines each have their own queue.
  */
 export function prepareLaneNodeModulesAsync(root, worktree, o) {
     const run = laneTreeQueue.then(() => runTreeStepsAsync(prepareLaneSteps(root, worktree, o)));
@@ -360,7 +361,7 @@ function* prepareLaneSteps(root, worktree, o) {
         if (!ignored) {
             // A cut-off tree goes (its links unlinked, never followed); a link to yours stays as it was.
             if (!isLink(target) && existsSync(target))
-                unlinkNodeModules(root, worktree);
+                yield* unlinkNodeModulesSteps(root, worktree);
             o.warn?.(`omg factory run: git does not ignore ${rels.join(', ')} in ${worktree}, so the lane gets no copied node_modules (the lane commit refuses links in its worktree); add node_modules to .gitignore`);
             return null;
         }
@@ -825,11 +826,9 @@ function unlinkOwnLink(root, link) {
  * Remove a node_modules tree linkNodeModules built, never through a link:
  * every symlink and junction at any depth is unlinked first (the PR's code
  * may have planted one in a cache dir), then files and dirs bottom up. A
- * dir is read only after an lstat says it is a plain directory.
+ * dir is read only after an lstat says it is a plain directory. As tree
+ * steps (runTreeSteps for the synchronous callers).
  */
-function removeGateTree(dir) {
-    runTreeSteps(removeGateTreeSteps(dir));
-}
 function* removeGateTreeSteps(dir) {
     const walk = function* (d) {
         for (const name of readdirSync(d)) {
@@ -859,12 +858,16 @@ function* removeGateTreeSteps(dir) {
  * and dirty check.
  */
 export function unlinkNodeModules(root, checkout) {
+    runTreeSteps(unlinkNodeModulesSteps(root, checkout));
+}
+/** unlinkNodeModules as tree steps (a lane's cut-off or not-ignored tree goes without holding the event loop). */
+function* unlinkNodeModulesSteps(root, checkout) {
     const target = join(checkout, 'node_modules');
     // The nested workspace trees first (the root's marker names them): every link unlinked, never followed.
     for (const nm of nestedTreeDirs(checkout)) {
-        unlinkTreeLinks(nm);
+        yield* unlinkTreeLinks(nm);
         if (existsSync(join(nm, GATE_TREE_MARKER)))
-            removeGateTree(nm);
+            yield* removeGateTreeSteps(nm);
     }
     nestedTrees.delete(checkout);
     let st;
@@ -883,19 +886,20 @@ export function unlinkNodeModules(root, checkout) {
     // M3 (review-490): a real node_modules dir in an engine checkout is treated as the engine's tree whether or not the
     // marker is still there (the PR's code can delete it): every link at any depth goes first, never followed. The
     // marker only decides whether the rest goes too; without it the caller's own (link-safe) removal takes the files.
-    unlinkTreeLinks(target);
+    yield* unlinkTreeLinks(target);
     if (existsSync(join(target, GATE_TREE_MARKER)))
-        removeGateTree(target);
+        yield* removeGateTreeSteps(target);
 }
 /** Unlink every symlink and junction under `dir` at any depth, never following one; files and dirs stay. */
-function unlinkTreeLinks(dir) {
+function* unlinkTreeLinks(dir) {
     for (const name of readdirSync(dir)) {
+        yield;
         const p = join(dir, name);
         const st = lstatSync(p);
         if (st.isSymbolicLink())
             unlinkLink(p);
         else if (st.isDirectory())
-            unlinkTreeLinks(p);
+            yield* unlinkTreeLinks(p);
     }
 }
 /**
