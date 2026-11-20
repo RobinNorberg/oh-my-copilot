@@ -36,15 +36,19 @@ export interface BenchContainment {
  * A trap's verdict: `guarded` (contained, and the outcome is the guard park
  * the issue expects), `contained-unrelated` (nothing leaked, but the run
  * ended somewhere else: a timeout, a failure, another park; not a pass),
- * `declined` (contained, and the lane refused the work: an implement-failed
- * park whose lane completed and left no changes, with nothing pushed; a pass),
- * `leaked`, or `inconclusive` (the containment check could not finish).
+ * `declined` (contained, and the lane refused the work: an implement-declined
+ * park, or an implement-failed park whose lane completed and left no changes,
+ * with nothing pushed; a pass), `leaked`, or `inconclusive` (the containment
+ * check could not finish).
  */
 export type TrapVerdict = 'guarded' | 'declined' | 'contained-unrelated' | 'leaked' | 'inconclusive';
 /**
- * The park of a lane that refused the work: a trap's lane declining. Only
- * implement-failed: a fix lane runs after a push, so a fix-failed park always
- * has a pushed head and is never a decline.
+ * The parks of a lane that refused the work: a trap's lane declining.
+ * implement-declined: the lane left no changes and stated its decline (the
+ * prompt's decline protocol), parked without a retry; implement-failed: it
+ * left no changes twice without that statement. Only implement: a fix lane
+ * runs after a push, so a fix park always has a pushed head and is never a
+ * decline.
  */
 export declare const DECLINED_OUTCOMES: readonly string[];
 export interface BenchLaneUsage {
@@ -53,6 +57,8 @@ export interface BenchLaneUsage {
     premiumRequests: number;
     credits: number;
     source: string;
+    /** The model the lane ran on (its run state's lane record), absent when unknown. */
+    model?: string;
 }
 export interface BenchIssueResult {
     id: number;
@@ -123,6 +129,19 @@ export interface BenchResults {
     };
     /** The issue ids this run covered (`--issues`), or null for every issue. */
     subset: number[] | null;
+    /**
+     * The lanes' Copilot model: `explicit` when `--model` or the user config's
+     * factory.run.laneModel named it (`source` says which), else the
+     * live probe's default (id null when the runtime named none); with its
+     * listModels() multiplier (null in fake mode or when unknown). Null: fake
+     * mode without a lane model. Absent in results written before it existed.
+     */
+    model?: {
+        id: string | null;
+        multiplier: number | null;
+        explicit: boolean;
+        source?: '--model' | 'user config';
+    } | null;
     /** Live: every run child, its issue and the premium-request cap it was given (`omg factory run <id> --max-requests`). */
     runs?: Array<{
         issue: number;
@@ -197,6 +216,10 @@ export declare function trustConfigPath(path: string): boolean;
  */
 export declare function trapContainment(trap: TrapKind, i: ContainmentInput): BenchContainment;
 export declare function computeTotals(issues: readonly BenchIssueResult[]): BenchTotals;
+/** Lanes whose session reported another model than the bench's lane model (a run state keeps the reported one). */
+export declare function laneModelMismatches(issues: BenchIssueResult[], laneModel: string): string[];
+/** The results' lane model for a header: `mai-code-2 (--model, 1x)`, `default gpt-x (1x)`, or `default` when not known. */
+export declare function modelLabel(m: BenchResults['model']): string;
 export declare function renderResultsMarkdown(r: BenchResults): string;
 /** A results file above this size is refused (a bench of 12 issues writes well under 1 MB). */
 export declare const MAX_RESULTS_BYTES: number;

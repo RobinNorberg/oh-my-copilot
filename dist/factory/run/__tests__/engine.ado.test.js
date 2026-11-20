@@ -55,6 +55,20 @@ describe('omg factory run on Azure DevOps (fake ADO, real git)', () => {
         expect(ado.calls.some((c) => c.route === 'wit.comments.POST' && /awaiting a human: \*\*merge\*\*/.test(c.body.text))).toBe(true);
         expectNoMerge();
     });
+    it('a key in the Acceptance Criteria field parks at intake before any lane, kinds only', async () => {
+        const key = `AKIA${'ABCDEFGHIJKLMNOP'}`;
+        ado.acceptance = `<ul><li>deploy with ${key}</li></ul>`;
+        const dry = await run([], { dryRun: true });
+        expect(dry.plan).toMatchObject({ next: 'awaiting-human', reason: 'secret-shaped-content' });
+        expect(dry.message).not.toContain(key);
+        const out = await run(happy());
+        expect(out.gate?.name, out.message).toBe('secret-shaped-content');
+        const parked = readFactoryState(h.root, ISSUE);
+        expect(parked.phase).toBe('intake');
+        expect(parked.gate?.reason).toContain('(aws-access-key)');
+        expect(JSON.stringify(parked)).not.toContain(key);
+        expect(ado.calls.some((c) => c.route === 'git.pullRequests.POST')).toBe(false);
+    });
     it('a PR head the engine did not push stops the run at head-moved-externally', async () => {
         ado.headOverride = 'e'.repeat(40);
         const out = await run(happy());

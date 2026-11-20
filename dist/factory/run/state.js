@@ -264,6 +264,8 @@ function shapeProblem(s) {
         const sbx = x?.sandbox;
         return isStr(x?.id) && isStr(x.kind) && isStr(x.status) && isStr(x.startSha) && typeof x.maxCredits === 'number'
             && (x.stopUnconfirmed === undefined || typeof x.stopUnconfirmed === 'boolean')
+            && (x.treeReusable === undefined || x.treeReusable === true)
+            && (x.model === undefined || isStr(x.model))
             && (x.tamperCheck === undefined || x.tamperCheck === 'clean' || x.tamperCheck === 'problems' || x.tamperCheck === 'skipped')
             && (sbx === undefined || (typeof sbx === 'object' && sbx !== null && isStr(sbx.mode) && isCount(sbx.unsandboxedCalls)
                 && (sbx.writeNetwork === undefined || sbx.writeNetwork === 'none' || sbx.writeNetwork === 'registry')));
@@ -329,6 +331,8 @@ function humanReviewShapeProblem(s) {
         return 'plainHeadRan';
     if (s.gateTreeCopy !== undefined && s.gateTreeCopy !== true)
         return 'gateTreeCopy';
+    if (s.laneModel !== undefined && s.laneModel !== null && !isStr(s.laneModel))
+        return 'laneModel';
     // One admin dir name under <common>/worktrees (git makes it from the checkout's base name): no separator, nothing else.
     if (s.checkoutAdmin !== undefined && (!isStr(s.checkoutAdmin) || !/^[A-Za-z0-9._-]+$/.test(s.checkoutAdmin) || s.checkoutAdmin === '.' || s.checkoutAdmin === '..'))
         return 'checkoutAdmin';

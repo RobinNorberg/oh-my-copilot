@@ -201,6 +201,29 @@ The dispatcher parses stdin once and passes the object through `normalizeHookPay
 
 Copilot has no model channel for a Stop that does not block. When the merged Stop output carries a `systemMessage` (the budget-guard 90% warning, for example) and no block, the dispatcher removes it and stores it in `$COPILOT_HOME/projects/.omg-pending-context/<sessionId>.json`. The next UserPromptSubmit of that session prepends it to its `additionalContext`, which Copilot injects (confirmed live on 1.0.91), and deletes the file. A blocking Stop gets the message appended to its block reason instead. The file is keyed by session id under the per-user config dir, like `context-guard-stop`'s retry guard, so a prompt pays no git probe for it. A subagent's Stop carries the child session id next to the parent's `transcript_path`; the child gets no later prompt, so nothing is stored for it. SessionEnd deletes pending files older than 24 hours.
 
+### Lane hook set
+
+Factory lanes (`omg factory run`, copilot_run `minimalHooks`) run a reduced hook set. The engine sets `OMC_LANE_HOOKS=minimal` in the lane runtime's env. The hook processes inherit it, and the lane's shells and any nested copilot sessions inherit it too; it can only drop events, never the kept guards. Under it the dispatcher runs only these events:
+
+| Event | Hooks | Why kept |
+|---|---|---|
+| PreToolUse | `pre-tool-enforcer.mjs`, `git-guardrails.mjs` | tool guards |
+| PermissionRequest | `permission-handler.mjs` | permission decisions |
+
+Every other event (SessionStart, UserPromptSubmit, PostToolUse, PostToolUseFailure, SubagentStart, SubagentStop, PreCompact, Stop, SessionEnd, Notification) reads stdin to its end and exits 0 with no output. No hook script, `run.cjs` or payload library loads, so the event costs only the node start (about 75 ms on Windows). Without the variable, or with any other value, every event runs as before.
+
+**Lane hook registration.** A skipped event still costs a process: the Copilot CLI spawns one for every event the plugin registers, about 0.6 to 1.0 s each under lane load. So a lane session also registers only the kept events. Before the lane runtime starts, the engine builds a lane plugin dir in the job home (`<job dir>/home/lane-plugin`, `src/copilot-run/lane-plugin.ts`) and the session loads it in place of the plugin root:
+
+- It mirrors the plugin root. Every directory is a link to the real one (a junction on Windows), except the runtime-state and VCS dirs (`.git`, `.omc`, `.omg`, `.copilot`) and any dir that holds the lane dir itself (with the plugin root as the repo, the job home lies under `.omc`; a link there would be a cycle). Of the files, only `plugin.json` and the root files it names (`.mcp.json`) are copied; the CLI reads no other top-level file, so the rest are left out. The manifest, skills, agents, commands and MCP config are therefore the shipped ones.
+- Only the hooks file that `plugin.json` names (`copilot/hooks.json`) is generated. It holds the shipped PreToolUse and PermissionRequest entries unchanged, plus `OMC_LANE_PLUGIN_MIRROR=1` in each entry's env.
+- The CLI sets `CLAUDE_PLUGIN_ROOT` to the lane dir. Under `OMC_LANE_PLUGIN_MIRROR=1`, the dispatcher sets `CLAUDE_PLUGIN_ROOT` back to its own plugin root. `run.cjs` then routes the kept guards as in the real plugin.
+- The lane cannot change it. The dir is outside the worktree and outside the lane-writable temp and profile dirs, and the OS sandbox grants it read-only in both profiles. The runtime's write tool approves only paths in the worktree and the job's temp dir. (An unsandboxed `detect-only` lane can write wherever your account can, the plugin root included, as before.)
+- It fails closed. If the dir cannot be built (no root `plugin.json`, no hooks file, a kept event missing, a path that leaves the plugin, a dir that already exists), the session loads the full plugin and the job records a note. The `OMC_LANE_HOOKS=minimal` fast path above still applies.
+- It is removed when the session ends, before the job home is kept or deleted. The links point at the real plugin root, which can be your checkout, so the engine never removes the dir with a recursive delete: its remover checks each entry without following it, unlinks a link or junction, and descends only into real dirs. A removal that fails is a job note, and the job home is then kept rather than deleted around the links.
+- A crash cannot leave it behind for good. The dir holds a marker file (`.omg-lane-plugin.json`) with the engine's pid. Before it builds a lane plugin dir, the engine sweeps the job dirs next to the new one and removes, with the same remover, each `cr-<id>/home/lane-plugin` that has the marker and whose engine has exited (or, for its own pid, whose job has finished). A dir without the marker, a link in its path, or a live engine's dir is left alone. A build that fails halfway removes its partial dir the same way.
+
+Other sessions load the plugin root as before. To see what the CLI registers for a plugin dir without starting a session, start the runtime with `--plugin-dir <dir>` and call the SDK's `rpc.hooks.discover()`. The plugin root lists 14 hook rows over 12 events; a lane plugin dir lists 3 (`preToolUse` ×2, `permissionRequest`).
+
 ## Hook Categories
 
 OMC hooks fall into four categories:

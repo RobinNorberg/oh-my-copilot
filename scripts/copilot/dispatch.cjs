@@ -1,5 +1,21 @@
 #!/usr/bin/env node
 'use strict';
+
+// The lane hook set (see the header): checked before any require, so a skipped
+// event costs only the node start.
+const LANE_HOOK_EVENTS = new Set(['PreToolUse', 'PermissionRequest']);
+
+function laneSkipsEvent(event, env = process.env) {
+  return env.OMC_LANE_HOOKS === 'minimal' && !LANE_HOOK_EVENTS.has(event);
+}
+
+const laneSkip = require.main === module && laneSkipsEvent(process.argv[2]);
+if (laneSkip && process.stdin && !process.stdin.isTTY) {
+  // Read the payload to its end, so the host's write never meets a closed pipe.
+  process.stdin.on('error', () => {});
+  process.stdin.resume();
+}
+
 /**
  * Copilot CLI per-event hook dispatcher (fork-owned, oh-my-copilot).
  *
@@ -71,6 +87,14 @@
  * other hooks' outputs are kept. A hook that times out contributes no stdout
  * on either runner path, even JSON it printed before it hung.
  *
+ * Lane hook set: under OMC_LANE_HOOKS=minimal only LANE_HOOK_EVENTS run
+ * (the PreToolUse guards and the PermissionRequest handler). Every other event
+ * drains stdin and exits 0 with no output before any hook, run.cjs or payload
+ * library loads. The engine sets the variable in the runtime env of factory
+ * lanes (copilot_run `minimalHooks`); hook processes inherit it, and the lane's
+ * shells and any nested copilot sessions inherit it too. It can only drop
+ * events, never the kept guards.
+ *
  * Claude Code never runs this file (hooks/hooks.json is untouched).
  */
 
@@ -87,6 +111,14 @@ const { hardenWindowsExeSearch } = require('../lib/windows-search.cjs');
 hardenWindowsExeSearch();
 
 const SCRIPTS_DIR = path.join(__dirname, '..');
+
+// Lane plugin dir (src/copilot-run/lane-plugin.ts): the CLI set CLAUDE_PLUGIN_ROOT
+// to the engine's mirror of the plugin. Node loaded this file by its real path,
+// so its own plugin root is the real one: run.cjs then routes the kept guards
+// as in the real plugin (worker eligibility checks the hook against that root).
+if (require.main === module && process.env.OMC_LANE_PLUGIN_MIRROR === '1') {
+  process.env.CLAUDE_PLUGIN_ROOT = path.resolve(SCRIPTS_DIR, '..');
+}
 const RUN_CJS = path.join(SCRIPTS_DIR, 'run.cjs');
 const ADAPTER = path.join(SCRIPTS_DIR, 'lib', 'copilot-hook-adapter.cjs');
 const HOOK_SEPARATOR = '--';
@@ -615,7 +647,7 @@ async function main() {
   process.exitCode = merged.exitCode;
 }
 
-if (require.main === module) {
+if (require.main === module && !laneSkip) {
   main().catch((error) => {
     writeAllSync(2, `[omg-hook] dispatch error: ${error && error.stack ? error.stack : String(error)}\n`);
     process.exitCode = failClosedEnabled() ? 1 : 0;
@@ -624,6 +656,8 @@ if (require.main === module) {
 
 module.exports = {
   HOOK_SEPARATOR,
+  LANE_HOOK_EVENTS,
+  laneSkipsEvent,
   parseDispatchArgv,
   encodeDispatchArgv,
   mergeExitCodes,

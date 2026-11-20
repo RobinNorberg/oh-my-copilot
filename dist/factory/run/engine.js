@@ -70,7 +70,7 @@ import { buildGitView, GIT_VIEW_MAX_BYTES, GIT_VIEW_MAX_OBJECTS } from './git-vi
 import { driveGates } from './gates-driver.js';
 import { missingCheckHint, NO_CI_CHECKS_NOTE, noHeadChecksText } from '../../ship/gates.js';
 import { ghBranchTip, ghCheckRunApps, ghCheckSuites, ghCommitCheckNames, ghRequiredCheckRules } from '../../forge/github/checks.js';
-import { ciFixPrompt, conflictFixPrompt, fenceFor, fenced, fixPrompt, implementPrompt, oneLine, reviewPrompt } from './prompts.js';
+import { ciFixPrompt, conflictFixPrompt, fenceFor, fenced, fixPrompt, implementPrompt, oneLine, REPO_GUIDE_FILES, reviewPrompt } from './prompts.js';
 import { BASE_FAILURES_MAX, headRunSignals, parseVitestReport, readVitestReport, testDeltaVerdict, testIdText, vitestOutputFailures, vitestReportArgs, vitestReportPath } from './test-delta.js';
 import { decisionsViolation, loadTeamContext, pathsInDiff, pathsInText } from '../team/context.js';
 import { mergeComment, mergeDecision } from './merge-policy.js';
@@ -89,7 +89,7 @@ import { ghDependsOn, ghIssueComment, ghIssueJson, ghIssueView, ghViewItem, gith
 import { isSatisfied } from '../check/score.js';
 import { outcomePosts, postedBefore } from './outcome.js';
 import { forgePrStateReader, humanMergeCandidate, laneTrustProblem, markMergedByHuman } from './human-merged.js';
-import { checkoutBranch, checkoutPath, checkoutWorker, defaultGateConfigLoader, FACTORY_CHECKOUT_TEAM, GATE_CACHE_DIRS, GATE_TREE_COPY_WHY, GATE_TREE_MARKER, gateTreeHasLinks, linkNodeModules, trustedNestedRels, unlinkNodeModules } from './prepare.js';
+import { checkoutBranch, checkoutPath, checkoutWorker, defaultGateConfigLoader, FACTORY_CHECKOUT_TEAM, GATE_CACHE_DIRS, GATE_TREE_COPY_WHY, GATE_TREE_MARKER, gateTreeHasLinks, linkNodeModules, prepareLaneNodeModules, settleLaneNodeModules, trustedNestedRels, unlinkNodeModules } from './prepare.js';
 import { baseWorkspacePatterns } from './workspace-tree.js';
 import { canTransition, createShipState, transition, latestVerdict, parseShipState, recordVerdict, shipStatePath, updateShipState, verifyShipIntegrity, } from '../../ship/state.js';
 import { ghReviewFeedback } from '../../forge/github/reviews.js';
@@ -108,7 +108,8 @@ import { getGlobalOmcStatePath } from '../../utils/paths.js';
 import { isProcessAlive, isProcessIdentityLive, terminateOwnedProcessTree } from '../../platform/process-utils.js';
 import { isTerminalLaneState, LaneLostError } from './lane.js';
 import { jobRefProblem } from '../../copilot-run/job.js';
-import { CI_TREE_PATHS, commitLaneWork, conflictFixStart, LANE_PROTECTED_PATHS, laneCommitMessage, pathGlobMatches } from './lane-commit.js';
+import { secretShapeKinds } from '../heal/sanitize.js';
+import { CI_TREE_PATHS, commitLaneWork, conflictFixStart, LANE_DECLINED, LANE_PROTECTED_PATHS, laneCommitMessage, laneDecline, pathGlobMatches } from './lane-commit.js';
 import { proveLaneTreeGone } from './lane-procs.js';
 import { quarantineTamper, RELEASE_TAMPER_COMMAND, STILL_ACTIVE, tamperHoldMessage, tamperHoldPath, writeTamperHold } from './tamper-quarantine.js';
 import { currentBytes, defaultLedgerDir, EngineLedger, emptyHooksDir, userBaselineKey } from './ledger.js';
@@ -1236,6 +1237,68 @@ class FactoryEngine {
             this.o.warn?.(`omg factory run: ${problem}; a gate that fails in the sandbox parks at ${GATE_SANDBOX_INCOMPATIBLE_GATE}`);
         return null;
     }
+    /**
+     * A write lane worktree about to run in the OS sandbox on Windows gets a
+     * copy of your node_modules (prepareLaneNodeModules, the gates' copied
+     * tree: GATE_TREE_COPY_WHY), so the lane's tests open no junction. Its git
+     * ignore check runs before anything is copied (the dirs need not exist):
+     * hardened host git `check-ignore --no-index` in the worktree with its
+     * recorded links (its exit 1, none ignored, throws: not ignored).
+     */
+    prepareLaneTree(worktree) {
+        const ignored = (paths) => {
+            const out = runHostGit(worktree, [...worktreeGitDirArgs(worktree), '--no-optional-locks', 'check-ignore', '--no-index', '-z', '--stdin'], PRIVATE_GIT_TIMEOUT_MS, process.env, paths.map((p) => `${p}/\0`).join(''));
+            const listed = new Set(out.split('\0').filter(Boolean).map((p) => p.replace(/\/$/, '')));
+            return paths.every((p) => listed.has(p));
+        };
+        // One copy per item: the tree of this run's latest committed lane moves here (prepare.ts adoptLaneTree, its trust argument).
+        // Only from a lane whose engine commit landed after its process tree was proven gone (treeReusable): never a failed,
+        // stalled or lost lane, one whose commit was refused or is parked to be retried, or one a survivor may still write.
+        const reuseFrom = this.state.lanes
+            .filter((l) => l.worktree && l.treeReusable === true && l.id !== this.state.pendingCommit?.laneId && !samePath(l.worktree, worktree))
+            .map((l) => l.worktree).reverse();
+        return prepareLaneNodeModules(this.o.root, worktree, { workspaces: this.baseWorkspaces(), ...(this.o.warn ? { warn: this.o.warn } : {}), ignored, reuseFrom });
+    }
+    /**
+     * Right before the lane commit: the copied tree prepareLaneTree built must
+     * still be ignored as the lane left its .gitignore (settleLaneNodeModules),
+     * by the commit's own check (`ls-files --others --ignored`, lane-commit.ts).
+     * A removal error only warns: the commit then refuses the links left.
+     */
+    settleLaneTree(worktree) {
+        const ignored = (paths) => {
+            const out = runHostGit(worktree, [...worktreeGitDirArgs(worktree), '--no-optional-locks', 'ls-files', '-z', '--others', '--ignored', '--exclude-standard', '--directory', '--', ...paths], PRIVATE_GIT_TIMEOUT_MS);
+            const listed = new Set(out.split('\0').filter(Boolean).map((p) => p.replace(/\/$/, '')));
+            return paths.every((p) => listed.has(p));
+        };
+        try {
+            const removed = settleLaneNodeModules(this.o.root, worktree, ignored);
+            if (removed)
+                this.o.warn?.(`omg factory run: ${removed}`);
+        }
+        catch (error) {
+            this.o.warn?.(`omg factory run: the copied node_modules of ${worktree} is no longer ignored by git and could not be removed (${errText(error)}); the lane commit refuses its links`);
+        }
+    }
+    /**
+     * What a write lane's prompt may say about its sandbox: the lane backend's
+     * reading of the sandbox settings (null: a backend that cannot tell, such
+     * as a cloud agent, or unreadable settings: the prompt says nothing). The
+     * dependencies are named ready only where prepareLaneTree copies your
+     * node_modules into the worktree.
+     */
+    laneEnvironment() {
+        let intent;
+        try {
+            intent = this.o.lanes.laneSandbox?.(this.o.root) ?? null;
+        }
+        catch {
+            intent = null;
+        }
+        if (!intent)
+            return null;
+        return { sandboxed: intent.sandboxed, writeNetwork: intent.writeNetwork, nodeModulesReady: intent.windowsCopy && existsSync(join(this.o.root, 'node_modules')) };
+    }
     /** The gate-sandbox-incompatible park of a copied tree linkGateTree could not build (`why`). */
     treeCopyPark(why) {
         return { name: GATE_SANDBOX_INCOMPATIBLE_GATE, reason: `${why}; the run's gate trees are copies because ${GATE_TREE_COPY_WHY}. For an npm project, set factory.run.sandbox.isolation to "container" in your user config: the gates then run in a container with its own npm ci and need no copy. A full disk or a busy file can also be the cause: free space or close the program holding the file. Then rerun ${this.resume}. ${ACK_WARNING}` };
@@ -1705,6 +1768,8 @@ class FactoryEngine {
         if (this.o.allowSecretShapes) {
             if (existing?.gate?.name === SECRET_SHAPES_GATE && existing.pendingCommit?.secretFindings?.length)
                 this.secretShapesAllowed = true;
+            else if (existing?.gate?.name === SECRET_SHAPES_GATE && (existing.phase === 'intake' || existing.phase === 'plan'))
+                this.o.warn?.(`omg factory run: --allow-secret-shapes is ignored: the run for ${this.what} is parked because its own text or linked plan file holds secret-shaped content; edit the item or the plan file instead`);
             else
                 this.o.warn?.(`omg factory run: --allow-secret-shapes is ignored: the run for ${this.what} is not parked at awaiting-human: ${SECRET_SHAPES_GATE}`);
         }
@@ -1835,6 +1900,14 @@ class FactoryEngine {
             notes.push(`rerun after awaiting-human: ${s.gate.name}`);
         if (s.gate)
             this.resumedFromPark = true;
+        // The recorded model is informational: this invocation's laneModel (user config / --model) still picks the lanes' model.
+        const nowModel = this.o.limits.laneModel ?? null;
+        if (s.laneModel !== undefined && s.laneModel !== nowModel) {
+            const what = (m) => m ?? "Copilot's default model";
+            const note = `lane model changed on resume: the run's first lane used ${what(s.laneModel)}, this invocation starts lanes on ${what(nowModel)}`;
+            notes.push(note);
+            this.o.warn?.(`omg factory run: ${note}`);
+        }
         const { gate: _gate, ...rest } = s;
         const history = notes.map((note) => ({ at, from: s.phase, to: s.phase, note }));
         // A rerun after a gate gets its retries back for the phase it re-evaluates.
@@ -2329,11 +2402,26 @@ class FactoryEngine {
         }
         const body = item.acceptance ? `${item.body.trim()}\n\n## Acceptance criteria\n\n${item.acceptance}\n` : item.body;
         const planLink = findPlanLink(item.body, item.comments, item.authorTrusted);
+        if (this.issueTextSecretPark(noun, item.title, body))
+            return;
         if (this.foreignPr(item.repoUrl))
             return;
         if (this.blockedBy(item.dependsOn, item.repoUrl))
             return;
         this.save((s) => moveTo({ ...s, repoUrl: item.repoUrl, issueTitle: item.title, issueBody: body, ...(planLink ? { planLink } : {}) }, 'plan', `${noun} ${item.url}`, this.iso()));
+    }
+    /**
+     * The lane commit's secret scan, run on the item's own title and body before
+     * any lane: a lane given a key in its plan copies it into the change. Parks
+     * in intake (a rerun reads the edited item again); names the kinds, never a value.
+     */
+    issueTextSecretPark(noun, title, body) {
+        const kinds = secretShapeKinds(`${title}\n${body}`);
+        if (kinds.length === 0)
+            return false;
+        this.gate(SECRET_SHAPES_GATE, `the ${noun} text itself (title or body) holds secret-shaped content (${kinds.join(', ')}), so no lane started: a lane would copy it into the change. Remove it from the ${noun} (rotate the key or token if it is real) and rerun ${this.resume}, or ${cancelCommand(this.key)}`);
+        this.progress.emit('intake', 'fail', `secret-shaped content in the ${noun} text`);
+        return true;
     }
     async intake() {
         if (this.state.kind === 'ci-heal')
@@ -2364,6 +2452,8 @@ class FactoryEngine {
         }
         const body = typeof v.body === 'string' ? v.body : '';
         const planLink = findPlanLink(body, Array.isArray(v.comments) ? v.comments : [], issueAuthorTrusted(v));
+        if (this.issueTextSecretPark('issue', typeof v.title === 'string' ? v.title : '', body))
+            return;
         if (this.foreignPr(m[1]))
             return;
         if (this.blockedBy(ghDependsOn(body), m[1]))
@@ -2383,6 +2473,12 @@ class FactoryEngine {
             const text = readBaseFile(this.exec, this.o.root, baseSha, s.planLink);
             if (text === null || !text.trim()) {
                 this.gate('needs-plan', `omg-plan ${s.planLink} is missing or empty on ${s.base} at ${baseSha.slice(0, 12)}`);
+                return;
+            }
+            const planKinds = secretShapeKinds(text);
+            if (planKinds.length > 0) {
+                this.gate(SECRET_SHAPES_GATE, `the linked plan file ${s.planLink} holds secret-shaped content (${planKinds.join(', ')}), so no lane started: a lane would copy it into the change. Remove it from the plan file on ${s.base} (rotate the key or token if it is real) and rerun ${this.resume}, or ${cancelCommand(this.key)}`);
+                this.progress.emit('plan', 'fail', 'secret-shaped content in the linked plan file');
                 return;
             }
             const blob = this.run(['rev-parse', '--verify', `${baseSha}:${s.planLink}`], 'git', TRUSTED_READ_ENV).trim();
@@ -2480,7 +2576,15 @@ class FactoryEngine {
         }
         if (undecided && this.layoutChoice === 'private' && !(await this.setupPrivate(baseSha)))
             return;
-        const out = await this.runLane('implement', baseSha, 'write', implementPrompt(this.state, this.teamContext(this.readAt(baseSha), pathsInText(this.state.plan?.text ?? '')), this.laneScripts()), 'implement');
+        const read = this.readAt(baseSha);
+        // Name only the guide files the base has: the lane worktree checks it out.
+        const guides = REPO_GUIDE_FILES.filter((p) => { try {
+            return read(p) !== undefined;
+        }
+        catch {
+            return false;
+        } });
+        const out = await this.runLane('implement', baseSha, 'write', implementPrompt(this.state, this.teamContext(read, pathsInText(this.state.plan?.text ?? '')), this.laneScripts(), this.laneEnvironment(), guides), 'implement');
         if (out.kind === 'done')
             await this.acceptWriteLane(out, 'implement', baseSha);
     }
@@ -2492,7 +2596,7 @@ class FactoryEngine {
         if (this.isHumanRound(head, ship))
             return this.humanFix(this.state.pr, head, ship);
         const round = ship?.fixRounds ?? 0;
-        const out = await this.runLane('fix', head, 'write', fixPrompt(this.state, round, this.laneScripts()), `fix@${round}`);
+        const out = await this.runLane('fix', head, 'write', fixPrompt(this.state, round, this.laneScripts(), this.laneEnvironment()), `fix@${round}`);
         if (out.kind === 'done')
             await this.acceptWriteLane(out, `fix@${round}`, head);
     }
@@ -2531,7 +2635,7 @@ class FactoryEngine {
         const priv = this.privateRun();
         await this.commitWriteLane({
             laneId: lane.id, key, start, parents: [...parents], worktree: result.worktree, branch: priv ? null : result.branch, message: laneCommitMessage(title, result.finalText),
-        });
+        }, laneDecline(result.finalText));
     }
     /** --allow-secret-shapes answered this invocation's secret-shaped-content park (start()). */
     secretShapesAllowed = false;
@@ -2546,7 +2650,7 @@ class FactoryEngine {
      * goes on, a positively seen survivor parks lane-unconfirmed), then the
      * shared state is re-compared, then the commit.
      */
-    async commitWriteLane(p) {
+    async commitWriteLane(p, declined = null) {
         const lane = this.state.lanes.find((l) => l.id === p.laneId);
         if (!lane)
             throw new FactoryStepError(`the lane ${p.laneId} of the pending commit is not in the run state`);
@@ -2582,6 +2686,8 @@ class FactoryEngine {
         const secretAllowPaths = this.secretAllowPaths();
         // The private repository is checked right before the engine's git runs there (review-481 g).
         priv?.assert();
+        // A lane that changed .gitignore can leave the engine's copied node_modules unignored: removed, not committed or blamed.
+        this.settleLaneTree(p.worktree);
         const commit = commitLaneWork({
             worktree: p.worktree, start: p.start, parents: p.parents, repoRoot: priv ? priv.repo.repo : this.o.root, branch: priv ? null : p.branch, message: p.message, extraProtected,
             secretAck: (p.secretAck ?? []), secretAllowPaths,
@@ -2598,12 +2704,18 @@ class FactoryEngine {
                 return this.gate('protected-paths', `lane ${p.laneId}: ${commit.reason}; nothing was committed or pushed. Rerun ${this.resume} to run the step again (the lane must leave those paths alone), or stop with ${cancelCommand(this.key)}`);
             if (commit.refusal === 'gitlink' || commit.refusal === 'escaped')
                 return this.gate('sandbox-escaped', `${kind} lane ${p.laneId}: ${commit.reason}; nothing was committed or pushed`);
+            // A lane that left no changes and said it declined the work parks at once: its fresh retry would get the same
+            // prompt and decline again. The reason is the lane's own text, so only the park's local detail carries it.
+            // (Not kept in pendingCommit: a rerun of a parked pending commit that turns out empty gets the usual retry.)
+            if (commit.refusal === 'empty' && declined !== null) {
+                return this.gate(`${kind}-declined`, `lane ${p.laneId}: ${LANE_DECLINED}, so it was not retried; its stated reason is in the park detail (omg factory run status). Sharpen the plan or the ${this.state.kind === 'ci-heal' ? 'diagnosis' : 'issue'}, then rerun ${this.resume}, or stop with ${cancelCommand(this.key)}`, parkTail(declined));
+            }
             return this.laneFailed(p.key, kind, `lane ${p.laneId}: ${commit.reason}`);
         }
         // The engine's own commit moved the lane's branch and worktree HEAD: the new baseline of the recheck.
         this.rebaseRecheck();
         const head = commit.sha;
-        this.updateLane(p.laneId, { endSha: head, ...(commit.notes.length > 0 ? { note: commit.notes.join('; ') } : {}) });
+        this.updateLane(p.laneId, { endSha: head, ...(commit.notes.length > 0 ? { note: commit.notes.join('; ') } : {}), ...(proof.kind === 'gone' ? { treeReusable: true } : {}) });
         // A detect-only lane after the PR exists (fix, conflict-fix, ci-fix) is recorded in a PR comment; the first one is in the PR body.
         if (lane.sandbox?.mode === 'detect-only' && this.state.pr) {
             this.commentOnce('pr', `detect-only@${p.laneId}`, 'sandbox', `**Sandbox: detect-only.** ${kind} lane ${p.laneId} ran without an OS sandbox (\`writeUnsandboxed: "detect-only"\`).\n`);
@@ -4385,7 +4497,7 @@ class FactoryEngine {
             throw new FactoryStepError(`the engine merge for the conflict-fix lane failed: ${errText(error)}`);
         }
         const conflicted = merged.conflicted.length > 0 ? merged.conflicted : this.state.conflicts ?? [];
-        const out = await this.runLane('conflict-fix', merged.sha, 'write', conflictFixPrompt(this.state, conflicted), key);
+        const out = await this.runLane('conflict-fix', merged.sha, 'write', conflictFixPrompt(this.state, conflicted, this.laneEnvironment()), key);
         if (out.kind === 'done')
             await this.acceptWriteLane(out, key, merged.sha, [head, baseSha]);
     }
@@ -4394,7 +4506,7 @@ class FactoryEngine {
         if (!f || !HEX40.test(f.startSha))
             throw new FactoryStepError('ci-fix needs the failure it fixes');
         const key = `ci-fix@${this.state.ciFixRounds}`;
-        const out = await this.runLane('ci-fix', f.startSha, 'write', ciFixPrompt(this.state), key);
+        const out = await this.runLane('ci-fix', f.startSha, 'write', ciFixPrompt(this.state, this.laneEnvironment()), key);
         if (out.kind === 'done')
             await this.acceptWriteLane(out, key, f.startSha);
     }
@@ -5973,13 +6085,15 @@ class FactoryEngine {
         }
         this.ledger.setRecheck(undefined);
         const startedAt = this.iso();
-        const record = { id, kind, startSha: startRef, status: 'running', maxCredits: cap.cap, startedAt, ...(laneTree ? { worktree: laneTree } : {}) };
+        const model = this.o.limits.laneModel;
+        const record = { id, kind, startSha: startRef, status: 'running', maxCredits: cap.cap, startedAt, ...(model ? { model } : {}), ...(laneTree ? { worktree: laneTree } : {}) };
         // The baseline is persisted before the lane exists, so a lost lane or a resume compares against it.
         try {
             this.ledger.setBaseline(id, before);
             if (userBefore)
                 this.ledger.setBaseline(userBaselineKey(id), userBefore);
-            this.save((s) => ({ ...s, lanes: [...s.lanes, record] }));
+            // The first lane's model is kept for the resume warning only (informational: it never picks the model).
+            this.save((s) => ({ ...s, lanes: [...s.lanes, record], ...(s.laneModel === undefined ? { laneModel: model ?? null } : {}) }));
         }
         catch (error) {
             // No lane started: the heal reservation is released before the step fails.
@@ -5991,6 +6105,11 @@ class FactoryEngine {
             ({ remoteId } = await this.o.lanes.start({
                 laneId: id, cwd: this.o.root, baseRef: startRef, prompt, profile, timeoutMs: this.o.limits.laneTimeoutMs, maxCredits: cap.cap, ledgerTag: { role: kind, run: runSlug(this.key) },
                 ...(profile === 'write' ? { engineCommits: true } : {}),
+                // factory.run.laneModel / --model: every lane kind (implement, review, fix, ci-fix, conflict-fix) starts on it.
+                ...(model ? { model } : {}),
+                // The OS sandbox on Windows denies opening a package dir through a junction: a write lane gets a copied node_modules
+                // (a review lane's shell is read-only, so it runs no test and needs none).
+                ...(profile === 'write' ? { beforeSandboxedSession: (wt) => this.prepareLaneTree(wt) } : {}),
                 ...(priv && laneTree ? { worktree: { path: laneTree, commonGitDir: priv.repo.gitDir }, jobRoot: priv.layout.jobs, deniedPaths: priv.deniedFor(laneTree), beforeHostGit: () => priv.problem() } : {}),
             }));
         }
@@ -6082,6 +6201,11 @@ class FactoryEngine {
         const usage = usageOf(result);
         settleHeal(usage.credits);
         const status = stalled ? 'stalled' : result.state === 'completed' ? 'completed' : result.state === 'cancelled' ? 'cancelled' : 'failed';
+        // The session ran on another model than the one asked for: kept on the lane and in the history (the record's model is the reported one).
+        const modelMismatch = model && result.model && result.model !== model ? `lane ${id} asked for model ${model}, the session reported ${result.model}` : undefined;
+        if (modelMismatch)
+            this.save((x) => ({ ...x, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: modelMismatch }] }));
+        const laneNote = [result.error, modelMismatch].filter(Boolean).join('; ');
         this.updateLane(id, {
             status,
             usage,
@@ -6089,8 +6213,9 @@ class FactoryEngine {
             ...(result.headSha ? { endSha: result.headSha } : {}),
             // The private layout keeps the engine's own record of the worktree it made (acceptWriteLane compares the backend's with it).
             ...(result.worktree && !laneTree ? { worktree: result.worktree } : {}),
-            ...(result.error ? { note: result.error } : {}),
+            ...(laneNote ? { note: laneNote } : {}),
             ...(result.sandbox ? { sandbox: result.sandbox } : {}),
+            ...(result.model ? { model: result.model } : {}),
         });
         if (status === 'completed')
             this.save((x) => ({ ...x, lostStreak: { ...x.lostStreak, [kind]: 0 } }));
@@ -6914,7 +7039,7 @@ class FactoryEngine {
             this.save((x) => ({ ...x, humanReview: { seenAt: this.iso(), head, digest, threadIds } }));
         const round = current.fixRounds;
         const before = this.state.lanes.length;
-        const out = await this.runLane('fix', head, 'write', humanFixPrompt(this.state, round, open, by, this.laneScripts()), `fix@${round}`);
+        const out = await this.runLane('fix', head, 'write', humanFixPrompt(this.state, round, open, by, this.laneScripts(), this.laneEnvironment()), `fix@${round}`);
         const lane = this.state.lanes[before];
         if (lane?.kind === 'fix')
             this.updateLane(lane.id, { feedback: { source: 'human', forge: this.forge?.kind ?? 'github', items: open.length } });
@@ -7051,6 +7176,10 @@ function dryLayoutNote(o, exec, local) {
         return `; but ${errText(error)}, so the run would park at awaiting-human: ${PRIVATE_STORE_GATE}`;
     }
 }
+/** The real run's intake park on secret-shaped item text, predicted: kinds only, never a value. */
+function drySecretPark(noun, kinds, caps) {
+    return { exitCode: 0, phase: null, state: null, message: `dry run: the ${noun} text itself (title or body) holds secret-shaped content (${kinds.join(', ')}); the run would stop at awaiting-human: ${SECRET_SHAPES_GATE} before any lane`, plan: { next: 'awaiting-human', reason: SECRET_SHAPES_GATE, ...caps } };
+}
 function dryRun(o) {
     const holder = busyHolder(o, engineRunKey(o));
     if (holder)
@@ -7113,6 +7242,16 @@ function dryRun(o) {
         const open = forge.reviews.findOpenPrForBranch(branch);
         if (open !== undefined)
             return { exitCode: 0, phase: null, state: null, message: `dry run: open PR #${open} already uses ${branch}; the run would stop at awaiting-human: pr-exists`, plan: { next: 'awaiting-human', reason: 'pr-exists', ...caps } };
+        const itemBody = item.acceptance ? `${item.body.trim()}
+
+## Acceptance criteria
+
+${item.acceptance}
+` : item.body;
+        const itemKinds = secretShapeKinds(`${item.title}
+${itemBody}`);
+        if (itemKinds.length > 0)
+            return drySecretPark(terms.item, itemKinds, caps);
         const link = findPlanLink(item.body, item.comments, item.authorTrusted);
         const source = link ? `omg-plan ${link}` : item.acceptance ? terms.acceptance : hasAcceptanceCriteria(item.body) ? `${terms.body} (Acceptance criteria)` : undefined;
         // The local gate's executable, probed by the resolver the real gate run uses, without spawning it (dogfood F40).
@@ -7146,6 +7285,10 @@ function dryRun(o) {
     const body = typeof v.body === 'string' ? v.body : '';
     if (v.state !== 'OPEN')
         return { exitCode: 0, phase: null, state: null, message: 'dry run: the issue is closed; the run would be cancelled', plan: { next: 'cancelled', ...caps } };
+    const issueKinds = secretShapeKinds(`${typeof v.title === 'string' ? v.title : ''}
+${body}`);
+    if (issueKinds.length > 0)
+        return drySecretPark('issue', issueKinds, caps);
     const link = findPlanLink(body, Array.isArray(v.comments) ? v.comments : [], issueAuthorTrusted(v));
     const source = link ? `omg-plan ${link}` : hasAcceptanceCriteria(body) ? 'issue body (Acceptance criteria)' : undefined;
     const repoUrl = typeof v.url === 'string' ? v.url.replace(/\/issues\/\d+$/, '') : '';

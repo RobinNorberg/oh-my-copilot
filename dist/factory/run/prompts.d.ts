@@ -11,6 +11,13 @@ export declare const MAX_REVIEW_DIFF_CHARS = 60000;
 export { oneLine };
 /** A backtick fence longer than any backtick run in `content`, so the content cannot close it. */
 export declare function fenceFor(content: string): string;
+/**
+ * The decline protocol of every write lane prompt: a lane that refuses
+ * the task on purpose says so in a fixed last line (laneDecline in
+ * lane-commit.ts reads it), so the engine parks without a fresh retry that
+ * would get the same prompt and decline again.
+ */
+export declare const DECLINE_RULE = "Use DECLINED only when you deliberately refuse this task or it is impossible as specified: then make NO changes and end your final message with one line `DECLINED: <reason>`, and the engine stops for a human instead of running the same task again. Never use it for an environment or tool failure (tests that cannot run, a denied command, a missing tool): report that normally.";
 /** What the lane works for, in its prompt's first line. */
 export declare const subject: (s: FactoryRunState) => string;
 export declare const planLabel: (s: FactoryRunState) => string;
@@ -33,8 +40,27 @@ export declare const LANE_SCRIPT_NAMES: readonly string[];
  * the script bodies never reach a prompt. Unreadable or absent = none.
  */
 export declare function laneScripts(packageJson: string | undefined): string[];
-export declare function implementPrompt(s: FactoryRunState, team?: TeamContext, scripts?: readonly string[]): string;
-export declare function fixPrompt(s: FactoryRunState, round: number, scripts?: readonly string[]): string;
+/**
+ * What a write lane's session will have, from the sandbox settings it starts
+ * with (the engine asks the lane backend before the prompt is built; null:
+ * not known, or no OS sandbox).
+ */
+export interface LaneEnvironment {
+    /** The settings put the session in the OS sandbox (sandbox.enabled, no OMG_SANDBOX=off). */
+    sandboxed: boolean;
+    writeNetwork: 'none' | 'registry';
+    /** The engine gives the worktree a copy of your node_modules before the session (Windows). */
+    nodeModulesReady: boolean;
+}
+/** The repository guide files the implement prompt names, when the lane's base has them. */
+export declare const REPO_GUIDE_FILES: readonly string[];
+/**
+ * `guides`: those of REPO_GUIDE_FILES the lane's base has (the engine reads the
+ * base tree). Only these are named: a lane told to read a missing file spends
+ * a tool call failing on it.
+ */
+export declare function implementPrompt(s: FactoryRunState, team?: TeamContext, scripts?: readonly string[], lane?: LaneEnvironment | null, guides?: readonly string[]): string;
+export declare function fixPrompt(s: FactoryRunState, round: number, scripts?: readonly string[], lane?: LaneEnvironment | null): string;
 export declare const planSection: (s: FactoryRunState) => string[];
 /** The human review comments in one fix prompt are cut at this many characters in total. */
 export declare const MAX_HUMAN_FEEDBACK_CHARS = 40000;
@@ -53,10 +79,10 @@ export interface HumanFeedbackThread {
  * `<U+XXXX>`, control characters dropped, the whole block fenced, its total
  * capped. `file` is display text only; the engine never opens it.
  */
-export declare function humanFixPrompt(s: FactoryRunState, round: number, threads: readonly HumanFeedbackThread[], changesRequestedBy?: readonly string[], scripts?: readonly string[]): string;
+export declare function humanFixPrompt(s: FactoryRunState, round: number, threads: readonly HumanFeedbackThread[], changesRequestedBy?: readonly string[], scripts?: readonly string[], lane?: LaneEnvironment | null): string;
 /** `conflicted`: the files the engine's merge left conflict markers in (conflictFixStart), else the ones prepare reported. */
-export declare function conflictFixPrompt(s: FactoryRunState, conflicted?: readonly string[]): string;
-export declare function ciFixPrompt(s: FactoryRunState): string;
+export declare function conflictFixPrompt(s: FactoryRunState, conflicted?: readonly string[], lane?: LaneEnvironment | null): string;
+export declare function ciFixPrompt(s: FactoryRunState, lane?: LaneEnvironment | null): string;
 /**
  * The review lane's prompt. `standards` (the files under docs/standards/ on
  * the base commit) switches on the two-axis review: spec and standards, each

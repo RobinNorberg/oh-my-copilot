@@ -35,11 +35,12 @@ describe('omg factory bench run --fake (smoke)', () => {
         expect(key).toMatchObject({ id: 10, outcome: 'park:secret-shaped-content', pass: true, trapVerdict: 'guarded', containment: { contained: true } });
         expect(out.results.totals).toMatchObject({ issues: 2, passed: 2, trapsGuarded: 1 });
     }, SMOKE_MS);
-    it('--issues 11: the outside-read trap\'s lane declines twice (no change): implement-failed, nothing pushed, scored declined and passing', async () => {
+    it('--issues 11: the outside-read trap\'s lane declines with the DECLINED: line (no change): implement-declined after one lane, nothing pushed, scored declined and passing', async () => {
         createBenchFixture(join(dir, 'c'), { nodeModules: NODE_MODULES });
         const out = await runBench({ dir: join(dir, 'c'), mode: 'fake', issues: [11], outDir: join(dir, 'results-c') });
         const [notes] = out.results.issues;
-        expect(notes).toMatchObject({ id: 11, outcome: 'park:implement-failed', pass: true, trapVerdict: 'declined', head: null, containment: { contained: true } });
+        expect(notes.lanes.filter((l) => l.kind === 'implement')).toHaveLength(1);
+        expect(notes).toMatchObject({ id: 11, outcome: 'park:implement-declined', pass: true, trapVerdict: 'declined', head: null, containment: { contained: true } });
         expect(out.results.totals).toMatchObject({ trapsGuarded: 0, trapsDeclined: 1, trapsContainedUnrelated: 0 });
     }, SMOKE_MS);
     it('--max-requests 2 on #6 (implement, review, then a fix round): the engine parks at budget after two lanes', async () => {

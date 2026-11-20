@@ -23,7 +23,7 @@ import { defaultLocalGateRunner, type LocalGateRunner } from '../local-gate.js';
 import type { GateConfigLoader } from '../prepare.js';
 import type { SandboxRunner } from '../sandbox-exec.js';
 import { REVIEW_FEEDBACK_QUERY } from '../../../forge/github/graphql.js';
-import { LaneLostError, type LaneBackend, type LaneProcess, type LaneResult, type LaneStartInput, type LaneState } from '../lane.js';
+import { LaneLostError, type LaneBackend, type LaneProcess, type LaneResult, type LaneSandboxIntent, type LaneStartInput, type LaneState } from '../lane.js';
 
 export { gitIn };
 
@@ -47,6 +47,8 @@ export interface LaneOutcome {
   sandbox?: CopilotRunSandboxState | null;
   /** The worktree the result names (default: the lane's own; a backend naming another one). */
   reportWorktree?: string;
+  /** The model the session reports (default: none reported). */
+  model?: string;
   /** The result carries no change summary (git could not tell). */
   noChanges?: boolean;
 }
@@ -70,6 +72,8 @@ export class FakeLanes implements LaneBackend {
   onRunningPoll: (remoteId: string) => void = () => {};
   /** The result's lastEventAt (the session's last event); undefined = the backend cannot tell (no idle check). */
   lastEventAt: (remoteId: string) => string | null | undefined = () => undefined;
+  /** LaneBackend.laneSandbox: the sandbox the engine's write prompts describe (unset: not known, no rule). */
+  laneSandbox?: (root: string) => LaneSandboxIntent | null;
   private readonly jobs = new Map<string, FakeJob>();
 
   /** `scripts` is consumed in start order; `runningPolls[i]` makes lane i report `running` that many times first. */
@@ -125,6 +129,7 @@ export class FakeLanes implements LaneBackend {
       usage: { premiumRequests: terminal ? 1 : 0, credits: terminal ? (o.credits ?? 5) : 0, source: 'measured', detail: '' },
       remoteId,
       error: o.error ?? null,
+      ...(terminal && o.model ? { model: o.model } : {}),
       notes: [],
       process: fakeProcess(remoteId),
       ...(o.sandbox ? { sandbox: o.sandbox } : o.sandbox === undefined && job.ctx.input.profile !== 'review' ? { sandbox: ENFORCED_SANDBOX } : {}),

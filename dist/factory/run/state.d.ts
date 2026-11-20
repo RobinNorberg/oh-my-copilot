@@ -63,6 +63,12 @@ export interface FactoryLaneRecord {
     status: FactoryLaneStatus;
     /** The AI-credit cap the lane was started with. */
     maxCredits: number;
+    /**
+     * The Copilot model the lane started on (factory.run.laneModel or
+     * `--model`), replaced by the model the session reported when it ended.
+     * Absent: no model was passed and the session reported none.
+     */
+    model?: string;
     /** AI Credits is the unit; premiumRequests is legacy, kept for older readers. */
     usage?: {
         credits: number;
@@ -86,6 +92,13 @@ export interface FactoryLaneRecord {
      * other paths): run clean / reset read the note.
      */
     stopUnconfirmed?: boolean;
+    /**
+     * The engine's commit of this write lane landed and its process tree was
+     * proven gone before it (not `unproven`): only such a lane's copied
+     * node_modules may move into a later lane of the run (prepare.ts
+     * adoptLaneTree). Absent: never reused.
+     */
+    treeReusable?: true;
     /**
      * The tamper check of a lane the engine cancelled: `clean` (it compared and
      * found nothing), `problems` (it found a change), `skipped` (the stop was not
@@ -297,6 +310,13 @@ export interface FactoryRunState {
      * files lack it.
      */
     gateTreeCopy?: true;
+    /**
+     * The lane model the run's first lane was asked for (factory.run.laneModel
+     * or `--model`; null: Copilot's default). Informational only: a resumed
+     * invocation with a different model gets a warning, and this value never
+     * picks the model. Optional: older state files lack it.
+     */
+    laneModel?: string | null;
     /**
      * The name of the prepare checkout's admin dir under `<common>/worktrees/`,
      * as `worktree add` made it: a later invocation reads the checkout only

@@ -79,6 +79,12 @@ export interface FactoryLaneRecord {
   status: FactoryLaneStatus;
   /** The AI-credit cap the lane was started with. */
   maxCredits: number;
+  /**
+   * The Copilot model the lane started on (factory.run.laneModel or
+   * `--model`), replaced by the model the session reported when it ended.
+   * Absent: no model was passed and the session reported none.
+   */
+  model?: string;
   /** AI Credits is the unit; premiumRequests is legacy, kept for older readers. */
   usage?: { credits: number; premiumRequests: number; source: 'measured' | 'estimated' };
   verdict?: FactoryLaneVerdict;
@@ -98,6 +104,13 @@ export interface FactoryLaneRecord {
    * other paths): run clean / reset read the note.
    */
   stopUnconfirmed?: boolean;
+  /**
+   * The engine's commit of this write lane landed and its process tree was
+   * proven gone before it (not `unproven`): only such a lane's copied
+   * node_modules may move into a later lane of the run (prepare.ts
+   * adoptLaneTree). Absent: never reused.
+   */
+  treeReusable?: true;
   /**
    * The tamper check of a lane the engine cancelled: `clean` (it compared and
    * found nothing), `problems` (it found a change), `skipped` (the stop was not
@@ -287,6 +300,13 @@ export interface FactoryRunState {
    * files lack it.
    */
   gateTreeCopy?: true;
+  /**
+   * The lane model the run's first lane was asked for (factory.run.laneModel
+   * or `--model`; null: Copilot's default). Informational only: a resumed
+   * invocation with a different model gets a warning, and this value never
+   * picks the model. Optional: older state files lack it.
+   */
+  laneModel?: string | null;
   /**
    * The name of the prepare checkout's admin dir under `<common>/worktrees/`,
    * as `worktree add` made it: a later invocation reads the checkout only
@@ -618,6 +638,8 @@ function shapeProblem(s: Record<string, unknown>): string | null {
     const sbx = x?.sandbox as Record<string, unknown> | undefined;
     return isStr(x?.id) && isStr(x.kind) && isStr(x.status) && isStr(x.startSha) && typeof x.maxCredits === 'number'
       && (x.stopUnconfirmed === undefined || typeof x.stopUnconfirmed === 'boolean')
+      && (x.treeReusable === undefined || x.treeReusable === true)
+      && (x.model === undefined || isStr(x.model))
       && (x.tamperCheck === undefined || x.tamperCheck === 'clean' || x.tamperCheck === 'problems' || x.tamperCheck === 'skipped')
       && (sbx === undefined || (typeof sbx === 'object' && sbx !== null && isStr(sbx.mode) && isCount(sbx.unsandboxedCalls)
         && (sbx.writeNetwork === undefined || sbx.writeNetwork === 'none' || sbx.writeNetwork === 'registry')));
@@ -671,6 +693,7 @@ function humanReviewShapeProblem(s: Record<string, unknown>): string | null {
   if (s.testDeltaExcusedHead !== undefined && (!isStr(s.testDeltaExcusedHead) || !HEX40.test(s.testDeltaExcusedHead))) return 'testDeltaExcusedHead';
   if (s.plainHeadRan !== undefined && s.plainHeadRan !== true) return 'plainHeadRan';
   if (s.gateTreeCopy !== undefined && s.gateTreeCopy !== true) return 'gateTreeCopy';
+  if (s.laneModel !== undefined && s.laneModel !== null && !isStr(s.laneModel)) return 'laneModel';
   // One admin dir name under <common>/worktrees (git makes it from the checkout's base name): no separator, nothing else.
   if (s.checkoutAdmin !== undefined && (!isStr(s.checkoutAdmin) || !/^[A-Za-z0-9._-]+$/.test(s.checkoutAdmin) || s.checkoutAdmin === '.' || s.checkoutAdmin === '..')) return 'checkoutAdmin';
   const cal = s.gateCalibration as Record<string, unknown> | undefined;

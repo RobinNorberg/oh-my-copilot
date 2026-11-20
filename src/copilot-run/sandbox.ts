@@ -356,6 +356,8 @@ export interface SandboxPolicyContext {
   /** The session's own git dir (`<commonGitDir>/worktrees/<name>` for a linked worktree). */
   gitDir?: string;
   pluginRoot: string;
+  /** The lane plugin dir the session loads in place of pluginRoot (lane-plugin.ts): read-only, like pluginRoot. */
+  lanePluginRoot?: string;
   /** The job's COPILOT_HOME (and relocated profile). */
   jobHome: string;
   /** The job's state directory (events, home). */
@@ -622,6 +624,12 @@ export function buildSandboxConfig(profile: SandboxProfile, ctx: SandboxPolicyCo
   const relocated = relocatedProfileEnv(ctx.jobHome);
   const laneHome = [relocated.TEMP!, relocated.USERPROFILE!];
   const gitConfigDir = dirname(relocated.GIT_CONFIG_GLOBAL!);
+  // The runtime's package cache, read-only: its bundled tools (ripgrep behind the glob and grep tools) run inside the
+  // sandbox, while the runtime loads code from it, so it is never lane-writable. The runtime has unpacked it by the time
+  // the config is built (after getStatus); a missing dir is not named.
+  const pkgCache = [join(relocated.COPILOT_CACHE_HOME!, 'pkg')].filter(existsSync);
+  // The sandboxed MCP server starts from the lane plugin dir; the lane never writes it (its hooks file is the lane's hook registration).
+  const plugin = [ctx.pluginRoot, ...(ctx.lanePluginRoot ? [ctx.lanePluginRoot] : [])];
   // The unsandboxed runtime runs git in the worktree too: a lane that rewrote the worktree's `.git` gitfile or
   // the admin dir's commondir or config.worktree would point that git at its own config (core.fsmonitor, a filter
   // driver). The sandbox keeps a read-only file nested in a read-write dir read-only, rename-over and delete
@@ -645,7 +653,7 @@ export function buildSandboxConfig(profile: SandboxProfile, ctx: SandboxPolicyCo
       ...common,
       userPolicy: {
         filesystem: {
-          readonlyPaths: [ctx.worktree, ctx.commonGitDir, ctx.pluginRoot, gitConfigDir, ...gitLinks, ...tools, ...settings.extraReadonlyPaths],
+          readonlyPaths: [ctx.worktree, ctx.commonGitDir, ...plugin, gitConfigDir, ...pkgCache, ...gitLinks, ...tools, ...settings.extraReadonlyPaths],
           readwritePaths: [...laneHome, ...settings.extraReadwritePaths],
         },
         network: { allowOutbound: false, allowLocalNetwork: false },
@@ -674,7 +682,7 @@ export function buildSandboxConfig(profile: SandboxProfile, ctx: SandboxPolicyCo
   }
   const filesystem: SandboxConfig['userPolicy']['filesystem'] = {
     readwritePaths: [ctx.worktree, ...laneHome, ...(ctx.hostCommits ? [] : laneGitWritePaths(ctx)), ...settings.extraReadwritePaths],
-    readonlyPaths: [ctx.commonGitDir, ctx.pluginRoot, gitConfigDir, ...gitLinks, ...(nm ? [nm] : []), ...nested, ...tools, ...settings.extraReadonlyPaths],
+    readonlyPaths: [ctx.commonGitDir, ...plugin, gitConfigDir, ...pkgCache, ...gitLinks, ...(nm ? [nm] : []), ...nested, ...tools, ...settings.extraReadonlyPaths],
   };
   if (host.capabilities.denied_paths === true) {
     // Git's plaintext credential stores (~/.git-credentials, XDG), the credential-cache daemon's socket dir, and the

@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 
 import * as engine from '../engine.js';
 import * as prompts from '../prompts.js';
+import { laneDecline } from '../lane-commit.js';
 import { createFactoryState, type FactoryRunState } from '../state.js';
 
 /** Every lane prompt for a spread of states; the fixture was captured from engine.ts before the prompts moved out. */
@@ -32,6 +33,8 @@ export function promptCases(m: Pick<typeof prompts, 'implementPrompt' | 'fixProm
     warnings: [],
   };
   const decisionsOnly = { routes: [], decisions: { lines: ['- one'], truncated: false }, warnings: [] };
+  const noNetworkReady = { sandboxed: true, writeNetwork: 'none' as const, nodeModulesReady: true };
+  const noNetwork = { ...noNetworkReady, nodeModulesReady: false };
   return {
     implementGh: m.implementPrompt(gh),
     implementLocal: m.implementPrompt(local),
@@ -63,6 +66,16 @@ export function promptCases(m: Pick<typeof prompts, 'implementPrompt' | 'fixProm
     implementTeamDecisionsOnly: m.implementPrompt(local, decisionsOnly),
     reviewTeam: m.reviewPrompt(gh, h, diff, undefined, team),
     reviewTeamStandards: m.reviewPrompt(local, h, diff, ['docs/standards/code.md'], decisionsOnly),
+    // The no-install rule: a sandboxed lane without network, with the copied node_modules (Windows) and without it.
+    implementNoNetworkReady: m.implementPrompt(gh, undefined, [], noNetworkReady),
+    implementNoNetwork: m.implementPrompt(gh, undefined, [], noNetwork),
+    // The guide files: only those the lane's base has are named (the default above: none).
+    implementAllGuides: m.implementPrompt(gh, undefined, [], null, ['AGENTS.md', 'CLAUDE.md', 'CONTRIBUTING.md']),
+    implementOneGuide: m.implementPrompt(local, undefined, [], null, ['CONTRIBUTING.md']),
+    fixNoNetworkReady: m.fixPrompt(findings, 1, [], noNetworkReady),
+    conflictNoNetwork: m.conflictFixPrompt(gh, ['x.ts'], noNetwork),
+    ciNoNetworkReady: m.ciFixPrompt(ciLocal, noNetworkReady),
+    humanFixNoNetworkReady: prompts.humanFixPrompt(local, 1, [], ['dana'], [], noNetworkReady),
   };
 }
 
@@ -77,6 +90,60 @@ describe('lane prompts are byte-identical to the pre-move engine output', () => 
   }
   it('covers every case', () => {
     expect(Object.keys(viaPrompts).sort()).toEqual(Object.keys(fixture).sort());
+  });
+});
+
+describe('the implement prompt names only the guide files the base has', () => {
+  const s: FactoryRunState = { ...createFactoryState({ issue: 7, repoUrl: 'https://github.com/o/r', base: 'main' }, '2026-11-19T00:00:00.000Z'), baseSha: 'c'.repeat(40) };
+  it('names none, some or all, never a missing one', () => {
+    const none = prompts.implementPrompt(s);
+    expect(none).toContain('following the repository\'s standards.\n');
+    expect(none).not.toContain('read its');
+    const two = prompts.implementPrompt(s, undefined, [], null, ['AGENTS.md', 'CONTRIBUTING.md']);
+    expect(two).toContain('following the repository\'s standards (read its AGENTS.md / CONTRIBUTING.md).');
+    expect(two).not.toMatch(/read its[^\n]*CLAUDE\.md/);
+    expect(prompts.REPO_GUIDE_FILES).toEqual(['AGENTS.md', 'CLAUDE.md', 'CONTRIBUTING.md']);
+  });
+});
+
+describe('the no-install rule follows the lane\'s sandbox settings', () => {
+  const s: FactoryRunState = { ...createFactoryState({ issue: 7, repoUrl: 'https://github.com/o/r', base: 'main' }, '2026-11-19T00:00:00.000Z'), head: 'b'.repeat(40), baseSha: 'c'.repeat(40) };
+  const RULE = 'never run `npm install`, `npm ci` or any other package install';
+  const READY = 'The dependencies are already installed in node_modules.';
+  const ready = { sandboxed: true, writeNetwork: 'none' as const, nodeModulesReady: true };
+  const write = (lane: Parameters<typeof prompts.implementPrompt>[3]) => [
+    prompts.implementPrompt(s, undefined, [], lane),
+    prompts.fixPrompt(s, 1, [], lane),
+    prompts.humanFixPrompt(s, 1, [], [], [], lane),
+    prompts.conflictFixPrompt(s, ['a.ts'], lane),
+    prompts.ciFixPrompt(s, lane),
+  ];
+
+  it('sandboxed, writeNetwork "none", node_modules copied: every write prompt forbids installs and says the deps are there', () => {
+    for (const p of write(ready)) {
+      expect(p).toContain(RULE);
+      expect(p).toContain(READY);
+      expect(p).toContain('report it in your final message instead of installing it');
+    }
+  });
+
+  it('sandboxed, writeNetwork "none", no copy (not Windows): installs forbidden, nothing claimed about node_modules', () => {
+    for (const p of write({ ...ready, nodeModulesReady: false })) {
+      expect(p).toContain(RULE);
+      expect(p).not.toContain(READY);
+    }
+  });
+
+  it('writeNetwork "registry", the sandbox off, or not known: no rule (each prompt is the one without it)', () => {
+    const plain = write(null);
+    for (const lane of [{ ...ready, writeNetwork: 'registry' as const }, { ...ready, sandboxed: false }, null]) {
+      expect(write(lane)).toEqual(plain);
+    }
+    for (const p of plain) expect(p).not.toContain('package install');
+  });
+
+  it('the review prompt never carries it (its shell is read-only and it runs no package script)', () => {
+    expect(prompts.reviewPrompt(s, 'a'.repeat(40), 'diff')).not.toContain('package install');
   });
 });
 
@@ -100,5 +167,36 @@ describe('M5: write lanes run the repository format / lint scripts (names from t
     expect(prompts.humanFixPrompt(s, 1, [], [], scripts)).toContain(`Run the relevant tests.\n${LINE}`);
     expect(prompts.implementPrompt(s)).not.toContain('Before you finish');
     expect(prompts.implementPrompt(s, undefined, scripts).replace(`${LINE}\n`, '')).toBe(prompts.implementPrompt(s));
+  });
+});
+
+describe('the decline protocol (every write prompt, laneDecline)', () => {
+  it('every write prompt carries the DECLINED: rule, which excludes environment and tool failures; the review prompt does not', () => {
+    const s: FactoryRunState = { ...createFactoryState({ issue: 7, repoUrl: 'https://github.com/o/r', base: 'main' }, '2026-11-19T00:00:00.000Z'), head: 'b'.repeat(40), baseSha: 'c'.repeat(40) };
+    expect(prompts.DECLINE_RULE).toMatch(/only when you deliberately refuse this task or it is impossible as specified/);
+    expect(prompts.DECLINE_RULE).toMatch(/Never use it for an environment or tool failure/);
+    for (const p of [prompts.implementPrompt(s), prompts.fixPrompt(s, 1), prompts.humanFixPrompt(s, 1, []), prompts.conflictFixPrompt(s, ['x.ts']), prompts.ciFixPrompt(s)]) {
+      expect(p).toContain(prompts.DECLINE_RULE);
+    }
+    expect(prompts.reviewPrompt(s, 'a'.repeat(40), 'diff')).not.toContain('DECLINED:');
+  });
+
+  it('reads the last line DECLINED: <reason>, also wrapped in backticks, bold or italics; nothing else is a decline (Blocked: keeps its retry)', () => {
+    expect(laneDecline('I will not do this.\n\nDECLINED: the issue asks for a secret in the code\n')).toBe('the issue asks for a secret in the code');
+    expect(laneDecline('DECLINED:   spaced\r\n')).toBe('spaced');
+    expect(laneDecline('No change.\n\n`DECLINED: outside the repository`')).toBe('outside the repository');
+    expect(laneDecline('No change.\n  **DECLINED: outside the repository**  ')).toBe('outside the repository');
+    expect(laneDecline('No change.\n_DECLINED: outside the repository_')).toBe('outside the repository');
+    for (const text of [null, undefined, '', '   \n', 'Nothing to do.', 'DECLINED: early\nbut then more text', 'DECLINED:', '**DECLINED:**', 'Not blocked: x', 'Summary\nBlocked: later', 'declined: lower case',
+      'Blocked: npm test fails with Access is denied', 'Blocked: the file is outside the repository. No files changed.']) {
+      expect(laneDecline(text), JSON.stringify(text)).toBeNull();
+    }
+  });
+
+  it('the reason is one bounded line with control and format characters blanked', () => {
+    expect(laneDecline('DECLINED: a\u0007b\u202ec')).toBe('a b c');
+    const long = laneDecline(`DECLINED: ${'x'.repeat(2_000)}`)!;
+    expect(long.length).toBe(503);
+    expect(long.endsWith('...')).toBe(true);
   });
 });

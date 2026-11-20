@@ -21,6 +21,7 @@ import { RUNTIME_MIN_MAX_CREDITS } from '../../smoke/copilot-sdk-scenarios.js';
 import { MAX_TIMEOUT_MS } from '../../copilot-run/job.js';
 import { DEFAULT_SHIP_CONFIG, trustedUserConfigPath } from '../../ship/config.js';
 import type { FactoryRunState } from './state.js';
+import copilotModels from '../../config/copilot-models.json' with { type: 'json' };
 
 export { RUNTIME_MIN_MAX_CREDITS };
 
@@ -55,6 +56,12 @@ export interface FactoryRunLimits {
   maxCiFixRounds: number;
   /** Overall bound of one gates phase across its watch windows (factory.run.gatesTimeoutMinutes). */
   gatesTimeoutMs: number;
+  /**
+   * The Copilot model every lane session starts on (factory.run.laneModel in
+   * the trusted user config, or `omg factory run --model`); absent = no model
+   * is passed and the lanes run on Copilot's default model.
+   */
+  laneModel?: string;
 }
 
 export const DEFAULT_FACTORY_RUN_LIMITS: Readonly<FactoryRunLimits> = Object.freeze({
@@ -105,6 +112,21 @@ function checked(key: LimitKey, value: unknown, source: string): number {
   return (value as number) * spec.scale;
 }
 
+/** The Copilot model ids a lane model may name (src/config/copilot-models.json knownModels). */
+export const KNOWN_LANE_MODELS: readonly string[] = copilotModels.knownModels;
+
+/**
+ * A lane model id (factory.run.laneModel, `--model`): returned when it is in
+ * KNOWN_LANE_MODELS, else throws naming the known ids. An unknown id is
+ * refused, never passed on: Copilot would reject or misbill it at the first lane.
+ */
+export function checkLaneModel(value: unknown, source: string): string {
+  if (typeof value !== 'string' || !value.trim()) throw new Error(`${source} must be a Copilot model id (one of ${KNOWN_LANE_MODELS.join(', ')})`);
+  const id = value.trim();
+  if (!KNOWN_LANE_MODELS.includes(id)) throw new Error(`${source} ${JSON.stringify(id)} is not a known Copilot model id; known ids: ${KNOWN_LANE_MODELS.join(', ')}`);
+  return id;
+}
+
 export interface LoadedFactoryRunLimits {
   limits: FactoryRunLimits;
   warnings: string[];
@@ -126,7 +148,10 @@ export function resolveFactoryRunLimits(trustedUser: unknown, project: unknown):
   for (const key of Object.keys(KEYS) as LimitKey[]) {
     if (user[key] !== undefined) set(KEYS[key].field, checked(key, user[key], 'user config'));
   }
+  if (user.laneModel !== undefined) limits.laneModel = checkLaneModel(user.laneModel, 'user config: factory.run.laneModel');
   const proj = runBlock(project, 'project config');
+  // The lanes' model changes what a run bills: only the trusted user config (or --model) sets it.
+  if (proj.laneModel !== undefined) warnings.push('omg factory run: ignoring factory.run.laneModel from the working-tree project config; set it in your user config or pass --model');
   const projFix = shipMaxFixRounds(project);
   const tighten = (key: LimitKey, raw: unknown, label = `factory.run.${key}`) => {
     const value = checked(key, raw, 'project config');

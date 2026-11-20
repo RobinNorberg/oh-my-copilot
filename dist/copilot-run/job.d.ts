@@ -69,6 +69,13 @@ export declare const STOP_CONTINUATION_SKIP_TOKEN = "persistent-mode,workflow-dr
  * runtime files anyway (lane-commit.ts isOmcRuntimePath).
  */
 export declare const PROJECT_MEMORY_SKIP_TOKEN = "project-memory-session,project-memory-posttool";
+/**
+ * OMC_LANE_HOOKS value that limits a session's plugin hooks to the lane hook
+ * set: scripts/copilot/dispatch.cjs runs only the PreToolUse guards and the
+ * PermissionRequest handler, and every other event exits before any hook
+ * loads. Set by the engine in the runtime env, which the session cannot change.
+ */
+export declare const LANE_HOOKS_MINIMAL = "minimal";
 export type CopilotRunIsolation = 'worktree' | 'none';
 export type CopilotRunStatus = 'starting' | 'running' | 'completed' | 'failed' | 'timeout' | 'cancelled';
 /** `write` (default): the worker policy. `review`: no write tool, and no git command that moves or rewrites the tree. */
@@ -100,6 +107,8 @@ export interface CopilotRunStartOptions {
     sandboxScope?: SandboxScope;
     /** Start the session with a credential-free env ({@link scrubLaneCredentials}). */
     scrubCredentials?: boolean;
+    /** Run only the lane hook set ({@link LANE_HOOKS_MINIMAL}): the PreToolUse guards and the PermissionRequest handler. */
+    minimalHooks?: boolean;
     /**
      * The caller commits the session's changes after the job (omg factory run):
      * a write session's sandbox keeps the whole common git dir read-only, so it
@@ -128,6 +137,17 @@ export interface CopilotRunStartOptions {
      * fails the job as sandbox-escaped and no host git runs in it.
      */
     beforeHostGit?: () => string | null;
+    /**
+     * A write job on Windows whose sandbox settings put it in the OS sandbox
+     * ({@link CopilotRunManager.sandboxIntent}): called once inside start(),
+     * with the job's worktree, before the job's timeout is armed and before
+     * the runtime starts, so the work counts against no timer. The caller makes
+     * the worktree usable in that sandbox (omg factory run: a real copy of
+     * your node_modules, as the sandbox cannot open a package dir through a
+     * junction). A non-null problem, or a throw, fails the job and no runtime
+     * or session is started. Not called for a review job (its shell is read-only).
+     */
+    beforeSandboxedSession?: (worktree: string) => string | null;
 }
 /**
  * A credential-free session env, in place. Removed: GitHub tokens
@@ -376,6 +396,23 @@ export declare class CopilotRunManager {
     /** The job branches and worktree HEADs (sharedGitStateSnapshot keys) of the jobs this manager created. */
     private readonly owned;
     constructor(deps: CopilotRunDeps);
+    /**
+     * The OS sandbox a job in `root` gets from its settings alone, before any
+     * host probe: `sandboxed` when sandbox.enabled is on and OMG_SANDBOX is not
+     * "off" (a host that then cannot sandbox refuses the session, or runs it
+     * detect-only), with its writeNetwork; `windowsCopy` when that sandbox is
+     * the Windows one (beforeSandboxedSession runs). A settings object, or the
+     * repository root to load the settings of `scope` from (a malformed block
+     * throws, as start() refuses it).
+     */
+    sandboxIntent(from: SandboxSettings | {
+        root: string;
+        scope: SandboxScope;
+    }): {
+        sandboxed: boolean;
+        writeNetwork: SandboxSettings['writeNetwork'];
+        windowsCopy: boolean;
+    };
     /** Validate, ask the budget governor, prepare the worktree, and start the session in the background. */
     start(input: CopilotRunStartInput, options?: CopilotRunStartOptions): CopilotRunSnapshot;
     status(jobId: string): CopilotRunSnapshot;
