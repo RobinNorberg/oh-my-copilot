@@ -1,29 +1,35 @@
-# oh-my-copilot v5.29.2
+# oh-my-copilot v5.30.0
 
-Adds Microsoft's MAI Code 2 models to the Copilot tiers, makes tier aliases pick a model your Copilot plan actually offers, and handles the new Copilot CLI / SDK protocol mismatch. See CHANGELOG.md.
+Faster, cheaper factory lanes on Windows, and a lane model setting. See CHANGELOG.md.
 
-Install with `npm install -g oh-my-copilot@5.29.2`, or from the plugin marketplace: `copilot plugin update oh-my-copilot@omc`.
+Install with `npm install -g oh-my-copilot@5.30.0`, or from the plugin marketplace: `copilot plugin update oh-my-copilot@omc`.
 
-## Model tiers
+## Factory benchmark
 
-Each tier is a fallback list; Copilot uses the first model your plan offers.
+The 12-issue live factory bench on `mai-code-2`, against the v5.27.0 baseline on `claude-sonnet-5.5`:
 
-| Tier | Models |
-|---|---|
-| fable | `claude-fable-5.2`, `gpt-6.2-astra` |
-| opus | `claude-opus-5.5`, `gpt-6.1-sol`, `claude-sonnet-5.5`, `mai-code-2` |
-| sonnet | `mai-code-2`, `claude-sonnet-5.5`, `mai-code-2-flash` |
-| haiku | `mai-code-2-flash`, `claude-haiku-5.5`, `gpt-6-luna` |
+| | v5.27.0 baseline | v5.30.0 |
+|---|---|---|
+| Pass | 11/12 | 12/12 |
+| Wall time | 1334 s | 1333 s |
+| Premium requests | 21 | 18 |
+| AI credits | 95.1 | 22.3 |
+| Hook time on the lanes' critical path | 311 s | 77 s |
 
-- **Sonnet-tier agents (executor, debugger, test-engineer and others) now default to MAI Code 2**, and haiku-tier agents (explore, writer) to MAI Code 2 Flash, for their cost. Set `agents.<name>.model` to go back to a Claude model for any agent.
-- **Tier aliases follow your plan.** `agents.<name>.model: "opus"` and team workers resolve to the first tier model your plan offers (read once from Copilot's model list, cached for 24 h, no prompt sent). When the plan has none (for example `fable` on Copilot Pro), the agent or worker uses the session model and omg prints a warning; a stale override omg wrote earlier is removed.
-- `claude-fable-5.2` and `gpt-6.2-astra` are listed by their expected ids, which could not be confirmed on a plan without them.
+## Added
+
+- **`factory.run.laneModel` / `omg factory run --model <id>`** starts every lane on that Copilot model; `omg factory bench run --model` checks it against your plan first.
+- **Lanes run and register only the hooks they need.** A lane session loads a generated plugin mirror that registers only PreToolUse (`pre-tool-enforcer`, `git-guardrails`) and PermissionRequest, so the Copilot CLI no longer starts a process for every other hook event. Other sessions are unchanged.
 
 ## Fixed
 
-- **Copilot CLI 1.0.113 and newer speak SDK protocol 4; the latest `@github/copilot-sdk` (1.0.34) speaks only 3.** Every SDK feature (SDK teams, `copilot_run`, smoke tier 2, the factory sandbox) now fails with a clear message naming both versions and the fix instead of a raw protocol error, and `omg team --transport auto` checks first and falls back to tmux panes. Until a protocol-4 SDK ships, use `@github/copilot` 1.0.112 or pane transport.
+- **Lanes can run the tests in the Windows OS sandbox.** Write lanes get a real copy of your node_modules (one per work item, moved between lanes of the same item) made before the lane starts, and sandboxed lanes are told there is no network and not to install packages.
+- **Copilot's glob and grep tools work in sandboxed lanes** (the bundled ripgrep is granted read-only).
+- **A lane that declines on purpose** (`DECLINED: <reason>`) parks at once instead of being retried.
+- **An issue whose text holds a key or token parks at intake**, before any lane or premium request.
+- The implement prompt names only the guide files the repository has.
 
 ## Caveats
 
-- **MAI Code 2 is not tuned for very long-horizon agentic work** (Microsoft's model card). A factory benchmark comparison follows this release; switching the sonnet tier back is a one-line change.
-- **Test evidence:** this release was published with CI on the release commit, not the maintainer's local full test suite.
+- **Test evidence:** published with CI on the release commit, not the maintainer's local full test suite. The live Tier 2 smoke runs in the tag's CI.
+- The `git-guardrails` deny inside a lane is covered by tests and the CLI's hook discovery; no guarded git command ran during the live bench.
