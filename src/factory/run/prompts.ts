@@ -9,6 +9,7 @@ import { forgeTerms } from '../../forge/terms.js';
 import { oneLine } from '../../lib/one-line.js';
 import type { TeamContext } from '../team/context.js';
 import { MAX_FAILING_TITLES } from './gates-driver.js';
+import { outsidePaths, type LikelyFile } from './prescan.js';
 import type { FactoryRunState } from './state.js';
 
 /** A failed prepare step's output in the ci-fix prompt is cut at this many characters. */
@@ -44,7 +45,7 @@ const WRITE_LANE_GIT_RULES: readonly string[] = [
  * lane-commit.ts reads it), so the engine parks without a fresh retry that
  * would get the same prompt and decline again.
  */
-export const DECLINE_RULE = 'Use DECLINED only when you deliberately refuse this task or it is impossible as specified: then make NO changes and end your final message with one line `DECLINED: <reason>`, and the engine stops for a human instead of running the same task again. Never use it for an environment or tool failure (tests that cannot run, a denied command, a missing tool): report that normally.';
+export const DECLINE_RULE = 'Use DECLINED only when you deliberately refuse this task or it is impossible as specified: then make NO changes and end your final message with one line `DECLINED: <reason>` (the very last line, after your summary), and the engine stops for a human instead of running the same task again. A task that can only be done with a file outside this worktree (an absolute path elsewhere on the machine) is impossible as specified: lanes may not read or write outside the worktree, and every rerun is denied the same way, so decline it. Never use DECLINED for a failure a rerun can fix (tests that cannot run, a denied command or a missing tool inside this worktree): report that normally.';
 
 /** What the lane works for, in its prompt's first line. */
 export const subject = (s: FactoryRunState): string => (s.kind === 'ci-heal'
@@ -141,9 +142,13 @@ export const REPO_GUIDE_FILES: readonly string[] = ['AGENTS.md', 'CLAUDE.md', 'C
 /**
  * `guides`: those of REPO_GUIDE_FILES the lane's base has (the engine reads the
  * base tree). Only these are named: a lane told to read a missing file spends
- * a tool call failing on it.
+ * a tool call failing on it. `likely`: the pre-scan's list; `tracked`: the
+ * base's file paths when the pre-scan read them (an outside path that ends in
+ * one, a stack frame of this repository, gets no outside-path note).
  */
-export function implementPrompt(s: FactoryRunState, team?: TeamContext, scripts: readonly string[] = [], lane: LaneEnvironment | null = null, guides: readonly string[] = []): string {
+export function implementPrompt(s: FactoryRunState, team?: TeamContext, scripts: readonly string[] = [], lane: LaneEnvironment | null = null, guides: readonly string[] = [], likely: readonly LikelyFile[] = [], tracked?: ReadonlySet<string>): string {
+  // A heal diagnosis quotes CI log paths (/home/runner/...), which are not inputs the task needs.
+  const outside = s.kind === 'ci-heal' ? 0 : outsidePaths(`${s.issueTitle ?? ''}\n${s.plan?.text ?? ''}`, 5, tracked).length;
   return [
     `You are the implementer for ${subject(s)}`,
     '',
@@ -155,12 +160,30 @@ export function implementPrompt(s: FactoryRunState, team?: TeamContext, scripts:
     ...WRITE_LANE_GIT_RULES,
     'Do not edit .github/, .copilot/, .omg/skills/, .omc/skills/, AGENTS.md or CLAUDE.md: the engine refuses to commit a change there.',
     DECLINE_RULE,
+    ...(outside > 0 ? [`The plan names ${outside === 1 ? 'an absolute path' : `${outside} absolute paths`} outside this worktree: you cannot read or write ${outside === 1 ? 'it' : 'them'}. If the task can only be done with ${outside === 1 ? 'that file' : 'those files'}, decline it as above.`] : []),
     '',
     `## Plan (${planLabel(s)})`,
     '',
     s.plan?.text ?? '',
+    ...likelySection(likely),
     ...(team ? ['', ...teamSection(team, 'plan')] : []),
   ].join('\n');
+}
+
+/**
+ * The pre-scan's likely relevant files (prescan.ts: plain repo paths of the
+ * base and a reason built from plain identifiers, never file contents): a
+ * hint after the plan, never a limit on what the lane changes. Empty when
+ * the pre-scan found none.
+ */
+export function likelySection(likely: readonly LikelyFile[]): string[] {
+  if (likely.length === 0) return [];
+  return [
+    '',
+    '## Likely relevant files (a free search of the base tree for the paths and names in the plan; a starting point, not a limit: change whatever the plan needs)',
+    '',
+    ...likely.map((f) => `- \`${f.path}\`: ${oneLine(f.reason, 200)}`),
+  ];
 }
 
 export function fixPrompt(s: FactoryRunState, round: number, scripts: readonly string[] = [], lane: LaneEnvironment | null = null): string {
