@@ -54,11 +54,29 @@ describe('parallel private-layout runs in one checkout (B2)', () => {
             }
             return w.exec(cmd, args, opts);
         };
+        // A fake lane ends in microtasks, while an engine also waits on real I/O before its lane (the implement
+        // pre-scan runs git): one engine could finish every lane before the other's git returns. So a lane's
+        // polls wait until both engines started a lane (at most 20 s; a run that cannot start while the other's
+        // lane runs still fails the assertion below).
+        let releaseBoth;
+        const bothStarted = new Promise((r) => { releaseBoth = r; });
+        const startedTags = new Set();
+        const barrier = () => Promise.race([bothStarted, new Promise((r) => { setTimeout(r, 20_000).unref(); })]);
         const lanesFor = (tag, scripts) => {
             // Each lane reports `running` for a few polls, so the engines interleave at their awaits.
             const lanes = new FakeLanes(w.root, scripts, [4, 4]);
             const start = lanes.start.bind(lanes);
-            lanes.start = async (input) => { events.push(`${tag}-start-${input.laneId}`); return start(input); };
+            const poll = lanes.poll.bind(lanes);
+            const wait = lanes.wait.bind(lanes);
+            lanes.start = async (input) => {
+                events.push(`${tag}-start-${input.laneId}`);
+                startedTags.add(tag);
+                if (startedTags.size === 2)
+                    releaseBoth();
+                return start(input);
+            };
+            lanes.poll = async (id) => { await barrier(); return poll(id); };
+            lanes.wait = async (id, ms) => { await barrier(); return wait(id, ms); };
             lanes.onRunningPoll = () => { events.push(`${tag}-poll`); };
             return lanes;
         };

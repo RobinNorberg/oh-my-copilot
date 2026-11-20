@@ -66,7 +66,7 @@ import { parseJsonc } from '../../utils/jsonc.js';
 import { gitForWindowsShell, nodeModulesTreeProblem, resolveGateIsolation, resolveGatesSandboxMode, resolveRequireDeniedPaths, resolveWindowsGitTransport, type GateContainerSettings, type GatesSandboxMode, type WindowsGitTransportMode } from '../../copilot-run/sandbox.js';
 import { CONTAINER_INCOMPATIBLE_ADVICE, CONTAINER_SRC, containerRunLabel, GATE_CONTAINER_UNAVAILABLE_GATE } from './container-gate.js';
 import { CREDENTIAL_FILES_READABLE_NOTE, redactGateOutput, sandboxCommandTooLong, sandboxJobRoot, splitFileListArgs, type SandboxRunner, type SandboxRunRequest, type SandboxRunResult } from './sandbox-exec.js';
-import { forgetWorktreeGitLinks, readWorktreeGitLinks, recordedWorktreeGitLinks, recordWorktreeGitLinks, removeStaleWorktreeEntry, removeWorkerWorktree, runHostGit, runHostGitBuffer, worktreeGitDirArgs, worktreeGitLinksIntact } from '../../team/git-worktree.js';
+import { forgetWorktreeGitLinks, readWorktreeGitLinks, recordedWorktreeGitLinks, recordWorktreeGitLinks, removeStaleWorktreeEntry, removeWorkerWorktree, runHostGit, runHostGitBuffer, runHostGitBufferAsync, worktreeGitDirArgs, worktreeGitLinksIntact } from '../../team/git-worktree.js';
 import { buildGitView, GIT_VIEW_MAX_BYTES, GIT_VIEW_MAX_OBJECTS, type GitViewSource } from './git-view.js';
 import { driveGates } from './gates-driver.js';
 import { missingCheckHint, NO_CI_CHECKS_NOTE, noHeadChecksText, type GateHeadReads } from '../../ship/gates.js';
@@ -120,6 +120,7 @@ import { ghReviewFeedback } from '../../forge/github/reviews.js';
 import { ReviewHeadMovedError, visibleLine } from '../../forge/review-feedback.js';
 import type { ForgeRepo, ForgeReviewFeedback, PrMergeability } from '../../forge/types.js';
 import { humanFixPrompt, laneScripts } from './prompts.js';
+import { likelyRelevantFiles, type LikelyFile } from './prescan.js';
 import { lockPathFor } from '../../lib/file-lock.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
 import { checkDiagnosis } from '../heal/diagnosis-output.js';
@@ -202,6 +203,44 @@ import {
 } from './state.js';
 import { PARALLEL_LAYOUT_GATE, readTrustedBaseLayerAtRef, reserveLaneCredits } from './parallel.js';
 import { claimRepoKey } from './claims.js';
+
+/** Each host git call of the implement pre-scan (ls-tree, cat-file, check-ignore) is killed after this long. */
+const PRESCAN_GIT_TIMEOUT_MS = 3_000;
+
+/**
+ * The implement prompt's free pre-scan (prescan.ts) of `baseSha` for `text`
+ * (issue title and plan): likely relevant paths, read with hardened host git
+ * from the checkout at `root`, asynchronously (the engine loop keeps
+ * running); paths the checkout's .gitignore excludes are dropped. `tracked`
+ * is the base's file list when the tree was read. A failure only drops the
+ * hint (warned), never the lane.
+ */
+export async function implementLikelyFiles(root: string, text: string, baseSha: string, warn?: (message: string) => void): Promise<{ files: LikelyFile[]; tracked?: ReadonlySet<string> }> {
+  const env = scrubShipEnv(process.env);
+  let tracked: ReadonlySet<string> | undefined;
+  try {
+    const files = await likelyRelevantFiles(text, baseSha, (args, input, maxBuffer) => runHostGitBufferAsync(root, args, PRESCAN_GIT_TIMEOUT_MS, env, input, maxBuffer), {
+      onTree: (t) => { tracked = t; },
+      ignored: async (paths) => {
+        if (paths.length === 0) return new Set<string>();
+        let out: Buffer;
+        try {
+          out = await runHostGitBufferAsync(root, ['--no-optional-locks', 'check-ignore', '--no-index', '-z', '--stdin'], PRESCAN_GIT_TIMEOUT_MS, env, paths.join('\0'));
+        } catch (e) {
+          // check-ignore exits 1 when no path is ignored: only that status with empty output is an answer.
+          const x = e as { status?: number | null; stdout?: Buffer };
+          if (x.status === 1 && (x.stdout?.length ?? 0) === 0) return new Set<string>();
+          throw e;
+        }
+        return new Set(out.toString('utf8').split('\0').filter(Boolean));
+      },
+    });
+    return { files, tracked };
+  } catch (e) {
+    warn?.(`omg factory run: the likely-files pre-scan failed, so the implement prompt carries no file hint: ${errText(e)}`);
+    return { files: [], tracked };
+  }
+}
 
 /** Exit code of a run parked at a human gate other than the expected `merge` park. */
 export const EXIT_AWAITING_HUMAN = 4;
@@ -2716,7 +2755,8 @@ class FactoryEngine {
     const read = this.readAt(baseSha);
     // Name only the guide files the base has: the lane worktree checks it out.
     const guides = REPO_GUIDE_FILES.filter((p) => { try { return read(p) !== undefined; } catch { return false; } });
-    const out = await this.runLane('implement', baseSha, 'write', implementPrompt(this.state, this.teamContext(read, pathsInText(this.state.plan?.text ?? '')), this.laneScripts(), this.laneEnvironment(), guides), 'implement');
+    const likely = await implementLikelyFiles(this.o.root, `${this.state.issueTitle ?? ''}\n${this.state.plan?.text ?? ''}`, baseSha, (m) => this.o.warn?.(m));
+    const out = await this.runLane('implement', baseSha, 'write', implementPrompt(this.state, this.teamContext(read, pathsInText(this.state.plan?.text ?? '')), this.laneScripts(), this.laneEnvironment(), guides, likely.files, likely.tracked), 'implement');
     if (out.kind === 'done') await this.acceptWriteLane(out, 'implement', baseSha);
   }
 

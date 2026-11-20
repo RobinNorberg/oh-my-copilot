@@ -16,7 +16,7 @@
 import { existsSync, lstatSync, mkdtempSync, realpathSync, readFileSync, readdirSync, rmdirSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
-import { execFileSync } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { resolveBareExe } from '../utils/windows-search.js';
 import { atomicWriteJson, ensureDirWithMode, validateResolvedPath } from './fs-utils.js';
@@ -338,6 +338,34 @@ export function runHostGit(cwd: string, args: readonly string[], timeout?: numbe
 export function runHostGitBuffer(cwd: string, args: readonly string[], timeout?: number, baseEnv: NodeJS.ProcessEnv = process.env, input?: string | Buffer): Buffer {
   const { argv, env } = hostGitCommand(cwd, args, timeout, baseEnv);
   return execFileSync(hostGitExe(), argv, { cwd, env, stdio: 'pipe', windowsHide: true, timeout, maxBuffer: 512 * 1024 * 1024, ...(input !== undefined ? { input } : {}) });
+}
+
+/**
+ * runHostGitBuffer without holding the event loop while git runs (the
+ * hardening, pins and link check are the same; the driver listing of a
+ * work-tree subcommand still runs synchronously first). Rejects with the
+ * execFile error, `status` set to git's exit code and `stdout` to its
+ * output; output beyond `maxBuffer` or a run past `timeout` kills git and
+ * rejects.
+ */
+export function runHostGitBufferAsync(cwd: string, args: readonly string[], timeout?: number, baseEnv: NodeJS.ProcessEnv = process.env, input?: string | Buffer, maxBuffer = HOST_GIT_MAX_BUFFER): Promise<Buffer> {
+  let exe: string;
+  let cmd: { argv: string[]; env: NodeJS.ProcessEnv };
+  try {
+    cmd = hostGitCommand(cwd, args, timeout, baseEnv);
+    exe = hostGitExe();
+  } catch (e) {
+    return Promise.reject(e);
+  }
+  return new Promise((resolvePromise, reject) => {
+    const child = execFile(exe, cmd.argv, { cwd, env: cmd.env, encoding: 'buffer', windowsHide: true, timeout, maxBuffer, killSignal: 'SIGKILL' }, (err, stdout) => {
+      if (err) reject(Object.assign(err, { status: typeof err.code === 'number' ? err.code : null, stdout }));
+      else resolvePromise(stdout);
+    });
+    // git may exit before reading all of stdin (EPIPE): its exit status decides.
+    child.stdin?.on('error', () => {});
+    child.stdin?.end(input);
+  });
 }
 
 function hostGitCommand(cwd: string, args: readonly string[], timeout: number | undefined, baseEnv: NodeJS.ProcessEnv): { argv: string[]; env: NodeJS.ProcessEnv } {

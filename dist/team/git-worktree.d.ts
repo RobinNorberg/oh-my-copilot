@@ -154,6 +154,15 @@ export declare const HOST_GIT_MAX_BUFFER: number;
 export declare function runHostGit(cwd: string, args: readonly string[], timeout?: number, baseEnv?: NodeJS.ProcessEnv, input?: string | Buffer): string;
 /** runHostGit with raw stdout bytes (`cat-file --batch` of binary blobs). */
 export declare function runHostGitBuffer(cwd: string, args: readonly string[], timeout?: number, baseEnv?: NodeJS.ProcessEnv, input?: string | Buffer): Buffer;
+/**
+ * runHostGitBuffer without holding the event loop while git runs (the
+ * hardening, pins and link check are the same; the driver listing of a
+ * work-tree subcommand still runs synchronously first). Rejects with the
+ * execFile error, `status` set to git's exit code and `stdout` to its
+ * output; output beyond `maxBuffer` or a run past `timeout` kills git and
+ * rejects.
+ */
+export declare function runHostGitBufferAsync(cwd: string, args: readonly string[], timeout?: number, baseEnv?: NodeJS.ProcessEnv, input?: string | Buffer, maxBuffer?: number): Promise<Buffer>;
 /** The empty tree of each object format: GIT_ATTR_SOURCE names it, so host git reads no `.gitattributes`. */
 export declare const EMPTY_TREE: Readonly<Record<string, string>>;
 /** The first git that honours GIT_ATTR_SOURCE (git --attr-source, 2.41.0). */

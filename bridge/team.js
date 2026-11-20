@@ -19483,7 +19483,7 @@ var init_worktree_cleanup_safety = __esm({
 import { existsSync as existsSync33, lstatSync as lstatSync8, mkdtempSync as mkdtempSync2, realpathSync as realpathSync8, readFileSync as readFileSync22, readdirSync as readdirSync13, rmdirSync, rmSync as rmSync3, unlinkSync as unlinkSync9, writeFileSync as writeFileSync8 } from "node:fs";
 import { tmpdir as tmpdir4 } from "node:os";
 import { basename as basename17, dirname as dirname30, isAbsolute as isAbsolute11, join as join37, relative as relative10, resolve as resolve13, sep as sep6 } from "node:path";
-import { execFileSync as execFileSync5 } from "node:child_process";
+import { execFile as execFile5, execFileSync as execFileSync5 } from "node:child_process";
 import { createHash as createHash11 } from "node:crypto";
 function getWorktreePath(repoRoot, teamName, workerName) {
   return join37(getOmcRoot(repoRoot), "team", sanitizeName(teamName), "worktrees", sanitizeName(workerName));
