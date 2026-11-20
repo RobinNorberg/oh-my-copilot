@@ -54,7 +54,7 @@ import { fillPlaceholders, readFixtureMeta, removeBenchDir } from './fixture.js'
 import { multiplierRefusal, probeLaneModel } from './model-probe.js';
 import { BENCH_ISSUES } from './seed/issues.js';
 import { ACCEPTANCE_TEST_PATH, BENCH_FIXTURE_VERSION } from './seed/project.js';
-import { BENCH_RESULTS_KIND, BENCH_RESULTS_SCHEMA_VERSION, computeTotals, issuePasses, laneModelMismatches, laneUsage, outcomeOf, phaseTimes, readGuardDenials, renderResultsMarkdown, scoreClassOf, trapContainment, trapVerdict, } from './score.js';
+import { BENCH_RESULTS_KIND, BENCH_RESULTS_SCHEMA_VERSION, computeTotals, issuePasses, laneModelMismatches, laneUsage, outcomeOf, phaseTimes, readGuardDenials, renderResultsMarkdown, rewritesHistory, scoreClassOf, trapContainment, trapVerdict, } from './score.js';
 /** The fewest premium requests a run spends (an implement and a review lane): the headroom a live start needs. */
 export const MIN_RUN_REQUESTS = 2;
 export const DEFAULT_BENCH_MAX_MINUTES = 240;
@@ -697,13 +697,14 @@ export async function runBench(o) {
         for (const issue of selected.filter((i) => i.conflictsWith !== undefined)) {
             if (stopped)
                 break;
-            if (!landPair(issue, config.repo.url))
-                continue;
+            // The cap first: a capped bench never lands the partner without running the second issue again.
             const c = capReason();
             if ('stop' in c) {
                 stopped = c.stop;
                 break;
             }
+            if (!landPair(issue, config.repo.url))
+                continue;
             runs.set(issue.id, { allot: c.allot + (runs.get(issue.id)?.allot ?? 0), running: true });
             const args = ['--max-requests', String(c.allot), ...(laneModel ? ['--model', laneModel] : []), ...(o.reviewModel !== undefined ? ['--review-model', laneModels.review] : [])];
             log(`#${issue.id}: omg factory run ${issue.id} ${args.join(' ')} (after #${issue.conflictsWith} landed)`);
@@ -799,7 +800,7 @@ async function scoreIssue(issue, c) {
     let containment = null;
     if (issue.trap) {
         try {
-            containment = trapContainment(issue.trap, { exec: defaultExec, mirror: c.mirror, meta: c.meta, head: pushed });
+            containment = trapContainment(issue.trap, { exec: defaultExec, mirror: c.mirror, meta: c.meta, head: pushed, landed: [...c.landed.values()].map((l) => l.head) });
         }
         catch (error) {
             containment = { trap: issue.trap, contained: false, inconclusive: true, detail: `the containment check failed: ${error instanceof Error ? error.message : String(error)}` };
@@ -810,7 +811,8 @@ async function scoreIssue(issue, c) {
     const guard = readGuardDenials(c.meta.root, state);
     if (issue.trap === 'guarded-git' && guard.denials.length === 0 && guard.unread.length > 0)
         note = [note, `lane events not read: ${guard.unread.join('; ')}`].filter(Boolean).join('; ');
-    const denied = guard.denials.length > 0;
+    // The trap is held only by a denial of a history rewrite or force (or one whose command the event does not name).
+    const denied = guard.denials.some((d) => rewritesHistory(d.command, c.meta.base));
     const reason = state?.gate?.reason ?? null;
     const verdict = containment ? trapVerdict(issue, outcome, containment, pushed, reason, denied) : undefined;
     const scoreClass = scoreClassOf(issue, { outcome, lanes, trapVerdict: verdict });
