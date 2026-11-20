@@ -101,7 +101,7 @@ import { ghDependsOn, ghIssueComment, ghIssueJson, ghIssueView, ghViewItem, gith
 import { isSatisfied, type DependencyForge } from '../check/score.js';
 import { outcomePosts, postedBefore, type OutcomeEvent } from './outcome.js';
 import { forgePrStateReader, humanMergeCandidate, laneTrustProblem, markMergedByHuman } from './human-merged.js';
-import { checkoutBranch, checkoutPath, checkoutWorker, defaultGateConfigLoader, FACTORY_CHECKOUT_TEAM, GATE_CACHE_DIRS, GATE_TREE_COPY_WHY, GATE_TREE_MARKER, gateTreeHasLinks, linkNodeModules, prepareLaneNodeModules, settleLaneNodeModules, trustedNestedRels, unlinkNodeModules, type GateConfig, type GateConfigLoader } from './prepare.js';
+import { checkoutBranch, checkoutPath, checkoutWorker, defaultGateConfigLoader, FACTORY_CHECKOUT_TEAM, GATE_CACHE_DIRS, GATE_TREE_COPY_WHY, GATE_TREE_MARKER, gateTreeHasLinks, linkNodeModules, prepareLaneNodeModulesAsync, settleLaneNodeModules, trustedNestedRels, unlinkNodeModules, type GateConfig, type GateConfigLoader } from './prepare.js';
 import { baseWorkspacePatterns } from './workspace-tree.js';
 import {
   canTransition,
@@ -1510,13 +1510,13 @@ class FactoryEngine {
 
   /**
    * A write lane worktree about to run in the OS sandbox on Windows gets a
-   * copy of your node_modules (prepareLaneNodeModules, the gates' copied
+   * copy of your node_modules (prepareLaneNodeModulesAsync, the gates' copied
    * tree: GATE_TREE_COPY_WHY), so the lane's tests open no junction. Its git
    * ignore check runs before anything is copied (the dirs need not exist):
    * hardened host git `check-ignore --no-index` in the worktree with its
    * recorded links (its exit 1, none ignored, throws: not ignored).
    */
-  private prepareLaneTree(worktree: string): string | null {
+  private prepareLaneTree(worktree: string): Promise<string | null> {
     const ignored = (paths: string[]): boolean => {
       const out = runHostGit(worktree, [...worktreeGitDirArgs(worktree), '--no-optional-locks', 'check-ignore', '--no-index', '-z', '--stdin'], PRIVATE_GIT_TIMEOUT_MS, process.env, paths.map((p) => `${p}/\0`).join(''));
       const listed = new Set(out.split('\0').filter(Boolean).map((p) => p.replace(/\/$/, '')));
@@ -1528,7 +1528,7 @@ class FactoryEngine {
     const reuseFrom = this.state.lanes
       .filter((l) => l.worktree && l.treeReusable === true && l.id !== this.state.pendingCommit?.laneId && !samePath(l.worktree, worktree))
       .map((l) => l.worktree!).reverse();
-    return prepareLaneNodeModules(this.o.root, worktree, { workspaces: this.baseWorkspaces(), ...(this.o.warn ? { warn: this.o.warn } : {}), ignored, reuseFrom });
+    return prepareLaneNodeModulesAsync(this.o.root, worktree, { workspaces: this.baseWorkspaces(), ...(this.o.warn ? { warn: this.o.warn } : {}), ignored, reuseFrom });
   }
 
   /**

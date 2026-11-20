@@ -127,8 +127,8 @@ describe('omg factory run engine (fake lanes, real git, scripted gh)', () => {
     writeFileSync(join(h.root, 'node_modules', 'pkg', 'index.js'), 'yours\n');
     writeFileSync(join(h.root, 'node_modules', '.bin', 'pkg'), 'shim\n');
     const seen: (string | null)[] = [];
-    const prepared: LaneScript = (ctx) => {
-      seen.push(ctx.input.beforeSandboxedSession!(ctx.worktree));
+    const prepared: LaneScript = async (ctx) => {
+      seen.push(await ctx.input.beforeSandboxedSession!(ctx.worktree));
       const nm = join(ctx.worktree, 'node_modules');
       expect(lstatSync(nm).isSymbolicLink()).toBe(false);
       expect(lstatSync(join(nm, 'pkg')).isSymbolicLink()).toBe(false);
@@ -153,8 +153,8 @@ describe('omg factory run engine (fake lanes, real git, scripted gh)', () => {
     writeFileSync(join(h.root, 'node_modules', 'pkg', 'index.js'), 'yours\n');
     writeFileSync(join(h.root, 'node_modules', '.bin', 'pkg'), 'shim\n');
     const trees: string[] = [];
-    const prepared = (file: string, content: string): LaneScript => (ctx) => {
-      expect(ctx.input.beforeSandboxedSession!(ctx.worktree)).toBeNull();
+    const prepared = (file: string, content: string): LaneScript => async (ctx) => {
+      expect(await ctx.input.beforeSandboxedSession!(ctx.worktree)).toBeNull();
       trees.push(join(ctx.worktree, 'node_modules'));
       if (trees.length === 1) writeFileSync(join(ctx.worktree, 'node_modules', 'pkg', 'left-by-implement.txt'), 'x\n');
       return commitFile(file, content)(ctx);
@@ -175,8 +175,8 @@ describe('omg factory run engine (fake lanes, real git, scripted gh)', () => {
       mkdirSync(join(h.root, 'node_modules', 'pkg'), { recursive: true });
       writeFileSync(join(h.root, 'node_modules', 'pkg', 'index.js'), 'yours\n');
     };
-    const prepare = (trees: string[], then: LaneScript): LaneScript => (ctx) => {
-      expect(ctx.input.beforeSandboxedSession!(ctx.worktree)).toBeNull();
+    const prepare = (trees: string[], then: LaneScript): LaneScript => async (ctx) => {
+      expect(await ctx.input.beforeSandboxedSession!(ctx.worktree)).toBeNull();
       trees.push(join(ctx.worktree, 'node_modules'));
       return then(ctx);
     };
@@ -224,8 +224,8 @@ describe('omg factory run engine (fake lanes, real git, scripted gh)', () => {
     writeFileSync(join(h.root, 'node_modules', 'pkg', 'index.js'), 'yours\n');
     writeFileSync(join(h.root, 'node_modules', '.bin', 'pkg'), 'shim\n');
     let tree = '';
-    const unignores: LaneScript = (ctx) => {
-      expect(ctx.input.beforeSandboxedSession!(ctx.worktree)).toBeNull();
+    const unignores: LaneScript = async (ctx) => {
+      expect(await ctx.input.beforeSandboxedSession!(ctx.worktree)).toBeNull();
       tree = join(ctx.worktree, 'node_modules');
       expect(existsSync(join(tree, 'pkg', 'index.js'))).toBe(true);
       writeFileSync(join(ctx.worktree, '.gitignore'), '.omg/\n');

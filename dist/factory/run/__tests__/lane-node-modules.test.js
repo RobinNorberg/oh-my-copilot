@@ -14,7 +14,44 @@ vi.mock('fs', async (importOriginal) => {
     };
     return { ...real, default: { ...real, unlinkSync }, unlinkSync };
 });
-import { GATE_TREE_COMPLETE, GATE_TREE_MARKER, nestedTreeDirs, prepareLaneNodeModules, settleLaneNodeModules, unlinkNodeModules } from '../prepare.js';
+// Lets a test make the async copy (fs/promises copyFile) fail for one source path (a busy file), and hold a copy in
+// flight: `hold` holds the first copy whose source includes it until `release` settles (then it really copies and its
+// destination goes to `landed`); `faultNext` fails the first copy started after the held one; `holdFault` makes the
+// failing copy itself wait for `release` before it rejects; `onFault` runs as a copy fails.
+const copyFault = vi.hoisted(() => ({
+    name: undefined,
+    hold: undefined,
+    faultNext: false,
+    holdFault: false,
+    release: Promise.resolve(),
+    onFault: undefined,
+    holding: false,
+    landed: [],
+}));
+vi.mock('fs/promises', async (importOriginal) => {
+    const real = await importOriginal();
+    const copyFile = async (src, dest, mode) => {
+        const f = copyFault;
+        if (f.hold !== undefined && !f.holding && String(src).includes(f.hold)) {
+            f.holding = true;
+            await f.release;
+            await real.copyFile(src, dest, mode);
+            f.landed.push(String(dest));
+            return;
+        }
+        if ((f.name !== undefined && String(src).endsWith(f.name)) || (f.faultNext && f.holding)) {
+            f.faultNext = false;
+            f.name = undefined;
+            f.onFault?.();
+            if (f.holdFault)
+                await f.release;
+            throw Object.assign(new Error(`EBUSY: resource busy or locked, copyfile '${String(src)}'`), { code: 'EBUSY' });
+        }
+        return real.copyFile(src, dest, mode);
+    };
+    return { ...real, default: { ...real, copyFile }, copyFile };
+});
+import { GATE_TREE_COMPLETE, GATE_TREE_MARKER, nestedTreeDirs, prepareLaneNodeModules, prepareLaneNodeModulesAsync, settleLaneNodeModules, unlinkNodeModules } from '../prepare.js';
 const linkType = process.platform === 'win32' ? 'junction' : 'dir';
 const dirs = [];
 /** Unlink every link under `dir` (never followed), then remove it: a test dir never empties a link target. */
@@ -44,6 +81,7 @@ function removeDir(dir) {
     rmSync(dir, { recursive: true, force: true });
 }
 afterEach(() => {
+    Object.assign(copyFault, { name: undefined, hold: undefined, faultNext: false, holdFault: false, release: Promise.resolve(), onFault: undefined, holding: false, landed: [] });
     for (const d of dirs.splice(0))
         removeDir(d);
 });
@@ -350,6 +388,164 @@ describe('settleLaneNodeModules (before the lane commit)', () => {
         writeFileSync(join(other.worktree, 'node_modules', 'own.js'), 'own\n');
         expect(settleLaneNodeModules(other.root, other.worktree, never)).toBeNull();
         expect(readFileSync(join(other.worktree, 'node_modules', 'own.js'), 'utf-8')).toBe('own\n');
+    });
+});
+describe('prepareLaneNodeModulesAsync (the copy without blocking the event loop)', () => {
+    /** setup() plus `packages` generated packages of 2 dirs and 20 files each in yours, and a second empty lane worktree. */
+    function generated(packages = 60) {
+        const s = setup();
+        for (let p = 0; p < packages; p += 1) {
+            for (const sub of ['lib', 'lib/inner']) {
+                mkdirSync(join(s.store, `pkg-${p}`, sub), { recursive: true });
+                for (let f = 0; f < 10; f += 1)
+                    writeFileSync(join(s.store, `pkg-${p}`, sub, `f${f}.js`), `module.exports = ${p * 100 + f};\n`);
+            }
+        }
+        const other = join(s.worktree, '..', 'lane-other');
+        mkdirSync(other);
+        return { ...s, other };
+    }
+    it('the same tree as the synchronous build, and timers fire while it is copied (the event loop is never held for the whole copy)', async () => {
+        const { root, worktree, store, other } = generated();
+        const before = fingerprint(store);
+        expect(prepareLaneNodeModules(root, other, { ignored: ignoredAll })).toBeNull();
+        const nm = join(worktree, 'node_modules');
+        // A timer callback that finds the tree begun but not complete ran in the middle of the copy.
+        const seen = [];
+        const tick = setInterval(() => {
+            if (!existsSync(join(nm, GATE_TREE_MARKER)))
+                return seen.push('before');
+            seen.push(readFileSync(join(nm, GATE_TREE_MARKER), 'utf-8').includes(GATE_TREE_COMPLETE) ? 'complete' : 'copying');
+        }, 1);
+        let result;
+        try {
+            result = await prepareLaneNodeModulesAsync(root, worktree, { ignored: ignoredAll });
+        }
+        finally {
+            clearInterval(tick);
+        }
+        expect(result).toBeNull();
+        expect(seen).toContain('copying');
+        expect(fingerprint(nm)).toEqual(fingerprint(join(other, 'node_modules')));
+        expect(readFileSync(join(nm, GATE_TREE_MARKER), 'utf-8').split('\n')).toContain(GATE_TREE_COMPLETE);
+        expect(lstatSync(join(nm, '.bin')).isSymbolicLink()).toBe(true);
+        expect(fingerprint(store)).toEqual(before);
+    });
+    it('a file copy that fails mid-tree: every copy settles, the cut-off tree is removed, the reason is returned (the lane does not start), yours untouched', async () => {
+        const { root, worktree, store } = generated(20);
+        const before = fingerprint(store);
+        copyFault.name = join('pkg-7', 'lib', 'f3.js');
+        const why = await prepareLaneNodeModulesAsync(root, worktree, { ignored: ignoredAll });
+        expect(why).toMatch(/the copied node_modules tree of the lane worktree .* could not be built \(EBUSY: resource busy or locked/);
+        expect(existsSync(join(worktree, 'node_modules'))).toBe(false);
+        expect(fingerprint(store)).toEqual(before);
+        // The next preparation builds it whole.
+        copyFault.name = undefined;
+        expect(await prepareLaneNodeModulesAsync(root, worktree, { ignored: ignoredAll })).toBeNull();
+        expect(readFileSync(join(worktree, 'node_modules', 'pkg-7', 'lib', 'f3.js'), 'utf-8')).toBe('module.exports = 703;\n');
+    });
+    it('a copy fails while another is still in flight: the cut-off tree is removed only after that copy has landed (no copy writes into a removed tree)', async () => {
+        const { root, worktree, store } = generated(20);
+        const before = fingerprint(store);
+        let releasedAt = 0;
+        let release;
+        copyFault.release = new Promise((r) => { release = r; });
+        // The first package file copied is held; the next copy started fails at once, mid-walk.
+        copyFault.hold = 'pkg-';
+        copyFault.faultNext = true;
+        copyFault.onFault = () => { setTimeout(() => { releasedAt = Date.now(); release(); }, 200); };
+        const why = await prepareLaneNodeModulesAsync(root, worktree, { ignored: ignoredAll });
+        const returnedAt = Date.now();
+        expect(why).toMatch(/the copied node_modules tree of the lane worktree .* could not be built \(EBUSY: resource busy or locked/);
+        expect(releasedAt).toBeGreaterThan(0);
+        expect(returnedAt).toBeGreaterThanOrEqual(releasedAt);
+        // The held copy landed in the tree (it was still there), and the removal took it afterwards.
+        expect(copyFault.landed).toHaveLength(1);
+        expect(existsSync(copyFault.landed[0])).toBe(false);
+        expect(existsSync(join(worktree, 'node_modules'))).toBe(false);
+        expect(fingerprint(store)).toEqual(before);
+    });
+    it('the last copy to settle fails (seen when the build drains): the same reason, and nothing is left', async () => {
+        const { root, worktree, store } = generated(5);
+        const before = fingerprint(store);
+        let release;
+        copyFault.release = new Promise((r) => { release = r; });
+        // The failing copy rejects only after the walk is long done, so the body learns of it at its drain.
+        copyFault.name = join('pkg-3', 'lib', 'f3.js');
+        copyFault.holdFault = true;
+        const timer = setTimeout(() => release(), 300);
+        try {
+            const why = await prepareLaneNodeModulesAsync(root, worktree, { ignored: ignoredAll });
+            expect(why).toMatch(/the copied node_modules tree of the lane worktree .* could not be built \(EBUSY: resource busy or locked/);
+        }
+        finally {
+            clearTimeout(timer);
+        }
+        expect(existsSync(join(worktree, 'node_modules'))).toBe(false);
+        expect(fingerprint(store)).toEqual(before);
+    });
+    it('a cut-off tree the git ignore check refuses is removed without holding the event loop (timers fire mid-removal); yours untouched', async () => {
+        const { root, worktree, store } = generated(60);
+        const before = fingerprint(store);
+        expect(prepareLaneNodeModules(root, worktree, { ignored: ignoredAll })).toBeNull();
+        const nm = join(worktree, 'node_modules');
+        writeFileSync(join(nm, GATE_TREE_MARKER), '');
+        const total = readdirSync(nm).filter((n) => n.startsWith('pkg-')).length;
+        const seen = [];
+        const tick = setInterval(() => {
+            try {
+                seen.push(readdirSync(nm).filter((n) => n.startsWith('pkg-')).length);
+            }
+            catch { /* gone */ }
+        }, 1);
+        let result;
+        const warned = [];
+        try {
+            result = await prepareLaneNodeModulesAsync(root, worktree, { ignored: () => false, warn: (m) => warned.push(m) });
+        }
+        finally {
+            clearInterval(tick);
+        }
+        expect(result).toBeNull();
+        expect(warned.join('\n')).toMatch(/git does not ignore node_modules/);
+        // A timer ran while some, not all, package dirs were gone.
+        expect(seen.some((n) => n > 0 && n < total)).toBe(true);
+        expect(existsSync(nm)).toBe(false);
+        expect(fingerprint(store)).toEqual(before);
+    });
+    it('over its bounds: the dry walk refuses before anything is copied, nothing is left, yours untouched', async () => {
+        const { root, worktree, store } = generated(5);
+        const before = fingerprint(store);
+        const why = await prepareLaneNodeModulesAsync(root, worktree, { ignored: ignoredAll, copy: { maxFiles: 20 } });
+        expect(why).toMatch(/could not be built \(.*over 20 entries/);
+        expect(existsSync(join(worktree, 'node_modules'))).toBe(false);
+        expect(fingerprint(store)).toEqual(before);
+    });
+    it('a cut-off copy is removed and built again; the earlier lane\'s tree is moved (reuseFrom), as in the synchronous build', async () => {
+        const { root, worktree, store, other } = generated(5);
+        const before = fingerprint(store);
+        expect(await prepareLaneNodeModulesAsync(root, worktree, { ignored: ignoredAll })).toBeNull();
+        const nm = join(worktree, 'node_modules');
+        writeFileSync(join(nm, GATE_TREE_MARKER), '');
+        rmSync(join(nm, 'pkg-2', 'lib'), { recursive: true });
+        expect(await prepareLaneNodeModulesAsync(root, worktree, { ignored: ignoredAll })).toBeNull();
+        expect(readFileSync(join(nm, 'pkg-2', 'lib', 'f1.js'), 'utf-8')).toBe('module.exports = 201;\n');
+        const tree = fingerprint(nm);
+        expect(await prepareLaneNodeModulesAsync(root, other, { ignored: ignoredAll, reuseFrom: [worktree], copy: { maxFiles: 1 } })).toBeNull();
+        expect(existsSync(nm)).toBe(false);
+        expect(fingerprint(join(other, 'node_modules'))).toEqual(tree);
+        expect(fingerprint(store)).toEqual(before);
+    });
+    it('one preparation at a time: the second starts (its ignore check) only after the first tree is complete', async () => {
+        const { root, worktree, other } = generated(10);
+        const firstDone = [];
+        const a = prepareLaneNodeModulesAsync(root, worktree, { ignored: ignoredAll });
+        const b = prepareLaneNodeModulesAsync(root, other, { ignored: () => {
+                firstDone.push(readFileSync(join(worktree, 'node_modules', GATE_TREE_MARKER), 'utf-8').includes(GATE_TREE_COMPLETE));
+                return true;
+            } });
+        expect(await Promise.all([a, b])).toEqual([null, null]);
+        expect(firstDone).toEqual([true]);
     });
 });
 //# sourceMappingURL=lane-node-modules.test.js.map

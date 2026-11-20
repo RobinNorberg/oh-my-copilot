@@ -532,6 +532,8 @@ export async function runBench(o) {
                 const line = `${k} lanes' Copilot model (${ownFlag(k)}): ${id}; premium multiplier: ${info.multiplier ?? 'unknown'} (${info.detail})`;
                 (o.announce ?? log)(line);
                 notes.push(line);
+                if (info.multiplier === null)
+                    notes.push(`the ${k} lanes' multiplier is unknown: a lane without session.shutdown totals counts its user calls once each, which undercounts a model above 1x`);
                 const stop = multiplierRefusal(info, o.allowMultiplier, ownFlag(k));
                 if (stop)
                     throw new BenchUsageError(stop);

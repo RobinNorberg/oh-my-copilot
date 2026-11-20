@@ -72,6 +72,18 @@ describe('omg factory run engine (fake lanes, real git, scripted gh)', () => {
         expect(lanes.started.map((s) => s.model)).toEqual([undefined, 'mai-code-2-flash']);
         expect(readFactoryState(h.root, ISSUE).laneModels).toMatchObject({ implement: null, review: 'mai-code-2-flash' });
     });
+    it('a run started before laneModels existed (laneModel recorded, no per-kind map) gets the map on its next lane', async () => {
+        const first = run([noCommit, noCommit], { limits: limits({ laneModel: 'mai-code-2', laneModels: { review: 'mai-code-2-flash' } }) });
+        await first.done;
+        const path = factoryStatePath(h.root, ISSUE);
+        const old = JSON.parse(readFileSync(path, 'utf8'));
+        delete old.laneModels;
+        writeFileSync(path, JSON.stringify(old));
+        expect(readFactoryState(h.root, ISSUE).laneModels).toBeUndefined();
+        const second = run([commitFile('a.ts'), review('approve')], { limits: limits({ laneModel: 'mai-code-2', laneModels: { review: 'mai-code-2-flash' } }) });
+        await second.done;
+        expect(readFactoryState(h.root, ISSUE).laneModels).toMatchObject({ implement: 'mai-code-2', review: 'mai-code-2-flash' });
+    });
     it('a resume with another review model warns per kind; the unchanged kinds are not named', async () => {
         const first = run([noCommit, noCommit], { limits: limits({ laneModel: 'mai-code-2', laneModels: { review: 'mai-code-2-flash' } }) });
         await first.done;
@@ -101,8 +113,8 @@ describe('omg factory run engine (fake lanes, real git, scripted gh)', () => {
         writeFileSync(join(h.root, 'node_modules', 'pkg', 'index.js'), 'yours\n');
         writeFileSync(join(h.root, 'node_modules', '.bin', 'pkg'), 'shim\n');
         const seen = [];
-        const prepared = (ctx) => {
-            seen.push(ctx.input.beforeSandboxedSession(ctx.worktree));
+        const prepared = async (ctx) => {
+            seen.push(await ctx.input.beforeSandboxedSession(ctx.worktree));
             const nm = join(ctx.worktree, 'node_modules');
             expect(lstatSync(nm).isSymbolicLink()).toBe(false);
             expect(lstatSync(join(nm, 'pkg')).isSymbolicLink()).toBe(false);
@@ -126,8 +138,8 @@ describe('omg factory run engine (fake lanes, real git, scripted gh)', () => {
         writeFileSync(join(h.root, 'node_modules', 'pkg', 'index.js'), 'yours\n');
         writeFileSync(join(h.root, 'node_modules', '.bin', 'pkg'), 'shim\n');
         const trees = [];
-        const prepared = (file, content) => (ctx) => {
-            expect(ctx.input.beforeSandboxedSession(ctx.worktree)).toBeNull();
+        const prepared = (file, content) => async (ctx) => {
+            expect(await ctx.input.beforeSandboxedSession(ctx.worktree)).toBeNull();
             trees.push(join(ctx.worktree, 'node_modules'));
             if (trees.length === 1)
                 writeFileSync(join(ctx.worktree, 'node_modules', 'pkg', 'left-by-implement.txt'), 'x\n');
@@ -148,8 +160,8 @@ describe('omg factory run engine (fake lanes, real git, scripted gh)', () => {
             mkdirSync(join(h.root, 'node_modules', 'pkg'), { recursive: true });
             writeFileSync(join(h.root, 'node_modules', 'pkg', 'index.js'), 'yours\n');
         };
-        const prepare = (trees, then) => (ctx) => {
-            expect(ctx.input.beforeSandboxedSession(ctx.worktree)).toBeNull();
+        const prepare = (trees, then) => async (ctx) => {
+            expect(await ctx.input.beforeSandboxedSession(ctx.worktree)).toBeNull();
             trees.push(join(ctx.worktree, 'node_modules'));
             return then(ctx);
         };
@@ -193,8 +205,8 @@ describe('omg factory run engine (fake lanes, real git, scripted gh)', () => {
         writeFileSync(join(h.root, 'node_modules', 'pkg', 'index.js'), 'yours\n');
         writeFileSync(join(h.root, 'node_modules', '.bin', 'pkg'), 'shim\n');
         let tree = '';
-        const unignores = (ctx) => {
-            expect(ctx.input.beforeSandboxedSession(ctx.worktree)).toBeNull();
+        const unignores = async (ctx) => {
+            expect(await ctx.input.beforeSandboxedSession(ctx.worktree)).toBeNull();
             tree = join(ctx.worktree, 'node_modules');
             expect(existsSync(join(tree, 'pkg', 'index.js'))).toBe(true);
             writeFileSync(join(ctx.worktree, '.gitignore'), '.omg/\n');

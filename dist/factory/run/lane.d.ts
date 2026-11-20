@@ -82,7 +82,7 @@ export interface LaneStartInput {
      * prepareLaneNodeModules); a non-null problem fails the lane before any
      * session starts.
      */
-    beforeSandboxedSession?: (worktree: string) => string | null;
+    beforeSandboxedSession?: (worktree: string) => string | null | Promise<string | null>;
     /** Cloud backends only. */
     customAgent?: string;
     timeoutMs: number;
@@ -163,7 +163,7 @@ export declare class LaneLostError extends Error {
 }
 export declare const TERMINAL_LANE_STATES: readonly LaneState[];
 export declare const isTerminalLaneState: (state: LaneState) => boolean;
-export type LaneJobManager = Pick<CopilotRunManager, 'start' | 'status' | 'wait' | 'cancel'> & Partial<Pick<CopilotRunManager, 'sandboxIntent'>>;
+export type LaneJobManager = Pick<CopilotRunManager, 'start' | 'status' | 'wait' | 'cancel'> & Partial<Pick<CopilotRunManager, 'sandboxIntent' | 'prepared'>>;
 export interface CopilotLaneBackendOptions {
     /**
      * The caller's explicit opt-in to live, billed sessions (`omg factory run`
