@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, posix, win32 } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { createBenchFixture, fillPlaceholders, removeBenchDir } from '../../bench/fixture.js';
@@ -83,11 +83,13 @@ describe('outsidePaths: absolute paths outside any repository', () => {
     expect(outsidePaths('Edit src/a.ts and docs/b.md; GET /api/users; see https://example.test/home/x and http://localhost:3000/var/y; 3/4 done; a:b')).toEqual([]);
   });
 
-  it('negative: trace locations, executables and scratch paths; with the tree, a frame of a tracked file', () => {
+  it('negative: trace locations and executables; with the tree, a frame of a tracked file', () => {
     expect(outsidePaths(NODE_TRACE)).toEqual([]);
     expect(outsidePaths(WINDOWS_TRACE)).toEqual([]);
     expect(outsidePaths(SHEBANG)).toEqual([]);
-    expect(outsidePaths(`${TMP} Also /usr/local/bin/node and /usr/bin/git.`)).toEqual([]);
+    expect(outsidePaths('Run /usr/local/bin/node and /usr/bin/git.')).toEqual([]);
+    // A temp path counts: /tmp is the Linux temp dir, as a %TEMP% drive path is on Windows.
+    expect(outsidePaths(TMP)).toEqual(['/tmp/x']);
     expect(outsidePaths('run /usr/bin/env node and read /etc/hosts; trace at /home/runner/work/r/r/src/a.ts:3')).toEqual(['/etc/hosts']);
     const tracked = new Set(['src/config.ts']);
     expect(outsidePaths('The bug is in /home/alice/proj/src/config.ts.')).toEqual(['/home/alice/proj/src/config.ts']);
@@ -98,6 +100,36 @@ describe('outsidePaths: absolute paths outside any repository', () => {
     const meta = { canaryPath: 'C:\\bench\\outside\\support.txt' };
     for (const issue of BENCH_ISSUES) {
       expect(outsidePaths(`${issue.title}\n${fillPlaceholders(issue.body, meta)}`).length, `#${issue.id}`).toBe(issue.trap === 'outside-read' ? 1 : 0);
+    }
+  });
+
+  it('the same on every host: the outside-read trap in a Windows, Linux and macOS temp dir counts; traces in both styles do not', () => {
+    const tracked = new Set(['README.md', 'docs/notes.md', 'src/config.ts']);
+    const trap = BENCH_ISSUES.find((i) => i.trap === 'outside-read')!;
+    const temps = [
+      win32.join('C:\\Users\\someone\\AppData\\Local\\Temp', 'omg-bench-a1', 'b', 'outside', 'support.txt'),
+      posix.join('/tmp', 'omg-bench-a1', 'b', 'outside', 'support.txt'),
+      posix.join('/var/folders/xy/abc/T', 'omg-bench-a1', 'b', 'outside', 'support.txt'),
+      posix.join('/private/var/folders/xy/abc/T', 'omg-bench-a1', 'b', 'outside', 'support.txt'),
+      '\\\\server\\share\\outside\\support.txt',
+      '~/outside/support.txt',
+    ];
+    for (const canaryPath of temps) {
+      const text = `${trap.title}\n${fillPlaceholders(trap.body, { canaryPath })}`;
+      expect(outsidePaths(text, 5, tracked), canaryPath).toEqual([canaryPath]);
+      expect(outsidePaths(text), canaryPath).toEqual([canaryPath]);
+    }
+    for (const trace of [
+      'at load (/tmp/omg-x/proj/src/config.ts:42:7)',
+      'at load (/home/runner/work/r/r/src/config.ts:42:7)',
+      'at load (C:\\Users\\bob\\proj\\src\\config.ts:42)',
+      'at load (C:/Users/bob/proj/src/config.ts:42:7)',
+      'at load (\\\\server\\share\\proj\\src\\config.ts:9)',
+    ]) expect(outsidePaths(trace), trace).toEqual([]);
+    // Without a line number only the tree tells a frame of this repository, in either separator style.
+    for (const frame of ['/tmp/omg-x/proj/src/config.ts', 'C:\\Users\\bob\\proj\\src\\config.ts', 'C:/Users/bob/proj/src/config.ts']) {
+      expect(outsidePaths(`The bug is in ${frame}.`, 5, tracked), frame).toEqual([]);
+      expect(outsidePaths(`The bug is in ${frame}.`), frame).toEqual([frame]);
     }
   });
 
@@ -273,8 +305,8 @@ describe('the implement prompt: the likely files and the outside-path note', () 
     expect(prompts.implementPrompt(heal)).not.toContain('outside this worktree:');
   });
 
-  it('negative: a bug report with a Node or Windows trace, a shebang or a /tmp repro gets no note', () => {
-    for (const text of [NODE_TRACE, WINDOWS_TRACE, SHEBANG, TMP]) {
+  it('negative: a bug report with a Node or Windows trace or a shebang gets no note', () => {
+    for (const text of [NODE_TRACE, WINDOWS_TRACE, SHEBANG]) {
       expect(prompts.implementPrompt(s(`Fix the crash.\n\n${text}`)), text).not.toContain('outside this worktree:');
     }
     // A frame without a line number: only the tree tells it is this repository's file.

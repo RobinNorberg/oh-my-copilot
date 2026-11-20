@@ -133472,7 +133472,7 @@ var init_prescan = __esm({
     MAX_SCAN_CHARS = 2e5;
     OUTSIDE_RE = /(?<![\w/\\.:])(?:[A-Za-z]:[\\/][^\s`'"<>|*?]+|\\\\[\w.$-]+\\[^\s`'"<>|*?]+|~\/[^\s`'"<>|*?]+|\/(?:home|Users|root|etc|var|tmp|opt|mnt|srv|usr|private|Volumes)\/[^\s`'"<>|*?]+)/g;
     LINE_SUFFIX = /:\d+(?::\d+)?$/;
-    BENIGN_OUTSIDE = /^\/(?:usr\/(?:local\/)?s?bin|s?bin|tmp|private\/tmp|var\/tmp)\//;
+    BENIGN_OUTSIDE = /^\/(?:usr\/(?:local\/)?s?bin|s?bin)\//;
     escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   }
 });

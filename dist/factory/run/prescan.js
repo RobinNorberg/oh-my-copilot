@@ -48,11 +48,14 @@ const OUTSIDE_RE = /(?<![\w/\\.:])(?:[A-Za-z]:[\\/][^\s`'"<>|*?]+|\\\\[\w.$-]+\\
 const LINE_SUFFIX = /:\d+(?::\d+)?$/;
 /**
  * Outside paths that are never a task's input: executables an issue runs
- * (`#!/usr/bin/env node`, `/usr/local/bin/node`) and scratch space (`/tmp/x`
- * in a repro). `/etc/...` and home paths stay: a task that reads one of
- * those (`/etc/hosts`, `~/notes.md`) is the outside read a lane cannot do.
+ * (`#!/usr/bin/env node`, `/usr/local/bin/node`). `/etc/...`, home and temp
+ * paths stay: a task that reads one of those (`/etc/hosts`, `~/notes.md`) is
+ * the outside read a lane cannot do. `/tmp` is no exception: it is the
+ * system temp dir on Linux (os.tmpdir()), where a support file or the bench's
+ * outside file lives as often as `%TEMP%` (a drive path, always counted) does
+ * on Windows.
  */
-const BENIGN_OUTSIDE = /^\/(?:usr\/(?:local\/)?s?bin|s?bin|tmp|private\/tmp|var\/tmp)\//;
+const BENIGN_OUTSIDE = /^\/(?:usr\/(?:local\/)?s?bin|s?bin)\//;
 /** `p` without trailing sentence punctuation (a loop, so a long run of dots stays linear). */
 function trimTrailing(p) {
     let end = p.length;
@@ -144,7 +147,7 @@ export function prescanTerms(input, tracked) {
  * The absolute paths outside any repository that `text` names as a possible
  * input: a Windows drive or UNC path, `~/`, or a POSIX path under a system or
  * home root. Left out: a location in a stack trace or log (`:line` or
- * `:line:col` after it), an executable or scratch path (BENIGN_OUTSIDE), and,
+ * `:line:col` after it), an executable path (BENIGN_OUTSIDE), and,
  * with the base's `tracked` paths, a path ending in a tracked file of two or
  * more segments (a frame of this repository at another checkout). Each once,
  * in first-seen order, at most `max`. Linear, deterministic and free; the

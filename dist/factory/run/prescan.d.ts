@@ -61,7 +61,7 @@ export declare function prescanTerms(input: string, tracked?: ReadonlySet<string
  * The absolute paths outside any repository that `text` names as a possible
  * input: a Windows drive or UNC path, `~/`, or a POSIX path under a system or
  * home root. Left out: a location in a stack trace or log (`:line` or
- * `:line:col` after it), an executable or scratch path (BENIGN_OUTSIDE), and,
+ * `:line:col` after it), an executable path (BENIGN_OUTSIDE), and,
  * with the base's `tracked` paths, a path ending in a tracked file of two or
  * more segments (a frame of this repository at another checkout). Each once,
  * in first-seen order, at most `max`. Linear, deterministic and free; the
