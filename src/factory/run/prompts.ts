@@ -142,11 +142,13 @@ export const REPO_GUIDE_FILES: readonly string[] = ['AGENTS.md', 'CLAUDE.md', 'C
 /**
  * `guides`: those of REPO_GUIDE_FILES the lane's base has (the engine reads the
  * base tree). Only these are named: a lane told to read a missing file spends
- * a tool call failing on it.
+ * a tool call failing on it. `likely`: the pre-scan's list; `tracked`: the
+ * base's file paths when the pre-scan read them (an outside path that ends in
+ * one, a stack frame of this repository, gets no outside-path note).
  */
-export function implementPrompt(s: FactoryRunState, team?: TeamContext, scripts: readonly string[] = [], lane: LaneEnvironment | null = null, guides: readonly string[] = [], likely: readonly LikelyFile[] = []): string {
+export function implementPrompt(s: FactoryRunState, team?: TeamContext, scripts: readonly string[] = [], lane: LaneEnvironment | null = null, guides: readonly string[] = [], likely: readonly LikelyFile[] = [], tracked?: ReadonlySet<string>): string {
   // A heal diagnosis quotes CI log paths (/home/runner/...), which are not inputs the task needs.
-  const outside = s.kind === 'ci-heal' ? 0 : outsidePaths(`${s.issueTitle ?? ''}\n${s.plan?.text ?? ''}`).length;
+  const outside = s.kind === 'ci-heal' ? 0 : outsidePaths(`${s.issueTitle ?? ''}\n${s.plan?.text ?? ''}`, 5, tracked).length;
   return [
     `You are the implementer for ${subject(s)}`,
     '',

@@ -60,11 +60,24 @@ import { type AzEntry } from '../../forge/ado/az-binary.js';
 import type { ForgeOptions, ResolvedForgeConfig } from '../../forge/types.js';
 import { type GateConfigLoader } from './prepare.js';
 import type { ForgeReviewFeedback } from '../../forge/types.js';
+import { type LikelyFile } from './prescan.js';
 import { type FactoryRunLimits } from './budget.js';
 import { type LocalGateRunner } from './local-gate.js';
 import { type LaneBackend, type LaneProcess } from './lane.js';
 import { type LaneTreeProof } from './lane-procs.js';
 import { EXIT_BUSY, type FactoryCiFailure, type FactoryGate, type FactoryHealRecord, type FactoryPhase, type FactoryRunKey, type FactoryRunState, type OwnerDeps, type HeldOwner, type HeldSlot } from './state.js';
+/**
+ * The implement prompt's free pre-scan (prescan.ts) of `baseSha` for `text`
+ * (issue title and plan): likely relevant paths, read with hardened host git
+ * from the checkout at `root`, asynchronously (the engine loop keeps
+ * running); paths the checkout's .gitignore excludes are dropped. `tracked`
+ * is the base's file list when the tree was read. A failure only drops the
+ * hint (warned), never the lane.
+ */
+export declare function implementLikelyFiles(root: string, text: string, baseSha: string, warn?: (message: string) => void): Promise<{
+    files: LikelyFile[];
+    tracked?: ReadonlySet<string>;
+}>;
 /** Exit code of a run parked at a human gate other than the expected `merge` park. */
 export declare const EXIT_AWAITING_HUMAN = 4;
 export { EXIT_BUSY };

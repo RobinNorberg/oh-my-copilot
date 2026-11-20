@@ -12,7 +12,9 @@
  * (the lane commit's scan, heal/sanitize.ts), paths a write lane may not
  * change (LANE_PROTECTED_PATHS), paths with characters outside a plain set,
  * and paths the caller's `ignored` check reports (.gitignore). Bounded in
- * tree entries, bytes read and wall time; any git failure yields no list.
+ * tree bytes and entries and in bytes read, so the list depends on the input
+ * and the tree only; the wall-time budget is an abort that lists nothing. A
+ * git failure rejects (the caller warns and drops the hint).
  */
 
 import { secretShapeKinds } from '../heal/sanitize.js';
@@ -25,8 +27,12 @@ export interface LikelyFile {
   reason: string;
 }
 
-/** Host git in the repository that holds the base commit (hardened, replace objects off); stdout as bytes. */
-export type PrescanGit = (args: readonly string[], input?: Buffer) => Buffer;
+/**
+ * Host git in the repository that holds the base commit (hardened, replace
+ * objects off, asynchronous so the engine loop keeps running); stdout as
+ * bytes. Output beyond `maxBuffer` rejects.
+ */
+export type PrescanGit = (args: readonly string[], input: Buffer | undefined, maxBuffer: number) => Promise<Buffer>;
 
 export interface PrescanOptions {
   /** The most paths listed (default 8). */
@@ -37,12 +43,16 @@ export interface PrescanOptions {
   maxTotalBytes?: number;
   /** A tree with more entries gets path matches only, no content phase (default 50,000). */
   maxTreeEntries?: number;
-  /** The content phase stops after this many milliseconds (default 2,000). */
+  /** The `ls-tree` output above this many bytes rejects: a huge tree gets no list (default 16 MB). */
+  maxTreeBytes?: number;
+  /** Past this many milliseconds the scan lists nothing (an abort, never a partial list; default 2,000). */
   budgetMs?: number;
   /** The clock (tests). */
   now?: () => number;
-  /** The candidate paths a .gitignore excludes; a throw drops every candidate. */
-  ignored?: (paths: readonly string[]) => ReadonlySet<string>;
+  /** The candidate paths a .gitignore excludes; a rejection rejects the scan. */
+  ignored?: (paths: readonly string[]) => Promise<ReadonlySet<string>>;
+  /** Called with every tracked file path of the base once the tree is read (the implement prompt's outside-path note). */
+  onTree?: (tracked: ReadonlySet<string>) => void;
 }
 
 const HEX40 = /^[0-9a-f]{40}$/;
@@ -67,18 +77,71 @@ const MAX_IDENTIFIERS = 12;
 const MAX_NAMED_PATHS = 12;
 const PATH_TOKEN = /(?<=^|[\s`'"(<[])((?:[\w@+-][\w.@+-]*\/)*[\w@+-][\w.@+-]*\.[A-Za-z][A-Za-z0-9]{0,7})(?=$|[\s`'")>\],:;!?]|\.(?:\s|$))/gm;
 
-/** The repo paths and code identifiers an issue names, each once, in first-seen order. */
-export function prescanTerms(input: string): { paths: string[]; identifiers: string[] } {
-  // An absolute path outside the repository names nothing in it (its segments are not code names).
-  let text = input;
-  for (const p of outsidePaths(input, Infinity)) text = text.split(p).join(' ');
+/** Only this much of an issue is read (the scan stays linear and small). */
+const MAX_SCAN_CHARS = 200_000;
+/** An absolute path outside any repository: a Windows drive or UNC path, `~/`, or a POSIX path under a system or home root. */
+const OUTSIDE_RE = /(?<![\w/\\.:])(?:[A-Za-z]:[\\/][^\s`'"<>|*?]+|\\\\[\w.$-]+\\[^\s`'"<>|*?]+|~\/[^\s`'"<>|*?]+|\/(?:home|Users|root|etc|var|tmp|opt|mnt|srv|usr|private|Volumes)\/[^\s`'"<>|*?]+)/g;
+/** A stack-trace or compiler location after a path (`a.ts:42`, `a.ts:42:7`); at most two groups, so the match is linear. */
+const LINE_SUFFIX = /:\d+(?::\d+)?$/;
+/**
+ * Outside paths that are never a task's input: executables an issue runs
+ * (`#!/usr/bin/env node`, `/usr/local/bin/node`) and scratch space (`/tmp/x`
+ * in a repro). `/etc/...` and home paths stay: a task that reads one of
+ * those (`/etc/hosts`, `~/notes.md`) is the outside read a lane cannot do.
+ */
+const BENIGN_OUTSIDE = /^\/(?:usr\/(?:local\/)?s?bin|s?bin|tmp|private\/tmp|var\/tmp)\//;
+
+/** `p` without trailing sentence punctuation (a loop, so a long run of dots stays linear). */
+function trimTrailing(p: string): string {
+  let end = p.length;
+  while (end > 0 && '.,;:)]'.includes(p[end - 1])) end -= 1;
+  return p.slice(0, end);
+}
+
+/** A matched outside path without trailing punctuation or `:line(:col)`; `line` when it had one. */
+function cleanOutside(raw: string): { path: string; line: boolean } {
+  const p = trimTrailing(raw);
+  const line = LINE_SUFFIX.test(p);
+  return { path: line ? trimTrailing(p.replace(LINE_SUFFIX, '')) : p, line };
+}
+
+/**
+ * The longest proper suffix of `path`'s segments that is a tracked file, with
+ * at least `minSegs` segments (only the last 16 segments are tried).
+ */
+function trackedSuffix(path: string, tracked: ReadonlySet<string>, minSegs: number): string | undefined {
+  const segs = path.split(/[\\/]/).filter(Boolean);
+  for (let i = Math.max(1, segs.length - 16); i <= segs.length - minSegs; i += 1) {
+    const s = segs.slice(i).join('/');
+    if (tracked.has(s)) return s;
+  }
+  return undefined;
+}
+
+/**
+ * The repo paths and code identifiers an issue names, each once, in
+ * first-seen order. With the base's `tracked` paths, an outside path that
+ * ends in a tracked file (a stack frame `/home/alice/proj/src/a.ts:3`)
+ * names that file.
+ */
+export function prescanTerms(input: string, tracked?: ReadonlySet<string>): { paths: string[]; identifiers: string[] } {
+  // An absolute path outside the repository names nothing in it (its segments are not code names), except a tracked suffix.
+  const inRepo: string[] = [];
+  const text = input.slice(0, MAX_SCAN_CHARS).replace(OUTSIDE_RE, (raw) => {
+    const s = tracked ? trackedSuffix(cleanOutside(raw).path, tracked, 1) : undefined;
+    if (s && SAFE_PATH.test(s)) inRepo.push(s);
+    return ' ';
+  });
   const paths: string[] = [];
+  const addPath = (p: string) => { if (!paths.includes(p) && paths.length < MAX_NAMED_PATHS) paths.push(p); };
   for (const m of text.matchAll(PATH_TOKEN)) {
     const before = text.slice(Math.max(0, (m.index ?? 0) - 3), m.index);
     // A URL's path or a Windows / UNC absolute path is not a repo path.
     if (/:\/\/?$|[\\:]$/.test(before) || /:\/\//.test(m[1])) continue;
-    if (!paths.includes(m[1]) && paths.length < MAX_NAMED_PATHS) paths.push(m[1]);
+    addPath(m[1]);
   }
+  // The paths written out first; the tracked files of outside paths (often a long trace) after them.
+  for (const p of inRepo) addPath(p);
   const identifiers: string[] = [];
   const add = (w: string) => {
     // A secret-shaped word is never a search term (its reason would carry it into the prompt).
@@ -107,27 +170,31 @@ export function prescanTerms(input: string): { paths: string[]; identifiers: str
 }
 
 /**
- * The absolute paths outside any repository that `text` names: a Windows
- * drive or UNC path, `~/`, or a POSIX path under a system or home root.
- * Each once, in first-seen order, at most 5. Deterministic and free; the
+ * The absolute paths outside any repository that `text` names as a possible
+ * input: a Windows drive or UNC path, `~/`, or a POSIX path under a system or
+ * home root. Left out: a location in a stack trace or log (`:line` or
+ * `:line:col` after it), an executable or scratch path (BENIGN_OUTSIDE), and,
+ * with the base's `tracked` paths, a path ending in a tracked file of two or
+ * more segments (a frame of this repository at another checkout). Each once,
+ * in first-seen order, at most `max`. Linear, deterministic and free; the
  * implement prompt only counts them.
  */
-export function outsidePaths(text: string, max = 5): string[] {
-  const out: string[] = [];
-  const re = /(?<![\w/\\.:])(?:[A-Za-z]:[\\/][^\s`'"<>|*?]+|\\\\[\w.$-]+\\[^\s`'"<>|*?]+|~\/[^\s`'"<>|*?]+|\/(?:home|Users|root|etc|var|tmp|opt|mnt|srv|usr|private|Volumes)\/[^\s`'"<>|*?]+)/g;
-  for (const m of text.matchAll(re)) {
-    const p = m[0].replace(/[.,;:)\]]+$/, '');
-    if (!out.includes(p)) out.push(p);
-    if (out.length >= max) break;
+export function outsidePaths(text: string, max = 5, tracked?: ReadonlySet<string>): string[] {
+  const out = new Set<string>();
+  for (const m of text.slice(0, MAX_SCAN_CHARS).matchAll(OUTSIDE_RE)) {
+    const { path, line } = cleanOutside(m[0]);
+    if (line || BENIGN_OUTSIDE.test(path) || (tracked && trackedSuffix(path, tracked, 2))) continue;
+    out.add(path);
+    if (out.size >= max) break;
   }
-  return out;
+  return [...out];
 }
 
 interface TreeFile { path: string; oid: string; size: number }
 
-function treeFiles(git: PrescanGit, sha: string): TreeFile[] {
+async function treeFiles(git: PrescanGit, sha: string, maxBytes: number): Promise<TreeFile[]> {
   const out: TreeFile[] = [];
-  for (const rec of git(['ls-tree', '-r', '-z', '-l', '--full-tree', sha]).toString('utf8').split('\0')) {
+  for (const rec of (await git(['ls-tree', '-r', '-z', '-l', '--full-tree', sha], undefined, maxBytes)).toString('utf8').split('\0')) {
     const tab = rec.indexOf('\t');
     if (tab < 0) continue;
     const [mode, type, oid, size] = rec.slice(0, tab).trim().split(/\s+/);
@@ -145,11 +212,12 @@ function eligible(f: TreeFile, maxFileBytes: number): boolean {
   return secretShapeKinds(f.path).length === 0;
 }
 
-/** `cat-file --batch` of `oids`: oid -> bytes (a missing object is left out). */
-function readBlobs(git: PrescanGit, oids: readonly string[]): Map<string, Buffer> {
+/** `cat-file --batch` of `oids` (`bytes` in all): oid -> bytes (a missing object is left out). */
+async function readBlobs(git: PrescanGit, oids: readonly string[], bytes: number): Promise<Map<string, Buffer>> {
   const out = new Map<string, Buffer>();
   if (oids.length === 0) return out;
-  const buf = git(['cat-file', '--batch'], Buffer.from(`${oids.join('\n')}\n`));
+  // Each object adds one header line (`<oid> blob <size>\n`) and a newline to its bytes.
+  const buf = await git(['cat-file', '--batch'], Buffer.from(`${oids.join('\n')}\n`), bytes + oids.length * 100 + 1024);
   let at = 0;
   while (at < buf.length) {
     const nl = buf.indexOf(0x0a, at);
@@ -169,23 +237,25 @@ const escapeRe = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
  * The likely relevant files of the base commit `sha` for `text` (issue title
  * and plan): at most `maxFiles`, highest score first, ties by path. A path
  * the issue names scores above a file that defines a named identifier, which
- * scores above one that only mentions it. Empty on any git failure.
+ * scores above one that only mentions it. Empty past the time budget; a git
+ * failure (a huge tree included) or a failed ignore check rejects.
  */
-export function likelyRelevantFiles(text: string, sha: string, git: PrescanGit, o: PrescanOptions = {}): LikelyFile[] {
+export async function likelyRelevantFiles(text: string, sha: string, git: PrescanGit, o: PrescanOptions = {}): Promise<LikelyFile[]> {
   const maxFiles = o.maxFiles ?? 8;
   const maxFileBytes = o.maxFileBytes ?? 200_000;
   const maxTotal = o.maxTotalBytes ?? 8_000_000;
   const now = o.now ?? Date.now;
   const deadline = now() + (o.budgetMs ?? 2_000);
   if (!HEX40.test(sha) || maxFiles <= 0) return [];
-  const { paths, identifiers } = prescanTerms(text);
+  // Without terms and without an outside path (whose tracked suffix could be one) no git runs.
+  const first = prescanTerms(text);
+  if (first.paths.length === 0 && first.identifiers.length === 0 && text.slice(0, MAX_SCAN_CHARS).search(OUTSIDE_RE) < 0) return [];
+  const tree = await treeFiles(git, sha, o.maxTreeBytes ?? 16_000_000);
+  const tracked = new Set(tree.map((f) => f.path));
+  o.onTree?.(tracked);
+  const { paths, identifiers } = prescanTerms(text, tracked);
   if (paths.length === 0 && identifiers.length === 0) return [];
-  let tree: TreeFile[];
-  try {
-    tree = treeFiles(git, sha);
-  } catch {
-    return [];
-  }
+  if (now() > deadline) return [];
   const protectedSet = new Set(protectedChanges(tree.map((f) => f.path), LANE_PROTECTED_PATHS));
   const files = tree.filter((f) => eligible(f, maxFileBytes) && !protectedSet.has(f.path));
   const score = new Map<string, { n: number; reasons: string[] }>();
@@ -229,15 +299,12 @@ export function likelyRelevantFiles(text: string, sha: string, git: PrescanGit, 
     total += f.size;
     batch.push(f);
   }
-  let blobs: Map<string, Buffer>;
-  try {
-    blobs = readBlobs(git, batch.map((f) => f.oid));
-  } catch {
-    return [];
-  }
+  // The content phase is bounded by bytes only (the same input and tree give the same list); time only aborts.
+  if (now() > deadline) return [];
+  const blobs = await readBlobs(git, batch.map((f) => f.oid), total);
   const cleared = new Set<string>();
   for (const f of batch) {
-    if (now() > deadline) break;
+    if (now() > deadline) return [];
     const bytes = blobs.get(f.oid);
     if (!bytes || bytes.subarray(0, 8_000).includes(0)) continue;
     const body = bytes.toString('utf8');
@@ -252,16 +319,12 @@ export function likelyRelevantFiles(text: string, sha: string, git: PrescanGit, 
   for (const p of [...score.keys()]) if (!cleared.has(p)) score.delete(p);
   let ranked = [...score.entries()].sort((a, b) => b[1].n - a[1].n || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
   if (ranked.length === 0) return [];
-  // .gitignore: a check that fails drops the whole list (never list a path we could not clear).
+  // .gitignore: a check that fails rejects the whole scan (never list a path we could not clear).
   if (o.ignored) {
-    let ign: ReadonlySet<string>;
-    try {
-      ign = o.ignored(ranked.slice(0, maxFiles * 2).map(([p]) => p));
-    } catch {
-      return [];
-    }
+    const ign = await o.ignored(ranked.slice(0, maxFiles * 2).map(([p]) => p));
     ranked = ranked.filter(([p]) => !ign.has(p));
   }
+  if (now() > deadline) return [];
   return ranked.slice(0, maxFiles).map(([path, e]) => ({ path, reason: oneReason(e.reasons) }));
 }
 

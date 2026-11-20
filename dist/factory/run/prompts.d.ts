@@ -58,9 +58,11 @@ export declare const REPO_GUIDE_FILES: readonly string[];
 /**
  * `guides`: those of REPO_GUIDE_FILES the lane's base has (the engine reads the
  * base tree). Only these are named: a lane told to read a missing file spends
- * a tool call failing on it.
+ * a tool call failing on it. `likely`: the pre-scan's list; `tracked`: the
+ * base's file paths when the pre-scan read them (an outside path that ends in
+ * one, a stack frame of this repository, gets no outside-path note).
  */
-export declare function implementPrompt(s: FactoryRunState, team?: TeamContext, scripts?: readonly string[], lane?: LaneEnvironment | null, guides?: readonly string[], likely?: readonly LikelyFile[]): string;
+export declare function implementPrompt(s: FactoryRunState, team?: TeamContext, scripts?: readonly string[], lane?: LaneEnvironment | null, guides?: readonly string[], likely?: readonly LikelyFile[], tracked?: ReadonlySet<string>): string;
 /**
  * The pre-scan's likely relevant files (prescan.ts: plain repo paths of the
  * base and a reason built from plain identifiers, never file contents): a

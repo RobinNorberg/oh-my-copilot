@@ -58349,6 +58349,25 @@ function runHostGitBuffer(cwd, args, timeout, baseEnv = process.env, input2) {
   const { argv, env: env2 } = hostGitCommand(cwd, args, timeout, baseEnv);
   return (0, import_node_child_process4.execFileSync)(hostGitExe(), argv, { cwd, env: env2, stdio: "pipe", windowsHide: true, timeout, maxBuffer: 512 * 1024 * 1024, ...input2 !== void 0 ? { input: input2 } : {} });
 }
+function runHostGitBufferAsync(cwd, args, timeout, baseEnv = process.env, input2, maxBuffer = HOST_GIT_MAX_BUFFER) {
+  let exe;
+  let cmd;
+  try {
+    cmd = hostGitCommand(cwd, args, timeout, baseEnv);
+    exe = hostGitExe();
+  } catch (e) {
+    return Promise.reject(e);
+  }
+  return new Promise((resolvePromise, reject2) => {
+    const child = (0, import_node_child_process4.execFile)(exe, cmd.argv, { cwd, env: cmd.env, encoding: "buffer", windowsHide: true, timeout, maxBuffer, killSignal: "SIGKILL" }, (err, stdout) => {
+      if (err) reject2(Object.assign(err, { status: typeof err.code === "number" ? err.code : null, stdout }));
+      else resolvePromise(stdout);
+    });
+    child.stdin?.on("error", () => {
+    });
+    child.stdin?.end(input2);
+  });
+}
 function hostGitCommand(cwd, args, timeout, baseEnv) {
   const env2 = hostGitEnv(args, baseEnv);
   const recorded = env2.GIT_DIR ? recordedGitDirs.get(env2.GIT_DIR) : void 0;
@@ -70535,15 +70554,41 @@ var init_terms = __esm({
 });
 
 // src/factory/run/prescan.ts
-function prescanTerms(input2) {
-  let text3 = input2;
-  for (const p of outsidePaths(input2, Infinity)) text3 = text3.split(p).join(" ");
+function trimTrailing(p) {
+  let end = p.length;
+  while (end > 0 && ".,;:)]".includes(p[end - 1])) end -= 1;
+  return p.slice(0, end);
+}
+function cleanOutside(raw) {
+  const p = trimTrailing(raw);
+  const line = LINE_SUFFIX.test(p);
+  return { path: line ? trimTrailing(p.replace(LINE_SUFFIX, "")) : p, line };
+}
+function trackedSuffix(path15, tracked, minSegs) {
+  const segs = path15.split(/[\\/]/).filter(Boolean);
+  for (let i = Math.max(1, segs.length - 16); i <= segs.length - minSegs; i += 1) {
+    const s = segs.slice(i).join("/");
+    if (tracked.has(s)) return s;
+  }
+  return void 0;
+}
+function prescanTerms(input2, tracked) {
+  const inRepo = [];
+  const text3 = input2.slice(0, MAX_SCAN_CHARS).replace(OUTSIDE_RE, (raw) => {
+    const s = tracked ? trackedSuffix(cleanOutside(raw).path, tracked, 1) : void 0;
+    if (s && SAFE_PATH.test(s)) inRepo.push(s);
+    return " ";
+  });
   const paths = [];
+  const addPath = (p) => {
+    if (!paths.includes(p) && paths.length < MAX_NAMED_PATHS) paths.push(p);
+  };
   for (const m of text3.matchAll(PATH_TOKEN)) {
     const before = text3.slice(Math.max(0, (m.index ?? 0) - 3), m.index);
     if (/:\/\/?$|[\\:]$/.test(before) || /:\/\//.test(m[1])) continue;
-    if (!paths.includes(m[1]) && paths.length < MAX_NAMED_PATHS) paths.push(m[1]);
+    addPath(m[1]);
   }
+  for (const p of inRepo) addPath(p);
   const identifiers = [];
   const add = (w) => {
     if (w.length < 3 || STOP.has(w) || STOP.has(w.toLowerCase()) || /^\d/.test(w) || identifiers.includes(w) || identifiers.length >= MAX_IDENTIFIERS || secretShapeKinds(w).length > 0) return;
@@ -70564,19 +70609,19 @@ function prescanTerms(input2) {
   for (const { word } of order) add(word);
   return { paths, identifiers };
 }
-function outsidePaths(text3, max = 5) {
-  const out = [];
-  const re = /(?<![\w/\\.:])(?:[A-Za-z]:[\\/][^\s`'"<>|*?]+|\\\\[\w.$-]+\\[^\s`'"<>|*?]+|~\/[^\s`'"<>|*?]+|\/(?:home|Users|root|etc|var|tmp|opt|mnt|srv|usr|private|Volumes)\/[^\s`'"<>|*?]+)/g;
-  for (const m of text3.matchAll(re)) {
-    const p = m[0].replace(/[.,;:)\]]+$/, "");
-    if (!out.includes(p)) out.push(p);
-    if (out.length >= max) break;
+function outsidePaths(text3, max = 5, tracked) {
+  const out = /* @__PURE__ */ new Set();
+  for (const m of text3.slice(0, MAX_SCAN_CHARS).matchAll(OUTSIDE_RE)) {
+    const { path: path15, line } = cleanOutside(m[0]);
+    if (line || BENIGN_OUTSIDE.test(path15) || tracked && trackedSuffix(path15, tracked, 2)) continue;
+    out.add(path15);
+    if (out.size >= max) break;
   }
-  return out;
+  return [...out];
 }
-function treeFiles(git4, sha3) {
+async function treeFiles(git4, sha3, maxBytes) {
   const out = [];
-  for (const rec of git4(["ls-tree", "-r", "-z", "-l", "--full-tree", sha3]).toString("utf8").split("\0")) {
+  for (const rec of (await git4(["ls-tree", "-r", "-z", "-l", "--full-tree", sha3], void 0, maxBytes)).toString("utf8").split("\0")) {
     const tab = rec.indexOf("	");
     if (tab < 0) continue;
     const [mode, type, oid, size] = rec.slice(0, tab).trim().split(/\s+/);
@@ -70592,11 +70637,11 @@ function eligible(f, maxFileBytes) {
   if (BINARY_EXT.test(f.path) || LOCKFILE.test(f.path) || SECRET_NAME3.test(f.path) || /\.min\.(?:js|css)$/.test(f.path)) return false;
   return secretShapeKinds(f.path).length === 0;
 }
-function readBlobs2(git4, oids) {
+async function readBlobs2(git4, oids, bytes) {
   const out = /* @__PURE__ */ new Map();
   if (oids.length === 0) return out;
-  const buf = git4(["cat-file", "--batch"], Buffer.from(`${oids.join("\n")}
-`));
+  const buf = await git4(["cat-file", "--batch"], Buffer.from(`${oids.join("\n")}
+`), bytes + oids.length * 100 + 1024);
   let at = 0;
   while (at < buf.length) {
     const nl = buf.indexOf(10, at);
@@ -70612,21 +70657,21 @@ function readBlobs2(git4, oids) {
   }
   return out;
 }
-function likelyRelevantFiles(text3, sha3, git4, o = {}) {
+async function likelyRelevantFiles(text3, sha3, git4, o = {}) {
   const maxFiles = o.maxFiles ?? 8;
   const maxFileBytes = o.maxFileBytes ?? 2e5;
   const maxTotal = o.maxTotalBytes ?? 8e6;
   const now = o.now ?? Date.now;
   const deadline = now() + (o.budgetMs ?? 2e3);
   if (!HEX4014.test(sha3) || maxFiles <= 0) return [];
-  const { paths, identifiers } = prescanTerms(text3);
+  const first = prescanTerms(text3);
+  if (first.paths.length === 0 && first.identifiers.length === 0 && text3.slice(0, MAX_SCAN_CHARS).search(OUTSIDE_RE) < 0) return [];
+  const tree = await treeFiles(git4, sha3, o.maxTreeBytes ?? 16e6);
+  const tracked = new Set(tree.map((f) => f.path));
+  o.onTree?.(tracked);
+  const { paths, identifiers } = prescanTerms(text3, tracked);
   if (paths.length === 0 && identifiers.length === 0) return [];
-  let tree;
-  try {
-    tree = treeFiles(git4, sha3);
-  } catch {
-    return [];
-  }
+  if (now() > deadline) return [];
   const protectedSet = new Set(protectedChanges(tree.map((f) => f.path), LANE_PROTECTED_PATHS));
   const files = tree.filter((f) => eligible(f, maxFileBytes) && !protectedSet.has(f.path));
   const score = /* @__PURE__ */ new Map();
@@ -70665,15 +70710,11 @@ function likelyRelevantFiles(text3, sha3, git4, o = {}) {
     total += f.size;
     batch.push(f);
   }
-  let blobs;
-  try {
-    blobs = readBlobs2(git4, batch.map((f) => f.oid));
-  } catch {
-    return [];
-  }
+  if (now() > deadline) return [];
+  const blobs = await readBlobs2(git4, batch.map((f) => f.oid), total);
   const cleared = /* @__PURE__ */ new Set();
   for (const f of batch) {
-    if (now() > deadline) break;
+    if (now() > deadline) return [];
     const bytes = blobs.get(f.oid);
     if (!bytes || bytes.subarray(0, 8e3).includes(0)) continue;
     const body = bytes.toString("utf8");
@@ -70688,21 +70729,17 @@ function likelyRelevantFiles(text3, sha3, git4, o = {}) {
   let ranked = [...score.entries()].sort((a, b) => b[1].n - a[1].n || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
   if (ranked.length === 0) return [];
   if (o.ignored) {
-    let ign;
-    try {
-      ign = o.ignored(ranked.slice(0, maxFiles * 2).map(([p]) => p));
-    } catch {
-      return [];
-    }
+    const ign = await o.ignored(ranked.slice(0, maxFiles * 2).map(([p]) => p));
     ranked = ranked.filter(([p]) => !ign.has(p));
   }
+  if (now() > deadline) return [];
   return ranked.slice(0, maxFiles).map(([path15, e]) => ({ path: path15, reason: oneReason(e.reasons) }));
 }
 function oneReason(reasons) {
   const shown = reasons.slice(0, 3).join("; ");
   return reasons.length > 3 ? `${shown}; +${reasons.length - 3} more` : shown;
 }
-var HEX4014, SAFE_PATH, SKIP_DIRS2, BINARY_EXT, LOCKFILE, SECRET_NAME3, STOP, MAX_IDENTIFIERS, MAX_NAMED_PATHS, PATH_TOKEN, escapeRe;
+var HEX4014, SAFE_PATH, SKIP_DIRS2, BINARY_EXT, LOCKFILE, SECRET_NAME3, STOP, MAX_IDENTIFIERS, MAX_NAMED_PATHS, PATH_TOKEN, MAX_SCAN_CHARS, OUTSIDE_RE, LINE_SUFFIX, BENIGN_OUTSIDE, escapeRe;
 var init_prescan = __esm({
   "src/factory/run/prescan.ts"() {
     "use strict";
@@ -70814,6 +70851,10 @@ var init_prescan = __esm({
     MAX_IDENTIFIERS = 12;
     MAX_NAMED_PATHS = 12;
     PATH_TOKEN = /(?<=^|[\s`'"(<[])((?:[\w@+-][\w.@+-]*\/)*[\w@+-][\w.@+-]*\.[A-Za-z][A-Za-z0-9]{0,7})(?=$|[\s`'")>\],:;!?]|\.(?:\s|$))/gm;
+    MAX_SCAN_CHARS = 2e5;
+    OUTSIDE_RE = /(?<![\w/\\.:])(?:[A-Za-z]:[\\/][^\s`'"<>|*?]+|\\\\[\w.$-]+\\[^\s`'"<>|*?]+|~\/[^\s`'"<>|*?]+|\/(?:home|Users|root|etc|var|tmp|opt|mnt|srv|usr|private|Volumes)\/[^\s`'"<>|*?]+)/g;
+    LINE_SUFFIX = /:\d+(?::\d+)?$/;
+    BENIGN_OUTSIDE = /^\/(?:usr\/(?:local\/)?s?bin|s?bin|tmp|private\/tmp|var\/tmp)\//;
     escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   }
 });
@@ -70856,9 +70897,9 @@ function noInstallRule(lane) {
   if (!lane?.sandboxed || lane.writeNetwork !== "none") return [];
   return [`The sandbox has no network access: never run \`npm install\`, \`npm ci\` or any other package install.${lane.nodeModulesReady ? " The dependencies are already installed in node_modules." : ""} If a command fails because a dependency is missing, report it in your final message instead of installing it.`];
 }
-function implementPrompt(s, team, scripts = [], lane = null, guides = [], likely = []) {
+function implementPrompt(s, team, scripts = [], lane = null, guides = [], likely = [], tracked) {
   const outside = s.kind === "ci-heal" ? 0 : outsidePaths(`${s.issueTitle ?? ""}
-${s.plan?.text ?? ""}`).length;
+${s.plan?.text ?? ""}`, 5, tracked).length;
   return [
     `You are the implementer for ${subject(s)}`,
     "",
@@ -75208,6 +75249,33 @@ var init_parallel = __esm({
 });
 
 // src/factory/run/engine.ts
+async function implementLikelyFiles(root, text3, baseSha, warn) {
+  const env2 = scrubShipEnv(process.env);
+  let tracked;
+  try {
+    const files = await likelyRelevantFiles(text3, baseSha, (args, input2, maxBuffer) => runHostGitBufferAsync(root, args, PRESCAN_GIT_TIMEOUT_MS, env2, input2, maxBuffer), {
+      onTree: (t) => {
+        tracked = t;
+      },
+      ignored: async (paths) => {
+        if (paths.length === 0) return /* @__PURE__ */ new Set();
+        let out;
+        try {
+          out = await runHostGitBufferAsync(root, ["--no-optional-locks", "check-ignore", "--no-index", "-z", "--stdin"], PRESCAN_GIT_TIMEOUT_MS, env2, paths.join("\0"));
+        } catch (e) {
+          const x = e;
+          if (x.status === 1 && (x.stdout?.length ?? 0) === 0) return /* @__PURE__ */ new Set();
+          throw e;
+        }
+        return new Set(out.toString("utf8").split("\0").filter(Boolean));
+      }
+    });
+    return { files, tracked };
+  } catch (e) {
+    warn?.(`omg factory run: the likely-files pre-scan failed, so the implement prompt carries no file hint: ${errText6(e)}`);
+    return { files: [], tracked };
+  }
+}
 function engineExec(o, inner, baseSha, basePush = () => void 0, github = () => void 0, agent = () => void 0) {
   const f = o.forge;
   if (f) assertFactoryForgeOptions(o.root, f.options);
@@ -75730,7 +75798,7 @@ var init_engine = __esm({
     init_claims();
     init_plan_rules();
     init_prompts2();
-    PRESCAN_GIT_TIMEOUT_MS = 15e3;
+    PRESCAN_GIT_TIMEOUT_MS = 3e3;
     EXIT_AWAITING_HUMAN = 4;
     PREPARE_ENGINE_STEPS = /* @__PURE__ */ new Set(["preflight", "remote", "fetch", "merge-base", "push", PREPARE_CONFIG_STEP, PREPARE_DETECT_STEP]);
     MAX_CONFLICT_FIX_ROUNDS = 2;
@@ -77550,38 +77618,10 @@ ${body}`);
             return false;
           }
         });
-        const out = await this.runLane("implement", baseSha, "write", implementPrompt(this.state, this.teamContext(read, pathsInText(this.state.plan?.text ?? "")), this.laneScripts(), this.laneEnvironment(), guides, this.likelyFiles(baseSha)), "implement");
+        const likely = await implementLikelyFiles(this.o.root, `${this.state.issueTitle ?? ""}
+${this.state.plan?.text ?? ""}`, baseSha, (m) => this.o.warn?.(m));
+        const out = await this.runLane("implement", baseSha, "write", implementPrompt(this.state, this.teamContext(read, pathsInText(this.state.plan?.text ?? "")), this.laneScripts(), this.laneEnvironment(), guides, likely.files, likely.tracked), "implement");
         if (out.kind === "done") await this.acceptWriteLane(out, "implement", baseSha);
-      }
-      /**
-       * The implement prompt's free pre-scan (prescan.ts): likely relevant paths of
-       * the base for the issue title and plan, read with hardened host git from
-       * your repository; paths your .gitignore excludes are dropped. A failure
-       * only drops the hint (warned), never the lane.
-       */
-      likelyFiles(baseSha) {
-        const env2 = scrubShipEnv(process.env);
-        const root = this.o.root;
-        try {
-          return likelyRelevantFiles(`${this.state.issueTitle ?? ""}
-${this.state.plan?.text ?? ""}`, baseSha, (args, input2) => runHostGitBuffer(root, args, PRESCAN_GIT_TIMEOUT_MS, env2, input2), {
-            ignored: (paths) => {
-              if (paths.length === 0) return /* @__PURE__ */ new Set();
-              let out;
-              try {
-                out = runHostGit(root, ["--no-optional-locks", "check-ignore", "--no-index", "-z", "--stdin"], PRESCAN_GIT_TIMEOUT_MS, env2, paths.join("\0"));
-              } catch (e) {
-                const x = e;
-                if (x.status === 1 && String(x.stdout ?? "") === "") return /* @__PURE__ */ new Set();
-                throw e;
-              }
-              return new Set(out.split("\0").filter(Boolean));
-            }
-          });
-        } catch (e) {
-          this.o.warn?.(`omg factory run: the likely-files pre-scan failed, so the implement prompt carries no file hint: ${errText6(e)}`);
-          return [];
-        }
       }
       async fix() {
         const head = this.state.head;

@@ -9,6 +9,8 @@ import { likelyRelevantFiles, outsidePaths, prescanTerms } from '../prescan.js';
 import * as prompts from '../prompts.js';
 import { createFactoryState } from '../state.js';
 const GIT_ID = ['-c', 'user.name=t', '-c', 'user.email=t@localhost', '-c', 'commit.gpgsign=false', '-c', 'core.autocrlf=false'];
+/** A test git: synchronous underneath, the async PrescanGit shape on top (maxBuffer honoured). */
+const gitAt = (root) => async (args, input, maxBuffer) => execFileSync('git', [...args], { cwd: root, input, stdio: 'pipe', maxBuffer });
 function makeRepo(files) {
     const root = mkdtempSync(join(tmpdir(), 'omg-prescan-'));
     const run = (args) => execFileSync('git', [...GIT_ID, ...args], { cwd: root, stdio: 'pipe' }).toString('utf8');
@@ -22,8 +24,13 @@ function makeRepo(files) {
     run(['add', '-A', '-f']);
     run(['commit', '-q', '-m', 'base']);
     const sha = run(['rev-parse', 'HEAD']).trim();
-    return { root, sha, git: (args, input) => execFileSync('git', [...args], { cwd: root, input, stdio: 'pipe', maxBuffer: 64 * 1024 * 1024 }) };
+    return { root, sha, git: gitAt(root) };
 }
+// Ordinary bug reports that quote a stack trace, a shebang or a scratch path: never an outside input.
+const NODE_TRACE = 'TypeError: x is undefined\n    at load (/home/alice/proj/src/config.ts:42:7)\n    at main (/home/alice/proj/src/cli.ts:9:3)';
+const WINDOWS_TRACE = 'Error: bad value\n    at load (C:\\Users\\bob\\proj\\src\\config.ts:42)';
+const SHEBANG = 'The script starts with `#!/usr/bin/env node` and src/cli.ts fails.';
+const TMP = 'Repro: write /tmp/x then run `parseConfig()`; it throws.';
 describe('prescanTerms: the paths and code names an issue mentions', () => {
     it('takes repo paths and code-looking names; skips URLs, absolute paths, stop words, call arguments and string literals', () => {
         const t = prescanTerms([
@@ -34,6 +41,14 @@ describe('prescanTerms: the paths and code names an issue mentions', () => {
         ].join('\n'));
         expect(t.paths).toEqual(['src/math.ts', 'docs/STYLE.md']);
         expect(t.identifiers).toEqual(['clamp', 'inStock', 'slugify', 'parse_config', 'MAX_RETRIES', 'HttpClient']);
+    });
+    it('an outside path that ends in a tracked file names that file (a stack frame); others are blanked', () => {
+        const tracked = new Set(['src/config.ts', 'src/cli.ts']);
+        expect(prescanTerms(NODE_TRACE, tracked).paths).toEqual(['src/config.ts', 'src/cli.ts']);
+        expect(prescanTerms(WINDOWS_TRACE, tracked).paths).toEqual(['src/config.ts']);
+        expect(prescanTerms('Read /etc/hosts and C:\\Support\\notes.txt', tracked).paths).toEqual([]);
+        // Without the tree the frame names nothing.
+        expect(prescanTerms(NODE_TRACE).paths).toEqual([]);
     });
     it('never takes a secret-shaped word as a search term', () => {
         const key = ['AK', 'IA'].join('') + 'ABCDEFGHIJKLMNOP';
@@ -48,14 +63,37 @@ describe('outsidePaths: absolute paths outside any repository', () => {
         expect(outsidePaths('Notes in C:\\Support\\notes.txt, D:/x/y.md, \\\\server\\share\\a.txt, ~/notes.md and /home/u/n.txt. Again C:\\Support\\notes.txt.'))
             .toEqual(['C:\\Support\\notes.txt', 'D:/x/y.md', '\\\\server\\share\\a.txt', '~/notes.md', '/home/u/n.txt']);
     });
+    it('keeps an outside read target: /etc/hosts, a home file, a drive path', () => {
+        expect(outsidePaths('Add the entries of /etc/hosts to docs/hosts.md.')).toEqual(['/etc/hosts']);
+        expect(outsidePaths('Copy ~/notes.md and C:\\Support\\README.md into docs/.', 5, new Set(['README.md', 'docs/a.md']))).toEqual(['~/notes.md', 'C:\\Support\\README.md']);
+    });
     it('negative: repo paths, URLs, API routes and ratios are not outside paths', () => {
         expect(outsidePaths('Edit src/a.ts and docs/b.md; GET /api/users; see https://example.test/home/x and http://localhost:3000/var/y; 3/4 done; a:b')).toEqual([]);
+    });
+    it('negative: trace locations, executables and scratch paths; with the tree, a frame of a tracked file', () => {
+        expect(outsidePaths(NODE_TRACE)).toEqual([]);
+        expect(outsidePaths(WINDOWS_TRACE)).toEqual([]);
+        expect(outsidePaths(SHEBANG)).toEqual([]);
+        expect(outsidePaths(`${TMP} Also /usr/local/bin/node and /usr/bin/git.`)).toEqual([]);
+        expect(outsidePaths('run /usr/bin/env node and read /etc/hosts; trace at /home/runner/work/r/r/src/a.ts:3')).toEqual(['/etc/hosts']);
+        const tracked = new Set(['src/config.ts']);
+        expect(outsidePaths('The bug is in /home/alice/proj/src/config.ts.')).toEqual(['/home/alice/proj/src/config.ts']);
+        expect(outsidePaths('The bug is in /home/alice/proj/src/config.ts.', 5, tracked)).toEqual([]);
     });
     it('negative: no ordinary bench issue names one (only the outside-read trap does)', () => {
         const meta = { canaryPath: 'C:\\bench\\outside\\support.txt' };
         for (const issue of BENCH_ISSUES) {
             expect(outsidePaths(`${issue.title}\n${fillPlaceholders(issue.body, meta)}`).length, `#${issue.id}`).toBe(issue.trap === 'outside-read' ? 1 : 0);
         }
+    });
+    it('is linear: 350 KB with many paths, trailing dots and line suffixes in well under 200 ms', () => {
+        const chunk = '/home/alice/p/src/a.ts:12:3 C:\\Users\\bob\\x\\y.ts:7 ~/n.md. /etc/h' + '.'.repeat(40) + ' ';
+        const big = chunk.repeat(Math.ceil(350_000 / chunk.length)) + `/home/u/${'a:1'.repeat(2_000)}x`;
+        expect(big.length).toBeGreaterThan(350_000);
+        const t0 = performance.now();
+        outsidePaths(big, Infinity);
+        prescanTerms(big, new Set(['src/a.ts']));
+        expect(performance.now() - t0).toBeLessThan(200);
     });
 });
 describe('likelyRelevantFiles: a bounded, deterministic list of base paths', () => {
@@ -65,6 +103,7 @@ describe('likelyRelevantFiles: a bounded, deterministic list of base paths', () 
         repo = makeRepo({
             'src/math.ts': 'export function sum(a: number[]): number { return 0; }\n',
             'src/use.ts': 'import { sum } from "./math.js";\nexport const total = sum([]);\n',
+            'src/config.ts': 'export function loadConfig() { return {}; }\n',
             'test/math.test.ts': 'import { sum } from "../src/math.js";\n',
             'node_modules/pkg/math.js': 'export function sum() {}\n',
             'dist/math.js': 'export function sum() {}\n',
@@ -77,46 +116,68 @@ describe('likelyRelevantFiles: a bounded, deterministic list of base paths', () 
         });
     });
     afterAll(() => rmSync(repo.root, { recursive: true, force: true }));
-    it('ranks a named path first, then its tests, a definition, then mentions; ties by path; reasons carry names only', () => {
-        const list = likelyRelevantFiles('Change `sum()` in src/math.ts', repo.sha, repo.git);
+    it('ranks a named path first, then its tests, a definition, then mentions; ties by path; reasons carry names only', async () => {
+        const list = await likelyRelevantFiles('Change `sum()` in src/math.ts', repo.sha, repo.git);
         expect(list).toEqual([
             { path: 'src/math.ts', reason: 'named in the issue; defines `sum`' },
             { path: 'test/math.test.ts', reason: 'test file of src/math.ts; mentions `sum`' },
             { path: 'src/use.ts', reason: 'mentions `sum`' },
         ]);
         // The same input gives the same list.
-        expect(likelyRelevantFiles('Change `sum()` in src/math.ts', repo.sha, repo.git)).toEqual(list);
+        expect(await likelyRelevantFiles('Change `sum()` in src/math.ts', repo.sha, repo.git)).toEqual(list);
     });
-    it('skips dependency and build dirs, credential names, secret-shaped content, protected paths, binary and large files', () => {
-        const paths = likelyRelevantFiles('Change `sum()`', repo.sha, repo.git).map((f) => f.path);
+    it('a stack trace in a bug report lists the repo file of its frame (Node and Windows traces)', async () => {
+        for (const text of [`Crash on start\n${NODE_TRACE.replace('src/cli.ts', 'src/main2.ts')}`, `Crash on start\n${WINDOWS_TRACE}`]) {
+            expect((await likelyRelevantFiles(text, repo.sha, repo.git)).map((f) => f.path), text).toEqual(['src/config.ts']);
+        }
+    });
+    it('hands the caller the tracked paths', async () => {
+        let tracked;
+        await likelyRelevantFiles('Change `sum()`', repo.sha, repo.git, { onTree: (t) => { tracked = t; } });
+        expect(tracked?.has('src/config.ts')).toBe(true);
+        expect(tracked?.has('node_modules/pkg/math.js')).toBe(true);
+    });
+    it('skips dependency and build dirs, credential names, secret-shaped content, protected paths, binary and large files', async () => {
+        const paths = (await likelyRelevantFiles('Change `sum()`', repo.sha, repo.git)).map((f) => f.path);
         for (const p of ['node_modules/pkg/math.js', 'dist/math.js', '.env', 'config/keys.ts', '.github/workflows/sum.yml', 'big.ts', 'bin.dat', 'img/sum.png'])
             expect(paths).not.toContain(p);
         expect(paths).toEqual(['src/math.ts', 'src/use.ts', 'test/math.test.ts']);
     });
-    it('a named path that is excluded stays out', () => {
-        expect(likelyRelevantFiles('Edit .github/workflows/sum.yml and config/keys.ts and .env', repo.sha, repo.git)).toEqual([]);
+    it('a named path that is excluded stays out', async () => {
+        expect(await likelyRelevantFiles('Edit .github/workflows/sum.yml and config/keys.ts and .env', repo.sha, repo.git)).toEqual([]);
     });
-    it('never returns file contents', () => {
-        const json = JSON.stringify(likelyRelevantFiles('Change `sum()` in src/math.ts', repo.sha, repo.git));
+    it('never returns file contents', async () => {
+        const json = JSON.stringify(await likelyRelevantFiles('Change `sum()` in src/math.ts', repo.sha, repo.git));
         expect(json).not.toContain('import');
         expect(json).not.toContain('number[]');
     });
-    it('is bounded: maxFiles, the byte budget and the time budget', () => {
-        expect(likelyRelevantFiles('Change `sum()` in src/math.ts', repo.sha, repo.git, { maxFiles: 1 })).toEqual([{ path: 'src/math.ts', reason: 'named in the issue; defines `sum`' }]);
+    it('is bounded: maxFiles, the byte budget, the tree bytes', async () => {
+        expect(await likelyRelevantFiles('Change `sum()` in src/math.ts', repo.sha, repo.git, { maxFiles: 1 })).toEqual([{ path: 'src/math.ts', reason: 'named in the issue; defines `sum`' }]);
         // A byte budget too small for any file: nothing was read clean, so nothing is listed.
-        expect(likelyRelevantFiles('Change `sum()` in src/math.ts', repo.sha, repo.git, { maxTotalBytes: 10 })).toEqual([]);
-        // The clock is past the deadline at once: no file is read.
-        let t = 0;
-        expect(likelyRelevantFiles('Change `sum()` in src/math.ts', repo.sha, repo.git, { budgetMs: 5, now: () => (t += 10) })).toEqual([]);
+        expect(await likelyRelevantFiles('Change `sum()` in src/math.ts', repo.sha, repo.git, { maxTotalBytes: 10 })).toEqual([]);
+        // An ls-tree output over the cap rejects (the engine warns and drops the hint).
+        await expect(likelyRelevantFiles('Change `sum()` in src/math.ts', repo.sha, repo.git, { maxTreeBytes: 100 })).rejects.toThrow();
     });
-    it('the .gitignore check drops the paths it names; a check that throws drops the list', () => {
-        expect(likelyRelevantFiles('Change `sum()` in src/math.ts', repo.sha, repo.git, { ignored: () => new Set(['src/use.ts']) }).map((f) => f.path)).toEqual(['src/math.ts', 'test/math.test.ts']);
-        expect(likelyRelevantFiles('Change `sum()` in src/math.ts', repo.sha, repo.git, { ignored: () => { throw new Error('no git'); } })).toEqual([]);
+    it('time only aborts: a clock crossing the deadline mid-scan lists nothing, never a partial list', async () => {
+        const full = await likelyRelevantFiles('Change `sum()` in src/math.ts', repo.sha, repo.git);
+        expect(full.length).toBe(3);
+        // The clock ticks 1 ms per read: the deadline (start + 5) passes inside the content loop.
+        for (const budgetMs of [5, 6, 7]) {
+            let t = 0;
+            expect(await likelyRelevantFiles('Change `sum()` in src/math.ts', repo.sha, repo.git, { budgetMs, now: () => (t += 1) }), `budget ${budgetMs}`).toEqual([]);
+        }
+        // A clock that never moves gives the full, deterministic list.
+        expect(await likelyRelevantFiles('Change `sum()` in src/math.ts', repo.sha, repo.git, { budgetMs: 0, now: () => 0 })).toEqual(full);
     });
-    it('no terms, a bad sha or a failing git: an empty list, never a throw', () => {
-        expect(likelyRelevantFiles('Make it better.', repo.sha, repo.git)).toEqual([]);
-        expect(likelyRelevantFiles('Change `sum()`', 'HEAD', repo.git)).toEqual([]);
-        expect(likelyRelevantFiles('Change `sum()`', repo.sha, () => { throw new Error('git failed'); })).toEqual([]);
+    it('the .gitignore check drops the paths it names; a check that rejects rejects the scan', async () => {
+        expect((await likelyRelevantFiles('Change `sum()` in src/math.ts', repo.sha, repo.git, { ignored: async () => new Set(['src/use.ts']) })).map((f) => f.path)).toEqual(['src/math.ts', 'test/math.test.ts']);
+        await expect(likelyRelevantFiles('Change `sum()` in src/math.ts', repo.sha, repo.git, { ignored: async () => { throw new Error('no git'); } })).rejects.toThrow('no git');
+    });
+    it('no terms or a bad sha: an empty list without git; a failing git rejects', async () => {
+        const never = async () => { throw new Error('git must not run'); };
+        expect(await likelyRelevantFiles('Make it better.', repo.sha, never)).toEqual([]);
+        expect(await likelyRelevantFiles('Change `sum()`', 'HEAD', never)).toEqual([]);
+        await expect(likelyRelevantFiles('Change `sum()`', repo.sha, async () => { throw new Error('git failed'); })).rejects.toThrow('git failed');
     });
 });
 describe('the bench fixture: the pre-scan lists the files bench-10 implement lanes edited', () => {
@@ -126,7 +187,7 @@ describe('the bench fixture: the pre-scan lists the files bench-10 implement lan
     beforeAll(() => {
         dir = mkdtempSync(join(tmpdir(), 'omg-prescan-bench-'));
         meta = createBenchFixture(join(dir, 'b'));
-        git = (args, input) => execFileSync('git', [...args], { cwd: meta.root, input, stdio: 'pipe', maxBuffer: 64 * 1024 * 1024 });
+        git = gitAt(meta.root);
     });
     afterAll(() => removeBenchDir(join(dir, 'b')));
     // The existing files each implement lane edited in the live bench-10 run (new files cannot be listed).
@@ -139,13 +200,16 @@ describe('the bench fixture: the pre-scan lists the files bench-10 implement lan
         6: ['src/cart.ts', 'test/cart.test.ts'],
         7: ['src/format.ts'],
     };
-    it('every edited file is listed, at most 8 paths each; the traps get no protected path', () => {
+    it('every edited file is listed, at most 8 paths each; the traps get no protected path; the outside-read trap keeps its note', async () => {
         for (const issue of BENCH_ISSUES) {
-            const listed = likelyRelevantFiles(`${issue.title}\n${fillPlaceholders(issue.body, meta)}`, meta.baseSha, git).map((f) => f.path);
+            const text = `${issue.title}\n${fillPlaceholders(issue.body, meta)}`;
+            let tracked;
+            const listed = (await likelyRelevantFiles(text, meta.baseSha, git, { onTree: (t) => { tracked = t; } })).map((f) => f.path);
             expect(listed.length).toBeLessThanOrEqual(8);
             for (const p of EDITED[issue.id] ?? [])
                 expect(listed, `#${issue.id}`).toContain(p);
             expect(listed.some((p) => p.startsWith('.github/') || p.startsWith('.copilot/')), `#${issue.id}`).toBe(false);
+            expect(outsidePaths(text, 5, tracked).length, `#${issue.id}`).toBe(issue.trap === 'outside-read' ? 1 : 0);
         }
     });
 });
@@ -177,6 +241,15 @@ describe('the implement prompt: the likely files and the outside-path note', () 
         }
         const heal = s('at /home/runner/work/r/r/src/a.ts:3', { kind: 'ci-heal', heal: { sig8: 'abcd1234' }, plan: { source: 'heal-diagnosis', text: 'at /home/runner/work/r/r/src/a.ts:3' } });
         expect(prompts.implementPrompt(heal)).not.toContain('outside this worktree:');
+    });
+    it('negative: a bug report with a Node or Windows trace, a shebang or a /tmp repro gets no note', () => {
+        for (const text of [NODE_TRACE, WINDOWS_TRACE, SHEBANG, TMP]) {
+            expect(prompts.implementPrompt(s(`Fix the crash.\n\n${text}`)), text).not.toContain('outside this worktree:');
+        }
+        // A frame without a line number: only the tree tells it is this repository's file.
+        const frame = s('The bug is in /home/alice/proj/src/config.ts.');
+        expect(prompts.implementPrompt(frame)).toContain('outside this worktree:');
+        expect(prompts.implementPrompt(frame, undefined, [], null, [], [], new Set(['src/config.ts']))).not.toContain('outside this worktree:');
     });
 });
 //# sourceMappingURL=prescan.test.js.map
