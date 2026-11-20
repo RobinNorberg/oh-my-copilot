@@ -120,6 +120,10 @@ import { ghReviewFeedback } from '../../forge/github/reviews.js';
 import { ReviewHeadMovedError, visibleLine } from '../../forge/review-feedback.js';
 import type { ForgeRepo, ForgeReviewFeedback, PrMergeability } from '../../forge/types.js';
 import { humanFixPrompt, laneScripts } from './prompts.js';
+import { likelyRelevantFiles, type LikelyFile } from './prescan.js';
+
+/** Each host git call of the implement pre-scan (ls-tree, cat-file, check-ignore) is killed after this long. */
+const PRESCAN_GIT_TIMEOUT_MS = 15_000;
 import { lockPathFor } from '../../lib/file-lock.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
 import { checkDiagnosis } from '../heal/diagnosis-output.js';
@@ -2716,8 +2720,39 @@ class FactoryEngine {
     const read = this.readAt(baseSha);
     // Name only the guide files the base has: the lane worktree checks it out.
     const guides = REPO_GUIDE_FILES.filter((p) => { try { return read(p) !== undefined; } catch { return false; } });
-    const out = await this.runLane('implement', baseSha, 'write', implementPrompt(this.state, this.teamContext(read, pathsInText(this.state.plan?.text ?? '')), this.laneScripts(), this.laneEnvironment(), guides), 'implement');
+    const out = await this.runLane('implement', baseSha, 'write', implementPrompt(this.state, this.teamContext(read, pathsInText(this.state.plan?.text ?? '')), this.laneScripts(), this.laneEnvironment(), guides, this.likelyFiles(baseSha)), 'implement');
     if (out.kind === 'done') await this.acceptWriteLane(out, 'implement', baseSha);
+  }
+
+  /**
+   * The implement prompt's free pre-scan (prescan.ts): likely relevant paths of
+   * the base for the issue title and plan, read with hardened host git from
+   * your repository; paths your .gitignore excludes are dropped. A failure
+   * only drops the hint (warned), never the lane.
+   */
+  private likelyFiles(baseSha: string): LikelyFile[] {
+    const env = scrubShipEnv(process.env);
+    const root = this.o.root;
+    try {
+      return likelyRelevantFiles(`${this.state.issueTitle ?? ''}\n${this.state.plan?.text ?? ''}`, baseSha, (args, input) => runHostGitBuffer(root, args, PRESCAN_GIT_TIMEOUT_MS, env, input), {
+        ignored: (paths) => {
+          if (paths.length === 0) return new Set();
+          let out: string;
+          try {
+            out = runHostGit(root, ['--no-optional-locks', 'check-ignore', '--no-index', '-z', '--stdin'], PRESCAN_GIT_TIMEOUT_MS, env, paths.join('\0'));
+          } catch (e) {
+            // check-ignore exits 1 when no path is ignored: only that status with empty output is an answer.
+            const x = e as { status?: number; stdout?: string | Buffer };
+            if (x.status === 1 && String(x.stdout ?? '') === '') return new Set();
+            throw e;
+          }
+          return new Set(out.split('\0').filter(Boolean));
+        },
+      });
+    } catch (e) {
+      this.o.warn?.(`omg factory run: the likely-files pre-scan failed, so the implement prompt carries no file hint: ${errText(e)}`);
+      return [];
+    }
   }
 
   private async fix(): Promise<void> {

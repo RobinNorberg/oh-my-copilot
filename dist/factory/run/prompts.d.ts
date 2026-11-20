@@ -5,6 +5,7 @@
  */
 import { oneLine } from '../../lib/one-line.js';
 import type { TeamContext } from '../team/context.js';
+import { type LikelyFile } from './prescan.js';
 import type { FactoryRunState } from './state.js';
 /** The review prompt's diff is cut at this many characters (copilot_run prompts are capped at 100k). */
 export declare const MAX_REVIEW_DIFF_CHARS = 60000;
@@ -17,7 +18,7 @@ export declare function fenceFor(content: string): string;
  * lane-commit.ts reads it), so the engine parks without a fresh retry that
  * would get the same prompt and decline again.
  */
-export declare const DECLINE_RULE = "Use DECLINED only when you deliberately refuse this task or it is impossible as specified: then make NO changes and end your final message with one line `DECLINED: <reason>`, and the engine stops for a human instead of running the same task again. Never use it for an environment or tool failure (tests that cannot run, a denied command, a missing tool): report that normally.";
+export declare const DECLINE_RULE = "Use DECLINED only when you deliberately refuse this task or it is impossible as specified: then make NO changes and end your final message with one line `DECLINED: <reason>` (the very last line, after your summary), and the engine stops for a human instead of running the same task again. A task that can only be done with a file outside this worktree (an absolute path elsewhere on the machine) is impossible as specified: lanes may not read or write outside the worktree, and every rerun is denied the same way, so decline it. Never use DECLINED for a failure a rerun can fix (tests that cannot run, a denied command or a missing tool inside this worktree): report that normally.";
 /** What the lane works for, in its prompt's first line. */
 export declare const subject: (s: FactoryRunState) => string;
 export declare const planLabel: (s: FactoryRunState) => string;
@@ -59,7 +60,14 @@ export declare const REPO_GUIDE_FILES: readonly string[];
  * base tree). Only these are named: a lane told to read a missing file spends
  * a tool call failing on it.
  */
-export declare function implementPrompt(s: FactoryRunState, team?: TeamContext, scripts?: readonly string[], lane?: LaneEnvironment | null, guides?: readonly string[]): string;
+export declare function implementPrompt(s: FactoryRunState, team?: TeamContext, scripts?: readonly string[], lane?: LaneEnvironment | null, guides?: readonly string[], likely?: readonly LikelyFile[]): string;
+/**
+ * The pre-scan's likely relevant files (prescan.ts: plain repo paths of the
+ * base and a reason built from plain identifiers, never file contents): a
+ * hint after the plan, never a limit on what the lane changes. Empty when
+ * the pre-scan found none.
+ */
+export declare function likelySection(likely: readonly LikelyFile[]): string[];
 export declare function fixPrompt(s: FactoryRunState, round: number, scripts?: readonly string[], lane?: LaneEnvironment | null): string;
 export declare const planSection: (s: FactoryRunState) => string[];
 /** The human review comments in one fix prompt are cut at this many characters in total. */
