@@ -6,9 +6,9 @@
  * Cross-platform: Windows, macOS, Linux
  */
 
-import { appendFileSync, closeSync, existsSync, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, renameSync, writeFileSync } from 'fs';
+import { appendFileSync, closeSync, existsSync, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, realpathSync, renameSync, writeFileSync } from 'fs';
 import { createHash } from 'crypto';
-import { dirname, join, resolve, basename } from 'path';
+import { dirname, join, resolve, basename, isAbsolute } from 'path';
 import { homedir } from 'os';
 import { execFileSync } from 'child_process';
 import { fileURLToPath, pathToFileURL } from 'url';
@@ -28,6 +28,33 @@ import { resolveExcerptChars, resolveJevLogMaxBytes, rotateJevLog } from './jev-
 import { isCopilotHookHost, isSkillToolName } from './lib/hook-host.mjs';
 import { extractCopilotNativeGoal, resolveCopilotParentSessionId } from './lib/copilot-continuation.mjs';
 import { readOmgGoalRecord, ultragoalStatePlanId } from './lib/omg-goal-record.mjs';
+
+// Lane fast path (docs/HOOKS.md "Lane hook set"): a factory lane's Copilot hooks
+// run every guard that can deny or rewrite a tool call, and skip the advisory
+// context and the state reads that only feed it. Claude Code never sets
+// OMC_HOOK_EVENT, so the variable alone cannot change a Claude Code hook.
+const LANE_FAST_PATH = process.env.OMC_LANE_HOOKS === 'minimal' && isCopilotHookHost();
+
+/**
+ * Lane: the state root the engine resolved once, in the lane's env, for the
+ * lane's work dir (OMC_LANE_STATE_ROOT for OMC_LANE_CWD, src/copilot-run/job.ts
+ * laneStateRootEnv). Used only when the payload cwd is exactly that dir
+ * (realpath'd, case-folded on Windows). A subdir resolves as before: with
+ * CLAUDE_PLUGIN_ROOT set the canonical resolver can give a subdir a root of
+ * its own, so the work dir's root is not safe to reuse there. Null for
+ * anything else, which resolves as before.
+ */
+function laneStateRoot(directory) {
+  const laneCwd = process.env.OMC_LANE_CWD;
+  const root = process.env.OMC_LANE_STATE_ROOT;
+  if (!LANE_FAST_PATH || process.env.OMC_STATE_DIR || !laneCwd || !root || !isAbsolute(laneCwd) || !isAbsolute(root)) return null;
+  try {
+    const fold = (path) => (process.platform === 'win32' ? path.toLowerCase() : path);
+    return fold(realpathSync.native(resolve(directory))) === fold(realpathSync.native(laneCwd)) ? root : null;
+  } catch {
+    return null;
+  }
+}
 
 // Inlined from src/config/models.ts — avoids a dist/ import so the hook works
 // before a build and stays consistent with the TypeScript source.
@@ -2536,7 +2563,7 @@ async function main() {
     // Resolve the .omc state root once, honoring OMC_STATE_DIR.
     // All helpers receive stateDir so they stay in sync with the centralized
     // resolver used by session-start.mjs and persistent-mode (issue #2518, PR #2532).
-    const omcRoot = await resolveOmcStateRoot(directory);
+    const omcRoot = laneStateRoot(directory) ?? await resolveOmcStateRoot(directory);
     const stateDir = join(omcRoot, 'state');
 
     // Record Skill invocations to flow trace
@@ -2561,11 +2588,13 @@ async function main() {
           }, data);
           return;
         }
-        if (verdict?.context) shellCheckContext = verdict.context;
+        // Lane: a shell-check warning is advisory context; its deny above still applies.
+        if (verdict?.context && !LANE_FAST_PATH) shellCheckContext = verdict.context;
       } catch { /* fail-open */ }
     }
 
-    recordToolInvocation(data, directory);
+    // Lane: the flow trace is telemetry only.
+    if (!LANE_FAST_PATH) recordToolInvocation(data, directory);
 
     // Activate skill state when Skill tool is invoked (issue #1033)
     // Writes skill-active-state.json so the persistent-mode Stop hook can
@@ -2605,7 +2634,8 @@ async function main() {
       return;
     }
 
-    const modeActive = hasActiveMode(stateDir, sessionId);
+    // Feeds only the advisory message, which a lane skips.
+    const modeActive = LANE_FAST_PATH ? false : hasActiveMode(stateDir, sessionId);
 
     // When set, replaces the Task/Agent tool input via hookSpecificOutput.updatedInput
     // so a configured per-agent model (agents.<name>.model) is applied (issue #3242).
@@ -2781,7 +2811,8 @@ async function main() {
       }
     }
 
-    const todoStatus = await getTodoStatus(directory);
+    // Feeds only the advisory message, which a lane skips.
+    const todoStatus = LANE_FAST_PATH ? '' : await getTodoStatus(directory);
 
     // Force-agent-delegation: symmetric to evaluateAgentHeavyPreflight. Where
     // preflight blocks Task/Agent spawning when context is exhausted, this
@@ -2852,6 +2883,19 @@ async function main() {
         emitPreToolUseOutput(preflightBlock, data);
         return;
       }
+    }
+
+    // Lane: every guard above has run. What follows only builds advisory context
+    // (slop warning, todo/mode/agent nudges, its throttle file), so a lane emits
+    // the same output as a call whose advisory message is empty.
+    if (LANE_FAST_PATH) {
+      emitPreToolUseOutput(
+        updatedToolInput
+          ? { continue: true, suppressOutput: true, hookSpecificOutput: { hookEventName: 'PreToolUse', updatedInput: updatedToolInput } }
+          : { continue: true, suppressOutput: true },
+        data,
+      );
+      return;
     }
 
     const { warning: slopWarning, appliedAction } = generateSlopWarning(data, toolName);

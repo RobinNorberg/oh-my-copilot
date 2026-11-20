@@ -12,6 +12,7 @@ import {
   filterDriverOverrides,
   hostGit,
   hostGitHardeningArgs,
+  laneStateRootEnv,
   relativeHooksPathRule,
   reviewProfileDenial,
   scrubLaneCredentials,
@@ -312,6 +313,21 @@ describe('copilot_run allowLive and session env', () => {
     expect(lane.OMC_GIT_GUARDRAILS).toBe('1');
     // The caller's OMC_LANE_HOOKS is stripped with the rest of OMC_*: only the option sets it.
     expect(plain.OMC_LANE_HOOKS).toBeUndefined();
+  });
+
+  it('minimalHooks: the lane env carries the precomputed state root of its work dir; other sessions and caller env never get it', async () => {
+    const callerVars = { OMC_LANE_CWD: '/caller', OMC_LANE_STATE_ROOT: '/caller/.omg' };
+    // The real plugin root: laneStateRootEnv runs its scripts/lane-state-root.mjs.
+    const m = new CopilotRunManager({ ...fakeDeps(root, 'idle', calls, { OMG_COPILOT_RUN_ALLOW: '1', ...callerVars }), pluginRoot: () => process.cwd() });
+    await m.wait(m.start({ prompt: 'a', cwd: repo }, { minimalHooks: true }).jobId, 10_000);
+    await m.wait(m.start({ prompt: 'b', cwd: repo }).jobId, 10_000);
+    const [lane, plain] = calls.connections.map((c) => c.env!);
+    const workCwd = realpathSync.native(calls.sessions[0].workingDirectory!);
+    expect(lane.OMC_LANE_CWD).toBe(workCwd);
+    expect(lane.OMC_LANE_STATE_ROOT).toBe((await laneStateRootEnv(workCwd, lane, process.cwd())).OMC_LANE_STATE_ROOT);
+    expect(lane.OMC_LANE_STATE_ROOT).toMatch(/\.omg$/);
+    expect(plain.OMC_LANE_CWD).toBeUndefined();
+    expect(plain.OMC_LANE_STATE_ROOT).toBeUndefined();
   });
 
   it('minimalHooks: the lane session loads the lane plugin dir (only the kept hook events); other sessions load the plugin root', async () => {
