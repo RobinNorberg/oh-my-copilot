@@ -185,7 +185,11 @@ describe('POSIX supervised worker-launch transport (issue #3655)', () => {
             startedRecord = started;
             // The validated bootstrap ran: the provider stub executed and saw the
             // attempt identity while the internal descriptor env var stayed filtered.
-            const controlledRecord = JSON.parse(await readFile(providerMarker, 'utf8'));
+            // "Provider started" is published for the supervising wrapper pid; the
+            // provider node process boots after it and writes the marker later, so
+            // wait for the marker instead of reading it once (a loaded CI host lost
+            // that race: ENOENT on provider-ran.json).
+            const controlledRecord = await vi.waitFor(async () => JSON.parse(await readFile(providerMarker, 'utf8')), { timeout: 5_000, interval: 20 });
             expect(controlledRecord.provider_pid).toBeGreaterThan(0);
             expect(controlledRecord.child_pid).toBeGreaterThan(0);
             expect(controlledRecord.provider_pid).not.toBe(started.pid);
