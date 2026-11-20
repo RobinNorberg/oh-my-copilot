@@ -42,7 +42,7 @@
 import { childEnv, hardenWindowsExeSearch } from '../utils/windows-search.js';
 import { spawnSync } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
-import { closeSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, rmSync, statSync, writeFileSync, writeSync } from 'node:fs';
+import { closeSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, realpathSync, rmSync, statSync, writeFileSync, writeSync } from 'node:fs';
 import { tmpdir, userInfo } from 'node:os';
 import { basename, dirname, isAbsolute, join, relative, resolve, win32 } from 'node:path';
 import { formatAmount } from '../budget/governor.js';
@@ -112,6 +112,35 @@ export const PROJECT_MEMORY_SKIP_TOKEN = 'project-memory-session,project-memory-
  * loads. Set by the engine in the runtime env, which the session cannot change.
  */
 export const LANE_HOOKS_MINIMAL = 'minimal';
+const LANE_STATE_ROOT_TIMEOUT_MS = 15_000;
+/**
+ * The lane's precomputed state root: OMC_LANE_CWD (the work dir, realpath'd)
+ * and OMC_LANE_STATE_ROOT (the state root a hook resolves there). It is
+ * computed once by scripts/lane-state-root.mjs in the lane's own env, with the
+ * resolver pre-tool-enforcer.mjs uses, so the lane's PreToolUse hooks can skip
+ * the two git spawns of that lookup on every tool call (docs/HOOKS.md "Lane
+ * PreToolUse fast path"). Empty, so the hook resolves as before, when the
+ * env sets OMC_STATE_DIR or the script fails.
+ */
+export function laneStateRootEnv(workCwd, sessionEnv, pluginRoot) {
+    if (sessionEnv.OMC_STATE_DIR)
+        return {};
+    try {
+        const cwd = realpathSync.native(workCwd);
+        const env = { ...sessionEnv, CLAUDE_PLUGIN_ROOT: pluginRoot };
+        delete env.OMC_HOOK_EVENT;
+        const result = spawnSync(process.execPath, [join(pluginRoot, 'scripts', 'lane-state-root.mjs'), cwd], {
+            cwd, env, encoding: 'utf8', timeout: LANE_STATE_ROOT_TIMEOUT_MS, windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'],
+        });
+        if (result.status !== 0)
+            return {};
+        const root = JSON.parse(result.stdout).root;
+        return typeof root === 'string' && isAbsolute(root) ? { OMC_LANE_CWD: cwd, OMC_LANE_STATE_ROOT: root } : {};
+    }
+    catch {
+        return {};
+    }
+}
 export class CopilotRunError extends Error {
 }
 /**
@@ -1315,6 +1344,9 @@ export class CopilotRunManager {
                 job.notes.push(`lane hook registration fell back to the full plugin hooks: ${errText(err)}`);
             }
         }
+        // Set last, from the finished env: the lane hooks then skip the state-root lookup (laneStateRootEnv).
+        if (job.minimalHooks)
+            Object.assign(env, laneStateRootEnv(job.workCwd, env, pluginRoot));
         const lanePluginRoot = sessionPluginRoot === pluginRoot ? undefined : sessionPluginRoot;
         // The lane plugin dir holds links into the plugin: removed link-safe (never a recursive rm), and a failure
         // is a note, never a throw that skips the rest of the teardown. False: it is still there.

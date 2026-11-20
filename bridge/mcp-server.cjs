@@ -62606,6 +62606,7 @@ __export(job_exports, {
   hostGit: () => hostGit,
   hostGitHardeningArgs: () => hostGitHardeningArgs,
   jobRefProblem: () => jobRefProblem,
+  laneStateRootEnv: () => laneStateRootEnv,
   relativeHooksPathRule: () => relativeHooksPathRule,
   resolveStartRef: () => resolveStartRef,
   reviewProfileDenial: () => reviewProfileDenial,
@@ -62614,6 +62615,27 @@ __export(job_exports, {
   sharedGitStateSnapshot: () => sharedGitStateSnapshot,
   summarizeChanges: () => summarizeChanges
 });
+function laneStateRootEnv(workCwd, sessionEnv, pluginRoot) {
+  if (sessionEnv.OMC_STATE_DIR) return {};
+  try {
+    const cwd = import_node_fs13.realpathSync.native(workCwd);
+    const env2 = { ...sessionEnv, CLAUDE_PLUGIN_ROOT: pluginRoot };
+    delete env2.OMC_HOOK_EVENT;
+    const result = (0, import_node_child_process5.spawnSync)(process.execPath, [(0, import_node_path14.join)(pluginRoot, "scripts", "lane-state-root.mjs"), cwd], {
+      cwd,
+      env: env2,
+      encoding: "utf8",
+      timeout: LANE_STATE_ROOT_TIMEOUT_MS,
+      windowsHide: true,
+      stdio: ["ignore", "pipe", "ignore"]
+    });
+    if (result.status !== 0) return {};
+    const root = JSON.parse(result.stdout).root;
+    return typeof root === "string" && (0, import_node_path14.isAbsolute)(root) ? { OMC_LANE_CWD: cwd, OMC_LANE_STATE_ROOT: root } : {};
+  } catch {
+    return {};
+  }
+}
 function scrubLaneCredentials(env2, emptyDir) {
   for (const key of Object.keys(env2)) {
     if (key.toUpperCase() === "COPILOT_GITHUB_TOKEN") continue;
@@ -62935,7 +62957,7 @@ function defaultCopilotRunDeps(env2 = process.env) {
     killTree: (pid) => killProcessTree(pid, import_node_child_process5.spawnSync)
   };
 }
-var import_node_child_process5, import_node_crypto4, import_node_fs13, import_node_os6, import_node_path14, DEFAULT_TIMEOUT_MS, MAX_TIMEOUT_MS, DEFAULT_MAX_CREDITS, MAX_RUNNING_JOBS, MAX_PROMPT_CHARS, WORKTREE_TEAM, MCP_SERVER, START_TIMEOUT_MS2, RPC_TIMEOUT_MS2, ABORT_GRACE_MS2, SHUTDOWN_GRACE_MS2, STOP_TIMEOUT_MS2, SERVER_EXIT_GRACE_MS, GIT_TIMEOUT_MS2, DENIED_LOG_MAX, JOB_ID2, MAX_START_REF_CHARS, STOP_CONTINUATION_SKIP_TOKEN, PROJECT_MEMORY_SKIP_TOKEN, LANE_HOOKS_MINIMAL, CopilotRunError, REVIEW_SHELL_DENY_PATTERNS, IDENTITY_TIMEOUT_MS, sleep5, isTerminal2, git2, lines, JOB_REF_PREFIX, PLAIN_REF, CopilotRunManager;
+var import_node_child_process5, import_node_crypto4, import_node_fs13, import_node_os6, import_node_path14, DEFAULT_TIMEOUT_MS, MAX_TIMEOUT_MS, DEFAULT_MAX_CREDITS, MAX_RUNNING_JOBS, MAX_PROMPT_CHARS, WORKTREE_TEAM, MCP_SERVER, START_TIMEOUT_MS2, RPC_TIMEOUT_MS2, ABORT_GRACE_MS2, SHUTDOWN_GRACE_MS2, STOP_TIMEOUT_MS2, SERVER_EXIT_GRACE_MS, GIT_TIMEOUT_MS2, DENIED_LOG_MAX, JOB_ID2, MAX_START_REF_CHARS, STOP_CONTINUATION_SKIP_TOKEN, PROJECT_MEMORY_SKIP_TOKEN, LANE_HOOKS_MINIMAL, LANE_STATE_ROOT_TIMEOUT_MS, CopilotRunError, REVIEW_SHELL_DENY_PATTERNS, IDENTITY_TIMEOUT_MS, sleep5, isTerminal2, git2, lines, JOB_REF_PREFIX, PLAIN_REF, CopilotRunManager;
 var init_job = __esm({
   "src/copilot-run/job.ts"() {
     "use strict";
@@ -62988,6 +63010,7 @@ var init_job = __esm({
     STOP_CONTINUATION_SKIP_TOKEN = "persistent-mode,workflow-drift-guard,code-simplifier";
     PROJECT_MEMORY_SKIP_TOKEN = "project-memory-session,project-memory-posttool";
     LANE_HOOKS_MINIMAL = "minimal";
+    LANE_STATE_ROOT_TIMEOUT_MS = 15e3;
     CopilotRunError = class extends Error {
     };
     REVIEW_SHELL_DENY_PATTERNS = [
@@ -63560,6 +63583,7 @@ var init_job = __esm({
             job.notes.push(`lane hook registration fell back to the full plugin hooks: ${errText4(err)}`);
           }
         }
+        if (job.minimalHooks) Object.assign(env2, laneStateRootEnv(job.workCwd, env2, pluginRoot));
         const lanePluginRoot = sessionPluginRoot === pluginRoot ? void 0 : sessionPluginRoot;
         const removeLaneDir = () => {
           if (!lanePluginRoot) return true;
