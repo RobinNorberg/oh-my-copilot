@@ -8,7 +8,7 @@
 
 import { appendFileSync, closeSync, existsSync, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, realpathSync, renameSync, writeFileSync } from 'fs';
 import { createHash } from 'crypto';
-import { dirname, join, resolve, basename, isAbsolute, relative } from 'path';
+import { dirname, join, resolve, basename, isAbsolute } from 'path';
 import { homedir } from 'os';
 import { execFileSync } from 'child_process';
 import { fileURLToPath, pathToFileURL } from 'url';
@@ -38,9 +38,11 @@ const LANE_FAST_PATH = process.env.OMC_LANE_HOOKS === 'minimal' && isCopilotHook
 /**
  * Lane: the state root the engine resolved once, in the lane's env, for the
  * lane's work dir (OMC_LANE_STATE_ROOT for OMC_LANE_CWD, src/copilot-run/job.ts
- * laneStateRootEnv). Used for that dir, or a dir below it with no `.git` or
- * `.omc-workspace` of its own on the way (those resolve to their own root);
- * null for anything else, which resolves as before.
+ * laneStateRootEnv). Used only when the payload cwd is exactly that dir
+ * (realpath'd, case-folded on Windows). A subdir resolves as before: with
+ * CLAUDE_PLUGIN_ROOT set the canonical resolver can give a subdir a root of
+ * its own, so the work dir's root is not safe to reuse there. Null for
+ * anything else, which resolves as before.
  */
 function laneStateRoot(directory) {
   const laneCwd = process.env.OMC_LANE_CWD;
@@ -48,14 +50,7 @@ function laneStateRoot(directory) {
   if (!LANE_FAST_PATH || process.env.OMC_STATE_DIR || !laneCwd || !root || !isAbsolute(laneCwd) || !isAbsolute(root)) return null;
   try {
     const fold = (path) => (process.platform === 'win32' ? path.toLowerCase() : path);
-    const cwd = realpathSync.native(resolve(directory));
-    const rel = relative(fold(laneCwd), fold(cwd));
-    if (rel.startsWith('..') || isAbsolute(rel)) return null;
-    for (let cursor = cwd; fold(cursor) !== fold(laneCwd); cursor = dirname(cursor)) {
-      if (dirname(cursor) === cursor) return null;
-      if (existsSync(join(cursor, '.git')) || existsSync(join(cursor, '.omc-workspace'))) return null;
-    }
-    return root;
+    return fold(realpathSync.native(resolve(directory))) === fold(realpathSync.native(laneCwd)) ? root : null;
   } catch {
     return null;
   }

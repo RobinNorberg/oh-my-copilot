@@ -278,7 +278,7 @@ describe('copilot_run allowLive and session env', () => {
         const [lane, plain] = calls.connections.map((c) => c.env);
         const workCwd = realpathSync.native(calls.sessions[0].workingDirectory);
         expect(lane.OMC_LANE_CWD).toBe(workCwd);
-        expect(lane.OMC_LANE_STATE_ROOT).toBe(laneStateRootEnv(workCwd, lane, process.cwd()).OMC_LANE_STATE_ROOT);
+        expect(lane.OMC_LANE_STATE_ROOT).toBe((await laneStateRootEnv(workCwd, lane, process.cwd())).OMC_LANE_STATE_ROOT);
         expect(lane.OMC_LANE_STATE_ROOT).toMatch(/\.omg$/);
         expect(plain.OMC_LANE_CWD).toBeUndefined();
         expect(plain.OMC_LANE_STATE_ROOT).toBeUndefined();

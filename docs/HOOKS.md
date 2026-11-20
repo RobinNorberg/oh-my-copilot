@@ -226,33 +226,38 @@ Every other event (SessionStart, UserPromptSubmit, PostToolUse, PostToolUseFailu
 
 Every skipped item only builds the advisory message or records telemetry. None of them is read by a guard, so none can change a deny. The read-budget warning is kept: it is the first step of that guard, and the deny follows it. A lane call that would get only a nudge outside a lane prints `{"continue":true,"suppressOutput":true}`, plus `updatedInput` when a model was injected. `src/__tests__/pre-tool-enforcer-lane.test.ts` runs 21 payload sequences (every deny above, a rewrite, allowed calls) as a normal Copilot session and as a lane, and requires the same decision on every call. It also requires byte-for-byte equal output from Claude Code with the variable set, and from Copilot with any other value. `git-guardrails.mjs` is unchanged.
 
-**Precomputed state root.** Every guard reads the state root (`.omg`, or the root that `OMC_STATE_DIR` or a `.omc-workspace` marker selects). Resolving it costs two `git rev-parse` spawns, about 160 ms of a 230 ms enforcer run. A lane resolves it once instead. Before the lane runtime starts, the engine runs `scripts/lane-state-root.mjs` in the lane's own env, with the resolver the hook uses (`src/copilot-run/job.ts` `laneStateRootEnv`). It then sets two variables in the runtime env:
+**Precomputed state root.** Every guard reads the state root (`.omg`, or the root that `OMC_STATE_DIR` or a `.omc-workspace` marker selects). Resolving it costs two `git rev-parse` spawns, about 160 ms of a 230 ms enforcer run. A lane resolves it once instead. Before the lane runtime starts, the engine runs `scripts/lane-state-root.mjs` in the lane's own env, with the resolver the hook uses (`src/copilot-run/job.ts` `laneStateRootEnv`). The child runs asynchronously, so the engine's event loop (its MCP server, other lanes) keeps running, and the engine awaits it before the runtime starts. It then sets two variables in the runtime env:
 
 - `OMC_LANE_CWD`: the lane's work dir, realpath'd.
 - `OMC_LANE_STATE_ROOT`: the state root for that dir.
 
-The engine sets neither variable when the lane env sets `OMC_STATE_DIR` or the script fails. Other sessions never get them; the engine strips `OMC_*` from the caller's env. The enforcer uses the value only when all of these hold:
+The engine sets neither variable when the lane env sets `OMC_STATE_DIR`, the lane worktree's git links are no longer intact (`worktreeGitLinksIntact`), or the script fails or runs past its 15 s timeout. Other sessions never get them; the engine strips `OMC_*` from the caller's env. The enforcer uses the value only when all of these hold:
 
 - the lane fast path is on;
 - `OMC_STATE_DIR` is unset in the hook;
-- the payload cwd, realpath'd (case-insensitive on Windows), is `OMC_LANE_CWD` or a dir below it;
-- no dir from the payload cwd up to, but not including, `OMC_LANE_CWD` holds its own `.git` or `.omc-workspace`. A nested repo or workspace has its own root.
+- `OMC_LANE_CWD` is an absolute path;
+- the payload cwd, realpath'd, equals `OMC_LANE_CWD`, realpath'd (case-insensitive on Windows).
 
-In every other case it resolves the root as before.
+In every other case it resolves the root as before, a subdir of the work dir included: with `CLAUDE_PLUGIN_ROOT` set, the canonical resolver can give a subdir a root of its own, so the work dir's root is not reused there. Lane tool calls run in the work dir, so the fast path covers nearly every call.
+
+Host git: the resolver runs `git rev-parse` (`--show-toplevel`, `--git-common-dir`, `--show-superproject-working-tree`) in the lane worktree, as the host. It runs before the runtime starts, so the lane's agent has not run there yet, and only while the worktree's git links still match what git recorded at creation. The child's git also gets the host git hardening (`hostGitHardeningArgs`) as `GIT_CONFIG_COUNT` / `GIT_CONFIG_KEY_n` / `GIT_CONFIG_VALUE_n` env: an empty `core.hooksPath`, `core.fsmonitor=false` and every other program-naming key pinned. `rev-parse` only reads and runs no hook; with the fsmonitor pinned off, no configured program runs either.
 
 Trust: the values come from the engine, which sets them in the runtime env before the runtime starts, as it sets `OMC_LANE_HOOKS`. A lane's shell commands run as children of the CLI and cannot change the CLI's env, so the hooks the CLI starts see the engine's values. A lane that starts a nested session with its own env could set any value there. It could equally drop `OMC_LANE_HOOKS` or set `ALLOW_ULTRAGOAL_WITHOUT_GOAL=1`, which already live in that same env, so the variables open no new bypass. `src/__tests__/pre-tool-enforcer-lane.test.ts` checks that:
 
 - the precomputed root equals `getOmcRoot` for the work dir and for a subdir;
 - the 21 payload sequences decide the same with it;
-- the hook ignores it for a sibling path that shares the prefix (`<cwd>-x`), the parent dir, a nested repo, a workspace marker, a set `OMC_STATE_DIR`, a non-lane Copilot session and Claude Code.
+- the engine sets no variable when the child fails, prints no absolute root or times out, and the child's git sees the hardening;
+- the hook ignores it for a subdir (which then decides as a normal session there, with and without `CLAUDE_PLUGIN_ROOT`), a relative `OMC_LANE_CWD`, a sibling path that shares the prefix (`<cwd>-x`), the parent dir, a nested repo, a workspace marker, a set `OMC_STATE_DIR`, a non-lane Copilot session and Claude Code.
 
 Measured cost on Windows, full dispatcher chain, 60 calls each over Bash, Read, Edit, Grep, Glob and Agent:
 
 | | mean per call | median | p90 |
 |---|---|---|---|
-| outside a lane | 339 ms | 328 ms | 372 ms |
-| lane, advisory skipped | 317 ms | 317 ms | 329 ms |
-| lane, advisory skipped + precomputed root | 162 ms | 157 ms | 165 ms |
+| outside a lane | 324 ms | 313 ms | 379 ms |
+| lane, advisory skipped | 296 ms | 298 ms | 308 ms |
+| lane, advisory skipped + precomputed root (tool call in the work dir) | 127 ms | 124 ms | 145 ms |
+
+The one-time precompute takes about 170 ms per lane start; the engine's event loop stays responsive meanwhile (largest gap 16 ms, the Windows timer tick).
 
 **Lane hook registration.** A skipped event still costs a process: the Copilot CLI spawns one for every event the plugin registers, about 0.6 to 1.0 s each under lane load. So a lane session also registers only the kept events. Before the lane runtime starts, the engine builds a lane plugin dir in the job home (`<job dir>/home/lane-plugin`, `src/copilot-run/lane-plugin.ts`) and the session loads it in place of the plugin root:
 

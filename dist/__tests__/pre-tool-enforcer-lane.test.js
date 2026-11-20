@@ -96,19 +96,19 @@ function runRaw(payload, cwd, aux, mode, extra = {}) {
     });
 }
 /** The engine's precomputed state root for a lane in `cwd`, as job.ts sets it. */
-function laneRootVars(cwd, aux, extra = {}) {
-    const vars = laneStateRootEnv(cwd, hookEnv(aux, 'lane', extra), process.cwd());
+async function laneRootVars(cwd, aux, extra = {}) {
+    const vars = await laneStateRootEnv(cwd, hookEnv(aux, 'lane', extra), process.cwd());
     expect(Object.keys(vars).sort()).toEqual(['OMC_LANE_CWD', 'OMC_LANE_STATE_ROOT']);
     return vars;
 }
 /** Runs a case's calls in a fresh project; the raw stdout of each call. */
-function runCase(c, mode) {
+async function runCase(c, mode) {
     const { cwd, aux } = makeProject();
     c.setup?.(cwd, aux);
     // Outside a Copilot lane the engine's variables must be inert: give those modes a decoy root.
     const decoy = { OMC_LANE_CWD: realpathSync.native(cwd), OMC_LANE_STATE_ROOT: join(aux, 'decoy', '.omg') };
     const extra = mode === 'lane-root'
-        ? { ...c.env, ...laneRootVars(cwd, aux, c.env) }
+        ? { ...c.env, ...(await laneRootVars(cwd, aux, c.env)) }
         : mode === 'claude-lane-var' || mode === 'copilot-lane-other' ? { ...decoy, ...c.env } : c.env;
     const outputs = c.calls(cwd, aux).map((payload) => runRaw(payload, cwd, aux, mode, extra));
     return { outputs, cwd, aux };
@@ -189,10 +189,10 @@ const CASES = [
 describe('pre-tool-enforcer lane fast path (OMC_LANE_HOOKS=minimal)', () => {
     // Lane decisions of every case, collected by the per-case tests for the coverage check below.
     const laneDecisions = [];
-    it.each(CASES.map((c) => [c.name, c]))('%s: the lane decides as a normal Copilot session, with no advisory context', (_name, c) => {
-        const normal = runCase(c, 'copilot');
-        const lane = runCase(c, 'lane');
-        const laneRoot = runCase(c, 'lane-root');
+    it.each(CASES.map((c) => [c.name, c]))('%s: the lane decides as a normal Copilot session, with no advisory context', async (_name, c) => {
+        const normal = await runCase(c, 'copilot');
+        const lane = await runCase(c, 'lane');
+        const laneRoot = await runCase(c, 'lane-root');
         expect(lane.outputs).toHaveLength(normal.outputs.length);
         expect(laneRoot.outputs).toHaveLength(normal.outputs.length);
         lane.outputs.forEach((out, i) => {
@@ -221,48 +221,84 @@ describe('pre-tool-enforcer lane fast path (OMC_LANE_HOOKS=minimal)', () => {
         expect(denies.length).toBeGreaterThanOrEqual(9);
         expect(laneDecisions.some((d) => d.updatedInput?.model === 'sonnet')).toBe(true);
     });
-    it('the advisory a lane skips is there outside the lane', () => {
+    it('the advisory a lane skips is there outside the lane', async () => {
         const bash = CASES[0];
-        expect(additionalContext(runCase(bash, 'copilot').outputs[0])).toContain('Use parallel execution');
-        expect(runCase(bash, 'lane').outputs[0].trim()).toBe('{"continue":true,"suppressOutput":true}');
+        expect(additionalContext((await runCase(bash, 'copilot')).outputs[0])).toContain('Use parallel execution');
+        expect((await runCase(bash, 'lane')).outputs[0].trim()).toBe('{"continue":true,"suppressOutput":true}');
     });
-    it('a lane writes the skill state and no advisory throttle file', () => {
+    it('a lane writes the skill state and no advisory throttle file', async () => {
         const c = CASES.find((x) => x.name === 'Skill call records skill state');
-        const normal = runCase(c, 'copilot');
-        const lane = runCase(c, 'lane');
+        const normal = await runCase(c, 'copilot');
+        const lane = await runCase(c, 'lane');
         const sessionDir = (cwd) => join(cwd, '.omg', 'state', 'sessions', SESSION);
         expect(existsSync(join(sessionDir(normal.cwd), 'skill-active-state.json'))).toBe(true);
         expect(existsSync(join(sessionDir(lane.cwd), 'skill-active-state.json'))).toBe(true);
-        const bash = runCase(CASES[0], 'lane');
+        const bash = await runCase(CASES[0], 'lane');
         expect(existsSync(join(sessionDir(bash.cwd), 'pre-tool-advisory-throttle.json'))).toBe(false);
     });
-    it.each(CASES.map((c) => [c.name, c]))('%s: byte for byte unchanged outside a Copilot lane', (_name, c) => {
+    it.each(CASES.map((c) => [c.name, c]))('%s: byte for byte unchanged outside a Copilot lane', async (_name, c) => {
         // Claude Code never sets OMC_HOOK_EVENT, so OMC_LANE_HOOKS=minimal there is inert;
         // on Copilot any value other than "minimal" is inert too.
         const scrub = (r) => r.outputs.map((o) => o.split(r.cwd).join('<CWD>').split(JSON.stringify(r.cwd).slice(1, -1)).join('<CWD>').split(r.aux).join('<AUX>').split(JSON.stringify(r.aux).slice(1, -1)).join('<AUX>'));
-        expect(scrub(runCase(c, 'claude-lane-var'))).toEqual(scrub(runCase(c, 'claude')));
-        expect(scrub(runCase(c, 'copilot-lane-other'))).toEqual(scrub(runCase(c, 'copilot')));
+        expect(scrub(await runCase(c, 'claude-lane-var'))).toEqual(scrub(await runCase(c, 'claude')));
+        expect(scrub(await runCase(c, 'copilot-lane-other'))).toEqual(scrub(await runCase(c, 'copilot')));
     });
 });
 describe('lane precomputed state root (OMC_LANE_CWD / OMC_LANE_STATE_ROOT)', () => {
-    it('equals what getOmcRoot returns for the work dir, also with the lane profile as HOME', () => {
+    it('equals what getOmcRoot returns for the work dir, also with the lane profile as HOME', async () => {
         vi.stubEnv('OMC_STATE_DIR', '');
         try {
             const { cwd, aux } = makeProject();
             const expected = getOmcRoot(realpathSync.native(cwd));
-            expect(laneRootVars(cwd, aux)).toEqual({ OMC_LANE_CWD: realpathSync.native(cwd), OMC_LANE_STATE_ROOT: expected });
+            expect(await laneRootVars(cwd, aux)).toEqual({ OMC_LANE_CWD: realpathSync.native(cwd), OMC_LANE_STATE_ROOT: expected });
             const sub = join(cwd, 'pkg', 'src');
             mkdirSync(sub, { recursive: true });
-            expect(laneRootVars(sub, aux).OMC_LANE_STATE_ROOT).toBe(getOmcRoot(realpathSync.native(sub)));
+            expect((await laneRootVars(sub, aux)).OMC_LANE_STATE_ROOT).toBe(getOmcRoot(realpathSync.native(sub)));
         }
         finally {
             vi.unstubAllEnvs();
         }
     });
-    it('is not computed when the lane env sets OMC_STATE_DIR, or the work dir is missing', () => {
+    it('is not computed when the lane env sets OMC_STATE_DIR, or the work dir is missing', async () => {
         const { cwd, aux } = makeProject();
-        expect(laneStateRootEnv(cwd, { ...hookEnv(aux, 'lane'), OMC_STATE_DIR: join(aux, 'central') }, process.cwd())).toEqual({});
-        expect(laneStateRootEnv(join(cwd, 'missing'), hookEnv(aux, 'lane'), process.cwd())).toEqual({});
+        expect(await laneStateRootEnv(cwd, { ...hookEnv(aux, 'lane'), OMC_STATE_DIR: join(aux, 'central') }, process.cwd())).toEqual({});
+        expect(await laneStateRootEnv(join(cwd, 'missing'), hookEnv(aux, 'lane'), process.cwd())).toEqual({});
+    });
+    /** A plugin root whose scripts/lane-state-root.mjs is `body`. */
+    function fakePlugin(aux, name, body) {
+        const plugin = join(aux, name);
+        mkdirSync(join(plugin, 'scripts'), { recursive: true });
+        writeFileSync(join(plugin, 'scripts', 'lane-state-root.mjs'), body);
+        return plugin;
+    }
+    it('is not computed when the resolver child fails, prints no absolute root, or times out', async () => {
+        const { cwd, aux } = makeProject();
+        const env = hookEnv(aux, 'lane');
+        expect(await laneStateRootEnv(cwd, env, fakePlugin(aux, 'exit1', 'process.exit(1);\n'))).toEqual({});
+        expect(await laneStateRootEnv(cwd, env, fakePlugin(aux, 'nojson', 'process.stdout.write("not json");\n'))).toEqual({});
+        expect(await laneStateRootEnv(cwd, env, fakePlugin(aux, 'relroot', 'process.stdout.write(JSON.stringify({ root: "relative/.omg" }));\n'))).toEqual({});
+        expect(await laneStateRootEnv(cwd, env, join(aux, 'no-such-plugin'))).toEqual({});
+        const started = Date.now();
+        expect(await laneStateRootEnv(cwd, env, fakePlugin(aux, 'hang', 'setInterval(() => {}, 1000);\n'), 300)).toEqual({});
+        // The timeout ends the child; a hang guard only.
+        expect(Date.now() - started).toBeLessThan(scaleTiming(10_000));
+    });
+    it('gives the child git the host git hardening as GIT_CONFIG_* env', async () => {
+        const { cwd, aux } = makeProject();
+        // The planted values the hardening overrides.
+        execFileSync('git', ['config', 'core.fsmonitor', 'true'], { cwd, stdio: 'pipe' });
+        execFileSync('git', ['config', 'core.hooksPath', 'evil-hooks'], { cwd, stdio: 'pipe' });
+        // Reports, as the root, what the child's git reads for core.fsmonitor and core.hooksPath.
+        const plugin = fakePlugin(aux, 'env', [
+            "import { execFileSync } from 'child_process';",
+            "const get = (key) => execFileSync('git', ['config', '--get', key], { encoding: 'utf8' }).trim();",
+            "process.stdout.write(JSON.stringify({ root: process.cwd() + '/' + encodeURIComponent(get('core.fsmonitor') + '|' + get('core.hooksPath')) }));",
+            '',
+        ].join('\n'));
+        const vars = await laneStateRootEnv(cwd, hookEnv(aux, 'lane'), plugin);
+        const [fsmonitor, hooksPath] = decodeURIComponent(vars.OMC_LANE_STATE_ROOT.slice(realpathSync.native(cwd).length + 1)).split('|');
+        expect(fsmonitor).toBe('false');
+        expect(hooksPath).toMatch(/omg-host-git-nohooks-/);
     });
     // The precomputed root points at a decoy whose state holds an active ultragoal, while the
     // project itself has none: a deny proves the hook used the decoy, an allow that it resolved itself.
@@ -277,16 +313,32 @@ describe('lane precomputed state root (OMC_LANE_CWD / OMC_LANE_STATE_ROOT)', () 
     }
     const denied = (stdout) => JSON.parse(stdout.trim()).hookSpecificOutput?.permissionDecision === 'deny';
     const bashIn = (dir) => call(dir, 'Bash', { command: 'npm test' });
-    it('is used for the lane work dir and a plain subdir of it', () => {
+    it('is used for the lane work dir only', () => {
         const { cwd, aux, vars } = decoySetup();
         expect(denied(runRaw(bashIn(cwd), cwd, aux, 'lane', vars))).toBe(true);
-        const sub = join(cwd, 'src', 'deep');
-        mkdirSync(sub, { recursive: true });
-        expect(denied(runRaw(bashIn(sub), sub, aux, 'lane', vars))).toBe(true);
         if (process.platform === 'win32') {
             const upper = { ...vars, OMC_LANE_CWD: vars.OMC_LANE_CWD.toUpperCase() };
             expect(denied(runRaw(bashIn(cwd), cwd, aux, 'lane', upper))).toBe(true);
         }
+    });
+    it('falls back to the normal lookup in a subdir, as a normal session resolves it, also with CLAUDE_PLUGIN_ROOT set', () => {
+        const { cwd, aux, vars } = decoySetup();
+        const sub = join(cwd, 'src', 'deep');
+        mkdirSync(sub, { recursive: true });
+        // The decoy root holds an active ultragoal and the project none: a subdir must not see the decoy.
+        expect(denied(runRaw(bashIn(sub), sub, aux, 'lane', vars))).toBe(false);
+        expect(denied(runRaw(bashIn(sub), sub, aux, 'lane', { ...vars, CLAUDE_PLUGIN_ROOT: process.cwd() }))).toBe(false);
+        // With an active ultragoal in the project's own root as well, the subdir decides as a normal session there.
+        ultragoalState(cwd);
+        for (const extra of [{}, { CLAUDE_PLUGIN_ROOT: process.cwd() }]) {
+            const lane = decision(runRaw(bashIn(sub), sub, aux, 'lane', { ...vars, ...extra }), cwd, aux);
+            expect(lane).toEqual(decision(runRaw(bashIn(sub), sub, aux, 'copilot', extra), cwd, aux));
+            expect(lane).toEqual(decision(runRaw(bashIn(sub), sub, aux, 'lane', extra), cwd, aux));
+        }
+    });
+    it('is ignored when OMC_LANE_CWD is relative', () => {
+        const { cwd, aux, vars } = decoySetup();
+        expect(denied(runRaw(bashIn(cwd), cwd, aux, 'lane', { ...vars, OMC_LANE_CWD: '.' }))).toBe(false);
     });
     it('falls back to the normal lookup outside the work dir, in a nested repo, and with OMC_STATE_DIR', () => {
         const { cwd, aux, vars } = decoySetup();

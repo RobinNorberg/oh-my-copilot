@@ -62615,26 +62615,40 @@ __export(job_exports, {
   sharedGitStateSnapshot: () => sharedGitStateSnapshot,
   summarizeChanges: () => summarizeChanges
 });
-function laneStateRootEnv(workCwd, sessionEnv, pluginRoot) {
+async function laneStateRootEnv(workCwd, sessionEnv, pluginRoot, timeoutMs = LANE_STATE_ROOT_TIMEOUT_MS) {
   if (sessionEnv.OMC_STATE_DIR) return {};
   try {
     const cwd = import_node_fs13.realpathSync.native(workCwd);
-    const env2 = { ...sessionEnv, CLAUDE_PLUGIN_ROOT: pluginRoot };
+    const env2 = { ...sessionEnv, ...gitConfigEnv(hostGitHardeningArgs()), CLAUDE_PLUGIN_ROOT: pluginRoot };
     delete env2.OMC_HOOK_EVENT;
-    const result = (0, import_node_child_process5.spawnSync)(process.execPath, [(0, import_node_path14.join)(pluginRoot, "scripts", "lane-state-root.mjs"), cwd], {
-      cwd,
-      env: env2,
-      encoding: "utf8",
-      timeout: LANE_STATE_ROOT_TIMEOUT_MS,
-      windowsHide: true,
-      stdio: ["ignore", "pipe", "ignore"]
+    const stdout = await new Promise((resolveOut, reject2) => {
+      (0, import_node_child_process5.execFile)(process.execPath, [(0, import_node_path14.join)(pluginRoot, "scripts", "lane-state-root.mjs"), cwd], {
+        cwd,
+        env: env2,
+        encoding: "utf8",
+        timeout: timeoutMs,
+        windowsHide: true
+      }, (err, out) => err ? reject2(err) : resolveOut(out));
     });
-    if (result.status !== 0) return {};
-    const root = JSON.parse(result.stdout).root;
+    const root = JSON.parse(stdout).root;
     return typeof root === "string" && (0, import_node_path14.isAbsolute)(root) ? { OMC_LANE_CWD: cwd, OMC_LANE_STATE_ROOT: root } : {};
   } catch {
     return {};
   }
+}
+function gitConfigEnv(args) {
+  const env2 = {};
+  let n = 0;
+  for (let i = 0; i + 1 < args.length; i += 2) {
+    if (args[i] !== "-c") continue;
+    const eq = args[i + 1].indexOf("=");
+    if (eq <= 0) continue;
+    env2[`GIT_CONFIG_KEY_${n}`] = args[i + 1].slice(0, eq);
+    env2[`GIT_CONFIG_VALUE_${n}`] = args[i + 1].slice(eq + 1);
+    n++;
+  }
+  env2.GIT_CONFIG_COUNT = String(n);
+  return env2;
 }
 function scrubLaneCredentials(env2, emptyDir) {
   for (const key of Object.keys(env2)) {
@@ -63583,7 +63597,7 @@ var init_job = __esm({
             job.notes.push(`lane hook registration fell back to the full plugin hooks: ${errText4(err)}`);
           }
         }
-        if (job.minimalHooks) Object.assign(env2, laneStateRootEnv(job.workCwd, env2, pluginRoot));
+        if (job.minimalHooks && jobGitDirArgs(job) !== null) Object.assign(env2, await laneStateRootEnv(job.workCwd, env2, pluginRoot));
         const lanePluginRoot = sessionPluginRoot === pluginRoot ? void 0 : sessionPluginRoot;
         const removeLaneDir = () => {
           if (!lanePluginRoot) return true;

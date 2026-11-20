@@ -41,7 +41,7 @@
  */
 
 import { childEnv, hardenWindowsExeSearch } from '../utils/windows-search.js';
-import { spawnSync } from 'node:child_process';
+import { execFile, spawnSync } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
 import { closeSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, realpathSync, rmSync, statSync, writeFileSync, writeSync } from 'node:fs';
 import { tmpdir, userInfo } from 'node:os';
@@ -175,23 +175,56 @@ const LANE_STATE_ROOT_TIMEOUT_MS = 15_000;
  * resolver pre-tool-enforcer.mjs uses, so the lane's PreToolUse hooks can skip
  * the two git spawns of that lookup on every tool call (docs/HOOKS.md "Lane
  * PreToolUse fast path"). Empty, so the hook resolves as before, when the
- * env sets OMC_STATE_DIR or the script fails.
+ * env sets OMC_STATE_DIR or the script fails or times out.
+ *
+ * Async, so the engine's event loop (the MCP server, other lanes) keeps
+ * running while the child resolves; the engine awaits it before client.start.
+ *
+ * Host git: the resolver runs `git rev-parse` (--show-toplevel,
+ * --git-common-dir, --show-superproject-working-tree) in the lane worktree,
+ * which the lane's agent cannot have touched yet (the runtime has not
+ * started). The caller runs it only while the worktree's git links are
+ * intact (worktreeGitLinksIntact), and the child's git gets the host git
+ * hardening (hostGitHardeningArgs) as GIT_CONFIG_* env: no hook, fsmonitor
+ * or other configured program runs. rev-parse only reads.
  */
-export function laneStateRootEnv(workCwd: string, sessionEnv: NodeJS.ProcessEnv, pluginRoot: string): Record<string, string> {
+export async function laneStateRootEnv(
+  workCwd: string,
+  sessionEnv: NodeJS.ProcessEnv,
+  pluginRoot: string,
+  timeoutMs: number = LANE_STATE_ROOT_TIMEOUT_MS,
+): Promise<Record<string, string>> {
   if (sessionEnv.OMC_STATE_DIR) return {};
   try {
     const cwd = realpathSync.native(workCwd);
-    const env: NodeJS.ProcessEnv = { ...sessionEnv, CLAUDE_PLUGIN_ROOT: pluginRoot };
+    const env: NodeJS.ProcessEnv = { ...sessionEnv, ...gitConfigEnv(hostGitHardeningArgs()), CLAUDE_PLUGIN_ROOT: pluginRoot };
     delete env.OMC_HOOK_EVENT;
-    const result = spawnSync(process.execPath, [join(pluginRoot, 'scripts', 'lane-state-root.mjs'), cwd], {
-      cwd, env, encoding: 'utf8', timeout: LANE_STATE_ROOT_TIMEOUT_MS, windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'],
+    const stdout = await new Promise<string>((resolveOut, reject) => {
+      execFile(process.execPath, [join(pluginRoot, 'scripts', 'lane-state-root.mjs'), cwd], {
+        cwd, env, encoding: 'utf8', timeout: timeoutMs, windowsHide: true,
+      }, (err, out) => (err ? reject(err) : resolveOut(out)));
     });
-    if (result.status !== 0) return {};
-    const root: unknown = JSON.parse(result.stdout).root;
+    const root: unknown = JSON.parse(stdout).root;
     return typeof root === 'string' && isAbsolute(root) ? { OMC_LANE_CWD: cwd, OMC_LANE_STATE_ROOT: root } : {};
   } catch {
     return {};
   }
+}
+
+/** `-c key=value` pairs as GIT_CONFIG_COUNT / GIT_CONFIG_KEY_n / GIT_CONFIG_VALUE_n (git 2.31+). */
+function gitConfigEnv(args: readonly string[]): Record<string, string> {
+  const env: Record<string, string> = {};
+  let n = 0;
+  for (let i = 0; i + 1 < args.length; i += 2) {
+    if (args[i] !== '-c') continue;
+    const eq = args[i + 1].indexOf('=');
+    if (eq <= 0) continue;
+    env[`GIT_CONFIG_KEY_${n}`] = args[i + 1].slice(0, eq);
+    env[`GIT_CONFIG_VALUE_${n}`] = args[i + 1].slice(eq + 1);
+    n++;
+  }
+  env.GIT_CONFIG_COUNT = String(n);
+  return env;
 }
 
 export type CopilotRunIsolation = 'worktree' | 'none';
@@ -1486,7 +1519,8 @@ export class CopilotRunManager {
       }
     }
     // Set last, from the finished env: the lane hooks then skip the state-root lookup (laneStateRootEnv).
-    if (job.minimalHooks) Object.assign(env, laneStateRootEnv(job.workCwd, env, pluginRoot));
+    // Only while the worktree's git links are intact (jobGitDirArgs null): no host git runs in a tampered tree.
+    if (job.minimalHooks && jobGitDirArgs(job) !== null) Object.assign(env, await laneStateRootEnv(job.workCwd, env, pluginRoot));
     const lanePluginRoot = sessionPluginRoot === pluginRoot ? undefined : sessionPluginRoot;
     // The lane plugin dir holds links into the plugin: removed link-safe (never a recursive rm), and a failure
     // is a note, never a throw that skips the rest of the teardown. False: it is still there.
