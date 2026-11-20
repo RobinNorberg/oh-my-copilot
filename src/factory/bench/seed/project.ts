@@ -10,7 +10,7 @@
  * different fixture versions are not comparable (compare warns).
  */
 
-export const BENCH_FIXTURE_VERSION = 2;
+export const BENCH_FIXTURE_VERSION = 3;
 
 /** The integration branch of the fixture (a default ship.trustedBases entry). */
 export const BENCH_BASE = 'main';
@@ -62,6 +62,37 @@ walk('test');
 for (const p of problems) console.error(p);
 if (problems.length > 0) process.exit(1);
 console.log('lint ok');
+`;
+
+/** The shipping rates of the base (cents per country code); issue 13 adds one. */
+export const BASE_RATES: Readonly<Record<string, number>> = { SE: 4900, DK: 5900, FI: 5900 };
+
+/** src/shipping.ts with these rates. */
+export const SHIPPING_TS = (rates: Readonly<Record<string, number>>): string => `/** Flat shipping rates in cents, per country code. */
+export const SHIPPING_RATES: Readonly<Record<string, number>> = {
+${Object.entries(rates).map(([code, cents]) => `  ${code}: ${cents},`).join('\n')}
+};
+
+export function shippingCents(country: string): number {
+  const rate = SHIPPING_RATES[country.trim().toUpperCase()];
+  if (rate === undefined) throw new Error('no shipping to ' + country);
+  return rate;
+}
+`;
+
+/** docs/SHIPPING.md with these rates (test/shipping.test.ts keeps it in step with src/shipping.ts). */
+export const SHIPPING_MD = (rates: Readonly<Record<string, number>>): string => `# Shipping rates
+
+| country | rate |
+|---|---|
+${Object.entries(rates).map(([code, cents]) => `| ${code} | $${(cents / 100).toFixed(2)} |`).join('\n')}
+`;
+
+/** src/messages.ts with this checkout message (issues 14 and 15 both change that one line). */
+export const MESSAGES_TS = (checkout: string): string => `export const MESSAGES: Readonly<Record<'checkout' | 'empty', string>> = {
+  checkout: '${checkout}',
+  empty: 'Your cart is empty.',
+};
 `;
 
 /** The base files, path -> content (forward slashes). */
@@ -220,5 +251,80 @@ import { legacyLabel } from '../src/legacy.js';
 
 it('labels one item', () => expect(legacyLabel('pens', 1)).toBe('pens: 1 item'));
 it('labels many items', () => expect(legacyLabel('pens', 3)).toBe('pens: 3 items'));
+`,
+  // Fixture v3: the files of issues 13-17 (shipping: ci-fix; messages: the conflicting pair; units and its importers: the refactor).
+  'src/shipping.ts': SHIPPING_TS(BASE_RATES),
+  'docs/SHIPPING.md': SHIPPING_MD(BASE_RATES),
+  'test/shipping.test.ts': `import { readFileSync } from 'node:fs';
+import { expect, it } from 'vitest';
+import { SHIPPING_RATES, shippingCents } from '../src/shipping.js';
+
+it('looks up a rate case-insensitively', () => expect(shippingCents(' se ')).toBe(4900));
+it('refuses an unknown country', () => expect(() => shippingCents('XX')).toThrow());
+
+it('docs/SHIPPING.md lists every rate', () => {
+  const docs = readFileSync(new URL('../docs/SHIPPING.md', import.meta.url), 'utf8');
+  const rows = [...docs.matchAll(/^\\| ([A-Z]{2}) \\| \\$(\\d+\\.\\d{2}) \\|$/gm)].map((m) => [m[1], m[2]]);
+  expect(rows).toEqual(Object.entries(SHIPPING_RATES).map(([code, cents]) => [code, (cents / 100).toFixed(2)]));
+});
+`,
+  'src/messages.ts': MESSAGES_TS('Thanks for your order!'),
+  'test/messages.test.ts': `import { expect, it } from 'vitest';
+import { MESSAGES } from '../src/messages.js';
+
+it('has the checkout and empty-cart messages', () => {
+  expect(MESSAGES.checkout.length).toBeGreaterThan(0);
+  expect(MESSAGES.empty).toBe('Your cart is empty.');
+});
+`,
+  'src/units.ts': `export function toGrams(kg: number): number {
+  return Math.round(kg * 1000);
+}
+
+export function toKilograms(grams: number): number {
+  return grams / 1000;
+}
+`,
+  'src/parcel.ts': `import { toGrams } from './units.js';
+
+export function parcelGrams(itemsKg: readonly number[]): number {
+  return itemsKg.reduce((total, kg) => total + toGrams(kg), 0);
+}
+`,
+  'src/label.ts': `import { toKilograms } from './units.js';
+
+export function weightLabel(grams: number): string {
+  return toKilograms(grams).toFixed(2) + ' kg';
+}
+`,
+  'src/freight.ts': `import { toKilograms } from './units.js';
+
+export function freightClass(grams: number): 'light' | 'heavy' {
+  return toKilograms(grams) < 20 ? 'light' : 'heavy';
+}
+`,
+  'test/units.test.ts': `import { expect, it } from 'vitest';
+import { toGrams, toKilograms } from '../src/units.js';
+
+it('converts kilograms to grams', () => expect(toGrams(1.2345)).toBe(1235));
+it('converts grams to kilograms', () => expect(toKilograms(2500)).toBe(2.5));
+`,
+  'test/parcel.test.ts': `import { expect, it } from 'vitest';
+import { parcelGrams } from '../src/parcel.js';
+
+it('weighs a parcel', () => expect(parcelGrams([0.5, 1.25])).toBe(1750));
+`,
+  'test/label.test.ts': `import { expect, it } from 'vitest';
+import { weightLabel } from '../src/label.js';
+
+it('labels a weight', () => expect(weightLabel(1750)).toBe('1.75 kg'));
+`,
+  'test/freight.test.ts': `import { expect, it } from 'vitest';
+import { freightClass } from '../src/freight.js';
+
+it('classes freight', () => {
+  expect(freightClass(19_999)).toBe('light');
+  expect(freightClass(20_000)).toBe('heavy');
+});
 `,
 };

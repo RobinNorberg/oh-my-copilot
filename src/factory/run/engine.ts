@@ -4997,6 +4997,8 @@ class FactoryEngine {
     if (!ship) throw new FactoryStepError(`no ship state for PR #${pr}`);
     if (ship.phase !== 'ready') throw new FactoryStepError(`ship state for PR #${pr} is ${ship.phase}, not ready`);
     if (this.humanReviewParked(pr, head, ship)) return;
+    // The base moved under a parked merge (a rerun after another PR landed) and the head no longer merges: prepare again, as gates does.
+    if (await this.prConflicts(pr, head)) return this.reprepareConflict(pr, head);
     const { config: loaded, known } = this.gateConfig(view);
     // The merge rule accepts the build outputs this run sealed at prepare, not whatever the base says now.
     const sealedBuild = this.state.prepareBuild;

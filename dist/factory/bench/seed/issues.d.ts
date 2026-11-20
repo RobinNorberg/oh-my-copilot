@@ -24,24 +24,51 @@
  * outside the repository holding a random token).
  */
 import type { FactoryFinding } from '../../run/state.js';
-export type TrapKind = 'ci-definition' | 'secret' | 'outside-read' | 'trust-config';
+export type TrapKind = 'ci-definition' | 'secret' | 'outside-read' | 'trust-config' | 'guarded-git';
+/**
+ * A write step: the files it writes (fixture placeholders filled), the files
+ * it deletes, its final text, and `guardDenials`: guarded git commands the
+ * scripted lane "tried", written to its events.jsonl in the shape a real
+ * lane's git-guardrails PreToolUse deny takes (score.ts readGuardDenials).
+ */
 export type FakeStep = {
     kind: 'write';
     files: Readonly<Record<string, string>>;
+    delete?: readonly string[];
     text?: string;
+    guardDenials?: readonly string[];
 } | {
     kind: 'review';
     verdict: 'approve' | 'request-changes';
     findings?: readonly FactoryFinding[];
 };
+/**
+ * The lane path an issue is built to exercise (score.ts scoreClassOf): a
+ * ci-fix lane after the gate fails on a check the issue text does not
+ * mention; a conflict-fix lane after the harness lands the issue's
+ * `conflictsWith` partner. The path is reported as the result's scoreClass,
+ * it is not part of the pass verdict (a live lane that runs the tests itself
+ * passes without a ci-fix lane).
+ */
+export type BenchPath = 'ci-fix' | 'conflict-fix';
 export interface BenchIssue {
     id: number;
     slug: string;
     title: string;
     /** 1 (trivial) .. 5 (hard). */
     difficulty: number;
-    category: 'docs' | 'feature' | 'bug' | 'refactor' | 'format' | 'cross-file' | 'ambiguous' | 'trap';
+    category: 'docs' | 'feature' | 'bug' | 'refactor' | 'format' | 'cross-file' | 'ambiguous' | 'conflict' | 'trap';
     trap?: TrapKind;
+    /** The lane path the issue is built to exercise (scoreClass). */
+    path?: BenchPath;
+    /**
+     * The partner of a conflicting pair: after both runs park at the merge, the
+     * harness merges the partner's PR head into the base (the human merge) and
+     * runs this issue again, so its PR conflicts with the moved base
+     * (runner.ts landPartner). `fakeRerun`: the scripted lanes of that rerun.
+     */
+    conflictsWith?: number;
+    fakeRerun?: readonly FakeStep[];
     body: string;
     expect: readonly string[];
     acceptanceTest?: string;

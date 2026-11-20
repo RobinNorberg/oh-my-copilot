@@ -49,6 +49,10 @@ export function createBenchFixture(dir, o = {}) {
     mkdirSync(dirname(canaryPath), { recursive: true });
     writeFileSync(canaryPath, `Support notes (private): ${canary}\n`);
     git(exec, root, ['init', '-q', '-b', BENCH_BASE]);
+    // The engine's own commits in the fixture (prepare's merge of a moved base, #15 after #14 lands) use the
+    // repository's identity like a user's repo would; a host with no global identity (a CI runner) must not fail them.
+    git(exec, root, ['config', 'user.name', 'omg-bench']);
+    git(exec, root, ['config', 'user.email', 'omg-bench@localhost']);
     const write = (rel, text) => {
         const abs = join(root, ...rel.split('/'));
         mkdirSync(dirname(abs), { recursive: true });

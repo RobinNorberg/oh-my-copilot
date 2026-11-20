@@ -52,5 +52,45 @@ describe('local forge: gates -> prepare for a head that conflicts with the moved
         expect(runs.at(-1)).toBe(state.head);
         expect(w.calls.some((c) => c.startsWith('git merge-tree --write-tree '))).toBe(true);
     });
+    it('a rerun parked at the merge, after another PR landed on the same lines, prepares again and the conflict-fix lane resolves it', async () => {
+        w = localWorld();
+        gitIn(w.root, 'config', 'user.name', 't');
+        gitIn(w.root, 'config', 'user.email', 't@example.invalid');
+        w.gate = async () => ({ status: 0, stdout: 'ok\n', stderr: '', timedOut: false });
+        const first = await runFactoryEngine(localOpts(w, lanesFor(w, [commitFile('README.md', 'lane side\n'), review('approve')]), unsandboxed));
+        expect(first.gate?.name, first.message).toBe('merge');
+        const parkedHead = readFactoryState(w.root, LOCAL_ISSUE).head;
+        // Another change lands on the base in the same file; the parked PR no longer merges.
+        writeFileSync(join(w.root, 'README.md'), 'base side\n');
+        gitIn(w.root, 'commit', '-q', '-am', 'base: README');
+        const baseTip = gitIn(w.root, 'rev-parse', BASE);
+        const resolve = ({ worktree }) => {
+            writeFileSync(join(worktree, 'README.md'), 'both sides\n');
+            return { finalText: 'Merged.' };
+        };
+        const lanes = lanesFor(w, [resolve, review('approve')]);
+        const again = await runFactoryEngine(localOpts(w, lanes, unsandboxed));
+        expect(again.gate?.name, again.message).toBe('merge');
+        expect(lanes.started.map((s) => s.laneId)).toEqual([`issue-${LOCAL_ISSUE}-conflict-fix-1`, `issue-${LOCAL_ISSUE}-review-2`]);
+        const state = readFactoryState(w.root, LOCAL_ISSUE);
+        expect(state.conflictReprepares).toBe(1);
+        expect(state.history.some((e) => e.from === 'merge' && e.to === 'prepare' && e.note.includes(`conflicts with ${BASE} after it moved; preparing again`))).toBe(true);
+        expect(state.head).not.toBe(parkedHead);
+        expect(gitIn(w.root, 'merge-base', '--is-ancestor', baseTip, state.head)).toBe('');
+        expect(gitIn(w.root, 'show', `${state.head}:README.md`)).toBe('both sides');
+    });
+    it('a rerun parked at the merge with a base that still merges stays at the merge park, no lane', async () => {
+        w = localWorld();
+        gitIn(w.root, 'config', 'user.name', 't');
+        gitIn(w.root, 'config', 'user.email', 't@example.invalid');
+        w.gate = async () => ({ status: 0, stdout: 'ok\n', stderr: '', timedOut: false });
+        const first = await runFactoryEngine(localOpts(w, lanesFor(w, [commitFile('README.md', 'lane side\n'), review('approve')]), unsandboxed));
+        expect(first.gate?.name, first.message).toBe('merge');
+        const lanes = lanesFor(w, []);
+        const again = await runFactoryEngine(localOpts(w, lanes, unsandboxed));
+        expect(again.gate?.name, again.message).toBe('merge');
+        expect(lanes.started).toEqual([]);
+        expect(readFactoryState(w.root, LOCAL_ISSUE).conflictReprepares ?? 0).toBe(0);
+    });
 });
 //# sourceMappingURL=engine.local.conflict-reprepare.test.js.map

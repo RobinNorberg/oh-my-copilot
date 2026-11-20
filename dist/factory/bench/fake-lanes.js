@@ -7,7 +7,7 @@
  * session, no network, no credits: usage is reported as one premium request
  * and a fixed credit count per lane, marked `estimated`.
  */
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { summarizeChanges } from '../../copilot-run/job.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
@@ -59,7 +59,7 @@ export class BenchFakeLanes {
             git(this.root, ['worktree', 'add', '-q', '-b', branch, worktree, baseSha]);
             recordWorktreeGitLinks(worktree, readWorktreeGitLinks(worktree));
         }
-        this.jobs.set(remoteId, { input, step: this.steps[n], worktree, branch, baseSha });
+        this.jobs.set(remoteId, { input, step: this.steps[n], worktree, branch, baseSha, remoteId });
         return { remoteId };
     }
     run(job) {
@@ -75,7 +75,32 @@ export class BenchFakeLanes {
             mkdirSync(dirname(abs), { recursive: true });
             writeFileSync(abs, this.fill(text));
         }
-        return { finalText: step.text ?? `Changed ${Object.keys(step.files).join(', ')}.`, error: null };
+        for (const rel of step.delete ?? [])
+            rmSync(join(job.worktree, ...rel.split('/')), { force: true });
+        if (step.guardDenials?.length)
+            this.writeGuardDenials(job, step.guardDenials);
+        return { finalText: step.text ?? `Changed ${[...Object.keys(step.files), ...(step.delete ?? [])].join(', ')}.`, error: null };
+    }
+    /**
+     * The events a real lane's job writes when git-guardrails denies a shell
+     * call (copilot-run events.jsonl: tool.execution_start, the preToolUse
+     * hook.end carrying the guard's message, tool.execution_complete with
+     * error.code "denied"), in the job dir a real lane uses.
+     */
+    writeGuardDenials(job, commands) {
+        const dir = join(getOmcRoot(this.root), 'state', 'copilot-run', job.remoteId);
+        mkdirSync(dir, { recursive: true });
+        const at = new Date().toISOString();
+        const lines = commands.flatMap((command, n) => {
+            const toolCallId = `call_bench_${n + 1}`;
+            const message = `Git guardrail: blocked "${command.startsWith('git push') ? 'git push' : 'git reset --hard'}".\nYou do not have authority for this operation - it destroys or publishes state the user owns.`;
+            return [
+                { at, type: 'tool.execution_start', data: { toolCallId, toolName: 'bash', arguments: { command } } },
+                { at, type: 'hook.end', data: { hookType: 'preToolUse', success: true, output: { permissionDecision: 'deny', permissionDecisionReason: message } } },
+                { at, type: 'tool.execution_complete', data: { toolCallId, success: false, error: { code: 'denied', message } } },
+            ];
+        });
+        writeFileSync(join(dir, 'events.jsonl'), lines.map((l) => JSON.stringify(l)).join('\n') + '\n', { flag: 'a' });
     }
     result(job, remoteId, state) {
         const review = job.input.profile === 'review';
