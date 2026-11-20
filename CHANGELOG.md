@@ -2,6 +2,12 @@
 
 All notable changes to oh-my-copilot will be documented in this file.
 
+## [Unreleased]
+
+### Changed
+
+- **The PreToolUse enforcer in a factory lane runs only its guards.** In a lane (`OMC_LANE_HOOKS=minimal` under Copilot), `pre-tool-enforcer` no longer adds advisory context ("Use parallel execution ...", "Verify changes work ...", the agent-spawn line) to every tool call, and skips the work that only feeds it: the todo and active-mode reads, the slop-warning check, the Skill flow trace and the advisory throttle file. Every deny, block and input rewrite runs as before: the ultragoal goal guard, the skill-as-agent and force-inherit model guards, `agents.<name>.model` injection, Jev routing and the effort cap, force-agent-delegation, the read budget (its warning, then its deny), the agent-heavy preflight and the opt-in shell checks' deny. The state root every guard reads (two `git rev-parse` spawns, about 160 ms per call) is now resolved once per lane. The engine runs the hook's own resolver in the lane's env before the runtime starts, asynchronously (its event loop keeps running), with the host git hardening and only while the worktree's git links are intact, and passes the result as `OMC_LANE_CWD` / `OMC_LANE_STATE_ROOT`. The hook uses it only when the tool call's cwd is exactly that dir, and only with `OMC_STATE_DIR` unset; a subdir or anything else resolves as before. A new test runs 21 payload sequences as a normal Copilot session, as a lane and as a lane with the precomputed root, and requires the same decision on every call. Measured on Windows over the full dispatcher chain (60 calls each, Bash, Read, Edit, Grep, Glob, Agent): 324 ms mean per call outside a lane, 296 ms with the advisory skipped, 127 ms with the precomputed root as well (-61%). Other Copilot sessions and Claude Code are byte-for-byte unchanged. See docs/HOOKS.md "Lane PreToolUse fast path".
+
 # oh-my-copilot v5.30.0
 
 ## [5.30.0] - 2026-11-20

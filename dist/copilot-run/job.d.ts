@@ -76,6 +76,27 @@ export declare const PROJECT_MEMORY_SKIP_TOKEN = "project-memory-session,project
  * loads. Set by the engine in the runtime env, which the session cannot change.
  */
 export declare const LANE_HOOKS_MINIMAL = "minimal";
+/**
+ * The lane's precomputed state root: OMC_LANE_CWD (the work dir, realpath'd)
+ * and OMC_LANE_STATE_ROOT (the state root a hook resolves there). It is
+ * computed once by scripts/lane-state-root.mjs in the lane's own env, with the
+ * resolver pre-tool-enforcer.mjs uses, so the lane's PreToolUse hooks can skip
+ * the two git spawns of that lookup on every tool call (docs/HOOKS.md "Lane
+ * PreToolUse fast path"). Empty, so the hook resolves as before, when the
+ * env sets OMC_STATE_DIR or the script fails or times out.
+ *
+ * Async, so the engine's event loop (the MCP server, other lanes) keeps
+ * running while the child resolves; the engine awaits it before client.start.
+ *
+ * Host git: the resolver runs `git rev-parse` (--show-toplevel,
+ * --git-common-dir, --show-superproject-working-tree) in the lane worktree,
+ * which the lane's agent cannot have touched yet (the runtime has not
+ * started). The caller runs it only while the worktree's git links are
+ * intact (worktreeGitLinksIntact), and the child's git gets the host git
+ * hardening (hostGitHardeningArgs) as GIT_CONFIG_* env: no hook, fsmonitor
+ * or other configured program runs. rev-parse only reads.
+ */
+export declare function laneStateRootEnv(workCwd: string, sessionEnv: NodeJS.ProcessEnv, pluginRoot: string, timeoutMs?: number): Promise<Record<string, string>>;
 export type CopilotRunIsolation = 'worktree' | 'none';
 export type CopilotRunStatus = 'starting' | 'running' | 'completed' | 'failed' | 'timeout' | 'cancelled';
 /** `write` (default): the worker policy. `review`: no write tool, and no git command that moves or rewrites the tree. */
