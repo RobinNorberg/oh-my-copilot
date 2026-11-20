@@ -173,4 +173,18 @@ export declare function ledgerTracker(start: LedgerSnapshot): (now: LedgerSnapsh
     credits: number;
 };
 export declare function runBench(o: BenchRunOptions): Promise<BenchRunOutput>;
+/**
+ * The human merge of a conflicting pair's partner (BenchIssue.conflictsWith):
+ * when both runs parked at the merge, merge the partner's PR head from the
+ * mirror into your base with git, as the merge park's command says (`git
+ * merge --no-ff --no-edit <head>` on the base, which must be checked out and
+ * clean). The second issue's PR then conflicts with the moved base, and its
+ * rerun goes gates/merge -> prepare -> conflict-fix. Returns the landed head,
+ * or why the pair was not exercised.
+ */
+export declare function landPartner(meta: BenchFixtureMeta, mirror: string, partner: number, issue: number, exec?: Exec): {
+    head: string;
+} | {
+    skipped: string;
+};
 //# sourceMappingURL=runner.d.ts.map

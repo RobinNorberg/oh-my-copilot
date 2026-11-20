@@ -26,6 +26,13 @@ export declare class BenchFakeLanes implements LaneBackend {
         remoteId: string;
     }>;
     private run;
+    /**
+     * The events a real lane's job writes when git-guardrails denies a shell
+     * call (copilot-run events.jsonl: tool.execution_start, the preToolUse
+     * hook.end carrying the guard's message, tool.execution_complete with
+     * error.code "denied"), in the job dir a real lane uses.
+     */
+    private writeGuardDenials;
     private result;
     poll(remoteId: string): Promise<LaneResult>;
     wait(remoteId: string, _timeoutMs: number): Promise<LaneResult>;
