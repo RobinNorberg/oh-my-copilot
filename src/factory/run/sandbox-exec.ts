@@ -48,6 +48,8 @@ import {
   laneToolPaths,
   missingSandboxEnv,
   proxyCaEnv,
+  scrubTokens,
+  secretValues,
   sessionGitHubToken,
   type GateContainerSettings,
   type SandboxConfigLayers,
@@ -327,7 +329,9 @@ export async function runSandboxed(argv: readonly string[], o: SandboxExecOption
     // GIT_CEILING_DIRECTORIES: a git root search from the runtime's working dir stops at the job root, so it never reaches
     // the root repository's work tree (the job root is under its .omg/) and its hooks or instructions.
     Object.assign(env, { GIT_TERMINAL_PROMPT: '0', GCM_INTERACTIVE: 'never', COPILOT_ALLOW_ALL: 'false', GIT_CEILING_DIRECTORIES: resolve(o.jobRoot) });
-    const gitHubToken = sessionGitHubToken(deps.env);
+    const credentialSource = { userConfigDir: deps.userConfigDir(), platform: deps.platform };
+    const gitHubToken = sessionGitHubToken(deps.env, credentialSource);
+    const secrets = secretValues(deps.env, credentialSource);
 
     const { CopilotClient, RuntimeConnection } = loaded.module;
     const c: SdkClientLike = new CopilotClient({
@@ -363,6 +367,8 @@ export async function runSandboxed(argv: readonly string[], o: SandboxExecOption
           hostCommits: true,
           toolPaths: (deps.toolPaths ?? laneToolPaths)(deps.env, deps.platform),
           extraReadonly: proxy.caPaths,
+          // A keyring-less host's plaintext login token, also when COPILOT_HOME moved the config out of ~/.copilot.
+          ...(deps.platform === 'win32' ? {} : { extraDenied: [join(credentialSource.userConfigDir, 'config.json')] }),
           ...(o.mainRoot ? { mainRoot: resolve(o.mainRoot) } : {}),
           ...(o.nodeModulesTarget ? { nodeModulesTarget: resolve(o.nodeModulesTarget) } : {}),
           ...(o.nestedNodeModulesTargets ? { nestedNodeModulesTargets: o.nestedNodeModulesTargets.map((p) => resolve(p)) } : {}),
@@ -429,7 +435,7 @@ export async function runSandboxed(argv: readonly string[], o: SandboxExecOption
       const why = !r ? (answer !== 'timeout' && 'error' in answer ? 'the shell call failed' : 'the shell call gave no answer') : `its completion was ${attested.get(id) === false ? 'attested sandboxed: false' : 'not attested sandboxed'}`;
       return noVerdict(`${timeout ? `timed out after ${o.timeoutMs} ms and ` : ''}${why}; the command is not counted as run in the sandbox`);
     }
-    const raw = typeof r?.output === 'string' ? r.output : '';
+    const raw = scrubTokens(typeof r?.output === 'string' ? r.output : '', secrets);
     const read = readMarker(raw, marker);
     const marked = readable ? { credentialFilesReadable: true as const } : {};
     if (timeout) return { ran: true, status: 124, output: tail(`${read.output.trim()}\ntimed out after ${o.timeoutMs} ms`), timedOut: true, ...marked };

@@ -11870,7 +11870,58 @@ function loginIdentity(userConfigDir) {
     return {};
   }
 }
-var import_fs16, import_path15, import_url3, STRIPPED_ENV_EXACT, STRIPPED_ENV_PREFIXES, LOGIN_SHADOWING_TOKENS, SMOKE_SET_ENV, SESSION_SET_ENV, CREDENTIAL_ENV, SECRET_NAME, CASSETTE_ENV, HMAC_KEY_ENV, REPLAY_HMAC_KEY;
+function storedLoginToken(userConfigDir, platform = process.platform, now2 = Date.now()) {
+  if (platform === "win32") return void 0;
+  try {
+    const parsed2 = parseJsonc((0, import_fs16.readFileSync)((0, import_path15.join)(userConfigDir, "config.json"), "utf-8"));
+    if (!parsed2 || typeof parsed2 !== "object") return void 0;
+    const user = parsed2.lastLoggedInUser;
+    if (!user || typeof user !== "object" || typeof user.login !== "string" || !user.login) return void 0;
+    const host = typeof user.host === "string" && user.host ? user.host : "https://github.com";
+    for (const field of PLAINTEXT_TOKEN_FIELDS) {
+      const token = tokenFromMap(parsed2[field], host, user.login, now2, 1);
+      if (token) return token;
+    }
+  } catch {
+  }
+  return void 0;
+}
+function tokenFromMap(map2, host, login3, now2, depth) {
+  if (!map2 || typeof map2 !== "object" || Array.isArray(map2)) return void 0;
+  for (const [key, value] of Object.entries(map2)) {
+    if (tokenKeyMatches(key, host, login3)) {
+      const token = tokenValue(value, now2);
+      if (token) return token;
+    } else if (depth > 0 && value && typeof value === "object" && !("token" in value)) {
+      const token = tokenFromMap(value, host, login3, now2, depth - 1);
+      if (token) return token;
+    }
+  }
+  return void 0;
+}
+function tokenKeyMatches(key, host, login3) {
+  if (!key.endsWith(`:${login3}`)) return false;
+  const keyHost = key.slice(0, -(login3.length + 1)).replace(/\/+$/, "");
+  const bare = host.replace(/^[a-z][a-z0-9+.-]*:\/\//i, "").replace(/\/+$/, "").toLowerCase();
+  if (!bare) return false;
+  const k = keyHost.toLowerCase();
+  if (!k.endsWith(bare)) return false;
+  const before = k.slice(0, k.length - bare.length);
+  return before === "" || before.endsWith("//") || before.endsWith(":");
+}
+function tokenValue(value, now2) {
+  if (typeof value === "string") return value.trim() || void 0;
+  if (!value || typeof value !== "object") return void 0;
+  const v = value;
+  if (typeof v.token !== "string" || !v.token.trim()) return void 0;
+  if (typeof v.accountType === "string" && v.accountType.toLowerCase() === "entra") return void 0;
+  if (typeof v.expiresAt === "string") {
+    const at = Date.parse(v.expiresAt);
+    if (Number.isFinite(at) && at <= now2) return void 0;
+  }
+  return v.token.trim();
+}
+var import_fs16, import_path15, import_url3, STRIPPED_ENV_EXACT, STRIPPED_ENV_PREFIXES, LOGIN_SHADOWING_TOKENS, SMOKE_SET_ENV, SESSION_SET_ENV, CREDENTIAL_ENV, SECRET_NAME, CASSETTE_ENV, HMAC_KEY_ENV, REPLAY_HMAC_KEY, PLAINTEXT_TOKEN_FIELDS;
 var init_copilot_session_env = __esm({
   "src/smoke/copilot-session-env.ts"() {
     "use strict";
@@ -11958,6 +12009,7 @@ var init_copilot_session_env = __esm({
     };
     HMAC_KEY_ENV = "COPILOT_HMAC_KEY";
     REPLAY_HMAC_KEY = "omg-replay-dummy-hmac-key";
+    PLAINTEXT_TOKEN_FIELDS = ["authTokens", "copilotTokens"];
   }
 });
 
@@ -60224,11 +60276,27 @@ function envValue2(env2, name) {
   const value = key === void 0 ? void 0 : env2[key];
   return typeof value === "string" && value.trim() !== "" ? value : void 0;
 }
-function sessionGitHubToken(env2) {
-  return envValue2(env2, "COPILOT_GITHUB_TOKEN");
+function storedToken(env2, source2) {
+  return source2 && !isReplayEnv(env2) ? storedLoginToken(source2.userConfigDir, source2.platform) : void 0;
 }
-function secretValues(env2) {
-  return ["COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"].map((n) => envValue2(env2, n)).filter((v) => v !== void 0 && v.length >= 8);
+function sessionGitHubToken(env2, source2) {
+  return envValue2(env2, "COPILOT_GITHUB_TOKEN") ?? storedToken(env2, source2);
+}
+function triedCredentialNames(env2, source2, hasLogin) {
+  const names = [];
+  if (envValue2(env2, "COPILOT_GITHUB_TOKEN")) names.push("COPILOT_GITHUB_TOKEN");
+  if (hasLogin) names.push(storedToken(env2, source2) ? "the stored login (plaintext token in the Copilot config.json)" : "the stored login (OS credential store)");
+  else for (const n of ["GH_TOKEN", "GITHUB_TOKEN"]) if (envValue2(env2, n)) names.push(n);
+  return names;
+}
+function withCredentialHint(text6, env2, source2, hasLogin) {
+  if (!/not authenticated/i.test(text6)) return text6;
+  const tried = triedCredentialNames(env2, source2, hasLogin);
+  return `${text6} (credentials tried: ${tried.length ? tried.join(", ") : "none found"}; run \`copilot login\` or set COPILOT_GITHUB_TOKEN)`;
+}
+function secretValues(env2, source2) {
+  const values = [...["COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"].map((n) => envValue2(env2, n)), storedToken(env2, source2)].filter((v) => v !== void 0 && v.length >= 8);
+  return [...new Set(values)];
 }
 function scrubTokens(text6, secrets) {
   let out = text6;
@@ -62020,7 +62088,7 @@ function withCassette(loaded2, env2 = process.env, options = {}) {
         return created.rec;
       };
       const requestHandler = mode === "record" ? createRecordingHandler(Base, recorder) : createReplayHandler(Base, (ctx) => target(ctx).replayer);
-      super({ ...opts, requestHandler, ...mode === "replay" ? { useLoggedInUser: false } : {} });
+      super({ ...opts, requestHandler, ...mode === "replay" ? { useLoggedInUser: false, gitHubToken: void 0 } : {} });
       this.cassetteSlot = slot;
       if (mode === "record") {
         const stop = this.stop.bind(this);
@@ -63667,27 +63735,32 @@ async function fetchCopilotCatalogue(opts = {}) {
     const bin = found && deps.platform === "win32" && /\.(cmd|bat|ps1)$/i.test(found) ? resolveShimTarget(found) : found;
     if (!bin) return { error: "the copilot CLI was not found" };
     const ident = loginIdentity(deps.userConfigDir());
+    hasLogin = ident.loggedInUsers !== void 0;
     (0, import_node_fs12.writeFileSync)((0, import_node_path14.join)(jobHome, "config.json"), `${JSON.stringify({ ...ident, trustedFolders: [workDir] }, null, 2)}
 `);
-    const env2 = childEnv(allowlistSessionEnv(buildSessionEnv(deps.env, jobHome, { session: false, hasLogin: ident.loggedInUsers !== void 0 }), jobHome));
+    const env2 = childEnv(allowlistSessionEnv(buildSessionEnv(deps.env, jobHome, { session: false, hasLogin }), jobHome));
     (0, import_node_fs12.mkdirSync)(env2.XDG_CONFIG_HOME, { recursive: true });
     (0, import_node_fs12.mkdirSync)((0, import_node_path14.dirname)(env2.GIT_CONFIG_GLOBAL), { recursive: true });
     (0, import_node_fs12.mkdirSync)(env2.TEMP, { recursive: true });
+    const gitHubToken = sessionGitHubToken(deps.env, source2);
     const { CopilotClient, RuntimeConnection } = loaded2.module;
     const c = new CopilotClient({
       connection: RuntimeConnection.forStdio({ path: bin, args: ["--max-ai-credits", String(RUNTIME_MIN_MAX_CREDITS)], env: env2 }),
       baseDirectory: jobHome,
-      workingDirectory: workDir
+      workingDirectory: workDir,
+      ...gitHubToken ? { gitHubToken } : {}
     });
     client = c;
     await c.start().catch(rethrowSdkStartError);
     return { models: catalogueFromListModels(await c.listModels()) };
   };
+  const source2 = { userConfigDir: deps.userConfigDir(), platform: deps.platform };
+  let hasLogin = false;
   let result;
   try {
     result = await withTimeout(read(), opts.deadlineMs ?? FETCH_DEADLINE_MS, "reading the Copilot model catalogue");
   } catch (error62) {
-    result = { error: errText(error62) };
+    result = { error: scrubTokens(withCredentialHint(errText(error62), deps.env, source2, hasLogin), secretValues(deps.env, source2)) };
   }
   cancelled = true;
   const started = client;
@@ -124828,7 +124901,7 @@ var init_job = __esm({
           cleanedUp: false,
           sandboxSettings,
           sandbox: null,
-          secrets: secretValues(this.deps.env),
+          secrets: secretValues(this.deps.env, { userConfigDir: this.deps.userConfigDir(), platform: this.deps.platform }),
           stopReason: null,
           requestStop: (reason) => requestStop(reason),
           stopped,
@@ -125093,7 +125166,8 @@ var init_job = __esm({
         (0, import_node_fs34.writeFileSync)((0, import_node_path39.join)(job.home, "config.json"), `${JSON.stringify({ ...ident, trustedFolders: [job.workCwd] }, null, 2)}
 `);
         const env2 = childEnv(allowlistSessionEnv(buildSessionEnv(deps.env, job.home, { session: false, hasLogin: ident.loggedInUsers !== void 0 }), job.home));
-        const gitHubToken = sessionGitHubToken(deps.env);
+        const gitHubToken = sessionGitHubToken(deps.env, { userConfigDir: deps.userConfigDir(), platform: deps.platform });
+        const laneDenied = [...job.deniedPaths, ...deps.platform === "win32" ? [] : [(0, import_node_path39.join)(deps.userConfigDir(), "config.json")]];
         (0, import_node_fs34.mkdirSync)(env2.XDG_CONFIG_HOME, { recursive: true });
         (0, import_node_fs34.mkdirSync)((0, import_node_path39.dirname)(env2.GIT_CONFIG_GLOBAL), { recursive: true });
         (0, import_node_fs34.mkdirSync)(env2.TEMP, { recursive: true });
@@ -125189,7 +125263,9 @@ var init_job = __esm({
               hostCommits: job.hostCommits,
               toolPaths: (deps.toolPaths ?? laneToolPaths)(deps.env, deps.platform),
               extraReadonly: proxy.caPaths,
-              ...job.deniedPaths.length > 0 ? { extraDenied: job.deniedPaths } : {},
+              // A keyring-less host keeps the login token in plain text in the user's Copilot config.json: denied also when
+              // COPILOT_HOME moved it out of ~/.copilot (denied by default).
+              ...laneDenied.length > 0 ? { extraDenied: laneDenied } : {},
               // A caller-made worktree (the private layout): its common git dir is not the checkout's, whose budget ledger stays denied.
               ...job.external ? { mainRoot: job.ledgerCwd } : {}
             };
@@ -130977,7 +131053,9 @@ async function runSandboxed(argv, o, deps) {
     (0, import_node_fs36.mkdirSync)(env2.TEMP, { recursive: true });
     (0, import_node_fs36.writeFileSync)(env2.GIT_CONFIG_GLOBAL, "[credential]\n	helper =\n");
     Object.assign(env2, { GIT_TERMINAL_PROMPT: "0", GCM_INTERACTIVE: "never", COPILOT_ALLOW_ALL: "false", GIT_CEILING_DIRECTORIES: (0, import_node_path41.resolve)(o.jobRoot) });
-    const gitHubToken = sessionGitHubToken(deps.env);
+    const credentialSource = { userConfigDir: deps.userConfigDir(), platform: deps.platform };
+    const gitHubToken = sessionGitHubToken(deps.env, credentialSource);
+    const secrets = secretValues(deps.env, credentialSource);
     const { CopilotClient, RuntimeConnection } = loaded2.module;
     const c = new CopilotClient({
       connection: RuntimeConnection.forStdio({ path: bin, args: ["--max-ai-credits", String(RUNTIME_MIN_MAX_CREDITS)], env: env2 }),
@@ -131012,6 +131090,8 @@ async function runSandboxed(argv, o, deps) {
           hostCommits: true,
           toolPaths: (deps.toolPaths ?? laneToolPaths)(deps.env, deps.platform),
           extraReadonly: proxy.caPaths,
+          // A keyring-less host's plaintext login token, also when COPILOT_HOME moved the config out of ~/.copilot.
+          ...deps.platform === "win32" ? {} : { extraDenied: [(0, import_node_path41.join)(credentialSource.userConfigDir, "config.json")] },
           ...o.mainRoot ? { mainRoot: (0, import_node_path41.resolve)(o.mainRoot) } : {},
           ...o.nodeModulesTarget ? { nodeModulesTarget: (0, import_node_path41.resolve)(o.nodeModulesTarget) } : {},
           ...o.nestedNodeModulesTargets ? { nestedNodeModulesTargets: o.nestedNodeModulesTargets.map((p) => (0, import_node_path41.resolve)(p)) } : {}
@@ -131083,7 +131163,7 @@ async function runSandboxed(argv, o, deps) {
       const why = !r ? answer !== "timeout" && "error" in answer ? "the shell call failed" : "the shell call gave no answer" : `its completion was ${attested.get(id) === false ? "attested sandboxed: false" : "not attested sandboxed"}`;
       return noVerdict(`${timeout ? `timed out after ${o.timeoutMs} ms and ` : ""}${why}; the command is not counted as run in the sandbox`);
     }
-    const raw = typeof r?.output === "string" ? r.output : "";
+    const raw = scrubTokens(typeof r?.output === "string" ? r.output : "", secrets);
     const read = readMarker(raw, marker);
     const marked = readable ? { credentialFilesReadable: true } : {};
     if (timeout) return { ran: true, status: 124, output: tail(`${read.output.trim()}
@@ -151577,6 +151657,8 @@ async function probeLaneModel(jobRoot, deps = defaultCopilotRunDeps(), requested
   const workDir = (0, import_node_path48.join)(jobHome, "work");
   let client = null;
   let session = null;
+  const source2 = { userConfigDir: deps.userConfigDir(), platform: deps.platform };
+  let hasLogin = false;
   try {
     (0, import_node_fs44.mkdirSync)(workDir, { recursive: true });
     const loaded2 = await deps.loadSdk().catch(() => null);
@@ -151587,16 +151669,20 @@ async function probeLaneModel(jobRoot, deps = defaultCopilotRunDeps(), requested
     const ident = loginIdentity(deps.userConfigDir());
     (0, import_node_fs44.writeFileSync)((0, import_node_path48.join)(jobHome, "config.json"), `${JSON.stringify({ ...ident, trustedFolders: [workDir] }, null, 2)}
 `);
-    const env2 = childEnv(allowlistSessionEnv(buildSessionEnv(deps.env, jobHome, { session: false, hasLogin: ident.loggedInUsers !== void 0 }), jobHome));
+    hasLogin = ident.loggedInUsers !== void 0;
+    const env2 = childEnv(allowlistSessionEnv(buildSessionEnv(deps.env, jobHome, { session: false, hasLogin }), jobHome));
     (0, import_node_fs44.mkdirSync)(env2.XDG_CONFIG_HOME, { recursive: true });
     (0, import_node_fs44.mkdirSync)((0, import_node_path48.dirname)(env2.GIT_CONFIG_GLOBAL), { recursive: true });
     (0, import_node_fs44.mkdirSync)(env2.TEMP, { recursive: true });
-    const gitHubToken = sessionGitHubToken(deps.env);
+    const gitHubToken = sessionGitHubToken(deps.env, source2);
     const { CopilotClient, RuntimeConnection } = loaded2.module;
     const c = new CopilotClient({
       connection: RuntimeConnection.forStdio({ path: bin, args: ["--max-ai-credits", String(RUNTIME_MIN_MAX_CREDITS)], env: env2 }),
       baseDirectory: jobHome,
-      workingDirectory: workDir
+      workingDirectory: workDir,
+      // listModels() runs before (or without) a session: the client option puts the credential in the runtime env. The
+      // probe sends no prompt and its session has no tools, so no untrusted code sees that env. Never in the job home.
+      ...gitHubToken ? { gitHubToken } : {}
     });
     client = c;
     await withTimeout(c.start().catch(rethrowSdkStartError), START_TIMEOUT_MS4, "client.start()");
@@ -151635,7 +151721,7 @@ async function probeLaneModel(jobRoot, deps = defaultCopilotRunDeps(), requested
     const multiplier = modelMultiplier(Array.isArray(models) ? models : [], model);
     return { model, multiplier, detail: multiplier === null ? `listModels() gives no billing multiplier for ${model}` : `listModels() billing.multiplier of ${model}` };
   } catch (error62) {
-    return none(`the probe failed: ${errText(error62)}`);
+    return none(`the probe failed: ${scrubTokens(withCredentialHint(errText(error62), deps.env, source2, hasLogin), secretValues(deps.env, source2))}`);
   } finally {
     if (session) {
       try {
@@ -157278,14 +157364,12 @@ function readHostCredentials(stream, timeoutMs) {
     stream.once("error", finish2);
   });
 }
-function workerGitHubToken(env2, hasLogin) {
-  const names = hasLogin ? ["COPILOT_GITHUB_TOKEN"] : ["COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"];
-  for (const name of names) {
+function workerGitHubToken(env2, hasLogin, stored) {
+  const pick2 = (name) => {
     const key = Object.keys(env2).find((k) => k.toUpperCase() === name);
-    const value = key ? env2[key]?.trim() : void 0;
-    if (value) return value;
-  }
-  return void 0;
+    return key ? env2[key]?.trim() || void 0 : void 0;
+  };
+  return pick2("COPILOT_GITHUB_TOKEN") ?? stored ?? (hasLogin ? void 0 : pick2("GH_TOKEN") ?? pick2("GITHUB_TOKEN"));
 }
 function adoptSessionEnv(target, env2) {
   for (const key of Object.keys(target)) {
@@ -157507,7 +157591,8 @@ async function runSdkHost(spec, deps) {
 `);
   }
   const hasLogin = ident.loggedInUsers !== void 0;
-  const gitHubToken = workerGitHubToken({ ...deps.env, ...deps.credentials }, hasLogin);
+  const stored = hasLogin && loaded2.cassette !== "replay" ? storedLoginToken(spec.user_config_dir, deps.platform) : void 0;
+  const gitHubToken = workerGitHubToken({ ...deps.env, ...deps.credentials }, hasLogin, stored);
   if (!hasLogin && !gitHubToken && loaded2.cassette !== "replay") {
     return fail10("start_failed", "an SDK team worker needs a stored Copilot login (copilot login) or COPILOT_GITHUB_TOKEN; GH_TOKEN and GITHUB_TOKEN are used only without a login");
   }
@@ -157857,6 +157942,8 @@ async function runSdkHostMain(specPath, loadInProcessTools) {
     (await Promise.resolve().then(() => (init_handler(), handler_exports))).addRecordingDenyLiterals(Object.values(credentials));
     const spec = JSON.parse((0, import_node_fs49.readFileSync)(specPath, "utf8"));
     if (spec?.schema_version !== 1 || !spec.worker_name || !spec.state_root) throw new Error("invalid sdk host spec");
+    const stored = typeof spec.user_config_dir === "string" ? storedLoginToken(spec.user_config_dir, process.platform) : void 0;
+    if (stored) (await Promise.resolve().then(() => (init_handler(), handler_exports))).addRecordingDenyLiterals([stored]);
     log3(`start team=${spec.team_name} worker=${spec.worker_name} attempt=${spec.attempt_id}`);
     const outcome = await runSdkHost(spec, {
       loadSdk: () => loadCopilotSdk2(process.env, spawnSync24),

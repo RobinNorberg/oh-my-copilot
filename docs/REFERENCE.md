@@ -824,7 +824,7 @@ Pane workers are not sandboxed; their env is hygiene, not a boundary.
 
     Your `user.name`, `safe.directory` and `core.longpaths` still apply.
   - **What is kept.** `PATH`, the real home and profile dirs (`HOME`, `USERPROFILE`, `APPDATA`, `LOCALAPPDATA`, `TEMP`), toolchain variables such as `JAVA_HOME`, proxy and CA variables, and the model variables; the host also keeps the `OMC_*`/`OMG_*` variables and the worker its `OMC_TEAM_*` ones.
-  - **Copilot's credential.** The leader writes `COPILOT_GITHUB_TOKEN`, `GH_TOKEN` and `GITHUB_TOKEN` once to the host's stdin, so they are never in the host's env, where a worker could read them with `ps eww` or `/proc/<pid>/environ`. The host passes one of them to the session over RPC (`gitHubToken`): `COPILOT_GITHUB_TOKEN`, or `GH_TOKEN`/`GITHUB_TOKEN` when no stored Copilot login exists. With neither a login nor a token the worker fails to start.
+  - **Copilot's credential.** The leader writes `COPILOT_GITHUB_TOKEN`, `GH_TOKEN` and `GITHUB_TOKEN` once to the host's stdin, so they are never in the host's env, where a worker could read them with `ps eww` or `/proc/<pid>/environ`. The host passes one of them to the session over RPC (`gitHubToken`): `COPILOT_GITHUB_TOKEN`, else on a Linux or macOS host without a keyring the stored login's plaintext token from your Copilot `config.json` (see "Linux and macOS: hosts without a keyring"), else `GH_TOKEN`/`GITHUB_TOKEN` when no stored Copilot login exists. With neither a login nor a token the worker fails to start.
     - The SDK's client-level `gitHubToken` would put the token into the runtime process env (`COPILOT_SDK_AUTH_TOKEN`), so it is not used. The token-only path (CI, no stored login) therefore relies on the session-level token and needs a live tier-2 smoke before you rely on it.
   - **The leader's settings.** The leader's `COPILOT_HOME` and `COPILOT_MODEL` never replace the worker's own home or its `--model`.
   - **Denied commands.** The shell denylist also refuses `git credential fill`/`approve`/`reject`, `git config … extraheader`, `gh auth token`, `gh auth git-credential`, `gh auth status -t`/`--show-token` and `az account get-access-token`. A helper such as `-c credential.helper=!gh auth git-credential` is already refused by the `-c credential.*` rule.
@@ -1432,6 +1432,12 @@ Every `copilot_run` session asks the Copilot CLI's OS sandbox to confine its she
 3. It reads `sandbox.getEnforcementStatus`.
 
 The sandbox is confirmed only when all three succeed and enforcement is not `blocked`. After that, every shell call must carry the runtime's `sandboxed: true` attestation. The first call without it stops the session as `sandbox-escaped`. Sandbox bypass requests are always rejected, and `allowBypass` is never set.
+
+###### Linux and macOS: hosts without a keyring
+
+Without an OS keyring (no Secret Service, or a headless WSL or server install), `copilot login` stores the token in plain text in your Copilot config (`~/.copilot/config.json`, or under `COPILOT_HOME`), next to `lastLoggedInUser`. A lane's job home only ever gets the login identity, so oh-my-copilot uses that stored token automatically. It reads the entry for `lastLoggedInUser` and passes it the way it passes `COPILOT_GITHUB_TOKEN`: over the session RPC (`gitHubToken`) for `copilot_run` and factory lanes, sandboxed gate commands and SDK team workers, and as the SDK client's `gitHubToken` for the no-session model reads (the model catalogue and the bench `--model` probe), which start no session that runs code. It is never written to the job home, the lane env, logs, notes or progress files, and lane output that carries it is redacted. Where the host reports `denied_paths`, the lane sandbox also denies your Copilot `config.json` when `COPILOT_HOME` moved it out of `~/.copilot` (which is denied anyway).
+
+`COPILOT_GITHUB_TOKEN` overrides the stored token. `GH_TOKEN` and `GITHUB_TOKEN` are used only when there is no stored login, as before. An expired entry or a Microsoft Entra entry is skipped. On Windows nothing changes: the token stays in Credential Manager and is never read from `config.json`. When a model read still answers "Not authenticated", the message names the credentials it tried (names only, never values) and points to `copilot login` or `COPILOT_GITHUB_TOKEN`.
 
 ###### Linux: restricted user namespaces
 

@@ -235,4 +235,88 @@ export function loginIdentity(userConfigDir) {
         return {};
     }
 }
+/** The config.json maps where Copilot CLI keeps plaintext tokens without an OS keyring (`copilotTokens`: older CLIs). */
+const PLAINTEXT_TOKEN_FIELDS = ['authTokens', 'copilotTokens'];
+/**
+ * The plaintext token Copilot CLI stored in `<userConfigDir>/config.json` for
+ * `lastLoggedInUser`, or undefined. Without an OS keyring (Linux or macOS
+ * with no Secret Service / keychain) the CLI writes it there, keyed by host
+ * and login (`<host>:<login>`); a value is the token string or
+ * `{ token, expiresAt?, accountType? }`. An expired entry and an Entra entry
+ * (not a GitHub token) are skipped. Never on Windows: the CLI keeps it in
+ * Credential Manager there, and lanes keep using that.
+ *
+ * The caller must never write the value into a job home, an env, or a file:
+ * it goes over the session RPC (`gitHubToken`) or a no-session probe's
+ * client option only, and joins the lane output redaction set.
+ */
+export function storedLoginToken(userConfigDir, platform = process.platform, now = Date.now()) {
+    if (platform === 'win32')
+        return undefined;
+    try {
+        const parsed = parseJsonc(readFileSync(join(userConfigDir, 'config.json'), 'utf-8'));
+        if (!parsed || typeof parsed !== 'object')
+            return undefined;
+        const user = parsed.lastLoggedInUser;
+        if (!user || typeof user !== 'object' || typeof user.login !== 'string' || !user.login)
+            return undefined;
+        const host = typeof user.host === 'string' && user.host ? user.host : 'https://github.com';
+        for (const field of PLAINTEXT_TOKEN_FIELDS) {
+            const token = tokenFromMap(parsed[field], host, user.login, now, 1);
+            if (token)
+                return token;
+        }
+    }
+    catch { /* unreadable or not JSON: no stored token */ }
+    return undefined;
+}
+function tokenFromMap(map, host, login, now, depth) {
+    if (!map || typeof map !== 'object' || Array.isArray(map))
+        return undefined;
+    for (const [key, value] of Object.entries(map)) {
+        if (tokenKeyMatches(key, host, login)) {
+            const token = tokenValue(value, now);
+            if (token)
+                return token;
+        }
+        else if (depth > 0 && value && typeof value === 'object' && !('token' in value)) {
+            // A provider-grouped map (`{ github: { "<host>:<login>": ... } }`).
+            const token = tokenFromMap(value, host, login, now, depth - 1);
+            if (token)
+                return token;
+        }
+    }
+    return undefined;
+}
+/** `<host>:<login>`, the host with or without its scheme, optionally after a `<provider>:` prefix. */
+function tokenKeyMatches(key, host, login) {
+    if (!key.endsWith(`:${login}`))
+        return false;
+    const keyHost = key.slice(0, -(login.length + 1)).replace(/\/+$/, '');
+    const bare = host.replace(/^[a-z][a-z0-9+.-]*:\/\//i, '').replace(/\/+$/, '').toLowerCase();
+    if (!bare)
+        return false;
+    const k = keyHost.toLowerCase();
+    if (!k.endsWith(bare))
+        return false;
+    const before = k.slice(0, k.length - bare.length);
+    return before === '' || before.endsWith('//') || before.endsWith(':');
+}
+function tokenValue(value, now) {
+    if (typeof value === 'string')
+        return value.trim() || undefined;
+    if (!value || typeof value !== 'object')
+        return undefined;
+    const v = value;
+    if (typeof v.token !== 'string' || !v.token.trim())
+        return undefined;
+    if (typeof v.accountType === 'string' && v.accountType.toLowerCase() === 'entra')
+        return undefined;
+    if (typeof v.expiresAt === 'string') {
+        const at = Date.parse(v.expiresAt);
+        if (Number.isFinite(at) && at <= now)
+            return undefined;
+    }
+    return v.token.trim();
+}
 //# sourceMappingURL=copilot-session-env.js.map

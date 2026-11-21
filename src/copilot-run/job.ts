@@ -1220,7 +1220,7 @@ export class CopilotRunManager {
       cleanedUp: false,
       sandboxSettings,
       sandbox: null,
-      secrets: secretValues(this.deps.env),
+      secrets: secretValues(this.deps.env, { userConfigDir: this.deps.userConfigDir(), platform: this.deps.platform }),
       stopReason: null,
       requestStop: (reason) => requestStop(reason),
       stopped,
@@ -1497,7 +1497,8 @@ export class CopilotRunManager {
     writeFileSync(join(job.home, 'config.json'), `${JSON.stringify({ ...ident, trustedFolders: [job.workCwd] }, null, 2)}\n`);
     // An env allowlist with the profile relocated into the job's home (sandbox.ts).
     const env = childEnv(allowlistSessionEnv(buildSessionEnv(deps.env, job.home, { session: false, hasLogin: ident.loggedInUsers !== undefined }), job.home));
-    const gitHubToken = sessionGitHubToken(deps.env);
+    const gitHubToken = sessionGitHubToken(deps.env, { userConfigDir: deps.userConfigDir(), platform: deps.platform });
+    const laneDenied = [...job.deniedPaths, ...(deps.platform === 'win32' ? [] : [join(deps.userConfigDir(), 'config.json')])];
     mkdirSync(env.XDG_CONFIG_HOME!, { recursive: true });
     mkdirSync(dirname(env.GIT_CONFIG_GLOBAL!), { recursive: true });
     mkdirSync(env.TEMP!, { recursive: true });
@@ -1608,7 +1609,9 @@ export class CopilotRunManager {
           hostCommits: job.hostCommits,
           toolPaths: (deps.toolPaths ?? laneToolPaths)(deps.env, deps.platform),
           extraReadonly: proxy.caPaths,
-          ...(job.deniedPaths.length > 0 ? { extraDenied: job.deniedPaths } : {}),
+          // A keyring-less host keeps the login token in plain text in the user's Copilot config.json: denied also when
+          // COPILOT_HOME moved it out of ~/.copilot (denied by default).
+          ...(laneDenied.length > 0 ? { extraDenied: laneDenied } : {}),
           // A caller-made worktree (the private layout): its common git dir is not the checkout's, whose budget ledger stays denied.
           ...(job.external ? { mainRoot: job.ledgerCwd } : {}),
         };

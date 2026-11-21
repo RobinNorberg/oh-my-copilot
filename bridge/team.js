@@ -8095,7 +8095,58 @@ function loginIdentity(userConfigDir) {
     return {};
   }
 }
-var STRIPPED_ENV_EXACT, STRIPPED_ENV_PREFIXES, LOGIN_SHADOWING_TOKENS, SMOKE_SET_ENV, SESSION_SET_ENV, CREDENTIAL_ENV, SECRET_NAME, CASSETTE_ENV, HMAC_KEY_ENV, REPLAY_HMAC_KEY;
+function storedLoginToken(userConfigDir, platform = process.platform, now = Date.now()) {
+  if (platform === "win32") return void 0;
+  try {
+    const parsed = parseJsonc(readFileSync13(join21(userConfigDir, "config.json"), "utf-8"));
+    if (!parsed || typeof parsed !== "object") return void 0;
+    const user = parsed.lastLoggedInUser;
+    if (!user || typeof user !== "object" || typeof user.login !== "string" || !user.login) return void 0;
+    const host = typeof user.host === "string" && user.host ? user.host : "https://github.com";
+    for (const field of PLAINTEXT_TOKEN_FIELDS) {
+      const token = tokenFromMap(parsed[field], host, user.login, now, 1);
+      if (token) return token;
+    }
+  } catch {
+  }
+  return void 0;
+}
+function tokenFromMap(map, host, login, now, depth) {
+  if (!map || typeof map !== "object" || Array.isArray(map)) return void 0;
+  for (const [key, value] of Object.entries(map)) {
+    if (tokenKeyMatches(key, host, login)) {
+      const token = tokenValue(value, now);
+      if (token) return token;
+    } else if (depth > 0 && value && typeof value === "object" && !("token" in value)) {
+      const token = tokenFromMap(value, host, login, now, depth - 1);
+      if (token) return token;
+    }
+  }
+  return void 0;
+}
+function tokenKeyMatches(key, host, login) {
+  if (!key.endsWith(`:${login}`)) return false;
+  const keyHost = key.slice(0, -(login.length + 1)).replace(/\/+$/, "");
+  const bare = host.replace(/^[a-z][a-z0-9+.-]*:\/\//i, "").replace(/\/+$/, "").toLowerCase();
+  if (!bare) return false;
+  const k = keyHost.toLowerCase();
+  if (!k.endsWith(bare)) return false;
+  const before = k.slice(0, k.length - bare.length);
+  return before === "" || before.endsWith("//") || before.endsWith(":");
+}
+function tokenValue(value, now) {
+  if (typeof value === "string") return value.trim() || void 0;
+  if (!value || typeof value !== "object") return void 0;
+  const v = value;
+  if (typeof v.token !== "string" || !v.token.trim()) return void 0;
+  if (typeof v.accountType === "string" && v.accountType.toLowerCase() === "entra") return void 0;
+  if (typeof v.expiresAt === "string") {
+    const at = Date.parse(v.expiresAt);
+    if (Number.isFinite(at) && at <= now) return void 0;
+  }
+  return v.token.trim();
+}
+var STRIPPED_ENV_EXACT, STRIPPED_ENV_PREFIXES, LOGIN_SHADOWING_TOKENS, SMOKE_SET_ENV, SESSION_SET_ENV, CREDENTIAL_ENV, SECRET_NAME, CASSETTE_ENV, HMAC_KEY_ENV, REPLAY_HMAC_KEY, PLAINTEXT_TOKEN_FIELDS;
 var init_copilot_session_env = __esm({
   "src/smoke/copilot-session-env.ts"() {
     "use strict";
@@ -8180,6 +8231,7 @@ var init_copilot_session_env = __esm({
     };
     HMAC_KEY_ENV = "COPILOT_HMAC_KEY";
     REPLAY_HMAC_KEY = "omg-replay-dummy-hmac-key";
+    PLAINTEXT_TOKEN_FIELDS = ["authTokens", "copilotTokens"];
   }
 });
 
@@ -22573,8 +22625,27 @@ function envValue2(env, name) {
   const value = key === void 0 ? void 0 : env[key];
   return typeof value === "string" && value.trim() !== "" ? value : void 0;
 }
-function secretValues(env) {
-  return ["COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"].map((n) => envValue2(env, n)).filter((v) => v !== void 0 && v.length >= 8);
+function storedToken(env, source2) {
+  return source2 && !isReplayEnv(env) ? storedLoginToken(source2.userConfigDir, source2.platform) : void 0;
+}
+function sessionGitHubToken(env, source2) {
+  return envValue2(env, "COPILOT_GITHUB_TOKEN") ?? storedToken(env, source2);
+}
+function triedCredentialNames(env, source2, hasLogin) {
+  const names = [];
+  if (envValue2(env, "COPILOT_GITHUB_TOKEN")) names.push("COPILOT_GITHUB_TOKEN");
+  if (hasLogin) names.push(storedToken(env, source2) ? "the stored login (plaintext token in the Copilot config.json)" : "the stored login (OS credential store)");
+  else for (const n of ["GH_TOKEN", "GITHUB_TOKEN"]) if (envValue2(env, n)) names.push(n);
+  return names;
+}
+function withCredentialHint(text2, env, source2, hasLogin) {
+  if (!/not authenticated/i.test(text2)) return text2;
+  const tried = triedCredentialNames(env, source2, hasLogin);
+  return `${text2} (credentials tried: ${tried.length ? tried.join(", ") : "none found"}; run \`copilot login\` or set COPILOT_GITHUB_TOKEN)`;
+}
+function secretValues(env, source2) {
+  const values = [...["COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"].map((n) => envValue2(env, n)), storedToken(env, source2)].filter((v) => v !== void 0 && v.length >= 8);
+  return [...new Set(values)];
 }
 function scrubTokens(text2, secrets) {
   let out = text2;
@@ -24168,7 +24239,7 @@ function withCassette(loaded2, env = process.env, options = {}) {
         return created.rec;
       };
       const requestHandler = mode === "record" ? createRecordingHandler(Base, recorder) : createReplayHandler(Base, (ctx) => target(ctx).replayer);
-      super({ ...opts, requestHandler, ...mode === "replay" ? { useLoggedInUser: false } : {} });
+      super({ ...opts, requestHandler, ...mode === "replay" ? { useLoggedInUser: false, gitHubToken: void 0 } : {} });
       this.cassetteSlot = slot;
       if (mode === "record") {
         const stop = this.stop.bind(this);
@@ -24864,27 +24935,32 @@ async function fetchCopilotCatalogue(opts = {}) {
     const bin = found && deps.platform === "win32" && /\.(cmd|bat|ps1)$/i.test(found) ? resolveShimTarget(found) : found;
     if (!bin) return { error: "the copilot CLI was not found" };
     const ident = loginIdentity(deps.userConfigDir());
+    hasLogin = ident.loggedInUsers !== void 0;
     writeFileSync12(join52(jobHome, "config.json"), `${JSON.stringify({ ...ident, trustedFolders: [workDir] }, null, 2)}
 `);
-    const env = childEnv(allowlistSessionEnv(buildSessionEnv(deps.env, jobHome, { session: false, hasLogin: ident.loggedInUsers !== void 0 }), jobHome));
+    const env = childEnv(allowlistSessionEnv(buildSessionEnv(deps.env, jobHome, { session: false, hasLogin }), jobHome));
     mkdirSync13(env.XDG_CONFIG_HOME, { recursive: true });
     mkdirSync13(dirname38(env.GIT_CONFIG_GLOBAL), { recursive: true });
     mkdirSync13(env.TEMP, { recursive: true });
+    const gitHubToken = sessionGitHubToken(deps.env, source2);
     const { CopilotClient, RuntimeConnection } = loaded2.module;
     const c = new CopilotClient({
       connection: RuntimeConnection.forStdio({ path: bin, args: ["--max-ai-credits", String(RUNTIME_MIN_MAX_CREDITS)], env }),
       baseDirectory: jobHome,
-      workingDirectory: workDir
+      workingDirectory: workDir,
+      ...gitHubToken ? { gitHubToken } : {}
     });
     client = c;
     await c.start().catch(rethrowSdkStartError);
     return { models: catalogueFromListModels(await c.listModels()) };
   };
+  const source2 = { userConfigDir: deps.userConfigDir(), platform: deps.platform };
+  let hasLogin = false;
   let result;
   try {
     result = await withTimeout(read(), opts.deadlineMs ?? FETCH_DEADLINE_MS, "reading the Copilot model catalogue");
   } catch (error) {
-    result = { error: errText(error) };
+    result = { error: scrubTokens(withCredentialHint(errText(error), deps.env, source2, hasLogin), secretValues(deps.env, source2)) };
   }
   cancelled = true;
   const started = client;

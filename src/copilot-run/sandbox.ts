@@ -21,7 +21,7 @@ import { basename, dirname, isAbsolute, join, posix, resolve, win32 } from 'node
 
 import { userConfigLayers } from '../ship/config.js';
 import { resolveProjectConfigPath } from '../config/project-config-path.js';
-import { SMOKE_SET_ENV } from '../smoke/copilot-session-env.js';
+import { isReplayEnv, SMOKE_SET_ENV, storedLoginToken } from '../smoke/copilot-session-env.js';
 import { isUnderRoot } from '../team/sdk-policy.js';
 import { parseJsonc } from '../utils/jsonc.js';
 import { getOmcRoot } from '../lib/worktree-paths.js';
@@ -1058,23 +1058,64 @@ function envValue(env: NodeJS.ProcessEnv, name: string): string | undefined {
   return typeof value === 'string' && value.trim() !== '' ? value : undefined;
 }
 
+/** Where a stored login's plaintext token can be read (storedLoginToken): the user's Copilot config dir, on this OS. */
+export interface StoredLoginSource {
+  userConfigDir: string;
+  platform: NodeJS.Platform;
+}
+
+/** The stored login's plaintext token for `source`; none in a cassette replay, which runs credential-free. */
+function storedToken(env: NodeJS.ProcessEnv, source: StoredLoginSource | undefined): string | undefined {
+  return source && !isReplayEnv(env) ? storedLoginToken(source.userConfigDir, source.platform) : undefined;
+}
+
 /**
  * The explicit Copilot credential for the session's `gitHubToken` option
  * (SDK 1.0.16 SessionConfig: sent over the session RPC, never put in the
- * runtime's env, unlike the client-level option).
+ * runtime's env, unlike the client-level option): COPILOT_GITHUB_TOKEN,
+ * else, with `source`, the stored login's plaintext token from a keyring-less
+ * host's config.json (storedLoginToken; never on Windows). The job home only
+ * ever gets the login identity, so without this a keyring-less host's
+ * relocated runtime has no credential.
  */
-export function sessionGitHubToken(env: NodeJS.ProcessEnv): string | undefined {
-  return envValue(env, 'COPILOT_GITHUB_TOKEN');
+export function sessionGitHubToken(env: NodeJS.ProcessEnv, source?: StoredLoginSource): string | undefined {
+  return envValue(env, 'COPILOT_GITHUB_TOKEN') ?? storedToken(env, source);
+}
+
+/**
+ * The credentials a runtime started from `env` and `source` can use, by name
+ * only (never a value), in the order the runtime prefers them; for a
+ * "Not authenticated" message.
+ */
+export function triedCredentialNames(env: NodeJS.ProcessEnv, source: StoredLoginSource, hasLogin: boolean): string[] {
+  const names: string[] = [];
+  if (envValue(env, 'COPILOT_GITHUB_TOKEN')) names.push('COPILOT_GITHUB_TOKEN');
+  if (hasLogin) names.push(storedToken(env, source) ? 'the stored login (plaintext token in the Copilot config.json)' : 'the stored login (OS credential store)');
+  else for (const n of ['GH_TOKEN', 'GITHUB_TOKEN']) if (envValue(env, n)) names.push(n);
+  return names;
+}
+
+/**
+ * `text` with, when it reports "Not authenticated", the credentials tried
+ * (names only) and how to add one.
+ */
+export function withCredentialHint(text: string, env: NodeJS.ProcessEnv, source: StoredLoginSource, hasLogin: boolean): string {
+  if (!/not authenticated/i.test(text)) return text;
+  const tried = triedCredentialNames(env, source, hasLogin);
+  return `${text} (credentials tried: ${tried.length ? tried.join(', ') : 'none found'}; run \`copilot login\` or set COPILOT_GITHUB_TOKEN)`;
 }
 
 /** GitHub token shapes: classic ghp_/gho_/ghu_/ghs_/ghr_ and fine-grained github_pat_. */
 const TOKEN_PATTERN = /\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})/g;
 
-/** The token values in the caller's env that lane output must never carry. */
-export function secretValues(env: NodeJS.ProcessEnv): string[] {
-  return ['COPILOT_GITHUB_TOKEN', 'GH_TOKEN', 'GITHUB_TOKEN']
-    .map((n) => envValue(env, n))
+/**
+ * The token values lane output must never carry: those in the caller's env
+ * and, with `source`, the stored login's plaintext token.
+ */
+export function secretValues(env: NodeJS.ProcessEnv, source?: StoredLoginSource): string[] {
+  const values = [...['COPILOT_GITHUB_TOKEN', 'GH_TOKEN', 'GITHUB_TOKEN'].map((n) => envValue(env, n)), storedToken(env, source)]
     .filter((v): v is string => v !== undefined && v.length >= 8);
+  return [...new Set(values)];
 }
 
 /**
