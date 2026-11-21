@@ -129548,6 +129548,36 @@ var init_gate_procs = __esm({
   }
 });
 
+// src/factory/git-preflight.ts
+function parseGitVersion(text6) {
+  const m = /git version (\d+)\.(\d+)/.exec(text6);
+  return m ? [Number(m[1]), Number(m[2])] : null;
+}
+function gitVersionAtLeast(version3, min) {
+  return version3[0] > min[0] || version3[0] === min[0] && version3[1] >= min[1];
+}
+function factoryGitProblem(exec3 = defaultExec, platform = process.platform) {
+  const r = exec3("git", ["--version"], {});
+  const want = `${FACTORY_GIT_MIN_VERSION[0]}.${FACTORY_GIT_MIN_VERSION[1]}`;
+  const v = r.status === 0 ? parseGitVersion(r.stdout) : null;
+  if (!v) {
+    const why = r.stderr.trim().split(/\r?\n/)[0]?.trim();
+    return `the factory needs git >= ${want} (merge-tree --write-tree), and \`git --version\` could not be read${why ? `: ${why}` : ""}`;
+  }
+  if (gitVersionAtLeast(v, FACTORY_GIT_MIN_VERSION)) return null;
+  const full = /git version (\S+)/.exec(r.stdout)?.[1] ?? `${v[0]}.${v[1]}`;
+  const hint = platform === "linux" ? " On Ubuntu: sudo add-apt-repository ppa:git-core/ppa && sudo apt-get update && sudo apt-get install git" : "";
+  return `git ${full} is too old for the factory: it needs git >= ${want} (merge-tree --write-tree).${hint}`;
+}
+var FACTORY_GIT_MIN_VERSION;
+var init_git_preflight = __esm({
+  "src/factory/git-preflight.ts"() {
+    "use strict";
+    init_exec();
+    FACTORY_GIT_MIN_VERSION = [2, 38];
+  }
+});
+
 // src/factory/run/private-store.ts
 function canonicalExisting(p) {
   let head = (0, import_path184.resolve)(p);
@@ -130139,12 +130169,11 @@ function privateExec(p, ctx, gitDirOf, env2 = {}) {
 }
 function gitVersionProblem(exec3 = defaultExec) {
   const r = exec3("git", ["--version"], {});
-  const m = /git version (\d+)\.(\d+)/.exec(r.stdout);
+  const v = r.status === 0 ? parseGitVersion(r.stdout) : null;
   const want = `${PRIVATE_GIT_MIN_VERSION[0]}.${PRIVATE_GIT_MIN_VERSION[1]}`;
-  if (r.status !== 0 || !m) return `the private layout needs git ${want} or later, and \`git --version\` could not be read`;
-  const [major, minor] = [Number(m[1]), Number(m[2])];
-  if (major > PRIVATE_GIT_MIN_VERSION[0] || major === PRIVATE_GIT_MIN_VERSION[0] && minor >= PRIVATE_GIT_MIN_VERSION[1]) return null;
-  return `the private layout needs git ${want} or later (GIT_NO_LAZY_FETCH), and this git is ${major}.${minor}`;
+  if (!v) return `the private layout needs git ${want} or later, and \`git --version\` could not be read`;
+  if (gitVersionAtLeast(v, PRIVATE_GIT_MIN_VERSION)) return null;
+  return `the private layout needs git ${want} or later (GIT_NO_LAZY_FETCH), and this git is ${v[0]}.${v[1]}`;
 }
 function rerecordConfigHash(p, ctx) {
   const next = { ...p, configHash: privateRepoConfigHash(p.gitDir) };
@@ -130346,6 +130375,7 @@ var init_private_store = __esm({
     import_path184 = require("path");
     init_exec();
     init_merge2();
+    init_git_preflight();
     init_sdk_policy();
     init_exec2();
     init_lane_commit();
@@ -150205,7 +150235,8 @@ function createBenchFixture(dir, o = {}) {
   (0, import_node_fs42.mkdirSync)((0, import_node_path46.dirname)(canaryPath), { recursive: true });
   (0, import_node_fs42.writeFileSync)(canaryPath, `Support notes (private): ${canary}
 `);
-  git6(exec3, root, ["init", "-q", "-b", BENCH_BASE]);
+  git6(exec3, root, ["init", "-q"]);
+  git6(exec3, root, ["symbolic-ref", "HEAD", `refs/heads/${BENCH_BASE}`]);
   git6(exec3, root, ["config", "user.name", "omg-bench"]);
   git6(exec3, root, ["config", "user.email", "omg-bench@localhost"]);
   const write = (rel, text6) => {
@@ -152919,6 +152950,8 @@ function factoryBenchCommand() {
   const bench = new Command("bench").description("Benchmark the factory on seeded issues against the local forge (init a fixture, run it --fake or --live, compare results)");
   bench.command("init").argument("<dir>", "a new or empty directory for the fixture (the repository goes to <dir>/repo)").option("--node-modules <dir>", "link <dir>/repo/node_modules to this node_modules (it needs vitest and typescript) instead of running npm install there").description("Create the bench fixture: a TypeScript + vitest repository on the local forge with the seeded backlog").action((dir, o) => {
     try {
+      const gitProblem = factoryGitProblem();
+      if (gitProblem) throw new Error(gitProblem);
       const meta3 = createBenchFixture(dir, o.nodeModules ? { nodeModules: o.nodeModules } : {});
       console.log(source_default.green(`bench fixture v${meta3.fixtureVersion} at ${meta3.root} (${meta3.issues.length} issues)`));
       if (!o.nodeModules) console.log(`next: npm install in ${meta3.root}, then omg factory bench run ${dir} --fake (or --live --max-requests <n>)`);
@@ -152928,6 +152961,8 @@ function factoryBenchCommand() {
   });
   bench.command("run").argument("<dir>", "the fixture directory (omg factory bench init)").option("--fake", "scripted lanes, no Copilot and no cost: proves the harness, scoring and trap expectations").option("--live", 'real Copilot lanes through omg factory run <id> in the fixture repository; needs --max-requests and the gate sandbox enforced (factory.run.sandbox.gates "enforced", or isolation "container" and gates not "unsandboxed")').option("--max-requests <n>", `the premium-request cap: ${LIVE_CAP_BOUND}`, integerOption(1, 1e4)).option("--max-credits <n>", "--live: no run starts once this many AI credits are recorded (a soft stop: runs in flight finish)", integerOption(1, 1e6)).option("--max-minutes <n>", `no run starts after this many minutes (default ${DEFAULT_BENCH_MAX_MINUTES})`, integerOption(1, 24 * 60)).option("--parallel <n>", '--live: up to n runs at once (needs factory.run.maxConcurrent above 1 and layout "private" in your user config)', integerOption(1, 16)).option("--allow-multiplier <n>", "--live: accept lane models (the default, --model, --review-model or factory.run.laneModels) that bill up to n premium requests per call (without it: refused above 1, or when Copilot does not report the model or multiplier)", integerOption(1, 1e3)).option("--model <id>", "start every lane without its own factory.run.laneModels entry on this Copilot model id (a known model id): --fake passes it to the engine, --live passes --model to each omg factory run and checks THIS model against your account (refused when listModels() does not offer it) and its multiplier; the results record it").option("--review-model <id>", "start review lanes on this Copilot model id (a known model id), e.g. a cheaper one than the implement lanes: passed on like --model, and --live checks it against your account and --allow-multiplier too; the results record it per lane kind").option("--issues <ids>", "run only these issues (comma-separated ids, e.g. 2,6,9,10); the results record the subset").option("--out <dir>", "results directory (default ./bench-results)").option("--json", "print the results JSON instead of the summary").description("Run the factory over the fixture until every issue is parked, finished or not runnable, then score it").action(async (dir, o) => {
     if (Boolean(o.fake) === Boolean(o.live)) return fail4(new Error("pass exactly one of --fake and --live"), true);
+    const gitProblem = factoryGitProblem();
+    if (gitProblem) return fail4(new Error(gitProblem));
     let issues;
     try {
       issues = o.issues === void 0 ? void 0 : parseIssueList(o.issues);
@@ -153012,6 +153047,7 @@ var init_factory_bench = __esm({
     init_esm();
     init_source();
     import_node_fs47 = require("node:fs");
+    init_git_preflight();
     init_fixture();
     init_runner();
     init_score2();
@@ -153834,6 +153870,10 @@ function factoryRunCommand(deps = defaultFactoryRunDeps) {
       throw new FactoryUsageError(error62 instanceof Error ? error62.message : String(error62));
     }
     let issue2 = o.next ? void 0 : parseIssue(issueRaw);
+    if (!o.dryRun) {
+      const gitProblem = factoryGitProblem(deps.exec);
+      if (gitProblem) throw new FactoryUsageError(gitProblem);
+    }
     const root = factoryRoot(exec3);
     const loadedLimits = deps.limits(root);
     for (const w of loadedLimits.warnings) console.error(source_default.yellow(w));
@@ -154545,6 +154585,7 @@ var init_factory = __esm({
     init_score();
     init_forge();
     init_parallel();
+    init_git_preflight();
     init_private_run();
     init_skill_slash();
     defaultFactoryRunDeps = {
@@ -155125,8 +155166,10 @@ function prepareFactoryRepo(dir) {
     return `repository files: ${err.message}`;
   }
   const steps = [
-    [["init", "-q", "--bare", "-b", FACTORY_RUN_BASE, bare], dir],
-    [["init", "-q", "-b", FACTORY_RUN_BASE], repo],
+    [["init", "-q", "--bare", bare], dir],
+    [["symbolic-ref", "HEAD", `refs/heads/${FACTORY_RUN_BASE}`], bare],
+    [["init", "-q"], repo],
+    [["symbolic-ref", "HEAD", `refs/heads/${FACTORY_RUN_BASE}`], repo],
     [["config", "user.name", "omg-smoke"], repo],
     [["config", "user.email", "omg-smoke@example.invalid"], repo],
     [["config", "commit.gpgsign", "false"], repo],

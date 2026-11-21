@@ -43,6 +43,7 @@ import { basename, dirname, isAbsolute, join, resolve } from 'path';
 
 import { defaultExec, type Exec, type ExecResult } from '../../ship/exec.js';
 import { protectedChanges } from '../../ship/merge.js';
+import { gitVersionAtLeast, parseGitVersion } from '../git-preflight.js';
 import { isUnderRoot } from '../../team/sdk-policy.js';
 import { mirrorNamedRemoteKeys, mirrorRewriteKeys, REMOTE_CONFIG_ARGS, sameFsPath, URL_REWRITE_CONFIG_ARGS } from './exec.js';
 import { LANE_PROTECTED_PATHS } from './lane-commit.js';
@@ -1153,12 +1154,11 @@ export const PRIVATE_GIT_MIN_VERSION = [2, 44] as const;
 /** Null, or why the git on PATH is too old for the private store (or its version cannot be read). */
 export function gitVersionProblem(exec: Exec = defaultExec): string | null {
   const r = exec('git', ['--version'], {});
-  const m = /git version (\d+)\.(\d+)/.exec(r.stdout);
+  const v = r.status === 0 ? parseGitVersion(r.stdout) : null;
   const want = `${PRIVATE_GIT_MIN_VERSION[0]}.${PRIVATE_GIT_MIN_VERSION[1]}`;
-  if (r.status !== 0 || !m) return `the private layout needs git ${want} or later, and \`git --version\` could not be read`;
-  const [major, minor] = [Number(m[1]), Number(m[2])];
-  if (major > PRIVATE_GIT_MIN_VERSION[0] || (major === PRIVATE_GIT_MIN_VERSION[0] && minor >= PRIVATE_GIT_MIN_VERSION[1])) return null;
-  return `the private layout needs git ${want} or later (GIT_NO_LAZY_FETCH), and this git is ${major}.${minor}`;
+  if (!v) return `the private layout needs git ${want} or later, and \`git --version\` could not be read`;
+  if (gitVersionAtLeast(v, PRIVATE_GIT_MIN_VERSION)) return null;
+  return `the private layout needs git ${want} or later (GIT_NO_LAZY_FETCH), and this git is ${v[0]}.${v[1]}`;
 }
 
 /**

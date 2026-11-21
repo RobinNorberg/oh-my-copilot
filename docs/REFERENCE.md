@@ -66,6 +66,7 @@ The npm package exposes both `oh-my-copilot` and `omg`; examples prefer `omg` un
 
 - [GitHub Copilot CLI](https://github.com/github/copilot-cli) with a Copilot subscription, or [Claude Code](https://docs.anthropic.com/claude-code) with a Claude Max/Pro subscription or `ANTHROPIC_API_KEY`
 - Node.js 22.13 or newer (23.4 or newer on the 23 line) on PATH (every hook and the MCP server run `node`; `omg doctor conflicts` checks it). Node 20 is not supported: state locking and the job database use the built-in `node:sqlite`.
+- git 2.38 or newer for the factory (`omg factory run`, `omg factory bench`; `merge-tree --write-tree`), checked once at the start of those commands; the private run layout needs 2.44. Ubuntu 20.04 ships 2.25. On Ubuntu: `sudo add-apt-repository ppa:git-core/ppa && sudo apt-get update && sudo apt-get install git`.
 
 ---
 

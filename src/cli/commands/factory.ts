@@ -77,6 +77,7 @@ import { checkEnvFor, fetchBase, FETCH_TIMEOUT_MS, forgeReadExec, localBase, mis
 import { BUCKET_ORDER, checkItems, plainText, type CheckResult } from '../../factory/check/score.js';
 import { createForge } from '../../forge/index.js';
 import { liveCreditReservations, parallelLayoutRefusal, readTrustedBaseLayerAtRef, releaseDeadCreditReservations, resolveParallelSettings, runParallelSupervisor, type ParallelChildOutcome, type ParallelSettings } from '../../factory/run/parallel.js';
+import { factoryGitProblem } from '../../factory/git-preflight.js';
 import { resolveRunLayout, userParallelOptIn, type RunLayoutChoice } from '../../factory/run/private-run.js';
 import { skillSlash } from '../../utils/skill-slash.js';
 
@@ -530,6 +531,10 @@ export function factoryRunCommand(deps: FactoryRunDeps = defaultFactoryRunDeps):
           throw new FactoryUsageError(error instanceof Error ? error.message : String(error));
         }
         let issue: number | undefined = o.next ? undefined : parseIssue(issueRaw);
+        if (!o.dryRun) {
+          const gitProblem = factoryGitProblem(deps.exec);
+          if (gitProblem) throw new FactoryUsageError(gitProblem);
+        }
         const root = factoryRoot(exec);
         const loadedLimits = deps.limits(root);
         for (const w of loadedLimits.warnings) console.error(chalk.yellow(w));

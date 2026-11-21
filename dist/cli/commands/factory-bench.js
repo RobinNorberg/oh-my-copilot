@@ -8,6 +8,7 @@
 import { Command } from 'commander';
 import chalk from 'chalk';
 import { writeFileSync } from 'node:fs';
+import { factoryGitProblem } from '../../factory/git-preflight.js';
 import { createBenchFixture } from '../../factory/bench/fixture.js';
 import { BenchUsageError, DEFAULT_BENCH_MAX_MINUTES, LIVE_CAP_BOUND, parseIssueList, runBench } from '../../factory/bench/runner.js';
 import { benchRegressions, compareResults, DEFAULT_REQUEST_TOLERANCE_PCT, readBenchResults, renderRegressions } from '../../factory/bench/score.js';
@@ -25,6 +26,9 @@ export function factoryBenchCommand() {
         .description('Create the bench fixture: a TypeScript + vitest repository on the local forge with the seeded backlog')
         .action((dir, o) => {
         try {
+            const gitProblem = factoryGitProblem();
+            if (gitProblem)
+                throw new Error(gitProblem);
             const meta = createBenchFixture(dir, o.nodeModules ? { nodeModules: o.nodeModules } : {});
             console.log(chalk.green(`bench fixture v${meta.fixtureVersion} at ${meta.root} (${meta.issues.length} issues)`));
             if (!o.nodeModules)
@@ -53,6 +57,9 @@ export function factoryBenchCommand() {
         .action(async (dir, o) => {
         if (Boolean(o.fake) === Boolean(o.live))
             return fail(new Error('pass exactly one of --fake and --live'), true);
+        const gitProblem = factoryGitProblem();
+        if (gitProblem)
+            return fail(new Error(gitProblem));
         let issues;
         try {
             issues = o.issues === undefined ? undefined : parseIssueList(o.issues);
