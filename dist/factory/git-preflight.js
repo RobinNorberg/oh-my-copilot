@@ -15,15 +15,18 @@ export function gitVersionAtLeast(version, min) {
     return version[0] > min[0] || (version[0] === min[0] && version[1] >= min[1]);
 }
 /** Null, or the actionable message for a git on PATH that is too old for the factory (or whose version cannot be read). */
-export function factoryGitProblem(exec = defaultExec) {
+export function factoryGitProblem(exec = defaultExec, platform = process.platform) {
     const r = exec('git', ['--version'], {});
     const want = `${FACTORY_GIT_MIN_VERSION[0]}.${FACTORY_GIT_MIN_VERSION[1]}`;
     const v = r.status === 0 ? parseGitVersion(r.stdout) : null;
-    if (!v)
-        return `the factory needs git >= ${want} (merge-tree --write-tree), and \`git --version\` could not be read`;
+    if (!v) {
+        const why = r.stderr.trim().split(/\r?\n/)[0]?.trim();
+        return `the factory needs git >= ${want} (merge-tree --write-tree), and \`git --version\` could not be read${why ? `: ${why}` : ''}`;
+    }
     if (gitVersionAtLeast(v, FACTORY_GIT_MIN_VERSION))
         return null;
     const full = /git version (\S+)/.exec(r.stdout)?.[1] ?? `${v[0]}.${v[1]}`;
-    return `git ${full} is too old for the factory: it needs git >= ${want} (merge-tree --write-tree). On Ubuntu: add-apt-repository ppa:git-core/ppa && apt-get install git`;
+    const hint = platform === 'linux' ? ' On Ubuntu: sudo add-apt-repository ppa:git-core/ppa && sudo apt-get update && sudo apt-get install git' : '';
+    return `git ${full} is too old for the factory: it needs git >= ${want} (merge-tree --write-tree).${hint}`;
 }
 //# sourceMappingURL=git-preflight.js.map

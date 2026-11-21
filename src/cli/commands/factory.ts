@@ -532,7 +532,7 @@ export function factoryRunCommand(deps: FactoryRunDeps = defaultFactoryRunDeps):
         }
         let issue: number | undefined = o.next ? undefined : parseIssue(issueRaw);
         if (!o.dryRun) {
-          const gitProblem = factoryGitProblem();
+          const gitProblem = factoryGitProblem(deps.exec);
           if (gitProblem) throw new FactoryUsageError(gitProblem);
         }
         const root = factoryRoot(exec);

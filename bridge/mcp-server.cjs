@@ -67402,6 +67402,21 @@ var init_gate_procs = __esm({
   }
 });
 
+// src/factory/git-preflight.ts
+function parseGitVersion(text3) {
+  const m = /git version (\d+)\.(\d+)/.exec(text3);
+  return m ? [Number(m[1]), Number(m[2])] : null;
+}
+function gitVersionAtLeast(version2, min) {
+  return version2[0] > min[0] || version2[0] === min[0] && version2[1] >= min[1];
+}
+var init_git_preflight = __esm({
+  "src/factory/git-preflight.ts"() {
+    "use strict";
+    init_exec();
+  }
+});
+
 // src/factory/run/private-store.ts
 function canonicalExisting(p) {
   let head = (0, import_path103.resolve)(p);
@@ -67993,12 +68008,11 @@ function privateExec(p, ctx, gitDirOf, env2 = {}) {
 }
 function gitVersionProblem(exec = defaultExec) {
   const r = exec("git", ["--version"], {});
-  const m = /git version (\d+)\.(\d+)/.exec(r.stdout);
+  const v = r.status === 0 ? parseGitVersion(r.stdout) : null;
   const want = `${PRIVATE_GIT_MIN_VERSION[0]}.${PRIVATE_GIT_MIN_VERSION[1]}`;
-  if (r.status !== 0 || !m) return `the private layout needs git ${want} or later, and \`git --version\` could not be read`;
-  const [major, minor] = [Number(m[1]), Number(m[2])];
-  if (major > PRIVATE_GIT_MIN_VERSION[0] || major === PRIVATE_GIT_MIN_VERSION[0] && minor >= PRIVATE_GIT_MIN_VERSION[1]) return null;
-  return `the private layout needs git ${want} or later (GIT_NO_LAZY_FETCH), and this git is ${major}.${minor}`;
+  if (!v) return `the private layout needs git ${want} or later, and \`git --version\` could not be read`;
+  if (gitVersionAtLeast(v, PRIVATE_GIT_MIN_VERSION)) return null;
+  return `the private layout needs git ${want} or later (GIT_NO_LAZY_FETCH), and this git is ${v[0]}.${v[1]}`;
 }
 function rerecordConfigHash(p, ctx) {
   const next = { ...p, configHash: privateRepoConfigHash(p.gitDir) };
@@ -68200,6 +68214,7 @@ var init_private_store = __esm({
     import_path103 = require("path");
     init_exec();
     init_merge2();
+    init_git_preflight();
     init_sdk_policy();
     init_exec2();
     init_lane_commit();
@@ -82149,14 +82164,6 @@ var init_factory_setup = __esm({
       createForge,
       userConfigPath: () => trustedUserConfigPath()
     };
-  }
-});
-
-// src/factory/git-preflight.ts
-var init_git_preflight = __esm({
-  "src/factory/git-preflight.ts"() {
-    "use strict";
-    init_exec();
   }
 });
 

@@ -129548,6 +129548,36 @@ var init_gate_procs = __esm({
   }
 });
 
+// src/factory/git-preflight.ts
+function parseGitVersion(text6) {
+  const m = /git version (\d+)\.(\d+)/.exec(text6);
+  return m ? [Number(m[1]), Number(m[2])] : null;
+}
+function gitVersionAtLeast(version3, min) {
+  return version3[0] > min[0] || version3[0] === min[0] && version3[1] >= min[1];
+}
+function factoryGitProblem(exec3 = defaultExec, platform = process.platform) {
+  const r = exec3("git", ["--version"], {});
+  const want = `${FACTORY_GIT_MIN_VERSION[0]}.${FACTORY_GIT_MIN_VERSION[1]}`;
+  const v = r.status === 0 ? parseGitVersion(r.stdout) : null;
+  if (!v) {
+    const why = r.stderr.trim().split(/\r?\n/)[0]?.trim();
+    return `the factory needs git >= ${want} (merge-tree --write-tree), and \`git --version\` could not be read${why ? `: ${why}` : ""}`;
+  }
+  if (gitVersionAtLeast(v, FACTORY_GIT_MIN_VERSION)) return null;
+  const full = /git version (\S+)/.exec(r.stdout)?.[1] ?? `${v[0]}.${v[1]}`;
+  const hint = platform === "linux" ? " On Ubuntu: sudo add-apt-repository ppa:git-core/ppa && sudo apt-get update && sudo apt-get install git" : "";
+  return `git ${full} is too old for the factory: it needs git >= ${want} (merge-tree --write-tree).${hint}`;
+}
+var FACTORY_GIT_MIN_VERSION;
+var init_git_preflight = __esm({
+  "src/factory/git-preflight.ts"() {
+    "use strict";
+    init_exec();
+    FACTORY_GIT_MIN_VERSION = [2, 38];
+  }
+});
+
 // src/factory/run/private-store.ts
 function canonicalExisting(p) {
   let head = (0, import_path184.resolve)(p);
@@ -130139,12 +130169,11 @@ function privateExec(p, ctx, gitDirOf, env2 = {}) {
 }
 function gitVersionProblem(exec3 = defaultExec) {
   const r = exec3("git", ["--version"], {});
-  const m = /git version (\d+)\.(\d+)/.exec(r.stdout);
+  const v = r.status === 0 ? parseGitVersion(r.stdout) : null;
   const want = `${PRIVATE_GIT_MIN_VERSION[0]}.${PRIVATE_GIT_MIN_VERSION[1]}`;
-  if (r.status !== 0 || !m) return `the private layout needs git ${want} or later, and \`git --version\` could not be read`;
-  const [major, minor] = [Number(m[1]), Number(m[2])];
-  if (major > PRIVATE_GIT_MIN_VERSION[0] || major === PRIVATE_GIT_MIN_VERSION[0] && minor >= PRIVATE_GIT_MIN_VERSION[1]) return null;
-  return `the private layout needs git ${want} or later (GIT_NO_LAZY_FETCH), and this git is ${major}.${minor}`;
+  if (!v) return `the private layout needs git ${want} or later, and \`git --version\` could not be read`;
+  if (gitVersionAtLeast(v, PRIVATE_GIT_MIN_VERSION)) return null;
+  return `the private layout needs git ${want} or later (GIT_NO_LAZY_FETCH), and this git is ${v[0]}.${v[1]}`;
 }
 function rerecordConfigHash(p, ctx) {
   const next = { ...p, configHash: privateRepoConfigHash(p.gitDir) };
@@ -130346,6 +130375,7 @@ var init_private_store = __esm({
     import_path184 = require("path");
     init_exec();
     init_merge2();
+    init_git_preflight();
     init_sdk_policy();
     init_exec2();
     init_lane_commit();
@@ -149139,32 +149169,6 @@ var init_factory_setup = __esm({
   }
 });
 
-// src/factory/git-preflight.ts
-function parseGitVersion(text6) {
-  const m = /git version (\d+)\.(\d+)/.exec(text6);
-  return m ? [Number(m[1]), Number(m[2])] : null;
-}
-function gitVersionAtLeast(version3, min) {
-  return version3[0] > min[0] || version3[0] === min[0] && version3[1] >= min[1];
-}
-function factoryGitProblem(exec3 = defaultExec) {
-  const r = exec3("git", ["--version"], {});
-  const want = `${FACTORY_GIT_MIN_VERSION[0]}.${FACTORY_GIT_MIN_VERSION[1]}`;
-  const v = r.status === 0 ? parseGitVersion(r.stdout) : null;
-  if (!v) return `the factory needs git >= ${want} (merge-tree --write-tree), and \`git --version\` could not be read`;
-  if (gitVersionAtLeast(v, FACTORY_GIT_MIN_VERSION)) return null;
-  const full = /git version (\S+)/.exec(r.stdout)?.[1] ?? `${v[0]}.${v[1]}`;
-  return `git ${full} is too old for the factory: it needs git >= ${want} (merge-tree --write-tree). On Ubuntu: add-apt-repository ppa:git-core/ppa && apt-get install git`;
-}
-var FACTORY_GIT_MIN_VERSION;
-var init_git_preflight = __esm({
-  "src/factory/git-preflight.ts"() {
-    "use strict";
-    init_exec();
-    FACTORY_GIT_MIN_VERSION = [2, 38];
-  }
-});
-
 // src/factory/bench/seed/project.ts
 var BENCH_FIXTURE_VERSION, BENCH_BASE, BENCH_LABEL, BENCH_GATE, ACCEPTANCE_TEST_PATH, json2, BENCH_OMG_JSONC, LINT_MJS, BASE_RATES, SHIPPING_TS, SHIPPING_MD, MESSAGES_TS, BENCH_PROJECT_FILES;
 var init_project = __esm({
@@ -153867,7 +153871,7 @@ function factoryRunCommand(deps = defaultFactoryRunDeps) {
     }
     let issue2 = o.next ? void 0 : parseIssue(issueRaw);
     if (!o.dryRun) {
-      const gitProblem = factoryGitProblem();
+      const gitProblem = factoryGitProblem(deps.exec);
       if (gitProblem) throw new FactoryUsageError(gitProblem);
     }
     const root = factoryRoot(exec3);

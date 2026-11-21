@@ -10,5 +10,5 @@ export declare const FACTORY_GIT_MIN_VERSION: readonly [2, 38];
 export declare function parseGitVersion(text: string): [number, number] | null;
 export declare function gitVersionAtLeast(version: readonly [number, number], min: readonly [number, number]): boolean;
 /** Null, or the actionable message for a git on PATH that is too old for the factory (or whose version cannot be read). */
-export declare function factoryGitProblem(exec?: Exec): string | null;
+export declare function factoryGitProblem(exec?: Exec, platform?: NodeJS.Platform): string | null;
 //# sourceMappingURL=git-preflight.d.ts.map
