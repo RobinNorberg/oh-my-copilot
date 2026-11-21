@@ -225,7 +225,9 @@ function* linkNodeModulesSteps(root, checkout, warn, workspaces, copy) {
         return ws.problem;
     // The trees this call builds: the root one, then one per workspace package whose node_modules exists in your
     // checkout (npm puts version conflicts there, pnpm every package's direct deps), in the same package dir of the gate checkout.
-    const trees = [{ src: source, to: target, rel: '' }];
+    // The links name your node_modules by its realpath: the gate sandbox grants that dir (sandbox.ts buildSandboxConfig), and
+    // on Linux (bwrap) a path through a link to it (a bench's `node_modules -> <omc>/node_modules`) is not mounted there.
+    const trees = [{ src: realpathSync.native(source), to: target, rel: '' }];
     for (const rel of ws.dirs) {
         const yours = plainDirUnder(root, rel);
         const src = yours ? join(yours, 'node_modules') : null;

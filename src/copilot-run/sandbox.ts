@@ -458,6 +458,9 @@ export function nodeModulesTreeProblem(worktree: string, target: string, platfor
   /** The links in `dir` (and in its real `@scope` dirs): each `<base>/<name>` or into the worktree; true when one uses `base`. */
   const check = (dir: string, base: string, scoped: boolean): { problem: string } | { linked: boolean } => {
     let linked = false;
+    // linkNodeModules links to the realpath of `base` (the dir granted read-only); older trees to `base` as named.
+    let baseReal: string | null = null;
+    try { baseReal = realpathSync.native(base); } catch { /* only the lexical form */ }
     for (const name of readdirSync(dir)) {
       const p = join(dir, name);
       let link: string;
@@ -476,7 +479,7 @@ export function nodeModulesTreeProblem(worktree: string, target: string, platfor
         return { problem: `${p} cannot be read (${error instanceof Error ? error.message : String(error)})` };
       }
       const to = P.resolve(P.dirname(p), link);
-      if (same(to, join(base, name))) linked = true;
+      if (same(to, join(base, name)) || (baseReal !== null && same(to, join(baseReal, name)))) linked = true;
       else if (!insideWorktree(p, to)) return { problem: `${p} points to ${to}, not ${join(base, name)} the engine linked` };
     }
     return { linked };

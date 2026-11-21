@@ -49624,6 +49624,11 @@ function nodeModulesTreeProblem(worktree, target, platform = process.platform) {
   };
   const check2 = (dir, base, scoped) => {
     let linked = false;
+    let baseReal = null;
+    try {
+      baseReal = import_node_fs7.realpathSync.native(base);
+    } catch {
+    }
     for (const name of (0, import_node_fs7.readdirSync)(dir)) {
       const p = (0, import_node_path8.join)(dir, name);
       let link;
@@ -49642,7 +49647,7 @@ function nodeModulesTreeProblem(worktree, target, platform = process.platform) {
         return { problem: `${p} cannot be read (${error62 instanceof Error ? error62.message : String(error62)})` };
       }
       const to = P.resolve(P.dirname(p), link);
-      if (same3(to, (0, import_node_path8.join)(base, name))) linked = true;
+      if (same3(to, (0, import_node_path8.join)(base, name)) || baseReal !== null && same3(to, (0, import_node_path8.join)(baseReal, name))) linked = true;
       else if (!insideWorktree(p, to)) return { problem: `${p} points to ${to}, not ${(0, import_node_path8.join)(base, name)} the engine linked` };
     }
     return { linked };
@@ -66487,7 +66492,7 @@ function* linkNodeModulesSteps(root, checkout, warn, workspaces, copy) {
     present = (0, import_fs83.existsSync)(target) || isLink2(target);
   }
   if (present) return ws.problem;
-  const trees = [{ src: source, to: target, rel: "" }];
+  const trees = [{ src: import_fs83.realpathSync.native(source), to: target, rel: "" }];
   for (const rel of ws.dirs) {
     const yours = plainDirUnder(root, rel);
     const src = yours ? (0, import_path100.join)(yours, "node_modules") : null;
