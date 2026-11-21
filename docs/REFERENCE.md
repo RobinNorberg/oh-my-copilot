@@ -1427,7 +1427,7 @@ Every `copilot_run` session asks the Copilot CLI's OS sandbox to confine its she
 
 **Confirmation.** Before the first turn the job does three things:
 
-1. It probes the host with `sandbox.getHostSupport`, which must report the `shell` capability. On Linux it then runs one trial launch, `bwrap --ro-bind / / --dev /dev --unshare-all --die-with-parent -- true`, once per process. When that fails, the host counts as unsupported with the reason, and `host.launchFailed` is `true`. See [Linux: restricted user namespaces](#linux-restricted-user-namespaces).
+1. It probes the host with `sandbox.getHostSupport`, which must report the `shell` capability. On Linux it then runs one trial launch, `bwrap --ro-bind / / --dev /dev --unshare-all --die-with-parent --clearenv -- true`, once per process. The sandbox needs bubblewrap >= 0.5.0 (`--clearenv`); on an older one (Ubuntu 20.04 ships 0.4.0) the trial fails and the reason names the version and the upgrade. `omg factory run` and `omg factory bench run --live` check this up front on Linux and refuse (usage error) instead of parking every lane; `--allow-unsandboxed-lanes` skips the check. When that fails, the host counts as unsupported with the reason, and `host.launchFailed` is `true`. See [Linux: restricted user namespaces](#linux-restricted-user-namespaces).
 2. It applies the policy below, with `options.update` on SDK 1.0.16, or at create on an SDK whose `createSession` takes it.
 3. It reads `sandbox.getEnforcementStatus`.
 

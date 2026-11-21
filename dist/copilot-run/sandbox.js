@@ -771,10 +771,17 @@ function rpcMethod(root, path, name) {
  * creates, network included (`--unshare-all`; policies without outbound
  * access get an empty net namespace), around `true`.
  */
-export const BWRAP_TRIAL_ARGS = ['--ro-bind', '/', '/', '--dev', '/dev', '--unshare-all', '--die-with-parent', '--', 'true'];
+export const BWRAP_TRIAL_ARGS = ['--ro-bind', '/', '/', '--dev', '/dev', '--unshare-all', '--die-with-parent', '--clearenv', '--', 'true'];
+/** The oldest bubblewrap the sandbox runs on: it launches with `--clearenv`, added in 0.5.0. */
+export const BWRAP_MIN_VERSION = [0, 5];
+/** "major.minor" from `bwrap --version` ("bubblewrap 0.4.0", "bubblewrap 0.10.0"), or null. */
+export function parseBwrapVersion(text) {
+    const m = /(\d+)\.(\d+)/.exec(text);
+    return m ? [Number(m[1]), Number(m[2])] : null;
+}
 const defaultTrialSpawner = (cmd, args, timeoutMs) => {
-    const r = spawnSync(cmd, args, { encoding: 'utf8', timeout: timeoutMs, stdio: ['ignore', 'ignore', 'pipe'] });
-    return { ...(r.error ? { error: r.error } : {}), status: r.status, stderr: r.stderr ?? '' };
+    const r = spawnSync(cmd, args, { encoding: 'utf8', timeout: timeoutMs, stdio: ['ignore', 'pipe', 'pipe'] });
+    return { ...(r.error ? { error: r.error } : {}), status: r.status, stderr: r.stderr ?? '', stdout: r.stdout ?? '' };
 };
 /**
  * Whether bwrap can launch a process here: null when it can, else why not.
@@ -791,6 +798,12 @@ export function bwrapTrialLaunchError(spawn = defaultTrialSpawner, timeoutMs = 1
     if (r.status === 0)
         return null;
     const stderr = r.stderr.trim().slice(0, 200);
+    const v = spawn('bwrap', ['--version'], timeoutMs);
+    const parsed = v.error || v.status !== 0 ? null : parseBwrapVersion(v.stdout ?? '');
+    if (parsed && (parsed[0] < BWRAP_MIN_VERSION[0] || (parsed[0] === BWRAP_MIN_VERSION[0] && parsed[1] < BWRAP_MIN_VERSION[1]))) {
+        return `bubblewrap ${/\d+\.\d+(?:\.\d+)?/.exec(v.stdout ?? '')?.[0] ?? `${parsed[0]}.${parsed[1]}`} is too old for the Copilot sandbox: it needs bwrap >= ${BWRAP_MIN_VERSION[0]}.${BWRAP_MIN_VERSION[1]}.0 (--clearenv). `
+            + 'Ubuntu 20.04 ships 0.4.0: upgrade the distro (22.04+ ships 0.6+) or build bubblewrap from https://github.com/containers/bubblewrap';
+    }
     if (/RTM_NEWADDR|uid map|new namespace/i.test(stderr)) {
         return 'unprivileged user namespaces are restricted (AppArmor kernel.apparmor_restrict_unprivileged_userns=1), so bwrap cannot launch the sandbox; '
             + `see "Linux: restricted user namespaces" in docs/REFERENCE.md (bwrap: ${stderr})`;
@@ -803,6 +816,10 @@ export function cachedBwrapTrialLaunchError() {
     if (cachedBwrapTrial === undefined)
         cachedBwrapTrial = bwrapTrialLaunchError();
     return cachedBwrapTrial;
+}
+/** Null off Linux, else cachedBwrapTrialLaunchError: the up-front gate so an unusable sandbox refuses a run instead of parking every lane. */
+export function linuxSandboxProblem(platform = process.platform, trial = cachedBwrapTrialLaunchError) {
+    return platform === 'linux' ? trial() : null;
 }
 /**
  * `client.rpc.sandbox.getHostSupport()`; supported only with the `shell`

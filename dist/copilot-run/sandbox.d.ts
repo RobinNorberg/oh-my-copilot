@@ -361,6 +361,7 @@ export type SandboxTrialSpawner = (cmd: string, args: readonly string[], timeout
     error?: Error;
     status: number | null;
     stderr: string;
+    stdout?: string;
 };
 /**
  * The trial launch: bwrap with the namespaces the runtime's Linux sandbox
@@ -368,6 +369,10 @@ export type SandboxTrialSpawner = (cmd: string, args: readonly string[], timeout
  * access get an empty net namespace), around `true`.
  */
 export declare const BWRAP_TRIAL_ARGS: readonly string[];
+/** The oldest bubblewrap the sandbox runs on: it launches with `--clearenv`, added in 0.5.0. */
+export declare const BWRAP_MIN_VERSION: readonly [0, 5];
+/** "major.minor" from `bwrap --version` ("bubblewrap 0.4.0", "bubblewrap 0.10.0"), or null. */
+export declare function parseBwrapVersion(text: string): [number, number] | null;
 /**
  * Whether bwrap can launch a process here: null when it can, else why not.
  * `sandbox.getHostSupport` reports a host with bwrap installed as supported
@@ -377,6 +382,8 @@ export declare const BWRAP_TRIAL_ARGS: readonly string[];
 export declare function bwrapTrialLaunchError(spawn?: SandboxTrialSpawner, timeoutMs?: number): string | null;
 /** bwrapTrialLaunchError with the real bwrap, run once per process. */
 export declare function cachedBwrapTrialLaunchError(): string | null;
+/** Null off Linux, else cachedBwrapTrialLaunchError: the up-front gate so an unusable sandbox refuses a run instead of parking every lane. */
+export declare function linuxSandboxProblem(platform?: NodeJS.Platform, trial?: () => string | null): string | null;
 export interface HostLaunchCheck {
     /** Default process.platform; the trial launch runs on linux only. */
     platform?: NodeJS.Platform;

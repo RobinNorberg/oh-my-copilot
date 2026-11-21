@@ -9,6 +9,7 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 import { writeFileSync } from 'node:fs';
 import { factoryGitProblem } from '../../factory/git-preflight.js';
+import { linuxSandboxProblem } from '../../copilot-run/sandbox.js';
 import { createBenchFixture } from '../../factory/bench/fixture.js';
 import { BenchUsageError, DEFAULT_BENCH_MAX_MINUTES, LIVE_CAP_BOUND, parseIssueList, runBench } from '../../factory/bench/runner.js';
 import { benchRegressions, compareResults, DEFAULT_REQUEST_TOLERANCE_PCT, readBenchResults, renderRegressions } from '../../factory/bench/score.js';
@@ -60,6 +61,9 @@ export function factoryBenchCommand() {
         const gitProblem = factoryGitProblem();
         if (gitProblem)
             return fail(new Error(gitProblem));
+        const sandboxProblem = o.live ? linuxSandboxProblem() : null;
+        if (sandboxProblem)
+            return fail(new Error(`the Linux sandbox is unusable: ${sandboxProblem}`), true);
         let issues;
         try {
             issues = o.issues === undefined ? undefined : parseIssueList(o.issues);

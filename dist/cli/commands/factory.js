@@ -68,6 +68,7 @@ import { BUCKET_ORDER, checkItems, plainText } from '../../factory/check/score.j
 import { createForge } from '../../forge/index.js';
 import { liveCreditReservations, parallelLayoutRefusal, readTrustedBaseLayerAtRef, releaseDeadCreditReservations, resolveParallelSettings, runParallelSupervisor } from '../../factory/run/parallel.js';
 import { factoryGitProblem } from '../../factory/git-preflight.js';
+import { linuxSandboxProblem } from '../../copilot-run/sandbox.js';
 import { resolveRunLayout, userParallelOptIn } from '../../factory/run/private-run.js';
 import { skillSlash } from '../../utils/skill-slash.js';
 export function renderChainStatus(status) {
@@ -503,6 +504,9 @@ export function factoryRunCommand(deps = defaultFactoryRunDeps) {
             const gitProblem = factoryGitProblem(deps.exec);
             if (gitProblem)
                 throw new FactoryUsageError(gitProblem);
+            const sandboxProblem = o.allowUnsandboxedLanes ? null : linuxSandboxProblem();
+            if (sandboxProblem)
+                throw new FactoryUsageError(`the Linux sandbox is unusable: ${sandboxProblem}`);
         }
         const root = factoryRoot(exec);
         const loadedLimits = deps.limits(root);
