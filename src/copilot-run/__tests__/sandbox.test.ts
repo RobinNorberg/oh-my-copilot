@@ -9,6 +9,10 @@ import {
   DEFAULT_SANDBOX_SETTINGS,
   allowlistSessionEnv,
   bwrapTrialLaunchError,
+  linuxSandboxProblem,
+  factorySandboxProblem,
+  parseBwrapVersion,
+  bwrapTooOld,
   buildSandboxConfig,
   nodeModulesTreeProblem,
   findOnPath,
@@ -668,6 +672,48 @@ describe('detection helpers', () => {
     const missing = Object.assign(new Error('spawnSync bwrap ENOENT'), { code: 'ENOENT' });
     expect(bwrapTrialLaunchError(spawner({ error: missing, status: null, stderr: '' }))).toMatch(/^bwrap \(bubblewrap\) is not on PATH/);
     expect(bwrapTrialLaunchError(spawner({ status: 2, stderr: 'bwrap: something else' }))).toBe('a trial bwrap launch failed (exit 2): bwrap: something else');
+  });
+
+  it('bwrapTrialLaunchError rejects bubblewrap older than 0.5.0 and accepts newer ones', () => {
+    type R = { error?: Error; status: number | null; stderr: string; stdout?: string };
+    const spawner = (trial: R, version: R) => (_cmd: string, args: readonly string[]) => (args[0] === '--version' ? version : trial);
+    expect(BWRAP_TRIAL_ARGS).toContain('--clearenv');
+    const old = bwrapTrialLaunchError(spawner({ status: 1, stderr: 'bwrap: Unknown option --clearenv' }, { status: 0, stderr: '', stdout: 'bubblewrap 0.4.0\n' }));
+    expect(old).toMatch(/^bubblewrap 0\.4\.0 is too old for the Copilot sandbox: it needs bwrap >= 0\.5\.0 \(--clearenv\)\. Ubuntu 20\.04 ships 0\.4\.0/);
+    expect(old).toContain('https://github.com/containers/bubblewrap');
+    for (const v of ['bubblewrap 0.5.0\n', 'bubblewrap 0.10.0\n']) {
+      expect(bwrapTrialLaunchError(spawner({ status: 0, stderr: '' }, { status: 0, stderr: '', stdout: v }))).toBeNull();
+    }
+    // A failing trial on a new bwrap keeps its own reason (AppArmor userns branch intact).
+    expect(bwrapTrialLaunchError(spawner({ status: 1, stderr: 'bwrap: loopback: Failed RTM_NEWADDR' }, { status: 0, stderr: '', stdout: 'bubblewrap 0.10.0\n' }))).toMatch(/^unprivileged user namespaces are restricted/);
+    // Unparseable version output falls back to the trial result.
+    expect(bwrapTrialLaunchError(spawner({ status: 2, stderr: 'bwrap: x' }, { status: 0, stderr: '', stdout: 'garbage' }))).toBe('a trial bwrap launch failed (exit 2): bwrap: x');
+    expect(bwrapTrialLaunchError(spawner({ status: 0, stderr: '' }, { status: 0, stderr: '', stdout: 'garbage' }))).toBeNull();
+    // --clearenv rejected by a trial whose version cannot be read.
+    expect(bwrapTrialLaunchError(spawner({ status: 1, stderr: 'bwrap: Unknown option --clearenv' }, { status: 1, stderr: '' }))).toBe('a trial bwrap launch failed (exit 1): bwrap: Unknown option --clearenv');
+  });
+
+  it('linuxSandboxProblem gates on Linux only', () => {
+    expect(linuxSandboxProblem('win32', () => 'boom')).toBeNull();
+    expect(linuxSandboxProblem('linux', () => 'boom')).toBe('boom');
+    expect(linuxSandboxProblem('linux', () => null)).toBeNull();
+  });
+
+  it('parseBwrapVersion and bwrapTooOld compare against BWRAP_MIN_VERSION', () => {
+    expect(parseBwrapVersion('bubblewrap 0.4.0')).toEqual({ major: 0, minor: 4, text: '0.4.0' });
+    expect(parseBwrapVersion('garbage')).toBeNull();
+    expect(bwrapTooOld({ major: 0, minor: 4 })).toBe(true);
+    expect(bwrapTooOld({ major: 0, minor: 5 })).toBe(false);
+    expect(bwrapTooOld({ major: 0, minor: 10 })).toBe(false);
+    expect(bwrapTooOld({ major: 1, minor: 0 })).toBe(false);
+  });
+
+  it('factorySandboxProblem checks only when the lanes would refuse an unconfirmed sandbox', () => {
+    const boom = () => 'boom';
+    expect(factorySandboxProblem({ ...DEFAULT_SANDBOX_SETTINGS }, boom, {})).toBe('boom');
+    expect(factorySandboxProblem({ ...DEFAULT_SANDBOX_SETTINGS, enabled: false }, boom, {})).toBeNull();
+    expect(factorySandboxProblem({ ...DEFAULT_SANDBOX_SETTINGS, writeUnsandboxed: 'detect-only' }, boom, {})).toBeNull();
+    expect(factorySandboxProblem({ ...DEFAULT_SANDBOX_SETTINGS }, boom, { OMG_SANDBOX: 'off' })).toBeNull();
   });
 
   it('sdkCreateSessionAcceptsSandbox reads the createSession source', () => {

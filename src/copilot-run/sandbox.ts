@@ -852,18 +852,33 @@ function rpcMethod(root: unknown, path: string[], name: string): (() => Promise<
 }
 
 /** Runs `cmd args` to completion, shaped like spawnSync's result. */
-export type SandboxTrialSpawner = (cmd: string, args: readonly string[], timeoutMs: number) => { error?: Error; status: number | null; stderr: string };
+export type SandboxTrialSpawner = (cmd: string, args: readonly string[], timeoutMs: number) => { error?: Error; status: number | null; stderr: string; stdout?: string };
 
 /**
  * The trial launch: bwrap with the namespaces the runtime's Linux sandbox
  * creates, network included (`--unshare-all`; policies without outbound
  * access get an empty net namespace), around `true`.
  */
-export const BWRAP_TRIAL_ARGS: readonly string[] = ['--ro-bind', '/', '/', '--dev', '/dev', '--unshare-all', '--die-with-parent', '--', 'true'];
+export const BWRAP_TRIAL_ARGS: readonly string[] = ['--ro-bind', '/', '/', '--dev', '/dev', '--unshare-all', '--die-with-parent', '--clearenv', '--', 'true'];
+
+/** The oldest bubblewrap the sandbox runs on: it launches with `--clearenv`, added in 0.5.0. */
+export const BWRAP_MIN_VERSION = [0, 5] as const;
+
+/** The version in `bwrap --version` ("bubblewrap 0.4.0", "bubblewrap 0.10.0"): major, minor and the version text, or null. */
+export function parseBwrapVersion(text: string): { major: number; minor: number; text: string } | null {
+  const m = /(\d+)\.(\d+)(?:\.\d+)?/.exec(text);
+  return m ? { major: Number(m[1]), minor: Number(m[2]), text: m[0] } : null;
+}
+
+/** True when `v` is older than {@link BWRAP_MIN_VERSION}. */
+export function bwrapTooOld(v: { major: number; minor: number }): boolean {
+  const [major, minor] = BWRAP_MIN_VERSION;
+  return v.major < major || (v.major === major && v.minor < minor);
+}
 
 const defaultTrialSpawner: SandboxTrialSpawner = (cmd, args, timeoutMs) => {
-  const r = spawnSync(cmd, args, { encoding: 'utf8', timeout: timeoutMs, stdio: ['ignore', 'ignore', 'pipe'] });
-  return { ...(r.error ? { error: r.error } : {}), status: r.status, stderr: r.stderr ?? '' };
+  const r = spawnSync(cmd, args, { encoding: 'utf8', timeout: timeoutMs, stdio: ['ignore', 'pipe', 'pipe'] });
+  return { ...(r.error ? { error: r.error } : {}), status: r.status, stderr: r.stderr ?? '', stdout: r.stdout ?? '' };
 };
 
 /**
@@ -878,6 +893,12 @@ export function bwrapTrialLaunchError(spawn: SandboxTrialSpawner = defaultTrialS
   if (r.error) return `a trial bwrap launch failed: ${errText(r.error)}`;
   if (r.status === 0) return null;
   const stderr = r.stderr.trim().slice(0, 200);
+  const v = spawn('bwrap', ['--version'], timeoutMs);
+  const parsed = v.error || v.status !== 0 ? null : parseBwrapVersion(v.stdout ?? '');
+  if (parsed && bwrapTooOld(parsed)) {
+    return `bubblewrap ${parsed.text} is too old for the Copilot sandbox: it needs bwrap >= ${BWRAP_MIN_VERSION[0]}.${BWRAP_MIN_VERSION[1]}.0 (--clearenv). `
+      + 'Ubuntu 20.04 ships 0.4.0: upgrade the distro (22.04+ ships 0.6+) or build bubblewrap from https://github.com/containers/bubblewrap';
+  }
   if (/RTM_NEWADDR|uid map|new namespace/i.test(stderr)) {
     return 'unprivileged user namespaces are restricted (AppArmor kernel.apparmor_restrict_unprivileged_userns=1), so bwrap cannot launch the sandbox; '
       + `see "Linux: restricted user namespaces" in docs/REFERENCE.md (bwrap: ${stderr})`;
@@ -890,6 +911,22 @@ let cachedBwrapTrial: string | null | undefined;
 export function cachedBwrapTrialLaunchError(): string | null {
   if (cachedBwrapTrial === undefined) cachedBwrapTrial = bwrapTrialLaunchError();
   return cachedBwrapTrial;
+}
+
+/** Null off Linux, else cachedBwrapTrialLaunchError: the up-front gate so an unusable sandbox refuses a run instead of parking every lane. */
+export function linuxSandboxProblem(platform: NodeJS.Platform = process.platform, trial: () => string | null = cachedBwrapTrialLaunchError): string | null {
+  return platform === 'linux' ? trial() : null;
+}
+
+/**
+ * The up-front gate of `omg factory run` and `omg factory bench run --live`:
+ * `problem()` (linuxSandboxProblem) only when the lanes would refuse an
+ * unconfirmed sandbox (`sandbox-unavailable`), i.e. the sandbox is enabled,
+ * {@link SANDBOX_KILL_ENV} is not "off" and writeUnsandboxed is "refuse";
+ * else null.
+ */
+export function factorySandboxProblem(settings: SandboxSettings, problem: () => string | null, env: NodeJS.ProcessEnv = process.env): string | null {
+  return settings.enabled && settings.writeUnsandboxed === 'refuse' && env[SANDBOX_KILL_ENV] !== 'off' ? problem() : null;
 }
 
 export interface HostLaunchCheck {

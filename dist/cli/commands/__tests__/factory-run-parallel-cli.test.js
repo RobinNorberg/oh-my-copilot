@@ -37,6 +37,8 @@ function deps(over = {}) {
         base: () => 'dev',
         ledgerDir: h.ledgerDir,
         processes: new FakeProcesses(),
+        // No real bwrap trial in unit tests (Linux CI): the up-front sandbox check passes.
+        sandboxProblem: () => null,
         ...over,
     };
 }
