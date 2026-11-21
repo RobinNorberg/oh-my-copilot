@@ -1,4 +1,4 @@
-import { appendFileSync, existsSync, lstatSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
@@ -147,6 +147,46 @@ describe('omg factory run engine (fake lanes, real git, scripted gh)', () => {
     expect(gitIn(h.root, 'ls-tree', '-r', '--name-only', readFactoryState(h.root, ISSUE)!.head!)).not.toContain('node_modules');
   });
 
+  it('off Windows (copy false): the lane worktree gets the gates\' linked tree (links to the realpath of yours), the lane grant names your node_modules, the tree is gone before the commit', async () => {
+    mkdirSync(join(h.root, 'node_modules', 'typescript'), { recursive: true });
+    mkdirSync(join(h.root, 'node_modules', '.bin'), { recursive: true });
+    writeFileSync(join(h.root, 'node_modules', 'typescript', 'index.js'), 'yours\n');
+    const yours = realpathSync.native(join(h.root, 'node_modules'));
+    let tree = '';
+    let grant: { target: string; nested?: string[] } | undefined;
+    const prepared: LaneScript = async (ctx) => {
+      expect(await ctx.input.beforeSandboxedSession!(ctx.worktree, { copy: false })).toBeNull();
+      tree = join(ctx.worktree, 'node_modules');
+      expect(lstatSync(tree).isSymbolicLink()).toBe(false);
+      // Linked, not copied: each top-level entry is a link to the same entry of yours, by its realpath.
+      expect(lstatSync(join(tree, 'typescript')).isSymbolicLink()).toBe(true);
+      expect(realpathSync.native(join(tree, 'typescript'))).toBe(join(yours, 'typescript'));
+      grant = ctx.input.nodeModulesGrant!(ctx.worktree);
+      return commitFile('a.ts')(ctx);
+    };
+    const { lanes, done } = run([prepared, review('approve')]);
+    expect((await done).gate?.name).toBe('merge');
+    expect(grant).toEqual({ target: join(h.root, 'node_modules') });
+    expect(lanes.started.map((s) => [s.profile ?? 'write', typeof s.nodeModulesGrant])).toEqual([['write', 'function'], ['review', 'undefined']]);
+    // Every link went before the commit (never followed: yours is untouched), and nothing of it was committed.
+    expect(existsSync(tree)).toBe(false);
+    expect(readFileSync(join(h.root, 'node_modules', 'typescript', 'index.js'), 'utf-8')).toBe('yours\n');
+    expect(gitIn(h.root, 'ls-tree', '-r', '--name-only', readFactoryState(h.root, ISSUE)!.head!)).not.toContain('node_modules');
+  });
+
+  it('a Windows lane (copy) gets no node_modules grant: its copied tree stays as before', async () => {
+    mkdirSync(join(h.root, 'node_modules', 'pkg'), { recursive: true });
+    let grant: unknown = 'unset';
+    const prepared: LaneScript = async (ctx) => {
+      expect(await ctx.input.beforeSandboxedSession!(ctx.worktree, { copy: true })).toBeNull();
+      grant = ctx.input.nodeModulesGrant!(ctx.worktree);
+      return commitFile('a.ts')(ctx);
+    };
+    const { done } = run([prepared, review('approve')]);
+    expect((await done).gate?.name).toBe('merge');
+    expect(grant).toBeUndefined();
+  });
+
   it('one copy per item: the fix lane gets the implement lane\'s tree moved into its worktree (not copied again), yours untouched', async () => {
     mkdirSync(join(h.root, 'node_modules', 'pkg'), { recursive: true });
     mkdirSync(join(h.root, 'node_modules', '.bin'), { recursive: true });
@@ -256,12 +296,22 @@ describe('omg factory run engine (fake lanes, real git, scripted gh)', () => {
     expect(copiedReview.prompt).not.toContain('package install');
   });
 
-  it('no network without a copy (not Windows): installs forbidden, nothing claimed about node_modules', async () => {
+  it('no network off Windows (the linked tree): installs forbidden, the dependencies named installed; without your node_modules nothing is claimed', async () => {
     const RULE = 'never run `npm install`, `npm ci` or any other package install';
+    mkdirSync(join(h.root, 'node_modules'), { recursive: true });
     const lanes = new FakeLanes(h.root, [commitFile('a.ts'), review('approve')]);
     lanes.laneSandbox = () => ({ sandboxed: true, writeNetwork: 'none', windowsCopy: false });
     await runFactoryEngine(opts(lanes));
     expect(lanes.started[0].prompt).toContain(RULE);
+    expect(lanes.started[0].prompt).toContain('The dependencies are already installed in node_modules.');
+  });
+
+  it('no network and no node_modules of yours: installs forbidden, nothing claimed about node_modules', async () => {
+    const lanes = new FakeLanes(h.root, [commitFile('a.ts'), review('approve')]);
+    lanes.laneSandbox = () => ({ sandboxed: true, writeNetwork: 'none', windowsCopy: false });
+    rmSync(join(h.root, 'node_modules'), { recursive: true, force: true });
+    await runFactoryEngine(opts(lanes));
+    expect(lanes.started[0].prompt).toContain('never run `npm install`');
     expect(lanes.started[0].prompt).not.toContain('already installed');
   });
 

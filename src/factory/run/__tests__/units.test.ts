@@ -970,6 +970,25 @@ describe('the prepare checkout\'s node_modules link', () => {
     expect(readFileSync(join(store, 'typescript', 'package.json'), 'utf-8')).toBe('{}\n');
   });
 
+  it('a nested workspace tree links name the realpath of your package node_modules too (#589 review C), so the grant (its realpath) covers them', () => {
+    const { root, checkout } = setup();
+    mkdirSync(join(root, 'packages', 'a', 'node_modules', 'left-pad'), { recursive: true });
+    writeFileSync(join(root, 'packages', 'a', 'package.json'), '{"name":"a"}\n');
+    mkdirSync(join(checkout, 'packages', 'a'), { recursive: true });
+    // Your checkout reached through a link (a symlinked temp or home dir): every lexical path under it differs from its realpath.
+    const via = join(root, '..', 'via');
+    symlinkSync(root, via, linkType);
+    linkNodeModules(via, checkout, undefined, ['packages/*']);
+    const fold = (p: string) => { const r = resolve(p).replace(/[\/]+$/, ''); return process.platform === 'win32' ? r.toLowerCase() : r; };
+    const link = join(checkout, 'packages', 'a', 'node_modules', 'left-pad');
+    expect(lstatSync(link).isSymbolicLink()).toBe(true);
+    expect(fold(resolve(dirname(link), readlinkSync(link)))).toBe(fold(join(realpathSync.native(join(root, 'packages', 'a', 'node_modules')), 'left-pad')));
+    expect(fold(resolve(dirname(link), readlinkSync(link)))).not.toBe(fold(join(via, 'packages', 'a', 'node_modules', 'left-pad')));
+    unlinkNodeModules(via, checkout);
+    unlinkOne(via);
+    expect(existsSync(join(root, 'packages', 'a', 'node_modules', 'left-pad'))).toBe(true);
+  });
+
   it('leaves a real node_modules directory and a link to anything else', () => {
     const { root, checkout } = setup();
     mkdirSync(join(checkout, 'node_modules'));

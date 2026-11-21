@@ -979,6 +979,8 @@ class FactoryEngine {
   private gateCfg?: { baseSha: string; loaded: GateConfig };
   /** The base's workspace globs of this invocation (baseWorkspaces), by the base sha they were read at. */
   private wsGlobs?: { baseSha: string; globs: string[] };
+  /** How prepareLaneTree readied each lane worktree of this invocation (by resolved path): copied (Windows) or linked. */
+  private readonly laneTreeModes = new Map<string, 'copy' | 'link'>();
   /** The Azure DevOps forge; undefined = GitHub through the gh calls. */
   private readonly forge?: Forge;
   /** The forge, for messages. */
@@ -1548,14 +1550,18 @@ class FactoryEngine {
   }
 
   /**
-   * A write lane worktree about to run in the OS sandbox on Windows gets a
-   * copy of your node_modules (prepareLaneNodeModulesAsync, the gates' copied
-   * tree: GATE_TREE_COPY_WHY), so the lane's tests open no junction. Its git
-   * ignore check runs before anything is copied (the dirs need not exist):
-   * hardened host git `check-ignore --no-index` in the worktree with its
-   * recorded links (its exit 1, none ignored, throws: not ignored).
+   * A write lane worktree about to run in the OS sandbox gets your
+   * node_modules (prepareLaneNodeModulesAsync): on Windows (`copy`) the
+   * gates' copied tree (GATE_TREE_COPY_WHY), so the lane's tests open no
+   * junction; on Linux and macOS the gates' linked tree, granted read-only
+   * through laneNodeModulesGrant, without which the lane has no tsc or
+   * vitest. Its git ignore check runs before anything is built (the dirs
+   * need not exist): hardened host git `check-ignore --no-index` in the
+   * worktree with its recorded links (its exit 1, none ignored, throws: not
+   * ignored).
    */
-  private prepareLaneTree(worktree: string): Promise<string | null> {
+  private prepareLaneTree(worktree: string, copy = true): Promise<string | null> {
+    this.laneTreeModes.set(resolve(worktree), copy ? 'copy' : 'link');
     const ignored = (paths: string[]): boolean => {
       const out = runHostGit(worktree, [...worktreeGitDirArgs(worktree), '--no-optional-locks', 'check-ignore', '--no-index', '-z', '--stdin'], PRIVATE_GIT_TIMEOUT_MS, process.env, paths.map((p) => `${p}/\0`).join(''));
       const listed = new Set(out.split('\0').filter(Boolean).map((p) => p.replace(/\/$/, '')));
@@ -1567,7 +1573,24 @@ class FactoryEngine {
     const reuseFrom = this.state.lanes
       .filter((l) => l.worktree && l.treeReusable === true && l.id !== this.state.pendingCommit?.laneId && !samePath(l.worktree, worktree))
       .map((l) => l.worktree!).reverse();
+    if (!copy) return prepareLaneNodeModulesAsync(this.o.root, worktree, { workspaces: this.baseWorkspaces(), ...(this.o.warn ? { warn: this.o.warn } : {}), ignored, copy: false });
     return prepareLaneNodeModulesAsync(this.o.root, worktree, { workspaces: this.baseWorkspaces(), ...(this.o.warn ? { warn: this.o.warn } : {}), ignored, reuseFrom });
+  }
+
+  /**
+   * What a write lane's sandbox may grant under node_modules, asked before
+   * each of its sessions: as for the gates (sandboxRun), your node_modules
+   * and the nested workspace trees the engine vouches for (trustedNestedRels),
+   * so every link of `<worktree>/node_modules` is checked against them
+   * (nodeModulesTreeProblem) and a link the lane planted or re-pointed stops
+   * the session instead of being mounted. Undefined (nothing granted) for a
+   * Windows lane's copied tree, as before: it holds no link to grant through
+   * but `.bin`.
+   */
+  private laneNodeModulesGrant(worktree: string): { target: string; nested?: string[] } | undefined {
+    if (this.laneTreeModes.get(resolve(worktree)) === 'copy') return undefined;
+    const nested = trustedNestedRels(this.o.root, worktree, this.baseWorkspaces()).map((rel) => join(this.o.root, ...rel.split('/'), 'node_modules'));
+    return { target: join(this.o.root, 'node_modules'), ...(nested.length > 0 ? { nested } : {}) };
   }
 
   /**
@@ -1583,7 +1606,9 @@ class FactoryEngine {
       return paths.every((p) => listed.has(p));
     };
     try {
-      const removed = settleLaneNodeModules(this.o.root, worktree, ignored);
+      // A linked tree (Linux, macOS) always goes before the commit; a copied one only once git no longer ignores it.
+      const linked = (this.laneTreeModes.get(resolve(worktree)) ?? (process.platform === 'win32' ? 'copy' : 'link')) === 'link';
+      const removed = settleLaneNodeModules(this.o.root, worktree, ignored, linked);
       if (removed) this.o.warn?.(`omg factory run: ${removed}`);
     } catch (error) {
       this.o.warn?.(`omg factory run: the copied node_modules of ${worktree} is no longer ignored by git and could not be removed (${errText(error)}); the lane commit refuses its links`);
@@ -1594,14 +1619,14 @@ class FactoryEngine {
    * What a write lane's prompt may say about its sandbox: the lane backend's
    * reading of the sandbox settings (null: a backend that cannot tell, such
    * as a cloud agent, or unreadable settings: the prompt says nothing). The
-   * dependencies are named ready only where prepareLaneTree copies your
-   * node_modules into the worktree.
+   * dependencies are named ready only where prepareLaneTree gives the
+   * worktree your node_modules (the OS sandbox: copied or linked).
    */
   private laneEnvironment(): LaneEnvironment | null {
     let intent;
     try { intent = this.o.lanes.laneSandbox?.(this.o.root) ?? null; } catch { intent = null; }
     if (!intent) return null;
-    return { sandboxed: intent.sandboxed, writeNetwork: intent.writeNetwork, nodeModulesReady: intent.windowsCopy && existsSync(join(this.o.root, 'node_modules')) };
+    return { sandboxed: intent.sandboxed, writeNetwork: intent.writeNetwork, nodeModulesReady: intent.sandboxed && existsSync(join(this.o.root, 'node_modules')) };
   }
 
   /** The gate-sandbox-incompatible park of a copied tree linkGateTree could not build (`why`). */
@@ -5946,9 +5971,10 @@ class FactoryEngine {
         ...(profile === 'write' ? { engineCommits: true } : {}),
         // factory.run.laneModels[kind] / --review-model, else factory.run.laneModel / --model (laneModelFor).
         ...(model ? { model } : {}),
-        // The OS sandbox on Windows denies opening a package dir through a junction: a write lane gets a copied node_modules
-        // (a review lane's shell is read-only, so it runs no test and needs none).
-        ...(profile === 'write' ? { beforeSandboxedSession: (wt: string) => this.prepareLaneTree(wt) } : {}),
+        // The OS sandbox on Windows denies opening a package dir through a junction: a write lane gets a copied node_modules;
+        // elsewhere the gates' linked tree, granted read-only only as the engine vouches for it (laneNodeModulesGrant).
+        // A review lane's shell is read-only, so it runs no test and needs none.
+        ...(profile === 'write' ? { beforeSandboxedSession: (wt: string, o?: { copy: boolean }) => this.prepareLaneTree(wt, o?.copy ?? true), nodeModulesGrant: (wt: string) => this.laneNodeModulesGrant(wt) } : {}),
         ...(priv && laneTree ? { worktree: { path: laneTree, commonGitDir: priv.repo.gitDir }, jobRoot: priv.layout.jobs, deniedPaths: priv.deniedFor(laneTree), beforeHostGit: () => priv.problem() } : {}),
       }));
     } catch (error) {
