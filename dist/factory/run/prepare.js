@@ -237,7 +237,8 @@ function* linkNodeModulesSteps(root, checkout, warn, workspaces, copy) {
         const nested = join(dir, 'node_modules');
         if (existsSync(nested) || isLink(nested))
             continue;
-        trees.push({ src, to: nested, rel });
+        // By its realpath too, as the root's: the grant is the realpath of yours (sandbox.ts nestedNodeModulesTargets).
+        trees.push({ src: realpathSync.native(src), to: nested, rel });
     }
     const built = [];
     let budget;
@@ -296,11 +297,16 @@ function* linkNodeModulesSteps(root, checkout, warn, workspaces, copy) {
     return ws.problem;
 }
 /**
- * A lane worktree's own node_modules for the OS sandbox on Windows
+ * A lane worktree's own node_modules for the OS sandbox. On Windows
  * (GATE_TREE_COPY_WHY: a package dir opened through a junction is denied,
  * so a lane's `npm test` fails with "Access is denied"): linkNodeModules'
  * copied tree in `worktree`, the same build the gates use, from your
- * node_modules at `root` (only read). Once per worktree: a complete tree
+ * node_modules at `root` (only read). On Linux and macOS (`copy: false`):
+ * the gates' linked tree, whose links name your node_modules by its
+ * realpath, which the lane's sandbox grants read-only (the engine passes it
+ * as the session's nodeModulesTarget, so every link is checked before each
+ * session); without it a lane worktree has no node_modules and, with no
+ * network, no tsc or vitest. Once per worktree: a complete tree
  * already there is reused, a cut-off one is built again. Your node_modules,
  * and the target of any link, is never written or removed: an existing
  * `<worktree>/node_modules` link is unlinked only when it resolves to yours
@@ -315,8 +321,9 @@ function* linkNodeModulesSteps(root, checkout, warn, workspaces, copy) {
  * space, a foreign link), else null.
  *
  * `reuseFrom`: earlier lane worktrees of the same work item, most recent
- * first; a complete tree there is moved here instead of a new copy
- * (adoptLaneTree, with its checks and trust argument).
+ * first; a complete copied tree there is moved here instead of a new copy
+ * (adoptLaneTree, with its checks and trust argument). A linked tree
+ * (`copy: false`) is never moved: it costs about as little as the move.
  */
 export function prepareLaneNodeModules(root, worktree, o) {
     return runTreeSteps(prepareLaneSteps(root, worktree, o));
@@ -342,6 +349,7 @@ export function prepareLaneNodeModulesAsync(root, worktree, o) {
 let laneTreeQueue = Promise.resolve();
 function* prepareLaneSteps(root, worktree, o) {
     const target = join(worktree, 'node_modules');
+    const copy = o.copy ?? true;
     if (!existsSync(join(root, 'node_modules')))
         return null;
     if (isLink(target) && !sameDir(target, join(root, 'node_modules')))
@@ -364,11 +372,11 @@ function* prepareLaneSteps(root, worktree, o) {
             // A cut-off tree goes (its links unlinked, never followed); a link to yours stays as it was.
             if (!isLink(target) && existsSync(target))
                 yield* unlinkNodeModulesSteps(root, worktree);
-            o.warn?.(`omg factory run: git does not ignore ${rels.join(', ')} in ${worktree}, so the lane gets no copied node_modules (the lane commit refuses links in its worktree); add node_modules to .gitignore`);
+            o.warn?.(`omg factory run: git does not ignore ${rels.join(', ')} in ${worktree}, so the lane gets no ${copy ? 'copied ' : ''}node_modules (the lane commit refuses links in its worktree); add node_modules to .gitignore`);
             return null;
         }
-        // Only a root tree moves (a workspace layout's nested trees are copied as before), and only into an empty spot.
-        if (nested.length === 0 && !existsSync(target) && !isLink(target)) {
+        // Only a copied root tree moves (a workspace layout's nested trees are copied as before), and only into an empty spot.
+        if (copy && nested.length === 0 && !existsSync(target) && !isLink(target)) {
             const adopted = yield* adoptLaneTree(root, worktree, o.reuseFrom ?? [], o.warn);
             if (adopted === true)
                 return null;
@@ -379,10 +387,10 @@ function* prepareLaneSteps(root, worktree, o) {
     }
     let problem;
     try {
-        problem = yield* linkNodeModulesSteps(root, worktree, o.warn, o.workspaces ?? [], o.copy ?? true);
+        problem = yield* linkNodeModulesSteps(root, worktree, o.warn, o.workspaces ?? [], copy);
     }
     catch (error) {
-        return `the copied node_modules tree of the lane worktree ${worktree} could not be built (${error instanceof Error ? error.message : String(error)})`;
+        return `the ${copy ? 'copied' : 'linked'} node_modules tree of the lane worktree ${worktree} could not be built (${error instanceof Error ? error.message : String(error)})`;
     }
     finally {
         // The in-process record serves the gate checkouts; a lane tree is found by its marker (settleLaneNodeModules), and the
@@ -534,8 +542,14 @@ function* adoptedTreeProblem(root, tree) {
  * unlinked first, never followed (unlinkNodeModules), so the commit neither
  * refuses its links nor stages the copy. Returns what was removed, or null.
  * A removal error throws (the commit then refuses the links that are left).
+ *
+ * `linked` (the Linux and macOS lane tree, `copy: false`): a tree of links
+ * only, cheap to build again, so it always goes before the commit, whatever
+ * git ignores (null returned): every link in the worktree's node_modules is
+ * unlinked, never followed, marker or not (the lane can delete the marker,
+ * as in unlinkNodeModules M3), so its links are never committed.
  */
-export function settleLaneNodeModules(root, worktree, ignored) {
+export function settleLaneNodeModules(root, worktree, ignored, linked = false) {
     const target = join(worktree, 'node_modules');
     try {
         if (!lstatSync(target).isDirectory())
@@ -544,7 +558,13 @@ export function settleLaneNodeModules(root, worktree, ignored) {
     catch {
         return null;
     }
-    if (sameDir(target, join(root, 'node_modules')) || !gateTreeComplete(target))
+    if (sameDir(target, join(root, 'node_modules')))
+        return null;
+    if (linked) {
+        unlinkNodeModules(root, worktree);
+        return null;
+    }
+    if (!gateTreeComplete(target))
         return null;
     const rels = ['node_modules', ...nestedTreeDirs(worktree).map((nm) => relative(worktree, nm).split(/[\\/]/).join('/'))];
     let still = false;

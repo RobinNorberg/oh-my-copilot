@@ -58,7 +58,8 @@ export class CopilotLaneBackend {
         }, { allowLive: this.options.allowLive, disableStopContinuations: true, minimalHooks: true, ledgerKey: `factory-lane:${input.laneId}`, ...(input.ledgerTag ? { ledgerTag: { kind: 'factory-lane', ...input.ledgerTag } } : {}), sandboxScope: 'factory', ...(input.scrubCredentials ? { scrubCredentials: true } : {}), ...(input.engineCommits ? { hostCommits: true } : {}),
             ...(input.worktree ? { worktree: input.worktree } : {}), ...(input.jobRoot ? { jobRoot: input.jobRoot } : {}),
             ...(input.deniedPaths ? { deniedPaths: input.deniedPaths } : {}), ...(input.beforeHostGit ? { beforeHostGit: input.beforeHostGit } : {}),
-            ...(input.beforeSandboxedSession ? { beforeSandboxedSession: input.beforeSandboxedSession } : {}) });
+            ...(input.beforeSandboxedSession ? { beforeSandboxedSession: input.beforeSandboxedSession } : {}),
+            ...(input.nodeModulesGrant ? { nodeModulesGrant: input.nodeModulesGrant } : {}) });
         // An async beforeSandboxedSession: the lane counts as started (the engine's idle clock) only once its worktree is ready.
         await this.manager.prepared?.(snap.jobId);
         return { remoteId: snap.jobId };

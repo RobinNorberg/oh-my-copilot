@@ -243,7 +243,10 @@ export interface SandboxPolicyContext {
     /**
      * The only target a `<worktree>/node_modules` link may resolve to (the
      * dir the engine linked; review-483 M4): a link elsewhere throws instead
-     * of being granted read-only. Unset: the link's target as it is (lanes).
+     * of being granted read-only. Unset: nothing under node_modules is
+     * granted. A link in the worktree is lane-writable, so its own target is
+     * never taken as a grant: a session could plant one for the next session
+     * to have mounted (the factory's gates and lanes always pass the target).
      */
     nodeModulesTarget?: string;
     /**
@@ -277,7 +280,7 @@ export declare const REGISTRY_HOSTS: readonly string[];
  * grant needs an exact match with the engine's own list too
  * (nestedNodeModulesTargets). A line of another shape is ignored.
  */
-export declare function nodeModulesTreeProblem(worktree: string, target: string, platform?: NodeJS.Platform): {
+export declare function nodeModulesTreeProblem(worktree: string, target: string, platform?: NodeJS.Platform, targetReal?: string): {
     problem: string | null;
     linked: boolean;
     nested?: string[];

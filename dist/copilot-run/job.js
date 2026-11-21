@@ -172,6 +172,12 @@ function gitConfigEnv(args) {
 }
 export class CopilotRunError extends Error {
 }
+/** SandboxPolicyContext's node_modules fields from CopilotRunStartOptions.nodeModulesGrant's answer. */
+function nodeModulesPolicy(grant) {
+    if (!grant)
+        return {};
+    return { nodeModulesTarget: grant.target, ...(grant.nested && grant.nested.length > 0 ? { nestedNodeModulesTargets: grant.nested } : {}) };
+}
 /**
  * A credential-free session env, in place. Removed: GitHub tokens
  * (CREDENTIAL_ENV in copilot-session-env.ts), ssh-agent and askpass hooks, every other
@@ -1024,6 +1030,7 @@ export class CopilotRunManager {
             external,
             deniedPaths: [...(options.deniedPaths ?? [])],
             beforeHostGit: options.beforeHostGit ?? null,
+            nodeModulesGrant: profile !== 'review' ? options.nodeModulesGrant ?? null : null,
             unprepared: null,
             pid: undefined,
             pidIdentity: null,
@@ -1048,15 +1055,15 @@ export class CopilotRunManager {
             done: Promise.resolve(),
         };
         this.jobs.set(id, job);
-        // The OS sandbox on Windows (a write job): the caller readies the worktree now, before the job's timeout below is
+        // The OS sandbox (a write job): the caller readies the worktree now, before the job's timeout below is
         // armed and before the runtime starts. A synchronous hook runs before start() returns; an async one (a promise)
         // keeps the event loop free, and the job's timeout and run wait for it (job.prepared, which the caller awaits
         // before its own idle clock starts: prepared()).
         const intent = this.sandboxIntent(sandboxSettings);
         let preparing = null;
-        if (options.beforeSandboxedSession && worktree && profile !== 'review' && intent.windowsCopy) {
+        if (options.beforeSandboxedSession && worktree && profile !== 'review' && intent.sandboxed) {
             try {
-                const ready = options.beforeSandboxedSession(worktree.path);
+                const ready = options.beforeSandboxedSession(worktree.path, { copy: intent.windowsCopy });
                 // Any thenable (not only a native Promise) is awaited; Promise.resolve adopts it.
                 if (ready != null && typeof ready.then === 'function')
                     preparing = Promise.resolve(ready).then((problem) => { job.unprepared = problem; }, (err) => { job.unprepared = errText(err); });
@@ -1469,6 +1476,8 @@ export class CopilotRunManager {
                     platform: deps.platform,
                     settings: job.sandboxSettings,
                     hostCommits: job.hostCommits,
+                    // The caller-vouched node_modules (factory lanes); none, nothing under node_modules is granted.
+                    ...nodeModulesPolicy(job.nodeModulesGrant?.(resolve(top))),
                     toolPaths: (deps.toolPaths ?? laneToolPaths)(deps.env, deps.platform),
                     extraReadonly: proxy.caPaths,
                     // A keyring-less host keeps the login token in plain text in the user's Copilot config.json: its config dir is

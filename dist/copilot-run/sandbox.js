@@ -286,7 +286,7 @@ function sameRealPath(real, want, platform) {
  * grant needs an exact match with the engine's own list too
  * (nestedNodeModulesTargets). A line of another shape is ignored.
  */
-export function nodeModulesTreeProblem(worktree, target, platform = process.platform) {
+export function nodeModulesTreeProblem(worktree, target, platform = process.platform, targetReal) {
     const nm = join(worktree, 'node_modules');
     let st;
     try {
@@ -303,7 +303,8 @@ export function nodeModulesTreeProblem(worktree, target, platform = process.plat
         catch (error) {
             return { problem: `${nm} is a link that cannot be resolved (${error instanceof Error ? error.message : String(error)})`, linked: false };
         }
-        return sameRealPath(real, target, platform) ? { problem: null, linked: true } : { problem: `${nm} resolves to ${real}, not your node_modules ${target} (the only target the engine links)`, linked: false };
+        const same = targetReal !== undefined ? (platform === 'win32' ? real.toLowerCase() === targetReal.toLowerCase() : real === targetReal) : sameRealPath(real, target, platform);
+        return same ? { problem: null, linked: true } : { problem: `${nm} resolves to ${real}, not your node_modules ${target} (the only target the engine links)`, linked: false };
     }
     if (!st.isDirectory())
         return { problem: null, linked: false };
@@ -322,14 +323,15 @@ export function nodeModulesTreeProblem(worktree, target, platform = process.plat
         }
     };
     /** The links in `dir` (and in its real `@scope` dirs): each `<base>/<name>` or into the worktree; true when one uses `base`. */
-    const check = (dir, base, scoped) => {
+    const check = (dir, base, scoped, known) => {
         let linked = false;
         // linkNodeModules links to the realpath of `base` (the dir granted read-only); older trees to `base` as named.
-        let baseReal = null;
-        try {
-            baseReal = realpathSync.native(base);
-        }
-        catch { /* only the lexical form */ }
+        let baseReal = known ?? null;
+        if (baseReal === null)
+            try {
+                baseReal = realpathSync.native(base);
+            }
+            catch { /* only the lexical form */ }
         for (const name of readdirSync(dir)) {
             const p = join(dir, name);
             let link;
@@ -337,7 +339,7 @@ export function nodeModulesTreeProblem(worktree, target, platform = process.plat
                 const e = lstatSync(p);
                 if (!e.isSymbolicLink()) {
                     if (!scoped && name.startsWith('@') && e.isDirectory()) {
-                        const inner = check(p, join(base, name), true);
+                        const inner = check(p, join(base, name), true, baseReal !== null ? join(baseReal, name) : undefined);
                         if ('problem' in inner)
                             return inner;
                         linked ||= inner.linked;
@@ -357,7 +359,8 @@ export function nodeModulesTreeProblem(worktree, target, platform = process.plat
         }
         return { linked };
     };
-    const top = check(nm, target, false);
+    // `targetReal`: the caller's own realpath of the target, the one it grants (buildSandboxConfig), so check and grant agree.
+    const top = check(nm, target, false, targetReal);
     if ('problem' in top)
         return { problem: top.problem, linked: false };
     const nested = [];
@@ -429,16 +432,6 @@ function gateTreeNestedRels(nm) {
         // No dot segment (`.omg`, `.git`: engine state and other runs' checkouts) and no node_modules segment, nor a win32 alias of one.
         return segs.length <= 6 && segs.every((s) => s !== '' && !s.startsWith('.') && !/[ .]$/.test(s) && !s.includes('~') && s.toLowerCase() !== 'node_modules');
     });
-}
-/** The target of `<worktree>/node_modules` when it is a junction or symlink (read-only for a write session). */
-function nodeModulesLinkTarget(worktree) {
-    const nm = join(worktree, 'node_modules');
-    try {
-        return lstatSync(nm).isSymbolicLink() ? realpathSync.native(nm) : null;
-    }
-    catch {
-        return null;
-    }
 }
 /**
  * The read-write carve-outs of the read-only common git dir for a write
@@ -580,21 +573,22 @@ export function buildSandboxConfig(profile, ctx, host) {
     if (isUnderRoot(ctx.jobDir, ctx.worktree, ctx.platform)) {
         throw new Error(`the job dir ${ctx.jobDir} lies inside the lane-writable worktree ${ctx.worktree}; use isolation "worktree"`);
     }
-    let nm;
+    // No target, no grant: a `<worktree>/node_modules` link is lane-writable, so its own target is never mounted (a session
+    // could plant one for the next). A copilot_run job outside the factory reads no linked node_modules in the sandbox.
+    let nm = null;
     let nested = [];
-    if (ctx.nodeModulesTarget === undefined)
-        nm = nodeModulesLinkTarget(ctx.worktree);
-    else {
+    if (ctx.nodeModulesTarget !== undefined) {
         // The engine's link or per-run tree: only the engine-recorded target is granted (read-only), never a link's own target.
-        const tree = nodeModulesTreeProblem(ctx.worktree, ctx.nodeModulesTarget, ctx.platform);
+        let targetReal;
+        try {
+            targetReal = realpathSync.native(ctx.nodeModulesTarget);
+        }
+        catch { /* nothing to grant */ }
+        const tree = nodeModulesTreeProblem(ctx.worktree, ctx.nodeModulesTarget, ctx.platform, targetReal);
         if (tree.problem)
             throw new Error(`the node_modules in ${ctx.worktree} is not as the engine linked it (${tree.problem}); it is not granted`);
-        nm = null;
-        if (tree.linked)
-            try {
-                nm = realpathSync.native(ctx.nodeModulesTarget);
-            }
-            catch { /* nothing to grant */ }
+        if (tree.linked && targetReal !== undefined)
+            nm = targetReal;
         // A workspace package's node_modules of yours that a nested gate tree links to (read-only, like the root's), only
         // when it is exactly one the engine validated (review-501 M1): the marker naming it is PR-writable.
         const fold = (p) => (ctx.platform === 'win32' ? p.toLowerCase() : p);

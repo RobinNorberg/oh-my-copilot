@@ -51,6 +51,7 @@ vi.mock('fs/promises', async (importOriginal) => {
     };
     return { ...real, default: { ...real, copyFile }, copyFile };
 });
+import { nodeModulesTreeProblem } from '../../../copilot-run/sandbox.js';
 import { GATE_TREE_COMPLETE, GATE_TREE_MARKER, nestedTreeDirs, prepareLaneNodeModules, prepareLaneNodeModulesAsync, settleLaneNodeModules, unlinkNodeModules } from '../prepare.js';
 const linkType = process.platform === 'win32' ? 'junction' : 'dir';
 const dirs = [];
@@ -129,6 +130,46 @@ function setup() {
     return { root, worktree, store };
 }
 const ignoredAll = () => true;
+describe('prepareLaneNodeModules copy false (the lane worktree in the Linux and macOS OS sandbox)', () => {
+    it('builds the gates\' linked tree: each entry a link to the realpath of yours (the dir the sandbox grants), which passes the sandbox check; yours untouched', () => {
+        const { root, worktree, store } = setup();
+        const before = fingerprint(store);
+        const asked = [];
+        expect(prepareLaneNodeModules(root, worktree, { ignored: (p) => { asked.push(p); return true; }, copy: false })).toBeNull();
+        expect(asked).toEqual([['node_modules']]);
+        const nm = join(worktree, 'node_modules');
+        expect(lstatSync(nm).isSymbolicLink()).toBe(false);
+        const real = realpathSync.native(store);
+        for (const name of ['vitest', '@scope', '.bin']) {
+            expect(lstatSync(join(nm, name)).isSymbolicLink()).toBe(true);
+            expect(realpathSync.native(join(nm, name))).toBe(join(real, name));
+        }
+        expect(nodeModulesTreeProblem(worktree, join(root, 'node_modules'))).toEqual({ problem: null, linked: true });
+        expect(fingerprint(store)).toEqual(before);
+    });
+    it('never moves an earlier lane\'s tree (reuseFrom ignored): a fresh linked tree', () => {
+        const { root, worktree } = setup();
+        const earlier = join(worktree, '..', 'earlier');
+        mkdirSync(earlier);
+        expect(prepareLaneNodeModules(root, earlier, { ignored: ignoredAll })).toBeNull();
+        expect(prepareLaneNodeModules(root, worktree, { ignored: ignoredAll, copy: false, reuseFrom: [earlier] })).toBeNull();
+        expect(existsSync(join(earlier, 'node_modules', GATE_TREE_MARKER))).toBe(true);
+        expect(lstatSync(join(worktree, 'node_modules', 'vitest')).isSymbolicLink()).toBe(true);
+    });
+    it('settleLaneNodeModules linked: the tree goes before the commit even when git still ignores it, every link unlinked (never followed), marker or not', () => {
+        const { root, worktree, store } = setup();
+        const before = fingerprint(store);
+        expect(prepareLaneNodeModules(root, worktree, { ignored: ignoredAll, copy: false })).toBeNull();
+        expect(settleLaneNodeModules(root, worktree, ignoredAll, true)).toBeNull();
+        expect(existsSync(join(worktree, 'node_modules'))).toBe(false);
+        // The lane deleted the marker: the links still go.
+        expect(prepareLaneNodeModules(root, worktree, { ignored: ignoredAll, copy: false })).toBeNull();
+        rmSync(join(worktree, 'node_modules', GATE_TREE_MARKER));
+        expect(settleLaneNodeModules(root, worktree, ignoredAll, true)).toBeNull();
+        expect(readdirSync(join(worktree, 'node_modules')).filter((n) => lstatSync(join(worktree, 'node_modules', n)).isSymbolicLink())).toEqual([]);
+        expect(fingerprint(store)).toEqual(before);
+    });
+});
 describe('prepareLaneNodeModules (the lane worktree in the Windows OS sandbox)', () => {
     it('builds a real copied tree (package dirs copied, .bin a link), and the junction target (your node_modules) is untouched', () => {
         const { root, worktree, store } = setup();
