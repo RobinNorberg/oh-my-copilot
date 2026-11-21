@@ -9,6 +9,7 @@
 import { Command } from 'commander';
 import chalk from 'chalk';
 import { writeFileSync } from 'node:fs';
+import { factoryGitProblem } from '../../factory/git-preflight.js';
 import { createBenchFixture } from '../../factory/bench/fixture.js';
 import { BenchUsageError, DEFAULT_BENCH_MAX_MINUTES, LIVE_CAP_BOUND, parseIssueList, runBench } from '../../factory/bench/runner.js';
 import { benchRegressions, compareResults, DEFAULT_REQUEST_TOLERANCE_PCT, readBenchResults, renderRegressions } from '../../factory/bench/score.js';
@@ -29,6 +30,8 @@ export function factoryBenchCommand(): Command {
     .description('Create the bench fixture: a TypeScript + vitest repository on the local forge with the seeded backlog')
     .action((dir: string, o: { nodeModules?: string }) => {
       try {
+        const gitProblem = factoryGitProblem();
+        if (gitProblem) throw new Error(gitProblem);
         const meta = createBenchFixture(dir, o.nodeModules ? { nodeModules: o.nodeModules } : {});
         console.log(chalk.green(`bench fixture v${meta.fixtureVersion} at ${meta.root} (${meta.issues.length} issues)`));
         if (!o.nodeModules) console.log(`next: npm install in ${meta.root}, then omg factory bench run ${dir} --fake (or --live --max-requests <n>)`);
@@ -55,6 +58,8 @@ export function factoryBenchCommand(): Command {
     .description('Run the factory over the fixture until every issue is parked, finished or not runnable, then score it')
     .action(async (dir: string, o: { fake?: boolean; live?: boolean; maxRequests?: number; maxCredits?: number; maxMinutes?: number; parallel?: number; allowMultiplier?: number; model?: string; reviewModel?: string; issues?: string; out?: string; json?: boolean }) => {
       if (Boolean(o.fake) === Boolean(o.live)) return fail(new Error('pass exactly one of --fake and --live'), true);
+      const gitProblem = factoryGitProblem();
+      if (gitProblem) return fail(new Error(gitProblem));
       let issues: number[] | undefined;
       try {
         issues = o.issues === undefined ? undefined : parseIssueList(o.issues);

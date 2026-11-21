@@ -67,6 +67,7 @@ import { checkEnvFor, fetchBase, FETCH_TIMEOUT_MS, forgeReadExec, localBase, mis
 import { BUCKET_ORDER, checkItems, plainText } from '../../factory/check/score.js';
 import { createForge } from '../../forge/index.js';
 import { liveCreditReservations, parallelLayoutRefusal, readTrustedBaseLayerAtRef, releaseDeadCreditReservations, resolveParallelSettings, runParallelSupervisor } from '../../factory/run/parallel.js';
+import { factoryGitProblem } from '../../factory/git-preflight.js';
 import { resolveRunLayout, userParallelOptIn } from '../../factory/run/private-run.js';
 import { skillSlash } from '../../utils/skill-slash.js';
 export function renderChainStatus(status) {
@@ -498,6 +499,11 @@ export function factoryRunCommand(deps = defaultFactoryRunDeps) {
             throw new FactoryUsageError(error instanceof Error ? error.message : String(error));
         }
         let issue = o.next ? undefined : parseIssue(issueRaw);
+        if (!o.dryRun) {
+            const gitProblem = factoryGitProblem();
+            if (gitProblem)
+                throw new FactoryUsageError(gitProblem);
+        }
         const root = factoryRoot(exec);
         const loadedLimits = deps.limits(root);
         for (const w of loadedLimits.warnings)

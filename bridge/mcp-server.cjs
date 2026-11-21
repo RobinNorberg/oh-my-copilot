@@ -82152,6 +82152,14 @@ var init_factory_setup = __esm({
   }
 });
 
+// src/factory/git-preflight.ts
+var init_git_preflight = __esm({
+  "src/factory/git-preflight.ts"() {
+    "use strict";
+    init_exec();
+  }
+});
+
 // src/factory/bench/seed/project.ts
 var BENCH_BASE, BENCH_LABEL, BENCH_GATE, json2, BENCH_OMG_JSONC, LINT_MJS, BASE_RATES, SHIPPING_TS, SHIPPING_MD, MESSAGES_TS, BENCH_PROJECT_FILES;
 var init_project = __esm({
@@ -83376,6 +83384,7 @@ var init_factory_bench = __esm({
   "src/cli/commands/factory-bench.ts"() {
     "use strict";
     init_esm();
+    init_git_preflight();
     init_fixture();
     init_runner();
     init_score2();
@@ -83565,6 +83574,7 @@ var init_factory = __esm({
     init_score();
     init_forge();
     init_parallel();
+    init_git_preflight();
     init_private_run();
     init_skill_slash();
   }
@@ -84108,8 +84118,10 @@ function prepareFactoryRepo(dir) {
     return `repository files: ${err.message}`;
   }
   const steps = [
-    [["init", "-q", "--bare", "-b", FACTORY_RUN_BASE, bare], dir],
-    [["init", "-q", "-b", FACTORY_RUN_BASE], repo],
+    [["init", "-q", "--bare", bare], dir],
+    [["symbolic-ref", "HEAD", `refs/heads/${FACTORY_RUN_BASE}`], bare],
+    [["init", "-q"], repo],
+    [["symbolic-ref", "HEAD", `refs/heads/${FACTORY_RUN_BASE}`], repo],
     [["config", "user.name", "omg-smoke"], repo],
     [["config", "user.email", "omg-smoke@example.invalid"], repo],
     [["config", "commit.gpgsign", "false"], repo],
