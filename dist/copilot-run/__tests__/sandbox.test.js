@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, resolve, sep } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { sdkCreateSessionAcceptsSandbox } from '../../smoke/copilot-sdk-driver.js';
-import { BWRAP_TRIAL_ARGS, DEFAULT_SANDBOX_SETTINGS, allowlistSessionEnv, bwrapTrialLaunchError, linuxSandboxProblem, buildSandboxConfig, nodeModulesTreeProblem, findOnPath, gitForWindowsShell, laneGitWritePaths, laneToolPaths, loadSandboxSettings, missingSandboxEnv, proxyCaEnv, MXC_REQUIRED_ENV, probeHostSupport, resolveSandboxSettings, scrubTokens, secretValues, sessionGitHubToken, unconfirmedMode, } from '../sandbox.js';
+import { BWRAP_TRIAL_ARGS, DEFAULT_SANDBOX_SETTINGS, allowlistSessionEnv, bwrapTrialLaunchError, linuxSandboxProblem, factorySandboxProblem, parseBwrapVersion, bwrapTooOld, buildSandboxConfig, nodeModulesTreeProblem, findOnPath, gitForWindowsShell, laneGitWritePaths, laneToolPaths, loadSandboxSettings, missingSandboxEnv, proxyCaEnv, MXC_REQUIRED_ENV, probeHostSupport, resolveSandboxSettings, scrubTokens, secretValues, sessionGitHubToken, unconfirmedMode, } from '../sandbox.js';
 let root;
 let ctx;
 const host = (caps = { shell: true }) => ({ supported: true, capabilities: caps });
@@ -654,6 +654,21 @@ describe('detection helpers', () => {
         expect(linuxSandboxProblem('win32', () => 'boom')).toBeNull();
         expect(linuxSandboxProblem('linux', () => 'boom')).toBe('boom');
         expect(linuxSandboxProblem('linux', () => null)).toBeNull();
+    });
+    it('parseBwrapVersion and bwrapTooOld compare against BWRAP_MIN_VERSION', () => {
+        expect(parseBwrapVersion('bubblewrap 0.4.0')).toEqual({ major: 0, minor: 4, text: '0.4.0' });
+        expect(parseBwrapVersion('garbage')).toBeNull();
+        expect(bwrapTooOld({ major: 0, minor: 4 })).toBe(true);
+        expect(bwrapTooOld({ major: 0, minor: 5 })).toBe(false);
+        expect(bwrapTooOld({ major: 0, minor: 10 })).toBe(false);
+        expect(bwrapTooOld({ major: 1, minor: 0 })).toBe(false);
+    });
+    it('factorySandboxProblem checks only when the lanes would refuse an unconfirmed sandbox', () => {
+        const boom = () => 'boom';
+        expect(factorySandboxProblem({ ...DEFAULT_SANDBOX_SETTINGS }, boom, {})).toBe('boom');
+        expect(factorySandboxProblem({ ...DEFAULT_SANDBOX_SETTINGS, enabled: false }, boom, {})).toBeNull();
+        expect(factorySandboxProblem({ ...DEFAULT_SANDBOX_SETTINGS, writeUnsandboxed: 'detect-only' }, boom, {})).toBeNull();
+        expect(factorySandboxProblem({ ...DEFAULT_SANDBOX_SETTINGS }, boom, { OMG_SANDBOX: 'off' })).toBeNull();
     });
     it('sdkCreateSessionAcceptsSandbox reads the createSession source', () => {
         const sdk = (cls) => ({ module: { CopilotClient: cls, RuntimeConnection: { forStdio: () => ({}) } }, version: 'x', from: 'test' });

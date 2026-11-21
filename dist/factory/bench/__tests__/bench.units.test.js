@@ -541,11 +541,12 @@ describe('acceptance on a hostile PR head (H1, M2, L1)', () => {
 });
 describe('CLI', () => {
     afterEach(() => { process.exitCode = undefined; });
-    const run = async (...args) => {
+    const run = async (...args) => runWith({}, ...args);
+    const runWith = async (deps, ...args) => {
         const err = vi.spyOn(console, 'error').mockImplementation(() => { });
         const log = vi.spyOn(console, 'log').mockImplementation(() => { });
         try {
-            await factoryBenchCommand().exitOverride().parseAsync(args, { from: 'user' });
+            await factoryBenchCommand(deps).exitOverride().parseAsync(args, { from: 'user' });
             return { code: process.exitCode, err: err.mock.calls.map((c) => String(c[0])).join('\n'), out: log.mock.calls.map((c) => String(c[0])).join('\n') };
         }
         finally {
@@ -562,6 +563,17 @@ describe('CLI', () => {
         expect(await run('run', bench, '--fake', '--issues', '2,x')).toMatchObject({ code: 2, err: expect.stringContaining('not a comma-separated list') });
         expect(await run('run', bench, '--fake', '--issues', '2,99')).toMatchObject({ code: 2, err: expect.stringContaining('no bench issue 99') });
         expect(await run('run', bench, '--fake', '--issues', '2,2')).toMatchObject({ code: 2, err: expect.stringContaining('twice') });
+    });
+    it('run --live refuses an unusable Linux sandbox (exit 2) after the --max-requests check; --fake is not checked', async () => {
+        const bench = join(dir, 'sb');
+        createBenchFixture(bench, { nodeModules: NODE_MODULES });
+        const sandboxProblem = vi.fn(() => 'boom');
+        expect(await runWith({ sandboxProblem }, 'run', bench, '--live')).toMatchObject({ code: 2, err: expect.stringContaining('--live needs --max-requests') });
+        expect(sandboxProblem).not.toHaveBeenCalled();
+        expect(await runWith({ sandboxProblem }, 'run', bench, '--live', '--max-requests', '1')).toMatchObject({ code: 2, err: expect.stringContaining('the Linux sandbox is unusable: boom') });
+        expect(sandboxProblem).toHaveBeenCalledTimes(1);
+        expect(await runWith({ sandboxProblem }, 'run', bench, '--fake', '--parallel', '2')).toMatchObject({ code: 2, err: expect.stringContaining('--parallel applies to --live') });
+        expect(sandboxProblem).toHaveBeenCalledTimes(1);
     });
     it('the --live help names the same sandbox rule as the refusal: isolation "container" and gates not "unsandboxed"', () => {
         const live = factoryBenchCommand().commands.find((c) => c.name() === 'run').options.find((o) => o.long === '--live');

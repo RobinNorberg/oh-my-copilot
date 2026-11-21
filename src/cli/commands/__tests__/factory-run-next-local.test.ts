@@ -43,6 +43,7 @@ function deps(base = 'main'): FactoryRunDeps {
     base: () => base,
     ledgerDir: ledger,
     forge: (root) => resolveForgeConfig(undefined, undefined, LOCAL_PROJECT_CONFIG, undefined, { root, stateDir: getGlobalOmcStatePath('forge') }),
+    sandboxProblem: () => null,
   };
 }
 

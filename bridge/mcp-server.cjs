@@ -49952,8 +49952,12 @@ function rpcMethod(root, path15, name) {
   }
 }
 function parseBwrapVersion(text3) {
-  const m = /(\d+)\.(\d+)/.exec(text3);
-  return m ? [Number(m[1]), Number(m[2])] : null;
+  const m = /(\d+)\.(\d+)(?:\.\d+)?/.exec(text3);
+  return m ? { major: Number(m[1]), minor: Number(m[2]), text: m[0] } : null;
+}
+function bwrapTooOld(v) {
+  const [major, minor] = BWRAP_MIN_VERSION;
+  return v.major < major || v.major === major && v.minor < minor;
 }
 function bwrapTrialLaunchError(spawn9 = defaultTrialSpawner, timeoutMs = 1e4) {
   const r = spawn9("bwrap", BWRAP_TRIAL_ARGS, timeoutMs);
@@ -49963,8 +49967,8 @@ function bwrapTrialLaunchError(spawn9 = defaultTrialSpawner, timeoutMs = 1e4) {
   const stderr = r.stderr.trim().slice(0, 200);
   const v = spawn9("bwrap", ["--version"], timeoutMs);
   const parsed = v.error || v.status !== 0 ? null : parseBwrapVersion(v.stdout ?? "");
-  if (parsed && (parsed[0] < BWRAP_MIN_VERSION[0] || parsed[0] === BWRAP_MIN_VERSION[0] && parsed[1] < BWRAP_MIN_VERSION[1])) {
-    return `bubblewrap ${/\d+\.\d+(?:\.\d+)?/.exec(v.stdout ?? "")?.[0] ?? `${parsed[0]}.${parsed[1]}`} is too old for the Copilot sandbox: it needs bwrap >= ${BWRAP_MIN_VERSION[0]}.${BWRAP_MIN_VERSION[1]}.0 (--clearenv). Ubuntu 20.04 ships 0.4.0: upgrade the distro (22.04+ ships 0.6+) or build bubblewrap from https://github.com/containers/bubblewrap`;
+  if (parsed && bwrapTooOld(parsed)) {
+    return `bubblewrap ${parsed.text} is too old for the Copilot sandbox: it needs bwrap >= ${BWRAP_MIN_VERSION[0]}.${BWRAP_MIN_VERSION[1]}.0 (--clearenv). Ubuntu 20.04 ships 0.4.0: upgrade the distro (22.04+ ships 0.6+) or build bubblewrap from https://github.com/containers/bubblewrap`;
   }
   if (/RTM_NEWADDR|uid map|new namespace/i.test(stderr)) {
     return `unprivileged user namespaces are restricted (AppArmor kernel.apparmor_restrict_unprivileged_userns=1), so bwrap cannot launch the sandbox; see "Linux: restricted user namespaces" in docs/REFERENCE.md (bwrap: ${stderr})`;

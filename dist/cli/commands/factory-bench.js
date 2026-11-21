@@ -18,7 +18,7 @@ const fail = (error, usage = false) => {
     console.error(chalk.red(`omg factory bench: ${error instanceof Error ? error.message : String(error)}`));
     process.exitCode = usage || error instanceof BenchUsageError ? 2 : 1;
 };
-export function factoryBenchCommand() {
+export function factoryBenchCommand(deps = {}) {
     const bench = new Command('bench').description('Benchmark the factory on seeded issues against the local forge (init a fixture, run it --fake or --live, compare results)');
     bench
         .command('init')
@@ -61,9 +61,6 @@ export function factoryBenchCommand() {
         const gitProblem = factoryGitProblem();
         if (gitProblem)
             return fail(new Error(gitProblem));
-        const sandboxProblem = o.live ? linuxSandboxProblem() : null;
-        if (sandboxProblem)
-            return fail(new Error(`the Linux sandbox is unusable: ${sandboxProblem}`), true);
         let issues;
         try {
             issues = o.issues === undefined ? undefined : parseIssueList(o.issues);
@@ -96,6 +93,7 @@ export function factoryBenchCommand() {
                 announce: (m) => console.error(chalk.cyan(m)),
                 interrupted: () => interrupted,
                 signals: (forward) => { forwards.add(forward); return () => { forwards.delete(forward); }; },
+                sandboxProblem: deps.sandboxProblem ?? (() => linuxSandboxProblem()),
             });
             const t = out.results.totals;
             if (o.json)

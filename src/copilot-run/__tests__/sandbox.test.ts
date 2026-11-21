@@ -10,6 +10,9 @@ import {
   allowlistSessionEnv,
   bwrapTrialLaunchError,
   linuxSandboxProblem,
+  factorySandboxProblem,
+  parseBwrapVersion,
+  bwrapTooOld,
   buildSandboxConfig,
   nodeModulesTreeProblem,
   findOnPath,
@@ -694,6 +697,23 @@ describe('detection helpers', () => {
     expect(linuxSandboxProblem('win32', () => 'boom')).toBeNull();
     expect(linuxSandboxProblem('linux', () => 'boom')).toBe('boom');
     expect(linuxSandboxProblem('linux', () => null)).toBeNull();
+  });
+
+  it('parseBwrapVersion and bwrapTooOld compare against BWRAP_MIN_VERSION', () => {
+    expect(parseBwrapVersion('bubblewrap 0.4.0')).toEqual({ major: 0, minor: 4, text: '0.4.0' });
+    expect(parseBwrapVersion('garbage')).toBeNull();
+    expect(bwrapTooOld({ major: 0, minor: 4 })).toBe(true);
+    expect(bwrapTooOld({ major: 0, minor: 5 })).toBe(false);
+    expect(bwrapTooOld({ major: 0, minor: 10 })).toBe(false);
+    expect(bwrapTooOld({ major: 1, minor: 0 })).toBe(false);
+  });
+
+  it('factorySandboxProblem checks only when the lanes would refuse an unconfirmed sandbox', () => {
+    const boom = () => 'boom';
+    expect(factorySandboxProblem({ ...DEFAULT_SANDBOX_SETTINGS }, boom, {})).toBe('boom');
+    expect(factorySandboxProblem({ ...DEFAULT_SANDBOX_SETTINGS, enabled: false }, boom, {})).toBeNull();
+    expect(factorySandboxProblem({ ...DEFAULT_SANDBOX_SETTINGS, writeUnsandboxed: 'detect-only' }, boom, {})).toBeNull();
+    expect(factorySandboxProblem({ ...DEFAULT_SANDBOX_SETTINGS }, boom, { OMG_SANDBOX: 'off' })).toBeNull();
   });
 
   it('sdkCreateSessionAcceptsSandbox reads the createSession source', () => {

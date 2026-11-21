@@ -91,6 +91,11 @@ export interface BenchRunOptions {
     trustedUser?: unknown;
     /** Live: subscribe the run children to the bench's stop signal (the CLI forwards Ctrl+C). */
     signals?: (forward: (signal: NodeJS.Signals) => void) => () => void;
+    /**
+     * Live: the up-front Linux sandbox check (the CLI passes linuxSandboxProblem), run only when the lanes'
+     * sandbox settings (the trusted user config, then the fixture's) would refuse; null = usable. Default: none.
+     */
+    sandboxProblem?: () => string | null;
 }
 export interface BenchRunOutput {
     results: BenchResults;

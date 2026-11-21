@@ -30,7 +30,7 @@ import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSy
 import { tmpdir } from 'node:os';
 import { join, resolve, sep } from 'node:path';
 import { ledgerPath, ledgerTotals, parseLedger } from '../../budget/ledger.js';
-import { resolveGateIsolation, resolveGatesSandboxMode } from '../../copilot-run/sandbox.js';
+import { factorySandboxProblem, loadSandboxSettings, resolveGateIsolation, resolveGatesSandboxMode } from '../../copilot-run/sandbox.js';
 import { createForge } from '../../forge/index.js';
 import { resolveForgeConfig } from '../../forge/config.js';
 import { LOCAL_REMOTE, readMirrorRef } from '../../forge/local/index.js';
@@ -425,6 +425,12 @@ export async function runBench(o) {
     if (o.mode === 'live') {
         if (o.maxRequests === undefined)
             throw new BenchUsageError('--live needs --max-requests <n>: the bench never spends premium requests without an explicit cap');
+        if (o.sandboxProblem) {
+            const settings = loadSandboxSettings(meta.root, 'factory', { user: trustedUser, project: fixtureBaseConfig(meta) }).settings;
+            const problem = factorySandboxProblem(settings, o.sandboxProblem);
+            if (problem)
+                throw new BenchUsageError(`the Linux sandbox is unusable: ${problem}`);
+        }
     }
     else if (parallel !== 1) {
         throw new BenchUsageError('--parallel applies to --live; --fake runs one engine at a time');

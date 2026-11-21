@@ -39,7 +39,7 @@ describe('omg factory run forge wiring', () => {
         const lanes = new FakeLanes(h.root, [commitFile('a.ts'), review('approve')]);
         const deps = {
             exec, lanes: () => lanes, limits: () => resolveFactoryRunLimits(undefined, undefined), base: () => 'dev',
-            ledgerDir: h.ledgerDir, gateConfig: testGateConfig, gateSandbox: () => attestedSandbox(() => h.exec), forge,
+            ledgerDir: h.ledgerDir, gateConfig: testGateConfig, gateSandbox: () => attestedSandbox(() => h.exec), forge, sandboxProblem: () => null,
         };
         await factoryRunCommand(deps).parseAsync([String(ISSUE), '--json'], { from: 'user' });
         expect(process.exitCode ?? 0).toBe(0);
@@ -59,7 +59,7 @@ describe('omg factory run without a usable forge (F9)', () => {
     const depsWith = (forge) => ({
         exec: (cmd, args, opts) => (cmd === 'git' && args.join(' ') === 'rev-parse --show-toplevel' ? ok(`${h.root}
 `) : h.exec(cmd, args, opts)),
-        lanes: () => new FakeLanes(h.root, []), limits: () => resolveFactoryRunLimits(undefined, undefined), base: () => 'dev',
+        lanes: () => new FakeLanes(h.root, []), limits: () => resolveFactoryRunLimits(undefined, undefined), base: () => 'dev', sandboxProblem: () => null,
         ledgerDir: h.ledgerDir, gateConfig: testGateConfig, gateSandbox: () => attestedSandbox(() => h.exec), forge,
     });
     const unavailable = () => { throw new FactoryForgeUnavailableError('no origin remote: omg factory needs a GitHub or Azure DevOps origin'); };

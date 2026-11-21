@@ -68,7 +68,7 @@ import { BUCKET_ORDER, checkItems, plainText } from '../../factory/check/score.j
 import { createForge } from '../../forge/index.js';
 import { liveCreditReservations, parallelLayoutRefusal, readTrustedBaseLayerAtRef, releaseDeadCreditReservations, resolveParallelSettings, runParallelSupervisor } from '../../factory/run/parallel.js';
 import { factoryGitProblem } from '../../factory/git-preflight.js';
-import { linuxSandboxProblem } from '../../copilot-run/sandbox.js';
+import { factorySandboxProblem, linuxSandboxProblem, loadSandboxSettings } from '../../copilot-run/sandbox.js';
 import { resolveRunLayout, userParallelOptIn } from '../../factory/run/private-run.js';
 import { skillSlash } from '../../utils/skill-slash.js';
 export function renderChainStatus(status) {
@@ -177,6 +177,7 @@ export const defaultFactoryRunDeps = {
     forge: (root, base, opts) => loadFactoryForgeConfig(factoryGuardExec(defaultExec), root, base, userConfigLayers().trustedUser, projectConfig(root), opts),
     gateSandbox: (root) => createSandboxRunner(root),
     parallel: (root, base, kind) => defaultParallelLayers(root, base, kind),
+    sandboxProblem: () => linuxSandboxProblem(),
 };
 class FactoryUsageError extends Error {
 }
@@ -504,11 +505,21 @@ export function factoryRunCommand(deps = defaultFactoryRunDeps) {
             const gitProblem = factoryGitProblem(deps.exec);
             if (gitProblem)
                 throw new FactoryUsageError(gitProblem);
-            const sandboxProblem = o.allowUnsandboxedLanes ? null : linuxSandboxProblem();
+        }
+        const root = factoryRoot(exec);
+        if (!o.dryRun) {
+            // Only where a lane would park at sandbox-unavailable: a malformed sandbox block is left to the lanes' own load.
+            let settings;
+            try {
+                settings = (deps.sandboxSettings ?? ((r) => loadSandboxSettings(r, 'factory').settings))(root);
+            }
+            catch {
+                settings = undefined;
+            }
+            const sandboxProblem = settings ? factorySandboxProblem(settings, deps.sandboxProblem) : null;
             if (sandboxProblem)
                 throw new FactoryUsageError(`the Linux sandbox is unusable: ${sandboxProblem}`);
         }
-        const root = factoryRoot(exec);
         const loadedLimits = deps.limits(root);
         for (const w of loadedLimits.warnings)
             console.error(chalk.yellow(w));
