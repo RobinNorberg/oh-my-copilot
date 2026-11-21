@@ -6,14 +6,15 @@
  */
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { join, resolve } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { storedLoginToken } from '../../smoke/copilot-session-env.js';
 import { scrubTokens, secretValues, sessionGitHubToken, triedCredentialNames, withCredentialHint } from '../sandbox.js';
 import { fetchCopilotCatalogue } from '../model-catalogue.js';
 import { probeLaneModel } from '../../factory/bench/model-probe.js';
 import { workerGitHubToken } from '../../team/sdk-host.js';
 import { CopilotRunManager } from '../job.js';
+import { DEFAULT_SANDBOX_SETTINGS } from '../sandbox.js';
 import { fakeDeps, fakeSdk, newCalls, scratchRepo } from './fake-sdk.js';
 // Not token-shaped, so the exact-value redaction (not the gh*_ pattern) is what scrubs it.
 const STORED = 'stored-plaintext-credential-0001';
@@ -151,6 +152,8 @@ describe('no-session probes pass the credential through the client option', () =
         await cleanup;
         expect(sdk.seen.clientOpts[0].gitHubToken).toBe(STORED);
         expect(JSON.stringify(sdk.seen.envs[0])).not.toContain(STORED);
+        // The env that carries the client credential: no git root search past the job root, no auto-approved tool.
+        expect(sdk.seen.envs[0]).toMatchObject({ GIT_CEILING_DIRECTORIES: resolve(join(deps.tmpRoot, 'omg-model-catalogue')), COPILOT_ALLOW_ALL: 'false' });
         expect(sdk.seen.homeConfigs[0]).toContain('"lastLoggedInUser"');
         expect(sdk.seen.homeConfigs[0]).not.toContain(STORED);
         expect(sdk.seen.homeConfigs[0]).not.toContain('authTokens');
@@ -189,6 +192,7 @@ describe('no-session probes pass the credential through the client option', () =
         expect(info).toMatchObject({ model: 'mai-code-2', multiplier: 1, offered: ['mai-code-2'] });
         expect(sdk.seen.clientOpts[0].gitHubToken).toBe(STORED);
         expect(JSON.stringify(sdk.seen.envs[0])).not.toContain(STORED);
+        expect(sdk.seen.envs[0]).toMatchObject({ GIT_CEILING_DIRECTORIES: resolve(join(root, 'probe')), COPILOT_ALLOW_ALL: 'false' });
         expect(sdk.seen.homeConfigs[0]).not.toContain(STORED);
     });
     it('the bench model probe: "Not authenticated" names the credentials tried', async () => {
@@ -242,6 +246,62 @@ describe('a copilot_run lane on a keyring-less host', () => {
         await m.wait(m.start({ prompt: 'x', cwd: repo }).jobId, 10_000);
         expect(calls.sessions).toHaveLength(1);
         expect(calls.sessions[0]).not.toHaveProperty('gitHubToken');
+    });
+});
+describe('the lane sandbox on a keyring-less host with COPILOT_HOME outside the real home', () => {
+    let savedOmcHome;
+    beforeEach(() => {
+        // The deny list names the OMC global state root's forge dir and creates it: never the real one.
+        savedOmcHome = process.env.OMC_HOME;
+        const omcHome = mkdtempSync(join(tmpdir(), 'omg-keyringless-omc-'));
+        dirs.push(omcHome);
+        process.env.OMC_HOME = omcHome;
+    });
+    afterEach(() => {
+        if (savedOmcHome === undefined)
+            delete process.env.OMC_HOME;
+        else
+            process.env.OMC_HOME = savedOmcHome;
+    });
+    /** One write lane on a host that reports denied_paths; its sandbox config's deniedPaths. */
+    async function laneDenied(over = () => ({}), env = {}) {
+        const { root, repo } = scratchRepo('omg-keyringless-deny-');
+        dirs.push(root);
+        const calls = newCalls();
+        const deps = {
+            ...fakeDeps(root, 'idle', calls, { OMG_COPILOT_RUN_ALLOW: '1', ...env }),
+            loadSdk: async () => fakeSdk('idle', calls, 'supported', true),
+            realHome: () => join(root, 'home'),
+            sandboxSettings: () => ({ settings: { ...DEFAULT_SANDBOX_SETTINGS, allowedHosts: [], extraReadonlyPaths: [], extraReadwritePaths: [] }, warnings: [] }),
+            ...over(root),
+        };
+        const m = new CopilotRunManager(deps);
+        const done = await m.wait(m.start({ prompt: 'x', cwd: repo }).jobId, 10_000);
+        const update = calls.optionsUpdates[0];
+        return { root, done, denied: update?.sandboxConfig.userPolicy.filesystem.deniedPaths };
+    }
+    it('linux: the whole config dir is denied', async () => {
+        const { root, done, denied } = await laneDenied();
+        expect(done.status).toBe('completed');
+        expect(denied).toContain(join(root, 'user-copilot'));
+    });
+    it('linux: with a grant inside the config dir, only its config.json is denied', async () => {
+        const { root, done, denied } = await laneDenied((r) => {
+            writeFileSync(join(r, 'config.json'), JSON.stringify(loggedIn({})));
+            return { userConfigDir: () => r };
+        });
+        expect(done.status).toBe('completed');
+        expect(denied).toContain(join(root, 'config.json'));
+        expect(denied).not.toContain(root);
+    });
+    it('win32: no config dir deny', async () => {
+        const { root, denied } = await laneDenied((r) => {
+            mkdirSync(join(r, 'localappdata'), { recursive: true });
+            return { platform: 'win32', env: { PATH: process.env.PATH ?? '', OMG_COPILOT_RUN_ALLOW: '1', SYSTEMROOT: 'C:\\Windows', LOCALAPPDATA: join(r, 'localappdata') } };
+        });
+        expect(denied).toBeDefined();
+        expect(denied).not.toContain(join(root, 'user-copilot'));
+        expect(denied).not.toContain(join(root, 'user-copilot', 'config.json'));
     });
 });
 //# sourceMappingURL=keyringless-auth.test.js.map

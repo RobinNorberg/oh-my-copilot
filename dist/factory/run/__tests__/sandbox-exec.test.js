@@ -5,7 +5,7 @@
  * this host has), and gateEnv. No Copilot runtime, no network, no credits.
  */
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -392,6 +392,65 @@ describe('createSandboxRunner and requireDeniedPaths', () => {
         expect(await run({ ...req, requireDeniedPaths: true })).toMatchObject({ ran: false, reason: expect.stringContaining('requireDeniedPaths') });
         expect(rec.commands).toEqual([]);
         expect(await run(req)).toMatchObject({ ran: true, credentialFilesReadable: true });
+    });
+});
+/** Whether this host can make a file symlink (Windows needs developer mode or the privilege). */
+const canSymlink = (() => {
+    const d = mkdtempSync(join(tmpdir(), 'omg-symlink-probe-'));
+    try {
+        writeFileSync(join(d, 'target'), '');
+        symlinkSync(join(d, 'target'), join(d, 'link'), 'file');
+        return true;
+    }
+    catch {
+        return false;
+    }
+    finally {
+        rmSync(d, { recursive: true, force: true });
+    }
+})();
+describe('runSandboxed on a keyring-less host (COPILOT_HOME outside the real home)', () => {
+    const STORED = 'stored-plaintext-credential-0001';
+    const denied = () => (rec.optionsUpdates[0]?.sandboxConfig).userPolicy.filesystem.deniedPaths ?? [];
+    const storedLogin = (cfgDir) => writeFileSync(join(cfgDir, 'config.json'), JSON.stringify({
+        loggedInUsers: [{ login: 'me' }], lastLoggedInUser: { login: 'me' }, authTokens: { 'https://github.com:me': { token: STORED } },
+    }));
+    it('linux: the whole config dir is denied', async () => {
+        await runSandboxed(['/bin/true'], opts(), deps(ok));
+        expect(denied()).toContain(join(dir, 'user-copilot'));
+    });
+    it('linux: with a grant inside the config dir, only its config.json is denied', async () => {
+        writeFileSync(join(dir, 'config.json'), JSON.stringify({ loggedInUsers: [{ login: 'me' }] }));
+        await runSandboxed(['/bin/true'], opts(), deps(ok, 'supported', { userConfigDir: () => dir }));
+        expect(denied()).toContain(join(dir, 'config.json'));
+        expect(denied()).not.toContain(dir);
+    });
+    it.skipIf(!canSymlink)('linux: a symlinked config.json also denies the file it points to', async () => {
+        const target = join(dir, 'elsewhere', 'real-config.json');
+        mkdirSync(join(dir, 'elsewhere'));
+        writeFileSync(target, JSON.stringify({ loggedInUsers: [{ login: 'me' }] }));
+        rmSync(join(dir, 'user-copilot', 'config.json'));
+        symlinkSync(target, join(dir, 'user-copilot', 'config.json'), 'file');
+        await runSandboxed(['/bin/true'], opts(), deps(ok));
+        expect(denied()).toContain(join(dir, 'user-copilot', 'config.json'));
+        expect(denied()).toContain(realpathSync.native(target));
+    });
+    it('win32: no config dir deny (the token stays in Credential Manager)', async () => {
+        mkdirSync(join(dir, 'localappdata'));
+        await runSandboxed(['C:\\node.exe', 'x.js'], opts(), deps(ok, 'supported', { platform: 'win32', env: { PATH: '', SYSTEMROOT: 'C:\\Windows', LOCALAPPDATA: join(dir, 'localappdata') } }));
+        expect(rec.optionsUpdates).toHaveLength(1);
+        expect(denied().length).toBeGreaterThan(0);
+        expect(denied()).not.toContain(join(dir, 'user-copilot'));
+        expect(denied()).not.toContain(join(dir, 'user-copilot', 'config.json'));
+    });
+    it('the stored token goes on createSession only, and gate output carrying it is scrubbed by exact value', async () => {
+        storedLogin(join(dir, 'user-copilot'));
+        const r = await runSandboxed(['/usr/bin/node', 'x.js'], opts(), deps(said(`leaked ${STORED}\nMARKER 0\n`), 'supported', { env: { PATH: process.env.PATH ?? '' } }));
+        expect(r).toEqual({ ran: true, status: 0, output: 'leaked [redacted]', timedOut: false });
+        expect(rec.sessions[0].gitHubToken).toBe(STORED);
+        expect(rec.clients[0]).not.toHaveProperty('gitHubToken');
+        expect(JSON.stringify(rec.clients[0])).not.toContain(STORED);
+        expect(JSON.stringify(rec.connections[0].env)).not.toContain(STORED);
     });
 });
 describe('buildSandboxConfig deny list (Windows)', () => {

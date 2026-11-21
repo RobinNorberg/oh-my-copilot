@@ -981,6 +981,25 @@ function envValue(env, name) {
     const value = key === undefined ? undefined : env[key];
     return typeof value === 'string' && value.trim() !== '' ? value : undefined;
 }
+/**
+ * The sandbox denies for the user's Copilot config dir on a keyring-less host, where its config.json holds the login
+ * token in plain text (never on Windows: the token stays in Credential Manager). The default ~/.copilot is denied whole
+ * anyway; a relocated COPILOT_HOME is denied whole too, unless a grant lies under it (buildSandboxConfig drops it then),
+ * and its config.json always, also the file a symlinked config.json points to.
+ */
+export function copilotConfigDenies(userConfigDir, platform) {
+    if (platform === 'win32')
+        return [];
+    const cfg = join(userConfigDir, 'config.json');
+    const out = [userConfigDir, cfg];
+    try {
+        const real = realpathSync.native(cfg);
+        if (real !== cfg)
+            out.push(real);
+    }
+    catch { /* missing or dangling: nothing more to name */ }
+    return out;
+}
 /** The stored login's plaintext token for `source`; none in a cassette replay, which runs credential-free. */
 function storedToken(env, source) {
     return source && !isReplayEnv(env) ? storedLoginToken(source.userConfigDir, source.platform) : undefined;

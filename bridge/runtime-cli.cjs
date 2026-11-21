@@ -3423,7 +3423,7 @@ async function withProcessIdentityFileLock(lockPath, fn, timeoutMs = 1e4) {
           continue;
         }
         if (Date.now() >= deadline) throw new Error("process_identity_lock_timeout");
-        await new Promise((resolve22) => setTimeout(resolve22, 25));
+        await new Promise((resolve23) => setTimeout(resolve23, 25));
         continue;
       }
       try {
@@ -3444,7 +3444,7 @@ async function withProcessIdentityFileLock(lockPath, fn, timeoutMs = 1e4) {
           }
         }
         if (Date.now() >= deadline) throw new Error("process_identity_lock_timeout");
-        await new Promise((resolve22) => setTimeout(resolve22, 25));
+        await new Promise((resolve23) => setTimeout(resolve23, 25));
       }
     }
     return await fn();
@@ -8346,7 +8346,7 @@ async function renameWithRetry(tempPath, filePath, maxAttempts = 10, delayMs = 3
       }
       lastError = error;
       if (attempt < maxAttempts - 1) {
-        await new Promise((resolve22) => setTimeout(resolve22, delayMs));
+        await new Promise((resolve23) => setTimeout(resolve23, delayMs));
       }
     }
   }
@@ -8815,7 +8815,7 @@ function withFileLockSync(lockPath, fn, opts) {
   }
 }
 function sleep(ms) {
-  return new Promise((resolve22) => setTimeout(resolve22, ms));
+  return new Promise((resolve23) => setTimeout(resolve23, ms));
 }
 async function acquireFileLock(lockPath, opts) {
   const staleLockMs = opts?.staleLockMs ?? DEFAULT_STALE_LOCK_MS;
@@ -9647,7 +9647,7 @@ function canonicalAuthorityDigest(input) {
   return (0, import_node_crypto5.createHash)("sha256").update(payload, "utf8").digest("hex");
 }
 function sleep2(ms) {
-  return new Promise((resolve22) => setTimeout(resolve22, ms));
+  return new Promise((resolve23) => setTimeout(resolve23, ms));
 }
 function isExactText(value) {
   return typeof value === "string" && value.length > 0 && value === value.trim();
@@ -11110,11 +11110,11 @@ async function runWorkerLaunchBootstrap(value) {
       let resolveCompletion;
       let resolveWindowsReady;
       let resolveWindowsTerminal;
-      const windowsReady = new Promise((resolve22) => {
-        resolveWindowsReady = resolve22;
+      const windowsReady = new Promise((resolve23) => {
+        resolveWindowsReady = resolve23;
       });
-      const windowsTerminal = new Promise((resolve22) => {
-        resolveWindowsTerminal = resolve22;
+      const windowsTerminal = new Promise((resolve23) => {
+        resolveWindowsTerminal = resolve23;
       });
       if (process.platform === "win32") child.stderr?.resume();
       if (providerGate) {
@@ -11130,9 +11130,9 @@ async function runWorkerLaunchBootstrap(value) {
         });
       }
       let windowsTerminationProofWrite = Promise.resolve();
-      const windowsStdoutClosed = new Promise((resolve22) => {
-        if (process.platform !== "win32" || !child.stdout) resolve22();
-        else child.stdout.once("close", () => resolve22());
+      const windowsStdoutClosed = new Promise((resolve23) => {
+        if (process.platform !== "win32" || !child.stdout) resolve23();
+        else child.stdout.once("close", () => resolve23());
       });
       if (process.platform === "win32" && child.stdout) {
         let buffered = "";
@@ -11182,8 +11182,8 @@ async function runWorkerLaunchBootstrap(value) {
           }
         });
       }
-      const completion = new Promise((resolve22) => {
-        resolveCompletion = resolve22;
+      const completion = new Promise((resolve23) => {
+        resolveCompletion = resolve23;
         child.once(process.platform === "win32" ? "close" : "exit", async (exitCode, signal) => {
           if (settled && process.platform === "win32" || childExitObserved) return;
           childExitObserved = true;
@@ -11242,7 +11242,7 @@ async function runWorkerLaunchBootstrap(value) {
             written_at: (/* @__PURE__ */ new Date()).toISOString()
           }).catch(() => void 0);
           await invocation.cleanup().catch(() => void 0);
-          resolve22(gateCleanupRequired ? cleanupVerified ? { outcome: "provider_spawn_failed" } : { outcome: "provider_cleanup_unverified" } : cleanupVerified ? { outcome: "ran", exitCode: effectiveExitCode, signal: effectiveSignal } : { outcome: "provider_cleanup_unverified" });
+          resolve23(gateCleanupRequired ? cleanupVerified ? { outcome: "provider_spawn_failed" } : { outcome: "provider_cleanup_unverified" } : cleanupVerified ? { outcome: "ran", exitCode: effectiveExitCode, signal: effectiveSignal } : { outcome: "provider_cleanup_unverified" });
         });
         child.once("error", async () => {
           if (settled) return;
@@ -11260,7 +11260,7 @@ async function runWorkerLaunchBootstrap(value) {
             written_at: (/* @__PURE__ */ new Date()).toISOString()
           }).catch(() => void 0);
           await invocation.cleanup().catch(() => void 0);
-          resolve22({ outcome: "provider_spawn_failed" });
+          resolve23({ outcome: "provider_spawn_failed" });
         });
       });
       const terminateProvider = async () => {
@@ -11295,7 +11295,7 @@ async function runWorkerLaunchBootstrap(value) {
           }
           return await Promise.race([
             windowsTerminal,
-            new Promise((resolve22) => setTimeout(() => resolve22(false), 5e3))
+            new Promise((resolve23) => setTimeout(() => resolve23(false), 5e3))
           ]);
         }
         if (child.pid && providerStartIdentity && launchGroup) {
@@ -11307,11 +11307,11 @@ async function runWorkerLaunchBootstrap(value) {
             force: true
           });
           await terminationResult;
-          const completed = await new Promise((resolve22) => {
-            const timer = setTimeout(() => resolve22(false), 2e3);
+          const completed = await new Promise((resolve23) => {
+            const timer = setTimeout(() => resolve23(false), 2e3);
             void completion.then((result) => {
               clearTimeout(timer);
-              resolve22(result.outcome !== "provider_cleanup_unverified");
+              resolve23(result.outcome !== "provider_cleanup_unverified");
             });
           });
           return completed;
@@ -11330,20 +11330,20 @@ async function runWorkerLaunchBootstrap(value) {
           if (!providerGate || providerGate.destroyed) return false;
           let callbackCalled = false;
           let callbackError = false;
-          const closeResultPromise = new Promise((resolve22) => {
-            providerGateOperationResolve = resolve22;
+          const closeResultPromise = new Promise((resolve23) => {
+            providerGateOperationResolve = resolve23;
             const finish = (error) => {
               providerGateError ??= error ?? null;
               providerGateOperationResolve = null;
               callbackCalled = true;
               callbackError = providerGateError !== null;
-              resolve22(!callbackError);
+              resolve23(!callbackError);
             };
             try {
               providerGate.end(finish);
             } catch {
               providerGateOperationResolve = null;
-              resolve22(false);
+              resolve23(false);
             }
           });
           providerGateOperationPromise = closeResultPromise;
@@ -11367,8 +11367,8 @@ async function runWorkerLaunchBootstrap(value) {
         if (providerGateReleased) return providerGateError === null;
         if (providerGateReleaseAttempted || providerGateClosed || !providerGate || providerGate.destroyed) return false;
         providerGateReleaseAttempted = true;
-        const releasePromise = new Promise((resolve22) => {
-          providerGateOperationResolve = resolve22;
+        const releasePromise = new Promise((resolve23) => {
+          providerGateOperationResolve = resolve23;
           try {
             providerGate.end("release\n", (error) => {
               providerGateError ??= error ?? null;
@@ -11378,11 +11378,11 @@ async function runWorkerLaunchBootstrap(value) {
                 providerGateReleased = true;
                 terminateProviderOnGateError = null;
               }
-              resolve22(released);
+              resolve23(released);
             });
           } catch {
             providerGateOperationResolve = null;
-            resolve22(false);
+            resolve23(false);
           }
         });
         providerGateOperationPromise = releasePromise;
@@ -11411,9 +11411,9 @@ async function runWorkerLaunchBootstrap(value) {
           for (const signal of cleanupSignals) process.removeListener(signal, onBootstrapSignal);
         });
       }
-      const spawned = await new Promise((resolve22) => {
-        child.once("spawn", () => resolve22(true));
-        child.once("error", () => resolve22(false));
+      const spawned = await new Promise((resolve23) => {
+        child.once("spawn", () => resolve23(true));
+        child.once("error", () => resolve23(false));
       });
       if (!spawned) {
         await completion;
@@ -11422,7 +11422,7 @@ async function runWorkerLaunchBootstrap(value) {
       if (process.platform === "win32") {
         const ready = await Promise.race([
           windowsReady,
-          new Promise((resolve22) => setTimeout(() => resolve22(false), 1e4))
+          new Promise((resolve23) => setTimeout(() => resolve23(false), 1e4))
         ]);
         if (!ready || !providerPid || !providerStartIdentity || settled) {
           return cleanupProvider("provider_spawn_failed");
@@ -11457,7 +11457,7 @@ async function runWorkerLaunchBootstrap(value) {
         if (!await releaseProviderGate() || providerGateError !== null) {
           return cleanupProvider("provider_spawn_failed");
         }
-        if (!spec.release_after_spawn) await new Promise((resolve22) => setTimeout(resolve22, 75));
+        if (!spec.release_after_spawn) await new Promise((resolve23) => setTimeout(resolve23, 75));
         if (settled) return { completion };
       }
       if (invocation.completionPath && (0, import_node_fs6.existsSync)(invocation.completionPath)) {
@@ -16647,7 +16647,7 @@ async function withDispatchLock(teamName, cwd, fn) {
         );
       }
       const jitter = 0.5 + Math.random() * 0.5;
-      await new Promise((resolve22) => setTimeout(resolve22, Math.floor(pollMs * jitter)));
+      await new Promise((resolve23) => setTimeout(resolve23, Math.floor(pollMs * jitter)));
       pollMs = Math.min(pollMs * 2, DISPATCH_LOCK_MAX_POLL_MS);
     }
   }
@@ -17303,7 +17303,7 @@ async function writeAtomic2(path5, data) {
         const delay = WIN32_RENAME_RETRY_DELAYS_MS[attempt];
         const code = error.code ?? "";
         if (process.platform !== "win32" || delay === void 0 || !WIN32_RENAME_RETRY_CODES.has(code)) throw error;
-        await new Promise((resolve22) => setTimeout(resolve22, delay));
+        await new Promise((resolve23) => setTimeout(resolve23, delay));
       }
     }
   } finally {
@@ -20819,8 +20819,8 @@ ${dirtyFiles.map((f) => `- \`${f}\``).join("\n")}`;
               return false;
             }
           })(),
-          new Promise((resolve22) => {
-            const t = setTimeout(() => resolve22(false), remaining);
+          new Promise((resolve23) => {
+            const t = setTimeout(() => resolve23(false), remaining);
             if (typeof t.unref === "function") t.unref();
           })
         ]);
@@ -22867,12 +22867,15 @@ function replayResponse(res, dirs) {
   }
   return new Response([204, 205, 304].includes(res.status) ? null : body, { status: res.status, headers });
 }
+function addRecordingDenyLiterals(values) {
+  for (const v of values) if (v) extraDenyLiterals.add(v);
+}
 function deferred() {
-  let resolve22;
+  let resolve23;
   const promise = new Promise((r) => {
-    resolve22 = r;
+    resolve23 = r;
   });
-  return { promise, resolve: resolve22 };
+  return { promise, resolve: resolve23 };
 }
 function createRecordingHandler(Base, recorderOf) {
   class RecordingHandler extends Base {
@@ -23504,15 +23507,15 @@ var init_copilot_sdk_driver = __esm({
 // src/smoke/copilot-binary.ts
 function resolveCopilotBinary(override, env, deps = {}) {
   const exists = deps.existsSync ?? import_fs43.existsSync;
-  const resolve22 = deps.resolveExecutable ?? ((name) => resolveExecutable(name));
+  const resolve23 = deps.resolveExecutable ?? ((name) => resolveExecutable(name));
   const list = deps.readdirSync ?? ((p) => (0, import_fs43.readdirSync)(p));
   const platform = deps.platform ?? process.platform;
   if (override) {
     if (exists(override)) return { bin: override, source: "override" };
-    const found = resolve22(override);
+    const found = resolve23(override);
     return found ? { bin: found, source: "override" } : { bin: null, source: null };
   }
-  const onPath = resolve22("copilot");
+  const onPath = resolve23("copilot");
   if (onPath) return { bin: onPath, source: "path" };
   const envPath = env.COPILOT_CLI_PATH?.trim();
   if (envPath && exists(envPath)) return { bin: envPath, source: "COPILOT_CLI_PATH" };
@@ -23684,10 +23687,12 @@ async function fetchCopilotCatalogue(opts = {}) {
     (0, import_node_fs15.writeFileSync)((0, import_node_path16.join)(jobHome, "config.json"), `${JSON.stringify({ ...ident, trustedFolders: [workDir] }, null, 2)}
 `);
     const env = childEnv(allowlistSessionEnv(buildSessionEnv(deps.env, jobHome, { session: false, hasLogin }), jobHome));
+    Object.assign(env, { COPILOT_ALLOW_ALL: "false", GIT_CEILING_DIRECTORIES: (0, import_node_path16.resolve)(jobRoot) });
     (0, import_node_fs15.mkdirSync)(env.XDG_CONFIG_HOME, { recursive: true });
     (0, import_node_fs15.mkdirSync)((0, import_node_path16.dirname)(env.GIT_CONFIG_GLOBAL), { recursive: true });
     (0, import_node_fs15.mkdirSync)(env.TEMP, { recursive: true });
     const gitHubToken = sessionGitHubToken(deps.env, source2);
+    if (gitHubToken) addRecordingDenyLiterals([gitHubToken]);
     const { CopilotClient, RuntimeConnection } = loaded2.module;
     const c = new CopilotClient({
       connection: RuntimeConnection.forStdio({ path: bin, args: ["--max-ai-credits", String(RUNTIME_MIN_MAX_CREDITS)], env }),
@@ -23751,6 +23756,7 @@ var init_model_catalogue = __esm({
     init_copilot_sdk_driver();
     init_copilot_sdk_scenarios();
     init_copilot_session_env();
+    init_handler();
     init_process_utils2();
     init_windows_search();
     init_copilot_binary();
@@ -23919,7 +23925,7 @@ async function waitForRecoveryGateRecord(path5, expected, timeoutMs, pollInterva
       if (value.recovery_id === expected.recovery_id && value.worker_name === expected.worker_name && value.replacement_generation === expected.replacement_generation && value.pane_attempt_id === expected.pane_attempt_id && value.launch_attempt_id === expected.launch_attempt_id && value.launch_nonce === expected.launch_nonce) return true;
     } catch {
     }
-    await new Promise((resolve22) => setTimeout(resolve22, pollIntervalMs));
+    await new Promise((resolve23) => setTimeout(resolve23, pollIntervalMs));
   }
   return false;
 }
@@ -23982,7 +23988,7 @@ async function runWorkerActivationGate(gate) {
     let supervisorTimer;
     let terminationResult = null;
     let finishCompletion;
-    const completion = new Promise((resolve22) => {
+    const completion = new Promise((resolve23) => {
       const finish = async (result, terminal) => {
         if (settled) return;
         settled = true;
@@ -23998,7 +24004,7 @@ async function runWorkerActivationGate(gate) {
         } catch {
         }
         await invocation.cleanup().catch(() => void 0);
-        resolve22(result);
+        resolve23(result);
       };
       finishCompletion = finish;
       child.once("exit", async (exitCode, signal) => {
@@ -24029,11 +24035,11 @@ async function runWorkerActivationGate(gate) {
           force: true
         });
         const terminated = await terminationResult === "terminated";
-        const completed2 = await new Promise((resolve22) => {
-          const timer = setTimeout(() => resolve22(false), 2e3);
+        const completed2 = await new Promise((resolve23) => {
+          const timer = setTimeout(() => resolve23(false), 2e3);
           void completion.then((result) => {
             clearTimeout(timer);
-            resolve22(result.outcome !== "provider_cleanup_unverified");
+            resolve23(result.outcome !== "provider_cleanup_unverified");
           });
         });
         return terminated && completed2;
@@ -24050,15 +24056,15 @@ async function runWorkerActivationGate(gate) {
         }
       } catch {
       }
-      const completed = await new Promise((resolve22) => {
-        const timer = setTimeout(() => resolve22(false), 2e3);
+      const completed = await new Promise((resolve23) => {
+        const timer = setTimeout(() => resolve23(false), 2e3);
         void completion.then(() => {
           clearTimeout(timer);
-          resolve22(true);
+          resolve23(true);
         });
         if (settled) {
           clearTimeout(timer);
-          resolve22(true);
+          resolve23(true);
         }
       });
       return completed;
@@ -24074,9 +24080,9 @@ async function runWorkerActivationGate(gate) {
         for (const signal of cleanupSignals) process.removeListener(signal, onGateSignal);
       });
     }
-    const spawned = await new Promise((resolve22) => {
-      child.once("spawn", () => resolve22(true));
-      child.once("error", () => resolve22(false));
+    const spawned = await new Promise((resolve23) => {
+      child.once("spawn", () => resolve23(true));
+      child.once("error", () => resolve23(false));
     });
     if (!spawned) {
       const failed = await completion;
@@ -24102,7 +24108,7 @@ async function runWorkerActivationGate(gate) {
           return { outcome: "provider_cleanup_unverified" };
         }
       }
-      await new Promise((resolve22) => setTimeout(resolve22, 150));
+      await new Promise((resolve23) => setTimeout(resolve23, 150));
       if (settled) return await completion;
       const reboundIdentity = getProcessStartIdentitySync(providerPid);
       if (!reboundIdentity || reboundIdentity !== providerStartIdentity || !isProcessAlive(providerPid)) {
@@ -24743,7 +24749,7 @@ async function waitForStartupEvidenceBudget(hasEvidence, budgetMs, delayMs = WOR
     const remainingMs = deadline - Date.now();
     if (remainingMs <= 0) return false;
     await new Promise(
-      (resolve22) => setTimeout(resolve22, Math.min(delayMs, remainingMs))
+      (resolve23) => setTimeout(resolve23, Math.min(delayMs, remainingMs))
     );
   }
 }
@@ -26102,14 +26108,14 @@ async function readOrCreateRecoveryAttempt(input, recoveryId, replacementGenerat
   }
 }
 function waitForBootstrapRecoveryEvidence(delayMs, signal) {
-  return new Promise((resolve22, reject) => {
+  return new Promise((resolve23, reject) => {
     if (signal?.aborted) {
       reject(signal.reason ?? new Error("bootstrap_recovery_evidence_aborted"));
       return;
     }
     const timer = setTimeout(() => {
       signal?.removeEventListener("abort", onAbort);
-      resolve22();
+      resolve23();
     }, delayMs);
     const onAbort = () => {
       clearTimeout(timer);
@@ -31848,7 +31854,7 @@ async function waitForSentinelReadiness(options = {}) {
   }
   const deadline = startedAt + timeoutMs;
   while (Date.now() < deadline) {
-    await new Promise((resolve22) => setTimeout(resolve22, pollIntervalMs));
+    await new Promise((resolve23) => setTimeout(resolve23, pollIntervalMs));
     attempts += 1;
     latest = checkSentinelReadiness(options);
     if (latest.ready) {
@@ -32221,7 +32227,7 @@ async function runPersistentRecoveryOwnerLoop(input, options = {}) {
   const reconcileServices = options.reconcileServices ?? reconcileCommittedTeamServices;
   const monitor = options.monitor ?? monitorTeamV2;
   const sleep4 = options.sleep ?? (async (ms) => {
-    await new Promise((resolve22) => setTimeout(resolve22, ms));
+    await new Promise((resolve23) => setTimeout(resolve23, ms));
   });
   const shutdown = options.shutdown ?? shutdownTeamV2;
   let iteration = 0;
@@ -32543,8 +32549,8 @@ function createRuntimeStartupShutdownBarrier() {
   let settled = false;
   let requested = false;
   let resolveCompletion;
-  const completion = new Promise((resolve22) => {
-    resolveCompletion = resolve22;
+  const completion = new Promise((resolve23) => {
+    resolveCompletion = resolve23;
   });
   return {
     requestShutdown: () => {

@@ -44,6 +44,7 @@ import { dirname, join, resolve } from 'node:path';
 import { defaultCopilotRunDeps, type CopilotRunDeps } from '../../copilot-run/job.js';
 import {
   allowlistSessionEnv,
+  copilotConfigDenies,
   loadSandboxSettings,
   laneToolPaths,
   missingSandboxEnv,
@@ -64,6 +65,7 @@ import { redactSecrets } from '../heal/sanitize.js';
 import { resolveShimTarget, rethrowSdkStartError, runtimePid, type PermissionResult, type SdkClientLike, type SdkSessionLike } from '../../smoke/copilot-sdk-driver.js';
 import { RUNTIME_MIN_MAX_CREDITS, SDK_INSTALL_COMMAND } from '../../smoke/copilot-sdk-scenarios.js';
 import { buildSessionEnv, loginIdentity } from '../../smoke/copilot-session-env.js';
+import { addRecordingDenyLiterals } from '../../smoke/replay/handler.js';
 import { childEnv } from '../../utils/windows-search.js';
 
 /** The output tail a sandboxed command keeps (as the local gate record, local-gate.ts LOCAL_GATE_TAIL_CHARS). */
@@ -332,6 +334,8 @@ export async function runSandboxed(argv: readonly string[], o: SandboxExecOption
     const credentialSource = { userConfigDir: deps.userConfigDir(), platform: deps.platform };
     const gitHubToken = sessionGitHubToken(deps.env, credentialSource);
     const secrets = secretValues(deps.env, credentialSource);
+    // A recording (cassette record mode) never carries the session credential, the stored login token included.
+    if (gitHubToken) addRecordingDenyLiterals([gitHubToken]);
 
     const { CopilotClient, RuntimeConnection } = loaded.module;
     const c: SdkClientLike = new CopilotClient({
@@ -367,8 +371,8 @@ export async function runSandboxed(argv: readonly string[], o: SandboxExecOption
           hostCommits: true,
           toolPaths: (deps.toolPaths ?? laneToolPaths)(deps.env, deps.platform),
           extraReadonly: proxy.caPaths,
-          // A keyring-less host's plaintext login token, also when COPILOT_HOME moved the config out of ~/.copilot.
-          ...(deps.platform === 'win32' ? {} : { extraDenied: [join(credentialSource.userConfigDir, 'config.json')] }),
+          // A keyring-less host's plaintext login token, also when COPILOT_HOME moved the config dir out of ~/.copilot.
+          ...(deps.platform === 'win32' ? {} : { extraDenied: copilotConfigDenies(credentialSource.userConfigDir, deps.platform) }),
           ...(o.mainRoot ? { mainRoot: resolve(o.mainRoot) } : {}),
           ...(o.nodeModulesTarget ? { nodeModulesTarget: resolve(o.nodeModulesTarget) } : {}),
           ...(o.nestedNodeModulesTargets ? { nestedNodeModulesTargets: o.nestedNodeModulesTargets.map((p) => resolve(p)) } : {}),

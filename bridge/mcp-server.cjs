@@ -50073,6 +50073,17 @@ function envValue2(env2, name) {
   const value = key === void 0 ? void 0 : env2[key];
   return typeof value === "string" && value.trim() !== "" ? value : void 0;
 }
+function copilotConfigDenies(userConfigDir, platform) {
+  if (platform === "win32") return [];
+  const cfg = (0, import_node_path8.join)(userConfigDir, "config.json");
+  const out = [userConfigDir, cfg];
+  try {
+    const real2 = import_node_fs7.realpathSync.native(cfg);
+    if (real2 !== cfg) out.push(real2);
+  } catch {
+  }
+  return out;
+}
 function storedToken(env2, source) {
   return source && !isReplayEnv(env2) ? storedLoginToken(source.userConfigDir, source.platform) : void 0;
 }
@@ -51593,6 +51604,9 @@ function replayResponse(res, dirs) {
       return missResponse("omg replay: cassette miss (a WebSocket recording answered an HTTP request)");
   }
   return new Response([204, 205, 304].includes(res.status) ? null : body, { status: res.status, headers });
+}
+function addRecordingDenyLiterals(values) {
+  for (const v of values) if (v) extraDenyLiterals.add(v);
 }
 function deferred() {
   let resolve63;
@@ -63070,6 +63084,7 @@ var init_job = __esm({
     init_copilot_sdk_scenarios();
     init_copilot_session_env();
     init_process_utils2();
+    init_handler();
     init_git_worktree();
     init_sdk_policy();
     init_shell_allowlist();
@@ -63660,7 +63675,8 @@ var init_job = __esm({
 `);
         const env2 = childEnv(allowlistSessionEnv(buildSessionEnv(deps.env, job.home, { session: false, hasLogin: ident.loggedInUsers !== void 0 }), job.home));
         const gitHubToken = sessionGitHubToken(deps.env, { userConfigDir: deps.userConfigDir(), platform: deps.platform });
-        const laneDenied = [...job.deniedPaths, ...deps.platform === "win32" ? [] : [(0, import_node_path14.join)(deps.userConfigDir(), "config.json")]];
+        if (gitHubToken) addRecordingDenyLiterals([gitHubToken]);
+        const laneDenied = [...job.deniedPaths, ...copilotConfigDenies(deps.userConfigDir(), deps.platform)];
         (0, import_node_fs13.mkdirSync)(env2.XDG_CONFIG_HOME, { recursive: true });
         (0, import_node_fs13.mkdirSync)((0, import_node_path14.dirname)(env2.GIT_CONFIG_GLOBAL), { recursive: true });
         (0, import_node_fs13.mkdirSync)(env2.TEMP, { recursive: true });
@@ -63756,8 +63772,8 @@ var init_job = __esm({
               hostCommits: job.hostCommits,
               toolPaths: (deps.toolPaths ?? laneToolPaths)(deps.env, deps.platform),
               extraReadonly: proxy.caPaths,
-              // A keyring-less host keeps the login token in plain text in the user's Copilot config.json: denied also when
-              // COPILOT_HOME moved it out of ~/.copilot (denied by default).
+              // A keyring-less host keeps the login token in plain text in the user's Copilot config.json: its config dir is
+              // denied also when COPILOT_HOME moved it out of ~/.copilot (denied by default; copilotConfigDenies).
               ...laneDenied.length > 0 ? { extraDenied: laneDenied } : {},
               // A caller-made worktree (the private layout): its common git dir is not the checkout's, whose budget ledger stays denied.
               ...job.external ? { mainRoot: job.ledgerCwd } : {}
@@ -68872,6 +68888,7 @@ async function runSandboxed(argv, o, deps) {
     const credentialSource = { userConfigDir: deps.userConfigDir(), platform: deps.platform };
     const gitHubToken = sessionGitHubToken(deps.env, credentialSource);
     const secrets = secretValues(deps.env, credentialSource);
+    if (gitHubToken) addRecordingDenyLiterals([gitHubToken]);
     const { CopilotClient, RuntimeConnection } = loaded2.module;
     const c = new CopilotClient({
       connection: RuntimeConnection.forStdio({ path: bin, args: ["--max-ai-credits", String(RUNTIME_MIN_MAX_CREDITS)], env: env2 }),
@@ -68906,8 +68923,8 @@ async function runSandboxed(argv, o, deps) {
           hostCommits: true,
           toolPaths: (deps.toolPaths ?? laneToolPaths)(deps.env, deps.platform),
           extraReadonly: proxy.caPaths,
-          // A keyring-less host's plaintext login token, also when COPILOT_HOME moved the config out of ~/.copilot.
-          ...deps.platform === "win32" ? {} : { extraDenied: [(0, import_node_path16.join)(credentialSource.userConfigDir, "config.json")] },
+          // A keyring-less host's plaintext login token, also when COPILOT_HOME moved the config dir out of ~/.copilot.
+          ...deps.platform === "win32" ? {} : { extraDenied: copilotConfigDenies(credentialSource.userConfigDir, deps.platform) },
           ...o.mainRoot ? { mainRoot: (0, import_node_path16.resolve)(o.mainRoot) } : {},
           ...o.nodeModulesTarget ? { nodeModulesTarget: (0, import_node_path16.resolve)(o.nodeModulesTarget) } : {},
           ...o.nestedNodeModulesTargets ? { nestedNodeModulesTargets: o.nestedNodeModulesTargets.map((p) => (0, import_node_path16.resolve)(p)) } : {}
@@ -69117,6 +69134,7 @@ var init_sandbox_exec = __esm({
     init_copilot_sdk_driver();
     init_copilot_sdk_scenarios();
     init_copilot_session_env();
+    init_handler();
     init_windows_search();
     SANDBOX_OUTPUT_TAIL_CHARS = 8e3;
     START_TIMEOUT_MS3 = 6e4;
@@ -83388,6 +83406,7 @@ var init_model_probe = __esm({
     init_copilot_sdk_driver();
     init_copilot_sdk_scenarios();
     init_copilot_session_env();
+    init_handler();
     init_process_utils2();
     init_windows_search();
   }

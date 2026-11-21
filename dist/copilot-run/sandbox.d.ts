@@ -437,6 +437,13 @@ export interface StoredLoginSource {
     platform: NodeJS.Platform;
 }
 /**
+ * The sandbox denies for the user's Copilot config dir on a keyring-less host, where its config.json holds the login
+ * token in plain text (never on Windows: the token stays in Credential Manager). The default ~/.copilot is denied whole
+ * anyway; a relocated COPILOT_HOME is denied whole too, unless a grant lies under it (buildSandboxConfig drops it then),
+ * and its config.json always, also the file a symlinked config.json points to.
+ */
+export declare function copilotConfigDenies(userConfigDir: string, platform: NodeJS.Platform): string[];
+/**
  * The explicit Copilot credential for the session's `gitHubToken` option
  * (SDK 1.0.16 SessionConfig: sent over the session RPC, never put in the
  * runtime's env, unlike the client-level option): COPILOT_GITHUB_TOKEN,

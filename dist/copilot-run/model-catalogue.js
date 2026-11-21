@@ -16,7 +16,7 @@ import { spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { atomicWriteJsonSync } from '../lib/atomic-write.js';
 import { getGlobalOmcStateRoot } from '../utils/paths.js';
 import { errText, withTimeout } from './timeout.js';
@@ -26,6 +26,7 @@ import { allowlistSessionEnv, scrubTokens, secretValues, sessionGitHubToken, wit
 import { loadCopilotSdk, resolveShimTarget, rethrowSdkStartError, runtimePid } from '../smoke/copilot-sdk-driver.js';
 import { RUNTIME_MIN_MAX_CREDITS, SDK_INSTALL_COMMAND } from '../smoke/copilot-sdk-scenarios.js';
 import { buildSessionEnv, loginIdentity } from '../smoke/copilot-session-env.js';
+import { addRecordingDenyLiterals } from '../smoke/replay/handler.js';
 import { hasExited, killProcessTree } from '../smoke/process-utils.js';
 import { childEnv, hardenWindowsExeSearch } from '../utils/windows-search.js';
 import { resolveCopilotBinary } from '../smoke/copilot-binary.js';
@@ -242,12 +243,18 @@ export async function fetchCopilotCatalogue(opts = {}) {
         hasLogin = ident.loggedInUsers !== undefined;
         writeFileSync(join(jobHome, 'config.json'), `${JSON.stringify({ ...ident, trustedFolders: [workDir] }, null, 2)}\n`);
         const env = childEnv(allowlistSessionEnv(buildSessionEnv(deps.env, jobHome, { session: false, hasLogin }), jobHome));
+        // The runtime env carries the client credential (below): a git root search from the work dir stops at the job root,
+        // so no repository's hooks or instructions around it run with that env; no tool is ever auto-approved.
+        Object.assign(env, { COPILOT_ALLOW_ALL: 'false', GIT_CEILING_DIRECTORIES: resolve(jobRoot) });
         mkdirSync(env.XDG_CONFIG_HOME, { recursive: true });
         mkdirSync(dirname(env.GIT_CONFIG_GLOBAL), { recursive: true });
         mkdirSync(env.TEMP, { recursive: true });
         // listModels() has no session, so the explicit credential goes in the client option (the runtime env): no session
         // and no untrusted code here. Never in the job home.
         const gitHubToken = sessionGitHubToken(deps.env, source);
+        // A recording (cassette record mode) never carries the credential, the stored login token included.
+        if (gitHubToken)
+            addRecordingDenyLiterals([gitHubToken]);
         const { CopilotClient, RuntimeConnection } = loaded.module;
         const c = new CopilotClient({
             connection: RuntimeConnection.forStdio({ path: bin, args: ['--max-ai-credits', String(RUNTIME_MIN_MAX_CREDITS)], env }),

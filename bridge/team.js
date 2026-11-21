@@ -1891,7 +1891,7 @@ async function withProcessIdentityFileLock(lockPath, fn, timeoutMs = 1e4) {
           continue;
         }
         if (Date.now() >= deadline) throw new Error("process_identity_lock_timeout");
-        await new Promise((resolve22) => setTimeout(resolve22, 25));
+        await new Promise((resolve23) => setTimeout(resolve23, 25));
         continue;
       }
       try {
@@ -1912,7 +1912,7 @@ async function withProcessIdentityFileLock(lockPath, fn, timeoutMs = 1e4) {
           }
         }
         if (Date.now() >= deadline) throw new Error("process_identity_lock_timeout");
-        await new Promise((resolve22) => setTimeout(resolve22, 25));
+        await new Promise((resolve23) => setTimeout(resolve23, 25));
       }
     }
     return await fn();
@@ -4208,7 +4208,7 @@ async function writeAtomic3(path5, data) {
         const delay = WIN32_RENAME_RETRY_DELAYS_MS[attempt];
         const code = error.code ?? "";
         if (process.platform !== "win32" || delay === void 0 || !WIN32_RENAME_RETRY_CODES.has(code)) throw error;
-        await new Promise((resolve22) => setTimeout(resolve22, delay));
+        await new Promise((resolve23) => setTimeout(resolve23, delay));
       }
     }
   } finally {
@@ -4328,7 +4328,7 @@ async function withMailboxLock(teamName, workerName, cwd, fn) {
   while (Date.now() < deadline) {
     const result = await withLock(lockDir, fn);
     if (result.ok) return result.value;
-    await new Promise((resolve22) => setTimeout(resolve22, delayMs));
+    await new Promise((resolve23) => setTimeout(resolve23, delayMs));
     delayMs = Math.min(delayMs * 2, 200);
   }
   throw new Error(`Failed to acquire mailbox lock for ${workerName} after ${timeoutMs}ms`);
@@ -4496,7 +4496,7 @@ async function teamCreateTask(teamName, task, cwd) {
       return taskLock.value;
     });
     if (result.ok) return result.value;
-    await new Promise((resolve22) => setTimeout(resolve22, delayMs));
+    await new Promise((resolve23) => setTimeout(resolve23, delayMs));
     delayMs = Math.min(delayMs * 2, 200);
   }
   throw new Error(`Failed to acquire task creation lock for team ${teamName} after ${timeoutMs}ms`);
@@ -4562,7 +4562,7 @@ async function teamUpdateTask(teamName, taskId, updates, cwd) {
       return normalized;
     });
     if (result.ok) return result.value;
-    await new Promise((resolve22) => setTimeout(resolve22, delayMs));
+    await new Promise((resolve23) => setTimeout(resolve23, delayMs));
     delayMs = Math.min(delayMs * 2, 200);
   }
   throw new Error(`Failed to acquire task update lock for task ${taskId} in team ${teamName} after ${timeoutMs}ms`);
@@ -5204,7 +5204,7 @@ async function withDispatchLock(teamName, cwd, fn) {
         );
       }
       const jitter = 0.5 + Math.random() * 0.5;
-      await new Promise((resolve22) => setTimeout(resolve22, Math.floor(pollMs * jitter)));
+      await new Promise((resolve23) => setTimeout(resolve23, Math.floor(pollMs * jitter)));
       pollMs = Math.min(pollMs * 2, DISPATCH_LOCK_MAX_POLL_MS);
     }
   }
@@ -6321,7 +6321,7 @@ async function bootstrapPersistentOwner(input, priorEpoch) {
       return true;
     }
     if (owner && (owner.epoch > expectedEpoch || owner.epoch === expectedEpoch && owner.pid !== childPid)) return false;
-    await new Promise((resolve22) => setTimeout(resolve22, 25));
+    await new Promise((resolve23) => setTimeout(resolve23, 25));
   }
   return false;
 }
@@ -6484,7 +6484,7 @@ function createRecoveryOwnerClient(dispatch, timing = {}) {
           teamName: normalized.teamName,
           workerName: normalized.workerName
         })) return outcome.result;
-        await new Promise((resolve22) => setTimeout(resolve22, timing.pollIntervalMs ?? 250));
+        await new Promise((resolve23) => setTimeout(resolve23, timing.pollIntervalMs ?? 250));
       }
       return timeoutResult(normalized, canonical.recovery_id);
     }
@@ -6932,7 +6932,7 @@ async function renameWithRetry(tempPath, filePath, maxAttempts = 10, delayMs = 3
       }
       lastError = error;
       if (attempt < maxAttempts - 1) {
-        await new Promise((resolve22) => setTimeout(resolve22, delayMs));
+        await new Promise((resolve23) => setTimeout(resolve23, delayMs));
       }
     }
   }
@@ -7477,7 +7477,7 @@ function withFileLockSync(lockPath, fn, opts) {
   }
 }
 function sleep(ms) {
-  return new Promise((resolve22) => setTimeout(resolve22, ms));
+  return new Promise((resolve23) => setTimeout(resolve23, ms));
 }
 async function acquireFileLock(lockPath, opts) {
   const staleLockMs = opts?.staleLockMs ?? DEFAULT_STALE_LOCK_MS;
@@ -8369,7 +8369,7 @@ function canonicalAuthorityDigest(input) {
   return createHash9("sha256").update(payload, "utf8").digest("hex");
 }
 function sleep2(ms) {
-  return new Promise((resolve22) => setTimeout(resolve22, ms));
+  return new Promise((resolve23) => setTimeout(resolve23, ms));
 }
 function isExactText(value) {
   return typeof value === "string" && value.length > 0 && value === value.trim();
@@ -22076,8 +22076,8 @@ ${dirtyFiles.map((f) => `- \`${f}\``).join("\n")}`;
               return false;
             }
           })(),
-          new Promise((resolve22) => {
-            const t = setTimeout(() => resolve22(false), remaining);
+          new Promise((resolve23) => {
+            const t = setTimeout(() => resolve23(false), remaining);
             if (typeof t.unref === "function") t.unref();
           })
         ]);
@@ -24122,12 +24122,15 @@ function replayResponse(res, dirs) {
   }
   return new Response([204, 205, 304].includes(res.status) ? null : body, { status: res.status, headers });
 }
+function addRecordingDenyLiterals(values) {
+  for (const v of values) if (v) extraDenyLiterals.add(v);
+}
 function deferred() {
-  let resolve22;
+  let resolve23;
   const promise = new Promise((r) => {
-    resolve22 = r;
+    resolve23 = r;
   });
-  return { promise, resolve: resolve22 };
+  return { promise, resolve: resolve23 };
 }
 function createRecordingHandler(Base, recorderOf) {
   class RecordingHandler extends Base {
@@ -24757,15 +24760,15 @@ import { existsSync as existsSync43, readdirSync as readdirSync18 } from "fs";
 import { join as join51 } from "path";
 function resolveCopilotBinary(override, env, deps = {}) {
   const exists = deps.existsSync ?? existsSync43;
-  const resolve22 = deps.resolveExecutable ?? ((name) => resolveExecutable(name));
+  const resolve23 = deps.resolveExecutable ?? ((name) => resolveExecutable(name));
   const list = deps.readdirSync ?? ((p) => readdirSync18(p));
   const platform = deps.platform ?? process.platform;
   if (override) {
     if (exists(override)) return { bin: override, source: "override" };
-    const found = resolve22(override);
+    const found = resolve23(override);
     return found ? { bin: found, source: "override" } : { bin: null, source: null };
   }
-  const onPath = resolve22("copilot");
+  const onPath = resolve23("copilot");
   if (onPath) return { bin: onPath, source: "path" };
   const envPath = env.COPILOT_CLI_PATH?.trim();
   if (envPath && exists(envPath)) return { bin: envPath, source: "COPILOT_CLI_PATH" };
@@ -24793,7 +24796,7 @@ import { spawnSync as spawnSync7 } from "node:child_process";
 import { randomBytes as randomBytes3 } from "node:crypto";
 import { existsSync as existsSync44, mkdirSync as mkdirSync13, readdirSync as readdirSync19, readFileSync as readFileSync31, rmdirSync as rmdirSync2, rmSync as rmSync8, statSync as statSync10, writeFileSync as writeFileSync12 } from "node:fs";
 import { tmpdir as tmpdir8 } from "node:os";
-import { dirname as dirname38, join as join52 } from "node:path";
+import { dirname as dirname38, join as join52, resolve as resolve19 } from "node:path";
 function redactCatalogueDetail(text2, env = process.env) {
   const clean = scrubTokens(text2, secretValues(env)).replace(/\s+/g, " ").trim();
   return clean.length > DETAIL_MAX_CHARS ? `${clean.slice(0, DETAIL_MAX_CHARS - 3)}...` : clean;
@@ -24939,10 +24942,12 @@ async function fetchCopilotCatalogue(opts = {}) {
     writeFileSync12(join52(jobHome, "config.json"), `${JSON.stringify({ ...ident, trustedFolders: [workDir] }, null, 2)}
 `);
     const env = childEnv(allowlistSessionEnv(buildSessionEnv(deps.env, jobHome, { session: false, hasLogin }), jobHome));
+    Object.assign(env, { COPILOT_ALLOW_ALL: "false", GIT_CEILING_DIRECTORIES: resolve19(jobRoot) });
     mkdirSync13(env.XDG_CONFIG_HOME, { recursive: true });
     mkdirSync13(dirname38(env.GIT_CONFIG_GLOBAL), { recursive: true });
     mkdirSync13(env.TEMP, { recursive: true });
     const gitHubToken = sessionGitHubToken(deps.env, source2);
+    if (gitHubToken) addRecordingDenyLiterals([gitHubToken]);
     const { CopilotClient, RuntimeConnection } = loaded2.module;
     const c = new CopilotClient({
       connection: RuntimeConnection.forStdio({ path: bin, args: ["--max-ai-credits", String(RUNTIME_MIN_MAX_CREDITS)], env }),
@@ -25001,6 +25006,7 @@ var init_model_catalogue = __esm({
     init_copilot_sdk_driver();
     init_copilot_sdk_scenarios();
     init_copilot_session_env();
+    init_handler();
     init_process_utils2();
     init_windows_search();
     init_copilot_binary();
@@ -25023,7 +25029,7 @@ var init_model_catalogue = __esm({
 });
 
 // src/team/scaling.ts
-import { join as join53, resolve as resolve19 } from "path";
+import { join as join53, resolve as resolve20 } from "path";
 import { mkdir as mkdir14, readFile as readFile14, rm as rm8 } from "fs/promises";
 function scaleUpFenceBlocks(config) {
   const attempt = config.active_scale_up;
@@ -25162,7 +25168,7 @@ async function waitForRecoveryGateRecord(path5, expected, timeoutMs, pollInterva
       if (value.recovery_id === expected.recovery_id && value.worker_name === expected.worker_name && value.replacement_generation === expected.replacement_generation && value.pane_attempt_id === expected.pane_attempt_id && value.launch_attempt_id === expected.launch_attempt_id && value.launch_nonce === expected.launch_nonce) return true;
     } catch {
     }
-    await new Promise((resolve22) => setTimeout(resolve22, pollIntervalMs));
+    await new Promise((resolve23) => setTimeout(resolve23, pollIntervalMs));
   }
   return false;
 }
@@ -25220,7 +25226,7 @@ __export(runtime_v2_exports, {
   waitForStartupEvidenceBudget: () => waitForStartupEvidenceBudget,
   writeWatchdogFailedMarker: () => writeWatchdogFailedMarker
 });
-import { dirname as dirname39, join as join54, resolve as resolve20 } from "path";
+import { dirname as dirname39, join as join54, resolve as resolve21 } from "path";
 import { existsSync as existsSync45 } from "fs";
 import {
   link as link4,
@@ -25947,7 +25953,7 @@ async function waitForStartupEvidenceBudget(hasEvidence, budgetMs, delayMs = WOR
     const remainingMs = deadline - Date.now();
     if (remainingMs <= 0) return false;
     await new Promise(
-      (resolve22) => setTimeout(resolve22, Math.min(delayMs, remainingMs))
+      (resolve23) => setTimeout(resolve23, Math.min(delayMs, remainingMs))
     );
   }
 }
@@ -27306,14 +27312,14 @@ async function readOrCreateRecoveryAttempt(input, recoveryId, replacementGenerat
   }
 }
 function waitForBootstrapRecoveryEvidence(delayMs, signal) {
-  return new Promise((resolve22, reject) => {
+  return new Promise((resolve23, reject) => {
     if (signal?.aborted) {
       reject(signal.reason ?? new Error("bootstrap_recovery_evidence_aborted"));
       return;
     }
     const timer = setTimeout(() => {
       signal?.removeEventListener("abort", onAbort);
-      resolve22();
+      resolve23();
     }, delayMs);
     const onAbort = () => {
       clearTimeout(timer);
@@ -29377,7 +29383,7 @@ async function startTeamV2(config) {
   }
   const instance = createTeamInstanceBinding({
     teamName: sanitized,
-    cwd: resolve20(config.cwd),
+    cwd: resolve21(config.cwd),
     ...config.instanceId !== void 0 ? { instanceId: config.instanceId } : {}
   });
   const leaderCwd = instance.cwd;
@@ -32653,7 +32659,7 @@ import {
   writeFileSync as writeFileSync13
 } from "fs";
 import { readFile as readFile18 } from "fs/promises";
-import { dirname as dirname41, join as join58, resolve as resolve21 } from "path";
+import { dirname as dirname41, join as join58, resolve as resolve22 } from "path";
 import { fileURLToPath as fileURLToPath7 } from "url";
 
 // src/team/api-interop.ts
@@ -34577,7 +34583,7 @@ async function startTeamJob(input) {
   if (typeof input.cwd !== "string" || input.cwd.trim().length === 0) {
     throw new Error("cwd must be a non-empty path");
   }
-  const cwd = resolve21(input.cwd);
+  const cwd = resolve22(input.cwd);
   await assertTeamSpawnAllowed(cwd);
   if (!Array.isArray(input.agentTypes) || input.agentTypes.length === 0) {
     throw new Error("agentTypes must be a non-empty array");
@@ -34709,7 +34715,7 @@ async function waitForTeamJob(jobId, options = {}) {
     if (status2.status !== "running") {
       return status2;
     }
-    await new Promise((resolve22) => setTimeout(resolve22, delayMs));
+    await new Promise((resolve23) => setTimeout(resolve23, delayMs));
     delayMs = Math.min(Math.floor(delayMs * 1.5), 2e3);
   }
   const status = await getTeamJobStatus(jobId);

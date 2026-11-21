@@ -66,7 +66,7 @@ export const gitIn = (cwd: string, ...args: string[]) =>
     stdio: 'pipe',
   }).trim();
 
-export function fakeSdk(behavior: FakeBehavior, calls: FakeCalls, sandbox: FakeSandbox = 'supported'): LoadedSdk {
+export function fakeSdk(behavior: FakeBehavior, calls: FakeCalls, sandbox: FakeSandbox = 'supported', deniedPaths = false): LoadedSdk {
   class Session {
     sessionId = `sess-${calls.sessions.length}`;
     rpc = fakeSessionRpc(sandbox, calls);
@@ -91,7 +91,7 @@ export function fakeSdk(behavior: FakeBehavior, calls: FakeCalls, sandbox: FakeS
   }
   class Client {
     cliProcess = null;
-    rpc = fakeClientRpc(sandbox);
+    rpc = fakeClientRpc(sandbox, deniedPaths);
     constructor(_opts: unknown) {}
     async start() {}
     async stop() { return []; }

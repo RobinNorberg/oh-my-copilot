@@ -28,6 +28,7 @@
 
 import { randomBytes } from 'node:crypto';
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join, resolve, sep } from 'node:path';
 import { ledgerPath, ledgerTotals, parseLedger } from '../../budget/ledger.js';
 import { resolveGateIsolation, resolveGatesSandboxMode } from '../../copilot-run/sandbox.js';
@@ -536,8 +537,9 @@ export async function runBench(o: BenchRunOptions): Promise<BenchRunOutput> {
     }
     config = loadFactoryForgeConfig(factoryGuardExec(defaultExec), meta.root, meta.base, trustedUser, undefined).config;
     if (config.kind !== 'local') throw new BenchUsageError(`the fixture resolves to the ${config.kind} forge (your user config's factory.forge?); the bench needs the local forge`);
-    // The lanes' model and its multiplier, before anything is spent (read-only, no model turn).
-    const probe = o.modelProbe ?? ((m?: string) => probeLaneModel(join(benchDir, 'model-probe'), undefined, m));
+    // The lanes' model and its multiplier, before anything is spent (read-only, no model turn). The probe's job home is
+    // under the OS temp dir, never the bench dir: its runtime env carries the credential, so no repository surrounds it.
+    const probe = o.modelProbe ?? ((m?: string) => probeLaneModel(join(tmpdir(), 'omg-model-probe'), undefined, m));
     const model = await probe(laneModel);
     // A probe that ignored the explicit model must not pass its default off as it.
     if (laneModel && !(model.explicit && model.model === laneModel)) throw new BenchUsageError(`the model probe did not check ${modelFlag} ${laneModel} (it reported ${model.model ?? 'no model'}); the bench does not start an unchecked ${modelFlag}`);
