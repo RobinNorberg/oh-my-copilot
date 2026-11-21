@@ -49020,7 +49020,58 @@ function loginIdentity(userConfigDir) {
     return {};
   }
 }
-var import_fs49, import_path62, import_url8, STRIPPED_ENV_EXACT, STRIPPED_ENV_PREFIXES, LOGIN_SHADOWING_TOKENS, SMOKE_SET_ENV, SESSION_SET_ENV, CREDENTIAL_ENV, SECRET_NAME, CASSETTE_ENV, HMAC_KEY_ENV, REPLAY_HMAC_KEY;
+function storedLoginToken(userConfigDir, platform = process.platform, now = Date.now()) {
+  if (platform === "win32") return void 0;
+  try {
+    const parsed = parseJsonc((0, import_fs49.readFileSync)((0, import_path62.join)(userConfigDir, "config.json"), "utf-8"));
+    if (!parsed || typeof parsed !== "object") return void 0;
+    const user = parsed.lastLoggedInUser;
+    if (!user || typeof user !== "object" || typeof user.login !== "string" || !user.login) return void 0;
+    const host = typeof user.host === "string" && user.host ? user.host : "https://github.com";
+    for (const field of PLAINTEXT_TOKEN_FIELDS) {
+      const token = tokenFromMap(parsed[field], host, user.login, now, 1);
+      if (token) return token;
+    }
+  } catch {
+  }
+  return void 0;
+}
+function tokenFromMap(map2, host, login3, now, depth) {
+  if (!map2 || typeof map2 !== "object" || Array.isArray(map2)) return void 0;
+  for (const [key, value] of Object.entries(map2)) {
+    if (tokenKeyMatches(key, host, login3)) {
+      const token = tokenValue(value, now);
+      if (token) return token;
+    } else if (depth > 0 && value && typeof value === "object" && !("token" in value)) {
+      const token = tokenFromMap(value, host, login3, now, depth - 1);
+      if (token) return token;
+    }
+  }
+  return void 0;
+}
+function tokenKeyMatches(key, host, login3) {
+  if (!key.endsWith(`:${login3}`)) return false;
+  const keyHost = key.slice(0, -(login3.length + 1)).replace(/\/+$/, "");
+  const bare = host.replace(/^[a-z][a-z0-9+.-]*:\/\//i, "").replace(/\/+$/, "").toLowerCase();
+  if (!bare) return false;
+  const k = keyHost.toLowerCase();
+  if (!k.endsWith(bare)) return false;
+  const before = k.slice(0, k.length - bare.length);
+  return before === "" || before.endsWith("//") || before.endsWith(":");
+}
+function tokenValue(value, now) {
+  if (typeof value === "string") return value.trim() || void 0;
+  if (!value || typeof value !== "object") return void 0;
+  const v = value;
+  if (typeof v.token !== "string" || !v.token.trim()) return void 0;
+  if (typeof v.accountType === "string" && v.accountType.toLowerCase() === "entra") return void 0;
+  if (typeof v.expiresAt === "string") {
+    const at = Date.parse(v.expiresAt);
+    if (Number.isFinite(at) && at <= now) return void 0;
+  }
+  return v.token.trim();
+}
+var import_fs49, import_path62, import_url8, STRIPPED_ENV_EXACT, STRIPPED_ENV_PREFIXES, LOGIN_SHADOWING_TOKENS, SMOKE_SET_ENV, SESSION_SET_ENV, CREDENTIAL_ENV, SECRET_NAME, CASSETTE_ENV, HMAC_KEY_ENV, REPLAY_HMAC_KEY, PLAINTEXT_TOKEN_FIELDS;
 var init_copilot_session_env = __esm({
   "src/smoke/copilot-session-env.ts"() {
     "use strict";
@@ -49108,6 +49159,7 @@ var init_copilot_session_env = __esm({
     };
     HMAC_KEY_ENV = "COPILOT_HMAC_KEY";
     REPLAY_HMAC_KEY = "omg-replay-dummy-hmac-key";
+    PLAINTEXT_TOKEN_FIELDS = ["authTokens", "copilotTokens"];
   }
 });
 
@@ -50021,11 +50073,26 @@ function envValue2(env2, name) {
   const value = key === void 0 ? void 0 : env2[key];
   return typeof value === "string" && value.trim() !== "" ? value : void 0;
 }
-function sessionGitHubToken(env2) {
-  return envValue2(env2, "COPILOT_GITHUB_TOKEN");
+function copilotConfigDenies(userConfigDir, platform) {
+  if (platform === "win32") return [];
+  const cfg = (0, import_node_path8.join)(userConfigDir, "config.json");
+  const out = [userConfigDir, cfg];
+  try {
+    const real2 = import_node_fs7.realpathSync.native(cfg);
+    if (real2 !== cfg) out.push(real2);
+  } catch {
+  }
+  return out;
 }
-function secretValues(env2) {
-  return ["COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"].map((n) => envValue2(env2, n)).filter((v) => v !== void 0 && v.length >= 8);
+function storedToken(env2, source) {
+  return source && !isReplayEnv(env2) ? storedLoginToken(source.userConfigDir, source.platform) : void 0;
+}
+function sessionGitHubToken(env2, source) {
+  return envValue2(env2, "COPILOT_GITHUB_TOKEN") ?? storedToken(env2, source);
+}
+function secretValues(env2, source) {
+  const values = [...["COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"].map((n) => envValue2(env2, n)), storedToken(env2, source)].filter((v) => v !== void 0 && v.length >= 8);
+  return [...new Set(values)];
 }
 function scrubTokens(text3, secrets) {
   let out = text3;
@@ -51538,6 +51605,9 @@ function replayResponse(res, dirs) {
   }
   return new Response([204, 205, 304].includes(res.status) ? null : body, { status: res.status, headers });
 }
+function addRecordingDenyLiterals(values) {
+  for (const v of values) if (v) extraDenyLiterals.add(v);
+}
 function deferred() {
   let resolve63;
   const promise2 = new Promise((r) => {
@@ -51655,7 +51725,7 @@ function withCassette(loaded2, env2 = process.env, options = {}) {
         return created.rec;
       };
       const requestHandler = mode === "record" ? createRecordingHandler(Base, recorder) : createReplayHandler(Base, (ctx) => target(ctx).replayer);
-      super({ ...opts, requestHandler, ...mode === "replay" ? { useLoggedInUser: false } : {} });
+      super({ ...opts, requestHandler, ...mode === "replay" ? { useLoggedInUser: false, gitHubToken: void 0 } : {} });
       this.cassetteSlot = slot;
       if (mode === "record") {
         const stop = this.stop.bind(this);
@@ -63014,6 +63084,7 @@ var init_job = __esm({
     init_copilot_sdk_scenarios();
     init_copilot_session_env();
     init_process_utils2();
+    init_handler();
     init_git_worktree();
     init_sdk_policy();
     init_shell_allowlist();
@@ -63338,7 +63409,7 @@ var init_job = __esm({
           cleanedUp: false,
           sandboxSettings,
           sandbox: null,
-          secrets: secretValues(this.deps.env),
+          secrets: secretValues(this.deps.env, { userConfigDir: this.deps.userConfigDir(), platform: this.deps.platform }),
           stopReason: null,
           requestStop: (reason) => requestStop(reason),
           stopped,
@@ -63603,7 +63674,9 @@ var init_job = __esm({
         (0, import_node_fs13.writeFileSync)((0, import_node_path14.join)(job.home, "config.json"), `${JSON.stringify({ ...ident, trustedFolders: [job.workCwd] }, null, 2)}
 `);
         const env2 = childEnv(allowlistSessionEnv(buildSessionEnv(deps.env, job.home, { session: false, hasLogin: ident.loggedInUsers !== void 0 }), job.home));
-        const gitHubToken = sessionGitHubToken(deps.env);
+        const gitHubToken = sessionGitHubToken(deps.env, { userConfigDir: deps.userConfigDir(), platform: deps.platform });
+        if (gitHubToken) addRecordingDenyLiterals([gitHubToken]);
+        const laneDenied = [...job.deniedPaths, ...copilotConfigDenies(deps.userConfigDir(), deps.platform)];
         (0, import_node_fs13.mkdirSync)(env2.XDG_CONFIG_HOME, { recursive: true });
         (0, import_node_fs13.mkdirSync)((0, import_node_path14.dirname)(env2.GIT_CONFIG_GLOBAL), { recursive: true });
         (0, import_node_fs13.mkdirSync)(env2.TEMP, { recursive: true });
@@ -63699,7 +63772,9 @@ var init_job = __esm({
               hostCommits: job.hostCommits,
               toolPaths: (deps.toolPaths ?? laneToolPaths)(deps.env, deps.platform),
               extraReadonly: proxy.caPaths,
-              ...job.deniedPaths.length > 0 ? { extraDenied: job.deniedPaths } : {},
+              // A keyring-less host keeps the login token in plain text in the user's Copilot config.json: its config dir is
+              // denied also when COPILOT_HOME moved it out of ~/.copilot (denied by default; copilotConfigDenies).
+              ...laneDenied.length > 0 ? { extraDenied: laneDenied } : {},
               // A caller-made worktree (the private layout): its common git dir is not the checkout's, whose budget ledger stays denied.
               ...job.external ? { mainRoot: job.ledgerCwd } : {}
             };
@@ -68810,7 +68885,10 @@ async function runSandboxed(argv, o, deps) {
     (0, import_node_fs15.mkdirSync)(env2.TEMP, { recursive: true });
     (0, import_node_fs15.writeFileSync)(env2.GIT_CONFIG_GLOBAL, "[credential]\n	helper =\n");
     Object.assign(env2, { GIT_TERMINAL_PROMPT: "0", GCM_INTERACTIVE: "never", COPILOT_ALLOW_ALL: "false", GIT_CEILING_DIRECTORIES: (0, import_node_path16.resolve)(o.jobRoot) });
-    const gitHubToken = sessionGitHubToken(deps.env);
+    const credentialSource = { userConfigDir: deps.userConfigDir(), platform: deps.platform };
+    const gitHubToken = sessionGitHubToken(deps.env, credentialSource);
+    const secrets = secretValues(deps.env, credentialSource);
+    if (gitHubToken) addRecordingDenyLiterals([gitHubToken]);
     const { CopilotClient, RuntimeConnection } = loaded2.module;
     const c = new CopilotClient({
       connection: RuntimeConnection.forStdio({ path: bin, args: ["--max-ai-credits", String(RUNTIME_MIN_MAX_CREDITS)], env: env2 }),
@@ -68845,6 +68923,8 @@ async function runSandboxed(argv, o, deps) {
           hostCommits: true,
           toolPaths: (deps.toolPaths ?? laneToolPaths)(deps.env, deps.platform),
           extraReadonly: proxy.caPaths,
+          // A keyring-less host's plaintext login token, also when COPILOT_HOME moved the config dir out of ~/.copilot.
+          ...deps.platform === "win32" ? {} : { extraDenied: copilotConfigDenies(credentialSource.userConfigDir, deps.platform) },
           ...o.mainRoot ? { mainRoot: (0, import_node_path16.resolve)(o.mainRoot) } : {},
           ...o.nodeModulesTarget ? { nodeModulesTarget: (0, import_node_path16.resolve)(o.nodeModulesTarget) } : {},
           ...o.nestedNodeModulesTargets ? { nestedNodeModulesTargets: o.nestedNodeModulesTargets.map((p) => (0, import_node_path16.resolve)(p)) } : {}
@@ -68916,7 +68996,7 @@ async function runSandboxed(argv, o, deps) {
       const why = !r ? answer !== "timeout" && "error" in answer ? "the shell call failed" : "the shell call gave no answer" : `its completion was ${attested.get(id) === false ? "attested sandboxed: false" : "not attested sandboxed"}`;
       return noVerdict(`${timeout ? `timed out after ${o.timeoutMs} ms and ` : ""}${why}; the command is not counted as run in the sandbox`);
     }
-    const raw = typeof r?.output === "string" ? r.output : "";
+    const raw = scrubTokens(typeof r?.output === "string" ? r.output : "", secrets);
     const read = readMarker(raw, marker);
     const marked = readable ? { credentialFilesReadable: true } : {};
     if (timeout) return { ran: true, status: 124, output: tail(`${read.output.trim()}
@@ -69054,6 +69134,7 @@ var init_sandbox_exec = __esm({
     init_copilot_sdk_driver();
     init_copilot_sdk_scenarios();
     init_copilot_session_env();
+    init_handler();
     init_windows_search();
     SANDBOX_OUTPUT_TAIL_CHARS = 8e3;
     START_TIMEOUT_MS3 = 6e4;
@@ -83325,6 +83406,7 @@ var init_model_probe = __esm({
     init_copilot_sdk_driver();
     init_copilot_sdk_scenarios();
     init_copilot_session_env();
+    init_handler();
     init_process_utils2();
     init_windows_search();
   }

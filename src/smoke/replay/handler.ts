@@ -744,7 +744,7 @@ export function withCassette(loaded: LoadedSdk, env: NodeJS.ProcessEnv = process
         return created.rec;
       };
       const requestHandler = mode === 'record' ? createRecordingHandler(Base, recorder) : createReplayHandler(Base, (ctx) => target(ctx).replayer);
-      super({ ...opts, requestHandler, ...(mode === 'replay' ? { useLoggedInUser: false } : {}) });
+      super({ ...opts, requestHandler, ...(mode === 'replay' ? { useLoggedInUser: false, gitHubToken: undefined } : {}) });
       this.cassetteSlot = slot;
       if (mode === 'record') {
         const stop = this.stop.bind(this);

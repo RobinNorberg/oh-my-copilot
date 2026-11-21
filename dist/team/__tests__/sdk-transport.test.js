@@ -721,10 +721,10 @@ describe('sdk host', () => {
     });
     describe('worker env', () => {
         const pathKey = process.platform === 'win32' ? 'Path' : 'PATH';
-        async function runEnv(hostEnv, specOver = {}) {
+        async function runEnv(hostEnv, specOver = {}, depsOver = {}) {
             const attempt = await newAttempt();
             const { loaded, rec } = fakeSdk();
-            const host = await hostWithLeader(attempt, deps(loaded, { env: hostEnv }), async () => {
+            const host = await hostWithLeader(attempt, deps(loaded, { env: hostEnv, ...depsOver }), async () => {
                 await until(() => readSdkSession(stateRoot, WORKER)?.state === 'idle');
                 ringDoorbell(stateRoot, WORKER, { kind: 'shutdown' });
             }, specFor(attempt, specOver));
@@ -786,6 +786,16 @@ describe('sdk host', () => {
             writeFileSync(join(userConfig, 'config.json'), JSON.stringify({ loggedInUsers: [{ login: 'robin' }], lastLoggedInUser: { login: 'robin' } }));
             const { cfg } = await runEnv({ [pathKey]: '/usr/bin', GH_TOKEN: 'gh' }, { user_config_dir: userConfig });
             expect(cfg.gitHubToken).toBeUndefined();
+        });
+        it('a keyring-less host: the stored login token goes to the session RPC, never the runtime env or the home', async () => {
+            const stored = 'stored-plaintext-credential-0001';
+            const userConfig = join(cwd, 'user-config-plain');
+            mkdirSync(userConfig, { recursive: true });
+            writeFileSync(join(userConfig, 'config.json'), JSON.stringify({ loggedInUsers: [{ login: 'me' }], lastLoggedInUser: { login: 'me' }, authTokens: { 'https://github.com:me': { token: stored } } }));
+            const { env, cfg } = await runEnv({ [pathKey]: '/usr/bin', GH_TOKEN: 'gh' }, { user_config_dir: userConfig }, { platform: 'linux' });
+            expect(cfg.gitHubToken).toBe(stored);
+            expect(JSON.stringify(env)).not.toContain(stored);
+            expect(readFileSync(join(sdkWorkerFiles(stateRoot, WORKER).home, 'config.json'), 'utf8')).not.toContain(stored);
         });
         // A CI checkout (actions/checkout persist-credentials, Azure Pipelines) writes the job token as a URL-scoped
         // extra header into .git/config; the plain `http.extraHeader=` reset does not clear a URL-scoped one.

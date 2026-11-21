@@ -639,7 +639,7 @@ export function withCassette(loaded, env = process.env, options = {}) {
                 return created.rec;
             };
             const requestHandler = mode === 'record' ? createRecordingHandler(Base, recorder) : createReplayHandler(Base, (ctx) => target(ctx).replayer);
-            super({ ...opts, requestHandler, ...(mode === 'replay' ? { useLoggedInUser: false } : {}) });
+            super({ ...opts, requestHandler, ...(mode === 'replay' ? { useLoggedInUser: false, gitHubToken: undefined } : {}) });
             this.cassetteSlot = slot;
             if (mode === 'record') {
                 const stop = this.stop.bind(this);

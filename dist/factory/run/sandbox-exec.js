@@ -41,7 +41,7 @@ import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { userInfo } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { defaultCopilotRunDeps } from '../../copilot-run/job.js';
-import { allowlistSessionEnv, loadSandboxSettings, laneToolPaths, missingSandboxEnv, proxyCaEnv, sessionGitHubToken, } from '../../copilot-run/sandbox.js';
+import { allowlistSessionEnv, copilotConfigDenies, loadSandboxSettings, laneToolPaths, missingSandboxEnv, proxyCaEnv, scrubTokens, secretValues, sessionGitHubToken, } from '../../copilot-run/sandbox.js';
 import { defaultContainerExec, runContainerGate } from './container-gate.js';
 import { SessionSandboxController } from '../../copilot-run/sandbox-session.js';
 import { errText, withTimeout } from '../../copilot-run/timeout.js';
@@ -51,6 +51,7 @@ import { redactSecrets } from '../heal/sanitize.js';
 import { resolveShimTarget, rethrowSdkStartError, runtimePid } from '../../smoke/copilot-sdk-driver.js';
 import { RUNTIME_MIN_MAX_CREDITS, SDK_INSTALL_COMMAND } from '../../smoke/copilot-sdk-scenarios.js';
 import { buildSessionEnv, loginIdentity } from '../../smoke/copilot-session-env.js';
+import { addRecordingDenyLiterals } from '../../smoke/replay/handler.js';
 import { childEnv } from '../../utils/windows-search.js';
 /** The output tail a sandboxed command keeps (as the local gate record, local-gate.ts LOCAL_GATE_TAIL_CHARS). */
 export const SANDBOX_OUTPUT_TAIL_CHARS = 8_000;
@@ -219,7 +220,12 @@ export async function runSandboxed(argv, o, deps) {
         // GIT_CEILING_DIRECTORIES: a git root search from the runtime's working dir stops at the job root, so it never reaches
         // the root repository's work tree (the job root is under its .omg/) and its hooks or instructions.
         Object.assign(env, { GIT_TERMINAL_PROMPT: '0', GCM_INTERACTIVE: 'never', COPILOT_ALLOW_ALL: 'false', GIT_CEILING_DIRECTORIES: resolve(o.jobRoot) });
-        const gitHubToken = sessionGitHubToken(deps.env);
+        const credentialSource = { userConfigDir: deps.userConfigDir(), platform: deps.platform };
+        const gitHubToken = sessionGitHubToken(deps.env, credentialSource);
+        const secrets = secretValues(deps.env, credentialSource);
+        // A recording (cassette record mode) never carries the session credential, the stored login token included.
+        if (gitHubToken)
+            addRecordingDenyLiterals([gitHubToken]);
         const { CopilotClient, RuntimeConnection } = loaded.module;
         const c = new CopilotClient({
             connection: RuntimeConnection.forStdio({ path: bin, args: ['--max-ai-credits', String(RUNTIME_MIN_MAX_CREDITS)], env }),
@@ -254,6 +260,8 @@ export async function runSandboxed(argv, o, deps) {
                     hostCommits: true,
                     toolPaths: (deps.toolPaths ?? laneToolPaths)(deps.env, deps.platform),
                     extraReadonly: proxy.caPaths,
+                    // A keyring-less host's plaintext login token, also when COPILOT_HOME moved the config dir out of ~/.copilot.
+                    ...(deps.platform === 'win32' ? {} : { extraDenied: copilotConfigDenies(credentialSource.userConfigDir, deps.platform) }),
                     ...(o.mainRoot ? { mainRoot: resolve(o.mainRoot) } : {}),
                     ...(o.nodeModulesTarget ? { nodeModulesTarget: resolve(o.nodeModulesTarget) } : {}),
                     ...(o.nestedNodeModulesTargets ? { nestedNodeModulesTargets: o.nestedNodeModulesTargets.map((p) => resolve(p)) } : {}),
@@ -328,7 +336,7 @@ export async function runSandboxed(argv, o, deps) {
             const why = !r ? (answer !== 'timeout' && 'error' in answer ? 'the shell call failed' : 'the shell call gave no answer') : `its completion was ${attested.get(id) === false ? 'attested sandboxed: false' : 'not attested sandboxed'}`;
             return noVerdict(`${timeout ? `timed out after ${o.timeoutMs} ms and ` : ''}${why}; the command is not counted as run in the sandbox`);
         }
-        const raw = typeof r?.output === 'string' ? r.output : '';
+        const raw = scrubTokens(typeof r?.output === 'string' ? r.output : '', secrets);
         const read = readMarker(raw, marker);
         const marked = readable ? { credentialFilesReadable: true } : {};
         if (timeout)

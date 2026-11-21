@@ -110,4 +110,18 @@ export declare function buildSessionEnv(base: NodeJS.ProcessEnv, home: string, o
  * (CI) all three pass through, since a token is then the only credential.
  */
 export declare function loginIdentity(userConfigDir: string): Record<string, unknown>;
+/**
+ * The plaintext token Copilot CLI stored in `<userConfigDir>/config.json` for
+ * `lastLoggedInUser`, or undefined. Without an OS keyring (Linux or macOS
+ * with no Secret Service / keychain) the CLI writes it there, keyed by host
+ * and login (`<host>:<login>`); a value is the token string or
+ * `{ token, expiresAt?, accountType? }`. An expired entry and an Entra entry
+ * (not a GitHub token) are skipped. Never on Windows: the CLI keeps it in
+ * Credential Manager there, and lanes keep using that.
+ *
+ * The caller must never write the value into a job home, an env, or a file:
+ * it goes over the session RPC (`gitHubToken`) or a no-session probe's
+ * client option only, and joins the lane output redaction set.
+ */
+export declare function storedLoginToken(userConfigDir: string, platform?: NodeJS.Platform, now?: number): string | undefined;
 //# sourceMappingURL=copilot-session-env.d.ts.map

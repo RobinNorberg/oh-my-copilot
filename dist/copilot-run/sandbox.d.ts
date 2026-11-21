@@ -431,14 +431,44 @@ export declare function proxyCaEnv(env: NodeJS.ProcessEnv, platform: NodeJS.Plat
 export declare const MXC_REQUIRED_ENV: readonly string[];
 /** The {@link MXC_REQUIRED_ENV} names `env` lacks (or holds blank) on win32; none elsewhere. */
 export declare function missingSandboxEnv(env: NodeJS.ProcessEnv, platform: NodeJS.Platform): string[];
+/** Where a stored login's plaintext token can be read (storedLoginToken): the user's Copilot config dir, on this OS. */
+export interface StoredLoginSource {
+    userConfigDir: string;
+    platform: NodeJS.Platform;
+}
+/**
+ * The sandbox denies for the user's Copilot config dir on a keyring-less host, where its config.json holds the login
+ * token in plain text (never on Windows: the token stays in Credential Manager). The default ~/.copilot is denied whole
+ * anyway; a relocated COPILOT_HOME is denied whole too, unless a grant lies under it (buildSandboxConfig drops it then),
+ * and its config.json always, also the file a symlinked config.json points to.
+ */
+export declare function copilotConfigDenies(userConfigDir: string, platform: NodeJS.Platform): string[];
 /**
  * The explicit Copilot credential for the session's `gitHubToken` option
  * (SDK 1.0.16 SessionConfig: sent over the session RPC, never put in the
- * runtime's env, unlike the client-level option).
+ * runtime's env, unlike the client-level option): COPILOT_GITHUB_TOKEN,
+ * else, with `source`, the stored login's plaintext token from a keyring-less
+ * host's config.json (storedLoginToken; never on Windows). The job home only
+ * ever gets the login identity, so without this a keyring-less host's
+ * relocated runtime has no credential.
  */
-export declare function sessionGitHubToken(env: NodeJS.ProcessEnv): string | undefined;
-/** The token values in the caller's env that lane output must never carry. */
-export declare function secretValues(env: NodeJS.ProcessEnv): string[];
+export declare function sessionGitHubToken(env: NodeJS.ProcessEnv, source?: StoredLoginSource): string | undefined;
+/**
+ * The credentials a runtime started from `env` and `source` can use, by name
+ * only (never a value), in the order the runtime prefers them; for a
+ * "Not authenticated" message.
+ */
+export declare function triedCredentialNames(env: NodeJS.ProcessEnv, source: StoredLoginSource, hasLogin: boolean): string[];
+/**
+ * `text` with, when it reports "Not authenticated", the credentials tried
+ * (names only) and how to add one.
+ */
+export declare function withCredentialHint(text: string, env: NodeJS.ProcessEnv, source: StoredLoginSource, hasLogin: boolean): string;
+/**
+ * The token values lane output must never carry: those in the caller's env
+ * and, with `source`, the stored login's plaintext token.
+ */
+export declare function secretValues(env: NodeJS.ProcessEnv, source?: StoredLoginSource): string[];
 /**
  * `text` with every GitHub token shape and every exact `secrets` value
  * replaced by `[redacted]`. It matches literal text only: a token that is

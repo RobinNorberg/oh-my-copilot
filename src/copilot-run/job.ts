@@ -71,6 +71,7 @@ import { RUNTIME_MIN_MAX_CREDITS, usageCredits } from '../smoke/copilot-sdk-scen
 import type { CopilotEvent } from '../smoke/copilot-session-eval.js';
 import { buildSessionEnv, isCredentialEnvKey, loginIdentity, resolveDefaultPluginRoot } from '../smoke/copilot-session-env.js';
 import { killProcessTree } from '../smoke/process-utils.js';
+import { addRecordingDenyLiterals } from '../smoke/replay/handler.js';
 import {
   ensureWorkerWorktree,
   getBranchName,
@@ -104,6 +105,7 @@ import {
   REVIEW_SHELL_TOOLS,
   SANDBOX_KILL_ENV,
   allowlistSessionEnv,
+  copilotConfigDenies,
   laneToolPaths,
   loadSandboxSettings,
   missingSandboxEnv,
@@ -1220,7 +1222,7 @@ export class CopilotRunManager {
       cleanedUp: false,
       sandboxSettings,
       sandbox: null,
-      secrets: secretValues(this.deps.env),
+      secrets: secretValues(this.deps.env, { userConfigDir: this.deps.userConfigDir(), platform: this.deps.platform }),
       stopReason: null,
       requestStop: (reason) => requestStop(reason),
       stopped,
@@ -1497,7 +1499,10 @@ export class CopilotRunManager {
     writeFileSync(join(job.home, 'config.json'), `${JSON.stringify({ ...ident, trustedFolders: [job.workCwd] }, null, 2)}\n`);
     // An env allowlist with the profile relocated into the job's home (sandbox.ts).
     const env = childEnv(allowlistSessionEnv(buildSessionEnv(deps.env, job.home, { session: false, hasLogin: ident.loggedInUsers !== undefined }), job.home));
-    const gitHubToken = sessionGitHubToken(deps.env);
+    const gitHubToken = sessionGitHubToken(deps.env, { userConfigDir: deps.userConfigDir(), platform: deps.platform });
+    // A recording (cassette record mode) never carries the session credential, the stored login token included.
+    if (gitHubToken) addRecordingDenyLiterals([gitHubToken]);
+    const laneDenied = [...job.deniedPaths, ...copilotConfigDenies(deps.userConfigDir(), deps.platform)];
     mkdirSync(env.XDG_CONFIG_HOME!, { recursive: true });
     mkdirSync(dirname(env.GIT_CONFIG_GLOBAL!), { recursive: true });
     mkdirSync(env.TEMP!, { recursive: true });
@@ -1608,7 +1613,9 @@ export class CopilotRunManager {
           hostCommits: job.hostCommits,
           toolPaths: (deps.toolPaths ?? laneToolPaths)(deps.env, deps.platform),
           extraReadonly: proxy.caPaths,
-          ...(job.deniedPaths.length > 0 ? { extraDenied: job.deniedPaths } : {}),
+          // A keyring-less host keeps the login token in plain text in the user's Copilot config.json: its config dir is
+          // denied also when COPILOT_HOME moved it out of ~/.copilot (denied by default; copilotConfigDenies).
+          ...(laneDenied.length > 0 ? { extraDenied: laneDenied } : {}),
           // A caller-made worktree (the private layout): its common git dir is not the checkout's, whose budget ledger stays denied.
           ...(job.external ? { mainRoot: job.ledgerCwd } : {}),
         };

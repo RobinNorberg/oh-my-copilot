@@ -29,7 +29,7 @@ export declare function fakeSessionRpc(sandbox: FakeSandbox, calls: {
     optionsUpdates: Array<Record<string, unknown>>;
 }): never;
 export declare const gitIn: (cwd: string, ...args: string[]) => string;
-export declare function fakeSdk(behavior: FakeBehavior, calls: FakeCalls, sandbox?: FakeSandbox): LoadedSdk;
+export declare function fakeSdk(behavior: FakeBehavior, calls: FakeCalls, sandbox?: FakeSandbox, deniedPaths?: boolean): LoadedSdk;
 export declare function fakeDeps(root: string, behavior: FakeBehavior, calls: FakeCalls, env: NodeJS.ProcessEnv, sandbox?: FakeSandbox): CopilotRunDeps;
 /** A temp root with a logged-in user config and a one-commit repository at `<root>/repo` (branch main). */
 export declare function scratchRepo(prefix: string): {
