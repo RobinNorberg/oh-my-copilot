@@ -19873,6 +19873,39 @@ function hostGitCommand(cwd, args, timeout, baseEnv) {
   }
   return { argv: [...hostGitHardeningArgs(), ...tree, ...finalArgs], env };
 }
+function attributeFreeCheckout(repoRoot, gitVersion) {
+  if (hostGitAttrSourceProblem(gitVersion)) {
+    const shown = /(\d+\.\d+\.\d+\S*)/.exec((gitVersion === void 0 ? hostGitVersionCache : gitVersion) ?? "")?.[1];
+    throw new Error(`${shown ? `git ${shown} is too old` : "the git version cannot be read"} for the factory: it needs git >= ${HOST_GIT_ATTR_SOURCE_MIN.replace(/\.0$/, "")} (merge-tree --write-tree and GIT_ATTR_SOURCE)`);
+  }
+  const format = runHostGit(repoRoot, ["rev-parse", "--show-object-format"]).trim();
+  const emptyTree = EMPTY_TREE[format];
+  if (!emptyTree) throw new Error(`unknown object format ${JSON.stringify(format)}`);
+  const drivers = hostGitDriverOverrides(repoRoot);
+  if (drivers === null) throw new Error("host git: the filter and diff drivers cannot be listed or overridden; refusing to check a lane worktree out");
+  return {
+    config: ["-c", `core.attributesFile=${hostAttributesFile()}`, ...EXEC_KEY_OVERRIDES.flatMap((kv) => ["-c", kv]), ...drivers],
+    env: { GIT_ATTR_SOURCE: emptyTree, GIT_LFS_SKIP_SMUDGE: "1", GIT_NO_REPLACE_OBJECTS: "1", GIT_GRAFT_FILE: join37(hostHooksDir(), "grafts") }
+  };
+}
+function hostGitAttrSourceProblem(version) {
+  if (version === void 0) {
+    if (hostGitVersionCache === void 0) {
+      try {
+        hostGitVersionCache = execFileSync5(hostGitExe(), ["--version"], { encoding: "utf-8", stdio: "pipe", windowsHide: true }).trim();
+      } catch {
+        hostGitVersionCache = null;
+      }
+    }
+    version = hostGitVersionCache;
+  }
+  const m = version ? /(\d+)\.(\d+)\.(\d+)/.exec(version) : null;
+  if (!m) return `cannot read the git version (${version ?? "git --version failed"}); a sandboxed lane needs git ${HOST_GIT_ATTR_SOURCE_MIN} or newer`;
+  const [maj, min, patch] = HOST_GIT_ATTR_SOURCE_MIN.split(".").map(Number);
+  const v = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const ok = v[0] !== maj ? v[0] > maj : v[1] !== min ? v[1] > min : v[2] >= patch;
+  return ok ? null : `${version} does not honour GIT_ATTR_SOURCE; a sandboxed lane needs git ${HOST_GIT_ATTR_SOURCE_MIN} or newer, so host git reads none of the lane's .gitattributes`;
+}
 function git(repoRoot, args, cwd = repoRoot) {
   return runHostGit(cwd, args).trim();
 }
@@ -20438,9 +20471,16 @@ function ensureWorkerWorktree(teamName, workerName, repoRoot, options = {}) {
   }
   if (existsSync34(wtPath)) {
     assertCompatibleExistingWorktree(repoRoot, wtPath, branch, mode);
-    const previousBase = readMetadata(repoRoot, teamName).find((entry) => entry.workerName === workerName)?.baseCommit;
+    const previous = readMetadata(repoRoot, teamName).find((entry) => entry.workerName === workerName);
+    if (options.withoutAttributes && previous?.attributeFree !== true) {
+      const error = new Error(`worktree_attributes_applied: the lane worktree ${wtPath} was checked out before the attribute-free checkout, so its files may differ from their blobs; recreate it: remove the worktree (for a factory run: cancel it, run omg factory run clean, then rerun)`);
+      error.code = "worktree_attributes_applied";
+      throw error;
+    }
+    const previousBase = previous?.baseCommit;
     const info2 = {
       ...previousBase ? { baseCommit: previousBase } : {},
+      ...previous?.attributeFree ? { attributeFree: true } : {},
       path: wtPath,
       branch,
       workerName,
@@ -20458,10 +20498,12 @@ function ensureWorkerWorktree(teamName, workerName, repoRoot, options = {}) {
   const wtDir = join37(getOmcRoot(repoRoot), "team", sanitizeName(teamName), "worktrees");
   ensureDirWithMode(wtDir);
   const args = mode === "named" ? ["worktree", "add", "-b", branch, wtPath, options.baseRef ?? "HEAD"] : ["worktree", "add", "--detach", wtPath, options.baseRef ?? "HEAD"];
-  execFileSync5(hostGitExe(), args, { cwd: repoRoot, stdio: "pipe", windowsHide: true });
+  const checkout = options.withoutAttributes ? attributeFreeCheckout(repoRoot) : null;
+  execFileSync5(hostGitExe(), [...checkout?.config ?? [], ...args], { cwd: repoRoot, stdio: "pipe", windowsHide: true, ...checkout ? { env: { ...process.env, ...checkout.env } } : {} });
   const baseCommit = gitOrNull(["rev-parse", "HEAD"], wtPath);
   const info = {
     ...baseCommit ? { baseCommit } : {},
+    ...checkout ? { attributeFree: true } : {},
     path: wtPath,
     branch,
     workerName,
@@ -20772,7 +20814,7 @@ function cleanupTeamWorktrees(teamName, repoRoot) {
   }
   return { removed, preserved, retained };
 }
-var emptyHooksDir, EXEC_KEY_OVERRIDES, emptyAttributesFile, WORK_TREE_SUBCOMMANDS, GLOBAL_OPTIONS_WITH_VALUE, HOST_GIT_MAX_BUFFER, LANE_SUBMODULE_OVERRIDES, IGNORE_SUBMODULES_SUBCOMMANDS, EMPTY_TREE, recordedGitDirs, pathKey, UNTRACKED_OMC_STATE, WORKTREE_RUNTIME_STATE_DIRS, RUNTIME_LEFTOVER_RETRY_MS;
+var emptyHooksDir, EXEC_KEY_OVERRIDES, emptyAttributesFile, WORK_TREE_SUBCOMMANDS, GLOBAL_OPTIONS_WITH_VALUE, HOST_GIT_MAX_BUFFER, LANE_SUBMODULE_OVERRIDES, IGNORE_SUBMODULES_SUBCOMMANDS, EMPTY_TREE, HOST_GIT_ATTR_SOURCE_MIN, hostGitVersionCache, recordedGitDirs, pathKey, UNTRACKED_OMC_STATE, WORKTREE_RUNTIME_STATE_DIRS, RUNTIME_LEFTOVER_RETRY_MS;
 var init_git_worktree = __esm({
   "src/team/git-worktree.ts"() {
     "use strict";
@@ -20837,6 +20879,7 @@ var init_git_worktree = __esm({
       sha1: "4b825dc642cb6eb9a060e54bf8d69288fbee4904",
       sha256: "6ef19b41225c5369f1c104d45d8d85efa9b057b53b14b4b9b939dd74decc5321"
     };
+    HOST_GIT_ATTR_SOURCE_MIN = "2.41.0";
     recordedGitDirs = /* @__PURE__ */ new Map();
     pathKey = (path5) => process.platform === "win32" ? resolve13(path5).toLowerCase() : resolve13(path5);
     UNTRACKED_OMC_STATE = new RegExp(

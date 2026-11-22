@@ -66,6 +66,9 @@ describe('factory host check', () => {
         const old = byId(await runHostCheck(deps({ exec: execFor({ git: 'git version 2.25.1\n', bwrap: 'bubblewrap 0.10.0' }) })), 'git');
         expect(old).toMatchObject({ status: 'fail', fix: expect.stringContaining('ppa:git-core/ppa') });
         expect(old.detail).toContain('2.25.1');
+        // 2.38 to 2.40 run merge-tree --write-tree but ignore GIT_ATTR_SOURCE: a fail, not a warn.
+        expect(byId(await runHostCheck(deps({ exec: execFor({ git: 'git version 2.40.1\n', bwrap: 'bubblewrap 0.10.0' }) })), 'git')).toMatchObject({ status: 'fail', detail: expect.stringContaining('>= 2.41') });
+        expect(byId(await runHostCheck(deps({ exec: execFor({ git: 'git version 2.41.0\n', bwrap: 'bubblewrap 0.10.0' }) })), 'git')).toMatchObject({ status: 'warn' });
         expect(byId(await runHostCheck(deps({ exec: execFor({ git: 'git version 2.43.0\n', bwrap: 'bubblewrap 0.10.0' }) })), 'git')).toMatchObject({ status: 'warn', detail: expect.stringContaining('2.44') });
     });
     it('fails the Linux sandbox with the trial launch reason and a fix', async () => {

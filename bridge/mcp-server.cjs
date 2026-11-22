@@ -58564,6 +58564,21 @@ function hostGitCommand(cwd, args, timeout, baseEnv) {
   }
   return { argv: [...hostGitHardeningArgs(), ...tree, ...finalArgs], env: env2 };
 }
+function attributeFreeCheckout(repoRoot, gitVersion) {
+  if (hostGitAttrSourceProblem(gitVersion)) {
+    const shown = /(\d+\.\d+\.\d+\S*)/.exec((gitVersion === void 0 ? hostGitVersionCache : gitVersion) ?? "")?.[1];
+    throw new Error(`${shown ? `git ${shown} is too old` : "the git version cannot be read"} for the factory: it needs git >= ${HOST_GIT_ATTR_SOURCE_MIN.replace(/\.0$/, "")} (merge-tree --write-tree and GIT_ATTR_SOURCE)`);
+  }
+  const format2 = runHostGit(repoRoot, ["rev-parse", "--show-object-format"]).trim();
+  const emptyTree = EMPTY_TREE[format2];
+  if (!emptyTree) throw new Error(`unknown object format ${JSON.stringify(format2)}`);
+  const drivers = hostGitDriverOverrides(repoRoot);
+  if (drivers === null) throw new Error("host git: the filter and diff drivers cannot be listed or overridden; refusing to check a lane worktree out");
+  return {
+    config: ["-c", `core.attributesFile=${hostAttributesFile()}`, ...EXEC_KEY_OVERRIDES.flatMap((kv) => ["-c", kv]), ...drivers],
+    env: { GIT_ATTR_SOURCE: emptyTree, GIT_LFS_SKIP_SMUDGE: "1", GIT_NO_REPLACE_OBJECTS: "1", GIT_GRAFT_FILE: (0, import_node_path10.join)(hostHooksDir(), "grafts") }
+  };
+}
 function hostGitAttrSourceProblem(version2) {
   if (version2 === void 0) {
     if (hostGitVersionCache === void 0) {
@@ -59082,9 +59097,16 @@ function ensureWorkerWorktree(teamName, workerName, repoRoot, options = {}) {
   }
   if ((0, import_node_fs9.existsSync)(wtPath)) {
     assertCompatibleExistingWorktree(repoRoot, wtPath, branch2, mode);
-    const previousBase = readMetadata(repoRoot, teamName).find((entry) => entry.workerName === workerName)?.baseCommit;
+    const previous = readMetadata(repoRoot, teamName).find((entry) => entry.workerName === workerName);
+    if (options.withoutAttributes && previous?.attributeFree !== true) {
+      const error62 = new Error(`worktree_attributes_applied: the lane worktree ${wtPath} was checked out before the attribute-free checkout, so its files may differ from their blobs; recreate it: remove the worktree (for a factory run: cancel it, run omg factory run clean, then rerun)`);
+      error62.code = "worktree_attributes_applied";
+      throw error62;
+    }
+    const previousBase = previous?.baseCommit;
     const info2 = {
       ...previousBase ? { baseCommit: previousBase } : {},
+      ...previous?.attributeFree ? { attributeFree: true } : {},
       path: wtPath,
       branch: branch2,
       workerName,
@@ -59102,10 +59124,12 @@ function ensureWorkerWorktree(teamName, workerName, repoRoot, options = {}) {
   const wtDir = (0, import_node_path10.join)(getOmcRoot(repoRoot), "team", sanitizeName(teamName), "worktrees");
   ensureDirWithMode(wtDir);
   const args = mode === "named" ? ["worktree", "add", "-b", branch2, wtPath, options.baseRef ?? "HEAD"] : ["worktree", "add", "--detach", wtPath, options.baseRef ?? "HEAD"];
-  (0, import_node_child_process4.execFileSync)(hostGitExe(), args, { cwd: repoRoot, stdio: "pipe", windowsHide: true });
+  const checkout = options.withoutAttributes ? attributeFreeCheckout(repoRoot) : null;
+  (0, import_node_child_process4.execFileSync)(hostGitExe(), [...checkout?.config ?? [], ...args], { cwd: repoRoot, stdio: "pipe", windowsHide: true, ...checkout ? { env: { ...process.env, ...checkout.env } } : {} });
   const baseCommit = gitOrNull(["rev-parse", "HEAD"], wtPath);
   const info = {
     ...baseCommit ? { baseCommit } : {},
+    ...checkout ? { attributeFree: true } : {},
     path: wtPath,
     branch: branch2,
     workerName,
@@ -63362,12 +63386,12 @@ var init_job = __esm({
         } else if (isolation === "worktree") {
           let info;
           try {
-            info = ensureWorkerWorktree(WORKTREE_TEAM, id, ledgerCwd, { mode: "named", requireCleanLeader: false, ...startSha ? { baseRef: startSha } : {} });
+            info = ensureWorkerWorktree(WORKTREE_TEAM, id, ledgerCwd, { mode: "named", requireCleanLeader: false, ...startSha ? { baseRef: startSha } : {}, ...options.hostCommits ? { withoutAttributes: true } : {} });
           } catch (err) {
             const path15 = getWorktreePath(ledgerCwd, WORKTREE_TEAM, id);
             const branch2 = getBranchName(WORKTREE_TEAM, id);
             let left = "";
-            if ((0, import_node_fs13.existsSync)(path15)) {
+            if ((0, import_node_fs13.existsSync)(path15) && err?.code !== "worktree_attributes_applied") {
               try {
                 removeWorkerWorktree(WORKTREE_TEAM, id, ledgerCwd);
               } catch {
@@ -67621,10 +67645,13 @@ function parseGitVersion(text3) {
 function gitVersionAtLeast(version2, min) {
   return version2[0] > min[0] || version2[0] === min[0] && version2[1] >= min[1];
 }
+var FACTORY_GIT_MIN_VERSION;
 var init_git_preflight = __esm({
   "src/factory/git-preflight.ts"() {
     "use strict";
     init_exec();
+    init_git_worktree();
+    FACTORY_GIT_MIN_VERSION = HOST_GIT_ATTR_SOURCE_MIN.split(".").slice(0, 2).map(Number);
   }
 });
 
@@ -68823,14 +68850,25 @@ var init_private_run = __esm({
        * made with the store's pins (no hook, no filter, no global config), its
        * links recorded before anything else runs in it; the config hash is
        * re-recorded after (the allowlist still applies), so the caller seals
-       * `repo.configHash` again.
+       * `repo.configHash` again. `withoutAttributes` (a lane worktree the engine
+       * commits for): GIT_ATTR_SOURCE the empty tree, so the checkout writes blob
+       * bytes, as the attribute-free staging reads them (attributeFreeCheckout;
+       * the store's pins already leave no filter driver and no global or system
+       * attributes).
        */
-      addWorktree(path15, sha3, branch2) {
+      addWorktree(path15, sha3, branch2, o = {}) {
         const tooLong = longPathProblem(path15, this.repo.longestPath);
         if (tooLong) throw new PrivateStoreError(tooLong);
         if ((0, import_fs87.existsSync)(path15)) throw new PrivateStoreError(`the private worktree ${path15} already exists`);
         this.ensureCommit(sha3);
-        privateGitOk(this.repo, this.ctx, ["worktree", "add", "-q", ...branch2 ? ["-B", branch2] : ["--detach"], path15, sha3], `git worktree add ${path15}`, { env: identityEnv() });
+        let attrs = {};
+        if (o.withoutAttributes) {
+          const format2 = privateGitOk(this.repo, this.ctx, ["rev-parse", "--show-object-format"], "git rev-parse --show-object-format").trim();
+          const emptyTree = EMPTY_TREE[format2];
+          if (!emptyTree) throw new PrivateStoreError(`the private repository has an unknown object format ${JSON.stringify(format2)}`);
+          attrs = { GIT_ATTR_SOURCE: emptyTree };
+        }
+        privateGitOk(this.repo, this.ctx, ["worktree", "add", "-q", ...branch2 ? ["-B", branch2] : ["--detach"], path15, sha3], `git worktree add ${path15}`, { env: { ...identityEnv(), ...attrs } });
         this.repo = rerecordConfigHash(this.repo, this.ctx);
         const links = readWorktreeGitLinks(path15);
         if (!links || !inside(links.adminDir, (0, import_path104.join)(this.repo.gitDir, "worktrees"), process.platform)) throw new PrivateStoreError(`the private worktree ${path15} has no git links in ${this.repo.gitDir}`);
@@ -71328,6 +71366,7 @@ var init_prompts2 = __esm({
     WRITE_LANE_GIT_RULES = [
       "Leave your changes in this worktree and do NOT commit: the git directory is read-only, so git add, git commit, git merge, git stash and every other git command that writes fail. The engine commits your changes after you finish, with your final message as the commit message, so end with a short summary of the change.",
       "Do NOT push, open a pull request, or change git config, hooks or refs.",
+      "Files are checked out exactly as committed: keep the committed line endings of every file, and never edit or replace a Git LFS pointer file (a small text file starting `version https://git-lfs.github.com/spec/v1`): it stands for content this worktree does not have.",
       "On Windows, call repo-local scripts as `.\\name` (`.\\gradlew`, `.\\build.bat`): a bare name does not search the worktree."
     ];
     DECLINE_RULE = "Use DECLINED only when you deliberately refuse this task or it is impossible as specified: then make NO changes and end your final message with one line `DECLINED: <reason>` (the very last line, after your summary), and the engine stops for a human instead of running the same task again. A task that can only be done with a file outside this worktree (an absolute path elsewhere on the machine) is impossible as specified: lanes may not read or write outside the worktree, and every rerun is denied the same way, so decline it. Never use DECLINED for a failure a rerun can fix (tests that cannot run, a denied command or a missing tool inside this worktree): report that normally.";
@@ -80803,7 +80842,7 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
           laneTree2 = priv.worktreePath(this.state.lanes.length + 1);
           try {
             if ((0, import_fs98.existsSync)(laneTree2)) priv.removeWorktree(laneTree2);
-            priv.addWorktree(laneTree2, startRef);
+            priv.addWorktree(laneTree2, startRef, void 0, { withoutAttributes: true });
           } catch (error62) {
             if (error62 instanceof PrivateRepoTampered) throw error62;
             throw new FactoryStepError(`the private lane worktree ${laneTree2} could not be made: ${errText6(error62)}`);

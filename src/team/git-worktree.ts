@@ -39,6 +39,8 @@ export interface WorktreeInfo {
   reused?: boolean;
   /** The commit the worktree was created at; worker commits are counted on top of it. */
   baseCommit?: string;
+  /** Checked out without attributes (attributeFreeCheckout); a worktree without it is never reused for such a checkout. */
+  attributeFree?: boolean;
 }
 
 /** A clean worker worktree kept because it holds commits the leader HEAD does not contain. */
@@ -55,6 +57,8 @@ export interface EnsureWorkerWorktreeOptions {
   mode?: TeamWorktreeMode;
   baseRef?: string;
   requireCleanLeader?: boolean;
+  /** Check out without attributes (attributeFreeCheckout): the worktree the factory engine commits for (copilot_run hostCommits). */
+  withoutAttributes?: boolean;
 }
 
 export interface EnsureWorkerWorktreeResult extends WorktreeInfo {
@@ -404,6 +408,41 @@ export const EMPTY_TREE: Readonly<Record<string, string>> = {
   sha1: '4b825dc642cb6eb9a060e54bf8d69288fbee4904',
   sha256: '6ef19b41225c5369f1c104d45d8d85efa9b057b53b14b4b9b939dd74decc5321',
 };
+
+/**
+ * The `-c` pairs (before the subcommand) and environment of a `git worktree
+ * add` whose checkout writes every file as its blob's bytes, for a worktree
+ * the factory engine stages (lane-commit.ts): the staging runs with no
+ * attribute applied (runHostGit), so a checkout that honoured the
+ * repository's `.gitattributes` (eol=crlf without core.autocrlf, a
+ * clean/smudge filter, git-lfs) would write bytes that differ from the
+ * blob, and an untouched file would be committed as a rewrite whenever git
+ * re-hashes it (a racily clean index entry). These are the staging's own
+ * settings: GIT_ATTR_SOURCE the empty tree, the empty core.attributesFile,
+ * every filter and diff driver blanked; GIT_LFS_SKIP_SMUDGE keeps a git-lfs
+ * that still runs from downloading. core.autocrlf and `info/attributes`
+ * apply on both sides alike. The other host hardening applies too
+ * (EXEC_KEY_OVERRIDES, GIT_NO_REPLACE_OBJECTS and the absent graft file), but
+ * hooks are not touched (a post-checkout hook still runs). Throws when git is
+ * older than HOST_GIT_ATTR_SOURCE_MIN (it would ignore GIT_ATTR_SOURCE and
+ * apply the tree's attributes), the drivers cannot be listed or the object
+ * format is unknown. `gitVersion` is `git --version` output (default: run it).
+ */
+export function attributeFreeCheckout(repoRoot: string, gitVersion?: string | null): { config: string[]; env: Record<string, string> } {
+  if (hostGitAttrSourceProblem(gitVersion)) {
+    const shown = /(\d+\.\d+\.\d+\S*)/.exec((gitVersion === undefined ? hostGitVersionCache : gitVersion) ?? '')?.[1];
+    throw new Error(`${shown ? `git ${shown} is too old` : 'the git version cannot be read'} for the factory: it needs git >= ${HOST_GIT_ATTR_SOURCE_MIN.replace(/\.0$/, '')} (merge-tree --write-tree and GIT_ATTR_SOURCE)`);
+  }
+  const format = runHostGit(repoRoot, ['rev-parse', '--show-object-format']).trim();
+  const emptyTree = EMPTY_TREE[format];
+  if (!emptyTree) throw new Error(`unknown object format ${JSON.stringify(format)}`);
+  const drivers = hostGitDriverOverrides(repoRoot);
+  if (drivers === null) throw new Error('host git: the filter and diff drivers cannot be listed or overridden; refusing to check a lane worktree out');
+  return {
+    config: ['-c', `core.attributesFile=${hostAttributesFile()}`, ...EXEC_KEY_OVERRIDES.flatMap((kv) => ['-c', kv]), ...drivers],
+    env: { GIT_ATTR_SOURCE: emptyTree, GIT_LFS_SKIP_SMUDGE: '1', GIT_NO_REPLACE_OBJECTS: '1', GIT_GRAFT_FILE: join(hostHooksDir(), 'grafts') },
+  };
+}
 
 /** The first git that honours GIT_ATTR_SOURCE (git --attr-source, 2.41.0). */
 export const HOST_GIT_ATTR_SOURCE_MIN = '2.41.0';
@@ -1299,9 +1338,17 @@ export function ensureWorkerWorktree(
 
   if (existsSync(wtPath)) {
     assertCompatibleExistingWorktree(repoRoot, wtPath, branch, mode);
-    const previousBase = readMetadata(repoRoot, teamName).find((entry) => entry.workerName === workerName)?.baseCommit;
+    const previous = readMetadata(repoRoot, teamName).find((entry) => entry.workerName === workerName);
+    // A worktree checked out with the attributes applied (before the attribute-free checkout) holds rewritten bytes.
+    if (options.withoutAttributes && previous?.attributeFree !== true) {
+      const error = new Error(`worktree_attributes_applied: the lane worktree ${wtPath} was checked out before the attribute-free checkout, so its files may differ from their blobs; recreate it: remove the worktree (for a factory run: cancel it, run omg factory run clean, then rerun)`);
+      (error as Error & { code?: string }).code = 'worktree_attributes_applied';
+      throw error;
+    }
+    const previousBase = previous?.baseCommit;
     const info: EnsureWorkerWorktreeResult = {
       ...(previousBase ? { baseCommit: previousBase } : {}),
+      ...(previous?.attributeFree ? { attributeFree: true } : {}),
       path: wtPath,
       branch,
       workerName,
@@ -1323,11 +1370,13 @@ export function ensureWorkerWorktree(
   const args = mode === 'named'
     ? ['worktree', 'add', '-b', branch, wtPath, options.baseRef ?? 'HEAD']
     : ['worktree', 'add', '--detach', wtPath, options.baseRef ?? 'HEAD'];
-  execFileSync(hostGitExe(), args, { cwd: repoRoot, stdio: 'pipe', windowsHide: true });
+  const checkout = options.withoutAttributes ? attributeFreeCheckout(repoRoot) : null;
+  execFileSync(hostGitExe(), [...(checkout?.config ?? []), ...args], { cwd: repoRoot, stdio: 'pipe', windowsHide: true, ...(checkout ? { env: { ...process.env, ...checkout.env } } : {}) });
   const baseCommit = gitOrNull(['rev-parse', 'HEAD'], wtPath);
 
   const info: EnsureWorkerWorktreeResult = {
     ...(baseCommit ? { baseCommit } : {}),
+    ...(checkout ? { attributeFree: true } : {}),
     path: wtPath,
     branch,
     workerName,
