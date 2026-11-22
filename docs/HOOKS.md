@@ -493,7 +493,7 @@ Opt-in masking for the strings that `redactTokens` produces (notification and re
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `OMC_REDACT_KEY_SHAPES` | (unset) | `1` enables the key-shape masking above. Any other value leaves it off. |
+| `OMC_REDACT_KEY_SHAPES` | (unset) | `1` enables the key-shape masking above, which also masks the whole quoted value of a `NAME="..."` secret, including text after an escaped quote. Any other value leaves it off. |
 
 ---
 
