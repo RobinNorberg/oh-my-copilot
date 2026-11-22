@@ -67,6 +67,38 @@ The npm package exposes both `oh-my-copilot` and `omg`; examples prefer `omg` un
 - [GitHub Copilot CLI](https://github.com/github/copilot-cli) with a Copilot subscription, or [Claude Code](https://docs.anthropic.com/claude-code) with a Claude Max/Pro subscription or `ANTHROPIC_API_KEY`
 - Node.js 22.13 or newer (23.4 or newer on the 23 line) on PATH (every hook and the MCP server run `node`; `omg doctor conflicts` checks it). Node 20 is not supported: state locking and the job database use the built-in `node:sqlite`.
 - git 2.38 or newer for the factory (`omg factory run`, `omg factory bench`; `merge-tree --write-tree`), checked once at the start of those commands; the private run layout needs 2.44. Ubuntu 20.04 ships 2.25. On Ubuntu: `sudo add-apt-repository ppa:git-core/ppa && sudo apt-get update && sudo apt-get install git`.
+- `omg factory check --host` checks all of the factory's host prerequisites in one pass (see [Linux setup](#linux-setup)).
+
+### Linux setup
+
+The factory runs on Linux, WSL included, with these prerequisites. Check them all at once:
+
+```bash
+omg factory check --host          # or --json; exit 1 when any item fails
+```
+
+It is free: it sends no model request and starts no session. It reports each item as `ok`, `warn` or `fail`, with the command that fixes it:
+
+| Item | Checks | Fails or warns when |
+| --- | --- | --- |
+| `node` | `process.versions.node` against `engines` | Node is older than 22.13 (fail) |
+| `git` | `git --version` | older than 2.38 (fail); older than 2.44, the private layout's minimum (warn) |
+| `sandbox` | Linux: a trial bwrap launch (the one `omg factory run` makes). Windows and macOS: `sandbox.getHostSupport` on a runtime started without a session | bwrap is missing, older than 0.5.0, or cannot create namespaces; the runtime reports no sandbox (fail) |
+| `copilot` | the `copilot` binary, and its version as factory launches run it (`COPILOT_AUTO_UPDATE=false`) | not found (fail); newer than 1.0.112 (warn) |
+| `sdk` | `@github/copilot-sdk` from the global npm root | missing, or outside `^1.0.16` (fail) |
+| `sdk.protocol` | a runtime start and stop, without a session or a login, so the SDK and CLI handshake | the protocols differ (fail) |
+| `login` | the stored login identity and, outside Windows, a usable credential: `COPILOT_GITHUB_TOKEN`, or a plaintext token in the Copilot `config.json`. Only names are printed, never a token value | no login and no token (fail); a login whose token sits in no readable place, which is fine with an OS keyring (warn) |
+| `copilot.pkg-cache` | the Copilot package caches (`COPILOT_PKG_CACHE_HOME`, `COPILOT_CACHE_HOME`, `~/.cache/copilot`, `COPILOT_HOME`, `~/.copilot`, each under `pkg/<platform>-<arch>`) | a runtime newer than 1.0.112 is cached (warn) |
+
+Per Ubuntu release:
+
+- **Node.js 22.13 or newer.** None of 20.04, 22.04 or 24.04 ships it. Install it from the NodeSource `node_22.x` repository or with nvm (`nvm install 22`). With a user npm prefix (`npm config set prefix ~/.npm-global`, then add `~/.npm-global/bin` to PATH), global installs need no sudo.
+- **git 2.38 or newer** (2.44 for the private layout). 20.04 ships 2.25 and 22.04 ships 2.34, so install from the git PPA: `sudo add-apt-repository ppa:git-core/ppa && sudo apt-get update && sudo apt-get install git`. 24.04 ships 2.43, which runs the factory; the PPA also gets you 2.44 or newer.
+- **bubblewrap 0.5.0 or newer.** The sandbox launches with `--clearenv`. 22.04 (0.6) and 24.04 (0.9) ship a new enough one: `sudo apt-get install bubblewrap`. 20.04 ships 0.4.0, and no PPA carries a newer one, so build it from source (https://github.com/containers/bubblewrap: `meson setup build && meson compile -C build && sudo meson install -C build`, which installs to `/usr/local/bin/bwrap`; make sure that comes before `/usr/bin` on PATH). On 23.10 and later, including 24.04, also see [Linux: restricted user namespaces](#linux-restricted-user-namespaces).
+- **The Copilot CLI and SDK, pinned.** `npm i -g @github/copilot@1.0.112 @github/copilot-sdk`. SDK 1.0.16 speaks protocol 3, and CLI 1.0.113 and later speak protocol 4, so a newer CLI fails the handshake.
+- **Login.** Run `copilot login` once. On a host without a keyring (headless WSL, a server) the CLI stores the token in plain text in `~/.copilot/config.json`, and the factory sends it over the session RPC (see [Linux and macOS: hosts without a keyring](#linux-and-macos-hosts-without-a-keyring)). Alternatively, export `COPILOT_GITHUB_TOKEN`.
+- **Keep the CLI from updating itself.** An interactive `copilot` (or `copilot update`) downloads a newer runtime into `~/.cache/copilot/pkg/linux-x64/<version>`. With auto-update on, every later `copilot` prefers that runtime over the one the npm package installed: `package.json` still says 1.0.112, but the runtime reports 1.0.114 and speaks protocol 4. Factory launches set `COPILOT_AUTO_UPDATE=false` and give each job its own `HOME`, `COPILOT_HOME` and `COPILOT_CACHE_HOME`, so lanes, probes and benches keep the installed runtime. Your own `copilot` does not. `copilot.pkg-cache` names the cached directory. Move it aside (`mv ~/.cache/copilot/pkg/linux-x64/1.0.114 ~/.cache/copilot/pkg/linux-x64/1.0.114.parked`), reinstall the pin, and run your own `copilot` with `COPILOT_AUTO_UPDATE=false` or `--no-auto-update`.
+- **Use the Linux filesystem.** Clone repositories and run benches under your Linux home, not under `/mnt/c`. The Windows mount is many times slower for git and npm, and its permission and symlink semantics differ.
 
 ---
 
