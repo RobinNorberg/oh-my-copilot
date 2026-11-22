@@ -170,6 +170,17 @@ describe('omg factory run engine (fake lanes, real git, scripted gh)', () => {
         expect((await done).gate?.name).toBe('merge');
         expect(grant).toBeUndefined();
     });
+    it('a write lane whose tree the engine never prepared gets no node_modules grant (fail closed)', async () => {
+        mkdirSync(join(h.root, 'node_modules', 'pkg'), { recursive: true });
+        let grant = 'unset';
+        const unprepared = async (ctx) => {
+            grant = ctx.input.nodeModulesGrant(ctx.worktree);
+            return commitFile('a.ts')(ctx);
+        };
+        const { done } = run([unprepared, review('approve')]);
+        expect((await done).gate?.name).toBe('merge');
+        expect(grant).toBeUndefined();
+    });
     it('one copy per item: the fix lane gets the implement lane\'s tree moved into its worktree (not copied again), yours untouched', async () => {
         mkdirSync(join(h.root, 'node_modules', 'pkg'), { recursive: true });
         mkdirSync(join(h.root, 'node_modules', '.bin'), { recursive: true });

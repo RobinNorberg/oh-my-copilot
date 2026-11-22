@@ -547,10 +547,31 @@ function* adoptedTreeProblem(root, tree) {
  * only, cheap to build again, so it always goes before the commit, whatever
  * git ignores (null returned): every link in the worktree's node_modules is
  * unlinked, never followed, marker or not (the lane can delete the marker,
- * as in unlinkNodeModules M3), so its links are never committed.
+ * as in unlinkNodeModules M3), so its links are never committed. `nested`:
+ * the lane's nested workspace trees as relative package dirs, recorded by the
+ * engine when it prepared the lane (the marker that also names them is
+ * lane-writable): their links go too, never followed, marker or not.
  */
-export function settleLaneNodeModules(root, worktree, ignored, linked = false) {
+export function settleLaneNodeModules(root, worktree, ignored, linked = false, nested = []) {
     const target = join(worktree, 'node_modules');
+    if (linked) {
+        for (const rel of nested) {
+            const dir = plainDirUnder(worktree, rel);
+            if (!dir)
+                continue;
+            const nm = join(dir, 'node_modules');
+            try {
+                if (lstatSync(nm).isSymbolicLink())
+                    continue;
+            }
+            catch {
+                continue;
+            }
+            runTreeSteps(unlinkTreeLinks(nm));
+            if (existsSync(join(nm, GATE_TREE_MARKER)))
+                runTreeSteps(removeGateTreeSteps(nm));
+        }
+    }
     try {
         if (!lstatSync(target).isDirectory())
             return null;
@@ -912,16 +933,27 @@ function* unlinkNodeModulesSteps(root, checkout) {
     if (existsSync(join(target, GATE_TREE_MARKER)))
         yield* removeGateTreeSteps(target);
 }
-/** Unlink every symlink and junction under `dir` at any depth, never following one; files and dirs stay. */
-function* unlinkTreeLinks(dir) {
-    for (const name of readdirSync(dir)) {
+/**
+ * Unlink every symlink and junction under `dir` at any depth, never following one; files and dirs stay. A dir that
+ * is not the one its lstat saw once listed (a still-running lane process swapped it for a link or another dir between
+ * the two: dev/ino differ) is skipped, so its listing is never acted on; a link left that way is refused by the commit.
+ */
+function* unlinkTreeLinks(dir, seen) {
+    const before = seen ?? lstatSync(dir);
+    if (before.isSymbolicLink() || !before.isDirectory())
+        return;
+    const names = readdirSync(dir);
+    const after = lstatSync(dir);
+    if (after.isSymbolicLink() || !after.isDirectory() || after.dev !== before.dev || after.ino !== before.ino)
+        return;
+    for (const name of names) {
         yield;
         const p = join(dir, name);
         const st = lstatSync(p);
         if (st.isSymbolicLink())
             unlinkLink(p);
         else if (st.isDirectory())
-            yield* unlinkTreeLinks(p);
+            yield* unlinkTreeLinks(p, st);
     }
 }
 /**

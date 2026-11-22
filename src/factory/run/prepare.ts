@@ -12,7 +12,7 @@
  * in it with push off, and the engine pushes the result itself.
  */
 
-import { copyFileSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmdirSync, statfsSync, statSync, symlinkSync, unlinkSync, writeFileSync } from 'fs';
+import { copyFileSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmdirSync, statfsSync, statSync, symlinkSync, unlinkSync, writeFileSync, type Stats } from 'fs';
 import { copyFile } from 'fs/promises';
 import { basename, join, posix, relative, win32 } from 'path';
 import { loadBaseKnownFlaky, loadTrustedShipConfig, userConfigLayers, type KnownFlakyTest, type ShipConfig } from '../../ship/config.js';
@@ -480,10 +480,23 @@ function* adoptedTreeProblem(root: string, tree: string): TreeSteps<string | nul
  * only, cheap to build again, so it always goes before the commit, whatever
  * git ignores (null returned): every link in the worktree's node_modules is
  * unlinked, never followed, marker or not (the lane can delete the marker,
- * as in unlinkNodeModules M3), so its links are never committed.
+ * as in unlinkNodeModules M3), so its links are never committed. `nested`:
+ * the lane's nested workspace trees as relative package dirs, recorded by the
+ * engine when it prepared the lane (the marker that also names them is
+ * lane-writable): their links go too, never followed, marker or not.
  */
-export function settleLaneNodeModules(root: string, worktree: string, ignored: (paths: string[]) => boolean, linked = false): string | null {
+export function settleLaneNodeModules(root: string, worktree: string, ignored: (paths: string[]) => boolean, linked = false, nested: readonly string[] = []): string | null {
   const target = join(worktree, 'node_modules');
+  if (linked) {
+    for (const rel of nested) {
+      const dir = plainDirUnder(worktree, rel);
+      if (!dir) continue;
+      const nm = join(dir, 'node_modules');
+      try { if (lstatSync(nm).isSymbolicLink()) continue; } catch { continue; }
+      runTreeSteps(unlinkTreeLinks(nm));
+      if (existsSync(join(nm, GATE_TREE_MARKER))) runTreeSteps(removeGateTreeSteps(nm));
+    }
+  }
   try { if (!lstatSync(target).isDirectory()) return null; } catch { return null; }
   if (sameDir(target, join(root, 'node_modules'))) return null;
   if (linked) {
@@ -793,14 +806,23 @@ function* unlinkNodeModulesSteps(root: string, checkout: string): TreeSteps<void
   if (existsSync(join(target, GATE_TREE_MARKER))) yield* removeGateTreeSteps(target);
 }
 
-/** Unlink every symlink and junction under `dir` at any depth, never following one; files and dirs stay. */
-function* unlinkTreeLinks(dir: string): TreeSteps<void> {
-  for (const name of readdirSync(dir)) {
+/**
+ * Unlink every symlink and junction under `dir` at any depth, never following one; files and dirs stay. A dir that
+ * is not the one its lstat saw once listed (a still-running lane process swapped it for a link or another dir between
+ * the two: dev/ino differ) is skipped, so its listing is never acted on; a link left that way is refused by the commit.
+ */
+function* unlinkTreeLinks(dir: string, seen?: Stats): TreeSteps<void> {
+  const before = seen ?? lstatSync(dir);
+  if (before.isSymbolicLink() || !before.isDirectory()) return;
+  const names = readdirSync(dir);
+  const after = lstatSync(dir);
+  if (after.isSymbolicLink() || !after.isDirectory() || after.dev !== before.dev || after.ino !== before.ino) return;
+  for (const name of names) {
     yield;
     const p = join(dir, name);
     const st = lstatSync(p);
     if (st.isSymbolicLink()) unlinkLink(p);
-    else if (st.isDirectory()) yield* unlinkTreeLinks(p);
+    else if (st.isDirectory()) yield* unlinkTreeLinks(p, st);
   }
 }
 

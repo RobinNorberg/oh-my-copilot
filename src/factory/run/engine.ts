@@ -981,6 +981,8 @@ class FactoryEngine {
   private wsGlobs?: { baseSha: string; globs: string[] };
   /** How prepareLaneTree readied each lane worktree of this invocation (by resolved path): copied (Windows) or linked. */
   private readonly laneTreeModes = new Map<string, 'copy' | 'link'>();
+  /** The nested workspace trees (relative package dirs) prepareLaneTree linked in each lane worktree, for settleLaneTree. */
+  private readonly laneNestedRels = new Map<string, string[]>();
   /** The Azure DevOps forge; undefined = GitHub through the gh calls. */
   private readonly forge?: Forge;
   /** The forge, for messages. */
@@ -1573,7 +1575,15 @@ class FactoryEngine {
     const reuseFrom = this.state.lanes
       .filter((l) => l.worktree && l.treeReusable === true && l.id !== this.state.pendingCommit?.laneId && !samePath(l.worktree, worktree))
       .map((l) => l.worktree!).reverse();
-    if (!copy) return prepareLaneNodeModulesAsync(this.o.root, worktree, { workspaces: this.baseWorkspaces(), ...(this.o.warn ? { warn: this.o.warn } : {}), ignored, copy: false });
+    if (!copy) {
+      // The nested trees are recorded while the marker that names them is fresh: the lane may delete it (settleLaneTree).
+      return prepareLaneNodeModulesAsync(this.o.root, worktree, { workspaces: this.baseWorkspaces(), ...(this.o.warn ? { warn: this.o.warn } : {}), ignored, copy: false }).then((problem) => {
+        const nested = trustedNestedRels(this.o.root, worktree, this.baseWorkspaces());
+        const known = this.laneNestedRels.get(resolve(worktree)) ?? [];
+        this.laneNestedRels.set(resolve(worktree), [...new Set([...known, ...nested])]);
+        return problem;
+      });
+    }
     return prepareLaneNodeModulesAsync(this.o.root, worktree, { workspaces: this.baseWorkspaces(), ...(this.o.warn ? { warn: this.o.warn } : {}), ignored, reuseFrom });
   }
 
@@ -1588,7 +1598,8 @@ class FactoryEngine {
    * but `.bin`.
    */
   private laneNodeModulesGrant(worktree: string): { target: string; nested?: string[] } | undefined {
-    if (this.laneTreeModes.get(resolve(worktree)) === 'copy') return undefined;
+    // Fail closed: only a tree prepareLaneTree linked in this invocation is granted (an unknown worktree gets nothing).
+    if (this.laneTreeModes.get(resolve(worktree)) !== 'link') return undefined;
     const nested = trustedNestedRels(this.o.root, worktree, this.baseWorkspaces()).map((rel) => join(this.o.root, ...rel.split('/'), 'node_modules'));
     return { target: join(this.o.root, 'node_modules'), ...(nested.length > 0 ? { nested } : {}) };
   }
@@ -1605,13 +1616,15 @@ class FactoryEngine {
       const listed = new Set(out.split('\0').filter(Boolean).map((p) => p.replace(/\/$/, '')));
       return paths.every((p) => listed.has(p));
     };
+    // A linked tree (Linux, macOS) always goes before the commit; a copied one only once git no longer ignores it.
+    const linked = (this.laneTreeModes.get(resolve(worktree)) ?? (process.platform === 'win32' ? 'copy' : 'link')) === 'link';
     try {
-      // A linked tree (Linux, macOS) always goes before the commit; a copied one only once git no longer ignores it.
-      const linked = (this.laneTreeModes.get(resolve(worktree)) ?? (process.platform === 'win32' ? 'copy' : 'link')) === 'link';
-      const removed = settleLaneNodeModules(this.o.root, worktree, ignored, linked);
+      const removed = settleLaneNodeModules(this.o.root, worktree, ignored, linked, this.laneNestedRels.get(resolve(worktree)) ?? []);
       if (removed) this.o.warn?.(`omg factory run: ${removed}`);
     } catch (error) {
-      this.o.warn?.(`omg factory run: the copied node_modules of ${worktree} is no longer ignored by git and could not be removed (${errText(error)}); the lane commit refuses its links`);
+      this.o.warn?.(linked
+        ? `omg factory run: the linked node_modules of ${worktree} could not be unlinked before the lane commit (${errText(error)}); the lane commit refuses its links`
+        : `omg factory run: the copied node_modules of ${worktree} is no longer ignored by git and could not be removed (${errText(error)}); the lane commit refuses its links`);
     }
   }
 

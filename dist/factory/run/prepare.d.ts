@@ -136,9 +136,12 @@ export interface LaneTreeOptions {
  * only, cheap to build again, so it always goes before the commit, whatever
  * git ignores (null returned): every link in the worktree's node_modules is
  * unlinked, never followed, marker or not (the lane can delete the marker,
- * as in unlinkNodeModules M3), so its links are never committed.
+ * as in unlinkNodeModules M3), so its links are never committed. `nested`:
+ * the lane's nested workspace trees as relative package dirs, recorded by the
+ * engine when it prepared the lane (the marker that also names them is
+ * lane-writable): their links go too, never followed, marker or not.
  */
-export declare function settleLaneNodeModules(root: string, worktree: string, ignored: (paths: string[]) => boolean, linked?: boolean): string | null;
+export declare function settleLaneNodeModules(root: string, worktree: string, ignored: (paths: string[]) => boolean, linked?: boolean, nested?: readonly string[]): string | null;
 /**
  * Why a gate tree may be built as copies: in the Copilot OS sandbox on
  * Windows (its low-integrity token) a directory junction whose target the

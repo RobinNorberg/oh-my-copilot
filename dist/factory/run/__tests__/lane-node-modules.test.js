@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 // Lets one test make prepare.ts's unlinkSync throw for one path (a read-only or busy file); every other call goes to the real one.
 const unlinkFault = vi.hoisted(() => ({ name: undefined }));
+const readdirFault = vi.hoisted(() => ({ name: undefined, swap: undefined }));
 vi.mock('fs', async (importOriginal) => {
     const real = await importOriginal();
     const unlinkSync = (p) => {
@@ -12,7 +13,15 @@ vi.mock('fs', async (importOriginal) => {
             throw Object.assign(new Error(`EPERM: operation not permitted, unlink '${String(p)}'`), { code: 'EPERM' });
         return real.unlinkSync(p);
     };
-    return { ...real, default: { ...real, unlinkSync }, unlinkSync };
+    // Lets one test run `swap` once, right before prepare.ts lists a dir whose path ends with `name` (a lane process racing the walk).
+    const readdirSync = ((...args) => {
+        if (readdirFault.name !== undefined && String(args[0]).endsWith(readdirFault.name)) {
+            readdirFault.name = undefined;
+            readdirFault.swap?.();
+        }
+        return real.readdirSync(...args);
+    });
+    return { ...real, default: { ...real, unlinkSync, readdirSync }, unlinkSync, readdirSync };
 });
 // Lets a test make the async copy (fs/promises copyFile) fail for one source path (a busy file), and hold a copy in
 // flight: `hold` holds the first copy whose source includes it until `release` settles (then it really copies and its
@@ -83,6 +92,7 @@ function removeDir(dir) {
 }
 afterEach(() => {
     Object.assign(copyFault, { name: undefined, hold: undefined, faultNext: false, holdFault: false, release: Promise.resolve(), onFault: undefined, holding: false, landed: [] });
+    Object.assign(readdirFault, { name: undefined, swap: undefined });
     for (const d of dirs.splice(0))
         removeDir(d);
 });
@@ -168,6 +178,50 @@ describe('prepareLaneNodeModules copy false (the lane worktree in the Linux and 
         expect(settleLaneNodeModules(root, worktree, ignoredAll, true)).toBeNull();
         expect(readdirSync(join(worktree, 'node_modules')).filter((n) => lstatSync(join(worktree, 'node_modules', n)).isSymbolicLink())).toEqual([]);
         expect(fingerprint(store)).toEqual(before);
+    });
+    it('settleLaneNodeModules linked, marker deleted: the nested trees the engine recorded lose their links too, never followed; yours untouched', () => {
+        const { root, worktree, store } = setup();
+        for (const base of [root, worktree]) {
+            mkdirSync(join(base, 'packages', 'a'), { recursive: true });
+            writeFileSync(join(base, 'packages', 'a', 'package.json'), '{"name":"a"}\n');
+        }
+        mkdirSync(join(root, 'packages', 'a', 'node_modules', 'dep'), { recursive: true });
+        writeFileSync(join(root, 'packages', 'a', 'node_modules', 'dep', 'index.js'), 'dep\n');
+        const before = fingerprint(store);
+        const yoursNested = fingerprint(join(root, 'packages', 'a', 'node_modules'));
+        expect(prepareLaneNodeModules(root, worktree, { workspaces: ['packages/*'], ignored: ignoredAll, copy: false })).toBeNull();
+        const nested = join(worktree, 'packages', 'a', 'node_modules');
+        expect(lstatSync(join(nested, 'dep')).isSymbolicLink()).toBe(true);
+        // The lane deleted the root marker, the only on-disk record of the nested tree.
+        rmSync(join(worktree, 'node_modules', GATE_TREE_MARKER));
+        expect(nestedTreeDirs(worktree)).toEqual([]);
+        expect(settleLaneNodeModules(root, worktree, ignoredAll, true, ['packages/a'])).toBeNull();
+        const links = (dir) => (existsSync(dir) ? fingerprint(dir).filter((e) => e.startsWith('L ')) : []);
+        expect(links(nested)).toEqual([]);
+        expect(links(join(worktree, 'node_modules'))).toEqual([]);
+        expect(fingerprint(store)).toEqual(before);
+        expect(fingerprint(join(root, 'packages', 'a', 'node_modules'))).toEqual(yoursNested);
+    });
+    it('a dir swapped for a link between its lstat and its listing is skipped: nothing behind the link is unlinked', () => {
+        const { root, worktree, store } = setup();
+        expect(prepareLaneNodeModules(root, worktree, { ignored: ignoredAll, copy: false })).toBeNull();
+        const nm = join(worktree, 'node_modules');
+        // A real dir in the lane's tree, and elsewhere a dir holding a link (a package store's own link, say).
+        mkdirSync(join(nm, 'real-dir'));
+        const decoy = join(worktree, '..', 'decoy');
+        mkdirSync(decoy);
+        symlinkSync(join(store, 'vitest'), join(decoy, 'kept-link'), linkType);
+        const decoyBefore = fingerprint(decoy);
+        readdirFault.name = 'real-dir';
+        readdirFault.swap = () => {
+            rmdirSync(join(nm, 'real-dir'));
+            symlinkSync(decoy, join(nm, 'real-dir'), linkType);
+        };
+        rmSync(join(nm, GATE_TREE_MARKER));
+        expect(settleLaneNodeModules(root, worktree, ignoredAll, true)).toBeNull();
+        expect(readdirFault.name).toBeUndefined();
+        expect(fingerprint(decoy)).toEqual(decoyBefore);
+        expect(lstatSync(join(nm, 'real-dir')).isSymbolicLink()).toBe(true);
     });
 });
 describe('prepareLaneNodeModules (the lane worktree in the Windows OS sandbox)', () => {

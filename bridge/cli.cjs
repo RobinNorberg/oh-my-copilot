@@ -128809,8 +128809,22 @@ function* adoptedTreeProblem(root, tree) {
   };
   return yield* walk(tree, "");
 }
-function settleLaneNodeModules(root, worktree, ignored, linked = false) {
+function settleLaneNodeModules(root, worktree, ignored, linked = false, nested = []) {
   const target = (0, import_path181.join)(worktree, "node_modules");
+  if (linked) {
+    for (const rel of nested) {
+      const dir = plainDirUnder(worktree, rel);
+      if (!dir) continue;
+      const nm = (0, import_path181.join)(dir, "node_modules");
+      try {
+        if ((0, import_fs156.lstatSync)(nm).isSymbolicLink()) continue;
+      } catch {
+        continue;
+      }
+      runTreeSteps(unlinkTreeLinks(nm));
+      if ((0, import_fs156.existsSync)((0, import_path181.join)(nm, GATE_TREE_MARKER))) runTreeSteps(removeGateTreeSteps(nm));
+    }
+  }
   try {
     if (!(0, import_fs156.lstatSync)(target).isDirectory()) return null;
   } catch {
@@ -129029,13 +129043,18 @@ function* unlinkNodeModulesSteps(root, checkout) {
   yield* unlinkTreeLinks(target);
   if ((0, import_fs156.existsSync)((0, import_path181.join)(target, GATE_TREE_MARKER))) yield* removeGateTreeSteps(target);
 }
-function* unlinkTreeLinks(dir) {
-  for (const name of (0, import_fs156.readdirSync)(dir)) {
+function* unlinkTreeLinks(dir, seen) {
+  const before = seen ?? (0, import_fs156.lstatSync)(dir);
+  if (before.isSymbolicLink() || !before.isDirectory()) return;
+  const names = (0, import_fs156.readdirSync)(dir);
+  const after = (0, import_fs156.lstatSync)(dir);
+  if (after.isSymbolicLink() || !after.isDirectory() || after.dev !== before.dev || after.ino !== before.ino) return;
+  for (const name of names) {
     yield;
     const p = (0, import_path181.join)(dir, name);
     const st = (0, import_fs156.lstatSync)(p);
     if (st.isSymbolicLink()) unlinkLink2(p);
-    else if (st.isDirectory()) yield* unlinkTreeLinks(p);
+    else if (st.isDirectory()) yield* unlinkTreeLinks(p, st);
   }
 }
 function gateTreeHasLinks(checkout) {
@@ -139133,6 +139152,8 @@ var init_engine = __esm({
       wsGlobs;
       /** How prepareLaneTree readied each lane worktree of this invocation (by resolved path): copied (Windows) or linked. */
       laneTreeModes = /* @__PURE__ */ new Map();
+      /** The nested workspace trees (relative package dirs) prepareLaneTree linked in each lane worktree, for settleLaneTree. */
+      laneNestedRels = /* @__PURE__ */ new Map();
       /** The Azure DevOps forge; undefined = GitHub through the gh calls. */
       forge;
       /** The forge, for messages. */
@@ -139667,7 +139688,14 @@ var init_engine = __esm({
           return paths.every((p) => listed2.has(p));
         };
         const reuseFrom = this.state.lanes.filter((l) => l.worktree && l.treeReusable === true && l.id !== this.state.pendingCommit?.laneId && !samePath2(l.worktree, worktree)).map((l) => l.worktree).reverse();
-        if (!copy) return prepareLaneNodeModulesAsync(this.o.root, worktree, { workspaces: this.baseWorkspaces(), ...this.o.warn ? { warn: this.o.warn } : {}, ignored, copy: false });
+        if (!copy) {
+          return prepareLaneNodeModulesAsync(this.o.root, worktree, { workspaces: this.baseWorkspaces(), ...this.o.warn ? { warn: this.o.warn } : {}, ignored, copy: false }).then((problem) => {
+            const nested = trustedNestedRels(this.o.root, worktree, this.baseWorkspaces());
+            const known = this.laneNestedRels.get((0, import_path198.resolve)(worktree)) ?? [];
+            this.laneNestedRels.set((0, import_path198.resolve)(worktree), [.../* @__PURE__ */ new Set([...known, ...nested])]);
+            return problem;
+          });
+        }
         return prepareLaneNodeModulesAsync(this.o.root, worktree, { workspaces: this.baseWorkspaces(), ...this.o.warn ? { warn: this.o.warn } : {}, ignored, reuseFrom });
       }
       /**
@@ -139681,7 +139709,7 @@ var init_engine = __esm({
        * but `.bin`.
        */
       laneNodeModulesGrant(worktree) {
-        if (this.laneTreeModes.get((0, import_path198.resolve)(worktree)) === "copy") return void 0;
+        if (this.laneTreeModes.get((0, import_path198.resolve)(worktree)) !== "link") return void 0;
         const nested = trustedNestedRels(this.o.root, worktree, this.baseWorkspaces()).map((rel) => (0, import_path198.join)(this.o.root, ...rel.split("/"), "node_modules"));
         return { target: (0, import_path198.join)(this.o.root, "node_modules"), ...nested.length > 0 ? { nested } : {} };
       }
@@ -139697,12 +139725,12 @@ var init_engine = __esm({
           const listed2 = new Set(out.split("\0").filter(Boolean).map((p) => p.replace(/\/$/, "")));
           return paths.every((p) => listed2.has(p));
         };
+        const linked = (this.laneTreeModes.get((0, import_path198.resolve)(worktree)) ?? (process.platform === "win32" ? "copy" : "link")) === "link";
         try {
-          const linked = (this.laneTreeModes.get((0, import_path198.resolve)(worktree)) ?? (process.platform === "win32" ? "copy" : "link")) === "link";
-          const removed = settleLaneNodeModules(this.o.root, worktree, ignored, linked);
+          const removed = settleLaneNodeModules(this.o.root, worktree, ignored, linked, this.laneNestedRels.get((0, import_path198.resolve)(worktree)) ?? []);
           if (removed) this.o.warn?.(`omg factory run: ${removed}`);
         } catch (error62) {
-          this.o.warn?.(`omg factory run: the copied node_modules of ${worktree} is no longer ignored by git and could not be removed (${errText6(error62)}); the lane commit refuses its links`);
+          this.o.warn?.(linked ? `omg factory run: the linked node_modules of ${worktree} could not be unlinked before the lane commit (${errText6(error62)}); the lane commit refuses its links` : `omg factory run: the copied node_modules of ${worktree} is no longer ignored by git and could not be removed (${errText6(error62)}); the lane commit refuses its links`);
         }
       }
       /**
