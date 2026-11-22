@@ -9,6 +9,8 @@ import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Command } from 'commander';
 import { join, dirname } from 'path';
 import { randomUUID } from 'crypto';
+import { execFileSync } from 'child_process';
+import { tmpdir } from 'os';
 import * as fs from 'fs';
 import { mkdirSync, rmSync, writeFileSync, existsSync, readFileSync } from 'fs';
 import { ralphCloseout, ralphCommand, ralphVerify, runFeedbackCommand } from '../../src/cli/commands/ralph';
@@ -18,13 +20,21 @@ import { getOmcRoot, validateSessionId } from '../../src/lib/worktree-paths';
 
 describe('Ralph Closeout Codex Findings', () => {
   let tmpDir: string;
+  let homeDir: string;
   let sessionId: string;
   let stateRoot: string;
 
   beforeEach(() => {
-    tmpDir = `/tmp/ralph-test-${randomUUID()}`;
+    // A non-git directory anchors OMC state at the user's home (~/.omg), so the project is made
+    // a git repo and HOME is redirected: nothing here may read or write the real home.
+    homeDir = join(tmpdir(), `ralph-test-home-${randomUUID()}`);
+    mkdirSync(homeDir, { recursive: true });
+    vi.stubEnv('HOME', homeDir);
+    vi.stubEnv('USERPROFILE', homeDir);
+    tmpDir = join(tmpdir(), `ralph-test-${randomUUID()}`);
     sessionId = randomUUID();
     mkdirSync(tmpDir, { recursive: true });
+    execFileSync('git', ['init', '-q'], { cwd: tmpDir });
     
     // Create a minimal OMC state structure
     stateRoot = join(tmpDir, '.omg');
@@ -35,6 +45,8 @@ describe('Ralph Closeout Codex Findings', () => {
     if (existsSync(tmpDir)) {
       rmSync(tmpDir, { recursive: true, force: true });
     }
+    rmSync(homeDir, { recursive: true, force: true });
+    vi.unstubAllEnvs();
   });
 
   describe('P1: Register closeout command', () => {
