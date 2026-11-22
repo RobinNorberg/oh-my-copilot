@@ -29,9 +29,28 @@ function tempDir() {
     tempRoots.push(dir);
     return dir;
 }
+// On Windows a timed-out feedback command leaves its grandchild (spawnSync kills the
+// shell, not the `node` it started) alive for up to ~3s with its cwd in the temp dir, so
+// removal fails with EPERM until that orphan exits. rmSync's own maxRetries is not
+// honoured for this error on Node 25, hence an explicit bounded retry.
+function removeTempDir(dir) {
+    const deadline = Date.now() + 15000;
+    for (;;) {
+        try {
+            rmSync(dir, { recursive: true, force: true });
+            return;
+        }
+        catch (error) {
+            const code = error.code;
+            if (!['EPERM', 'EBUSY', 'ENOTEMPTY'].includes(code ?? '') || Date.now() > deadline)
+                throw error;
+            Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 200);
+        }
+    }
+}
 afterEach(() => {
     for (const dir of tempRoots.splice(0))
-        rmSync(dir, { recursive: true, force: true });
+        removeTempDir(dir);
     spawnMock.defaultSpawnFn.mockClear();
     vi.unstubAllEnvs();
     // The afk action exports these for the spawned session; keep them out of later tests.
