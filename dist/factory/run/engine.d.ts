@@ -365,8 +365,10 @@ export declare const windowsGitTransportFailure: (output: string | undefined, pl
  * Access is denied.`
  */
 export declare const windowsJunctionReadDenied: (output: string | undefined, platform?: NodeJS.Platform) => boolean;
+/** What the gate-sandbox-incompatible park says for a dotnet command (docs/REFERENCE.md, .NET repositories). */
+export declare const DOTNET_SANDBOX_ADVICE = "Your dotnet command fails in the sandbox on the base. The sandbox has no network, so every NuGet package must already be in the NuGet global packages folder (NUGET_PACKAGES, else ~/.nuget/packages): run dotnet restore on the base yourself once. Private feeds and credentials in your NuGet.Config are not available there, and an explicit -m/-maxcpucount above 1 hangs (MSBuild worker nodes cannot connect in the Windows sandbox; the engine adds -m:1 when none is given)";
 /** What the gate-sandbox-incompatible park of a failing base calibration tells the human to do. */
-export declare function sandboxIncompatibleAdvice(tail: string | undefined, platform?: NodeJS.Platform): string;
+export declare function sandboxIncompatibleAdvice(tail: string | undefined, platform?: NodeJS.Platform, argv?: readonly string[]): string;
 /**
  * Engine git in the prepare checkout once the PR's code ran there: the admin
  * dir recorded at `worktree add` (recordWorktreeGitLinks, before any of it

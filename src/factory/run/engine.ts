@@ -64,6 +64,7 @@ import { listChangedFiles, protectedChanges } from '../../ship/merge.js';
 import { ESLINT_SCRIPT, PREPARE_CONFIG_STEP, PREPARE_DETECT_STEP, PREPARE_SANDBOX_STEP, runPrepareAsync, VITEST_SCRIPT, type PrepareCheckResult, type PrepareCheckRun } from '../../ship/prepare.js';
 import { parseJsonc } from '../../utils/jsonc.js';
 import { gitForWindowsShell, nodeModulesTreeProblem, resolveGateIsolation, resolveGatesSandboxMode, resolveRequireDeniedPaths, resolveWindowsGitTransport, type GateContainerSettings, type GatesSandboxMode, type WindowsGitTransportMode } from '../../copilot-run/sandbox.js';
+import { isDotnetExe } from '../../copilot-run/dotnet-sandbox.js';
 import { CONTAINER_INCOMPATIBLE_ADVICE, CONTAINER_SRC, containerRunLabel, GATE_CONTAINER_UNAVAILABLE_GATE } from './container-gate.js';
 import { CREDENTIAL_FILES_READABLE_NOTE, redactGateOutput, sandboxCommandTooLong, sandboxJobRoot, splitFileListArgs, type SandboxRunner, type SandboxRunRequest, type SandboxRunResult } from './sandbox-exec.js';
 import { forgetWorktreeGitLinks, readWorktreeGitLinks, recordedWorktreeGitLinks, recordWorktreeGitLinks, removeStaleWorktreeEntry, removeWorkerWorktree, runHostGit, runHostGitBuffer, runHostGitBufferAsync, worktreeGitDirArgs, worktreeGitLinksIntact } from '../../team/git-worktree.js';
@@ -128,7 +129,7 @@ import { assertLaneCreditCap, LANE_MODEL_KINDS, laneModelFor, nextLaneCap, resol
 import { FactorySafetyError, factoryGuardExec, hardenedGitExec, sameFsPath, type GithubReadContext } from './exec.js';
 import { createGateProcTracker, gateProcsPath, liveGateProcs, reapGateProcs, sweepGateProcs } from './gate-procs.js';
 import { assertFactoryForgeOptions, EXIT_FORGE_UNAVAILABLE, FactoryForgeUnavailableError, localRemoteMismatch, syncLocalMirror } from './forge-roots.js';
-import { assertLocalGateCommand, defaultLocalGateRunner, describeGateSources, gateDefinition, gateDefinitionSources, localGateDue, localGateRecord, resolveLocalGateArgv, runLocalGate, type LocalGateRunner } from './local-gate.js';
+import { assertLocalGateCommand, defaultLocalGateRunner, describeGateSources, gateDefinition, gateDefinitionSources, gateSourcePathspec, localGateDue, patternSourceChanges, localGateRecord, resolveLocalGateArgv, runLocalGate, type LocalGateRunner } from './local-gate.js';
 import { isLocalBranchName, localCheckRecordPath, LOCAL_GATE_CHECK, LOCAL_REMOTE, readMirrorRef } from '../../forge/local/index.js';
 import { getGlobalOmcStatePath } from '../../utils/paths.js';
 import { isProcessAlive, isProcessIdentityLive, terminateOwnedProcessTree } from '../../platform/process-utils.js';
@@ -693,8 +694,12 @@ export const windowsGitTransportFailure = (output: string | undefined, platform:
 export const windowsJunctionReadDenied = (output: string | undefined, platform: NodeJS.Platform = process.platform): boolean =>
   platform === 'win32' && !!output && /Cannot read directory "[^"\r\n]*node_modules[\\/][^"\r\n]*": Access is denied\./.test(output);
 
+/** What the gate-sandbox-incompatible park says for a dotnet command (docs/REFERENCE.md, .NET repositories). */
+export const DOTNET_SANDBOX_ADVICE = 'Your dotnet command fails in the sandbox on the base. The sandbox has no network, so every NuGet package must already be in the NuGet global packages folder (NUGET_PACKAGES, else ~/.nuget/packages): run dotnet restore on the base yourself once. Private feeds and credentials in your NuGet.Config are not available there, and an explicit -m/-maxcpucount above 1 hangs (MSBuild worker nodes cannot connect in the Windows sandbox; the engine adds -m:1 when none is given)';
+
 /** What the gate-sandbox-incompatible park of a failing base calibration tells the human to do. */
-export function sandboxIncompatibleAdvice(tail: string | undefined, platform: NodeJS.Platform = process.platform): string {
+export function sandboxIncompatibleAdvice(tail: string | undefined, platform: NodeJS.Platform = process.platform, argv?: readonly string[]): string {
+  if (isDotnetExe(argv?.[0])) return DOTNET_SANDBOX_ADVICE;
   // git clone, fetch and push to a local path start git-upload-pack / git-receive-pack through Git for Windows' sh.exe,
   // and no MSYS2 program starts in the Copilot sandbox on Windows (exit 0xC0000142, live 2026-11-12); no network either.
   if (windowsGitTransportFailure(tail, platform)) return GIT_TRANSPORT_SANDBOX_ADVICE;
@@ -1639,7 +1644,19 @@ class FactoryEngine {
     let intent;
     try { intent = this.o.lanes.laneSandbox?.(this.o.root) ?? null; } catch { intent = null; }
     if (!intent) return null;
-    return { sandboxed: intent.sandboxed, writeNetwork: intent.writeNetwork, nodeModulesReady: intent.sandboxed && existsSync(join(this.o.root, 'node_modules')) };
+    return { sandboxed: intent.sandboxed, writeNetwork: intent.writeNetwork, nodeModulesReady: intent.sandboxed && existsSync(join(this.o.root, 'node_modules')), ...(this.dotnetRepo() ? { dotnet: true } : {}) };
+  }
+
+  /**
+   * The run's repository is a .NET one for its lanes: the local gate
+   * (factory.forge.local.gate, trusted config only) runs dotnet. Never read
+   * from repository files, so no change of a PR's turns it on or off. The
+   * gate and prepare checks need no such rule: the sandbox runner treats
+   * each command whose executable is dotnet as one (dotnet-sandbox.ts).
+   */
+  private dotnetRepo(): boolean {
+    const gate = this.o.forge?.config.kind === 'local' ? this.o.forge.config.local?.gate : undefined;
+    return isDotnetExe(gate?.[0]);
   }
 
   /** The gate-sandbox-incompatible park of a copied tree linkGateTree could not build (`why`). */
@@ -3145,7 +3162,7 @@ class FactoryEngine {
     const gate = this.o.forge?.config.kind === 'local' ? this.o.forge.config.local?.gate : undefined;
     const unresolved = gate && gate.length > 0 ? gateDefinitionSources(gate).unresolved : undefined;
     if (!unresolved) return false;
-    this.gate('gate-definition-unknown', `${unresolved}; offline the gate is the only check and its definition cannot be compared with ${this.state.base}, so ${outcome}. Wrap the command in a script committed in the repo (for example node scripts/gate.mjs) and set factory.forge.local.gate to that, or to an npm script (npm test, npm run <script>); then rerun ${this.resume}, or ${cancelCommand(this.key)}`);
+    this.gate('gate-definition-unknown', `${unresolved}; offline the gate is the only check and its definition cannot be compared with ${this.state.base}, so ${outcome}. Wrap the command in a script committed in the repo (for example node scripts/gate.mjs) and set factory.forge.local.gate to that, to an npm script (npm test, npm run <script>) or to dotnet build / dotnet test; then rerun ${this.resume}, or ${cancelCommand(this.key)}`);
     return true;
   }
 
@@ -3170,10 +3187,26 @@ class FactoryEngine {
     if (this.gateDefinitionUnknownParked('nothing was pushed')) return true;
     const { sources } = gateDefinitionSources(gate);
     if (sources.length === 0) return false;
+    // A dotnet gate's pattern sources: the commit's whole tree as [path, blob id], read once per commit.
+    const trees = new Map<string, Array<readonly [string, string]>>();
+    const treeAt = (sha: string): Array<readonly [string, string]> => {
+      let tree = trees.get(sha);
+      if (!tree) {
+        const r = this.exec('git', ['ls-tree', '-r', '-z', '--full-tree', sha], { cwd: this.o.root, env: TRUSTED_READ_ENV });
+        if (r.status !== 0) throw new FactoryStepError(`git ls-tree ${sha.slice(0, 12)} failed: ${r.stderr.trim().slice(0, 300)}`);
+        // `<mode> <type> <oid>\t<path>`, NUL-terminated.
+        tree = r.stdout.split('\0').filter(Boolean).map((line) => {
+          const tab = line.indexOf('\t');
+          return [line.slice(tab + 1), line.slice(0, tab).split(' ')[2] ?? ''] as const;
+        });
+        trees.set(sha, tree);
+      }
+      return tree;
+    };
     const at = (sha: string) => createHash('sha256').update(gateDefinition(sources, (path) => {
       const r = this.exec('git', ['show', `${sha}:${path}`], { cwd: this.o.root, env: TRUSTED_READ_ENV });
       return r.status === 0 ? r.stdout : undefined;
-    }), 'utf8').digest('hex');
+    }, () => treeAt(sha)), 'utf8').digest('hex');
     const head = at(cand);
     if (head === at(s.baseSha) || head === s.gateChangeApproved) return false;
     let mirrorBase: string | undefined;
@@ -3184,7 +3217,12 @@ class FactoryEngine {
       return false;
     }
     const stale = allowed !== undefined ? ' (--allow-gate-change accepted only the definition the run parked on, and this one differs)' : '';
-    this.save((x) => setGate(x, 'gate-definition-changed', `the change redefines the local gate "${gate.join(' ')}" (${describeGateSources(sources)} differ from ${s.base})${stale}; offline the gate is the only check, so nothing was pushed. Inspect it with git -C ${this.o.root} diff ${s.baseSha!.slice(0, 12)} ${cand.slice(0, 12)} -- ${[...new Set(sources.map((x) => x.path))].join(' ')}, then rerun ${this.resume} --allow-gate-change to accept it, or ${cancelCommand(this.key)}`, this.iso(), { definition: head }));
+    // A pattern source (a dotnet gate) is named by the files that differ, not by its patterns.
+    const plain = sources.filter((x) => !x.pattern);
+    const changed = sources.some((x) => x.pattern) ? patternSourceChanges(sources, treeAt(s.baseSha), treeAt(cand)) : [];
+    const named = [...(plain.length > 0 ? [describeGateSources(plain)] : []), ...changed].join(', ') || describeGateSources(sources);
+    const specs = [...new Set([...plain.map(gateSourcePathspec), ...changed])];
+    this.save((x) => setGate(x, 'gate-definition-changed', `the change redefines the local gate "${gate.join(' ')}" (${named} differ from ${s.base})${stale}; offline the gate is the only check, so nothing was pushed. Inspect it with git -C ${this.o.root} diff ${s.baseSha!.slice(0, 12)} ${cand.slice(0, 12)} -- ${(specs.length > 0 ? specs : sources.map(gateSourcePathspec)).join(' ')}, then rerun ${this.resume} --allow-gate-change to accept it, or ${cancelCommand(this.key)}`, this.iso(), { definition: head }));
     return true;
   }
 
@@ -4295,7 +4333,7 @@ class FactoryEngine {
       this.save((x) => ({ ...x, gateCalibration: { ...(x.gateCalibration ?? {}), [key]: out }, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `calibrated ${what.slice(0, 120)} in ${placeName} on the base ${baseSha.slice(0, 12)}: ${out.ok ? 'passes' : 'fails'}` }] }));
     }
     if (cal.ok) return null;
-    const advice = plainRun ? `It fails on the base without any sandbox too, so the check itself is broken on the base: fix it on ${this.state.base ?? 'the base'}` : container ? CONTAINER_INCOMPATIBLE_ADVICE : cal.gitTransport ? GIT_TRANSPORT_SANDBOX_ADVICE : sandboxIncompatibleAdvice(cal.tail);
+    const advice = plainRun ? `It fails on the base without any sandbox too, so the check itself is broken on the base: fix it on ${this.state.base ?? 'the base'}` : container ? CONTAINER_INCOMPATIBLE_ADVICE : cal.gitTransport ? GIT_TRANSPORT_SANDBOX_ADVICE : sandboxIncompatibleAdvice(cal.tail, process.platform, c.argv);
     return {
       name: GATE_SANDBOX_INCOMPATIBLE_GATE,
       reason: `${what} fails in ${placeName} on the base ${baseSha.slice(0, 12)} itself, so its failure on ${head.slice(0, 12)} is not counted (no ci-fix lane). ${advice}, then rerun ${this.resume}. ${ACK_WARNING}${cal.tail ? `; base output tail: ${cal.tail.slice(-1_500)}` : ''}`,
@@ -5988,6 +6026,8 @@ class FactoryEngine {
         // elsewhere the gates' linked tree, granted read-only only as the engine vouches for it (laneNodeModulesGrant).
         // A review lane's shell is read-only, so it runs no test and needs none.
         ...(profile === 'write' ? { beforeSandboxedSession: (wt: string, o?: { copy: boolean }) => this.prepareLaneTree(wt, o?.copy ?? true), nodeModulesGrant: (wt: string) => this.laneNodeModulesGrant(wt) } : {}),
+        // A .NET repository (the trusted local gate runs dotnet): the env and NuGet grant dotnet needs in the lane sandbox.
+        ...(profile === 'write' && this.dotnetRepo() ? { dotnet: true } : {}),
         ...(priv && laneTree ? { worktree: { path: laneTree, commonGitDir: priv.repo.gitDir }, jobRoot: priv.layout.jobs, deniedPaths: priv.deniedFor(laneTree), beforeHostGit: () => priv.problem() } : {}),
       }));
     } catch (error) {
@@ -7029,7 +7069,7 @@ function dryRun(o: FactoryEngineOptions): FactoryRunOutcome {
   if (gateUnknown) {
     return {
       exitCode: 0, phase: existing?.phase ?? null, state: existing ?? null,
-      message: `dry run: ${gateUnknown}; the run would stop at awaiting-human: gate-definition-unknown before any lane; wrap the command in a script committed in the repo (for example node scripts/gate.mjs) and use that as the gate`,
+      message: `dry run: ${gateUnknown}; the run would stop at awaiting-human: gate-definition-unknown before any lane; wrap the command in a script committed in the repo (for example node scripts/gate.mjs), or use an npm script or dotnet build / dotnet test as the gate`,
       plan: { next: 'awaiting-human', reason: 'gate-definition-unknown', ...caps },
     };
   }

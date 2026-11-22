@@ -86,6 +86,8 @@ export interface LaneStartInput {
   beforeSandboxedSession?: (worktree: string, o?: { copy: boolean }) => string | null | Promise<string | null>;
   /** The local backend, a write lane: the node_modules its sandbox may grant (CopilotRunStartOptions.nodeModulesGrant). */
   nodeModulesGrant?: (worktree: string) => { target: string; nested?: string[] } | undefined;
+  /** The local backend, a write lane in a .NET repository (the run's local gate runs dotnet): CopilotRunStartOptions.dotnet. */
+  dotnet?: boolean;
   /** Cloud backends only. */
   customAgent?: string;
   timeoutMs: number;
@@ -217,7 +219,7 @@ export class CopilotLaneBackend implements LaneBackend {
         ...(input.worktree ? { worktree: input.worktree } : {}), ...(input.jobRoot ? { jobRoot: input.jobRoot } : {}),
         ...(input.deniedPaths ? { deniedPaths: input.deniedPaths } : {}), ...(input.beforeHostGit ? { beforeHostGit: input.beforeHostGit } : {}),
         ...(input.beforeSandboxedSession ? { beforeSandboxedSession: input.beforeSandboxedSession } : {}),
-        ...(input.nodeModulesGrant ? { nodeModulesGrant: input.nodeModulesGrant } : {}) },
+        ...(input.nodeModulesGrant ? { nodeModulesGrant: input.nodeModulesGrant } : {}), ...(input.dotnet ? { dotnet: true } : {}) },
     );
     // An async beforeSandboxedSession: the lane counts as started (the engine's idle clock) only once its worktree is ready.
     await this.manager.prepared?.(snap.jobId);

@@ -150,6 +150,52 @@ describe('F38: cancel closes the local PR; clean + reset make the item runnable 
   });
 });
 
+describe('a dotnet gate: its MSBuild files define it, and its write lanes get the dotnet sandbox', () => {
+  const CSPROJ = '<Project Sdk="Microsoft.NET.Sdk">\n  <PropertyGroup>\n    <TargetFramework>net10.0</TargetFramework>\n  </PropertyGroup>\n</Project>\n';
+  function baseProject(): void {
+    mkdirSync(join(w.root, 'src', 'App'), { recursive: true });
+    writeFileSync(join(w.root, 'App.sln'), 'Microsoft Visual Studio Solution File\n');
+    writeFileSync(join(w.root, 'src', 'App', 'App.csproj'), CSPROJ);
+    gitIn(w.root, 'add', '.');
+    gitIn(w.root, 'commit', '-q', '-m', 'project');
+  }
+
+  it('a code-only change runs the gate and reaches the merge gate; the write lane (not the review lane) is started with dotnet', async () => {
+    w = localWorld(['dotnet', 'test']);
+    baseProject();
+    const lanes = lanesFor(w, [commitFile('src/App/Greet.cs', 'namespace App; public static class Greet { }\n'), review('approve')]);
+    const out = await runFactoryEngine(localOpts(w, lanes));
+    expect(out.exitCode, out.message).toBe(0);
+    expect(out.gate?.name).toBe('merge');
+    expect(w.gateRuns.map((r) => r.argv)).toEqual([['dotnet', 'test']]);
+    expect(lanes.started.map((l) => [l.profile ?? 'write', l.dotnet ?? false])).toEqual([['write', true], ['review', false]]);
+  }, MULTI_RUN_MS);
+
+  it('a lane that edits a project file parks at gate-definition-changed, naming that file (nothing pushed)', async () => {
+    w = localWorld(['dotnet', 'test']);
+    baseProject();
+    const out = await runFactoryEngine(localOpts(w, lanesFor(w, [commitFile('src/App/App.csproj', CSPROJ.replace('</PropertyGroup>', '  <Target Name="VSTest" />\n  </PropertyGroup>'))])));
+    expect(out.gate?.name, out.message).toBe('gate-definition-changed');
+    expect(out.gate?.reason).toMatch(/redefines the local gate "dotnet test" \(src\/App\/App\.csproj differ from main\).*diff [0-9a-f]{12} [0-9a-f]{12} -- src\/App\/App\.csproj, then rerun/);
+    expect(readMirrorRef(w.config.repo.url, BRANCH)).toBeUndefined();
+  }, MULTI_RUN_MS);
+
+  it('a lane that adds a Directory.Build.props parks too', async () => {
+    w = localWorld(['dotnet', 'build']);
+    baseProject();
+    const out = await runFactoryEngine(localOpts(w, lanesFor(w, [commitFile('Directory.Build.props', '<Project />\n')])));
+    expect(out.gate?.name, out.message).toBe('gate-definition-changed');
+    expect(out.gate?.reason).toMatch(/\(Directory\.Build\.props differ from main\)/);
+  }, MULTI_RUN_MS);
+
+  it('a node gate: no lane is started with dotnet', async () => {
+    w = localWorld();
+    const lanes = lanesFor(w, [greet(), review('approve')]);
+    expect((await runFactoryEngine(localOpts(w, lanes))).gate?.name).toBe('merge');
+    expect(lanes.started.every((l) => l.dotnet === undefined)).toBe(true);
+  }, MULTI_RUN_MS);
+});
+
 describe('F41: a lane may not redefine the local gate', () => {
   it('a lane that adds the gate\'s lint script parks at gate-definition-changed (nothing pushed); --allow-gate-change records it and goes on', async () => {
     w = localWorld(['npm', 'run', 'lint']);

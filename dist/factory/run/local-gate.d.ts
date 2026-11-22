@@ -156,7 +156,9 @@ export declare function runLocalGate(i: LocalGateInput): Promise<LocalGateOutcom
  * project config (`.npmrc` script-shell/node-options, `.yarnrc`,
  * `.yarnrc.yml`, `.pnpmfile.cjs`) at the repository top and in the package
  * directory; a node gate by the script file it runs; a gate executable given
- * as a repository path by that file. What the script itself runs
+ * as a repository path by that file; a `dotnet build` / `dotnet test` gate
+ * by every file of the repository that matches DOTNET_DEFINITION_PATTERNS
+ * (`pattern` sources) plus the repository files its argv names. What the script itself runs
  * (vitest.config, scripts/test.mjs) is covered by review, not here.
  * Empty when the argv names nothing in the repository (`node --test`).
  *
@@ -169,6 +171,7 @@ export declare function runLocalGate(i: LocalGateInput): Promise<LocalGateOutcom
 export type GateDefinitionSource = {
     path: string;
     scripts?: string[];
+    pattern?: true;
 };
 /**
  * The gate's definition sources, or why an npm-style gate's definition
@@ -180,14 +183,30 @@ export interface GateDefinitionSources {
     sources: GateDefinitionSource[];
     unresolved?: string;
 }
+/**
+ * The repository files that define what `dotnet build` / `dotnet test` does,
+ * as basename patterns matched at any depth, case-insensitively: solutions
+ * and solution filters, project files, every MSBuild import (`*.props`,
+ * `*.targets`, Directory.Build.* among them), MSBuild's automatic response
+ * file, the SDK pin and NuGet's config and lock files. What the build itself
+ * compiles and runs (the code, the tests, a .runsettings or xunit.runner.json)
+ * is covered by review, as vitest.config is for an npm gate.
+ */
+export declare const DOTNET_DEFINITION_PATTERNS: readonly string[];
+/** The paths the pattern sources match whose blob differs between two trees ([path, blob id]): added, removed or changed. */
+export declare function patternSourceChanges(sources: readonly GateDefinitionSource[], a: ReadonlyArray<readonly [string, string]>, b: ReadonlyArray<readonly [string, string]>): string[];
+/** A source as a git pathspec (the park message's diff command): a pattern matches at any depth, in any case. */
+export declare const gateSourcePathspec: (s: GateDefinitionSource) => string;
 export declare function gateDefinitionSources(gate: readonly string[]): GateDefinitionSources;
 /**
  * The gate's definition at one commit, comparable across commits: per source
  * the named package.json scripts (a file that is not JSON compares by its
- * text), or the file's text. `read` returns a path's content at that commit,
- * undefined when the file is absent there.
+ * text), or the file's text; per `pattern` source every matching path of
+ * the commit's tree with its blob id. `read` returns a path's content at
+ * that commit, undefined when the file is absent there; `list` the commit's
+ * files as [path, blob id] (needed only for pattern sources).
  */
-export declare function gateDefinition(sources: readonly GateDefinitionSource[], read: (path: string) => string | undefined): string;
+export declare function gateDefinition(sources: readonly GateDefinitionSource[], read: (path: string) => string | undefined, list?: () => ReadonlyArray<readonly [string, string]>): string;
 /** What a gate change touches, for the park message: `package.json scripts lint` or the file path. */
 export declare const describeGateSources: (sources: readonly GateDefinitionSource[]) => string;
 //# sourceMappingURL=local-gate.d.ts.map

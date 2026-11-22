@@ -548,6 +548,38 @@ describe('copilot_run beforeSandboxedSession (the Windows OS sandbox)', () => {
   });
 });
 
+describe('copilot_run dotnet (a write lane of a .NET repository)', () => {
+  type Fs = { readonlyPaths: string[]; readwritePaths: string[] };
+  const fs = (i = 0): Fs => (calls.optionsUpdates[i] as { sandboxConfig: { userPolicy: { filesystem: Fs } } }).sandboxConfig.userPolicy.filesystem;
+  const DOTNET_KEYS = ['NUGET_PACKAGES', 'DOTNET_CLI_USE_MSBUILD_SERVER', 'MSBUILDDISABLENODEREUSE', 'UseSharedCompilation', 'EnableSourceControlManagerQueries'];
+
+  it('dotnet: the session env has the MSBuild/NuGet variables and the packages folder is granted read-only', async () => {
+    const home = join(root, 'home');
+    const packages = join(home, '.nuget', 'packages');
+    mkdirSync(packages, { recursive: true });
+    const m = manager('idle', 'supported', { realHome: () => home });
+    const done = await m.wait(m.start({ prompt: 'implement', cwd: repo }, { dotnet: true }).jobId, 10_000);
+    expect(done.status).toBe('completed');
+    const env = calls.connections[0].env!;
+    expect(env).toMatchObject({ NUGET_PACKAGES: packages, UseSharedCompilation: 'false', EnableSourceControlManagerQueries: 'false', MSBUILDDISABLENODEREUSE: '1' });
+    expect(fs().readonlyPaths).toContain(packages);
+    expect(fs().readwritePaths).not.toContain(packages);
+  });
+
+  it('without dotnet, or for a review job: none of it (inert for a Node repository)', async () => {
+    const home = join(root, 'home');
+    mkdirSync(join(home, '.nuget', 'packages'), { recursive: true });
+    const m = manager('idle', 'supported', { realHome: () => home });
+    expect((await m.wait(m.start({ prompt: 'implement', cwd: repo }).jobId, 10_000)).status).toBe('completed');
+    expect((await m.wait(m.start({ prompt: 'review', cwd: repo, profile: 'review' }, { dotnet: true }).jobId, 10_000)).status).toBe('completed');
+    for (const i of [0, 1]) {
+      const env = calls.connections[i].env!;
+      for (const k of DOTNET_KEYS) expect(env[k], `${i} ${k}`).toBeUndefined();
+      expect([...fs(i).readonlyPaths, ...fs(i).readwritePaths].some((p) => p.includes('.nuget')), String(i)).toBe(false);
+    }
+  });
+});
+
 describe('copilot_run git link files', () => {
   it('extensions.worktreeConfig: creates the job admin dir\'s config.worktree so the write policy keeps it read-only', async () => {
     gitIn(repo, 'config', 'extensions.worktreeConfig', 'true');

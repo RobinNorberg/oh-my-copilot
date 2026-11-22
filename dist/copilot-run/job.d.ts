@@ -188,6 +188,12 @@ export interface CopilotRunStartOptions {
         target: string;
         nested?: string[];
     } | undefined;
+    /**
+     * A write job in a .NET repository (the factory: the run's local gate runs
+     * dotnet): the session env and grants dotnet needs in the sandbox
+     * (dotnet-sandbox.ts dotnetSandboxEnv). Absent: none.
+     */
+    dotnet?: boolean;
 }
 /**
  * A credential-free session env, in place. Removed: GitHub tokens

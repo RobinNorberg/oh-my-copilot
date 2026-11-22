@@ -712,4 +712,56 @@ describe('gateEnv', () => {
         }
     }, 150_000);
 });
+describe('runSandboxed: a dotnet command (dotnet-sandbox.ts)', () => {
+    const policy = () => (rec.optionsUpdates[0]?.sandboxConfig).userPolicy.filesystem;
+    /** The words the shell runs (linux form: each word NUL-terminated; the first is the cwd). */
+    const words = () => Buffer.from(/'([A-Za-z0-9+/=]+)'/.exec(rec.commands[0])[1], 'base64').toString('utf8').split('\0').slice(1, -1);
+    const DOTNET_KEYS = ['APPDATA', 'NUGET_PACKAGES', 'DOTNET_CLI_TELEMETRY_OPTOUT', 'DOTNET_NOLOGO', 'DOTNET_CLI_USE_MSBUILD_SERVER', 'MSBUILDDISABLENODEREUSE', 'UseSharedCompilation', 'EnableSourceControlManagerQueries'];
+    it('adds -m:1, the MSBuild/NuGet env and a read-only grant on the NuGet packages folder', async () => {
+        const packages = join(dir, 'home', '.nuget', 'packages');
+        mkdirSync(packages, { recursive: true });
+        await runSandboxed(['/usr/bin/dotnet', 'test', '--', 'RunConfiguration.X=1'], opts(), deps(ok));
+        expect(words()).toEqual(['/usr/bin/dotnet', 'test', '-m:1', '--', 'RunConfiguration.X=1']);
+        const env = rec.connections[0].env;
+        expect(env).toMatchObject({ NUGET_PACKAGES: packages, UseSharedCompilation: 'false', EnableSourceControlManagerQueries: 'false', MSBUILDDISABLENODEREUSE: '1', DOTNET_CLI_USE_MSBUILD_SERVER: '0' });
+        // APPDATA is a Windows variable only.
+        expect(env.APPDATA).toBeUndefined();
+        expect(policy().readonlyPaths).toContain(packages);
+        expect(policy().readwritePaths).not.toContain(packages);
+    });
+    it('no packages folder: no grant and no NUGET_PACKAGES; an explicit node count is kept', async () => {
+        await runSandboxed(['/usr/bin/dotnet', 'build', '-m:4'], opts(), deps(ok));
+        expect(words()).toEqual(['/usr/bin/dotnet', 'build', '-m:4']);
+        expect(rec.connections[0].env.NUGET_PACKAGES).toBeUndefined();
+        expect(policy().readonlyPaths.some((p) => p.includes('.nuget'))).toBe(false);
+    });
+    it('is inert for a node command: same argv, no dotnet env, no NuGet grant', async () => {
+        mkdirSync(join(dir, 'home', '.nuget', 'packages'), { recursive: true });
+        await runSandboxed(['/usr/bin/node', 'node_modules/vitest/vitest.mjs', 'run'], opts(), deps(ok));
+        expect(words()).toEqual(['/usr/bin/node', 'node_modules/vitest/vitest.mjs', 'run']);
+        for (const k of DOTNET_KEYS)
+            expect(rec.connections[0].env[k], k).toBeUndefined();
+        expect([...policy().readonlyPaths, ...policy().readwritePaths].some((p) => p.includes('.nuget'))).toBe(false);
+    });
+    it('win32: APPDATA is the job profile\'s, never the real one, and the real NuGet config dir is not granted', async () => {
+        mkdirSync(join(dir, 'localappdata'));
+        const real = join(dir, 'home');
+        mkdirSync(join(real, 'AppData', 'Roaming', 'NuGet'), { recursive: true });
+        writeFileSync(join(real, 'AppData', 'Roaming', 'NuGet', 'NuGet.Config'), '<configuration><packageSourceCredentials /></configuration>');
+        const packages = join(dir, 'nuget-cache');
+        mkdirSync(packages);
+        await runSandboxed(['C:\\Program Files\\dotnet\\dotnet.exe', 'test'], opts(), deps(ok, 'supported', {
+            platform: 'win32',
+            env: { PATH: '', SYSTEMROOT: 'C:\\Windows', LOCALAPPDATA: join(dir, 'localappdata'), APPDATA: join(real, 'AppData', 'Roaming'), NUGET_PACKAGES: packages },
+        }));
+        const env = rec.connections[0].env;
+        expect(env.APPDATA).toBe(join(resolve(env.USERPROFILE), 'AppData', 'Roaming'));
+        expect(env.APPDATA.startsWith(join(dir, 'jobs'))).toBe(true);
+        expect(env.NUGET_PACKAGES).toBe(packages);
+        const all = [...policy().readonlyPaths, ...policy().readwritePaths];
+        expect(policy().readonlyPaths).toContain(packages);
+        expect(all.some((p) => p.toLowerCase().includes(join('appdata', 'roaming').toLowerCase()) && !p.startsWith(join(dir, 'jobs')))).toBe(false);
+        expect(all.some((p) => p === real || p.startsWith(join(real, 'AppData')))).toBe(false);
+    });
+});
 //# sourceMappingURL=sandbox-exec.test.js.map

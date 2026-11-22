@@ -117,6 +117,7 @@ import {
   type SandboxScope,
   type SandboxSettings,
 } from './sandbox.js';
+import { dotnetSandboxEnv } from './dotnet-sandbox.js';
 import { LANE_PLUGIN_DIR, prepareLanePluginDir, removeLanePluginDir, sweepStaleLanePluginDirs } from './lane-plugin.js';
 import { SessionSandboxController, sandboxBypassDenial } from './sandbox-session.js';
 import { errText, withTimeout } from './timeout.js';
@@ -314,6 +315,12 @@ export interface CopilotRunStartOptions {
    * nothing under node_modules is granted.
    */
   nodeModulesGrant?: (worktree: string) => { target: string; nested?: string[] } | undefined;
+  /**
+   * A write job in a .NET repository (the factory: the run's local gate runs
+   * dotnet): the session env and grants dotnet needs in the sandbox
+   * (dotnet-sandbox.ts dotnetSandboxEnv). Absent: none.
+   */
+  dotnet?: boolean;
 }
 
 /** SandboxPolicyContext's node_modules fields from CopilotRunStartOptions.nodeModulesGrant's answer. */
@@ -544,6 +551,8 @@ interface Job {
   beforeHostGit: (() => string | null) | null;
   /** CopilotRunStartOptions.nodeModulesGrant (write jobs only). */
   nodeModulesGrant: ((worktree: string) => { target: string; nested?: string[] } | undefined) | null;
+  /** CopilotRunStartOptions.dotnet (write jobs only). */
+  dotnet: boolean;
   /** Why CopilotRunStartOptions.beforeSandboxedSession could not ready the worktree (the job fails before the runtime starts). */
   unprepared: string | null;
   /** The runtime's pid once the client started (stopAll's kill fallback). */
@@ -1228,6 +1237,7 @@ export class CopilotRunManager {
       deniedPaths: [...(options.deniedPaths ?? [])],
       beforeHostGit: options.beforeHostGit ?? null,
       nodeModulesGrant: profile !== 'review' ? options.nodeModulesGrant ?? null : null,
+      dotnet: profile !== 'review' && options.dotnet === true,
       unprepared: null,
       pid: undefined,
       pidIdentity: null,
@@ -1538,6 +1548,12 @@ export class CopilotRunManager {
     if (!job.hostCommits) seedGitIdentity(job.ledgerCwd, env.GIT_CONFIG_GLOBAL!);
     // OMC_BUDGET_HOST_LEDGER: this job records the session's usage; its hooks must not count it again.
     Object.assign(env, { OMC_GIT_GUARDRAILS: '1', COPILOT_ALLOW_ALL: 'false', OMC_BUDGET_HOST_LEDGER: '1', GIT_TERMINAL_PROMPT: '0', GCM_INTERACTIVE: 'never' });
+    const dotnetGrants: string[] = [];
+    if (job.dotnet) {
+      const d = dotnetSandboxEnv(env.USERPROFILE!, deps.env, (deps.realHome ?? (() => userInfo().homedir))(), deps.platform);
+      Object.assign(env, d.env);
+      dotnetGrants.push(...d.readonly);
+    }
     delete env[COPILOT_RUN_ALLOW_ENV];
     // OMC_* from the caller is stripped above, so this is the session's only skip list.
     const skipHooks = [...(job.disableStopContinuations ? [STOP_CONTINUATION_SKIP_TOKEN] : []), ...(job.hostCommits ? [PROJECT_MEMORY_SKIP_TOKEN] : [])];
@@ -1636,7 +1652,7 @@ export class CopilotRunManager {
           // The caller-vouched node_modules (factory lanes); none, nothing under node_modules is granted.
           ...nodeModulesPolicy(job.nodeModulesGrant?.(resolve(top))),
           toolPaths: (deps.toolPaths ?? laneToolPaths)(deps.env, deps.platform),
-          extraReadonly: proxy.caPaths,
+          extraReadonly: [...proxy.caPaths, ...dotnetGrants],
           // A keyring-less host keeps the login token in plain text in the user's Copilot config.json: its config dir is
           // denied also when COPILOT_HOME moved it out of ~/.copilot (denied by default; copilotConfigDenies).
           ...(laneDenied.length > 0 ? { extraDenied: laneDenied } : {}),

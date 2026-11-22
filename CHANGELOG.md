@@ -2,6 +2,17 @@
 
 All notable changes to oh-my-copilot will be documented in this file.
 
+## [Unreleased]
+
+### Added
+
+- **The factory runs .NET repositories on Windows without a wrapper script.** A local gate or prepare check can now be plain `["dotnet", "test"]` or `["dotnet", "build"]`. Before, it parked at intake with `gate-definition-unknown`, and in the Windows sandbox it hung with no output until the 30-minute check timeout, on the head and again on the base. The repository needs its NuGet packages already restored on the machine (the sandbox has no network). Not verified on Linux or macOS. See [.NET repositories](docs/REFERENCE.md#dotnet-repositories).
+  - **The gate's definition.** A `dotnet build` / `dotnet test` gate is defined by the repository's solution, project and MSBuild files at any depth: `*.sln`, `*.slnx`, `*.slnf`, `*.csproj`, `*.fsproj`, `*.vbproj`, `*.proj`, `*.props`, `*.targets`, `Directory.Build.rsp`, `global.json`, `nuget.config`, `packages.lock.json` and `dotnet.config`. A lane that changes one parks at `gate-definition-changed`, and the message names the changed files. Any other dotnet subcommand still parks at `gate-definition-unknown`.
+  - **In the sandbox.** A command whose executable is `dotnet`, and the write lanes of a run whose local gate is one, get `APPDATA` in the job's own profile (never your real NuGet.Config, which can hold feed credentials), a read-only grant on the NuGet global packages folder (`NUGET_PACKAGES`, else `~/.nuget/packages`), and MSBuild settings: no compiler server and no SourceLink read of your real `~/.gitconfig`. MSBuild's worker nodes cannot connect to their parent inside the Windows sandbox (their named pipe refuses the AppContainer process), and no environment variable stops them, so the sandbox runner adds `-m:1` to a dotnet gate that names no node count. Lanes are told in their prompt to pass `-m:1`. A Node repository gets none of this.
+  - **The park hint.** A dotnet gate that fails in the sandbox on the base parks at `gate-sandbox-incompatible` with the .NET causes (the packages folder, private feeds, an explicit node count above 1), not the npm registry hint.
+  - Private NuGet feeds, restoring with network, and `packages.config` projects are not supported yet.
+- `.slnx`, `.slnf`, `Directory.Build.rsp` and `dotnet.config` are protected from auto-merge like the other project and tool files, and the pre-scan skips `packages.lock.json` like the other lockfiles.
+
 # oh-my-copilot v5.32.0
 
 ## [5.32.0] - 2026-11-22

@@ -57,6 +57,7 @@ import {
   type SandboxSettings,
 } from '../../copilot-run/sandbox.js';
 import { defaultContainerExec, runContainerGate } from './container-gate.js';
+import { dotnetSandboxArgs, dotnetSandboxEnv, isDotnetExe } from '../../copilot-run/dotnet-sandbox.js';
 import { SessionSandboxController } from '../../copilot-run/sandbox-session.js';
 import { errText, withTimeout } from '../../copilot-run/timeout.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
@@ -298,7 +299,9 @@ export async function runSandboxed(argv: readonly string[], o: SandboxExecOption
   const noVerdict = (reason: string): SandboxRunResult => ({ ran: false, reason, started: true });
   const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
   const marker = `${MARKER_PREFIX}${randomBytes(8).toString('hex')}`;
-  const command = sandboxShellCommand(deps.platform, argv, o.cwd, marker);
+  // A dotnet command: one MSBuild node (dotnet-sandbox.ts), plus the env and NuGet grant below.
+  const dotnet = isDotnetExe(argv[0]);
+  const command = sandboxShellCommand(deps.platform, dotnet ? [argv[0], ...dotnetSandboxArgs(argv.slice(1))] : argv, o.cwd, marker);
   if (command === null) return refuse('the command cannot be passed to the sandbox shell unchanged (a NUL, or on Windows an empty argument or a double quote)');
   const max = sandboxCommandMaxChars(deps.platform);
   if (command.length > max) {
@@ -331,6 +334,13 @@ export async function runSandboxed(argv: readonly string[], o: SandboxExecOption
     // GIT_CEILING_DIRECTORIES: a git root search from the runtime's working dir stops at the job root, so it never reaches
     // the root repository's work tree (the job root is under its .omg/) and its hooks or instructions.
     Object.assign(env, { GIT_TERMINAL_PROMPT: '0', GCM_INTERACTIVE: 'never', COPILOT_ALLOW_ALL: 'false', GIT_CEILING_DIRECTORIES: resolve(o.jobRoot) });
+    const realHome = (deps.realHome ?? (() => userInfo().homedir))();
+    const dotnetGrants: string[] = [];
+    if (dotnet) {
+      const d = dotnetSandboxEnv(env.USERPROFILE!, deps.env, realHome, deps.platform);
+      Object.assign(env, d.env);
+      dotnetGrants.push(...d.readonly);
+    }
     const credentialSource = { userConfigDir: deps.userConfigDir(), platform: deps.platform };
     const gitHubToken = sessionGitHubToken(deps.env, credentialSource);
     const secrets = secretValues(deps.env, credentialSource);
@@ -347,7 +357,6 @@ export async function runSandboxed(argv: readonly string[], o: SandboxExecOption
     await withTimeout(c.start().catch(rethrowSdkStartError), START_TIMEOUT_MS, 'client.start()');
     pid = runtimePid(c);
     const pluginRoot = deps.pluginRoot();
-    const realHome = (deps.realHome ?? (() => userInfo().homedir))();
     const settings: SandboxSettings = { ...o.settings, enabled: true, writeUnsandboxed: 'refuse', writeNetwork: o.network, extraReadwritePaths: [] };
     const notes: string[] = [];
     const sandbox = new SessionSandboxController({
@@ -370,7 +379,7 @@ export async function runSandboxed(argv: readonly string[], o: SandboxExecOption
           settings,
           hostCommits: true,
           toolPaths: (deps.toolPaths ?? laneToolPaths)(deps.env, deps.platform),
-          extraReadonly: proxy.caPaths,
+          extraReadonly: [...proxy.caPaths, ...dotnetGrants],
           // A keyring-less host's plaintext login token, also when COPILOT_HOME moved the config dir out of ~/.copilot.
           ...(deps.platform === 'win32' ? {} : { extraDenied: copilotConfigDenies(credentialSource.userConfigDir, deps.platform) }),
           ...(o.mainRoot ? { mainRoot: resolve(o.mainRoot) } : {}),

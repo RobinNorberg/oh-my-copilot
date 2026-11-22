@@ -202,7 +202,7 @@ const DENIED_NAMES = new Set([
   'cargo.toml', 'cargo.lock', 'go.mod', 'go.sum', 'go.work', 'go.work.sum', 'pyproject.toml', 'poetry.lock', 'pipfile', 'pipfile.lock', 'uv.lock',
   'setup.py', 'setup.cfg', 'tox.ini', 'noxfile.py', 'conftest.py', 'gemfile', 'gemfile.lock', 'composer.json', 'composer.lock', 'pom.xml',
   'build.gradle', 'build.gradle.kts', 'settings.gradle', 'settings.gradle.kts', 'gradle.properties', 'gradlew', 'gradlew.bat',
-  'directory.packages.props', 'directory.build.props', 'directory.build.targets', 'nuget.config', 'packages.lock.json', 'global.json',
+  'directory.packages.props', 'directory.build.props', 'directory.build.targets', 'nuget.config', 'packages.lock.json', 'global.json', 'directory.build.rsp', 'dotnet.config',
   'jsconfig.json', '.babelrc', '.editorconfig', '.gitattributes', '.gitmodules', '.gitignore', '.mailmap',
   'dockerfile', 'compose.yaml', 'compose.yml', 'makefile', 'justfile', 'taskfile.yml', 'codeowners', 'cmakelists.txt', 'constraints.txt',
   'agents.md', 'agent.md', 'claude.md', 'gemini.md', 'copilot-instructions.md', 'skill.md', 'omg.jsonc',
@@ -215,7 +215,7 @@ const DENIED_NAMES = new Set([
 
 /** File-name patterns (folded) of the same kinds: requirements files, project files, tool configs, env files, agent prompt files. */
 const DENIED_NAME_PATTERNS: readonly RegExp[] = [
-  /^requirements.*\.(?:txt|in)$/, /\.(?:csproj|fsproj|vbproj|sln|props|targets)$/, /^tsconfig.*\.json$/,
+  /^requirements.*\.(?:txt|in)$/, /\.(?:csproj|fsproj|vbproj|sln|slnx|slnf|props|targets)$/, /^tsconfig.*\.json$/,
   /^\.eslintrc/, /^eslint\.config\./, /^\.prettierrc/, /^prettier\.config\./, /^\.stylelintrc/,
   /(?:^|\.)config\.[cm]?[jt]sx?$/, /^vitest\.(?:workspace|projects)\./, /^\.env(?:\..*)?$/, /^docker-compose.*\.ya?ml$/, /^\.?dockerfile\./,
   /\.(?:prompt|instructions|chatmode|agent)\.md$/, /\.mdc$/,

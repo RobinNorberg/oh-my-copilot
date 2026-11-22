@@ -431,7 +431,9 @@ async function runSandboxedGate(i: LocalGateInput, base: LocalCheckRecord, now: 
  * project config (`.npmrc` script-shell/node-options, `.yarnrc`,
  * `.yarnrc.yml`, `.pnpmfile.cjs`) at the repository top and in the package
  * directory; a node gate by the script file it runs; a gate executable given
- * as a repository path by that file. What the script itself runs
+ * as a repository path by that file; a `dotnet build` / `dotnet test` gate
+ * by every file of the repository that matches DOTNET_DEFINITION_PATTERNS
+ * (`pattern` sources) plus the repository files its argv names. What the script itself runs
  * (vitest.config, scripts/test.mjs) is covered by review, not here.
  * Empty when the argv names nothing in the repository (`node --test`).
  *
@@ -441,7 +443,7 @@ async function runSandboxedGate(i: LocalGateInput, base: LocalCheckRecord, now: 
  * `--globalconfig` outside the repository is not a repository file and is
  * not compared; an argv `--script-shell` inside the repository is.
  */
-export type GateDefinitionSource = { path: string; scripts?: string[] };
+export type GateDefinitionSource = { path: string; scripts?: string[]; pattern?: true };
 
 /**
  * The gate's definition sources, or why an npm-style gate's definition
@@ -519,6 +521,70 @@ function scriptSource(manager: string, args: readonly string[], shown: string): 
   return { sources: [{ path: at('package.json'), scripts: [`pre${script}`, script, `post${script}`] }, ...files.map((path) => ({ path }))] };
 }
 
+/**
+ * The repository files that define what `dotnet build` / `dotnet test` does,
+ * as basename patterns matched at any depth, case-insensitively: solutions
+ * and solution filters, project files, every MSBuild import (`*.props`,
+ * `*.targets`, Directory.Build.* among them), MSBuild's automatic response
+ * file, the SDK pin and NuGet's config and lock files. What the build itself
+ * compiles and runs (the code, the tests, a .runsettings or xunit.runner.json)
+ * is covered by review, as vitest.config is for an npm gate.
+ */
+export const DOTNET_DEFINITION_PATTERNS: readonly string[] = [
+  '*.sln', '*.slnx', '*.slnf', '*.csproj', '*.fsproj', '*.vbproj', '*.proj', '*.props', '*.targets',
+  'Directory.Build.rsp', 'global.json', 'nuget.config', 'packages.lock.json', 'dotnet.config',
+];
+
+/** The dotnet subcommands a gate may run: both are defined by the repository's MSBuild files only. */
+const DOTNET_GATE_SUBCOMMANDS = new Set(['build', 'test']);
+/** dotnet options whose value names a file or project the command reads. */
+const DOTNET_PATH_OPTIONS = new Set(['--settings', '-s', '--project', '--solution', '--test-adapter-path']);
+/** dotnet options that take the next argument as a value that names no repository file. */
+const DOTNET_VALUE_OPTIONS = new Set(['-c', '--configuration', '-f', '--framework', '-r', '--runtime', '-o', '--output', '-v', '--verbosity', '--filter', '-l', '--logger', '--collect', '-a', '--arch', '--os', '--results-directory', '-d', '--diag', '-e', '--environment', '--version-suffix', '--blame-hang-timeout', '--blame-crash-dump-type', '--blame-hang-dump-type']);
+
+function dotnetSource(args: readonly string[], shown: string): GateDefinitionSources {
+  const sub = args[0]?.toLowerCase();
+  if (!sub || !DOTNET_GATE_SUBCOMMANDS.has(sub)) {
+    return { sources: [], unresolved: `${shown} runs dotnet ${sub ? JSON.stringify(args[0]) : 'without a subcommand'}; only dotnet build and dotnet test (the subcommand first) have a known definition, the repository's solution, project and MSBuild files` };
+  }
+  // The files the argv itself names inside the repository (a project, a settings file, a response file); paths outside it are trusted config.
+  const named: string[] = [];
+  for (let i = 1; i < args.length; i++) {
+    const a = args[i];
+    if (a === '--') break;
+    let value: string | undefined;
+    if (a.startsWith('@')) value = a.slice(1);
+    else if (!a.startsWith('-')) value = a;
+    else {
+      const eq = a.indexOf('=');
+      const flag = eq > 0 ? a.slice(0, eq) : a;
+      if (DOTNET_PATH_OPTIONS.has(flag)) value = eq > 0 ? a.slice(eq + 1) : args[++i];
+      else if (eq < 0 && DOTNET_VALUE_OPTIONS.has(flag)) i++;
+    }
+    const p = value === undefined ? undefined : repoPath(value);
+    if (p) named.push(p.replace(/\/+$/, ''));
+  }
+  return { sources: [...DOTNET_DEFINITION_PATTERNS.map((path) => ({ path, pattern: true as const })), ...[...new Set(named)].map((path) => ({ path }))] };
+}
+
+/** True when the repository path `path` matches the basename pattern `pattern` (`*.ext` or a file name, case-insensitive). */
+const patternHit = (pattern: string, path: string): boolean => {
+  const base = (path.split('/').pop() ?? path).toLowerCase();
+  const p = pattern.toLowerCase();
+  return p.startsWith('*.') ? base.endsWith(p.slice(1)) && base.length > p.length - 1 : base === p;
+};
+
+/** The paths the pattern sources match whose blob differs between two trees ([path, blob id]): added, removed or changed. */
+export function patternSourceChanges(sources: readonly GateDefinitionSource[], a: ReadonlyArray<readonly [string, string]>, b: ReadonlyArray<readonly [string, string]>): string[] {
+  const patterns = sources.filter((s) => s.pattern).map((s) => s.path);
+  const pick = (tree: ReadonlyArray<readonly [string, string]>) => new Map(tree.filter(([p]) => patterns.some((x) => patternHit(x, p))));
+  const [ma, mb] = [pick(a), pick(b)];
+  return [...new Set([...ma.keys(), ...mb.keys()])].filter((p) => ma.get(p) !== mb.get(p)).sort();
+}
+
+/** A source as a git pathspec (the park message's diff command): a pattern matches at any depth, in any case. */
+export const gateSourcePathspec = (s: GateDefinitionSource): string => (s.pattern ? `':(glob,icase)**/${s.path}'` : s.path);
+
 const npxUnresolved = (shown: string): string => `${shown} runs npx, which fetches and runs registry code that the repository cannot pin`;
 
 export function gateDefinitionSources(gate: readonly string[]): GateDefinitionSources {
@@ -548,6 +614,8 @@ export function gateDefinitionSources(gate: readonly string[]): GateDefinitionSo
     const p = repoPath(target);
     return { sources: p ? [{ path: p }] : [] };
   }
+  // dotnet by name, or the dotnet host by an absolute path outside the repository (a repository path is its own file, below).
+  if (name === 'dotnet' && (!/[\\/]/.test(cmd) || !repoPath(cmd))) return dotnetSource(args, shown);
   // A path names the file the gate runs: a repository file is its own definition; one outside the repository is not the PR's to change.
   if (/[\\/]/.test(cmd)) {
     const own = repoPath(cmd);
@@ -562,11 +630,19 @@ export function gateDefinitionSources(gate: readonly string[]): GateDefinitionSo
 /**
  * The gate's definition at one commit, comparable across commits: per source
  * the named package.json scripts (a file that is not JSON compares by its
- * text), or the file's text. `read` returns a path's content at that commit,
- * undefined when the file is absent there.
+ * text), or the file's text; per `pattern` source every matching path of
+ * the commit's tree with its blob id. `read` returns a path's content at
+ * that commit, undefined when the file is absent there; `list` the commit's
+ * files as [path, blob id] (needed only for pattern sources).
  */
-export function gateDefinition(sources: readonly GateDefinitionSource[], read: (path: string) => string | undefined): string {
+export function gateDefinition(sources: readonly GateDefinitionSource[], read: (path: string) => string | undefined, list?: () => ReadonlyArray<readonly [string, string]>): string {
+  let tree: ReadonlyArray<readonly [string, string]> | undefined;
   return JSON.stringify(sources.map((s) => {
+    if (s.pattern) {
+      if (!list) throw new Error(`the gate definition source ${s.path} is a pattern and needs the commit's file list`);
+      tree ??= list();
+      return [`**/${s.path}`, tree.filter(([p]) => patternHit(s.path, p)).map(([p, oid]) => [p, oid]).sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))];
+    }
     const text = read(s.path);
     if (!s.scripts || text === undefined) return [s.path, text ?? null];
     let scripts: Record<string, unknown> | undefined;
@@ -582,4 +658,4 @@ export function gateDefinition(sources: readonly GateDefinitionSource[], read: (
 
 /** What a gate change touches, for the park message: `package.json scripts lint` or the file path. */
 export const describeGateSources = (sources: readonly GateDefinitionSource[]): string =>
-  sources.map((s) => (s.scripts ? `${s.path} scripts ${s.scripts.join('/')}` : s.path)).join(', ');
+  sources.map((s) => (s.scripts ? `${s.path} scripts ${s.scripts.join('/')}` : s.pattern ? `**/${s.path}` : s.path)).join(', ');
