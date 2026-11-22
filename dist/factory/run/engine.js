@@ -120,6 +120,7 @@ import { createFactoryProgress, HEARTBEAT_MIN_MS } from './progress.js';
 import { acquireFactoryClaim, claimBusyMessage, factoryClaimHolder, factoryClaimRepo, isShallowClaimRepo, localFactoryClaimRepo, shallowClaimWarning, settleFactoryClaim, trustedFactoryClaimRepo, trustedLocalFactoryClaimRepo } from './claims.js';
 import { compareSnapshots, replaceObjectsProblem, samePath, snapshotRepo, verifyReviewWorktree } from './review-guard.js';
 import { GATE_INSTALL_GATE, IMPORT_REFUSED_GATE, LAYOUT_UNSUPPORTED_GATE, PRIVATE_STORE_GATE, PrivateRun, REPO_GUARD_GATE, resolveGateInstall, resolveRunLayout } from './private-run.js';
+import { classifyNugetFailure, dotnetRestoreArgs, GATE_INSTALL_SANDBOXED_HINT, NUGET_PRIVATE_FEED_UNSUPPORTED, nugetRunPackagesDir } from './nuget-restore.js';
 import { lockfileUnchanged, PRIVATE_GIT_TIMEOUT_MS, PrivateRepoTampered, PrivateStoreError, userRepoGuardSnapshot } from './private-store.js';
 import { parseReviewOutput, reviewComment, verdictNotes } from './review-output.js';
 import { findPlanLink, hasAcceptanceCriteria, issueAuthorTrusted } from './plan-rules.js';
@@ -415,7 +416,7 @@ export const windowsGitTransportFailure = (output, platform = process.platform) 
  */
 export const windowsJunctionReadDenied = (output, platform = process.platform) => platform === 'win32' && !!output && /Cannot read directory "[^"\r\n]*node_modules[\\/][^"\r\n]*": Access is denied\./.test(output);
 /** What the gate-sandbox-incompatible park says for a dotnet command (docs/REFERENCE.md, .NET repositories). */
-export const DOTNET_SANDBOX_ADVICE = 'Your dotnet command fails in the sandbox on the base. The sandbox has no network, so every NuGet package must already be in the NuGet global packages folder (NUGET_PACKAGES, else ~/.nuget/packages): run dotnet restore on the base yourself once. Private feeds and credentials in your NuGet.Config are not available there. NuGet\'s audit cannot reach the feed and warns NU1900, which fails a project with TreatWarningsAsErrors: set NuGetAudit to false there (or pass -p:NuGetAudit=false in the gate). The engine appends -m:1 to every MSBuild command (worker nodes cannot connect in the Windows sandbox; the last -m wins), so a hang comes from elsewhere, such as a task run with TaskHostFactory. dotnet test on Microsoft.Testing.Platform (global.json test.runner) does not run in the Windows sandbox: its test app cannot connect back to dotnet test';
+export const DOTNET_SANDBOX_ADVICE = 'Your dotnet command fails in the sandbox on the base. The sandbox has no network, so every NuGet package must already be in the NuGet global packages folder (NUGET_PACKAGES, else ~/.nuget/packages): run dotnet restore on the base yourself once, or set factory.run.gateInstall "sandboxed" in your user config so the engine restores a local gate\'s missing packages from nuget.org in the OS sandbox (a gate that fails restoring never reaches this base check). Private feeds and credentials in your NuGet.Config are not available there. NuGet\'s audit cannot reach the feed and warns NU1900, which fails a project with TreatWarningsAsErrors: set NuGetAudit to false there (or pass -p:NuGetAudit=false in the gate). The engine appends -m:1 to every MSBuild command (worker nodes cannot connect in the Windows sandbox; the last -m wins), so a hang comes from elsewhere, such as a task run with TaskHostFactory. dotnet test on Microsoft.Testing.Platform (global.json test.runner) does not run in the Windows sandbox: its test app cannot connect back to dotnet test';
 /** What the gate-sandbox-incompatible park of a failing base calibration tells the human to do. */
 export function sandboxIncompatibleAdvice(tail, platform = process.platform, argv) {
     if (isDotnetExe(argv?.[0]))
@@ -1138,6 +1139,10 @@ class FactoryEngine {
      * copies and the prepare checks' process records go: the run dir in the
      * private layout (review-483 L8), the repository's OMC state root otherwise.
      */
+    /** The run's own NuGet packages folder (nuget-restore.ts): under the gate job root, removed with the run (omg factory run clean). */
+    nugetPackagesDir() {
+        return nugetRunPackagesDir(this.gateJobRoot(), runSlug(this.key));
+    }
     gateJobRoot() {
         const p = this.privateRun();
         return p ? join(p.layout.runDir, 'gates') : sandboxJobRoot(this.o.root);
@@ -1164,7 +1169,11 @@ class FactoryEngine {
         const container = settings && this.containerImageId ? { ...settings, image: this.containerImageId } : settings;
         // A dotnet command in a Microsoft.Testing.Platform repository (the trusted base's global.json): no -m:1 on dotnet test.
         const mtp = isDotnetExe(req.exe) && this.dotnetMtpBase();
-        const r = this.o.gateSandbox({ ...req, ...(mtp ? { dotnetMtp: true } : {}), nodeModulesTarget: join(this.o.root, 'node_modules'), ...(nested.length > 0 ? { nestedNodeModulesTargets: nested } : {}), ...(p ? { mainRoot: this.o.root, jobRoot: this.gateJobRoot() } : {}), ...(container ? { container, runLabel: containerRunLabel(this.o.root, this.key) } : {}) });
+        // The run's own NuGet packages folder, once the restore step made it: every dotnet command of the run reads it
+        // (the real cache its read-only fallback); only the restore step (it sets the field itself) writes it.
+        const nugetDir = this.nugetPackagesDir();
+        const nuget = !req.nugetPackages && isDotnetExe(req.exe) && existsSync(nugetDir) ? { nugetPackages: { dir: nugetDir, writable: false } } : {};
+        const r = this.o.gateSandbox({ ...req, ...nuget, ...(mtp ? { dotnetMtp: true } : {}), nodeModulesTarget: join(this.o.root, 'node_modules'), ...(nested.length > 0 ? { nestedNodeModulesTargets: nested } : {}), ...(p ? { mainRoot: this.o.root, jobRoot: this.gateJobRoot() } : {}), ...(container ? { container, runLabel: containerRunLabel(this.o.root, this.key) } : {}) });
         if (!container)
             return r;
         return r.then((out) => {
@@ -1655,6 +1664,12 @@ class FactoryEngine {
         if (this.gatesSandbox(loaded).container)
             return null;
         const rule = lockfileUnchanged(p.repo, baseSha, head, p.ctx);
+        // A .NET repository (the local gate runs dotnet) with no npm lockfile at the base or the head: nothing for npm to
+        // install; its NuGet packages come from the restore step before the dotnet gate (nugetFailureNext), not from npm ci.
+        if (rule.lockfiles.length === 0 && rule.changed.length === 0 && this.dotnetRepo()) {
+            this.save((x) => ({ ...x, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: 'no npm lockfile in this .NET repository: the prepare checkout gets no node_modules and no npm ci' }] }));
+            return null;
+        }
         if (rule.policy === 'junction') {
             const failed = this.linkGateTree(path, baseSha);
             return failed ? this.treeCopyPark(failed) : null;
@@ -3130,6 +3145,60 @@ class FactoryEngine {
         const { sources } = gateDefinitionSources(gate);
         if (sources.length === 0)
             return false;
+        const { at, treeAt } = this.gateDefinitionHasher(sources);
+        const head = at(cand);
+        if (this.gateDefinitionPinned(s, head, at))
+            return false;
+        if (allowed === head) {
+            this.save((x) => ({ ...x, gateChangeApproved: head, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `gate definition change in ${cand.slice(0, 12)} accepted (--allow-gate-change): ${describeGateSources(sources)}` }] }));
+            return false;
+        }
+        const stale = allowed !== undefined ? ' (--allow-gate-change accepted only the definition the run parked on, and this one differs)' : '';
+        // A pattern source (a dotnet gate) is named by the files that differ, not by its patterns.
+        const plain = sources.filter((x) => !x.pattern);
+        const changed = sources.some((x) => x.pattern) ? patternSourceChanges(sources, treeAt(s.baseSha), treeAt(cand)) : [];
+        const named = [...(plain.length > 0 ? [describeGateSources(plain)] : []), ...changed].join(', ') || describeGateSources(sources);
+        const specs = [...new Set([...plain.map(gateSourcePathspec), ...changed.map(shellPath)])];
+        this.save((x) => setGate(x, 'gate-definition-changed', `the change redefines the local gate "${gate.join(' ')}" (${named} differ from ${s.base})${stale}; offline the gate is the only check, so nothing was pushed. Inspect it with git -C ${this.o.root} diff ${s.baseSha.slice(0, 12)} ${cand.slice(0, 12)} -- ${(specs.length > 0 ? specs : sources.map(gateSourcePathspec)).join(' ')}, then rerun ${this.resume} --allow-gate-change to accept it, or ${cancelCommand(this.key)}`, this.iso(), { definition: head }));
+        return true;
+    }
+    /**
+     * The definition hash `head` (gateDefinitionHasher) is one the run trusts:
+     * the run's base's, the one --allow-gate-change accepted
+     * (gateChangeApproved), or the mirror's current base's.
+     */
+    gateDefinitionPinned(s, head, at) {
+        if (head === at(s.baseSha) || head === s.gateChangeApproved)
+            return true;
+        let mirrorBase;
+        try {
+            mirrorBase = readMirrorRef(this.o.forge.config.repo.url, s.base);
+        }
+        catch { /* compared with the run's base only */ }
+        return !!mirrorBase && HEX40.test(mirrorBase) && mirrorBase !== s.baseSha && head === at(mirrorBase);
+    }
+    /**
+     * True when the local gate's definition files at `sha` (the commit the
+     * dotnet restore step would evaluate with the network on) are pinned, as
+     * gateDefinitionParked decides at publish: unchanged from the base (or the
+     * mirror's base) or exactly the change a human accepted. A gate with no
+     * definition sources counts as pinned; one that cannot be pinned does not.
+     */
+    gateDefinitionTrustedAt(sha) {
+        const s = this.state;
+        const gate = this.o.forge?.config.kind === 'local' ? this.o.forge.config.local?.gate : undefined;
+        if (!gate || gate.length === 0 || !s.baseSha)
+            return false;
+        const { sources, unresolved } = gateDefinitionSources(gate);
+        if (unresolved)
+            return false;
+        if (sources.length === 0)
+            return true;
+        const { at } = this.gateDefinitionHasher(sources);
+        return this.gateDefinitionPinned(s, at(sha), at);
+    }
+    /** The definition hash of `sources` at a commit (`at`) and the commit's tree (`treeAt`), read from your repository. */
+    gateDefinitionHasher(sources) {
         // A dotnet gate's pattern sources: the commit's whole tree as [path, blob id], read once per commit.
         const trees = new Map();
         const treeAt = (sha) => {
@@ -3151,28 +3220,7 @@ class FactoryEngine {
             const r = this.exec('git', ['show', `${sha}:${path}`], { cwd: this.o.root, env: TRUSTED_READ_ENV });
             return r.status === 0 ? r.stdout : undefined;
         }, () => treeAt(sha)), 'utf8').digest('hex');
-        const head = at(cand);
-        if (head === at(s.baseSha) || head === s.gateChangeApproved)
-            return false;
-        let mirrorBase;
-        try {
-            mirrorBase = readMirrorRef(this.o.forge.config.repo.url, s.base);
-        }
-        catch { /* compared with the run's base only */ }
-        if (mirrorBase && HEX40.test(mirrorBase) && mirrorBase !== s.baseSha && head === at(mirrorBase))
-            return false;
-        if (allowed === head) {
-            this.save((x) => ({ ...x, gateChangeApproved: head, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `gate definition change in ${cand.slice(0, 12)} accepted (--allow-gate-change): ${describeGateSources(sources)}` }] }));
-            return false;
-        }
-        const stale = allowed !== undefined ? ' (--allow-gate-change accepted only the definition the run parked on, and this one differs)' : '';
-        // A pattern source (a dotnet gate) is named by the files that differ, not by its patterns.
-        const plain = sources.filter((x) => !x.pattern);
-        const changed = sources.some((x) => x.pattern) ? patternSourceChanges(sources, treeAt(s.baseSha), treeAt(cand)) : [];
-        const named = [...(plain.length > 0 ? [describeGateSources(plain)] : []), ...changed].join(', ') || describeGateSources(sources);
-        const specs = [...new Set([...plain.map(gateSourcePathspec), ...changed.map(shellPath)])];
-        this.save((x) => setGate(x, 'gate-definition-changed', `the change redefines the local gate "${gate.join(' ')}" (${named} differ from ${s.base})${stale}; offline the gate is the only check, so nothing was pushed. Inspect it with git -C ${this.o.root} diff ${s.baseSha.slice(0, 12)} ${cand.slice(0, 12)} -- ${(specs.length > 0 ? specs : sources.map(gateSourcePathspec)).join(' ')}, then rerun ${this.resume} --allow-gate-change to accept it, or ${cancelCommand(this.key)}`, this.iso(), { definition: head }));
-        return true;
+        return { at, treeAt };
     }
     async review() {
         const s = this.state;
@@ -4195,6 +4243,13 @@ class FactoryEngine {
                     this.noteCredentialFilesReadable(head);
                 if (r.status === 0 && !r.timedOut)
                     return { status: 0, stdout: redactGateOutput(r.output), stderr: '' };
+                // A dotnet check that could not restore its NuGet packages judged no code: a park, never a ci-fix lane. The
+                // networked restore runs only before the local gate (after its checkout checks), never between prepare's checks.
+                const nuget = isDotnetExe(c.exe) ? classifyNugetFailure(r.output) : null;
+                if (nuget) {
+                    const feed = nuget.kind === 'private-feed' ? `; ${NUGET_PRIVATE_FEED_UNSUPPORTED} (${nuget.sources.join(', ') || 'a feed answered 401 or 403'})` : '';
+                    return stop({ name: GATE_INSTALL_GATE, reason: `${label} could not restore its NuGet packages on ${head.slice(0, 12)} (${nuget.codes.join(', ')}), which says nothing about the code, so no ci-fix lane was started${feed}. Prepare checks get no restore step (only the local gate does, with factory.run.gateInstall "sandboxed"): run the dotnet command as the local gate instead of a prepare check, or restore the PR branch's packages into your NuGet global packages folder yourself; then rerun ${this.resume}`, detail: parkTail(r.output) });
+                }
                 const park = await this.calibrateGate(c, at.baseSha, at.commonGitDir, PREPARE_CHECK_TIMEOUT_MS, label, head);
                 // The base failed opening a package dir through the gate tree's junction (esbuild on Windows): the same check
                 // again, still in the sandbox, on a copied tree; its failure then counts only against a base that passes there.
@@ -4875,6 +4930,104 @@ class FactoryEngine {
         const commit = this.gateCfg?.loaded.config?.trustedBaseCommit ?? this.state.baseSha;
         return this.mtpGateParks(gate, this.gatesSandboxAt(commit), `the local gate "${gate.join(' ')}" could never pass there and ${outcome}`);
     }
+    /** The head whose next gate run starts with the networked dotnet restore (nugetFailureNext asked; ensureLocalGate runs it). */
+    nugetRestoreDue;
+    /** Heads the networked dotnet restore already ran for in this process: once per head, then a park. */
+    nugetRestoreTried = new Set();
+    /**
+     * What follows a dotnet gate run that failed restoring NuGet packages
+     * (classifyNugetFailure; its FAILURE record is already gone, so no ci-fix
+     * lane starts): `restore` (factory.run.gateInstall "sandboxed", an OS
+     * sandbox gate, not yet tried for this head), else the park.
+     */
+    nugetFailureNext(head, gate, nuget, sandboxed, tail) {
+        const what = `the local gate \`${gate.join(' ')}\` could not restore its NuGet packages on ${head.slice(0, 12)} (${nuget.codes.join(', ')}), which says nothing about the code, so no ci-fix lane was started`;
+        const yourself = `restore the PR branch's packages into your NuGet global packages folder yourself (dotnet restore on that branch; the sandbox reads that folder), then rerun ${this.resume}; or ${cancelCommand(this.key)}`;
+        const detail = tail ? parkTail(tail) : undefined;
+        const park = (reason) => ({ name: GATE_INSTALL_GATE, reason, ...(detail ? { detail } : {}) });
+        if (nuget.kind === 'private-feed') {
+            return park(`${what}: ${NUGET_PRIVATE_FEED_UNSUPPORTED} (${nuget.sources.join(', ') || 'a feed answered 401 or 403'}); the sandbox never gets your NuGet.Config or its credentials. Make the packages come from nuget.org, or ${yourself}`);
+        }
+        if (!sandboxed)
+            return park(`${what}; the gate ran without the OS sandbox or in the gate container, where the engine runs no restore step: check that the packages and versions exist and the feed is reachable, or ${yourself}`);
+        if (this.nugetRestoreTried.has(head))
+            return park(`${what}, even after the sandboxed dotnet restore for this head ran${localDetailNote(this.key, 'the gate output')}; ${yourself}`);
+        let mode;
+        try {
+            mode = resolveGateInstall(this.runUserConfig(), this.trustedBaseLayer(this.gateCfg?.loaded.config?.trustedBaseCommit)).mode;
+        }
+        catch (error) {
+            return park(`${what}, and factory.run.gateInstall could not be read: ${errText(error)}; fix it, then rerun ${this.resume}`);
+        }
+        if (mode === 'park')
+            return park(`${what}. The OS sandbox has no network, so every package must already be in your NuGet global packages folder (NUGET_PACKAGES, else ~/.nuget/packages). To fetch the missing ones from nuget.org, ${GATE_INSTALL_SANDBOXED_HINT}, then rerun ${this.resume}; or ${yourself}`);
+        return 'restore';
+    }
+    /**
+     * The networked dotnet restore before a dotnet gate (nuget-restore.ts):
+     * `dotnet restore <the gate's targets> -m:1` in the prepare checkout,
+     * through the gate's OS sandbox runner with only NUGET_HOSTS reachable,
+     * writing new packages into the run's own packages folder (the real cache
+     * the read-only fallback). Restore evaluates the repository's MSBuild
+     * files with the network on, so it runs only when the gate's definition
+     * files at `head` are pinned (gateDefinitionTrustedAt: unchanged from the
+     * base or the change a human accepted with --allow-gate-change), after
+     * ensureLocalGate's checkout checks and the sandboxed clean, and with no
+     * recorded prepare or gate process still running there. Null when it
+     * passed; else the park (never a ci-fix lane).
+     */
+    async nugetRestore(head, gate, checkout, common, gates) {
+        const what = `the gate needs NuGet packages that are not in your NuGet global packages folder, and the sandboxed dotnet restore`;
+        if (gates.mode !== 'enforced' || gates.container)
+            return { name: GATE_INSTALL_GATE, reason: `${what} runs only for gates in the OS sandbox; rerun ${this.resume}` };
+        if (!this.gateDefinitionTrustedAt(head)) {
+            return { name: GATE_INSTALL_GATE, reason: `${what} did not run: the gate's definition files at ${head.slice(0, 12)} are neither ${this.state.base}'s nor the change accepted with --allow-gate-change, and dotnet restore evaluates them with the network on; inspect the project files on the branch, then rerun ${this.resume}, or ${cancelCommand(this.key)}` };
+        }
+        let live;
+        try {
+            live = this.liveCheckoutProcs(head);
+        }
+        catch (error) {
+            return { name: 'gates', reason: `${what} did not run: ${errText(error)}` };
+        }
+        if (live.length > 0)
+            return { name: 'gates', reason: `${what} did not run: process(es) a prepare check or the local gate started in the engine's prepare checkout ${checkout} still run (pid ${live.join(', ')}); stop them (Task Manager, or kill -9 ${live.join(' ')}), then rerun ${this.resume}` };
+        const args = dotnetRestoreArgs(gate.slice(1));
+        if (!args)
+            return { name: GATE_INSTALL_GATE, reason: `${what} cannot be derived from the gate \`${gate.join(' ')}\` (it runs no MSBuild); restore the packages yourself, then rerun ${this.resume}` };
+        const argv = [gate[0], ...args];
+        const target = resolveLocalGateArgv(argv, { cwd: checkout, subject: 'the sandboxed dotnet restore', configKey: 'factory.run.gateInstall' });
+        if ('missing' in target)
+            return { name: GATE_INSTALL_GATE, reason: `${what} cannot start (${target.missing}); rerun ${this.resume}` };
+        const dir = this.nugetPackagesDir();
+        mkdirSync(dir, { recursive: true });
+        const linkBefore = checkoutGitLink(checkout).hash;
+        const started = this.clock();
+        let r;
+        try {
+            r = this.o.gateSandbox
+                ? await this.sandboxRun({ purpose: 'restore', argv, exe: target.exe, args: target.args, cwd: checkout, commonGitDir: common, timeoutMs: this.localGateTimeout() * 60_000, network: 'nuget', nugetPackages: { dir, writable: true }, ...(gates.requireDeniedPaths ? { requireDeniedPaths: true } : {}) })
+                : { ran: false, reason: 'no OS sandbox runner was given to the engine' };
+        }
+        catch (error) {
+            r = { ran: false, reason: errText(error) };
+        }
+        if (checkoutGitLink(checkout).hash !== linkBefore) {
+            return { name: 'lane-tampered', reason: `the engine's prepare checkout ${checkout} has a .git file that changed while the sandboxed dotnet restore ran, so the local gate did not run; inspect and remove it by hand, then rerun ${this.resume}` };
+        }
+        if (!r.ran)
+            return { name: GATE_INSTALL_GATE, reason: `${what} could not run in the OS sandbox (${r.reason}); fix that, or set factory.run.gateInstall "park", then rerun ${this.resume}` };
+        if (r.status !== 0 || r.timedOut) {
+            const failure = classifyNugetFailure(r.output);
+            const why = failure?.kind === 'private-feed'
+                ? `${NUGET_PRIVATE_FEED_UNSUPPORTED} (${failure.sources.join(', ') || 'a feed answered 401 or 403'}), and the sandbox never gets your NuGet.Config or its credentials`
+                : `a package or version the project files name may not exist on nuget.org${failure ? ` (${failure.codes.join(', ')})` : ''}`;
+            return { name: GATE_INSTALL_GATE, reason: `${what} with only api.nuget.org reachable failed (exit ${r.status}${r.timedOut ? ', timed out' : ''}): ${why}. That needs a human, not a ci-fix lane${localDetailNote(this.key, 'its output')}: fix the package references on the branch (a change to them parks at gate-definition-changed for your approval), then rerun ${this.resume}; or ${cancelCommand(this.key)}`, detail: parkTail(r.output) };
+        }
+        const seconds = Math.round((this.clock() - started) / 1000);
+        this.save((x) => ({ ...x, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `dotnet restore ran in the OS sandbox with only api.nuget.org reachable in the prepare checkout on ${head.slice(0, 12)} (${seconds} s); new packages went to the run's own packages folder, and the gate runs again offline` }] }));
+        return null;
+    }
     async ensureLocalGate(head) {
         const f = this.o.forge;
         const stateDir = this.localGateStateDir();
@@ -4971,6 +5124,17 @@ class FactoryEngine {
         // A dotnet gate: leftover build state under bin/, obj/ and artifacts/ is removed by a step in the OS sandbox, then verified.
         if (dotnetGate && !(await this.dotnetBuildStateReady(head, checkout, gitArgsRead, read, gates, common)))
             return false;
+        // The networked dotnet restore the last offline run of this gate asked for (nugetFailureNext): only here, after the
+        // checkout checks above and the sandboxed clean, and only on pinned definitions (nugetRestore checks them itself).
+        if (dotnetGate && this.nugetRestoreDue === head) {
+            this.nugetRestoreDue = undefined;
+            this.nugetRestoreTried.add(head);
+            const park = await this.nugetRestore(head, gate, checkout, common, gates);
+            if (park) {
+                this.gate(park.name, park.reason, park.detail);
+                return false;
+            }
+        }
         this.progress.heartbeat('gates', `local gate ${gate.join(' ')} on ${head.slice(0, 12)}`, this.fields());
         const input = { stateDir, root: this.o.root, head, gate, timeoutMinutes, checkout, ...(this.o.localGate ? { runner: this.o.localGate } : {}), now: () => new Date(this.clock()) };
         // The checkout's gitfile around the gate (the PR's code): a change parks at lane-tampered. Before it, the gitfile must
@@ -5062,6 +5226,18 @@ class FactoryEngine {
             return false;
         if (record.sandboxNote)
             this.noteCredentialFilesReadable(head);
+        // A dotnet gate that could not restore its NuGet packages judged no code: never a FAILURE for a ci-fix lane.
+        const nuget = dotnetGate && record.state === 'FAILURE' ? classifyNugetFailure(record.tail) : null;
+        if (nuget) {
+            rmSync(localCheckRecordPath(stateDir, this.o.root, head), { force: true });
+            const next = this.nugetFailureNext(head, gate, nuget, record.sandbox === 'enforced' && !gates.container, record.tail);
+            if (next === 'restore') {
+                this.nugetRestoreDue = head;
+                return this.ensureLocalGate(head);
+            }
+            this.gate(next.name, next.reason, next.detail);
+            return false;
+        }
         if (record.sandbox !== 'enforced' || record.state !== 'FAILURE')
             return true;
         // A failure in the sandbox counts only when the gate passes in the sandbox on the trusted base itself.

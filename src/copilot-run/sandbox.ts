@@ -376,6 +376,20 @@ export interface SandboxPolicyContext {
   sshAuthSock?: string;
   /** The CA bundle files and cert dirs the caller's env names (proxyCaEnv), granted read-only like the tool dirs. */
   extraReadonly?: string[];
+  /**
+   * Engine-made dirs outside the worktree a write session may write (the
+   * factory's dotnet restore step: the run's own NuGet packages dir,
+   * nuget-restore.ts). Never from config; a path that holds the real home,
+   * the worktree, the common git dir or the job dir, or a filesystem root,
+   * throws.
+   */
+  extraReadwrite?: string[];
+  /**
+   * The only hosts a write session may reach, instead of
+   * settings.writeNetwork (the factory's dotnet restore step: NUGET_HOSTS).
+   * Never from config.
+   */
+  onlyHosts?: readonly string[];
   /** The OMC global state root to deny (default getGlobalOmcStateRoot()); a test seam. */
   omcStateRoot?: string;
   /**
@@ -411,6 +425,8 @@ export interface SandboxPolicyContext {
 }
 
 export const REGISTRY_HOSTS: readonly string[] = ['registry.npmjs.org', '*.npmjs.org'];
+/** The hosts the factory's sandboxed dotnet restore step reaches (nuget.org's feed serves the index and the packages). */
+export const NUGET_HOSTS: readonly string[] = ['api.nuget.org'];
 
 /** `real` (a realpath) is the realpath of `want`; false when `want` cannot be resolved. Case-folded on win32. */
 function sameRealPath(real: string, want: string, platform: NodeJS.Platform): boolean {
@@ -684,8 +700,13 @@ export function buildSandboxConfig(profile: SandboxProfile, ctx: SandboxPolicyCo
     const allowed = new Set((ctx.nestedNodeModulesTargets ?? []).flatMap((p) => { try { return [fold(realpathSync.native(p))]; } catch { return []; } }));
     nested = (tree.nested ?? []).filter((p) => allowed.has(fold(p)));
   }
+  for (const p of ctx.extraReadwrite ?? []) {
+    if (P.dirname(P.resolve(p)) === P.resolve(p) || [ctx.realHome, ctx.worktree, ctx.commonGitDir, ctx.jobDir].some((x) => x && isUnderRoot(x, p, ctx.platform))) {
+      throw new Error(`the read-write grant ${p} is a filesystem root or holds the home, the worktree, the git dir or the job dir`);
+    }
+  }
   const filesystem: SandboxConfig['userPolicy']['filesystem'] = {
-    readwritePaths: [ctx.worktree, ...laneHome, ...(ctx.hostCommits ? [] : laneGitWritePaths(ctx)), ...settings.extraReadwritePaths],
+    readwritePaths: [ctx.worktree, ...laneHome, ...(ctx.hostCommits ? [] : laneGitWritePaths(ctx)), ...settings.extraReadwritePaths, ...(ctx.extraReadwrite ?? [])],
     readonlyPaths: [ctx.commonGitDir, ...plugin, gitConfigDir, ...pkgCache, ...gitLinks, ...(nm ? [nm] : []), ...nested, ...tools, ...settings.extraReadonlyPaths],
   };
   if (host.capabilities.denied_paths === true) {
@@ -741,9 +762,11 @@ export function buildSandboxConfig(profile: SandboxProfile, ctx: SandboxPolicyCo
       filesystem.deniedPaths.push(...sockets.filter((s) => s !== '/' && !holdsGrant(s)));
     }
   }
-  const network: SandboxConfig['userPolicy']['network'] = settings.writeNetwork === 'registry'
-    ? { allowOutbound: true, allowedHosts: [...REGISTRY_HOSTS, ...settings.allowedHosts], allowLocalNetwork: ctx.platform === 'win32' }
-    : { allowOutbound: false, allowLocalNetwork: false };
+  const network: SandboxConfig['userPolicy']['network'] = ctx.onlyHosts
+    ? { allowOutbound: true, allowedHosts: [...ctx.onlyHosts], allowLocalNetwork: ctx.platform === 'win32' }
+    : settings.writeNetwork === 'registry'
+      ? { allowOutbound: true, allowedHosts: [...REGISTRY_HOSTS, ...settings.allowedHosts], allowLocalNetwork: ctx.platform === 'win32' }
+      : { allowOutbound: false, allowLocalNetwork: false };
   return { enabled: true, addCurrentWorkingDirectory: true, ...common, userPolicy: { filesystem, network } };
 }
 

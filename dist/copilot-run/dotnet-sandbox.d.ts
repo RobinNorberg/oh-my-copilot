@@ -100,14 +100,30 @@ export declare function nugetPackagesGrant(env: NodeJS.ProcessEnv, realHome: str
     note?: string;
 };
 /**
+ * A factory run's own NuGet packages folder (engine-made, outside every
+ * checkout; factory/run/nuget-restore.ts): the dotnet restore step writes
+ * new packages there (`writable`), every other dotnet command of the run
+ * reads it.
+ */
+export interface RunNugetPackages {
+    dir: string;
+    writable: boolean;
+}
+/**
  * The variables a sandboxed dotnet needs, for an env whose USERPROFILE is
  * already the job's profile (relocatedProfileEnv), and the paths to grant
  * read-only. `hostEnv` and `realHome` locate the NuGet packages folder;
- * `notes` say why it was refused (nugetPackagesGrant).
+ * `notes` say why it was refused (nugetPackagesGrant). With `run` (a
+ * factory run's own packages folder, RunNugetPackages) NUGET_PACKAGES names
+ * that folder and the real one becomes NUGET_FALLBACK_PACKAGES, still
+ * read-only: NuGet writes a new package only into its global packages
+ * folder, so the real cache is never written (a read-only grant could not
+ * take one anyway); `readwrite` holds the run's folder when it is writable.
  */
-export declare function dotnetSandboxEnv(profile: string, hostEnv: NodeJS.ProcessEnv, realHome: string, platform?: NodeJS.Platform): {
+export declare function dotnetSandboxEnv(profile: string, hostEnv: NodeJS.ProcessEnv, realHome: string, platform?: NodeJS.Platform, run?: RunNugetPackages): {
     env: Record<string, string>;
     readonly: string[];
+    readwrite: string[];
     notes: string[];
 };
 /** True when a sandbox.allowedHosts entry lets NuGet reach nuget.org's feed (`api.nuget.org`, `*.nuget.org`). */

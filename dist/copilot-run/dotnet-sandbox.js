@@ -170,17 +170,24 @@ export function nugetPackagesGrant(env, realHome, protectedRoots = omcRoots(real
  * The variables a sandboxed dotnet needs, for an env whose USERPROFILE is
  * already the job's profile (relocatedProfileEnv), and the paths to grant
  * read-only. `hostEnv` and `realHome` locate the NuGet packages folder;
- * `notes` say why it was refused (nugetPackagesGrant).
+ * `notes` say why it was refused (nugetPackagesGrant). With `run` (a
+ * factory run's own packages folder, RunNugetPackages) NUGET_PACKAGES names
+ * that folder and the real one becomes NUGET_FALLBACK_PACKAGES, still
+ * read-only: NuGet writes a new package only into its global packages
+ * folder, so the real cache is never written (a read-only grant could not
+ * take one anyway); `readwrite` holds the run's folder when it is writable.
  */
-export function dotnetSandboxEnv(profile, hostEnv, realHome, platform = process.platform) {
+export function dotnetSandboxEnv(profile, hostEnv, realHome, platform = process.platform, run) {
     const grant = nugetPackagesGrant(hostEnv, realHome, omcRoots(realHome), platform);
     const packages = grant.dir;
+    const runDir = run ? resolve(run.dir) : null;
+    const nuget = runDir ? { NUGET_PACKAGES: runDir, ...(packages ? { NUGET_FALLBACK_PACKAGES: packages } : {}) } : packages ? { NUGET_PACKAGES: packages } : {};
     return {
         notes: grant.note ? [grant.note] : [],
         env: {
             // NuGet's user config dir: the job's empty profile, never the real %APPDATA%\NuGet.
             ...(platform === 'win32' ? { APPDATA: join(resolve(profile), 'AppData', 'Roaming') } : {}),
-            ...(packages ? { NUGET_PACKAGES: packages } : {}),
+            ...nuget,
             DOTNET_CLI_TELEMETRY_OPTOUT: '1',
             DOTNET_NOLOGO: '1',
             // The MSBuild server and reused nodes talk over the same pipes the sandbox blocks.
@@ -190,7 +197,8 @@ export function dotnetSandboxEnv(profile, hostEnv, realHome, platform = process.
             UseSharedCompilation: 'false',
             EnableSourceControlManagerQueries: 'false',
         },
-        readonly: packages ? [packages] : [],
+        readonly: [...(packages ? [packages] : []), ...(runDir && !run.writable ? [runDir] : [])],
+        readwrite: runDir && run.writable ? [runDir] : [],
     };
 }
 /** True when a sandbox.allowedHosts entry lets NuGet reach nuget.org's feed (`api.nuget.org`, `*.nuget.org`). */

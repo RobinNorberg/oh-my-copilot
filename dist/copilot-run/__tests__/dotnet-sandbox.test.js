@@ -127,6 +127,26 @@ describe('dotnetSandboxEnv', () => {
         // Nothing of the real %APPDATA% (NuGet.Config, which can hold feed credentials) is named.
         expect(JSON.stringify(out)).not.toContain(JSON.stringify(join(home, 'AppData')).slice(1, -1));
     });
+    it('a run packages folder: NUGET_PACKAGES names it, your cache becomes the read-only NUGET_FALLBACK_PACKAGES; writable only for the restore step', () => {
+        const home = join(dir, 'home');
+        const cache = join(home, '.nuget', 'packages');
+        mkdirSync(cache, { recursive: true });
+        const run = join(dir, 'gates', 'nuget', 'issue-7');
+        const restore = dotnetSandboxEnv(join(dir, 'profile'), {}, home, 'win32', { dir: run, writable: true });
+        expect(restore.env).toMatchObject({ NUGET_PACKAGES: run, NUGET_FALLBACK_PACKAGES: cache });
+        expect(restore.readonly).toEqual([cache]);
+        expect(restore.readwrite).toEqual([run]);
+        const gate = dotnetSandboxEnv(join(dir, 'profile'), {}, home, 'win32', { dir: run, writable: false });
+        expect(gate.env).toMatchObject({ NUGET_PACKAGES: run, NUGET_FALLBACK_PACKAGES: cache });
+        expect(gate.readonly).toEqual([cache, run]);
+        expect(gate.readwrite).toEqual([]);
+        // Without the real cache: the run's folder alone, no fallback.
+        const bare = dotnetSandboxEnv(join(dir, 'profile'), {}, join(dir, 'nohome'), 'linux', { dir: run, writable: true });
+        expect(bare.env.NUGET_PACKAGES).toBe(run);
+        expect(bare.env.NUGET_FALLBACK_PACKAGES).toBeUndefined();
+        // No run folder: as before, nothing writable.
+        expect(dotnetSandboxEnv(join(dir, 'profile'), {}, home, 'win32').readwrite).toEqual([]);
+    });
     it('elsewhere: no APPDATA; no packages folder, no grant', () => {
         const out = dotnetSandboxEnv(join(dir, 'profile'), {}, join(dir, 'home'), 'linux');
         expect(out.env.APPDATA).toBeUndefined();

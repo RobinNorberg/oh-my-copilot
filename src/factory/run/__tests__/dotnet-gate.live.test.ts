@@ -8,7 +8,9 @@
  * Windows (the only verified host), without `dotnet` on PATH, when
  * the sandbox cannot start (no copilot CLI or SDK), and, for the test case,
  * when the xunit packages are not already in the NuGet global packages folder
- * (the sandbox has no network, so nothing is restored from a feed).
+ * (the sandbox has no network, so nothing is restored from a feed). The
+ * restore case reaches nuget.org (api.nuget.org only) and writes only a
+ * throwaway packages dir; it skips when your cache already holds its package.
  */
 import { spawnSync } from 'node:child_process';
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
@@ -18,6 +20,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { nugetPackagesDir } from '../../../copilot-run/dotnet-sandbox.js';
 import { resolveLocalGateArgv } from '../../../factory/run/local-gate.js';
+import { classifyNugetFailure, dotnetRestoreArgs } from '../../../factory/run/nuget-restore.js';
 import { resolveDefaultPluginRoot } from '../../../smoke/copilot-session-env.js';
 import { createSandboxRunner } from '../../../factory/run/sandbox-exec.js';
 import { findOnPath } from '../../../utils/windows-search.js';
@@ -28,6 +31,9 @@ const dotnet = onWindows ? findOnPath('dotnet', { ...process.env, PATHEXT: '.EXE
 const XUNIT = [['microsoft.net.test.sdk', '17.14.1'], ['xunit', '2.9.3'], ['xunit.runner.visualstudio', '3.1.4']] as const;
 const packages = nugetPackagesDir(process.env, homedir());
 const xunitCached = !!packages && XUNIT.every(([id, v]) => existsSync(join(packages, id, v)));
+/** A small package with no dependencies on net10.0 that the restore case fetches; skipped when your cache already has it. */
+const UNCACHED = ['Humanizer.Core', '2.14.1'] as const;
+const uncachedCached = !!packages && existsSync(join(packages, UNCACHED[0].toLowerCase(), UNCACHED[1]));
 
 let dir: string;
 /** The user's checkout (the job homes go under its .omg/) and the engine-owned checkout the gate runs in. */
@@ -140,6 +146,33 @@ describe.runIf(process.env.OMG_LIVE_DOTNET === '1' && onWindows && !!dotnet)('a 
     expect(r.output).toMatch(/Restored .*Lib\.Tests\.csproj/);
     expect(r.output).toMatch(/Passed!\s+- Failed:\s+0, Passed:\s+1/);
   }, 720_000);
+
+  it.runIf(!uncachedCached)('the restore step fetches a package not in your cache from nuget.org into a throwaway packages dir, then the gate passes offline on it; your cache gains nothing', async (ctx) => {
+    const co = join(dir, 'restore-checkout');
+    git(dir, 'clone', '-q', root, co);
+    writeFileSync(join(co, 'Lib', 'Lib.csproj'), LIB.replace('</PropertyGroup>', `</PropertyGroup>\n  <ItemGroup>\n    <PackageReference Include="${UNCACHED[0]}" Version="${UNCACHED[1]}" />\n  </ItemGroup>`));
+    const run = createSandboxRunner(root, undefined, { user: { factory: { run: { sandbox: {} } } }, project: undefined });
+    const throwaway = join(dir, 'run-packages');
+    mkdirSync(throwaway);
+    const build = ['dotnet', 'build', 'Lib/Lib.csproj'];
+    const target = resolveLocalGateArgv(build, { cwd: co });
+    if ('missing' in target) throw new Error(target.missing);
+    const offline = await run({ purpose: 'gate', argv: build, exe: target.exe, args: target.args, cwd: co, commonGitDir: join(co, '.git'), timeoutMs: 300_000 });
+    if (!offline.ran && NO_RUNTIME.test(offline.reason)) { ctx.skip(`no Copilot runtime here: ${offline.reason}`); return; }
+    expect(offline.ran && offline.status, offline.ran ? offline.output : offline.reason).not.toBe(0);
+    if (!offline.ran) return;
+    expect(classifyNugetFailure(offline.output), offline.output).toMatchObject({ kind: 'restore' });
+    const restoreArgv = ['dotnet', ...dotnetRestoreArgs(build.slice(1))!];
+    const rt = resolveLocalGateArgv(restoreArgv, { cwd: co });
+    if ('missing' in rt) throw new Error(rt.missing);
+    const restored = await run({ purpose: 'restore', argv: restoreArgv, exe: rt.exe, args: rt.args, cwd: co, commonGitDir: join(co, '.git'), timeoutMs: 300_000, network: 'nuget', nugetPackages: { dir: throwaway, writable: true } });
+    expect(restored.ran && restored.status, restored.ran ? restored.output : restored.reason).toBe(0);
+    expect(existsSync(join(throwaway, UNCACHED[0].toLowerCase(), UNCACHED[1]))).toBe(true);
+    const r = await run({ purpose: 'gate', argv: build, exe: target.exe, args: target.args, cwd: co, commonGitDir: join(co, '.git'), timeoutMs: 300_000, nugetPackages: { dir: throwaway, writable: false } });
+    expect(r.ran && r.status, r.ran ? r.output : r.reason).toBe(0);
+    if (r.ran) expect(r.output).toMatch(/Build succeeded/);
+    expect(!!packages && existsSync(join(packages, UNCACHED[0].toLowerCase(), UNCACHED[1]))).toBe(false);
+  }, 900_000);
 
   it('H2: a junction obj -> a dir outside the checkout survives the clean step, and a sandboxed delete through it is denied', async (ctx) => {
     const co = join(dir, 'junction-checkout');

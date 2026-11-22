@@ -22,7 +22,9 @@
  * `clean --discard` removes it.
  */
 
-import { existsSync, readdirSync } from 'fs';
+import { existsSync, readdirSync, rmSync } from 'fs';
+import { nugetRunPackagesDir } from './nuget-restore.js';
+import { sandboxJobRoot } from './sandbox-exec.js';
 import { dirname, join, resolve } from 'path';
 import { WORKTREE_TEAM } from '../../copilot-run/job.js';
 import { LOCAL_REMOTE } from '../../forge/local/index.js';
@@ -392,8 +394,28 @@ export function cleanHeldFactoryRun(o: FactoryCleanOptions, state: FactoryRunSta
       result.kept.push({ worktree: path, reason: error instanceof Error ? error.message : String(error) });
     }
   }
+  cleanRunNugetPackages(o, state, result);
   cleanGateContainers(o, result);
   return result;
+}
+
+/**
+ * The shared layout's run NuGet packages folder (nuget-restore.ts; the
+ * private layout's lies in the run dir and goes with it), once the prepare
+ * checkout is gone. Only the sandboxed dotnet restore step writes it (the
+ * PR's code gets it read-only), and rmSync unlinks a link without following
+ * it.
+ */
+function cleanRunNugetPackages(o: FactoryCleanOptions, state: FactoryRunState, result: FactoryCleanResult): void {
+  if (state.layout === 2) return;
+  const dir = nugetRunPackagesDir(sandboxJobRoot(o.root), runSlug(o.issue));
+  if (!existsSync(dir) || existsSync(getWorktreePath(o.root, FACTORY_CHECKOUT_TEAM, checkoutWorker(o.issue)))) return;
+  try {
+    rmSync(dir, { recursive: true, force: true, maxRetries: 2 });
+    result.removed.push(dir);
+  } catch (error) {
+    result.kept.push({ worktree: dir, reason: error instanceof Error ? error.message : String(error) });
+  }
 }
 
 /**

@@ -215,6 +215,36 @@ describe('factory run with factory.run.layout "private"', () => {
     expect(existsSync(join(s.privateDir!, 'w', 'prep', 'node_modules'))).toBe(false);
   }, T);
 
+  it('a .NET repository with no npm lockfile: no npm ci and no gate-install-needed, also with "sandboxed"; a NuGet failure takes the restore step with the run packages dir in the run dir', async () => {
+    w = localWorld(['dotnet', 'test']);
+    writeFileSync(join(w.root, '.gitignore'), '.omg/\nbin/\nobj/\n');
+    mkdirSync(join(w.root, 'src', 'App'), { recursive: true });
+    writeFileSync(join(w.root, 'src', 'App', 'App.csproj'), '<Project Sdk="Microsoft.NET.Sdk" />\n');
+    gitIn(w.root, 'add', '.');
+    gitIn(w.root, 'commit', '-q', '-m', 'project');
+    const work = join(w.dir, 'fw');
+    const user = { factory: { run: { layout: 'private', workDir: work, gateInstall: 'sandboxed' } } };
+    const reqs: SandboxRunRequest[] = [];
+    let gates = 0;
+    const runner = async (req: SandboxRunRequest) => {
+      reqs.push(req);
+      if (req.purpose === 'gate') {
+        gates += 1;
+        return gates === 1
+          ? { ran: true as const, status: 1, output: 'App.csproj : error NU1301: Unable to load the service index for source https://api.nuget.org/v3/index.json.', timedOut: false }
+          : { ran: true as const, status: 0, output: 'Passed!', timedOut: false };
+      }
+      return { ran: true as const, status: 0, output: '', timedOut: false };
+    };
+    const out = await runFactoryEngine(opts({ w, user }, [commitFile('src/App/Greet.cs', 'namespace App;\n'), review('approve')], { gateSandbox: runner }));
+    expect(out.gate?.name, out.message).toBe('merge');
+    expect(reqs.map((r) => r.purpose)).not.toContain('install');
+    const s = readFactoryState(w.root, LOCAL_ISSUE)!;
+    expect(s.history.some((h) => h.note === 'no npm lockfile in this .NET repository: the prepare checkout gets no node_modules and no npm ci')).toBe(true);
+    const restore = reqs.find((r) => r.purpose === 'restore')!;
+    expect(restore).toMatchObject({ network: 'nuget', cwd: join(s.privateDir!, 'w', 'prep'), nugetPackages: { dir: join(s.privateDir!, 'gates', 'nuget', `issue-${LOCAL_ISSUE}`), writable: true } });
+  }, T);
+
   it('isolation "container": a lockfile the PR changes needs no host install (the gate container installs per command)', async () => {
     const env = privateWorld();
     w = env.w;

@@ -835,4 +835,31 @@ describe('runSandboxed: a dotnet command (dotnet-sandbox.ts)', () => {
     expect(all.some((p) => p.toLowerCase().includes(join('appdata', 'roaming').toLowerCase()) && !p.startsWith(join(dir, 'jobs')))).toBe(false);
     expect(all.some((p) => p === real || p.startsWith(join(real, 'AppData')))).toBe(false);
   });
+
+  it('the restore step: network "nuget" reaches api.nuget.org only (not the configured hosts), the run packages dir is writable, your cache the read-only fallback', async () => {
+    const packages = join(dir, 'home', '.nuget', 'packages');
+    mkdirSync(packages, { recursive: true });
+    const run = join(dir, 'gates', 'nuget', 'issue-7');
+    mkdirSync(run, { recursive: true });
+    const settings = { ...DEFAULT_SANDBOX_SETTINGS, writeNetwork: 'registry' as const, allowedHosts: ['npm.example.com'], extraReadonlyPaths: [], extraReadwritePaths: [] };
+    await runSandboxed(['/usr/bin/dotnet', 'restore'], opts({ network: 'nuget', settings, nugetPackages: { dir: run, writable: true } }), deps(ok));
+    const config = rec.optionsUpdates[0]?.sandboxConfig as Policy & { userPolicy: { network: unknown } };
+    expect(config.userPolicy.network).toEqual({ allowOutbound: true, allowedHosts: ['api.nuget.org'], allowLocalNetwork: false });
+    expect(rec.connections[0].env).toMatchObject({ NUGET_PACKAGES: run, NUGET_FALLBACK_PACKAGES: packages });
+    expect(policy().readwritePaths).toContain(run);
+    expect(policy().readonlyPaths).toContain(packages);
+    expect(policy().readwritePaths).not.toContain(packages);
+    expect(words()).toEqual(['/usr/bin/dotnet', 'restore', '-m:1']);
+  });
+
+  it('a gate on the run packages dir: read-only, offline', async () => {
+    const run = join(dir, 'gates', 'nuget', 'issue-7');
+    mkdirSync(run, { recursive: true });
+    await runSandboxed(['/usr/bin/dotnet', 'test'], opts({ nugetPackages: { dir: run, writable: false } }), deps(ok));
+    const config = rec.optionsUpdates[0]?.sandboxConfig as Policy & { userPolicy: { network: unknown } };
+    expect(config.userPolicy.network).toEqual({ allowOutbound: false, allowLocalNetwork: false });
+    expect(rec.connections[0].env.NUGET_PACKAGES).toBe(run);
+    expect(policy().readonlyPaths).toContain(run);
+    expect(policy().readwritePaths).not.toContain(run);
+  });
 });

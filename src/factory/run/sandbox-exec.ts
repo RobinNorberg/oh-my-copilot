@@ -48,6 +48,7 @@ import {
   loadSandboxSettings,
   laneToolPaths,
   missingSandboxEnv,
+  NUGET_HOSTS,
   proxyCaEnv,
   scrubTokens,
   secretValues,
@@ -57,7 +58,7 @@ import {
   type SandboxSettings,
 } from '../../copilot-run/sandbox.js';
 import { defaultContainerExec, runContainerGate } from './container-gate.js';
-import { dotnetSandboxArgs, dotnetSandboxEnv, isDotnetExe } from '../../copilot-run/dotnet-sandbox.js';
+import { dotnetSandboxArgs, dotnetSandboxEnv, isDotnetExe, type RunNugetPackages } from '../../copilot-run/dotnet-sandbox.js';
 import { SessionSandboxController } from '../../copilot-run/sandbox-session.js';
 import { errText, withTimeout } from '../../copilot-run/timeout.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
@@ -82,8 +83,11 @@ const ATTEST_WAIT_MS = 2_000;
 
 /** One command for the sandbox: the configured argv (for records and messages) and what it resolved to. */
 export interface SandboxRunRequest {
-  /** What runs it: a prepare check, the local gate, a base calibration of either, or the step that empties a dotnet gate's build dirs (dotnet-clean.ts). */
-  purpose: 'prepare' | 'gate' | 'calibrate' | 'install' | 'clean';
+  /**
+   * What runs it: a prepare check, the local gate, a base calibration of either, the step that empties a dotnet gate's
+   * build dirs (dotnet-clean.ts), or the dotnet restore step before a dotnet gate (nuget-restore.ts).
+   */
+  purpose: 'prepare' | 'gate' | 'calibrate' | 'install' | 'clean' | 'restore';
   /** The configured argv (ship.prepare.checks, factory.forge.local.gate) or the built-in check's. */
   argv: readonly string[];
   /** The executable and arguments it resolved to (resolveLocalGateArgv: never a .cmd/.bat). */
@@ -97,7 +101,7 @@ export interface SandboxRunRequest {
   /** factory.run.sandbox.requireDeniedPaths: a host without denied_paths gives no verdict instead of running. */
   requireDeniedPaths?: boolean;
   /** The network this command gets instead of factory.run.sandbox.writeNetwork (the private layout's `npm ci --ignore-scripts`: the registry; the dotnet clean step: none). */
-  network?: 'registry' | 'none';
+  network?: 'registry' | 'none' | 'nuget';
   /** The user's checkout (the budget ledger the sandbox denies) when `commonGitDir` is another repository's (the private layout). */
   mainRoot?: string;
   /** The only dir a `<cwd>/node_modules` link may resolve to (the one the engine linked); another target is refused, never granted. */
@@ -128,6 +132,11 @@ export interface SandboxRunRequest {
   reportFile?: string;
   /** A dotnet command in a repository whose trusted base pins Microsoft.Testing.Platform (dotnet-sandbox.ts isMtpGlobalJson): no -m:1 on dotnet test. */
   dotnetMtp?: true;
+  /**
+   * A dotnet command of a run that has its own NuGet packages folder (nuget-restore.ts): NUGET_PACKAGES names it and
+   * the real cache is the read-only fallback; writable only for the restore step. Ignored for other executables.
+   */
+  nugetPackages?: RunNugetPackages;
 }
 
 /** The gate record and PR note line for a sandboxed run on a host without denied_paths. */
@@ -161,7 +170,8 @@ export interface SandboxExecOptions {
   cwd: string;
   commonGitDir: string;
   timeoutMs: number;
-  network: 'none' | 'registry';
+  /** 'nuget': only NUGET_HOSTS (the dotnet restore step), never the configured hosts. */
+  network: 'none' | 'registry' | 'nuget';
   /** The factory sandbox settings (allowedHosts, extra read-only paths); extra read-write paths are dropped. */
   settings: SandboxSettings;
   /** The dir the per-command job homes go under (never inside `cwd`). */
@@ -174,6 +184,8 @@ export interface SandboxExecOptions {
   nestedNodeModulesTargets?: string[];
   /** SandboxRunRequest.dotnetMtp. */
   dotnetMtp?: true;
+  /** SandboxRunRequest.nugetPackages. */
+  nugetPackages?: RunNugetPackages;
 }
 
 export const MARKER_PREFIX = 'omg-gate-exit-';
@@ -340,11 +352,13 @@ export async function runSandboxed(argv: readonly string[], o: SandboxExecOption
     Object.assign(env, { GIT_TERMINAL_PROMPT: '0', GCM_INTERACTIVE: 'never', COPILOT_ALLOW_ALL: 'false', GIT_CEILING_DIRECTORIES: resolve(o.jobRoot) });
     const realHome = (deps.realHome ?? (() => userInfo().homedir))();
     const dotnetGrants: string[] = [];
+    const dotnetWrites: string[] = [];
     const dotnetNotes: string[] = [];
     if (dotnet) {
-      const d = dotnetSandboxEnv(env.USERPROFILE!, deps.env, realHome, deps.platform);
+      const d = dotnetSandboxEnv(env.USERPROFILE!, deps.env, realHome, deps.platform, o.nugetPackages);
       Object.assign(env, d.env);
       dotnetGrants.push(...d.readonly);
+      dotnetWrites.push(...d.readwrite);
       dotnetNotes.push(...d.notes);
     }
     const credentialSource = { userConfigDir: deps.userConfigDir(), platform: deps.platform };
@@ -363,7 +377,8 @@ export async function runSandboxed(argv: readonly string[], o: SandboxExecOption
     await withTimeout(c.start().catch(rethrowSdkStartError), START_TIMEOUT_MS, 'client.start()');
     pid = runtimePid(c);
     const pluginRoot = deps.pluginRoot();
-    const settings: SandboxSettings = { ...o.settings, enabled: true, writeUnsandboxed: 'refuse', writeNetwork: o.network, extraReadwritePaths: [] };
+    // 'nuget' (the dotnet restore step): only NUGET_HOSTS through onlyHosts below, never the configured hosts.
+    const settings: SandboxSettings = { ...o.settings, enabled: true, writeUnsandboxed: 'refuse', writeNetwork: o.network === 'nuget' ? 'none' : o.network, extraReadwritePaths: [] };
     const notes: string[] = [];
     const sandbox = new SessionSandboxController({
       profile: 'write',
@@ -386,6 +401,8 @@ export async function runSandboxed(argv: readonly string[], o: SandboxExecOption
           hostCommits: true,
           toolPaths: (deps.toolPaths ?? laneToolPaths)(deps.env, deps.platform),
           extraReadonly: [...proxy.caPaths, ...dotnetGrants],
+          ...(dotnetWrites.length > 0 ? { extraReadwrite: dotnetWrites } : {}),
+          ...(o.network === 'nuget' ? { onlyHosts: NUGET_HOSTS } : {}),
           // A keyring-less host's plaintext login token, also when COPILOT_HOME moved the config dir out of ~/.copilot.
           ...(deps.platform === 'win32' ? {} : { extraDenied: copilotConfigDenies(credentialSource.userConfigDir, deps.platform) }),
           ...(o.mainRoot ? { mainRoot: resolve(o.mainRoot) } : {}),
@@ -526,6 +543,7 @@ export function createSandboxRunner(root: string, deps: SandboxExecDeps = defaul
       ...(req.nodeModulesTarget ? { nodeModulesTarget: req.nodeModulesTarget } : {}),
       ...(req.nestedNodeModulesTargets ? { nestedNodeModulesTargets: req.nestedNodeModulesTargets } : {}),
       ...(req.dotnetMtp ? { dotnetMtp: true as const } : {}),
+      ...(req.nugetPackages ? { nugetPackages: req.nugetPackages } : {}),
     }, deps);
   };
 }

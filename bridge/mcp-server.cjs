@@ -49821,8 +49821,13 @@ function buildSandboxConfig(profile, ctx, host) {
     }));
     nested = (tree.nested ?? []).filter((p) => allowed.has(fold5(p)));
   }
+  for (const p of ctx.extraReadwrite ?? []) {
+    if (P.dirname(P.resolve(p)) === P.resolve(p) || [ctx.realHome, ctx.worktree, ctx.commonGitDir, ctx.jobDir].some((x) => x && isUnderRoot(x, p, ctx.platform))) {
+      throw new Error(`the read-write grant ${p} is a filesystem root or holds the home, the worktree, the git dir or the job dir`);
+    }
+  }
   const filesystem = {
-    readwritePaths: [ctx.worktree, ...laneHome, ...ctx.hostCommits ? [] : laneGitWritePaths(ctx), ...settings.extraReadwritePaths],
+    readwritePaths: [ctx.worktree, ...laneHome, ...ctx.hostCommits ? [] : laneGitWritePaths(ctx), ...settings.extraReadwritePaths, ...ctx.extraReadwrite ?? []],
     readonlyPaths: [ctx.commonGitDir, ...plugin, gitConfigDir, ...pkgCache, ...gitLinks, ...nm ? [nm] : [], ...nested, ...tools, ...settings.extraReadonlyPaths]
   };
   if (host.capabilities.denied_paths === true) {
@@ -49900,7 +49905,7 @@ function buildSandboxConfig(profile, ctx, host) {
       filesystem.deniedPaths.push(...sockets.filter((s) => s !== "/" && !holdsGrant(s)));
     }
   }
-  const network = settings.writeNetwork === "registry" ? { allowOutbound: true, allowedHosts: [...REGISTRY_HOSTS, ...settings.allowedHosts], allowLocalNetwork: ctx.platform === "win32" } : { allowOutbound: false, allowLocalNetwork: false };
+  const network = ctx.onlyHosts ? { allowOutbound: true, allowedHosts: [...ctx.onlyHosts], allowLocalNetwork: ctx.platform === "win32" } : settings.writeNetwork === "registry" ? { allowOutbound: true, allowedHosts: [...REGISTRY_HOSTS, ...settings.allowedHosts], allowLocalNetwork: ctx.platform === "win32" } : { allowOutbound: false, allowLocalNetwork: false };
   return { enabled: true, addCurrentWorkingDirectory: true, ...common, userPolicy: { filesystem, network } };
 }
 function defaultToolPathProbe(env2, platform) {
@@ -50160,7 +50165,7 @@ function allowlistSessionEnv(env2, jobHome) {
   }
   return { ...out, ...relocatedProfileEnv(jobHome) };
 }
-var import_node_child_process2, import_node_fs7, import_node_path8, SANDBOX_SHELL_TOOLS, REVIEW_READ_TOOLS, REVIEW_SHELL_TOOLS, DEFAULT_SANDBOX_SETTINGS, SANDBOX_KILL_ENV, isStringArray2, GATES_SANDBOX_MODES, CONTAINER_KEYS, defaultGateImage, defaultGitGateImage, REGISTRY_HOSTS, GATE_TREE_MARKER_NAME, errText, BWRAP_TRIAL_ARGS, BWRAP_MIN_VERSION, defaultTrialSpawner, cachedBwrapTrial, SESSION_ENV_ALLOWLIST, MXC_REQUIRED_ENV, TOKEN_PATTERN;
+var import_node_child_process2, import_node_fs7, import_node_path8, SANDBOX_SHELL_TOOLS, REVIEW_READ_TOOLS, REVIEW_SHELL_TOOLS, DEFAULT_SANDBOX_SETTINGS, SANDBOX_KILL_ENV, isStringArray2, GATES_SANDBOX_MODES, CONTAINER_KEYS, defaultGateImage, defaultGitGateImage, REGISTRY_HOSTS, NUGET_HOSTS, GATE_TREE_MARKER_NAME, errText, BWRAP_TRIAL_ARGS, BWRAP_MIN_VERSION, defaultTrialSpawner, cachedBwrapTrial, SESSION_ENV_ALLOWLIST, MXC_REQUIRED_ENV, TOKEN_PATTERN;
 var init_sandbox2 = __esm({
   "src/copilot-run/sandbox.ts"() {
     "use strict";
@@ -50194,6 +50199,7 @@ var init_sandbox2 = __esm({
     defaultGateImage = (nodeVersion = process.versions.node) => `node:${nodeVersion.split(".")[0]}-bookworm-slim`;
     defaultGitGateImage = (nodeVersion = process.versions.node) => `node:${nodeVersion.split(".")[0]}-bookworm`;
     REGISTRY_HOSTS = ["registry.npmjs.org", "*.npmjs.org"];
+    NUGET_HOSTS = ["api.nuget.org"];
     GATE_TREE_MARKER_NAME = ".omg-gate-tree";
     errText = (err) => err instanceof Error ? err.message : String(err);
     BWRAP_TRIAL_ARGS = ["--ro-bind", "/", "/", "--dev", "/dev", "--unshare-all", "--die-with-parent", "--clearenv", "--", "true"];
@@ -62553,15 +62559,17 @@ function nugetPackagesGrant(env2, realHome, protectedRoots = omcRoots(realHome),
     return { dir: null };
   }
 }
-function dotnetSandboxEnv(profile, hostEnv, realHome, platform = process.platform) {
+function dotnetSandboxEnv(profile, hostEnv, realHome, platform = process.platform, run3) {
   const grant = nugetPackagesGrant(hostEnv, realHome, omcRoots(realHome), platform);
   const packages = grant.dir;
+  const runDir = run3 ? (0, import_node_path13.resolve)(run3.dir) : null;
+  const nuget = runDir ? { NUGET_PACKAGES: runDir, ...packages ? { NUGET_FALLBACK_PACKAGES: packages } : {} } : packages ? { NUGET_PACKAGES: packages } : {};
   return {
     notes: grant.note ? [grant.note] : [],
     env: {
       // NuGet's user config dir: the job's empty profile, never the real %APPDATA%\NuGet.
       ...platform === "win32" ? { APPDATA: (0, import_node_path13.join)((0, import_node_path13.resolve)(profile), "AppData", "Roaming") } : {},
-      ...packages ? { NUGET_PACKAGES: packages } : {},
+      ...nuget,
       DOTNET_CLI_TELEMETRY_OPTOUT: "1",
       DOTNET_NOLOGO: "1",
       // The MSBuild server and reused nodes talk over the same pipes the sandbox blocks.
@@ -62571,7 +62579,8 @@ function dotnetSandboxEnv(profile, hostEnv, realHome, platform = process.platfor
       UseSharedCompilation: "false",
       EnableSourceControlManagerQueries: "false"
     },
-    readonly: packages ? [packages] : []
+    readonly: [...packages ? [packages] : [], ...runDir && !run3.writable ? [runDir] : []],
+    readwrite: runDir && run3.writable ? [runDir] : []
   };
 }
 var import_node_fs12, import_node_path13, MSBUILD_SUBCOMMANDS, DOTNET_SINGLE_NODE_FLAG, DOTNET_PATH_OPTIONS, DOTNET_COMMON_VALUE_OPTIONS, DOTNET_VALUE_OPTIONS, DOTNET_MTP_UNSUPPORTED, omcRoots, isNugetHost;
@@ -64399,40 +64408,2033 @@ var init_budget = __esm({
   }
 });
 
+// src/factory/run/nuget-restore.ts
+function classifyNugetFailure(output2) {
+  if (!output2) return null;
+  const codes = [...new Set([...output2.matchAll(NUGET_RESTORE_ERROR)].map((m) => m[1]))].sort();
+  if (codes.length === 0) return null;
+  const sources = /* @__PURE__ */ new Set();
+  for (const m of output2.matchAll(/\bfor source '?(https?:\/\/[^\s'"\]]+)/gi)) if (!isNugetOrg(m[1])) sources.add(m[1].replace(/[.'"]+$/, ""));
+  for (const m of output2.matchAll(/\bThe local source '([^'\r\n]+)'/gi)) sources.add(m[1]);
+  for (const m of output2.matchAll(/\bin source\(s\): ([^\r\n\[]+)/gi)) {
+    for (const name of m[1].split(",")) if (name.trim() && !isNugetOrg(name)) sources.add(name.trim().replace(/[.'"]+$/, ""));
+  }
+  const auth = /Response status code does not indicate success: 40[13]\b/i.test(output2);
+  return { kind: sources.size > 0 || auth ? "private-feed" : "restore", codes, sources: [...sources].sort() };
+}
+function dotnetRestoreArgs(gateArgs) {
+  const sub = gateArgs[0]?.toLowerCase();
+  if (!sub || !MSBUILD_SUBCOMMANDS.includes(sub) || sub === "clean") return null;
+  const rest = gateArgs.slice(1);
+  const end = rest.indexOf("--");
+  const args = end < 0 ? rest : rest.slice(0, end);
+  const targets = dotnetPositionals(sub, args);
+  if (sub === "test" && targets.some((a) => /\.(?:dll|exe)$/i.test(a))) return null;
+  const extra = [];
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if ((a === "--project" || a === "--solution") && i + 1 < args.length) targets.push(args[++i]);
+    else if (/^--(?:project|solution)[=:]/.test(a)) targets.push(a.replace(/^--(?:project|solution)[=:]/, ""));
+    else if ((a === "-r" || a === "--runtime") && i + 1 < args.length) extra.push(a, args[++i]);
+    else if (/^(?:-r|--runtime)[=:]/.test(a) || /^(?:-p|--property|\/p|\/property):/i.test(a)) extra.push(a);
+  }
+  return ["restore", ...targets, ...extra];
+}
+var import_node_path16, NUGET_RESTORE_ERROR, isNugetOrg, nugetRunPackagesDir, GATE_INSTALL_SANDBOXED_HINT, NUGET_PRIVATE_FEED_UNSUPPORTED;
+var init_nuget_restore = __esm({
+  "src/factory/run/nuget-restore.ts"() {
+    "use strict";
+    import_node_path16 = require("node:path");
+    init_dotnet_sandbox();
+    NUGET_RESTORE_ERROR = /\berror (NU(?:110[0-3]|13\d\d))\b/g;
+    isNugetOrg = (s) => {
+      const t = s.trim().replace(/[.'"]+$/, "");
+      if (/^(?:nuget\.org|Microsoft Visual Studio Offline Packages)$/i.test(t)) return true;
+      const host = /^https?:\/\/([^/:\s'"]+)/i.exec(t)?.[1];
+      return !!host && /(?:^|\.)nuget\.org$/i.test(host);
+    };
+    nugetRunPackagesDir = (gateJobRoot, slug) => (0, import_node_path16.join)(gateJobRoot, "nuget", slug);
+    GATE_INSTALL_SANDBOXED_HINT = 'set factory.run.gateInstall "sandboxed" in your user config (the engine then runs dotnet restore in the OS sandbox with only api.nuget.org reachable, after the gate definition check)';
+    NUGET_PRIVATE_FEED_UNSUPPORTED = "private or local NuGet feeds are not supported in the sandbox yet";
+  }
+});
+
+// src/utils/string-width.ts
+function stripAnsi(str9) {
+  return str9.replace(
+    /\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g,
+    ""
+  );
+}
+var init_string_width = __esm({
+  "src/utils/string-width.ts"() {
+    "use strict";
+  }
+});
+
+// src/forge/types.ts
+function shipyardKeys(body) {
+  return [...body.matchAll(/^shipyard-key: (\d+)\/([a-z0-9-]{3,60})\r?$/gm)].map((m) => [Number(m[1]), m[2]]);
+}
+var PROGRESS_STAGES, shipyardKeySearch;
+var init_types9 = __esm({
+  "src/forge/types.ts"() {
+    "use strict";
+    PROGRESS_STAGES = ["queued", "building", "reviewing", "verifying", "ready-to-merge", "done", "blocked", "cancelled"];
+    shipyardKeySearch = (spec) => `"shipyard-key: ${spec}/" in:body`;
+  }
+});
+
+// src/factory/run/test-delta.ts
+function testId(parts) {
+  const hash2 = (0, import_node_crypto5.createHash)("sha256").update(JSON.stringify(parts)).digest("hex").slice(0, ID_HASH_CHARS);
+  return `${hash2} ${parts.join(" > ")}`.slice(0, TEST_ID_MAX_CHARS);
+}
+function testIdText(id) {
+  return /^[0-9a-f]{16} /.test(id) ? id.slice(ID_HASH_CHARS + 1) : id;
+}
+function vitestReportPath(dir) {
+  return (0, import_node_path17.join)(dir, `.omg-vitest-report-${(0, import_node_crypto5.randomBytes)(6).toString("hex")}.json`);
+}
+function vitestReportArgs(path15) {
+  return ["--reporter=default", "--reporter=json", `--outputFile=${path15}`, "--coverage.enabled=false"];
+}
+function relative29(name, root) {
+  const n = slash(name);
+  const r = slash(root).replace(/\/+$/, "");
+  return n.toLowerCase().startsWith(`${r.toLowerCase()}/`) ? n.slice(r.length + 1) : n;
+}
+function parseVitestReport(text3, root) {
+  let data;
+  try {
+    data = JSON.parse(text3);
+  } catch {
+    return null;
+  }
+  const files = data?.testResults;
+  if (!Array.isArray(files)) return null;
+  let passed = 0;
+  const failed = /* @__PURE__ */ new Set();
+  const broken = /* @__PURE__ */ new Set();
+  const failedFiles = /* @__PURE__ */ new Set();
+  for (const f of files) {
+    if (typeof f !== "object" || f === null || typeof f.name !== "string" || !Array.isArray(f.assertionResults)) return null;
+    const file2 = relative29(f.name, root);
+    let own2 = 0;
+    for (const a of f.assertionResults) {
+      if (typeof a !== "object" || a === null || typeof a.title !== "string") return null;
+      if (a.status === "passed") passed += 1;
+      if (a.status !== "failed") continue;
+      own2 += 1;
+      const ancestors = Array.isArray(a.ancestorTitles) ? a.ancestorTitles.filter((t) => typeof t === "string") : [];
+      failed.add(testId([file2, ...ancestors, a.title]));
+    }
+    const fileError = typeof f.message === "string" && f.message.trim() !== "";
+    if (f.status === "failed" && (own2 === 0 || fileError)) broken.add(testId([file2]));
+    if (f.status === "failed" || own2 > 0) failedFiles.add(file2);
+  }
+  return { passed, failed: [...failed].sort(), brokenFiles: [...broken].sort(), failedFiles: failedFiles.size };
+}
+function readVitestReport(path15, root) {
+  try {
+    const fd = (0, import_node_fs15.openSync)(path15, "r");
+    try {
+      const size = (0, import_node_fs15.fstatSync)(fd).size;
+      if (size > VITEST_REPORT_MAX_BYTES) return null;
+      const buf = Buffer.alloc(size);
+      let off = 0;
+      while (off < size) {
+        const n = (0, import_node_fs15.readSync)(fd, buf, off, size - off, off);
+        if (n <= 0) break;
+        off += n;
+      }
+      return parseVitestReport(buf.subarray(0, off).toString("utf8"), root);
+    } finally {
+      (0, import_node_fs15.closeSync)(fd);
+    }
+  } catch {
+    return null;
+  } finally {
+    try {
+      (0, import_node_fs15.rmSync)(path15, { force: true });
+    } catch {
+    }
+  }
+}
+function stripAnsi2(text3) {
+  return text3.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "");
+}
+function vitestOutputFailures(output2) {
+  const text3 = stripAnsi2(output2);
+  return [
+    .../^\s*Errors\s+\d+\s+errors?\b/m.test(text3) ? [UNHANDLED_ERRORS_ID] : [],
+    .../does not meet (?:global )?threshold/i.test(text3) ? [COVERAGE_THRESHOLD_ID] : [],
+    .../import\(s\) exceeded the danger threshold/i.test(text3) ? [IMPORT_DANGER_ID] : []
+  ];
+}
+function vitestSummaryFailed(output2) {
+  const text3 = stripAnsi2(output2);
+  const tests = /^\s*Tests\s+(\d+)\s+failed\b/m.exec(text3)?.[1];
+  const files = /^\s*Test Files\s+(\d+)\s+failed\b/m.exec(text3)?.[1];
+  const seen = /^\s*(?:Tests|Test Files)\s+\S/m.test(text3);
+  return { ...tests ? { tests: Number(tests) } : {}, ...files ? { files: Number(files) } : {}, seen };
+}
+function headRunSignals(status, output2) {
+  return { status, output: vitestOutputFailures(output2), summary: vitestSummaryFailed(output2) };
+}
+function testDeltaVerdict(base, head, signals, baseOutput = []) {
+  if (!base) return { kind: "park", why: "the base run left no test report" };
+  if (base.passed === 0) return { kind: "park", why: "no selected test passes on the base" };
+  if (!head) return { kind: "park", why: "the head run left no test report" };
+  if (signals.status !== 1) return { kind: "park", why: `the head run exited ${signals.status}, not 1 (failed tests)` };
+  const both = signals.output.filter((id) => baseOutput.includes(id));
+  if (both.length > 0) return { kind: "park", why: `${both.join(" and ")} on the base and the head` };
+  if (!signals.summary.seen) return { kind: "park", why: "the head run's output has no vitest summary (Tests or Test Files)" };
+  if (signals.summary.tests !== void 0 && signals.summary.tests > head.failed.length) return { kind: "park", why: "the head run's summary names more failed tests than its report" };
+  const files = head.failedFiles ?? (/* @__PURE__ */ new Set([...head.failed.map((id) => testIdText(id).split(" > ")[0]), ...head.brokenFiles.map(testIdText)])).size;
+  if (signals.summary.files !== void 0 && signals.summary.files > files) return { kind: "park", why: "the head run's summary names more failed test files than its report" };
+  const onHead = [...head.failed, ...head.brokenFiles.map(fileId2), ...signals.output];
+  if (onHead.length === 0) return { kind: "park", why: "the head run failed, but its report names no failing test" };
+  const onBase = /* @__PURE__ */ new Set([...base.failed, ...base.brokenFiles.map(fileId2)]);
+  const counted = onHead.filter((t) => !onBase.has(t));
+  const excused = onHead.filter((t) => onBase.has(t));
+  return counted.length > 0 ? { kind: "fail", counted, excused } : { kind: "pass", excused };
+}
+function vitestSummaryShapeOk(v) {
+  const s = v;
+  const strs = (x) => Array.isArray(x) && x.length <= BASE_FAILURES_MAX && x.every((t) => typeof t === "string" && t.length <= TEST_ID_MAX_CHARS);
+  const count = (x) => Number.isSafeInteger(x) && x >= 0;
+  return typeof s === "object" && s !== null && !Array.isArray(s) && count(s.passed) && strs(s.failed) && strs(s.brokenFiles) && (s.failedFiles === void 0 || count(s.failedFiles)) && Object.keys(s).every((k) => k === "passed" || k === "failed" || k === "brokenFiles" || k === "failedFiles");
+}
+var import_node_crypto5, import_node_fs15, import_node_path17, VITEST_REPORT_MAX_BYTES, BASE_FAILURES_MAX, TEST_ID_MAX_CHARS, ID_HASH_CHARS, slash, fileId2, UNHANDLED_ERRORS_ID, COVERAGE_THRESHOLD_ID, IMPORT_DANGER_ID;
+var init_test_delta = __esm({
+  "src/factory/run/test-delta.ts"() {
+    "use strict";
+    import_node_crypto5 = require("node:crypto");
+    import_node_fs15 = require("node:fs");
+    import_node_path17 = require("node:path");
+    VITEST_REPORT_MAX_BYTES = 32 * 1024 * 1024;
+    BASE_FAILURES_MAX = 200;
+    TEST_ID_MAX_CHARS = 300;
+    ID_HASH_CHARS = 16;
+    slash = (p) => p.replace(/\\/g, "/");
+    fileId2 = (id) => `${id} (the file failed)`;
+    UNHANDLED_ERRORS_ID = 'errors outside any test (vitest "Unhandled Errors")';
+    COVERAGE_THRESHOLD_ID = "a coverage threshold is not met";
+    IMPORT_DANGER_ID = "an import exceeded vitest's danger threshold (experimental.importDurations.failOnDanger)";
+  }
+});
+
+// src/factory/run/state.ts
+function healRunKey(sig8) {
+  const key = `heal-${sig8}`;
+  if (!HEAL_RUN_KEY.test(key)) throw new FactoryStateError(`signature id must be 8 hex characters, got ${JSON.stringify(sig8)}`);
+  return key;
+}
+function runKeyOf(s) {
+  return s.kind === "ci-heal" ? `heal-${s.heal?.sig8 ?? ""}` : s.issue;
+}
+function implementerName(key) {
+  return `factory-impl-${key}`;
+}
+function reviewerName(key, jobId) {
+  return `factory-review-${key}-${jobId}`;
+}
+function factoryBranch(key) {
+  return typeof key === "number" ? `factory/issue-${key}` : `factory/${key}`;
+}
+function factoryStateDir2(root) {
+  return (0, import_path90.join)(getOmcRoot(root), "state", "factory");
+}
+function factoryStatePath(root, key) {
+  return (0, import_path90.join)(factoryStateDir2(root), `run-${key}.json`);
+}
+function factoryOwnerPath(root, key) {
+  return (0, import_path90.join)(factoryStateDir2(root), `run-${key}.owner`);
+}
+function factoryRepoOwnerPath(root) {
+  return (0, import_path90.join)(factoryStateDir2(root), "engine.owner");
+}
+function factoryCancelPath(root, key) {
+  return (0, import_path90.join)(factoryStateDir2(root), `run-${key}.cancel`);
+}
+function factoryCancelRequested(root, key) {
+  return (0, import_fs74.existsSync)(factoryCancelPath(root, key));
+}
+function shipVerdictHash(v) {
+  return (0, import_crypto22.createHash)("sha256").update(JSON.stringify([v.reviewer, v.verdict, v.sha, v.at, v.notes ?? null])).digest("hex");
+}
+function createFactoryState(input2, now) {
+  const key = input2.heal ? healRunKey(input2.heal.sig8) : input2.issue;
+  return {
+    version: 1,
+    kind: input2.heal ? "ci-heal" : "issue",
+    issue: input2.heal ? 0 : input2.issue,
+    ...input2.heal ? { heal: input2.heal } : {},
+    ...input2.remote ? { remote: input2.remote } : {},
+    repoUrl: input2.repoUrl,
+    base: input2.base,
+    branch: factoryBranch(key),
+    phase: "intake",
+    implementer: implementerName(key),
+    lanes: [],
+    retries: {},
+    lostStreak: {},
+    elapsedMs: 0,
+    ciFixRounds: 0,
+    history: [{ at: now, from: null, to: "intake", note: input2.heal ? `ci-heal for CI signature ${input2.heal.sig8}` : `${input2.itemNoun ?? "issue"} #${input2.issue}` }],
+    createdAt: now,
+    updatedAt: now
+  };
+}
+function moveTo(state, to, note, now) {
+  if (TERMINAL_FACTORY_PHASES.includes(state.phase)) {
+    throw new FactoryStateError(`factory run ${runLabel(runKeyOf(state))} is ${state.phase}; it does not move to ${to}`);
+  }
+  const { gate: _gate, ...rest } = state;
+  return { ...rest, phase: to, updatedAt: now, history: [...state.history, { at: now, from: state.phase, to, note }] };
+}
+function setGate(state, name, reason, now, extra = {}) {
+  return {
+    ...state,
+    gate: { name, reason, at: now, ...extra },
+    updatedAt: now,
+    history: [...state.history, { at: now, from: state.phase, to: state.phase, note: `awaiting-human: ${name}: ${reason}` }]
+  };
+}
+function trackerStageOf(s) {
+  if (s.gate) return s.gate.name === "merge" ? "ready-to-merge" : "blocked";
+  switch (s.phase) {
+    case "intake":
+    case "plan":
+      return "queued";
+    case "implement":
+    case "publish":
+    case "fix":
+    case "conflict-fix":
+    case "ci-fix":
+      return "building";
+    case "review":
+      return "reviewing";
+    case "prepare":
+    case "gates":
+      return "verifying";
+    case "merge":
+      return "ready-to-merge";
+    case "merged":
+      return "done";
+    case "cancelled":
+      return "cancelled";
+    case "failed":
+      return "blocked";
+  }
+}
+function computeFactoryIntegrity(state) {
+  return (0, import_crypto22.createHash)("sha256").update(JSON.stringify({ ...state, integrity: void 0 })).digest("hex");
+}
+function verifyFactoryIntegrity(state) {
+  return typeof state.integrity === "string" && state.integrity === computeFactoryIntegrity(state);
+}
+function forgeResumeProblem(state, resolved, resolvedRepoUrl) {
+  const recorded = state.forgeKind ?? "github";
+  const label = runLabel(runKeyOf(state));
+  if (recorded !== resolved) return `factory run ${label} started on ${recorded}, but the forge now resolves to ${resolved}; finish or cancel the run before changing factory.forge`;
+  if (resolvedRepoUrl !== void 0 && state.repoUrl && !sameRepo(state.repoUrl, resolvedRepoUrl)) {
+    return `factory run ${label} started in ${state.repoUrl}, but the forge now resolves to ${resolvedRepoUrl}; finish or cancel the run before changing the origin remote or factory.forge`;
+  }
+  return null;
+}
+function runRemote(state) {
+  return state.remote ?? "origin";
+}
+function shapeProblem2(s) {
+  if (!isStr2(s.repoUrl) || !isStr2(s.base) || !s.base || !isStr2(s.branch) || !s.branch) return "repoUrl/base/branch";
+  if (!FACTORY_PHASES.includes(s.phase)) return "phase";
+  if (!isStr2(s.implementer) || !s.implementer) return "implementer";
+  if (s.kind !== void 0 && s.kind !== "issue" && s.kind !== "ci-heal") return "kind";
+  if (s.forgeKind !== void 0 && s.forgeKind !== "github" && s.forgeKind !== "azure-devops" && s.forgeKind !== "local") return "forgeKind";
+  if (s.remote !== void 0 ? s.remote !== LOCAL_REMOTE || s.forgeKind !== "local" : s.forgeKind === "local") return "remote";
+  if (s.localGate !== void 0 && (s.forgeKind !== "local" || !Array.isArray(s.localGate) || s.localGate.length === 0 || !s.localGate.every(isStr2))) return "localGate";
+  if (s.gateChangeApproved !== void 0 && (s.forgeKind !== "local" || !isStr2(s.gateChangeApproved) || !HEX64.test(s.gateChangeApproved))) return "gateChangeApproved";
+  const gateDef = s.gate?.definition;
+  if (gateDef !== void 0 && (s.forgeKind !== "local" || !isStr2(gateDef) || !HEX64.test(gateDef))) return "gate.definition";
+  const gateDetail = s.gate?.detail;
+  if (gateDetail !== void 0 && (!isStr2(gateDetail) || gateDetail.length > GATE_DETAIL_MAX_CHARS)) return "gate.detail";
+  if (s.prepareChecks !== void 0 && s.prepareChecks !== "auto" && !(Array.isArray(s.prepareChecks) && s.prepareChecks.every((a) => Array.isArray(a) && a.length > 0 && a.every(isStr2)))) return "prepareChecks";
+  if (s.prepareBuild !== void 0 && s.prepareBuild !== "none") {
+    const b = s.prepareBuild;
+    const strs = (v) => Array.isArray(v) && v.length > 0 && v.every(isStr2);
+    if (typeof b !== "object" || b === null || !strs(b.command) || !strs(b.outputs) || !b.outputs.every(isBuildOutputDir)) return "prepareBuild";
+  }
+  if (s.trackerStage !== void 0 && !PROGRESS_STAGES.includes(s.trackerStage)) return "trackerStage";
+  if (s.codingAgent !== void 0 && (s.kind === "ci-heal" || codingAgentRecordProblem(s.codingAgent) !== null)) return "codingAgent";
+  if (s.layout !== void 0 || s.privateDir !== void 0 || s.privateStore !== void 0) {
+    const ps = s.privateStore;
+    if (s.layout !== 2 || !isStr2(s.privateDir) || !(0, import_path90.isAbsolute)(s.privateDir) || typeof ps !== "object" || ps === null || !isStr2(ps.userGitDir) || !(0, import_path90.isAbsolute)(ps.userGitDir) || !isStr2(ps.configHash) || !HEX64.test(ps.configHash) || !isCount3(ps.longestPath) || !isCount3(ps.nextImport)) return "layout";
+  }
+  if (s.pendingParents !== void 0 && (!Array.isArray(s.pendingParents) || s.pendingParents.length === 0 || !s.pendingParents.every((x) => isStr2(x) && /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/.test(x)))) return "pendingParents";
+  if (s.kind === "ci-heal") {
+    const h = s.heal;
+    const d = h?.diagnosis;
+    if (!isStr2(h?.sig8) || !Array.isArray(h.failingTests) || !Array.isArray(h.env) || typeof d !== "object" || d === null || !isStr2(d.rootCause)) return "heal";
+  }
+  if (!Array.isArray(s.lanes) || !s.lanes.every((l) => {
+    const x = l;
+    const sbx = x?.sandbox;
+    return isStr2(x?.id) && isStr2(x.kind) && isStr2(x.status) && isStr2(x.startSha) && typeof x.maxCredits === "number" && (x.stopUnconfirmed === void 0 || typeof x.stopUnconfirmed === "boolean") && (x.treeReusable === void 0 || x.treeReusable === true) && (x.model === void 0 || isStr2(x.model)) && (x.tamperCheck === void 0 || x.tamperCheck === "clean" || x.tamperCheck === "problems" || x.tamperCheck === "skipped") && (sbx === void 0 || typeof sbx === "object" && sbx !== null && isStr2(sbx.mode) && isCount3(sbx.unsandboxedCalls) && (sbx.writeNetwork === void 0 || sbx.writeNetwork === "none" || sbx.writeNetwork === "registry"));
+  })) return "lanes";
+  if (typeof s.retries !== "object" || s.retries === null || !Object.values(s.retries).every(isCount3)) return "retries";
+  if (typeof s.lostStreak !== "object" || s.lostStreak === null) return "lostStreak";
+  if (typeof s.elapsedMs !== "number" || !isCount3(s.ciFixRounds)) return "elapsedMs/ciFixRounds";
+  if (s.conflictReprepares !== void 0 && !isCount3(s.conflictReprepares)) return "conflictReprepares";
+  if (!Array.isArray(s.history)) return "history";
+  if (!isStr2(s.createdAt) || !isStr2(s.updatedAt)) return "createdAt/updatedAt";
+  return humanReviewShapeProblem(s);
+}
+function pendingCommitShapeOk(v) {
+  const p = v;
+  return typeof p === "object" && p !== null && !Array.isArray(p) && isStr2(p.laneId) && isStr2(p.key) && isStr2(p.start) && FULL_SHA2.test(p.start) && Array.isArray(p.parents) && p.parents.length > 0 && p.parents.length <= 2 && p.parents.every((x) => isStr2(x) && FULL_SHA2.test(x)) && isStr2(p.worktree) && (p.branch === null || isStr2(p.branch)) && isStr2(p.message) && p.message.length <= 8e3 && (p.secretFindings === void 0 || findingsOk(p.secretFindings)) && (p.secretAck === void 0 || findingsOk(p.secretAck)) && Object.keys(p).every((k) => ["laneId", "key", "start", "parents", "worktree", "branch", "message", "secretFindings", "secretAck"].includes(k));
+}
+function humanReviewShapeProblem(s) {
+  const h = s.humanReview;
+  if (h !== void 0 && (typeof h !== "object" || h === null || Array.isArray(h) || !isStr2(h.seenAt) || !isStr2(h.head) || !HEX406.test(h.head) || !isStr2(h.digest) || !HEX64.test(h.digest) || h.threadIds !== void 0 && (!Array.isArray(h.threadIds) || h.threadIds.length > MAX_HUMAN_THREAD_IDS || !h.threadIds.every(THREAD_ID)) || Object.keys(h).some((k) => k !== "seenAt" && k !== "head" && k !== "digest" && k !== "threadIds"))) return "humanReview";
+  if (s.unsandboxedAck !== void 0 && (!isStr2(s.unsandboxedAck) || !HEX406.test(s.unsandboxedAck))) return "unsandboxedAck";
+  if (s.unsandboxedGatesAck !== void 0 && (!isStr2(s.unsandboxedGatesAck) || !HEX406.test(s.unsandboxedGatesAck))) return "unsandboxedGatesAck";
+  if (s.pendingCommit !== void 0 && !pendingCommitShapeOk(s.pendingCommit)) return "pendingCommit";
+  if (s.sandboxedPrepareHead !== void 0 && (!isStr2(s.sandboxedPrepareHead) || !HEX406.test(s.sandboxedPrepareHead))) return "sandboxedPrepareHead";
+  if (s.sandboxedGateHead !== void 0 && (!isStr2(s.sandboxedGateHead) || !HEX406.test(s.sandboxedGateHead))) return "sandboxedGateHead";
+  if (s.gitTransportPlainHead !== void 0 && (!isStr2(s.gitTransportPlainHead) || !HEX406.test(s.gitTransportPlainHead))) return "gitTransportPlainHead";
+  if (s.testDeltaExcusedHead !== void 0 && (!isStr2(s.testDeltaExcusedHead) || !HEX406.test(s.testDeltaExcusedHead))) return "testDeltaExcusedHead";
+  if (s.plainHeadRan !== void 0 && s.plainHeadRan !== true) return "plainHeadRan";
+  if (s.gateTreeCopy !== void 0 && s.gateTreeCopy !== true) return "gateTreeCopy";
+  if (s.laneModel !== void 0 && s.laneModel !== null && !isStr2(s.laneModel)) return "laneModel";
+  if (s.laneModels !== void 0 && (typeof s.laneModels !== "object" || s.laneModels === null || Array.isArray(s.laneModels) || !Object.entries(s.laneModels).every(([k, v]) => ["implement", "review", "fix", "ciFix", "conflictFix"].includes(k) && (v === null || isStr2(v))))) return "laneModels";
+  if (s.checkoutAdmin !== void 0 && (!isStr2(s.checkoutAdmin) || !/^[A-Za-z0-9._-]+$/.test(s.checkoutAdmin) || s.checkoutAdmin === "." || s.checkoutAdmin === "..")) return "checkoutAdmin";
+  const cal = s.gateCalibration;
+  if (cal !== void 0 && (typeof cal !== "object" || cal === null || Array.isArray(cal) || !Object.entries(cal).every(([k, v]) => {
+    const e = v;
+    return HEX64.test(k) && typeof e === "object" && e !== null && typeof e.ok === "boolean" && (e.tail === void 0 || isStr2(e.tail)) && (e.gitTransport === void 0 || e.gitTransport === true) && (e.timedOut === void 0 || e.timedOut === true) && (e.junctionRead === void 0 || e.junctionRead === true) && (e.tests === void 0 || vitestSummaryShapeOk(e.tests)) && (e.beforePlainHead === void 0 || e.beforePlainHead === true) && Object.keys(e).every((x) => x === "ok" || x === "tail" || x === "timedOut" || x === "gitTransport" || x === "junctionRead" || x === "tests" || x === "beforePlainHead");
+  }))) return "gateCalibration";
+  const lanes = s.lanes;
+  if (!lanes.every((l) => {
+    const f = l.feedback;
+    return f === void 0 || typeof f === "object" && f !== null && !Array.isArray(f) && f.source === "human" && FEEDBACK_FORGES.includes(f.forge) && isCount3(f.items) && Object.keys(f).every((k) => k === "source" || k === "forge" || k === "items") && l.kind === "fix";
+  })) return "lanes.feedback";
+  return null;
+}
+function readFactoryState(root, key) {
+  const path15 = factoryStatePath(root, key);
+  if (!(0, import_fs74.existsSync)(path15)) return null;
+  return parseFactoryState(path15, key, (0, import_fs74.readFileSync)(path15, "utf8"));
+}
+function parseFactoryState(path15, key, raw) {
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error62) {
+    throw new FactoryStateError(`${path15} is not valid JSON: ${error62 instanceof Error ? error62.message : String(error62)}`);
+  }
+  const s = parsed;
+  if (typeof parsed !== "object" || parsed === null || s.version !== 1 || typeof s.issue !== "number") throw new FactoryStateError(`${path15} is not a factory run state for ${runLabel(key)}`);
+  const problem = shapeProblem2(s);
+  if (problem) throw new FactoryStateError(`${path15} is malformed (field ${problem})`);
+  if (runKeyOf(parsed) !== key) throw new FactoryStateError(`${path15} is not a factory run state for ${runLabel(key)}`);
+  const h = s.humanReview;
+  if (h && h.threadIds === void 0) h.threadIds = [];
+  return parsed;
+}
+function updateFactoryState(root, key, mutate, options = {}) {
+  if (!(0, import_fs74.existsSync)((0, import_path90.join)(root, ".git"))) throw new FactoryStateError(`${root} is not a git work tree; factory run state lives in the repo`);
+  const path15 = factoryStatePath(root, key);
+  ensureDirSync(factoryStateDir2(root));
+  return withFileLockSync(lockPathFor(path15), () => {
+    const bytes = (0, import_fs74.existsSync)(path15) ? (0, import_fs74.readFileSync)(path15) : null;
+    options.verify?.(bytes);
+    const current = bytes === null ? null : parseFactoryState(path15, key, bytes.toString("utf8"));
+    if (current && !verifyFactoryIntegrity(current)) {
+      throw new FactoryStateError(`${path15} fails its integrity check (edited outside omg factory run); the run is failed until a human replaces the file`);
+    }
+    const { sealed, content } = writeSealed(path15, mutate(current));
+    options.onWrite?.(path15, content);
+    return sealed;
+  }, { timeoutMs: 5e3 });
+}
+function writeSealed(path15, next) {
+  const sealed = { ...next, integrity: computeFactoryIntegrity(next) };
+  const content = JSON.stringify(sealed, null, 2);
+  atomicWriteFileSync(path15, content);
+  return { sealed, content };
+}
+function overwriteFactoryState(root, key, state) {
+  ensureDirSync(factoryStateDir2(root));
+  return writeSealed(factoryStatePath(root, key), state);
+}
+function describeOwner(o) {
+  const pid = o.pid === void 0 ? "no live process" : `pid ${ownerText(o.pid)}`;
+  return `${o.run === void 0 ? "run unknown" : ownerText(o.run)}, ${pid} on ${ownerText(o.hostname ?? "unknown host")} since ${ownerText(o.startedAt ?? "unknown")}${o.root ? ` in ${ownerText(o.root)}` : ""}`;
+}
+function acquireFactoryOwner(root, key, now, deps = defaultOwnerDeps()) {
+  return claimOwner(factoryOwnerPath(root, key), now, deps, (prior) => `omg factory run ${key} is already running (pid ${ownerText(prior.pid)} on ${ownerText(prior.hostname)} since ${ownerText(prior.startedAt)})`);
+}
+function acquireFactoryRepoOwner(root, key, now, deps = defaultOwnerDeps()) {
+  const held = claimOwner(factoryRepoOwnerPath(root), now, deps, (prior) => engineBusyMessage(prior, root, String(key)), { run: String(key), root: (0, import_path90.resolve)(root) });
+  if (key === "scan") return held;
+  const live = heldSlots(root, deps);
+  if (live.length === 0) return held;
+  held.release();
+  throw new FactoryBusyError(`${live.length} private-layout parallel run(s) are active in this checkout (${live.map(slotText).join("; ")}); a run that takes this checkout's engine lock (the shared layout, factory.run.maxConcurrent 1, reset, clean of a shared run, heal) starts after they end (omg factory run status lists them)`);
+}
+function factorySlotsDir(root) {
+  return (0, import_path90.join)(factoryStateDir2(root), "slots");
+}
+function factorySlotPath(root, slot) {
+  return (0, import_path90.join)(factorySlotsDir(root), `slot-${slot}.owner`);
+}
+function factoryImportLockPath(root) {
+  return (0, import_path90.join)(factoryStateDir2(root), "import.lock");
+}
+function heldSlots(root, deps = defaultOwnerDeps()) {
+  let names;
+  try {
+    names = (0, import_fs74.readdirSync)(factorySlotsDir(root));
+  } catch {
+    return [];
+  }
+  const out = [];
+  for (const name of names) {
+    const m = SLOT_FILE.exec(name);
+    if (!m) continue;
+    const path15 = (0, import_path90.join)(factorySlotsDir(root), name);
+    const owner = ownerHolding(path15, deps);
+    if (owner !== null) out.push({ slot: Number(m[1]), path: path15, owner });
+  }
+  return out.sort((a, b) => a.slot - b.slot);
+}
+function acquireRunSlot(root, key, max, now, deps = defaultOwnerDeps(), scanWaitMs = SCAN_WAIT_MS) {
+  if (!Number.isInteger(max) || max < 1) throw new FactoryStateError(`factory.run.maxConcurrent must be a positive integer (got ${String(max)})`);
+  let held;
+  let slot = -1;
+  const busy = [];
+  for (let i = 0; i < max && !held; i++) {
+    try {
+      held = claimOwner(factorySlotPath(root, i), now(), deps, (prior) => `slot ${i}: ${describeOwner(prior)}`, { run: String(key), root: (0, import_path90.resolve)(root) });
+      slot = i;
+    } catch (error62) {
+      if (!(error62 instanceof FactoryBusyError)) throw error62;
+      busy.push(error62.message.startsWith("slot ") ? error62.message : `slot ${i}: ${error62.message}`);
+    }
+  }
+  if (!held) throw new FactoryBusyError(`${max} runs active (factory.run.maxConcurrent ${max}): ${busy.join("; ")}; start this one after one of them ends (omg factory run status)`);
+  const start = scanWait.clock();
+  for (; ; ) {
+    const path15 = factoryRepoOwnerPath(root);
+    const h = ownerHolding(path15, deps);
+    if (h === null) return { ...held, slot };
+    const waited = scanWait.clock() - start;
+    if (h !== "unreadable" && h.run === "scan" && waited < scanWaitMs) {
+      scanWait.sleep(Math.min(SCAN_POLL_MS, scanWaitMs - waited));
+      continue;
+    }
+    held.release();
+    if (h === "unreadable") throw new FactoryBusyError(unreadableOwnerMessage(path15));
+    throw new FactoryBusyError(h.run === "scan" ? `${engineBusyText(h)} (waited ${Math.round(waited / 1e3)} s)` : `a shared-layout run holds this checkout's engine lock (${describeOwner(h)}); private parallel runs start after it ends (a run started in the shared layout keeps it: there is no migration)`, h.run === "scan" ? "scan" : void 0);
+  }
+}
+function acquireImportLock(root, label, now, deps = defaultOwnerDeps(), waitMs = IMPORT_LOCK_WAIT_MS) {
+  const start = scanWait.clock();
+  for (; ; ) {
+    const r = tryImportLock(root, label, now, deps, scanWait.clock() - start, waitMs);
+    if ("held" in r) return r.held;
+    scanWait.sleep(r.sleepMs);
+  }
+}
+function tryImportLock(root, label, now, deps, waited, waitMs) {
+  const path15 = factoryImportLockPath(root);
+  const key = `${(0, import_path90.resolve)(path15)}\0${deps.pid}`;
+  if (importHeld.has(key)) throw new FactoryStateError(`this process already holds the repository import lock ${path15}; a nested section must be given that hold (withRepoImportLock's held option)`);
+  try {
+    const held = claimOwner(path15, now(), deps, (prior) => `the repository import lock ${path15} is held by ${describeOwner(prior)} (another run fetches, imports or pushes)`, { run: label, root: (0, import_path90.resolve)(root) });
+    importHeld.add(key);
+    let released = false;
+    return { held: { ...held, release: () => {
+      if (!released) {
+        released = true;
+        importHeld.delete(key);
+      }
+      return held.release();
+    } } };
+  } catch (error62) {
+    if (!(error62 instanceof FactoryBusyError)) throw error62;
+    if (error62.message.startsWith("the owner file ") || waited >= waitMs) {
+      throw new ImportLockBusyError(`${error62.message}; waited ${Math.round(waited / 1e3)} s: rerun when it is done (omg factory run status names the holder)`);
+    }
+    return { busy: error62.message, sleepMs: Math.min(SCAN_POLL_MS, waitMs - waited) };
+  }
+}
+function withRepoImportLock(root, label, fn, o = {}) {
+  const path15 = (0, import_path90.resolve)(factoryImportLockPath(root));
+  if (importInside.has(path15)) return fn();
+  const held = o.held ?? acquireImportLock(root, label, o.now ?? (() => (/* @__PURE__ */ new Date()).toISOString()), o.deps ?? defaultOwnerDeps(), o.waitMs ?? IMPORT_LOCK_WAIT_MS);
+  importInside.add(path15);
+  try {
+    return fn();
+  } finally {
+    importInside.delete(path15);
+    if (!o.held) held.release();
+  }
+}
+async function withRepoImportLockAsync(root, label, fn, o = {}) {
+  const now = o.now ?? (() => (/* @__PURE__ */ new Date()).toISOString());
+  const sleep9 = o.sleep ?? ((ms) => new Promise((r) => {
+    setTimeout(r, ms);
+  }));
+  const start = scanWait.clock();
+  for (; ; ) {
+    const r = tryImportLock(root, label, now, o.deps ?? defaultOwnerDeps(), scanWait.clock() - start, o.waitMs ?? IMPORT_LOCK_WAIT_MS);
+    if ("held" in r) {
+      try {
+        return withRepoImportLock(root, label, fn, { held: r.held });
+      } finally {
+        r.held.release();
+      }
+    }
+    if (o.stopped?.()) throw new ImportLockBusyError(`${r.busy}; stopped by a signal while waiting for it (nothing was done under the lock): rerun to continue`);
+    await sleep9(r.sleepMs);
+  }
+}
+function ownerFromOtherCheckout(prior, root, platform = process.platform) {
+  if (typeof prior.root !== "string") return false;
+  const fold5 = (p) => platform === "win32" || platform === "darwin" ? (0, import_path90.resolve)(p).toLowerCase() : (0, import_path90.resolve)(p);
+  return fold5(prior.root) !== fold5(root);
+}
+function ownerHolds(owner, deps) {
+  if (owner.hostname !== deps.hostname) return true;
+  if (owner.pid === deps.pid || !deps.isAlive(owner.pid)) return false;
+  if (typeof owner.identity !== "string" || !deps.identityOf) return true;
+  const current = deps.identityOf(owner.pid);
+  return current === null || current === owner.identity;
+}
+function ownerRecord(now, deps, fields = {}) {
+  const identity = deps.identityOf?.(deps.pid) ?? null;
+  return { pid: deps.pid, hostname: deps.hostname, startedAt: now, ...fields.run ? { run: fields.run } : {}, ...fields.root ? { root: fields.root } : {}, ...identity ? { identity } : {} };
+}
+function ownerHolding(path15, deps = defaultOwnerDeps()) {
+  let raw;
+  try {
+    raw = (0, import_fs74.readFileSync)(path15, "utf8");
+  } catch {
+    return null;
+  }
+  try {
+    const owner = JSON.parse(raw);
+    if (!isOwnerRecord(owner)) return "unreadable";
+    return ownerHolds(owner, deps) ? owner : null;
+  } catch {
+    return "unreadable";
+  }
+}
+function withOwnerFileLock(path15, fn) {
+  const lock = lockPathFor(path15);
+  const handle = acquireFileLockSync(lock, { timeoutMs: 5e3 });
+  if (!handle) throw new FactoryBusyError(lockBusyMessage(lock));
+  try {
+    return fn();
+  } finally {
+    releaseFileLockSync(handle);
+  }
+}
+function lockBusyMessage(lock, nowMs = Date.now()) {
+  const remove = `if no omg factory process is running, remove ${lock}`;
+  let stat;
+  try {
+    stat = (0, import_fs74.lstatSync)(lock);
+  } catch {
+    return `another omg factory process held the lock file ${lock}; retry in a moment`;
+  }
+  if (stat.isDirectory()) return `the lock path ${lock} is a directory, so the lock can never be taken and never goes stale; ${remove}`;
+  if (nowMs - stat.mtimeMs >= LOCK_STALE_MS) return `the lock file ${lock} has been held for more than ${LOCK_STALE_MS / 1e3} s by a live pid (maybe an unrelated program reusing it), so it does not go stale; ${remove}`;
+  return `another omg factory process holds the lock file ${lock}; retry in a moment (${remove})`;
+}
+function claimOwner(path15, now, deps, busy, fields = {}) {
+  ensureDirSync((0, import_path90.dirname)(path15));
+  const record3 = `${JSON.stringify(ownerRecord(now, deps, fields))}
+`;
+  const tookOver = withOwnerFileLock(path15, () => {
+    let prior;
+    if ((0, import_fs74.existsSync)(path15)) {
+      let parsed;
+      try {
+        parsed = JSON.parse((0, import_fs74.readFileSync)(path15, "utf8"));
+      } catch {
+        parsed = void 0;
+      }
+      if (!isOwnerRecord(parsed)) throw new FactoryBusyError(unreadableOwnerMessage(path15));
+      prior = parsed;
+      if (ownerHolds(prior, deps)) throw new FactoryBusyError(busy(prior), typeof prior.run === "string" ? prior.run : void 0);
+    }
+    atomicWriteFileSync(path15, record3);
+    return prior;
+  });
+  const whileMine = (fn) => {
+    try {
+      withOwnerFileLock(path15, () => {
+        const owner = (0, import_fs74.existsSync)(path15) ? JSON.parse((0, import_fs74.readFileSync)(path15, "utf8")) : null;
+        if (isOwnerRecord(owner) && owner.pid === deps.pid && owner.hostname === deps.hostname) fn(owner);
+      });
+      return true;
+    } catch (error62) {
+      console.error(`omg factory: could not update the lock ${path15} (${error62 instanceof Error ? error62.message : String(error62)}); it stays held by this process`);
+      return false;
+    }
+  };
+  const release = () => whileMine(() => (0, import_fs74.unlinkSync)(path15));
+  const relabel = (run3) => {
+    whileMine((owner) => atomicWriteFileSync(path15, `${JSON.stringify({ ...owner, run: run3 })}
+`));
+  };
+  return { release, relabel, ...tookOver ? { tookOver } : {} };
+}
+var import_crypto22, import_fs74, import_os17, import_path90, FACTORY_PHASES, TERMINAL_FACTORY_PHASES, HEAL_RUN_KEY, HEAL_APPROVE_GATE, HEAL_DIAGNOSIS_GATE, FactoryStateError, EXIT_BUSY, FactoryBusyError, FactoryTamperHoldError, runSlug, runLabel, isStr2, HEX64, GATE_DETAIL_MAX_CHARS, isCount3, HEX406, MAX_HUMAN_THREAD_IDS, THREAD_ID, FEEDBACK_FORGES, FULL_SHA2, findingsOk, ownIdentity, startIdentity, defaultOwnerDeps, ownerText, SLOT_FILE, slotText, IMPORT_LOCK_WAIT_MS, ImportLockBusyError, importHeld, importInside, SCAN_WAIT_MS, SCAN_POLL_MS, scanWait, engineBusyMessage, engineBusyText, unreadableOwnerMessage, isOwnerRecord, LOCK_STALE_MS;
+var init_state5 = __esm({
+  "src/factory/run/state.ts"() {
+    "use strict";
+    import_crypto22 = require("crypto");
+    import_fs74 = require("fs");
+    import_os17 = require("os");
+    import_path90 = require("path");
+    init_atomic_write();
+    init_file_lock();
+    init_worktree_paths();
+    init_process_utils();
+    init_string_width();
+    init_config2();
+    init_exec();
+    init_types9();
+    init_mirror();
+    init_coding_agent_lane();
+    init_test_delta();
+    FACTORY_PHASES = [
+      "intake",
+      "plan",
+      "implement",
+      "publish",
+      "review",
+      "fix",
+      "prepare",
+      "conflict-fix",
+      "gates",
+      "ci-fix",
+      "merge",
+      "merged",
+      "cancelled",
+      "failed"
+    ];
+    TERMINAL_FACTORY_PHASES = ["merged", "cancelled", "failed"];
+    HEAL_RUN_KEY = /^heal-[0-9a-f]{8}$/;
+    HEAL_APPROVE_GATE = "heal-approve";
+    HEAL_DIAGNOSIS_GATE = "heal-diagnosis";
+    FactoryStateError = class extends Error {
+      constructor(message) {
+        super(message);
+        this.name = "FactoryStateError";
+      }
+    };
+    EXIT_BUSY = 6;
+    FactoryBusyError = class extends FactoryStateError {
+      /** The holder's run key when a live owner file refused (`scan`: the poller's heal scan or base sync, or a read command's fetch). */
+      holderRun;
+      constructor(message, holderRun) {
+        super(message);
+        this.name = "FactoryBusyError";
+        if (holderRun !== void 0) this.holderRun = holderRun;
+      }
+    };
+    FactoryTamperHoldError = class extends FactoryBusyError {
+      constructor(message) {
+        super(message);
+        this.name = "FactoryTamperHoldError";
+      }
+    };
+    runSlug = (key) => typeof key === "number" ? `issue-${key}` : key;
+    runLabel = (key) => typeof key === "number" ? `#${key}` : key;
+    isStr2 = (v) => typeof v === "string";
+    HEX64 = /^[0-9a-f]{64}$/;
+    GATE_DETAIL_MAX_CHARS = 4e3;
+    isCount3 = (v) => Number.isInteger(v) && v >= 0;
+    HEX406 = /^[0-9a-f]{40}$/;
+    MAX_HUMAN_THREAD_IDS = 200;
+    THREAD_ID = (v) => typeof v === "string" && v.length > 0 && v.length <= 200;
+    FEEDBACK_FORGES = ["github", "azure-devops", "local"];
+    FULL_SHA2 = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
+    findingsOk = (v) => Array.isArray(v) && v.length <= 1e3 && v.every((f) => {
+      const r = f;
+      return typeof r === "object" && r !== null && isStr2(r.path) && r.path.length <= 4096 && isStr2(r.kind) && /^[a-z-]{1,40}$/.test(r.kind) && Object.keys(r).every((k) => k === "path" || k === "kind");
+    });
+    startIdentity = (pid) => {
+      if (pid !== process.pid) return getProcessStartIdentitySync(pid);
+      if (ownIdentity === void 0) ownIdentity = getProcessStartIdentitySync(pid);
+      return ownIdentity;
+    };
+    defaultOwnerDeps = () => ({ pid: process.pid, hostname: (0, import_os17.hostname)(), isAlive: isProcessAlive, identityOf: startIdentity });
+    ownerText = (v) => stripAnsi(String(v)).replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu, " ");
+    SLOT_FILE = /^slot-(\d+)\.owner$/;
+    slotText = (s) => `slot ${s.slot}: ${s.owner === "unreadable" ? `unreadable (${s.path}; omg factory run release)` : describeOwner(s.owner)}`;
+    IMPORT_LOCK_WAIT_MS = 15 * 6e4;
+    ImportLockBusyError = class extends FactoryBusyError {
+      constructor(message) {
+        super(message, "import");
+        this.name = "ImportLockBusyError";
+      }
+    };
+    importHeld = /* @__PURE__ */ new Set();
+    importInside = /* @__PURE__ */ new Set();
+    SCAN_WAIT_MS = 6e4;
+    SCAN_POLL_MS = 500;
+    scanWait = {
+      sleep: (ms) => {
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+      },
+      clock: () => Date.now()
+    };
+    engineBusyMessage = (prior, root, key) => engineBusyText(prior, key) + (ownerFromOtherCheckout(prior, root) ? "; WARNING: that engine runs in another folder that shares this checkout's state root (a linked worktree, or with OMC_STATE_DIR set a clone with the same folder name: parallel clones need distinct folder names)" : "");
+    engineBusyText = (prior, key) => prior.run === "scan" ? `the poller's heal scan or base sync, or a factory read command's fetch, holds this checkout for a moment (${describeOwner(prior)}); retry` : `another omg factory engine runs in this repository (${describeOwner(prior)}); one engine runs per checkout at a time${key === "next" ? ", so run --next after it ends" : key === "scan" ? ", so retry after it ends" : key ? `, so start ${ownerText(key)} after it ends` : ""} (parallel runs need separate clones)`;
+    unreadableOwnerMessage = (path15, release = "omg factory run release") => `the owner file ${path15} is unreadable, so it counts as held; check that no engine uses it, then remove it (${release})`;
+    isOwnerRecord = (v) => typeof v === "object" && v !== null && Number.isInteger(v.pid) && typeof v.hostname === "string";
+    LOCK_STALE_MS = 3e4;
+  }
+});
+
+// src/factory/run/container-gate.ts
+function containerRunLabel(root, key) {
+  const repo = (0, import_node_crypto6.createHash)("sha256").update((0, import_node_path18.resolve)(root)).digest("hex").slice(0, 10);
+  return `${repo}-${runSlug(key).toLowerCase().replace(/[^a-z0-9-]/g, "-").slice(0, 40)}`;
+}
+function mountArg(fields) {
+  return fields.map((f) => /[",\n\r]/.test(f) ? `"${f.replace(/"/g, '""')}"` : f).join(",");
+}
+function hardeningArgs(s) {
+  return [
+    "--rm",
+    "--init",
+    "--pull",
+    "never",
+    // No container log on the runtime's disk, outside the watched volume (review-499b N1): output comes through the attached CLI only.
+    "--log-driver",
+    "none",
+    "--cap-drop",
+    "ALL",
+    "--security-opt",
+    "no-new-privileges",
+    "--pids-limit",
+    String(s.pidsLimit),
+    "--memory",
+    s.memory,
+    "--cpus",
+    String(s.cpus)
+  ];
+}
+function containerEnvArgs(extra = {}) {
+  const env2 = {
+    PATH: CONTAINER_PATH,
+    HOME: `${WORK}/home`,
+    CI: "1",
+    npm_config_update_notifier: "false",
+    npm_config_fund: "false",
+    npm_config_audit: "false",
+    ...extra
+  };
+  return Object.entries(env2).flatMap(([k, v]) => ["-e", `${k}=${v}`]);
+}
+function inContainerLimit(timeoutMs, argv) {
+  return ["timeout", "-s", "KILL", `${Math.ceil(timeoutMs / 1e3) + IN_CONTAINER_GRACE_S}s`, ...argv];
+}
+function sizeBytes(size) {
+  const m = /^(\d+)([mg])$/i.exec(size);
+  if (!m) throw new Error(`not a size: ${size}`);
+  return Number(m[1]) * (m[2].toLowerCase() === "g" ? 1024 ** 3 : 1024 ** 2);
+}
+function lockfileCachePolicy(lock) {
+  if (!lock || typeof lock !== "object" || Array.isArray(lock)) return { refuse: "the lockfile is not a JSON object" };
+  const outside = { refuse: "the lockfile has a package that does not come from the npm registry (git, a tarball URL or a file); the gate container installs registry packages only" };
+  let integrity = true;
+  const check2 = (e, version2) => {
+    if (typeof e.resolved === "string" && !REGISTRY_PREFIXES.some((p) => e.resolved.startsWith(p))) return false;
+    if (typeof version2 === "string" && /^[a-z+]+:/i.test(version2) && !version2.startsWith("npm:")) return false;
+    if (typeof e.integrity !== "string" || e.integrity === "") integrity = false;
+    return true;
+  };
+  const packages = lock.packages;
+  if (packages && typeof packages === "object" && !Array.isArray(packages)) {
+    for (const [key, raw] of Object.entries(packages)) {
+      if (key === "" || !raw || typeof raw !== "object") continue;
+      const e = raw;
+      if (!key.includes("node_modules/") || e.link === true || e.inBundle === true) continue;
+      if (!check2(e)) return outside;
+    }
+    return integrity ? "shared" : "private";
+  }
+  const walk = (deps, depth) => {
+    if (!deps || typeof deps !== "object" || depth > 64) return true;
+    for (const raw of Object.values(deps)) {
+      if (!raw || typeof raw !== "object") continue;
+      const e = raw;
+      if (e.bundled === true) continue;
+      if (!check2(e, e.version) || !walk(e.dependencies, depth + 1)) return false;
+    }
+    return true;
+  };
+  if (!walk(lock.dependencies, 0)) return outside;
+  return integrity ? "shared" : "private";
+}
+function installPlan(checkout) {
+  const regular = (name) => {
+    try {
+      return (0, import_node_fs16.lstatSync)((0, import_node_path18.join)(checkout, name)).isFile();
+    } catch {
+      return false;
+    }
+  };
+  if (!regular("package.json")) return { kind: "none" };
+  for (const lock of ["npm-shrinkwrap.json", "package-lock.json"]) {
+    if (!regular(lock)) continue;
+    const path15 = (0, import_node_path18.join)(checkout, lock);
+    if ((0, import_node_fs16.lstatSync)(path15).size > LOCKFILE_MAX_BYTES) return { kind: "unsupported", reason: `${lock} is larger than the gate container reads` };
+    const bytes = (0, import_node_fs16.readFileSync)(path15);
+    let json3;
+    try {
+      json3 = JSON.parse(bytes.toString("utf8"));
+    } catch {
+      return { kind: "unsupported", reason: `${lock} is not valid JSON` };
+    }
+    const policy = lockfileCachePolicy(json3);
+    if (typeof policy === "object") return { kind: "unsupported", reason: policy.refuse };
+    return { kind: "npm-ci", lockHash: (0, import_node_crypto6.createHash)("sha256").update(bytes).digest("hex").slice(0, 16), sharedCache: policy === "shared" };
+  }
+  let pkg = {};
+  try {
+    pkg = JSON.parse((0, import_node_fs16.readFileSync)((0, import_node_path18.join)(checkout, "package.json"), "utf8"));
+  } catch {
+  }
+  const deps = ["dependencies", "devDependencies", "optionalDependencies"].some((k) => {
+    const v = pkg?.[k];
+    return v && typeof v === "object" && Object.keys(v).length > 0;
+  });
+  if (!deps) return { kind: "none" };
+  const other = ["pnpm-lock.yaml", "yarn.lock", "bun.lockb", "bun.lock"].find(regular);
+  return { kind: "unsupported", reason: other ? `the project uses ${other}; the gate container installs npm projects (package-lock.json or npm-shrinkwrap.json) only` : "the project has dependencies but no package-lock.json; the gate container installs with npm ci only" };
+}
+function containerArgv(req) {
+  const words = isNodeExe(req.exe) && req.args.length > 0 && !(0, import_node_path18.isAbsolute)(req.args[0]) ? ["node", ...req.args] : [...req.argv];
+  const root = (0, import_node_path18.resolve)(req.cwd);
+  const mapped = (w) => {
+    if (!(0, import_node_path18.isAbsolute)(w)) return w;
+    const rel = (0, import_node_path18.relative)(root, (0, import_node_path18.resolve)(w));
+    if (rel === "") return SRC;
+    if (rel.startsWith("..") || (0, import_node_path18.isAbsolute)(rel)) return w;
+    return `${SRC}/${rel.split(import_node_path18.sep).join("/")}`;
+  };
+  return words.map((w, i) => {
+    if (i === 0 && isNodeExe(w)) return "node";
+    if (w.startsWith(OUTPUT_FILE_FLAG)) return `${OUTPUT_FILE_FLAG}${mapped(w.slice(OUTPUT_FILE_FLAG.length))}`;
+    return mapped(w);
+  });
+}
+function copyScript(npmCi, gitView = false) {
+  const copy = copyLines(gitView).join("; ");
+  return npmCi ? `${copy}; ${HOLD_NPMRC}` : copy;
+}
+function checkoutCopyProblem(checkout) {
+  let root;
+  try {
+    root = import_node_fs16.realpathSync.native(checkout);
+  } catch {
+    return "the checkout could not be resolved";
+  }
+  let seen = 0;
+  const inside2 = (p) => samePathOrUnder(p, root);
+  const walk = (dir) => {
+    for (const name of (0, import_node_fs16.readdirSync)(dir)) {
+      if (name === ".git" || name === "node_modules") continue;
+      if (++seen > SCAN_MAX_ENTRIES) return "the checkout has more files than the gate container copies";
+      const path15 = (0, import_node_path18.join)(dir, name);
+      const st = (0, import_node_fs16.lstatSync)(path15);
+      if (st.isSymbolicLink()) {
+        const lexical = linkTargetProblem((0, import_node_fs16.readlinkSync)(path15), (0, import_node_path18.relative)(root, dir).split(import_node_path18.sep).filter(Boolean).length);
+        if (lexical) return lexical;
+        let target;
+        try {
+          target = import_node_fs16.realpathSync.native(path15);
+        } catch {
+          return "the checkout has a link whose target does not exist";
+        }
+        if (!inside2(target)) return "the checkout has a link (a symbolic link or junction) that points outside it";
+        continue;
+      }
+      if (st.isDirectory()) {
+        const p = walk(path15);
+        if (p) return p;
+      } else if (st.isFile() && st.nlink > 1) return "the checkout has a file with more than one hard link";
+    }
+    return null;
+  };
+  try {
+    return walk(root);
+  } catch {
+    return "the checkout could not be listed";
+  }
+}
+function linkTargetProblem(target, depth) {
+  if (target === "" || target.startsWith("/") || target.startsWith("\\") || /^[A-Za-z]:/.test(target)) return "the checkout has a link with an absolute target";
+  let up = 0;
+  let walked = false;
+  for (const part of target.split(/[\\/]+/)) {
+    if (part === "" || part === ".") continue;
+    if (part !== "..") {
+      walked = true;
+      continue;
+    }
+    if (walked) return "the checkout has a link whose target steps back (..) after a name";
+    if (++up > depth) return "the checkout has a link (a symbolic link or junction) that points outside it";
+  }
+  return null;
+}
+function samePathOrUnder(p, root) {
+  const norm2 = (x) => process.platform === "win32" ? x.toLowerCase() : x;
+  const a = norm2(p);
+  const b = norm2(root);
+  return a === b || a.startsWith(b.endsWith(import_node_path18.sep) ? b : b + import_node_path18.sep);
+}
+async function runContainerGate(req, s, runLabel2, deps) {
+  const unavailable = (reason) => ({ ran: false, reason, unavailable: true });
+  const noVerdict = (reason) => ({ ran: false, reason, started: true });
+  const log = deps.log ?? ((line) => {
+    process.stderr.write(`${line}
+`);
+  });
+  const bin = s.runtime;
+  const switchBack = 'or set factory.run.sandbox.isolation "copilot" in your user config';
+  if (req.purpose === "install") {
+    return { ran: true, status: 0, output: "gate container: dependencies are installed in the container per command", timedOut: false };
+  }
+  if (!/^[a-z0-9-]{1,60}$/.test(runLabel2)) return unavailable(`the run label ${JSON.stringify(runLabel2)} is not [a-z0-9-]`);
+  let diskLimit;
+  try {
+    diskLimit = sizeBytes(s.diskLimit);
+  } catch {
+    return unavailable(`factory.run.sandbox.container.diskLimit ${JSON.stringify(s.diskLimit)} is not a size`);
+  }
+  const probe = await deps.exec(bin, ["version", "--format", "{{.Server.Version}}"], { timeoutMs: PROBE_TIMEOUT_MS });
+  if (probe.spawnError !== void 0) return unavailable(`the container runtime ${bin} is not installed or not on PATH (${probe.spawnError}); install it, ${switchBack}`);
+  if (probe.status !== 0) return unavailable(`the container runtime ${bin} does not answer (${firstLine(probe.tail) || `exit ${probe.status}`}); start ${bin === "docker" ? "Docker Desktop or the docker daemon" : "the podman machine or service"}, ${switchBack}`);
+  const inspectImage = () => deps.exec(bin, ["image", "inspect", "--format", "{{.Id}}", s.image], { timeoutMs: PROBE_TIMEOUT_MS });
+  let image = await inspectImage();
+  if (image.status !== 0) {
+    if (/^sha256:[0-9a-f]{64}$/.test(s.image)) return unavailable(`the pinned gate image ${s.image} is no longer present (removed during the run?); start the run again so the image tag is resolved and pulled again`);
+    log(`omg factory run: pulling the gate image ${s.image} with ${bin} (factory.run.sandbox.container.image); pin a digest there to fix what runs`);
+    const pulled = await deps.exec(bin, ["pull", s.image], { timeoutMs: PULL_TIMEOUT_MS });
+    if (pulled.status !== 0) return unavailable(`the gate image ${s.image} is not present and ${bin} pull failed (${firstLine(lastLines(pulled.tail)) || `exit ${pulled.status}`}); pull it yourself, set factory.run.sandbox.container.image, ${switchBack}`);
+    image = await inspectImage();
+  }
+  const imageId = /^(sha256:[0-9a-f]{64})$/m.exec(image.tail.trim())?.[1];
+  if (!imageId) return unavailable(`could not read the image id of ${s.image} from ${bin} image inspect (${firstLine(image.tail) || `exit ${image.status}`}); pull the image again or pin a digest in factory.run.sandbox.container.image, ${switchBack}`);
+  const ref = imageId;
+  const plan = installPlan(req.cwd);
+  if (plan.kind === "unsupported") return unavailable(`${plan.reason}; ${switchBack}`);
+  const scan = checkoutCopyProblem(req.cwd);
+  if (scan) return noVerdict(`${scan}, so it is not copied into the gate container; nothing is counted`);
+  const id = (deps.id ?? (() => (0, import_node_crypto6.randomBytes)(4).toString("hex")))();
+  const name = `${CONTAINER_NAME_PREFIX}${runLabel2}-${id}`;
+  const volume = name;
+  const network = `${name}-net`;
+  const cache = plan.kind === "npm-ci" && plan.sharedCache ? `${CONTAINER_NAME_PREFIX}cache-${plan.lockHash}` : void 0;
+  const labels = ["--label", `${RUN_LABEL}=${runLabel2}`, "--label", `${GATE_LABEL}=1`];
+  const harden = hardeningArgs(s);
+  const work = ["--mount", mountArg(["type=volume", `source=${volume}`, `target=${WORK}`])];
+  const workRo = ["--mount", mountArg(["type=volume", `source=${volume}`, `target=${WORK}`, "readonly"])];
+  const started = [];
+  let volumeMade = false;
+  let networkMade = false;
+  const ran = (o) => ({ ran: true, ...o, imageId });
+  const removeNetwork = async () => {
+    if (!networkMade) return;
+    const rm4 = await deps.exec(bin, ["network", "rm", network], { timeoutMs: PROBE_TIMEOUT_MS }).catch(() => null);
+    if (rm4?.status === 0) networkMade = false;
+  };
+  const step = (container, opts, argv, timeoutMs, full) => {
+    started.push(container);
+    return deps.exec(bin, ["run", "--name", container, ...opts, ref, ...inContainerLimit(timeoutMs, argv)], {
+      timeoutMs,
+      ...full !== void 0 ? { full } : {},
+      onTimeout: async () => {
+        await deps.exec(bin, ["kill", container], { timeoutMs: KILL_TIMEOUT_MS }).catch(() => null);
+        await deps.exec(bin, ["rm", "-f", container], { timeoutMs: KILL_TIMEOUT_MS }).catch(() => null);
+      }
+    });
+  };
+  let duCount = 0;
+  const watched = async (container, run3) => {
+    let stopped = false;
+    let over;
+    let misses = 0;
+    let timer;
+    let inflight = Promise.resolve();
+    const tick = () => {
+      inflight = (async () => {
+        if (stopped) return;
+        const duName = `${container}-du-${++duCount}`;
+        started.push(duName);
+        const du = await deps.exec(bin, [
+          "run",
+          "--name",
+          duName,
+          ...labels,
+          ...harden,
+          "--network",
+          "none",
+          // root without DAC override: only DAC_READ_SEARCH, so a dir the PR made unreadable is still counted.
+          "--user",
+          "0:0",
+          "--cap-add",
+          "DAC_READ_SEARCH",
+          "--read-only",
+          ...workRo,
+          ref,
+          ...inContainerLimit(PROBE_TIMEOUT_MS, ["du", "-sxk", WORK])
+        ], { timeoutMs: PROBE_TIMEOUT_MS + 2 * IN_CONTAINER_GRACE_S * 1e3 }).catch(() => null);
+        if (du !== null && (du.status === 0 || du.status === 1) && !du.timedOut) started.splice(started.indexOf(duName), 1);
+        else await deps.exec(bin, ["rm", "-f", duName], { timeoutMs: KILL_TIMEOUT_MS }).catch(() => null);
+        const m = du ? /^(\d+)\s+\/work\s*$/m.exec(du.tail) : null;
+        const kb = m ? Number(m[1]) : NaN;
+        if (stopped) return;
+        const measured = Number.isFinite(kb);
+        misses = measured ? 0 : misses + 1;
+        if (measured && kb * 1024 > diskLimit || misses >= 2) {
+          over = measured ? "over" : "unmeasured";
+          await deps.exec(bin, ["kill", container], { timeoutMs: KILL_TIMEOUT_MS }).catch(() => null);
+          await deps.exec(bin, ["rm", "-f", container], { timeoutMs: KILL_TIMEOUT_MS }).catch(() => null);
+          return;
+        }
+        if (!stopped) timer = setTimeout(tick, deps.diskWatchMs ?? DISK_WATCH_MS);
+      })();
+    };
+    timer = setTimeout(tick, deps.diskWatchMs ?? DISK_WATCH_MS);
+    try {
+      const r = await run3();
+      return over ? { ...r, overDisk: over } : r;
+    } finally {
+      stopped = true;
+      clearTimeout(timer);
+      await inflight;
+    }
+  };
+  const overDisk = (what, r) => ran({
+    status: 1,
+    output: tail(`${r.tail.trim()}
+${what} in the gate container ${r.overDisk === "unmeasured" ? `was stopped: its disk use could not be measured twice in a row, so factory.run.sandbox.container.diskLimit (${s.diskLimit}) could not be checked` : `used more than factory.run.sandbox.container.diskLimit (${s.diskLimit}) and was stopped`}`),
+    timedOut: false
+  });
+  try {
+    const made = await deps.exec(bin, ["volume", "create", ...labels, volume], { timeoutMs: PROBE_TIMEOUT_MS });
+    if (made.status !== 0) return unavailable(`${bin} could not create the gate volume (${firstLine(made.tail) || `exit ${made.status}`}); check the runtime's disk, ${switchBack}`);
+    volumeMade = true;
+    if (cache) {
+      const problem2 = await ensureCacheVolume(deps.exec, bin, cache);
+      if (problem2) return unavailable(`${problem2}; ${switchBack}`);
+    }
+    const cacheMount = cache ? ["--mount", mountArg(["type=volume", `source=${cache}`, `target=/cache`])] : [];
+    const copy = await step(`${name}-copy`, [
+      ...labels,
+      ...harden,
+      "--network",
+      "none",
+      "--user",
+      "0:0",
+      "--cap-add",
+      "CHOWN",
+      "--cap-add",
+      "DAC_OVERRIDE",
+      "--cap-add",
+      "FOWNER",
+      "--read-only",
+      "--mount",
+      mountArg(["type=bind", `source=${(0, import_node_path18.resolve)(req.cwd)}`, "target=/in", "readonly"]),
+      ...work,
+      ...cacheMount,
+      ...req.gitView ? ["--mount", mountArg(["type=bind", `source=${(0, import_node_path18.resolve)(req.gitView)}`, `target=${GIT_VIEW_MOUNT}`, "readonly"])] : []
+    ], ["sh", "-c", copyScript(plan.kind === "npm-ci", req.gitView !== void 0)], COPY_TIMEOUT_MS);
+    if (copy.status !== 0) return noVerdict(`copying the checkout into the gate container failed (exit ${copy.status ?? "none"}${copy.timedOut ? ", timed out" : ""}); nothing is counted`);
+    const runBase = [...labels, ...harden, "--user", CONTAINER_USER, "--read-only", "--tmpfs", "/tmp:rw,exec,nosuid,nodev,size=1g", ...work, "-w", SRC];
+    const ownCache = { npm_config_cache: `${WORK}/home/.npm` };
+    if (plan.kind === "npm-ci") {
+      const timeoutMs = s.installTimeoutMinutes * 6e4;
+      const net2 = await deps.exec(bin, ["network", "create", ...labels, ...bin === "docker" ? ["--driver", "bridge", "-o", "com.docker.network.bridge.enable_icc=false"] : ["-o", "isolate=true"], network], { timeoutMs: PROBE_TIMEOUT_MS });
+      if (net2.status !== 0) return unavailable(`${bin} could not create the gate install network (${firstLine(net2.tail) || `exit ${net2.status}`}); ${switchBack}`);
+      networkMade = true;
+      const fetchName = `${name}-install`;
+      const inst = await watched(fetchName, () => step(fetchName, [
+        ...runBase,
+        "--network",
+        network,
+        ...cacheMount,
+        ...containerEnvArgs({ ...cache ? { npm_config_cache: "/cache/npm" } : ownCache, ...NPM_FETCH_ENV })
+      ], ["npm", "ci", "--ignore-scripts"], timeoutMs));
+      await removeNetwork();
+      if (inst.overDisk) return overDisk("the dependency install (npm ci)", inst);
+      if (inst.timedOut) return ran({ status: 124, output: tail(`${inst.tail.trim()}
+the dependency install (npm ci) in the gate container timed out after ${s.installTimeoutMinutes} min`), timedOut: true });
+      if (inst.status === null || inst.status === 125) return noVerdict(`the container runtime failed while the dependency install ran (exit ${inst.status ?? "none"}); nothing is counted`);
+      if (inst.status !== 0) return ran({ status: inst.status, output: tail(`${inst.tail.trim()}
+the dependency install (npm ci) in the gate container failed (exit ${inst.status})`), timedOut: false });
+      const scriptsName = `${name}-scripts`;
+      const scripts = await watched(scriptsName, () => step(scriptsName, [...runBase, "--network", "none", ...containerEnvArgs(ownCache)], ["sh", "-c", SCRIPTS_SCRIPT], timeoutMs));
+      if (scripts.overDisk) return overDisk("the install scripts", scripts);
+      if (scripts.timedOut) return ran({ status: 124, output: tail(`${scripts.tail.trim()}
+the install scripts in the gate container timed out after ${s.installTimeoutMinutes} min`), timedOut: true });
+      if (scripts.status === null || scripts.status === 125) return noVerdict(`the container runtime failed while the install scripts ran (exit ${scripts.status ?? "none"}); nothing is counted`);
+      if (scripts.status !== 0) return ran({ status: scripts.status, output: tail(`${scripts.tail.trim()}
+the install scripts (npm rebuild and the root's install scripts, no network) in the gate container failed (exit ${scripts.status})`), timedOut: false });
+    }
+    const argv = containerArgv(req);
+    const r = await watched(name, () => step(name, [...runBase, "--network", "none", ...containerEnvArgs(ownCache)], argv, req.timeoutMs));
+    if (r.overDisk) return overDisk("the command", r);
+    if (r.timedOut) return ran({ status: 124, output: tail(`${r.tail.trim()}
+timed out after ${req.timeoutMs} ms`), timedOut: true });
+    if (r.spawnError !== void 0 || r.status === null || r.status === 125) return noVerdict(`the container runtime failed while the command ran (exit ${r.status ?? "none"}); nothing is counted`);
+    const result = ran({ status: r.status, output: tail(r.tail.trim()), timedOut: false });
+    if (r.status !== 0 && req.reportFile) {
+      const rel = (0, import_node_path18.relative)((0, import_node_path18.resolve)(req.cwd), (0, import_node_path18.resolve)(req.reportFile));
+      if (rel !== "" && !rel.startsWith("..") && !(0, import_node_path18.isAbsolute)(rel)) {
+        const got = await step(`${name}-report`, [
+          ...labels,
+          ...harden,
+          "--network",
+          "none",
+          "--user",
+          CONTAINER_USER,
+          "--read-only",
+          ...workRo
+        ], ["cat", `${SRC}/${rel.split(import_node_path18.sep).join("/")}`], COPY_TIMEOUT_MS, VITEST_REPORT_MAX_BYTES);
+        if (got.status === 0 && got.stdout && !got.overflow) return ran({ status: r.status, output: tail(r.tail.trim()), timedOut: false, report: got.stdout.toString("utf8") });
+      }
+    }
+    if (req.purpose !== "prepare" || r.status !== 0) return result;
+    const back = await step(`${name}-export`, [
+      ...labels,
+      ...harden,
+      "--network",
+      "none",
+      "--user",
+      CONTAINER_USER,
+      "--read-only",
+      ...workRo
+    ], ["tar", "-C", SRC, "--exclude=.git", "--exclude=node_modules", "--format=posix", "-cf", "-", "."], COPY_TIMEOUT_MS, COPY_BACK_MAX_BYTES);
+    if (back.status !== 0 || !back.stdout) return noVerdict(`reading the prepare check's changes back from the gate container failed (${back.overflow ? "over the size bound" : `exit ${back.status ?? "none"}`}); nothing is counted`);
+    const problem = applyCopyBack(req.cwd, back.stdout, deps.platform ?? process.platform);
+    if (problem) return noVerdict(`the prepare check's changes cannot be copied back safely (${problem}); nothing is counted`);
+    return result;
+  } catch {
+    return noVerdict("the gate container failed unexpectedly; nothing is counted");
+  } finally {
+    for (const c of started) await deps.exec(bin, ["rm", "-f", c], { timeoutMs: KILL_TIMEOUT_MS }).catch(() => null);
+    await removeNetwork();
+    if (volumeMade) {
+      for (let i = 0; i < 3; i++) {
+        const rm4 = await deps.exec(bin, ["volume", "rm", "-f", volume], { timeoutMs: PROBE_TIMEOUT_MS }).catch(() => null);
+        if (rm4?.status === 0) break;
+        await new Promise((r) => setTimeout(r, 500));
+      }
+    }
+  }
+}
+async function ensureCacheVolume(exec, bin, cache) {
+  const inspect = await exec(bin, ["volume", "inspect", "--format", "{{.Driver}}|{{json .Labels}}|{{json .Options}}", cache], { timeoutMs: PROBE_TIMEOUT_MS });
+  if (inspect.status === 0) {
+    const [driver, labelsJson, optionsJson] = inspect.tail.trim().split("\n")[0].split("|");
+    let labels;
+    let options;
+    try {
+      labels = JSON.parse(labelsJson ?? "");
+      options = JSON.parse(optionsJson ?? "");
+    } catch {
+      return `the npm cache volume ${cache} cannot be inspected; remove it (${bin} volume rm ${cache})`;
+    }
+    const l = labels ?? {};
+    const noOptions = options === null || typeof options === "object" && Object.keys(options).length === 0;
+    if (driver !== "local" || l[CACHE_LABEL] !== "npm" || l[GATE_LABEL] !== "1" || !noOptions) return `a volume named ${cache} exists that the factory did not make (driver, labels or options differ); remove or rename it`;
+    return null;
+  }
+  const c = await exec(bin, ["volume", "create", "--label", `${GATE_LABEL}=1`, "--label", `${CACHE_LABEL}=npm`, cache], { timeoutMs: PROBE_TIMEOUT_MS });
+  return c.status === 0 ? null : `${bin} could not create the npm cache volume (${firstLine(c.tail) || `exit ${c.status}`})`;
+}
+function readTar(buf, maxEntries = COPY_BACK_MAX_ENTRIES) {
+  const entries = [];
+  let off = 0;
+  let pax = {};
+  let longName;
+  let longLink;
+  const str9 = (b) => {
+    const z2 = b.indexOf(0);
+    return (z2 === -1 ? b : b.subarray(0, z2)).toString("utf8");
+  };
+  const octal = (b) => {
+    if (b[0] & 128) throw new Error("base-256 size");
+    const t = str9(b).trim();
+    if (t === "") return 0;
+    if (!/^[0-7]+$/.test(t)) throw new Error("bad octal field");
+    return parseInt(t, 8);
+  };
+  while (off + 512 <= buf.length) {
+    const h = buf.subarray(off, off + 512);
+    if (h.every((x) => x === 0)) return entries;
+    const sum = octal(h.subarray(148, 156));
+    let calc = 0;
+    for (let i = 0; i < 512; i++) calc += i >= 148 && i < 156 ? 32 : h[i];
+    if (calc !== sum) throw new Error("bad header checksum");
+    const flag = String.fromCharCode(h[156] || 48);
+    let size = octal(h.subarray(124, 136));
+    if (pax.size !== void 0) size = Number(pax.size);
+    if (!Number.isSafeInteger(size) || size < 0) throw new Error("bad size");
+    const start = off + 512;
+    const end = start + size;
+    if (end > buf.length) throw new Error("truncated");
+    const data = buf.subarray(start, end);
+    off = start + Math.ceil(size / 512) * 512;
+    if (flag === "x") {
+      pax = { ...pax, ...parsePax(data) };
+      continue;
+    }
+    if (flag === "g") continue;
+    if (flag === "L") {
+      longName = str9(data);
+      continue;
+    }
+    if (flag === "K") {
+      longLink = str9(data);
+      continue;
+    }
+    const prefix = str9(h.subarray(345, 500));
+    const path15 = pax.path ?? longName ?? (prefix ? `${prefix}/${str9(h.subarray(0, 100))}` : str9(h.subarray(0, 100)));
+    const linkTarget = pax.linkpath ?? longLink ?? str9(h.subarray(157, 257));
+    const type = flag === "0" || flag === "7" ? "file" : flag === "5" ? "dir" : flag === "2" ? "symlink" : flag === "1" ? "hardlink" : "other";
+    entries.push({ path: path15, type, mode: octal(h.subarray(100, 108)), ...type === "file" ? { data: Buffer.from(data) } : {}, ...type === "symlink" || type === "hardlink" ? { linkTarget } : {} });
+    if (entries.length > maxEntries) throw new Error("too many entries");
+    pax = {};
+    longName = void 0;
+    longLink = void 0;
+  }
+  throw new Error("no end-of-archive marker");
+}
+function parsePax(data) {
+  const out = {};
+  let i = 0;
+  while (i < data.length) {
+    const space = data.indexOf(32, i);
+    if (space === -1) throw new Error("bad pax record");
+    const len = Number(data.subarray(i, space).toString("ascii"));
+    if (!Number.isSafeInteger(len) || len <= space - i || i + len > data.length) throw new Error("bad pax record");
+    const rec = data.subarray(space + 1, i + len - 1).toString("utf8");
+    const eq = rec.indexOf("=");
+    if (eq > 0) out[rec.slice(0, eq)] = rec.slice(eq + 1);
+    i += len;
+  }
+  return out;
+}
+function foldPath(p, platform) {
+  return foldsCase(platform) ? dropIgnorable(p.normalize("NFC")).toLowerCase() : p;
+}
+function isName(component, name, platform) {
+  if (!foldsCase(platform)) return component === name;
+  const c = dropIgnorable(component.normalize("NFC"));
+  return c.toLowerCase() === name || c.toUpperCase() === name.toUpperCase() || c.normalize("NFKC").toLowerCase() === name;
+}
+function safeRelPath(raw, platform) {
+  const p = raw.replace(/^(?:\.\/)+/, "").replace(/\/+$/, "");
+  if (p === "" || p === ".") return "";
+  if (p.startsWith("/") || p.includes("\0") || p.includes("\\")) return null;
+  const parts = p.split("/");
+  if (parts.some((s) => s === "" || s === "." || s === "..")) return null;
+  if (parts.some((s) => isName(s, ".git", platform) || isName(s, "node_modules", platform))) return null;
+  if (platform === "win32" && parts.some((s) => /[<>:"|?*\x00-\x1f]/.test(s) || /[. ]$/.test(s) || /~\d/.test(s) || /^(?:con|prn|aux|nul|com[\d¹²³]|lpt[\d¹²³]|conin\$|conout\$)(?:\..*)?$/i.test(s))) return null;
+  return p;
+}
+function hostTree(root, platform) {
+  const out = /* @__PURE__ */ new Map();
+  const walk = (dir, rel) => {
+    for (const name of (0, import_node_fs16.readdirSync)(dir)) {
+      if (isName(name, ".git", platform) || isName(name, "node_modules", platform)) continue;
+      const r = rel ? `${rel}/${name}` : name;
+      const st = (0, import_node_fs16.lstatSync)((0, import_node_path18.join)(dir, name));
+      const kind = st.isSymbolicLink() ? "symlink" : st.isDirectory() ? "dir" : st.isFile() && st.nlink === 1 ? "file" : "other";
+      out.set(foldPath(r, platform), { rel: r, kind });
+      if (kind === "dir") walk((0, import_node_path18.join)(dir, name), r);
+    }
+  };
+  walk(root, "");
+  return out;
+}
+function onDiskProblem(checkout, realRoot, rel, leaf) {
+  const parts = rel.split("/");
+  let deepest = checkout;
+  for (let i = 0; i < parts.length; i++) {
+    const path15 = (0, import_node_path18.join)(checkout, ...parts.slice(0, i + 1));
+    let st;
+    try {
+      st = (0, import_node_fs16.lstatSync)(path15);
+    } catch (error62) {
+      if (error62.code === "ENOENT") break;
+      return "a path could not be checked";
+    }
+    if (st.isSymbolicLink()) return "a file would be written through a host link";
+    if (i < parts.length - 1 || leaf === "dir") {
+      if (!st.isDirectory()) return "a file would be written under a non-directory";
+      deepest = path15;
+    } else if (!st.isFile() || st.nlink !== 1) return "a file replaces a host directory, link or hard-linked file";
+  }
+  let real2;
+  try {
+    real2 = import_node_fs16.realpathSync.native(deepest);
+  } catch {
+    return "a parent directory could not be resolved";
+  }
+  return samePathOrUnder(real2, realRoot) ? null : "a file would be written outside the checkout";
+}
+function applyCopyBack(checkout, tar, platform) {
+  let entries;
+  try {
+    entries = readTar(tar);
+  } catch {
+    return "the tar stream is malformed or too large";
+  }
+  let host;
+  let realRoot;
+  try {
+    host = hostTree(checkout, platform);
+    realRoot = import_node_fs16.realpathSync.native(checkout);
+  } catch {
+    return "the checkout could not be listed";
+  }
+  const want = /* @__PURE__ */ new Map();
+  for (const e of entries) {
+    const rel = safeRelPath(e.path, platform);
+    if (rel === null) return "an entry has a path that cannot be written here";
+    if (rel === "") continue;
+    const key = foldPath(rel, platform);
+    if (want.has(key)) return "two entries name the same file on this host";
+    want.set(key, { rel, e });
+  }
+  const writes = [];
+  for (const [key, { rel, e }] of want) {
+    const kind = host.get(key)?.kind;
+    if (e.type === "dir") {
+      if (kind !== void 0 && kind !== "dir") return "a directory replaces a host file or link";
+      continue;
+    }
+    if (e.type === "symlink") {
+      if (kind !== "symlink") return "the check created a symbolic link";
+      continue;
+    }
+    if (e.type !== "file") return "the check created a hardlink, device or other special file";
+    if (kind !== void 0 && kind !== "file") return "a file replaces a host directory, link or hard-linked file";
+    const parts = rel.split("/");
+    for (let i = 1; i < parts.length; i++) {
+      const pkey = foldPath(parts.slice(0, i).join("/"), platform);
+      const parent = host.get(pkey)?.kind;
+      if (parent !== void 0 && parent !== "dir") return "a file would be written through a host link";
+      const w = want.get(pkey);
+      if (parent === void 0 && w && w.e.type !== "dir") return "a file would be written under a non-directory";
+    }
+    const disk = onDiskProblem(checkout, realRoot, rel, "file");
+    if (disk) return disk;
+    if (kind === "file") {
+      const cur = (0, import_node_fs16.readFileSync)((0, import_node_path18.join)(checkout, ...parts));
+      if (cur.equals(e.data)) continue;
+    }
+    writes.push({ rel, data: e.data, mode: e.mode });
+  }
+  const removals = [...host].filter(([key, h]) => (h.kind === "file" || h.kind === "symlink") && !want.has(key)).map(([, h]) => h.rel);
+  for (const rel of removals) {
+    const parent = rel.split("/").slice(0, -1).join("/");
+    if (parent && onDiskProblem(checkout, realRoot, parent, "dir")) return "a file to remove lies under a host link";
+  }
+  for (const { rel, data, mode } of writes) {
+    const path15 = (0, import_node_path18.join)(checkout, ...rel.split("/"));
+    const dir = (0, import_node_path18.dirname)(path15);
+    let tmp;
+    try {
+      (0, import_node_fs16.mkdirSync)(dir, { recursive: true });
+      if (!samePathOrUnder(import_node_fs16.realpathSync.native(dir), realRoot)) return "a file would be written outside the checkout; files before it were written";
+      tmp = (0, import_node_path18.join)(dir, `.omg-copy-back-${(0, import_node_crypto6.randomBytes)(6).toString("hex")}`);
+      (0, import_node_fs16.writeFileSync)(tmp, data, { flag: "wx" });
+      if (platform !== "win32") (0, import_node_fs16.chmodSync)(tmp, mode & 73 ? 493 : 420);
+      (0, import_node_fs16.renameSync)(tmp, path15);
+      tmp = void 0;
+    } catch {
+      if (tmp) try {
+        (0, import_node_fs16.unlinkSync)(tmp);
+      } catch {
+      }
+      return "writing a file back failed part-way; files before it were written";
+    }
+  }
+  try {
+    for (const rel of removals) (0, import_node_fs16.unlinkSync)((0, import_node_path18.join)(checkout, ...rel.split("/")));
+  } catch {
+    return "removing a file the check deleted failed part-way";
+  }
+  return null;
+}
+var import_node_child_process6, import_node_crypto6, import_node_fs16, import_node_path18, GATE_CONTAINER_UNAVAILABLE_GATE, CONTAINER_INCOMPATIBLE_ADVICE, CONTAINER_NAME_PREFIX, RUN_LABEL, GATE_LABEL, CACHE_LABEL, CONTAINER_PATH, CONTAINER_USER, WORK, SRC, NPM_REGISTRY, REGISTRY_PREFIXES, PROBE_TIMEOUT_MS, PULL_TIMEOUT_MS, COPY_TIMEOUT_MS, KILL_TIMEOUT_MS, IN_CONTAINER_GRACE_S, DISK_WATCH_MS, OUTPUT_TAIL_BYTES, COPY_BACK_MAX_BYTES, COPY_BACK_MAX_ENTRIES, SCAN_MAX_ENTRIES, LOCKFILE_MAX_BYTES, defaultContainerExec, isNodeExe, OUTPUT_FILE_FLAG, CONTAINER_SRC, GIT_VIEW_MOUNT, copyLines, NPMRC_HELD, HOLD_NPMRC, RESTORE_NPMRC, NPM_FETCH_ENV, SCRIPTS_SCRIPT, tail, firstLine, lastLines, IGNORABLE, dropIgnorable, foldsCase;
+var init_container_gate = __esm({
+  "src/factory/run/container-gate.ts"() {
+    "use strict";
+    import_node_child_process6 = require("node:child_process");
+    import_node_crypto6 = require("node:crypto");
+    import_node_fs16 = require("node:fs");
+    import_node_path18 = require("node:path");
+    init_sandbox_exec();
+    init_state5();
+    init_test_delta();
+    GATE_CONTAINER_UNAVAILABLE_GATE = "gate-container-unavailable";
+    CONTAINER_INCOMPATIBLE_ADVICE = 'Your gate fails in the gate container on the base: there it runs with no network, a git repository of only the checked commit (git itself must be in the image), as a non-root user on a read-only root (only /tmp, the checkout and HOME writable), with the dependencies npm ci installs from your lockfile and their install scripts run without network. Make the gate work there (or pick another factory.run.sandbox.container.image), or set factory.run.sandbox.isolation "copilot" in your user config';
+    CONTAINER_NAME_PREFIX = "omg-gate-";
+    RUN_LABEL = "omg.run";
+    GATE_LABEL = "omg.gate";
+    CACHE_LABEL = "omg.cache";
+    CONTAINER_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin";
+    CONTAINER_USER = "1000:1000";
+    WORK = "/work";
+    SRC = `${WORK}/src`;
+    NPM_REGISTRY = "https://registry.npmjs.org/";
+    REGISTRY_PREFIXES = [NPM_REGISTRY, "https://registry.yarnpkg.com/"];
+    PROBE_TIMEOUT_MS = 2e4;
+    PULL_TIMEOUT_MS = 15 * 6e4;
+    COPY_TIMEOUT_MS = 10 * 6e4;
+    KILL_TIMEOUT_MS = 3e4;
+    IN_CONTAINER_GRACE_S = 30;
+    DISK_WATCH_MS = 1e4;
+    OUTPUT_TAIL_BYTES = 64 * 1024;
+    COPY_BACK_MAX_BYTES = 256 * 1024 * 1024;
+    COPY_BACK_MAX_ENTRIES = 1e5;
+    SCAN_MAX_ENTRIES = 2e5;
+    LOCKFILE_MAX_BYTES = 64 * 1024 * 1024;
+    defaultContainerExec = (bin, args, o) => new Promise((done) => {
+      let tail4 = Buffer.alloc(0);
+      const out = [];
+      let outBytes = 0;
+      let overflow = false;
+      let timedOut = false;
+      let settled = false;
+      const keep = (chunk) => {
+        tail4 = Buffer.concat([tail4, chunk]);
+        if (tail4.length > OUTPUT_TAIL_BYTES) tail4 = tail4.subarray(tail4.length - OUTPUT_TAIL_BYTES);
+      };
+      const finish = (r) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        clearTimeout(hardKill);
+        done({ ...r, tail: tail4.toString("utf8"), overflow, timedOut, ...o.full !== void 0 && !overflow ? { stdout: Buffer.concat(out) } : {} });
+      };
+      let hardKill;
+      let child;
+      try {
+        child = (0, import_node_child_process6.spawn)(bin, [...args], { stdio: ["ignore", "pipe", "pipe"], windowsHide: true, shell: false });
+      } catch (error62) {
+        done({ status: null, tail: "", overflow: false, timedOut: false, spawnError: error62 instanceof Error ? error62.message : String(error62) });
+        return;
+      }
+      const timer = setTimeout(() => {
+        timedOut = true;
+        void Promise.resolve(o.onTimeout?.()).catch(() => void 0).finally(() => {
+          hardKill = setTimeout(() => {
+            try {
+              child.kill("SIGKILL");
+            } catch {
+            }
+          }, 1e4);
+        });
+      }, o.timeoutMs);
+      child.stdout.on("data", (chunk) => {
+        if (o.full !== void 0) {
+          if (!overflow && outBytes + chunk.length <= o.full) {
+            out.push(chunk);
+            outBytes += chunk.length;
+          } else {
+            overflow = true;
+            out.length = 0;
+          }
+        } else keep(chunk);
+      });
+      child.stderr.on("data", (chunk) => keep(chunk));
+      child.on("error", (error62) => finish({ status: null, spawnError: error62.message }));
+      child.on("close", (code) => finish({ status: code }));
+    });
+    isNodeExe = (p) => /^node(?:\.exe)?$/i.test((0, import_node_path18.basename)(p));
+    OUTPUT_FILE_FLAG = "--outputFile=";
+    CONTAINER_SRC = SRC;
+    GIT_VIEW_MOUNT = "/in-git";
+    copyLines = (gitView) => [
+      "set -e",
+      `mkdir -p ${SRC} ${WORK}/home`,
+      // Through a file, not a pipe: sh has no pipefail, and a partial copy must fail the step (copy back removes what is missing).
+      `tar -C /in --exclude=.git --exclude=node_modules -cf ${WORK}/in.tar .`,
+      `tar -C ${SRC} -xf ${WORK}/in.tar`,
+      `rm -f ${WORK}/in.tar`,
+      ...gitView ? [`mkdir ${SRC}/.git`, `tar -C ${GIT_VIEW_MOUNT} -cf ${WORK}/git.tar .`, `tar -C ${SRC}/.git -xf ${WORK}/git.tar`, `rm -f ${WORK}/git.tar`] : [],
+      `chown -R ${CONTAINER_USER} ${WORK}`,
+      'if [ -d /cache ]; then mkdir -p /cache/npm; [ "$(stat -c %u /cache/npm)" = 1000 ] || chown -R 1000:1000 /cache; fi'
+    ];
+    NPMRC_HELD = `${WORK}/npmrc.held`;
+    HOLD_NPMRC = `if [ -e ${SRC}/.npmrc ] || [ -L ${SRC}/.npmrc ]; then mv ${SRC}/.npmrc ${NPMRC_HELD}; fi`;
+    RESTORE_NPMRC = `if [ -e ${NPMRC_HELD} ] || [ -L ${NPMRC_HELD} ]; then rm -rf ${SRC}/.npmrc; mv ${NPMRC_HELD} ${SRC}/.npmrc; fi`;
+    NPM_FETCH_ENV = {
+      npm_config_registry: NPM_REGISTRY,
+      npm_config_proxy: "null",
+      npm_config_https_proxy: "null",
+      npm_config_strict_ssl: "true",
+      npm_config_replace_registry_host: "npmjs"
+    };
+    SCRIPTS_SCRIPT = [
+      "set -e",
+      RESTORE_NPMRC,
+      "npm rebuild --foreground-scripts",
+      'for s in preinstall install postinstall prepublish preprepare prepare postprepare; do npm run --if-present --ignore-scripts "$s"; done'
+    ].join("; ");
+    tail = (text3) => {
+      const clean = redactGateOutput(text3);
+      return clean.length > SANDBOX_OUTPUT_TAIL_CHARS ? clean.slice(-SANDBOX_OUTPUT_TAIL_CHARS) : clean;
+    };
+    firstLine = (text3) => text3.trim().split("\n")[0]?.trim().slice(0, 300) ?? "";
+    lastLines = (text3) => text3.trim().split("\n").slice(-1).join("\n");
+    IGNORABLE = [[173, 173], [8203, 8207], [8234, 8238], [8288, 8292], [65279, 65279]];
+    dropIgnorable = (s) => [...s].filter((ch) => {
+      const c = ch.codePointAt(0);
+      return !IGNORABLE.some(([a, b]) => c >= a && c <= b);
+    }).join("");
+    foldsCase = (platform) => platform === "win32" || platform === "darwin";
+  }
+});
+
+// src/factory/run/sandbox-exec.ts
+function sandboxShellCommand(platform, argv, cwd, marker) {
+  if (argv.length === 0 || !/^[A-Za-z0-9-]+$/.test(marker) || [cwd, ...argv].some((a) => a.includes("\0"))) return null;
+  if (platform === "win32") {
+    if (argv.some((a) => a === "" || a.includes('"'))) return null;
+    const payload2 = Buffer.from([cwd, ...argv].join("\0"), "utf8").toString("base64");
+    return [
+      `$omgV = @([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${payload2}')).Split([char]0))`,
+      `if ($omgV.Count -eq ${argv.length + 1}) { Set-Location -LiteralPath $omgV[0] -ErrorAction Stop; $ErrorActionPreference = 'Continue'; $omgE = $omgV[1]; $omgR = @($omgV | Select-Object -Skip 2);$global:LASTEXITCODE = $null; & $omgE @omgR 2>&1 | ForEach-Object { $omgL = "$_"; if ($omgL.Length -gt ${SHELL_LINE_CHARS}) { $omgL.Substring(0, ${SHELL_LINE_CHARS}) } else { $omgL } } | Select-Object -Last ${SHELL_OUTPUT_LINES}; "${marker} $LASTEXITCODE" }`
+    ].join("; ");
+  }
+  const payload = Buffer.from([cwd, ...argv].map((w) => `${w}\0`).join(""), "utf8").toString("base64");
+  return `omg_a=(); while IFS= read -r -d '' omg_w; do omg_a+=("$omg_w"); done < <(printf '%s' '${payload}' | base64 -d); if [ "\${#omg_a[@]}" -eq ${argv.length + 1} ] && omg_o=$(mktemp) && cd -- "\${omg_a[0]}"; then "\${omg_a[@]:1}" > "$omg_o" 2>&1; omg_s=$?; tail -c ${SHELL_OUTPUT_BYTES} -- "$omg_o"; rm -f -- "$omg_o"; printf '\\n%s %s\\n' '${marker}' "$omg_s"; fi`;
+}
+function sandboxCommandTooLong(platform, argv, cwd) {
+  const command = sandboxShellCommand(platform, argv, cwd, SIZING_MARKER);
+  return command !== null && command.length > sandboxCommandMaxChars(platform);
+}
+function splitFileListArgs(platform, exe, args, fixed, cwd) {
+  if (!sandboxCommandTooLong(platform, [exe, ...args], cwd) || args.length <= fixed + 1) return [[...args]];
+  const head = args.slice(0, fixed);
+  const parts = [];
+  let chunk = [];
+  for (const file2 of args.slice(fixed)) {
+    if (chunk.length > 0 && sandboxCommandTooLong(platform, [exe, ...head, ...chunk, file2], cwd)) {
+      parts.push([...head, ...chunk]);
+      chunk = [];
+    }
+    chunk.push(file2);
+  }
+  parts.push([...head, ...chunk]);
+  return parts;
+}
+function readMarker(output2, marker) {
+  const none = { code: null, output: output2 };
+  const count = (s) => output2.split(s).length - 1;
+  if (count(marker) !== 1 || count(MARKER_PREFIX) !== (marker.includes(MARKER_PREFIX) ? 1 : 0)) return none;
+  const lines3 = output2.split("\n");
+  let i = lines3.length - 1;
+  while (i >= 0 && lines3[i].trim() === "") i--;
+  const m = i >= 0 ? /^(\S+) (-?\d+)\r?$/.exec(lines3[i]) : null;
+  if (!m || m[1] !== marker) return none;
+  return { code: Number(m[2]), output: lines3.slice(0, i).join("\n") };
+}
+function redactGateOutput(text3) {
+  return redactSecrets(text3).replace(/(?:[A-Za-z0-9+/=]{40,}\r?\n)+-----END [A-Z0-9 ]*KEY-----/g, "[redacted]");
+}
+async function runSandboxed(argv, o, deps) {
+  const notStarted = (reason) => ({ ran: false, reason });
+  const refuse2 = (reason) => ({ ran: false, reason, refused: true });
+  const noVerdict = (reason) => ({ ran: false, reason, started: true });
+  const sleep9 = deps.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
+  const marker = `${MARKER_PREFIX}${(0, import_node_crypto7.randomBytes)(8).toString("hex")}`;
+  const dotnet = isDotnetExe(argv[0]);
+  const command = sandboxShellCommand(deps.platform, dotnet ? [argv[0], ...dotnetSandboxArgs(argv.slice(1), { mtp: o.dotnetMtp === true })] : argv, o.cwd, marker);
+  if (command === null) return refuse2("the command cannot be passed to the sandbox shell unchanged (a NUL, or on Windows an empty argument or a double quote)");
+  const max = sandboxCommandMaxChars(deps.platform);
+  if (command.length > max) {
+    return refuse2(`the command is too long for the sandbox shell: it encodes to ${command.length} characters, above the ${max} that ${deps.platform === "win32" ? "a Windows command line" : "one shell argument"} can safely carry; shorten the configured command`);
+  }
+  const jobHome = (0, import_node_path19.join)(o.jobRoot, `gate-${Date.now().toString(36)}-${(0, import_node_crypto7.randomBytes)(4).toString("hex")}`);
+  const workDir = (0, import_node_path19.join)(jobHome, "work");
+  let client = null;
+  let session = null;
+  let pid;
+  let started = false;
+  try {
+    (0, import_node_fs17.mkdirSync)(workDir, { recursive: true });
+    const loaded2 = await deps.loadSdk().catch(() => null);
+    if (!loaded2) return notStarted(`@github/copilot-sdk is not installed or could not be loaded, so the sandbox cannot start (${SDK_INSTALL_COMMAND})`);
+    const found = deps.resolveBin();
+    const bin = found && deps.platform === "win32" && /\.(cmd|bat|ps1)$/i.test(found) ? resolveShimTarget(found) : found;
+    if (!bin) return notStarted(found ? `copilot shim ${found} names no .js/.exe target` : "copilot CLI not found (PATH, COPILOT_CLI_PATH, WinGet), so the sandbox cannot start");
+    const ident = loginIdentity(deps.userConfigDir());
+    (0, import_node_fs17.writeFileSync)((0, import_node_path19.join)(jobHome, "config.json"), `${JSON.stringify({ ...ident, trustedFolders: [workDir] }, null, 2)}
+`);
+    const env2 = childEnv(allowlistSessionEnv(buildSessionEnv(deps.env, jobHome, { session: false, hasLogin: ident.loggedInUsers !== void 0 }), jobHome));
+    const missing = missingSandboxEnv(env2, deps.platform);
+    if (missing.length) return notStarted(`the sandbox env lacks ${missing.join(", ")}, which the Windows sandbox needs to launch any process`);
+    (0, import_node_fs17.mkdirSync)(env2.XDG_CONFIG_HOME, { recursive: true });
+    (0, import_node_fs17.mkdirSync)((0, import_node_path19.dirname)(env2.GIT_CONFIG_GLOBAL), { recursive: true });
+    (0, import_node_fs17.mkdirSync)(env2.TEMP, { recursive: true });
+    (0, import_node_fs17.writeFileSync)(env2.GIT_CONFIG_GLOBAL, "[credential]\n	helper =\n");
+    Object.assign(env2, { GIT_TERMINAL_PROMPT: "0", GCM_INTERACTIVE: "never", COPILOT_ALLOW_ALL: "false", GIT_CEILING_DIRECTORIES: (0, import_node_path19.resolve)(o.jobRoot) });
+    const realHome = (deps.realHome ?? (() => (0, import_node_os7.userInfo)().homedir))();
+    const dotnetGrants = [];
+    const dotnetWrites = [];
+    const dotnetNotes = [];
+    if (dotnet) {
+      const d = dotnetSandboxEnv(env2.USERPROFILE, deps.env, realHome, deps.platform, o.nugetPackages);
+      Object.assign(env2, d.env);
+      dotnetGrants.push(...d.readonly);
+      dotnetWrites.push(...d.readwrite);
+      dotnetNotes.push(...d.notes);
+    }
+    const credentialSource = { userConfigDir: deps.userConfigDir(), platform: deps.platform };
+    const gitHubToken = sessionGitHubToken(deps.env, credentialSource);
+    const secrets = secretValues(deps.env, credentialSource);
+    if (gitHubToken) addRecordingDenyLiterals([gitHubToken]);
+    const { CopilotClient, RuntimeConnection } = loaded2.module;
+    const c = new CopilotClient({
+      connection: RuntimeConnection.forStdio({ path: bin, args: ["--max-ai-credits", String(RUNTIME_MIN_MAX_CREDITS)], env: env2 }),
+      baseDirectory: jobHome,
+      workingDirectory: workDir
+    });
+    client = c;
+    await withTimeout3(c.start().catch(rethrowSdkStartError), START_TIMEOUT_MS3, "client.start()");
+    pid = runtimePid(c);
+    const pluginRoot = deps.pluginRoot();
+    const settings = { ...o.settings, enabled: true, writeUnsandboxed: "refuse", writeNetwork: o.network === "nuget" ? "none" : o.network, extraReadwritePaths: [] };
+    const notes = [];
+    const sandbox = new SessionSandboxController({
+      profile: "write",
+      settings,
+      env: deps.env,
+      platform: deps.platform,
+      rpcTimeoutMs: RPC_TIMEOUT_MS3,
+      ...deps.sandboxTrialLaunch ? { trialLaunch: deps.sandboxTrialLaunch } : {},
+      policyContext: () => {
+        const proxy = proxyCaEnv(deps.env, deps.platform, realHome);
+        return {
+          worktree: (0, import_node_path19.resolve)(o.cwd),
+          commonGitDir: (0, import_node_path19.resolve)(o.commonGitDir),
+          pluginRoot,
+          jobHome,
+          jobDir: jobHome,
+          realHome,
+          platform: deps.platform,
+          settings,
+          hostCommits: true,
+          toolPaths: (deps.toolPaths ?? laneToolPaths)(deps.env, deps.platform),
+          extraReadonly: [...proxy.caPaths, ...dotnetGrants],
+          ...dotnetWrites.length > 0 ? { extraReadwrite: dotnetWrites } : {},
+          ...o.network === "nuget" ? { onlyHosts: NUGET_HOSTS } : {},
+          // A keyring-less host's plaintext login token, also when COPILOT_HOME moved the config dir out of ~/.copilot.
+          ...deps.platform === "win32" ? {} : { extraDenied: copilotConfigDenies(credentialSource.userConfigDir, deps.platform) },
+          ...o.mainRoot ? { mainRoot: (0, import_node_path19.resolve)(o.mainRoot) } : {},
+          ...o.nodeModulesTarget ? { nodeModulesTarget: (0, import_node_path19.resolve)(o.nodeModulesTarget) } : {},
+          ...o.nestedNodeModulesTargets ? { nestedNodeModulesTargets: o.nestedNodeModulesTargets.map((p) => (0, import_node_path19.resolve)(p)) } : {}
+        };
+      },
+      note: (text3) => {
+        notes.push(text3);
+      }
+    });
+    const config2 = await sandbox.decide(c, loaded2);
+    if (!config2) return notStarted(`the sandbox is not available: ${sandbox.state?.reason ?? "unknown reason"}`);
+    const readable = !config2.userPolicy.filesystem.deniedPaths?.length;
+    if (readable && o.requireDeniedPaths) {
+      return notStarted("the sandbox host does not report denied_paths, so it cannot hide your credential files from the PR's code, and factory.run.sandbox.requireDeniedPaths is true");
+    }
+    const attested = /* @__PURE__ */ new Map();
+    const onPermissionRequest = () => ({ kind: "reject", feedback: "omg factory run: a gate session grants nothing" });
+    const atCreate = sandbox.atCreate(loaded2, config2);
+    session = await withTimeout3(c.createSession({
+      onPermissionRequest,
+      onEvent: (e) => {
+        const data = e.data ?? {};
+        if (e.type === "tool.execution_start") sandbox.toolStarted(data);
+        if (e.type === "tool.execution_complete") {
+          attested.set(String(data.toolCallId ?? ""), data.sandboxed);
+          sandbox.toolCompleted(data);
+        }
+      },
+      // No plugin: its hooks would run in the runtime, outside the sandbox.
+      pluginDirectories: [],
+      workingDirectory: workDir,
+      disabledMcpServers: ["github-mcp-server"],
+      excludedTools: [],
+      ...gitHubToken ? { gitHubToken } : {},
+      ...atCreate ? { sandboxConfig: config2 } : {}
+    }), RPC_TIMEOUT_MS3, "createSession()");
+    await sandbox.confirm(session, config2, atCreate);
+    if (sandbox.state?.mode !== "enforced") return notStarted(`the sandbox policy was not confirmed: ${sandbox.state?.reason ?? "unknown reason"}`);
+    const shell = session.rpc.shell;
+    if (typeof shell?.executeUserRequested !== "function") return notStarted("the SDK has no shell.executeUserRequested RPC, so the command cannot run in the sandbox");
+    const requestId = (0, import_node_crypto7.randomUUID)();
+    let timer;
+    started = true;
+    const call = shell.executeUserRequested.call(shell, { requestId, command }).then((value) => ({ value }), (error62) => ({ error: error62 }));
+    const timedOut = new Promise((r2) => {
+      timer = setTimeout(() => r2("timeout"), o.timeoutMs);
+    });
+    let answer = await Promise.race([call, timedOut]);
+    clearTimeout(timer);
+    let timeout = false;
+    if (answer === "timeout") {
+      timeout = true;
+      try {
+        await withTimeout3(shell.cancelUserRequested?.call(shell, { requestId }) ?? Promise.resolve(), RPC_TIMEOUT_MS3, "cancelUserRequested()");
+      } catch {
+      }
+      let grace;
+      answer = await Promise.race([call, new Promise((r2) => {
+        grace = setTimeout(() => r2("timeout"), CANCEL_GRACE_MS);
+      })]);
+      clearTimeout(grace);
+    }
+    const r = answer !== "timeout" && "value" in answer ? answer.value : null;
+    const id = typeof r?.toolCallId === "string" ? r.toolCallId : "";
+    for (let waited = 0; id && !attested.has(id) && waited < ATTEST_WAIT_MS; waited += 100) await sleep9(100);
+    const escapes = sandbox.state?.unsandboxedCalls ?? 0;
+    if (escapes > 0) return noVerdict(`${escapes} call(s) of the gate session were not attested sandboxed: true; nothing is counted`);
+    if (!id || attested.get(id) !== true) {
+      const why2 = !r ? answer !== "timeout" && "error" in answer ? "the shell call failed" : "the shell call gave no answer" : `its completion was ${attested.get(id) === false ? "attested sandboxed: false" : "not attested sandboxed"}`;
+      return noVerdict(`${timeout ? `timed out after ${o.timeoutMs} ms and ` : ""}${why2}; the command is not counted as run in the sandbox`);
+    }
+    const raw = scrubTokens(typeof r?.output === "string" ? r.output : "", secrets);
+    const read = readMarker(raw, marker);
+    const marked = readable ? { credentialFilesReadable: true } : {};
+    if (timeout) return { ran: true, status: 124, output: tail2(`${read.output.trim()}
+timed out after ${o.timeoutMs} ms`), timedOut: true, ...marked };
+    if (typeof r?.success !== "boolean") return noVerdict("the sandbox shell call reported no success field");
+    if (read.code === null) return noVerdict("the output did not end with the one exit-code marker line the sandbox shell prints after the command");
+    const exitOk = r.exitCode === void 0 || r.exitCode === null || r.exitCode === 0 || r.exitCode === read.code;
+    const successOk = r.success === true || read.code !== 0;
+    if (!exitOk || !successOk) return noVerdict("the sandbox shell's own result contradicts the exit code the command printed");
+    const why = read.code !== 0 && dotnetNotes.length > 0 ? `
+${dotnetNotes.join("\n")}` : "";
+    return { ran: true, status: read.code, output: `${tail2(read.output.trim())}${why}`, timedOut: false, ...marked };
+  } catch (err) {
+    if (started) return noVerdict("the sandbox runtime failed while the command ran");
+    return notStarted(`the sandbox runtime failed: ${errText4(err).slice(0, 300)}`);
+  } finally {
+    if (session) {
+      try {
+        await withTimeout3(session.disconnect(), RPC_TIMEOUT_MS3, "disconnect()");
+      } catch {
+      }
+      try {
+        await withTimeout3(client.deleteSession(session.sessionId), RPC_TIMEOUT_MS3, "deleteSession()");
+      } catch {
+      }
+    }
+    if (client) {
+      pid ??= runtimePid(client);
+      if (session && pid && deps.isAlive(pid)) {
+        try {
+          deps.killTree(pid);
+        } catch {
+        }
+      }
+      let stopped = false;
+      try {
+        await withTimeout3(client.stop(), STOP_TIMEOUT_MS3, "client.stop()");
+        stopped = true;
+      } catch {
+      }
+      if (!stopped) {
+        if (pid && deps.isAlive(pid)) {
+          try {
+            deps.killTree(pid);
+          } catch {
+          }
+        }
+        try {
+          await withTimeout3(client.forceStop?.() ?? Promise.resolve(), STOP_TIMEOUT_MS3, "client.forceStop()");
+        } catch {
+        }
+      }
+      if (pid && deps.isAlive(pid)) {
+        try {
+          deps.killTree(pid);
+        } catch {
+        }
+      }
+    }
+    try {
+      (0, import_node_fs17.rmSync)(jobHome, { recursive: true, force: true });
+    } catch {
+    }
+  }
+}
+function createSandboxRunner(root, deps = defaultCopilotRunDeps(), layers) {
+  return async (req) => {
+    if (req.container) {
+      if (!req.runLabel) return { ran: false, reason: "the gate container request has no run label", unavailable: true };
+      return runContainerGate(req, req.container, req.runLabel, { exec: defaultContainerExec, platform: deps.platform });
+    }
+    let settings;
+    try {
+      settings = (layers ? loadSandboxSettings(root, "factory", layers) : loadSandboxSettings(root, "factory")).settings;
+    } catch (err) {
+      return { ran: false, reason: `the sandbox settings could not be read: ${errText4(err)}` };
+    }
+    return runSandboxed([req.exe, ...req.args], {
+      cwd: req.cwd,
+      commonGitDir: req.commonGitDir,
+      timeoutMs: req.timeoutMs,
+      network: req.network ?? settings.writeNetwork,
+      settings,
+      jobRoot: req.jobRoot ?? sandboxJobRoot(root),
+      ...req.requireDeniedPaths ? { requireDeniedPaths: true } : {},
+      ...req.mainRoot ? { mainRoot: req.mainRoot } : {},
+      ...req.nodeModulesTarget ? { nodeModulesTarget: req.nodeModulesTarget } : {},
+      ...req.nestedNodeModulesTargets ? { nestedNodeModulesTargets: req.nestedNodeModulesTargets } : {},
+      ...req.dotnetMtp ? { dotnetMtp: true } : {},
+      ...req.nugetPackages ? { nugetPackages: req.nugetPackages } : {}
+    }, deps);
+  };
+}
+function gateEnv(env2, home) {
+  const kept = new Set(GATE_ENV_KEPT);
+  const has = (name) => Object.keys(env2).some((k) => k.toUpperCase() === name);
+  const out = {};
+  for (const [key, value] of Object.entries(env2)) {
+    const upper = key.toUpperCase();
+    if (value !== void 0 && (kept.has(upper) || upper.startsWith("LC_"))) out[key] = value;
+  }
+  const tmp = (0, import_node_path19.join)(home, "tmp");
+  (0, import_node_fs17.mkdirSync)(tmp, { recursive: true });
+  const gitConfig = (0, import_node_path19.join)(home, ".gitconfig-empty");
+  (0, import_node_fs17.writeFileSync)(gitConfig, "");
+  return {
+    ...out,
+    ...TRUSTED_READ_ENV,
+    HOME: home,
+    USERPROFILE: home,
+    XDG_CONFIG_HOME: (0, import_node_path19.join)(home, ".config"),
+    ...has("APPDATA") ? { APPDATA: (0, import_node_path19.join)(home, "AppData", "Roaming") } : {},
+    ...has("LOCALAPPDATA") ? { LOCALAPPDATA: (0, import_node_path19.join)(home, "AppData", "Local") } : {},
+    TEMP: tmp,
+    TMP: tmp,
+    TMPDIR: tmp,
+    GIT_CONFIG_NOSYSTEM: "1",
+    GIT_CONFIG_GLOBAL: gitConfig,
+    GIT_TERMINAL_PROMPT: "0",
+    GCM_INTERACTIVE: "never"
+  };
+}
+var import_node_crypto7, import_node_fs17, import_node_os7, import_node_path19, SANDBOX_OUTPUT_TAIL_CHARS, START_TIMEOUT_MS3, RPC_TIMEOUT_MS3, STOP_TIMEOUT_MS3, CANCEL_GRACE_MS, ATTEST_WAIT_MS, CREDENTIAL_FILES_READABLE_NOTE, MARKER_PREFIX, SHELL_OUTPUT_BYTES, SHELL_OUTPUT_LINES, SHELL_LINE_CHARS, sandboxCommandMaxChars, SIZING_MARKER, tail2, sandboxJobRoot, GATE_ENV_KEPT;
+var init_sandbox_exec = __esm({
+  "src/factory/run/sandbox-exec.ts"() {
+    "use strict";
+    import_node_crypto7 = require("node:crypto");
+    import_node_fs17 = require("node:fs");
+    import_node_os7 = require("node:os");
+    import_node_path19 = require("node:path");
+    init_job();
+    init_sandbox2();
+    init_container_gate();
+    init_dotnet_sandbox();
+    init_sandbox_session();
+    init_timeout();
+    init_worktree_paths();
+    init_exec();
+    init_sanitize();
+    init_copilot_sdk_driver();
+    init_copilot_sdk_scenarios();
+    init_copilot_session_env();
+    init_handler();
+    init_windows_search();
+    SANDBOX_OUTPUT_TAIL_CHARS = 8e3;
+    START_TIMEOUT_MS3 = 6e4;
+    RPC_TIMEOUT_MS3 = 3e4;
+    STOP_TIMEOUT_MS3 = 15e3;
+    CANCEL_GRACE_MS = 5e3;
+    ATTEST_WAIT_MS = 2e3;
+    CREDENTIAL_FILES_READABLE_NOTE = "sandboxed; credential files readable on this host";
+    MARKER_PREFIX = "omg-gate-exit-";
+    SHELL_OUTPUT_BYTES = 64 * 1024;
+    SHELL_OUTPUT_LINES = 400;
+    SHELL_LINE_CHARS = 2e3;
+    sandboxCommandMaxChars = (platform) => platform === "win32" ? 28e3 : 12e4;
+    SIZING_MARKER = `${MARKER_PREFIX}${"0".repeat(16)}`;
+    tail2 = (text3) => {
+      const clean = redactGateOutput(text3);
+      return clean.length > SANDBOX_OUTPUT_TAIL_CHARS ? clean.slice(-SANDBOX_OUTPUT_TAIL_CHARS) : clean;
+    };
+    sandboxJobRoot = (root) => (0, import_node_path19.join)(getOmcRoot(root), "state", "factory-gates");
+    GATE_ENV_KEPT = [
+      "PATH",
+      "PATHEXT",
+      "SYSTEMROOT",
+      "SYSTEMDRIVE",
+      "WINDIR",
+      "COMSPEC",
+      "LANG",
+      "TZ",
+      "CI",
+      "NODE_ENV",
+      "NPM_CONFIG_CACHE"
+    ];
+  }
+});
+
 // src/forge/local/store.ts
 function isUnder2(path15, root) {
-  const rel = (0, import_path90.relative)(realOr(root), realOr(path15));
+  const rel = (0, import_path91.relative)(realOr(root), realOr(path15));
   const folded = process.platform === "win32" ? rel.toLowerCase() : rel;
-  return folded === "" || !folded.startsWith("..") && !(0, import_path90.isAbsolute)(folded);
+  return folded === "" || !folded.startsWith("..") && !(0, import_path91.isAbsolute)(folded);
 }
 function engineOwnedDir(dir, untrustedRoots) {
-  if (!(0, import_path90.isAbsolute)(dir)) throw new Error(`local forge: state directory ${dir} is not absolute`);
-  if ((0, import_fs74.existsSync)(dir) && !(0, import_fs74.lstatSync)(dir).isDirectory()) throw new Error(`local forge: state directory ${dir} is not a directory`);
+  if (!(0, import_path91.isAbsolute)(dir)) throw new Error(`local forge: state directory ${dir} is not absolute`);
+  if ((0, import_fs75.existsSync)(dir) && !(0, import_fs75.lstatSync)(dir).isDirectory()) throw new Error(`local forge: state directory ${dir} is not a directory`);
   const real2 = realOr(dir);
   const root = untrustedRoots.find((r) => r.trim() !== "" && isUnder2(real2, r));
   if (root) throw new Error(`local forge: state directory ${real2} is under the untrusted root ${root}`);
   return real2;
 }
 function noLinkPath(anchor2, path15, create = true, allowLinkedAnchor = false) {
-  const top = (0, import_path90.resolve)(anchor2);
-  const rel = (0, import_path90.relative)(top, (0, import_path90.resolve)(path15));
-  if (rel === "" || rel.startsWith("..") || (0, import_path90.isAbsolute)(rel)) throw new Error(`local forge: ${path15} is not under ${anchor2}`);
-  const parts = rel.split(import_path90.sep);
-  if (!allowLinkedAnchor && (0, import_fs74.lstatSync)(top, { throwIfNoEntry: false })?.isSymbolicLink()) throw new Error(`local forge: refusing to go through the symbolic link ${top}`);
-  if (create) (0, import_fs74.mkdirSync)(top, { recursive: true, mode: 448 });
+  const top = (0, import_path91.resolve)(anchor2);
+  const rel = (0, import_path91.relative)(top, (0, import_path91.resolve)(path15));
+  if (rel === "" || rel.startsWith("..") || (0, import_path91.isAbsolute)(rel)) throw new Error(`local forge: ${path15} is not under ${anchor2}`);
+  const parts = rel.split(import_path91.sep);
+  if (!allowLinkedAnchor && (0, import_fs75.lstatSync)(top, { throwIfNoEntry: false })?.isSymbolicLink()) throw new Error(`local forge: refusing to go through the symbolic link ${top}`);
+  if (create) (0, import_fs75.mkdirSync)(top, { recursive: true, mode: 448 });
   let cur = top;
   for (const [i, part] of parts.entries()) {
-    cur = (0, import_path90.join)(cur, part);
+    cur = (0, import_path91.join)(cur, part);
     const leaf = i === parts.length - 1;
-    let st = (0, import_fs74.lstatSync)(cur, { throwIfNoEntry: false });
+    let st = (0, import_fs75.lstatSync)(cur, { throwIfNoEntry: false });
     if (!st && !leaf) {
       if (!create) return false;
       try {
-        (0, import_fs74.mkdirSync)(cur, { mode: 448 });
+        (0, import_fs75.mkdirSync)(cur, { mode: 448 });
       } catch (err) {
         if (err.code !== "EEXIST") throw err;
       }
-      st = (0, import_fs74.lstatSync)(cur);
+      st = (0, import_fs75.lstatSync)(cur);
     }
     if (st?.isSymbolicLink()) throw new Error(`local forge: refusing to go through the symbolic link ${cur}`);
     if (st && !leaf && !st.isDirectory()) throw new Error(`local forge: ${cur} is not a directory`);
@@ -64440,48 +66442,48 @@ function noLinkPath(anchor2, path15, create = true, allowLinkedAnchor = false) {
   return true;
 }
 function writeAtomic(path15, content, anchor2, allowLinkedAnchor = false) {
-  if (anchor2 === void 0) (0, import_fs74.mkdirSync)((0, import_path90.dirname)(path15), { recursive: true, mode: 448 });
+  if (anchor2 === void 0) (0, import_fs75.mkdirSync)((0, import_path91.dirname)(path15), { recursive: true, mode: 448 });
   else noLinkPath(anchor2, path15, true, allowLinkedAnchor);
   atomicWriteFileSync(path15, content);
 }
 function appendNoFollow(anchor2, path15, text3, allowLinkedAnchor = false) {
   noLinkPath(anchor2, path15, true, allowLinkedAnchor);
-  const fd = (0, import_fs74.openSync)(path15, import_fs74.constants.O_WRONLY | import_fs74.constants.O_APPEND | import_fs74.constants.O_CREAT | (import_fs74.constants.O_NOFOLLOW ?? 0), 384);
+  const fd = (0, import_fs75.openSync)(path15, import_fs75.constants.O_WRONLY | import_fs75.constants.O_APPEND | import_fs75.constants.O_CREAT | (import_fs75.constants.O_NOFOLLOW ?? 0), 384);
   try {
-    (0, import_fs74.writeFileSync)(fd, text3);
+    (0, import_fs75.writeFileSync)(fd, text3);
   } finally {
-    (0, import_fs74.closeSync)(fd);
+    (0, import_fs75.closeSync)(fd);
   }
 }
 function breakStaleLock(lock, staleMs, token, seenOwner) {
   if (ownerOf(lock) !== seenOwner) return;
   const aside = `${lock}.stale-${token}`;
   try {
-    (0, import_fs74.renameSync)(lock, aside);
+    (0, import_fs75.renameSync)(lock, aside);
   } catch {
     return;
   }
-  if (ownerOf(aside) === seenOwner && Date.now() - (0, import_fs74.statSync)(aside).mtimeMs > staleMs) {
-    (0, import_fs74.rmSync)(aside, { recursive: true, force: true });
+  if (ownerOf(aside) === seenOwner && Date.now() - (0, import_fs75.statSync)(aside).mtimeMs > staleMs) {
+    (0, import_fs75.rmSync)(aside, { recursive: true, force: true });
     return;
   }
   try {
-    (0, import_fs74.renameSync)(aside, lock);
+    (0, import_fs75.renameSync)(aside, lock);
   } catch {
-    (0, import_fs74.rmSync)(aside, { recursive: true, force: true });
+    (0, import_fs75.rmSync)(aside, { recursive: true, force: true });
   }
 }
 function withFileLock2(path15, fn, o = {}) {
   const lock = `${path15}.lock`;
-  const token = `${process.pid}-${(0, import_crypto22.randomUUID)()}`;
-  const staleMs = o.staleMs ?? LOCK_STALE_MS;
-  (0, import_fs74.mkdirSync)((0, import_path90.dirname)(path15), { recursive: true, mode: 448 });
+  const token = `${process.pid}-${(0, import_crypto23.randomUUID)()}`;
+  const staleMs = o.staleMs ?? LOCK_STALE_MS2;
+  (0, import_fs75.mkdirSync)((0, import_path91.dirname)(path15), { recursive: true, mode: 448 });
   const deadline = Date.now() + (o.timeoutMs ?? LOCK_TIMEOUT_MS);
   let deniedSince;
   for (let wait = 5; ; wait = Math.min(wait * 2, 100)) {
     try {
-      (0, import_fs74.mkdirSync)(lock);
-      (0, import_fs74.writeFileSync)((0, import_path90.join)(lock, OWNER), token);
+      (0, import_fs75.mkdirSync)(lock);
+      (0, import_fs75.writeFileSync)((0, import_path91.join)(lock, OWNER), token);
       break;
     } catch (err) {
       const code = err.code;
@@ -64495,7 +66497,7 @@ function withFileLock2(path15, fn, o = {}) {
         let age;
         const seenOwner = ownerOf(lock);
         try {
-          age = Date.now() - (0, import_fs74.statSync)(lock).mtimeMs;
+          age = Date.now() - (0, import_fs75.statSync)(lock).mtimeMs;
         } catch {
           continue;
         }
@@ -64511,7 +66513,7 @@ function withFileLock2(path15, fn, o = {}) {
   try {
     return fn();
   } finally {
-    if (ownerOf(lock) === token) (0, import_fs74.rmSync)(lock, { recursive: true, force: true });
+    if (ownerOf(lock) === token) (0, import_fs75.rmSync)(lock, { recursive: true, force: true });
   }
 }
 function validPr(p) {
@@ -64519,10 +66521,10 @@ function validPr(p) {
   return !!r && Number.isInteger(r.number) && r.number > 0 && typeof r.head === "string" && typeof r.base === "string" && typeof r.title === "string" && (r.state === "OPEN" || r.state === "MERGED" || r.state === "CLOSED") && typeof r.isDraft === "boolean";
 }
 function readPrStore(path15) {
-  if (!(0, import_fs74.existsSync)(path15)) return empty();
+  if (!(0, import_fs75.existsSync)(path15)) return empty();
   let parsed;
   try {
-    parsed = JSON.parse((0, import_fs74.readFileSync)(path15, "utf8"));
+    parsed = JSON.parse((0, import_fs75.readFileSync)(path15, "utf8"));
   } catch (err) {
     throw new Error(`local forge: the PR store ${path15} is not valid JSON (${err.message})`);
   }
@@ -64547,8 +66549,8 @@ function validReview(r, pr) {
 }
 function readLocalReviews(storeDir, pr) {
   const path15 = localReviewsPath(storeDir, pr);
-  if (!noLinkPath(storeDir, path15, false) || !(0, import_fs74.existsSync)(path15)) return [];
-  return (0, import_fs74.readFileSync)(path15, "utf8").split("\n").filter((l) => l.trim() !== "").map((line, i) => {
+  if (!noLinkPath(storeDir, path15, false) || !(0, import_fs75.existsSync)(path15)) return [];
+  return (0, import_fs75.readFileSync)(path15, "utf8").split("\n").filter((l) => l.trim() !== "").map((line, i) => {
     let r;
     try {
       r = JSON.parse(line);
@@ -64559,50 +66561,50 @@ function readLocalReviews(storeDir, pr) {
     return r;
   });
 }
-var import_crypto22, import_fs74, import_path90, realOr, sleep6, LOCK_TIMEOUT_MS, LOCK_STALE_MS, PENDING_DELETE_MS, OWNER, ownerOf, empty, localReviewsPath;
+var import_crypto23, import_fs75, import_path91, realOr, sleep6, LOCK_TIMEOUT_MS, LOCK_STALE_MS2, PENDING_DELETE_MS, OWNER, ownerOf, empty, localReviewsPath;
 var init_store = __esm({
   "src/forge/local/store.ts"() {
     "use strict";
-    import_crypto22 = require("crypto");
-    import_fs74 = require("fs");
-    import_path90 = require("path");
+    import_crypto23 = require("crypto");
+    import_fs75 = require("fs");
+    import_path91 = require("path");
     init_atomic_write();
     realOr = (p) => {
       try {
-        return import_fs74.realpathSync.native(p);
+        return import_fs75.realpathSync.native(p);
       } catch {
-        return (0, import_path90.resolve)(p);
+        return (0, import_path91.resolve)(p);
       }
     };
     sleep6 = (ms) => {
       Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
     };
     LOCK_TIMEOUT_MS = 15e3;
-    LOCK_STALE_MS = 6e4;
+    LOCK_STALE_MS2 = 6e4;
     PENDING_DELETE_MS = 5e3;
     OWNER = "owner";
     ownerOf = (lock) => {
       try {
-        return (0, import_fs74.readFileSync)((0, import_path90.join)(lock, OWNER), "utf8");
+        return (0, import_fs75.readFileSync)((0, import_path91.join)(lock, OWNER), "utf8");
       } catch {
         return void 0;
       }
     };
     empty = () => ({ version: 1, next: 1, prs: [] });
-    localReviewsPath = (storeDir, pr) => (0, import_path90.join)(storeDir, "prs", String(pr), "reviews.jsonl");
+    localReviewsPath = (storeDir, pr) => (0, import_path91.join)(storeDir, "prs", String(pr), "reviews.jsonl");
   }
 });
 
 // src/forge/local/checks.ts
 function validRecord(r) {
   const x = r;
-  return !!x && x.name === LOCAL_GATE_CHECK && typeof x.head === "string" && HEX406.test(x.head) && (x.state === "PENDING" || x.state === "SUCCESS" || x.state === "FAILURE") && Array.isArray(x.argv) && x.argv.every((a) => typeof a === "string") && Number.isSafeInteger(x.runId) && x.runId > 0 && typeof x.startedAt === "string" && (x.completedAt === void 0 || typeof x.completedAt === "string") && (x.exitCode === void 0 || Number.isInteger(x.exitCode)) && (x.tail === void 0 || typeof x.tail === "string") && (x.sandbox === void 0 || x.sandbox === "enforced" || x.sandbox === "ack" || x.sandbox === "unsandboxed") && (x.sandboxNote === void 0 || typeof x.sandboxNote === "string");
+  return !!x && x.name === LOCAL_GATE_CHECK && typeof x.head === "string" && HEX407.test(x.head) && (x.state === "PENDING" || x.state === "SUCCESS" || x.state === "FAILURE") && Array.isArray(x.argv) && x.argv.every((a) => typeof a === "string") && Number.isSafeInteger(x.runId) && x.runId > 0 && typeof x.startedAt === "string" && (x.completedAt === void 0 || typeof x.completedAt === "string") && (x.exitCode === void 0 || Number.isInteger(x.exitCode)) && (x.tail === void 0 || typeof x.tail === "string") && (x.sandbox === void 0 || x.sandbox === "enforced" || x.sandbox === "ack" || x.sandbox === "unsandboxed") && (x.sandboxNote === void 0 || typeof x.sandboxNote === "string");
 }
 function readRecordFile(path15) {
-  if (!(0, import_fs75.existsSync)(path15)) return void 0;
+  if (!(0, import_fs76.existsSync)(path15)) return void 0;
   let parsed;
   try {
-    parsed = JSON.parse((0, import_fs75.readFileSync)(path15, "utf8"));
+    parsed = JSON.parse((0, import_fs76.readFileSync)(path15, "utf8"));
   } catch (err) {
     throw new Error(`local forge: the check record ${path15} is not valid JSON (${err.message})`);
   }
@@ -64617,8 +66619,8 @@ function writeLocalCheckRecord(stateDir, root, record3) {
   return path15;
 }
 function readCheckRecordAt(storeDir, head) {
-  if (!HEX406.test(head)) throw new Error(`local forge: expected a 40-hex head sha, got ${JSON.stringify(head)}`);
-  const record3 = readRecordFile((0, import_path91.join)(storeDir, "checks", `${head}.json`));
+  if (!HEX407.test(head)) throw new Error(`local forge: expected a 40-hex head sha, got ${JSON.stringify(head)}`);
+  const record3 = readRecordFile((0, import_path92.join)(storeDir, "checks", `${head}.json`));
   if (record3 && record3.head !== head) throw new Error(`local forge: the check record for ${head} names ${record3.head}`);
   return record3;
 }
@@ -64626,7 +66628,7 @@ function readLocalCheckRecord(stateDir, root, head) {
   return readCheckRecordAt(localStoreDir(stateDir, root), head);
 }
 function localChecks(checksDir, recordFor) {
-  const forHead = (headSha) => HEX406.test(headSha) ? recordFor(headSha) : void 0;
+  const forHead = (headSha) => HEX407.test(headSha) ? recordFor(headSha) : void 0;
   return {
     checks(_pr, headSha) {
       const r = forHead(headSha);
@@ -64665,14 +66667,14 @@ function localChecks(checksDir, recordFor) {
     },
     rerun(_pr, runId) {
       try {
-        if (!/^[1-9]\d*$/.test(runId) || !(0, import_fs75.existsSync)(checksDir)) return { ok: false, stderr: `no local-gate run ${runId}` };
-        for (const name of (0, import_fs75.readdirSync)(checksDir)) {
+        if (!/^[1-9]\d*$/.test(runId) || !(0, import_fs76.existsSync)(checksDir)) return { ok: false, stderr: `no local-gate run ${runId}` };
+        for (const name of (0, import_fs76.readdirSync)(checksDir)) {
           const m = /^([0-9a-f]{40})\.json$/.exec(name);
           if (!m) continue;
           const r = recordFor(m[1]);
           if (r && String(r.runId) === runId) {
             if (r.state === "PENDING") return { ok: false, stderr: `local-gate run ${runId} is still running` };
-            (0, import_fs75.rmSync)((0, import_path91.join)(checksDir, name), { force: true });
+            (0, import_fs76.rmSync)((0, import_path92.join)(checksDir, name), { force: true });
             return { ok: true, stderr: "" };
           }
         }
@@ -64685,16 +66687,16 @@ function localChecks(checksDir, recordFor) {
     transientError: /(?!)/
   };
 }
-var import_fs75, import_path91, LOCAL_GATE_CHECK, HEX406, BUCKET, CONCLUSION, jobIdOf;
+var import_fs76, import_path92, LOCAL_GATE_CHECK, HEX407, BUCKET, CONCLUSION, jobIdOf;
 var init_checks4 = __esm({
   "src/forge/local/checks.ts"() {
     "use strict";
-    import_fs75 = require("fs");
-    import_path91 = require("path");
+    import_fs76 = require("fs");
+    import_path92 = require("path");
     init_mirror();
     init_store();
     LOCAL_GATE_CHECK = "local-gate";
-    HEX406 = /^[0-9a-f]{40}$/;
+    HEX407 = /^[0-9a-f]{40}$/;
     BUCKET = { PENDING: "pending", SUCCESS: "pass", FAILURE: "fail" };
     CONCLUSION = { SUCCESS: "success", FAILURE: "failure" };
     jobIdOf = (head) => `${LOCAL_GATE_CHECK}:${head}`;
@@ -64763,13 +66765,13 @@ function localReviews(ctx) {
     if (!base) throw new Error(`local PR #${pr}: base ${p.base} is not in the mirror`);
     return { number: p.number, state: p.state, isDraft: p.isDraft, baseRefName: p.base, baseRefOid: base, headRefName: p.head, headRefOid: head, url: localPrUrl(p.number) };
   };
-  const humanFile = (pr, name) => (0, import_path92.join)(ctx.humanDir, "prs", String(pr), name);
-  const omgRoot = (0, import_path92.join)(ctx.humanDir, "..", "..");
+  const humanFile = (pr, name) => (0, import_path93.join)(ctx.humanDir, "prs", String(pr), name);
+  const omgRoot = (0, import_path93.join)(ctx.humanDir, "..", "..");
   return {
     refreshPr: refresh,
     reviewFeedback(pr, head) {
       assertReviewHead(pr, head, view(pr).headRefOid);
-      return localReviewFeedback(readLocalReviews((0, import_path92.dirname)(ctx.storePath), pr), head);
+      return localReviewFeedback(readLocalReviews((0, import_path93.dirname)(ctx.storePath), pr), head);
     },
     findOpenPrForBranch(branch2) {
       return readPrStore(ctx.storePath).prs.filter((p) => p.head === branch2 && p.state === "OPEN").map(refresh).find((p) => p.state === "OPEN")?.number;
@@ -64784,7 +66786,7 @@ function localReviews(ctx) {
       if (!head) throw new Error(`local PR: branch ${o.head} is not in the mirror (push it first)`);
       if (!base) throw new Error(`local PR: base ${o.base} is not in the mirror`);
       if (head === base || isAncestor(ctx, head, base) === true) throw new Error(`local PR: no commits between ${o.base} and ${o.head}`);
-      const body = (0, import_fs76.readFileSync)(o.bodyFile, "utf8");
+      const body = (0, import_fs77.readFileSync)(o.bodyFile, "utf8");
       const number4 = updatePrStore(ctx.storePath, (store) => {
         const open4 = store.prs.find((p) => p.head === o.head && p.base === o.base && p.state === "OPEN");
         if (open4) throw new Error(`local PR: #${open4.number} is already open for ${o.head}`);
@@ -64832,7 +66834,7 @@ ${body}`, omgRoot);
         if (!readPrStore(ctx.storePath).prs.some((x) => x.number === pr)) return { ok: false, stderr: `local PR #${pr} does not exist` };
         appendNoFollow(omgRoot, humanFile(pr, "comments.md"), `
 <!-- ${(/* @__PURE__ */ new Date()).toISOString()} -->
-${(0, import_fs76.readFileSync)(bodyFile, "utf8").replace(/\n*$/, "\n")}`);
+${(0, import_fs77.readFileSync)(bodyFile, "utf8").replace(/\n*$/, "\n")}`);
         return { ok: true, stderr: "" };
       } catch (err) {
         return { ok: false, stderr: err.message };
@@ -64840,30 +66842,17 @@ ${(0, import_fs76.readFileSync)(bodyFile, "utf8").replace(/\n*$/, "\n")}`);
     }
   };
 }
-var import_fs76, import_path92, TRUSTED_READ_ENV2, localPrUrl;
+var import_fs77, import_path93, TRUSTED_READ_ENV2, localPrUrl;
 var init_reviews2 = __esm({
   "src/forge/local/reviews.ts"() {
     "use strict";
-    import_fs76 = require("fs");
-    import_path92 = require("path");
+    import_fs77 = require("fs");
+    import_path93 = require("path");
     init_review_feedback();
     init_mirror();
     init_store();
     TRUSTED_READ_ENV2 = Object.freeze({ GIT_NO_REPLACE_OBJECTS: "1" });
     localPrUrl = (pr) => `omg-local://pr/${pr}`;
-  }
-});
-
-// src/forge/types.ts
-function shipyardKeys(body) {
-  return [...body.matchAll(/^shipyard-key: (\d+)\/([a-z0-9-]{3,60})\r?$/gm)].map((m) => [Number(m[1]), m[2]]);
-}
-var PROGRESS_STAGES, shipyardKeySearch;
-var init_types9 = __esm({
-  "src/forge/types.ts"() {
-    "use strict";
-    PROGRESS_STAGES = ["queued", "building", "reviewing", "verifying", "ready-to-merge", "done", "blocked", "cancelled"];
-    shipyardKeySearch = (spec) => `"shipyard-key: ${spec}/" in:body`;
   }
 });
 
@@ -65020,7 +67009,7 @@ function byId(items) {
 function localTracker(ctx) {
   const committedCache = /* @__PURE__ */ new Map();
   const warnings = [];
-  const omgRoot = (0, import_path93.join)(ctx.humanDir, "..", "..");
+  const omgRoot = (0, import_path94.join)(ctx.humanDir, "..", "..");
   const git4 = (args) => {
     const r = ctx.exec("git", args, { cwd: ctx.root, env: TRUSTED_READ_ENV3 });
     if (r.status !== 0) throw new Error(`local backlog: git ${args.join(" ")} failed: ${(r.stderr || r.stdout).trim()}`);
@@ -65047,17 +67036,17 @@ function localTracker(ctx) {
     committedCache.set(sha3, result);
     return result;
   };
-  const dirOnDisk = () => (0, import_path93.join)(ctx.root, ...ctx.backlogDir.split("/"));
+  const dirOnDisk = () => (0, import_path94.join)(ctx.root, ...ctx.backlogDir.split("/"));
   const scanWorking = () => {
     const dir = dirOnDisk();
     const out = [];
     const skipped = /* @__PURE__ */ new Map();
-    if (!noLinkPath(ctx.root, dir, false, true) || !(0, import_fs77.existsSync)(dir) || !(0, import_fs77.lstatSync)(dir).isDirectory()) return { out, skipped };
-    for (const name of (0, import_fs77.readdirSync)(dir).sort()) {
+    if (!noLinkPath(ctx.root, dir, false, true) || !(0, import_fs78.existsSync)(dir) || !(0, import_fs78.lstatSync)(dir).isDirectory()) return { out, skipped };
+    for (const name of (0, import_fs78.readdirSync)(dir).sort()) {
       if (backlogFileId(name) === void 0) continue;
-      const file2 = (0, import_path93.join)(dir, name);
-      if (!(0, import_fs77.lstatSync)(file2).isFile()) continue;
-      const text3 = (0, import_fs77.readFileSync)(file2, "utf8");
+      const file2 = (0, import_path94.join)(dir, name);
+      if (!(0, import_fs78.lstatSync)(file2).isFile()) continue;
+      const text3 = (0, import_fs78.readFileSync)(file2, "utf8");
       try {
         out.push({ item: parseBacklogFile(`${ctx.backlogDir}/${name}`, text3), text: lf(text3), file: file2 });
       } catch (err) {
@@ -65072,7 +67061,7 @@ function localTracker(ctx) {
   const working = () => scanWorking().out;
   const baseSha = () => {
     const sha3 = ctx.options.baseSha?.();
-    if (sha3 !== void 0 && !HEX407.test(sha3)) throw new Error(`local backlog: base commit ${JSON.stringify(sha3)} is not a 40-hex sha`);
+    if (sha3 !== void 0 && !HEX408.test(sha3)) throw new Error(`local backlog: base commit ${JSON.stringify(sha3)} is not a 40-hex sha`);
     return sha3;
   };
   const entries = () => {
@@ -65099,7 +67088,7 @@ function localTracker(ctx) {
   const changedAfter = /* @__PURE__ */ new Map();
   const changedAfterMerge = (path15, mergedHead) => {
     const sha3 = baseSha();
-    if (!sha3 || !mergedHead || !HEX407.test(mergedHead)) return false;
+    if (!sha3 || !mergedHead || !HEX408.test(mergedHead)) return false;
     const key = `${sha3}:${mergedHead}:${path15}`;
     const known = changedAfter.get(key);
     if (known !== void 0) return known;
@@ -65116,8 +67105,8 @@ function localTracker(ctx) {
     let from = sha3;
     for (let i = 0; i < 50 && !after; i++) {
       const [last = "", ...parents] = git4(lastStateChangeArgs(from, path15)).trim().split(/\s+/);
-      if (!HEX407.test(last) || last === mergedHead || ctx.exec("git", mergedArgs(mergedHead, last), { cwd: ctx.root, env: TRUSTED_READ_ENV3 }).status !== 0) break;
-      if (parents.length !== 1 || !HEX407.test(parents[0])) break;
+      if (!HEX408.test(last) || last === mergedHead || ctx.exec("git", mergedArgs(mergedHead, last), { cwd: ctx.root, env: TRUSTED_READ_ENV3 }).status !== 0) break;
+      if (parents.length !== 1 || !HEX408.test(parents[0])) break;
       if (stateAt(last) !== stateAt(parents[0])) after = true;
       else from = parents[0];
     }
@@ -65160,12 +67149,12 @@ function localTracker(ctx) {
     if (!e) throw new Error(`local backlog item #${id} is not in ${ctx.backlogDir}${ctx.options.workingTree ? "" : ` at ${baseSha()}`}`);
     return toForgeItem(e, all);
   };
-  const itemDir = (id) => (0, import_path93.join)(ctx.humanDir, "items", String(id));
+  const itemDir = (id) => (0, import_path94.join)(ctx.humanDir, "items", String(id));
   const readBody = (bodyFile) => {
-    if (ctx.trackerBodyDir !== void 0 && (0, import_path93.resolve)((0, import_path93.dirname)(bodyFile)) !== (0, import_path93.resolve)(ctx.trackerBodyDir)) {
+    if (ctx.trackerBodyDir !== void 0 && (0, import_path94.resolve)((0, import_path94.dirname)(bodyFile)) !== (0, import_path94.resolve)(ctx.trackerBodyDir)) {
       throw new Error(`local backlog: body file ${bodyFile} is not in ${ctx.trackerBodyDir}`);
     }
-    return (0, import_fs77.readFileSync)(bodyFile, "utf8");
+    return (0, import_fs78.readFileSync)(bodyFile, "utf8");
   };
   const withAcceptance = (body, acceptance) => acceptance && acceptance.length > 0 && acceptanceSectionOf(body) === void 0 ? `${body.replace(/\n*$/, "")}
 
@@ -65191,8 +67180,8 @@ ${own2}
     if (e.file === void 0 && scanWorking().skipped.has(id)) {
       throw new Error(`local backlog: the working-tree file for #${id} (${scanWorking().skipped.get(id)}) is malformed and was skipped; fix or remove it by hand (it is not overwritten)`);
     }
-    const file2 = e.file ?? (0, import_path93.join)(ctx.root, ...e.item.path.split("/"));
-    if ((0, import_fs77.existsSync)(file2) && !(0, import_fs77.lstatSync)(file2).isFile()) throw new Error(`local backlog: ${file2} is not a regular file`);
+    const file2 = e.file ?? (0, import_path94.join)(ctx.root, ...e.item.path.split("/"));
+    if ((0, import_fs78.existsSync)(file2) && !(0, import_fs78.lstatSync)(file2).isFile()) throw new Error(`local backlog: ${file2} is not a regular file`);
     return { entry: e, file: file2 };
   };
   return {
@@ -65204,9 +67193,9 @@ ${own2}
     },
     comment(id, bodyFile) {
       try {
-        appendNoFollow(omgRoot, (0, import_path93.join)(itemDir(id), "comments.md"), `
+        appendNoFollow(omgRoot, (0, import_path94.join)(itemDir(id), "comments.md"), `
 <!-- ${(/* @__PURE__ */ new Date()).toISOString()} -->
-${(0, import_fs77.readFileSync)(bodyFile, "utf8").replace(/\n*$/, "\n")}`);
+${(0, import_fs78.readFileSync)(bodyFile, "utf8").replace(/\n*$/, "\n")}`);
         return { ok: true, stderr: "" };
       } catch (err) {
         return { ok: false, stderr: err.message };
@@ -65214,7 +67203,7 @@ ${(0, import_fs77.readFileSync)(bodyFile, "utf8").replace(/\n*$/, "\n")}`);
     },
     setProgress(id, stage, _mapping) {
       try {
-        writeAtomic((0, import_path93.join)(itemDir(id), "progress.json"), `${JSON.stringify({ id, stage, updatedAt: (/* @__PURE__ */ new Date()).toISOString() }, null, 2)}
+        writeAtomic((0, import_path94.join)(itemDir(id), "progress.json"), `${JSON.stringify({ id, stage, updatedAt: (/* @__PURE__ */ new Date()).toISOString() }, null, 2)}
 `, omgRoot);
         return { ok: true, detail: `local item #${id}: ${stage}` };
       } catch (err) {
@@ -65243,7 +67232,7 @@ ${(0, import_fs77.readFileSync)(bodyFile, "utf8").replace(/\n*$/, "\n")}`);
         const priority = change.priority ?? fields.priority;
         if (labels.length === fields.labels.length && labels.every((l, i) => l === fields.labels[i]) && priority === fields.priority) return { ok: true, detail: "nothing to change" };
         const rendered = renderBacklogFile({ ...fields, labels, ...priority === void 0 ? {} : { priority } }, entry.item.body);
-        writeAtomic(file2, entry.file === void 0 ? rendered : keepTitleLine((0, import_fs77.readFileSync)(file2, "utf8"), rendered, fields.title), ctx.root);
+        writeAtomic(file2, entry.file === void 0 ? rendered : keepTitleLine((0, import_fs78.readFileSync)(file2, "utf8"), rendered, fields.title), ctx.root);
         return { ok: true, detail: `${file2} edited in the working tree; commit it on the base branch` };
       } catch (err) {
         return { ok: false, detail: err.message };
@@ -65259,10 +67248,10 @@ ${(0, import_fs77.readFileSync)(bodyFile, "utf8").replace(/\n*$/, "\n")}`);
       const scan = scanWorking();
       const id = Math.max(0, ...all.keys(), ...scan.out.map((d) => d.item.id), ...scan.skipped.keys()) + 1;
       const name = `${id}-${backlogSlug(draft.title)}.md`;
-      const file2 = (0, import_path93.join)(dirOnDisk(), name);
+      const file2 = (0, import_path94.join)(dirOnDisk(), name);
       noLinkPath(ctx.root, file2, true, true);
       const text3 = renderBacklogFile({ title: draft.title, state: "open", labels: [...new Set(draft.labels)], dependsOn: [], ...draft.priority === void 0 ? {} : { priority: draft.priority } }, body);
-      (0, import_fs77.writeFileSync)(file2, text3, { flag: "wx" });
+      (0, import_fs78.writeFileSync)(file2, text3, { flag: "wx" });
       return id;
     },
     updateItem(id, update) {
@@ -65287,18 +67276,18 @@ ${(0, import_fs77.readFileSync)(bodyFile, "utf8").replace(/\n*$/, "\n")}`);
     }
   };
 }
-var import_fs77, import_path93, TRUSTED_READ_ENV3, HEX407, lf;
+var import_fs78, import_path94, TRUSTED_READ_ENV3, HEX408, lf;
 var init_tracker = __esm({
   "src/forge/local/tracker.ts"() {
     "use strict";
-    import_fs77 = require("fs");
-    import_path93 = require("path");
+    import_fs78 = require("fs");
+    import_path94 = require("path");
     init_types9();
     init_backlog();
     init_mirror();
     init_store();
     TRUSTED_READ_ENV3 = Object.freeze({ GIT_NO_REPLACE_OBJECTS: "1" });
-    HEX407 = /^[0-9a-f]{40}$/;
+    HEX408 = /^[0-9a-f]{40}$/;
     lf = (s) => s.replace(/\r\n/g, "\n");
   }
 });
@@ -65315,12 +67304,12 @@ function localForgeLimitations(base = "<base>") {
     "not for sharing work between machines"
   ];
 }
-var import_fs78, import_path94, createLocalForge;
+var import_fs79, import_path95, createLocalForge;
 var init_local = __esm({
   "src/forge/local/index.ts"() {
     "use strict";
-    import_fs78 = require("fs");
-    import_path94 = require("path");
+    import_fs79 = require("fs");
+    import_path95 = require("path");
     init_checks4();
     init_merge3();
     init_reviews2();
@@ -65338,12 +67327,12 @@ var init_local = __esm({
       const recordFor = (head) => readCheckRecordAt(storeDir, head);
       const omgRoot = options.local?.omgRoot;
       if (!omgRoot) throw new Error("local forge: options.local.omgRoot is required (getOmcRoot(root))");
-      const humanDir = (0, import_path94.join)(omgRoot, "factory", "local");
-      const storePath = (0, import_path94.join)(storeDir, "prs.json");
+      const humanDir = (0, import_path95.join)(omgRoot, "factory", "local");
+      const storePath = (0, import_path95.join)(storeDir, "prs.json");
       const reviews = localReviews({ exec, root: cwd, mirror: mirror2, storePath, humanDir });
       let store;
       const prStore = () => {
-        const st = (0, import_fs78.statSync)(storePath, { throwIfNoEntry: false, bigint: true });
+        const st = (0, import_fs79.statSync)(storePath, { throwIfNoEntry: false, bigint: true });
         const key = st ? `${st.ino}:${st.size}:${st.mtimeNs}:${st.ctimeNs}` : "absent";
         if (store?.key !== key) {
           try {
@@ -65379,7 +67368,7 @@ var init_local = __esm({
           mergedPr
         }),
         reviews,
-        checks: localChecks((0, import_path94.join)(storeDir, "checks"), recordFor),
+        checks: localChecks((0, import_path95.join)(storeDir, "checks"), recordFor),
         merge: localMerge(cwd),
         capabilities: { heal: false, projectsV2: false, boardColumns: false, webhookIntake: false },
         limitations: () => localForgeLimitations()
@@ -65395,12 +67384,12 @@ function isTrustedAdoAuthor(createdBy, trustedAuthors) {
   const name = unique.trim().toLowerCase();
   return trustedAuthors.some((a) => a.toLowerCase() === name);
 }
-var import_path95, DEFAULT_CHECK_CONFIG;
+var import_path96, DEFAULT_CHECK_CONFIG;
 var init_config3 = __esm({
   "src/forge/config.ts"() {
     "use strict";
     init_remote_url();
-    import_path95 = require("path");
+    import_path96 = require("path");
     init_mirror();
     init_types9();
     DEFAULT_CHECK_CONFIG = Object.freeze({ maxAcceptanceItems: 12, maxSize: 8, maxBodyChars: 2e4 });
@@ -65412,10 +67401,10 @@ function factoryForgeOptions(repoRoot, env2 = process.env) {
   const omcRoot = getOmcRoot(repoRoot);
   return {
     untrustedRoots: [
-      (0, import_path96.resolve)(repoRoot),
+      (0, import_path97.resolve)(repoRoot),
       omcRoot,
-      (0, import_path96.join)(omcRoot, "team"),
-      (0, import_path96.join)(omcRoot, "state", "copilot-run"),
+      (0, import_path97.join)(omcRoot, "team"),
+      (0, import_path97.join)(omcRoot, "state", "copilot-run"),
       env2.OMC_JOBS_DIR || getGlobalOmcStatePath("team-jobs")
     ],
     stateDir: getGlobalOmcStatePath("forge")
@@ -65479,7 +67468,7 @@ function syncLocalMirror(exec, root, mirror2, base, onBase) {
   };
   const refused = localRemoteRefusedConfig(exec, root, mirror2);
   if (refused) throw new FactoryForgeUnavailableError(`refusing the local forge: ${refused}; remove it (git config --unset <key>, in the config file that sets it: git config --show-origin --get-regexp <key>)`);
-  if (!(0, import_fs79.existsSync)((0, import_path96.join)(mirror2, "HEAD"))) must(mirrorInitArgs(mirror2), "local forge mirror");
+  if (!(0, import_fs80.existsSync)((0, import_path97.join)(mirror2, "HEAD"))) must(mirrorInitArgs(mirror2), "local forge mirror");
   const current = git4(mirrorRemoteGetUrlArgs(), TRUSTED_READ_ENV);
   if (current.status !== 0) must(mirrorRemoteAddArgs(mirror2), "local forge remote");
   const mismatch = localRemoteMismatch(exec, root, mirror2);
@@ -65489,7 +67478,7 @@ function syncLocalMirror(exec, root, mirror2, base, onBase) {
     throw new FactoryForgeUnavailableError(`refusing to sync the local forge mirror: ${mismatch}; point the ${LOCAL_REMOTE} remote back at the mirror: ${how} (a key set in another config file: add --global, or --file from git config --show-origin)`);
   }
   const local = must(["rev-parse", "--verify", `refs/heads/${base}`], `local base ${base}`, TRUSTED_READ_ENV).trim();
-  if (!HEX408.test(local)) throw new Error(`local base ${base} did not resolve to a commit`);
+  if (!HEX409.test(local)) throw new Error(`local base ${base} did not resolve to a commit`);
   onBase?.(local);
   const upToDate = readMirrorRef(mirror2, base) === local;
   if (upToDate && git4(["rev-parse", "--verify", `refs/remotes/${LOCAL_REMOTE}/${base}`], TRUSTED_READ_ENV).stdout.trim() === local) return local;
@@ -65506,12 +67495,12 @@ function syncLocalMirror(exec, root, mirror2, base, onBase) {
   must(mirrorFetchArgs(base), "local forge fetch", TRUSTED_READ_ENV);
   return local;
 }
-var import_fs79, import_path96, HEX408, norm, FactoryForgeUnavailableError, EXIT_FORGE_UNAVAILABLE, configRecords;
+var import_fs80, import_path97, HEX409, norm, FactoryForgeUnavailableError, EXIT_FORGE_UNAVAILABLE, configRecords;
 var init_forge_roots = __esm({
   "src/factory/run/forge-roots.ts"() {
     "use strict";
-    import_fs79 = require("fs");
-    import_path96 = require("path");
+    import_fs80 = require("fs");
+    import_path97 = require("path");
     init_config3();
     init_local();
     init_worktree_paths();
@@ -65520,8 +67509,8 @@ var init_forge_roots = __esm({
     init_exec();
     init_jsonc();
     init_paths2();
-    HEX408 = /^[0-9a-f]{40}$/;
-    norm = (p) => process.platform === "win32" ? (0, import_path96.resolve)(p).toLowerCase() : (0, import_path96.resolve)(p);
+    HEX409 = /^[0-9a-f]{40}$/;
+    norm = (p) => process.platform === "win32" ? (0, import_path97.resolve)(p).toLowerCase() : (0, import_path97.resolve)(p);
     FactoryForgeUnavailableError = class extends Error {
       constructor(message) {
         super(message);
@@ -65538,28 +67527,28 @@ var init_forge_roots = __esm({
 
 // src/factory/run/ledger.ts
 function defaultLedgerDir(env2 = process.env) {
-  const base = env2.OMC_STATE_DIR?.trim() ? (0, import_path97.resolve)(env2.OMC_STATE_DIR) : (0, import_path97.join)((0, import_os17.homedir)(), ".omg");
-  return (0, import_path97.join)(base, "factory-ledger");
+  const base = env2.OMC_STATE_DIR?.trim() ? (0, import_path98.resolve)(env2.OMC_STATE_DIR) : (0, import_path98.join)((0, import_os18.homedir)(), ".omg");
+  return (0, import_path98.join)(base, "factory-ledger");
 }
 function ledgerFilePath(dir, root, key) {
-  return (0, import_path97.join)(dir, sha256((0, import_path97.resolve)(root).toLowerCase()).slice(0, 16), `run-${key}.json`);
+  return (0, import_path98.join)(dir, sha256((0, import_path98.resolve)(root).toLowerCase()).slice(0, 16), `run-${key}.json`);
 }
 function emptyHooksDir2(dir) {
-  const path15 = (0, import_path97.join)(dir, "empty-hooks");
-  (0, import_fs80.mkdirSync)(path15, { recursive: true, mode: 448 });
+  const path15 = (0, import_path98.join)(dir, "empty-hooks");
+  (0, import_fs81.mkdirSync)(path15, { recursive: true, mode: 448 });
   return path15;
 }
 function currentBytes(path15) {
-  return (0, import_fs80.existsSync)(path15) ? (0, import_fs80.readFileSync)(path15) : null;
+  return (0, import_fs81.existsSync)(path15) ? (0, import_fs81.readFileSync)(path15) : null;
 }
-var import_crypto23, import_fs80, import_os17, import_path97, LedgerError, userBaselineKey, sha256, EngineLedger;
+var import_crypto24, import_fs81, import_os18, import_path98, LedgerError, userBaselineKey, sha256, EngineLedger;
 var init_ledger2 = __esm({
   "src/factory/run/ledger.ts"() {
     "use strict";
-    import_crypto23 = require("crypto");
-    import_fs80 = require("fs");
-    import_os17 = require("os");
-    import_path97 = require("path");
+    import_crypto24 = require("crypto");
+    import_fs81 = require("fs");
+    import_os18 = require("os");
+    import_path98 = require("path");
     init_atomic_write();
     LedgerError = class extends Error {
       constructor(message) {
@@ -65568,7 +67557,7 @@ var init_ledger2 = __esm({
       }
     };
     userBaselineKey = (laneId) => `${laneId}@user`;
-    sha256 = (data) => (0, import_crypto23.createHash)("sha256").update(data).digest("hex");
+    sha256 = (data) => (0, import_crypto24.createHash)("sha256").update(data).digest("hex");
     EngineLedger = class _EngineLedger {
       constructor(file2, data, existed) {
         this.file = file2;
@@ -65578,10 +67567,10 @@ var init_ledger2 = __esm({
       /** Load the sidecar for (root, issue), or start an empty one; a malformed sidecar is refused. */
       static open(dir, root, issue2) {
         const file2 = ledgerFilePath(dir, root, issue2);
-        if (!(0, import_fs80.existsSync)(file2)) return new _EngineLedger(file2, { version: 1, root: (0, import_path97.resolve)(root), issue: issue2, files: {}, baselines: {} }, false);
+        if (!(0, import_fs81.existsSync)(file2)) return new _EngineLedger(file2, { version: 1, root: (0, import_path98.resolve)(root), issue: issue2, files: {}, baselines: {} }, false);
         let parsed;
         try {
-          parsed = JSON.parse((0, import_fs80.readFileSync)(file2, "utf8"));
+          parsed = JSON.parse((0, import_fs81.readFileSync)(file2, "utf8"));
         } catch (error62) {
           throw new LedgerError(`the engine ledger ${file2} is not valid JSON: ${error62 instanceof Error ? error62.message : String(error62)}`);
         }
@@ -65593,7 +67582,7 @@ var init_ledger2 = __esm({
         return new _EngineLedger(file2, d, true);
       }
       tracks(path15) {
-        return Object.prototype.hasOwnProperty.call(this.data.files, (0, import_path97.resolve)(path15));
+        return Object.prototype.hasOwnProperty.call(this.data.files, (0, import_path98.resolve)(path15));
       }
       /** Every path the engine recorded a write of (resolved). */
       trackedPaths() {
@@ -65601,11 +67590,11 @@ var init_ledger2 = __esm({
       }
       /** The content of the engine's last write of `path` (null: absent; undefined: not tracked). */
       recorded(path15) {
-        return this.data.files[(0, import_path97.resolve)(path15)]?.content;
+        return this.data.files[(0, import_path98.resolve)(path15)]?.content;
       }
       /** Record the engine's write of `path` (null: the file must not exist) and persist the sidecar. */
       record(path15, content) {
-        this.data.files[(0, import_path97.resolve)(path15)] = { sha256: content === null ? null : sha256(content), content };
+        this.data.files[(0, import_path98.resolve)(path15)] = { sha256: content === null ? null : sha256(content), content };
         this.persist();
       }
       /**
@@ -65614,13 +67603,13 @@ var init_ledger2 = __esm({
        * between a hash and a second read cannot happen. Untracked: false.
        */
       matches(path15, bytes) {
-        const rec = this.data.files[(0, import_path97.resolve)(path15)];
+        const rec = this.data.files[(0, import_path98.resolve)(path15)];
         if (!rec) return false;
         return (bytes === null ? null : sha256(bytes)) === rec.sha256;
       }
       /** Engine-owned files whose bytes differ from the engine's last write (optionally only `paths`). */
       mismatches(paths) {
-        const wanted = paths ? new Set(paths.map((p) => (0, import_path97.resolve)(p))) : null;
+        const wanted = paths ? new Set(paths.map((p) => (0, import_path98.resolve)(p))) : null;
         const out = [];
         for (const [path15, rec] of Object.entries(this.data.files)) {
           if (wanted && !wanted.has(path15)) continue;
@@ -65637,12 +67626,12 @@ var init_ledger2 = __esm({
       restore(paths, stamp2) {
         const aside = [];
         for (const raw of paths) {
-          const path15 = (0, import_path97.resolve)(raw);
+          const path15 = (0, import_path98.resolve)(raw);
           const rec = this.data.files[path15];
           if (!rec) continue;
-          if ((0, import_fs80.existsSync)(path15)) {
+          if ((0, import_fs81.existsSync)(path15)) {
             const to = `${path15}.tampered-${stamp2}`;
-            (0, import_fs80.renameSync)(path15, to);
+            (0, import_fs81.renameSync)(path15, to);
             aside.push(to);
           }
           if (rec.content !== null) atomicWriteFileSync(path15, rec.content);
@@ -65681,747 +67670,15 @@ var init_ledger2 = __esm({
         this.persist();
       }
       persist() {
-        const dir = (0, import_path97.dirname)(this.file);
-        (0, import_fs80.mkdirSync)(dir, { recursive: true, mode: 448 });
+        const dir = (0, import_path98.dirname)(this.file);
+        (0, import_fs81.mkdirSync)(dir, { recursive: true, mode: 448 });
         atomicWriteFileSync(this.file, JSON.stringify(this.data));
         try {
-          (0, import_fs80.chmodSync)(this.file, 384);
+          (0, import_fs81.chmodSync)(this.file, 384);
         } catch {
         }
       }
     };
-  }
-});
-
-// src/utils/string-width.ts
-function stripAnsi(str9) {
-  return str9.replace(
-    /\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g,
-    ""
-  );
-}
-var init_string_width = __esm({
-  "src/utils/string-width.ts"() {
-    "use strict";
-  }
-});
-
-// src/factory/run/test-delta.ts
-function testId(parts) {
-  const hash2 = (0, import_node_crypto5.createHash)("sha256").update(JSON.stringify(parts)).digest("hex").slice(0, ID_HASH_CHARS);
-  return `${hash2} ${parts.join(" > ")}`.slice(0, TEST_ID_MAX_CHARS);
-}
-function testIdText(id) {
-  return /^[0-9a-f]{16} /.test(id) ? id.slice(ID_HASH_CHARS + 1) : id;
-}
-function vitestReportPath(dir) {
-  return (0, import_node_path16.join)(dir, `.omg-vitest-report-${(0, import_node_crypto5.randomBytes)(6).toString("hex")}.json`);
-}
-function vitestReportArgs(path15) {
-  return ["--reporter=default", "--reporter=json", `--outputFile=${path15}`, "--coverage.enabled=false"];
-}
-function relative30(name, root) {
-  const n = slash(name);
-  const r = slash(root).replace(/\/+$/, "");
-  return n.toLowerCase().startsWith(`${r.toLowerCase()}/`) ? n.slice(r.length + 1) : n;
-}
-function parseVitestReport(text3, root) {
-  let data;
-  try {
-    data = JSON.parse(text3);
-  } catch {
-    return null;
-  }
-  const files = data?.testResults;
-  if (!Array.isArray(files)) return null;
-  let passed = 0;
-  const failed = /* @__PURE__ */ new Set();
-  const broken = /* @__PURE__ */ new Set();
-  const failedFiles = /* @__PURE__ */ new Set();
-  for (const f of files) {
-    if (typeof f !== "object" || f === null || typeof f.name !== "string" || !Array.isArray(f.assertionResults)) return null;
-    const file2 = relative30(f.name, root);
-    let own2 = 0;
-    for (const a of f.assertionResults) {
-      if (typeof a !== "object" || a === null || typeof a.title !== "string") return null;
-      if (a.status === "passed") passed += 1;
-      if (a.status !== "failed") continue;
-      own2 += 1;
-      const ancestors = Array.isArray(a.ancestorTitles) ? a.ancestorTitles.filter((t) => typeof t === "string") : [];
-      failed.add(testId([file2, ...ancestors, a.title]));
-    }
-    const fileError = typeof f.message === "string" && f.message.trim() !== "";
-    if (f.status === "failed" && (own2 === 0 || fileError)) broken.add(testId([file2]));
-    if (f.status === "failed" || own2 > 0) failedFiles.add(file2);
-  }
-  return { passed, failed: [...failed].sort(), brokenFiles: [...broken].sort(), failedFiles: failedFiles.size };
-}
-function readVitestReport(path15, root) {
-  try {
-    const fd = (0, import_node_fs15.openSync)(path15, "r");
-    try {
-      const size = (0, import_node_fs15.fstatSync)(fd).size;
-      if (size > VITEST_REPORT_MAX_BYTES) return null;
-      const buf = Buffer.alloc(size);
-      let off = 0;
-      while (off < size) {
-        const n = (0, import_node_fs15.readSync)(fd, buf, off, size - off, off);
-        if (n <= 0) break;
-        off += n;
-      }
-      return parseVitestReport(buf.subarray(0, off).toString("utf8"), root);
-    } finally {
-      (0, import_node_fs15.closeSync)(fd);
-    }
-  } catch {
-    return null;
-  } finally {
-    try {
-      (0, import_node_fs15.rmSync)(path15, { force: true });
-    } catch {
-    }
-  }
-}
-function stripAnsi2(text3) {
-  return text3.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "");
-}
-function vitestOutputFailures(output2) {
-  const text3 = stripAnsi2(output2);
-  return [
-    .../^\s*Errors\s+\d+\s+errors?\b/m.test(text3) ? [UNHANDLED_ERRORS_ID] : [],
-    .../does not meet (?:global )?threshold/i.test(text3) ? [COVERAGE_THRESHOLD_ID] : [],
-    .../import\(s\) exceeded the danger threshold/i.test(text3) ? [IMPORT_DANGER_ID] : []
-  ];
-}
-function vitestSummaryFailed(output2) {
-  const text3 = stripAnsi2(output2);
-  const tests = /^\s*Tests\s+(\d+)\s+failed\b/m.exec(text3)?.[1];
-  const files = /^\s*Test Files\s+(\d+)\s+failed\b/m.exec(text3)?.[1];
-  const seen = /^\s*(?:Tests|Test Files)\s+\S/m.test(text3);
-  return { ...tests ? { tests: Number(tests) } : {}, ...files ? { files: Number(files) } : {}, seen };
-}
-function headRunSignals(status, output2) {
-  return { status, output: vitestOutputFailures(output2), summary: vitestSummaryFailed(output2) };
-}
-function testDeltaVerdict(base, head, signals, baseOutput = []) {
-  if (!base) return { kind: "park", why: "the base run left no test report" };
-  if (base.passed === 0) return { kind: "park", why: "no selected test passes on the base" };
-  if (!head) return { kind: "park", why: "the head run left no test report" };
-  if (signals.status !== 1) return { kind: "park", why: `the head run exited ${signals.status}, not 1 (failed tests)` };
-  const both = signals.output.filter((id) => baseOutput.includes(id));
-  if (both.length > 0) return { kind: "park", why: `${both.join(" and ")} on the base and the head` };
-  if (!signals.summary.seen) return { kind: "park", why: "the head run's output has no vitest summary (Tests or Test Files)" };
-  if (signals.summary.tests !== void 0 && signals.summary.tests > head.failed.length) return { kind: "park", why: "the head run's summary names more failed tests than its report" };
-  const files = head.failedFiles ?? (/* @__PURE__ */ new Set([...head.failed.map((id) => testIdText(id).split(" > ")[0]), ...head.brokenFiles.map(testIdText)])).size;
-  if (signals.summary.files !== void 0 && signals.summary.files > files) return { kind: "park", why: "the head run's summary names more failed test files than its report" };
-  const onHead = [...head.failed, ...head.brokenFiles.map(fileId2), ...signals.output];
-  if (onHead.length === 0) return { kind: "park", why: "the head run failed, but its report names no failing test" };
-  const onBase = /* @__PURE__ */ new Set([...base.failed, ...base.brokenFiles.map(fileId2)]);
-  const counted = onHead.filter((t) => !onBase.has(t));
-  const excused = onHead.filter((t) => onBase.has(t));
-  return counted.length > 0 ? { kind: "fail", counted, excused } : { kind: "pass", excused };
-}
-function vitestSummaryShapeOk(v) {
-  const s = v;
-  const strs = (x) => Array.isArray(x) && x.length <= BASE_FAILURES_MAX && x.every((t) => typeof t === "string" && t.length <= TEST_ID_MAX_CHARS);
-  const count = (x) => Number.isSafeInteger(x) && x >= 0;
-  return typeof s === "object" && s !== null && !Array.isArray(s) && count(s.passed) && strs(s.failed) && strs(s.brokenFiles) && (s.failedFiles === void 0 || count(s.failedFiles)) && Object.keys(s).every((k) => k === "passed" || k === "failed" || k === "brokenFiles" || k === "failedFiles");
-}
-var import_node_crypto5, import_node_fs15, import_node_path16, VITEST_REPORT_MAX_BYTES, BASE_FAILURES_MAX, TEST_ID_MAX_CHARS, ID_HASH_CHARS, slash, fileId2, UNHANDLED_ERRORS_ID, COVERAGE_THRESHOLD_ID, IMPORT_DANGER_ID;
-var init_test_delta = __esm({
-  "src/factory/run/test-delta.ts"() {
-    "use strict";
-    import_node_crypto5 = require("node:crypto");
-    import_node_fs15 = require("node:fs");
-    import_node_path16 = require("node:path");
-    VITEST_REPORT_MAX_BYTES = 32 * 1024 * 1024;
-    BASE_FAILURES_MAX = 200;
-    TEST_ID_MAX_CHARS = 300;
-    ID_HASH_CHARS = 16;
-    slash = (p) => p.replace(/\\/g, "/");
-    fileId2 = (id) => `${id} (the file failed)`;
-    UNHANDLED_ERRORS_ID = 'errors outside any test (vitest "Unhandled Errors")';
-    COVERAGE_THRESHOLD_ID = "a coverage threshold is not met";
-    IMPORT_DANGER_ID = "an import exceeded vitest's danger threshold (experimental.importDurations.failOnDanger)";
-  }
-});
-
-// src/factory/run/state.ts
-function healRunKey(sig8) {
-  const key = `heal-${sig8}`;
-  if (!HEAL_RUN_KEY.test(key)) throw new FactoryStateError(`signature id must be 8 hex characters, got ${JSON.stringify(sig8)}`);
-  return key;
-}
-function runKeyOf(s) {
-  return s.kind === "ci-heal" ? `heal-${s.heal?.sig8 ?? ""}` : s.issue;
-}
-function implementerName(key) {
-  return `factory-impl-${key}`;
-}
-function reviewerName(key, jobId) {
-  return `factory-review-${key}-${jobId}`;
-}
-function factoryBranch(key) {
-  return typeof key === "number" ? `factory/issue-${key}` : `factory/${key}`;
-}
-function factoryStateDir2(root) {
-  return (0, import_path98.join)(getOmcRoot(root), "state", "factory");
-}
-function factoryStatePath(root, key) {
-  return (0, import_path98.join)(factoryStateDir2(root), `run-${key}.json`);
-}
-function factoryOwnerPath(root, key) {
-  return (0, import_path98.join)(factoryStateDir2(root), `run-${key}.owner`);
-}
-function factoryRepoOwnerPath(root) {
-  return (0, import_path98.join)(factoryStateDir2(root), "engine.owner");
-}
-function factoryCancelPath(root, key) {
-  return (0, import_path98.join)(factoryStateDir2(root), `run-${key}.cancel`);
-}
-function factoryCancelRequested(root, key) {
-  return (0, import_fs81.existsSync)(factoryCancelPath(root, key));
-}
-function shipVerdictHash(v) {
-  return (0, import_crypto24.createHash)("sha256").update(JSON.stringify([v.reviewer, v.verdict, v.sha, v.at, v.notes ?? null])).digest("hex");
-}
-function createFactoryState(input2, now) {
-  const key = input2.heal ? healRunKey(input2.heal.sig8) : input2.issue;
-  return {
-    version: 1,
-    kind: input2.heal ? "ci-heal" : "issue",
-    issue: input2.heal ? 0 : input2.issue,
-    ...input2.heal ? { heal: input2.heal } : {},
-    ...input2.remote ? { remote: input2.remote } : {},
-    repoUrl: input2.repoUrl,
-    base: input2.base,
-    branch: factoryBranch(key),
-    phase: "intake",
-    implementer: implementerName(key),
-    lanes: [],
-    retries: {},
-    lostStreak: {},
-    elapsedMs: 0,
-    ciFixRounds: 0,
-    history: [{ at: now, from: null, to: "intake", note: input2.heal ? `ci-heal for CI signature ${input2.heal.sig8}` : `${input2.itemNoun ?? "issue"} #${input2.issue}` }],
-    createdAt: now,
-    updatedAt: now
-  };
-}
-function moveTo(state, to, note, now) {
-  if (TERMINAL_FACTORY_PHASES.includes(state.phase)) {
-    throw new FactoryStateError(`factory run ${runLabel(runKeyOf(state))} is ${state.phase}; it does not move to ${to}`);
-  }
-  const { gate: _gate, ...rest } = state;
-  return { ...rest, phase: to, updatedAt: now, history: [...state.history, { at: now, from: state.phase, to, note }] };
-}
-function setGate(state, name, reason, now, extra = {}) {
-  return {
-    ...state,
-    gate: { name, reason, at: now, ...extra },
-    updatedAt: now,
-    history: [...state.history, { at: now, from: state.phase, to: state.phase, note: `awaiting-human: ${name}: ${reason}` }]
-  };
-}
-function trackerStageOf(s) {
-  if (s.gate) return s.gate.name === "merge" ? "ready-to-merge" : "blocked";
-  switch (s.phase) {
-    case "intake":
-    case "plan":
-      return "queued";
-    case "implement":
-    case "publish":
-    case "fix":
-    case "conflict-fix":
-    case "ci-fix":
-      return "building";
-    case "review":
-      return "reviewing";
-    case "prepare":
-    case "gates":
-      return "verifying";
-    case "merge":
-      return "ready-to-merge";
-    case "merged":
-      return "done";
-    case "cancelled":
-      return "cancelled";
-    case "failed":
-      return "blocked";
-  }
-}
-function computeFactoryIntegrity(state) {
-  return (0, import_crypto24.createHash)("sha256").update(JSON.stringify({ ...state, integrity: void 0 })).digest("hex");
-}
-function verifyFactoryIntegrity(state) {
-  return typeof state.integrity === "string" && state.integrity === computeFactoryIntegrity(state);
-}
-function forgeResumeProblem(state, resolved, resolvedRepoUrl) {
-  const recorded = state.forgeKind ?? "github";
-  const label = runLabel(runKeyOf(state));
-  if (recorded !== resolved) return `factory run ${label} started on ${recorded}, but the forge now resolves to ${resolved}; finish or cancel the run before changing factory.forge`;
-  if (resolvedRepoUrl !== void 0 && state.repoUrl && !sameRepo(state.repoUrl, resolvedRepoUrl)) {
-    return `factory run ${label} started in ${state.repoUrl}, but the forge now resolves to ${resolvedRepoUrl}; finish or cancel the run before changing the origin remote or factory.forge`;
-  }
-  return null;
-}
-function runRemote(state) {
-  return state.remote ?? "origin";
-}
-function shapeProblem2(s) {
-  if (!isStr2(s.repoUrl) || !isStr2(s.base) || !s.base || !isStr2(s.branch) || !s.branch) return "repoUrl/base/branch";
-  if (!FACTORY_PHASES.includes(s.phase)) return "phase";
-  if (!isStr2(s.implementer) || !s.implementer) return "implementer";
-  if (s.kind !== void 0 && s.kind !== "issue" && s.kind !== "ci-heal") return "kind";
-  if (s.forgeKind !== void 0 && s.forgeKind !== "github" && s.forgeKind !== "azure-devops" && s.forgeKind !== "local") return "forgeKind";
-  if (s.remote !== void 0 ? s.remote !== LOCAL_REMOTE || s.forgeKind !== "local" : s.forgeKind === "local") return "remote";
-  if (s.localGate !== void 0 && (s.forgeKind !== "local" || !Array.isArray(s.localGate) || s.localGate.length === 0 || !s.localGate.every(isStr2))) return "localGate";
-  if (s.gateChangeApproved !== void 0 && (s.forgeKind !== "local" || !isStr2(s.gateChangeApproved) || !HEX64.test(s.gateChangeApproved))) return "gateChangeApproved";
-  const gateDef = s.gate?.definition;
-  if (gateDef !== void 0 && (s.forgeKind !== "local" || !isStr2(gateDef) || !HEX64.test(gateDef))) return "gate.definition";
-  const gateDetail = s.gate?.detail;
-  if (gateDetail !== void 0 && (!isStr2(gateDetail) || gateDetail.length > GATE_DETAIL_MAX_CHARS)) return "gate.detail";
-  if (s.prepareChecks !== void 0 && s.prepareChecks !== "auto" && !(Array.isArray(s.prepareChecks) && s.prepareChecks.every((a) => Array.isArray(a) && a.length > 0 && a.every(isStr2)))) return "prepareChecks";
-  if (s.prepareBuild !== void 0 && s.prepareBuild !== "none") {
-    const b = s.prepareBuild;
-    const strs = (v) => Array.isArray(v) && v.length > 0 && v.every(isStr2);
-    if (typeof b !== "object" || b === null || !strs(b.command) || !strs(b.outputs) || !b.outputs.every(isBuildOutputDir)) return "prepareBuild";
-  }
-  if (s.trackerStage !== void 0 && !PROGRESS_STAGES.includes(s.trackerStage)) return "trackerStage";
-  if (s.codingAgent !== void 0 && (s.kind === "ci-heal" || codingAgentRecordProblem(s.codingAgent) !== null)) return "codingAgent";
-  if (s.layout !== void 0 || s.privateDir !== void 0 || s.privateStore !== void 0) {
-    const ps = s.privateStore;
-    if (s.layout !== 2 || !isStr2(s.privateDir) || !(0, import_path98.isAbsolute)(s.privateDir) || typeof ps !== "object" || ps === null || !isStr2(ps.userGitDir) || !(0, import_path98.isAbsolute)(ps.userGitDir) || !isStr2(ps.configHash) || !HEX64.test(ps.configHash) || !isCount3(ps.longestPath) || !isCount3(ps.nextImport)) return "layout";
-  }
-  if (s.pendingParents !== void 0 && (!Array.isArray(s.pendingParents) || s.pendingParents.length === 0 || !s.pendingParents.every((x) => isStr2(x) && /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/.test(x)))) return "pendingParents";
-  if (s.kind === "ci-heal") {
-    const h = s.heal;
-    const d = h?.diagnosis;
-    if (!isStr2(h?.sig8) || !Array.isArray(h.failingTests) || !Array.isArray(h.env) || typeof d !== "object" || d === null || !isStr2(d.rootCause)) return "heal";
-  }
-  if (!Array.isArray(s.lanes) || !s.lanes.every((l) => {
-    const x = l;
-    const sbx = x?.sandbox;
-    return isStr2(x?.id) && isStr2(x.kind) && isStr2(x.status) && isStr2(x.startSha) && typeof x.maxCredits === "number" && (x.stopUnconfirmed === void 0 || typeof x.stopUnconfirmed === "boolean") && (x.treeReusable === void 0 || x.treeReusable === true) && (x.model === void 0 || isStr2(x.model)) && (x.tamperCheck === void 0 || x.tamperCheck === "clean" || x.tamperCheck === "problems" || x.tamperCheck === "skipped") && (sbx === void 0 || typeof sbx === "object" && sbx !== null && isStr2(sbx.mode) && isCount3(sbx.unsandboxedCalls) && (sbx.writeNetwork === void 0 || sbx.writeNetwork === "none" || sbx.writeNetwork === "registry"));
-  })) return "lanes";
-  if (typeof s.retries !== "object" || s.retries === null || !Object.values(s.retries).every(isCount3)) return "retries";
-  if (typeof s.lostStreak !== "object" || s.lostStreak === null) return "lostStreak";
-  if (typeof s.elapsedMs !== "number" || !isCount3(s.ciFixRounds)) return "elapsedMs/ciFixRounds";
-  if (s.conflictReprepares !== void 0 && !isCount3(s.conflictReprepares)) return "conflictReprepares";
-  if (!Array.isArray(s.history)) return "history";
-  if (!isStr2(s.createdAt) || !isStr2(s.updatedAt)) return "createdAt/updatedAt";
-  return humanReviewShapeProblem(s);
-}
-function pendingCommitShapeOk(v) {
-  const p = v;
-  return typeof p === "object" && p !== null && !Array.isArray(p) && isStr2(p.laneId) && isStr2(p.key) && isStr2(p.start) && FULL_SHA2.test(p.start) && Array.isArray(p.parents) && p.parents.length > 0 && p.parents.length <= 2 && p.parents.every((x) => isStr2(x) && FULL_SHA2.test(x)) && isStr2(p.worktree) && (p.branch === null || isStr2(p.branch)) && isStr2(p.message) && p.message.length <= 8e3 && (p.secretFindings === void 0 || findingsOk(p.secretFindings)) && (p.secretAck === void 0 || findingsOk(p.secretAck)) && Object.keys(p).every((k) => ["laneId", "key", "start", "parents", "worktree", "branch", "message", "secretFindings", "secretAck"].includes(k));
-}
-function humanReviewShapeProblem(s) {
-  const h = s.humanReview;
-  if (h !== void 0 && (typeof h !== "object" || h === null || Array.isArray(h) || !isStr2(h.seenAt) || !isStr2(h.head) || !HEX409.test(h.head) || !isStr2(h.digest) || !HEX64.test(h.digest) || h.threadIds !== void 0 && (!Array.isArray(h.threadIds) || h.threadIds.length > MAX_HUMAN_THREAD_IDS || !h.threadIds.every(THREAD_ID)) || Object.keys(h).some((k) => k !== "seenAt" && k !== "head" && k !== "digest" && k !== "threadIds"))) return "humanReview";
-  if (s.unsandboxedAck !== void 0 && (!isStr2(s.unsandboxedAck) || !HEX409.test(s.unsandboxedAck))) return "unsandboxedAck";
-  if (s.unsandboxedGatesAck !== void 0 && (!isStr2(s.unsandboxedGatesAck) || !HEX409.test(s.unsandboxedGatesAck))) return "unsandboxedGatesAck";
-  if (s.pendingCommit !== void 0 && !pendingCommitShapeOk(s.pendingCommit)) return "pendingCommit";
-  if (s.sandboxedPrepareHead !== void 0 && (!isStr2(s.sandboxedPrepareHead) || !HEX409.test(s.sandboxedPrepareHead))) return "sandboxedPrepareHead";
-  if (s.sandboxedGateHead !== void 0 && (!isStr2(s.sandboxedGateHead) || !HEX409.test(s.sandboxedGateHead))) return "sandboxedGateHead";
-  if (s.gitTransportPlainHead !== void 0 && (!isStr2(s.gitTransportPlainHead) || !HEX409.test(s.gitTransportPlainHead))) return "gitTransportPlainHead";
-  if (s.testDeltaExcusedHead !== void 0 && (!isStr2(s.testDeltaExcusedHead) || !HEX409.test(s.testDeltaExcusedHead))) return "testDeltaExcusedHead";
-  if (s.plainHeadRan !== void 0 && s.plainHeadRan !== true) return "plainHeadRan";
-  if (s.gateTreeCopy !== void 0 && s.gateTreeCopy !== true) return "gateTreeCopy";
-  if (s.laneModel !== void 0 && s.laneModel !== null && !isStr2(s.laneModel)) return "laneModel";
-  if (s.laneModels !== void 0 && (typeof s.laneModels !== "object" || s.laneModels === null || Array.isArray(s.laneModels) || !Object.entries(s.laneModels).every(([k, v]) => ["implement", "review", "fix", "ciFix", "conflictFix"].includes(k) && (v === null || isStr2(v))))) return "laneModels";
-  if (s.checkoutAdmin !== void 0 && (!isStr2(s.checkoutAdmin) || !/^[A-Za-z0-9._-]+$/.test(s.checkoutAdmin) || s.checkoutAdmin === "." || s.checkoutAdmin === "..")) return "checkoutAdmin";
-  const cal = s.gateCalibration;
-  if (cal !== void 0 && (typeof cal !== "object" || cal === null || Array.isArray(cal) || !Object.entries(cal).every(([k, v]) => {
-    const e = v;
-    return HEX64.test(k) && typeof e === "object" && e !== null && typeof e.ok === "boolean" && (e.tail === void 0 || isStr2(e.tail)) && (e.gitTransport === void 0 || e.gitTransport === true) && (e.timedOut === void 0 || e.timedOut === true) && (e.junctionRead === void 0 || e.junctionRead === true) && (e.tests === void 0 || vitestSummaryShapeOk(e.tests)) && (e.beforePlainHead === void 0 || e.beforePlainHead === true) && Object.keys(e).every((x) => x === "ok" || x === "tail" || x === "timedOut" || x === "gitTransport" || x === "junctionRead" || x === "tests" || x === "beforePlainHead");
-  }))) return "gateCalibration";
-  const lanes = s.lanes;
-  if (!lanes.every((l) => {
-    const f = l.feedback;
-    return f === void 0 || typeof f === "object" && f !== null && !Array.isArray(f) && f.source === "human" && FEEDBACK_FORGES.includes(f.forge) && isCount3(f.items) && Object.keys(f).every((k) => k === "source" || k === "forge" || k === "items") && l.kind === "fix";
-  })) return "lanes.feedback";
-  return null;
-}
-function readFactoryState(root, key) {
-  const path15 = factoryStatePath(root, key);
-  if (!(0, import_fs81.existsSync)(path15)) return null;
-  return parseFactoryState(path15, key, (0, import_fs81.readFileSync)(path15, "utf8"));
-}
-function parseFactoryState(path15, key, raw) {
-  let parsed;
-  try {
-    parsed = JSON.parse(raw);
-  } catch (error62) {
-    throw new FactoryStateError(`${path15} is not valid JSON: ${error62 instanceof Error ? error62.message : String(error62)}`);
-  }
-  const s = parsed;
-  if (typeof parsed !== "object" || parsed === null || s.version !== 1 || typeof s.issue !== "number") throw new FactoryStateError(`${path15} is not a factory run state for ${runLabel(key)}`);
-  const problem = shapeProblem2(s);
-  if (problem) throw new FactoryStateError(`${path15} is malformed (field ${problem})`);
-  if (runKeyOf(parsed) !== key) throw new FactoryStateError(`${path15} is not a factory run state for ${runLabel(key)}`);
-  const h = s.humanReview;
-  if (h && h.threadIds === void 0) h.threadIds = [];
-  return parsed;
-}
-function updateFactoryState(root, key, mutate, options = {}) {
-  if (!(0, import_fs81.existsSync)((0, import_path98.join)(root, ".git"))) throw new FactoryStateError(`${root} is not a git work tree; factory run state lives in the repo`);
-  const path15 = factoryStatePath(root, key);
-  ensureDirSync(factoryStateDir2(root));
-  return withFileLockSync(lockPathFor(path15), () => {
-    const bytes = (0, import_fs81.existsSync)(path15) ? (0, import_fs81.readFileSync)(path15) : null;
-    options.verify?.(bytes);
-    const current = bytes === null ? null : parseFactoryState(path15, key, bytes.toString("utf8"));
-    if (current && !verifyFactoryIntegrity(current)) {
-      throw new FactoryStateError(`${path15} fails its integrity check (edited outside omg factory run); the run is failed until a human replaces the file`);
-    }
-    const { sealed, content } = writeSealed(path15, mutate(current));
-    options.onWrite?.(path15, content);
-    return sealed;
-  }, { timeoutMs: 5e3 });
-}
-function writeSealed(path15, next) {
-  const sealed = { ...next, integrity: computeFactoryIntegrity(next) };
-  const content = JSON.stringify(sealed, null, 2);
-  atomicWriteFileSync(path15, content);
-  return { sealed, content };
-}
-function overwriteFactoryState(root, key, state) {
-  ensureDirSync(factoryStateDir2(root));
-  return writeSealed(factoryStatePath(root, key), state);
-}
-function describeOwner(o) {
-  const pid = o.pid === void 0 ? "no live process" : `pid ${ownerText(o.pid)}`;
-  return `${o.run === void 0 ? "run unknown" : ownerText(o.run)}, ${pid} on ${ownerText(o.hostname ?? "unknown host")} since ${ownerText(o.startedAt ?? "unknown")}${o.root ? ` in ${ownerText(o.root)}` : ""}`;
-}
-function acquireFactoryOwner(root, key, now, deps = defaultOwnerDeps()) {
-  return claimOwner(factoryOwnerPath(root, key), now, deps, (prior) => `omg factory run ${key} is already running (pid ${ownerText(prior.pid)} on ${ownerText(prior.hostname)} since ${ownerText(prior.startedAt)})`);
-}
-function acquireFactoryRepoOwner(root, key, now, deps = defaultOwnerDeps()) {
-  const held = claimOwner(factoryRepoOwnerPath(root), now, deps, (prior) => engineBusyMessage(prior, root, String(key)), { run: String(key), root: (0, import_path98.resolve)(root) });
-  if (key === "scan") return held;
-  const live = heldSlots(root, deps);
-  if (live.length === 0) return held;
-  held.release();
-  throw new FactoryBusyError(`${live.length} private-layout parallel run(s) are active in this checkout (${live.map(slotText).join("; ")}); a run that takes this checkout's engine lock (the shared layout, factory.run.maxConcurrent 1, reset, clean of a shared run, heal) starts after they end (omg factory run status lists them)`);
-}
-function factorySlotsDir(root) {
-  return (0, import_path98.join)(factoryStateDir2(root), "slots");
-}
-function factorySlotPath(root, slot) {
-  return (0, import_path98.join)(factorySlotsDir(root), `slot-${slot}.owner`);
-}
-function factoryImportLockPath(root) {
-  return (0, import_path98.join)(factoryStateDir2(root), "import.lock");
-}
-function heldSlots(root, deps = defaultOwnerDeps()) {
-  let names;
-  try {
-    names = (0, import_fs81.readdirSync)(factorySlotsDir(root));
-  } catch {
-    return [];
-  }
-  const out = [];
-  for (const name of names) {
-    const m = SLOT_FILE.exec(name);
-    if (!m) continue;
-    const path15 = (0, import_path98.join)(factorySlotsDir(root), name);
-    const owner = ownerHolding(path15, deps);
-    if (owner !== null) out.push({ slot: Number(m[1]), path: path15, owner });
-  }
-  return out.sort((a, b) => a.slot - b.slot);
-}
-function acquireRunSlot(root, key, max, now, deps = defaultOwnerDeps(), scanWaitMs = SCAN_WAIT_MS) {
-  if (!Number.isInteger(max) || max < 1) throw new FactoryStateError(`factory.run.maxConcurrent must be a positive integer (got ${String(max)})`);
-  let held;
-  let slot = -1;
-  const busy = [];
-  for (let i = 0; i < max && !held; i++) {
-    try {
-      held = claimOwner(factorySlotPath(root, i), now(), deps, (prior) => `slot ${i}: ${describeOwner(prior)}`, { run: String(key), root: (0, import_path98.resolve)(root) });
-      slot = i;
-    } catch (error62) {
-      if (!(error62 instanceof FactoryBusyError)) throw error62;
-      busy.push(error62.message.startsWith("slot ") ? error62.message : `slot ${i}: ${error62.message}`);
-    }
-  }
-  if (!held) throw new FactoryBusyError(`${max} runs active (factory.run.maxConcurrent ${max}): ${busy.join("; ")}; start this one after one of them ends (omg factory run status)`);
-  const start = scanWait.clock();
-  for (; ; ) {
-    const path15 = factoryRepoOwnerPath(root);
-    const h = ownerHolding(path15, deps);
-    if (h === null) return { ...held, slot };
-    const waited = scanWait.clock() - start;
-    if (h !== "unreadable" && h.run === "scan" && waited < scanWaitMs) {
-      scanWait.sleep(Math.min(SCAN_POLL_MS, scanWaitMs - waited));
-      continue;
-    }
-    held.release();
-    if (h === "unreadable") throw new FactoryBusyError(unreadableOwnerMessage(path15));
-    throw new FactoryBusyError(h.run === "scan" ? `${engineBusyText(h)} (waited ${Math.round(waited / 1e3)} s)` : `a shared-layout run holds this checkout's engine lock (${describeOwner(h)}); private parallel runs start after it ends (a run started in the shared layout keeps it: there is no migration)`, h.run === "scan" ? "scan" : void 0);
-  }
-}
-function acquireImportLock(root, label, now, deps = defaultOwnerDeps(), waitMs = IMPORT_LOCK_WAIT_MS) {
-  const start = scanWait.clock();
-  for (; ; ) {
-    const r = tryImportLock(root, label, now, deps, scanWait.clock() - start, waitMs);
-    if ("held" in r) return r.held;
-    scanWait.sleep(r.sleepMs);
-  }
-}
-function tryImportLock(root, label, now, deps, waited, waitMs) {
-  const path15 = factoryImportLockPath(root);
-  const key = `${(0, import_path98.resolve)(path15)}\0${deps.pid}`;
-  if (importHeld.has(key)) throw new FactoryStateError(`this process already holds the repository import lock ${path15}; a nested section must be given that hold (withRepoImportLock's held option)`);
-  try {
-    const held = claimOwner(path15, now(), deps, (prior) => `the repository import lock ${path15} is held by ${describeOwner(prior)} (another run fetches, imports or pushes)`, { run: label, root: (0, import_path98.resolve)(root) });
-    importHeld.add(key);
-    let released = false;
-    return { held: { ...held, release: () => {
-      if (!released) {
-        released = true;
-        importHeld.delete(key);
-      }
-      return held.release();
-    } } };
-  } catch (error62) {
-    if (!(error62 instanceof FactoryBusyError)) throw error62;
-    if (error62.message.startsWith("the owner file ") || waited >= waitMs) {
-      throw new ImportLockBusyError(`${error62.message}; waited ${Math.round(waited / 1e3)} s: rerun when it is done (omg factory run status names the holder)`);
-    }
-    return { busy: error62.message, sleepMs: Math.min(SCAN_POLL_MS, waitMs - waited) };
-  }
-}
-function withRepoImportLock(root, label, fn, o = {}) {
-  const path15 = (0, import_path98.resolve)(factoryImportLockPath(root));
-  if (importInside.has(path15)) return fn();
-  const held = o.held ?? acquireImportLock(root, label, o.now ?? (() => (/* @__PURE__ */ new Date()).toISOString()), o.deps ?? defaultOwnerDeps(), o.waitMs ?? IMPORT_LOCK_WAIT_MS);
-  importInside.add(path15);
-  try {
-    return fn();
-  } finally {
-    importInside.delete(path15);
-    if (!o.held) held.release();
-  }
-}
-async function withRepoImportLockAsync(root, label, fn, o = {}) {
-  const now = o.now ?? (() => (/* @__PURE__ */ new Date()).toISOString());
-  const sleep9 = o.sleep ?? ((ms) => new Promise((r) => {
-    setTimeout(r, ms);
-  }));
-  const start = scanWait.clock();
-  for (; ; ) {
-    const r = tryImportLock(root, label, now, o.deps ?? defaultOwnerDeps(), scanWait.clock() - start, o.waitMs ?? IMPORT_LOCK_WAIT_MS);
-    if ("held" in r) {
-      try {
-        return withRepoImportLock(root, label, fn, { held: r.held });
-      } finally {
-        r.held.release();
-      }
-    }
-    if (o.stopped?.()) throw new ImportLockBusyError(`${r.busy}; stopped by a signal while waiting for it (nothing was done under the lock): rerun to continue`);
-    await sleep9(r.sleepMs);
-  }
-}
-function ownerFromOtherCheckout(prior, root, platform = process.platform) {
-  if (typeof prior.root !== "string") return false;
-  const fold5 = (p) => platform === "win32" || platform === "darwin" ? (0, import_path98.resolve)(p).toLowerCase() : (0, import_path98.resolve)(p);
-  return fold5(prior.root) !== fold5(root);
-}
-function ownerHolds(owner, deps) {
-  if (owner.hostname !== deps.hostname) return true;
-  if (owner.pid === deps.pid || !deps.isAlive(owner.pid)) return false;
-  if (typeof owner.identity !== "string" || !deps.identityOf) return true;
-  const current = deps.identityOf(owner.pid);
-  return current === null || current === owner.identity;
-}
-function ownerRecord(now, deps, fields = {}) {
-  const identity = deps.identityOf?.(deps.pid) ?? null;
-  return { pid: deps.pid, hostname: deps.hostname, startedAt: now, ...fields.run ? { run: fields.run } : {}, ...fields.root ? { root: fields.root } : {}, ...identity ? { identity } : {} };
-}
-function ownerHolding(path15, deps = defaultOwnerDeps()) {
-  let raw;
-  try {
-    raw = (0, import_fs81.readFileSync)(path15, "utf8");
-  } catch {
-    return null;
-  }
-  try {
-    const owner = JSON.parse(raw);
-    if (!isOwnerRecord(owner)) return "unreadable";
-    return ownerHolds(owner, deps) ? owner : null;
-  } catch {
-    return "unreadable";
-  }
-}
-function withOwnerFileLock(path15, fn) {
-  const lock = lockPathFor(path15);
-  const handle = acquireFileLockSync(lock, { timeoutMs: 5e3 });
-  if (!handle) throw new FactoryBusyError(lockBusyMessage(lock));
-  try {
-    return fn();
-  } finally {
-    releaseFileLockSync(handle);
-  }
-}
-function lockBusyMessage(lock, nowMs = Date.now()) {
-  const remove = `if no omg factory process is running, remove ${lock}`;
-  let stat;
-  try {
-    stat = (0, import_fs81.lstatSync)(lock);
-  } catch {
-    return `another omg factory process held the lock file ${lock}; retry in a moment`;
-  }
-  if (stat.isDirectory()) return `the lock path ${lock} is a directory, so the lock can never be taken and never goes stale; ${remove}`;
-  if (nowMs - stat.mtimeMs >= LOCK_STALE_MS2) return `the lock file ${lock} has been held for more than ${LOCK_STALE_MS2 / 1e3} s by a live pid (maybe an unrelated program reusing it), so it does not go stale; ${remove}`;
-  return `another omg factory process holds the lock file ${lock}; retry in a moment (${remove})`;
-}
-function claimOwner(path15, now, deps, busy, fields = {}) {
-  ensureDirSync((0, import_path98.dirname)(path15));
-  const record3 = `${JSON.stringify(ownerRecord(now, deps, fields))}
-`;
-  const tookOver = withOwnerFileLock(path15, () => {
-    let prior;
-    if ((0, import_fs81.existsSync)(path15)) {
-      let parsed;
-      try {
-        parsed = JSON.parse((0, import_fs81.readFileSync)(path15, "utf8"));
-      } catch {
-        parsed = void 0;
-      }
-      if (!isOwnerRecord(parsed)) throw new FactoryBusyError(unreadableOwnerMessage(path15));
-      prior = parsed;
-      if (ownerHolds(prior, deps)) throw new FactoryBusyError(busy(prior), typeof prior.run === "string" ? prior.run : void 0);
-    }
-    atomicWriteFileSync(path15, record3);
-    return prior;
-  });
-  const whileMine = (fn) => {
-    try {
-      withOwnerFileLock(path15, () => {
-        const owner = (0, import_fs81.existsSync)(path15) ? JSON.parse((0, import_fs81.readFileSync)(path15, "utf8")) : null;
-        if (isOwnerRecord(owner) && owner.pid === deps.pid && owner.hostname === deps.hostname) fn(owner);
-      });
-      return true;
-    } catch (error62) {
-      console.error(`omg factory: could not update the lock ${path15} (${error62 instanceof Error ? error62.message : String(error62)}); it stays held by this process`);
-      return false;
-    }
-  };
-  const release = () => whileMine(() => (0, import_fs81.unlinkSync)(path15));
-  const relabel = (run3) => {
-    whileMine((owner) => atomicWriteFileSync(path15, `${JSON.stringify({ ...owner, run: run3 })}
-`));
-  };
-  return { release, relabel, ...tookOver ? { tookOver } : {} };
-}
-var import_crypto24, import_fs81, import_os18, import_path98, FACTORY_PHASES, TERMINAL_FACTORY_PHASES, HEAL_RUN_KEY, HEAL_APPROVE_GATE, HEAL_DIAGNOSIS_GATE, FactoryStateError, EXIT_BUSY, FactoryBusyError, FactoryTamperHoldError, runSlug, runLabel, isStr2, HEX64, GATE_DETAIL_MAX_CHARS, isCount3, HEX409, MAX_HUMAN_THREAD_IDS, THREAD_ID, FEEDBACK_FORGES, FULL_SHA2, findingsOk, ownIdentity, startIdentity, defaultOwnerDeps, ownerText, SLOT_FILE, slotText, IMPORT_LOCK_WAIT_MS, ImportLockBusyError, importHeld, importInside, SCAN_WAIT_MS, SCAN_POLL_MS, scanWait, engineBusyMessage, engineBusyText, unreadableOwnerMessage, isOwnerRecord, LOCK_STALE_MS2;
-var init_state5 = __esm({
-  "src/factory/run/state.ts"() {
-    "use strict";
-    import_crypto24 = require("crypto");
-    import_fs81 = require("fs");
-    import_os18 = require("os");
-    import_path98 = require("path");
-    init_atomic_write();
-    init_file_lock();
-    init_worktree_paths();
-    init_process_utils();
-    init_string_width();
-    init_config2();
-    init_exec();
-    init_types9();
-    init_mirror();
-    init_coding_agent_lane();
-    init_test_delta();
-    FACTORY_PHASES = [
-      "intake",
-      "plan",
-      "implement",
-      "publish",
-      "review",
-      "fix",
-      "prepare",
-      "conflict-fix",
-      "gates",
-      "ci-fix",
-      "merge",
-      "merged",
-      "cancelled",
-      "failed"
-    ];
-    TERMINAL_FACTORY_PHASES = ["merged", "cancelled", "failed"];
-    HEAL_RUN_KEY = /^heal-[0-9a-f]{8}$/;
-    HEAL_APPROVE_GATE = "heal-approve";
-    HEAL_DIAGNOSIS_GATE = "heal-diagnosis";
-    FactoryStateError = class extends Error {
-      constructor(message) {
-        super(message);
-        this.name = "FactoryStateError";
-      }
-    };
-    EXIT_BUSY = 6;
-    FactoryBusyError = class extends FactoryStateError {
-      /** The holder's run key when a live owner file refused (`scan`: the poller's heal scan or base sync, or a read command's fetch). */
-      holderRun;
-      constructor(message, holderRun) {
-        super(message);
-        this.name = "FactoryBusyError";
-        if (holderRun !== void 0) this.holderRun = holderRun;
-      }
-    };
-    FactoryTamperHoldError = class extends FactoryBusyError {
-      constructor(message) {
-        super(message);
-        this.name = "FactoryTamperHoldError";
-      }
-    };
-    runSlug = (key) => typeof key === "number" ? `issue-${key}` : key;
-    runLabel = (key) => typeof key === "number" ? `#${key}` : key;
-    isStr2 = (v) => typeof v === "string";
-    HEX64 = /^[0-9a-f]{64}$/;
-    GATE_DETAIL_MAX_CHARS = 4e3;
-    isCount3 = (v) => Number.isInteger(v) && v >= 0;
-    HEX409 = /^[0-9a-f]{40}$/;
-    MAX_HUMAN_THREAD_IDS = 200;
-    THREAD_ID = (v) => typeof v === "string" && v.length > 0 && v.length <= 200;
-    FEEDBACK_FORGES = ["github", "azure-devops", "local"];
-    FULL_SHA2 = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
-    findingsOk = (v) => Array.isArray(v) && v.length <= 1e3 && v.every((f) => {
-      const r = f;
-      return typeof r === "object" && r !== null && isStr2(r.path) && r.path.length <= 4096 && isStr2(r.kind) && /^[a-z-]{1,40}$/.test(r.kind) && Object.keys(r).every((k) => k === "path" || k === "kind");
-    });
-    startIdentity = (pid) => {
-      if (pid !== process.pid) return getProcessStartIdentitySync(pid);
-      if (ownIdentity === void 0) ownIdentity = getProcessStartIdentitySync(pid);
-      return ownIdentity;
-    };
-    defaultOwnerDeps = () => ({ pid: process.pid, hostname: (0, import_os18.hostname)(), isAlive: isProcessAlive, identityOf: startIdentity });
-    ownerText = (v) => stripAnsi(String(v)).replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu, " ");
-    SLOT_FILE = /^slot-(\d+)\.owner$/;
-    slotText = (s) => `slot ${s.slot}: ${s.owner === "unreadable" ? `unreadable (${s.path}; omg factory run release)` : describeOwner(s.owner)}`;
-    IMPORT_LOCK_WAIT_MS = 15 * 6e4;
-    ImportLockBusyError = class extends FactoryBusyError {
-      constructor(message) {
-        super(message, "import");
-        this.name = "ImportLockBusyError";
-      }
-    };
-    importHeld = /* @__PURE__ */ new Set();
-    importInside = /* @__PURE__ */ new Set();
-    SCAN_WAIT_MS = 6e4;
-    SCAN_POLL_MS = 500;
-    scanWait = {
-      sleep: (ms) => {
-        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
-      },
-      clock: () => Date.now()
-    };
-    engineBusyMessage = (prior, root, key) => engineBusyText(prior, key) + (ownerFromOtherCheckout(prior, root) ? "; WARNING: that engine runs in another folder that shares this checkout's state root (a linked worktree, or with OMC_STATE_DIR set a clone with the same folder name: parallel clones need distinct folder names)" : "");
-    engineBusyText = (prior, key) => prior.run === "scan" ? `the poller's heal scan or base sync, or a factory read command's fetch, holds this checkout for a moment (${describeOwner(prior)}); retry` : `another omg factory engine runs in this repository (${describeOwner(prior)}); one engine runs per checkout at a time${key === "next" ? ", so run --next after it ends" : key === "scan" ? ", so retry after it ends" : key ? `, so start ${ownerText(key)} after it ends` : ""} (parallel runs need separate clones)`;
-    unreadableOwnerMessage = (path15, release = "omg factory run release") => `the owner file ${path15} is unreadable, so it counts as held; check that no engine uses it, then remove it (${release})`;
-    isOwnerRecord = (v) => typeof v === "object" && v !== null && Number.isInteger(v.pid) && typeof v.hostname === "string";
-    LOCK_STALE_MS2 = 3e4;
   }
 });
 
@@ -68385,7 +69642,7 @@ function privateHasCommit(p, ctx, sha3) {
   return SHA2.test(sha3) && hasCommit(ctx, p.gitDir, sha3);
 }
 function staleImportRefs(userGitDir, run3, ctx) {
-  if (!RUN_LABEL.test(run3)) throw new PrivateStoreError("the import refs need a plain run label");
+  if (!RUN_LABEL2.test(run3)) throw new PrivateStoreError("the import refs need a plain run label");
   const r = git3(ctx, userGitDir, [`--git-dir=${userGitDir}`, "for-each-ref", "--format=%(refname) %(objectname)", `refs/omg-import/${run3}/`]);
   if (r.status !== 0) throw new PrivateStoreError("the import refs cannot be listed", r.stderr.trim().slice(-2e3));
   return r.stdout.split("\n").filter(Boolean).map((l) => ({ ref: l.slice(0, l.lastIndexOf(" ")), sha: l.slice(l.lastIndexOf(" ") + 1) })).filter((x) => SHA2.test(x.sha));
@@ -68395,7 +69652,7 @@ function dropStaleImportRef(userGitDir, ref, sha3, ctx) {
   return deleteImportRef(ctx, userGitDir, ref, sha3);
 }
 function importRef(run3, n) {
-  if (!RUN_LABEL.test(run3) || run3.endsWith(".lock") || !(Number.isSafeInteger(n) && n >= 0)) throw new PrivateStoreError("the import ref needs a plain run label and a non-negative number");
+  if (!RUN_LABEL2.test(run3) || run3.endsWith(".lock") || !(Number.isSafeInteger(n) && n >= 0)) throw new PrivateStoreError("the import ref needs a plain run label and a non-negative number");
   return `refs/omg-import/${run3}/${n}`;
 }
 function parseRawDiff(out) {
@@ -68411,7 +69668,7 @@ function parseRawDiff(out) {
 }
 function importFromPrivate(input2, ctx) {
   const { userGitDir: user, sha: sha3, startSha } = input2;
-  if (!SHA2.test(sha3) || !SHA2.test(startSha) || input2.expectedParents.some((x) => !SHA2.test(x)) || !RUN_LABEL.test(input2.run) || !(Number.isSafeInteger(input2.n) && input2.n >= 0)) {
+  if (!SHA2.test(sha3) || !SHA2.test(startSha) || input2.expectedParents.some((x) => !SHA2.test(x)) || !RUN_LABEL2.test(input2.run) || !(Number.isSafeInteger(input2.n) && input2.n >= 0)) {
     return refuse("bad-input", "the import needs full shas, a plain run label and a non-negative number");
   }
   const ref = importRef(input2.run, input2.n);
@@ -68565,7 +69822,7 @@ function lockfileUnchanged(p, baseSha, headSha, ctx) {
   const changed = LOCKFILES.filter((f) => base.get(f) !== head.get(f) || base.has(f) && !/^100(?:644|755) blob /.test(base.get(f)));
   return { policy: lockfiles.length > 0 && changed.length === 0 ? "junction" : "park", lockfiles, changed };
 }
-var import_crypto26, import_fs86, import_os19, import_path103, PrivateStoreError, SHA2, REPO_KEY, SLUG, RUN_LABEL, WINDOWS_GIT_PATH_MAX, PRIVATE_GIT_TIMEOUT_MS, RESOLVE_TIMEOUT_MS2, PrivateGitTimeout, sq, lexists2, isPlainDir, BOOL, ENGINE_CONFIG, TOO_LARGE, HOOK_FILE_MAX_BYTES, GUARD_UNREADABLE, GUARD_TOO_LARGE, DANGEROUS_CONFIG, MAX_INCLUDE_DEPTH2, HOOKS_CAP, expandHome, fingerprint, printableKey, GUARD_ITEMS, seedRef, PrivateRepoTampered, PRIVATE_GIT_MIN_VERSION, refuse, sameNode, LOCKFILES;
+var import_crypto26, import_fs86, import_os19, import_path103, PrivateStoreError, SHA2, REPO_KEY, SLUG, RUN_LABEL2, WINDOWS_GIT_PATH_MAX, PRIVATE_GIT_TIMEOUT_MS, RESOLVE_TIMEOUT_MS2, PrivateGitTimeout, sq, lexists2, isPlainDir, BOOL, ENGINE_CONFIG, TOO_LARGE, HOOK_FILE_MAX_BYTES, GUARD_UNREADABLE, GUARD_TOO_LARGE, DANGEROUS_CONFIG, MAX_INCLUDE_DEPTH2, HOOKS_CAP, expandHome, fingerprint, printableKey, GUARD_ITEMS, seedRef, PrivateRepoTampered, PRIVATE_GIT_MIN_VERSION, refuse, sameNode, LOCKFILES;
 var init_private_store = __esm({
   "src/factory/run/private-store.ts"() {
     "use strict";
@@ -68592,7 +69849,7 @@ var init_private_store = __esm({
     SHA2 = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
     REPO_KEY = /^[0-9a-f]{8,64}$/;
     SLUG = /^[a-z0-9][a-z0-9-]{0,63}$/;
-    RUN_LABEL = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
+    RUN_LABEL2 = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
     WINDOWS_GIT_PATH_MAX = 4095;
     PRIVATE_GIT_TIMEOUT_MS = 6e5;
     RESOLVE_TIMEOUT_MS2 = 3e4;
@@ -69099,1204 +70356,14 @@ var init_private_run = __esm({
   }
 });
 
-// src/factory/run/sandbox-exec.ts
-function sandboxShellCommand(platform, argv, cwd, marker) {
-  if (argv.length === 0 || !/^[A-Za-z0-9-]+$/.test(marker) || [cwd, ...argv].some((a) => a.includes("\0"))) return null;
-  if (platform === "win32") {
-    if (argv.some((a) => a === "" || a.includes('"'))) return null;
-    const payload2 = Buffer.from([cwd, ...argv].join("\0"), "utf8").toString("base64");
-    return [
-      `$omgV = @([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${payload2}')).Split([char]0))`,
-      `if ($omgV.Count -eq ${argv.length + 1}) { Set-Location -LiteralPath $omgV[0] -ErrorAction Stop; $ErrorActionPreference = 'Continue'; $omgE = $omgV[1]; $omgR = @($omgV | Select-Object -Skip 2);$global:LASTEXITCODE = $null; & $omgE @omgR 2>&1 | ForEach-Object { $omgL = "$_"; if ($omgL.Length -gt ${SHELL_LINE_CHARS}) { $omgL.Substring(0, ${SHELL_LINE_CHARS}) } else { $omgL } } | Select-Object -Last ${SHELL_OUTPUT_LINES}; "${marker} $LASTEXITCODE" }`
-    ].join("; ");
-  }
-  const payload = Buffer.from([cwd, ...argv].map((w) => `${w}\0`).join(""), "utf8").toString("base64");
-  return `omg_a=(); while IFS= read -r -d '' omg_w; do omg_a+=("$omg_w"); done < <(printf '%s' '${payload}' | base64 -d); if [ "\${#omg_a[@]}" -eq ${argv.length + 1} ] && omg_o=$(mktemp) && cd -- "\${omg_a[0]}"; then "\${omg_a[@]:1}" > "$omg_o" 2>&1; omg_s=$?; tail -c ${SHELL_OUTPUT_BYTES} -- "$omg_o"; rm -f -- "$omg_o"; printf '\\n%s %s\\n' '${marker}' "$omg_s"; fi`;
-}
-function sandboxCommandTooLong(platform, argv, cwd) {
-  const command = sandboxShellCommand(platform, argv, cwd, SIZING_MARKER);
-  return command !== null && command.length > sandboxCommandMaxChars(platform);
-}
-function splitFileListArgs(platform, exe, args, fixed, cwd) {
-  if (!sandboxCommandTooLong(platform, [exe, ...args], cwd) || args.length <= fixed + 1) return [[...args]];
-  const head = args.slice(0, fixed);
-  const parts = [];
-  let chunk = [];
-  for (const file2 of args.slice(fixed)) {
-    if (chunk.length > 0 && sandboxCommandTooLong(platform, [exe, ...head, ...chunk, file2], cwd)) {
-      parts.push([...head, ...chunk]);
-      chunk = [];
-    }
-    chunk.push(file2);
-  }
-  parts.push([...head, ...chunk]);
-  return parts;
-}
-function readMarker(output2, marker) {
-  const none = { code: null, output: output2 };
-  const count = (s) => output2.split(s).length - 1;
-  if (count(marker) !== 1 || count(MARKER_PREFIX) !== (marker.includes(MARKER_PREFIX) ? 1 : 0)) return none;
-  const lines3 = output2.split("\n");
-  let i = lines3.length - 1;
-  while (i >= 0 && lines3[i].trim() === "") i--;
-  const m = i >= 0 ? /^(\S+) (-?\d+)\r?$/.exec(lines3[i]) : null;
-  if (!m || m[1] !== marker) return none;
-  return { code: Number(m[2]), output: lines3.slice(0, i).join("\n") };
-}
-function redactGateOutput(text3) {
-  return redactSecrets(text3).replace(/(?:[A-Za-z0-9+/=]{40,}\r?\n)+-----END [A-Z0-9 ]*KEY-----/g, "[redacted]");
-}
-async function runSandboxed(argv, o, deps) {
-  const notStarted = (reason) => ({ ran: false, reason });
-  const refuse2 = (reason) => ({ ran: false, reason, refused: true });
-  const noVerdict = (reason) => ({ ran: false, reason, started: true });
-  const sleep9 = deps.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
-  const marker = `${MARKER_PREFIX}${(0, import_node_crypto6.randomBytes)(8).toString("hex")}`;
-  const dotnet = isDotnetExe(argv[0]);
-  const command = sandboxShellCommand(deps.platform, dotnet ? [argv[0], ...dotnetSandboxArgs(argv.slice(1), { mtp: o.dotnetMtp === true })] : argv, o.cwd, marker);
-  if (command === null) return refuse2("the command cannot be passed to the sandbox shell unchanged (a NUL, or on Windows an empty argument or a double quote)");
-  const max = sandboxCommandMaxChars(deps.platform);
-  if (command.length > max) {
-    return refuse2(`the command is too long for the sandbox shell: it encodes to ${command.length} characters, above the ${max} that ${deps.platform === "win32" ? "a Windows command line" : "one shell argument"} can safely carry; shorten the configured command`);
-  }
-  const jobHome = (0, import_node_path17.join)(o.jobRoot, `gate-${Date.now().toString(36)}-${(0, import_node_crypto6.randomBytes)(4).toString("hex")}`);
-  const workDir = (0, import_node_path17.join)(jobHome, "work");
-  let client = null;
-  let session = null;
-  let pid;
-  let started = false;
-  try {
-    (0, import_node_fs16.mkdirSync)(workDir, { recursive: true });
-    const loaded2 = await deps.loadSdk().catch(() => null);
-    if (!loaded2) return notStarted(`@github/copilot-sdk is not installed or could not be loaded, so the sandbox cannot start (${SDK_INSTALL_COMMAND})`);
-    const found = deps.resolveBin();
-    const bin = found && deps.platform === "win32" && /\.(cmd|bat|ps1)$/i.test(found) ? resolveShimTarget(found) : found;
-    if (!bin) return notStarted(found ? `copilot shim ${found} names no .js/.exe target` : "copilot CLI not found (PATH, COPILOT_CLI_PATH, WinGet), so the sandbox cannot start");
-    const ident = loginIdentity(deps.userConfigDir());
-    (0, import_node_fs16.writeFileSync)((0, import_node_path17.join)(jobHome, "config.json"), `${JSON.stringify({ ...ident, trustedFolders: [workDir] }, null, 2)}
-`);
-    const env2 = childEnv(allowlistSessionEnv(buildSessionEnv(deps.env, jobHome, { session: false, hasLogin: ident.loggedInUsers !== void 0 }), jobHome));
-    const missing = missingSandboxEnv(env2, deps.platform);
-    if (missing.length) return notStarted(`the sandbox env lacks ${missing.join(", ")}, which the Windows sandbox needs to launch any process`);
-    (0, import_node_fs16.mkdirSync)(env2.XDG_CONFIG_HOME, { recursive: true });
-    (0, import_node_fs16.mkdirSync)((0, import_node_path17.dirname)(env2.GIT_CONFIG_GLOBAL), { recursive: true });
-    (0, import_node_fs16.mkdirSync)(env2.TEMP, { recursive: true });
-    (0, import_node_fs16.writeFileSync)(env2.GIT_CONFIG_GLOBAL, "[credential]\n	helper =\n");
-    Object.assign(env2, { GIT_TERMINAL_PROMPT: "0", GCM_INTERACTIVE: "never", COPILOT_ALLOW_ALL: "false", GIT_CEILING_DIRECTORIES: (0, import_node_path17.resolve)(o.jobRoot) });
-    const realHome = (deps.realHome ?? (() => (0, import_node_os7.userInfo)().homedir))();
-    const dotnetGrants = [];
-    const dotnetNotes = [];
-    if (dotnet) {
-      const d = dotnetSandboxEnv(env2.USERPROFILE, deps.env, realHome, deps.platform);
-      Object.assign(env2, d.env);
-      dotnetGrants.push(...d.readonly);
-      dotnetNotes.push(...d.notes);
-    }
-    const credentialSource = { userConfigDir: deps.userConfigDir(), platform: deps.platform };
-    const gitHubToken = sessionGitHubToken(deps.env, credentialSource);
-    const secrets = secretValues(deps.env, credentialSource);
-    if (gitHubToken) addRecordingDenyLiterals([gitHubToken]);
-    const { CopilotClient, RuntimeConnection } = loaded2.module;
-    const c = new CopilotClient({
-      connection: RuntimeConnection.forStdio({ path: bin, args: ["--max-ai-credits", String(RUNTIME_MIN_MAX_CREDITS)], env: env2 }),
-      baseDirectory: jobHome,
-      workingDirectory: workDir
-    });
-    client = c;
-    await withTimeout3(c.start().catch(rethrowSdkStartError), START_TIMEOUT_MS3, "client.start()");
-    pid = runtimePid(c);
-    const pluginRoot = deps.pluginRoot();
-    const settings = { ...o.settings, enabled: true, writeUnsandboxed: "refuse", writeNetwork: o.network, extraReadwritePaths: [] };
-    const notes = [];
-    const sandbox = new SessionSandboxController({
-      profile: "write",
-      settings,
-      env: deps.env,
-      platform: deps.platform,
-      rpcTimeoutMs: RPC_TIMEOUT_MS3,
-      ...deps.sandboxTrialLaunch ? { trialLaunch: deps.sandboxTrialLaunch } : {},
-      policyContext: () => {
-        const proxy = proxyCaEnv(deps.env, deps.platform, realHome);
-        return {
-          worktree: (0, import_node_path17.resolve)(o.cwd),
-          commonGitDir: (0, import_node_path17.resolve)(o.commonGitDir),
-          pluginRoot,
-          jobHome,
-          jobDir: jobHome,
-          realHome,
-          platform: deps.platform,
-          settings,
-          hostCommits: true,
-          toolPaths: (deps.toolPaths ?? laneToolPaths)(deps.env, deps.platform),
-          extraReadonly: [...proxy.caPaths, ...dotnetGrants],
-          // A keyring-less host's plaintext login token, also when COPILOT_HOME moved the config dir out of ~/.copilot.
-          ...deps.platform === "win32" ? {} : { extraDenied: copilotConfigDenies(credentialSource.userConfigDir, deps.platform) },
-          ...o.mainRoot ? { mainRoot: (0, import_node_path17.resolve)(o.mainRoot) } : {},
-          ...o.nodeModulesTarget ? { nodeModulesTarget: (0, import_node_path17.resolve)(o.nodeModulesTarget) } : {},
-          ...o.nestedNodeModulesTargets ? { nestedNodeModulesTargets: o.nestedNodeModulesTargets.map((p) => (0, import_node_path17.resolve)(p)) } : {}
-        };
-      },
-      note: (text3) => {
-        notes.push(text3);
-      }
-    });
-    const config2 = await sandbox.decide(c, loaded2);
-    if (!config2) return notStarted(`the sandbox is not available: ${sandbox.state?.reason ?? "unknown reason"}`);
-    const readable = !config2.userPolicy.filesystem.deniedPaths?.length;
-    if (readable && o.requireDeniedPaths) {
-      return notStarted("the sandbox host does not report denied_paths, so it cannot hide your credential files from the PR's code, and factory.run.sandbox.requireDeniedPaths is true");
-    }
-    const attested = /* @__PURE__ */ new Map();
-    const onPermissionRequest = () => ({ kind: "reject", feedback: "omg factory run: a gate session grants nothing" });
-    const atCreate = sandbox.atCreate(loaded2, config2);
-    session = await withTimeout3(c.createSession({
-      onPermissionRequest,
-      onEvent: (e) => {
-        const data = e.data ?? {};
-        if (e.type === "tool.execution_start") sandbox.toolStarted(data);
-        if (e.type === "tool.execution_complete") {
-          attested.set(String(data.toolCallId ?? ""), data.sandboxed);
-          sandbox.toolCompleted(data);
-        }
-      },
-      // No plugin: its hooks would run in the runtime, outside the sandbox.
-      pluginDirectories: [],
-      workingDirectory: workDir,
-      disabledMcpServers: ["github-mcp-server"],
-      excludedTools: [],
-      ...gitHubToken ? { gitHubToken } : {},
-      ...atCreate ? { sandboxConfig: config2 } : {}
-    }), RPC_TIMEOUT_MS3, "createSession()");
-    await sandbox.confirm(session, config2, atCreate);
-    if (sandbox.state?.mode !== "enforced") return notStarted(`the sandbox policy was not confirmed: ${sandbox.state?.reason ?? "unknown reason"}`);
-    const shell = session.rpc.shell;
-    if (typeof shell?.executeUserRequested !== "function") return notStarted("the SDK has no shell.executeUserRequested RPC, so the command cannot run in the sandbox");
-    const requestId = (0, import_node_crypto6.randomUUID)();
-    let timer;
-    started = true;
-    const call = shell.executeUserRequested.call(shell, { requestId, command }).then((value) => ({ value }), (error62) => ({ error: error62 }));
-    const timedOut = new Promise((r2) => {
-      timer = setTimeout(() => r2("timeout"), o.timeoutMs);
-    });
-    let answer = await Promise.race([call, timedOut]);
-    clearTimeout(timer);
-    let timeout = false;
-    if (answer === "timeout") {
-      timeout = true;
-      try {
-        await withTimeout3(shell.cancelUserRequested?.call(shell, { requestId }) ?? Promise.resolve(), RPC_TIMEOUT_MS3, "cancelUserRequested()");
-      } catch {
-      }
-      let grace;
-      answer = await Promise.race([call, new Promise((r2) => {
-        grace = setTimeout(() => r2("timeout"), CANCEL_GRACE_MS);
-      })]);
-      clearTimeout(grace);
-    }
-    const r = answer !== "timeout" && "value" in answer ? answer.value : null;
-    const id = typeof r?.toolCallId === "string" ? r.toolCallId : "";
-    for (let waited = 0; id && !attested.has(id) && waited < ATTEST_WAIT_MS; waited += 100) await sleep9(100);
-    const escapes = sandbox.state?.unsandboxedCalls ?? 0;
-    if (escapes > 0) return noVerdict(`${escapes} call(s) of the gate session were not attested sandboxed: true; nothing is counted`);
-    if (!id || attested.get(id) !== true) {
-      const why2 = !r ? answer !== "timeout" && "error" in answer ? "the shell call failed" : "the shell call gave no answer" : `its completion was ${attested.get(id) === false ? "attested sandboxed: false" : "not attested sandboxed"}`;
-      return noVerdict(`${timeout ? `timed out after ${o.timeoutMs} ms and ` : ""}${why2}; the command is not counted as run in the sandbox`);
-    }
-    const raw = scrubTokens(typeof r?.output === "string" ? r.output : "", secrets);
-    const read = readMarker(raw, marker);
-    const marked = readable ? { credentialFilesReadable: true } : {};
-    if (timeout) return { ran: true, status: 124, output: tail(`${read.output.trim()}
-timed out after ${o.timeoutMs} ms`), timedOut: true, ...marked };
-    if (typeof r?.success !== "boolean") return noVerdict("the sandbox shell call reported no success field");
-    if (read.code === null) return noVerdict("the output did not end with the one exit-code marker line the sandbox shell prints after the command");
-    const exitOk = r.exitCode === void 0 || r.exitCode === null || r.exitCode === 0 || r.exitCode === read.code;
-    const successOk = r.success === true || read.code !== 0;
-    if (!exitOk || !successOk) return noVerdict("the sandbox shell's own result contradicts the exit code the command printed");
-    const why = read.code !== 0 && dotnetNotes.length > 0 ? `
-${dotnetNotes.join("\n")}` : "";
-    return { ran: true, status: read.code, output: `${tail(read.output.trim())}${why}`, timedOut: false, ...marked };
-  } catch (err) {
-    if (started) return noVerdict("the sandbox runtime failed while the command ran");
-    return notStarted(`the sandbox runtime failed: ${errText4(err).slice(0, 300)}`);
-  } finally {
-    if (session) {
-      try {
-        await withTimeout3(session.disconnect(), RPC_TIMEOUT_MS3, "disconnect()");
-      } catch {
-      }
-      try {
-        await withTimeout3(client.deleteSession(session.sessionId), RPC_TIMEOUT_MS3, "deleteSession()");
-      } catch {
-      }
-    }
-    if (client) {
-      pid ??= runtimePid(client);
-      if (session && pid && deps.isAlive(pid)) {
-        try {
-          deps.killTree(pid);
-        } catch {
-        }
-      }
-      let stopped = false;
-      try {
-        await withTimeout3(client.stop(), STOP_TIMEOUT_MS3, "client.stop()");
-        stopped = true;
-      } catch {
-      }
-      if (!stopped) {
-        if (pid && deps.isAlive(pid)) {
-          try {
-            deps.killTree(pid);
-          } catch {
-          }
-        }
-        try {
-          await withTimeout3(client.forceStop?.() ?? Promise.resolve(), STOP_TIMEOUT_MS3, "client.forceStop()");
-        } catch {
-        }
-      }
-      if (pid && deps.isAlive(pid)) {
-        try {
-          deps.killTree(pid);
-        } catch {
-        }
-      }
-    }
-    try {
-      (0, import_node_fs16.rmSync)(jobHome, { recursive: true, force: true });
-    } catch {
-    }
-  }
-}
-function createSandboxRunner(root, deps = defaultCopilotRunDeps(), layers) {
-  return async (req) => {
-    if (req.container) {
-      if (!req.runLabel) return { ran: false, reason: "the gate container request has no run label", unavailable: true };
-      return runContainerGate(req, req.container, req.runLabel, { exec: defaultContainerExec, platform: deps.platform });
-    }
-    let settings;
-    try {
-      settings = (layers ? loadSandboxSettings(root, "factory", layers) : loadSandboxSettings(root, "factory")).settings;
-    } catch (err) {
-      return { ran: false, reason: `the sandbox settings could not be read: ${errText4(err)}` };
-    }
-    return runSandboxed([req.exe, ...req.args], {
-      cwd: req.cwd,
-      commonGitDir: req.commonGitDir,
-      timeoutMs: req.timeoutMs,
-      network: req.network ?? settings.writeNetwork,
-      settings,
-      jobRoot: req.jobRoot ?? sandboxJobRoot(root),
-      ...req.requireDeniedPaths ? { requireDeniedPaths: true } : {},
-      ...req.mainRoot ? { mainRoot: req.mainRoot } : {},
-      ...req.nodeModulesTarget ? { nodeModulesTarget: req.nodeModulesTarget } : {},
-      ...req.nestedNodeModulesTargets ? { nestedNodeModulesTargets: req.nestedNodeModulesTargets } : {},
-      ...req.dotnetMtp ? { dotnetMtp: true } : {}
-    }, deps);
-  };
-}
-function gateEnv(env2, home) {
-  const kept = new Set(GATE_ENV_KEPT);
-  const has = (name) => Object.keys(env2).some((k) => k.toUpperCase() === name);
-  const out = {};
-  for (const [key, value] of Object.entries(env2)) {
-    const upper = key.toUpperCase();
-    if (value !== void 0 && (kept.has(upper) || upper.startsWith("LC_"))) out[key] = value;
-  }
-  const tmp = (0, import_node_path17.join)(home, "tmp");
-  (0, import_node_fs16.mkdirSync)(tmp, { recursive: true });
-  const gitConfig = (0, import_node_path17.join)(home, ".gitconfig-empty");
-  (0, import_node_fs16.writeFileSync)(gitConfig, "");
-  return {
-    ...out,
-    ...TRUSTED_READ_ENV,
-    HOME: home,
-    USERPROFILE: home,
-    XDG_CONFIG_HOME: (0, import_node_path17.join)(home, ".config"),
-    ...has("APPDATA") ? { APPDATA: (0, import_node_path17.join)(home, "AppData", "Roaming") } : {},
-    ...has("LOCALAPPDATA") ? { LOCALAPPDATA: (0, import_node_path17.join)(home, "AppData", "Local") } : {},
-    TEMP: tmp,
-    TMP: tmp,
-    TMPDIR: tmp,
-    GIT_CONFIG_NOSYSTEM: "1",
-    GIT_CONFIG_GLOBAL: gitConfig,
-    GIT_TERMINAL_PROMPT: "0",
-    GCM_INTERACTIVE: "never"
-  };
-}
-var import_node_crypto6, import_node_fs16, import_node_os7, import_node_path17, SANDBOX_OUTPUT_TAIL_CHARS, START_TIMEOUT_MS3, RPC_TIMEOUT_MS3, STOP_TIMEOUT_MS3, CANCEL_GRACE_MS, ATTEST_WAIT_MS, CREDENTIAL_FILES_READABLE_NOTE, MARKER_PREFIX, SHELL_OUTPUT_BYTES, SHELL_OUTPUT_LINES, SHELL_LINE_CHARS, sandboxCommandMaxChars, SIZING_MARKER, tail, sandboxJobRoot, GATE_ENV_KEPT;
-var init_sandbox_exec = __esm({
-  "src/factory/run/sandbox-exec.ts"() {
-    "use strict";
-    import_node_crypto6 = require("node:crypto");
-    import_node_fs16 = require("node:fs");
-    import_node_os7 = require("node:os");
-    import_node_path17 = require("node:path");
-    init_job();
-    init_sandbox2();
-    init_container_gate();
-    init_dotnet_sandbox();
-    init_sandbox_session();
-    init_timeout();
-    init_worktree_paths();
-    init_exec();
-    init_sanitize();
-    init_copilot_sdk_driver();
-    init_copilot_sdk_scenarios();
-    init_copilot_session_env();
-    init_handler();
-    init_windows_search();
-    SANDBOX_OUTPUT_TAIL_CHARS = 8e3;
-    START_TIMEOUT_MS3 = 6e4;
-    RPC_TIMEOUT_MS3 = 3e4;
-    STOP_TIMEOUT_MS3 = 15e3;
-    CANCEL_GRACE_MS = 5e3;
-    ATTEST_WAIT_MS = 2e3;
-    CREDENTIAL_FILES_READABLE_NOTE = "sandboxed; credential files readable on this host";
-    MARKER_PREFIX = "omg-gate-exit-";
-    SHELL_OUTPUT_BYTES = 64 * 1024;
-    SHELL_OUTPUT_LINES = 400;
-    SHELL_LINE_CHARS = 2e3;
-    sandboxCommandMaxChars = (platform) => platform === "win32" ? 28e3 : 12e4;
-    SIZING_MARKER = `${MARKER_PREFIX}${"0".repeat(16)}`;
-    tail = (text3) => {
-      const clean = redactGateOutput(text3);
-      return clean.length > SANDBOX_OUTPUT_TAIL_CHARS ? clean.slice(-SANDBOX_OUTPUT_TAIL_CHARS) : clean;
-    };
-    sandboxJobRoot = (root) => (0, import_node_path17.join)(getOmcRoot(root), "state", "factory-gates");
-    GATE_ENV_KEPT = [
-      "PATH",
-      "PATHEXT",
-      "SYSTEMROOT",
-      "SYSTEMDRIVE",
-      "WINDIR",
-      "COMSPEC",
-      "LANG",
-      "TZ",
-      "CI",
-      "NODE_ENV",
-      "NPM_CONFIG_CACHE"
-    ];
-  }
-});
-
-// src/factory/run/container-gate.ts
-function containerRunLabel(root, key) {
-  const repo = (0, import_node_crypto7.createHash)("sha256").update((0, import_node_path18.resolve)(root)).digest("hex").slice(0, 10);
-  return `${repo}-${runSlug(key).toLowerCase().replace(/[^a-z0-9-]/g, "-").slice(0, 40)}`;
-}
-function mountArg(fields) {
-  return fields.map((f) => /[",\n\r]/.test(f) ? `"${f.replace(/"/g, '""')}"` : f).join(",");
-}
-function hardeningArgs(s) {
-  return [
-    "--rm",
-    "--init",
-    "--pull",
-    "never",
-    // No container log on the runtime's disk, outside the watched volume (review-499b N1): output comes through the attached CLI only.
-    "--log-driver",
-    "none",
-    "--cap-drop",
-    "ALL",
-    "--security-opt",
-    "no-new-privileges",
-    "--pids-limit",
-    String(s.pidsLimit),
-    "--memory",
-    s.memory,
-    "--cpus",
-    String(s.cpus)
-  ];
-}
-function containerEnvArgs(extra = {}) {
-  const env2 = {
-    PATH: CONTAINER_PATH,
-    HOME: `${WORK}/home`,
-    CI: "1",
-    npm_config_update_notifier: "false",
-    npm_config_fund: "false",
-    npm_config_audit: "false",
-    ...extra
-  };
-  return Object.entries(env2).flatMap(([k, v]) => ["-e", `${k}=${v}`]);
-}
-function inContainerLimit(timeoutMs, argv) {
-  return ["timeout", "-s", "KILL", `${Math.ceil(timeoutMs / 1e3) + IN_CONTAINER_GRACE_S}s`, ...argv];
-}
-function sizeBytes(size) {
-  const m = /^(\d+)([mg])$/i.exec(size);
-  if (!m) throw new Error(`not a size: ${size}`);
-  return Number(m[1]) * (m[2].toLowerCase() === "g" ? 1024 ** 3 : 1024 ** 2);
-}
-function lockfileCachePolicy(lock) {
-  if (!lock || typeof lock !== "object" || Array.isArray(lock)) return { refuse: "the lockfile is not a JSON object" };
-  const outside = { refuse: "the lockfile has a package that does not come from the npm registry (git, a tarball URL or a file); the gate container installs registry packages only" };
-  let integrity = true;
-  const check2 = (e, version2) => {
-    if (typeof e.resolved === "string" && !REGISTRY_PREFIXES.some((p) => e.resolved.startsWith(p))) return false;
-    if (typeof version2 === "string" && /^[a-z+]+:/i.test(version2) && !version2.startsWith("npm:")) return false;
-    if (typeof e.integrity !== "string" || e.integrity === "") integrity = false;
-    return true;
-  };
-  const packages = lock.packages;
-  if (packages && typeof packages === "object" && !Array.isArray(packages)) {
-    for (const [key, raw] of Object.entries(packages)) {
-      if (key === "" || !raw || typeof raw !== "object") continue;
-      const e = raw;
-      if (!key.includes("node_modules/") || e.link === true || e.inBundle === true) continue;
-      if (!check2(e)) return outside;
-    }
-    return integrity ? "shared" : "private";
-  }
-  const walk = (deps, depth) => {
-    if (!deps || typeof deps !== "object" || depth > 64) return true;
-    for (const raw of Object.values(deps)) {
-      if (!raw || typeof raw !== "object") continue;
-      const e = raw;
-      if (e.bundled === true) continue;
-      if (!check2(e, e.version) || !walk(e.dependencies, depth + 1)) return false;
-    }
-    return true;
-  };
-  if (!walk(lock.dependencies, 0)) return outside;
-  return integrity ? "shared" : "private";
-}
-function installPlan(checkout) {
-  const regular = (name) => {
-    try {
-      return (0, import_node_fs17.lstatSync)((0, import_node_path18.join)(checkout, name)).isFile();
-    } catch {
-      return false;
-    }
-  };
-  if (!regular("package.json")) return { kind: "none" };
-  for (const lock of ["npm-shrinkwrap.json", "package-lock.json"]) {
-    if (!regular(lock)) continue;
-    const path15 = (0, import_node_path18.join)(checkout, lock);
-    if ((0, import_node_fs17.lstatSync)(path15).size > LOCKFILE_MAX_BYTES) return { kind: "unsupported", reason: `${lock} is larger than the gate container reads` };
-    const bytes = (0, import_node_fs17.readFileSync)(path15);
-    let json3;
-    try {
-      json3 = JSON.parse(bytes.toString("utf8"));
-    } catch {
-      return { kind: "unsupported", reason: `${lock} is not valid JSON` };
-    }
-    const policy = lockfileCachePolicy(json3);
-    if (typeof policy === "object") return { kind: "unsupported", reason: policy.refuse };
-    return { kind: "npm-ci", lockHash: (0, import_node_crypto7.createHash)("sha256").update(bytes).digest("hex").slice(0, 16), sharedCache: policy === "shared" };
-  }
-  let pkg = {};
-  try {
-    pkg = JSON.parse((0, import_node_fs17.readFileSync)((0, import_node_path18.join)(checkout, "package.json"), "utf8"));
-  } catch {
-  }
-  const deps = ["dependencies", "devDependencies", "optionalDependencies"].some((k) => {
-    const v = pkg?.[k];
-    return v && typeof v === "object" && Object.keys(v).length > 0;
-  });
-  if (!deps) return { kind: "none" };
-  const other = ["pnpm-lock.yaml", "yarn.lock", "bun.lockb", "bun.lock"].find(regular);
-  return { kind: "unsupported", reason: other ? `the project uses ${other}; the gate container installs npm projects (package-lock.json or npm-shrinkwrap.json) only` : "the project has dependencies but no package-lock.json; the gate container installs with npm ci only" };
-}
-function containerArgv(req) {
-  const words = isNodeExe(req.exe) && req.args.length > 0 && !(0, import_node_path18.isAbsolute)(req.args[0]) ? ["node", ...req.args] : [...req.argv];
-  const root = (0, import_node_path18.resolve)(req.cwd);
-  const mapped = (w) => {
-    if (!(0, import_node_path18.isAbsolute)(w)) return w;
-    const rel = (0, import_node_path18.relative)(root, (0, import_node_path18.resolve)(w));
-    if (rel === "") return SRC;
-    if (rel.startsWith("..") || (0, import_node_path18.isAbsolute)(rel)) return w;
-    return `${SRC}/${rel.split(import_node_path18.sep).join("/")}`;
-  };
-  return words.map((w, i) => {
-    if (i === 0 && isNodeExe(w)) return "node";
-    if (w.startsWith(OUTPUT_FILE_FLAG)) return `${OUTPUT_FILE_FLAG}${mapped(w.slice(OUTPUT_FILE_FLAG.length))}`;
-    return mapped(w);
-  });
-}
-function copyScript(npmCi, gitView = false) {
-  const copy = copyLines(gitView).join("; ");
-  return npmCi ? `${copy}; ${HOLD_NPMRC}` : copy;
-}
-function checkoutCopyProblem(checkout) {
-  let root;
-  try {
-    root = import_node_fs17.realpathSync.native(checkout);
-  } catch {
-    return "the checkout could not be resolved";
-  }
-  let seen = 0;
-  const inside2 = (p) => samePathOrUnder(p, root);
-  const walk = (dir) => {
-    for (const name of (0, import_node_fs17.readdirSync)(dir)) {
-      if (name === ".git" || name === "node_modules") continue;
-      if (++seen > SCAN_MAX_ENTRIES) return "the checkout has more files than the gate container copies";
-      const path15 = (0, import_node_path18.join)(dir, name);
-      const st = (0, import_node_fs17.lstatSync)(path15);
-      if (st.isSymbolicLink()) {
-        const lexical = linkTargetProblem((0, import_node_fs17.readlinkSync)(path15), (0, import_node_path18.relative)(root, dir).split(import_node_path18.sep).filter(Boolean).length);
-        if (lexical) return lexical;
-        let target;
-        try {
-          target = import_node_fs17.realpathSync.native(path15);
-        } catch {
-          return "the checkout has a link whose target does not exist";
-        }
-        if (!inside2(target)) return "the checkout has a link (a symbolic link or junction) that points outside it";
-        continue;
-      }
-      if (st.isDirectory()) {
-        const p = walk(path15);
-        if (p) return p;
-      } else if (st.isFile() && st.nlink > 1) return "the checkout has a file with more than one hard link";
-    }
-    return null;
-  };
-  try {
-    return walk(root);
-  } catch {
-    return "the checkout could not be listed";
-  }
-}
-function linkTargetProblem(target, depth) {
-  if (target === "" || target.startsWith("/") || target.startsWith("\\") || /^[A-Za-z]:/.test(target)) return "the checkout has a link with an absolute target";
-  let up = 0;
-  let walked = false;
-  for (const part of target.split(/[\\/]+/)) {
-    if (part === "" || part === ".") continue;
-    if (part !== "..") {
-      walked = true;
-      continue;
-    }
-    if (walked) return "the checkout has a link whose target steps back (..) after a name";
-    if (++up > depth) return "the checkout has a link (a symbolic link or junction) that points outside it";
-  }
-  return null;
-}
-function samePathOrUnder(p, root) {
-  const norm2 = (x) => process.platform === "win32" ? x.toLowerCase() : x;
-  const a = norm2(p);
-  const b = norm2(root);
-  return a === b || a.startsWith(b.endsWith(import_node_path18.sep) ? b : b + import_node_path18.sep);
-}
-async function runContainerGate(req, s, runLabel2, deps) {
-  const unavailable = (reason) => ({ ran: false, reason, unavailable: true });
-  const noVerdict = (reason) => ({ ran: false, reason, started: true });
-  const log = deps.log ?? ((line) => {
-    process.stderr.write(`${line}
-`);
-  });
-  const bin = s.runtime;
-  const switchBack = 'or set factory.run.sandbox.isolation "copilot" in your user config';
-  if (req.purpose === "install") {
-    return { ran: true, status: 0, output: "gate container: dependencies are installed in the container per command", timedOut: false };
-  }
-  if (!/^[a-z0-9-]{1,60}$/.test(runLabel2)) return unavailable(`the run label ${JSON.stringify(runLabel2)} is not [a-z0-9-]`);
-  let diskLimit;
-  try {
-    diskLimit = sizeBytes(s.diskLimit);
-  } catch {
-    return unavailable(`factory.run.sandbox.container.diskLimit ${JSON.stringify(s.diskLimit)} is not a size`);
-  }
-  const probe = await deps.exec(bin, ["version", "--format", "{{.Server.Version}}"], { timeoutMs: PROBE_TIMEOUT_MS });
-  if (probe.spawnError !== void 0) return unavailable(`the container runtime ${bin} is not installed or not on PATH (${probe.spawnError}); install it, ${switchBack}`);
-  if (probe.status !== 0) return unavailable(`the container runtime ${bin} does not answer (${firstLine(probe.tail) || `exit ${probe.status}`}); start ${bin === "docker" ? "Docker Desktop or the docker daemon" : "the podman machine or service"}, ${switchBack}`);
-  const inspectImage = () => deps.exec(bin, ["image", "inspect", "--format", "{{.Id}}", s.image], { timeoutMs: PROBE_TIMEOUT_MS });
-  let image = await inspectImage();
-  if (image.status !== 0) {
-    if (/^sha256:[0-9a-f]{64}$/.test(s.image)) return unavailable(`the pinned gate image ${s.image} is no longer present (removed during the run?); start the run again so the image tag is resolved and pulled again`);
-    log(`omg factory run: pulling the gate image ${s.image} with ${bin} (factory.run.sandbox.container.image); pin a digest there to fix what runs`);
-    const pulled = await deps.exec(bin, ["pull", s.image], { timeoutMs: PULL_TIMEOUT_MS });
-    if (pulled.status !== 0) return unavailable(`the gate image ${s.image} is not present and ${bin} pull failed (${firstLine(lastLines(pulled.tail)) || `exit ${pulled.status}`}); pull it yourself, set factory.run.sandbox.container.image, ${switchBack}`);
-    image = await inspectImage();
-  }
-  const imageId = /^(sha256:[0-9a-f]{64})$/m.exec(image.tail.trim())?.[1];
-  if (!imageId) return unavailable(`could not read the image id of ${s.image} from ${bin} image inspect (${firstLine(image.tail) || `exit ${image.status}`}); pull the image again or pin a digest in factory.run.sandbox.container.image, ${switchBack}`);
-  const ref = imageId;
-  const plan = installPlan(req.cwd);
-  if (plan.kind === "unsupported") return unavailable(`${plan.reason}; ${switchBack}`);
-  const scan = checkoutCopyProblem(req.cwd);
-  if (scan) return noVerdict(`${scan}, so it is not copied into the gate container; nothing is counted`);
-  const id = (deps.id ?? (() => (0, import_node_crypto7.randomBytes)(4).toString("hex")))();
-  const name = `${CONTAINER_NAME_PREFIX}${runLabel2}-${id}`;
-  const volume = name;
-  const network = `${name}-net`;
-  const cache = plan.kind === "npm-ci" && plan.sharedCache ? `${CONTAINER_NAME_PREFIX}cache-${plan.lockHash}` : void 0;
-  const labels = ["--label", `${RUN_LABEL2}=${runLabel2}`, "--label", `${GATE_LABEL}=1`];
-  const harden = hardeningArgs(s);
-  const work = ["--mount", mountArg(["type=volume", `source=${volume}`, `target=${WORK}`])];
-  const workRo = ["--mount", mountArg(["type=volume", `source=${volume}`, `target=${WORK}`, "readonly"])];
-  const started = [];
-  let volumeMade = false;
-  let networkMade = false;
-  const ran = (o) => ({ ran: true, ...o, imageId });
-  const removeNetwork = async () => {
-    if (!networkMade) return;
-    const rm4 = await deps.exec(bin, ["network", "rm", network], { timeoutMs: PROBE_TIMEOUT_MS }).catch(() => null);
-    if (rm4?.status === 0) networkMade = false;
-  };
-  const step = (container, opts, argv, timeoutMs, full) => {
-    started.push(container);
-    return deps.exec(bin, ["run", "--name", container, ...opts, ref, ...inContainerLimit(timeoutMs, argv)], {
-      timeoutMs,
-      ...full !== void 0 ? { full } : {},
-      onTimeout: async () => {
-        await deps.exec(bin, ["kill", container], { timeoutMs: KILL_TIMEOUT_MS }).catch(() => null);
-        await deps.exec(bin, ["rm", "-f", container], { timeoutMs: KILL_TIMEOUT_MS }).catch(() => null);
-      }
-    });
-  };
-  let duCount = 0;
-  const watched = async (container, run3) => {
-    let stopped = false;
-    let over;
-    let misses = 0;
-    let timer;
-    let inflight = Promise.resolve();
-    const tick = () => {
-      inflight = (async () => {
-        if (stopped) return;
-        const duName = `${container}-du-${++duCount}`;
-        started.push(duName);
-        const du = await deps.exec(bin, [
-          "run",
-          "--name",
-          duName,
-          ...labels,
-          ...harden,
-          "--network",
-          "none",
-          // root without DAC override: only DAC_READ_SEARCH, so a dir the PR made unreadable is still counted.
-          "--user",
-          "0:0",
-          "--cap-add",
-          "DAC_READ_SEARCH",
-          "--read-only",
-          ...workRo,
-          ref,
-          ...inContainerLimit(PROBE_TIMEOUT_MS, ["du", "-sxk", WORK])
-        ], { timeoutMs: PROBE_TIMEOUT_MS + 2 * IN_CONTAINER_GRACE_S * 1e3 }).catch(() => null);
-        if (du !== null && (du.status === 0 || du.status === 1) && !du.timedOut) started.splice(started.indexOf(duName), 1);
-        else await deps.exec(bin, ["rm", "-f", duName], { timeoutMs: KILL_TIMEOUT_MS }).catch(() => null);
-        const m = du ? /^(\d+)\s+\/work\s*$/m.exec(du.tail) : null;
-        const kb = m ? Number(m[1]) : NaN;
-        if (stopped) return;
-        const measured = Number.isFinite(kb);
-        misses = measured ? 0 : misses + 1;
-        if (measured && kb * 1024 > diskLimit || misses >= 2) {
-          over = measured ? "over" : "unmeasured";
-          await deps.exec(bin, ["kill", container], { timeoutMs: KILL_TIMEOUT_MS }).catch(() => null);
-          await deps.exec(bin, ["rm", "-f", container], { timeoutMs: KILL_TIMEOUT_MS }).catch(() => null);
-          return;
-        }
-        if (!stopped) timer = setTimeout(tick, deps.diskWatchMs ?? DISK_WATCH_MS);
-      })();
-    };
-    timer = setTimeout(tick, deps.diskWatchMs ?? DISK_WATCH_MS);
-    try {
-      const r = await run3();
-      return over ? { ...r, overDisk: over } : r;
-    } finally {
-      stopped = true;
-      clearTimeout(timer);
-      await inflight;
-    }
-  };
-  const overDisk = (what, r) => ran({
-    status: 1,
-    output: tail2(`${r.tail.trim()}
-${what} in the gate container ${r.overDisk === "unmeasured" ? `was stopped: its disk use could not be measured twice in a row, so factory.run.sandbox.container.diskLimit (${s.diskLimit}) could not be checked` : `used more than factory.run.sandbox.container.diskLimit (${s.diskLimit}) and was stopped`}`),
-    timedOut: false
-  });
-  try {
-    const made = await deps.exec(bin, ["volume", "create", ...labels, volume], { timeoutMs: PROBE_TIMEOUT_MS });
-    if (made.status !== 0) return unavailable(`${bin} could not create the gate volume (${firstLine(made.tail) || `exit ${made.status}`}); check the runtime's disk, ${switchBack}`);
-    volumeMade = true;
-    if (cache) {
-      const problem2 = await ensureCacheVolume(deps.exec, bin, cache);
-      if (problem2) return unavailable(`${problem2}; ${switchBack}`);
-    }
-    const cacheMount = cache ? ["--mount", mountArg(["type=volume", `source=${cache}`, `target=/cache`])] : [];
-    const copy = await step(`${name}-copy`, [
-      ...labels,
-      ...harden,
-      "--network",
-      "none",
-      "--user",
-      "0:0",
-      "--cap-add",
-      "CHOWN",
-      "--cap-add",
-      "DAC_OVERRIDE",
-      "--cap-add",
-      "FOWNER",
-      "--read-only",
-      "--mount",
-      mountArg(["type=bind", `source=${(0, import_node_path18.resolve)(req.cwd)}`, "target=/in", "readonly"]),
-      ...work,
-      ...cacheMount,
-      ...req.gitView ? ["--mount", mountArg(["type=bind", `source=${(0, import_node_path18.resolve)(req.gitView)}`, `target=${GIT_VIEW_MOUNT}`, "readonly"])] : []
-    ], ["sh", "-c", copyScript(plan.kind === "npm-ci", req.gitView !== void 0)], COPY_TIMEOUT_MS);
-    if (copy.status !== 0) return noVerdict(`copying the checkout into the gate container failed (exit ${copy.status ?? "none"}${copy.timedOut ? ", timed out" : ""}); nothing is counted`);
-    const runBase = [...labels, ...harden, "--user", CONTAINER_USER, "--read-only", "--tmpfs", "/tmp:rw,exec,nosuid,nodev,size=1g", ...work, "-w", SRC];
-    const ownCache = { npm_config_cache: `${WORK}/home/.npm` };
-    if (plan.kind === "npm-ci") {
-      const timeoutMs = s.installTimeoutMinutes * 6e4;
-      const net2 = await deps.exec(bin, ["network", "create", ...labels, ...bin === "docker" ? ["--driver", "bridge", "-o", "com.docker.network.bridge.enable_icc=false"] : ["-o", "isolate=true"], network], { timeoutMs: PROBE_TIMEOUT_MS });
-      if (net2.status !== 0) return unavailable(`${bin} could not create the gate install network (${firstLine(net2.tail) || `exit ${net2.status}`}); ${switchBack}`);
-      networkMade = true;
-      const fetchName = `${name}-install`;
-      const inst = await watched(fetchName, () => step(fetchName, [
-        ...runBase,
-        "--network",
-        network,
-        ...cacheMount,
-        ...containerEnvArgs({ ...cache ? { npm_config_cache: "/cache/npm" } : ownCache, ...NPM_FETCH_ENV })
-      ], ["npm", "ci", "--ignore-scripts"], timeoutMs));
-      await removeNetwork();
-      if (inst.overDisk) return overDisk("the dependency install (npm ci)", inst);
-      if (inst.timedOut) return ran({ status: 124, output: tail2(`${inst.tail.trim()}
-the dependency install (npm ci) in the gate container timed out after ${s.installTimeoutMinutes} min`), timedOut: true });
-      if (inst.status === null || inst.status === 125) return noVerdict(`the container runtime failed while the dependency install ran (exit ${inst.status ?? "none"}); nothing is counted`);
-      if (inst.status !== 0) return ran({ status: inst.status, output: tail2(`${inst.tail.trim()}
-the dependency install (npm ci) in the gate container failed (exit ${inst.status})`), timedOut: false });
-      const scriptsName = `${name}-scripts`;
-      const scripts = await watched(scriptsName, () => step(scriptsName, [...runBase, "--network", "none", ...containerEnvArgs(ownCache)], ["sh", "-c", SCRIPTS_SCRIPT], timeoutMs));
-      if (scripts.overDisk) return overDisk("the install scripts", scripts);
-      if (scripts.timedOut) return ran({ status: 124, output: tail2(`${scripts.tail.trim()}
-the install scripts in the gate container timed out after ${s.installTimeoutMinutes} min`), timedOut: true });
-      if (scripts.status === null || scripts.status === 125) return noVerdict(`the container runtime failed while the install scripts ran (exit ${scripts.status ?? "none"}); nothing is counted`);
-      if (scripts.status !== 0) return ran({ status: scripts.status, output: tail2(`${scripts.tail.trim()}
-the install scripts (npm rebuild and the root's install scripts, no network) in the gate container failed (exit ${scripts.status})`), timedOut: false });
-    }
-    const argv = containerArgv(req);
-    const r = await watched(name, () => step(name, [...runBase, "--network", "none", ...containerEnvArgs(ownCache)], argv, req.timeoutMs));
-    if (r.overDisk) return overDisk("the command", r);
-    if (r.timedOut) return ran({ status: 124, output: tail2(`${r.tail.trim()}
-timed out after ${req.timeoutMs} ms`), timedOut: true });
-    if (r.spawnError !== void 0 || r.status === null || r.status === 125) return noVerdict(`the container runtime failed while the command ran (exit ${r.status ?? "none"}); nothing is counted`);
-    const result = ran({ status: r.status, output: tail2(r.tail.trim()), timedOut: false });
-    if (r.status !== 0 && req.reportFile) {
-      const rel = (0, import_node_path18.relative)((0, import_node_path18.resolve)(req.cwd), (0, import_node_path18.resolve)(req.reportFile));
-      if (rel !== "" && !rel.startsWith("..") && !(0, import_node_path18.isAbsolute)(rel)) {
-        const got = await step(`${name}-report`, [
-          ...labels,
-          ...harden,
-          "--network",
-          "none",
-          "--user",
-          CONTAINER_USER,
-          "--read-only",
-          ...workRo
-        ], ["cat", `${SRC}/${rel.split(import_node_path18.sep).join("/")}`], COPY_TIMEOUT_MS, VITEST_REPORT_MAX_BYTES);
-        if (got.status === 0 && got.stdout && !got.overflow) return ran({ status: r.status, output: tail2(r.tail.trim()), timedOut: false, report: got.stdout.toString("utf8") });
-      }
-    }
-    if (req.purpose !== "prepare" || r.status !== 0) return result;
-    const back = await step(`${name}-export`, [
-      ...labels,
-      ...harden,
-      "--network",
-      "none",
-      "--user",
-      CONTAINER_USER,
-      "--read-only",
-      ...workRo
-    ], ["tar", "-C", SRC, "--exclude=.git", "--exclude=node_modules", "--format=posix", "-cf", "-", "."], COPY_TIMEOUT_MS, COPY_BACK_MAX_BYTES);
-    if (back.status !== 0 || !back.stdout) return noVerdict(`reading the prepare check's changes back from the gate container failed (${back.overflow ? "over the size bound" : `exit ${back.status ?? "none"}`}); nothing is counted`);
-    const problem = applyCopyBack(req.cwd, back.stdout, deps.platform ?? process.platform);
-    if (problem) return noVerdict(`the prepare check's changes cannot be copied back safely (${problem}); nothing is counted`);
-    return result;
-  } catch {
-    return noVerdict("the gate container failed unexpectedly; nothing is counted");
-  } finally {
-    for (const c of started) await deps.exec(bin, ["rm", "-f", c], { timeoutMs: KILL_TIMEOUT_MS }).catch(() => null);
-    await removeNetwork();
-    if (volumeMade) {
-      for (let i = 0; i < 3; i++) {
-        const rm4 = await deps.exec(bin, ["volume", "rm", "-f", volume], { timeoutMs: PROBE_TIMEOUT_MS }).catch(() => null);
-        if (rm4?.status === 0) break;
-        await new Promise((r) => setTimeout(r, 500));
-      }
-    }
-  }
-}
-async function ensureCacheVolume(exec, bin, cache) {
-  const inspect = await exec(bin, ["volume", "inspect", "--format", "{{.Driver}}|{{json .Labels}}|{{json .Options}}", cache], { timeoutMs: PROBE_TIMEOUT_MS });
-  if (inspect.status === 0) {
-    const [driver, labelsJson, optionsJson] = inspect.tail.trim().split("\n")[0].split("|");
-    let labels;
-    let options;
-    try {
-      labels = JSON.parse(labelsJson ?? "");
-      options = JSON.parse(optionsJson ?? "");
-    } catch {
-      return `the npm cache volume ${cache} cannot be inspected; remove it (${bin} volume rm ${cache})`;
-    }
-    const l = labels ?? {};
-    const noOptions = options === null || typeof options === "object" && Object.keys(options).length === 0;
-    if (driver !== "local" || l[CACHE_LABEL] !== "npm" || l[GATE_LABEL] !== "1" || !noOptions) return `a volume named ${cache} exists that the factory did not make (driver, labels or options differ); remove or rename it`;
-    return null;
-  }
-  const c = await exec(bin, ["volume", "create", "--label", `${GATE_LABEL}=1`, "--label", `${CACHE_LABEL}=npm`, cache], { timeoutMs: PROBE_TIMEOUT_MS });
-  return c.status === 0 ? null : `${bin} could not create the npm cache volume (${firstLine(c.tail) || `exit ${c.status}`})`;
-}
-function readTar(buf, maxEntries = COPY_BACK_MAX_ENTRIES) {
-  const entries = [];
-  let off = 0;
-  let pax = {};
-  let longName;
-  let longLink;
-  const str9 = (b) => {
-    const z2 = b.indexOf(0);
-    return (z2 === -1 ? b : b.subarray(0, z2)).toString("utf8");
-  };
-  const octal = (b) => {
-    if (b[0] & 128) throw new Error("base-256 size");
-    const t = str9(b).trim();
-    if (t === "") return 0;
-    if (!/^[0-7]+$/.test(t)) throw new Error("bad octal field");
-    return parseInt(t, 8);
-  };
-  while (off + 512 <= buf.length) {
-    const h = buf.subarray(off, off + 512);
-    if (h.every((x) => x === 0)) return entries;
-    const sum = octal(h.subarray(148, 156));
-    let calc = 0;
-    for (let i = 0; i < 512; i++) calc += i >= 148 && i < 156 ? 32 : h[i];
-    if (calc !== sum) throw new Error("bad header checksum");
-    const flag = String.fromCharCode(h[156] || 48);
-    let size = octal(h.subarray(124, 136));
-    if (pax.size !== void 0) size = Number(pax.size);
-    if (!Number.isSafeInteger(size) || size < 0) throw new Error("bad size");
-    const start = off + 512;
-    const end = start + size;
-    if (end > buf.length) throw new Error("truncated");
-    const data = buf.subarray(start, end);
-    off = start + Math.ceil(size / 512) * 512;
-    if (flag === "x") {
-      pax = { ...pax, ...parsePax(data) };
-      continue;
-    }
-    if (flag === "g") continue;
-    if (flag === "L") {
-      longName = str9(data);
-      continue;
-    }
-    if (flag === "K") {
-      longLink = str9(data);
-      continue;
-    }
-    const prefix = str9(h.subarray(345, 500));
-    const path15 = pax.path ?? longName ?? (prefix ? `${prefix}/${str9(h.subarray(0, 100))}` : str9(h.subarray(0, 100)));
-    const linkTarget = pax.linkpath ?? longLink ?? str9(h.subarray(157, 257));
-    const type = flag === "0" || flag === "7" ? "file" : flag === "5" ? "dir" : flag === "2" ? "symlink" : flag === "1" ? "hardlink" : "other";
-    entries.push({ path: path15, type, mode: octal(h.subarray(100, 108)), ...type === "file" ? { data: Buffer.from(data) } : {}, ...type === "symlink" || type === "hardlink" ? { linkTarget } : {} });
-    if (entries.length > maxEntries) throw new Error("too many entries");
-    pax = {};
-    longName = void 0;
-    longLink = void 0;
-  }
-  throw new Error("no end-of-archive marker");
-}
-function parsePax(data) {
-  const out = {};
-  let i = 0;
-  while (i < data.length) {
-    const space = data.indexOf(32, i);
-    if (space === -1) throw new Error("bad pax record");
-    const len = Number(data.subarray(i, space).toString("ascii"));
-    if (!Number.isSafeInteger(len) || len <= space - i || i + len > data.length) throw new Error("bad pax record");
-    const rec = data.subarray(space + 1, i + len - 1).toString("utf8");
-    const eq = rec.indexOf("=");
-    if (eq > 0) out[rec.slice(0, eq)] = rec.slice(eq + 1);
-    i += len;
-  }
-  return out;
-}
-function foldPath(p, platform) {
-  return foldsCase(platform) ? dropIgnorable(p.normalize("NFC")).toLowerCase() : p;
-}
-function isName(component, name, platform) {
-  if (!foldsCase(platform)) return component === name;
-  const c = dropIgnorable(component.normalize("NFC"));
-  return c.toLowerCase() === name || c.toUpperCase() === name.toUpperCase() || c.normalize("NFKC").toLowerCase() === name;
-}
-function safeRelPath(raw, platform) {
-  const p = raw.replace(/^(?:\.\/)+/, "").replace(/\/+$/, "");
-  if (p === "" || p === ".") return "";
-  if (p.startsWith("/") || p.includes("\0") || p.includes("\\")) return null;
-  const parts = p.split("/");
-  if (parts.some((s) => s === "" || s === "." || s === "..")) return null;
-  if (parts.some((s) => isName(s, ".git", platform) || isName(s, "node_modules", platform))) return null;
-  if (platform === "win32" && parts.some((s) => /[<>:"|?*\x00-\x1f]/.test(s) || /[. ]$/.test(s) || /~\d/.test(s) || /^(?:con|prn|aux|nul|com[\d¹²³]|lpt[\d¹²³]|conin\$|conout\$)(?:\..*)?$/i.test(s))) return null;
-  return p;
-}
-function hostTree(root, platform) {
-  const out = /* @__PURE__ */ new Map();
-  const walk = (dir, rel) => {
-    for (const name of (0, import_node_fs17.readdirSync)(dir)) {
-      if (isName(name, ".git", platform) || isName(name, "node_modules", platform)) continue;
-      const r = rel ? `${rel}/${name}` : name;
-      const st = (0, import_node_fs17.lstatSync)((0, import_node_path18.join)(dir, name));
-      const kind = st.isSymbolicLink() ? "symlink" : st.isDirectory() ? "dir" : st.isFile() && st.nlink === 1 ? "file" : "other";
-      out.set(foldPath(r, platform), { rel: r, kind });
-      if (kind === "dir") walk((0, import_node_path18.join)(dir, name), r);
-    }
-  };
-  walk(root, "");
-  return out;
-}
-function onDiskProblem(checkout, realRoot, rel, leaf) {
-  const parts = rel.split("/");
-  let deepest = checkout;
-  for (let i = 0; i < parts.length; i++) {
-    const path15 = (0, import_node_path18.join)(checkout, ...parts.slice(0, i + 1));
-    let st;
-    try {
-      st = (0, import_node_fs17.lstatSync)(path15);
-    } catch (error62) {
-      if (error62.code === "ENOENT") break;
-      return "a path could not be checked";
-    }
-    if (st.isSymbolicLink()) return "a file would be written through a host link";
-    if (i < parts.length - 1 || leaf === "dir") {
-      if (!st.isDirectory()) return "a file would be written under a non-directory";
-      deepest = path15;
-    } else if (!st.isFile() || st.nlink !== 1) return "a file replaces a host directory, link or hard-linked file";
-  }
-  let real2;
-  try {
-    real2 = import_node_fs17.realpathSync.native(deepest);
-  } catch {
-    return "a parent directory could not be resolved";
-  }
-  return samePathOrUnder(real2, realRoot) ? null : "a file would be written outside the checkout";
-}
-function applyCopyBack(checkout, tar, platform) {
-  let entries;
-  try {
-    entries = readTar(tar);
-  } catch {
-    return "the tar stream is malformed or too large";
-  }
-  let host;
-  let realRoot;
-  try {
-    host = hostTree(checkout, platform);
-    realRoot = import_node_fs17.realpathSync.native(checkout);
-  } catch {
-    return "the checkout could not be listed";
-  }
-  const want = /* @__PURE__ */ new Map();
-  for (const e of entries) {
-    const rel = safeRelPath(e.path, platform);
-    if (rel === null) return "an entry has a path that cannot be written here";
-    if (rel === "") continue;
-    const key = foldPath(rel, platform);
-    if (want.has(key)) return "two entries name the same file on this host";
-    want.set(key, { rel, e });
-  }
-  const writes = [];
-  for (const [key, { rel, e }] of want) {
-    const kind = host.get(key)?.kind;
-    if (e.type === "dir") {
-      if (kind !== void 0 && kind !== "dir") return "a directory replaces a host file or link";
-      continue;
-    }
-    if (e.type === "symlink") {
-      if (kind !== "symlink") return "the check created a symbolic link";
-      continue;
-    }
-    if (e.type !== "file") return "the check created a hardlink, device or other special file";
-    if (kind !== void 0 && kind !== "file") return "a file replaces a host directory, link or hard-linked file";
-    const parts = rel.split("/");
-    for (let i = 1; i < parts.length; i++) {
-      const pkey = foldPath(parts.slice(0, i).join("/"), platform);
-      const parent = host.get(pkey)?.kind;
-      if (parent !== void 0 && parent !== "dir") return "a file would be written through a host link";
-      const w = want.get(pkey);
-      if (parent === void 0 && w && w.e.type !== "dir") return "a file would be written under a non-directory";
-    }
-    const disk = onDiskProblem(checkout, realRoot, rel, "file");
-    if (disk) return disk;
-    if (kind === "file") {
-      const cur = (0, import_node_fs17.readFileSync)((0, import_node_path18.join)(checkout, ...parts));
-      if (cur.equals(e.data)) continue;
-    }
-    writes.push({ rel, data: e.data, mode: e.mode });
-  }
-  const removals = [...host].filter(([key, h]) => (h.kind === "file" || h.kind === "symlink") && !want.has(key)).map(([, h]) => h.rel);
-  for (const rel of removals) {
-    const parent = rel.split("/").slice(0, -1).join("/");
-    if (parent && onDiskProblem(checkout, realRoot, parent, "dir")) return "a file to remove lies under a host link";
-  }
-  for (const { rel, data, mode } of writes) {
-    const path15 = (0, import_node_path18.join)(checkout, ...rel.split("/"));
-    const dir = (0, import_node_path18.dirname)(path15);
-    let tmp;
-    try {
-      (0, import_node_fs17.mkdirSync)(dir, { recursive: true });
-      if (!samePathOrUnder(import_node_fs17.realpathSync.native(dir), realRoot)) return "a file would be written outside the checkout; files before it were written";
-      tmp = (0, import_node_path18.join)(dir, `.omg-copy-back-${(0, import_node_crypto7.randomBytes)(6).toString("hex")}`);
-      (0, import_node_fs17.writeFileSync)(tmp, data, { flag: "wx" });
-      if (platform !== "win32") (0, import_node_fs17.chmodSync)(tmp, mode & 73 ? 493 : 420);
-      (0, import_node_fs17.renameSync)(tmp, path15);
-      tmp = void 0;
-    } catch {
-      if (tmp) try {
-        (0, import_node_fs17.unlinkSync)(tmp);
-      } catch {
-      }
-      return "writing a file back failed part-way; files before it were written";
-    }
-  }
-  try {
-    for (const rel of removals) (0, import_node_fs17.unlinkSync)((0, import_node_path18.join)(checkout, ...rel.split("/")));
-  } catch {
-    return "removing a file the check deleted failed part-way";
-  }
-  return null;
-}
-var import_node_child_process6, import_node_crypto7, import_node_fs17, import_node_path18, GATE_CONTAINER_UNAVAILABLE_GATE, CONTAINER_INCOMPATIBLE_ADVICE, CONTAINER_NAME_PREFIX, RUN_LABEL2, GATE_LABEL, CACHE_LABEL, CONTAINER_PATH, CONTAINER_USER, WORK, SRC, NPM_REGISTRY, REGISTRY_PREFIXES, PROBE_TIMEOUT_MS, PULL_TIMEOUT_MS, COPY_TIMEOUT_MS, KILL_TIMEOUT_MS, IN_CONTAINER_GRACE_S, DISK_WATCH_MS, OUTPUT_TAIL_BYTES, COPY_BACK_MAX_BYTES, COPY_BACK_MAX_ENTRIES, SCAN_MAX_ENTRIES, LOCKFILE_MAX_BYTES, defaultContainerExec, isNodeExe, OUTPUT_FILE_FLAG, CONTAINER_SRC, GIT_VIEW_MOUNT, copyLines, NPMRC_HELD, HOLD_NPMRC, RESTORE_NPMRC, NPM_FETCH_ENV, SCRIPTS_SCRIPT, tail2, firstLine, lastLines, IGNORABLE, dropIgnorable, foldsCase;
-var init_container_gate = __esm({
-  "src/factory/run/container-gate.ts"() {
-    "use strict";
-    import_node_child_process6 = require("node:child_process");
-    import_node_crypto7 = require("node:crypto");
-    import_node_fs17 = require("node:fs");
-    import_node_path18 = require("node:path");
-    init_sandbox_exec();
-    init_state5();
-    init_test_delta();
-    GATE_CONTAINER_UNAVAILABLE_GATE = "gate-container-unavailable";
-    CONTAINER_INCOMPATIBLE_ADVICE = 'Your gate fails in the gate container on the base: there it runs with no network, a git repository of only the checked commit (git itself must be in the image), as a non-root user on a read-only root (only /tmp, the checkout and HOME writable), with the dependencies npm ci installs from your lockfile and their install scripts run without network. Make the gate work there (or pick another factory.run.sandbox.container.image), or set factory.run.sandbox.isolation "copilot" in your user config';
-    CONTAINER_NAME_PREFIX = "omg-gate-";
-    RUN_LABEL2 = "omg.run";
-    GATE_LABEL = "omg.gate";
-    CACHE_LABEL = "omg.cache";
-    CONTAINER_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin";
-    CONTAINER_USER = "1000:1000";
-    WORK = "/work";
-    SRC = `${WORK}/src`;
-    NPM_REGISTRY = "https://registry.npmjs.org/";
-    REGISTRY_PREFIXES = [NPM_REGISTRY, "https://registry.yarnpkg.com/"];
-    PROBE_TIMEOUT_MS = 2e4;
-    PULL_TIMEOUT_MS = 15 * 6e4;
-    COPY_TIMEOUT_MS = 10 * 6e4;
-    KILL_TIMEOUT_MS = 3e4;
-    IN_CONTAINER_GRACE_S = 30;
-    DISK_WATCH_MS = 1e4;
-    OUTPUT_TAIL_BYTES = 64 * 1024;
-    COPY_BACK_MAX_BYTES = 256 * 1024 * 1024;
-    COPY_BACK_MAX_ENTRIES = 1e5;
-    SCAN_MAX_ENTRIES = 2e5;
-    LOCKFILE_MAX_BYTES = 64 * 1024 * 1024;
-    defaultContainerExec = (bin, args, o) => new Promise((done) => {
-      let tail4 = Buffer.alloc(0);
-      const out = [];
-      let outBytes = 0;
-      let overflow = false;
-      let timedOut = false;
-      let settled = false;
-      const keep = (chunk) => {
-        tail4 = Buffer.concat([tail4, chunk]);
-        if (tail4.length > OUTPUT_TAIL_BYTES) tail4 = tail4.subarray(tail4.length - OUTPUT_TAIL_BYTES);
-      };
-      const finish = (r) => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timer);
-        clearTimeout(hardKill);
-        done({ ...r, tail: tail4.toString("utf8"), overflow, timedOut, ...o.full !== void 0 && !overflow ? { stdout: Buffer.concat(out) } : {} });
-      };
-      let hardKill;
-      let child;
-      try {
-        child = (0, import_node_child_process6.spawn)(bin, [...args], { stdio: ["ignore", "pipe", "pipe"], windowsHide: true, shell: false });
-      } catch (error62) {
-        done({ status: null, tail: "", overflow: false, timedOut: false, spawnError: error62 instanceof Error ? error62.message : String(error62) });
-        return;
-      }
-      const timer = setTimeout(() => {
-        timedOut = true;
-        void Promise.resolve(o.onTimeout?.()).catch(() => void 0).finally(() => {
-          hardKill = setTimeout(() => {
-            try {
-              child.kill("SIGKILL");
-            } catch {
-            }
-          }, 1e4);
-        });
-      }, o.timeoutMs);
-      child.stdout.on("data", (chunk) => {
-        if (o.full !== void 0) {
-          if (!overflow && outBytes + chunk.length <= o.full) {
-            out.push(chunk);
-            outBytes += chunk.length;
-          } else {
-            overflow = true;
-            out.length = 0;
-          }
-        } else keep(chunk);
-      });
-      child.stderr.on("data", (chunk) => keep(chunk));
-      child.on("error", (error62) => finish({ status: null, spawnError: error62.message }));
-      child.on("close", (code) => finish({ status: code }));
-    });
-    isNodeExe = (p) => /^node(?:\.exe)?$/i.test((0, import_node_path18.basename)(p));
-    OUTPUT_FILE_FLAG = "--outputFile=";
-    CONTAINER_SRC = SRC;
-    GIT_VIEW_MOUNT = "/in-git";
-    copyLines = (gitView) => [
-      "set -e",
-      `mkdir -p ${SRC} ${WORK}/home`,
-      // Through a file, not a pipe: sh has no pipefail, and a partial copy must fail the step (copy back removes what is missing).
-      `tar -C /in --exclude=.git --exclude=node_modules -cf ${WORK}/in.tar .`,
-      `tar -C ${SRC} -xf ${WORK}/in.tar`,
-      `rm -f ${WORK}/in.tar`,
-      ...gitView ? [`mkdir ${SRC}/.git`, `tar -C ${GIT_VIEW_MOUNT} -cf ${WORK}/git.tar .`, `tar -C ${SRC}/.git -xf ${WORK}/git.tar`, `rm -f ${WORK}/git.tar`] : [],
-      `chown -R ${CONTAINER_USER} ${WORK}`,
-      'if [ -d /cache ]; then mkdir -p /cache/npm; [ "$(stat -c %u /cache/npm)" = 1000 ] || chown -R 1000:1000 /cache; fi'
-    ];
-    NPMRC_HELD = `${WORK}/npmrc.held`;
-    HOLD_NPMRC = `if [ -e ${SRC}/.npmrc ] || [ -L ${SRC}/.npmrc ]; then mv ${SRC}/.npmrc ${NPMRC_HELD}; fi`;
-    RESTORE_NPMRC = `if [ -e ${NPMRC_HELD} ] || [ -L ${NPMRC_HELD} ]; then rm -rf ${SRC}/.npmrc; mv ${NPMRC_HELD} ${SRC}/.npmrc; fi`;
-    NPM_FETCH_ENV = {
-      npm_config_registry: NPM_REGISTRY,
-      npm_config_proxy: "null",
-      npm_config_https_proxy: "null",
-      npm_config_strict_ssl: "true",
-      npm_config_replace_registry_host: "npmjs"
-    };
-    SCRIPTS_SCRIPT = [
-      "set -e",
-      RESTORE_NPMRC,
-      "npm rebuild --foreground-scripts",
-      'for s in preinstall install postinstall prepublish preprepare prepare postprepare; do npm run --if-present --ignore-scripts "$s"; done'
-    ].join("; ");
-    tail2 = (text3) => {
-      const clean = redactGateOutput(text3);
-      return clean.length > SANDBOX_OUTPUT_TAIL_CHARS ? clean.slice(-SANDBOX_OUTPUT_TAIL_CHARS) : clean;
-    };
-    firstLine = (text3) => text3.trim().split("\n")[0]?.trim().slice(0, 300) ?? "";
-    lastLines = (text3) => text3.trim().split("\n").slice(-1).join("\n");
-    IGNORABLE = [[173, 173], [8203, 8207], [8234, 8238], [8288, 8292], [65279, 65279]];
-    dropIgnorable = (s) => [...s].filter((ch) => {
-      const c = ch.codePointAt(0);
-      return !IGNORABLE.some(([a, b]) => c >= a && c <= b);
-    }).join("");
-    foldsCase = (platform) => platform === "win32" || platform === "darwin";
-  }
-});
-
 // src/factory/run/clean.ts
 var import_fs88, import_path105;
 var init_clean = __esm({
   "src/factory/run/clean.ts"() {
     "use strict";
     import_fs88 = require("fs");
+    init_nuget_restore();
+    init_sandbox_exec();
     import_path105 = require("path");
     init_job();
     init_local();
@@ -70692,26 +70759,26 @@ function buildGitView(dir, sha3, source, git4, maxBytes = GIT_VIEW_MAX_BYTES) {
   if (bytes > maxBytes) throw new Error(`${sha3.slice(0, 12)} holds ${bytes} bytes of objects, above the ${maxBytes} a git view holds`);
   const pack = source(["pack-objects", "--stdout", "-q"], list);
   (0, import_node_fs18.mkdirSync)(dir, { recursive: true });
-  const gitDir = (0, import_node_path19.join)(dir, ".git");
+  const gitDir = (0, import_node_path20.join)(dir, ".git");
   if ((0, import_node_fs18.existsSync)(gitDir)) throw new Error(`${gitDir} already exists`);
   git4(dir, ["init", "-q", "--template=", dir]);
   const own2 = ["--git-dir", gitDir, "--work-tree", dir];
   git4(dir, [...own2, "index-pack", "--stdin"], pack);
-  (0, import_node_fs18.writeFileSync)((0, import_node_path19.join)(gitDir, "shallow"), `${sha3}
+  (0, import_node_fs18.writeFileSync)((0, import_node_path20.join)(gitDir, "shallow"), `${sha3}
 `);
-  (0, import_node_fs18.writeFileSync)((0, import_node_path19.join)(gitDir, "HEAD"), `${sha3}
+  (0, import_node_fs18.writeFileSync)((0, import_node_path20.join)(gitDir, "HEAD"), `${sha3}
 `);
   git4(dir, [...own2, "read-tree", sha3]);
   const head = git4(dir, [...own2, "rev-parse", "--verify", "HEAD^{commit}"]).trim();
   if (head !== sha3) throw new Error(`the git view's HEAD is ${head.slice(0, 12)}, not ${sha3.slice(0, 12)}`);
   return gitDir;
 }
-var import_node_fs18, import_node_path19, GIT_VIEW_MAX_OBJECTS, GIT_VIEW_MAX_BYTES, HEX4012;
+var import_node_fs18, import_node_path20, GIT_VIEW_MAX_OBJECTS, GIT_VIEW_MAX_BYTES, HEX4012;
 var init_git_view = __esm({
   "src/factory/run/git-view.ts"() {
     "use strict";
     import_node_fs18 = require("node:fs");
-    import_node_path19 = require("node:path");
+    import_node_path20 = require("node:path");
     GIT_VIEW_MAX_OBJECTS = 5e5;
     GIT_VIEW_MAX_BYTES = 256 * 1024 * 1024;
     HEX4012 = /^[0-9a-f]{40}$/;
@@ -71305,7 +71372,7 @@ function noInstallRule(lane) {
 }
 function dotnetRule(lane) {
   if (!lane?.sandboxed || !lane.dotnet) return [];
-  const offline = lane.nugetReachable ? "" : " NuGet cannot reach its feed here: packages come only from those already restored on this machine, so do not add or upgrade a package reference; report a missing package in your final message instead.";
+  const offline = lane.nugetReachable ? "" : " NuGet cannot reach its feed here: packages come only from those already restored on this machine, so do not add or upgrade a package reference; report a missing package in your final message instead. A package change in a project file is not built here: the run stops for a human to approve it, and only then does the engine fetch the package.";
   const watch = " Never run dotnet watch: it waits for file changes and never ends.";
   if (lane.dotnetMtp) {
     const subs2 = MSBUILD_SUBCOMMANDS.filter((x) => x !== "test").map((x) => `dotnet ${x}`);
@@ -74553,7 +74620,7 @@ function benignChange(key, was, now) {
 }
 function configEntries(bytes, tmp) {
   if (bytes === null) return [];
-  const file2 = (0, import_node_path20.join)(tmp, `cfg-${Math.random().toString(36).slice(2)}`);
+  const file2 = (0, import_node_path21.join)(tmp, `cfg-${Math.random().toString(36).slice(2)}`);
   (0, import_node_fs19.writeFileSync)(file2, bytes);
   try {
     const out = runHostGit(tmp, ["config", "--file", file2, "--null", "--list"], 3e4);
@@ -74582,7 +74649,7 @@ function changedKeys(before, after, tmp) {
 function putKeysBack(current, old, keys, tmp) {
   const entries = configEntries(old, tmp);
   if (!entries) return null;
-  const file2 = (0, import_node_path20.join)(tmp, `merge-${Math.random().toString(36).slice(2)}`);
+  const file2 = (0, import_node_path21.join)(tmp, `merge-${Math.random().toString(36).slice(2)}`);
   (0, import_node_fs19.writeFileSync)(file2, current);
   try {
     for (const key of keys) {
@@ -74614,7 +74681,7 @@ function assertParentsReal(common, rel) {
   const segs = rel.split("/").slice(0, -1);
   let dir = common;
   for (const s of segs) {
-    dir = (0, import_node_path20.join)(dir, s);
+    dir = (0, import_node_path21.join)(dir, s);
     let st;
     try {
       st = (0, import_node_fs19.lstatSync)(dir);
@@ -74669,7 +74736,7 @@ function restoreConfigLocked(abs, compute) {
   }
 }
 function atomicRestore(abs, bytes, exec) {
-  if ((0, import_node_fs19.existsSync)(`${abs}.lock`)) throw new Error(`${(0, import_node_path20.basename)(abs)}.lock exists (a git command is writing it), so it was not restored`);
+  if ((0, import_node_fs19.existsSync)(`${abs}.lock`)) throw new Error(`${(0, import_node_path21.basename)(abs)}.lock exists (a git command is writing it), so it was not restored`);
   let st;
   try {
     st = (0, import_node_fs19.lstatSync)(abs);
@@ -74720,7 +74787,7 @@ function problemStatus(p, touched, before, after) {
   m = /^submodule git dir (modules\/.+) was removed$/.exec(p);
   if (m) return "ok";
   m = /^submodule git dir (modules\/.+) was added$/.exec(p) ?? /^(modules\/.+) changed \(config, hooks, info or alternates\)$/.exec(p);
-  if (m) return touched(`${m[1]}/`) && !(0, import_node_fs19.existsSync)((0, import_node_path20.join)(before.commonDir, ...m[1].split("/"), "objects", "info", "alternates")) ? "ok" : "unhandled";
+  if (m) return touched(`${m[1]}/`) && !(0, import_node_fs19.existsSync)((0, import_node_path21.join)(before.commonDir, ...m[1].split("/"), "objects", "info", "alternates")) ? "ok" : "unhandled";
   m = /^worktree entry worktrees\/([^/]+) was added$/.exec(p);
   if (m) return after?.worktrees?.[m[1]]?.commondir === "../.." ? "ok" : "unhandled";
   if (/^worktree entry worktrees\/[^/]+ was removed or is no longer a directory$/.test(p)) return "ok";
@@ -74740,12 +74807,12 @@ function advice(p, common) {
   return `inspect it in ${common} and remove what you did not add`;
 }
 function quarantineTamper(i) {
-  const hold = { root: (0, import_node_path20.resolve)(i.root), at: i.at, run: i.run, gate: i.gate, moved: [], restored: [], notRestored: [], refs: [], kept: [], active: [], undo: [] };
+  const hold = { root: (0, import_node_path21.resolve)(i.root), at: i.at, run: i.run, gate: i.gate, moved: [], restored: [], notRestored: [], refs: [], kept: [], active: [], undo: [] };
   const common = i.before.commonDir;
   const kept = i.before.restore;
   const touchedRels = [];
   const failedRels = /* @__PURE__ */ new Set();
-  const dir = (0, import_node_path20.join)(i.ledgerDir, "quarantine", repoKey(i.root), `${i.at.replace(/[:.]/g, "-")}${i.label ? `-${i.label.replace(/[^A-Za-z0-9._-]/g, "_")}` : ""}`);
+  const dir = (0, import_node_path21.join)(i.ledgerDir, "quarantine", repoKey(i.root), `${i.at.replace(/[:.]/g, "-")}${i.label ? `-${i.label.replace(/[^A-Za-z0-9._-]/g, "_")}` : ""}`);
   const quarantine = () => {
     if (!hold.quarantine) {
       (0, import_node_fs19.mkdirSync)(dir, { recursive: true, mode: 448 });
@@ -74764,9 +74831,9 @@ function quarantineTamper(i) {
     }
     if (now) {
       let handleItem2 = function(rel, was, is) {
-        const abs = (0, import_node_path20.join)(common, ...rel.split("/"));
+        const abs = (0, import_node_path21.join)(common, ...rel.split("/"));
         const owner = ownerOf2(rel);
-        if (owner && !realDir((0, import_node_path20.join)(common, ...owner.split("/")))) {
+        if (owner && !realDir((0, import_node_path21.join)(common, ...owner.split("/")))) {
           hold.kept.push(`${rel} (its git dir ${owner} is gone; nothing was recreated)`);
           return false;
         }
@@ -74846,14 +74913,14 @@ function quarantineTamper(i) {
         }
         return renamed;
       }, saveBytes2 = function(rel, bytes) {
-        const to = (0, import_node_path20.join)(quarantine(), ...rel.split("/"));
-        (0, import_node_fs19.mkdirSync)((0, import_node_path20.dirname)(to), { recursive: true });
+        const to = (0, import_node_path21.join)(quarantine(), ...rel.split("/"));
+        (0, import_node_fs19.mkdirSync)((0, import_node_path21.dirname)(to), { recursive: true });
         (0, import_node_fs19.writeFileSync)(to, bytes);
         return to;
       }, saveCurrent2 = function(rel, abs, is) {
         if (is.startsWith("link:")) {
-          const to2 = (0, import_node_path20.join)(quarantine(), LINKS_DIR, ...rel.split("/"));
-          (0, import_node_fs19.mkdirSync)((0, import_node_path20.dirname)(to2), { recursive: true });
+          const to2 = (0, import_node_path21.join)(quarantine(), LINKS_DIR, ...rel.split("/"));
+          (0, import_node_fs19.mkdirSync)((0, import_node_path21.dirname)(to2), { recursive: true });
           (0, import_node_fs19.writeFileSync)(to2, is.slice(5));
           return { at: to2, renamed: false };
         }
@@ -74863,8 +74930,8 @@ function quarantineTamper(i) {
           if (is.startsWith("b64x:")) (0, import_node_fs19.chmodSync)(to2, 493);
           return { at: to2, renamed: false };
         }
-        const to = (0, import_node_path20.join)(quarantine(), ...rel.split("/"));
-        (0, import_node_fs19.mkdirSync)((0, import_node_path20.dirname)(to), { recursive: true });
+        const to = (0, import_node_path21.join)(quarantine(), ...rel.split("/"));
+        (0, import_node_fs19.mkdirSync)((0, import_node_path21.dirname)(to), { recursive: true });
         try {
           (0, import_node_fs19.copyFileSync)(abs, to);
           return { at: to, renamed: false };
@@ -74888,7 +74955,7 @@ function quarantineTamper(i) {
       };
       const changed = [.../* @__PURE__ */ new Set([...Object.keys(kept), ...Object.keys(now)])].filter((rel) => rel !== RESTORE_SCOPE_KEY && kept[rel] !== now[rel] && inScope(rel)).sort();
       touchedRels.push(...changed);
-      const tmp = (0, import_node_path20.join)(dir, ".tmp");
+      const tmp = (0, import_node_path21.join)(dir, ".tmp");
       const movedAway = [];
       const added = changed.filter((rel) => kept[rel] === void 0).reverse();
       for (const rel of [...added, ...changed.filter((rel2) => kept[rel2] !== void 0)]) {
@@ -74915,7 +74982,7 @@ function quarantineTamper(i) {
   }
   if (hold.quarantine && hold.undo.length > 0) {
     try {
-      (0, import_node_fs19.writeFileSync)((0, import_node_path20.join)(hold.quarantine, "undo.txt"), `${hold.undo.join("\n")}
+      (0, import_node_fs19.writeFileSync)((0, import_node_path21.join)(hold.quarantine, "undo.txt"), `${hold.undo.join("\n")}
 `);
     } catch {
     }
@@ -74947,7 +75014,7 @@ function refChanges(before, now, common, quarantine, only) {
     if (was === is) continue;
     if (was === void 0 && name.startsWith("refs/replace/")) {
       saved.push(`${name} ${is}`);
-      (0, import_node_fs19.writeFileSync)((0, import_node_path20.join)(quarantine(), "refs.txt"), `${saved.join("\n")}
+      (0, import_node_fs19.writeFileSync)((0, import_node_path21.join)(quarantine(), "refs.txt"), `${saved.join("\n")}
 `);
       runHostGit(common, ["--git-dir", common, "update-ref", "-d", name, is], 3e4);
       out.push(`${name} was created at ${is.slice(0, 12)}: deleted (saved in refs.txt)`);
@@ -74955,13 +75022,13 @@ function refChanges(before, now, common, quarantine, only) {
     else if (is === void 0) out.push(`${name} was deleted (was ${was.slice(0, 12)}); to put it back: git update-ref ${name} ${was}`);
     else out.push(`${name} moved ${was.slice(0, 12)} -> ${is.slice(0, 12)}; if you did not move it: git update-ref ${name} ${was} ${is}`);
   }
-  if (out.length > 0) (0, import_node_fs19.writeFileSync)((0, import_node_path20.join)(quarantine(), "refs.txt"), `${[...saved, ...out].join("\n")}
+  if (out.length > 0) (0, import_node_fs19.writeFileSync)((0, import_node_path21.join)(quarantine(), "refs.txt"), `${[...saved, ...out].join("\n")}
 `);
   return out;
 }
 function writeTamperHold(ledgerDir, root, hold) {
   const path15 = tamperHoldPath(ledgerDir, root);
-  (0, import_node_fs19.mkdirSync)((0, import_node_path20.dirname)(path15), { recursive: true, mode: 448 });
+  (0, import_node_fs19.mkdirSync)((0, import_node_path21.dirname)(path15), { recursive: true, mode: 448 });
   atomicWriteFileSync(path15, `${JSON.stringify(hold, null, 2)}
 `);
 }
@@ -74983,18 +75050,18 @@ function tamperHoldMessage(ledgerDir, root) {
   const active = hold.active ?? [];
   return `a tamper hold is set on this checkout since ${hold.at} (run ${hold.run} parked at ${hold.gate}), so no factory run starts here${hold.quarantine ? `; what changed in .git is in ${hold.quarantine}` : ""}${active.length ? `; ${active.length} item(s) are ${STILL_ACTIVE}: ${active.slice(0, 3).join("; ")}` : ""}. Your own change during that run (a git config key, \`git remote add\` or \`git remote set-url\` included, and a branch's upstream set to a path, a URL, "." or a remote added during the run, a hook husky or an editor installed) triggers this too: put it back with the cp command in undo.txt in that folder if it was yours. Then run ${RELEASE_TAMPER_COMMAND}`;
 }
-var import_node_fs19, import_node_path20, repoKey, tamperHoldPath, RELEASE_TAMPER_COMMAND, STILL_ACTIVE, BENIGN_KEYS, benignKey, BRANCH_UPSTREAM, HEADS_REF, sameValues, valuesByKey, decode3, isConfigRel, realDir, errText5, CONFIG_LOCKED, LINKS_DIR;
+var import_node_fs19, import_node_path21, repoKey, tamperHoldPath, RELEASE_TAMPER_COMMAND, STILL_ACTIVE, BENIGN_KEYS, benignKey, BRANCH_UPSTREAM, HEADS_REF, sameValues, valuesByKey, decode3, isConfigRel, realDir, errText5, CONFIG_LOCKED, LINKS_DIR;
 var init_tamper_quarantine = __esm({
   "src/factory/run/tamper-quarantine.ts"() {
     "use strict";
     import_node_fs19 = require("node:fs");
-    import_node_path20 = require("node:path");
+    import_node_path21 = require("node:path");
     init_atomic_write();
     init_git_worktree();
     init_ledger2();
     init_review_guard();
-    repoKey = (root) => sha256((0, import_node_path20.resolve)(root).toLowerCase()).slice(0, 16);
-    tamperHoldPath = (ledgerDir, root) => (0, import_node_path20.join)(ledgerDir, "holds", `${repoKey(root)}.json`);
+    repoKey = (root) => sha256((0, import_node_path21.resolve)(root).toLowerCase()).slice(0, 16);
+    tamperHoldPath = (ledgerDir, root) => (0, import_node_path21.join)(ledgerDir, "holds", `${repoKey(root)}.json`);
     RELEASE_TAMPER_COMMAND = "omg factory run release --tamper";
     STILL_ACTIVE = "STILL ACTIVE (it can run on your next git command)";
     BENIGN_KEYS = [
@@ -75527,21 +75594,21 @@ function listLinux() {
   }
   return rows;
 }
-var import_node_child_process7, import_node_fs20, import_node_path21, import_node_util2, execFileAsync7, LANE_PROCS_QUERY_TIMEOUT_MS, KILL_DEADLINE_MS2, under3, WIN_QUERY, defaultLaneProcsDeps;
+var import_node_child_process7, import_node_fs20, import_node_path22, import_node_util2, execFileAsync7, LANE_PROCS_QUERY_TIMEOUT_MS, KILL_DEADLINE_MS2, under3, WIN_QUERY, defaultLaneProcsDeps;
 var init_lane_procs = __esm({
   "src/factory/run/lane-procs.ts"() {
     "use strict";
     import_node_child_process7 = require("node:child_process");
     import_node_fs20 = require("node:fs");
-    import_node_path21 = require("node:path");
+    import_node_path22 = require("node:path");
     import_node_util2 = require("node:util");
     init_process_utils();
     execFileAsync7 = (0, import_node_util2.promisify)(import_node_child_process7.execFile);
     LANE_PROCS_QUERY_TIMEOUT_MS = 1e4;
     KILL_DEADLINE_MS2 = 1e4;
     under3 = (dir, path15) => {
-      const r = (0, import_node_path21.relative)((0, import_node_path21.resolve)(dir), (0, import_node_path21.resolve)(path15));
-      return r === "" || !r.startsWith("..") && !(0, import_node_path21.isAbsolute)(r);
+      const r = (0, import_node_path22.relative)((0, import_node_path22.resolve)(dir), (0, import_node_path22.resolve)(path15));
+      return r === "" || !r.startsWith("..") && !(0, import_node_path22.isAbsolute)(r);
     };
     WIN_QUERY = `Get-CimInstance Win32_Process -Property ProcessId,ParentProcessId,CreationDate -ErrorAction Stop | ForEach-Object { $c = if ($_.CreationDate) { ([DateTime]$_.CreationDate).ToUniversalTime().Ticks } else { '-' }; "$($_.ProcessId) $($_.ParentProcessId) $c" }`;
     defaultLaneProcsDeps = {
@@ -76340,6 +76407,7 @@ var init_engine = __esm({
     init_claims();
     init_review_guard();
     init_private_run();
+    init_nuget_restore();
     init_private_store();
     init_review_output();
     init_plan_rules();
@@ -76422,7 +76490,7 @@ var init_engine = __esm({
     MSYS_DLL_INIT_FAILED = [3221225794, 3221225794 - 2 ** 32];
     windowsGitTransportFailure = (output2, platform = process.platform) => platform === "win32" && !!output2?.includes(GIT_TRANSPORT_FAILURE);
     windowsJunctionReadDenied = (output2, platform = process.platform) => platform === "win32" && !!output2 && /Cannot read directory "[^"\r\n]*node_modules[\\/][^"\r\n]*": Access is denied\./.test(output2);
-    DOTNET_SANDBOX_ADVICE = "Your dotnet command fails in the sandbox on the base. The sandbox has no network, so every NuGet package must already be in the NuGet global packages folder (NUGET_PACKAGES, else ~/.nuget/packages): run dotnet restore on the base yourself once. Private feeds and credentials in your NuGet.Config are not available there. NuGet's audit cannot reach the feed and warns NU1900, which fails a project with TreatWarningsAsErrors: set NuGetAudit to false there (or pass -p:NuGetAudit=false in the gate). The engine appends -m:1 to every MSBuild command (worker nodes cannot connect in the Windows sandbox; the last -m wins), so a hang comes from elsewhere, such as a task run with TaskHostFactory. dotnet test on Microsoft.Testing.Platform (global.json test.runner) does not run in the Windows sandbox: its test app cannot connect back to dotnet test";
+    DOTNET_SANDBOX_ADVICE = `Your dotnet command fails in the sandbox on the base. The sandbox has no network, so every NuGet package must already be in the NuGet global packages folder (NUGET_PACKAGES, else ~/.nuget/packages): run dotnet restore on the base yourself once, or set factory.run.gateInstall "sandboxed" in your user config so the engine restores a local gate's missing packages from nuget.org in the OS sandbox (a gate that fails restoring never reaches this base check). Private feeds and credentials in your NuGet.Config are not available there. NuGet's audit cannot reach the feed and warns NU1900, which fails a project with TreatWarningsAsErrors: set NuGetAudit to false there (or pass -p:NuGetAudit=false in the gate). The engine appends -m:1 to every MSBuild command (worker nodes cannot connect in the Windows sandbox; the last -m wins), so a hang comes from elsewhere, such as a task run with TaskHostFactory. dotnet test on Microsoft.Testing.Platform (global.json test.runner) does not run in the Windows sandbox: its test app cannot connect back to dotnet test`;
     localDetailNote = (key, what) => `; ${what} is shown on this host only (omg factory run status ${key}), never posted`;
     isHumanReadGate = (name) => name === HUMAN_REVIEW_GATE || name === "merge" || name === "fix-rounds-spent" || name === "head-moved-externally";
     CALIBRATION_NO_TEST_FILTER = "omg-calibration-matches-no-test-file";
@@ -76864,6 +76932,10 @@ var init_engine = __esm({
        * copies and the prepare checks' process records go: the run dir in the
        * private layout (review-483 L8), the repository's OMC state root otherwise.
        */
+      /** The run's own NuGet packages folder (nuget-restore.ts): under the gate job root, removed with the run (omg factory run clean). */
+      nugetPackagesDir() {
+        return nugetRunPackagesDir(this.gateJobRoot(), runSlug(this.key));
+      }
       gateJobRoot() {
         const p = this.privateRun();
         return p ? (0, import_path117.join)(p.layout.runDir, "gates") : sandboxJobRoot(this.o.root);
@@ -76882,7 +76954,9 @@ var init_engine = __esm({
         if (!settings && this.containerIsolated()) return Promise.reject(new FactoryStepError('factory.run.sandbox.isolation "container" is set in your user config, but the gate settings were not resolved before a gate command; nothing ran'));
         const container = settings && this.containerImageId ? { ...settings, image: this.containerImageId } : settings;
         const mtp = isDotnetExe(req.exe) && this.dotnetMtpBase();
-        const r = this.o.gateSandbox({ ...req, ...mtp ? { dotnetMtp: true } : {}, nodeModulesTarget: (0, import_path117.join)(this.o.root, "node_modules"), ...nested.length > 0 ? { nestedNodeModulesTargets: nested } : {}, ...p ? { mainRoot: this.o.root, jobRoot: this.gateJobRoot() } : {}, ...container ? { container, runLabel: containerRunLabel(this.o.root, this.key) } : {} });
+        const nugetDir = this.nugetPackagesDir();
+        const nuget = !req.nugetPackages && isDotnetExe(req.exe) && (0, import_fs98.existsSync)(nugetDir) ? { nugetPackages: { dir: nugetDir, writable: false } } : {};
+        const r = this.o.gateSandbox({ ...req, ...nuget, ...mtp ? { dotnetMtp: true } : {}, nodeModulesTarget: (0, import_path117.join)(this.o.root, "node_modules"), ...nested.length > 0 ? { nestedNodeModulesTargets: nested } : {}, ...p ? { mainRoot: this.o.root, jobRoot: this.gateJobRoot() } : {}, ...container ? { container, runLabel: containerRunLabel(this.o.root, this.key) } : {} });
         if (!container) return r;
         return r.then((out) => {
           if (out.ran && out.imageId) this.containerImageId = out.imageId;
@@ -77339,6 +77413,10 @@ var init_engine = __esm({
       async privateNodeModules(p, path15, baseSha, head, loaded2) {
         if (this.gatesSandbox(loaded2).container) return null;
         const rule = lockfileUnchanged(p.repo, baseSha, head, p.ctx);
+        if (rule.lockfiles.length === 0 && rule.changed.length === 0 && this.dotnetRepo()) {
+          this.save((x) => ({ ...x, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: "no npm lockfile in this .NET repository: the prepare checkout gets no node_modules and no npm ci" }] }));
+          return null;
+        }
         if (rule.policy === "junction") {
           const failed = this.linkGateTree(path15, baseSha);
           return failed ? this.treeCopyPark(failed) : null;
@@ -78608,6 +78686,54 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
         if (this.gateDefinitionUnknownParked("nothing was pushed")) return true;
         const { sources } = gateDefinitionSources(gate);
         if (sources.length === 0) return false;
+        const { at, treeAt } = this.gateDefinitionHasher(sources);
+        const head = at(cand);
+        if (this.gateDefinitionPinned(s, head, at)) return false;
+        if (allowed === head) {
+          this.save((x) => ({ ...x, gateChangeApproved: head, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `gate definition change in ${cand.slice(0, 12)} accepted (--allow-gate-change): ${describeGateSources(sources)}` }] }));
+          return false;
+        }
+        const stale = allowed !== void 0 ? " (--allow-gate-change accepted only the definition the run parked on, and this one differs)" : "";
+        const plain = sources.filter((x) => !x.pattern);
+        const changed = sources.some((x) => x.pattern) ? patternSourceChanges(sources, treeAt(s.baseSha), treeAt(cand)) : [];
+        const named = [...plain.length > 0 ? [describeGateSources(plain)] : [], ...changed].join(", ") || describeGateSources(sources);
+        const specs = [.../* @__PURE__ */ new Set([...plain.map(gateSourcePathspec), ...changed.map(shellPath)])];
+        this.save((x) => setGate(x, "gate-definition-changed", `the change redefines the local gate "${gate.join(" ")}" (${named} differ from ${s.base})${stale}; offline the gate is the only check, so nothing was pushed. Inspect it with git -C ${this.o.root} diff ${s.baseSha.slice(0, 12)} ${cand.slice(0, 12)} -- ${(specs.length > 0 ? specs : sources.map(gateSourcePathspec)).join(" ")}, then rerun ${this.resume} --allow-gate-change to accept it, or ${cancelCommand(this.key)}`, this.iso(), { definition: head }));
+        return true;
+      }
+      /**
+       * The definition hash `head` (gateDefinitionHasher) is one the run trusts:
+       * the run's base's, the one --allow-gate-change accepted
+       * (gateChangeApproved), or the mirror's current base's.
+       */
+      gateDefinitionPinned(s, head, at) {
+        if (head === at(s.baseSha) || head === s.gateChangeApproved) return true;
+        let mirrorBase;
+        try {
+          mirrorBase = readMirrorRef(this.o.forge.config.repo.url, s.base);
+        } catch {
+        }
+        return !!mirrorBase && HEX4018.test(mirrorBase) && mirrorBase !== s.baseSha && head === at(mirrorBase);
+      }
+      /**
+       * True when the local gate's definition files at `sha` (the commit the
+       * dotnet restore step would evaluate with the network on) are pinned, as
+       * gateDefinitionParked decides at publish: unchanged from the base (or the
+       * mirror's base) or exactly the change a human accepted. A gate with no
+       * definition sources counts as pinned; one that cannot be pinned does not.
+       */
+      gateDefinitionTrustedAt(sha3) {
+        const s = this.state;
+        const gate = this.o.forge?.config.kind === "local" ? this.o.forge.config.local?.gate : void 0;
+        if (!gate || gate.length === 0 || !s.baseSha) return false;
+        const { sources, unresolved } = gateDefinitionSources(gate);
+        if (unresolved) return false;
+        if (sources.length === 0) return true;
+        const { at } = this.gateDefinitionHasher(sources);
+        return this.gateDefinitionPinned(s, at(sha3), at);
+      }
+      /** The definition hash of `sources` at a commit (`at`) and the commit's tree (`treeAt`), read from your repository. */
+      gateDefinitionHasher(sources) {
         const trees = /* @__PURE__ */ new Map();
         const treeAt = (sha3) => {
           let tree = trees.get(sha3);
@@ -78626,25 +78752,7 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
           const r = this.exec("git", ["show", `${sha3}:${path15}`], { cwd: this.o.root, env: TRUSTED_READ_ENV });
           return r.status === 0 ? r.stdout : void 0;
         }, () => treeAt(sha3)), "utf8").digest("hex");
-        const head = at(cand);
-        if (head === at(s.baseSha) || head === s.gateChangeApproved) return false;
-        let mirrorBase;
-        try {
-          mirrorBase = readMirrorRef(this.o.forge.config.repo.url, s.base);
-        } catch {
-        }
-        if (mirrorBase && HEX4018.test(mirrorBase) && mirrorBase !== s.baseSha && head === at(mirrorBase)) return false;
-        if (allowed === head) {
-          this.save((x) => ({ ...x, gateChangeApproved: head, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `gate definition change in ${cand.slice(0, 12)} accepted (--allow-gate-change): ${describeGateSources(sources)}` }] }));
-          return false;
-        }
-        const stale = allowed !== void 0 ? " (--allow-gate-change accepted only the definition the run parked on, and this one differs)" : "";
-        const plain = sources.filter((x) => !x.pattern);
-        const changed = sources.some((x) => x.pattern) ? patternSourceChanges(sources, treeAt(s.baseSha), treeAt(cand)) : [];
-        const named = [...plain.length > 0 ? [describeGateSources(plain)] : [], ...changed].join(", ") || describeGateSources(sources);
-        const specs = [.../* @__PURE__ */ new Set([...plain.map(gateSourcePathspec), ...changed.map(shellPath)])];
-        this.save((x) => setGate(x, "gate-definition-changed", `the change redefines the local gate "${gate.join(" ")}" (${named} differ from ${s.base})${stale}; offline the gate is the only check, so nothing was pushed. Inspect it with git -C ${this.o.root} diff ${s.baseSha.slice(0, 12)} ${cand.slice(0, 12)} -- ${(specs.length > 0 ? specs : sources.map(gateSourcePathspec)).join(" ")}, then rerun ${this.resume} --allow-gate-change to accept it, or ${cancelCommand(this.key)}`, this.iso(), { definition: head }));
-        return true;
+        return { at, treeAt };
       }
       async review() {
         const s = this.state;
@@ -79496,6 +79604,11 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
             if (this.state.sandboxedPrepareHead !== head) this.save((x) => ({ ...x, sandboxedPrepareHead: head }));
             if (r.credentialFilesReadable) this.noteCredentialFilesReadable(head);
             if (r.status === 0 && !r.timedOut) return { status: 0, stdout: redactGateOutput(r.output), stderr: "" };
+            const nuget = isDotnetExe(c.exe) ? classifyNugetFailure(r.output) : null;
+            if (nuget) {
+              const feed = nuget.kind === "private-feed" ? `; ${NUGET_PRIVATE_FEED_UNSUPPORTED} (${nuget.sources.join(", ") || "a feed answered 401 or 403"})` : "";
+              return stop({ name: GATE_INSTALL_GATE, reason: `${label} could not restore its NuGet packages on ${head.slice(0, 12)} (${nuget.codes.join(", ")}), which says nothing about the code, so no ci-fix lane was started${feed}. Prepare checks get no restore step (only the local gate does, with factory.run.gateInstall "sandboxed"): run the dotnet command as the local gate instead of a prepare check, or restore the PR branch's packages into your NuGet global packages folder yourself; then rerun ${this.resume}`, detail: parkTail(r.output) });
+            }
             const park = await this.calibrateGate(c, at.baseSha, at.commonGitDir, PREPARE_CHECK_TIMEOUT_MS, label, head);
             if (park?.junctionRead) {
               const switched = this.switchToGateTreeCopy(path15);
@@ -80063,6 +80176,89 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
         const commit = this.gateCfg?.loaded.config?.trustedBaseCommit ?? this.state.baseSha;
         return this.mtpGateParks(gate, this.gatesSandboxAt(commit), `the local gate "${gate.join(" ")}" could never pass there and ${outcome}`);
       }
+      /** The head whose next gate run starts with the networked dotnet restore (nugetFailureNext asked; ensureLocalGate runs it). */
+      nugetRestoreDue;
+      /** Heads the networked dotnet restore already ran for in this process: once per head, then a park. */
+      nugetRestoreTried = /* @__PURE__ */ new Set();
+      /**
+       * What follows a dotnet gate run that failed restoring NuGet packages
+       * (classifyNugetFailure; its FAILURE record is already gone, so no ci-fix
+       * lane starts): `restore` (factory.run.gateInstall "sandboxed", an OS
+       * sandbox gate, not yet tried for this head), else the park.
+       */
+      nugetFailureNext(head, gate, nuget, sandboxed, tail4) {
+        const what = `the local gate \`${gate.join(" ")}\` could not restore its NuGet packages on ${head.slice(0, 12)} (${nuget.codes.join(", ")}), which says nothing about the code, so no ci-fix lane was started`;
+        const yourself = `restore the PR branch's packages into your NuGet global packages folder yourself (dotnet restore on that branch; the sandbox reads that folder), then rerun ${this.resume}; or ${cancelCommand(this.key)}`;
+        const detail = tail4 ? parkTail(tail4) : void 0;
+        const park = (reason) => ({ name: GATE_INSTALL_GATE, reason, ...detail ? { detail } : {} });
+        if (nuget.kind === "private-feed") {
+          return park(`${what}: ${NUGET_PRIVATE_FEED_UNSUPPORTED} (${nuget.sources.join(", ") || "a feed answered 401 or 403"}); the sandbox never gets your NuGet.Config or its credentials. Make the packages come from nuget.org, or ${yourself}`);
+        }
+        if (!sandboxed) return park(`${what}; the gate ran without the OS sandbox or in the gate container, where the engine runs no restore step: check that the packages and versions exist and the feed is reachable, or ${yourself}`);
+        if (this.nugetRestoreTried.has(head)) return park(`${what}, even after the sandboxed dotnet restore for this head ran${localDetailNote(this.key, "the gate output")}; ${yourself}`);
+        let mode;
+        try {
+          mode = resolveGateInstall(this.runUserConfig(), this.trustedBaseLayer(this.gateCfg?.loaded.config?.trustedBaseCommit)).mode;
+        } catch (error62) {
+          return park(`${what}, and factory.run.gateInstall could not be read: ${errText6(error62)}; fix it, then rerun ${this.resume}`);
+        }
+        if (mode === "park") return park(`${what}. The OS sandbox has no network, so every package must already be in your NuGet global packages folder (NUGET_PACKAGES, else ~/.nuget/packages). To fetch the missing ones from nuget.org, ${GATE_INSTALL_SANDBOXED_HINT}, then rerun ${this.resume}; or ${yourself}`);
+        return "restore";
+      }
+      /**
+       * The networked dotnet restore before a dotnet gate (nuget-restore.ts):
+       * `dotnet restore <the gate's targets> -m:1` in the prepare checkout,
+       * through the gate's OS sandbox runner with only NUGET_HOSTS reachable,
+       * writing new packages into the run's own packages folder (the real cache
+       * the read-only fallback). Restore evaluates the repository's MSBuild
+       * files with the network on, so it runs only when the gate's definition
+       * files at `head` are pinned (gateDefinitionTrustedAt: unchanged from the
+       * base or the change a human accepted with --allow-gate-change), after
+       * ensureLocalGate's checkout checks and the sandboxed clean, and with no
+       * recorded prepare or gate process still running there. Null when it
+       * passed; else the park (never a ci-fix lane).
+       */
+      async nugetRestore(head, gate, checkout, common, gates) {
+        const what = `the gate needs NuGet packages that are not in your NuGet global packages folder, and the sandboxed dotnet restore`;
+        if (gates.mode !== "enforced" || gates.container) return { name: GATE_INSTALL_GATE, reason: `${what} runs only for gates in the OS sandbox; rerun ${this.resume}` };
+        if (!this.gateDefinitionTrustedAt(head)) {
+          return { name: GATE_INSTALL_GATE, reason: `${what} did not run: the gate's definition files at ${head.slice(0, 12)} are neither ${this.state.base}'s nor the change accepted with --allow-gate-change, and dotnet restore evaluates them with the network on; inspect the project files on the branch, then rerun ${this.resume}, or ${cancelCommand(this.key)}` };
+        }
+        let live;
+        try {
+          live = this.liveCheckoutProcs(head);
+        } catch (error62) {
+          return { name: "gates", reason: `${what} did not run: ${errText6(error62)}` };
+        }
+        if (live.length > 0) return { name: "gates", reason: `${what} did not run: process(es) a prepare check or the local gate started in the engine's prepare checkout ${checkout} still run (pid ${live.join(", ")}); stop them (Task Manager, or kill -9 ${live.join(" ")}), then rerun ${this.resume}` };
+        const args = dotnetRestoreArgs(gate.slice(1));
+        if (!args) return { name: GATE_INSTALL_GATE, reason: `${what} cannot be derived from the gate \`${gate.join(" ")}\` (it runs no MSBuild); restore the packages yourself, then rerun ${this.resume}` };
+        const argv = [gate[0], ...args];
+        const target = resolveLocalGateArgv(argv, { cwd: checkout, subject: "the sandboxed dotnet restore", configKey: "factory.run.gateInstall" });
+        if ("missing" in target) return { name: GATE_INSTALL_GATE, reason: `${what} cannot start (${target.missing}); rerun ${this.resume}` };
+        const dir = this.nugetPackagesDir();
+        (0, import_fs98.mkdirSync)(dir, { recursive: true });
+        const linkBefore = checkoutGitLink(checkout).hash;
+        const started = this.clock();
+        let r;
+        try {
+          r = this.o.gateSandbox ? await this.sandboxRun({ purpose: "restore", argv, exe: target.exe, args: target.args, cwd: checkout, commonGitDir: common, timeoutMs: this.localGateTimeout() * 6e4, network: "nuget", nugetPackages: { dir, writable: true }, ...gates.requireDeniedPaths ? { requireDeniedPaths: true } : {} }) : { ran: false, reason: "no OS sandbox runner was given to the engine" };
+        } catch (error62) {
+          r = { ran: false, reason: errText6(error62) };
+        }
+        if (checkoutGitLink(checkout).hash !== linkBefore) {
+          return { name: "lane-tampered", reason: `the engine's prepare checkout ${checkout} has a .git file that changed while the sandboxed dotnet restore ran, so the local gate did not run; inspect and remove it by hand, then rerun ${this.resume}` };
+        }
+        if (!r.ran) return { name: GATE_INSTALL_GATE, reason: `${what} could not run in the OS sandbox (${r.reason}); fix that, or set factory.run.gateInstall "park", then rerun ${this.resume}` };
+        if (r.status !== 0 || r.timedOut) {
+          const failure3 = classifyNugetFailure(r.output);
+          const why = failure3?.kind === "private-feed" ? `${NUGET_PRIVATE_FEED_UNSUPPORTED} (${failure3.sources.join(", ") || "a feed answered 401 or 403"}), and the sandbox never gets your NuGet.Config or its credentials` : `a package or version the project files name may not exist on nuget.org${failure3 ? ` (${failure3.codes.join(", ")})` : ""}`;
+          return { name: GATE_INSTALL_GATE, reason: `${what} with only api.nuget.org reachable failed (exit ${r.status}${r.timedOut ? ", timed out" : ""}): ${why}. That needs a human, not a ci-fix lane${localDetailNote(this.key, "its output")}: fix the package references on the branch (a change to them parks at gate-definition-changed for your approval), then rerun ${this.resume}; or ${cancelCommand(this.key)}`, detail: parkTail(r.output) };
+        }
+        const seconds = Math.round((this.clock() - started) / 1e3);
+        this.save((x) => ({ ...x, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `dotnet restore ran in the OS sandbox with only api.nuget.org reachable in the prepare checkout on ${head.slice(0, 12)} (${seconds} s); new packages went to the run's own packages folder, and the gate runs again offline` }] }));
+        return null;
+      }
       async ensureLocalGate(head) {
         const f = this.o.forge;
         const stateDir = this.localGateStateDir();
@@ -80141,6 +80337,15 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
         if (this.mtpGateParks(sealed ?? gate, gates, `the local gate "${(sealed ?? gate).join(" ")}" did not run`)) return false;
         const common = this.privateRun()?.repo.gitDir ?? (0, import_path117.resolve)(this.o.root, this.run(["rev-parse", "--git-common-dir"]).trim());
         if (dotnetGate && !await this.dotnetBuildStateReady(head, checkout, gitArgsRead, read, gates, common)) return false;
+        if (dotnetGate && this.nugetRestoreDue === head) {
+          this.nugetRestoreDue = void 0;
+          this.nugetRestoreTried.add(head);
+          const park2 = await this.nugetRestore(head, gate, checkout, common, gates);
+          if (park2) {
+            this.gate(park2.name, park2.reason, park2.detail);
+            return false;
+          }
+        }
         this.progress.heartbeat("gates", `local gate ${gate.join(" ")} on ${head.slice(0, 12)}`, this.fields());
         const input2 = { stateDir, root: this.o.root, head, gate, timeoutMinutes, checkout, ...this.o.localGate ? { runner: this.o.localGate } : {}, now: () => new Date(this.clock()) };
         const recordedLinks = recordedWorktreeGitLinks(checkout);
@@ -80210,6 +80415,17 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
         }
         if (await this.recheckFailed("after the local gate")) return false;
         if (record3.sandboxNote) this.noteCredentialFilesReadable(head);
+        const nuget = dotnetGate && record3.state === "FAILURE" ? classifyNugetFailure(record3.tail) : null;
+        if (nuget) {
+          (0, import_fs98.rmSync)(localCheckRecordPath(stateDir, this.o.root, head), { force: true });
+          const next = this.nugetFailureNext(head, gate, nuget, record3.sandbox === "enforced" && !gates.container, record3.tail);
+          if (next === "restore") {
+            this.nugetRestoreDue = head;
+            return this.ensureLocalGate(head);
+          }
+          this.gate(next.name, next.reason, next.detail);
+          return false;
+        }
         if (record3.sandbox !== "enforced" || record3.state !== "FAILURE") return true;
         const base = this.state.baseSha;
         const target = resolveLocalGateArgv(gate, { cwd: checkout });
