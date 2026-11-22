@@ -95,6 +95,12 @@ function laneEdits(worktree: string): void {
   writeFileSync(join(worktree, 'nested', 'deeper', 'still', 'n.txt'), 'n\n');
   writeFileSync(join(worktree, 'run.sh'), '#!/bin/sh\necho hi\n');
   if (process.platform !== 'win32') chmodSync(join(worktree, 'run.sh'), 0o755);
+  // The two files the lane leaves alone: `worktree add` honoured the committed `eol=crlf` and wrote them with CRLF, which
+  // the attribute-free staging does not convert back. Whether `status` then lists them depends on git's per-second racy
+  // check at checkout (a smudged index entry is re-hashed, a clean one is not), so their committed bytes are restored:
+  // the comparison covers what the lane changed, the same way on every run.
+  writeFileSync(join(worktree, '.gitattributes'), '* text=auto eol=crlf\n*.dat binary\n');
+  writeFileSync(join(worktree, 'nested', 'deep', 'keep.txt'), 'k\n');
 }
 
 describe('engine-read staging: the tree equals the one `git add -A` staged', () => {

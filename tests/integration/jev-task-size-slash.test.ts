@@ -147,6 +147,18 @@ describe("keyword-detector.mjs: OMC_JEV_TASK_SIZE_SLASH_ANYWHERE", () => {
       .map((entry) => entry.mode);
   }
 
+  /** The resolver's task-size row is in shadow.jsonl (its last write); 10 s at most. */
+  async function waitForTaskSizeRow() {
+    const deadline = Date.now() + 10_000;
+    for (;;) {
+      let modes: string[] = [];
+      try { modes = taskSizeModes(); } catch { /* not written yet */ }
+      if (modes.length > 0) return;
+      if (Date.now() > deadline) throw new Error("the shadow-mode resolver wrote no task-size row within 10 s");
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+  }
+
   function expectKept(output: Awaited<ReturnType<typeof run>>, mode = "ralph") {
     expectModeKept(output.hookSpecificOutput?.additionalContext ?? "", mode);
   }
@@ -304,6 +316,9 @@ describe("keyword-detector.mjs: OMC_JEV_TASK_SIZE_SLASH_ANYWHERE", () => {
         OMC_JEV_TASK_SIZE_SLASH_ANYWHERE: "1",
         OMC_JEV: jev,
       }));
+      // Shadow mode asks Jev from a detached resolver that outlives the hook and writes its row into cwd: wait for
+      // it, or afterEach removes cwd while the resolver recreates jev-logs (ENOTEMPTY).
+      if (jev === "task-size") await waitForTaskSizeRow();
     });
   });
 
