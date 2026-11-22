@@ -44,11 +44,11 @@ export type FakeStep = {
 };
 /**
  * The lane path an issue is built to exercise (score.ts scoreClassOf): a
- * ci-fix lane after the gate fails on a check the issue text does not
- * mention; a conflict-fix lane after the harness lands the issue's
- * `conflictsWith` partner. The path is reported as the result's scoreClass,
- * it is not part of the pass verdict (a live lane that runs the tests itself
- * passes without a ci-fix lane).
+ * ci-fix lane after a prepare check fails that the lane cannot run through
+ * the repository's tests; a conflict-fix lane after the harness lands the
+ * issue's `conflictsWith` partner. The path is reported as the result's
+ * scoreClass, it is not part of the pass verdict; a merged park that skipped
+ * the path is a bench finding (the fixture did not exercise it).
  */
 export type BenchPath = 'ci-fix' | 'conflict-fix';
 export interface BenchIssue {

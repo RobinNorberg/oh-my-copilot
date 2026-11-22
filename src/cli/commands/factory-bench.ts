@@ -28,12 +28,13 @@ export function factoryBenchCommand(deps: { sandboxProblem?: () => string | null
     .command('init')
     .argument('<dir>', 'a new or empty directory for the fixture (the repository goes to <dir>/repo)')
     .option('--node-modules <dir>', 'link <dir>/repo/node_modules to this node_modules (it needs vitest and typescript) instead of running npm install there')
+    .option('--force', 'when an earlier fixture at this path left engine state in the factory ledger dir (its run ledgers, heal ledgers, tamper hold, keyed by the repository path), remove exactly that state instead of refusing; the directory itself must still be new or empty')
     .description('Create the bench fixture: a TypeScript + vitest repository on the local forge with the seeded backlog')
-    .action((dir: string, o: { nodeModules?: string }) => {
+    .action((dir: string, o: { nodeModules?: string; force?: boolean }) => {
       try {
         const gitProblem = factoryGitProblem();
         if (gitProblem) throw new Error(gitProblem);
-        const meta = createBenchFixture(dir, o.nodeModules ? { nodeModules: o.nodeModules } : {});
+        const meta = createBenchFixture(dir, { ...(o.nodeModules ? { nodeModules: o.nodeModules } : {}), ...(o.force ? { force: true } : {}) });
         console.log(chalk.green(`bench fixture v${meta.fixtureVersion} at ${meta.root} (${meta.issues.length} issues)`));
         if (!o.nodeModules) console.log(`next: npm install in ${meta.root}, then omg factory bench run ${dir} --fake (or --live --max-requests <n>)`);
       } catch (error) {

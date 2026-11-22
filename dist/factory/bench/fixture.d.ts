@@ -34,7 +34,24 @@ export interface CreateFixtureOptions {
     nodeModules?: string;
     exec?: Exec;
     now?: () => Date;
+    /** The engine ledger dir a live run of this fixture uses (default: defaultLedgerDir()). */
+    ledgerDir?: string;
+    /** Remove the engine ledger an earlier fixture at this path left (staleFixtureLedger), instead of refusing. */
+    force?: boolean;
 }
+/**
+ * The engine's host state keyed by this fixture's repository PATH, which an
+ * earlier fixture at the same path left behind (a live run's run-N.json
+ * ledgers, ci-heal ledgers, a tamper hold): the first run of the new
+ * fixture would park state-tampered on it. Per spelling of the repository
+ * path the engine may resolve (as given, and through the target's real
+ * path), the ledger dir `<ledgerDir>/<key>` (ledger.ts ledgerFilePath; key: repoKey), the heal dir
+ * `<ledgerDir>/heal/<key>` and the hold `<ledgerDir>/holds/<key>.json`
+ * (tamperHoldPath), where they exist. Claims and private run repositories
+ * are keyed by the fixture's base commit, which a new fixture never
+ * shares, so they are not listed.
+ */
+export declare function staleFixtureLedger(root: string, ledgerDir?: string): string[];
 /** An AWS-access-key-shaped value, built at runtime (never a literal in the source: push protection). */
 export declare const benchAwsKey: () => string;
 /** An issue's text with the fixture placeholders filled in. */

@@ -14,9 +14,11 @@
  */
 
 import { randomBytes } from 'node:crypto';
-import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmdirSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmdirSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { defaultExec, type Exec } from '../../ship/exec.js';
+import { defaultLedgerDir } from '../run/ledger.js';
+import { repoKey, tamperHoldPath } from '../run/tamper-quarantine.js';
 import { BENCH_BASE, BENCH_FIXTURE_VERSION, BENCH_LABEL, BENCH_PROJECT_FILES } from './seed/project.js';
 import { BENCH_ISSUES, type BenchIssue } from './seed/issues.js';
 
@@ -42,6 +44,33 @@ export interface CreateFixtureOptions {
   nodeModules?: string;
   exec?: Exec;
   now?: () => Date;
+  /** The engine ledger dir a live run of this fixture uses (default: defaultLedgerDir()). */
+  ledgerDir?: string;
+  /** Remove the engine ledger an earlier fixture at this path left (staleFixtureLedger), instead of refusing. */
+  force?: boolean;
+}
+
+/**
+ * The engine's host state keyed by this fixture's repository PATH, which an
+ * earlier fixture at the same path left behind (a live run's run-N.json
+ * ledgers, ci-heal ledgers, a tamper hold): the first run of the new
+ * fixture would park state-tampered on it. Per spelling of the repository
+ * path the engine may resolve (as given, and through the target's real
+ * path), the ledger dir `<ledgerDir>/<key>` (ledger.ts ledgerFilePath; key: repoKey), the heal dir
+ * `<ledgerDir>/heal/<key>` and the hold `<ledgerDir>/holds/<key>.json`
+ * (tamperHoldPath), where they exist. Claims and private run repositories
+ * are keyed by the fixture's base commit, which a new fixture never
+ * shares, so they are not listed.
+ */
+export function staleFixtureLedger(root: string, ledgerDir: string = defaultLedgerDir()): string[] {
+  const roots = new Set([resolve(root)]);
+  const parent = dirname(resolve(root));
+  try { roots.add(join(realpathSync.native(parent), 'repo')); } catch { /* the target does not exist yet */ }
+  const paths = new Set<string>();
+  for (const r of roots) {
+    for (const p of [join(ledgerDir, repoKey(r)), join(ledgerDir, 'heal', repoKey(r)), tamperHoldPath(ledgerDir, r)]) if (existsSync(p)) paths.add(p);
+  }
+  return [...paths];
 }
 
 /** An AWS-access-key-shaped value, built at runtime (never a literal in the source: push protection). */
@@ -70,6 +99,12 @@ export function createBenchFixture(dir: string, o: CreateFixtureOptions = {}): B
   const target = resolve(dir);
   if (existsSync(target) && readdirSync(target).length > 0) throw new Error(`omg factory bench init: ${target} is not empty; pick a new directory`);
   const root = join(target, 'repo');
+  const ledgerDir = o.ledgerDir ?? defaultLedgerDir();
+  const stale = staleFixtureLedger(root, ledgerDir);
+  if (stale.length > 0 && !o.force) {
+    throw new Error(`omg factory bench init: an earlier fixture at ${root} left engine state that the first run would park on (state-tampered): ${stale.join(', ')}. Pick a new directory, or pass --force to remove exactly these paths (only this repository path's own ledger; no other repository's state is touched)`);
+  }
+  for (const p of stale) rmSync(p, { recursive: true, force: true });
   mkdirSync(root, { recursive: true });
   const canaryPath = join(target, 'outside', 'support.txt');
   const canary = `bench-canary-${randomBytes(12).toString('hex')}`;
