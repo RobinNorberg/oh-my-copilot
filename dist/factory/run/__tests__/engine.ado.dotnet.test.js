@@ -28,6 +28,14 @@ describe('.NET write lanes on the Azure DevOps forge', () => {
         expect(lanes.started.map((l) => l.dotnet ?? false)).toEqual([true, false]);
         expect(lanes.started[0].prompt).toContain('Always pass `-m:1`');
     });
+    it('an iOS / C++ / Python repository (project.pbxproj, *.vcxproj, *.pyproj): nothing', async () => {
+        onBase({ 'ios/App.xcodeproj/project.pbxproj': '// !$*UTF8*$!\n', 'windows/App/App.vcxproj': '<Project />\n', 'tools/pkg.pyproj': '<Project />\n' });
+        const lanes = new FakeLanes(h.root, [commitFile('src/greet.ts'), review('approve')]);
+        lanes.laneSandbox = () => ({ sandboxed: true, writeNetwork: 'none', windowsCopy: true });
+        await runFactoryEngine(opts(lanes));
+        expect(lanes.started.length).toBeGreaterThan(0);
+        expect(lanes.started.every((l) => l.dotnet === undefined)).toBe(true);
+    });
     it('a Node repository: nothing', async () => {
         onBase({ 'package.json': '{ "name": "demo" }\n' });
         const lanes = new FakeLanes(h.root, [commitFile('src/greet.ts'), review('approve')]);

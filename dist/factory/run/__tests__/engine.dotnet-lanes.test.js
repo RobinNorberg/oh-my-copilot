@@ -9,7 +9,8 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { runFactoryEngine } from '../engine.js';
-import { commitFile, FakeLanes, gitIn, review } from './fake-lanes.js';
+import { readFactoryState } from '../state.js';
+import { commitFile, FakeLanes, gitIn, ISSUE, review } from './fake-lanes.js';
 import { h, opts, useEngineHarness } from './engine-harness.js';
 useEngineHarness();
 const RULE = 'Always pass `-m:1`';
@@ -45,6 +46,17 @@ describe('.NET write lanes on the GitHub forge', () => {
         onBase({ 'package.json': '{ "name": "demo" }\n', 'bin/cli.js': '#!/usr/bin/env node\n' });
         const lanes = sandboxed(new FakeLanes(h.root, [commitFile('src/greet.ts'), review('approve')]));
         await runFactoryEngine(opts(lanes));
+        expect(lanes.started.every((l) => l.dotnet === undefined)).toBe(true);
+        expect(lanes.started.some((l) => l.prompt.includes('-m:1'))).toBe(false);
+    });
+    it('an iOS / React Native / C++ / Python repository (project.pbxproj, *.vcxproj, *.pyproj, *.esproj, *.proj) is not a .NET run', async () => {
+        onBase({
+            'package.json': '{ "name": "demo" }\n', 'ios/App.xcodeproj/project.pbxproj': '// !$*UTF8*$!\n', 'windows/App/App.vcxproj': '<Project />\n',
+            'tools/pkg.pyproj': '<Project />\n', 'web/App.esproj': '<Project />\n', 'build.proj': '<Project />\n',
+        });
+        const lanes = sandboxed(new FakeLanes(h.root, [commitFile('src/greet.ts'), review('approve')]));
+        await runFactoryEngine(opts(lanes));
+        expect(lanes.started.length).toBeGreaterThan(0);
         expect(lanes.started.every((l) => l.dotnet === undefined)).toBe(true);
         expect(lanes.started.some((l) => l.prompt.includes('-m:1'))).toBe(false);
     });
@@ -90,6 +102,9 @@ describe('.NET write lanes on the GitHub forge', () => {
         expect(out.exitCode, out.message).not.toBe(0);
         expect(out.message).toMatch(/could not be listed to tell whether it is a \.NET repository \(git ls-tree exit 128: fatal: not a tree object\)/);
         expect(lanes.started).toEqual([]);
+        // A step error, read before the lane is recorded: no lane start failure that would consume a lane retry (review of #606 L4).
+        expect(out.message).not.toMatch(/could not start/);
+        expect(readFactoryState(h.root, ISSUE)?.lanes ?? []).toEqual([]);
     });
 });
 //# sourceMappingURL=engine.dotnet-lanes.test.js.map

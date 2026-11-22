@@ -223,22 +223,32 @@ export declare function basenameMatcher(globs: readonly string[]): (path: string
 /** True when a repository file defines a dotnet gate (DOTNET_DEFINITION_PATTERNS). */
 export declare const isDotnetDefinitionFile: (path: string) => boolean;
 /**
- * The solution and project files that make a repository a .NET one for its
- * write lanes when the trusted base commit's tree holds one (engine.ts
- * dotnetRepo), matched as DOTNET_DEFINITION_PATTERNS are.
+ * The files that DETECT a .NET repository for its write lanes when the
+ * trusted base commit's tree holds one (engine.ts dotnetRepo): solutions and
+ * the .NET language project files only, matched as DOTNET_DEFINITION_PATTERNS
+ * are. Deliberately narrower than DOTNET_DEFINITION_PATTERNS' `*.*proj`, which
+ * also matches an Xcode `project.pbxproj`, `*.vcxproj`, `*.pyproj`,
+ * `*.esproj` and the generic MSBuild `*.proj` (a traversal
+ * `dirs.proj`, a C++ build): those do not make an iOS, React Native, C++ or
+ * Python repository a .NET one (a .NET repository using `dirs.proj` also has
+ * a csproj). The two lists have different jobs: this one turns the .NET lane
+ * env on; DOTNET_DEFINITION_PATTERNS pins a dotnet gate and keeps auto-merge
+ * off every MSBuild file, so it stays wide.
  */
 export declare const DOTNET_PROJECT_PATTERNS: readonly string[];
 /** True when a repository file is a .NET solution or project file (DOTNET_PROJECT_PATTERNS). */
 export declare const isDotnetProjectFile: (path: string) => boolean;
 export { DOTNET_BUILD_DIRS };
 /**
- * The index of the first segment of a repository path (`/`-separated, as git
- * lists it) that is a DOTNET_BUILD_DIRS name, or -1: also -1 for a path with
- * an empty, `.` or `..` segment or a `\`. A node_modules segment counts like
- * any other: the callers leave out the package trees the engine itself links
- * or copies (engine.ts readGateCheckout), and only those.
+ * The index of the first segment of a repository path that is a
+ * DOTNET_BUILD_DIRS name, or -1: also -1 when a node_modules segment comes
+ * first (a package tree, whoever installed it, is never build output and the
+ * clean step never enters one; a node_modules inside a build dir is build
+ * output), and for a path walkStop rejects.
  */
 export declare function dotnetBuildDirIndex(path: string): number;
+/** True when a repository path is at or under a node_modules dir that comes before any build dir (walkStop). */
+export declare function inPackageTree(path: string): boolean;
 /** True when a repository path lies under a build dir (dotnetBuildDirIndex); a path that is itself named like one is not under it. */
 export declare function underDotnetBuildDir(path: string): boolean;
 /**
@@ -246,12 +256,21 @@ export declare function underDotnetBuildDir(path: string): boolean;
  * paths), the definition files MSBuild would read for a dotnet gate although
  * no commit pins them (an ignored `App.csproj.user` or `Directory.Build.rsp`),
  * outside the build output dirs (`bin/`, `obj/`, `artifacts/`), which a
- * sandboxed step empties before a dotnet gate run (dotnet-clean.ts). The
- * caller leaves out the package trees the engine links or copies; a file
- * under any other dir named `node_modules` counts. The PR's code run there
- * earlier (a prepare check, an earlier gate run) can leave one.
+ * sandboxed step empties before a dotnet gate run (dotnet-clean.ts), and
+ * outside `node_modules` (inPackageTree: real packages ship `*.props`,
+ * `*.vcxproj` or `*.sln` files; MSBuild reads one there only for a project
+ * under that dir, and the engine parks on a head that tracks one:
+ * trackedPackageTreeProjects). The PR's code run there earlier (a prepare
+ * check, an earlier gate run) can leave one.
  */
 export declare function strayDotnetDefinitionFiles(untracked: readonly string[]): string[];
+/**
+ * Of a head's tracked paths, the .NET definition files (DOTNET_DEFINITION_PATTERNS)
+ * under a node_modules dir (inPackageTree). The clean step never enters such a
+ * dir and the checks leave it out, so build output a project there would
+ * read is never cleaned: a dotnet gate does not run on such a head.
+ */
+export declare function trackedPackageTreeProjects(tracked: readonly string[]): string[];
 /** A commit's files as [path, blob id] (`git ls-tree -r`). */
 export type GateTree = ReadonlyArray<readonly [string, string]>;
 /** The paths the pattern sources match whose blob differs between two trees ([path, blob id]): added, removed or changed. */

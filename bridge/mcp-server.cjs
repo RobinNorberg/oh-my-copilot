@@ -71922,11 +71922,13 @@ var init_merge_policy = __esm({
 });
 
 // src/factory/run/dotnet-clean.ts
-var DOTNET_BUILD_DIRS;
+var DOTNET_BUILD_DIRS, isDotnetBuildDirName, isPackageTreeName;
 var init_dotnet_clean = __esm({
   "src/factory/run/dotnet-clean.ts"() {
     "use strict";
     DOTNET_BUILD_DIRS = /* @__PURE__ */ new Set(["bin", "obj", "artifacts"]);
+    isDotnetBuildDirName = (name) => DOTNET_BUILD_DIRS.has(name.toLowerCase());
+    isPackageTreeName = (name) => name.toLowerCase() === "node_modules";
   }
 });
 
@@ -72185,17 +72187,28 @@ function basenameMatcher(globs) {
   const re = new RegExp(`^(?:${globs.map((g) => g.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*")).join("|")})$`, "is");
   return (path15) => re.test(openedBasename(path15)) || re.test(foldedName(basenameOf(path15)));
 }
-function dotnetBuildDirIndex(path15) {
+function walkStop(path15) {
   const segs = path15.replace(/\/+$/, "").split("/");
-  if (segs.some((s) => s === "" || s === "." || s === ".." || s.includes("\\"))) return -1;
-  return segs.findIndex((s) => DOTNET_BUILD_DIRS.has(s.toLowerCase()));
+  if (segs.some((s) => s === "" || s === "." || s === ".." || s.includes("\\"))) return null;
+  const at = segs.findIndex((s) => isPackageTreeName(s) || isDotnetBuildDirName(s));
+  return at < 0 ? null : { at, packageTree: isPackageTreeName(segs[at]) };
+}
+function dotnetBuildDirIndex(path15) {
+  const stop = walkStop(path15);
+  return stop && !stop.packageTree ? stop.at : -1;
+}
+function inPackageTree(path15) {
+  return walkStop(path15)?.packageTree === true;
 }
 function underDotnetBuildDir(path15) {
   const at = dotnetBuildDirIndex(path15);
   return at >= 0 && at < path15.replace(/\/+$/, "").split("/").length - 1;
 }
 function strayDotnetDefinitionFiles(untracked) {
-  return untracked.filter((p) => !underDotnetBuildDir(p) && isDotnetDefinitionFile(p));
+  return untracked.filter((p) => !underDotnetBuildDir(p) && !inPackageTree(p) && isDotnetDefinitionFile(p));
+}
+function trackedPackageTreeProjects(tracked) {
+  return tracked.filter((p) => inPackageTree(p) && isDotnetDefinitionFile(p));
 }
 function dotnetSource(args, shown) {
   const sub = args[0]?.toLowerCase();
@@ -72410,7 +72423,7 @@ var init_local_gate = __esm({
     basenameOf = (path15) => path15.split(/[\\/]/).pop() ?? path15;
     openedBasename = (path15) => foldedName(basenameOf(path15).replace(/:.*$/s, "")).replace(/[. ]+$/, "");
     isDotnetDefinitionFile = basenameMatcher(DOTNET_DEFINITION_PATTERNS);
-    DOTNET_PROJECT_PATTERNS = ["*.sln", "*.slnx", "*.*proj"];
+    DOTNET_PROJECT_PATTERNS = ["*.sln", "*.slnx", "*.csproj", "*.fsproj", "*.vbproj"];
     isDotnetProjectFile = basenameMatcher(DOTNET_PROJECT_PATTERNS);
     DOTNET_GATE_SUBCOMMANDS = /* @__PURE__ */ new Set(["build", "test"]);
     DOTNET_ADAPTER_OPTIONS = /* @__PURE__ */ new Set(["--test-adapter-path", "-a"]);
@@ -80002,15 +80015,17 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
           const status = [...gitArgs, "-c", "core.untrackedCache=false", "status", "--porcelain=v1", "-z", "--untracked-files=all"];
           out.dirty = checkoutChanges(this.o.root, checkout, runHostGit(checkout, status, void 0, fresh), trustedNestedRels(this.o.root, checkout, this.baseWorkspaces()));
           if (dotnet) {
-            const ours = this.engineTreeMatcher(checkout);
-            out.untracked = runHostGit(checkout, [...gitArgs, "ls-files", "--others", "-z"], void 0, fresh).split("\0").filter((p) => p && !ours(p));
+            out.untracked = runHostGit(checkout, [...gitArgs, "ls-files", "--others", "-z"], void 0, fresh).split("\0").filter(Boolean);
+            const tracked = [];
             for (const line of runHostGit(checkout, [...gitArgs, "ls-files", "-s", "-z"], void 0, fresh).split("\0")) {
               const tab = line.indexOf("	");
               if (tab < 0) continue;
               const p = line.slice(tab + 1);
               if (line.startsWith("160000 ")) out.gitlinks.push(p);
-              else if (dotnetBuildDirIndex(p) >= 0 && !ours(p)) out.kept.push(p);
+              else tracked.push(p);
             }
+            out.kept = tracked.filter((p) => dotnetBuildDirIndex(p) >= 0);
+            out.packageTreeProjects = trackedPackageTreeProjects(tracked);
           }
         } catch (error62) {
           out.problem = errText6(error62);
@@ -80018,25 +80033,6 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
           (0, import_fs98.rmSync)(indexDir, { recursive: true, force: true });
         }
         return out;
-      }
-      /**
-       * The node_modules dirs the engine itself links or copies into `checkout`
-       * (repository paths): the root one and the workspace packages' it vouches
-       * for (trustedNestedRels). A dotnet gate's checks and the clean step leave
-       * exactly these out; any other dir named node_modules is the repository's
-       * (or the PR's) and is checked and cleaned like the rest.
-       */
-      engineTrees(checkout) {
-        return ["node_modules", ...trustedNestedRels(this.o.root, checkout, this.baseWorkspaces()).map((rel) => `${rel}/node_modules`)];
-      }
-      /** Whether a repository path (as git lists it) is one of engineTrees or under one; case-insensitive where the file system is (Windows, macOS). */
-      engineTreeMatcher(checkout) {
-        const fold5 = (p) => process.platform === "linux" ? p : p.toLowerCase();
-        const trees = this.engineTrees(checkout).map(fold5);
-        return (path15) => {
-          const p = fold5(path15.replace(/\/+$/, ""));
-          return trees.some((t) => p === t || p.startsWith(`${t}/`));
-        };
       }
       /**
        * The gitlink (submodule) dirs of the head that are not empty in
@@ -80082,8 +80078,12 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
        */
       async dotnetBuildStateReady(head, checkout, gitArgs, read, gates, common) {
         const inBuild = (p) => dotnetBuildDirIndex(p) >= 0;
-        const nestedRepos = (untracked) => untracked.filter((p) => p.endsWith("/") && !inBuild(p));
+        const nestedRepos = (untracked) => untracked.filter((p) => p.endsWith("/") && !inBuild(p) && !inPackageTree(p));
         const list = (paths) => `${paths.slice(0, 5).join(", ")}${paths.length > 5 ? `, ${paths.length - 5} more` : ""}`;
+        if (read.packageTreeProjects && read.packageTreeProjects.length > 0) {
+          this.gate("gates", `a tracked .NET project under a node_modules directory is not supported: build output there is not cleaned (${head.slice(0, 12)} tracks ${list(read.packageTreeProjects)}), so the dotnet gate did not run; move the .NET files out of node_modules on the branch, or cancel with ${cancelCommand(this.key)}; then rerun ${this.resume}`);
+          return false;
+        }
         const recovery = `inspect ${checkout}, delete them by hand or start again with a fresh checkout (${this.freshCheckoutRecovery()}), then rerun ${this.resume}`;
         const nested = nestedRepos(read.untracked);
         if (nested.length > 0) {
@@ -80119,8 +80119,7 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
           this.gate("gates", `the step that empties the dotnet gate's build dirs is missing (${script}: the oh-my-copilot install has no dist), so the local gate did not run; reinstall oh-my-copilot, then rerun ${this.resume}`);
           return false;
         }
-        const trees = this.engineTrees(checkout);
-        const argv = [process.execPath, script, String(trees.length), ...trees, ...read.kept];
+        const argv = [process.execPath, script, ...read.kept];
         if (sandboxCommandTooLong(process.platform, argv, checkout)) {
           this.gate("gates", `${read.kept.length} tracked files under bin/, obj/ or artifacts/ are too many to name to the sandboxed step that empties the dotnet gate's build dirs, so the local gate did not run; untrack them or wrap the gate in a script, then rerun ${this.resume}`);
           return false;
@@ -80128,7 +80127,7 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
         const started = this.clock();
         let r;
         try {
-          r = await this.sandboxRun({ purpose: "clean", argv: ["node", script, String(trees.length), ...trees, ...read.kept], exe: process.execPath, args: argv.slice(1), cwd: checkout, commonGitDir: common, timeoutMs: DOTNET_CLEAN_TIMEOUT_MS, network: "none", ...gates.requireDeniedPaths ? { requireDeniedPaths: true } : {} });
+          r = await this.sandboxRun({ purpose: "clean", argv: ["node", script, ...read.kept], exe: process.execPath, args: argv.slice(1), cwd: checkout, commonGitDir: common, timeoutMs: DOTNET_CLEAN_TIMEOUT_MS, network: "none", ...gates.requireDeniedPaths ? { requireDeniedPaths: true } : {} });
         } catch (error62) {
           r = { ran: false, reason: errText6(error62) };
         }
@@ -81438,6 +81437,7 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
           return { kind: "stopped" };
         }
         if (await this.recheckFailed(`before the ${kind} lane`)) return { kind: "stopped" };
+        const dotnet = profile === "write" && this.dotnetRepo();
         const priv = this.privateRun();
         let laneTree2;
         if (priv) {
@@ -81521,7 +81521,7 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
             // A review lane's shell is read-only, so it runs no test and needs none.
             ...profile === "write" ? { beforeSandboxedSession: (wt, o) => this.prepareLaneTree(wt, o?.copy ?? true), nodeModulesGrant: (wt) => this.laneNodeModulesGrant(wt) } : {},
             // A .NET repository (dotnetRepo: trusted config or the trusted base's tree, any forge): the env and NuGet grant dotnet needs in the lane sandbox.
-            ...profile === "write" && this.dotnetRepo() ? { dotnet: true } : {},
+            ...dotnet ? { dotnet: true } : {},
             ...priv && laneTree2 ? { worktree: { path: laneTree2, commonGitDir: priv.repo.gitDir }, jobRoot: priv.layout.jobs, deniedPaths: priv.deniedFor(laneTree2), beforeHostGit: () => priv.problem() } : {}
           }));
         } catch (error62) {

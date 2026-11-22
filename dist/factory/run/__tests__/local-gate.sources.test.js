@@ -215,19 +215,20 @@ describe('a dotnet gate is defined by the repository\'s solution, project and MS
             'Tests/Tests.csproj.user', 'Directory.Build.rsp', 'src/App/obj/App.csproj.evil.props', 'src/App/obj/App.csproj.nuget.g.props', 'src/App/OBJ/App.csproj.nuget.g.targets',
             'src/App/obj/project.assets.json', 'src/App/obj/Debug/net10.0/x.props', 'src/App/bin/Debug/net10.0/App.dll', 'src/App/bin/x.targets', 'TestResults/a.trx', 'src/App/Program.cs',
             'artifacts/obj/App/App.csproj.nuget.g.props', 'build/obj.props', 'Tests/Properties/launchSettings.json', 'node_modules/x/obj/y.props',
-            // Follow-up 3: a node_modules segment is not exempt here; the engine leaves out only the trees it links or copies (engine.ts engineTrees).
+            // A node_modules dir is a package tree, whoever installed it (real packages ship *.props, *.vcxproj, *.sln files): exempt; a head tracking one parks instead (trackedPackageTreeProjects).
             'tools/node_modules/pkg/Directory.Build.props', 'web/NODE_MODULES/pkg/Properties/launchSettings.json',
-        ])).toEqual(['Tests/Tests.csproj.user', 'Directory.Build.rsp', 'build/obj.props', 'Tests/Properties/launchSettings.json', 'tools/node_modules/pkg/Directory.Build.props', 'web/NODE_MODULES/pkg/Properties/launchSettings.json']);
+        ])).toEqual(['Tests/Tests.csproj.user', 'Directory.Build.rsp', 'build/obj.props', 'Tests/Properties/launchSettings.json']);
     });
-    it('build output dirs: the first bin/obj/artifacts segment in any case, under node_modules too; never a path with an empty, . or .. segment', () => {
+    it('build output dirs: the first bin/obj/artifacts segment in any case, not under a node_modules dir that comes first; never a path with an empty, . or .. segment', () => {
         expect(dotnetBuildDirIndex('src/App/obj/x.props')).toBe(2);
         expect(dotnetBuildDirIndex('src/App/Bin/Debug/a.dll')).toBe(2);
         expect(dotnetBuildDirIndex('artifacts/obj/App/a.json')).toBe(0);
         expect(dotnetBuildDirIndex('src/App/obj')).toBe(2);
         expect(dotnetBuildDirIndex('src/App/objx/a')).toBe(-1);
         expect(dotnetBuildDirIndex('src/App/Program.cs')).toBe(-1);
-        expect(dotnetBuildDirIndex('node_modules/pkg/bin/cli.js')).toBe(2);
-        expect(dotnetBuildDirIndex('a/NODE_MODULES/obj/x')).toBe(2);
+        expect(dotnetBuildDirIndex('node_modules/pkg/bin/cli.js')).toBe(-1);
+        expect(dotnetBuildDirIndex('a/NODE_MODULES/obj/x')).toBe(-1);
+        expect(dotnetBuildDirIndex('a/obj/node_modules/x')).toBe(1);
         for (const p of ['a//obj/x', './obj/x', 'a/../obj/x', 'a/b\\c/obj/x'])
             expect(dotnetBuildDirIndex(p), p).toBe(-1);
     });

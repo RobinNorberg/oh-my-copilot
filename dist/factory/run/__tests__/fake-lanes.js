@@ -14,7 +14,7 @@ import { gitIn } from '../../../copilot-run/__tests__/fake-sdk.js';
 import { resolveShipConfig } from '../../../ship/config.js';
 import { readWorktreeGitLinks, recordWorktreeGitLinks } from '../../../team/git-worktree.js';
 import { defaultExec } from '../../../ship/exec.js';
-import { cleanDotnetBuildOutput, parseCleanStepArgs } from '../dotnet-clean.js';
+import { cleanDotnetBuildOutput } from '../dotnet-clean.js';
 import { defaultLocalGateRunner } from '../local-gate.js';
 import { REVIEW_FEEDBACK_QUERY } from '../../../forge/github/graphql.js';
 import { LaneLostError } from '../lane.js';
@@ -215,10 +215,9 @@ export function attestedSandbox(exec, gate = () => undefined) {
     return async (req) => {
         if (req.purpose === 'calibrate')
             return { ran: true, status: 0, output: '', timedOut: false };
-        // The dotnet clean step (dotnet-clean-step.js <n> <tree...> <kept...>): its logic in process, as the sandboxed node would run it.
+        // The dotnet clean step (dotnet-clean-step.js <kept...>): its logic in process, as the sandboxed node would run it.
         if (req.purpose === 'clean') {
-            const { trees, keep } = parseCleanStepArgs(req.args.slice(1));
-            const r = cleanDotnetBuildOutput(req.cwd, keep, process.platform, trees);
+            const r = cleanDotnetBuildOutput(req.cwd, req.args.slice(1));
             return { ran: true, status: r.errors.length > 0 ? 1 : 0, output: [`removed ${r.removed}`, ...r.errors.map((e) => `error ${e}`)].join('\n'), timedOut: false };
         }
         // No test runner: the engine's own plain runner, as the engine ran the gate before the sandbox.

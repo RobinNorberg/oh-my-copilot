@@ -130,7 +130,7 @@ import { assertLaneCreditCap, LANE_MODEL_KINDS, laneModelFor, nextLaneCap, resol
 import { FactorySafetyError, factoryGuardExec, hardenedGitExec, sameFsPath, type GithubReadContext } from './exec.js';
 import { createGateProcTracker, gateProcsPath, liveGateProcs, reapGateProcs, sweepGateProcs } from './gate-procs.js';
 import { assertFactoryForgeOptions, EXIT_FORGE_UNAVAILABLE, FactoryForgeUnavailableError, localRemoteMismatch, syncLocalMirror } from './forge-roots.js';
-import { assertLocalGateCommand, defaultLocalGateRunner, describeGateSources, dotnetBuildDirIndex, gateDefinition, gateDefinitionSources, gateSourcePathspec, isDotnetProjectFile, localGateDue, patternSourceChanges, shellPath, strayDotnetDefinitionFiles, underDotnetBuildDir, localGateRecord, resolveLocalGateArgv, runLocalGate, type LocalGateRunner } from './local-gate.js';
+import { assertLocalGateCommand, defaultLocalGateRunner, describeGateSources, dotnetBuildDirIndex, gateDefinition, gateDefinitionSources, gateSourcePathspec, inPackageTree, isDotnetProjectFile, localGateDue, patternSourceChanges, shellPath, strayDotnetDefinitionFiles, trackedPackageTreeProjects, underDotnetBuildDir, localGateRecord, resolveLocalGateArgv, runLocalGate, type LocalGateRunner } from './local-gate.js';
 import { isLocalBranchName, localCheckRecordPath, LOCAL_GATE_CHECK, LOCAL_REMOTE, readMirrorRef } from '../../forge/local/index.js';
 import { getGlobalOmcStatePath } from '../../utils/paths.js';
 import { isProcessAlive, isProcessIdentityLive, terminateOwnedProcessTree } from '../../platform/process-utils.js';
@@ -615,7 +615,7 @@ const HEX40 = /^[0-9a-f]{40}$/;
 const DOTNET_CLEAN_TIMEOUT_MS = 5 * 60_000;
 
 /** ensureLocalGate's read-only view of the prepare checkout (readGateCheckout). */
-interface GateCheckoutRead { at: string; dirty: string[]; untracked: string[]; kept: string[]; gitlinks: string[]; problem?: string }
+interface GateCheckoutRead { at: string; dirty: string[]; untracked: string[]; kept: string[]; gitlinks: string[]; packageTreeProjects?: string[]; problem?: string }
 
 /** L7: the output lines a ci-failed park shows, and the characters of each and of the whole tail. */
 const PARK_TAIL_LINES = 12;
@@ -4742,18 +4742,21 @@ class FactoryEngine {
       out.dirty = checkoutChanges(this.o.root, checkout, runHostGit(checkout, status, undefined, fresh), trustedNestedRels(this.o.root, checkout, this.baseWorkspaces()));
       // A dotnet gate: MSBuild also reads untracked files no commit pins (an App.csproj.user; a restore output or stale
       // build in obj/ or bin/), which the PR's code run here earlier could leave; every untracked file, ignored or not.
-      // The package trees the engine linked or copied there (engineTrees) are left out, and only those.
+      // Paths under a node_modules dir (any, whoever installed it) are left out by the callers' predicates (local-gate.ts inPackageTree).
       if (dotnet) {
-        const ours = this.engineTreeMatcher(checkout);
-        out.untracked = runHostGit(checkout, [...gitArgs, 'ls-files', '--others', '-z'], undefined, fresh).split('\0').filter((p) => p && !ours(p));
-        // `<mode> <oid> <stage>\t<path>`: every tracked path, the build-dir ones kept by the clean step, the gitlinks (submodules) checked.
+        out.untracked = runHostGit(checkout, [...gitArgs, 'ls-files', '--others', '-z'], undefined, fresh).split('\0').filter(Boolean);
+        // `<mode> <oid> <stage>\t<path>` of the index read from HEAD: the build-dir paths kept by the clean step, the gitlinks
+        // (submodules) checked, the definition files tracked under a node_modules dir (a park).
+        const tracked: string[] = [];
         for (const line of runHostGit(checkout, [...gitArgs, 'ls-files', '-s', '-z'], undefined, fresh).split('\0')) {
           const tab = line.indexOf('\t');
           if (tab < 0) continue;
           const p = line.slice(tab + 1);
           if (line.startsWith('160000 ')) out.gitlinks.push(p);
-          else if (dotnetBuildDirIndex(p) >= 0 && !ours(p)) out.kept.push(p);
+          else tracked.push(p);
         }
+        out.kept = tracked.filter((p) => dotnetBuildDirIndex(p) >= 0);
+        out.packageTreeProjects = trackedPackageTreeProjects(tracked);
       }
     } catch (error) {
       out.problem = errText(error);
@@ -4761,27 +4764,6 @@ class FactoryEngine {
       rmSync(indexDir, { recursive: true, force: true });
     }
     return out;
-  }
-
-  /**
-   * The node_modules dirs the engine itself links or copies into `checkout`
-   * (repository paths): the root one and the workspace packages' it vouches
-   * for (trustedNestedRels). A dotnet gate's checks and the clean step leave
-   * exactly these out; any other dir named node_modules is the repository's
-   * (or the PR's) and is checked and cleaned like the rest.
-   */
-  private engineTrees(checkout: string): string[] {
-    return ['node_modules', ...trustedNestedRels(this.o.root, checkout, this.baseWorkspaces()).map((rel) => `${rel}/node_modules`)];
-  }
-
-  /** Whether a repository path (as git lists it) is one of engineTrees or under one; case-insensitive where the file system is (Windows, macOS). */
-  private engineTreeMatcher(checkout: string): (path: string) => boolean {
-    const fold = (p: string) => (process.platform === 'linux' ? p : p.toLowerCase());
-    const trees = this.engineTrees(checkout).map(fold);
-    return (path) => {
-      const p = fold(path.replace(/\/+$/, ''));
-      return trees.some((t) => p === t || p.startsWith(`${t}/`));
-    };
   }
 
   /**
@@ -4821,9 +4803,14 @@ class FactoryEngine {
    */
   private async dotnetBuildStateReady(head: string, checkout: string, gitArgs: string[], read: GateCheckoutRead, gates: { mode: GatesSandboxMode; requireDeniedPaths: boolean; container?: GateContainerSettings }, common: string): Promise<boolean> {
     const inBuild = (p: string) => dotnetBuildDirIndex(p) >= 0;
-    // readGateCheckout already left the engine's package trees out: a nested repository under any other node_modules counts.
-    const nestedRepos = (untracked: readonly string[]) => untracked.filter((p) => p.endsWith('/') && !inBuild(p));
+    // A package dir that is a git repository (a git dependency) under node_modules is a package, never MSBuild input.
+    const nestedRepos = (untracked: readonly string[]) => untracked.filter((p) => p.endsWith('/') && !inBuild(p) && !inPackageTree(p));
     const list = (paths: readonly string[]) => `${paths.slice(0, 5).join(', ')}${paths.length > 5 ? `, ${paths.length - 5} more` : ''}`;
+    // node_modules dirs are never cleaned nor checked, so a project the head tracks under one could read build output left there.
+    if (read.packageTreeProjects && read.packageTreeProjects.length > 0) {
+      this.gate('gates', `a tracked .NET project under a node_modules directory is not supported: build output there is not cleaned (${head.slice(0, 12)} tracks ${list(read.packageTreeProjects)}), so the dotnet gate did not run; move the .NET files out of node_modules on the branch, or cancel with ${cancelCommand(this.key)}; then rerun ${this.resume}`);
+      return false;
+    }
     const recovery = `inspect ${checkout}, delete them by hand or start again with a fresh checkout (${this.freshCheckoutRecovery()}), then rerun ${this.resume}`;
     const nested = nestedRepos(read.untracked);
     if (nested.length > 0) {
@@ -4860,8 +4847,7 @@ class FactoryEngine {
       this.gate('gates', `the step that empties the dotnet gate's build dirs is missing (${script}: the oh-my-copilot install has no dist), so the local gate did not run; reinstall oh-my-copilot, then rerun ${this.resume}`);
       return false;
     }
-    const trees = this.engineTrees(checkout);
-    const argv = [process.execPath, script, String(trees.length), ...trees, ...read.kept];
+    const argv = [process.execPath, script, ...read.kept];
     if (sandboxCommandTooLong(process.platform, argv, checkout)) {
       this.gate('gates', `${read.kept.length} tracked files under bin/, obj/ or artifacts/ are too many to name to the sandboxed step that empties the dotnet gate's build dirs, so the local gate did not run; untrack them or wrap the gate in a script, then rerun ${this.resume}`);
       return false;
@@ -4869,7 +4855,7 @@ class FactoryEngine {
     const started = this.clock();
     let r: SandboxRunResult;
     try {
-      r = await this.sandboxRun({ purpose: 'clean', argv: ['node', script, String(trees.length), ...trees, ...read.kept], exe: process.execPath, args: argv.slice(1), cwd: checkout, commonGitDir: common, timeoutMs: DOTNET_CLEAN_TIMEOUT_MS, network: 'none', ...(gates.requireDeniedPaths ? { requireDeniedPaths: true } : {}) });
+      r = await this.sandboxRun({ purpose: 'clean', argv: ['node', script, ...read.kept], exe: process.execPath, args: argv.slice(1), cwd: checkout, commonGitDir: common, timeoutMs: DOTNET_CLEAN_TIMEOUT_MS, network: 'none', ...(gates.requireDeniedPaths ? { requireDeniedPaths: true } : {}) });
     } catch (error) {
       r = { ran: false, reason: errText(error) };
     }
@@ -6238,6 +6224,9 @@ class FactoryEngine {
       return { kind: 'stopped' };
     }
     if (await this.recheckFailed(`before the ${kind} lane`)) return { kind: 'stopped' };
+    // A .NET repository (dotnetRepo): read before anything is made or reserved, so a base that cannot be listed is a step
+    // error that stops the step, never a lane start failure that consumes a lane retry.
+    const dotnet = profile === 'write' && this.dotnetRepo();
     // The private layout: the engine makes the lane's worktree `<run>/w/<n>` itself, before the snapshot it is compared against.
     const priv = this.privateRun();
     let laneTree: string | undefined;
@@ -6320,7 +6309,7 @@ class FactoryEngine {
         // A review lane's shell is read-only, so it runs no test and needs none.
         ...(profile === 'write' ? { beforeSandboxedSession: (wt: string, o?: { copy: boolean }) => this.prepareLaneTree(wt, o?.copy ?? true), nodeModulesGrant: (wt: string) => this.laneNodeModulesGrant(wt) } : {}),
         // A .NET repository (dotnetRepo: trusted config or the trusted base's tree, any forge): the env and NuGet grant dotnet needs in the lane sandbox.
-        ...(profile === 'write' && this.dotnetRepo() ? { dotnet: true } : {}),
+        ...(dotnet ? { dotnet: true } : {}),
         ...(priv && laneTree ? { worktree: { path: laneTree, commonGitDir: priv.repo.gitDir }, jobRoot: priv.layout.jobs, deniedPaths: priv.deniedFor(laneTree), beforeHostGit: () => priv.problem() } : {}),
       }));
     } catch (error) {

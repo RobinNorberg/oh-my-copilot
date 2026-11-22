@@ -3,7 +3,7 @@
  * lanes, a real repository with no origin, the engine-owned bare mirror
  * under a temp forge state dir. No gh, az or copilot runs, and no AI credits.
  */
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { readMirrorRef } from '../../../forge/local/index.js';
@@ -308,12 +308,11 @@ describe('a dotnet gate: its MSBuild files define it, and its write lanes get th
     const again = await runFactoryEngine(localOpts(w, lanesFor(w, []), { gateSandbox }));
     expect(again.gate?.name, again.message).toBe('merge');
     expect(seen).toEqual([false]);
-    // One step, through the sandbox runner: node <omg>/dist/.../dotnet-clean-step.js <n> <trees> <kept>, no network, in the checkout.
+    // One step, through the sandbox runner: node <omg>/dist/.../dotnet-clean-step.js <kept>, no network, in the checkout.
     expect(steps).toHaveLength(1);
     expect(steps[0]).toMatchObject({ purpose: 'clean', network: 'none', exe: process.execPath, cwd: w.gateRuns[0].cwd });
     expect(steps[0].args[0]).toMatch(/[\\/]dist[\\/]factory[\\/]run[\\/]dotnet-clean-step\.js$/);
-    // The engine's package trees (the root node_modules here: no workspaces), then the tracked paths under a build dir.
-    expect(steps[0].args.slice(1)).toEqual(['1', 'node_modules', 'src/App/bin/tracked.txt']);
+    expect(steps[0].args.slice(1)).toEqual(['src/App/bin/tracked.txt']);
     expect(readFactoryState(w.root, LOCAL_ISSUE)!.history.some((h) => /^removed 2 build output entries under bin\/, obj\/ and artifacts\/ in the prepare checkout in the OS sandbox before the dotnet gate on [0-9a-f]{12} \(\d+ s\)$/.test(h.note))).toBe(true);
   }, MULTI_RUN_MS);
 
@@ -363,34 +362,46 @@ describe('a dotnet gate: its MSBuild files define it, and its write lanes get th
     expect(w.gateRuns).toHaveLength(1);
   }, MULTI_RUN_MS);
 
-  it('follow-up 3: build output under a node_modules dir the engine did not make is removed by the step; the engine\'s own tree is never touched', async () => {
+  it('a mixed repo: a nested node_modules the engine did not make (bin/ dirs, a junction-backed package, *.props and *.vcxproj files) is neither cleaned nor parked on', async () => {
     w = localWorld(['dotnet', 'test']);
     writeFileSync(join(w.root, '.gitignore'), '.omg/\nbin/\nobj/\nnode_modules/\n');
     baseProject();
-    const seen = leaveThenSee((cwd) => writeAt(cwd, 'tools/node_modules/pkg/obj/App.csproj.nuget.g.targets'), (cwd) => existsSync(join(cwd, 'tools', 'node_modules', 'pkg', 'obj')));
-    const steps: SandboxRunRequest[] = [];
-    const inner = cleanStep();
-    const gateSandbox: SandboxRunner = (req) => {
-      if (req.purpose === 'clean') steps.push(req);
-      return inner(req);
-    };
-    await firstRun({ gateSandbox });
-    const again = await runFactoryEngine(localOpts(w, lanesFor(w, []), { gateSandbox }));
-    expect(again.gate?.name, again.message).toBe('merge');
-    expect(seen).toEqual([false]);
-    expect(steps).toHaveLength(1);
-    expect(steps[0].args.slice(1, 3)).toEqual(['1', 'node_modules']);
+    // What a trusted prepare build's `npm ci --prefix src/Web/ClientApp` (or pnpm) leaves: real packages and a linked one.
+    const store = join(w.dir, 'pnpm-store');
+    try {
+      writeAt(store, 'esbuild/bin/esbuild', 'esbuild');
+      const pkgs = 'src/Web/ClientApp/node_modules';
+      const seen = leaveThenSee((cwd) => {
+        writeAt(cwd, `${pkgs}/vite/bin/vite.js`, 'vite');
+        writeAt(cwd, `${pkgs}/addon/build/addon.vcxproj`);
+        writeAt(cwd, `${pkgs}/addon/build/config.props`);
+        mkdirSync(join(cwd, ...pkgs.split('/')), { recursive: true });
+        symlinkSync(join(store, 'esbuild'), join(cwd, ...pkgs.split('/'), 'esbuild'), process.platform === 'win32' ? 'junction' : 'dir');
+        staleBuild(cwd);
+      }, (cwd) => seesStale(cwd) || !existsSync(join(cwd, ...pkgs.split('/'), 'vite', 'bin', 'vite.js')) || !existsSync(join(cwd, ...pkgs.split('/'), 'esbuild', 'bin', 'esbuild')));
+      await firstRun({ gateSandbox: cleanStep() });
+      const again = await runFactoryEngine(localOpts(w, lanesFor(w, []), { gateSandbox: cleanStep() }));
+      expect(again.gate?.name, again.message).toBe('merge');
+      expect(seen).toEqual([false]);
+      expect(readFileSync(join(store, 'esbuild', 'bin', 'esbuild'), 'utf8')).toBe('esbuild');
+      unlinkSync(join(w.gateRuns[0].cwd, ...pkgs.split('/'), 'esbuild'));
+    } finally {
+      rmSync(store, { recursive: true, force: true });
+    }
   }, MULTI_RUN_MS);
 
-  it('follow-up 3: a definition file under a node_modules dir the engine did not make parks like any other', async () => {
+  it('a head tracking a .NET project under a node_modules dir parks before the dotnet gate: build output there is not cleaned', async () => {
     w = localWorld(['dotnet', 'test']);
-    writeFileSync(join(w.root, '.gitignore'), '.omg/\nnode_modules/\n');
     baseProject();
-    leaveThenSee((cwd) => writeAt(cwd, 'src/node_modules/Directory.Build.props'), () => false);
-    await firstRun({ gateSandboxUserConfig: UNSANDBOXED_GATES });
-    const again = await runFactoryEngine(localOpts(w, lanesFor(w, []), { gateSandboxUserConfig: UNSANDBOXED_GATES }));
-    expect(again.gate?.name, again.message).toBe('lane-tampered');
-    expect(again.gate?.reason).toMatch(/untracked file\(s\) that MSBuild reads for the dotnet gate but no commit pins \(src\/node_modules\/Directory\.Build\.props\)/);
+    // On the base, so the change does not redefine the gate: the park is about the head's tree, whoever added the file.
+    mkdirSync(join(w.root, 'x', 'node_modules', 'App'), { recursive: true });
+    writeFileSync(join(w.root, 'x', 'node_modules', 'App', 'App.csproj'), CSPROJ);
+    gitIn(w.root, 'add', '.');
+    gitIn(w.root, 'commit', '-q', '-m', 'a project under node_modules');
+    const out = await runFactoryEngine(localOpts(w, lanesFor(w, [commitFile('src/App/Greet.cs', 'namespace App;\n'), review('approve')]), { gateSandbox: cleanStep() }));
+    expect(out.gate?.name, out.message).toBe('gates');
+    expect(out.gate?.reason).toMatch(/a tracked \.NET project under a node_modules directory is not supported: build output there is not cleaned \([0-9a-f]{12} tracks x\/node_modules\/App\/App\.csproj\)/);
+    expect(w.gateRuns).toEqual([]);
   }, MULTI_RUN_MS);
 
   it('follow-up 4: a base global.json that cannot be read fails the step (it parks), never "not Microsoft.Testing.Platform"', async () => {
