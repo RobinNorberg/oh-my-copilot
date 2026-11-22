@@ -96350,15 +96350,19 @@ function hostGitCommand(cwd, args, timeout, baseEnv2) {
   }
   return { argv: [...hostGitHardeningArgs(), ...tree, ...finalArgs], env: env2 };
 }
-function attributeFreeCheckout(repoRoot3) {
+function attributeFreeCheckout(repoRoot3, gitVersion) {
+  if (hostGitAttrSourceProblem(gitVersion)) {
+    const shown = /(\d+\.\d+\.\d+\S*)/.exec((gitVersion === void 0 ? hostGitVersionCache : gitVersion) ?? "")?.[1];
+    throw new Error(`${shown ? `git ${shown} is too old` : "the git version cannot be read"} for the factory: it needs git >= ${HOST_GIT_ATTR_SOURCE_MIN.replace(/\.0$/, "")} (merge-tree --write-tree and GIT_ATTR_SOURCE)`);
+  }
   const format = runHostGit(repoRoot3, ["rev-parse", "--show-object-format"]).trim();
   const emptyTree = EMPTY_TREE[format];
   if (!emptyTree) throw new Error(`unknown object format ${JSON.stringify(format)}`);
   const drivers = hostGitDriverOverrides(repoRoot3);
   if (drivers === null) throw new Error("host git: the filter and diff drivers cannot be listed or overridden; refusing to check a lane worktree out");
   return {
-    config: ["-c", `core.attributesFile=${hostAttributesFile()}`, ...drivers],
-    env: { GIT_ATTR_SOURCE: emptyTree, GIT_LFS_SKIP_SMUDGE: "1" }
+    config: ["-c", `core.attributesFile=${hostAttributesFile()}`, ...EXEC_KEY_OVERRIDES.flatMap((kv) => ["-c", kv]), ...drivers],
+    env: { GIT_ATTR_SOURCE: emptyTree, GIT_LFS_SKIP_SMUDGE: "1", GIT_NO_REPLACE_OBJECTS: "1", GIT_GRAFT_FILE: (0, import_node_path28.join)(hostHooksDir(), "grafts") }
   };
 }
 function hostGitAttrSourceProblem(version3) {
@@ -96963,9 +96967,16 @@ function ensureWorkerWorktree(teamName, workerName, repoRoot3, options = {}) {
   }
   if ((0, import_node_fs25.existsSync)(wtPath)) {
     assertCompatibleExistingWorktree(repoRoot3, wtPath, branch2, mode);
-    const previousBase = readMetadata(repoRoot3, teamName).find((entry2) => entry2.workerName === workerName)?.baseCommit;
+    const previous = readMetadata(repoRoot3, teamName).find((entry2) => entry2.workerName === workerName);
+    if (options.withoutAttributes && previous?.attributeFree !== true) {
+      const error62 = new Error(`worktree_attributes_applied: the lane worktree ${wtPath} was checked out before the attribute-free checkout, so its files may differ from their blobs; recreate it: remove the worktree (for a factory run: cancel it, run omg factory run clean, then rerun)`);
+      error62.code = "worktree_attributes_applied";
+      throw error62;
+    }
+    const previousBase = previous?.baseCommit;
     const info2 = {
       ...previousBase ? { baseCommit: previousBase } : {},
+      ...previous?.attributeFree ? { attributeFree: true } : {},
       path: wtPath,
       branch: branch2,
       workerName,
@@ -96988,6 +96999,7 @@ function ensureWorkerWorktree(teamName, workerName, repoRoot3, options = {}) {
   const baseCommit = gitOrNull(["rev-parse", "HEAD"], wtPath);
   const info = {
     ...baseCommit ? { baseCommit } : {},
+    ...checkout ? { attributeFree: true } : {},
     path: wtPath,
     branch: branch2,
     workerName,
@@ -124807,7 +124819,7 @@ var init_job = __esm({
             const path30 = getWorktreePath(ledgerCwd, WORKTREE_TEAM, id);
             const branch2 = getBranchName(WORKTREE_TEAM, id);
             let left = "";
-            if ((0, import_node_fs34.existsSync)(path30)) {
+            if ((0, import_node_fs34.existsSync)(path30) && err?.code !== "worktree_attributes_applied") {
               try {
                 removeWorkerWorktree(WORKTREE_TEAM, id, ledgerCwd);
               } catch {
@@ -129723,19 +129735,21 @@ function factoryGitProblem(exec3 = defaultExec, platform = process.platform) {
   const v = r.status === 0 ? parseGitVersion(r.stdout) : null;
   if (!v) {
     const why = r.stderr.trim().split(/\r?\n/)[0]?.trim();
-    return `the factory needs git >= ${want} (merge-tree --write-tree), and \`git --version\` could not be read${why ? `: ${why}` : ""}`;
+    return `the factory needs git >= ${want} ${NEED}, and \`git --version\` could not be read${why ? `: ${why}` : ""}`;
   }
   if (gitVersionAtLeast(v, FACTORY_GIT_MIN_VERSION)) return null;
   const full = /git version (\S+)/.exec(r.stdout)?.[1] ?? `${v[0]}.${v[1]}`;
   const hint = platform === "linux" ? " On Ubuntu: sudo add-apt-repository ppa:git-core/ppa && sudo apt-get update && sudo apt-get install git" : "";
-  return `git ${full} is too old for the factory: it needs git >= ${want} (merge-tree --write-tree).${hint}`;
+  return `git ${full} is too old for the factory: it needs git >= ${want} ${NEED}.${hint}`;
 }
-var FACTORY_GIT_MIN_VERSION;
+var FACTORY_GIT_MIN_VERSION, NEED;
 var init_git_preflight = __esm({
   "src/factory/git-preflight.ts"() {
     "use strict";
     init_exec();
-    FACTORY_GIT_MIN_VERSION = [2, 38];
+    init_git_worktree();
+    FACTORY_GIT_MIN_VERSION = HOST_GIT_ATTR_SOURCE_MIN.split(".").slice(0, 2).map(Number);
+    NEED = "(merge-tree --write-tree and GIT_ATTR_SOURCE)";
   }
 });
 
@@ -133922,6 +133936,7 @@ var init_prompts2 = __esm({
     WRITE_LANE_GIT_RULES = [
       "Leave your changes in this worktree and do NOT commit: the git directory is read-only, so git add, git commit, git merge, git stash and every other git command that writes fail. The engine commits your changes after you finish, with your final message as the commit message, so end with a short summary of the change.",
       "Do NOT push, open a pull request, or change git config, hooks or refs.",
+      "Files are checked out exactly as committed: keep the committed line endings of every file, and never edit or replace a Git LFS pointer file (a small text file starting `version https://git-lfs.github.com/spec/v1`): it stands for content this worktree does not have.",
       "On Windows, call repo-local scripts as `.\\name` (`.\\gradlew`, `.\\build.bat`): a bare name does not search the worktree."
     ];
     DECLINE_RULE = "Use DECLINED only when you deliberately refuse this task or it is impossible as specified: then make NO changes and end your final message with one line `DECLINED: <reason>` (the very last line, after your summary), and the engine stops for a human instead of running the same task again. A task that can only be done with a file outside this worktree (an absolute path elsewhere on the machine) is impossible as specified: lanes may not read or write outside the worktree, and every rerun is denied the same way, so decline it. Never use DECLINED for a failure a rerun can fix (tests that cannot run, a denied command or a missing tool inside this worktree): report that normally.";

@@ -11,6 +11,8 @@ export interface WorktreeInfo {
     reused?: boolean;
     /** The commit the worktree was created at; worker commits are counted on top of it. */
     baseCommit?: string;
+    /** Checked out without attributes (attributeFreeCheckout); a worktree without it is never reused for such a checkout. */
+    attributeFree?: boolean;
 }
 /** A clean worker worktree kept because it holds commits the leader HEAD does not contain. */
 export interface PreservedWorktree {
@@ -179,11 +181,14 @@ export declare const EMPTY_TREE: Readonly<Record<string, string>>;
  * settings: GIT_ATTR_SOURCE the empty tree, the empty core.attributesFile,
  * every filter and diff driver blanked; GIT_LFS_SKIP_SMUDGE keeps a git-lfs
  * that still runs from downloading. core.autocrlf and `info/attributes`
- * apply on both sides alike. Hooks are not touched (a post-checkout hook
- * still runs). Throws when the drivers cannot be listed or the object
- * format is unknown.
+ * apply on both sides alike. The other host hardening applies too
+ * (EXEC_KEY_OVERRIDES, GIT_NO_REPLACE_OBJECTS and the absent graft file), but
+ * hooks are not touched (a post-checkout hook still runs). Throws when git is
+ * older than HOST_GIT_ATTR_SOURCE_MIN (it would ignore GIT_ATTR_SOURCE and
+ * apply the tree's attributes), the drivers cannot be listed or the object
+ * format is unknown. `gitVersion` is `git --version` output (default: run it).
  */
-export declare function attributeFreeCheckout(repoRoot: string): {
+export declare function attributeFreeCheckout(repoRoot: string, gitVersion?: string | null): {
     config: string[];
     env: Record<string, string>;
 };

@@ -218,6 +218,34 @@ describe('untouched files are never committed: the lane checkout writes blob byt
     const plain = ensureWorkerWorktree('tm', 'plain', root, { mode: 'detached', requireCleanLeader: false })!;
     expect(readFileSync(join(plain.path, 'keep.txt'), 'utf8')).toBe('k\r\n');
   });
+
+  it('reuses an attribute-free worktree, and refuses to reuse one checked out with the attributes for an attribute-free checkout', () => {
+    eolFixture();
+    const opts = { mode: 'detached' as const, requireCleanLeader: false, withoutAttributes: true };
+    const free = ensureWorkerWorktree('tm', 'free', root, opts)!;
+    expect(free).toMatchObject({ created: true, attributeFree: true });
+    expect(ensureWorkerWorktree('tm', 'free', root, opts)).toMatchObject({ reused: true, attributeFree: true });
+    // Made before the attribute-free checkout (no record): never reused for one, and nothing is removed.
+    const old = ensureWorkerWorktree('tm', 'old', root, { mode: 'detached', requireCleanLeader: false })!;
+    expect(old.attributeFree).toBeUndefined();
+    let error: (Error & { code?: string }) | undefined;
+    try { ensureWorkerWorktree('tm', 'old', root, opts); } catch (e) { error = e as Error & { code?: string }; }
+    expect(error?.code).toBe('worktree_attributes_applied');
+    expect(error?.message).toMatch(/checked out before the attribute-free checkout.*recreate it/);
+    expect(readFileSync(join(old.path, 'keep.txt'), 'utf8')).toBe('k\r\n');
+    // A plain reuse is unchanged.
+    expect(ensureWorkerWorktree('tm', 'old', root, { mode: 'detached', requireCleanLeader: false })).toMatchObject({ reused: true });
+  });
+
+  it('attributeFreeCheckout carries the host hardening, keeps hooks, and fails closed on a git that ignores GIT_ATTR_SOURCE', () => {
+    commitAll({ 'a.txt': 'a\n' });
+    const c = attributeFreeCheckout(root, 'git version 2.50.1');
+    expect(c.config).toEqual(expect.arrayContaining(['core.fsmonitor=false', 'core.alternateRefsCommand=true']));
+    expect(c.config.some((v) => v.startsWith('core.hooksPath'))).toBe(false);
+    expect(c.env).toMatchObject({ GIT_NO_REPLACE_OBJECTS: '1', GIT_LFS_SKIP_SMUDGE: '1' });
+    expect(() => attributeFreeCheckout(root, 'git version 2.40.1')).toThrow('git 2.40.1 is too old for the factory: it needs git >= 2.41 (merge-tree --write-tree and GIT_ATTR_SOURCE)');
+    expect(() => attributeFreeCheckout(root, null)).toThrow(/git version cannot be read.*>= 2\.41/);
+  });
 });
 
 describe('engine-read staging: links and swaps', () => {

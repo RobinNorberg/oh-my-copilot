@@ -134,6 +134,8 @@ describe('PrivateRun', () => {
     expect(readFileSync(join(p.worktreePath(1), 'k.txt'), 'utf8')).toBe('k\n');
     p.addWorktree(p.worktreePath(2), base);
     expect(readFileSync(join(p.worktreePath(2), 'k.txt'), 'utf8')).toBe('k\r\n');
+    // Never reused: a lane worktree checked out with the attributes is not taken for an attribute-free one (the engine makes it anew).
+    expect(() => p.addWorktree(p.worktreePath(2), base, undefined, { withoutAttributes: true })).toThrow(/already exists/);
   }, T);
 
   it('run start makes the seed and the private clone under the work root; a lane worktree is detached at its start, with a deny list of the rest', () => {

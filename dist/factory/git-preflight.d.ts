@@ -1,11 +1,14 @@
 /**
  * Host git check for the factory: `merge-tree --write-tree` (mirror sync, lane
- * commits) needs git 2.38. Run once, early, so an old git (Ubuntu 20.04 ships
- * 2.25) gets one actionable message instead of git's usage text from a later
- * command. The private layout has its own, stricter check (gitVersionProblem).
+ * commits) needs git 2.38, and the attribute-free lane checkout needs
+ * GIT_ATTR_SOURCE (git 2.41, HOST_GIT_ATTR_SOURCE_MIN: an older git ignores it
+ * and applies the tree's eol attributes). Run once, early, so an old git
+ * (Ubuntu 20.04 ships 2.25, 22.04 2.34) gets one actionable message instead of
+ * git's usage text from a later command. The private layout has its own,
+ * stricter check (gitVersionProblem).
  */
 import { type Exec } from '../ship/exec.js';
-export declare const FACTORY_GIT_MIN_VERSION: readonly [2, 38];
+export declare const FACTORY_GIT_MIN_VERSION: readonly [number, number];
 /** "major.minor" from `git --version` output ("git version 2.50.1.windows.1", "git version 2.39.3 (Apple Git-146)"), or null. */
 export declare function parseGitVersion(text: string): [number, number] | null;
 export declare function gitVersionAtLeast(version: readonly [number, number], min: readonly [number, number]): boolean;

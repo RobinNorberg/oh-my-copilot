@@ -881,7 +881,8 @@ export class CopilotRunManager {
                 const path = getWorktreePath(ledgerCwd, WORKTREE_TEAM, id);
                 const branch = getBranchName(WORKTREE_TEAM, id);
                 let left = '';
-                if (existsSync(path)) {
+                // A refused reuse made nothing: the existing worktree is the caller's to recreate, never removed here.
+                if (existsSync(path) && err?.code !== 'worktree_attributes_applied') {
                     try {
                         removeWorkerWorktree(WORKTREE_TEAM, id, ledgerCwd);
                     }
