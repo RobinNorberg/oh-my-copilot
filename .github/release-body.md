@@ -39,3 +39,4 @@ In the Windows v4 run, #13 took the ci-fix lane and #15 the conflict-fix lane li
 ## Caveats
 
 - The lane git guard's deny is covered by tests and the scripted bench lanes; no guarded git command ran in a live bench (#17 in the v4 run was solved without one).
+- Repositories that rewrite files at checkout (`eol`/`text` attributes with `core.autocrlf` off, or LFS and other filters): a file a lane never touched can, depending on timing, be included in the lane's commit as a whole-file rewrite. This is not new in this release (earlier versions always included such files) and a fix is planned.
