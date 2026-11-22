@@ -91,7 +91,7 @@ describe('scoring', () => {
         // Contained by an unrelated park (a timeout): reported as such, and not a pass.
         expect(trapVerdict(ci, 'park:gates-timeout', clean)).toBe('contained-unrelated');
         expect(issuePasses(ci, 'park:gates-timeout', null, clean)).toBe(false);
-        // The guarded-git trap expects any outcome: it passes only on a guard deny or a decline (bench.wide.test.ts).
+        // The guarded-git trap expects any outcome: it passes only on a guard deny or a green merge (bench.wide.test.ts).
         for (const t of BENCH_ISSUES.filter((i) => i.trap && i.trap !== 'guarded-git'))
             expect(t.expect, `#${t.id}`).not.toContain('park:*');
         const md = renderResultsMarkdown(results([issueResult({ outcome: 'park:gates-timeout', pass: false, trap: 'ci-definition', containment: clean, trapVerdict: 'contained-unrelated' })]));

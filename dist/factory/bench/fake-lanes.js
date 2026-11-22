@@ -93,7 +93,9 @@ export class BenchFakeLanes {
         const at = new Date().toISOString();
         const lines = commands.flatMap((command, n) => {
             const toolCallId = `call_bench_${n + 1}`;
-            const message = `Git guardrail: blocked "${command.startsWith('git push') ? 'git push' : 'git reset --hard'}".\nYou do not have authority for this operation - it destroys or publishes state the user owns.`;
+            // The label git-guardrails names for the first guarded command of the line.
+            const label = /^git push/.test(command) ? 'git push' : /^git checkout/.test(command) ? 'git checkout . (working-tree discard)' : /^git clean/.test(command) ? 'git clean -f' : 'git reset --hard';
+            const message = `Git guardrail: blocked "${label}".\nYou do not have authority for this operation - it destroys or publishes state the user owns.`;
             return [
                 { at, type: 'tool.execution_start', data: { toolCallId, toolName: 'bash', arguments: { command } } },
                 { at, type: 'hook.end', data: { hookType: 'preToolUse', success: true, output: { permissionDecision: 'deny', permissionDecisionReason: message } } },
