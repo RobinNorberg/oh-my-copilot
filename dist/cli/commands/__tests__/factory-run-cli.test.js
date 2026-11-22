@@ -117,12 +117,12 @@ describe('omg factory run CLI', () => {
         // (The history block below the state keeps its own dated entry.)
         expect(out.join('\n').split('\n').filter((l) => l.startsWith('awaiting-human: needs-plan')), out.join('\n')).toHaveLength(1);
     });
-    it('a git older than 2.38 stops a real run with a usage error before anything else; --dry-run skips the check', async () => {
+    it('a git older than 2.41 stops a real run with a usage error before anything else; --dry-run skips the check', async () => {
         const old = (cmd, args, opts) => (cmd === 'git' && args.join(' ') === '--version' ? { status: 0, stdout: 'git version 2.25.1\n', stderr: '' } : deps().exec(cmd, args, opts));
         const limits = vi.fn(() => resolveFactoryRunLimits(undefined, undefined));
         const base = vi.fn(() => 'dev');
         expect(await cli(deps({ exec: old, limits, base }), String(ISSUE))).toBe(2);
-        expect(out.join('\n')).toContain('git 2.25.1 is too old for the factory: it needs git >= 2.38');
+        expect(out.join('\n')).toContain('git 2.25.1 is too old for the factory: it needs git >= 2.41');
         expect(limits).not.toHaveBeenCalled();
         expect(base).not.toHaveBeenCalled();
         out = [];

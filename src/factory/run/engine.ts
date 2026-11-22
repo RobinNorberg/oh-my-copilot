@@ -5915,7 +5915,7 @@ class FactoryEngine {
       try {
         // A worktree with no lane record (a refusal after it was made, before the lane was recorded) holds nothing: made anew.
         if (existsSync(laneTree)) priv.removeWorktree(laneTree);
-        priv.addWorktree(laneTree, startRef);
+        priv.addWorktree(laneTree, startRef, undefined, { withoutAttributes: true });
       } catch (error) {
         if (error instanceof PrivateRepoTampered) throw error;
         throw new FactoryStepError(`the private lane worktree ${laneTree} could not be made: ${errText(error)}`);

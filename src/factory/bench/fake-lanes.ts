@@ -14,7 +14,7 @@ import { summarizeChanges } from '../../copilot-run/job.js';
 import type { CopilotRunSandboxState } from '../../copilot-run/sandbox.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
 import { defaultExec } from '../../ship/exec.js';
-import { readWorktreeGitLinks, recordWorktreeGitLinks } from '../../team/git-worktree.js';
+import { attributeFreeCheckout, readWorktreeGitLinks, recordWorktreeGitLinks } from '../../team/git-worktree.js';
 import type { LaneProcessOps } from '../run/engine.js';
 import { LaneLostError, type LaneBackend, type LaneProcess, type LaneResult, type LaneStartInput } from '../run/lane.js';
 import type { FakeStep } from './seed/issues.js';
@@ -25,8 +25,8 @@ export const FAKE_LANE_CREDITS = 1;
 /** A write lane's sandbox record on a host that confirmed the sandbox (what a real enforced lane reports). */
 const ENFORCED: CopilotRunSandboxState = { mode: 'enforced', host: {}, applied: 'create', canary: 'skipped', unsandboxedCalls: 0, cliVersion: 'fake', sdkVersion: 'fake', writeNetwork: 'none' } as unknown as CopilotRunSandboxState;
 
-function git(cwd: string, args: string[]): string {
-  const r = defaultExec('git', args, { cwd });
+function git(cwd: string, args: string[], env?: Record<string, string>): string {
+  const r = defaultExec('git', args, { cwd, ...(env ? { env } : {}) });
   if (r.status !== 0) throw new Error(`fake lane: git ${args.join(' ')} failed: ${(r.stderr || r.stdout).trim()}`);
   return r.stdout.trim();
 }
@@ -68,7 +68,9 @@ export class BenchFakeLanes implements LaneBackend {
       worktree = join(getOmcRoot(this.root), 'team', 'copilot-run', 'worktrees', remoteId);
       mkdirSync(dirname(worktree), { recursive: true });
       baseSha = git(this.root, ['rev-parse', '--verify', `${input.baseRef}^{commit}`]);
-      git(this.root, ['worktree', 'add', '-q', '-b', branch, worktree, baseSha]);
+      // Checked out as copilot_run checks out an engine-committed lane (withoutAttributes): blob bytes, no attribute applied.
+      const checkout = attributeFreeCheckout(this.root);
+      git(this.root, [...checkout.config, 'worktree', 'add', '-q', '-b', branch, worktree, baseSha], checkout.env);
       recordWorktreeGitLinks(worktree, readWorktreeGitLinks(worktree)!);
     }
     this.jobs.set(remoteId, { input, step: this.steps[n], worktree, branch, baseSha, remoteId });

@@ -2,6 +2,17 @@
 
 All notable changes to oh-my-copilot will be documented in this file.
 
+## [Unreleased]
+
+### Fixed
+
+- **A factory lane commit never includes a file the lane did not touch.** In a repository whose `.gitattributes` rewrites files at checkout (`eol=crlf` with `core.autocrlf` off, the Linux and macOS default, or a clean/smudge filter such as git-lfs), a lane's commit could include an untouched file as a whole-file rewrite (CRLF line endings, or an LFS file's content in place of its pointer). The lane worktree was checked out with the attributes applied, while the engine stages with no attribute applied (so a lane-written `.gitattributes` can select no filter driver), and git re-hashes an unchanged file only when its index entry is racily clean, so it happened depending on timing. Lane worktrees (implement, fix, CI-fix and conflict-fix, in the shared and the private layout) are now checked out the way the engine stages them: no `.gitattributes` applies and no filter driver runs, so every file holds its blob's bytes (see Changed). `core.autocrlf` and the repository's `info/attributes` still apply, on both sides alike. The checkout gets the host hardening of the other engine git calls, and keeps your hooks. A lane worktree checked out before this change is never reused for it: the lane fails to start with a message naming the worktree to recreate. The prepare checkout the gates run in is unchanged, and so are `omg team` worker worktrees.
+
+### Changed
+
+- **Lanes see files as committed, gates see them checked out.** A write lane's worktree now holds committed line endings (LF in a repository that asks for CRLF checkouts) and git-lfs pointer files instead of their content (the private layout already skipped the LFS download), while the gates' prepare checkout still applies `.gitattributes`. A lane test that reads an LFS asset or depends on checkout line endings can fail in the lane and pass at the gate. The write lane prompts now say that files are checked out exactly as committed: keep the committed line endings, and never edit or replace a Git LFS pointer file.
+- **The factory needs git 2.41 or newer (was 2.38).** The lane checkout relies on `GIT_ATTR_SOURCE`, which git 2.38 to 2.40 ignore, so their checkout would still apply the tree's eol attributes. `omg factory run`, `omg factory bench init` and `bench run` stop with "git 2.40.1 is too old for the factory: it needs git >= 2.41 (merge-tree --write-tree and GIT_ATTR_SOURCE)"; `omg factory check --host` fails below 2.41 and warns below 2.44 (the private layout), and the lane checkout itself refuses an older git. Ubuntu 24.04 (2.43) runs the factory; 20.04 and 22.04 need the git PPA.
+
 # oh-my-copilot v5.31.0
 
 ## [5.31.0] - 2026-11-22

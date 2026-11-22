@@ -1100,13 +1100,15 @@ export class CopilotRunManager {
     } else if (isolation === 'worktree') {
       let info;
       try {
-        info = ensureWorkerWorktree(WORKTREE_TEAM, id, ledgerCwd, { mode: 'named', requireCleanLeader: false, ...(startSha ? { baseRef: startSha } : {}) });
+        // The engine commits a hostCommits lane with no attribute applied: its checkout writes blob bytes, so an untouched file is never staged.
+        info = ensureWorkerWorktree(WORKTREE_TEAM, id, ledgerCwd, { mode: 'named', requireCleanLeader: false, ...(startSha ? { baseRef: startSha } : {}), ...(options.hostCommits ? { withoutAttributes: true } : {}) });
       } catch (err) {
         // A failure after `git worktree add` leaves a worktree no job id can clean: remove it now (same safety checks), or name it.
         const path = getWorktreePath(ledgerCwd, WORKTREE_TEAM, id);
         const branch = getBranchName(WORKTREE_TEAM, id);
         let left = '';
-        if (existsSync(path)) {
+        // A refused reuse made nothing: the existing worktree is the caller's to recreate, never removed here.
+        if (existsSync(path) && (err as { code?: string } | null)?.code !== 'worktree_attributes_applied') {
           try { removeWorkerWorktree(WORKTREE_TEAM, id, ledgerCwd); } catch { /* reported below */ }
           if (existsSync(path)) left = ` The partly created worktree ${path} (branch ${branch}) is left; check it and remove it by hand (unlink any junction in it first).`;
         }
