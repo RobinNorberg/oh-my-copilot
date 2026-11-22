@@ -30314,7 +30314,7 @@ async function monitorTeamV2(teamName, cwd, expectedInstanceId) {
     const sdkCapped = Boolean(
       sdkSession && providerLiveness !== "dead" && sdkSession.state === "capped"
     );
-    const paneSignals = sdkSession ? null : observePane(paneCapture);
+    const paneSignals = sdkSession ? null : observePane(paneCapture, w.worker_cli);
     const paneState = paneSignals ? classifyPane(paneSignals) : null;
     const paneWaitsAtTrust = paneState?.kind === "trust" && !paneSignals?.busy;
     const paneSuggestsIdle = sdkSession ? alive && providerLiveness !== "dead" && (sdkSession.state === "idle" && sdkSession.queued === 0 || sdkCapped) : alive && providerLiveness !== "dead" && (paneState?.kind === "idle" || paneWaitsAtTrust);

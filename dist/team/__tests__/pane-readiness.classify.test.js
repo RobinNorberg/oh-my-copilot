@@ -190,6 +190,67 @@ describe('PANE_PATTERNS', () => {
         }
     });
 });
+// Fork: the Copilot rows of PANE_PATTERNS.copilot, read from the Copilot CLI captures the tmux-session tests use
+// (1.0.91 idle box and working line, 1.0.88 folder trust dialog). The corpus has no recorded Copilot frames yet.
+describe('Copilot pane signals', () => {
+    const idle = [
+        '  ╭─╮╭─╮',
+        '  ╰─╯╰─╯  Copilot v1.0.91 uses AI.',
+        '  █ ▘▝ █  Check for mistakes.',
+        ' ● MCP Servers reloaded: 2 servers connected',
+        ' ~\\AppData\\L... [⎇ master%] Session: 0 AIC used',
+        '╻▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄',
+        '┃',
+        '╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀',
+        ' ← open   ·Interactive · · / commands · ? help',
+        ' sidebar   Allow All       · tab next tab',
+        ' GitHub Copilot • Auto',
+    ].join('\n');
+    const working = [
+        '  ❯ Read .omg/state/team/t/workers/worker-1/inbox.md, execute now',
+        ' ○ skill(lean-ctx)',
+        '╻▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄',
+        '┃',
+        '╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀',
+        ' ○ Working · 25 B esc interrupt',
+        ' GitHub Copilot • Auto → gpt-6-luna',
+    ].join('\n');
+    const folderTrust = [
+        '│ Do you trust the files in this folder?                    │',
+        '│                                                            │',
+        '│ ❯ 1. Yes                                                   │',
+        '│   2. Yes, and remember this folder for future sessions     │',
+        '│   3. No (Esc)                                              │',
+        '│                                                            │',
+        '│ ↑/↓ to navigate · enter to select · esc to cancel          │',
+        '╰────────────────────────────────────────────────────────────╯',
+    ].join('\n');
+    it('the bare ┃ input box is an idle prompt for copilot only', () => {
+        expect(describeSignals(observePane(idle, 'copilot'))).toBe('idlePrompt');
+        expect(classifyPane(observePane(idle, 'copilot'))).toEqual({ kind: 'idle' });
+        expect(observePane(idle, 'claude').idlePrompt).toBe(false);
+        expect(classifyPane(observePane(idle, 'claude')).kind).not.toBe('idle');
+    });
+    it.each([
+        ['○ Working · 25 B esc interrupt', working],
+        ['◉ Working esc edit prompt', working.replace('○ Working · 25 B esc interrupt', '◉ Working esc edit prompt')],
+    ])('the working line %s is busy for copilot only', (_line, capture) => {
+        expect(describeSignals(observePane(capture, 'copilot'))).toBe('idlePrompt busy');
+        expect(classifyPane(observePane(capture, 'copilot'))).toEqual({ kind: 'busy' });
+        expect(observePane(capture, 'claude').busy).toBe(false);
+    });
+    it('the input box without the working line is idle', () => {
+        const done = working.replace(' ○ Working · 25 B esc interrupt\n', '');
+        expect(classifyPane(observePane(done, 'copilot'))).toEqual({ kind: 'idle' });
+    });
+    it('the folder trust dialog (1. Yes / 3. No (Esc)) is copilot_folder for copilot only', () => {
+        expect(observePane(folderTrust, 'copilot').trust).toBe('copilot_folder');
+        expect(classifyPane(observePane(folderTrust, 'copilot'))).toEqual({ kind: 'trust', trust: 'copilot_folder' });
+        expect(detectPaneTrustPromptKind(folderTrust, 'copilot')).toBe('copilot_folder');
+        expect(observePane(folderTrust, 'claude').trust).toBeNull();
+        expect(observePane(folderTrust, 'codex').trust).toBeNull();
+    });
+});
 describe('claudeTrustFocus', () => {
     const read = (file) => readFileSync(join(CORPUS_ROOT, file), 'utf8');
     const STALE_YES = ' ❯ Yes, I trust this folder\n';

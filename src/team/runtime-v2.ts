@@ -9493,7 +9493,7 @@ export async function monitorTeamV2(
     // A worker stopped at a trust dialog is not working either, and nothing
     // nudges it. A busy pane is not reported, whatever else is on screen.
     // Fork: an SDK session has no pane to read; its own state says idle.
-    const paneSignals = sdkSession ? null : observePane(paneCapture);
+    const paneSignals = sdkSession ? null : observePane(paneCapture, w.worker_cli);
     const paneState = paneSignals ? classifyPane(paneSignals) : null;
     const paneWaitsAtTrust =
       paneState?.kind === "trust" && !paneSignals?.busy;

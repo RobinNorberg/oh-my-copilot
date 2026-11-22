@@ -76,6 +76,30 @@ describe('fork default redaction rules survive the TOKEN_RULES port', () => {
     redactTokens(input);
     const start = performance.now();
     expect(redactTokens(input)).toBe(input);
-    expect(performance.now() - start).toBeLessThan(1000);
+    expect(performance.now() - start).toBeLessThan(500);
+  });
+
+  it('the URL credential rule keeps its output on plain and prefixed schemes', () => {
+    delete process.env.OMC_REDACT_KEY_SHAPES;
+    expect(redactTokens('https://user:pass@host')).toBe('https://****@host');
+    expect(redactTokens('foo-https://u:p@h')).toBe('foo-https://****@h');
+  });
+
+  it('the URL credential rule masks a scheme longer than 256 characters', () => {
+    delete process.env.OMC_REDACT_KEY_SHAPES;
+    const out = redactTokens('q'.repeat(300) + 'https://user:pass@host');
+    expect(out).toBe('q'.repeat(300) + 'https://****@host');
+    expect(out).not.toContain('pass');
+  });
+
+  it.each([
+    ['login -p', 'login '.repeat(20000) + ' -p'],
+    ['mysql -p', 'mysql '.repeat(20000) + ' -p'],
+  ])('the %s rule stays fast on a long run of the command word', (_rule, input) => {
+    delete process.env.OMC_REDACT_KEY_SHAPES;
+    redactTokens(input);
+    const start = performance.now();
+    redactTokens(input);
+    expect(performance.now() - start).toBeLessThan(500);
   });
 });

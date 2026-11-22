@@ -6,7 +6,7 @@ import { delimiter, dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderRecoveryContinuationInstruction } from '../worker-bootstrap.js';
-// Drives fake-team-provider.mjs over pipes, with a stub `omc` on PATH, so each
+// Drives fake-team-provider.mjs over pipes, with a stub `omg` on PATH, so each
 // scenario's frames and key handling stay checked without tmux.
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, '../../..');
@@ -85,8 +85,8 @@ async function waitUntil(done, diagnostics, timeoutMs = 10_000) {
 async function writeTaskInbox() {
     await writeFile(inboxPath, [
         '# Worker inbox',
-        `omc team api claim-task --input '{"team_name":"t","task_id":"1","worker":"worker-1"}' --json`,
-        `omc team api transition-task-status --input '{"team_name":"t","task_id":"1","from":"in_progress","to":"completed","claim_token":"<claim_token>"}' --json`,
+        `omg team api claim-task --input '{"team_name":"t","task_id":"1","worker":"worker-1"}' --json`,
+        `omg team api transition-task-status --input '{"team_name":"t","task_id":"1","from":"in_progress","to":"completed","claim_token":"<claim_token>"}' --json`,
     ].join('\n'));
 }
 function sendStartupTrigger(run) {
@@ -108,13 +108,13 @@ async function runClaimLifecycle(run, completedFrame) {
     await shutDown(run);
 }
 beforeEach(async () => {
-    root = await mkdtemp(join(tmpdir(), 'omc-fake-scenario-'));
+    root = await mkdtemp(join(tmpdir(), 'omg-fake-scenario-'));
     callsPath = join(root, 'api-calls.log');
     tracePath = join(root, 'trace.jsonl');
     inboxPath = join(root, 'inbox.md');
     ackPath = join(root, 'shutdown-ack.json');
     await mkdir(join(root, 'bin'));
-    const stub = join(root, 'bin', 'omc');
+    const stub = join(root, 'bin', 'omg');
     await writeFile(stub, [
         '#!/bin/sh',
         `printf '%s %s\\n' "$3" "$5" >> '${callsPath}'`,

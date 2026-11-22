@@ -59,15 +59,17 @@ const TOKEN_RULES: ReadonlyArray<readonly [pattern: RegExp, replacement: TokenRe
   // Secret-named flags with a separate value: --token abc, --api-key abc, --token -abc (not --next-flag)
   [new RegExp(String.raw`(--?${FLAG_NAME})(=|\s+)(?!--)${QUOTED_OR_BARE}`, 'gi'), (_m: string, name: string, sep: string, value: string) => maskValue(name, sep, value)],
   // URL credentials: scheme://user:pass@host, scheme://:pass@host
-  // The scheme is bounded (256 characters): an unbounded run made the scan quadratic on long runs such as
-  // `a-a-a-...` (every word start read the whole run looking for `://`).
-  [/(\b[a-z][a-z0-9+.-]{0,255}:\/\/)[^\s/:@]*:[^\s/@]+@/gi, '$1****@'],
+  // The scheme starts only where no scheme character precedes it: with `\b` every word start of a run such as
+  // `a-a-a-...` read the whole run looking for `://`, a quadratic scan; the lookbehind keeps it linear with no
+  // length bound, so a scheme of any length is still masked.
+  [/((?<![a-z0-9+.-])[a-z][a-z0-9+.-]*:\/\/)[^\s/:@]*:[^\s/@]+@/gi, '$1****@'],
   // curl -u user:pass / --user user:pass (not `-u redis://...`)
   [/(\s(?:-u|--user)(?:=|\s+)["']?[^\s:"']*:)((?!\/)[^\s"']+)/g, (_m: string, head: string, value: string) => `${head}${value.includes('****') ? value : '****'}`],
-  // mysql/mariadb -pSecret (attached password)
-  [/(\b(?:mysql|mysqldump|mysqladmin|mariadb|mariadb-dump)\b[^\n|;&]*?\s-p)([^\s-][^\s]*)/g, '$1****'],
-  // `... login ... -p secret` (docker/podman/helm/az login)
-  [/(\blogin\b[^\n|;&]*?\s-p\s+)("[^"]*"|'[^']*'|\S+)/g, '$1****'],
+  // mysql/mariadb -pSecret (attached password). The span to `-p` is bounded (512 characters): unbounded, every
+  // repeat of the command word read the rest of the line, a quadratic scan.
+  [/(\b(?:mysql|mysqldump|mysqladmin|mariadb|mariadb-dump)\b[^\n|;&]{0,512}?\s-p)([^\s-][^\s]*)/g, '$1****'],
+  // `... login ... -p secret` (docker/podman/helm/az login); the span to `-p` is bounded as for mysql above
+  [/(\blogin\b[^\n|;&]{0,512}?\s-p\s+)("[^"]*"|'[^']*'|\S+)/g, '$1****'],
   // Webhook URL secrets: hooks.slack.com/services/..., discord.com/api/webhooks/...
   [/(hooks\.slack\.com\/(?:services|workflows|triggers)\/)[^\s"']+/gi, '$1****'],
   [/(discord(?:app)?\.com\/api\/webhooks\/\d+\/)[^\s"'/?]+/gi, '$1****'],

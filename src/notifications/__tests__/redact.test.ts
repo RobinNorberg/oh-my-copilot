@@ -506,8 +506,22 @@ describe('redactTokens key-shape masking (OMC_REDACT_KEY_SHAPES=1)', () => {
             setSwitch('1');
             expect(redactTokens(input), `on, ${label}, ${JSON.stringify(separator)}`).toBe(`${visibleOn}${separator}${masked}`);
             setSwitch(undefined);
-            // fork: the default NAME=value rule masks xoxb_SECRET=... without the switch, so its off row differs.
-            if (name === 'xoxb_SECRET') continue;
+            // fork: the default NAME=value rule masks xoxb_SECRET=... without the switch too, so its off row
+            // differs for `=` separators. The default chain ends a double-quoted value at the first quote, escaped
+            // or not, so the text after an escaped quote stays visible without the switch (the switch-on scan
+            // reads escapes); pinned here so a change to either is seen.
+            if (name === 'xoxb_SECRET' && separator.includes('=')) {
+              const forkOff: Record<string, string> = {
+                'escaped quote': '****sensitive-suffix"',
+                'escaped quote and a Bearer word': '**** Bearer ****',
+              };
+              const out = redactTokens(input);
+              expect(out, `off, ${label}, ${JSON.stringify(separator)}`).toBe(`${name}${separator}${forkOff[label] ?? '****'}`);
+              expect(out).not.toContain('canary');
+              expect(out).not.toContain('words');
+              expect(out).not.toContain('start');
+              continue;
+            }
             expect(redactTokens(input), `off, ${label}, ${JSON.stringify(separator)}`).toBe(`${visibleOff}${separator}${plain}`);
           }
         }

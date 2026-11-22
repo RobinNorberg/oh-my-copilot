@@ -216,6 +216,35 @@ describe('monitorTeamV2 pane-based stall inference', () => {
     );
   });
 
+  // Fork: the monitor reads a Copilot worker's pane with Copilot's own patterns (worker_cli), so its bare
+  // `┃` input box is an idle prompt and its folder trust dialog is a trust dialog.
+  it.each([
+    ['the Copilot idle input box', '╻▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄\n┃\n╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n GitHub Copilot • Auto\n', 'idle at prompt'],
+    ['the Copilot folder trust dialog', [
+      '│ Do you trust the files in this folder?                    │',
+      '│ ❯ 1. Yes                                                   │',
+      '│   2. Yes, and remember this folder for future sessions     │',
+      '│   3. No (Esc)                                              │',
+    ].join('\n'), 'waiting at a trust dialog'],
+  ])('reads %s of a copilot worker with the copilot patterns', async (_label, capture, waitsAt) => {
+    cwd = await mkdtemp(join(tmpdir(), 'omc-runtime-v2-monitor-copilot-'));
+    isolateFixtureRoot(cwd);
+    await writeConfigAndTask('pending');
+    const configPath = join(teamStateRoot(cwd, 'demo-team'), 'config.json');
+    const config = JSON.parse(await readFile(configPath, 'utf-8'));
+    config.workers[0].worker_cli = 'copilot';
+    await writeFile(configPath, JSON.stringify(config, null, 2), 'utf-8');
+    mocks.tmuxExecAsync.mockImplementation(async (args: string[]) => (
+      { stdout: args[0] === 'capture-pane' ? capture : '', stderr: '' }
+    ));
+    const { monitorTeamV2 } = await import('../runtime-v2.js');
+    const snapshot = await monitorTeamV2('demo-team', cwd);
+
+    expect(snapshot?.recommendations).toContain(
+      `Investigate worker-1: assigned work but no work-start evidence; pane is ${waitsAt}`,
+    );
+  });
+
   it('does not flag a busy pane, even one whose output quotes a trust dialog', async () => {
     const snapshot = await monitorWithPane(
       'omc-runtime-v2-monitor-busy-trust-',
