@@ -68,8 +68,15 @@ describe('buildSandboxConfig', () => {
             '.ssh', '.gitconfig', '.omg', '.copilot', '.azure', '.git-credentials', join('.config', 'git', 'credentials'), join('.cache', 'git', 'credential'),
             join('.config', 'gh'), '.aws', '.npmrc', '.docker', '.kube', '.netrc', join('.cargo', 'credentials'), join('.cargo', 'credentials.toml'),
             '.gnupg', '.pypirc', join('.config', 'gcloud'),
+            join('.nuget', 'NuGet'), join('.nuget', 'plugins'), join('.config', 'NuGet'), join('.local', 'share', 'MicrosoftCredentialProvider'),
         ].map((p) => join(ctx.realHome, p));
         expect(denied.userPolicy.filesystem.deniedPaths).toEqual([...homeDenied, '/var/run/docker.sock', '/run/docker.sock', '/run/podman']);
+        // A dotnet job's read-only NuGet packages grant survives beside the denied NuGet config and credential dirs (never all of ~/.nuget).
+        const packages = join(ctx.realHome, '.nuget', 'packages');
+        const dotnet = buildSandboxConfig('write', { ...ctx, extraReadonly: [packages] }, host({ shell: true, denied_paths: true }));
+        expect(dotnet.userPolicy.filesystem.readonlyPaths).toContain(packages);
+        expect(dotnet.userPolicy.filesystem.deniedPaths).toEqual(expect.arrayContaining([join(ctx.realHome, '.nuget', 'NuGet'), join(ctx.realHome, '.nuget', 'plugins'), join(ctx.realHome, '.local', 'share', 'MicrosoftCredentialProvider')]));
+        expect(dotnet.userPolicy.filesystem.deniedPaths.some((d) => packages.startsWith(d))).toBe(false);
         // The user's runtime dir and the SSH agent's socket dir are denied on Linux/macOS.
         const sockets = buildSandboxConfig('write', { ...ctx, uid: 1000, sshAuthSock: '/tmp/ssh-XYZ/agent.42' }, host({ shell: true, denied_paths: true }));
         expect(sockets.userPolicy.filesystem.deniedPaths).toEqual([...homeDenied, '/run/user/1000', '/var/run/docker.sock', '/run/docker.sock', '/run/podman', '/tmp/ssh-XYZ']);
@@ -80,7 +87,7 @@ describe('buildSandboxConfig', () => {
         }
         // No socket entry on Windows; gh's hosts.yml dir and the GCM/MSAL token cache instead.
         const win = buildSandboxConfig('write', { ...ctx, platform: 'win32', uid: 1000, sshAuthSock: '/tmp/ssh-XYZ/agent.42' }, host({ shell: true, denied_paths: true }));
-        expect(win.userPolicy.filesystem.deniedPaths).toEqual([...homeDenied, join(ctx.realHome, 'AppData', 'Roaming', 'GitHub CLI'), join(ctx.realHome, 'AppData', 'Local', '.IdentityService')]);
+        expect(win.userPolicy.filesystem.deniedPaths).toEqual([...homeDenied, join(ctx.realHome, 'AppData', 'Roaming', 'GitHub CLI'), join(ctx.realHome, 'AppData', 'Local', '.IdentityService'), join(ctx.realHome, 'AppData', 'Roaming', 'NuGet'), join(ctx.realHome, 'AppData', 'Local', 'MicrosoftCredentialProvider')]);
         // An agent socket directly in a shared sticky dir: only the socket, never all of /tmp.
         for (const sshAuthSock of ['/tmp/agent.42', '/var/tmp/agent.42']) {
             const cfg = buildSandboxConfig('write', { ...ctx, sshAuthSock }, host({ shell: true, denied_paths: true }));

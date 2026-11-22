@@ -90,6 +90,8 @@ export interface LaneStartInput {
         target: string;
         nested?: string[];
     } | undefined;
+    /** The local backend, a write lane in a .NET repository (the run's local gate runs dotnet): CopilotRunStartOptions.dotnet. */
+    dotnet?: boolean;
     /** Cloud backends only. */
     customAgent?: string;
     timeoutMs: number;
@@ -142,6 +144,8 @@ export interface LaneProcess {
 export interface LaneSandboxIntent {
     sandboxed: boolean;
     writeNetwork: 'none' | 'registry';
+    /** sandbox.allowedHosts: the hosts "registry" allows beyond the npm registry. */
+    allowedHosts?: readonly string[];
     /** The Windows sandbox: beforeSandboxedSession copies (elsewhere it links, whenever `sandboxed`). */
     windowsCopy: boolean;
 }

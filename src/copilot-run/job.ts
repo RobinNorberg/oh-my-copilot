@@ -117,6 +117,7 @@ import {
   type SandboxScope,
   type SandboxSettings,
 } from './sandbox.js';
+import { dotnetSandboxEnv } from './dotnet-sandbox.js';
 import { LANE_PLUGIN_DIR, prepareLanePluginDir, removeLanePluginDir, sweepStaleLanePluginDirs } from './lane-plugin.js';
 import { SessionSandboxController, sandboxBypassDenial } from './sandbox-session.js';
 import { errText, withTimeout } from './timeout.js';
@@ -314,6 +315,12 @@ export interface CopilotRunStartOptions {
    * nothing under node_modules is granted.
    */
   nodeModulesGrant?: (worktree: string) => { target: string; nested?: string[] } | undefined;
+  /**
+   * A write job in a .NET repository (the factory: the run's local gate runs
+   * dotnet): the session env and grants dotnet needs in the sandbox
+   * (dotnet-sandbox.ts dotnetSandboxEnv). Absent: none.
+   */
+  dotnet?: boolean;
 }
 
 /** SandboxPolicyContext's node_modules fields from CopilotRunStartOptions.nodeModulesGrant's answer. */
@@ -544,6 +551,8 @@ interface Job {
   beforeHostGit: (() => string | null) | null;
   /** CopilotRunStartOptions.nodeModulesGrant (write jobs only). */
   nodeModulesGrant: ((worktree: string) => { target: string; nested?: string[] } | undefined) | null;
+  /** CopilotRunStartOptions.dotnet (write jobs only). */
+  dotnet: boolean;
   /** Why CopilotRunStartOptions.beforeSandboxedSession could not ready the worktree (the job fails before the runtime starts). */
   unprepared: string | null;
   /** The runtime's pid once the client started (stopAll's kill fallback). */
@@ -985,10 +994,10 @@ export class CopilotRunManager {
    * repository root to load the settings of `scope` from (a malformed block
    * throws, as start() refuses it).
    */
-  sandboxIntent(from: SandboxSettings | { root: string; scope: SandboxScope }): { sandboxed: boolean; writeNetwork: SandboxSettings['writeNetwork']; windowsCopy: boolean } {
+  sandboxIntent(from: SandboxSettings | { root: string; scope: SandboxScope }): { sandboxed: boolean; writeNetwork: SandboxSettings['writeNetwork']; allowedHosts: readonly string[]; windowsCopy: boolean } {
     const settings = 'enabled' in from ? from : (this.deps.sandboxSettings ?? loadSandboxSettings)(from.root, from.scope).settings;
     const sandboxed = settings.enabled && this.deps.env[SANDBOX_KILL_ENV] !== 'off';
-    return { sandboxed, writeNetwork: settings.writeNetwork, windowsCopy: sandboxed && this.deps.platform === 'win32' };
+    return { sandboxed, writeNetwork: settings.writeNetwork, allowedHosts: [...settings.allowedHosts], windowsCopy: sandboxed && this.deps.platform === 'win32' };
   }
 
   /** Validate, ask the budget governor, prepare the worktree, and start the session in the background. */
@@ -1228,6 +1237,7 @@ export class CopilotRunManager {
       deniedPaths: [...(options.deniedPaths ?? [])],
       beforeHostGit: options.beforeHostGit ?? null,
       nodeModulesGrant: profile !== 'review' ? options.nodeModulesGrant ?? null : null,
+      dotnet: profile !== 'review' && options.dotnet === true,
       unprepared: null,
       pid: undefined,
       pidIdentity: null,
@@ -1538,6 +1548,14 @@ export class CopilotRunManager {
     if (!job.hostCommits) seedGitIdentity(job.ledgerCwd, env.GIT_CONFIG_GLOBAL!);
     // OMC_BUDGET_HOST_LEDGER: this job records the session's usage; its hooks must not count it again.
     Object.assign(env, { OMC_GIT_GUARDRAILS: '1', COPILOT_ALLOW_ALL: 'false', OMC_BUDGET_HOST_LEDGER: '1', GIT_TERMINAL_PROMPT: '0', GCM_INTERACTIVE: 'never' });
+    const realHome = (deps.realHome ?? (() => userInfo().homedir))();
+    const dotnetGrants: string[] = [];
+    if (job.dotnet) {
+      const d = dotnetSandboxEnv(env.USERPROFILE!, deps.env, realHome, deps.platform);
+      Object.assign(env, d.env);
+      dotnetGrants.push(...d.readonly);
+      job.notes.push(...d.notes);
+    }
     delete env[COPILOT_RUN_ALLOW_ENV];
     // OMC_* from the caller is stripped above, so this is the session's only skip list.
     const skipHooks = [...(job.disableStopContinuations ? [STOP_CONTINUATION_SKIP_TOKEN] : []), ...(job.hostCommits ? [PROJECT_MEMORY_SKIP_TOKEN] : [])];
@@ -1618,7 +1636,6 @@ export class CopilotRunManager {
         // A job worktree's git dirs come from the links recorded at creation, never from discovery.
         const commonRaw = job.worktree ? job.commonGitDir : git(job.workCwd, ['rev-parse', '--path-format=absolute', '--git-common-dir']);
         const gitDirRaw = job.worktree ? job.worktreeLinks?.adminDir ?? null : git(job.workCwd, ['rev-parse', '--path-format=absolute', '--git-dir']);
-        const realHome = (deps.realHome ?? (() => userInfo().homedir))();
         const proxy = proxyCaEnv(deps.env, deps.platform, realHome);
         job.notes.push(...proxy.notes);
         return {
@@ -1636,7 +1653,7 @@ export class CopilotRunManager {
           // The caller-vouched node_modules (factory lanes); none, nothing under node_modules is granted.
           ...nodeModulesPolicy(job.nodeModulesGrant?.(resolve(top))),
           toolPaths: (deps.toolPaths ?? laneToolPaths)(deps.env, deps.platform),
-          extraReadonly: proxy.caPaths,
+          extraReadonly: [...proxy.caPaths, ...dotnetGrants],
           // A keyring-less host keeps the login token in plain text in the user's Copilot config.json: its config dir is
           // denied also when COPILOT_HOME moved it out of ~/.copilot (denied by default; copilotConfigDenies).
           ...(laneDenied.length > 0 ? { extraDenied: laneDenied } : {}),

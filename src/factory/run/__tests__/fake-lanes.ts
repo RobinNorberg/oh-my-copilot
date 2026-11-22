@@ -19,6 +19,7 @@ import { readWorktreeGitLinks, recordWorktreeGitLinks } from '../../../team/git-
 import { defaultExec, type Exec, type ExecResult } from '../../../ship/exec.js';
 import type { FactoryEngineOptions, LaneProcessOps } from '../engine.js';
 import type { LaneTreeProof } from '../lane-procs.js';
+import { cleanDotnetBuildOutput } from '../dotnet-clean.js';
 import { defaultLocalGateRunner, type LocalGateRunner } from '../local-gate.js';
 import type { GateConfigLoader } from '../prepare.js';
 import type { SandboxRunner } from '../sandbox-exec.js';
@@ -321,6 +322,11 @@ export const testGateConfig: GateConfigLoader = () => ({
 export function attestedSandbox(exec: () => Exec, gate: () => LocalGateRunner | undefined = () => undefined): SandboxRunner {
   return async (req) => {
     if (req.purpose === 'calibrate') return { ran: true, status: 0, output: '', timedOut: false };
+    // The dotnet clean step (dotnet-clean-step.js <kept...>): its logic in process, as the sandboxed node would run it.
+    if (req.purpose === 'clean') {
+      const r = cleanDotnetBuildOutput(req.cwd, req.args.slice(1));
+      return { ran: true, status: r.errors.length > 0 ? 1 : 0, output: [`removed ${r.removed}`, ...r.errors.map((e) => `error ${e}`)].join('\n'), timedOut: false };
+    }
     // No test runner: the engine's own plain runner, as the engine ran the gate before the sandbox.
     const runner = gate() ?? defaultLocalGateRunner;
     if (req.purpose === 'gate') {

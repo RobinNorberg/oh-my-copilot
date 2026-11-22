@@ -509,12 +509,42 @@ describe('copilot_run beforeSandboxedSession (the Windows OS sandbox)', () => {
         expect((await m.wait(m.start({ prompt: 'implement', cwd: repo }, { beforeSandboxedSession: () => { called += 1; return null; } }).jobId, 10_000)).status).toBe('completed');
         expect(called).toBe(1);
     });
-    it('sandboxIntent: the settings alone (enabled, kill switch, writeNetwork, Windows)', () => {
+    it('sandboxIntent: the settings alone (enabled, kill switch, writeNetwork, allowedHosts, Windows)', () => {
         const at = (platform, over, env = winEnv) => manager('idle', 'supported', { platform, sandboxSettings: settings(over) }, env).sandboxIntent({ root: repo, scope: 'factory' });
-        expect(at('win32', {})).toEqual({ sandboxed: true, writeNetwork: 'none', windowsCopy: true });
-        expect(at('linux', { writeNetwork: 'registry' })).toEqual({ sandboxed: true, writeNetwork: 'registry', windowsCopy: false });
-        expect(at('win32', { enabled: false })).toEqual({ sandboxed: false, writeNetwork: 'none', windowsCopy: false });
-        expect(at('win32', {}, { ...winEnv, OMG_SANDBOX: 'off' })).toEqual({ sandboxed: false, writeNetwork: 'none', windowsCopy: false });
+        expect(at('win32', {})).toEqual({ sandboxed: true, writeNetwork: 'none', allowedHosts: [], windowsCopy: true });
+        expect(at('linux', { writeNetwork: 'registry' })).toEqual({ sandboxed: true, writeNetwork: 'registry', allowedHosts: [], windowsCopy: false });
+        expect(at('win32', { enabled: false })).toEqual({ sandboxed: false, writeNetwork: 'none', allowedHosts: [], windowsCopy: false });
+        expect(at('win32', {}, { ...winEnv, OMG_SANDBOX: 'off' })).toEqual({ sandboxed: false, writeNetwork: 'none', allowedHosts: [], windowsCopy: false });
+        expect(at('linux', { writeNetwork: 'registry', allowedHosts: ['api.nuget.org'] })).toEqual({ sandboxed: true, writeNetwork: 'registry', allowedHosts: ['api.nuget.org'], windowsCopy: false });
+    });
+});
+describe('copilot_run dotnet (a write lane of a .NET repository)', () => {
+    const fs = (i = 0) => calls.optionsUpdates[i].sandboxConfig.userPolicy.filesystem;
+    const DOTNET_KEYS = ['NUGET_PACKAGES', 'DOTNET_CLI_USE_MSBUILD_SERVER', 'MSBUILDDISABLENODEREUSE', 'UseSharedCompilation', 'EnableSourceControlManagerQueries'];
+    it('dotnet: the session env has the MSBuild/NuGet variables and the packages folder is granted read-only', async () => {
+        const home = join(root, 'home');
+        const packages = join(home, '.nuget', 'packages');
+        mkdirSync(packages, { recursive: true });
+        const m = manager('idle', 'supported', { realHome: () => home });
+        const done = await m.wait(m.start({ prompt: 'implement', cwd: repo }, { dotnet: true }).jobId, 10_000);
+        expect(done.status).toBe('completed');
+        const env = calls.connections[0].env;
+        expect(env).toMatchObject({ NUGET_PACKAGES: packages, UseSharedCompilation: 'false', EnableSourceControlManagerQueries: 'false', MSBUILDDISABLENODEREUSE: '1' });
+        expect(fs().readonlyPaths).toContain(packages);
+        expect(fs().readwritePaths).not.toContain(packages);
+    });
+    it('without dotnet, or for a review job: none of it (inert for a Node repository)', async () => {
+        const home = join(root, 'home');
+        mkdirSync(join(home, '.nuget', 'packages'), { recursive: true });
+        const m = manager('idle', 'supported', { realHome: () => home });
+        expect((await m.wait(m.start({ prompt: 'implement', cwd: repo }).jobId, 10_000)).status).toBe('completed');
+        expect((await m.wait(m.start({ prompt: 'review', cwd: repo, profile: 'review' }, { dotnet: true }).jobId, 10_000)).status).toBe('completed');
+        for (const i of [0, 1]) {
+            const env = calls.connections[i].env;
+            for (const k of DOTNET_KEYS)
+                expect(env[k], `${i} ${k}`).toBeUndefined();
+            expect([...fs(i).readonlyPaths, ...fs(i).readwritePaths].some((p) => p.includes('.nuget')), String(i)).toBe(false);
+        }
     });
 });
 describe('copilot_run git link files', () => {

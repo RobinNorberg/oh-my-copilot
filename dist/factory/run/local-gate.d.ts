@@ -30,6 +30,7 @@
  */
 import { type LocalCheckRecord } from '../../forge/local/index.js';
 import { type GateProcTracker } from './gate-procs.js';
+import { DOTNET_BUILD_DIRS } from './dotnet-clean.js';
 import { type SandboxRunner } from './sandbox-exec.js';
 /** The record keeps this many characters of the gate's output (jobLog, the ci-fix prompt). */
 export declare const LOCAL_GATE_TAIL_CHARS = 8000;
@@ -156,8 +157,13 @@ export declare function runLocalGate(i: LocalGateInput): Promise<LocalGateOutcom
  * project config (`.npmrc` script-shell/node-options, `.yarnrc`,
  * `.yarnrc.yml`, `.pnpmfile.cjs`) at the repository top and in the package
  * directory; a node gate by the script file it runs; a gate executable given
- * as a repository path by that file. What the script itself runs
- * (vitest.config, scripts/test.mjs) is covered by review, not here.
+ * as a repository path by that file; a `dotnet build` / `dotnet test` gate
+ * by every file of the repository that matches DOTNET_DEFINITION_PATTERNS
+ * (`pattern` sources) plus the repository paths its argv names: a test
+ * adapter dir (`tree` sources, compared by every blob under the path), any
+ * other path as that one file's blob (`file` sources: a project or solution
+ * dir pins nothing beyond the patterns). What the
+ * script itself runs (vitest.config, scripts/test.mjs) is covered by review, not here.
  * Empty when the argv names nothing in the repository (`node --test`).
  *
  * Config files compare by their text, so a changed `script-shell=` or
@@ -169,6 +175,9 @@ export declare function runLocalGate(i: LocalGateInput): Promise<LocalGateOutcom
 export type GateDefinitionSource = {
     path: string;
     scripts?: string[];
+    pattern?: true;
+    tree?: true;
+    file?: true;
 };
 /**
  * The gate's definition sources, or why an npm-style gate's definition
@@ -180,14 +189,77 @@ export interface GateDefinitionSources {
     sources: GateDefinitionSource[];
     unresolved?: string;
 }
+/**
+ * The repository files that define what `dotnet build` / `dotnet test` does,
+ * as basename globs matched at any depth, case-insensitively: solutions and
+ * solution filters, every project file (`*.*proj`: csproj, fsproj, vbproj,
+ * proj, esproj, sqlproj, shproj...), shared-project items, every MSBuild
+ * import (`*.props`, `*.targets`, `*.tasks`, Directory.Build.* among them),
+ * the `<project>.user` file MSBuild imports beside each project, response
+ * files (Directory.Build.rsp, an argv `@file.rsp`), the SDK pin and NuGet's
+ * config and lock files, and the launch profiles Microsoft.Testing.Platform
+ * reads (`Properties/launchSettings.json`, `<project>.run.json`: an env such
+ * as TESTINGPLATFORM_EXITCODE_IGNORE or `--ignore-exit-code` there makes
+ * failing tests exit 0). What the build itself compiles and runs (the code,
+ * the tests, a .runsettings or xunit.runner.json, a
+ * runtimeconfig.template.json) is covered by review, as vitest.config is for
+ * an npm gate; auto-merge also protects those (DOTNET_TEST_CONFIG_PATTERNS).
+ */
+export declare const DOTNET_DEFINITION_PATTERNS: readonly string[];
+/**
+ * The .NET test and analyzer config: not part of a dotnet gate's definition
+ * (as vitest.config is not part of an npm gate's), but never auto-merged.
+ */
+export declare const DOTNET_TEST_CONFIG_PATTERNS: readonly string[];
+/**
+ * One case-insensitive matcher for a file's basename against basename globs
+ * (`*` any run of characters). It matches when the name as Windows opens it
+ * (openedBasename) or the name itself (folded, nothing dropped) does: on
+ * Linux `src/evil:1.props` is a plain file name that matches `*.props`.
+ */
+export declare function basenameMatcher(globs: readonly string[]): (path: string) => boolean;
+/** True when a repository file defines a dotnet gate (DOTNET_DEFINITION_PATTERNS). */
+export declare const isDotnetDefinitionFile: (path: string) => boolean;
+export { DOTNET_BUILD_DIRS };
+/**
+ * The index of the first segment of a repository path (`/`-separated, as git
+ * lists it) that is a DOTNET_BUILD_DIRS name, or -1: also -1 for a path with
+ * an empty, `.` or `..` segment, a `\`, or a node_modules segment (a linked
+ * or copied package tree is never build output).
+ */
+export declare function dotnetBuildDirIndex(path: string): number;
+/**
+ * Of the prepare checkout's untracked files (ignored or not, repository
+ * paths), the definition files MSBuild would read for a dotnet gate although
+ * no commit pins them (an ignored `App.csproj.user` or `Directory.Build.rsp`),
+ * outside the build output dirs (`bin/`, `obj/`, `artifacts/`), which a
+ * sandboxed step empties before a dotnet gate run (dotnet-clean.ts), and
+ * outside `node_modules` (a package tree is never the repository's MSBuild
+ * input). The PR's code run there earlier (a prepare check, an earlier gate
+ * run) can leave one.
+ */
+export declare function strayDotnetDefinitionFiles(untracked: readonly string[]): string[];
+/** A commit's files as [path, blob id] (`git ls-tree -r`). */
+export type GateTree = ReadonlyArray<readonly [string, string]>;
+/** The paths the pattern sources match whose blob differs between two trees ([path, blob id]): added, removed or changed. */
+export declare function patternSourceChanges(sources: readonly GateDefinitionSource[], a: GateTree, b: GateTree): string[];
+/** A path quoted for the shell when it holds anything but plain path characters (the park message's git diff). */
+export declare const shellPath: (p: string) => string;
+/** A source as a git pathspec (the park message's diff command): a pattern matches at any depth, in any case. */
+export declare const gateSourcePathspec: (s: GateDefinitionSource) => string;
 export declare function gateDefinitionSources(gate: readonly string[]): GateDefinitionSources;
 /**
  * The gate's definition at one commit, comparable across commits: per source
  * the named package.json scripts (a file that is not JSON compares by its
- * text), or the file's text. `read` returns a path's content at that commit,
- * undefined when the file is absent there.
+ * text), or the file's text; all `pattern` sources together as every
+ * matching path of the commit's tree with its blob id (one pass); per `tree`
+ * source every [path, blob id] at or under its path (a file, or a
+ * directory's whole content); per `file` source the [path, blob id] of that
+ * path only (none for a directory). `read` returns a path's content at that
+ * commit, undefined when the file is absent there; `list` the commit's files
+ * as [path, blob id] (needed only for pattern, tree and file sources, read once).
  */
-export declare function gateDefinition(sources: readonly GateDefinitionSource[], read: (path: string) => string | undefined): string;
+export declare function gateDefinition(sources: readonly GateDefinitionSource[], read: (path: string) => string | undefined, list?: () => GateTree): string;
 /** What a gate change touches, for the park message: `package.json scripts lint` or the file path. */
 export declare const describeGateSources: (sources: readonly GateDefinitionSource[]) => string;
 //# sourceMappingURL=local-gate.d.ts.map
