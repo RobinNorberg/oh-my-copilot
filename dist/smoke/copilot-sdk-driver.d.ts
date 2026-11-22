@@ -144,6 +144,11 @@ export interface SdkClientOptions {
     requestHandler?: unknown;
     /** Set by withCassette in replay: never use the machine's stored login. */
     useLoggedInUser?: boolean;
+    /**
+     * Client-level GitHub token (SDK 1.0.16 CopilotClientOptions.gitHubToken): the SDK puts it in the runtime's env
+     * (COPILOT_SDK_AUTH_TOKEN) and adds --no-auto-login. Only for a no-session probe; a lane's goes over the session RPC.
+     */
+    gitHubToken?: string;
 }
 export interface CopilotSdkModule {
     CopilotClient: new (opts: SdkClientOptions) => SdkClientLike;
@@ -223,6 +228,8 @@ export interface SdkProtocolProbeOptions {
     startTimeoutMs?: number;
     stopTimeoutMs?: number;
     killTree?: (pid: number) => void;
+    /** Runs on the started client before it stops (no session exists: only no-session RPCs such as sandbox.getHostSupport); a throw is ignored. */
+    onStarted?: (client: SdkClientLike) => Promise<void>;
 }
 /**
  * Starts and stops a runtime on `bin` (no session, no prompt) and returns the

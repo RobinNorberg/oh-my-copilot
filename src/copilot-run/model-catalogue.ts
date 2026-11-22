@@ -17,16 +17,17 @@ import { spawnSync, type SpawnSyncOptions } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { atomicWriteJsonSync } from '../lib/atomic-write.js';
 import { getGlobalOmcStateRoot } from '../utils/paths.js';
 import { errText, withTimeout } from './timeout.js';
 // Static, not lazy: bundlers keep only the names used here, while a dynamic import keeps whole modules.
 // Not copilot-run/job.ts: it reaches src/factory/**, which the team bundle must not (tests/lint/team-bundle-no-native).
-import { allowlistSessionEnv, scrubTokens, secretValues } from './sandbox.js';
+import { allowlistSessionEnv, scrubTokens, secretValues, sessionGitHubToken, withCredentialHint } from './sandbox.js';
 import { loadCopilotSdk, resolveShimTarget, rethrowSdkStartError, runtimePid, type LoadedSdk, type SdkClientLike } from '../smoke/copilot-sdk-driver.js';
 import { RUNTIME_MIN_MAX_CREDITS, SDK_INSTALL_COMMAND } from '../smoke/copilot-sdk-scenarios.js';
 import { buildSessionEnv, loginIdentity } from '../smoke/copilot-session-env.js';
+import { addRecordingDenyLiterals } from '../smoke/replay/handler.js';
 import { hasExited, killProcessTree, type SpawnSyncFn } from '../smoke/process-utils.js';
 import { childEnv, hardenWindowsExeSearch } from '../utils/windows-search.js';
 import { resolveCopilotBinary } from '../smoke/copilot-binary.js';
@@ -277,26 +278,38 @@ export async function fetchCopilotCatalogue(opts: {
     const bin = found && deps.platform === 'win32' && /\.(cmd|bat|ps1)$/i.test(found) ? resolveShimTarget(found) : found;
     if (!bin) return { error: 'the copilot CLI was not found' };
     const ident = loginIdentity(deps.userConfigDir());
+    hasLogin = ident.loggedInUsers !== undefined;
     writeFileSync(join(jobHome, 'config.json'), `${JSON.stringify({ ...ident, trustedFolders: [workDir] }, null, 2)}\n`);
-    const env = childEnv(allowlistSessionEnv(buildSessionEnv(deps.env, jobHome, { session: false, hasLogin: ident.loggedInUsers !== undefined }), jobHome));
+    const env = childEnv(allowlistSessionEnv(buildSessionEnv(deps.env, jobHome, { session: false, hasLogin }), jobHome));
+    // The runtime env carries the client credential (below): a git root search from the work dir stops at the job root,
+    // so no repository's hooks or instructions around it run with that env; no tool is ever auto-approved.
+    Object.assign(env, { COPILOT_ALLOW_ALL: 'false', GIT_CEILING_DIRECTORIES: resolve(jobRoot) });
     mkdirSync(env.XDG_CONFIG_HOME!, { recursive: true });
     mkdirSync(dirname(env.GIT_CONFIG_GLOBAL!), { recursive: true });
     mkdirSync(env.TEMP!, { recursive: true });
+    // listModels() has no session, so the explicit credential goes in the client option (the runtime env): no session
+    // and no untrusted code here. Never in the job home.
+    const gitHubToken = sessionGitHubToken(deps.env, source);
+    // A recording (cassette record mode) never carries the credential, the stored login token included.
+    if (gitHubToken) addRecordingDenyLiterals([gitHubToken]);
     const { CopilotClient, RuntimeConnection } = loaded.module;
     const c: SdkClientLike = new CopilotClient({
       connection: RuntimeConnection.forStdio({ path: bin, args: ['--max-ai-credits', String(RUNTIME_MIN_MAX_CREDITS)], env }),
       baseDirectory: jobHome,
       workingDirectory: workDir,
+      ...(gitHubToken ? { gitHubToken } : {}),
     });
     client = c;
     await c.start().catch(rethrowSdkStartError);
     return { models: catalogueFromListModels(await c.listModels()) };
   };
+  const source = { userConfigDir: deps.userConfigDir(), platform: deps.platform };
+  let hasLogin = false;
   let result: { models: string[] } | { error: string };
   try {
     result = await withTimeout(read(), opts.deadlineMs ?? FETCH_DEADLINE_MS, 'reading the Copilot model catalogue');
   } catch (error) {
-    result = { error: errText(error) };
+    result = { error: scrubTokens(withCredentialHint(errText(error), deps.env, source, hasLogin), secretValues(deps.env, source)) };
   }
   cancelled = true;
   const started = client as SdkClientLike | null;

@@ -22316,6 +22316,7 @@ var init_model_catalogue = __esm({
     init_copilot_sdk_driver();
     init_copilot_sdk_scenarios();
     init_copilot_session_env();
+    init_handler();
     init_process_utils2();
     init_windows_search();
     init_copilot_binary();

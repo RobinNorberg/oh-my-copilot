@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmdirSync, rmSync, symlinkSync, unlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -346,22 +346,92 @@ describe('copilot_run sandbox permissions and env', () => {
 describe('copilot_run beforeSandboxedSession (the Windows OS sandbox)', () => {
     const winEnv = { SystemRoot: 'C:\Windows', LOCALAPPDATA: 'C:\Users\real\AppData\Local' };
     it('win32 with the sandbox on: called once inside start(), with the job worktree, before the runtime starts and before the job timeout runs', async () => {
+        // Ordering, not wall time: record when the copy runs and when the job's timeout timer is armed
+        // (the setTimeout carrying this job's unique timeoutMs), so host load cannot flip the result.
+        const timeoutMs = 123_457;
+        const order = [];
         const seen = [];
+        const realSetTimeout = globalThis.setTimeout;
+        const timers = vi.spyOn(globalThis, 'setTimeout').mockImplementation(((...args) => {
+            if (args[1] === timeoutMs)
+                order.push('job timeout armed');
+            return realSetTimeout(...args);
+        }));
+        try {
+            const m = manager('idle', 'supported', { platform: 'win32' }, winEnv);
+            const started = m.start({ prompt: 'implement', cwd: repo, timeoutMs }, { beforeSandboxedSession: (wt) => {
+                    order.push('copy');
+                    seen.push({ path: wt, connections: calls.connections.length });
+                    return null;
+                } });
+            order.push('start() returned');
+            // Called once, synchronously inside start() (the caller's idle clock starts after it),
+            // before the runtime connected and before the job's timeout was armed.
+            expect(order).toEqual(['copy', 'job timeout armed', 'start() returned']);
+            const done = await m.wait(started.jobId, 10_000);
+            expect(done.status).toBe('completed');
+            expect(seen).toEqual([{ path: started.worktree.path, connections: 0 }]);
+            expect(calls.prompts).toEqual(['implement']);
+        }
+        finally {
+            timers.mockRestore();
+        }
+    });
+    it('win32, an async hook: start() returns at once, timers run during it, the runtime starts and the job timeout is armed only after it; prepared() settles with it', async () => {
         const m = manager('idle', 'supported', { platform: 'win32' }, winEnv);
-        const t0 = Date.now();
-        // A copy slower than the job's timeout: the timeout is armed only after it, so the job still completes.
-        const started = m.start({ prompt: 'implement', cwd: repo, timeoutMs: 400 }, { beforeSandboxedSession: (wt) => {
-                const until = Date.now() + 600;
-                while (Date.now() < until) { /* the synchronous copy */ }
-                seen.push({ path: wt, connections: calls.connections.length, elapsed: Date.now() - t0 });
-                return null;
+        const order = [];
+        let finish;
+        const started = m.start({ prompt: 'implement', cwd: repo, timeoutMs: 300 }, { beforeSandboxedSession: () => {
+                order.push('hook');
+                return new Promise((r) => { finish = r; });
             } });
-        // Called synchronously, before start() returned (the caller's idle clock starts after it).
-        expect(seen).toHaveLength(1);
+        order.push('start returned');
+        let ready = false;
+        void m.prepared(started.jobId).then(() => { ready = true; });
+        // The event loop is free: a timer fires while the worktree is readied, longer than the job's timeout.
+        await new Promise((r) => setTimeout(r, 500));
+        order.push(`timer: ${calls.connections.length} connections, ready ${ready}`);
+        expect(m.status(started.jobId).status).toBe('starting');
+        finish(null);
+        await m.prepared(started.jobId);
         const done = await m.wait(started.jobId, 10_000);
+        expect(order).toEqual(['hook', 'start returned', 'timer: 0 connections, ready false']);
+        // The 300 ms timeout was armed after the hook, so the job was not stopped by it.
         expect(done.status).toBe('completed');
-        expect(seen).toEqual([{ path: started.worktree.path, connections: 0, elapsed: seen[0].elapsed }]);
         expect(calls.prompts).toEqual(['implement']);
+    });
+    it.each([
+        ['a problem', async () => 'the copy is over its bounds'],
+        ['a rejection', async () => { throw new Error('the copy is over its bounds'); }],
+    ])('win32, an async hook: %s fails the job with worktree-unprepared; no runtime or session is started', async (_what, hook) => {
+        const m = manager('idle', 'supported', { platform: 'win32' }, winEnv);
+        const started = m.start({ prompt: 'implement', cwd: repo }, { beforeSandboxedSession: hook });
+        await expect(m.prepared(started.jobId)).resolves.toBeUndefined();
+        const done = await m.wait(started.jobId, 10_000);
+        expect(done.status).toBe('failed');
+        expect(done.error).toMatch(/^worktree-unprepared: the copy is over its bounds; no session was started/);
+        expect(calls.connections).toHaveLength(0);
+        expect(calls.sessions).toHaveLength(0);
+    });
+    it('win32, a non-native thenable hook is awaited like a promise: its problem fails the job; no runtime is started', async () => {
+        const m = manager('idle', 'supported', { platform: 'win32' }, winEnv);
+        const thenable = { then: (ok, _fail) => { setTimeout(() => ok?.('the copy is over its bounds'), 20); return thenable; } };
+        const started = m.start({ prompt: 'implement', cwd: repo }, { beforeSandboxedSession: () => thenable });
+        expect(m.status(started.jobId).status).toBe('starting');
+        await m.prepared(started.jobId);
+        const done = await m.wait(started.jobId, 10_000);
+        expect(done.status).toBe('failed');
+        expect(done.error).toMatch(/^worktree-unprepared: the copy is over its bounds; no session was started/);
+        expect(calls.connections).toHaveLength(0);
+    });
+    it('win32, an async hook: a cancel while the worktree is readied ends the job cancelled once it settles; no runtime is started', async () => {
+        const m = manager('idle', 'supported', { platform: 'win32' }, winEnv);
+        let finish;
+        const started = m.start({ prompt: 'implement', cwd: repo }, { beforeSandboxedSession: () => new Promise((r) => { finish = r; }) });
+        const cancelled = m.cancel(started.jobId);
+        finish(null);
+        expect((await cancelled).status).toBe('cancelled');
+        expect(calls.connections).toHaveLength(0);
     });
     it.each([
         ['a problem', () => 'the copy is over its bounds'],
@@ -375,11 +445,56 @@ describe('copilot_run beforeSandboxedSession (the Windows OS sandbox)', () => {
         expect(calls.sessions).toHaveLength(0);
         expect(calls.prompts).toHaveLength(0);
     });
-    it('not called off Windows, on Windows with the sandbox switched off (config or OMG_SANDBOX=off), nor for a review job', async () => {
+    it('off Windows: called with copy false (the linked tree); the grant target is the nodeModulesTarget of the session, so the linked tree is granted read-only', async () => {
+        const yours = join(root, 'user-nm');
+        mkdirSync(join(yours, 'pkg'), { recursive: true });
+        const seen = [];
+        const asked = [];
+        const linux = manager('idle', 'supported', { platform: 'linux' });
+        const started = linux.start({ prompt: 'implement', cwd: repo }, {
+            beforeSandboxedSession: (wt, o) => {
+                seen.push(o);
+                mkdirSync(join(wt, 'node_modules'));
+                symlinkSync(join(realpathSync.native(yours), 'pkg'), join(wt, 'node_modules', 'pkg'), process.platform === 'win32' ? 'junction' : 'dir');
+                return null;
+            },
+            nodeModulesGrant: (wt) => { asked.push(wt); return { target: yours }; },
+        });
+        const done = await linux.wait(started.jobId, 10_000);
+        expect(done.status).toBe('completed');
+        expect(seen).toEqual([{ copy: false }]);
+        expect(asked).toEqual([resolve(started.worktree.path)]);
+        const ro = calls.optionsUpdates[0].sandboxConfig.userPolicy.filesystem.readonlyPaths;
+        expect(ro).toContain(realpathSync.native(yours));
+    });
+    it('off Windows: a link in the worktree to anywhere but the grant target refuses the session (no prompt is sent)', async () => {
+        const yours = join(root, 'user-nm');
+        const outside = join(root, 'outside');
+        mkdirSync(yours, { recursive: true });
+        mkdirSync(outside, { recursive: true });
+        const linux = manager('idle', 'supported', { platform: 'linux' });
+        const started = linux.start({ prompt: 'implement', cwd: repo }, {
+            beforeSandboxedSession: (wt) => { symlinkSync(outside, join(wt, 'node_modules'), process.platform === 'win32' ? 'junction' : 'dir'); return null; },
+            nodeModulesGrant: () => ({ target: yours }),
+        });
+        const done = await linux.wait(started.jobId, 10_000);
+        expect(done.status).not.toBe('completed');
+        expect(calls.prompts).toHaveLength(0);
+        const wt = started.worktree?.path;
+        if (wt)
+            try {
+                unlinkSync(join(wt, 'node_modules'));
+            }
+            catch {
+                try {
+                    rmdirSync(join(wt, 'node_modules'));
+                }
+                catch { /* gone */ }
+            }
+    });
+    it('not called on Windows with the sandbox switched off (config or OMG_SANDBOX=off), nor for a review job', async () => {
         let called = 0;
         const hook = () => { called += 1; return 'unexpected'; };
-        const linux = manager('idle', 'supported', { platform: 'linux' });
-        expect((await linux.wait(linux.start({ prompt: 'implement', cwd: repo }, { beforeSandboxedSession: hook }).jobId, 10_000)).status).toBe('completed');
         const off = manager('idle', 'supported', { platform: 'win32', sandboxSettings: settings({ enabled: false }) }, winEnv);
         expect((await off.wait(off.start({ prompt: 'implement', cwd: repo }, { beforeSandboxedSession: hook }).jobId, 10_000)).status).toBe('completed');
         const killed = manager('idle', 'supported', { platform: 'win32' }, { ...winEnv, OMG_SANDBOX: 'off' });

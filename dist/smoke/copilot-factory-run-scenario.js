@@ -150,8 +150,10 @@ export function prepareFactoryRepo(dir) {
         return `repository files: ${err.message}`;
     }
     const steps = [
-        [['init', '-q', '--bare', '-b', FACTORY_RUN_BASE, bare], dir],
-        [['init', '-q', '-b', FACTORY_RUN_BASE], repo],
+        [['init', '-q', '--bare', bare], dir],
+        [['symbolic-ref', 'HEAD', `refs/heads/${FACTORY_RUN_BASE}`], bare],
+        [['init', '-q'], repo],
+        [['symbolic-ref', 'HEAD', `refs/heads/${FACTORY_RUN_BASE}`], repo],
         [['config', 'user.name', 'omg-smoke'], repo],
         [['config', 'user.email', 'omg-smoke@example.invalid'], repo],
         [['config', 'commit.gpgsign', 'false'], repo],

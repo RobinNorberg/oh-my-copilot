@@ -1,6 +1,6 @@
-import { existsSync, linkSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmdirSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, linkSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, realpathSync, renameSync, rmdirSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { parseProgressLog } from '../../../lib/agent-progress.js';
@@ -947,6 +947,46 @@ describe('the prepare checkout\'s node_modules link', () => {
     symlinkSync(join(target, '.bin'), join(checkout, 'node_modules', 'typescript'), linkType);
     expect(nodeModulesTreeProblem(checkout, target).problem).toMatch(/typescript points to/);
     unlinkNodeModules(root, checkout);
+  });
+
+  it('a root node_modules that is itself a link: the tree links name its realpath (the dir the sandbox mounts), and the check accepts both forms', () => {
+    const { root, checkout } = setup();
+    // bench init --node-modules: <root>/node_modules -> another checkout's node_modules. bwrap mounts only the realpath,
+    // so a tree link through <root>/node_modules dangles inside the Linux sandbox ("tsc: not found").
+    const store = join(root, '..', 'store');
+    renameSync(join(root, 'node_modules'), store);
+    symlinkSync(store, join(root, 'node_modules'), linkType);
+    linkNodeModules(root, checkout);
+    const fold = (p: string) => { const r = resolve(p).replace(/[\\/]+$/, ''); return process.platform === 'win32' ? r.toLowerCase() : r; };
+    const link = join(checkout, 'node_modules', 'typescript');
+    expect(fold(resolve(dirname(link), readlinkSync(link)))).toBe(fold(join(realpathSync.native(store), 'typescript')));
+    const target = join(root, 'node_modules');
+    expect(nodeModulesTreeProblem(checkout, target)).toEqual({ problem: null, linked: true });
+    // A tree of an earlier release (links through <root>/node_modules) is still the engine's.
+    unlinkOne(link);
+    symlinkSync(join(target, 'typescript'), link, linkType);
+    expect(nodeModulesTreeProblem(checkout, target)).toEqual({ problem: null, linked: true });
+    unlinkNodeModules(root, checkout);
+    expect(readFileSync(join(store, 'typescript', 'package.json'), 'utf-8')).toBe('{}\n');
+  });
+
+  it('a nested workspace tree links name the realpath of your package node_modules too (#589 review C), so the grant (its realpath) covers them', () => {
+    const { root, checkout } = setup();
+    mkdirSync(join(root, 'packages', 'a', 'node_modules', 'left-pad'), { recursive: true });
+    writeFileSync(join(root, 'packages', 'a', 'package.json'), '{"name":"a"}\n');
+    mkdirSync(join(checkout, 'packages', 'a'), { recursive: true });
+    // Your checkout reached through a link (a symlinked temp or home dir): every lexical path under it differs from its realpath.
+    const via = join(root, '..', 'via');
+    symlinkSync(root, via, linkType);
+    linkNodeModules(via, checkout, undefined, ['packages/*']);
+    const fold = (p: string) => { const r = resolve(p).replace(/[\/]+$/, ''); return process.platform === 'win32' ? r.toLowerCase() : r; };
+    const link = join(checkout, 'packages', 'a', 'node_modules', 'left-pad');
+    expect(lstatSync(link).isSymbolicLink()).toBe(true);
+    expect(fold(resolve(dirname(link), readlinkSync(link)))).toBe(fold(join(realpathSync.native(join(root, 'packages', 'a', 'node_modules')), 'left-pad')));
+    expect(fold(resolve(dirname(link), readlinkSync(link)))).not.toBe(fold(join(via, 'packages', 'a', 'node_modules', 'left-pad')));
+    unlinkNodeModules(via, checkout);
+    unlinkOne(via);
+    expect(existsSync(join(root, 'packages', 'a', 'node_modules', 'left-pad'))).toBe(true);
   });
 
   it('leaves a real node_modules directory and a link to anything else', () => {

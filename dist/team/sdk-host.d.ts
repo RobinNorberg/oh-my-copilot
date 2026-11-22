@@ -117,11 +117,12 @@ export declare function readHostCredentials(stream: NodeJS.ReadableStream & {
     destroy?: () => void;
 }, timeoutMs: number): Promise<Record<string, string>>;
 /**
- * The Copilot credential for the session RPC: COPILOT_GITHUB_TOKEN, else
- * GH_TOKEN / GITHUB_TOKEN when no stored login was copied (with a login they
- * would shadow it, as buildSessionEnv drops them then).
+ * The Copilot credential for the session RPC: COPILOT_GITHUB_TOKEN, else the
+ * stored login's plaintext token (`stored`: a keyring-less host's config.json,
+ * storedLoginToken), else GH_TOKEN / GITHUB_TOKEN when no stored login was
+ * copied (with a login they would shadow it, as buildSessionEnv drops them then).
  */
-export declare function workerGitHubToken(env: NodeJS.ProcessEnv, hasLogin: boolean): string | undefined;
+export declare function workerGitHubToken(env: NodeJS.ProcessEnv, hasLogin: boolean, stored?: string): string | undefined;
 /**
  * Make `target` hold exactly `env`. The `t` MCP server child runs with the
  * session env; in-process tool handlers read `process.env`, so with

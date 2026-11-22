@@ -67,6 +67,8 @@ import { checkEnvFor, fetchBase, FETCH_TIMEOUT_MS, forgeReadExec, localBase, mis
 import { BUCKET_ORDER, checkItems, plainText } from '../../factory/check/score.js';
 import { createForge } from '../../forge/index.js';
 import { liveCreditReservations, parallelLayoutRefusal, readTrustedBaseLayerAtRef, releaseDeadCreditReservations, resolveParallelSettings, runParallelSupervisor } from '../../factory/run/parallel.js';
+import { factoryGitProblem } from '../../factory/git-preflight.js';
+import { factorySandboxProblem, linuxSandboxProblem, loadSandboxSettings } from '../../copilot-run/sandbox.js';
 import { resolveRunLayout, userParallelOptIn } from '../../factory/run/private-run.js';
 import { skillSlash } from '../../utils/skill-slash.js';
 export function renderChainStatus(status) {
@@ -175,6 +177,7 @@ export const defaultFactoryRunDeps = {
     forge: (root, base, opts) => loadFactoryForgeConfig(factoryGuardExec(defaultExec), root, base, userConfigLayers().trustedUser, projectConfig(root), opts),
     gateSandbox: (root) => createSandboxRunner(root),
     parallel: (root, base, kind) => defaultParallelLayers(root, base, kind),
+    sandboxProblem: () => linuxSandboxProblem(),
 };
 class FactoryUsageError extends Error {
 }
@@ -246,6 +249,9 @@ export function renderFactoryRunState(state, o = {}) {
         lines.push(chalk.yellow(`lane ${plainText(state.pendingCommit.laneId)}'s work is not committed yet (the rerun commits the same worktree)${state.pendingCommit.secretFindings?.length ? `; secret-shaped: ${state.pendingCommit.secretFindings.map((f) => plainText(`${f.path} (${f.kind})`)).join(', ')}` : ''}`));
     if (state.unsandboxedGatesAck)
         lines.push(chalk.yellow(`prepare checks and the local gate without the OS sandbox accepted for ${state.unsandboxedGatesAck.slice(0, 12)} (--allow-unsandboxed-gates)`));
+    // The per-kind models the run's first lane resolved (informational; this invocation's config picks the models).
+    if (state.laneModels)
+        lines.push(`lane models: ${Object.entries(state.laneModels).map(([k, m]) => `${k} ${m ? plainText(m) : 'default'}`).join(', ')}`);
     lines.push(`lanes ${state.lanes.length}  run AI credits ${runCredits(state).toFixed(2)}  elapsed ${Math.round(state.elapsedMs / 60_000)} min`);
     for (const lane of state.lanes) {
         const credits = lane.usage ? `${lane.usage.credits.toFixed(2)}/${lane.maxCredits}` : `-/${lane.maxCredits}`;
@@ -470,7 +476,8 @@ export function factoryRunCommand(deps = defaultFactoryRunDeps) {
         .option('--allow-secret-shapes', 'Accept the secret-shaped content (the key or token shapes, by path and kind, the park named) that parked a lane commit at secret-shaped-content, for that lane commit only: you checked they are test fixtures, not real secrets; a new path or kind parks again')
         .option('--parallel <n>', 'With --next and factory.run.maxConcurrent above 1 (factory.run.layout "private"): run up to min(n, maxConcurrent) runs at once, each its own `omg factory run --next` process; a slot is refilled when a run ends, until nothing is runnable or Ctrl+C', integerOption(1, 64))
         .option('--max-requests <n>', 'Start no further lane in this run once its lanes recorded n premium requests, or when a lane\'s usage is unknown (the run parks at budget); the lane in flight when the cap is reached finishes, so the run can end above n by that one lane', integerOption(1, 10_000))
-        .option('--model <id>', 'Start every lane (implement, review, fix, ci-fix, conflict-fix) on this Copilot model id instead of factory.run.laneModel or the Copilot default model; an id not in the known model list is refused')
+        .option('--model <id>', 'Start every lane (implement, review, fix, ci-fix, conflict-fix) without its own factory.run.laneModels entry on this Copilot model id instead of factory.run.laneModel or the Copilot default model; an id not in the known model list is refused')
+        .option('--review-model <id>', 'Start review lanes on this Copilot model id (over factory.run.laneModels.review, --model and factory.run.laneModel), e.g. a cheaper model than the implement lanes; an id not in the known model list is refused')
         .option('--json', 'JSON output')
         .action((issueRaw, o) => factoryGuarded(Boolean(o.json), async () => {
         if (o.next && issueRaw !== undefined)
@@ -485,18 +492,39 @@ export function factoryRunCommand(deps = defaultFactoryRunDeps) {
             throw new FactoryUsageError(error instanceof Error ? error.message : String(error));
         }
         let laneModel;
+        let reviewModel;
         try {
             laneModel = o.model === undefined ? undefined : checkLaneModel(o.model, '--model');
+            reviewModel = o.reviewModel === undefined ? undefined : checkLaneModel(o.reviewModel, '--review-model');
         }
         catch (error) {
             throw new FactoryUsageError(error instanceof Error ? error.message : String(error));
         }
         let issue = o.next ? undefined : parseIssue(issueRaw);
+        if (!o.dryRun) {
+            const gitProblem = factoryGitProblem(deps.exec);
+            if (gitProblem)
+                throw new FactoryUsageError(gitProblem);
+        }
         const root = factoryRoot(exec);
+        if (!o.dryRun) {
+            // Only where a lane would park at sandbox-unavailable: a malformed sandbox block is left to the lanes' own load.
+            let settings;
+            try {
+                settings = (deps.sandboxSettings ?? ((r) => loadSandboxSettings(r, 'factory').settings))(root);
+            }
+            catch {
+                settings = undefined;
+            }
+            const sandboxProblem = settings ? factorySandboxProblem(settings, deps.sandboxProblem) : null;
+            if (sandboxProblem)
+                throw new FactoryUsageError(`the Linux sandbox is unusable: ${sandboxProblem}`);
+        }
         const loadedLimits = deps.limits(root);
         for (const w of loadedLimits.warnings)
             console.error(chalk.yellow(w));
-        const limits = { ...loadedLimits.limits, ...(o.maxRequests !== undefined ? { maxRunRequests: o.maxRequests } : {}), ...(laneModel ? { laneModel } : {}) };
+        const limits = { ...loadedLimits.limits, ...(o.maxRequests !== undefined ? { maxRunRequests: o.maxRequests } : {}), ...(laneModel ? { laneModel } : {}),
+            ...(reviewModel ? { laneModels: { ...loadedLimits.limits.laneModels, review: reviewModel } } : {}) };
         const base = deps.base(root);
         let claimRepo = null;
         const warnShallow = shallowWarnOnce();
@@ -541,7 +569,7 @@ export function factoryRunCommand(deps = defaultFactoryRunDeps) {
                 throw new FactoryUsageError('--max-requests caps one run; it does not combine with --parallel');
             if (!slotMode)
                 throw new FactoryUsageError('--parallel needs factory.run.maxConcurrent above 1 and factory.run.layout: "private"; parallel runs are an opt-in of your user config (factory.run.maxConcurrent, maxInFlightCredits or layout "private" there), and only then can the .copilot/omg.jsonc committed on a trusted base supply the other key');
-            return runParallel(deps, root, Math.min(o.parallel, par.settings.maxConcurrent), parent, Boolean(o.json), laneModel);
+            return runParallel(deps, root, Math.min(o.parallel, par.settings.maxConcurrent), parent, Boolean(o.json), laneModel, reviewModel);
         }
         const creditLimit = slotMode ? par.settings.maxInFlightCredits ?? limits.laneMaxCredits * par.settings.maxConcurrent : par?.settings.maxInFlightCredits;
         let signals = 0;
@@ -681,7 +709,7 @@ export function factoryRunCommand(deps = defaultFactoryRunDeps) {
      * stop signal (the second exits at once). One line per child; `--json`:
      * `{ ok, parallel, interrupted, exitCode, children: [{ index, exitCode, next, message }], message }`.
      */
-    async function runParallel(deps, root, n, parent, json, laneModel) {
+    async function runParallel(deps, root, n, parent, json, laneModel, reviewModel) {
         const forwards = new Set();
         let stops = 0;
         const stoppers = new Set();
@@ -702,7 +730,7 @@ export function factoryRunCommand(deps = defaultFactoryRunDeps) {
         const sigterm = () => onSignal('SIGTERM');
         process.on('SIGINT', sigint);
         process.on('SIGTERM', sigterm);
-        const args = [...(parent !== undefined ? ['--parent', String(parent)] : []), ...(laneModel ? ['--model', laneModel] : [])];
+        const args = [...(parent !== undefined ? ['--parent', String(parent)] : []), ...(laneModel ? ['--model', laneModel] : []), ...(reviewModel ? ['--review-model', reviewModel] : [])];
         const signals = (forward) => { forwards.add(forward); return () => { forwards.delete(forward); }; };
         const child = deps.parallelChild ?? ((c) => defaultPollAutoStart(process.argv[1], { signals: c.signals })({ root: c.root, args: c.args }));
         try {

@@ -27,9 +27,10 @@
  */
 import { randomBytes } from 'node:crypto';
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join, resolve, sep } from 'node:path';
 import { ledgerPath, ledgerTotals, parseLedger } from '../../budget/ledger.js';
-import { resolveGateIsolation, resolveGatesSandboxMode } from '../../copilot-run/sandbox.js';
+import { factorySandboxProblem, loadSandboxSettings, resolveGateIsolation, resolveGatesSandboxMode } from '../../copilot-run/sandbox.js';
 import { createForge } from '../../forge/index.js';
 import { resolveForgeConfig } from '../../forge/config.js';
 import { LOCAL_REMOTE, readMirrorRef } from '../../forge/local/index.js';
@@ -40,7 +41,7 @@ import { parseJsonc } from '../../utils/jsonc.js';
 import { checkEnvFor, forgeReadExec, localBase, readForgeOptions } from '../check/cli.js';
 import { checkItems } from '../check/score.js';
 import { defaultPollAutoStart, pollParallel } from '../poll.js';
-import { checkLaneModel, DEFAULT_FACTORY_RUN_LIMITS, laneRequestsUnknown } from '../run/budget.js';
+import { checkLaneModel, checkLaneModels, DEFAULT_FACTORY_RUN_LIMITS, LANE_MODEL_KINDS, laneModelFor, laneRequestsUnknown } from '../run/budget.js';
 import { runFactoryEngine } from '../run/engine.js';
 import { factoryForgeOptions, loadFactoryForgeConfig } from '../run/forge-roots.js';
 import { defaultLedgerDir } from '../run/ledger.js';
@@ -54,7 +55,7 @@ import { fillPlaceholders, readFixtureMeta, removeBenchDir } from './fixture.js'
 import { multiplierRefusal, probeLaneModel } from './model-probe.js';
 import { BENCH_ISSUES } from './seed/issues.js';
 import { ACCEPTANCE_TEST_PATH, BENCH_FIXTURE_VERSION } from './seed/project.js';
-import { BENCH_RESULTS_KIND, BENCH_RESULTS_SCHEMA_VERSION, computeTotals, issuePasses, laneModelMismatches, laneUsage, outcomeOf, phaseTimes, renderResultsMarkdown, trapContainment, trapVerdict, } from './score.js';
+import { BENCH_RESULTS_KIND, BENCH_RESULTS_SCHEMA_VERSION, computeTotals, issuePasses, laneModelMismatches, laneUsage, outcomeOf, phaseTimes, benchFinding, guardedGitCommand, readGuardDenials, renderResultsMarkdown, scoreClassOf, trapContainment, trapVerdict, } from './score.js';
 /** The fewest premium requests a run spends (an implement and a review lane): the headroom a live start needs. */
 export const MIN_RUN_REQUESTS = 2;
 export const DEFAULT_BENCH_MAX_MINUTES = 240;
@@ -386,8 +387,13 @@ export async function runBench(o) {
     // so the probe and the lanes cannot disagree.
     let laneModel;
     let laneModelSource;
+    // Per lane kind (factory.run.laneModels, --review-model for review): a child reads the user config's laneModels
+    // itself and gets --review-model, so the probe and the lanes agree here too.
+    let laneModels = {};
+    const laneModelSources = {};
     try {
-        const userLaneModel = trustedUser?.factory?.run?.laneModel;
+        const userRun = trustedUser?.factory?.run;
+        const userLaneModel = userRun?.laneModel;
         if (o.model !== undefined) {
             laneModel = checkLaneModel(o.model, '--model');
             laneModelSource = '--model';
@@ -396,16 +402,35 @@ export async function runBench(o) {
             laneModel = checkLaneModel(userLaneModel, 'user config: factory.run.laneModel');
             laneModelSource = 'user config';
         }
+        if (userRun?.laneModels !== undefined) {
+            laneModels = checkLaneModels(userRun.laneModels, 'user config: factory.run.laneModels');
+            for (const k of Object.keys(laneModels))
+                laneModelSources[k] = 'user config';
+        }
+        if (o.reviewModel !== undefined) {
+            laneModels = { ...laneModels, review: checkLaneModel(o.reviewModel, '--review-model') };
+            laneModelSources.review = '--review-model';
+        }
     }
     catch (error) {
         throw new BenchUsageError(error instanceof Error ? error.message : String(error));
     }
+    const hasOwnModels = Object.keys(laneModels).length > 0;
+    /** Where each kind's own model came from, as the CLI or config names it. */
+    const ownFlag = (k) => (laneModelSources[k] === '--review-model' ? '--review-model' : `factory.run.laneModels.${k}`);
     const modelFlag = laneModelSource === 'user config' ? 'factory.run.laneModel' : '--model';
     /** The lanes' model as the results record it (null: not named and not probed). */
     let modelUsed = laneModel && laneModelSource ? { id: laneModel, multiplier: null, explicit: true, source: laneModelSource } : null;
+    const ownModelsUsed = Object.fromEntries(LANE_MODEL_KINDS.filter((k) => laneModels[k]).map((k) => [k, { id: laneModels[k], multiplier: null, source: laneModelSources[k] }]));
     if (o.mode === 'live') {
         if (o.maxRequests === undefined)
             throw new BenchUsageError('--live needs --max-requests <n>: the bench never spends premium requests without an explicit cap');
+        if (o.sandboxProblem) {
+            const settings = loadSandboxSettings(meta.root, 'factory', { user: trustedUser, project: fixtureBaseConfig(meta) }).settings;
+            const problem = factorySandboxProblem(settings, o.sandboxProblem);
+            if (problem)
+                throw new BenchUsageError(`the Linux sandbox is unusable: ${problem}`);
+        }
     }
     else if (parallel !== 1) {
         throw new BenchUsageError('--parallel applies to --live; --fake runs one engine at a time');
@@ -421,6 +446,51 @@ export async function runBench(o) {
     const runsLog = [];
     let config;
     let ledgerUsed = null;
+    /** The conflicting pairs' second issues: the partner landed before their rerun. */
+    const landed = new Map();
+    /** Land a pair's partner (landPartner); the landed head, or null with a note when the pair was not exercised. */
+    const landPair = (issue, mirror) => {
+        const partner = issue.conflictsWith;
+        const r = inScope(partner) ? landPartner(meta, mirror, partner, issue.id) : { skipped: `#${partner} is not in --issues` };
+        if ('skipped' in r) {
+            notes.push(`conflicting pair #${partner}/#${issue.id} not exercised: ${r.skipped}`);
+            log(`#${issue.id} ${issue.slug}: conflicting pair not exercised: ${r.skipped}`);
+            return null;
+        }
+        landed.set(issue.id, { issue: partner, head: r.head });
+        log(`#${issue.id} ${issue.slug}: landed #${partner} (${r.head.slice(0, 12)}) on ${meta.base}; running again`);
+        return r.head;
+    };
+    /** Fake mode: one engine run of an issue with these scripted lanes; false when the bench must stop. */
+    const runFake = async (issue, steps, seen) => {
+        // --max-requests in fake mode: the same hard per-run cap the live children get.
+        let maxRunRequests;
+        if (o.maxRequests !== undefined) {
+            const used = [...seen].reduce((n, id) => n + (issueUsage(meta.root, id)?.requests ?? 0), 0);
+            maxRunRequests = o.maxRequests - used;
+            if (maxRunRequests < MIN_RUN_REQUESTS) {
+                stopped = 'max-requests';
+                return false;
+            }
+        }
+        log(`#${issue.id} ${issue.slug}: running${maxRunRequests !== undefined ? ` (cap ${maxRunRequests} requests)` : ''}`);
+        try {
+            const out = await runFactoryEngine({
+                root: meta.root, issue: issue.id, exec: defaultExec, base: meta.base, limits: { ...DEFAULT_FACTORY_RUN_LIMITS, ...(maxRunRequests !== undefined ? { maxRunRequests } : {}), ...(laneModel ? { laneModel } : {}), ...(hasOwnModels ? { laneModels } : {}) },
+                lanes: new BenchFakeLanes(meta.root, steps, (t) => fillPlaceholders(t, meta)),
+                ledgerDir: join(benchDir, 'engine-ledger'), processes: BENCH_FAKE_PROCESSES, pollMs: 5, sleep: async () => { },
+                gateConfig: benchGateConfig, forge: { config, options: { ...factoryForgeOptions(meta.root), stateDir: join(benchDir, 'forge-state') } },
+                gateSandbox: plainGateRunner, gateSandboxUserConfig: null, runUserConfig: null, secretScanUserConfig: null, codingAgentUserConfig: null,
+                warn: () => { },
+            });
+            log(`#${issue.id} ${issue.slug}: exit ${out.exitCode}: ${out.message.split('\n')[0].slice(0, 200)}`);
+        }
+        catch (error) {
+            errors.set(issue.id, error instanceof Error ? error.message : String(error));
+            log(`#${issue.id} ${issue.slug}: error: ${errors.get(issue.id)}`);
+        }
+        return true;
+    };
     if (o.mode === 'fake') {
         config = fakeForgeConfig(meta, join(benchDir, 'forge-state'));
         const seen = new Set();
@@ -442,32 +512,24 @@ export async function runBench(o) {
                 notes.push(`backlog item #${next.id} is not a bench issue; skipped`);
                 continue;
             }
-            // --max-requests in fake mode: the same hard per-run cap the live children get.
-            let maxRunRequests;
-            if (o.maxRequests !== undefined) {
-                const used = [...seen].reduce((n, id) => n + (issueUsage(meta.root, id)?.requests ?? 0), 0);
-                maxRunRequests = o.maxRequests - used;
-                if (maxRunRequests < MIN_RUN_REQUESTS) {
-                    stopped = 'max-requests';
-                    break;
-                }
+            if (!(await runFake(issue, issue.fake, seen)))
+                break;
+        }
+        // The conflicting pairs: land the partner, then run the second issue again with its rerun lanes.
+        for (const issue of selected.filter((i) => i.conflictsWith !== undefined)) {
+            if (stopped)
+                break;
+            if (o.interrupted?.()) {
+                stopped = 'interrupted';
+                break;
             }
-            log(`#${issue.id} ${issue.slug}: running${maxRunRequests !== undefined ? ` (cap ${maxRunRequests} requests)` : ''}`);
-            try {
-                const out = await runFactoryEngine({
-                    root: meta.root, issue: issue.id, exec: defaultExec, base: meta.base, limits: { ...DEFAULT_FACTORY_RUN_LIMITS, ...(maxRunRequests !== undefined ? { maxRunRequests } : {}), ...(laneModel ? { laneModel } : {}) },
-                    lanes: new BenchFakeLanes(meta.root, issue.fake, (t) => fillPlaceholders(t, meta)),
-                    ledgerDir: join(benchDir, 'engine-ledger'), processes: BENCH_FAKE_PROCESSES, pollMs: 5, sleep: async () => { },
-                    gateConfig: benchGateConfig, forge: { config, options: { ...factoryForgeOptions(meta.root), stateDir: join(benchDir, 'forge-state') } },
-                    gateSandbox: plainGateRunner, gateSandboxUserConfig: null, runUserConfig: null, secretScanUserConfig: null, codingAgentUserConfig: null,
-                    warn: () => { },
-                });
-                log(`#${issue.id} ${issue.slug}: exit ${out.exitCode}: ${out.message.split('\n')[0].slice(0, 200)}`);
+            if (overTime()) {
+                stopped = 'max-minutes';
+                break;
             }
-            catch (error) {
-                errors.set(issue.id, error instanceof Error ? error.message : String(error));
-                log(`#${issue.id} ${issue.slug}: error: ${errors.get(issue.id)}`);
-            }
+            const landedHead = landPair(issue, config.repo.url);
+            if (landedHead && !(await runFake(issue, issue.fakeRerun ?? [], seen)))
+                break;
         }
     }
     else {
@@ -484,8 +546,10 @@ export async function runBench(o) {
         config = loadFactoryForgeConfig(factoryGuardExec(defaultExec), meta.root, meta.base, trustedUser, undefined).config;
         if (config.kind !== 'local')
             throw new BenchUsageError(`the fixture resolves to the ${config.kind} forge (your user config's factory.forge?); the bench needs the local forge`);
-        // The lanes' model and its multiplier, before anything is spent (read-only, no model turn).
-        const model = await (o.modelProbe ?? ((m) => probeLaneModel(join(benchDir, 'model-probe'), undefined, m)))(laneModel);
+        // The lanes' model and its multiplier, before anything is spent (read-only, no model turn). The probe's job home is
+        // under the OS temp dir, never the bench dir: its runtime env carries the credential, so no repository surrounds it.
+        const probe = o.modelProbe ?? ((m) => probeLaneModel(join(tmpdir(), 'omg-model-probe'), undefined, m));
+        const model = await probe(laneModel);
         // A probe that ignored the explicit model must not pass its default off as it.
         if (laneModel && !(model.explicit && model.model === laneModel))
             throw new BenchUsageError(`the model probe did not check ${modelFlag} ${laneModel} (it reported ${model.model ?? 'no model'}); the bench does not start an unchecked ${modelFlag}`);
@@ -495,9 +559,32 @@ export async function runBench(o) {
         notes.push(modelLine);
         if (model.multiplier === null)
             notes.push('the multiplier is unknown: a lane without session.shutdown totals counts its user calls once each, which undercounts a model above 1x');
-        const multiplierStop = multiplierRefusal(model, o.allowMultiplier);
+        const multiplierStop = multiplierRefusal(model, o.allowMultiplier, modelFlag);
         if (multiplierStop)
             throw new BenchUsageError(multiplierStop);
+        // Every other distinct model a lane kind starts on: checked against the account and --allow-multiplier the same way.
+        const probed = new Map(laneModel ? [[laneModel, model]] : []);
+        for (const k of LANE_MODEL_KINDS) {
+            const id = laneModels[k];
+            if (!id)
+                continue;
+            let info = probed.get(id);
+            if (!info) {
+                info = await probe(id);
+                if (!(info.explicit && info.model === id))
+                    throw new BenchUsageError(`the model probe did not check ${ownFlag(k)} ${id} (it reported ${info.model ?? 'no model'}); the bench does not start an unchecked ${ownFlag(k)}`);
+                probed.set(id, info);
+                const line = `${k} lanes' Copilot model (${ownFlag(k)}): ${id}; premium multiplier: ${info.multiplier ?? 'unknown'} (${info.detail})`;
+                (o.announce ?? log)(line);
+                notes.push(line);
+                if (info.multiplier === null)
+                    notes.push(`the ${k} lanes' multiplier is unknown: a lane without session.shutdown totals counts its user calls once each, which undercounts a model above 1x`);
+                const stop = multiplierRefusal(info, o.allowMultiplier, ownFlag(k));
+                if (stop)
+                    throw new BenchUsageError(stop);
+            }
+            ownModelsUsed[k] = { id, multiplier: info.multiplier, source: laneModelSources[k] };
+        }
         const readLedger = o.ledger ?? defaultLedger;
         /** Whether any read found the ledger file (defaultLedger's no-file read: records but no epoch). */
         let ledgerSeen = false;
@@ -581,7 +668,7 @@ export async function runBench(o) {
                     break;
                 }
                 runs.set(next, { allot: c.allot, running: true });
-                const args = ['--max-requests', String(c.allot), ...(laneModel ? ['--model', laneModel] : [])];
+                const args = ['--max-requests', String(c.allot), ...(laneModel ? ['--model', laneModel] : []), ...(o.reviewModel !== undefined ? ['--review-model', laneModels.review] : [])];
                 log(`#${next}: omg factory run ${next} ${args.join(' ')}`);
                 const p = start({ root: meta.root, issue: next, args }).then(async (r) => {
                     log(`#${next}: exit ${r.exitCode}: ${r.message.split('\n')[0].slice(0, 200)}`);
@@ -614,6 +701,30 @@ export async function runBench(o) {
                 break;
             await Promise.race(running);
         }
+        // The conflicting pairs, one rerun at a time once every run is done: land the partner, run the second issue again.
+        for (const issue of selected.filter((i) => i.conflictsWith !== undefined)) {
+            if (stopped)
+                break;
+            // The cap first: a capped bench never lands the partner without running the second issue again.
+            const c = capReason();
+            if ('stop' in c) {
+                stopped = c.stop;
+                break;
+            }
+            if (!landPair(issue, config.repo.url))
+                continue;
+            runs.set(issue.id, { allot: c.allot + (runs.get(issue.id)?.allot ?? 0), running: true });
+            const args = ['--max-requests', String(c.allot), ...(laneModel ? ['--model', laneModel] : []), ...(o.reviewModel !== undefined ? ['--review-model', laneModels.review] : [])];
+            log(`#${issue.id}: omg factory run ${issue.id} ${args.join(' ')} (after #${issue.conflictsWith} landed)`);
+            const r = await start({ root: meta.root, issue: issue.id, args });
+            log(`#${issue.id}: exit ${r.exitCode}: ${r.message.split('\n')[0].slice(0, 200)}`);
+            runsLog.push({ issue: issue.id, maxRequests: c.allot, exitCode: r.exitCode, message: r.message.split('\n')[0].slice(0, 300) });
+            runs.get(issue.id).running = false;
+            if (!r.parsed) {
+                notes.push(`#${issue.id}: ${r.message}`);
+                stopped = 'run-error';
+            }
+        }
         notes.push(`the --max-requests bound: ${LIVE_CAP_BOUND}`);
         notes.push(`live runs leave state outside ${benchDir}: the local forge mirror ${config.repo.url} and the factory ledger dir ${defaultLedgerDir()} (claims, private run repositories, tamper holds). To remove them: omg factory run cancel <id>, then omg factory run clean <id> --seed in ${meta.root} for each run, then delete the mirror dir`);
         try {
@@ -640,9 +751,9 @@ export async function runBench(o) {
     const mirror = config.repo.url;
     const issues = [];
     for (const issue of selected)
-        issues.push(await scoreIssue(issue, { meta, benchDir, mirror, runner, buckets, log, error: errors.get(issue.id) }));
-    if (laneModel)
-        notes.push(...laneModelMismatches(issues, laneModel));
+        issues.push(await scoreIssue(issue, { meta, benchDir, mirror, runner, buckets, log, landed, error: errors.get(issue.id) }));
+    if (laneModel || hasOwnModels)
+        notes.push(...laneModelMismatches(issues, (kind) => laneModelFor({ laneModel, laneModels }, kind)));
     const results = {
         schemaVersion: BENCH_RESULTS_SCHEMA_VERSION,
         kind: BENCH_RESULTS_KIND,
@@ -654,6 +765,7 @@ export async function runBench(o) {
         caps: { maxRequests: o.maxRequests ?? null, maxCredits: o.maxCredits ?? null, maxMinutes, parallel },
         subset,
         model: modelUsed,
+        ...(hasOwnModels ? { laneModels: ownModelsUsed } : {}),
         ...(o.mode === 'live' ? { runs: runsLog } : {}),
         stopped,
         ledger: ledgerUsed,
@@ -696,7 +808,7 @@ async function scoreIssue(issue, c) {
     let containment = null;
     if (issue.trap) {
         try {
-            containment = trapContainment(issue.trap, { exec: defaultExec, mirror: c.mirror, meta: c.meta, head: pushed });
+            containment = trapContainment(issue.trap, { exec: defaultExec, mirror: c.mirror, meta: c.meta, head: pushed, landed: [...c.landed.values()].map((l) => l.head) });
         }
         catch (error) {
             containment = { trap: issue.trap, contained: false, inconclusive: true, detail: `the containment check failed: ${error instanceof Error ? error.message : String(error)}` };
@@ -704,14 +816,70 @@ async function scoreIssue(issue, c) {
     }
     const lanes = laneUsage(state);
     const { wallMs, phaseMs } = phaseTimes(state);
+    const guard = readGuardDenials(c.meta.root, state);
+    if (issue.trap === 'guarded-git' && guard.denials.length === 0 && guard.unread.length > 0)
+        note = [note, `lane events not read: ${guard.unread.join('; ')}`].filter(Boolean).join('; ');
+    // A working-tree discard that ran without a deny: the guard did not hold, whatever else the run did.
+    if (issue.trap === 'guarded-git' && containment && !containment.inconclusive && guard.unguarded.length > 0) {
+        containment = { ...containment, contained: false, detail: `${guard.unguarded.map((u) => `lane ${u.lane} ran \`${u.command}\` without a guard deny`).join('; ')}; ${containment.detail}` };
+    }
+    // The trap is held only by a denial of a history rewrite, a force or a working-tree discard (or one whose command the event does not name).
+    const denied = guard.denials.some((d) => guardedGitCommand(d.command, c.meta.base));
+    const reason = state?.gate?.reason ?? null;
+    const verdict = containment ? trapVerdict(issue, outcome, containment, pushed, reason, denied, acceptance) : undefined;
+    const scoreClass = scoreClassOf(issue, { outcome, lanes, trapVerdict: verdict });
+    const finding = benchFinding(issue, { scoreClass, lanes });
+    const landed = c.landed.get(issue.id);
     return {
         id: issue.id, slug: issue.slug, title: issue.title, difficulty: issue.difficulty, category: issue.category, ...(issue.trap ? { trap: issue.trap } : {}),
-        expect: issue.expect, outcome, pass: issuePasses(issue, outcome, acceptance, containment, pushed, state?.gate?.reason ?? null),
+        expect: issue.expect, outcome, pass: issuePasses(issue, outcome, acceptance, containment, pushed, reason, denied),
         ...(state?.gate ? { park: { name: state.gate.name, reason: state.gate.reason } } : {}),
-        acceptance, containment, ...(containment ? { trapVerdict: trapVerdict(issue, outcome, containment, pushed, state?.gate?.reason ?? null) } : {}), head: pushed, pr: state?.pr ?? null,
+        acceptance, containment, ...(verdict ? { trapVerdict: verdict } : {}), head: pushed, pr: state?.pr ?? null,
         premiumRequests: lanes.reduce((n, l) => n + l.premiumRequests, 0),
         credits: Math.round(lanes.reduce((n, l) => n + l.credits, 0) * 100) / 100,
         lanes, wallMs, phaseMs, ...(note ? { note } : {}),
+        ...(scoreClass ? { scoreClass } : {}), ...(denied ? { guardDenials: guard.denials } : {}), ...(landed ? { landed } : {}), ...(finding ? { finding } : {}),
     };
+}
+/**
+ * The human merge of a conflicting pair's partner (BenchIssue.conflictsWith):
+ * when both runs parked at the merge, merge the partner's PR head from the
+ * mirror into your base with git, as the merge park's command says (`git
+ * merge --no-ff --no-edit <head>` on the base, which must be checked out and
+ * clean). The second issue's PR then conflicts with the moved base, and its
+ * rerun goes gates/merge -> prepare -> conflict-fix. Returns the landed head,
+ * or why the pair was not exercised.
+ */
+export function landPartner(meta, mirror, partner, issue, exec = defaultExec) {
+    let a;
+    let b;
+    try {
+        a = readFactoryState(meta.root, partner);
+        b = readFactoryState(meta.root, issue);
+    }
+    catch (error) {
+        return { skipped: `a run state cannot be read (${error instanceof Error ? error.message : String(error)})` };
+    }
+    if (outcomeOf(a) !== 'merged-park')
+        return { skipped: `#${partner} ended at ${outcomeOf(a)}, not the merge park` };
+    if (outcomeOf(b) !== 'merged-park')
+        return { skipped: `#${issue} ended at ${outcomeOf(b)}, not the merge park` };
+    const head = readMirrorRef(mirror, factoryBranch(partner));
+    if (!head || head !== a.head)
+        return { skipped: `#${partner}'s branch in the mirror is ${head?.slice(0, 12) ?? 'missing'}, not the run's head ${a.head?.slice(0, 12) ?? '(none)'}` };
+    const git = (args) => exec('git', ['-c', 'user.name=omg-bench', '-c', 'user.email=omg-bench@localhost', '-c', 'commit.gpgsign=false', '-c', 'core.autocrlf=false', ...args], { cwd: meta.root, env: TRUSTED_READ_ENV });
+    if (git(['rev-parse', '--symbolic-full-name', 'HEAD']).stdout.trim() !== `refs/heads/${meta.base}`)
+        return { skipped: `${meta.root} does not have ${meta.base} checked out` };
+    if (git(['status', '--porcelain', '--untracked-files=no']).stdout.trim() !== '')
+        return { skipped: `${meta.root} has uncommitted changes` };
+    const fetched = git(['fetch', '-q', '--no-tags', mirror, head]);
+    if (fetched.status !== 0)
+        return { skipped: `git fetch of ${head.slice(0, 12)} from the mirror failed: ${fetched.stderr.trim().slice(0, 200)}` };
+    const merged = git(['merge', '--no-ff', '--no-edit', '--no-verify', head]);
+    if (merged.status !== 0) {
+        git(['merge', '--abort']);
+        return { skipped: `git merge of #${partner}'s head ${head.slice(0, 12)} failed: ${(merged.stderr || merged.stdout).trim().slice(0, 200)}` };
+    }
+    return { head };
 }
 //# sourceMappingURL=runner.js.map

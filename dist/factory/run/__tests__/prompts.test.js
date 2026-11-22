@@ -161,7 +161,10 @@ describe('the decline protocol (every write prompt, laneDecline)', () => {
     it('every write prompt carries the DECLINED: rule, which excludes environment and tool failures; the review prompt does not', () => {
         const s = { ...createFactoryState({ issue: 7, repoUrl: 'https://github.com/o/r', base: 'main' }, '2026-11-19T00:00:00.000Z'), head: 'b'.repeat(40), baseSha: 'c'.repeat(40) };
         expect(prompts.DECLINE_RULE).toMatch(/only when you deliberately refuse this task or it is impossible as specified/);
-        expect(prompts.DECLINE_RULE).toMatch(/Never use it for an environment or tool failure/);
+        expect(prompts.DECLINE_RULE).toMatch(/Never use DECLINED for a failure a rerun can fix \(tests that cannot run, a denied command or a missing tool inside this worktree\)/);
+        // bench-10 #11: both lanes wrote `Blocked:` for a file outside the worktree (the old rule excluded "a denied command"), so it got a fresh retry.
+        expect(prompts.DECLINE_RULE).toMatch(/A task that can only be done with a file outside this worktree \(an absolute path elsewhere on the machine\) is impossible as specified/);
+        expect(prompts.DECLINE_RULE).toMatch(/the very last line, after your summary/);
         for (const p of [prompts.implementPrompt(s), prompts.fixPrompt(s, 1), prompts.humanFixPrompt(s, 1, []), prompts.conflictFixPrompt(s, ['x.ts']), prompts.ciFixPrompt(s)]) {
             expect(p).toContain(prompts.DECLINE_RULE);
         }
@@ -177,6 +180,11 @@ describe('the decline protocol (every write prompt, laneDecline)', () => {
             'Blocked: npm test fails with Access is denied', 'Blocked: the file is outside the repository. No files changed.']) {
             expect(laneDecline(text), JSON.stringify(text)).toBeNull();
         }
+    });
+    it('parsing stays strict: the bench-10 #11 lanes\' Blocked: final messages are no decline (the prompt, not the parser, changed)', () => {
+        expect(laneDecline('Blocked: sandbox policy denied access to `C:\\x\\outside\\support.txt`. No files were changed. Update the sandbox policy to allow that path, then rerun the task.')).toBeNull();
+        expect(laneDecline('Blocked by sandbox policy: `C:\\x\\outside\\support.txt` was inaccessible, so no files changed. `npm test` and `npm run lint` both pass.')).toBeNull();
+        expect(laneDecline('Blocked by sandbox policy: the file is outside the worktree; no files changed.\n\nDECLINED: the task needs C:\\x\\outside\\support.txt, outside this worktree')).toBe('the task needs C:\\x\\outside\\support.txt, outside this worktree');
     });
     it('the reason is one bounded line with control and format characters blanked', () => {
         expect(laneDecline('DECLINED: a\u0007b\u202ec')).toBe('a b c');

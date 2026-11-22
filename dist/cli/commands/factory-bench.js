@@ -8,6 +8,8 @@
 import { Command } from 'commander';
 import chalk from 'chalk';
 import { writeFileSync } from 'node:fs';
+import { factoryGitProblem } from '../../factory/git-preflight.js';
+import { linuxSandboxProblem } from '../../copilot-run/sandbox.js';
 import { createBenchFixture } from '../../factory/bench/fixture.js';
 import { BenchUsageError, DEFAULT_BENCH_MAX_MINUTES, LIVE_CAP_BOUND, parseIssueList, runBench } from '../../factory/bench/runner.js';
 import { benchRegressions, compareResults, DEFAULT_REQUEST_TOLERANCE_PCT, readBenchResults, renderRegressions } from '../../factory/bench/score.js';
@@ -16,16 +18,20 @@ const fail = (error, usage = false) => {
     console.error(chalk.red(`omg factory bench: ${error instanceof Error ? error.message : String(error)}`));
     process.exitCode = usage || error instanceof BenchUsageError ? 2 : 1;
 };
-export function factoryBenchCommand() {
+export function factoryBenchCommand(deps = {}) {
     const bench = new Command('bench').description('Benchmark the factory on seeded issues against the local forge (init a fixture, run it --fake or --live, compare results)');
     bench
         .command('init')
         .argument('<dir>', 'a new or empty directory for the fixture (the repository goes to <dir>/repo)')
         .option('--node-modules <dir>', 'link <dir>/repo/node_modules to this node_modules (it needs vitest and typescript) instead of running npm install there')
+        .option('--force', 'when an earlier fixture at this path left engine state in the factory ledger dir (its run ledgers, heal ledgers, tamper hold, keyed by the repository path), remove exactly that state instead of refusing; the directory itself must still be new or empty')
         .description('Create the bench fixture: a TypeScript + vitest repository on the local forge with the seeded backlog')
         .action((dir, o) => {
         try {
-            const meta = createBenchFixture(dir, o.nodeModules ? { nodeModules: o.nodeModules } : {});
+            const gitProblem = factoryGitProblem();
+            if (gitProblem)
+                throw new Error(gitProblem);
+            const meta = createBenchFixture(dir, { ...(o.nodeModules ? { nodeModules: o.nodeModules } : {}), ...(o.force ? { force: true } : {}) });
             console.log(chalk.green(`bench fixture v${meta.fixtureVersion} at ${meta.root} (${meta.issues.length} issues)`));
             if (!o.nodeModules)
                 console.log(`next: npm install in ${meta.root}, then omg factory bench run ${dir} --fake (or --live --max-requests <n>)`);
@@ -43,8 +49,9 @@ export function factoryBenchCommand() {
         .option('--max-credits <n>', '--live: no run starts once this many AI credits are recorded (a soft stop: runs in flight finish)', integerOption(1, 1_000_000))
         .option('--max-minutes <n>', `no run starts after this many minutes (default ${DEFAULT_BENCH_MAX_MINUTES})`, integerOption(1, 24 * 60))
         .option('--parallel <n>', '--live: up to n runs at once (needs factory.run.maxConcurrent above 1 and layout "private" in your user config)', integerOption(1, 16))
-        .option('--allow-multiplier <n>', '--live: accept a lane model (the default, or --model) that bills up to n premium requests per call (without it: refused above 1, or when Copilot does not report the model or multiplier)', integerOption(1, 1_000))
-        .option('--model <id>', 'start every lane on this Copilot model id (a known model id): --fake passes it to the engine, --live passes --model to each omg factory run and checks THIS model against your account (refused when listModels() does not offer it) and its multiplier; the results record it')
+        .option('--allow-multiplier <n>', '--live: accept lane models (the default, --model, --review-model or factory.run.laneModels) that bill up to n premium requests per call (without it: refused above 1, or when Copilot does not report the model or multiplier)', integerOption(1, 1_000))
+        .option('--model <id>', 'start every lane without its own factory.run.laneModels entry on this Copilot model id (a known model id): --fake passes it to the engine, --live passes --model to each omg factory run and checks THIS model against your account (refused when listModels() does not offer it) and its multiplier; the results record it')
+        .option('--review-model <id>', 'start review lanes on this Copilot model id (a known model id), e.g. a cheaper one than the implement lanes: passed on like --model, and --live checks it against your account and --allow-multiplier too; the results record it per lane kind')
         .option('--issues <ids>', 'run only these issues (comma-separated ids, e.g. 2,6,9,10); the results record the subset')
         .option('--out <dir>', 'results directory (default ./bench-results)')
         .option('--json', 'print the results JSON instead of the summary')
@@ -52,6 +59,9 @@ export function factoryBenchCommand() {
         .action(async (dir, o) => {
         if (Boolean(o.fake) === Boolean(o.live))
             return fail(new Error('pass exactly one of --fake and --live'), true);
+        const gitProblem = factoryGitProblem();
+        if (gitProblem)
+            return fail(new Error(gitProblem));
         let issues;
         try {
             issues = o.issues === undefined ? undefined : parseIssueList(o.issues);
@@ -77,12 +87,14 @@ export function factoryBenchCommand() {
                 ...(o.parallel !== undefined ? { parallel: o.parallel } : {}), ...(o.out ? { outDir: o.out } : {}), ...(issues ? { issues } : {}),
                 ...(o.allowMultiplier !== undefined ? { allowMultiplier: o.allowMultiplier } : {}),
                 ...(o.model !== undefined ? { model: o.model } : {}),
+                ...(o.reviewModel !== undefined ? { reviewModel: o.reviewModel } : {}),
                 log: (m) => { if (!o.json)
                     console.error(chalk.gray(m)); },
                 // The lanes' model and multiplier, before any run starts (also with --json: stderr).
                 announce: (m) => console.error(chalk.cyan(m)),
                 interrupted: () => interrupted,
                 signals: (forward) => { forwards.add(forward); return () => { forwards.delete(forward); }; },
+                sandboxProblem: deps.sandboxProblem ?? (() => linuxSandboxProblem()),
             });
             const t = out.results.totals;
             if (o.json)

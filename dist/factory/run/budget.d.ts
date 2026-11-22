@@ -53,10 +53,32 @@ export interface FactoryRunLimits {
     /**
      * The Copilot model every lane session starts on (factory.run.laneModel in
      * the trusted user config, or `omg factory run --model`); absent = no model
-     * is passed and the lanes run on Copilot's default model.
+     * is passed and the lanes run on Copilot's default model. A kind with its
+     * own entry in laneModels starts on that one instead.
      */
     laneModel?: string;
+    /**
+     * Per-lane-kind models (factory.run.laneModels in the trusted user config,
+     * `--review-model` for review): a lane starts on laneModels[kind], else
+     * laneModel, else Copilot's default model (laneModelFor).
+     */
+    laneModels?: LaneModels;
 }
+/** The lane-kind keys of factory.run.laneModels. */
+export declare const LANE_MODEL_KINDS: readonly ["implement", "review", "fix", "ciFix", "conflictFix"];
+export type LaneModelKind = (typeof LANE_MODEL_KINDS)[number];
+export type LaneModels = Partial<Record<LaneModelKind, string>>;
+/** The laneModels key of a lane kind (null: a kind that starts no Copilot session, the coding agent). */
+export declare function laneModelKind(kind: FactoryRunState['lanes'][number]['kind']): LaneModelKind | null;
+/** The model a lane of `kind` starts on: laneModels[kind] ?? laneModel; undefined = Copilot's default. */
+export declare function laneModelFor(limits: Pick<FactoryRunLimits, 'laneModel' | 'laneModels'>, kind: FactoryRunState['lanes'][number]['kind']): string | undefined;
+/** Every lane kind's resolved model (null: Copilot's default), in LANE_MODEL_KINDS order. */
+export declare function resolvedLaneModels(limits: Pick<FactoryRunLimits, 'laneModel' | 'laneModels'>): Record<LaneModelKind, string | null>;
+/**
+ * factory.run.laneModels from the trusted user config: an object whose keys
+ * are LANE_MODEL_KINDS and whose values are known model ids (checkLaneModel).
+ */
+export declare function checkLaneModels(value: unknown, source: string): LaneModels;
 export declare const DEFAULT_FACTORY_RUN_LIMITS: Readonly<FactoryRunLimits>;
 /** The Copilot model ids a lane model may name (src/config/copilot-models.json knownModels). */
 export declare const KNOWN_LANE_MODELS: readonly string[];

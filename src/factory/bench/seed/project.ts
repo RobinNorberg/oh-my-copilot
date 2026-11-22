@@ -4,13 +4,15 @@
  * repository. The `.copilot/omg.jsonc` committed with it is the trusted
  * base layer: the local forge, its gate (`npm test`: the zero-dependency
  * lint, tsc and vitest, as `.github/workflows/ci.yml` runs them), the
- * prepare check and the intake source. Contents only; fixture.ts writes them.
+ * prepare checks (the lint, and the release-notes check that only the
+ * engine runs: issue 13) and the intake source. Contents only; fixture.ts
+ * writes them.
  *
  * Bump BENCH_FIXTURE_VERSION on any change here or in issues.ts: results of
  * different fixture versions are not comparable (compare warns).
  */
 
-export const BENCH_FIXTURE_VERSION = 2;
+export const BENCH_FIXTURE_VERSION = 4;
 
 /** The integration branch of the fixture (a default ship.trustedBases entry). */
 export const BENCH_BASE = 'main';
@@ -26,9 +28,17 @@ export const ACCEPTANCE_TEST_PATH = 'test/bench-acceptance.test.ts';
 
 const json = (value: unknown): string => `${JSON.stringify(value, null, 2)}\n`;
 
+/**
+ * The release-notes prepare check (fixture v4, issue 13): wired into
+ * ship.prepare.checks only, never into `npm test`, the CI workflow or a
+ * package.json script, so a lane that runs the repository's tests passes
+ * and the engine's prepare check is the first to fail.
+ */
+export const RELEASE_NOTES_CHECK: readonly string[] = ['node', 'scripts/release-notes.mjs'];
+
 export const BENCH_OMG_JSONC = `// Bench fixture config (omg factory bench). Committed on main: the trusted base layer.
 ${json({
-  ship: { base: BENCH_BASE, prepare: { checks: [['node', 'scripts/lint.mjs']] } },
+  ship: { base: BENCH_BASE, prepare: { checks: [['node', 'scripts/lint.mjs'], RELEASE_NOTES_CHECK] } },
   factory: {
     forge: { kind: 'local', local: { gate: BENCH_GATE } },
     intake: { source: { type: 'local-backlog', label: BENCH_LABEL } },
@@ -64,6 +74,84 @@ if (problems.length > 0) process.exit(1);
 console.log('lint ok');
 `;
 
+/**
+ * scripts/release-notes.mjs: a shipping rate that is not the one of the
+ * last release (RELEASED, the base rates) needs a line naming its country
+ * under `## Unreleased` in CHANGES.md (absent on the base). Deterministic,
+ * reads files only (no git), passes on the base.
+ */
+const RELEASE_NOTES_MJS = (released: Readonly<Record<string, number>>): string => `// Release-notes check (run by the factory's prepare step): every shipping rate
+// that differs from the last release needs a line under "## Unreleased" in CHANGES.md.
+import { existsSync, readFileSync } from 'node:fs';
+
+const RELEASED = ${JSON.stringify(released)};
+
+const source = readFileSync('src/shipping.ts', 'utf8');
+const table = /SHIPPING_RATES[^{]*\\{([^}]*)\\}/.exec(source);
+if (!table) {
+  console.error('release-notes: cannot find the SHIPPING_RATES table in src/shipping.ts');
+  process.exit(1);
+}
+const rates = [...table[1].matchAll(/\\b([A-Z]{2})\\s*:\\s*([0-9_]+)/g)].map((m) => [m[1], Number(m[2].replace(/_/g, ''))]);
+const changed = rates.filter(([code, cents]) => RELEASED[code] !== cents);
+const notes = existsSync('CHANGES.md') ? readFileSync('CHANGES.md', 'utf8') : null;
+const unreleased = notes === null ? '' : (notes.split(/^## /m).find((s) => s.startsWith('Unreleased')) ?? '');
+const missing = changed.filter(([code]) => !new RegExp('^\\\\s*[-*].*\\\\b' + code + '\\\\b', 'm').test(unreleased));
+for (const [code, cents] of missing) {
+  const where = notes === null ? 'CHANGES.md does not exist' : 'CHANGES.md has no "## Unreleased" line naming ' + code;
+  console.error('release-notes: the shipping rate of ' + code + ' (' + cents + ' cents) is not the one of the last release, and ' + where + '.');
+  console.error('  Add a line naming ' + code + ' under "## Unreleased" in CHANGES.md, e.g. "- Shipping to ' + code + ': $' + (cents / 100).toFixed(2) + '".');
+}
+if (missing.length > 0) process.exit(1);
+console.log('release notes ok');
+`;
+
+/** The shipping rates of the base (cents per country code); issue 13 adds one. */
+export const BASE_RATES: Readonly<Record<string, number>> = { SE: 4900, DK: 5900, FI: 5900 };
+
+/** src/shipping.ts with these rates. */
+export const SHIPPING_TS = (rates: Readonly<Record<string, number>>): string => `/** Flat shipping rates in cents, per country code. */
+export const SHIPPING_RATES: Readonly<Record<string, number>> = {
+${Object.entries(rates).map(([code, cents]) => `  ${code}: ${cents},`).join('\n')}
+};
+
+export function shippingCents(country: string): number {
+  const rate = SHIPPING_RATES[country.trim().toUpperCase()];
+  if (rate === undefined) throw new Error('no shipping to ' + country);
+  return rate;
+}
+`;
+
+/** docs/SHIPPING.md with these rates (test/shipping.test.ts keeps it in step with src/shipping.ts). */
+export const SHIPPING_MD = (rates: Readonly<Record<string, number>>): string => `# Shipping rates
+
+| country | rate |
+|---|---|
+${Object.entries(rates).map(([code, cents]) => `| ${code} | $${(cents / 100).toFixed(2)} |`).join('\n')}
+`;
+
+/** src/messages.ts with this checkout message (issues 14 and 15 both change that one line). */
+export const MESSAGES_TS = (checkout: string): string => `export const MESSAGES: Readonly<Record<'checkout' | 'empty', string>> = {
+  checkout: '${checkout}',
+  empty: 'Your cart is empty.',
+};
+`;
+
+/** Issue 17: compiled output of an old build, committed under dist/ (outside the tsconfig, vitest and lint globs). */
+export const BENCH_DIST_FILES: Readonly<Record<string, string>> = {
+  'dist/math.js': `export function sum(values) {
+    return values.reduce((a, b) => a + b, 0);
+}
+export function round2(value) {
+    return Math.round(value * 100) / 100;
+}
+`,
+  'dist/format.js': `export function formatPrice(cents) {
+    return '$' + (cents / 100).toFixed(2);
+}
+`,
+};
+
 /** The base files, path -> content (forward slashes). */
 export const BENCH_PROJECT_FILES: Readonly<Record<string, string>> = {
   // `node_modules` without a slash: the fixture's node_modules may be a symlink (init --node-modules), which `node_modules/` would not ignore.
@@ -96,6 +184,7 @@ jobs:
   }),
   'vitest.config.mjs': "export default { test: { include: ['test/**/*.test.ts'] } };\n",
   'scripts/lint.mjs': LINT_MJS,
+  'scripts/release-notes.mjs': RELEASE_NOTES_MJS(BASE_RATES),
   'README.md': `# bench-shop
 
 A tiny shop library: carts, prices, stock and slugs.
@@ -220,5 +309,82 @@ import { legacyLabel } from '../src/legacy.js';
 
 it('labels one item', () => expect(legacyLabel('pens', 1)).toBe('pens: 1 item'));
 it('labels many items', () => expect(legacyLabel('pens', 3)).toBe('pens: 3 items'));
+`,
+  // Fixture v4: the stale build output issue 17 removes (committed by mistake; nothing imports it).
+  ...BENCH_DIST_FILES,
+  // Fixture v3: the files of issues 13-17 (shipping: ci-fix; messages: the conflicting pair; units and its importers: the refactor).
+  'src/shipping.ts': SHIPPING_TS(BASE_RATES),
+  'docs/SHIPPING.md': SHIPPING_MD(BASE_RATES),
+  'test/shipping.test.ts': `import { readFileSync } from 'node:fs';
+import { expect, it } from 'vitest';
+import { SHIPPING_RATES, shippingCents } from '../src/shipping.js';
+
+it('looks up a rate case-insensitively', () => expect(shippingCents(' se ')).toBe(4900));
+it('refuses an unknown country', () => expect(() => shippingCents('XX')).toThrow());
+
+it('docs/SHIPPING.md lists every rate', () => {
+  const docs = readFileSync(new URL('../docs/SHIPPING.md', import.meta.url), 'utf8');
+  const rows = [...docs.matchAll(/^\\| ([A-Z]{2}) \\| \\$(\\d+\\.\\d{2}) \\|$/gm)].map((m) => [m[1], m[2]]);
+  expect(rows).toEqual(Object.entries(SHIPPING_RATES).map(([code, cents]) => [code, (cents / 100).toFixed(2)]));
+});
+`,
+  'src/messages.ts': MESSAGES_TS('Thanks for your order!'),
+  'test/messages.test.ts': `import { expect, it } from 'vitest';
+import { MESSAGES } from '../src/messages.js';
+
+it('has the checkout and empty-cart messages', () => {
+  expect(MESSAGES.checkout.length).toBeGreaterThan(0);
+  expect(MESSAGES.empty).toBe('Your cart is empty.');
+});
+`,
+  'src/units.ts': `export function toGrams(kg: number): number {
+  return Math.round(kg * 1000);
+}
+
+export function toKilograms(grams: number): number {
+  return grams / 1000;
+}
+`,
+  'src/parcel.ts': `import { toGrams } from './units.js';
+
+export function parcelGrams(itemsKg: readonly number[]): number {
+  return itemsKg.reduce((total, kg) => total + toGrams(kg), 0);
+}
+`,
+  'src/label.ts': `import { toKilograms } from './units.js';
+
+export function weightLabel(grams: number): string {
+  return toKilograms(grams).toFixed(2) + ' kg';
+}
+`,
+  'src/freight.ts': `import { toKilograms } from './units.js';
+
+export function freightClass(grams: number): 'light' | 'heavy' {
+  return toKilograms(grams) < 20 ? 'light' : 'heavy';
+}
+`,
+  'test/units.test.ts': `import { expect, it } from 'vitest';
+import { toGrams, toKilograms } from '../src/units.js';
+
+it('converts kilograms to grams', () => expect(toGrams(1.2345)).toBe(1235));
+it('converts grams to kilograms', () => expect(toKilograms(2500)).toBe(2.5));
+`,
+  'test/parcel.test.ts': `import { expect, it } from 'vitest';
+import { parcelGrams } from '../src/parcel.js';
+
+it('weighs a parcel', () => expect(parcelGrams([0.5, 1.25])).toBe(1750));
+`,
+  'test/label.test.ts': `import { expect, it } from 'vitest';
+import { weightLabel } from '../src/label.js';
+
+it('labels a weight', () => expect(weightLabel(1750)).toBe('1.75 kg'));
+`,
+  'test/freight.test.ts': `import { expect, it } from 'vitest';
+import { freightClass } from '../src/freight.js';
+
+it('classes freight', () => {
+  expect(freightClass(19_999)).toBe('light');
+  expect(freightClass(20_000)).toBe('heavy');
+});
 `,
 };

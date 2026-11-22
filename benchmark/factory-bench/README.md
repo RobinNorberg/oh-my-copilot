@@ -2,7 +2,7 @@
 
 `baseline.json` is the `omg factory bench` results file that `omg release <version> --bench <results.json>` compares against in its preflight phase. A regression refuses the release unless `--allow-bench-regression` is passed. Without `--bench`, the release makes no bench comparison and only says so.
 
-The committed `baseline.json` is a live run of omg 5.27.0 on fixture v2: all 12 issues, 11 of 12 passed, 21 premium requests. Issue 6 (discount-codes) passed review and gates but fails the hidden acceptance test, so it counts as a failure in the baseline. Local paths in the notes are replaced with `~` and `<fixture>`. Check the `mode` field of any baseline: a `fake` one comes from scripted lanes and proves only the harness, the scoring and the trap expectations. Requests per merged park are not compared between a fake and a live file.
+The committed `baseline.json` is a live Windows run of an omg 5.30.0 dev build (before 5.31.0) on fixture v4, lane model `mai-code-2`: all 17 issues passed, 12 merged parks, traps contained 5 of 5, 33 premium requests, 38.49 AI credits, 2237 s wall time summed over the issues. #13 took the ci-fix lane and #15 the conflict-fix lane; #17 was solved without the lane git guard denying anything, which the results record as one bench finding (`solved-without-guard`). `--fail-on-regression` (so `omg release --bench`) refuses results of another fixture version, so compare a v4 run against it. Local paths in the notes and messages are replaced with `~` and `<fixture>`. Check the `mode` field of any baseline: a `fake` one comes from scripted lanes and proves only the harness, the scoring and the trap expectations. Requests per merged park are not compared between a fake and a live file.
 
 ## Refresh the baseline
 

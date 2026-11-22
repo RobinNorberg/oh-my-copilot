@@ -4,6 +4,7 @@ import { hostname } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { factoryCommand, factoryRunCommand } from '../factory.js';
+import { DEFAULT_SANDBOX_SETTINGS } from '../../../copilot-run/sandbox.js';
 import { resolveFactoryRunLimits } from '../../../factory/run/budget.js';
 import { factoryClaimPath } from '../../../factory/run/claims.js';
 import { EXIT_AWAITING_HUMAN, EXIT_BUSY } from '../../../factory/run/engine.js';
@@ -43,6 +44,8 @@ function deps(over = {}) {
         gateConfig: testGateConfig, gateSandbox: () => attestedSandbox(() => h.exec),
         // The fake lanes record no runtime process: the real tree proof would warn on stderr, which `out` captures.
         processes: new FakeProcesses(),
+        // No real bwrap trial in unit tests (Linux CI): the up-front sandbox check passes.
+        sandboxProblem: () => null,
         ...over,
     };
 }
@@ -114,6 +117,44 @@ describe('omg factory run CLI', () => {
         // (The history block below the state keeps its own dated entry.)
         expect(out.join('\n').split('\n').filter((l) => l.startsWith('awaiting-human: needs-plan')), out.join('\n')).toHaveLength(1);
     });
+    it('a git older than 2.38 stops a real run with a usage error before anything else; --dry-run skips the check', async () => {
+        const old = (cmd, args, opts) => (cmd === 'git' && args.join(' ') === '--version' ? { status: 0, stdout: 'git version 2.25.1\n', stderr: '' } : deps().exec(cmd, args, opts));
+        const limits = vi.fn(() => resolveFactoryRunLimits(undefined, undefined));
+        const base = vi.fn(() => 'dev');
+        expect(await cli(deps({ exec: old, limits, base }), String(ISSUE))).toBe(2);
+        expect(out.join('\n')).toContain('git 2.25.1 is too old for the factory: it needs git >= 2.38');
+        expect(limits).not.toHaveBeenCalled();
+        expect(base).not.toHaveBeenCalled();
+        out = [];
+        lanes = new FakeLanes(h.root, []);
+        expect(await cli(deps({ exec: old }), String(ISSUE), '--dry-run', '--json')).toBe(0);
+        expect(out.join('\n')).not.toContain('too old for the factory');
+    });
+    it('an unusable Linux sandbox stops a real run with a usage error before lanes or state; --dry-run, a disabled sandbox and detect-only skip the check', async () => {
+        const sandboxProblem = vi.fn(() => 'boom');
+        const limits = vi.fn(() => resolveFactoryRunLimits(undefined, undefined));
+        const built = vi.fn(() => lanes);
+        lanes = new FakeLanes(h.root, []);
+        const refusing = { sandboxProblem, sandboxSettings: () => ({ ...DEFAULT_SANDBOX_SETTINGS }) };
+        expect(await cli(deps({ ...refusing, limits, lanes: built }), String(ISSUE))).toBe(2);
+        expect(out.join('\n')).toContain('the Linux sandbox is unusable: boom');
+        expect(sandboxProblem).toHaveBeenCalledTimes(1);
+        expect(limits).not.toHaveBeenCalled();
+        expect(built).not.toHaveBeenCalled();
+        expect(readFactoryState(h.root, ISSUE)).toBeNull();
+        out = [];
+        expect(await cli(deps(refusing), String(ISSUE), '--dry-run', '--json')).toBe(0);
+        expect(out.join('\n')).not.toContain('the Linux sandbox is unusable');
+        expect(sandboxProblem).toHaveBeenCalledTimes(1);
+        // The lanes would not refuse: no check, the run goes on (to the needs-plan gate, no lane).
+        h.gh.issue.body = 'no plan';
+        for (const over of [{ enabled: false }, { writeUnsandboxed: 'detect-only' }]) {
+            out = [];
+            expect(await cli(deps({ sandboxProblem, sandboxSettings: () => ({ ...DEFAULT_SANDBOX_SETTINGS, ...over }) }), String(ISSUE))).toBe(4);
+            expect(out.join('\n')).toMatch(/awaiting-human: needs-plan/);
+            expect(sandboxProblem).toHaveBeenCalledTimes(1);
+        }
+    });
     it('--dry-run never constructs the live lane backend and writes no state', async () => {
         const d = deps({ lanes: () => { throw new Error('lanes must not be built for --dry-run'); } });
         expect(await cli(d, String(ISSUE), '--dry-run', '--json')).toBe(0);
@@ -154,6 +195,21 @@ describe('omg factory run CLI', () => {
         out = [];
         expect(await cli(configured, 'status', String(ISSUE))).toBe(0);
         expect(out.join('\n')).toMatch(/implement-1 completed credits \S+ model mai-code-2/);
+    }, ENGINE_FLOW_TIMEOUT_MS);
+    it('--review-model: an unknown id exits 2; a known one starts review lanes on it over factory.run.laneModels.review, the rest on --model, and status shows the per-kind models', async () => {
+        lanes = new FakeLanes(h.root, []);
+        expect(await cli(deps(), String(ISSUE), '--review-model', 'nope')).toBe(2);
+        expect(out.join('\n')).toMatch(/--review-model "nope" is not a known Copilot model id/);
+        expect(readFactoryState(h.root, ISSUE)).toBeNull();
+        lanes = new FakeLanes(h.root, [commitFile('a.ts'), review('approve')]);
+        const configured = deps({ limits: () => resolveFactoryRunLimits({ factory: { run: { laneModel: 'claude-sonnet-5.5', laneModels: { review: 'claude-haiku-5.5', fix: 'gpt-6-luna' } } } }, undefined) });
+        expect(await cli(configured, String(ISSUE), '--model', 'mai-code-2', '--review-model', 'mai-code-2-flash')).toBe(0);
+        expect(lanes.started.map((s) => s.model)).toEqual(['mai-code-2', 'mai-code-2-flash']);
+        expect(readFactoryState(h.root, ISSUE).laneModels).toEqual({ implement: 'mai-code-2', review: 'mai-code-2-flash', fix: 'gpt-6-luna', ciFix: 'mai-code-2', conflictFix: 'mai-code-2' });
+        out = [];
+        expect(await cli(configured, 'status', String(ISSUE))).toBe(0);
+        expect(out.join('\n')).toContain('lane models: implement mai-code-2, review mai-code-2-flash, fix gpt-6-luna, ciFix mai-code-2, conflictFix mai-code-2');
+        expect(out.join('\n')).toMatch(/review-1 completed .*model mai-code-2-flash/);
     }, ENGINE_FLOW_TIMEOUT_MS);
     describe('--next (shipyard ↔ factory design §3.5)', () => {
         /** Tracker items by id; #7 keeps the harness issue's title and body unless given. */

@@ -21,7 +21,7 @@ import { basename, dirname, isAbsolute, join, posix, resolve, win32 } from 'node
 
 import { userConfigLayers } from '../ship/config.js';
 import { resolveProjectConfigPath } from '../config/project-config-path.js';
-import { SMOKE_SET_ENV } from '../smoke/copilot-session-env.js';
+import { isReplayEnv, SMOKE_SET_ENV, storedLoginToken } from '../smoke/copilot-session-env.js';
 import { isUnderRoot } from '../team/sdk-policy.js';
 import { parseJsonc } from '../utils/jsonc.js';
 import { getOmcRoot } from '../lib/worktree-paths.js';
@@ -394,7 +394,10 @@ export interface SandboxPolicyContext {
   /**
    * The only target a `<worktree>/node_modules` link may resolve to (the
    * dir the engine linked; review-483 M4): a link elsewhere throws instead
-   * of being granted read-only. Unset: the link's target as it is (lanes).
+   * of being granted read-only. Unset: nothing under node_modules is
+   * granted. A link in the worktree is lane-writable, so its own target is
+   * never taken as a grant: a session could plant one for the next session
+   * to have mounted (the factory's gates and lanes always pass the target).
    */
   nodeModulesTarget?: string;
   /**
@@ -437,14 +440,15 @@ function sameRealPath(real: string, want: string, platform: NodeJS.Platform): bo
  * grant needs an exact match with the engine's own list too
  * (nestedNodeModulesTargets). A line of another shape is ignored.
  */
-export function nodeModulesTreeProblem(worktree: string, target: string, platform: NodeJS.Platform = process.platform): { problem: string | null; linked: boolean; nested?: string[] } {
+export function nodeModulesTreeProblem(worktree: string, target: string, platform: NodeJS.Platform = process.platform, targetReal?: string): { problem: string | null; linked: boolean; nested?: string[] } {
   const nm = join(worktree, 'node_modules');
   let st;
   try { st = lstatSync(nm); } catch { return { problem: null, linked: false }; }
   if (st.isSymbolicLink()) {
     let real: string;
     try { real = realpathSync.native(nm); } catch (error) { return { problem: `${nm} is a link that cannot be resolved (${error instanceof Error ? error.message : String(error)})`, linked: false }; }
-    return sameRealPath(real, target, platform) ? { problem: null, linked: true } : { problem: `${nm} resolves to ${real}, not your node_modules ${target} (the only target the engine links)`, linked: false };
+    const same = targetReal !== undefined ? (platform === 'win32' ? real.toLowerCase() === targetReal.toLowerCase() : real === targetReal) : sameRealPath(real, target, platform);
+    return same ? { problem: null, linked: true } : { problem: `${nm} resolves to ${real}, not your node_modules ${target} (the only target the engine links)`, linked: false };
   }
   if (!st.isDirectory()) return { problem: null, linked: false };
   const P = platform === 'win32' ? win32 : posix;
@@ -456,8 +460,11 @@ export function nodeModulesTreeProblem(worktree: string, target: string, platfor
     try { return isUnderRoot(p, worktree, platform); } catch { return false; }
   };
   /** The links in `dir` (and in its real `@scope` dirs): each `<base>/<name>` or into the worktree; true when one uses `base`. */
-  const check = (dir: string, base: string, scoped: boolean): { problem: string } | { linked: boolean } => {
+  const check = (dir: string, base: string, scoped: boolean, known?: string): { problem: string } | { linked: boolean } => {
     let linked = false;
+    // linkNodeModules links to the realpath of `base` (the dir granted read-only); older trees to `base` as named.
+    let baseReal: string | null = known ?? null;
+    if (baseReal === null) try { baseReal = realpathSync.native(base); } catch { /* only the lexical form */ }
     for (const name of readdirSync(dir)) {
       const p = join(dir, name);
       let link: string;
@@ -465,7 +472,7 @@ export function nodeModulesTreeProblem(worktree: string, target: string, platfor
         const e = lstatSync(p);
         if (!e.isSymbolicLink()) {
           if (!scoped && name.startsWith('@') && e.isDirectory()) {
-            const inner = check(p, join(base, name), true);
+            const inner = check(p, join(base, name), true, baseReal !== null ? join(baseReal, name) : undefined);
             if ('problem' in inner) return inner;
             linked ||= inner.linked;
           }
@@ -476,12 +483,13 @@ export function nodeModulesTreeProblem(worktree: string, target: string, platfor
         return { problem: `${p} cannot be read (${error instanceof Error ? error.message : String(error)})` };
       }
       const to = P.resolve(P.dirname(p), link);
-      if (same(to, join(base, name))) linked = true;
+      if (same(to, join(base, name)) || (baseReal !== null && same(to, join(baseReal, name)))) linked = true;
       else if (!insideWorktree(p, to)) return { problem: `${p} points to ${to}, not ${join(base, name)} the engine linked` };
     }
     return { linked };
   };
-  const top = check(nm, target, false);
+  // `targetReal`: the caller's own realpath of the target, the one it grants (buildSandboxConfig), so check and grant agree.
+  const top = check(nm, target, false, targetReal);
   if ('problem' in top) return { problem: top.problem, linked: false };
   const nested: string[] = [];
   for (const rel of gateTreeNestedRels(nm)) {
@@ -532,12 +540,6 @@ function gateTreeNestedRels(nm: string): string[] {
     // No dot segment (`.omg`, `.git`: engine state and other runs' checkouts) and no node_modules segment, nor a win32 alias of one.
     return segs.length <= 6 && segs.every((s) => s !== '' && !s.startsWith('.') && !/[ .]$/.test(s) && !s.includes('~') && s.toLowerCase() !== 'node_modules');
   });
-}
-
-/** The target of `<worktree>/node_modules` when it is a junction or symlink (read-only for a write session). */
-function nodeModulesLinkTarget(worktree: string): string | null {
-  const nm = join(worktree, 'node_modules');
-  try { return lstatSync(nm).isSymbolicLink() ? realpathSync.native(nm) : null; } catch { return null; }
 }
 
 /**
@@ -665,15 +667,17 @@ export function buildSandboxConfig(profile: SandboxProfile, ctx: SandboxPolicyCo
   if (isUnderRoot(ctx.jobDir, ctx.worktree, ctx.platform)) {
     throw new Error(`the job dir ${ctx.jobDir} lies inside the lane-writable worktree ${ctx.worktree}; use isolation "worktree"`);
   }
-  let nm: string | null;
+  // No target, no grant: a `<worktree>/node_modules` link is lane-writable, so its own target is never mounted (a session
+  // could plant one for the next). A copilot_run job outside the factory reads no linked node_modules in the sandbox.
+  let nm: string | null = null;
   let nested: string[] = [];
-  if (ctx.nodeModulesTarget === undefined) nm = nodeModulesLinkTarget(ctx.worktree);
-  else {
+  if (ctx.nodeModulesTarget !== undefined) {
     // The engine's link or per-run tree: only the engine-recorded target is granted (read-only), never a link's own target.
-    const tree = nodeModulesTreeProblem(ctx.worktree, ctx.nodeModulesTarget, ctx.platform);
+    let targetReal: string | undefined;
+    try { targetReal = realpathSync.native(ctx.nodeModulesTarget); } catch { /* nothing to grant */ }
+    const tree = nodeModulesTreeProblem(ctx.worktree, ctx.nodeModulesTarget, ctx.platform, targetReal);
     if (tree.problem) throw new Error(`the node_modules in ${ctx.worktree} is not as the engine linked it (${tree.problem}); it is not granted`);
-    nm = null;
-    if (tree.linked) try { nm = realpathSync.native(ctx.nodeModulesTarget); } catch { /* nothing to grant */ }
+    if (tree.linked && targetReal !== undefined) nm = targetReal;
     // A workspace package's node_modules of yours that a nested gate tree links to (read-only, like the root's), only
     // when it is exactly one the engine validated (review-501 M1): the marker naming it is PR-writable.
     const fold = (p: string) => (ctx.platform === 'win32' ? p.toLowerCase() : p);
@@ -849,18 +853,33 @@ function rpcMethod(root: unknown, path: string[], name: string): (() => Promise<
 }
 
 /** Runs `cmd args` to completion, shaped like spawnSync's result. */
-export type SandboxTrialSpawner = (cmd: string, args: readonly string[], timeoutMs: number) => { error?: Error; status: number | null; stderr: string };
+export type SandboxTrialSpawner = (cmd: string, args: readonly string[], timeoutMs: number) => { error?: Error; status: number | null; stderr: string; stdout?: string };
 
 /**
  * The trial launch: bwrap with the namespaces the runtime's Linux sandbox
  * creates, network included (`--unshare-all`; policies without outbound
  * access get an empty net namespace), around `true`.
  */
-export const BWRAP_TRIAL_ARGS: readonly string[] = ['--ro-bind', '/', '/', '--dev', '/dev', '--unshare-all', '--die-with-parent', '--', 'true'];
+export const BWRAP_TRIAL_ARGS: readonly string[] = ['--ro-bind', '/', '/', '--dev', '/dev', '--unshare-all', '--die-with-parent', '--clearenv', '--', 'true'];
+
+/** The oldest bubblewrap the sandbox runs on: it launches with `--clearenv`, added in 0.5.0. */
+export const BWRAP_MIN_VERSION = [0, 5] as const;
+
+/** The version in `bwrap --version` ("bubblewrap 0.4.0", "bubblewrap 0.10.0"): major, minor and the version text, or null. */
+export function parseBwrapVersion(text: string): { major: number; minor: number; text: string } | null {
+  const m = /(\d+)\.(\d+)(?:\.\d+)?/.exec(text);
+  return m ? { major: Number(m[1]), minor: Number(m[2]), text: m[0] } : null;
+}
+
+/** True when `v` is older than {@link BWRAP_MIN_VERSION}. */
+export function bwrapTooOld(v: { major: number; minor: number }): boolean {
+  const [major, minor] = BWRAP_MIN_VERSION;
+  return v.major < major || (v.major === major && v.minor < minor);
+}
 
 const defaultTrialSpawner: SandboxTrialSpawner = (cmd, args, timeoutMs) => {
-  const r = spawnSync(cmd, args, { encoding: 'utf8', timeout: timeoutMs, stdio: ['ignore', 'ignore', 'pipe'] });
-  return { ...(r.error ? { error: r.error } : {}), status: r.status, stderr: r.stderr ?? '' };
+  const r = spawnSync(cmd, args, { encoding: 'utf8', timeout: timeoutMs, stdio: ['ignore', 'pipe', 'pipe'] });
+  return { ...(r.error ? { error: r.error } : {}), status: r.status, stderr: r.stderr ?? '', stdout: r.stdout ?? '' };
 };
 
 /**
@@ -875,6 +894,12 @@ export function bwrapTrialLaunchError(spawn: SandboxTrialSpawner = defaultTrialS
   if (r.error) return `a trial bwrap launch failed: ${errText(r.error)}`;
   if (r.status === 0) return null;
   const stderr = r.stderr.trim().slice(0, 200);
+  const v = spawn('bwrap', ['--version'], timeoutMs);
+  const parsed = v.error || v.status !== 0 ? null : parseBwrapVersion(v.stdout ?? '');
+  if (parsed && bwrapTooOld(parsed)) {
+    return `bubblewrap ${parsed.text} is too old for the Copilot sandbox: it needs bwrap >= ${BWRAP_MIN_VERSION[0]}.${BWRAP_MIN_VERSION[1]}.0 (--clearenv). `
+      + 'Ubuntu 20.04 ships 0.4.0: upgrade the distro (22.04+ ships 0.6+) or build bubblewrap from https://github.com/containers/bubblewrap';
+  }
   if (/RTM_NEWADDR|uid map|new namespace/i.test(stderr)) {
     return 'unprivileged user namespaces are restricted (AppArmor kernel.apparmor_restrict_unprivileged_userns=1), so bwrap cannot launch the sandbox; '
       + `see "Linux: restricted user namespaces" in docs/REFERENCE.md (bwrap: ${stderr})`;
@@ -887,6 +912,22 @@ let cachedBwrapTrial: string | null | undefined;
 export function cachedBwrapTrialLaunchError(): string | null {
   if (cachedBwrapTrial === undefined) cachedBwrapTrial = bwrapTrialLaunchError();
   return cachedBwrapTrial;
+}
+
+/** Null off Linux, else cachedBwrapTrialLaunchError: the up-front gate so an unusable sandbox refuses a run instead of parking every lane. */
+export function linuxSandboxProblem(platform: NodeJS.Platform = process.platform, trial: () => string | null = cachedBwrapTrialLaunchError): string | null {
+  return platform === 'linux' ? trial() : null;
+}
+
+/**
+ * The up-front gate of `omg factory run` and `omg factory bench run --live`:
+ * `problem()` (linuxSandboxProblem) only when the lanes would refuse an
+ * unconfirmed sandbox (`sandbox-unavailable`), i.e. the sandbox is enabled,
+ * {@link SANDBOX_KILL_ENV} is not "off" and writeUnsandboxed is "refuse";
+ * else null.
+ */
+export function factorySandboxProblem(settings: SandboxSettings, problem: () => string | null, env: NodeJS.ProcessEnv = process.env): string | null {
+  return settings.enabled && settings.writeUnsandboxed === 'refuse' && env[SANDBOX_KILL_ENV] !== 'off' ? problem() : null;
 }
 
 export interface HostLaunchCheck {
@@ -1058,23 +1099,81 @@ function envValue(env: NodeJS.ProcessEnv, name: string): string | undefined {
   return typeof value === 'string' && value.trim() !== '' ? value : undefined;
 }
 
+/** Where a stored login's plaintext token can be read (storedLoginToken): the user's Copilot config dir, on this OS. */
+export interface StoredLoginSource {
+  userConfigDir: string;
+  platform: NodeJS.Platform;
+}
+
+/**
+ * The sandbox denies for the user's Copilot config dir on a keyring-less host, where its config.json holds the login
+ * token in plain text (never on Windows: the token stays in Credential Manager). The default ~/.copilot is denied whole
+ * anyway; a relocated COPILOT_HOME is denied whole too, unless a grant lies under it (buildSandboxConfig drops it then),
+ * and its config.json always, also the file a symlinked config.json points to.
+ */
+export function copilotConfigDenies(userConfigDir: string, platform: NodeJS.Platform): string[] {
+  if (platform === 'win32') return [];
+  const cfg = join(userConfigDir, 'config.json');
+  const out = [userConfigDir, cfg];
+  try {
+    const real = realpathSync.native(cfg);
+    if (real !== cfg) out.push(real);
+  } catch { /* missing or dangling: nothing more to name */ }
+  return out;
+}
+
+/** The stored login's plaintext token for `source`; none in a cassette replay, which runs credential-free. */
+function storedToken(env: NodeJS.ProcessEnv, source: StoredLoginSource | undefined): string | undefined {
+  return source && !isReplayEnv(env) ? storedLoginToken(source.userConfigDir, source.platform) : undefined;
+}
+
 /**
  * The explicit Copilot credential for the session's `gitHubToken` option
  * (SDK 1.0.16 SessionConfig: sent over the session RPC, never put in the
- * runtime's env, unlike the client-level option).
+ * runtime's env, unlike the client-level option): COPILOT_GITHUB_TOKEN,
+ * else, with `source`, the stored login's plaintext token from a keyring-less
+ * host's config.json (storedLoginToken; never on Windows). The job home only
+ * ever gets the login identity, so without this a keyring-less host's
+ * relocated runtime has no credential.
  */
-export function sessionGitHubToken(env: NodeJS.ProcessEnv): string | undefined {
-  return envValue(env, 'COPILOT_GITHUB_TOKEN');
+export function sessionGitHubToken(env: NodeJS.ProcessEnv, source?: StoredLoginSource): string | undefined {
+  return envValue(env, 'COPILOT_GITHUB_TOKEN') ?? storedToken(env, source);
+}
+
+/**
+ * The credentials a runtime started from `env` and `source` can use, by name
+ * only (never a value), in the order the runtime prefers them; for a
+ * "Not authenticated" message.
+ */
+export function triedCredentialNames(env: NodeJS.ProcessEnv, source: StoredLoginSource, hasLogin: boolean): string[] {
+  const names: string[] = [];
+  if (envValue(env, 'COPILOT_GITHUB_TOKEN')) names.push('COPILOT_GITHUB_TOKEN');
+  if (hasLogin) names.push(storedToken(env, source) ? 'the stored login (plaintext token in the Copilot config.json)' : 'the stored login (OS credential store)');
+  else for (const n of ['GH_TOKEN', 'GITHUB_TOKEN']) if (envValue(env, n)) names.push(n);
+  return names;
+}
+
+/**
+ * `text` with, when it reports "Not authenticated", the credentials tried
+ * (names only) and how to add one.
+ */
+export function withCredentialHint(text: string, env: NodeJS.ProcessEnv, source: StoredLoginSource, hasLogin: boolean): string {
+  if (!/not authenticated/i.test(text)) return text;
+  const tried = triedCredentialNames(env, source, hasLogin);
+  return `${text} (credentials tried: ${tried.length ? tried.join(', ') : 'none found'}; run \`copilot login\` or set COPILOT_GITHUB_TOKEN)`;
 }
 
 /** GitHub token shapes: classic ghp_/gho_/ghu_/ghs_/ghr_ and fine-grained github_pat_. */
 const TOKEN_PATTERN = /\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})/g;
 
-/** The token values in the caller's env that lane output must never carry. */
-export function secretValues(env: NodeJS.ProcessEnv): string[] {
-  return ['COPILOT_GITHUB_TOKEN', 'GH_TOKEN', 'GITHUB_TOKEN']
-    .map((n) => envValue(env, n))
+/**
+ * The token values lane output must never carry: those in the caller's env
+ * and, with `source`, the stored login's plaintext token.
+ */
+export function secretValues(env: NodeJS.ProcessEnv, source?: StoredLoginSource): string[] {
+  const values = [...['COPILOT_GITHUB_TOKEN', 'GH_TOKEN', 'GITHUB_TOKEN'].map((n) => envValue(env, n)), storedToken(env, source)]
     .filter((v): v is string => v !== undefined && v.length >= 8);
+  return [...new Set(values)];
 }
 
 /**

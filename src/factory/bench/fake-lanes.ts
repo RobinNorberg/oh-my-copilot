@@ -8,7 +8,7 @@
  * and a fixed credit count per lane, marked `estimated`.
  */
 
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { summarizeChanges } from '../../copilot-run/job.js';
 import type { CopilotRunSandboxState } from '../../copilot-run/sandbox.js';
@@ -37,6 +37,7 @@ interface Job {
   worktree: string;
   branch: string;
   baseSha: string;
+  remoteId: string;
   done?: { finalText: string; error: string | null };
 }
 
@@ -70,7 +71,7 @@ export class BenchFakeLanes implements LaneBackend {
       git(this.root, ['worktree', 'add', '-q', '-b', branch, worktree, baseSha]);
       recordWorktreeGitLinks(worktree, readWorktreeGitLinks(worktree)!);
     }
-    this.jobs.set(remoteId, { input, step: this.steps[n], worktree, branch, baseSha });
+    this.jobs.set(remoteId, { input, step: this.steps[n], worktree, branch, baseSha, remoteId });
     return { remoteId };
   }
 
@@ -86,7 +87,33 @@ export class BenchFakeLanes implements LaneBackend {
       mkdirSync(dirname(abs), { recursive: true });
       writeFileSync(abs, this.fill(text));
     }
-    return { finalText: step.text ?? `Changed ${Object.keys(step.files).join(', ')}.`, error: null };
+    for (const rel of step.delete ?? []) rmSync(join(job.worktree, ...rel.split('/')), { force: true });
+    if (step.guardDenials?.length) this.writeGuardDenials(job, step.guardDenials);
+    return { finalText: step.text ?? `Changed ${[...Object.keys(step.files), ...(step.delete ?? [])].join(', ')}.`, error: null };
+  }
+
+  /**
+   * The events a real lane's job writes when git-guardrails denies a shell
+   * call (copilot-run events.jsonl: tool.execution_start, the preToolUse
+   * hook.end carrying the guard's message, tool.execution_complete with
+   * error.code "denied"), in the job dir a real lane uses.
+   */
+  private writeGuardDenials(job: Job, commands: readonly string[]): void {
+    const dir = join(getOmcRoot(this.root), 'state', 'copilot-run', job.remoteId);
+    mkdirSync(dir, { recursive: true });
+    const at = new Date().toISOString();
+    const lines = commands.flatMap((command, n) => {
+      const toolCallId = `call_bench_${n + 1}`;
+      // The label git-guardrails names for the first guarded command of the line.
+      const label = /^git push/.test(command) ? 'git push' : /^git checkout/.test(command) ? 'git checkout . (working-tree discard)' : /^git clean/.test(command) ? 'git clean -f' : 'git reset --hard';
+      const message = `Git guardrail: blocked "${label}".\nYou do not have authority for this operation - it destroys or publishes state the user owns.`;
+      return [
+        { at, type: 'tool.execution_start', data: { toolCallId, toolName: 'bash', arguments: { command } } },
+        { at, type: 'hook.end', data: { hookType: 'preToolUse', success: true, output: { permissionDecision: 'deny', permissionDecisionReason: message } } },
+        { at, type: 'tool.execution_complete', data: { toolCallId, success: false, error: { code: 'denied', message } } },
+      ];
+    });
+    writeFileSync(join(dir, 'events.jsonl'), lines.map((l) => JSON.stringify(l)).join('\n') + '\n', { flag: 'a' });
   }
 
   private result(job: Job, remoteId: string, state: LaneResult['state']): LaneResult {

@@ -40,7 +40,7 @@ export const gitIn = (cwd, ...args) => execFileSync('git', ['-c', 'user.name=t',
     encoding: 'utf8',
     stdio: 'pipe',
 }).trim();
-export function fakeSdk(behavior, calls, sandbox = 'supported') {
+export function fakeSdk(behavior, calls, sandbox = 'supported', deniedPaths = false) {
     class Session {
         cfg;
         sessionId = `sess-${calls.sessions.length}`;
@@ -69,7 +69,7 @@ export function fakeSdk(behavior, calls, sandbox = 'supported') {
     }
     class Client {
         cliProcess = null;
-        rpc = fakeClientRpc(sandbox);
+        rpc = fakeClientRpc(sandbox, deniedPaths);
         constructor(_opts) { }
         async start() { }
         async stop() { return []; }

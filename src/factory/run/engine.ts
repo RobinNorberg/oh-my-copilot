@@ -66,7 +66,7 @@ import { parseJsonc } from '../../utils/jsonc.js';
 import { gitForWindowsShell, nodeModulesTreeProblem, resolveGateIsolation, resolveGatesSandboxMode, resolveRequireDeniedPaths, resolveWindowsGitTransport, type GateContainerSettings, type GatesSandboxMode, type WindowsGitTransportMode } from '../../copilot-run/sandbox.js';
 import { CONTAINER_INCOMPATIBLE_ADVICE, CONTAINER_SRC, containerRunLabel, GATE_CONTAINER_UNAVAILABLE_GATE } from './container-gate.js';
 import { CREDENTIAL_FILES_READABLE_NOTE, redactGateOutput, sandboxCommandTooLong, sandboxJobRoot, splitFileListArgs, type SandboxRunner, type SandboxRunRequest, type SandboxRunResult } from './sandbox-exec.js';
-import { forgetWorktreeGitLinks, readWorktreeGitLinks, recordedWorktreeGitLinks, recordWorktreeGitLinks, removeStaleWorktreeEntry, removeWorkerWorktree, runHostGit, runHostGitBuffer, worktreeGitDirArgs, worktreeGitLinksIntact } from '../../team/git-worktree.js';
+import { forgetWorktreeGitLinks, readWorktreeGitLinks, recordedWorktreeGitLinks, recordWorktreeGitLinks, removeStaleWorktreeEntry, removeWorkerWorktree, runHostGit, runHostGitBuffer, runHostGitBufferAsync, worktreeGitDirArgs, worktreeGitLinksIntact } from '../../team/git-worktree.js';
 import { buildGitView, GIT_VIEW_MAX_BYTES, GIT_VIEW_MAX_OBJECTS, type GitViewSource } from './git-view.js';
 import { driveGates } from './gates-driver.js';
 import { missingCheckHint, NO_CI_CHECKS_NOTE, noHeadChecksText, type GateHeadReads } from '../../ship/gates.js';
@@ -101,7 +101,7 @@ import { ghDependsOn, ghIssueComment, ghIssueJson, ghIssueView, ghViewItem, gith
 import { isSatisfied, type DependencyForge } from '../check/score.js';
 import { outcomePosts, postedBefore, type OutcomeEvent } from './outcome.js';
 import { forgePrStateReader, humanMergeCandidate, laneTrustProblem, markMergedByHuman } from './human-merged.js';
-import { checkoutBranch, checkoutPath, checkoutWorker, defaultGateConfigLoader, FACTORY_CHECKOUT_TEAM, GATE_CACHE_DIRS, GATE_TREE_COPY_WHY, GATE_TREE_MARKER, gateTreeHasLinks, linkNodeModules, prepareLaneNodeModules, settleLaneNodeModules, trustedNestedRels, unlinkNodeModules, type GateConfig, type GateConfigLoader } from './prepare.js';
+import { checkoutBranch, checkoutPath, checkoutWorker, defaultGateConfigLoader, FACTORY_CHECKOUT_TEAM, GATE_CACHE_DIRS, GATE_TREE_COPY_WHY, GATE_TREE_MARKER, gateTreeHasLinks, linkNodeModules, prepareLaneNodeModulesAsync, settleLaneNodeModules, trustedNestedRels, unlinkNodeModules, type GateConfig, type GateConfigLoader } from './prepare.js';
 import { baseWorkspacePatterns } from './workspace-tree.js';
 import {
   canTransition,
@@ -120,10 +120,11 @@ import { ghReviewFeedback } from '../../forge/github/reviews.js';
 import { ReviewHeadMovedError, visibleLine } from '../../forge/review-feedback.js';
 import type { ForgeRepo, ForgeReviewFeedback, PrMergeability } from '../../forge/types.js';
 import { humanFixPrompt, laneScripts } from './prompts.js';
+import { likelyRelevantFiles, type LikelyFile } from './prescan.js';
 import { lockPathFor } from '../../lib/file-lock.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
 import { checkDiagnosis } from '../heal/diagnosis-output.js';
-import { assertLaneCreditCap, nextLaneCap, runCredits, runCreditsExceeded, type FactoryRunLimits } from './budget.js';
+import { assertLaneCreditCap, LANE_MODEL_KINDS, laneModelFor, nextLaneCap, resolvedLaneModels, runCredits, runCreditsExceeded, type FactoryRunLimits } from './budget.js';
 import { FactorySafetyError, factoryGuardExec, hardenedGitExec, sameFsPath, type GithubReadContext } from './exec.js';
 import { createGateProcTracker, gateProcsPath, liveGateProcs, reapGateProcs, sweepGateProcs } from './gate-procs.js';
 import { assertFactoryForgeOptions, EXIT_FORGE_UNAVAILABLE, FactoryForgeUnavailableError, localRemoteMismatch, syncLocalMirror } from './forge-roots.js';
@@ -202,6 +203,44 @@ import {
 } from './state.js';
 import { PARALLEL_LAYOUT_GATE, readTrustedBaseLayerAtRef, reserveLaneCredits } from './parallel.js';
 import { claimRepoKey } from './claims.js';
+
+/** Each host git call of the implement pre-scan (ls-tree, cat-file, check-ignore) is killed after this long. */
+const PRESCAN_GIT_TIMEOUT_MS = 3_000;
+
+/**
+ * The implement prompt's free pre-scan (prescan.ts) of `baseSha` for `text`
+ * (issue title and plan): likely relevant paths, read with hardened host git
+ * from the checkout at `root`, asynchronously (the engine loop keeps
+ * running); paths the checkout's .gitignore excludes are dropped. `tracked`
+ * is the base's file list when the tree was read. A failure only drops the
+ * hint (warned), never the lane.
+ */
+export async function implementLikelyFiles(root: string, text: string, baseSha: string, warn?: (message: string) => void): Promise<{ files: LikelyFile[]; tracked?: ReadonlySet<string> }> {
+  const env = scrubShipEnv(process.env);
+  let tracked: ReadonlySet<string> | undefined;
+  try {
+    const files = await likelyRelevantFiles(text, baseSha, (args, input, maxBuffer) => runHostGitBufferAsync(root, args, PRESCAN_GIT_TIMEOUT_MS, env, input, maxBuffer), {
+      onTree: (t) => { tracked = t; },
+      ignored: async (paths) => {
+        if (paths.length === 0) return new Set<string>();
+        let out: Buffer;
+        try {
+          out = await runHostGitBufferAsync(root, ['--no-optional-locks', 'check-ignore', '--no-index', '-z', '--stdin'], PRESCAN_GIT_TIMEOUT_MS, env, paths.join('\0'));
+        } catch (e) {
+          // check-ignore exits 1 when no path is ignored: only that status with empty output is an answer.
+          const x = e as { status?: number | null; stdout?: Buffer };
+          if (x.status === 1 && (x.stdout?.length ?? 0) === 0) return new Set<string>();
+          throw e;
+        }
+        return new Set(out.toString('utf8').split('\0').filter(Boolean));
+      },
+    });
+    return { files, tracked };
+  } catch (e) {
+    warn?.(`omg factory run: the likely-files pre-scan failed, so the implement prompt carries no file hint: ${errText(e)}`);
+    return { files: [], tracked };
+  }
+}
 
 /** Exit code of a run parked at a human gate other than the expected `merge` park. */
 export const EXIT_AWAITING_HUMAN = 4;
@@ -940,6 +979,10 @@ class FactoryEngine {
   private gateCfg?: { baseSha: string; loaded: GateConfig };
   /** The base's workspace globs of this invocation (baseWorkspaces), by the base sha they were read at. */
   private wsGlobs?: { baseSha: string; globs: string[] };
+  /** How prepareLaneTree readied each lane worktree of this invocation (by resolved path): copied (Windows) or linked. */
+  private readonly laneTreeModes = new Map<string, 'copy' | 'link'>();
+  /** The nested workspace trees (relative package dirs) prepareLaneTree linked in each lane worktree, for settleLaneTree. */
+  private readonly laneNestedRels = new Map<string, string[]>();
   /** The Azure DevOps forge; undefined = GitHub through the gh calls. */
   private readonly forge?: Forge;
   /** The forge, for messages. */
@@ -1509,14 +1552,18 @@ class FactoryEngine {
   }
 
   /**
-   * A write lane worktree about to run in the OS sandbox on Windows gets a
-   * copy of your node_modules (prepareLaneNodeModules, the gates' copied
-   * tree: GATE_TREE_COPY_WHY), so the lane's tests open no junction. Its git
-   * ignore check runs before anything is copied (the dirs need not exist):
-   * hardened host git `check-ignore --no-index` in the worktree with its
-   * recorded links (its exit 1, none ignored, throws: not ignored).
+   * A write lane worktree about to run in the OS sandbox gets your
+   * node_modules (prepareLaneNodeModulesAsync): on Windows (`copy`) the
+   * gates' copied tree (GATE_TREE_COPY_WHY), so the lane's tests open no
+   * junction; on Linux and macOS the gates' linked tree, granted read-only
+   * through laneNodeModulesGrant, without which the lane has no tsc or
+   * vitest. Its git ignore check runs before anything is built (the dirs
+   * need not exist): hardened host git `check-ignore --no-index` in the
+   * worktree with its recorded links (its exit 1, none ignored, throws: not
+   * ignored).
    */
-  private prepareLaneTree(worktree: string): string | null {
+  private prepareLaneTree(worktree: string, copy = true): Promise<string | null> {
+    this.laneTreeModes.set(resolve(worktree), copy ? 'copy' : 'link');
     const ignored = (paths: string[]): boolean => {
       const out = runHostGit(worktree, [...worktreeGitDirArgs(worktree), '--no-optional-locks', 'check-ignore', '--no-index', '-z', '--stdin'], PRIVATE_GIT_TIMEOUT_MS, process.env, paths.map((p) => `${p}/\0`).join(''));
       const listed = new Set(out.split('\0').filter(Boolean).map((p) => p.replace(/\/$/, '')));
@@ -1528,7 +1575,33 @@ class FactoryEngine {
     const reuseFrom = this.state.lanes
       .filter((l) => l.worktree && l.treeReusable === true && l.id !== this.state.pendingCommit?.laneId && !samePath(l.worktree, worktree))
       .map((l) => l.worktree!).reverse();
-    return prepareLaneNodeModules(this.o.root, worktree, { workspaces: this.baseWorkspaces(), ...(this.o.warn ? { warn: this.o.warn } : {}), ignored, reuseFrom });
+    if (!copy) {
+      // The nested trees are recorded while the marker that names them is fresh: the lane may delete it (settleLaneTree).
+      return prepareLaneNodeModulesAsync(this.o.root, worktree, { workspaces: this.baseWorkspaces(), ...(this.o.warn ? { warn: this.o.warn } : {}), ignored, copy: false }).then((problem) => {
+        const nested = trustedNestedRels(this.o.root, worktree, this.baseWorkspaces());
+        const known = this.laneNestedRels.get(resolve(worktree)) ?? [];
+        this.laneNestedRels.set(resolve(worktree), [...new Set([...known, ...nested])]);
+        return problem;
+      });
+    }
+    return prepareLaneNodeModulesAsync(this.o.root, worktree, { workspaces: this.baseWorkspaces(), ...(this.o.warn ? { warn: this.o.warn } : {}), ignored, reuseFrom });
+  }
+
+  /**
+   * What a write lane's sandbox may grant under node_modules, asked before
+   * each of its sessions: as for the gates (sandboxRun), your node_modules
+   * and the nested workspace trees the engine vouches for (trustedNestedRels),
+   * so every link of `<worktree>/node_modules` is checked against them
+   * (nodeModulesTreeProblem) and a link the lane planted or re-pointed stops
+   * the session instead of being mounted. Undefined (nothing granted) for a
+   * Windows lane's copied tree, as before: it holds no link to grant through
+   * but `.bin`.
+   */
+  private laneNodeModulesGrant(worktree: string): { target: string; nested?: string[] } | undefined {
+    // Fail closed: only a tree prepareLaneTree linked in this invocation is granted (an unknown worktree gets nothing).
+    if (this.laneTreeModes.get(resolve(worktree)) !== 'link') return undefined;
+    const nested = trustedNestedRels(this.o.root, worktree, this.baseWorkspaces()).map((rel) => join(this.o.root, ...rel.split('/'), 'node_modules'));
+    return { target: join(this.o.root, 'node_modules'), ...(nested.length > 0 ? { nested } : {}) };
   }
 
   /**
@@ -1543,11 +1616,15 @@ class FactoryEngine {
       const listed = new Set(out.split('\0').filter(Boolean).map((p) => p.replace(/\/$/, '')));
       return paths.every((p) => listed.has(p));
     };
+    // A linked tree (Linux, macOS) always goes before the commit; a copied one only once git no longer ignores it.
+    const linked = (this.laneTreeModes.get(resolve(worktree)) ?? (process.platform === 'win32' ? 'copy' : 'link')) === 'link';
     try {
-      const removed = settleLaneNodeModules(this.o.root, worktree, ignored);
+      const removed = settleLaneNodeModules(this.o.root, worktree, ignored, linked, this.laneNestedRels.get(resolve(worktree)) ?? []);
       if (removed) this.o.warn?.(`omg factory run: ${removed}`);
     } catch (error) {
-      this.o.warn?.(`omg factory run: the copied node_modules of ${worktree} is no longer ignored by git and could not be removed (${errText(error)}); the lane commit refuses its links`);
+      this.o.warn?.(linked
+        ? `omg factory run: the linked node_modules of ${worktree} could not be unlinked before the lane commit (${errText(error)}); the lane commit refuses its links`
+        : `omg factory run: the copied node_modules of ${worktree} is no longer ignored by git and could not be removed (${errText(error)}); the lane commit refuses its links`);
     }
   }
 
@@ -1555,14 +1632,14 @@ class FactoryEngine {
    * What a write lane's prompt may say about its sandbox: the lane backend's
    * reading of the sandbox settings (null: a backend that cannot tell, such
    * as a cloud agent, or unreadable settings: the prompt says nothing). The
-   * dependencies are named ready only where prepareLaneTree copies your
-   * node_modules into the worktree.
+   * dependencies are named ready only where prepareLaneTree gives the
+   * worktree your node_modules (the OS sandbox: copied or linked).
    */
   private laneEnvironment(): LaneEnvironment | null {
     let intent;
     try { intent = this.o.lanes.laneSandbox?.(this.o.root) ?? null; } catch { intent = null; }
     if (!intent) return null;
-    return { sandboxed: intent.sandboxed, writeNetwork: intent.writeNetwork, nodeModulesReady: intent.windowsCopy && existsSync(join(this.o.root, 'node_modules')) };
+    return { sandboxed: intent.sandboxed, writeNetwork: intent.writeNetwork, nodeModulesReady: intent.sandboxed && existsSync(join(this.o.root, 'node_modules')) };
   }
 
   /** The gate-sandbox-incompatible park of a copied tree linkGateTree could not build (`why`). */
@@ -2106,11 +2183,19 @@ class FactoryEngine {
     if (tookOver) notes.push(`took over from dead owner pid ${tookOver.pid} on ${tookOver.hostname}`);
     if (s.gate) notes.push(`rerun after awaiting-human: ${s.gate.name}`);
     if (s.gate) this.resumedFromPark = true;
-    // The recorded model is informational: this invocation's laneModel (user config / --model) still picks the lanes' model.
-    const nowModel = this.o.limits.laneModel ?? null;
-    if (s.laneModel !== undefined && s.laneModel !== nowModel) {
-      const what = (m: string | null) => m ?? "Copilot's default model";
-      const note = `lane model changed on resume: the run's first lane used ${what(s.laneModel)}, this invocation starts lanes on ${what(nowModel)}`;
+    // The recorded models are informational: this invocation's laneModel / laneModels (user config, --model,
+    // --review-model) still pick the lanes' models. Compared per lane kind; a state from before laneModels
+    // recorded one model for every kind.
+    const what = (m: string | null) => m ?? "Copilot's default model";
+    const nowModels = resolvedLaneModels(this.o.limits);
+    const before = s.laneModels ?? (s.laneModel !== undefined ? Object.fromEntries(LANE_MODEL_KINDS.map((k) => [k, s.laneModel ?? null])) : undefined);
+    const changed = before ? LANE_MODEL_KINDS.filter((k) => (before[k] ?? null) !== nowModels[k]) : [];
+    if (before && changed.length === LANE_MODEL_KINDS.length && new Set(changed.map((k) => before[k] ?? null)).size === 1 && new Set(changed.map((k) => nowModels[k])).size === 1) {
+      const note = `lane model changed on resume: the run's first lane used ${what(before[changed[0]] ?? null)}, this invocation starts lanes on ${what(nowModels[changed[0]])}`;
+      notes.push(note);
+      this.o.warn?.(`omg factory run: ${note}`);
+    } else if (before && changed.length) {
+      const note = `lane models changed on resume: ${changed.map((k) => `${k} ${what(before[k] ?? null)} -> ${what(nowModels[k])}`).join('; ')}`;
       notes.push(note);
       this.o.warn?.(`omg factory run: ${note}`);
     }
@@ -2708,7 +2793,8 @@ class FactoryEngine {
     const read = this.readAt(baseSha);
     // Name only the guide files the base has: the lane worktree checks it out.
     const guides = REPO_GUIDE_FILES.filter((p) => { try { return read(p) !== undefined; } catch { return false; } });
-    const out = await this.runLane('implement', baseSha, 'write', implementPrompt(this.state, this.teamContext(read, pathsInText(this.state.plan?.text ?? '')), this.laneScripts(), this.laneEnvironment(), guides), 'implement');
+    const likely = await implementLikelyFiles(this.o.root, `${this.state.issueTitle ?? ''}\n${this.state.plan?.text ?? ''}`, baseSha, (m) => this.o.warn?.(m));
+    const out = await this.runLane('implement', baseSha, 'write', implementPrompt(this.state, this.teamContext(read, pathsInText(this.state.plan?.text ?? '')), this.laneScripts(), this.laneEnvironment(), guides, likely.files, likely.tracked), 'implement');
     if (out.kind === 'done') await this.acceptWriteLane(out, 'implement', baseSha);
   }
 
@@ -4949,6 +5035,8 @@ class FactoryEngine {
     if (!ship) throw new FactoryStepError(`no ship state for PR #${pr}`);
     if (ship.phase !== 'ready') throw new FactoryStepError(`ship state for PR #${pr} is ${ship.phase}, not ready`);
     if (this.humanReviewParked(pr, head, ship)) return;
+    // The base moved under a parked merge (a rerun after another PR landed) and the head no longer merges: prepare again, as gates does.
+    if (await this.prConflicts(pr, head)) return this.reprepareConflict(pr, head);
     const { config: loaded, known } = this.gateConfig(view);
     // The merge rule accepts the build outputs this run sealed at prepare, not whatever the base says now.
     const sealedBuild = this.state.prepareBuild;
@@ -5876,14 +5964,14 @@ class FactoryEngine {
     }
     this.ledger.setRecheck(undefined);
     const startedAt = this.iso();
-    const model = this.o.limits.laneModel;
+    const model = laneModelFor(this.o.limits, kind);
     const record: FactoryLaneRecord = { id, kind, startSha: startRef, status: 'running', maxCredits: cap.cap, startedAt, ...(model ? { model } : {}), ...(laneTree ? { worktree: laneTree } : {}) };
     // The baseline is persisted before the lane exists, so a lost lane or a resume compares against it.
     try {
       this.ledger.setBaseline(id, before);
       if (userBefore) this.ledger.setBaseline(userBaselineKey(id), userBefore);
-      // The first lane's model is kept for the resume warning only (informational: it never picks the model).
-      this.save((s) => ({ ...s, lanes: [...s.lanes, record], ...(s.laneModel === undefined ? { laneModel: model ?? null } : {}) }));
+      // The first lane's model and the per-kind map are kept for the resume warning and status only (informational: they never pick a model).
+      this.save((s) => ({ ...s, lanes: [...s.lanes, record], ...(s.laneModel === undefined ? { laneModel: model ?? null, laneModels: resolvedLaneModels(this.o.limits) } : s.laneModels === undefined ? { laneModels: resolvedLaneModels(this.o.limits) } : {}) }));
     } catch (error) {
       // No lane started: the heal reservation is released before the step fails.
       settleHeal(0);
@@ -5894,11 +5982,12 @@ class FactoryEngine {
       ({ remoteId } = await this.o.lanes.start({
         laneId: id, cwd: this.o.root, baseRef: startRef, prompt, profile, timeoutMs: this.o.limits.laneTimeoutMs, maxCredits: cap.cap, ledgerTag: { role: kind, run: runSlug(this.key) },
         ...(profile === 'write' ? { engineCommits: true } : {}),
-        // factory.run.laneModel / --model: every lane kind (implement, review, fix, ci-fix, conflict-fix) starts on it.
+        // factory.run.laneModels[kind] / --review-model, else factory.run.laneModel / --model (laneModelFor).
         ...(model ? { model } : {}),
-        // The OS sandbox on Windows denies opening a package dir through a junction: a write lane gets a copied node_modules
-        // (a review lane's shell is read-only, so it runs no test and needs none).
-        ...(profile === 'write' ? { beforeSandboxedSession: (wt: string) => this.prepareLaneTree(wt) } : {}),
+        // The OS sandbox on Windows denies opening a package dir through a junction: a write lane gets a copied node_modules;
+        // elsewhere the gates' linked tree, granted read-only only as the engine vouches for it (laneNodeModulesGrant).
+        // A review lane's shell is read-only, so it runs no test and needs none.
+        ...(profile === 'write' ? { beforeSandboxedSession: (wt: string, o?: { copy: boolean }) => this.prepareLaneTree(wt, o?.copy ?? true), nodeModulesGrant: (wt: string) => this.laneNodeModulesGrant(wt) } : {}),
         ...(priv && laneTree ? { worktree: { path: laneTree, commonGitDir: priv.repo.gitDir }, jobRoot: priv.layout.jobs, deniedPaths: priv.deniedFor(laneTree), beforeHostGit: () => priv.problem() } : {}),
       }));
     } catch (error) {

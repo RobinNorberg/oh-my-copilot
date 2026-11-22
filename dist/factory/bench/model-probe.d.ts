@@ -38,8 +38,9 @@ export declare function modelMultiplier(models: readonly ModelEntry[], model: st
  * needs `--allow-multiplier` at or above it (one lane then costs that many
  * premium requests). An unknown model or multiplier fails closed: it needs
  * `--allow-multiplier`, given after checking the default model by hand.
+ * `flag` names where an explicit model came from in the messages.
  */
-export declare function multiplierRefusal(info: BenchModelInfo, allow: number | undefined): string | null;
+export declare function multiplierRefusal(info: BenchModelInfo, allow: number | undefined, flag?: string): string | null;
 export declare function probeLaneModel(jobRoot: string, deps?: Pick<CopilotRunDeps, 'env' | 'platform' | 'loadSdk' | 'resolveBin' | 'userConfigDir' | 'killTree'>, requested?: string): Promise<BenchModelInfo>;
 export {};
 //# sourceMappingURL=model-probe.d.ts.map

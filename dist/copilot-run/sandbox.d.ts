@@ -243,7 +243,10 @@ export interface SandboxPolicyContext {
     /**
      * The only target a `<worktree>/node_modules` link may resolve to (the
      * dir the engine linked; review-483 M4): a link elsewhere throws instead
-     * of being granted read-only. Unset: the link's target as it is (lanes).
+     * of being granted read-only. Unset: nothing under node_modules is
+     * granted. A link in the worktree is lane-writable, so its own target is
+     * never taken as a grant: a session could plant one for the next session
+     * to have mounted (the factory's gates and lanes always pass the target).
      */
     nodeModulesTarget?: string;
     /**
@@ -277,7 +280,7 @@ export declare const REGISTRY_HOSTS: readonly string[];
  * grant needs an exact match with the engine's own list too
  * (nestedNodeModulesTargets). A line of another shape is ignored.
  */
-export declare function nodeModulesTreeProblem(worktree: string, target: string, platform?: NodeJS.Platform): {
+export declare function nodeModulesTreeProblem(worktree: string, target: string, platform?: NodeJS.Platform, targetReal?: string): {
     problem: string | null;
     linked: boolean;
     nested?: string[];
@@ -361,6 +364,7 @@ export type SandboxTrialSpawner = (cmd: string, args: readonly string[], timeout
     error?: Error;
     status: number | null;
     stderr: string;
+    stdout?: string;
 };
 /**
  * The trial launch: bwrap with the namespaces the runtime's Linux sandbox
@@ -368,6 +372,19 @@ export type SandboxTrialSpawner = (cmd: string, args: readonly string[], timeout
  * access get an empty net namespace), around `true`.
  */
 export declare const BWRAP_TRIAL_ARGS: readonly string[];
+/** The oldest bubblewrap the sandbox runs on: it launches with `--clearenv`, added in 0.5.0. */
+export declare const BWRAP_MIN_VERSION: readonly [0, 5];
+/** The version in `bwrap --version` ("bubblewrap 0.4.0", "bubblewrap 0.10.0"): major, minor and the version text, or null. */
+export declare function parseBwrapVersion(text: string): {
+    major: number;
+    minor: number;
+    text: string;
+} | null;
+/** True when `v` is older than {@link BWRAP_MIN_VERSION}. */
+export declare function bwrapTooOld(v: {
+    major: number;
+    minor: number;
+}): boolean;
 /**
  * Whether bwrap can launch a process here: null when it can, else why not.
  * `sandbox.getHostSupport` reports a host with bwrap installed as supported
@@ -377,6 +394,16 @@ export declare const BWRAP_TRIAL_ARGS: readonly string[];
 export declare function bwrapTrialLaunchError(spawn?: SandboxTrialSpawner, timeoutMs?: number): string | null;
 /** bwrapTrialLaunchError with the real bwrap, run once per process. */
 export declare function cachedBwrapTrialLaunchError(): string | null;
+/** Null off Linux, else cachedBwrapTrialLaunchError: the up-front gate so an unusable sandbox refuses a run instead of parking every lane. */
+export declare function linuxSandboxProblem(platform?: NodeJS.Platform, trial?: () => string | null): string | null;
+/**
+ * The up-front gate of `omg factory run` and `omg factory bench run --live`:
+ * `problem()` (linuxSandboxProblem) only when the lanes would refuse an
+ * unconfirmed sandbox (`sandbox-unavailable`), i.e. the sandbox is enabled,
+ * {@link SANDBOX_KILL_ENV} is not "off" and writeUnsandboxed is "refuse";
+ * else null.
+ */
+export declare function factorySandboxProblem(settings: SandboxSettings, problem: () => string | null, env?: NodeJS.ProcessEnv): string | null;
 export interface HostLaunchCheck {
     /** Default process.platform; the trial launch runs on linux only. */
     platform?: NodeJS.Platform;
@@ -431,14 +458,44 @@ export declare function proxyCaEnv(env: NodeJS.ProcessEnv, platform: NodeJS.Plat
 export declare const MXC_REQUIRED_ENV: readonly string[];
 /** The {@link MXC_REQUIRED_ENV} names `env` lacks (or holds blank) on win32; none elsewhere. */
 export declare function missingSandboxEnv(env: NodeJS.ProcessEnv, platform: NodeJS.Platform): string[];
+/** Where a stored login's plaintext token can be read (storedLoginToken): the user's Copilot config dir, on this OS. */
+export interface StoredLoginSource {
+    userConfigDir: string;
+    platform: NodeJS.Platform;
+}
+/**
+ * The sandbox denies for the user's Copilot config dir on a keyring-less host, where its config.json holds the login
+ * token in plain text (never on Windows: the token stays in Credential Manager). The default ~/.copilot is denied whole
+ * anyway; a relocated COPILOT_HOME is denied whole too, unless a grant lies under it (buildSandboxConfig drops it then),
+ * and its config.json always, also the file a symlinked config.json points to.
+ */
+export declare function copilotConfigDenies(userConfigDir: string, platform: NodeJS.Platform): string[];
 /**
  * The explicit Copilot credential for the session's `gitHubToken` option
  * (SDK 1.0.16 SessionConfig: sent over the session RPC, never put in the
- * runtime's env, unlike the client-level option).
+ * runtime's env, unlike the client-level option): COPILOT_GITHUB_TOKEN,
+ * else, with `source`, the stored login's plaintext token from a keyring-less
+ * host's config.json (storedLoginToken; never on Windows). The job home only
+ * ever gets the login identity, so without this a keyring-less host's
+ * relocated runtime has no credential.
  */
-export declare function sessionGitHubToken(env: NodeJS.ProcessEnv): string | undefined;
-/** The token values in the caller's env that lane output must never carry. */
-export declare function secretValues(env: NodeJS.ProcessEnv): string[];
+export declare function sessionGitHubToken(env: NodeJS.ProcessEnv, source?: StoredLoginSource): string | undefined;
+/**
+ * The credentials a runtime started from `env` and `source` can use, by name
+ * only (never a value), in the order the runtime prefers them; for a
+ * "Not authenticated" message.
+ */
+export declare function triedCredentialNames(env: NodeJS.ProcessEnv, source: StoredLoginSource, hasLogin: boolean): string[];
+/**
+ * `text` with, when it reports "Not authenticated", the credentials tried
+ * (names only) and how to add one.
+ */
+export declare function withCredentialHint(text: string, env: NodeJS.ProcessEnv, source: StoredLoginSource, hasLogin: boolean): string;
+/**
+ * The token values lane output must never carry: those in the caller's env
+ * and, with `source`, the stored login's plaintext token.
+ */
+export declare function secretValues(env: NodeJS.ProcessEnv, source?: StoredLoginSource): string[];
 /**
  * `text` with every GitHub token shape and every exact `secrets` value
  * replaced by `[redacted]`. It matches literal text only: a token that is

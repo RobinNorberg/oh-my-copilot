@@ -41,9 +41,9 @@
  */
 
 import { childEnv, hardenWindowsExeSearch } from '../utils/windows-search.js';
-import { spawnSync } from 'node:child_process';
+import { execFile, spawnSync } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
-import { closeSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, rmSync, statSync, writeFileSync, writeSync } from 'node:fs';
+import { closeSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, realpathSync, rmSync, statSync, writeFileSync, writeSync } from 'node:fs';
 import { tmpdir, userInfo } from 'node:os';
 import { basename, dirname, isAbsolute, join, relative, resolve, win32 } from 'node:path';
 
@@ -71,6 +71,7 @@ import { RUNTIME_MIN_MAX_CREDITS, usageCredits } from '../smoke/copilot-sdk-scen
 import type { CopilotEvent } from '../smoke/copilot-session-eval.js';
 import { buildSessionEnv, isCredentialEnvKey, loginIdentity, resolveDefaultPluginRoot } from '../smoke/copilot-session-env.js';
 import { killProcessTree } from '../smoke/process-utils.js';
+import { addRecordingDenyLiterals } from '../smoke/replay/handler.js';
 import {
   ensureWorkerWorktree,
   getBranchName,
@@ -104,6 +105,7 @@ import {
   REVIEW_SHELL_TOOLS,
   SANDBOX_KILL_ENV,
   allowlistSessionEnv,
+  copilotConfigDenies,
   laneToolPaths,
   loadSandboxSettings,
   missingSandboxEnv,
@@ -166,6 +168,67 @@ export const PROJECT_MEMORY_SKIP_TOKEN = 'project-memory-session,project-memory-
  */
 export const LANE_HOOKS_MINIMAL = 'minimal';
 
+const LANE_STATE_ROOT_TIMEOUT_MS = 15_000;
+
+/**
+ * The lane's precomputed state root: OMC_LANE_CWD (the work dir, realpath'd)
+ * and OMC_LANE_STATE_ROOT (the state root a hook resolves there). It is
+ * computed once by scripts/lane-state-root.mjs in the lane's own env, with the
+ * resolver pre-tool-enforcer.mjs uses, so the lane's PreToolUse hooks can skip
+ * the two git spawns of that lookup on every tool call (docs/HOOKS.md "Lane
+ * PreToolUse fast path"). Empty, so the hook resolves as before, when the
+ * env sets OMC_STATE_DIR or the script fails or times out.
+ *
+ * Async, so the engine's event loop (the MCP server, other lanes) keeps
+ * running while the child resolves; the engine awaits it before client.start.
+ *
+ * Host git: the resolver runs `git rev-parse` (--show-toplevel,
+ * --git-common-dir, --show-superproject-working-tree) in the lane worktree,
+ * which the lane's agent cannot have touched yet (the runtime has not
+ * started). The caller runs it only while the worktree's git links are
+ * intact (worktreeGitLinksIntact), and the child's git gets the host git
+ * hardening (hostGitHardeningArgs) as GIT_CONFIG_* env: no hook, fsmonitor
+ * or other configured program runs. rev-parse only reads.
+ */
+export async function laneStateRootEnv(
+  workCwd: string,
+  sessionEnv: NodeJS.ProcessEnv,
+  pluginRoot: string,
+  timeoutMs: number = LANE_STATE_ROOT_TIMEOUT_MS,
+): Promise<Record<string, string>> {
+  if (sessionEnv.OMC_STATE_DIR) return {};
+  try {
+    const cwd = realpathSync.native(workCwd);
+    const env: NodeJS.ProcessEnv = { ...sessionEnv, ...gitConfigEnv(hostGitHardeningArgs()), CLAUDE_PLUGIN_ROOT: pluginRoot };
+    delete env.OMC_HOOK_EVENT;
+    const stdout = await new Promise<string>((resolveOut, reject) => {
+      execFile(process.execPath, [join(pluginRoot, 'scripts', 'lane-state-root.mjs'), cwd], {
+        cwd, env, encoding: 'utf8', timeout: timeoutMs, windowsHide: true,
+      }, (err, out) => (err ? reject(err) : resolveOut(out)));
+    });
+    const root: unknown = JSON.parse(stdout).root;
+    return typeof root === 'string' && isAbsolute(root) ? { OMC_LANE_CWD: cwd, OMC_LANE_STATE_ROOT: root } : {};
+  } catch {
+    return {};
+  }
+}
+
+/** `-c key=value` pairs as GIT_CONFIG_COUNT / GIT_CONFIG_KEY_n / GIT_CONFIG_VALUE_n (git 2.31+). */
+function gitConfigEnv(args: readonly string[]): Record<string, string> {
+  const env: Record<string, string> = {};
+  let n = 0;
+  for (let i = 0; i + 1 < args.length; i += 2) {
+    if (args[i] !== '-c') continue;
+    const eq = args[i + 1].indexOf('=');
+    if (eq <= 0) continue;
+    env[`GIT_CONFIG_KEY_${n}`] = args[i + 1].slice(0, eq);
+    env[`GIT_CONFIG_VALUE_${n}`] = args[i + 1].slice(eq + 1);
+    n++;
+  }
+  env.GIT_CONFIG_COUNT = String(n);
+  return env;
+}
+
 export type CopilotRunIsolation = 'worktree' | 'none';
 export type CopilotRunStatus = 'starting' | 'running' | 'completed' | 'failed' | 'timeout' | 'cancelled';
 /** `write` (default): the worker policy. `review`: no write tool, and no git command that moves or rewrites the tree. */
@@ -227,16 +290,36 @@ export interface CopilotRunStartOptions {
    */
   beforeHostGit?: () => string | null;
   /**
-   * A write job on Windows whose sandbox settings put it in the OS sandbox
+   * A write job whose sandbox settings put it in the OS sandbox
    * ({@link CopilotRunManager.sandboxIntent}): called once inside start(),
-   * with the job's worktree, before the job's timeout is armed and before
-   * the runtime starts, so the work counts against no timer. The caller makes
-   * the worktree usable in that sandbox (omg factory run: a real copy of
-   * your node_modules, as the sandbox cannot open a package dir through a
-   * junction). A non-null problem, or a throw, fails the job and no runtime
+   * with the job's worktree and whether that sandbox is the Windows one
+   * (`copy`, sandboxIntent's windowsCopy), before the job's timeout is armed
+   * and before the runtime starts, so the work counts against no timer. The
+   * caller makes the worktree usable in that sandbox (omg factory run: on
+   * Windows a real copy of your node_modules, as the sandbox cannot open a
+   * package dir through a junction; elsewhere the gates' linked tree). A
+   * non-null problem, or a throw, fails the job and no runtime
    * or session is started. Not called for a review job (its shell is read-only).
+   * A promise keeps the event loop free while the worktree is readied: the
+   * job's timeout is armed and the runtime started only once it settles, and
+   * prepared(jobId) settles with it (a caller starts its idle clock after).
    */
-  beforeSandboxedSession?: (worktree: string) => string | null;
+  beforeSandboxedSession?: (worktree: string, o: { copy: boolean }) => string | null | PromiseLike<string | null>;
+  /**
+   * A write job: the node_modules the write sandbox may grant read-only for
+   * the job's worktree, asked each time the session's sandbox config is built
+   * (SandboxPolicyContext.nodeModulesTarget and nestedNodeModulesTargets:
+   * `<worktree>/node_modules` is then checked link by link against it, and a
+   * link elsewhere refuses the session). Absent, or undefined returned:
+   * nothing under node_modules is granted.
+   */
+  nodeModulesGrant?: (worktree: string) => { target: string; nested?: string[] } | undefined;
+}
+
+/** SandboxPolicyContext's node_modules fields from CopilotRunStartOptions.nodeModulesGrant's answer. */
+function nodeModulesPolicy(grant: { target: string; nested?: string[] } | undefined): { nodeModulesTarget?: string; nestedNodeModulesTargets?: string[] } {
+  if (!grant) return {};
+  return { nodeModulesTarget: grant.target, ...(grant.nested && grant.nested.length > 0 ? { nestedNodeModulesTargets: grant.nested } : {}) };
 }
 
 /**
@@ -459,6 +542,8 @@ interface Job {
   /** CopilotRunStartOptions.deniedPaths / beforeHostGit. */
   deniedPaths: string[];
   beforeHostGit: (() => string | null) | null;
+  /** CopilotRunStartOptions.nodeModulesGrant (write jobs only). */
+  nodeModulesGrant: ((worktree: string) => { target: string; nested?: string[] } | undefined) | null;
   /** Why CopilotRunStartOptions.beforeSandboxedSession could not ready the worktree (the job fails before the runtime starts). */
   unprepared: string | null;
   /** The runtime's pid once the client started (stopAll's kill fallback). */
@@ -484,6 +569,8 @@ interface Job {
   stopReason: CopilotRunStopReason | null;
   requestStop: (reason: CopilotRunStopReason) => void;
   stopped: Promise<void>;
+  /** Settles once beforeSandboxedSession has readied the worktree (at once when it ran synchronously or not at all). */
+  prepared: Promise<void>;
   done: Promise<void>;
 }
 
@@ -1138,6 +1225,7 @@ export class CopilotRunManager {
       external,
       deniedPaths: [...(options.deniedPaths ?? [])],
       beforeHostGit: options.beforeHostGit ?? null,
+      nodeModulesGrant: profile !== 'review' ? options.nodeModulesGrant ?? null : null,
       unprepared: null,
       pid: undefined,
       pidIdentity: null,
@@ -1154,23 +1242,37 @@ export class CopilotRunManager {
       cleanedUp: false,
       sandboxSettings,
       sandbox: null,
-      secrets: secretValues(this.deps.env),
+      secrets: secretValues(this.deps.env, { userConfigDir: this.deps.userConfigDir(), platform: this.deps.platform }),
       stopReason: null,
       requestStop: (reason) => requestStop(reason),
       stopped,
+      prepared: Promise.resolve(),
       done: Promise.resolve(),
     };
     this.jobs.set(id, job);
-    // The OS sandbox on Windows (a write job): the caller readies the worktree now, synchronously, so nothing can stop
-    // the job mid-way and neither the job's timeout below nor the caller's idle clock (it starts once start() returns) runs.
+    // The OS sandbox (a write job): the caller readies the worktree now, before the job's timeout below is
+    // armed and before the runtime starts. A synchronous hook runs before start() returns; an async one (a promise)
+    // keeps the event loop free, and the job's timeout and run wait for it (job.prepared, which the caller awaits
+    // before its own idle clock starts: prepared()).
     const intent = this.sandboxIntent(sandboxSettings);
-    if (options.beforeSandboxedSession && worktree && profile !== 'review' && intent.windowsCopy) {
-      try { job.unprepared = options.beforeSandboxedSession(worktree.path); } catch (err) { job.unprepared = errText(err); }
+    let preparing: Promise<void> | null = null;
+    if (options.beforeSandboxedSession && worktree && profile !== 'review' && intent.sandboxed) {
+      try {
+        const ready = options.beforeSandboxedSession(worktree.path, { copy: intent.windowsCopy });
+        // Any thenable (not only a native Promise) is awaited; Promise.resolve adopts it.
+        if (ready != null && typeof (ready as PromiseLike<unknown>).then === 'function') preparing = Promise.resolve(ready).then((problem) => { job.unprepared = problem; }, (err: unknown) => { job.unprepared = errText(err); });
+        else job.unprepared = ready as string | null;
+      } catch (err) { job.unprepared = errText(err); }
     }
-    const timer = setTimeout(() => job.requestStop('timeout'), timeoutMs);
-    timer.unref?.();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const arm = (): void => {
+      timer = setTimeout(() => job.requestStop('timeout'), timeoutMs);
+      timer.unref?.();
+    };
+    if (preparing) job.prepared = preparing;
+    else arm();
     // The status turns terminal only after the teardown and the change summary.
-    job.done = this.run(job)
+    job.done = (preparing ? preparing.then(() => { arm(); return this.run(job); }) : this.run(job))
       .catch((err): CopilotRunStatus => { job.error ??= errText(err); return 'failed'; })
       .then((outcome) => {
         clearTimeout(timer);
@@ -1234,6 +1336,11 @@ export class CopilotRunManager {
 
   status(jobId: string): CopilotRunSnapshot {
     return this.snapshot(this.find(jobId));
+  }
+
+  /** Settles once the job's worktree is readied (an async beforeSandboxedSession); at once otherwise. Never rejects. */
+  prepared(jobId: string): Promise<void> {
+    return this.find(jobId).prepared;
   }
 
   /** Wait until the job ends or `timeoutMs` passes; the snapshot says which. */
@@ -1390,6 +1497,9 @@ export class CopilotRunManager {
       job.error = `worktree-unprepared: ${job.unprepared}; no session was started`;
       return 'failed';
     }
+    // Cancelled while an async beforeSandboxedSession readied the worktree: no runtime is started for it.
+    const early: CopilotRunStopReason | null = job.stopReason;
+    if (early === 'cancelled') return 'cancelled';
     // A cassette that cannot be applied throws (withCassette): report it, never fall back to a plain client.
     let loadError: string | undefined;
     const loaded = await deps.loadSdk().catch((err: unknown) => { loadError = `loading @github/copilot-sdk failed: ${errText(err)}`; return null; });
@@ -1409,7 +1519,10 @@ export class CopilotRunManager {
     writeFileSync(join(job.home, 'config.json'), `${JSON.stringify({ ...ident, trustedFolders: [job.workCwd] }, null, 2)}\n`);
     // An env allowlist with the profile relocated into the job's home (sandbox.ts).
     const env = childEnv(allowlistSessionEnv(buildSessionEnv(deps.env, job.home, { session: false, hasLogin: ident.loggedInUsers !== undefined }), job.home));
-    const gitHubToken = sessionGitHubToken(deps.env);
+    const gitHubToken = sessionGitHubToken(deps.env, { userConfigDir: deps.userConfigDir(), platform: deps.platform });
+    // A recording (cassette record mode) never carries the session credential, the stored login token included.
+    if (gitHubToken) addRecordingDenyLiterals([gitHubToken]);
+    const laneDenied = [...job.deniedPaths, ...copilotConfigDenies(deps.userConfigDir(), deps.platform)];
     mkdirSync(env.XDG_CONFIG_HOME!, { recursive: true });
     mkdirSync(dirname(env.GIT_CONFIG_GLOBAL!), { recursive: true });
     mkdirSync(env.TEMP!, { recursive: true });
@@ -1457,6 +1570,9 @@ export class CopilotRunManager {
         job.notes.push(`lane hook registration fell back to the full plugin hooks: ${errText(err)}`);
       }
     }
+    // Set last, from the finished env: the lane hooks then skip the state-root lookup (laneStateRootEnv).
+    // Only while the worktree's git links are intact (jobGitDirArgs null): no host git runs in a tampered tree.
+    if (job.minimalHooks && jobGitDirArgs(job) !== null) Object.assign(env, await laneStateRootEnv(job.workCwd, env, pluginRoot));
     const lanePluginRoot = sessionPluginRoot === pluginRoot ? undefined : sessionPluginRoot;
     // The lane plugin dir holds links into the plugin: removed link-safe (never a recursive rm), and a failure
     // is a note, never a throw that skips the rest of the teardown. False: it is still there.
@@ -1515,9 +1631,13 @@ export class CopilotRunManager {
           platform: deps.platform,
           settings: job.sandboxSettings,
           hostCommits: job.hostCommits,
+          // The caller-vouched node_modules (factory lanes); none, nothing under node_modules is granted.
+          ...nodeModulesPolicy(job.nodeModulesGrant?.(resolve(top))),
           toolPaths: (deps.toolPaths ?? laneToolPaths)(deps.env, deps.platform),
           extraReadonly: proxy.caPaths,
-          ...(job.deniedPaths.length > 0 ? { extraDenied: job.deniedPaths } : {}),
+          // A keyring-less host keeps the login token in plain text in the user's Copilot config.json: its config dir is
+          // denied also when COPILOT_HOME moved it out of ~/.copilot (denied by default; copilotConfigDenies).
+          ...(laneDenied.length > 0 ? { extraDenied: laneDenied } : {}),
           // A caller-made worktree (the private layout): its common git dir is not the checkout's, whose budget ledger stays denied.
           ...(job.external ? { mainRoot: job.ledgerCwd } : {}),
         };

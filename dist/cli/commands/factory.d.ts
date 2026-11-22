@@ -33,6 +33,7 @@ import { type Exec } from '../../ship/exec.js';
 import { type FactoryCheckDeps } from '../../factory/check/cli.js';
 import type { FactoryPollDeps } from '../../factory/poll.js';
 import { type ParallelChildOutcome, type ParallelSettings } from '../../factory/run/parallel.js';
+import { type SandboxSettings } from '../../copilot-run/sandbox.js';
 import { type RunLayoutChoice } from '../../factory/run/private-run.js';
 export declare function renderChainStatus(status: ChainStatus): string;
 /** Seams for `omg factory run` (tests script gh/git and the lanes; nothing live). */
@@ -81,6 +82,10 @@ export interface FactoryRunDeps {
         args: readonly string[];
         signals: (forward: (signal: NodeJS.Signals) => void) => () => void;
     }) => Promise<ParallelChildOutcome>;
+    /** The up-front Linux sandbox check of a real run (default: linuxSandboxProblem, a cached bwrap trial launch); null = usable. */
+    sandboxProblem: () => string | null;
+    /** The lanes' sandbox settings (default: loadSandboxSettings(root, 'factory')): the check runs only when they would refuse. */
+    sandboxSettings?: (root: string) => SandboxSettings;
 }
 /** defaultParallelLayers for a given trusted user config and guarded `exec` (exported for its tests). */
 export declare function parallelLayers(root: string, base: string, kind: () => ParallelForge | undefined, user: unknown, exec: Exec): {

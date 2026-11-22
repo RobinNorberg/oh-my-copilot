@@ -65,7 +65,9 @@ describe('gates: a PR that conflicts with its moved base goes back to prepare', 
         const out = await done;
         expect(out.gate?.name, out.message).toBe('merge');
         expect(lanes.started).toHaveLength(2);
-        expect(reads()).toBe(5);
+        // Four reads at the gates (MERGEABLE, UNKNOWN, UNKNOWN, CONFLICTING), one after the re-prepare, and one more at the
+        // merge step: merge() reads mergeability again (prConflicts) before it parks, as gates() does.
+        expect(reads()).toBe(6);
         const state = readFactoryState(h.root, ISSUE);
         expect(state.conflictReprepares).toBe(1);
         expect(gitIn(h.root, 'merge-base', '--is-ancestor', baseSha, state.head)).toBe('');

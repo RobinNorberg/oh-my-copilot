@@ -1180,6 +1180,16 @@ describe('SDK protocol mismatch', () => {
     expect(await probeSdkProtocol(fakeSdk({ startError: 'spawn EACCES' }).loaded, 'copilot')).toBeNull();
   });
 
+  it('probeSdkProtocol runs onStarted only after a clean start, before stop, and ignores its throw', async () => {
+    const ok = fakeSdk();
+    expect(await probeSdkProtocol(ok.loaded, 'copilot', { onStarted: async () => { ok.rec.ops.push('onStarted'); throw new Error('rpc gone'); } })).toBeNull();
+    expect(ok.rec.ops).toEqual(['start', 'onStarted', 'stop']);
+    const mismatch = fakeSdk({ startError: PROTOCOL_MISMATCH });
+    let ran = false;
+    await probeSdkProtocol(mismatch.loaded, 'copilot', { onStarted: async () => { ran = true; } });
+    expect(ran).toBe(false);
+  });
+
   it('names an older CLI by protocol when the SDK tops out above protocol 3', () => {
     const newer = 'SDK protocol version mismatch: SDK supports versions 3-4, but server reports version 5. Please update.';
     let thrown: unknown;

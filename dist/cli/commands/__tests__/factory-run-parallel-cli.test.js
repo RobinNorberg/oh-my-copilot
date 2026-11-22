@@ -37,6 +37,8 @@ function deps(over = {}) {
         base: () => 'dev',
         ledgerDir: h.ledgerDir,
         processes: new FakeProcesses(),
+        // No real bwrap trial in unit tests (Linux CI): the up-front sandbox check passes.
+        sandboxProblem: () => null,
         ...over,
     };
 }
@@ -101,6 +103,14 @@ describe('omg factory run with factory.run.maxConcurrent', () => {
         expect(json.message).toMatch(/--parallel 2: 3 run\(s\) ended \(stopped by a signal\); exit 130/);
         // The supervisor's listeners are gone.
         expect(process.listeners('SIGINT').filter((l) => !before.has(l))).toEqual([]);
+    });
+    it('--review-model is forwarded to every child next to --model and --parent', async () => {
+        const seen = [];
+        const d = deps({ ...parallel(2, 'private'), parallelChild: async ({ args }) => { seen.push(args); return { exitCode: 0, parsed: true, next: null, message: 'nothing runnable' }; } });
+        await cli(d, '--next', '--parallel', '2', '--parent', '42', '--model', 'mai-code-2', '--review-model', 'mai-code-2-flash');
+        expect(seen.length).toBeGreaterThan(0);
+        for (const args of seen)
+            expect(args).toEqual(['--parent', '42', '--model', 'mai-code-2', '--review-model', 'mai-code-2-flash']);
     });
     it('review-487 L-1: with no opt-in in the user config nothing is read (no git, no forge kind); the base layer is read at the sha the remote holds, never at a planted tracking ref', () => {
         const calls = [];

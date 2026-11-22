@@ -76,6 +76,27 @@ export declare const PROJECT_MEMORY_SKIP_TOKEN = "project-memory-session,project
  * loads. Set by the engine in the runtime env, which the session cannot change.
  */
 export declare const LANE_HOOKS_MINIMAL = "minimal";
+/**
+ * The lane's precomputed state root: OMC_LANE_CWD (the work dir, realpath'd)
+ * and OMC_LANE_STATE_ROOT (the state root a hook resolves there). It is
+ * computed once by scripts/lane-state-root.mjs in the lane's own env, with the
+ * resolver pre-tool-enforcer.mjs uses, so the lane's PreToolUse hooks can skip
+ * the two git spawns of that lookup on every tool call (docs/HOOKS.md "Lane
+ * PreToolUse fast path"). Empty, so the hook resolves as before, when the
+ * env sets OMC_STATE_DIR or the script fails or times out.
+ *
+ * Async, so the engine's event loop (the MCP server, other lanes) keeps
+ * running while the child resolves; the engine awaits it before client.start.
+ *
+ * Host git: the resolver runs `git rev-parse` (--show-toplevel,
+ * --git-common-dir, --show-superproject-working-tree) in the lane worktree,
+ * which the lane's agent cannot have touched yet (the runtime has not
+ * started). The caller runs it only while the worktree's git links are
+ * intact (worktreeGitLinksIntact), and the child's git gets the host git
+ * hardening (hostGitHardeningArgs) as GIT_CONFIG_* env: no hook, fsmonitor
+ * or other configured program runs. rev-parse only reads.
+ */
+export declare function laneStateRootEnv(workCwd: string, sessionEnv: NodeJS.ProcessEnv, pluginRoot: string, timeoutMs?: number): Promise<Record<string, string>>;
 export type CopilotRunIsolation = 'worktree' | 'none';
 export type CopilotRunStatus = 'starting' | 'running' | 'completed' | 'failed' | 'timeout' | 'cancelled';
 /** `write` (default): the worker policy. `review`: no write tool, and no git command that moves or rewrites the tree. */
@@ -138,16 +159,35 @@ export interface CopilotRunStartOptions {
      */
     beforeHostGit?: () => string | null;
     /**
-     * A write job on Windows whose sandbox settings put it in the OS sandbox
+     * A write job whose sandbox settings put it in the OS sandbox
      * ({@link CopilotRunManager.sandboxIntent}): called once inside start(),
-     * with the job's worktree, before the job's timeout is armed and before
-     * the runtime starts, so the work counts against no timer. The caller makes
-     * the worktree usable in that sandbox (omg factory run: a real copy of
-     * your node_modules, as the sandbox cannot open a package dir through a
-     * junction). A non-null problem, or a throw, fails the job and no runtime
+     * with the job's worktree and whether that sandbox is the Windows one
+     * (`copy`, sandboxIntent's windowsCopy), before the job's timeout is armed
+     * and before the runtime starts, so the work counts against no timer. The
+     * caller makes the worktree usable in that sandbox (omg factory run: on
+     * Windows a real copy of your node_modules, as the sandbox cannot open a
+     * package dir through a junction; elsewhere the gates' linked tree). A
+     * non-null problem, or a throw, fails the job and no runtime
      * or session is started. Not called for a review job (its shell is read-only).
+     * A promise keeps the event loop free while the worktree is readied: the
+     * job's timeout is armed and the runtime started only once it settles, and
+     * prepared(jobId) settles with it (a caller starts its idle clock after).
      */
-    beforeSandboxedSession?: (worktree: string) => string | null;
+    beforeSandboxedSession?: (worktree: string, o: {
+        copy: boolean;
+    }) => string | null | PromiseLike<string | null>;
+    /**
+     * A write job: the node_modules the write sandbox may grant read-only for
+     * the job's worktree, asked each time the session's sandbox config is built
+     * (SandboxPolicyContext.nodeModulesTarget and nestedNodeModulesTargets:
+     * `<worktree>/node_modules` is then checked link by link against it, and a
+     * link elsewhere refuses the session). Absent, or undefined returned:
+     * nothing under node_modules is granted.
+     */
+    nodeModulesGrant?: (worktree: string) => {
+        target: string;
+        nested?: string[];
+    } | undefined;
 }
 /**
  * A credential-free session env, in place. Removed: GitHub tokens
@@ -416,6 +456,8 @@ export declare class CopilotRunManager {
     /** Validate, ask the budget governor, prepare the worktree, and start the session in the background. */
     start(input: CopilotRunStartInput, options?: CopilotRunStartOptions): CopilotRunSnapshot;
     status(jobId: string): CopilotRunSnapshot;
+    /** Settles once the job's worktree is readied (an async beforeSandboxedSession); at once otherwise. Never rejects. */
+    prepared(jobId: string): Promise<void>;
     /** Wait until the job ends or `timeoutMs` passes; the snapshot says which. */
     wait(jobId: string, timeoutMs: number): Promise<CopilotRunSnapshot>;
     /** Abort the session and wait (bounded) for the teardown. */

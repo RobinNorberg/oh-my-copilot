@@ -25,7 +25,7 @@ import { dirname, join } from 'node:path';
 import { atomicWriteJson } from '../lib/atomic-write.js';
 import { ledgerPath, NANO_AIU_PER_CREDIT, recordUsage } from '../budget/ledger.js';
 import { RUNTIME_MIN_MAX_CREDITS, usageCredits } from '../smoke/copilot-sdk-scenarios.js';
-import { buildSessionEnv, isCredentialEnvKey, loginIdentity } from '../smoke/copilot-session-env.js';
+import { buildSessionEnv, isCredentialEnvKey, loginIdentity, storedLoginToken } from '../smoke/copilot-session-env.js';
 import { rethrowSdkStartError, runtimePid, } from '../smoke/copilot-sdk-driver.js';
 import { hostGitHardeningArgs } from './git-worktree.js';
 import { loadWorkerLaunchAttempt } from './worker-launch-ack.js';
@@ -276,19 +276,17 @@ export function readHostCredentials(stream, timeoutMs) {
     });
 }
 /**
- * The Copilot credential for the session RPC: COPILOT_GITHUB_TOKEN, else
- * GH_TOKEN / GITHUB_TOKEN when no stored login was copied (with a login they
- * would shadow it, as buildSessionEnv drops them then).
+ * The Copilot credential for the session RPC: COPILOT_GITHUB_TOKEN, else the
+ * stored login's plaintext token (`stored`: a keyring-less host's config.json,
+ * storedLoginToken), else GH_TOKEN / GITHUB_TOKEN when no stored login was
+ * copied (with a login they would shadow it, as buildSessionEnv drops them then).
  */
-export function workerGitHubToken(env, hasLogin) {
-    const names = hasLogin ? ['COPILOT_GITHUB_TOKEN'] : ['COPILOT_GITHUB_TOKEN', 'GH_TOKEN', 'GITHUB_TOKEN'];
-    for (const name of names) {
+export function workerGitHubToken(env, hasLogin, stored) {
+    const pick = (name) => {
         const key = Object.keys(env).find((k) => k.toUpperCase() === name);
-        const value = key ? env[key]?.trim() : undefined;
-        if (value)
-            return value;
-    }
-    return undefined;
+        return key ? env[key]?.trim() || undefined : undefined;
+    };
+    return pick('COPILOT_GITHUB_TOKEN') ?? stored ?? (hasLogin ? undefined : pick('GH_TOKEN') ?? pick('GITHUB_TOKEN'));
 }
 /**
  * Make `target` hold exactly `env`. The `t` MCP server child runs with the
@@ -550,7 +548,9 @@ export async function runSdkHost(spec, deps) {
         writeFileSync(homeConfig, `${JSON.stringify({ ...ident, trustedFolders: [spec.worker_cwd, spec.leader_cwd] }, null, 2)}\n`);
     }
     const hasLogin = ident.loggedInUsers !== undefined;
-    const gitHubToken = workerGitHubToken({ ...deps.env, ...deps.credentials }, hasLogin);
+    // A keyring-less host's stored login token (never on Windows, never in a replay); over the session RPC only, never in the home or env.
+    const stored = hasLogin && loaded.cassette !== 'replay' ? storedLoginToken(spec.user_config_dir, deps.platform) : undefined;
+    const gitHubToken = workerGitHubToken({ ...deps.env, ...deps.credentials }, hasLogin, stored);
     // Replay answers every model request from the cassette and runs credential-free (design section 8.2); the SDK says so.
     if (!hasLogin && !gitHubToken && loaded.cassette !== 'replay') {
         return fail('start_failed', 'an SDK team worker needs a stored Copilot login (copilot login) or COPILOT_GITHUB_TOKEN; GH_TOKEN and GITHUB_TOKEN are used only without a login');
@@ -956,6 +956,10 @@ export async function runSdkHostMain(specPath, loadInProcessTools) {
         const spec = JSON.parse(readFileSync(specPath, 'utf8'));
         if (spec?.schema_version !== 1 || !spec.worker_name || !spec.state_root)
             throw new Error('invalid sdk host spec');
+        // A keyring-less host's stored login token, which runSdkHost may use: never in a recording either.
+        const stored = typeof spec.user_config_dir === 'string' ? storedLoginToken(spec.user_config_dir, process.platform) : undefined;
+        if (stored)
+            (await import('../smoke/replay/handler.js')).addRecordingDenyLiterals([stored]);
         log(`start team=${spec.team_name} worker=${spec.worker_name} attempt=${spec.attempt_id}`);
         const outcome = await runSdkHost(spec, {
             loadSdk: () => loadCopilotSdk(process.env, spawnSync),
