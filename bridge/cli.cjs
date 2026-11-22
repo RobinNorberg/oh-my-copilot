@@ -60152,12 +60152,25 @@ function rpcMethod(root, path30, name) {
     return null;
   }
 }
+function parseBwrapVersion(text6) {
+  const m = /(\d+)\.(\d+)(?:\.\d+)?/.exec(text6);
+  return m ? { major: Number(m[1]), minor: Number(m[2]), text: m[0] } : null;
+}
+function bwrapTooOld(v) {
+  const [major, minor] = BWRAP_MIN_VERSION;
+  return v.major < major || v.major === major && v.minor < minor;
+}
 function bwrapTrialLaunchError(spawn21 = defaultTrialSpawner, timeoutMs = 1e4) {
   const r = spawn21("bwrap", BWRAP_TRIAL_ARGS, timeoutMs);
   if (r.error?.code === "ENOENT") return "bwrap (bubblewrap) is not on PATH, and the Linux sandbox runs every shell under it: install bubblewrap";
   if (r.error) return `a trial bwrap launch failed: ${errText2(r.error)}`;
   if (r.status === 0) return null;
   const stderr = r.stderr.trim().slice(0, 200);
+  const v = spawn21("bwrap", ["--version"], timeoutMs);
+  const parsed2 = v.error || v.status !== 0 ? null : parseBwrapVersion(v.stdout ?? "");
+  if (parsed2 && bwrapTooOld(parsed2)) {
+    return `bubblewrap ${parsed2.text} is too old for the Copilot sandbox: it needs bwrap >= ${BWRAP_MIN_VERSION[0]}.${BWRAP_MIN_VERSION[1]}.0 (--clearenv). Ubuntu 20.04 ships 0.4.0: upgrade the distro (22.04+ ships 0.6+) or build bubblewrap from https://github.com/containers/bubblewrap`;
+  }
   if (/RTM_NEWADDR|uid map|new namespace/i.test(stderr)) {
     return `unprivileged user namespaces are restricted (AppArmor kernel.apparmor_restrict_unprivileged_userns=1), so bwrap cannot launch the sandbox; see "Linux: restricted user namespaces" in docs/REFERENCE.md (bwrap: ${stderr})`;
   }
@@ -60166,6 +60179,12 @@ function bwrapTrialLaunchError(spawn21 = defaultTrialSpawner, timeoutMs = 1e4) {
 function cachedBwrapTrialLaunchError() {
   if (cachedBwrapTrial === void 0) cachedBwrapTrial = bwrapTrialLaunchError();
   return cachedBwrapTrial;
+}
+function linuxSandboxProblem(platform = process.platform, trial = cachedBwrapTrialLaunchError) {
+  return platform === "linux" ? trial() : null;
+}
+function factorySandboxProblem(settings, problem, env2 = process.env) {
+  return settings.enabled && settings.writeUnsandboxed === "refuse" && env2[SANDBOX_KILL_ENV] !== "off" ? problem() : null;
 }
 async function probeHostSupport(client, timeoutMs, launch = {}) {
   const host = await askHostSupport(client, timeoutMs);
@@ -60338,7 +60357,7 @@ function allowlistSessionEnv(env2, jobHome) {
   }
   return { ...out, ...relocatedProfileEnv(jobHome) };
 }
-var import_node_child_process3, import_node_fs11, import_node_path13, SANDBOX_SHELL_TOOLS, REVIEW_READ_TOOLS, REVIEW_SHELL_TOOLS, DEFAULT_SANDBOX_SETTINGS, SANDBOX_KILL_ENV, isStringArray2, GATES_SANDBOX_MODES, CONTAINER_KEYS, defaultGateImage, defaultGitGateImage, REGISTRY_HOSTS, GATE_TREE_MARKER_NAME, errText2, BWRAP_TRIAL_ARGS, defaultTrialSpawner, cachedBwrapTrial, SESSION_ENV_ALLOWLIST, MXC_REQUIRED_ENV, TOKEN_PATTERN;
+var import_node_child_process3, import_node_fs11, import_node_path13, SANDBOX_SHELL_TOOLS, REVIEW_READ_TOOLS, REVIEW_SHELL_TOOLS, DEFAULT_SANDBOX_SETTINGS, SANDBOX_KILL_ENV, isStringArray2, GATES_SANDBOX_MODES, CONTAINER_KEYS, defaultGateImage, defaultGitGateImage, REGISTRY_HOSTS, GATE_TREE_MARKER_NAME, errText2, BWRAP_TRIAL_ARGS, BWRAP_MIN_VERSION, defaultTrialSpawner, cachedBwrapTrial, SESSION_ENV_ALLOWLIST, MXC_REQUIRED_ENV, TOKEN_PATTERN;
 var init_sandbox2 = __esm({
   "src/copilot-run/sandbox.ts"() {
     "use strict";
@@ -60374,10 +60393,11 @@ var init_sandbox2 = __esm({
     REGISTRY_HOSTS = ["registry.npmjs.org", "*.npmjs.org"];
     GATE_TREE_MARKER_NAME = ".omg-gate-tree";
     errText2 = (err) => err instanceof Error ? err.message : String(err);
-    BWRAP_TRIAL_ARGS = ["--ro-bind", "/", "/", "--dev", "/dev", "--unshare-all", "--die-with-parent", "--", "true"];
+    BWRAP_TRIAL_ARGS = ["--ro-bind", "/", "/", "--dev", "/dev", "--unshare-all", "--die-with-parent", "--clearenv", "--", "true"];
+    BWRAP_MIN_VERSION = [0, 5];
     defaultTrialSpawner = (cmd, args, timeoutMs) => {
-      const r = (0, import_node_child_process3.spawnSync)(cmd, args, { encoding: "utf8", timeout: timeoutMs, stdio: ["ignore", "ignore", "pipe"] });
-      return { ...r.error ? { error: r.error } : {}, status: r.status, stderr: r.stderr ?? "" };
+      const r = (0, import_node_child_process3.spawnSync)(cmd, args, { encoding: "utf8", timeout: timeoutMs, stdio: ["ignore", "pipe", "pipe"] });
+      return { ...r.error ? { error: r.error } : {}, status: r.status, stderr: r.stderr ?? "", stdout: r.stdout ?? "" };
     };
     SESSION_ENV_ALLOWLIST = [
       // TEMP, TMP and TMPDIR are not passed: relocatedProfileEnv points them at the job's own temp dir.
@@ -152602,6 +152622,11 @@ async function runBench(o) {
   const ownModelsUsed = Object.fromEntries(LANE_MODEL_KINDS.filter((k) => laneModels[k]).map((k) => [k, { id: laneModels[k], multiplier: null, source: laneModelSources[k] }]));
   if (o.mode === "live") {
     if (o.maxRequests === void 0) throw new BenchUsageError("--live needs --max-requests <n>: the bench never spends premium requests without an explicit cap");
+    if (o.sandboxProblem) {
+      const settings = loadSandboxSettings(meta3.root, "factory", { user: trustedUser, project: fixtureBaseConfig(meta3) }).settings;
+      const problem = factorySandboxProblem(settings, o.sandboxProblem);
+      if (problem) throw new BenchUsageError(`the Linux sandbox is unusable: ${problem}`);
+    }
   } else if (parallel !== 1) {
     throw new BenchUsageError("--parallel applies to --live; --fake runs one engine at a time");
   }
@@ -153090,7 +153115,7 @@ ${r.stderr}` : ""}`, timedOut: r.timedOut };
 });
 
 // src/cli/commands/factory-bench.ts
-function factoryBenchCommand() {
+function factoryBenchCommand(deps = {}) {
   const bench = new Command("bench").description("Benchmark the factory on seeded issues against the local forge (init a fixture, run it --fake or --live, compare results)");
   bench.command("init").argument("<dir>", "a new or empty directory for the fixture (the repository goes to <dir>/repo)").option("--node-modules <dir>", "link <dir>/repo/node_modules to this node_modules (it needs vitest and typescript) instead of running npm install there").description("Create the bench fixture: a TypeScript + vitest repository on the local forge with the seeded backlog").action((dir, o) => {
     try {
@@ -153146,7 +153171,8 @@ function factoryBenchCommand() {
           return () => {
             forwards.delete(forward);
           };
-        }
+        },
+        sandboxProblem: deps.sandboxProblem ?? (() => linuxSandboxProblem())
       });
       const t = out.results.totals;
       if (o.json) console.log(JSON.stringify(out.results, null, 2));
@@ -153192,6 +153218,7 @@ var init_factory_bench = __esm({
     init_source();
     import_node_fs47 = require("node:fs");
     init_git_preflight();
+    init_sandbox2();
     init_fixture();
     init_runner();
     init_score2();
@@ -154019,6 +154046,16 @@ function factoryRunCommand(deps = defaultFactoryRunDeps) {
       if (gitProblem) throw new FactoryUsageError(gitProblem);
     }
     const root = factoryRoot(exec3);
+    if (!o.dryRun) {
+      let settings;
+      try {
+        settings = (deps.sandboxSettings ?? ((r) => loadSandboxSettings(r, "factory").settings))(root);
+      } catch {
+        settings = void 0;
+      }
+      const sandboxProblem = settings ? factorySandboxProblem(settings, deps.sandboxProblem) : null;
+      if (sandboxProblem) throw new FactoryUsageError(`the Linux sandbox is unusable: ${sandboxProblem}`);
+    }
     const loadedLimits = deps.limits(root);
     for (const w of loadedLimits.warnings) console.error(source_default.yellow(w));
     const limits = {
@@ -154730,6 +154767,7 @@ var init_factory = __esm({
     init_forge();
     init_parallel();
     init_git_preflight();
+    init_sandbox2();
     init_private_run();
     init_skill_slash();
     defaultFactoryRunDeps = {
@@ -154743,7 +154781,8 @@ var init_factory = __esm({
       },
       forge: (root, base, opts) => loadFactoryForgeConfig(factoryGuardExec(defaultExec), root, base, userConfigLayers().trustedUser, projectConfig(root), opts),
       gateSandbox: (root) => createSandboxRunner(root),
-      parallel: (root, base, kind) => defaultParallelLayers(root, base, kind)
+      parallel: (root, base, kind) => defaultParallelLayers(root, base, kind),
+      sandboxProblem: () => linuxSandboxProblem()
     };
     FactoryUsageError = class extends Error {
     };

@@ -31,7 +31,7 @@ import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSy
 import { tmpdir } from 'node:os';
 import { join, resolve, sep } from 'node:path';
 import { ledgerPath, ledgerTotals, parseLedger } from '../../budget/ledger.js';
-import { resolveGateIsolation, resolveGatesSandboxMode } from '../../copilot-run/sandbox.js';
+import { factorySandboxProblem, loadSandboxSettings, resolveGateIsolation, resolveGatesSandboxMode } from '../../copilot-run/sandbox.js';
 import { createForge } from '../../forge/index.js';
 import { resolveForgeConfig } from '../../forge/config.js';
 import { LOCAL_REMOTE, readMirrorRef } from '../../forge/local/index.js';
@@ -122,6 +122,11 @@ export interface BenchRunOptions {
   trustedUser?: unknown;
   /** Live: subscribe the run children to the bench's stop signal (the CLI forwards Ctrl+C). */
   signals?: (forward: (signal: NodeJS.Signals) => void) => () => void;
+  /**
+   * Live: the up-front Linux sandbox check (the CLI passes linuxSandboxProblem), run only when the lanes'
+   * sandbox settings (the trusted user config, then the fixture's) would refuse; null = usable. Default: none.
+   */
+  sandboxProblem?: () => string | null;
 }
 
 export interface BenchRunOutput {
@@ -448,6 +453,11 @@ export async function runBench(o: BenchRunOptions): Promise<BenchRunOutput> {
   const ownModelsUsed: NonNullable<BenchResults['laneModels']> = Object.fromEntries(LANE_MODEL_KINDS.filter((k) => laneModels[k]).map((k) => [k, { id: laneModels[k]!, multiplier: null, source: laneModelSources[k]! }]));
   if (o.mode === 'live') {
     if (o.maxRequests === undefined) throw new BenchUsageError('--live needs --max-requests <n>: the bench never spends premium requests without an explicit cap');
+    if (o.sandboxProblem) {
+      const settings = loadSandboxSettings(meta.root, 'factory', { user: trustedUser, project: fixtureBaseConfig(meta) }).settings;
+      const problem = factorySandboxProblem(settings, o.sandboxProblem);
+      if (problem) throw new BenchUsageError(`the Linux sandbox is unusable: ${problem}`);
+    }
   } else if (parallel !== 1) {
     throw new BenchUsageError('--parallel applies to --live; --fake runs one engine at a time');
   }

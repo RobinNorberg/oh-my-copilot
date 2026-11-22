@@ -9,6 +9,7 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 import { writeFileSync } from 'node:fs';
 import { factoryGitProblem } from '../../factory/git-preflight.js';
+import { linuxSandboxProblem } from '../../copilot-run/sandbox.js';
 import { createBenchFixture } from '../../factory/bench/fixture.js';
 import { BenchUsageError, DEFAULT_BENCH_MAX_MINUTES, LIVE_CAP_BOUND, parseIssueList, runBench } from '../../factory/bench/runner.js';
 import { benchRegressions, compareResults, DEFAULT_REQUEST_TOLERANCE_PCT, readBenchResults, renderRegressions } from '../../factory/bench/score.js';
@@ -17,7 +18,7 @@ const fail = (error, usage = false) => {
     console.error(chalk.red(`omg factory bench: ${error instanceof Error ? error.message : String(error)}`));
     process.exitCode = usage || error instanceof BenchUsageError ? 2 : 1;
 };
-export function factoryBenchCommand() {
+export function factoryBenchCommand(deps = {}) {
     const bench = new Command('bench').description('Benchmark the factory on seeded issues against the local forge (init a fixture, run it --fake or --live, compare results)');
     bench
         .command('init')
@@ -92,6 +93,7 @@ export function factoryBenchCommand() {
                 announce: (m) => console.error(chalk.cyan(m)),
                 interrupted: () => interrupted,
                 signals: (forward) => { forwards.add(forward); return () => { forwards.delete(forward); }; },
+                sandboxProblem: deps.sandboxProblem ?? (() => linuxSandboxProblem()),
             });
             const t = out.results.totals;
             if (o.json)

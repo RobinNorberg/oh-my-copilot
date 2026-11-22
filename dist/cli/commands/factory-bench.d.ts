@@ -6,5 +6,7 @@
  * results files.
  */
 import { Command } from 'commander';
-export declare function factoryBenchCommand(): Command;
+export declare function factoryBenchCommand(deps?: {
+    sandboxProblem?: () => string | null;
+}): Command;
 //# sourceMappingURL=factory-bench.d.ts.map

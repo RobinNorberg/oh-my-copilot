@@ -78,6 +78,7 @@ import { BUCKET_ORDER, checkItems, plainText, type CheckResult } from '../../fac
 import { createForge } from '../../forge/index.js';
 import { liveCreditReservations, parallelLayoutRefusal, readTrustedBaseLayerAtRef, releaseDeadCreditReservations, resolveParallelSettings, runParallelSupervisor, type ParallelChildOutcome, type ParallelSettings } from '../../factory/run/parallel.js';
 import { factoryGitProblem } from '../../factory/git-preflight.js';
+import { factorySandboxProblem, linuxSandboxProblem, loadSandboxSettings, type SandboxSettings } from '../../copilot-run/sandbox.js';
 import { resolveRunLayout, userParallelOptIn, type RunLayoutChoice } from '../../factory/run/private-run.js';
 import { skillSlash } from '../../utils/skill-slash.js';
 
@@ -144,6 +145,10 @@ export interface FactoryRunDeps {
   parallel?: (root: string, base: string, forge: () => ParallelForge | undefined) => { settings: ParallelSettings; layout: RunLayoutChoice } | undefined;
   /** The `--parallel` children (default: a child `omg factory run --next --json` of this CLI entry, poll's auto-start). */
   parallelChild?: (o: { root: string; args: readonly string[]; signals: (forward: (signal: NodeJS.Signals) => void) => () => void }) => Promise<ParallelChildOutcome>;
+  /** The up-front Linux sandbox check of a real run (default: linuxSandboxProblem, a cached bwrap trial launch); null = usable. */
+  sandboxProblem: () => string | null;
+  /** The lanes' sandbox settings (default: loadSandboxSettings(root, 'factory')): the check runs only when they would refuse. */
+  sandboxSettings?: (root: string) => SandboxSettings;
 }
 
 /**
@@ -221,6 +226,7 @@ export const defaultFactoryRunDeps: FactoryRunDeps = {
   forge: (root, base, opts) => loadFactoryForgeConfig(factoryGuardExec(defaultExec), root, base, userConfigLayers().trustedUser, projectConfig(root), opts),
   gateSandbox: (root) => createSandboxRunner(root),
   parallel: (root, base, kind) => defaultParallelLayers(root, base, kind),
+  sandboxProblem: () => linuxSandboxProblem(),
 };
 
 class FactoryUsageError extends Error {}
@@ -536,6 +542,13 @@ export function factoryRunCommand(deps: FactoryRunDeps = defaultFactoryRunDeps):
           if (gitProblem) throw new FactoryUsageError(gitProblem);
         }
         const root = factoryRoot(exec);
+        if (!o.dryRun) {
+          // Only where a lane would park at sandbox-unavailable: a malformed sandbox block is left to the lanes' own load.
+          let settings: SandboxSettings | undefined;
+          try { settings = (deps.sandboxSettings ?? ((r) => loadSandboxSettings(r, 'factory').settings))(root); } catch { settings = undefined; }
+          const sandboxProblem = settings ? factorySandboxProblem(settings, deps.sandboxProblem) : null;
+          if (sandboxProblem) throw new FactoryUsageError(`the Linux sandbox is unusable: ${sandboxProblem}`);
+        }
         const loadedLimits = deps.limits(root);
         for (const w of loadedLimits.warnings) console.error(chalk.yellow(w));
         const limits = { ...loadedLimits.limits, ...(o.maxRequests !== undefined ? { maxRunRequests: o.maxRequests } : {}), ...(laneModel ? { laneModel } : {}),

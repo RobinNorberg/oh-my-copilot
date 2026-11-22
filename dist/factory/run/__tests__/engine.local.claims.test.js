@@ -79,6 +79,7 @@ describe('F60: local-forge claims across clones', () => {
             ledgerDir: w.ledgerDir,
             gateConfig: localTestGateConfig,
             forge: (r) => resolveForgeConfig({ factory: { forge: { kind: 'local', local: { gate: ['node', '--test'] } } } }, undefined, undefined, undefined, { root: r, stateDir: join(w.dir, `forge-state-${basename(r)}`) }),
+            sandboxProblem: () => null,
         };
         let out = [];
         vi.spyOn(console, 'log').mockImplementation((...a) => { out.push(a.join(' ')); });

@@ -168,7 +168,7 @@ describe('teleportCommand', () => {
     describe('worktree without a readable package.json', () => {
         beforeEach(() => {
             // A Python, Go or Rust repository: no package.json, lockfile or node_modules.
-            existsSync.mockImplementation((target) => target === '/root/issue');
+            existsSync.mockImplementation((target) => toPosix(String(target)) === '/root/issue');
             readFileSync.mockImplementation((target) => {
                 throw Object.assign(new Error(`ENOENT: no such file or directory, open '${String(target)}'`), { code: 'ENOENT' });
             });
@@ -194,17 +194,17 @@ describe('teleportCommand', () => {
             expect(symlinkSync).not.toHaveBeenCalled();
             expect(warnSpy).not.toHaveBeenCalled();
             expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Worktree created successfully!'));
-            expect(result).toMatchObject({ success: true, worktreePath: '/root/issue/repo-1' });
+            expect(result).toMatchObject({ success: true, worktreePath: join('/root', 'issue', 'repo-1') });
         });
         it('still installs when the package.json exists but cannot be read', async () => {
             const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => { });
-            existsSync.mockImplementation((target) => target === '/root/issue' || target === '/root/issue/repo-1/package.json');
+            existsSync.mockImplementation((target) => ['/root/issue', '/root/issue/repo-1/package.json'].includes(toPosix(String(target))));
             readFileSync.mockImplementation((target) => {
                 throw Object.assign(new Error(`EACCES: permission denied, open '${String(target)}'`), { code: 'EACCES' });
             });
             await teleportCommand('#1', { worktreePath: '/root' });
             expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('could not read package.json'));
-            expect(execFileSync).toHaveBeenCalledWith('npm', ['install'], expect.objectContaining({ cwd: '/root/issue/repo-1' }));
+            expect(execFileSync).toHaveBeenCalledWith('npm', ['install'], expect.objectContaining({ cwd: join('/root', 'issue', 'repo-1') }));
         });
     });
     it.each([
