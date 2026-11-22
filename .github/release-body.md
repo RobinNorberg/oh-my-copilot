@@ -21,7 +21,7 @@ In the Windows v4 run, #13 took the ci-fix lane and #15 the conflict-fix lane li
 
 - **Linux support for the factory.** Lanes and gates get a read-only linked `node_modules`, so the repository's tests run in the OS sandbox. Hosts without a keyring authenticate with the stored Copilot login, for lanes, gate commands, team workers and model reads.
 - **`omg factory check --host`** checks node, git, the OS sandbox, the Copilot binary, the SDK and its protocol handshake, and the login in one pass, with a fix command for each failure. docs/REFERENCE.md gains a "Linux setup" section for Ubuntu 20.04, 22.04 and 24.04.
-- **Up-front refusals** for git older than 2.38 and bubblewrap older than 0.5.0, instead of a later, unclear failure.
+- **Up-front refusals** for git older than 2.38 and bubblewrap older than 0.5.0, instead of a later, unclear failure. The bubblewrap check is skipped when the lane sandbox is off (`factory.run.sandbox.enabled: false`, `writeUnsandboxed: "detect-only"` or `OMG_SANDBOX=off`).
 - **A model per lane kind.** `factory.run.laneModels` and `--review-model <id>` let review lanes run a cheaper model than implement lanes.
 - **Faster lanes.** The PreToolUse enforcer runs only its guards in a lane, with the state root resolved once. A lane's `node_modules` copy no longer blocks the engine's event loop. The implement prompt lists up to 8 files the lane likely needs, found by a free pre-scan.
 - **Bench fixture v4.** The ci-fix issue (#13) and the git-guard issue (#17) now exercise their paths, a merged run that skipped its path is reported as a bench finding, `bench compare` reads results across fixture versions, and `bench init --force` clears engine state left by an earlier fixture at the same path.
@@ -29,13 +29,10 @@ In the Windows v4 run, #13 took the ci-fix lane and #15 the conflict-fix lane li
 ## Fixed
 
 - **Gates fail with `tsc: not found` on Linux** when the repository's `node_modules` is a symlink.
-- **`omg ralph verify`** kills the whole process tree when a feedback command times out.
+- **`omg ralph verify`** kills the whole process tree when a feedback command times out. On POSIX, feedback commands now run without a controlling terminal: a command that opens `/dev/tty` gets ENXIO. On Windows, the process tree is not killed when the 30 s grace period runs out or `taskkill` fails.
 - **A lane asked to use a file outside its worktree** declines instead of being retried.
 - **A rerun parked at the merge** prepares again when its PR conflicts with the moved base.
 - Windows-only test failures in the teleport, ralph-afk and ralph-closeout tests, and two CI-flaky tests.
-
-## Changed
-
 - **A `node_modules` link planted by a lane is no longer granted** read-only to the next session. Nothing under `node_modules` is granted without a target the engine recorded.
 - **Behaviour change:** a plain `copilot_run` write job outside the factory no longer gets a linked `node_modules` read-only in the sandbox. Jobs that relied on it must install or copy their dependencies another way.
 
