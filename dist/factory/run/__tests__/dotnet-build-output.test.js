@@ -13,7 +13,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { cleanDotnetBuildOutput, DOTNET_BUILD_DIRS } from '../dotnet-clean.js';
-import { DOTNET_BUILD_DIRS as GATE_BUILD_DIRS, dotnetBuildDirIndex } from '../local-gate.js';
+import { DOTNET_BUILD_DIRS as GATE_BUILD_DIRS, dotnetBuildDirIndex, inPackageTree, isDotnetDefinitionFile, isDotnetProjectFile, strayDotnetDefinitionFiles, trackedPackageTreeProjects, underDotnetBuildDir } from '../local-gate.js';
 let dir;
 let checkout;
 let outside;
@@ -55,7 +55,7 @@ function link(target, rel) {
     symlinkSync(target, join(checkout, rel), process.platform === 'win32' ? 'junction' : 'dir');
     links.push(join(checkout, rel));
 }
-/** The engine's inputs: every untracked path (ignored or not), and the tracked paths under a build dir. */
+/** The engine's inputs (readGateCheckout): every untracked path (ignored or not), and the tracked paths under a build dir. */
 const untracked = () => git('ls-files', '--others', '-z').split('\0').filter(Boolean);
 const kept = () => git('ls-files', '-z').split('\0').filter((p) => p && dotnetBuildDirIndex(p) >= 0);
 const leftUnder = () => untracked().filter((p) => dotnetBuildDirIndex(p) >= 0);
@@ -183,6 +183,85 @@ describe('cleanDotnetBuildOutput', () => {
         expect(cleanDotnetBuildOutput(checkout, ['src/app/bin/tracked.txt'], 'win32').errors).toEqual([]);
         expect(exists('src/App/Bin/Tracked.txt')).toBe(true);
         expect(exists('src/App/Bin/stale.dll')).toBe(false);
+    });
+});
+describe('node_modules dirs are package trees, whoever installed them (review of #606: the segment exemption)', () => {
+    it('a mixed repo: a nested node_modules a prepare build or npm ci made (bin/ dirs, a junction-backed package, *.props / *.vcxproj / *.sln files) is neither cleaned nor checked', () => {
+        writeFileSync(join(checkout, '.gitignore'), 'bin/\nobj/\nnode_modules/\n');
+        put('src/Web/Web.csproj');
+        put('src/Web/ClientApp/package.json', '{}');
+        git('add', '.');
+        git('commit', '-q', '-m', 'base');
+        put('src/Web/ClientApp/node_modules/vite/bin/vite.js', 'vite');
+        put('src/Web/ClientApp/node_modules/addon/build/addon.vcxproj');
+        put('src/Web/ClientApp/node_modules/addon/build/config.props');
+        put('src/Web/ClientApp/node_modules/addon/build/binding.sln');
+        put('src/Web/ClientApp/node_modules/addon/obj/x.txt');
+        mkdirSync(join(outside, 'esbuild', 'bin'), { recursive: true });
+        writeFileSync(join(outside, 'esbuild', 'bin', 'esbuild'), 'outside');
+        link(join(outside, 'esbuild'), 'src/Web/ClientApp/node_modules/esbuild');
+        // A differently cased package tree: the same predicate on both sides, on every platform.
+        put('tools/Node_Modules/pkg/bin/cli.js');
+        put('src/Web/obj/stale.dll');
+        const before = untracked();
+        // Git for Windows lists files through the junction-backed package dir; the checks leave them out all the same.
+        expect(leftUnder()).toEqual(['src/Web/obj/stale.dll']);
+        expect(strayDotnetDefinitionFiles(before)).toEqual([]);
+        expect(cleanDotnetBuildOutput(checkout, kept())).toEqual({ removed: 1, errors: [] });
+        for (const stay of ['src/Web/ClientApp/node_modules/vite/bin/vite.js', 'src/Web/ClientApp/node_modules/addon/obj/x.txt', 'src/Web/ClientApp/node_modules/addon/build/addon.vcxproj', 'tools/Node_Modules/pkg/bin/cli.js'])
+            expect(exists(stay), stay).toBe(true);
+        expect(lstatSync(join(checkout, 'src', 'Web', 'ClientApp', 'node_modules', 'esbuild')).isSymbolicLink()).toBe(true);
+        expect(readFileSync(join(outside, 'esbuild', 'bin', 'esbuild'), 'utf8')).toBe('outside');
+        expect(exists('src/Web/obj')).toBe(false);
+        expect(leftUnder()).toEqual([]);
+        expect(strayDotnetDefinitionFiles(untracked())).toEqual([]);
+    });
+    it('a node_modules inside a build dir is build output: it goes, and the checks see it', () => {
+        base();
+        put('src/App/obj/node_modules/x.txt');
+        link(outside, 'src/App/bin/node_modules');
+        expect(dotnetBuildDirIndex('src/App/obj/node_modules/x.txt')).toBe(2);
+        expect(cleanDotnetBuildOutput(checkout, kept()).errors).toEqual([]);
+        for (const gone of ['src/App/obj', 'src/App/bin'])
+            expect(exists(gone), gone).toBe(false);
+        outsideIntact();
+    });
+    it('a junctioned root node_modules (the engine\'s link to yours) is never walked or removed', () => {
+        base();
+        mkdirSync(join(outside, 'pkg', 'bin'), { recursive: true });
+        writeFileSync(join(outside, 'pkg', 'bin', 'cli.js'), 'outside');
+        link(outside, 'node_modules');
+        expect(cleanDotnetBuildOutput(checkout, kept())).toEqual({ removed: 0, errors: [] });
+        expect(lstatSync(join(checkout, 'node_modules')).isSymbolicLink()).toBe(true);
+        expect(readFileSync(join(outside, 'pkg', 'bin', 'cli.js'), 'utf8')).toBe('outside');
+    });
+    it('trackedPackageTreeProjects: the .NET definition files a head tracks under a node_modules dir (a park), not under a build dir', () => {
+        expect(trackedPackageTreeProjects([
+            'x/node_modules/App/App.csproj', 'node_modules/pkg/Directory.Build.props', 'A/NODE_MODULES/b.sln',
+            'src/App/App.csproj', 'node_modules/pkg/README.md', 'src/App/obj/node_modules/c.csproj',
+        ])).toEqual(['x/node_modules/App/App.csproj', 'node_modules/pkg/Directory.Build.props', 'A/NODE_MODULES/b.sln']);
+    });
+});
+describe('the .NET path rules', () => {
+    it('underDotnetBuildDir: a path under bin/, obj/ or artifacts/ at any depth, in any case, not under node_modules; not a file so named', () => {
+        for (const p of ['src/App/obj/project.assets.json', 'bin/Tests.dll', 'a/ARTIFACTS/x', 'src/obj/node_modules/x'])
+            expect(underDotnetBuildDir(p), p).toBe(true);
+        for (const p of ['src/bin', 'src/objx/a', 'src/App/App.csproj', 'a/../obj/x', 'node_modules/pkg/bin/cli.js', 'a/Node_Modules/b/obj/c'])
+            expect(underDotnetBuildDir(p), p).toBe(false);
+        for (const p of ['node_modules/x', 'a/NODE_MODULES/b/obj/c', 'a/node_modules/'])
+            expect(inPackageTree(p), p).toBe(true);
+        for (const p of ['a/obj/node_modules/x', 'src/App/App.csproj', 'node_modulesx/a'])
+            expect(inPackageTree(p), p).toBe(false);
+    });
+    it('isDotnetProjectFile (detecting a .NET run): solutions and C#, F#, VB project files only, as Windows opens the name', () => {
+        for (const p of ['App.sln', 'src/App.slnx', 'src/App/App.csproj', 'x/Y.FSPROJ', 'a/B.vbproj', 'src/App/App.csproj::$DATA'])
+            expect(isDotnetProjectFile(p), p).toBe(true);
+        for (const p of ['package.json', 'App.slnf', 'Directory.Build.props', 'App.csproj.user', 'proj', 'build.proj', 'ios/App.xcodeproj/project.pbxproj', 'windows/App/App.vcxproj', 'x/pkg.pyproj', 'App.esproj', 'db.sqlproj'])
+            expect(isDotnetProjectFile(p), p).toBe(false);
+    });
+    it('the gate definition still pins every *.*proj: the two lists have different jobs', () => {
+        for (const p of ['windows/App/App.vcxproj', 'build.proj', 'App.esproj', 'App.csproj'])
+            expect(isDotnetDefinitionFile(p), p).toBe(true);
     });
 });
 //# sourceMappingURL=dotnet-build-output.test.js.map

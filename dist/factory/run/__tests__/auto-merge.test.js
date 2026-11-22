@@ -151,6 +151,16 @@ describe('review-498 adversarial paths', () => {
         }
         expect(deniedPaths(['src/App/Program.cs', 'tests/AppTests.cs'])).toEqual([]);
     });
+    it('follow-up 1: in a .NET repository (dotnet) a path under bin/, obj/ or artifacts/ never auto-merges; elsewhere (a Node bin/cli.js) it may', () => {
+        const output = ['src/App/obj/project.assets.json', 'tests/T/bin/Debug/net10.0/T.dll', 'artifacts/bin/App/x.txt', 'src/App/OBJ/a.AssemblyInfoInputs.cache', 'src/App/obj./x.cache'];
+        for (const p of output) {
+            expect(deniedPaths([p], [], [], true), p).toEqual([p]);
+            expect(classifyChanges([file(p)], all, { dotnet: true }).tier, p).toBeUndefined();
+        }
+        expect(deniedPaths(['bin/cli.js', 'src/obj.ts'])).toEqual([]);
+        expect(deniedPaths(['src/obj.ts', 'tools/bin'], [], [], true)).toEqual([]);
+        expect(classifyChanges([file('bin/cli.js')], all).tier).toBeDefined();
+    });
     it('H1: the docs tier is an allowlist of .md/.rst (and .txt under docs/): no .mdx, scripts, HTML, site config or images', () => {
         for (const p of ['docs/install.sh', 'docs/install.ps1', 'x.mdx', 'docs/x.mdx', 'docs/index.html', 'docs/site.js', 'docs/logo.svg', 'notes.txt']) {
             expect(isDocsPath(p), p).toBe(false);

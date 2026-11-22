@@ -24,7 +24,7 @@ import { normalize, resolve } from 'path';
 import { repoIdentity, sameRepo } from '../../ship/config.js';
 import { PROTECTED_PATHS, protectedChanges } from '../../ship/merge.js';
 import { CI_TREE_PATHS, LANE_PROTECTED_PATHS } from './lane-commit.js';
-import { basenameMatcher, DOTNET_DEFINITION_PATTERNS, DOTNET_TEST_CONFIG_PATTERNS } from './local-gate.js';
+import { basenameMatcher, DOTNET_BUILD_DIRS, DOTNET_DEFINITION_PATTERNS, DOTNET_TEST_CONFIG_PATTERNS } from './local-gate.js';
 import { checkName } from './merge-policy.js';
 
 export const AUTO_MERGE_TIERS = ['docs', 'tests', 'small'] as const;
@@ -252,10 +252,11 @@ export function globMatcher(glob: string): (path: string) => boolean {
  * `extra` (the configured protected paths, known-flaky file and core.hooksPath,
  * root-relative), `globs` (the user's securityCritical list), the denied
  * directories anywhere in the path, manifests, lockfiles, config and agent
- * prompt files by name, and any path Windows could resolve elsewhere
- * (protectedChanges' raw `:`/`~`/`..` rule).
+ * prompt files by name, any path Windows could resolve elsewhere
+ * (protectedChanges' raw `:`/`~`/`..` rule), and for a .NET repository
+ * (`dotnet`) every path under a bin/, obj/ or artifacts/ dir.
  */
-export function deniedPaths(paths: readonly string[], extra: readonly string[] = [], globs: readonly string[] = []): string[] {
+export function deniedPaths(paths: readonly string[], extra: readonly string[] = [], globs: readonly string[] = [], dotnet = false): string[] {
   const anchored = new Set(protectedChanges(paths, [...LANE_PROTECTED_PATHS, ...CI_TREE_PATHS, ...PROTECTED_PATHS, '.omg/', '.omc/', ...HOOK_DIRS, ...SHIPPED_DIRS, ...extra.map(rootRelative).filter(Boolean)]));
   const user = globs.map(globMatcher);
   return paths.filter((p) => {
@@ -264,6 +265,8 @@ export function deniedPaths(paths: readonly string[], extra: readonly string[] =
     if (segs.length === 0) return true;
     if (segs.length === 1 && GIT_HOOK_NAMES.has(segs[0].replace(/\.exe$/, ''))) return true;
     if (segs.slice(0, -1).some((s) => DENIED_DIRS.has(s))) return true;
+    // A .NET repository: committed build output (bin/, obj/, artifacts/ at any depth) is MSBuild input (local-gate.ts DOTNET_BUILD_DIR_SOURCES).
+    if (dotnet && segs.slice(0, -1).some((s) => DOTNET_BUILD_DIRS.has(s))) return true;
     if (user.some((m) => m(p))) return true;
     const name = segs[segs.length - 1];
     return DENIED_DIRS.has(name) || DENIED_NAMES.has(name) || DENIED_NAME_PATTERNS.some((r) => r.test(name)) || deniedDotnetName(name);
@@ -492,6 +495,8 @@ export interface TierResult {
 export const SMALL_TIER_DENIED = ['src/factory/', 'src/ship/', 'src/copilot-run/', 'src/forge/'];
 
 export interface ClassifyOptions {
+  /** A .NET repository (engine.ts dotnetRepo): paths under bin/, obj/ and artifacts/ are denied too. */
+  dotnet?: boolean;
   /** Root-relative protected paths: the configured protected paths, the known-flaky file, the configured core.hooksPath. */
   extraDenied?: readonly string[];
   /** The files the BASE test config runs before or around tests (setupFiles, globalSetup, ...); `problem` = they could not be read. */
@@ -529,7 +534,7 @@ export function classifyChanges(entries: readonly ChangedEntry[] | null, config:
   if (odd.length > 0) reasons.push(`non-plain file modes (symlink, gitlink, executable or mode change): ${list(odd.map((e) => `${e.path} ${e.oldMode}->${e.newMode}`))}`);
   const binary = entries.filter((e) => e.added === null || e.deleted === null);
   if (binary.length > 0) reasons.push(`binary changes: ${list(binary.map((e) => e.path))}`);
-  const denied = deniedPaths(entries.map((e) => e.path), [...(opts.extraDenied ?? []), ...(opts.installFiles?.paths ?? [])], config.securityCritical ?? []);
+  const denied = deniedPaths(entries.map((e) => e.path), [...(opts.extraDenied ?? []), ...(opts.installFiles?.paths ?? [])], config.securityCritical ?? [], opts.dotnet === true);
   if (denied.length > 0) reasons.push(`touches paths that always need a human (CI, config, manifests, lockfiles, hooks, agent prompts, factory or security-critical files): ${list(denied)}`);
   const isSetup = setupMatcher(opts.testSetup?.paths ?? []);
   const setup = entries.filter((e) => isSetup(e.path));

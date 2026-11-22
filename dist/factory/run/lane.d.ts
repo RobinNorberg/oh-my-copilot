@@ -90,7 +90,7 @@ export interface LaneStartInput {
         target: string;
         nested?: string[];
     } | undefined;
-    /** The local backend, a write lane in a .NET repository (the run's local gate runs dotnet): CopilotRunStartOptions.dotnet. */
+    /** The local backend, a write lane in a .NET repository (engine.ts dotnetRepo, any forge): CopilotRunStartOptions.dotnet. */
     dotnet?: boolean;
     /** Cloud backends only. */
     customAgent?: string;
