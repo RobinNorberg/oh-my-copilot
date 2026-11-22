@@ -49836,8 +49836,14 @@ function buildSandboxConfig(profile, ctx, host) {
       ".gnupg",
       ".pypirc",
       (0, import_node_path8.join)(".config", "gcloud"),
-      // Windows: gh's hosts.yml (%APPDATA%\GitHub CLI) and the GCM/MSAL token cache (%LOCALAPPDATA%\.IdentityService).
-      ...ctx.platform === "win32" ? [(0, import_node_path8.join)("AppData", "Roaming", "GitHub CLI"), (0, import_node_path8.join)("AppData", "Local", ".IdentityService")] : []
+      // NuGet's user config (feed credentials) and the credential providers' token caches; never all of ~/.nuget,
+      // which holds the packages folder a dotnet job is granted read-only (dotnet-sandbox.ts).
+      (0, import_node_path8.join)(".nuget", "NuGet"),
+      (0, import_node_path8.join)(".nuget", "plugins"),
+      (0, import_node_path8.join)(".local", "share", "MicrosoftCredentialProvider"),
+      // Windows: gh's hosts.yml (%APPDATA%\GitHub CLI), the GCM/MSAL token cache (%LOCALAPPDATA%\.IdentityService),
+      // NuGet's user config and the Azure Artifacts credential provider's cache.
+      ...ctx.platform === "win32" ? [(0, import_node_path8.join)("AppData", "Roaming", "GitHub CLI"), (0, import_node_path8.join)("AppData", "Local", ".IdentityService"), (0, import_node_path8.join)("AppData", "Roaming", "NuGet"), (0, import_node_path8.join)("AppData", "Local", "MicrosoftCredentialProvider")] : []
     ].map((p) => (0, import_node_path8.join)(ctx.realHome, p));
     const grants = [...filesystem.readwritePaths, ...filesystem.readonlyPaths.filter((p) => !nested.includes(p)), ctx.realHome];
     const holdsGrant = (s) => grants.some((g) => {
@@ -62493,10 +62499,10 @@ function isDotnetExe(exe) {
 }
 function dotnetSandboxArgs(args) {
   const sub = args[0]?.toLowerCase();
-  if (!sub || !MSBUILD_SUBCOMMANDS.has(sub)) return [...args];
+  if (!sub || !MSBUILD_SUBCOMMANDS.includes(sub)) return [...args];
   const end = args.indexOf("--");
   const own2 = end < 0 ? args : args.slice(0, end);
-  if (own2.some((a) => NODE_COUNT_FLAG.test(a))) return [...args];
+  if (sub === "test" && own2.slice(1).some((a) => !a.startsWith("-") && /\.(?:dll|exe)$/i.test(a))) return [...args];
   return end < 0 ? [...args, DOTNET_SINGLE_NODE_FLAG] : [...args.slice(0, end), DOTNET_SINGLE_NODE_FLAG, ...args.slice(end)];
 }
 function nugetPackagesDir(env2, realHome) {
@@ -62527,15 +62533,15 @@ function dotnetSandboxEnv(profile, hostEnv, realHome, platform = process.platfor
     readonly: packages ? [packages] : []
   };
 }
-var import_node_fs12, import_node_path13, MSBUILD_SUBCOMMANDS, NODE_COUNT_FLAG, DOTNET_SINGLE_NODE_FLAG;
+var import_node_fs12, import_node_path13, MSBUILD_SUBCOMMANDS, DOTNET_SINGLE_NODE_FLAG, isNugetHost;
 var init_dotnet_sandbox = __esm({
   "src/copilot-run/dotnet-sandbox.ts"() {
     "use strict";
     import_node_fs12 = require("node:fs");
     import_node_path13 = require("node:path");
-    MSBUILD_SUBCOMMANDS = /* @__PURE__ */ new Set(["build", "test", "restore", "pack", "publish", "clean", "msbuild", "run"]);
-    NODE_COUNT_FLAG = /^[-/](?:m|maxcpucount)(?::.*)?$/i;
+    MSBUILD_SUBCOMMANDS = ["build", "test", "restore", "pack", "publish", "clean", "msbuild"];
     DOTNET_SINGLE_NODE_FLAG = "-m:1";
+    isNugetHost = (host) => /^(?:api|\*)\.nuget\.org$/i.test(host.trim());
   }
 });
 
@@ -63341,7 +63347,7 @@ var init_job = __esm({
       sandboxIntent(from) {
         const settings = "enabled" in from ? from : (this.deps.sandboxSettings ?? loadSandboxSettings)(from.root, from.scope).settings;
         const sandboxed = settings.enabled && this.deps.env[SANDBOX_KILL_ENV] !== "off";
-        return { sandboxed, writeNetwork: settings.writeNetwork, windowsCopy: sandboxed && this.deps.platform === "win32" };
+        return { sandboxed, writeNetwork: settings.writeNetwork, allowedHosts: [...settings.allowedHosts], windowsCopy: sandboxed && this.deps.platform === "win32" };
       }
       /** Validate, ask the budget governor, prepare the worktree, and start the session in the background. */
       start(input2, options = {}) {
@@ -63872,9 +63878,10 @@ var init_job = __esm({
         (0, import_node_fs14.writeFileSync)(env2.GIT_CONFIG_GLOBAL, "[credential]\n	helper =\n");
         if (!job.hostCommits) seedGitIdentity(job.ledgerCwd, env2.GIT_CONFIG_GLOBAL);
         Object.assign(env2, { OMC_GIT_GUARDRAILS: "1", COPILOT_ALLOW_ALL: "false", OMC_BUDGET_HOST_LEDGER: "1", GIT_TERMINAL_PROMPT: "0", GCM_INTERACTIVE: "never" });
+        const realHome = (deps.realHome ?? (() => (0, import_node_os6.userInfo)().homedir))();
         const dotnetGrants = [];
         if (job.dotnet) {
-          const d = dotnetSandboxEnv(env2.USERPROFILE, deps.env, (deps.realHome ?? (() => (0, import_node_os6.userInfo)().homedir))(), deps.platform);
+          const d = dotnetSandboxEnv(env2.USERPROFILE, deps.env, realHome, deps.platform);
           Object.assign(env2, d.env);
           dotnetGrants.push(...d.readonly);
         }
@@ -63950,7 +63957,6 @@ var init_job = __esm({
             const top = job.worktree?.path ?? git2(job.workCwd, ["rev-parse", "--show-toplevel"]) ?? job.workCwd;
             const commonRaw = job.worktree ? job.commonGitDir : git2(job.workCwd, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
             const gitDirRaw = job.worktree ? job.worktreeLinks?.adminDir ?? null : git2(job.workCwd, ["rev-parse", "--path-format=absolute", "--git-dir"]);
-            const realHome = (deps.realHome ?? (() => (0, import_node_os6.userInfo)().homedir))();
             const proxy = proxyCaEnv(deps.env, deps.platform, realHome);
             job.notes.push(...proxy.notes);
             return {
@@ -71090,7 +71096,7 @@ var init_prescan = __esm({
     SAFE_PATH = /^[\w@+-][\w.@+-]*(?:\/[\w@+-][\w.@+-]*)*$/;
     SKIP_DIRS2 = /* @__PURE__ */ new Set(["node_modules", "dist", "build", "out", "coverage", "vendor", "target", ".git", ".next", ".nuxt", ".cache", ".venv", "venv", "__pycache__", "bower_components", "jspm_packages"]);
     BINARY_EXT = /\.(?:png|jpe?g|gif|bmp|ico|webp|avif|tiff?|psd|pdf|zip|gz|tgz|bz2|xz|7z|rar|jar|war|class|exe|dll|so|dylib|o|a|lib|obj|wasm|node|woff2?|ttf|otf|eot|mp[34]|mov|avi|webm|ogg|wav|flac|sqlite|db|bin|pyc|pyo|lockb)$/i;
-    LOCKFILE = /(?:^|\/)(?:package-lock\.json|npm-shrinkwrap\.json|yarn\.lock|pnpm-lock\.yaml|bun\.lockb|Cargo\.lock|poetry\.lock|composer\.lock|Gemfile\.lock|go\.sum|packages\.lock\.json)$/;
+    LOCKFILE = /(?:^|\/)(?:package-lock\.json|npm-shrinkwrap\.json|yarn\.lock|pnpm-lock\.yaml|bun\.lockb|Cargo\.lock|poetry\.lock|composer\.lock|Gemfile\.lock|go\.sum|packages\.lock\.json)$/i;
     SECRET_NAME3 = /(?:^|\/)(?:\.env(?:\.[^/]*)?|\.npmrc|\.netrc|\.pypirc|id_(?:rsa|dsa|ecdsa|ed25519)(?:\.pub)?|[^/]*credentials[^/]*|[^/]*secrets?(?:\.[^/]*)?)$|\.(?:pem|key|p12|pfx|jks|keystore|crt|cer|der|kdbx)$/i;
     STOP = /* @__PURE__ */ new Set([
       "and",
@@ -71239,8 +71245,10 @@ function noInstallRule(lane) {
 }
 function dotnetRule(lane) {
   if (!lane?.sandboxed || !lane.dotnet) return [];
-  const offline = lane.writeNetwork === "none" ? " NuGet packages come only from those already restored on this machine: do not add or upgrade a package reference; report a missing package in your final message instead." : "";
-  return [`Always pass \`${DOTNET_SINGLE_NODE_FLAG}\` to dotnet build, test, restore, pack, publish, clean and run (for example \`dotnet test ${DOTNET_SINGLE_NODE_FLAG}\`): in this sandbox MSBuild's worker nodes cannot connect, and without it the command hangs.${offline}`];
+  const offline = lane.nugetReachable ? "" : " NuGet cannot reach its feed here: packages come only from those already restored on this machine, so do not add or upgrade a package reference; report a missing package in your final message instead.";
+  const subs = MSBUILD_SUBCOMMANDS.map((x) => `dotnet ${x}`);
+  const list = `${subs.slice(0, -1).join(", ")} and ${subs[subs.length - 1]}`;
+  return [`Always pass \`${DOTNET_SINGLE_NODE_FLAG}\` to ${list} (for example \`dotnet test ${DOTNET_SINGLE_NODE_FLAG}\`): in this sandbox MSBuild's worker nodes cannot connect, and without it the command hangs. Not to dotnet run, which hands it to the program as an argument: build with \`dotnet build ${DOTNET_SINGLE_NODE_FLAG}\`, then start the program with \`dotnet run --no-build\`. Not to \`dotnet test <file>.dll\` either, which runs no MSBuild and rejects it.${offline}`];
 }
 function implementPrompt(s, team, scripts = [], lane = null, guides = [], likely = [], tracked) {
   const outside = s.kind === "ci-heal" ? 0 : outsidePaths(`${s.issueTitle ?? ""}
@@ -71839,13 +71847,484 @@ var init_merge_policy = __esm({
   }
 });
 
+// src/factory/run/local-gate.ts
+function resolveLocalGateArgv(argv, o) {
+  const platform = o.platform ?? process.platform;
+  const env2 = o.env ?? process.env;
+  const execPath = o.execPath ?? process.execPath;
+  const exists = o.exists ?? import_fs91.existsSync;
+  const what = o.subject ?? "the local gate";
+  const key = o.configKey ?? "factory.forge.local.gate";
+  const P = platform === "win32" ? import_path108.win32 : import_path108.posix;
+  const [cmd, ...args] = argv;
+  if (!cmd) return { missing: `${what} argv is empty` };
+  const hasPath = /[\\/]/.test(cmd) || platform === "win32" && cmd.includes(":");
+  if (hasPath) {
+    const at = P.isAbsolute(cmd) ? cmd : P.resolve(o.cwd, cmd);
+    return exists(at) ? { exe: cmd, args } : { missing: `${what} executable ${cmd} does not exist (resolved in the prepare checkout to ${at})` };
+  }
+  if (platform !== "win32") {
+    return findOnPath(cmd, env2, platform, exists) ? { exe: cmd, args } : { missing: `${what} executable ${cmd} is not on PATH` };
+  }
+  const name = cmd.toLowerCase().replace(/\.(cmd|bat)$/, "");
+  const known = NODE_SCRIPTS2[name];
+  const exe = () => findOnPath(name === cmd.toLowerCase() ? cmd : name, { ...env2, PATHEXT: ".COM;.EXE" }, "win32", exists);
+  if (known) {
+    const fromExe = known.exeFirst ? exe() : null;
+    if (fromExe) return { exe: fromExe, args };
+    const script = P.join(P.dirname(execPath), ...known.script);
+    if (exists(script)) return { exe: execPath, args: [script, ...args] };
+    return { missing: `${what} executable ${cmd} cannot start: on Windows ${what} runs without a shell, so ${name}.cmd is never run, and ${script} does not exist; set ${key} to a command that starts without a shell, such as ${npmCliHint(P, execPath, exists)}` };
+  }
+  if (/\.(cmd|bat)$/i.test(cmd)) {
+    return { missing: `${what} executable ${cmd} is a cmd.exe script, which ${what} never runs (no shell); set ${key} to node, an .exe or npm (none needs a shell), such as ${npmCliHint(P, execPath, exists)}` };
+  }
+  const found = exe();
+  return found ? { exe: found, args } : { missing: `${what} executable ${cmd} is not on PATH as an .exe or .com (on Windows ${what} runs without a shell, so .cmd/.bat shims are skipped); set ${key} to a command that starts without a shell, such as ${npmCliHint(P, execPath, exists)}` };
+}
+async function killGateTree(child, rootExited) {
+  const pid = child.pid;
+  if (!pid) return;
+  if (!rootExited) {
+    const identity = await getProcessStartIdentity(pid, Date.now() + KILL_DEADLINE_MS);
+    if (identity) {
+      const done = await terminateOwnedProcessTree({ pid, expectedStartIdentity: identity, deadlineAt: new Date(Date.now() + KILL_DEADLINE_MS).toISOString(), force: true });
+      if (done === "terminated" || done === "already-dead") return;
+    }
+    try {
+      child.kill("SIGKILL");
+    } catch {
+    }
+  }
+  if (process.platform !== "win32") {
+    try {
+      process.kill(-pid, "SIGKILL");
+    } catch {
+    }
+  }
+}
+function runOwned(exe, args, cwd, env2, timeoutMs, track) {
+  return new Promise((done) => {
+    let child;
+    try {
+      child = (0, import_child_process24.spawn)(exe, args, { cwd, env: env2, windowsHide: true, stdio: ["ignore", "pipe", "pipe"], detached: process.platform !== "win32" });
+    } catch (error62) {
+      done({ status: 127, stdout: "", stderr: "", timedOut: false, startError: `${exe}: ${error62.message}` });
+      return;
+    }
+    if (child.pid) track?.spawned(child.pid);
+    let stdout = "";
+    let stderr = "";
+    let exitStatus = null;
+    let timedOut = false;
+    let settled = false;
+    let drain;
+    const finish = (r) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      clearTimeout(drain);
+      done(r);
+    };
+    child.stdout.setEncoding("utf8").on("data", (d) => {
+      stdout = keepTail(stdout + d);
+    });
+    child.stderr.setEncoding("utf8").on("data", (d) => {
+      stderr = keepTail(stderr + d);
+    });
+    child.on("error", (error62) => {
+      if (!child.pid) finish({ status: 127, stdout, stderr, timedOut: false, startError: `${exe}: ${error62.message}` });
+    });
+    child.on("exit", (code, signal) => {
+      exitStatus = code ?? (signal ? 128 : 1);
+      const exitedAt = Date.now();
+      drain = setTimeout(() => {
+        if (settled || timedOut) return;
+        void killGateTree(child, true);
+        child.stdout?.destroy();
+        child.stderr?.destroy();
+        void (track ? track.rootGone(exitedAt) : Promise.resolve()).catch(() => void 0).then(() => {
+          finish({ status: exitStatus, stdout, stderr, timedOut: false });
+        });
+      }, EXIT_DRAIN_MS);
+    });
+    child.on("close", (code, signal) => {
+      finish({ status: timedOut ? 124 : exitStatus ?? code ?? (signal ? 128 : 1), stdout, stderr, timedOut });
+    });
+    const timer = setTimeout(() => {
+      const exited = exitStatus !== null;
+      if (!exited) timedOut = true;
+      void killGateTree(child, exited).then(() => exited ? track?.rootGone(Date.now()) : void 0).catch(() => void 0).finally(() => {
+        child.stdout?.destroy();
+        child.stderr?.destroy();
+        finish(exited ? { status: exitStatus, stdout, stderr, timedOut: false } : { status: 124, stdout, stderr, timedOut: true });
+      });
+    }, timeoutMs);
+  });
+}
+function assertLocalGateCommand(recorded, configured, checkout, expectedCheckout) {
+  if (!configured || configured.length === 0) throw new FactorySafetyError("omg factory run refuses the local gate: factory.forge.local.gate is not set in a trusted config layer");
+  if (recorded.length !== configured.length || recorded.some((a, i) => a !== configured[i])) {
+    throw new FactorySafetyError(`omg factory run refuses the local gate \`${configured.join(" ")}\`: this run recorded \`${recorded.join(" ")}\`; restore factory.forge.local.gate, or cancel the run (omg factory run cancel) and start a new one`);
+  }
+  const real2 = realOrResolved(checkout);
+  for (const p of [checkout, expectedCheckout]) {
+    if (isLink3(p)) throw new FactorySafetyError(`omg factory run refuses the local gate in ${checkout} (really ${real2}): ${p} is a junction or symlink, never the engine's prepare checkout`);
+  }
+  if (!sameFsPath(real2, realOrResolved(expectedCheckout))) throw new FactorySafetyError(`omg factory run refuses the local gate in ${checkout} (really ${real2}): it runs only in the engine's prepare checkout ${expectedCheckout}`);
+}
+function localGateRecord(stateDir, root, head) {
+  return readLocalCheckRecord(stateDir, root, head);
+}
+function localGateDue(stateDir, root, head, timeoutMinutes, now) {
+  const r = localGateRecord(stateDir, root, head);
+  if (!r) return true;
+  if (r.state !== "PENDING") return false;
+  const started = Date.parse(r.startedAt);
+  return !Number.isFinite(started) || now.getTime() - started > timeoutMinutes * 6e4 + LOCAL_GATE_STALE_GRACE_MS;
+}
+async function runLocalGate(i) {
+  if (i.gate.length === 0) throw new FactorySafetyError("omg factory run refuses an empty local gate");
+  if (i.mode === "enforced" && !i.sandbox) throw new FactorySafetyError("omg factory run refuses an enforced local gate without a sandbox runner");
+  const now = i.now ?? (() => /* @__PURE__ */ new Date());
+  const started = now();
+  const base = { name: LOCAL_GATE_CHECK, head: i.head, state: "PENDING", argv: [...i.gate], runId: runIdAt(started), startedAt: started.toISOString(), sandbox: i.mode };
+  writeLocalCheckRecord(i.stateDir, i.root, base);
+  if (i.mode === "enforced") return runSandboxedGate(i, base, now);
+  const procs = gateProcsPath(i.stateDir, i.root, i.head);
+  await sweepGateProcs((0, import_path108.dirname)(procs)).catch(() => void 0);
+  await reapGateProcs(procs).catch(() => void 0);
+  let r;
+  try {
+    r = await (i.runner ?? defaultLocalGateRunner)(i.gate, i.checkout, i.timeoutMinutes * 6e4, createGateProcTracker(procs, Date.now(), void 0, (m) => process.stderr.write(`omg factory run: ${m}
+`)));
+  } catch (error62) {
+    (0, import_fs91.rmSync)(localCheckRecordPath(i.stateDir, i.root, i.head), { force: true });
+    throw error62;
+  } finally {
+    await reapGateProcs(procs).catch(() => void 0);
+  }
+  if (r.startError !== void 0) {
+    (0, import_fs91.rmSync)(localCheckRecordPath(i.stateDir, i.root, i.head), { force: true });
+    return { started: false, reason: r.startError };
+  }
+  const output2 = `${r.stdout}${r.stderr ? `
+${r.stderr}` : ""}${r.timedOut ? `
+local gate timed out after ${i.timeoutMinutes} min` : ""}`;
+  const done = {
+    ...base,
+    state: r.status === 0 && !r.timedOut ? "SUCCESS" : "FAILURE",
+    completedAt: now().toISOString(),
+    exitCode: r.timedOut ? 124 : r.status,
+    tail: tailOf(output2.trim())
+  };
+  writeLocalCheckRecord(i.stateDir, i.root, done);
+  return { started: true, record: done };
+}
+async function runSandboxedGate(i, base, now) {
+  const drop = () => (0, import_fs91.rmSync)(localCheckRecordPath(i.stateDir, i.root, i.head), { force: true });
+  hardenWindowsExeSearch();
+  const target = resolveLocalGateArgv(i.gate, { cwd: i.checkout });
+  if ("missing" in target) {
+    drop();
+    return { started: false, reason: target.missing };
+  }
+  let r;
+  try {
+    r = await i.sandbox.run({ purpose: "gate", argv: i.gate, exe: target.exe, args: target.args, cwd: i.checkout, commonGitDir: i.sandbox.commonGitDir, timeoutMs: i.timeoutMinutes * 6e4, ...i.sandbox.requireDeniedPaths ? { requireDeniedPaths: true } : {} });
+  } catch (error62) {
+    drop();
+    throw error62;
+  }
+  if (!r.ran) {
+    drop();
+    return { started: false, reason: r.reason, sandbox: true, ...r.started ? { noVerdict: true } : {}, ...r.refused ? { refused: true } : {}, ...r.unavailable ? { unavailable: true } : {} };
+  }
+  const output2 = `${r.output}${r.timedOut ? `
+local gate timed out after ${i.timeoutMinutes} min` : ""}`;
+  const done = {
+    ...base,
+    state: r.status === 0 && !r.timedOut ? "SUCCESS" : "FAILURE",
+    completedAt: now().toISOString(),
+    exitCode: r.timedOut ? 124 : r.status,
+    tail: tailOf(output2.trim()),
+    ...r.credentialFilesReadable ? { sandboxNote: CREDENTIAL_FILES_READABLE_NOTE } : {}
+  };
+  writeLocalCheckRecord(i.stateDir, i.root, done);
+  return { started: true, record: done };
+}
+function repoPath(p) {
+  if (import_path108.posix.isAbsolute(p) || import_path108.win32.isAbsolute(p) || /^[a-z]:/i.test(p)) return void 0;
+  const norm2 = import_path108.posix.normalize(p.replace(/\\/g, "/"));
+  return norm2 === "." || norm2.startsWith("../") || norm2 === ".." ? void 0 : norm2;
+}
+function scriptSource(manager2, args, shown) {
+  const words = [];
+  let dir = "";
+  const configs = [];
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (a === "--") break;
+    if (!a.startsWith("-") || a === "-") {
+      words.push(a);
+      continue;
+    }
+    if (manager2 !== "npm" && words.length > 0) break;
+    const eq = a.indexOf("=");
+    const flag = eq > 0 ? a.slice(0, eq) : a;
+    let value;
+    if (eq > 0) value = a.slice(eq + 1);
+    else if (VALUE_FLAGS.has(flag)) value = args[++i];
+    if (WORKSPACE_FLAGS.has(flag)) return { sources: [], unresolved: `${shown} selects workspace packages (${flag}), so the script's package.json is not known` };
+    if (DIR_FLAGS.has(flag)) {
+      const p = value === void 0 ? void 0 : /^\.\/?$/.test(import_path108.posix.normalize(value.replace(/\\/g, "/"))) ? "" : repoPath(value)?.replace(/\/+$/, "");
+      if (p === void 0) return { sources: [], unresolved: `${shown} runs in ${JSON.stringify(value ?? "")}, which is not a directory inside the repository` };
+      dir = p;
+    } else if ((CONFIG_FLAGS.has(flag) || flag === "--script-shell") && value !== void 0) {
+      const p = repoPath(value);
+      if (p) configs.push(p);
+    }
+  }
+  const [sub, next] = words;
+  let script;
+  if (!sub) script = void 0;
+  else if (NPM_TEST.has(sub)) script = "test";
+  else if (sub === "start") script = "start";
+  else if (NPM_RUN.has(sub)) script = next;
+  else if (PM_NON_SCRIPT.has(sub)) return { sources: [], unresolved: `${shown} runs ${manager2} ${sub}, not a package.json script, so its definition is not known` };
+  else if (manager2 !== "npm") script = sub;
+  if (!script) return { sources: [], unresolved: `${shown} names no package.json script (such as npm test or npm run <script>)` };
+  const at = (f) => dir ? `${dir}/${f}` : f;
+  const files = [.../* @__PURE__ */ new Set([...PM_CONFIG_FILES, ...PM_CONFIG_FILES.map(at), ...configs])];
+  return { sources: [{ path: at("package.json"), scripts: [`pre${script}`, script, `post${script}`] }, ...files.map((path15) => ({ path: path15 }))] };
+}
+function basenameMatcher(globs) {
+  const re = new RegExp(`^(?:${globs.map((g) => g.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*")).join("|")})$`, "i");
+  return (path15) => re.test(path15.split(/[\\/]/).pop() ?? path15);
+}
+function strayDotnetDefinitionFiles(untracked) {
+  return untracked.filter((p) => {
+    const dirs = p.toLowerCase().split("/");
+    const base = dirs.pop() ?? "";
+    if (dirs.includes("bin")) return false;
+    if (dirs.includes("obj")) return dirs[dirs.length - 1] === "obj" && /\.(?:props|targets)$/.test(base) && !/\.nuget\.g\.(?:props|targets)$/.test(base);
+    return isDotnetDefinitionFile(p);
+  });
+}
+function dotnetSource(args, shown) {
+  const sub = args[0]?.toLowerCase();
+  if (!sub || !DOTNET_GATE_SUBCOMMANDS.has(sub)) {
+    return { sources: [], unresolved: `${shown} runs dotnet ${sub ? JSON.stringify(args[0]) : "without a subcommand"}; only dotnet build and dotnet test (the subcommand first) have a known definition, the repository's solution, project and MSBuild files` };
+  }
+  const named = [];
+  for (let i = 1; i < args.length; i++) {
+    const a = args[i];
+    if (a === "--") break;
+    let value;
+    if (a.startsWith("@")) value = a.slice(1);
+    else if (!a.startsWith("-")) value = a;
+    else {
+      const sep21 = a.search(/[=:]/);
+      const flag = sep21 > 0 ? a.slice(0, sep21) : a;
+      if (DOTNET_PATH_OPTIONS[sub].has(flag)) value = sep21 > 0 ? a.slice(sep21 + 1) : args[++i];
+      else if (sep21 < 0 && DOTNET_VALUE_OPTIONS[sub].has(flag)) i++;
+    }
+    const p = value === void 0 ? void 0 : repoPath(value);
+    if (p) named.push(p.replace(/\/+$/, ""));
+  }
+  return { sources: [...DOTNET_DEFINITION_PATTERNS.map((path15) => ({ path: path15, pattern: true })), ...[...new Set(named)].map((path15) => ({ path: path15, tree: true }))] };
+}
+function patternEntries(sources, tree) {
+  const hit = basenameMatcher(sources.filter((s) => s.pattern).map((s) => s.path));
+  return tree.filter(([p]) => hit(p)).sort((a, b) => a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0);
+}
+function treeEntries2(path15, tree) {
+  const at = path15.toLowerCase();
+  return tree.filter(([p]) => {
+    const q = p.toLowerCase();
+    return q === at || q.startsWith(`${at}/`);
+  }).sort((a, b) => a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0);
+}
+function patternSourceChanges(sources, a, b) {
+  const [ma, mb] = [new Map(patternEntries(sources, a)), new Map(patternEntries(sources, b))];
+  return [.../* @__PURE__ */ new Set([...ma.keys(), ...mb.keys()])].filter((p) => ma.get(p) !== mb.get(p)).sort();
+}
+function gateDefinitionSources(gate) {
+  const [cmd, ...args] = gate;
+  if (!cmd) return { sources: [] };
+  const shown = `the gate "${gate.join(" ")}"`;
+  const name = (cmd.split(/[\\/]/).pop() ?? cmd).toLowerCase().replace(/\.(cmd|bat|exe)$/, "");
+  if (name === "npm" || name === "pnpm" || name === "yarn") return scriptSource(name, args, shown);
+  if (name === "npx") return { sources: [], unresolved: npxUnresolved(shown) };
+  if (name === "node") {
+    const at = args.findIndex((a) => !a.startsWith("-"));
+    if (args[0] === "--run" && args[1] !== void 0 && !args[1].startsWith("-")) return scriptSource("npm", ["run", args[1]], shown);
+    if (args[0] === "--test" && args.slice(1).every((a) => !a.startsWith("-") || a.startsWith("--test-") || a === "--experimental-test-coverage")) return { sources: [] };
+    if (["-e", "--eval", "-p", "--print"].includes(args[0]) && args[1] !== void 0) return { sources: [] };
+    if (/^--(eval|print)=/.test(args[0] ?? "")) return { sources: [] };
+    if (at !== 0 && args.length > 0) return { sources: [], unresolved: `${shown} passes node the option ${JSON.stringify(args[0])} before its script, so what it runs is not known` };
+    if (at < 0) return { sources: [] };
+    const target = args[at];
+    const base = (target.split(/[\\/]/).pop() ?? "").toLowerCase();
+    if (base === "npm-cli.js") return scriptSource("npm", args.slice(at + 1), shown);
+    if (base === "npx-cli.js") return { sources: [], unresolved: npxUnresolved(shown) };
+    const pm = /^(pnpm|yarn)([-.][\w.]+)?\.c?js$/.exec(base);
+    if (pm) return scriptSource(pm[1], args.slice(at + 1), shown);
+    const p = repoPath(target);
+    return { sources: p ? [{ path: p }] : [] };
+  }
+  if (isDotnetExe(cmd) && (!/[\\/]/.test(cmd) || !repoPath(cmd))) return dotnetSource(args, shown);
+  if (/[\\/]/.test(cmd)) {
+    const own2 = repoPath(cmd);
+    if (own2) return { sources: [{ path: own2 }] };
+    return { sources: [], unresolved: `${shown} runs ${JSON.stringify(cmd)}, a program outside the repository that may read repository files the gate does not name (a Makefile, pytest.ini, its arguments)` };
+  }
+  return { sources: [], unresolved: `${shown} runs ${JSON.stringify(cmd)} from PATH, and the repository holds no file that defines it` };
+}
+function gateDefinition(sources, read, list) {
+  let tree;
+  const files = (s) => {
+    if (!list) throw new Error(`the gate definition source ${s.path} is a ${s.pattern ? "pattern" : "tree"} and needs the commit's file list`);
+    return tree ??= list();
+  };
+  const patterns = sources.filter((s) => s.pattern);
+  return JSON.stringify([...patterns.length > 0 ? [[patterns.map((s) => `**/${s.path}`).join("|"), patternEntries(patterns, files(patterns[0]))]] : [], ...sources.filter((s) => !s.pattern).map((s) => {
+    if (s.tree) return [s.path, treeEntries2(s.path, files(s))];
+    const text3 = read(s.path);
+    if (!s.scripts || text3 === void 0) return [s.path, text3 ?? null];
+    let scripts;
+    try {
+      const parsed = JSON.parse(text3);
+      scripts = parsed && typeof parsed.scripts === "object" && parsed.scripts !== null ? parsed.scripts : {};
+    } catch {
+      return [s.path, text3];
+    }
+    return [s.path, s.scripts.map((k) => [k, Object.prototype.hasOwnProperty.call(scripts, k) ? scripts[k] : null])];
+  })]);
+}
+var import_child_process24, import_fs91, import_os20, import_path108, LOCAL_GATE_TAIL_CHARS, LOCAL_GATE_STALE_GRACE_MS, STREAM_KEEP_CHARS, KILL_DEADLINE_MS, EXIT_DRAIN_MS, NODE_SCRIPTS2, npmCliHint, keepTail, defaultLocalGateRunner, realOrResolved, isLink3, runIdAt, tailOf, NPM_TEST, NPM_RUN, PM_CONFIG_FILES, DIR_FLAGS, CONFIG_FLAGS, WORKSPACE_FLAGS, PM_NON_SCRIPT, VALUE_FLAGS, DOTNET_DEFINITION_PATTERNS, DOTNET_TEST_CONFIG_PATTERNS, isDotnetDefinitionFile, DOTNET_GATE_SUBCOMMANDS, DOTNET_PATH_OPTIONS, DOTNET_COMMON_VALUE_OPTIONS, DOTNET_VALUE_OPTIONS, shellPath, gateSourcePathspec, npxUnresolved, describeGateSources;
+var init_local_gate = __esm({
+  "src/factory/run/local-gate.ts"() {
+    "use strict";
+    import_child_process24 = require("child_process");
+    import_fs91 = require("fs");
+    import_os20 = require("os");
+    import_path108 = require("path");
+    init_dotnet_sandbox();
+    init_local();
+    init_process_utils();
+    init_windows_search();
+    init_exec2();
+    init_gate_procs();
+    init_sandbox_exec();
+    LOCAL_GATE_TAIL_CHARS = 8e3;
+    LOCAL_GATE_STALE_GRACE_MS = 6e4;
+    STREAM_KEEP_CHARS = 64 * 1024;
+    KILL_DEADLINE_MS = 3e4;
+    EXIT_DRAIN_MS = 2e3;
+    NODE_SCRIPTS2 = {
+      npm: { script: ["node_modules", "npm", "bin", "npm-cli.js"], exeFirst: false },
+      npx: { script: ["node_modules", "npm", "bin", "npx-cli.js"], exeFirst: false },
+      pnpm: { script: ["node_modules", "corepack", "dist", "pnpm.js"], exeFirst: true },
+      yarn: { script: ["node_modules", "corepack", "dist", "yarn.js"], exeFirst: true }
+    };
+    npmCliHint = (P, execPath, exists) => {
+      const script = P.join(P.dirname(execPath), "node_modules", "npm", "bin", "npm-cli.js");
+      return exists(script) ? JSON.stringify(["npm", "test"]) : JSON.stringify(["node", script, "test"]);
+    };
+    keepTail = (text3) => text3.length > STREAM_KEEP_CHARS ? text3.slice(-STREAM_KEEP_CHARS) : text3;
+    defaultLocalGateRunner = async (argv, cwd, timeoutMs, track) => {
+      hardenWindowsExeSearch();
+      const target = resolveLocalGateArgv(argv, { cwd });
+      if ("missing" in target) return { status: 127, stdout: "", stderr: "", timedOut: false, startError: target.missing };
+      const exe = resolveBareExe(target.exe) ?? target.exe;
+      const home = (0, import_fs91.mkdtempSync)((0, import_path108.join)((0, import_os20.tmpdir)(), "omg-gate-home-"));
+      try {
+        return await runOwned(exe, target.args, cwd, childEnv(gateEnv(process.env, home)), timeoutMs, track);
+      } finally {
+        try {
+          (0, import_fs91.rmSync)(home, { recursive: true, force: true });
+        } catch {
+        }
+      }
+    };
+    realOrResolved = (p) => {
+      try {
+        return import_fs91.realpathSync.native(p);
+      } catch {
+        return (0, import_path108.resolve)(p);
+      }
+    };
+    isLink3 = (p) => {
+      try {
+        return (0, import_fs91.lstatSync)(p).isSymbolicLink();
+      } catch {
+        return false;
+      }
+    };
+    runIdAt = (d) => Math.max(1, Math.floor(d.getTime() / 1e3));
+    tailOf = (text3) => {
+      const clean = redactGateOutput(text3);
+      return clean.length > LOCAL_GATE_TAIL_CHARS ? clean.slice(-LOCAL_GATE_TAIL_CHARS) : clean;
+    };
+    NPM_TEST = /* @__PURE__ */ new Set(["test", "t", "tst"]);
+    NPM_RUN = /* @__PURE__ */ new Set(["run", "run-script", "rum", "urn"]);
+    PM_CONFIG_FILES = [".npmrc", ".yarnrc", ".yarnrc.yml", ".pnpmfile.cjs"];
+    DIR_FLAGS = /* @__PURE__ */ new Set(["--prefix", "-C", "--dir", "--cwd"]);
+    CONFIG_FLAGS = /* @__PURE__ */ new Set(["--userconfig", "--globalconfig"]);
+    WORKSPACE_FLAGS = /* @__PURE__ */ new Set(["--workspace", "-w", "--workspaces", "--ws", "-ws", "--filter", "-F", "--recursive", "-r", "--include-workspace-root"]);
+    PM_NON_SCRIPT = /* @__PURE__ */ new Set(["workspace", "workspaces", "recursive", "exec", "dlx", "node", "create"]);
+    VALUE_FLAGS = /* @__PURE__ */ new Set([...DIR_FLAGS, ...CONFIG_FLAGS, "--workspace", "-w", "--filter", "-F", "--registry", "--cache", "--loglevel", "--script-shell", "--node-options", "--tag", "--otp", "--reporter"]);
+    DOTNET_DEFINITION_PATTERNS = [
+      "*.sln",
+      "*.slnx",
+      "*.slnf",
+      "*.*proj",
+      "*.projitems",
+      "*.props",
+      "*.targets",
+      "*.tasks",
+      "*.user",
+      "*.rsp",
+      "global.json",
+      "nuget.config",
+      "packages.lock.json",
+      "dotnet.config"
+    ];
+    DOTNET_TEST_CONFIG_PATTERNS = [
+      "*.runsettings",
+      "testconfig.json",
+      "xunit.runner.json",
+      ".globalconfig",
+      "*.ruleset",
+      "stylecop.json",
+      "dotnet-tools.json"
+    ];
+    isDotnetDefinitionFile = basenameMatcher(DOTNET_DEFINITION_PATTERNS);
+    DOTNET_GATE_SUBCOMMANDS = /* @__PURE__ */ new Set(["build", "test"]);
+    DOTNET_PATH_OPTIONS = {
+      build: /* @__PURE__ */ new Set(["--project", "--solution"]),
+      test: /* @__PURE__ */ new Set(["--settings", "-s", "--project", "--solution", "--test-adapter-path", "-a"])
+    };
+    DOTNET_COMMON_VALUE_OPTIONS = ["-c", "--configuration", "-f", "--framework", "-r", "--runtime", "-o", "--output", "-v", "--verbosity", "--arch", "--os", "--version-suffix"];
+    DOTNET_VALUE_OPTIONS = {
+      build: /* @__PURE__ */ new Set([...DOTNET_COMMON_VALUE_OPTIONS, "-a", "-s", "--source"]),
+      test: /* @__PURE__ */ new Set([...DOTNET_COMMON_VALUE_OPTIONS, "--filter", "-l", "--logger", "--collect", "--results-directory", "-d", "--diag", "-e", "--environment", "--blame-hang-timeout", "--blame-crash-dump-type", "--blame-hang-dump-type"])
+    };
+    shellPath = (p) => /^[\w@%+=,./-]+$/.test(p) ? p : `'${p.replace(/'/g, "'\\''")}'`;
+    gateSourcePathspec = (s) => s.pattern ? `':(glob,icase)**/${s.path}'` : shellPath(s.path);
+    npxUnresolved = (shown) => `${shown} runs npx, which fetches and runs registry code that the repository cannot pin`;
+    describeGateSources = (sources) => sources.map((s) => s.scripts ? `${s.path} scripts ${s.scripts.join("/")}` : s.pattern ? `**/${s.path}` : s.path).join(", ");
+  }
+});
+
 // src/factory/run/auto-merge.ts
 function resolveAutoMergeConfig(user, repo) {
   const auto = user?.factory?.merge?.auto;
   if (auto === void 0 || auto === null) return {};
   if (typeof auto !== "object" || Array.isArray(auto)) return { error: "factory.merge.auto must be an object keyed by repository" };
   const samePath3 = (a, b) => {
-    const norm2 = (p) => (0, import_path108.normalize)((0, import_path108.resolve)(p)).replace(/[\\/]+$/, "");
+    const norm2 = (p) => (0, import_path109.normalize)((0, import_path109.resolve)(p)).replace(/[\\/]+$/, "");
     return process.platform === "win32" ? norm2(a).toLowerCase() === norm2(b).toLowerCase() : norm2(a) === norm2(b);
   };
   const matches = Object.keys(auto).filter((key2) => {
@@ -71940,7 +72419,7 @@ function deniedPaths(paths, extra = [], globs = []) {
     if (segs.slice(0, -1).some((s) => DENIED_DIRS.has(s))) return true;
     if (user.some((m) => m(p))) return true;
     const name = segs[segs.length - 1];
-    return DENIED_DIRS.has(name) || DENIED_NAMES.has(name) || DENIED_NAME_PATTERNS.some((r) => r.test(name));
+    return DENIED_DIRS.has(name) || DENIED_NAMES.has(name) || DENIED_NAME_PATTERNS.some((r) => r.test(name)) || deniedDotnetName(name);
   });
 }
 function isDocsPath(path15) {
@@ -72271,14 +72750,15 @@ function autoMergeComment(label, tier, head, evidence, by) {
     ""
   ].join("\n");
 }
-var import_path108, AUTO_MERGE_TIERS, MANUAL_MERGE_LABEL, DEFAULT_SMALL_MAX_CHANGED_LINES, DEFAULT_SMALL_MAX_FILES, MAX_CAP, GLOB_KEYS, MAX_GLOBS, fold2, segments, DENIED_DIRS, GIT_HOOK_NAMES, HOOK_DIRS, SHIPPED_DIRS, DENIED_NAMES, DENIED_NAME_PATTERNS, rootRelative, ROOT_DOCS, DOCS_EXT, FRONTMATTER_CANDIDATE, isFrontmatterCandidate, canonicalSpelling, hasFrontmatter, LIFECYCLE_SCRIPT, SCRIPT_RUNNER, RUNNER_INSTALL, UNFOLLOWABLE, INTERPRETER, ELSEWHERE_FLAG, TEST_SKIP, TEST_FILE_SKIP, ASSERTION, patchPathIsTest, TEST_NAME, ROOT_TEST_DIRS, ANY_DEPTH_TEST_DIRS, TEST_DIR_FILE, TEST_RUNNER_CODE, looksLikeTest, plainMode, SMALL_TIER_DENIED, setupMatcher, oneLineOf, TEST_CONFIG_NAME, SETUP_KEY_NAMES, MORE_CONFIG_KEY, ALLOWED_IMPORT, IMPORT_SPECIFIER, DYNAMIC_LOAD, KEY_ALT, SETUP_KEYS, SETUP_KEY_WORD, LOADS_MORE, STRING, BENIGN_PARKS, PARK_NOTE;
+var import_path109, AUTO_MERGE_TIERS, MANUAL_MERGE_LABEL, DEFAULT_SMALL_MAX_CHANGED_LINES, DEFAULT_SMALL_MAX_FILES, MAX_CAP, GLOB_KEYS, MAX_GLOBS, fold2, segments, DENIED_DIRS, GIT_HOOK_NAMES, HOOK_DIRS, SHIPPED_DIRS, DENIED_NAMES, DENIED_NAME_PATTERNS, deniedDotnetName, rootRelative, ROOT_DOCS, DOCS_EXT, FRONTMATTER_CANDIDATE, isFrontmatterCandidate, canonicalSpelling, hasFrontmatter, LIFECYCLE_SCRIPT, SCRIPT_RUNNER, RUNNER_INSTALL, UNFOLLOWABLE, INTERPRETER, ELSEWHERE_FLAG, TEST_SKIP, TEST_FILE_SKIP, ASSERTION, patchPathIsTest, TEST_NAME, ROOT_TEST_DIRS, ANY_DEPTH_TEST_DIRS, TEST_DIR_FILE, TEST_RUNNER_CODE, looksLikeTest, plainMode, SMALL_TIER_DENIED, setupMatcher, oneLineOf, TEST_CONFIG_NAME, SETUP_KEY_NAMES, MORE_CONFIG_KEY, ALLOWED_IMPORT, IMPORT_SPECIFIER, DYNAMIC_LOAD, KEY_ALT, SETUP_KEYS, SETUP_KEY_WORD, LOADS_MORE, STRING, BENIGN_PARKS, PARK_NOTE;
 var init_auto_merge = __esm({
   "src/factory/run/auto-merge.ts"() {
     "use strict";
-    import_path108 = require("path");
+    import_path109 = require("path");
     init_config2();
     init_merge2();
     init_lane_commit();
+    init_local_gate();
     init_merge_policy();
     AUTO_MERGE_TIERS = ["docs", "tests", "small"];
     MANUAL_MERGE_LABEL = "factory:manual-merge";
@@ -72417,14 +72897,6 @@ var init_auto_merge = __esm({
       "gradle.properties",
       "gradlew",
       "gradlew.bat",
-      "directory.packages.props",
-      "directory.build.props",
-      "directory.build.targets",
-      "nuget.config",
-      "packages.lock.json",
-      "global.json",
-      "directory.build.rsp",
-      "dotnet.config",
       "jsconfig.json",
       ".babelrc",
       ".editorconfig",
@@ -72480,7 +72952,6 @@ var init_auto_merge = __esm({
     ]);
     DENIED_NAME_PATTERNS = [
       /^requirements.*\.(?:txt|in)$/,
-      /\.(?:csproj|fsproj|vbproj|sln|slnx|slnf|props|targets)$/,
       /^tsconfig.*\.json$/,
       /^\.eslintrc/,
       /^eslint\.config\./,
@@ -72495,6 +72966,7 @@ var init_auto_merge = __esm({
       /\.(?:prompt|instructions|chatmode|agent)\.md$/,
       /\.mdc$/
     ];
+    deniedDotnetName = basenameMatcher([...DOTNET_DEFINITION_PATTERNS, ...DOTNET_TEST_CONFIG_PATTERNS]);
     rootRelative = (p) => p.replace(/\\/g, "/").trim().replace(/^(?:\.\/|\/)+/, "");
     ROOT_DOCS = /^(?:readme|changelog|contributing)(?:[._-][^/]*)?\.(?:md|rst|txt)$/;
     DOCS_EXT = /\.(?:md|rst|txt)$/;
@@ -72613,15 +73085,15 @@ function searchable(dir, deps, roots) {
   if (dir.slice(3).split(/[\\/]+/).some((s) => s.endsWith(".") || s.endsWith(" "))) return void 0;
   const resolved = real(deps, dir);
   if (resolved === void 0 || !/^[A-Za-z]:[\\/]/.test(resolved)) return void 0;
-  return trustedPath(resolved, roots) ? import_path109.win32.resolve(resolved) : void 0;
+  return trustedPath(resolved, roots) ? import_path110.win32.resolve(resolved) : void 0;
 }
 function resolvePosixAz(deps, given) {
-  const roots = given.flatMap((r) => [import_path109.posix.resolve(r), real(deps, r)].filter((x) => x !== void 0));
+  const roots = given.flatMap((r) => [import_path110.posix.resolve(r), real(deps, r)].filter((x) => x !== void 0));
   for (const dir of (deps.env.PATH ?? "").split(":")) {
     if (!dir.startsWith("/") || dir.split("/").some((s) => s === "." || s === "..")) continue;
     const realDir2 = real(deps, dir);
     if (realDir2 === void 0 || !posixTrusted(realDir2, roots)) continue;
-    const candidate = import_path109.posix.join(realDir2, "az");
+    const candidate = import_path110.posix.join(realDir2, "az");
     if (!deps.isFile(candidate)) continue;
     const realAz = real(deps, candidate);
     if (realAz === void 0 || !realAz.startsWith("/") || !posixTrusted(realAz, roots)) continue;
@@ -72633,17 +73105,17 @@ function resolveAzEntry(deps) {
   const given = deps.untrustedRoots.filter((r) => r.trim() !== "");
   if (given.length === 0) throw new AzBinaryError("Azure CLI resolution needs the repository, worktree, lane and job roots (untrustedRoots)");
   if (deps.platform !== "win32") return resolvePosixAz(deps, given);
-  const roots = given.flatMap((r) => [import_path109.win32.resolve(r), real(deps, r)].filter((x) => x !== void 0));
+  const roots = given.flatMap((r) => [import_path110.win32.resolve(r), real(deps, r)].filter((x) => x !== void 0));
   const dirs = pathEnv(deps.env, deps.platform).split(";").map((d) => d.trim().replace(/^"(.*)"$/, "$1")).filter((d) => d !== "").map((d) => searchable(d, deps, roots)).filter((d) => d !== void 0);
-  const azCmd = dirs.map((d) => import_path109.win32.join(d, "az.cmd")).find((p) => deps.isFile(p));
+  const azCmd = dirs.map((d) => import_path110.win32.join(d, "az.cmd")).find((p) => deps.isFile(p));
   if (!azCmd) {
     throw new AzBinaryError(
       "Azure CLI not found: no az.cmd on a drive-absolute PATH entry outside node_modules and the repository, lane and job roots. Install it with the MSI (https://aka.ms/installazurecliwindows)."
     );
   }
-  const python = import_path109.win32.resolve(import_path109.win32.dirname(azCmd), "..", "python.exe");
-  const cliPackage = import_path109.win32.resolve(import_path109.win32.dirname(azCmd), "..", "Lib", "site-packages", "azure", "cli");
-  if (!deps.isFile(python) || !(deps.isFile(import_path109.win32.join(cliPackage, "__main__.py")) || deps.isFile(import_path109.win32.join(cliPackage, "__main__.pyc")))) {
+  const python = import_path110.win32.resolve(import_path110.win32.dirname(azCmd), "..", "python.exe");
+  const cliPackage = import_path110.win32.resolve(import_path110.win32.dirname(azCmd), "..", "Lib", "site-packages", "azure", "cli");
+  if (!deps.isFile(python) || !(deps.isFile(import_path110.win32.join(cliPackage, "__main__.py")) || deps.isFile(import_path110.win32.join(cliPackage, "__main__.pyc")))) {
     throw new AzBinaryError(
       `Azure CLI at ${azCmd} has no bundled ${python} with ${cliPackage} (not the MSI layout). omg runs az through that python, never through cmd.exe; reinstall the Azure CLI with the MSI (https://aka.ms/installazurecliwindows).`
     );
@@ -72654,11 +73126,11 @@ function resolveAzEntry(deps) {
   }
   return { command: python, prefix: AZ_PYTHON_PREFIX, env: { AZ_INSTALLER: "MSI" } };
 }
-var import_path109, AZ_PYTHON_PREFIX, AzBinaryError, fold3, within2, trustedPath, posixWithin, posixTrusted;
+var import_path110, AZ_PYTHON_PREFIX, AzBinaryError, fold3, within2, trustedPath, posixWithin, posixTrusted;
 var init_az_binary = __esm({
   "src/forge/ado/az-binary.ts"() {
     "use strict";
-    import_path109 = require("path");
+    import_path110 = require("path");
     AZ_PYTHON_PREFIX = Object.freeze(["-IBm", "azure.cli"]);
     AzBinaryError = class extends Error {
       constructor(message) {
@@ -72666,14 +73138,14 @@ var init_az_binary = __esm({
         this.name = "AzBinaryError";
       }
     };
-    fold3 = (p) => import_path109.win32.resolve(p).replace(/[\\/]+$/, "").toLowerCase();
+    fold3 = (p) => import_path110.win32.resolve(p).replace(/[\\/]+$/, "").toLowerCase();
     within2 = (dir, root) => {
       const d = fold3(dir), r = fold3(root);
       return d === r || d.startsWith(`${r}\\`);
     };
-    trustedPath = (path15, roots) => !import_path109.win32.resolve(path15).split("\\").some((s) => s.toLowerCase() === "node_modules") && !roots.some((root) => within2(path15, root));
+    trustedPath = (path15, roots) => !import_path110.win32.resolve(path15).split("\\").some((s) => s.toLowerCase() === "node_modules") && !roots.some((root) => within2(path15, root));
     posixWithin = (path15, root) => {
-      const p = import_path109.posix.resolve(path15), r = import_path109.posix.resolve(root);
+      const p = import_path110.posix.resolve(path15), r = import_path110.posix.resolve(root);
       return p === r || p.startsWith(r === "/" ? "/" : `${r}/`);
     };
     posixTrusted = (path15, roots) => !path15.split("/").includes("node_modules") && !roots.some((root) => posixWithin(path15, root));
@@ -72994,7 +73466,7 @@ function adoMergeBody(headSha) {
   return { status: "completed", lastMergeSourceCommit: { commitId: headSha }, completionOptions: { mergeStrategy: "noFastForward" } };
 }
 function mergeBodyDirProblem(dir, platform = process.platform) {
-  const st = (0, import_fs91.lstatSync)(dir);
+  const st = (0, import_fs92.lstatSync)(dir);
   if (!st.isDirectory()) return `merge body directory ${dir} is not a directory`;
   if (platform === "win32") return void 0;
   const uid = typeof process.getuid === "function" ? process.getuid() : void 0;
@@ -73003,18 +73475,18 @@ function mergeBodyDirProblem(dir, platform = process.platform) {
   return void 0;
 }
 function writeBody(ctx, o, pr, headSha) {
-  if (!(0, import_path110.isAbsolute)(o.stateDir)) throw new Error(`merge body directory ${o.stateDir} is not absolute`);
-  (0, import_fs91.mkdirSync)(o.stateDir, { recursive: true, mode: 448 });
+  if (!(0, import_path111.isAbsolute)(o.stateDir)) throw new Error(`merge body directory ${o.stateDir} is not absolute`);
+  (0, import_fs92.mkdirSync)(o.stateDir, { recursive: true, mode: 448 });
   const dir = realOr2(o.stateDir);
   const root = o.untrustedRoots.find((r) => r.trim() !== "" && under2(dir, r));
   if (root) throw new Error(`merge body directory ${dir} is under the untrusted root ${root}`);
   const problem = mergeBodyDirProblem(dir);
   if (problem) throw new Error(problem);
-  const path15 = (0, import_path110.join)(dir, fileSafe(`ado-merge-${ctx.repo.owner}-${ctx.repo.project}-${ctx.repo.name}-pr-${pr}-${headSha.slice(0, 12)}.json`));
+  const path15 = (0, import_path111.join)(dir, fileSafe(`ado-merge-${ctx.repo.owner}-${ctx.repo.project}-${ctx.repo.name}-pr-${pr}-${headSha.slice(0, 12)}.json`));
   const content = `${JSON.stringify(adoMergeBody(headSha), null, 2)}
 `;
-  (0, import_fs91.rmSync)(path15, { force: true });
-  (0, import_fs91.writeFileSync)(path15, content, { encoding: "utf8", mode: 384, flag: "wx" });
+  (0, import_fs92.rmSync)(path15, { force: true });
+  (0, import_fs92.writeFileSync)(path15, content, { encoding: "utf8", mode: 384, flag: "wx" });
   return { path: path15, sha256: (0, import_crypto27.createHash)("sha256").update(content, "utf8").digest("hex") };
 }
 function adoMerge(ctx, o) {
@@ -73043,27 +73515,27 @@ function adoMerge(ctx, o) {
     }
   };
 }
-var import_crypto27, import_fs91, import_path110, SATISFIED, realOr2, under2, fileSafe;
+var import_crypto27, import_fs92, import_path111, SATISFIED, realOr2, under2, fileSafe;
 var init_merge4 = __esm({
   "src/forge/ado/merge.ts"() {
     "use strict";
     import_crypto27 = require("crypto");
-    import_fs91 = require("fs");
-    import_path110 = require("path");
+    import_fs92 = require("fs");
+    import_path111 = require("path");
     init_checks5();
     init_invoke();
     init_reviews();
     SATISFIED = /* @__PURE__ */ new Set(["approved", "notApplicable"]);
     realOr2 = (p) => {
       try {
-        return import_fs91.realpathSync.native(p);
+        return import_fs92.realpathSync.native(p);
       } catch {
-        return (0, import_path110.resolve)(p);
+        return (0, import_path111.resolve)(p);
       }
     };
     under2 = (path15, root) => {
-      const rel = (0, import_path110.relative)(realOr2(root), path15);
-      return rel === "" || !rel.startsWith("..") && !(0, import_path110.isAbsolute)(rel);
+      const rel = (0, import_path111.relative)(realOr2(root), path15);
+      return rel === "" || !rel.startsWith("..") && !(0, import_path111.isAbsolute)(rel);
     };
     fileSafe = (s) => s.replace(/[^A-Za-z0-9._-]+/g, "_");
   }
@@ -73078,7 +73550,7 @@ function recordingAdoExec(exec, dir, now = () => /* @__PURE__ */ new Date()) {
     let requestBody;
     if (typeof inv !== "string" && inv.flags["--in-file"]) {
       try {
-        requestBody = parseMaybe((0, import_fs92.readFileSync)(inv.flags["--in-file"], "utf8"));
+        requestBody = parseMaybe((0, import_fs93.readFileSync)(inv.flags["--in-file"], "utf8"));
       } catch {
         requestBody = "<unreadable>";
       }
@@ -73098,19 +73570,19 @@ function recordingAdoExec(exec, dir, now = () => /* @__PURE__ */ new Date()) {
       argv: azArgs.map((a, i) => inv.inFileAt === i ? "<in-file>" : a),
       ...requestBody !== void 0 ? { requestBody } : {}
     };
-    (0, import_fs92.mkdirSync)(dir, { recursive: true });
-    (0, import_fs92.writeFileSync)((0, import_path111.join)(dir, `${inv.route.id}.${(0, import_crypto28.createHash)("sha256").update(key).digest("hex").slice(0, 10)}.json`), `${JSON.stringify(fixture, null, 2)}
+    (0, import_fs93.mkdirSync)(dir, { recursive: true });
+    (0, import_fs93.writeFileSync)((0, import_path112.join)(dir, `${inv.route.id}.${(0, import_crypto28.createHash)("sha256").update(key).digest("hex").slice(0, 10)}.json`), `${JSON.stringify(fixture, null, 2)}
 `, "utf8");
     return res;
   };
 }
-var import_crypto28, import_fs92, import_path111, ADO_RECORD_ENV, parseMaybe;
+var import_crypto28, import_fs93, import_path112, ADO_RECORD_ENV, parseMaybe;
 var init_record = __esm({
   "src/forge/ado/record.ts"() {
     "use strict";
     import_crypto28 = require("crypto");
-    import_fs92 = require("fs");
-    import_path111 = require("path");
+    import_fs93 = require("fs");
+    import_path112 = require("path");
     init_az_binary();
     init_guard();
     init_redact2();
@@ -73361,7 +73833,7 @@ function adoTracker(ctx, intakeSource, bodyDir) {
     },
     comment(id, bodyFile) {
       try {
-        const call = adoCall(ctx, "wit.comments.POST", { ...projectParams(ctx), workItemId: String(id) }, { format: "markdown" }, { text: (0, import_fs93.readFileSync)(bodyFile, "utf8") });
+        const call = adoCall(ctx, "wit.comments.POST", { ...projectParams(ctx), workItemId: String(id) }, { format: "markdown" }, { text: (0, import_fs94.readFileSync)(bodyFile, "utf8") });
         return { ok: call.ok, stderr: call.ok ? "" : call.stderr || `az exited ${call.status}` };
       } catch (error62) {
         return { ok: false, stderr: failure2(error62) };
@@ -73466,11 +73938,11 @@ function adoTracker(ctx, intakeSource, bodyDir) {
   };
   return tracker;
 }
-var import_fs93, CLOSED_CATEGORIES, DEPENDS_ON, CHILD, PARENT, REV_CONFLICT, linkedIds, splitTags, num3, failure2, RELATION_OF, PEEK_FIELDS, PEEK_BATCH, KEY_QUERY_TOP, HTML_ESCAPES, escapeHtml, adoTextHtml, adoListHtml;
+var import_fs94, CLOSED_CATEGORIES, DEPENDS_ON, CHILD, PARENT, REV_CONFLICT, linkedIds, splitTags, num3, failure2, RELATION_OF, PEEK_FIELDS, PEEK_BATCH, KEY_QUERY_TOP, HTML_ESCAPES, escapeHtml, adoTextHtml, adoListHtml;
 var init_tracker2 = __esm({
   "src/forge/ado/tracker.ts"() {
     "use strict";
-    import_fs93 = require("fs");
+    import_fs94 = require("fs");
     init_body_file();
     init_config3();
     init_types9();
@@ -73505,12 +73977,12 @@ function defaultAzBinaryDeps(untrustedRoots, env2 = process.env) {
     env: env2,
     isFile: (p) => {
       try {
-        return (0, import_fs94.statSync)(p).isFile();
+        return (0, import_fs95.statSync)(p).isFile();
       } catch {
         return false;
       }
     },
-    realpath: (p) => import_fs94.realpathSync.native(p),
+    realpath: (p) => import_fs95.realpathSync.native(p),
     untrustedRoots
   };
 }
@@ -73540,19 +74012,19 @@ function createAzureDevOpsForge(exec, cwd, config2, options) {
     tracker: adoTracker(ctx, config2.intake.source, options.trackerBodyDir),
     reviews: adoReviews(ctx, { trustedReviewers: config2.review?.trustedReviewers ?? [] }),
     checks: adoChecks(ctx),
-    merge: adoMerge(ctx, { stateDir: options.stateDir ?? (0, import_path112.join)((0, import_os20.homedir)(), ".omg", "forge"), untrustedRoots }),
+    merge: adoMerge(ctx, { stateDir: options.stateDir ?? (0, import_path113.join)((0, import_os21.homedir)(), ".omg", "forge"), untrustedRoots }),
     ...pipeline ? { ci: adoCi(ctx, pipeline) } : {},
     // Heal needs to know which pipeline is CI: only a trusted factory.heal.pipeline names it.
     capabilities: { heal: pipeline !== void 0, projectsV2: false, boardColumns: true, webhookIntake: false }
   };
 }
-var import_fs94, import_os20, import_path112, progressValues, progressStates, progressColumns;
+var import_fs95, import_os21, import_path113, progressValues, progressStates, progressColumns;
 var init_ado = __esm({
   "src/forge/ado/index.ts"() {
     "use strict";
-    import_fs94 = require("fs");
-    import_os20 = require("os");
-    import_path112 = require("path");
+    import_fs95 = require("fs");
+    import_os21 = require("os");
+    import_path113 = require("path");
     init_az_binary();
     init_checks5();
     init_ci();
@@ -74714,440 +75186,6 @@ var init_diagnosis_output = __esm({
   }
 });
 
-// src/factory/run/local-gate.ts
-function resolveLocalGateArgv(argv, o) {
-  const platform = o.platform ?? process.platform;
-  const env2 = o.env ?? process.env;
-  const execPath = o.execPath ?? process.execPath;
-  const exists = o.exists ?? import_fs95.existsSync;
-  const what = o.subject ?? "the local gate";
-  const key = o.configKey ?? "factory.forge.local.gate";
-  const P = platform === "win32" ? import_path113.win32 : import_path113.posix;
-  const [cmd, ...args] = argv;
-  if (!cmd) return { missing: `${what} argv is empty` };
-  const hasPath = /[\\/]/.test(cmd) || platform === "win32" && cmd.includes(":");
-  if (hasPath) {
-    const at = P.isAbsolute(cmd) ? cmd : P.resolve(o.cwd, cmd);
-    return exists(at) ? { exe: cmd, args } : { missing: `${what} executable ${cmd} does not exist (resolved in the prepare checkout to ${at})` };
-  }
-  if (platform !== "win32") {
-    return findOnPath(cmd, env2, platform, exists) ? { exe: cmd, args } : { missing: `${what} executable ${cmd} is not on PATH` };
-  }
-  const name = cmd.toLowerCase().replace(/\.(cmd|bat)$/, "");
-  const known = NODE_SCRIPTS2[name];
-  const exe = () => findOnPath(name === cmd.toLowerCase() ? cmd : name, { ...env2, PATHEXT: ".COM;.EXE" }, "win32", exists);
-  if (known) {
-    const fromExe = known.exeFirst ? exe() : null;
-    if (fromExe) return { exe: fromExe, args };
-    const script = P.join(P.dirname(execPath), ...known.script);
-    if (exists(script)) return { exe: execPath, args: [script, ...args] };
-    return { missing: `${what} executable ${cmd} cannot start: on Windows ${what} runs without a shell, so ${name}.cmd is never run, and ${script} does not exist; set ${key} to a command that starts without a shell, such as ${npmCliHint(P, execPath, exists)}` };
-  }
-  if (/\.(cmd|bat)$/i.test(cmd)) {
-    return { missing: `${what} executable ${cmd} is a cmd.exe script, which ${what} never runs (no shell); set ${key} to node, an .exe or npm (none needs a shell), such as ${npmCliHint(P, execPath, exists)}` };
-  }
-  const found = exe();
-  return found ? { exe: found, args } : { missing: `${what} executable ${cmd} is not on PATH as an .exe or .com (on Windows ${what} runs without a shell, so .cmd/.bat shims are skipped); set ${key} to a command that starts without a shell, such as ${npmCliHint(P, execPath, exists)}` };
-}
-async function killGateTree(child, rootExited) {
-  const pid = child.pid;
-  if (!pid) return;
-  if (!rootExited) {
-    const identity = await getProcessStartIdentity(pid, Date.now() + KILL_DEADLINE_MS);
-    if (identity) {
-      const done = await terminateOwnedProcessTree({ pid, expectedStartIdentity: identity, deadlineAt: new Date(Date.now() + KILL_DEADLINE_MS).toISOString(), force: true });
-      if (done === "terminated" || done === "already-dead") return;
-    }
-    try {
-      child.kill("SIGKILL");
-    } catch {
-    }
-  }
-  if (process.platform !== "win32") {
-    try {
-      process.kill(-pid, "SIGKILL");
-    } catch {
-    }
-  }
-}
-function runOwned(exe, args, cwd, env2, timeoutMs, track) {
-  return new Promise((done) => {
-    let child;
-    try {
-      child = (0, import_child_process24.spawn)(exe, args, { cwd, env: env2, windowsHide: true, stdio: ["ignore", "pipe", "pipe"], detached: process.platform !== "win32" });
-    } catch (error62) {
-      done({ status: 127, stdout: "", stderr: "", timedOut: false, startError: `${exe}: ${error62.message}` });
-      return;
-    }
-    if (child.pid) track?.spawned(child.pid);
-    let stdout = "";
-    let stderr = "";
-    let exitStatus = null;
-    let timedOut = false;
-    let settled = false;
-    let drain;
-    const finish = (r) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      clearTimeout(drain);
-      done(r);
-    };
-    child.stdout.setEncoding("utf8").on("data", (d) => {
-      stdout = keepTail(stdout + d);
-    });
-    child.stderr.setEncoding("utf8").on("data", (d) => {
-      stderr = keepTail(stderr + d);
-    });
-    child.on("error", (error62) => {
-      if (!child.pid) finish({ status: 127, stdout, stderr, timedOut: false, startError: `${exe}: ${error62.message}` });
-    });
-    child.on("exit", (code, signal) => {
-      exitStatus = code ?? (signal ? 128 : 1);
-      const exitedAt = Date.now();
-      drain = setTimeout(() => {
-        if (settled || timedOut) return;
-        void killGateTree(child, true);
-        child.stdout?.destroy();
-        child.stderr?.destroy();
-        void (track ? track.rootGone(exitedAt) : Promise.resolve()).catch(() => void 0).then(() => {
-          finish({ status: exitStatus, stdout, stderr, timedOut: false });
-        });
-      }, EXIT_DRAIN_MS);
-    });
-    child.on("close", (code, signal) => {
-      finish({ status: timedOut ? 124 : exitStatus ?? code ?? (signal ? 128 : 1), stdout, stderr, timedOut });
-    });
-    const timer = setTimeout(() => {
-      const exited = exitStatus !== null;
-      if (!exited) timedOut = true;
-      void killGateTree(child, exited).then(() => exited ? track?.rootGone(Date.now()) : void 0).catch(() => void 0).finally(() => {
-        child.stdout?.destroy();
-        child.stderr?.destroy();
-        finish(exited ? { status: exitStatus, stdout, stderr, timedOut: false } : { status: 124, stdout, stderr, timedOut: true });
-      });
-    }, timeoutMs);
-  });
-}
-function assertLocalGateCommand(recorded, configured, checkout, expectedCheckout) {
-  if (!configured || configured.length === 0) throw new FactorySafetyError("omg factory run refuses the local gate: factory.forge.local.gate is not set in a trusted config layer");
-  if (recorded.length !== configured.length || recorded.some((a, i) => a !== configured[i])) {
-    throw new FactorySafetyError(`omg factory run refuses the local gate \`${configured.join(" ")}\`: this run recorded \`${recorded.join(" ")}\`; restore factory.forge.local.gate, or cancel the run (omg factory run cancel) and start a new one`);
-  }
-  const real2 = realOrResolved(checkout);
-  for (const p of [checkout, expectedCheckout]) {
-    if (isLink3(p)) throw new FactorySafetyError(`omg factory run refuses the local gate in ${checkout} (really ${real2}): ${p} is a junction or symlink, never the engine's prepare checkout`);
-  }
-  if (!sameFsPath(real2, realOrResolved(expectedCheckout))) throw new FactorySafetyError(`omg factory run refuses the local gate in ${checkout} (really ${real2}): it runs only in the engine's prepare checkout ${expectedCheckout}`);
-}
-function localGateRecord(stateDir, root, head) {
-  return readLocalCheckRecord(stateDir, root, head);
-}
-function localGateDue(stateDir, root, head, timeoutMinutes, now) {
-  const r = localGateRecord(stateDir, root, head);
-  if (!r) return true;
-  if (r.state !== "PENDING") return false;
-  const started = Date.parse(r.startedAt);
-  return !Number.isFinite(started) || now.getTime() - started > timeoutMinutes * 6e4 + LOCAL_GATE_STALE_GRACE_MS;
-}
-async function runLocalGate(i) {
-  if (i.gate.length === 0) throw new FactorySafetyError("omg factory run refuses an empty local gate");
-  if (i.mode === "enforced" && !i.sandbox) throw new FactorySafetyError("omg factory run refuses an enforced local gate without a sandbox runner");
-  const now = i.now ?? (() => /* @__PURE__ */ new Date());
-  const started = now();
-  const base = { name: LOCAL_GATE_CHECK, head: i.head, state: "PENDING", argv: [...i.gate], runId: runIdAt(started), startedAt: started.toISOString(), sandbox: i.mode };
-  writeLocalCheckRecord(i.stateDir, i.root, base);
-  if (i.mode === "enforced") return runSandboxedGate(i, base, now);
-  const procs = gateProcsPath(i.stateDir, i.root, i.head);
-  await sweepGateProcs((0, import_path113.dirname)(procs)).catch(() => void 0);
-  await reapGateProcs(procs).catch(() => void 0);
-  let r;
-  try {
-    r = await (i.runner ?? defaultLocalGateRunner)(i.gate, i.checkout, i.timeoutMinutes * 6e4, createGateProcTracker(procs, Date.now(), void 0, (m) => process.stderr.write(`omg factory run: ${m}
-`)));
-  } catch (error62) {
-    (0, import_fs95.rmSync)(localCheckRecordPath(i.stateDir, i.root, i.head), { force: true });
-    throw error62;
-  } finally {
-    await reapGateProcs(procs).catch(() => void 0);
-  }
-  if (r.startError !== void 0) {
-    (0, import_fs95.rmSync)(localCheckRecordPath(i.stateDir, i.root, i.head), { force: true });
-    return { started: false, reason: r.startError };
-  }
-  const output2 = `${r.stdout}${r.stderr ? `
-${r.stderr}` : ""}${r.timedOut ? `
-local gate timed out after ${i.timeoutMinutes} min` : ""}`;
-  const done = {
-    ...base,
-    state: r.status === 0 && !r.timedOut ? "SUCCESS" : "FAILURE",
-    completedAt: now().toISOString(),
-    exitCode: r.timedOut ? 124 : r.status,
-    tail: tailOf(output2.trim())
-  };
-  writeLocalCheckRecord(i.stateDir, i.root, done);
-  return { started: true, record: done };
-}
-async function runSandboxedGate(i, base, now) {
-  const drop = () => (0, import_fs95.rmSync)(localCheckRecordPath(i.stateDir, i.root, i.head), { force: true });
-  hardenWindowsExeSearch();
-  const target = resolveLocalGateArgv(i.gate, { cwd: i.checkout });
-  if ("missing" in target) {
-    drop();
-    return { started: false, reason: target.missing };
-  }
-  let r;
-  try {
-    r = await i.sandbox.run({ purpose: "gate", argv: i.gate, exe: target.exe, args: target.args, cwd: i.checkout, commonGitDir: i.sandbox.commonGitDir, timeoutMs: i.timeoutMinutes * 6e4, ...i.sandbox.requireDeniedPaths ? { requireDeniedPaths: true } : {} });
-  } catch (error62) {
-    drop();
-    throw error62;
-  }
-  if (!r.ran) {
-    drop();
-    return { started: false, reason: r.reason, sandbox: true, ...r.started ? { noVerdict: true } : {}, ...r.refused ? { refused: true } : {}, ...r.unavailable ? { unavailable: true } : {} };
-  }
-  const output2 = `${r.output}${r.timedOut ? `
-local gate timed out after ${i.timeoutMinutes} min` : ""}`;
-  const done = {
-    ...base,
-    state: r.status === 0 && !r.timedOut ? "SUCCESS" : "FAILURE",
-    completedAt: now().toISOString(),
-    exitCode: r.timedOut ? 124 : r.status,
-    tail: tailOf(output2.trim()),
-    ...r.credentialFilesReadable ? { sandboxNote: CREDENTIAL_FILES_READABLE_NOTE } : {}
-  };
-  writeLocalCheckRecord(i.stateDir, i.root, done);
-  return { started: true, record: done };
-}
-function repoPath(p) {
-  if (import_path113.posix.isAbsolute(p) || import_path113.win32.isAbsolute(p) || /^[a-z]:/i.test(p)) return void 0;
-  const norm2 = import_path113.posix.normalize(p.replace(/\\/g, "/"));
-  return norm2 === "." || norm2.startsWith("../") || norm2 === ".." ? void 0 : norm2;
-}
-function scriptSource(manager2, args, shown) {
-  const words = [];
-  let dir = "";
-  const configs = [];
-  for (let i = 0; i < args.length; i++) {
-    const a = args[i];
-    if (a === "--") break;
-    if (!a.startsWith("-") || a === "-") {
-      words.push(a);
-      continue;
-    }
-    if (manager2 !== "npm" && words.length > 0) break;
-    const eq = a.indexOf("=");
-    const flag = eq > 0 ? a.slice(0, eq) : a;
-    let value;
-    if (eq > 0) value = a.slice(eq + 1);
-    else if (VALUE_FLAGS.has(flag)) value = args[++i];
-    if (WORKSPACE_FLAGS.has(flag)) return { sources: [], unresolved: `${shown} selects workspace packages (${flag}), so the script's package.json is not known` };
-    if (DIR_FLAGS.has(flag)) {
-      const p = value === void 0 ? void 0 : /^\.\/?$/.test(import_path113.posix.normalize(value.replace(/\\/g, "/"))) ? "" : repoPath(value)?.replace(/\/+$/, "");
-      if (p === void 0) return { sources: [], unresolved: `${shown} runs in ${JSON.stringify(value ?? "")}, which is not a directory inside the repository` };
-      dir = p;
-    } else if ((CONFIG_FLAGS.has(flag) || flag === "--script-shell") && value !== void 0) {
-      const p = repoPath(value);
-      if (p) configs.push(p);
-    }
-  }
-  const [sub, next] = words;
-  let script;
-  if (!sub) script = void 0;
-  else if (NPM_TEST.has(sub)) script = "test";
-  else if (sub === "start") script = "start";
-  else if (NPM_RUN.has(sub)) script = next;
-  else if (PM_NON_SCRIPT.has(sub)) return { sources: [], unresolved: `${shown} runs ${manager2} ${sub}, not a package.json script, so its definition is not known` };
-  else if (manager2 !== "npm") script = sub;
-  if (!script) return { sources: [], unresolved: `${shown} names no package.json script (such as npm test or npm run <script>)` };
-  const at = (f) => dir ? `${dir}/${f}` : f;
-  const files = [.../* @__PURE__ */ new Set([...PM_CONFIG_FILES, ...PM_CONFIG_FILES.map(at), ...configs])];
-  return { sources: [{ path: at("package.json"), scripts: [`pre${script}`, script, `post${script}`] }, ...files.map((path15) => ({ path: path15 }))] };
-}
-function dotnetSource(args, shown) {
-  const sub = args[0]?.toLowerCase();
-  if (!sub || !DOTNET_GATE_SUBCOMMANDS.has(sub)) {
-    return { sources: [], unresolved: `${shown} runs dotnet ${sub ? JSON.stringify(args[0]) : "without a subcommand"}; only dotnet build and dotnet test (the subcommand first) have a known definition, the repository's solution, project and MSBuild files` };
-  }
-  const named = [];
-  for (let i = 1; i < args.length; i++) {
-    const a = args[i];
-    if (a === "--") break;
-    let value;
-    if (a.startsWith("@")) value = a.slice(1);
-    else if (!a.startsWith("-")) value = a;
-    else {
-      const eq = a.indexOf("=");
-      const flag = eq > 0 ? a.slice(0, eq) : a;
-      if (DOTNET_PATH_OPTIONS.has(flag)) value = eq > 0 ? a.slice(eq + 1) : args[++i];
-      else if (eq < 0 && DOTNET_VALUE_OPTIONS.has(flag)) i++;
-    }
-    const p = value === void 0 ? void 0 : repoPath(value);
-    if (p) named.push(p.replace(/\/+$/, ""));
-  }
-  return { sources: [...DOTNET_DEFINITION_PATTERNS.map((path15) => ({ path: path15, pattern: true })), ...[...new Set(named)].map((path15) => ({ path: path15 }))] };
-}
-function patternSourceChanges(sources, a, b) {
-  const patterns = sources.filter((s) => s.pattern).map((s) => s.path);
-  const pick2 = (tree) => new Map(tree.filter(([p]) => patterns.some((x) => patternHit(x, p))));
-  const [ma, mb] = [pick2(a), pick2(b)];
-  return [.../* @__PURE__ */ new Set([...ma.keys(), ...mb.keys()])].filter((p) => ma.get(p) !== mb.get(p)).sort();
-}
-function gateDefinitionSources(gate) {
-  const [cmd, ...args] = gate;
-  if (!cmd) return { sources: [] };
-  const shown = `the gate "${gate.join(" ")}"`;
-  const name = (cmd.split(/[\\/]/).pop() ?? cmd).toLowerCase().replace(/\.(cmd|bat|exe)$/, "");
-  if (name === "npm" || name === "pnpm" || name === "yarn") return scriptSource(name, args, shown);
-  if (name === "npx") return { sources: [], unresolved: npxUnresolved(shown) };
-  if (name === "node") {
-    const at = args.findIndex((a) => !a.startsWith("-"));
-    if (args[0] === "--run" && args[1] !== void 0 && !args[1].startsWith("-")) return scriptSource("npm", ["run", args[1]], shown);
-    if (args[0] === "--test" && args.slice(1).every((a) => !a.startsWith("-") || a.startsWith("--test-") || a === "--experimental-test-coverage")) return { sources: [] };
-    if (["-e", "--eval", "-p", "--print"].includes(args[0]) && args[1] !== void 0) return { sources: [] };
-    if (/^--(eval|print)=/.test(args[0] ?? "")) return { sources: [] };
-    if (at !== 0 && args.length > 0) return { sources: [], unresolved: `${shown} passes node the option ${JSON.stringify(args[0])} before its script, so what it runs is not known` };
-    if (at < 0) return { sources: [] };
-    const target = args[at];
-    const base = (target.split(/[\\/]/).pop() ?? "").toLowerCase();
-    if (base === "npm-cli.js") return scriptSource("npm", args.slice(at + 1), shown);
-    if (base === "npx-cli.js") return { sources: [], unresolved: npxUnresolved(shown) };
-    const pm = /^(pnpm|yarn)([-.][\w.]+)?\.c?js$/.exec(base);
-    if (pm) return scriptSource(pm[1], args.slice(at + 1), shown);
-    const p = repoPath(target);
-    return { sources: p ? [{ path: p }] : [] };
-  }
-  if (name === "dotnet" && (!/[\\/]/.test(cmd) || !repoPath(cmd))) return dotnetSource(args, shown);
-  if (/[\\/]/.test(cmd)) {
-    const own2 = repoPath(cmd);
-    if (own2) return { sources: [{ path: own2 }] };
-    return { sources: [], unresolved: `${shown} runs ${JSON.stringify(cmd)}, a program outside the repository that may read repository files the gate does not name (a Makefile, pytest.ini, its arguments)` };
-  }
-  return { sources: [], unresolved: `${shown} runs ${JSON.stringify(cmd)} from PATH, and the repository holds no file that defines it` };
-}
-function gateDefinition(sources, read, list) {
-  let tree;
-  return JSON.stringify(sources.map((s) => {
-    if (s.pattern) {
-      if (!list) throw new Error(`the gate definition source ${s.path} is a pattern and needs the commit's file list`);
-      tree ??= list();
-      return [`**/${s.path}`, tree.filter(([p]) => patternHit(s.path, p)).map(([p, oid]) => [p, oid]).sort((a, b) => a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0)];
-    }
-    const text3 = read(s.path);
-    if (!s.scripts || text3 === void 0) return [s.path, text3 ?? null];
-    let scripts;
-    try {
-      const parsed = JSON.parse(text3);
-      scripts = parsed && typeof parsed.scripts === "object" && parsed.scripts !== null ? parsed.scripts : {};
-    } catch {
-      return [s.path, text3];
-    }
-    return [s.path, s.scripts.map((k) => [k, Object.prototype.hasOwnProperty.call(scripts, k) ? scripts[k] : null])];
-  }));
-}
-var import_child_process24, import_fs95, import_os21, import_path113, LOCAL_GATE_TAIL_CHARS, LOCAL_GATE_STALE_GRACE_MS, STREAM_KEEP_CHARS, KILL_DEADLINE_MS, EXIT_DRAIN_MS, NODE_SCRIPTS2, npmCliHint, keepTail, defaultLocalGateRunner, realOrResolved, isLink3, runIdAt, tailOf, NPM_TEST, NPM_RUN, PM_CONFIG_FILES, DIR_FLAGS, CONFIG_FLAGS, WORKSPACE_FLAGS, PM_NON_SCRIPT, VALUE_FLAGS, DOTNET_DEFINITION_PATTERNS, DOTNET_GATE_SUBCOMMANDS, DOTNET_PATH_OPTIONS, DOTNET_VALUE_OPTIONS, patternHit, gateSourcePathspec, npxUnresolved, describeGateSources;
-var init_local_gate = __esm({
-  "src/factory/run/local-gate.ts"() {
-    "use strict";
-    import_child_process24 = require("child_process");
-    import_fs95 = require("fs");
-    import_os21 = require("os");
-    import_path113 = require("path");
-    init_local();
-    init_process_utils();
-    init_windows_search();
-    init_exec2();
-    init_gate_procs();
-    init_sandbox_exec();
-    LOCAL_GATE_TAIL_CHARS = 8e3;
-    LOCAL_GATE_STALE_GRACE_MS = 6e4;
-    STREAM_KEEP_CHARS = 64 * 1024;
-    KILL_DEADLINE_MS = 3e4;
-    EXIT_DRAIN_MS = 2e3;
-    NODE_SCRIPTS2 = {
-      npm: { script: ["node_modules", "npm", "bin", "npm-cli.js"], exeFirst: false },
-      npx: { script: ["node_modules", "npm", "bin", "npx-cli.js"], exeFirst: false },
-      pnpm: { script: ["node_modules", "corepack", "dist", "pnpm.js"], exeFirst: true },
-      yarn: { script: ["node_modules", "corepack", "dist", "yarn.js"], exeFirst: true }
-    };
-    npmCliHint = (P, execPath, exists) => {
-      const script = P.join(P.dirname(execPath), "node_modules", "npm", "bin", "npm-cli.js");
-      return exists(script) ? JSON.stringify(["npm", "test"]) : JSON.stringify(["node", script, "test"]);
-    };
-    keepTail = (text3) => text3.length > STREAM_KEEP_CHARS ? text3.slice(-STREAM_KEEP_CHARS) : text3;
-    defaultLocalGateRunner = async (argv, cwd, timeoutMs, track) => {
-      hardenWindowsExeSearch();
-      const target = resolveLocalGateArgv(argv, { cwd });
-      if ("missing" in target) return { status: 127, stdout: "", stderr: "", timedOut: false, startError: target.missing };
-      const exe = resolveBareExe(target.exe) ?? target.exe;
-      const home = (0, import_fs95.mkdtempSync)((0, import_path113.join)((0, import_os21.tmpdir)(), "omg-gate-home-"));
-      try {
-        return await runOwned(exe, target.args, cwd, childEnv(gateEnv(process.env, home)), timeoutMs, track);
-      } finally {
-        try {
-          (0, import_fs95.rmSync)(home, { recursive: true, force: true });
-        } catch {
-        }
-      }
-    };
-    realOrResolved = (p) => {
-      try {
-        return import_fs95.realpathSync.native(p);
-      } catch {
-        return (0, import_path113.resolve)(p);
-      }
-    };
-    isLink3 = (p) => {
-      try {
-        return (0, import_fs95.lstatSync)(p).isSymbolicLink();
-      } catch {
-        return false;
-      }
-    };
-    runIdAt = (d) => Math.max(1, Math.floor(d.getTime() / 1e3));
-    tailOf = (text3) => {
-      const clean = redactGateOutput(text3);
-      return clean.length > LOCAL_GATE_TAIL_CHARS ? clean.slice(-LOCAL_GATE_TAIL_CHARS) : clean;
-    };
-    NPM_TEST = /* @__PURE__ */ new Set(["test", "t", "tst"]);
-    NPM_RUN = /* @__PURE__ */ new Set(["run", "run-script", "rum", "urn"]);
-    PM_CONFIG_FILES = [".npmrc", ".yarnrc", ".yarnrc.yml", ".pnpmfile.cjs"];
-    DIR_FLAGS = /* @__PURE__ */ new Set(["--prefix", "-C", "--dir", "--cwd"]);
-    CONFIG_FLAGS = /* @__PURE__ */ new Set(["--userconfig", "--globalconfig"]);
-    WORKSPACE_FLAGS = /* @__PURE__ */ new Set(["--workspace", "-w", "--workspaces", "--ws", "-ws", "--filter", "-F", "--recursive", "-r", "--include-workspace-root"]);
-    PM_NON_SCRIPT = /* @__PURE__ */ new Set(["workspace", "workspaces", "recursive", "exec", "dlx", "node", "create"]);
-    VALUE_FLAGS = /* @__PURE__ */ new Set([...DIR_FLAGS, ...CONFIG_FLAGS, "--workspace", "-w", "--filter", "-F", "--registry", "--cache", "--loglevel", "--script-shell", "--node-options", "--tag", "--otp", "--reporter"]);
-    DOTNET_DEFINITION_PATTERNS = [
-      "*.sln",
-      "*.slnx",
-      "*.slnf",
-      "*.csproj",
-      "*.fsproj",
-      "*.vbproj",
-      "*.proj",
-      "*.props",
-      "*.targets",
-      "Directory.Build.rsp",
-      "global.json",
-      "nuget.config",
-      "packages.lock.json",
-      "dotnet.config"
-    ];
-    DOTNET_GATE_SUBCOMMANDS = /* @__PURE__ */ new Set(["build", "test"]);
-    DOTNET_PATH_OPTIONS = /* @__PURE__ */ new Set(["--settings", "-s", "--project", "--solution", "--test-adapter-path"]);
-    DOTNET_VALUE_OPTIONS = /* @__PURE__ */ new Set(["-c", "--configuration", "-f", "--framework", "-r", "--runtime", "-o", "--output", "-v", "--verbosity", "--filter", "-l", "--logger", "--collect", "-a", "--arch", "--os", "--results-directory", "-d", "--diag", "-e", "--environment", "--version-suffix", "--blame-hang-timeout", "--blame-crash-dump-type", "--blame-hang-dump-type"]);
-    patternHit = (pattern, path15) => {
-      const base = (path15.split("/").pop() ?? path15).toLowerCase();
-      const p = pattern.toLowerCase();
-      return p.startsWith("*.") ? base.endsWith(p.slice(1)) && base.length > p.length - 1 : base === p;
-    };
-    gateSourcePathspec = (s) => s.pattern ? `':(glob,icase)**/${s.path}'` : s.path;
-    npxUnresolved = (shown) => `${shown} runs npx, which fetches and runs registry code that the repository cannot pin`;
-    describeGateSources = (sources) => sources.map((s) => s.scripts ? `${s.path} scripts ${s.scripts.join("/")}` : s.pattern ? `**/${s.path}` : s.path).join(", ");
-  }
-});
-
 // src/factory/run/lane.ts
 var LaneLostError, TERMINAL_LANE_STATES, isTerminalLaneState, STATE_OF, CopilotLaneBackend;
 var init_lane = __esm({
@@ -76290,7 +76328,7 @@ var init_engine = __esm({
     MSYS_DLL_INIT_FAILED = [3221225794, 3221225794 - 2 ** 32];
     windowsGitTransportFailure = (output2, platform = process.platform) => platform === "win32" && !!output2?.includes(GIT_TRANSPORT_FAILURE);
     windowsJunctionReadDenied = (output2, platform = process.platform) => platform === "win32" && !!output2 && /Cannot read directory "[^"\r\n]*node_modules[\\/][^"\r\n]*": Access is denied\./.test(output2);
-    DOTNET_SANDBOX_ADVICE = "Your dotnet command fails in the sandbox on the base. The sandbox has no network, so every NuGet package must already be in the NuGet global packages folder (NUGET_PACKAGES, else ~/.nuget/packages): run dotnet restore on the base yourself once. Private feeds and credentials in your NuGet.Config are not available there, and an explicit -m/-maxcpucount above 1 hangs (MSBuild worker nodes cannot connect in the Windows sandbox; the engine adds -m:1 when none is given)";
+    DOTNET_SANDBOX_ADVICE = "Your dotnet command fails in the sandbox on the base. The sandbox has no network, so every NuGet package must already be in the NuGet global packages folder (NUGET_PACKAGES, else ~/.nuget/packages): run dotnet restore on the base yourself once. Private feeds and credentials in your NuGet.Config are not available there. NuGet's audit cannot reach the feed and warns NU1900, which fails a project with TreatWarningsAsErrors: set NuGetAudit to false there (or pass -p:NuGetAudit=false in the gate). The engine appends -m:1 to every MSBuild command (worker nodes cannot connect in the Windows sandbox; the last -m wins), so a hang comes from elsewhere, such as a task run with TaskHostFactory";
     localDetailNote = (key, what) => `; ${what} is shown on this host only (omg factory run status ${key}), never posted`;
     isHumanReadGate = (name) => name === HUMAN_REVIEW_GATE || name === "merge" || name === "fix-rounds-spent" || name === "head-moved-externally";
     CALIBRATION_NO_TEST_FILTER = "omg-calibration-matches-no-test-file";
@@ -76945,7 +76983,7 @@ var init_engine = __esm({
           intent = null;
         }
         if (!intent) return null;
-        return { sandboxed: intent.sandboxed, writeNetwork: intent.writeNetwork, nodeModulesReady: intent.sandboxed && (0, import_fs98.existsSync)((0, import_path117.join)(this.o.root, "node_modules")), ...this.dotnetRepo() ? { dotnet: true } : {} };
+        return { sandboxed: intent.sandboxed, writeNetwork: intent.writeNetwork, nodeModulesReady: intent.sandboxed && (0, import_fs98.existsSync)((0, import_path117.join)(this.o.root, "node_modules")), ...this.dotnetRepo() ? { dotnet: true, ...intent.writeNetwork === "registry" && (intent.allowedHosts ?? []).some(isNugetHost) ? { nugetReachable: true } : {} } : {} };
       }
       /**
        * The run's repository is a .NET one for its lanes: the local gate
@@ -78488,7 +78526,7 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
         const plain = sources.filter((x) => !x.pattern);
         const changed = sources.some((x) => x.pattern) ? patternSourceChanges(sources, treeAt(s.baseSha), treeAt(cand)) : [];
         const named = [...plain.length > 0 ? [describeGateSources(plain)] : [], ...changed].join(", ") || describeGateSources(sources);
-        const specs = [.../* @__PURE__ */ new Set([...plain.map(gateSourcePathspec), ...changed])];
+        const specs = [.../* @__PURE__ */ new Set([...plain.map(gateSourcePathspec), ...changed.map(shellPath)])];
         this.save((x) => setGate(x, "gate-definition-changed", `the change redefines the local gate "${gate.join(" ")}" (${named} differ from ${s.base})${stale}; offline the gate is the only check, so nothing was pushed. Inspect it with git -C ${this.o.root} diff ${s.baseSha.slice(0, 12)} ${cand.slice(0, 12)} -- ${(specs.length > 0 ? specs : sources.map(gateSourcePathspec)).join(" ")}, then rerun ${this.resume} --allow-gate-change to accept it, or ${cancelCommand(this.key)}`, this.iso(), { definition: head }));
         return true;
       }
@@ -79777,6 +79815,7 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
         if ((0, import_fs98.existsSync)(checkout)) {
           const gitArgs = this.checkoutGitArgs(checkout);
           let dirty = [];
+          let stray = [];
           let problem = typeof gitArgs === "string" ? gitArgs : null;
           if (typeof gitArgs !== "string") {
             const indexDir = (0, import_fs98.mkdtempSync)((0, import_path117.join)((0, import_os22.tmpdir)(), "omg-gate-index-"));
@@ -79786,6 +79825,9 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
               runHostGit(checkout, [...gitArgs, "read-tree", at], void 0, fresh);
               const status = [...gitArgs, "-c", "core.untrackedCache=false", "status", "--porcelain=v1", "-z", "--untracked-files=all"];
               dirty = checkoutChanges(this.o.root, checkout, runHostGit(checkout, status, void 0, fresh), trustedNestedRels(this.o.root, checkout, this.baseWorkspaces()));
+              if (isDotnetExe(gate[0]) || isDotnetExe(this.state.localGate?.[0])) {
+                stray = strayDotnetDefinitionFiles(runHostGit(checkout, [...gitArgs, "ls-files", "--others", "-z"], void 0, fresh).split("\0").filter(Boolean));
+              }
             } catch (error62) {
               problem = errText6(error62);
             } finally {
@@ -79798,6 +79840,10 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
           }
           if (at === head && dirty.length > 0) {
             this.gate("lane-tampered", `the engine's prepare checkout ${checkout} is at ${head.slice(0, 12)} but its working tree differs from it (${dirty.slice(0, 5).join(", ")}): a changed tracked file or an untracked file that is not ignored, so the local gate did not run; inspect it and undo what the PR's code changed there, then rerun ${this.resume}`);
+            return false;
+          }
+          if (at === head && stray.length > 0) {
+            this.gate("lane-tampered", `the engine's prepare checkout ${checkout} holds untracked file(s) that MSBuild reads for the dotnet gate but no commit pins (${stray.slice(0, 5).join(", ")}${stray.length > 5 ? `, ${stray.length - 5} more` : ""}): the PR's code run there earlier can leave them (ignored by .gitignore or not), so the local gate did not run; inspect them and delete them by hand (or the checkout, with omg factory run clean), then rerun ${this.resume}`);
             return false;
           }
         } else if (!this.reprepared && this.state.pr !== void 0) {

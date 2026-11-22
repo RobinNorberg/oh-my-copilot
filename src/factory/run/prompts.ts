@@ -4,7 +4,7 @@
  * byte); engine.ts re-exports the public names.
  */
 
-import { DOTNET_SINGLE_NODE_FLAG } from '../../copilot-run/dotnet-sandbox.js';
+import { DOTNET_SINGLE_NODE_FLAG, MSBUILD_SUBCOMMANDS } from '../../copilot-run/dotnet-sandbox.js';
 import { visibleLine, visibleText } from '../../forge/review-feedback.js';
 import { forgeTerms } from '../../forge/terms.js';
 import { oneLine } from '../../lib/one-line.js';
@@ -126,6 +126,8 @@ export interface LaneEnvironment {
   nodeModulesReady: boolean;
   /** A .NET repository (the run's local gate runs dotnet): the lane's sandbox has the dotnet env (dotnet-sandbox.ts). */
   dotnet?: boolean;
+  /** writeNetwork "registry" with a NuGet host (api.nuget.org) in sandbox.allowedHosts: NuGet can reach its feed. */
+  nugetReachable?: boolean;
 }
 
 /**
@@ -147,10 +149,13 @@ function noInstallRule(lane: LaneEnvironment | null): string[] {
  */
 function dotnetRule(lane: LaneEnvironment | null): string[] {
   if (!lane?.sandboxed || !lane.dotnet) return [];
-  const offline = lane.writeNetwork === 'none'
-    ? ' NuGet packages come only from those already restored on this machine: do not add or upgrade a package reference; report a missing package in your final message instead.'
-    : '';
-  return [`Always pass \`${DOTNET_SINGLE_NODE_FLAG}\` to dotnet build, test, restore, pack, publish, clean and run (for example \`dotnet test ${DOTNET_SINGLE_NODE_FLAG}\`): in this sandbox MSBuild's worker nodes cannot connect, and without it the command hangs.${offline}`];
+  // writeNetwork "registry" allows the npm hosts only: NuGet is offline there too unless sandbox.allowedHosts names a NuGet host.
+  const offline = lane.nugetReachable
+    ? ''
+    : ' NuGet cannot reach its feed here: packages come only from those already restored on this machine, so do not add or upgrade a package reference; report a missing package in your final message instead.';
+  const subs = MSBUILD_SUBCOMMANDS.map((x) => `dotnet ${x}`);
+  const list = `${subs.slice(0, -1).join(', ')} and ${subs[subs.length - 1]}`;
+  return [`Always pass \`${DOTNET_SINGLE_NODE_FLAG}\` to ${list} (for example \`dotnet test ${DOTNET_SINGLE_NODE_FLAG}\`): in this sandbox MSBuild's worker nodes cannot connect, and without it the command hangs. Not to dotnet run, which hands it to the program as an argument: build with \`dotnet build ${DOTNET_SINGLE_NODE_FLAG}\`, then start the program with \`dotnet run --no-build\`. Not to \`dotnet test <file>.dll\` either, which runs no MSBuild and rejects it.${offline}`];
 }
 
 /** The repository guide files the implement prompt names, when the lane's base has them. */

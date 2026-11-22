@@ -17,8 +17,11 @@
  *   pipe too: UseSharedCompilation=false compiles in process instead (a
  *   two-project `dotnet test` went from 56 s to 16 s).
  * - With no APPDATA NuGet stops ("Value cannot be null. (Parameter
- *   'path1')"): it points into the job's own profile, never at your real
- *   %APPDATA%\NuGet\NuGet.Config (it can hold private-feed credentials).
+ *   'path1')"): it points into the job's own profile, so NuGet does not load
+ *   your real %APPDATA%\NuGet\NuGet.Config (it can hold private-feed
+ *   credentials). On Windows the sandbox cannot deny the file itself (the
+ *   "Known gap" in docs/REFERENCE.md); on Linux and macOS sandbox.ts denies
+ *   the NuGet config and credential-provider dirs.
  * - NuGet and SourceLink find your profile from the OS, not USERPROFILE: the
  *   global packages folder is granted read-only (and named in
  *   NUGET_PACKAGES), and SourceLink's read of your real ~/.gitconfig, which
@@ -35,24 +38,29 @@ export function isDotnetExe(exe) {
     const base = (exe.split(/[\\/]/).pop() ?? exe).toLowerCase();
     return base === 'dotnet' || base === 'dotnet.exe';
 }
-/** dotnet subcommands that run MSBuild, so they take `-m`. */
-const MSBUILD_SUBCOMMANDS = new Set(['build', 'test', 'restore', 'pack', 'publish', 'clean', 'msbuild', 'run']);
-/** `-m`, `-m:N`, `-maxcpucount[:N]`, `/m...`, in any case. */
-const NODE_COUNT_FLAG = /^[-/](?:m|maxcpucount)(?::.*)?$/i;
+/**
+ * dotnet subcommands that run MSBuild and pass `-m` to it. Not `run`: it
+ * passes an unknown option on to the program (`dotnet run -m:1` gives the
+ * program the argument `-m:1`), so a program is built with `dotnet build
+ * -m:1` and started with `dotnet run --no-build`.
+ */
+export const MSBUILD_SUBCOMMANDS = ['build', 'test', 'restore', 'pack', 'publish', 'clean', 'msbuild'];
 /** The flag every MSBuild-running dotnet command needs in the sandbox (see the module comment). */
 export const DOTNET_SINGLE_NODE_FLAG = '-m:1';
 /**
- * The dotnet arguments with `-m:1` added (before any `--`) when the
- * subcommand runs MSBuild and names no node count itself. An explicit
- * `-m`/`-maxcpucount` is kept as given (above 1 it hangs in the sandbox).
+ * The dotnet arguments with `-m:1` appended (before any `--`) when the
+ * subcommand runs MSBuild. Always appended: MSBuild's last switch wins, so
+ * an explicit `-m:4` or bare `-m` earlier (which would hang in the sandbox)
+ * becomes one node. Not for `dotnet test <file>.dll|.exe` (VSTest, no
+ * MSBuild), which rejects `-m:1`.
  */
 export function dotnetSandboxArgs(args) {
     const sub = args[0]?.toLowerCase();
-    if (!sub || !MSBUILD_SUBCOMMANDS.has(sub))
+    if (!sub || !MSBUILD_SUBCOMMANDS.includes(sub))
         return [...args];
     const end = args.indexOf('--');
     const own = end < 0 ? args : args.slice(0, end);
-    if (own.some((a) => NODE_COUNT_FLAG.test(a)))
+    if (sub === 'test' && own.slice(1).some((a) => !a.startsWith('-') && /\.(?:dll|exe)$/i.test(a)))
         return [...args];
     return end < 0 ? [...args, DOTNET_SINGLE_NODE_FLAG] : [...args.slice(0, end), DOTNET_SINGLE_NODE_FLAG, ...args.slice(end)];
 }
@@ -96,4 +104,6 @@ export function dotnetSandboxEnv(profile, hostEnv, realHome, platform = process.
         readonly: packages ? [packages] : [],
     };
 }
+/** True when a sandbox.allowedHosts entry lets NuGet reach nuget.org's feed (`api.nuget.org`, `*.nuget.org`). */
+export const isNugetHost = (host) => /^(?:api|\*)\.nuget\.org$/i.test(host.trim());
 //# sourceMappingURL=dotnet-sandbox.js.map

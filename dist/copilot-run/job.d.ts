@@ -457,6 +457,7 @@ export declare class CopilotRunManager {
     }): {
         sandboxed: boolean;
         writeNetwork: SandboxSettings['writeNetwork'];
+        allowedHosts: readonly string[];
         windowsCopy: boolean;
     };
     /** Validate, ask the budget governor, prepare the worktree, and start the session in the background. */

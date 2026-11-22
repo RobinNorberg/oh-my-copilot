@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 
 import * as engine from '../engine.js';
 import * as prompts from '../prompts.js';
+import { MSBUILD_SUBCOMMANDS } from '../../../copilot-run/dotnet-sandbox.js';
 import { laneDecline } from '../lane-commit.js';
 import { createFactoryState, type FactoryRunState } from '../state.js';
 
@@ -160,13 +161,28 @@ describe('the dotnet rule: only a sandboxed lane of a .NET repository is told to
 
   it('every write prompt names -m:1, and offline forbids new packages', () => {
     for (const p of write({ ...lane, dotnet: true })) {
-      expect(p).toContain('Always pass `-m:1` to dotnet build, test');
+      expect(p).toContain('Always pass `-m:1` to dotnet build, dotnet test, dotnet restore, dotnet pack, dotnet publish, dotnet clean and dotnet msbuild');
+      expect(p).toContain('do not add or upgrade a package reference');
+      // dotnet run gets no -m:1 (it reaches the program), a VSTest dll run rejects it.
+      expect(p).toContain('Not to dotnet run');
+      expect(p).toContain('`dotnet run --no-build`');
+      expect(p).toContain('`dotnet test <file>.dll`');
+    }
+    // "registry" allows the npm hosts only: NuGet stays offline unless a NuGet host is allowed.
+    for (const p of write({ ...lane, writeNetwork: 'registry', dotnet: true })) {
+      expect(p).toContain('`-m:1`');
       expect(p).toContain('do not add or upgrade a package reference');
     }
-    for (const p of write({ ...lane, writeNetwork: 'registry', dotnet: true })) {
+    for (const p of write({ ...lane, writeNetwork: 'registry', dotnet: true, nugetReachable: true })) {
       expect(p).toContain('`-m:1`');
       expect(p).not.toContain('package reference');
     }
+  });
+
+  it('the subcommand list is MSBUILD_SUBCOMMANDS (no drift), and run is not in it', () => {
+    expect(MSBUILD_SUBCOMMANDS).not.toContain('run');
+    const p = prompts.implementPrompt(s, undefined, [], { ...lane, dotnet: true });
+    for (const sub of MSBUILD_SUBCOMMANDS) expect(p).toContain(`dotnet ${sub}`);
   });
 
   it('a Node repository, an unsandboxed lane or an unknown sandbox: no dotnet text, the prompt unchanged', () => {

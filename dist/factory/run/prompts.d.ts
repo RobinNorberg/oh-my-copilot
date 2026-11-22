@@ -54,6 +54,8 @@ export interface LaneEnvironment {
     nodeModulesReady: boolean;
     /** A .NET repository (the run's local gate runs dotnet): the lane's sandbox has the dotnet env (dotnet-sandbox.ts). */
     dotnet?: boolean;
+    /** writeNetwork "registry" with a NuGet host (api.nuget.org) in sandbox.allowedHosts: NuGet can reach its feed. */
+    nugetReachable?: boolean;
 }
 /** The repository guide files the implement prompt names, when the lane's base has them. */
 export declare const REPO_GUIDE_FILES: readonly string[];

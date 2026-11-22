@@ -63,7 +63,7 @@ import { listChangedFiles, protectedChanges } from '../../ship/merge.js';
 import { ESLINT_SCRIPT, PREPARE_CONFIG_STEP, PREPARE_DETECT_STEP, PREPARE_SANDBOX_STEP, runPrepareAsync, VITEST_SCRIPT } from '../../ship/prepare.js';
 import { parseJsonc } from '../../utils/jsonc.js';
 import { gitForWindowsShell, nodeModulesTreeProblem, resolveGateIsolation, resolveGatesSandboxMode, resolveRequireDeniedPaths, resolveWindowsGitTransport } from '../../copilot-run/sandbox.js';
-import { isDotnetExe } from '../../copilot-run/dotnet-sandbox.js';
+import { isDotnetExe, isNugetHost } from '../../copilot-run/dotnet-sandbox.js';
 import { CONTAINER_INCOMPATIBLE_ADVICE, CONTAINER_SRC, containerRunLabel, GATE_CONTAINER_UNAVAILABLE_GATE } from './container-gate.js';
 import { CREDENTIAL_FILES_READABLE_NOTE, redactGateOutput, sandboxCommandTooLong, sandboxJobRoot, splitFileListArgs } from './sandbox-exec.js';
 import { forgetWorktreeGitLinks, readWorktreeGitLinks, recordedWorktreeGitLinks, recordWorktreeGitLinks, removeStaleWorktreeEntry, removeWorkerWorktree, runHostGit, runHostGitBuffer, runHostGitBufferAsync, worktreeGitDirArgs, worktreeGitLinksIntact } from '../../team/git-worktree.js';
@@ -104,7 +104,7 @@ import { assertLaneCreditCap, LANE_MODEL_KINDS, laneModelFor, nextLaneCap, resol
 import { FactorySafetyError, factoryGuardExec, hardenedGitExec, sameFsPath } from './exec.js';
 import { createGateProcTracker, gateProcsPath, liveGateProcs, reapGateProcs, sweepGateProcs } from './gate-procs.js';
 import { assertFactoryForgeOptions, EXIT_FORGE_UNAVAILABLE, FactoryForgeUnavailableError, localRemoteMismatch, syncLocalMirror } from './forge-roots.js';
-import { assertLocalGateCommand, defaultLocalGateRunner, describeGateSources, gateDefinition, gateDefinitionSources, gateSourcePathspec, localGateDue, patternSourceChanges, localGateRecord, resolveLocalGateArgv, runLocalGate } from './local-gate.js';
+import { assertLocalGateCommand, defaultLocalGateRunner, describeGateSources, gateDefinition, gateDefinitionSources, gateSourcePathspec, localGateDue, patternSourceChanges, shellPath, strayDotnetDefinitionFiles, localGateRecord, resolveLocalGateArgv, runLocalGate } from './local-gate.js';
 import { isLocalBranchName, localCheckRecordPath, LOCAL_GATE_CHECK, LOCAL_REMOTE, readMirrorRef } from '../../forge/local/index.js';
 import { getGlobalOmcStatePath } from '../../utils/paths.js';
 import { isProcessAlive, isProcessIdentityLive, terminateOwnedProcessTree } from '../../platform/process-utils.js';
@@ -412,7 +412,7 @@ export const windowsGitTransportFailure = (output, platform = process.platform) 
  */
 export const windowsJunctionReadDenied = (output, platform = process.platform) => platform === 'win32' && !!output && /Cannot read directory "[^"\r\n]*node_modules[\\/][^"\r\n]*": Access is denied\./.test(output);
 /** What the gate-sandbox-incompatible park says for a dotnet command (docs/REFERENCE.md, .NET repositories). */
-export const DOTNET_SANDBOX_ADVICE = 'Your dotnet command fails in the sandbox on the base. The sandbox has no network, so every NuGet package must already be in the NuGet global packages folder (NUGET_PACKAGES, else ~/.nuget/packages): run dotnet restore on the base yourself once. Private feeds and credentials in your NuGet.Config are not available there, and an explicit -m/-maxcpucount above 1 hangs (MSBuild worker nodes cannot connect in the Windows sandbox; the engine adds -m:1 when none is given)';
+export const DOTNET_SANDBOX_ADVICE = 'Your dotnet command fails in the sandbox on the base. The sandbox has no network, so every NuGet package must already be in the NuGet global packages folder (NUGET_PACKAGES, else ~/.nuget/packages): run dotnet restore on the base yourself once. Private feeds and credentials in your NuGet.Config are not available there. NuGet\'s audit cannot reach the feed and warns NU1900, which fails a project with TreatWarningsAsErrors: set NuGetAudit to false there (or pass -p:NuGetAudit=false in the gate). The engine appends -m:1 to every MSBuild command (worker nodes cannot connect in the Windows sandbox; the last -m wins), so a hang comes from elsewhere, such as a task run with TaskHostFactory';
 /** What the gate-sandbox-incompatible park of a failing base calibration tells the human to do. */
 export function sandboxIncompatibleAdvice(tail, platform = process.platform, argv) {
     if (isDotnetExe(argv?.[0]))
@@ -1381,7 +1381,7 @@ class FactoryEngine {
         }
         if (!intent)
             return null;
-        return { sandboxed: intent.sandboxed, writeNetwork: intent.writeNetwork, nodeModulesReady: intent.sandboxed && existsSync(join(this.o.root, 'node_modules')), ...(this.dotnetRepo() ? { dotnet: true } : {}) };
+        return { sandboxed: intent.sandboxed, writeNetwork: intent.writeNetwork, nodeModulesReady: intent.sandboxed && existsSync(join(this.o.root, 'node_modules')), ...(this.dotnetRepo() ? { dotnet: true, ...(intent.writeNetwork === 'registry' && (intent.allowedHosts ?? []).some(isNugetHost) ? { nugetReachable: true } : {}) } : {}) };
     }
     /**
      * The run's repository is a .NET one for its lanes: the local gate
@@ -3140,7 +3140,7 @@ class FactoryEngine {
         const plain = sources.filter((x) => !x.pattern);
         const changed = sources.some((x) => x.pattern) ? patternSourceChanges(sources, treeAt(s.baseSha), treeAt(cand)) : [];
         const named = [...(plain.length > 0 ? [describeGateSources(plain)] : []), ...changed].join(', ') || describeGateSources(sources);
-        const specs = [...new Set([...plain.map(gateSourcePathspec), ...changed])];
+        const specs = [...new Set([...plain.map(gateSourcePathspec), ...changed.map(shellPath)])];
         this.save((x) => setGate(x, 'gate-definition-changed', `the change redefines the local gate "${gate.join(' ')}" (${named} differ from ${s.base})${stale}; offline the gate is the only check, so nothing was pushed. Inspect it with git -C ${this.o.root} diff ${s.baseSha.slice(0, 12)} ${cand.slice(0, 12)} -- ${(specs.length > 0 ? specs : sources.map(gateSourcePathspec)).join(' ')}, then rerun ${this.resume} --allow-gate-change to accept it, or ${cancelCommand(this.key)}`, this.iso(), { definition: head }));
         return true;
     }
@@ -4708,6 +4708,7 @@ class FactoryEngine {
             // The recorded git dir, never the checkout's `.git` file (the PR's code ran there in prepare).
             const gitArgs = this.checkoutGitArgs(checkout);
             let dirty = [];
+            let stray = [];
             let problem = typeof gitArgs === 'string' ? gitArgs : null;
             if (typeof gitArgs !== 'string') {
                 // The status compares with a fresh index read from HEAD, never the checkout's own (the PR's code could set
@@ -4723,6 +4724,11 @@ class FactoryEngine {
                     runHostGit(checkout, [...gitArgs, 'read-tree', at], undefined, fresh);
                     const status = [...gitArgs, '-c', 'core.untrackedCache=false', 'status', '--porcelain=v1', '-z', '--untracked-files=all'];
                     dirty = checkoutChanges(this.o.root, checkout, runHostGit(checkout, status, undefined, fresh), trustedNestedRels(this.o.root, checkout, this.baseWorkspaces()));
+                    // A dotnet gate: MSBuild also reads ignored files no commit pins (an App.csproj.user, obj/<project>.*.props), which
+                    // the PR's code run here earlier could leave; every untracked file, ignored or not, is listed.
+                    if (isDotnetExe(gate[0]) || isDotnetExe(this.state.localGate?.[0])) {
+                        stray = strayDotnetDefinitionFiles(runHostGit(checkout, [...gitArgs, 'ls-files', '--others', '-z'], undefined, fresh).split(' ').filter(Boolean));
+                    }
                 }
                 catch (error) {
                     problem = errText(error);
@@ -4737,6 +4743,10 @@ class FactoryEngine {
             }
             if (at === head && dirty.length > 0) {
                 this.gate('lane-tampered', `the engine's prepare checkout ${checkout} is at ${head.slice(0, 12)} but its working tree differs from it (${dirty.slice(0, 5).join(', ')}): a changed tracked file or an untracked file that is not ignored, so the local gate did not run; inspect it and undo what the PR's code changed there, then rerun ${this.resume}`);
+                return false;
+            }
+            if (at === head && stray.length > 0) {
+                this.gate('lane-tampered', `the engine's prepare checkout ${checkout} holds untracked file(s) that MSBuild reads for the dotnet gate but no commit pins (${stray.slice(0, 5).join(', ')}${stray.length > 5 ? `, ${stray.length - 5} more` : ''}): the PR's code run there earlier can leave them (ignored by .gitignore or not), so the local gate did not run; inspect them and delete them by hand (or the checkout, with omg factory run clean), then rerun ${this.resume}`);
                 return false;
             }
         }

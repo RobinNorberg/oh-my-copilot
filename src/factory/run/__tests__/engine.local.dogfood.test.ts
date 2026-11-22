@@ -11,13 +11,13 @@ import { createForge } from '../../../forge/index.js';
 import { getOmcRoot } from '../../../lib/worktree-paths.js';
 import { cleanFactoryRun } from '../clean.js';
 import { cancelCommand, runFactoryEngine, EXIT_AWAITING_HUMAN } from '../engine.js';
-import { factoryForgeOptions } from '../forge-roots.js';
+import { factoryForgeOptions, syncLocalMirror } from '../forge-roots.js';
 import { ledgerFilePath } from '../ledger.js';
 import { resetFactoryRun } from '../reset.js';
 import { FactoryBusyError, factoryRepoOwnerPath, factoryStatePath, readFactoryState, requestFactoryCancel } from '../state.js';
 import { factoryClaimPath } from '../claims.js';
 import { commitFile, gitIn, review } from './fake-lanes.js';
-import { lanesFor, LOCAL_ISSUE, localOpts, localWorld, type LocalWorld } from './engine-local-harness.js';
+import { BASE, lanesFor, LOCAL_ISSUE, localOpts, localWorld, type LocalWorld } from './engine-local-harness.js';
 
 let w: LocalWorld;
 afterEach(() => rmSync(w.dir, { recursive: true, force: true }));
@@ -186,6 +186,62 @@ describe('a dotnet gate: its MSBuild files define it, and its write lanes get th
     const out = await runFactoryEngine(localOpts(w, lanesFor(w, [commitFile('Directory.Build.props', '<Project />\n')])));
     expect(out.gate?.name, out.message).toBe('gate-definition-changed');
     expect(out.gate?.reason).toMatch(/\(Directory\.Build\.props differ from main\)/);
+  }, MULTI_RUN_MS);
+
+  it('a lane that adds a project\'s .user file (MSBuild imports it beside the project) parks, naming it', async () => {
+    w = localWorld(['dotnet', 'test']);
+    baseProject();
+    const user = '<Project>\n  <PropertyGroup>\n    <IsTestProject>false</IsTestProject>\n  </PropertyGroup>\n</Project>\n';
+    const out = await runFactoryEngine(localOpts(w, lanesFor(w, [commitFile('src/App/App.csproj.user', user)])));
+    expect(out.gate?.name, out.message).toBe('gate-definition-changed');
+    expect(out.gate?.reason).toMatch(/\(src\/App\/App\.csproj\.user differ from main\).* -- src\/App\/App\.csproj\.user, then rerun/);
+    expect(readMirrorRef(w.config.repo.url, BRANCH)).toBeUndefined();
+  }, MULTI_RUN_MS);
+
+  it('the same change landing on the base (the mirror\'s current base) lets the parked head through on a plain rerun', async () => {
+    w = localWorld(['dotnet', 'test']);
+    baseProject();
+    const changed = CSPROJ.replace('net10.0', 'net9.0');
+    const out = await runFactoryEngine(localOpts(w, lanesFor(w, [commitFile('src/App/App.csproj', changed)])));
+    expect(out.gate?.name, out.message).toBe('gate-definition-changed');
+    // The human lands the identical project change on main; the run's recorded base is still the old one.
+    writeFileSync(join(w.root, 'src', 'App', 'App.csproj'), changed);
+    gitIn(w.root, 'commit', '-q', '-am', 'base: net9.0');
+    // The mirror's base moves as the engine's own fetch would move it (syncLocalMirror).
+    syncLocalMirror(w.exec, w.root, w.config.repo.url, BASE);
+    const again = await runFactoryEngine(localOpts(w, lanesFor(w, [review('approve')])));
+    expect(again.gate?.name, again.message).not.toBe('gate-definition-changed');
+    expect(readFactoryState(w.root, LOCAL_ISSUE)!.gateChangeApproved).toBeUndefined();
+  }, MULTI_RUN_MS);
+
+  it('a git ls-tree failure while comparing the definition fails the step and pushes nothing', async () => {
+    w = localWorld(['dotnet', 'test']);
+    baseProject();
+    const exec = w.exec;
+    const failing: typeof w.exec = (cmd, args, opts) => (cmd === 'git' && args.includes('ls-tree') && args.includes('--full-tree') ? { status: 128, stdout: '', stderr: 'fatal: not a tree object' } : exec(cmd, args, opts));
+    const out = await runFactoryEngine(localOpts(w, lanesFor(w, [commitFile('src/App/Greet.cs', 'namespace App;\n')]), { exec: failing }));
+    expect(out.exitCode, out.message).not.toBe(0);
+    expect(out.message).toMatch(/git ls-tree [0-9a-f]{12} failed: fatal: not a tree object/);
+    expect(readMirrorRef(w.config.repo.url, BRANCH)).toBeUndefined();
+    expect(w.gateRuns).toEqual([]);
+  }, MULTI_RUN_MS);
+
+  it('an ignored definition file the PR\'s code left in the prepare checkout parks the next gate run at lane-tampered', async () => {
+    w = localWorld(['dotnet', 'test']);
+    writeFileSync(join(w.root, '.gitignore'), '.omg/\n*.user\n');
+    baseProject();
+    // The first gate run (the PR's test code) leaves an ignored App.csproj.user and does not start (no verdict).
+    w.gate = async (argv, cwd) => {
+      w.gateRuns.push({ argv, cwd, head: gitIn(cwd, 'rev-parse', 'HEAD') });
+      writeFileSync(join(cwd, 'src', 'App', 'App.csproj.user'), '<Project />\n');
+      return { status: 127, stdout: '', stderr: '', timedOut: false, startError: 'dotnet is not on PATH' };
+    };
+    const first = await runFactoryEngine(localOpts(w, lanesFor(w, [commitFile('src/App/Greet.cs', 'namespace App;\n'), review('approve')]), { gateSandboxUserConfig: UNSANDBOXED_GATES }));
+    expect(first.gate?.name, first.message).toBe('gates');
+    const again = await runFactoryEngine(localOpts(w, lanesFor(w, []), { gateSandboxUserConfig: UNSANDBOXED_GATES }));
+    expect(again.gate?.name, again.message).toBe('lane-tampered');
+    expect(again.gate?.reason).toMatch(/untracked file\(s\) that MSBuild reads for the dotnet gate but no commit pins \(src\/App\/App\.csproj\.user\)/);
+    expect(w.gateRuns).toHaveLength(1);
   }, MULTI_RUN_MS);
 
   it('a node gate: no lane is started with dotnet', async () => {

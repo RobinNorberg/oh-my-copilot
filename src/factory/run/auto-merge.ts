@@ -24,6 +24,7 @@ import { normalize, resolve } from 'path';
 import { repoIdentity, sameRepo } from '../../ship/config.js';
 import { PROTECTED_PATHS, protectedChanges } from '../../ship/merge.js';
 import { CI_TREE_PATHS, LANE_PROTECTED_PATHS } from './lane-commit.js';
+import { basenameMatcher, DOTNET_DEFINITION_PATTERNS, DOTNET_TEST_CONFIG_PATTERNS } from './local-gate.js';
 import { checkName } from './merge-policy.js';
 
 export const AUTO_MERGE_TIERS = ['docs', 'tests', 'small'] as const;
@@ -202,7 +203,6 @@ const DENIED_NAMES = new Set([
   'cargo.toml', 'cargo.lock', 'go.mod', 'go.sum', 'go.work', 'go.work.sum', 'pyproject.toml', 'poetry.lock', 'pipfile', 'pipfile.lock', 'uv.lock',
   'setup.py', 'setup.cfg', 'tox.ini', 'noxfile.py', 'conftest.py', 'gemfile', 'gemfile.lock', 'composer.json', 'composer.lock', 'pom.xml',
   'build.gradle', 'build.gradle.kts', 'settings.gradle', 'settings.gradle.kts', 'gradle.properties', 'gradlew', 'gradlew.bat',
-  'directory.packages.props', 'directory.build.props', 'directory.build.targets', 'nuget.config', 'packages.lock.json', 'global.json', 'directory.build.rsp', 'dotnet.config',
   'jsconfig.json', '.babelrc', '.editorconfig', '.gitattributes', '.gitmodules', '.gitignore', '.mailmap',
   'dockerfile', 'compose.yaml', 'compose.yml', 'makefile', 'justfile', 'taskfile.yml', 'codeowners', 'cmakelists.txt', 'constraints.txt',
   'agents.md', 'agent.md', 'claude.md', 'gemini.md', 'copilot-instructions.md', 'skill.md', 'omg.jsonc',
@@ -215,11 +215,17 @@ const DENIED_NAMES = new Set([
 
 /** File-name patterns (folded) of the same kinds: requirements files, project files, tool configs, env files, agent prompt files. */
 const DENIED_NAME_PATTERNS: readonly RegExp[] = [
-  /^requirements.*\.(?:txt|in)$/, /\.(?:csproj|fsproj|vbproj|sln|slnx|slnf|props|targets)$/, /^tsconfig.*\.json$/,
+  /^requirements.*\.(?:txt|in)$/, /^tsconfig.*\.json$/,
   /^\.eslintrc/, /^eslint\.config\./, /^\.prettierrc/, /^prettier\.config\./, /^\.stylelintrc/,
   /(?:^|\.)config\.[cm]?[jt]sx?$/, /^vitest\.(?:workspace|projects)\./, /^\.env(?:\..*)?$/, /^docker-compose.*\.ya?ml$/, /^\.?dockerfile\./,
   /\.(?:prompt|instructions|chatmode|agent)\.md$/, /\.mdc$/,
 ];
+
+/**
+ * .NET: a dotnet gate's definition files (local-gate.ts DOTNET_DEFINITION_PATTERNS, the one list both use) and the
+ * test and analyzer config (DOTNET_TEST_CONFIG_PATTERNS), in any repository.
+ */
+const deniedDotnetName = basenameMatcher([...DOTNET_DEFINITION_PATTERNS, ...DOTNET_TEST_CONFIG_PATTERNS]);
 
 /** A changed-path spelling of a configured path: `/` separators, no leading `./` or `/` (the protected-path rules are root-relative). */
 const rootRelative = (p: string): string => p.replace(/\\/g, '/').trim().replace(/^(?:\.\/|\/)+/, '');
@@ -260,7 +266,7 @@ export function deniedPaths(paths: readonly string[], extra: readonly string[] =
     if (segs.slice(0, -1).some((s) => DENIED_DIRS.has(s))) return true;
     if (user.some((m) => m(p))) return true;
     const name = segs[segs.length - 1];
-    return DENIED_DIRS.has(name) || DENIED_NAMES.has(name) || DENIED_NAME_PATTERNS.some((r) => r.test(name));
+    return DENIED_DIRS.has(name) || DENIED_NAMES.has(name) || DENIED_NAME_PATTERNS.some((r) => r.test(name)) || deniedDotnetName(name);
   });
 }
 

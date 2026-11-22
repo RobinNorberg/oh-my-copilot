@@ -695,8 +695,12 @@ export function buildSandboxConfig(profile: SandboxProfile, ctx: SandboxPolicyCo
       '.ssh', '.gitconfig', '.omg', '.copilot', '.azure', '.git-credentials', join('.config', 'git', 'credentials'), join('.cache', 'git', 'credential'),
       join('.config', 'gh'), '.aws', '.npmrc', '.docker', '.kube', '.netrc', join('.cargo', 'credentials'), join('.cargo', 'credentials.toml'),
       '.gnupg', '.pypirc', join('.config', 'gcloud'),
-      // Windows: gh's hosts.yml (%APPDATA%\GitHub CLI) and the GCM/MSAL token cache (%LOCALAPPDATA%\.IdentityService).
-      ...(ctx.platform === 'win32' ? [join('AppData', 'Roaming', 'GitHub CLI'), join('AppData', 'Local', '.IdentityService')] : []),
+      // NuGet's user config (feed credentials) and the credential providers' token caches; never all of ~/.nuget,
+      // which holds the packages folder a dotnet job is granted read-only (dotnet-sandbox.ts).
+      join('.nuget', 'NuGet'), join('.nuget', 'plugins'), join('.local', 'share', 'MicrosoftCredentialProvider'),
+      // Windows: gh's hosts.yml (%APPDATA%\GitHub CLI), the GCM/MSAL token cache (%LOCALAPPDATA%\.IdentityService),
+      // NuGet's user config and the Azure Artifacts credential provider's cache.
+      ...(ctx.platform === 'win32' ? [join('AppData', 'Roaming', 'GitHub CLI'), join('AppData', 'Local', '.IdentityService'), join('AppData', 'Roaming', 'NuGet'), join('AppData', 'Local', 'MicrosoftCredentialProvider')] : []),
     ].map((p) => join(ctx.realHome, p));
     // A grant canon cannot resolve (a dangling link) holds nothing: the deny stays.
     // A nested workspace grant never lifts a deny (the PR-writable marker names it): a deny around it stays.

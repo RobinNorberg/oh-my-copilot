@@ -539,12 +539,13 @@ describe('copilot_run beforeSandboxedSession (the Windows OS sandbox)', () => {
     expect(called).toBe(1);
   });
 
-  it('sandboxIntent: the settings alone (enabled, kill switch, writeNetwork, Windows)', () => {
+  it('sandboxIntent: the settings alone (enabled, kill switch, writeNetwork, allowedHosts, Windows)', () => {
     const at = (platform: NodeJS.Platform, over: Partial<SandboxSettings>, env: NodeJS.ProcessEnv = winEnv) => manager('idle', 'supported', { platform, sandboxSettings: settings(over) }, env).sandboxIntent({ root: repo, scope: 'factory' });
-    expect(at('win32', {})).toEqual({ sandboxed: true, writeNetwork: 'none', windowsCopy: true });
-    expect(at('linux', { writeNetwork: 'registry' })).toEqual({ sandboxed: true, writeNetwork: 'registry', windowsCopy: false });
-    expect(at('win32', { enabled: false })).toEqual({ sandboxed: false, writeNetwork: 'none', windowsCopy: false });
-    expect(at('win32', {}, { ...winEnv, OMG_SANDBOX: 'off' })).toEqual({ sandboxed: false, writeNetwork: 'none', windowsCopy: false });
+    expect(at('win32', {})).toEqual({ sandboxed: true, writeNetwork: 'none', allowedHosts: [], windowsCopy: true });
+    expect(at('linux', { writeNetwork: 'registry' })).toEqual({ sandboxed: true, writeNetwork: 'registry', allowedHosts: [], windowsCopy: false });
+    expect(at('win32', { enabled: false })).toEqual({ sandboxed: false, writeNetwork: 'none', allowedHosts: [], windowsCopy: false });
+    expect(at('win32', {}, { ...winEnv, OMG_SANDBOX: 'off' })).toEqual({ sandboxed: false, writeNetwork: 'none', allowedHosts: [], windowsCopy: false });
+    expect(at('linux', { writeNetwork: 'registry', allowedHosts: ['api.nuget.org'] })).toEqual({ sandboxed: true, writeNetwork: 'registry', allowedHosts: ['api.nuget.org'], windowsCopy: false });
   });
 });
 

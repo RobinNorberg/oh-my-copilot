@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { DOTNET_SINGLE_NODE_FLAG, dotnetSandboxArgs, dotnetSandboxEnv, isDotnetExe, nugetPackagesDir } from '../dotnet-sandbox.js';
+import { DOTNET_SINGLE_NODE_FLAG, dotnetSandboxArgs, dotnetSandboxEnv, isDotnetExe, isNugetHost, nugetPackagesDir } from '../dotnet-sandbox.js';
 
 let dir: string;
 beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'omg-dotnet-sandbox-')); });
@@ -28,11 +28,27 @@ describe('dotnetSandboxArgs', () => {
     expect(dotnetSandboxArgs(['Restore'])).toEqual(['Restore', '-m:1']);
   });
 
-  it('keeps an explicit node count, and leaves other subcommands and option-first argv alone', () => {
-    for (const flag of ['-m', '-m:4', '/m', '-maxcpucount', '-maxCpuCount:2', '/maxcpucount:1']) expect(dotnetSandboxArgs(['build', flag])).toEqual(['build', flag]);
+  it('appends -m:1 after an explicit node count too (MSBuild\'s last switch wins), and leaves other subcommands and option-first argv alone', () => {
+    for (const flag of ['-m', '-m:4', '/m', '-maxcpucount', '-maxCpuCount:2', '/maxcpucount:1', '--maxcpucount:4', '--m:2']) expect(dotnetSandboxArgs(['build', flag])).toEqual(['build', flag, '-m:1']);
     // After `--` a -m is the app's or the test's, not MSBuild's.
     expect(dotnetSandboxArgs(['test', '--', '-m:4'])).toEqual(['test', '-m:1', '--', '-m:4']);
     for (const args of [[], ['--info'], ['format'], ['tool', 'restore'], ['exec', 'x.dll'], ['--diagnostics', 'build']]) expect(dotnetSandboxArgs(args)).toEqual(args);
+  });
+
+  it('never touches dotnet run (the flag would reach the program\'s argv)', () => {
+    for (const args of [['run'], ['run', '--project', 'src/App'], ['RUN', '--no-build', '--', 'x'], ['run', '-c', 'Release']]) expect(dotnetSandboxArgs(args)).toEqual(args);
+  });
+
+  it('dotnet test <file>.dll|.exe (VSTest, no MSBuild, rejects -m:1) is left alone; a project or a .dll after -- is not', () => {
+    for (const args of [['test', 'bin/App.Tests.dll'], ['test', 'out\\App.Tests.DLL', '--logger', 'trx'], ['test', '-c', 'Release', 'App.Tests.exe']]) expect(dotnetSandboxArgs(args)).toEqual(args);
+    expect(dotnetSandboxArgs(['test', 'tests/App.Tests.csproj'])).toEqual(['test', 'tests/App.Tests.csproj', '-m:1']);
+    expect(dotnetSandboxArgs(['test', '--', 'x.dll'])).toEqual(['test', '-m:1', '--', 'x.dll']);
+    expect(dotnetSandboxArgs(['build', 'x.dll'])).toEqual(['build', 'x.dll', '-m:1']);
+  });
+
+  it('isNugetHost: api.nuget.org or *.nuget.org only', () => {
+    for (const h of ['api.nuget.org', '*.nuget.org', ' API.NuGet.org ']) expect(isNugetHost(h), h).toBe(true);
+    for (const h of ['nuget.org.evil.test', 'registry.npmjs.org', 'pkgs.dev.azure.com', '']) expect(isNugetHost(h), h).toBe(false);
   });
 });
 

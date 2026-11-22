@@ -751,7 +751,7 @@ export class CopilotRunManager {
     sandboxIntent(from) {
         const settings = 'enabled' in from ? from : (this.deps.sandboxSettings ?? loadSandboxSettings)(from.root, from.scope).settings;
         const sandboxed = settings.enabled && this.deps.env[SANDBOX_KILL_ENV] !== 'off';
-        return { sandboxed, writeNetwork: settings.writeNetwork, windowsCopy: sandboxed && this.deps.platform === 'win32' };
+        return { sandboxed, writeNetwork: settings.writeNetwork, allowedHosts: [...settings.allowedHosts], windowsCopy: sandboxed && this.deps.platform === 'win32' };
     }
     /** Validate, ask the budget governor, prepare the worktree, and start the session in the background. */
     start(input, options = {}) {
@@ -1374,9 +1374,10 @@ export class CopilotRunManager {
             seedGitIdentity(job.ledgerCwd, env.GIT_CONFIG_GLOBAL);
         // OMC_BUDGET_HOST_LEDGER: this job records the session's usage; its hooks must not count it again.
         Object.assign(env, { OMC_GIT_GUARDRAILS: '1', COPILOT_ALLOW_ALL: 'false', OMC_BUDGET_HOST_LEDGER: '1', GIT_TERMINAL_PROMPT: '0', GCM_INTERACTIVE: 'never' });
+        const realHome = (deps.realHome ?? (() => userInfo().homedir))();
         const dotnetGrants = [];
         if (job.dotnet) {
-            const d = dotnetSandboxEnv(env.USERPROFILE, deps.env, (deps.realHome ?? (() => userInfo().homedir))(), deps.platform);
+            const d = dotnetSandboxEnv(env.USERPROFILE, deps.env, realHome, deps.platform);
             Object.assign(env, d.env);
             dotnetGrants.push(...d.readonly);
         }
@@ -1471,7 +1472,6 @@ export class CopilotRunManager {
                 // A job worktree's git dirs come from the links recorded at creation, never from discovery.
                 const commonRaw = job.worktree ? job.commonGitDir : git(job.workCwd, ['rev-parse', '--path-format=absolute', '--git-common-dir']);
                 const gitDirRaw = job.worktree ? job.worktreeLinks?.adminDir ?? null : git(job.workCwd, ['rev-parse', '--path-format=absolute', '--git-dir']);
-                const realHome = (deps.realHome ?? (() => userInfo().homedir))();
                 const proxy = proxyCaEnv(deps.env, deps.platform, realHome);
                 job.notes.push(...proxy.notes);
                 return {

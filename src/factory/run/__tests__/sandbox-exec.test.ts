@@ -782,9 +782,9 @@ describe('runSandboxed: a dotnet command (dotnet-sandbox.ts)', () => {
     expect(policy().readwritePaths).not.toContain(packages);
   });
 
-  it('no packages folder: no grant and no NUGET_PACKAGES; an explicit node count is kept', async () => {
+  it('no packages folder: no grant and no NUGET_PACKAGES; -m:1 follows an explicit node count (the last switch wins)', async () => {
     await runSandboxed(['/usr/bin/dotnet', 'build', '-m:4'], opts(), deps(ok));
-    expect(words()).toEqual(['/usr/bin/dotnet', 'build', '-m:4']);
+    expect(words()).toEqual(['/usr/bin/dotnet', 'build', '-m:4', '-m:1']);
     expect(rec.connections[0].env.NUGET_PACKAGES).toBeUndefined();
     expect(policy().readonlyPaths.some((p) => p.includes('.nuget'))).toBe(false);
   });
