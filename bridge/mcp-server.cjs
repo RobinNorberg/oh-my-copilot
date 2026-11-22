@@ -81761,6 +81761,25 @@ var init_cli2 = __esm({
   }
 });
 
+// src/factory/host-check.ts
+var COPILOT_INSTALL_COMMAND;
+var init_host_check = __esm({
+  "src/factory/host-check.ts"() {
+    "use strict";
+    init_exec();
+    init_git_preflight();
+    init_private_store();
+    init_sandbox2();
+    init_copilot_binary();
+    init_copilot_sdk_driver();
+    init_copilot_sdk_scenarios();
+    init_copilot_session_env();
+    init_config_dir();
+    init_tmux_utils();
+    COPILOT_INSTALL_COMMAND = `npm i -g @github/copilot@${LAST_PROTOCOL3_CLI}`;
+  }
+});
+
 // src/cli/commands/factory-check.ts
 var import_fs102, import_promises8;
 var init_factory_check = __esm({
@@ -81778,6 +81797,7 @@ var init_factory_check = __esm({
     init_exec();
     init_jsonc();
     init_integer_option();
+    init_host_check();
   }
 });
 

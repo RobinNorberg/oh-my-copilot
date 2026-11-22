@@ -228,6 +228,8 @@ export interface SdkProtocolProbeOptions {
     startTimeoutMs?: number;
     stopTimeoutMs?: number;
     killTree?: (pid: number) => void;
+    /** Runs on the started client before it stops (no session exists: only no-session RPCs such as sandbox.getHostSupport); a throw is ignored. */
+    onStarted?: (client: SdkClientLike) => Promise<void>;
 }
 /**
  * Starts and stops a runtime on `bin` (no session, no prompt) and returns the

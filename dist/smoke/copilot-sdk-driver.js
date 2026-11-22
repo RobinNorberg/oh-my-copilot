@@ -353,6 +353,12 @@ export async function probeSdkProtocol(loaded, bin, opts = {}) {
             workingDirectory: home,
         });
         await withTimeout(client.start().catch(rethrowSdkStartError), opts.startTimeoutMs ?? PROBE_START_TIMEOUT_MS, 'client.start()');
+        if (opts.onStarted) {
+            try {
+                await opts.onStarted(client);
+            }
+            catch { /* the caller's own check */ }
+        }
         return null;
     }
     catch (err) {

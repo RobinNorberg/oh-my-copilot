@@ -24685,6 +24685,12 @@ async function probeSdkProtocol(loaded2, bin, opts = {}) {
       workingDirectory: home
     });
     await withTimeout2(client.start().catch(rethrowSdkStartError), opts.startTimeoutMs ?? PROBE_START_TIMEOUT_MS, "client.start()");
+    if (opts.onStarted) {
+      try {
+        await opts.onStarted(client);
+      } catch {
+      }
+    }
     return null;
   } catch (err) {
     if (err instanceof TimeoutError) return `${PROBE_TIMEOUT_REASON}: ${err.message} (${bin})`;
