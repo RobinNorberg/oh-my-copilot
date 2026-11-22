@@ -16,7 +16,7 @@ import { executeCustomProvider } from "./custom-rate-provider.js";
 import { render } from "./render.js";
 import { detectApiKeySource } from "./elements/api-key-source.js";
 import { detectHudHost } from "./host.js";
-import { resolveCachedOmcUpdate } from "./elements/update-hint.js";
+import { resolveCachedOmcUpdate, resolveOmcUpdateState } from "./elements/update-hint.js";
 import { refreshMissionBoardState } from "./mission-board.js";
 import { readTeamStateForHud } from "./elements/team.js";
 import { readUltragoalStateForHud } from "./elements/ultragoal.js";
@@ -24,6 +24,7 @@ import { sanitizeOutput } from "./sanitize.js";
 import { estimatePayloadFromTranscriptPath } from "./payload-estimate.js";
 import { getRuntimePackageVersion } from "../lib/version.js";
 import { compareVersions, getOmcUpdateChannel } from "../features/auto-update.js";
+import { OMC_HUD_UNBUILT_VERSION_ENV } from "../lib/env-vars.js";
 import { resolveToWorktreeRoot, resolveTranscriptPath, withWorktreePathRenderScope, } from "../lib/worktree-paths.js";
 import { writeFileSync, mkdirSync, existsSync, readFileSync } from "fs";
 import { access, readFile } from "fs/promises";
@@ -342,6 +343,7 @@ async function mainImpl(watchMode = false, skipInit = false) {
         // Read OMC version and update check cache
         let omcVersion = null;
         let updateAvailable = null;
+        let omcUnbuiltVersion = null;
         let omcUpdateSource = null;
         // Under Copilot stdin.version is the Copilot CLI version, not Claude Code's.
         const claudeCodeVersion = isCopilotHost ? null : (stdin.version ?? null);
@@ -357,15 +359,18 @@ async function mainImpl(watchMode = false, skipInit = false) {
                 console.error("[HUD] Version detection error:", error instanceof Error ? error.message : error);
             }
         }
+        let cachedLatestVersion = null;
         // Async file read to avoid blocking event loop (Issue #1273)
         try {
             const updateCacheFile = getUpdateCheckCachePath();
             await access(updateCacheFile);
             const content = await readFile(updateCacheFile, "utf-8");
             const cached = JSON.parse(content);
+            // Fork: the cache is trusted only for this HUD's own install channel and
+            // version; resolveOmcUpdateState below then weighs it against an unbuilt version.
             const cachedUpdate = resolveCachedOmcUpdate(cached, omcVersion, getOmcUpdateChannel(), compareVersions);
             if (cachedUpdate) {
-                updateAvailable = cachedUpdate.latestVersion;
+                cachedLatestVersion = cachedUpdate.latestVersion;
                 omcUpdateSource = cachedUpdate.source;
             }
             // claudeCodeLatestVersion is absent on caches written before the
@@ -382,6 +387,9 @@ async function mainImpl(watchMode = false, skipInit = false) {
                 console.error("[HUD] Update cache read error:", error instanceof Error ? error.message : error);
             }
         }
+        // After the read, so an unbuilt version is still reported when the cache is unreadable.
+        ({ updateAvailable, unbuiltVersion: omcUnbuiltVersion } =
+            resolveOmcUpdateState(omcVersion, cachedLatestVersion, process.env[OMC_HUD_UNBUILT_VERSION_ENV]));
         // Session summary: read cached state and trigger background regeneration if needed
         let sessionSummary = null;
         // The summary spawns `claude -p`, which Copilot sessions cannot rely on.
@@ -452,6 +460,7 @@ async function mainImpl(watchMode = false, skipInit = false) {
                 : transcriptData.sessionTotalTokens ?? null,
             omcVersion,
             updateAvailable,
+            omcUnbuiltVersion,
             omcUpdateSource,
             claudeCodeVersion,
             claudeCodeUpdateAvailable,

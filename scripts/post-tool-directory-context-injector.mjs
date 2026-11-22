@@ -23,6 +23,7 @@ import { fileURLToPath, pathToFileURL } from 'url';
 import { readStdin } from './lib/stdin.mjs';
 // fork: Copilot apply_patch sends patch text, not a path object; extract its paths.
 import { toolInputPaths } from './lib/tool-input-paths.mjs';
+import { loadContextText } from './lib/context-text-loader.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -43,6 +44,11 @@ try {
   // dist not available — skip directory context injection silently
 }
 
+// Opt-in text cleaning (OMC_CONTEXT_TEXT_SANITIZE=1 or true): the README text read from disk is cleaned before it is
+// injected. The header and the truncation notice that the injector module writes name the file (the notice tells the model
+// to read it), so the paths of the context files are identifiers: they are written exactly, and the text around them is
+// cleaned (see cleanTextBlockKeeping). The module is loaded only when the switch is on; with the switch off the text is
+// injected unchanged.
 async function main() {
   // Honor the documented kill switches (issues #838, #3253) with the same
   // `post-tool-use` event token as the other PostToolUse hooks.
@@ -85,17 +91,28 @@ async function main() {
     }
 
     const hook = createDirectoryReadmeInjectorHook(cwd);
-    const contextText = rawPaths
-      .map((rawPath) => hook.processToolExecution(toolName, isAbsolute(rawPath) ? rawPath : join(cwd, rawPath), sessionId))
+    const filePaths = rawPaths.map((rawPath) => (isAbsolute(rawPath) ? rawPath : join(cwd, rawPath)));
+    const contextText = filePaths
+      .map((filePath) => hook.processToolExecution(toolName, filePath, sessionId))
       .filter(Boolean)
       .join('\n\n');
 
     if (contextText) {
+      const sanitize = await loadContextText();
+      let paths = [];
+      if (sanitize && typeof hook.getContextFilesForFile === 'function') {
+        try {
+          // fork: every patched path of an apply_patch, not one file_path.
+          paths = filePaths.flatMap((filePath) => hook.getContextFilesForFile(filePath));
+        } catch {
+          // The paths are not known: the text is cleaned as a whole.
+        }
+      }
       console.log(JSON.stringify({
         continue: true,
         hookSpecificOutput: {
           hookEventName: 'PostToolUse',
-          additionalContext: contextText,
+          additionalContext: sanitize ? sanitize.cleanTextBlockKeeping(contextText, paths) : contextText,
         },
       }));
     } else {

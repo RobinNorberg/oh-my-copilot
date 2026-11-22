@@ -5,12 +5,14 @@
  * tmux send-keys continuation nudges. Only nudges worker panes (never the
  * leader) in the current team session.
  *
- * Idle = pane shows a prompt (paneLooksReady) AND no active task running
- * (paneHasActiveTask is false).
+ * Idle = classifyPane reads the pane as idle (a prompt is drawn, and no trust
+ * dialog, active task or startup status line is on screen), and the pane also
+ * looks ready the way the checks that send keys read it.
  *
  * @see https://github.com/anthropics/oh-my-copilot/issues/1047
  */
-import { paneLooksReady, paneHasActiveTask, captureOwnedTeamPane, providerForTeamTarget, } from './tmux-session.js';
+import { classifyPane, observePane, paneHasActiveTask, paneLooksReady, } from './pane-readiness.js';
+import { captureOwnedTeamPane, providerForTeamTarget, } from './tmux-session.js';
 import { isValidTeamInstanceId, isValidTmuxServerIdentity, } from './types.js';
 export const DEFAULT_NUDGE_CONFIG = {
     delayMs: 30_000,
@@ -30,14 +32,18 @@ export async function capturePane(ownership) {
     }
 }
 /**
- * A pane is idle when it shows a prompt (ready for input) but has no
- * active task running.
+ * A pane is idle when it shows a prompt and nothing else claims it: no trust
+ * dialog, no active task and no startup status line. A nudge types into the
+ * pane, so it also needs the pane to look ready the way the checks that send
+ * keys have always read it: a draft that mentions "loading" stays untouched.
  */
 export async function isPaneIdle(ownership) {
     const captured = await capturePane(ownership);
     if (!captured)
         return false;
-    return paneLooksReady(captured) && !paneHasActiveTask(captured);
+    return (classifyPane(observePane(captured)).kind === 'idle' &&
+        paneLooksReady(captured) &&
+        !paneHasActiveTask(captured));
 }
 export class NudgeTracker {
     config;

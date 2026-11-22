@@ -26,6 +26,13 @@ export declare function isNativeWindowsShell(): boolean;
  * spawned without cmd.exe.
  */
 export declare function quoteForCmd(arg: string): string;
+/**
+ * Pre-existing quoting for the tmux layer only (tmux's own argv on a .cmd tmux,
+ * and the login-shell wrapper's `/c` payload): those carry OMC-built strings
+ * such as `%0` pane ids and `set "K=%%V%%"` prefixes, never free text, so they
+ * keep their old semantics. Host CLI argv must use quoteForCmd.
+ */
+export declare function quoteForTmuxCmdLayer(command: string): string;
 export interface HostBinarySpawn {
     command: string;
     args: string[];

@@ -18,7 +18,9 @@ import { tmuxExec, tmuxExecAsync, tmuxShell, tmuxCmdAsync, } from "../cli/tmux-u
 import { isValidTeamInstanceId, isValidTmuxServerIdentity, } from "./types.js";
 import { currentStrictProcessStartIdentity, isValidStrictProcessStartIdentity, observeProcessIdentity, } from "./team-owner-epoch.js";
 import { getNativeContainedFs } from "../graph/runtime/native-contained-fs.js";
-import { paneLineLooksLikeIdlePrompt } from "./pane-readiness.js";
+import { describeStartupReadyTimeout, resolveStartupReadyTimeoutMs, } from "./ready-timeout.js";
+import { detectPaneTrustPromptKind, paneHasActiveTask, paneHasStartupBanner, paneHasTrustPrompt, paneLooksReady, claudeTrustFocus, } from "./pane-readiness.js";
+export { detectPaneTrustPromptKind, paneHasActiveTask, paneHasTrustPrompt, paneLooksReady, };
 import { awaitWorkerLaunchAcknowledgement, awaitWorkerLaunchProviderStarted, buildProviderEnvironment, cleanupWorkerLaunchTransport, isWorkerLaunchAttemptAccepted, isWorkerLaunchAttemptCurrent, materializeWorkerLaunchTransport, observeWorkerLaunchProvider, prepareWorkerLaunchAttempt, retireAndCleanupCurrentWorkerLaunchAttempt, revokeWorkerLaunchAttempt, } from "./worker-launch-ack.js";
 import { resolveRuntimeCliPath } from "./runtime-owner-client.js";
 import { buildPsmuxNamespacePath, disposePsmuxNamespace, isPsmux, psmuxNamespaceIsEmpty, runPsmuxVerifiedCommand, } from "./psmux-adapter.js";
@@ -3293,166 +3295,6 @@ export async function killOwnedWorkerPane(ownership) {
         throw new Error("owned_pane_tmux_server_guard_failed");
     }
 }
-/**
- * @internal Exported for testing only.
- */
-export function detectPaneTrustPromptKind(captured, provider) {
-    const lines = captured
-        .split("\n")
-        .map((l) => l.replace(/\r/g, "").trim())
-        .filter((l) => l.length > 0);
-    const tail = lines.slice(-12);
-    const lastCodexPromptIndex = lines.findLastIndex((line) => paneLineLooksLikeIdlePrompt(line, "codex"));
-    const activeCodexPrompt = lastCodexPromptIndex >= 0
-        ? lines[lastCodexPromptIndex].replace(/^\s*(?:[│┃║▌▐▏▕╎┆┊]\s*)?[›>❯]\s*/, "")
-        : "";
-    const lastCodexTrustQuestionIndex = lines.findLastIndex((line, index) => /Trust this folder\?/i.test(lines.slice(index, index + 2).join(" ")));
-    const previousTrustChoiceWasRendered = lastCodexTrustQuestionIndex >= 0 &&
-        lines
-            .slice(lastCodexTrustQuestionIndex + 1, lastCodexPromptIndex)
-            .some((line) => {
-            const prompt = line.replace(/^\s*(?:[│┃║▌▐▏▕╎┆┊]\s*)?[›>❯]\s*/, "");
-            return /^(?:1(?:\.|$)|2(?:\.|$))/i.test(prompt);
-        });
-    const lastCodexPromptIsTrustChoice = lastCodexPromptIndex >= 0 &&
-        (/^(?:1(?:\.|$)|2(?:\.|$))/i.test(activeCodexPrompt) ||
-            (activeCodexPrompt === "" && !previousTrustChoiceWasRendered));
-    const codexTrustQuestionIsActive = lastCodexTrustQuestionIndex >= 0 &&
-        (lastCodexPromptIndex < lastCodexTrustQuestionIndex ||
-            lastCodexPromptIsTrustChoice);
-    if ((provider === undefined || provider === "codex") &&
-        codexTrustQuestionIsActive) {
-        return "codex_directory";
-    }
-    const hasCursorTrustBanner = tail.some((l) => /Workspace Trust Required/i.test(l));
-    const hasCursorTrustHint = tail.some((l) => /Pass\s+--trust,\s*--yolo,\s*or\s+-f/i.test(l));
-    if ((provider === undefined || provider === "cursor") &&
-        hasCursorTrustBanner &&
-        (hasCursorTrustHint ||
-            tail.some((l) => /Do you trust the contents of this directory\?/i.test(l)))) {
-        return "cursor_workspace_trust";
-    }
-    // Claude Code wraps the question to the pane width. In a 35-column pane it
-    // starts 13 lines from the bottom and reaches "trust?" within 3 lines.
-    const claudeQuestionLines = lines.slice(-20);
-    const hasClaudeDirectoryQuestion = claudeQuestionLines.some((_, index) => /(?:Do you trust the files in this folder|Quick safety check:\s*Is this a project you created or one you trust)\?/i.test(claudeQuestionLines.slice(index, index + 3).join(" ")));
-    const hasClaudeDirectoryNoChoice = tail.some((l) => /\bNo,\s*exit\b/i.test(l));
-    const hasClaudeDirectoryYesChoice = tail.some((l) => /\bYes,\s*(?:proceed|I trust this folder)\b/i.test(l));
-    if ((provider === undefined || provider === "claude") &&
-        hasClaudeDirectoryQuestion &&
-        hasClaudeDirectoryNoChoice &&
-        hasClaudeDirectoryYesChoice) {
-        return "claude_directory";
-    }
-    // Copilot CLI 1.0.88 "Confirm folder trust" dialog, shown for an untrusted
-    // cwd even with --allow-all-tools/--allow-all-paths (--add-dir does not
-    // suppress it). Focus starts on "1. Yes" (this session only, not persisted).
-    const hasCopilotYesChoice = tail.some((l) => /\b1\.\s*Yes\s*(?:│|$)/.test(l));
-    const hasCopilotNoChoice = tail.some((l) => /\b3\.\s*No\s*\(Esc\)/i.test(l));
-    if (provider === "copilot" &&
-        hasClaudeDirectoryQuestion &&
-        hasCopilotYesChoice &&
-        hasCopilotNoChoice) {
-        return "copilot_folder";
-    }
-    const hasDirectoryQuestion = tail.some((l) => /Do you trust the contents of this directory\?/i.test(l));
-    const hasDirectoryChoices = tail.some((l) => /Yes,\s*continue|No,\s*quit|Press enter to continue/i.test(l));
-    if (hasDirectoryQuestion && hasDirectoryChoices)
-        return "directory";
-    // cursor-agent asks the same question but offers no selectable answer: it
-    // prints "Workspace Trust Required", tells the operator to pass --trust/-f,
-    // and exits. There is nothing to dismiss, so this is reported as its own
-    // kind and never answered with keystrokes. Launch args carry `--force
-    // --trust` precisely so this state is unreachable; seeing it means a pane
-    // was started without them.
-    const hasHookReview = tail.some((l) => /Hooks need review/i.test(l));
-    const hasHookTrustChoice = tail.some((l) => /Continue without trusting/i.test(l));
-    const hasHookConfirm = tail.some((l) => /Press enter to confirm or esc to go back/i.test(l));
-    if (hasHookReview && hasHookTrustChoice && hasHookConfirm)
-        return "codex_hooks";
-    return null;
-}
-export function paneHasTrustPrompt(captured, provider) {
-    return detectPaneTrustPromptKind(captured, provider) !== null;
-}
-function paneHasClaudeStartupBanner(captured, provider) {
-    const lines = captured
-        .split("\n")
-        .map((line) => line.replace(/\r/g, "").trim())
-        .filter((line) => line.length > 0)
-        .slice(-20);
-    const lastPromptIndex = lines.findLastIndex((line) => paneLineLooksLikeIdlePrompt(line, provider));
-    // Claude Code v2.1.x renders the permission-mode indicator
-    // ("⏵⏵ bypass permissions on (shift+tab to cycle)") *below* the prompt
-    // as a persistent idle-state UI element. If a prompt is present anywhere
-    // in the tail, the pane has finished bootstrapping and the banner is an
-    // idle mode indicator, not a startup signal.
-    if (lastPromptIndex >= 0)
-        return false;
-    const lastStartupBannerIndex = lines.findLastIndex((line) => /bypass\s+permissions\s+on/i.test(line) ||
-        /shift\+tab\s+to\s+cycle/i.test(line) ||
-        /^⏵⏵\s+/.test(line));
-    return lastStartupBannerIndex >= 0;
-}
-function paneIsBootstrapping(captured, provider) {
-    if (paneHasClaudeStartupBanner(captured, provider))
-        return true;
-    const lines = captured
-        .split("\n")
-        .map((line) => line.replace(/\r/g, "").trim())
-        .filter((line) => line.length > 0);
-    return lines.some((line) => /\b(loading|initializing|starting up)\b/i.test(line) ||
-        /\bmodel:\s*loading\b/i.test(line) ||
-        /\bconnecting\s+to\b/i.test(line));
-}
-export function paneHasActiveTask(captured, provider) {
-    const lines = captured
-        .split("\n")
-        .map((l) => l.replace(/\r/g, "").trim())
-        .filter((l) => l.length > 0);
-    const tail = lines.slice(-40);
-    if (provider === "cursor" && tail.some((l) => /ctrl\+c\s+to\s+stop/i.test(l)))
-        return true;
-    // Fork fix: Copilot CLI 1.0.9x status lines read "○ Working · 25 B esc interrupt"
-    // and "◉ Working esc edit prompt".
-    if (provider === "copilot" &&
-        tail.some((l) => /^\S?\s*Working\b.*\besc\b/u.test(l)))
-        return true;
-    if (tail.some((l) => /\b\d+\s+background terminal running\b/i.test(l)))
-        return true;
-    if (tail.some((l) => /esc to interrupt/i.test(l)))
-        return true;
-    if (tail.some((l) => /\bbackground terminal running\b/i.test(l)))
-        return true;
-    if (tail.some((l) => /^[·✻✢✳✶✽✺✹✸✷*]\s+[A-Za-z][A-Za-z0-9''-]*(?:\s+[A-Za-z][A-Za-z0-9''-]*){0,3}(?:…|\.{3})(?:\s*\(.*\))?$/u.test(l)))
-        return true;
-    return false;
-}
-export function paneLooksReady(captured, provider) {
-    const content = captured.trimEnd();
-    if (content === "")
-        return false;
-    const lines = content
-        .split("\n")
-        .map((line) => line.replace(/\r/g, "").trimEnd())
-        .filter((line) => line.trim() !== "");
-    if (lines.length === 0)
-        return false;
-    // Dismissible trust prompts are still interactive. Cursor has exited, while
-    // Codex's folder-trust choice must be made by the user, so neither is ready.
-    const trustPrompt = detectPaneTrustPromptKind(content, provider);
-    if (trustPrompt === "cursor_workspace_trust" ||
-        trustPrompt === "codex_directory")
-        return false;
-    if (paneHasTrustPrompt(content, provider))
-        return true;
-    if (paneIsBootstrapping(content, provider))
-        return false;
-    const lastLine = lines[lines.length - 1];
-    if (paneLineLooksLikeIdlePrompt(lastLine, provider))
-        return true;
-    return lines.some((line) => paneLineLooksLikeIdlePrompt(line, provider));
-}
 export async function waitForPaneReady(paneId, opts = {}) {
     if (!isCmuxSurfaceTarget(paneId) && !opts.tmuxServerIdentity)
         return false;
@@ -3556,6 +3398,8 @@ async function startupContextIsActive(context, attemptAlreadyFenced = false) {
 export async function startupProviderExited(context) {
     return (await observeWorkerLaunchProvider(context.attempt)) === "dead";
 }
+// A Down sent 530ms after the trust dialog drew took effect (recording E0).
+const CLAUDE_TRUST_DOWN_RESEND_MS = 1_000;
 export async function waitForStartupPaneReady(context, opts = {}) {
     if (context.ownership.paneId !== context.attempt.pane_id ||
         context.provider !== context.attempt.provider) {
@@ -3569,7 +3413,12 @@ export async function waitForStartupPaneReady(context, opts = {}) {
         : 250;
     const deadline = Date.now() + timeoutMs;
     const handledSelectors = new Set();
-    while (Date.now() < deadline) {
+    let claudeTrustDownSentAt = -Infinity;
+    // Set right after Enter answers Claude's trust dialog: the pane is read once
+    // more even when that Enter went out at the last poll before the deadline.
+    let readAfterTrustAnswer = false;
+    while (Date.now() < deadline || readAfterTrustAnswer) {
+        readAfterTrustAnswer = false;
         if (!(await startupContextIsActive(context, opts.attemptAlreadyFenced)))
             return { ok: false, reason: "attempt_inactive" };
         if (await startupProviderExited(context))
@@ -3620,14 +3469,30 @@ export async function waitForStartupPaneReady(context, opts = {}) {
                 continue;
             }
             if (selector === "claude_directory") {
-                // This Claude Code dialog focuses "No, exit" by default; move to the affirmative choice.
-                await sendTeamPaneKey(context.ownership.paneId, "Down", context.ownership.tmuxServerIdentity);
+                // This dialog focuses "No, exit" first. Claude Code 2.1.328 was
+                // measured to drop a Down sent right after the dialog drew, so Down is
+                // resent while "No" stays focused, and Enter is sent only when the last
+                // capture showed the affirmative choice focused. An answered dialog
+                // above a live input prompt gets no key: it would reach the prompt.
+                const focus = claudeTrustFocus(captured);
+                if (focus === "stale")
+                    return { ok: false, reason: "selector_persistent" };
+                if (focus !== "yes") {
+                    if (focus === "no" &&
+                        Date.now() - claudeTrustDownSentAt >= CLAUDE_TRUST_DOWN_RESEND_MS) {
+                        await sendTeamPaneKey(context.ownership.paneId, "Down", context.ownership.tmuxServerIdentity);
+                        claudeTrustDownSentAt = Date.now();
+                    }
+                    await sleep(pollIntervalMs);
+                    continue;
+                }
             }
             else {
                 await sendLiteralPaneText(context.ownership.paneId, selector === "directory" ? "1" : "3", context.ownership.tmuxServerIdentity);
             }
             await sendTeamPaneKey(context.ownership.paneId, "Enter", context.ownership.tmuxServerIdentity);
             handledSelectors.add(selector);
+            readAfterTrustAnswer = selector === "claude_directory";
             await sleep(pollIntervalMs);
             continue;
         }
@@ -3637,6 +3502,8 @@ export async function waitForStartupPaneReady(context, opts = {}) {
             return { ok: true };
         await sleep(pollIntervalMs);
     }
+    console.warn(`[tmux-session] waitForStartupPaneReady: pane ${safePaneDiagnosticToken(context.ownership.paneId)} ` +
+        `timed out after ${timeoutMs}ms; ${describeStartupReadyTimeout(process.env, timeoutMs)}`);
     return { ok: false, reason: "readiness_timeout" };
 }
 async function startupPaneSubmitBlockReason(context, attemptAlreadyFenced) {
@@ -3670,6 +3537,7 @@ export async function deliverStartupInbox(context, message, options = {}) {
     if (message.length > 200)
         return { ok: false, reason: "message_too_long" };
     const ready = await waitForStartupPaneReady(context, {
+        timeoutMs: resolveStartupReadyTimeoutMs(process.env),
         attemptAlreadyFenced: options.attemptAlreadyFenced,
     });
     if (!ready.ok)
@@ -3815,7 +3683,7 @@ export async function sendToWorker(_sessionName, paneId, message, tmuxServerIden
         if (!initialObservation.ok || !initialObservation.captured.trim())
             return false;
         const initialCapture = initialObservation.captured;
-        if (paneHasClaudeStartupBanner(initialCapture)) {
+        if (paneHasStartupBanner(initialCapture)) {
             return false;
         }
         const paneBusy = paneHasActiveTask(initialCapture);
