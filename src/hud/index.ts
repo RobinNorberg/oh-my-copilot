@@ -42,7 +42,7 @@ import { executeCustomProvider } from "./custom-rate-provider.js";
 import { render } from "./render.js";
 import { detectApiKeySource } from "./elements/api-key-source.js";
 import { detectHudHost } from "./host.js";
-import { resolveCachedOmcUpdate } from "./elements/update-hint.js";
+import { resolveCachedOmcUpdate, resolveOmcUpdateState } from "./elements/update-hint.js";
 import { refreshMissionBoardState } from "./mission-board.js";
 import { readTeamStateForHud } from "./elements/team.js";
 import { readUltragoalStateForHud } from "./elements/ultragoal.js";
@@ -57,6 +57,7 @@ import type {
 } from "./types.js";
 import { getRuntimePackageVersion } from "../lib/version.js";
 import { compareVersions, getOmcUpdateChannel } from "../features/auto-update.js";
+import { OMC_HUD_UNBUILT_VERSION_ENV } from "../lib/env-vars.js";
 import {
   resolveToWorktreeRoot,
   resolveTranscriptPath,
@@ -464,6 +465,7 @@ async function mainImpl(watchMode = false, skipInit = false): Promise<void> {
     // Read OMC version and update check cache
     let omcVersion: string | null = null;
     let updateAvailable: string | null = null;
+    let omcUnbuiltVersion: string | null = null;
     let omcUpdateSource: "npm" | "marketplace" | "copilot-plugin" | null = null;
     // Under Copilot stdin.version is the Copilot CLI version, not Claude Code's.
     const claudeCodeVersion = isCopilotHost ? null : (stdin.version ?? null);
@@ -480,12 +482,15 @@ async function mainImpl(watchMode = false, skipInit = false): Promise<void> {
         );
       }
     }
+    let cachedLatestVersion: unknown = null;
     // Async file read to avoid blocking event loop (Issue #1273)
     try {
       const updateCacheFile = getUpdateCheckCachePath();
       await access(updateCacheFile);
       const content = await readFile(updateCacheFile, "utf-8");
       const cached = JSON.parse(content);
+      // Fork: the cache is trusted only for this HUD's own install channel and
+      // version; resolveOmcUpdateState below then weighs it against an unbuilt version.
       const cachedUpdate = resolveCachedOmcUpdate(
         cached,
         omcVersion,
@@ -493,7 +498,7 @@ async function mainImpl(watchMode = false, skipInit = false): Promise<void> {
         compareVersions,
       );
       if (cachedUpdate) {
-        updateAvailable = cachedUpdate.latestVersion;
+        cachedLatestVersion = cachedUpdate.latestVersion;
         omcUpdateSource = cachedUpdate.source;
       }
       // claudeCodeLatestVersion is absent on caches written before the
@@ -514,6 +519,13 @@ async function mainImpl(watchMode = false, skipInit = false): Promise<void> {
         );
       }
     }
+    // After the read, so an unbuilt version is still reported when the cache is unreadable.
+    ({ updateAvailable, unbuiltVersion: omcUnbuiltVersion } =
+      resolveOmcUpdateState(
+        omcVersion,
+        cachedLatestVersion,
+        process.env[OMC_HUD_UNBUILT_VERSION_ENV],
+      ));
 
     // Session summary: read cached state and trigger background regeneration if needed
     let sessionSummary: SessionSummaryState | null = null;
@@ -599,6 +611,7 @@ async function mainImpl(watchMode = false, skipInit = false): Promise<void> {
         : transcriptData.sessionTotalTokens ?? null,
       omcVersion,
       updateAvailable,
+      omcUnbuiltVersion,
       omcUpdateSource,
       claudeCodeVersion,
       claudeCodeUpdateAvailable,

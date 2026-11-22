@@ -415,6 +415,16 @@ describe('runtime v2 startup inbox dispatch', () => {
         });
         return () => attempt;
     }
+    function useProductionLaunchFence() {
+        launchMocks.withWorkerLaunchAttemptFence.mockImplementation(async (_attempt, fn) => {
+            try {
+                return { ok: true, value: await fn() };
+            }
+            catch {
+                return { ok: false };
+            }
+        });
+    }
     async function seedOwnerRecoveryFixture(provider, label) {
         const teamName = 'dispatch-team';
         const requestId = `owner-${provider}-${label}-request`;
@@ -2441,6 +2451,28 @@ describe('runtime v2 startup inbox dispatch', () => {
         expect(requests[0]?.last_reason).toBe('worker_notify_failed:startup_send_failed');
         expect(mocks.sendToWorker).toHaveBeenCalledTimes(1);
     });
+    it('tears down the owned worker launch and names the refusal when the dispatch store refuses startup writes', async () => {
+        cwd = await mkdtempFixture('omc-runtime-v2-startup-store-refused-');
+        useProductionLaunchFence();
+        const storePath = absPath(cwd, TeamPaths.dispatchRequests('dispatch-team'));
+        atomicWriteControl.triggerReadPath = storePath;
+        atomicWriteControl.corruptSiblingPath = storePath;
+        const { startTeamV2 } = await import('../runtime-v2.js');
+        const runtime = await startTeamV2({
+            teamName: 'dispatch-team',
+            workerCount: 1,
+            agentTypes: ['claude'],
+            tasks: [{ subject: 'Dispatch test', description: 'Verify a refused dispatch store' }],
+            cwd,
+        });
+        expect(runtime.startupFailures).toEqual([
+            { worker: 'worker-1', reason: expect.stringMatching(/^dispatch_enqueue_failed:/) },
+        ]);
+        expect(runtime.config.workers[0]?.assigned_tasks).toEqual([]);
+        expect(mocks.killOwnedWorkerPane).toHaveBeenCalledWith(expect.objectContaining({ paneId: '%2' }));
+        expect(mocks.deliverStartupInbox).not.toHaveBeenCalled();
+        await expect(readFile(storePath, 'utf8')).resolves.toBe('{corrupt sibling');
+    });
     it('reports provider_exited as the startup failure when the provider left a shell prompt', async () => {
         cwd = await mkdtempFixture('omc-runtime-v2-provider-exited-');
         mocks.deliverStartupInbox.mockResolvedValueOnce({ ok: false, reason: 'provider_exited' });
@@ -3094,6 +3126,39 @@ describe('runtime v2 startup inbox dispatch', () => {
             kind: 'final',
             outcome: 'succeeded',
         });
+    });
+    it('keeps a committed recovery resumable when its dispatch store refuses writes, then completes it on retry', async () => {
+        cwd = await mkdtempFixture('omc-runtime-v2-owner-store-refused-');
+        useProductionLaunchFence();
+        const fixture = await seedOwnerRecoveryFixture('codex', 'store-refused');
+        configureOwnerPaneLifecycle();
+        const storePath = absPath(cwd, TeamPaths.dispatchRequests(fixture.teamName));
+        await mkdir(join(storePath, '..'), { recursive: true });
+        await writeFile(storePath, '{corrupt store', 'utf8');
+        const recover = async () => {
+            const { executeRecoverDeadWorkerV2Owner } = await import('../runtime-v2.js');
+            return executeRecoverDeadWorkerV2Owner({
+                teamName: fixture.teamName,
+                cwd,
+                workerName: 'worker-1',
+                requestId: fixture.requestId,
+                instanceId: fixture.instanceId,
+            });
+        };
+        const refused = await recover();
+        expect(refused).toMatchObject({ outcome: 'failed', message: expect.stringMatching(/^dispatch_enqueue_failed:/) });
+        expect(mocks.deliverStartupInbox).not.toHaveBeenCalled();
+        expect(mocks.killOwnedWorkerPane).not.toHaveBeenCalled();
+        await expect(readFile(storePath, 'utf8')).resolves.toBe('{corrupt store');
+        expect(readRecoveryOutcome(cwd, fixture.requestId)).toMatchObject({ kind: 'phase' });
+        const config = JSON.parse(await readFile(absPath(cwd, TeamPaths.config(fixture.teamName)), 'utf8'));
+        expect(config.active_recovery).toMatchObject({ request_id: fixture.requestId, recovery_id: fixture.recoveryId });
+        await rm(storePath);
+        const retried = await recover();
+        expect(retried).toMatchObject({ outcome: 'recovered', committed: true, newPaneId: '%2' });
+        expect(mocks.deliverStartupInbox).toHaveBeenCalledTimes(1);
+        expect(mocks.killOwnedWorkerPane).not.toHaveBeenCalled();
+        expect(readRecoveryOutcome(cwd, fixture.requestId)).toMatchObject({ kind: 'final', outcome: 'succeeded' });
     });
     it('requeues the selected task through an exact read when a sibling corrupts after inventory', async () => {
         vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });

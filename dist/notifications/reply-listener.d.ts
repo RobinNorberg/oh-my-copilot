@@ -120,7 +120,16 @@ export type ReplyInjectionStep = {
     kind: "key";
     value: string;
 };
+/**
+ * The first 50 characters of the injected reply for the daemon log. The reply is redacted before it is cut
+ * (see redactedPreview), not after: a key that starts shortly before the cut would otherwise be logged as
+ * a fragment that is too short to be recognized. It is also redacted before the escapes of sanitizeReplyInput
+ * are added (see escapeReplyInput): they double every backslash, which turns `"a\"b"` into a quoted value
+ * that ends after `a\\` and leaves `b` visible. What is typed into the pane is not changed.
+ */
+export declare function replyLogPreview(text: string, platform: string, config: Pick<ReplyListenerDaemonConfig, "includePrefix" | "maxMessageLength">): string;
 export declare function buildReplyInjectionSteps(text: string, platform: string, config: Pick<ReplyListenerDaemonConfig, "includePrefix" | "maxMessageLength">, mapping?: Pick<SessionMapping, "event" | "askUserQuestionOptionCount" | "askUserQuestionAllowOther">): ReplyInjectionStep[];
+export declare function sendReplyInjectionSteps(paneId: string, steps: ReplyInjectionStep[]): boolean;
 /**
  * Inject a reply into a Herdr agent pane through the semantic agent surface.
  *

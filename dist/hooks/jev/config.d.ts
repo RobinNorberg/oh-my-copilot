@@ -46,8 +46,9 @@
  * channel (ADR 03672).
  *
  * OMC_JEV entry syntax: `point` (shadow) | `point:active` (active) | `all`
- * (every registered point, shadow) | `all:active` (every point, active).
- * Unknown point names are ignored.
+ * (every registered point, shadow) | `all:active` (every point, active) |
+ * `point:shadow` (shadow even under `all:active`, when it is the last entry
+ * naming the point). Unknown point names are ignored.
  */
 export declare const JEV_DEFAULT_ENDPOINT = "https://api.typesafe.ai/v1/systemone";
 /** Points currently promoted to active. Empty until the promotion ticket (07). */
@@ -70,6 +71,8 @@ export interface JevConfig {
     activatedPoints: ReadonlySet<string>;
     /** Points named `point:off` (a later non-off entry for the point turns it back on): off even under `all` or `all:active`. */
     offPoints: ReadonlySet<string>;
+    /** Points whose last entry is `point:shadow`: shadow even under `all:active` or an earlier `point:active`. */
+    shadowPoints: ReadonlySet<string>;
     /** `all:active`: every opted-in point is active. */
     activateAll: boolean;
     timeoutMs: number;

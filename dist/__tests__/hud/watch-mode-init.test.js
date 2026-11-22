@@ -1,4 +1,8 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { OMC_HUD_UNBUILT_VERSION_ENV } from '../../lib/env-vars.js';
 function makeStdin(withRateLimits = false, rateLimitOverrides = {}) {
     const fiveHourPercent = 'fiveHourPercent' in rateLimitOverrides ? rateLimitOverrides.fiveHourPercent : 11;
     const weeklyPercent = 'weeklyPercent' in rateLimitOverrides ? rateLimitOverrides.weeklyPercent : 2;
@@ -151,8 +155,18 @@ describe('HUD watch mode initialization', () => {
         vi.doMock('../../lib/version.js', () => ({
             getRuntimePackageVersion: vi.fn(() => '4.7.9'),
         }));
+        // fork: the HUD trusts the update cache only for its own install channel and
+        // version (resolveCachedOmcUpdate), which compares with this compareVersions.
         vi.doMock('../../features/auto-update.js', () => ({
-            compareVersions: vi.fn(() => 0),
+            compareVersions: vi.fn((a, b) => {
+                const pa = a.split('.').map(Number);
+                const pb = b.split('.').map(Number);
+                for (let i = 0; i < 3; i++)
+                    if (pa[i] !== pb[i])
+                        return (pa[i] ?? 0) < (pb[i] ?? 0) ? -1 : 1;
+                return 0;
+            }),
+            getOmcUpdateChannel: vi.fn(() => 'marketplace'),
         }));
         vi.doMock('../../lib/worktree-paths.js', () => ({
             resolveToWorktreeRoot: vi.fn((cwd) => cwd ?? '/tmp/worktree'),
@@ -415,6 +429,57 @@ describe('HUD watch mode initialization', () => {
         });
         await hud.main(true, false);
         expect(getUsage).toHaveBeenCalledTimes(1);
+    });
+    describe('newer installed version the HUD wrapper skipped as unbuilt', () => {
+        const originalConfigDir = process.env.COPILOT_HOME;
+        const originalUnbuiltVersion = process.env[OMC_HUD_UNBUILT_VERSION_ENV];
+        let configDir;
+        function writeUpdateCheckCache(latestVersion) {
+            mkdirSync(join(configDir, '.omg'), { recursive: true });
+            writeFileSync(join(configDir, '.omg', 'update-check.json'), 
+            // fork: currentVersion names the install the cache was written for.
+            JSON.stringify({ latestVersion, source: 'marketplace', currentVersion: '4.7.9' }));
+        }
+        function restoreEnv(name, value) {
+            if (value === undefined)
+                delete process.env[name];
+            else
+                process.env[name] = value;
+        }
+        beforeEach(() => {
+            configDir = mkdtempSync(join(tmpdir(), 'omc-hud-unbuilt-'));
+            process.env.COPILOT_HOME = configDir;
+            delete process.env[OMC_HUD_UNBUILT_VERSION_ENV];
+        });
+        afterEach(() => {
+            restoreEnv('COPILOT_HOME', originalConfigDir);
+            restoreEnv(OMC_HUD_UNBUILT_VERSION_ENV, originalUnbuiltVersion);
+            rmSync(configDir, { recursive: true, force: true });
+        });
+        it('reports it as unbuilt instead of advertising it as an update', async () => {
+            writeUpdateCheckCache('4.8.0');
+            process.env[OMC_HUD_UNBUILT_VERSION_ENV] = '4.8.0';
+            const hud = await importHudModule();
+            await hud.main(true, false);
+            expect(render).toHaveBeenCalledWith(expect.objectContaining({
+                omcVersion: '4.7.9',
+                updateAvailable: null,
+                omcUnbuiltVersion: '4.8.0',
+                omcUpdateSource: 'marketplace',
+            }), expect.anything());
+        });
+        it('still reports it when the update-check cache is missing', async () => {
+            process.env[OMC_HUD_UNBUILT_VERSION_ENV] = '4.8.0';
+            const hud = await importHudModule();
+            await hud.main(true, false);
+            expect(render).toHaveBeenCalledWith(expect.objectContaining({ updateAvailable: null, omcUnbuiltVersion: '4.8.0' }), expect.anything());
+        });
+        it('advertises the cached latest version when the wrapper skipped nothing', async () => {
+            writeUpdateCheckCache('4.8.0');
+            const hud = await importHudModule();
+            await hud.main(true, false);
+            expect(render).toHaveBeenCalledWith(expect.objectContaining({ updateAvailable: '4.8.0', omcUnbuiltVersion: null }), expect.anything());
+        });
     });
 });
 //# sourceMappingURL=watch-mode-init.test.js.map

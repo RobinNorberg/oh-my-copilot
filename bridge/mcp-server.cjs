@@ -41424,21 +41424,23 @@ ${JSON.stringify(data, null, 2)}
         try {
           const root = validateWorkingDirectory(workingDirectory);
           ensureOmcDir("", root);
-          let finalMemory;
-          if (merge2) {
-            const existing = await loadProjectMemory(root);
-            if (existing) {
-              finalMemory = mergeProjectMemory(existing, memory);
+          await withProjectMemoryLock(root, async () => {
+            let finalMemory;
+            if (merge2) {
+              const existing = await loadProjectMemory(root);
+              if (existing) {
+                finalMemory = mergeProjectMemory(existing, memory);
+              } else {
+                finalMemory = memory;
+              }
             } else {
               finalMemory = memory;
             }
-          } else {
-            finalMemory = memory;
-          }
-          if (!finalMemory.version) finalMemory.version = "1.0.0";
-          if (!finalMemory.lastScanned) finalMemory.lastScanned = Date.now();
-          if (!finalMemory.projectRoot) finalMemory.projectRoot = root;
-          await saveProjectMemory(root, finalMemory);
+            if (!finalMemory.version) finalMemory.version = "1.0.0";
+            if (!finalMemory.lastScanned) finalMemory.lastScanned = Date.now();
+            if (!finalMemory.projectRoot) finalMemory.projectRoot = root;
+            await saveProjectMemory(root, finalMemory);
+          });
           return {
             content: [{
               type: "text",
@@ -41510,34 +41512,36 @@ Path: ${getWorktreeProjectMemoryPath(root)}`
         const { directive, context = "", priority = "normal", workingDirectory } = args;
         try {
           const root = validateWorkingDirectory(workingDirectory);
-          const memory = await loadProjectMemory(root);
-          if (!memory) {
+          return await withProjectMemoryLock(root, async () => {
+            const memory = await loadProjectMemory(root);
+            if (!memory) {
+              return {
+                content: [{
+                  type: "text",
+                  text: "Project memory does not exist. Run a session first to auto-detect project environment."
+                }]
+              };
+            }
+            const newDirective = {
+              timestamp: Date.now(),
+              directive,
+              context,
+              source: "explicit",
+              priority
+            };
+            memory.userDirectives = addDirective(memory.userDirectives, newDirective);
+            await saveProjectMemory(root, memory);
             return {
               content: [{
                 type: "text",
-                text: "Project memory does not exist. Run a session first to auto-detect project environment."
-              }]
-            };
-          }
-          const newDirective = {
-            timestamp: Date.now(),
-            directive,
-            context,
-            source: "explicit",
-            priority
-          };
-          memory.userDirectives = addDirective(memory.userDirectives, newDirective);
-          await saveProjectMemory(root, memory);
-          return {
-            content: [{
-              type: "text",
-              text: `Successfully added directive to project memory.
+                text: `Successfully added directive to project memory.
 
 - **Directive:** ${directive}
 - **Priority:** ${priority}
 - **Context:** ${context || "(none)"}`
-            }]
-          };
+              }]
+            };
+          });
         } catch (error62) {
           return {
             content: [{
@@ -42198,7 +42202,10 @@ async function searchSessionHistory(rawOptions) {
   const literalWorkingDirectory = rawOptions.workingDirectory ? (0, import_path45.resolve)(rawOptions.workingDirectory) : workingDirectory;
   const currentProjectRoots = [currentProjectRoot, literalWorkingDirectory].concat(getMainRepoRoot(currentProjectRoot) ?? []).concat(getClaudeWorktreeParent(currentProjectRoot) ?? []).filter((value, index, arr2) => Boolean(value) && arr2.indexOf(value) === index);
   const transcriptProjectRoots = currentProjectRoots.filter((root) => isWithinProject(root, [currentProjectRoot]));
-  const targets = scopeMode === "all" ? buildAllProjectTargets() : buildCurrentProjectTargets(currentProjectRoot, transcriptProjectRoots);
+  const targets = scopeMode === "all" ? buildAllProjectTargets() : uniqueSortedTargets([
+    ...buildCurrentProjectTargets(currentProjectRoot, transcriptProjectRoots),
+    ...scopeMode === "project" ? buildAllProjectTargets() : []
+  ]);
   const matchRetainer = createMatchRetainer(limit);
   for (const target of targets) {
     await collectMatchesFromFile(target, {
@@ -58170,10 +58177,94 @@ var init_types8 = __esm({
   }
 });
 
+// src/team/ready-timeout.ts
+var init_ready_timeout = __esm({
+  "src/team/ready-timeout.ts"() {
+    "use strict";
+  }
+});
+
 // src/team/pane-readiness.ts
+var LEGACY_IDLE_PROMPT_LINE, CURSOR_IDLE_PROMPT_LINE, COPILOT_IDLE_PROMPT_LINE, SHARED_BUSY_LINES, SHARED_PATTERNS, PANE_PATTERNS, UNKNOWN_PROVIDER_PATTERNS;
 var init_pane_readiness = __esm({
   "src/team/pane-readiness.ts"() {
     "use strict";
+    LEGACY_IDLE_PROMPT_LINE = /^\s*(?:[│┃║▌▐▏▕╎┆┊]\s*)?[›>❯]\s*/u;
+    CURSOR_IDLE_PROMPT_LINE = /^\s*(?:[│┃║▌▐▏▕╎┆┊]\s*)?[›>❯→]\s*/u;
+    COPILOT_IDLE_PROMPT_LINE = /^\s*(?:[│┃║▌▐▏▕╎┆┊]\s*)?[›>❯]\s*|^\s*┃\s*$/u;
+    SHARED_BUSY_LINES = [
+      /esc to interrupt/i,
+      /\bbackground terminal running\b/i,
+      /^[·✻✢✳✶✽✺✹✸✷*]\s+[A-Za-z][A-Za-z0-9''-]*(?:\s+[A-Za-z][A-Za-z0-9''-]*){0,3}(?:…|\.{3})(?:\s*\(.*\))?$/u
+    ];
+    SHARED_PATTERNS = {
+      idlePromptLine: LEGACY_IDLE_PROMPT_LINE,
+      busyLines: SHARED_BUSY_LINES,
+      startupBannerLines: [
+        /bypass\s+permissions\s+on/i,
+        /shift\+tab\s+to\s+cycle/i,
+        /^⏵⏵\s+/
+      ],
+      loadingLines: [
+        /\b(loading|initializing|starting up)\b/i,
+        /\bconnecting\s+to\b/i
+      ],
+      // A status line starts with the startup word, inside an optional box border.
+      // Behind a spinner it may be any length, since it names what loads or
+      // connects. A spinner is a braille frame or one of Claude's spinner glyphs;
+      // any other leading mark opens output, a list item, quoted text or an input
+      // prompt. Without a spinner the line is short, not counting the padding and
+      // border of a box. Gemini's own status lines are read in their exact form,
+      // with or without its spinner, since they can grow long: "Resuming
+      // session..." alone or opening its MCP progress, which wraps in a narrow pane,
+      // and "Connecting to MCP servers... (n/m)" alone or with the servers it waits for.
+      startupStatusLines: [
+        /^(?:[│┃║▌▐▏▕╎┆┊]\s*)?[\u2800-\u28FF·✻✢✳✶✽✺✹✸✷]\s*(?:model:\s*)?(?:loading|initializing|starting up|connecting\s+to)\b/iu,
+        /^(?:[│┃║▌▐▏▕╎┆┊]\s*)?(?:model:\s*)?(?:loading|initializing|starting up|connecting\s+to)\b.{0,40}?\s*(?:[│┃║▌▐▏▕╎┆┊]\s*)?$/iu,
+        /^(?:[│┃║▌▐▏▕╎┆┊]\s*)?(?:[\u2800-\u28FF]\s*)?(?:Resuming session\.\.\.(?: \(|\s*(?:[│┃║▌▐▏▕╎┆┊]\s*)?$)|Connecting to MCP servers\.\.\. \(\d+\/\d+\)(?: - Waiting for: .+)?\s*(?:[│┃║▌▐▏▕╎┆┊]\s*)?$)/u
+      ],
+      trustKinds: ["directory", "codex_hooks"],
+      verifiedVersion: null
+    };
+    PANE_PATTERNS = {
+      claude: {
+        ...SHARED_PATTERNS,
+        trustKinds: ["claude_directory", ...SHARED_PATTERNS.trustKinds],
+        verifiedVersion: "2.1.325"
+      },
+      // Fork: Copilot CLI 1.0.9x draws its idle box as a bare `┃` line, shows
+      // "○ Working · 25 B esc interrupt" / "◉ Working esc edit prompt" while busy,
+      // and asks its own "Confirm folder trust" question (copilot_folder).
+      copilot: {
+        ...SHARED_PATTERNS,
+        idlePromptLine: COPILOT_IDLE_PROMPT_LINE,
+        busyLines: [/^\S?\s*Working\b.*\besc\b/u, ...SHARED_BUSY_LINES],
+        trustKinds: ["copilot_folder", ...SHARED_PATTERNS.trustKinds]
+      },
+      codex: {
+        ...SHARED_PATTERNS,
+        trustKinds: ["codex_directory", ...SHARED_PATTERNS.trustKinds],
+        verifiedVersion: "0.167.0"
+      },
+      gemini: SHARED_PATTERNS,
+      cursor: {
+        ...SHARED_PATTERNS,
+        idlePromptLine: CURSOR_IDLE_PROMPT_LINE,
+        busyLines: [/ctrl\+c\s+to\s+stop/i, ...SHARED_BUSY_LINES],
+        trustKinds: ["cursor_workspace_trust", ...SHARED_PATTERNS.trustKinds]
+      },
+      grok: SHARED_PATTERNS,
+      antigravity: SHARED_PATTERNS
+    };
+    UNKNOWN_PROVIDER_PATTERNS = {
+      ...SHARED_PATTERNS,
+      trustKinds: [
+        "codex_directory",
+        "cursor_workspace_trust",
+        "claude_directory",
+        ...SHARED_PATTERNS.trustKinds
+      ]
+    };
   }
 });
 
@@ -58326,6 +58417,7 @@ var init_tmux_session = __esm({
     init_types8();
     init_team_owner_epoch();
     init_native_contained_fs();
+    init_ready_timeout();
     init_pane_readiness();
     init_worker_launch_ack();
     init_runtime_owner_client();
@@ -82328,13 +82420,71 @@ var init_progress_pick = __esm({
 });
 
 // src/notifications/redact.ts
-var SECRET_NAME4, FLAG_NAME, QUOTED_OR_BARE;
+var SECRET_NAME4, FLAG_NAME, QUOTED_OR_BARE, maskValue, TOKEN_RULES2;
 var init_redact3 = __esm({
   "src/notifications/redact.ts"() {
     "use strict";
     SECRET_NAME4 = String.raw`[A-Za-z0-9_]*(?:TOKEN|SECRET|PASSWORD|PASSWD|API[-_]?KEY|ACCESS[-_]?KEY|PRIVATE[-_]?KEY|CREDENTIALS?|WEBHOOK|_KEY\b)[A-Za-z0-9_-]*`;
     FLAG_NAME = String.raw`(?:${SECRET_NAME4}|(?:auth|pass|pw|passphrase|key)(?![A-Za-z0-9_-]))`;
     QUOTED_OR_BARE = String.raw`("[^"]*"|'[^']*'|[^\s"']+)`;
+    maskValue = (name, sep21, value) => `${name}${sep21}${value.includes("****") ? value : "****"}`;
+    TOKEN_RULES2 = [
+      // PEM private keys: the whole body, up to the END line or the end of the text
+      [/(-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----)[\s\S]*?(?:-----END [A-Z0-9 ]*PRIVATE KEY-----|$)/g, "$1****"],
+      // Slack tokens: xoxb-..., xapp-..., xoxp-..., xoxa-...
+      [/\b(xox[bpae]-)[A-Za-z0-9-]+/g, "$1****"],
+      [/\b(xapp-)[A-Za-z0-9-]+/g, "$1****"],
+      // Telegram bot tokens in URL paths: /bot123456:ABC.../
+      [/\/bot(\d+):[A-Za-z0-9_-]+/g, "/bot$1:****"],
+      // Telegram bot tokens standalone: 123456789:AAHfoo-bar_Baz
+      [/\b(\d{8,12}):[A-Za-z0-9_-]{20,}\b/g, "$1:****"],
+      // Bearer/Bot authorization values in error strings
+      [/(Bearer\s+)\S+/gi, "$1****"],
+      [/(Bot\s+)\S+/gi, "$1****"],
+      // Anthropic API keys: sk-ant-api...
+      [/\b(sk-ant-api)[A-Za-z0-9_-]+/g, "$1****"],
+      // OpenAI-style keys: sk-..., sk-proj-...
+      [/\b(sk-(?:proj-|live-|test-|svcacct-)?)(?!ant-api)[A-Za-z0-9_-]{8,}/g, "$1****"],
+      // GitHub tokens: ghp_, gho_, ghs_, github_pat_
+      [/\b(ghp_)[A-Za-z0-9]+/g, "$1****"],
+      [/\b(gho_)[A-Za-z0-9]+/g, "$1****"],
+      [/\b(ghs_)[A-Za-z0-9]+/g, "$1****"],
+      [/\b(gh[ur]_)[A-Za-z0-9]+/g, "$1****"],
+      [/\b(github_pat_)[A-Za-z0-9_]+/g, "$1****"],
+      // AWS access key IDs: AKIA...
+      [/\b(AKIA)[A-Z0-9]{16}\b/g, "$1****"],
+      // Secret-named JSON fields, also with escaped quotes: {"password":"x"}, {\"token\":\"x\"}
+      [
+        new RegExp(String.raw`((\\?["'])${SECRET_NAME4}\2\s*:\s*)(?:(\\?["'])(.*?)\3|([^\s,}\]"'\\]+))`, "gi"),
+        (_m, head, _q, vq, quoted, bare) => vq !== void 0 ? `${head}${vq}${(quoted ?? "").includes("****") ? quoted : "****"}${vq}` : `${head}${bare?.includes("****") ? bare : "****"}`
+      ],
+      // Credential headers: Authorization: Basic x, X-API-Key: x, Cookie: x (the scheme is kept)
+      [
+        /\b((?:Proxy-)?Authorization|Cookie|X-[A-Za-z0-9-]*(?:Key|Token|Secret|Auth|Signature)[A-Za-z0-9-]*)(\s*:\s*)((?:Bearer|Basic|Bot|Token|Digest|Negotiate)\s+)?([^"'\\\r\n]+)/gi,
+        (_m, name, sep21, scheme, value) => `${name}${sep21}${scheme ?? ""}${value.includes("****") ? value : "****"}`
+      ],
+      // Secret-named env assignments / --flag=value: GITHUB_TOKEN=..., --password="..."
+      [new RegExp(String.raw`(\b${SECRET_NAME4})(\s*=\s*)${QUOTED_OR_BARE}`, "gi"), (_m, name, sep21, value) => maskValue(name, sep21, value)],
+      // Secret-named flags with a separate value: --token abc, --api-key abc, --token -abc (not --next-flag)
+      [new RegExp(String.raw`(--?${FLAG_NAME})(=|\s+)(?!--)${QUOTED_OR_BARE}`, "gi"), (_m, name, sep21, value) => maskValue(name, sep21, value)],
+      // URL credentials: scheme://user:pass@host, scheme://:pass@host
+      // The scheme starts only where no scheme character precedes it: with `\b` every word start of a run such as
+      // `a-a-a-...` read the whole run looking for `://`, a quadratic scan; the lookbehind keeps it linear with no
+      // length bound, so a scheme of any length is still masked.
+      [/((?<![a-z0-9+.-])[a-z][a-z0-9+.-]*:\/\/)[^\s/:@]*:[^\s/@]+@/gi, "$1****@"],
+      // curl -u user:pass / --user user:pass (not `-u redis://...`)
+      [/(\s(?:-u|--user)(?:=|\s+)["']?[^\s:"']*:)((?!\/)[^\s"']+)/g, (_m, head, value) => `${head}${value.includes("****") ? value : "****"}`],
+      // mysql/mariadb -pSecret (attached password). The span to `-p` is bounded (512 characters): unbounded, every
+      // repeat of the command word read the rest of the line, a quadratic scan.
+      [/(\b(?:mysql|mysqldump|mysqladmin|mariadb|mariadb-dump)\b[^\n|;&]{0,512}?\s-p)([^\s-][^\s]*)/g, "$1****"],
+      // `... login ... -p secret` (docker/podman/helm/az login); the span to `-p` is bounded as for mysql above
+      [/(\blogin\b[^\n|;&]{0,512}?\s-p\s+)("[^"]*"|'[^']*'|\S+)/g, "$1****"],
+      // Webhook URL secrets: hooks.slack.com/services/..., discord.com/api/webhooks/...
+      [/(hooks\.slack\.com\/(?:services|workflows|triggers)\/)[^\s"']+/gi, "$1****"],
+      [/(discord(?:app)?\.com\/api\/webhooks\/\d+\/)[^\s"'/?]+/gi, "$1****"],
+      // Padded base64 blobs: c2VjcmV0cGFzc3dvcmQ=
+      [/(?<![A-Za-z0-9+/=*])[A-Za-z0-9+/]{16,}={1,2}(?![A-Za-z0-9+/=])/g, "****"]
+    ];
   }
 });
 
