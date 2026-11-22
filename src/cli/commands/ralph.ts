@@ -433,15 +433,30 @@ export function resolveFeedbackTimeoutMs(raw?: string): number | null {
  * caller's capture and buffer limit apply unchanged; it reports the outcome as
  * JSON on fd 3. The tree kill mirrors killProcessTree (platform/process-utils):
  * `taskkill /F /T` by absolute path on Windows, a process-group SIGKILL on
- * POSIX (the shell runs detached, so it leads its own group).
+ * POSIX (the shell runs detached, so it leads its own group). Detaching leaves
+ * the terminal's foreground group, so the runner forwards SIGINT/SIGTERM/SIGHUP
+ * to that group (then SIGKILL after 2 s) before exiting. It also drops the
+ * controlling tty, so a command that opens /dev/tty gets ENXIO. Known leaks:
+ * on Windows, when the outer grace timeout fires or taskkill fails, the tree
+ * is not killed (there is no process group to signal).
+ * The runner itself starts without NODE_OPTIONS (no inherited --require or
+ * --inspect output); the original env travels in the payload for the shell.
  */
-const FEEDBACK_RUNNER = `
+export const FEEDBACK_RUNNER = `
 const { spawn, execFileSync } = require('child_process');
 const { writeSync } = require('fs');
-const [command, timeoutMs, taskkill] = JSON.parse(process.argv[1]);
+const [command, timeoutMs, taskkill, env] = JSON.parse(process.argv[1]);
 let timedOut = false;
 const report = (outcome) => { try { writeSync(3, JSON.stringify(outcome)); } catch {} };
-const child = spawn(command, { shell: true, stdio: ['ignore', 'inherit', 'inherit'], windowsHide: true, detached: process.platform !== 'win32' });
+const child = spawn(command, { shell: true, env, stdio: ['ignore', 'inherit', 'inherit'], windowsHide: true, detached: process.platform !== 'win32' });
+if (process.platform !== 'win32') {
+  for (const s of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
+    process.on(s, () => {
+      try { process.kill(-child.pid, s); } catch {}
+      setTimeout(() => { try { process.kill(-child.pid, 'SIGKILL'); } catch {} process.exit(130); }, 2000);
+    });
+  }
+}
 const timer = setTimeout(() => {
   timedOut = true;
   try {
@@ -468,8 +483,9 @@ interface FeedbackRunResult {
 
 function spawnFeedbackCommand(command: string, directory: string, timeoutMs: number): FeedbackRunResult {
   const taskkill = win32.join(process.env.SystemRoot || process.env.windir || 'C:\\Windows', 'System32', 'taskkill.exe');
-  const outer = spawnSync(process.execPath, ['-e', FEEDBACK_RUNNER, JSON.stringify([command, timeoutMs, taskkill])], {
+  const outer = spawnSync(process.execPath, ['-e', FEEDBACK_RUNNER, JSON.stringify([command, timeoutMs, taskkill, process.env])], {
     cwd: directory,
+    env: Object.fromEntries(Object.entries(process.env).filter(([key]) => key.toUpperCase() !== 'NODE_OPTIONS')),
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe', 'pipe'],
     timeout: timeoutMs + FEEDBACK_RUNNER_GRACE_MS,

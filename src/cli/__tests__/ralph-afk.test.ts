@@ -2,6 +2,7 @@ import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { dirname, join } from 'path';
+import { spawn } from 'child_process';
 
 const spawnMock = vi.hoisted(() => ({ defaultSpawnFn: vi.fn(() => ({ pid: 4242, unref: vi.fn() })) }));
 vi.mock('../../hooks/session-end/spawn-next.js', async (importOriginal) => {
@@ -16,7 +17,7 @@ vi.mock('../../factory/map-ingest.js', async (importOriginal) => {
 });
 
 import { AFK_ALLOWED_TOOLS, AFK_INCLUDE_USER_SETTINGS_ENV, AFK_SPAWN_FLAGS, COPILOT_AFK_SPAWN_FLAGS } from '../../hooks/session-end/spawn-next.js';
-import { COPILOT_RALPH_AFK_SESSION_FLAGS, materializeRalphSkill, ralphAfkArgv, ralphCommand, ralphVerify, resolveFeedbackCommands, resolveFeedbackTimeoutMs, runFeedbackCommand, DEFAULT_FEEDBACK_TIMEOUT_MS, RALPH_AFK_FEEDBACK_ENV, RALPH_AFK_SESSION_COMMANDS } from '../commands/ralph.js';
+import { FEEDBACK_RUNNER, COPILOT_RALPH_AFK_SESSION_FLAGS, materializeRalphSkill, ralphAfkArgv, ralphCommand, ralphVerify, resolveFeedbackCommands, resolveFeedbackTimeoutMs, runFeedbackCommand, DEFAULT_FEEDBACK_TIMEOUT_MS, RALPH_AFK_FEEDBACK_ENV, RALPH_AFK_SESSION_COMMANDS } from '../commands/ralph.js';
 import * as fileLock from '../../lib/file-lock.js';
 import { acquireFileLockSync, lockPathFor, releaseFileLockSync } from '../../lib/file-lock.js';
 import { Command } from 'commander';
@@ -705,7 +706,7 @@ operable program or batch file.`);
         return (error as NodeJS.ErrnoException).code === 'EPERM';
       }
     };
-    const deadline = Date.now() + 2000;
+    const deadline = Date.now() + 5000;
     while (alive() && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 50));
     try {
       expect(alive()).toBe(false);
@@ -713,6 +714,38 @@ operable program or batch file.`);
       if (alive()) process.kill(pid, 'SIGKILL');
     }
   }, 20000);
+
+  it.skipIf(process.platform === 'win32')('forwards SIGTERM to the feedback command group when the runner is signalled', async () => {
+    const pidFile = join(dir, 'sig-grandchild.pid');
+    writeFileSync(join(dir, 'sig-grandchild.js'), `require('fs').writeFileSync(${JSON.stringify(pidFile)}, String(process.pid));
+setTimeout(() => {}, 30000);
+`, 'utf8');
+    const runner = spawn(process.execPath, ['-e', FEEDBACK_RUNNER, JSON.stringify(['node sig-grandchild.js && echo finished', 60000, 'unused', process.env])], { cwd: dir, stdio: ['ignore', 'ignore', 'ignore', 'pipe'] });
+    const exited = new Promise((resolve) => runner.on('exit', resolve));
+    const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+    const startDeadline = Date.now() + 10000;
+    while (!existsSync(pidFile) && Date.now() < startDeadline) await sleep(50);
+    await sleep(100);
+    const pid = Number(readFileSync(pidFile, 'utf8'));
+    expect(pid).toBeGreaterThan(0);
+    const alive = (): boolean => {
+      try {
+        process.kill(pid, 0);
+        return true;
+      } catch (error) {
+        return (error as NodeJS.ErrnoException).code === 'EPERM';
+      }
+    };
+    runner.kill('SIGTERM');
+    await exited;
+    const deadline = Date.now() + 5000;
+    while (alive() && Date.now() < deadline) await sleep(50);
+    try {
+      expect(alive()).toBe(false);
+    } finally {
+      if (alive()) process.kill(pid, 'SIGKILL');
+    }
+  }, 30000);
 
   it('runs a sessionless gate without a lock and reports baseline candidates', () => {
     writeFailer('sessionless failure');

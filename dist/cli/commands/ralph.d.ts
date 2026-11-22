@@ -92,6 +92,24 @@ export declare const DEFAULT_FEEDBACK_TIMEOUT_MS = 600000;
  * zero (for example `--timeout 0.0001`) must be rejected, not passed through.
  */
 export declare function resolveFeedbackTimeoutMs(raw?: string): number | null;
+/**
+ * Runs the feedback command under a deadline and, when the deadline passes,
+ * kills the whole process tree, not only the shell. `spawnSync`'s own timeout
+ * kills just the shell, which leaves a grandchild (a 10-minute `npm test`)
+ * holding files, ports and its cwd. The runner inherits stdout/stderr, so the
+ * caller's capture and buffer limit apply unchanged; it reports the outcome as
+ * JSON on fd 3. The tree kill mirrors killProcessTree (platform/process-utils):
+ * `taskkill /F /T` by absolute path on Windows, a process-group SIGKILL on
+ * POSIX (the shell runs detached, so it leads its own group). Detaching leaves
+ * the terminal's foreground group, so the runner forwards SIGINT/SIGTERM/SIGHUP
+ * to that group (then SIGKILL after 2 s) before exiting. It also drops the
+ * controlling tty, so a command that opens /dev/tty gets ENXIO. Known leaks:
+ * on Windows, when the outer grace timeout fires or taskkill fails, the tree
+ * is not killed (there is no process group to signal).
+ * The runner itself starts without NODE_OPTIONS (no inherited --require or
+ * --inspect output); the original env travels in the payload for the shell.
+ */
+export declare const FEEDBACK_RUNNER = "\nconst { spawn, execFileSync } = require('child_process');\nconst { writeSync } = require('fs');\nconst [command, timeoutMs, taskkill, env] = JSON.parse(process.argv[1]);\nlet timedOut = false;\nconst report = (outcome) => { try { writeSync(3, JSON.stringify(outcome)); } catch {} };\nconst child = spawn(command, { shell: true, env, stdio: ['ignore', 'inherit', 'inherit'], windowsHide: true, detached: process.platform !== 'win32' });\nif (process.platform !== 'win32') {\n  for (const s of ['SIGINT', 'SIGTERM', 'SIGHUP']) {\n    process.on(s, () => {\n      try { process.kill(-child.pid, s); } catch {}\n      setTimeout(() => { try { process.kill(-child.pid, 'SIGKILL'); } catch {} process.exit(130); }, 2000);\n    });\n  }\n}\nconst timer = setTimeout(() => {\n  timedOut = true;\n  try {\n    if (process.platform === 'win32') execFileSync(taskkill, ['/F', '/T', '/PID', String(child.pid)], { stdio: 'ignore', timeout: 5000, windowsHide: true });\n    else process.kill(-child.pid, 'SIGKILL');\n  } catch {\n    try { child.kill('SIGKILL'); } catch {}\n  }\n}, timeoutMs);\nchild.on('error', (error) => { clearTimeout(timer); report({ error: error.code || 'unknown', spawned: Boolean(child.pid) }); process.exit(1); });\nchild.on('exit', (status, signal) => { clearTimeout(timer); report({ status, signal, timedOut }); process.exit(typeof status === 'number' ? status : 1); });\n";
 /** Run one feedback command on the current tree and fingerprint its failures. */
 export declare function runFeedbackCommand(command: string, directory: string, options?: {
     timeoutMs?: number;
