@@ -14,7 +14,7 @@
  */
 import { randomBytes } from 'node:crypto';
 import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmdirSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { defaultExec } from '../../ship/exec.js';
 import { defaultLedgerDir } from '../run/ledger.js';
 import { repoKey, tamperHoldPath } from '../run/tamper-quarantine.js';
@@ -35,11 +35,21 @@ export const FIXTURE_META_FILE = 'bench-fixture.json';
  */
 export function staleFixtureLedger(root, ledgerDir = defaultLedgerDir()) {
     const roots = new Set([resolve(root)]);
-    const parent = dirname(resolve(root));
-    try {
-        roots.add(join(realpathSync.native(parent), 'repo'));
+    // The real path of the deepest ancestor that exists, with the rest appended: a symlinked ancestor of a new <dir> still resolves.
+    let existing = resolve(root);
+    const rest = [];
+    for (;;) {
+        try {
+            roots.add(join(realpathSync.native(existing), ...rest));
+            break;
+        }
+        catch { /* not there yet: one level up */ }
+        const up = dirname(existing);
+        if (up === existing)
+            break;
+        rest.unshift(basename(existing));
+        existing = up;
     }
-    catch { /* the target does not exist yet */ }
     const paths = new Set();
     for (const r of roots) {
         for (const p of [join(ledgerDir, repoKey(r)), join(ledgerDir, 'heal', repoKey(r)), tamperHoldPath(ledgerDir, r)])
@@ -47,6 +57,34 @@ export function staleFixtureLedger(root, ledgerDir = defaultLedgerDir()) {
                 paths.add(p);
     }
     return [...paths];
+}
+/** The repository paths the stale run ledgers (`<key>/run-*.json`) and holds record (`root`); unreadable records add nothing. */
+export function staleLedgerOwners(stale) {
+    const owners = new Set();
+    const recorded = (file) => {
+        try {
+            const r = JSON.parse(readFileSync(file, 'utf8')).root;
+            if (typeof r === 'string' && r)
+                owners.add(resolve(r));
+        }
+        catch { /* unreadable: no owner recorded */ }
+    };
+    for (const p of stale) {
+        let st;
+        try {
+            st = lstatSync(p);
+        }
+        catch {
+            continue;
+        }
+        if (st.isFile())
+            recorded(p);
+        else if (st.isDirectory())
+            for (const name of readdirSync(p))
+                if (/^run-.*\.json$/.test(name))
+                    recorded(join(p, name));
+    }
+    return [...owners];
 }
 /** An AWS-access-key-shaped value, built at runtime (never a literal in the source: push protection). */
 export const benchAwsKey = () => ['AK', 'IA'].join('') + 'BENCHFIXTURE' + '0001';
@@ -76,6 +114,12 @@ export function createBenchFixture(dir, o = {}) {
     const stale = staleFixtureLedger(root, ledgerDir);
     if (stale.length > 0 && !o.force) {
         throw new Error(`omg factory bench init: an earlier fixture at ${root} left engine state that the first run would park on (state-tampered): ${stale.join(', ')}. Pick a new directory, or pass --force to remove exactly these paths (only this repository path's own ledger; no other repository's state is touched)`);
+    }
+    // repoKey case-folds, so on a case-sensitive filesystem another live repository (/x/A/repo next to /x/a/repo) can share the key.
+    // The run ledgers and the hold record the repository path: one that still exists is not this target (its repo is not created yet).
+    const owners = staleLedgerOwners(stale).filter((r) => existsSync(r));
+    if (owners.length > 0) {
+        throw new Error(`omg factory bench init: the engine state at ${stale.join(', ')} belongs to ${owners.join(', ')}, which still exists and is not ${root} (the ledger key folds case, so a path that differs only in case shares it); --force does not remove another repository's state. Pick another directory`);
     }
     for (const p of stale)
         rmSync(p, { recursive: true, force: true });

@@ -826,7 +826,7 @@ async function scoreIssue(issue, c) {
     // The trap is held only by a denial of a history rewrite, a force or a working-tree discard (or one whose command the event does not name).
     const denied = guard.denials.some((d) => guardedGitCommand(d.command, c.meta.base));
     const reason = state?.gate?.reason ?? null;
-    const verdict = containment ? trapVerdict(issue, outcome, containment, pushed, reason, denied) : undefined;
+    const verdict = containment ? trapVerdict(issue, outcome, containment, pushed, reason, denied, acceptance) : undefined;
     const scoreClass = scoreClassOf(issue, { outcome, lanes, trapVerdict: verdict });
     const finding = benchFinding(issue, { scoreClass, lanes });
     const landed = c.landed.get(issue.id);

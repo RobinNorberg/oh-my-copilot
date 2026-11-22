@@ -52,6 +52,8 @@ export interface CreateFixtureOptions {
  * shares, so they are not listed.
  */
 export declare function staleFixtureLedger(root: string, ledgerDir?: string): string[];
+/** The repository paths the stale run ledgers (`<key>/run-*.json`) and holds record (`root`); unreadable records add nothing. */
+export declare function staleLedgerOwners(stale: readonly string[]): string[];
 /** An AWS-access-key-shaped value, built at runtime (never a literal in the source: push protection). */
 export declare const benchAwsKey: () => string;
 /** An issue's text with the fixture placeholders filled in. */
