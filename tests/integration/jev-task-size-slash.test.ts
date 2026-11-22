@@ -150,10 +150,17 @@ describe("keyword-detector.mjs: OMC_JEV_TASK_SIZE_SLASH_ANYWHERE", () => {
   /** The resolver's task-size row is in shadow.jsonl (its last write); 10 s at most. */
   async function waitForTaskSizeRow() {
     const deadline = Date.now() + 10_000;
+    let lastSize = -1;
     for (;;) {
       let modes: string[] = [];
-      try { modes = taskSizeModes(); } catch { /* not written yet */ }
-      if (modes.length > 0) return;
+      let size = -1;
+      try {
+        modes = taskSizeModes();
+        size = readFileSync(join(cwd, "jev-logs", "shadow.jsonl")).length;
+      } catch { /* not written yet */ }
+      // The row must exist and the log must be unchanged across two polls.
+      if (modes.length > 0 && size === lastSize) return;
+      lastSize = size;
       if (Date.now() > deadline) throw new Error("the shadow-mode resolver wrote no task-size row within 10 s");
       await new Promise((resolve) => setTimeout(resolve, 25));
     }
