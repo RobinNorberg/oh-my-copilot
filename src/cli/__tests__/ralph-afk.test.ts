@@ -2,6 +2,7 @@ import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { dirname, join } from 'path';
+import { spawn } from 'child_process';
 
 const spawnMock = vi.hoisted(() => ({ defaultSpawnFn: vi.fn(() => ({ pid: 4242, unref: vi.fn() })) }));
 vi.mock('../../hooks/session-end/spawn-next.js', async (importOriginal) => {
@@ -16,7 +17,7 @@ vi.mock('../../factory/map-ingest.js', async (importOriginal) => {
 });
 
 import { AFK_ALLOWED_TOOLS, AFK_INCLUDE_USER_SETTINGS_ENV, AFK_SPAWN_FLAGS, COPILOT_AFK_SPAWN_FLAGS } from '../../hooks/session-end/spawn-next.js';
-import { COPILOT_RALPH_AFK_SESSION_FLAGS, materializeRalphSkill, ralphAfkArgv, ralphCommand, ralphVerify, resolveFeedbackCommands, resolveFeedbackTimeoutMs, runFeedbackCommand, DEFAULT_FEEDBACK_TIMEOUT_MS, RALPH_AFK_FEEDBACK_ENV, RALPH_AFK_SESSION_COMMANDS } from '../commands/ralph.js';
+import { FEEDBACK_RUNNER, COPILOT_RALPH_AFK_SESSION_FLAGS, materializeRalphSkill, ralphAfkArgv, ralphCommand, ralphVerify, resolveFeedbackCommands, resolveFeedbackTimeoutMs, runFeedbackCommand, DEFAULT_FEEDBACK_TIMEOUT_MS, RALPH_AFK_FEEDBACK_ENV, RALPH_AFK_SESSION_COMMANDS } from '../commands/ralph.js';
 import * as fileLock from '../../lib/file-lock.js';
 import { acquireFileLockSync, lockPathFor, releaseFileLockSync } from '../../lib/file-lock.js';
 import { Command } from 'commander';
@@ -36,26 +37,8 @@ function tempDir(): string {
   return dir;
 }
 
-// On Windows a timed-out feedback command leaves its grandchild (spawnSync kills the
-// shell, not the `node` it started) alive for up to ~3s with its cwd in the temp dir, so
-// removal fails with EPERM until that orphan exits. rmSync's own maxRetries is not
-// honoured for this error on Node 25, hence an explicit bounded retry.
-function removeTempDir(dir: string): void {
-  const deadline = Date.now() + 15000;
-  for (;;) {
-    try {
-      rmSync(dir, { recursive: true, force: true });
-      return;
-    } catch (error) {
-      const code = (error as NodeJS.ErrnoException).code;
-      if (!['EPERM', 'EBUSY', 'ENOTEMPTY'].includes(code ?? '') || Date.now() > deadline) throw error;
-      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 200);
-    }
-  }
-}
-
 afterEach(() => {
-  for (const dir of tempRoots.splice(0)) removeTempDir(dir);
+  for (const dir of tempRoots.splice(0)) rmSync(dir, { recursive: true, force: true });
   spawnMock.defaultSpawnFn.mockClear();
   vi.unstubAllEnvs();
   // The afk action exports these for the spawned session; keep them out of later tests.
@@ -703,6 +686,64 @@ operable program or batch file.`);
       expect(output).not.toContain('NEW failure');
     } finally {
       logSpy.mockRestore();
+    }
+  }, 30000);
+
+  it('kills the whole process tree when a feedback command times out', async () => {
+    // A compound command forces a real shell on every platform, so the slow
+    // node process is a grandchild: killing only the shell would leave it running.
+    const pidFile = join(dir, 'grandchild.pid');
+    writeFileSync(join(dir, 'slow-grandchild.js'), `require('fs').writeFileSync(${JSON.stringify(pidFile)}, String(process.pid));\nsetTimeout(() => {}, 30000);\n`, 'utf8');
+    const result = runFeedbackCommand('node slow-grandchild.js && echo finished', dir, { timeoutMs: 1500 });
+    expect(result).toEqual({ signatures: [], timedOut: true });
+    const pid = Number(readFileSync(pidFile, 'utf8'));
+    expect(pid).toBeGreaterThan(0);
+    const alive = (): boolean => {
+      try {
+        process.kill(pid, 0);
+        return true;
+      } catch (error) {
+        return (error as NodeJS.ErrnoException).code === 'EPERM';
+      }
+    };
+    const deadline = Date.now() + 5000;
+    while (alive() && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 50));
+    try {
+      expect(alive()).toBe(false);
+    } finally {
+      if (alive()) process.kill(pid, 'SIGKILL');
+    }
+  }, 20000);
+
+  it.skipIf(process.platform === 'win32')('forwards SIGTERM to the feedback command group when the runner is signalled', async () => {
+    const pidFile = join(dir, 'sig-grandchild.pid');
+    writeFileSync(join(dir, 'sig-grandchild.js'), `require('fs').writeFileSync(${JSON.stringify(pidFile)}, String(process.pid));
+setTimeout(() => {}, 30000);
+`, 'utf8');
+    const runner = spawn(process.execPath, ['-e', FEEDBACK_RUNNER, JSON.stringify(['node sig-grandchild.js && echo finished', 60000, 'unused', process.env])], { cwd: dir, stdio: ['ignore', 'ignore', 'ignore', 'pipe'] });
+    const exited = new Promise((resolve) => runner.on('exit', resolve));
+    const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+    const startDeadline = Date.now() + 10000;
+    while (!existsSync(pidFile) && Date.now() < startDeadline) await sleep(50);
+    await sleep(100);
+    const pid = Number(readFileSync(pidFile, 'utf8'));
+    expect(pid).toBeGreaterThan(0);
+    const alive = (): boolean => {
+      try {
+        process.kill(pid, 0);
+        return true;
+      } catch (error) {
+        return (error as NodeJS.ErrnoException).code === 'EPERM';
+      }
+    };
+    runner.kill('SIGTERM');
+    await exited;
+    const deadline = Date.now() + 5000;
+    while (alive() && Date.now() < deadline) await sleep(50);
+    try {
+      expect(alive()).toBe(false);
+    } finally {
+      if (alive()) process.kill(pid, 'SIGKILL');
     }
   }, 30000);
 

@@ -178740,16 +178740,60 @@ function resolveFeedbackTimeoutMs(raw) {
   const timeoutMs = Math.round(seconds2 * 1e3);
   return timeoutMs >= 1 ? timeoutMs : null;
 }
+var FEEDBACK_RUNNER = `
+const { spawn, execFileSync } = require('child_process');
+const { writeSync } = require('fs');
+const [command, timeoutMs, taskkill, env] = JSON.parse(process.argv[1]);
+let timedOut = false;
+const report = (outcome) => { try { writeSync(3, JSON.stringify(outcome)); } catch {} };
+const child = spawn(command, { shell: true, env, stdio: ['ignore', 'inherit', 'inherit'], windowsHide: true, detached: process.platform !== 'win32' });
+if (process.platform !== 'win32') {
+  for (const s of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
+    process.on(s, () => {
+      try { process.kill(-child.pid, s); } catch {}
+      setTimeout(() => { try { process.kill(-child.pid, 'SIGKILL'); } catch {} process.exit(130); }, 2000);
+    });
+  }
+}
+const timer = setTimeout(() => {
+  timedOut = true;
+  try {
+    if (process.platform === 'win32') execFileSync(taskkill, ['/F', '/T', '/PID', String(child.pid)], { stdio: 'ignore', timeout: 5000, windowsHide: true });
+    else process.kill(-child.pid, 'SIGKILL');
+  } catch {
+    try { child.kill('SIGKILL'); } catch {}
+  }
+}, timeoutMs);
+child.on('error', (error) => { clearTimeout(timer); report({ error: error.code || 'unknown', spawned: Boolean(child.pid) }); process.exit(1); });
+child.on('exit', (status, signal) => { clearTimeout(timer); report({ status, signal, timedOut }); process.exit(typeof status === 'number' ? status : 1); });
+`;
+var FEEDBACK_RUNNER_GRACE_MS = 3e4;
+function spawnFeedbackCommand(command, directory, timeoutMs) {
+  const taskkill = import_path158.win32.join(process.env.SystemRoot || process.env.windir || "C:\\Windows", "System32", "taskkill.exe");
+  const outer = (0, import_child_process43.spawnSync)(process.execPath, ["-e", FEEDBACK_RUNNER, JSON.stringify([command, timeoutMs, taskkill, process.env])], {
+    cwd: directory,
+    env: Object.fromEntries(Object.entries(process.env).filter(([key]) => key.toUpperCase() !== "NODE_OPTIONS")),
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe", "pipe"],
+    timeout: timeoutMs + FEEDBACK_RUNNER_GRACE_MS,
+    windowsHide: true,
+    maxBuffer: 32 * 1024 * 1024
+  });
+  const base = { stdout: outer.stdout ?? "", stderr: outer.stderr ?? "" };
+  let outcome = null;
+  try {
+    outcome = JSON.parse(String(outer.output?.[3] ?? ""));
+  } catch {
+    outcome = null;
+  }
+  if (!outcome) return { ...base, pid: outer.pid ?? 0, status: outer.status, ...outer.error ? { error: outer.error } : {} };
+  if (outcome.timedOut) return { ...base, pid: outer.pid, status: null, error: Object.assign(new Error("spawnSync ETIMEDOUT"), { code: "ETIMEDOUT" }) };
+  if (outcome.error) return { ...base, pid: outcome.spawned ? outer.pid : 0, status: null, error: Object.assign(new Error(`spawn ${outcome.error}`), { code: outcome.error }) };
+  return { ...base, pid: outer.pid, status: outcome.status ?? null };
+}
 function runFeedbackCommand(command, directory, options = {}) {
   try {
-    const result = (0, import_child_process43.spawnSync)(command, {
-      shell: true,
-      cwd: directory,
-      encoding: "utf8",
-      timeout: options.timeoutMs ?? DEFAULT_FEEDBACK_TIMEOUT_MS,
-      windowsHide: true,
-      maxBuffer: 32 * 1024 * 1024
-    });
+    const result = spawnFeedbackCommand(command, directory, options.timeoutMs ?? DEFAULT_FEEDBACK_TIMEOUT_MS);
     const output2 = `${result.stdout ?? ""}
 ${result.stderr ?? ""}`;
     const errorCode2 = result.error && "code" in result.error && typeof result.error.code === "string" ? result.error.code : void 0;
