@@ -3,7 +3,7 @@
  * lanes, a real repository with no origin, the engine-owned bare mirror
  * under a temp forge state dir. No gh, az or copilot runs, and no AI credits.
  */
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { readMirrorRef } from '../../../forge/local/index.js';
@@ -16,7 +16,7 @@ import { ledgerFilePath } from '../ledger.js';
 import { resetFactoryRun } from '../reset.js';
 import { FactoryBusyError, factoryRepoOwnerPath, factoryStatePath, readFactoryState, requestFactoryCancel } from '../state.js';
 import { factoryClaimPath } from '../claims.js';
-import { attestedSandbox, commitFile, gitIn, review } from './fake-lanes.js';
+import { attestedSandbox, commitFile, gitIn, review, type LaneScript } from './fake-lanes.js';
 import type { FactoryEngineOptions } from '../engine.js';
 import type { SandboxRunner, SandboxRunRequest, SandboxRunResult } from '../sandbox-exec.js';
 import { BASE, lanesFor, LOCAL_ISSUE, localOpts, localWorld, type LocalWorld } from './engine-local-harness.js';
@@ -330,6 +330,95 @@ describe('a dotnet gate: its MSBuild files define it, and its write lanes get th
     const again = await runFactoryEngine(localOpts(w, lanesFor(w, []), { gateSandbox }));
     expect(again.gate?.name, again.message).toBe('merge');
     expect(seen).toEqual([false]);
+  }, MULTI_RUN_MS);
+
+  it('follow-up 1: a lane whose change commits build output under obj/ parks at gate-definition-changed before any push, naming it', async () => {
+    w = localWorld(['dotnet', 'test']);
+    baseProject();
+    const lane: LaneScript = (ctx) => {
+      writeAt(ctx.worktree, 'src/App/obj/project.assets.json', '{}\n');
+      return commitFile('src/App/Greet.cs', 'namespace App;\n')(ctx);
+    };
+    const out = await runFactoryEngine(localOpts(w, lanesFor(w, [lane])));
+    expect(out.gate?.name, out.message).toBe('gate-definition-changed');
+    expect(out.gate?.reason).toMatch(/\(src\/App\/obj\/project\.assets\.json differ from main\); tracked files under bin\/, obj\/ or artifacts\/ are build output MSBuild may reuse instead of building the change, so they count as the gate's definition/);
+    expect(readMirrorRef(w.config.repo.url, BRANCH)).toBeUndefined();
+    expect(w.gateRuns).toEqual([]);
+  }, MULTI_RUN_MS);
+
+  it('follow-up 2: content the PR\'s code wrote under a submodule (gitlink) dir parks at lane-tampered before the dotnet gate, in any gate mode', async () => {
+    w = localWorld(['dotnet', 'test']);
+    baseProject();
+    gitIn(w.root, 'update-index', '--add', '--cacheinfo', `160000,${gitIn(w.root, 'rev-parse', 'HEAD').trim()},Lib`);
+    gitIn(w.root, 'commit', '-q', '-m', 'submodule Lib');
+    leaveThenSee((cwd) => {
+      writeAt(cwd, 'Lib/Lib.csproj');
+      writeAt(cwd, 'Lib/obj/stale.dll', 'stale');
+    }, () => false);
+    await firstRun({ gateSandboxUserConfig: UNSANDBOXED_GATES });
+    const again = await runFactoryEngine(localOpts(w, lanesFor(w, []), { gateSandboxUserConfig: UNSANDBOXED_GATES }));
+    expect(again.gate?.name, again.message).toBe('lane-tampered');
+    expect(again.gate?.reason).toMatch(/has content in the submodule \(gitlink\) dir Lib, which git does not list/);
+    expect(w.gateRuns).toHaveLength(1);
+  }, MULTI_RUN_MS);
+
+  it('a mixed repo: a nested node_modules the engine did not make (bin/ dirs, a junction-backed package, *.props and *.vcxproj files) is neither cleaned nor parked on', async () => {
+    w = localWorld(['dotnet', 'test']);
+    writeFileSync(join(w.root, '.gitignore'), '.omg/\nbin/\nobj/\nnode_modules/\n');
+    baseProject();
+    // What a trusted prepare build's `npm ci --prefix src/Web/ClientApp` (or pnpm) leaves: real packages and a linked one.
+    const store = join(w.dir, 'pnpm-store');
+    try {
+      writeAt(store, 'esbuild/bin/esbuild', 'esbuild');
+      const pkgs = 'src/Web/ClientApp/node_modules';
+      const seen = leaveThenSee((cwd) => {
+        writeAt(cwd, `${pkgs}/vite/bin/vite.js`, 'vite');
+        writeAt(cwd, `${pkgs}/addon/build/addon.vcxproj`);
+        writeAt(cwd, `${pkgs}/addon/build/config.props`);
+        mkdirSync(join(cwd, ...pkgs.split('/')), { recursive: true });
+        symlinkSync(join(store, 'esbuild'), join(cwd, ...pkgs.split('/'), 'esbuild'), process.platform === 'win32' ? 'junction' : 'dir');
+        staleBuild(cwd);
+      }, (cwd) => seesStale(cwd) || !existsSync(join(cwd, ...pkgs.split('/'), 'vite', 'bin', 'vite.js')) || !existsSync(join(cwd, ...pkgs.split('/'), 'esbuild', 'bin', 'esbuild')));
+      await firstRun({ gateSandbox: cleanStep() });
+      const again = await runFactoryEngine(localOpts(w, lanesFor(w, []), { gateSandbox: cleanStep() }));
+      expect(again.gate?.name, again.message).toBe('merge');
+      expect(seen).toEqual([false]);
+      expect(readFileSync(join(store, 'esbuild', 'bin', 'esbuild'), 'utf8')).toBe('esbuild');
+      unlinkSync(join(w.gateRuns[0].cwd, ...pkgs.split('/'), 'esbuild'));
+    } finally {
+      rmSync(store, { recursive: true, force: true });
+    }
+  }, MULTI_RUN_MS);
+
+  it('a head tracking a .NET project under a node_modules dir parks before the dotnet gate: build output there is not cleaned', async () => {
+    w = localWorld(['dotnet', 'test']);
+    baseProject();
+    // On the base, so the change does not redefine the gate: the park is about the head's tree, whoever added the file.
+    mkdirSync(join(w.root, 'x', 'node_modules', 'App'), { recursive: true });
+    writeFileSync(join(w.root, 'x', 'node_modules', 'App', 'App.csproj'), CSPROJ);
+    gitIn(w.root, 'add', '.');
+    gitIn(w.root, 'commit', '-q', '-m', 'a project under node_modules');
+    const out = await runFactoryEngine(localOpts(w, lanesFor(w, [commitFile('src/App/Greet.cs', 'namespace App;\n'), review('approve')]), { gateSandbox: cleanStep() }));
+    expect(out.gate?.name, out.message).toBe('gates');
+    expect(out.gate?.reason).toMatch(/a tracked \.NET project under a node_modules directory is not supported: build output there is not cleaned \([0-9a-f]{12} tracks x\/node_modules\/App\/App\.csproj\)/);
+    expect(w.gateRuns).toEqual([]);
+  }, MULTI_RUN_MS);
+
+  it('follow-up 4: a base global.json that cannot be read fails the step (it parks), never "not Microsoft.Testing.Platform"', async () => {
+    w = localWorld(['dotnet', 'build']);
+    baseProject();
+    writeFileSync(join(w.root, 'global.json'), '{ "sdk": { "version": "10.0.101" } }\n');
+    gitIn(w.root, 'add', 'global.json');
+    gitIn(w.root, 'commit', '-q', '-m', 'global.json');
+    const exec = w.exec;
+    const failing: typeof w.exec = (cmd, args, opts) => (cmd === 'git' && args.includes('show') && args.some((a) => a.endsWith(':global.json')) ? { status: 128, stdout: '', stderr: 'fatal: bad object' } : exec(cmd, args, opts));
+    // A backend that reads the sandbox: the write prompt asks for the Microsoft.Testing.Platform variant (dotnetMtpBase).
+    const lanes = lanesFor(w, [commitFile('src/App/Greet.cs', 'namespace App;\n')]);
+    lanes.laneSandbox = () => ({ sandboxed: true, writeNetwork: 'none', windowsCopy: true });
+    const out = await runFactoryEngine(localOpts(w, lanes, { exec: failing }));
+    expect(out.exitCode, out.message).not.toBe(0);
+    expect(out.message).toMatch(/global\.json could not be read \(git show exit 128: fatal: bad object\)/);
+    expect(lanes.started).toEqual([]);
   }, MULTI_RUN_MS);
 
   it('a nested git repository outside the build dirs parks at lane-tampered before the dotnet gate runs, in any gate mode', async () => {

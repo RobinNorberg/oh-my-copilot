@@ -316,8 +316,8 @@ export interface CopilotRunStartOptions {
    */
   nodeModulesGrant?: (worktree: string) => { target: string; nested?: string[] } | undefined;
   /**
-   * A write job in a .NET repository (the factory: the run's local gate runs
-   * dotnet): the session env and grants dotnet needs in the sandbox
+   * A write job in a .NET repository (the factory: engine.ts dotnetRepo, on
+   * every forge): the session env and grants dotnet needs in the sandbox
    * (dotnet-sandbox.ts dotnetSandboxEnv). Absent: none.
    */
   dotnet?: boolean;
