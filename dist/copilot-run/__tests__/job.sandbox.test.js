@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmdirSync, rmSync, symlinkSync, unlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -445,11 +445,56 @@ describe('copilot_run beforeSandboxedSession (the Windows OS sandbox)', () => {
         expect(calls.sessions).toHaveLength(0);
         expect(calls.prompts).toHaveLength(0);
     });
-    it('not called off Windows, on Windows with the sandbox switched off (config or OMG_SANDBOX=off), nor for a review job', async () => {
+    it('off Windows: called with copy false (the linked tree); the grant target is the nodeModulesTarget of the session, so the linked tree is granted read-only', async () => {
+        const yours = join(root, 'user-nm');
+        mkdirSync(join(yours, 'pkg'), { recursive: true });
+        const seen = [];
+        const asked = [];
+        const linux = manager('idle', 'supported', { platform: 'linux' });
+        const started = linux.start({ prompt: 'implement', cwd: repo }, {
+            beforeSandboxedSession: (wt, o) => {
+                seen.push(o);
+                mkdirSync(join(wt, 'node_modules'));
+                symlinkSync(join(realpathSync.native(yours), 'pkg'), join(wt, 'node_modules', 'pkg'), process.platform === 'win32' ? 'junction' : 'dir');
+                return null;
+            },
+            nodeModulesGrant: (wt) => { asked.push(wt); return { target: yours }; },
+        });
+        const done = await linux.wait(started.jobId, 10_000);
+        expect(done.status).toBe('completed');
+        expect(seen).toEqual([{ copy: false }]);
+        expect(asked).toEqual([resolve(started.worktree.path)]);
+        const ro = calls.optionsUpdates[0].sandboxConfig.userPolicy.filesystem.readonlyPaths;
+        expect(ro).toContain(realpathSync.native(yours));
+    });
+    it('off Windows: a link in the worktree to anywhere but the grant target refuses the session (no prompt is sent)', async () => {
+        const yours = join(root, 'user-nm');
+        const outside = join(root, 'outside');
+        mkdirSync(yours, { recursive: true });
+        mkdirSync(outside, { recursive: true });
+        const linux = manager('idle', 'supported', { platform: 'linux' });
+        const started = linux.start({ prompt: 'implement', cwd: repo }, {
+            beforeSandboxedSession: (wt) => { symlinkSync(outside, join(wt, 'node_modules'), process.platform === 'win32' ? 'junction' : 'dir'); return null; },
+            nodeModulesGrant: () => ({ target: yours }),
+        });
+        const done = await linux.wait(started.jobId, 10_000);
+        expect(done.status).not.toBe('completed');
+        expect(calls.prompts).toHaveLength(0);
+        const wt = started.worktree?.path;
+        if (wt)
+            try {
+                unlinkSync(join(wt, 'node_modules'));
+            }
+            catch {
+                try {
+                    rmdirSync(join(wt, 'node_modules'));
+                }
+                catch { /* gone */ }
+            }
+    });
+    it('not called on Windows with the sandbox switched off (config or OMG_SANDBOX=off), nor for a review job', async () => {
         let called = 0;
         const hook = () => { called += 1; return 'unexpected'; };
-        const linux = manager('idle', 'supported', { platform: 'linux' });
-        expect((await linux.wait(linux.start({ prompt: 'implement', cwd: repo }, { beforeSandboxedSession: hook }).jobId, 10_000)).status).toBe('completed');
         const off = manager('idle', 'supported', { platform: 'win32', sandboxSettings: settings({ enabled: false }) }, winEnv);
         expect((await off.wait(off.start({ prompt: 'implement', cwd: repo }, { beforeSandboxedSession: hook }).jobId, 10_000)).status).toBe('completed');
         const killed = manager('idle', 'supported', { platform: 'win32' }, { ...winEnv, OMG_SANDBOX: 'off' });

@@ -59796,7 +59796,7 @@ function sameRealPath(real2, want, platform) {
   }
   return platform === "win32" ? real2.toLowerCase() === w.toLowerCase() : real2 === w;
 }
-function nodeModulesTreeProblem(worktree, target, platform = process.platform) {
+function nodeModulesTreeProblem(worktree, target, platform = process.platform, targetReal) {
   const nm = (0, import_node_path13.join)(worktree, "node_modules");
   let st;
   try {
@@ -59811,7 +59811,8 @@ function nodeModulesTreeProblem(worktree, target, platform = process.platform) {
     } catch (error62) {
       return { problem: `${nm} is a link that cannot be resolved (${error62 instanceof Error ? error62.message : String(error62)})`, linked: false };
     }
-    return sameRealPath(real2, target, platform) ? { problem: null, linked: true } : { problem: `${nm} resolves to ${real2}, not your node_modules ${target} (the only target the engine links)`, linked: false };
+    const same9 = targetReal !== void 0 ? platform === "win32" ? real2.toLowerCase() === targetReal.toLowerCase() : real2 === targetReal : sameRealPath(real2, target, platform);
+    return same9 ? { problem: null, linked: true } : { problem: `${nm} resolves to ${real2}, not your node_modules ${target} (the only target the engine links)`, linked: false };
   }
   if (!st.isDirectory()) return { problem: null, linked: false };
   const P = platform === "win32" ? import_node_path13.win32 : import_node_path13.posix;
@@ -59825,10 +59826,10 @@ function nodeModulesTreeProblem(worktree, target, platform = process.platform) {
       return false;
     }
   };
-  const check2 = (dir, base, scoped) => {
+  const check2 = (dir, base, scoped, known) => {
     let linked = false;
-    let baseReal = null;
-    try {
+    let baseReal = known ?? null;
+    if (baseReal === null) try {
       baseReal = import_node_fs11.realpathSync.native(base);
     } catch {
     }
@@ -59839,7 +59840,7 @@ function nodeModulesTreeProblem(worktree, target, platform = process.platform) {
         const e = (0, import_node_fs11.lstatSync)(p);
         if (!e.isSymbolicLink()) {
           if (!scoped && name.startsWith("@") && e.isDirectory()) {
-            const inner = check2(p, (0, import_node_path13.join)(base, name), true);
+            const inner = check2(p, (0, import_node_path13.join)(base, name), true, baseReal !== null ? (0, import_node_path13.join)(baseReal, name) : void 0);
             if ("problem" in inner) return inner;
             linked ||= inner.linked;
           }
@@ -59855,7 +59856,7 @@ function nodeModulesTreeProblem(worktree, target, platform = process.platform) {
     }
     return { linked };
   };
-  const top = check2(nm, target, false);
+  const top = check2(nm, target, false, targetReal);
   if ("problem" in top) return { problem: top.problem, linked: false };
   const nested = [];
   for (const rel of gateTreeNestedRels(nm)) {
@@ -59908,14 +59909,6 @@ function gateTreeNestedRels(nm) {
     const segs = rel.split("/");
     return segs.length <= 6 && segs.every((s) => s !== "" && !s.startsWith(".") && !/[ .]$/.test(s) && !s.includes("~") && s.toLowerCase() !== "node_modules");
   });
-}
-function nodeModulesLinkTarget(worktree) {
-  const nm = (0, import_node_path13.join)(worktree, "node_modules");
-  try {
-    return (0, import_node_fs11.lstatSync)(nm).isSymbolicLink() ? import_node_fs11.realpathSync.native(nm) : null;
-  } catch {
-    return null;
-  }
 }
 function laneGitWritePaths(ctx) {
   const out = [(0, import_node_path13.join)(ctx.commonGitDir, "objects")];
@@ -59993,17 +59986,17 @@ function buildSandboxConfig(profile, ctx, host) {
   if (isUnderRoot(ctx.jobDir, ctx.worktree, ctx.platform)) {
     throw new Error(`the job dir ${ctx.jobDir} lies inside the lane-writable worktree ${ctx.worktree}; use isolation "worktree"`);
   }
-  let nm;
+  let nm = null;
   let nested = [];
-  if (ctx.nodeModulesTarget === void 0) nm = nodeModulesLinkTarget(ctx.worktree);
-  else {
-    const tree = nodeModulesTreeProblem(ctx.worktree, ctx.nodeModulesTarget, ctx.platform);
-    if (tree.problem) throw new Error(`the node_modules in ${ctx.worktree} is not as the engine linked it (${tree.problem}); it is not granted`);
-    nm = null;
-    if (tree.linked) try {
-      nm = import_node_fs11.realpathSync.native(ctx.nodeModulesTarget);
+  if (ctx.nodeModulesTarget !== void 0) {
+    let targetReal;
+    try {
+      targetReal = import_node_fs11.realpathSync.native(ctx.nodeModulesTarget);
     } catch {
     }
+    const tree = nodeModulesTreeProblem(ctx.worktree, ctx.nodeModulesTarget, ctx.platform, targetReal);
+    if (tree.problem) throw new Error(`the node_modules in ${ctx.worktree} is not as the engine linked it (${tree.problem}); it is not granted`);
+    if (tree.linked && targetReal !== void 0) nm = targetReal;
     const fold8 = (p) => ctx.platform === "win32" ? p.toLowerCase() : p;
     const allowed = new Set((ctx.nestedNodeModulesTargets ?? []).flatMap((p) => {
       try {
@@ -124277,6 +124270,10 @@ function gitConfigEnv(args) {
   env2.GIT_CONFIG_COUNT = String(n);
   return env2;
 }
+function nodeModulesPolicy(grant) {
+  if (!grant) return {};
+  return { nodeModulesTarget: grant.target, ...grant.nested && grant.nested.length > 0 ? { nestedNodeModulesTargets: grant.nested } : {} };
+}
 function scrubLaneCredentials(env2, emptyDir) {
   for (const key of Object.keys(env2)) {
     if (key.toUpperCase() === "COPILOT_GITHUB_TOKEN") continue;
@@ -124931,6 +124928,7 @@ var init_job = __esm({
           external,
           deniedPaths: [...options.deniedPaths ?? []],
           beforeHostGit: options.beforeHostGit ?? null,
+          nodeModulesGrant: profile !== "review" ? options.nodeModulesGrant ?? null : null,
           unprepared: null,
           pid: void 0,
           pidIdentity: null,
@@ -124957,9 +124955,9 @@ var init_job = __esm({
         this.jobs.set(id, job);
         const intent = this.sandboxIntent(sandboxSettings);
         let preparing = null;
-        if (options.beforeSandboxedSession && worktree && profile !== "review" && intent.windowsCopy) {
+        if (options.beforeSandboxedSession && worktree && profile !== "review" && intent.sandboxed) {
           try {
-            const ready = options.beforeSandboxedSession(worktree.path);
+            const ready = options.beforeSandboxedSession(worktree.path, { copy: intent.windowsCopy });
             if (ready != null && typeof ready.then === "function") preparing = Promise.resolve(ready).then((problem) => {
               job.unprepared = problem;
             }, (err) => {
@@ -125308,6 +125306,8 @@ var init_job = __esm({
               platform: deps.platform,
               settings: job.sandboxSettings,
               hostCommits: job.hostCommits,
+              // The caller-vouched node_modules (factory lanes); none, nothing under node_modules is granted.
+              ...nodeModulesPolicy(job.nodeModulesGrant?.((0, import_node_path39.resolve)(top))),
               toolPaths: (deps.toolPaths ?? laneToolPaths)(deps.env, deps.platform),
               extraReadonly: proxy.caPaths,
               // A keyring-less host keeps the login token in plain text in the user's Copilot config.json: its config dir is
@@ -128647,7 +128647,7 @@ function* linkNodeModulesSteps(root, checkout, warn, workspaces, copy) {
     if (!src || !dir || isLink2(src) || !(0, import_fs156.existsSync)(src) || !(0, import_fs156.statSync)(src).isDirectory()) continue;
     const nested = (0, import_path181.join)(dir, "node_modules");
     if ((0, import_fs156.existsSync)(nested) || isLink2(nested)) continue;
-    trees.push({ src, to: nested, rel });
+    trees.push({ src: import_fs156.realpathSync.native(src), to: nested, rel });
   }
   const built = [];
   let budget;
@@ -128699,6 +128699,7 @@ function prepareLaneNodeModulesAsync(root, worktree, o) {
 }
 function* prepareLaneSteps(root, worktree, o) {
   const target = (0, import_path181.join)(worktree, "node_modules");
+  const copy = o.copy ?? true;
   if (!(0, import_fs156.existsSync)((0, import_path181.join)(root, "node_modules"))) return null;
   if (isLink2(target) && !sameDir(target, (0, import_path181.join)(root, "node_modules"))) return `${target} is a link the engine did not make, so the lane's node_modules is not prepared`;
   const building = !(0, import_fs156.existsSync)(target) || isLink2(target) || gateTreeIncomplete(target);
@@ -128715,10 +128716,10 @@ function* prepareLaneSteps(root, worktree, o) {
     }
     if (!ignored) {
       if (!isLink2(target) && (0, import_fs156.existsSync)(target)) yield* unlinkNodeModulesSteps(root, worktree);
-      o.warn?.(`omg factory run: git does not ignore ${rels.join(", ")} in ${worktree}, so the lane gets no copied node_modules (the lane commit refuses links in its worktree); add node_modules to .gitignore`);
+      o.warn?.(`omg factory run: git does not ignore ${rels.join(", ")} in ${worktree}, so the lane gets no ${copy ? "copied " : ""}node_modules (the lane commit refuses links in its worktree); add node_modules to .gitignore`);
       return null;
     }
-    if (nested.length === 0 && !(0, import_fs156.existsSync)(target) && !isLink2(target)) {
+    if (copy && nested.length === 0 && !(0, import_fs156.existsSync)(target) && !isLink2(target)) {
       const adopted = yield* adoptLaneTree(root, worktree, o.reuseFrom ?? [], o.warn);
       if (adopted === true) return null;
       if (typeof adopted === "string") return adopted;
@@ -128726,9 +128727,9 @@ function* prepareLaneSteps(root, worktree, o) {
   }
   let problem;
   try {
-    problem = yield* linkNodeModulesSteps(root, worktree, o.warn, o.workspaces ?? [], o.copy ?? true);
+    problem = yield* linkNodeModulesSteps(root, worktree, o.warn, o.workspaces ?? [], copy);
   } catch (error62) {
-    return `the copied node_modules tree of the lane worktree ${worktree} could not be built (${error62 instanceof Error ? error62.message : String(error62)})`;
+    return `the ${copy ? "copied" : "linked"} node_modules tree of the lane worktree ${worktree} could not be built (${error62 instanceof Error ? error62.message : String(error62)})`;
   } finally {
     nestedTrees.delete(worktree);
   }
@@ -128814,14 +128815,33 @@ function* adoptedTreeProblem(root, tree) {
   };
   return yield* walk(tree, "");
 }
-function settleLaneNodeModules(root, worktree, ignored) {
+function settleLaneNodeModules(root, worktree, ignored, linked = false, nested = []) {
   const target = (0, import_path181.join)(worktree, "node_modules");
+  if (linked) {
+    for (const rel of nested) {
+      const dir = plainDirUnder(worktree, rel);
+      if (!dir) continue;
+      const nm = (0, import_path181.join)(dir, "node_modules");
+      try {
+        if ((0, import_fs156.lstatSync)(nm).isSymbolicLink()) continue;
+      } catch {
+        continue;
+      }
+      runTreeSteps(unlinkTreeLinks(nm));
+      if ((0, import_fs156.existsSync)((0, import_path181.join)(nm, GATE_TREE_MARKER))) runTreeSteps(removeGateTreeSteps(nm));
+    }
+  }
   try {
     if (!(0, import_fs156.lstatSync)(target).isDirectory()) return null;
   } catch {
     return null;
   }
-  if (sameDir(target, (0, import_path181.join)(root, "node_modules")) || !gateTreeComplete(target)) return null;
+  if (sameDir(target, (0, import_path181.join)(root, "node_modules"))) return null;
+  if (linked) {
+    unlinkNodeModules(root, worktree);
+    return null;
+  }
+  if (!gateTreeComplete(target)) return null;
   const rels = ["node_modules", ...nestedTreeDirs(worktree).map((nm) => (0, import_path181.relative)(worktree, nm).split(/[\\/]/).join("/"))];
   let still = false;
   try {
@@ -129029,13 +129049,18 @@ function* unlinkNodeModulesSteps(root, checkout) {
   yield* unlinkTreeLinks(target);
   if ((0, import_fs156.existsSync)((0, import_path181.join)(target, GATE_TREE_MARKER))) yield* removeGateTreeSteps(target);
 }
-function* unlinkTreeLinks(dir) {
-  for (const name of (0, import_fs156.readdirSync)(dir)) {
+function* unlinkTreeLinks(dir, seen) {
+  const before = seen ?? (0, import_fs156.lstatSync)(dir);
+  if (before.isSymbolicLink() || !before.isDirectory()) return;
+  const names = (0, import_fs156.readdirSync)(dir);
+  const after = (0, import_fs156.lstatSync)(dir);
+  if (after.isSymbolicLink() || !after.isDirectory() || after.dev !== before.dev || after.ino !== before.ino) return;
+  for (const name of names) {
     yield;
     const p = (0, import_path181.join)(dir, name);
     const st = (0, import_fs156.lstatSync)(p);
     if (st.isSymbolicLink()) unlinkLink2(p);
-    else if (st.isDirectory()) yield* unlinkTreeLinks(p);
+    else if (st.isDirectory()) yield* unlinkTreeLinks(p, st);
   }
 }
 function gateTreeHasLinks(checkout) {
@@ -137790,7 +137815,8 @@ var init_lane = __esm({
             ...input2.jobRoot ? { jobRoot: input2.jobRoot } : {},
             ...input2.deniedPaths ? { deniedPaths: input2.deniedPaths } : {},
             ...input2.beforeHostGit ? { beforeHostGit: input2.beforeHostGit } : {},
-            ...input2.beforeSandboxedSession ? { beforeSandboxedSession: input2.beforeSandboxedSession } : {}
+            ...input2.beforeSandboxedSession ? { beforeSandboxedSession: input2.beforeSandboxedSession } : {},
+            ...input2.nodeModulesGrant ? { nodeModulesGrant: input2.nodeModulesGrant } : {}
           }
         );
         await this.manager.prepared?.(snap.jobId);
@@ -139130,6 +139156,10 @@ var init_engine = __esm({
       gateCfg;
       /** The base's workspace globs of this invocation (baseWorkspaces), by the base sha they were read at. */
       wsGlobs;
+      /** How prepareLaneTree readied each lane worktree of this invocation (by resolved path): copied (Windows) or linked. */
+      laneTreeModes = /* @__PURE__ */ new Map();
+      /** The nested workspace trees (relative package dirs) prepareLaneTree linked in each lane worktree, for settleLaneTree. */
+      laneNestedRels = /* @__PURE__ */ new Map();
       /** The Azure DevOps forge; undefined = GitHub through the gh calls. */
       forge;
       /** The forge, for messages. */
@@ -139646,21 +139676,48 @@ var init_engine = __esm({
         return null;
       }
       /**
-       * A write lane worktree about to run in the OS sandbox on Windows gets a
-       * copy of your node_modules (prepareLaneNodeModulesAsync, the gates' copied
-       * tree: GATE_TREE_COPY_WHY), so the lane's tests open no junction. Its git
-       * ignore check runs before anything is copied (the dirs need not exist):
-       * hardened host git `check-ignore --no-index` in the worktree with its
-       * recorded links (its exit 1, none ignored, throws: not ignored).
+       * A write lane worktree about to run in the OS sandbox gets your
+       * node_modules (prepareLaneNodeModulesAsync): on Windows (`copy`) the
+       * gates' copied tree (GATE_TREE_COPY_WHY), so the lane's tests open no
+       * junction; on Linux and macOS the gates' linked tree, granted read-only
+       * through laneNodeModulesGrant, without which the lane has no tsc or
+       * vitest. Its git ignore check runs before anything is built (the dirs
+       * need not exist): hardened host git `check-ignore --no-index` in the
+       * worktree with its recorded links (its exit 1, none ignored, throws: not
+       * ignored).
        */
-      prepareLaneTree(worktree) {
+      prepareLaneTree(worktree, copy = true) {
+        this.laneTreeModes.set((0, import_path198.resolve)(worktree), copy ? "copy" : "link");
         const ignored = (paths) => {
           const out = runHostGit(worktree, [...worktreeGitDirArgs(worktree), "--no-optional-locks", "check-ignore", "--no-index", "-z", "--stdin"], PRIVATE_GIT_TIMEOUT_MS, process.env, paths.map((p) => `${p}/\0`).join(""));
           const listed2 = new Set(out.split("\0").filter(Boolean).map((p) => p.replace(/\/$/, "")));
           return paths.every((p) => listed2.has(p));
         };
         const reuseFrom = this.state.lanes.filter((l) => l.worktree && l.treeReusable === true && l.id !== this.state.pendingCommit?.laneId && !samePath2(l.worktree, worktree)).map((l) => l.worktree).reverse();
+        if (!copy) {
+          return prepareLaneNodeModulesAsync(this.o.root, worktree, { workspaces: this.baseWorkspaces(), ...this.o.warn ? { warn: this.o.warn } : {}, ignored, copy: false }).then((problem) => {
+            const nested = trustedNestedRels(this.o.root, worktree, this.baseWorkspaces());
+            const known = this.laneNestedRels.get((0, import_path198.resolve)(worktree)) ?? [];
+            this.laneNestedRels.set((0, import_path198.resolve)(worktree), [.../* @__PURE__ */ new Set([...known, ...nested])]);
+            return problem;
+          });
+        }
         return prepareLaneNodeModulesAsync(this.o.root, worktree, { workspaces: this.baseWorkspaces(), ...this.o.warn ? { warn: this.o.warn } : {}, ignored, reuseFrom });
+      }
+      /**
+       * What a write lane's sandbox may grant under node_modules, asked before
+       * each of its sessions: as for the gates (sandboxRun), your node_modules
+       * and the nested workspace trees the engine vouches for (trustedNestedRels),
+       * so every link of `<worktree>/node_modules` is checked against them
+       * (nodeModulesTreeProblem) and a link the lane planted or re-pointed stops
+       * the session instead of being mounted. Undefined (nothing granted) for a
+       * Windows lane's copied tree, as before: it holds no link to grant through
+       * but `.bin`.
+       */
+      laneNodeModulesGrant(worktree) {
+        if (this.laneTreeModes.get((0, import_path198.resolve)(worktree)) !== "link") return void 0;
+        const nested = trustedNestedRels(this.o.root, worktree, this.baseWorkspaces()).map((rel) => (0, import_path198.join)(this.o.root, ...rel.split("/"), "node_modules"));
+        return { target: (0, import_path198.join)(this.o.root, "node_modules"), ...nested.length > 0 ? { nested } : {} };
       }
       /**
        * Right before the lane commit: the copied tree prepareLaneTree built must
@@ -139674,19 +139731,20 @@ var init_engine = __esm({
           const listed2 = new Set(out.split("\0").filter(Boolean).map((p) => p.replace(/\/$/, "")));
           return paths.every((p) => listed2.has(p));
         };
+        const linked = (this.laneTreeModes.get((0, import_path198.resolve)(worktree)) ?? (process.platform === "win32" ? "copy" : "link")) === "link";
         try {
-          const removed = settleLaneNodeModules(this.o.root, worktree, ignored);
+          const removed = settleLaneNodeModules(this.o.root, worktree, ignored, linked, this.laneNestedRels.get((0, import_path198.resolve)(worktree)) ?? []);
           if (removed) this.o.warn?.(`omg factory run: ${removed}`);
         } catch (error62) {
-          this.o.warn?.(`omg factory run: the copied node_modules of ${worktree} is no longer ignored by git and could not be removed (${errText6(error62)}); the lane commit refuses its links`);
+          this.o.warn?.(linked ? `omg factory run: the linked node_modules of ${worktree} could not be unlinked before the lane commit (${errText6(error62)}); the lane commit refuses its links` : `omg factory run: the copied node_modules of ${worktree} is no longer ignored by git and could not be removed (${errText6(error62)}); the lane commit refuses its links`);
         }
       }
       /**
        * What a write lane's prompt may say about its sandbox: the lane backend's
        * reading of the sandbox settings (null: a backend that cannot tell, such
        * as a cloud agent, or unreadable settings: the prompt says nothing). The
-       * dependencies are named ready only where prepareLaneTree copies your
-       * node_modules into the worktree.
+       * dependencies are named ready only where prepareLaneTree gives the
+       * worktree your node_modules (the OS sandbox: copied or linked).
        */
       laneEnvironment() {
         let intent;
@@ -139696,7 +139754,7 @@ var init_engine = __esm({
           intent = null;
         }
         if (!intent) return null;
-        return { sandboxed: intent.sandboxed, writeNetwork: intent.writeNetwork, nodeModulesReady: intent.windowsCopy && (0, import_fs171.existsSync)((0, import_path198.join)(this.o.root, "node_modules")) };
+        return { sandboxed: intent.sandboxed, writeNetwork: intent.writeNetwork, nodeModulesReady: intent.sandboxed && (0, import_fs171.existsSync)((0, import_path198.join)(this.o.root, "node_modules")) };
       }
       /** The gate-sandbox-incompatible park of a copied tree linkGateTree could not build (`why`). */
       treeCopyPark(why) {
@@ -143813,9 +143871,10 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
             ...profile === "write" ? { engineCommits: true } : {},
             // factory.run.laneModels[kind] / --review-model, else factory.run.laneModel / --model (laneModelFor).
             ...model ? { model } : {},
-            // The OS sandbox on Windows denies opening a package dir through a junction: a write lane gets a copied node_modules
-            // (a review lane's shell is read-only, so it runs no test and needs none).
-            ...profile === "write" ? { beforeSandboxedSession: (wt) => this.prepareLaneTree(wt) } : {},
+            // The OS sandbox on Windows denies opening a package dir through a junction: a write lane gets a copied node_modules;
+            // elsewhere the gates' linked tree, granted read-only only as the engine vouches for it (laneNodeModulesGrant).
+            // A review lane's shell is read-only, so it runs no test and needs none.
+            ...profile === "write" ? { beforeSandboxedSession: (wt, o) => this.prepareLaneTree(wt, o?.copy ?? true), nodeModulesGrant: (wt) => this.laneNodeModulesGrant(wt) } : {},
             ...priv && laneTree2 ? { worktree: { path: laneTree2, commonGitDir: priv.repo.gitDir }, jobRoot: priv.layout.jobs, deniedPaths: priv.deniedFor(laneTree2), beforeHostGit: () => priv.problem() } : {}
           }));
         } catch (error62) {

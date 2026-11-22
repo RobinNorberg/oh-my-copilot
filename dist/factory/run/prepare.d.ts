@@ -72,11 +72,16 @@ export declare const GATE_TREE_FILE_MAX_BYTES: number;
  */
 export declare function linkNodeModules(root: string, checkout: string, warn?: (message: string) => void, workspaces?: readonly string[], copy?: boolean | Partial<GateTreeCopyLimits>): string | null;
 /**
- * A lane worktree's own node_modules for the OS sandbox on Windows
+ * A lane worktree's own node_modules for the OS sandbox. On Windows
  * (GATE_TREE_COPY_WHY: a package dir opened through a junction is denied,
  * so a lane's `npm test` fails with "Access is denied"): linkNodeModules'
  * copied tree in `worktree`, the same build the gates use, from your
- * node_modules at `root` (only read). Once per worktree: a complete tree
+ * node_modules at `root` (only read). On Linux and macOS (`copy: false`):
+ * the gates' linked tree, whose links name your node_modules by its
+ * realpath, which the lane's sandbox grants read-only (the engine passes it
+ * as the session's nodeModulesTarget, so every link is checked before each
+ * session); without it a lane worktree has no node_modules and, with no
+ * network, no tsc or vitest. Once per worktree: a complete tree
  * already there is reused, a cut-off one is built again. Your node_modules,
  * and the target of any link, is never written or removed: an existing
  * `<worktree>/node_modules` link is unlinked only when it resolves to yours
@@ -91,8 +96,9 @@ export declare function linkNodeModules(root: string, checkout: string, warn?: (
  * space, a foreign link), else null.
  *
  * `reuseFrom`: earlier lane worktrees of the same work item, most recent
- * first; a complete tree there is moved here instead of a new copy
- * (adoptLaneTree, with its checks and trust argument).
+ * first; a complete copied tree there is moved here instead of a new copy
+ * (adoptLaneTree, with its checks and trust argument). A linked tree
+ * (`copy: false`) is never moved: it costs about as little as the move.
  */
 export declare function prepareLaneNodeModules(root: string, worktree: string, o: LaneTreeOptions): string | null;
 /**
@@ -113,7 +119,7 @@ export interface LaneTreeOptions {
     workspaces?: readonly string[];
     warn?: (message: string) => void;
     ignored: (paths: string[]) => boolean;
-    copy?: true | Partial<GateTreeCopyLimits>;
+    copy?: boolean | Partial<GateTreeCopyLimits>;
     reuseFrom?: readonly string[];
 }
 /**
@@ -125,8 +131,17 @@ export interface LaneTreeOptions {
  * unlinked first, never followed (unlinkNodeModules), so the commit neither
  * refuses its links nor stages the copy. Returns what was removed, or null.
  * A removal error throws (the commit then refuses the links that are left).
+ *
+ * `linked` (the Linux and macOS lane tree, `copy: false`): a tree of links
+ * only, cheap to build again, so it always goes before the commit, whatever
+ * git ignores (null returned): every link in the worktree's node_modules is
+ * unlinked, never followed, marker or not (the lane can delete the marker,
+ * as in unlinkNodeModules M3), so its links are never committed. `nested`:
+ * the lane's nested workspace trees as relative package dirs, recorded by the
+ * engine when it prepared the lane (the marker that also names them is
+ * lane-writable): their links go too, never followed, marker or not.
  */
-export declare function settleLaneNodeModules(root: string, worktree: string, ignored: (paths: string[]) => boolean): string | null;
+export declare function settleLaneNodeModules(root: string, worktree: string, ignored: (paths: string[]) => boolean, linked?: boolean, nested?: readonly string[]): string | null;
 /**
  * Why a gate tree may be built as copies: in the Copilot OS sandbox on
  * Windows (its low-integrity token) a directory junction whose target the

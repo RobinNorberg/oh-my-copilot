@@ -78,12 +78,14 @@ export interface LaneStartInput {
   /** Private layout: privateRepoProblem, run right before the backend's host git reads the worktree after the session. */
   beforeHostGit?: () => string | null;
   /**
-   * The local backend, a write lane in the OS sandbox on Windows: readies the
-   * lane worktree before its runtime starts (prepare.ts
-   * prepareLaneNodeModules); a non-null problem fails the lane before any
-   * session starts.
+   * The local backend, a write lane in the OS sandbox: readies the lane
+   * worktree before its runtime starts (prepare.ts prepareLaneNodeModules;
+   * `copy` on Windows, else the linked tree); a non-null problem fails the
+   * lane before any session starts.
    */
-  beforeSandboxedSession?: (worktree: string) => string | null | Promise<string | null>;
+  beforeSandboxedSession?: (worktree: string, o?: { copy: boolean }) => string | null | Promise<string | null>;
+  /** The local backend, a write lane: the node_modules its sandbox may grant (CopilotRunStartOptions.nodeModulesGrant). */
+  nodeModulesGrant?: (worktree: string) => { target: string; nested?: string[] } | undefined;
   /** Cloud backends only. */
   customAgent?: string;
   timeoutMs: number;
@@ -140,7 +142,7 @@ export interface LaneProcess {
 export interface LaneSandboxIntent {
   sandboxed: boolean;
   writeNetwork: 'none' | 'registry';
-  /** The Windows sandbox: beforeSandboxedSession runs. */
+  /** The Windows sandbox: beforeSandboxedSession copies (elsewhere it links, whenever `sandboxed`). */
   windowsCopy: boolean;
 }
 
@@ -214,7 +216,8 @@ export class CopilotLaneBackend implements LaneBackend {
       { allowLive: this.options.allowLive, disableStopContinuations: true, minimalHooks: true, ledgerKey: `factory-lane:${input.laneId}`, ...(input.ledgerTag ? { ledgerTag: { kind: 'factory-lane' as const, ...input.ledgerTag } } : {}), sandboxScope: 'factory', ...(input.scrubCredentials ? { scrubCredentials: true } : {}), ...(input.engineCommits ? { hostCommits: true } : {}),
         ...(input.worktree ? { worktree: input.worktree } : {}), ...(input.jobRoot ? { jobRoot: input.jobRoot } : {}),
         ...(input.deniedPaths ? { deniedPaths: input.deniedPaths } : {}), ...(input.beforeHostGit ? { beforeHostGit: input.beforeHostGit } : {}),
-        ...(input.beforeSandboxedSession ? { beforeSandboxedSession: input.beforeSandboxedSession } : {}) },
+        ...(input.beforeSandboxedSession ? { beforeSandboxedSession: input.beforeSandboxedSession } : {}),
+        ...(input.nodeModulesGrant ? { nodeModulesGrant: input.nodeModulesGrant } : {}) },
     );
     // An async beforeSandboxedSession: the lane counts as started (the engine's idle clock) only once its worktree is ready.
     await this.manager.prepared?.(snap.jobId);

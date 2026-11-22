@@ -363,8 +363,39 @@ describe('buildSandboxConfig', () => {
             point(elsewhere);
             expect(() => buildSandboxConfig('write', c, host())).toThrow(/node_modules in .* is not as the engine linked it \(.*resolves to .*secret, not your node_modules .*\); it is not granted/);
             expect(() => buildSandboxConfig('write', c, host({ shell: true, denied_paths: true }))).toThrow(/it is not granted/);
-            // Without nodeModulesTarget (lanes): the link's target as it is, today's rule.
-            expect(buildSandboxConfig('write', { ...c, nodeModulesTarget: undefined }, host()).userPolicy.filesystem.readonlyPaths).toContain(realpathSync.native(elsewhere));
+            // Without nodeModulesTarget: no grant at all (a link in the worktree is lane-writable, never a grant of its own).
+            const fsNo = buildSandboxConfig('write', { ...c, nodeModulesTarget: undefined }, host()).userPolicy.filesystem;
+            expect(fsNo.readonlyPaths).not.toContain(realpathSync.native(elsewhere));
+            expect(fsNo.readonlyPaths).not.toContain(realpathSync.native(yours));
+        }
+        finally {
+            rmSync(base, { recursive: true, force: true });
+        }
+    });
+    it('planted link (#589 review B): a lane worktree whose node_modules is a link to an outside dir gets no grant without a target, and refuses the session with one', () => {
+        const base = mkdtempSync(join(tmpdir(), 'omg-sbx-plant-'));
+        try {
+            const worktree = join(base, 'wt');
+            const yours = join(base, 'user', 'node_modules');
+            const outside = join(base, 'home-secrets');
+            for (const d of [worktree, yours, outside])
+                mkdirSync(d, { recursive: true });
+            // The first session planted it; the next session's config is built now.
+            symlinkSync(outside, join(worktree, 'node_modules'), process.platform === 'win32' ? 'junction' : 'dir');
+            const c = { ...ctx, worktree, platform: process.platform };
+            const fsNo = buildSandboxConfig('write', c, host({ shell: true, denied_paths: true })).userPolicy.filesystem;
+            expect([...fsNo.readonlyPaths, ...fsNo.readwritePaths]).not.toContain(realpathSync.native(outside));
+            expect(() => buildSandboxConfig('write', { ...c, nodeModulesTarget: yours }, host())).toThrow(/home-secrets, not your node_modules .*; it is not granted/);
+            // A planted link inside the engine's per-run tree refuses too.
+            try {
+                unlinkSync(join(worktree, 'node_modules'));
+            }
+            catch {
+                rmdirSync(join(worktree, 'node_modules'));
+            }
+            mkdirSync(join(worktree, 'node_modules'));
+            symlinkSync(outside, join(worktree, 'node_modules', 'pkg'), process.platform === 'win32' ? 'junction' : 'dir');
+            expect(() => buildSandboxConfig('write', { ...c, nodeModulesTarget: yours }, host())).toThrow(/pkg points to .*home-secrets, not .*; it is not granted/);
         }
         finally {
             rmSync(base, { recursive: true, force: true });
