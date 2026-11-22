@@ -28,7 +28,7 @@
 import { randomUUID } from 'crypto';
 import { spawnSync } from 'child_process';
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync } from 'fs';
-import { join } from 'path';
+import { join, win32 } from 'path';
 import { getSkillsDir } from '../../features/builtin-skills/skills.js';
 import { getOmcRoot, validateSessionId } from '../../lib/worktree-paths.js';
 import { acquireFileLockSync, lockPathFor, releaseFileLockSync } from '../../lib/file-lock.js';
@@ -409,17 +409,68 @@ export function resolveFeedbackTimeoutMs(raw) {
     const timeoutMs = Math.round(seconds * 1000);
     return timeoutMs >= 1 ? timeoutMs : null;
 }
+/**
+ * Runs the feedback command under a deadline and, when the deadline passes,
+ * kills the whole process tree, not only the shell. `spawnSync`'s own timeout
+ * kills just the shell, which leaves a grandchild (a 10-minute `npm test`)
+ * holding files, ports and its cwd. The runner inherits stdout/stderr, so the
+ * caller's capture and buffer limit apply unchanged; it reports the outcome as
+ * JSON on fd 3. The tree kill mirrors killProcessTree (platform/process-utils):
+ * `taskkill /F /T` by absolute path on Windows, a process-group SIGKILL on
+ * POSIX (the shell runs detached, so it leads its own group).
+ */
+const FEEDBACK_RUNNER = `
+const { spawn, execFileSync } = require('child_process');
+const { writeSync } = require('fs');
+const [command, timeoutMs, taskkill] = JSON.parse(process.argv[1]);
+let timedOut = false;
+const report = (outcome) => { try { writeSync(3, JSON.stringify(outcome)); } catch {} };
+const child = spawn(command, { shell: true, stdio: ['ignore', 'inherit', 'inherit'], windowsHide: true, detached: process.platform !== 'win32' });
+const timer = setTimeout(() => {
+  timedOut = true;
+  try {
+    if (process.platform === 'win32') execFileSync(taskkill, ['/F', '/T', '/PID', String(child.pid)], { stdio: 'ignore', timeout: 5000, windowsHide: true });
+    else process.kill(-child.pid, 'SIGKILL');
+  } catch {
+    try { child.kill('SIGKILL'); } catch {}
+  }
+}, timeoutMs);
+child.on('error', (error) => { clearTimeout(timer); report({ error: error.code || 'unknown', spawned: Boolean(child.pid) }); process.exit(1); });
+child.on('exit', (status, signal) => { clearTimeout(timer); report({ status, signal, timedOut }); process.exit(typeof status === 'number' ? status : 1); });
+`;
+/** Grace for the runner itself on top of the command budget (tree kill + exit). */
+const FEEDBACK_RUNNER_GRACE_MS = 30_000;
+function spawnFeedbackCommand(command, directory, timeoutMs) {
+    const taskkill = win32.join(process.env.SystemRoot || process.env.windir || 'C:\\Windows', 'System32', 'taskkill.exe');
+    const outer = spawnSync(process.execPath, ['-e', FEEDBACK_RUNNER, JSON.stringify([command, timeoutMs, taskkill])], {
+        cwd: directory,
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe', 'pipe'],
+        timeout: timeoutMs + FEEDBACK_RUNNER_GRACE_MS,
+        windowsHide: true,
+        maxBuffer: 32 * 1024 * 1024,
+    });
+    const base = { stdout: outer.stdout ?? '', stderr: outer.stderr ?? '' };
+    let outcome = null;
+    try {
+        outcome = JSON.parse(String(outer.output?.[3] ?? ''));
+    }
+    catch {
+        outcome = null;
+    }
+    // No report: the runner could not start (bad cwd), overran its grace, or died.
+    if (!outcome)
+        return { ...base, pid: outer.pid ?? 0, status: outer.status, ...(outer.error ? { error: outer.error } : {}) };
+    if (outcome.timedOut)
+        return { ...base, pid: outer.pid, status: null, error: Object.assign(new Error('spawnSync ETIMEDOUT'), { code: 'ETIMEDOUT' }) };
+    if (outcome.error)
+        return { ...base, pid: outcome.spawned ? outer.pid : 0, status: null, error: Object.assign(new Error(`spawn ${outcome.error}`), { code: outcome.error }) };
+    return { ...base, pid: outer.pid, status: outcome.status ?? null };
+}
 /** Run one feedback command on the current tree and fingerprint its failures. */
 export function runFeedbackCommand(command, directory, options = {}) {
     try {
-        const result = spawnSync(command, {
-            shell: true,
-            cwd: directory,
-            encoding: 'utf8',
-            timeout: options.timeoutMs ?? DEFAULT_FEEDBACK_TIMEOUT_MS,
-            windowsHide: true,
-            maxBuffer: 32 * 1024 * 1024,
-        });
+        const result = spawnFeedbackCommand(command, directory, options.timeoutMs ?? DEFAULT_FEEDBACK_TIMEOUT_MS);
         const output = `${result.stdout ?? ''}\n${result.stderr ?? ''}`;
         const errorCode = result.error && 'code' in result.error && typeof result.error.code === 'string'
             ? result.error.code

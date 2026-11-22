@@ -625,6 +625,35 @@ operable program or batch file.`);
             logSpy.mockRestore();
         }
     }, 30000);
+    it('kills the whole process tree when a feedback command times out', async () => {
+        // A compound command forces a real shell on every platform, so the slow
+        // node process is a grandchild: killing only the shell would leave it running.
+        const pidFile = join(dir, 'grandchild.pid');
+        writeFileSync(join(dir, 'slow-grandchild.js'), `require('fs').writeFileSync(${JSON.stringify(pidFile)}, String(process.pid));\nsetTimeout(() => {}, 30000);\n`, 'utf8');
+        const result = runFeedbackCommand('node slow-grandchild.js && echo finished', dir, { timeoutMs: 1500 });
+        expect(result).toEqual({ signatures: [], timedOut: true });
+        const pid = Number(readFileSync(pidFile, 'utf8'));
+        expect(pid).toBeGreaterThan(0);
+        const alive = () => {
+            try {
+                process.kill(pid, 0);
+                return true;
+            }
+            catch (error) {
+                return error.code === 'EPERM';
+            }
+        };
+        const deadline = Date.now() + 2000;
+        while (alive() && Date.now() < deadline)
+            await new Promise((resolve) => setTimeout(resolve, 50));
+        try {
+            expect(alive()).toBe(false);
+        }
+        finally {
+            if (alive())
+                process.kill(pid, 'SIGKILL');
+        }
+    }, 20000);
     it('runs a sessionless gate without a lock and reports baseline candidates', () => {
         writeFailer('sessionless failure');
         writePackage('node failer.js');
