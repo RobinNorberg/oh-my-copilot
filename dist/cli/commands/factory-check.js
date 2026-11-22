@@ -16,6 +16,7 @@ import { userConfigLayers } from '../../ship/config.js';
 import { defaultExec } from '../../ship/exec.js';
 import { parseJsonc } from '../../utils/jsonc.js';
 import { integerOption } from '../utils/integer-option.js';
+import { defaultHostCheckDeps, runFactoryHostCheck } from '../../factory/host-check.js';
 export async function ttyConfirm(question) {
     const rl = createInterface({ input: process.stdin, output: process.stderr });
     try {
@@ -41,7 +42,7 @@ export function defaultFactoryCheckDeps(base) {
         err: (line) => console.error(line),
     };
 }
-export function factoryCheckCommand(deps) {
+export function factoryCheckCommand(deps, hostDeps = () => defaultHostCheckDeps()) {
     return new Command('check')
         .description('Bucket intake items as runnable / needs-plan / blocked (read-only; --mark tags the runnable ones)')
         .argument('[ids...]', 'item ids (GitHub issue numbers, Azure DevOps work item ids or local backlog item ids); default: the intake source')
@@ -51,7 +52,12 @@ export function factoryCheckCommand(deps) {
         .option('--json', 'JSON output (schemaVersion 1)')
         .option('--mark', 'add factory.intake.marker to the runnable items (asks first)')
         .option('--yes', 'confirm --mark without a prompt')
+        .option('--host', 'check the host prerequisites instead (node, git, sandbox, Copilot CLI, SDK and protocol, login, package cache); free: no model request')
         .action(async (ids, o) => {
+        if (o.host) {
+            process.exitCode = await runFactoryHostCheck({ json: o.json }, hostDeps(), deps.out);
+            return;
+        }
         try {
             process.exitCode = await runFactoryCheck({ ids, ...o }, deps);
         }
