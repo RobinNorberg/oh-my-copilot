@@ -86,6 +86,8 @@ export interface SandboxRunRequest {
      * nothing of a failed run is copied back. The OS sandbox writes it in `cwd` itself.
      */
     reportFile?: string;
+    /** A dotnet command in a repository whose trusted base pins Microsoft.Testing.Platform (dotnet-sandbox.ts isMtpGlobalJson): no -m:1 on dotnet test. */
+    dotnetMtp?: true;
 }
 /** The gate record and PR note line for a sandboxed run on a host without denied_paths. */
 export declare const CREDENTIAL_FILES_READABLE_NOTE = "sandboxed; credential files readable on this host";
@@ -137,6 +139,8 @@ export interface SandboxExecOptions {
     mainRoot?: string;
     nodeModulesTarget?: string;
     nestedNodeModulesTargets?: string[];
+    /** SandboxRunRequest.dotnetMtp. */
+    dotnetMtp?: true;
 }
 export declare const MARKER_PREFIX = "omg-gate-exit-";
 /** The command's output the POSIX form keeps (`tail -c`) before the marker line. */

@@ -18,6 +18,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { nugetPackagesDir } from '../../../copilot-run/dotnet-sandbox.js';
 import { resolveLocalGateArgv } from '../../../factory/run/local-gate.js';
+import { removeDotnetBuildOutput } from '../../../factory/run/prepare.js';
 import { createSandboxRunner } from '../../../factory/run/sandbox-exec.js';
 import { findOnPath } from '../../../utils/windows-search.js';
 
@@ -111,4 +112,18 @@ describe.runIf(process.env.OMG_LIVE_DOTNET === '1' && onWindows && !!dotnet)('a 
     expect(r.status, r.output).toBe(0);
     expect(r.output).toMatch(/Passed!\s+- Failed:\s+0, Passed:\s+1/);
   }, 360_000);
+
+  it.runIf(xunitCached)('after the engine removed bin/ and obj/ (as before every dotnet gate run) the gate restores offline and passes again', async (ctx) => {
+    const first = await gate(['dotnet', 'test']);
+    if (!first.ran && NO_RUNTIME.test(first.reason)) { ctx.skip(`no Copilot runtime here: ${first.reason}`); return; }
+    const listed = spawnSync('git', ['ls-files', '--others', '-z'], { cwd: checkout, encoding: 'utf8' }).stdout.split('\0').filter(Boolean);
+    expect(removeDotnetBuildOutput(checkout, listed)).toBeGreaterThan(0);
+    expect(existsSync(join(checkout, 'Lib.Tests', 'obj')) || existsSync(join(checkout, 'Lib', 'bin'))).toBe(false);
+    const r = await gate(['dotnet', 'test']);
+    expect(r.ran, r.ran ? '' : r.reason).toBe(true);
+    if (!r.ran) return;
+    expect(r.status, r.output).toBe(0);
+    expect(r.output).toMatch(/Restored .*Lib\.Tests\.csproj/);
+    expect(r.output).toMatch(/Passed!\s+- Failed:\s+0, Passed:\s+1/);
+  }, 720_000);
 });

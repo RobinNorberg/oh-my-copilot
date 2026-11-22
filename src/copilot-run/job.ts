@@ -1554,6 +1554,7 @@ export class CopilotRunManager {
       const d = dotnetSandboxEnv(env.USERPROFILE!, deps.env, realHome, deps.platform);
       Object.assign(env, d.env);
       dotnetGrants.push(...d.readonly);
+      job.notes.push(...d.notes);
     }
     delete env[COPILOT_RUN_ALLOW_ENV];
     // OMC_* from the caller is stripped above, so this is the session's only skip list.

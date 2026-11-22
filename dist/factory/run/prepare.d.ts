@@ -170,6 +170,27 @@ export interface GateTreeCopyLimits {
     freeBytes: (dir: string) => number | null;
 }
 /**
+ * Remove a dotnet gate's leftover build state from `checkout` (the engine's
+ * prepare checkout, before the gate): of `untracked` (repository paths as
+ * `git ls-files --others -z` lists them against the head, ignored or not),
+ * every path under a `bin`, `obj` or `artifacts` dir (local-gate.ts
+ * dotnetBuildDirIndex), then the dirs that became empty under it. The PR's
+ * code run there earlier (a prepare check, a source generator, an earlier
+ * gate run) can leave a restore output or a stale build that MSBuild reuses
+ * (NuGet's no-op restore keeps obj/*.nuget.g.targets; a newer bin/ skips
+ * CoreCompile), and it would change the gate's result.
+ *
+ * Link-safe, never leaving the checkout: each path is walked from the
+ * checkout one lstat at a time; a link (symlink or junction) at or below the
+ * build dir is unlinked itself, never followed (git lists a junction's
+ * content on Windows, the link itself on POSIX); a link above it, a file on
+ * the way, or anything not there is left alone. A listed path that is the
+ * build dir itself goes only when it is a link. Tracked files are never
+ * listed, and a dir that still holds one is not empty. Returns how many
+ * entries went.
+ */
+export declare function removeDotnetBuildOutput(checkout: string, untracked: readonly string[]): number;
+/**
  * Remove what linkNodeModules made before the checkout is discarded: on
  * POSIX a symlink named node_modules is untracked for a `node_modules/`
  * gitignore line (directory-only), so removeWorkerWorktree would see a dirty

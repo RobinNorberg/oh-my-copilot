@@ -68,7 +68,7 @@ describe('buildSandboxConfig', () => {
             '.ssh', '.gitconfig', '.omg', '.copilot', '.azure', '.git-credentials', join('.config', 'git', 'credentials'), join('.cache', 'git', 'credential'),
             join('.config', 'gh'), '.aws', '.npmrc', '.docker', '.kube', '.netrc', join('.cargo', 'credentials'), join('.cargo', 'credentials.toml'),
             '.gnupg', '.pypirc', join('.config', 'gcloud'),
-            join('.nuget', 'NuGet'), join('.nuget', 'plugins'), join('.local', 'share', 'MicrosoftCredentialProvider'),
+            join('.nuget', 'NuGet'), join('.nuget', 'plugins'), join('.config', 'NuGet'), join('.local', 'share', 'MicrosoftCredentialProvider'),
         ].map((p) => join(ctx.realHome, p));
         expect(denied.userPolicy.filesystem.deniedPaths).toEqual([...homeDenied, '/var/run/docker.sock', '/run/docker.sock', '/run/podman']);
         // A dotnet job's read-only NuGet packages grant survives beside the denied NuGet config and credential dirs (never all of ~/.nuget).

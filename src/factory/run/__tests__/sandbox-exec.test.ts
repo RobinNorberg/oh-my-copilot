@@ -789,6 +789,24 @@ describe('runSandboxed: a dotnet command (dotnet-sandbox.ts)', () => {
     expect(policy().readonlyPaths.some((p) => p.includes('.nuget'))).toBe(false);
   });
 
+  it('F3: dotnetMtp (the trusted base selects Microsoft.Testing.Platform): no -m:1 on dotnet test, still on dotnet build', async () => {
+    await runSandboxed(['/usr/bin/dotnet', 'test', '--project', 'Tests'], opts({ dotnetMtp: true }), deps(ok));
+    expect(words()).toEqual(['/usr/bin/dotnet', 'test', '--project', 'Tests']);
+    rec.commands.length = 0;
+    await runSandboxed(['/usr/bin/dotnet', 'build'], opts({ dotnetMtp: true }), deps(ok));
+    expect(words()).toEqual(['/usr/bin/dotnet', 'build', '-m:1']);
+  });
+
+  it('F9: a refused NUGET_PACKAGES (the home dir) is not named or granted, and a failing command\'s output says why', async () => {
+    const home = join(dir, 'home');
+    mkdirSync(home, { recursive: true });
+    const r = await runSandboxed(['/usr/bin/dotnet', 'test'], opts(), deps(said('error NU1101: Unable to find package xunit\nMARKER 1\n'), 'supported', { env: { PATH: '', NUGET_PACKAGES: home } }));
+    expect(rec.connections[0].env.NUGET_PACKAGES).toBeUndefined();
+    expect(policy().readonlyPaths).not.toContain(home);
+    expect(r.ran && r.status).toBe(1);
+    expect(r.ran && r.output).toMatch(/NU1101[\s\S]*NUGET_PACKAGES \(.*\) is your home dir or a dir above it, so it is not granted to the sandbox/);
+  });
+
   it('is inert for a node command: same argv, no dotnet env, no NuGet grant', async () => {
     mkdirSync(join(dir, 'home', '.nuget', 'packages'), { recursive: true });
     await runSandboxed(['/usr/bin/node', 'node_modules/vitest/vitest.mjs', 'run'], opts(), deps(ok));

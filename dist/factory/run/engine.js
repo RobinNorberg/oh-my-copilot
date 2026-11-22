@@ -63,7 +63,7 @@ import { listChangedFiles, protectedChanges } from '../../ship/merge.js';
 import { ESLINT_SCRIPT, PREPARE_CONFIG_STEP, PREPARE_DETECT_STEP, PREPARE_SANDBOX_STEP, runPrepareAsync, VITEST_SCRIPT } from '../../ship/prepare.js';
 import { parseJsonc } from '../../utils/jsonc.js';
 import { gitForWindowsShell, nodeModulesTreeProblem, resolveGateIsolation, resolveGatesSandboxMode, resolveRequireDeniedPaths, resolveWindowsGitTransport } from '../../copilot-run/sandbox.js';
-import { isDotnetExe, isNugetHost } from '../../copilot-run/dotnet-sandbox.js';
+import { DOTNET_MTP_UNSUPPORTED, isDotnetExe, isMtpGlobalJson, isNugetHost } from '../../copilot-run/dotnet-sandbox.js';
 import { CONTAINER_INCOMPATIBLE_ADVICE, CONTAINER_SRC, containerRunLabel, GATE_CONTAINER_UNAVAILABLE_GATE } from './container-gate.js';
 import { CREDENTIAL_FILES_READABLE_NOTE, redactGateOutput, sandboxCommandTooLong, sandboxJobRoot, splitFileListArgs } from './sandbox-exec.js';
 import { forgetWorktreeGitLinks, readWorktreeGitLinks, recordedWorktreeGitLinks, recordWorktreeGitLinks, removeStaleWorktreeEntry, removeWorkerWorktree, runHostGit, runHostGitBuffer, runHostGitBufferAsync, worktreeGitDirArgs, worktreeGitLinksIntact } from '../../team/git-worktree.js';
@@ -90,7 +90,7 @@ import { ghDependsOn, ghIssueComment, ghIssueJson, ghIssueView, ghViewItem, gith
 import { isSatisfied } from '../check/score.js';
 import { outcomePosts, postedBefore } from './outcome.js';
 import { forgePrStateReader, humanMergeCandidate, laneTrustProblem, markMergedByHuman } from './human-merged.js';
-import { checkoutBranch, checkoutPath, checkoutWorker, defaultGateConfigLoader, FACTORY_CHECKOUT_TEAM, GATE_CACHE_DIRS, GATE_TREE_COPY_WHY, GATE_TREE_MARKER, gateTreeHasLinks, linkNodeModules, prepareLaneNodeModulesAsync, settleLaneNodeModules, trustedNestedRels, unlinkNodeModules } from './prepare.js';
+import { checkoutBranch, checkoutPath, checkoutWorker, defaultGateConfigLoader, FACTORY_CHECKOUT_TEAM, GATE_CACHE_DIRS, GATE_TREE_COPY_WHY, GATE_TREE_MARKER, gateTreeHasLinks, linkNodeModules, prepareLaneNodeModulesAsync, removeDotnetBuildOutput, settleLaneNodeModules, trustedNestedRels, unlinkNodeModules } from './prepare.js';
 import { baseWorkspacePatterns } from './workspace-tree.js';
 import { canTransition, createShipState, transition, latestVerdict, parseShipState, recordVerdict, shipStatePath, updateShipState, verifyShipIntegrity, } from '../../ship/state.js';
 import { ghReviewFeedback } from '../../forge/github/reviews.js';
@@ -412,7 +412,7 @@ export const windowsGitTransportFailure = (output, platform = process.platform) 
  */
 export const windowsJunctionReadDenied = (output, platform = process.platform) => platform === 'win32' && !!output && /Cannot read directory "[^"\r\n]*node_modules[\\/][^"\r\n]*": Access is denied\./.test(output);
 /** What the gate-sandbox-incompatible park says for a dotnet command (docs/REFERENCE.md, .NET repositories). */
-export const DOTNET_SANDBOX_ADVICE = 'Your dotnet command fails in the sandbox on the base. The sandbox has no network, so every NuGet package must already be in the NuGet global packages folder (NUGET_PACKAGES, else ~/.nuget/packages): run dotnet restore on the base yourself once. Private feeds and credentials in your NuGet.Config are not available there. NuGet\'s audit cannot reach the feed and warns NU1900, which fails a project with TreatWarningsAsErrors: set NuGetAudit to false there (or pass -p:NuGetAudit=false in the gate). The engine appends -m:1 to every MSBuild command (worker nodes cannot connect in the Windows sandbox; the last -m wins), so a hang comes from elsewhere, such as a task run with TaskHostFactory';
+export const DOTNET_SANDBOX_ADVICE = 'Your dotnet command fails in the sandbox on the base. The sandbox has no network, so every NuGet package must already be in the NuGet global packages folder (NUGET_PACKAGES, else ~/.nuget/packages): run dotnet restore on the base yourself once. Private feeds and credentials in your NuGet.Config are not available there. NuGet\'s audit cannot reach the feed and warns NU1900, which fails a project with TreatWarningsAsErrors: set NuGetAudit to false there (or pass -p:NuGetAudit=false in the gate). The engine appends -m:1 to every MSBuild command (worker nodes cannot connect in the Windows sandbox; the last -m wins), so a hang comes from elsewhere, such as a task run with TaskHostFactory. dotnet test on Microsoft.Testing.Platform (global.json test.runner) does not run in the Windows sandbox: its test app cannot connect back to dotnet test';
 /** What the gate-sandbox-incompatible park of a failing base calibration tells the human to do. */
 export function sandboxIncompatibleAdvice(tail, platform = process.platform, argv) {
     if (isDotnetExe(argv?.[0]))
@@ -1159,7 +1159,9 @@ class FactoryEngine {
         // N2 (review-532b): once the image id is known, every container command of the run names it, never the tag again,
         // so the head and the base calibrations run the same image.
         const container = settings && this.containerImageId ? { ...settings, image: this.containerImageId } : settings;
-        const r = this.o.gateSandbox({ ...req, nodeModulesTarget: join(this.o.root, 'node_modules'), ...(nested.length > 0 ? { nestedNodeModulesTargets: nested } : {}), ...(p ? { mainRoot: this.o.root, jobRoot: this.gateJobRoot() } : {}), ...(container ? { container, runLabel: containerRunLabel(this.o.root, this.key) } : {}) });
+        // A dotnet command in a Microsoft.Testing.Platform repository (the trusted base's global.json): no -m:1 on dotnet test.
+        const mtp = isDotnetExe(req.exe) && this.dotnetMtpBase();
+        const r = this.o.gateSandbox({ ...req, ...(mtp ? { dotnetMtp: true } : {}), nodeModulesTarget: join(this.o.root, 'node_modules'), ...(nested.length > 0 ? { nestedNodeModulesTargets: nested } : {}), ...(p ? { mainRoot: this.o.root, jobRoot: this.gateJobRoot() } : {}), ...(container ? { container, runLabel: containerRunLabel(this.o.root, this.key) } : {}) });
         if (!container)
             return r;
         return r.then((out) => {
@@ -1381,7 +1383,24 @@ class FactoryEngine {
         }
         if (!intent)
             return null;
-        return { sandboxed: intent.sandboxed, writeNetwork: intent.writeNetwork, nodeModulesReady: intent.sandboxed && existsSync(join(this.o.root, 'node_modules')), ...(this.dotnetRepo() ? { dotnet: true, ...(intent.writeNetwork === 'registry' && (intent.allowedHosts ?? []).some(isNugetHost) ? { nugetReachable: true } : {}) } : {}) };
+        return { sandboxed: intent.sandboxed, writeNetwork: intent.writeNetwork, nodeModulesReady: intent.sandboxed && existsSync(join(this.o.root, 'node_modules')), ...(this.dotnetRepo() ? { dotnet: true, ...(intent.writeNetwork === 'registry' && (intent.allowedHosts ?? []).some(isNugetHost) ? { nugetReachable: true } : {}), ...(this.dotnetMtpBase() ? { dotnetMtp: true } : {}) } : {}) };
+    }
+    /** dotnetMtpBase's answer per base sha. */
+    mtpAt;
+    /**
+     * The run's trusted base pins Microsoft.Testing.Platform for dotnet test
+     * (its root global.json, read from the base commit, never the PR head:
+     * dotnet-sandbox.ts isMtpGlobalJson). False with no base yet.
+     */
+    dotnetMtpBase() {
+        const sha = this.state.baseSha;
+        if (!sha)
+            return false;
+        if (this.mtpAt?.sha !== sha) {
+            const r = this.exec('git', ['show', `${sha}:global.json`], { cwd: this.o.root, env: TRUSTED_READ_ENV });
+            this.mtpAt = { sha, mtp: r.status === 0 && isMtpGlobalJson(r.stdout) };
+        }
+        return this.mtpAt.mtp;
     }
     /**
      * The run's repository is a .NET one for its lanes: the local gate
@@ -4702,6 +4721,9 @@ class FactoryEngine {
         if (!this.privateRun() && this.legacyCheckout(checkout))
             this.discardLegacyCheckout(checkout);
         let at = '';
+        // A dotnet gate: the checkout's untracked files (ignored or not), its build output removed before the gate runs.
+        const dotnetGate = isDotnetExe(gate[0]) || isDotnetExe(this.state.localGate?.[0]);
+        let untracked = [];
         // The private layout: the host git reads below go to the private repository, which must still be the engine's.
         this.privateRun()?.assert();
         if (existsSync(checkout)) {
@@ -4724,10 +4746,11 @@ class FactoryEngine {
                     runHostGit(checkout, [...gitArgs, 'read-tree', at], undefined, fresh);
                     const status = [...gitArgs, '-c', 'core.untrackedCache=false', 'status', '--porcelain=v1', '-z', '--untracked-files=all'];
                     dirty = checkoutChanges(this.o.root, checkout, runHostGit(checkout, status, undefined, fresh), trustedNestedRels(this.o.root, checkout, this.baseWorkspaces()));
-                    // A dotnet gate: MSBuild also reads ignored files no commit pins (an App.csproj.user, obj/<project>.*.props), which
-                    // the PR's code run here earlier could leave; every untracked file, ignored or not, is listed.
-                    if (isDotnetExe(gate[0]) || isDotnetExe(this.state.localGate?.[0])) {
-                        stray = strayDotnetDefinitionFiles(runHostGit(checkout, [...gitArgs, 'ls-files', '--others', '-z'], undefined, fresh).split(' ').filter(Boolean));
+                    // A dotnet gate: MSBuild also reads untracked files no commit pins (an App.csproj.user; a restore output or stale
+                    // build in obj/ or bin/), which the PR's code run here earlier could leave; every untracked file, ignored or not.
+                    if (dotnetGate) {
+                        untracked = runHostGit(checkout, [...gitArgs, 'ls-files', '--others', '-z'], undefined, fresh).split('\0').filter(Boolean);
+                        stray = strayDotnetDefinitionFiles(untracked);
                     }
                 }
                 catch (error) {
@@ -4792,6 +4815,18 @@ class FactoryEngine {
         const timeoutMinutes = this.localGateTimeout();
         // factory.run.sandbox.gates: the gate config of this base was loaded by gates() before the gate runs.
         const gates = this.gatesSandbox(this.gateCfg.loaded);
+        // Microsoft.Testing.Platform (the trusted base's global.json): in the Windows sandbox its test app's pipe back to
+        // dotnet test is denied (UnauthorizedAccessException), so such a gate could never pass there; elsewhere unverified.
+        if (gates.mode === 'enforced' && !gates.container && isDotnetExe(gate[0]) && gate[1]?.toLowerCase() === 'test' && this.dotnetMtpBase()) {
+            this.gate('gates', `${DOTNET_MTP_UNSUPPORTED}: ${this.state.base}'s global.json selects it for dotnet test, and in the Windows OS sandbox the test app cannot connect to dotnet test's pipe, so the local gate "${gate.join(' ')}" did not run. Use a VSTest runner on the base, set factory.run.sandbox.gates to "unsandboxed" in your user config (the PR's code then runs as you), or cancel with ${cancelCommand(this.key)}; then rerun ${this.resume}`);
+            return false;
+        }
+        // A dotnet gate starts from no leftover build state: untracked files under bin/, obj/ and artifacts/ go (link-safe).
+        if (dotnetGate && untracked.length > 0) {
+            const removed = removeDotnetBuildOutput(checkout, untracked);
+            if (removed > 0)
+                this.save((x) => ({ ...x, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `removed ${removed} untracked build output entr${removed === 1 ? 'y' : 'ies'} under bin/, obj/ and artifacts/ in the prepare checkout before the dotnet gate on ${head.slice(0, 12)}` }] }));
+        }
         const common = this.privateRun()?.repo.gitDir ?? resolve(this.o.root, this.run(['rev-parse', '--git-common-dir']).trim());
         this.progress.heartbeat('gates', `local gate ${gate.join(' ')} on ${head.slice(0, 12)}`, this.fields());
         const input = { stateDir, root: this.o.root, head, gate, timeoutMinutes, checkout, ...(this.o.localGate ? { runner: this.o.localGate } : {}), now: () => new Date(this.clock()) };

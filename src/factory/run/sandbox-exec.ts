@@ -126,6 +126,8 @@ export interface SandboxRunRequest {
    * nothing of a failed run is copied back. The OS sandbox writes it in `cwd` itself.
    */
   reportFile?: string;
+  /** A dotnet command in a repository whose trusted base pins Microsoft.Testing.Platform (dotnet-sandbox.ts isMtpGlobalJson): no -m:1 on dotnet test. */
+  dotnetMtp?: true;
 }
 
 /** The gate record and PR note line for a sandboxed run on a host without denied_paths. */
@@ -170,6 +172,8 @@ export interface SandboxExecOptions {
   mainRoot?: string;
   nodeModulesTarget?: string;
   nestedNodeModulesTargets?: string[];
+  /** SandboxRunRequest.dotnetMtp. */
+  dotnetMtp?: true;
 }
 
 export const MARKER_PREFIX = 'omg-gate-exit-';
@@ -301,7 +305,7 @@ export async function runSandboxed(argv: readonly string[], o: SandboxExecOption
   const marker = `${MARKER_PREFIX}${randomBytes(8).toString('hex')}`;
   // A dotnet command: one MSBuild node (dotnet-sandbox.ts), plus the env and NuGet grant below.
   const dotnet = isDotnetExe(argv[0]);
-  const command = sandboxShellCommand(deps.platform, dotnet ? [argv[0], ...dotnetSandboxArgs(argv.slice(1))] : argv, o.cwd, marker);
+  const command = sandboxShellCommand(deps.platform, dotnet ? [argv[0], ...dotnetSandboxArgs(argv.slice(1), { mtp: o.dotnetMtp === true })] : argv, o.cwd, marker);
   if (command === null) return refuse('the command cannot be passed to the sandbox shell unchanged (a NUL, or on Windows an empty argument or a double quote)');
   const max = sandboxCommandMaxChars(deps.platform);
   if (command.length > max) {
@@ -336,10 +340,12 @@ export async function runSandboxed(argv: readonly string[], o: SandboxExecOption
     Object.assign(env, { GIT_TERMINAL_PROMPT: '0', GCM_INTERACTIVE: 'never', COPILOT_ALLOW_ALL: 'false', GIT_CEILING_DIRECTORIES: resolve(o.jobRoot) });
     const realHome = (deps.realHome ?? (() => userInfo().homedir))();
     const dotnetGrants: string[] = [];
+    const dotnetNotes: string[] = [];
     if (dotnet) {
       const d = dotnetSandboxEnv(env.USERPROFILE!, deps.env, realHome, deps.platform);
       Object.assign(env, d.env);
       dotnetGrants.push(...d.readonly);
+      dotnetNotes.push(...d.notes);
     }
     const credentialSource = { userConfigDir: deps.userConfigDir(), platform: deps.platform };
     const gitHubToken = sessionGitHubToken(deps.env, credentialSource);
@@ -459,7 +465,9 @@ export async function runSandboxed(argv: readonly string[], o: SandboxExecOption
     const exitOk = r.exitCode === undefined || r.exitCode === null || r.exitCode === 0 || r.exitCode === read.code;
     const successOk = r.success === true || read.code !== 0;
     if (!exitOk || !successOk) return noVerdict('the sandbox shell\'s own result contradicts the exit code the command printed');
-    return { ran: true, status: read.code, output: tail(read.output.trim()), timedOut: false, ...marked };
+    // A failing dotnet command: why its NuGet packages folder was not granted (the park's output tail shows it).
+    const why = read.code !== 0 && dotnetNotes.length > 0 ? `\n${dotnetNotes.join('\n')}` : '';
+    return { ran: true, status: read.code, output: `${tail(read.output.trim())}${why}`, timedOut: false, ...marked };
   } catch (err) {
     if (started) return noVerdict('the sandbox runtime failed while the command ran');
     return notStarted(`the sandbox runtime failed: ${errText(err).slice(0, 300)}`);
@@ -517,6 +525,7 @@ export function createSandboxRunner(root: string, deps: SandboxExecDeps = defaul
       ...(req.mainRoot ? { mainRoot: req.mainRoot } : {}),
       ...(req.nodeModulesTarget ? { nodeModulesTarget: req.nodeModulesTarget } : {}),
       ...(req.nestedNodeModulesTargets ? { nestedNodeModulesTargets: req.nestedNodeModulesTargets } : {}),
+      ...(req.dotnetMtp ? { dotnetMtp: true as const } : {}),
     }, deps);
   };
 }

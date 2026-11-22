@@ -137,7 +137,9 @@ describe('review-498 adversarial paths', () => {
     });
     it('.NET: every dotnet gate definition file (the same list as local-gate.ts) and the test and analyzer config never auto-merge', () => {
         const definition = ['App.sln', 'App.slnx', 'a.slnf', 'src/App.csproj', 'b.fsproj', 'c.vbproj', 'build.proj', 'web/web.esproj', 'Shared/Shared.projitems', 'Tests/Tests.csproj.user',
-            'Directory.Build.props', 'Directory.Packages.props', 'src/Directory.Build.targets', 'build/My.tasks', 'Directory.Build.rsp', 'global.json', 'NuGet.Config', 'src/packages.lock.json', 'dotnet.config'];
+            'Directory.Build.props', 'Directory.Packages.props', 'src/Directory.Build.targets', 'build/My.tasks', 'Directory.Build.rsp', 'global.json', 'NuGet.Config', 'src/packages.lock.json', 'dotnet.config',
+            // F2: Microsoft.Testing.Platform's launch profiles; F7: Windows spellings of a definition file, as the pin matches them.
+            'Tests/Properties/launchSettings.json', 'Tests/Tests.run.json', 'src/App.csproj.', 'src/App.csproj::$DATA', 'Directory.Build.props:x'];
         for (const p of definition)
             expect(isDotnetDefinitionFile(p), p).toBe(true);
         const testConfig = ['tests/ci.runsettings', 'testconfig.json', 'tests/xunit.runner.json', '.globalconfig', 'rules/App.ruleset', 'stylecop.json', '.config/dotnet-tools.json'];

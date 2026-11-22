@@ -6,7 +6,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { DOTNET_SINGLE_NODE_FLAG, dotnetSandboxArgs, dotnetSandboxEnv, isDotnetExe, isNugetHost, nugetPackagesDir } from '../dotnet-sandbox.js';
+import { DOTNET_SINGLE_NODE_FLAG, dotnetSandboxArgs, dotnetSandboxEnv, isDotnetExe, isMtpGlobalJson, isNugetHost, nugetPackagesDir, nugetPackagesGrant } from '../dotnet-sandbox.js';
 let dir;
 beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'omg-dotnet-sandbox-')); });
 afterEach(() => { rmSync(dir, { recursive: true, force: true }); });
@@ -44,6 +44,27 @@ describe('dotnetSandboxArgs', () => {
         expect(dotnetSandboxArgs(['test', '--', 'x.dll'])).toEqual(['test', '-m:1', '--', 'x.dll']);
         expect(dotnetSandboxArgs(['build', 'x.dll'])).toEqual(['build', 'x.dll', '-m:1']);
     });
+    it('F6: an option\'s value is not a test file (--diag log.exe, --logger "trx;LogFileName=a.dll", --settings x.dll), and an option with its own value takes none', () => {
+        for (const args of [['test', '--diag', 'log.exe'], ['test', '--logger', 'trx;LogFileName=a.dll'], ['test', '-l', 'x.dll'], ['test', '--results-directory', 'r.exe'], ['test', '--settings', 'x.dll'], ['test', '-a', 'adapters.dll']]) {
+            expect(dotnetSandboxArgs(args), args.join(' ')).toEqual([...args, '-m:1']);
+        }
+        // `--diag:log.exe` carries its value: the next word is positional again.
+        expect(dotnetSandboxArgs(['test', '--diag:log.txt', 'App.Tests.dll'])).toEqual(['test', '--diag:log.txt', 'App.Tests.dll']);
+        expect(dotnetSandboxArgs(['test', '--diag', 'log.txt', 'App.Tests.dll'])).toEqual(['test', '--diag', 'log.txt', 'App.Tests.dll']);
+    });
+    it('F3: in Microsoft.Testing.Platform mode dotnet test gets no -m:1 (it rejects it); build still does', () => {
+        expect(dotnetSandboxArgs(['test'], { mtp: true })).toEqual(['test']);
+        expect(dotnetSandboxArgs(['test', '--project', 'Tests'], { mtp: true })).toEqual(['test', '--project', 'Tests']);
+        expect(dotnetSandboxArgs(['build'], { mtp: true })).toEqual(['build', '-m:1']);
+        expect(dotnetSandboxArgs(['test'], { mtp: false })).toEqual(['test', '-m:1']);
+    });
+    it('isMtpGlobalJson: global.json test.runner Microsoft.Testing.Platform, comments allowed; anything else is VSTest', () => {
+        expect(isMtpGlobalJson('{ "test": { "runner": "Microsoft.Testing.Platform" } }')).toBe(true);
+        expect(isMtpGlobalJson('﻿// pin\n{ "sdk": { "version": "10.0.101" }, /* mtp */ "test": { "runner": "microsoft.testing.platform" }, }')).toBe(true);
+        for (const t of [undefined, '', '{}', '{ "test": { "runner": "VSTest" } }', '{ "test": "Microsoft.Testing.Platform" }', 'not json', '{ "sdk": { "runner": "Microsoft.Testing.Platform" } }']) {
+            expect(isMtpGlobalJson(t), String(t)).toBe(false);
+        }
+    });
     it('isNugetHost: api.nuget.org or *.nuget.org only', () => {
         for (const h of ['api.nuget.org', '*.nuget.org', ' API.NuGet.org '])
             expect(isNugetHost(h), h).toBe(true);
@@ -67,6 +88,30 @@ describe('nugetPackagesDir', () => {
         expect(nugetPackagesDir({ NUGET_PACKAGES: join(dir, 'missing') }, home)).toBeNull();
         writeFileSync(join(dir, 'file'), '');
         expect(nugetPackagesDir({ NUGET_PACKAGES: join(dir, 'file') }, home)).toBeNull();
+    });
+    it('F9: a NUGET_PACKAGES that is the home dir, above it, a filesystem root, or inside or above an OMC root is refused with a note', () => {
+        const home = join(dir, 'home');
+        const omg = join(home, '.omg');
+        mkdirSync(join(omg, 'state', 'cache'), { recursive: true });
+        const own = join(dir, 'cache');
+        mkdirSync(own);
+        const grant = (p) => nugetPackagesGrant({ NUGET_PACKAGES: p }, home, [omg]);
+        for (const [p, why] of [[home, /your home dir or a dir above it/], [dir, /your home dir or a dir above it/], [`${home}${process.platform === 'win32' ? '\\' : '/'}`, /home dir/],
+            [join(omg, 'state', 'cache'), /inside or above the OMC config or state dir/], [omg, /OMC/], [process.platform === 'win32' ? 'C:\\' : '/', /a filesystem root/]]) {
+            const out = grant(p);
+            expect(out.dir, p).toBeNull();
+            expect(out.note, p).toMatch(why);
+            expect(out.note).toMatch(/is not granted to the sandbox/);
+        }
+        expect(grant(own)).toEqual({ dir: own });
+        // Case-folded on Windows only.
+        if (process.platform === 'win32')
+            expect(grant(home.toUpperCase()).dir).toBeNull();
+        // dotnetSandboxEnv names no folder and passes the note on.
+        const env = dotnetSandboxEnv(join(dir, 'profile'), { NUGET_PACKAGES: home }, home, 'linux');
+        expect(env.env.NUGET_PACKAGES).toBeUndefined();
+        expect(env.readonly).toEqual([]);
+        expect(env.notes).toHaveLength(1);
     });
 });
 describe('dotnetSandboxEnv', () => {

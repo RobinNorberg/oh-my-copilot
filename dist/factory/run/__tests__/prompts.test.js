@@ -167,6 +167,19 @@ describe('the dotnet rule: only a sandboxed lane of a .NET repository is told to
             expect(p).not.toContain('package reference');
         }
     });
+    it('every dotnet rule forbids dotnet watch', () => {
+        for (const p of [...write({ ...lane, dotnet: true }), ...write({ ...lane, dotnet: true, dotnetMtp: true })])
+            expect(p).toContain('Never run dotnet watch');
+    });
+    it('F3: a Microsoft.Testing.Platform repository: no -m:1 and no dotnet test; build with -m:1, then run each test project with dotnet run --no-build', () => {
+        for (const p of write({ ...lane, dotnet: true, dotnetMtp: true })) {
+            expect(p).toContain('Always pass `-m:1` to dotnet build, dotnet restore, dotnet pack, dotnet publish, dotnet clean and dotnet msbuild');
+            expect(p).toContain('`dotnet test` does not work in this sandbox');
+            expect(p).toContain('`dotnet run --project <test project> --no-build`');
+            expect(p).not.toContain('`dotnet test -m:1`');
+            expect(p).toContain('do not add or upgrade a package reference');
+        }
+    });
     it('the subcommand list is MSBUILD_SUBCOMMANDS (no drift), and run is not in it', () => {
         expect(MSBUILD_SUBCOMMANDS).not.toContain('run');
         const p = prompts.implementPrompt(s, undefined, [], { ...lane, dotnet: true });

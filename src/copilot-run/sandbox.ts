@@ -697,7 +697,7 @@ export function buildSandboxConfig(profile: SandboxProfile, ctx: SandboxPolicyCo
       '.gnupg', '.pypirc', join('.config', 'gcloud'),
       // NuGet's user config (feed credentials) and the credential providers' token caches; never all of ~/.nuget,
       // which holds the packages folder a dotnet job is granted read-only (dotnet-sandbox.ts).
-      join('.nuget', 'NuGet'), join('.nuget', 'plugins'), join('.local', 'share', 'MicrosoftCredentialProvider'),
+      join('.nuget', 'NuGet'), join('.nuget', 'plugins'), join('.config', 'NuGet'), join('.local', 'share', 'MicrosoftCredentialProvider'),
       // Windows: gh's hosts.yml (%APPDATA%\GitHub CLI), the GCM/MSAL token cache (%LOCALAPPDATA%\.IdentityService),
       // NuGet's user config and the Azure Artifacts credential provider's cache.
       ...(ctx.platform === 'win32' ? [join('AppData', 'Roaming', 'GitHub CLI'), join('AppData', 'Local', '.IdentityService'), join('AppData', 'Roaming', 'NuGet'), join('AppData', 'Local', 'MicrosoftCredentialProvider')] : []),

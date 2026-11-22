@@ -219,6 +219,70 @@ describe('a dotnet gate: its MSBuild files define it, and its write lanes get th
         expect(again.gate?.reason).toMatch(/untracked file\(s\) that MSBuild reads for the dotnet gate but no commit pins \(src\/App\/App\.csproj\.user\)/);
         expect(w.gateRuns).toHaveLength(1);
     }, MULTI_RUN_MS);
+    it('F1: restore output and a stale build the PR\'s code left under obj/ and bin/ are removed before the next gate run; a tracked bin/ file stays', async () => {
+        w = localWorld(['dotnet', 'test']);
+        writeFileSync(join(w.root, '.gitignore'), '.omg/\nbin/\nobj/\n');
+        baseProject();
+        mkdirSync(join(w.root, 'src', 'App', 'bin'), { recursive: true });
+        writeFileSync(join(w.root, 'src', 'App', 'bin', 'tracked.txt'), 'kept\n');
+        gitIn(w.root, 'add', '-f', 'src/App/bin/tracked.txt');
+        gitIn(w.root, 'commit', '-q', '-m', 'tracked bin file');
+        // NuGet's no-op restore keeps a tampered obj/*.nuget.g.targets; a newer bin/ build makes MSBuild skip CoreCompile.
+        const tampered = ['src', 'App', 'obj', 'App.csproj.nuget.g.targets'];
+        const stale = ['src', 'App', 'bin', 'Debug', 'net10.0', 'App.dll'];
+        const seen = [];
+        w.gate = async (argv, cwd) => {
+            const first = w.gateRuns.length === 0;
+            w.gateRuns.push({ argv, cwd, head: gitIn(cwd, 'rev-parse', 'HEAD') });
+            if (first) {
+                // The first gate run (the PR's code) leaves both behind and does not start (no verdict).
+                for (const p of [tampered, stale]) {
+                    mkdirSync(join(cwd, ...p.slice(0, -1)), { recursive: true });
+                    writeFileSync(join(cwd, ...p), '<Project><PropertyGroup><IsTestProject>false</IsTestProject></PropertyGroup></Project>\n');
+                }
+                return { status: 127, stdout: '', stderr: '', timedOut: false, startError: 'dotnet is not on PATH' };
+            }
+            // The PR's tests pass only without the leftovers: with them the run would not reach the merge gate.
+            const leftover = existsSync(join(cwd, ...tampered)) || existsSync(join(cwd, ...stale));
+            seen.push({ leftover, tracked: existsSync(join(cwd, 'src', 'App', 'bin', 'tracked.txt')) });
+            return { status: leftover ? 1 : 0, stdout: '', stderr: '', timedOut: false };
+        };
+        const first = await runFactoryEngine(localOpts(w, lanesFor(w, [commitFile('src/App/Greet.cs', 'namespace App;\n'), review('approve')]), { gateSandboxUserConfig: UNSANDBOXED_GATES }));
+        expect(first.gate?.name, first.message).toBe('gates');
+        const again = await runFactoryEngine(localOpts(w, lanesFor(w, []), { gateSandboxUserConfig: UNSANDBOXED_GATES }));
+        expect(again.gate?.name, again.message).toBe('merge');
+        expect(seen).toEqual([{ leftover: false, tracked: true }]);
+        expect(readFactoryState(w.root, LOCAL_ISSUE).history.some((h) => /^removed 2 untracked build output entries under bin\/, obj\/ and artifacts\/ in the prepare checkout before the dotnet gate on [0-9a-f]{12}$/.test(h.note))).toBe(true);
+    }, MULTI_RUN_MS);
+    it('F3: a dotnet test gate on a base whose global.json selects Microsoft.Testing.Platform parks before it runs in the OS sandbox', async () => {
+        w = localWorld(['dotnet', 'test']);
+        writeFileSync(join(w.root, 'global.json'), '{ "test": { "runner": "Microsoft.Testing.Platform" } }\n');
+        baseProject();
+        const lanes = lanesFor(w, [commitFile('src/App/Greet.cs', 'namespace App;\n'), review('approve')]);
+        const out = await runFactoryEngine(localOpts(w, lanes));
+        expect(out.gate?.name, out.message).toBe('gates');
+        expect(out.gate?.reason).toMatch(/^Microsoft\.Testing\.Platform test gates are not supported in the sandbox yet: main's global\.json selects it/);
+        expect(w.gateRuns).toEqual([]);
+    }, MULTI_RUN_MS);
+    it('F4: with a project dir in the gate argv, a comment change in a test file under it runs the gate (no gate-definition-changed)', async () => {
+        w = localWorld(['dotnet', 'test', 'tests/Foo.Tests']);
+        mkdirSync(join(w.root, 'tests', 'Foo.Tests'), { recursive: true });
+        writeFileSync(join(w.root, 'tests', 'Foo.Tests', 'Foo.Tests.csproj'), CSPROJ);
+        writeFileSync(join(w.root, 'tests', 'Foo.Tests', 'FooTests.cs'), 'public class FooTests { }\n');
+        gitIn(w.root, 'add', '.');
+        gitIn(w.root, 'commit', '-q', '-m', 'tests');
+        const out = await runFactoryEngine(localOpts(w, lanesFor(w, [commitFile('tests/Foo.Tests/FooTests.cs', '// a comment\npublic class FooTests { }\n'), review('approve')])));
+        expect(out.gate?.name, out.message).toBe('merge');
+        expect(w.gateRuns.map((r) => r.argv)).toEqual([['dotnet', 'test', 'tests/Foo.Tests']]);
+    }, MULTI_RUN_MS);
+    it('F2: a lane that adds a Microsoft.Testing.Platform launch profile parks at gate-definition-changed', async () => {
+        w = localWorld(['dotnet', 'test']);
+        baseProject();
+        const launch = '{ "profiles": { "Tests": { "commandName": "Project", "commandLineArgs": "--ignore-exit-code 2" } } }\n';
+        const out = await runFactoryEngine(localOpts(w, lanesFor(w, [commitFile('src/App/Properties/launchSettings.json', launch)])));
+        expect(out.gate?.name, out.message).toBe('gate-definition-changed');
+        expect(out.gate?.reason).toMatch(/\(src\/App\/Properties\/launchSettings\.json differ from main\)/);
+    }, MULTI_RUN_MS);
     it('a node gate: no lane is started with dotnet', async () => {
         w = localWorld();
         const lanes = lanesFor(w, [greet(), review('approve')]);

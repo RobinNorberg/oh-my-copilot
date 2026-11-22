@@ -128,6 +128,8 @@ export interface LaneEnvironment {
   dotnet?: boolean;
   /** writeNetwork "registry" with a NuGet host (api.nuget.org) in sandbox.allowedHosts: NuGet can reach its feed. */
   nugetReachable?: boolean;
+  /** The trusted base's global.json selects Microsoft.Testing.Platform for dotnet test (dotnet-sandbox.ts isMtpGlobalJson). */
+  dotnetMtp?: boolean;
 }
 
 /**
@@ -153,9 +155,17 @@ function dotnetRule(lane: LaneEnvironment | null): string[] {
   const offline = lane.nugetReachable
     ? ''
     : ' NuGet cannot reach its feed here: packages come only from those already restored on this machine, so do not add or upgrade a package reference; report a missing package in your final message instead.';
+  const watch = ' Never run dotnet watch: it waits for file changes and never ends.';
+  // Microsoft.Testing.Platform: dotnet test rejects -m:1 and its test app cannot connect back to it in the sandbox; the
+  // test app run on its own works (dotnet-sandbox.ts DOTNET_MTP_UNSUPPORTED).
+  if (lane.dotnetMtp) {
+    const subs = MSBUILD_SUBCOMMANDS.filter((x) => x !== 'test').map((x) => `dotnet ${x}`);
+    const list = `${subs.slice(0, -1).join(', ')} and ${subs[subs.length - 1]}`;
+    return [`Always pass \`${DOTNET_SINGLE_NODE_FLAG}\` to ${list} (for example \`dotnet build ${DOTNET_SINGLE_NODE_FLAG}\`): in this sandbox MSBuild's worker nodes cannot connect, and without it the command hangs. This repository runs its tests on Microsoft.Testing.Platform, and \`dotnet test\` does not work in this sandbox: build with \`dotnet build ${DOTNET_SINGLE_NODE_FLAG}\`, then run each test project as a program with \`dotnet run --project <test project> --no-build\` (a non-zero exit code means a test failed). Never pass \`${DOTNET_SINGLE_NODE_FLAG}\` to dotnet run, which hands it to the program as an argument.${watch}${offline}`];
+  }
   const subs = MSBUILD_SUBCOMMANDS.map((x) => `dotnet ${x}`);
   const list = `${subs.slice(0, -1).join(', ')} and ${subs[subs.length - 1]}`;
-  return [`Always pass \`${DOTNET_SINGLE_NODE_FLAG}\` to ${list} (for example \`dotnet test ${DOTNET_SINGLE_NODE_FLAG}\`): in this sandbox MSBuild's worker nodes cannot connect, and without it the command hangs. Not to dotnet run, which hands it to the program as an argument: build with \`dotnet build ${DOTNET_SINGLE_NODE_FLAG}\`, then start the program with \`dotnet run --no-build\`. Not to \`dotnet test <file>.dll\` either, which runs no MSBuild and rejects it.${offline}`];
+  return [`Always pass \`${DOTNET_SINGLE_NODE_FLAG}\` to ${list} (for example \`dotnet test ${DOTNET_SINGLE_NODE_FLAG}\`): in this sandbox MSBuild's worker nodes cannot connect, and without it the command hangs. Not to dotnet run, which hands it to the program as an argument: build with \`dotnet build ${DOTNET_SINGLE_NODE_FLAG}\`, then start the program with \`dotnet run --no-build\`. Not to \`dotnet test <file>.dll\` either, which runs no MSBuild and rejects it.${watch}${offline}`];
 }
 
 /** The repository guide files the implement prompt names, when the lane's base has them. */

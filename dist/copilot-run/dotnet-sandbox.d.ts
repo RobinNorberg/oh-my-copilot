@@ -40,14 +40,47 @@ export declare function isDotnetExe(exe: string | undefined): boolean;
 export declare const MSBUILD_SUBCOMMANDS: readonly string[];
 /** The flag every MSBuild-running dotnet command needs in the sandbox (see the module comment). */
 export declare const DOTNET_SINGLE_NODE_FLAG = "-m:1";
+/** Per subcommand, the dotnet options whose value names a file, project or directory the command reads (dotnet test: -a is --test-adapter-path). */
+export declare const DOTNET_PATH_OPTIONS: Record<string, ReadonlySet<string>>;
+/** Per subcommand, the options that take the next argument as a value that names no repository file (dotnet build: -a is --arch, -s is --source). */
+export declare const DOTNET_VALUE_OPTIONS: Record<string, ReadonlySet<string>>;
+/**
+ * The positional arguments of a dotnet command line (before any `--`):
+ * the words that are not options and not the value of an option that takes
+ * the next word (DOTNET_PATH_OPTIONS, DOTNET_VALUE_OPTIONS of `sub`; an
+ * option written `--x=v` or `--x:v` carries its own value).
+ */
+export declare function dotnetPositionals(sub: string, args: readonly string[]): string[];
+/**
+ * The SDK pin says `dotnet test` runs Microsoft.Testing.Platform (MTP)
+ * instead of VSTest: `global.json` `{"test": {"runner": "Microsoft.Testing.Platform"}}`.
+ * In that mode `dotnet test` rejects MSBuild's `-m` ("Unknown option '--m'").
+ * A `dotnet.config` `[dotnet.test.runner]` section is not read: .NET SDK
+ * 10.0.101 ignores it (VSTest runs), so `-m:1` stays right there.
+ */
+export declare function isMtpGlobalJson(text: string | undefined): boolean;
+/**
+ * Why the engine parks a `dotnet test` gate in a Microsoft.Testing.Platform
+ * repository before it runs in the OS sandbox: in the Windows sandbox the
+ * test app's named pipe back to `dotnet test` is denied
+ * (UnauthorizedAccessException in NamedPipeClient.ConnectAsync, exit 1,
+ * zero tests run). The test app started on its own (`dotnet run --project
+ * <tests> --no-build` after `dotnet build -m:1`) runs and reports in the
+ * sandbox.
+ */
+export declare const DOTNET_MTP_UNSUPPORTED = "Microsoft.Testing.Platform test gates are not supported in the sandbox yet";
 /**
  * The dotnet arguments with `-m:1` appended (before any `--`) when the
  * subcommand runs MSBuild. Always appended: MSBuild's last switch wins, so
  * an explicit `-m:4` or bare `-m` earlier (which would hang in the sandbox)
  * becomes one node. Not for `dotnet test <file>.dll|.exe` (VSTest, no
- * MSBuild), which rejects `-m:1`.
+ * MSBuild; an option's value such as `--diag log.exe` is not one), which
+ * rejects `-m:1`, and not for `dotnet test` in Microsoft.Testing.Platform
+ * mode (`mtp`, isMtpGlobalJson of the trusted base), which rejects it too.
  */
-export declare function dotnetSandboxArgs(args: readonly string[]): string[];
+export declare function dotnetSandboxArgs(args: readonly string[], o?: {
+    mtp?: boolean;
+}): string[];
 /**
  * The NuGet global packages folder on this host: NUGET_PACKAGES when set to
  * an absolute path, else `<real home>/.nuget/packages`; null when that is
@@ -56,13 +89,26 @@ export declare function dotnetSandboxArgs(args: readonly string[]): string[];
  */
 export declare function nugetPackagesDir(env: NodeJS.ProcessEnv, realHome: string): string | null;
 /**
+ * nugetPackagesDir with why a NUGET_PACKAGES folder is refused (`note`, one
+ * line the caller surfaces; `dir` null, nothing granted): the home dir, an
+ * ancestor of it, a filesystem root, or a dir inside or above an OMC config
+ * or state root (`protectedRoots`). Granting one of those read-only would
+ * open your profile or the engine's state to the PR's code.
+ */
+export declare function nugetPackagesGrant(env: NodeJS.ProcessEnv, realHome: string, protectedRoots?: readonly string[], platform?: NodeJS.Platform): {
+    dir: string | null;
+    note?: string;
+};
+/**
  * The variables a sandboxed dotnet needs, for an env whose USERPROFILE is
  * already the job's profile (relocatedProfileEnv), and the paths to grant
- * read-only. `hostEnv` and `realHome` locate the NuGet packages folder.
+ * read-only. `hostEnv` and `realHome` locate the NuGet packages folder;
+ * `notes` say why it was refused (nugetPackagesGrant).
  */
 export declare function dotnetSandboxEnv(profile: string, hostEnv: NodeJS.ProcessEnv, realHome: string, platform?: NodeJS.Platform): {
     env: Record<string, string>;
     readonly: string[];
+    notes: string[];
 };
 /** True when a sandbox.allowedHosts entry lets NuGet reach nuget.org's feed (`api.nuget.org`, `*.nuget.org`). */
 export declare const isNugetHost: (host: string) => boolean;

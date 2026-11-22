@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DOTNET_DEFINITION_PATTERNS, describeGateSources, gateDefinition, gateDefinitionSources, gateSourcePathspec, isDotnetDefinitionFile, patternSourceChanges, shellPath, strayDotnetDefinitionFiles } from '../local-gate.js';
+import { DOTNET_DEFINITION_PATTERNS, describeGateSources, dotnetBuildDirIndex, gateDefinition, gateDefinitionSources, gateSourcePathspec, isDotnetDefinitionFile, patternSourceChanges, shellPath, strayDotnetDefinitionFiles } from '../local-gate.js';
 
 describe('gate definitions that the repository cannot pin park as unknown', () => {
   it('npx fetches registry code: unresolved, in any spelling', () => {
@@ -115,20 +115,25 @@ describe('a dotnet gate is defined by the repository\'s solution, project and MS
     }
   });
 
-  it('repository files or directories the argv names are tree sources too; paths outside the repository and after -- are not', () => {
+  it('repository paths the argv names are file sources (an adapter dir a tree source); paths outside the repository and after -- are not', () => {
     expect(named(['dotnet', 'test', 'tests/App.Tests/App.Tests.csproj', '--settings', 'ci.runsettings', '@build.rsp']))
-      .toEqual([{ path: 'tests/App.Tests/App.Tests.csproj', tree: true }, { path: 'ci.runsettings', tree: true }, { path: 'build.rsp', tree: true }]);
+      .toEqual([{ path: 'tests/App.Tests/App.Tests.csproj', file: true }, { path: 'ci.runsettings', file: true }, { path: 'build.rsp', file: true }]);
     expect(gateDefinitionSources(['dotnet', 'test', '--settings=C:\\ci\\x.runsettings', '-c', 'Release', '--filter', 'Category=Unit', '--', 'tests/x']).sources).toEqual(PATTERNS);
+    // F9: dotnet test's run settings after -- may name adapter dirs too.
+    expect(named(['dotnet', 'test', '--', 'RunConfiguration.TestAdaptersPaths=adapters;C:\\x;tools/more/', 'RunConfiguration.X=1'])).toEqual([{ path: 'adapters', tree: true }, { path: 'tools/more', tree: true }]);
+    expect(named(['dotnet', 'build', '--', 'RunConfiguration.TestAdaptersPaths=adapters'])).toEqual([]);
   });
 
   it('the argv spellings: --settings:x, -s:x, -a (test adapter path) for test; for build -a is --arch, -s is --source and -d takes no value', () => {
-    expect(named(['dotnet', 'test', '--settings:ci.runsettings'])).toEqual([{ path: 'ci.runsettings', tree: true }]);
-    expect(named(['dotnet', 'test', '-s:ci.runsettings'])).toEqual([{ path: 'ci.runsettings', tree: true }]);
+    expect(named(['dotnet', 'test', '--settings:ci.runsettings'])).toEqual([{ path: 'ci.runsettings', file: true }]);
+    expect(named(['dotnet', 'test', '-s:ci.runsettings'])).toEqual([{ path: 'ci.runsettings', file: true }]);
     expect(named(['dotnet', 'test', '-a', 'adapters'])).toEqual([{ path: 'adapters', tree: true }]);
     expect(named(['dotnet', 'test', '--test-adapter-path:adapters/'])).toEqual([{ path: 'adapters', tree: true }]);
-    expect(named(['dotnet', 'build', '-a', 'x64', '-s', 'feed', 'App.sln'])).toEqual([{ path: 'App.sln', tree: true }]);
-    expect(named(['dotnet', 'build', '-d', 'App.sln'])).toEqual([{ path: 'App.sln', tree: true }]);
-    expect(named(['dotnet', 'test', '-d', 'diag.log', 'App.sln'])).toEqual([{ path: 'App.sln', tree: true }]);
+    expect(named(['dotnet', 'build', '-a', 'x64', '-s', 'feed', 'App.sln'])).toEqual([{ path: 'App.sln', file: true }]);
+    expect(named(['dotnet', 'build', '-d', 'App.sln'])).toEqual([{ path: 'App.sln', file: true }]);
+    expect(named(['dotnet', 'test', '-d', 'diag.log', 'App.sln'])).toEqual([{ path: 'App.sln', file: true }]);
+    // The same path named as a project and as an adapter dir is pinned whole.
+    expect(named(['dotnet', 'test', 'tools', '-a', 'tools'])).toEqual([{ path: 'tools', tree: true }]);
     // MSBuild switches with a colon name no repository file.
     expect(named(['dotnet', 'build', '-p:Configuration=Release', '-bl:out.binlog', '-v:q'])).toEqual([]);
   });
@@ -191,6 +196,24 @@ describe('a dotnet gate is defined by the repository\'s solution, project and MS
     expect(one('k1')).not.toBe(one('k2'));
   });
 
+  it('F4: a project directory named in the argv pins no test code under it; only an adapter dir is pinned whole', () => {
+    const read = () => { throw new Error('file and tree sources never read a file'); };
+    const files = { 'tests/Foo.Tests/Foo.Tests.csproj': 'p1', 'tests/Foo.Tests/FooTests.cs': 't1', 'tests/Foo.Tests/Sub/More.cs': 'm1' };
+    const dirGate = gateDefinitionSources(['dotnet', 'test', 'tests/Foo.Tests']).sources;
+    const def = (over: Record<string, string>) => gateDefinition(dirGate, read, () => tree({ ...files, ...over }));
+    const base = def({});
+    // A comment change, a new or a removed test file under the project dir: the definition is the same.
+    expect(def({ 'tests/Foo.Tests/FooTests.cs': 't2' })).toBe(base);
+    expect(def({ 'tests/Foo.Tests/New.cs': 'n1' })).toBe(base);
+    expect(def({ 'tests/Foo.Tests/Sub/More.cs': '' })).toBe(base);
+    // Its project file still is, by the pattern sources.
+    expect(def({ 'tests/Foo.Tests/Foo.Tests.csproj': 'p2' })).not.toBe(base);
+    // As an adapter dir the same path is pinned by every blob under it.
+    const adapter = gateDefinitionSources(['dotnet', 'test', '-a', 'tests/Foo.Tests']).sources;
+    const adef = (over: Record<string, string>) => gateDefinition(adapter, read, () => tree({ ...files, ...over }));
+    expect(adef({ 'tests/Foo.Tests/FooTests.cs': 't2' })).not.toBe(adef({}));
+  });
+
   it('an npm gate\'s definition is unchanged by the pattern and tree handling (no file list is needed)', () => {
     const { sources } = gateDefinitionSources(['npm', 'test']);
     const out = gateDefinition(sources, (p) => (p === 'package.json' ? '{"scripts":{"test":"vitest"}}' : undefined));
@@ -210,10 +233,32 @@ describe('a dotnet gate is defined by the repository\'s solution, project and MS
     expect(describeGateSources([{ path: '*.sln', pattern: true }, { path: 'ci.runsettings' }])).toBe('**/*.sln, ci.runsettings');
   });
 
-  it('stray untracked files MSBuild would read in the prepare checkout: definition files outside bin/obj, and obj/ imports other than restore\'s', () => {
+  it('stray untracked files MSBuild would read in the prepare checkout: definition files outside bin/, obj/ and artifacts/ (those are removed before the gate)', () => {
     expect(strayDotnetDefinitionFiles([
-      'Tests/Tests.csproj.user', 'Directory.Build.rsp', 'src/App/obj/App.csproj.evil.props', 'src/App/obj/App.csproj.nuget.g.props', 'src/App/obj/App.csproj.nuget.g.targets',
+      'Tests/Tests.csproj.user', 'Directory.Build.rsp', 'src/App/obj/App.csproj.evil.props', 'src/App/obj/App.csproj.nuget.g.props', 'src/App/OBJ/App.csproj.nuget.g.targets',
       'src/App/obj/project.assets.json', 'src/App/obj/Debug/net10.0/x.props', 'src/App/bin/Debug/net10.0/App.dll', 'src/App/bin/x.targets', 'TestResults/a.trx', 'src/App/Program.cs',
-    ])).toEqual(['Tests/Tests.csproj.user', 'Directory.Build.rsp', 'src/App/obj/App.csproj.evil.props']);
+      'artifacts/obj/App/App.csproj.nuget.g.props', 'build/obj.props', 'Tests/Properties/launchSettings.json', 'node_modules/x/obj/y.props',
+    ])).toEqual(['Tests/Tests.csproj.user', 'Directory.Build.rsp', 'build/obj.props', 'Tests/Properties/launchSettings.json', 'node_modules/x/obj/y.props']);
+  });
+
+  it('build output dirs: the first bin/obj/artifacts segment in any case; never a path with a node_modules, empty, . or .. segment', () => {
+    expect(dotnetBuildDirIndex('src/App/obj/x.props')).toBe(2);
+    expect(dotnetBuildDirIndex('src/App/Bin/Debug/a.dll')).toBe(2);
+    expect(dotnetBuildDirIndex('artifacts/obj/App/a.json')).toBe(0);
+    expect(dotnetBuildDirIndex('src/App/obj')).toBe(2);
+    expect(dotnetBuildDirIndex('src/App/objx/a')).toBe(-1);
+    expect(dotnetBuildDirIndex('src/App/Program.cs')).toBe(-1);
+    for (const p of ['node_modules/pkg/bin/cli.js', 'a/NODE_MODULES/obj/x', 'a//obj/x', './obj/x', 'a/../obj/x', 'a/b\\c/obj/x']) expect(dotnetBuildDirIndex(p), p).toBe(-1);
+  });
+
+  it('F2: the Microsoft.Testing.Platform launch profiles are definition files', () => {
+    for (const p of ['Tests/Properties/launchSettings.json', 'LAUNCHSETTINGS.JSON', 'Tests/Tests.run.json']) expect(isDotnetDefinitionFile(p), p).toBe(true);
+    for (const p of ['Tests/settings.json', 'run.json.bak', 'Tests/runjson']) expect(isDotnetDefinitionFile(p), p).toBe(false);
+  });
+
+  it('F7: a basename is matched as Windows opens it: trailing dots and spaces, an NTFS stream suffix and default-ignorable characters folded', () => {
+    for (const p of ['src/App.csproj.', 'src/App.csproj .', 'src/App.csproj::$DATA', 'src/App.csproj:evil', 'Directory.Build.props​', 'Ｄirectory.Build.props', 'global.json. ']) {
+      expect(isDotnetDefinitionFile(p), JSON.stringify(p)).toBe(true);
+    }
   });
 });

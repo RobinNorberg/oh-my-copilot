@@ -158,8 +158,10 @@ export declare function runLocalGate(i: LocalGateInput): Promise<LocalGateOutcom
  * directory; a node gate by the script file it runs; a gate executable given
  * as a repository path by that file; a `dotnet build` / `dotnet test` gate
  * by every file of the repository that matches DOTNET_DEFINITION_PATTERNS
- * (`pattern` sources) plus the repository files or directories its argv
- * names (`tree` sources, compared by every blob under the path). What the
+ * (`pattern` sources) plus the repository paths its argv names: a test
+ * adapter dir (`tree` sources, compared by every blob under the path), any
+ * other path as that one file's blob (`file` sources: a project or solution
+ * dir pins nothing beyond the patterns). What the
  * script itself runs (vitest.config, scripts/test.mjs) is covered by review, not here.
  * Empty when the argv names nothing in the repository (`node --test`).
  *
@@ -174,6 +176,7 @@ export type GateDefinitionSource = {
     scripts?: string[];
     pattern?: true;
     tree?: true;
+    file?: true;
 };
 /**
  * The gate's definition sources, or why an npm-style gate's definition
@@ -193,10 +196,13 @@ export interface GateDefinitionSources {
  * import (`*.props`, `*.targets`, `*.tasks`, Directory.Build.* among them),
  * the `<project>.user` file MSBuild imports beside each project, response
  * files (Directory.Build.rsp, an argv `@file.rsp`), the SDK pin and NuGet's
- * config and lock files. What the build itself compiles and runs (the code,
- * the tests, a .runsettings or xunit.runner.json) is covered by review, as
- * vitest.config is for an npm gate; auto-merge also protects those
- * (DOTNET_TEST_CONFIG_PATTERNS).
+ * config and lock files, and the launch profiles Microsoft.Testing.Platform
+ * reads (`Properties/launchSettings.json`, `<project>.run.json`: an env such
+ * as TESTINGPLATFORM_EXITCODE_IGNORE or `--ignore-exit-code` there makes
+ * failing tests exit 0). What the build itself compiles and runs (the code,
+ * the tests, a .runsettings or xunit.runner.json, a
+ * runtimeconfig.template.json) is covered by review, as vitest.config is for
+ * an npm gate; auto-merge also protects those (DOTNET_TEST_CONFIG_PATTERNS).
  */
 export declare const DOTNET_DEFINITION_PATTERNS: readonly string[];
 /**
@@ -204,19 +210,26 @@ export declare const DOTNET_DEFINITION_PATTERNS: readonly string[];
  * (as vitest.config is not part of an npm gate's), but never auto-merged.
  */
 export declare const DOTNET_TEST_CONFIG_PATTERNS: readonly string[];
-/** One case-insensitive matcher for a file's basename against basename globs (`*` any run of characters). */
+/** One case-insensitive matcher for a file's basename (openedBasename) against basename globs (`*` any run of characters). */
 export declare function basenameMatcher(globs: readonly string[]): (path: string) => boolean;
 /** True when a repository file defines a dotnet gate (DOTNET_DEFINITION_PATTERNS). */
 export declare const isDotnetDefinitionFile: (path: string) => boolean;
+/** The directory names (any case) whose untracked content is build output a dotnet gate starts without (prepare.ts removeDotnetBuildOutput). */
+export declare const DOTNET_BUILD_DIRS: ReadonlySet<string>;
+/**
+ * The index of the first segment of a repository path (`/`-separated, as git
+ * lists it) that is a DOTNET_BUILD_DIRS name, or -1: also -1 for a path with
+ * an empty, `.` or `..` segment, a `\`, or a node_modules segment (a linked
+ * or copied package tree is never build output).
+ */
+export declare function dotnetBuildDirIndex(path: string): number;
 /**
  * Of the prepare checkout's untracked files (ignored or not, repository
- * paths), those MSBuild would read for a dotnet gate although no commit pins
- * them: a definition file outside `bin/` and `obj/` (an ignored
- * `App.csproj.user` or `Directory.Build.rsp`), and in an `obj/` dir an
- * imported `*.props` / `*.targets` (MSBuild imports
- * `obj/<project>.*.props|targets`) other than restore's own
- * `*.nuget.g.props|targets`. The PR's code run there earlier (a prepare
- * check, an earlier gate run) can leave one.
+ * paths), the definition files MSBuild would read for a dotnet gate although
+ * no commit pins them (an ignored `App.csproj.user` or `Directory.Build.rsp`),
+ * outside the build output dirs (`bin/`, `obj/`, `artifacts/`), which the
+ * engine empties of untracked files before every dotnet gate run. The PR's
+ * code run there earlier (a prepare check, an earlier gate run) can leave one.
  */
 export declare function strayDotnetDefinitionFiles(untracked: readonly string[]): string[];
 /** A commit's files as [path, blob id] (`git ls-tree -r`). */
@@ -234,9 +247,10 @@ export declare function gateDefinitionSources(gate: readonly string[]): GateDefi
  * text), or the file's text; all `pattern` sources together as every
  * matching path of the commit's tree with its blob id (one pass); per `tree`
  * source every [path, blob id] at or under its path (a file, or a
- * directory's whole content). `read` returns a path's content at that
+ * directory's whole content); per `file` source the [path, blob id] of that
+ * path only (none for a directory). `read` returns a path's content at that
  * commit, undefined when the file is absent there; `list` the commit's files
- * as [path, blob id] (needed only for pattern and tree sources, read once).
+ * as [path, blob id] (needed only for pattern, tree and file sources, read once).
  */
 export declare function gateDefinition(sources: readonly GateDefinitionSource[], read: (path: string) => string | undefined, list?: () => GateTree): string;
 /** What a gate change touches, for the park message: `package.json scripts lint` or the file path. */
