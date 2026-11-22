@@ -1100,7 +1100,8 @@ export class CopilotRunManager {
     } else if (isolation === 'worktree') {
       let info;
       try {
-        info = ensureWorkerWorktree(WORKTREE_TEAM, id, ledgerCwd, { mode: 'named', requireCleanLeader: false, ...(startSha ? { baseRef: startSha } : {}) });
+        // The engine commits a hostCommits lane with no attribute applied: its checkout writes blob bytes, so an untouched file is never staged.
+        info = ensureWorkerWorktree(WORKTREE_TEAM, id, ledgerCwd, { mode: 'named', requireCleanLeader: false, ...(startSha ? { baseRef: startSha } : {}), ...(options.hostCommits ? { withoutAttributes: true } : {}) });
       } catch (err) {
         // A failure after `git worktree add` leaves a worktree no job id can clean: remove it now (same safety checks), or name it.
         const path = getWorktreePath(ledgerCwd, WORKTREE_TEAM, id);

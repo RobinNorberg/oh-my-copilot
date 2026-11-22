@@ -182,9 +182,15 @@ export declare class PrivateRun {
      * made with the store's pins (no hook, no filter, no global config), its
      * links recorded before anything else runs in it; the config hash is
      * re-recorded after (the allowlist still applies), so the caller seals
-     * `repo.configHash` again.
+     * `repo.configHash` again. `withoutAttributes` (a lane worktree the engine
+     * commits for): GIT_ATTR_SOURCE the empty tree, so the checkout writes blob
+     * bytes, as the attribute-free staging reads them (attributeFreeCheckout;
+     * the store's pins already leave no filter driver and no global or system
+     * attributes).
      */
-    addWorktree(path: string, sha: string, branch?: string): void;
+    addWorktree(path: string, sha: string, branch?: string, o?: {
+        withoutAttributes?: boolean;
+    }): void;
     /**
      * Remove a private worktree: its node_modules link first, then removeRunDir
      * (links unlinked, never followed), then its own admin entry under the

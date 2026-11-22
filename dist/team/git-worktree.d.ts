@@ -25,6 +25,8 @@ export interface EnsureWorkerWorktreeOptions {
     mode?: TeamWorktreeMode;
     baseRef?: string;
     requireCleanLeader?: boolean;
+    /** Check out without attributes (attributeFreeCheckout): the worktree the factory engine commits for (copilot_run hostCommits). */
+    withoutAttributes?: boolean;
 }
 export interface EnsureWorkerWorktreeResult extends WorktreeInfo {
     mode: TeamWorktreeMode;
@@ -165,6 +167,26 @@ export declare function runHostGitBuffer(cwd: string, args: readonly string[], t
 export declare function runHostGitBufferAsync(cwd: string, args: readonly string[], timeout?: number, baseEnv?: NodeJS.ProcessEnv, input?: string | Buffer, maxBuffer?: number): Promise<Buffer>;
 /** The empty tree of each object format: GIT_ATTR_SOURCE names it, so host git reads no `.gitattributes`. */
 export declare const EMPTY_TREE: Readonly<Record<string, string>>;
+/**
+ * The `-c` pairs (before the subcommand) and environment of a `git worktree
+ * add` whose checkout writes every file as its blob's bytes, for a worktree
+ * the factory engine stages (lane-commit.ts): the staging runs with no
+ * attribute applied (runHostGit), so a checkout that honoured the
+ * repository's `.gitattributes` (eol=crlf without core.autocrlf, a
+ * clean/smudge filter, git-lfs) would write bytes that differ from the
+ * blob, and an untouched file would be committed as a rewrite whenever git
+ * re-hashes it (a racily clean index entry). These are the staging's own
+ * settings: GIT_ATTR_SOURCE the empty tree, the empty core.attributesFile,
+ * every filter and diff driver blanked; GIT_LFS_SKIP_SMUDGE keeps a git-lfs
+ * that still runs from downloading. core.autocrlf and `info/attributes`
+ * apply on both sides alike. Hooks are not touched (a post-checkout hook
+ * still runs). Throws when the drivers cannot be listed or the object
+ * format is unknown.
+ */
+export declare function attributeFreeCheckout(repoRoot: string): {
+    config: string[];
+    env: Record<string, string>;
+};
 /** The first git that honours GIT_ATTR_SOURCE (git --attr-source, 2.41.0). */
 export declare const HOST_GIT_ATTR_SOURCE_MIN = "2.41.0";
 /**

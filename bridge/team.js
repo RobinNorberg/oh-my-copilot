@@ -19651,6 +19651,17 @@ function hostGitCommand(cwd, args, timeout, baseEnv) {
   }
   return { argv: [...hostGitHardeningArgs(), ...tree, ...finalArgs], env };
 }
+function attributeFreeCheckout(repoRoot) {
+  const format = runHostGit(repoRoot, ["rev-parse", "--show-object-format"]).trim();
+  const emptyTree = EMPTY_TREE[format];
+  if (!emptyTree) throw new Error(`unknown object format ${JSON.stringify(format)}`);
+  const drivers = hostGitDriverOverrides(repoRoot);
+  if (drivers === null) throw new Error("host git: the filter and diff drivers cannot be listed or overridden; refusing to check a lane worktree out");
+  return {
+    config: ["-c", `core.attributesFile=${hostAttributesFile()}`, ...drivers],
+    env: { GIT_ATTR_SOURCE: emptyTree, GIT_LFS_SKIP_SMUDGE: "1" }
+  };
+}
 function git(repoRoot, args, cwd = repoRoot) {
   return runHostGit(cwd, args).trim();
 }
@@ -20236,7 +20247,8 @@ function ensureWorkerWorktree(teamName, workerName, repoRoot, options = {}) {
   const wtDir = join37(getOmcRoot(repoRoot), "team", sanitizeName(teamName), "worktrees");
   ensureDirWithMode(wtDir);
   const args = mode === "named" ? ["worktree", "add", "-b", branch, wtPath, options.baseRef ?? "HEAD"] : ["worktree", "add", "--detach", wtPath, options.baseRef ?? "HEAD"];
-  execFileSync5(hostGitExe(), args, { cwd: repoRoot, stdio: "pipe", windowsHide: true });
+  const checkout = options.withoutAttributes ? attributeFreeCheckout(repoRoot) : null;
+  execFileSync5(hostGitExe(), [...checkout?.config ?? [], ...args], { cwd: repoRoot, stdio: "pipe", windowsHide: true, ...checkout ? { env: { ...process.env, ...checkout.env } } : {} });
   const baseCommit = gitOrNull(["rev-parse", "HEAD"], wtPath);
   const info = {
     ...baseCommit ? { baseCommit } : {},

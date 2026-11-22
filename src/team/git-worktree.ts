@@ -55,6 +55,8 @@ export interface EnsureWorkerWorktreeOptions {
   mode?: TeamWorktreeMode;
   baseRef?: string;
   requireCleanLeader?: boolean;
+  /** Check out without attributes (attributeFreeCheckout): the worktree the factory engine commits for (copilot_run hostCommits). */
+  withoutAttributes?: boolean;
 }
 
 export interface EnsureWorkerWorktreeResult extends WorktreeInfo {
@@ -404,6 +406,34 @@ export const EMPTY_TREE: Readonly<Record<string, string>> = {
   sha1: '4b825dc642cb6eb9a060e54bf8d69288fbee4904',
   sha256: '6ef19b41225c5369f1c104d45d8d85efa9b057b53b14b4b9b939dd74decc5321',
 };
+
+/**
+ * The `-c` pairs (before the subcommand) and environment of a `git worktree
+ * add` whose checkout writes every file as its blob's bytes, for a worktree
+ * the factory engine stages (lane-commit.ts): the staging runs with no
+ * attribute applied (runHostGit), so a checkout that honoured the
+ * repository's `.gitattributes` (eol=crlf without core.autocrlf, a
+ * clean/smudge filter, git-lfs) would write bytes that differ from the
+ * blob, and an untouched file would be committed as a rewrite whenever git
+ * re-hashes it (a racily clean index entry). These are the staging's own
+ * settings: GIT_ATTR_SOURCE the empty tree, the empty core.attributesFile,
+ * every filter and diff driver blanked; GIT_LFS_SKIP_SMUDGE keeps a git-lfs
+ * that still runs from downloading. core.autocrlf and `info/attributes`
+ * apply on both sides alike. Hooks are not touched (a post-checkout hook
+ * still runs). Throws when the drivers cannot be listed or the object
+ * format is unknown.
+ */
+export function attributeFreeCheckout(repoRoot: string): { config: string[]; env: Record<string, string> } {
+  const format = runHostGit(repoRoot, ['rev-parse', '--show-object-format']).trim();
+  const emptyTree = EMPTY_TREE[format];
+  if (!emptyTree) throw new Error(`unknown object format ${JSON.stringify(format)}`);
+  const drivers = hostGitDriverOverrides(repoRoot);
+  if (drivers === null) throw new Error('host git: the filter and diff drivers cannot be listed or overridden; refusing to check a lane worktree out');
+  return {
+    config: ['-c', `core.attributesFile=${hostAttributesFile()}`, ...drivers],
+    env: { GIT_ATTR_SOURCE: emptyTree, GIT_LFS_SKIP_SMUDGE: '1' },
+  };
+}
 
 /** The first git that honours GIT_ATTR_SOURCE (git --attr-source, 2.41.0). */
 export const HOST_GIT_ATTR_SOURCE_MIN = '2.41.0';
@@ -1323,7 +1353,8 @@ export function ensureWorkerWorktree(
   const args = mode === 'named'
     ? ['worktree', 'add', '-b', branch, wtPath, options.baseRef ?? 'HEAD']
     : ['worktree', 'add', '--detach', wtPath, options.baseRef ?? 'HEAD'];
-  execFileSync(hostGitExe(), args, { cwd: repoRoot, stdio: 'pipe', windowsHide: true });
+  const checkout = options.withoutAttributes ? attributeFreeCheckout(repoRoot) : null;
+  execFileSync(hostGitExe(), [...(checkout?.config ?? []), ...args], { cwd: repoRoot, stdio: 'pipe', windowsHide: true, ...(checkout ? { env: { ...process.env, ...checkout.env } } : {}) });
   const baseCommit = gitOrNull(['rev-parse', 'HEAD'], wtPath);
 
   const info: EnsureWorkerWorktreeResult = {

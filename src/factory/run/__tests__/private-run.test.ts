@@ -5,7 +5,7 @@
  * parks, the layout keys, the lane deny list. No Copilot session, no network.
  */
 import { spawnSync } from 'node:child_process';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -123,6 +123,19 @@ describe('the layout keys and small helpers', () => {
 });
 
 describe('PrivateRun', () => {
+  it('a lane worktree made withoutAttributes holds blob bytes (no committed eol applies); a plain one applies it', () => {
+    writeFileSync(join(root, '.gitattributes'), '* text=auto eol=crlf\n');
+    writeFileSync(join(root, 'k.txt'), 'k\n');
+    g(root, ['add', '.']);
+    g(root, ['-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', 'eol']);
+    base = g(root, ['rev-parse', 'HEAD']);
+    const p = create();
+    p.addWorktree(p.worktreePath(1), base, undefined, { withoutAttributes: true });
+    expect(readFileSync(join(p.worktreePath(1), 'k.txt'), 'utf8')).toBe('k\n');
+    p.addWorktree(p.worktreePath(2), base);
+    expect(readFileSync(join(p.worktreePath(2), 'k.txt'), 'utf8')).toBe('k\r\n');
+  }, T);
+
   it('run start makes the seed and the private clone under the work root; a lane worktree is detached at its start, with a deny list of the rest', () => {
     const p = create();
     expect(p.layout.runDir.startsWith(work)).toBe(true);

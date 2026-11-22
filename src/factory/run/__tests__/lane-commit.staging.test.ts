@@ -3,12 +3,12 @@
  * layer 2, L3): real git in temp repos, no Copilot.
  */
 import { execFileSync } from 'node:child_process';
-import { chmodSync, copyFileSync, linkSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, truncateSync, unlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, copyFileSync, existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, truncateSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { readWorktreeGitLinks, recordWorktreeGitLinks, runHostGit, worktreeGitDirArgs } from '../../../team/git-worktree.js';
+import { attributeFreeCheckout, ensureWorkerWorktree, readWorktreeGitLinks, recordWorktreeGitLinks, runHostGit, worktreeGitDirArgs } from '../../../team/git-worktree.js';
 import { commitLaneWork, engineRead, LANE_COMMIT_MAX_BYTES, LANE_FILE_MAX_BYTES, pathGlobMatches, type SecretFinding } from '../lane-commit.js';
 
 const git = (cwd: string, ...args: string[]) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: 'pipe' }).trim();
@@ -43,10 +43,16 @@ function commitAll(files: Record<string, string | Buffer>): string {
 }
 
 let n = 0;
-function laneTree(): { worktree: string; start: string } {
+/**
+ * A lane worktree as the engine's lanes get one: checked out without
+ * attributes (attributeFreeCheckout, copilot_run's hostCommits checkout).
+ * `withAttributes`: a plain `git worktree add`, the checkout before the fix.
+ */
+function laneTree(o: { withAttributes?: boolean } = {}): { worktree: string; start: string } {
   const worktree = join(dir, `lane-${++n}`);
   const start = git(root, 'rev-parse', 'HEAD');
-  git(root, 'worktree', 'add', '-q', '--detach', worktree, start);
+  const checkout = o.withAttributes ? { config: [], env: {} } : attributeFreeCheckout(root);
+  execFileSync('git', [...checkout.config, 'worktree', 'add', '-q', '--detach', worktree, start], { cwd: root, stdio: 'pipe', env: { ...process.env, ...checkout.env } });
   recordWorktreeGitLinks(worktree, readWorktreeGitLinks(worktree)!);
   return { worktree, start };
 }
@@ -95,13 +101,21 @@ function laneEdits(worktree: string): void {
   writeFileSync(join(worktree, 'nested', 'deeper', 'still', 'n.txt'), 'n\n');
   writeFileSync(join(worktree, 'run.sh'), '#!/bin/sh\necho hi\n');
   if (process.platform !== 'win32') chmodSync(join(worktree, 'run.sh'), 0o755);
-  // The two files the lane leaves alone: `worktree add` honoured the committed `eol=crlf` and wrote them with CRLF, which
-  // the attribute-free staging does not convert back. Whether `status` then lists them depends on git's per-second racy
-  // check at checkout (a smudged index entry is re-hashed, a clean one is not), so their committed bytes are restored:
-  // the comparison covers what the lane changed, the same way on every run.
-  writeFileSync(join(worktree, '.gitattributes'), '* text=auto eol=crlf\n*.dat binary\n');
-  writeFileSync(join(worktree, 'nested', 'deep', 'keep.txt'), 'k\n');
 }
+
+/**
+ * Make every index entry of the lane worktree racily clean: the index file's
+ * mtime set before the files' mtimes, so git re-hashes each file's content
+ * instead of trusting its stat data (what a checkout within the index's
+ * second does by chance).
+ */
+function makeRacy(worktree: string): void {
+  const index = join(readWorktreeGitLinks(worktree)!.adminDir, 'index');
+  const at = statSync(index).mtimeMs / 1000 - 3600;
+  utimesSync(index, at, at);
+}
+
+const changedPaths = (start: string, sha: string) => git(root, 'diff-tree', '-r', '--no-renames', '--name-only', start, sha).split('\n').filter(Boolean).sort();
 
 describe('engine-read staging: the tree equals the one `git add -A` staged', () => {
   for (const autocrlf of ['false', 'true', 'input']) {
@@ -132,6 +146,77 @@ describe('engine-read staging: the tree equals the one `git add -A` staged', () 
     const res = commitLaneWork({ worktree, start, parents: [start], repoRoot: root, branch: null, message: 'x' });
     expect(res.ok, JSON.stringify(res)).toBe(true);
     expect(treeOf((res as { sha: string }).sha)).toBe(expected);
+  });
+});
+
+describe('untouched files are never committed: the lane checkout writes blob bytes', () => {
+  /** A committed .gitattributes the attribute-free staging never reads, and files the lane leaves alone. */
+  function eolFixture(): void {
+    commitAll({ '.gitattributes': '* text=auto eol=crlf\n', 'keep.txt': 'k\n', 'nested/deep/keep.txt': 'deep\n', 'edit.txt': 'e\n' });
+  }
+
+  it('eol=crlf with core.autocrlf false, a racy index: only the edited file is in the commit (the attribute-honouring checkout committed the untouched ones)', () => {
+    eolFixture();
+    const { worktree, start } = laneTree();
+    expect(readFileSync(join(worktree, 'keep.txt'), 'utf8')).toBe('k\n');
+    writeFileSync(join(worktree, 'edit.txt'), 'edited\n');
+    makeRacy(worktree);
+    const res = commitLaneWork({ worktree, start, parents: [start], repoRoot: root, branch: null, message: 'x' });
+    expect(res.ok, JSON.stringify(res)).toBe(true);
+    expect(changedPaths(start, (res as { sha: string }).sha)).toEqual(['edit.txt']);
+    expect((res as { files: string[] }).files).toEqual(['edit.txt']);
+
+    // The control: the checkout before the fix wrote CRLF, and the same racy index committed every untouched text file.
+    const before = laneTree({ withAttributes: true });
+    expect(readFileSync(join(before.worktree, 'keep.txt'), 'utf8')).toBe('k\r\n');
+    writeFileSync(join(before.worktree, 'edit.txt'), 'edited\n');
+    makeRacy(before.worktree);
+    const old = commitLaneWork({ worktree: before.worktree, start: before.start, parents: [before.start], repoRoot: root, branch: null, message: 'x' });
+    expect(old.ok, JSON.stringify(old)).toBe(true);
+    expect(changedPaths(before.start, (old as { sha: string }).sha)).toEqual(['.gitattributes', 'edit.txt', 'keep.txt', 'nested/deep/keep.txt']);
+  });
+
+  it('a clean/smudge filter in the repository config: no driver runs at checkout or staging, and only the edited file is in the commit', () => {
+    commitAll({ '.gitattributes': '*.txt filter=mark\n', 'keep.txt': 'keep\n', 'edit.txt': 'e\n' });
+    // Configured after the commit, so only the lane's checkout and staging could run it.
+    const marker = join(dir, 'driver-ran');
+    const script = join(dir, 'driver.sh');
+    writeFileSync(script, `#!/bin/sh\necho "$1" >> '${marker.replace(/\\/g, '/')}'\ntr a-z A-Z\n`);
+    const driver = (what: string) => `sh '${script.replace(/\\/g, '/')}' ${what}`;
+    git(root, 'config', 'filter.mark.smudge', driver('smudge'));
+    git(root, 'config', 'filter.mark.clean', driver('clean'));
+    git(root, 'config', 'filter.mark.required', 'true');
+    const { worktree, start } = laneTree();
+    expect(readFileSync(join(worktree, 'keep.txt'), 'utf8')).toBe('keep\n');
+    writeFileSync(join(worktree, 'edit.txt'), 'edited\n');
+    makeRacy(worktree);
+    const res = commitLaneWork({ worktree, start, parents: [start], repoRoot: root, branch: null, message: 'x' });
+    expect(res.ok, JSON.stringify(res)).toBe(true);
+    expect(changedPaths(start, (res as { sha: string }).sha)).toEqual(['edit.txt']);
+    expect(git(root, 'cat-file', 'blob', `${(res as { sha: string }).sha}:edit.txt`)).toBe('edited');
+    expect(existsSync(marker)).toBe(false);
+
+    // The control: the checkout before the fix ran the smudge driver, and the racy index committed the smudged file.
+    const before = laneTree({ withAttributes: true });
+    expect(existsSync(marker)).toBe(true);
+    expect(readFileSync(join(before.worktree, 'keep.txt'), 'utf8')).toBe('KEEP\n');
+    rmSync(marker);
+    writeFileSync(join(before.worktree, 'edit.txt'), 'edited\n');
+    makeRacy(before.worktree);
+    const old = commitLaneWork({ worktree: before.worktree, start: before.start, parents: [before.start], repoRoot: root, branch: null, message: 'x' });
+    expect(old.ok, JSON.stringify(old)).toBe(true);
+    expect(changedPaths(before.start, (old as { sha: string }).sha)).toEqual(['edit.txt', 'keep.txt']);
+    // The engine's staging itself never runs the driver.
+    expect(existsSync(marker)).toBe(false);
+  });
+
+  it('ensureWorkerWorktree withoutAttributes (copilot_run hostCommits) checks out blob bytes; without it the attributes apply', () => {
+    eolFixture();
+    const free = ensureWorkerWorktree('tm', 'free', root, { mode: 'detached', requireCleanLeader: false, withoutAttributes: true })!;
+    expect(readFileSync(join(free.path, 'keep.txt'), 'utf8')).toBe('k\n');
+    expect(readFileSync(join(free.path, '.gitattributes'), 'utf8')).toBe('* text=auto eol=crlf\n');
+    const plain = ensureWorkerWorktree('tm', 'plain', root, { mode: 'detached', requireCleanLeader: false })!;
+    expect(readFileSync(join(plain.path, 'keep.txt'), 'utf8')).toBe('k\r\n');
   });
 });
 

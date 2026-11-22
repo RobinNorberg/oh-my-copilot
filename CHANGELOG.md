@@ -2,6 +2,12 @@
 
 All notable changes to oh-my-copilot will be documented in this file.
 
+## [Unreleased]
+
+### Fixed
+
+- **A factory lane commit never includes a file the lane did not touch.** In a repository whose `.gitattributes` rewrites files at checkout (`eol=crlf` with `core.autocrlf` off, the Linux and macOS default, or a clean/smudge filter such as git-lfs), a lane's commit could include an untouched file as a whole-file rewrite (CRLF line endings, or an LFS file's content in place of its pointer). The lane worktree was checked out with the attributes applied, while the engine stages with no attribute applied (so a lane-written `.gitattributes` can select no filter driver), and git re-hashes an unchanged file only when its index entry is racily clean, so it happened depending on timing. Lane worktrees (implement, fix, CI-fix and conflict-fix, in the shared and the private layout) are now checked out the way the engine stages them: no `.gitattributes` applies and no filter driver runs, so every file holds its blob's bytes. **Behaviour change:** a lane now sees committed line endings (LF in a repository that asks for CRLF checkouts) and git-lfs pointers instead of their content (the private layout already skipped the LFS download). `core.autocrlf` and the repository's `info/attributes` still apply, on both sides alike. The prepare checkout the gates run in is unchanged, and so are `omg team` worker worktrees.
+
 # oh-my-copilot v5.31.0
 
 ## [5.31.0] - 2026-11-22

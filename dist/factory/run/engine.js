@@ -6124,7 +6124,7 @@ class FactoryEngine {
                 // A worktree with no lane record (a refusal after it was made, before the lane was recorded) holds nothing: made anew.
                 if (existsSync(laneTree))
                     priv.removeWorktree(laneTree);
-                priv.addWorktree(laneTree, startRef);
+                priv.addWorktree(laneTree, startRef, undefined, { withoutAttributes: true });
             }
             catch (error) {
                 if (error instanceof PrivateRepoTampered)

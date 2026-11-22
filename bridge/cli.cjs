@@ -96180,6 +96180,7 @@ __export(git_worktree_exports, {
   EMPTY_TREE: () => EMPTY_TREE,
   HOST_GIT_ATTR_SOURCE_MIN: () => HOST_GIT_ATTR_SOURCE_MIN,
   HOST_GIT_MAX_BUFFER: () => HOST_GIT_MAX_BUFFER,
+  attributeFreeCheckout: () => attributeFreeCheckout,
   checkWorkerWorktreeRemovalSafety: () => checkWorkerWorktreeRemovalSafety,
   cleanupTeamWorktrees: () => cleanupTeamWorktrees,
   createWorkerWorktree: () => createWorkerWorktree,
@@ -96348,6 +96349,17 @@ function hostGitCommand(cwd, args, timeout, baseEnv2) {
     if (IGNORE_SUBMODULES_SUBCOMMANDS.has(subcommand)) finalArgs = [...args.slice(0, at + 1), "--ignore-submodules=all", ...args.slice(at + 1)];
   }
   return { argv: [...hostGitHardeningArgs(), ...tree, ...finalArgs], env: env2 };
+}
+function attributeFreeCheckout(repoRoot3) {
+  const format = runHostGit(repoRoot3, ["rev-parse", "--show-object-format"]).trim();
+  const emptyTree = EMPTY_TREE[format];
+  if (!emptyTree) throw new Error(`unknown object format ${JSON.stringify(format)}`);
+  const drivers = hostGitDriverOverrides(repoRoot3);
+  if (drivers === null) throw new Error("host git: the filter and diff drivers cannot be listed or overridden; refusing to check a lane worktree out");
+  return {
+    config: ["-c", `core.attributesFile=${hostAttributesFile()}`, ...drivers],
+    env: { GIT_ATTR_SOURCE: emptyTree, GIT_LFS_SKIP_SMUDGE: "1" }
+  };
 }
 function hostGitAttrSourceProblem(version3) {
   if (version3 === void 0) {
@@ -96971,7 +96983,8 @@ function ensureWorkerWorktree(teamName, workerName, repoRoot3, options = {}) {
   const wtDir = (0, import_node_path28.join)(getOmcRoot(repoRoot3), "team", sanitizeName(teamName), "worktrees");
   ensureDirWithMode(wtDir);
   const args = mode === "named" ? ["worktree", "add", "-b", branch2, wtPath, options.baseRef ?? "HEAD"] : ["worktree", "add", "--detach", wtPath, options.baseRef ?? "HEAD"];
-  (0, import_node_child_process14.execFileSync)(hostGitExe(), args, { cwd: repoRoot3, stdio: "pipe", windowsHide: true });
+  const checkout = options.withoutAttributes ? attributeFreeCheckout(repoRoot3) : null;
+  (0, import_node_child_process14.execFileSync)(hostGitExe(), [...checkout?.config ?? [], ...args], { cwd: repoRoot3, stdio: "pipe", windowsHide: true, ...checkout ? { env: { ...process.env, ...checkout.env } } : {} });
   const baseCommit = gitOrNull(["rev-parse", "HEAD"], wtPath);
   const info = {
     ...baseCommit ? { baseCommit } : {},
@@ -124789,7 +124802,7 @@ var init_job = __esm({
         } else if (isolation === "worktree") {
           let info;
           try {
-            info = ensureWorkerWorktree(WORKTREE_TEAM, id, ledgerCwd, { mode: "named", requireCleanLeader: false, ...startSha ? { baseRef: startSha } : {} });
+            info = ensureWorkerWorktree(WORKTREE_TEAM, id, ledgerCwd, { mode: "named", requireCleanLeader: false, ...startSha ? { baseRef: startSha } : {}, ...options.hostCommits ? { withoutAttributes: true } : {} });
           } catch (err) {
             const path30 = getWorktreePath(ledgerCwd, WORKTREE_TEAM, id);
             const branch2 = getBranchName(WORKTREE_TEAM, id);
@@ -130927,14 +130940,25 @@ var init_private_run = __esm({
        * made with the store's pins (no hook, no filter, no global config), its
        * links recorded before anything else runs in it; the config hash is
        * re-recorded after (the allowlist still applies), so the caller seals
-       * `repo.configHash` again.
+       * `repo.configHash` again. `withoutAttributes` (a lane worktree the engine
+       * commits for): GIT_ATTR_SOURCE the empty tree, so the checkout writes blob
+       * bytes, as the attribute-free staging reads them (attributeFreeCheckout;
+       * the store's pins already leave no filter driver and no global or system
+       * attributes).
        */
-      addWorktree(path30, sha3, branch2) {
+      addWorktree(path30, sha3, branch2, o = {}) {
         const tooLong = longPathProblem(path30, this.repo.longestPath);
         if (tooLong) throw new PrivateStoreError(tooLong);
         if ((0, import_fs160.existsSync)(path30)) throw new PrivateStoreError(`the private worktree ${path30} already exists`);
         this.ensureCommit(sha3);
-        privateGitOk(this.repo, this.ctx, ["worktree", "add", "-q", ...branch2 ? ["-B", branch2] : ["--detach"], path30, sha3], `git worktree add ${path30}`, { env: identityEnv() });
+        let attrs = {};
+        if (o.withoutAttributes) {
+          const format = privateGitOk(this.repo, this.ctx, ["rev-parse", "--show-object-format"], "git rev-parse --show-object-format").trim();
+          const emptyTree = EMPTY_TREE[format];
+          if (!emptyTree) throw new PrivateStoreError(`the private repository has an unknown object format ${JSON.stringify(format)}`);
+          attrs = { GIT_ATTR_SOURCE: emptyTree };
+        }
+        privateGitOk(this.repo, this.ctx, ["worktree", "add", "-q", ...branch2 ? ["-B", branch2] : ["--detach"], path30, sha3], `git worktree add ${path30}`, { env: { ...identityEnv(), ...attrs } });
         this.repo = rerecordConfigHash(this.repo, this.ctx);
         const links = readWorktreeGitLinks(path30);
         if (!links || !inside(links.adminDir, (0, import_path185.join)(this.repo.gitDir, "worktrees"), process.platform)) throw new PrivateStoreError(`the private worktree ${path30} has no git links in ${this.repo.gitDir}`);
@@ -143799,7 +143823,7 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
           laneTree2 = priv.worktreePath(this.state.lanes.length + 1);
           try {
             if ((0, import_fs171.existsSync)(laneTree2)) priv.removeWorktree(laneTree2);
-            priv.addWorktree(laneTree2, startRef);
+            priv.addWorktree(laneTree2, startRef, void 0, { withoutAttributes: true });
           } catch (error62) {
             if (error62 instanceof PrivateRepoTampered) throw error62;
             throw new FactoryStepError(`the private lane worktree ${laneTree2} could not be made: ${errText6(error62)}`);
@@ -151955,8 +151979,8 @@ var init_poll = __esm({
 });
 
 // src/factory/bench/fake-lanes.ts
-function git7(cwd, args) {
-  const r = defaultExec("git", args, { cwd });
+function git7(cwd, args, env2) {
+  const r = defaultExec("git", args, { cwd, ...env2 ? { env: env2 } : {} });
   if (r.status !== 0) throw new Error(`fake lane: git ${args.join(" ")} failed: ${(r.stderr || r.stdout).trim()}`);
   return r.stdout.trim();
 }
@@ -152001,7 +152025,8 @@ var init_fake_lanes = __esm({
           worktree = (0, import_node_path48.join)(getOmcRoot(this.root), "team", "copilot-run", "worktrees", remoteId);
           (0, import_node_fs44.mkdirSync)((0, import_node_path48.dirname)(worktree), { recursive: true });
           baseSha = git7(this.root, ["rev-parse", "--verify", `${input2.baseRef}^{commit}`]);
-          git7(this.root, ["worktree", "add", "-q", "-b", branch2, worktree, baseSha]);
+          const checkout = attributeFreeCheckout(this.root);
+          git7(this.root, [...checkout.config, "worktree", "add", "-q", "-b", branch2, worktree, baseSha], checkout.env);
           recordWorktreeGitLinks(worktree, readWorktreeGitLinks(worktree));
         }
         this.jobs.set(remoteId, { input: input2, step: this.steps[n], worktree, branch: branch2, baseSha, remoteId });
