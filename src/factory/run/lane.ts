@@ -86,7 +86,7 @@ export interface LaneStartInput {
   beforeSandboxedSession?: (worktree: string, o?: { copy: boolean }) => string | null | Promise<string | null>;
   /** The local backend, a write lane: the node_modules its sandbox may grant (CopilotRunStartOptions.nodeModulesGrant). */
   nodeModulesGrant?: (worktree: string) => { target: string; nested?: string[] } | undefined;
-  /** The local backend, a write lane in a .NET repository (the run's local gate runs dotnet): CopilotRunStartOptions.dotnet. */
+  /** The local backend, a write lane in a .NET repository (engine.ts dotnetRepo, any forge): CopilotRunStartOptions.dotnet. */
   dotnet?: boolean;
   /** Cloud backends only. */
   customAgent?: string;

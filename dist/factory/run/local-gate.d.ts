@@ -159,7 +159,8 @@ export declare function runLocalGate(i: LocalGateInput): Promise<LocalGateOutcom
  * directory; a node gate by the script file it runs; a gate executable given
  * as a repository path by that file; a `dotnet build` / `dotnet test` gate
  * by every file of the repository that matches DOTNET_DEFINITION_PATTERNS
- * (`pattern` sources) plus the repository paths its argv names: a test
+ * (`pattern` sources) and every tracked path under a bin/, obj/ or artifacts/
+ * dir (`buildDir` pattern sources), plus the repository paths its argv names: a test
  * adapter dir (`tree` sources, compared by every blob under the path), any
  * other path as that one file's blob (`file` sources: a project or solution
  * dir pins nothing beyond the patterns). What the
@@ -178,6 +179,7 @@ export type GateDefinitionSource = {
     pattern?: true;
     tree?: true;
     file?: true;
+    buildDir?: true;
 };
 /**
  * The gate's definition sources, or why an npm-style gate's definition
@@ -220,23 +222,34 @@ export declare const DOTNET_TEST_CONFIG_PATTERNS: readonly string[];
 export declare function basenameMatcher(globs: readonly string[]): (path: string) => boolean;
 /** True when a repository file defines a dotnet gate (DOTNET_DEFINITION_PATTERNS). */
 export declare const isDotnetDefinitionFile: (path: string) => boolean;
+/**
+ * The solution and project files that make a repository a .NET one for its
+ * write lanes when the trusted base commit's tree holds one (engine.ts
+ * dotnetRepo), matched as DOTNET_DEFINITION_PATTERNS are.
+ */
+export declare const DOTNET_PROJECT_PATTERNS: readonly string[];
+/** True when a repository file is a .NET solution or project file (DOTNET_PROJECT_PATTERNS). */
+export declare const isDotnetProjectFile: (path: string) => boolean;
 export { DOTNET_BUILD_DIRS };
 /**
  * The index of the first segment of a repository path (`/`-separated, as git
  * lists it) that is a DOTNET_BUILD_DIRS name, or -1: also -1 for a path with
- * an empty, `.` or `..` segment, a `\`, or a node_modules segment (a linked
- * or copied package tree is never build output).
+ * an empty, `.` or `..` segment or a `\`. A node_modules segment counts like
+ * any other: the callers leave out the package trees the engine itself links
+ * or copies (engine.ts readGateCheckout), and only those.
  */
 export declare function dotnetBuildDirIndex(path: string): number;
+/** True when a repository path lies under a build dir (dotnetBuildDirIndex); a path that is itself named like one is not under it. */
+export declare function underDotnetBuildDir(path: string): boolean;
 /**
  * Of the prepare checkout's untracked files (ignored or not, repository
  * paths), the definition files MSBuild would read for a dotnet gate although
  * no commit pins them (an ignored `App.csproj.user` or `Directory.Build.rsp`),
  * outside the build output dirs (`bin/`, `obj/`, `artifacts/`), which a
- * sandboxed step empties before a dotnet gate run (dotnet-clean.ts), and
- * outside `node_modules` (a package tree is never the repository's MSBuild
- * input). The PR's code run there earlier (a prepare check, an earlier gate
- * run) can leave one.
+ * sandboxed step empties before a dotnet gate run (dotnet-clean.ts). The
+ * caller leaves out the package trees the engine links or copies; a file
+ * under any other dir named `node_modules` counts. The PR's code run there
+ * earlier (a prepare check, an earlier gate run) can leave one.
  */
 export declare function strayDotnetDefinitionFiles(untracked: readonly string[]): string[];
 /** A commit's files as [path, blob id] (`git ls-tree -r`). */

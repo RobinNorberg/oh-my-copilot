@@ -511,36 +511,45 @@ export function basenameMatcher(globs) {
 }
 /** True when a repository file defines a dotnet gate (DOTNET_DEFINITION_PATTERNS). */
 export const isDotnetDefinitionFile = basenameMatcher(DOTNET_DEFINITION_PATTERNS);
+/**
+ * The solution and project files that make a repository a .NET one for its
+ * write lanes when the trusted base commit's tree holds one (engine.ts
+ * dotnetRepo), matched as DOTNET_DEFINITION_PATTERNS are.
+ */
+export const DOTNET_PROJECT_PATTERNS = ['*.sln', '*.slnx', '*.*proj'];
+/** True when a repository file is a .NET solution or project file (DOTNET_PROJECT_PATTERNS). */
+export const isDotnetProjectFile = basenameMatcher(DOTNET_PROJECT_PATTERNS);
 export { DOTNET_BUILD_DIRS };
 /**
  * The index of the first segment of a repository path (`/`-separated, as git
  * lists it) that is a DOTNET_BUILD_DIRS name, or -1: also -1 for a path with
- * an empty, `.` or `..` segment, a `\`, or a node_modules segment (a linked
- * or copied package tree is never build output).
+ * an empty, `.` or `..` segment or a `\`. A node_modules segment counts like
+ * any other: the callers leave out the package trees the engine itself links
+ * or copies (engine.ts readGateCheckout), and only those.
  */
 export function dotnetBuildDirIndex(path) {
     const segs = path.replace(/\/+$/, '').split('/');
-    if (segs.some((s) => s === '' || s === '.' || s === '..' || s.includes('\\') || s.toLowerCase() === 'node_modules'))
+    if (segs.some((s) => s === '' || s === '.' || s === '..' || s.includes('\\')))
         return -1;
     return segs.findIndex((s) => DOTNET_BUILD_DIRS.has(s.toLowerCase()));
+}
+/** True when a repository path lies under a build dir (dotnetBuildDirIndex); a path that is itself named like one is not under it. */
+export function underDotnetBuildDir(path) {
+    const at = dotnetBuildDirIndex(path);
+    return at >= 0 && at < path.replace(/\/+$/, '').split('/').length - 1;
 }
 /**
  * Of the prepare checkout's untracked files (ignored or not, repository
  * paths), the definition files MSBuild would read for a dotnet gate although
  * no commit pins them (an ignored `App.csproj.user` or `Directory.Build.rsp`),
  * outside the build output dirs (`bin/`, `obj/`, `artifacts/`), which a
- * sandboxed step empties before a dotnet gate run (dotnet-clean.ts), and
- * outside `node_modules` (a package tree is never the repository's MSBuild
- * input). The PR's code run there earlier (a prepare check, an earlier gate
- * run) can leave one.
+ * sandboxed step empties before a dotnet gate run (dotnet-clean.ts). The
+ * caller leaves out the package trees the engine links or copies; a file
+ * under any other dir named `node_modules` counts. The PR's code run there
+ * earlier (a prepare check, an earlier gate run) can leave one.
  */
 export function strayDotnetDefinitionFiles(untracked) {
-    return untracked.filter((p) => {
-        if (p.split('/').some((s) => s.toLowerCase() === 'node_modules'))
-            return false;
-        const at = dotnetBuildDirIndex(p);
-        return (at < 0 || at === p.replace(/\/+$/, '').split('/').length - 1) && isDotnetDefinitionFile(p);
-    });
+    return untracked.filter((p) => !underDotnetBuildDir(p) && isDotnetDefinitionFile(p));
 }
 /** The dotnet subcommands a gate may run: both are defined by the repository's MSBuild files only. */
 const DOTNET_GATE_SUBCOMMANDS = new Set(['build', 'test']);
@@ -596,12 +605,23 @@ function dotnetSource(args, shown) {
         else
             named.set(p, { path: p, file: true });
     }
-    return { sources: [...DOTNET_DEFINITION_PATTERNS.map((path) => ({ path, pattern: true })), ...named.values()] };
+    return { sources: [...DOTNET_DEFINITION_PATTERNS.map((path) => ({ path, pattern: true })), ...DOTNET_BUILD_DIR_SOURCES, ...named.values()] };
 }
+/**
+ * Every tracked path under a bin/, obj/ or artifacts/ dir (any case, any
+ * depth) is part of a dotnet gate's definition: committed build output
+ * (`project.assets.json`, `*.AssemblyInfoInputs.cache`, a `Tests.dll`) is
+ * MSBuild input no definition pattern names, and the step that empties the
+ * build dirs before the gate keeps tracked files by design. Pattern sources
+ * whose glob names the dir (`bin/**`, the park's pathspec); patternEntries
+ * matches them by segment, never by basename.
+ */
+const DOTNET_BUILD_DIR_SOURCES = [...DOTNET_BUILD_DIRS].map((d) => ({ path: `${d}/**`, pattern: true, buildDir: true }));
 /** The entries of `tree` the pattern sources match, in one pass with one matcher, sorted by path. */
 function patternEntries(sources, tree) {
-    const hit = basenameMatcher(sources.filter((s) => s.pattern).map((s) => s.path));
-    return tree.filter(([p]) => hit(p)).sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
+    const hit = basenameMatcher(sources.filter((s) => s.pattern && !s.buildDir).map((s) => s.path));
+    const build = sources.some((s) => s.buildDir);
+    return tree.filter(([p]) => hit(p) || (build && underDotnetBuildDir(p))).sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
 }
 /** The entries of `tree` at or (unless `exact`) under the repository path `path` (a file, or every blob of a directory), in any case, sorted. */
 function treeEntries(path, tree, exact = false) {

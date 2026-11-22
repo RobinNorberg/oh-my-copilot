@@ -86,7 +86,7 @@ describe('gate definitions that the repository cannot pin park as unknown', () =
     });
 });
 describe('a dotnet gate is defined by the repository\'s solution, project and MSBuild files', () => {
-    const PATTERNS = DOTNET_DEFINITION_PATTERNS.map((path) => ({ path, pattern: true }));
+    const PATTERNS = [...DOTNET_DEFINITION_PATTERNS.map((path) => ({ path, pattern: true })), ...['bin', 'obj', 'artifacts'].map((d) => ({ path: `${d}/**`, pattern: true, buildDir: true }))];
     const named = (gate) => gateDefinitionSources(gate).sources.filter((s) => !('pattern' in s));
     it('dotnet build / dotnet test, by name or by an absolute path to the host, are pinned by the pattern sources', () => {
         for (const gate of [['dotnet', 'test'], ['dotnet', 'build'], ['dotnet.exe', 'test', '-c', 'Release'], ['C:\\Program Files\\dotnet\\dotnet.exe', 'test'], ['/usr/share/dotnet/dotnet', 'build', '--no-restore'], ['dotnet', 'TEST']]) {
@@ -215,19 +215,30 @@ describe('a dotnet gate is defined by the repository\'s solution, project and MS
             'Tests/Tests.csproj.user', 'Directory.Build.rsp', 'src/App/obj/App.csproj.evil.props', 'src/App/obj/App.csproj.nuget.g.props', 'src/App/OBJ/App.csproj.nuget.g.targets',
             'src/App/obj/project.assets.json', 'src/App/obj/Debug/net10.0/x.props', 'src/App/bin/Debug/net10.0/App.dll', 'src/App/bin/x.targets', 'TestResults/a.trx', 'src/App/Program.cs',
             'artifacts/obj/App/App.csproj.nuget.g.props', 'build/obj.props', 'Tests/Properties/launchSettings.json', 'node_modules/x/obj/y.props',
-            // L2: a package tree (linked or copied node_modules) shipping MSBuild-named files never parks.
-            'node_modules/pkg/Directory.Build.props', 'web/node_modules/pkg/global.json', 'web/NODE_MODULES/pkg/Properties/launchSettings.json',
-        ])).toEqual(['Tests/Tests.csproj.user', 'Directory.Build.rsp', 'build/obj.props', 'Tests/Properties/launchSettings.json']);
+            // Follow-up 3: a node_modules segment is not exempt here; the engine leaves out only the trees it links or copies (engine.ts engineTrees).
+            'tools/node_modules/pkg/Directory.Build.props', 'web/NODE_MODULES/pkg/Properties/launchSettings.json',
+        ])).toEqual(['Tests/Tests.csproj.user', 'Directory.Build.rsp', 'build/obj.props', 'Tests/Properties/launchSettings.json', 'tools/node_modules/pkg/Directory.Build.props', 'web/NODE_MODULES/pkg/Properties/launchSettings.json']);
     });
-    it('build output dirs: the first bin/obj/artifacts segment in any case; never a path with a node_modules, empty, . or .. segment', () => {
+    it('build output dirs: the first bin/obj/artifacts segment in any case, under node_modules too; never a path with an empty, . or .. segment', () => {
         expect(dotnetBuildDirIndex('src/App/obj/x.props')).toBe(2);
         expect(dotnetBuildDirIndex('src/App/Bin/Debug/a.dll')).toBe(2);
         expect(dotnetBuildDirIndex('artifacts/obj/App/a.json')).toBe(0);
         expect(dotnetBuildDirIndex('src/App/obj')).toBe(2);
         expect(dotnetBuildDirIndex('src/App/objx/a')).toBe(-1);
         expect(dotnetBuildDirIndex('src/App/Program.cs')).toBe(-1);
-        for (const p of ['node_modules/pkg/bin/cli.js', 'a/NODE_MODULES/obj/x', 'a//obj/x', './obj/x', 'a/../obj/x', 'a/b\\c/obj/x'])
+        expect(dotnetBuildDirIndex('node_modules/pkg/bin/cli.js')).toBe(2);
+        expect(dotnetBuildDirIndex('a/NODE_MODULES/obj/x')).toBe(2);
+        for (const p of ['a//obj/x', './obj/x', 'a/../obj/x', 'a/b\\c/obj/x'])
             expect(dotnetBuildDirIndex(p), p).toBe(-1);
+    });
+    it('follow-up 1: every tracked path under bin/, obj/ or artifacts/ is part of a dotnet gate\'s definition (added, changed or removed); a file named bin is not', () => {
+        const { sources } = gateDefinitionSources(['dotnet', 'test']);
+        const base = [['src/App/App.csproj', 'a'], ['src/App/Program.cs', 'b'], ['tools/bin', 'c'], ['artifacts/readme.txt', 'd']];
+        const head = [...base.slice(0, 3), ['artifacts/readme.txt', 'e'], ['src/App/obj/project.assets.json', 'f'], ['tests/T/Bin/Debug/T.dll', 'g'], ['src/App/Program.cs', 'b'], ['tools/bin', 'h']];
+        expect(patternSourceChanges(sources, base, head)).toEqual(['artifacts/readme.txt', 'src/App/obj/project.assets.json', 'tests/T/Bin/Debug/T.dll']);
+        expect(gateDefinition(sources, () => undefined, () => base)).not.toBe(gateDefinition(sources, () => undefined, () => [...base, ['src/App/obj/x.cache', 'z']]));
+        expect(sources.filter((x) => x.buildDir).map(gateSourcePathspec)).toEqual(["':(glob,icase)**/bin/**'", "':(glob,icase)**/obj/**'", "':(glob,icase)**/artifacts/**'"]);
+        expect(describeGateSources(sources.filter((x) => x.buildDir))).toBe('**/bin/**, **/obj/**, **/artifacts/**');
     });
     it('F2: the Microsoft.Testing.Platform launch profiles are definition files', () => {
         for (const p of ['Tests/Properties/launchSettings.json', 'LAUNCHSETTINGS.JSON', 'Tests/Tests.run.json'])

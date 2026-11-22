@@ -1,8 +1,9 @@
 /**
  * What `dotnet` needs to build and test inside the Copilot OS sandbox, for a
  * factory gate or prepare check whose executable is `dotnet` and for the
- * write lanes of a run whose local gate is one (the caller decides; nothing
- * here looks at repository files, so no PR can switch it on or off).
+ * write lanes of a .NET repository (the caller decides, from trusted config
+ * and the trusted base commit only: engine.ts dotnetRepo; nothing here looks
+ * at repository files, so no PR can switch it on or off).
  *
  * Found by running `dotnet build` / `dotnet test` in the Windows sandbox
  * (Copilot CLI 1.0.107, .NET SDK 10.0.101):

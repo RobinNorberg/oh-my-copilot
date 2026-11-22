@@ -23,18 +23,24 @@ export const DOTNET_BUILD_DIRS = new Set(['bin', 'obj', 'artifacts']);
 const MAX_ERRORS = 20;
 /**
  * Remove every entry under each directory named `bin`, `obj` or `artifacts`
- * (any case, any depth, outside `node_modules` and the checkout's own `.git`)
- * of `checkout`, except the tracked paths in `keep` (repository paths, `/`
- * separated, as git lists them). A build dir without a kept path under it
+ * (any case, any depth, outside the checkout's own `.git` and the package
+ * trees in `trees`) of `checkout`, except the tracked paths in `keep`
+ * (repository paths, `/` separated, as git lists them). `trees` are the
+ * `node_modules` dirs the engine itself links or copies there (the root one
+ * and the workspace packages' it vouches for, engine.ts engineTrees); an entry
+ * not named `node_modules` is ignored. Any other dir named `node_modules` is
+ * walked like the rest. A build dir without a kept path under it
  * goes whole. A link (symlink or junction) is unlinked, never followed: at a
  * build dir, under it, or on the way to one (the walk does not descend
  * through a link). A directory outside the build dirs that holds `.git` (a
  * nested repository) is not descended into: the engine's check parks on it.
  * Names compare case-insensitively on Windows.
  */
-export function cleanDotnetBuildOutput(checkout, keep, platform = process.platform) {
+export function cleanDotnetBuildOutput(checkout, keep, platform = process.platform, trees = ['node_modules']) {
     const fold = (p) => (platform === 'win32' ? p.toLowerCase() : p);
-    const exact = new Set(keep.map((p) => fold(p.replace(/\/+$/, ''))));
+    const skip = new Set(trees.map((t) => fold(t.replace(/\/+$/, ''))).filter((t) => (t.split('/').pop() ?? '').toLowerCase() === 'node_modules'));
+    // The engine's package trees are kept like tracked paths: never removed, and a build dir above one is cleared entry by entry.
+    const exact = new Set([...keep.map((p) => fold(p.replace(/\/+$/, ''))), ...skip]);
     // Every dir above a kept path: it is cleared entry by entry, never removed whole.
     const above = new Set();
     for (const p of exact) {
@@ -114,10 +120,12 @@ export function cleanDotnetBuildOutput(checkout, keep, platform = process.platfo
     const walk = (abs, rel) => {
         for (const name of list(abs, rel || '.')) {
             const lower = name.toLowerCase();
-            if (lower === 'node_modules' || (rel === '' && name === '.git'))
+            if (rel === '' && name === '.git')
                 continue;
             const childRel = rel ? `${rel}/${name}` : name;
             const key = fold(childRel);
+            if (skip.has(key))
+                continue;
             const childAbs = join(abs, name);
             const st = stat(childAbs, childRel);
             if (!st)
@@ -141,5 +149,17 @@ export function cleanDotnetBuildOutput(checkout, keep, platform = process.platfo
     };
     walk(checkout, '');
     return result;
+}
+/**
+ * The step's arguments (dotnet-clean-step.ts): a first argument of digits only
+ * is the count of package trees that follow; the rest are the kept paths
+ * (each under a build dir, so it holds a `/` and is never all digits).
+ * Without the count only the root `node_modules` is a tree.
+ */
+export function parseCleanStepArgs(args) {
+    if (!/^\d+$/.test(args[0] ?? ''))
+        return { trees: ['node_modules'], keep: [...args] };
+    const n = Number(args[0]);
+    return { trees: args.slice(1, 1 + n), keep: args.slice(1 + n) };
 }
 //# sourceMappingURL=dotnet-clean.js.map

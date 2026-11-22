@@ -135275,15 +135275,15 @@ function basenameMatcher(globs) {
 }
 function dotnetBuildDirIndex(path30) {
   const segs = path30.replace(/\/+$/, "").split("/");
-  if (segs.some((s) => s === "" || s === "." || s === ".." || s.includes("\\") || s.toLowerCase() === "node_modules")) return -1;
+  if (segs.some((s) => s === "" || s === "." || s === ".." || s.includes("\\"))) return -1;
   return segs.findIndex((s) => DOTNET_BUILD_DIRS.has(s.toLowerCase()));
 }
+function underDotnetBuildDir(path30) {
+  const at = dotnetBuildDirIndex(path30);
+  return at >= 0 && at < path30.replace(/\/+$/, "").split("/").length - 1;
+}
 function strayDotnetDefinitionFiles(untracked) {
-  return untracked.filter((p) => {
-    if (p.split("/").some((s) => s.toLowerCase() === "node_modules")) return false;
-    const at = dotnetBuildDirIndex(p);
-    return (at < 0 || at === p.replace(/\/+$/, "").split("/").length - 1) && isDotnetDefinitionFile(p);
-  });
+  return untracked.filter((p) => !underDotnetBuildDir(p) && isDotnetDefinitionFile(p));
 }
 function dotnetSource(args, shown) {
   const sub = args[0]?.toLowerCase();
@@ -135322,11 +135322,12 @@ function dotnetSource(args, shown) {
     if (adapter || named.get(p)?.tree) named.set(p, { path: p, tree: true });
     else named.set(p, { path: p, file: true });
   }
-  return { sources: [...DOTNET_DEFINITION_PATTERNS.map((path30) => ({ path: path30, pattern: true })), ...named.values()] };
+  return { sources: [...DOTNET_DEFINITION_PATTERNS.map((path30) => ({ path: path30, pattern: true })), ...DOTNET_BUILD_DIR_SOURCES, ...named.values()] };
 }
 function patternEntries(sources, tree) {
-  const hit2 = basenameMatcher(sources.filter((s) => s.pattern).map((s) => s.path));
-  return tree.filter(([p]) => hit2(p)).sort((a, b) => a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0);
+  const hit2 = basenameMatcher(sources.filter((s) => s.pattern && !s.buildDir).map((s) => s.path));
+  const build = sources.some((s) => s.buildDir);
+  return tree.filter(([p]) => hit2(p) || build && underDotnetBuildDir(p)).sort((a, b) => a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0);
 }
 function treeEntries2(path30, tree, exact = false) {
   const at = path30.toLowerCase();
@@ -135392,7 +135393,7 @@ function gateDefinition(sources, read, list3) {
     return [s.path, s.scripts.map((k) => [k, Object.prototype.hasOwnProperty.call(scripts, k) ? scripts[k] : null])];
   })]);
 }
-var import_child_process47, import_fs164, import_os36, import_path189, LOCAL_GATE_TAIL_CHARS, LOCAL_GATE_STALE_GRACE_MS, STREAM_KEEP_CHARS, KILL_DEADLINE_MS, EXIT_DRAIN_MS, NODE_SCRIPTS2, npmCliHint, keepTail, defaultLocalGateRunner, realOrResolved, isLink3, runIdAt, tailOf, NPM_TEST, NPM_RUN, PM_CONFIG_FILES, DIR_FLAGS, CONFIG_FLAGS, WORKSPACE_FLAGS, PM_NON_SCRIPT, VALUE_FLAGS, DOTNET_DEFINITION_PATTERNS, DOTNET_TEST_CONFIG_PATTERNS, foldedName, basenameOf, openedBasename, isDotnetDefinitionFile, DOTNET_GATE_SUBCOMMANDS, DOTNET_ADAPTER_OPTIONS, shellPath2, gateSourcePathspec, npxUnresolved, describeGateSources;
+var import_child_process47, import_fs164, import_os36, import_path189, LOCAL_GATE_TAIL_CHARS, LOCAL_GATE_STALE_GRACE_MS, STREAM_KEEP_CHARS, KILL_DEADLINE_MS, EXIT_DRAIN_MS, NODE_SCRIPTS2, npmCliHint, keepTail, defaultLocalGateRunner, realOrResolved, isLink3, runIdAt, tailOf, NPM_TEST, NPM_RUN, PM_CONFIG_FILES, DIR_FLAGS, CONFIG_FLAGS, WORKSPACE_FLAGS, PM_NON_SCRIPT, VALUE_FLAGS, DOTNET_DEFINITION_PATTERNS, DOTNET_TEST_CONFIG_PATTERNS, foldedName, basenameOf, openedBasename, isDotnetDefinitionFile, DOTNET_PROJECT_PATTERNS, isDotnetProjectFile, DOTNET_GATE_SUBCOMMANDS, DOTNET_ADAPTER_OPTIONS, DOTNET_BUILD_DIR_SOURCES, shellPath2, gateSourcePathspec, npxUnresolved, describeGateSources;
 var init_local_gate = __esm({
   "src/factory/run/local-gate.ts"() {
     "use strict";
@@ -135497,8 +135498,11 @@ var init_local_gate = __esm({
     basenameOf = (path30) => path30.split(/[\\/]/).pop() ?? path30;
     openedBasename = (path30) => foldedName(basenameOf(path30).replace(/:.*$/s, "")).replace(/[. ]+$/, "");
     isDotnetDefinitionFile = basenameMatcher(DOTNET_DEFINITION_PATTERNS);
+    DOTNET_PROJECT_PATTERNS = ["*.sln", "*.slnx", "*.*proj"];
+    isDotnetProjectFile = basenameMatcher(DOTNET_PROJECT_PATTERNS);
     DOTNET_GATE_SUBCOMMANDS = /* @__PURE__ */ new Set(["build", "test"]);
     DOTNET_ADAPTER_OPTIONS = /* @__PURE__ */ new Set(["--test-adapter-path", "-a"]);
+    DOTNET_BUILD_DIR_SOURCES = [...DOTNET_BUILD_DIRS].map((d) => ({ path: `${d}/**`, pattern: true, buildDir: true }));
     shellPath2 = (p) => /^[\w@%+=,./-]+$/.test(p) ? p : `'${p.replace(/'/g, "'\\''")}'`;
     gateSourcePathspec = (s) => s.pattern ? `':(glob,icase)**/${s.path}'` : shellPath2(s.path);
     npxUnresolved = (shown) => `${shown} runs npx, which fetches and runs registry code that the repository cannot pin`;
@@ -135596,7 +135600,7 @@ function globMatcher(glob) {
   const re = new RegExp(`^${anyDepth ? "(?:[^/]+/)*" : ""}${body}$`);
   return (path30) => re.test(segments(path30).join("/"));
 }
-function deniedPaths(paths, extra = [], globs = []) {
+function deniedPaths(paths, extra = [], globs = [], dotnet = false) {
   const anchored = new Set(protectedChanges(paths, [...LANE_PROTECTED_PATHS, ...CI_TREE_PATHS, ...PROTECTED_PATHS, ".omg/", ".omc/", ...HOOK_DIRS, ...SHIPPED_DIRS, ...extra.map(rootRelative).filter(Boolean)]));
   const user = globs.map(globMatcher);
   return paths.filter((p) => {
@@ -135605,6 +135609,7 @@ function deniedPaths(paths, extra = [], globs = []) {
     if (segs.length === 0) return true;
     if (segs.length === 1 && GIT_HOOK_NAMES.has(segs[0].replace(/\.exe$/, ""))) return true;
     if (segs.slice(0, -1).some((s) => DENIED_DIRS.has(s))) return true;
+    if (dotnet && segs.slice(0, -1).some((s) => DOTNET_BUILD_DIRS.has(s))) return true;
     if (user.some((m) => m(p))) return true;
     const name = segs[segs.length - 1];
     return DENIED_DIRS.has(name) || DENIED_NAMES.has(name) || DENIED_NAME_PATTERNS.some((r) => r.test(name)) || deniedDotnetName(name);
@@ -135747,7 +135752,7 @@ function classifyChanges(entries, config2, opts = {}) {
   if (odd.length > 0) reasons.push(`non-plain file modes (symlink, gitlink, executable or mode change): ${list3(odd.map((e) => `${e.path} ${e.oldMode}->${e.newMode}`))}`);
   const binary = entries.filter((e) => e.added === null || e.deleted === null);
   if (binary.length > 0) reasons.push(`binary changes: ${list3(binary.map((e) => e.path))}`);
-  const denied = deniedPaths(entries.map((e) => e.path), [...opts.extraDenied ?? [], ...opts.installFiles?.paths ?? []], config2.securityCritical ?? []);
+  const denied = deniedPaths(entries.map((e) => e.path), [...opts.extraDenied ?? [], ...opts.installFiles?.paths ?? []], config2.securityCritical ?? [], opts.dotnet === true);
   if (denied.length > 0) reasons.push(`touches paths that always need a human (CI, config, manifests, lockfiles, hooks, agent prompts, factory or security-critical files): ${list3(denied)}`);
   const isSetup = setupMatcher(opts.testSetup?.paths ?? []);
   const setup2 = entries.filter((e) => isSetup(e.path));
@@ -140674,24 +140679,71 @@ var init_engine = __esm({
         const sha3 = this.state.baseSha;
         if (!sha3) return false;
         if (this.mtpAt?.sha !== sha3) {
-          const names = process.platform === "win32" ? this.exec("git", ["ls-tree", "-z", "--name-only", sha3], { cwd: this.o.root, env: TRUSTED_READ_ENV }).stdout.split("\0").filter((n) => n.toLowerCase() === "global.json") : ["global.json"];
-          this.mtpAt = { sha: sha3, mtp: names.some((n) => {
+          const root = this.exec("git", ["ls-tree", "-z", "--name-only", sha3], { cwd: this.o.root, env: TRUSTED_READ_ENV });
+          if (root.status !== 0) throw new FactoryStepError(`the trusted base ${sha3.slice(0, 12)}'s root files could not be listed to read its global.json (git ls-tree exit ${root.status}: ${oneLine(root.stderr, 200)})`);
+          const names = root.stdout.split("\0").filter((n) => process.platform === "win32" ? n.toLowerCase() === "global.json" : n === "global.json");
+          const mtp = names.some((n) => {
             const r = this.exec("git", ["show", `${sha3}:${n}`], { cwd: this.o.root, env: TRUSTED_READ_ENV });
-            return r.status === 0 && isMtpGlobalJson(r.stdout);
-          }) };
+            if (r.status !== 0) throw new FactoryStepError(`the trusted base ${sha3.slice(0, 12)}'s ${n} could not be read (git show exit ${r.status}: ${oneLine(r.stderr, 200)})`);
+            return isMtpGlobalJson(r.stdout);
+          });
+          this.mtpAt = { sha: sha3, mtp };
         }
         return this.mtpAt.mtp;
       }
+      /** dotnetRepo's base-dependent answer per base sha. */
+      dotnetAt;
       /**
-       * The run's repository is a .NET one for its lanes: the local gate
-       * (factory.forge.local.gate, trusted config only) runs dotnet. Never read
-       * from repository files, so no change of a PR's turns it on or off. The
-       * gate and prepare checks need no such rule: the sandbox runner treats
-       * each command whose executable is dotnet as one (dotnet-sandbox.ts).
+       * The run's repository is a .NET one for its write lanes and auto-merge, on
+       * every forge, from trusted input only: the local gate
+       * (factory.forge.local.gate) runs dotnet; or a trusted ship.prepare check
+       * or ship.prepare.build command runs dotnet (the user config at its
+       * default location, else the trusted base's committed config:
+       * trustedPrepareChecks); or the trusted base commit's tree
+       * (state.baseSha, `git ls-tree -r`, never the PR head or a working tree)
+       * holds a solution or project file (isDotnetProjectFile: *.sln, *.slnx,
+       * *.*proj). Cached per base sha, so no commit of the PR's turns it on or
+       * off mid-run; a base that moves (a merge on the base branch) is read
+       * again. Submodule trees are not descended into. The gate and prepare
+       * checks need no such rule: the sandbox runner treats each command whose
+       * executable is dotnet as one (dotnet-sandbox.ts). A base that cannot be
+       * listed is a step error (it parks).
        */
       dotnetRepo() {
         const gate = this.o.forge?.config.kind === "local" ? this.o.forge.config.local?.gate : void 0;
-        return isDotnetExe(gate?.[0]);
+        if (isDotnetExe(gate?.[0])) return true;
+        const sha3 = this.state.baseSha;
+        if (!sha3 || !HEX4020.test(sha3)) return false;
+        if (this.dotnetAt?.sha !== sha3) this.dotnetAt = { sha: sha3, dotnet: this.dotnetPrepare(sha3) || this.dotnetBaseTree(sha3) };
+        return this.dotnetAt.dotnet;
+      }
+      /** dotnetRepo for auto-merge: when it cannot tell (an unlistable base), the build dirs are denied (fail closed). */
+      autoMergeDotnet() {
+        try {
+          return this.dotnetRepo();
+        } catch {
+          return true;
+        }
+      }
+      /** A trusted ship.prepare check or ship.prepare.build command at `sha` runs dotnet. An invalid block counts as none here: prepare reports it. */
+      dotnetPrepare(sha3) {
+        try {
+          const user = this.runUserConfig();
+          const base = this.trustedBaseLayer(sha3);
+          const build = trustedPrepareBuild(user, base);
+          return [...trustedPrepareChecks(user, base) ?? [], ...build ? [build.command] : []].some((argv) => isDotnetExe(argv[0]));
+        } catch {
+          return false;
+        }
+      }
+      /** The trusted base commit `sha` holds a .NET solution or project file at any depth (DOTNET_PROJECT_PATTERNS). */
+      dotnetBaseTree(sha3) {
+        const r = this.exec("git", ["ls-tree", "-r", "-z", "--full-tree", sha3], { cwd: this.o.root, env: TRUSTED_READ_ENV });
+        if (r.status !== 0) throw new FactoryStepError(`the trusted base ${sha3.slice(0, 12)} could not be listed to tell whether it is a .NET repository (git ls-tree exit ${r.status}: ${oneLine(r.stderr, 200)})`);
+        return r.stdout.split("\0").some((line2) => {
+          const tab = line2.indexOf("	");
+          return tab > 0 && line2.slice(0, tab).split(" ")[1] === "blob" && isDotnetProjectFile(line2.slice(tab + 1));
+        });
       }
       /** The gate-sandbox-incompatible park of a copied tree linkGateTree could not build (`why`). */
       treeCopyPark(why) {
@@ -142226,7 +142278,8 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
         const changed = sources.some((x) => x.pattern) ? patternSourceChanges(sources, treeAt(s.baseSha), treeAt(cand)) : [];
         const named = [...plain.length > 0 ? [describeGateSources(plain)] : [], ...changed].join(", ") || describeGateSources(sources);
         const specs = [.../* @__PURE__ */ new Set([...plain.map(gateSourcePathspec), ...changed.map(shellPath2)])];
-        this.save((x) => setGate(x, "gate-definition-changed", `the change redefines the local gate "${gate.join(" ")}" (${named} differ from ${s.base})${stale2}; offline the gate is the only check, so nothing was pushed. Inspect it with git -C ${this.o.root} diff ${s.baseSha.slice(0, 12)} ${cand.slice(0, 12)} -- ${(specs.length > 0 ? specs : sources.map(gateSourcePathspec)).join(" ")}, then rerun ${this.resume} --allow-gate-change to accept it, or ${cancelCommand(this.key)}`, this.iso(), { definition: head }));
+        const output2 = changed.some(underDotnetBuildDir) ? "; tracked files under bin/, obj/ or artifacts/ are build output MSBuild may reuse instead of building the change, so they count as the gate's definition" : "";
+        this.save((x) => setGate(x, "gate-definition-changed", `the change redefines the local gate "${gate.join(" ")}" (${named} differ from ${s.base})${output2}${stale2}; offline the gate is the only check, so nothing was pushed. Inspect it with git -C ${this.o.root} diff ${s.baseSha.slice(0, 12)} ${cand.slice(0, 12)} -- ${(specs.length > 0 ? specs : sources.map(gateSourcePathspec)).join(" ")}, then rerun ${this.resume} --allow-gate-change to accept it, or ${cancelCommand(this.key)}`, this.iso(), { definition: head }));
         return true;
       }
       async review() {
@@ -143516,7 +143569,7 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
        */
       readGateCheckout(checkout, gitArgs2, dotnet) {
         const indexDir = (0, import_fs171.mkdtempSync)((0, import_path198.join)((0, import_os38.tmpdir)(), "omg-gate-index-"));
-        const out = { at: "", dirty: [], untracked: [], kept: [] };
+        const out = { at: "", dirty: [], untracked: [], kept: [], gitlinks: [] };
         try {
           out.at = runHostGit(checkout, [...gitArgs2, "rev-parse", "HEAD"]).trim();
           const fresh = { ...process.env, GIT_INDEX_FILE: (0, import_path198.join)(indexDir, "index") };
@@ -143524,8 +143577,15 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
           const status = [...gitArgs2, "-c", "core.untrackedCache=false", "status", "--porcelain=v1", "-z", "--untracked-files=all"];
           out.dirty = checkoutChanges(this.o.root, checkout, runHostGit(checkout, status, void 0, fresh), trustedNestedRels(this.o.root, checkout, this.baseWorkspaces()));
           if (dotnet) {
-            out.untracked = runHostGit(checkout, [...gitArgs2, "ls-files", "--others", "-z"], void 0, fresh).split("\0").filter(Boolean);
-            out.kept = runHostGit(checkout, [...gitArgs2, "ls-files", "-z"], void 0, fresh).split("\0").filter((p) => p && dotnetBuildDirIndex(p) >= 0);
+            const ours = this.engineTreeMatcher(checkout);
+            out.untracked = runHostGit(checkout, [...gitArgs2, "ls-files", "--others", "-z"], void 0, fresh).split("\0").filter((p) => p && !ours(p));
+            for (const line2 of runHostGit(checkout, [...gitArgs2, "ls-files", "-s", "-z"], void 0, fresh).split("\0")) {
+              const tab = line2.indexOf("	");
+              if (tab < 0) continue;
+              const p = line2.slice(tab + 1);
+              if (line2.startsWith("160000 ")) out.gitlinks.push(p);
+              else if (dotnetBuildDirIndex(p) >= 0 && !ours(p)) out.kept.push(p);
+            }
           }
         } catch (error62) {
           out.problem = errText6(error62);
@@ -143533,6 +143593,52 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
           (0, import_fs171.rmSync)(indexDir, { recursive: true, force: true });
         }
         return out;
+      }
+      /**
+       * The node_modules dirs the engine itself links or copies into `checkout`
+       * (repository paths): the root one and the workspace packages' it vouches
+       * for (trustedNestedRels). A dotnet gate's checks and the clean step leave
+       * exactly these out; any other dir named node_modules is the repository's
+       * (or the PR's) and is checked and cleaned like the rest.
+       */
+      engineTrees(checkout) {
+        return ["node_modules", ...trustedNestedRels(this.o.root, checkout, this.baseWorkspaces()).map((rel) => `${rel}/node_modules`)];
+      }
+      /** Whether a repository path (as git lists it) is one of engineTrees or under one; case-insensitive where the file system is (Windows, macOS). */
+      engineTreeMatcher(checkout) {
+        const fold8 = (p) => process.platform === "linux" ? p : p.toLowerCase();
+        const trees = this.engineTrees(checkout).map(fold8);
+        return (path30) => {
+          const p = fold8(path30.replace(/\/+$/, ""));
+          return trees.some((t) => p === t || p.startsWith(`${t}/`));
+        };
+      }
+      /**
+       * The gitlink (submodule) dirs of the head that are not empty in
+       * `checkout` (read-only: lstat and readdir). git lists nothing the PR's
+       * code writes under a gitlink path (`ls-files --others` and `status`
+       * skip it), and a `.git` planted there also keeps the clean step out, so
+       * a dotnet gate runs only with every gitlink dir empty, as `git worktree
+       * add` leaves it (submodules are never initialised in the checkout). A
+       * path that is not a plain dir (a file, a link) counts too; a missing one
+       * does not.
+       */
+      filledGitlinks(checkout, gitlinks) {
+        return gitlinks.filter((rel) => {
+          const abs = (0, import_path198.join)(checkout, ...rel.split("/"));
+          let st;
+          try {
+            st = (0, import_fs171.lstatSync)(abs);
+          } catch {
+            return false;
+          }
+          if (st.isSymbolicLink() || !st.isDirectory()) return true;
+          try {
+            return (0, import_fs171.readdirSync)(abs).length > 0;
+          } catch {
+            return true;
+          }
+        });
       }
       /**
        * Before a dotnet gate in the OS sandbox, leftover build state goes (the PR's code run in
@@ -143551,12 +143657,17 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
        */
       async dotnetBuildStateReady(head, checkout, gitArgs2, read, gates, common) {
         const inBuild = (p) => dotnetBuildDirIndex(p) >= 0;
-        const nestedRepos = (untracked) => untracked.filter((p) => p.endsWith("/") && !inBuild(p) && !p.split("/").some((s) => s.toLowerCase() === "node_modules"));
+        const nestedRepos = (untracked) => untracked.filter((p) => p.endsWith("/") && !inBuild(p));
         const list3 = (paths) => `${paths.slice(0, 5).join(", ")}${paths.length > 5 ? `, ${paths.length - 5} more` : ""}`;
         const recovery = `inspect ${checkout}, delete them by hand or start again with a fresh checkout (${this.freshCheckoutRecovery()}), then rerun ${this.resume}`;
         const nested = nestedRepos(read.untracked);
         if (nested.length > 0) {
           this.gate("lane-tampered", `the engine's prepare checkout ${checkout} holds untracked nested git repositor${nested.length === 1 ? "y" : "ies"} (${list3(nested)}), whose files git does not list, so the engine cannot check what MSBuild would read there and the dotnet gate did not run; ${recovery}`);
+          return false;
+        }
+        const filled = this.filledGitlinks(checkout, read.gitlinks);
+        if (filled.length > 0) {
+          this.gate("lane-tampered", `the engine's prepare checkout ${checkout} has content in the submodule (gitlink) dir${filled.length === 1 ? "" : "s"} ${list3(filled)}, which git does not list and the engine never fills (submodules are not initialised there), so the engine cannot check what MSBuild would read there and the dotnet gate did not run; ${recovery}`);
           return false;
         }
         const leftovers = read.untracked.filter(inBuild);
@@ -143583,7 +143694,8 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
           this.gate("gates", `the step that empties the dotnet gate's build dirs is missing (${script}: the oh-my-copilot install has no dist), so the local gate did not run; reinstall oh-my-copilot, then rerun ${this.resume}`);
           return false;
         }
-        const argv = [process.execPath, script, ...read.kept];
+        const trees = this.engineTrees(checkout);
+        const argv = [process.execPath, script, String(trees.length), ...trees, ...read.kept];
         if (sandboxCommandTooLong(process.platform, argv, checkout)) {
           this.gate("gates", `${read.kept.length} tracked files under bin/, obj/ or artifacts/ are too many to name to the sandboxed step that empties the dotnet gate's build dirs, so the local gate did not run; untrack them or wrap the gate in a script, then rerun ${this.resume}`);
           return false;
@@ -143591,7 +143703,7 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
         const started = this.clock();
         let r;
         try {
-          r = await this.sandboxRun({ purpose: "clean", argv: ["node", script, ...read.kept], exe: process.execPath, args: argv.slice(1), cwd: checkout, commonGitDir: common, timeoutMs: DOTNET_CLEAN_TIMEOUT_MS, network: "none", ...gates.requireDeniedPaths ? { requireDeniedPaths: true } : {} });
+          r = await this.sandboxRun({ purpose: "clean", argv: ["node", script, String(trees.length), ...trees, ...read.kept], exe: process.execPath, args: argv.slice(1), cwd: checkout, commonGitDir: common, timeoutMs: DOTNET_CLEAN_TIMEOUT_MS, network: "none", ...gates.requireDeniedPaths ? { requireDeniedPaths: true } : {} });
         } catch (error62) {
           r = { ran: false, reason: errText6(error62) };
         }
@@ -143613,7 +143725,7 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
             return false;
           }
         });
-        const left = after.problem ? [] : [...after.untracked.filter(inBuild), ...nestedRepos(after.untracked), ...strayDotnetDefinitionFiles(after.untracked), ...links];
+        const left = after.problem ? [] : [...after.untracked.filter(inBuild), ...nestedRepos(after.untracked), ...strayDotnetDefinitionFiles(after.untracked), ...this.filledGitlinks(checkout, after.gitlinks), ...links];
         if (after.problem || after.at !== head || after.dirty.length > 0 || left.length > 0) {
           const what = after.problem ? `cannot be read (${after.problem})` : after.at !== head ? `is no longer at ${head.slice(0, 12)}` : after.dirty.length > 0 ? `differs from ${head.slice(0, 12)} (${list3(after.dirty)})` : `still holds ${list3([...new Set(left)])}`;
           this.gate("lane-tampered", `after the sandboxed step that empties the dotnet gate's build dirs, the engine's prepare checkout ${checkout} ${what}, so the local gate did not run; ${recovery}`);
@@ -143660,7 +143772,7 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
         let at = "";
         const sealed = this.state.localGate && this.localGateEverStarted(head) ? this.state.localGate : void 0;
         const dotnetGate = isDotnetExe((sealed ?? gate)[0]);
-        let read = { at: "", dirty: [], untracked: [], kept: [] };
+        let read = { at: "", dirty: [], untracked: [], kept: [], gitlinks: [] };
         let gitArgsRead = [];
         this.privateRun()?.assert();
         if ((0, import_fs171.existsSync)(checkout)) {
@@ -144181,6 +144293,7 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
         const changes = protectedProblem ? { reasons: [`the configured protected paths could not be read (${protectedProblem})`], evidence: [] } : classifyChanges(entries, resolved.config, {
           extraDenied: extra,
           installFiles,
+          dotnet: this.autoMergeDotnet(),
           ...testSetup ? { testSetup } : {},
           ...frontmatter ? { frontmatter } : {},
           ...patch !== void 0 ? { patch } : {}
@@ -144982,7 +145095,7 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
             // elsewhere the gates' linked tree, granted read-only only as the engine vouches for it (laneNodeModulesGrant).
             // A review lane's shell is read-only, so it runs no test and needs none.
             ...profile === "write" ? { beforeSandboxedSession: (wt, o) => this.prepareLaneTree(wt, o?.copy ?? true), nodeModulesGrant: (wt) => this.laneNodeModulesGrant(wt) } : {},
-            // A .NET repository (the trusted local gate runs dotnet): the env and NuGet grant dotnet needs in the lane sandbox.
+            // A .NET repository (dotnetRepo: trusted config or the trusted base's tree, any forge): the env and NuGet grant dotnet needs in the lane sandbox.
             ...profile === "write" && this.dotnetRepo() ? { dotnet: true } : {},
             ...priv && laneTree2 ? { worktree: { path: laneTree2, commonGitDir: priv.repo.gitDir }, jobRoot: priv.layout.jobs, deniedPaths: priv.deniedFor(laneTree2), beforeHostGit: () => priv.problem() } : {}
           }));

@@ -124,7 +124,7 @@ export interface LaneEnvironment {
   writeNetwork: 'none' | 'registry';
   /** The engine gives the worktree a copy of your node_modules before the session (Windows). */
   nodeModulesReady: boolean;
-  /** A .NET repository (the run's local gate runs dotnet): the lane's sandbox has the dotnet env (dotnet-sandbox.ts). */
+  /** A .NET repository (engine.ts dotnetRepo, any forge): the lane's sandbox has the dotnet env (dotnet-sandbox.ts). */
   dotnet?: boolean;
   /** writeNetwork "registry" with a NuGet host (api.nuget.org) in sandbox.allowedHosts: NuGet can reach its feed. */
   nugetReachable?: boolean;
