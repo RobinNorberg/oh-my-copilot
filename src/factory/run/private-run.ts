@@ -35,7 +35,7 @@ import { join, resolve } from 'path';
 
 import { withFileLockSync } from '../../lib/file-lock.js';
 import { defaultExec, scrubShipEnv, type Exec, type ExecResult } from '../../ship/exec.js';
-import { recordedWorktreeGitLinks, recordWorktreeGitLinks, readWorktreeGitLinks } from '../../team/git-worktree.js';
+import { EMPTY_TREE, recordedWorktreeGitLinks, recordWorktreeGitLinks, readWorktreeGitLinks } from '../../team/git-worktree.js';
 import { childEnv, hardenWindowsExeSearch, resolveBareExe } from '../../utils/windows-search.js';
 import { claimRepoKey } from './claims.js';
 import type { GitViewSource } from './git-view.js';
@@ -389,14 +389,25 @@ export class PrivateRun {
    * made with the store's pins (no hook, no filter, no global config), its
    * links recorded before anything else runs in it; the config hash is
    * re-recorded after (the allowlist still applies), so the caller seals
-   * `repo.configHash` again.
+   * `repo.configHash` again. `withoutAttributes` (a lane worktree the engine
+   * commits for): GIT_ATTR_SOURCE the empty tree, so the checkout writes blob
+   * bytes, as the attribute-free staging reads them (attributeFreeCheckout;
+   * the store's pins already leave no filter driver and no global or system
+   * attributes).
    */
-  addWorktree(path: string, sha: string, branch?: string): void {
+  addWorktree(path: string, sha: string, branch?: string, o: { withoutAttributes?: boolean } = {}): void {
     const tooLong = longPathProblem(path, this.repo.longestPath);
     if (tooLong) throw new PrivateStoreError(tooLong);
     if (existsSync(path)) throw new PrivateStoreError(`the private worktree ${path} already exists`);
     this.ensureCommit(sha);
-    privateGitOk(this.repo, this.ctx, ['worktree', 'add', '-q', ...(branch ? ['-B', branch] : ['--detach']), path, sha], `git worktree add ${path}`, { env: identityEnv() });
+    let attrs: Record<string, string> = {};
+    if (o.withoutAttributes) {
+      const format = privateGitOk(this.repo, this.ctx, ['rev-parse', '--show-object-format'], 'git rev-parse --show-object-format').trim();
+      const emptyTree = EMPTY_TREE[format];
+      if (!emptyTree) throw new PrivateStoreError(`the private repository has an unknown object format ${JSON.stringify(format)}`);
+      attrs = { GIT_ATTR_SOURCE: emptyTree };
+    }
+    privateGitOk(this.repo, this.ctx, ['worktree', 'add', '-q', ...(branch ? ['-B', branch] : ['--detach']), path, sha], `git worktree add ${path}`, { env: { ...identityEnv(), ...attrs } });
     this.repo = rerecordConfigHash(this.repo, this.ctx);
     const links = readWorktreeGitLinks(path);
     if (!links || !inside(links.adminDir, join(this.repo.gitDir, 'worktrees'), process.platform)) throw new PrivateStoreError(`the private worktree ${path} has no git links in ${this.repo.gitDir}`);

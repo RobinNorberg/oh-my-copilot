@@ -59,7 +59,7 @@ export function quoteForCmd(arg) {
  * such as `%0` pane ids and `set "K=%%V%%"` prefixes, never free text, so they
  * keep their old semantics. Host CLI argv must use quoteForCmd.
  */
-function quoteForTmuxCmdLayer(command) {
+export function quoteForTmuxCmdLayer(command) {
     assertSafeCmdValue(command);
     if (command.length === 0)
         return '""';

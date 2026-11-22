@@ -6,6 +6,7 @@
  */
 
 import { RESET } from '../colors.js';
+import { compareVersions } from '../../utils/semver-compare.js';
 
 const YELLOW = '\x1b[33m';
 const BOLD = '\x1b[1m';
@@ -13,6 +14,44 @@ const BOLD = '\x1b[1m';
 /** Copilot CLI plugin update; the marketplace clone is refreshed first, as in the Claude hint. */
 const COPILOT_PLUGIN_UPDATE = '! copilot plugin marketplace update omc && copilot plugin update oh-my-copilot@omc';
 const NPM_UPDATE = '! npm i -g oh-my-copilot@latest';
+const SEMVER_RE = /^\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?$/;
+
+export interface OmcUpdateState {
+  /** Version to advertise as an update, else null */
+  updateAvailable: string | null;
+  /** Newer installed version the HUD wrapper skipped because it has no built HUD, else null */
+  unbuiltVersion: string | null;
+}
+
+/**
+ * Decide what the HUD says about newer OMC versions.
+ *
+ * The HUD wrapper keeps rendering the previous built version while a newer
+ * cached version has no dist/hud/index.js, and reports that version through
+ * OMC_HUD_UNBUILT_VERSION. That version is already installed, so the update
+ * command cannot deliver it: it is reported as unbuilt rather than as an
+ * update. A latest version above the unbuilt one is still a real update.
+ */
+export function resolveOmcUpdateState(
+  omcVersion: string | null,
+  latestVersion: unknown,
+  unbuiltVersionEnv: string | undefined,
+): OmcUpdateState {
+  if (!omcVersion) return { updateAvailable: null, unbuiltVersion: null };
+
+  const unbuiltVersion =
+    unbuiltVersionEnv && SEMVER_RE.test(unbuiltVersionEnv) && compareVersions(omcVersion, unbuiltVersionEnv) < 0
+      ? unbuiltVersionEnv
+      : null;
+
+  if (typeof latestVersion === 'string' && latestVersion && compareVersions(omcVersion, latestVersion) < 0) {
+    if (!unbuiltVersion || compareVersions(unbuiltVersion, latestVersion) < 0) {
+      return { updateAvailable: latestVersion, unbuiltVersion: null };
+    }
+  }
+
+  return { updateAvailable: null, unbuiltVersion };
+}
 
 export interface UpdateHintInput {
   /** Latest OMC version when an update is available, else null */
@@ -26,6 +65,10 @@ export interface UpdateHintInput {
   claudeCodeUpdateAvailable: string | null;
   /** Host CLI; under Copilot no Claude Code line is ever rendered */
   host?: 'claude' | 'copilot';
+  /** Newer installed OMC version that has no built HUD, else null */
+  omcUnbuiltVersion?: string | null;
+  /** OMC version this HUD is running */
+  omcVersion?: string | null;
 }
 
 /**
@@ -46,6 +89,9 @@ export function renderUpdateHints(input: UpdateHintInput): string[] {
       command = '! claude plugin marketplace update omc && claude plugin update oh-my-copilot@omc';
     }
     lines.push(`${YELLOW}${BOLD}[!] omg ${input.omcUpdateAvailable} - paste: ${command}${RESET}`);
+  } else if (input.omcUnbuiltVersion) {
+    const running = input.omcVersion ? ` - HUD is running ${input.omcVersion}` : '';
+    lines.push(`${YELLOW}${BOLD}[!] omg ${input.omcUnbuiltVersion} is installed but not built${running}${RESET}`);
   }
 
   if (!copilot && input.claudeCodeUpdateAvailable) {

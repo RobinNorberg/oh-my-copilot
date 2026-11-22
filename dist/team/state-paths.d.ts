@@ -58,6 +58,9 @@ export declare const TeamPaths: {
     readonly mailbox: (teamName: string, workerName: string) => string;
     readonly mailboxLockDir: (teamName: string, workerName: string) => string;
     readonly dispatchRequests: (teamName: string) => string;
+    readonly dispatchLock: (teamName: string) => string;
+    readonly dispatchLegacyLockDir: (teamName: string) => string;
+    /** @deprecated Use `dispatchLegacyLockDir` instead. Kept for public API compatibility. */
     readonly dispatchLockDir: (teamName: string) => string;
     readonly mailboxNotificationLock: (teamName: string, requestId: string) => string;
     readonly workerStatus: (teamName: string, workerName: string) => string;

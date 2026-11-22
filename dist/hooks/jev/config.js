@@ -46,8 +46,9 @@
  * channel (ADR 03672).
  *
  * OMC_JEV entry syntax: `point` (shadow) | `point:active` (active) | `all`
- * (every registered point, shadow) | `all:active` (every point, active).
- * Unknown point names are ignored.
+ * (every registered point, shadow) | `all:active` (every point, active) |
+ * `point:shadow` (shadow even under `all:active`, when it is the last entry
+ * naming the point). Unknown point names are ignored.
  */
 import { join } from 'node:path';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
@@ -72,6 +73,7 @@ export function parseJevConfig(env = process.env) {
     const points = new Set();
     const activatedPoints = new Set();
     const offPoints = new Set();
+    const shadowPoints = new Set();
     let allPoints = false;
     let activateAll = false;
     if (raw && raw !== 'off') {
@@ -83,6 +85,7 @@ export function parseJevConfig(env = process.env) {
             const name = colon === -1 ? token : token.slice(0, colon);
             const isActive = colon !== -1 && token.slice(colon + 1) === 'active';
             const isOff = colon !== -1 && token.slice(colon + 1).trim().toLowerCase() === 'off';
+            const isShadow = colon !== -1 && token.slice(colon + 1) === 'shadow';
             if (name === 'all') {
                 if (isOff) {
                     // `all:off` withdraws the wildcard instead of enabling it.
@@ -98,6 +101,7 @@ export function parseJevConfig(env = process.env) {
             else if (isOff) {
                 points.delete(name);
                 activatedPoints.delete(name);
+                shadowPoints.delete(name);
                 offPoints.add(name);
             }
             else {
@@ -105,6 +109,11 @@ export function parseJevConfig(env = process.env) {
                 points.add(name);
                 if (isActive)
                     activatedPoints.add(name);
+                // The last entry of the name wins: only a `point:shadow` entry as the last one pins it to shadow.
+                if (isShadow)
+                    shadowPoints.add(name);
+                else
+                    shadowPoints.delete(name);
             }
         }
     }
@@ -122,6 +131,7 @@ export function parseJevConfig(env = process.env) {
         allPoints,
         activatedPoints,
         offPoints,
+        shadowPoints,
         activateAll,
         timeoutMs: positiveInt(env.OMC_JEV_TIMEOUT_MS, DEFAULT_TIMEOUT_MS, MAX_TIMER_DELAY_MS),
         maxRequests: positiveInt(env.OMC_JEV_MAX_REQUESTS, 0),
@@ -204,6 +214,8 @@ export function pointState(point, config, activated = ACTIVATED_POINTS) {
     const namedOnly = NAMED_ONLY_POINTS.has(point);
     if ((namedOnly || !config.allPoints) && !config.points.has(point))
         return 'off';
+    if (config.shadowPoints.has(point))
+        return 'shadow';
     return (activated.has(point) || (!namedOnly && config.activateAll) || config.activatedPoints.has(point))
         ? 'active'
         : 'shadow';

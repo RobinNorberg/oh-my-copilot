@@ -3662,11 +3662,12 @@ var init_config_dir = __esm({
 });
 
 // src/lib/env-vars.ts
-var OMC_PLUGIN_ROOT_ENV;
+var OMC_PLUGIN_ROOT_ENV, OMC_HUD_UNBUILT_VERSION_ENV;
 var init_env_vars = __esm({
   "src/lib/env-vars.ts"() {
     "use strict";
     OMC_PLUGIN_ROOT_ENV = "OMC_PLUGIN_ROOT";
+    OMC_HUD_UNBUILT_VERSION_ENV = "OMC_HUD_UNBUILT_VERSION";
   }
 });
 
@@ -3836,13 +3837,24 @@ function validRecord(value) {
   const record3 = value;
   return record3.version === REGISTRY_VERSION && Number.isSafeInteger(record3.pid) && typeof record3.pid === "number" && record3.pid > 0 && typeof record3.processStartIdentity === "string" && record3.processStartIdentity.length > 0 && typeof record3.pluginRoot === "string" && record3.pluginRoot.length > 0 && typeof record3.updatedAt === "string" && Number.isFinite(Date.parse(record3.updatedAt));
 }
+function runsThroughDanglingLink(path30) {
+  for (let current = path30; ; current = (0, import_path2.dirname)(current)) {
+    try {
+      if ((0, import_fs.lstatSync)(current).isSymbolicLink() && !(0, import_fs.existsSync)(current)) return true;
+    } catch (error62) {
+      if (error62.code !== "ENOENT") return true;
+    }
+    if ((0, import_path2.dirname)(current) === current) return false;
+  }
+}
 function readOccupiedPluginRoots(configDir = getCopilotConfigDir(), options = {}) {
   const directory = getCacheOccupancyDir(configDir);
   let names;
   try {
     names = (0, import_fs.readdirSync)(directory).filter((name) => RECORD_PATTERN.test(name));
   } catch (error62) {
-    return { roots: /* @__PURE__ */ new Set(), unavailable: error62.code !== "ENOENT", identities: /* @__PURE__ */ new Map() };
+    const code = error62.code;
+    return { roots: /* @__PURE__ */ new Set(), unavailable: code !== "ENOENT" || runsThroughDanglingLink(directory), identities: /* @__PURE__ */ new Map() };
   }
   const roots = /* @__PURE__ */ new Set();
   const records2 = [];
@@ -45183,6 +45195,10 @@ var init_state_paths = __esm({
       mailbox: (teamName, workerName) => `.omg/state/team/${teamName}/mailbox/${workerName}.json`,
       mailboxLockDir: (teamName, workerName) => `.omg/state/team/${teamName}/mailbox/.lock-${workerName}`,
       dispatchRequests: (teamName) => `.omg/state/team/${teamName}/dispatch/requests.json`,
+      // Not `.lock`: that name holds pre-identity-lock mkdir directories, which the file lock cannot read or reclaim.
+      dispatchLock: (teamName) => `.omg/state/team/${teamName}/dispatch/requests.lock`,
+      dispatchLegacyLockDir: (teamName) => `.omg/state/team/${teamName}/dispatch/.lock`,
+      /** @deprecated Use `dispatchLegacyLockDir` instead. Kept for public API compatibility. */
       dispatchLockDir: (teamName) => `.omg/state/team/${teamName}/dispatch/.lock`,
       mailboxNotificationLock: (teamName, requestId) => `.omg/state/team/${teamName}/dispatch/.mailbox-notification-${(0, import_node_crypto.createHash)("sha256").update(requestId).digest("hex")}.lock`,
       workerStatus: (teamName, workerName) => `.omg/state/team/${teamName}/workers/${workerName}/status.json`,
@@ -48761,21 +48777,23 @@ ${JSON.stringify(data, null, 2)}
         try {
           const root = validateWorkingDirectory(workingDirectory);
           ensureOmcDir("", root);
-          let finalMemory;
-          if (merge2) {
-            const existing = await loadProjectMemory(root);
-            if (existing) {
-              finalMemory = mergeProjectMemory(existing, memory);
+          await withProjectMemoryLock(root, async () => {
+            let finalMemory;
+            if (merge2) {
+              const existing = await loadProjectMemory(root);
+              if (existing) {
+                finalMemory = mergeProjectMemory(existing, memory);
+              } else {
+                finalMemory = memory;
+              }
             } else {
               finalMemory = memory;
             }
-          } else {
-            finalMemory = memory;
-          }
-          if (!finalMemory.version) finalMemory.version = "1.0.0";
-          if (!finalMemory.lastScanned) finalMemory.lastScanned = Date.now();
-          if (!finalMemory.projectRoot) finalMemory.projectRoot = root;
-          await saveProjectMemory(root, finalMemory);
+            if (!finalMemory.version) finalMemory.version = "1.0.0";
+            if (!finalMemory.lastScanned) finalMemory.lastScanned = Date.now();
+            if (!finalMemory.projectRoot) finalMemory.projectRoot = root;
+            await saveProjectMemory(root, finalMemory);
+          });
           return {
             content: [{
               type: "text",
@@ -48847,34 +48865,36 @@ Path: ${getWorktreeProjectMemoryPath(root)}`
         const { directive, context = "", priority = "normal", workingDirectory } = args;
         try {
           const root = validateWorkingDirectory(workingDirectory);
-          const memory = await loadProjectMemory(root);
-          if (!memory) {
+          return await withProjectMemoryLock(root, async () => {
+            const memory = await loadProjectMemory(root);
+            if (!memory) {
+              return {
+                content: [{
+                  type: "text",
+                  text: "Project memory does not exist. Run a session first to auto-detect project environment."
+                }]
+              };
+            }
+            const newDirective = {
+              timestamp: Date.now(),
+              directive,
+              context,
+              source: "explicit",
+              priority
+            };
+            memory.userDirectives = addDirective(memory.userDirectives, newDirective);
+            await saveProjectMemory(root, memory);
             return {
               content: [{
                 type: "text",
-                text: "Project memory does not exist. Run a session first to auto-detect project environment."
-              }]
-            };
-          }
-          const newDirective = {
-            timestamp: Date.now(),
-            directive,
-            context,
-            source: "explicit",
-            priority
-          };
-          memory.userDirectives = addDirective(memory.userDirectives, newDirective);
-          await saveProjectMemory(root, memory);
-          return {
-            content: [{
-              type: "text",
-              text: `Successfully added directive to project memory.
+                text: `Successfully added directive to project memory.
 
 - **Directive:** ${directive}
 - **Priority:** ${priority}
 - **Context:** ${context || "(none)"}`
-            }]
-          };
+              }]
+            };
+          });
         } catch (error62) {
           return {
             content: [{
@@ -49596,7 +49616,10 @@ async function searchSessionHistory(rawOptions) {
   const literalWorkingDirectory = rawOptions.workingDirectory ? (0, import_path54.resolve)(rawOptions.workingDirectory) : workingDirectory;
   const currentProjectRoots = [currentProjectRoot, literalWorkingDirectory].concat(getMainRepoRoot(currentProjectRoot) ?? []).concat(getClaudeWorktreeParent(currentProjectRoot) ?? []).filter((value, index, arr2) => Boolean(value) && arr2.indexOf(value) === index);
   const transcriptProjectRoots = currentProjectRoots.filter((root) => isWithinProject(root, [currentProjectRoot]));
-  const targets = scopeMode === "all" ? buildAllProjectTargets() : buildCurrentProjectTargets(currentProjectRoot, transcriptProjectRoots);
+  const targets = scopeMode === "all" ? buildAllProjectTargets() : uniqueSortedTargets([
+    ...buildCurrentProjectTargets(currentProjectRoot, transcriptProjectRoots),
+    ...scopeMode === "project" ? buildAllProjectTargets() : []
+  ]);
   const matchRetainer = createMatchRetainer(limit);
   for (const target of targets) {
     await collectMatchesFromFile(target, {
@@ -54959,6 +54982,7 @@ function parseJevConfig(env2 = process.env) {
   const points = /* @__PURE__ */ new Set();
   const activatedPoints = /* @__PURE__ */ new Set();
   const offPoints = /* @__PURE__ */ new Set();
+  const shadowPoints = /* @__PURE__ */ new Set();
   let allPoints = false;
   let activateAll = false;
   if (raw && raw !== "off") {
@@ -54969,6 +54993,7 @@ function parseJevConfig(env2 = process.env) {
       const name = colon === -1 ? token : token.slice(0, colon);
       const isActive = colon !== -1 && token.slice(colon + 1) === "active";
       const isOff = colon !== -1 && token.slice(colon + 1).trim().toLowerCase() === "off";
+      const isShadow = colon !== -1 && token.slice(colon + 1) === "shadow";
       if (name === "all") {
         if (isOff) {
           allPoints = false;
@@ -54980,11 +55005,14 @@ function parseJevConfig(env2 = process.env) {
       } else if (isOff) {
         points.delete(name);
         activatedPoints.delete(name);
+        shadowPoints.delete(name);
         offPoints.add(name);
       } else {
         offPoints.delete(name);
         points.add(name);
         if (isActive) activatedPoints.add(name);
+        if (isShadow) shadowPoints.add(name);
+        else shadowPoints.delete(name);
       }
     }
   }
@@ -55001,6 +55029,7 @@ function parseJevConfig(env2 = process.env) {
     allPoints,
     activatedPoints,
     offPoints,
+    shadowPoints,
     activateAll,
     timeoutMs: positiveInt(env2.OMC_JEV_TIMEOUT_MS, DEFAULT_TIMEOUT_MS, MAX_TIMER_DELAY_MS),
     maxRequests: positiveInt(env2.OMC_JEV_MAX_REQUESTS, 0),
@@ -55029,6 +55058,7 @@ function pointState(point, config2, activated = ACTIVATED_POINTS) {
   if (config2.offPoints.has(point)) return "off";
   const namedOnly = NAMED_ONLY_POINTS.has(point);
   if ((namedOnly || !config2.allPoints) && !config2.points.has(point)) return "off";
+  if (config2.shadowPoints.has(point)) return "shadow";
   return activated.has(point) || !namedOnly && config2.activateAll || config2.activatedPoints.has(point) ? "active" : "shadow";
 }
 function boundExcerpts(value, max) {
@@ -55522,9 +55552,9 @@ function openBreaker(settings, seconds2, reason, now2) {
         const current = breakerOf(onDisk.state, now2);
         if (current && current.until >= until - EXTEND_MIN_MS) return current;
         const state = { until, reason, since: current ? Math.min(current.since, since) : since };
-        const replaced = replaceFileIf(settings.dir, "breaker.json", JSON.stringify(state), () => holdsLock(lockPath2, token));
-        if (replaced === "lost") continue;
-        if (!replaced) return void 0;
+        const replaced2 = replaceFileIf(settings.dir, "breaker.json", JSON.stringify(state), () => holdsLock(lockPath2, token));
+        if (replaced2 === "lost") continue;
+        if (!replaced2) return void 0;
         written = state;
         removeStaleTemp(settings.dir, now2);
       } finally {
@@ -79695,26 +79725,259 @@ var init_types9 = __esm({
   }
 });
 
-// src/team/pane-readiness.ts
-function paneLineLooksLikeIdlePrompt(line2, provider) {
-  if (provider === void 0) return LEGACY_IDLE_PROMPT_LINE.test(line2);
-  return PROVIDER_IDLE_PROMPT_LINES[provider].test(line2);
+// src/team/ready-timeout.ts
+function parseExactInteger2(raw) {
+  const trimmed = raw.trim();
+  if (!trimmed) return void 0;
+  const negative = trimmed.startsWith("-");
+  const magnitude = negative || trimmed.startsWith("+") ? trimmed.slice(1) : trimmed;
+  const match = DECIMAL_INTEGER_TEXT2.exec(magnitude);
+  if (!match) return void 0;
+  const integerDigits = match[1] ?? "";
+  const fractionDigits = match[2] ?? match[3] ?? "";
+  const exponent = match[4] === void 0 ? 0 : Number(match[4]);
+  const shift = fractionDigits.length - exponent;
+  if (shift > 0) {
+    const significand = integerDigits + fractionDigits;
+    if (/[1-9]/.test(significand)) {
+      const trailingZeros = significand.length - significand.replace(/0+$/, "").length;
+      if (trailingZeros < shift) return void 0;
+    }
+  }
+  const parsed2 = (negative ? -1 : 1) * Number(magnitude);
+  return Number.isSafeInteger(parsed2) ? parsed2 : void 0;
 }
-var LEGACY_IDLE_PROMPT_LINE, CURSOR_IDLE_PROMPT_LINE, COPILOT_IDLE_PROMPT_LINE, PROVIDER_IDLE_PROMPT_LINES;
+function parseReadyTimeoutMs(env2) {
+  const raw = env2[READY_TIMEOUT_ENV];
+  return raw == null ? void 0 : parseExactInteger2(String(raw));
+}
+function resolveStartupReadyTimeoutMs(env2) {
+  const parsed2 = parseReadyTimeoutMs(env2);
+  if (parsed2 === void 0) return STARTUP_READY_TIMEOUT_MIN_MS;
+  return Math.min(
+    Math.max(STARTUP_READY_TIMEOUT_MIN_MS, parsed2),
+    STARTUP_READY_TIMEOUT_MAX_MS
+  );
+}
+function displayValue(raw) {
+  if (/^[\x21-\x7e]{1,32}$/.test(raw)) return raw;
+  const quoted = JSON.stringify(raw.slice(0, DISPLAY_MAX_CHARS)).replace(
+    UNSAFE_DISPLAY_CHARS,
+    (char) => `\\u${char.charCodeAt(0).toString(16).padStart(4, "0")}`
+  );
+  return raw.length > DISPLAY_MAX_CHARS ? `${quoted}... (truncated, ${raw.length} chars)` : quoted;
+}
+function describeStartupReadyTimeout(env2, effectiveMs) {
+  const raw = env2[READY_TIMEOUT_ENV];
+  const setting = raw == null ? `${READY_TIMEOUT_ENV} unset` : `${READY_TIMEOUT_ENV}=${displayValue(raw)}`;
+  return `${setting} (effective ${effectiveMs}ms; startup wait is clamped to ${STARTUP_READY_TIMEOUT_MIN_MS}..${STARTUP_READY_TIMEOUT_MAX_MS}ms)`;
+}
+var READY_TIMEOUT_ENV, STARTUP_READY_TIMEOUT_MIN_MS, STARTUP_READY_TIMEOUT_MAX_MS, DECIMAL_INTEGER_TEXT2, DISPLAY_MAX_CHARS, UNSAFE_DISPLAY_CHARS;
+var init_ready_timeout = __esm({
+  "src/team/ready-timeout.ts"() {
+    "use strict";
+    READY_TIMEOUT_ENV = "OMC_TEAM_READY_TIMEOUT_MS";
+    STARTUP_READY_TIMEOUT_MIN_MS = 3e4;
+    STARTUP_READY_TIMEOUT_MAX_MS = 12e4;
+    DECIMAL_INTEGER_TEXT2 = /^(?:(\d+)(?:\.(\d*))?|\.(\d+))(?:[eE]([+-]?\d+))?$/;
+    DISPLAY_MAX_CHARS = 32;
+    UNSAFE_DISPLAY_CHARS = /[\u007f-\u009f\u2028\u2029\p{Bidi_Control}]/gu;
+  }
+});
+
+// src/team/pane-readiness.ts
+function patternsFor(provider) {
+  if (provider === void 0) return UNKNOWN_PROVIDER_PATTERNS;
+  return Object.hasOwn(PANE_PATTERNS, provider) ? PANE_PATTERNS[provider] : SHARED_PATTERNS;
+}
+function paneLines(captured) {
+  return captured.split("\n").map((line2) => line2.replace(/\r/g, "").trim()).filter((line2) => line2.length > 0);
+}
+function anyLineMatches(lines4, patterns) {
+  return lines4.some((line2) => patterns.some((pattern) => pattern.test(line2)));
+}
+function codexTrustQuestionIsActive(lines4) {
+  const codexPromptLine = PANE_PATTERNS.codex.idlePromptLine;
+  const promptText = (line2) => line2.replace(codexPromptLine, "");
+  const isTrustChoice = (text6) => /^(?:1(?:\.|$)|2(?:\.|$))/i.test(text6);
+  const lastQuestionIndex = lines4.findLastIndex(
+    (_, index) => /Trust this folder\?/i.test(lines4.slice(index, index + 2).join(" "))
+  );
+  if (lastQuestionIndex < 0) return false;
+  const lastPromptIndex = lines4.findLastIndex(
+    (line2) => codexPromptLine.test(line2)
+  );
+  if (lastPromptIndex < lastQuestionIndex) return true;
+  const activePrompt = promptText(lines4[lastPromptIndex]);
+  if (isTrustChoice(activePrompt)) return true;
+  const previousChoiceWasRendered = lines4.slice(lastQuestionIndex + 1, lastPromptIndex).some((line2) => isTrustChoice(promptText(line2)));
+  return activePrompt === "" && !previousChoiceWasRendered;
+}
+function claudeTrustQuestionStartsAt(lines4, index) {
+  return /(?:Do you trust the files in this folder|Quick safety check:\s*Is this a project you created or one you trust)\?/i.test(
+    lines4.slice(index, index + 3).join(" ")
+  );
+}
+function detectTrustPrompt(lines4, kinds) {
+  const tail6 = lines4.slice(-12);
+  const tailHas = (pattern) => tail6.some((line2) => pattern.test(line2));
+  if (kinds.includes("codex_directory") && codexTrustQuestionIsActive(lines4)) {
+    return "codex_directory";
+  }
+  if (kinds.includes("cursor_workspace_trust") && tailHas(/Workspace Trust Required/i) && (tailHas(/Pass\s+--trust,\s*--yolo,\s*or\s+-f/i) || tailHas(/Do you trust the contents of this directory\?/i))) {
+    return "cursor_workspace_trust";
+  }
+  const claudeQuestionLines = lines4.slice(-20);
+  if (kinds.includes("claude_directory") && claudeQuestionLines.some((_, index) => claudeTrustQuestionStartsAt(claudeQuestionLines, index)) && tailHas(/\bNo,\s*exit\b/i) && tailHas(/\bYes,\s*(?:proceed|I trust this folder)\b/i)) {
+    return "claude_directory";
+  }
+  if (kinds.includes("copilot_folder") && claudeQuestionLines.some((_, index) => claudeTrustQuestionStartsAt(claudeQuestionLines, index)) && tailHas(/\b1\.\s*Yes\s*(?:│|$)/) && tailHas(/\b3\.\s*No\s*\(Esc\)/i)) {
+    return "copilot_folder";
+  }
+  if (kinds.includes("directory") && tailHas(/Do you trust the contents of this directory\?/i) && tailHas(/Yes,\s*continue|No,\s*quit|Press enter to continue/i)) {
+    return "directory";
+  }
+  if (kinds.includes("codex_hooks") && tailHas(/Hooks need review/i) && tailHas(/Continue without trusting/i) && tailHas(/Press enter to confirm or esc to go back/i)) {
+    return "codex_hooks";
+  }
+  return null;
+}
+function hasStartupBanner(lines4, patterns) {
+  const tail6 = lines4.slice(-20);
+  if (tail6.some((line2) => patterns.idlePromptLine.test(line2))) return false;
+  return anyLineMatches(tail6, patterns.startupBannerLines);
+}
+function observePane(captured, provider) {
+  const patterns = patternsFor(provider);
+  const lines4 = paneLines(captured);
+  const startupBanner = hasStartupBanner(lines4, patterns);
+  return {
+    trust: detectTrustPrompt(lines4, patterns.trustKinds),
+    bootstrapping: startupBanner || anyLineMatches(lines4, patterns.loadingLines),
+    startupStatus: startupBanner || anyLineMatches(lines4, patterns.startupStatusLines),
+    idlePrompt: lines4.some((line2) => patterns.idlePromptLine.test(line2)),
+    busy: anyLineMatches(lines4.slice(-40), patterns.busyLines)
+  };
+}
+function classifyPane(signals) {
+  if (signals.trust) return { kind: "trust", trust: signals.trust };
+  if (signals.busy) return { kind: "busy" };
+  if (signals.startupStatus) return { kind: "bootstrapping" };
+  if (signals.idlePrompt) return { kind: "idle" };
+  return { kind: "unknown" };
+}
+function detectPaneTrustPromptKind(captured, provider) {
+  return detectTrustPrompt(paneLines(captured), patternsFor(provider).trustKinds);
+}
+function claudeTrustFocus(captured) {
+  const lines4 = paneLines(captured);
+  const question = lines4.findLastIndex((_, index) => claudeTrustQuestionStartsAt(lines4, index));
+  if (question < 0) return null;
+  const no = lines4.findIndex((line2, index) => index > question && /^\s*(?:❯\s*)?No,\s*exit\b/i.test(line2));
+  const yes = no >= 0 ? lines4[no + 1] ?? "" : "";
+  if (!/^\s*(?:❯\s*)?Yes,\s*(?:proceed|I trust this folder)\b/i.test(yes)) return null;
+  if (lines4.slice(no + 2).some((line2) => patternsFor("claude").idlePromptLine.test(line2))) return "stale";
+  return /^\s*❯/.test(yes) ? "yes" : "no";
+}
+function paneHasTrustPrompt(captured, provider) {
+  return detectPaneTrustPromptKind(captured, provider) !== null;
+}
+function paneHasStartupBanner(captured, provider) {
+  return hasStartupBanner(paneLines(captured), patternsFor(provider));
+}
+function paneHasActiveTask(captured, provider) {
+  return anyLineMatches(
+    paneLines(captured).slice(-40),
+    patternsFor(provider).busyLines
+  );
+}
+function paneLooksReady(captured, provider) {
+  const signals = observePane(captured, provider);
+  if (signals.trust === "cursor_workspace_trust" || signals.trust === "codex_directory")
+    return false;
+  if (signals.trust) return true;
+  if (signals.bootstrapping) return false;
+  return signals.idlePrompt;
+}
+var LEGACY_IDLE_PROMPT_LINE, CURSOR_IDLE_PROMPT_LINE, COPILOT_IDLE_PROMPT_LINE, SHARED_BUSY_LINES, SHARED_PATTERNS, PANE_PATTERNS, UNKNOWN_PROVIDER_PATTERNS;
 var init_pane_readiness = __esm({
   "src/team/pane-readiness.ts"() {
     "use strict";
     LEGACY_IDLE_PROMPT_LINE = /^\s*(?:[│┃║▌▐▏▕╎┆┊]\s*)?[›>❯]\s*/u;
     CURSOR_IDLE_PROMPT_LINE = /^\s*(?:[│┃║▌▐▏▕╎┆┊]\s*)?[›>❯→]\s*/u;
     COPILOT_IDLE_PROMPT_LINE = /^\s*(?:[│┃║▌▐▏▕╎┆┊]\s*)?[›>❯]\s*|^\s*┃\s*$/u;
-    PROVIDER_IDLE_PROMPT_LINES = {
-      claude: LEGACY_IDLE_PROMPT_LINE,
-      copilot: COPILOT_IDLE_PROMPT_LINE,
-      codex: LEGACY_IDLE_PROMPT_LINE,
-      gemini: LEGACY_IDLE_PROMPT_LINE,
-      cursor: CURSOR_IDLE_PROMPT_LINE,
-      grok: LEGACY_IDLE_PROMPT_LINE,
-      antigravity: LEGACY_IDLE_PROMPT_LINE
+    SHARED_BUSY_LINES = [
+      /esc to interrupt/i,
+      /\bbackground terminal running\b/i,
+      /^[·✻✢✳✶✽✺✹✸✷*]\s+[A-Za-z][A-Za-z0-9''-]*(?:\s+[A-Za-z][A-Za-z0-9''-]*){0,3}(?:…|\.{3})(?:\s*\(.*\))?$/u
+    ];
+    SHARED_PATTERNS = {
+      idlePromptLine: LEGACY_IDLE_PROMPT_LINE,
+      busyLines: SHARED_BUSY_LINES,
+      startupBannerLines: [
+        /bypass\s+permissions\s+on/i,
+        /shift\+tab\s+to\s+cycle/i,
+        /^⏵⏵\s+/
+      ],
+      loadingLines: [
+        /\b(loading|initializing|starting up)\b/i,
+        /\bconnecting\s+to\b/i
+      ],
+      // A status line starts with the startup word, inside an optional box border.
+      // Behind a spinner it may be any length, since it names what loads or
+      // connects. A spinner is a braille frame or one of Claude's spinner glyphs;
+      // any other leading mark opens output, a list item, quoted text or an input
+      // prompt. Without a spinner the line is short, not counting the padding and
+      // border of a box. Gemini's own status lines are read in their exact form,
+      // with or without its spinner, since they can grow long: "Resuming
+      // session..." alone or opening its MCP progress, which wraps in a narrow pane,
+      // and "Connecting to MCP servers... (n/m)" alone or with the servers it waits for.
+      startupStatusLines: [
+        /^(?:[│┃║▌▐▏▕╎┆┊]\s*)?[\u2800-\u28FF·✻✢✳✶✽✺✹✸✷]\s*(?:model:\s*)?(?:loading|initializing|starting up|connecting\s+to)\b/iu,
+        /^(?:[│┃║▌▐▏▕╎┆┊]\s*)?(?:model:\s*)?(?:loading|initializing|starting up|connecting\s+to)\b.{0,40}?\s*(?:[│┃║▌▐▏▕╎┆┊]\s*)?$/iu,
+        /^(?:[│┃║▌▐▏▕╎┆┊]\s*)?(?:[\u2800-\u28FF]\s*)?(?:Resuming session\.\.\.(?: \(|\s*(?:[│┃║▌▐▏▕╎┆┊]\s*)?$)|Connecting to MCP servers\.\.\. \(\d+\/\d+\)(?: - Waiting for: .+)?\s*(?:[│┃║▌▐▏▕╎┆┊]\s*)?$)/u
+      ],
+      trustKinds: ["directory", "codex_hooks"],
+      verifiedVersion: null
+    };
+    PANE_PATTERNS = {
+      claude: {
+        ...SHARED_PATTERNS,
+        trustKinds: ["claude_directory", ...SHARED_PATTERNS.trustKinds],
+        verifiedVersion: "2.1.325"
+      },
+      // Fork: Copilot CLI 1.0.9x draws its idle box as a bare `┃` line, shows
+      // "○ Working · 25 B esc interrupt" / "◉ Working esc edit prompt" while busy,
+      // and asks its own "Confirm folder trust" question (copilot_folder).
+      copilot: {
+        ...SHARED_PATTERNS,
+        idlePromptLine: COPILOT_IDLE_PROMPT_LINE,
+        busyLines: [/^\S?\s*Working\b.*\besc\b/u, ...SHARED_BUSY_LINES],
+        trustKinds: ["copilot_folder", ...SHARED_PATTERNS.trustKinds]
+      },
+      codex: {
+        ...SHARED_PATTERNS,
+        trustKinds: ["codex_directory", ...SHARED_PATTERNS.trustKinds],
+        verifiedVersion: "0.167.0"
+      },
+      gemini: SHARED_PATTERNS,
+      cursor: {
+        ...SHARED_PATTERNS,
+        idlePromptLine: CURSOR_IDLE_PROMPT_LINE,
+        busyLines: [/ctrl\+c\s+to\s+stop/i, ...SHARED_BUSY_LINES],
+        trustKinds: ["cursor_workspace_trust", ...SHARED_PATTERNS.trustKinds]
+      },
+      grok: SHARED_PATTERNS,
+      antigravity: SHARED_PATTERNS
+    };
+    UNKNOWN_PROVIDER_PATTERNS = {
+      ...SHARED_PATTERNS,
+      trustKinds: [
+        "codex_directory",
+        "cursor_workspace_trust",
+        "claude_directory",
+        ...SHARED_PATTERNS.trustKinds
+      ]
     };
   }
 });
@@ -80061,12 +80324,12 @@ async function writeExclusiveTextAtomic(path30, value) {
     await (0, import_promises8.unlink)(candidate).catch(() => void 0);
   }
 }
-function parseExactInteger2(raw) {
+function parseExactInteger3(raw) {
   const trimmed = raw.trim();
   if (!trimmed) return null;
   const negative = trimmed.startsWith("-");
   const magnitude = negative || trimmed.startsWith("+") ? trimmed.slice(1) : trimmed;
-  const match = DECIMAL_INTEGER_TEXT2.exec(magnitude);
+  const match = DECIMAL_INTEGER_TEXT3.exec(magnitude);
   if (!match) return null;
   const integerDigits = match[1] ?? "";
   const fractionDigits = match[2] ?? match[3] ?? "";
@@ -80084,7 +80347,7 @@ function parseExactInteger2(raw) {
 }
 function resolvePositiveInteger(value, fallback) {
   if (value == null || value.trim() === "") return fallback;
-  const parsed2 = parseExactInteger2(value);
+  const parsed2 = parseExactInteger3(value);
   return parsed2 !== null && parsed2 > 0 ? parsed2 : fallback;
 }
 async function prepareWorkerLaunchAttempt(input2) {
@@ -80939,7 +81202,7 @@ function buildWindowsBatchProviderLine(providerArgv) {
   if (line2.length > WINDOWS_PROVIDER_LINE_MAX) throw new Error("worker_launch_provider_argv_too_long");
   return line2;
 }
-var import_node_crypto8, import_node_fs17, import_promises8, import_node_path20, import_node_os5, WORKER_LAUNCH_SCHEMA_VERSION, DEFAULT_ACK_TIMEOUT_MS, DEFAULT_POLL_INTERVAL_MS, DEFAULT_DECISION_TIMEOUT_MS, WORKER_LAUNCH_TRANSPORT_OWNER_KIND, WORKER_LAUNCH_TRANSPORT_CLEANUP_KIND, WORKER_LAUNCH_BOOTSTRAP_DESCRIPTOR_FILE, WORKER_LAUNCH_RECOVERY_GATE_CONTAINED_ENV, WORKER_LAUNCH_INTERNAL_ENV_KEYS, WORKER_LAUNCH_AUTHORITY_PROTOCOL, WINDOWS_SUPERVISOR_PROTOCOL, WINDOWS_PROVIDER_LINE_MAX, WINDOWS_PROVIDER_LINE_VAR, WINDOWS_NO_CWD_EXE_SEARCH_VAR, WINDOWS_RESERVED_ENV_KEYS, SAFE_BASELINE_ENV_KEYS, WINDOWS_BASELINE_ENV_KEYS, PROVIDER_PASSTHROUGH_CREDENTIALS, DECIMAL_INTEGER_TEXT2;
+var import_node_crypto8, import_node_fs17, import_promises8, import_node_path20, import_node_os5, WORKER_LAUNCH_SCHEMA_VERSION, DEFAULT_ACK_TIMEOUT_MS, DEFAULT_POLL_INTERVAL_MS, DEFAULT_DECISION_TIMEOUT_MS, WORKER_LAUNCH_TRANSPORT_OWNER_KIND, WORKER_LAUNCH_TRANSPORT_CLEANUP_KIND, WORKER_LAUNCH_BOOTSTRAP_DESCRIPTOR_FILE, WORKER_LAUNCH_RECOVERY_GATE_CONTAINED_ENV, WORKER_LAUNCH_INTERNAL_ENV_KEYS, WORKER_LAUNCH_AUTHORITY_PROTOCOL, WINDOWS_SUPERVISOR_PROTOCOL, WINDOWS_PROVIDER_LINE_MAX, WINDOWS_PROVIDER_LINE_VAR, WINDOWS_NO_CWD_EXE_SEARCH_VAR, WINDOWS_RESERVED_ENV_KEYS, SAFE_BASELINE_ENV_KEYS, WINDOWS_BASELINE_ENV_KEYS, PROVIDER_PASSTHROUGH_CREDENTIALS, DECIMAL_INTEGER_TEXT3;
 var init_worker_launch_ack = __esm({
   "src/team/worker-launch-ack.ts"() {
     "use strict";
@@ -81005,7 +81268,7 @@ var init_worker_launch_ack = __esm({
       copilot: ["COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"],
       claude: ["ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN"]
     };
-    DECIMAL_INTEGER_TEXT2 = /^(?:(\d+)(?:\.(\d*))?|\.(\d+))(?:[eE]([+-]?\d+))?$/;
+    DECIMAL_INTEGER_TEXT3 = /^(?:(\d+)(?:\.(\d*))?|\.(\d+))(?:[eE]([+-]?\d+))?$/;
   }
 });
 
@@ -86466,12 +86729,12 @@ async function getPaneCurrentCommandStatus(paneId, tmuxServerIdentity) {
 function paneCurrentCommandLooksSubmitted(command) {
   return command.length > 0 && !paneCurrentCommandLooksReady(command);
 }
-function parseExactInteger3(raw) {
+function parseExactInteger4(raw) {
   const trimmed = raw.trim();
   if (!trimmed) return null;
   const negative = trimmed.startsWith("-");
   const magnitude = negative || trimmed.startsWith("+") ? trimmed.slice(1) : trimmed;
-  const match = DECIMAL_INTEGER_TEXT3.exec(magnitude);
+  const match = DECIMAL_INTEGER_TEXT4.exec(magnitude);
   if (!match) return null;
   const integerDigits = match[1] ?? "";
   const fractionDigits = match[2] ?? match[3] ?? "";
@@ -86492,7 +86755,7 @@ function resolveTeamShellReadyTimeoutMs(env2 = process.env, explicitTimeoutMs) {
     return Number(explicitTimeoutMs);
   }
   const raw = env2.OMC_TEAM_SHELL_READY_TIMEOUT_MS;
-  const parsed2 = raw == null || String(raw).trim() === "" ? null : parseExactInteger3(String(raw));
+  const parsed2 = raw == null || String(raw).trim() === "" ? null : parseExactInteger4(String(raw));
   return parsed2 !== null && parsed2 > 0 ? parsed2 : 5e3;
 }
 async function waitForShellReady(paneId, opts = {}) {
@@ -86549,7 +86812,7 @@ function resolveTeamStartSubmitTimeoutMs(env2 = process.env, explicitTimeoutMs) 
     return Number(explicitTimeoutMs);
   }
   const raw = env2.OMC_TEAM_START_SUBMIT_TIMEOUT_MS;
-  const parsed2 = raw == null || String(raw).trim() === "" ? null : parseExactInteger3(String(raw));
+  const parsed2 = raw == null || String(raw).trim() === "" ? null : parseExactInteger4(String(raw));
   return parsed2 !== null && parsed2 > 0 ? parsed2 : 8e3;
 }
 async function verifyWorkerStartCommandSubmitted(paneId, startCmd, opts = {}) {
@@ -88254,131 +88517,6 @@ async function killOwnedWorkerPane(ownership) {
     throw new Error("owned_pane_tmux_server_guard_failed");
   }
 }
-function detectPaneTrustPromptKind(captured, provider) {
-  const lines4 = captured.split("\n").map((l) => l.replace(/\r/g, "").trim()).filter((l) => l.length > 0);
-  const tail6 = lines4.slice(-12);
-  const lastCodexPromptIndex = lines4.findLastIndex(
-    (line2) => paneLineLooksLikeIdlePrompt(line2, "codex")
-  );
-  const activeCodexPrompt = lastCodexPromptIndex >= 0 ? lines4[lastCodexPromptIndex].replace(
-    /^\s*(?:[│┃║▌▐▏▕╎┆┊]\s*)?[›>❯]\s*/,
-    ""
-  ) : "";
-  const lastCodexTrustQuestionIndex = lines4.findLastIndex(
-    (line2, index) => /Trust this folder\?/i.test(lines4.slice(index, index + 2).join(" "))
-  );
-  const previousTrustChoiceWasRendered = lastCodexTrustQuestionIndex >= 0 && lines4.slice(lastCodexTrustQuestionIndex + 1, lastCodexPromptIndex).some((line2) => {
-    const prompt = line2.replace(/^\s*(?:[│┃║▌▐▏▕╎┆┊]\s*)?[›>❯]\s*/, "");
-    return /^(?:1(?:\.|$)|2(?:\.|$))/i.test(prompt);
-  });
-  const lastCodexPromptIsTrustChoice = lastCodexPromptIndex >= 0 && (/^(?:1(?:\.|$)|2(?:\.|$))/i.test(activeCodexPrompt) || activeCodexPrompt === "" && !previousTrustChoiceWasRendered);
-  const codexTrustQuestionIsActive = lastCodexTrustQuestionIndex >= 0 && (lastCodexPromptIndex < lastCodexTrustQuestionIndex || lastCodexPromptIsTrustChoice);
-  if ((provider === void 0 || provider === "codex") && codexTrustQuestionIsActive) {
-    return "codex_directory";
-  }
-  const hasCursorTrustBanner = tail6.some(
-    (l) => /Workspace Trust Required/i.test(l)
-  );
-  const hasCursorTrustHint = tail6.some(
-    (l) => /Pass\s+--trust,\s*--yolo,\s*or\s+-f/i.test(l)
-  );
-  if ((provider === void 0 || provider === "cursor") && hasCursorTrustBanner && (hasCursorTrustHint || tail6.some(
-    (l) => /Do you trust the contents of this directory\?/i.test(l)
-  ))) {
-    return "cursor_workspace_trust";
-  }
-  const claudeQuestionLines = lines4.slice(-20);
-  const hasClaudeDirectoryQuestion = claudeQuestionLines.some(
-    (_, index) => /(?:Do you trust the files in this folder|Quick safety check:\s*Is this a project you created or one you trust)\?/i.test(
-      claudeQuestionLines.slice(index, index + 3).join(" ")
-    )
-  );
-  const hasClaudeDirectoryNoChoice = tail6.some(
-    (l) => /\bNo,\s*exit\b/i.test(l)
-  );
-  const hasClaudeDirectoryYesChoice = tail6.some(
-    (l) => /\bYes,\s*(?:proceed|I trust this folder)\b/i.test(l)
-  );
-  if ((provider === void 0 || provider === "claude") && hasClaudeDirectoryQuestion && hasClaudeDirectoryNoChoice && hasClaudeDirectoryYesChoice) {
-    return "claude_directory";
-  }
-  const hasCopilotYesChoice = tail6.some((l) => /\b1\.\s*Yes\s*(?:│|$)/.test(l));
-  const hasCopilotNoChoice = tail6.some((l) => /\b3\.\s*No\s*\(Esc\)/i.test(l));
-  if (provider === "copilot" && hasClaudeDirectoryQuestion && hasCopilotYesChoice && hasCopilotNoChoice) {
-    return "copilot_folder";
-  }
-  const hasDirectoryQuestion = tail6.some(
-    (l) => /Do you trust the contents of this directory\?/i.test(l)
-  );
-  const hasDirectoryChoices = tail6.some(
-    (l) => /Yes,\s*continue|No,\s*quit|Press enter to continue/i.test(l)
-  );
-  if (hasDirectoryQuestion && hasDirectoryChoices) return "directory";
-  const hasHookReview = tail6.some((l) => /Hooks need review/i.test(l));
-  const hasHookTrustChoice = tail6.some(
-    (l) => /Continue without trusting/i.test(l)
-  );
-  const hasHookConfirm = tail6.some(
-    (l) => /Press enter to confirm or esc to go back/i.test(l)
-  );
-  if (hasHookReview && hasHookTrustChoice && hasHookConfirm)
-    return "codex_hooks";
-  return null;
-}
-function paneHasTrustPrompt(captured, provider) {
-  return detectPaneTrustPromptKind(captured, provider) !== null;
-}
-function paneHasClaudeStartupBanner(captured, provider) {
-  const lines4 = captured.split("\n").map((line2) => line2.replace(/\r/g, "").trim()).filter((line2) => line2.length > 0).slice(-20);
-  const lastPromptIndex = lines4.findLastIndex(
-    (line2) => paneLineLooksLikeIdlePrompt(line2, provider)
-  );
-  if (lastPromptIndex >= 0) return false;
-  const lastStartupBannerIndex = lines4.findLastIndex(
-    (line2) => /bypass\s+permissions\s+on/i.test(line2) || /shift\+tab\s+to\s+cycle/i.test(line2) || /^⏵⏵\s+/.test(line2)
-  );
-  return lastStartupBannerIndex >= 0;
-}
-function paneIsBootstrapping(captured, provider) {
-  if (paneHasClaudeStartupBanner(captured, provider)) return true;
-  const lines4 = captured.split("\n").map((line2) => line2.replace(/\r/g, "").trim()).filter((line2) => line2.length > 0);
-  return lines4.some(
-    (line2) => /\b(loading|initializing|starting up)\b/i.test(line2) || /\bmodel:\s*loading\b/i.test(line2) || /\bconnecting\s+to\b/i.test(line2)
-  );
-}
-function paneHasActiveTask(captured, provider) {
-  const lines4 = captured.split("\n").map((l) => l.replace(/\r/g, "").trim()).filter((l) => l.length > 0);
-  const tail6 = lines4.slice(-40);
-  if (provider === "cursor" && tail6.some((l) => /ctrl\+c\s+to\s+stop/i.test(l)))
-    return true;
-  if (provider === "copilot" && tail6.some((l) => /^\S?\s*Working\b.*\besc\b/u.test(l)))
-    return true;
-  if (tail6.some((l) => /\b\d+\s+background terminal running\b/i.test(l)))
-    return true;
-  if (tail6.some((l) => /esc to interrupt/i.test(l))) return true;
-  if (tail6.some((l) => /\bbackground terminal running\b/i.test(l))) return true;
-  if (tail6.some(
-    (l) => /^[·✻✢✳✶✽✺✹✸✷*]\s+[A-Za-z][A-Za-z0-9''-]*(?:\s+[A-Za-z][A-Za-z0-9''-]*){0,3}(?:…|\.{3})(?:\s*\(.*\))?$/u.test(
-      l
-    )
-  ))
-    return true;
-  return false;
-}
-function paneLooksReady(captured, provider) {
-  const content2 = captured.trimEnd();
-  if (content2 === "") return false;
-  const lines4 = content2.split("\n").map((line2) => line2.replace(/\r/g, "").trimEnd()).filter((line2) => line2.trim() !== "");
-  if (lines4.length === 0) return false;
-  const trustPrompt = detectPaneTrustPromptKind(content2, provider);
-  if (trustPrompt === "cursor_workspace_trust" || trustPrompt === "codex_directory")
-    return false;
-  if (paneHasTrustPrompt(content2, provider)) return true;
-  if (paneIsBootstrapping(content2, provider)) return false;
-  const lastLine = lines4[lines4.length - 1];
-  if (paneLineLooksLikeIdlePrompt(lastLine, provider)) return true;
-  return lines4.some((line2) => paneLineLooksLikeIdlePrompt(line2, provider));
-}
 async function waitForPaneReady(paneId, opts = {}) {
   if (!isCmuxSurfaceTarget(paneId) && !opts.tmuxServerIdentity) return false;
   const timeoutMs = Number.isFinite(opts.timeoutMs) && (opts.timeoutMs ?? 0) > 0 ? Number(opts.timeoutMs) : 3e4;
@@ -88469,7 +88607,10 @@ async function waitForStartupPaneReady(context, opts = {}) {
   const pollIntervalMs = Number.isFinite(opts.pollIntervalMs) && (opts.pollIntervalMs ?? 0) > 0 ? Number(opts.pollIntervalMs) : 250;
   const deadline = Date.now() + timeoutMs;
   const handledSelectors = /* @__PURE__ */ new Set();
-  while (Date.now() < deadline) {
+  let claudeTrustDownSentAt = -Infinity;
+  let readAfterTrustAnswer = false;
+  while (Date.now() < deadline || readAfterTrustAnswer) {
+    readAfterTrustAnswer = false;
     if (!await startupContextIsActive(context, opts.attemptAlreadyFenced))
       return { ok: false, reason: "attempt_inactive" };
     if (await startupProviderExited(context))
@@ -88509,11 +88650,21 @@ async function waitForStartupPaneReady(context, opts = {}) {
         continue;
       }
       if (selector === "claude_directory") {
-        await sendTeamPaneKey(
-          context.ownership.paneId,
-          "Down",
-          context.ownership.tmuxServerIdentity
-        );
+        const focus = claudeTrustFocus(captured);
+        if (focus === "stale")
+          return { ok: false, reason: "selector_persistent" };
+        if (focus !== "yes") {
+          if (focus === "no" && Date.now() - claudeTrustDownSentAt >= CLAUDE_TRUST_DOWN_RESEND_MS) {
+            await sendTeamPaneKey(
+              context.ownership.paneId,
+              "Down",
+              context.ownership.tmuxServerIdentity
+            );
+            claudeTrustDownSentAt = Date.now();
+          }
+          await sleep6(pollIntervalMs);
+          continue;
+        }
       } else {
         await sendLiteralPaneText(
           context.ownership.paneId,
@@ -88527,6 +88678,7 @@ async function waitForStartupPaneReady(context, opts = {}) {
         context.ownership.tmuxServerIdentity
       );
       handledSelectors.add(selector);
+      readAfterTrustAnswer = selector === "claude_directory";
       await sleep6(pollIntervalMs);
       continue;
     }
@@ -88535,6 +88687,9 @@ async function waitForStartupPaneReady(context, opts = {}) {
     if (paneLooksReady(captured, context.provider)) return { ok: true };
     await sleep6(pollIntervalMs);
   }
+  console.warn(
+    `[tmux-session] waitForStartupPaneReady: pane ${safePaneDiagnosticToken(context.ownership.paneId)} timed out after ${timeoutMs}ms; ${describeStartupReadyTimeout(process.env, timeoutMs)}`
+  );
   return { ok: false, reason: "readiness_timeout" };
 }
 async function startupPaneSubmitBlockReason(context, attemptAlreadyFenced) {
@@ -88565,6 +88720,7 @@ async function startupPaneSubmitBlockReason(context, attemptAlreadyFenced) {
 async function deliverStartupInbox(context, message4, options = {}) {
   if (message4.length > 200) return { ok: false, reason: "message_too_long" };
   const ready = await waitForStartupPaneReady(context, {
+    timeoutMs: resolveStartupReadyTimeoutMs(process.env),
     attemptAlreadyFenced: options.attemptAlreadyFenced
   });
   if (!ready.ok) return { ok: false, reason: ready.reason };
@@ -88697,7 +88853,7 @@ async function sendToWorker(_sessionName, paneId, message4, tmuxServerIdentity) 
     if (!initialObservation.ok || !initialObservation.captured.trim())
       return false;
     const initialCapture = initialObservation.captured;
-    if (paneHasClaudeStartupBanner(initialCapture)) {
+    if (paneHasStartupBanner(initialCapture)) {
       return false;
     }
     const paneBusy = paneHasActiveTask(initialCapture);
@@ -89316,7 +89472,7 @@ async function killTeamSession(sessionName2, workerPaneIds, leaderPaneId, option
   if (result.outcome === "executed") return true;
   return await observeTmuxServerIdentity(identity) === "dead";
 }
-var import_fs88, import_crypto23, import_child_process26, import_util16, import_path101, import_os20, sleep6, execFileAsync6, TMUX_SESSION_PREFIX, TMUX_LIVENESS_SERVER_RECHECK_ATTEMPTS, TMUX_LIVENESS_SERVER_RECHECK_DELAY_MS, CMUX_MEMBERSHIP_RETRY_ATTEMPTS, CMUX_MEMBERSHIP_RETRY_INTERVAL_MS, defaultTmuxServerIdentityDependencies, guardMarkerCounter, TMUX_MAILBOX_PANE_ID, TMUX_MAILBOX_TARGET, defaultMailboxTargetOwnershipDependencies, defaultDirectMailboxEffectDependencies, TeamSessionCreationError, SUPPORTED_POSIX_SHELLS, ZSH_CANDIDATES, BASH_CANDIDATES, DECIMAL_INTEGER_TEXT3, DANGEROUS_LAUNCH_BINARY_CHARS;
+var import_fs88, import_crypto23, import_child_process26, import_util16, import_path101, import_os20, sleep6, execFileAsync6, TMUX_SESSION_PREFIX, TMUX_LIVENESS_SERVER_RECHECK_ATTEMPTS, TMUX_LIVENESS_SERVER_RECHECK_DELAY_MS, CMUX_MEMBERSHIP_RETRY_ATTEMPTS, CMUX_MEMBERSHIP_RETRY_INTERVAL_MS, defaultTmuxServerIdentityDependencies, guardMarkerCounter, TMUX_MAILBOX_PANE_ID, TMUX_MAILBOX_TARGET, defaultMailboxTargetOwnershipDependencies, defaultDirectMailboxEffectDependencies, TeamSessionCreationError, SUPPORTED_POSIX_SHELLS, ZSH_CANDIDATES, BASH_CANDIDATES, DECIMAL_INTEGER_TEXT4, DANGEROUS_LAUNCH_BINARY_CHARS, CLAUDE_TRUST_DOWN_RESEND_MS;
 var init_tmux_session = __esm({
   "src/team/tmux-session.ts"() {
     "use strict";
@@ -89333,6 +89489,7 @@ var init_tmux_session = __esm({
     init_types9();
     init_team_owner_epoch();
     init_native_contained_fs();
+    init_ready_timeout();
     init_pane_readiness();
     init_worker_launch_ack();
     init_runtime_owner_client();
@@ -89392,8 +89549,9 @@ var init_tmux_session = __esm({
       "/opt/homebrew/bin/zsh"
     ];
     BASH_CANDIDATES = ["/bin/bash", "/usr/bin/bash"];
-    DECIMAL_INTEGER_TEXT3 = /^(?:(\d+)(?:\.(\d*))?|\.(\d+))(?:[eE]([+-]?\d+))?$/;
+    DECIMAL_INTEGER_TEXT4 = /^(?:(\d+)(?:\.(\d*))?|\.(\d+))(?:[eE]([+-]?\d+))?$/;
     DANGEROUS_LAUNCH_BINARY_CHARS = /[;&|`$()<>\n\r\t\0]/;
+    CLAUDE_TRUST_DOWN_RESEND_MS = 1e3;
   }
 });
 
@@ -89505,16 +89663,209 @@ var init_tmux = __esm({
 });
 
 // src/notifications/redact.ts
-function redactTokens(input2) {
-  return input2.replace(/(-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----)[\s\S]*?(?:-----END [A-Z0-9 ]*PRIVATE KEY-----|$)/g, "$1****").replace(/\b(xox[bpae]-)[A-Za-z0-9-]+/g, "$1****").replace(/\b(xapp-)[A-Za-z0-9-]+/g, "$1****").replace(/\/bot(\d+):[A-Za-z0-9_-]+/g, "/bot$1:****").replace(/\b(\d{8,12}):[A-Za-z0-9_-]{20,}\b/g, "$1:****").replace(/(Bearer\s+)\S+/gi, "$1****").replace(/(Bot\s+)\S+/gi, "$1****").replace(/\b(sk-ant-api)[A-Za-z0-9_-]+/g, "$1****").replace(/\b(sk-(?:proj-|live-|test-|svcacct-)?)(?!ant-api)[A-Za-z0-9_-]{8,}/g, "$1****").replace(/\b(ghp_)[A-Za-z0-9]+/g, "$1****").replace(/\b(gho_)[A-Za-z0-9]+/g, "$1****").replace(/\b(ghs_)[A-Za-z0-9]+/g, "$1****").replace(/\b(gh[ur]_)[A-Za-z0-9]+/g, "$1****").replace(/\b(github_pat_)[A-Za-z0-9_]+/g, "$1****").replace(/\b(AKIA)[A-Z0-9]{16}\b/g, "$1****").replace(
-    new RegExp(String.raw`((\\?["'])${SECRET_NAME3}\2\s*:\s*)(?:(\\?["'])(.*?)\3|([^\s,}\]"'\\]+))`, "gi"),
-    (_m, head, _q, vq, quoted, bare) => vq !== void 0 ? `${head}${vq}${(quoted ?? "").includes("****") ? quoted : "****"}${vq}` : `${head}${bare?.includes("****") ? bare : "****"}`
-  ).replace(
-    /\b((?:Proxy-)?Authorization|Cookie|X-[A-Za-z0-9-]*(?:Key|Token|Secret|Auth|Signature)[A-Za-z0-9-]*)(\s*:\s*)((?:Bearer|Basic|Bot|Token|Digest|Negotiate)\s+)?([^"'\\\r\n]+)/gi,
-    (_m, name, sep29, scheme, value) => `${name}${sep29}${scheme ?? ""}${value.includes("****") ? value : "****"}`
-  ).replace(new RegExp(String.raw`(\b${SECRET_NAME3})(\s*=\s*)${QUOTED_OR_BARE}`, "gi"), (_m, name, sep29, value) => maskValue(name, sep29, value)).replace(new RegExp(String.raw`(--?${FLAG_NAME})(=|\s+)(?!--)${QUOTED_OR_BARE}`, "gi"), (_m, name, sep29, value) => maskValue(name, sep29, value)).replace(/(\b[a-z][a-z0-9+.-]*:\/\/)[^\s/:@]*:[^\s/@]+@/gi, "$1****@").replace(/(\s(?:-u|--user)(?:=|\s+)["']?[^\s:"']*:)((?!\/)[^\s"']+)/g, (_m, head, value) => `${head}${value.includes("****") ? value : "****"}`).replace(/(\b(?:mysql|mysqldump|mysqladmin|mariadb|mariadb-dump)\b[^\n|;&]*?\s-p)([^\s-][^\s]*)/g, "$1****").replace(/(\blogin\b[^\n|;&]*?\s-p\s+)("[^"]*"|'[^']*'|\S+)/g, "$1****").replace(/(hooks\.slack\.com\/(?:services|workflows|triggers)\/)[^\s"']+/gi, "$1****").replace(/(discord(?:app)?\.com\/api\/webhooks\/\d+\/)[^\s"'/?]+/gi, "$1****").replace(/(?<![A-Za-z0-9+/=*])[A-Za-z0-9+/]{16,}={1,2}(?![A-Za-z0-9+/=])/g, "****");
+function keyShapesEnabled() {
+  return process.env.OMC_REDACT_KEY_SHAPES === "1";
 }
-var SECRET_NAME3, FLAG_NAME, QUOTED_OR_BARE, maskValue;
+function replaced(replacement, args) {
+  if (typeof replacement === "function") return replacement(...args);
+  return replacement.replace(/\$(\d)/g, (_t, n) => {
+    const group = args[Number(n)];
+    return typeof group === "string" ? group : "";
+  });
+}
+function redactTokens(input2) {
+  if (!keyShapesEnabled()) {
+    return TOKEN_RULES2.reduce(
+      (text7, [pattern, replacement]) => text7.replace(pattern, replacement),
+      input2
+    );
+  }
+  const ranges = [];
+  let text6 = input2;
+  for (const [pattern, replacement] of TOKEN_RULES2) {
+    text6 = text6.replace(pattern, (...args) => {
+      const match = args[0];
+      const offset = args.find((arg, index) => index > 0 && typeof arg === "number");
+      const out = replaced(replacement, args);
+      if (out === match) return match;
+      const maskAt = out.lastIndexOf(MASK);
+      if (maskAt < 0) return match;
+      let head = 0;
+      while (head < maskAt && head < match.length && match[head] === out[head]) head++;
+      let tail6 = 0;
+      while (tail6 < out.length - maskAt - MASK.length && tail6 < match.length - head && match[match.length - 1 - tail6] === out[out.length - 1 - tail6]) tail6++;
+      let end = match.length - tail6;
+      if (end <= head) return match;
+      const mask2 = out.slice(head, out.length - tail6) || MASK;
+      if (typeof replacement === "function" && /^(?:"[^"]*"|'[^']*')$/.test(match.slice(head, end)) && !/^["']/.test(mask2)) {
+        head++;
+        end--;
+        if (end === head) return match;
+      }
+      ranges.push([offset + head, offset + end, mask2]);
+      return match.slice(0, head) + "*".repeat(end - head) + match.slice(end);
+    });
+  }
+  for (const range of keyShapeRanges(input2)) ranges.push(range);
+  return applyMasks(input2, ranges);
+}
+function redactedPrefix(text6, max, finish2 = (redacted) => redacted) {
+  return finish2(keyShapesEnabled() ? redactTokens(text6) : text6).slice(0, max);
+}
+function redactedPreview(text6, max, cut2 = text6.length, finish2) {
+  const shown = redactedPrefix(text6, cut2, finish2);
+  return `${shown.slice(0, max)}${shown.length > max ? "..." : ""}`;
+}
+function isWordChar(code) {
+  return code === 95 || code >= 48 && code <= 57 || code >= 65 && code <= 90 || code >= 97 && code <= 122;
+}
+function isTokenChar(code) {
+  return code === 45 || isWordChar(code);
+}
+function assignmentNameEnd(input2, i) {
+  const n = input2.length;
+  let j = i;
+  while (j < n && isWordChar(input2.charCodeAt(j))) j++;
+  if (j - i < 3) return -1;
+  const name = input2.slice(i, j).toUpperCase();
+  return REDACT_KEY_SHAPES_PHRASES.some((phrase) => name.includes(phrase)) ? j : -1;
+}
+function isSkippable(c) {
+  return c === '"' || c === "'" || c === "[" || c === "]";
+}
+function separatorsAfter(input2, from, tables) {
+  const n = input2.length;
+  const found = [];
+  const skipBlanks = (start) => {
+    let k = start;
+    while (k < n && (input2[k] === " " || input2[k] === "	")) k++;
+    return k;
+  };
+  const first = skipBlanks(from);
+  if (!isSkippable(input2[first])) {
+    if (input2[first] === "=" || input2[first] === ":") found.push(first);
+    return found;
+  }
+  const followed = tables.followed ??= new Uint8Array(n + 1);
+  const stack = [first];
+  while (stack.length > 0) {
+    const entry2 = stack.pop();
+    if (followed[entry2]) continue;
+    followed[entry2] = 1;
+    const k = skipBlanks(entry2);
+    if (!isSkippable(input2[k])) {
+      if (input2[k] === "=" || input2[k] === ":") found.push(k);
+      continue;
+    }
+    if (input2[k] === "[") {
+      const close = (tables.closeFrom ??= closeIndexes(input2))[k + 1];
+      if (close >= 0) stack.push(close + 1);
+      const open9 = skipBlanks(k + 1);
+      const quote5 = input2[open9];
+      if (quote5 === '"' || quote5 === "'") {
+        for (const escaped of quote5 === '"' ? [true] : [false, true]) {
+          const map2 = quote5 === "'" && escaped ? tables.keyEnds : tables.ends;
+          let table2 = map2.get(quote5);
+          if (!table2) {
+            table2 = valueEnds(input2, quote5, escaped);
+            map2.set(quote5, table2);
+          }
+          const end = table2[open9 + 1];
+          if (input2[end] !== quote5) continue;
+          const after = skipBlanks(end + 1);
+          if (input2[after] === "]") stack.push(after + 1);
+        }
+      }
+    }
+    stack.push(k + 1);
+  }
+  return found;
+}
+function closeIndexes(input2) {
+  const n = input2.length;
+  const closeFrom = new Int32Array(n + 1);
+  closeFrom[n] = -1;
+  for (let p = n - 1; p >= 0; p--) closeFrom[p] = input2.charCodeAt(p) === 93 ? p : closeFrom[p + 1];
+  return closeFrom;
+}
+function valueEnds(input2, quote5, escapes = quote5 === '"') {
+  const n = input2.length;
+  const ends = new Int32Array(n + 1);
+  ends[n] = n;
+  for (let p = n - 1; p >= 0; p--) {
+    const c = input2[p];
+    if (quote5 ? c === quote5 || c === "\n" : ` 	\r
+"'&;|,)}`.includes(c)) ends[p] = p;
+    else if (quote5 && escapes && c === "\\" && p + 1 < n && input2[p + 1] !== "\n") ends[p] = ends[p + 2];
+    else ends[p] = ends[p + 1];
+  }
+  return ends;
+}
+function keyShapeRanges(input2) {
+  const n = input2.length;
+  const ranges = [];
+  const tables = { ends: /* @__PURE__ */ new Map(), keyEnds: /* @__PURE__ */ new Map() };
+  let keySkipUntil = 0;
+  let jwtSkipUntil = 0;
+  for (let i = 0; i < n; i++) {
+    if (i > 0 && isWordChar(input2.charCodeAt(i - 1))) continue;
+    const nameEnd = assignmentNameEnd(input2, i);
+    if (nameEnd >= 0) {
+      for (const separator of separatorsAfter(input2, nameEnd, tables)) {
+        let valueStart = separator + 1;
+        while (valueStart < n && (input2[valueStart] === " " || input2[valueStart] === "	")) valueStart++;
+        const quote5 = input2[valueStart] === '"' || input2[valueStart] === "'" ? input2[valueStart] : "";
+        if (quote5) valueStart++;
+        let table2 = tables.ends.get(quote5);
+        if (!table2) tables.ends.set(quote5, table2 = valueEnds(input2, quote5));
+        if (table2[valueStart] > valueStart) ranges.push([valueStart, table2[valueStart], MASK]);
+      }
+    }
+    if (i >= keySkipUntil) {
+      for (const [prefix, minLength] of REDACT_KEY_SHAPES_PREFIXES) {
+        if (!input2.startsWith(prefix, i)) continue;
+        let j = i + prefix.length;
+        while (j < n && isTokenChar(input2.charCodeAt(j))) j++;
+        if (j - (i + prefix.length) >= minLength) {
+          ranges.push([i + prefix.length, j, MASK]);
+          keySkipUntil = j;
+        }
+        break;
+      }
+    }
+    if (i >= jwtSkipUntil && input2.startsWith("eyJ", i)) {
+      let j = i + 3;
+      while (j < n && isTokenChar(input2.charCodeAt(j))) j++;
+      jwtSkipUntil = j;
+      if (j - i >= 11 && input2[j] === ".") {
+        let k = j + 1;
+        while (k < n && isTokenChar(input2.charCodeAt(k))) k++;
+        if (k - (j + 1) >= 8 && input2[k] === ".") {
+          let m = k + 1;
+          while (m < n && isTokenChar(input2.charCodeAt(m))) m++;
+          if (m - (k + 1) >= 8) ranges.push([i + 3, m, "***"]);
+        }
+      }
+    }
+  }
+  return ranges;
+}
+function applyMasks(input2, ranges) {
+  if (ranges.length === 0) return input2;
+  ranges.sort((a, b) => a[0] - b[0]);
+  let out = "";
+  let pos = 0;
+  for (const [start, end, mask2] of ranges) {
+    if (start < pos) {
+      if (end > pos) pos = end;
+      continue;
+    }
+    out += input2.slice(pos, start) + mask2;
+    pos = end;
+  }
+  return out + input2.slice(pos);
+}
+var SECRET_NAME3, FLAG_NAME, QUOTED_OR_BARE, maskValue, TOKEN_RULES2, MASK, REDACT_KEY_SHAPES_PREFIXES, REDACT_KEY_SHAPES_PHRASES;
 var init_redact2 = __esm({
   "src/notifications/redact.ts"() {
     "use strict";
@@ -89522,6 +89873,75 @@ var init_redact2 = __esm({
     FLAG_NAME = String.raw`(?:${SECRET_NAME3}|(?:auth|pass|pw|passphrase|key)(?![A-Za-z0-9_-]))`;
     QUOTED_OR_BARE = String.raw`("[^"]*"|'[^']*'|[^\s"']+)`;
     maskValue = (name, sep29, value) => `${name}${sep29}${value.includes("****") ? value : "****"}`;
+    TOKEN_RULES2 = [
+      // PEM private keys: the whole body, up to the END line or the end of the text
+      [/(-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----)[\s\S]*?(?:-----END [A-Z0-9 ]*PRIVATE KEY-----|$)/g, "$1****"],
+      // Slack tokens: xoxb-..., xapp-..., xoxp-..., xoxa-...
+      [/\b(xox[bpae]-)[A-Za-z0-9-]+/g, "$1****"],
+      [/\b(xapp-)[A-Za-z0-9-]+/g, "$1****"],
+      // Telegram bot tokens in URL paths: /bot123456:ABC.../
+      [/\/bot(\d+):[A-Za-z0-9_-]+/g, "/bot$1:****"],
+      // Telegram bot tokens standalone: 123456789:AAHfoo-bar_Baz
+      [/\b(\d{8,12}):[A-Za-z0-9_-]{20,}\b/g, "$1:****"],
+      // Bearer/Bot authorization values in error strings
+      [/(Bearer\s+)\S+/gi, "$1****"],
+      [/(Bot\s+)\S+/gi, "$1****"],
+      // Anthropic API keys: sk-ant-api...
+      [/\b(sk-ant-api)[A-Za-z0-9_-]+/g, "$1****"],
+      // OpenAI-style keys: sk-..., sk-proj-...
+      [/\b(sk-(?:proj-|live-|test-|svcacct-)?)(?!ant-api)[A-Za-z0-9_-]{8,}/g, "$1****"],
+      // GitHub tokens: ghp_, gho_, ghs_, github_pat_
+      [/\b(ghp_)[A-Za-z0-9]+/g, "$1****"],
+      [/\b(gho_)[A-Za-z0-9]+/g, "$1****"],
+      [/\b(ghs_)[A-Za-z0-9]+/g, "$1****"],
+      [/\b(gh[ur]_)[A-Za-z0-9]+/g, "$1****"],
+      [/\b(github_pat_)[A-Za-z0-9_]+/g, "$1****"],
+      // AWS access key IDs: AKIA...
+      [/\b(AKIA)[A-Z0-9]{16}\b/g, "$1****"],
+      // Secret-named JSON fields, also with escaped quotes: {"password":"x"}, {\"token\":\"x\"}
+      [
+        new RegExp(String.raw`((\\?["'])${SECRET_NAME3}\2\s*:\s*)(?:(\\?["'])(.*?)\3|([^\s,}\]"'\\]+))`, "gi"),
+        (_m, head, _q, vq, quoted, bare) => vq !== void 0 ? `${head}${vq}${(quoted ?? "").includes("****") ? quoted : "****"}${vq}` : `${head}${bare?.includes("****") ? bare : "****"}`
+      ],
+      // Credential headers: Authorization: Basic x, X-API-Key: x, Cookie: x (the scheme is kept)
+      [
+        /\b((?:Proxy-)?Authorization|Cookie|X-[A-Za-z0-9-]*(?:Key|Token|Secret|Auth|Signature)[A-Za-z0-9-]*)(\s*:\s*)((?:Bearer|Basic|Bot|Token|Digest|Negotiate)\s+)?([^"'\\\r\n]+)/gi,
+        (_m, name, sep29, scheme, value) => `${name}${sep29}${scheme ?? ""}${value.includes("****") ? value : "****"}`
+      ],
+      // Secret-named env assignments / --flag=value: GITHUB_TOKEN=..., --password="..."
+      [new RegExp(String.raw`(\b${SECRET_NAME3})(\s*=\s*)${QUOTED_OR_BARE}`, "gi"), (_m, name, sep29, value) => maskValue(name, sep29, value)],
+      // Secret-named flags with a separate value: --token abc, --api-key abc, --token -abc (not --next-flag)
+      [new RegExp(String.raw`(--?${FLAG_NAME})(=|\s+)(?!--)${QUOTED_OR_BARE}`, "gi"), (_m, name, sep29, value) => maskValue(name, sep29, value)],
+      // URL credentials: scheme://user:pass@host, scheme://:pass@host
+      // The scheme starts only where no scheme character precedes it: with `\b` every word start of a run such as
+      // `a-a-a-...` read the whole run looking for `://`, a quadratic scan; the lookbehind keeps it linear with no
+      // length bound, so a scheme of any length is still masked.
+      [/((?<![a-z0-9+.-])[a-z][a-z0-9+.-]*:\/\/)[^\s/:@]*:[^\s/@]+@/gi, "$1****@"],
+      // curl -u user:pass / --user user:pass (not `-u redis://...`)
+      [/(\s(?:-u|--user)(?:=|\s+)["']?[^\s:"']*:)((?!\/)[^\s"']+)/g, (_m, head, value) => `${head}${value.includes("****") ? value : "****"}`],
+      // mysql/mariadb -pSecret (attached password). The span to `-p` is bounded (512 characters): unbounded, every
+      // repeat of the command word read the rest of the line, a quadratic scan.
+      [/(\b(?:mysql|mysqldump|mysqladmin|mariadb|mariadb-dump)\b[^\n|;&]{0,512}?\s-p)([^\s-][^\s]*)/g, "$1****"],
+      // `... login ... -p secret` (docker/podman/helm/az login); the span to `-p` is bounded as for mysql above
+      [/(\blogin\b[^\n|;&]{0,512}?\s-p\s+)("[^"]*"|'[^']*'|\S+)/g, "$1****"],
+      // Webhook URL secrets: hooks.slack.com/services/..., discord.com/api/webhooks/...
+      [/(hooks\.slack\.com\/(?:services|workflows|triggers)\/)[^\s"']+/gi, "$1****"],
+      [/(discord(?:app)?\.com\/api\/webhooks\/\d+\/)[^\s"'/?]+/gi, "$1****"],
+      // Padded base64 blobs: c2VjcmV0cGFzc3dvcmQ=
+      [/(?<![A-Za-z0-9+/=*])[A-Za-z0-9+/]{16,}={1,2}(?![A-Za-z0-9+/=])/g, "****"]
+    ];
+    MASK = "****";
+    REDACT_KEY_SHAPES_PREFIXES = [
+      ["sk-", 8],
+      ["sk_live_", 16],
+      ["sk_test_", 16],
+      ["rk_", 16],
+      ["AIza", 20],
+      ["gsk_", 20],
+      ["xai-", 20],
+      ["hf_", 20]
+    ];
+    REDACT_KEY_SHAPES_PHRASES = ["KEY", "TOKEN", "SECRET", "PASSWORD", "PASSWD", "PASS", "PWD", "CREDENTIALS"];
   }
 });
 
@@ -94441,6 +94861,9 @@ var init_worker_bootstrap = __esm({
 });
 
 // src/team/dispatch-queue.ts
+function isTeamWideDispatchFailure(error62) {
+  return error62 instanceof DispatchLockTimeoutError || error62 instanceof DispatchStoreInvalidError;
+}
 function validateWorkerName(name) {
   if (!WORKER_NAME_SAFE_PATTERN.test(name)) {
     throw new Error(`Invalid worker name: "${name}"`);
@@ -94477,73 +94900,106 @@ function resolveDispatchLockTimeoutMs(env2 = process.env) {
 async function withDispatchLock(teamName, cwd, fn) {
   const root = absPath(cwd, TeamPaths.root(teamName));
   if (!(0, import_fs99.existsSync)(root)) throw new Error(`Team ${teamName} not found`);
-  const lockDir = absPath(cwd, TeamPaths.dispatchLockDir(teamName));
-  const ownerPath = (0, import_path117.join)(lockDir, "owner");
-  const ownerToken = `${process.pid}.${Date.now()}.${Math.random().toString(16).slice(2)}`;
   const timeoutMs = resolveDispatchLockTimeoutMs(process.env);
   const deadline = Date.now() + timeoutMs;
-  let pollMs = DISPATCH_LOCK_INITIAL_POLL_MS;
-  await (0, import_promises18.mkdir)((0, import_path117.dirname)(lockDir), { recursive: true });
+  const timedOut = () => new DispatchLockTimeoutError(teamName, timeoutMs);
+  try {
+    return await withProcessIdentityFileLock(
+      absPath(cwd, TeamPaths.dispatchLock(teamName)),
+      () => withLegacyDispatchLockDir(absPath(cwd, TeamPaths.dispatchLegacyLockDir(teamName)), deadline, timedOut, fn),
+      timeoutMs
+    );
+  } catch (error62) {
+    if (error62 instanceof Error && error62.message === "process_identity_lock_timeout") throw timedOut();
+    throw error62;
+  }
+}
+async function isLegacyDispatchLockReclaimable(lockDir) {
+  try {
+    const owner = JSON.parse(await (0, import_promises18.readFile)((0, import_path117.join)(lockDir, "owner"), "utf8"));
+    if (isProcessIdentityDead(owner)) return true;
+  } catch {
+  }
+  try {
+    return Date.now() - (await (0, import_promises18.stat)(lockDir)).mtimeMs > LEGACY_LOCK_STALE_MS;
+  } catch {
+    return false;
+  }
+}
+async function withLegacyDispatchLockDir(lockDir, deadline, timedOut, fn) {
+  const ownerPath = (0, import_path117.join)(lockDir, "owner");
+  const owner = JSON.stringify({ pid: process.pid, process_started_at: currentProcessStartIdentity(), nonce: (0, import_crypto30.randomUUID)() });
+  let pollMs = LEGACY_LOCK_INITIAL_POLL_MS;
   while (true) {
     try {
-      await (0, import_promises18.mkdir)(lockDir, { recursive: false });
-      try {
-        await (0, import_promises18.writeFile)(ownerPath, ownerToken, "utf8");
-      } catch (error62) {
-        await (0, import_promises18.rm)(lockDir, { recursive: true, force: true });
-        throw error62;
-      }
+      await (0, import_promises18.mkdir)(lockDir);
       break;
     } catch (error62) {
-      const err = error62;
-      if (err.code !== "EEXIST") throw error62;
-      try {
-        const info = await (0, import_promises18.stat)(lockDir);
-        if (Date.now() - info.mtimeMs > LOCK_STALE_MS4) {
-          await (0, import_promises18.rm)(lockDir, { recursive: true, force: true });
-          continue;
-        }
-      } catch {
-      }
-      if (Date.now() > deadline) {
-        throw new Error(
-          `Timed out acquiring dispatch lock for ${teamName} after ${timeoutMs}ms. Set ${OMC_DISPATCH_LOCK_TIMEOUT_ENV} to increase (current: ${timeoutMs}ms, max: ${MAX_DISPATCH_LOCK_TIMEOUT_MS}ms).`
-        );
-      }
-      const jitter = 0.5 + Math.random() * 0.5;
-      await new Promise((resolve96) => setTimeout(resolve96, Math.floor(pollMs * jitter)));
-      pollMs = Math.min(pollMs * 2, DISPATCH_LOCK_MAX_POLL_MS);
+      if (error62.code !== "EEXIST") throw error62;
     }
+    if (await isLegacyDispatchLockReclaimable(lockDir)) {
+      await (0, import_promises18.rm)(lockDir, { recursive: true, force: true });
+      continue;
+    }
+    if (Date.now() >= deadline) throw timedOut();
+    await new Promise((resolve96) => setTimeout(resolve96, pollMs));
+    pollMs = Math.min(pollMs * 2, LEGACY_LOCK_MAX_POLL_MS);
+  }
+  try {
+    await (0, import_promises18.writeFile)(ownerPath, owner, "utf8");
+  } catch (error62) {
+    await (0, import_promises18.rm)(lockDir, { recursive: true, force: true });
+    throw error62;
   }
   try {
     return await fn();
   } finally {
-    try {
-      const currentOwner2 = await (0, import_promises18.readFile)(ownerPath, "utf8");
-      if (currentOwner2.trim() === ownerToken) {
-        await (0, import_promises18.rm)(lockDir, { recursive: true, force: true });
-      }
-    } catch {
+    if (await (0, import_promises18.readFile)(ownerPath, "utf8").catch(() => null) === owner) {
+      await (0, import_promises18.rm)(lockDir, { recursive: true, force: true }).catch(() => void 0);
     }
   }
 }
-async function readDispatchRequestsFromFile(teamName, cwd) {
+async function readDispatchStore(teamName, cwd) {
   const path30 = absPath(cwd, TeamPaths.dispatchRequests(teamName));
+  let text6;
   try {
-    if (!(0, import_fs99.existsSync)(path30)) return [];
-    const raw = await (0, import_promises18.readFile)(path30, "utf8");
-    const parsed2 = JSON.parse(raw);
-    if (!Array.isArray(parsed2)) return [];
-    return parsed2.map((entry2) => normalizeDispatchRequest(teamName, entry2)).filter((req) => req !== null);
-  } catch {
-    return [];
+    text6 = await (0, import_promises18.readFile)(path30, "utf8");
+  } catch (error62) {
+    return error62.code === "ENOENT" ? { kind: "ok", entries: [] } : { kind: "invalid", reason: "unreadable" };
   }
+  let parsed2;
+  try {
+    parsed2 = JSON.parse(text6);
+  } catch {
+    return { kind: "invalid", reason: "json" };
+  }
+  if (!Array.isArray(parsed2)) return { kind: "invalid", reason: "non_array" };
+  return {
+    kind: "ok",
+    entries: parsed2.map((raw) => {
+      const request = isPlainRecord3(raw) ? normalizeDispatchRequest(teamName, raw) : null;
+      return request ? { kind: "request", request } : { kind: "unrecognized", raw };
+    })
+  };
 }
-async function writeDispatchRequestsToFile(teamName, requests, cwd) {
+function requestsOf(entries) {
+  return entries.flatMap((entry2) => entry2.kind === "request" ? [entry2.request] : []);
+}
+async function readDispatchRequestsFromFile(teamName, cwd) {
+  const store = await readDispatchStore(teamName, cwd);
+  return store.kind === "ok" ? requestsOf(store.entries) : [];
+}
+async function readDispatchStoreForWrite(teamName, cwd) {
+  const store = await readDispatchStore(teamName, cwd);
+  if (store.kind === "invalid") {
+    throw new DispatchStoreInvalidError(absPath(cwd, TeamPaths.dispatchRequests(teamName)), store.reason);
+  }
+  return store.entries;
+}
+async function writeDispatchStore(teamName, entries, cwd) {
   const path30 = absPath(cwd, TeamPaths.dispatchRequests(teamName));
-  const dir = (0, import_path117.dirname)(path30);
-  ensureDirWithMode(dir);
-  atomicWriteJson2(path30, requests);
+  ensureDirWithMode((0, import_path117.dirname)(path30));
+  atomicWriteJson2(path30, entries.map((entry2) => entry2.kind === "request" ? entry2.request : entry2.raw));
 }
 function normalizeDispatchRequest(teamName, raw, nowIso2 = (/* @__PURE__ */ new Date()).toISOString()) {
   if (!isDispatchKind(raw.kind)) return null;
@@ -94735,8 +95191,8 @@ async function enqueueDispatchRequest(teamName, requestInput, cwd) {
   }
   validateWorkerName(requestInput.to_worker);
   return await withDispatchLock(teamName, cwd, async () => {
-    const requests = await readDispatchRequestsFromFile(teamName, cwd);
-    const existing = requests.find((req) => equivalentPendingDispatch(req, requestInput));
+    const entries = await readDispatchStoreForWrite(teamName, cwd);
+    const existing = requestsOf(entries).find((req) => equivalentPendingDispatch(req, requestInput));
     if (existing) return { request: existing, deduped: true };
     const nowIso2 = (/* @__PURE__ */ new Date()).toISOString();
     const request = normalizeDispatchRequest(
@@ -94752,8 +95208,8 @@ async function enqueueDispatchRequest(teamName, requestInput, cwd) {
       nowIso2
     );
     if (!request) throw new Error("failed_to_normalize_dispatch_request");
-    requests.push(request);
-    await writeDispatchRequestsToFile(teamName, requests, cwd);
+    entries.push({ kind: "request", request });
+    await writeDispatchStore(teamName, entries, cwd);
     return { request, deduped: false };
   });
 }
@@ -94772,10 +95228,11 @@ async function readDispatchRequest(teamName, requestId, cwd) {
 }
 async function transitionDispatchRequest(teamName, requestId, from, to, patch = {}, cwd) {
   return await withDispatchLock(teamName, cwd, async () => {
-    const requests = await readDispatchRequestsFromFile(teamName, cwd);
-    const index = requests.findIndex((req) => req.request_id === requestId);
-    if (index < 0) return null;
-    const existing = requests[index];
+    const entries = await readDispatchStoreForWrite(teamName, cwd);
+    const index = entries.findIndex((entry3) => entry3.kind === "request" && entry3.request.request_id === requestId);
+    const entry2 = entries[index];
+    if (entry2?.kind !== "request") return null;
+    const existing = entry2.request;
     if (existing.status !== from && existing.status !== to) return null;
     if (!canTransitionDispatchStatus(existing.status, to)) return null;
     const nowIso2 = (/* @__PURE__ */ new Date()).toISOString();
@@ -94793,8 +95250,8 @@ async function transitionDispatchRequest(teamName, requestId, from, to, patch = 
     if (to === "notified") next.notified_at = patch.notified_at ?? nowIso2;
     if (to === "delivered") next.delivered_at = patch.delivered_at ?? nowIso2;
     if (to === "failed") next.failed_at = patch.failed_at ?? nowIso2;
-    requests[index] = next;
-    await writeDispatchRequestsToFile(teamName, requests, cwd);
+    entries[index] = { kind: "request", request: next };
+    await writeDispatchStore(teamName, entries, cwd);
     return next;
   });
 }
@@ -94810,7 +95267,7 @@ async function markDispatchRequestDelivered(teamName, requestId, patch = {}, cwd
   if (current.status === "delivered") return current;
   return await transitionDispatchRequest(teamName, requestId, current.status, "delivered", patch, cwd);
 }
-var import_crypto30, import_fs99, import_promises18, import_path117, OMC_DISPATCH_LOCK_TIMEOUT_ENV, DEFAULT_DISPATCH_LOCK_TIMEOUT_MS, MIN_DISPATCH_LOCK_TIMEOUT_MS, MAX_DISPATCH_LOCK_TIMEOUT_MS, DISPATCH_LOCK_INITIAL_POLL_MS, DISPATCH_LOCK_MAX_POLL_MS, LOCK_STALE_MS4;
+var import_crypto30, import_fs99, import_promises18, import_path117, DispatchStoreInvalidError, DispatchLockTimeoutError, OMC_DISPATCH_LOCK_TIMEOUT_ENV, DEFAULT_DISPATCH_LOCK_TIMEOUT_MS, MIN_DISPATCH_LOCK_TIMEOUT_MS, MAX_DISPATCH_LOCK_TIMEOUT_MS, LEGACY_LOCK_STALE_MS, LEGACY_LOCK_INITIAL_POLL_MS, LEGACY_LOCK_MAX_POLL_MS;
 var init_dispatch_queue = __esm({
   "src/team/dispatch-queue.ts"() {
     "use strict";
@@ -94821,13 +95278,31 @@ var init_dispatch_queue = __esm({
     init_state_paths();
     init_fs_utils();
     init_contracts();
+    init_process_identity_lock();
+    init_team_owner_epoch();
+    DispatchStoreInvalidError = class extends Error {
+      constructor(path30, reason) {
+        super(`Refusing to overwrite invalid dispatch store ${path30} (${reason})`);
+        this.path = path30;
+        this.reason = reason;
+        this.name = "DispatchStoreInvalidError";
+      }
+    };
+    DispatchLockTimeoutError = class extends Error {
+      constructor(teamName, timeoutMs) {
+        super(
+          `Timed out acquiring dispatch lock for ${teamName} after ${timeoutMs}ms. Set ${OMC_DISPATCH_LOCK_TIMEOUT_ENV} to increase (current: ${timeoutMs}ms, max: ${MAX_DISPATCH_LOCK_TIMEOUT_MS}ms).`
+        );
+        this.name = "DispatchLockTimeoutError";
+      }
+    };
     OMC_DISPATCH_LOCK_TIMEOUT_ENV = "OMC_TEAM_DISPATCH_LOCK_TIMEOUT_MS";
     DEFAULT_DISPATCH_LOCK_TIMEOUT_MS = 15e3;
     MIN_DISPATCH_LOCK_TIMEOUT_MS = 1e3;
     MAX_DISPATCH_LOCK_TIMEOUT_MS = 12e4;
-    DISPATCH_LOCK_INITIAL_POLL_MS = 25;
-    DISPATCH_LOCK_MAX_POLL_MS = 500;
-    LOCK_STALE_MS4 = 5 * 60 * 1e3;
+    LEGACY_LOCK_STALE_MS = 5 * 60 * 1e3;
+    LEGACY_LOCK_INITIAL_POLL_MS = 25;
+    LEGACY_LOCK_MAX_POLL_MS = 500;
   }
 });
 
@@ -95223,23 +95698,14 @@ var init_mailbox_notification_guard = __esm({
   }
 });
 
-// src/team/mcp-comm.ts
-function isConfirmedNotification(outcome) {
-  if (!outcome.ok) return false;
-  if (outcome.transport !== "hook") return true;
-  return outcome.reason !== "queued_for_hook_dispatch";
-}
-function isLeaderPaneMissingMailboxPersistedOutcome(request, outcome) {
-  return request.to_worker === "leader-fixed" && outcome.ok && outcome.reason === "leader_pane_missing_mailbox_persisted";
-}
-function fallbackTransportForPreference(preference) {
-  if (preference === "prompt_stdin") return "prompt_stdin";
-  if (preference === "transport_direct") return "tmux_send_keys";
-  return "hook";
-}
+// src/team/mcp-dispatch-helpers.ts
 function notifyExceptionReason(error62) {
   const message4 = error62 instanceof Error ? error62.message : String(error62);
   return `notify_exception:${message4}`;
+}
+function enqueueFailedOutcome(error62) {
+  const message4 = error62 instanceof Error ? error62.message : String(error62);
+  return { ok: false, transport: "none", reason: `dispatch_enqueue_failed:${message4}` };
 }
 function isExactText2(value) {
   return typeof value === "string" && value.length > 0 && value === value.trim();
@@ -95254,6 +95720,29 @@ function canonicalNotificationLockIdentity(lockPath2) {
       return lockPath2;
     }
   }
+}
+var import_node_path25, import_node_fs21;
+var init_mcp_dispatch_helpers = __esm({
+  "src/team/mcp-dispatch-helpers.ts"() {
+    "use strict";
+    import_node_path25 = require("node:path");
+    import_node_fs21 = require("node:fs");
+  }
+});
+
+// src/team/mcp-comm.ts
+function isConfirmedNotification(outcome) {
+  if (!outcome.ok) return false;
+  if (outcome.transport !== "hook") return true;
+  return outcome.reason !== "queued_for_hook_dispatch";
+}
+function isLeaderPaneMissingMailboxPersistedOutcome(request, outcome) {
+  return request.to_worker === "leader-fixed" && outcome.ok && outcome.reason === "leader_pane_missing_mailbox_persisted";
+}
+function fallbackTransportForPreference(preference) {
+  if (preference === "prompt_stdin") return "prompt_stdin";
+  if (preference === "transport_direct") return "tmux_send_keys";
+  return "hook";
 }
 function managedOutcome(ok2, transport, reason) {
   return { ok: ok2, transport, reason, notification_managed: true };
@@ -95452,20 +95941,25 @@ async function markLeaderPaneMissingDeferred(params) {
   ).catch(logTransitionFailure);
 }
 async function queueInboxInstruction(params) {
-  const queued = await enqueueDispatchRequest(
-    params.teamName,
-    {
-      kind: "inbox",
-      to_worker: params.workerName,
-      worker_index: params.workerIndex,
-      pane_id: params.paneId,
-      trigger_message: params.triggerMessage,
-      transport_preference: params.transportPreference,
-      fallback_allowed: params.fallbackAllowed,
-      inbox_correlation_key: params.inboxCorrelationKey
-    },
-    params.cwd
-  );
+  let queued;
+  try {
+    queued = await enqueueDispatchRequest(
+      params.teamName,
+      {
+        kind: "inbox",
+        to_worker: params.workerName,
+        worker_index: params.workerIndex,
+        pane_id: params.paneId,
+        trigger_message: params.triggerMessage,
+        transport_preference: params.transportPreference,
+        fallback_allowed: params.fallbackAllowed,
+        inbox_correlation_key: params.inboxCorrelationKey
+      },
+      params.cwd
+    );
+  } catch (error62) {
+    return enqueueFailedOutcome(error62);
+  }
   if (queued.deduped) {
     return {
       ok: false,
@@ -95514,20 +96008,25 @@ async function queueInboxInstruction(params) {
 }
 async function queueDirectMailboxMessage(params) {
   const message4 = await params.deps.sendDirectMessage(params.teamName, params.fromWorker, params.toWorker, params.body, params.cwd);
-  const queued = await enqueueDispatchRequest(
-    params.teamName,
-    {
-      kind: "mailbox",
-      to_worker: params.toWorker,
-      worker_index: params.toWorkerIndex,
-      pane_id: params.toPaneId,
-      trigger_message: params.triggerMessage,
-      message_id: message4.message_id,
-      transport_preference: params.transportPreference,
-      fallback_allowed: params.fallbackAllowed
-    },
-    params.cwd
-  );
+  let queued;
+  try {
+    queued = await enqueueDispatchRequest(
+      params.teamName,
+      {
+        kind: "mailbox",
+        to_worker: params.toWorker,
+        worker_index: params.toWorkerIndex,
+        pane_id: params.toPaneId,
+        trigger_message: params.triggerMessage,
+        message_id: message4.message_id,
+        transport_preference: params.transportPreference,
+        fallback_allowed: params.fallbackAllowed
+      },
+      params.cwd
+    );
+  } catch (error62) {
+    return { ...enqueueFailedOutcome(error62), message_id: message4.message_id, to_worker: params.toWorker };
+  }
   if (queued.deduped) {
     return {
       ok: false,
@@ -95610,21 +96109,34 @@ async function queueBroadcastMailboxMessage(params) {
     );
     persistedRecipients.push({ ...recipient, triggerMessage, message: message4 });
   }
+  let teamWideFailure;
   for (const recipient of persistedRecipients) {
-    const queued = await enqueueDispatchRequest(
-      params.teamName,
-      {
-        kind: "mailbox",
-        to_worker: recipient.workerName,
-        worker_index: recipient.workerIndex,
-        pane_id: recipient.paneId,
-        trigger_message: recipient.triggerMessage,
+    let queued;
+    try {
+      if (teamWideFailure !== void 0) throw teamWideFailure;
+      queued = await enqueueDispatchRequest(
+        params.teamName,
+        {
+          kind: "mailbox",
+          to_worker: recipient.workerName,
+          worker_index: recipient.workerIndex,
+          pane_id: recipient.paneId,
+          trigger_message: recipient.triggerMessage,
+          message_id: recipient.message.message_id,
+          transport_preference: params.transportPreference,
+          fallback_allowed: params.fallbackAllowed
+        },
+        params.cwd
+      );
+    } catch (error62) {
+      if (isTeamWideDispatchFailure(error62)) teamWideFailure = error62;
+      outcomes[recipient.index] = {
+        ...enqueueFailedOutcome(error62),
         message_id: recipient.message.message_id,
-        transport_preference: params.transportPreference,
-        fallback_allowed: params.fallbackAllowed
-      },
-      params.cwd
-    );
+        to_worker: recipient.workerName
+      };
+      continue;
+    }
     if (queued.deduped) {
       outcomes[recipient.index] = {
         ok: false,
@@ -95698,12 +96210,10 @@ async function queueBroadcastMailboxMessage(params) {
   }
   return outcomes;
 }
-var import_node_fs21, import_node_path25, mailboxNotificationTombstones;
+var mailboxNotificationTombstones;
 var init_mcp_comm = __esm({
   "src/team/mcp-comm.ts"() {
     "use strict";
-    import_node_fs21 = require("node:fs");
-    import_node_path25 = require("node:path");
     init_dispatch_queue();
     init_team_ops();
     init_mailbox_notification_guard();
@@ -95711,6 +96221,7 @@ var init_mcp_comm = __esm({
     init_state_paths();
     init_process_identity_lock();
     init_swallowed_error();
+    init_mcp_dispatch_helpers();
     mailboxNotificationTombstones = /* @__PURE__ */ new Map();
   }
 });
@@ -96180,6 +96691,7 @@ __export(git_worktree_exports, {
   EMPTY_TREE: () => EMPTY_TREE,
   HOST_GIT_ATTR_SOURCE_MIN: () => HOST_GIT_ATTR_SOURCE_MIN,
   HOST_GIT_MAX_BUFFER: () => HOST_GIT_MAX_BUFFER,
+  attributeFreeCheckout: () => attributeFreeCheckout,
   checkWorkerWorktreeRemovalSafety: () => checkWorkerWorktreeRemovalSafety,
   cleanupTeamWorktrees: () => cleanupTeamWorktrees,
   createWorkerWorktree: () => createWorkerWorktree,
@@ -96348,6 +96860,21 @@ function hostGitCommand(cwd, args, timeout, baseEnv2) {
     if (IGNORE_SUBMODULES_SUBCOMMANDS.has(subcommand)) finalArgs = [...args.slice(0, at + 1), "--ignore-submodules=all", ...args.slice(at + 1)];
   }
   return { argv: [...hostGitHardeningArgs(), ...tree, ...finalArgs], env: env2 };
+}
+function attributeFreeCheckout(repoRoot3, gitVersion) {
+  if (hostGitAttrSourceProblem(gitVersion)) {
+    const shown = /(\d+\.\d+\.\d+\S*)/.exec((gitVersion === void 0 ? hostGitVersionCache : gitVersion) ?? "")?.[1];
+    throw new Error(`${shown ? `git ${shown} is too old` : "the git version cannot be read"} for the factory: it needs git >= ${HOST_GIT_ATTR_SOURCE_MIN.replace(/\.0$/, "")} (merge-tree --write-tree and GIT_ATTR_SOURCE)`);
+  }
+  const format = runHostGit(repoRoot3, ["rev-parse", "--show-object-format"]).trim();
+  const emptyTree = EMPTY_TREE[format];
+  if (!emptyTree) throw new Error(`unknown object format ${JSON.stringify(format)}`);
+  const drivers = hostGitDriverOverrides(repoRoot3);
+  if (drivers === null) throw new Error("host git: the filter and diff drivers cannot be listed or overridden; refusing to check a lane worktree out");
+  return {
+    config: ["-c", `core.attributesFile=${hostAttributesFile()}`, ...EXEC_KEY_OVERRIDES.flatMap((kv) => ["-c", kv]), ...drivers],
+    env: { GIT_ATTR_SOURCE: emptyTree, GIT_LFS_SKIP_SMUDGE: "1", GIT_NO_REPLACE_OBJECTS: "1", GIT_GRAFT_FILE: (0, import_node_path28.join)(hostHooksDir(), "grafts") }
+  };
 }
 function hostGitAttrSourceProblem(version3) {
   if (version3 === void 0) {
@@ -96951,9 +97478,16 @@ function ensureWorkerWorktree(teamName, workerName, repoRoot3, options = {}) {
   }
   if ((0, import_node_fs25.existsSync)(wtPath)) {
     assertCompatibleExistingWorktree(repoRoot3, wtPath, branch2, mode);
-    const previousBase = readMetadata(repoRoot3, teamName).find((entry2) => entry2.workerName === workerName)?.baseCommit;
+    const previous = readMetadata(repoRoot3, teamName).find((entry2) => entry2.workerName === workerName);
+    if (options.withoutAttributes && previous?.attributeFree !== true) {
+      const error62 = new Error(`worktree_attributes_applied: the lane worktree ${wtPath} was checked out before the attribute-free checkout, so its files may differ from their blobs; recreate it: remove the worktree (for a factory run: cancel it, run omg factory run clean, then rerun)`);
+      error62.code = "worktree_attributes_applied";
+      throw error62;
+    }
+    const previousBase = previous?.baseCommit;
     const info2 = {
       ...previousBase ? { baseCommit: previousBase } : {},
+      ...previous?.attributeFree ? { attributeFree: true } : {},
       path: wtPath,
       branch: branch2,
       workerName,
@@ -96971,10 +97505,12 @@ function ensureWorkerWorktree(teamName, workerName, repoRoot3, options = {}) {
   const wtDir = (0, import_node_path28.join)(getOmcRoot(repoRoot3), "team", sanitizeName(teamName), "worktrees");
   ensureDirWithMode(wtDir);
   const args = mode === "named" ? ["worktree", "add", "-b", branch2, wtPath, options.baseRef ?? "HEAD"] : ["worktree", "add", "--detach", wtPath, options.baseRef ?? "HEAD"];
-  (0, import_node_child_process14.execFileSync)(hostGitExe(), args, { cwd: repoRoot3, stdio: "pipe", windowsHide: true });
+  const checkout = options.withoutAttributes ? attributeFreeCheckout(repoRoot3) : null;
+  (0, import_node_child_process14.execFileSync)(hostGitExe(), [...checkout?.config ?? [], ...args], { cwd: repoRoot3, stdio: "pipe", windowsHide: true, ...checkout ? { env: { ...process.env, ...checkout.env } } : {} });
   const baseCommit = gitOrNull(["rev-parse", "HEAD"], wtPath);
   const info = {
     ...baseCommit ? { baseCommit } : {},
+    ...checkout ? { attributeFree: true } : {},
     path: wtPath,
     branch: branch2,
     workerName,
@@ -99048,6 +99584,7 @@ var init_scaling = __esm({
     init_monitor();
     init_tmux_session();
     init_herdr_session();
+    init_ready_timeout();
     init_state_paths();
     init_worker_bootstrap();
     init_sdk_transport();
@@ -105269,7 +105806,11 @@ async function monitorTeamV2(teamName, cwd, expectedInstanceId) {
     const sdkCapped = Boolean(
       sdkSession && providerLiveness !== "dead" && sdkSession.state === "capped"
     );
-    const paneSuggestsIdle = sdkSession ? alive && providerLiveness !== "dead" && (sdkSession.state === "idle" && sdkSession.queued === 0 || sdkCapped) : alive && providerLiveness !== "dead" && paneLooksReady(paneCapture) && !paneHasActiveTask(paneCapture);
+    const paneSignals = sdkSession ? null : observePane(paneCapture, w.worker_cli);
+    const paneState = paneSignals ? classifyPane(paneSignals) : null;
+    const paneWaitsAtTrust = paneState?.kind === "trust" && !paneSignals?.busy;
+    const paneSuggestsIdle = sdkSession ? alive && providerLiveness !== "dead" && (sdkSession.state === "idle" && sdkSession.queued === 0 || sdkCapped) : alive && providerLiveness !== "dead" && (paneState?.kind === "idle" || paneWaitsAtTrust);
+    const paneWaitsAt = !paneWaitsAtTrust ? "idle at prompt" : paneState?.kind === "trust" && paneState.trust === "cursor_workspace_trust" ? "stopped at the Cursor workspace trust notice" : "waiting at a trust dialog";
     const statusFresh = isFreshTimestamp2(status.updated_at);
     const heartbeatFresh = isFreshTimestamp2(heartbeat?.last_turn_at);
     const hasWorkStartEvidence = expectedTaskId !== "" && hasWorkerStatusProgress(status, expectedTaskId);
@@ -105331,19 +105872,19 @@ async function monitorTeamV2(teamName, cwd, expectedInstanceId) {
         }
       } else if (stallReason === "missing_dependency") {
         recommendations.push(
-          `Investigate ${w.name}: task-${outstandingTask?.id ?? expectedTaskId} is blocked by missing task ids [${missingDependencyIds.join(", ")}]; pane is idle at prompt`
+          `Investigate ${w.name}: task-${outstandingTask?.id ?? expectedTaskId} is blocked by missing task ids [${missingDependencyIds.join(", ")}]; pane is ${paneWaitsAt}`
         );
       } else if (stallReason === "no_work_start_evidence") {
         recommendations.push(
-          `Investigate ${w.name}: assigned work but no work-start evidence; pane is idle at prompt`
+          `Investigate ${w.name}: assigned work but no work-start evidence; pane is ${paneWaitsAt}`
         );
       } else if (stallReason === "stale_or_missing_worker_reports") {
         recommendations.push(
-          `Investigate ${w.name}: pane is idle while status/heartbeat are stale or missing`
+          `Investigate ${w.name}: pane is ${paneWaitsAtTrust ? paneWaitsAt : "idle"} while status/heartbeat are stale or missing`
         );
       } else {
         recommendations.push(
-          `Investigate ${w.name}: no meaningful turn progress and pane is idle at prompt`
+          `Investigate ${w.name}: no meaningful turn progress and pane is ${paneWaitsAt}`
         );
       }
     }
@@ -106460,6 +107001,7 @@ var init_runtime_v2 = __esm({
     init_model_contract();
     init_tmux_session();
     init_herdr_session();
+    init_pane_readiness();
     init_worker_bootstrap();
     init_mcp_comm();
     init_sdk_launch_progress();
@@ -107298,7 +107840,9 @@ __export(reply_listener_exports, {
   parseApprovalReply: () => parseApprovalReply,
   pollLoop: () => pollLoop,
   processSlackSocketMessage: () => processSlackSocketMessage,
+  replyLogPreview: () => replyLogPreview,
   sanitizeReplyInput: () => sanitizeReplyInput,
+  sendReplyInjectionSteps: () => sendReplyInjectionSteps,
   startReplyListener: () => startReplyListener,
   stopReplyListener: () => stopReplyListener
 });
@@ -107430,7 +107974,13 @@ function isDaemonRunning() {
   return true;
 }
 function sanitizeReplyInput(text6) {
-  return text6.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, "").replace(/[\u202a-\u202e\u2066-\u2069]/g, "").replace(/\r\n|[\r\n]/g, " ").replace(/\\/g, "\\\\").replace(/`/g, "\\`").replace(/\$\(/g, "\\$(").replace(/\$\{/g, "\\${").trim();
+  return escapeReplyInput(stripReplyInput(text6));
+}
+function stripReplyInput(text6) {
+  return text6.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, "").replace(/[\u202a-\u202e\u2066-\u2069]/g, "").replace(/\r\n|[\r\n]/g, " ");
+}
+function escapeReplyInput(text6) {
+  return text6.replace(/\\/g, "\\\\").replace(/`/g, "\\`").replace(/\$\(/g, "\\$(").replace(/\$\{/g, "\\${").trim();
 }
 function parseApprovalReply(text6) {
   const trimmed = text6.trim().toLowerCase();
@@ -107465,16 +108015,83 @@ function handleApprovalReply(approvalRef, text6, platform) {
   );
   return decision;
 }
+function prefixedReply(text6, platform, config2) {
+  return (config2.includePrefix ? `[reply:${platform}] ` : "") + text6;
+}
+function sanitizeReplyText(text6, platform, config2) {
+  return sanitizeReplyInput(prefixedReply(text6, platform, config2));
+}
+function unescapeReplyInput(text6) {
+  return text6.replace(/\\(\\|`|\$(?=[({]))/g, "$1");
+}
+function maskTypedText(text6, typed) {
+  let masked = text6;
+  for (const { literal: literal3, logged } of typed) {
+    const redacted = logged ?? escapeReplyInput(redactTokens(unescapeReplyInput(literal3)));
+    if (redacted === literal3) continue;
+    for (const form of TYPED_TEXT_FORMS) {
+      try {
+        masked = masked.split(form(literal3)).join(form(redacted));
+      } catch {
+      }
+    }
+  }
+  return masked;
+}
+function redactTypedText(text6, typed) {
+  return redactTokens(unescapeReplyInput(maskTypedText(text6, typed)));
+}
+function sendKeysErrorText(error62, steps) {
+  const message4 = error62 instanceof Error ? error62.message : String(error62);
+  if (!keyShapesEnabled()) return message4;
+  const logged = loggedReplyOf(steps);
+  return redactTypedText(
+    message4,
+    steps.flatMap((step) => step.kind === "literal" ? [{ literal: step.value, logged }] : [])
+  );
+}
+function herdrErrorText(error62, typed, logged) {
+  if (!(error62 instanceof Error)) return String(error62);
+  const typedTexts = typed !== void 0 && keyShapesEnabled() ? [{ literal: typed, logged }] : [];
+  if (error62 instanceof HerdrError && error62.detail) {
+    const stderr = error62.detail.trim();
+    const prefix = `herdr_${error62.code}: `;
+    if (error62.message === prefix + stderr.slice(0, 300)) {
+      return prefix + redactedPrefix(maskTypedText(stderr, typedTexts), 300);
+    }
+  }
+  return typedTexts.length > 0 ? redactTypedText(error62.message, typedTexts) : error62.message;
+}
+function typedReplyForLog(text6, platform, config2) {
+  return redactedPrefix(
+    stripReplyInput(prefixedReply(text6, platform, config2)),
+    config2.maxMessageLength,
+    escapeReplyInput
+  );
+}
+function loggedReplyOf(steps) {
+  return loggedReplies.get(steps)?.();
+}
+function replyLogPreview(text6, platform, config2) {
+  return redactedPreview(
+    stripReplyInput(prefixedReply(text6, platform, config2)),
+    50,
+    config2.maxMessageLength,
+    escapeReplyInput
+  );
+}
 function buildReplyInjectionSteps(text6, platform, config2, mapping) {
-  const prefix = config2.includePrefix ? `[reply:${platform}] ` : "";
-  const sanitized = sanitizeReplyInput(prefix + text6);
-  const truncated = sanitized.slice(0, config2.maxMessageLength);
+  const truncated = sanitizeReplyText(text6, platform, config2).slice(
+    0,
+    config2.maxMessageLength
+  );
+  let steps;
   if (mapping?.event === "ask-user-question" && mapping.askUserQuestionAllowOther !== false && Number.isFinite(mapping.askUserQuestionOptionCount)) {
     const optionCount = Math.max(
       0,
       Math.floor(mapping.askUserQuestionOptionCount ?? 0)
     );
-    return [
+    steps = [
       ...Array.from({ length: optionCount }, () => ({
         kind: "key",
         value: "Down"
@@ -107483,11 +108100,14 @@ function buildReplyInjectionSteps(text6, platform, config2, mapping) {
       { kind: "literal", value: truncated },
       { kind: "key", value: "Enter" }
     ];
+  } else {
+    steps = [
+      { kind: "literal", value: truncated },
+      { kind: "key", value: "Enter" }
+    ];
   }
-  return [
-    { kind: "literal", value: truncated },
-    { kind: "key", value: "Enter" }
-  ];
+  loggedReplies.set(steps, () => typedReplyForLog(text6, platform, config2));
+  return steps;
 }
 function sendReplyInjectionSteps(paneId, steps) {
   try {
@@ -107507,7 +108127,7 @@ function sendReplyInjectionSteps(paneId, steps) {
     return true;
   } catch (error62) {
     log(
-      `ERROR: Failed to send reply injection steps to pane ${paneId}: ${error62 instanceof Error ? error62.message : String(error62)}`
+      `ERROR: Failed to send reply injection steps to pane ${paneId}: ${sendKeysErrorText(error62, steps)}`
     );
     return false;
   }
@@ -107518,7 +108138,7 @@ async function injectReplyIntoHerdrPane(paneId, text6, platform, config2, mappin
     content2 = await captureHerdrWorkerPane(paneId, 15);
   } catch (error62) {
     log(
-      `WARN: Failed to capture herdr pane ${paneId}: ${error62 instanceof Error ? error62.message : String(error62)}`
+      `WARN: Failed to capture herdr pane ${paneId}: ${herdrErrorText(error62)}`
     );
   }
   if (!content2.trim()) {
@@ -107541,12 +108161,12 @@ async function injectReplyIntoHerdrPane(paneId, text6, platform, config2, mappin
   try {
     await herdrSendPrompt(paneId, preview);
     log(
-      `Injected reply from ${platform} into herdr pane ${paneId}: "${preview.slice(0, 50)}${preview.length > 50 ? "..." : ""}"`
+      `Injected reply from ${platform} into herdr pane ${paneId}: "${replyLogPreview(text6, platform, config2)}"`
     );
     return true;
   } catch (error62) {
     log(
-      `ERROR: Failed to inject reply into herdr pane ${paneId}: ${error62 instanceof Error ? error62.message : String(error62)}`
+      `ERROR: Failed to inject reply into herdr pane ${paneId}: ${herdrErrorText(error62, preview, loggedReplyOf(steps))}`
     );
     return false;
   }
@@ -107572,7 +108192,7 @@ async function injectReply(paneId, text6, platform, config2, mapping) {
   const success2 = mapping?.event === "ask-user-question" ? sendReplyInjectionSteps(paneId, steps) : sendToPane(paneId, preview, true);
   if (success2) {
     log(
-      `Injected reply from ${platform} into pane ${paneId}: "${preview.slice(0, 50)}${preview.length > 50 ? "..." : ""}"`
+      `Injected reply from ${platform} into pane ${paneId}: "${replyLogPreview(text6, platform, config2)}"`
     );
   } else {
     log(`ERROR: Failed to inject reply into pane ${paneId}`);
@@ -108334,7 +108954,7 @@ async function processSlackSocketMessage(rawMessage, connectionState, paneId, co
   }
   return { injected: success2, validation };
 }
-var import_fs106, import_path126, import_url16, import_child_process30, import_crypto32, import_https2, __filename2, SECURE_FILE_MODE2, MAX_LOG_SIZE_BYTES, DAEMON_ENV_ALLOWLIST, DEFAULT_STATE_DIR, PID_FILE_PATH, STATE_FILE_PATH, LOG_FILE_PATH, APPROVAL_APPROVE_WORDS, APPROVAL_DENY_WORDS, RateLimiter, discordBackoffUntil, PRUNE_INTERVAL_MS;
+var import_fs106, import_path126, import_url16, import_child_process30, import_crypto32, import_https2, __filename2, SECURE_FILE_MODE2, MAX_LOG_SIZE_BYTES, DAEMON_ENV_ALLOWLIST, DEFAULT_STATE_DIR, PID_FILE_PATH, STATE_FILE_PATH, LOG_FILE_PATH, APPROVAL_APPROVE_WORDS, APPROVAL_DENY_WORDS, RateLimiter, TYPED_TEXT_FORMS, loggedReplies, discordBackoffUntil, PRUNE_INTERVAL_MS;
 var init_reply_listener = __esm({
   "src/notifications/reply-listener.ts"() {
     "use strict";
@@ -108439,6 +109059,8 @@ var init_reply_listener = __esm({
         this.timestamps = [];
       }
     };
+    TYPED_TEXT_FORMS = [(typed) => quoteForTmuxCmdLayer(typed), (typed) => typed];
+    loggedReplies = /* @__PURE__ */ new WeakMap();
     discordBackoffUntil = 0;
     PRUNE_INTERVAL_MS = 60 * 60 * 1e3;
   }
@@ -123509,10 +124131,10 @@ function replaceObjectsProblem(exec3, root) {
   try {
     const rawCommon = run(exec3, root, ["rev-parse", "--git-common-dir"]).trim();
     const commonDir = (0, import_path170.isAbsolute)(rawCommon) ? rawCommon : (0, import_path170.resolve)(root, rawCommon);
-    const replaced = run(exec3, root, ["for-each-ref", FOR_EACH_REF_FORMAT]).split(/\r?\n/).map((l) => l.trim().split(" ")[0]).filter((name) => name.startsWith("refs/replace/"));
-    const found = [...replaced.slice(0, 5), ...(0, import_fs146.existsSync)((0, import_path170.join)(commonDir, "info", "grafts")) ? [(0, import_path170.join)(commonDir, "info", "grafts")] : []];
+    const replaced2 = run(exec3, root, ["for-each-ref", FOR_EACH_REF_FORMAT]).split(/\r?\n/).map((l) => l.trim().split(" ")[0]).filter((name) => name.startsWith("refs/replace/"));
+    const found = [...replaced2.slice(0, 5), ...(0, import_fs146.existsSync)((0, import_path170.join)(commonDir, "info", "grafts")) ? [(0, import_path170.join)(commonDir, "info", "grafts")] : []];
     if (found.length === 0) return null;
-    return `the repository has git replace refs or grafts (${found.join(", ")}${replaced.length > 5 ? ", ..." : ""}), which make git read other commits or trees than the ones named; the factory does not run on it. Inspect them (git replace -l; git for-each-ref refs/replace/), delete what you did not create (git replace -d <sha>; remove info/grafts), then rerun`;
+    return `the repository has git replace refs or grafts (${found.join(", ")}${replaced2.length > 5 ? ", ..." : ""}), which make git read other commits or trees than the ones named; the factory does not run on it. Inspect them (git replace -l; git for-each-ref refs/replace/), delete what you did not create (git replace -d <sha>; remove info/grafts), then rerun`;
   } catch (error62) {
     return `the replace refs and grafts of the repository cannot be read: ${error62 instanceof Error ? error62.message : String(error62)}`;
   }
@@ -124789,12 +125411,12 @@ var init_job = __esm({
         } else if (isolation === "worktree") {
           let info;
           try {
-            info = ensureWorkerWorktree(WORKTREE_TEAM, id, ledgerCwd, { mode: "named", requireCleanLeader: false, ...startSha ? { baseRef: startSha } : {} });
+            info = ensureWorkerWorktree(WORKTREE_TEAM, id, ledgerCwd, { mode: "named", requireCleanLeader: false, ...startSha ? { baseRef: startSha } : {}, ...options.hostCommits ? { withoutAttributes: true } : {} });
           } catch (err) {
             const path30 = getWorktreePath(ledgerCwd, WORKTREE_TEAM, id);
             const branch2 = getBranchName(WORKTREE_TEAM, id);
             let left = "";
-            if ((0, import_node_fs34.existsSync)(path30)) {
+            if ((0, import_node_fs34.existsSync)(path30) && err?.code !== "worktree_attributes_applied") {
               try {
                 removeWorkerWorktree(WORKTREE_TEAM, id, ledgerCwd);
               } catch {
@@ -125845,7 +126467,7 @@ function breakStaleLock(lock, staleMs, token, seenOwner) {
 function withFileLock2(path30, fn, o = {}) {
   const lock = `${path30}.lock`;
   const token = `${process.pid}-${(0, import_crypto44.randomUUID)()}`;
-  const staleMs = o.staleMs ?? LOCK_STALE_MS5;
+  const staleMs = o.staleMs ?? LOCK_STALE_MS4;
   (0, import_fs147.mkdirSync)((0, import_path171.dirname)(path30), { recursive: true, mode: 448 });
   const deadline = Date.now() + (o.timeoutMs ?? LOCK_TIMEOUT_MS3);
   let deniedSince;
@@ -125938,7 +126560,7 @@ function appendLocalReview(storeDir, record3) {
   withFileLock2(path30, () => appendNoFollow(storeDir, path30, `${JSON.stringify(record3)}
 `));
 }
-var import_crypto44, import_fs147, import_path171, realOr, sleep8, LOCK_TIMEOUT_MS3, LOCK_STALE_MS5, PENDING_DELETE_MS, OWNER, ownerOf, empty2, MAX_LOCAL_REVIEW_CHARS, localReviewsPath;
+var import_crypto44, import_fs147, import_path171, realOr, sleep8, LOCK_TIMEOUT_MS3, LOCK_STALE_MS4, PENDING_DELETE_MS, OWNER, ownerOf, empty2, MAX_LOCAL_REVIEW_CHARS, localReviewsPath;
 var init_store = __esm({
   "src/forge/local/store.ts"() {
     "use strict";
@@ -125957,7 +126579,7 @@ var init_store = __esm({
       Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms2);
     };
     LOCK_TIMEOUT_MS3 = 15e3;
-    LOCK_STALE_MS5 = 6e4;
+    LOCK_STALE_MS4 = 6e4;
     PENDING_DELETE_MS = 5e3;
     OWNER = "owner";
     ownerOf = (lock) => {
@@ -128164,7 +128786,7 @@ function lockBusyMessage(lock, nowMs = Date.now()) {
     return `another omg factory process held the lock file ${lock}; retry in a moment`;
   }
   if (stat2.isDirectory()) return `the lock path ${lock} is a directory, so the lock can never be taken and never goes stale; ${remove}`;
-  if (nowMs - stat2.mtimeMs >= LOCK_STALE_MS6) return `the lock file ${lock} has been held for more than ${LOCK_STALE_MS6 / 1e3} s by a live pid (maybe an unrelated program reusing it), so it does not go stale; ${remove}`;
+  if (nowMs - stat2.mtimeMs >= LOCK_STALE_MS5) return `the lock file ${lock} has been held for more than ${LOCK_STALE_MS5 / 1e3} s by a live pid (maybe an unrelated program reusing it), so it does not go stale; ${remove}`;
   return `another omg factory process holds the lock file ${lock}; retry in a moment (${remove})`;
 }
 function claimOwner(path30, now2, deps, busy, fields = {}) {
@@ -128206,7 +128828,7 @@ function claimOwner(path30, now2, deps, busy, fields = {}) {
   };
   return { release, relabel, ...tookOver ? { tookOver } : {} };
 }
-var import_crypto46, import_fs154, import_os34, import_path179, FACTORY_PHASES, TERMINAL_FACTORY_PHASES, HEAL_RUN_KEY, HEAL_APPROVE_GATE, HEAL_DIAGNOSIS_GATE, FactoryStateError, EXIT_BUSY, FactoryBusyError, FactoryTamperHoldError, runSlug, runLabel, isStr2, HEX64, GATE_DETAIL_MAX_CHARS, isCount3, HEX409, MAX_HUMAN_THREAD_IDS, THREAD_ID, FEEDBACK_FORGES, FULL_SHA2, findingsOk, ownIdentity, startIdentity, defaultOwnerDeps, ownerText, SLOT_FILE, slotText, IMPORT_LOCK_WAIT_MS, IMPORT_LOCK_SCAN_WAIT_MS, ImportLockBusyError, importHeld, importInside, SCAN_WAIT_MS, AUTO_START_SCAN_WAIT_MS, READ_SCAN_WAIT_MS, SCAN_POLL_MS, scanWait, engineBusyMessage, engineBusyText, unreadableOwnerMessage, isOwnerRecord, LOCK_STALE_MS6;
+var import_crypto46, import_fs154, import_os34, import_path179, FACTORY_PHASES, TERMINAL_FACTORY_PHASES, HEAL_RUN_KEY, HEAL_APPROVE_GATE, HEAL_DIAGNOSIS_GATE, FactoryStateError, EXIT_BUSY, FactoryBusyError, FactoryTamperHoldError, runSlug, runLabel, isStr2, HEX64, GATE_DETAIL_MAX_CHARS, isCount3, HEX409, MAX_HUMAN_THREAD_IDS, THREAD_ID, FEEDBACK_FORGES, FULL_SHA2, findingsOk, ownIdentity, startIdentity, defaultOwnerDeps, ownerText, SLOT_FILE, slotText, IMPORT_LOCK_WAIT_MS, IMPORT_LOCK_SCAN_WAIT_MS, ImportLockBusyError, importHeld, importInside, SCAN_WAIT_MS, AUTO_START_SCAN_WAIT_MS, READ_SCAN_WAIT_MS, SCAN_POLL_MS, scanWait, engineBusyMessage, engineBusyText, unreadableOwnerMessage, isOwnerRecord, LOCK_STALE_MS5;
 var init_state6 = __esm({
   "src/factory/run/state.ts"() {
     "use strict";
@@ -128315,7 +128937,7 @@ var init_state6 = __esm({
     engineBusyText = (prior, key) => prior.run === "scan" ? `the poller's heal scan or base sync, or a factory read command's fetch, holds this checkout for a moment (${describeOwner(prior)}); retry` : `another omg factory engine runs in this repository (${describeOwner(prior)}); one engine runs per checkout at a time${key === "next" ? ", so run --next after it ends" : key === "scan" ? ", so retry after it ends" : key ? `, so start ${ownerText(key)} after it ends` : ""} (parallel runs need separate clones)`;
     unreadableOwnerMessage = (path30, release = "omg factory run release") => `the owner file ${path30} is unreadable, so it counts as held; check that no engine uses it, then remove it (${release})`;
     isOwnerRecord = (v) => typeof v === "object" && v !== null && Number.isInteger(v.pid) && typeof v.hostname === "string";
-    LOCK_STALE_MS6 = 3e4;
+    LOCK_STALE_MS5 = 3e4;
   }
 });
 
@@ -129710,19 +130332,21 @@ function factoryGitProblem(exec3 = defaultExec, platform = process.platform) {
   const v = r.status === 0 ? parseGitVersion(r.stdout) : null;
   if (!v) {
     const why = r.stderr.trim().split(/\r?\n/)[0]?.trim();
-    return `the factory needs git >= ${want} (merge-tree --write-tree), and \`git --version\` could not be read${why ? `: ${why}` : ""}`;
+    return `the factory needs git >= ${want} ${NEED}, and \`git --version\` could not be read${why ? `: ${why}` : ""}`;
   }
   if (gitVersionAtLeast(v, FACTORY_GIT_MIN_VERSION)) return null;
   const full = /git version (\S+)/.exec(r.stdout)?.[1] ?? `${v[0]}.${v[1]}`;
   const hint = platform === "linux" ? " On Ubuntu: sudo add-apt-repository ppa:git-core/ppa && sudo apt-get update && sudo apt-get install git" : "";
-  return `git ${full} is too old for the factory: it needs git >= ${want} (merge-tree --write-tree).${hint}`;
+  return `git ${full} is too old for the factory: it needs git >= ${want} ${NEED}.${hint}`;
 }
-var FACTORY_GIT_MIN_VERSION;
+var FACTORY_GIT_MIN_VERSION, NEED;
 var init_git_preflight = __esm({
   "src/factory/git-preflight.ts"() {
     "use strict";
     init_exec();
-    FACTORY_GIT_MIN_VERSION = [2, 38];
+    init_git_worktree();
+    FACTORY_GIT_MIN_VERSION = HOST_GIT_ATTR_SOURCE_MIN.split(".").slice(0, 2).map(Number);
+    NEED = "(merge-tree --write-tree and GIT_ATTR_SOURCE)";
   }
 });
 
@@ -130927,14 +131551,25 @@ var init_private_run = __esm({
        * made with the store's pins (no hook, no filter, no global config), its
        * links recorded before anything else runs in it; the config hash is
        * re-recorded after (the allowlist still applies), so the caller seals
-       * `repo.configHash` again.
+       * `repo.configHash` again. `withoutAttributes` (a lane worktree the engine
+       * commits for): GIT_ATTR_SOURCE the empty tree, so the checkout writes blob
+       * bytes, as the attribute-free staging reads them (attributeFreeCheckout;
+       * the store's pins already leave no filter driver and no global or system
+       * attributes).
        */
-      addWorktree(path30, sha3, branch2) {
+      addWorktree(path30, sha3, branch2, o = {}) {
         const tooLong = longPathProblem(path30, this.repo.longestPath);
         if (tooLong) throw new PrivateStoreError(tooLong);
         if ((0, import_fs160.existsSync)(path30)) throw new PrivateStoreError(`the private worktree ${path30} already exists`);
         this.ensureCommit(sha3);
-        privateGitOk(this.repo, this.ctx, ["worktree", "add", "-q", ...branch2 ? ["-B", branch2] : ["--detach"], path30, sha3], `git worktree add ${path30}`, { env: identityEnv() });
+        let attrs = {};
+        if (o.withoutAttributes) {
+          const format = privateGitOk(this.repo, this.ctx, ["rev-parse", "--show-object-format"], "git rev-parse --show-object-format").trim();
+          const emptyTree = EMPTY_TREE[format];
+          if (!emptyTree) throw new PrivateStoreError(`the private repository has an unknown object format ${JSON.stringify(format)}`);
+          attrs = { GIT_ATTR_SOURCE: emptyTree };
+        }
+        privateGitOk(this.repo, this.ctx, ["worktree", "add", "-q", ...branch2 ? ["-B", branch2] : ["--detach"], path30, sha3], `git worktree add ${path30}`, { env: { ...identityEnv(), ...attrs } });
         this.repo = rerecordConfigHash(this.repo, this.ctx);
         const links = readWorktreeGitLinks(path30);
         if (!links || !inside(links.adminDir, (0, import_path185.join)(this.repo.gitDir, "worktrees"), process.platform)) throw new PrivateStoreError(`the private worktree ${path30} has no git links in ${this.repo.gitDir}`);
@@ -133898,6 +134533,7 @@ var init_prompts2 = __esm({
     WRITE_LANE_GIT_RULES = [
       "Leave your changes in this worktree and do NOT commit: the git directory is read-only, so git add, git commit, git merge, git stash and every other git command that writes fail. The engine commits your changes after you finish, with your final message as the commit message, so end with a short summary of the change.",
       "Do NOT push, open a pull request, or change git config, hooks or refs.",
+      "Files are checked out exactly as committed: keep the committed line endings of every file, and never edit or replace a Git LFS pointer file (a small text file starting `version https://git-lfs.github.com/spec/v1`): it stands for content this worktree does not have.",
       "On Windows, call repo-local scripts as `.\\name` (`.\\gradlew`, `.\\build.bat`): a bare name does not search the worktree."
     ];
     DECLINE_RULE = "Use DECLINED only when you deliberately refuse this task or it is impossible as specified: then make NO changes and end your final message with one line `DECLINED: <reason>` (the very last line, after your summary), and the engine stops for a human instead of running the same task again. A task that can only be done with a file outside this worktree (an absolute path elsewhere on the machine) is impossible as specified: lanes may not read or write outside the worktree, and every rerun is denied the same way, so decline it. Never use DECLINED for a failure a rerun can fix (tests that cannot run, a denied command or a missing tool inside this worktree): report that normally.";
@@ -136900,8 +137536,8 @@ function quarantineTamper(i) {
     delete hold.quarantine;
     return hold;
   }
-  const replaced = hold.refs.some((r) => r.startsWith("refs/replace/"));
-  if (!hold.failed && hold.moved.length + hold.restored.length + hold.notRestored.length + hold.active.length === 0 && !replaced) return hold;
+  const replaced2 = hold.refs.some((r) => r.startsWith("refs/replace/"));
+  if (!hold.failed && hold.moved.length + hold.restored.length + hold.notRestored.length + hold.active.length === 0 && !replaced2) return hold;
   if (i.hold === false) return hold;
   hold.held = true;
   try {
@@ -137078,8 +137714,8 @@ function forgePrStateReader(forge, exec3, root, repoUrl) {
     }
     const head = s.head ?? "";
     if (!HEX4019.test(head)) throw new Error(`run ${label2} has no pushed head`);
-    const replaced = replaceObjectsProblem(exec3, root);
-    if (replaced) throw new Error(replaced);
+    const replaced2 = replaceObjectsProblem(exec3, root);
+    if (replaced2) throw new Error(replaced2);
     const t = exec3("git", ["rev-parse", "--verify", `refs/heads/${s.base}`], { cwd: root, env: TRUSTED_READ_ENV });
     const baseTip = t.stdout.trim();
     if (t.status !== 0 || !HEX4019.test(baseTip)) throw new Error(`your ${s.base} could not be read (git rev-parse exit ${t.status})`);
@@ -140173,10 +140809,10 @@ var init_engine = __esm({
           else if (existing?.gate?.name === SECRET_SHAPES_GATE && (existing.phase === "intake" || existing.phase === "plan")) this.o.warn?.(`omg factory run: --allow-secret-shapes is ignored: the run for ${this.what} is parked because its own text or linked plan file holds secret-shaped content; edit the item or the plan file instead`);
           else this.o.warn?.(`omg factory run: --allow-secret-shapes is ignored: the run for ${this.what} is not parked at awaiting-human: ${SECRET_SHAPES_GATE}`);
         }
-        const replaced = replaceObjectsProblem(this.exec, this.o.root);
-        if (replaced && !existing) {
+        const replaced2 = replaceObjectsProblem(this.exec, this.o.root);
+        if (replaced2 && !existing) {
           this.progress.emit("intake", "fail", "replace refs or grafts");
-          return { exitCode: 1, phase: null, state: null, message: `omg factory run refuses to start: ${replaced}` };
+          return { exitCode: 1, phase: null, state: null, message: `omg factory run refuses to start: ${replaced2}` };
         }
         try {
           if (!existing) {
@@ -140213,7 +140849,7 @@ var init_engine = __esm({
               if (!await this.settleLost(lane, "lost at resume; its worktree is kept for inspection", humanCleared)) break;
             }
             this.recheckAfterCiPark(existing);
-            if (replaced && !this.state.gate) this.gate("lane-tampered", `${replaced} ${this.resume}`);
+            if (replaced2 && !this.state.gate) this.gate("lane-tampered", `${replaced2} ${this.resume}`);
             const priv = this.privateRun();
             if (priv) {
               this.holdRunLock();
@@ -143799,7 +144435,7 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
           laneTree2 = priv.worktreePath(this.state.lanes.length + 1);
           try {
             if ((0, import_fs171.existsSync)(laneTree2)) priv.removeWorktree(laneTree2);
-            priv.addWorktree(laneTree2, startRef);
+            priv.addWorktree(laneTree2, startRef, void 0, { withoutAttributes: true });
           } catch (error62) {
             if (error62 instanceof PrivateRepoTampered) throw error62;
             throw new FactoryStepError(`the private lane worktree ${laneTree2} could not be made: ${errText6(error62)}`);
@@ -148325,7 +148961,7 @@ function acquireIntakeLock(cwd, now2 = Date.now()) {
       } catch {
         started = 0;
       }
-      if (now2 - started < LOCK_STALE_MS7) {
+      if (now2 - started < LOCK_STALE_MS6) {
         return { ok: false, reason: `another intake run appears active (lock at ${lockPath2}, started ${new Date(started).toISOString()}). Remove the lock only if you are certain no sweep is running.` };
       }
     }
@@ -148499,7 +149135,7 @@ function intakeCommand() {
   });
   return cmd;
 }
-var import_child_process48, import_fs177, import_path207, HARBOR_LABELS, TASK_NAME, CRONTAB_MARKER, LOCK_STALE_MS7, defaultIntakeRunner, DANGEROUS_HOST_BIN_CHARS;
+var import_child_process48, import_fs177, import_path207, HARBOR_LABELS, TASK_NAME, CRONTAB_MARKER, LOCK_STALE_MS6, defaultIntakeRunner, DANGEROUS_HOST_BIN_CHARS;
 var init_intake = __esm({
   "src/cli/commands/intake.ts"() {
     "use strict";
@@ -148523,7 +149159,7 @@ var init_intake = __esm({
     ];
     TASK_NAME = "OMC Intake";
     CRONTAB_MARKER = "# omc-intake";
-    LOCK_STALE_MS7 = 2 * 36e5;
+    LOCK_STALE_MS6 = 2 * 36e5;
     defaultIntakeRunner = (cmd, args, options) => {
       let launch;
       try {
@@ -151955,8 +152591,8 @@ var init_poll = __esm({
 });
 
 // src/factory/bench/fake-lanes.ts
-function git7(cwd, args) {
-  const r = defaultExec("git", args, { cwd });
+function git7(cwd, args, env2) {
+  const r = defaultExec("git", args, { cwd, ...env2 ? { env: env2 } : {} });
   if (r.status !== 0) throw new Error(`fake lane: git ${args.join(" ")} failed: ${(r.stderr || r.stdout).trim()}`);
   return r.stdout.trim();
 }
@@ -152001,7 +152637,8 @@ var init_fake_lanes = __esm({
           worktree = (0, import_node_path48.join)(getOmcRoot(this.root), "team", "copilot-run", "worktrees", remoteId);
           (0, import_node_fs44.mkdirSync)((0, import_node_path48.dirname)(worktree), { recursive: true });
           baseSha = git7(this.root, ["rev-parse", "--verify", `${input2.baseRef}^{commit}`]);
-          git7(this.root, ["worktree", "add", "-q", "-b", branch2, worktree, baseSha]);
+          const checkout = attributeFreeCheckout(this.root);
+          git7(this.root, [...checkout.config, "worktree", "add", "-q", "-b", branch2, worktree, baseSha], checkout.env);
           recordWorktreeGitLinks(worktree, readWorktreeGitLinks(worktree));
         }
         this.jobs.set(remoteId, { input: input2, step: this.steps[n], worktree, branch: branch2, baseSha, remoteId });
@@ -160339,7 +160976,7 @@ var init_checkpoint = __esm({
 function fail5(code, message4) {
   throw new GraphSchedulerError(code, message4);
 }
-function displayValue(value) {
+function displayValue2(value) {
   if (typeof value === "string") return JSON.stringify(value);
   try {
     const serialized = JSON.stringify(value);
@@ -160380,7 +161017,7 @@ function requireStableId(value, what) {
   if (!isValidStableId(value))
     fail5(
       "invalid_input",
-      `${what} ${displayValue(value)} is not a stable identifier`
+      `${what} ${displayValue2(value)} is not a stable identifier`
     );
 }
 function toFingerprintJson(value, seen) {
@@ -160459,7 +161096,7 @@ function fenceDescriptor(descriptor, projection) {
   if (projection.descriptor_hash !== descriptor.descriptor_hash || projection.run_id !== descriptor.run_id || projection.revision_id !== descriptor.revision_id) {
     fail5(
       "descriptor_mismatch",
-      `projection bound to ${displayValue(projection.run_id)}/${displayValue(projection.revision_id)}/${displayValue(projection.descriptor_hash)}, not ${descriptor.run_id}/${descriptor.revision_id}/${descriptor.descriptor_hash}`
+      `projection bound to ${displayValue2(projection.run_id)}/${displayValue2(projection.revision_id)}/${displayValue2(projection.descriptor_hash)}, not ${descriptor.run_id}/${descriptor.revision_id}/${descriptor.descriptor_hash}`
     );
   }
 }
@@ -160532,7 +161169,7 @@ function validateIdentities(descriptor, node2, identities) {
       if (!isValidStableId(value))
         fail5(
           "invalid_input",
-          `${what} value ${displayValue(value)} is not a stable identifier`
+          `${what} value ${displayValue2(value)} is not a stable identifier`
         );
     }
   };
@@ -160545,7 +161182,7 @@ function validateIdentities(descriptor, node2, identities) {
     if (value !== void 0 && !isValidStableId(value))
       fail5(
         "invalid_input",
-        `${displayValue(value)} is not a stable identifier`
+        `${displayValue2(value)} is not a stable identifier`
       );
   }
 }
@@ -160574,7 +161211,7 @@ function requireActivation(projection, activationId) {
   if (activation === void 0)
     fail5(
       "activation_not_found",
-      `activation ${displayValue(activationId)} not found`
+      `activation ${displayValue2(activationId)} not found`
     );
   requireStableId(activation.activation_id, "stored activation id");
   requireStableId(activation.node_id, "stored node id");
@@ -160594,7 +161231,7 @@ function guardTransitionId(projection, transitionId) {
   if (!isValidStableId(transitionId))
     fail5(
       "invalid_input",
-      `transition id ${displayValue(transitionId)} is not a stable identifier`
+      `transition id ${displayValue2(transitionId)} is not a stable identifier`
     );
   assertFreshId(projection, transitionId, "transition id");
 }
@@ -160729,7 +161366,7 @@ function beginActivationAttempt(descriptor, projection, input2) {
   if (!isValidStableId(input2.attempt_id))
     fail5(
       "invalid_input",
-      `attempt id ${displayValue(input2.attempt_id)} is not a stable identifier`
+      `attempt id ${displayValue2(input2.attempt_id)} is not a stable identifier`
     );
   assertFreshId(projection, input2.attempt_id, "attempt id");
   const nextProjection = cloneProjection(projection);
@@ -166158,6 +166795,16 @@ var init_context_warning = __esm({
 });
 
 // src/hud/elements/update-hint.ts
+function resolveOmcUpdateState(omcVersion, latestVersion, unbuiltVersionEnv) {
+  if (!omcVersion) return { updateAvailable: null, unbuiltVersion: null };
+  const unbuiltVersion = unbuiltVersionEnv && SEMVER_RE.test(unbuiltVersionEnv) && compareVersions(omcVersion, unbuiltVersionEnv) < 0 ? unbuiltVersionEnv : null;
+  if (typeof latestVersion === "string" && latestVersion && compareVersions(omcVersion, latestVersion) < 0) {
+    if (!unbuiltVersion || compareVersions(unbuiltVersion, latestVersion) < 0) {
+      return { updateAvailable: latestVersion, unbuiltVersion: null };
+    }
+  }
+  return { updateAvailable: null, unbuiltVersion };
+}
 function renderUpdateHints(input2) {
   const lines4 = [];
   const copilot = input2.host === "copilot";
@@ -166169,6 +166816,9 @@ function renderUpdateHints(input2) {
       command = "! claude plugin marketplace update omc && claude plugin update oh-my-copilot@omc";
     }
     lines4.push(`${YELLOW13}${BOLD3}[!] omg ${input2.omcUpdateAvailable} - paste: ${command}${RESET}`);
+  } else if (input2.omcUnbuiltVersion) {
+    const running = input2.omcVersion ? ` - HUD is running ${input2.omcVersion}` : "";
+    lines4.push(`${YELLOW13}${BOLD3}[!] omg ${input2.omcUnbuiltVersion} is installed but not built${running}${RESET}`);
   }
   if (!copilot && input2.claudeCodeUpdateAvailable) {
     lines4.push(
@@ -166184,15 +166834,17 @@ function resolveCachedOmcUpdate(cached2, installedVersion, channel, compareVersi
   if (compareVersions5(installedVersion, cached2.latestVersion) >= 0) return null;
   return { latestVersion: cached2.latestVersion, source: channel };
 }
-var YELLOW13, BOLD3, COPILOT_PLUGIN_UPDATE, NPM_UPDATE;
+var YELLOW13, BOLD3, COPILOT_PLUGIN_UPDATE, NPM_UPDATE, SEMVER_RE;
 var init_update_hint = __esm({
   "src/hud/elements/update-hint.ts"() {
     "use strict";
     init_colors();
+    init_semver_compare();
     YELLOW13 = "\x1B[33m";
     BOLD3 = "\x1B[1m";
     COPILOT_PLUGIN_UPDATE = "! copilot plugin marketplace update omc && copilot plugin update oh-my-copilot@omc";
     NPM_UPDATE = "! npm i -g oh-my-copilot@latest";
+    SEMVER_RE = /^\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?$/;
   }
 });
 
@@ -166681,7 +167333,9 @@ async function render(context, config2) {
       omcUpdateAvailable: context.updateAvailable,
       omcUpdateSource: context.omcUpdateSource ?? null,
       claudeCodeUpdateAvailable: context.claudeCodeUpdateAvailable ?? null,
-      host: context.host
+      host: context.host,
+      omcUnbuiltVersion: context.omcUnbuiltVersion ?? null,
+      omcVersion: context.omcVersion ?? null
     })) ?? [];
     if (updateHints.length > 0) renderedDetail.set("updateHint", updateHints);
   }
@@ -167264,6 +167918,7 @@ async function mainImpl(watchMode = false, skipInit = false) {
     const customBuckets = config2.rateLimitsProvider?.type === "custom" ? await executeCustomProvider(config2.rateLimitsProvider) : null;
     let omcVersion = null;
     let updateAvailable = null;
+    let omcUnbuiltVersion = null;
     let omcUpdateSource = null;
     const claudeCodeVersion = isCopilotHost ? null : stdin.version ?? null;
     let claudeCodeUpdateAvailable = null;
@@ -167278,6 +167933,7 @@ async function mainImpl(watchMode = false, skipInit = false) {
         );
       }
     }
+    let cachedLatestVersion = null;
     try {
       const updateCacheFile = getUpdateCheckCachePath();
       await (0, import_promises37.access)(updateCacheFile);
@@ -167290,7 +167946,7 @@ async function mainImpl(watchMode = false, skipInit = false) {
         compareVersions2
       );
       if (cachedUpdate) {
-        updateAvailable = cachedUpdate.latestVersion;
+        cachedLatestVersion = cachedUpdate.latestVersion;
         omcUpdateSource = cachedUpdate.source;
       }
       if (cached2?.claudeCodeLatestVersion && claudeCodeVersion && compareVersions2(claudeCodeVersion, cached2.claudeCodeLatestVersion) < 0) {
@@ -167304,6 +167960,11 @@ async function mainImpl(watchMode = false, skipInit = false) {
         );
       }
     }
+    ({ updateAvailable, unbuiltVersion: omcUnbuiltVersion } = resolveOmcUpdateState(
+      omcVersion,
+      cachedLatestVersion,
+      process.env[OMC_HUD_UNBUILT_VERSION_ENV]
+    ));
     let sessionSummary = null;
     const sessionSummaryEnabled = !isCopilotHost && (config2.elements.sessionSummary ?? false);
     if (sessionSummaryEnabled && resolvedTranscriptPath && currentSessionId) {
@@ -167360,6 +168021,7 @@ async function mainImpl(watchMode = false, skipInit = false) {
       sessionTotalTokens: copilotTokens ? copilotTokens.sessionTotal : transcriptData.sessionTotalTokens ?? null,
       omcVersion,
       updateAvailable,
+      omcUnbuiltVersion,
       omcUpdateSource,
       claudeCodeVersion,
       claudeCodeUpdateAvailable,
@@ -167465,6 +168127,7 @@ var init_hud = __esm({
     init_payload_estimate();
     init_version();
     init_auto_update();
+    init_env_vars();
     init_worktree_paths();
     import_fs222 = require("fs");
     import_promises37 = require("fs/promises");
@@ -190406,10 +191069,10 @@ function readNewLines(path30, tail6, flush) {
   if (!st) return [];
   const lines4 = [];
   const known = tail6.ino !== 0 || tail6.birthtimeMs !== 0;
-  const replaced = known && (tail6.ino !== 0 && st.ino !== 0 ? st.ino !== tail6.ino : st.birthtimeMs !== tail6.birthtimeMs);
-  if (replaced || st.size < tail6.offset) {
+  const replaced2 = known && (tail6.ino !== 0 && st.ino !== 0 ? st.ino !== tail6.ino : st.birthtimeMs !== tail6.birthtimeMs);
+  if (replaced2 || st.size < tail6.offset) {
     const old = tryStat(`${path30}.1`);
-    const isOldFile = old !== null && (known ? replaced && (tail6.ino !== 0 ? old.ino === tail6.ino : old.birthtimeMs === tail6.birthtimeMs) : old.size >= tail6.offset);
+    const isOldFile = old !== null && (known ? replaced2 && (tail6.ino !== 0 ? old.ino === tail6.ino : old.birthtimeMs === tail6.birthtimeMs) : old.size >= tail6.offset);
     if (isOldFile) {
       try {
         lines4.push(...Buffer.concat([tail6.rest, readFrom(`${path30}.1`, tail6.offset, old.size)]).toString("utf8").split("\n"));

@@ -1,43 +1,40 @@
-# oh-my-copilot v5.31.0
+# oh-my-copilot v5.32.0
 
-The factory now runs end to end on Linux (WSL Ubuntu): 17/17 on bench fixture v3, with the same pass rate and premium requests as the Windows run of that fixture. See CHANGELOG.md.
+This release ports upstream oh-my-claudecode through e400eab90, and makes factory lane commits deterministic in repositories whose `.gitattributes` rewrite files at checkout (line endings, git-lfs and other filters). See CHANGELOG.md.
 
-Install with `npm install -g oh-my-copilot@5.31.0`, or from the plugin marketplace: `copilot plugin update oh-my-copilot@omc`.
+Install with `npm install -g oh-my-copilot@5.32.0`, or from the plugin marketplace: `copilot plugin update oh-my-copilot@omc`.
 
-## Factory benchmark
+There is no new factory bench run in this release. The bench baseline is unchanged from v5.31.0.
 
-The 17-issue live factory bench on `mai-code-2`. The v3 runs and the v4 run are different fixtures (v4 redesigned #13 and #17), so their numbers are not comparable to each other. The Windows and Linux v3 runs used different hosts and different builds, so they are not a controlled comparison either.
+## Highlights
 
-| | Windows bench-11, fixture v3 (v5.30.0 + M1/M2, 2026-11-20) | Linux, WSL Ubuntu, fixture v3 (dev, 2026-11-22) | Windows, fixture v4 (dev, 2026-11-22) |
-|---|---|---|---|
-| Pass | 17/17 | 17/17 | 17/17 |
-| Premium requests | 28 | 28 | 33 |
-| AI credits | 35.59 | 29.81 | 38.49 |
-| Wall time (sum over issues) | 1700 s | 825 s | 2237 s |
+- **A lane commit holds only the files the lane changed.** In a repository that asks for CRLF checkouts with `core.autocrlf` off (the Linux and macOS default), or that uses git-lfs or another clean/smudge filter, a lane's commit could include an untouched file as a whole-file rewrite, depending on timing. Lane worktrees are now checked out the way the engine stages them, so every file holds its blob's bytes and an untouched file is never committed.
+- **Upstream port through e400eab90.** 22 of 26 upstream commits ported: team readiness and pane fixes, opt-in redaction, hook text and planner switches, and plugin cache data-loss fixes.
 
-In the Windows v4 run, #13 took the ci-fix lane and #15 the conflict-fix lane live. #17 was solved without tripping the lane git guard, which the bench records as a finding: the guard is still not exercised live. This v4 run is the new committed bench baseline that `omg release --bench` compares against.
+## From upstream
 
-## Added
+- **Team panes and readiness.** Pane signals are read through one per-provider pattern table; Copilot keeps its own idle box, busy line and folder-trust dialog, and the team monitor reads a Copilot worker's pane with Copilot's patterns. The idle nudge and the monitor share one pane state. Claude's trust dialog is answered only once Yes is focused, and a dropped Down key is sent again. `OMC_TEAM_READY_TIMEOUT_MS` extends a worker's startup readiness wait.
+- **Team dispatch queue** no longer erases requests or takes a live lock.
+- **Opt-in key-shape redaction.** `OMC_REDACT_KEY_SHAPES=1` also masks key shapes (`sk_live_`, `AIza`, `gsk_`, `xai-`, `hf_`, JWTs) and secret-named NAME=value pairs in notification logs and reply-listener error lines. With the switch off, the fork's default redaction rules give the same output as before. The URL-credential, `mysql -p` and `login -p` rules no longer take quadratic time on long inputs.
+- **Opt-in hook switches.** `OMC_CONTEXT_TEXT_SANITIZE=1` cleans control and direction characters out of the text the hooks inject. `OMC_PROJECT_MEMORY_FRAME=1` marks the project-memory summary as reference only. `OMC_PLANNER_WRITE_GUARD=1` limits the planner agent to Markdown files under `.omg/plans/` (see Caveats). `OMC_AGENT_TYPE_DENY` lists agent types whose subagent spawns are refused with `OMC_AGENT_TYPE_DENY_MODE=deny` (or logged with `shadow`). `OMC_JEV_ROW_TELEMETRY`, `OMC_JEV_POINTER_EXPAND` and `point:shadow` add opt-in JEV telemetry and pointer expansion.
+- **Project memory.** MCP writes take the shared lock.
+- **Plugin cache.** `repair-plugin-cache` never links runnable versions to an unbuilt one, and a dangling link is read as an unreadable cache-occupancy registry, not an absent one.
+- **HUD.** A newer installed but unbuilt version is reported as such, instead of a false update hint.
+- Session search reads transcripts for named project filters, and the contained-fs addon build finds the running node's headers.
 
-- **Linux support for the factory.** Lanes and gates get a read-only linked `node_modules`, so the repository's tests run in the OS sandbox. Hosts without a keyring authenticate with the stored Copilot login, for lanes, gate commands, team workers and model reads.
-- **`omg factory check --host`** checks node, git, the OS sandbox, the Copilot binary, the SDK and its protocol handshake, and the login in one pass, with a fix command for each failure. docs/REFERENCE.md gains a "Linux setup" section for Ubuntu 20.04, 22.04 and 24.04.
-- **Up-front refusals** for git older than 2.38 and bubblewrap older than 0.5.0, instead of a later, unclear failure. The bubblewrap check is skipped when the lane sandbox is off (`factory.run.sandbox.enabled: false`, `writeUnsandboxed: "detect-only"` or `OMG_SANDBOX=off`).
-- **A model per lane kind.** `factory.run.laneModels` and `--review-model <id>` let review lanes run a cheaper model than implement lanes.
-- **Faster lanes.** The PreToolUse enforcer runs only its guards in a lane, with the state root resolved once. A lane's `node_modules` copy no longer blocks the engine's event loop. The implement prompt lists up to 8 files the lane likely needs, found by a free pre-scan.
-- **Bench fixture v4.** The ci-fix issue (#13) and the git-guard issue (#17) now exercise their paths, a merged run that skipped its path is reported as a bench finding, `bench compare` reads results across fixture versions, and `bench init --force` clears engine state left by an earlier fixture at the same path.
+## Changed / Upgrade notes
 
-## Fixed
+- **The factory needs git 2.41 or newer (was 2.38).** `omg factory run`, `omg factory bench init` and `bench run` stop on an older git, and `omg factory check --host` reports it. Ubuntu 24.04 (git 2.43) runs the factory. Ubuntu 20.04 and 22.04 need the git PPA: `sudo add-apt-repository ppa:git-core/ppa && sudo apt-get update && sudo apt-get install git`. The private layout still needs 2.44 (Ubuntu 24.04 needs the git PPA for it).
+- **Lanes see files as committed, gates see them checked out.** A write lane's worktree holds committed line endings (LF in a repository that asks for CRLF checkouts) and git-lfs pointer files instead of their content. The gates' prepare checkout still applies `.gitattributes`. A lane test that reads an LFS asset or depends on checkout line endings can fail in the lane and pass at the gate. The write lane prompts tell the lane to keep the committed line endings and never edit or replace an LFS pointer file.
+- **Lane worktrees are checked out attribute-free from this release on.** Each lane gets a new worktree, so a run resumed after the upgrade needs no action. Worktrees left by earlier lanes are never reused; `omg factory run clean <issue>` removes them once the run is merged or cancelled.
 
-- **Gates fail with `tsc: not found` on Linux** when the repository's `node_modules` is a symlink.
-- **`omg ralph verify`** kills the whole process tree when a feedback command times out. On POSIX, feedback commands now run without a controlling terminal: a command that opens `/dev/tty` gets ENXIO. On Windows, the process tree is not killed when the 30 s grace period runs out or `taskkill` fails.
-- **A lane asked to use a file outside its worktree** declines instead of being retried.
-- **A rerun parked at the merge** prepares again when its PR conflicts with the moved base.
-- Windows-only test failures in the teleport, ralph-afk and ralph-closeout tests, and two CI-flaky tests.
-- **A `node_modules` link planted by a lane is no longer granted** read-only to the next session. Nothing under `node_modules` is granted without a target the engine recorded.
-- **Behaviour change:** a plain `copilot_run` write job outside the factory no longer gets a linked `node_modules` read-only in the sandbox. Jobs that relied on it must install or copy their dependencies another way.
+## Deferred
+
+- `OMC_AGENT_EXTRA_DISALLOWED_TOOLS` (upstream 7184060c9): it does not reach the Copilot plugin's agent projection, and its preset names Claude Desktop tools.
+- The doctor's project-local `.claude/settings.local.json` conflict check (upstream c5f9f6902): waits until it is settled whether Copilot CLI reads a project-local settings file.
 
 ## Caveats
 
 - **Test evidence:** published with CI on the release commit, not the maintainer's local full test suite. The live Tier 2 smoke runs in the tag's CI.
-- The lane git guard's deny is covered by tests and the scripted bench lanes; no guarded git command ran in a live bench (#17 in the v4 run was solved without one).
-- Repositories that rewrite files at checkout (`eol`/`text` attributes with `core.autocrlf` off, or LFS and other filters): a file a lane never touched can, depending on timing, be included in the lane's commit as a whole-file rewrite. This is not new in this release (earlier versions always included such files) and a fix is planned.
+- The lane git guard's deny is covered by tests and the scripted bench lanes; no guarded git command has run in a live bench yet.
+- `OMC_PLANNER_WRITE_GUARD=1` protects nothing under the Copilot host yet: Copilot's PreToolUse payload carries no agent identity, and an `apply_patch` call names no file path.- **Redaction:** with the default rules, a `NAME="value"` secret that contains a backslash-escaped quote keeps the text after that quote unmasked: `API_TOKEN="abc\"sensitive-suffix"` is logged as `API_TOKEN=****sensitive-suffix"`. v5.31.0 behaves the same. `OMC_REDACT_KEY_SHAPES=1` masks the whole value. A fix is planned.

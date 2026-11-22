@@ -3,6 +3,8 @@ import type { MailboxNotificationTarget, MailboxTargetOwnership } from "./mailbo
 import type { CliAgentType } from "./model-contract.js";
 import { type TeamInstanceId, type TmuxServerIdentity } from "./types.js";
 import { type ProcessIdentityObservation } from "./team-owner-epoch.js";
+import { detectPaneTrustPromptKind, paneHasActiveTask, paneHasTrustPrompt, paneLooksReady, type PaneTrustPromptKind } from "./pane-readiness.js";
+export { detectPaneTrustPromptKind, paneHasActiveTask, paneHasTrustPrompt, paneLooksReady, type PaneTrustPromptKind, };
 import { type WorkerLaunchAttempt, type WorkerLaunchContext } from "./worker-launch-ack.js";
 export type TmuxServerIdentityObservation = "matching" | "dead" | "unknown";
 export interface TmuxServerIdentityDependencies {
@@ -394,17 +396,6 @@ export declare function captureOwnedTeamPane(ownership: WorkerPaneOwnership, opt
 export declare function sendTeamPaneKey(paneId: string, key: string, tmuxServerIdentity?: TmuxServerIdentity): Promise<void>;
 export declare function killTeamPane(paneId: string): Promise<void>;
 export declare function killOwnedWorkerPane(ownership: WorkerPaneOwnership): Promise<void>;
-/**
- * @internal Exported for testing only.
- */
-export type PaneTrustPromptKind = "directory" | "claude_directory" | "copilot_folder" | "codex_directory" | "codex_hooks" | "cursor_workspace_trust";
-/**
- * @internal Exported for testing only.
- */
-export declare function detectPaneTrustPromptKind(captured: string, provider?: CliAgentType): PaneTrustPromptKind | null;
-export declare function paneHasTrustPrompt(captured: string, provider?: CliAgentType): boolean;
-export declare function paneHasActiveTask(captured: string, provider?: CliAgentType): boolean;
-export declare function paneLooksReady(captured: string, provider?: CliAgentType): boolean;
 export interface WaitForPaneReadyOptions {
     timeoutMs?: number;
     pollIntervalMs?: number;
@@ -533,5 +524,4 @@ export declare function killTeamSession(sessionName: string, workerPaneIds?: str
     sessionMode?: TeamSessionMode;
     tmuxServerIdentity?: TmuxServerIdentity;
 }): Promise<boolean>;
-export {};
 //# sourceMappingURL=tmux-session.d.ts.map

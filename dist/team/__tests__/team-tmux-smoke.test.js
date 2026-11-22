@@ -29,6 +29,11 @@ const TSX_LOADER_URL = pathToFileURL(join(REPO_ROOT, 'node_modules', 'tsx', 'dis
 const SMOKE_CACHE = join(REPO_ROOT, 'node_modules', '.cache', 'omg-team-tmux-smoke');
 const RUNTIME_CLI_PATH = join(SMOKE_CACHE, 'bridge', 'runtime-cli.cjs');
 const SHUTDOWN_ACK_TIMEOUT_MS = 30_000;
+// Live lanes pick a fake-team-provider.mjs scenario; only the default one
+// meets every assertion below.
+const FAKE_PROVIDER_SCENARIO = process.env.OMC_FAKE_PROVIDER_SCENARIO;
+// The worker environment is allowlisted, so the shim carries this setting.
+const FAKE_SLOW_BANNER_MS = process.env.OMC_FAKE_SLOW_BANNER_MS;
 const execFileAsync = promisify(execFile);
 function sleep(ms) {
     return new Promise(resolveSleep => setTimeout(resolveSleep, ms));
@@ -145,7 +150,8 @@ describe.skipIf(!SMOKE_ENABLED)('team tmux smoke: fake claude worker lifecycle',
             '#!/bin/sh',
             // Login shells may reorder PATH (macOS path_helper); pin the omg shim.
             `export PATH=${shellQuote(binDir)}:"$PATH"`,
-            `exec ${shellQuote(process.execPath)} --import ${shellQuote(TSX_LOADER_URL)} ${shellQuote(FAKE_PROVIDER)} --trace ${shellQuote(tracePath)} "$@"`,
+            ...(FAKE_SLOW_BANNER_MS ? [`export OMC_FAKE_SLOW_BANNER_MS=${shellQuote(FAKE_SLOW_BANNER_MS)}`] : []),
+            `exec ${shellQuote(process.execPath)} --import ${shellQuote(TSX_LOADER_URL)} ${shellQuote(FAKE_PROVIDER)} --trace ${shellQuote(tracePath)}${FAKE_PROVIDER_SCENARIO ? ` --scenario ${shellQuote(FAKE_PROVIDER_SCENARIO)}` : ''} "$@"`,
         ]);
         await writeExecutable(join(binDir, 'omg'), [
             '#!/bin/sh',
