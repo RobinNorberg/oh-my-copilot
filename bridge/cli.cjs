@@ -146743,6 +146743,13 @@ function defaultHostCheckDeps(env2 = process.env) {
     userConfigDir: getCopilotConfigDir(),
     exec: defaultExec,
     bwrapTrial: cachedBwrapTrialLaunchError,
+    sandboxSettings: () => {
+      try {
+        return loadSandboxSettings(process.cwd(), "factory").settings;
+      } catch {
+        return void 0;
+      }
+    },
     resolveBin: () => resolveCopilotBinary(void 0, env2).bin,
     copilotVersion: (bin, childEnv2) => {
       const plan = buildHostBinarySpawn(bin, ["--version"]);
@@ -146787,11 +146794,17 @@ function checkGit(d) {
   }
   return { id: "git", status: "ok", detail: `git ${v[0]}.${v[1]} (factory >= ${FACTORY_GIT_MIN_VERSION.join(".")}, private layout >= ${want})` };
 }
+function sandboxFailure(d, problem, fix) {
+  const settings = d.sandboxSettings();
+  const lenient = settings !== void 0 && factorySandboxProblem(settings, () => problem, d.env) === null;
+  if (lenient) return { id: "sandbox", status: "warn", detail: `${problem} (sandbox off / detect-only: lanes run unsandboxed)`, fix };
+  return { id: "sandbox", status: "fail", detail: problem, fix };
+}
 function checkLinuxSandbox(d) {
   const problem = linuxSandboxProblem(d.platform, d.bwrapTrial);
   if (problem) {
     const fix = /not on PATH/.test(problem) ? 'sudo apt-get install bubblewrap (Ubuntu 20.04 ships 0.4.0: build >= 0.5.0 from source, see "Linux setup" in docs/REFERENCE.md)' : /too old/.test(problem) ? 'build bubblewrap >= 0.5.0 from source or move to Ubuntu 22.04+ (see "Linux setup" in docs/REFERENCE.md)' : 'see "Linux: restricted user namespaces" in docs/REFERENCE.md';
-    return { id: "sandbox", status: "fail", detail: problem, fix };
+    return sandboxFailure(d, problem, fix);
   }
   const r = d.exec("bwrap", ["--version"], {});
   const v = r.status === 0 ? parseBwrapVersion(r.stdout) : null;
@@ -146830,7 +146843,7 @@ function newerCachedRuntimes(d) {
 function checkPkgCache(d) {
   const found = newerCachedRuntimes(d);
   if (found.length === 0) return { id: "copilot.pkg-cache", status: "ok", detail: `no cached Copilot runtime newer than ${LAST_PROTOCOL3_CLI}` };
-  const move = found.map((p) => `mv "${p}" "${p}.parked"`).join(" && ");
+  const move = d.platform === "win32" ? found.map((p) => `Move-Item -LiteralPath "${p}" -Destination "${p}.parked"`).join("; ") : found.map((p) => `mv "${p}" "${p}.parked"`).join(" && ");
   return {
     id: "copilot.pkg-cache",
     status: "warn",
@@ -146847,6 +146860,7 @@ function checkLogin(d) {
     if (envToken) return { id: "login", status: "ok", detail: "no stored login; COPILOT_GITHUB_TOKEN is set" };
     return { id: "login", status: "fail", detail: "no stored Copilot login and no COPILOT_GITHUB_TOKEN", fix: "copilot login" };
   }
+  if (d.platform === "darwin" && identity) return { id: "login", status: "ok", detail: "stored login identity present (token in the keychain)" };
   const plaintext = identity && storedLoginToken(d.userConfigDir, d.platform) !== void 0;
   if (envToken) return { id: "login", status: "ok", detail: `COPILOT_GITHUB_TOKEN is set${identity ? "; stored login identity present" : ""}` };
   if (plaintext) return { id: "login", status: "ok", detail: "stored login identity present; its token is in the Copilot config.json (keyring-less host), which lanes pass over the session RPC" };
@@ -146895,7 +146909,7 @@ async function runHostCheck(d) {
     if (withHost) {
       if (!r.host) items.push({ id: "sandbox", status: "warn", detail: "not checked: the runtime did not start" });
       else if (r.host.supported) items.push({ id: "sandbox", status: "ok", detail: `the Copilot runtime reports the OS sandbox supported (${Object.entries(r.host.capabilities).filter(([, v]) => v).map(([k]) => k).join(", ") || "no capabilities listed"})` });
-      else items.push({ id: "sandbox", status: "fail", detail: `the Copilot runtime reports no usable OS sandbox: ${r.host.reason ?? "unsupported"}`, fix: 'see "Sandboxed lanes" in docs/REFERENCE.md' });
+      else items.push(sandboxFailure(d, `the Copilot runtime reports no usable OS sandbox: ${r.host.reason ?? "unsupported"}`, 'see "Sandboxed lanes" in docs/REFERENCE.md'));
     }
   }
   items.push(checkLogin(d), checkPkgCache(d));
@@ -146905,7 +146919,7 @@ async function runHostCheck(d) {
 async function runFactoryHostCheck(opts, d, out) {
   const items = await runHostCheck(d);
   const ok2 = !items.some((i) => i.status === "fail");
-  if (opts.json) out(JSON.stringify({ schemaVersion: 1, ok: ok2, host: items }, null, 2));
+  if (opts.json) out(JSON.stringify({ schemaVersion: 1, kind: "host", ok: ok2, host: items }, null, 2));
   else {
     for (const i of items) {
       out(`${i.status.padEnd(4)}  ${i.id.padEnd(18)} ${i.detail}`);
@@ -146966,6 +146980,14 @@ function defaultFactoryCheckDeps(base) {
 function factoryCheckCommand(deps, hostDeps = () => defaultHostCheckDeps()) {
   return new Command("check").description("Bucket intake items as runnable / needs-plan / blocked (read-only; --mark tags the runnable ones)").argument("[ids...]", "item ids (GitHub issue numbers, Azure DevOps work item ids or local backlog item ids); default: the intake source").option("--parent <spec>", "check the children of this spec item (GitHub task list `- [ ] #n` | ADO child links)").option("--source <spec>", "intake source: label:<name> | milestone:<name> | wiql-query:<guid> | board-column:<team>/<board>/<column> | area-tag:<area path>#<tag> | local-backlog[:<label>]").option("--limit <n>", "items read from the source (1..200)", integerOption(1, 200)).option("--json", "JSON output (schemaVersion 1)").option("--mark", "add factory.intake.marker to the runnable items (asks first)").option("--yes", "confirm --mark without a prompt").option("--host", "check the host prerequisites instead (node, git, sandbox, Copilot CLI, SDK and protocol, login, package cache); free: no model request").action(async (ids2, o) => {
     if (o.host) {
+      const stray = [ids2.length > 0 && "item ids", o.source !== void 0 && "--source", o.parent !== void 0 && "--parent", o.limit !== void 0 && "--limit", o.mark && "--mark", o.yes && "--yes"].filter(Boolean);
+      if (stray.length > 0) {
+        const message4 = `--host checks the host and takes no intake options (got ${stray.join(", ")})`;
+        if (o.json) deps.out(JSON.stringify({ ok: false, error: message4 }, null, 2));
+        else deps.err(source_default.red(factoryErrorLine(message4)));
+        process.exitCode = EXIT_CHECK_USAGE;
+        return;
+      }
       process.exitCode = await runFactoryHostCheck({ json: o.json }, hostDeps(), deps.out);
       return;
     }

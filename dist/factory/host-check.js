@@ -13,7 +13,7 @@ import { join } from 'node:path';
 import { defaultExec } from '../ship/exec.js';
 import { FACTORY_GIT_MIN_VERSION, factoryGitProblem, gitVersionAtLeast, parseGitVersion } from './git-preflight.js';
 import { PRIVATE_GIT_MIN_VERSION } from './run/private-store.js';
-import { cachedBwrapTrialLaunchError, linuxSandboxProblem, parseBwrapVersion, probeHostSupport, scrubTokens, secretValues } from '../copilot-run/sandbox.js';
+import { cachedBwrapTrialLaunchError, factorySandboxProblem, linuxSandboxProblem, loadSandboxSettings, parseBwrapVersion, probeHostSupport, scrubTokens, secretValues } from '../copilot-run/sandbox.js';
 import { compareCopilotVersions, parseCopilotVersion, resolveCopilotBinary } from '../smoke/copilot-binary.js';
 import { LAST_PROTOCOL3_CLI, PROBE_TIMEOUT_REASON, SDK_MIN_VERSION, loadCopilotSdk, probeSdkProtocol, satisfiesSdkRange } from '../smoke/copilot-sdk-driver.js';
 import { SDK_INSTALL_COMMAND } from '../smoke/copilot-sdk-scenarios.js';
@@ -46,6 +46,14 @@ export function defaultHostCheckDeps(env = process.env) {
         userConfigDir: getCopilotConfigDir(),
         exec: defaultExec,
         bwrapTrial: cachedBwrapTrialLaunchError,
+        sandboxSettings: () => {
+            try {
+                return loadSandboxSettings(process.cwd(), 'factory').settings;
+            }
+            catch {
+                return undefined;
+            }
+        },
         resolveBin: () => resolveCopilotBinary(undefined, env).bin,
         copilotVersion: (bin, childEnv) => {
             const plan = buildHostBinarySpawn(bin, ['--version']);
@@ -93,6 +101,14 @@ function checkGit(d) {
     }
     return { id: 'git', status: 'ok', detail: `git ${v[0]}.${v[1]} (factory >= ${FACTORY_GIT_MIN_VERSION.join('.')}, private layout >= ${want})` };
 }
+/** A failing sandbox item, downgraded to warn where `omg factory run` would not refuse (sandbox off, detect-only, OMG_SANDBOX=off). */
+function sandboxFailure(d, problem, fix) {
+    const settings = d.sandboxSettings();
+    const lenient = settings !== undefined && factorySandboxProblem(settings, () => problem, d.env) === null;
+    if (lenient)
+        return { id: 'sandbox', status: 'warn', detail: `${problem} (sandbox off / detect-only: lanes run unsandboxed)`, fix };
+    return { id: 'sandbox', status: 'fail', detail: problem, fix };
+}
 function checkLinuxSandbox(d) {
     const problem = linuxSandboxProblem(d.platform, d.bwrapTrial);
     if (problem) {
@@ -101,7 +117,7 @@ function checkLinuxSandbox(d) {
             : /too old/.test(problem)
                 ? 'build bubblewrap >= 0.5.0 from source or move to Ubuntu 22.04+ (see "Linux setup" in docs/REFERENCE.md)'
                 : 'see "Linux: restricted user namespaces" in docs/REFERENCE.md';
-        return { id: 'sandbox', status: 'fail', detail: problem, fix };
+        return sandboxFailure(d, problem, fix);
     }
     const r = d.exec('bwrap', ['--version'], {});
     const v = r.status === 0 ? parseBwrapVersion(r.stdout) : null;
@@ -148,7 +164,9 @@ function checkPkgCache(d) {
     const found = newerCachedRuntimes(d);
     if (found.length === 0)
         return { id: 'copilot.pkg-cache', status: 'ok', detail: `no cached Copilot runtime newer than ${LAST_PROTOCOL3_CLI}` };
-    const move = found.map((p) => `mv "${p}" "${p}.parked"`).join(' && ');
+    const move = d.platform === 'win32'
+        ? found.map((p) => `Move-Item -LiteralPath "${p}" -Destination "${p}.parked"`).join('; ')
+        : found.map((p) => `mv "${p}" "${p}.parked"`).join(' && ');
     return {
         id: 'copilot.pkg-cache',
         status: 'warn',
@@ -168,6 +186,8 @@ function checkLogin(d) {
             return { id: 'login', status: 'ok', detail: 'no stored login; COPILOT_GITHUB_TOKEN is set' };
         return { id: 'login', status: 'fail', detail: 'no stored Copilot login and no COPILOT_GITHUB_TOKEN', fix: 'copilot login' };
     }
+    if (d.platform === 'darwin' && identity)
+        return { id: 'login', status: 'ok', detail: 'stored login identity present (token in the keychain)' };
     const plaintext = identity && storedLoginToken(d.userConfigDir, d.platform) !== undefined;
     if (envToken)
         return { id: 'login', status: 'ok', detail: `COPILOT_GITHUB_TOKEN is set${identity ? '; stored login identity present' : ''}` };
@@ -237,7 +257,7 @@ export async function runHostCheck(d) {
             else if (r.host.supported)
                 items.push({ id: 'sandbox', status: 'ok', detail: `the Copilot runtime reports the OS sandbox supported (${Object.entries(r.host.capabilities).filter(([, v]) => v).map(([k]) => k).join(', ') || 'no capabilities listed'})` });
             else
-                items.push({ id: 'sandbox', status: 'fail', detail: `the Copilot runtime reports no usable OS sandbox: ${r.host.reason ?? 'unsupported'}`, fix: 'see "Sandboxed lanes" in docs/REFERENCE.md' });
+                items.push(sandboxFailure(d, `the Copilot runtime reports no usable OS sandbox: ${r.host.reason ?? 'unsupported'}`, 'see "Sandboxed lanes" in docs/REFERENCE.md'));
         }
     }
     items.push(checkLogin(d), checkPkgCache(d));
@@ -249,7 +269,7 @@ export async function runFactoryHostCheck(opts, d, out) {
     const items = await runHostCheck(d);
     const ok = !items.some((i) => i.status === 'fail');
     if (opts.json)
-        out(JSON.stringify({ schemaVersion: 1, ok, host: items }, null, 2));
+        out(JSON.stringify({ schemaVersion: 1, kind: 'host', ok, host: items }, null, 2));
     else {
         for (const i of items) {
             out(`${i.status.padEnd(4)}  ${i.id.padEnd(18)} ${i.detail}`);

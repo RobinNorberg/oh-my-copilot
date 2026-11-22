@@ -58,6 +58,14 @@ export function factoryCheckCommand(deps: FactoryCheckDeps, hostDeps: () => Host
     .option('--host', 'check the host prerequisites instead (node, git, sandbox, Copilot CLI, SDK and protocol, login, package cache); free: no model request')
     .action(async (ids: string[], o: { parent?: string; source?: string; limit?: number; json?: boolean; mark?: boolean; yes?: boolean; host?: boolean }) => {
       if (o.host) {
+        const stray = [ids.length > 0 && 'item ids', o.source !== undefined && '--source', o.parent !== undefined && '--parent', o.limit !== undefined && '--limit', o.mark && '--mark', o.yes && '--yes'].filter(Boolean);
+        if (stray.length > 0) {
+          const message = `--host checks the host and takes no intake options (got ${stray.join(', ')})`;
+          if (o.json) deps.out(JSON.stringify({ ok: false, error: message }, null, 2));
+          else deps.err(chalk.red(factoryErrorLine(message)));
+          process.exitCode = EXIT_CHECK_USAGE;
+          return;
+        }
         process.exitCode = await runFactoryHostCheck({ json: o.json }, hostDeps(), deps.out);
         return;
       }

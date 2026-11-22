@@ -7,7 +7,7 @@
  * the login item names credentials only, and every line is scrubbed.
  */
 import { type Exec } from '../ship/exec.js';
-import { type SandboxHostRecord } from '../copilot-run/sandbox.js';
+import { type SandboxHostRecord, type SandboxSettings } from '../copilot-run/sandbox.js';
 import { type LoadedSdk } from '../smoke/copilot-sdk-driver.js';
 export type HostCheckStatus = 'ok' | 'warn' | 'fail';
 export interface HostCheckItem {
@@ -33,6 +33,8 @@ export interface HostCheckDeps {
     exec: Exec;
     /** Linux: why a trial bwrap launch fails, or null. */
     bwrapTrial: () => string | null;
+    /** The factory sandbox settings the run gate uses; undefined when they cannot be loaded (then the sandbox item is strict). */
+    sandboxSettings: () => SandboxSettings | undefined;
     resolveBin: () => string | null;
     /** `copilot --version` output of `bin` under `env`. */
     copilotVersion: (bin: string, env: NodeJS.ProcessEnv) => string;
