@@ -238,7 +238,9 @@ describe('a dotnet gate is defined by the repository\'s solution, project and MS
       'Tests/Tests.csproj.user', 'Directory.Build.rsp', 'src/App/obj/App.csproj.evil.props', 'src/App/obj/App.csproj.nuget.g.props', 'src/App/OBJ/App.csproj.nuget.g.targets',
       'src/App/obj/project.assets.json', 'src/App/obj/Debug/net10.0/x.props', 'src/App/bin/Debug/net10.0/App.dll', 'src/App/bin/x.targets', 'TestResults/a.trx', 'src/App/Program.cs',
       'artifacts/obj/App/App.csproj.nuget.g.props', 'build/obj.props', 'Tests/Properties/launchSettings.json', 'node_modules/x/obj/y.props',
-    ])).toEqual(['Tests/Tests.csproj.user', 'Directory.Build.rsp', 'build/obj.props', 'Tests/Properties/launchSettings.json', 'node_modules/x/obj/y.props']);
+      // L2: a package tree (linked or copied node_modules) shipping MSBuild-named files never parks.
+      'node_modules/pkg/Directory.Build.props', 'web/node_modules/pkg/global.json', 'web/NODE_MODULES/pkg/Properties/launchSettings.json',
+    ])).toEqual(['Tests/Tests.csproj.user', 'Directory.Build.rsp', 'build/obj.props', 'Tests/Properties/launchSettings.json']);
   });
 
   it('build output dirs: the first bin/obj/artifacts segment in any case; never a path with a node_modules, empty, . or .. segment', () => {
@@ -254,6 +256,12 @@ describe('a dotnet gate is defined by the repository\'s solution, project and MS
   it('F2: the Microsoft.Testing.Platform launch profiles are definition files', () => {
     for (const p of ['Tests/Properties/launchSettings.json', 'LAUNCHSETTINGS.JSON', 'Tests/Tests.run.json']) expect(isDotnetDefinitionFile(p), p).toBe(true);
     for (const p of ['Tests/settings.json', 'run.json.bak', 'Tests/runjson']) expect(isDotnetDefinitionFile(p), p).toBe(false);
+  });
+
+  it('L1: a name with a colon is matched as written too (on Linux it is a plain file name): src/evil:1.props pins and never auto-merges', () => {
+    for (const p of ['src/evil:1.props', 'obj/App.csproj.x:y.props', 'a:Directory.Build.props', 'src/b:c.csproj']) expect(isDotnetDefinitionFile(p), p).toBe(true);
+    expect(strayDotnetDefinitionFiles(['src/evil:1.props'])).toEqual(['src/evil:1.props']);
+    for (const p of ['notes:2026.txt', 'src/a:b.cs']) expect(isDotnetDefinitionFile(p), p).toBe(false);
   });
 
   it('F7: a basename is matched as Windows opens it: trailing dots and spaces, an NTFS stream suffix and default-ignorable characters folded', () => {

@@ -11,13 +11,13 @@
  * (the sandbox has no network, so nothing is restored from a feed).
  */
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { nugetPackagesDir } from '../../../copilot-run/dotnet-sandbox.js';
 import { resolveLocalGateArgv } from '../../../factory/run/local-gate.js';
-import { removeDotnetBuildOutput } from '../../../factory/run/prepare.js';
+import { resolveDefaultPluginRoot } from '../../../smoke/copilot-session-env.js';
 import { createSandboxRunner } from '../../../factory/run/sandbox-exec.js';
 import { findOnPath } from '../../../utils/windows-search.js';
 const onWindows = process.platform === 'win32';
@@ -88,6 +88,12 @@ async function gate(argv) {
     const run = createSandboxRunner(root, undefined, { user: { factory: { run: { sandbox: {} } } }, project: undefined });
     return run({ purpose: 'gate', argv, exe: target.exe, args: target.args, cwd, commonGitDir: join(checkout, '.git'), timeoutMs: 300_000 });
 }
+/** The engine's clean step (the built dist/factory/run/dotnet-clean-step.js, `npm run build` first) in the real sandbox, as ensureLocalGate runs it. */
+async function cleanStep(cwd) {
+    const script = join(resolveDefaultPluginRoot(process.env), 'dist', 'factory', 'run', 'dotnet-clean-step.js');
+    const run = createSandboxRunner(root, undefined, { user: { factory: { run: { sandbox: {} } } }, project: undefined });
+    return run({ purpose: 'clean', argv: ['node', script], exe: process.execPath, args: [script], cwd, commonGitDir: join(cwd, '.git'), timeoutMs: 300_000, network: 'none' });
+}
 describe.runIf(process.env.OMG_LIVE_DOTNET === '1' && onWindows && !!dotnet)('a dotnet gate in the real Windows gate sandbox (live, no model turn)', () => {
     it('dotnet build of a project with no packages passes', async (ctx) => {
         const r = await gate(['dotnet', 'build', 'Lib/Lib.csproj']);
@@ -115,15 +121,23 @@ describe.runIf(process.env.OMG_LIVE_DOTNET === '1' && onWindows && !!dotnet)('a 
         expect(r.status, r.output).toBe(0);
         expect(r.output).toMatch(/Passed!\s+- Failed:\s+0, Passed:\s+1/);
     }, 360_000);
-    it.runIf(xunitCached)('after the engine removed bin/ and obj/ (as before every dotnet gate run) the gate restores offline and passes again', async (ctx) => {
+    it.runIf(xunitCached)('after the sandboxed clean step (as before every dotnet gate run) the build dirs and a nested repository in obj/ are gone and the gate restores offline and passes again', async (ctx) => {
         const first = await gate(['dotnet', 'test']);
         if (!first.ran && NO_RUNTIME.test(first.reason)) {
             ctx.skip(`no Copilot runtime here: ${first.reason}`);
             return;
         }
+        // The PR's code hides a stale file from git ls-files behind a repository in obj/.
+        writeFileSync(join(checkout, 'Lib.Tests', 'obj', 'stale.props'), '<Project />\n');
+        git(join(checkout, 'Lib.Tests', 'obj'), 'init', '-q');
+        const r0 = await cleanStep(checkout);
+        expect(r0.ran, r0.ran ? '' : r0.reason).toBe(true);
+        if (!r0.ran)
+            return;
+        expect(r0.status, r0.output).toBe(0);
+        expect(r0.output).toMatch(/^removed [1-9]\d*$/m);
         const listed = spawnSync('git', ['ls-files', '--others', '-z'], { cwd: checkout, encoding: 'utf8' }).stdout.split('\0').filter(Boolean);
-        expect(removeDotnetBuildOutput(checkout, listed)).toBeGreaterThan(0);
-        expect(existsSync(join(checkout, 'Lib.Tests', 'obj')) || existsSync(join(checkout, 'Lib', 'bin'))).toBe(false);
+        expect(listed).toEqual([]);
         const r = await gate(['dotnet', 'test']);
         expect(r.ran, r.ran ? '' : r.reason).toBe(true);
         if (!r.ran)
@@ -132,5 +146,44 @@ describe.runIf(process.env.OMG_LIVE_DOTNET === '1' && onWindows && !!dotnet)('a 
         expect(r.output).toMatch(/Restored .*Lib\.Tests\.csproj/);
         expect(r.output).toMatch(/Passed!\s+- Failed:\s+0, Passed:\s+1/);
     }, 720_000);
+    it('H2: a junction obj -> a dir outside the checkout survives the clean step, and a sandboxed delete through it is denied', async (ctx) => {
+        const co = join(dir, 'junction-checkout');
+        const canary = join(dir, 'junction-canary');
+        git(dir, 'clone', '-q', root, co);
+        mkdirSync(join(canary, 'sub', 'tree'), { recursive: true });
+        writeFileSync(join(canary, 'sub', 'f.txt'), 'CANARY');
+        writeFileSync(join(canary, 'sub', 'tree', 'g.txt'), 'CANARY');
+        const junction = join(co, 'Lib', 'obj');
+        symlinkSync(canary, junction, 'junction');
+        try {
+            // What a raced walk would do: delete through the link a leftover process swapped in.
+            writeFileSync(join(co, 'follow.mjs'), "import { rmSync, unlinkSync } from 'node:fs';\nfor (const f of [() => unlinkSync('Lib/obj/sub/f.txt'), () => rmSync('Lib/obj/sub/tree', { recursive: true })]) { try { f(); console.log('deleted'); } catch (e) { console.log('denied', e.code); } }\n");
+            const run = createSandboxRunner(root, undefined, { user: { factory: { run: { sandbox: {} } } }, project: undefined });
+            const follow = await run({ purpose: 'clean', argv: ['node', 'follow.mjs'], exe: process.execPath, args: ['follow.mjs'], cwd: co, commonGitDir: join(co, '.git'), timeoutMs: 120_000, network: 'none' });
+            if (!follow.ran && NO_RUNTIME.test(follow.reason)) {
+                ctx.skip(`no Copilot runtime here: ${follow.reason}`);
+                return;
+            }
+            expect(follow.ran, follow.ran ? '' : follow.reason).toBe(true);
+            if (!follow.ran)
+                return;
+            expect(follow.output).not.toMatch(/deleted/);
+            expect(follow.output.match(/denied/g)).toHaveLength(2);
+            expect(existsSync(join(canary, 'sub', 'f.txt')) && existsSync(join(canary, 'sub', 'tree', 'g.txt'))).toBe(true);
+            // The clean step itself unlinks the junction, never follows it.
+            const r = await cleanStep(co);
+            expect(r.ran && r.status, r.ran ? r.output : r.reason).toBe(0);
+            expect(existsSync(junction)).toBe(false);
+            expect(readdirSync(canary)).toEqual(['sub']);
+            expect(existsSync(join(canary, 'sub', 'f.txt')) && existsSync(join(canary, 'sub', 'tree', 'g.txt'))).toBe(true);
+        }
+        finally {
+            try {
+                if (lstatSync(junction).isSymbolicLink())
+                    unlinkSync(junction);
+            }
+            catch { /* gone */ }
+        }
+    }, 360_000);
 });
 //# sourceMappingURL=dotnet-gate.live.test.js.map

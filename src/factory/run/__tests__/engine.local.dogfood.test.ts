@@ -16,7 +16,9 @@ import { ledgerFilePath } from '../ledger.js';
 import { resetFactoryRun } from '../reset.js';
 import { FactoryBusyError, factoryRepoOwnerPath, factoryStatePath, readFactoryState, requestFactoryCancel } from '../state.js';
 import { factoryClaimPath } from '../claims.js';
-import { commitFile, gitIn, review } from './fake-lanes.js';
+import { attestedSandbox, commitFile, gitIn, review } from './fake-lanes.js';
+import type { FactoryEngineOptions } from '../engine.js';
+import type { SandboxRunner, SandboxRunRequest, SandboxRunResult } from '../sandbox-exec.js';
 import { BASE, lanesFor, LOCAL_ISSUE, localOpts, localWorld, type LocalWorld } from './engine-local-harness.js';
 
 let w: LocalWorld;
@@ -244,51 +246,182 @@ describe('a dotnet gate: its MSBuild files define it, and its write lanes get th
     expect(w.gateRuns).toHaveLength(1);
   }, MULTI_RUN_MS);
 
-  it('F1: restore output and a stale build the PR\'s code left under obj/ and bin/ are removed before the next gate run; a tracked bin/ file stays', async () => {
+  /** The first gate run (the PR's code) runs `leave` in the checkout and does not start; later runs see what is left. */
+  function leaveThenSee(leave: (cwd: string) => void, sees: (cwd: string) => boolean): boolean[] {
+    const seen: boolean[] = [];
+    w.gate = async (argv, cwd) => {
+      const first = w.gateRuns.length === 0;
+      w.gateRuns.push({ argv, cwd, head: gitIn(cwd, 'rev-parse', 'HEAD') });
+      if (first) {
+        leave(cwd);
+        return { status: 127, stdout: '', stderr: '', timedOut: false, startError: 'dotnet is not on PATH' };
+      }
+      const leftover = sees(cwd);
+      seen.push(leftover);
+      return { status: leftover ? 1 : 0, stdout: '', stderr: '', timedOut: false };
+    };
+    return seen;
+  }
+  const writeAt = (cwd: string, rel: string, text = '<Project><PropertyGroup><IsTestProject>false</IsTestProject></PropertyGroup></Project>\n') => {
+    mkdirSync(dirname(join(cwd, rel)), { recursive: true });
+    writeFileSync(join(cwd, rel), text);
+  };
+  /**
+   * The test sandbox (the clean step's logic in process), a gate that did not start reported as handed over with no
+   * verdict (the PR's code ran: no ack park), and optionally the clean step replaced.
+   */
+  const cleanStep = (clean?: (req: SandboxRunRequest) => Promise<SandboxRunResult>): SandboxRunner => {
+    const inner = attestedSandbox(() => w.exec, () => w.gate);
+    return async (req) => {
+      if (req.purpose === 'clean' && clean) return clean(req);
+      const r = await inner(req);
+      return req.purpose === 'gate' && !r.ran ? { ...r, started: true } : r;
+    };
+  };
+  const firstRun = async (over: Partial<FactoryEngineOptions> = {}) => {
+    const out = await runFactoryEngine(localOpts(w, lanesFor(w, [commitFile('src/App/Greet.cs', 'namespace App;\n'), review('approve')]), over));
+    expect(out.gate?.name, out.message).toMatch(/^gate(s|-no-verdict)$/);
+  };
+  const staleBuild = (cwd: string) => {
+    writeAt(cwd, 'src/App/obj/App.csproj.nuget.g.targets');
+    writeAt(cwd, 'src/App/bin/Debug/net10.0/App.dll', 'stale');
+  };
+  const seesStale = (cwd: string) => existsSync(join(cwd, 'src', 'App', 'obj', 'App.csproj.nuget.g.targets')) || existsSync(join(cwd, 'src', 'App', 'bin', 'Debug', 'net10.0', 'App.dll'));
+  const ignoreBuild = () => writeFileSync(join(w.root, '.gitignore'), '.omg/\nbin/\nobj/\n');
+
+  it('F1: restore output and a stale build the PR\'s code left under obj/ and bin/ are removed by the sandboxed step before the next gate run; a tracked bin/ file stays', async () => {
     w = localWorld(['dotnet', 'test']);
-    writeFileSync(join(w.root, '.gitignore'), '.omg/\nbin/\nobj/\n');
+    ignoreBuild();
     baseProject();
     mkdirSync(join(w.root, 'src', 'App', 'bin'), { recursive: true });
     writeFileSync(join(w.root, 'src', 'App', 'bin', 'tracked.txt'), 'kept\n');
     gitIn(w.root, 'add', '-f', 'src/App/bin/tracked.txt');
     gitIn(w.root, 'commit', '-q', '-m', 'tracked bin file');
-    // NuGet's no-op restore keeps a tampered obj/*.nuget.g.targets; a newer bin/ build makes MSBuild skip CoreCompile.
-    const tampered = ['src', 'App', 'obj', 'App.csproj.nuget.g.targets'];
-    const stale = ['src', 'App', 'bin', 'Debug', 'net10.0', 'App.dll'];
-    const seen: Array<{ leftover: boolean; tracked: boolean }> = [];
-    w.gate = async (argv, cwd) => {
-      const first = w.gateRuns.length === 0;
-      w.gateRuns.push({ argv, cwd, head: gitIn(cwd, 'rev-parse', 'HEAD') });
-      if (first) {
-        // The first gate run (the PR's code) leaves both behind and does not start (no verdict).
-        for (const p of [tampered, stale]) {
-          mkdirSync(join(cwd, ...p.slice(0, -1)), { recursive: true });
-          writeFileSync(join(cwd, ...p), '<Project><PropertyGroup><IsTestProject>false</IsTestProject></PropertyGroup></Project>\n');
-        }
-        return { status: 127, stdout: '', stderr: '', timedOut: false, startError: 'dotnet is not on PATH' };
-      }
-      // The PR's tests pass only without the leftovers: with them the run would not reach the merge gate.
-      const leftover = existsSync(join(cwd, ...tampered)) || existsSync(join(cwd, ...stale));
-      seen.push({ leftover, tracked: existsSync(join(cwd, 'src', 'App', 'bin', 'tracked.txt')) });
-      return { status: leftover ? 1 : 0, stdout: '', stderr: '', timedOut: false };
+    const seen = leaveThenSee(staleBuild, (cwd) => seesStale(cwd) || !existsSync(join(cwd, 'src', 'App', 'bin', 'tracked.txt')));
+    const steps: SandboxRunRequest[] = [];
+    const inner = cleanStep();
+    const gateSandbox: SandboxRunner = (req) => {
+      if (req.purpose === 'clean') steps.push(req);
+      return inner(req);
     };
-    const first = await runFactoryEngine(localOpts(w, lanesFor(w, [commitFile('src/App/Greet.cs', 'namespace App;\n'), review('approve')]), { gateSandboxUserConfig: UNSANDBOXED_GATES }));
-    expect(first.gate?.name, first.message).toBe('gates');
-    const again = await runFactoryEngine(localOpts(w, lanesFor(w, []), { gateSandboxUserConfig: UNSANDBOXED_GATES }));
+    await firstRun({ gateSandbox });
+    const again = await runFactoryEngine(localOpts(w, lanesFor(w, []), { gateSandbox }));
     expect(again.gate?.name, again.message).toBe('merge');
-    expect(seen).toEqual([{ leftover: false, tracked: true }]);
-    expect(readFactoryState(w.root, LOCAL_ISSUE)!.history.some((h) => /^removed 2 untracked build output entries under bin\/, obj\/ and artifacts\/ in the prepare checkout before the dotnet gate on [0-9a-f]{12}$/.test(h.note))).toBe(true);
+    expect(seen).toEqual([false]);
+    // One step, through the sandbox runner: node <omg>/dist/.../dotnet-clean-step.js <kept>, no network, in the checkout.
+    expect(steps).toHaveLength(1);
+    expect(steps[0]).toMatchObject({ purpose: 'clean', network: 'none', exe: process.execPath, cwd: w.gateRuns[0].cwd });
+    expect(steps[0].args[0]).toMatch(/[\\/]dist[\\/]factory[\\/]run[\\/]dotnet-clean-step\.js$/);
+    expect(steps[0].args.slice(1)).toEqual(['src/App/bin/tracked.txt']);
+    expect(readFactoryState(w.root, LOCAL_ISSUE)!.history.some((h) => /^removed 2 build output entries under bin\/, obj\/ and artifacts\/ in the prepare checkout in the OS sandbox before the dotnet gate on [0-9a-f]{12} \(\d+ s\)$/.test(h.note))).toBe(true);
   }, MULTI_RUN_MS);
 
-  it('F3: a dotnet test gate on a base whose global.json selects Microsoft.Testing.Platform parks before it runs in the OS sandbox', async () => {
+  it('H1: a git repository the PR\'s code made in obj/ (hiding its files from git) is removed by the step and the gate runs clean', async () => {
+    w = localWorld(['dotnet', 'test']);
+    ignoreBuild();
+    baseProject();
+    const seen = leaveThenSee((cwd) => {
+      staleBuild(cwd);
+      writeAt(cwd, 'src/App/obj/Evil.props', '<Project />\n');
+      gitIn(join(cwd, 'src', 'App', 'obj'), 'init', '-q');
+    }, (cwd) => seesStale(cwd) || existsSync(join(cwd, 'src', 'App', 'obj')));
+    const gateSandbox = cleanStep();
+    await firstRun({ gateSandbox });
+    const again = await runFactoryEngine(localOpts(w, lanesFor(w, []), { gateSandbox }));
+    expect(again.gate?.name, again.message).toBe('merge');
+    expect(seen).toEqual([false]);
+  }, MULTI_RUN_MS);
+
+  it('a nested git repository outside the build dirs parks at lane-tampered before the dotnet gate runs, in any gate mode', async () => {
+    w = localWorld(['dotnet', 'test']);
+    writeFileSync(join(w.root, '.gitignore'), '.omg/\nvendor/\n');
+    baseProject();
+    leaveThenSee((cwd) => {
+      writeAt(cwd, 'vendor/lib/Directory.Build.props', '<Project />\n');
+      gitIn(join(cwd, 'vendor', 'lib'), 'init', '-q');
+    }, () => false);
+    await firstRun({ gateSandboxUserConfig: UNSANDBOXED_GATES });
+    const again = await runFactoryEngine(localOpts(w, lanesFor(w, []), { gateSandboxUserConfig: UNSANDBOXED_GATES }));
+    expect(again.gate?.name, again.message).toBe('lane-tampered');
+    expect(again.gate?.reason).toMatch(/untracked nested git repository \(vendor\/lib\/\)/);
+    expect(w.gateRuns).toHaveLength(1);
+  }, MULTI_RUN_MS);
+
+  it('the engine\'s check after the step parks at lane-tampered when anything is left under a build dir', async () => {
+    w = localWorld(['dotnet', 'test']);
+    ignoreBuild();
+    baseProject();
+    leaveThenSee(staleBuild, () => false);
+    // A step that reports success but removed nothing.
+    const gateSandbox = cleanStep(async () => ({ ran: true, status: 0, output: 'removed 2', timedOut: false }));
+    await firstRun({ gateSandbox });
+    const again = await runFactoryEngine(localOpts(w, lanesFor(w, []), { gateSandbox }));
+    expect(again.gate?.name, again.message).toBe('lane-tampered');
+    expect(again.gate?.reason).toMatch(/after the sandboxed step that empties the dotnet gate's build dirs, the engine's prepare checkout .* still holds src\/App\/(bin|obj)\//);
+    expect(w.gateRuns).toHaveLength(1);
+  }, MULTI_RUN_MS);
+
+  it('a failing or timed-out step parks at lane-tampered with its error lines; a step that cannot start parks at gates; the gate never runs', async () => {
+    w = localWorld(['dotnet', 'test']);
+    ignoreBuild();
+    baseProject();
+    leaveThenSee(staleBuild, () => false);
+    let answer: SandboxRunResult = { ran: true, status: 1, output: 'removed 0\nerror src/App/obj: EPERM: operation not permitted', timedOut: false };
+    const gateSandbox = cleanStep(async () => answer);
+    await firstRun({ gateSandbox });
+    const failed = await runFactoryEngine(localOpts(w, lanesFor(w, []), { gateSandbox }));
+    expect(failed.gate?.name, failed.message).toBe('lane-tampered');
+    expect(failed.gate?.reason).toMatch(/failed \(exit 1\): error src\/App\/obj: EPERM: operation not permitted/);
+    const cases: Array<[SandboxRunResult, string, RegExp]> = [
+      [{ ran: true, status: 124, output: '', timedOut: true }, 'lane-tampered', /timed out after 5 min/],
+      [{ ran: false, reason: 'the sandbox runtime failed while the command ran', started: true }, 'lane-tampered', /gave no verdict/],
+      [{ ran: false, reason: 'copilot CLI not found' }, 'gates', /did not start \(copilot CLI not found\); nothing was removed/],
+    ];
+    for (const [next, park, text] of cases) {
+      answer = next;
+      const again = await runFactoryEngine(localOpts(w, lanesFor(w, []), { gateSandbox }));
+      expect(again.gate?.name, again.message).toBe(park);
+      expect(again.gate?.reason).toMatch(text);
+    }
+    expect(w.gateRuns).toHaveLength(1);
+  }, MULTI_RUN_MS);
+
+  it('unsandboxed gates: the engine deletes nothing; the leftovers stay with a history note', async () => {
+    w = localWorld(['dotnet', 'test']);
+    ignoreBuild();
+    baseProject();
+    const seen = leaveThenSee(staleBuild, seesStale);
+    await firstRun({ gateSandboxUserConfig: UNSANDBOXED_GATES });
+    await runFactoryEngine(localOpts(w, lanesFor(w, []), { gateSandboxUserConfig: UNSANDBOXED_GATES }));
+    expect(seen).toEqual([true]);
+    expect(readFactoryState(w.root, LOCAL_ISSUE)!.history.some((h) => /^left 2 untracked build output paths under bin\/, obj\/ or artifacts\/ in the prepare checkout before the dotnet gate on [0-9a-f]{12}: the gates run without the OS sandbox/.test(h.note))).toBe(true);
+  }, MULTI_RUN_MS);
+
+  it('F3/M1/M2: a dotnet test gate on a base whose global.json selects Microsoft.Testing.Platform parks before any lane on Windows; elsewhere it runs (unverified)', async () => {
     w = localWorld(['dotnet', 'test']);
     writeFileSync(join(w.root, 'global.json'), '{ "test": { "runner": "Microsoft.Testing.Platform" } }\n');
     baseProject();
     const lanes = lanesFor(w, [commitFile('src/App/Greet.cs', 'namespace App;\n'), review('approve')]);
     const out = await runFactoryEngine(localOpts(w, lanes));
+    if (process.platform === 'win32') {
+      expect(out.gate?.name, out.message).toBe('gates');
+      expect(out.gate?.reason).toMatch(/^Microsoft\.Testing\.Platform test gates are not supported in the sandbox yet: main's global\.json selects it .* could never pass there and no (further )?lane was started/);
+      expect(lanes.started).toEqual([]);
+      expect(w.gateRuns).toEqual([]);
+    } else {
+      expect(out.gate?.name, out.message).toBe('merge');
+      expect(w.gateRuns).toHaveLength(1);
+    }
+  }, MULTI_RUN_MS);
+
+  it.runIf(process.platform === 'win32')('L4: on Windows a root Global.json in another case selects Microsoft.Testing.Platform too', async () => {
+    w = localWorld(['dotnet', 'test']);
+    writeFileSync(join(w.root, 'Global.json'), '{ "test": { "runner": "Microsoft.Testing.Platform" } }\n');
+    baseProject();
+    const lanes = lanesFor(w, [commitFile('src/App/Greet.cs', 'namespace App;\n'), review('approve')]);
+    const out = await runFactoryEngine(localOpts(w, lanes));
     expect(out.gate?.name, out.message).toBe('gates');
-    expect(out.gate?.reason).toMatch(/^Microsoft\.Testing\.Platform test gates are not supported in the sandbox yet: main's global\.json selects it/);
-    expect(w.gateRuns).toEqual([]);
+    expect(lanes.started).toEqual([]);
   }, MULTI_RUN_MS);
 
   it('F4: with a project dir in the gate argv, a comment change in a test file under it runs the gate (no gate-definition-changed)', async () => {

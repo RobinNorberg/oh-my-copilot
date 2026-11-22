@@ -17,7 +17,6 @@ import { basename, join, posix, relative, win32 } from 'path';
 import { loadBaseKnownFlaky, loadTrustedShipConfig, userConfigLayers } from '../../ship/config.js';
 import { getBranchName, getWorktreePath } from '../../team/git-worktree.js';
 import { runSlug } from './state.js';
-import { dotnetBuildDirIndex } from './local-gate.js';
 import { expandWorkspaceDirs, plainDirUnder, workspaceLinkTarget } from './workspace-tree.js';
 export const FACTORY_CHECKOUT_TEAM = 'factory-run';
 /** `issue-<n>`, or `heal-<sig8>` for a ci-heal run. */
@@ -889,86 +888,6 @@ function* removeGateTreeSteps(dir) {
         rmdirSync(d);
     };
     yield* walk(dir);
-}
-/**
- * Remove a dotnet gate's leftover build state from `checkout` (the engine's
- * prepare checkout, before the gate): of `untracked` (repository paths as
- * `git ls-files --others -z` lists them against the head, ignored or not),
- * every path under a `bin`, `obj` or `artifacts` dir (local-gate.ts
- * dotnetBuildDirIndex), then the dirs that became empty under it. The PR's
- * code run there earlier (a prepare check, a source generator, an earlier
- * gate run) can leave a restore output or a stale build that MSBuild reuses
- * (NuGet's no-op restore keeps obj/*.nuget.g.targets; a newer bin/ skips
- * CoreCompile), and it would change the gate's result.
- *
- * Link-safe, never leaving the checkout: each path is walked from the
- * checkout one lstat at a time; a link (symlink or junction) at or below the
- * build dir is unlinked itself, never followed (git lists a junction's
- * content on Windows, the link itself on POSIX); a link above it, a file on
- * the way, or anything not there is left alone. A listed path that is the
- * build dir itself goes only when it is a link. Tracked files are never
- * listed, and a dir that still holds one is not empty. Returns how many
- * entries went.
- */
-export function removeDotnetBuildOutput(checkout, untracked) {
-    let removed = 0;
-    const emptied = new Set();
-    for (const listed of untracked) {
-        const at = dotnetBuildDirIndex(listed);
-        if (at < 0)
-            continue;
-        const segs = listed.replace(/\/+$/, '').split('/');
-        // A stream or drive spelling never names a plain checkout path on Windows.
-        if (process.platform === 'win32' && segs.some((s) => s.includes(':')))
-            continue;
-        let cur = checkout;
-        const dirs = [];
-        for (let i = 0; i < segs.length; i++) {
-            cur = join(cur, segs[i]);
-            let st;
-            try {
-                st = lstatSync(cur);
-            }
-            catch {
-                break;
-            }
-            if (st.isSymbolicLink()) {
-                if (i >= at) {
-                    unlinkLink(cur);
-                    removed++;
-                    for (const d of dirs)
-                        emptied.add(d);
-                }
-                break;
-            }
-            const last = i === segs.length - 1;
-            if (last && i > at) {
-                if (st.isDirectory())
-                    runTreeSteps(removeGateTreeSteps(cur));
-                else
-                    unlinkSync(cur);
-                removed++;
-                for (const d of dirs)
-                    emptied.add(d);
-                break;
-            }
-            if (!st.isDirectory())
-                break;
-            if (i >= at)
-                dirs.push(cur);
-        }
-    }
-    // The dirs on the way, deepest first; one that still holds anything (a tracked file) stays.
-    const candidates = [...emptied].sort((a, b) => b.length - a.length);
-    for (const d of candidates) {
-        try {
-            const st = lstatSync(d);
-            if (st.isDirectory() && !st.isSymbolicLink())
-                rmdirSync(d);
-        }
-        catch { /* not empty, or gone */ }
-    }
-    return removed;
 }
 /**
  * Remove what linkNodeModules made before the checkout is discarded: on

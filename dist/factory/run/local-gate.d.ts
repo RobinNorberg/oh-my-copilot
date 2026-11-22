@@ -30,6 +30,7 @@
  */
 import { type LocalCheckRecord } from '../../forge/local/index.js';
 import { type GateProcTracker } from './gate-procs.js';
+import { DOTNET_BUILD_DIRS } from './dotnet-clean.js';
 import { type SandboxRunner } from './sandbox-exec.js';
 /** The record keeps this many characters of the gate's output (jobLog, the ci-fix prompt). */
 export declare const LOCAL_GATE_TAIL_CHARS = 8000;
@@ -210,12 +211,16 @@ export declare const DOTNET_DEFINITION_PATTERNS: readonly string[];
  * (as vitest.config is not part of an npm gate's), but never auto-merged.
  */
 export declare const DOTNET_TEST_CONFIG_PATTERNS: readonly string[];
-/** One case-insensitive matcher for a file's basename (openedBasename) against basename globs (`*` any run of characters). */
+/**
+ * One case-insensitive matcher for a file's basename against basename globs
+ * (`*` any run of characters). It matches when the name as Windows opens it
+ * (openedBasename) or the name itself (folded, nothing dropped) does: on
+ * Linux `src/evil:1.props` is a plain file name that matches `*.props`.
+ */
 export declare function basenameMatcher(globs: readonly string[]): (path: string) => boolean;
 /** True when a repository file defines a dotnet gate (DOTNET_DEFINITION_PATTERNS). */
 export declare const isDotnetDefinitionFile: (path: string) => boolean;
-/** The directory names (any case) whose untracked content is build output a dotnet gate starts without (prepare.ts removeDotnetBuildOutput). */
-export declare const DOTNET_BUILD_DIRS: ReadonlySet<string>;
+export { DOTNET_BUILD_DIRS };
 /**
  * The index of the first segment of a repository path (`/`-separated, as git
  * lists it) that is a DOTNET_BUILD_DIRS name, or -1: also -1 for a path with
@@ -227,9 +232,11 @@ export declare function dotnetBuildDirIndex(path: string): number;
  * Of the prepare checkout's untracked files (ignored or not, repository
  * paths), the definition files MSBuild would read for a dotnet gate although
  * no commit pins them (an ignored `App.csproj.user` or `Directory.Build.rsp`),
- * outside the build output dirs (`bin/`, `obj/`, `artifacts/`), which the
- * engine empties of untracked files before every dotnet gate run. The PR's
- * code run there earlier (a prepare check, an earlier gate run) can leave one.
+ * outside the build output dirs (`bin/`, `obj/`, `artifacts/`), which a
+ * sandboxed step empties before a dotnet gate run (dotnet-clean.ts), and
+ * outside `node_modules` (a package tree is never the repository's MSBuild
+ * input). The PR's code run there earlier (a prepare check, an earlier gate
+ * run) can leave one.
  */
 export declare function strayDotnetDefinitionFiles(untracked: readonly string[]): string[];
 /** A commit's files as [path, blob id] (`git ls-tree -r`). */

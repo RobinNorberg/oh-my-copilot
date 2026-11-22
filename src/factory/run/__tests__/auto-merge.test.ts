@@ -174,7 +174,9 @@ describe('review-498 adversarial paths', () => {
     const definition = ['App.sln', 'App.slnx', 'a.slnf', 'src/App.csproj', 'b.fsproj', 'c.vbproj', 'build.proj', 'web/web.esproj', 'Shared/Shared.projitems', 'Tests/Tests.csproj.user',
       'Directory.Build.props', 'Directory.Packages.props', 'src/Directory.Build.targets', 'build/My.tasks', 'Directory.Build.rsp', 'global.json', 'NuGet.Config', 'src/packages.lock.json', 'dotnet.config',
       // F2: Microsoft.Testing.Platform's launch profiles; F7: Windows spellings of a definition file, as the pin matches them.
-      'Tests/Properties/launchSettings.json', 'Tests/Tests.run.json', 'src/App.csproj.', 'src/App.csproj::$DATA', 'Directory.Build.props:x'];
+      'Tests/Properties/launchSettings.json', 'Tests/Tests.run.json', 'src/App.csproj.', 'src/App.csproj::$DATA', 'Directory.Build.props:x',
+      // L1: on Linux a plain file name with a colon.
+      'src/evil:1.props'];
     for (const p of definition) expect(isDotnetDefinitionFile(p), p).toBe(true);
     const testConfig = ['tests/ci.runsettings', 'testconfig.json', 'tests/xunit.runner.json', '.globalconfig', 'rules/App.ruleset', 'stylecop.json', '.config/dotnet-tools.json'];
     for (const p of [...definition, ...testConfig]) {

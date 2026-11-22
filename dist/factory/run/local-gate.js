@@ -38,6 +38,7 @@ import { getProcessStartIdentity, terminateOwnedProcessTree } from '../../platfo
 import { childEnv, findOnPath, hardenWindowsExeSearch, resolveBareExe } from '../../utils/windows-search.js';
 import { FactorySafetyError, sameFsPath } from './exec.js';
 import { createGateProcTracker, gateProcsPath, reapGateProcs, sweepGateProcs } from './gate-procs.js';
+import { DOTNET_BUILD_DIRS } from './dotnet-clean.js';
 import { CREDENTIAL_FILES_READABLE_NOTE, gateEnv, redactGateOutput } from './sandbox-exec.js';
 /** The record keeps this many characters of the gate's output (jobLog, the ci-fix prompt). */
 export const LOCAL_GATE_TAIL_CHARS = 8_000;
@@ -490,24 +491,27 @@ export const DOTNET_DEFINITION_PATTERNS = [
 export const DOTNET_TEST_CONFIG_PATTERNS = [
     '*.runsettings', 'testconfig.json', 'xunit.runner.json', '.globalconfig', '*.ruleset', 'stylecop.json', 'dotnet-tools.json',
 ];
+/** A basename folded as auto-merge's segments() folds (NFKC, no default-ignorable code point, lower case). */
+const foldedName = (base) => base.normalize('NFKC').replace(/\p{Default_Ignorable_Code_Point}/gu, '').toUpperCase().toLowerCase().normalize('NFKC');
+const basenameOf = (path) => path.split(/[\\/]/).pop() ?? path;
 /**
  * A path's basename as Windows opens it: an NTFS stream suffix (`name:stream`,
- * `name::$DATA`) and trailing dots and spaces dropped, folded as auto-merge's
- * segments() folds (NFKC, no default-ignorable code point, lower case).
+ * `name::$DATA`) and trailing dots and spaces dropped, then folded (foldedName).
  */
-const openedBasename = (path) => {
-    const base = (path.split(/[\\/]/).pop() ?? path).replace(/:.*$/s, '');
-    return base.normalize('NFKC').replace(/\p{Default_Ignorable_Code_Point}/gu, '').toUpperCase().toLowerCase().normalize('NFKC').replace(/[. ]+$/, '');
-};
-/** One case-insensitive matcher for a file's basename (openedBasename) against basename globs (`*` any run of characters). */
+const openedBasename = (path) => foldedName(basenameOf(path).replace(/:.*$/s, '')).replace(/[. ]+$/, '');
+/**
+ * One case-insensitive matcher for a file's basename against basename globs
+ * (`*` any run of characters). It matches when the name as Windows opens it
+ * (openedBasename) or the name itself (folded, nothing dropped) does: on
+ * Linux `src/evil:1.props` is a plain file name that matches `*.props`.
+ */
 export function basenameMatcher(globs) {
-    const re = new RegExp(`^(?:${globs.map((g) => g.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*')).join('|')})$`, 'i');
-    return (path) => re.test(openedBasename(path));
+    const re = new RegExp(`^(?:${globs.map((g) => g.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*')).join('|')})$`, 'is');
+    return (path) => re.test(openedBasename(path)) || re.test(foldedName(basenameOf(path)));
 }
 /** True when a repository file defines a dotnet gate (DOTNET_DEFINITION_PATTERNS). */
 export const isDotnetDefinitionFile = basenameMatcher(DOTNET_DEFINITION_PATTERNS);
-/** The directory names (any case) whose untracked content is build output a dotnet gate starts without (prepare.ts removeDotnetBuildOutput). */
-export const DOTNET_BUILD_DIRS = new Set(['bin', 'obj', 'artifacts']);
+export { DOTNET_BUILD_DIRS };
 /**
  * The index of the first segment of a repository path (`/`-separated, as git
  * lists it) that is a DOTNET_BUILD_DIRS name, or -1: also -1 for a path with
@@ -524,12 +528,16 @@ export function dotnetBuildDirIndex(path) {
  * Of the prepare checkout's untracked files (ignored or not, repository
  * paths), the definition files MSBuild would read for a dotnet gate although
  * no commit pins them (an ignored `App.csproj.user` or `Directory.Build.rsp`),
- * outside the build output dirs (`bin/`, `obj/`, `artifacts/`), which the
- * engine empties of untracked files before every dotnet gate run. The PR's
- * code run there earlier (a prepare check, an earlier gate run) can leave one.
+ * outside the build output dirs (`bin/`, `obj/`, `artifacts/`), which a
+ * sandboxed step empties before a dotnet gate run (dotnet-clean.ts), and
+ * outside `node_modules` (a package tree is never the repository's MSBuild
+ * input). The PR's code run there earlier (a prepare check, an earlier gate
+ * run) can leave one.
  */
 export function strayDotnetDefinitionFiles(untracked) {
     return untracked.filter((p) => {
+        if (p.split('/').some((s) => s.toLowerCase() === 'node_modules'))
+            return false;
         const at = dotnetBuildDirIndex(p);
         return (at < 0 || at === p.replace(/\/+$/, '').split('/').length - 1) && isDotnetDefinitionFile(p);
     });
