@@ -5,7 +5,8 @@
  */
 import { Command } from 'commander';
 import { type FactoryCheckDeps } from '../../factory/check/cli.js';
+import { type HostCheckDeps } from '../../factory/host-check.js';
 export declare function ttyConfirm(question: string): Promise<boolean>;
 export declare function defaultFactoryCheckDeps(base: (root: string) => string): FactoryCheckDeps;
-export declare function factoryCheckCommand(deps: FactoryCheckDeps): Command;
+export declare function factoryCheckCommand(deps: FactoryCheckDeps, hostDeps?: () => HostCheckDeps): Command;
 //# sourceMappingURL=factory-check.d.ts.map

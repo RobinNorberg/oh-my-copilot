@@ -474,6 +474,8 @@ export interface SdkProtocolProbeOptions {
   startTimeoutMs?: number;
   stopTimeoutMs?: number;
   killTree?: (pid: number) => void;
+  /** Runs on the started client before it stops (no session exists: only no-session RPCs such as sandbox.getHostSupport); a throw is ignored. */
+  onStarted?: (client: SdkClientLike) => Promise<void>;
 }
 
 /**
@@ -500,6 +502,7 @@ export async function probeSdkProtocol(loaded: LoadedSdk, bin: string, opts: Sdk
       workingDirectory: home,
     });
     await withTimeout(client.start().catch(rethrowSdkStartError), opts.startTimeoutMs ?? PROBE_START_TIMEOUT_MS, 'client.start()');
+    if (opts.onStarted) { try { await opts.onStarted(client); } catch { /* the caller's own check */ } }
     return null;
   } catch (err) {
     if (err instanceof TimeoutError) return `${PROBE_TIMEOUT_REASON}: ${err.message} (${bin})`;
