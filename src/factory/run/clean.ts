@@ -22,8 +22,8 @@
  * `clean --discard` removes it.
  */
 
-import { existsSync, readdirSync, rmSync } from 'fs';
-import { nugetRunPackagesDir } from './nuget-restore.js';
+import { existsSync, readdirSync } from 'fs';
+import { nugetDefinitionTreeDir, nugetRunPackagesDir, removeEngineDir } from './nuget-restore.js';
 import { sandboxJobRoot } from './sandbox-exec.js';
 import { dirname, join, resolve } from 'path';
 import { WORKTREE_TEAM } from '../../copilot-run/job.js';
@@ -400,21 +400,23 @@ export function cleanHeldFactoryRun(o: FactoryCleanOptions, state: FactoryRunSta
 }
 
 /**
- * The shared layout's run NuGet packages folder (nuget-restore.ts; the
- * private layout's lies in the run dir and goes with it), once the prepare
- * checkout is gone. Only the sandboxed dotnet restore step writes it (the
- * PR's code gets it read-only), and rmSync unlinks a link without following
- * it.
+ * The shared layout's run NuGet packages folder and definition tree
+ * (nuget-restore.ts; the private layout's lie in the run dir and go with
+ * it), once the prepare checkout is gone. Only the sandboxed dotnet restore
+ * step writes them, on the pinned definition files alone (the PR's code
+ * gets the packages folder read-only); removeEngineDir refuses a dir that
+ * is a link or resolves outside the gate job root (see its comment).
  */
 function cleanRunNugetPackages(o: FactoryCleanOptions, state: FactoryRunState, result: FactoryCleanResult): void {
   if (state.layout === 2) return;
-  const dir = nugetRunPackagesDir(sandboxJobRoot(o.root), runSlug(o.issue));
-  if (!existsSync(dir) || existsSync(getWorktreePath(o.root, FACTORY_CHECKOUT_TEAM, checkoutWorker(o.issue)))) return;
-  try {
-    rmSync(dir, { recursive: true, force: true, maxRetries: 2 });
-    result.removed.push(dir);
-  } catch (error) {
-    result.kept.push({ worktree: dir, reason: error instanceof Error ? error.message : String(error) });
+  if (existsSync(getWorktreePath(o.root, FACTORY_CHECKOUT_TEAM, checkoutWorker(o.issue)))) return;
+  const jobRoot = sandboxJobRoot(o.root);
+  for (const dir of [nugetRunPackagesDir(jobRoot, runSlug(o.issue)), nugetDefinitionTreeDir(jobRoot, runSlug(o.issue))]) {
+    try {
+      if (removeEngineDir(dir, jobRoot)) result.removed.push(dir);
+    } catch (error) {
+      result.kept.push({ worktree: dir, reason: error instanceof Error ? error.message : String(error) });
+    }
   }
 }
 

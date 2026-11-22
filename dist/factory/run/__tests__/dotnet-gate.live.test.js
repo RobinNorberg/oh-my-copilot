@@ -14,12 +14,13 @@
  */
 import { spawnSync } from 'node:child_process';
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:http';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { nugetPackagesDir } from '../../../copilot-run/dotnet-sandbox.js';
 import { resolveLocalGateArgv } from '../../../factory/run/local-gate.js';
-import { classifyNugetFailure, dotnetRestoreArgs } from '../../../factory/run/nuget-restore.js';
+import { classifyNugetFailure, dotnetRestoreArgs, parseCatFileBatch, writeDefinitionTree } from '../../../factory/run/nuget-restore.js';
 import { resolveDefaultPluginRoot } from '../../../smoke/copilot-session-env.js';
 import { createSandboxRunner } from '../../../factory/run/sandbox-exec.js';
 import { findOnPath } from '../../../utils/windows-search.js';
@@ -185,6 +186,96 @@ describe.runIf(process.env.OMG_LIVE_DOTNET === '1' && onWindows && !!dotnet)('a 
             expect(r.output).toMatch(/Build succeeded/);
         expect(!!packages && existsSync(join(packages, UNCACHED[0].toLowerCase(), UNCACHED[1]))).toBe(false);
     }, 900_000);
+    it('H1: the restore in a definition tree written from the head\'s git objects never runs the <Exec> of an unpinned import the head rewrote', async (ctx) => {
+        const repo = join(dir, 'h1-repo');
+        const tree = join(dir, 'h1-tree');
+        const marker = join(dir, 'h1-marker.txt');
+        const hits = [];
+        const srv = createServer((req, res) => { hits.push(req.url ?? ''); res.end('ok'); });
+        await new Promise((r) => srv.listen(0, '127.0.0.1', () => r()));
+        const port = srv.address().port;
+        try {
+            mkdirSync(join(repo, 'build'), { recursive: true });
+            mkdirSync(join(repo, 'App'));
+            writeFileSync(join(repo, 'Directory.Build.props'), '<Project>\n  <Import Project="$(MSBuildThisFileDirectory)build/common.msbuild" />\n</Project>\n');
+            writeFileSync(join(repo, 'build', 'common.msbuild'), '<Project />\n');
+            writeFileSync(join(repo, 'App', 'App.csproj'), LIB);
+            git(repo, 'init', '-q', '-b', 'main');
+            git(repo, 'add', '.');
+            git(repo, 'commit', '-q', '-m', 'base');
+            // The "PR" rewrites only the unpinned import: an Exec before the restore graph, a marker and a loopback canary.
+            writeFileSync(join(repo, 'build', 'common.msbuild'), `<Project>\n  <Target Name="Evil" BeforeTargets="_GenerateRestoreGraph;CollectPackageReferences">\n    <Exec ContinueOnError="true" Command="echo RAN_EXEC_IN_RESTORE &gt; &quot;${marker}&quot;" />\n    <Exec ContinueOnError="true" Command="curl.exe -s -m 10 -o NUL http://127.0.0.1:${port}/h1-canary" />\n  </Target>\n</Project>\n`);
+            git(repo, 'commit', '-q', '-am', 'head');
+            const entries = spawnSync('git', ['ls-tree', '-r', '-z', '--full-tree', 'HEAD'], { cwd: repo, encoding: 'utf8' }).stdout.split('\0').filter(Boolean).map((line) => {
+                const tab = line.indexOf('\t');
+                const [mode, , oid] = line.slice(0, tab).split(' ');
+                return [line.slice(tab + 1), oid, mode];
+            });
+            const written = writeDefinitionTree(tree, entries, (oids) => parseCatFileBatch(spawnSync('git', ['cat-file', '--batch'], { cwd: repo, input: `${oids.join('\n')}\n` }).stdout));
+            expect(written).toEqual({ files: ['App/App.csproj', 'Directory.Build.props'] });
+            const run = createSandboxRunner(root, undefined, { user: { factory: { run: { sandbox: {} } } }, project: undefined });
+            const argv = ['dotnet', ...dotnetRestoreArgs(['build', 'App/App.csproj'])];
+            const t = resolveLocalGateArgv(argv, { cwd: tree });
+            if ('missing' in t)
+                throw new Error(t.missing);
+            const throwaway = join(dir, 'h1-packages');
+            mkdirSync(throwaway);
+            const r = await run({ purpose: 'restore', argv, exe: t.exe, args: t.args, cwd: tree, commonGitDir: join(repo, '.git'), timeoutMs: 300_000, network: 'nuget', nugetPackages: { dir: throwaway, writable: true } });
+            if (!r.ran && NO_RUNTIME.test(r.reason)) {
+                ctx.skip(`no Copilot runtime here: ${r.reason}`);
+                return;
+            }
+            expect(r.ran, r.ran ? '' : r.reason).toBe(true);
+            if (!r.ran)
+                return;
+            // NuGet's restore evaluation ignores a missing import: the restore succeeds without it, and its Exec never ran.
+            expect(r.status, r.output).toBe(0);
+            expect(r.output).not.toMatch(/RAN_EXEC_IN_RESTORE/);
+            expect(existsSync(marker)).toBe(false);
+            expect(hits).toEqual([]);
+        }
+        finally {
+            srv.close();
+        }
+    }, 360_000);
+    it('H2: the restore step reaches api.nuget.org and no other internet host; on Windows loopback stays reachable (the sandbox runs nothing without it)', async (ctx) => {
+        const tree = join(dir, 'h2-tree');
+        const hits = [];
+        const srv = createServer((req, res) => { hits.push(req.url ?? ''); res.end('ok'); });
+        await new Promise((r) => srv.listen(0, '127.0.0.1', () => r()));
+        const port = srv.address().port;
+        try {
+            mkdirSync(join(tree, 'App'), { recursive: true });
+            writeFileSync(join(tree, 'App', 'App.csproj'), LIB);
+            // A pinned definition file (trusted: the test's own) that probes what the restore step can reach.
+            writeFileSync(join(tree, 'Directory.Build.targets'), `<Project>\n  <Target Name="Probe" BeforeTargets="_GenerateRestoreGraph">\n    <Exec ContinueOnError="true" Command="curl.exe -s -m 10 -o NUL -w &quot;PROBE_LOOPBACK=%%{http_code}&quot; http://127.0.0.1:${port}/h2-loopback" />\n    <Exec ContinueOnError="true" Command="curl.exe -s -m 10 -o NUL -w &quot;PROBE_EXAMPLE=%%{http_code}&quot; https://example.com/" />\n    <Exec ContinueOnError="true" Command="curl.exe -s -m 10 -o NUL -w &quot;PROBE_NUGET=%%{http_code}&quot; https://api.nuget.org/v3/index.json" />\n  </Target>\n</Project>\n`);
+            const run = createSandboxRunner(root, undefined, { user: { factory: { run: { sandbox: {} } } }, project: undefined });
+            const argv = ['dotnet', 'restore', 'App/App.csproj'];
+            const t = resolveLocalGateArgv(argv, { cwd: tree });
+            if ('missing' in t)
+                throw new Error(t.missing);
+            const throwaway = join(dir, 'h2-packages');
+            mkdirSync(throwaway);
+            const r = await run({ purpose: 'restore', argv, exe: t.exe, args: t.args, cwd: tree, commonGitDir: join(checkout, '.git'), timeoutMs: 300_000, network: 'nuget', nugetPackages: { dir: throwaway, writable: true } });
+            if (!r.ran && NO_RUNTIME.test(r.reason)) {
+                ctx.skip(`no Copilot runtime here: ${r.reason}`);
+                return;
+            }
+            expect(r.ran, r.ran ? '' : r.reason).toBe(true);
+            if (!r.ran)
+                return;
+            expect(r.output).toMatch(/PROBE_NUGET=200/);
+            expect(r.output).toMatch(/PROBE_EXAMPLE=000/);
+            // Known gap (docs/REFERENCE.md, .NET repositories): the Windows sandbox runs no command with outbound allowed and
+            // the local network denied, so loopback answers. When this fails, the runtime can deny it: set allowLocalNetwork
+            // false for onlyHosts (sandbox.ts) and turn this into a not-reachable assertion.
+            expect(r.output).toMatch(/PROBE_LOOPBACK=200/);
+            expect(hits).toEqual(['/h2-loopback']);
+        }
+        finally {
+            srv.close();
+        }
+    }, 360_000);
     it('H2: a junction obj -> a dir outside the checkout survives the clean step, and a sandboxed delete through it is denied', async (ctx) => {
         const co = join(dir, 'junction-checkout');
         const canary = join(dir, 'junction-canary');

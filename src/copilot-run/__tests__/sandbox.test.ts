@@ -212,6 +212,8 @@ describe('buildSandboxConfig', () => {
     const settings = { ...ctx.settings, writeNetwork: 'registry' as const, allowedHosts: ['npm.example.com'] };
     expect(buildSandboxConfig('write', { ...ctx, settings, onlyHosts: NUGET_HOSTS }, host()).userPolicy.network).toEqual({ allowOutbound: true, allowedHosts: ['api.nuget.org'], allowLocalNetwork: false });
     expect(NUGET_HOSTS).toEqual(['api.nuget.org']);
+    // Windows: the local network stays on (the Windows sandbox runs nothing with outbound on and it off).
+    expect(buildSandboxConfig('write', { ...ctx, settings, platform: 'win32', onlyHosts: NUGET_HOSTS }, host()).userPolicy.network.allowLocalNetwork).toBe(true);
     expect(buildSandboxConfig('review', { ...ctx, onlyHosts: NUGET_HOSTS }, host()).userPolicy.network.allowOutbound).toBe(false);
   });
 

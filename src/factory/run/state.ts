@@ -282,6 +282,12 @@ export interface FactoryRunState {
   sandboxedPrepareHead?: string;
   /** The head the local gate last ran on in the OS sandbox (the command was handed over): a later gate start failure on it parks at gate-no-verdict. Optional: older state files lack it. */
   sandboxedGateHead?: string;
+  /**
+   * The networked dotnet restore step (nuget-restore.ts): the head it last ran for and the gate definition hash
+   * (as gateChangeApproved) that head had. Once per definition and head, also across reruns; the run's packages
+   * folder holds what that definition restored, and is emptied before a restore for another definition.
+   */
+  nugetRestore?: { head: string; definition: string };
   /** The head a check last ran on WITHOUT any sandbox through the Windows git-transport fallback: such a run is never auto-merged. */
   gitTransportPlainHead?: string;
   /** The head whose built-in prepare tests passed only because tests that fail on the base too were not counted (test-delta.ts): such a run is never auto-merged. */
@@ -697,6 +703,10 @@ function humanReviewShapeProblem(s: Record<string, unknown>): string | null {
   if (s.pendingCommit !== undefined && !pendingCommitShapeOk(s.pendingCommit)) return 'pendingCommit';
   if (s.sandboxedPrepareHead !== undefined && (!isStr(s.sandboxedPrepareHead) || !HEX40.test(s.sandboxedPrepareHead))) return 'sandboxedPrepareHead';
   if (s.sandboxedGateHead !== undefined && (!isStr(s.sandboxedGateHead) || !HEX40.test(s.sandboxedGateHead))) return 'sandboxedGateHead';
+  if (s.nugetRestore !== undefined) {
+    const n = s.nugetRestore as { head?: unknown; definition?: unknown } | null;
+    if (s.forgeKind !== 'local' || typeof n !== 'object' || n === null || !isStr(n.head) || !HEX40.test(n.head) || !isStr(n.definition) || !HEX64.test(n.definition)) return 'nugetRestore';
+  }
   if (s.gitTransportPlainHead !== undefined && (!isStr(s.gitTransportPlainHead) || !HEX40.test(s.gitTransportPlainHead))) return 'gitTransportPlainHead';
   if (s.testDeltaExcusedHead !== undefined && (!isStr(s.testDeltaExcusedHead) || !HEX40.test(s.testDeltaExcusedHead))) return 'testDeltaExcusedHead';
   if (s.plainHeadRan !== undefined && s.plainHeadRan !== true) return 'plainHeadRan';

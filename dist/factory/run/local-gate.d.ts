@@ -131,7 +131,8 @@ export declare function localGateDue(stateDir: string, root: string, head: strin
  */
 export type LocalGateOutcome = {
     started: true;
-    record: LocalCheckRecord;
+    record: LocalCheckRecord; /** The whole output (the record keeps a tail only). */
+    output?: string;
 } | {
     started: false;
     reason: string;

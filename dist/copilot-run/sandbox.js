@@ -677,6 +677,10 @@ export function buildSandboxConfig(profile, ctx, host) {
             filesystem.deniedPaths.push(...sockets.filter((s) => s !== '/' && !holdsGrant(s)));
         }
     }
+    // allowLocalNetwork on Windows (registry and onlyHosts): the Windows sandbox runs nothing with outbound allowed and the
+    // local network denied (verified 2026-11-22, Copilot CLI 1.0.91: even `dotnet --version` prints nothing and the shell's
+    // exit marker never comes), so there loopback (any port) and the LAN stay reachable next to the allowed hosts; every
+    // other internet host is refused. Off on every other platform. dotnet-gate.live.test.ts checks both.
     const network = ctx.onlyHosts
         ? { allowOutbound: true, allowedHosts: [...ctx.onlyHosts], allowLocalNetwork: ctx.platform === 'win32' }
         : settings.writeNetwork === 'registry'
