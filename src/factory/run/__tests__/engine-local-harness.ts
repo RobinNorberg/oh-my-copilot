@@ -51,9 +51,9 @@ export interface LocalWorld {
 }
 
 /** A repository on `main` with the backlog item #7 committed, and no remote. */
-export function localWorld(gate: string[] | null = ['node', '--test']): LocalWorld {
+export function localWorld(gate: string[] | null = ['node', '--test'], repoName = 'repo'): LocalWorld {
   const dir = mkdtempSync(join(tmpdir(), 'omg-factory-local-'));
-  const root = join(dir, 'repo');
+  const root = join(dir, repoName);
   mkdirSync(root);
   gitIn(root, 'init', '-q', '-b', BASE);
   writeFileSync(join(root, 'README.md'), 'hello\n');

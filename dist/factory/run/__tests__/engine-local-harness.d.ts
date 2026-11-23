@@ -32,7 +32,7 @@ export interface LocalWorld {
     gate: LocalGateRunner;
 }
 /** A repository on `main` with the backlog item #7 committed, and no remote. */
-export declare function localWorld(gate?: string[] | null): LocalWorld;
+export declare function localWorld(gate?: string[] | null, repoName?: string): LocalWorld;
 /** Ship's gate config without a fetch; the engine replaces requiredChecks with local-gate on the local forge. */
 export declare const localTestGateConfig: GateConfigLoader;
 export declare function localOpts(w: LocalWorld, lanes: FakeLanes, over?: Partial<FactoryEngineOptions>): FactoryEngineOptions;

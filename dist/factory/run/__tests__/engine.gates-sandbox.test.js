@@ -21,6 +21,7 @@ import { sandboxShellCommand } from '../sandbox-exec.js';
 import { EngineLedger } from '../ledger.js';
 import { factoryStatePath, overwriteFactoryState, readFactoryState } from '../state.js';
 import { BASE, lanesFor, LOCAL_ISSUE, localOpts, localWorld } from './engine-local-harness.js';
+import { sealedNext, steps } from './gate-next-expect.js';
 import { commitFile, gitIn, review } from './fake-lanes.js';
 const MULTI_RUN_MS = 300_000;
 let w;
@@ -74,6 +75,7 @@ describe('gates "enforced" (the default)', () => {
         expect(out.exitCode, out.message).toBe(EXIT_AWAITING_HUMAN);
         expect(out.gate?.name).toBe(GATES_UNSANDBOXED_GATE);
         const head = readFactoryState(w.root, LOCAL_ISSUE).head;
+        expect(sealedNext(w.root, LOCAL_ISSUE, out)).toEqual([steps(LOCAL_ISSUE).status, steps(LOCAL_ISSUE).flag('--allow-unsandboxed-gates'), steps(LOCAL_ISSUE).cancel]);
         expect(out.gate?.reason).toContain(`the prepare check \`node check.js\` on ${head.slice(0, 12)} would run the PR's own code WITHOUT the OS sandbox (the OS sandbox gave no verdict: the host reports no shell sandbox capability)`);
         expect(out.gate?.reason).toContain('--allow-unsandboxed-gates');
         expect(w.gateRuns).toEqual([]);
