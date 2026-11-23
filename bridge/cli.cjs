@@ -152917,7 +152917,7 @@ var init_collect = __esm({
 function patternAction(name) {
   const m = LANE_PARK.exec(name);
   if (!m) return null;
-  return m[2] === "failed" ? { group: "fix", why: `a ${m[1]} lane failed after its fresh retry`, steps: ["status", "resume", "cancel"] } : { group: "fix", why: `a ${m[1]} lane declined the work; its reason is in the run status`, steps: ["status", "resume", "cancel"] };
+  return m[2] === "failed" ? { group: "fix", why: `the ${m[1]} lane failed after its fresh retry`, steps: ["status", "resume", "cancel"] } : { group: "fix", why: `the ${m[1]} lane declined the work; its reason is in the run status`, steps: ["status", "resume", "cancel"] };
 }
 function gateAction(name) {
   const exact = Object.prototype.hasOwnProperty.call(GATE_ACTIONS, name) ? GATE_ACTIONS[name] : null;

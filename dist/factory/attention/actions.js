@@ -103,8 +103,8 @@ export function patternAction(name) {
     if (!m)
         return null;
     return m[2] === 'failed'
-        ? { group: 'fix', why: `a ${m[1]} lane failed after its fresh retry`, steps: ['status', 'resume', 'cancel'] }
-        : { group: 'fix', why: `a ${m[1]} lane declined the work; its reason is in the run status`, steps: ['status', 'resume', 'cancel'] };
+        ? { group: 'fix', why: `the ${m[1]} lane failed after its fresh retry`, steps: ['status', 'resume', 'cancel'] }
+        : { group: 'fix', why: `the ${m[1]} lane declined the work; its reason is in the run status`, steps: ['status', 'resume', 'cancel'] };
 }
 export const UNKNOWN_GATE_ACTION = Object.freeze({ group: 'fix', why: 'a park this version of omg does not know; read the run status', steps: ['resume', 'status'] });
 /** The table entry of a gate name; `known` false is the unknown fallback. */
