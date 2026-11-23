@@ -18,6 +18,8 @@ export interface FactoryAttentionDeps {
     ledgerDir?: string;
     now?: () => number;
     owner?: OwnerDeps;
+    /** The terminal width the view is laid out for (default process.stdout.columns; unknown: 80, at least 40). */
+    columns?: () => number | undefined;
 }
 export declare const defaultAttentionDeps: FactoryAttentionDeps;
 export declare function factoryAttentionCommand(deps?: FactoryAttentionDeps): Command;

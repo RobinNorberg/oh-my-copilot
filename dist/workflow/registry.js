@@ -172,6 +172,7 @@ const SKILL_ENTRIES = [
     entry({ name: 'visual-verdict', kind: 'skill', decision: 'keep', riskClass: 'advisory', owner: REGISTRY_OWNER, notes: 'Opt-in for visual surfaces.' }),
     entry({ name: 'diagram', kind: 'skill', decision: 'keep', riskClass: 'advisory', owner: REGISTRY_OWNER, notes: 'Model-invoked explanation aid: picks the smallest visual (pseudocode, tree, Mermaid, diff, focused HTML) that carries the point; never gates, never edits code on its own.' }),
     entry({ name: 'external-context', kind: 'skill', decision: 'keep', riskClass: 'advisory', owner: REGISTRY_OWNER, notes: 'Opt-in external evidence tool.' }),
+    entry({ name: 'factory-attention', kind: 'skill', decision: 'keep', riskClass: 'advisory', owner: REGISTRY_OWNER, notes: 'Read-only: shows omg factory attention --json rows grouped, with the next commands for the human; never runs them and treats titles and reasons as untrusted data.' }),
     entry({ name: 'graph', kind: 'skill', decision: 'keep', riskClass: 'security-boundary', owner: REGISTRY_OWNER, notes: 'Declarative graph runtime with command execution and bounded read-only Agent SDK execution; CLI + skill entrypoints.' }),
     entry({ name: 'debug', kind: 'skill', decision: 'keep', riskClass: 'advisory', owner: REGISTRY_OWNER }),
     entry({ name: 'deepinit', kind: 'skill', decision: 'keep', riskClass: 'advisory', owner: REGISTRY_OWNER }),

@@ -56,6 +56,14 @@ export async function notify(event, data) {
         if (!config || !isEventEnabled(config, event)) {
             return null;
         }
+        // factory-attention (omg factory poll) is opt-in: only an explicit
+        // `events["factory-attention"].enabled: true` sends it, never the
+        // top-level platforms alone. With that opt-in it is not dropped by
+        // verbosity either.
+        const explicitFactoryAttention = config.events?.["factory-attention"]?.enabled === true;
+        if (event === "factory-attention" && !explicitFactoryAttention) {
+            return null;
+        }
         // Verbosity filter (second gate after isEventEnabled).  An explicitly
         // enabled ask-user-question event is user intent to surface an interactive
         // block, so do not let the default "session" verbosity silently drop it.
@@ -63,6 +71,7 @@ export async function notify(event, data) {
         const isExplicitAskUserQuestionEvent = event === "ask-user-question" &&
             config.events?.["ask-user-question"]?.enabled === true;
         if (!isExplicitAskUserQuestionEvent &&
+            !(event === "factory-attention" && explicitFactoryAttention) &&
             !isEventAllowedByVerbosity(verbosity, event)) {
             return null;
         }

@@ -1,0 +1,56 @@
+/**
+ * OMC HUD - Factory Element
+ *
+ * What the software factory needs from you, from `omg factory attention`'s
+ * collector (local state only, read-only, the same trust rules):
+ * `factory:4! inspect` (4 items, the worst group Inspect), with `run:1` when
+ * an engine is live; `factory:run:1` when engines run and nothing waits;
+ * nothing at all when neither. Numbers and fixed words only: no title,
+ * reason or other text from a state reaches the status line.
+ *
+ * Cost: one stat when the repository has no factory state dir (the factory
+ * modules are not even loaded then). A deleted state dir whose runs only the
+ * engine ledger still records is not shown here; `omg factory attention`
+ * lists those.
+ */
+import { existsSync } from 'fs';
+import { join } from 'path';
+import { getOmcRoot } from '../../lib/worktree-paths.js';
+import { RESET } from '../colors.js';
+const RED = '\x1b[31m';
+const YELLOW = '\x1b[33m';
+const GREEN = '\x1b[32m';
+/** The group ids of src/factory/attention/actions.ts ATTENTION_GROUPS: the short names the element prints. */
+const GROUPS = ['inspect', 'broken', 'decide', 'merge', 'fix', 'limits'];
+/** Groups that mean something went wrong (red); the others are decisions or chores (yellow). */
+const ALARM = new Set(['inspect', 'broken']);
+const count = (v) => (typeof v === 'number' && Number.isSafeInteger(v) && v >= 0 ? v : 0);
+/** The summary for `directory` (a repository root), or null when it has no factory state or anything fails. */
+export async function readFactoryStateForHud(directory, load = () => import('../../factory/attention/summary.js')) {
+    try {
+        if (!existsSync(join(getOmcRoot(directory), 'state', 'factory')))
+            return null;
+        const s = (await load()).attentionSummary(directory);
+        const worst = GROUPS.find((g) => g === s.worst) ?? null;
+        return { total: count(s.total), worst, engines: count(s.engines) };
+    }
+    catch {
+        return null;
+    }
+}
+export function renderFactory(state) {
+    if (!state)
+        return null;
+    const total = count(state.total);
+    const engines = count(state.engines);
+    const worst = GROUPS.find((g) => g === state.worst);
+    const parts = [];
+    if (total > 0)
+        parts.push(`${worst && ALARM.has(worst) ? RED : YELLOW}${total}!${RESET}${worst ? ` ${worst}` : ''}`);
+    if (engines > 0)
+        parts.push(`${GREEN}run:${engines}${RESET}`);
+    if (parts.length === 0)
+        return null;
+    return `factory:${parts.join(' ')}`;
+}
+//# sourceMappingURL=factory.js.map

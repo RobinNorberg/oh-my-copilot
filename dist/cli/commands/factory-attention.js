@@ -10,7 +10,7 @@ import { execFileSync } from 'child_process';
 import { Command } from 'commander';
 import chalk from 'chalk';
 import { attentionJson, collectAttention } from '../../factory/attention/collect.js';
-import { renderAttention } from '../../factory/attention/render.js';
+import { layoutColumns, renderAttention, warningLines } from '../../factory/attention/render.js';
 import { EXIT_CHECK_FAILED, EXIT_CHECK_USAGE } from '../../factory/check/cli.js';
 import { plainText } from '../../factory/check/score.js';
 import { EXIT_AWAITING_HUMAN } from '../../factory/run/engine.js';
@@ -55,9 +55,11 @@ export function factoryAttentionCommand(deps = defaultAttentionDeps) {
             if (o.json)
                 deps.out(JSON.stringify(attentionJson(data), null, 2));
             else {
+                const columns = (deps.columns ?? (() => process.stdout.columns))();
                 for (const w of data.warnings)
-                    deps.err(chalk.yellow(w));
-                deps.out(renderAttention(data, { verbose: o.verbose }));
+                    for (const l of warningLines(w, layoutColumns(columns)))
+                        deps.err(chalk.yellow(l));
+                deps.out(renderAttention(data, { verbose: o.verbose, columns }));
             }
             process.exitCode = data.readFailed ? EXIT_CHECK_FAILED : data.items.length > 0 && !o.exitZero ? EXIT_AWAITING_HUMAN : 0;
         }

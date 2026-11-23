@@ -20,6 +20,7 @@ import { resolveCachedOmcUpdate, resolveOmcUpdateState } from "./elements/update
 import { refreshMissionBoardState } from "./mission-board.js";
 import { readTeamStateForHud } from "./elements/team.js";
 import { readUltragoalStateForHud } from "./elements/ultragoal.js";
+import { readFactoryStateForHud } from "./elements/factory.js";
 import { sanitizeOutput } from "./sanitize.js";
 import { estimatePayloadFromTranscriptPath } from "./payload-estimate.js";
 import { getRuntimePackageVersion } from "../lib/version.js";
@@ -493,6 +494,7 @@ async function mainImpl(watchMode = false, skipInit = false) {
                 : {}),
             ...(config.elements.team === true ? { team: readTeamStateForHud(cwd) } : {}),
             ...(config.elements.ultragoal === true ? { ultragoal: readUltragoalStateForHud(cwd) } : {}),
+            ...(config.elements.factory === true ? { factory: await readFactoryStateForHud(cwd) } : {}),
         };
         // Debug: log data if OMC_DEBUG is set
         if (process.env.OMC_DEBUG) {

@@ -15,6 +15,14 @@
  * 3. PRs: every run in flight with a PR. A PR a human completed or abandoned
  *    prints the resume hint; open human review threads are counted
  *    (ForgeReviews.reviewFeedback on every forge; ADO's listThreads where a forge has no feedback read).
+ * 3c. attention: `omg factory attention`'s collector (local state only,
+ *    read-only): the first tick prints a one-line summary, later ticks one
+ *    line per item that is new since the previous tick (run key, group,
+ *    trust, gate, park time), with its first next command; an item that
+ *    gets a stale-gate reminder (3b) in the same tick is printed by the
+ *    reminder only. Each new item also goes to the `factory-attention`
+ *    notification, which is off unless configured and carries
+ *    engine-composed text only (attention/notify.ts).
  * 4. board: the board rows that changed since the previous tick
  *    (src/factory/board), or with `--json` one JSON object per tick.
  *
@@ -63,6 +71,9 @@ import type { CheckBucket } from './check/rules.js';
 import type { HealConfig } from './heal/config.js';
 import { type ScanResult } from './heal/cli.js';
 import { type FactoryRunLimits } from './run/budget.js';
+import { type AttentionGroup } from './attention/actions.js';
+import { type AttentionData } from './attention/collect.js';
+import { type AttentionNotice } from './attention/notify.js';
 import { type Reminder } from './team/reminders.js';
 import { type FactoryRunKey, type HeldOwner, type OwnerDeps } from './run/state.js';
 /**
@@ -259,6 +270,14 @@ export interface PollTick {
     prs: PollPr[];
     /** Runs parked at a human gate past factory.poll.remindAfterHours (printed, never posted); absent when none is due. */
     reminders?: Reminder[];
+    /**
+     * `omg factory attention` items that are new since the previous tick (first tick: a one-line summary instead).
+     * Engine-composed fields only: no title, reason or other text from a state. Absent when the step did not run.
+     */
+    attention?: {
+        summary?: string;
+        new: PollAttentionItem[];
+    };
     /** Board rows that changed since the previous tick (every row on the first). */
     board: Array<{
         stage: BoardStage | 'outside';
@@ -324,8 +343,20 @@ export interface PollContext {
         board: Map<string, string>;
         prs: Map<string, string>;
         ledger?: boolean;
+        attention?: Set<string>;
     };
     tick: number;
+    /** `omg factory attention`'s collector for this repository (local, read-only); absent: no attention step. */
+    attention?: () => AttentionData;
+    /** Sends the `factory-attention` notification of one new item (it decides itself whether notifications are configured). */
+    notifyAttention?: (n: AttentionNotice) => Promise<void>;
+}
+/** One new attention item in a tick: the run key, group, the gate of a trusted row, and the first next command's argv. */
+export interface PollAttentionItem {
+    key: string;
+    group: AttentionGroup;
+    gate: string | null;
+    next: string[] | null;
 }
 /**
  * One tick. Steps 1-4 never spawn and never write to the tracker or forge; a
@@ -366,6 +397,8 @@ export type FactoryPollDeps = FactoryBoardDeps & {
     sleep?: (ms: number, wake: AbortSignal) => Promise<void>;
     /** Subscribe to the stop signals (default SIGINT and SIGTERM, passed to the handler); returns the unsubscribe. */
     onStop?: (handler: (signal?: NodeJS.Signals) => void) => () => void;
+    /** The `factory-attention` notification of a new attention item (default: the notification stack, off unless configured). */
+    notifyAttention?: (n: AttentionNotice) => Promise<void>;
 };
 /** Run the poller until a stop signal (or one tick with --once); returns the exit code. */
 export declare function runFactoryPoll(o: FactoryPollOptions, deps: FactoryPollDeps): Promise<number>;

@@ -70,7 +70,7 @@ export const DEFAULT_ELEMENT_ORDER = {
     line1: ['hostname', 'cwd', 'gitRepo', 'gitBranch', 'gitStatus', 'apiKeySource', 'account', 'profile'],
     main: [
         'omgLabel', 'model', 'effort', 'claudeLabel', 'enterpriseCost', 'creditBudget', 'copilotMode', 'rateLimits', 'customBuckets', 'permission', 'thinking',
-        'promptTime', 'session', 'tokens', 'ralph', 'autopilot', 'team', 'ultragoal', 'prd',
+        'promptTime', 'session', 'tokens', 'ralph', 'autopilot', 'team', 'ultragoal', 'factory', 'prd',
         'skills', 'lastSkill', 'contextBar', 'agents', 'background',
         'callCounts', 'lastTool', 'recentTools', 'sessionSummary',
     ],
@@ -81,7 +81,7 @@ export const DEFAULT_HUD_USAGE_POLL_INTERVAL_MS = 90 * 1000;
  * Copilot host defaults, applied over the preset and under the user's config:
  * Copilot's own footer already shows the model, effort, directory and branch,
  * so these start off and a user `true` turns them back on. The OMC-state
- * elements (copilotMode, team, ultragoal) start on here; under Claude they are
+ * elements (copilotMode, team, ultragoal, factory) start on here; under Claude they are
  * unset in every preset, so they stay off unless the user turns them on.
  */
 export const COPILOT_HOST_DEFAULTS = {
@@ -92,6 +92,7 @@ export const COPILOT_HOST_DEFAULTS = {
     copilotMode: true,
     team: true,
     ultragoal: true,
+    factory: true,
 };
 /**
  * Elements with no data source under Copilot (Claude usage/enterprise APIs,

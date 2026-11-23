@@ -526,6 +526,7 @@ export function formatTeamsAdaptiveCard(payload, tagList) {
         "session-idle": { title: "Session Idle", style: "warning" },
         "ask-user-question": { title: "Input Needed", style: "attention" },
         "agent-call": { title: "Agent Spawned", style: "default" },
+        "factory-attention": { title: "Factory Needs You", style: "attention" },
     };
     const eventInfo = eventTitles[payload.event] || { title: payload.event, style: "default" };
     // Build Adaptive Card body

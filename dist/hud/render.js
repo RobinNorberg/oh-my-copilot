@@ -25,6 +25,7 @@ import { renderAutopilot } from "./elements/autopilot.js";
 import { renderCopilotMode } from "./elements/copilot-mode.js";
 import { renderTeam } from "./elements/team.js";
 import { renderUltragoal } from "./elements/ultragoal.js";
+import { renderFactory } from "./elements/factory.js";
 import { renderCwd } from "./elements/cwd.js";
 import { renderPremiumBudget } from "./elements/premium-budget.js";
 import { renderHostname } from "./elements/hostname.js";
@@ -447,6 +448,11 @@ export async function render(context, config) {
         const ultragoal = isolate(() => renderUltragoal(context.ultragoal));
         if (ultragoal)
             rendered.set("ultragoal", ultragoal);
+    }
+    if (enabledElements.factory === true) {
+        const factory = isolate(() => renderFactory(context.factory));
+        if (factory)
+            rendered.set("factory", factory);
     }
     if (enabledElements.prdStory && context.prd) {
         const prd = isolate(() => renderPrd(context.prd));

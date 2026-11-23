@@ -15,6 +15,14 @@
  * 3. PRs: every run in flight with a PR. A PR a human completed or abandoned
  *    prints the resume hint; open human review threads are counted
  *    (ForgeReviews.reviewFeedback on every forge; ADO's listThreads where a forge has no feedback read).
+ * 3c. attention: `omg factory attention`'s collector (local state only,
+ *    read-only): the first tick prints a one-line summary, later ticks one
+ *    line per item that is new since the previous tick (run key, group,
+ *    trust, gate, park time), with its first next command; an item that
+ *    gets a stale-gate reminder (3b) in the same tick is printed by the
+ *    reminder only. Each new item also goes to the `factory-attention`
+ *    notification, which is off unless configured and carries
+ *    engine-composed text only (attention/notify.ts).
  * 4. board: the board rows that changed since the previous tick
  *    (src/factory/board), or with `--json` one JSON object per tick.
  *
@@ -77,7 +85,10 @@ import { FactoryForgeUnavailableError } from './run/forge-roots.js';
 import { defaultLedgerDir } from './run/ledger.js';
 import { tamperHoldMessage } from './run/tamper-quarantine.js';
 import { visibleLine } from '../forge/review-feedback.js';
-import { reminderCommand } from './attention/actions.js';
+import { commandText, GROUP_TITLES, reminderCommand } from './attention/actions.js';
+import { collectAttention } from './attention/collect.js';
+import { attentionNotice, noticeGate, sendAttentionNotice } from './attention/notify.js';
+import { summaryLine } from './attention/render.js';
 import { resumeCommand } from './run/engine.js';
 import { resolveTeamConfig, TeamConfigError } from './team/context.js';
 import { staleGateReminders } from './team/reminders.js';
@@ -433,6 +444,8 @@ export function defaultPollBudget(layers, env = process.env) {
         }
     };
 }
+/** What makes an attention item "the same" from tick to tick: the run, its group and trust, and its gate and park time. */
+const attentionId = (i) => JSON.stringify([i.key, i.group, i.trust, i.gate, i.at]);
 const message = (error) => plainText(error instanceof Error ? error.message : String(error));
 /** A resume re-parks a run whose branch rewrote decisions.md, so its reminder offers the cancel instead (the attention table's commands). */
 const reminderHint = (key, gate) => reminderCommand(key, gate);
@@ -612,6 +625,29 @@ export async function pollTick(ctx) {
     const idle = !locked && !unsound && !live.some(([, s]) => !s.gate);
     // 3b. stale-gate reminders: read-only on git (the base commit's routing file), printed only.
     const reminders = step('reminders', () => staleGateReminders({ root, runs, nowMs: ctx.now(), afterHours: ctx.remindAfterHours, ...(ctx.baseSha ? { readBase: (path) => readBaseFile(ctx.exec, root, ctx.baseSha, path) ?? undefined } : {}), warn: (m) => warnings.push(plainText(m)) }));
+    // 3c. attention: the items that are new since the previous tick (local state only, read-only). The reminder path
+    // owns a park that is still waiting after remindAfterHours; this path owns a park when it first appears. An item that
+    // gets a reminder in this same tick is printed by the reminder alone.
+    let attention;
+    if (ctx.attention) {
+        const d = step('attention', ctx.attention);
+        if (d) {
+            const before = ctx.previous.attention;
+            ctx.previous.attention = new Set(d.items.map(attentionId));
+            if (!before)
+                attention = { summary: summaryLine(d), new: [] };
+            else {
+                const reminded = new Set((reminders ?? []).map((r) => runLabel(r.run)));
+                const fresh = d.items.filter((i) => !before.has(attentionId(i)) && !reminded.has(i.key));
+                attention = { new: fresh.map((i) => ({ key: i.key, group: i.group, gate: noticeGate(i), next: i.next[0]?.argv ?? null })) };
+                for (const i of fresh) {
+                    const notice = attentionNotice(root, i);
+                    if (notice && ctx.notifyAttention)
+                        await ctx.notifyAttention(notice);
+                }
+            }
+        }
+    }
     // 4. board: the rows that changed.
     const board = [];
     const shown = step('board', () => collectBoard({ forge, config, root, ids, check: null, now: ctx.now(), warnings }));
@@ -674,7 +710,7 @@ export async function pollTick(ctx) {
     }
     return {
         schemaVersion: POLL_JSON_SCHEMA_VERSION, tick: ctx.tick, at, forge: config.kind, repo: config.repo.url,
-        heal, intake, ...(baseSync ? { baseSync } : {}), prs, ...(reminders && reminders.length > 0 ? { reminders } : {}), board, idle, autoStart, rateLimited, errors: errors.map(plainText), warnings: warnings.map(plainText),
+        heal, intake, ...(baseSync ? { baseSync } : {}), prs, ...(reminders && reminders.length > 0 ? { reminders } : {}), ...(attention ? { attention } : {}), board, idle, autoStart, rateLimited, errors: errors.map(plainText), warnings: warnings.map(plainText),
     };
 }
 export function renderTick(t) {
@@ -694,6 +730,12 @@ export function renderTick(t) {
             const trust = p.trustIncomplete ? '; trust incomplete: the collaborator list was not read whole, so list reviewers in factory.review.trustedReviewers' : '';
             lines.push(`  PR ${prefix}${p.pr} of ${runLabel(p.id)}: ${p.threads ?? 0} human thread(s)${p.ignored ? ` (${p.ignored} ignored)` : ''}${trust}`);
         }
+    }
+    if (t.attention?.summary)
+        lines.push(`  attention: ${t.attention.summary} (omg factory attention)`);
+    for (const a of t.attention?.new ?? []) {
+        const c = a.next ? commandText(a.next) : null;
+        lines.push(`  attention: ${a.key} needs you: ${GROUP_TITLES[a.group].toLowerCase()}${a.gate ? ` at ${a.gate}` : ''}${c ? `; next: ${c.inRoot ? 'in the repository root, ' : ''}${c.line}` : ''}`);
     }
     for (const r of t.reminders ?? [])
         lines.push(`  reminder: ${runLabel(r.run)} has waited ${r.hours} h at ${visibleLine(r.gate)}${r.handles.length ? ` ${r.handles.join(' ')}` : ''}: ${r.reason} (${reminderHint(r.run, r.gate)})`);
@@ -782,6 +824,8 @@ export async function runFactoryPoll(o, deps) {
         remindAfterHours: teamConfig.remindAfterHours,
         tamperHold: () => tamperHoldMessage(deps.ledgerDir ?? defaultLedgerDir(), read.root),
         ...(() => { const n = pollParallel(layers.trustedUser, layers.base, (m) => deps.err(plainText(m))); return n !== undefined ? { parallel: n } : {}; })(),
+        attention: () => collectAttention(read.root, { ledgerDir: deps.ledgerDir ?? defaultLedgerDir(), owner, now }),
+        notifyAttention: deps.notifyAttention ?? ((n) => sendAttentionNotice(n)),
         owner, now, previous: { board: new Map(), prs: new Map() }, tick: 0,
     };
     let interval = base;
