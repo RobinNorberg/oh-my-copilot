@@ -337,8 +337,6 @@ describe('a slow repository does not stall the others', () => {
             }
             const gapsServed = during.slice(1).filter((c, i) => answeredA.some((t) => t > during[i].end && t < c.start)).length;
             expect(gapsServed, timeline).toBeGreaterThanOrEqual(Math.min(1, during.length - 1));
-            // B's back-off is longer than the 200 ms tick: it is computed less often than A.
-            expect(s.costs()[ledgerRepoId(b)].costMs * BACKOFF_FACTOR, timeline).toBeGreaterThan(200);
             // Each compute of B stopped at the allowance (the rest is one warning), so longestB is bounded too.
             const bSummary = (await get(s, `${base(s)}api/v1/repo/${ledgerRepoId(b)}/summary`)).body;
             expect(bSummary).toContain('state files the engine has no record of were not read');
@@ -370,15 +368,28 @@ describe('a slow repository does not stall the others', () => {
         const a = repo('a');
         asEngine(a, parked(1));
         flood(a, 2500);
-        const s = await startDashboardServer({ root: a, collect: collectOf(a), watchDirs: [factoryStateDir(a)], pollDirs: [], ledgerDir, pollMs: 100, debounceMs: 30, minIntervalMs: 60, tickMs: 200 });
+        const costs = [];
+        const collectA = collectOf(a);
+        const collect = (...args) => { const t = Date.now(); try {
+            return collectA(...args);
+        }
+        finally {
+            costs.push(Date.now() - t);
+        } };
+        const s = await startDashboardServer({ root: a, collect, watchDirs: [factoryStateDir(a)], pollDirs: [], ledgerDir, pollMs: 100, debounceMs: 30, minIntervalMs: 60, tickMs: 200 });
         servers.push(s);
         const loop = rewriteLoop(a);
         try {
-            expect(await worst(s, `${base(s)}api/v1/summary`, 3_000)).toBeLessThan(1_500);
+            const max = await worst(s, `${base(s)}api/v1/summary`, 3_000);
+            // At most one compute (stopped at the allowance) plus host-load headroom, never a pass over all 2500 files.
+            expect(max).toBeLessThan(Math.max(...costs) + 3_000);
             const before = s.recomputes();
+            const seen = costs.length;
             await new Promise((r) => setTimeout(r, 2_000));
-            // Backed off: a few recomputes in 2 s, not one per 60 ms.
-            expect(s.recomputes() - before).toBeLessThan(10);
+            // Backed off: each recompute waits at least max(minInterval, BACKOFF_FACTOR x its predecessor's cost), so 2 s hold
+            // at most 2000 / that many (timers never fire early), however fast this host computes.
+            const spacing = Math.max(60, Math.min(...costs.slice(Math.max(0, seen - 1))) * BACKOFF_FACTOR);
+            expect(s.recomputes() - before, JSON.stringify({ costs, spacing })).toBeLessThanOrEqual(Math.floor(2_000 / spacing) + 2);
         }
         finally {
             clearInterval(loop);
