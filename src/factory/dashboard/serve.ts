@@ -21,9 +21,13 @@
  *
  * Updates: fs.watch on the state, heal, slot and ledger dirs (flat dirs,
  * non-recursive) plus a poll of a cheap signature (names, sizes, mtimes).
- * A change schedules one recompute at most `debounceMs` later and at most
- * one per `minIntervalMs`, so a writer that rewrites files in a loop cannot
- * pin a CPU. The summary's rev is a hash of its time-independent part; when
+ * A change schedules a recompute of that view `debounceMs` later, at most
+ * one per view per interval: `minIntervalMs`, or BACKOFF_FACTOR times the
+ * view's last compute time when that is longer (up to MAX_BACKOFF_MS). Views
+ * are recomputed one per event-loop turn (setImmediate between them), so a
+ * slow repository cannot hold a shared pass and requests are answered between
+ * views; while a backed-off view waits, the previous summary is served with
+ * `stale: true`. A writer that rewrites files in a loop cannot pin a CPU. The summary's rev is a hash of its time-independent part; when
  * it changes, every event stream gets `event: changed`.
  *
  * `--all-repos` (options.repos): one view per repository this host's engine
@@ -32,7 +36,7 @@
  * ledger id), checked against the server's own list: `api/v1/repos`,
  * `api/v1/repo/<id>/summary`, `api/v1/repo/<id>/run/<key>`; an unknown or
  * malformed id is a 404 and no path ever comes from a request. Every view's
- * recompute goes through one debounced, rate-limited pass, and fs.watch
+ * recompute is debounced and backed off per view, and fs.watch
  * handles are capped across views (MAX_WATCHERS; the rest are polled). An
  * event names the view: `data: <id> <rev>`, or `data: repos <rev>` for the
  * list. Full roots are only ever JSON text values.
@@ -61,6 +65,12 @@ export const MAX_STREAMS = 16;
 export const POLL_MS = 5_000;
 export const DEBOUNCE_MS = 250;
 export const MIN_RECOMPUTE_INTERVAL_MS = 1_000;
+/** A view is not recomputed again before this many times its last compute time has passed... */
+export const BACKOFF_FACTOR = 10;
+/** ...capped here, so a slow repository is still refreshed every few minutes. */
+export const MAX_BACKOFF_MS = 300_000;
+/** A view backed off this long or longer (its compute took 500 ms or more) is marked stale while it waits; a shorter wait is not worth an event. */
+export const STALE_BACKOFF_MS = 5_000;
 export const PING_MS = 15_000;
 /** A recompute this often even without a file change: time-based notes ("possibly hung") appear. */
 export const TICK_MS = 60_000;
@@ -108,6 +118,8 @@ export type ServedItem = Omit<CollectedItem, 'next'> & { next: ServedNext[] };
 export type ServedSummary = Omit<DashboardDataV2, 'attention'> & {
   attention: Omit<DashboardDataV2['attention'], 'items'> & { items: ServedItem[] };
   rev: string;
+  /** A recompute is pending and backed off (the repository is slow to read): this is the previous summary. */
+  stale?: boolean;
 };
 
 /**
@@ -328,6 +340,12 @@ export interface View {
   body: string;
   sig: string;
   watchers: Map<string, FSWatcher>;
+  /** When the view became dirty (ms), null when it is up to date. */
+  dirtyAt: number | null;
+  /** The earliest next recompute (ms): its back-off. */
+  nextAt: number;
+  /** The last compute's duration (ms). */
+  costMs: number;
 }
 
 export interface DashboardServerOptions {
@@ -374,6 +392,8 @@ export interface DashboardServer {
   rev: () => string;
   /** Recomputes done (tests and timings). */
   recomputes: () => number;
+  /** Each view's last compute time, remaining back-off and stale marker, by id ('' in the single-repository mode). */
+  costs: () => Record<string, { costMs: number; backoffMs: number; stale: boolean }>;
   /** fs.watch handles open now (the global cap). */
   watchers: () => number;
   /** The repository ids served now (--all-repos; [''] in the single-repository mode). */
@@ -424,6 +444,7 @@ export async function startDashboardServer(o: DashboardServerOptions): Promise<D
   };
   const addView = (source: ServedRepo): View | null => {
     let summary: ServedSummary;
+    const t0 = Date.now();
     try {
       summary = compute({ source } as View);
     } catch (error) {
@@ -431,8 +452,9 @@ export async function startDashboardServer(o: DashboardServerOptions): Promise<D
       if (!multi) throw error;
       return null;
     }
-    const v: View = { source, summary, body: jsonText(summary), sig: '', watchers: new Map() };
+    const v: View = { source, summary, body: jsonText(summary), sig: '', watchers: new Map(), dirtyAt: null, nextAt: 0, costMs: 0 };
     v.sig = signature(v);
+    backOff(v, Date.now() - t0);
     views.set(source.id, v);
     return v;
   };
@@ -478,49 +500,102 @@ export async function startDashboardServer(o: DashboardServerOptions): Promise<D
   const broadcast = (chunk: string): void => {
     for (const s of streams) writeEvent(s, chunk, streams);
   };
+  const setBody = (v: View, summary: ServedSummary): void => {
+    v.summary = summary;
+    v.body = jsonText(summary);
+  };
   const recompute = (v: View): void => {
     let next: ServedSummary;
     try {
       next = compute(v);
     } catch (error) {
       log(`dashboard: ${multi ? `repository ${v.source.id}: ` : ''}the state could not be read: ${text(error instanceof Error ? error.message : error)}`);
+      if (v.summary.stale) markStale(v, false);
       return;
     }
     if (next.rev === v.summary.rev) return;
-    v.summary = next;
-    v.body = jsonText(next);
+    setBody(v, next);
     // The single-repository stream names the rev only, as before; with --all-repos it names the repository id first.
-    broadcast(`event: changed\ndata: ${multi ? `${v.source.id} ` : ''}${next.rev}\n\n`);
+    broadcast(`event: changed
+data: ${multi ? `${v.source.id} ` : ''}${next.rev}
+
+`);
+  };
+  /** The served summary with or without the stale marker; its rev changes with it, so the page re-reads it. */
+  const markStale = (v: View, stale: boolean): void => {
+    if (Boolean(v.summary.stale) === stale) return;
+    const { rev: _rev, stale: _stale, ...rest } = v.summary;
+    const next = stale ? { ...rest, stale: true } : rest;
+    setBody(v, { ...next, rev: summaryRev(next) } as ServedSummary);
+    broadcast(`event: changed
+data: ${multi ? `${v.source.id} ` : ''}${v.summary.rev}
+
+`);
   };
   const announceRepos = (): void => {
-    if (multi && rebuildRepos()) broadcast(`event: changed\ndata: repos ${reposSummary!.rev}\n\n`);
+    if (multi && rebuildRepos()) broadcast(`event: changed
+data: repos ${reposSummary!.rev}
+
+`);
   };
 
-  // One recompute pass over the changed views at most per minIntervalMs, the first `debounceMs` after a change;
-  // later changes in the window join it, so writers in many repositories cannot pin a CPU either.
-  const dirty = new Set<string>();
+  // Each view: one recompute `debounceMs` after a change, then not again before its back-off ends.
+  // The views are computed one per event-loop turn, the most overdue first.
   let timer: NodeJS.Timeout | null = null;
-  let lastRun = 0;
+  let timerAt = Number.POSITIVE_INFINITY;
+  let pumping = false;
   let closed = false;
-  const schedule = (id: string | null): void => {
-    if (closed) return;
-    if (id === null) for (const k of views.keys()) dirty.add(k);
-    else dirty.add(id);
-    if (timer) return;
-    const delay = Math.max(debounceMs, lastRun + minIntervalMs - Date.now());
+  function backOff(v: View, costMs: number): void {
+    v.costMs = costMs;
+    v.nextAt = Date.now() + Math.min(MAX_BACKOFF_MS, Math.max(minIntervalMs, costMs * BACKOFF_FACTOR));
+  }
+  const dueAt = (v: View): number => Math.max((v.dirtyAt ?? 0) + debounceMs, v.nextAt);
+  const arm = (): void => {
+    if (closed || pumping) return;
+    let at = Number.POSITIVE_INFINITY;
+    for (const v of views.values()) if (v.dirtyAt !== null) at = Math.min(at, dueAt(v));
+    if (at === Number.POSITIVE_INFINITY || (timer && timerAt <= at)) return;
+    if (timer) clearTimeout(timer);
+    timerAt = at;
     timer = setTimeout(() => {
       timer = null;
-      lastRun = Date.now();
-      const ids = [...dirty];
-      dirty.clear();
-      for (const k of ids) {
-        const v = views.get(k);
-        if (v) recompute(v);
-      }
-      announceRepos();
-    }, delay);
+      timerAt = Number.POSITIVE_INFINITY;
+      pump();
+    }, Math.max(0, at - Date.now()));
     timer.unref();
   };
+  const pump = (): void => {
+    if (closed) return;
+    const now = Date.now();
+    let pick: View | null = null;
+    for (const v of views.values()) if (v.dirtyAt !== null && dueAt(v) <= now && (!pick || dueAt(v) < dueAt(pick))) pick = v;
+    if (!pick) {
+      pumping = false;
+      announceRepos();
+      arm();
+      return;
+    }
+    pumping = true;
+    pick.dirtyAt = null;
+    const t0 = Date.now();
+    recompute(pick);
+    backOff(pick, Date.now() - t0);
+    setImmediate(pump);
+  };
+  const schedule = (id: string | null): void => {
+    if (closed) return;
+    const now = Date.now();
+    for (const v of id === null ? [...views.values()] : [views.get(id)]) {
+      if (!v || v.dirtyAt !== null) continue;
+      v.dirtyAt = now;
+      // Backed off (slow to compute): the previous summary is served, marked, until the recompute.
+      if (v.costMs * BACKOFF_FACTOR >= STALE_BACKOFF_MS && v.nextAt > now + debounceMs) markStale(v, true);
+    }
+    arm();
+  };
+  /** Each view's last compute time and back-off (tests and timings). */
+  const costs = (): Record<string, { costMs: number; backoffMs: number; stale: boolean }> =>
+    Object.fromEntries([...views.values()].map((v) => [v.source.id, { costMs: v.costMs, backoffMs: Math.max(0, v.nextAt - Date.now()), stale: Boolean(v.summary.stale) }]));
 
   // --- watching: fs.watch up to a global cap of watchers, a poll of every view's dirs ------------------
   let watcherCount = 0;
@@ -744,6 +819,7 @@ export async function startDashboardServer(o: DashboardServerOptions): Promise<D
     server,
     rev: () => (multi ? reposSummary!.rev : views.get('')!.summary.rev),
     recomputes: () => recomputes,
+    costs,
     watchers: () => watcherCount,
     repoIds: () => [...views.keys()],
     close: () => {

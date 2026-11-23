@@ -613,7 +613,8 @@ function start() {
     FD.tickAges(ctx.ages, Date.parse(data.generatedAt), Date.now());
     if (fk && ctx.focus[fk]) ctx.focus[fk].focus({ preventScroll: true });
     window.scrollTo(x, y);
-    byId('generated').textContent = 'Data as of ' + new Date(Date.parse(data.generatedAt)).toLocaleString() + (data.forge && data.forge.read ? '; tracker read at ' + data.forge.at + ' (--forge)' : '; local state only, no forge read');
+    byId('generated').textContent = 'Data as of ' + new Date(Date.parse(data.generatedAt)).toLocaleString() + (data.forge && data.forge.read ? '; tracker read at ' + data.forge.at + ' (--forge)' : '; local state only, no forge read')
+      + (data.stale === true ? '. Stale: this repository is slow to read, so it is refreshed less often; a newer state is waiting to be read' : '');
   }
   function fetchJson(url) {
     return fetch(url, { cache: 'no-store', credentials: 'same-origin', redirect: 'error' }).then(function (r) {

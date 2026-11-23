@@ -59,6 +59,19 @@ export function rootHeader(root: string, max = ROOT_HEADER_MAX): string {
   return `${p.slice(0, half).join('')}…${p.slice(p.length - (max - 1 - half)).join('')}`;
 }
 
+/** A repository taking longer than this to collect gets a note in --verbose (no kill: the command is one-shot). */
+export const SLOW_REPO_MS = 1_000;
+
+/**
+ * A repository's header line: labelled, its folder name quoted (JSON string
+ * escapes) and both name and path plain and cut, so a directory name cannot
+ * pass for a command or a run row (the line never starts with `$`, `#` or `==`).
+ */
+export function repoHeader(root: string, tags = ''): string {
+  const name = JSON.stringify(plainText(basename(root)).slice(0, 60));
+  return `repository: ${name}  ${rootHeader(root)}${tags ? `  (${tags})` : ''}`;
+}
+
 /** Most urgent group first, then oldest item, then by path; a repository with nothing to do goes last. */
 function repoRank(r: RepoAttention): [number, number] {
   const first = r.data.items[0];
@@ -155,8 +168,9 @@ export function renderAllRepos(d: AllReposAttention, o: { verbose?: boolean; pla
   for (const r of d.repos) {
     const rc = groupCounts(r.data.summary.byGroup);
     const tags = [r.current ? 'current' : null, r.data.forge, r.recorded ? null : 'no factory runs recorded on this host'].filter(Boolean).join(', ');
-    lines.push('', chalk.bold(`== ${basename(r.root) ? plainText(basename(r.root)).slice(0, 60) : rootHeader(r.root)}  ${rootHeader(r.root)}${tags ? `  (${tags})` : ''}`));
-    lines.push(`   ${r.data.items.length === 0 ? 'nothing needs you' : rc}; ${r.data.summary.engines.live === 0 ? 'no engine running' : `${plural(r.data.summary.engines.live, 'engine')} running`}${verbose ? `; ${r.ms} ms` : ''}`);
+    lines.push('', chalk.bold(repoHeader(r.root, tags)));
+    const slow = r.ms > SLOW_REPO_MS ? ` (slow: over ${SLOW_REPO_MS / 1000} s; its state dir may hold many files)` : '';
+    lines.push(`   ${r.data.items.length === 0 ? 'nothing needs you' : rc}; ${r.data.summary.engines.live === 0 ? 'no engine running' : `${plural(r.data.summary.engines.live, 'engine')} running`}${verbose ? `; ${r.ms} ms${slow}` : ''}`);
     for (const w of r.data.warnings) lines.push(chalk.yellow(`   warning: ${w}`));
     const where = r.current ? undefined : rootWord(r.root, platform);
     for (const g of ATTENTION_GROUPS) {

@@ -573,3 +573,42 @@ describe('omg factory attention: the sealed next commands (FactoryGate.next)', (
     expect(JSON.stringify(r.next)).not.toContain('example.invalid');
   });
 });
+
+describe('a flood of lane-written state files', () => {
+  it('reads the ledger runs first and the rest up to the cap: 5000 forged files cannot hide a real parked run', async () => {
+    const { collectDashboardV2 } = await import('../../dashboard/collect-v2.js');
+    const { MAX_RUN_STATES } = await import('../collect.js');
+    asEngine(parked(9999, 'merge', 2));
+    const sd = factoryStateDir(root);
+    const forged = JSON.stringify({ schemaVersion: 1, issue: 1, phase: 'awaiting-human', issueTitle: 'forged', updatedAt: at(1) });
+    for (let i = 1; i <= 5000; i++) writeFileSync(join(sd, `run-${i}.json`), forged.replace('"issue":1', `"issue":${i}`));
+    let t = Date.now();
+    const d = collectAttention(root, { ledgerDir, now: () => NOW, limits: DEFAULT_FACTORY_RUN_LIMITS, owner: OWNER });
+    const attentionMs = Date.now() - t;
+    const real = d.items.find((i) => i.key === '#9999')!;
+    expect(real).toMatchObject({ group: 'merge', trust: 'ok', title: 'item 9999' });
+    // The cap: the real run plus MAX - 1 forged ones, the lowest keys; one row stands for the rest.
+    const forgedRows = d.items.filter((i) => i.key !== '#9999' && i.key !== 'state-files');
+    expect(forgedRows).toHaveLength(MAX_RUN_STATES - 1);
+    expect(forgedRows.every((i) => i.trust !== 'ok' && i.group === 'inspect')).toBe(true);
+    expect(forgedRows.some((i) => i.key === '#1')).toBe(true);
+    expect(forgedRows.some((i) => i.key === `#${MAX_RUN_STATES}`)).toBe(false);
+    const rest = d.items.filter((i) => i.key === 'state-files');
+    expect(rest).toHaveLength(1);
+    expect(rest[0]).toMatchObject({ group: 'inspect', next: [] });
+    expect(rest[0].why).toContain(`${5000 - (MAX_RUN_STATES - 1)} more state files were not read`);
+    expect(d.readFailed).toBe(true);
+    expect(d.warnings.some((w) => w.includes('more state files were not read'))).toBe(true);
+
+    t = Date.now();
+    const v2 = collectDashboardV2(root, { ledgerDir, now: () => NOW, limits: DEFAULT_FACTORY_RUN_LIMITS, owner: OWNER });
+    const dashboardMs = Date.now() - t;
+    const run = v2.runs.find((r) => r.key === '#9999')!;
+    expect(run).toMatchObject({ verified: true, title: 'item 9999' });
+    expect(v2.runs).toHaveLength(MAX_RUN_STATES);
+    expect(v2.warnings.some((w) => w.includes('more state files were not read'))).toBe(true);
+    // Generous bounds for loaded CI hosts; the point is no ~10 ms per file and no read past the cap.
+    expect(attentionMs).toBeLessThan(15_000);
+    expect(dashboardMs).toBeLessThan(15_000);
+  }, 120_000);
+});
