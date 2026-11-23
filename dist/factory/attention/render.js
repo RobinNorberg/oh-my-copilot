@@ -108,7 +108,13 @@ const CONT = '      | ';
 export function reasonLines(reason, columns = DEFAULT_COLUMNS) {
     return wrapLines('    reason: ', '          | ', reason, columns);
 }
-function itemLines(i, verbose, columns) {
+/**
+ * One row's lines. `inRepo` (--all-repos, a repository other than the current one): the root
+ * as one quoted word, or null when it cannot be shown safely in a command;
+ * the `omg` commands are repository-relative, so they are printed under
+ * "in <root>:" (or the prose fallback). Undefined: the current repository.
+ */
+export function itemLines(i, verbose, columns = DEFAULT_COLUMNS, inRepo) {
     const keyPart = `  ${i.key}`;
     // The title is cut, never wrapped: one line per row head.
     const title = i.title ? cutToWidth(i.title, columns - 1 - textWidth(keyPart) - 2) : '';
@@ -137,6 +143,9 @@ function itemLines(i, verbose, columns) {
     if (verbose && i.error)
         for (const l of wrapLines('    error: ', '          | ', i.error, columns))
             lines.push(chalk.gray(l));
+    if (inRepo !== undefined && i.next.some((n) => n.argv[0] === 'omg')) {
+        lines.push(chalk.gray(inRepo === null ? '    run in that repository\'s root (named in its header; its path cannot be shown safely in a command):' : `    in ${inRepo}:`));
+    }
     for (const n of i.next) {
         const c = commandText(n.argv);
         if (c.inRoot)

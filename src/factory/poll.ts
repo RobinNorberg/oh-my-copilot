@@ -636,7 +636,9 @@ export interface PollAttentionItem {
  * time (all from the engine's own state). An untrusted row: its key only, as nothing else of it is the engine's (a
  * lane can rewrite the state's times and flip it between unreadable and unverified as often as it likes).
  */
-const attentionId = (i: AttentionItem): string => (i.trust === 'ok' ? JSON.stringify([i.key, i.group, 'ok', i.gate, i.at]) : JSON.stringify([i.key, 'untrusted']));
+/** Trusted: the engine's own state (seal and ledger). The `state-files` row stands for files nobody read: counted as untrusted. */
+const trustedItem = (i: AttentionItem): boolean => i.trust === 'ok' && i.key !== 'state-files';
+const attentionId = (i: AttentionItem): string => (trustedItem(i) ? JSON.stringify([i.key, i.group, 'ok', i.gate, i.at]) : JSON.stringify([i.key, 'untrusted']));
 
 /** Mark ids seen at `now`, the most recent last; the oldest go once there are more than ATTENTION_SEEN_MAX. */
 function markSeen(seen: Map<string, number>, ids: Iterable<string>, now: number): void {
@@ -835,7 +837,7 @@ export async function pollTick(ctx: PollContext): Promise<PollTick> {
       const nowMs = ctx.now();
       const quietMs = (ctx.remindAfterHours && ctx.remindAfterHours > 0 ? ctx.remindAfterHours : ATTENTION_QUIET_DEFAULT_HOURS) * 3_600_000;
       const prev = ctx.previous;
-      const unverified = d.items.filter((i) => i.trust !== 'ok').length;
+      const unverified = d.items.filter((i) => !trustedItem(i)).length;
       if (!before) attention = { summary: summaryLine(d), new: [] };
       else {
         const reminded = new Set((reminders ?? []).map((r) => runLabel(r.run)));
@@ -846,7 +848,7 @@ export async function pollTick(ctx: PollContext): Promise<PollTick> {
         });
         // A lane can write any number of untrusted rows (and they sort first): they are only ever counted, so they can
         // never delay or crowd out a trusted item's line or notice.
-        const trusted = fresh.filter(({ i }) => i.trust === 'ok');
+        const trusted = fresh.filter(({ i }) => trustedItem(i));
         const untrustedNew = fresh.length - trusted.length;
         const printed = trusted.slice(0, ATTENTION_PRINT_ITEMS);
         attention = {

@@ -26,6 +26,10 @@ export declare const CLIENT_JS: string;
  * The page. It holds no data at all (the script fetches it), so nothing from
  * a state is ever in this HTML. `nonce` is the response's CSP nonce, the only
  * thing that varies (base64: no character that needs escaping here).
+ * `allRepos` (--serve --all-repos) adds the Repositories section first; the
+ * script then fetches the repository list and one repository by its id.
  */
-export declare function dashboardPageHtml(nonce: string): string;
+export declare function dashboardPageHtml(nonce: string, o?: {
+    allRepos?: boolean;
+}): string;
 //# sourceMappingURL=client.d.ts.map

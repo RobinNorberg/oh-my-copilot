@@ -16,6 +16,7 @@ import type { Exec, ExecResult } from '../../ship/exec.js';
 import type { AnyAttentionNotice } from '../attention/notify.js';
 import { EngineLedger } from '../run/ledger.js';
 import { computeFactoryIntegrity, createFactoryState, factoryStateDir, factoryStatePath, moveTo, runKeyOf, setGate, updateFactoryState, type FactoryRunState } from '../run/state.js';
+import { MAX_UNRECORDED_STATES } from '../attention/collect.js';
 import { ATTENTION_COUNT_NOTICE_WINDOW_MS, ATTENTION_NOTICE_ITEMS, ATTENTION_QUEUE_MAX, runFactoryPoll, type FactoryPollDeps, type PollTick } from '../poll.js';
 
 const SHA = 'a'.repeat(40);
@@ -146,6 +147,18 @@ describe('omg factory poll: untrusted rows never crowd out a trusted item', () =
     expect(t[4].attention?.new.map((i) => i.key)).toEqual(['#10']);
     expect(notices.filter((x) => 'key' in x.n).map((x) => [x.tick, keyOf(x.n)])).toEqual([[4, '#10']]);
   }, 300_000);
+});
+
+describe('omg factory poll: state files left unread', () => {
+  it('the `state-files` row is one untrusted item: counted, never an item line or notice', async () => {
+    const t = await poll(3, (n) => {
+      if (n === 0) for (let k = 0; k < MAX_UNRECORDED_STATES + 5; k++) writeFileSync(factoryStatePath(root, 7000 + k), '{}');
+      if (n === 1) park(11);
+    });
+    expect(t[1].attention).toEqual({ new: [], unverified: MAX_UNRECORDED_STATES + 1 });
+    expect(t[2].attention?.new.map((i) => i.key)).toEqual(['#11']);
+    expect(notices.map((x) => [x.tick, keyOf(x.n)])).toEqual([[1, `count ${MAX_UNRECORDED_STATES + 1}`], [2, '#11']]);
+  }, 120_000);
 });
 
 describe('omg factory poll: trusted notices queue', () => {

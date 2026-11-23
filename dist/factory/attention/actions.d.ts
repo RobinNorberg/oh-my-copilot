@@ -10,7 +10,7 @@
  */
 import { gateSteps, patternEntry, type GateEntry, type GateGroup, type GateStep, type NextCommand } from '../run/gate-next.js';
 import type { FactoryRunKey } from '../run/state.js';
-export { cancelArgv, commandLine, commandText, fromSealed, gateCommands, gateStepsFor, mergeArgv, nextCommands, resumeArgv, stateFacts, stateGateNext, statusArgv, validRunKey, type MergeFacts, type NextCommand, } from '../run/gate-next.js';
+export { cancelArgv, commandLine, commandText, fromSealed, rootWord, gateCommands, gateStepsFor, mergeArgv, nextCommands, resumeArgv, stateFacts, stateGateNext, statusArgv, validRunKey, type MergeFacts, type NextCommand, } from '../run/gate-next.js';
 export declare const ATTENTION_GROUPS: readonly ["inspect", "broken", "decide", "merge", "fix", "limits"];
 export type AttentionGroup = GateGroup;
 export type ActionStep = GateStep;

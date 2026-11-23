@@ -109,6 +109,53 @@ export interface CollectAttentionOptions {
   limits?: FactoryRunLimits | null;
   owner?: OwnerDeps;
   verbose?: boolean;
+  /** Each run's final read (after the live-engine reread), so the dashboard reuses it instead of reading the state again. */
+  onRead?: (r: ReadRun) => void;
+}
+
+/**
+ * At most this many state files the engine has no record of (run states and,
+ * apart, heal records) are read per repository: a lane can write any number
+ * of files into `.omg/state/factory`, and each one costs about 0.7 ms to
+ * check on Windows (open dominates). Every run (and heal seal) the engine
+ * ledger records is read on top of these: that set lives outside the
+ * repository and grows only with the engine's own runs.
+ */
+export const MAX_UNRECORDED_STATES = 200;
+
+const keyOrder = (a: FactoryRunKey, b: FactoryRunKey): number =>
+  typeof a === 'number' ? (typeof b === 'number' ? a - b : -1) : typeof b === 'number' ? 1 : a < b ? -1 : a > b ? 1 : 0;
+
+/**
+ * The run keys to read in a repository, chosen so that flooding the state dir
+ * cannot push an engine run out: every run the engine ledger records (the
+ * ledger lives outside the repository and holds the engine's own runs only),
+ * then up to `max` other canonical state files in ascending key order, however
+ * many runs are recorded. `omitted` counts the unrecorded state files left unread.
+ */
+export function runKeysToRead(root: string, ledgerDir: string, max = MAX_UNRECORDED_STATES): { keys: FactoryRunKey[]; omitted: number } {
+  const keysIn = (dir: string, skip?: Map<string, FactoryRunKey>): Map<string, FactoryRunKey> => {
+    const out = new Map<string, FactoryRunKey>();
+    let names: string[] = [];
+    try {
+      names = readdirSync(dir);
+    } catch {
+      // No such dir: no runs there.
+    }
+    for (const name of names) {
+      const key = runKeyOfName(name);
+      if (key !== null && !skip?.has(String(key))) out.set(String(key), key);
+    }
+    return out;
+  };
+  const recorded = keysIn(dirname(ledgerFilePath(ledgerDir, root, 1)));
+  const others = [...keysIn(factoryStateDir(root), recorded).values()].sort(keyOrder);
+  return { keys: [...[...recorded.values()].sort(keyOrder), ...others.slice(0, max)], omitted: Math.max(0, others.length - max) };
+}
+
+/** The one Inspect row (and warning) that stands for the state files left unread. */
+export function omittedStatesNote(omitted: number): string {
+  return `${omitted} state files the engine has no record of were not read (more than the limit of ${MAX_UNRECORDED_STATES} per repository); inspect .omg/state/factory`;
 }
 
 const RUN_FILE = /^run-(\d+|heal-[0-9a-f]{8})\.json$/;
@@ -525,8 +572,7 @@ function collectIn(root: string, o: CollectAttentionOptions): AttentionData {
     });
   }
 
-  // The run keys: every canonical state file, and every run the engine ledger of this repository records.
-  const keys = new Map<string, FactoryRunKey>();
+  // The run keys: every run the engine ledger of this repository records, then the other canonical state files, capped.
   const listed = (dir: string): string[] => {
     try {
       return readdirSync(dir);
@@ -534,17 +580,16 @@ function collectIn(root: string, o: CollectAttentionOptions): AttentionData {
       return []; // No such dir: no runs there.
     }
   };
-  for (const name of [...listed(factoryStateDir(root)), ...listed(dirname(ledgerFilePath(o.ledgerDir, root, 1)))]) {
-    const key = runKeyOfName(name);
-    if (key !== null) keys.set(String(key), key);
-  }
+  const { keys, omitted } = runKeysToRead(root, o.ledgerDir);
+  let unread = omitted;
   // sig8 -> the ci-heal run of it: the engine's own state running or finished, or `untrusted` (a state that is not the
   // engine's, or a missing one the ledger does not record as finished: its run row, under the heal key, is the row).
   const healRuns = new Map<string, 'running' | 'finished' | 'untrusted'>();
-  for (const key of [...keys.values()].sort((a, b) => String(a).localeCompare(String(b), 'en', { numeric: true }))) {
+  for (const key of keys) {
     const sig8 = typeof key === 'string' ? key.slice('heal-'.length) : null;
     let r = readRun(root, key, o.ledgerDir);
     if (r.missing) {
+      o.onRead?.(r);
       const item = missingItem(root, key, o.ledgerDir);
       if (item) items.push(item);
       if (sig8 !== null) {
@@ -565,6 +610,7 @@ function collectIn(root: string, o: CollectAttentionOptions): AttentionData {
     const live = ownerOf(root, key, o.ledgerDir, deps);
     // A live engine writes the state, then the ledger: one reread rules out reading between the two.
     if ((r.trust === 'ledger' || r.trust === 'unverified') && live === 'live') r = readRun(root, key, o.ledgerDir);
+    o.onRead?.(r);
     if (r.trust === 'unreadable') {
       readFailed = true;
       // A fixed message: the error can quote the file's bytes and a local path (the row's `error`, --verbose).
@@ -594,8 +640,11 @@ function collectIn(root: string, o: CollectAttentionOptions): AttentionData {
 
   // Heal signatures whose open heal run waits for a human before any ci-heal run state exists, and seals whose record is gone.
   const healDir = join(factoryStateDir(root), 'heal');
-  const sigs = new Set([...listed(healDir).filter((f) => /^[0-9a-f]{8}\.json$/.test(f)).map((f) => f.slice(0, 8)), ...healSealSigs(o.ledgerDir, root)]);
-  for (const sig8 of [...sigs].sort()) {
+  // The same rule: every seal (outside the repository), then up to the allowance of other heal records in order.
+  const sealed = new Set(healSealSigs(o.ledgerDir, root));
+  const healOthers = listed(healDir).filter((f) => /^[0-9a-f]{8}\.json$/.test(f)).map((f) => f.slice(0, 8)).filter((s) => !sealed.has(s)).sort();
+  unread += Math.max(0, healOthers.length - MAX_UNRECORDED_STATES);
+  for (const sig8 of [...[...sealed].sort(), ...healOthers.slice(0, MAX_UNRECORDED_STATES)]) {
     if (!SIG8.test(sig8)) continue;
     // A ci-heal run in flight stands in for its heal signature. Once it is finished the host ledger's heal seal decides
     // whether an open heal run exists: a missing, unreadable or unsealed record is a row as on the no-run path. A run
@@ -640,6 +689,17 @@ function collectIn(root: string, o: CollectAttentionOptions): AttentionData {
       item = { ...row, why: HEAL_WHY.unreadable!, error: errText(error), trust: 'unreadable' };
     }
     if (item) items.push(item);
+  }
+
+  if (unread > 0) {
+    // One fixed row for the rest, never one row per file: the exit code stays non-zero (readFailed). Its files are not
+    // read, so nothing in them is the engine's: poll counts the row as untrusted (never an item notice).
+    readFailed = true;
+    warnings.push(omittedStatesNote(unread));
+    items.push({
+      key: 'state-files', group: 'inspect', gate: null, phase: null, ageMs: null, credits: null, cap: null, pr: null, head: null, title: '',
+      why: omittedStatesNote(unread), next: [], trust: 'ok', notes: [], at: 0,
+    });
   }
 
   // The engine count is the runs whose owner file is the engine's ledger-recorded write (live here or on another host).

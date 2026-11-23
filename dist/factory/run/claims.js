@@ -121,7 +121,7 @@ export function trustedFactoryClaimRepo(exec, root, ledgerDir) {
     return factoryClaimRepo(hardenedGitExec(exec, emptyHooksDir(ledgerDir)), root);
 }
 /** A path as one spelling: realpath when it exists (junctions, symlinks, 8.3 names), normalized, case-folded only where the filesystem folds case. */
-function canonicalPath(path, platform) {
+export function canonicalPath(path, platform = process.platform) {
     let abs = normalize(resolve(path));
     try {
         abs = realpathSync.native(abs);

@@ -13,7 +13,7 @@
  * marker. Command lines are built from validated fields only and are never
  * cut (a cut command is not copyable).
  */
-import type { AttentionData } from './collect.js';
+import type { AttentionData, AttentionItem } from './collect.js';
 export declare function ageText(ms: number | null): string;
 export declare function summaryLine(d: AttentionData): string;
 /** The narrowest and the assumed terminal width (no TTY, or one that reports no width). */
@@ -43,6 +43,13 @@ export declare function cutToWidth(s: string, max: number): string;
 export declare function wrapLines(first: string, cont: string, text: string, columns: number): string[];
 /** The reason behind a fixed `reason: ` / `| ` prefix, wrapped to the terminal width. */
 export declare function reasonLines(reason: string, columns?: number): string[];
+/**
+ * One row's lines. `inRepo` (--all-repos, a repository other than the current one): the root
+ * as one quoted word, or null when it cannot be shown safely in a command;
+ * the `omg` commands are repository-relative, so they are printed under
+ * "in <root>:" (or the prose fallback). Undefined: the current repository.
+ */
+export declare function itemLines(i: AttentionItem, verbose: boolean, columns?: number, inRepo?: string | null): string[];
 /** A warning wrapped behind a fixed `warning: ` / `| ` prefix (it can quote an error message about a state file). */
 export declare function warningLines(w: string, columns?: number): string[];
 export declare function renderAttention(d: AttentionData, o?: {

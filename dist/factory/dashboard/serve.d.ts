@@ -21,12 +21,28 @@
  *
  * Updates: fs.watch on the state, heal, slot and ledger dirs (flat dirs,
  * non-recursive) plus a poll of a cheap signature (names, sizes, mtimes).
- * A change schedules one recompute at most `debounceMs` later and at most
- * one per `minIntervalMs`, so a writer that rewrites files in a loop cannot
- * pin a CPU. The summary's rev is a hash of its time-independent part; when
+ * A change schedules a recompute of that view `debounceMs` later, at most
+ * one per view per interval: `minIntervalMs`, or BACKOFF_FACTOR times the
+ * view's last compute time when that is longer (up to MAX_BACKOFF_MS). Views
+ * are recomputed one per event-loop turn (setImmediate between them), so a
+ * slow repository cannot hold a shared pass and requests are answered between
+ * views; while a backed-off view waits, the previous summary is served with
+ * `stale: true`. A writer that rewrites files in a loop cannot pin a CPU. The summary's rev is a hash of its time-independent part; when
  * it changes, every event stream gets `event: changed`.
+ *
+ * `--all-repos` (options.repos): one view per repository this host's engine
+ * ledger knows (run/ledger-roots.ts), the list re-read every RESCAN_MS. A
+ * repository is selected by the id the server issued for it (its 16-hex
+ * ledger id), checked against the server's own list: `api/v1/repos`,
+ * `api/v1/repo/<id>/summary`, `api/v1/repo/<id>/run/<key>`; an unknown or
+ * malformed id is a 404 and no path ever comes from a request. Every view's
+ * recompute is debounced and backed off per view, and fs.watch
+ * handles are capped across views (MAX_WATCHERS; the rest are polled). An
+ * event names the view: `data: <id> <rev>`, or `data: repos <rev>` for the
+ * list. Full roots are only ever JSON text values.
  */
 import { type Server, type ServerResponse } from 'http';
+import { type FSWatcher } from 'fs';
 import { type AttentionTrust } from '../attention/collect.js';
 import { type FactoryRunKey } from '../run/state.js';
 import type { DashboardDataV2 } from './collect-v2.js';
@@ -40,11 +56,25 @@ export declare const MAX_STREAMS = 16;
 export declare const POLL_MS = 5000;
 export declare const DEBOUNCE_MS = 250;
 export declare const MIN_RECOMPUTE_INTERVAL_MS = 1000;
+/** A view is not recomputed again before this many times its last compute time has passed... */
+export declare const BACKOFF_FACTOR = 10;
+/** ...capped here, so a slow repository is still refreshed every few minutes. */
+export declare const MAX_BACKOFF_MS = 300000;
+/** A view backed off this long or longer (its compute took 500 ms or more) is marked stale while it waits; a shorter wait is not worth an event. */
+export declare const STALE_BACKOFF_MS = 5000;
 export declare const PING_MS = 15000;
 /** A recompute this often even without a file change: time-based notes ("possibly hung") appear. */
 export declare const TICK_MS = 60000;
 export declare const FORGE_REFRESH_MS: number;
 export declare const GATE_DETAIL_MAX = 20000;
+/** --all-repos: fs.watch handles across every repository (the rest are polled only). */
+export declare const MAX_WATCHERS = 64;
+/** --all-repos: the repository set is re-read this often. */
+export declare const RESCAN_MS = 60000;
+/** --all-repos: at most this many repositories are served. */
+export declare const MAX_REPOS = 200;
+/** A repository id the server issues: the ledger id (16 hex). */
+export declare const SERVED_REPO_ID: RegExp;
 /** Constant-time token comparison; a different length still costs one compare and is false. */
 export declare function tokenEquals(given: string, expected: string): boolean;
 /** A `/api/v1/run/<key>` key: a positive integer (no leading zero) or `heal-<8 hex>`; null for anything else. */
@@ -65,6 +95,8 @@ export type ServedSummary = Omit<DashboardDataV2, 'attention'> & {
         items: ServedItem[];
     };
     rev: string;
+    /** A recompute is pending and backed off (the repository is slow to read): this is the previous summary. */
+    stale?: boolean;
 };
 /**
  * The one sentence a row of a state that is not trusted shows: fixed here,
@@ -88,6 +120,12 @@ type CollectedRun = DashboardDataV2['runs'][number];
 export declare function servedRun(r: CollectedRun): CollectedRun;
 /** Fixed, engine-authored warnings: a line per run whose state cannot be read, and a count of the rest (printed in the terminal, never served). */
 export declare function servedWarnings(raw: readonly string[], items: readonly ServedItem[], runs: readonly CollectedRun[]): string[];
+/**
+ * Served attention rows in group order; inside a group the untrusted rows
+ * come first, ordered by run key (never by a timestamp from their state),
+ * then the trusted rows in the collector's order (oldest wait first).
+ */
+export declare function orderServedItems(items: readonly ServedItem[]): ServedItem[];
 export declare function servedSummary(d: DashboardDataV2, rev: string, platform?: NodeJS.Platform): ServedSummary;
 /** The rev: a hash of the summary without its clock-derived fields, so only a change of state changes it. */
 export declare function summaryRev(d: unknown): string;
@@ -95,30 +133,83 @@ export declare function summaryRev(d: unknown): string;
 export declare function dirSignature(dir: string): string;
 /** An event stream whose client does not read holds at most this much in the server's buffer before it is dropped. */
 export declare const STREAM_BUFFER_MAX: number;
+/** An event stream whose buffer has not drained to 0 by this many consecutive pings is dropped (a client that reads nothing). */
+export declare const STREAM_STALL_PINGS = 3;
 /**
  * One write to an event stream. A client that stops reading (write returns
  * false, or the buffer passes STREAM_BUFFER_MAX) is destroyed and leaves the
  * set: the server never buffers without bound for it. False: dropped.
  */
+type StreamLike = {
+    readonly writableLength: number;
+    destroy: () => unknown;
+};
+/**
+ * At each ping: a stream whose buffer is not empty again since the last ping
+ * (it read nothing) counts one stall; at `limit` consecutive stalls it is
+ * destroyed and leaves the set. Returns the streams dropped.
+ */
+export declare function dropStalledStreams<S extends StreamLike>(streams: Set<S>, stalls: Map<S, number>, limit: number): S[];
 export declare function writeEvent(s: Pick<ServerResponse, 'write' | 'writableLength' | 'destroy'>, chunk: string, streams: Set<unknown>): boolean;
-export interface DashboardServerOptions {
+/** One repository the server serves: its id (issued by the server's own list, never taken from a request), root, collector and dirs. */
+export interface ServedRepo {
+    id: string;
     root: string;
+    collect: (now: number) => DashboardDataV2;
+    watchDirs: readonly string[];
+    pollDirs: readonly string[];
+}
+/** The --all-repos set: the repositories, and how many ledger records were skipped (count only). */
+export interface ServedRepoList {
+    repos: ServedRepo[];
+    skipped: number;
+    warnings: string[];
+}
+/** A served repository and what it last produced. */
+export interface View {
+    source: ServedRepo;
+    summary: ServedSummary;
+    body: string;
+    sig: string;
+    watchers: Map<string, FSWatcher>;
+    /** When the view became dirty (ms), null when it is up to date. */
+    dirtyAt: number | null;
+    /** The earliest next recompute (ms): its back-off. */
+    nextAt: number;
+    /** The last compute's duration (ms). */
+    costMs: number;
+}
+export interface DashboardServerOptions {
+    /** The single-repository mode (without `repos`): its root, collector and dirs. */
+    root?: string;
     ledgerDir: string;
     /** The collector, as the CLI composes it (limits, --since, --bench-dir, the --forge board). */
-    collect: (now: number) => DashboardDataV2;
+    collect?: (now: number) => DashboardDataV2;
     port?: number;
     now?: () => number;
     /** Watched (fs.watch) and polled. */
-    watchDirs: readonly string[];
+    watchDirs?: readonly string[];
     /** Polled only (bench result dirs). */
     pollDirs?: readonly string[];
-    /** `--forge` only: the forge read, at start and every forgeRefreshMs. Never called otherwise. */
+    /**
+     * `--all-repos`: the repository list, read at start and every rescanMs.
+     * The routes are then `api/v1/repos` and `api/v1/repo/<id>/...`; the
+     * single-repository `api/v1/summary` and `api/v1/run/<key>` are 404.
+     */
+    repos?: {
+        list: () => ServedRepoList | Promise<ServedRepoList>;
+        rescanMs?: number;
+        maxWatchers?: number;
+    };
+    /** `--forge` only (single-repository mode): the forge read, at start and every forgeRefreshMs. Never called otherwise. */
     forgeRefresh?: () => Promise<void>;
     forgeRefreshMs?: number;
     pollMs?: number;
     debounceMs?: number;
     minIntervalMs?: number;
     pingMs?: number;
+    /** Pings without a drained buffer before a stream is dropped (STREAM_STALL_PINGS). */
+    stallPings?: number;
     tickMs?: number;
     headersTimeoutMs?: number;
     maxConnections?: number;
@@ -135,9 +226,54 @@ export interface DashboardServer {
     rev: () => string;
     /** Recomputes done (tests and timings). */
     recomputes: () => number;
+    /** Each view's last compute time, remaining back-off and stale marker, by id ('' in the single-repository mode). */
+    costs: () => Record<string, {
+        costMs: number;
+        backoffMs: number;
+        stale: boolean;
+    }>;
+    /** fs.watch handles open now (the global cap). */
+    watchers: () => number;
+    /** The repository ids served now (--all-repos; [''] in the single-repository mode). */
+    repoIds: () => string[];
     close: () => Promise<void>;
 }
 export declare function startDashboardServer(o: DashboardServerOptions): Promise<DashboardServer>;
+/** One repository's row of `api/v1/repos`: counts, engines, last change, and its attention rows. */
+export interface ServedRepoRow {
+    id: string;
+    /** The root's last path segment (plain text). */
+    name: string;
+    /** The full root, plain text: shown as text only, never in a URL or an attribute. */
+    root: string;
+    /** The root as one word a command line can carry here (rootWord), or null: name the repository in prose. */
+    rootWord: string | null;
+    forge: string | null;
+    byGroup: ServedSummary['attention']['summary']['byGroup'];
+    items: number;
+    engines: number;
+    runs: number;
+    /** The latest run update (ISO), or null. */
+    lastChange: string | null;
+    attention: ServedSummary['attention']['items'];
+}
+export interface ReposSummary {
+    schemaVersion: 1;
+    allRepos: true;
+    rev: string;
+    generatedAt: string;
+    repos: ServedRepoRow[];
+    summary: {
+        byGroup: Record<string, number>;
+        repos: number;
+        items: number;
+        engines: number;
+        skipped: number;
+    };
+    warnings: string[];
+}
+/** `api/v1/repos`: the repositories, most urgent first (then the oldest wait), each with its attention rows. */
+export declare function reposSummaryOf(views: readonly View[], skipped: number, warnings: string[], now: number, platform?: NodeJS.Platform): ReposSummary;
 export interface RunDetail {
     schemaVersion: 2;
     rev: string;

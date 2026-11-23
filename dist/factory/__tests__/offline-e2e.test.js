@@ -142,6 +142,7 @@ const pollDeps = (w) => ({
     autoStart: async () => { throw new Error('factory.intake.autoStart is off: no auto-start'); },
     onStop: () => () => undefined,
     localBaseSync: pollLocalBaseSync(w.exec, w.ledgerDir),
+    ledgerDir: w.ledgerDir,
 });
 /** The last JSON document a command printed. */
 function lastJson(w) {
