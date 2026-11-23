@@ -25,8 +25,8 @@
  * path under node_modules, and a pure delete with a shell built-in or
  * system tool (`<Exec Command="rm -rf node_modules" />`, `del /q
  * node_modules\.cache`) reads nothing there; `rimraf` and a package
- * runner (`npx`, `bunx`, `npm exec` / `npm x`, `pnpm dlx` / `pnpm exec`,
- * `yarn dlx` / `yarn exec`) run node_modules code and count.
+ * runner (NPX_RUN: `npx`, `pnpx`, `bunx`, `npm exec` / `npm x`, `pnpm dlx` /
+ * `pnpm exec`, `yarn dlx` / `yarn exec`, `bun x`) run node_modules code and count.
  * ASP.NET Core 2.x SpaServices projects run `node
  * node_modules/webpack/bin/webpack.js` in an Exec: that counts, so their
  * gate runs only on the engine's exact node_modules tree (and parks on a
@@ -74,21 +74,28 @@ export declare function nodeModulesReferences(path: string, text: string): strin
 export declare function restoreSettingMentions(path: string, text: string): string[];
 /**
  * The `Import Project` values of a pinned MSBuild file that do not name a
- * pinned definition file (M2): each `;` part of the decoded value whose text
- * does not end in `.props`, `.targets`, `.tasks`, `.projitems`, `.user` or a
- * `*proj` extension, including one that ends in a property reference
- * (`$(X)`) or a wildcard; `$([MSBuild]::GetPathOfFileAbove('<name>.props'))`
- * counts by its literal name, with a start dir only as
- * `$(MSBuildThisFileDirectory)` plus `..` segments that stay inside the
- * repository (any other start, such as `'C:/corp'` or `$(CorpRoot)`,
- * counts). A literal path, or one after `$(MSBuildThisFileDirectory)`,
- * that is absolute or climbs above the repository root counts too (round
- * 5: a file outside the repository is never pinned). Such a file is absent
- * from the definition tree and may set the restore sources, so the engine
- * cannot tell which sources the repository uses. Not seen: a path built
- * from another property (`$(RepoRoot)eng/x.props` counts by its extension)
- * and a GetPathOfFileAbove search that finds no file inside the repository
- * and goes on above it. A file larger than PINNED_READ_MAX counts as
+ * pinned definition file (M2): each `;` part of the decoded value, `%XX`
+ * unescaped as MSBuild does, that
+ * - has a `node_modules` path segment (any case, `\` or `/`): such a file
+ *   is never pinned (the engine does not read node_modules trees);
+ * - does not end, textually, in `.props`, `.targets`, `.tasks`,
+ *   `.projitems`, `.user` or a `*proj` extension, including one that ends
+ *   in a property reference (`$(X)`) or a wildcard;
+ * - is a literal path, or one after `$(MSBuildThisFileDirectory)` (which
+ *   ends in a separator, so separators after it are dropped), that is
+ *   absolute or climbs above the repository root (round 5).
+ * `$([MSBuild]::GetPathOfFileAbove('<name>.props'[, <start>]))` counts by
+ * its literal name (a name with a `..` segment or an absolute one counts),
+ * with a start dir only as `$(MSBuildThisFileDirectory)` plus `..`
+ * segments (any other start, such as `'C:/corp'` or `$(CorpRoot)`,
+ * counts). A start at or above the repository root is pinned: the search
+ * finds nothing above the root in the engine's trees, like
+ * `GetDirectoryNameOfFileAbove` (counted by the extension after it); a
+ * file above the checkout on your machine is a config the engine cannot
+ * see. Such an unpinned file is absent from the definition tree and may set the restore
+ * sources, so the engine cannot tell which sources the repository uses.
+ * Not seen: a path built from another property (`$(RepoRoot)eng/x.props`
+ * counts by its extension). A file larger than PINNED_READ_MAX counts as
  * `not read`. Other files: none.
  */
 export declare function unpinnedImports(path: string, text: string): string[];

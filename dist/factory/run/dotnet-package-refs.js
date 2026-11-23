@@ -25,8 +25,8 @@
  * path under node_modules, and a pure delete with a shell built-in or
  * system tool (`<Exec Command="rm -rf node_modules" />`, `del /q
  * node_modules\.cache`) reads nothing there; `rimraf` and a package
- * runner (`npx`, `bunx`, `npm exec` / `npm x`, `pnpm dlx` / `pnpm exec`,
- * `yarn dlx` / `yarn exec`) run node_modules code and count.
+ * runner (NPX_RUN: `npx`, `pnpx`, `bunx`, `npm exec` / `npm x`, `pnpm dlx` /
+ * `pnpm exec`, `yarn dlx` / `yarn exec`, `bun x`) run node_modules code and count.
  * ASP.NET Core 2.x SpaServices projects run `node
  * node_modules/webpack/bin/webpack.js` in an Exec: that counts, so their
  * gate runs only on the engine's exact node_modules tree (and parks on a
@@ -91,15 +91,22 @@ function jsonStrings(text) {
     }
     return out;
 }
+/** The `.cmd` / `.exe` / `.ps1` a package-manager shim may carry. */
+const SHIM_EXT = String.raw `(?:\.(?:cmd|exe|ps1))?`;
+/** Up to eight option tokens before a package manager's subcommand (`--yes`, `-y`, `--cwd web`, `--dir=web`); bounded so a scan stays linear. */
+const PM_OPTIONS = String.raw `(?:\s+-{1,2}[\w-]+(?:=[^\s"'&|;]*|\s+[^\s"'&|;-][^\s"'&|;]*)?){0,8}`;
 /**
- * A package-runner run anywhere in a command, quoted or not, with or without
- * `.cmd` / `.exe`: `npx`, `bunx`, `npm exec`, `npm x`, `pnpm dlx`, `pnpm
- * exec`, `yarn dlx`, `yarn exec`; each resolves `node_modules/.bin/<name>`
- * (or fetches a package) before anything else. `npm run <script>`, `npm
- * install` and `npm ci` are not runs of a package binary named in the
- * command (the SPA templates' `npm install` / `npm run build`).
+ * A package-runner run anywhere in a command, quoted or not, bare or after
+ * a path (`C:\nodejs\npx.cmd`, `/usr/bin/npx`), with or without `.cmd` /
+ * `.exe` / `.ps1`: `npx`, `pnpx`, `bunx`, and `npm exec` / `npm x`, `pnpm
+ * dlx` / `pnpm exec`, `yarn dlx` / `yarn exec`, `bun x`, each with option
+ * tokens allowed before the subcommand (`npm --yes exec`); each resolves
+ * `node_modules/.bin/<name>` (or fetches a package) before anything else.
+ * `npm run <script>`, `npm install`, `npm ci`, `yarn run <script>` and a
+ * bare `yarn <bin>` / `pnpm <bin>` are not counted, like `npm run` (the SPA
+ * templates' `npm install` / `npm run build`).
  */
-const NPX_RUN = /(?:^|[\s&|;(`"'])(?:(?:npx|bunx)(?:\.cmd|\.exe)?|(?:npm(?:\.cmd|\.exe)?["']?\s+(?:exec|x))|(?:pnpm(?:\.cmd|\.exe)?["']?\s+(?:dlx|exec))|(?:yarn(?:\.cmd|\.exe)?["']?\s+(?:dlx|exec)))(?=[\s"'&|;)`]|$)/i;
+const NPX_RUN = new RegExp(String.raw `(?:^|[\s&|;(\x60"'\\/])(?:(?:npx|pnpx|bunx)${SHIM_EXT}|(?:npm${SHIM_EXT}["']?${PM_OPTIONS}\s+(?:exec|x))|(?:pnpm${SHIM_EXT}["']?${PM_OPTIONS}\s+(?:dlx|exec))|(?:yarn${SHIM_EXT}["']?${PM_OPTIONS}\s+(?:dlx|exec))|(?:bun${SHIM_EXT}["']?${PM_OPTIONS}\s+x))(?=[\s"'&|;)\x60]|$)`, 'i');
 /**
  * A pure delete command, whole (M3): a shell built-in or system tool,
  * `rm`, `del`, `rd`, `rmdir` or `Remove-Item` (optionally `.exe`), then
@@ -110,6 +117,8 @@ const NPX_RUN = /(?:^|[\s&|;(`"'])(?:(?:npx|bunx)(?:\.cmd|\.exe)?|(?:npm(?:\.cmd
  * else, so either runs node_modules code and counts as a reference.
  */
 const PURE_DELETE = /^(?:rm|del|rd|rmdir|remove-item)(?:\.exe)?(?:\s+(?:--?[a-z][a-z-]*|\/[a-z]|[\w.:\\/-]+))+$/i;
+/** A value with MSBuild's `%XX` escapes unescaped (`%2e%2e` reads as `..`, `%3B` as `;`), as MSBuild does before it uses it. */
+const msbuildUnescape = (value) => value.replace(/%([0-9a-f]{2})/gi, (_, h) => String.fromCharCode(Number.parseInt(h, 16)));
 /**
  * An `Exec Command` (XML-decoded) as MSBuild runs it: `%XX` unescaped
  * (MSBuild turns `%0A`, `%26%26` or `%3B` into a line break, `&&` or
@@ -121,7 +130,7 @@ const PURE_DELETE = /^(?:rm|del|rd|rmdir|remove-item)(?:\.exe)?(?:\s+(?:--?[a-z]
  * chained command; a chain, a substitution or an escape can run more).
  */
 function execRunText(command) {
-    const run = command.replace(/%([0-9a-f]{2})/gi, (_, h) => String.fromCharCode(Number.parseInt(h, 16)));
+    const run = msbuildUnescape(command);
     return !/[%$`&|;<>\r\n()]/.test(run) && PURE_DELETE.test(run.trim()) ? null : run;
 }
 /** The kind of a pinned file this module reads, by its basename, or null. */
@@ -299,8 +308,8 @@ const THIS_DIR_UP = String.raw `\$\(MSBuildThisFileDirectory\)((?:\.\.(?:[\\/]\.
  * extension; `<start>` (quoted or not) only as THIS_DIR_UP. Groups: the name (quoted, bare), the `..` part (quoted, bare).
  */
 const FILE_ABOVE = new RegExp(String.raw `^\$\(\[MSBuild\]::GetPathOfFileAbove\(\s*(?:'([^'$%@()]+)'|([^'"$%@(),\s]+))\s*(?:,\s*(?:'${THIS_DIR_UP}'|${THIS_DIR_UP})\s*)?\)\)$`, 'i');
-/** An Import path relative to the importing file's dir: literal, or after `$(MSBuildThisFileDirectory)`. Group: the relative path. */
-const THIS_DIR_PATH = /^(?:\$\(MSBuildThisFileDirectory\))?([^$@%*?]*)$/i;
+/** An Import path relative to the importing file's dir: literal, or after `$(MSBuildThisFileDirectory)` and any separators (it ends in one). Group: the relative path. */
+const THIS_DIR_PATH = /^(?:\$\(MSBuildThisFileDirectory\)[\\/]*)?([^$@%*?]*)$/i;
 /**
  * True when `rel` (a path relative to the dir of the repository file
  * `path`, `\` read as `/`) is absolute or climbs above the repository root.
@@ -322,21 +331,28 @@ function leavesRepository(path, rel) {
 }
 /**
  * The `Import Project` values of a pinned MSBuild file that do not name a
- * pinned definition file (M2): each `;` part of the decoded value whose text
- * does not end in `.props`, `.targets`, `.tasks`, `.projitems`, `.user` or a
- * `*proj` extension, including one that ends in a property reference
- * (`$(X)`) or a wildcard; `$([MSBuild]::GetPathOfFileAbove('<name>.props'))`
- * counts by its literal name, with a start dir only as
- * `$(MSBuildThisFileDirectory)` plus `..` segments that stay inside the
- * repository (any other start, such as `'C:/corp'` or `$(CorpRoot)`,
- * counts). A literal path, or one after `$(MSBuildThisFileDirectory)`,
- * that is absolute or climbs above the repository root counts too (round
- * 5: a file outside the repository is never pinned). Such a file is absent
- * from the definition tree and may set the restore sources, so the engine
- * cannot tell which sources the repository uses. Not seen: a path built
- * from another property (`$(RepoRoot)eng/x.props` counts by its extension)
- * and a GetPathOfFileAbove search that finds no file inside the repository
- * and goes on above it. A file larger than PINNED_READ_MAX counts as
+ * pinned definition file (M2): each `;` part of the decoded value, `%XX`
+ * unescaped as MSBuild does, that
+ * - has a `node_modules` path segment (any case, `\` or `/`): such a file
+ *   is never pinned (the engine does not read node_modules trees);
+ * - does not end, textually, in `.props`, `.targets`, `.tasks`,
+ *   `.projitems`, `.user` or a `*proj` extension, including one that ends
+ *   in a property reference (`$(X)`) or a wildcard;
+ * - is a literal path, or one after `$(MSBuildThisFileDirectory)` (which
+ *   ends in a separator, so separators after it are dropped), that is
+ *   absolute or climbs above the repository root (round 5).
+ * `$([MSBuild]::GetPathOfFileAbove('<name>.props'[, <start>]))` counts by
+ * its literal name (a name with a `..` segment or an absolute one counts),
+ * with a start dir only as `$(MSBuildThisFileDirectory)` plus `..`
+ * segments (any other start, such as `'C:/corp'` or `$(CorpRoot)`,
+ * counts). A start at or above the repository root is pinned: the search
+ * finds nothing above the root in the engine's trees, like
+ * `GetDirectoryNameOfFileAbove` (counted by the extension after it); a
+ * file above the checkout on your machine is a config the engine cannot
+ * see. Such an unpinned file is absent from the definition tree and may set the restore
+ * sources, so the engine cannot tell which sources the repository uses.
+ * Not seen: a path built from another property (`$(RepoRoot)eng/x.props`
+ * counts by its extension). A file larger than PINNED_READ_MAX counts as
  * `not read`. Other files: none.
  */
 export function unpinnedImports(path, text) {
@@ -346,12 +362,15 @@ export function unpinnedImports(path, text) {
         return [`not read (larger than ${PINNED_READ_MAX / 1024} KB)`];
     const out = new Set();
     for (const v of attributeValues(scanXml(text).tags, 'Import', 'Project')) {
-        for (const part of v.split(';').map((s) => s.trim()).filter(Boolean)) {
+        // MSBuild splits on a literal `;` only: an escaped `%3B` stays in its part.
+        for (const raw of v.split(';').map((s) => s.trim()).filter(Boolean)) {
+            const part = msbuildUnescape(raw).trim();
             const above = FILE_ABOVE.exec(part);
+            const name = above ? (above[1] ?? above[2]).trim() : part;
             const local = above ? null : THIS_DIR_PATH.exec(part);
-            const outside = above ? leavesRepository(path, above[3] ?? above[4] ?? '') : local ? leavesRepository(path, local[1]) : false;
-            if (outside || !PINNED_IMPORT.test(above ? (above[1] ?? above[2]).trim() : part))
-                out.add(part.slice(0, 200));
+            const outside = above ? /^(?:[a-z]:|[\\/])|(?:^|[\\/])\.\.(?:[\\/]|$)/i.test(name) : local ? leavesRepository(path, local[1]) : false;
+            if (hasNodeModulesSegment(part) || outside || !PINNED_IMPORT.test(name))
+                out.add(raw.slice(0, 200));
         }
     }
     return [...out];

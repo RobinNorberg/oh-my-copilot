@@ -157,6 +157,8 @@ describe('.NET write lanes on the GitHub forge', () => {
       expect(lanes.started[0]).toMatchObject({ dotnet: true });
       expect(lanes.started[0].dotnetNugetHierarchy).toBeUndefined();
       expect(lanes.started[0].dotnetNugetNoAddSource).toBeUndefined();
+      // Round 6: a dotnet write lane's worktree is made at the commit its policy read (a sha, resolved once).
+      for (const l of [lanes.started[0], lanes.started[2]]) expect(l.baseRef).toMatch(/^[0-9a-f]{40}$/);
       expect(seen).toBeDefined();
       return seen!;
     }
@@ -191,6 +193,25 @@ describe('.NET write lanes on the GitHub forge', () => {
       expect(s.input.dotnetNugetHierarchy).toContain('under a node_modules directory (node_modules/x/Lib.csproj');
       expect(s.env.RestoreConfigFile).toBeUndefined();
       noNugetOrg(s);
+    });
+
+    it('round 6 (K): the head imports ../node_modules/corp/Sources.props, which sets RestoreSources: nothing is added', async () => {
+      const s = await fixLaneOn({ 'Lib/Lib.csproj': LIB, 'node_modules/corp/Sources.props': '<Project><PropertyGroup><RestoreSources>corp-feed</RestoreSources></PropertyGroup></Project>\n', 'Lib/Directory.Build.props': '<Project><Import Project="../node_modules/corp/Sources.props" /></Project>\n' });
+      expect(s.input).toMatchObject({ dotnet: true, dotnetNugetNoAddSource: true });
+      expect(s.env.RestoreConfigFile).toMatch(/nuget\.config$/);
+      noNugetOrg(s);
+    });
+
+    it('round 6: the head runs npx in an Exec (a node_modules reference that sets no restore setting): nuget.org is still added', async () => {
+      const s = await fixLaneOn({ 'Lib/Lib.csproj': LIB.replace('</Project>', '<Target Name="Web" BeforeTargets="Build"><Exec Command="npx tsc" /></Target></Project>') });
+      expect(s.input.dotnetNugetNoAddSource).toBeUndefined();
+      expect(s.env.RestoreAdditionalProjectSources).toBe('https://api.nuget.org/v3/index.json');
+    });
+
+    it('round 6: the root Directory.Build.props idiom (GetPathOfFileAbove from the root\'s parent) keeps nuget.org added', async () => {
+      const s = await fixLaneOn({ 'Lib/Lib.csproj': LIB, 'Directory.Build.props': "<Project><Import Project=\"$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))\" Condition=\"Exists($([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../')))\" /></Project>\n" });
+      expect(s.input.dotnetNugetNoAddSource).toBeUndefined();
+      expect(s.env.RestoreAdditionalProjectSources).toBe('https://api.nuget.org/v3/index.json');
     });
 
     it('an ordinary head (a source file only): the fix lane keeps one file with nuget.org added for the settings-only root config', async () => {

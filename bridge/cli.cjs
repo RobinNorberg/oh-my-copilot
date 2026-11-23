@@ -140166,7 +140166,7 @@ function jsonStrings(text9) {
   return out;
 }
 function execRunText(command) {
-  const run3 = command.replace(/%([0-9a-f]{2})/gi, (_, h) => String.fromCharCode(Number.parseInt(h, 16)));
+  const run3 = msbuildUnescape(command);
   return !/[%$`&|;<>\r\n()]/.test(run3) && PURE_DELETE.test(run3.trim()) ? null : run3;
 }
 function fileKind(path30) {
@@ -140276,11 +140276,13 @@ function unpinnedImports(path30, text9) {
   if (text9.length > PINNED_READ_MAX) return [`not read (larger than ${PINNED_READ_MAX / 1024} KB)`];
   const out = /* @__PURE__ */ new Set();
   for (const v of attributeValues(scanXml(text9).tags, "Import", "Project")) {
-    for (const part of v.split(";").map((s) => s.trim()).filter(Boolean)) {
+    for (const raw of v.split(";").map((s) => s.trim()).filter(Boolean)) {
+      const part = msbuildUnescape(raw).trim();
       const above = FILE_ABOVE.exec(part);
+      const name = above ? (above[1] ?? above[2]).trim() : part;
       const local = above ? null : THIS_DIR_PATH.exec(part);
-      const outside = above ? leavesRepository(path30, above[3] ?? above[4] ?? "") : local ? leavesRepository(path30, local[1]) : false;
-      if (outside || !PINNED_IMPORT.test(above ? (above[1] ?? above[2]).trim() : part)) out.add(part.slice(0, 200));
+      const outside = above ? /^(?:[a-z]:|[\\/])|(?:^|[\\/])\.\.(?:[\\/]|$)/i.test(name) : local ? leavesRepository(path30, local[1]) : false;
+      if (hasNodeModulesSegment(part) || outside || !PINNED_IMPORT.test(name)) out.add(raw.slice(0, 200));
     }
   }
   return [...out];
@@ -140315,21 +140317,24 @@ function projectSdkMentions(path30, text9) {
   }
   return [...out].sort();
 }
-var PINNED_READ_MAX, NPX_RUN, PURE_DELETE, readsForNodeModulesRefs, RESTORE_SETTINGS, PINNED_IMPORT, THIS_DIR_UP, FILE_ABOVE, THIS_DIR_PATH;
+var PINNED_READ_MAX, SHIM_EXT, PM_OPTIONS, NPX_RUN, PURE_DELETE, msbuildUnescape, readsForNodeModulesRefs, RESTORE_SETTINGS, PINNED_IMPORT, THIS_DIR_UP, FILE_ABOVE, THIS_DIR_PATH;
 var init_dotnet_package_refs = __esm({
   "src/factory/run/dotnet-package-refs.ts"() {
     "use strict";
     init_jsonc();
     init_xml_scan();
     PINNED_READ_MAX = 256 * 1024;
-    NPX_RUN = /(?:^|[\s&|;(`"'])(?:(?:npx|bunx)(?:\.cmd|\.exe)?|(?:npm(?:\.cmd|\.exe)?["']?\s+(?:exec|x))|(?:pnpm(?:\.cmd|\.exe)?["']?\s+(?:dlx|exec))|(?:yarn(?:\.cmd|\.exe)?["']?\s+(?:dlx|exec)))(?=[\s"'&|;)`]|$)/i;
+    SHIM_EXT = String.raw`(?:\.(?:cmd|exe|ps1))?`;
+    PM_OPTIONS = String.raw`(?:\s+-{1,2}[\w-]+(?:=[^\s"'&|;]*|\s+[^\s"'&|;-][^\s"'&|;]*)?){0,8}`;
+    NPX_RUN = new RegExp(String.raw`(?:^|[\s&|;(\x60"'\\/])(?:(?:npx|pnpx|bunx)${SHIM_EXT}|(?:npm${SHIM_EXT}["']?${PM_OPTIONS}\s+(?:exec|x))|(?:pnpm${SHIM_EXT}["']?${PM_OPTIONS}\s+(?:dlx|exec))|(?:yarn${SHIM_EXT}["']?${PM_OPTIONS}\s+(?:dlx|exec))|(?:bun${SHIM_EXT}["']?${PM_OPTIONS}\s+x))(?=[\s"'&|;)\x60]|$)`, "i");
     PURE_DELETE = /^(?:rm|del|rd|rmdir|remove-item)(?:\.exe)?(?:\s+(?:--?[a-z][a-z-]*|\/[a-z]|[\w.:\\/-]+))+$/i;
+    msbuildUnescape = (value) => value.replace(/%([0-9a-f]{2})/gi, (_, h) => String.fromCharCode(Number.parseInt(h, 16)));
     readsForNodeModulesRefs = (path30) => fileKind(path30) !== null;
     RESTORE_SETTINGS = /\bRestore(?:Sources|AdditionalProjectSources|FallbackFolders|ConfigFile|PackagesPath|NoCache|IgnoreFailedSources)\b/gi;
     PINNED_IMPORT = /\.(?:[a-z0-9]*proj|props|targets|tasks|projitems|user)$/i;
     THIS_DIR_UP = String.raw`\$\(MSBuildThisFileDirectory\)((?:\.\.(?:[\\/]\.\.)*)?)[\\/]?`;
     FILE_ABOVE = new RegExp(String.raw`^\$\(\[MSBuild\]::GetPathOfFileAbove\(\s*(?:'([^'$%@()]+)'|([^'"$%@(),\s]+))\s*(?:,\s*(?:'${THIS_DIR_UP}'|${THIS_DIR_UP})\s*)?\)\)$`, "i");
-    THIS_DIR_PATH = /^(?:\$\(MSBuildThisFileDirectory\))?([^$@%*?]*)$/i;
+    THIS_DIR_PATH = /^(?:\$\(MSBuildThisFileDirectory\)[\\/]*)?([^$@%*?]*)$/i;
   }
 });
 
@@ -142000,7 +142005,10 @@ var init_engine = __esm({
        * - `noAddSource`: the pinned MSBuild or response files (or `argv`) set
        *   NuGet's restore sources or config themselves (restoreSettingMentions),
        *   or import a file that is not a pinned definition file, which may
-       *   (unpinnedImports): nuget.org is never added (H2, M2).
+       *   (unpinnedImports), or reference a path under a node_modules dir that
+       *   MSBuild or NuGet reads settings from (`settingRefs`: an Import, a
+       *   ProjectReference, a solution entry, a local source, a response-file
+       *   token; not an Exec or a UsingTask): nuget.org is never added (H2, M2).
        * - `rootSources`: a commit whose root config defines a package-source
        *   policy (nugetConfigVerdict): nuget.org is never added either, even when
        *   the tree's own root file defines none.
@@ -142023,7 +142031,7 @@ var init_engine = __esm({
         const hierarchy = lower2.length > 0 ? `the repository pins a nuget.config below its root (${list3(lower2)}${where}), which one config file would hide` : pkgProjects.length > 0 ? `the repository tracks a .NET project or solution under a node_modules directory (${list3(pkgProjects)}${where}), where the engine does not look for nuget.config files` : ambiguous ? `the engine cannot tell which root nuget.config NuGet reads (${ambiguous.ambiguous})` : unmapped ? `the root ${unmapped.name} maps packages to the source key(s) ${unmapped.verdict.unmappedKeys.join(", ")}, which it does not define (NuGet takes them from another config, such as the user config's nuget.org; define them in the root ${unmapped.name} to keep one file)` : null;
         const fromArgv = argv.some((a) => /Restore(?:Sources|AdditionalProjectSources|FallbackFolders|ConfigFile|PackagesPath|NoCache|IgnoreFailedSources)/i.test(a)) ? ["the command line"] : [];
         const rootSources = all.flatMap(({ sha: sha3, facts }) => "verdict" in facts.root && !facts.root.verdict.addNugetOrg ? [`the root ${facts.root.name} at ${sha3.slice(0, 12)}`] : []);
-        return { hierarchy, noAddSource: [...union2((f) => f.restoreSettings), ...union2((f) => f.unpinnedImports), ...fromArgv], rootSources, sdks: union2((f) => f.projectSdks) };
+        return { hierarchy, noAddSource: [...union2((f) => f.restoreSettings), ...union2((f) => f.unpinnedImports), ...union2((f) => f.settingRefs), ...fromArgv], rootSources, sdks: union2((f) => f.projectSdks) };
       }
       /**
        * The nuget.config files the commit's MSBuild project SDK resolution
@@ -145379,6 +145387,7 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
         else root = { name: one.name, oid: one.oid };
         const rootOid = "oid" in root ? root.oid : void 0;
         const refs2 = [];
+        const settingRefs = [];
         const restoreSettings = [];
         const projectSdks = [];
         const unpinned = [];
@@ -145395,7 +145404,10 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
           };
           for (const [p, oid] of files) {
             const text9 = blob(p, oid).toString("utf8");
-            for (const r of nodeModulesReferences(p, text9)) refs2.push(`${p}: ${r}`);
+            for (const r of nodeModulesReferences(p, text9)) {
+              refs2.push(`${p}: ${r}`);
+              if (!/^(?:Exec|UsingTask) /.test(r)) settingRefs.push(`${p}: ${r}`);
+            }
             const settings = restoreSettingMentions(p, text9);
             if (settings.length > 0) restoreSettings.push(`${p}: ${settings.join(", ")}`);
             const sdks = projectSdkMentions(p, text9);
@@ -145407,6 +145419,7 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
         }
         const facts = {
           refs: refs2,
+          settingRefs,
           trackedTrees: [...trackedTrees].sort(),
           lowerConfigs: lowerConfigs.sort(),
           packageTreeProjects: trackedPackageTreeProjects(blobs).sort(),
@@ -146759,7 +146772,8 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
         }
         if (await this.recheckFailed(`before the ${kind} lane`)) return { kind: "stopped" };
         const dotnet = profile === "write" && this.dotnetRepo();
-        const nugetPolicy = dotnet ? this.dotnetNugetPolicy(HEX4021.test(startRef) ? startRef : this.run(["rev-parse", "--verify", `${startRef}^{commit}`], "git", TRUSTED_READ_ENV).trim()) : null;
+        if (dotnet && !HEX4021.test(startRef)) startRef = this.run(["rev-parse", "--verify", `${startRef}^{commit}`], "git", TRUSTED_READ_ENV).trim();
+        const nugetPolicy = dotnet ? this.dotnetNugetPolicy(startRef) : null;
         const priv = this.privateRun();
         let laneTree2;
         if (priv) {

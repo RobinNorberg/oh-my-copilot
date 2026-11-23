@@ -696,6 +696,30 @@ describe('a nuget.config below the root that only nuget.org could bypass (PR 611
             }, MULTI_RUN_MS);
         }
     }
+    it('round 6 (K): an approved head imports ../node_modules/corp/Sources.props (RestoreSources) under a settings-only root config: the restore step parks before it runs, and nothing adds nuget.org', async () => {
+        w = localWorld(['dotnet', 'test']);
+        project(SETTINGS_ONLY, false);
+        const seen = [];
+        const r = recorder([{ status: 1, output: OFFLINE }, { status: 1, output: COMPILE }]);
+        const inner = r.sandbox;
+        const sandbox = async (req) => {
+            if (req.purpose === 'gate' || req.purpose === 'restore')
+                seen.push({ purpose: req.purpose, ...effective(req.cwd, req.nugetHierarchy, req.nugetNoAddSource, req.nugetFromGit) });
+            return inner(req);
+        };
+        const both = (ctx) => {
+            commitFile('node_modules/corp/Sources.props', '<Project><PropertyGroup><RestoreSources>C:\\corp-feed</RestoreSources></PropertyGroup></Project>\n')(ctx);
+            return commitFile('Lib/Directory.Build.props', '<Project><Import Project="../node_modules/corp/Sources.props" /></Project>\n')(ctx);
+        };
+        const parked = await runFactoryEngine(localOpts(w, lanesFor(w, [both]), { gateSandbox: sandbox, runUserConfig: SANDBOXED }));
+        expect(parked.gate?.name, parked.message).toBe('gate-definition-changed');
+        const out = await runFactoryEngine(localOpts(w, lanesFor(w, [review('approve')]), { gateSandbox: sandbox, runUserConfig: SANDBOXED, allowGateChange: true }));
+        expect(out.gate?.name, out.message).toBe('gate-install-needed');
+        expect(out.gate?.reason).toContain('the build imports a file that is not a pinned definition file (Lib/Directory.Build.props: ../node_modules/corp/Sources.props)');
+        expect(r.reqs.filter((q) => q.purpose === 'restore')).toEqual([]);
+        for (const s of seen)
+            expect(s.env.RestoreAdditionalProjectSources, s.purpose).toBeUndefined();
+    }, MULTI_RUN_MS);
     it('round 5 (msb-settings): an approved head adds RestoreSources in Lib/Directory.Build.props under a settings-only root config: the gate, the restore step and the ci-fix lane never add nuget.org', async () => {
         w = localWorld(['dotnet', 'test']);
         project(SETTINGS_ONLY, false);

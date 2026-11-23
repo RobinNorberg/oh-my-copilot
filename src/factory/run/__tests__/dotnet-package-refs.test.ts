@@ -318,9 +318,11 @@ describe('M2: unpinnedImports', () => {
       '$([MSBuild]::GetPathOfFileAbove(x.props, $(MSBuildThisFileDirectory)..\\..\\))',
       '$([msbuild]::getpathoffileabove(X.PROPS, $(msbuildthisfiledirectory)..))',
     ]) expect(imp('src/a/A.csproj', v), v).toEqual([]);
-    // From src/a, three `..` climb above the root; from the root file one does.
-    expect(imp('src/a/A.csproj', "$([MSBuild]::GetPathOfFileAbove('x.props', '$(MSBuildThisFileDirectory)../../..'))")).toHaveLength(1);
-    expect(imp('Directory.Build.props', "$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))")).toHaveLength(1);
+    // Round 6: a start above the root searches nothing the engine's trees hold (a file above the checkout is a config the
+    // engine cannot see), so it is pinned like GetDirectoryNameOfFileAbove: the root Directory.Build.props idiom restores.
+    expect(imp('src/a/A.csproj', "$([MSBuild]::GetPathOfFileAbove('x.props', '$(MSBuildThisFileDirectory)../../..'))")).toEqual([]);
+    expect(imp('Directory.Build.props', "$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))")).toEqual([]);
+    expect(imp('Directory.Build.props', '$([MSBuild]::GetDirectoryNameOfFileAbove($(MSBuildThisFileDirectory).., Directory.Build.props))\\Directory.Build.props')).toEqual([]);
     // A literal path or one after $(MSBuildThisFileDirectory): absolute or above the root counts; inside does not.
     for (const v of ['../../outside/Corp.props', '$(MSBuildThisFileDirectory)..\\..\\outside\\Corp.props', 'C:\\corp\\Corp.props', '/opt/corp/Corp.props', '\\\\server\\share\\Corp.props']) {
       expect(imp('a/A.csproj', v), v).toEqual([v]);
@@ -329,6 +331,55 @@ describe('M2: unpinnedImports', () => {
     expect(imp('Directory.Build.props', '../Corp.props')).toHaveLength(1);
     // Not resolved (documented): a path built from another property counts by its extension only.
     expect(imp('a/A.csproj', '$(RepoRoot)eng/Versions.props')).toEqual([]);
+  });
+});
+
+describe('round 6: node_modules imports, separators after $(MSBuildThisFileDirectory), %XX escapes', () => {
+  const imp = (path: string, value: string) => unpinnedImports(path, `<Project><Import Project="${value}" /></Project>`);
+
+  it('an Import with a node_modules segment is never pinned (any case, either separator, escaped, after a property, as a GetPathOfFileAbove name)', () => {
+    for (const v of [
+      '../node_modules/corp/Sources.props',
+      '..\\NODE_MODULES\\corp\\Sources.props',
+      '../node%5fmodules/corp/Sources.props',
+      '$(MSBuildThisFileDirectory)../node_modules/corp/Sources.props',
+      '$(RepoRoot)node_modules\\corp\\Sources.props',
+      "$([MSBuild]::GetPathOfFileAbove('node_modules/corp/Sources.props', '$(MSBuildThisFileDirectory)'))",
+    ]) expect(imp('Lib/Directory.Build.props', v), v).toEqual([v]);
+  });
+
+  it('$(MSBuildThisFileDirectory) ends in a separator: a separator after it stays inside the repository', () => {
+    for (const v of ['$(MSBuildThisFileDirectory)\\eng\\Versions.props', '$(MSBuildThisFileDirectory)/eng/Versions.props', '$(MSBuildThisFileDirectory)eng\\Versions.props']) {
+      expect(imp('Directory.Build.props', v), v).toEqual([]);
+    }
+    expect(imp('Directory.Build.props', '$(MSBuildThisFileDirectory)\\..\\corp.props')).toHaveLength(1);
+  });
+
+  it('%XX is unescaped before the checks; an escaped ; does not split', () => {
+    for (const v of ['%2e%2e/corp/Sources.props', '$(MSBuildThisFileDirectory)%2e%2e\\corp.props', 'C%3a/corp/corp.props']) expect(imp('Directory.Build.props', v), v).toEqual([v]);
+    expect(imp('Directory.Build.props', 'eng/a.props%3Beng/b.props')).toEqual([]);
+    expect(imp('Directory.Build.props', 'eng/Sources%2emsbuild')).toHaveLength(1);
+  });
+
+  it('the attack forms stay unpinned', () => {
+    for (const v of [
+      '../../outside/Corp.props',
+      'C:/corp/corp.props',
+      '\\\\server\\share\\corp.props',
+      "$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(CorpRoot)'))",
+      "$([MSBuild]::GetPathOfFileAbove('../../corp.props', '$(MSBuildThisFileDirectory)'))",
+      "$([MSBuild]::GetPathOfFileAbove('C:/corp/corp.props'))",
+      "$([System.IO.Path]::Combine('..','corp.props'))",
+    ]) expect(imp('Directory.Build.props', v), v).toEqual([v]);
+  });
+
+  it('package runners: a path prefix, options before the subcommand, pnpx, bun x and .ps1 count; yarn/pnpm <bin> and yarn run do not', () => {
+    for (const c of ['C:\\nodejs\\npx.cmd tsc', '/usr/bin/npx tsc', '&quot;C:\\Program Files\\nodejs\\npx.cmd&quot; tsc', 'npm --yes exec tsc', 'npm -y x tsc', 'pnpm --silent dlx tsc', 'yarn --cwd web exec tsc', 'pnpm --dir=web exec tsc', 'pnpx tsc', 'bun x tsc', 'npx.ps1 tsc', 'pnpm.ps1 dlx tsc']) {
+      expect(nodeModulesReferences('a.csproj', `<Exec Command="${c}" />`), c).toEqual([expect.stringContaining('Exec Command (npx runs node_modules/.bin)')]);
+    }
+    for (const c of ['pnpm tsc', 'yarn tsc', 'yarn run tsc', 'npm run-script build', 'npm --prefix web run build', 'bun run build', 'pnpm --filter web build']) {
+      expect(nodeModulesReferences('a.csproj', `<Exec Command="${c}" />`), c).toEqual([]);
+    }
   });
 });
 
@@ -360,13 +411,15 @@ describe('L1: linear scans of crafted pinned files', () => {
       ['a.props', rep('<!--')], ['a.props', rep('<Import "')], ['a.props', `<Import ${rep('a')}`], ['a.props', rep('<Exec ')],
       ['a.props', rep('<Exec Command="')], ['a.props', `<Exec ${rep('x="a" ')}`], ['Directory.Build.rsp', rep('-p:a=b ')],
       ['global.json', rep('"\\')], ['a.slnf', rep('"\\')], ['a.sln', rep('Project(\n')], ['nuget.config', rep('<add value="')],
-      ['a.props', rep('<a>')],
+      ['a.props', rep('<a>')], ['a.props', `<Exec Command="${rep('npm -a ')}" />`], ['a.props', `<Exec Command="${rep('npm -a b ')}" />`],
+      ['a.props', `<Import Project="${rep('%2e')}" />`],
     ];
     for (const [p, t] of cases) {
       const start = performance.now();
       nodeModulesReferences(p, t);
       restoreSettingMentions(p, t);
       projectSdkMentions(p, t);
+      unpinnedImports(p, t);
       expect(performance.now() - start, `${p} ${t.slice(0, 12)}`).toBeLessThan(200);
     }
   });

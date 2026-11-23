@@ -1576,7 +1576,10 @@ class FactoryEngine {
      * - `noAddSource`: the pinned MSBuild or response files (or `argv`) set
      *   NuGet's restore sources or config themselves (restoreSettingMentions),
      *   or import a file that is not a pinned definition file, which may
-     *   (unpinnedImports): nuget.org is never added (H2, M2).
+     *   (unpinnedImports), or reference a path under a node_modules dir that
+     *   MSBuild or NuGet reads settings from (`settingRefs`: an Import, a
+     *   ProjectReference, a solution entry, a local source, a response-file
+     *   token; not an Exec or a UsingTask): nuget.org is never added (H2, M2).
      * - `rootSources`: a commit whose root config defines a package-source
      *   policy (nugetConfigVerdict): nuget.org is never added either, even when
      *   the tree's own root file defines none.
@@ -1610,7 +1613,7 @@ class FactoryEngine {
         const fromArgv = argv.some((a) => /Restore(?:Sources|AdditionalProjectSources|FallbackFolders|ConfigFile|PackagesPath|NoCache|IgnoreFailedSources)/i.test(a)) ? ['the command line'] : [];
         // A root config that defines a package-source policy in either commit: the tree's own root file (which the sandbox reads) gets nothing added either.
         const rootSources = all.flatMap(({ sha, facts }) => ('verdict' in facts.root && !facts.root.verdict.addNugetOrg ? [`the root ${facts.root.name} at ${sha.slice(0, 12)}`] : []));
-        return { hierarchy, noAddSource: [...union((f) => f.restoreSettings), ...union((f) => f.unpinnedImports), ...fromArgv], rootSources, sdks: union((f) => f.projectSdks) };
+        return { hierarchy, noAddSource: [...union((f) => f.restoreSettings), ...union((f) => f.unpinnedImports), ...union((f) => f.settingRefs), ...fromArgv], rootSources, sdks: union((f) => f.projectSdks) };
     }
     /**
      * The nuget.config files the commit's MSBuild project SDK resolution
@@ -5574,6 +5577,7 @@ class FactoryEngine {
             root = { name: one.name, oid: one.oid };
         const rootOid = 'oid' in root ? root.oid : undefined;
         const refs = [];
+        const settingRefs = [];
         const restoreSettings = [];
         const projectSdks = [];
         const unpinned = [];
@@ -5590,8 +5594,11 @@ class FactoryEngine {
             };
             for (const [p, oid] of files) {
                 const text = blob(p, oid).toString('utf8');
-                for (const r of nodeModulesReferences(p, text))
+                for (const r of nodeModulesReferences(p, text)) {
                     refs.push(`${p}: ${r}`);
+                    if (!/^(?:Exec|UsingTask) /.test(r))
+                        settingRefs.push(`${p}: ${r}`);
+                }
                 const settings = restoreSettingMentions(p, text);
                 if (settings.length > 0)
                     restoreSettings.push(`${p}: ${settings.join(', ')}`);
@@ -5607,6 +5614,7 @@ class FactoryEngine {
         }
         const facts = {
             refs,
+            settingRefs,
             trackedTrees: [...trackedTrees].sort(),
             lowerConfigs: lowerConfigs.sort(),
             packageTreeProjects: trackedPackageTreeProjects(blobs).sort(),
@@ -7197,7 +7205,10 @@ class FactoryEngine {
         // NuGet's set-up from the trusted base AND the commit the lane's worktree starts at (dotnetNugetPolicy, a union of both:
         // an approved head that adds a lower config or sets RestoreSources makes the lane stricter, never looser). The lane's own
         // edits never decide it (the sandbox layer's scan of the worktree at the lane's start is the safety net).
-        const nugetPolicy = dotnet ? this.dotnetNugetPolicy(HEX40.test(startRef) ? startRef : this.run(['rev-parse', '--verify', `${startRef}^{commit}`], 'git', TRUSTED_READ_ENV).trim()) : null;
+        // A start that is not a sha is resolved once, and that commit is both what the policy reads and what the worktree is made at.
+        if (dotnet && !HEX40.test(startRef))
+            startRef = this.run(['rev-parse', '--verify', `${startRef}^{commit}`], 'git', TRUSTED_READ_ENV).trim();
+        const nugetPolicy = dotnet ? this.dotnetNugetPolicy(startRef) : null;
         // The private layout: the engine makes the lane's worktree `<run>/w/<n>` itself, before the snapshot it is compared against.
         const priv = this.privateRun();
         let laneTree;
