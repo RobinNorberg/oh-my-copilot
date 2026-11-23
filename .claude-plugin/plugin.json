@@ -45,6 +45,7 @@
     "./skills/drydock/",
     "./skills/execute/",
     "./skills/external-context/",
+    "./skills/factory-attention/",
     "./skills/figure-it-out/",
     "./skills/fix-ci/",
     "./skills/fix-merge-conflicts/",

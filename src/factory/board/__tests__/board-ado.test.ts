@@ -9,6 +9,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { engineWroteAll } from './trusted-states.js';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { adoFixtureExec, loadAdoFixtures, parseAdoFixture, type AdoFixture } from '../../../forge/ado/__tests__/fixtures.js';
 import { POSIX_ENTRY, REPO, variant } from '../../../forge/ado/__tests__/world.js';
@@ -37,7 +38,7 @@ beforeEach(() => {
   out = [];
   err = [];
 });
-afterEach(() => rmSync(root, { recursive: true, force: true }));
+afterEach(() => { rmSync(root, { recursive: true, force: true }); rmSync(`${root}-ledger`, { recursive: true, force: true }); });
 
 /** The git reads of an ADO checkout and the fixtures for every az call; `az` keeps what reached the fixtures. */
 function world(fixtures: readonly AdoFixture[] = loadAdoFixtures()) {
@@ -80,7 +81,11 @@ function deps(exec: Exec, over: Partial<FactoryBoardDeps> = {}): FactoryBoardDep
   };
 }
 
-const board = (exec: Exec, o: FactoryBoardOptions = {}, over: Partial<FactoryBoardDeps> = {}) => runFactoryBoard(o, deps(exec, over));
+/** The planted states are the engine's own writes (recorded in a ledger). */
+const board = (exec: Exec, o: FactoryBoardOptions = {}, over: Partial<FactoryBoardDeps> = {}) => {
+  engineWroteAll(root, `${root}-ledger`);
+  return runFactoryBoard(o, deps(exec, { ledgerDir: `${root}-ledger`, ...over }));
+};
 const json = (): BoardJson => JSON.parse(out.join('\n')) as BoardJson;
 const flag = (args: readonly string[], f: string) => args[args.indexOf(f) + 1];
 const routeOf = (args: readonly string[]) => `${flag(args, '--area')}.${flag(args, '--resource')}.${args.includes('--http-method') ? flag(args, '--http-method') : 'GET'}`;

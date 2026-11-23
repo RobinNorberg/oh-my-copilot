@@ -1,7 +1,9 @@
 /**
  * The `omg factory board` terminal view (ADO parity design §1): one section
  * per non-empty column, top to bottom (terminals are narrow). Every string
- * in the BoardJson was already passed through plainText by collect.ts.
+ * in the BoardJson was already passed through plainText by collect.ts. A run
+ * row whose state is not verified shows its key, "not verified" and the
+ * status command only.
  */
 import chalk from 'chalk';
 import { plainText } from '../check/score.js';
@@ -42,6 +44,9 @@ export function backlogLine(r) {
     return `  ${bucket}  ${id}  ${pri}  ${title}  ${r.check.reasons[0] ?? ''}${r.check.reasons.length ? `  ${chalk.gray(r.check.detail)}` : ''}${r.flags.length ? `  ${flagText(r).join('  ')}` : ''}`;
 }
 export function runLine(r, prefix) {
+    // A state that fails the trust check: nothing from it, only the read-only status command.
+    if (r.verified === false)
+        return `  ${runLabel(r.id).padEnd(6)}  ${chalk.red('not verified')}${r.next ? `  ${r.next}` : ''}`;
     const run = r.run;
     const parts = [runLabel(r.id).padEnd(6)];
     if (r.error)
@@ -75,7 +80,7 @@ export function runLine(r, prefix) {
 export function renderBoard(b) {
     const prefix = b.forge === 'azure-devops' ? '!' : '#';
     const items = b.columns.reduce((n, c) => n + c.items.length, 0);
-    const runs = b.columns.reduce((n, c) => n + c.items.filter((r) => r.run).length, 0) + b.outside.length;
+    const runs = b.columns.reduce((n, c) => n + c.items.filter((r) => r.run || r.verified === false).length, 0) + b.outside.length;
     const source = b.parent ? `spec #${b.parent.id} ${b.parent.title}` : b.source ? `source ${plainText(sourceText(b.source))}` : 'no intake source';
     const lines = [chalk.bold(`factory board  ${b.forge} ${b.repo}  ${source}  (${items} item${items === 1 ? '' : 's'}, ${runs} run${runs === 1 ? '' : 's'})`)];
     for (const c of b.columns) {

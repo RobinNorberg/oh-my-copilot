@@ -38,6 +38,7 @@ export interface HookNotificationConfig {
         "approval-request"?: HookEventConfig;
         "ask-user-question"?: HookEventConfig;
         "agent-call"?: HookEventConfig;
+        "factory-attention"?: HookEventConfig;
     };
     /** Global default template (fallback when event has no template) */
     defaultTemplate?: string;

@@ -42,7 +42,14 @@ export const GROUP_TITLES: Readonly<Record<AttentionGroup, string>> = Object.fre
 /** Shown when a state fails its seal or ledger check: only the read-only status command. */
 export const suppressedCommands = (key: FactoryRunKey): NextCommand[] => (validRunKey(key) ? [{ label: 'read the run state', argv: statusArgv(key), billed: false }] : []);
 
-/** A poll reminder's command: the cancel where a rerun re-parks (decisions-rewritten), else the resume. */
+/**
+ * A poll reminder's command, from the shared table: the plain rerun only
+ * when the gate's steps offer it, else the cancel (a rerun would re-park, or
+ * the gate needs a decision first), else the read-only status.
+ */
 export function reminderCommand(key: FactoryRunKey, gate: string): string {
-  return gate === 'decisions-rewritten' ? cancelCommand(key) : resumeCommand(key);
+  const steps = gateSteps(gate).steps;
+  if (steps.includes('resume')) return resumeCommand(key);
+  if (steps.includes('cancel')) return cancelCommand(key);
+  return validRunKey(key) ? statusArgv(key).join(' ') : resumeCommand(key);
 }

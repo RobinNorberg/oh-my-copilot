@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -44,6 +44,23 @@ describe('staleGateReminders', () => {
         expect(staleGateReminders({ root, runs: renewed, nowMs: T0 + 50 * H, afterHours: 24 })).toEqual([]);
         expect(staleGateReminders({ root, runs: new Map(), nowMs: T0 + 60 * H, afterHours: 24 })).toEqual([]);
         expect(JSON.parse(readFileSync(remindersPath(root), 'utf8'))).toEqual({});
+    });
+    it('the lane-writable record only postpones: never a reminder of a park younger than the window, a future time counts as now', () => {
+        const runs = new Map([parked(1, T0)]);
+        const gateAt = new Date(T0).toISOString();
+        const put = (remindedAt) => { mkdirSync(join(remindersPath(root), '..'), { recursive: true }); writeFileSync(remindersPath(root), JSON.stringify({ '#1': { gateAt, remindedAt } })); };
+        const at = (h) => staleGateReminders({ root, runs, nowMs: T0 + h * H, afterHours: 24 });
+        // An absurdly old remindedAt: no reminder before the sealed park time is a window old, then one.
+        put('2000-01-01T00:00:00.000Z');
+        expect(at(0)).toEqual([]);
+        expect(at(23)).toEqual([]);
+        expect(at(25)).toHaveLength(1);
+        // A future remindedAt postpones by one window from when it was read (kept clamped), not forever.
+        put('2999-01-01T00:00:00.000Z');
+        expect(at(30)).toEqual([]);
+        expect(JSON.parse(readFileSync(remindersPath(root), 'utf8'))['#1'].remindedAt).toBe(new Date(T0 + 30 * H).toISOString());
+        expect(at(53)).toEqual([]);
+        expect(at(54)).toHaveLength(1);
     });
     it('falls back to the catch-all handle when the plan names no path, and works without a base', () => {
         const runs = new Map([parked(2, T0, 'no paths here')]);

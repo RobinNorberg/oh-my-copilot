@@ -39,8 +39,8 @@ describe('registry projections — drift check against installed surfaces', () =
         // incl. statechart and ketchup-video, and sdd)
         // plus this fork's 15 exclusive skills: the critique / deep-review /
         // discover / ralph-experiment lanes, ship, and the omc-ado-* and omc-gh-*
-        // issue-tracker lanes.
-        expect(installed.skills.length).toBe(99);
+        // issue-tracker lanes, and factory-attention.
+        expect(installed.skills.length).toBe(100);
         expect(installed.commands.length).toBe(21);
         const drift = checkProjectionDrift(installed);
         expect(drift.unregistered).toEqual([]);

@@ -22,6 +22,10 @@ export declare const gateAction: typeof gateSteps;
 export declare const GROUP_TITLES: Readonly<Record<AttentionGroup, string>>;
 /** Shown when a state fails its seal or ledger check: only the read-only status command. */
 export declare const suppressedCommands: (key: FactoryRunKey) => NextCommand[];
-/** A poll reminder's command: the cancel where a rerun re-parks (decisions-rewritten), else the resume. */
+/**
+ * A poll reminder's command, from the shared table: the plain rerun only
+ * when the gate's steps offer it, else the cancel (a rerun would re-park, or
+ * the gate needs a decision first), else the read-only status.
+ */
 export declare function reminderCommand(key: FactoryRunKey, gate: string): string;
 //# sourceMappingURL=actions.d.ts.map

@@ -17,7 +17,8 @@ export type NotificationEvent =
   | "session-idle"
   | "ask-user-question"
   | "agent-call"
-  | "approval-request";
+  | "approval-request"
+  | "factory-attention";
 
 /** Supported notification platforms */
 export type NotificationPlatform =
@@ -178,6 +179,8 @@ export interface NotificationConfig {
     "ask-user-question"?: EventNotificationConfig;
     "agent-call"?: EventNotificationConfig;
     "approval-request"?: EventNotificationConfig;
+    /** Off unless enabled here explicitly (`omg factory poll` new attention items). */
+    "factory-attention"?: EventNotificationConfig;
   };
 }
 

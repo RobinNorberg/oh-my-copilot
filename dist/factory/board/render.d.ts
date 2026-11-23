@@ -1,7 +1,9 @@
 /**
  * The `omg factory board` terminal view (ADO parity design §1): one section
  * per non-empty column, top to bottom (terminals are narrow). Every string
- * in the BoardJson was already passed through plainText by collect.ts.
+ * in the BoardJson was already passed through plainText by collect.ts. A run
+ * row whose state is not verified shows its key, "not verified" and the
+ * status command only.
  */
 import type { BoardJson, BoardRow } from './collect.js';
 /** `--source` as a short header text: `label factory`, `area-tag Web\Factory#factory`, … */

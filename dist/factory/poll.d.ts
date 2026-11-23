@@ -15,6 +15,20 @@
  * 3. PRs: every run in flight with a PR. A PR a human completed or abandoned
  *    prints the resume hint; open human review threads are counted
  *    (ForgeReviews.reviewFeedback on every forge; ADO's listThreads where a forge has no feedback read).
+ * 3c. attention: `omg factory attention`'s collector (local state only,
+ *    read-only): the first tick prints a one-line summary, later ticks one
+ *    line per item that is new since the previous tick (run key, group,
+ *    trust, gate, park time), with its first next command; a stale-gate
+ *    reminder (3b) in the same tick stands for an item's line (never its
+ *    notice) only when its sealed park time is a reminder window old. Only trusted items get a line and an item notice
+ *    (queued past the per-tick cap and rate limit), once per identity: only
+ *    an identity that really got its line or notice counts as announced, and
+ *    a queued notice waits while its run's row is not trusted; rows whose
+ *    state is not trusted are only counted (one line when the count changes,
+ *    one count notice per hour, one more per 10 min when the count rises), so
+ *    a lane cannot crowd out, drop or indefinitely delay a trusted item. The
+ *    `factory-attention` notification is off unless configured and carries
+ *    engine-composed text only (attention/notify.ts).
  * 4. board: the board rows that changed since the previous tick
  *    (src/factory/board), or with `--json` one JSON object per tick.
  *
@@ -63,6 +77,9 @@ import type { CheckBucket } from './check/rules.js';
 import type { HealConfig } from './heal/config.js';
 import { type ScanResult } from './heal/cli.js';
 import { type FactoryRunLimits } from './run/budget.js';
+import { type AttentionGroup } from './attention/actions.js';
+import { type AttentionData } from './attention/collect.js';
+import { type AnyAttentionNotice, type AttentionNotice } from './attention/notify.js';
 import { type Reminder } from './team/reminders.js';
 import { type FactoryRunKey, type HeldOwner, type OwnerDeps } from './run/state.js';
 /**
@@ -259,6 +276,21 @@ export interface PollTick {
     prs: PollPr[];
     /** Runs parked at a human gate past factory.poll.remindAfterHours (printed, never posted); absent when none is due. */
     reminders?: Reminder[];
+    /**
+     * `omg factory attention` items that are new since the previous tick (first tick: a one-line summary instead).
+     * Engine-composed fields only: no title, reason or other text from a state. Absent when the step did not run.
+     * `new` holds trusted items only (at most ATTENTION_PRINT_ITEMS, the rest counted in `more`); `unverified`: how many
+     * rows are not trusted (counts only), when that count changed or such a row is new; `queued`: trusted notices waiting
+     * for the rate limit; `dropped`: trusted item notices dropped because the queue was full (one count notice covers them).
+     */
+    attention?: {
+        summary?: string;
+        new: PollAttentionItem[];
+        more?: number;
+        unverified?: number;
+        queued?: number;
+        dropped?: number;
+    };
     /** Board rows that changed since the previous tick (every row on the first). */
     board: Array<{
         stage: BoardStage | 'outside';
@@ -311,6 +343,8 @@ export interface PollContext {
     unreleasedScan?: HeldOwner;
     /** The tamper hold on the checkout (tamper-quarantine.ts), null when none: no auto-start while it is set (default: the factory ledger's). */
     tamperHold?: () => string | null;
+    /** Engine ledger directory (default defaultLedgerDir()): board rows and reminders of a state that fails the trust check show "not verified" only. */
+    ledgerDir?: string;
     /**
      * B2: factory.run.maxConcurrent when it is above 1 with factory.run.layout
      * "private" (trusted layers): the auto-start runs `omg factory run --next
@@ -324,9 +358,77 @@ export interface PollContext {
         board: Map<string, string>;
         prs: Map<string, string>;
         ledger?: boolean;
+        attention?: Set<string>;
+        /** Attention ids last seen, with the time (bounded, oldest evicted): a row that comes back within the quiet window is not new. */
+        seen?: Map<string, number>;
+        /** When this poll sent its recent trusted `factory-attention` notices (the rate limit). */
+        notified?: number[];
+        /** Trusted ids that got their own line, and trusted ids that got a notice (or the overflow's count notice): when (bounded). */
+        printed?: Map<string, number>;
+        notifiedIds?: Map<string, number>;
+        /** Trusted item notices waiting for the rate limit, oldest first (at most ATTENTION_QUEUE_MAX, one per identity). */
+        queue?: Array<{
+            id: string;
+            key: string;
+            notice: AttentionNotice;
+        }>;
+        /** Trusted items whose notice did not fit the queue: one count notice for them when the rate limit allows. */
+        overflow?: Array<{
+            id: string;
+            key: string;
+            group: AttentionGroup;
+        }>;
+        /** The untrusted row count of the previous tick (its line is printed when it changes). */
+        unverified?: number;
+        /** An untrusted row appeared since the last untrusted count notice; when that notice went out (its own budget) and the count it carried. */
+        countDue?: boolean;
+        countNotifiedAt?: number;
+        countNotified?: number;
+        /** The first tick ran (its attention summary is the baseline, even when its collector failed). */
+        baselined?: boolean;
+        /** Notices started and not yet settled, abandoned ones included (bounded by ATTENTION_PENDING_MAX). */
+        pending?: number;
     };
     tick: number;
+    /** `omg factory attention`'s collector for this repository (local, read-only); absent: no attention step. */
+    attention?: () => AttentionData;
+    /**
+     * Sends one `factory-attention` notification (it decides itself whether notifications are configured). `signal`
+     * aborts when the tick's timeout passes: the send is abandoned then.
+     */
+    notifyAttention?: (n: AnyAttentionNotice, signal?: AbortSignal) => Promise<void>;
+    /** The longest a tick waits for its notifications (default ATTENTION_NOTIFY_TIMEOUT_MS). */
+    notifyTimeoutMs?: number;
 }
+/** Per tick: at most this many trusted notices sent (the rest wait in the queue); trusted item lines printed, then one "and K more" line. */
+export declare const ATTENTION_NOTICE_ITEMS = 3;
+export declare const ATTENTION_PRINT_ITEMS = 10;
+/** At most this many trusted `factory-attention` notices per window for the repository; the rest wait in the queue. */
+export declare const ATTENTION_RATE_MAX = 6;
+export declare const ATTENTION_RATE_WINDOW_MS: number;
+/** Trusted notices waiting for the rate limit; past this, one count notice covers the overflow. */
+export declare const ATTENTION_QUEUE_MAX = 100;
+/** The untrusted rows' count notice: at most one per this window for the repository (its own budget). */
+export declare const ATTENTION_COUNT_NOTICE_WINDOW_MS: number;
+/** A count above the last notified one (a new untrusted row) may send one more count notice per this window. */
+export declare const ATTENTION_COUNT_RISE_MS: number;
+export declare const ATTENTION_NOTIFY_TIMEOUT_MS = 10000;
+/** Sends that may be in flight at once, abandoned ones included until they settle (a hung notifier stops here). */
+export declare const ATTENTION_PENDING_MAX: number;
+/** How many attention ids the poll remembers; and how long a row that went away stays known without remindAfterHours. */
+export declare const ATTENTION_SEEN_MAX = 10000;
+/** One new attention item in a tick: the run key, group, the gate of a trusted row, and the first next command's argv. */
+export interface PollAttentionItem {
+    key: string;
+    group: AttentionGroup;
+    gate: string | null;
+    next: string[] | null;
+}
+/**
+ * Waits for every promise, at most `ms`; true when all settled in time. A notification never stalls the tick longer.
+ * The timer stays referenced: a hung send that holds no handle must not let node exit in the middle of the tick.
+ */
+export declare function settledWithin(ps: Promise<unknown>[], ms: number): Promise<boolean>;
 /**
  * One tick. Steps 1-4 never spawn and never write to the tracker or forge; a
  * guard refusal propagates (a bug, not an unreadable item). Step 5 is the
@@ -366,6 +468,10 @@ export type FactoryPollDeps = FactoryBoardDeps & {
     sleep?: (ms: number, wake: AbortSignal) => Promise<void>;
     /** Subscribe to the stop signals (default SIGINT and SIGTERM, passed to the handler); returns the unsubscribe. */
     onStop?: (handler: (signal?: NodeJS.Signals) => void) => () => void;
+    /** The `factory-attention` notification of new attention items (default: the notification stack, off unless configured). */
+    notifyAttention?: (n: AnyAttentionNotice, signal?: AbortSignal) => Promise<void>;
+    /** The longest a tick waits for its attention notifications (default ATTENTION_NOTIFY_TIMEOUT_MS; tests). */
+    notifyTimeoutMs?: number;
 };
 /** Run the poller until a stop signal (or one tick with --once); returns the exit code. */
 export declare function runFactoryPoll(o: FactoryPollOptions, deps: FactoryPollDeps): Promise<number>;

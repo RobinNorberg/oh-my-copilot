@@ -162,6 +162,17 @@ describe('recordHumanMerge: skipped runs', () => {
         expect(readFactoryState(root, ISSUE).phase).toBe('cancelled');
         expect(humanMergeLines([r])).toEqual([`run #${ISSUE}: not checked for a human merge: ${r.reason}`]);
     });
+    it('a sealed state that is not the engine\'s last write: the line never quotes its base or lane ids', () => {
+        engineState(cancelled);
+        // Rewritten outside the engine with a hostile base and a lane that would trip the lane-trust check (sealed again).
+        updateFactoryState(root, ISSUE, (s) => ({ ...s, base: 'MRKZbase', lanes: [lane({ id: 'MRKZlane', status: 'running' })] }));
+        const read = reader('MERGED');
+        const r = recordHumanMerge(root, ISSUE, opts(read));
+        expect(r).toMatchObject({ kind: 'unchanged', reason: expect.stringMatching(/not the engine's last write/) });
+        expect(JSON.stringify(r)).not.toContain('MRKZ');
+        expect(humanMergeLines([r]).join('\n')).not.toContain('MRKZ');
+        expect(read.calls).toBe(0);
+    });
     it('a run parked at lane-unconfirmed is not read on the forge', () => {
         engineState((s) => ({ ...s, phase: 'implement', gate: { name: 'lane-unconfirmed', reason: 'x', at: NOW } }));
         const read = reader('MERGED');

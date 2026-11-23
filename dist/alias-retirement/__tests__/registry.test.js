@@ -88,11 +88,13 @@ describe('alias-retirement registry', () => {
         // Raised 96 -> 98 canonical when upstream's statechart and ketchup-video
         // shipped as real skill directories (upstream c5b71636e); additions, not
         // retirements.
+        // Raised 99 -> 100 canonical when the fork's factory-attention skill shipped
+        // as a real skill directory; an addition, not a retirement.
         const all = createBuiltinSkills();
-        expect(all).toHaveLength(101);
+        expect(all).toHaveLength(102);
         const canonical = all.filter((s) => !s.aliasOf);
         const aliases = all.filter((s) => !!s.aliasOf);
-        expect(canonical).toHaveLength(99);
+        expect(canonical).toHaveLength(100);
         expect(aliases).toHaveLength(2);
         expect(aliases.map((s) => s.name).sort()).toEqual(['cancel-ralph', 'psm'].sort());
     });

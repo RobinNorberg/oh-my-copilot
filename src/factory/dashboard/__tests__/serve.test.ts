@@ -632,8 +632,8 @@ describe('dashboard server: functional', () => {
     expect(byKey('#4')).toMatchObject({ trust: 'ledger', why: UNTRUSTED_WHY.ledger, title: '', pr: null });
     expect(d.warnings).toEqual(['run #3: the state cannot be read', expect.stringMatching(/^\d+ warning\(s\): the terminal running the server prints them$/)]);
     expect(d.attention.warnings).toEqual(d.warnings);
-    // The full error stays in the terminal.
-    expect(logs.join('\n')).toContain('XRUN');
+    // The terminal gets attention's fixed warning; the raw error is only in `omg factory attention --verbose`.
+    expect(logs.join('\n')).toContain('run state #3 is unreadable (the error: omg factory attention --verbose)');
     const page = renderedText(d, {});
     for (const bad of ['XRUN', 'SECRET', ...pathForms]) expect(page, bad).not.toContain(bad);
   });

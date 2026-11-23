@@ -144,7 +144,7 @@ export function renderAllRepos(d, o = {}) {
                 continue;
             lines.push(chalk.bold(`  ${GROUP_TITLES[g].toUpperCase()} (${items.length})`));
             for (const i of items)
-                lines.push(...itemLines(i, verbose, where).map((l) => `  ${l}`));
+                lines.push(...itemLines(i, verbose, undefined, where).map((l) => `  ${l}`));
         }
     }
     return lines.join('\n');

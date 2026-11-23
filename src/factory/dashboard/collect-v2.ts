@@ -19,11 +19,12 @@
  */
 
 import { readdirSync, statSync } from 'fs';
-import { join } from 'path';
+import { basename, join } from 'path';
 import type { ForgeKind } from '../../forge/types.js';
 import { LOCAL_REMOTE } from '../../forge/local/mirror.js';
 import { plainText } from '../check/score.js';
 import { attentionJson, collectAttention, readRegularFile, type ReadRun, type AttentionData, type AttentionItem, type AttentionTrust } from '../attention/collect.js';
+import { gateSteps } from '../run/gate-next.js';
 import type { BoardJson, BoardRow } from '../board/collect.js';
 import type { FactoryRunLimits } from '../run/budget.js';
 import { factoryProgressFile } from '../run/progress.js';
@@ -372,9 +373,9 @@ function median(values: number[]): number | null {
 }
 
 function unverifiedRun(key: FactoryRunKey, trust: AttentionTrust, s: FactoryRunState | undefined): DashboardRunV2 {
-  // Only enum-shaped values of an untrusted state: no title, no reason, no numbers.
+  // Only enum-shaped values of an untrusted state, each one the engine knows (its phase enum, the shared gate table): no title, no reason, no numbers.
   const phase = s && (FACTORY_PHASES as readonly string[]).includes(s.phase) ? s.phase : null;
-  const gateName = s?.gate && typeof s.gate.name === 'string' && SAFE_NAME.test(s.gate.name) ? s.gate.name : null;
+  const gateName = s?.gate && typeof s.gate.name === 'string' && SAFE_NAME.test(s.gate.name) && gateSteps(s.gate.name).known ? s.gate.name : null;
   return {
     key: runLabel(key), kind: typeof key === 'string' ? 'ci-heal' : 'issue', trust, verified: false, title: '', phase,
     gate: gateName ? { name: gateName, reason: '', at: '' } : null, outcome: 'unknown', pr: null, head: null, forge: null,
@@ -465,6 +466,9 @@ function benchRow(path: string, file: string, source: DashboardBenchV2['source']
   };
 }
 
+/** readRegularFile's reasons that hold no path and no file bytes. */
+const FIXED_READ_REASON = /^(it is (a link|a directory|a FIFO|a device or socket), not a regular file|it is larger than \d+ bytes|the file (was replaced|grew) while it was read)$/;
+
 /** Bench results from `<root>/bench-results/` and every --bench-dir; one row per result file, oldest first. */
 export function readBenchV2(root: string, dirs: readonly string[], warnings: string[]): DashboardBenchV2[] {
   const out: DashboardBenchV2[] = [];
@@ -484,7 +488,10 @@ export function readBenchV2(root: string, dirs: readonly string[], warnings: str
         if (row) out.push(row);
         else skipped++;
       } catch (error) {
-        warnings.push(`${source}/${text(name, 120)}: skipped (${text(error instanceof Error ? error.message : error, 120)})`);
+        // Only the bounded read's own fixed reasons are shown; any other error (a parse error quotes the file's bytes,
+        // an fs error its path) becomes one fixed reason.
+        const why = error instanceof Error && FIXED_READ_REASON.test(error.message) ? error.message : 'not a readable bench result file';
+        warnings.push(`${source}/${text(basename(name), 120)}: skipped (${why})`);
       }
     }
     if (skipped > 0 && source === 'bench-results') warnings.push(`bench-results: ${skipped} JSON file(s) are not bench results and were skipped`);
@@ -546,8 +553,8 @@ function collectV2In(root: string, o: CollectDashboardV2Options): DashboardDataV
         clampedRuns.add(v.run.key);
         warnings.push(`run ${v.run.key}: history timestamps ${v.clamped}; its times are clamped to now and to the entry before, and the run is left out of the throughput medians`);
       }
-    } catch (error) {
-      warnings.push(`run ${runLabel(key)}: skipped (${text(error instanceof Error ? error.message : error, 160)})`);
+    } catch {
+      warnings.push(`run ${runLabel(key)}: skipped (its state could not be laid out)`);
     }
   }
   const startedMs = (r: DashboardRunV2): number => msOf(r.startedAt);

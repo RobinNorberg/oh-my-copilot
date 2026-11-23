@@ -18,10 +18,11 @@
  * goes through plainText here and is HTML-escaped again in render.ts.
  */
 import { readdirSync, statSync } from 'fs';
-import { join } from 'path';
+import { basename, join } from 'path';
 import { LOCAL_REMOTE } from '../../forge/local/mirror.js';
 import { plainText } from '../check/score.js';
 import { attentionJson, collectAttention, readRegularFile } from '../attention/collect.js';
+import { gateSteps } from '../run/gate-next.js';
 import { factoryProgressFile } from '../run/progress.js';
 import { defaultOwnerDeps, FACTORY_PHASES, heldSlots, runLabel, TERMINAL_FACTORY_PHASES, } from '../run/state.js';
 import { localDay, parseSince } from './collect.js';
@@ -227,9 +228,9 @@ function median(values) {
     return v.length % 2 ? v[m] : Math.round((v[m - 1] + v[m]) / 2);
 }
 function unverifiedRun(key, trust, s) {
-    // Only enum-shaped values of an untrusted state: no title, no reason, no numbers.
+    // Only enum-shaped values of an untrusted state, each one the engine knows (its phase enum, the shared gate table): no title, no reason, no numbers.
     const phase = s && FACTORY_PHASES.includes(s.phase) ? s.phase : null;
-    const gateName = s?.gate && typeof s.gate.name === 'string' && SAFE_NAME.test(s.gate.name) ? s.gate.name : null;
+    const gateName = s?.gate && typeof s.gate.name === 'string' && SAFE_NAME.test(s.gate.name) && gateSteps(s.gate.name).known ? s.gate.name : null;
     return {
         key: runLabel(key), kind: typeof key === 'string' ? 'ci-heal' : 'issue', trust, verified: false, title: '', phase,
         gate: gateName ? { name: gateName, reason: '', at: '' } : null, outcome: 'unknown', pr: null, head: null, forge: null,
@@ -324,6 +325,8 @@ function benchRow(path, file, source) {
         ...(invalid.length ? { invalid } : {}),
     };
 }
+/** readRegularFile's reasons that hold no path and no file bytes. */
+const FIXED_READ_REASON = /^(it is (a link|a directory|a FIFO|a device or socket), not a regular file|it is larger than \d+ bytes|the file (was replaced|grew) while it was read)$/;
 /** Bench results from `<root>/bench-results/` and every --bench-dir; one row per result file, oldest first. */
 export function readBenchV2(root, dirs, warnings) {
     const out = [];
@@ -348,7 +351,10 @@ export function readBenchV2(root, dirs, warnings) {
                     skipped++;
             }
             catch (error) {
-                warnings.push(`${source}/${text(name, 120)}: skipped (${text(error instanceof Error ? error.message : error, 120)})`);
+                // Only the bounded read's own fixed reasons are shown; any other error (a parse error quotes the file's bytes,
+                // an fs error its path) becomes one fixed reason.
+                const why = error instanceof Error && FIXED_READ_REASON.test(error.message) ? error.message : 'not a readable bench result file';
+                warnings.push(`${source}/${text(basename(name), 120)}: skipped (${why})`);
             }
         }
         if (skipped > 0 && source === 'bench-results')
@@ -410,8 +416,8 @@ function collectV2In(root, o) {
                 warnings.push(`run ${v.run.key}: history timestamps ${v.clamped}; its times are clamped to now and to the entry before, and the run is left out of the throughput medians`);
             }
         }
-        catch (error) {
-            warnings.push(`run ${runLabel(key)}: skipped (${text(error instanceof Error ? error.message : error, 160)})`);
+        catch {
+            warnings.push(`run ${runLabel(key)}: skipped (its state could not be laid out)`);
         }
     }
     const startedMs = (r) => msOf(r.startedAt);

@@ -17,7 +17,7 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 import { allReposJson, collectAllRepos, renderAllRepos } from '../../factory/attention/all-repos.js';
 import { attentionJson, collectAttention } from '../../factory/attention/collect.js';
-import { renderAttention } from '../../factory/attention/render.js';
+import { layoutColumns, renderAttention, warningLines } from '../../factory/attention/render.js';
 import { EXIT_CHECK_FAILED, EXIT_CHECK_USAGE } from '../../factory/check/cli.js';
 import { plainText } from '../../factory/check/score.js';
 import type { FactoryRunLimits, LoadedFactoryRunLimits } from '../../factory/run/budget.js';
@@ -35,9 +35,23 @@ export interface FactoryAttentionDeps {
   ledgerDir?: string;
   now?: () => number;
   owner?: OwnerDeps;
+  /** The terminal width the view is laid out for (default terminalColumns(); unknown: 80, at least 40). */
+  columns?: () => number | undefined;
   /** --all-repos: the root-probe timeout (tests). */
   probeMs?: number;
   platform?: NodeJS.Platform;
+}
+
+/**
+ * The width to lay out for: stdout's columns, else stderr's (stdout piped from a terminal), else a numeric COLUMNS
+ * held to 40..500, else undefined (80).
+ */
+export function terminalColumns(
+  stdout: { columns?: number } = process.stdout, stderr: { columns?: number } = process.stderr, env: NodeJS.ProcessEnv = process.env,
+): number | undefined {
+  for (const c of [stdout.columns, stderr.columns]) if (typeof c === 'number' && Number.isFinite(c) && c > 0) return c;
+  const n = /^\d{1,4}$/.test(env.COLUMNS?.trim() ?? '') ? Number(env.COLUMNS) : Number.NaN;
+  return n > 0 ? Math.min(500, Math.max(40, n)) : undefined;
 }
 
 const defaultRoot = (): string => execFileSync('git', ['rev-parse', '--show-toplevel'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true }).trim();
@@ -96,8 +110,9 @@ export function factoryAttentionCommand(deps: FactoryAttentionDeps = defaultAtte
       data.warnings.unshift(...warnings.map((w) => plainText(w)));
       if (o.json) deps.out(JSON.stringify(attentionJson(data), null, 2));
       else {
-        for (const w of data.warnings) deps.err(chalk.yellow(w));
-        deps.out(renderAttention(data, { verbose: o.verbose }));
+        const columns = (deps.columns ?? (() => terminalColumns()))();
+        for (const w of data.warnings) for (const l of warningLines(w, layoutColumns(columns))) deps.err(chalk.yellow(l));
+        deps.out(renderAttention(data, { verbose: o.verbose, columns }));
       }
       process.exitCode = data.readFailed ? EXIT_CHECK_FAILED : data.items.length > 0 && !o.exitZero ? EXIT_AWAITING_HUMAN : 0;
     } catch (error) {

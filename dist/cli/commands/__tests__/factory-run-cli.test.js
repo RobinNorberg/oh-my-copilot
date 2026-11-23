@@ -552,6 +552,14 @@ describe('omg factory run CLI', () => {
             const json = JSON.parse(out.join('\n'));
             expect(json).toMatchObject({ integrityOk: true, ledgerOk: false, next: [] });
             expect(json.gate.next).toBeUndefined();
+            // No record at all (a moved repository, another host, OMC_STATE_DIR): the calm attention wording, not FAILED.
+            out = [];
+            expect(await cli({ ...d, ledgerDir: join(h.ledgerDir, 'another-host') }, 'status', String(ISSUE))).toBe(0);
+            const calm = out.join('\n');
+            expect(calm).toContain('cannot be verified on this host: no engine ledger record');
+            expect(calm).toContain('next steps withheld');
+            expect(calm).not.toContain('FAILED');
+            expect(calm).not.toContain('example.invalid');
         }, ENGINE_FLOW_TIMEOUT_MS);
         it('a state sealed before next existed shows the same steps from the table, and its rerun resumes it', async () => {
             lanes = new FakeLanes(h.root, [commitFile('a.ts'), review('approve')]);

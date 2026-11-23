@@ -318,11 +318,22 @@ describe('ordering and output', () => {
         expect(plainText('\u001b]0;title\u0007ok')).toBe('ok');
     });
     it('plainText turns blank-looking filler and invisible code points into spaces', () => {
-        const blanks = ['\u00AD', '\u034F', '\u061C', '\u115F', '\u1160', '\u17B4', '\u17B5', '\u180B', '\u180E', '\u180F', '\u200B', '\u200F', '\u2060', '\u2065', '\u206F', '\u2800', '\u3164', '\uFE00', '\uFE0F', '\uFEFF', '\uFFA0', '\u{E0000}', '\u{E0001}', '\u{E007F}', '\u{E0100}', '\u{E01EF}'];
+        const blanks = ['­', '͏', '؜', 'ᅟ', 'ᅠ', '឴', '឵', '᠎', '​', '‏', '⁠', '⁥', '⁯', '⠀', 'ㅤ', '﻿', 'ﾠ', '\u{E0000}',
+            // Private use (BMP and the supplementary planes), U+16FE4, unassigned code points and a lone surrogate.
+            '', '', '\u{F0000}', '\u{10FFFD}', '\u{16FE4}', '͸', '﷐', '\u{E0FFF}', '\uD800'];
         for (const b of blanks)
             expect(plainText(`a${b}b`), `U+${b.codePointAt(0).toString(16)}`).toBe('a b');
         // Visible text, letters of other scripts and ordinary emoji stay.
         expect(plainText('räksmörgås 한글 ✅ x')).toBe('räksmörgås 한글 ✅ x');
+    });
+    it('plainText deletes glyph selectors (variation selectors, Mongolian FVS, tags) instead of adding spaces', () => {
+        for (const s of ['᠋', '᠌', '᠍', '᠏', '︀', '️', '\u{E0001}', '\u{E0020}', '\u{E007F}', '\u{E0100}', '\u{E01EF}']) {
+            expect(plainText(`a${s}b`), `U+${s.codePointAt(0).toString(16)}`).toBe('ab');
+        }
+        // VS16 emoji, a keycap and a tag-sequence flag keep their look.
+        expect(plainText('ok ❤️')).toBe('ok ❤');
+        expect(plainText('1️⃣')).toBe('1⃣');
+        expect(plainText('\u{1F3F4}\u{E0067}\u{E0062}\u{E0065}\u{E006E}\u{E0067}\u{E007F} x')).toBe('\u{1F3F4} x');
     });
     it('checks each id once, reading items only through forge.tracker', () => {
         const forge = fakeForge({ items: [item(1), item(2)] });

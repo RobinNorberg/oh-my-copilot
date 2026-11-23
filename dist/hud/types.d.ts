@@ -9,6 +9,7 @@ import type { SessionSummaryState } from './elements/session-summary.js';
 import type { PayloadEstimate } from './payload-estimate.js';
 import type { TeamStateForHud } from './elements/team.js';
 import type { UltragoalStateForHud } from './elements/ultragoal.js';
+import type { FactoryStateForHud } from './elements/factory.js';
 import type { MissionBoardConfig, MissionBoardState } from './mission-board.js';
 import type { AgentKind, IncomingAgentMessage } from './agent-kind.js';
 export type { AutopilotStateForHud, ApiKeySource, SessionSummaryState };
@@ -465,6 +466,8 @@ export interface HudRenderContext {
     team?: TeamStateForHud | null;
     /** Open ultragoal plan (read only when the `ultragoal` element is on) */
     ultragoal?: UltragoalStateForHud | null;
+    /** Software factory attention summary (read only when the `factory` element is on) */
+    factory?: FactoryStateForHud | null;
 }
 export type HudPreset = 'minimal' | 'focused' | 'full' | 'opencode' | 'dense';
 /**
@@ -544,6 +547,7 @@ export interface HudElementConfig {
     copilotMode?: boolean;
     team?: boolean;
     ultragoal?: boolean;
+    factory?: boolean;
     prdStory: boolean;
     activeSkills: boolean;
     lastSkill: boolean;
