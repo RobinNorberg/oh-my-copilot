@@ -77,6 +77,8 @@ import { FactoryForgeUnavailableError } from './run/forge-roots.js';
 import { defaultLedgerDir } from './run/ledger.js';
 import { tamperHoldMessage } from './run/tamper-quarantine.js';
 import { visibleLine } from '../forge/review-feedback.js';
+import { reminderCommand } from './attention/actions.js';
+import { resumeCommand } from './run/engine.js';
 import { resolveTeamConfig, TeamConfigError } from './team/context.js';
 import { staleGateReminders } from './team/reminders.js';
 import { AUTO_START_SCAN_WAIT_MS, acquireFactoryRepoOwnerForRun, acquireRunSlot, defaultOwnerDeps, heldSlots, EXIT_BUSY, FactoryBusyError, factoryRepoOwnerPath, ownerHolding, runLabel, TERMINAL_FACTORY_PHASES, tryScanLock, verifyFactoryIntegrity, } from './run/state.js';
@@ -432,10 +434,8 @@ export function defaultPollBudget(layers, env = process.env) {
     };
 }
 const message = (error) => plainText(error instanceof Error ? error.message : String(error));
-const resumeHint = (key) => (typeof key === 'number' ? `omg factory run ${key}` : `omg factory heal approve ${key.slice('heal-'.length)}`);
-const cancelHint = (key) => (typeof key === 'number' ? `omg factory run cancel ${key}` : `omg factory heal cancel ${key.slice('heal-'.length)}`);
-/** A resume re-parks a run whose branch rewrote decisions.md, so its reminder offers the cancel instead. */
-const reminderHint = (key, gate) => (gate === 'decisions-rewritten' ? cancelHint(key) : resumeHint(key));
+/** A resume re-parks a run whose branch rewrote decisions.md, so its reminder offers the cancel instead (the attention table's commands). */
+const reminderHint = (key, gate) => reminderCommand(key, gate);
 /**
  * One tick. Steps 1-4 never spawn and never write to the tracker or forge; a
  * guard refusal propagates (a bug, not an unreadable item). Step 5 is the
@@ -572,7 +572,7 @@ export async function pollTick(ctx) {
             else {
                 row.state = view.state;
                 if (view.state !== 'OPEN')
-                    row.hint = resumeHint(key);
+                    row.hint = resumeCommand(key);
                 else if (forge.reviews.reviewFeedback) {
                     const feedback = step(`PR ${pr} review feedback`, () => forge.reviews.reviewFeedback(pr, view.headRefOid));
                     if (feedback) {
