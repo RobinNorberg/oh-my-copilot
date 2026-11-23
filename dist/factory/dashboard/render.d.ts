@@ -8,7 +8,7 @@
  * reasons, lane ids and bench rows are untrusted, also inside attributes
  * and SVG text.
  */
-import type { DashboardDataV2 } from './collect-v2.js';
+import { type DashboardDataV2 } from './collect-v2.js';
 export declare const esc: (v: unknown) => string;
 export declare function fmtDuration(msValue: number): string;
 /** At most this many runs open in the Runs table; the rest sit behind one <details>. */

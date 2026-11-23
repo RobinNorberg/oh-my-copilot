@@ -21,17 +21,32 @@
  *
  * Updates: fs.watch on the state, heal, slot and ledger dirs (flat dirs,
  * non-recursive) plus a poll of a cheap signature (names, sizes, mtimes).
- * A change schedules one recompute at most `debounceMs` later and at most
- * one per `minIntervalMs`, so a writer that rewrites files in a loop cannot
- * pin a CPU. The summary's rev is a hash of its time-independent part; when
+ * A change schedules a recompute of that view `debounceMs` later, at most
+ * one per view per interval: `minIntervalMs`, or BACKOFF_FACTOR times the
+ * view's last compute time when that is longer (up to MAX_BACKOFF_MS). Views
+ * are recomputed one per event-loop turn (setImmediate between them), so a
+ * slow repository cannot hold a shared pass and requests are answered between
+ * views; while a backed-off view waits, the previous summary is served with
+ * `stale: true`. A writer that rewrites files in a loop cannot pin a CPU. The summary's rev is a hash of its time-independent part; when
  * it changes, every event stream gets `event: changed`.
+ *
+ * `--all-repos` (options.repos): one view per repository this host's engine
+ * ledger knows (run/ledger-roots.ts), the list re-read every RESCAN_MS. A
+ * repository is selected by the id the server issued for it (its 16-hex
+ * ledger id), checked against the server's own list: `api/v1/repos`,
+ * `api/v1/repo/<id>/summary`, `api/v1/repo/<id>/run/<key>`; an unknown or
+ * malformed id is a 404 and no path ever comes from a request. Every view's
+ * recompute is debounced and backed off per view, and fs.watch
+ * handles are capped across views (MAX_WATCHERS; the rest are polled). An
+ * event names the view: `data: <id> <rev>`, or `data: repos <rev>` for the
+ * list. Full roots are only ever JSON text values.
  */
 import { createHash, randomBytes, timingSafeEqual } from 'crypto';
 import { createServer } from 'http';
 import { readdirSync, statSync, watch } from 'fs';
 import { basename, join } from 'path';
 import { plainText } from '../check/score.js';
-import { commandText } from '../attention/actions.js';
+import { commandText, rootWord } from '../attention/actions.js';
 import { readRun } from '../attention/collect.js';
 import { GATE_GROUPS, gateSteps, statusArgv } from '../run/gate-next.js';
 import { FACTORY_PHASES, runLabel } from '../run/state.js';
@@ -46,11 +61,25 @@ export const MAX_STREAMS = 16;
 export const POLL_MS = 5_000;
 export const DEBOUNCE_MS = 250;
 export const MIN_RECOMPUTE_INTERVAL_MS = 1_000;
+/** A view is not recomputed again before this many times its last compute time has passed... */
+export const BACKOFF_FACTOR = 10;
+/** ...capped here, so a slow repository is still refreshed every few minutes. */
+export const MAX_BACKOFF_MS = 300_000;
+/** A view backed off this long or longer (its compute took 500 ms or more) is marked stale while it waits; a shorter wait is not worth an event. */
+export const STALE_BACKOFF_MS = 5_000;
 export const PING_MS = 15_000;
 /** A recompute this often even without a file change: time-based notes ("possibly hung") appear. */
 export const TICK_MS = 60_000;
 export const FORGE_REFRESH_MS = 5 * 60_000;
 export const GATE_DETAIL_MAX = 20_000;
+/** --all-repos: fs.watch handles across every repository (the rest are polled only). */
+export const MAX_WATCHERS = 64;
+/** --all-repos: the repository set is re-read this often. */
+export const RESCAN_MS = 60_000;
+/** --all-repos: at most this many repositories are served. */
+export const MAX_REPOS = 200;
+/** A repository id the server issues: the ledger id (16 hex). */
+export const SERVED_REPO_ID = /^[0-9a-f]{16}$/;
 const HISTORY_MAX = 100;
 const RUN_KEY = /^(?:([1-9][0-9]{0,8})|(heal-[0-9a-f]{8}))$/;
 /** Constant-time token comparison; a different length still costs one compare and is false. */
@@ -91,7 +120,6 @@ const untrustedTrust = (t) => (typeof t === 'string' && Object.prototype.hasOwnP
 /** A gate name the shared gate table knows, in the engine's name shape; null for anything else. */
 const knownGate = (g) => (typeof g === 'string' && SAFE_NAME.test(g) && gateSteps(g).known ? g : null);
 const knownPhase = (p) => (typeof p === 'string' && FACTORY_PHASES.includes(p) ? p : null);
-const finiteOrNull = (n) => (typeof n === 'number' && Number.isFinite(n) ? n : null);
 /** A run label (`#12`, `heal-0123abcd`) back to its key, re-validated; null for anything else. */
 export function keyOfLabel(label) {
     if (typeof label !== 'string')
@@ -119,7 +147,7 @@ export function servedItem(i, platform = process.platform) {
     return {
         key: key === null ? '' : runLabel(key),
         group: GATE_GROUPS.includes(i.group) ? i.group : 'inspect',
-        gate: knownGate(i.gate), phase: knownPhase(i.phase), ageMs: finiteOrNull(i.ageMs),
+        gate: knownGate(i.gate), phase: knownPhase(i.phase), ageMs: null,
         credits: null, cap: null, pr: null, head: null, title: '',
         why: UNTRUSTED_WHY[trust],
         next: offered && status ? [{ label: 'read the run state', argv: status, billed: false, ...commandText(status, platform) }] : [],
@@ -148,9 +176,23 @@ export function servedWarnings(raw, items, runs) {
         out.push(`${raw.length} warning(s): the terminal running the server prints them`);
     return out;
 }
+/**
+ * Served attention rows in group order; inside a group the untrusted rows
+ * come first, ordered by run key (never by a timestamp from their state),
+ * then the trusted rows in the collector's order (oldest wait first).
+ */
+export function orderServedItems(items) {
+    const group = (i) => GATE_GROUPS.indexOf(i.group);
+    const keyNum = (i) => { const k = keyOfLabel(i.key); return typeof k === 'number' ? k : Number.MAX_SAFE_INTEGER; };
+    return items.map((i, n) => ({ i, n })).sort((a, b) => {
+        const ta = a.i.trust === 'ok' ? 1 : 0;
+        const tb = b.i.trust === 'ok' ? 1 : 0;
+        return group(a.i) - group(b.i) || ta - tb || (ta === 0 ? keyNum(a.i) - keyNum(b.i) || a.i.key.localeCompare(b.i.key) : a.n - b.n);
+    }).map((x) => x.i);
+}
 export function servedSummary(d, rev, platform = process.platform) {
     // Defence in depth: whatever the collector passes, a row of a state that is not trusted carries no text or number from that state.
-    const items = d.attention.items.map((i) => servedItem(i, platform));
+    const items = orderServedItems(d.attention.items.map((i) => servedItem(i, platform)));
     const runs = d.runs.map(servedRun);
     const untrusted = new Set(runs.filter((r) => !r.verified).map((r) => r.key));
     const known = new Set(runs.map((r) => r.key));
@@ -210,11 +252,33 @@ export function dirSignature(dir) {
 }
 /** An event stream whose client does not read holds at most this much in the server's buffer before it is dropped. */
 export const STREAM_BUFFER_MAX = 64 * 1024;
+/** An event stream whose buffer has not drained to 0 by this many consecutive pings is dropped (a client that reads nothing). */
+export const STREAM_STALL_PINGS = 3;
 /**
- * One write to an event stream. A client that stops reading (write returns
- * false, or the buffer passes STREAM_BUFFER_MAX) is destroyed and leaves the
- * set: the server never buffers without bound for it. False: dropped.
+ * At each ping: a stream whose buffer is not empty again since the last ping
+ * (it read nothing) counts one stall; at `limit` consecutive stalls it is
+ * destroyed and leaves the set. Returns the streams dropped.
  */
+export function dropStalledStreams(streams, stalls, limit) {
+    const dropped = [];
+    for (const s of streams) {
+        const n = s.writableLength > 0 ? (stalls.get(s) ?? 0) + 1 : 0;
+        if (n >= limit) {
+            streams.delete(s);
+            stalls.delete(s);
+            s.destroy();
+            dropped.push(s);
+        }
+        else if (n > 0)
+            stalls.set(s, n);
+        else
+            stalls.delete(s);
+    }
+    for (const s of stalls.keys())
+        if (!streams.has(s))
+            stalls.delete(s);
+    return dropped;
+}
 export function writeEvent(s, chunk, streams) {
     const ok = s.write(chunk);
     if (ok && s.writableLength <= STREAM_BUFFER_MAX)
@@ -240,104 +304,258 @@ export async function startDashboardServer(o) {
     const debounceMs = o.debounceMs ?? DEBOUNCE_MS;
     const minIntervalMs = o.minIntervalMs ?? MIN_RECOMPUTE_INTERVAL_MS;
     const headersTimeout = o.headersTimeoutMs ?? 5_000;
-    // --- the summary and its rev -------------------------------------------------
+    const multi = o.repos ?? null;
+    if (!multi && (typeof o.root !== 'string' || !o.collect))
+        throw new Error('startDashboardServer: a root and a collector, or a repository list');
+    const maxWatchers = multi?.maxWatchers ?? MAX_WATCHERS;
+    // --- the views: one per repository (one in the single-repository mode) ----------------------
     let forgeBusy = false;
-    if (o.forgeRefresh)
+    if (!multi && o.forgeRefresh)
         await o.forgeRefresh().catch((e) => log(`--forge: ${text(e instanceof Error ? e.message : e)}`));
-    let summary;
-    let body;
     let recomputes = 0;
+    const views = new Map();
     // The collector's raw warnings (error text, local paths) go to the terminal only, once per change; the page gets fixed lines.
-    let loggedWarnings = '';
-    const compute = () => {
-        const d = o.collect(clock());
+    const loggedWarnings = new Map();
+    const compute = (v) => {
+        const d = v.source.collect(clock());
         recomputes++;
         const raw = d.warnings.map((w) => text(w, 500));
-        if (raw.join('\n') !== loggedWarnings) {
-            loggedWarnings = raw.join('\n');
+        if (raw.join('\n') !== (loggedWarnings.get(v.source.id) ?? '')) {
+            loggedWarnings.set(v.source.id, raw.join('\n'));
             for (const w of raw)
-                log(`dashboard warning: ${w}`);
+                log(`dashboard warning: ${multi ? `repository ${v.source.id}: ` : ''}${w}`);
         }
         // The rev is of what is served, so a change only in what an untrusted state says sends no event.
         const served = servedSummary(d, '', platform);
         return { ...served, rev: summaryRev({ ...served, rev: undefined }) };
     };
-    summary = compute();
-    body = jsonText(summary);
+    const addView = (source) => {
+        let summary;
+        const t0 = Date.now();
+        try {
+            summary = compute({ source });
+        }
+        catch (error) {
+            log(`dashboard: ${multi ? `repository ${source.id}: ` : ''}the state could not be read: ${text(error instanceof Error ? error.message : error)}`);
+            if (!multi)
+                throw error;
+            return null;
+        }
+        const v = { source, summary, body: jsonText(summary), sig: '', watchers: new Map(), dirtyAt: null, nextAt: 0, costMs: 0 };
+        v.sig = signature(v);
+        backOff(v, Date.now() - t0);
+        views.set(source.id, v);
+        return v;
+    };
+    const single = multi ? null : { id: '', root: o.root, collect: o.collect, watchDirs: o.watchDirs ?? [], pollDirs: o.pollDirs ?? [] };
+    if (single)
+        addView(single);
+    let reposSummary = null;
+    let reposBody = '';
+    let skipped = 0;
+    let listWarnings = [];
+    const rebuildRepos = () => {
+        const next = reposSummaryOf([...views.values()], skipped, listWarnings, clock(), platform);
+        const changed = reposSummary === null || next.rev !== reposSummary.rev;
+        reposSummary = next;
+        reposBody = jsonText(next);
+        return changed;
+    };
+    const applyList = (list) => {
+        const wanted = new Map(list.repos.slice(0, MAX_REPOS).map((r) => [r.id, r]));
+        let changed = false;
+        for (const [id, v] of views) {
+            // A repository that disappeared (or whose root changed) is dropped.
+            const w = wanted.get(id);
+            if (!w || w.root !== v.source.root) {
+                closeWatchers(v);
+                views.delete(id);
+                changed = true;
+            }
+        }
+        for (const [id, r] of wanted) {
+            if (views.has(id) || !SERVED_REPO_ID.test(id))
+                continue;
+            if (addView(r))
+                changed = true;
+        }
+        skipped = list.skipped;
+        listWarnings = list.warnings.map((w) => text(w, 500));
+        return changed;
+    };
+    if (multi) {
+        applyList(await multi.list());
+        rebuildRepos();
+    }
     const streams = new Set();
     const broadcast = (chunk) => {
         for (const s of streams)
             writeEvent(s, chunk, streams);
     };
-    const recompute = () => {
+    const setBody = (v, summary) => {
+        v.summary = summary;
+        v.body = jsonText(summary);
+    };
+    const recompute = (v) => {
         let next;
         try {
-            next = compute();
+            next = compute(v);
         }
         catch (error) {
-            log(`dashboard: the state could not be read: ${text(error instanceof Error ? error.message : error)}`);
+            log(`dashboard: ${multi ? `repository ${v.source.id}: ` : ''}the state could not be read: ${text(error instanceof Error ? error.message : error)}`);
+            if (v.summary.stale)
+                markStale(v, false);
             return;
         }
-        if (next.rev === summary.rev)
+        if (next.rev === v.summary.rev)
             return;
-        summary = next;
-        body = jsonText(summary);
-        broadcast(`event: changed\ndata: ${summary.rev}\n\n`);
+        setBody(v, next);
+        // The single-repository stream names the rev only, as before; with --all-repos it names the repository id first.
+        broadcast(`event: changed
+data: ${multi ? `${v.source.id} ` : ''}${next.rev}
+
+`);
     };
-    // At most one recompute per minIntervalMs, the first `debounceMs` after a change; later changes in the window join it.
-    let timer = null;
-    let lastRun = 0;
-    let closed = false;
-    const schedule = () => {
-        if (timer || closed)
+    /** The served summary with or without the stale marker; its rev changes with it, so the page re-reads it. */
+    const markStale = (v, stale) => {
+        if (Boolean(v.summary.stale) === stale)
             return;
-        const delay = Math.max(debounceMs, lastRun + minIntervalMs - Date.now());
+        const { rev: _rev, stale: _stale, ...rest } = v.summary;
+        const next = stale ? { ...rest, stale: true } : rest;
+        setBody(v, { ...next, rev: summaryRev(next) });
+        broadcast(`event: changed
+data: ${multi ? `${v.source.id} ` : ''}${v.summary.rev}
+
+`);
+    };
+    const announceRepos = () => {
+        if (multi && rebuildRepos())
+            broadcast(`event: changed
+data: repos ${reposSummary.rev}
+
+`);
+    };
+    // Each view: one recompute `debounceMs` after a change, then not again before its back-off ends.
+    // The views are computed one per event-loop turn, the most overdue first.
+    let timer = null;
+    let timerAt = Number.POSITIVE_INFINITY;
+    let pumping = false;
+    let closed = false;
+    function backOff(v, costMs) {
+        v.costMs = costMs;
+        v.nextAt = Date.now() + Math.min(MAX_BACKOFF_MS, Math.max(minIntervalMs, costMs * BACKOFF_FACTOR));
+    }
+    const dueAt = (v) => Math.max((v.dirtyAt ?? 0) + debounceMs, v.nextAt);
+    const arm = () => {
+        if (closed || pumping)
+            return;
+        let at = Number.POSITIVE_INFINITY;
+        for (const v of views.values())
+            if (v.dirtyAt !== null)
+                at = Math.min(at, dueAt(v));
+        if (at === Number.POSITIVE_INFINITY || (timer && timerAt <= at))
+            return;
+        if (timer)
+            clearTimeout(timer);
+        timerAt = at;
         timer = setTimeout(() => {
             timer = null;
-            lastRun = Date.now();
-            recompute();
-        }, delay);
+            timerAt = Number.POSITIVE_INFINITY;
+            pump();
+        }, Math.max(0, at - Date.now()));
         timer.unref();
     };
-    // --- watching ----------------------------------------------------------------------
-    const watchers = new Map();
-    const ensureWatchers = () => {
-        for (const dir of o.watchDirs) {
-            if (watchers.has(dir))
+    const pump = () => {
+        if (closed)
+            return;
+        const now = Date.now();
+        let pick = null;
+        for (const v of views.values())
+            if (v.dirtyAt !== null && dueAt(v) <= now && (!pick || dueAt(v) < dueAt(pick)))
+                pick = v;
+        if (!pick) {
+            pumping = false;
+            announceRepos();
+            arm();
+            return;
+        }
+        pumping = true;
+        pick.dirtyAt = null;
+        const t0 = Date.now();
+        recompute(pick);
+        backOff(pick, Date.now() - t0);
+        setImmediate(pump);
+    };
+    const schedule = (id) => {
+        if (closed)
+            return;
+        const now = Date.now();
+        for (const v of id === null ? [...views.values()] : [views.get(id)]) {
+            if (!v || v.dirtyAt !== null)
                 continue;
-            try {
-                const w = watch(dir, { persistent: false }, () => schedule());
-                w.on('error', () => {
-                    w.close();
-                    watchers.delete(dir);
-                    schedule();
-                });
-                watchers.set(dir, w);
-            }
-            catch {
-                // Not there yet (no factory run): the poll picks it up when it appears.
+            v.dirtyAt = now;
+            // Backed off (slow to compute): the previous summary is served, marked, until the recompute.
+            if (v.costMs * BACKOFF_FACTOR >= STALE_BACKOFF_MS && v.nextAt > now + debounceMs)
+                markStale(v, true);
+        }
+        arm();
+    };
+    /** Each view's last compute time and back-off (tests and timings). */
+    const costs = () => Object.fromEntries([...views.values()].map((v) => [v.source.id, { costMs: v.costMs, backoffMs: Math.max(0, v.nextAt - Date.now()), stale: Boolean(v.summary.stale) }]));
+    // --- watching: fs.watch up to a global cap of watchers, a poll of every view's dirs ------------------
+    let watcherCount = 0;
+    function closeWatchers(v) {
+        for (const w of v.watchers.values())
+            w.close();
+        watcherCount -= v.watchers.size;
+        v.watchers.clear();
+    }
+    const ensureWatchers = () => {
+        for (const v of views.values()) {
+            for (const dir of v.source.watchDirs) {
+                if (v.watchers.has(dir) || watcherCount >= maxWatchers)
+                    continue;
+                try {
+                    const id = v.source.id;
+                    const w = watch(dir, { persistent: false }, () => schedule(id));
+                    w.on('error', () => {
+                        w.close();
+                        if (v.watchers.delete(dir))
+                            watcherCount--;
+                        schedule(id);
+                    });
+                    v.watchers.set(dir, w);
+                    watcherCount++;
+                }
+                catch {
+                    // Not there yet (no factory run): the poll picks it up when it appears.
+                }
             }
         }
     };
     ensureWatchers();
-    const allDirs = [...o.watchDirs, ...(o.pollDirs ?? [])];
-    const signature = () => allDirs.map(dirSignature).join('\n');
-    let sig = signature();
     const poll = setInterval(() => {
         ensureWatchers();
-        const s = signature();
-        if (s !== sig) {
-            sig = s;
-            schedule();
+        for (const v of views.values()) {
+            const s = signature(v);
+            if (s !== v.sig) {
+                v.sig = s;
+                schedule(v.source.id);
+            }
         }
     }, o.pollMs ?? POLL_MS);
     poll.unref();
-    const tick = setInterval(schedule, o.tickMs ?? TICK_MS);
+    const tick = setInterval(() => schedule(null), o.tickMs ?? TICK_MS);
     tick.unref();
-    const ping = setInterval(() => broadcast(': ping\n\n'), o.pingMs ?? PING_MS);
+    // A stream that has not read anything since the last pings is dropped, before its buffer could reach STREAM_BUFFER_MAX.
+    const stalls = new Map();
+    const ping = setInterval(() => {
+        dropStalledStreams(streams, stalls, o.stallPings ?? STREAM_STALL_PINGS);
+        broadcast(': ping\n\n');
+    }, o.pingMs ?? PING_MS);
     ping.unref();
     let forgeTimer = null;
-    if (o.forgeRefresh) {
+    if (!multi && o.forgeRefresh) {
         const refresh = o.forgeRefresh;
         forgeTimer = setInterval(() => {
             if (forgeBusy)
@@ -345,10 +563,30 @@ export async function startDashboardServer(o) {
             forgeBusy = true;
             refresh().catch((e) => log(`--forge: ${text(e instanceof Error ? e.message : e)}`)).finally(() => {
                 forgeBusy = false;
-                schedule();
+                schedule(null);
             });
         }, o.forgeRefreshMs ?? FORGE_REFRESH_MS);
         forgeTimer.unref();
+    }
+    // --all-repos: the repository set is re-read on a slow timer (new repositories appear, gone ones are dropped).
+    let rescanTimer = null;
+    let rescanning = false;
+    if (multi) {
+        rescanTimer = setInterval(() => {
+            if (rescanning || closed)
+                return;
+            rescanning = true;
+            Promise.resolve().then(() => multi.list()).then((list) => {
+                if (closed)
+                    return;
+                if (applyList(list))
+                    ensureWatchers();
+                announceRepos();
+            }).catch((e) => log(`dashboard: the repository list could not be re-read: ${text(e instanceof Error ? e.message : e)}`)).finally(() => {
+                rescanning = false;
+            });
+        }, multi.rescanMs ?? RESCAN_MS);
+        rescanTimer.unref();
     }
     // --- HTTP ------------------------------------------------------------------------------
     let port = 0;
@@ -368,6 +606,13 @@ export async function startDashboardServer(o) {
     const refuse = (req, res, status, headers = {}) => {
         send(req, res, status, { Connection: 'close', ...headers });
     };
+    const sendJson = (req, res, rev, payload) => {
+        const etag = `"${rev}"`;
+        if (req.headers['if-none-match'] === etag)
+            return send(req, res, 304, { ETag: etag });
+        return send(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', ETag: etag }, payload);
+    };
+    const revQuery = (query) => query === null || /^rev=[0-9a-f]{0,64}$/.test(query);
     const handle = (req, res) => {
         const h = req.headers;
         if (typeof h.host !== 'string' || !allowedHosts().includes(h.host))
@@ -395,21 +640,42 @@ export async function startDashboardServer(o) {
         const sameSite = site === undefined || site === 'same-origin' || site === 'none';
         if (path === '' && query === null) {
             const nonce = newNonce();
-            return send(req, res, 200, { 'Content-Type': 'text/html; charset=utf-8' }, dashboardPageHtml(nonce), nonce);
+            return send(req, res, 200, { 'Content-Type': 'text/html; charset=utf-8' }, dashboardPageHtml(nonce, { allRepos: multi !== null }), nonce);
         }
-        if (path === 'api/v1/summary' && (query === null || /^rev=[0-9a-f]{0,64}$/.test(query))) {
+        if (!multi && path === 'api/v1/summary' && revQuery(query)) {
             if (!sameSite)
                 return refuse(req, res, 403);
-            const etag = `"${summary.rev}"`;
-            if (h['if-none-match'] === etag)
-                return send(req, res, 304, { ETag: etag });
-            return send(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', ETag: etag }, body);
+            const v = views.get('');
+            return sendJson(req, res, v.summary.rev, v.body);
         }
-        if (path.startsWith('api/v1/run/') && query === null) {
+        if (!multi && path.startsWith('api/v1/run/') && query === null) {
             if (!sameSite)
                 return refuse(req, res, 403);
             const key = parseRunKey(path.slice('api/v1/run/'.length));
-            const detail = key === null ? null : runDetail(o.root, o.ledgerDir, summary, key);
+            const detail = key === null ? null : runDetail(o.root, o.ledgerDir, views.get('').summary, key);
+            if (!detail)
+                return refuse(req, res, 404);
+            return send(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8' }, jsonText(detail));
+        }
+        if (multi && path === 'api/v1/repos' && revQuery(query)) {
+            if (!sameSite)
+                return refuse(req, res, 403);
+            return sendJson(req, res, reposSummary.rev, reposBody);
+        }
+        if (multi && path.startsWith('api/v1/repo/')) {
+            if (!sameSite)
+                return refuse(req, res, 403);
+            // `api/v1/repo/<id>/summary` or `api/v1/repo/<id>/run/<key>`: the id must be one this server issued.
+            const m = /^api\/v1\/repo\/([0-9a-f]{16})\/(summary|run\/([^/]*))$/.exec(path);
+            const v = m ? views.get(m[1]) : undefined;
+            if (!m || !v)
+                return refuse(req, res, 404);
+            if (m[2] === 'summary')
+                return revQuery(query) ? sendJson(req, res, v.summary.rev, v.body) : refuse(req, res, 404);
+            if (query !== null)
+                return refuse(req, res, 404);
+            const key = parseRunKey(m[3]);
+            const detail = key === null ? null : runDetail(v.source.root, o.ledgerDir, v.summary, key);
             if (!detail)
                 return refuse(req, res, 404);
             return send(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8' }, jsonText(detail));
@@ -428,7 +694,7 @@ export async function startDashboardServer(o) {
             req.socket.setTimeout(0);
             streams.add(res);
             res.on('close', () => streams.delete(res));
-            writeEvent(res, `retry: 3000\n\nevent: changed\ndata: ${summary.rev}\n\n`, streams);
+            writeEvent(res, `retry: 3000\n\nevent: changed\ndata: ${multi ? `repos ${reposSummary.rev}` : views.get('').summary.rev}\n\n`, streams);
             return;
         }
         return refuse(req, res, 404);
@@ -455,11 +721,12 @@ export async function startDashboardServer(o) {
         clearInterval(ping);
         if (forgeTimer)
             clearInterval(forgeTimer);
+        if (rescanTimer)
+            clearInterval(rescanTimer);
         if (timer)
             clearTimeout(timer);
-        for (const w of watchers.values())
-            w.close();
-        watchers.clear();
+        for (const v of views.values())
+            closeWatchers(v);
     };
     try {
         await new Promise((resolveListen, rejectListen) => {
@@ -486,8 +753,11 @@ export async function startDashboardServer(o) {
         url: `http://${DASHBOARD_HOST}:${port}/t/${token}/`,
         port,
         server,
-        rev: () => summary.rev,
+        rev: () => (multi ? reposSummary.rev : views.get('').summary.rev),
         recomputes: () => recomputes,
+        costs,
+        watchers: () => watcherCount,
+        repoIds: () => [...views.keys()],
         close: () => {
             closing ??= new Promise((done) => {
                 stopTimers();
@@ -499,6 +769,35 @@ export async function startDashboardServer(o) {
             });
             return closing;
         },
+    };
+}
+/** Each watched and polled dir's signature, joined. */
+function signature(v) {
+    return [...v.source.watchDirs, ...v.source.pollDirs].map(dirSignature).join('\n');
+}
+const GROUP_RANK = new Map(['inspect', 'broken', 'decide', 'merge', 'fix', 'limits'].map((g, i) => [g, i]));
+/** `api/v1/repos`: the repositories, most urgent first (then the oldest wait), each with its attention rows. */
+export function reposSummaryOf(views, skipped, warnings, now, platform = process.platform) {
+    const rows = views.map((v) => {
+        const s = v.summary;
+        const items = s.attention.items;
+        const last = s.runs.reduce((m, r) => (typeof r.updatedAt === 'string' && (m === null || r.updatedAt > m) ? r.updatedAt : m), null);
+        const rank = items.length ? Math.min(...items.map((i) => GROUP_RANK.get(i.group) ?? 99)) : 100;
+        const oldest = Math.max(0, ...items.filter((i) => (GROUP_RANK.get(i.group) ?? 99) === rank).map((i) => i.ageMs ?? 0));
+        return {
+            id: v.source.id, name: text(basename(v.source.root), 120) || text(v.source.root, 120), root: text(v.source.root, 1_000), rootWord: rootWord(v.source.root, platform),
+            forge: s.attention.forge, byGroup: s.attention.summary.byGroup, items: items.length, engines: s.live.engines, runs: s.runs.length, lastChange: last, attention: items, rank, oldest,
+        };
+    });
+    rows.sort((a, b) => a.rank - b.rank || b.oldest - a.oldest || a.root.localeCompare(b.root));
+    const repos = rows.map(({ rank: _r, oldest: _o, ...rest }) => rest);
+    const byGroup = {};
+    for (const g of GROUP_RANK.keys())
+        byGroup[g] = repos.reduce((n, r) => n + (r.byGroup[g] ?? 0), 0);
+    const stable = { repos: views.map((v) => [v.source.id, v.summary.rev]).sort(), skipped, warnings };
+    return {
+        schemaVersion: 1, allRepos: true, rev: createHash('sha256').update(JSON.stringify(stable)).digest('hex').slice(0, 32), generatedAt: new Date(now).toISOString(), repos,
+        summary: { byGroup, repos: repos.length, items: repos.reduce((n, r) => n + r.items, 0), engines: repos.reduce((n, r) => n + r.engines, 0), skipped }, warnings,
     };
 }
 /**

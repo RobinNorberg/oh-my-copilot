@@ -198,6 +198,51 @@ describe('dashboard page script: DOM builders', () => {
         fd.tickAges(c.ages, Date.parse('2026-11-20T10:10:00.000Z'), Date.parse('2026-11-20T10:11:00.000Z'));
         expect(els.some((e) => e.textContent === 'waiting 2m 0s')).toBe(true);
     });
+    it('--all-repos: repositories and their rows as text only; ids validated; the root never in an attribute; "in <root>:" before omg commands', () => {
+        const items = data().attention.items;
+        const list = {
+            schemaVersion: 1, allRepos: true, rev: 'x', generatedAt: '2026-11-20T10:10:00.000Z', summary: { repos: 3, skipped: 2, items: 2, engines: 0, byGroup: {} },
+            repos: [
+                { id: 'aaaaaaaaaaaaaaaa', name: HOSTILE, root: `C:/x/${HOSTILE}`, rootWord: null, forge: 'github', byGroup: { merge: 1, inspect: 1 }, items: 2, engines: 0, runs: 2, lastChange: '2026-11-20T10:05:00.000Z', attention: items },
+                { id: 'bbbbbbbbbbbbbbbb', name: 'beta', root: '/r/beta', rootWord: '/r/beta', forge: null, byGroup: {}, items: 0, engines: 1, runs: 0, lastChange: null, attention: [] },
+                { id: '../../x', name: 'evil', root: '/evil', rootWord: '/evil', byGroup: {}, items: 0, engines: 0, runs: 0, lastChange: null, attention: [] },
+            ],
+            warnings: [],
+        };
+        expect(fd.repoId('aaaaaaaaaaaaaaaa')).toBe('aaaaaaaaaaaaaaaa');
+        for (const bad of ['../../x', 'AAAAAAAAAAAAAAAA', 'aaaaaaaaaaaaaaa', 'aaaaaaaaaaaaaaaa/', ''])
+            expect(fd.repoId(bad)).toBeNull();
+        const picked = [];
+        const c = { ...ctx({ on: { repo: (id) => picked.push(id) } }), ui: { ...ui(), repo: null } };
+        const table = fd.buildRepos(doc, list, c);
+        const tels = all(table);
+        // The id that is not one the server issues is not shown at all.
+        expect(texts(table).join('')).not.toContain('evil');
+        expect(texts(table).join('')).toContain(HOSTILE);
+        for (const e of tels)
+            for (const [k, v] of e.attrs) {
+                expect(fd.ATTRS).toContain(k);
+                expect(v).not.toContain('C:/x');
+                expect(v).not.toContain('/r/beta');
+            }
+        const buttons = tels.filter((e) => e.tagName === 'button');
+        expect(buttons.map((b) => b.getAttribute('data-k'))).toEqual(['repo:all', 'repo:aaaaaaaaaaaaaaaa', 'repo:bbbbbbbbbbbbbbbb']);
+        buttons[2].click();
+        buttons[0].click();
+        expect(picked).toEqual(['bbbbbbbbbbbbbbbb', null]);
+        const att = fd.buildAllAttention(doc, list, c);
+        const aels = all(att);
+        const t = texts(att).join('');
+        expect(t).toContain('Run these in that repository\'s root');
+        expect(t).not.toContain('SECRET');
+        // Copy keys carry the repository id; nothing from data becomes an element id.
+        const keys = aels.filter((e) => e.tagName === 'button').map((b) => b.getAttribute('data-k'));
+        expect(keys.every((k) => String(k).startsWith('copy:aaaaaaaaaaaaaaaa:'))).toBe(true);
+        expect(aels.some((e) => e.attrs.has('id'))).toBe(false);
+        const withWord = fd.buildAllAttention(doc, { ...list, repos: [{ ...list.repos[0], rootWord: '"C:/x y"' }] }, c);
+        expect(all(withWord).filter((e) => e.tagName === 'code').map((e) => e.textContent)).toContain('"C:/x y"');
+        expect(texts(fd.buildAllAttention(doc, { ...list, repos: [list.repos[1]] }, c)).join('')).toBe('Nothing needs you in any repository.');
+    });
     it('runs: sort headers are buttons with aria-sort, an unverified row shows only the marker, detail opens with gate output in a <pre>', () => {
         const toggled = [];
         const sorted = [];
@@ -270,7 +315,11 @@ describe('dashboard page script: source lint', () => {
         expect(hBody).toContain('el.setAttribute(name');
         expect(hBody).toContain("FD.ATTRS.indexOf(name) < 0) throw");
         // Its fetch URLs are fixed strings and the validated run key.
-        expect([...CLIENT_JS.matchAll(/fetchJson\(([^)]*)\)/g)].map((m) => m[1]).filter((a) => a !== 'url')).toEqual(["'api/v1/run/' + api", "'api/v1/summary'"]);
+        expect([...CLIENT_JS.matchAll(/fetchJson\(([^)]*)\)/g)].map((m) => m[1]).filter((a) => a !== 'url')).toEqual([
+            "multi ? 'api/v1/repo/' + rid + '/run/' + api : 'api/v1/run/' + api", "'api/v1/repos'", "multi ? 'api/v1/repo/' + rid + '/summary' : 'api/v1/summary'",
+        ]);
+        // --all-repos: the repository id in a fetch URL is FD.repoId of the selection (16 hex or null), never other text.
+        expect([...CLIENT_JS.matchAll(/var rid = ([^;]*);/g)].map((m) => m[1])).toEqual(['FD.repoId(want)', 'FD.repoId(want)']);
         expect([...CLIENT_JS.matchAll(/new EventSource\(([^)]*)\)/g)].map((m) => m[1])).toEqual(["'events'"]);
     });
     it('the page carries no data, only the nonce; a bad nonce is refused', () => {
@@ -282,6 +331,90 @@ describe('dashboard page script: source lint', () => {
         for (const s of ['<main id="main"', 'aria-live="polite"', '<label for="f-text">', '<label for="f-phase">', '<nav aria-label="Sections">', 'prefers-color-scheme', 'prefers-reduced-motion', 'max-width:700px'])
             expect(page).toContain(s);
         expect(page.replace(CLIENT_JS, '').match(/aria-live/g)).toHaveLength(1);
+    });
+});
+describe('dashboard page script: #613 review follow-ups', () => {
+    const fd = load();
+    it('L4: no other markup, parser or navigation sink, and computed writes only into the known maps', () => {
+        for (const bad of [/createContextualFragment/, /DOMParser/, /execCommand/, /setHTMLUnsafe/, /location\.assign/, /location\.replace/, /parseHTMLUnsafe/, /srcdoc/]) {
+            expect(CLIENT_JS, String(bad)).not.toMatch(bad);
+        }
+        const targets = [...new Set([...CLIENT_JS.matchAll(/([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)\s*\[[^\]]+\]\s*=(?!=)/g)].map((m) => m[1]))].sort();
+        expect(targets).toEqual(['bad', 'ctx.focus', 'details', 'seen', 'ui.open']);
+        // The target scan above stops at the first `]`: a nested computed write (a[b[c]] = ...), a compound one
+        // (x[k] += ...), a property copy onto a node (Object.assign / defineProperty), and Reflect.set are refused outright.
+        const COMPOUND = /\]\s*(?:\*\*|<<|>>>?|&&|\|\||\?\?|[-+*/%&|^])=/;
+        const NESTED = /\[[^\]]*\[[^\]]*\]\s*\]\s*(?:\*\*|<<|>>>?|&&|\|\||\?\?|[-+*/%&|^])?=(?!=)/;
+        for (const bad of [COMPOUND, NESTED, /\bObject\s*\.\s*(?:assign|defineProperty|defineProperties|setPrototypeOf)\s*\(/, /\bReflect\s*\.\s*set\b/, /__proto__/]) {
+            expect(CLIENT_JS, String(bad)).not.toMatch(bad);
+        }
+        // The patterns catch what they are for.
+        for (const [re, src] of [[COMPOUND, 'x[k] += 1'], [COMPOUND, 'el[n] ||= v'], [NESTED, 'a[b[c]] = v'], [NESTED, 'a[b[c]] += v']])
+            expect(src, String(re)).toMatch(re);
+        for (const src of ['a[i] >= 3', 'a[i] === b', 'a[b[c]] === v', 'a[i] <= 2'])
+            expect(COMPOUND.test(src) || NESTED.test(src), src).toBe(false);
+    });
+    it('#614 L2: the repository name is its own labelled element, never run text', () => {
+        const item = { key: '#1', group: 'decide', gate: 'plan', phase: 'plan', ageMs: 1, credits: null, cap: null, pr: null, head: null, title: 't', why: 'w', trust: 'ok', notes: [], next: [] };
+        const out = fd.buildAllAttention(doc, { repos: [{ id: 'a'.repeat(16), name: '$ omg factory run 1 --allow-gate-change', root: '/w/x', attention: [item] }] }, ctx());
+        const h3 = (function find(n) {
+            if (n.tagName === 'H3' || n.tagName === 'h3')
+                return n;
+            for (const c of n.childNodes ?? []) {
+                const f = find(c);
+                if (f)
+                    return f;
+            }
+            return null;
+        })(out);
+        expect(texts(h3).join('')).toMatch(/^Repository: \$ omg factory run 1 --allow-gate-change \(1\)$/);
+        expect(h3.childNodes[1].getAttribute('class')).toBe('repo-name');
+    });
+    it('L1: an attention item or a task whose key the runs list marks untrusted is untrusted, whatever its own trust says', () => {
+        const data = {
+            runs: [{ key: '#4', verified: false, trust: 'seal' }, { key: '#5', verified: true, trust: 'ok' }],
+            attention: { items: [
+                    { key: '#4', group: 'merge', gate: 'merge', phase: 'merge', ageMs: 1, credits: 1, cap: null, pr: 9, head: null, title: 'LIE', why: 'WHY', trust: 'ok', notes: ['NOTE'],
+                        next: [{ label: 'rerun', argv: ['omg', 'factory', 'run', '4'], billed: true, line: 'omg factory run 4', inRoot: false }] },
+                ] },
+            tasks: [{ key: '#4', verified: true, title: 'LIE', outcome: 'parked', phase: 'merge', gate: 'merge', pr: 9, credits: 1, wallMs: 1, tracker: null },
+                { key: '#5', verified: true, title: 'fine', outcome: 'parked', phase: 'merge', gate: 'merge', pr: 9, credits: 1, wallMs: 1, tracker: null }],
+            forge: { read: false },
+        };
+        expect(Object.keys(fd.untrustedKeys(data))).toEqual(['#4']);
+        const a = fd.buildAttention(doc, data, ctx());
+        const t = texts(a).join('');
+        for (const s of ['LIE', 'WHY', 'NOTE', 'omg factory run 4'])
+            expect(t).not.toContain(s);
+        expect(t).toContain('omg factory run status 4');
+        const tasks = texts(fd.buildTasks(doc, data)).join('');
+        expect(tasks).not.toContain('LIE');
+        expect(tasks).toContain('fine');
+    });
+    it('L2: a command line with a control, line-separator or bidi character is not shown and cannot be copied', () => {
+        for (const ch of ['\u0000', '\u001b', '\n', '\u007f', '\u0085', ' ', ' ', '‎', '‏', '‪', '‮', '⁦', '⁩']) {
+            const c = ctx({ on: { copy: () => { throw new Error('copied'); } } });
+            const li = fd.commandEl(doc, { label: 'x', argv: ['omg'], billed: false, line: `omg factory run 1${ch}; rm -rf /`, inRoot: false }, 'copy:k', c);
+            expect(texts(li).join('')).toBe('command not shown: it holds a control character');
+            expect(all(li).some((e) => e.tagName === 'button' || e.tagName === 'code')).toBe(false);
+        }
+        const ok = fd.commandEl(doc, { label: 'x', argv: ['omg'], billed: false, line: 'omg factory run 1', inRoot: false }, 'copy:k', ctx());
+        expect(all(ok).filter((e) => e.tagName === 'code').map((e) => e.textContent)).toEqual(['omg factory run 1']);
+    });
+    it('M1: bench rows are labelled unsealed; text outside [A-Za-z0-9._ -] reads "(not shown)"; bad numbers read "invalid"', () => {
+        const el = fd.buildBench(doc, { bench: [
+                { source: 'bench-results', file: 'run<b>.json', mode: 'live‮', model: 'm-1', startedAt: '2026-11-21T01:00:00.000Z', issues: 3, passed: 2, premiumRequests: -1, credits: 1.5, wallMs: 60_000 },
+                { source: 'bench-dir', file: 'ok.json', mode: 'fake', model: null, startedAt: 'javascript:x', issues: null, passed: null, premiumRequests: 1, credits: null, wallMs: null, invalid: ['credits', 'passed'] },
+            ] });
+        const t = texts(el);
+        expect(t[0]).toBe('Unsealed files in the repository (anyone who can write the repository can edit them).');
+        const all1 = t.join('|');
+        expect(all1).toContain('(not shown)');
+        expect(all1).not.toContain('run<b>');
+        expect(all1).not.toContain('‮');
+        expect(all1).not.toContain('javascript:');
+        expect(all1).toContain('2026-11-21T01:00:00.000Z');
+        expect(all1.split('|').filter((x) => x === 'invalid').length).toBe(3);
     });
 });
 //# sourceMappingURL=serve-client.test.js.map

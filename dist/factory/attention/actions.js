@@ -10,7 +10,7 @@
  */
 import { cancelCommand, resumeCommand } from '../run/engine.js';
 import { GATE_GROUPS, GATE_TABLE, gateSteps, patternEntry, statusArgv, UNKNOWN_GATE_ENTRY, validRunKey, } from '../run/gate-next.js';
-export { cancelArgv, commandLine, commandText, fromSealed, gateCommands, gateStepsFor, mergeArgv, nextCommands, resumeArgv, stateFacts, stateGateNext, statusArgv, validRunKey, } from '../run/gate-next.js';
+export { cancelArgv, commandLine, commandText, fromSealed, rootWord, gateCommands, gateStepsFor, mergeArgv, nextCommands, resumeArgv, stateFacts, stateGateNext, statusArgv, validRunKey, } from '../run/gate-next.js';
 export const ATTENTION_GROUPS = GATE_GROUPS;
 export const GATE_ACTIONS = GATE_TABLE;
 export const patternAction = patternEntry;

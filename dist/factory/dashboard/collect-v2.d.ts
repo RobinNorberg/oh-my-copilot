@@ -140,7 +140,18 @@ export interface DashboardBenchV2 {
     premiumRequests: number | null;
     credits: number | null;
     wallMs: number | null;
+    /** The numeric fields the file holds as something other than a finite number >= 0 (shown as "invalid"); absent when none. */
+    invalid?: string[];
 }
+/**
+ * Bench result files are UNSEALED and live in the repository (or a
+ * --bench-dir): anyone who can write the repository can edit them. Their
+ * text fields are shown only when they are plain words of BENCH_TEXT (else
+ * BENCH_NOT_SHOWN), their numbers only when finite and >= 0.
+ */
+export declare const BENCH_TEXT: RegExp;
+export declare const BENCH_NOT_SHOWN = "(not shown)";
+export declare const BENCH_UNSEALED_NOTE = "Unsealed files in the repository (anyone who can write the repository can edit them).";
 export interface DashboardDataV2 {
     schemaVersion: typeof DASHBOARD_SCHEMA_VERSION_2;
     generatedAt: string;
@@ -252,5 +263,6 @@ export interface CollectDashboardV2Options {
 }
 /** Bench results from `<root>/bench-results/` and every --bench-dir; one row per result file, oldest first. */
 export declare function readBenchV2(root: string, dirs: readonly string[], warnings: string[]): DashboardBenchV2[];
+/** One render scope: the state root is resolved once per collection, not once per file path. */
 export declare function collectDashboardV2(root: string, o: CollectDashboardV2Options): DashboardDataV2;
 //# sourceMappingURL=collect-v2.d.ts.map

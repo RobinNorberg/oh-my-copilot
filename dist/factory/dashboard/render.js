@@ -9,6 +9,7 @@
  * and SVG text.
  */
 import { ATTENTION_GROUPS, commandText, GROUP_TITLES } from '../attention/actions.js';
+import { BENCH_UNSEALED_NOTE } from './collect-v2.js';
 export const esc = (v) => String(v).replace(/[&<>"'`]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;', '`': '&#96;' }[c]));
 export function fmtDuration(msValue) {
     const s = Math.round(msValue / 1000);
@@ -168,8 +169,12 @@ export function renderDashboardHtml(d, o = {}) {
     const throughput = `<ul class="tiles"><li><span class="muted">Engine time to merge-ready, median</span><b>${esc(dur(t.engineToMergeReady.medianMs) || '-')}</b><span class="muted">p90 ${esc(dur(t.engineToMergeReady.p90Ms) || '-')}, ${t.engineToMergeReady.runs} run(s); waiting excluded</span></li><li><span class="muted">Waiting at the merge park, median</span><b>${esc(dur(t.waitingAtMerge.medianMs) || '-')}</b><span class="muted">${t.waitingAtMerge.runs} run(s)</span></li></ul>
 ${t.since ? `<p class="muted">Medians and per-day counts since ${esc(t.since)}.</p>` : ''}${t.excludedRuns ? `<p class="warn">${esc(t.excludedRuns)} run(s) left out of the medians: their history timestamps were out of order or later than now (see Warnings).</p>` : ''}
 ${table('Runs per day', ['Day', 'Started', 'Reached the merge park'], t.byDay.map((r) => [esc(r.day), esc(r.started), esc(r.mergeReady)]), 'No runs yet.')}`;
-    const bench = table('Bench results, oldest first', ['File', 'Source', 'Started', 'Mode', 'Model', 'Passed', 'Requests', 'Credits', 'Wall time'], d.bench.map((b) => [esc(b.file), esc(b.source), esc(b.startedAt ?? ''), esc(b.mode ?? ''), esc(b.model ?? ''), esc(b.passed === null ? '' : `${b.passed}${b.issues === null ? '' : ` / ${b.issues}`}`),
-        esc(num(b.premiumRequests)), esc(num(b.credits)), esc(dur(b.wallMs))]), 'No bench results (bench-results/*.json, or pass --bench-dir).');
+    // Bench files are unsealed and lane-writable: the collector keeps only plain words and finite numbers >= 0; a bad number reads "invalid".
+    const bad = (b, f) => Array.isArray(b.invalid) && b.invalid.includes(f);
+    const bnum = (b, f) => (bad(b, f) ? 'invalid' : num(b[f]));
+    const bench = `<p class="warn">${esc(BENCH_UNSEALED_NOTE)}</p>` + table('Bench results, oldest first', ['File', 'Source', 'Started', 'Mode', 'Model', 'Passed', 'Requests', 'Credits', 'Wall time'], d.bench.map((b) => [esc(b.file), esc(b.source), esc(b.startedAt ?? ''), esc(b.mode ?? ''), esc(b.model ?? ''),
+        esc(bad(b, 'passed') || bad(b, 'issues') ? 'invalid' : b.passed === null ? '' : `${b.passed}${b.issues === null ? '' : ` / ${b.issues}`}`),
+        esc(bnum(b, 'premiumRequests')), esc(bnum(b, 'credits')), esc(bad(b, 'wallMs') ? 'invalid' : dur(b.wallMs))]), 'No bench results (bench-results/*.json, or pass --bench-dir).');
     const warnings = d.warnings.length ? `<section aria-labelledby="h-warnings"><h2 id="h-warnings">Warnings</h2><ul>${d.warnings.map((w) => `<li class="warn">${esc(w)}</li>`).join('')}</ul></section>` : '';
     const body = { attention: attentionHtml(d), live, runs, tasks, cost, throughput, bench };
     // The CLI validates --watch to 2..86400 s; anything else here (1e21, a fraction) is no refresh at all.

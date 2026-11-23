@@ -931,7 +931,10 @@ function getProjectIdentifier(worktreeRoot) {
   if (scope && scopeKey) scope.projectIdentifiers.set(scopeKey, identifier);
   return identifier;
 }
+var knownOmcRoots = new import_node_async_hooks.AsyncLocalStorage();
 function getOmcRoot(worktreeRoot) {
+  const known = worktreeRoot === void 0 ? void 0 : knownOmcRoots.getStore()?.get(worktreeRoot);
+  if (known !== void 0) return known;
   const scope = worktreePathRenderScope.getStore();
   if (!scope) return computeOmcRoot(worktreeRoot);
   const key = [worktreeRoot ?? "", process.env.OMC_STATE_DIR ?? "", process.cwd()].join("\0");

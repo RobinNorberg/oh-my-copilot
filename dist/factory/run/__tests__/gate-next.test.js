@@ -130,9 +130,12 @@ describe('commandLine / commandText / humanCommand: the printed form of an argv'
     it('a root with a space is double-quoted where every shell reads it the same', () => {
         expect(humanCommand(merge('/work/my repo'), 'linux')).toBe(`git -C "/work/my repo" merge --no-ff --no-edit ${HEAD}`);
         expect(humanCommand(merge('/work/my repo'), 'darwin')).toBe(`git -C "/work/my repo" merge --no-ff --no-edit ${HEAD}`);
-        // A Windows path has backslashes: not in the portable set, so cmd.exe could not read any quoted form; the -C form is withheld.
-        expect(commandText(merge('C:\\Code\\my repo'), 'win32')).toEqual({ line: `git merge --no-ff --no-edit ${HEAD}`, inRoot: true });
-        expect(humanCommand(merge('C:\\Code\\my repo'), 'win32')).toBe(`in the repository root: git merge --no-ff --no-edit ${HEAD}`);
+        // A Windows path with a space: backslashes read literally inside double quotes in PowerShell and cmd.exe, so the -C form is kept.
+        expect(commandText(merge('C:\\Code\\my repo'), 'win32')).toEqual({ line: `git -C "C:\\Code\\my repo" merge --no-ff --no-edit ${HEAD}`, inRoot: false });
+        expect(humanCommand(merge('C:\\Users\\Jane Doe\\src\\repo'), 'win32')).toBe(`git -C "C:\\Users\\Jane Doe\\src\\repo" merge --no-ff --no-edit ${HEAD}`);
+        // A trailing backslash would escape the closing quote for the program's parser: withheld. POSIX shells read backslashes in double quotes: single-quoted.
+        expect(commandText(merge('C:\\Code\\my repo\\'), 'win32')).toEqual({ line: `git merge --no-ff --no-edit ${HEAD}`, inRoot: true });
+        expect(commandText(merge('/work/my\\ repo'), 'linux').line).toBe(`git -C '/work/my\\ repo' merge --no-ff --no-edit ${HEAD}`);
     });
     it('a root with a single quote or & gets the POSIX single-quote form, and on Windows is withheld', () => {
         expect(humanCommand(merge("/work/it's"), 'linux')).toBe(`git -C '/work/it'\\''s' merge --no-ff --no-edit ${HEAD}`);

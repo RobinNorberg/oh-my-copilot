@@ -74,6 +74,8 @@ export declare function trustedLocalFactoryClaimRepo(exec: Exec, root: string, l
  * both use it, over the raw exec.
  */
 export declare function trustedFactoryClaimRepo(exec: Exec, root: string, ledgerDir: string): string | null;
+/** A path as one spelling: realpath when it exists (junctions, symlinks, 8.3 names), normalized, case-folded only where the filesystem folds case. */
+export declare function canonicalPath(path: string, platform?: NodeJS.Platform): string;
 /**
  * The claim directory's key: the repoIdentity of the repository, with
  * github.com aliases folded; a local path (an origin that is another

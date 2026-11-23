@@ -300,12 +300,21 @@ const BARE_WIN = /^[A-Za-z0-9_./:\\+=-]+$/;
  * `%`, `!`, `^`, `&`, `|`, `<`, `>`, `;`, `'` or backslash inside).
  */
 const DOUBLE_QUOTABLE = /^[\p{L}\p{N} /:._-]+$/u;
+/**
+ * On Windows also backslashes (a path's separators): inside double quotes
+ * PowerShell and cmd.exe both take them literally, as long as the word does
+ * not end in one (a program's own argument parser would read `\"` as an
+ * escaped quote). Every other character listed above stays outside the set.
+ */
+const DOUBLE_QUOTABLE_WIN = /^[\p{L}\p{N} /:._\\-]+$/u;
+const doubleQuotable = (word: string, platform: NodeJS.Platform): boolean =>
+  DOUBLE_QUOTABLE.test(word) || (platform === 'win32' && DOUBLE_QUOTABLE_WIN.test(word) && !word.endsWith('\\'));
 /** A word with a character a terminal shows as blank, nothing or a control (what score.ts plainText replaces): never printed inside a command. */
 const unprintable = (word: string): boolean => plainText(word) !== word;
 
 const bare = (word: string, platform: NodeJS.Platform): boolean => (platform === 'win32' ? BARE_WIN : BARE_POSIX).test(word);
 /** The word prints bare or double-quoted the same in every shell family. */
-const portable = (word: string, platform: NodeJS.Platform): boolean => !unprintable(word) && (bare(word, platform) || DOUBLE_QUOTABLE.test(word));
+const portable = (word: string, platform: NodeJS.Platform): boolean => !unprintable(word) && (bare(word, platform) || doubleQuotable(word, platform));
 
 /**
  * One word for the shell family of `platform`: bare when safe, double quotes
@@ -315,7 +324,7 @@ const portable = (word: string, platform: NodeJS.Platform): boolean => !unprinta
  */
 function quoteWord(word: string, platform: NodeJS.Platform): string {
   if (bare(word, platform)) return word;
-  if (DOUBLE_QUOTABLE.test(word) && !unprintable(word)) return `"${word}"`;
+  if (doubleQuotable(word, platform) && !unprintable(word)) return `"${word}"`;
   return platform === 'win32' ? `'${word.replace(/'/g, "''")}'` : `'${word.replace(/'/g, "'\\''")}'`;
 }
 
@@ -338,6 +347,17 @@ export function commandText(argv: readonly string[], platform: NodeJS.Platform =
     if (!portable(root, platform) && (platform === 'win32' || unprintable(root))) return { line: commandLine(['git', ...argv.slice(3)], platform), inRoot: true };
   }
   return { line: commandLine(argv, platform), inRoot: false };
+}
+
+/**
+ * A repository root as one copyable word for the shell family of `platform`
+ * (the rule commandText applies to `git -C <root>`), or null when it cannot
+ * be shown safely there: the caller then names the repository in prose and
+ * prints no path inside a command.
+ */
+export function rootWord(root: string, platform: NodeJS.Platform = process.platform): string | null {
+  if (!portable(root, platform) && (platform === 'win32' || unprintable(root))) return null;
+  return quoteWord(root, platform);
 }
 
 /** commandText as one phrase: the line, or "in the repository root: <line>". */

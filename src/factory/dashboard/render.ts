@@ -10,7 +10,7 @@
  */
 
 import { ATTENTION_GROUPS, commandText, GROUP_TITLES, type NextCommand } from '../attention/actions.js';
-import type { DashboardDataV2, DashboardRunV2, TimelineStep, Usage } from './collect-v2.js';
+import { BENCH_UNSEALED_NOTE, type DashboardDataV2, type DashboardRunV2, type TimelineStep, type Usage } from './collect-v2.js';
 
 export const esc = (v: unknown): string =>
   String(v).replace(/[&<>"'`]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;', '`': '&#96;' }[c] as string));
@@ -190,9 +190,13 @@ export function renderDashboardHtml(d: DashboardDataV2, o: RenderOptions = {}): 
 ${t.since ? `<p class="muted">Medians and per-day counts since ${esc(t.since)}.</p>` : ''}${t.excludedRuns ? `<p class="warn">${esc(t.excludedRuns)} run(s) left out of the medians: their history timestamps were out of order or later than now (see Warnings).</p>` : ''}
 ${table('Runs per day', ['Day', 'Started', 'Reached the merge park'], t.byDay.map((r) => [esc(r.day), esc(r.started), esc(r.mergeReady)]), 'No runs yet.')}`;
 
-  const bench = table('Bench results, oldest first', ['File', 'Source', 'Started', 'Mode', 'Model', 'Passed', 'Requests', 'Credits', 'Wall time'],
-    d.bench.map((b) => [esc(b.file), esc(b.source), esc(b.startedAt ?? ''), esc(b.mode ?? ''), esc(b.model ?? ''), esc(b.passed === null ? '' : `${b.passed}${b.issues === null ? '' : ` / ${b.issues}`}`),
-      esc(num(b.premiumRequests)), esc(num(b.credits)), esc(dur(b.wallMs))]),
+  // Bench files are unsealed and lane-writable: the collector keeps only plain words and finite numbers >= 0; a bad number reads "invalid".
+  const bad = (b: (typeof d.bench)[number], f: string): boolean => Array.isArray(b.invalid) && b.invalid.includes(f);
+  const bnum = (b: (typeof d.bench)[number], f: 'premiumRequests' | 'credits'): string => (bad(b, f) ? 'invalid' : num(b[f]));
+  const bench = `<p class="warn">${esc(BENCH_UNSEALED_NOTE)}</p>` + table('Bench results, oldest first', ['File', 'Source', 'Started', 'Mode', 'Model', 'Passed', 'Requests', 'Credits', 'Wall time'],
+    d.bench.map((b) => [esc(b.file), esc(b.source), esc(b.startedAt ?? ''), esc(b.mode ?? ''), esc(b.model ?? ''),
+      esc(bad(b, 'passed') || bad(b, 'issues') ? 'invalid' : b.passed === null ? '' : `${b.passed}${b.issues === null ? '' : ` / ${b.issues}`}`),
+      esc(bnum(b, 'premiumRequests')), esc(bnum(b, 'credits')), esc(bad(b, 'wallMs') ? 'invalid' : dur(b.wallMs))]),
     'No bench results (bench-results/*.json, or pass --bench-dir).');
 
   const warnings = d.warnings.length ? `<section aria-labelledby="h-warnings"><h2 id="h-warnings">Warnings</h2><ul>${d.warnings.map((w) => `<li class="warn">${esc(w)}</li>`).join('')}</ul></section>` : '';
