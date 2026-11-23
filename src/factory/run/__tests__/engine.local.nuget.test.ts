@@ -3,7 +3,8 @@
  * (nuget-restore.ts): fake lanes, a real repository and prepare checkout,
  * the test sandbox. No dotnet, network, gh or copilot runs.
  */
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { dotnetNugetConfig, dotnetSandboxEnv } from '../../../copilot-run/dotnet-sandbox.js';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { localCheckRecordPath } from '../../../forge/local/index.js';
@@ -13,7 +14,7 @@ import { DEFINITION_TREE_STUBS, restoreApprovalNote } from '../nuget-restore.js'
 import { readFactoryState, requestFactoryCancel, updateFactoryState } from '../state.js';
 import { EngineLedger } from '../ledger.js';
 import type { SandboxRunner, SandboxRunRequest, SandboxRunResult } from '../sandbox-exec.js';
-import { attestedSandbox, commitFile, gitIn, review } from './fake-lanes.js';
+import { attestedSandbox, commitFile, gitIn, review, type LaneScript } from './fake-lanes.js';
 import { lanesFor, LOCAL_ISSUE, localOpts, localWorld, type LocalWorld } from './engine-local-harness.js';
 import { sealedNext, steps } from './gate-next-expect.js';
 
@@ -680,4 +681,70 @@ describe('NU1603: a version NuGet replaced never passes silently', () => {
     expect(out.gate?.reason).toContain('the gate runs offline, where NuGet cannot repeat that resolution');
     expect(readFactoryState(w.root, LOCAL_ISSUE)!.nugetRestore?.outcome).toBe('failed');
   }, MULTI_RUN_MS);
+});
+
+describe('a nuget.config below the root that only nuget.org could bypass (PR 611 round 4)', () => {
+  const LOWER = '<configuration><packageSources><clear /><add key="corp" value="C:\corp-feed" /></packageSources></configuration>\n';
+  const SETTINGS_ONLY = '<configuration><config><add key="x" value="y" /></config></configuration>\n';
+  const LIB = '<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup><ItemGroup><PackageReference Include="Humanizer.Core" Version="2.14.1" /></ItemGroup></Project>\n';
+  const COMPILE = 'src/App/Greet.cs(1,1): error CS1002: ; expected';
+  interface Seen { purpose: string; env: Record<string, string>; fallback: boolean }
+
+  /** What a sandboxed dotnet command in `cwd` gets as sandbox-exec.ts and job.ts build it: the request's hierarchy, else dotnetNugetConfig. */
+  function effective(cwd: string, hierarchy: string | undefined, noAdd: boolean | undefined): Omit<Seen, 'purpose'> {
+    const prof = mkdtempSync(join(w.dir, 'prof-'));
+    const cfg = hierarchy ? { hierarchy } : dotnetNugetConfig(cwd, prof, process.platform, { noAdd: noAdd === true });
+    return { env: dotnetSandboxEnv(prof, {}, prof, process.platform, undefined, cfg).env, fallback: existsSync(join(prof, 'nuget', 'nuget.config')) };
+  }
+
+  /** The repository: src/App plus Lib/Lib.csproj (a package only on nuget.org); Lib/nuget.config on the base when `lowerOnBase`. */
+  function project(rootConfig: string | null, lowerOnBase: boolean): void {
+    if (rootConfig) writeFileSync(join(w.root, 'nuget.config'), rootConfig);
+    mkdirSync(join(w.root, 'Lib'), { recursive: true });
+    writeFileSync(join(w.root, 'Lib', 'Lib.csproj'), LIB);
+    if (lowerOnBase) writeFileSync(join(w.root, 'Lib', 'nuget.config'), LOWER);
+    baseProject();
+  }
+
+  /** Expect hierarchy mode: no RestoreConfigFile, no nuget.org added, no nuget.org-only file written. */
+  const hierarchyOnly = (seen: Seen[]) => {
+    expect(seen.length).toBeGreaterThan(0);
+    for (const s of seen) {
+      expect(s, s.purpose).toMatchObject({ fallback: false });
+      expect(s.env.RestoreConfigFile, s.purpose).toBeUndefined();
+      expect(s.env.RestoreAdditionalProjectSources, s.purpose).toBeUndefined();
+    }
+  };
+
+  for (const rootConfig of [null, SETTINGS_ONLY]) {
+    const rootLabel = rootConfig ? 'a settings-only root config' : 'no root config';
+    for (const where of ['base', 'approved head'] as const) {
+      it(`${rootLabel}, the lower config on the ${where}: the offline gate, the networked restore and the ci-fix lane all keep NuGet's hierarchy`, async () => {
+        w = localWorld(['dotnet', 'test']);
+        project(rootConfig, where === 'base');
+        const seen: Seen[] = [];
+        const r = recorder([{ status: 1, output: OFFLINE }, { status: 1, output: COMPILE }]);
+        const inner = r.sandbox;
+        const sandbox: SandboxRunner = async (req) => {
+          if (req.purpose === 'gate' || req.purpose === 'restore') seen.push({ purpose: req.purpose, ...effective(req.cwd, req.nugetHierarchy, req.nugetNoAddSource) });
+          return inner(req);
+        };
+        const fix: LaneScript = (ctx) => {
+          seen.push({ purpose: 'lane', ...effective(ctx.worktree, ctx.input.dotnet ? ctx.input.dotnetNugetHierarchy : 'not a dotnet lane', ctx.input.dotnetNugetNoAddSource) });
+          return commitFile('src/App/Greet.cs', 'namespace App; // fixed\n')(ctx);
+        };
+        if (where === 'base') {
+          await runFactoryEngine(localOpts(w, lanesFor(w, [commitFile('src/App/Greet.cs', 'namespace App;\n'), review('approve'), fix]), { gateSandbox: sandbox, runUserConfig: SANDBOXED }));
+        } else {
+          const parked = await runFactoryEngine(localOpts(w, lanesFor(w, [commitFile('Lib/nuget.config', LOWER)]), { gateSandbox: sandbox, runUserConfig: SANDBOXED }));
+          expect(parked.gate?.name, parked.message).toBe('gate-definition-changed');
+          expect(parked.gate?.reason).toContain('(Lib/nuget.config)');
+          await runFactoryEngine(localOpts(w, lanesFor(w, [review('approve'), fix]), { gateSandbox: sandbox, runUserConfig: SANDBOXED, allowGateChange: true }));
+        }
+        expect(seen.map((s) => s.purpose).slice(0, 4)).toEqual(['gate', 'restore', 'gate', 'lane']);
+        hierarchyOnly(seen);
+        expect(r.reqs.filter((q) => q.purpose === 'gate' || q.purpose === 'restore').every((q) => q.nugetHierarchy?.includes('Lib/nuget.config'))).toBe(true);
+      }, MULTI_RUN_MS);
+    }
+  }
 });

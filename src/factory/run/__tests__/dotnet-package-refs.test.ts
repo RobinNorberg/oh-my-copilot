@@ -218,8 +218,28 @@ describe('gateTreeExactProblem: a repository that commits its node_modules', () 
 });
 
 describe('M3: an Exec is exempt only as a whole, plain delete command (after MSBuild unescaping)', () => {
-  it('rimraf, npx rimraf, rm -rf, del, rd, rmdir and Remove-Item with plain paths do not count', () => {
-    for (const c of ['rimraf ./node_modules', 'npx rimraf node_modules', 'npx --yes rimraf node_modules', 'rm -rf node_modules', 'del /q node_modules\\.cache', 'rd /s /q node_modules', 'rmdir /s /q ClientApp\\node_modules', 'Remove-Item -Recurse node_modules']) {
+  it('round 4: rimraf and npx run node_modules code and count; WorkingDirectory or EnvironmentVariables naming node_modules count and void the exemption', () => {
+    for (const c of ['rimraf ./node_modules', 'rimraf.cmd node_modules', 'npx rimraf node_modules', 'npx --yes rimraf node_modules', 'npx -y rm -rf node_modules', 'npx del node_modules']) {
+      expect(nodeModulesReferences('a.csproj', `<Target Name="C"><Exec Command="${c}" /></Target>`), c).toHaveLength(1);
+    }
+    // npx counts whatever it names (it runs node_modules/.bin/<name> first); a plain rimraf on a path outside node_modules names none.
+    for (const c of ['npx rimraf dist', 'npx.cmd tsc -p .', 'npm ci &amp;&amp; npx ng build']) {
+      expect(nodeModulesReferences('a.csproj', `<Exec Command="${c}" />`), c).toEqual([expect.stringContaining('Exec Command (npx runs node_modules/.bin)')]);
+    }
+    expect(nodeModulesReferences('a.csproj', '<Exec Command="rimraf dist" />')).toEqual([]);
+    expect(nodeModulesReferences('a.csproj', '<Exec Command="rm -rf dist" WorkingDirectory="ClientApp\\node_modules\\.bin" />')).toEqual([
+      'Exec WorkingDirectory "ClientApp\\\\node_modules\\\\.bin"',
+      'Exec Command (run in or with node_modules) "rm -rf dist [ClientApp\\\\node_modules\\\\.bin]"',
+    ]);
+    expect(nodeModulesReferences('a.csproj', '<Exec Command="del /q node_modules\\.cache" EnvironmentVariables="PATH=node_modules/.bin;$(PATH)" />')).toHaveLength(2);
+    // The SPA templates' ordinary lines still name nothing.
+    for (const c of ['npm install', 'npm ci', 'npm run build -- --configuration production']) {
+      expect(nodeModulesReferences('a.csproj', `<Exec WorkingDirectory="$(SpaRoot)" Command="${c}" />`), c).toEqual([]);
+    }
+  });
+
+  it('rm -rf, del, rd, rmdir and Remove-Item with plain paths do not count', () => {
+    for (const c of ['rm -rf node_modules', 'rm.exe -rf node_modules', 'del /q node_modules\\.cache', 'rd /s /q node_modules', 'rmdir /s /q ClientApp\\node_modules', 'Remove-Item -Recurse node_modules']) {
       expect(nodeModulesReferences('a.csproj', `<Target Name="C"><Exec Command="${c}" /></Target>`), c).toEqual([]);
     }
     // ASP.NET Core 2.x SpaServices: the webpack run counts (its gate needs the engine's exact tree).
@@ -262,6 +282,11 @@ describe('M2: unpinnedImports', () => {
     expect(unpinnedImports('a.csproj', '<Project><Import Project="eng/*.props" /><Import Project="a.Shared.projitems" Label="Shared" /><Import Project="b.vcxproj" /><Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" /></Project>')).toEqual([]);
     expect(unpinnedImports('Directory.Build.props', `<Project><Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" /></Project>`)).toEqual([]);
     expect(unpinnedImports('Directory.Build.props', `<Project><Import Project="$([MSBuild]::GetPathOfFileAbove('Sources.msbuild', '$(MSBuildThisFileDirectory)../'))" /></Project>`)).toHaveLength(1);
+    // Round 4: the unquoted form counts the same way.
+    expect(unpinnedImports('Directory.Build.props', '<Project><Import Project="$([MSBuild]::GetPathOfFileAbove(Directory.Build.props, $(MSBuildThisFileDirectory)..))" /></Project>')).toEqual([]);
+    expect(unpinnedImports('Directory.Build.props', '<Project><Import Project="$([MSBuild]::GetPathOfFileAbove(Directory.Build.props, $(MSBuildThisFileDirectory)..\\))" /></Project>')).toEqual([]);
+    expect(unpinnedImports('Directory.Build.props', '<Project><Import Project="$([MSBuild]::GetPathOfFileAbove(Sources.msbuild, $(MSBuildThisFileDirectory)..))" /></Project>')).toHaveLength(1);
+    expect(unpinnedImports('Directory.Build.props', '<Project><Import Project="$([MSBuild]::GetPathOfFileAbove($(Name).props, $(MSBuildThisFileDirectory)..))" /></Project>')).toHaveLength(1);
     expect(unpinnedImports('a.csproj', '<Project><!-- <Import Project="x.msbuild" /> --></Project>')).toEqual([]);
     expect(unpinnedImports('nuget.config', '<Import Project="x.msbuild" />')).toEqual([]);
     expect(unpinnedImports('a.props', 'x'.repeat(PINNED_READ_MAX + 1))).toHaveLength(1);
