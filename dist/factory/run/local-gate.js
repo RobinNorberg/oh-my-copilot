@@ -576,14 +576,20 @@ export function underDotnetBuildDir(path) {
 export function strayDotnetDefinitionFiles(untracked) {
     return untracked.filter((p) => !underDotnetBuildDir(p) && !inPackageTree(p) && isDotnetDefinitionFile(p));
 }
+/** The files that have their own build output: solutions, solution filters and project files. */
+const isDotnetBuildableFile = basenameMatcher(['*.sln', '*.slnx', '*.slnf', '*.*proj']);
 /**
- * Of a head's tracked paths, the .NET definition files (DOTNET_DEFINITION_PATTERNS)
- * under a node_modules dir (inPackageTree). The clean step never enters such a
- * dir and the checks leave it out, so build output a project there would
- * read is never cleaned: a dotnet gate does not run on such a head.
+ * Of a head's tracked paths, the .NET solutions and projects (`*.sln`,
+ * `*.slnx`, `*.slnf`, `*.*proj`) under a node_modules dir (inPackageTree).
+ * The clean step never enters such a dir and the checks leave it out, so
+ * build output a project there would read is never cleaned: a dotnet gate in
+ * the OS sandbox does not run on such a head (the other gate modes clean
+ * nothing anyway and note it). Only a project or solution has build output
+ * of its own: a tracked package's `*.props`, `*.targets` or `global.json`
+ * there does not count.
  */
 export function trackedPackageTreeProjects(tracked) {
-    return tracked.filter((p) => inPackageTree(p) && isDotnetDefinitionFile(p));
+    return tracked.filter((p) => inPackageTree(p) && isDotnetBuildableFile(p));
 }
 /** The dotnet subcommands a gate may run: both are defined by the repository's MSBuild files only. */
 const DOTNET_GATE_SUBCOMMANDS = new Set(['build', 'test']);

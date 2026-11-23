@@ -327,6 +327,10 @@ function humanReviewShapeProblem(s) {
         const n = s.nugetRestore;
         if (s.forgeKind !== 'local' || typeof n !== 'object' || n === null || !isStr(n.head) || !HEX40.test(n.head) || !isStr(n.definition) || !HEX64.test(n.definition))
             return 'nugetRestore';
+        if (n.outcome !== undefined && n.outcome !== 'passed' && n.outcome !== 'failed' && n.outcome !== 'not-run')
+            return 'nugetRestore';
+        if (n.exit !== undefined && (typeof n.exit !== 'number' || !Number.isInteger(n.exit)))
+            return 'nugetRestore';
     }
     if (s.gitTransportPlainHead !== undefined && (!isStr(s.gitTransportPlainHead) || !HEX40.test(s.gitTransportPlainHead)))
         return 'gitTransportPlainHead';

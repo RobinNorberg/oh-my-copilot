@@ -233,11 +233,12 @@ describe('node_modules dirs are package trees, whoever installed them (review of
     expect(readFileSync(join(outside, 'pkg', 'bin', 'cli.js'), 'utf8')).toBe('outside');
   });
 
-  it('trackedPackageTreeProjects: the .NET definition files a head tracks under a node_modules dir (a park), not under a build dir', () => {
+  it('trackedPackageTreeProjects: the solutions and projects a head tracks under a node_modules dir (a park), not other definition files, not under a build dir', () => {
     expect(trackedPackageTreeProjects([
-      'x/node_modules/App/App.csproj', 'node_modules/pkg/Directory.Build.props', 'A/NODE_MODULES/b.sln',
+      'x/node_modules/App/App.csproj', 'node_modules/pkg/Directory.Build.props', 'A/NODE_MODULES/b.sln', 'node_modules/n/binding.vcxproj',
+      'node_modules/p/x.slnx', 'node_modules/p/x.slnf', 'node_modules/pkg/build/pkg.targets', 'node_modules/pkg/global.json', 'node_modules/pkg/nuget.config',
       'src/App/App.csproj', 'node_modules/pkg/README.md', 'src/App/obj/node_modules/c.csproj',
-    ])).toEqual(['x/node_modules/App/App.csproj', 'node_modules/pkg/Directory.Build.props', 'A/NODE_MODULES/b.sln']);
+    ])).toEqual(['x/node_modules/App/App.csproj', 'A/NODE_MODULES/b.sln', 'node_modules/n/binding.vcxproj', 'node_modules/p/x.slnx', 'node_modules/p/x.slnf']);
   });
 });
 

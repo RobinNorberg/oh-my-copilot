@@ -212,7 +212,7 @@ describe.runIf(process.env.OMG_LIVE_DOTNET === '1' && onWindows && !!dotnet)('a 
                 return [line.slice(tab + 1), oid, mode];
             });
             const written = writeDefinitionTree(tree, entries, (oids) => parseCatFileBatch(spawnSync('git', ['cat-file', '--batch'], { cwd: repo, input: `${oids.join('\n')}\n` }).stdout));
-            expect(written).toEqual({ files: ['App/App.csproj', 'Directory.Build.props'] });
+            expect(written).toEqual({ files: ['App/App.csproj', 'Directory.Build.props'], stubs: ['Directory.Build.targets', 'Directory.Solution.props', 'Directory.Solution.targets', 'Directory.Packages.props', 'nuget.config'] });
             const run = createSandboxRunner(root, undefined, { user: { factory: { run: { sandbox: {} } } }, project: undefined });
             const argv = ['dotnet', ...dotnetRestoreArgs(['build', 'App/App.csproj'])];
             const t = resolveLocalGateArgv(argv, { cwd: tree });

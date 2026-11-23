@@ -284,10 +284,13 @@ export interface FactoryRunState {
   sandboxedGateHead?: string;
   /**
    * The networked dotnet restore step (nuget-restore.ts): the head it last ran for and the gate definition hash
-   * (as gateChangeApproved) that head had. Once per definition and head, also across reruns; the run's packages
-   * folder holds what that definition restored, and is emptied before a restore for another definition.
+   * (as gateChangeApproved) that head had. The run's packages folder holds what that definition restored: only a
+   * dotnet command for a commit with that definition reads it, and it is emptied before a restore or a gate for
+   * another definition. `outcome` (written once the step ended; absent while it runs, or from an older release):
+   * `passed`, `failed` (it ran and exited non-zero or timed out, `exit` its code) or `not-run` (the sandbox gave no
+   * verdict or did not start). A rerun repeats the step for the same head unless it `passed`.
    */
-  nugetRestore?: { head: string; definition: string };
+  nugetRestore?: { head: string; definition: string; outcome?: 'passed' | 'failed' | 'not-run'; exit?: number };
   /** The head a check last ran on WITHOUT any sandbox through the Windows git-transport fallback: such a run is never auto-merged. */
   gitTransportPlainHead?: string;
   /** The head whose built-in prepare tests passed only because tests that fail on the base too were not counted (test-delta.ts): such a run is never auto-merged. */
@@ -704,8 +707,10 @@ function humanReviewShapeProblem(s: Record<string, unknown>): string | null {
   if (s.sandboxedPrepareHead !== undefined && (!isStr(s.sandboxedPrepareHead) || !HEX40.test(s.sandboxedPrepareHead))) return 'sandboxedPrepareHead';
   if (s.sandboxedGateHead !== undefined && (!isStr(s.sandboxedGateHead) || !HEX40.test(s.sandboxedGateHead))) return 'sandboxedGateHead';
   if (s.nugetRestore !== undefined) {
-    const n = s.nugetRestore as { head?: unknown; definition?: unknown } | null;
+    const n = s.nugetRestore as { head?: unknown; definition?: unknown; outcome?: unknown; exit?: unknown } | null;
     if (s.forgeKind !== 'local' || typeof n !== 'object' || n === null || !isStr(n.head) || !HEX40.test(n.head) || !isStr(n.definition) || !HEX64.test(n.definition)) return 'nugetRestore';
+    if (n.outcome !== undefined && n.outcome !== 'passed' && n.outcome !== 'failed' && n.outcome !== 'not-run') return 'nugetRestore';
+    if (n.exit !== undefined && (typeof n.exit !== 'number' || !Number.isInteger(n.exit))) return 'nugetRestore';
   }
   if (s.gitTransportPlainHead !== undefined && (!isStr(s.gitTransportPlainHead) || !HEX40.test(s.gitTransportPlainHead))) return 'gitTransportPlainHead';
   if (s.testDeltaExcusedHead !== undefined && (!isStr(s.testDeltaExcusedHead) || !HEX40.test(s.testDeltaExcusedHead))) return 'testDeltaExcusedHead';

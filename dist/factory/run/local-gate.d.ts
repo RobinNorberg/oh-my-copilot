@@ -266,10 +266,14 @@ export declare function underDotnetBuildDir(path: string): boolean;
  */
 export declare function strayDotnetDefinitionFiles(untracked: readonly string[]): string[];
 /**
- * Of a head's tracked paths, the .NET definition files (DOTNET_DEFINITION_PATTERNS)
- * under a node_modules dir (inPackageTree). The clean step never enters such a
- * dir and the checks leave it out, so build output a project there would
- * read is never cleaned: a dotnet gate does not run on such a head.
+ * Of a head's tracked paths, the .NET solutions and projects (`*.sln`,
+ * `*.slnx`, `*.slnf`, `*.*proj`) under a node_modules dir (inPackageTree).
+ * The clean step never enters such a dir and the checks leave it out, so
+ * build output a project there would read is never cleaned: a dotnet gate in
+ * the OS sandbox does not run on such a head (the other gate modes clean
+ * nothing anyway and note it). Only a project or solution has build output
+ * of its own: a tracked package's `*.props`, `*.targets` or `global.json`
+ * there does not count.
  */
 export declare function trackedPackageTreeProjects(tracked: readonly string[]): string[];
 /** A commit's files as [path, blob id] (`git ls-tree -r`). */
