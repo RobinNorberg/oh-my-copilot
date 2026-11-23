@@ -14,8 +14,11 @@ import { atomicWriteFileSync, ensureDirSync } from '../../lib/atomic-write.js';
 import { lockPathFor, withFileLockSync } from '../../lib/file-lock.js';
 import { visibleLine } from '../../forge/review-feedback.js';
 import { factoryStateDir, runLabel, TERMINAL_FACTORY_PHASES, verifyFactoryIntegrity } from '../run/state.js';
+import { statusArgv, validRunKey } from '../run/gate-next.js';
 import { pathsInText, TEAM_ROUTING_PATH } from './context.js';
 import { parseRouting, routeFor } from './routing.js';
+/** The record's gateAt for a run reminded as not verified (its own gate time is not trusted). */
+const UNVERIFIED_AT = 'unverified';
 export const remindersPath = (root) => join(factoryStateDir(root), 'reminders.json');
 function readRecord(path) {
     if (!existsSync(path))
@@ -36,7 +39,6 @@ function readRecord(path) {
         return {};
     }
 }
-/** The reminders due now; records them so the same run is reminded once per window. */
 export function staleGateReminders(o) {
     if (!o.afterHours || o.afterHours <= 0)
         return [];
@@ -52,6 +54,22 @@ export function staleGateReminders(o) {
             if (!s.gate || TERMINAL_FACTORY_PHASES.includes(s.phase))
                 continue;
             const label = runLabel(key);
+            if (o.untrusted?.has(key)) {
+                const rec = before[label];
+                if (!rec || rec.gateAt !== UNVERIFIED_AT) {
+                    next[label] = { gateAt: UNVERIFIED_AT, remindedAt: new Date(o.nowMs).toISOString() };
+                    continue;
+                }
+                const last = Date.parse(rec.remindedAt);
+                if (Number.isFinite(last) && o.nowMs - last < windowMs) {
+                    next[label] = rec;
+                    continue;
+                }
+                if (validRunKey(key))
+                    due.push({ run: key, verified: false, next: statusArgv(key).join(' ') });
+                next[label] = { gateAt: UNVERIFIED_AT, remindedAt: new Date(o.nowMs).toISOString() };
+                continue;
+            }
             if (!verifyFactoryIntegrity(s)) {
                 o.warn?.(`reminder: ${label} is unsound (its state fails the integrity seal), skipped`);
                 continue;

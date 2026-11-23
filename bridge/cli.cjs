@@ -91717,7 +91717,7 @@ async function notify(event, data) {
       message: "",
       // Will be formatted below
       timestamp: data.timestamp || (/* @__PURE__ */ new Date()).toISOString(),
-      // factory-attention carries no session, pane or project field: its message is all it sends.
+      // factory-attention carries no session, pane, project or reply field: its message is all it sends.
       tmuxSession: factoryAttention ? void 0 : data.tmuxSession ?? getCurrentTmuxSession() ?? void 0,
       tmuxPaneId: factoryAttention ? void 0 : data.tmuxPaneId ?? getCurrentTmuxPaneId2() ?? void 0,
       projectPath: factoryAttention ? void 0 : data.projectPath,
@@ -91736,9 +91736,9 @@ async function notify(event, data) {
       incompleteTasks: data.incompleteTasks,
       agentName: data.agentName,
       agentType: data.agentType,
-      replyChannel: data.replyChannel ?? process.env.OPENCLAW_REPLY_CHANNEL ?? void 0,
-      replyTarget: data.replyTarget ?? process.env.OPENCLAW_REPLY_TARGET ?? void 0,
-      replyThread: data.replyThread ?? process.env.OPENCLAW_REPLY_THREAD ?? void 0,
+      replyChannel: factoryAttention ? void 0 : data.replyChannel ?? process.env.OPENCLAW_REPLY_CHANNEL ?? void 0,
+      replyTarget: factoryAttention ? void 0 : data.replyTarget ?? process.env.OPENCLAW_REPLY_TARGET ?? void 0,
+      replyThread: factoryAttention ? void 0 : data.replyThread ?? process.env.OPENCLAW_REPLY_THREAD ?? void 0,
       approval: data.approval,
       replyable: data.replyable
     };
@@ -153181,402 +153181,6 @@ var init_fixture = __esm({
   }
 });
 
-// src/factory/board/render.ts
-function sourceText(source2) {
-  const v = (k) => String(source2[k] ?? "");
-  switch (source2.type) {
-    case "label":
-      return `label ${v("label")}`;
-    case "milestone":
-      return `milestone ${v("milestone")}`;
-    case "wiql-query":
-      return `wiql-query ${v("queryId")}`;
-    case "board-column":
-      return `board-column ${v("team")}/${v("board")}/${v("column")}`;
-    case "area-tag":
-      return `area-tag ${v("areaPath")}#${v("tag")}`;
-    default:
-      return v("type");
-  }
-}
-function flagText(r) {
-  return r.flags.map((f) => {
-    if (f === "drift") return source_default.yellow(`drift: live ${JSON.stringify(r.liveText ?? r.stage.live)} != recorded ${r.stage.recorded}`);
-    if (f === "unsynced") return source_default.yellow(`unsynced: recorded ${r.stage.recorded ?? "-"} != expected ${r.stage.expected}`);
-    if (f === "seal") return source_default.red("seal!");
-    return source_default.yellow("stale");
-  });
-}
-function backlogLine(r) {
-  const id = runLabel(r.id).padEnd(6);
-  if (r.error) return `  ${source_default.red("read-failed".padEnd(10))}  ${id}  ${r.error}`;
-  const pri = r.check?.priority ? `P${r.check.priority}` : "- ";
-  const title = r.title.slice(0, 40).padEnd(40);
-  if (!r.check) return `  ${id}  ${title}${r.flags.length ? `  ${flagText(r).join("  ")}` : ""}`;
-  const bucket = BUCKET_COLOR[r.check.bucket](r.check.bucket.padEnd(10));
-  return `  ${bucket}  ${id}  ${pri}  ${title}  ${r.check.reasons[0] ?? ""}${r.check.reasons.length ? `  ${source_default.gray(r.check.detail)}` : ""}${r.flags.length ? `  ${flagText(r).join("  ")}` : ""}`;
-}
-function runLine(r, prefix) {
-  const run3 = r.run;
-  const parts = [runLabel(r.id).padEnd(6)];
-  if (r.error) parts.push(source_default.red(`read-failed: ${r.error}`));
-  if (run3) {
-    parts.push(run3.gate ? source_default.yellow(`awaiting-human: ${run3.gate.name}`) : run3.phase);
-    if (run3.live) parts.push(source_default.cyan(`live pid ${run3.live.pid} on ${run3.live.host}${run3.live.slot !== void 0 ? ` slot ${run3.live.slot}` : ""}`));
-    if (run3.runningLane) parts.push(`lane ${run3.runningLane} running`);
-    parts.push(`${run3.credits.toFixed(2)} cr`);
-    if (run3.pr !== void 0) parts.push(`PR ${prefix}${run3.pr}`);
-    if (run3.head) parts.push(`head ${run3.head.slice(0, 12)}`);
-  }
-  if (r.gates) parts.push(`verdict ${r.gates.verdict} @ ${r.gates.sha.slice(0, 12)}`);
-  if (r.title) parts.push(r.title.slice(0, 40));
-  parts.push(...flagText(r));
-  const lines4 = [`  ${parts.join("  ")}`];
-  if (run3?.gate) lines4.push(source_default.gray(`        ${run3.gate.reason}`));
-  if (run3?.gate?.detail) lines4.push(source_default.gray(`        local only: ${run3.gate.detail}`));
-  if (run3?.privateDir) lines4.push(source_default.gray(`        layout private: ${run3.privateDir}`));
-  return lines4.join("\n");
-}
-function renderBoard(b) {
-  const prefix = b.forge === "azure-devops" ? "!" : "#";
-  const items = b.columns.reduce((n, c) => n + c.items.length, 0);
-  const runs = b.columns.reduce((n, c) => n + c.items.filter((r) => r.run).length, 0) + b.outside.length;
-  const source2 = b.parent ? `spec #${b.parent.id} ${b.parent.title}` : b.source ? `source ${plainText(sourceText(b.source))}` : "no intake source";
-  const lines4 = [source_default.bold(`factory board  ${b.forge} ${b.repo}  ${source2}  (${items} item${items === 1 ? "" : "s"}, ${runs} run${runs === 1 ? "" : "s"})`)];
-  for (const c of b.columns) {
-    if (c.items.length === 0) continue;
-    lines4.push("");
-    lines4.push(source_default.bold(c.title === c.stage ? c.stage.toUpperCase() : `${c.stage.toUpperCase()} (${c.title})`));
-    for (const r of c.items) lines4.push(c.stage === "backlog" ? backlogLine(r) : runLine(r, prefix));
-  }
-  if (b.outside.length > 0) {
-    lines4.push("");
-    lines4.push(source_default.bold("RUNS NOT IN THE INTAKE SOURCE"));
-    for (const r of b.outside) lines4.push(runLine(r, prefix));
-  }
-  if (items === 0 && b.outside.length === 0) lines4.push("no items and no runs in flight");
-  return lines4.join("\n");
-}
-var BUCKET_COLOR;
-var init_render = __esm({
-  "src/factory/board/render.ts"() {
-    "use strict";
-    init_source();
-    init_score();
-    init_state6();
-    BUCKET_COLOR = { runnable: source_default.green, "needs-plan": source_default.yellow, blocked: source_default.red };
-  }
-});
-
-// src/factory/board/collect.ts
-function readRuns(root, warnings) {
-  const runs = /* @__PURE__ */ new Map();
-  const broken = /* @__PURE__ */ new Set();
-  let names;
-  try {
-    names = (0, import_fs182.readdirSync)(factoryStateDir3(root));
-  } catch {
-    return { runs, broken };
-  }
-  for (const name of names.sort()) {
-    const m = RUN_FILE.exec(name);
-    if (!m) continue;
-    const key = /^\d+$/.test(m[1]) ? Number(m[1]) : m[1];
-    try {
-      const state = readFactoryState(root, key);
-      if (state) runs.set(key, state);
-    } catch (error62) {
-      broken.add(key);
-      warnings.push(`omg factory board: run state ${runLabel(key)} is unreadable: ${message2(error62)}`);
-    }
-  }
-  return { runs, broken };
-}
-function liveStage(kind, stages, item, recorded) {
-  const pick2 = (hits, text9) => {
-    const stage = recorded !== void 0 && hits.includes(recorded) ? recorded : hits[0];
-    return { stage, text: text9(stage) };
-  };
-  if (kind === "github") {
-    const hits = PROGRESS_STAGES.filter((s) => item.labels.some((l) => same7(l, stages[s]?.label)));
-    return hits.length ? pick2(hits, (s) => stages[s]?.label) : { stage: "unmapped" };
-  }
-  const byColumn = PROGRESS_STAGES.filter((s) => same7(item.column, stages[s]?.column));
-  if (byColumn.length) return pick2(byColumn, () => item.column);
-  const byState = PROGRESS_STAGES.filter((s) => same7(item.state, stages[s]?.state));
-  if (byState.length) return pick2(byState, () => item.state);
-  return { stage: "unmapped", text: item.column ?? (item.state || void 0) };
-}
-function wouldSync(config2, s, expected) {
-  if (!config2.progress.enabled || s.kind === "ci-heal" || s.phase === "intake") return false;
-  if (expected === "cancelled") return s.trackerStage !== void 0;
-  const m = config2.progress.stages[expected];
-  return Boolean(m?.label || m?.column || m?.state);
-}
-function columnTitle(config2, stage) {
-  if (stage === "backlog" || !config2.progress.enabled) return stage;
-  const m = config2.progress.stages[stage];
-  return plainText(m?.label ?? m?.column ?? m?.state ?? stage);
-}
-function liveOf(root, s) {
-  const h = ownerHolding(factoryOwnerPath(root, runKeyOf(s)));
-  if (h === null || h === "unreadable") return {};
-  const slot = heldSlots(root).find((x) => x.owner !== "unreadable" && x.owner.run === String(runKeyOf(s)) && x.owner.pid === h.pid);
-  return { live: { pid: h.pid, host: plainText(h.hostname), since: plainText(String(h.startedAt)), ...slot ? { slot: slot.slot } : {} } };
-}
-function runPart(root, s, warnings) {
-  const integrity = verifyFactoryIntegrity(s) ? "ok" : s.integrity === void 0 ? "none" : "bad";
-  const running = s.lanes.find((l) => l.status === "running");
-  const run3 = {
-    phase: s.phase,
-    ...s.gate ? { gate: { name: plainText(s.gate.name), reason: plainText(s.gate.reason), ...s.gate.detail ? { detail: plainText(s.gate.detail) } : {} } } : {},
-    ...s.pr !== void 0 ? { pr: s.pr } : {},
-    ...s.head ? { head: plainText(s.head) } : {},
-    lanes: s.lanes.length,
-    ...running ? { runningLane: plainText(running.id) } : {},
-    ...liveOf(root, s),
-    credits: Number(runCredits(s).toFixed(2)),
-    integrity,
-    updatedAt: plainText(s.updatedAt),
-    ...s.layout === 2 && s.privateDir ? { privateDir: plainText(s.privateDir) } : {}
-  };
-  if (s.pr === void 0) return { run: run3 };
-  try {
-    const ship = readShipState(root, s.pr);
-    const v = ship ? latestVerdict(ship) : void 0;
-    return v ? { run: run3, gates: { verdict: plainText(v.verdict), sha: v.sha, at: plainText(v.at) } } : { run: run3 };
-  } catch (error62) {
-    warnings.push(`omg factory board: ship state of PR ${s.pr} is unreadable: ${message2(error62)}`);
-    return { run: run3 };
-  }
-}
-function flagsOf(config2, s, row, now2) {
-  const flags = [];
-  const { expected, recorded, live } = row.stage;
-  if (live !== void 0 && recorded !== void 0 && live !== recorded) flags.push("drift");
-  if (expected !== void 0 && recorded !== expected && wouldSync(config2, s, expected)) flags.push("unsynced");
-  if (row.run?.integrity !== "ok") flags.push("seal");
-  const updated = Date.parse(s.updatedAt);
-  if (!TERMINAL_FACTORY_PHASES.includes(s.phase) && !s.gate && Number.isFinite(updated) && now2 - updated > BOARD_STALE_MS) flags.push("stale");
-  return flags;
-}
-function reviewNow(forge, s, row, warnings) {
-  const gate = row.run?.gate;
-  if (!gate || s.gate?.name !== "merge" || s.pr === void 0 || !s.head || !forge.reviews.reviewFeedback) return;
-  let fb;
-  try {
-    fb = forge.reviews.reviewFeedback(s.pr, s.head);
-  } catch (error62) {
-    if (error62 instanceof FactorySafetyError) throw error62;
-    warnings.push(`omg factory board: the review state of ${forge.kind === "local" ? "local " : ""}PR #${s.pr} is unreadable: ${message2(error62)}`);
-    return;
-  }
-  const by = [...new Set(fb.decisions.filter((d) => d.state === "changes-requested").map((d) => d.author))];
-  if (by.length === 0 && fb.threads.length === 0) return;
-  const what = [fb.threads.length > 0 ? `${fb.threads.length} open review ${forge.kind === "local" ? "note" : "thread"}(s)` : "", by.length > 0 ? `changes requested by ${by.join(", ")}` : ""].filter(Boolean).join(" and ");
-  gate.reason = plainText(`${gate.reason.replace(PARKED_REVIEW, "").replace(PARKED_MERGE_STEP, "")}; human review now: ${what} on ${forge.kind === "local" ? "local " : ""}PR #${s.pr}: do not merge${typeof s.issue === "number" && s.kind !== "ci-heal" ? `; omg factory run ${s.issue} reads it` : ""}`);
-}
-function memoTracker(forge) {
-  const seen = /* @__PURE__ */ new Map();
-  const tracker = Object.assign(Object.create(forge.tracker), {
-    viewItem: (id) => {
-      const hit2 = seen.get(id);
-      if (hit2) return hit2;
-      const item = forge.tracker.viewItem(id);
-      seen.set(id, item);
-      return item;
-    }
-  });
-  return { forge: Object.assign(Object.create(forge), { tracker }), seen };
-}
-function collectBoard(input2) {
-  const { config: config2, root, now: now2, warnings } = input2;
-  const ids2 = [...new Set(input2.ids)];
-  const { forge, seen } = memoTracker(input2.forge);
-  const { runs, broken } = readRuns(root, warnings);
-  const rows = /* @__PURE__ */ new Map();
-  const live = /* @__PURE__ */ new Map();
-  let order;
-  if (input2.check) {
-    const results = checkItems(forge, ids2, input2.check);
-    order = results.map((r) => r.id);
-    for (const r of results) {
-      const failed3 = r.reasons[0] === "read-failed" || r.reasons[0] === "wrong-type";
-      rows.set(r.id, {
-        id: r.id,
-        title: r.title,
-        url: r.url,
-        ...failed3 && !seen.has(r.id) ? { error: r.detail } : {},
-        check: { bucket: r.bucket, priority: r.priority, reasons: r.reasons, detail: r.detail },
-        stage: {},
-        flags: []
-      });
-      const item = seen.get(r.id);
-      if (item) live.set(r.id, { labels: item.labels, column: item.column, state: item.rawState });
-    }
-  } else {
-    order = [...ids2].sort((a, b) => a - b);
-    let peeked;
-    if (forge.tracker.peekItems) {
-      try {
-        peeked = forge.tracker.peekItems(ids2.filter((id) => /^[1-9]\d{0,9}$/.test(String(id))));
-      } catch (error62) {
-        if (error62 instanceof FactorySafetyError) throw error62;
-        warnings.push(`omg factory board: the batched item read failed: ${message2(error62)}`);
-        peeked = /* @__PURE__ */ new Map();
-      }
-    }
-    for (const id of order) {
-      let p = peeked?.get(id);
-      let error62;
-      if (!peeked) {
-        try {
-          const item = forge.tracker.viewItem(id);
-          p = { title: item.title, url: item.url, labels: item.labels, column: item.column, state: item.rawState };
-        } catch (e2) {
-          if (e2 instanceof FactorySafetyError) throw e2;
-          error62 = `#${id} could not be read: ${message2(e2)}`;
-        }
-      } else if (!p) {
-        error62 = `#${id} could not be read`;
-      }
-      rows.set(id, { id, title: plainText(p?.title ?? ""), url: plainText(p?.url ?? ""), ...error62 ? { error: error62 } : {}, stage: {}, flags: [] });
-      if (p) live.set(id, { labels: p.labels, column: p.column, state: p.state });
-    }
-  }
-  const columns = ["backlog", ...PROGRESS_STAGES].map((stage) => ({ stage, title: columnTitle(config2, stage), items: [] }));
-  const column = (stage) => columns.find((c) => c.stage === stage);
-  for (const id of order) {
-    const row = rows.get(id);
-    const s = runs.get(id);
-    if (!s) {
-      if (broken.has(id)) row.flags.push("seal");
-      const l2 = live.get(id);
-      if (l2 && config2.progress.enabled) {
-        const found = liveStage(config2.kind, config2.progress.stages, l2);
-        if (found.stage !== "unmapped") row.stage.live = found.stage;
-      }
-      column("backlog").items.push(row);
-      continue;
-    }
-    Object.assign(row, runPart(root, s, warnings));
-    if (input2.check || forge.kind === "local") reviewNow(forge, s, row, warnings);
-    if (!row.title && s.issueTitle) row.title = plainText(s.issueTitle);
-    const expected = trackerStageOf(s);
-    row.stage = { expected, ...s.trackerStage ? { recorded: s.trackerStage } : {} };
-    const l = live.get(id);
-    if (l && config2.progress.enabled) {
-      const found = liveStage(config2.kind, config2.progress.stages, l, s.trackerStage);
-      row.stage.live = found.stage;
-      if (found.text) row.liveText = plainText(found.text);
-    }
-    row.flags = flagsOf(config2, s, row, now2);
-    column(expected).items.push(row);
-  }
-  const inSource = new Set(ids2);
-  const outside = [];
-  for (const [key, s] of runs) {
-    if (inSource.has(key) || TERMINAL_FACTORY_PHASES.includes(s.phase)) continue;
-    if (s.forgeKind !== void 0 && s.forgeKind !== config2.kind) warnings.push(`omg factory board: run ${runLabel(key)} started on ${s.forgeKind}, but the forge resolves to ${config2.kind}`);
-    const row = { id: key, title: plainText(s.issueTitle ?? (s.kind === "ci-heal" ? "ci-heal" : "")), url: "", stage: { expected: trackerStageOf(s), ...s.trackerStage ? { recorded: s.trackerStage } : {} }, flags: [] };
-    Object.assign(row, runPart(root, s, warnings));
-    if (input2.check || forge.kind === "local") reviewNow(forge, s, row, warnings);
-    row.flags = flagsOf(config2, s, row, now2);
-    outside.push(row);
-  }
-  outside.sort((a, b) => typeof a.id === typeof b.id ? a.id < b.id ? -1 : 1 : typeof a.id === "number" ? -1 : 1);
-  for (const c of columns) if (c.stage !== "backlog") c.items.sort((a, b) => a.id - b.id);
-  return { columns, outside, readFailed: [...rows.values()].some((r) => r.error !== void 0 || r.check?.reasons[0] === "read-failed") };
-}
-async function runFactoryBoard(o, deps) {
-  const parent = o.parent === void 0 ? void 0 : parseItemId(o.parent);
-  if (parent !== void 0 && o.source !== void 0) throw new CheckUsageError("--parent and --source are exclusive");
-  if (parent !== void 0 && o.limit !== void 0) throw new CheckUsageError("--limit applies to an intake source; --parent shows every child of the spec");
-  const warnings = [];
-  const checkDeps = { ...deps, isTTY: () => false, confirm: async () => false };
-  const { root, base, baseSha, config: config2, forge, exec: exec3 } = openReadForge(o, checkDeps, warnings, "omg factory board");
-  const source2 = config2.intake.source;
-  let spec = null;
-  let ids2 = [];
-  if (parent !== void 0) {
-    const item = forge.tracker.viewItem(parent);
-    spec = { id: item.id, title: plainText(item.title), url: plainText(item.url) };
-    ids2 = item.children;
-  } else if (source2) {
-    ids2 = forge.tracker.queryItems(source2, config2.intake.limit);
-  } else if (!hasRuns(root)) {
-    throw new CheckIncompatibleError("no intake source and no factory runs: pass --source <spec> or --parent <spec>, or set factory.intake.source");
-  }
-  const env2 = o.check === false ? null : checkEnvFor(exec3, root, config2, base, baseSha);
-  const now2 = deps.now ?? Date.now;
-  warnings.push(...humanMergeLines(recordHumanMerges(root, readRuns(root, []).runs, { readPrState: forgePrStateReader(forge, exec3, root, config2.repo.url), ledgerDir: deps.ledgerDir ?? defaultLedgerDir(), now: () => new Date(now2()).toISOString() })).map((l) => `omg factory board: ${l}`));
-  const board = collectBoard({ forge, config: config2, root, ids: ids2, check: env2, now: (deps.now ?? Date.now)(), warnings });
-  if (forge.kind === "local") {
-    for (const id of ids2) {
-      try {
-        const item = forge.tracker.viewItem(id);
-        if (item.uncommitted) warnings.push(`omg factory board: #${id} (${item.url}) is uncommitted: untrusted until it is committed on ${base}`);
-      } catch (error62) {
-        if (error62 instanceof FactorySafetyError) throw error62;
-      }
-    }
-  }
-  warnings.push(...forge.tracker.warnings?.() ?? []);
-  const limitations = forgeLimitations(forge, base);
-  const json3 = {
-    schemaVersion: BOARD_JSON_SCHEMA_VERSION,
-    ok: !board.readFailed,
-    forge: config2.kind,
-    limitations,
-    repo: config2.repo.url,
-    source: parent !== void 0 || !source2 ? null : Object.fromEntries(Object.entries(source2).map(([k, v]) => [k, typeof v === "string" ? plainText(v) : v])),
-    parent: spec,
-    columns: board.columns,
-    outside: board.outside,
-    warnings: warnings.map(plainText)
-  };
-  if (o.json) {
-    deps.out(JSON.stringify(json3, null, 2));
-  } else {
-    for (const w of json3.warnings) deps.err(w);
-    for (const l of limitations) deps.out(source_default.gray(l));
-    deps.out(renderBoard(json3));
-  }
-  return json3.ok ? 0 : 1;
-}
-function hasRuns(root) {
-  try {
-    return (0, import_fs182.readdirSync)(factoryStateDir3(root)).some((n) => RUN_FILE.test(n));
-  } catch {
-    return false;
-  }
-}
-var import_fs182, BOARD_JSON_SCHEMA_VERSION, BOARD_STALE_MS, RUN_FILE, message2, same7, PARKED_REVIEW, PARKED_MERGE_STEP;
-var init_collect = __esm({
-  "src/factory/board/collect.ts"() {
-    "use strict";
-    init_source();
-    import_fs182 = require("fs");
-    init_cli();
-    init_score();
-    init_types10();
-    init_state5();
-    init_human_merged();
-    init_ledger2();
-    init_budget();
-    init_exec2();
-    init_state6();
-    init_render();
-    BOARD_JSON_SCHEMA_VERSION = 1;
-    BOARD_STALE_MS = 24 * 60 * 60 * 1e3;
-    RUN_FILE = /^run-(\d+|heal-[0-9a-f]{8})\.json$/;
-    message2 = (error62) => plainText(error62 instanceof Error ? error62.message : String(error62));
-    same7 = (a, b) => a !== void 0 && b !== void 0 && a.toLowerCase() === b.toLowerCase();
-    PARKED_REVIEW = /; human review: [\s\S]*?; if the PR gets new review comments before you merge, rerun [^;]*? first/;
-    PARKED_MERGE_STEP = /: run [^;]*, then [^;]*$/;
-  }
-});
-
 // src/factory/attention/actions.ts
 function reminderCommand(key, gate) {
   const steps = gateSteps(gate).steps;
@@ -153607,7 +153211,7 @@ var init_actions = __esm({
 
 // src/factory/attention/collect.ts
 function runKeyOfName(name) {
-  const m = RUN_FILE2.exec(name);
+  const m = RUN_FILE.exec(name);
   if (!m) return null;
   const key = /^\d+$/.test(m[1]) ? Number(m[1]) : m[1];
   if (typeof key === "number" && !(Number.isSafeInteger(key) && key > 0)) return null;
@@ -153616,7 +153220,7 @@ function runKeyOfName(name) {
 function readRegularFile(path30, max = READ_MAX_BYTES) {
   let st;
   try {
-    st = (0, import_fs183.lstatSync)(path30, { bigint: true });
+    st = (0, import_fs182.lstatSync)(path30, { bigint: true });
   } catch (error62) {
     return isMissing(error62) ? { missing: true } : { error: errText7(error62) };
   }
@@ -153624,28 +153228,28 @@ function readRegularFile(path30, max = READ_MAX_BYTES) {
   if (st.size > BigInt(max)) return { error: `it is larger than ${max} bytes` };
   let fd;
   try {
-    fd = (0, import_fs183.openSync)(path30, import_fs183.constants.O_RDONLY | (import_fs183.constants.O_NOFOLLOW ?? 0) | (import_fs183.constants.O_NONBLOCK ?? 0));
+    fd = (0, import_fs182.openSync)(path30, import_fs182.constants.O_RDONLY | (import_fs182.constants.O_NOFOLLOW ?? 0) | (import_fs182.constants.O_NONBLOCK ?? 0));
   } catch (error62) {
     return isMissing(error62) ? { missing: true } : { error: errText7(error62) };
   }
   try {
-    const f = (0, import_fs183.fstatSync)(fd, { bigint: true });
+    const f = (0, import_fs182.fstatSync)(fd, { bigint: true });
     if (!f.isFile() || !sameFile2(f, st)) return { error: "the file was replaced while it was read" };
     if (f.size > BigInt(max)) return { error: `it is larger than ${max} bytes` };
     const size = Number(f.size);
     const buf = Buffer.alloc(size);
     let n = 0;
     while (n < size) {
-      const got = (0, import_fs183.readSync)(fd, buf, n, size - n, n);
+      const got = (0, import_fs182.readSync)(fd, buf, n, size - n, n);
       if (got === 0) break;
       n += got;
     }
-    if ((0, import_fs183.readSync)(fd, Buffer.alloc(1), 0, 1, n) > 0) return { error: "the file grew while it was read" };
+    if ((0, import_fs182.readSync)(fd, Buffer.alloc(1), 0, 1, n) > 0) return { error: "the file grew while it was read" };
     return { bytes: buf.subarray(0, n) };
   } catch (error62) {
     return { error: errText7(error62) };
   } finally {
-    (0, import_fs183.closeSync)(fd);
+    (0, import_fs182.closeSync)(fd);
   }
 }
 function ownerOf3(root, key, ledgerDir, deps) {
@@ -153682,7 +153286,7 @@ function holderOf(path30, deps) {
 }
 function sinceProgress(root, key, now2) {
   try {
-    return now2 - (0, import_fs183.statSync)(factoryProgressFile(root, key)).mtimeMs;
+    return now2 - (0, import_fs182.statSync)(factoryProgressFile(root, key)).mtimeMs;
   } catch {
     return null;
   }
@@ -153812,6 +153416,9 @@ function healItem(root, sig8, s, o, now2, deps) {
   if (last?.status === "running" && Number.isInteger(last.pid) && deps.isAlive(last.pid)) return null;
   const approve2 = last?.status !== "running" && s.diagnosis?.outcome === "valid" && s.diagnosis.laneId === last?.id;
   const ended = (s.lanes ?? []).some((l) => l.status !== "running" && typeof l.startedAt === "string" && typeof s.healRun?.startedAt === "string" && l.startedAt >= s.healRun.startedAt);
+  if (approve2 && s.next !== "heal-approve") {
+    return { ...common, gate: "heal-approve", group: "decide", why: "a valid CI-heal diagnosis is sealed, but the heal record's next step disagrees; read its status, the commands are withheld", next: nextCommands(key, ["status"]), trust: "ok" };
+  }
   return {
     ...common,
     gate: approve2 ? "heal-approve" : "heal-diagnosis",
@@ -153849,6 +153456,16 @@ function healOpenAfterRun(root, sig8, s, o, now2) {
     at: Number.isFinite(at) ? at : 0
   };
 }
+function healRecordSealed(root, sig8, ledgerDir) {
+  const r = readRegularFile(healStatePath(root, sig8));
+  if (!("bytes" in r)) return false;
+  try {
+    const s = parseHealState(r.bytes.toString("utf8"), healStatePath(root, sig8));
+    return s.sig8 === sig8 && verifyHealSeal(ledgerDir, root, s) === "ok";
+  } catch {
+    return false;
+  }
+}
 function collectAttention(root, o) {
   return withWorktreePathRenderScope(() => collectIn(root, o));
 }
@@ -153883,7 +153500,7 @@ function collectIn(root, o) {
   const keys = /* @__PURE__ */ new Map();
   const listed2 = (dir) => {
     try {
-      return (0, import_fs183.readdirSync)(dir);
+      return (0, import_fs182.readdirSync)(dir);
     } catch {
       return [];
     }
@@ -153894,12 +153511,24 @@ function collectIn(root, o) {
   }
   const healRuns = /* @__PURE__ */ new Map();
   for (const key of [...keys.values()].sort((a, b) => String(a).localeCompare(String(b), "en", { numeric: true }))) {
+    const sig8 = typeof key === "string" ? key.slice("heal-".length) : null;
     let r = readRun(root, key, o.ledgerDir);
     if (r.missing) {
       const item2 = missingItem(root, key, o.ledgerDir);
       if (item2) items.push(item2);
+      if (sig8 !== null) {
+        if (item2) healRuns.set(sig8, "untrusted");
+        else {
+          try {
+            if (typeof EngineLedger.open(o.ledgerDir, root, key).recorded(factoryStatePath(root, key)) === "string") healRuns.set(sig8, "finished");
+          } catch {
+            healRuns.set(sig8, "untrusted");
+          }
+        }
+      }
       continue;
     }
+    if (sig8 !== null) healRuns.set(sig8, "untrusted");
     const live = ownerOf3(root, key, o.ledgerDir, deps);
     if ((r.trust === "ledger" || r.trust === "unverified") && live === "live") r = readRun(root, key, o.ledgerDir);
     if (r.trust === "unreadable") {
@@ -153908,7 +153537,7 @@ function collectIn(root, o) {
     }
     if (r.state && r.trust === "ok") {
       forges.add(forgeOf(r.state));
-      if (typeof key === "string") healRuns.set(key.slice("heal-".length), TERMINAL_FACTORY_PHASES.includes(r.state.phase));
+      if (sig8 !== null) healRuns.set(sig8, TERMINAL_FACTORY_PHASES.includes(r.state.phase) ? "finished" : "running");
     }
     if (live === "live" || live === "remote") liveRuns.push(runLabel(key));
     let item;
@@ -153917,6 +153546,10 @@ function collectIn(root, o) {
     } catch (error62) {
       readFailed = true;
       item = runItem(root, { key, trust: "unreadable", error: errText7(error62) }, now2, o, live);
+      if (sig8 !== null) healRuns.set(sig8, "untrusted");
+    }
+    if (item && sig8 !== null && item.next.some((c) => c.billed) && !healRecordSealed(root, sig8, o.ledgerDir)) {
+      item = { ...item, next: item.next.filter((c) => !c.billed), notes: [...item.notes, HEAL_UNSEALED_NOTE] };
     }
     if (item) items.push(item);
   }
@@ -153924,10 +153557,14 @@ function collectIn(root, o) {
   const sigs = /* @__PURE__ */ new Set([...listed2(healDir).filter((f) => /^[0-9a-f]{8}\.json$/.test(f)).map((f) => f.slice(0, 8)), ...healSealSigs(o.ledgerDir, root)]);
   for (const sig8 of [...sigs].sort()) {
     if (!SIG8.test(sig8)) continue;
-    const finishedRun = healRuns.get(sig8);
-    if (finishedRun === false) continue;
+    const run3 = healRuns.get(sig8);
+    if (run3 === "running") continue;
     const key = `heal-${sig8}`;
     const row = { key, group: "inspect", gate: null, phase: "heal", ageMs: null, credits: null, cap: null, pr: null, head: null, title: "", notes: [], next: suppressedCommands(key), at: 0 };
+    if (run3 === "untrusted") {
+      if (!items.some((i) => i.key === key)) items.push({ ...row, why: TRUST_WHY.ledger, trust: "ledger" });
+      continue;
+    }
     const r = readRegularFile(healStatePath(root, sig8));
     if ("missing" in r) {
       if (healSealOpen(o.ledgerDir, root, sig8) !== false) {
@@ -153951,7 +153588,7 @@ function collectIn(root, o) {
     }
     let item;
     try {
-      item = finishedRun ? healOpenAfterRun(root, sig8, s, o, now2) : healItem(root, sig8, s, o, now2, deps);
+      item = run3 === "finished" ? healOpenAfterRun(root, sig8, s, o, now2) : healItem(root, sig8, s, o, now2, deps);
     } catch (error62) {
       item = { ...row, why: HEAL_WHY.unreadable, error: errText7(error62), trust: "unreadable" };
     }
@@ -153994,11 +153631,11 @@ function attentionJson(d) {
     warnings: d.warnings
   };
 }
-var import_fs183, import_path210, ATTENTION_SCHEMA_VERSION, HUNG_AFTER_MS, TITLE_MAX, READ_MAX_BYTES, TEXT_MAX, REASON_MAX, RUN_FILE2, text5, errText7, HEX4024, forgeOf, msOf, sameFile2, kindOf, isMissing, relLog, TRUST_WHY, MISSING_UNREADABLE_LEDGER_WHY, HEAL_WHY, SLOT_WHY, UNTRUSTED_WHY, FORGED_OWNER_NOTE, REMOTE_OWNER_NOTE, FIXED_NOTES, GATE_NAME_SHAPE;
-var init_collect2 = __esm({
+var import_fs182, import_path210, ATTENTION_SCHEMA_VERSION, HUNG_AFTER_MS, TITLE_MAX, READ_MAX_BYTES, TEXT_MAX, REASON_MAX, RUN_FILE, text5, errText7, HEX4024, forgeOf, msOf, sameFile2, kindOf, isMissing, relLog, TRUST_WHY, MISSING_UNREADABLE_LEDGER_WHY, HEAL_WHY, SLOT_WHY, UNTRUSTED_WHY, FORGED_OWNER_NOTE, REMOTE_OWNER_NOTE, FIXED_NOTES, GATE_NAME_SHAPE, HEAL_UNSEALED_NOTE;
+var init_collect = __esm({
   "src/factory/attention/collect.ts"() {
     "use strict";
-    import_fs183 = require("fs");
+    import_fs182 = require("fs");
     import_path210 = require("path");
     init_mirror();
     init_worktree_paths();
@@ -154018,7 +153655,7 @@ var init_collect2 = __esm({
     READ_MAX_BYTES = 8 * 1024 * 1024;
     TEXT_MAX = 300;
     REASON_MAX = 2e3;
-    RUN_FILE2 = /^run-(\d+|heal-[0-9a-f]{8})\.json$/;
+    RUN_FILE = /^run-(\d+|heal-[0-9a-f]{8})\.json$/;
     text5 = (v, max = TEXT_MAX) => [...plainText(String(v ?? "")).replace(/\s+/g, " ").trim()].slice(0, max).join("");
     errText7 = (e2) => text5(e2 instanceof Error ? e2.message : String(e2));
     HEX4024 = /^[0-9a-f]{40}$/;
@@ -154048,6 +153685,430 @@ var init_collect2 = __esm({
     REMOTE_OWNER_NOTE = "the run's owner file names another host: this host cannot tell whether that engine is alive";
     FIXED_NOTES = /* @__PURE__ */ new Set([FORGED_OWNER_NOTE]);
     GATE_NAME_SHAPE = /^[a-z0-9][a-z0-9-]{0,59}$/;
+    HEAL_UNSEALED_NOTE = "heal approve is withheld: the heal record is not the one the heal run sealed (heal status shows it)";
+  }
+});
+
+// src/factory/board/render.ts
+function sourceText(source2) {
+  const v = (k) => String(source2[k] ?? "");
+  switch (source2.type) {
+    case "label":
+      return `label ${v("label")}`;
+    case "milestone":
+      return `milestone ${v("milestone")}`;
+    case "wiql-query":
+      return `wiql-query ${v("queryId")}`;
+    case "board-column":
+      return `board-column ${v("team")}/${v("board")}/${v("column")}`;
+    case "area-tag":
+      return `area-tag ${v("areaPath")}#${v("tag")}`;
+    default:
+      return v("type");
+  }
+}
+function flagText(r) {
+  return r.flags.map((f) => {
+    if (f === "drift") return source_default.yellow(`drift: live ${JSON.stringify(r.liveText ?? r.stage.live)} != recorded ${r.stage.recorded}`);
+    if (f === "unsynced") return source_default.yellow(`unsynced: recorded ${r.stage.recorded ?? "-"} != expected ${r.stage.expected}`);
+    if (f === "seal") return source_default.red("seal!");
+    return source_default.yellow("stale");
+  });
+}
+function backlogLine(r) {
+  const id = runLabel(r.id).padEnd(6);
+  if (r.error) return `  ${source_default.red("read-failed".padEnd(10))}  ${id}  ${r.error}`;
+  const pri = r.check?.priority ? `P${r.check.priority}` : "- ";
+  const title = r.title.slice(0, 40).padEnd(40);
+  if (!r.check) return `  ${id}  ${title}${r.flags.length ? `  ${flagText(r).join("  ")}` : ""}`;
+  const bucket = BUCKET_COLOR[r.check.bucket](r.check.bucket.padEnd(10));
+  return `  ${bucket}  ${id}  ${pri}  ${title}  ${r.check.reasons[0] ?? ""}${r.check.reasons.length ? `  ${source_default.gray(r.check.detail)}` : ""}${r.flags.length ? `  ${flagText(r).join("  ")}` : ""}`;
+}
+function runLine(r, prefix) {
+  if (r.verified === false) return `  ${runLabel(r.id).padEnd(6)}  ${source_default.red("not verified")}${r.next ? `  ${r.next}` : ""}`;
+  const run3 = r.run;
+  const parts = [runLabel(r.id).padEnd(6)];
+  if (r.error) parts.push(source_default.red(`read-failed: ${r.error}`));
+  if (run3) {
+    parts.push(run3.gate ? source_default.yellow(`awaiting-human: ${run3.gate.name}`) : run3.phase);
+    if (run3.live) parts.push(source_default.cyan(`live pid ${run3.live.pid} on ${run3.live.host}${run3.live.slot !== void 0 ? ` slot ${run3.live.slot}` : ""}`));
+    if (run3.runningLane) parts.push(`lane ${run3.runningLane} running`);
+    parts.push(`${run3.credits.toFixed(2)} cr`);
+    if (run3.pr !== void 0) parts.push(`PR ${prefix}${run3.pr}`);
+    if (run3.head) parts.push(`head ${run3.head.slice(0, 12)}`);
+  }
+  if (r.gates) parts.push(`verdict ${r.gates.verdict} @ ${r.gates.sha.slice(0, 12)}`);
+  if (r.title) parts.push(r.title.slice(0, 40));
+  parts.push(...flagText(r));
+  const lines4 = [`  ${parts.join("  ")}`];
+  if (run3?.gate) lines4.push(source_default.gray(`        ${run3.gate.reason}`));
+  if (run3?.gate?.detail) lines4.push(source_default.gray(`        local only: ${run3.gate.detail}`));
+  if (run3?.privateDir) lines4.push(source_default.gray(`        layout private: ${run3.privateDir}`));
+  return lines4.join("\n");
+}
+function renderBoard(b) {
+  const prefix = b.forge === "azure-devops" ? "!" : "#";
+  const items = b.columns.reduce((n, c) => n + c.items.length, 0);
+  const runs = b.columns.reduce((n, c) => n + c.items.filter((r) => r.run || r.verified === false).length, 0) + b.outside.length;
+  const source2 = b.parent ? `spec #${b.parent.id} ${b.parent.title}` : b.source ? `source ${plainText(sourceText(b.source))}` : "no intake source";
+  const lines4 = [source_default.bold(`factory board  ${b.forge} ${b.repo}  ${source2}  (${items} item${items === 1 ? "" : "s"}, ${runs} run${runs === 1 ? "" : "s"})`)];
+  for (const c of b.columns) {
+    if (c.items.length === 0) continue;
+    lines4.push("");
+    lines4.push(source_default.bold(c.title === c.stage ? c.stage.toUpperCase() : `${c.stage.toUpperCase()} (${c.title})`));
+    for (const r of c.items) lines4.push(c.stage === "backlog" ? backlogLine(r) : runLine(r, prefix));
+  }
+  if (b.outside.length > 0) {
+    lines4.push("");
+    lines4.push(source_default.bold("RUNS NOT IN THE INTAKE SOURCE"));
+    for (const r of b.outside) lines4.push(runLine(r, prefix));
+  }
+  if (items === 0 && b.outside.length === 0) lines4.push("no items and no runs in flight");
+  return lines4.join("\n");
+}
+var BUCKET_COLOR;
+var init_render = __esm({
+  "src/factory/board/render.ts"() {
+    "use strict";
+    init_source();
+    init_score();
+    init_state6();
+    BUCKET_COLOR = { runnable: source_default.green, "needs-plan": source_default.yellow, blocked: source_default.red };
+  }
+});
+
+// src/factory/board/collect.ts
+function readRuns(root, warnings, ledgerDir) {
+  const runs = /* @__PURE__ */ new Map();
+  const broken = /* @__PURE__ */ new Set();
+  const untrusted = /* @__PURE__ */ new Set();
+  let names;
+  try {
+    names = (0, import_fs183.readdirSync)(factoryStateDir3(root));
+  } catch {
+    return { runs, broken, untrusted };
+  }
+  for (const name of names.sort()) {
+    const m = RUN_FILE2.exec(name);
+    if (!m) continue;
+    const key = /^\d+$/.test(m[1]) ? Number(m[1]) : m[1];
+    if (ledgerDir !== void 0) {
+      const r = readRun(root, key, ledgerDir);
+      if (r.missing) continue;
+      if (!r.state) {
+        broken.add(key);
+        warnings.push(`omg factory board: run state ${runLabel(key)} is unreadable: ${plainText(r.error ?? "unknown error")}`);
+        continue;
+      }
+      runs.set(key, r.state);
+      if (r.trust !== "ok") untrusted.add(key);
+      continue;
+    }
+    try {
+      const state = readFactoryState(root, key);
+      if (state) runs.set(key, state);
+    } catch (error62) {
+      broken.add(key);
+      warnings.push(`omg factory board: run state ${runLabel(key)} is unreadable: ${message2(error62)}`);
+    }
+  }
+  return { runs, broken, untrusted };
+}
+function liveStage(kind, stages, item, recorded) {
+  const pick2 = (hits, text9) => {
+    const stage = recorded !== void 0 && hits.includes(recorded) ? recorded : hits[0];
+    return { stage, text: text9(stage) };
+  };
+  if (kind === "github") {
+    const hits = PROGRESS_STAGES.filter((s) => item.labels.some((l) => same7(l, stages[s]?.label)));
+    return hits.length ? pick2(hits, (s) => stages[s]?.label) : { stage: "unmapped" };
+  }
+  const byColumn = PROGRESS_STAGES.filter((s) => same7(item.column, stages[s]?.column));
+  if (byColumn.length) return pick2(byColumn, () => item.column);
+  const byState = PROGRESS_STAGES.filter((s) => same7(item.state, stages[s]?.state));
+  if (byState.length) return pick2(byState, () => item.state);
+  return { stage: "unmapped", text: item.column ?? (item.state || void 0) };
+}
+function wouldSync(config2, s, expected) {
+  if (!config2.progress.enabled || s.kind === "ci-heal" || s.phase === "intake") return false;
+  if (expected === "cancelled") return s.trackerStage !== void 0;
+  const m = config2.progress.stages[expected];
+  return Boolean(m?.label || m?.column || m?.state);
+}
+function columnTitle(config2, stage) {
+  if (stage === "backlog" || !config2.progress.enabled) return stage;
+  const m = config2.progress.stages[stage];
+  return plainText(m?.label ?? m?.column ?? m?.state ?? stage);
+}
+function liveOf(root, s) {
+  const h = ownerHolding(factoryOwnerPath(root, runKeyOf(s)));
+  if (h === null || h === "unreadable") return {};
+  const slot = heldSlots(root).find((x) => x.owner !== "unreadable" && x.owner.run === String(runKeyOf(s)) && x.owner.pid === h.pid);
+  return { live: { pid: h.pid, host: plainText(h.hostname), since: plainText(String(h.startedAt)), ...slot ? { slot: slot.slot } : {} } };
+}
+function runPart(root, s, warnings) {
+  const integrity = verifyFactoryIntegrity(s) ? "ok" : s.integrity === void 0 ? "none" : "bad";
+  const running = s.lanes.find((l) => l.status === "running");
+  const run3 = {
+    phase: s.phase,
+    ...s.gate ? { gate: { name: plainText(s.gate.name), reason: plainText(s.gate.reason), ...s.gate.detail ? { detail: plainText(s.gate.detail) } : {} } } : {},
+    ...s.pr !== void 0 ? { pr: s.pr } : {},
+    ...s.head ? { head: plainText(s.head) } : {},
+    lanes: s.lanes.length,
+    ...running ? { runningLane: plainText(running.id) } : {},
+    ...liveOf(root, s),
+    credits: Number(runCredits(s).toFixed(2)),
+    integrity,
+    updatedAt: plainText(s.updatedAt),
+    ...s.layout === 2 && s.privateDir ? { privateDir: plainText(s.privateDir) } : {}
+  };
+  if (s.pr === void 0) return { run: run3 };
+  try {
+    const ship = readShipState(root, s.pr);
+    const v = ship ? latestVerdict(ship) : void 0;
+    return v ? { run: run3, gates: { verdict: plainText(v.verdict), sha: v.sha, at: plainText(v.at) } } : { run: run3 };
+  } catch (error62) {
+    warnings.push(`omg factory board: ship state of PR ${s.pr} is unreadable: ${message2(error62)}`);
+    return { run: run3 };
+  }
+}
+function flagsOf(config2, s, row, now2) {
+  const flags = [];
+  const { expected, recorded, live } = row.stage;
+  if (live !== void 0 && recorded !== void 0 && live !== recorded) flags.push("drift");
+  if (expected !== void 0 && recorded !== expected && wouldSync(config2, s, expected)) flags.push("unsynced");
+  if (row.run?.integrity !== "ok") flags.push("seal");
+  const updated = Date.parse(s.updatedAt);
+  if (!TERMINAL_FACTORY_PHASES.includes(s.phase) && !s.gate && Number.isFinite(updated) && now2 - updated > BOARD_STALE_MS) flags.push("stale");
+  return flags;
+}
+function reviewNow(forge, s, row, warnings) {
+  const gate = row.run?.gate;
+  if (!gate || s.gate?.name !== "merge" || s.pr === void 0 || !s.head || !forge.reviews.reviewFeedback) return;
+  let fb;
+  try {
+    fb = forge.reviews.reviewFeedback(s.pr, s.head);
+  } catch (error62) {
+    if (error62 instanceof FactorySafetyError) throw error62;
+    warnings.push(`omg factory board: the review state of ${forge.kind === "local" ? "local " : ""}PR #${s.pr} is unreadable: ${message2(error62)}`);
+    return;
+  }
+  const by = [...new Set(fb.decisions.filter((d) => d.state === "changes-requested").map((d) => d.author))];
+  if (by.length === 0 && fb.threads.length === 0) return;
+  const what = [fb.threads.length > 0 ? `${fb.threads.length} open review ${forge.kind === "local" ? "note" : "thread"}(s)` : "", by.length > 0 ? `changes requested by ${by.join(", ")}` : ""].filter(Boolean).join(" and ");
+  gate.reason = plainText(`${gate.reason.replace(PARKED_REVIEW, "").replace(PARKED_MERGE_STEP, "")}; human review now: ${what} on ${forge.kind === "local" ? "local " : ""}PR #${s.pr}: do not merge${typeof s.issue === "number" && s.kind !== "ci-heal" ? `; omg factory run ${s.issue} reads it` : ""}`);
+}
+function memoTracker(forge) {
+  const seen = /* @__PURE__ */ new Map();
+  const tracker = Object.assign(Object.create(forge.tracker), {
+    viewItem: (id) => {
+      const hit2 = seen.get(id);
+      if (hit2) return hit2;
+      const item = forge.tracker.viewItem(id);
+      seen.set(id, item);
+      return item;
+    }
+  });
+  return { forge: Object.assign(Object.create(forge), { tracker }), seen };
+}
+function collectBoard(input2) {
+  const { config: config2, root, now: now2, warnings } = input2;
+  const ids2 = [...new Set(input2.ids)];
+  const { forge, seen } = memoTracker(input2.forge);
+  const { runs, broken, untrusted } = readRuns(root, warnings, input2.ledgerDir);
+  const rows = /* @__PURE__ */ new Map();
+  const live = /* @__PURE__ */ new Map();
+  let order;
+  if (input2.check) {
+    const results = checkItems(forge, ids2, input2.check);
+    order = results.map((r) => r.id);
+    for (const r of results) {
+      const failed3 = r.reasons[0] === "read-failed" || r.reasons[0] === "wrong-type";
+      rows.set(r.id, {
+        id: r.id,
+        title: r.title,
+        url: r.url,
+        ...failed3 && !seen.has(r.id) ? { error: r.detail } : {},
+        check: { bucket: r.bucket, priority: r.priority, reasons: r.reasons, detail: r.detail },
+        stage: {},
+        flags: []
+      });
+      const item = seen.get(r.id);
+      if (item) live.set(r.id, { labels: item.labels, column: item.column, state: item.rawState });
+    }
+  } else {
+    order = [...ids2].sort((a, b) => a - b);
+    let peeked;
+    if (forge.tracker.peekItems) {
+      try {
+        peeked = forge.tracker.peekItems(ids2.filter((id) => /^[1-9]\d{0,9}$/.test(String(id))));
+      } catch (error62) {
+        if (error62 instanceof FactorySafetyError) throw error62;
+        warnings.push(`omg factory board: the batched item read failed: ${message2(error62)}`);
+        peeked = /* @__PURE__ */ new Map();
+      }
+    }
+    for (const id of order) {
+      let p = peeked?.get(id);
+      let error62;
+      if (!peeked) {
+        try {
+          const item = forge.tracker.viewItem(id);
+          p = { title: item.title, url: item.url, labels: item.labels, column: item.column, state: item.rawState };
+        } catch (e2) {
+          if (e2 instanceof FactorySafetyError) throw e2;
+          error62 = `#${id} could not be read: ${message2(e2)}`;
+        }
+      } else if (!p) {
+        error62 = `#${id} could not be read`;
+      }
+      rows.set(id, { id, title: plainText(p?.title ?? ""), url: plainText(p?.url ?? ""), ...error62 ? { error: error62 } : {}, stage: {}, flags: [] });
+      if (p) live.set(id, { labels: p.labels, column: p.column, state: p.state });
+    }
+  }
+  const columns = ["backlog", ...PROGRESS_STAGES].map((stage) => ({ stage, title: columnTitle(config2, stage), items: [] }));
+  const column = (stage) => columns.find((c) => c.stage === stage);
+  for (const id of order) {
+    const row = rows.get(id);
+    const s = runs.get(id);
+    if (!s) {
+      if (broken.has(id)) row.flags.push("seal");
+      const l2 = live.get(id);
+      if (l2 && config2.progress.enabled) {
+        const found = liveStage(config2.kind, config2.progress.stages, l2);
+        if (found.stage !== "unmapped") row.stage.live = found.stage;
+      }
+      column("backlog").items.push(row);
+      continue;
+    }
+    if (untrusted.has(id)) {
+      Object.assign(row, unverifiedPart(id));
+      column(trackerStageOf(s)).items.push(row);
+      continue;
+    }
+    Object.assign(row, runPart(root, s, warnings));
+    if (input2.check || forge.kind === "local") reviewNow(forge, s, row, warnings);
+    if (!row.title && s.issueTitle) row.title = plainText(s.issueTitle);
+    const expected = trackerStageOf(s);
+    row.stage = { expected, ...s.trackerStage ? { recorded: s.trackerStage } : {} };
+    const l = live.get(id);
+    if (l && config2.progress.enabled) {
+      const found = liveStage(config2.kind, config2.progress.stages, l, s.trackerStage);
+      row.stage.live = found.stage;
+      if (found.text) row.liveText = plainText(found.text);
+    }
+    row.flags = flagsOf(config2, s, row, now2);
+    column(expected).items.push(row);
+  }
+  const inSource = new Set(ids2);
+  const outside = [];
+  for (const [key, s] of runs) {
+    if (inSource.has(key) || TERMINAL_FACTORY_PHASES.includes(s.phase)) continue;
+    if (untrusted.has(key)) {
+      outside.push({ id: key, title: "", url: "", stage: {}, flags: [], ...unverifiedPart(key) });
+      continue;
+    }
+    if (s.forgeKind !== void 0 && s.forgeKind !== config2.kind) warnings.push(`omg factory board: run ${runLabel(key)} started on ${s.forgeKind}, but the forge resolves to ${config2.kind}`);
+    const row = { id: key, title: plainText(s.issueTitle ?? (s.kind === "ci-heal" ? "ci-heal" : "")), url: "", stage: { expected: trackerStageOf(s), ...s.trackerStage ? { recorded: s.trackerStage } : {} }, flags: [] };
+    Object.assign(row, runPart(root, s, warnings));
+    if (input2.check || forge.kind === "local") reviewNow(forge, s, row, warnings);
+    row.flags = flagsOf(config2, s, row, now2);
+    outside.push(row);
+  }
+  outside.sort((a, b) => typeof a.id === typeof b.id ? a.id < b.id ? -1 : 1 : typeof a.id === "number" ? -1 : 1);
+  for (const c of columns) if (c.stage !== "backlog") c.items.sort((a, b) => a.id - b.id);
+  return { columns, outside, readFailed: [...rows.values()].some((r) => r.error !== void 0 || r.check?.reasons[0] === "read-failed") };
+}
+async function runFactoryBoard(o, deps) {
+  const parent = o.parent === void 0 ? void 0 : parseItemId(o.parent);
+  if (parent !== void 0 && o.source !== void 0) throw new CheckUsageError("--parent and --source are exclusive");
+  if (parent !== void 0 && o.limit !== void 0) throw new CheckUsageError("--limit applies to an intake source; --parent shows every child of the spec");
+  const warnings = [];
+  const checkDeps = { ...deps, isTTY: () => false, confirm: async () => false };
+  const { root, base, baseSha, config: config2, forge, exec: exec3 } = openReadForge(o, checkDeps, warnings, "omg factory board");
+  const source2 = config2.intake.source;
+  let spec = null;
+  let ids2 = [];
+  if (parent !== void 0) {
+    const item = forge.tracker.viewItem(parent);
+    spec = { id: item.id, title: plainText(item.title), url: plainText(item.url) };
+    ids2 = item.children;
+  } else if (source2) {
+    ids2 = forge.tracker.queryItems(source2, config2.intake.limit);
+  } else if (!hasRuns(root)) {
+    throw new CheckIncompatibleError("no intake source and no factory runs: pass --source <spec> or --parent <spec>, or set factory.intake.source");
+  }
+  const env2 = o.check === false ? null : checkEnvFor(exec3, root, config2, base, baseSha);
+  const now2 = deps.now ?? Date.now;
+  const ledgerDir = deps.ledgerDir ?? defaultLedgerDir();
+  warnings.push(...humanMergeLines(recordHumanMerges(root, readRuns(root, []).runs, { readPrState: forgePrStateReader(forge, exec3, root, config2.repo.url), ledgerDir, now: () => new Date(now2()).toISOString() })).map((l) => `omg factory board: ${l}`));
+  const board = collectBoard({ forge, config: config2, root, ids: ids2, check: env2, now: (deps.now ?? Date.now)(), warnings, ledgerDir });
+  if (forge.kind === "local") {
+    for (const id of ids2) {
+      try {
+        const item = forge.tracker.viewItem(id);
+        if (item.uncommitted) warnings.push(`omg factory board: #${id} (${item.url}) is uncommitted: untrusted until it is committed on ${base}`);
+      } catch (error62) {
+        if (error62 instanceof FactorySafetyError) throw error62;
+      }
+    }
+  }
+  warnings.push(...forge.tracker.warnings?.() ?? []);
+  const limitations = forgeLimitations(forge, base);
+  const json3 = {
+    schemaVersion: BOARD_JSON_SCHEMA_VERSION,
+    ok: !board.readFailed,
+    forge: config2.kind,
+    limitations,
+    repo: config2.repo.url,
+    source: parent !== void 0 || !source2 ? null : Object.fromEntries(Object.entries(source2).map(([k, v]) => [k, typeof v === "string" ? plainText(v) : v])),
+    parent: spec,
+    columns: board.columns,
+    outside: board.outside,
+    warnings: warnings.map(plainText)
+  };
+  if (o.json) {
+    deps.out(JSON.stringify(json3, null, 2));
+  } else {
+    for (const w of json3.warnings) deps.err(w);
+    for (const l of limitations) deps.out(source_default.gray(l));
+    deps.out(renderBoard(json3));
+  }
+  return json3.ok ? 0 : 1;
+}
+function hasRuns(root) {
+  try {
+    return (0, import_fs183.readdirSync)(factoryStateDir3(root)).some((n) => RUN_FILE2.test(n));
+  } catch {
+    return false;
+  }
+}
+var import_fs183, BOARD_JSON_SCHEMA_VERSION, BOARD_STALE_MS, RUN_FILE2, message2, same7, unverifiedPart, PARKED_REVIEW, PARKED_MERGE_STEP;
+var init_collect2 = __esm({
+  "src/factory/board/collect.ts"() {
+    "use strict";
+    init_source();
+    import_fs183 = require("fs");
+    init_cli();
+    init_score();
+    init_types10();
+    init_state5();
+    init_human_merged();
+    init_ledger2();
+    init_budget();
+    init_exec2();
+    init_state6();
+    init_collect();
+    init_actions();
+    init_render();
+    BOARD_JSON_SCHEMA_VERSION = 1;
+    BOARD_STALE_MS = 24 * 60 * 60 * 1e3;
+    RUN_FILE2 = /^run-(\d+|heal-[0-9a-f]{8})\.json$/;
+    message2 = (error62) => plainText(error62 instanceof Error ? error62.message : String(error62));
+    same7 = (a, b) => a !== void 0 && b !== void 0 && a.toLowerCase() === b.toLowerCase();
+    unverifiedPart = (key) => ({ verified: false, next: statusArgv(key).join(" ") });
+    PARKED_REVIEW = /; human review: [\s\S]*?; if the PR gets new review comments before you merge, rerun [^;]*? first/;
+    PARKED_MERGE_STEP = /: run [^;]*, then [^;]*$/;
   }
 });
 
@@ -154069,7 +154130,12 @@ function attentionMoreNotice(root, items) {
   for (const i of items) byGroup[i.group] = (byGroup[i.group] ?? 0) + 1;
   return { repo: repoName(root), more: items.length, byGroup };
 }
+function attentionCountNotice(root, count4) {
+  return { repo: repoName(root), count: count4 };
+}
 function attentionNoticeText(n) {
+  if ("count" in n) return `factory ${n.repo}: ${n.count} unverified or damaged state file(s) need inspection
+details: omg factory attention`;
   if ("more" in n) {
     const counts = Object.keys(GROUP_TITLES).filter((g) => n.byGroup[g]).map((g) => `${n.byGroup[g]} ${GROUP_TITLES[g].toLowerCase()}`);
     return `factory ${n.repo}: and ${n.more} more item(s) need you: ${counts.join(", ")}
@@ -154080,13 +154146,33 @@ details: omg factory attention`;
 next: ${n.next}` : ""}
 details: omg factory attention`;
 }
-async function sendAttentionNotice(n, notify2) {
+async function sendAttentionNotice(n, notify2, signal) {
   try {
+    if (signal?.aborted) return;
     const send = notify2 ?? (await Promise.resolve().then(() => (init_notifications(), notifications_exports))).notify;
     const { redactTokens: redactTokens2 } = await Promise.resolve().then(() => (init_redact2(), redact_exports));
-    await send("factory-attention", { sessionId: "factory-attention", message: redactTokens2(attentionNoticeText(n)), replyable: false });
+    if (signal?.aborted) return;
+    await untilAborted(send("factory-attention", { sessionId: "factory-attention", message: redactTokens2(attentionNoticeText(n)), replyable: false }), signal);
   } catch {
   }
+}
+function untilAborted(p, signal) {
+  if (!signal) return p.then(() => void 0);
+  return new Promise((resolve98, reject2) => {
+    if (signal.aborted) {
+      resolve98();
+      return;
+    }
+    const done = () => {
+      signal.removeEventListener("abort", done);
+      resolve98();
+    };
+    signal.addEventListener("abort", done, { once: true });
+    p.then(done, (error62) => {
+      signal.removeEventListener("abort", done);
+      reject2(error62);
+    });
+  });
 }
 var import_path211, GATE_NAME, KEY2, repoName;
 var init_notify = __esm({
@@ -154242,6 +154328,21 @@ function staleGateReminders(o) {
     for (const [key, s] of o.runs) {
       if (!s.gate || TERMINAL_FACTORY_PHASES.includes(s.phase)) continue;
       const label2 = runLabel(key);
+      if (o.untrusted?.has(key)) {
+        const rec2 = before[label2];
+        if (!rec2 || rec2.gateAt !== UNVERIFIED_AT) {
+          next[label2] = { gateAt: UNVERIFIED_AT, remindedAt: new Date(o.nowMs).toISOString() };
+          continue;
+        }
+        const last2 = Date.parse(rec2.remindedAt);
+        if (Number.isFinite(last2) && o.nowMs - last2 < windowMs) {
+          next[label2] = rec2;
+          continue;
+        }
+        if (validRunKey(key)) due.push({ run: key, verified: false, next: statusArgv(key).join(" ") });
+        next[label2] = { gateAt: UNVERIFIED_AT, remindedAt: new Date(o.nowMs).toISOString() };
+        continue;
+      }
       if (!verifyFactoryIntegrity(s)) {
         o.warn?.(`reminder: ${label2} is unsound (its state fails the integrity seal), skipped`);
         continue;
@@ -154276,7 +154377,7 @@ function staleGateReminders(o) {
     return due;
   }, { timeoutMs: 5e3 });
 }
-var import_fs184, import_path212, remindersPath;
+var import_fs184, import_path212, UNVERIFIED_AT, remindersPath;
 var init_reminders = __esm({
   "src/factory/team/reminders.ts"() {
     "use strict";
@@ -154286,8 +154387,10 @@ var init_reminders = __esm({
     init_file_lock();
     init_review_feedback();
     init_state6();
+    init_gate_next();
     init_context();
     init_routing2();
+    UNVERIFIED_AT = "unverified";
     remindersPath = (root) => (0, import_path212.join)(factoryStateDir3(root), "reminders.json");
   }
 });
@@ -154621,12 +154724,13 @@ async function pollTick(ctx) {
       }
     }
   }
-  const { runs, broken } = readRuns(root, warnings);
+  const ledgerDir = ctx.ledgerDir ?? defaultLedgerDir();
+  const { runs, broken, untrusted } = readRuns(root, warnings, ledgerDir);
   const live = [...runs].filter(([, s]) => !TERMINAL_FACTORY_PHASES.includes(s.phase));
   const prs = [];
   if (ctx.prs) {
     for (const [key, s] of live) {
-      if (s.pr === void 0) continue;
+      if (s.pr === void 0 || untrusted.has(key)) continue;
       const pr = s.pr;
       const row = { id: key, pr };
       const view2 = step(`PR ${pr}`, () => forge.reviews.viewPr(pr));
@@ -154659,9 +154763,9 @@ async function pollTick(ctx) {
   const sharedEngine = engineBusy(root, ctx.owner);
   const slots = heldSlots(root, ctx.owner).length;
   const locked = sharedEngine || slots > 0;
-  const unsound = broken.size > 0 || [...runs.values()].some((s) => !verifyFactoryIntegrity(s));
+  const unsound = broken.size > 0 || untrusted.size > 0 || [...runs.values()].some((s) => !verifyFactoryIntegrity(s));
   const idle = !locked && !unsound && !live.some(([, s]) => !s.gate);
-  const reminders = step("reminders", () => staleGateReminders({ root, runs, nowMs: ctx.now(), afterHours: ctx.remindAfterHours, ...ctx.baseSha ? { readBase: (path30) => readBaseFile(ctx.exec, root, ctx.baseSha, path30) ?? void 0 } : {}, warn: (m) => warnings.push(plainText(m)) }));
+  const reminders = step("reminders", () => staleGateReminders({ root, runs, untrusted, nowMs: ctx.now(), afterHours: ctx.remindAfterHours, ...ctx.baseSha ? { readBase: (path30) => readBaseFile(ctx.exec, root, ctx.baseSha, path30) ?? void 0 } : {}, warn: (m) => warnings.push(plainText(m)) }));
   let attention;
   if (ctx.attention) {
     const d = step("attention", ctx.attention);
@@ -154672,37 +154776,79 @@ async function pollTick(ctx) {
       const seen = ctx.previous.seen ??= /* @__PURE__ */ new Map();
       const nowMs = ctx.now();
       const quietMs = (ctx.remindAfterHours && ctx.remindAfterHours > 0 ? ctx.remindAfterHours : ATTENTION_QUIET_DEFAULT_HOURS) * 36e5;
+      const prev = ctx.previous;
+      const unverified = d.items.filter((i) => i.trust !== "ok").length;
       if (!before) attention = { summary: summaryLine2(d), new: [] };
       else {
         const reminded = new Set((reminders ?? []).map((r) => runLabel(r.run)));
-        const fresh = d.items.filter((i, n) => {
-          const last = seen.get(ids3[n]);
-          return !before.has(ids3[n]) && !reminded.has(i.key) && (last === void 0 || nowMs - last >= quietMs);
+        const fresh = d.items.map((i, n) => ({ i, id: ids3[n] })).filter(({ i, id }) => {
+          const last = seen.get(id);
+          return !before.has(id) && !reminded.has(i.key) && (last === void 0 || nowMs - last >= quietMs);
         });
-        const printed = fresh.slice(0, ATTENTION_PRINT_ITEMS);
+        const trusted = fresh.filter(({ i }) => i.trust === "ok");
+        const untrustedNew = fresh.length - trusted.length;
+        const printed = trusted.slice(0, ATTENTION_PRINT_ITEMS);
         attention = {
-          new: printed.map((i) => ({ key: i.key, group: i.group, gate: noticeGate(i), next: i.next[0]?.argv ?? null })),
-          ...fresh.length > printed.length ? { more: fresh.length - printed.length } : {}
+          new: printed.map(({ i }) => ({ key: i.key, group: i.group, gate: noticeGate(i), next: i.next[0]?.argv ?? null })),
+          ...trusted.length > printed.length ? { more: trusted.length - printed.length } : {},
+          ...unverified > 0 && (unverified !== prev.unverified || untrustedNew > 0) ? { unverified } : {}
         };
-        if (ctx.notifyAttention && fresh.length > 0) {
-          const notices = fresh.slice(0, ATTENTION_NOTICE_ITEMS).map((i) => attentionNotice(root, i)).filter((n) => n !== null);
-          if (fresh.length > ATTENTION_NOTICE_ITEMS) notices.push(attentionMoreNotice(root, fresh.slice(ATTENTION_NOTICE_ITEMS)));
-          const sent = (ctx.previous.notified ??= []).filter((t) => nowMs - t < ATTENTION_RATE_WINDOW_MS && t <= nowMs);
-          const allowed = notices.slice(0, Math.max(0, ATTENTION_RATE_MAX - sent.length));
-          ctx.previous.notified = [...sent, ...allowed.map(() => nowMs)];
-          if (allowed.length < notices.length) attention.dropped = notices.length - allowed.length;
+        if (ctx.notifyAttention) {
+          const present = new Set(ids3);
+          const queue = (prev.queue ?? []).filter((q) => present.has(q.id));
+          const queued = new Set(queue.map((q) => q.id));
+          const overflow = prev.overflow ?? [];
+          let dropped = 0;
+          for (const { i, id } of trusted) {
+            const notice = queued.has(id) ? null : attentionNotice(root, i);
+            if (!notice) continue;
+            if (queue.length >= ATTENTION_QUEUE_MAX) {
+              overflow.push(i.group);
+              dropped += 1;
+              continue;
+            }
+            queue.push({ id, notice });
+            queued.add(id);
+          }
+          const sent = (prev.notified ?? []).filter((t) => nowMs - t < ATTENTION_RATE_WINDOW_MS && t <= nowMs);
+          const pending = prev.pending ?? 0;
+          const room = pending >= ATTENTION_PENDING_MAX ? 0 : Math.max(0, Math.min(ATTENTION_NOTICE_ITEMS, ATTENTION_RATE_MAX - sent.length));
+          const batch = overflow.length > 0 && room > 0 ? [attentionMoreNotice(root, overflow.splice(0).map((group) => ({ group })))] : [];
+          batch.push(...queue.splice(0, room - batch.length).map((q) => q.notice));
+          prev.notified = [...sent, ...batch.map(() => nowMs)];
+          prev.queue = queue;
+          prev.overflow = overflow;
+          if (queue.length > 0) attention.queued = queue.length;
+          if (dropped > 0) attention.dropped = dropped;
+          if (untrustedNew > 0) prev.countDue = true;
+          if (unverified === 0) prev.countDue = false;
+          const last = prev.countNotifiedAt;
+          if (prev.countDue && pending < ATTENTION_PENDING_MAX && (last === void 0 || last > nowMs || nowMs - last >= ATTENTION_COUNT_NOTICE_WINDOW_MS)) {
+            batch.push(attentionCountNotice(root, unverified));
+            prev.countDue = false;
+            prev.countNotifiedAt = nowMs;
+          }
           const notify2 = ctx.notifyAttention;
           const timeoutMs = ctx.notifyTimeoutMs ?? ATTENTION_NOTIFY_TIMEOUT_MS;
-          if (allowed.length > 0 && !await settledWithin(allowed.map((n) => Promise.resolve().then(() => notify2(n))), timeoutMs)) {
-            warnings.push(`attention: the notifications did not finish within ${Math.round(timeoutMs / 1e3)} s; the poll goes on`);
+          if (batch.length > 0) {
+            const abort = new AbortController();
+            prev.pending = (prev.pending ?? 0) + batch.length;
+            const sends = batch.map((n) => untilAborted(Promise.resolve().then(() => notify2(n, abort.signal)).catch(() => void 0), abort.signal).finally(() => {
+              prev.pending = Math.max(0, (prev.pending ?? 1) - 1);
+            }));
+            if (!await settledWithin(sends, timeoutMs)) {
+              abort.abort();
+              warnings.push(`attention: the notifications did not finish within ${Math.round(timeoutMs / 1e3)} s; the poll goes on`);
+            }
           }
         }
       }
+      prev.unverified = unverified;
       markSeen(seen, ids3, nowMs);
     }
   }
   const board = [];
-  const shown = step("board", () => collectBoard({ forge, config: config2, root, ids: ids2, check: null, now: ctx.now(), warnings }));
+  const shown = step("board", () => collectBoard({ forge, config: config2, root, ids: ids2, check: null, now: ctx.now(), warnings, ledgerDir }));
   if (shown) {
     const rows = [...shown.columns.flatMap((c) => c.items.map((row) => ({ stage: c.stage, row }))), ...shown.outside.map((row) => ({ stage: "outside", row }))];
     const next = /* @__PURE__ */ new Map();
@@ -154777,8 +154923,10 @@ function renderTick(t) {
     lines4.push(`  attention: ${a.key} needs you: ${GROUP_TITLES[a.group].toLowerCase()}${a.gate ? ` at ${a.gate}` : ""}${c ? `; next: ${c.inRoot ? "in the repository root, " : ""}${c.line}` : ""}`);
   }
   if (t.attention?.more) lines4.push(`  attention: and ${t.attention.more} more new item(s) need you (omg factory attention)`);
-  if (t.attention?.dropped) lines4.push(`  attention: ${t.attention.dropped} notification(s) not sent: at most ${ATTENTION_RATE_MAX} per ${ATTENTION_RATE_WINDOW_MS / 6e4} min for this repository`);
-  for (const r of t.reminders ?? []) lines4.push(`  reminder: ${runLabel(r.run)} has waited ${r.hours} h at ${visibleLine(r.gate)}${r.handles.length ? ` ${r.handles.join(" ")}` : ""}: ${r.reason} (${reminderHint(r.run, r.gate)})`);
+  if (t.attention?.unverified) lines4.push(`  attention: ${t.attention.unverified} unverified or damaged state file(s) need inspection: omg factory attention`);
+  if (t.attention?.queued) lines4.push(`  attention: ${t.attention.queued} notification(s) queued: at most ${ATTENTION_RATE_MAX} per ${ATTENTION_RATE_WINDOW_MS / 6e4} min for this repository`);
+  if (t.attention?.dropped) lines4.push(`  attention: ${t.attention.dropped} notification(s) not sent: more than ${ATTENTION_QUEUE_MAX} were queued; one count notice covers them`);
+  for (const r of t.reminders ?? []) lines4.push("verified" in r ? `  reminder: ${runLabel(r.run)} is parked, not verified (${r.next})` : `  reminder: ${runLabel(r.run)} has waited ${r.hours} h at ${visibleLine(r.gate)}${r.handles.length ? ` ${r.handles.join(" ")}` : ""}: ${r.reason} (${reminderHint(r.run, r.gate)})`);
   const done = new Map(t.prs.filter((p) => p.hint).map((p) => [runLabel(p.id), p]));
   for (const b of t.board) {
     const p = done.get(runLabel(b.row.id));
@@ -154851,12 +154999,13 @@ async function runFactoryPoll(o, deps) {
     budget: deps.budget ?? defaultPollBudget(() => layers),
     remindAfterHours: teamConfig.remindAfterHours,
     tamperHold: () => tamperHoldMessage(deps.ledgerDir ?? defaultLedgerDir(), read.root),
+    ...deps.ledgerDir !== void 0 ? { ledgerDir: deps.ledgerDir } : {},
     ...(() => {
       const n = pollParallel(layers.trustedUser, layers.base, (m) => deps.err(plainText(m)));
       return n !== void 0 ? { parallel: n } : {};
     })(),
     attention: () => collectAttention(read.root, { ledgerDir: deps.ledgerDir ?? defaultLedgerDir(), owner, now: now2 }),
-    notifyAttention: deps.notifyAttention ?? ((n) => sendAttentionNotice(n)),
+    notifyAttention: deps.notifyAttention ?? ((n, signal) => sendAttentionNotice(n, void 0, signal)),
     ...deps.notifyTimeoutMs !== void 0 ? { notifyTimeoutMs: deps.notifyTimeoutMs } : {},
     owner,
     now: now2,
@@ -154887,7 +155036,7 @@ async function runFactoryPoll(o, deps) {
     release();
   }
 }
-var import_child_process49, import_fs185, import_path213, POLL_JSON_SCHEMA_VERSION, POLL_DEFAULT_INTERVAL_MS, POLL_MIN_INTERVAL_MS, POLL_MAX_INTERVAL_MS, POLL_OWNER_STALE_MS, PollBusyError, pollStatePath, pollAuditPath, writePollFile, ownerless, stale, heldBy, AUTO_START_MAX_STDOUT, AUTO_START_CLAIM, AUTO_START_SLACK_MS, AUTO_START_GRACE_MS, ATTENTION_NOTICE_ITEMS, ATTENTION_PRINT_ITEMS, ATTENTION_RATE_MAX, ATTENTION_RATE_WINDOW_MS, ATTENTION_NOTIFY_TIMEOUT_MS, ATTENTION_SEEN_MAX, ATTENTION_QUIET_DEFAULT_HOURS, attentionId, message3, reminderHint, defaultSleep, defaultOnStop;
+var import_child_process49, import_fs185, import_path213, POLL_JSON_SCHEMA_VERSION, POLL_DEFAULT_INTERVAL_MS, POLL_MIN_INTERVAL_MS, POLL_MAX_INTERVAL_MS, POLL_OWNER_STALE_MS, PollBusyError, pollStatePath, pollAuditPath, writePollFile, ownerless, stale, heldBy, AUTO_START_MAX_STDOUT, AUTO_START_CLAIM, AUTO_START_SLACK_MS, AUTO_START_GRACE_MS, ATTENTION_NOTICE_ITEMS, ATTENTION_PRINT_ITEMS, ATTENTION_RATE_MAX, ATTENTION_RATE_WINDOW_MS, ATTENTION_QUEUE_MAX, ATTENTION_COUNT_NOTICE_WINDOW_MS, ATTENTION_NOTIFY_TIMEOUT_MS, ATTENTION_PENDING_MAX, ATTENTION_SEEN_MAX, ATTENTION_QUIET_DEFAULT_HOURS, attentionId, message3, reminderHint, defaultSleep, defaultOnStop;
 var init_poll = __esm({
   "src/factory/poll.ts"() {
     "use strict";
@@ -154902,7 +155051,7 @@ var init_poll = __esm({
     init_graphql();
     init_config2();
     init_exec();
-    init_collect();
+    init_collect2();
     init_render();
     init_cli();
     init_score();
@@ -154914,7 +155063,7 @@ var init_poll = __esm({
     init_tamper_quarantine();
     init_review_feedback();
     init_actions();
-    init_collect2();
+    init_collect();
     init_notify();
     init_render2();
     init_engine();
@@ -154949,7 +155098,10 @@ var init_poll = __esm({
     ATTENTION_PRINT_ITEMS = 10;
     ATTENTION_RATE_MAX = 6;
     ATTENTION_RATE_WINDOW_MS = 10 * 6e4;
+    ATTENTION_QUEUE_MAX = 100;
+    ATTENTION_COUNT_NOTICE_WINDOW_MS = 60 * 6e4;
     ATTENTION_NOTIFY_TIMEOUT_MS = 1e4;
+    ATTENTION_PENDING_MAX = 2 * (ATTENTION_NOTICE_ITEMS + 1);
     ATTENTION_SEEN_MAX = 1e4;
     ATTENTION_QUIET_DEFAULT_HOURS = 24;
     attentionId = (i) => i.trust === "ok" ? JSON.stringify([i.key, i.group, "ok", i.gate, i.at]) : JSON.stringify([i.key, "untrusted"]);
@@ -156786,7 +156938,7 @@ var init_factory_board = __esm({
     "use strict";
     init_esm();
     init_source();
-    init_collect();
+    init_collect2();
     init_cli();
     init_state6();
     init_score();
@@ -156980,7 +157132,7 @@ var init_collect3 = __esm({
     import_fs186 = require("fs");
     import_path214 = require("path");
     init_score();
-    init_collect();
+    init_collect2();
     init_state6();
     DASHBOARD_SCHEMA_VERSION = 1;
     GATE_NOTE2 = /^awaiting-human: ([^:]+):/;
@@ -157443,7 +157595,7 @@ var init_collect_v2 = __esm({
     import_path215 = require("path");
     init_mirror();
     init_score();
-    init_collect2();
+    init_collect();
     init_ledger2();
     init_gate_next();
     init_progress2();
@@ -158707,7 +158859,7 @@ var init_serve = __esm({
     import_path216 = require("path");
     init_score();
     init_actions();
-    init_collect2();
+    init_collect();
     init_gate_next();
     init_state6();
     init_client3();
@@ -159093,7 +159245,7 @@ var init_factory_attention = __esm({
     import_child_process51 = require("child_process");
     init_esm();
     init_source();
-    init_collect2();
+    init_collect();
     init_render2();
     init_cli();
     init_score();
@@ -160315,7 +160467,7 @@ var init_factory = __esm({
     init_factory_dashboard();
     init_factory_attention();
     init_human_merged();
-    init_collect();
+    init_collect2();
     init_factory_pr();
     init_factory_poll();
     init_poll();
@@ -170470,7 +170622,7 @@ var init_summary = __esm({
     init_tamper_quarantine();
     init_state6();
     init_actions();
-    init_collect2();
+    init_collect();
     SUMMARY_TTL_MS = 5e3;
     CACHE_MAX = 32;
     cache2 = /* @__PURE__ */ new Map();

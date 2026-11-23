@@ -187,7 +187,7 @@ export async function notify(
       sessionId: data.sessionId,
       message: "", // Will be formatted below
       timestamp: data.timestamp || new Date().toISOString(),
-      // factory-attention carries no session, pane or project field: its message is all it sends.
+      // factory-attention carries no session, pane, project or reply field: its message is all it sends.
       tmuxSession: factoryAttention ? undefined : data.tmuxSession ?? getCurrentTmuxSession() ?? undefined,
       tmuxPaneId: factoryAttention ? undefined : data.tmuxPaneId ?? getCurrentTmuxPaneId() ?? undefined,
       projectPath: factoryAttention ? undefined : data.projectPath,
@@ -208,9 +208,9 @@ export async function notify(
       incompleteTasks: data.incompleteTasks,
       agentName: data.agentName,
       agentType: data.agentType,
-      replyChannel: data.replyChannel ?? process.env.OPENCLAW_REPLY_CHANNEL ?? undefined,
-      replyTarget: data.replyTarget ?? process.env.OPENCLAW_REPLY_TARGET ?? undefined,
-      replyThread: data.replyThread ?? process.env.OPENCLAW_REPLY_THREAD ?? undefined,
+      replyChannel: factoryAttention ? undefined : data.replyChannel ?? process.env.OPENCLAW_REPLY_CHANNEL ?? undefined,
+      replyTarget: factoryAttention ? undefined : data.replyTarget ?? process.env.OPENCLAW_REPLY_TARGET ?? undefined,
+      replyThread: factoryAttention ? undefined : data.replyThread ?? process.env.OPENCLAW_REPLY_THREAD ?? undefined,
       approval: data.approval,
       replyable: data.replyable,
     };

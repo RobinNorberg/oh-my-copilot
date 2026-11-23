@@ -9,6 +9,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { hostname, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { engineWroteAll } from '../board/__tests__/trusted-states.js';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { factoryRunJson } from '../../cli/commands/factory.js';
 import { factoryPollCommand } from '../../cli/commands/factory-poll.js';
@@ -51,7 +52,7 @@ beforeEach(() => {
   out = [];
   err = [];
 });
-afterEach(() => rmSync(root, { recursive: true, force: true }));
+afterEach(() => { rmSync(root, { recursive: true, force: true }); rmSync(`${root}-ledger`, { recursive: true, force: true }); });
 
 /** The review feedback GraphQL answer for PR 9: `threads` as [id, login] pairs; `me` (the viewer) has write access. */
 const DONE = { hasNextPage: false };
@@ -131,7 +132,11 @@ function deps(exec: Exec, over: Partial<FactoryPollDeps> = {}): FactoryPollDeps 
   };
 }
 
-const poll = (exec: Exec, o: FactoryPollOptions = {}, over: Partial<FactoryPollDeps> = {}) => runFactoryPoll(o, deps(exec, over));
+/** The planted states are the engine's own writes (recorded in a ledger), unless the test passes its own ledger. */
+const poll = (exec: Exec, o: FactoryPollOptions = {}, over: Partial<FactoryPollDeps> = {}) => {
+  if (over.ledgerDir === undefined) engineWroteAll(root, `${root}-ledger`);
+  return runFactoryPoll(o, deps(exec, { ledgerDir: `${root}-ledger`, ...over }));
+};
 const ticks = (): PollTick[] => out.map((l) => JSON.parse(l) as PollTick);
 const LABEL = { factory: { intake: { source: { type: 'label', label: 'factory' } } } };
 
@@ -204,6 +209,19 @@ describe('omg factory poll on GitHub', () => {
     // F33: the board row of #4 no longer repeats its stale merge gate reason.
     expect(out.join('\n')).not.toContain('gates green; a human merges');
     expect(out.join('\n')).toContain('the PR is closed: run `omg factory run 4` to record it');
+  });
+
+  it('a sealed state the engine ledger does not record: no PR read, no PR line, never idle', async () => {
+    seedParked();
+    const w = scripted({ prState: 'CLOSED' });
+    // An empty ledger: the planted state fails the trust check (lane code can write a sealed state).
+    expect(await poll(w.exec, { once: true, json: true }, { ledgerDir: `${root}-ledger` })).toBe(0);
+    expect(ticks()[0].prs).toEqual([]);
+    expect(ticks()[0].idle).toBe(false);
+    expect(w.calls.filter((c) => c.startsWith('gh pr') || c.startsWith('gh api'))).toEqual([]);
+    out.length = 0;
+    expect(await poll(scripted({ prState: 'CLOSED' }).exec, { once: true }, { ledgerDir: `${root}-ledger` })).toBe(0);
+    expect(out.join('\n')).not.toContain('PR #9');
   });
 
   it('an open PR: human threads by trusted reviewers are counted, untrusted authors as ignored (one fixed GraphQL read)', async () => {
@@ -749,7 +767,8 @@ describe('omg factory poll: factory.intake.autoStart', () => {
   });
 
   it('at most one run per tick: the started run in flight keeps the next tick from starting another', async () => {
-    const e = engine({ after: () => save(moveTo(issueRun(1), 'implement', 'lane lost', T0)) });
+    // The started engine writes its state and its ledger record (a state without one is untrusted: never idle either).
+    const e = engine({ after: () => { save(moveTo(issueRun(1), 'implement', 'lane lost', T0)); engineWroteAll(root, `${root}-ledger`); } });
     let stop: () => void = () => {};
     let sleeps = 0;
     const code = await poll(scripted().exec, { json: true, prs: false }, on(e, {

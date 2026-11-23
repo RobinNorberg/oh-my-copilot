@@ -443,6 +443,11 @@ function healItem(root: string, sig8: string, s: HealSignatureState, o: CollectA
   // (started at or after it) that ended. A first lane whose process died never ended: only `heal run` (which
   // records it as lost) moves it on.
   const ended = (s.lanes ?? []).some((l) => l.status !== 'running' && typeof l.startedAt === 'string' && typeof s.healRun?.startedAt === 'string' && l.startedAt >= s.healRun.startedAt);
+  // The sealed facts say approve is due, but the unsealed `next` disagrees: the engine (and closeHeal) refuse on `next`
+  // before any lane, so nothing billed or closing is offered; the read-only status shows what happened.
+  if (approve && s.next !== 'heal-approve') {
+    return { ...common, gate: 'heal-approve', group: 'decide', why: 'a valid CI-heal diagnosis is sealed, but the heal record\'s next step disagrees; read its status, the commands are withheld', next: nextCommands(key, ['status']), trust: 'ok' };
+  }
   return {
     ...common,
     gate: approve ? 'heal-approve' : 'heal-diagnosis',
@@ -483,6 +488,20 @@ function healOpenAfterRun(root: string, sig8: string, s: HealSignatureState, o: 
   };
 }
 
+const HEAL_UNSEALED_NOTE = 'heal approve is withheld: the heal record is not the one the heal run sealed (heal status shows it)';
+
+/** Whether the heal record of `sig8` is the one its heal seal holds: the engine takes `heal approve` only then. */
+function healRecordSealed(root: string, sig8: string, ledgerDir: string): boolean {
+  const r = readRegularFile(healStatePath(root, sig8));
+  if (!('bytes' in r)) return false;
+  try {
+    const s = parseHealState(r.bytes.toString('utf8'), healStatePath(root, sig8));
+    return s.sig8 === sig8 && verifyHealSeal(ledgerDir, root, s) === 'ok';
+  } catch {
+    return false;
+  }
+}
+
 /** One render scope: the state root is resolved once, not once per file path (dozens of git-metadata stats each on Windows). */
 export function collectAttention(root: string, o: CollectAttentionOptions): AttentionData {
   return withWorktreePathRenderScope(() => collectIn(root, o));
@@ -519,15 +538,30 @@ function collectIn(root: string, o: CollectAttentionOptions): AttentionData {
     const key = runKeyOfName(name);
     if (key !== null) keys.set(String(key), key);
   }
-  // sig8 -> whether the engine's own ci-heal run state of it is finished.
-  const healRuns = new Map<string, boolean>();
+  // sig8 -> the ci-heal run of it: the engine's own state running or finished, or `untrusted` (a state that is not the
+  // engine's, or a missing one the ledger does not record as finished: its run row, under the heal key, is the row).
+  const healRuns = new Map<string, 'running' | 'finished' | 'untrusted'>();
   for (const key of [...keys.values()].sort((a, b) => String(a).localeCompare(String(b), 'en', { numeric: true }))) {
+    const sig8 = typeof key === 'string' ? key.slice('heal-'.length) : null;
     let r = readRun(root, key, o.ledgerDir);
     if (r.missing) {
       const item = missingItem(root, key, o.ledgerDir);
       if (item) items.push(item);
+      if (sig8 !== null) {
+        // The engine refuses a new ci-heal run while its ledger records a state for it (state-tampered): never the no-run path.
+        if (item) healRuns.set(sig8, 'untrusted');
+        else {
+          try {
+            if (typeof EngineLedger.open(o.ledgerDir, root, key).recorded(factoryStatePath(root, key)) === 'string') healRuns.set(sig8, 'finished');
+          } catch {
+            healRuns.set(sig8, 'untrusted'); // The heal loop adds its status-only row: no run row exists.
+          }
+        }
+      }
       continue;
     }
+    // Set before anything below can throw: any state file of a ci-heal run keeps its heal signature off the no-run path.
+    if (sig8 !== null) healRuns.set(sig8, 'untrusted');
     const live = ownerOf(root, key, o.ledgerDir, deps);
     // A live engine writes the state, then the ledger: one reread rules out reading between the two.
     if ((r.trust === 'ledger' || r.trust === 'unverified') && live === 'live') r = readRun(root, key, o.ledgerDir);
@@ -539,7 +573,7 @@ function collectIn(root: string, o: CollectAttentionOptions): AttentionData {
     if (r.state && r.trust === 'ok') {
       forges.add(forgeOf(r.state));
       // Only the engine's own ci-heal run state stands in for its heal signature.
-      if (typeof key === 'string') healRuns.set(key.slice('heal-'.length), TERMINAL_FACTORY_PHASES.includes(r.state.phase));
+      if (sig8 !== null) healRuns.set(sig8, TERMINAL_FACTORY_PHASES.includes(r.state.phase) ? 'finished' : 'running');
     }
     if (live === 'live' || live === 'remote') liveRuns.push(runLabel(key));
     let item: AttentionItem | null;
@@ -549,6 +583,11 @@ function collectIn(root: string, o: CollectAttentionOptions): AttentionData {
       // A state this version cannot lay out is still a row, never a missing one.
       readFailed = true;
       item = runItem(root, { key, trust: 'unreadable', error: errText(error) }, now, o, live);
+      if (sig8 !== null) healRuns.set(sig8, 'untrusted');
+    }
+    // `heal approve` resumes a ci-heal run only on a heal record its seal holds (runHealEngine): withheld otherwise.
+    if (item && sig8 !== null && item.next.some((c) => c.billed) && !healRecordSealed(root, sig8, o.ledgerDir)) {
+      item = { ...item, next: item.next.filter((c) => !c.billed), notes: [...item.notes, HEAL_UNSEALED_NOTE] };
     }
     if (item) items.push(item);
   }
@@ -559,11 +598,17 @@ function collectIn(root: string, o: CollectAttentionOptions): AttentionData {
   for (const sig8 of [...sigs].sort()) {
     if (!SIG8.test(sig8)) continue;
     // A ci-heal run in flight stands in for its heal signature. Once it is finished the host ledger's heal seal decides
-    // whether an open heal run exists: a missing, unreadable or unsealed record is a row as on the no-run path.
-    const finishedRun = healRuns.get(sig8);
-    if (finishedRun === false) continue;
+    // whether an open heal run exists: a missing, unreadable or unsealed record is a row as on the no-run path. A run
+    // state that is not the engine's (or a missing one the ledger holds) is its own status-only row under this key: the
+    // engine takes no `heal approve` or `heal run` for it, and a second row would repeat the key.
+    const run = healRuns.get(sig8);
+    if (run === 'running') continue;
     const key: FactoryRunKey = `heal-${sig8}`;
     const row = { key, group: 'inspect' as const, gate: null, phase: 'heal', ageMs: null, credits: null, cap: null, pr: null, head: null, title: '', notes: [], next: suppressedCommands(key), at: 0 };
+    if (run === 'untrusted') {
+      if (!items.some((i) => i.key === key)) items.push({ ...row, why: TRUST_WHY.ledger, trust: 'ledger' });
+      continue;
+    }
     const r = readRegularFile(healStatePath(root, sig8));
     if ('missing' in r) {
       // L-3: a heal run the seal records as closed needs nobody once its record is gone (git clean); seals older than
@@ -590,7 +635,7 @@ function collectIn(root: string, o: CollectAttentionOptions): AttentionData {
     }
     let item: AttentionItem | null;
     try {
-      item = finishedRun ? healOpenAfterRun(root, sig8, s, o, now) : healItem(root, sig8, s, o, now, deps);
+      item = run === 'finished' ? healOpenAfterRun(root, sig8, s, o, now) : healItem(root, sig8, s, o, now, deps);
     } catch (error) {
       item = { ...row, why: HEAL_WHY.unreadable!, error: errText(error), trust: 'unreadable' };
     }

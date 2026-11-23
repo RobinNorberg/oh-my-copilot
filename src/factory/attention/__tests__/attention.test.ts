@@ -499,10 +499,12 @@ describe('omg factory attention: untrusted state cannot hide a row', () => {
     expect(collect().items).toEqual([]);
     write({ ...sig, lanes: [{ ...lane, status: 'running', pid: 778 }] });
     expect(one()).toMatchObject({ gate: 'heal-diagnosis' });
-    // A fake ci-heal run state does not stand in for the heal record: both show.
+    // A fake ci-heal run state is its own Inspect row under the heal key, and the only one: the engine takes no
+    // `heal approve` while a run state it did not write is there, so the heal record offers nothing beside it.
     write(sig);
     writeFileSync(factoryStatePath(root, healRunKey(sig8)), '{}');
-    expect(collect().items.map((i) => [i.key, i.trust]).sort()).toEqual([[`heal-${sig8}`, 'ok'], [`heal-${sig8}`, 'unreadable']]);
+    expect(one()).toMatchObject({ key: `heal-${sig8}`, group: 'inspect', trust: 'unreadable' });
+    expect(one().next.map((n) => [n.argv.join(' '), n.billed])).toEqual([[`omg factory heal status ${sig8}`, false]]);
   });
 
   it('--verbose prints a trusted reason behind a fixed prefix on every line, and no untrusted reason at all', async () => {

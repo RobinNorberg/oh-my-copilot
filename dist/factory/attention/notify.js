@@ -40,8 +40,13 @@ export function attentionMoreNotice(root, items) {
         byGroup[i.group] = (byGroup[i.group] ?? 0) + 1;
     return { repo: repoName(root), more: items.length, byGroup };
 }
+export function attentionCountNotice(root, count) {
+    return { repo: repoName(root), count };
+}
 const repoName = (root) => [...plainText(basename(root)).replace(/\s+/g, ' ').trim()].slice(0, 60).join('') || 'repository';
 export function attentionNoticeText(n) {
+    if ('count' in n)
+        return `factory ${n.repo}: ${n.count} unverified or damaged state file(s) need inspection\ndetails: omg factory attention`;
     if ('more' in n) {
         const counts = Object.keys(GROUP_TITLES).filter((g) => n.byGroup[g]).map((g) => `${n.byGroup[g]} ${GROUP_TITLES[g].toLowerCase()}`);
         return `factory ${n.repo}: and ${n.more} more item(s) need you: ${counts.join(', ')}\ndetails: omg factory attention`;
@@ -54,15 +59,35 @@ export function attentionNoticeText(n) {
  * adds none for this event) and not replyable: nothing a
  * reply says is ever typed into a terminal. `notify` is the notification
  * stack's (lazily imported, so a poll without notifications never loads it).
+ * Once `signal` aborts (the poll's timeout), the send is abandoned: the
+ * returned promise settles and nothing more is started for it.
  */
-export async function sendAttentionNotice(n, notify) {
+export async function sendAttentionNotice(n, notify, signal) {
     try {
+        if (signal?.aborted)
+            return;
         const send = notify ?? (await import('../../notifications/index.js')).notify;
         const { redactTokens } = await import('../../notifications/redact.js');
-        await send('factory-attention', { sessionId: 'factory-attention', message: redactTokens(attentionNoticeText(n)), replyable: false });
+        if (signal?.aborted)
+            return;
+        await untilAborted(send('factory-attention', { sessionId: 'factory-attention', message: redactTokens(attentionNoticeText(n)), replyable: false }), signal);
     }
     catch {
         // A notification is best effort: the poll tick printed the item already.
     }
+}
+/** Settles with `p`, or as soon as `signal` aborts (the promise is abandoned: its result is ignored). */
+export function untilAborted(p, signal) {
+    if (!signal)
+        return p.then(() => undefined);
+    return new Promise((resolve, reject) => {
+        if (signal.aborted) {
+            resolve();
+            return;
+        }
+        const done = () => { signal.removeEventListener('abort', done); resolve(); };
+        signal.addEventListener('abort', done, { once: true });
+        p.then(done, (error) => { signal.removeEventListener('abort', done); reject(error); });
+    });
 }
 //# sourceMappingURL=notify.js.map

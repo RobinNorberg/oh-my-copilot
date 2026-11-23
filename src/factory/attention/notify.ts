@@ -61,9 +61,25 @@ export function attentionMoreNotice(root: string, items: readonly Pick<Attention
   return { repo: repoName(root), more: items.length, byGroup };
 }
 
+/**
+ * One count-only notice for the rows whose state is not trusted (unverified, damaged, missing, planted slot files):
+ * the number only. A lane can write any number of such files, so they never get an item notice of their own.
+ */
+export interface AttentionCountNotice {
+  repo: string;
+  count: number;
+}
+
+export function attentionCountNotice(root: string, count: number): AttentionCountNotice {
+  return { repo: repoName(root), count };
+}
+
+export type AnyAttentionNotice = AttentionNotice | AttentionMoreNotice | AttentionCountNotice;
+
 const repoName = (root: string): string => [...plainText(basename(root)).replace(/\s+/g, ' ').trim()].slice(0, 60).join('') || 'repository';
 
-export function attentionNoticeText(n: AttentionNotice | AttentionMoreNotice): string {
+export function attentionNoticeText(n: AnyAttentionNotice): string {
+  if ('count' in n) return `factory ${n.repo}: ${n.count} unverified or damaged state file(s) need inspection\ndetails: omg factory attention`;
   if ('more' in n) {
     const counts = (Object.keys(GROUP_TITLES) as AttentionGroup[]).filter((g) => n.byGroup[g]).map((g) => `${n.byGroup[g]} ${GROUP_TITLES[g].toLowerCase()}`);
     return `factory ${n.repo}: and ${n.more} more item(s) need you: ${counts.join(', ')}\ndetails: omg factory attention`;
@@ -79,13 +95,28 @@ type Notify = (event: 'factory-attention', data: { sessionId: string; message: s
  * adds none for this event) and not replyable: nothing a
  * reply says is ever typed into a terminal. `notify` is the notification
  * stack's (lazily imported, so a poll without notifications never loads it).
+ * Once `signal` aborts (the poll's timeout), the send is abandoned: the
+ * returned promise settles and nothing more is started for it.
  */
-export async function sendAttentionNotice(n: AttentionNotice | AttentionMoreNotice, notify?: Notify): Promise<void> {
+export async function sendAttentionNotice(n: AnyAttentionNotice, notify?: Notify, signal?: AbortSignal): Promise<void> {
   try {
+    if (signal?.aborted) return;
     const send: Notify = notify ?? ((await import('../../notifications/index.js')).notify as unknown as Notify);
     const { redactTokens } = await import('../../notifications/redact.js');
-    await send('factory-attention', { sessionId: 'factory-attention', message: redactTokens(attentionNoticeText(n)), replyable: false });
+    if (signal?.aborted) return;
+    await untilAborted(send('factory-attention', { sessionId: 'factory-attention', message: redactTokens(attentionNoticeText(n)), replyable: false }), signal);
   } catch {
     // A notification is best effort: the poll tick printed the item already.
   }
+}
+
+/** Settles with `p`, or as soon as `signal` aborts (the promise is abandoned: its result is ignored). */
+export function untilAborted(p: Promise<unknown>, signal?: AbortSignal): Promise<void> {
+  if (!signal) return p.then(() => undefined);
+  return new Promise<void>((resolve, reject) => {
+    if (signal.aborted) { resolve(); return; }
+    const done = (): void => { signal.removeEventListener('abort', done); resolve(); };
+    signal.addEventListener('abort', done, { once: true });
+    p.then(done, (error: unknown) => { signal.removeEventListener('abort', done); reject(error); });
+  });
 }

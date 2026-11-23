@@ -34,7 +34,17 @@ export interface AttentionMoreNotice {
     byGroup: Partial<Record<AttentionGroup, number>>;
 }
 export declare function attentionMoreNotice(root: string, items: readonly Pick<AttentionItem, 'group'>[]): AttentionMoreNotice;
-export declare function attentionNoticeText(n: AttentionNotice | AttentionMoreNotice): string;
+/**
+ * One count-only notice for the rows whose state is not trusted (unverified, damaged, missing, planted slot files):
+ * the number only. A lane can write any number of such files, so they never get an item notice of their own.
+ */
+export interface AttentionCountNotice {
+    repo: string;
+    count: number;
+}
+export declare function attentionCountNotice(root: string, count: number): AttentionCountNotice;
+export type AnyAttentionNotice = AttentionNotice | AttentionMoreNotice | AttentionCountNotice;
+export declare function attentionNoticeText(n: AnyAttentionNotice): string;
 type Notify = (event: 'factory-attention', data: {
     sessionId: string;
     message: string;
@@ -45,7 +55,11 @@ type Notify = (event: 'factory-attention', data: {
  * adds none for this event) and not replyable: nothing a
  * reply says is ever typed into a terminal. `notify` is the notification
  * stack's (lazily imported, so a poll without notifications never loads it).
+ * Once `signal` aborts (the poll's timeout), the send is abandoned: the
+ * returned promise settles and nothing more is started for it.
  */
-export declare function sendAttentionNotice(n: AttentionNotice | AttentionMoreNotice, notify?: Notify): Promise<void>;
+export declare function sendAttentionNotice(n: AnyAttentionNotice, notify?: Notify, signal?: AbortSignal): Promise<void>;
+/** Settles with `p`, or as soon as `signal` aborts (the promise is abandoned: its result is ignored). */
+export declare function untilAborted(p: Promise<unknown>, signal?: AbortSignal): Promise<void>;
 export {};
 //# sourceMappingURL=notify.d.ts.map

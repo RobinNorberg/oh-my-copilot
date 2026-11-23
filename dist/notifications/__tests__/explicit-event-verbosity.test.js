@@ -122,6 +122,23 @@ describe("factory-attention notification (omg factory poll)", () => {
         expect(payload.projectName).toBeUndefined();
         expect(payload.projectPath).toBeUndefined();
     });
+    it("takes no reply channel, target or thread from the OPENCLAW_REPLY_* environment", async () => {
+        vi.stubEnv("OPENCLAW_REPLY_CHANNEL", "chan-marker");
+        vi.stubEnv("OPENCLAW_REPLY_TARGET", "target-marker");
+        vi.stubEnv("OPENCLAW_REPLY_THREAD", "thread-marker");
+        try {
+            mockGetNotificationConfig.mockReturnValue({ ...baseConfig, events: { "factory-attention": { enabled: true } } });
+            await notify("factory-attention", { sessionId: "factory-attention", message: "m" });
+            expect(mockDispatchNotifications).toHaveBeenCalledOnce();
+            const payload = mockDispatchNotifications.mock.calls[0][2];
+            expect(payload.replyChannel).toBeUndefined();
+            expect(payload.replyTarget).toBeUndefined();
+            expect(payload.replyThread).toBeUndefined();
+        }
+        finally {
+            vi.unstubAllEnvs();
+        }
+    });
     it("runs the message through the redaction", async () => {
         const sent = [];
         await sendAttentionNotice({ repo: "ghp_0123456789abcdefghijklmnopqrstuvwxyzAB", key: "#1", group: "fix", gate: null, next: null }, async (_e, d) => { sent.push(d.message); });

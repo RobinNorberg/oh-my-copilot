@@ -84,6 +84,14 @@ export interface BoardRow {
         sha: string;
         at: string;
     };
+    /**
+     * false: the run state is not the engine's verified last write (seal and
+     * engine ledger, as `omg factory attention` checks them). Such a row has
+     * no `run`, `gates` or text from the state, only the read-only status command.
+     */
+    verified?: false;
+    /** With verified false: the run's status command. */
+    next?: string;
 }
 export interface BoardJson {
     schemaVersion: number;
@@ -122,10 +130,16 @@ export type FactoryBoardDeps = Pick<FactoryCheckDeps, 'exec' | 'base' | 'trusted
     /** Engine ledger directory (default defaultLedgerDir()): a human merge is recorded only on a state that is the engine's last write. */
     ledgerDir?: string;
 };
-/** Every run state on disk; an unreadable one is a warning (and, for an item in the source, a `seal` flag). */
-export declare function readRuns(root: string, warnings: string[]): {
+/**
+ * Every run state on disk; an unreadable one is a warning (and, for an item in
+ * the source, a `seal` flag). With `ledgerDir`, each state is read once
+ * through `omg factory attention`'s trust check (readRun: the seal, then the
+ * engine ledger on the same bytes), and a state that fails it is in `untrusted`.
+ */
+export declare function readRuns(root: string, warnings: string[], ledgerDir?: string): {
     runs: Map<FactoryRunKey, FactoryRunState>;
     broken: Set<FactoryRunKey>;
+    untrusted: Set<FactoryRunKey>;
 };
 /**
  * The stage the tracker shows now, reverse-mapped through the progress
@@ -151,6 +165,8 @@ export interface CollectBoardInput {
     check: Parameters<typeof checkItems>[2] | null;
     now: number;
     warnings: string[];
+    /** Engine ledger directory: a run whose state fails the trust check shows as not verified. Absent: no trust check. */
+    ledgerDir?: string;
 }
 /**
  * F50 / M4: a run parked at the merge gate shows the PR's review state

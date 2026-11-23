@@ -85273,38 +85273,6 @@ var init_fixture = __esm({
   }
 });
 
-// src/factory/board/render.ts
-var BUCKET_COLOR;
-var init_render = __esm({
-  "src/factory/board/render.ts"() {
-    "use strict";
-    init_source();
-    init_score();
-    init_state5();
-    BUCKET_COLOR = { runnable: source_default.green, "needs-plan": source_default.yellow, blocked: source_default.red };
-  }
-});
-
-// src/factory/board/collect.ts
-var import_fs109, BOARD_STALE_MS;
-var init_collect = __esm({
-  "src/factory/board/collect.ts"() {
-    "use strict";
-    import_fs109 = require("fs");
-    init_cli();
-    init_score();
-    init_types9();
-    init_state4();
-    init_human_merged();
-    init_ledger2();
-    init_budget();
-    init_exec2();
-    init_state5();
-    init_render();
-    BOARD_STALE_MS = 24 * 60 * 60 * 1e3;
-  }
-});
-
 // src/factory/attention/actions.ts
 var GROUP_TITLES;
 var init_actions = __esm({
@@ -85325,11 +85293,11 @@ var init_actions = __esm({
 });
 
 // src/factory/attention/collect.ts
-var import_fs110, import_path129, HUNG_AFTER_MS, READ_MAX_BYTES, TRUST_WHY, MISSING_UNREADABLE_LEDGER_WHY, HEAL_WHY, SLOT_WHY, UNTRUSTED_WHY;
-var init_collect2 = __esm({
+var import_fs109, import_path129, HUNG_AFTER_MS, READ_MAX_BYTES, TRUST_WHY, MISSING_UNREADABLE_LEDGER_WHY, HEAL_WHY, SLOT_WHY, UNTRUSTED_WHY;
+var init_collect = __esm({
   "src/factory/attention/collect.ts"() {
     "use strict";
-    import_fs110 = require("fs");
+    import_fs109 = require("fs");
     import_path129 = require("path");
     init_mirror();
     init_worktree_paths();
@@ -85364,6 +85332,40 @@ var init_collect2 = __esm({
   }
 });
 
+// src/factory/board/render.ts
+var BUCKET_COLOR;
+var init_render = __esm({
+  "src/factory/board/render.ts"() {
+    "use strict";
+    init_source();
+    init_score();
+    init_state5();
+    BUCKET_COLOR = { runnable: source_default.green, "needs-plan": source_default.yellow, blocked: source_default.red };
+  }
+});
+
+// src/factory/board/collect.ts
+var import_fs110, BOARD_STALE_MS;
+var init_collect2 = __esm({
+  "src/factory/board/collect.ts"() {
+    "use strict";
+    import_fs110 = require("fs");
+    init_cli();
+    init_score();
+    init_types9();
+    init_state4();
+    init_human_merged();
+    init_ledger2();
+    init_budget();
+    init_exec2();
+    init_state5();
+    init_collect();
+    init_actions();
+    init_render();
+    BOARD_STALE_MS = 24 * 60 * 60 * 1e3;
+  }
+});
+
 // src/factory/attention/notify.ts
 var import_path130;
 var init_notify = __esm({
@@ -85395,13 +85397,14 @@ var init_reminders = __esm({
     init_file_lock();
     init_review_feedback();
     init_state5();
+    init_gate_next();
     init_context();
     init_routing2();
   }
 });
 
 // src/factory/poll.ts
-var import_child_process26, import_fs112, import_path132, POLL_DEFAULT_INTERVAL_MS, POLL_MIN_INTERVAL_MS, POLL_MAX_INTERVAL_MS, POLL_OWNER_STALE_MS, AUTO_START_MAX_STDOUT, AUTO_START_SLACK_MS, AUTO_START_GRACE_MS, ATTENTION_RATE_WINDOW_MS;
+var import_child_process26, import_fs112, import_path132, POLL_DEFAULT_INTERVAL_MS, POLL_MIN_INTERVAL_MS, POLL_MAX_INTERVAL_MS, POLL_OWNER_STALE_MS, AUTO_START_MAX_STDOUT, AUTO_START_SLACK_MS, AUTO_START_GRACE_MS, ATTENTION_NOTICE_ITEMS, ATTENTION_RATE_WINDOW_MS, ATTENTION_COUNT_NOTICE_WINDOW_MS, ATTENTION_PENDING_MAX;
 var init_poll = __esm({
   "src/factory/poll.ts"() {
     "use strict";
@@ -85416,7 +85419,7 @@ var init_poll = __esm({
     init_graphql();
     init_config2();
     init_exec();
-    init_collect();
+    init_collect2();
     init_render();
     init_cli();
     init_score();
@@ -85428,7 +85431,7 @@ var init_poll = __esm({
     init_tamper_quarantine();
     init_review_feedback();
     init_actions();
-    init_collect2();
+    init_collect();
     init_notify();
     init_render2();
     init_engine();
@@ -85445,7 +85448,10 @@ var init_poll = __esm({
     AUTO_START_MAX_STDOUT = 4 * 1024 * 1024;
     AUTO_START_SLACK_MS = 30 * 6e4;
     AUTO_START_GRACE_MS = 2 * 6e4;
+    ATTENTION_NOTICE_ITEMS = 3;
     ATTENTION_RATE_WINDOW_MS = 10 * 6e4;
+    ATTENTION_COUNT_NOTICE_WINDOW_MS = 60 * 6e4;
+    ATTENTION_PENDING_MAX = 2 * (ATTENTION_NOTICE_ITEMS + 1);
   }
 });
 
@@ -85552,7 +85558,7 @@ var init_factory_board = __esm({
   "src/cli/commands/factory-board.ts"() {
     "use strict";
     init_esm();
-    init_collect();
+    init_collect2();
     init_cli();
     init_state5();
     init_score();
@@ -85568,7 +85574,7 @@ var init_collect3 = __esm({
     import_fs113 = require("fs");
     import_path133 = require("path");
     init_score();
-    init_collect();
+    init_collect2();
     init_state5();
   }
 });
@@ -85582,7 +85588,7 @@ var init_collect_v2 = __esm({
     import_path134 = require("path");
     init_mirror();
     init_score();
-    init_collect2();
+    init_collect();
     init_ledger2();
     init_gate_next();
     init_progress2();
@@ -86159,7 +86165,7 @@ var init_serve = __esm({
     import_path135 = require("path");
     init_score();
     init_actions();
-    init_collect2();
+    init_collect();
     init_gate_next();
     init_state5();
     init_client3();
@@ -86216,7 +86222,7 @@ var init_factory_attention = __esm({
     "use strict";
     import_child_process28 = require("child_process");
     init_esm();
-    init_collect2();
+    init_collect();
     init_render2();
     init_cli();
     init_score();
@@ -86353,7 +86359,7 @@ var init_factory = __esm({
     init_factory_dashboard();
     init_factory_attention();
     init_human_merged();
-    init_collect();
+    init_collect2();
     init_factory_pr();
     init_factory_poll();
     init_poll();

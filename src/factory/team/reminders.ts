@@ -15,10 +15,11 @@ import { atomicWriteFileSync, ensureDirSync } from '../../lib/atomic-write.js';
 import { lockPathFor, withFileLockSync } from '../../lib/file-lock.js';
 import { visibleLine } from '../../forge/review-feedback.js';
 import { factoryStateDir, runLabel, TERMINAL_FACTORY_PHASES, verifyFactoryIntegrity, type FactoryRunKey, type FactoryRunState } from '../run/state.js';
+import { statusArgv, validRunKey } from '../run/gate-next.js';
 import { pathsInText, TEAM_ROUTING_PATH, type ReadAt } from './context.js';
 import { parseRouting, routeFor } from './routing.js';
 
-export interface Reminder {
+export interface GateReminder {
   run: FactoryRunKey;
   gate: string;
   /** Hours the run has waited at this gate. */
@@ -29,7 +30,18 @@ export interface Reminder {
   reason: string;
 }
 
+/** A parked run whose state fails the trust check: the key and the read-only status command, nothing from the state. */
+export interface UnverifiedReminder {
+  run: FactoryRunKey;
+  verified: false;
+  next: string;
+}
+
+export type Reminder = GateReminder | UnverifiedReminder;
+
 interface Record_ { gateAt: string; remindedAt: string }
+/** The record's gateAt for a run reminded as not verified (its own gate time is not trusted). */
+const UNVERIFIED_AT = 'unverified';
 type RecordFile = Record<string, Record_>;
 
 export const remindersPath = (root: string): string => join(factoryStateDir(root), 'reminders.json');
@@ -59,9 +71,18 @@ export interface ReminderInput {
   /** The base commit's files; undefined when the base sha is unknown. */
   readBase?: ReadAt;
   warn?: (message: string) => void;
+  /**
+   * Runs whose state fails the trust check (board readRuns with a ledger dir).
+   * Such a parked run is reminded once per window, counted from when it was
+   * first seen unverified, as "not verified" with the status command; no
+   * field of its state is shown.
+   */
+  untrusted?: ReadonlySet<FactoryRunKey>;
 }
 
 /** The reminders due now; records them so the same run is reminded once per window. */
+export function staleGateReminders(o: ReminderInput & { untrusted?: undefined }): GateReminder[];
+export function staleGateReminders(o: ReminderInput): Reminder[];
 export function staleGateReminders(o: ReminderInput): Reminder[] {
   if (!o.afterHours || o.afterHours <= 0) return [];
   const windowMs = o.afterHours * 3_600_000;
@@ -75,6 +96,15 @@ export function staleGateReminders(o: ReminderInput): Reminder[] {
     for (const [key, s] of o.runs) {
       if (!s.gate || TERMINAL_FACTORY_PHASES.includes(s.phase)) continue;
       const label = runLabel(key);
+      if (o.untrusted?.has(key)) {
+        const rec = before[label];
+        if (!rec || rec.gateAt !== UNVERIFIED_AT) { next[label] = { gateAt: UNVERIFIED_AT, remindedAt: new Date(o.nowMs).toISOString() }; continue; }
+        const last = Date.parse(rec.remindedAt);
+        if (Number.isFinite(last) && o.nowMs - last < windowMs) { next[label] = rec; continue; }
+        if (validRunKey(key)) due.push({ run: key, verified: false, next: statusArgv(key).join(' ') });
+        next[label] = { gateAt: UNVERIFIED_AT, remindedAt: new Date(o.nowMs).toISOString() };
+        continue;
+      }
       if (!verifyFactoryIntegrity(s)) { o.warn?.(`reminder: ${label} is unsound (its state fails the integrity seal), skipped`); continue; }
       const parkedAt = Date.parse(s.gate.at);
       if (!Number.isFinite(parkedAt)) continue;

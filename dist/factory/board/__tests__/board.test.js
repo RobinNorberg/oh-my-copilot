@@ -17,6 +17,7 @@ import { CheckIncompatibleError } from '../../check/cli.js';
 import { FactorySafetyError } from '../../run/exec.js';
 import { computeFactoryIntegrity, createFactoryState, factoryOwnerPath, factoryStateDir, factoryStatePath, moveTo, readFactoryState, runKeyOf, setGate, updateFactoryState, } from '../../run/state.js';
 import { EngineLedger } from '../../run/ledger.js';
+import { engineWroteAll } from './trusted-states.js';
 import { BOARD_JSON_SCHEMA_VERSION, liveStage, runFactoryBoard } from '../collect.js';
 const SHA = 'a'.repeat(40);
 const HEAD = 'b'.repeat(40);
@@ -70,6 +71,9 @@ function scripted(issues, listed = Object.keys(issues).map(Number)) {
             }
             if (args[0] === 'pr' && args[1] === 'list')
                 return ok('[]');
+            // The human-merge check of an engine-recorded run parked with a PR: still open.
+            if (args[0] === 'pr' && args[1] === 'view' && args.slice(3).join(' ') === '--json headRefOid,state')
+                return ok(JSON.stringify({ headRefOid: HEAD, state: 'OPEN' }));
             // M4: the merge-parked run's review state now (no review since the park).
             if (args[0] === 'api' && args[1] === 'graphql') {
                 const done = { hasNextPage: false };
@@ -93,7 +97,7 @@ beforeEach(() => {
     out = [];
     err = [];
 });
-afterEach(() => rmSync(root, { recursive: true, force: true }));
+afterEach(() => { rmSync(root, { recursive: true, force: true }); rmSync(`${root}-ledger`, { recursive: true, force: true }); });
 /** Progress sync on (a trusted user layer), so the factory:<stage> labels are the live stage. */
 const PROGRESS_USER = { factory: { progress: { enabled: true } } };
 function deps(exec, over = {}) {
@@ -109,7 +113,12 @@ function deps(exec, over = {}) {
         ...over,
     };
 }
-const board = (exec, o = {}, over = {}) => runFactoryBoard(o, deps(exec, over));
+/** The planted states are the engine's own writes (recorded in a ledger), unless the test passes its own ledger. */
+const board = (exec, o = {}, over = {}) => {
+    if (over.ledgerDir === undefined)
+        engineWroteAll(root, `${root}-ledger`);
+    return runFactoryBoard(o, deps(exec, { ledgerDir: `${root}-ledger`, ...over }));
+};
 const json = () => JSON.parse(out.join('\n'));
 const ids = (rows) => rows.map((r) => r.id);
 const column = (b, stage) => b.columns.find((c) => c.stage === stage);
@@ -188,8 +197,9 @@ describe('omg factory board on GitHub', () => {
         expect(four.stage).toEqual({ expected: 'ready-to-merge', recorded: 'verifying', live: 'verifying' });
         expect(four.flags).toEqual(['unsynced']);
         const five = column(b, 'blocked').items[0];
-        expect(five.run).toMatchObject({ phase: 'intake', gate: { name: 'blocked-by', reason: 'edited by hand' }, integrity: 'bad' });
-        expect(five.flags).toEqual(['seal']);
+        // A state that fails the trust check shows nothing from it: no run part, gate or reason; the status command only.
+        expect(five).toEqual({ id: 5, title: 'blocked by #1', url: `${REPO}/issues/5`, check: five.check, stage: {}, flags: [], verified: false, next: 'omg factory run status 5' });
+        expect(JSON.stringify(five)).not.toContain('edited by hand');
         const six = column(b, 'reviewing').items[0];
         expect(six.stage).toEqual({ expected: 'reviewing', recorded: 'reviewing', live: 'building' });
         expect(six.liveText).toBe('factory:building');
@@ -198,8 +208,8 @@ describe('omg factory board on GitHub', () => {
         expect(ids(b.outside)).toEqual([99, 'heal-0123abcd']);
         expect(b.outside[0]).toMatchObject({ title: 'explicit id red', url: '', run: { phase: 'review' } });
         expect(b.outside[1]).toMatchObject({ id: 'heal-0123abcd', title: 'ci-heal', stage: { expected: 'verifying' }, run: { phase: 'gates' } });
-        // Only reads reached gh (M4: the merge-parked run's review read is the fixed GraphQL query).
-        expect(w.calls.filter((c) => c.startsWith('gh ')).every((c) => /^gh (?:(?:issue (?:list|view)|pr list) |api graphql --hostname github\.com -f query=query\()/.test(c))).toBe(true);
+        // Only reads reached gh (M4: the merge-parked run's review read is the fixed GraphQL query; the human-merge check reads PR #9).
+        expect(w.calls.filter((c) => c.startsWith('gh ')).every((c) => /^gh (?:(?:issue (?:list|view)|pr list) |pr view 9 --json headRefOid,state$|api graphql --hostname github\.com -f query=query\()/.test(c))).toBe(true);
         expect(w.calls.filter((c) => c.startsWith('gh api graphql'))).toHaveLength(1);
     });
     it('a run whose owner file a live engine holds is marked live; a dead owner is not', async () => {
@@ -253,7 +263,8 @@ describe('omg factory board on GitHub', () => {
         expect(text).toMatch(/READY-TO-MERGE \(factory:ready-to-merge\)\n {2}#4 +awaiting-human: merge {2}0\.00 cr {2}PR #9 {2}head bbbbbbbbbbbb {2}verdict approve @ bbbbbbbbbbbb/);
         expect(text).toContain('unsynced: recorded verifying != expected ready-to-merge');
         expect(text).toContain('drift: live "factory:building" != recorded reviewing');
-        expect(text).toMatch(/#5 +awaiting-human: blocked-by .*seal!\n +edited by hand/);
+        expect(text).toMatch(/BLOCKED \(factory:blocked\)\n {2}#5 +not verified {2}omg factory run status 5\n/);
+        expect(text).not.toContain('edited by hand');
         expect(text).toMatch(/RUNS NOT IN THE INTAKE SOURCE\n {2}#99 .*\n {2}heal-0123abcd {2}gates/);
         expect(text).not.toMatch(/\u001b\[2J|\u0007/);
     });
@@ -274,7 +285,8 @@ describe('omg factory board on GitHub', () => {
         expect(b.columns.flatMap((c) => c.items).every((r) => r.check === undefined)).toBe(true);
         expect(ids(column(b, 'backlog').items)).toEqual([1, 2]);
         expect(column(b, 'reviewing').items[0].flags).toEqual(['drift']);
-        expect(w.calls.filter((c) => c.startsWith('gh '))).toEqual(['gh issue list --label factory --state open --json number --limit 50', ...[1, 2, 3, 4, 5, 6].map((n) => `gh issue view ${n} --json title,body,labels,state,url,author,comments`)]);
+        // The one PR read is the human-merge check of #4 (parked with PR #9, the engine's recorded state).
+        expect(w.calls.filter((c) => c.startsWith('gh '))).toEqual(['gh issue list --label factory --state open --json number --limit 50', 'gh pr view 9 --json headRefOid,state', ...[1, 2, 3, 4, 5, 6].map((n) => `gh issue view ${n} --json title,body,labels,state,url,author,comments`)]);
     });
     it('a failed item read shows read-failed and exits 1', async () => {
         expect(await board(scripted(ISSUES, [1, 7]).exec, { source: 'label:factory', json: true })).toBe(1);
