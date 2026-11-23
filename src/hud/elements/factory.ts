@@ -24,7 +24,8 @@ const YELLOW = '\x1b[33m';
 const GREEN = '\x1b[32m';
 
 /** The group ids of src/factory/attention/actions.ts ATTENTION_GROUPS: the short names the element prints. */
-const GROUPS = ['inspect', 'broken', 'decide', 'merge', 'fix', 'limits'] as const;
+export const FACTORY_HUD_GROUPS = ['inspect', 'broken', 'decide', 'merge', 'fix', 'limits'] as const;
+const GROUPS = FACTORY_HUD_GROUPS;
 /** Groups that mean something went wrong (red); the others are decisions or chores (yellow). */
 const ALARM = new Set<string>(['inspect', 'broken']);
 
