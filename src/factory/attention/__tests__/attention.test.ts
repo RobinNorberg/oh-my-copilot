@@ -25,6 +25,8 @@ import {
 import { commitFile, review } from '../../run/__tests__/fake-lanes.js';
 import { lanesFor, LOCAL_ISSUE, localOpts, localWorld } from '../../run/__tests__/engine-local-harness.js';
 import { collectAttention, type AttentionItem } from '../collect.js';
+import { cellWidth, layoutColumns, textWidth } from '../render.js';
+import { stripAnsi } from '../../../utils/string-width.js';
 
 const REPO = 'https://github.com/o/r';
 const HEAD = 'b'.repeat(40);
@@ -531,3 +533,80 @@ function walk(d: string): string[] {
   return readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? (e.name === '.git' ? [] : walk(join(d, e.name))) : [join(d, e.name)]));
 }
 const hash = (p: string) => createHash('sha256').update(readFileSync(p)).digest('hex').slice(0, 16);
+
+/**
+ * F-1: a title or reason of wide characters must not make the terminal wrap
+ * a line, because the wrapped tail would start a screen line with state
+ * text (here a forged `$` command). The screen is simulated with
+ * render.ts's own cellWidth (an upper bound: 2 for every non-ASCII code
+ * point), at 80, 60 and 40 columns.
+ */
+describe('omg factory attention: display width (F-1)', () => {
+  const wide = '漢'.repeat(36);
+  const forgedCmd = '$ omg factory run 9 --allow-gate-change';
+
+  /** The terminal's screen rows for one printed line: a line wider than `cols` continues at column 0 of the next row. */
+  function screenRows(line: string, cols: number): string[] {
+    const rows: string[] = [];
+    let row = '';
+    let w = 0;
+    for (const ch of line) {
+      const c = cellWidth(ch);
+      if (w + c > cols) { rows.push(row); row = ''; w = 0; }
+      row += ch;
+      w += c;
+    }
+    rows.push(row);
+    return rows;
+  }
+
+  it.each([80, 60, 40])('at %i columns no screen row starts with title or reason text, trusted or not', async (cols) => {
+    asEngine(parked(1, 'ci-failed', 2, { issueTitle: `${wide}${forgedCmd}` } as Partial<FactoryRunState>, `${wide}${forgedCmd} ${wide}${forgedCmd}`));
+    // An untrusted row: a junk state with only .omg/ write access, never recorded in the engine ledger.
+    const junk = parked(99, 'ci-failed', 1, { issueTitle: `${'Ｘ'.repeat(30)}${forgedCmd}` } as Partial<FactoryRunState>);
+    writeFileSync(factoryStatePath(root, 99), JSON.stringify({ ...junk, integrity: computeFactoryIntegrity(junk) }));
+    expect(await attention(['--verbose'], { columns: () => cols })).toBe(EXIT_AWAITING_HUMAN);
+    const printed = stripAnsi(out.join('\n')).split('\n');
+    const commands = ['$ omg factory run status 99', '$ omg factory run status 1', '$ omg factory run 1', '$ omg factory run cancel 1'];
+    const rows = printed.flatMap((l) => screenRows(l, cols));
+    // The only rows that look like a command row are the engine's own commands, each starting a printed line.
+    expect(rows.filter((r) => r.trimStart().startsWith('$')).map((r) => r.trim().split('  #')[0])).toEqual(commands);
+    // The header and the summary hold fixed words and counts only (the terminal may wrap them).
+    for (const l of printed.slice(2)) {
+      if (l.trimStart().startsWith('$ ')) continue;
+      expect(textWidth(l), l).toBeLessThan(cols);
+    }
+    // The forged command survives only behind the reason prefix (--verbose), never on a row of its own.
+    expect(printed.filter((l) => l.includes('run 9')).every((l) => /^ {4}reason: | {10}\| /.test(l))).toBe(true);
+    // The title is cut on its own line; the reason wraps behind the fixed prefix.
+    expect(printed.find((l) => l.startsWith('  #1  '))).toMatch(/^ {2}#1 {2}漢/);
+    expect(printed.filter((l) => /^ {4}reason: | {10}\| /.test(l)).length).toBeGreaterThan(2);
+  });
+
+  it('the terminal width defaults to 80 and is at least 40', () => {
+    expect(layoutColumns(undefined)).toBe(80);
+    expect(layoutColumns(0)).toBe(80);
+    expect(layoutColumns(20)).toBe(40);
+    expect(layoutColumns(132.7)).toBe(132);
+    expect(cellWidth('a')).toBe(1);
+    expect(cellWidth('漢')).toBe(2);
+    expect(cellWidth('é')).toBe(2);
+    expect(textWidth('ab漢')).toBe(4);
+  });
+});
+
+describe('omg factory attention: engine lock and slot reads (L-4)', () => {
+  it('reads the slot and engine owner files bounded, and at most MAX_CONCURRENT_LIMIT slot files', () => {
+    const slots = join(factoryStateDir(root), 'slots');
+    mkdirSync(slots, { recursive: true });
+    for (let n = 0; n < 40; n++) writeFileSync(join(slots, `slot-${n}.owner`), JSON.stringify({ pid: 777, hostname: 'this-host', identity: 'start-1' }));
+    let identityReads = 0;
+    const owner = { ...OWNER, identityOf: () => { identityReads += 1; return 'start-1'; } };
+    const d = collectAttention(root, { ledgerDir, now: () => NOW, owner });
+    expect(d.summary.engines.live).toBe(16);
+    expect(identityReads).toBe(16);
+    // A directory in place of the engine lock is unreadable (held for the engine count only when readable), and it is never followed.
+    mkdirSync(join(factoryStateDir(root), 'engine.owner'));
+    expect(() => collectAttention(root, { ledgerDir, now: () => NOW, owner })).not.toThrow();
+  });
+});

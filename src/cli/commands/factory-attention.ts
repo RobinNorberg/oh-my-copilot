@@ -11,7 +11,7 @@ import { execFileSync } from 'child_process';
 import { Command } from 'commander';
 import chalk from 'chalk';
 import { attentionJson, collectAttention } from '../../factory/attention/collect.js';
-import { renderAttention } from '../../factory/attention/render.js';
+import { layoutColumns, renderAttention, warningLines } from '../../factory/attention/render.js';
 import { EXIT_CHECK_FAILED, EXIT_CHECK_USAGE } from '../../factory/check/cli.js';
 import { plainText } from '../../factory/check/score.js';
 import type { LoadedFactoryRunLimits } from '../../factory/run/budget.js';
@@ -28,6 +28,8 @@ export interface FactoryAttentionDeps {
   ledgerDir?: string;
   now?: () => number;
   owner?: OwnerDeps;
+  /** The terminal width the view is laid out for (default process.stdout.columns; unknown: 80, at least 40). */
+  columns?: () => number | undefined;
 }
 
 const defaultRoot = (): string => execFileSync('git', ['rev-parse', '--show-toplevel'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true }).trim();
@@ -69,8 +71,9 @@ export function factoryAttentionCommand(deps: FactoryAttentionDeps = defaultAtte
       data.warnings.unshift(...warnings.map((w) => plainText(w)));
       if (o.json) deps.out(JSON.stringify(attentionJson(data), null, 2));
       else {
-        for (const w of data.warnings) deps.err(chalk.yellow(w));
-        deps.out(renderAttention(data, { verbose: o.verbose }));
+        const columns = (deps.columns ?? (() => process.stdout.columns))();
+        for (const w of data.warnings) for (const l of warningLines(w, layoutColumns(columns))) deps.err(chalk.yellow(l));
+        deps.out(renderAttention(data, { verbose: o.verbose, columns }));
       }
       process.exitCode = data.readFailed ? EXIT_CHECK_FAILED : data.items.length > 0 && !o.exitZero ? EXIT_AWAITING_HUMAN : 0;
     } catch (error) {

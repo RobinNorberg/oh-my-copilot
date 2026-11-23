@@ -207,7 +207,19 @@ export function writeHealSeal(ledgerDir: string, root: string, state: HealSignat
   const path = sealPath(ledgerDir, root, state.sig8);
   const kept = subject ?? readHealSealSubject(ledgerDir, root, state.sig8);
   ensureDirSync(healLedgerDir(ledgerDir, root));
-  atomicWriteFileSync(path, `${JSON.stringify({ sig8: state.sig8, seal: sealOf(state), ...(kept ? { subject: kept } : {}) }, null, 2)}\n`);
+  // `open` (outside the hash, which covers the record): whether the sealed heal run is open, so a reader can tell a
+  // closed heal run whose record was removed (git clean) from an open one; older seal files have no such field.
+  atomicWriteFileSync(path, `${JSON.stringify({ sig8: state.sig8, seal: sealOf(state), open: state.healRun?.open === true, ...(kept ? { subject: kept } : {}) }, null, 2)}\n`);
+}
+
+/** The seal file's `open` flag: true or false as the heal run last sealed it; null without a seal file, a readable one or the flag (a seal written before it). */
+export function healSealOpen(ledgerDir: string, root: string, sig8: string): boolean | null {
+  try {
+    const open = (JSON.parse(readFileSync(sealPath(ledgerDir, root, sig8), 'utf8')) as { open?: unknown } | null)?.open;
+    return typeof open === 'boolean' ? open : null;
+  } catch {
+    return null;
+  }
 }
 
 const scanRecordPath = (ledgerDir: string, root: string, sig8: string) => join(healLedgerDir(ledgerDir, root), `${sig8}.subject.json`);

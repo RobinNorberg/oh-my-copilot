@@ -23,20 +23,21 @@
  * is read.
  */
 
-import { closeSync, constants, fstatSync, lstatSync, openSync, readdirSync, readSync, statSync, type Stats } from 'fs';
+import { closeSync, constants, fstatSync, lstatSync, openSync, readdirSync, readSync, statSync, type BigIntStats, type Stats } from 'fs';
 import { dirname, join } from 'path';
 import type { ForgeKind } from '../../forge/types.js';
 import { LOCAL_REMOTE } from '../../forge/local/mirror.js';
 import { withWorktreePathRenderScope } from '../../lib/worktree-paths.js';
 import { plainText } from '../check/score.js';
 import { healStatePath, parseHealState, SIG8, type HealSignatureState } from '../heal/state.js';
-import { healSealSigs, verifyHealSeal } from '../heal/run.js';
+import { healSealOpen, healSealSigs, verifyHealSeal } from '../heal/run.js';
 import { runCredits, RUNTIME_MIN_MAX_CREDITS, type FactoryRunLimits } from '../run/budget.js';
+import { MAX_CONCURRENT_LIMIT } from '../run/parallel.js';
 import { EngineLedger, ledgerFilePath } from '../run/ledger.js';
 import { factoryProgressFile } from '../run/progress.js';
 import { RELEASE_TAMPER_COMMAND, tamperHoldMessage } from '../run/tamper-quarantine.js';
 import {
-  defaultOwnerDeps, factoryOwnerPath, factoryRepoOwnerPath, factoryStateDir, factoryStatePath, heldSlots, isOwnerRecord, ownerHolding, ownerHolds, parseFactoryState,
+  defaultOwnerDeps, factoryOwnerPath, factoryRepoOwnerPath, factoryStateDir, factorySlotsDir, factoryStatePath, isOwnerRecord, ownerHolds, parseFactoryState,
   runLabel, TERMINAL_FACTORY_PHASES, verifyFactoryIntegrity, type FactoryRunKey, type FactoryRunState, type OwnerDeps,
 } from '../run/state.js';
 import { ATTENTION_GROUPS, gateAction, nextCommands, suppressedCommands, type AttentionGroup, type NextCommand } from './actions.js';
@@ -106,7 +107,8 @@ export interface CollectAttentionOptions {
 }
 
 const RUN_FILE = /^run-(\d+|heal-[0-9a-f]{8})\.json$/;
-const text = (v: unknown, max = TEXT_MAX): string => plainText(String(v ?? '')).replace(/\s+/g, ' ').trim().slice(0, max);
+/** Sanitised, one line, cut to `max` code points (never half a surrogate pair). */
+const text = (v: unknown, max = TEXT_MAX): string => [...plainText(String(v ?? '')).replace(/\s+/g, ' ').trim()].slice(0, max).join('');
 const errText = (e: unknown): string => text(e instanceof Error ? e.message : String(e));
 const HEX40 = /^[0-9a-f]{40}$/;
 const forgeOf = (s: FactoryRunState): ForgeKind => (s.remote === LOCAL_REMOTE ? 'local' : s.forgeKind ?? 'github');
@@ -123,7 +125,9 @@ function runKeyOfName(name: string): FactoryRunKey | null {
 
 type FileRead = { bytes: Buffer } | { missing: true } | { error: string };
 
-const kindOf = (st: Stats): string => (st.isSymbolicLink() ? 'a link' : st.isDirectory() ? 'a directory' : st.isFIFO() ? 'a FIFO' : 'a device or socket');
+/** Same ino and dev; win32 may report dev 0 on one side (as state-lock's sameArtifactIdentity). */
+const sameFile = (a: BigIntStats, b: BigIntStats): boolean => a.ino === b.ino && (a.dev === b.dev || (process.platform === 'win32' && (a.dev === 0n || b.dev === 0n)));
+const kindOf = (st: Stats | BigIntStats): string => (st.isSymbolicLink() ? 'a link' : st.isDirectory() ? 'a directory' : st.isFIFO() ? 'a FIFO' : 'a device or socket');
 const isMissing = (e: unknown): boolean => (e as NodeJS.ErrnoException | null)?.code === 'ENOENT';
 
 /**
@@ -132,14 +136,15 @@ const isMissing = (e: unknown): boolean => (e as NodeJS.ErrnoException | null)?.
  * that same regular file and no larger than READ_MAX_BYTES.
  */
 export function readRegularFile(path: string, max = READ_MAX_BYTES): FileRead {
-  let st: Stats;
+  let st: BigIntStats;
   try {
-    st = lstatSync(path);
+    // BigInt ids: an NTFS file id above 2^53 rounds distinct files onto one Number (tests/lint/file-identity-bigint.test.ts).
+    st = lstatSync(path, { bigint: true });
   } catch (error) {
     return isMissing(error) ? { missing: true } : { error: errText(error) };
   }
   if (!st.isFile()) return { error: `it is ${kindOf(st)}, not a regular file` };
-  if (st.size > max) return { error: `it is larger than ${max} bytes` };
+  if (st.size > BigInt(max)) return { error: `it is larger than ${max} bytes` };
   let fd: number;
   try {
     // No follow and no blocking where the platform has them (a FIFO swapped in after the lstat cannot hang the read).
@@ -148,13 +153,14 @@ export function readRegularFile(path: string, max = READ_MAX_BYTES): FileRead {
     return isMissing(error) ? { missing: true } : { error: errText(error) };
   }
   try {
-    const f = fstatSync(fd);
-    if (!f.isFile() || f.ino !== st.ino || f.dev !== st.dev) return { error: 'the file was replaced while it was read' };
-    if (f.size > max) return { error: `it is larger than ${max} bytes` };
-    const buf = Buffer.alloc(f.size);
+    const f = fstatSync(fd, { bigint: true });
+    if (!f.isFile() || !sameFile(f, st)) return { error: 'the file was replaced while it was read' };
+    if (f.size > BigInt(max)) return { error: `it is larger than ${max} bytes` };
+    const size = Number(f.size);
+    const buf = Buffer.alloc(size);
     let n = 0;
-    while (n < f.size) {
-      const got = readSync(fd, buf, n, f.size - n, n);
+    while (n < size) {
+      const got = readSync(fd, buf, n, size - n, n);
       if (got === 0) break;
       n += got;
     }
@@ -194,6 +200,24 @@ function ownerOf(root: string, key: FactoryRunKey, ledgerDir: string, deps: Owne
   if (!isOwnerRecord(owner)) return 'unreadable';
   if (owner.hostname !== deps.hostname) return 'remote';
   return ownerHolds(owner, deps) ? 'live' : null;
+}
+
+/**
+ * ownerHolding through the bounded read: the holder of an owner file that is
+ * not run-scoped (the repository engine lock, a parallel slot), `unreadable`
+ * (held, as every caller of ownerHolding treats it), or null.
+ */
+function holderOf(path: string, deps: OwnerDeps): 'held' | 'unreadable' | null {
+  const r = readRegularFile(path);
+  if ('missing' in r) return null;
+  if ('error' in r) return 'unreadable';
+  try {
+    const owner: unknown = JSON.parse(r.bytes.toString('utf8'));
+    if (!isOwnerRecord(owner)) return 'unreadable';
+    return ownerHolds(owner, deps) ? 'held' : null;
+  } catch {
+    return 'unreadable';
+  }
 }
 
 /** Milliseconds since the run's progress log last changed (null: no log; negative: a modification time in the future). */
@@ -368,13 +392,39 @@ function healItem(root: string, sig8: string, s: HealSignatureState, o: CollectA
   // A debugger lane at work: nothing waits for a human yet.
   if (last?.status === 'running' && Number.isInteger(last.pid) && deps.isAlive(last.pid)) return null;
   const approve = last?.status !== 'running' && s.diagnosis?.outcome === 'valid' && s.diagnosis.laneId === last?.id;
+  // `heal close` takes only a heal run parked at heal-approve or heal-diagnosis (closeHeal), a stage the heal run
+  // writes when one of ITS lanes ends. `next` is not sealed, so the sealed lanes decide: a lane of this heal run
+  // (started at or after it) that ended. A first lane whose process died never ended: only `heal run` (which
+  // records it as lost) moves it on.
+  const ended = (s.lanes ?? []).some((l) => l.status !== 'running' && typeof l.startedAt === 'string' && typeof s.healRun?.startedAt === 'string' && l.startedAt >= s.healRun.startedAt);
   return {
     ...common,
     gate: approve ? 'heal-approve' : 'heal-diagnosis',
     group: 'decide',
-    why: approve ? 'a valid CI-heal diagnosis waits for a human approval' : 'the heal run has no valid diagnosis from its debugger lane; read it, then close the heal run or run the lane again',
-    next: nextCommands(key, approve ? ['status', 'resume', 'heal-close'] : ['status', 'heal-close', 'heal-run']),
+    why: approve ? 'a valid CI-heal diagnosis waits for a human approval'
+      : ended ? 'the heal run has no valid diagnosis from its debugger lane; read it, then close the heal run or run the lane again'
+        : 'the heal run\'s debugger lane ended without a record (its process is gone); run the lane again',
+    next: nextCommands(key, approve ? ['status', 'resume', 'heal-close'] : ended ? ['status', 'heal-close', 'heal-run'] : ['status', 'heal-run']),
     trust: 'ok',
+  };
+}
+
+/**
+ * L-2: the engine's own ci-heal run of `sig8` is finished (merged, cancelled
+ * or failed) while its heal record still holds an open heal run: the run
+ * ended without `heal close` (a human merge recorded elsewhere, a failed
+ * close), and an open heal run blocks every other debugger lane
+ * (MAX_OPEN_HEAL_RUNS). Sealed fields only, as healItem.
+ */
+function healOpenAfterRun(root: string, sig8: string, s: HealSignatureState, o: CollectAttentionOptions, now: number): AttentionItem | null {
+  if (s.sig8 !== sig8 || verifyHealSeal(o.ledgerDir, root, s) !== 'ok' || !s.healRun?.open) return null;
+  const key: FactoryRunKey = `heal-${sig8}`;
+  const at = msOf(s.updatedAt);
+  return {
+    key, group: 'decide', gate: 'heal-open', phase: 'heal', ageMs: Number.isFinite(at) ? Math.max(0, now - at) : null, credits: null, cap: null, pr: null, head: null,
+    title: text(`ci-heal ${s.class}`, TITLE_MAX),
+    why: 'the ci-heal run is finished but its heal run is still open, which blocks every other debugger lane; close it',
+    next: nextCommands(key, ['status', 'heal-close']), trust: 'ok', notes: [], at: Number.isFinite(at) ? at : 0,
   };
 }
 
@@ -414,7 +464,8 @@ function collectIn(root: string, o: CollectAttentionOptions): AttentionData {
     const key = runKeyOfName(name);
     if (key !== null) keys.set(String(key), key);
   }
-  const healRuns = new Set<string>();
+  // sig8 -> whether the engine's own ci-heal run state of it is finished.
+  const healRuns = new Map<string, boolean>();
   for (const key of [...keys.values()].sort((a, b) => String(a).localeCompare(String(b), 'en', { numeric: true }))) {
     let r = readRun(root, key, o.ledgerDir);
     if (r.missing) {
@@ -432,7 +483,7 @@ function collectIn(root: string, o: CollectAttentionOptions): AttentionData {
     if (r.state && r.trust === 'ok') {
       forges.add(forgeOf(r.state));
       // Only the engine's own ci-heal run state stands in for its heal signature.
-      if (typeof key === 'string') healRuns.add(key.slice('heal-'.length));
+      if (typeof key === 'string') healRuns.set(key.slice('heal-'.length), TERMINAL_FACTORY_PHASES.includes(r.state.phase));
     }
     if (live === 'live' || live === 'remote') liveRuns.push(runLabel(key));
     let item: AttentionItem | null;
@@ -450,13 +501,20 @@ function collectIn(root: string, o: CollectAttentionOptions): AttentionData {
   const healDir = join(factoryStateDir(root), 'heal');
   const sigs = new Set([...listed(healDir).filter((f) => /^[0-9a-f]{8}\.json$/.test(f)).map((f) => f.slice(0, 8)), ...healSealSigs(o.ledgerDir, root)]);
   for (const sig8 of [...sigs].sort()) {
-    if (healRuns.has(sig8) || !SIG8.test(sig8)) continue;
+    if (!SIG8.test(sig8)) continue;
+    // A ci-heal run in flight stands in for its heal signature; a finished one only for a record that is gone or unreadable.
+    const finishedRun = healRuns.get(sig8);
+    if (finishedRun === false) continue;
     const key: FactoryRunKey = `heal-${sig8}`;
     const row = { key, group: 'inspect' as const, gate: null, phase: 'heal', ageMs: null, credits: null, cap: null, pr: null, head: null, title: '', notes: [], next: suppressedCommands(key), at: 0 };
     const r = readRegularFile(healStatePath(root, sig8));
     if ('missing' in r) {
-      // Listed by its seal only: the heal run recorded a record that is gone.
-      items.push({ ...row, why: 'the heal record is missing; the heal seal outside the repository records one. Inspect it, the commands are withheld', trust: 'missing' });
+      // L-3: a heal run the seal records as closed needs nobody once its record is gone (git clean); seals older than
+      // the `open` field stay a row until the seal file is removed by hand (docs: `factory attention`).
+      if (finishedRun === undefined && healSealOpen(o.ledgerDir, root, sig8) !== false) {
+        // Listed by its seal only: the heal run recorded a record that is gone.
+        items.push({ ...row, why: 'the heal record is missing; the heal seal outside the repository records an open heal run (or predates the open flag). Inspect it, the commands are withheld', trust: 'missing' });
+      }
       continue;
     }
     let s: HealSignatureState | null = null;
@@ -469,22 +527,25 @@ function collectIn(root: string, o: CollectAttentionOptions): AttentionData {
       }
     }
     if (!s) {
+      if (finishedRun) continue;
       warnings.push(`heal signature ${sig8} is unreadable: ${problem}`);
       items.push({ ...row, why: `the heal record cannot be read: ${text(problem)}`, trust: 'unreadable' });
       continue;
     }
     let item: AttentionItem | null;
     try {
-      item = healItem(root, sig8, s, o, now, deps);
+      item = finishedRun ? healOpenAfterRun(root, sig8, s, o, now) : healItem(root, sig8, s, o, now, deps);
     } catch (error) {
       item = { ...row, why: `the heal record cannot be laid out: ${errText(error)}`, trust: 'unreadable' };
     }
     if (item) items.push(item);
   }
 
-  // The repository engine lock and the parallel slots, for the summary only.
-  const repoOwner = ownerHolding(factoryRepoOwnerPath(root), deps);
-  const slots = heldSlots(root, deps);
+  // The repository engine lock and the parallel slots, for the summary only: bounded reads (L-4), and at most
+  // MAX_CONCURRENT_LIMIT slot files, so planted files cannot make each read check a process start identity.
+  const repoOwner = holderOf(factoryRepoOwnerPath(root), deps);
+  const slotFiles = listed(factorySlotsDir(root)).filter((n) => /^slot-\d+\.owner$/.test(n)).sort().slice(0, MAX_CONCURRENT_LIMIT);
+  const slots = slotFiles.filter((n) => holderOf(join(factorySlotsDir(root), n), deps) !== null);
   const engines = Math.max(liveRuns.length, (repoOwner && repoOwner !== 'unreadable' ? 1 : 0) + slots.length);
 
   const order = new Map(ATTENTION_GROUPS.map((g, i) => [g, i]));
