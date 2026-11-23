@@ -37,6 +37,8 @@ import {
   factoryOwnerPath, factoryStateDir, heldSlots, ownerHolding, readFactoryState, runKeyOf, runLabel, TERMINAL_FACTORY_PHASES, trackerStageOf, verifyFactoryIntegrity,
   type FactoryPhase, type FactoryRunKey, type FactoryRunState,
 } from '../run/state.js';
+import { readRun, runKeysToRead } from '../attention/collect.js';
+import { statusArgv } from '../attention/actions.js';
 import { renderBoard } from './render.js';
 
 /** Bumped on any change to the `--json` shape (src/factory/board/__tests__ pins it). */
@@ -77,6 +79,14 @@ export interface BoardRow {
   flags: BoardFlag[];
   /** The latest `omg ship` verdict recorded for the run's PR. */
   gates?: { verdict: string; sha: string; at: string };
+  /**
+   * false: the run state is not the engine's verified last write (seal and
+   * engine ledger, as `omg factory attention` checks them). Such a row has
+   * no `run`, `gates` or text from the state, only the read-only status command.
+   */
+  verified?: false;
+  /** With verified false: the run's status command. */
+  next?: string;
 }
 
 export interface BoardJson {
@@ -114,15 +124,43 @@ export type FactoryBoardDeps = Pick<FactoryCheckDeps, 'exec' | 'base' | 'trusted
 const RUN_FILE = /^run-(\d+|heal-[0-9a-f]{8})\.json$/;
 const message = (error: unknown): string => plainText(error instanceof Error ? error.message : String(error));
 
-/** Every run state on disk; an unreadable one is a warning (and, for an item in the source, a `seal` flag). */
-export function readRuns(root: string, warnings: string[]): { runs: Map<FactoryRunKey, FactoryRunState>; broken: Set<FactoryRunKey> } {
+/**
+ * Every run state on disk; an unreadable one is a warning (and, for an item in
+ * the source, a `seal` flag). With `ledgerDir`, each state is read once
+ * through `omg factory attention`'s trust check (readRun: the seal, then the
+ * engine ledger on the same bytes), and a state that fails it is in `untrusted`;
+ * `unverified` holds the untrusted ones whose seal passes and that the ledger
+ * has no record of at all (trust `unverified`). With `ledgerDir` the keys are
+ * attention's (runKeysToRead): every run the engine ledger records, then at most
+ * MAX_UNRECORDED_STATES other state files, so a lane's flood of files bounds the
+ * cost of a read; `omitted` counts the state files left unread.
+ */
+export function readRuns(root: string, warnings: string[], ledgerDir?: string): { runs: Map<FactoryRunKey, FactoryRunState>; broken: Set<FactoryRunKey>; untrusted: Set<FactoryRunKey>; unverified: Set<FactoryRunKey>; omitted: number } {
   const runs = new Map<FactoryRunKey, FactoryRunState>();
   const broken = new Set<FactoryRunKey>();
+  const untrusted = new Set<FactoryRunKey>();
+  const unverified = new Set<FactoryRunKey>();
+  const unreadable = (key: FactoryRunKey, error: string): void => {
+    broken.add(key);
+    warnings.push(`omg factory board: run state ${runLabel(key)} is unreadable: ${plainText(error)}`);
+  };
+  if (ledgerDir !== undefined) {
+    const { keys, omitted } = runKeysToRead(root, ledgerDir);
+    for (const key of keys) {
+      const r = readRun(root, key, ledgerDir);
+      if (r.missing) continue;
+      if (!r.state) { unreadable(key, r.error ?? 'unknown error'); continue; }
+      runs.set(key, r.state);
+      if (r.trust !== 'ok') untrusted.add(key);
+      if (r.trust === 'unverified') unverified.add(key);
+    }
+    return { runs, broken, untrusted, unverified, omitted };
+  }
   let names: string[];
   try {
     names = readdirSync(factoryStateDir(root));
   } catch {
-    return { runs, broken };
+    return { runs, broken, untrusted, unverified, omitted: 0 };
   }
   for (const name of names.sort()) {
     const m = RUN_FILE.exec(name);
@@ -132,11 +170,10 @@ export function readRuns(root: string, warnings: string[]): { runs: Map<FactoryR
       const state = readFactoryState(root, key);
       if (state) runs.set(key, state);
     } catch (error) {
-      broken.add(key);
-      warnings.push(`omg factory board: run state ${runLabel(key)} is unreadable: ${message(error)}`);
+      unreadable(key, message(error));
     }
   }
-  return { runs, broken };
+  return { runs, broken, untrusted, unverified, omitted: 0 };
 }
 
 const same = (a: string | undefined, b: string | undefined): boolean => a !== undefined && b !== undefined && a.toLowerCase() === b.toLowerCase();
@@ -235,7 +272,12 @@ export interface CollectBoardInput {
   check: Parameters<typeof checkItems>[2] | null;
   now: number;
   warnings: string[];
+  /** Engine ledger directory: a run whose state fails the trust check shows as not verified. Absent: no trust check. */
+  ledgerDir?: string;
 }
+
+/** A run whose state is not verified: "not verified" and the status command, nothing from the state. */
+const unverifiedPart = (key: FactoryRunKey): Pick<BoardRow, 'verified' | 'next'> => ({ verified: false, next: statusArgv(key).join(' ') });
 
 /** The merge park's human-review clause, as the engine read the PR when it parked. */
 const PARKED_REVIEW = /; human review: [\s\S]*?; if the PR gets new review comments before you merge, rerun [^;]*? first/;
@@ -289,7 +331,7 @@ export function collectBoard(input: CollectBoardInput): Pick<BoardJson, 'columns
   const { config, root, now, warnings } = input;
   const ids = [...new Set(input.ids)];
   const { forge, seen } = memoTracker(input.forge);
-  const { runs, broken } = readRuns(root, warnings);
+  const { runs, broken, untrusted } = readRuns(root, warnings, input.ledgerDir);
 
   // The item part of each row: check results (and their memoized reads), or one batched peek.
   const rows = new Map<number, BoardRow>();
@@ -357,6 +399,12 @@ export function collectBoard(input: CollectBoardInput): Pick<BoardJson, 'columns
       column('backlog').items.push(row);
       continue;
     }
+    if (untrusted.has(id)) {
+      // The enum-shaped stage places the row; no other field of the state is read.
+      Object.assign(row, unverifiedPart(id));
+      column(trackerStageOf(s)).items.push(row);
+      continue;
+    }
     Object.assign(row, runPart(root, s, warnings));
     if (input.check || forge.kind === 'local') reviewNow(forge, s, row, warnings);
     if (!row.title && s.issueTitle) row.title = plainText(s.issueTitle);
@@ -375,7 +423,13 @@ export function collectBoard(input: CollectBoardInput): Pick<BoardJson, 'columns
   const inSource = new Set<FactoryRunKey>(ids);
   const outside: BoardRow[] = [];
   for (const [key, s] of runs) {
-    if (inSource.has(key) || TERMINAL_FACTORY_PHASES.includes(s.phase)) continue;
+    if (inSource.has(key)) continue;
+    // Before the phase check: an untrusted state's phase is not the engine's, so a forged terminal phase hides nothing.
+    if (untrusted.has(key)) {
+      outside.push({ id: key, title: '', url: '', stage: {}, flags: [], ...unverifiedPart(key) });
+      continue;
+    }
+    if (TERMINAL_FACTORY_PHASES.includes(s.phase)) continue;
     if (s.forgeKind !== undefined && s.forgeKind !== config.kind) warnings.push(`omg factory board: run ${runLabel(key)} started on ${s.forgeKind}, but the forge resolves to ${config.kind}`);
     const row: BoardRow = { id: key, title: plainText(s.issueTitle ?? (s.kind === 'ci-heal' ? 'ci-heal' : '')), url: '', stage: { expected: trackerStageOf(s), ...(s.trackerStage ? { recorded: s.trackerStage } : {}) }, flags: [] };
     Object.assign(row, runPart(root, s, warnings));
@@ -412,8 +466,9 @@ export async function runFactoryBoard(o: FactoryBoardOptions, deps: FactoryBoard
 
   const env = o.check === false ? null : checkEnvFor(exec, root, config, base, baseSha);
   const now = deps.now ?? Date.now;
-  warnings.push(...humanMergeLines(recordHumanMerges(root, readRuns(root, []).runs, { readPrState: forgePrStateReader(forge, exec, root, config.repo.url), ledgerDir: deps.ledgerDir ?? defaultLedgerDir(), now: () => new Date(now()).toISOString() })).map((l) => `omg factory board: ${l}`));
-  const board = collectBoard({ forge, config, root, ids, check: env, now: (deps.now ?? Date.now)(), warnings });
+  const ledgerDir = deps.ledgerDir ?? defaultLedgerDir();
+  warnings.push(...humanMergeLines(recordHumanMerges(root, readRuns(root, []).runs, { readPrState: forgePrStateReader(forge, exec, root, config.repo.url), ledgerDir, now: () => new Date(now()).toISOString() })).map((l) => `omg factory board: ${l}`));
+  const board = collectBoard({ forge, config, root, ids, check: env, now: (deps.now ?? Date.now)(), warnings, ledgerDir });
   if (forge.kind === 'local') {
     // The local backlog's working tree: an item not committed on the base is untrusted, and omg factory run cannot start it yet.
     for (const id of ids) {

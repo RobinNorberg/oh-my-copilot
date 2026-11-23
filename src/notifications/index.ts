@@ -153,6 +153,14 @@ export async function notify(
     if (!config || !isEventEnabled(config, event)) {
       return null;
     }
+    // factory-attention (omg factory poll) is opt-in: only an explicit
+    // `events["factory-attention"].enabled: true` sends it, never the
+    // top-level platforms alone. With that opt-in it is not dropped by
+    // verbosity either.
+    const explicitFactoryAttention = config.events?.["factory-attention"]?.enabled === true;
+    if (event === "factory-attention" && !explicitFactoryAttention) {
+      return null;
+    }
 
     // Verbosity filter (second gate after isEventEnabled).  An explicitly
     // enabled ask-user-question event is user intent to surface an interactive
@@ -163,6 +171,7 @@ export async function notify(
       config.events?.["ask-user-question"]?.enabled === true;
     if (
       !isExplicitAskUserQuestionEvent &&
+      !(event === "factory-attention" && explicitFactoryAttention) &&
       !isEventAllowedByVerbosity(verbosity, event)
     ) {
       return null;
@@ -172,16 +181,18 @@ export async function notify(
     const { getCurrentTmuxPaneId } = await import("./tmux.js");
 
     // Build the full payload
+    const factoryAttention = event === "factory-attention";
     const payload: NotificationPayload = {
       event,
       sessionId: data.sessionId,
       message: "", // Will be formatted below
       timestamp: data.timestamp || new Date().toISOString(),
-      tmuxSession: data.tmuxSession ?? getCurrentTmuxSession() ?? undefined,
-      tmuxPaneId: data.tmuxPaneId ?? getCurrentTmuxPaneId() ?? undefined,
-      projectPath: data.projectPath,
+      // factory-attention carries no session, pane, project or reply field: its message is all it sends.
+      tmuxSession: factoryAttention ? undefined : data.tmuxSession ?? getCurrentTmuxSession() ?? undefined,
+      tmuxPaneId: factoryAttention ? undefined : data.tmuxPaneId ?? getCurrentTmuxPaneId() ?? undefined,
+      projectPath: factoryAttention ? undefined : data.projectPath,
       projectName:
-        data.projectName ||
+        factoryAttention ? undefined : data.projectName ||
         (data.projectPath ? basename(data.projectPath) : undefined),
       modesUsed: data.modesUsed,
       contextSummary: data.contextSummary,
@@ -197,9 +208,9 @@ export async function notify(
       incompleteTasks: data.incompleteTasks,
       agentName: data.agentName,
       agentType: data.agentType,
-      replyChannel: data.replyChannel ?? process.env.OPENCLAW_REPLY_CHANNEL ?? undefined,
-      replyTarget: data.replyTarget ?? process.env.OPENCLAW_REPLY_TARGET ?? undefined,
-      replyThread: data.replyThread ?? process.env.OPENCLAW_REPLY_THREAD ?? undefined,
+      replyChannel: factoryAttention ? undefined : data.replyChannel ?? process.env.OPENCLAW_REPLY_CHANNEL ?? undefined,
+      replyTarget: factoryAttention ? undefined : data.replyTarget ?? process.env.OPENCLAW_REPLY_TARGET ?? undefined,
+      replyThread: factoryAttention ? undefined : data.replyThread ?? process.env.OPENCLAW_REPLY_THREAD ?? undefined,
       approval: data.approval,
       replyable: data.replyable,
     };

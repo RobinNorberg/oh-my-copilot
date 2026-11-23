@@ -9,7 +9,7 @@ import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, relative } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { factoryDashboardCommand, writeFileAtomic } from '../../../cli/commands/factory-dashboard.js';
 import { attentionJson, collectAttention } from '../../attention/collect.js';
@@ -180,6 +180,24 @@ describe('collectDashboardV2', () => {
         expect(a3.next.map((n) => n.argv.join(' '))).toEqual(['omg factory run status 3']);
         expect(d.tasks.find((t) => t.key === '#1')).toMatchObject({ title: 'First', outcome: 'parked', gate: 'merge', pr: 101, credits: 3, tracker: null });
     });
+    it('an unverified run shows a gate name only when the gate table knows it, and a phase only from the engine\'s phases', () => {
+        const forge = (issue, gate, phase) => {
+            const s = toMergePark(issue, 'x');
+            const t = { ...s, phase, gate: { ...s.gate, name: gate } };
+            writeFileSync(factoryStatePath(root, issue), JSON.stringify({ ...t, integrity: computeFactoryIntegrity(t) }));
+        };
+        mkdirSync(dirname(factoryStatePath(root, 5)), { recursive: true });
+        forge(5, 'mrkz-gate', 'implement');
+        forge(6, 'merge', 'implement');
+        forge(7, 'merge', 'mrkz-phase');
+        const d = collectDashboardV2(root, opts(T0 + 2_000_000));
+        expect(d.runs.find((r) => r.key === '#5')).toMatchObject({ verified: false, gate: null, phase: 'implement' });
+        expect(d.runs.find((r) => r.key === '#6')).toMatchObject({ verified: false, gate: { name: 'merge' }, phase: 'implement' });
+        // A phase the engine does not have: the state does not parse, so nothing from it is shown.
+        expect(d.runs.find((r) => r.key === '#7')).toMatchObject({ verified: false, gate: null, phase: null });
+        expect(JSON.stringify(d)).not.toMatch(/mrkz/);
+        expect(renderDashboardHtml(d)).not.toMatch(/mrkz/);
+    });
     it('throughput: started and merge-ready per day, median and p90 engine time to merge-ready, median wait at the merge park', () => {
         // Engine times to the merge park: 152 s, 152 + 20 s, 152 + 40 s (an extra intake step).
         for (const [issue, extra] of [[1, 0], [2, 20], [3, 40]]) {
@@ -304,6 +322,11 @@ describe('collectDashboardV2', () => {
         expect(d.warnings.filter((w) => /big\.json: skipped \(it is larger than 4000000 bytes\)/.test(w))).toHaveLength(1);
         if (linked)
             expect(d.warnings.filter((w) => /link\.json: skipped \(it is a link, not a regular file\)/.test(w))).toHaveLength(1);
+        // A file whose read throws another error (here a parse error, which quotes the file's bytes): a fixed reason only.
+        writeFileSync(join(benchDir, 'bad.json'), 'XRUN omg factory run 3 --allow-gate-change {');
+        const d2 = collectDashboardV2(root, opts(T0, { benchDirs: [benchDir] }));
+        expect(d2.warnings.filter((w) => w.includes('bad.json'))).toEqual([expect.stringMatching(/bad\.json: skipped \(not a readable bench result file\)$/)]);
+        expect(d2.warnings.join('\n')).not.toContain('XRUN');
     });
     it('empty repository: no runs, nothing needs you, valid sections', () => {
         const d = collectDashboardV2(root, opts(T0));

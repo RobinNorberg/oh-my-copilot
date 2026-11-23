@@ -142,6 +142,9 @@ const pollDeps = (w) => ({
     autoStart: async () => { throw new Error('factory.intake.autoStart is off: no auto-start'); },
     onStop: () => () => undefined,
     localBaseSync: pollLocalBaseSync(w.exec, w.ledgerDir),
+    ledgerDir: w.ledgerDir,
+    // The engine's owner in this world (no start-identity probe: defaultOwnerDeps would spawn a process reader per live owner).
+    owner: { pid: 4242, hostname: 'offline-e2e', isAlive: () => false },
 });
 /** The last JSON document a command printed. */
 function lastJson(w) {

@@ -26,4 +26,5 @@ export { renderMissionBoard } from './mission-board.js';
 export { renderSessionSummary } from './session-summary.js';
 export { renderLastTool } from './last-tool.js';
 export { renderHostname } from './hostname.js';
+export { renderFactory, readFactoryStateForHud } from './factory.js';
 //# sourceMappingURL=index.js.map

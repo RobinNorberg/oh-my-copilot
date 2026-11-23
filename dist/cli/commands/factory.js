@@ -1002,7 +1002,8 @@ export function factoryRunCommand(deps = defaultFactoryRunDeps) {
         const integrity = verifyFactoryIntegrity(stored);
         const ledgerDir = deps.ledgerDir ?? defaultLedgerDir();
         let ledgerOk = false;
-        let tracked = false;
+        // null: the ledger could not be read (counts as a mismatch).
+        let tracked = null;
         try {
             const ledger = EngineLedger.open(ledgerDir, root, issue);
             tracked = ledger.tracks(path);
@@ -1027,11 +1028,15 @@ export function factoryRunCommand(deps = defaultFactoryRunDeps) {
         }
         else {
             console.log(renderFactoryRunState(state));
+            // No record is not a mismatch: a moved repository, another host or OMC_STATE_DIR (attention's wording).
+            const unrecorded = integrity && !ledgerOk && tracked === false;
             if (!integrity)
                 console.log(chalk.red('integrity check FAILED: the state was edited outside omg factory run'));
+            else if (unrecorded)
+                console.log(chalk.yellow(`cannot be verified on this host: no engine ledger record in ${plainText(ledgerDir)} (moved repository, another host or OMC_STATE_DIR, or written outside the engine); next steps withheld`));
             else if (!ledgerOk)
-                console.log(chalk.red(tracked ? 'ledger check FAILED: the state is not the one the engine last wrote' : `ledger check FAILED: the engine ledger (${plainText(ledgerDir)}) has no record of this state`));
-            if (state.gate && !trusted)
+                console.log(chalk.red('ledger check FAILED: the state is not the one the engine last wrote'));
+            if (state.gate && !trusted && !unrecorded)
                 console.log(chalk.yellow('next steps not shown: the state did not pass its checks'));
             else if (next.length > 0) {
                 console.log('next:');

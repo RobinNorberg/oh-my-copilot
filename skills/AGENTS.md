@@ -45,6 +45,7 @@ Skills are reusable workflow templates that can be invoked via `/skill-name`. Ea
 | `deepinit/SKILL.md` | deepinit | Generate hierarchical AGENTS.md |
 | `research/SKILL.md` | research | Investigate an open question and return grounded, sourced findings |
 | `external-context/SKILL.md` | external-context | Invoke parallel document-specialist agents for external web searches and documentation lookup |
+| `factory-attention/SKILL.md` | factory-attention | Show what the software factory needs from the human (`omg factory attention --json`), grouped, with the commands for the human to run; read-only |
 | `autoresearch/SKILL.md` | autoresearch | Stateful single-mission improvement loop with strict evaluator contract and markdown decision logs |
 | `trace/SKILL.md` | trace | Evidence-driven tracing lane orchestrating competing tracer hypotheses |
 

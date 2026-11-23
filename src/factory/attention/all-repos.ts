@@ -180,7 +180,7 @@ export function renderAllRepos(d: AllReposAttention, o: { verbose?: boolean; pla
       const items = r.data.items.filter((i) => i.group === g);
       if (items.length === 0) continue;
       lines.push(chalk.bold(`  ${GROUP_TITLES[g].toUpperCase()} (${items.length})`));
-      for (const i of items) lines.push(...itemLines(i, verbose, where).map((l) => `  ${l}`));
+      for (const i of items) lines.push(...itemLines(i, verbose, undefined, where).map((l) => `  ${l}`));
     }
   }
   return lines.join('\n');

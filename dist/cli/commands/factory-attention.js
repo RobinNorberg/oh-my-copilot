@@ -16,12 +16,23 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 import { allReposJson, collectAllRepos, renderAllRepos } from '../../factory/attention/all-repos.js';
 import { attentionJson, collectAttention } from '../../factory/attention/collect.js';
-import { renderAttention } from '../../factory/attention/render.js';
+import { layoutColumns, renderAttention, warningLines } from '../../factory/attention/render.js';
 import { EXIT_CHECK_FAILED, EXIT_CHECK_USAGE } from '../../factory/check/cli.js';
 import { plainText } from '../../factory/check/score.js';
 import { EXIT_AWAITING_HUMAN } from '../../factory/run/engine.js';
 import { defaultLedgerDir } from '../../factory/run/ledger.js';
 import { checkPinnedRoot, discoverLedgerRoots } from '../../factory/run/ledger-roots.js';
+/**
+ * The width to lay out for: stdout's columns, else stderr's (stdout piped from a terminal), else a numeric COLUMNS
+ * held to 40..500, else undefined (80).
+ */
+export function terminalColumns(stdout = process.stdout, stderr = process.stderr, env = process.env) {
+    for (const c of [stdout.columns, stderr.columns])
+        if (typeof c === 'number' && Number.isFinite(c) && c > 0)
+            return c;
+    const n = /^\d{1,4}$/.test(env.COLUMNS?.trim() ?? '') ? Number(env.COLUMNS) : Number.NaN;
+    return n > 0 ? Math.min(500, Math.max(40, n)) : undefined;
+}
 const defaultRoot = () => execFileSync('git', ['rev-parse', '--show-toplevel'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true }).trim();
 export const defaultAttentionDeps = { root: defaultRoot, out: (l) => console.log(l), err: (l) => console.error(l) };
 /** The limits of `root` (null: no cap) and their warnings, each prefixed with the repository when there are several. */
@@ -77,9 +88,11 @@ export function factoryAttentionCommand(deps = defaultAttentionDeps) {
             if (o.json)
                 deps.out(JSON.stringify(attentionJson(data), null, 2));
             else {
+                const columns = (deps.columns ?? (() => terminalColumns()))();
                 for (const w of data.warnings)
-                    deps.err(chalk.yellow(w));
-                deps.out(renderAttention(data, { verbose: o.verbose }));
+                    for (const l of warningLines(w, layoutColumns(columns)))
+                        deps.err(chalk.yellow(l));
+                deps.out(renderAttention(data, { verbose: o.verbose, columns }));
             }
             process.exitCode = data.readFailed ? EXIT_CHECK_FAILED : data.items.length > 0 && !o.exitZero ? EXIT_AWAITING_HUMAN : 0;
         }

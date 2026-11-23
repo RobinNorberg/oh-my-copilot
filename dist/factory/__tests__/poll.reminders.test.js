@@ -13,6 +13,7 @@ import { createForge } from '../../forge/index.js';
 import { computeFactoryIntegrity, createFactoryState, factoryStateDir, factoryStatePath, moveTo, runKeyOf, setGate } from '../run/state.js';
 import { runFactoryPoll } from '../poll.js';
 import { remindersPath } from '../team/reminders.js';
+import { engineWroteAll } from '../board/__tests__/trusted-states.js';
 const SHA = 'a'.repeat(40);
 const T0 = '2026-10-31T10:00:00.000Z';
 const REPO = 'https://github.com/o/r';
@@ -31,7 +32,7 @@ beforeEach(() => {
     err = [];
     now = Date.parse(T0) + 30 * 3_600_000;
 });
-afterEach(() => rmSync(root, { recursive: true, force: true }));
+afterEach(() => { rmSync(root, { recursive: true, force: true }); rmSync(`${root}-ledger`, { recursive: true, force: true }); });
 function scripted(calls = []) {
     return (cmd, args) => {
         const a = args.join(' ');
@@ -66,6 +67,7 @@ function deps(exec, over = {}) {
     return {
         exec, base: () => 'dev', trustedUser: () => undefined, projectConfig: () => undefined, createForge,
         now: () => now,
+        ledgerDir: `${root}-ledger`,
         healScan: () => { throw new Error('no heal'); },
         owner: { pid: 4242, hostname: hostname(), isAlive: () => false },
         onStop: () => () => { },
@@ -78,6 +80,7 @@ function save(s) {
     const path = factoryStatePath(root, runKeyOf(s));
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, JSON.stringify({ ...s, integrity: computeFactoryIntegrity(s) }));
+    engineWroteAll(root, `${root}-ledger`);
 }
 const seedParked = (plan = 'edit src/a.ts') => save({
     ...setGate(moveTo({ ...createFactoryState({ issue: 4, repoUrl: REPO, base: 'dev' }, T0), forgeKind: 'github', issueTitle: 'issue 4', plan: { source: 'issue-body', text: plan } }, 'gates', 'gates', T0), 'merge', 'gates green; a human merges', T0),
@@ -121,14 +124,14 @@ describe('poll stale-gate reminders', () => {
             return base(cmd, args, opts);
         };
         expect(await runFactoryPoll(flags, deps(exec))).toBe(0);
-        expect(tick().reminders?.[0].handles).toEqual(['@robin']);
+        expect(tick().reminders?.[0]?.handles).toEqual(['@robin']);
     }, 60_000);
     it('a failed base read is a poll warning, not "file absent"', async () => {
         seedParked();
         const base = scripted();
         const exec = (cmd, args, opts) => (cmd === 'git' && args[0] === 'show' && args[1]?.endsWith('routing.md') ? { status: 128, stdout: '', stderr: 'fatal: bad object' } : base(cmd, args, opts));
         expect(await runFactoryPoll(flags, deps(exec))).toBe(0);
-        expect(tick().reminders?.[0].handles).toEqual([]);
+        expect(tick().reminders?.[0]?.handles).toEqual([]);
         expect(tick().warnings.join('\n')).toContain('routing.md unreadable at the base commit');
     });
     it('prints a hostile gate name with visible characters', async () => {

@@ -10,6 +10,7 @@ import type { SessionSummaryState } from './elements/session-summary.js';
 import type { PayloadEstimate } from './payload-estimate.js';
 import type { TeamStateForHud } from './elements/team.js';
 import type { UltragoalStateForHud } from './elements/ultragoal.js';
+import type { FactoryStateForHud } from './elements/factory.js';
 import type { MissionBoardConfig, MissionBoardState } from './mission-board.js';
 import { DEFAULT_MISSION_BOARD_CONFIG } from './mission-board.js';
 
@@ -583,6 +584,9 @@ export interface HudRenderContext {
 
   /** Open ultragoal plan (read only when the `ultragoal` element is on) */
   ultragoal?: UltragoalStateForHud | null;
+
+  /** Software factory attention summary (read only when the `factory` element is on) */
+  factory?: FactoryStateForHud | null;
 }
 
 // ============================================================================
@@ -740,6 +744,7 @@ export interface HudElementConfig {
   copilotMode?: boolean;     // Copilot native mode (plan/autopilot) and yolo; on under Copilot, off under Claude
   team?: boolean;            // Live omg team summary (team:name 3/4w 5/9t); on under Copilot, off under Claude
   ultragoal?: boolean;       // Open ultragoal plan progress (goal:2/5); on under Copilot, off under Claude
+  factory?: boolean;         // Software factory items that need you (factory:4! inspect run:1); off on every host (opt-in: about 0.5 s per render in a repository with factory state)
   prdStory: boolean;
   activeSkills: boolean;
   lastSkill: boolean;
@@ -826,7 +831,7 @@ export const DEFAULT_ELEMENT_ORDER: Required<LayoutConfig> = {
   line1: ['hostname', 'cwd', 'gitRepo', 'gitBranch', 'gitStatus', 'apiKeySource', 'account', 'profile'],
   main: [
     'omgLabel', 'model', 'effort', 'claudeLabel', 'enterpriseCost', 'creditBudget', 'copilotMode', 'rateLimits', 'customBuckets', 'permission', 'thinking',
-    'promptTime', 'session', 'tokens', 'ralph', 'autopilot', 'team', 'ultragoal', 'prd',
+    'promptTime', 'session', 'tokens', 'ralph', 'autopilot', 'team', 'ultragoal', 'factory', 'prd',
     'skills', 'lastSkill', 'contextBar', 'agents', 'background',
     'callCounts', 'lastTool', 'recentTools', 'sessionSummary',
   ],

@@ -10,9 +10,12 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { factoryAttentionCommand, type FactoryAttentionDeps } from '../../../cli/commands/factory-attention.js';
+import { factoryAttentionCommand, terminalColumns, type FactoryAttentionDeps } from '../../../cli/commands/factory-attention.js';
 import { writeHealState, type HealSignatureState } from '../../heal/state.js';
-import { writeHealSeal } from '../../heal/run.js';
+import { writeHealSeal, type HealSealSubject } from '../../heal/run.js';
+
+/** The classification snapshot `heal run` seals; `heal approve` needs it. */
+const SUBJECT: HealSealSubject = { class: 'regression', source: 'push', firstRed: { runId: '1', sha: 'c'.repeat(40) }, failingTests: [], env: [] };
 import { DEFAULT_FACTORY_RUN_LIMITS } from '../../run/budget.js';
 import { EXIT_AWAITING_HUMAN, runFactoryEngine } from '../../run/engine.js';
 import { EngineLedger } from '../../run/ledger.js';
@@ -24,7 +27,10 @@ import {
 } from '../../run/state.js';
 import { commitFile, review } from '../../run/__tests__/fake-lanes.js';
 import { lanesFor, LOCAL_ISSUE, localOpts, localWorld } from '../../run/__tests__/engine-local-harness.js';
-import { collectAttention, type AttentionItem } from '../collect.js';
+import { collectAttention, UNTRUSTED_WHY, type AttentionItem } from '../collect.js';
+import { gateAction } from '../actions.js';
+import { cellWidth, layoutColumns, textWidth } from '../render.js';
+import { stripAnsi } from '../../../utils/string-width.js';
 import { gateNext, humanCommand, stateFacts } from '../../run/gate-next.js';
 
 const REPO = 'https://github.com/o/r';
@@ -272,8 +278,12 @@ describe('omg factory attention', () => {
       diagnosis: { at: at(4), laneId: 'heal-fedcba98-debug-1', outcome: 'valid', evidence: {} },
     };
     writeHealState(root, sig);
-    writeHealSeal(ledgerDir, root, sig);
+    writeHealSeal(ledgerDir, root, sig, SUBJECT);
     writeHealState(root, { ...sig, sig8: '00000001', healRun: { id: 'h2', open: true, startedAt: at(3) } }); // no seal
+    // A seal written before the classification snapshot: the engine refuses heal approve, so the row offers status only.
+    const old = { ...sig, sig8: '00000002', class: 'MRKZclass' } as unknown as HealSignatureState;
+    writeHealState(root, old);
+    writeHealSeal(ledgerDir, root, old);
     await attention(['--json']);
     // The flag step is dropped: heal approve takes no --allow-unsandboxed-gates.
     expect(argvs(item(String(key)))).toEqual(['omg factory heal status 0123abcd', 'omg factory heal cancel 0123abcd']);
@@ -281,6 +291,8 @@ describe('omg factory attention', () => {
     expect(argvs(item('heal-fedcba98'))).toEqual(['omg factory heal status fedcba98', 'omg factory heal approve fedcba98', 'omg factory heal close fedcba98']);
     expect(item('heal-00000001')).toMatchObject({ group: 'inspect', trust: 'seal' });
     expect(argvs(item('heal-00000001'))).toEqual(['omg factory heal status 00000001']);
+    expect(item('heal-00000002')).toMatchObject({ group: 'decide', gate: 'heal-approve', trust: 'ok', title: 'ci-heal' });
+    expect(argvs(item('heal-00000002'))).toEqual(['omg factory heal status 00000002']);
   });
 
   it('a tamper hold is one Inspect item naming the release command', () => {
@@ -394,8 +406,8 @@ describe('omg factory attention: untrusted state cannot hide a row', () => {
     mkdirSync(join(factoryStateDir(root), 'heal', '0badc0de.json'), { recursive: true });
     const d = collect();
     expect(rows(d)).toEqual([['#40', 'inspect', 'unreadable'], ['#42', 'inspect', 'unreadable'], ['heal-0badc0de', 'inspect', 'unreadable'], ['#41', 'broken', 'ok']]);
-    expect(d.items.find((i) => i.key === '#40')!.why).toMatch(/a directory, not a regular file/);
-    expect(d.items.find((i) => i.key === '#42')!.why).toMatch(/larger than/);
+    expect(d.items.find((i) => i.key === '#40')!.error).toMatch(/a directory, not a regular file/);
+    expect(d.items.find((i) => i.key === '#42')!.error).toMatch(/larger than/);
     expect(exitOf(d)).toBe(1);
   });
 
@@ -432,6 +444,10 @@ describe('omg factory attention: untrusted state cannot hide a row', () => {
             for (const i of d.items.filter((x) => x.trust !== 'ok')) {
               expect(i.reason, what).toBeUndefined();
               expect(i.next.every((n) => n.argv.join(' ').startsWith('omg factory run status ') && !n.billed), what).toBe(true);
+              // ...and no text or fact from its state: a known gate name or none, no PR, head or title, a fixed why.
+              expect(i.gate === null || (gateAction(i.gate).known && /^[a-z0-9][a-z0-9-]{0,59}$/.test(i.gate)), what).toBe(true);
+              expect([i.pr, i.head, i.credits, i.title], what).toEqual([null, null, null, '']);
+              expect(UNTRUSTED_WHY.has(i.why), `${what}: ${i.why}`).toBe(true);
             }
           }
         }
@@ -450,7 +466,7 @@ describe('omg factory attention: untrusted state cannot hide a row', () => {
       healRun: { id: `heal-${sig8}`, open: true, startedAt: at(5) }, lanes: [lane], diagnosis: { at: at(4), laneId: lane.id, outcome: 'valid', evidence: {} },
       next: 'heal-approve', rerunIntents: [], updatedAt: at(4),
     };
-    const write = (s: HealSignatureState, seal = true) => { writeHealState(root, s); if (seal) writeHealSeal(ledgerDir, root, s); };
+    const write = (s: HealSignatureState, seal = true) => { writeHealState(root, s); if (seal) writeHealSeal(ledgerDir, root, s, SUBJECT); };
     const one = () => { const d = collect(); expect(d.items).toHaveLength(1); return d.items[0]; };
     write(sig);
     expect(one()).toMatchObject({ key: `heal-${sig8}`, group: 'decide', gate: 'heal-approve', trust: 'ok' });
@@ -477,7 +493,7 @@ describe('omg factory attention: untrusted state cannot hide a row', () => {
     const healLedger = join(ledgerDir, 'heal');
     const sealFile = walk(healLedger).find((p) => p.endsWith(`${sig8}.seal.json`))!;
     rmSync(sealFile);
-    expect(one()).toMatchObject({ group: 'inspect', trust: 'seal', why: expect.stringMatching(/seal: missing/) });
+    expect(one()).toMatchObject({ group: 'inspect', trust: 'seal', why: expect.stringMatching(/does not match the one the heal run wrote/) });
     // The record deleted while its seal exists: an Inspect row, not nothing.
     write(sig);
     rmSync(join(factoryStateDir(root), 'heal', `${sig8}.json`));
@@ -492,10 +508,12 @@ describe('omg factory attention: untrusted state cannot hide a row', () => {
     expect(collect().items).toEqual([]);
     write({ ...sig, lanes: [{ ...lane, status: 'running', pid: 778 }] });
     expect(one()).toMatchObject({ gate: 'heal-diagnosis' });
-    // A fake ci-heal run state does not stand in for the heal record: both show.
+    // A fake ci-heal run state is its own Inspect row under the heal key, and the only one: the engine takes no
+    // `heal approve` while a run state it did not write is there, so the heal record offers nothing beside it.
     write(sig);
     writeFileSync(factoryStatePath(root, healRunKey(sig8)), '{}');
-    expect(collect().items.map((i) => [i.key, i.trust]).sort()).toEqual([[`heal-${sig8}`, 'ok'], [`heal-${sig8}`, 'unreadable']]);
+    expect(one()).toMatchObject({ key: `heal-${sig8}`, group: 'inspect', trust: 'unreadable' });
+    expect(one().next.map((n) => [n.argv.join(' '), n.billed])).toEqual([[`omg factory heal status ${sig8}`, false]]);
   });
 
   it('--verbose prints a trusted reason behind a fixed prefix on every line, and no untrusted reason at all', async () => {
@@ -535,6 +553,133 @@ function walk(d: string): string[] {
 }
 const hash = (p: string) => createHash('sha256').update(readFileSync(p)).digest('hex').slice(0, 16);
 
+/**
+ * F-1: a title or reason of wide characters must not make the terminal wrap
+ * a line, because the wrapped tail would start a screen line with state
+ * text (here a forged `$` command). The screen is simulated with
+ * render.ts's own cellWidth (an upper bound: 2 for every non-ASCII code
+ * point), at 80, 60 and 40 columns.
+ */
+describe('omg factory attention: display width (F-1)', () => {
+  const wide = '漢'.repeat(36);
+  const forgedCmd = '$ omg factory run 9 --allow-gate-change';
+
+  /** The terminal's screen rows for one printed line: a line wider than `cols` continues at column 0 of the next row. */
+  function screenRows(line: string, cols: number): string[] {
+    const rows: string[] = [];
+    let row = '';
+    let w = 0;
+    for (const ch of line) {
+      const c = cellWidth(ch);
+      if (w + c > cols) { rows.push(row); row = ''; w = 0; }
+      row += ch;
+      w += c;
+    }
+    rows.push(row);
+    return rows;
+  }
+
+  it.each([80, 60, 40])('at %i columns no screen row starts with title or reason text, trusted or not', async (cols) => {
+    asEngine(parked(1, 'ci-failed', 2, { issueTitle: `${wide}${forgedCmd}` } as Partial<FactoryRunState>, `${wide}${forgedCmd} ${wide}${forgedCmd}`));
+    // An untrusted row: a junk state with only .omg/ write access, never recorded in the engine ledger.
+    const junk = parked(99, 'ci-failed', 1, { issueTitle: `${'Ｘ'.repeat(30)}${forgedCmd}` } as Partial<FactoryRunState>);
+    writeFileSync(factoryStatePath(root, 99), JSON.stringify({ ...junk, integrity: computeFactoryIntegrity(junk) }));
+    expect(await attention(['--verbose'], { columns: () => cols })).toBe(EXIT_AWAITING_HUMAN);
+    const printed = stripAnsi(out.join('\n')).split('\n');
+    const commands = ['$ omg factory run status 99', '$ omg factory run status 1', '$ omg factory run 1', '$ omg factory run cancel 1'];
+    const rows = printed.flatMap((l) => screenRows(l, cols));
+    // The only rows that look like a command row are the engine's own commands, each starting a printed line.
+    expect(rows.filter((r) => r.trimStart().startsWith('$')).map((r) => r.trim().split('  #')[0])).toEqual(commands);
+    // The header and the summary hold fixed words and counts only (the terminal may wrap them).
+    for (const l of printed.slice(2)) {
+      if (l.trimStart().startsWith('$ ')) continue;
+      expect(textWidth(l), l).toBeLessThan(cols);
+    }
+    // The forged command survives only behind the reason prefix (--verbose), never on a row of its own.
+    expect(printed.filter((l) => l.includes('run 9')).every((l) => /^ {4}reason: | {10}\| /.test(l))).toBe(true);
+    // The title is cut on its own line; the reason wraps behind the fixed prefix.
+    expect(printed.find((l) => l.startsWith('  #1  '))).toMatch(/^ {2}#1 {2}漢/);
+    expect(printed.filter((l) => /^ {4}reason: | {10}\| /.test(l)).length).toBeGreaterThan(2);
+  });
+
+  it('the terminal width defaults to 80 and is at least 40', () => {
+    expect(layoutColumns(undefined)).toBe(80);
+    expect(layoutColumns(0)).toBe(80);
+    expect(layoutColumns(20)).toBe(40);
+    expect(layoutColumns(132.7)).toBe(132);
+    expect(cellWidth('a')).toBe(1);
+    expect(cellWidth('漢')).toBe(2);
+    expect(cellWidth('é')).toBe(2);
+    expect(textWidth('ab漢')).toBe(4);
+  });
+});
+
+describe('omg factory attention: engine lock and slot reads (L-4)', () => {
+  it('reads the slot and engine owner files bounded, and at most MAX_CONCURRENT_LIMIT slot files', () => {
+    const slots = join(factoryStateDir(root), 'slots');
+    mkdirSync(slots, { recursive: true });
+    for (let n = 0; n < 40; n++) writeFileSync(join(slots, `slot-${n}.owner`), JSON.stringify({ pid: 777, hostname: 'this-host', identity: 'start-1' }));
+    let identityReads = 0;
+    const owner = { ...OWNER, identityOf: () => { identityReads += 1; return 'start-1'; } };
+    const d = collectAttention(root, { ledgerDir, now: () => NOW, owner });
+    // Slot files are not ledger-recorded: planted ones add no engine, and are one Inspect row without their content.
+    expect(d.summary.engines.live).toBe(0);
+    // At most MAX_CONCURRENT_LIMIT (16) start-identity checks, and none past the first planted slot.
+    expect(identityReads).toBeGreaterThan(0);
+    expect(identityReads).toBeLessThanOrEqual(16);
+    expect(d.items.map((i) => [i.key, i.group, i.trust, i.next.length])).toEqual([['slots', 'inspect', 'owner', 0]]);
+    expect(d.items[0].why).toMatch(/^slot files the engine did not write/);
+    expect(UNTRUSTED_WHY.has(d.items[0].why)).toBe(true);
+    // A directory in place of the engine lock is unreadable (held for the engine count only when readable), and it is never followed.
+    mkdirSync(join(factoryStateDir(root), 'engine.owner'));
+    expect(() => collectAttention(root, { ledgerDir, now: () => NOW, owner })).not.toThrow();
+  });
+
+  it('a slot held for a run whose owner file the engine recorded is that engine (counted once), and no row; `next` is a pick in progress', () => {
+    asEngine(moveTo(issueRun(8), 'implement', 'plan ok', at(2)));
+    ownerAsEngine(8, { pid: 777, hostname: 'this-host', startedAt: at(1) });
+    const slots = join(factoryStateDir(root), 'slots');
+    mkdirSync(slots, { recursive: true });
+    writeFileSync(join(slots, 'slot-0.owner'), JSON.stringify({ pid: 777, hostname: 'this-host', startedAt: at(1), run: '8' }));
+    writeFileSync(join(slots, 'slot-1.owner'), JSON.stringify({ pid: 777, hostname: 'this-host', startedAt: at(1), run: 'next' }));
+    let d = collectAttention(root, { ledgerDir, now: () => NOW, owner: OWNER });
+    expect(d.summary.engines).toEqual({ live: 1, runs: ['#8'] });
+    expect(d.items.filter((i) => i.key === 'slots')).toEqual([]);
+    // A slot naming another run (or an unreadable one) is the Inspect row.
+    writeFileSync(join(slots, 'slot-2.owner'), JSON.stringify({ pid: 777, hostname: 'this-host', startedAt: at(1), run: '9' }));
+    d = collectAttention(root, { ledgerDir, now: () => NOW, owner: OWNER });
+    expect(d.summary.engines.live).toBe(1);
+    expect(d.items.filter((i) => i.key === 'slots').map((i) => i.trust)).toEqual(['owner']);
+    writeFileSync(join(slots, 'slot-2.owner'), 'garbage');
+    expect(collectAttention(root, { ledgerDir, now: () => NOW, owner: OWNER }).items.filter((i) => i.key === 'slots')).toHaveLength(1);
+  });
+});
+
+describe('omg factory attention: untrusted rows keep no lane-chosen number (LOW-1, MEDIUM-1)', () => {
+  it('a forged owner row keeps only the fixed owner note, and no age or sort time from the state', () => {
+    asEngine({ ...moveTo(issueRun(33), 'implement', 'plan ok', at(3)), cancelRequested: true });
+    writeFileSync(factoryOwnerPath(root, 33), JSON.stringify({ pid: 777, hostname: 'this-host', startedAt: at(1) }));
+    const d = collectAttention(root, { ledgerDir, now: () => NOW, owner: OWNER, limits: { ...DEFAULT_FACTORY_RUN_LIMITS, maxRunCredits: 1 } });
+    const row = d.items.find((i) => i.key === '#33')!;
+    expect(row).toMatchObject({ trust: 'owner', ageMs: null, at: 0 });
+    expect(row.notes.join(' ')).not.toMatch(/\d/);
+    expect(row.notes.every((n) => /owner file the engine did not write/.test(n))).toBe(true);
+  });
+});
+
+describe('omg factory attention: layout width when stdout is not a terminal (LOW-3)', () => {
+  it('stdout columns, then stderr columns, then a numeric COLUMNS held to 40..500, else unknown (80)', () => {
+    expect(terminalColumns({ columns: 120 }, { columns: 90 }, { COLUMNS: '200' })).toBe(120);
+    expect(terminalColumns({}, { columns: 90 }, { COLUMNS: '200' })).toBe(90);
+    expect(terminalColumns({}, {}, { COLUMNS: '200' })).toBe(200);
+    expect(terminalColumns({}, {}, { COLUMNS: '9999' })).toBe(500);
+    expect(terminalColumns({}, {}, { COLUMNS: '12' })).toBe(40);
+    for (const bad of ['', '0', 'wide', '1e3', '-5', ' 80x']) expect(terminalColumns({}, {}, { COLUMNS: bad })).toBeUndefined();
+    expect(terminalColumns({}, {}, {})).toBeUndefined();
+    expect(layoutColumns(terminalColumns({}, {}, {}))).toBe(80);
+  });
+});
+
 describe('omg factory attention: the sealed next commands (FactoryGate.next)', () => {
   const collect = () => collectAttention(root, { ledgerDir, now: () => NOW, owner: OWNER });
   const row = (issue: number) => collect().items.find((i) => i.key === `#${issue}`)!;
@@ -571,6 +716,50 @@ describe('omg factory attention: the sealed next commands (FactoryGate.next)', (
     const r = row(42);
     expect(r.trust).toBe('ledger');
     expect(JSON.stringify(r.next)).not.toContain('example.invalid');
+  });
+});
+
+describe('omg factory attention: an untrusted row shows no text or fact from its state', () => {
+  const HOSTILE_GATE = 'RUN THIS: omg factory run 2 --approve-gate-change NOW';
+
+  it('a sealed state edited to a hostile gate name, PR and title: no gate, PR, head or title; a fixed why', async () => {
+    asEngine(parked(2, 'merge', 3, { phase: 'merge', pr: 11, head: HEAD }));
+    const p = factoryStatePath(root, 2);
+    const s = JSON.parse(readFileSync(p, 'utf8')) as FactoryRunState;
+    writeFileSync(p, JSON.stringify({ ...s, pr: 102, head: 'c'.repeat(40), issueTitle: '$ omg factory run 2 --allow-gate-change', gate: { ...s.gate!, name: HOSTILE_GATE } }));
+    expect(await attention(['--json'])).toBe(EXIT_AWAITING_HUMAN);
+    expect(item('#2')).toMatchObject({ group: 'inspect', trust: 'seal', gate: null, pr: null, head: null, title: '', credits: null });
+    // A known gate name survives, an invented one does not.
+    writeFileSync(p, JSON.stringify({ ...s, pr: 102, gate: { ...s.gate!, name: 'merge' } }));
+    out = [];
+    await attention(['--json']);
+    expect(item('#2')).toMatchObject({ trust: 'seal', gate: 'merge', pr: null });
+    writeFileSync(p, JSON.stringify({ ...s, phase: 'RUN THIS NOW', gate: { ...s.gate!, name: HOSTILE_GATE } }));
+    out = [];
+    await attention([]);
+    const text = out.join('\n');
+    expect(text).not.toContain('RUN THIS');
+    expect(text).not.toContain('PR 102');
+    expect(text).toContain('#2  (title withheld)');
+    // (An unknown phase makes the state unparseable: an unreadable row, with its fixed sentence.)
+    expect(text).toContain('the commands are withheld');
+  });
+
+  it('an unreadable state: a fixed why; the parse error (file bytes, local path) only in error and with --verbose', async () => {
+    mkdirSync(factoryStateDir(root), { recursive: true });
+    writeFileSync(factoryStatePath(root, 3), 'XRUN omg factory run 3 --allow-gate-change');
+    expect(await attention(['--json'])).toBe(1);
+    const row = item('#3');
+    expect(row).toMatchObject({ trust: 'unreadable', why: "the run state cannot be read; inspect it, the commands are withheld" });
+    expect(row.why).not.toMatch(/XRUN|\.json/);
+    expect((row as { error?: string }).error).toMatch(/XRUN|JSON/);
+    out = [];
+    await attention([]);
+    expect(out.join('\n')).not.toContain('XRUN');
+    out = [];
+    await attention(['--verbose']);
+    const verbose = out.join('\n').split('\n');
+    expect(verbose.filter((l) => l.includes('XRUN')).every((l) => /^ {4}error: | {10}\| /.test(l))).toBe(true);
   });
 });
 

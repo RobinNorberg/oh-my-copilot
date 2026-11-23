@@ -214,6 +214,12 @@ describe('attention commands', () => {
         }
         expect(reminderCommand(3, 'decisions-rewritten')).toBe(cancelCommand(3));
         expect(reminderCommand(3, 'merge')).toBe(resumeCommand(3));
+        // The plain rerun only where the table offers it: a decision gate or an invariant gets the cancel.
+        for (const gate of ['review-identity', 'coding-agent-reassigned', 'gate-definition-changed', 'gates-unsandboxed'])
+            expect(reminderCommand(3, gate), gate).toBe(cancelCommand(3));
+        expect(reminderCommand('heal-0123abcd', 'heal-diagnosis')).toBe(cancelCommand('heal-0123abcd'));
+        expect(reminderCommand(3, 'ci-failed')).toBe(resumeCommand(3));
+        expect(reminderCommand(3, 'some-future-gate')).toBe(resumeCommand(3));
     });
     it('validate the key, and drop flag steps on a heal run', () => {
         expect(validRunKey(0)).toBe(false);

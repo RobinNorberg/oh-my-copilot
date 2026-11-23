@@ -23,10 +23,21 @@ export interface FactoryAttentionDeps {
     ledgerDir?: string;
     now?: () => number;
     owner?: OwnerDeps;
+    /** The terminal width the view is laid out for (default terminalColumns(); unknown: 80, at least 40). */
+    columns?: () => number | undefined;
     /** --all-repos: the root-probe timeout (tests). */
     probeMs?: number;
     platform?: NodeJS.Platform;
 }
+/**
+ * The width to lay out for: stdout's columns, else stderr's (stdout piped from a terminal), else a numeric COLUMNS
+ * held to 40..500, else undefined (80).
+ */
+export declare function terminalColumns(stdout?: {
+    columns?: number;
+}, stderr?: {
+    columns?: number;
+}, env?: NodeJS.ProcessEnv): number | undefined;
 export declare const defaultAttentionDeps: FactoryAttentionDeps;
 export declare function factoryAttentionCommand(deps?: FactoryAttentionDeps): Command;
 //# sourceMappingURL=factory-attention.d.ts.map
