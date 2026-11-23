@@ -5,7 +5,7 @@
  * `omg factory board` renders. Every string in AttentionData already went
  * through plainText in collect.ts; commands are printed from their argv.
  */
-import type { AttentionData } from './collect.js';
+import type { AttentionData, AttentionItem } from './collect.js';
 export declare function ageText(ms: number | null): string;
 export declare function summaryLine(d: AttentionData): string;
 /** Characters of reason per line: with its prefix a line stays inside an 80-column terminal, so the terminal does not wrap it. */
@@ -16,6 +16,13 @@ export declare const REASON_WIDTH = 64;
  * like a `$` command row.
  */
 export declare function reasonLines(reason: string): string[];
+/**
+ * `inRepo` (--all-repos, a repository other than the current one): the root
+ * as one quoted word, or null when it cannot be shown safely in a command;
+ * the `omg` commands are repository-relative, so they are printed under
+ * "in <root>:" (or the prose fallback). Undefined: the current repository.
+ */
+export declare function itemLines(i: AttentionItem, verbose: boolean, inRepo?: string | null): string[];
 export declare function renderAttention(d: AttentionData, o?: {
     verbose?: boolean;
 }): string;

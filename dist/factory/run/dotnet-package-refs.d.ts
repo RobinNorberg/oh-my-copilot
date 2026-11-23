@@ -22,8 +22,10 @@
  * reference that resolves elsewhere counts. A mere mention does not count:
  * the ASP.NET SPA templates' `<Content Remove="$(SpaRoot)node_modules\**" />`
  * and `<Exec Command="npm install" />` (or `npm ci`, `npm run build`) name no
- * path under node_modules, and a pure delete (`<Exec Command="rimraf
- * node_modules" />`, `del /q node_modules\.cache`) reads nothing there.
+ * path under node_modules, and a pure delete with a shell built-in or
+ * system tool (`<Exec Command="rm -rf node_modules" />`, `del /q
+ * node_modules\.cache`) reads nothing there; `rimraf` and `npx` run
+ * node_modules code and count.
  * ASP.NET Core 2.x SpaServices projects run `node
  * node_modules/webpack/bin/webpack.js` in an Exec: that counts, so their
  * gate runs only on the engine's exact node_modules tree (and parks on a

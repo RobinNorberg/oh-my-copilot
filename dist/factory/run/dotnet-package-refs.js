@@ -22,8 +22,10 @@
  * reference that resolves elsewhere counts. A mere mention does not count:
  * the ASP.NET SPA templates' `<Content Remove="$(SpaRoot)node_modules\**" />`
  * and `<Exec Command="npm install" />` (or `npm ci`, `npm run build`) name no
- * path under node_modules, and a pure delete (`<Exec Command="rimraf
- * node_modules" />`, `del /q node_modules\.cache`) reads nothing there.
+ * path under node_modules, and a pure delete with a shell built-in or
+ * system tool (`<Exec Command="rm -rf node_modules" />`, `del /q
+ * node_modules\.cache`) reads nothing there; `rimraf` and `npx` run
+ * node_modules code and count.
  * ASP.NET Core 2.x SpaServices projects run `node
  * node_modules/webpack/bin/webpack.js` in an Exec: that counts, so their
  * gate runs only on the engine's exact node_modules tree (and parks on a
@@ -89,17 +91,23 @@ function jsonStrings(text) {
     return out;
 }
 /**
- * A pure delete command, whole (M3): optional `npx` (or `npx --yes`), then `rimraf`, `rm`,
- * `del`, `rd`, `rmdir` or `Remove-Item` (optionally `.cmd`/`.exe`), then
+ * A pure delete command, whole (M3): a shell built-in or system tool,
+ * `rm`, `del`, `rd`, `rmdir` or `Remove-Item` (optionally `.exe`), then
  * only simple flags (`-rf`, `--force`, `/q`) and plain path arguments.
+ * Not `rimraf` or `npx ...` (round 4): rimraf is a node_modules binary
+ * found through PATH (`node_modules/.bin` first under npm), and npx runs
+ * `node_modules/.bin/<x>` before anything else, so either runs
+ * node_modules code and counts as a reference.
  */
-const PURE_DELETE = /^(?:npx\s+(?:(?:--yes|-y)\s+)?)?(?:rimraf|rm|del|rd|rmdir|remove-item)(?:\.(?:cmd|exe))?(?:\s+(?:--?[a-z][a-z-]*|\/[a-z]|[\w.:\\/-]+))+$/i;
+/** An `npx` (or `npx.cmd`) run anywhere in a command: it resolves `node_modules/.bin/<name>` before anything else. */
+const NPX_RUN = /(?:^|[\s&|;(`"'])npx(?:\.cmd)?(?=\s|$)/i;
+const PURE_DELETE = /^(?:rm|del|rd|rmdir|remove-item)(?:\.exe)?(?:\s+(?:--?[a-z][a-z-]*|\/[a-z]|[\w.:\\/-]+))+$/i;
 /**
  * An `Exec Command` (XML-decoded) as MSBuild runs it: `%XX` unescaped
  * (MSBuild turns `%0A`, `%26%26` or `%3B` into a line break, `&&` or
  * `;` before the shell sees them), or null when it is a pure delete
  * (PURE_DELETE, after unescaping) with no `%`, `$`, backtick, `&`, `|`,
- * `;`, `<`, `>`, line break, `(` or `)` anywhere: `rimraf ./node_modules`
+ * `;`, `<`, `>`, line break, `(` or `)` anywhere: `rm -rf ./node_modules`
  * or `del /q node_modules\.cache` reads nothing there. Everything else is
  * read whole (M4 of an earlier review exempted delete segments of a
  * chained command; a chain, a substitution or an escape can run more).
@@ -142,6 +150,8 @@ export function nodeModulesReferences(path, text) {
     if (kind && text.length > PINNED_READ_MAX)
         return [`file larger than ${PINNED_READ_MAX / 1024} KB, not read (its references are unknown)`];
     const values = [];
+    // References that count whatever their text names (an npx run: npx runs node_modules/.bin/<name> first).
+    const always = [];
     if (kind === 'msbuild') {
         const { tags } = scanXml(text);
         for (const v of attributeValues(tags, 'Import', 'Project'))
@@ -154,11 +164,26 @@ export function nodeModulesReferences(path, text) {
         for (const v of attributeValues(tags, 'Code', 'Source'))
             values.push(['UsingTask Code Source', v]);
         // A command whose exit code decides the build, when it names a path under node_modules (`node node_modules/x/check.js`);
-        // `npm install`, `npm ci` or `npm run build` name none, and a pure delete (`rimraf node_modules`) reads nothing there.
-        for (const v of attributeValues(tags, 'Exec', 'Command')) {
-            const run = execRunText(v);
-            if (run !== null)
+        // `npm install`, `npm ci` or `npm run build` name none, and a pure delete (`rm -rf node_modules`) reads nothing there.
+        // An Exec's WorkingDirectory and EnvironmentVariables count as references too (`PATH=node_modules/.bin`), and with
+        // either naming node_modules no Command is a pure delete (round 4).
+        for (const t of tags) {
+            if (t.close || t.name.toLowerCase() !== 'exec')
+                continue;
+            const attr = (name) => { const a = t.attrs.find(([n]) => n.toLowerCase() === name); return a ? decodeXml(a[1]) : undefined; };
+            const where = ['workingdirectory', 'environmentvariables'].map((n) => [n, attr(n)]).filter(([, v]) => v !== undefined && hasNodeModulesSegment(v));
+            for (const [n, v] of where)
+                values.push([n === 'workingdirectory' ? 'Exec WorkingDirectory' : 'Exec EnvironmentVariables', v]);
+            const command = attr('command');
+            if (command === undefined)
+                continue;
+            const run = execRunText(command);
+            if (run !== null && NPX_RUN.test(run))
+                always.push(['Exec Command (npx runs node_modules/.bin)', run]);
+            else if (run !== null)
                 values.push(['Exec Command', run]);
+            else if (where.length > 0)
+                values.push(['Exec Command (run in or with node_modules)', `${command} [${where.map(([, v]) => v).join('; ')}]`]);
         }
     }
     else if (kind === 'rsp') {
@@ -233,7 +258,7 @@ export function nodeModulesReferences(path, text) {
             if (!/^https?:\/\//i.test(v.trim()))
                 values.push(['nuget.config value', v]);
     }
-    return values.filter(([, v]) => hasNodeModulesSegment(v)).map(([what, v]) => `${what} ${JSON.stringify(v.slice(0, 200))}`);
+    return [...values.filter(([, v]) => hasNodeModulesSegment(v)), ...always].map(([what, v]) => `${what} ${JSON.stringify(v.slice(0, 200))}`);
 }
 /** The MSBuild properties that set NuGet's restore sources or config (restoreSettingMentions). */
 const RESTORE_SETTINGS = /\bRestore(?:Sources|AdditionalProjectSources|FallbackFolders|ConfigFile|PackagesPath|NoCache|IgnoreFailedSources)\b/gi;
@@ -260,7 +285,7 @@ export function restoreSettingMentions(path, text) {
 /** An `Import Project` value (one `;` part, trimmed) that names a pinned definition file: it ends, textually, in one of their MSBuild extensions. */
 const PINNED_IMPORT = /\.(?:[a-z0-9]*proj|props|targets|tasks|projitems|user)$/i;
 /** `$([MSBuild]::GetPathOfFileAbove('<name>', ...))`: a file of that literal name, so it counts by that name's extension. */
-const FILE_ABOVE = /^\$\(\[MSBuild\]::GetPathOfFileAbove\(\s*'([^'$%@()]+)'\s*(?:,\s*'[^']*'\s*)?\)\)$/i;
+const FILE_ABOVE = /^\$\(\[MSBuild\]::GetPathOfFileAbove\(\s*(?:'([^'$%@()]+)'|([^'"$%@(),\s]+))\s*(?:,\s*(?:'[^']*'|\$\([\w.]+\)[\w.\\/]*)\s*)?\)\)$/i;
 /**
  * The `Import Project` values of a pinned MSBuild file that do not name a
  * pinned definition file (M2): each `;` part of the decoded value whose text
@@ -281,7 +306,7 @@ export function unpinnedImports(path, text) {
     for (const v of attributeValues(scanXml(text).tags, 'Import', 'Project')) {
         for (const part of v.split(';').map((s) => s.trim()).filter(Boolean)) {
             const above = FILE_ABOVE.exec(part);
-            if (!PINNED_IMPORT.test(above ? above[1].trim() : part))
+            if (!PINNED_IMPORT.test(above ? (above[1] ?? above[2]).trim() : part))
                 out.add(part.slice(0, 200));
         }
     }

@@ -242,9 +242,11 @@ describe('attention commands', () => {
     // PowerShell's '' doubling for a word outside the strict set.
     expect(commandLine(['a', "it's; x"], 'win32')).toBe("a 'it''s; x'");
     // Windows: cmd.exe reads no single quotes, so the -C <root> form is withheld for any root outside the strict set.
-    for (const root of ["C:/x/O'Brien;Write-Output INJECTED;#", 'C:/a&calc&/repo', 'C:/x/$(id)', 'C:/x/%PATH%', 'C:/x/a,b', 'C:/my repo\\sub']) {
+    for (const root of ["C:/x/O'Brien;Write-Output INJECTED;#", 'C:/a&calc&/repo', 'C:/x/$(id)', 'C:/x/%PATH%', 'C:/x/a,b', 'C:\\my repo\\', 'C:\\my "repo\\sub']) {
       expect(commandText(merge(root), 'win32'), root).toEqual({ line: `git merge --no-ff --no-edit ${head}`, inRoot: true });
     }
+    // Backslashes inside double quotes read literally in PowerShell and cmd.exe (no trailing one): the -C form is kept.
+    expect(commandText(merge('C:/my repo\\sub'), 'win32')).toEqual({ line: `git -C "C:/my repo\\sub" merge --no-ff --no-edit ${head}`, inRoot: false });
     // Anything a terminal cannot show (a newline, a filler) is withheld on every platform.
     for (const platform of ['win32', 'linux'] as const) {
       for (const root of ['/tmp/a\nb $(id) `id`', '/tmp/a\u3164b', '/tmp/a\u200bb']) expect(commandText(merge(root), platform).inRoot, JSON.stringify(root)).toBe(true);

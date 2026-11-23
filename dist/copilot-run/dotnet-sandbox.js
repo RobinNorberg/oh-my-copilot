@@ -414,6 +414,48 @@ export function readRegularFileBounded(path, max) {
         closeSync(fd);
     }
 }
+/** How many dirs lowerNugetConfigs reads before it stops and answers that it cannot tell. */
+const LOWER_NUGET_SCAN_DIRS = 100_000;
+/**
+ * The nuget.config files (any letter case) below `dir`'s root, as paths
+ * relative to `dir` with `/`, at most five; dirs named `.git`,
+ * `node_modules` (a package's own files, as engine.ts dotnetPinnedFacts)
+ * or `.omg` (the engine's state, other checkouts) are skipped and links are
+ * not followed. A dir that cannot be read, or more than
+ * LOWER_NUGET_SCAN_DIRS dirs, is reported as an entry too: the caller then
+ * cannot rule a lower config out.
+ */
+export function lowerNugetConfigs(dir) {
+    const found = [];
+    const queue = [''];
+    let read = 0;
+    while (queue.length > 0 && found.length < 5) {
+        const rel = queue.shift();
+        if (++read > LOWER_NUGET_SCAN_DIRS)
+            return [...found, `more than ${LOWER_NUGET_SCAN_DIRS} dirs, not all read`];
+        let entries;
+        try {
+            entries = readdirSync(rel ? join(dir, rel) : dir, { withFileTypes: true });
+        }
+        catch {
+            if (!rel)
+                return [];
+            found.push(`${rel} (unreadable)`);
+            continue;
+        }
+        for (const e of entries) {
+            const name = e.name.replace(/[. ]+$/, '').toLowerCase();
+            const p = rel ? `${rel}/${e.name}` : e.name;
+            if (e.isDirectory()) {
+                if (name !== '.git' && name !== 'node_modules' && name !== '.omg')
+                    queue.push(p);
+            }
+            else if (rel && e.name.toLowerCase() === 'nuget.config' && (e.isFile() || e.isSymbolicLink()))
+                found.push(p);
+        }
+    }
+    return found.slice(0, 5);
+}
 /**
  * A value for an MSBuild property set from the environment: MSBuild
  * unescapes `%XX` in it and expands `@(...)` (checked with .NET SDK
@@ -447,9 +489,18 @@ export const msbuildEscape = (value) => value.replace(/[%$@';?*]/g, (c) => `%${c
  * engine cannot tell which root file NuGet reads (rootNugetConfig
  * `ambiguous`), when the root file maps packages to a source key it does
  * not define (nugetConfigVerdict `unmappedKeys`: the file alone would leave
- * that source out), or when the path holds a `;`, which MSBuild splits.
+ * that source out), when the path holds a `;`, which MSBuild splits, or
+ * when `cwd`'s tree holds a nuget.config below its root (lowerNugetConfigs:
+ * NuGet reads it for the projects under it, and one file would hide it,
+ * so nothing is added and no nuget.org-only file is written). This check
+ * reads the tree as it is, so it holds for every caller (the engine, a
+ * write lane's worktree, a caller that never passes a hierarchy decision);
+ * only a caller that passes `{ hierarchy }` itself skips this function.
  */
 export function dotnetNugetConfig(cwd, profile, platform = process.platform, o = {}) {
+    const lower = lowerNugetConfigs(cwd);
+    if (lower.length > 0)
+        return { hierarchy: `NuGet reads its own config hierarchy: ${cwd} holds a nuget.config below its root (${lower.join(', ')}), which one config file would hide` };
     const root = rootNugetConfig(cwd, platform);
     if ('ambiguous' in root)
         return { hierarchy: `NuGet reads its own config hierarchy: ${root.ambiguous}` };

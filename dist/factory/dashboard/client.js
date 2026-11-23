@@ -129,6 +129,12 @@ FD.statusCommand = function (label) {
   return { label: 'read the run state', argv: argv, line: argv.join(' '), billed: false, inRoot: false };
 };
 /** What an attention row may offer: everything on a trusted row, the client-built status command on any other. */
+/** The keys of the runs this summary does not trust (runs list): a row of another section with such a key is untrusted too, whatever it says. */
+FD.untrustedKeys = function (data) {
+  var bad = Object.create(null);
+  (data && Array.isArray(data.runs) ? data.runs : []).forEach(function (r) { if (r.verified !== true || r.trust !== 'ok') bad[String(r.key)] = true; });
+  return bad;
+};
 FD.visibleNext = function (item) {
   if (item.trust === 'ok') return Array.isArray(item.next) ? item.next : [];
   var s = FD.statusCommand(item.key);
@@ -203,7 +209,10 @@ function table(doc, caption, head, rows, empty) {
 /** The marker: a known trust value in brackets, or none (a row that carries no trust value). */
 function trustMark(doc, trust) { return h(doc, 'span', { 'class': 'bad' }, trust === undefined ? 'not verified' : 'not verified (' + FD.trustOf(trust) + ')'); }
 
+/** A command line with a control, line-separator or bidi character is never shown or copied (it could hide what runs). */
+FD.UNSAFE_LINE = /[\u0000-\u001f\u007f-\u009f\u2028\u2029\u200e\u200f\u202a-\u202e\u2066-\u2069]/;
 FD.commandEl = function (doc, n, fk, ctx) {
+  if (FD.UNSAFE_LINE.test(String(n.line))) return h(doc, 'li', { 'class': 'warn' }, 'command not shown: it holds a control character');
   var code = h(doc, 'code', null, String(n.line));
   var btn = h(doc, 'button', { type: 'button', 'data-k': fk }, 'Copy');
   var line = String(n.line);
@@ -213,23 +222,36 @@ FD.commandEl = function (doc, n, fk, ctx) {
     h(doc, 'span', { 'class': 'muted' }, ' ' + String(n.label) + (n.billed ? ' (billed)' : ''))]);
 };
 
-FD.buildAttention = function (doc, data, ctx) {
+/** --all-repos: the line before a repository's commands (they are repository-relative); its root as text only. */
+FD.whereEl = function (doc, repo) {
+  if (!repo) return null;
+  return h(doc, 'p', { 'class': 'muted' }, repo.rootWord === null || repo.rootWord === undefined
+    ? 'Run these in that repository\'s root (its path cannot be shown safely in a command):'
+    : ['in ', h(doc, 'code', null, String(repo.rootWord)), ':']);
+};
+
+/** scope (--all-repos): { repo } of the rows' repository; group headings then carry no id and copy keys carry the repository id. */
+FD.buildAttention = function (doc, data, ctx, scope) {
   var items = data.attention && Array.isArray(data.attention.items) ? data.attention.items : [];
   if (items.length === 0) return h(doc, 'p', { 'class': 'ok' }, 'Nothing needs you.');
+  var repo = scope ? scope.repo : ctx.repo;
+  var kp = repo ? FD.repoId(repo.id) + ':' : '';
+  var bad = FD.untrustedKeys(data);
   var out = h(doc, 'div', null);
   FD.GROUPS.forEach(function (g) {
     var group = items.filter(function (i) { return i.group === g[0]; });
     if (group.length === 0) return;
-    out.appendChild(h(doc, 'h3', { id: 'attention-' + g[0] }, [g[1] + ' ', h(doc, 'span', { 'class': 'muted' }, '(' + group.length + ')')]));
+    out.appendChild(h(doc, scope ? 'h4' : 'h3', scope ? null : { id: 'attention-' + g[0] }, [g[1] + ' ', h(doc, 'span', { 'class': 'muted' }, '(' + group.length + ')')]));
     out.appendChild(h(doc, 'ul', { 'class': 'items' }, group.map(function (i) {
-      var trusted = i.trust === 'ok';
+      var trusted = i.trust === 'ok' && !bad[String(i.key)];
       if (!trusted) {
         var cmd = FD.statusCommand(i.key);
         var label = FD.apiKey(i.key) === null ? 'a run' : String(i.key);
         return h(doc, 'li', null, [
           h(doc, 'p', null, [h(doc, 'b', null, label), ' ', trustMark(doc, i.trust)]),
           h(doc, 'p', null, FD.UNTRUSTED_WHY[FD.trustOf(i.trust)]),
-          cmd ? h(doc, 'ul', { 'class': 'cmds', 'aria-label': 'Next commands' }, [FD.commandEl(doc, cmd, 'copy:' + label + ':0', ctx)]) : null
+          cmd && repo ? FD.whereEl(doc, repo) : null,
+          cmd ? h(doc, 'ul', { 'class': 'cmds', 'aria-label': 'Next commands' }, [FD.commandEl(doc, cmd, 'copy:' + kp + label + ':0', ctx)]) : null
         ]);
       }
       var age = h(doc, 'span', null, '');
@@ -243,7 +265,8 @@ FD.buildAttention = function (doc, data, ctx) {
         h(doc, 'p', { 'class': 'muted' }, [facts, facts ? ' · ' : '', age]),
         h(doc, 'p', null, String(i.why)),
         (Array.isArray(i.notes) ? i.notes : []).map(function (n) { return h(doc, 'p', { 'class': 'warn' }, 'note: ' + String(n)); }),
-        next.length ? h(doc, 'ul', { 'class': 'cmds', 'aria-label': 'Next commands' }, next.map(function (n, k) { return FD.commandEl(doc, n, 'copy:' + i.key + ':' + k, ctx); })) : null,
+        next.length && repo && next.some(function (n) { return Array.isArray(n.argv) && n.argv[0] === 'omg'; }) ? FD.whereEl(doc, repo) : null,
+        next.length ? h(doc, 'ul', { 'class': 'cmds', 'aria-label': 'Next commands' }, next.map(function (n, k) { return FD.commandEl(doc, n, 'copy:' + kp + i.key + ':' + k, ctx); })) : null,
         i.log ? h(doc, 'p', { 'class': 'muted' }, ['log: ', h(doc, 'code', null, String(i.log))]) : null
       ]);
     })));
@@ -364,11 +387,10 @@ FD.buildRuns = function (doc, data, ctx) {
 FD.buildTasks = function (doc, data) {
   var forge = data.forge && data.forge.read;
   var head = ['Run', 'Title', 'Outcome', 'Phase / gate', 'PR', 'Credits', 'Wall time'].concat(forge ? ['Bucket', 'Tracker stage'] : []);
-  var untrustedRun = Object.create(null);
-  FD.runRows(data).forEach(function (r) { if (!r.verified) untrustedRun[r.key] = true; });
+  var untrustedRun = FD.untrustedKeys(data);
   return table(doc, 'Tasks', head, (data.tasks || []).map(function (t) {
     // A board row with no run holds tracker text; a run row that is not verified shows the key and the marker only.
-    var ok = t.verified === true || (t.outcome === 'no run' && !untrustedRun[String(t.key)]);
+    var ok = !untrustedRun[String(t.key)] && (t.verified === true || t.outcome === 'no run');
     var row = ok ? [String(t.key), String(t.title), String(t.outcome),
       [t.phase, t.gate ? 'awaiting-human: ' + t.gate : ''].filter(Boolean).join(' / '), t.pr === null ? '' : '#' + t.pr, FD.num(t.credits), FD.fmtDur(t.wallMs)]
       : [String(t.key), '', trustMark(doc), '', '', '', ''];
@@ -403,11 +425,26 @@ FD.buildThroughput = function (doc, data) {
   ]);
 };
 
+FD.BENCH_NOTE = 'Unsealed files in the repository (anyone who can write the repository can edit them).';
+FD.BENCH_TEXT = /^[A-Za-z0-9._ -]+$/;
+/** A bench text field: a plain word or "(not shown)" (the server already filters; this page does again). */
+FD.benchText = function (v) { return v === null || v === undefined ? '' : (FD.BENCH_TEXT.test(String(v)) && String(v).length <= 120 ? String(v) : '(not shown)'); };
+/** A bench number: finite and >= 0, else "invalid" (also when the server marked the field invalid). */
+FD.benchNum = function (b, f, fmt) {
+  var v = b[f];
+  if ((Array.isArray(b.invalid) && b.invalid.indexOf(f) >= 0) || (v !== null && v !== undefined && !(typeof v === 'number' && isFinite(v) && v >= 0))) return 'invalid';
+  return v === null || v === undefined ? '' : fmt(v);
+};
 FD.buildBench = function (doc, data) {
-  return table(doc, 'Bench results', ['File', 'Source', 'Started', 'Mode', 'Model', 'Passed', 'Requests', 'Credits', 'Wall time'], (data.bench || []).map(function (b) {
-    return [String(b.file), String(b.source), b.startedAt || '', b.mode || '', b.model || '', b.passed === null ? '' : b.passed + (b.issues === null ? '' : ' / ' + b.issues),
-      FD.num(b.premiumRequests), FD.num(b.credits), FD.fmtDur(b.wallMs)];
-  }), 'No bench results (bench-results/*.json, or pass --bench-dir).');
+  var ident = function (v) { return String(v); };
+  return h(doc, 'div', null, [h(doc, 'p', { 'class': 'warn' }, FD.BENCH_NOTE),
+    table(doc, 'Bench results', ['File', 'Source', 'Started', 'Mode', 'Model', 'Passed', 'Requests', 'Credits', 'Wall time'], (data.bench || []).map(function (b) {
+      var passed = FD.benchNum(b, 'passed', ident);
+      var issues = FD.benchNum(b, 'issues', ident);
+      return [FD.benchText(b.file), b.source === 'bench-dir' ? 'bench-dir' : 'bench-results', /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.]+Z$/.test(String(b.startedAt)) ? String(b.startedAt) : '', FD.benchText(b.mode), FD.benchText(b.model),
+        passed === 'invalid' || issues === 'invalid' ? 'invalid' : passed + (passed !== '' && issues !== '' ? ' / ' + issues : ''),
+        FD.benchNum(b, 'premiumRequests', FD.num), FD.benchNum(b, 'credits', FD.num), FD.benchNum(b, 'wallMs', FD.fmtDur)];
+    }), 'No bench results (bench-results/*.json, or pass --bench-dir).')]);
 };
 
 FD.buildSummary = function (doc, data) {
@@ -424,6 +461,49 @@ FD.buildWarnings = function (doc, data) {
   return h(doc, 'ul', null, w.map(function (x) { return h(doc, 'li', { 'class': 'warn' }, String(x)); }));
 };
 
+/** A repository id as the server issued it (16 hex); null for anything else, so no other text reaches a fetch URL. */
+FD.repoId = function (id) { return /^[0-9a-f]{16}$/.test(String(id)) ? String(id) : null; };
+FD.reposOf = function (list) { return list && Array.isArray(list.repos) ? list.repos.filter(function (r) { return FD.repoId(r.id) !== null; }) : []; };
+FD.groupCounts = function (byGroup) {
+  return FD.GROUPS.filter(function (g) { return byGroup && byGroup[g[0]] > 0; }).map(function (g) { return g[1].toLowerCase() + ' ' + byGroup[g[0]]; }).join(', ');
+};
+
+/** --all-repos: one row per repository (name, path as text, counts, engines, last change) with a button that selects it. */
+FD.buildRepos = function (doc, list, ctx) {
+  var repos = FD.reposOf(list);
+  var sel = ctx.ui.repo || null;
+  var allBtn = h(doc, 'button', { type: 'button', 'data-k': 'repo:all', disabled: sel === null }, 'All repositories');
+  allBtn.addEventListener('click', function () { if (ctx.on && ctx.on.repo) ctx.on.repo(null); });
+  ctx.focus['repo:all'] = allBtn;
+  var s = list && list.summary ? list.summary : { repos: 0, skipped: 0 };
+  var parts = [h(doc, 'p', null, [allBtn, ' ', h(doc, 'span', { 'class': 'muted' }, s.repos + ' repositor' + (s.repos === 1 ? 'y' : 'ies') + (s.skipped ? '; ' + s.skipped + ' ledger record(s) skipped (see the terminal: omg factory attention --all-repos --verbose)' : ''))])];
+  parts.push(table(doc, 'Repositories', ['Repository', 'Path', 'Needs you', 'Engines running', 'Runs', 'Last change', 'View'], repos.map(function (r) {
+    var id = FD.repoId(r.id);
+    var b = h(doc, 'button', { type: 'button', 'data-k': 'repo:' + id, disabled: sel === id }, sel === id ? 'Shown' : 'Show');
+    b.addEventListener('click', function () { if (ctx.on && ctx.on.repo) ctx.on.repo(id); });
+    var rk = 'repo:' + id;
+    ctx.focus[rk] = b;
+    var last = h(doc, 'span', null, r.lastChange ? FD.relAge(String(r.lastChange), ctx.now || Date.now()) : '');
+    return [String(r.name), h(doc, 'code', null, String(r.root)), r.items ? FD.groupCounts(r.byGroup) : h(doc, 'span', { 'class': 'ok' }, 'nothing'),
+      String(r.engines), String(r.runs), last, b];
+  }), 'No repository with factory runs is recorded on this host.'));
+  return h(doc, 'div', null, parts);
+};
+
+/** --all-repos, "all repositories": the Attention rows grouped by repository, most urgent repository first. */
+FD.buildAllAttention = function (doc, list, ctx) {
+  var repos = FD.reposOf(list).filter(function (r) { return Array.isArray(r.attention) && r.attention.length > 0; });
+  if (repos.length === 0) return h(doc, 'p', { 'class': 'ok' }, 'Nothing needs you in any repository.');
+  return h(doc, 'div', null, repos.map(function (r) {
+    return h(doc, 'div', null, [
+      // The folder name in its own labelled element: a name shaped like a command or a run row reads as a name.
+      h(doc, 'h3', null, [h(doc, 'span', { 'class': 'muted' }, 'Repository: '), h(doc, 'span', { 'class': 'repo-name' }, String(r.name)), ' ', h(doc, 'span', { 'class': 'muted' }, '(' + r.attention.length + ')')]),
+      h(doc, 'p', { 'class': 'muted' }, h(doc, 'code', null, String(r.root))),
+      FD.buildAttention(doc, { attention: { items: r.attention } }, ctx, { repo: r })
+    ]);
+  }));
+};
+
 FD.tickAges = function (ages, genMs, nowMs) {
   ages.forEach(function (a) {
     var ms = FD.ageNow(a.ageMs, genMs, nowMs);
@@ -437,8 +517,8 @@ FD.SECTIONS = [['summary', FD.buildSummary], ['attention', FD.buildAttention], [
 function clear(el) { while (el.firstChild) el.removeChild(el.firstChild); }
 
 /** Builds every section into the elements byId(id) returns (b-<section>); returns the ctx with the focus map and the age list. */
-FD.renderAll = function (doc, data, ui, details, on, byId) {
-  var ctx = { ui: ui, details: details, on: on, focus: {}, ages: [] };
+FD.renderAll = function (doc, data, ui, details, on, byId, repo) {
+  var ctx = { ui: ui, details: details, on: on, focus: {}, ages: [], repo: repo || null };
   FD.SECTIONS.forEach(function (s) {
     var target = byId('b-' + s[0]);
     if (!target) return;
@@ -458,7 +538,16 @@ function start() {
   var data = null;
   var lastOk = null;
   var ctx = { ages: [], focus: {} };
-  var ui = { filter: '', phase: '', sort: null, page: 1, open: {} };
+  var ui = { filter: '', phase: '', sort: null, page: 1, open: {}, repo: null };
+  // --all-repos: the page has a Repositories section; a repository is selected by the id the server issued.
+  var multi = !!byId('b-repos');
+  var list = null;
+  var REPO_ONLY = ['summary', 'live', 'runs', 'tasks', 'cost', 'throughput', 'bench', 'warnings'];
+  function selectedRepo() {
+    if (!list || ui.repo === null) return null;
+    var hit = FD.reposOf(list).filter(function (r) { return r.id === ui.repo; });
+    return hit.length ? hit[0] : null;
+  }
   var details = {};
   var pending = false;
   var lastCount = null;
@@ -487,19 +576,43 @@ function start() {
     if (want.indexOf(ui.phase) < 0) ui.phase = '';
     sel.value = ui.phase;
   }
+  function renderRepos() {
+    var rctx = { ui: ui, on: on, focus: {}, ages: [], now: Date.now() };
+    var target = byId('b-repos');
+    clear(target);
+    target.appendChild(FD.buildRepos(doc, list, rctx));
+    var r = selectedRepo();
+    byId('scope').textContent = r ? 'Showing one repository: ' + String(r.name) : 'Showing all repositories';
+    REPO_ONLY.forEach(function (id) { var el = byId('b-' + id); if (el && el.parentNode) el.parentNode.hidden = r === null; });
+    return rctx;
+  }
   function render() {
-    if (!data) return;
+    if (multi ? !list : !data) return;
     if (selecting()) { pending = true; return; }
     pending = false;
     var active = doc.activeElement;
     var fk = active && active.getAttribute ? active.getAttribute('data-k') : null;
     var x = window.scrollX, y = window.scrollY;
+    var rctx = multi ? renderRepos() : null;
+    if (multi && (selectedRepo() === null || !data)) {
+      ctx = { ui: ui, details: details, on: on, focus: rctx.focus, ages: [] };
+      var att = byId('b-attention');
+      clear(att);
+      att.appendChild(selectedRepo() === null ? FD.buildAllAttention(doc, list, ctx) : FD.h(doc, 'p', { 'class': 'muted' }, 'Loading…'));
+      FD.tickAges(ctx.ages, Date.parse(list.generatedAt), Date.now());
+      if (fk && ctx.focus[fk]) ctx.focus[fk].focus({ preventScroll: true });
+      window.scrollTo(x, y);
+      byId('generated').textContent = 'Data as of ' + new Date(Date.parse(list.generatedAt)).toLocaleString() + '; local state only, no forge read';
+      return;
+    }
     syncPhases();
-    ctx = FD.renderAll(doc, data, ui, details, on, byId);
+    ctx = FD.renderAll(doc, data, ui, details, on, byId, multi ? selectedRepo() : null);
+    if (rctx) Object.keys(rctx.focus).forEach(function (k) { ctx.focus[k] = rctx.focus[k]; });
     FD.tickAges(ctx.ages, Date.parse(data.generatedAt), Date.now());
     if (fk && ctx.focus[fk]) ctx.focus[fk].focus({ preventScroll: true });
     window.scrollTo(x, y);
-    byId('generated').textContent = 'Data as of ' + new Date(Date.parse(data.generatedAt)).toLocaleString() + (data.forge && data.forge.read ? '; tracker read at ' + data.forge.at + ' (--forge)' : '; local state only, no forge read');
+    byId('generated').textContent = 'Data as of ' + new Date(Date.parse(data.generatedAt)).toLocaleString() + (data.forge && data.forge.read ? '; tracker read at ' + data.forge.at + ' (--forge)' : '; local state only, no forge read')
+      + (data.stale === true ? '. Stale: this repository is slow to read, so it is refreshed less often; a newer state is waiting to be read' : '');
   }
   function fetchJson(url) {
     return fetch(url, { cache: 'no-store', credentials: 'same-origin', redirect: 'error' }).then(function (r) {
@@ -509,18 +622,42 @@ function start() {
   }
   function loadDetail(api) {
     if (FD.apiKey(api) === null && !/^[1-9][0-9]{0,8}$/.test(api)) return;
-    fetchJson('api/v1/run/' + api).then(function (d) { details[api] = d; render(); }, function () { details[api] = { error: 'The detail could not be loaded (the run may be gone).' }; render(); });
+    if (multi && FD.repoId(ui.repo) === null) return;
+    var want = ui.repo;
+    var rid = FD.repoId(want);
+    fetchJson(multi ? 'api/v1/repo/' + rid + '/run/' + api : 'api/v1/run/' + api).then(function (d) { if (ui.repo !== want) return; details[api] = d; render(); }, function () { details[api] = { error: 'The detail could not be loaded (the run may be gone).' }; render(); });
+  }
+  function loadRepos() {
+    fetchJson('api/v1/repos').then(function (d) {
+      if (!d || d.schemaVersion !== 1 || d.allRepos !== true) throw new Error('unexpected data');
+      list = d;
+      lastOk = Date.now();
+      if (conn !== 'live' && conn !== 'reconnecting') setConn('live');
+      // A repository that disappeared from the server's list falls back to "all repositories".
+      if (ui.repo !== null && selectedRepo() === null) { ui.repo = null; data = null; }
+      var count = d.summary.items;
+      if (lastCount !== null && count !== lastCount) byId('announce').textContent = count === 0 ? 'Nothing needs you now.' : count + (count === 1 ? ' item needs' : ' items need') + ' you now.';
+      lastCount = count;
+      render();
+    }, function () { setConn('stale'); });
   }
   function load() {
-    fetchJson('api/v1/summary').then(function (d) {
+    if (multi) loadRepos();
+    if (!multi || FD.repoId(ui.repo) !== null) loadSummary();
+  }
+  function loadSummary() {
+    var want = ui.repo;
+    var rid = FD.repoId(want);
+    fetchJson(multi ? 'api/v1/repo/' + rid + '/summary' : 'api/v1/summary').then(function (d) {
       if (!d || d.schemaVersion !== 2) throw new Error('unexpected data');
+      if (multi && ui.repo !== want) return;
       var changed = !data || data.rev !== d.rev;
       data = d;
       lastOk = Date.now();
       if (conn !== 'live' && conn !== 'reconnecting') setConn('live');
       var count = d.attention.items.length;
-      if (lastCount !== null && count !== lastCount) byId('announce').textContent = count === 0 ? 'Nothing needs you now.' : count + (count === 1 ? ' item needs' : ' items need') + ' you now.';
-      lastCount = count;
+      if (!multi && lastCount !== null && count !== lastCount) byId('announce').textContent = count === 0 ? 'Nothing needs you now.' : count + (count === 1 ? ' item needs' : ' items need') + ' you now.';
+      if (!multi) lastCount = count;
       if (changed) Object.keys(ui.open).forEach(function (k) { if (ui.open[k]) loadDetail(k); });
       render();
     }, function () { setConn('stale'); });
@@ -550,20 +687,38 @@ function start() {
       if (ui.open[api]) { delete details[api]; loadDetail(api); }
       render();
     },
-    page: function (d) { ui.page += d; render(); }
+    page: function (d) { ui.page += d; render(); },
+    repo: function (id) {
+      var next = id === null ? null : FD.repoId(id);
+      if (id !== null && next === null) return;
+      ui.repo = next;
+      ui.open = {};
+      ui.page = 1;
+      details = {};
+      data = null;
+      render();
+      if (next !== null) loadSummary();
+    }
   };
   byId('f-text').addEventListener('input', function (e) { ui.filter = e.target.value; ui.page = 1; render(); });
   byId('f-phase').addEventListener('change', function (e) { ui.phase = e.target.value; ui.page = 1; render(); });
   doc.addEventListener('selectionchange', function () { if (pending && !selecting()) render(); });
   setInterval(function () {
-    if (data) FD.tickAges(ctx.ages, Date.parse(data.generatedAt), Date.now());
+    if (multi && !data && list) FD.tickAges(ctx.ages, Date.parse(list.generatedAt), Date.now());
+    else if (data) FD.tickAges(ctx.ages, Date.parse(data.generatedAt), Date.now());
     if (conn === 'stale') setConn('stale');
   }, 5000);
 
   var es = null;
   function connect() {
     es = new EventSource('events');
-    es.addEventListener('changed', function (e) { if (!data || String(e.data) !== data.rev) load(); });
+    es.addEventListener('changed', function (e) {
+      if (!multi) { if (!data || String(e.data) !== data.rev) load(); return; }
+      // --all-repos: "repos <rev>" for the list, "<id> <rev>" for one repository.
+      var parts = String(e.data).split(' ');
+      if (parts[0] === 'repos') { if (!list || parts[1] !== list.rev) loadRepos(); }
+      else if (ui.repo !== null && parts[0] === ui.repo && (!data || parts[1] !== data.rev)) loadSummary();
+    });
     es.addEventListener('open', function () { setConn('live'); load(); });
     es.addEventListener('error', function () {
       if (es.readyState === 2) { setConn('stale'); setTimeout(connect, 10000); } else setConn('reconnecting');
@@ -583,8 +738,10 @@ const SECTIONS = [
  * The page. It holds no data at all (the script fetches it), so nothing from
  * a state is ever in this HTML. `nonce` is the response's CSP nonce, the only
  * thing that varies (base64: no character that needs escaping here).
+ * `allRepos` (--serve --all-repos) adds the Repositories section first; the
+ * script then fetches the repository list and one repository by its id.
  */
-export function dashboardPageHtml(nonce) {
+export function dashboardPageHtml(nonce, o = {}) {
     if (!/^[A-Za-z0-9+/=]+$/.test(nonce))
         throw new Error('bad nonce');
     return `<!doctype html>
@@ -595,11 +752,11 @@ export function dashboardPageHtml(nonce) {
 <header><h1>Factory dashboard</h1>
 <p><span id="conn" class="conn">Connecting…</span> <span id="generated" class="muted"></span></p>
 <p class="muted">Live, read-only and local: this page copies commands and never runs them. Stop the server with Ctrl-C in its terminal.</p>
-<nav aria-label="Sections"><ul>${SECTIONS.map(([id, title]) => `<li><a href="#${id}">${title}</a></li>`).join('')}</ul></nav></header>
+<nav aria-label="Sections"><ul>${o.allRepos ? '<li><a href="#repos">Repositories</a></li>' : ''}${SECTIONS.map(([id, title]) => `<li><a href="#${id}">${title}</a></li>`).join('')}</ul></nav></header>
 <main id="main" tabindex="-1">
 <div id="announce" class="sr" aria-live="polite"></div>
 <noscript><p class="warn">This page needs JavaScript. Without it use <code>omg factory dashboard --out dashboard.html --watch</code>.</p></noscript>
-<section aria-label="Summary"><div id="b-summary"></div></section>
+${o.allRepos ? '<section id="repos" aria-labelledby="h-repos"><h2 id="h-repos">Repositories</h2><p id="scope" class="muted" aria-live="polite"></p><div id="b-repos"></div></section>\n' : ''}<section aria-label="Summary"><div id="b-summary"></div></section>
 <section id="attention" aria-labelledby="h-attention"><h2 id="h-attention">Attention</h2><div id="b-attention"></div></section>
 <section id="live" aria-labelledby="h-live"><h2 id="h-live">Live now</h2><div id="b-live"></div></section>
 <section id="runs" aria-labelledby="h-runs"><h2 id="h-runs">Runs</h2>

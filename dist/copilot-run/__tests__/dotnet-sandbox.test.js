@@ -2,11 +2,11 @@
  * dotnet-sandbox.ts: which commands count as dotnet, the -m:1 rewrite, the
  * NuGet packages folder lookup and the env a sandboxed dotnet gets.
  */
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { DOTNET_SINGLE_NODE_FLAG, dotnetNugetConfig, dotnetSandboxArgs, dotnetSandboxEnv, isDotnetExe, isMtpGlobalJson, isNugetHost, msbuildEscape, NUGET_CONFIG_READ_MAX, NUGET_ORG_ONLY_CONFIG, NUGET_ORG_SOURCE, nugetConfigVerdict, nugetPackagesDir, nugetPackagesGrant, readRegularFileBounded, rootNugetConfig } from '../dotnet-sandbox.js';
+import { DOTNET_SINGLE_NODE_FLAG, dotnetNugetConfig, dotnetSandboxArgs, dotnetSandboxEnv, isDotnetExe, lowerNugetConfigs, isMtpGlobalJson, isNugetHost, msbuildEscape, NUGET_CONFIG_READ_MAX, NUGET_ORG_ONLY_CONFIG, NUGET_ORG_SOURCE, nugetConfigVerdict, nugetPackagesDir, nugetPackagesGrant, readRegularFileBounded, rootNugetConfig } from '../dotnet-sandbox.js';
 let dir;
 beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'omg-dotnet-sandbox-')); });
 afterEach(() => { rmSync(dir, { recursive: true, force: true }); });
@@ -400,6 +400,40 @@ describe('H1: nugetConfigVerdict adds nuget.org only for a root config with no p
             nugetConfigVerdict(rep(s));
             expect(performance.now() - t, s).toBeLessThan(200);
         }
+    });
+});
+describe('a nuget.config below the root keeps NuGet\'s hierarchy whatever the caller passes (PR 611 round 4)', () => {
+    const LOWER = '<configuration><packageSources><clear /><add key="corp" value="C:\corp" /></packageSources></configuration>\n';
+    const put = (rel, text) => { mkdirSync(join(dir, 'repo', rel, '..'), { recursive: true }); writeFileSync(join(dir, 'repo', rel), text); };
+    const prof = () => join(dir, 'prof');
+    it.each([
+        ['no root config', null],
+        ['a settings-only root config', '<configuration><config><add key="x" value="y" /></config></configuration>\n'],
+        ['a root config with no source policy', '<configuration />\n'],
+    ])('%s and Lib/NUGET.CONFIG: hierarchy, nothing added, no nuget.org-only file', (_label, root) => {
+        if (root)
+            put('nuget.config', root);
+        put('Lib/NUGET.CONFIG', LOWER);
+        const cfg = dotnetNugetConfig(join(dir, 'repo'), prof(), 'win32');
+        expect(cfg).toEqual({ hierarchy: expect.stringContaining('below its root (Lib/NUGET.CONFIG)') });
+        const env = dotnetSandboxEnv(prof(), {}, prof(), 'win32', undefined, cfg).env;
+        expect(env.RestoreConfigFile).toBeUndefined();
+        expect(env.RestoreAdditionalProjectSources).toBeUndefined();
+        expect(existsSync(join(prof(), 'nuget', 'nuget.config'))).toBe(false);
+    });
+    it('a nuget.config under node_modules, .git or .omg is not a lower config; the root one alone is one file', () => {
+        put('nuget.config', '<configuration />\n');
+        put('node_modules/pkg/nuget.config', LOWER);
+        put('web/node_modules/pkg/nuget.config', LOWER);
+        put('.git/nuget.config', LOWER);
+        put('.omg/team/factory-run/worktrees/issue-1/Lib/nuget.config', LOWER);
+        expect(lowerNugetConfigs(join(dir, 'repo'))).toEqual([]);
+        expect(dotnetNugetConfig(join(dir, 'repo'), prof(), 'win32')).toMatchObject({ file: join(dir, 'repo', 'nuget.config'), addNugetOrg: true });
+    });
+    it('lists at most five, nearest the root first', () => {
+        for (const d of ['a', 'b', 'c', 'd', 'e', 'f', 'a/x'])
+            put(`${d}/nuget.config`, LOWER);
+        expect(lowerNugetConfigs(join(dir, 'repo'))).toHaveLength(5);
     });
 });
 //# sourceMappingURL=dotnet-sandbox.test.js.map

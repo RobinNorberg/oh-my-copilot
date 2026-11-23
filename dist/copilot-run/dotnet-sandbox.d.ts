@@ -232,6 +232,16 @@ export declare function nugetConfigVerdict(bytes: Buffer): NugetConfigVerdict;
  */
 export declare function readRegularFileBounded(path: string, max: number): Buffer | null;
 /**
+ * The nuget.config files (any letter case) below `dir`'s root, as paths
+ * relative to `dir` with `/`, at most five; dirs named `.git`,
+ * `node_modules` (a package's own files, as engine.ts dotnetPinnedFacts)
+ * or `.omg` (the engine's state, other checkouts) are skipped and links are
+ * not followed. A dir that cannot be read, or more than
+ * LOWER_NUGET_SCAN_DIRS dirs, is reported as an entry too: the caller then
+ * cannot rule a lower config out.
+ */
+export declare function lowerNugetConfigs(dir: string): string[];
+/**
  * A value for an MSBuild property set from the environment: MSBuild
  * unescapes `%XX` in it and expands `@(...)` (checked with .NET SDK
  * 10.0.101: `RestoreConfigFile` in a dir named `p%41` read `pA`, `p@(x)`
@@ -264,7 +274,13 @@ export declare const msbuildEscape: (value: string) => string;
  * engine cannot tell which root file NuGet reads (rootNugetConfig
  * `ambiguous`), when the root file maps packages to a source key it does
  * not define (nugetConfigVerdict `unmappedKeys`: the file alone would leave
- * that source out), or when the path holds a `;`, which MSBuild splits.
+ * that source out), when the path holds a `;`, which MSBuild splits, or
+ * when `cwd`'s tree holds a nuget.config below its root (lowerNugetConfigs:
+ * NuGet reads it for the projects under it, and one file would hide it,
+ * so nothing is added and no nuget.org-only file is written). This check
+ * reads the tree as it is, so it holds for every caller (the engine, a
+ * write lane's worktree, a caller that never passes a hierarchy decision);
+ * only a caller that passes `{ hierarchy }` itself skips this function.
  */
 export declare function dotnetNugetConfig(cwd: string, profile: string, platform?: NodeJS.Platform, o?: {
     noAdd?: boolean;

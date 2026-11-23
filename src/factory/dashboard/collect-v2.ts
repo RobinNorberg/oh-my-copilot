@@ -19,20 +19,20 @@
  */
 
 import { readdirSync, statSync } from 'fs';
-import { dirname, join } from 'path';
+import { join } from 'path';
 import type { ForgeKind } from '../../forge/types.js';
 import { LOCAL_REMOTE } from '../../forge/local/mirror.js';
 import { plainText } from '../check/score.js';
-import { attentionJson, collectAttention, readRegularFile, readRun, runKeyOfName, type AttentionData, type AttentionItem, type AttentionTrust } from '../attention/collect.js';
-import { ledgerFilePath } from '../run/ledger.js';
+import { attentionJson, collectAttention, readRegularFile, type ReadRun, type AttentionData, type AttentionItem, type AttentionTrust } from '../attention/collect.js';
 import type { BoardJson, BoardRow } from '../board/collect.js';
 import type { FactoryRunLimits } from '../run/budget.js';
 import { factoryProgressFile } from '../run/progress.js';
 import {
-  defaultOwnerDeps, FACTORY_PHASES, factoryStateDir, heldSlots, runLabel, TERMINAL_FACTORY_PHASES,
+  defaultOwnerDeps, FACTORY_PHASES, heldSlots, runLabel, TERMINAL_FACTORY_PHASES,
   type FactoryLaneRecord, type FactoryRunKey, type FactoryRunState, type OwnerDeps,
 } from '../run/state.js';
 import { localDay, parseSince } from './collect.js';
+import { withWorktreePathRenderScope } from '../../lib/worktree-paths.js';
 
 export const DASHBOARD_SCHEMA_VERSION_2 = 2;
 
@@ -275,7 +275,20 @@ export interface DashboardBenchV2 {
   premiumRequests: number | null;
   credits: number | null;
   wallMs: number | null;
+  /** The numeric fields the file holds as something other than a finite number >= 0 (shown as "invalid"); absent when none. */
+  invalid?: string[];
 }
+
+/**
+ * Bench result files are UNSEALED and live in the repository (or a
+ * --bench-dir): anyone who can write the repository can edit them. Their
+ * text fields are shown only when they are plain words of BENCH_TEXT (else
+ * BENCH_NOT_SHOWN), their numbers only when finite and >= 0.
+ */
+export const BENCH_TEXT = /^[A-Za-z0-9._ -]+$/;
+export const BENCH_NOT_SHOWN = '(not shown)';
+export const BENCH_UNSEALED_NOTE = 'Unsealed files in the repository (anyone who can write the repository can edit them).';
+const benchText = (v: string, max: number): string => (v.length <= max && BENCH_TEXT.test(v) ? v : BENCH_NOT_SHOWN);
 
 export interface DashboardDataV2 {
   schemaVersion: typeof DASHBOARD_SCHEMA_VERSION_2;
@@ -422,25 +435,33 @@ function benchRow(path: string, file: string, source: DashboardBenchV2['source']
   // A bench result names its kind, or (older writers) carries totals; anything else in the directory is not one.
   if (j.kind !== 'omg-factory-bench' && !totals) return null;
   const t = totals ?? {};
+  const invalid: string[] = [];
+  const count = (field: string, v: unknown): number | null => {
+    if (v === undefined || v === null) return null;
+    if (typeof v === 'number' && Number.isFinite(v) && v >= 0) return v;
+    invalid.push(field);
+    return null;
+  };
   const runs = Array.isArray(j.runs) ? j.runs : Array.isArray(j.issues) ? j.issues : null;
   const started = j.startedAt ?? j.createdAt ?? j.timestamp;
   // A negative wall time (finishedAt before startedAt) is no wall time: null.
-  const w = num(t.wallMs) ?? msOf(j.finishedAt) - msOf(started);
+  const w = count('wallMs', t.wallMs) ?? msOf(j.finishedAt) - msOf(started);
   const wall = Number.isFinite(w) && w >= 0 ? w : null;
   const model = typeof j.model === 'string' ? j.model : typeof (j.model as { id?: unknown } | null)?.id === 'string' ? (j.model as { id: string }).id : null;
   return {
     source,
-    file: text(file, 120),
-    schemaVersion: num(j.schemaVersion),
-    mode: typeof j.mode === 'string' ? text(j.mode, 30) : null,
-    omgVersion: typeof j.omgVersion === 'string' ? text(j.omgVersion, 30) : null,
-    model: model === null ? null : text(model, 60),
+    file: benchText(file, 120),
+    schemaVersion: count('schemaVersion', j.schemaVersion),
+    mode: typeof j.mode === 'string' ? benchText(j.mode, 30) : null,
+    omgVersion: typeof j.omgVersion === 'string' ? benchText(j.omgVersion, 30) : null,
+    model: model === null ? null : benchText(model, 60),
     startedAt: typeof started === 'string' && Number.isFinite(msOf(started)) ? new Date(msOf(started)).toISOString() : null,
-    issues: num(t.issues) ?? (runs ? runs.length : null),
-    passed: num(t.passed),
-    premiumRequests: num(t.premiumRequests),
-    credits: num(t.credits),
+    issues: count('issues', t.issues) ?? (runs ? runs.length : null),
+    passed: count('passed', t.passed),
+    premiumRequests: count('premiumRequests', t.premiumRequests),
+    credits: count('credits', t.credits),
     wallMs: wall,
+    ...(invalid.length ? { invalid } : {}),
   };
 }
 
@@ -475,20 +496,21 @@ function boardRows(b: BoardJson): BoardRow[] {
   return [...b.columns.flatMap((c) => c.items), ...b.outside];
 }
 
+/** One render scope: the state root is resolved once per collection, not once per file path. */
 export function collectDashboardV2(root: string, o: CollectDashboardV2Options): DashboardDataV2 {
+  return withWorktreePathRenderScope(() => collectV2In(root, o));
+}
+
+function collectV2In(root: string, o: CollectDashboardV2Options): DashboardDataV2 {
   const now = (o.now ?? Date.now)();
   const sinceMs = o.since === undefined ? null : parseSince(o.since);
   const owner = o.owner ?? defaultOwnerDeps();
   const warnings: string[] = [];
-  const attention = collectAttention(root, { ledgerDir: o.ledgerDir, now: () => now, limits: o.limits ?? null, owner, verbose: true });
+  // Each run state is read once, by the attention collector (the ledger-first, capped key set); its reads are reused here.
+  const reads: ReadRun[] = [];
+  // Unread state files are one of attention's warnings, which the result carries (once).
+  const attention = collectAttention(root, { ledgerDir: o.ledgerDir, now: () => now, limits: o.limits ?? null, owner, verbose: true, onRead: (r) => reads.push(r) });
 
-  // Every canonical run state, checked as attention checks it.
-  let names: string[] = [];
-  try {
-    names = readdirSync(factoryStateDir(root));
-  } catch {
-    // No state dir: no runs yet.
-  }
   /** Every verified state, --since or not (Live now always shows the present). */
   const allStates = new Map<string, FactoryRunState>();
   const states = new Map<string, FactoryRunState>();
@@ -496,10 +518,17 @@ export function collectDashboardV2(root: string, o: CollectDashboardV2Options): 
   /** Runs whose timeline was clamped: kept out of the throughput medians. */
   const clampedRuns = new Set<string>();
   const excluded = { runs: 0, missing: 0 };
-  for (const name of names) {
-    const key = runKeyOfName(name);
-    if (key === null) continue;
-    const r = readRun(root, key, o.ledgerDir);
+  const missingLabels = new Set(attention.items.filter((i) => i.trust === 'missing').map((i) => i.key));
+  for (const r of reads) {
+    const key = r.key;
+    if (r.missing) {
+      // The engine ledger records a state file that is gone: attention lists it (trust missing); a row here, never in a total.
+      if (!missingLabels.has(runLabel(key))) continue;
+      runs.push(unverifiedRun(key, 'missing', undefined));
+      excluded.runs++;
+      excluded.missing++;
+      continue;
+    }
     if (r.trust !== 'ok' || !r.state) {
       // An unreadable state is already one of attention's warnings. Nothing it claims (credits, requests) is counted or shown.
       runs.push(unverifiedRun(key, r.trust, r.state));
@@ -520,22 +549,6 @@ export function collectDashboardV2(root: string, o: CollectDashboardV2Options): 
     } catch (error) {
       warnings.push(`run ${runLabel(key)}: skipped (${text(error instanceof Error ? error.message : error, 160)})`);
     }
-  }
-  // Runs the engine ledger records whose state file is gone: attention lists them (trust missing); a row here, never in a total.
-  const stateKeys = new Set(names.map(runKeyOfName).filter((k) => k !== null).map((k) => runLabel(k)));
-  const missingLabels = new Set(attention.items.filter((i) => i.trust === 'missing').map((i) => i.key));
-  let ledgerNames: string[] = [];
-  try {
-    ledgerNames = readdirSync(dirname(ledgerFilePath(o.ledgerDir, root, 1)));
-  } catch {
-    // No ledger dir: nothing is missing.
-  }
-  for (const name of ledgerNames) {
-    const key = runKeyOfName(name);
-    if (key === null || stateKeys.has(runLabel(key)) || !missingLabels.has(runLabel(key))) continue;
-    runs.push(unverifiedRun(key, 'missing', undefined));
-    excluded.runs++;
-    excluded.missing++;
   }
   const startedMs = (r: DashboardRunV2): number => msOf(r.startedAt);
   runs.sort((a, b) => (Number(b.verified) - Number(a.verified)) || (startedMs(b) || 0) - (startedMs(a) || 0) || b.key.localeCompare(a.key, 'en', { numeric: true }));

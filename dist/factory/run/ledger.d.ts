@@ -47,6 +47,8 @@ export declare const userBaselineKey: (laneId: string) => string;
 export declare const sha256: (data: string | Buffer) => string;
 /** `$OMC_STATE_DIR/factory-ledger` or `~/.omg/factory-ledger`: outside the repository. */
 export declare function defaultLedgerDir(env?: NodeJS.ProcessEnv): string;
+/** A repository's directory name in the engine ledger: sha256 of the lower-cased resolved root, 16 hex. */
+export declare const ledgerRepoId: (root: string) => string;
 /** `run-<issue>.json`, or `run-heal-<sig8>.json` for a ci-heal run. */
 export declare function ledgerFilePath(dir: string, root: string, key: FactoryRunKey): string;
 /** The empty directory the engine passes as core.hooksPath (exec.ts hardenedGitExec). */

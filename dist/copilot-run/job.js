@@ -1379,7 +1379,8 @@ export class CopilotRunManager {
         const realHome = (deps.realHome ?? (() => userInfo().homedir))();
         const dotnetGrants = [];
         if (job.dotnet) {
-            // One NuGet config, the worktree root's or nuget.org only (dotnet-sandbox.ts dotnetNugetConfig), unless the base keeps NuGet's hierarchy (engine.ts).
+            // One NuGet config, the worktree root's or nuget.org only (dotnet-sandbox.ts dotnetNugetConfig), unless the base keeps NuGet's hierarchy (engine.ts)
+            // or the worktree holds a nuget.config below its root (dotnetNugetConfig keeps the hierarchy itself).
             const d = dotnetSandboxEnv(env.USERPROFILE, deps.env, realHome, deps.platform, undefined, job.dotnetNugetHierarchy ? { hierarchy: job.dotnetNugetHierarchy } : dotnetNugetConfig(job.worktree?.path ?? job.workCwd, env.USERPROFILE, deps.platform, { noAdd: job.dotnetNugetNoAddSource }));
             Object.assign(env, d.env);
             dotnetGrants.push(...d.readonly);

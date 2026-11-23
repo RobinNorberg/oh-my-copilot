@@ -1347,6 +1347,19 @@ export function getProjectIdentifier(worktreeRoot?: string): string {
   return identifier;
 }
 
+const knownOmcRoots = new AsyncLocalStorage<ReadonlyMap<string, string>>();
+
+/**
+ * Run `fn` with the state roots of these worktree roots already known: inside
+ * it, getOmcRoot(<that exact root>) returns the given state root without git
+ * or any stat. For roots the caller has validated itself (factory
+ * --all-repos: a top level with its own `.git`, whose state is its own
+ * `.omg`); every other lookup resolves as usual.
+ */
+export function withKnownOmcRoots<T>(roots: ReadonlyMap<string, string>, fn: () => T): T {
+  return knownOmcRoots.run(roots, fn);
+}
+
 /**
  * Get the .omc root directory path.
  *
@@ -1358,6 +1371,8 @@ export function getProjectIdentifier(worktreeRoot?: string): string {
  * @returns Absolute path to the omc root directory
  */
 export function getOmcRoot(worktreeRoot?: string): string {
+  const known = worktreeRoot === undefined ? undefined : knownOmcRoots.getStore()?.get(worktreeRoot);
+  if (known !== undefined) return known;
   // Inside a render scope (one HUD render, one state tool call) the answer is memoized: every call
   // revalidates the git metadata caches with dozens of stat calls, which a per-session loop over
   // hundreds of session dirs multiplies into minutes on Windows.
