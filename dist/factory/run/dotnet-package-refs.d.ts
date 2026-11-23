@@ -70,6 +70,18 @@ export declare function nodeModulesReferences(path: string, text: string): strin
  */
 export declare function restoreSettingMentions(path: string, text: string): string[];
 /**
+ * The `Import Project` values of a pinned MSBuild file that do not name a
+ * pinned definition file (M2): each `;` part of the decoded value whose text
+ * does not end in `.props`, `.targets`, `.tasks`, `.projitems`, `.user` or a
+ * `*proj` extension, including one that ends in a property reference
+ * (`$(X)`) or a wildcard; `$([MSBuild]::GetPathOfFileAbove('<name>.props',
+ * ...))` counts by its literal name. Such a file is absent from the
+ * definition tree and may set the restore sources, so the engine cannot
+ * tell which sources the repository uses. A file larger than
+ * PINNED_READ_MAX counts as `not read`. Other files: none.
+ */
+export declare function unpinnedImports(path: string, text: string): string[];
+/**
  * The MSBuild project SDKs a pinned file has NuGet resolve (M3): a
  * versioned `Sdk="<name>/<version>"` on `Project` or `Import` (a `;` list
  * too), an `Sdk` element or `Import` with `Name` and `Version`, or a

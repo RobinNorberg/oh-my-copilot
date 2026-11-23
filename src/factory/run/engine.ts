@@ -64,7 +64,7 @@ import { listChangedFiles, protectedChanges } from '../../ship/merge.js';
 import { ESLINT_SCRIPT, PREPARE_CONFIG_STEP, PREPARE_DETECT_STEP, PREPARE_SANDBOX_STEP, runPrepareAsync, VITEST_SCRIPT, type PrepareCheckResult, type PrepareCheckRun } from '../../ship/prepare.js';
 import { parseJsonc } from '../../utils/jsonc.js';
 import { gitForWindowsShell, nodeModulesTreeProblem, resolveGateIsolation, resolveGatesSandboxMode, resolveRequireDeniedPaths, resolveWindowsGitTransport, type GateContainerSettings, type GatesSandboxMode, type WindowsGitTransportMode } from '../../copilot-run/sandbox.js';
-import { DOTNET_MTP_UNSUPPORTED, isDotnetExe, isMtpGlobalJson, isNugetHost, nugetConfigVerdict, rootNugetConfig, NUGET_CONFIG_NAMES, type NugetConfigVerdict } from '../../copilot-run/dotnet-sandbox.js';
+import { DOTNET_MTP_UNSUPPORTED, isDotnetExe, isMtpGlobalJson, isNugetHost, nugetConfigVerdict, rootNugetConfig, NUGET_CONFIG_NAMES, NUGET_ORG_SOURCE, type NugetConfigVerdict } from '../../copilot-run/dotnet-sandbox.js';
 import { resolveDefaultPluginRoot } from '../../smoke/copilot-session-env.js';
 import { CONTAINER_INCOMPATIBLE_ADVICE, CONTAINER_SRC, containerRunLabel, GATE_CONTAINER_UNAVAILABLE_GATE } from './container-gate.js';
 import { CREDENTIAL_FILES_READABLE_NOTE, redactGateOutput, sandboxCommandTooLong, sandboxJobRoot, splitFileListArgs, type SandboxRunner, type SandboxRunRequest, type SandboxRunResult } from './sandbox-exec.js';
@@ -147,7 +147,7 @@ import { acquireFactoryClaim, claimBusyMessage, factoryClaimHolder, factoryClaim
 import { compareSnapshots, replaceObjectsProblem, samePath, snapshotRepo, verifyReviewWorktree, type RepoSnapshot } from './review-guard.js';
 import { GATE_INSTALL_GATE, IMPORT_REFUSED_GATE, LAYOUT_UNSUPPORTED_GATE, PRIVATE_STORE_GATE, PrivateRun, REPO_GUARD_GATE, resolveGateInstall, resolveRunLayout, type ImportStep, type Park, type RunLayoutChoice } from './private-run.js';
 import { classifyNugetFailure, dotnetRestoreArgs, GATE_INSTALL_SANDBOXED_HINT, missingDefinitionFile, NUGET_PRIVATE_FEED_UNSUPPORTED, nugetConfigUnreadableReason, nugetDefinitionTreeDir, nugetRunPackagesDir, nugetSubstituted, parseCatFileBatch, removeEngineDir, restoreApprovalNote, writeDefinitionTree, type DefinitionEntry, type NugetFailure } from './nuget-restore.js';
-import { nodeModulesReferences, projectSdkMentions, readsForNodeModulesRefs, restoreSettingMentions } from './dotnet-package-refs.js';
+import { nodeModulesReferences, projectSdkMentions, readsForNodeModulesRefs, restoreSettingMentions, unpinnedImports } from './dotnet-package-refs.js';
 import { lockfileUnchanged, PRIVATE_GIT_TIMEOUT_MS, PrivateRepoTampered, PrivateStoreError, userRepoGuardSnapshot } from './private-store.js';
 import { parseReviewOutput, reviewComment, verdictNotes } from './review-output.js';
 import { findPlanLink, hasAcceptanceCriteria, issueAuthorTrusted, type IssueComment } from './plan-rules.js';
@@ -626,6 +626,8 @@ interface DotnetPinnedFacts {
   root: { none: true } | { ambiguous: string } | { name: string; verdict: NugetConfigVerdict };
   restoreSettings: string[];
   projectSdks: string[];
+  /** `<path>: <values>` for each pinned MSBuild file whose Import names a file that is not a pinned definition file (unpinnedImports; M2). */
+  unpinnedImports: string[];
 }
 interface GateCheckoutRead { at: string; dirty: string[]; untracked: string[]; kept: string[]; gitlinks: string[]; packageTreeProjects?: string[]; problem?: string }
 
@@ -1834,8 +1836,9 @@ class FactoryEngine {
    *   packages to a source key it does not define (M1). In the shared layout
    *   that walk parks at the first unreadable config, naming this reason.
    * - `noAddSource`: the pinned MSBuild or response files (or `argv`) set
-   *   NuGet's restore sources or config themselves (restoreSettingMentions):
-   *   nuget.org is never added (H2).
+   *   NuGet's restore sources or config themselves (restoreSettingMentions),
+   *   or import a file that is not a pinned definition file, which may
+   *   (unpinnedImports): nuget.org is never added (H2, M2).
    * - `sdks`: MSBuild project SDKs NuGet resolves (projectSdkMentions; M3).
    * Throws (a step error) when a commit cannot be read.
    */
@@ -1856,7 +1859,7 @@ class FactoryEngine {
           ? `the root ${root.name} maps packages to the source key(s) ${root.verdict.unmappedKeys.join(', ')}, which it does not define (NuGet takes them from another config, such as the user config's nuget.org; define them in the root ${root.name} to keep one file)`
           : null;
     const fromArgv = argv.some((a) => /Restore(?:Sources|AdditionalProjectSources|FallbackFolders|ConfigFile|PackagesPath|NoCache|IgnoreFailedSources)/i.test(a)) ? ['the command line'] : [];
-    return { hierarchy, noAddSource: [...facts.restoreSettings, ...fromArgv], sdks: facts.projectSdks };
+    return { hierarchy, noAddSource: [...facts.restoreSettings, ...facts.unpinnedImports, ...fromArgv], sdks: facts.projectSdks };
   }
 
   /**
@@ -1869,6 +1872,27 @@ class FactoryEngine {
   private nugetHierarchyWhy(commit?: string): string | null {
     try {
       return this.dotnetNugetPolicy(commit).hierarchy;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Why a restore that missed packages may be the repository's own config:
+   * `commit`'s root nuget.config defines sources (so nothing was added,
+   * dotnet-sandbox.ts nugetConfigVerdict) and never names nuget.org, and
+   * the sandbox reads that file alone (no user config behind it). Null
+   * otherwise (no root config, nuget.org named or added, NuGet's hierarchy, sources set in MSBuild,
+   * or the commit cannot be read).
+   */
+  private noNugetOrgSource(commit: string): string | null {
+    try {
+      // NuGet's hierarchy, or MSBuild (or a file the engine cannot read) sets the sources: the root file is not the whole story.
+      const policy = this.dotnetNugetPolicy(commit);
+      if (policy.hierarchy || policy.noAddSource.length > 0) return null;
+      const root = this.dotnetPinnedFacts(commit).root;
+      if (!('verdict' in root) || root.verdict.addNugetOrg || root.verdict.namesNugetOrg) return null;
+      return `the repository's root ${root.name} lists no nuget.org source, and the sandbox reads that file alone (your user and machine NuGet configs, which may add nuget.org, are not behind it), so NuGet looked only in the sources it lists; if the repository should use nuget.org, add it to the root ${root.name} explicitly (<add key="nuget.org" value="${NUGET_ORG_SOURCE}" />)`;
     } catch {
       return null;
     }
@@ -5188,6 +5212,9 @@ class FactoryEngine {
     if (nuget.kind === 'config-unreadable') {
       return park(`the local gate \`${gate.join(' ')}\` could not restore its NuGet packages on ${head.slice(0, 12)}, so no ci-fix lane was started. ${nugetConfigUnreadableReason(nuget.sources, this.nugetHierarchyWhy(head), nuget.sdks)}; then rerun ${this.resume}; or ${cancelCommand(this.key)}`);
     }
+    // A feed of the repository's own config answered without the package (not NU1301, unreachable): the file lists no nuget.org.
+    const noOrg = nuget.kind === 'private-feed' && !nuget.codes.includes('NU1301') ? this.noNugetOrgSource(head) : null;
+    if (noOrg) return park(`${what}: ${noOrg} (${nuget.codes.join(', ')}${nuget.sources.length > 0 ? `; ${nuget.sources.join(', ')}` : ''}). Or ${yourself}`);
     if (nuget.kind === 'private-feed') {
       return park(`${what}: ${NUGET_PRIVATE_FEED_UNSUPPORTED} (${nuget.sources.join(', ') || 'a feed answered 401 or 403'}); the sandbox never gets your NuGet.Config or its credentials. Make the packages come from nuget.org, or ${yourself}`);
     }
@@ -5228,6 +5255,18 @@ class FactoryEngine {
     const trusted = this.gateDefinitionTrustedAt(head);
     if (!trusted) {
       return { name: GATE_INSTALL_GATE, reason: `${what} did not run: the gate's definition files at ${head.slice(0, 12)} are neither ${this.state.base}'s nor the change accepted with --allow-gate-change, and dotnet restore evaluates them with the network on; inspect the project files on the branch, then rerun ${this.resume}, or ${cancelCommand(this.key)}` };
+    }
+    // M2: an import of a file that is not pinned (absent from the definition tree) may set the restore sources, so the
+    // engine cannot tell which sources the repository uses: no restore, and no nuget.org-only config written for it.
+    let imports: string[];
+    try {
+      imports = this.dotnetPinnedFacts(head).unpinnedImports;
+    } catch (error) {
+      return { name: GATE_INSTALL_GATE, reason: `${what} did not run: the definition files of ${head.slice(0, 12)} could not be read (${errText(error)}); rerun ${this.resume}` };
+    }
+    if (imports.length > 0) {
+      const named = `${imports.slice(0, 3).map((i) => oneLine(visibleLine(i), 240)).join('; ')}${imports.length > 3 ? `; ${imports.length - 3} more` : ''}`;
+      return { name: GATE_INSTALL_GATE, reason: `${what} did not run: the build imports a file that is not a pinned definition file (${named}), so the engine cannot tell which package sources the repository uses; restore the PR branch's packages into your NuGet global packages folder yourself, or move those settings into a .props file, then rerun ${this.resume}; or ${cancelCommand(this.key)}` };
     }
     let live: number[];
     try {
@@ -5282,7 +5321,8 @@ class FactoryEngine {
       this.removeTree(tree, jobRoot);
     }
     // nugetFailureNext repeats the step on a rerun unless it passed (M3: never twice in one invocation, as it parks).
-    // NU1603 (nuget-restore.ts nugetSubstituted): NuGet took another version than a project names: a failed restore.
+    // L1: NU1603 (nuget-restore.ts nugetSubstituted): NuGet took another version than a project names. Even with the feed reachable
+    // this parks: the offline gate cannot repeat that resolution (NuGet must ask a feed whether the named version exists: NU1301).
     const substituted = r.ran ? nugetSubstituted(r.output) : null;
     const outcome = !r.ran ? 'not-run' as const : r.status === 0 && !r.timedOut && !substituted ? 'passed' as const : 'failed' as const;
     const exit = r.ran && Number.isInteger(r.status) ? { exit: r.status as number } : {};
@@ -5304,12 +5344,14 @@ class FactoryEngine {
         ? `the restore needs a file that is not a pinned definition file: ${needs} (the engine restores on the head's pinned definition files only, so MSBuild imports, tasks and scripts outside them are absent; restore the PR branch's packages into your NuGet global packages folder yourself, or keep the restore's inputs in definition files)`
         : failure?.kind === 'config-unreadable'
           ? nugetConfigUnreadableReason(failure.sources, this.nugetHierarchyWhy(head), failure.sdks)
+          : failure && !failure.mapping && !failure.codes.includes('NU1301') && this.noNugetOrgSource(head)
+          ? `${this.noNugetOrgSource(head)} (${failure.codes.join(', ')}${failure.sources.length > 0 ? `; ${failure.sources.join(', ')}` : ''})`
           : failure?.kind === 'private-feed'
           ? `${NUGET_PRIVATE_FEED_UNSUPPORTED} (${failure.sources.join(', ') || 'a feed answered 401 or 403'}), and the sandbox never gets your NuGet.Config or its credentials`
           : failure?.mapping
             ? `the root nuget.config's packageSourceMapping leaves sources out (NuGet: "PackageSourceMapping is enabled, the following source(s) were not considered"; ${failure.codes.join(', ')}): map those packages to a source the file defines`
             : !failure && substituted
-              ? `a version a project names does not exist on the restore's sources, and NuGet took another one (${substituted.sources.slice(0, 3).join('; ')}); the engine never builds a substitute: fix the version on the branch`
+              ? `a version a project names does not exist on the restore's sources, and NuGet took another one (${substituted.sources.slice(0, 3).join('; ')}); the gate runs offline, where NuGet cannot repeat that resolution (it must ask a feed whether the named version exists), so name the version NuGet resolved on the branch (a direct PackageReference for a transitive one)`
               : `a package or version the project files name may not exist on nuget.org${failure ? ` (${failure.codes.join(', ')})` : ''}`;
       return { name: GATE_INSTALL_GATE, reason: `${what} with only api.nuget.org reachable failed (exit ${r.status}${r.timedOut ? ', timed out' : ''}${substituted ? ', NU1603' : ''}): ${why}. That needs a human, not a ci-fix lane${localDetailNote(this.key, 'its output')}: fix it on the branch (a change to the definition files parks at gate-definition-changed for your approval), then rerun ${this.resume}, which runs the restore again (for a feed that failed only for now, rerun as it is); or ${cancelCommand(this.key)}`, detail: parkTail(r.output) };
     }
@@ -5402,6 +5444,7 @@ class FactoryEngine {
     const refs: string[] = [];
     const restoreSettings: string[] = [];
     const projectSdks: string[] = [];
+    const unpinned: string[] = [];
     let verdict: NugetConfigVerdict | undefined;
     const oids = [...new Set([...files.map(([, oid]) => oid), ...(rootOid ? [rootOid] : [])])];
     if (oids.length > 0) {
@@ -5419,6 +5462,8 @@ class FactoryEngine {
         if (settings.length > 0) restoreSettings.push(`${p}: ${settings.join(', ')}`);
         const sdks = projectSdkMentions(p, text);
         if (sdks.length > 0) projectSdks.push(`${p}: ${sdks.join(', ')}`);
+        const imports = unpinnedImports(p, text);
+        if (imports.length > 0) unpinned.push(`${p}: ${imports.join(', ')}`);
       }
       if (rootOid && 'name' in root) verdict = nugetConfigVerdict(blob(root.name, rootOid));
     }
@@ -5429,6 +5474,7 @@ class FactoryEngine {
       root: 'name' in root ? { name: root.name, verdict: verdict! } : root,
       restoreSettings,
       projectSdks,
+      unpinnedImports: unpinned,
     };
     if (this.pinnedFactsAt.size >= 4) this.pinnedFactsAt.delete(this.pinnedFactsAt.keys().next().value!);
     this.pinnedFactsAt.set(commit, facts);

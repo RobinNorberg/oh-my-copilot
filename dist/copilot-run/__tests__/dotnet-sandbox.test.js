@@ -321,7 +321,7 @@ const NUGET_SAYS = [
     [' nuget.org  key disabled', shape(`<configuration><packageSources>${P}</packageSources><disabledPackageSources><add key=" nuget.org " value="true" /></disabledPackageSources></configuration>`), true],
     ['mapping to NUGET.ORG', shape(`<configuration><packageSources>${P}</packageSources><packageSourceMapping><packageSource key="NUGET.ORG"><package pattern="*" /></packageSource></packageSourceMapping></configuration>`), true],
 ];
-describe('H1: nugetConfigVerdict adds nuget.org only when NuGet certainly uses it (fail closed)', () => {
+describe('H1: nugetConfigVerdict adds nuget.org only for a root config with no package-source policy at all', () => {
     it.each(NUGET_SAYS)('%s: never "add" where NuGet would not use nuget.org', (_name, bytes, nugetOrgEnabled) => {
         const v = nugetConfigVerdict(bytes);
         if (v.addNugetOrg)
@@ -329,22 +329,63 @@ describe('H1: nugetConfigVerdict adds nuget.org only when NuGet certainly uses i
         else
             expect(v.why).toBeTruthy();
     });
-    it('adds for the common shapes that only add a feed or set config, and nothing else', () => {
+    it('adds only for shapes that define no package-source policy at all', () => {
         const adds = NUGET_SAYS.filter(([, b]) => nugetConfigVerdict(b).addNugetOrg).map(([n]) => n).sort();
-        expect(adds).toEqual(['UTF-8 BOM, plain', 'a second public feed', 'commented clear', 'config section only', 'plain feed'].sort());
+        expect(adds).toEqual(['config section only']);
     });
-    it('every shape the review listed is "do not add"', () => {
+    it('H1 (round 3): namespace-prefixed and every earlier fooling shape is "do not add"', () => {
         const no = (s) => nugetConfigVerdict(typeof s === 'string' ? Buffer.from(s) : s).addNugetOrg;
-        expect(no('<configuration><packageSources><Clear /><add key="corp" value="C:\\corp" /></packageSources></configuration>')).toBe(false);
-        expect(no('<configuration><packageSources><add key="nuget.org" value="https://corp-mirror.example.test/v3/index.json" /></packageSources></configuration>')).toBe(false);
-        expect(no(`<configuration><packageSources><?pi <!-- ?><clear />${P}<!-- --></packageSources></configuration>`)).toBe(false);
-        expect(no(`<configuration><disabledPackageSources><ADD key="nuget.org" value="true"/></disabledPackageSources><packageSources>${P}</packageSources></configuration>`)).toBe(false);
-        expect(no(`<configuration><packageSources>${P}</packageSources><x note="a>b" /></configuration>`)).toBe(true);
-        expect(no('<configuration><packageSources><add key="x" value="&#110;uget.org" /></packageSources></configuration>')).toBe(false);
-        expect(no('<configuration><packageSources><add key="x" value=unquoted /></packageSources></configuration>')).toBe(false);
-        expect(no('<configuration><packageSources><add key="x" value="https://example.test/v3" />')).toBe(false);
-        expect(no('<configuration/><configuration/>')).toBe(false);
-        expect(no(Buffer.from([0x3c, 0xc3, 0x28, 0x3e]))).toBe(false);
+        for (const s of [
+            // Namespace prefixes: NuGet matches local names.
+            `<configuration xmlns:x="urn:x"><packageSources><x:clear />${P}</packageSources></configuration>`,
+            `<configuration xmlns:x="urn:x"><x:packageSources><x:clear/>${P}</x:packageSources></configuration>`,
+            `<configuration><packageSources><xml:clear />${P}</packageSources></configuration>`,
+            `<configuration xmlns:x="urn:x"><packageSources>${P}</packageSources><x:disabledPackageSources><add key="nuget.org" value="true" /></x:disabledPackageSources></configuration>`,
+            `<x:configuration xmlns:x="urn:x"><config><add key="a" value="b" /></config></x:configuration>`,
+            '<configuration xmlns:x="urn:x"><config><add key="a" value="b" /></config></configuration>',
+            '<configuration xmlns="urn:x"><config><add key="a" value="b" /></config></configuration>',
+            '<configuration><config xml:space="preserve"><add key="a" value="b" /></config></configuration>',
+            // Earlier rounds.
+            '<configuration><packageSources><Clear /><add key="corp" value="C:/corp" /></packageSources></configuration>',
+            '<configuration><packageSources><add key="nuget.org" value="https://corp-mirror.example.test/v3/index.json" /></packageSources></configuration>',
+            `<configuration><packageSources><?pi <!-- ?><clear />${P}<!-- --></packageSources></configuration>`,
+            `<configuration><disabledPackageSources><ADD key="nuget.org" value="true"/></disabledPackageSources><packageSources>${P}</packageSources></configuration>`,
+            '<configuration><packageSources><add key="x" value="&#110;uget.org" /></packageSources></configuration>',
+            '<configuration><config><add key="x" value="&#110;" /></config></configuration>',
+            '<configuration><config><add key="x" value="a&amp;b" /></config></configuration>',
+            '<configuration><config><add key="x" value=unquoted /></config></configuration>',
+            '<configuration><config><add key="x" value="y" />',
+            '<configuration/><configuration/>',
+            '<?xml version="1.0"?><?pi x?><configuration />',
+            ' x <?xml version="1.0"?><configuration />',
+            '<configuration><config><!-- a note --></config></configuration>',
+            '<configuration><fallbackPackageFolders><add key="f" value="C:/f" /></fallbackPackageFolders></configuration>',
+            '<configuration><config><add key="mapping" value="x" /></config></configuration>',
+            // A non-ASCII letter that case-folds to ASCII in .NET (long s).
+            '<configuration><package\u017Fources><add key="p" value="http://127.0.0.1:9/v3/index.json" /></package\u017Fources></configuration>',
+            '<configuration><a\u212A /></configuration>',
+            '<settings />',
+            '',
+            Buffer.from([0x3c, 0xc3, 0x28, 0x3e]),
+        ])
+            expect(no(s), String(s)).toBe(false);
+    });
+    it('a file that mentions clear or a source only in a comment adds nothing (it is read as it is)', () => {
+        const v = nugetConfigVerdict(Buffer.from('<configuration><!-- we used to <clear/> here --><config><add key="a" value="b" /></config></configuration>'));
+        expect(v.addNugetOrg).toBe(false);
+        expect(v.why).toMatch(/clear|<!/);
+    });
+    it('the positive cases: no source policy at all', () => {
+        const yes = (s) => nugetConfigVerdict(typeof s === 'string' ? Buffer.from(s) : s).addNugetOrg;
+        expect(yes('<configuration><config><add key="globalPackagesFolder" value="pk" /></config></configuration>')).toBe(true);
+        expect(yes('<?xml version="1.0" encoding="utf-8"?>\n<configuration>\n  <config>\n    <add key="dependencyVersion" value="Lowest" />\n  </config>\n</configuration>\n')).toBe(true);
+        expect(yes(Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from('<?xml version="1.0"?><configuration />')]))).toBe(true);
+        expect(yes('<configuration></configuration>')).toBe(true);
+        expect(yes('<configuration><packageRestore><add key="enabled" value="True" /></packageRestore></configuration>')).toBe(true);
+    });
+    it('namesNugetOrg: the raw text names nuget.org in any case', () => {
+        expect(nugetConfigVerdict(Buffer.from(`<configuration><packageSources>${P}</packageSources></configuration>`)).namesNugetOrg).toBe(false);
+        expect(nugetConfigVerdict(Buffer.from('<configuration><packageSources><clear /><add key="NuGet.org" value="https://api.nuget.org/v3/index.json" /></packageSources></configuration>')).namesNugetOrg).toBe(true);
     });
     it('M1: unmappedKeys names a mapping key the file does not define (unless it clears its sources)', () => {
         const v = (s) => nugetConfigVerdict(Buffer.from(s)).unmappedKeys;

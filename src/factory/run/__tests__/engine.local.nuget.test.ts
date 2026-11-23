@@ -254,7 +254,7 @@ const IMPORTING_PROPS = '<Project>\n  <Import Project="$(MSBuildThisFileDirector
 const EVIL_MSBUILD = '<Project>\n  <Target Name="Evil" BeforeTargets="_GenerateRestoreGraph">\n    <Exec Command="echo RAN_EXEC_IN_RESTORE" />\n  </Target>\n</Project>\n';
 
 describe('the networked restore evaluates only pinned definition files (H1)', () => {
-  it('a head that changes only an unpinned imported file: the restore tree holds exactly the head\'s pattern-matched files, none of the changed ones', async () => {
+  it('a head that changes only an unpinned imported file: the restore step never runs (M2: the engine cannot tell its sources)', async () => {
     w = localWorld(['dotnet', 'test']);
     baseProject();
     mkdirSync(join(w.root, 'build'));
@@ -265,21 +265,12 @@ describe('the networked restore evaluates only pinned definition files (H1)', ()
     const r = recorder([{ status: 1, output: FAKE_RESTORE_LINE }]);
     const lanes = lanesFor(w, [commitFile('build/common.msbuild', EVIL_MSBUILD), review('approve')]);
     const out = await runFactoryEngine(localOpts(w, lanes, { gateSandbox: r.sandbox, runUserConfig: SANDBOXED }));
-    // Not a definition change (no gate-definition-changed); the restore ran once, in the tree, and the gate that still
-    // prints the line parks.
+    // Not a definition change (no gate-definition-changed). Round 3 (M2): the imported .msbuild is absent from the
+    // definition tree and could set the restore sources, so the restore step parks before it writes a tree.
     expect(out.gate?.name, out.message).toBe('gate-install-needed');
-    expect(out.gate?.reason).toMatch(/even after the sandboxed dotnet restore for this head ran/);
-    expect(purposes(r)).toEqual(['gate', 'clean', 'restore', 'gate']);
-    const head = readFactoryState(w.root, LOCAL_ISSUE)!.head!;
-    const pinned = gitIn(w.root, 'ls-tree', '-r', '--name-only', head).split('\n').map((l) => l.trim()).filter((p) => /(?:\.sln|\.csproj|\.props)$/.test(p)).sort();
-    expect(r.trees).toHaveLength(1);
-    // The pinned files, and the stubs the head's root lacks (its own Directory.Build.props stays the head's).
-    const stubs = STUBS.map(([p]) => p).filter((p) => p !== 'Directory.Build.props');
-    expect(r.trees[0].map(([p]) => p).filter((p) => !stubs.includes(p))).toEqual(pinned);
-    expect(r.trees[0].map(([p]) => p).filter((p) => !stubs.includes(p))).toEqual(['App.sln', 'Directory.Build.props', 'src/App/App.csproj']);
-    expect(r.trees[0]).toContainEqual(['Directory.Build.props', IMPORTING_PROPS]);
-    expect(r.trees[0].some(([p, text]) => p.startsWith('build/') || text.includes('RAN_EXEC_IN_RESTORE'))).toBe(false);
-    expect(r.reqs.find((q) => q.purpose === 'restore')!.cwd).toBe(treeDir());
+    expect(out.gate?.reason).toContain('the build imports a file that is not a pinned definition file (Directory.Build.props: $(MSBuildThisFileDirectory)build/common.msbuild)');
+    expect(r.reqs.some((q) => q.purpose === 'restore')).toBe(false);
+    expect(r.trees).toHaveLength(0);
     expect(existsSync(treeDir())).toBe(false);
   }, MULTI_RUN_MS);
 
@@ -563,6 +554,51 @@ describe('a repository with a committed root nuget.config (the shared layout)', 
     expect(dotnetReqs(r).every((q) => q.nugetNoAddSource === true && q.nugetHierarchy === undefined)).toBe(true);
   }, MULTI_RUN_MS);
 
+  it('M2 (round 3): an Exists-guarded import of a file that is not pinned: nothing is added and the restore step parks before it writes a tree', async () => {
+    w = localWorld(['dotnet', 'test']);
+    baseProject();
+    writeFileSync(join(w.root, 'Directory.Build.props'), '<Project>\n  <Import Project="eng/Sources.msbuild" Condition="Exists(\'eng/Sources.msbuild\')" />\n</Project>\n');
+    mkdirSync(join(w.root, 'eng'), { recursive: true });
+    writeFileSync(join(w.root, 'eng', 'Sources.msbuild'), '<Project><PropertyGroup><RestoreSources>C:\\corp</RestoreSources></PropertyGroup></Project>\n');
+    gitIn(w.root, 'add', '-A');
+    gitIn(w.root, 'commit', '-q', '-m', 'unpinned import');
+    const r = recorder([{ status: 1, output: OFFLINE }]);
+    const out = await runFactoryEngine(localOpts(w, lanesFor(w, [commitFile('src/App/Greet.cs', 'namespace App;\n'), review('approve')]), { gateSandbox: r.sandbox, runUserConfig: SANDBOXED }));
+    expect(out.gate?.name, out.message).toBe('gate-install-needed');
+    expect(out.gate?.reason).toContain('the build imports a file that is not a pinned definition file (Directory.Build.props: eng/Sources.msbuild), so the engine cannot tell which package sources the repository uses');
+    expect(out.gate?.reason).toContain('move those settings into a .props file');
+    expect(r.reqs.some((q) => q.purpose === 'restore')).toBe(false);
+    expect(r.trees).toHaveLength(0);
+    expect(dotnetReqs(r).every((q) => q.nugetNoAddSource === true)).toBe(true);
+  }, MULTI_RUN_MS);
+
+  it('M2 (round 3): an ordinary import of a pinned .props file restores as before', async () => {
+    w = localWorld(['dotnet', 'test']);
+    baseProject();
+    writeFileSync(join(w.root, 'Directory.Build.props'), '<Project>\n  <Import Project="$(MSBuildThisFileDirectory)eng\\Versions.props" />\n</Project>\n');
+    mkdirSync(join(w.root, 'eng'), { recursive: true });
+    writeFileSync(join(w.root, 'eng', 'Versions.props'), '<Project />\n');
+    gitIn(w.root, 'add', '-A');
+    gitIn(w.root, 'commit', '-q', '-m', 'versions import');
+    const r = recorder([{ status: 1, output: OFFLINE }, { status: 0, output: 'Passed!' }]);
+    const out = await runFactoryEngine(localOpts(w, lanesFor(w, [commitFile('src/App/Greet.cs', 'namespace App;\n'), review('approve')]), { gateSandbox: r.sandbox, runUserConfig: SANDBOXED }));
+    expect(out.gate?.name, out.message).toBe('merge');
+    expect(purposes(r)).toEqual(['gate', 'clean', 'restore', 'gate']);
+    expect(dotnetReqs(r).every((q) => q.nugetNoAddSource === undefined)).toBe(true);
+  }, MULTI_RUN_MS);
+
+  it('H1 (round 3): a root config that only adds a local folder feed: a package only on nuget.org parks saying the file lists no nuget.org source', async () => {
+    w = localWorld(['dotnet', 'test']);
+    writeFileSync(join(w.root, 'nuget.config'), '<configuration><packageSources><add key="corp" value="C:\\corp" /></packageSources></configuration>\n');
+    baseProject();
+    const r = recorder([{ status: 1, output: 'C:\\repo\\src\\App\\App.csproj : error NU1101: Unable to find package Humanizer.Core. No packages exist with this id in source(s): corp\n' }]);
+    const out = await runFactoryEngine(localOpts(w, lanesFor(w, [commitFile('src/App/Greet.cs', 'namespace App;\n'), review('approve')]), { gateSandbox: r.sandbox, runUserConfig: SANDBOXED }));
+    expect(out.gate?.name, out.message).toBe('gate-install-needed');
+    expect(out.gate?.reason).toContain("the repository's root nuget.config lists no nuget.org source, and the sandbox reads that file alone");
+    expect(out.gate?.reason).toContain('<add key="nuget.org" value="https://api.nuget.org/v3/index.json" />');
+    expect(r.reqs.some((q) => q.purpose === 'restore')).toBe(false);
+  }, MULTI_RUN_MS);
+
   it('M1: a root config that maps packages to the nuget.org key it does not define keeps NuGet\'s hierarchy, and the park says so', async () => {
     w = localWorld(['dotnet', 'test']);
     writeFileSync(join(w.root, 'nuget.config'), '<configuration><packageSources><add key="corp" value="https://corp.example.test/v3/index.json" /></packageSources><packageSourceMapping><packageSource key="nuget.org"><package pattern="*" /></packageSource></packageSourceMapping></configuration>\n');
@@ -641,7 +677,7 @@ describe('NU1603: a version NuGet replaced never passes silently', () => {
     const out = await runFactoryEngine(localOpts(w, lanesFor(w, [commitFile('src/App/Greet.cs', 'namespace App;\n'), review('approve')]), { gateSandbox: r.sandbox, runUserConfig: SANDBOXED }));
     expect(out.gate?.name, out.message).toBe('gate-install-needed');
     expect(out.gate?.reason).toContain('failed (exit 0, NU1603)');
-    expect(out.gate?.reason).toContain('the engine never builds a substitute');
+    expect(out.gate?.reason).toContain('the gate runs offline, where NuGet cannot repeat that resolution');
     expect(readFactoryState(w.root, LOCAL_ISSUE)!.nugetRestore?.outcome).toBe('failed');
   }, MULTI_RUN_MS);
 });

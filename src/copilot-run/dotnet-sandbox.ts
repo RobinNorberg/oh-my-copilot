@@ -33,7 +33,7 @@
  *   reaches your working tree's own file, which the sandbox refuses ("Failed
  *   to read NuGet.Config due to unauthorized access"): RestoreConfigFile
  *   names one file instead (dotnetNugetConfig), and nuget.org is added only
- *   when the engine is certain NuGet would use it there
+ *   when that file plainly defines no package-source policy at all
  *   (nugetConfigVerdict): the engine never widens a repository's sources.
  * Not verified on Linux or macOS.
  */
@@ -220,7 +220,7 @@ export function dotnetSandboxEnv(profile: string, hostEnv: NodeJS.ProcessEnv, re
       UseSharedCompilation: 'false',
       EnableSourceControlManagerQueries: 'false',
       // One NuGet config file instead of the walk up to the drive root (dotnetNugetConfig; MSBuild unescapes the value), plus
-      // nuget.org when the engine is certain the default user config would add it there (nugetConfigVerdict).
+      // nuget.org only when that file plainly defines no package-source policy (nugetConfigVerdict).
       ...(nugetConfig && 'file' in nugetConfig ? { RestoreConfigFile: msbuildEscape(nugetConfig.file), ...(nugetConfig.addNugetOrg ? { RestoreAdditionalProjectSources: msbuildEscape(NUGET_ORG_SOURCE) } : {}) } : {}),
     },
     readonly: [...(packages ? [packages] : []), ...(runDir && !run!.writable ? [runDir] : [])],
@@ -320,10 +320,12 @@ export const NUGET_CONFIG_READ_MAX = 256 * 1024;
 
 /** What nugetConfigVerdict says about one root nuget.config. */
 export interface NugetConfigVerdict {
-  /** NuGet, reading this file with its default user config behind it, certainly uses nuget.org: it may be added. */
+  /** The file plainly defines no package-source policy at all: NuGet, reading it with its default user config behind it, uses nuget.org, so it may be added. */
   addNugetOrg: boolean;
   /** Why nuget.org is not added (absent when it is). */
   why?: string;
+  /** The raw text names `nuget.org` (any case): a restore that misses packages without it is not the file's omission. */
+  namesNugetOrg: boolean;
   /**
    * `packageSourceMapping` keys (`<packageSource key>`) that no
    * `packageSources/add key` of the file defines, when the file does not
@@ -336,54 +338,64 @@ export interface NugetConfigVerdict {
 
 const UTF16_32_BOMS = [[0x00, 0x00, 0xfe, 0xff], [0xff, 0xfe], [0xfe, 0xff]];
 
-/** The five predefined XML entities decoded (nugetConfigVerdict refuses every other reference). */
+/**
+ * Words whose presence anywhere in a root nuget.config's raw text (any case,
+ * comments included) means it may define a package-source policy:
+ * `packagesource` covers packageSources, disabledPackageSources,
+ * packageSourceMapping, packageSource and packageSourceCredentials under any
+ * prefix or namespace; then `clear`, `nuget.org`, `mapping`,
+ * `fallbackpackagefolders`; `&` (any entity or character reference) and `<!`
+ * (comments, CDATA, DOCTYPE).
+ */
+const SOURCE_POLICY_WORDS = ['packagesource', 'clear', 'nuget.org', 'mapping', 'fallbackpackagefolders', '&', '<!'];
+
+/** The five predefined XML entities decoded (for unmappedKeys only). */
 const decodePredefined = (s: string): string => s.replace(/&(amp|lt|gt|quot|apos);/g, (_, e: string) => ({ amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" } as Record<string, string>)[e]);
 
 /**
  * Whether the engine may add nuget.org for a repository whose root
  * nuget.config is `bytes`, read alone (RestoreConfigFile). NuGet with its
  * hierarchy would merge the default user config (nuget.org) behind the
- * file; with one file it does not, so the engine adds nuget.org
- * (RestoreAdditionalProjectSources) only when it is CERTAIN NuGet would use
- * it there. Fail closed: `addNugetOrg` only when ALL of these hold (else
- * nothing is added, and a restore that needed nuget.org fails or parks):
- * at most NUGET_CONFIG_READ_MAX bytes; no UTF-16 or UTF-32 byte order
- * mark, no NUL byte, valid UTF-8 (a UTF-8 BOM is fine); no CDATA, DOCTYPE,
- * processing instruction other than the leading `<?xml ...?>`, entity
- * reference other than the five predefined ones, unquoted attribute or
- * other shape xml-scan.ts reports as odd; after comments are removed, no
- * `clear` element in any letter case, no attribute `key` (any case) whose
- * value is `nuget.org` in any case, no `nuget.org` anywhere in the text
- * (host or key), no `packageSourceMapping` element in any case; and the
- * root element is `configuration`. The scan is linear (xml-scan.ts).
- * Compared with `dotnet nuget list source` for each shape in
- * dotnet-sandbox.test.ts (.NET SDK 10.0.101).
+ * file; with one file it does not. Safe by construction, not by listing the
+ * shapes that remove nuget.org: `addNugetOrg` only when the file plainly
+ * defines no package-source policy at all, that is ALL of: at most
+ * NUGET_CONFIG_READ_MAX bytes; no UTF-16 or UTF-32 byte order mark, no NUL
+ * byte, valid UTF-8 (a UTF-8 BOM is fine); its whole raw text, compared in
+ * any case, holds none of SOURCE_POLICY_WORDS and no `<?` other than one
+ * leading `<?xml ...?>` declaration; no tag or attribute name holds `:` or a
+ * character outside ASCII and no attribute is `xmlns`; and the linear
+ * scanner (xml-scan.ts) reads it as well-formed with the one root element
+ * `configuration`. Any doubt: nothing is added, and NuGet uses exactly what
+ * that one file says (a restore that needed nuget.org fails or parks).
+ * `unmappedKeys` keeps its own, separate reading (dotnetNugetConfig).
  */
 export function nugetConfigVerdict(bytes: Buffer): NugetConfigVerdict {
-  const no = (why: string, unmappedKeys: string[] = []): NugetConfigVerdict => ({ addNugetOrg: false, why, unmappedKeys });
-  if (bytes.length > NUGET_CONFIG_READ_MAX) return no(`it is larger than ${NUGET_CONFIG_READ_MAX / 1024} KB`);
-  if (UTF16_32_BOMS.some((b) => b.every((x, k) => bytes[k] === x))) return no('it is UTF-16 or UTF-32');
-  if (bytes.includes(0)) return no('it holds NUL bytes (UTF-16 or UTF-32 without a byte order mark)');
-  let text: string;
+  let text: string | null = null;
+  const verdict = (why: string | undefined, unmappedKeys: string[] = []): NugetConfigVerdict => ({ addNugetOrg: why === undefined, ...(why === undefined ? {} : { why }), namesNugetOrg: text !== null && text.toLowerCase().includes('nuget.org'), unmappedKeys });
+  if (bytes.length > NUGET_CONFIG_READ_MAX) return verdict(`it is larger than ${NUGET_CONFIG_READ_MAX / 1024} KB`);
+  if (UTF16_32_BOMS.some((b) => b.every((x, k) => bytes[k] === x))) return verdict('it is UTF-16 or UTF-32');
+  if (bytes.includes(0)) return verdict('it holds NUL bytes (UTF-16 or UTF-32 without a byte order mark)');
   try {
     text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: false }).decode(bytes);
   } catch {
-    return no('it is not valid UTF-8');
+    return verdict('it is not valid UTF-8');
   }
   const scan = scanXml(text);
-  if (scan.odd.length > 0) return no(`its XML holds ${scan.odd.slice(0, 3).join(', ')}`);
   // Every source the file defines and every mapping key, as NuGet names its elements and attributes (case-sensitive).
   const cleared = scan.tags.some((t) => !t.close && t.name.toLowerCase() === 'clear');
   const defined = new Set(scan.tags.filter((t) => !t.close && t.name === 'add' && t.parent === 'packageSources').flatMap((t) => t.attrs.filter(([a]) => a === 'key').map(([, v]) => decodePredefined(v))));
   const mapped = scan.tags.filter((t) => !t.close && t.name === 'packageSource' && t.parent === 'packageSourceMapping').flatMap((t) => t.attrs.filter(([a]) => a === 'key').map(([, v]) => decodePredefined(v)));
-  const unmapped = cleared ? [] : [...new Set(mapped.filter((k) => !defined.has(k)))].sort();
-  if (cleared) return no('it clears its package sources');
-  if (scan.tags.some((t) => t.attrs.some(([a, v]) => a.toLowerCase() === 'key' && decodePredefined(v).trim().toLowerCase() === 'nuget.org'))) return no('it names the nuget.org source key', unmapped);
-  const lower = (scan.text + scan.tags.map((t) => ` ${t.name} ${t.attrs.map(([a, v]) => `${a} ${decodePredefined(v)}`).join(' ')}`).join('')).toLowerCase();
-  if (lower.includes('nuget.org')) return no('it names nuget.org itself', unmapped);
-  if (scan.tags.some((t) => t.name.toLowerCase() === 'packagesourcemapping')) return no('it maps packages to sources (packageSourceMapping)', unmapped);
-  if (scan.tags.find((t) => !t.close)?.name !== 'configuration') return no('its root element is not configuration', unmapped);
-  return { addNugetOrg: true, unmappedKeys: unmapped };
+  const unmapped = cleared || scan.odd.length > 0 ? [] : [...new Set(mapped.filter((k) => !defined.has(k)))].sort();
+  const lower = text.toLowerCase();
+  const word = SOURCE_POLICY_WORDS.find((w) => lower.includes(w));
+  if (word) return verdict(`it may define package sources (it holds "${word}"), so it is used as it is`, unmapped);
+  const pi = lower.indexOf('<?');
+  if (pi >= 0 && (lower.slice(0, pi).trim() !== '' || !/^<\?xml[\s?]/.test(lower.slice(pi)) || lower.indexOf('<?', pi + 2) >= 0)) return verdict('it holds a processing instruction other than one leading XML declaration', unmapped);
+  if (scan.odd.length > 0) return verdict(`its XML holds ${scan.odd.slice(0, 3).join(', ')}`, unmapped);
+  const odd = (n: string) => n.includes(':') || /[^\x21-\x7e]/.test(n);
+  if (scan.tags.some((t) => odd(t.name) || t.attrs.some(([a]) => odd(a) || a.toLowerCase() === 'xmlns'))) return verdict('it uses XML namespaces or prefixes', unmapped);
+  if (scan.tags.find((t) => !t.close)?.name !== 'configuration') return verdict('its root element is not configuration', unmapped);
+  return verdict(undefined, unmapped);
 }
 
 /**
@@ -453,8 +465,8 @@ export const msbuildEscape = (value: string): string => value.replace(/[%$@';?*]
  * which adds no source, and the MSBuild project SDK resolver, `dotnet tool
  * restore`, `dotnet nuget` and `dotnet workload` ignore the property).
  * The file: the root config of `cwd` (rootNugetConfig), with nuget.org
- * added only when nugetConfigVerdict is certain NuGet would take it from
- * the default user config and `noAdd` (engine.ts: a pinned MSBuild file
+ * added only when nugetConfigVerdict finds no package-source policy in it
+ * at all and `noAdd` (engine.ts: a pinned MSBuild file
  * sets restore sources itself) is not set; or, with no root config,
  * NUGET_ORG_ONLY_CONFIG written to `<profile>/nuget/nuget.config`, the
  * command's own job profile (never inside the checkout). `hierarchy`

@@ -88,26 +88,25 @@ function jsonStrings(text) {
     }
     return out;
 }
-/** The programs an `Exec Command` segment may start with that only delete (they read nothing under node_modules). */
-const DELETE_COMMANDS = new Set(['rimraf', 'rm', 'del', 'erase', 'rd', 'rmdir', 'remove-item', 'ri']);
 /**
- * The parts of an `Exec Command` (decoded) that can read or run something:
- * the command split at `&&`, `||`, `&`, `|`, `;` and line breaks, minus
- * the pure delete commands (`rimraf`, `npx rimraf`, `rm`, `del`, `erase`,
- * `rd`, `rmdir`, `Remove-Item`): `rimraf ./node_modules` or `del /q
- * node_modules\.cache` reads nothing there (M4).
+ * A pure delete command, whole (M3): optional `npx` (or `npx --yes`), then `rimraf`, `rm`,
+ * `del`, `rd`, `rmdir` or `Remove-Item` (optionally `.cmd`/`.exe`), then
+ * only simple flags (`-rf`, `--force`, `/q`) and plain path arguments.
  */
-function execRunParts(command) {
-    return command.split(/&&|\|\||[&|;\r\n]/).map((s) => s.trim()).filter((s) => {
-        if (!s)
-            return false;
-        const words = s.split(/\s+/).map((w) => w.replace(/^["'@]+|["']+$/g, ''));
-        const program = (w) => (w ?? '').split(/[\\/]/).pop().toLowerCase().replace(/\.(?:cmd|exe|bat|ps1)$/, '');
-        let first = program(words[0]);
-        if (first === 'npx')
-            first = program(words.slice(1).find((w) => !w.startsWith('-')));
-        return !DELETE_COMMANDS.has(first);
-    });
+const PURE_DELETE = /^(?:npx\s+(?:(?:--yes|-y)\s+)?)?(?:rimraf|rm|del|rd|rmdir|remove-item)(?:\.(?:cmd|exe))?(?:\s+(?:--?[a-z][a-z-]*|\/[a-z]|[\w.:\\/-]+))+$/i;
+/**
+ * An `Exec Command` (XML-decoded) as MSBuild runs it: `%XX` unescaped
+ * (MSBuild turns `%0A`, `%26%26` or `%3B` into a line break, `&&` or
+ * `;` before the shell sees them), or null when it is a pure delete
+ * (PURE_DELETE, after unescaping) with no `%`, `$`, backtick, `&`, `|`,
+ * `;`, `<`, `>`, line break, `(` or `)` anywhere: `rimraf ./node_modules`
+ * or `del /q node_modules\.cache` reads nothing there. Everything else is
+ * read whole (M4 of an earlier review exempted delete segments of a
+ * chained command; a chain, a substitution or an escape can run more).
+ */
+function execRunText(command) {
+    const run = command.replace(/%([0-9a-f]{2})/gi, (_, h) => String.fromCharCode(Number.parseInt(h, 16)));
+    return !/[%$`&|;<>\r\n()]/.test(run) && PURE_DELETE.test(run.trim()) ? null : run;
 }
 /** The kind of a pinned file this module reads, by its basename, or null. */
 function fileKind(path) {
@@ -156,9 +155,11 @@ export function nodeModulesReferences(path, text) {
             values.push(['UsingTask Code Source', v]);
         // A command whose exit code decides the build, when it names a path under node_modules (`node node_modules/x/check.js`);
         // `npm install`, `npm ci` or `npm run build` name none, and a pure delete (`rimraf node_modules`) reads nothing there.
-        for (const v of attributeValues(tags, 'Exec', 'Command'))
-            for (const part of execRunParts(v))
-                values.push(['Exec Command', part]);
+        for (const v of attributeValues(tags, 'Exec', 'Command')) {
+            const run = execRunText(v);
+            if (run !== null)
+                values.push(['Exec Command', run]);
+        }
     }
     else if (kind === 'rsp') {
         // A response file: every token outside `#` comment lines (`-logger:<dll>`, `-distributedlogger:...`, `@file`,
@@ -255,6 +256,36 @@ export function restoreSettingMentions(path, text) {
     if (text.length > PINNED_READ_MAX)
         return [`not read (larger than ${PINNED_READ_MAX / 1024} KB)`];
     return [...new Set([...text.matchAll(RESTORE_SETTINGS)].map((m) => m[0]))].sort();
+}
+/** An `Import Project` value (one `;` part, trimmed) that names a pinned definition file: it ends, textually, in one of their MSBuild extensions. */
+const PINNED_IMPORT = /\.(?:[a-z0-9]*proj|props|targets|tasks|projitems|user)$/i;
+/** `$([MSBuild]::GetPathOfFileAbove('<name>', ...))`: a file of that literal name, so it counts by that name's extension. */
+const FILE_ABOVE = /^\$\(\[MSBuild\]::GetPathOfFileAbove\(\s*'([^'$%@()]+)'\s*(?:,\s*'[^']*'\s*)?\)\)$/i;
+/**
+ * The `Import Project` values of a pinned MSBuild file that do not name a
+ * pinned definition file (M2): each `;` part of the decoded value whose text
+ * does not end in `.props`, `.targets`, `.tasks`, `.projitems`, `.user` or a
+ * `*proj` extension, including one that ends in a property reference
+ * (`$(X)`) or a wildcard; `$([MSBuild]::GetPathOfFileAbove('<name>.props',
+ * ...))` counts by its literal name. Such a file is absent from the
+ * definition tree and may set the restore sources, so the engine cannot
+ * tell which sources the repository uses. A file larger than
+ * PINNED_READ_MAX counts as `not read`. Other files: none.
+ */
+export function unpinnedImports(path, text) {
+    if (fileKind(path) !== 'msbuild')
+        return [];
+    if (text.length > PINNED_READ_MAX)
+        return [`not read (larger than ${PINNED_READ_MAX / 1024} KB)`];
+    const out = new Set();
+    for (const v of attributeValues(scanXml(text).tags, 'Import', 'Project')) {
+        for (const part of v.split(';').map((s) => s.trim()).filter(Boolean)) {
+            const above = FILE_ABOVE.exec(part);
+            if (!PINNED_IMPORT.test(above ? above[1].trim() : part))
+                out.add(part.slice(0, 200));
+        }
+    }
+    return [...out];
 }
 /**
  * The MSBuild project SDKs a pinned file has NuGet resolve (M3): a

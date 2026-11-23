@@ -7,7 +7,7 @@ import { mkdirSync, mkdtempSync, rmSync, symlinkSync, unlinkSync, writeFileSync,
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { hasNodeModulesSegment, nodeModulesReferences, PINNED_READ_MAX, projectSdkMentions, readsForNodeModulesRefs, restoreSettingMentions } from '../dotnet-package-refs.js';
+import { hasNodeModulesSegment, nodeModulesReferences, PINNED_READ_MAX, projectSdkMentions, readsForNodeModulesRefs, restoreSettingMentions, unpinnedImports } from '../dotnet-package-refs.js';
 import { gateTreeExactProblem, linkNodeModules } from '../prepare.js';
 
 /** The ASP.NET Core React/Angular SPA template's project file (shortened): mentions node_modules, reads nothing there. */
@@ -217,14 +217,54 @@ describe('gateTreeExactProblem: a repository that commits its node_modules', () 
   });
 });
 
-describe('M4: an Exec that only deletes under node_modules reads nothing there', () => {
-  it('rimraf, npx rimraf, rm -rf, del, rd, rmdir and Remove-Item do not count; a chained command that runs one does', () => {
-    for (const c of ['rimraf ./node_modules', 'npx rimraf node_modules', 'npx --yes rimraf node_modules', 'rm -rf node_modules', 'del /q node_modules\\.cache', 'rd /s /q node_modules', 'rmdir /s /q ClientApp\\node_modules', 'Remove-Item -Recurse node_modules', 'npm prune &amp;&amp; del /q node_modules\\.cache']) {
+describe('M3: an Exec is exempt only as a whole, plain delete command (after MSBuild unescaping)', () => {
+  it('rimraf, npx rimraf, rm -rf, del, rd, rmdir and Remove-Item with plain paths do not count', () => {
+    for (const c of ['rimraf ./node_modules', 'npx rimraf node_modules', 'npx --yes rimraf node_modules', 'rm -rf node_modules', 'del /q node_modules\\.cache', 'rd /s /q node_modules', 'rmdir /s /q ClientApp\\node_modules', 'Remove-Item -Recurse node_modules']) {
       expect(nodeModulesReferences('a.csproj', `<Target Name="C"><Exec Command="${c}" /></Target>`), c).toEqual([]);
     }
-    expect(nodeModulesReferences('a.csproj', '<Exec Command="rimraf node_modules &amp;&amp; node node_modules/x/a.js" />')).toEqual(['Exec Command "node node_modules/x/a.js"']);
     // ASP.NET Core 2.x SpaServices: the webpack run counts (its gate needs the engine's exact tree).
     expect(nodeModulesReferences('a.csproj', '<Exec Command="node node_modules/webpack/bin/webpack.js --config webpack.config.vendor.js" />')).toHaveLength(1);
+  });
+
+  it('a chain, an MSBuild escape, a substitution or a property after a delete counts (the review bypasses)', () => {
+    for (const c of [
+      'rimraf node_modules%0Anode node_modules/x/e.js',
+      'rimraf node_modules%26%26node node_modules/x/e.js',
+      'rimraf node_modules%3Bnode node_modules/x/e.js',
+      'rimraf node_modules &amp;&amp; node node_modules/x/a.js',
+      'rimraf node_modules; node node_modules/x/a.js',
+      'rimraf node_modules | node node_modules/x/a.js',
+      'rimraf node_modules&#10;node node_modules/x/a.js',
+      'rm -rf $(node node_modules/x/a.js)',
+      'rm -rf `node node_modules/x/a.js`',
+      'rimraf $(SpaRoot)node_modules',
+      'rm -rf node_modules &gt; node_modules/x/out',
+      'npm prune &amp;&amp; del /q node_modules\\.cache',
+      'npx -c rimraf node_modules',
+      'rimraf &quot;node_modules&quot;',
+    ]) {
+      expect(nodeModulesReferences('a.csproj', `<Exec Command="${c}" />`), c).toHaveLength(1);
+    }
+    expect(nodeModulesReferences('a.csproj', '<Exec Command="rimraf node_modules%0Anode node_modules/x/e.js" />')[0]).toContain('node node_modules/x/e.js');
+  });
+
+  it('SPA template commands name no node_modules path and still do not count', () => {
+    for (const c of ['npm install', 'npm ci', 'npm run build -- --configuration production', 'node --version']) expect(nodeModulesReferences('a.csproj', `<Exec WorkingDirectory="$(SpaRoot)" Command="${c}" />`), c).toEqual([]);
+    expect(nodeModulesReferences('a.csproj', '<ItemGroup><Content Remove="$(SpaRoot)node_modules\\**" /></ItemGroup>')).toEqual([]);
+  });
+});
+
+describe('M2: unpinnedImports', () => {
+  it('an Import whose value does not end in a pinned extension counts; ordinary imports do not', () => {
+    expect(unpinnedImports('Directory.Build.props', '<Project><Import Project="eng/Sources.msbuild" Condition="Exists(\'eng/Sources.msbuild\')" /></Project>')).toEqual(['eng/Sources.msbuild']);
+    expect(unpinnedImports('Directory.Build.props', '<Project><Import Project="$(MSBuildThisFileDirectory)eng\\Versions.props" /></Project>')).toEqual([]);
+    expect(unpinnedImports('a.csproj', '<Project><Import Project="$(CustomProps)" /><Import Project="eng/*" /><import project="x.targets;y.xml" /></Project>')).toEqual(['$(CustomProps)', 'eng/*', 'y.xml']);
+    expect(unpinnedImports('a.csproj', '<Project><Import Project="eng/*.props" /><Import Project="a.Shared.projitems" Label="Shared" /><Import Project="b.vcxproj" /><Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" /></Project>')).toEqual([]);
+    expect(unpinnedImports('Directory.Build.props', `<Project><Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" /></Project>`)).toEqual([]);
+    expect(unpinnedImports('Directory.Build.props', `<Project><Import Project="$([MSBuild]::GetPathOfFileAbove('Sources.msbuild', '$(MSBuildThisFileDirectory)../'))" /></Project>`)).toHaveLength(1);
+    expect(unpinnedImports('a.csproj', '<Project><!-- <Import Project="x.msbuild" /> --></Project>')).toEqual([]);
+    expect(unpinnedImports('nuget.config', '<Import Project="x.msbuild" />')).toEqual([]);
+    expect(unpinnedImports('a.props', 'x'.repeat(PINNED_READ_MAX + 1))).toHaveLength(1);
   });
 });
 

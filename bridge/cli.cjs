@@ -124783,7 +124783,7 @@ function dotnetSandboxEnv(profile, hostEnv, realHome, platform = process.platfor
       UseSharedCompilation: "false",
       EnableSourceControlManagerQueries: "false",
       // One NuGet config file instead of the walk up to the drive root (dotnetNugetConfig; MSBuild unescapes the value), plus
-      // nuget.org when the engine is certain the default user config would add it there (nugetConfigVerdict).
+      // nuget.org only when that file plainly defines no package-source policy (nugetConfigVerdict).
       ...nugetConfig && "file" in nugetConfig ? { RestoreConfigFile: msbuildEscape(nugetConfig.file), ...nugetConfig.addNugetOrg ? { RestoreAdditionalProjectSources: msbuildEscape(NUGET_ORG_SOURCE) } : {} } : {}
     },
     readonly: [...packages ? [packages] : [], ...runDir && !run3.writable ? [runDir] : []],
@@ -124817,29 +124817,31 @@ function rootNugetConfig(dir, platform = process.platform) {
   return { file: (0, import_node_path38.join)(dir, one.name) };
 }
 function nugetConfigVerdict(bytes) {
-  const no = (why, unmappedKeys = []) => ({ addNugetOrg: false, why, unmappedKeys });
-  if (bytes.length > NUGET_CONFIG_READ_MAX) return no(`it is larger than ${NUGET_CONFIG_READ_MAX / 1024} KB`);
-  if (UTF16_32_BOMS.some((b) => b.every((x, k) => bytes[k] === x))) return no("it is UTF-16 or UTF-32");
-  if (bytes.includes(0)) return no("it holds NUL bytes (UTF-16 or UTF-32 without a byte order mark)");
-  let text9;
+  let text9 = null;
+  const verdict = (why, unmappedKeys = []) => ({ addNugetOrg: why === void 0, ...why === void 0 ? {} : { why }, namesNugetOrg: text9 !== null && text9.toLowerCase().includes("nuget.org"), unmappedKeys });
+  if (bytes.length > NUGET_CONFIG_READ_MAX) return verdict(`it is larger than ${NUGET_CONFIG_READ_MAX / 1024} KB`);
+  if (UTF16_32_BOMS.some((b) => b.every((x, k) => bytes[k] === x))) return verdict("it is UTF-16 or UTF-32");
+  if (bytes.includes(0)) return verdict("it holds NUL bytes (UTF-16 or UTF-32 without a byte order mark)");
   try {
     text9 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(bytes);
   } catch {
-    return no("it is not valid UTF-8");
+    return verdict("it is not valid UTF-8");
   }
   const scan = scanXml(text9);
-  if (scan.odd.length > 0) return no(`its XML holds ${scan.odd.slice(0, 3).join(", ")}`);
   const cleared = scan.tags.some((t) => !t.close && t.name.toLowerCase() === "clear");
   const defined = new Set(scan.tags.filter((t) => !t.close && t.name === "add" && t.parent === "packageSources").flatMap((t) => t.attrs.filter(([a]) => a === "key").map(([, v]) => decodePredefined(v))));
   const mapped = scan.tags.filter((t) => !t.close && t.name === "packageSource" && t.parent === "packageSourceMapping").flatMap((t) => t.attrs.filter(([a]) => a === "key").map(([, v]) => decodePredefined(v)));
-  const unmapped = cleared ? [] : [...new Set(mapped.filter((k) => !defined.has(k)))].sort();
-  if (cleared) return no("it clears its package sources");
-  if (scan.tags.some((t) => t.attrs.some(([a, v]) => a.toLowerCase() === "key" && decodePredefined(v).trim().toLowerCase() === "nuget.org"))) return no("it names the nuget.org source key", unmapped);
-  const lower2 = (scan.text + scan.tags.map((t) => ` ${t.name} ${t.attrs.map(([a, v]) => `${a} ${decodePredefined(v)}`).join(" ")}`).join("")).toLowerCase();
-  if (lower2.includes("nuget.org")) return no("it names nuget.org itself", unmapped);
-  if (scan.tags.some((t) => t.name.toLowerCase() === "packagesourcemapping")) return no("it maps packages to sources (packageSourceMapping)", unmapped);
-  if (scan.tags.find((t) => !t.close)?.name !== "configuration") return no("its root element is not configuration", unmapped);
-  return { addNugetOrg: true, unmappedKeys: unmapped };
+  const unmapped = cleared || scan.odd.length > 0 ? [] : [...new Set(mapped.filter((k) => !defined.has(k)))].sort();
+  const lower2 = text9.toLowerCase();
+  const word = SOURCE_POLICY_WORDS.find((w) => lower2.includes(w));
+  if (word) return verdict(`it may define package sources (it holds "${word}"), so it is used as it is`, unmapped);
+  const pi = lower2.indexOf("<?");
+  if (pi >= 0 && (lower2.slice(0, pi).trim() !== "" || !/^<\?xml[\s?]/.test(lower2.slice(pi)) || lower2.indexOf("<?", pi + 2) >= 0)) return verdict("it holds a processing instruction other than one leading XML declaration", unmapped);
+  if (scan.odd.length > 0) return verdict(`its XML holds ${scan.odd.slice(0, 3).join(", ")}`, unmapped);
+  const odd = (n) => n.includes(":") || /[^\x21-\x7e]/.test(n);
+  if (scan.tags.some((t) => odd(t.name) || t.attrs.some(([a]) => odd(a) || a.toLowerCase() === "xmlns"))) return verdict("it uses XML namespaces or prefixes", unmapped);
+  if (scan.tags.find((t) => !t.close)?.name !== "configuration") return verdict("its root element is not configuration", unmapped);
+  return verdict(void 0, unmapped);
 }
 function readRegularFileBounded(path30, max) {
   let st;
@@ -124893,7 +124895,7 @@ function dotnetNugetConfig(cwd, profile, platform = process.platform, o = {}) {
   (0, import_node_fs33.writeFileSync)(file2, NUGET_ORG_ONLY_CONFIG);
   return { file: file2, addNugetOrg: false };
 }
-var import_node_fs33, import_node_path38, MSBUILD_SUBCOMMANDS, DOTNET_SINGLE_NODE_FLAG, DOTNET_PATH_OPTIONS, DOTNET_COMMON_VALUE_OPTIONS, DOTNET_VALUE_OPTIONS, DOTNET_MTP_UNSUPPORTED, omcRoots, NUGET_ORG_ONLY_CONFIG, NUGET_CONFIG_NAMES, NUGET_ORG_SOURCE, NUGET_CONFIG_READ_MAX, UTF16_32_BOMS, decodePredefined, msbuildEscape, isNugetHost;
+var import_node_fs33, import_node_path38, MSBUILD_SUBCOMMANDS, DOTNET_SINGLE_NODE_FLAG, DOTNET_PATH_OPTIONS, DOTNET_COMMON_VALUE_OPTIONS, DOTNET_VALUE_OPTIONS, DOTNET_MTP_UNSUPPORTED, omcRoots, NUGET_ORG_ONLY_CONFIG, NUGET_CONFIG_NAMES, NUGET_ORG_SOURCE, NUGET_CONFIG_READ_MAX, UTF16_32_BOMS, SOURCE_POLICY_WORDS, decodePredefined, msbuildEscape, isNugetHost;
 var init_dotnet_sandbox = __esm({
   "src/copilot-run/dotnet-sandbox.ts"() {
     "use strict";
@@ -124935,6 +124937,7 @@ var init_dotnet_sandbox = __esm({
     NUGET_ORG_SOURCE = "https://api.nuget.org/v3/index.json";
     NUGET_CONFIG_READ_MAX = 256 * 1024;
     UTF16_32_BOMS = [[0, 0, 254, 255], [255, 254], [254, 255]];
+    SOURCE_POLICY_WORDS = ["packagesource", "clear", "nuget.org", "mapping", "fallbackpackagefolders", "&", "<!"];
     decodePredefined = (s) => s.replace(/&(amp|lt|gt|quot|apos);/g, (_, e2) => ({ amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" })[e2]);
     msbuildEscape = (value) => value.replace(/[%$@';?*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase().padStart(2, "0")}`);
     isNugetHost = (host) => /^(?:api|\*)\.nuget\.org$/i.test(host.trim());
@@ -140108,15 +140111,9 @@ function jsonStrings(text9) {
   }
   return out;
 }
-function execRunParts(command) {
-  return command.split(/&&|\|\||[&|;\r\n]/).map((s) => s.trim()).filter((s) => {
-    if (!s) return false;
-    const words = s.split(/\s+/).map((w) => w.replace(/^["'@]+|["']+$/g, ""));
-    const program3 = (w) => (w ?? "").split(/[\\/]/).pop().toLowerCase().replace(/\.(?:cmd|exe|bat|ps1)$/, "");
-    let first = program3(words[0]);
-    if (first === "npx") first = program3(words.slice(1).find((w) => !w.startsWith("-")));
-    return !DELETE_COMMANDS.has(first);
-  });
+function execRunText(command) {
+  const run3 = command.replace(/%([0-9a-f]{2})/gi, (_, h) => String.fromCharCode(Number.parseInt(h, 16)));
+  return !/[%$`&|;<>\r\n()]/.test(run3) && PURE_DELETE.test(run3.trim()) ? null : run3;
 }
 function fileKind(path30) {
   const base = (path30.split("/").pop() ?? path30).toLowerCase();
@@ -140139,7 +140136,10 @@ function nodeModulesReferences(path30, text9) {
     for (const v of attributeValues(tags, "ProjectReference", "Include")) values.push(["ProjectReference Include", v]);
     for (const v of attributeValues(tags, "UsingTask", "AssemblyFile")) values.push(["UsingTask AssemblyFile", v]);
     for (const v of attributeValues(tags, "Code", "Source")) values.push(["UsingTask Code Source", v]);
-    for (const v of attributeValues(tags, "Exec", "Command")) for (const part of execRunParts(v)) values.push(["Exec Command", part]);
+    for (const v of attributeValues(tags, "Exec", "Command")) {
+      const run3 = execRunText(v);
+      if (run3 !== null) values.push(["Exec Command", run3]);
+    }
   } else if (kind === "rsp") {
     for (const line2 of text9.split(/\r?\n/)) {
       if (line2.trimStart().startsWith("#")) continue;
@@ -140194,6 +140194,18 @@ function restoreSettingMentions(path30, text9) {
   if (text9.length > PINNED_READ_MAX) return [`not read (larger than ${PINNED_READ_MAX / 1024} KB)`];
   return [...new Set([...text9.matchAll(RESTORE_SETTINGS)].map((m) => m[0]))].sort();
 }
+function unpinnedImports(path30, text9) {
+  if (fileKind(path30) !== "msbuild") return [];
+  if (text9.length > PINNED_READ_MAX) return [`not read (larger than ${PINNED_READ_MAX / 1024} KB)`];
+  const out = /* @__PURE__ */ new Set();
+  for (const v of attributeValues(scanXml(text9).tags, "Import", "Project")) {
+    for (const part of v.split(";").map((s) => s.trim()).filter(Boolean)) {
+      const above = FILE_ABOVE.exec(part);
+      if (!PINNED_IMPORT.test(above ? above[1].trim() : part)) out.add(part.slice(0, 200));
+    }
+  }
+  return [...out];
+}
 function projectSdkMentions(path30, text9) {
   const kind = fileKind(path30);
   if (text9.length > PINNED_READ_MAX) return [];
@@ -140224,16 +140236,18 @@ function projectSdkMentions(path30, text9) {
   }
   return [...out].sort();
 }
-var PINNED_READ_MAX, DELETE_COMMANDS, readsForNodeModulesRefs, RESTORE_SETTINGS;
+var PINNED_READ_MAX, PURE_DELETE, readsForNodeModulesRefs, RESTORE_SETTINGS, PINNED_IMPORT, FILE_ABOVE;
 var init_dotnet_package_refs = __esm({
   "src/factory/run/dotnet-package-refs.ts"() {
     "use strict";
     init_jsonc();
     init_xml_scan();
     PINNED_READ_MAX = 256 * 1024;
-    DELETE_COMMANDS = /* @__PURE__ */ new Set(["rimraf", "rm", "del", "erase", "rd", "rmdir", "remove-item", "ri"]);
+    PURE_DELETE = /^(?:npx\s+(?:(?:--yes|-y)\s+)?)?(?:rimraf|rm|del|rd|rmdir|remove-item)(?:\.(?:cmd|exe))?(?:\s+(?:--?[a-z][a-z-]*|\/[a-z]|[\w.:\\/-]+))+$/i;
     readsForNodeModulesRefs = (path30) => fileKind(path30) !== null;
     RESTORE_SETTINGS = /\bRestore(?:Sources|AdditionalProjectSources|FallbackFolders|ConfigFile|PackagesPath|NoCache|IgnoreFailedSources)\b/gi;
+    PINNED_IMPORT = /\.(?:[a-z0-9]*proj|props|targets|tasks|projitems|user)$/i;
+    FILE_ABOVE = /^\$\(\[MSBuild\]::GetPathOfFileAbove\(\s*'([^'$%@()]+)'\s*(?:,\s*'[^']*'\s*)?\)\)$/i;
   }
 });
 
@@ -141899,8 +141913,9 @@ var init_engine = __esm({
        *   packages to a source key it does not define (M1). In the shared layout
        *   that walk parks at the first unreadable config, naming this reason.
        * - `noAddSource`: the pinned MSBuild or response files (or `argv`) set
-       *   NuGet's restore sources or config themselves (restoreSettingMentions):
-       *   nuget.org is never added (H2).
+       *   NuGet's restore sources or config themselves (restoreSettingMentions),
+       *   or import a file that is not a pinned definition file, which may
+       *   (unpinnedImports): nuget.org is never added (H2, M2).
        * - `sdks`: MSBuild project SDKs NuGet resolves (projectSdkMentions; M3).
        * Throws (a step error) when a commit cannot be read.
        */
@@ -141915,7 +141930,7 @@ var init_engine = __esm({
         const root = facts.root;
         const hierarchy = lower2.length > 0 ? `the repository pins a nuget.config below its root (${list3(lower2)}${base && base !== own3 ? ` in the base ${base.slice(0, 12)} or ${own3.slice(0, 12)}` : ""}), which one config file would hide` : "ambiguous" in root ? `the engine cannot tell which root nuget.config NuGet reads (${root.ambiguous})` : "verdict" in root && root.verdict.unmappedKeys.length > 0 ? `the root ${root.name} maps packages to the source key(s) ${root.verdict.unmappedKeys.join(", ")}, which it does not define (NuGet takes them from another config, such as the user config's nuget.org; define them in the root ${root.name} to keep one file)` : null;
         const fromArgv = argv.some((a) => /Restore(?:Sources|AdditionalProjectSources|FallbackFolders|ConfigFile|PackagesPath|NoCache|IgnoreFailedSources)/i.test(a)) ? ["the command line"] : [];
-        return { hierarchy, noAddSource: [...facts.restoreSettings, ...fromArgv], sdks: facts.projectSdks };
+        return { hierarchy, noAddSource: [...facts.restoreSettings, ...facts.unpinnedImports, ...fromArgv], sdks: facts.projectSdks };
       }
       /**
        * The nuget.config files the commit's MSBuild project SDK resolution
@@ -141927,6 +141942,25 @@ var init_engine = __esm({
       nugetHierarchyWhy(commit) {
         try {
           return this.dotnetNugetPolicy(commit).hierarchy;
+        } catch {
+          return null;
+        }
+      }
+      /**
+       * Why a restore that missed packages may be the repository's own config:
+       * `commit`'s root nuget.config defines sources (so nothing was added,
+       * dotnet-sandbox.ts nugetConfigVerdict) and never names nuget.org, and
+       * the sandbox reads that file alone (no user config behind it). Null
+       * otherwise (no root config, nuget.org named or added, NuGet's hierarchy, sources set in MSBuild,
+       * or the commit cannot be read).
+       */
+      noNugetOrgSource(commit) {
+        try {
+          const policy = this.dotnetNugetPolicy(commit);
+          if (policy.hierarchy || policy.noAddSource.length > 0) return null;
+          const root = this.dotnetPinnedFacts(commit).root;
+          if (!("verdict" in root) || root.verdict.addNugetOrg || root.verdict.namesNugetOrg) return null;
+          return `the repository's root ${root.name} lists no nuget.org source, and the sandbox reads that file alone (your user and machine NuGet configs, which may add nuget.org, are not behind it), so NuGet looked only in the sources it lists; if the repository should use nuget.org, add it to the root ${root.name} explicitly (<add key="nuget.org" value="${NUGET_ORG_SOURCE}" />)`;
         } catch {
           return null;
         }
@@ -145049,6 +145083,8 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
         if (nuget.kind === "config-unreadable") {
           return park(`the local gate \`${gate.join(" ")}\` could not restore its NuGet packages on ${head.slice(0, 12)}, so no ci-fix lane was started. ${nugetConfigUnreadableReason(nuget.sources, this.nugetHierarchyWhy(head), nuget.sdks)}; then rerun ${this.resume}; or ${cancelCommand(this.key)}`);
         }
+        const noOrg = nuget.kind === "private-feed" && !nuget.codes.includes("NU1301") ? this.noNugetOrgSource(head) : null;
+        if (noOrg) return park(`${what}: ${noOrg} (${nuget.codes.join(", ")}${nuget.sources.length > 0 ? `; ${nuget.sources.join(", ")}` : ""}). Or ${yourself}`);
         if (nuget.kind === "private-feed") {
           return park(`${what}: ${NUGET_PRIVATE_FEED_UNSUPPORTED} (${nuget.sources.join(", ") || "a feed answered 401 or 403"}); the sandbox never gets your NuGet.Config or its credentials. Make the packages come from nuget.org, or ${yourself}`);
         }
@@ -145087,6 +145123,16 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
         const trusted = this.gateDefinitionTrustedAt(head);
         if (!trusted) {
           return { name: GATE_INSTALL_GATE, reason: `${what} did not run: the gate's definition files at ${head.slice(0, 12)} are neither ${this.state.base}'s nor the change accepted with --allow-gate-change, and dotnet restore evaluates them with the network on; inspect the project files on the branch, then rerun ${this.resume}, or ${cancelCommand(this.key)}` };
+        }
+        let imports;
+        try {
+          imports = this.dotnetPinnedFacts(head).unpinnedImports;
+        } catch (error62) {
+          return { name: GATE_INSTALL_GATE, reason: `${what} did not run: the definition files of ${head.slice(0, 12)} could not be read (${errText6(error62)}); rerun ${this.resume}` };
+        }
+        if (imports.length > 0) {
+          const named = `${imports.slice(0, 3).map((i) => oneLine(visibleLine(i), 240)).join("; ")}${imports.length > 3 ? `; ${imports.length - 3} more` : ""}`;
+          return { name: GATE_INSTALL_GATE, reason: `${what} did not run: the build imports a file that is not a pinned definition file (${named}), so the engine cannot tell which package sources the repository uses; restore the PR branch's packages into your NuGet global packages folder yourself, or move those settings into a .props file, then rerun ${this.resume}; or ${cancelCommand(this.key)}` };
         }
         let live;
         try {
@@ -145154,7 +145200,7 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
         if (r.status !== 0 || r.timedOut || substituted) {
           const failure5 = r.status !== 0 || r.timedOut ? classifyNugetFailure(r.output) : null;
           const needs = failure5 || substituted ? void 0 : missingDefinitionFile(r.output, tree);
-          const why = needs !== void 0 ? `the restore needs a file that is not a pinned definition file: ${needs} (the engine restores on the head's pinned definition files only, so MSBuild imports, tasks and scripts outside them are absent; restore the PR branch's packages into your NuGet global packages folder yourself, or keep the restore's inputs in definition files)` : failure5?.kind === "config-unreadable" ? nugetConfigUnreadableReason(failure5.sources, this.nugetHierarchyWhy(head), failure5.sdks) : failure5?.kind === "private-feed" ? `${NUGET_PRIVATE_FEED_UNSUPPORTED} (${failure5.sources.join(", ") || "a feed answered 401 or 403"}), and the sandbox never gets your NuGet.Config or its credentials` : failure5?.mapping ? `the root nuget.config's packageSourceMapping leaves sources out (NuGet: "PackageSourceMapping is enabled, the following source(s) were not considered"; ${failure5.codes.join(", ")}): map those packages to a source the file defines` : !failure5 && substituted ? `a version a project names does not exist on the restore's sources, and NuGet took another one (${substituted.sources.slice(0, 3).join("; ")}); the engine never builds a substitute: fix the version on the branch` : `a package or version the project files name may not exist on nuget.org${failure5 ? ` (${failure5.codes.join(", ")})` : ""}`;
+          const why = needs !== void 0 ? `the restore needs a file that is not a pinned definition file: ${needs} (the engine restores on the head's pinned definition files only, so MSBuild imports, tasks and scripts outside them are absent; restore the PR branch's packages into your NuGet global packages folder yourself, or keep the restore's inputs in definition files)` : failure5?.kind === "config-unreadable" ? nugetConfigUnreadableReason(failure5.sources, this.nugetHierarchyWhy(head), failure5.sdks) : failure5 && !failure5.mapping && !failure5.codes.includes("NU1301") && this.noNugetOrgSource(head) ? `${this.noNugetOrgSource(head)} (${failure5.codes.join(", ")}${failure5.sources.length > 0 ? `; ${failure5.sources.join(", ")}` : ""})` : failure5?.kind === "private-feed" ? `${NUGET_PRIVATE_FEED_UNSUPPORTED} (${failure5.sources.join(", ") || "a feed answered 401 or 403"}), and the sandbox never gets your NuGet.Config or its credentials` : failure5?.mapping ? `the root nuget.config's packageSourceMapping leaves sources out (NuGet: "PackageSourceMapping is enabled, the following source(s) were not considered"; ${failure5.codes.join(", ")}): map those packages to a source the file defines` : !failure5 && substituted ? `a version a project names does not exist on the restore's sources, and NuGet took another one (${substituted.sources.slice(0, 3).join("; ")}); the gate runs offline, where NuGet cannot repeat that resolution (it must ask a feed whether the named version exists), so name the version NuGet resolved on the branch (a direct PackageReference for a transitive one)` : `a package or version the project files name may not exist on nuget.org${failure5 ? ` (${failure5.codes.join(", ")})` : ""}`;
           return { name: GATE_INSTALL_GATE, reason: `${what} with only api.nuget.org reachable failed (exit ${r.status}${r.timedOut ? ", timed out" : ""}${substituted ? ", NU1603" : ""}): ${why}. That needs a human, not a ci-fix lane${localDetailNote(this.key, "its output")}: fix it on the branch (a change to the definition files parks at gate-definition-changed for your approval), then rerun ${this.resume}, which runs the restore again (for a feed that failed only for now, rerun as it is); or ${cancelCommand(this.key)}`, detail: parkTail(r.output) };
         }
         const seconds2 = Math.round((this.clock() - started) / 1e3);
@@ -145239,6 +145285,7 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
         const refs2 = [];
         const restoreSettings = [];
         const projectSdks = [];
+        const unpinned = [];
         let verdict;
         const oids = [.../* @__PURE__ */ new Set([...files.map(([, oid]) => oid), ...rootOid ? [rootOid] : []])];
         if (oids.length > 0) {
@@ -145257,6 +145304,8 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
             if (settings.length > 0) restoreSettings.push(`${p}: ${settings.join(", ")}`);
             const sdks = projectSdkMentions(p, text9);
             if (sdks.length > 0) projectSdks.push(`${p}: ${sdks.join(", ")}`);
+            const imports = unpinnedImports(p, text9);
+            if (imports.length > 0) unpinned.push(`${p}: ${imports.join(", ")}`);
           }
           if (rootOid && "name" in root) verdict = nugetConfigVerdict(blob(root.name, rootOid));
         }
@@ -145266,7 +145315,8 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
           lowerConfigs: lowerConfigs.sort(),
           root: "name" in root ? { name: root.name, verdict } : root,
           restoreSettings,
-          projectSdks
+          projectSdks,
+          unpinnedImports: unpinned
         };
         if (this.pinnedFactsAt.size >= 4) this.pinnedFactsAt.delete(this.pinnedFactsAt.keys().next().value);
         this.pinnedFactsAt.set(commit, facts);

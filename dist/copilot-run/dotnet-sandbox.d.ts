@@ -33,7 +33,7 @@
  *   reaches your working tree's own file, which the sandbox refuses ("Failed
  *   to read NuGet.Config due to unauthorized access"): RestoreConfigFile
  *   names one file instead (dotnetNugetConfig), and nuget.org is added only
- *   when the engine is certain NuGet would use it there
+ *   when that file plainly defines no package-source policy at all
  *   (nugetConfigVerdict): the engine never widens a repository's sources.
  * Not verified on Linux or macOS.
  */
@@ -189,10 +189,12 @@ export type DotnetNugetConfig = {
 export declare const NUGET_CONFIG_READ_MAX: number;
 /** What nugetConfigVerdict says about one root nuget.config. */
 export interface NugetConfigVerdict {
-    /** NuGet, reading this file with its default user config behind it, certainly uses nuget.org: it may be added. */
+    /** The file plainly defines no package-source policy at all: NuGet, reading it with its default user config behind it, uses nuget.org, so it may be added. */
     addNugetOrg: boolean;
     /** Why nuget.org is not added (absent when it is). */
     why?: string;
+    /** The raw text names `nuget.org` (any case): a restore that misses packages without it is not the file's omission. */
+    namesNugetOrg: boolean;
     /**
      * `packageSourceMapping` keys (`<packageSource key>`) that no
      * `packageSources/add key` of the file defines, when the file does not
@@ -206,21 +208,18 @@ export interface NugetConfigVerdict {
  * Whether the engine may add nuget.org for a repository whose root
  * nuget.config is `bytes`, read alone (RestoreConfigFile). NuGet with its
  * hierarchy would merge the default user config (nuget.org) behind the
- * file; with one file it does not, so the engine adds nuget.org
- * (RestoreAdditionalProjectSources) only when it is CERTAIN NuGet would use
- * it there. Fail closed: `addNugetOrg` only when ALL of these hold (else
- * nothing is added, and a restore that needed nuget.org fails or parks):
- * at most NUGET_CONFIG_READ_MAX bytes; no UTF-16 or UTF-32 byte order
- * mark, no NUL byte, valid UTF-8 (a UTF-8 BOM is fine); no CDATA, DOCTYPE,
- * processing instruction other than the leading `<?xml ...?>`, entity
- * reference other than the five predefined ones, unquoted attribute or
- * other shape xml-scan.ts reports as odd; after comments are removed, no
- * `clear` element in any letter case, no attribute `key` (any case) whose
- * value is `nuget.org` in any case, no `nuget.org` anywhere in the text
- * (host or key), no `packageSourceMapping` element in any case; and the
- * root element is `configuration`. The scan is linear (xml-scan.ts).
- * Compared with `dotnet nuget list source` for each shape in
- * dotnet-sandbox.test.ts (.NET SDK 10.0.101).
+ * file; with one file it does not. Safe by construction, not by listing the
+ * shapes that remove nuget.org: `addNugetOrg` only when the file plainly
+ * defines no package-source policy at all, that is ALL of: at most
+ * NUGET_CONFIG_READ_MAX bytes; no UTF-16 or UTF-32 byte order mark, no NUL
+ * byte, valid UTF-8 (a UTF-8 BOM is fine); its whole raw text, compared in
+ * any case, holds none of SOURCE_POLICY_WORDS and no `<?` other than one
+ * leading `<?xml ...?>` declaration; no tag or attribute name holds `:` or a
+ * character outside ASCII and no attribute is `xmlns`; and the linear
+ * scanner (xml-scan.ts) reads it as well-formed with the one root element
+ * `configuration`. Any doubt: nothing is added, and NuGet uses exactly what
+ * that one file says (a restore that needed nuget.org fails or parks).
+ * `unmappedKeys` keeps its own, separate reading (dotnetNugetConfig).
  */
 export declare function nugetConfigVerdict(bytes: Buffer): NugetConfigVerdict;
 /**
@@ -255,8 +254,8 @@ export declare const msbuildEscape: (value: string) => string;
  * which adds no source, and the MSBuild project SDK resolver, `dotnet tool
  * restore`, `dotnet nuget` and `dotnet workload` ignore the property).
  * The file: the root config of `cwd` (rootNugetConfig), with nuget.org
- * added only when nugetConfigVerdict is certain NuGet would take it from
- * the default user config and `noAdd` (engine.ts: a pinned MSBuild file
+ * added only when nugetConfigVerdict finds no package-source policy in it
+ * at all and `noAdd` (engine.ts: a pinned MSBuild file
  * sets restore sources itself) is not set; or, with no root config,
  * NUGET_ORG_ONLY_CONFIG written to `<profile>/nuget/nuget.config`, the
  * command's own job profile (never inside the checkout). `hierarchy`
