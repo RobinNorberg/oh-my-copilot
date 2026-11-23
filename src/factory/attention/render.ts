@@ -122,9 +122,10 @@ function itemLines(i: AttentionItem, verbose: boolean, columns: number): string[
   const facts = [i.gate ? `awaiting-human: ${i.gate}` : null, i.phase ? `phase ${i.phase}` : null, ageText(i.ageMs)];
   if (i.credits !== null) facts.push(`${i.credits.toFixed(2)}${i.cap !== null ? ` of ${i.cap}` : ''} cr`);
   if (i.pr !== null) facts.push(`PR ${i.pr}`);
+  // An untrusted row leads with its trust, so the warning is never the part a narrow terminal wraps away.
   const trust = i.trust !== 'ok' ? `trust: ${i.trust}` : null;
-  if (trust) facts.push(trust);
-  for (const l of wrapLines('    ', CONT, facts.filter(Boolean).join('  '), columns)) lines.push(trust && l.endsWith(trust) ? `${l.slice(0, -trust.length)}${chalk.red(trust)}` : l);
+  if (trust) facts.unshift(trust);
+  for (const l of wrapLines('    ', CONT, facts.filter(Boolean).join('  '), columns)) lines.push(trust && l.startsWith(`    ${trust}`) ? `    ${chalk.red(trust)}${l.slice(4 + trust.length)}` : l);
   lines.push(...wrapLines('    ', CONT, i.why, columns));
   for (const n of i.notes) for (const l of wrapLines('    note: ', CONT, n, columns)) lines.push(chalk.yellow(l));
   // Only a trusted row carries a reason (collect.ts); the check here keeps an untrusted one off the screen regardless.
