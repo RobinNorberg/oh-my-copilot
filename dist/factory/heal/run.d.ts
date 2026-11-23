@@ -137,6 +137,8 @@ export declare function writeHealScanRecord(ledgerDir: string, root: string, r: 
 export declare function readHealScanRecord(ledgerDir: string, root: string, sig8: string): HealScanRecord | null;
 /** `ok` when the recorded heal run matches its out-of-repo seal; `none` without a heal run (and no seal). */
 export declare function verifyHealSeal(ledgerDir: string, root: string, state: HealSignatureState): 'ok' | 'none' | 'missing' | 'mismatch';
+/** The signatures with a heal seal outside the repository (each one a heal run the heal command recorded); read-only. */
+export declare function healSealSigs(ledgerDir: string, root: string): string[];
 /** Field-wise larger of the in-repo and the mirrored counters. */
 export declare function readHealCounters(root: string, ledgerDir: string, now: Date): HealDailyCounters;
 export declare function writeHealCounters(root: string, ledgerDir: string, counters: HealDailyCounters): void;

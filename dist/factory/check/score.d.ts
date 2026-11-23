@@ -39,7 +39,14 @@ export interface CheckEnv {
     /** The integration branch (ship.base) a dependency's factory PR must have merged into. */
     base: string;
 }
-/** Tracker text for a terminal: ANSI sequences dropped, then every control/format/separator character as a space. */
+/**
+ * Tracker text for a terminal: ANSI sequences dropped, then every
+ * control/format/separator character as a space, and so is every code point
+ * a terminal draws as blank or nothing although it is neither (the Hangul
+ * fillers, blank braille, the combining grapheme joiner, the Khmer and
+ * Mongolian invisible marks, variation selectors, U+2065 and the tag block):
+ * such filler could pad text out to look like a separate line.
+ */
 export declare const plainText: (v: string) => string;
 /** ADO Priority, else a GitHub `priority:pN` label (p0 -> 1 ... p3 -> 4). */
 export declare function itemPriority(item: ForgeItem): number | null;

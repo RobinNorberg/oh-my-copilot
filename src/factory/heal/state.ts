@@ -112,7 +112,8 @@ export function healStatePath(root: string, sig8: string): string {
   return join(healStateDir(root), `${sig8}.json`);
 }
 
-function parseState(raw: string, path: string): HealSignatureState {
+/** Parse a heal signature record from its bytes (`path` names it in the error). */
+export function parseHealState(raw: string, path: string): HealSignatureState {
   const s = JSON.parse(raw) as HealSignatureState;
   if (s?.version !== 1 || typeof s.sig8 !== 'string' || !SIG8.test(s.sig8) || typeof s.count !== 'number' || !Array.isArray(s.seenRuns)) {
     throw new Error(`${path}: not a heal signature state`);
@@ -122,7 +123,7 @@ function parseState(raw: string, path: string): HealSignatureState {
 
 export function readHealState(root: string, sig8: string): HealSignatureState | null {
   const path = healStatePath(root, sig8);
-  return existsSync(path) ? parseState(readFileSync(path, 'utf8'), path) : null;
+  return existsSync(path) ? parseHealState(readFileSync(path, 'utf8'), path) : null;
 }
 
 export function listHealStates(root: string): HealSignatureState[] {
@@ -133,7 +134,7 @@ export function listHealStates(root: string): HealSignatureState[] {
     .flatMap((f) => {
       const path = join(dir, f);
       try {
-        return [parseState(readFileSync(path, 'utf8'), path)];
+        return [parseHealState(readFileSync(path, 'utf8'), path)];
       } catch (error) {
         console.warn(`omg factory heal: skipping corrupt signature file ${path}: ${error instanceof Error ? error.message : String(error)}`);
         return [];

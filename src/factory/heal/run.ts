@@ -23,7 +23,7 @@
  */
 
 import { createHash } from 'crypto';
-import { existsSync, readFileSync } from 'fs';
+import { existsSync, readdirSync, readFileSync } from 'fs';
 import { join, resolve } from 'path';
 import { atomicWriteFileSync, ensureDirSync } from '../../lib/atomic-write.js';
 import { withFileLockSync } from '../../lib/file-lock.js';
@@ -254,6 +254,15 @@ export function verifyHealSeal(ledgerDir: string, root: string, state: HealSigna
     return (JSON.parse(readFileSync(path, 'utf8')) as { seal?: unknown }).seal === sealOf(state) ? 'ok' : 'mismatch';
   } catch {
     return 'mismatch';
+  }
+}
+
+/** The signatures with a heal seal outside the repository (each one a heal run the heal command recorded); read-only. */
+export function healSealSigs(ledgerDir: string, root: string): string[] {
+  try {
+    return readdirSync(healLedgerDir(ledgerDir, root)).map((f) => /^([0-9a-f]{8})\.seal\.json$/.exec(f)?.[1]).filter((s): s is string => s !== undefined).sort();
+  } catch {
+    return [];
   }
 }
 
