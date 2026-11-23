@@ -50,7 +50,7 @@ const HEX40 = /^[0-9a-f]{40}$/;
 const forgeOf = (s) => (s.remote === LOCAL_REMOTE ? 'local' : s.forgeKind ?? 'github');
 const msOf = (iso) => (typeof iso === 'string' ? Date.parse(iso) : Number.NaN);
 /** The run key of a canonical `run-<key>.json` name; null for anything else (`run-01.json` is not run 1's file). */
-function runKeyOfName(name) {
+export function runKeyOfName(name) {
     const m = RUN_FILE.exec(name);
     if (!m)
         return null;
@@ -149,7 +149,7 @@ function sinceProgress(root, key, now) {
 }
 const relLog = (key) => `.omg/progress/factory-${key}.log`;
 /** One read of the state bytes; seal, then the ledger on those same bytes. */
-function readRun(root, key, ledgerDir) {
+export function readRun(root, key, ledgerDir) {
     const path = factoryStatePath(root, key);
     const r = readRegularFile(path);
     if ('missing' in r)

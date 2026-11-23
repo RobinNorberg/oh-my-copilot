@@ -274,6 +274,23 @@ describe('checkGuardExec', () => {
         refused(exec, 'az', ['devops', 'invoke', '--area', 'wit', '--resource', 'workItems', '--http-method', 'PATCH']);
         refused(exec, 'npm', ['ci']);
     });
+    it('allows the human-merge reader\'s replace-ref listing (exactly the engine\'s for-each-ref shape) and nothing wider', () => {
+        const exec = checkGuardExec(inner, undefined, undefined, 'omg factory board');
+        expect(exec('git', ['for-each-ref', '--format=%(refname) %(objectname)'], { env: { GIT_NO_REPLACE_OBJECTS: '1' } }).status).toBe(0);
+        const refusedBoard = (args) => expect(() => exec('git', args)).toThrow(/omg factory board refuses|omg factory run refuses|omg ship refuses/);
+        refusedBoard(['for-each-ref']);
+        refusedBoard(['for-each-ref', '--format=%(refname)']);
+        refusedBoard(['for-each-ref', '--format=%(refname) %(objectname)', 'refs/heads/']);
+        refusedBoard(['for-each-ref', '--format=%(refname) %(objectname)', '--sort=-committerdate']);
+        refusedBoard(['for-each-ref', '--shell', '--format=%(refname) %(objectname)']);
+    });
+    it('the local human-merge read runs through the read guard without a refusal (replaceObjectsProblem)', async () => {
+        const { replaceObjectsProblem } = await import('../../run/review-guard.js');
+        const calls = [];
+        const recording = (_cmd, args) => { calls.push(args); return { status: 0, stdout: args[0] === 'rev-parse' ? '.git\n' : '', stderr: '' }; };
+        expect(replaceObjectsProblem(checkGuardExec(recording, undefined, undefined, 'omg factory dashboard'), process.cwd())).toBeNull();
+        expect(calls.some((a) => a[0] === 'for-each-ref')).toBe(true);
+    });
     it('allows the marker label only while a confirmed mark runs', () => {
         const mark = {};
         const exec = checkGuardExec(inner, () => mark.marker);

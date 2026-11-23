@@ -30,7 +30,7 @@ const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
 const laneTime = (lane) => ms(lane.endedAt ?? lane.startedAt);
 const pad2 = (n) => String(n).padStart(2, '0');
 /** Local calendar day (YYYY-MM-DD) of a timestamp. */
-const localDay = (t) => {
+export const localDay = (t) => {
     const d = new Date(t);
     return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 };
