@@ -26,6 +26,7 @@ import { createHash } from 'node:crypto';
 import { lstatSync, mkdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, posix, relative, resolve, sep, win32 } from 'node:path';
 import { dotnetPositionals, MSBUILD_SUBCOMMANDS } from '../../copilot-run/dotnet-sandbox.js';
+import { visibleLine } from '../../forge/review-feedback.js';
 import { isDotnetDefinitionFile } from './local-gate.js';
 /**
  * One restore error line as MSBuild's console logger prints it, from the
@@ -201,6 +202,56 @@ export function parseCatFileBatch(buf) {
     }
     return out;
 }
+/** An MSBuild file that ends MSBuild's walk up from a project at the tree root (it defines nothing). */
+const EMPTY_PROJECT = '<Project />\n';
+/**
+ * The NuGet config written at the tree root when the head has none there:
+ * nuget.org as the only source, and every source, disabled source and
+ * source mapping of the configs above the tree (and the machine-wide ones,
+ * such as Visual Studio's offline packages folder) cleared. Checked with
+ * .NET SDK 10.0.101: an ancestor config that adds a feed, disables nuget.org
+ * and maps every package to its feed restores from nuget.org with this one
+ * at the root, and a project restores the same packages as with the
+ * default config (only the offline folder's source goes, and its packages
+ * are nuget.org's).
+ */
+export const DEFINITION_TREE_NUGET_CONFIG = [
+    '<?xml version="1.0" encoding="utf-8"?>',
+    '<configuration>',
+    '  <packageSources>',
+    '    <clear />',
+    '    <add key="nuget.org" value="https://api.nuget.org/v3/index.json" protocolVersion="3" />',
+    '  </packageSources>',
+    '  <disabledPackageSources>',
+    '    <clear />',
+    '  </disabledPackageSources>',
+    '  <packageSourceMapping>',
+    '    <clear />',
+    '  </packageSourceMapping>',
+    '</configuration>',
+    '',
+].join('\n');
+/**
+ * The files written at the definition tree's root when the head has no file
+ * of that name there, so MSBuild's and NuGet's walk up from the tree stops
+ * at the tree, as a clone of the repository would see nothing above it
+ * (apart from your own parent dirs): `Directory.Build.props`,
+ * `Directory.Build.targets`, `Directory.Solution.props`,
+ * `Directory.Solution.targets` and `Directory.Packages.props` as an empty
+ * project (with .NET SDK 10.0.101 an empty `Directory.Packages.props` does
+ * not switch central package management on, and stops an ancestor's that
+ * would), and `nuget.config` (DEFINITION_TREE_NUGET_CONFIG). Never
+ * `global.json` or a `.rsp`: those select the SDK or add arguments, and an
+ * empty one would change what the head's own files say. [name, content].
+ */
+export const DEFINITION_TREE_STUBS = [
+    ['Directory.Build.props', EMPTY_PROJECT],
+    ['Directory.Build.targets', EMPTY_PROJECT],
+    ['Directory.Solution.props', EMPTY_PROJECT],
+    ['Directory.Solution.targets', EMPTY_PROJECT],
+    ['Directory.Packages.props', EMPTY_PROJECT],
+    ['nuget.config', DEFINITION_TREE_NUGET_CONFIG],
+];
 /**
  * Write the definition tree into `dir` (made here, so it must not exist;
  * its parent must): every entry of the head's tree that is a pinned
@@ -210,7 +261,13 @@ export function parseCatFileBatch(buf) {
  * a pattern-matching symlink, a path that cannot be written as a plain
  * file, a blob that is missing or does not hash to its id, or two paths
  * that land on the same file (a case clash) is a problem (nothing is
- * evaluated: the caller parks). `files`: the paths written, sorted.
+ * evaluated: the caller parks). `files`: the paths written, sorted. Then
+ * the stubs (DEFINITION_TREE_STUBS) the head's root lacks: an MSBuild one
+ * when no root file has its exact name (MSBuild matches names exactly on
+ * Linux; a root file that differs only in case on a case-insensitive file
+ * system keeps the stub out), `nuget.config` when no root file is named so
+ * in any case (NuGet looks for several casings). `stubs`: the names
+ * written, in that order. Stubs live in this tree only, never a checkout.
  */
 export function writeDefinitionTree(dir, entries, blobs) {
     const pinned = entries.filter(([p, , mode]) => mode !== '160000' && isDotnetDefinitionFile(p));
@@ -246,7 +303,24 @@ export function writeDefinitionTree(dir, entries, blobs) {
             return { problem: `the pinned definition file ${p} could not be written to the definition tree (${error.code ?? String(error)})` };
         }
     }
-    return { files: pinned.map(([p]) => p).sort() };
+    const atRoot = pinned.map(([p]) => p).filter((p) => !p.includes('/'));
+    const stubs = [];
+    for (const [name, content] of DEFINITION_TREE_STUBS) {
+        const nuget = name === 'nuget.config';
+        if (atRoot.some((p) => (nuget ? p.toLowerCase() === name : p === name)))
+            continue;
+        try {
+            writeFileSync(join(root, name), content, { flag: 'wx' });
+            stubs.push(name);
+        }
+        catch (error) {
+            // A root file differing only in case on a case-insensitive file system: MSBuild finds that one there.
+            if (error.code === 'EEXIST')
+                continue;
+            return { problem: `the definition tree's ${name} could not be written (${error.code ?? String(error)})` };
+        }
+    }
+    return { files: pinned.map(([p]) => p).sort(), stubs };
 }
 /**
  * Remove an engine-made dir (the run's packages folder, the definition
@@ -286,7 +360,11 @@ export function removeEngineDir(dir, root) {
  * The definition file a failed restore in the definition tree needed but
  * the tree lacks (MSBuild's "The imported project ... was not found", "The
  * project file ... was not found", "Project file does not exist"), as a
- * path relative to the tree, or undefined.
+ * path relative to the tree, or undefined. A path outside the tree comes
+ * back as MSBuild printed it, made one line of visible text (visibleLine:
+ * format and line characters as `<U+XXXX>`, other control characters
+ * dropped), at most 200 characters and JSON-quoted: it is restore output,
+ * and goes into a park reason.
  */
 export function missingDefinitionFile(output, tree) {
     // MSB4019: The imported project "<path>" was not found. MSB3202: The project file "<path>" was not found.
@@ -294,10 +372,25 @@ export function missingDefinitionFile(output, tree) {
     if (!m)
         return undefined;
     const rel = relative(resolve(tree), resolve(m[1]));
-    return rel && !rel.startsWith('..') && !isAbsolute(rel) ? rel.split(sep).join('/') : m[1];
+    if (rel && !rel.startsWith('..') && !isAbsolute(rel))
+        return visibleLine(rel.split(sep).join('/'));
+    return JSON.stringify(visibleLine(m[1]).slice(0, 200));
 }
 /** The setting and its two values, as the parks name them. */
 export const GATE_INSTALL_SANDBOXED_HINT = 'set factory.run.gateInstall "sandboxed" in your user config (the engine then runs dotnet restore in the OS sandbox with only api.nuget.org reachable, on the pinned definition files only, after the gate definition check)';
+/**
+ * What the gate-definition-changed park of a dotnet gate adds with
+ * gateInstall "sandboxed": the approval also lets the engine restore those
+ * files with the network on. On Windows also what that restore can reach
+ * beyond nuget.org: the Windows sandbox runs nothing with outbound access on
+ * and the local network off (the documented known gap), so the MSBuild
+ * targets in the approved files run with loopback and the local network
+ * reachable.
+ */
+export function restoreApprovalNote(platform) {
+    const note = '. With factory.run.gateInstall "sandboxed", approving with --allow-gate-change also lets the engine run dotnet restore on these definition files with api.nuget.org reachable';
+    return platform === 'win32' ? `${note}; on Windows the MSBuild targets in these files run during that restore, and loopback and your local network are reachable from it too` : note;
+}
 /** The private-feed park's reason prefix. */
 export const NUGET_PRIVATE_FEED_UNSUPPORTED = 'private or local NuGet feeds are not supported in the sandbox yet';
 //# sourceMappingURL=nuget-restore.js.map

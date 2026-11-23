@@ -9,7 +9,9 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { localCheckRecordPath } from '../../../forge/local/index.js';
 import { runFactoryEngine } from '../engine.js';
 import { cleanFactoryRun } from '../clean.js';
-import { readFactoryState, requestFactoryCancel } from '../state.js';
+import { DEFINITION_TREE_STUBS, restoreApprovalNote } from '../nuget-restore.js';
+import { readFactoryState, requestFactoryCancel, updateFactoryState } from '../state.js';
+import { EngineLedger } from '../ledger.js';
 import { attestedSandbox, commitFile, gitIn, review } from './fake-lanes.js';
 import { lanesFor, LOCAL_ISSUE, localOpts, localWorld } from './engine-local-harness.js';
 let w;
@@ -77,6 +79,8 @@ function recorder(gates, restore = { ran: true, status: 0, output: 'Restored src
     };
     return { reqs, trees, sandbox };
 }
+/** The engine's stubs at the definition tree's root (nuget-restore.ts DEFINITION_TREE_STUBS), as [path, content]. */
+const STUBS = DEFINITION_TREE_STUBS.map(([p, c]) => [p, c]);
 const purposes = (r) => r.reqs.map((q) => q.purpose).filter((p) => p !== 'calibrate' && p !== 'prepare');
 const nugetDir = () => join(w.root, '.omg', 'state', 'factory-gates', 'nuget', `issue-${LOCAL_ISSUE}`);
 const treeDir = () => join(w.root, '.omg', 'state', 'factory-gates', 'nuget-defs', `issue-${LOCAL_ISSUE}`);
@@ -120,9 +124,10 @@ describe('a dotnet gate that cannot restore its NuGet packages is never a code f
         // Never in the prepare checkout: the definition tree, holding the head's pinned definition files only, gone after.
         expect(restore.cwd).toBe(treeDir());
         expect(restore.cwd).not.toBe(r.reqs[0].cwd);
-        expect(r.trees).toEqual([[['App.sln', 'Microsoft Visual Studio Solution File\n'], ['src/App/App.csproj', CSPROJ]]]);
+        // The head's two pinned files, and the engine's stubs at the root (the head has none of them there).
+        expect(r.trees).toEqual([[['App.sln', 'Microsoft Visual Studio Solution File\n'], ...STUBS, ['src/App/App.csproj', CSPROJ]].sort((a, b) => (a[0] < b[0] ? -1 : 1))]);
         expect(existsSync(treeDir())).toBe(false);
-        expect(readFactoryState(w.root, LOCAL_ISSUE).nugetRestore).toEqual({ head: readFactoryState(w.root, LOCAL_ISSUE).head, definition: expect.stringMatching(/^[0-9a-f]{64}$/) });
+        expect(readFactoryState(w.root, LOCAL_ISSUE).nugetRestore).toEqual({ head: readFactoryState(w.root, LOCAL_ISSUE).head, definition: expect.stringMatching(/^[0-9a-f]{64}$/), outcome: 'passed', exit: 0 });
         // The gates: the first with your cache only, the second reads the run's dir (read-only) with your cache behind it.
         const gates = r.reqs.filter((q) => q.purpose === 'gate');
         expect(gates[0].nugetPackages).toBeUndefined();
@@ -245,8 +250,11 @@ describe('the networked restore evaluates only pinned definition files (H1)', ()
         const head = readFactoryState(w.root, LOCAL_ISSUE).head;
         const pinned = gitIn(w.root, 'ls-tree', '-r', '--name-only', head).split('\n').map((l) => l.trim()).filter((p) => /(?:\.sln|\.csproj|\.props)$/.test(p)).sort();
         expect(r.trees).toHaveLength(1);
-        expect(r.trees[0].map(([p]) => p)).toEqual(pinned);
-        expect(r.trees[0].map(([p]) => p)).toEqual(['App.sln', 'Directory.Build.props', 'src/App/App.csproj']);
+        // The pinned files, and the stubs the head's root lacks (its own Directory.Build.props stays the head's).
+        const stubs = STUBS.map(([p]) => p).filter((p) => p !== 'Directory.Build.props');
+        expect(r.trees[0].map(([p]) => p).filter((p) => !stubs.includes(p))).toEqual(pinned);
+        expect(r.trees[0].map(([p]) => p).filter((p) => !stubs.includes(p))).toEqual(['App.sln', 'Directory.Build.props', 'src/App/App.csproj']);
+        expect(r.trees[0]).toContainEqual(['Directory.Build.props', IMPORTING_PROPS]);
         expect(r.trees[0].some(([p, text]) => p.startsWith('build/') || text.includes('RAN_EXEC_IN_RESTORE'))).toBe(false);
         expect(r.reqs.find((q) => q.purpose === 'restore').cwd).toBe(treeDir());
         expect(existsSync(treeDir())).toBe(false);
@@ -337,7 +345,9 @@ describe('the approval message (M2)', () => {
         baseProject();
         const sandboxed = await runFactoryEngine(localOpts(w, lanesFor(w, [commitFile('src/App/App.csproj', BUMPED)]), { gateSandbox: recorder([{ status: 0, output: 'Passed!' }]).sandbox, runUserConfig: SANDBOXED }));
         expect(sandboxed.gate?.name, sandboxed.message).toBe('gate-definition-changed');
-        expect(sandboxed.gate?.reason).toMatch(/\. With factory\.run\.gateInstall "sandboxed", approving with --allow-gate-change also lets the engine run dotnet restore on these definition files with api\.nuget\.org reachable$/);
+        // The host's own text (restoreApprovalNote, both platforms' texts tested in nuget-restore.test.ts).
+        expect(sandboxed.gate?.reason?.endsWith(restoreApprovalNote(process.platform))).toBe(true);
+        expect(sandboxed.gate?.reason).toMatch(process.platform === 'win32' ? /api\.nuget\.org reachable; on Windows the MSBuild targets in these files run during that restore, and loopback and your local network are reachable from it too$/ : /api\.nuget\.org reachable$/);
     }, MULTI_RUN_MS);
     it('with "park" it says nothing about a restore', async () => {
         w = localWorld(['dotnet', 'test']);
@@ -345,6 +355,98 @@ describe('the approval message (M2)', () => {
         const parked = await runFactoryEngine(localOpts(w, lanesFor(w, [commitFile('src/App/App.csproj', BUMPED)]), { gateSandbox: recorder([{ status: 0, output: 'Passed!' }]).sandbox }));
         expect(parked.gate?.name, parked.message).toBe('gate-definition-changed');
         expect(parked.gate?.reason).not.toMatch(/dotnet restore/);
+    }, MULTI_RUN_MS);
+});
+describe('the run\'s packages folder belongs to one definition (H1 -> H2)', () => {
+    it('an approved bump restores at H1; a fix lane back at the base files (H2) never reads that folder, which is emptied first', async () => {
+        w = localWorld(['dotnet', 'test']);
+        baseProject();
+        // H1 offline: restore needed; H1 after the restore: a test the PR wrote fails (the base passes), so a ci-fix lane runs;
+        // that lane goes back to the base's project file (H2), whose gate passes.
+        const failing = { status: 1, output: 'Test run for C:\\work\\Tests.dll\nFailed!  - Failed:     1, Passed:     0, Skipped:     0, Total:     1' };
+        const r = recorder([{ status: 1, output: OFFLINE }, failing, { status: 0, output: 'Passed!' }], undefined, { ran: true, status: 0, output: 'Passed!', timedOut: false });
+        const parked = await runFactoryEngine(localOpts(w, lanesFor(w, [commitFile('src/App/App.csproj', BUMPED)]), { gateSandbox: r.sandbox, runUserConfig: SANDBOXED }));
+        expect(parked.gate?.name, parked.message).toBe('gate-definition-changed');
+        const lanes = lanesFor(w, [review('approve'), commitFile('src/App/App.csproj', CSPROJ), review('approve')]);
+        const out = await runFactoryEngine(localOpts(w, lanes, { gateSandbox: r.sandbox, runUserConfig: SANDBOXED, allowGateChange: true }));
+        expect(out.gate?.name, out.message).toBe('merge');
+        expect(purposes(r).filter((p) => p === 'restore')).toHaveLength(1);
+        // H1's second gate reads the folder H1's restore wrote; H2 (the base's definition again) never does.
+        const gates = r.reqs.filter((q) => q.purpose === 'gate');
+        expect(gates.map((g) => g.nugetPackages ?? null)).toEqual([null, { dir: nugetDir(), writable: false }, null]);
+        expect(existsSync(nugetDir())).toBe(false);
+        const state = readFactoryState(w.root, LOCAL_ISSUE);
+        expect(state.nugetRestore).toBeUndefined();
+        expect(state.history.some((h) => /^emptied the run's NuGet packages folder before the dotnet gate on [0-9a-f]{12}: it was restored for the definition files of [0-9a-f]{12}, which [0-9a-f]{12} does not have$/.test(h.note))).toBe(true);
+    }, MULTI_RUN_MS);
+});
+describe('"restore tried" records what happened (the outcome, not the start)', () => {
+    it('a restore that failed with the network is tried again on the rerun (a feed that failed only for now), and the state says it failed', async () => {
+        w = localWorld(['dotnet', 'test']);
+        baseProject();
+        const r = recorder([{ status: 1, output: OFFLINE }], { ran: true, status: 1, output: OFFLINE, timedOut: false });
+        const first = await runFactoryEngine(localOpts(w, lanesFor(w, [commitFile('src/App/Greet.cs', 'namespace App;\n'), review('approve')]), { gateSandbox: r.sandbox, runUserConfig: SANDBOXED }));
+        expect(first.gate?.name, first.message).toBe('gate-install-needed');
+        expect(first.gate?.reason).toMatch(/with only api\.nuget\.org reachable failed \(exit 1\).*then rerun omg factory run \S+, which runs the restore again/);
+        expect(readFactoryState(w.root, LOCAL_ISSUE).nugetRestore).toMatchObject({ outcome: 'failed', exit: 1 });
+        const again = await runFactoryEngine(localOpts(w, lanesFor(w, []), { gateSandbox: r.sandbox, runUserConfig: SANDBOXED }));
+        expect(again.gate?.name, again.message).toBe('gate-install-needed');
+        expect(again.gate?.reason).not.toMatch(/even after/);
+        expect(purposes(r).filter((p) => p === 'restore')).toHaveLength(2);
+    }, MULTI_RUN_MS);
+    it('a restore the sandbox could not start says nothing was restored, records not-run, and the rerun tries it again', async () => {
+        w = localWorld(['dotnet', 'test']);
+        baseProject();
+        const r = recorder([{ status: 1, output: OFFLINE }], { ran: false, reason: 'the sandbox runtime is missing' });
+        const first = await runFactoryEngine(localOpts(w, lanesFor(w, [commitFile('src/App/Greet.cs', 'namespace App;\n'), review('approve')]), { gateSandbox: r.sandbox, runUserConfig: SANDBOXED }));
+        expect(first.gate?.name, first.message).toBe('gate-install-needed');
+        expect(first.gate?.reason).toMatch(/could not run in the OS sandbox \(the sandbox runtime is missing\), so nothing was restored;.*\(a rerun tries the restore again\)/);
+        expect(readFactoryState(w.root, LOCAL_ISSUE).nugetRestore).toMatchObject({ outcome: 'not-run' });
+        expect(readFactoryState(w.root, LOCAL_ISSUE).nugetRestore.exit).toBeUndefined();
+        const again = await runFactoryEngine(localOpts(w, lanesFor(w, []), { gateSandbox: r.sandbox, runUserConfig: SANDBOXED }));
+        expect(again.gate?.reason).not.toMatch(/even after/);
+        expect(purposes(r).filter((p) => p === 'restore')).toHaveLength(2);
+    }, MULTI_RUN_MS);
+    it('a state from the previous release (head and definition, no outcome) does not stop the restore', async () => {
+        w = localWorld(['dotnet', 'test']);
+        baseProject();
+        const r = recorder([{ status: 1, output: OFFLINE }], { ran: false, reason: 'the sandbox runtime is missing' });
+        await runFactoryEngine(localOpts(w, lanesFor(w, [commitFile('src/App/Greet.cs', 'namespace App;\n'), review('approve')]), { gateSandbox: r.sandbox, runUserConfig: SANDBOXED }));
+        // What the previous release wrote before the sandbox started (and never updated): head and definition only; a write
+        // the engine made, recorded in its ledger.
+        const ledger = EngineLedger.open(w.ledgerDir, w.root, LOCAL_ISSUE);
+        updateFactoryState(w.root, LOCAL_ISSUE, (s) => ({ ...s, nugetRestore: { head: s.nugetRestore.head, definition: s.nugetRestore.definition } }), { onWrite: (p, c) => ledger.record(p, c) });
+        expect(readFactoryState(w.root, LOCAL_ISSUE).nugetRestore.outcome).toBeUndefined();
+        const again = await runFactoryEngine(localOpts(w, lanesFor(w, []), { gateSandbox: r.sandbox, runUserConfig: SANDBOXED }));
+        expect(again.gate?.reason, again.message).toMatch(/could not run in the OS sandbox/);
+        expect(purposes(r).filter((p) => p === 'restore')).toHaveLength(2);
+    }, MULTI_RUN_MS);
+});
+describe('the restore runs the gate that will run (L3: sealed ?? gate)', () => {
+    it('on a rerun the restore is derived from the sealed gate argv (projects, -p:, -r), and a changed configured gate is refused before any restore', async () => {
+        const gate = ['dotnet', 'test', 'App.sln', '-p:NuGetAudit=false', '-r', 'win-x64'];
+        w = localWorld(gate);
+        baseProject();
+        const r = recorder([{ status: 1, output: OFFLINE }, { status: 1, output: OFFLINE }, { status: 0, output: 'Passed!' }]);
+        // gateInstall "park" first: the gate runs once (sealing its argv) and parks; then "sandboxed" on the rerun.
+        const first = await runFactoryEngine(localOpts(w, lanesFor(w, [commitFile('src/App/Greet.cs', 'namespace App;\n'), review('approve')]), { gateSandbox: r.sandbox }));
+        expect(first.gate?.name, first.message).toBe('gate-install-needed');
+        expect(readFactoryState(w.root, LOCAL_ISSUE).localGate).toEqual(gate);
+        const out = await runFactoryEngine(localOpts(w, lanesFor(w, []), { gateSandbox: r.sandbox, runUserConfig: SANDBOXED }));
+        expect(out.gate?.name, out.message).toBe('merge');
+        expect(r.reqs.find((q) => q.purpose === 'restore').argv).toEqual(['dotnet', 'restore', 'App.sln', '-p:NuGetAudit=false', '-r', 'win-x64']);
+        // Another configured gate than the sealed one never reaches the restore: the run refuses it.
+        rmSync(w.dir, { recursive: true, force: true });
+        w = localWorld(gate);
+        baseProject();
+        const r2 = recorder([{ status: 1, output: OFFLINE }]);
+        await runFactoryEngine(localOpts(w, lanesFor(w, [commitFile('src/App/Greet.cs', 'namespace App;\n'), review('approve')]), { gateSandbox: r2.sandbox }));
+        const base = localOpts(w, lanesFor(w, []), { gateSandbox: r2.sandbox, runUserConfig: SANDBOXED });
+        const other = { ...w.config, local: { ...w.config.local, gate: ['dotnet', 'test', 'Other.sln'] } };
+        const refused = await runFactoryEngine({ ...base, forge: { ...base.forge, config: other } });
+        expect(refused.gate?.name, refused.message).toBe('gates');
+        expect(refused.gate?.reason).toMatch(/refuses the local gate `dotnet test Other\.sln`: this run recorded `dotnet test App\.sln -p:NuGetAudit=false -r win-x64`/);
+        expect(r2.reqs.some((q) => q.purpose === 'restore')).toBe(false);
     }, MULTI_RUN_MS);
 });
 //# sourceMappingURL=engine.local.nuget.test.js.map
