@@ -59,6 +59,7 @@ import { factorySetupCommand } from './factory-setup.js';
 import { factoryBenchCommand } from './factory-bench.js';
 import { factoryBoardCommand } from './factory-board.js';
 import { defaultDashboardDeps, factoryDashboardCommand } from './factory-dashboard.js';
+import { defaultAttentionDeps, factoryAttentionCommand } from './factory-attention.js';
 import { forgePrStateReader, humanMergeCandidate, humanMergeLines, recordHumanMerges } from '../../factory/run/human-merged.js';
 import { readRuns } from '../../factory/board/collect.js';
 import { factoryPrCommand } from './factory-pr.js';
@@ -1130,6 +1131,7 @@ export function factoryCommand() {
     cmd.addCommand(factoryTriageCommand(defaultFactoryCheckDeps(defaultFactoryRunDeps.base)));
     cmd.addCommand(factoryBoardCommand(defaultFactoryCheckDeps(defaultFactoryRunDeps.base)));
     cmd.addCommand(factoryDashboardCommand({ ...defaultDashboardDeps, humanMerges: (root) => cliHumanMerges(defaultFactoryRunDeps, root, readRuns(root, []).runs) }));
+    cmd.addCommand(factoryAttentionCommand({ ...defaultAttentionDeps, limits: defaultFactoryRunDeps.limits }));
     cmd.addCommand(factoryPrCommand(defaultFactoryCheckDeps(defaultFactoryRunDeps.base)));
     cmd.addCommand(factoryPollCommand({
         ...defaultFactoryCheckDeps(defaultFactoryRunDeps.base),

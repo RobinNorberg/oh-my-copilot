@@ -353,6 +353,13 @@ describe('ordering and output', () => {
     expect(plainText('\u001b]0;title\u0007ok')).toBe('ok');
   });
 
+  it('plainText turns blank-looking filler and invisible code points into spaces', () => {
+    const blanks = ['\u00AD', '\u034F', '\u061C', '\u115F', '\u1160', '\u17B4', '\u17B5', '\u180B', '\u180E', '\u180F', '\u200B', '\u200F', '\u2060', '\u2065', '\u206F', '\u2800', '\u3164', '\uFE00', '\uFE0F', '\uFEFF', '\uFFA0', '\u{E0000}', '\u{E0001}', '\u{E007F}', '\u{E0100}', '\u{E01EF}'];
+    for (const b of blanks) expect(plainText(`a${b}b`), `U+${b.codePointAt(0)!.toString(16)}`).toBe('a b');
+    // Visible text, letters of other scripts and ordinary emoji stay.
+    expect(plainText('räksmörgås 한글 ✅ x')).toBe('räksmörgås 한글 ✅ x');
+  });
+
   it('checks each id once, reading items only through forge.tracker', () => {
     const forge = fakeForge({ items: [item(1), item(2)] });
     expect(checkItems(forge, [2, 1, 2], env({ items: [] })).map((r) => r.id)).toEqual([1, 2]);

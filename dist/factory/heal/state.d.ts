@@ -107,6 +107,8 @@ export interface HealDailyCounters {
 }
 export declare function healStateDir(root: string): string;
 export declare function healStatePath(root: string, sig8: string): string;
+/** Parse a heal signature record from its bytes (`path` names it in the error). */
+export declare function parseHealState(raw: string, path: string): HealSignatureState;
 export declare function readHealState(root: string, sig8: string): HealSignatureState | null;
 export declare function listHealStates(root: string): HealSignatureState[];
 /** Today's counters in one counters file; a file from an earlier UTC day reads as zero. */

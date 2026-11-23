@@ -11,8 +11,17 @@ import { FactorySafetyError } from '../run/exec.js';
 import { factoryBranch } from '../run/state.js';
 import { evaluateItem } from './rules.js';
 export const BUCKET_ORDER = ['runnable', 'needs-plan', 'blocked'];
-/** Tracker text for a terminal: ANSI sequences dropped, then every control/format/separator character as a space. */
-export const plainText = (v) => stripAnsi(v).replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu, ' ');
+/**
+ * Tracker text for a terminal: ANSI sequences dropped, then every
+ * control/format/separator character as a space, and so is every code point
+ * a terminal draws as blank or nothing although it is neither (the Hangul
+ * fillers, blank braille, the combining grapheme joiner, the Khmer and
+ * Mongolian invisible marks, variation selectors, U+2065 and the tag block):
+ * such filler could pad text out to look like a separate line.
+ */
+export const plainText = (v) => 
+// eslint-disable-next-line no-misleading-character-class -- the combining marks are listed on purpose, each one alone
+stripAnsi(v).replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\u034F\u115F\u1160\u17B4\u17B5\u180B-\u180F\u2065\u2800\u3164\uFE00-\uFE0F\uFFA0\u{E0000}-\u{E0FFF}]/gu, ' ');
 /** ADO Priority, else a GitHub `priority:pN` label (p0 -> 1 ... p3 -> 4). */
 export function itemPriority(item) {
     if (item.priority !== undefined && Number.isInteger(item.priority) && item.priority > 0)
