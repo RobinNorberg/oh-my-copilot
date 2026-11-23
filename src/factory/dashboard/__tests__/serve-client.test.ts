@@ -185,6 +185,50 @@ describe('dashboard page script: DOM builders', () => {
     expect(els.some((e) => e.textContent === 'waiting 2m 0s')).toBe(true);
   });
 
+  it('--all-repos: repositories and their rows as text only; ids validated; the root never in an attribute; "in <root>:" before omg commands', () => {
+    const items = (data().attention as { items: unknown[] }).items;
+    const list = {
+      schemaVersion: 1, allRepos: true, rev: 'x', generatedAt: '2026-11-20T10:10:00.000Z', summary: { repos: 3, skipped: 2, items: 2, engines: 0, byGroup: {} },
+      repos: [
+        { id: 'aaaaaaaaaaaaaaaa', name: HOSTILE, root: `C:/x/${HOSTILE}`, rootWord: null, forge: 'github', byGroup: { merge: 1, inspect: 1 }, items: 2, engines: 0, runs: 2, lastChange: '2026-11-20T10:05:00.000Z', attention: items },
+        { id: 'bbbbbbbbbbbbbbbb', name: 'beta', root: '/r/beta', rootWord: '/r/beta', forge: null, byGroup: {}, items: 0, engines: 1, runs: 0, lastChange: null, attention: [] },
+        { id: '../../x', name: 'evil', root: '/evil', rootWord: '/evil', byGroup: {}, items: 0, engines: 0, runs: 0, lastChange: null, attention: [] },
+      ],
+      warnings: [],
+    };
+    expect(fd.repoId('aaaaaaaaaaaaaaaa')).toBe('aaaaaaaaaaaaaaaa');
+    for (const bad of ['../../x', 'AAAAAAAAAAAAAAAA', 'aaaaaaaaaaaaaaa', 'aaaaaaaaaaaaaaaa/', '']) expect(fd.repoId(bad)).toBeNull();
+    const picked: unknown[] = [];
+    const c = { ...ctx({ on: { repo: (id: unknown) => picked.push(id) } }), ui: { ...ui(), repo: null } };
+    const table = fd.buildRepos(doc, list, c);
+    const tels = all(table);
+    // The id that is not one the server issues is not shown at all.
+    expect(texts(table).join('')).not.toContain('evil');
+    expect(texts(table).join('')).toContain(HOSTILE);
+    for (const e of tels) for (const [k, v] of e.attrs) {
+      expect(fd.ATTRS).toContain(k);
+      expect(v).not.toContain('C:/x');
+      expect(v).not.toContain('/r/beta');
+    }
+    const buttons = tels.filter((e) => e.tagName === 'button');
+    expect(buttons.map((b) => b.getAttribute('data-k'))).toEqual(['repo:all', 'repo:aaaaaaaaaaaaaaaa', 'repo:bbbbbbbbbbbbbbbb']);
+    buttons[2].click();
+    buttons[0].click();
+    expect(picked).toEqual(['bbbbbbbbbbbbbbbb', null]);
+    const att = fd.buildAllAttention(doc, list, c);
+    const aels = all(att);
+    const t = texts(att).join('');
+    expect(t).toContain('Run these in that repository\'s root');
+    expect(t).not.toContain('SECRET');
+    // Copy keys carry the repository id; nothing from data becomes an element id.
+    const keys = aels.filter((e) => e.tagName === 'button').map((b) => b.getAttribute('data-k'));
+    expect(keys.every((k) => String(k).startsWith('copy:aaaaaaaaaaaaaaaa:'))).toBe(true);
+    expect(aels.some((e) => e.attrs.has('id'))).toBe(false);
+    const withWord = fd.buildAllAttention(doc, { ...list, repos: [{ ...list.repos[0], rootWord: '"C:/x y"' }] }, c);
+    expect(all(withWord).filter((e) => e.tagName === 'code').map((e) => e.textContent)).toContain('"C:/x y"');
+    expect(texts(fd.buildAllAttention(doc, { ...list, repos: [list.repos[1]] }, c)).join('')).toBe('Nothing needs you in any repository.');
+  });
+
   it('runs: sort headers are buttons with aria-sort, an unverified row shows only the marker, detail opens with gate output in a <pre>', () => {
     const toggled: string[] = [];
     const sorted: string[] = [];
@@ -248,7 +292,11 @@ describe('dashboard page script: source lint', () => {
       expect(CLIENT_JS, String(bad)).not.toMatch(bad);
     }
     // Its fetch URLs are fixed strings and the validated run key.
-    expect([...CLIENT_JS.matchAll(/fetchJson\(([^)]*)\)/g)].map((m) => m[1]).filter((a) => a !== 'url')).toEqual(["'api/v1/run/' + api", "'api/v1/summary'"]);
+    expect([...CLIENT_JS.matchAll(/fetchJson\(([^)]*)\)/g)].map((m) => m[1]).filter((a) => a !== 'url')).toEqual([
+      "multi ? 'api/v1/repo/' + rid + '/run/' + api : 'api/v1/run/' + api", "'api/v1/repos'", "multi ? 'api/v1/repo/' + rid + '/summary' : 'api/v1/summary'",
+    ]);
+    // --all-repos: the repository id in a fetch URL is FD.repoId of the selection (16 hex or null), never other text.
+    expect([...CLIENT_JS.matchAll(/var rid = ([^;]*);/g)].map((m) => m[1])).toEqual(['FD.repoId(want)', 'FD.repoId(want)']);
     expect([...CLIENT_JS.matchAll(/new EventSource\(([^)]*)\)/g)].map((m) => m[1])).toEqual(["'events'"]);
   });
 

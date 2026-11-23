@@ -129,7 +129,7 @@ export function trustedFactoryClaimRepo(exec: Exec, root: string, ledgerDir: str
 }
 
 /** A path as one spelling: realpath when it exists (junctions, symlinks, 8.3 names), normalized, case-folded only where the filesystem folds case. */
-function canonicalPath(path: string, platform: NodeJS.Platform): string {
+export function canonicalPath(path: string, platform: NodeJS.Platform = process.platform): string {
   let abs = normalize(resolve(path));
   try {
     abs = realpathSync.native(abs);

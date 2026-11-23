@@ -43,7 +43,13 @@ export function reasonLines(reason: string): string[] {
   return out;
 }
 
-function itemLines(i: AttentionItem, verbose: boolean): string[] {
+/**
+ * `inRepo` (--all-repos, a repository other than the current one): the root
+ * as one quoted word, or null when it cannot be shown safely in a command;
+ * the `omg` commands are repository-relative, so they are printed under
+ * "in <root>:" (or the prose fallback). Undefined: the current repository.
+ */
+export function itemLines(i: AttentionItem, verbose: boolean, inRepo?: string | null): string[] {
   const head = [chalk.bold(i.key)];
   if (i.title) head.push(i.title);
   const facts = [i.gate ? `awaiting-human: ${i.gate}` : null, i.phase ? `phase ${i.phase}` : null, ageText(i.ageMs)];
@@ -54,6 +60,9 @@ function itemLines(i: AttentionItem, verbose: boolean): string[] {
   for (const n of i.notes) lines.push(chalk.yellow(`    note: ${n}`));
   // Only a trusted row carries a reason (collect.ts); the check here keeps an untrusted one off the screen regardless.
   if (verbose && i.reason && i.trust === 'ok') for (const l of reasonLines(i.reason)) lines.push(chalk.gray(l));
+  if (inRepo !== undefined && i.next.some((n) => n.argv[0] === 'omg')) {
+    lines.push(chalk.gray(inRepo === null ? '    run in that repository\'s root (named in its header; its path cannot be shown safely in a command):' : `    in ${inRepo}:`));
+  }
   for (const n of i.next) {
     const c = commandText(n.argv);
     if (c.inRoot) lines.push(chalk.gray('    run in the repository root:'));

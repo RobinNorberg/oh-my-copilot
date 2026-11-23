@@ -25,15 +25,26 @@
  * one per `minIntervalMs`, so a writer that rewrites files in a loop cannot
  * pin a CPU. The summary's rev is a hash of its time-independent part; when
  * it changes, every event stream gets `event: changed`.
+ *
+ * `--all-repos` (options.repos): one view per repository this host's engine
+ * ledger knows (run/ledger-roots.ts), the list re-read every RESCAN_MS. A
+ * repository is selected by the id the server issued for it (its 16-hex
+ * ledger id), checked against the server's own list: `api/v1/repos`,
+ * `api/v1/repo/<id>/summary`, `api/v1/repo/<id>/run/<key>`; an unknown or
+ * malformed id is a 404 and no path ever comes from a request. Every view's
+ * recompute goes through one debounced, rate-limited pass, and fs.watch
+ * handles are capped across views (MAX_WATCHERS; the rest are polled). An
+ * event names the view: `data: <id> <rev>`, or `data: repos <rev>` for the
+ * list. Full roots are only ever JSON text values.
  */
 
 import { createHash, randomBytes, timingSafeEqual } from 'crypto';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'http';
 import { readdirSync, statSync, watch, type FSWatcher } from 'fs';
 import type { AddressInfo } from 'net';
-import { join } from 'path';
+import { basename, join } from 'path';
 import { plainText } from '../check/score.js';
-import { commandText } from '../attention/actions.js';
+import { commandText, rootWord } from '../attention/actions.js';
 import { readRun } from '../attention/collect.js';
 import { runLabel, type FactoryRunKey } from '../run/state.js';
 import type { DashboardDataV2 } from './collect-v2.js';
@@ -54,6 +65,14 @@ export const PING_MS = 15_000;
 export const TICK_MS = 60_000;
 export const FORGE_REFRESH_MS = 5 * 60_000;
 export const GATE_DETAIL_MAX = 20_000;
+/** --all-repos: fs.watch handles across every repository (the rest are polled only). */
+export const MAX_WATCHERS = 64;
+/** --all-repos: the repository set is re-read this often. */
+export const RESCAN_MS = 60_000;
+/** --all-repos: at most this many repositories are served. */
+export const MAX_REPOS = 200;
+/** A repository id the server issues: the ledger id (16 hex). */
+export const SERVED_REPO_ID = /^[0-9a-f]{16}$/;
 const HISTORY_MAX = 100;
 
 const RUN_KEY = /^(?:([1-9][0-9]{0,8})|(heal-[0-9a-f]{8}))$/;
@@ -123,18 +142,50 @@ export function dirSignature(dir: string): string {
   return parts.join('|');
 }
 
-export interface DashboardServerOptions {
+/** One repository the server serves: its id (issued by the server's own list, never taken from a request), root, collector and dirs. */
+export interface ServedRepo {
+  id: string;
   root: string;
+  collect: (now: number) => DashboardDataV2;
+  watchDirs: readonly string[];
+  pollDirs: readonly string[];
+}
+
+/** The --all-repos set: the repositories, and how many ledger records were skipped (count only). */
+export interface ServedRepoList {
+  repos: ServedRepo[];
+  skipped: number;
+  warnings: string[];
+}
+
+/** A served repository and what it last produced. */
+export interface View {
+  source: ServedRepo;
+  summary: ServedSummary;
+  body: string;
+  sig: string;
+  watchers: Map<string, FSWatcher>;
+}
+
+export interface DashboardServerOptions {
+  /** The single-repository mode (without `repos`): its root, collector and dirs. */
+  root?: string;
   ledgerDir: string;
   /** The collector, as the CLI composes it (limits, --since, --bench-dir, the --forge board). */
-  collect: (now: number) => DashboardDataV2;
+  collect?: (now: number) => DashboardDataV2;
   port?: number;
   now?: () => number;
   /** Watched (fs.watch) and polled. */
-  watchDirs: readonly string[];
+  watchDirs?: readonly string[];
   /** Polled only (bench result dirs). */
   pollDirs?: readonly string[];
-  /** `--forge` only: the forge read, at start and every forgeRefreshMs. Never called otherwise. */
+  /**
+   * `--all-repos`: the repository list, read at start and every rescanMs.
+   * The routes are then `api/v1/repos` and `api/v1/repo/<id>/...`; the
+   * single-repository `api/v1/summary` and `api/v1/run/<key>` are 404.
+   */
+  repos?: { list: () => ServedRepoList | Promise<ServedRepoList>; rescanMs?: number; maxWatchers?: number };
+  /** `--forge` only (single-repository mode): the forge read, at start and every forgeRefreshMs. Never called otherwise. */
   forgeRefresh?: () => Promise<void>;
   forgeRefreshMs?: number;
   pollMs?: number;
@@ -158,6 +209,10 @@ export interface DashboardServer {
   rev: () => string;
   /** Recomputes done (tests and timings). */
   recomputes: () => number;
+  /** fs.watch handles open now (the global cap). */
+  watchers: () => number;
+  /** The repository ids served now (--all-repos; [''] in the single-repository mode). */
+  repoIds: () => string[];
   close: () => Promise<void>;
 }
 
@@ -179,101 +234,192 @@ export async function startDashboardServer(o: DashboardServerOptions): Promise<D
   const debounceMs = o.debounceMs ?? DEBOUNCE_MS;
   const minIntervalMs = o.minIntervalMs ?? MIN_RECOMPUTE_INTERVAL_MS;
   const headersTimeout = o.headersTimeoutMs ?? 5_000;
+  const multi = o.repos ?? null;
+  if (!multi && (typeof o.root !== 'string' || !o.collect)) throw new Error('startDashboardServer: a root and a collector, or a repository list');
+  const maxWatchers = multi?.maxWatchers ?? MAX_WATCHERS;
 
-  // --- the summary and its rev -------------------------------------------------
+  // --- the views: one per repository (one in the single-repository mode) ----------------------
   let forgeBusy = false;
-  if (o.forgeRefresh) await o.forgeRefresh().catch((e: unknown) => log(`--forge: ${text(e instanceof Error ? e.message : e)}`));
-  let summary: ServedSummary;
-  let body: string;
+  if (!multi && o.forgeRefresh) await o.forgeRefresh().catch((e: unknown) => log(`--forge: ${text(e instanceof Error ? e.message : e)}`));
   let recomputes = 0;
-  const compute = (): ServedSummary => {
-    const d = o.collect(clock());
+  const views = new Map<string, View>();
+  const compute = (v: View): ServedSummary => {
+    const d = v.source.collect(clock());
     recomputes++;
     return servedSummary(d, summaryRev(d), platform);
   };
-  summary = compute();
-  body = jsonText(summary);
+  const addView = (source: ServedRepo): View | null => {
+    let summary: ServedSummary;
+    try {
+      summary = compute({ source } as View);
+    } catch (error) {
+      log(`dashboard: ${multi ? `repository ${source.id}: ` : ''}the state could not be read: ${text(error instanceof Error ? error.message : error)}`);
+      if (!multi) throw error;
+      return null;
+    }
+    const v: View = { source, summary, body: jsonText(summary), sig: '', watchers: new Map() };
+    v.sig = signature(v);
+    views.set(source.id, v);
+    return v;
+  };
+  const single: ServedRepo | null = multi ? null : { id: '', root: o.root!, collect: o.collect!, watchDirs: o.watchDirs ?? [], pollDirs: o.pollDirs ?? [] };
+  if (single) addView(single);
+  let reposSummary: ReposSummary | null = null;
+  let reposBody = '';
+  let skipped = 0;
+  let listWarnings: string[] = [];
+  const rebuildRepos = (): boolean => {
+    const next = reposSummaryOf([...views.values()], skipped, listWarnings, clock(), platform);
+    const changed = reposSummary === null || next.rev !== reposSummary.rev;
+    reposSummary = next;
+    reposBody = jsonText(next);
+    return changed;
+  };
+  const applyList = (list: ServedRepoList): boolean => {
+    const wanted = new Map(list.repos.slice(0, MAX_REPOS).map((r) => [r.id, r]));
+    let changed = false;
+    for (const [id, v] of views) {
+      // A repository that disappeared (or whose root changed) is dropped.
+      const w = wanted.get(id);
+      if (!w || w.root !== v.source.root) {
+        closeWatchers(v);
+        views.delete(id);
+        changed = true;
+      }
+    }
+    for (const [id, r] of wanted) {
+      if (views.has(id) || !SERVED_REPO_ID.test(id)) continue;
+      if (addView(r)) changed = true;
+    }
+    skipped = list.skipped;
+    listWarnings = list.warnings.map((w) => text(w, 500));
+    return changed;
+  };
+  if (multi) {
+    applyList(await multi.list());
+    rebuildRepos();
+  }
 
   const streams = new Set<ServerResponse>();
   const broadcast = (chunk: string): void => {
     for (const s of streams) s.write(chunk);
   };
-  const recompute = (): void => {
+  const recompute = (v: View): void => {
     let next: ServedSummary;
     try {
-      next = compute();
+      next = compute(v);
     } catch (error) {
-      log(`dashboard: the state could not be read: ${text(error instanceof Error ? error.message : error)}`);
+      log(`dashboard: ${multi ? `repository ${v.source.id}: ` : ''}the state could not be read: ${text(error instanceof Error ? error.message : error)}`);
       return;
     }
-    if (next.rev === summary.rev) return;
-    summary = next;
-    body = jsonText(summary);
-    broadcast(`event: changed\ndata: ${summary.rev}\n\n`);
+    if (next.rev === v.summary.rev) return;
+    v.summary = next;
+    v.body = jsonText(next);
+    // The single-repository stream names the rev only, as before; with --all-repos it names the repository id first.
+    broadcast(`event: changed\ndata: ${multi ? `${v.source.id} ` : ''}${next.rev}\n\n`);
+  };
+  const announceRepos = (): void => {
+    if (multi && rebuildRepos()) broadcast(`event: changed\ndata: repos ${reposSummary!.rev}\n\n`);
   };
 
-  // At most one recompute per minIntervalMs, the first `debounceMs` after a change; later changes in the window join it.
+  // One recompute pass over the changed views at most per minIntervalMs, the first `debounceMs` after a change;
+  // later changes in the window join it, so writers in many repositories cannot pin a CPU either.
+  const dirty = new Set<string>();
   let timer: NodeJS.Timeout | null = null;
   let lastRun = 0;
   let closed = false;
-  const schedule = (): void => {
-    if (timer || closed) return;
+  const schedule = (id: string | null): void => {
+    if (closed) return;
+    if (id === null) for (const k of views.keys()) dirty.add(k);
+    else dirty.add(id);
+    if (timer) return;
     const delay = Math.max(debounceMs, lastRun + minIntervalMs - Date.now());
     timer = setTimeout(() => {
       timer = null;
       lastRun = Date.now();
-      recompute();
+      const ids = [...dirty];
+      dirty.clear();
+      for (const k of ids) {
+        const v = views.get(k);
+        if (v) recompute(v);
+      }
+      announceRepos();
     }, delay);
     timer.unref();
   };
 
-  // --- watching ----------------------------------------------------------------------
-  const watchers = new Map<string, FSWatcher>();
+  // --- watching: fs.watch up to a global cap of watchers, a poll of every view's dirs ------------------
+  let watcherCount = 0;
+  function closeWatchers(v: View): void {
+    for (const w of v.watchers.values()) w.close();
+    watcherCount -= v.watchers.size;
+    v.watchers.clear();
+  }
   const ensureWatchers = (): void => {
-    for (const dir of o.watchDirs) {
-      if (watchers.has(dir)) continue;
-      try {
-        const w = watch(dir, { persistent: false }, () => schedule());
-        w.on('error', () => {
-          w.close();
-          watchers.delete(dir);
-          schedule();
-        });
-        watchers.set(dir, w);
-      } catch {
-        // Not there yet (no factory run): the poll picks it up when it appears.
+    for (const v of views.values()) {
+      for (const dir of v.source.watchDirs) {
+        if (v.watchers.has(dir) || watcherCount >= maxWatchers) continue;
+        try {
+          const id = v.source.id;
+          const w = watch(dir, { persistent: false }, () => schedule(id));
+          w.on('error', () => {
+            w.close();
+            if (v.watchers.delete(dir)) watcherCount--;
+            schedule(id);
+          });
+          v.watchers.set(dir, w);
+          watcherCount++;
+        } catch {
+          // Not there yet (no factory run): the poll picks it up when it appears.
+        }
       }
     }
   };
   ensureWatchers();
-  const allDirs = [...o.watchDirs, ...(o.pollDirs ?? [])];
-  const signature = (): string => allDirs.map(dirSignature).join('\n');
-  let sig = signature();
   const poll = setInterval(() => {
     ensureWatchers();
-    const s = signature();
-    if (s !== sig) {
-      sig = s;
-      schedule();
+    for (const v of views.values()) {
+      const s = signature(v);
+      if (s !== v.sig) {
+        v.sig = s;
+        schedule(v.source.id);
+      }
     }
   }, o.pollMs ?? POLL_MS);
   poll.unref();
-  const tick = setInterval(schedule, o.tickMs ?? TICK_MS);
+  const tick = setInterval(() => schedule(null), o.tickMs ?? TICK_MS);
   tick.unref();
   const ping = setInterval(() => broadcast(': ping\n\n'), o.pingMs ?? PING_MS);
   ping.unref();
   let forgeTimer: NodeJS.Timeout | null = null;
-  if (o.forgeRefresh) {
+  if (!multi && o.forgeRefresh) {
     const refresh = o.forgeRefresh;
     forgeTimer = setInterval(() => {
       if (forgeBusy) return;
       forgeBusy = true;
       refresh().catch((e: unknown) => log(`--forge: ${text(e instanceof Error ? e.message : e)}`)).finally(() => {
         forgeBusy = false;
-        schedule();
+        schedule(null);
       });
     }, o.forgeRefreshMs ?? FORGE_REFRESH_MS);
     forgeTimer.unref();
+  }
+  // --all-repos: the repository set is re-read on a slow timer (new repositories appear, gone ones are dropped).
+  let rescanTimer: NodeJS.Timeout | null = null;
+  let rescanning = false;
+  if (multi) {
+    rescanTimer = setInterval(() => {
+      if (rescanning || closed) return;
+      rescanning = true;
+      Promise.resolve().then(() => multi.list()).then((list) => {
+        if (closed) return;
+        if (applyList(list)) ensureWatchers();
+        announceRepos();
+      }).catch((e: unknown) => log(`dashboard: the repository list could not be re-read: ${text(e instanceof Error ? e.message : e)}`)).finally(() => {
+        rescanning = false;
+      });
+    }, multi.rescanMs ?? RESCAN_MS);
+    rescanTimer.unref();
   }
 
   // --- HTTP ------------------------------------------------------------------------------
@@ -293,6 +439,12 @@ export async function startDashboardServer(o: DashboardServerOptions): Promise<D
   const refuse = (req: IncomingMessage, res: ServerResponse, status: number, headers: Record<string, string> = {}): void => {
     send(req, res, status, { Connection: 'close', ...headers });
   };
+  const sendJson = (req: IncomingMessage, res: ServerResponse, rev: string, payload: string): void => {
+    const etag = `"${rev}"`;
+    if (req.headers['if-none-match'] === etag) return send(req, res, 304, { ETag: etag });
+    return send(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', ETag: etag }, payload);
+  };
+  const revQuery = (query: string | null): boolean => query === null || /^rev=[0-9a-f]{0,64}$/.test(query);
 
   const handle = (req: IncomingMessage, res: ServerResponse): void => {
     const h = req.headers;
@@ -315,18 +467,34 @@ export async function startDashboardServer(o: DashboardServerOptions): Promise<D
 
     if (path === '' && query === null) {
       const nonce = newNonce();
-      return send(req, res, 200, { 'Content-Type': 'text/html; charset=utf-8' }, dashboardPageHtml(nonce), nonce);
+      return send(req, res, 200, { 'Content-Type': 'text/html; charset=utf-8' }, dashboardPageHtml(nonce, { allRepos: multi !== null }), nonce);
     }
-    if (path === 'api/v1/summary' && (query === null || /^rev=[0-9a-f]{0,64}$/.test(query))) {
+    if (!multi && path === 'api/v1/summary' && revQuery(query)) {
       if (!sameSite) return refuse(req, res, 403);
-      const etag = `"${summary.rev}"`;
-      if (h['if-none-match'] === etag) return send(req, res, 304, { ETag: etag });
-      return send(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', ETag: etag }, body);
+      const v = views.get('')!;
+      return sendJson(req, res, v.summary.rev, v.body);
     }
-    if (path.startsWith('api/v1/run/') && query === null) {
+    if (!multi && path.startsWith('api/v1/run/') && query === null) {
       if (!sameSite) return refuse(req, res, 403);
       const key = parseRunKey(path.slice('api/v1/run/'.length));
-      const detail = key === null ? null : runDetail(o.root, o.ledgerDir, summary, key);
+      const detail = key === null ? null : runDetail(o.root!, o.ledgerDir, views.get('')!.summary, key);
+      if (!detail) return refuse(req, res, 404);
+      return send(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8' }, jsonText(detail));
+    }
+    if (multi && path === 'api/v1/repos' && revQuery(query)) {
+      if (!sameSite) return refuse(req, res, 403);
+      return sendJson(req, res, reposSummary!.rev, reposBody);
+    }
+    if (multi && path.startsWith('api/v1/repo/')) {
+      if (!sameSite) return refuse(req, res, 403);
+      // `api/v1/repo/<id>/summary` or `api/v1/repo/<id>/run/<key>`: the id must be one this server issued.
+      const m = /^api\/v1\/repo\/([0-9a-f]{16})\/(summary|run\/([^/]*))$/.exec(path);
+      const v = m ? views.get(m[1]) : undefined;
+      if (!m || !v) return refuse(req, res, 404);
+      if (m[2] === 'summary') return revQuery(query) ? sendJson(req, res, v.summary.rev, v.body) : refuse(req, res, 404);
+      if (query !== null) return refuse(req, res, 404);
+      const key = parseRunKey(m[3]);
+      const detail = key === null ? null : runDetail(v.source.root, o.ledgerDir, v.summary, key);
       if (!detail) return refuse(req, res, 404);
       return send(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8' }, jsonText(detail));
     }
@@ -341,7 +509,7 @@ export async function startDashboardServer(o: DashboardServerOptions): Promise<D
       req.socket.setTimeout(0);
       streams.add(res);
       res.on('close', () => streams.delete(res));
-      res.write(`retry: 3000\n\nevent: changed\ndata: ${summary.rev}\n\n`);
+      res.write(`retry: 3000\n\nevent: changed\ndata: ${multi ? `repos ${reposSummary!.rev}` : views.get('')!.summary.rev}\n\n`);
       return;
     }
     return refuse(req, res, 404);
@@ -366,9 +534,9 @@ export async function startDashboardServer(o: DashboardServerOptions): Promise<D
     clearInterval(tick);
     clearInterval(ping);
     if (forgeTimer) clearInterval(forgeTimer);
+    if (rescanTimer) clearInterval(rescanTimer);
     if (timer) clearTimeout(timer);
-    for (const w of watchers.values()) w.close();
-    watchers.clear();
+    for (const v of views.values()) closeWatchers(v);
   };
   try {
     await new Promise<void>((resolveListen, rejectListen) => {
@@ -395,8 +563,10 @@ export async function startDashboardServer(o: DashboardServerOptions): Promise<D
     url: `http://${DASHBOARD_HOST}:${port}/t/${token}/`,
     port,
     server,
-    rev: () => summary.rev,
+    rev: () => (multi ? reposSummary!.rev : views.get('')!.summary.rev),
     recomputes: () => recomputes,
+    watchers: () => watcherCount,
+    repoIds: () => [...views.keys()],
     close: () => {
       closing ??= new Promise<void>((done) => {
         stopTimers();
@@ -409,6 +579,67 @@ export async function startDashboardServer(o: DashboardServerOptions): Promise<D
     },
   };
 }
+
+/** Each watched and polled dir's signature, joined. */
+function signature(v: View): string {
+  return [...v.source.watchDirs, ...v.source.pollDirs].map(dirSignature).join('\n');
+}
+
+/** One repository's row of `api/v1/repos`: counts, engines, last change, and its attention rows. */
+export interface ServedRepoRow {
+  id: string;
+  /** The root's last path segment (plain text). */
+  name: string;
+  /** The full root, plain text: shown as text only, never in a URL or an attribute. */
+  root: string;
+  /** The root as one word a command line can carry here (rootWord), or null: name the repository in prose. */
+  rootWord: string | null;
+  forge: string | null;
+  byGroup: ServedSummary['attention']['summary']['byGroup'];
+  items: number;
+  engines: number;
+  runs: number;
+  /** The latest run update (ISO), or null. */
+  lastChange: string | null;
+  attention: ServedSummary['attention']['items'];
+}
+
+export interface ReposSummary {
+  schemaVersion: 1;
+  allRepos: true;
+  rev: string;
+  generatedAt: string;
+  repos: ServedRepoRow[];
+  summary: { byGroup: Record<string, number>; repos: number; items: number; engines: number; skipped: number };
+  warnings: string[];
+}
+
+const GROUP_RANK = new Map(['inspect', 'broken', 'decide', 'merge', 'fix', 'limits'].map((g, i) => [g, i]));
+
+/** `api/v1/repos`: the repositories, most urgent first (then the oldest wait), each with its attention rows. */
+export function reposSummaryOf(views: readonly View[], skipped: number, warnings: string[], now: number, platform: NodeJS.Platform = process.platform): ReposSummary {
+  const rows: (ServedRepoRow & { rank: number; oldest: number })[] = views.map((v) => {
+    const s = v.summary;
+    const items = s.attention.items;
+    const last = s.runs.reduce<string | null>((m, r) => (typeof r.updatedAt === 'string' && (m === null || r.updatedAt > m) ? r.updatedAt : m), null);
+    const rank = items.length ? Math.min(...items.map((i) => GROUP_RANK.get(i.group) ?? 99)) : 100;
+    const oldest = Math.max(0, ...items.filter((i) => (GROUP_RANK.get(i.group) ?? 99) === rank).map((i) => i.ageMs ?? 0));
+    return {
+      id: v.source.id, name: text(basename(v.source.root), 120) || text(v.source.root, 120), root: text(v.source.root, 1_000), rootWord: rootWord(v.source.root, platform),
+      forge: s.attention.forge, byGroup: s.attention.summary.byGroup, items: items.length, engines: s.live.engines, runs: s.runs.length, lastChange: last, attention: items, rank, oldest,
+    };
+  });
+  rows.sort((a, b) => a.rank - b.rank || b.oldest - a.oldest || a.root.localeCompare(b.root));
+  const repos = rows.map(({ rank: _r, oldest: _o, ...rest }) => rest);
+  const byGroup: Record<string, number> = {};
+  for (const g of GROUP_RANK.keys()) byGroup[g] = repos.reduce((n, r) => n + (r.byGroup[g as keyof typeof r.byGroup] ?? 0), 0);
+  const stable = { repos: views.map((v) => [v.source.id, v.summary.rev]).sort(), skipped, warnings };
+  return {
+    schemaVersion: 1, allRepos: true, rev: createHash('sha256').update(JSON.stringify(stable)).digest('hex').slice(0, 32), generatedAt: new Date(now).toISOString(), repos,
+    summary: { byGroup, repos: repos.length, items: repos.reduce((n, r) => n + r.items, 0), engines: repos.reduce((n, r) => n + r.engines, 0), skipped }, warnings,
+  };
+}
+
 
 export interface RunDetail {
   schemaVersion: 2;

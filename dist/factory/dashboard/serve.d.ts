@@ -25,8 +25,20 @@
  * one per `minIntervalMs`, so a writer that rewrites files in a loop cannot
  * pin a CPU. The summary's rev is a hash of its time-independent part; when
  * it changes, every event stream gets `event: changed`.
+ *
+ * `--all-repos` (options.repos): one view per repository this host's engine
+ * ledger knows (run/ledger-roots.ts), the list re-read every RESCAN_MS. A
+ * repository is selected by the id the server issued for it (its 16-hex
+ * ledger id), checked against the server's own list: `api/v1/repos`,
+ * `api/v1/repo/<id>/summary`, `api/v1/repo/<id>/run/<key>`; an unknown or
+ * malformed id is a 404 and no path ever comes from a request. Every view's
+ * recompute goes through one debounced, rate-limited pass, and fs.watch
+ * handles are capped across views (MAX_WATCHERS; the rest are polled). An
+ * event names the view: `data: <id> <rev>`, or `data: repos <rev>` for the
+ * list. Full roots are only ever JSON text values.
  */
 import { type Server } from 'http';
+import { type FSWatcher } from 'fs';
 import { type FactoryRunKey } from '../run/state.js';
 import type { DashboardDataV2 } from './collect-v2.js';
 /** The only address the server listens on. */
@@ -44,6 +56,14 @@ export declare const PING_MS = 15000;
 export declare const TICK_MS = 60000;
 export declare const FORGE_REFRESH_MS: number;
 export declare const GATE_DETAIL_MAX = 20000;
+/** --all-repos: fs.watch handles across every repository (the rest are polled only). */
+export declare const MAX_WATCHERS = 64;
+/** --all-repos: the repository set is re-read this often. */
+export declare const RESCAN_MS = 60000;
+/** --all-repos: at most this many repositories are served. */
+export declare const MAX_REPOS = 200;
+/** A repository id the server issues: the ledger id (16 hex). */
+export declare const SERVED_REPO_ID: RegExp;
 /** Constant-time token comparison; a different length still costs one compare and is false. */
 export declare function tokenEquals(given: string, expected: string): boolean;
 /** A `/api/v1/run/<key>` key: a positive integer (no leading zero) or `heal-<8 hex>`; null for anything else. */
@@ -62,18 +82,51 @@ export declare function servedSummary(d: DashboardDataV2, rev: string, platform?
 export declare function summaryRev(d: DashboardDataV2): string;
 /** One cheap signature of a directory: names, sizes and mtimes (a missing dir is its own value). */
 export declare function dirSignature(dir: string): string;
-export interface DashboardServerOptions {
+/** One repository the server serves: its id (issued by the server's own list, never taken from a request), root, collector and dirs. */
+export interface ServedRepo {
+    id: string;
     root: string;
+    collect: (now: number) => DashboardDataV2;
+    watchDirs: readonly string[];
+    pollDirs: readonly string[];
+}
+/** The --all-repos set: the repositories, and how many ledger records were skipped (count only). */
+export interface ServedRepoList {
+    repos: ServedRepo[];
+    skipped: number;
+    warnings: string[];
+}
+/** A served repository and what it last produced. */
+export interface View {
+    source: ServedRepo;
+    summary: ServedSummary;
+    body: string;
+    sig: string;
+    watchers: Map<string, FSWatcher>;
+}
+export interface DashboardServerOptions {
+    /** The single-repository mode (without `repos`): its root, collector and dirs. */
+    root?: string;
     ledgerDir: string;
     /** The collector, as the CLI composes it (limits, --since, --bench-dir, the --forge board). */
-    collect: (now: number) => DashboardDataV2;
+    collect?: (now: number) => DashboardDataV2;
     port?: number;
     now?: () => number;
     /** Watched (fs.watch) and polled. */
-    watchDirs: readonly string[];
+    watchDirs?: readonly string[];
     /** Polled only (bench result dirs). */
     pollDirs?: readonly string[];
-    /** `--forge` only: the forge read, at start and every forgeRefreshMs. Never called otherwise. */
+    /**
+     * `--all-repos`: the repository list, read at start and every rescanMs.
+     * The routes are then `api/v1/repos` and `api/v1/repo/<id>/...`; the
+     * single-repository `api/v1/summary` and `api/v1/run/<key>` are 404.
+     */
+    repos?: {
+        list: () => ServedRepoList | Promise<ServedRepoList>;
+        rescanMs?: number;
+        maxWatchers?: number;
+    };
+    /** `--forge` only (single-repository mode): the forge read, at start and every forgeRefreshMs. Never called otherwise. */
     forgeRefresh?: () => Promise<void>;
     forgeRefreshMs?: number;
     pollMs?: number;
@@ -96,9 +149,48 @@ export interface DashboardServer {
     rev: () => string;
     /** Recomputes done (tests and timings). */
     recomputes: () => number;
+    /** fs.watch handles open now (the global cap). */
+    watchers: () => number;
+    /** The repository ids served now (--all-repos; [''] in the single-repository mode). */
+    repoIds: () => string[];
     close: () => Promise<void>;
 }
 export declare function startDashboardServer(o: DashboardServerOptions): Promise<DashboardServer>;
+/** One repository's row of `api/v1/repos`: counts, engines, last change, and its attention rows. */
+export interface ServedRepoRow {
+    id: string;
+    /** The root's last path segment (plain text). */
+    name: string;
+    /** The full root, plain text: shown as text only, never in a URL or an attribute. */
+    root: string;
+    /** The root as one word a command line can carry here (rootWord), or null: name the repository in prose. */
+    rootWord: string | null;
+    forge: string | null;
+    byGroup: ServedSummary['attention']['summary']['byGroup'];
+    items: number;
+    engines: number;
+    runs: number;
+    /** The latest run update (ISO), or null. */
+    lastChange: string | null;
+    attention: ServedSummary['attention']['items'];
+}
+export interface ReposSummary {
+    schemaVersion: 1;
+    allRepos: true;
+    rev: string;
+    generatedAt: string;
+    repos: ServedRepoRow[];
+    summary: {
+        byGroup: Record<string, number>;
+        repos: number;
+        items: number;
+        engines: number;
+        skipped: number;
+    };
+    warnings: string[];
+}
+/** `api/v1/repos`: the repositories, most urgent first (then the oldest wait), each with its attention rows. */
+export declare function reposSummaryOf(views: readonly View[], skipped: number, warnings: string[], now: number, platform?: NodeJS.Platform): ReposSummary;
 export interface RunDetail {
     schemaVersion: 2;
     rev: string;

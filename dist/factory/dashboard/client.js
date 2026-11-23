@@ -187,14 +187,25 @@ FD.commandEl = function (doc, n, fk, ctx) {
     h(doc, 'span', { 'class': 'muted' }, ' ' + String(n.label) + (n.billed ? ' (billed)' : ''))]);
 };
 
-FD.buildAttention = function (doc, data, ctx) {
+/** --all-repos: the line before a repository's commands (they are repository-relative); its root as text only. */
+FD.whereEl = function (doc, repo) {
+  if (!repo) return null;
+  return h(doc, 'p', { 'class': 'muted' }, repo.rootWord === null || repo.rootWord === undefined
+    ? 'Run these in that repository\'s root (its path cannot be shown safely in a command):'
+    : ['in ', h(doc, 'code', null, String(repo.rootWord)), ':']);
+};
+
+/** scope (--all-repos): { repo } of the rows' repository; group headings then carry no id and copy keys carry the repository id. */
+FD.buildAttention = function (doc, data, ctx, scope) {
   var items = data.attention && Array.isArray(data.attention.items) ? data.attention.items : [];
   if (items.length === 0) return h(doc, 'p', { 'class': 'ok' }, 'Nothing needs you.');
+  var repo = scope ? scope.repo : ctx.repo;
+  var kp = repo ? FD.repoId(repo.id) + ':' : '';
   var out = h(doc, 'div', null);
   FD.GROUPS.forEach(function (g) {
     var group = items.filter(function (i) { return i.group === g[0]; });
     if (group.length === 0) return;
-    out.appendChild(h(doc, 'h3', { id: 'attention-' + g[0] }, [g[1] + ' ', h(doc, 'span', { 'class': 'muted' }, '(' + group.length + ')')]));
+    out.appendChild(h(doc, scope ? 'h4' : 'h3', scope ? null : { id: 'attention-' + g[0] }, [g[1] + ' ', h(doc, 'span', { 'class': 'muted' }, '(' + group.length + ')')]));
     out.appendChild(h(doc, 'ul', { 'class': 'items' }, group.map(function (i) {
       var trusted = i.trust === 'ok';
       var age = h(doc, 'span', null, '');
@@ -208,7 +219,8 @@ FD.buildAttention = function (doc, data, ctx) {
         h(doc, 'p', { 'class': 'muted' }, [facts, facts ? ' · ' : '', age]),
         h(doc, 'p', null, String(i.why)),
         (Array.isArray(i.notes) ? i.notes : []).map(function (n) { return h(doc, 'p', { 'class': 'warn' }, 'note: ' + String(n)); }),
-        next.length ? h(doc, 'ul', { 'class': 'cmds', 'aria-label': 'Next commands' }, next.map(function (n, k) { return FD.commandEl(doc, n, 'copy:' + i.key + ':' + k, ctx); })) : null,
+        next.length && repo && next.some(function (n) { return Array.isArray(n.argv) && n.argv[0] === 'omg'; }) ? FD.whereEl(doc, repo) : null,
+        next.length ? h(doc, 'ul', { 'class': 'cmds', 'aria-label': 'Next commands' }, next.map(function (n, k) { return FD.commandEl(doc, n, 'copy:' + kp + i.key + ':' + k, ctx); })) : null,
         i.log ? h(doc, 'p', { 'class': 'muted' }, ['log: ', h(doc, 'code', null, String(i.log))]) : null
       ]);
     })));
@@ -380,6 +392,47 @@ FD.buildWarnings = function (doc, data) {
   return h(doc, 'ul', null, w.map(function (x) { return h(doc, 'li', { 'class': 'warn' }, String(x)); }));
 };
 
+/** A repository id as the server issued it (16 hex); null for anything else, so no other text reaches a fetch URL. */
+FD.repoId = function (id) { return /^[0-9a-f]{16}$/.test(String(id)) ? String(id) : null; };
+FD.reposOf = function (list) { return list && Array.isArray(list.repos) ? list.repos.filter(function (r) { return FD.repoId(r.id) !== null; }) : []; };
+FD.groupCounts = function (byGroup) {
+  return FD.GROUPS.filter(function (g) { return byGroup && byGroup[g[0]] > 0; }).map(function (g) { return g[1].toLowerCase() + ' ' + byGroup[g[0]]; }).join(', ');
+};
+
+/** --all-repos: one row per repository (name, path as text, counts, engines, last change) with a button that selects it. */
+FD.buildRepos = function (doc, list, ctx) {
+  var repos = FD.reposOf(list);
+  var sel = ctx.ui.repo || null;
+  var allBtn = h(doc, 'button', { type: 'button', 'data-k': 'repo:all', disabled: sel === null }, 'All repositories');
+  allBtn.addEventListener('click', function () { if (ctx.on && ctx.on.repo) ctx.on.repo(null); });
+  ctx.focus['repo:all'] = allBtn;
+  var s = list && list.summary ? list.summary : { repos: 0, skipped: 0 };
+  var parts = [h(doc, 'p', null, [allBtn, ' ', h(doc, 'span', { 'class': 'muted' }, s.repos + ' repositor' + (s.repos === 1 ? 'y' : 'ies') + (s.skipped ? '; ' + s.skipped + ' ledger record(s) skipped (see the terminal: omg factory attention --all-repos --verbose)' : ''))])];
+  parts.push(table(doc, 'Repositories', ['Repository', 'Path', 'Needs you', 'Engines running', 'Runs', 'Last change', 'View'], repos.map(function (r) {
+    var id = FD.repoId(r.id);
+    var b = h(doc, 'button', { type: 'button', 'data-k': 'repo:' + id, disabled: sel === id }, sel === id ? 'Shown' : 'Show');
+    b.addEventListener('click', function () { if (ctx.on && ctx.on.repo) ctx.on.repo(id); });
+    ctx.focus['repo:' + id] = b;
+    var last = h(doc, 'span', null, r.lastChange ? FD.relAge(String(r.lastChange), ctx.now || Date.now()) : '');
+    return [String(r.name), h(doc, 'code', null, String(r.root)), r.items ? FD.groupCounts(r.byGroup) : h(doc, 'span', { 'class': 'ok' }, 'nothing'),
+      String(r.engines), String(r.runs), last, b];
+  }), 'No repository with factory runs is recorded on this host.'));
+  return h(doc, 'div', null, parts);
+};
+
+/** --all-repos, "all repositories": the Attention rows grouped by repository, most urgent repository first. */
+FD.buildAllAttention = function (doc, list, ctx) {
+  var repos = FD.reposOf(list).filter(function (r) { return Array.isArray(r.attention) && r.attention.length > 0; });
+  if (repos.length === 0) return h(doc, 'p', { 'class': 'ok' }, 'Nothing needs you in any repository.');
+  return h(doc, 'div', null, repos.map(function (r) {
+    return h(doc, 'div', null, [
+      h(doc, 'h3', null, [String(r.name) + ' ', h(doc, 'span', { 'class': 'muted' }, '(' + r.attention.length + ')')]),
+      h(doc, 'p', { 'class': 'muted' }, h(doc, 'code', null, String(r.root))),
+      FD.buildAttention(doc, { attention: { items: r.attention } }, ctx, { repo: r })
+    ]);
+  }));
+};
+
 FD.tickAges = function (ages, genMs, nowMs) {
   ages.forEach(function (a) {
     var ms = FD.ageNow(a.ageMs, genMs, nowMs);
@@ -393,8 +446,8 @@ FD.SECTIONS = [['summary', FD.buildSummary], ['attention', FD.buildAttention], [
 function clear(el) { while (el.firstChild) el.removeChild(el.firstChild); }
 
 /** Builds every section into the elements byId(id) returns (b-<section>); returns the ctx with the focus map and the age list. */
-FD.renderAll = function (doc, data, ui, details, on, byId) {
-  var ctx = { ui: ui, details: details, on: on, focus: {}, ages: [] };
+FD.renderAll = function (doc, data, ui, details, on, byId, repo) {
+  var ctx = { ui: ui, details: details, on: on, focus: {}, ages: [], repo: repo || null };
   FD.SECTIONS.forEach(function (s) {
     var target = byId('b-' + s[0]);
     if (!target) return;
@@ -414,7 +467,16 @@ function start() {
   var data = null;
   var lastOk = null;
   var ctx = { ages: [], focus: {} };
-  var ui = { filter: '', phase: '', sort: null, page: 1, open: {} };
+  var ui = { filter: '', phase: '', sort: null, page: 1, open: {}, repo: null };
+  // --all-repos: the page has a Repositories section; a repository is selected by the id the server issued.
+  var multi = !!byId('b-repos');
+  var list = null;
+  var REPO_ONLY = ['summary', 'live', 'runs', 'tasks', 'cost', 'throughput', 'bench', 'warnings'];
+  function selectedRepo() {
+    if (!list || ui.repo === null) return null;
+    var hit = FD.reposOf(list).filter(function (r) { return r.id === ui.repo; });
+    return hit.length ? hit[0] : null;
+  }
   var details = {};
   var pending = false;
   var lastCount = null;
@@ -443,15 +505,38 @@ function start() {
     if (want.indexOf(ui.phase) < 0) ui.phase = '';
     sel.value = ui.phase;
   }
+  function renderRepos() {
+    var rctx = { ui: ui, on: on, focus: {}, ages: [], now: Date.now() };
+    var target = byId('b-repos');
+    clear(target);
+    target.appendChild(FD.buildRepos(doc, list, rctx));
+    var r = selectedRepo();
+    byId('scope').textContent = r ? 'Showing one repository: ' + String(r.name) : 'Showing all repositories';
+    REPO_ONLY.forEach(function (id) { var el = byId('b-' + id); if (el && el.parentNode) el.parentNode.hidden = r === null; });
+    return rctx;
+  }
   function render() {
-    if (!data) return;
+    if (multi ? !list : !data) return;
     if (selecting()) { pending = true; return; }
     pending = false;
     var active = doc.activeElement;
     var fk = active && active.getAttribute ? active.getAttribute('data-k') : null;
     var x = window.scrollX, y = window.scrollY;
+    var rctx = multi ? renderRepos() : null;
+    if (multi && (selectedRepo() === null || !data)) {
+      ctx = { ui: ui, details: details, on: on, focus: rctx.focus, ages: [] };
+      var att = byId('b-attention');
+      clear(att);
+      att.appendChild(selectedRepo() === null ? FD.buildAllAttention(doc, list, ctx) : FD.h(doc, 'p', { 'class': 'muted' }, 'Loading…'));
+      FD.tickAges(ctx.ages, Date.parse(list.generatedAt), Date.now());
+      if (fk && ctx.focus[fk]) ctx.focus[fk].focus({ preventScroll: true });
+      window.scrollTo(x, y);
+      byId('generated').textContent = 'Data as of ' + new Date(Date.parse(list.generatedAt)).toLocaleString() + '; local state only, no forge read';
+      return;
+    }
     syncPhases();
-    ctx = FD.renderAll(doc, data, ui, details, on, byId);
+    ctx = FD.renderAll(doc, data, ui, details, on, byId, multi ? selectedRepo() : null);
+    if (rctx) Object.keys(rctx.focus).forEach(function (k) { ctx.focus[k] = rctx.focus[k]; });
     FD.tickAges(ctx.ages, Date.parse(data.generatedAt), Date.now());
     if (fk && ctx.focus[fk]) ctx.focus[fk].focus({ preventScroll: true });
     window.scrollTo(x, y);
@@ -465,18 +550,42 @@ function start() {
   }
   function loadDetail(api) {
     if (FD.apiKey(api) === null && !/^[1-9][0-9]{0,8}$/.test(api)) return;
-    fetchJson('api/v1/run/' + api).then(function (d) { details[api] = d; render(); }, function () { details[api] = { error: 'The detail could not be loaded (the run may be gone).' }; render(); });
+    if (multi && FD.repoId(ui.repo) === null) return;
+    var want = ui.repo;
+    var rid = FD.repoId(want);
+    fetchJson(multi ? 'api/v1/repo/' + rid + '/run/' + api : 'api/v1/run/' + api).then(function (d) { if (ui.repo !== want) return; details[api] = d; render(); }, function () { details[api] = { error: 'The detail could not be loaded (the run may be gone).' }; render(); });
+  }
+  function loadRepos() {
+    fetchJson('api/v1/repos').then(function (d) {
+      if (!d || d.schemaVersion !== 1 || d.allRepos !== true) throw new Error('unexpected data');
+      list = d;
+      lastOk = Date.now();
+      if (conn !== 'live' && conn !== 'reconnecting') setConn('live');
+      // A repository that disappeared from the server's list falls back to "all repositories".
+      if (ui.repo !== null && selectedRepo() === null) { ui.repo = null; data = null; }
+      var count = d.summary.items;
+      if (lastCount !== null && count !== lastCount) byId('announce').textContent = count === 0 ? 'Nothing needs you now.' : count + (count === 1 ? ' item needs' : ' items need') + ' you now.';
+      lastCount = count;
+      render();
+    }, function () { setConn('stale'); });
   }
   function load() {
-    fetchJson('api/v1/summary').then(function (d) {
+    if (multi) loadRepos();
+    if (!multi || FD.repoId(ui.repo) !== null) loadSummary();
+  }
+  function loadSummary() {
+    var want = ui.repo;
+    var rid = FD.repoId(want);
+    fetchJson(multi ? 'api/v1/repo/' + rid + '/summary' : 'api/v1/summary').then(function (d) {
       if (!d || d.schemaVersion !== 2) throw new Error('unexpected data');
+      if (multi && ui.repo !== want) return;
       var changed = !data || data.rev !== d.rev;
       data = d;
       lastOk = Date.now();
       if (conn !== 'live' && conn !== 'reconnecting') setConn('live');
       var count = d.attention.items.length;
-      if (lastCount !== null && count !== lastCount) byId('announce').textContent = count === 0 ? 'Nothing needs you now.' : count + (count === 1 ? ' item needs' : ' items need') + ' you now.';
-      lastCount = count;
+      if (!multi && lastCount !== null && count !== lastCount) byId('announce').textContent = count === 0 ? 'Nothing needs you now.' : count + (count === 1 ? ' item needs' : ' items need') + ' you now.';
+      if (!multi) lastCount = count;
       if (changed) Object.keys(ui.open).forEach(function (k) { if (ui.open[k]) loadDetail(k); });
       render();
     }, function () { setConn('stale'); });
@@ -506,20 +615,38 @@ function start() {
       if (ui.open[api]) { delete details[api]; loadDetail(api); }
       render();
     },
-    page: function (d) { ui.page += d; render(); }
+    page: function (d) { ui.page += d; render(); },
+    repo: function (id) {
+      var next = id === null ? null : FD.repoId(id);
+      if (id !== null && next === null) return;
+      ui.repo = next;
+      ui.open = {};
+      ui.page = 1;
+      details = {};
+      data = null;
+      render();
+      if (next !== null) loadSummary();
+    }
   };
   byId('f-text').addEventListener('input', function (e) { ui.filter = e.target.value; ui.page = 1; render(); });
   byId('f-phase').addEventListener('change', function (e) { ui.phase = e.target.value; ui.page = 1; render(); });
   doc.addEventListener('selectionchange', function () { if (pending && !selecting()) render(); });
   setInterval(function () {
-    if (data) FD.tickAges(ctx.ages, Date.parse(data.generatedAt), Date.now());
+    if (multi && !data && list) FD.tickAges(ctx.ages, Date.parse(list.generatedAt), Date.now());
+    else if (data) FD.tickAges(ctx.ages, Date.parse(data.generatedAt), Date.now());
     if (conn === 'stale') setConn('stale');
   }, 5000);
 
   var es = null;
   function connect() {
     es = new EventSource('events');
-    es.addEventListener('changed', function (e) { if (!data || String(e.data) !== data.rev) load(); });
+    es.addEventListener('changed', function (e) {
+      if (!multi) { if (!data || String(e.data) !== data.rev) load(); return; }
+      // --all-repos: "repos <rev>" for the list, "<id> <rev>" for one repository.
+      var parts = String(e.data).split(' ');
+      if (parts[0] === 'repos') { if (!list || parts[1] !== list.rev) loadRepos(); }
+      else if (ui.repo !== null && parts[0] === ui.repo && (!data || parts[1] !== data.rev)) loadSummary();
+    });
     es.addEventListener('open', function () { setConn('live'); load(); });
     es.addEventListener('error', function () {
       if (es.readyState === 2) { setConn('stale'); setTimeout(connect, 10000); } else setConn('reconnecting');
@@ -539,8 +666,10 @@ const SECTIONS = [
  * The page. It holds no data at all (the script fetches it), so nothing from
  * a state is ever in this HTML. `nonce` is the response's CSP nonce, the only
  * thing that varies (base64: no character that needs escaping here).
+ * `allRepos` (--serve --all-repos) adds the Repositories section first; the
+ * script then fetches the repository list and one repository by its id.
  */
-export function dashboardPageHtml(nonce) {
+export function dashboardPageHtml(nonce, o = {}) {
     if (!/^[A-Za-z0-9+/=]+$/.test(nonce))
         throw new Error('bad nonce');
     return `<!doctype html>
@@ -551,11 +680,11 @@ export function dashboardPageHtml(nonce) {
 <header><h1>Factory dashboard</h1>
 <p><span id="conn" class="conn">Connecting…</span> <span id="generated" class="muted"></span></p>
 <p class="muted">Live, read-only and local: this page copies commands and never runs them. Stop the server with Ctrl-C in its terminal.</p>
-<nav aria-label="Sections"><ul>${SECTIONS.map(([id, title]) => `<li><a href="#${id}">${title}</a></li>`).join('')}</ul></nav></header>
+<nav aria-label="Sections"><ul>${o.allRepos ? '<li><a href="#repos">Repositories</a></li>' : ''}${SECTIONS.map(([id, title]) => `<li><a href="#${id}">${title}</a></li>`).join('')}</ul></nav></header>
 <main id="main" tabindex="-1">
 <div id="announce" class="sr" aria-live="polite"></div>
 <noscript><p class="warn">This page needs JavaScript. Without it use <code>omg factory dashboard --out dashboard.html --watch</code>.</p></noscript>
-<section aria-label="Summary"><div id="b-summary"></div></section>
+${o.allRepos ? '<section id="repos" aria-labelledby="h-repos"><h2 id="h-repos">Repositories</h2><p id="scope" class="muted" aria-live="polite"></p><div id="b-repos"></div></section>\n' : ''}<section aria-label="Summary"><div id="b-summary"></div></section>
 <section id="attention" aria-labelledby="h-attention"><h2 id="h-attention">Attention</h2><div id="b-attention"></div></section>
 <section id="live" aria-labelledby="h-live"><h2 id="h-live">Live now</h2><div id="b-live"></div></section>
 <section id="runs" aria-labelledby="h-runs"><h2 id="h-runs">Runs</h2>

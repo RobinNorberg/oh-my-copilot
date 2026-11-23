@@ -131,6 +131,13 @@ export declare function commandText(argv: readonly string[], platform?: NodeJS.P
     line: string;
     inRoot: boolean;
 };
+/**
+ * A repository root as one copyable word for the shell family of `platform`
+ * (the rule commandText applies to `git -C <root>`), or null when it cannot
+ * be shown safely there: the caller then names the repository in prose and
+ * prints no path inside a command.
+ */
+export declare function rootWord(root: string, platform?: NodeJS.Platform): string | null;
 /** commandText as one phrase: the line, or "in the repository root: <line>". */
 export declare function humanCommand(argv: readonly string[], platform?: NodeJS.Platform): string;
 //# sourceMappingURL=gate-next.d.ts.map

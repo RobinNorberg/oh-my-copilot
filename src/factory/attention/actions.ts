@@ -17,7 +17,7 @@ import {
 import type { FactoryRunKey } from '../run/state.js';
 
 export {
-  cancelArgv, commandLine, commandText, fromSealed, gateCommands, gateStepsFor, mergeArgv, nextCommands, resumeArgv, stateFacts, stateGateNext, statusArgv, validRunKey,
+  cancelArgv, commandLine, commandText, fromSealed, rootWord, gateCommands, gateStepsFor, mergeArgv, nextCommands, resumeArgv, stateFacts, stateGateNext, statusArgv, validRunKey,
   type MergeFacts, type NextCommand,
 } from '../run/gate-next.js';
 

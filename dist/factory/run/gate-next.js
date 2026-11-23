@@ -292,6 +292,17 @@ export function commandText(argv, platform = process.platform) {
     }
     return { line: commandLine(argv, platform), inRoot: false };
 }
+/**
+ * A repository root as one copyable word for the shell family of `platform`
+ * (the rule commandText applies to `git -C <root>`), or null when it cannot
+ * be shown safely there: the caller then names the repository in prose and
+ * prints no path inside a command.
+ */
+export function rootWord(root, platform = process.platform) {
+    if (!portable(root, platform) && (platform === 'win32' || unprintable(root)))
+        return null;
+    return quoteWord(root, platform);
+}
 /** commandText as one phrase: the line, or "in the repository root: <line>". */
 export function humanCommand(argv, platform = process.platform) {
     const t = commandText(argv, platform);
