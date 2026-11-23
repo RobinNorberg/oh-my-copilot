@@ -6,7 +6,7 @@
  * through plainText in collect.ts; commands are printed from their argv.
  */
 import chalk from 'chalk';
-import { ATTENTION_GROUPS, commandLine, GROUP_TITLES } from './actions.js';
+import { ATTENTION_GROUPS, commandText, GROUP_TITLES } from './actions.js';
 export function ageText(ms) {
     if (ms === null)
         return 'age unknown';
@@ -25,6 +25,20 @@ export function summaryLine(d) {
     const engines = d.summary.engines.live === 0 ? 'no engine running' : `${plural(d.summary.engines.live, 'engine')} running`;
     return `${total === 0 ? 'nothing needs you' : `${plural(total, 'item')} need${total === 1 ? 's' : ''} you`}${parts.length ? `: ${parts.join(', ')}` : ''}; ${engines}`;
 }
+/** Characters of reason per line: with its prefix a line stays inside an 80-column terminal, so the terminal does not wrap it. */
+export const REASON_WIDTH = 64;
+/**
+ * The reason cut into lines of REASON_WIDTH, each behind a fixed prefix
+ * (`reason: `, then `| `): no reason text starts a line, so none can look
+ * like a `$` command row.
+ */
+export function reasonLines(reason) {
+    const chars = [...reason];
+    const out = [];
+    for (let k = 0; k < chars.length; k += REASON_WIDTH)
+        out.push(`    ${k === 0 ? 'reason: ' : '      | '}${chars.slice(k, k + REASON_WIDTH).join('')}`);
+    return out;
+}
 function itemLines(i, verbose) {
     const head = [chalk.bold(i.key)];
     if (i.title)
@@ -39,10 +53,16 @@ function itemLines(i, verbose) {
     const lines = [`  ${head.join('  ')}`, `    ${facts.filter(Boolean).join('  ')}`, `    ${i.why}`];
     for (const n of i.notes)
         lines.push(chalk.yellow(`    note: ${n}`));
-    if (verbose && i.reason)
-        lines.push(chalk.gray(`    reason: ${i.reason}`));
-    for (const n of i.next)
-        lines.push(`    ${chalk.cyan('$')} ${commandLine(n.argv)}  ${chalk.gray(`# ${n.label}`)}`);
+    // Only a trusted row carries a reason (collect.ts); the check here keeps an untrusted one off the screen regardless.
+    if (verbose && i.reason && i.trust === 'ok')
+        for (const l of reasonLines(i.reason))
+            lines.push(chalk.gray(l));
+    for (const n of i.next) {
+        const c = commandText(n.argv);
+        if (c.inRoot)
+            lines.push(chalk.gray('    run in the repository root:'));
+        lines.push(`    ${chalk.cyan('$')} ${c.line}  ${chalk.gray(`# ${n.label}${n.billed ? ' (billed)' : ''}`)}`);
+    }
     if (i.log)
         lines.push(chalk.gray(`    log: ${i.log}`));
     return lines;

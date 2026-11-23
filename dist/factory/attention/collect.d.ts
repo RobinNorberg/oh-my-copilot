@@ -14,6 +14,13 @@
  * commands are suppressed except the read-only status: a command built from
  * tampered state would be an injection vector. Every string from state goes
  * through plainText and is cut; commands come from actions.ts only.
+ *
+ * Untrusted state must not HIDE a row either: no field of a file decides to
+ * drop it before that file's trust check, the ledger is listed as well as
+ * the state dir (a deleted state the engine recorded is a row), an owner
+ * file counts as a live engine only when it is the engine's recorded write,
+ * and a heal record is checked against its seal before any of its fields
+ * is read.
  */
 import type { ForgeKind } from '../../forge/types.js';
 import { type FactoryRunLimits } from '../run/budget.js';
@@ -23,7 +30,16 @@ export declare const ATTENTION_SCHEMA_VERSION = 1;
 /** A live engine with no progress event for this long is "possibly hung" (a hint only: the log is unsealed). */
 export declare const HUNG_AFTER_MS: number;
 export declare const TITLE_MAX = 60;
-export type AttentionTrust = 'ok' | 'seal' | 'ledger' | 'unreadable';
+/** A state, heal or owner file larger than this is not read (an "unreadable" row). */
+export declare const READ_MAX_BYTES: number;
+/**
+ * `ok` the engine's own state; `seal` its integrity seal fails; `ledger` the
+ * engine ledger holds other bytes (or cannot be read); `unverified` this
+ * host's ledger has no record of it; `owner` an owner file the engine did
+ * not write; `missing` the ledger records a state file that is gone;
+ * `unreadable` the file cannot be read.
+ */
+export type AttentionTrust = 'ok' | 'seal' | 'ledger' | 'unverified' | 'owner' | 'missing' | 'unreadable';
 export interface AttentionItem {
     /** `#12`, `heal-0123abcd`, or `checkout` for the tamper hold. */
     key: string;
@@ -37,7 +53,7 @@ export interface AttentionItem {
     head: string | null;
     title: string;
     why: string;
-    /** --verbose / --json: the run's reason, sanitised (never gate.detail). */
+    /** --verbose / --json: the run's reason, sanitised (never gate.detail); trusted rows only. */
     reason?: string;
     next: NextCommand[];
     trust: AttentionTrust;
@@ -73,8 +89,22 @@ export interface CollectAttentionOptions {
     owner?: OwnerDeps;
     verbose?: boolean;
 }
+type FileRead = {
+    bytes: Buffer;
+} | {
+    missing: true;
+} | {
+    error: string;
+};
+/**
+ * One bounded read of a regular file: lstat first (a link, FIFO, device or
+ * directory is refused without being opened), then the opened file must be
+ * that same regular file and no larger than READ_MAX_BYTES.
+ */
+export declare function readRegularFile(path: string, max?: number): FileRead;
 /** One render scope: the state root is resolved once, not once per file path (dozens of git-metadata stats each on Windows). */
 export declare function collectAttention(root: string, o: CollectAttentionOptions): AttentionData;
-/** The `--json` shape: the items without their sort key, notes and log kept. */
+/** The `--json` shape: the items without their sort key, notes and log kept; a reason only on a trusted row. */
 export declare function attentionJson(d: AttentionData): Record<string, unknown>;
+export {};
 //# sourceMappingURL=collect.d.ts.map

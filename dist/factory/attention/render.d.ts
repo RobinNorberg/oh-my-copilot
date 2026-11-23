@@ -8,6 +8,14 @@
 import type { AttentionData } from './collect.js';
 export declare function ageText(ms: number | null): string;
 export declare function summaryLine(d: AttentionData): string;
+/** Characters of reason per line: with its prefix a line stays inside an 80-column terminal, so the terminal does not wrap it. */
+export declare const REASON_WIDTH = 64;
+/**
+ * The reason cut into lines of REASON_WIDTH, each behind a fixed prefix
+ * (`reason: `, then `| `): no reason text starts a line, so none can look
+ * like a `$` command row.
+ */
+export declare function reasonLines(reason: string): string[];
 export declare function renderAttention(d: AttentionData, o?: {
     verbose?: boolean;
 }): string;

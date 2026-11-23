@@ -20,7 +20,7 @@ import { tamperHoldPath } from '../../run/tamper-quarantine.js';
 import { factoryProgressFile } from '../../run/progress.js';
 import {
   computeFactoryIntegrity, createFactoryState, factoryOwnerPath, factoryStateDir, factoryStatePath, healRunKey, moveTo, runKeyOf, setGate, updateFactoryState,
-  type FactoryRunState,
+  type FactoryRunKey, type FactoryRunState,
 } from '../../run/state.js';
 import { commitFile, review } from '../../run/__tests__/fake-lanes.js';
 import { lanesFor, LOCAL_ISSUE, localOpts, localWorld } from '../../run/__tests__/engine-local-harness.js';
@@ -61,6 +61,15 @@ function asEngine(s: FactoryRunState): void {
   const key = runKeyOf(s);
   const l = EngineLedger.open(ledgerDir, root, key);
   updateFactoryState(root, key, () => s, { onWrite: (p, c) => l.record(p, c) });
+}
+
+/** An owner file as the engine leaves it: written, and recorded in the run's engine ledger. */
+function ownerAsEngine(key: FactoryRunKey, owner: Record<string, unknown>): void {
+  const path = factoryOwnerPath(root, key);
+  const content = JSON.stringify(owner);
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, content);
+  EngineLedger.open(ledgerDir, root, key).record(path, content);
 }
 
 /** A park at `gate` `hours` ago, from implement. */
@@ -182,9 +191,10 @@ describe('omg factory attention', () => {
     const s4 = parked(4, 'merge', 2, { phase: 'merge', pr: 14, head: HEAD });
     writeFileSync(factoryStatePath(root, 4), JSON.stringify({ ...s4, integrity: computeFactoryIntegrity(s4) }));
     expect(await attention(['--json'])).toBe(EXIT_AWAITING_HUMAN);
-    expect(item('#4')).toMatchObject({ group: 'inspect', trust: 'ledger', next: [{ argv: ['omg', 'factory', 'run', 'status', '4'] }] });
-    expect(item('#4').why).toMatch(/has no record of it/);
-    expect(item('#2').why).not.toMatch(/has no record/);
+    expect(item('#4')).toMatchObject({ group: 'inspect', trust: 'unverified', next: [{ argv: ['omg', 'factory', 'run', 'status', '4'] }] });
+    expect(item('#4').why).toMatch(/^cannot be verified on this host: no engine ledger record/);
+    expect(item('#4').why).not.toMatch(/not the engine's last write/);
+    expect(item('#2').why).not.toMatch(/cannot be verified/);
     expect(item('#1')).toMatchObject({ group: 'inspect', trust: 'seal' });
     expect(item('#2')).toMatchObject({ group: 'inspect', trust: 'ledger' });
     expect(item('#3')).toMatchObject({ group: 'inspect', trust: 'ledger' });
@@ -224,7 +234,7 @@ describe('omg factory attention', () => {
   it('writes nothing, while an engine holds a run (live owner file)', async () => {
     seedGroups();
     asEngine(moveTo(issueRun(20), 'implement', 'plan ok', at(1)));
-    writeFileSync(factoryOwnerPath(root, 20), JSON.stringify({ pid: 777, hostname: 'this-host', startedAt: at(1) }));
+    ownerAsEngine(20, { pid: 777, hostname: 'this-host', startedAt: at(1) });
     const log = factoryProgressFile(root, 20);
     mkdirSync(dirname(log), { recursive: true });
     writeFileSync(log, '{}\n');
@@ -257,6 +267,8 @@ describe('omg factory attention', () => {
       version: 1, sig8: 'fedcba98', signature: 's', class: 'regression', classification: {} as never, source: 'push',
       firstSeen: { runId: '1', at: at(5) }, lastSeen: { runId: '1', at: at(5) }, count: 1, seenRuns: ['1'],
       healRun: { id: 'h', open: true, startedAt: at(5) }, next: 'heal-approve', rerunIntents: [], updatedAt: at(4),
+      lanes: [{ id: 'heal-fedcba98-debug-1', kind: 'debug', startSha: HEAD, status: 'completed', maxCredits: 30, startedAt: at(5), endedAt: at(4), pid: 5, confinement: 'none' }],
+      diagnosis: { at: at(4), laneId: 'heal-fedcba98-debug-1', outcome: 'valid', evidence: {} },
     };
     writeHealState(root, sig);
     writeHealSeal(ledgerDir, root, sig);
@@ -294,6 +306,223 @@ describe('omg factory attention', () => {
     } finally {
       rmSync(w.dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe('omg factory attention: untrusted state cannot hide a row', () => {
+  const collect = (verbose = false) => collectAttention(root, { ledgerDir, now: () => NOW, owner: OWNER, verbose });
+  const exitOf = (d: ReturnType<typeof collect>) => (d.readFailed ? 1 : d.items.length > 0 ? EXIT_AWAITING_HUMAN : 0);
+  const rows = (d: ReturnType<typeof collect>) => d.items.map((i) => [i.key, i.group, i.trust]);
+
+  it('a deleted state file the ledger recorded is an Inspect row; a finished or never-written one is not', () => {
+    asEngine(parked(7, 'merge', 3, { phase: 'merge', pr: 3, head: HEAD }));
+    asEngine(moveTo(issueRun(8), 'merged', 'merged', at(2)));
+    asEngine(moveTo(issueRun(9), 'cancelled', 'cancelled', at(2)));
+    for (const k of [7, 8, 9]) rmSync(factoryStatePath(root, k));
+    // A ledger that records the state as "must not exist", and one that never tracked it.
+    EngineLedger.open(ledgerDir, root, 10).record(factoryStatePath(root, 10), null);
+    EngineLedger.open(ledgerDir, root, 11).record(factoryOwnerPath(root, 11), null);
+    const d = collect();
+    expect(rows(d)).toEqual([['#7', 'inspect', 'missing']]);
+    expect(d.items[0].why).toMatch(/state file is missing; the ledger holds its last write/);
+    expect(d.items[0].next.map((n) => n.argv.join(' '))).toEqual(['omg factory run status 7']);
+    expect(exitOf(d)).toBe(EXIT_AWAITING_HUMAN);
+  });
+
+  it('a cleaned run keeps its terminal state, so it is not "missing"; a reset moves the ledger aside first', async () => {
+    asEngine(moveTo(issueRun(12), 'cancelled', 'cancelled', at(2)));
+    expect(collect().items).toEqual([]);
+    // reset.ts: the ledger is renamed `<file>.reset-<stamp>` before the state: neither is listed.
+    const lf = join(dirname(EngineLedger.open(ledgerDir, root, 12).file), 'run-12.json');
+    writeFileSync(`${lf}.reset-1`, readFileSync(lf));
+    rmSync(lf);
+    rmSync(factoryStatePath(root, 12));
+    expect(collect().items).toEqual([]);
+  });
+
+  it('an alias file name (run-01.json) is not run 1; the real run 1 shows from the ledger when its file is gone', () => {
+    asEngine(parked(1, 'merge', 3, { phase: 'merge', pr: 3, head: HEAD }));
+    writeFileSync(join(factoryStateDir(root), 'run-01.json'), readFileSync(factoryStatePath(root, 1)));
+    expect(rows(collect())).toEqual([['#1', 'merge', 'ok']]);
+    rmSync(factoryStatePath(root, 1));
+    expect(rows(collect())).toEqual([['#1', 'inspect', 'missing']]);
+  });
+
+  it('a forged owner file with a future progress log does not hide a dead engine; a recorded owner on another host is shown', () => {
+    asEngine(moveTo(issueRun(30), 'implement', 'plan ok', at(25)));
+    expect(rows(collect())).toEqual([['#30', 'broken', 'ok']]);
+    writeFileSync(factoryOwnerPath(root, 30), JSON.stringify({ pid: 4242, hostname: 'other-host', startedAt: at(1) }));
+    const log = factoryProgressFile(root, 30);
+    mkdirSync(dirname(log), { recursive: true });
+    writeFileSync(log, 'x');
+    const future = new Date(NOW + 365 * 86_400_000);
+    utimesSync(log, future, future);
+    let d = collect();
+    expect(rows(d)).toEqual([['#30', 'inspect', 'owner']]);
+    expect(d.items[0].why).toMatch(/an owner file the engine did not write/);
+    expect(d.items[0].next.map((n) => n.argv.join(' '))).toEqual(['omg factory run status 30']);
+    expect(d.summary.engines.live).toBe(0);
+    // The engine's own owner record on another host (a shared state dir): shown, with only the status command.
+    ownerAsEngine(30, { pid: 4242, hostname: 'other-host', startedAt: at(1) });
+    d = collect();
+    expect(rows(d)).toEqual([['#30', 'broken', 'ok']]);
+    expect(d.items[0].why).toMatch(/engine on another host/);
+    expect(d.items[0].notes.join(' ')).toMatch(/cannot tell whether that engine is alive/);
+    expect(d.items[0].next.map((n) => n.argv.join(' '))).toEqual(['omg factory run status 30']);
+    // A live engine here with a future progress-log time is "possibly hung", not fresh.
+    ownerAsEngine(30, { pid: 777, hostname: 'this-host', startedAt: at(1) });
+    d = collect();
+    expect(rows(d)).toEqual([['#30', 'broken', 'ok']]);
+    expect(d.items[0].notes.join(' ')).toMatch(/possibly hung: .*modification time in the future/);
+    // A forged owner on a parked run keeps the park's row and says so.
+    asEngine(parked(31, 'ci-failed', 2));
+    writeFileSync(factoryOwnerPath(root, 31), JSON.stringify({ pid: 777, hostname: 'this-host', startedAt: at(1) }));
+    const p = collect().items.find((i) => i.key === '#31')!;
+    expect(p).toMatchObject({ group: 'fix', trust: 'ok' });
+    expect(p.notes.join(' ')).toMatch(/owner file the engine did not write/);
+  });
+
+  it('a non-regular or oversized state, owner or heal file is an unreadable row, never followed or blocked on', () => {
+    mkdirSync(factoryStatePath(root, 40), { recursive: true });
+    asEngine(moveTo(issueRun(41), 'implement', 'plan ok', at(25)));
+    mkdirSync(factoryOwnerPath(root, 41));
+    asEngine(parked(42, 'ci-failed', 2));
+    writeFileSync(factoryStatePath(root, 42), Buffer.alloc(8 * 1024 * 1024 + 1, 0x20));
+    mkdirSync(join(factoryStateDir(root), 'heal', '0badc0de.json'), { recursive: true });
+    const d = collect();
+    expect(rows(d)).toEqual([['#40', 'inspect', 'unreadable'], ['#42', 'inspect', 'unreadable'], ['heal-0badc0de', 'inspect', 'unreadable'], ['#41', 'broken', 'ok']]);
+    expect(d.items.find((i) => i.key === '#40')!.why).toMatch(/a directory, not a regular file/);
+    expect(d.items.find((i) => i.key === '#42')!.why).toMatch(/larger than/);
+    expect(exitOf(d)).toBe(1);
+  });
+
+  it('mutating any top-level field of a sealed state never removes a row and never gives exit 0', () => {
+    asEngine(parked(50, 'merge', 3, { phase: 'merge', pr: 3, head: HEAD }));
+    asEngine(moveTo(issueRun(51), 'implement', 'plan ok', at(25)));
+    asEngine(moveTo(issueRun(52), 'merged', 'merged', at(2)));
+    const baseline = collect();
+    expect(baseline.items.length).toBe(2);
+    expect(exitOf(baseline)).toBe(EXIT_AWAITING_HUMAN);
+    for (const key of [50, 51, 52]) {
+      const path = factoryStatePath(root, key);
+      const original = readFileSync(path, 'utf8');
+      const fields = Object.keys(JSON.parse(original) as object);
+      expect(fields.length).toBeGreaterThan(10);
+      for (const field of fields) {
+        const s = JSON.parse(original) as Record<string, unknown>;
+        const wrong = typeof s[field] === 'string' ? 12 : 'x';
+        for (const mutate of ['delete', 'null', 'type'] as const) {
+          for (const reseal of [false, true]) {
+            const m: Record<string, unknown> = { ...s };
+            if (mutate === 'delete') delete m[field];
+            else m[field] = mutate === 'null' ? null : wrong;
+            if (reseal && field !== 'integrity') {
+              try { m.integrity = computeFactoryIntegrity(m as unknown as FactoryRunState); } catch { /* a shape the seal cannot hash */ }
+            }
+            writeFileSync(path, JSON.stringify(m, null, 2));
+            const d = collect(true);
+            const what = `#${key}.${field} ${mutate}${reseal ? ' resealed' : ''}`;
+            expect(d.items.length, what).toBeGreaterThanOrEqual(baseline.items.length + (key === 52 ? 1 : 0));
+            expect(d.items.some((i) => i.key === `#${key}` && i.trust !== 'ok'), what).toBe(true);
+            expect(exitOf(d), what).not.toBe(0);
+            // An untrusted row carries no reason, and only the status command.
+            for (const i of d.items.filter((x) => x.trust !== 'ok')) {
+              expect(i.reason, what).toBeUndefined();
+              expect(i.next.every((n) => n.argv.join(' ').startsWith('omg factory run status ') && !n.billed), what).toBe(true);
+            }
+          }
+        }
+      }
+      writeFileSync(path, original);
+    }
+    expect(collect().items.length).toBe(2);
+  });
+
+  it('a heal record is judged by its seal first; `next` (unsealed) decides nothing', () => {
+    const sig8 = 'fedcba98';
+    const lane = { id: `heal-${sig8}-debug-1`, kind: 'debug' as const, startSha: HEAD, status: 'completed' as const, maxCredits: 30, startedAt: at(5), endedAt: at(4), pid: 5, confinement: 'none' };
+    const sig: HealSignatureState = {
+      version: 1, sig8, signature: 's', class: 'regression', classification: {} as never, source: 'push',
+      firstSeen: { runId: '1', at: at(5) }, lastSeen: { runId: '1', at: at(5) }, count: 1, seenRuns: ['1'],
+      healRun: { id: `heal-${sig8}`, open: true, startedAt: at(5) }, lanes: [lane], diagnosis: { at: at(4), laneId: lane.id, outcome: 'valid', evidence: {} },
+      next: 'heal-approve', rerunIntents: [], updatedAt: at(4),
+    };
+    const write = (s: HealSignatureState, seal = true) => { writeHealState(root, s); if (seal) writeHealSeal(ledgerDir, root, s); };
+    const one = () => { const d = collect(); expect(d.items).toHaveLength(1); return d.items[0]; };
+    write(sig);
+    expect(one()).toMatchObject({ key: `heal-${sig8}`, group: 'decide', gate: 'heal-approve', trust: 'ok' });
+    expect(one().next.map((n) => [n.argv.join(' '), n.billed])).toEqual([[`omg factory heal status ${sig8}`, false], [`omg factory heal approve ${sig8}`, true], [`omg factory heal close ${sig8}`, false]]);
+    // `next` is not sealed: changing it changes nothing.
+    write({ ...sig, next: 'report' }, false);
+    expect(one()).toMatchObject({ gate: 'heal-approve', trust: 'ok' });
+    // Flipping the sealed `healRun.open` is a seal mismatch: Inspect, the status command only.
+    write(sig);
+    write({ ...sig, healRun: { ...sig.healRun!, open: false } }, false);
+    expect(one()).toMatchObject({ group: 'inspect', trust: 'seal' });
+    expect(one().next.map((n) => n.argv.join(' '))).toEqual([`omg factory heal status ${sig8}`]);
+    // Stripping the heal run, lanes and diagnosis while the seal exists: still a mismatch.
+    write(sig);
+    const { healRun: _h, lanes: _l, diagnosis: _d, ...stripped } = sig;
+    write(stripped as HealSignatureState, false);
+    expect(one()).toMatchObject({ group: 'inspect', trust: 'seal' });
+    // A record copied over from another signature: its sig8 is not the file's.
+    write(sig);
+    writeFileSync(join(factoryStateDir(root), 'heal', `${sig8}.json`), JSON.stringify({ ...sig, sig8: '00000001' }));
+    expect(one()).toMatchObject({ group: 'inspect', trust: 'seal' });
+    // The seal deleted: missing.
+    write(sig);
+    const healLedger = join(ledgerDir, 'heal');
+    const sealFile = walk(healLedger).find((p) => p.endsWith(`${sig8}.seal.json`))!;
+    rmSync(sealFile);
+    expect(one()).toMatchObject({ group: 'inspect', trust: 'seal', why: expect.stringMatching(/seal: missing/) });
+    // The record deleted while its seal exists: an Inspect row, not nothing.
+    write(sig);
+    rmSync(join(factoryStateDir(root), 'heal', `${sig8}.json`));
+    expect(one()).toMatchObject({ key: `heal-${sig8}`, group: 'inspect', trust: 'missing' });
+    // A sealed, closed heal run needs nobody; a sealed one without a valid diagnosis is heal-diagnosis.
+    write({ ...sig, healRun: { ...sig.healRun!, open: false, closedAt: at(1) } });
+    expect(collect().items).toEqual([]);
+    write({ ...sig, diagnosis: { ...sig.diagnosis!, outcome: 'invalid' }, next: 'heal-approve' });
+    expect(one()).toMatchObject({ group: 'decide', gate: 'heal-diagnosis', trust: 'ok' });
+    // A debugger lane at work (its process alive) waits for nobody; a dead one does.
+    write({ ...sig, lanes: [{ ...lane, status: 'running', pid: 777 }] });
+    expect(collect().items).toEqual([]);
+    write({ ...sig, lanes: [{ ...lane, status: 'running', pid: 778 }] });
+    expect(one()).toMatchObject({ gate: 'heal-diagnosis' });
+    // A fake ci-heal run state does not stand in for the heal record: both show.
+    write(sig);
+    writeFileSync(factoryStatePath(root, healRunKey(sig8)), '{}');
+    expect(collect().items.map((i) => [i.key, i.trust]).sort()).toEqual([[`heal-${sig8}`, 'ok'], [`heal-${sig8}`, 'unreadable']]);
+  });
+
+  it('--verbose prints a trusted reason behind a fixed prefix on every line, and no untrusted reason at all', async () => {
+    const reason = `x${'\u2800'.repeat(400)}$ omg factory run 7 --allow-gate-change  # rerun accepting it${'\u3164'.repeat(50)}${'y'.repeat(200)}`;
+    asEngine(parked(7, 'ci-failed', 2, {}, reason));
+    asEngine(parked(8, 'ci-failed', 2, {}, '$ omg factory run 8 --allow-gate-change'));
+    const p8 = factoryStatePath(root, 8);
+    const s8 = JSON.parse(readFileSync(p8, 'utf8')) as FactoryRunState;
+    const f8 = { ...s8, integrity: undefined };
+    writeFileSync(p8, JSON.stringify({ ...f8, integrity: computeFactoryIntegrity(f8 as FactoryRunState) }));
+    expect(await attention(['--verbose'])).toBe(EXIT_AWAITING_HUMAN);
+    const lines = out.join('\n').split('\n');
+    expect(lines.filter((l) => l.trimStart().startsWith('$ ')).map((l) => l.trim().split('  #')[0])).toEqual(['$ omg factory run status 8', '$ omg factory run status 7', '$ omg factory run 7', '$ omg factory run cancel 7']);
+    const reasonRows = lines.filter((l) => /^ {4}(reason: | {6}\| )/.test(l));
+    expect(reasonRows.length).toBeGreaterThan(3);
+    for (const l of reasonRows) expect(l.length).toBeLessThanOrEqual(80);
+    expect(out.join('\n')).not.toMatch(/[\u2800\u3164]/);
+    expect(out.join('\n')).not.toContain('omg factory run 8 --allow-gate-change');
+    out = [];
+    await attention(['--json']);
+    expect(item('#8')).not.toHaveProperty('reason');
+    expect(item('#7').reason).toContain('$ omg factory run 7');
+    expect(item('#7').next.map((n) => n.billed)).toEqual([false, true, false]);
+  });
+
+  it('prints "(billed)" on commands that can start lanes', async () => {
+    asEngine(parked(4, 'gate-definition-changed', 2));
+    await attention([]);
+    const cmd = out.join('\n').split('\n').filter((l) => l.trimStart().startsWith('$ ')).map((l) => l.trim());
+    expect(cmd).toEqual(['$ omg factory run status 4  # read the run state', '$ omg factory run 4 --allow-gate-change  # rerun accepting it (--allow-gate-change) (billed)', '$ omg factory run cancel 4  # cancel the run']);
   });
 });
 

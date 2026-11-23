@@ -119675,7 +119675,7 @@ function healStatePath(root, sig8) {
   if (!SIG8.test(sig8)) throw new Error(`signature id must be 8 hex characters, got ${JSON.stringify(sig8)}`);
   return (0, import_path160.join)(healStateDir(root), `${sig8}.json`);
 }
-function parseState(raw, path30) {
+function parseHealState(raw, path30) {
   const s = JSON.parse(raw);
   if (s?.version !== 1 || typeof s.sig8 !== "string" || !SIG8.test(s.sig8) || typeof s.count !== "number" || !Array.isArray(s.seenRuns)) {
     throw new Error(`${path30}: not a heal signature state`);
@@ -119684,7 +119684,7 @@ function parseState(raw, path30) {
 }
 function readHealState(root, sig8) {
   const path30 = healStatePath(root, sig8);
-  return (0, import_fs136.existsSync)(path30) ? parseState((0, import_fs136.readFileSync)(path30, "utf8"), path30) : null;
+  return (0, import_fs136.existsSync)(path30) ? parseHealState((0, import_fs136.readFileSync)(path30, "utf8"), path30) : null;
 }
 function listHealStates(root) {
   const dir = healStateDir(root);
@@ -119692,7 +119692,7 @@ function listHealStates(root) {
   return (0, import_fs136.readdirSync)(dir).filter((f) => /^[0-9a-f]{8}\.json$/.test(f)).flatMap((f) => {
     const path30 = (0, import_path160.join)(dir, f);
     try {
-      return [parseState((0, import_fs136.readFileSync)(path30, "utf8"), path30)];
+      return [parseHealState((0, import_fs136.readFileSync)(path30, "utf8"), path30)];
     } catch (error62) {
       console.warn(`omg factory heal: skipping corrupt signature file ${path30}: ${error62 instanceof Error ? error62.message : String(error62)}`);
       return [];
@@ -137910,7 +137910,10 @@ var init_score = __esm({
     init_state6();
     init_rules();
     BUCKET_ORDER = ["runnable", "needs-plan", "blocked"];
-    plainText = (v) => stripAnsi(v).replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu, " ");
+    plainText = (v) => (
+      // eslint-disable-next-line no-misleading-character-class -- the combining marks are listed on purpose, each one alone
+      stripAnsi(v).replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\u034F\u115F\u1160\u17B4\u17B5\u180B-\u180F\u2065\u2800\u3164\uFE00-\uFE0F\uFFA0\u{E0000}-\u{E0FFF}]/gu, " ")
+    );
     NOT_AN_ISSUE = /returned no issue url/;
     messageOf = (error62) => error62 instanceof Error ? error62.message : String(error62);
     failed = (id, reason, detail) => ({ id, title: "", url: "", bucket: "blocked", reasons: [reason], detail: plainText(detail), priority: null, planSource: null });
@@ -147492,6 +147495,13 @@ function verifyHealSeal(ledgerDir, root, state) {
     return "mismatch";
   }
 }
+function healSealSigs(ledgerDir, root) {
+  try {
+    return (0, import_fs174.readdirSync)(healLedgerDir(ledgerDir, root)).map((f) => /^([0-9a-f]{8})\.seal\.json$/.exec(f)?.[1]).filter((s) => s !== void 0).sort();
+  } catch {
+    return [];
+  }
+}
 function readHealCounters(root, ledgerDir, now2) {
   const a = readDailyCountersAt(dailyCountersPath(root), now2);
   const b = readDailyCountersAt(mirrorCountersPath(ledgerDir, root), now2);
@@ -152950,30 +152960,31 @@ function nextCommands(key, steps, merge2) {
   const out = [];
   for (const step of steps) {
     switch (step) {
+      // A resume can start lanes (billed); `heal approve` starts the ci-heal run's lanes.
       case "resume":
-        out.push({ label: heal ? "approve / resume the ci-heal run" : "rerun the run", argv: resumeArgv(key) });
+        out.push({ label: heal ? "approve / resume the ci-heal run" : "rerun the run", argv: resumeArgv(key), billed: true });
         break;
       case "cancel":
-        out.push({ label: "cancel the run", argv: cancelArgv(key) });
+        out.push({ label: "cancel the run", argv: cancelArgv(key), billed: false });
         break;
       case "status":
-        out.push({ label: "read the run state", argv: statusArgv(key) });
+        out.push({ label: "read the run state", argv: statusArgv(key), billed: false });
         break;
       case "merge": {
         const argv = merge2 ? mergeArgv(merge2) : null;
-        if (argv) out.push({ label: merge2.forge === "local" ? "merge the exact head into your base" : "merge the exact head the gates checked", argv });
+        if (argv) out.push({ label: merge2.forge === "local" ? "merge the exact head into your base" : "merge the exact head the gates checked", argv, billed: false });
         break;
       }
       case "allow-gate-change":
       case "allow-unsandboxed-gates":
       case "allow-secret-shapes":
-        if (!heal) out.push({ label: `rerun accepting it (${FLAG[step]})`, argv: [...resumeArgv(key), FLAG[step]] });
+        if (!heal) out.push({ label: `rerun accepting it (${FLAG[step]})`, argv: [...resumeArgv(key), FLAG[step]], billed: true });
         break;
       case "heal-close":
-        if (SIG82.test(sig8)) out.push({ label: "close the heal run", argv: ["omg", "factory", "heal", "close", sig8] });
+        if (SIG82.test(sig8)) out.push({ label: "close the heal run", argv: ["omg", "factory", "heal", "close", sig8], billed: false });
         break;
       case "heal-run":
-        if (SIG82.test(sig8)) out.push({ label: "run the debugger lane again (billed)", argv: ["omg", "factory", "heal", "run", sig8] });
+        if (SIG82.test(sig8)) out.push({ label: "run the debugger lane again", argv: ["omg", "factory", "heal", "run", sig8], billed: true });
         break;
     }
   }
@@ -152982,15 +152993,32 @@ function nextCommands(key, steps, merge2) {
 function reminderCommand(key, gate) {
   return gate === "decisions-rewritten" ? cancelCommand(key) : resumeCommand(key);
 }
-function commandLine(argv) {
-  return argv.map((a) => SAFE_ARG.test(a) ? a : `'${a.replace(/'/g, "'\\''")}'`).join(" ");
+function portable(word, platform) {
+  if (unprintable(word)) return false;
+  return (platform === "win32" ? BARE_WIN : BARE_POSIX).test(word) || DOUBLE_QUOTABLE.test(word);
 }
-var ATTENTION_GROUPS, GROUP_TITLES, GATE_ACTIONS, LANE_KINDS, LANE_PARK, UNKNOWN_GATE_ACTION, HEX4023, SIG82, argvOf, FLAG, suppressedCommands, SAFE_ARG;
+function quoteWord(word, platform) {
+  if ((platform === "win32" ? BARE_WIN : BARE_POSIX).test(word)) return word;
+  if (DOUBLE_QUOTABLE.test(word) && !unprintable(word)) return `"${word}"`;
+  return platform === "win32" ? `'${word.replace(/'/g, "''")}'` : `'${word.replace(/'/g, "'\\''")}'`;
+}
+function commandLine(argv, platform = process.platform) {
+  return argv.map((a) => quoteWord(a, platform)).join(" ");
+}
+function commandText(argv, platform = process.platform) {
+  if (argv[0] === "git" && argv[1] === "-C" && argv.length > 3) {
+    const root = argv[2];
+    if (!portable(root, platform) && (platform === "win32" || unprintable(root))) return { line: commandLine(["git", ...argv.slice(3)], platform), inRoot: true };
+  }
+  return { line: commandLine(argv, platform), inRoot: false };
+}
+var ATTENTION_GROUPS, GROUP_TITLES, GATE_ACTIONS, LANE_KINDS, LANE_PARK, UNKNOWN_GATE_ACTION, HEX4023, SIG82, argvOf, FLAG, suppressedCommands, BARE_POSIX, BARE_WIN, DOUBLE_QUOTABLE, unprintable;
 var init_actions = __esm({
   "src/factory/attention/actions.ts"() {
     "use strict";
     init_merge();
     init_merge3();
+    init_score();
     init_engine();
     init_state6();
     ATTENTION_GROUPS = ["inspect", "broken", "decide", "merge", "fix", "limits"];
@@ -153077,8 +153105,11 @@ var init_actions = __esm({
       "allow-unsandboxed-gates": "--allow-unsandboxed-gates",
       "allow-secret-shapes": "--allow-secret-shapes"
     };
-    suppressedCommands = (key) => validRunKey(key) ? [{ label: "read the run state", argv: statusArgv(key) }] : [];
-    SAFE_ARG = /^[A-Za-z0-9_./:@%+=,\\-]+$/;
+    suppressedCommands = (key) => validRunKey(key) ? [{ label: "read the run state", argv: statusArgv(key), billed: false }] : [];
+    BARE_POSIX = /^[A-Za-z0-9_./:@%+=,-]+$/;
+    BARE_WIN = /^[A-Za-z0-9_./:\\+=-]+$/;
+    DOUBLE_QUOTABLE = /^[\p{L}\p{N} /:._-]+$/u;
+    unprintable = (word) => plainText(word) !== word;
   }
 });
 
@@ -155917,10 +155948,66 @@ var init_factory_dashboard = __esm({
 });
 
 // src/factory/attention/collect.ts
-function ownerOf3(root, key, deps) {
-  const h = deps ? ownerHolding(factoryOwnerPath(root, key), deps) : ownerHolding(factoryOwnerPath(root, key));
-  if (h === null) return null;
-  return h === "unreadable" ? "unreadable" : "live";
+function runKeyOfName(name) {
+  const m = RUN_FILE2.exec(name);
+  if (!m) return null;
+  const key = /^\d+$/.test(m[1]) ? Number(m[1]) : m[1];
+  if (typeof key === "number" && !(Number.isSafeInteger(key) && key > 0)) return null;
+  return name === `run-${String(key)}.json` ? key : null;
+}
+function readRegularFile(path30, max = READ_MAX_BYTES) {
+  let st;
+  try {
+    st = (0, import_fs187.lstatSync)(path30);
+  } catch (error62) {
+    return isMissing(error62) ? { missing: true } : { error: errText7(error62) };
+  }
+  if (!st.isFile()) return { error: `it is ${kindOf(st)}, not a regular file` };
+  if (st.size > max) return { error: `it is larger than ${max} bytes` };
+  let fd;
+  try {
+    fd = (0, import_fs187.openSync)(path30, import_fs187.constants.O_RDONLY | (import_fs187.constants.O_NOFOLLOW ?? 0) | (import_fs187.constants.O_NONBLOCK ?? 0));
+  } catch (error62) {
+    return isMissing(error62) ? { missing: true } : { error: errText7(error62) };
+  }
+  try {
+    const f = (0, import_fs187.fstatSync)(fd);
+    if (!f.isFile() || f.ino !== st.ino || f.dev !== st.dev) return { error: "the file was replaced while it was read" };
+    if (f.size > max) return { error: `it is larger than ${max} bytes` };
+    const buf = Buffer.alloc(f.size);
+    let n = 0;
+    while (n < f.size) {
+      const got = (0, import_fs187.readSync)(fd, buf, n, f.size - n, n);
+      if (got === 0) break;
+      n += got;
+    }
+    if ((0, import_fs187.readSync)(fd, Buffer.alloc(1), 0, 1, n) > 0) return { error: "the file grew while it was read" };
+    return { bytes: buf.subarray(0, n) };
+  } catch (error62) {
+    return { error: errText7(error62) };
+  } finally {
+    (0, import_fs187.closeSync)(fd);
+  }
+}
+function ownerOf3(root, key, ledgerDir, deps) {
+  const path30 = factoryOwnerPath(root, key);
+  const r = readRegularFile(path30);
+  if ("missing" in r) return null;
+  if ("error" in r) return "unreadable";
+  try {
+    if (!EngineLedger.open(ledgerDir, root, key).matches(path30, r.bytes)) return "forged";
+  } catch {
+    return "forged";
+  }
+  let owner;
+  try {
+    owner = JSON.parse(r.bytes.toString("utf8"));
+  } catch {
+    return "unreadable";
+  }
+  if (!isOwnerRecord(owner)) return "unreadable";
+  if (owner.hostname !== deps.hostname) return "remote";
+  return ownerHolds(owner, deps) ? "live" : null;
 }
 function sinceProgress(root, key, now2) {
   try {
@@ -155931,20 +156018,20 @@ function sinceProgress(root, key, now2) {
 }
 function readRun(root, key, ledgerDir) {
   const path30 = factoryStatePath(root, key);
-  let bytes;
+  const r = readRegularFile(path30);
+  if ("missing" in r) return { key, trust: "unreadable", missing: true, error: "the state file disappeared while it was read" };
+  if ("error" in r) return { key, trust: "unreadable", error: r.error };
   let state;
   try {
-    bytes = currentBytes(path30);
-    if (bytes === null) return { key, trust: "unreadable", error: "the state file disappeared while it was read" };
-    state = parseFactoryState(path30, key, bytes.toString("utf8"));
+    state = parseFactoryState(path30, key, r.bytes.toString("utf8"));
   } catch (error62) {
     return { key, trust: "unreadable", error: errText7(error62) };
   }
   if (!verifyFactoryIntegrity(state)) return { key, state, trust: "seal" };
   try {
     const ledger = EngineLedger.open(ledgerDir, root, key);
-    if (!ledger.tracks(path30)) return { key, state, trust: "ledger", error: "the engine ledger on this host has no record of it: the run ran with another ledger (another host or OMC_STATE_DIR), or the file was written outside the engine" };
-    if (!ledger.matches(path30, bytes)) return { key, state, trust: "ledger" };
+    if (!ledger.tracks(path30)) return { key, state, trust: "unverified" };
+    if (!ledger.matches(path30, r.bytes)) return { key, state, trust: "ledger" };
   } catch (error62) {
     return { key, state, trust: "ledger", error: errText7(error62) };
   }
@@ -155957,19 +156044,13 @@ function runItem(root, r, now2, o, live) {
     return { ...base, group: "inspect", gate: null, phase: null, ageMs: null, why: `${TRUST_WHY.unreadable}: ${r.error ?? "unknown error"}`, next: suppressedCommands(r.key), trust: "unreadable", at: 0 };
   }
   const s = r.state;
-  const terminal = TERMINAL_FACTORY_PHASES.includes(s.phase);
-  const credits = Number(runCredits(s).toFixed(2));
-  const cap = typeof r.key === "number" ? o.limits?.maxRunCredits ?? null : null;
   const common = {
     ...base,
     phase: text6(s.phase, 40),
     gate: s.gate ? text6(s.gate.name, 60) : null,
-    credits,
-    cap,
     pr: typeof s.pr === "number" && Number.isSafeInteger(s.pr) && s.pr > 0 ? s.pr : null,
     head: typeof s.head === "string" && HEX4024.test(s.head) ? s.head : null,
-    title: text6(s.issueTitle ?? (s.kind === "ci-heal" ? "ci-heal" : ""), TITLE_MAX),
-    ...o.verbose && s.gate ? { reason: text6(s.gate.reason, REASON_MAX) } : {}
+    title: text6(s.issueTitle ?? (s.kind === "ci-heal" ? "ci-heal" : ""), TITLE_MAX)
   };
   const gateAt = msOf(s.gate?.at);
   const updatedAt = msOf(s.updatedAt);
@@ -155978,48 +156059,83 @@ function runItem(root, r, now2, o, live) {
   if (r.trust !== "ok") {
     return { ...common, group: "inspect", ageMs, why: r.error ? `${TRUST_WHY[r.trust]} (${r.error})` : TRUST_WHY[r.trust], next: suppressedCommands(r.key), trust: r.trust, at };
   }
-  if (terminal) return null;
+  if (TERMINAL_FACTORY_PHASES.includes(s.phase)) return null;
+  const credits = Number(runCredits(s).toFixed(2));
+  const cap = typeof r.key === "number" ? o.limits?.maxRunCredits ?? null : null;
+  const trusted = { ...common, credits, cap, ...o.verbose && s.gate ? { reason: text6(s.gate.reason, REASON_MAX) } : {} };
   const notes = [];
   if (cap !== null && cap - credits < RUNTIME_MIN_MAX_CREDITS) notes.push(`within one lane minimum (${RUNTIME_MIN_MAX_CREDITS}) of the credit cap`);
   if (s.cancelRequested) notes.push("cancel requested");
   if (live === "live") {
     const quiet = sinceProgress(root, r.key, now2);
-    if (quiet === null || quiet >= HUNG_AFTER_MS) notes.push(`possibly hung: an engine holds the run but its progress log ${quiet === null ? "is missing" : `has not changed for ${Math.floor(quiet / 6e4)} min`} (a hint only)`);
+    if (quiet === null || quiet < 0 || quiet >= HUNG_AFTER_MS) {
+      const log3 = quiet === null ? "is missing" : quiet < 0 ? "has a modification time in the future" : `has not changed for ${Math.floor(quiet / 6e4)} min`;
+      notes.push(`possibly hung: an engine holds the run but its progress log ${log3} (a hint only)`);
+    }
   }
   if (live === "unreadable") notes.push("the run's owner file is unreadable (held until omg factory run release)");
+  if (live === "forged") notes.push(FORGED_OWNER_NOTE);
+  if (live === "remote") notes.push(REMOTE_OWNER_NOTE);
   if (s.gate) {
     const action2 = gateAction(s.gate.name);
     const forge = forgeOf(s);
     const why = action2.group === "merge" && s.gate.name === "merge" && forge === "azure-devops" ? `${action2.why}; complete PR !${common.pr ?? "?"} in Azure DevOps (the engine's PR comment names the exact command), then rerun` : action2.why;
     const next = nextCommands(r.key, action2.steps, { forge, root, ...common.pr !== null ? { pr: common.pr } : {}, ...common.head !== null ? { head: common.head } : {} });
     if (action2.steps.includes("merge") && !next.some((n) => n.argv[0] !== "omg") && forge !== "azure-devops") notes.push("no merge command: the run has no valid PR number or 40-hex head");
-    return { ...common, group: action2.group, ageMs, why, next, trust: "ok", notes: [...common.notes, ...notes], at };
+    return { ...trusted, group: action2.group, ageMs, why, next, trust: "ok", notes, at };
   }
   if (live === null) {
-    return { ...common, group: "broken", ageMs, why: "not finished, not parked, and no engine holds it (the engine stopped or died)", next: nextCommands(r.key, ["status", "resume", "cancel"]), trust: "ok", notes, at };
+    return { ...trusted, group: "broken", ageMs, why: "not finished, not parked, and no engine holds it (the engine stopped or died)", next: nextCommands(r.key, ["status", "resume", "cancel"]), trust: "ok", notes, at };
+  }
+  if (live === "forged") {
+    return { ...common, group: "inspect", ageMs, why: TRUST_WHY.owner, next: suppressedCommands(r.key), trust: "owner", notes, at };
+  }
+  if (live === "remote") {
+    return { ...trusted, group: "broken", ageMs, why: "not finished, not parked, and held by an engine on another host; check that host", next: nextCommands(r.key, ["status"]), trust: "ok", notes, at };
   }
   if (live === "unreadable") {
-    return { ...common, group: "broken", ageMs, why: "not finished, not parked, and its owner file cannot be read", next: nextCommands(r.key, ["status"]), trust: "ok", notes, at };
+    return { ...trusted, group: "broken", ageMs, why: "not finished, not parked, and its owner file cannot be read", next: nextCommands(r.key, ["status"]), trust: "ok", notes, at };
   }
   if (notes.some((n) => n.startsWith("possibly hung"))) {
-    return { ...common, group: "broken", ageMs, why: "an engine holds the run; it may be hung", next: nextCommands(r.key, ["status"]), trust: "ok", notes, at };
+    return { ...trusted, group: "broken", ageMs, why: "an engine holds the run; it may be hung", next: nextCommands(r.key, ["status"]), trust: "ok", notes, at };
   }
   return null;
 }
-function healItem(root, s, o, now2) {
-  if (!SIG8.test(s.sig8) || !s.healRun?.open || s.next !== "heal-approve" && s.next !== "heal-diagnosis") return null;
-  const key = `heal-${s.sig8}`;
-  const seal = verifyHealSeal(o.ledgerDir, root, s);
-  const at = msOf(s.updatedAt);
-  const common = { key, gate: s.next, phase: "heal", ageMs: Number.isFinite(at) ? Math.max(0, now2 - at) : null, credits: null, cap: null, pr: null, head: null, title: text6(`ci-heal ${s.class}`, TITLE_MAX), notes: [], at: Number.isFinite(at) ? at : 0 };
-  if (seal !== "ok") {
-    return { ...common, group: "inspect", why: `the heal record does not match the one the heal run wrote (seal: ${seal}); do not act on it`, next: suppressedCommands(key), trust: "seal" };
+function missingItem(root, key, ledgerDir) {
+  const path30 = factoryStatePath(root, key);
+  const base = { key: runLabel(key), group: "inspect", gate: null, phase: null, ageMs: null, credits: null, cap: null, pr: null, head: null, title: "", notes: [], log: relLog(key), next: suppressedCommands(key), at: 0 };
+  let recorded;
+  try {
+    recorded = EngineLedger.open(ledgerDir, root, key).recorded(path30);
+  } catch (error62) {
+    return { ...base, why: `the state file is missing and the engine ledger record of the run cannot be read (${errText7(error62)}); inspect it, the commands are withheld`, trust: "ledger" };
   }
-  const approve2 = s.next === "heal-approve";
+  if (typeof recorded !== "string") return null;
+  try {
+    const last = parseFactoryState(path30, key, recorded);
+    if (verifyFactoryIntegrity(last) && TERMINAL_FACTORY_PHASES.includes(last.phase)) return null;
+  } catch {
+  }
+  return { ...base, why: TRUST_WHY.missing, trust: "missing" };
+}
+function healItem(root, sig8, s, o, now2, deps) {
+  const key = `heal-${sig8}`;
+  const seal = s.sig8 === sig8 ? verifyHealSeal(o.ledgerDir, root, s) : "mismatch";
+  if (seal === "none") return null;
+  const at = msOf(s.updatedAt);
+  const common = { key, phase: "heal", ageMs: Number.isFinite(at) ? Math.max(0, now2 - at) : null, credits: null, cap: null, pr: null, head: null, title: text6(`ci-heal ${s.class}`, TITLE_MAX), notes: [], at: Number.isFinite(at) ? at : 0 };
+  if (seal !== "ok") {
+    return { ...common, gate: null, group: "inspect", why: `the heal record does not match the one the heal run wrote (seal: ${seal}); do not act on it`, next: suppressedCommands(key), trust: "seal" };
+  }
+  if (!s.healRun?.open) return null;
+  const last = s.lanes?.at(-1);
+  if (last?.status === "running" && Number.isInteger(last.pid) && deps.isAlive(last.pid)) return null;
+  const approve2 = last?.status !== "running" && s.diagnosis?.outcome === "valid" && s.diagnosis.laneId === last?.id;
   return {
     ...common,
+    gate: approve2 ? "heal-approve" : "heal-diagnosis",
     group: "decide",
-    why: approve2 ? "a valid CI-heal diagnosis waits for a human approval" : "the debugger lane's diagnosis was not valid; read it, then close the heal run or run the lane again",
+    why: approve2 ? "a valid CI-heal diagnosis waits for a human approval" : "the heal run has no valid diagnosis from its debugger lane; read it, then close the heal run or run the lane again",
     next: nextCommands(key, approve2 ? ["status", "resume", "heal-close"] : ["status", "heal-close", "heal-run"]),
     trust: "ok"
   };
@@ -156029,6 +156145,7 @@ function collectAttention(root, o) {
 }
 function collectIn(root, o) {
   const now2 = (o.now ?? Date.now)();
+  const deps = o.owner ?? defaultOwnerDeps();
   const warnings = [];
   const items = [];
   const liveRuns = [];
@@ -156048,56 +156165,87 @@ function collectIn(root, o) {
       head: null,
       title: "",
       why: "a tamper hold is set on this checkout: no factory run starts here until you check the repository's .git and release it",
-      next: [{ label: "release the hold after checking .git", argv: RELEASE_TAMPER_COMMAND.split(" ") }],
+      next: [{ label: "release the hold after checking .git", argv: RELEASE_TAMPER_COMMAND.split(" "), billed: false }],
       trust: "ok",
       notes: [],
       at: 0
     });
   }
-  let names = [];
-  try {
-    names = (0, import_fs187.readdirSync)(factoryStateDir3(root)).sort();
-  } catch {
+  const keys = /* @__PURE__ */ new Map();
+  const listed2 = (dir) => {
+    try {
+      return (0, import_fs187.readdirSync)(dir);
+    } catch {
+      return [];
+    }
+  };
+  for (const name of [...listed2(factoryStateDir3(root)), ...listed2((0, import_path214.dirname)(ledgerFilePath(o.ledgerDir, root, 1)))]) {
+    const key = runKeyOfName(name);
+    if (key !== null) keys.set(String(key), key);
   }
   const healRuns = /* @__PURE__ */ new Set();
-  for (const name of names) {
-    const m = RUN_FILE2.exec(name);
-    if (!m) continue;
-    const key = /^\d+$/.test(m[1]) ? Number(m[1]) : m[1];
-    if (typeof key === "string") healRuns.add(key.slice("heal-".length));
-    if (typeof key === "number" && !(Number.isSafeInteger(key) && key > 0)) continue;
+  for (const key of [...keys.values()].sort((a, b) => String(a).localeCompare(String(b), "en", { numeric: true }))) {
     let r = readRun(root, key, o.ledgerDir);
-    const live = ownerOf3(root, key, o.owner);
-    if (r.trust === "ledger" && live === "live") r = readRun(root, key, o.ledgerDir);
+    if (r.missing) {
+      const item2 = missingItem(root, key, o.ledgerDir);
+      if (item2) items.push(item2);
+      continue;
+    }
+    const live = ownerOf3(root, key, o.ledgerDir, deps);
+    if ((r.trust === "ledger" || r.trust === "unverified") && live === "live") r = readRun(root, key, o.ledgerDir);
     if (r.trust === "unreadable") {
       readFailed = true;
       warnings.push(`run state ${runLabel(key)} is unreadable: ${r.error ?? "unknown error"}`);
     }
-    if (r.state && r.trust === "ok") forges.add(forgeOf(r.state));
-    if (live === "live") liveRuns.push(runLabel(key));
-    const item = runItem(root, r, now2, o, live);
+    if (r.state && r.trust === "ok") {
+      forges.add(forgeOf(r.state));
+      if (typeof key === "string") healRuns.add(key.slice("heal-".length));
+    }
+    if (live === "live" || live === "remote") liveRuns.push(runLabel(key));
+    let item;
+    try {
+      item = runItem(root, r, now2, o, live);
+    } catch (error62) {
+      readFailed = true;
+      item = runItem(root, { key, trust: "unreadable", error: errText7(error62) }, now2, o, live);
+    }
     if (item) items.push(item);
   }
-  let healNames = [];
-  try {
-    healNames = (0, import_fs187.readdirSync)((0, import_path214.join)(factoryStateDir3(root), "heal")).filter((f) => /^[0-9a-f]{8}\.json$/.test(f)).sort();
-  } catch {
-  }
-  for (const f of healNames) {
-    const sig8 = f.slice(0, 8);
-    if (healRuns.has(sig8)) continue;
-    let s;
-    try {
-      s = readHealState(root, sig8);
-    } catch (error62) {
-      warnings.push(`heal signature ${sig8} is unreadable: ${errText7(error62)}`);
+  const healDir = (0, import_path214.join)(factoryStateDir3(root), "heal");
+  const sigs = /* @__PURE__ */ new Set([...listed2(healDir).filter((f) => /^[0-9a-f]{8}\.json$/.test(f)).map((f) => f.slice(0, 8)), ...healSealSigs(o.ledgerDir, root)]);
+  for (const sig8 of [...sigs].sort()) {
+    if (healRuns.has(sig8) || !SIG8.test(sig8)) continue;
+    const key = `heal-${sig8}`;
+    const row = { key, group: "inspect", gate: null, phase: "heal", ageMs: null, credits: null, cap: null, pr: null, head: null, title: "", notes: [], next: suppressedCommands(key), at: 0 };
+    const r = readRegularFile(healStatePath(root, sig8));
+    if ("missing" in r) {
+      items.push({ ...row, why: "the heal record is missing; the heal seal outside the repository records one. Inspect it, the commands are withheld", trust: "missing" });
       continue;
     }
-    const item = s ? healItem(root, s, o, now2) : null;
+    let s = null;
+    let problem = "error" in r ? r.error : "";
+    if ("bytes" in r) {
+      try {
+        s = parseHealState(r.bytes.toString("utf8"), healStatePath(root, sig8));
+      } catch (error62) {
+        problem = errText7(error62);
+      }
+    }
+    if (!s) {
+      warnings.push(`heal signature ${sig8} is unreadable: ${problem}`);
+      items.push({ ...row, why: `the heal record cannot be read: ${text6(problem)}`, trust: "unreadable" });
+      continue;
+    }
+    let item;
+    try {
+      item = healItem(root, sig8, s, o, now2, deps);
+    } catch (error62) {
+      item = { ...row, why: `the heal record cannot be laid out: ${errText7(error62)}`, trust: "unreadable" };
+    }
     if (item) items.push(item);
   }
-  const repoOwner = o.owner ? ownerHolding(factoryRepoOwnerPath(root), o.owner) : ownerHolding(factoryRepoOwnerPath(root));
-  const slots = o.owner ? heldSlots(root, o.owner) : heldSlots(root);
+  const repoOwner = ownerHolding(factoryRepoOwnerPath(root), deps);
+  const slots = heldSlots(root, deps);
   const engines = Math.max(liveRuns.length, (repoOwner && repoOwner !== "unreadable" ? 1 : 0) + slots.length);
   const order = new Map(ATTENTION_GROUPS.map((g, i) => [g, i]));
   items.sort((a, b) => order.get(a.group) - order.get(b.group) || a.at - b.at || a.key.localeCompare(b.key));
@@ -156120,11 +156268,11 @@ function attentionJson(d) {
     forge: d.forge,
     generatedAt: d.generatedAt,
     summary: d.summary,
-    items: d.items.map(({ at: _at, ...rest }) => rest),
+    items: d.items.map(({ at: _at, reason, ...rest }) => rest.trust === "ok" && reason !== void 0 ? { ...rest, reason } : rest),
     warnings: d.warnings
   };
 }
-var import_fs187, import_path214, ATTENTION_SCHEMA_VERSION, HUNG_AFTER_MS, TITLE_MAX, TEXT_MAX, REASON_MAX, RUN_FILE2, text6, errText7, HEX4024, forgeOf, msOf, relLog, TRUST_WHY;
+var import_fs187, import_path214, ATTENTION_SCHEMA_VERSION, HUNG_AFTER_MS, TITLE_MAX, READ_MAX_BYTES, TEXT_MAX, REASON_MAX, RUN_FILE2, text6, errText7, HEX4024, forgeOf, msOf, kindOf, isMissing, relLog, TRUST_WHY, FORGED_OWNER_NOTE, REMOTE_OWNER_NOTE;
 var init_collect3 = __esm({
   "src/factory/attention/collect.ts"() {
     "use strict";
@@ -156144,6 +156292,7 @@ var init_collect3 = __esm({
     ATTENTION_SCHEMA_VERSION = 1;
     HUNG_AFTER_MS = 10 * 6e4;
     TITLE_MAX = 60;
+    READ_MAX_BYTES = 8 * 1024 * 1024;
     TEXT_MAX = 300;
     REASON_MAX = 2e3;
     RUN_FILE2 = /^run-(\d+|heal-[0-9a-f]{8})\.json$/;
@@ -156152,12 +156301,19 @@ var init_collect3 = __esm({
     HEX4024 = /^[0-9a-f]{40}$/;
     forgeOf = (s) => s.remote === LOCAL_REMOTE ? "local" : s.forgeKind ?? "github";
     msOf = (iso2) => typeof iso2 === "string" ? Date.parse(iso2) : Number.NaN;
+    kindOf = (st) => st.isSymbolicLink() ? "a link" : st.isDirectory() ? "a directory" : st.isFIFO() ? "a FIFO" : "a device or socket";
+    isMissing = (e) => e?.code === "ENOENT";
     relLog = (key) => `.omg/progress/factory-${key}.log`;
     TRUST_WHY = {
       seal: "state is not the engine's last write (its integrity seal fails); inspect it, the commands are withheld",
       ledger: "state is not the engine's last write (the engine ledger does not hold these bytes); inspect it, the commands are withheld",
+      unverified: "cannot be verified on this host: no engine ledger record (moved repository, another host or OMC_STATE_DIR, or written outside the engine); the commands are withheld",
+      owner: "an owner file the engine did not write holds the run (the engine ledger does not record it); inspect it, the commands are withheld",
+      missing: "the engine's state file is missing; the ledger holds its last write. Inspect it, the commands are withheld",
       unreadable: "the run state cannot be read"
     };
+    FORGED_OWNER_NOTE = "an owner file the engine did not write is present (the engine ledger does not record it); it is not counted as a live engine";
+    REMOTE_OWNER_NOTE = "the run's owner file names another host: this host cannot tell whether that engine is alive";
   }
 });
 
@@ -156176,6 +156332,12 @@ function summaryLine2(d) {
   const engines = d.summary.engines.live === 0 ? "no engine running" : `${plural2(d.summary.engines.live, "engine")} running`;
   return `${total === 0 ? "nothing needs you" : `${plural2(total, "item")} need${total === 1 ? "s" : ""} you`}${parts.length ? `: ${parts.join(", ")}` : ""}; ${engines}`;
 }
+function reasonLines(reason) {
+  const chars = [...reason];
+  const out = [];
+  for (let k = 0; k < chars.length; k += REASON_WIDTH) out.push(`    ${k === 0 ? "reason: " : "      | "}${chars.slice(k, k + REASON_WIDTH).join("")}`);
+  return out;
+}
 function itemLines(i, verbose) {
   const head = [source_default.bold(i.key)];
   if (i.title) head.push(i.title);
@@ -156185,8 +156347,12 @@ function itemLines(i, verbose) {
   if (i.trust !== "ok") facts.push(source_default.red(`trust: ${i.trust}`));
   const lines4 = [`  ${head.join("  ")}`, `    ${facts.filter(Boolean).join("  ")}`, `    ${i.why}`];
   for (const n of i.notes) lines4.push(source_default.yellow(`    note: ${n}`));
-  if (verbose && i.reason) lines4.push(source_default.gray(`    reason: ${i.reason}`));
-  for (const n of i.next) lines4.push(`    ${source_default.cyan("$")} ${commandLine(n.argv)}  ${source_default.gray(`# ${n.label}`)}`);
+  if (verbose && i.reason && i.trust === "ok") for (const l of reasonLines(i.reason)) lines4.push(source_default.gray(l));
+  for (const n of i.next) {
+    const c = commandText(n.argv);
+    if (c.inRoot) lines4.push(source_default.gray("    run in the repository root:"));
+    lines4.push(`    ${source_default.cyan("$")} ${c.line}  ${source_default.gray(`# ${n.label}${n.billed ? " (billed)" : ""}`)}`);
+  }
   if (i.log) lines4.push(source_default.gray(`    log: ${i.log}`));
   return lines4;
 }
@@ -156200,19 +156366,20 @@ function renderAttention(d, o = {}) {
   }
   return lines4.join("\n");
 }
-var plural2;
+var plural2, REASON_WIDTH;
 var init_render3 = __esm({
   "src/factory/attention/render.ts"() {
     "use strict";
     init_source();
     init_actions();
     plural2 = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+    REASON_WIDTH = 64;
   }
 });
 
 // src/cli/commands/factory-attention.ts
 function factoryAttentionCommand(deps = defaultAttentionDeps) {
-  const cmd = new Command("attention").description("What needs you: parked, broken and tampered factory runs grouped by the human action, with the next commands (local state only: no network, no forge read, no write)").option("--json", "JSON output (schemaVersion 1)").option("--verbose", "also print each park's full reason (never its local detail)").option("--exit-zero", "exit 0 when something needs you (default: 4)");
+  const cmd = new Command("attention").description("What needs you: parked, broken and tampered factory runs grouped by the human action, with the next commands (local state only: no network, no forge read, no write)").option("--json", "JSON output (schemaVersion 1)").option("--verbose", "also print each park's full reason, for runs whose state is the engine's own (never its local detail)").option("--exit-zero", "exit 0 when something needs you (default: 4)");
   cmd.exitOverride((e) => {
     e.exitCode = e.code === "commander.helpDisplayed" || e.code === "commander.help" || e.code === "commander.version" ? 0 : EXIT_CHECK_USAGE;
     throw e;
@@ -191442,7 +191609,7 @@ function shipCommand(execImpl = defaultExec, loadShipConfig = shipConfig, drive 
       extraProtected: config2.knownFlakyFile === DEFAULT_SHIP_CONFIG.knownFlakyFile ? [] : [config2.knownFlakyFile]
     });
     const allowAdmin = config2.allowAdminMerge && trustedBase;
-    const commandText = decision.command.join(" ");
+    const commandText2 = decision.command.join(" ");
     if (!decision.ok) {
       emit(Boolean(o.json), { ok: false, merged: false, reasons: decision.reasons, command: decision.command }, () => {
         console.log(source_default.red(`merge refused for PR #${pr}:`));
@@ -191455,12 +191622,12 @@ function shipCommand(execImpl = defaultExec, loadShipConfig = shipConfig, drive 
       emit(Boolean(o.json), { ok: true, merged: false, command: decision.command }, () => {
         const why = config2.allowAdminMerge ? `base ${prView.baseRefName} is not in ship.trustedBases, so ship does not admin-merge` : "ship.allowAdminMerge is off";
         console.log(source_default.green(`PR #${pr} is merge-ready. ${why}; run:`));
-        console.log(`  ${commandText}`);
+        console.log(`  ${commandText2}`);
       });
       return 0;
     }
     const merged = exec3(decision.command[0], decision.command.slice(1), { cwd: root });
-    if (merged.status !== 0) throw new Error(`${commandText} failed: ${merged.stderr.trim()}`);
+    if (merged.status !== 0) throw new Error(`${commandText2} failed: ${merged.stderr.trim()}`);
     updateShipState(root, pr, (s) => {
       const ready = s.phase === "ready" ? s : transition(s, "ready", "merge-ready", now());
       return transition(ready, "merged", `merged at ${prView.headRefOid.slice(0, 12)}`, now());

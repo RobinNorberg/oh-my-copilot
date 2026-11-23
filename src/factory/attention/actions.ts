@@ -20,6 +20,7 @@
 import { ghMergeCommand } from '../../forge/github/merge.js';
 import { localMerge } from '../../forge/local/merge.js';
 import type { ForgeKind } from '../../forge/types.js';
+import { plainText } from '../check/score.js';
 import { cancelCommand, resumeCommand } from '../run/engine.js';
 import { HEAL_RUN_KEY, type FactoryRunKey } from '../run/state.js';
 
@@ -38,6 +39,8 @@ export const GROUP_TITLES: Readonly<Record<AttentionGroup, string>> = Object.fre
 export interface NextCommand {
   label: string;
   argv: string[];
+  /** True when the command can start lanes, and so spend AI credits (a resume, an approve, a heal lane). */
+  billed: boolean;
 }
 
 /**
@@ -209,35 +212,81 @@ export function nextCommands(key: FactoryRunKey, steps: readonly ActionStep[], m
   const out: NextCommand[] = [];
   for (const step of steps) {
     switch (step) {
-      case 'resume': out.push({ label: heal ? 'approve / resume the ci-heal run' : 'rerun the run', argv: resumeArgv(key) }); break;
-      case 'cancel': out.push({ label: 'cancel the run', argv: cancelArgv(key) }); break;
-      case 'status': out.push({ label: 'read the run state', argv: statusArgv(key) }); break;
+      // A resume can start lanes (billed); `heal approve` starts the ci-heal run's lanes.
+      case 'resume': out.push({ label: heal ? 'approve / resume the ci-heal run' : 'rerun the run', argv: resumeArgv(key), billed: true }); break;
+      case 'cancel': out.push({ label: 'cancel the run', argv: cancelArgv(key), billed: false }); break;
+      case 'status': out.push({ label: 'read the run state', argv: statusArgv(key), billed: false }); break;
       case 'merge': {
         const argv = merge ? mergeArgv(merge) : null;
-        if (argv) out.push({ label: merge!.forge === 'local' ? 'merge the exact head into your base' : 'merge the exact head the gates checked', argv });
+        if (argv) out.push({ label: merge!.forge === 'local' ? 'merge the exact head into your base' : 'merge the exact head the gates checked', argv, billed: false });
         break;
       }
       case 'allow-gate-change': case 'allow-unsandboxed-gates': case 'allow-secret-shapes':
-        if (!heal) out.push({ label: `rerun accepting it (${FLAG[step]})`, argv: [...resumeArgv(key), FLAG[step]!] });
+        if (!heal) out.push({ label: `rerun accepting it (${FLAG[step]})`, argv: [...resumeArgv(key), FLAG[step]!], billed: true });
         break;
-      case 'heal-close': if (SIG8.test(sig8)) out.push({ label: 'close the heal run', argv: ['omg', 'factory', 'heal', 'close', sig8] }); break;
-      case 'heal-run': if (SIG8.test(sig8)) out.push({ label: 'run the debugger lane again (billed)', argv: ['omg', 'factory', 'heal', 'run', sig8] }); break;
+      case 'heal-close': if (SIG8.test(sig8)) out.push({ label: 'close the heal run', argv: ['omg', 'factory', 'heal', 'close', sig8], billed: false }); break;
+      case 'heal-run': if (SIG8.test(sig8)) out.push({ label: 'run the debugger lane again', argv: ['omg', 'factory', 'heal', 'run', sig8], billed: true }); break;
     }
   }
   return out;
 }
 
 /** Shown when a state fails its seal or ledger check: only the read-only status command. */
-export const suppressedCommands = (key: FactoryRunKey): NextCommand[] => (validRunKey(key) ? [{ label: 'read the run state', argv: statusArgv(key) }] : []);
+export const suppressedCommands = (key: FactoryRunKey): NextCommand[] => (validRunKey(key) ? [{ label: 'read the run state', argv: statusArgv(key), billed: false }] : []);
 
 /** A poll reminder's command: the cancel where a rerun re-parks (decisions-rewritten), else the resume. */
 export function reminderCommand(key: FactoryRunKey, gate: string): string {
   return gate === 'decisions-rewritten' ? cancelCommand(key) : resumeCommand(key);
 }
 
-const SAFE_ARG = /^[A-Za-z0-9_./:@%+=,\\-]+$/;
+/** A word printed bare: POSIX shells (no backslash: it escapes there). */
+const BARE_POSIX = /^[A-Za-z0-9_./:@%+=,-]+$/;
+/** A word printed bare on Windows: no `%` (cmd expands it), `,` (a PowerShell array) or `@` (splatting). */
+const BARE_WIN = /^[A-Za-z0-9_./:\\+=-]+$/;
+/**
+ * Letters, digits, `/ : . _ -` and space: double-quoted, the word reads the
+ * same in PowerShell, cmd.exe and a POSIX shell (no `"`, `$`, backtick,
+ * `%`, `!`, `^`, `&`, `|`, `<`, `>`, `;` or backslash inside).
+ */
+const DOUBLE_QUOTABLE = /^[\p{L}\p{N} /:._-]+$/u;
+/** A word with a character a terminal shows as blank, nothing or a control (what score.ts plainText replaces): never printed inside a command. */
+const unprintable = (word: string): boolean => plainText(word) !== word;
 
-/** One argv as a copyable line: a word with any other character is single-quoted (a POSIX shell and PowerShell read it the same unless it holds a single quote, written the POSIX way). */
-export function commandLine(argv: readonly string[]): string {
-  return argv.map((a) => (SAFE_ARG.test(a) ? a : `'${a.replace(/'/g, "'\\''")}'`)).join(' ');
+/** True when `word` prints bare or double-quoted the same in every shell family (the strict set); false when only shell-specific quoting fits. */
+function portable(word: string, platform: NodeJS.Platform): boolean {
+  if (unprintable(word)) return false;
+  return (platform === 'win32' ? BARE_WIN : BARE_POSIX).test(word) || DOUBLE_QUOTABLE.test(word);
+}
+
+/**
+ * One word for the shell family of `platform`: bare when safe, double
+ * quotes when the strict set allows (valid in PowerShell, cmd and POSIX),
+ * else single quotes (POSIX: `'\''`; win32: PowerShell's `''` doubling,
+ * which cmd.exe does not read: commandText withholds such a word).
+ */
+function quoteWord(word: string, platform: NodeJS.Platform): string {
+  if ((platform === 'win32' ? BARE_WIN : BARE_POSIX).test(word)) return word;
+  if (DOUBLE_QUOTABLE.test(word) && !unprintable(word)) return `"${word}"`;
+  return platform === 'win32' ? `'${word.replace(/'/g, "''")}'` : `'${word.replace(/'/g, "'\\''")}'`;
+}
+
+/** One argv as a copyable line for the shell family of `platform` (default: this host's). */
+export function commandLine(argv: readonly string[], platform: NodeJS.Platform = process.platform): string {
+  return argv.map((a) => quoteWord(a, platform)).join(' ');
+}
+
+/**
+ * What the terminal view prints for a command. The repository root is the
+ * one free-form word a command can hold (`git -C <root> merge ...`): when
+ * it is outside the strict set on Windows (cmd.exe ignores single quotes),
+ * or holds a character a terminal cannot show anywhere, the `-C <root>`
+ * form is withheld and the command is to be run in the repository root.
+ * `--json` keeps the exact argv either way.
+ */
+export function commandText(argv: readonly string[], platform: NodeJS.Platform = process.platform): { line: string; inRoot: boolean } {
+  if (argv[0] === 'git' && argv[1] === '-C' && argv.length > 3) {
+    const root = argv[2];
+    if (!portable(root, platform) && (platform === 'win32' || unprintable(root))) return { line: commandLine(['git', ...argv.slice(3)], platform), inRoot: true };
+  }
+  return { line: commandLine(argv, platform), inRoot: false };
 }

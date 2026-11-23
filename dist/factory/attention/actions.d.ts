@@ -24,6 +24,8 @@ export declare const GROUP_TITLES: Readonly<Record<AttentionGroup, string>>;
 export interface NextCommand {
     label: string;
     argv: string[];
+    /** True when the command can start lanes, and so spend AI credits (a resume, an approve, a heal lane). */
+    billed: boolean;
 }
 /**
  * A step of the table: `resume` (`omg factory run <n>`, a heal run `omg
@@ -74,6 +76,18 @@ export declare function nextCommands(key: FactoryRunKey, steps: readonly ActionS
 export declare const suppressedCommands: (key: FactoryRunKey) => NextCommand[];
 /** A poll reminder's command: the cancel where a rerun re-parks (decisions-rewritten), else the resume. */
 export declare function reminderCommand(key: FactoryRunKey, gate: string): string;
-/** One argv as a copyable line: a word with any other character is single-quoted (a POSIX shell and PowerShell read it the same unless it holds a single quote, written the POSIX way). */
-export declare function commandLine(argv: readonly string[]): string;
+/** One argv as a copyable line for the shell family of `platform` (default: this host's). */
+export declare function commandLine(argv: readonly string[], platform?: NodeJS.Platform): string;
+/**
+ * What the terminal view prints for a command. The repository root is the
+ * one free-form word a command can hold (`git -C <root> merge ...`): when
+ * it is outside the strict set on Windows (cmd.exe ignores single quotes),
+ * or holds a character a terminal cannot show anywhere, the `-C <root>`
+ * form is withheld and the command is to be run in the repository root.
+ * `--json` keeps the exact argv either way.
+ */
+export declare function commandText(argv: readonly string[], platform?: NodeJS.Platform): {
+    line: string;
+    inRoot: boolean;
+};
 //# sourceMappingURL=actions.d.ts.map

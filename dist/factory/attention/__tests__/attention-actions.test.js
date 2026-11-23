@@ -9,11 +9,19 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { cancelCommand, resumeCommand } from '../../run/engine.js';
-import { commandLine, gateAction, GATE_ACTIONS, mergeArgv, nextCommands, reminderCommand, suppressedCommands, validRunKey } from '../actions.js';
+import { commandLine, commandText, gateAction, GATE_ACTIONS, mergeArgv, nextCommands, reminderCommand, suppressedCommands, validRunKey } from '../actions.js';
 const here = dirname(fileURLToPath(import.meta.url));
 const repo = resolve(here, '..', '..', '..', '..');
 const runDir = join(repo, 'src', 'factory', 'run');
-const sources = readdirSync(runDir).filter((f) => f.endsWith('.ts')).map((f) => ({ file: f, text: readFileSync(join(runDir, f), 'utf8') }));
+/** Every engine source under src/factory/run/, recursively (tests left out). */
+function runSources(dir, rel = '') {
+    return readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+        if (e.isDirectory())
+            return e.name === '__tests__' ? [] : runSources(join(dir, e.name), `${rel}${e.name}/`);
+        return e.name.endsWith('.ts') ? [{ file: `${rel}${e.name}`, text: readFileSync(join(dir, e.name), 'utf8') }] : [];
+    });
+}
+const sources = runSources(runDir);
 const KEBAB = '[a-z][a-z0-9]*(?:-[a-z0-9]+)*';
 /** `export const X_GATE = 'name'` in every run source. */
 function gateConstants() {
@@ -23,6 +31,82 @@ function gateConstants() {
             out.set(m[1], m[2]);
     return out;
 }
+/**
+ * The `name` values of every brace-free object literal that also has a
+ * `reason` key (a park object), in either key order: `{ name: X, reason }`,
+ * `{ reason, name: X }`, `{ name: 'x' as const, reason: ... }`. Type
+ * literals (`;`-separated) are read by the type pattern in extract().
+ */
+function parkObjectNames(text) {
+    const OPEN = '([{';
+    const CLOSE = ')]}';
+    const out = [];
+    for (const m of text.matchAll(/[{,]\s*name\s*:\s*/g)) {
+        // The value: up to the next `,`, `;` or closing bracket at its own depth.
+        let i = m.index + m[0].length;
+        const start = i;
+        for (let d = 0; i < text.length; i++) {
+            const c = text[i];
+            if (OPEN.includes(c))
+                d++;
+            else if (CLOSE.includes(c)) {
+                if (d === 0)
+                    break;
+                d--;
+            }
+            else if ((c === ',' || c === ';') && d === 0)
+                break;
+        }
+        const value = text.slice(start, i).trim();
+        // The enclosing object: back to its unmatched `{`, then its top-level text.
+        let j = m.index;
+        if (text[j] !== '{') {
+            for (let d = 0, k = j - 1; k >= 0; k--) {
+                const c = text[k];
+                if (CLOSE.includes(c))
+                    d++;
+                else if (OPEN.includes(c)) {
+                    if (d === 0) {
+                        j = k;
+                        break;
+                    }
+                    d--;
+                }
+            }
+        }
+        if (text[j] !== '{')
+            continue;
+        let top = '';
+        for (let d = 0, k = j + 1; k < text.length; k++) {
+            const c = text[k];
+            if (OPEN.includes(c))
+                d++;
+            else if (CLOSE.includes(c)) {
+                if (d === 0)
+                    break;
+                d--;
+            }
+            else if (d === 0)
+                top += c;
+        }
+        // A type literal (`;`-separated) is read by the type pattern; only an object with a `reason` key is a park.
+        if (top.includes(';') || !/(?:^|,)\s*reason\s*(?::|,|$)/.test(top))
+            continue;
+        out.push(value.replace(/\s+as\s+const$/, '').trim());
+    }
+    return out;
+}
+describe('the park-object scanner', () => {
+    it('reads the name of a park object in any key order and form', () => {
+        expect(parkObjectNames("x = { name: 'a-b', reason }; y = { reason: `r ${z}`, name: 'c' as const }; w = { name: GATE_X, reason: f(1, 2) };")).toEqual(["'a-b'", "'c'", 'GATE_X']);
+        expect(parkObjectNames("t: { name: 'a' | 'b'; reason: string }; o = { name: 'n', other: 1 }; p = { name: v.name, detail, reason: r }")).toEqual(['v.name']);
+    });
+    it('finds the engine\'s park objects (sanity: the scan is not empty)', () => {
+        const found = sources.flatMap((s) => parkObjectNames(s.text));
+        expect(found.length).toBeGreaterThan(10);
+        expect(found).toContain("'sandbox-unavailable'");
+    });
+});
 /**
  * The gate expressions whose value is computed, each reviewed: a park
  * object's name (its literal names are extracted below), the lane-kind
@@ -34,6 +118,11 @@ const REVIEWED_DYNAMIC = new Set([
 function extract() {
     const constants = gateConstants();
     const names = new Set(constants.values());
+    // Any exported kebab constant a park object may name (a non-exported one is not resolved: it must be reviewed).
+    const exported = new Map();
+    for (const { text } of sources)
+        for (const m of text.matchAll(new RegExp(`export const ([A-Z][A-Z0-9_]*) = '(${KEBAB})'`, 'g')))
+            exported.set(m[1], m[2]);
     const dynamic = [];
     for (const { file, text } of sources) {
         // this.gate(<first argument>, ...
@@ -58,8 +147,18 @@ function extract() {
             else if (!/^setGate\((?:state: |s, name, )/.test(call))
                 dynamic.push(`${file}: setGate without a literal name`);
         }
-        // Park objects: { name: 'x', reason } and the `name: 'a' | 'b'` type of such objects.
-        for (const m of text.matchAll(new RegExp(`name:\\s*'(${KEBAB})'(?=\\s*(?:,\\s*reason|\\|))`, 'g')))
+        // Park objects ({ name: X, reason }, any key order): a literal, an exported constant, or a reviewed expression.
+        for (const v of parkObjectNames(text)) {
+            const lit = new RegExp(`^'(${KEBAB})'$`).exec(v);
+            if (lit)
+                names.add(lit[1]);
+            else if (exported.has(v))
+                names.add(exported.get(v));
+            else
+                dynamic.push(`${file}: name: ${v}`);
+        }
+        // The `name: 'a' | 'b'` type of such objects.
+        for (const m of text.matchAll(new RegExp(`name:\\s*'(${KEBAB})'(?=\\s*\\|)`, 'g')))
             names.add(m[1]);
         for (const m of text.matchAll(new RegExp(`\\|\\s*'(${KEBAB})';\\s*reason`, 'g')))
             names.add(m[1]);
@@ -135,9 +234,48 @@ describe('attention commands', () => {
         expect(mergeArgv({ forge: 'github', root: '/r', pr: 5, head: `${'c'.repeat(39)};` })).toBeNull();
         expect(mergeArgv({ forge: 'github', root: '/r', pr: 0, head })).toBeNull();
     });
-    it('quote a word with a shell character when printed', () => {
-        expect(commandLine(['git', '-C', 'C:/my repo', 'merge'])).toBe("git -C 'C:/my repo' merge");
-        expect(commandLine(['a', "it's; x"])).toBe("a 'it'\\''s; x'");
+    it('mark every command that can start lanes as billed', () => {
+        const steps = ['resume', 'cancel', 'status', 'merge', 'allow-gate-change', 'allow-unsandboxed-gates', 'allow-secret-shapes'];
+        const issue = nextCommands(4, steps, { forge: 'github', root: '/r', pr: 5, head: 'c'.repeat(40) });
+        expect(issue.map((n) => [n.argv.slice(0, 4).join(' '), n.billed])).toEqual([
+            ['omg factory run 4', true], ['omg factory run cancel', false], ['omg factory run status', false], ['gh pr merge 5', false],
+            ['omg factory run 4', true], ['omg factory run 4', true], ['omg factory run 4', true],
+        ]);
+        const heal = nextCommands('heal-0123abcd', ['status', 'resume', 'heal-close', 'heal-run']);
+        expect(heal.map((n) => [n.argv.slice(0, 4).join(' '), n.billed])).toEqual([
+            ['omg factory heal status', false], ['omg factory heal approve', true], ['omg factory heal close', false], ['omg factory heal run', true],
+        ]);
+        expect(suppressedCommands(3).every((n) => !n.billed)).toBe(true);
+    });
+    it('quote for the shell family: double quotes for the strict set, else the shell\'s own single quotes', () => {
+        const head = 'c'.repeat(40);
+        const merge = (root) => ['git', '-C', root, 'merge', '--no-ff', '--no-edit', head];
+        for (const platform of ['win32', 'linux', 'darwin']) {
+            // A space: double quotes read the same in PowerShell, cmd.exe and POSIX shells.
+            expect(commandLine(merge('C:/my repo'), platform)).toBe(`git -C "C:/my repo" merge --no-ff --no-edit ${head}`);
+            expect(commandText(merge('/home/u/my repo'), platform)).toEqual({ line: `git -C "/home/u/my repo" merge --no-ff --no-edit ${head}`, inRoot: false });
+            expect(commandText(merge('C:/Code/repo'), platform)).toEqual({ line: `git -C C:/Code/repo merge --no-ff --no-edit ${head}`, inRoot: false });
+        }
+        // POSIX: single quotes, a quote written '\''.
+        expect(commandLine(['a', "it's; x"], 'linux')).toBe("a 'it'\\''s; x'");
+        expect(commandText(merge("/x/O'Brien;id;#"), 'linux').line).toBe(`git -C '/x/O'\\''Brien;id;#' merge --no-ff --no-edit ${head}`);
+        expect(commandText(merge('/x/a&calc&/r'), 'linux').line).toBe(`git -C '/x/a&calc&/r' merge --no-ff --no-edit ${head}`);
+        expect(commandText(merge('/x/$(id)'), 'linux').line).toBe(`git -C '/x/$(id)' merge --no-ff --no-edit ${head}`);
+        // PowerShell's '' doubling for a word outside the strict set.
+        expect(commandLine(['a', "it's; x"], 'win32')).toBe("a 'it''s; x'");
+        // Windows: cmd.exe reads no single quotes, so the -C <root> form is withheld for any root outside the strict set.
+        for (const root of ["C:/x/O'Brien;Write-Output INJECTED;#", 'C:/a&calc&/repo', 'C:/x/$(id)', 'C:/x/%PATH%', 'C:/x/a,b', 'C:/my repo\\sub']) {
+            expect(commandText(merge(root), 'win32'), root).toEqual({ line: `git merge --no-ff --no-edit ${head}`, inRoot: true });
+        }
+        // Anything a terminal cannot show (a newline, a filler) is withheld on every platform.
+        for (const platform of ['win32', 'linux']) {
+            for (const root of ['/tmp/a\nb $(id) `id`', '/tmp/a\u3164b', '/tmp/a\u200bb'])
+                expect(commandText(merge(root), platform).inRoot, JSON.stringify(root)).toBe(true);
+        }
+        // Bare words stay bare; a backslash is quoted on POSIX, where it escapes.
+        expect(commandLine(['omg', 'factory', 'run', '12', '--allow-gate-change'], 'win32')).toBe('omg factory run 12 --allow-gate-change');
+        expect(commandLine(['C:\\x'], 'win32')).toBe('C:\\x');
+        expect(commandLine(['C:\\x'], 'linux')).toBe("'C:\\x'");
     });
 });
 //# sourceMappingURL=attention-actions.test.js.map

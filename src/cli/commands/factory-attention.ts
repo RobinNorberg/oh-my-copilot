@@ -38,7 +38,7 @@ export function factoryAttentionCommand(deps: FactoryAttentionDeps = defaultAtte
   const cmd = new Command('attention')
     .description('What needs you: parked, broken and tampered factory runs grouped by the human action, with the next commands (local state only: no network, no forge read, no write)')
     .option('--json', 'JSON output (schemaVersion 1)')
-    .option('--verbose', 'also print each park\'s full reason (never its local detail)')
+    .option('--verbose', 'also print each park\'s full reason, for runs whose state is the engine\'s own (never its local detail)')
     .option('--exit-zero', 'exit 0 when something needs you (default: 4)');
   cmd.exitOverride((e) => {
     e.exitCode = e.code === 'commander.helpDisplayed' || e.code === 'commander.help' || e.code === 'commander.version' ? 0 : EXIT_CHECK_USAGE;
