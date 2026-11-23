@@ -304,6 +304,10 @@
     "source": "plugin"
   },
   {
+    "name": "factory-attention",
+    "source": "plugin"
+  },
+  {
     "name": "figure-it-out",
     "source": "plugin"
   },

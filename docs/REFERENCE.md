@@ -2742,6 +2742,7 @@ Marketplace/plugin installs compact the native plugin `skills/*/SKILL.md` files 
 | `drydock`                 | Shipyard harness scaffold: 4-pillar shared environment, --check drift audit    | `/drydock`                 |
 | `execute`                 | Carry an approved task through to working, verified code                       | `/execute`                |
 | `external-context`        | Parallel document-specialist research                                          | `/external-context`       |
+| `factory-attention`       | What the software factory needs from you, grouped, with the commands to run (read-only) | `/factory-attention` |
 | `figure-it-out`           | Design a bespoke playbook for tasks no bundled skill fits                      | `/figure-it-out`           |
 | `fix-ci`                  | Classify CI failures (real/flaky/environmental) and fix the real ones          | `/fix-ci`                  |
 | `fix-merge-conflicts`     | Resolve conflicts preserving both sides' intent, non-interactively             | `/fix-merge-conflicts`     |
@@ -2849,6 +2850,7 @@ Most installed skills are exposed as `/<registered-name>` (on Claude Code: `/oh-
 | `/diagram`                              | Explain the current topic with the smallest visual that carries it                            |
 | `/execute <task>`                      | Carry an approved task through to working, verified code                                      |
 | `/external-context <topic>`             | Run parallel document-specialist research                                                     |
+| `/factory-attention`                    | Show what the software factory needs from you (read-only; never runs the commands)            |
 | `/figure-it-out <task-shape>`           | Design a bespoke playbook, validated against its anchors                                      |
 | `/fix-ci`                               | Classify CI failures and fix the real ones                                                    |
 | `/fix-merge-conflicts`                  | Resolve conflicts preserving both sides' intent                                               |
