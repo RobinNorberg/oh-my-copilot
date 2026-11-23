@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { classifyNugetFailure, DEFINITION_TREE_NUGET_CONFIG, dotnetRestoreArgs, gitBlobId, missingDefinitionFile, nugetConfigUnreadableReason, nugetRunPackagesDir, parseCatFileBatch, removeEngineDir, restoreApprovalNote, restorePhase, writeDefinitionTree, type DefinitionEntry } from '../nuget-restore.js';
+import { classifyNugetFailure, DEFINITION_TREE_NUGET_CONFIG, dotnetRestoreArgs, gitBlobId, missingDefinitionFile, nugetConfigUnreadableReason, nugetRunPackagesDir, nugetSubstituted, parseCatFileBatch, removeEngineDir, restoreApprovalNote, restorePhase, writeDefinitionTree, type DefinitionEntry } from '../nuget-restore.js';
 
 // Lines from real sandboxed dotnet runs (.NET SDK 10.0.101, Windows), paths shortened.
 const OFFLINE_DNS = [
@@ -104,17 +104,36 @@ describe('classifyNugetFailure: a NuGet config it could not read (config-unreada
     expect(classifyNugetFailure(`${DENIED}\na.csproj : error NU1301: Unable to load the service index for source https://api.nuget.org/v3/index.json.`)!.kind).toBe('config-unreadable');
   });
 
-  it('only in the restore phase, and only as an MSBuild error line', () => {
+  it('only in the restore phase, and only as an MSBuild error line (anchored as NU errors: a project, solution or MSBuild file)', () => {
     expect(classifyNugetFailure(`  App -> C:\\w\\App.dll\n${DENIED}`)).toBeNull();
     expect(classifyNugetFailure("  Failed to read NuGet.Config due to unauthorized access. Path: 'C:\\repo\\NuGet.Config'.")).toBeNull();
+    // L5: a test or tool printing the words on a line of its own shape is no config failure.
+    expect(classifyNugetFailure("Program.cs says error : Failed to read NuGet.Config due to unauthorized access. Path: 'C:\\x'.")).toBeNull();
+    expect(classifyNugetFailure("[xunit] error : Failed to read NuGet.Config due to unauthorized access. Path: 'C:\\x'.")).toBeNull();
   });
 
-  it('the park reason names the file and what to do, for one config and for NuGet\'s own hierarchy', () => {
-    const one = nugetConfigUnreadableReason(['C:\\repo\\NuGet.Config'], []);
-    expect(one).toContain(JSON.stringify('C:\\repo\\NuGet.Config'));
+  it('M3: the MSBuild project SDK resolver failure (real sandbox output) carries the SDK names', () => {
+    const p = 'C:\\repo\\.omg\\team\\factory-run\\worktrees\\issue-1\\A\\A.proj';
+    const out = [
+      `${p} : error : Could not resolve SDK "Microsoft.Build.NoTargets". Exactly one of the probing messages below indicates why we could not resolve the SDK. Investigate and resolve that message to correctly specify the SDK.`,
+      `${p} : error :   SDK resolver "Microsoft.DotNet.MSBuildWorkloadSdkResolver" returned null.`,
+      `${p} : error :   Failed to load NuGet settings. Failed to read NuGet.Config due to unauthorized access. Path: 'C:\\repo\\NuGet.Config'.`,
+      `${p} : error MSB4236: The SDK 'Microsoft.Build.NoTargets/3.7.56' specified could not be found.`,
+    ].join('\n');
+    expect(classifyNugetFailure(out)).toEqual({ kind: 'config-unreadable', codes: [], sources: ['C:\\repo\\NuGet.Config'], sdks: ['Microsoft.Build.NoTargets'] });
+    const why = nugetConfigUnreadableReason(['C:\\repo\\NuGet.Config'], null, ['Microsoft.Build.NoTargets']);
+    expect(why).toContain('MSBuild project SDKs resolved from NuGet (Microsoft.Build.NoTargets)');
+    expect(why).toContain('ignores RestoreConfigFile');
+    expect(why).toContain('factory.run.layout "private"');
+  });
+
+  it('the park reason names the file (no doubled backslashes) and what to do, for one config and for NuGet\'s own hierarchy', () => {
+    const one = nugetConfigUnreadableReason(['C:\\repo\\NuGet.Config'], null);
+    expect(one).toContain('"C:\\repo\\NuGet.Config"');
+    expect(one).not.toContain('\\\\');
     expect(one).toContain('says nothing about the code');
     expect(one).toContain('the root nuget.config of its checkout');
-    const walk = nugetConfigUnreadableReason(['C:\\repo\\NuGet.Config'], ['src/nuget.config']);
+    const walk = nugetConfigUnreadableReason(['C:\\repo\\NuGet.Config'], 'the repository pins a nuget.config below its root (src/nuget.config)');
     expect(walk).toContain('pins a nuget.config below its root (src/nuget.config)');
     expect(walk).toContain('factory.run.layout "private"');
   });
@@ -338,5 +357,22 @@ describe('removeEngineDir (L1)', () => {
     expect(() => removeEngineDir(join(parent, 'issue-9'), root)).toThrow(/does not resolve below/);
     expect(() => removeEngineDir(root, root)).toThrow(/does not resolve below/);
     expect(readdirSync(canary).sort()).toEqual(['issue-9', 'keep.txt']);
+  });
+});
+
+describe('nugetSubstituted: NU1603, a version the project names that NuGet replaced', () => {
+  // As .NET SDK 10.0.101 printed it (a local feed with 13.0.1 and 13.0.3, a reference to 13.0.2).
+  const NU1603 = "/r/App/App.csproj : warning NU1603: App depends on Newtonsoft.Json (>= 13.0.2) but Newtonsoft.Json 13.0.2 was not found. Newtonsoft.Json 13.0.3 was resolved instead.";
+
+  it('is a failure of its own kind with NuGet\'s message, from the restore phase only', () => {
+    expect(nugetSubstituted(`${NU1603}\n  Restored /r/App/App.csproj (in 407 ms).\n  App -> /r/App/bin/App.dll`)).toEqual({ kind: 'substituted', codes: ['NU1603'], sources: ['App depends on Newtonsoft.Json (>= 13.0.2) but Newtonsoft.Json 13.0.2 was not found. Newtonsoft.Json 13.0.3 was resolved instead.'] });
+    expect(nugetSubstituted(NU1603.replace('warning', 'error'))?.kind).toBe('substituted');
+    // MSBuild repeats warnings in its summary after the build started: not the restore phase.
+    expect(nugetSubstituted(`  App -> /r/App/bin/App.dll\nBuild succeeded.\n${NU1603}`)).toBeNull();
+    // NU1604 (an exclusive lower bound) and a floating version's restore print no NU1603.
+    expect(nugetSubstituted("/r/App/App.csproj : warning NU1604: Project dependency Newtonsoft.Json (> 13.0.1 && < 14.0.0) does not contain an inclusive lower bound.")).toBeNull();
+    expect(nugetSubstituted(undefined)).toBeNull();
+    // classifyNugetFailure does not read it: a pass with NU1603 is no NU error.
+    expect(classifyNugetFailure(NU1603)).toBeNull();
   });
 });

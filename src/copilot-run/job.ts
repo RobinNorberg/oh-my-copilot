@@ -322,10 +322,12 @@ export interface CopilotRunStartOptions {
    */
   dotnet?: boolean;
   /**
-   * With `dotnet`: the trusted base pins a nuget.config below its root (engine.ts dotnetNugetHierarchyBase), so NuGet
-   * reads its own config hierarchy instead of the one file dotnet-sandbox.ts dotnetNugetConfig picks.
+   * With `dotnet`: why NuGet reads its own config hierarchy (engine.ts dotnetNugetPolicy: the trusted base pins a
+   * nuget.config below its root) instead of the one file dotnet-sandbox.ts dotnetNugetConfig picks.
    */
-  dotnetNugetHierarchy?: boolean;
+  dotnetNugetHierarchy?: string;
+  /** With `dotnet`: the trusted base's pinned MSBuild files set restore sources themselves, so nuget.org is never added. */
+  dotnetNugetNoAddSource?: boolean;
 }
 
 /** SandboxPolicyContext's node_modules fields from CopilotRunStartOptions.nodeModulesGrant's answer. */
@@ -559,7 +561,9 @@ interface Job {
   /** CopilotRunStartOptions.dotnet (write jobs only). */
   dotnet: boolean;
   /** CopilotRunStartOptions.dotnetNugetHierarchy (with `dotnet`). */
-  dotnetNugetHierarchy: boolean;
+  dotnetNugetHierarchy: string | null;
+  /** CopilotRunStartOptions.dotnetNugetNoAddSource. */
+  dotnetNugetNoAddSource: boolean;
   /** Why CopilotRunStartOptions.beforeSandboxedSession could not ready the worktree (the job fails before the runtime starts). */
   unprepared: string | null;
   /** The runtime's pid once the client started (stopAll's kill fallback). */
@@ -1245,7 +1249,8 @@ export class CopilotRunManager {
       beforeHostGit: options.beforeHostGit ?? null,
       nodeModulesGrant: profile !== 'review' ? options.nodeModulesGrant ?? null : null,
       dotnet: profile !== 'review' && options.dotnet === true,
-      dotnetNugetHierarchy: options.dotnetNugetHierarchy === true,
+      dotnetNugetHierarchy: options.dotnetNugetHierarchy ?? null,
+      dotnetNugetNoAddSource: options.dotnetNugetNoAddSource === true,
       unprepared: null,
       pid: undefined,
       pidIdentity: null,
@@ -1559,8 +1564,8 @@ export class CopilotRunManager {
     const realHome = (deps.realHome ?? (() => userInfo().homedir))();
     const dotnetGrants: string[] = [];
     if (job.dotnet) {
-      // One NuGet config, the worktree root's or nuget.org only (dotnet-sandbox.ts dotnetNugetConfig), unless the base pins lower ones.
-      const d = dotnetSandboxEnv(env.USERPROFILE!, deps.env, realHome, deps.platform, undefined, job.dotnetNugetHierarchy ? undefined : dotnetNugetConfig(job.worktree?.path ?? job.workCwd, env.USERPROFILE!, deps.platform));
+      // One NuGet config, the worktree root's or nuget.org only (dotnet-sandbox.ts dotnetNugetConfig), unless the base keeps NuGet's hierarchy (engine.ts).
+      const d = dotnetSandboxEnv(env.USERPROFILE!, deps.env, realHome, deps.platform, undefined, job.dotnetNugetHierarchy ? { hierarchy: job.dotnetNugetHierarchy } : dotnetNugetConfig(job.worktree?.path ?? job.workCwd, env.USERPROFILE!, deps.platform, { noAdd: job.dotnetNugetNoAddSource }));
       Object.assign(env, d.env);
       dotnetGrants.push(...d.readonly);
       job.notes.push(...d.notes);

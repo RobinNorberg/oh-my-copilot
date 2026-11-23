@@ -826,7 +826,7 @@ describe('runSandboxed: a dotnet command (dotnet-sandbox.ts)', () => {
     // Nothing more is granted for it: the checkout is the command's own.
     expect([...policy().readonlyPaths, ...policy().readwritePaths].some((p) => p.endsWith('nuget.config'))).toBe(false);
     rec.connections.length = 0;
-    await runSandboxed(['/usr/bin/dotnet', 'build'], opts({ nugetHierarchy: true }), deps(ok));
+    await runSandboxed(['/usr/bin/dotnet', 'build'], opts({ nugetHierarchy: 'NuGet reads its own config hierarchy: a test' }), deps(ok));
     expect(rec.connections[0].env.RestoreConfigFile).toBeUndefined();
   });
 

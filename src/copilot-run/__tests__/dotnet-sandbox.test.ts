@@ -2,12 +2,12 @@
  * dotnet-sandbox.ts: which commands count as dotnet, the -m:1 rewrite, the
  * NuGet packages folder lookup and the env a sandboxed dotnet gets.
  */
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { DOTNET_SINGLE_NODE_FLAG, dotnetNugetConfig, dotnetSandboxArgs, dotnetSandboxEnv, isDotnetExe, isMtpGlobalJson, isNugetHost, NUGET_ORG_ONLY_CONFIG, NUGET_ORG_SOURCE, nugetOrgImplied, nugetPackagesDir, nugetPackagesGrant, rootNugetConfig } from '../dotnet-sandbox.js';
+import { DOTNET_SINGLE_NODE_FLAG, dotnetNugetConfig, dotnetSandboxArgs, dotnetSandboxEnv, isDotnetExe, isMtpGlobalJson, isNugetHost, msbuildEscape, NUGET_CONFIG_READ_MAX, NUGET_ORG_ONLY_CONFIG, NUGET_ORG_SOURCE, nugetConfigVerdict, nugetPackagesDir, nugetPackagesGrant, readRegularFileBounded, rootNugetConfig } from '../dotnet-sandbox.js';
 
 let dir: string;
 beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'omg-dotnet-sandbox-')); });
@@ -180,22 +180,42 @@ describe('one NuGet config for a sandboxed dotnet (RestoreConfigFile)', () => {
     expect(one.readonly).toEqual(walk.readonly);
   });
 
-  it('rootNugetConfig: NuGet\'s names in its order, without case on Windows and macOS only; a dir of that name is none', () => {
+  it('rootNugetConfig: NuGet\'s names in its order; a dir of that name is none; in doubt, ambiguous', () => {
     const co = join(dir, 'co');
     mkdirSync(co);
-    expect(rootNugetConfig(co, 'win32')).toBeNull();
-    expect(rootNugetConfig(join(dir, 'missing'), 'linux')).toBeNull();
+    expect(rootNugetConfig(co, 'win32')).toEqual({ none: true });
+    expect(rootNugetConfig(join(dir, 'missing'), 'linux')).toEqual({ none: true });
     writeFileSync(join(co, 'NUGET.CONFIG'), clearOrg);
-    expect(rootNugetConfig(co, 'win32')).toBe(join(co, 'NUGET.CONFIG'));
-    expect(rootNugetConfig(co, 'darwin')).toBe(join(co, 'NUGET.CONFIG'));
-    expect(rootNugetConfig(co, 'linux')).toBeNull();
+    // Windows opens NuGet.Config in any case; Linux never probes NUGET.CONFIG; macOS depends on the volume.
+    expect(rootNugetConfig(co, 'win32')).toEqual({ file: join(co, 'NUGET.CONFIG') });
+    expect(rootNugetConfig(co, 'linux')).toEqual({ none: true });
+    expect('ambiguous' in rootNugetConfig(co, 'darwin')).toBe(true);
     const lin = join(dir, 'lin');
     mkdirSync(lin);
     writeFileSync(join(lin, 'NuGet.Config'), clearOrg);
-    expect(rootNugetConfig(lin, 'linux')).toBe(join(lin, 'NuGet.Config'));
+    expect(rootNugetConfig(lin, 'linux')).toEqual({ file: join(lin, 'NuGet.Config') });
+    expect(rootNugetConfig(lin, 'darwin')).toEqual({ file: join(lin, 'NuGet.Config') });
+    // A dir named nuget.config does not exist for NuGet's File.Exists: none, or the next name.
     const sub = join(dir, 'sub');
     mkdirSync(join(sub, 'nuget.config'), { recursive: true });
-    expect(rootNugetConfig(sub, 'win32')).toBeNull();
+    expect(rootNugetConfig(sub, 'win32')).toEqual({ none: true });
+    expect(rootNugetConfig(sub, 'linux')).toEqual({ none: true });
+  });
+
+  it('rootNugetConfig: two names that differ in case, or a link, are ambiguous (fakes for each platform)', () => {
+    // Two entries of one dir: only a case-sensitive file system holds both; the readdir is what is judged.
+    const two = join(dir, 'two');
+    mkdirSync(two);
+    writeFileSync(join(two, 'nuget.config'), clearOrg);
+    let both = true;
+    try { writeFileSync(join(two, 'NuGet.Config'), clearOrg, { flag: 'wx' }); } catch { both = false; }
+    if (both) for (const p of ['win32', 'darwin', 'linux'] as const) expect('ambiguous' in rootNugetConfig(two, p)).toBe(true);
+    else expect(rootNugetConfig(two, 'win32')).toEqual({ file: join(two, 'nuget.config') });
+    const link = join(dir, 'link');
+    mkdirSync(link);
+    let linked = true;
+    try { symlinkSync(join(two, 'nuget.config'), join(link, 'nuget.config'), 'file'); } catch { linked = false; }
+    if (linked) for (const p of ['win32', 'darwin', 'linux'] as const) expect('ambiguous' in rootNugetConfig(link, p)).toBe(true);
   });
 
   it('dotnetNugetConfig: the checkout\'s root file, else nuget.org only in the job profile (never in the checkout)', () => {
@@ -204,24 +224,137 @@ describe('one NuGet config for a sandboxed dotnet (RestoreConfigFile)', () => {
     mkdirSync(co);
     const none = dotnetNugetConfig(co, profile, 'win32');
     expect(none).toEqual({ file: join(profile, 'nuget', 'nuget.config'), addNugetOrg: false });
-    expect(readFileSync(none.file, 'utf8')).toBe(NUGET_ORG_ONLY_CONFIG);
+    expect(readFileSync(join(profile, 'nuget', 'nuget.config'), 'utf8')).toBe(NUGET_ORG_ONLY_CONFIG);
     expect(NUGET_ORG_ONLY_CONFIG).toContain(`value="${NUGET_ORG_SOURCE}"`);
     writeFileSync(join(co, 'nuget.config'), clearOrg);
     expect(dotnetNugetConfig(co, profile, 'win32')).toEqual({ file: join(co, 'nuget.config'), addNugetOrg: false });
-    // A root file that relies on nuget.org from the user config: added.
+    // A root file that relies on nuget.org from the user config: added, unless the engine says the repository sets
+    // its restore sources in MSBuild (H2).
     writeFileSync(join(co, 'nuget.config'), '<configuration><config><add key="dependencyVersion" value="Lowest" /></config></configuration>');
     expect(dotnetNugetConfig(co, profile, 'win32')).toEqual({ file: join(co, 'nuget.config'), addNugetOrg: true });
+    expect(dotnetNugetConfig(co, profile, 'win32', { noAdd: true })).toEqual({ file: join(co, 'nuget.config'), addNugetOrg: false });
+    // M1: a mapping to a key the file does not define keeps NuGet's own hierarchy.
+    writeFileSync(join(co, 'nuget.config'), '<configuration><packageSources><add key="corp" value="https://corp.example.test/v3/index.json" /></packageSources><packageSourceMapping><packageSource key="nuget.org"><package pattern="*" /></packageSource><packageSource key="corp"><package pattern="Corp.*" /></packageSource></packageSourceMapping></configuration>');
+    const mapped = dotnetNugetConfig(co, profile, 'win32');
+    expect('hierarchy' in mapped && mapped.hierarchy).toContain('maps packages to the source key(s) nuget.org, which it does not define');
+    // A file that cannot be read as a regular file (a dir of that name elsewhere is none; an unreadable one adds nothing).
+    rmSync(join(co, 'nuget.config'));
+    writeFileSync(join(co, 'nuget.config'), Buffer.alloc(NUGET_CONFIG_READ_MAX + 1, 0x20));
+    expect(dotnetNugetConfig(co, profile, 'win32')).toEqual({ file: join(co, 'nuget.config'), addNugetOrg: false });
   });
 
-  it('nugetOrgImplied: no <clear />, no nuget.org feed listed, nuget.org not disabled', () => {
-    expect(nugetOrgImplied('<configuration />')).toBe(true);
-    expect(nugetOrgImplied('<configuration><packageSources><add key="dotnet-public" value="https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet-public/nuget/v3/index.json" /></packageSources></configuration>')).toBe(true);
-    expect(nugetOrgImplied(clearOrg)).toBe(false);
-    expect(nugetOrgImplied('<configuration><packageSources><clear/><add key="mine" value="./feed" /></packageSources></configuration>')).toBe(false);
-    expect(nugetOrgImplied('<configuration><packageSources><add key="org" value="https://api.nuget.org/v3/index.json" /></packageSources></configuration>')).toBe(false);
-    expect(nugetOrgImplied('<configuration><disabledPackageSources><add key="nuget.org" value="true" /></disabledPackageSources></configuration>')).toBe(false);
-    expect(nugetOrgImplied('<configuration><disabledPackageSources><add key="nuget.org" value="false" /></disabledPackageSources></configuration>')).toBe(true);
-    // A commented-out clear is no clear.
-    expect(nugetOrgImplied('<configuration><packageSources><!-- <clear /> --><add key="x" value="https://example.test/v3/index.json" /></packageSources></configuration>')).toBe(true);
+  it('L2: the env value is MSBuild-escaped; a path with ";" keeps NuGet\'s hierarchy', () => {
+    expect(msbuildEscape("C:\\a%41b @(x) $(y) 'q' *?")).toBe('C:\\a%2541b %40(x) %24(y) %27q%27 %2A%3F');
+    const odd = join(dir, 'a%41b @(x) c');
+    mkdirSync(odd);
+    writeFileSync(join(odd, 'nuget.config'), clearOrg);
+    const one = dotnetNugetConfig(odd, join(dir, 'p'), 'win32');
+    const env = dotnetSandboxEnv(join(dir, 'profile'), {}, join(dir, 'home'), 'win32', undefined, one).env;
+    expect(env.RestoreConfigFile).toBe(msbuildEscape(join(odd, 'nuget.config')));
+    expect(env.RestoreConfigFile).toContain('a%2541b %40(x) c');
+    const semi = join(dir, 'a;b');
+    mkdirSync(semi);
+    writeFileSync(join(semi, 'nuget.config'), clearOrg);
+    const walk = dotnetNugetConfig(semi, join(dir, 'p'), 'win32');
+    expect('hierarchy' in walk && walk.hierarchy).toContain('";"');
+    const out = dotnetSandboxEnv(join(dir, 'profile'), {}, join(dir, 'home'), 'win32', undefined, walk);
+    expect(out.env.RestoreConfigFile).toBeUndefined();
+    expect(out.notes.join('\n')).toContain('NuGet reads its own config hierarchy');
+  });
+
+  it('L3: readRegularFileBounded reads a regular file within the cap, never a dir, a link or a larger file', () => {
+    const f = join(dir, 'f.config');
+    writeFileSync(f, 'abc');
+    expect(readRegularFileBounded(f, 10)?.toString()).toBe('abc');
+    expect(readRegularFileBounded(f, 2)).toBeNull();
+    expect(readRegularFileBounded(dir, 10)).toBeNull();
+    expect(readRegularFileBounded(join(dir, 'missing'), 10)).toBeNull();
+    let linked = true;
+    try { symlinkSync(f, join(dir, 'l.config'), 'file'); } catch { linked = false; }
+    if (linked) expect(readRegularFileBounded(join(dir, 'l.config'), 10)).toBeNull();
+  });
+});
+
+/** A root nuget.config shape, its bytes, and whether `dotnet nuget list source` in its dir (a fresh default user config
+ * behind it, .NET SDK 10.0.101, Windows; review variants.sh) listed https://api.nuget.org/v3/index.json enabled. */
+const P = '<add key="priv" value="http://127.0.0.1:9/v3/index.json" />';
+const shape = (s: string): Buffer => Buffer.from(s, 'utf8');
+const NUGET_SAYS: Array<[string, Buffer, boolean]> = [
+  ['plain feed', shape(`<configuration><packageSources>${P}</packageSources></configuration>`), true],
+  ['<clear />', shape(`<configuration><packageSources><clear />${P}</packageSources></configuration>`), false],
+  ['<Clear />', shape(`<configuration><packageSources><Clear />${P}</packageSources></configuration>`), false],
+  ['<CLEAR/>', shape(`<configuration><packageSources><CLEAR/>${P}</packageSources></configuration>`), false],
+  ['<PackageSources> section', shape(`<configuration><PackageSources><clear />${P}</PackageSources></configuration>`), true],
+  ['PI holding <!--', shape(`<configuration><packageSources><?x <!-- ?><clear />${P}<!-- --></packageSources></configuration>`), false],
+  ['CDATA holding <!--', shape(`<configuration><packageSources><![CDATA[<!--]]><clear />${P}<!-- --></packageSources></configuration>`), false],
+  ['UTF-16 with BOM', Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(`<?xml version="1.0" encoding="utf-16"?><configuration><packageSources><clear />${P}</packageSources></configuration>`, 'utf16le')]), false],
+  ['UTF-16 without BOM', Buffer.from(`<configuration><packageSources><clear />${P}</packageSources></configuration>`, 'utf16le'), false],
+  ['nuget.org key to a mirror', shape('<configuration><packageSources><add key="nuget.org" value="http://127.0.0.1:9/mirror/index.json" /></packageSources></configuration>'), false],
+  ['disabled nuget.org True', shape(`<configuration><packageSources>${P}</packageSources><disabledPackageSources><add key="nuget.org" value="True" /></disabledPackageSources></configuration>`), false],
+  ['<DisabledPackageSources>', shape(`<configuration><packageSources>${P}</packageSources><DisabledPackageSources><add key="nuget.org" value="true" /></DisabledPackageSources></configuration>`), true],
+  ['<clear></clear>', shape(`<configuration><packageSources><clear></clear>${P}</packageSources></configuration>`), false],
+  ['UTF-8 BOM, clear', Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), shape(`<configuration><packageSources><clear />${P}</packageSources></configuration>`)]), false],
+  ['UTF-8 BOM, plain', Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), shape(`<configuration><packageSources>${P}</packageSources></configuration>`)]), true],
+  ['DOCTYPE entity', shape(`<?xml version="1.0"?><!DOCTYPE configuration [<!ENTITY c "<clear/>">]><configuration><packageSources>&c;${P}</packageSources></configuration>`), false],
+  ['> in an attribute', shape(`<configuration><packageSources>${P}</packageSources><disabledPackageSources><add key="nuget.org" note="a>b" value="true" /></disabledPackageSources></configuration>`), false],
+  ['<ADD> disabling nuget.org', shape(`<configuration><packageSources>${P}</packageSources><disabledPackageSources><ADD key="nuget.org" value="true" /></disabledPackageSources></configuration>`), false],
+  ['Key= Value= (invalid)', shape(`<configuration><packageSources>${P}</packageSources><disabledPackageSources><add Key="nuget.org" Value="true" /></disabledPackageSources></configuration>`), false],
+  ['NuGet.org key disabled', shape(`<configuration><packageSources>${P}</packageSources><disabledPackageSources><add key="NuGet.org" value="true" /></disabledPackageSources></configuration>`), true],
+  ['remove nuget.org', shape(`<configuration><packageSources><remove key="nuget.org" />${P}</packageSources></configuration>`), true],
+  ['<clear\\n/>', shape(`<configuration><packageSources><clear\n/>${P}</packageSources></configuration>`), false],
+  ['char ref nuget&#46;org disabled', shape(`<configuration><packageSources>${P}</packageSources><disabledPackageSources><add key="nuget&#46;org" value="true" /></disabledPackageSources></configuration>`), false],
+  ['mapping to nuget.org, cleared', shape(`<configuration><packageSources><clear />${P}</packageSources><packageSourceMapping><packageSource key="nuget.org"><package pattern="*" /></packageSource></packageSourceMapping></configuration>`), false],
+  ['mapping to priv, no clear', shape(`<configuration><packageSources>${P}</packageSources><packageSourceMapping><packageSource key="priv"><package pattern="Corp.*" /></packageSource></packageSourceMapping></configuration>`), true],
+  ['config section only', shape('<configuration><config><add key="globalPackagesFolder" value="pk" /></config></configuration>'), true],
+  ['<Configuration> root', shape(`<Configuration><packageSources>${P}</packageSources></Configuration>`), true],
+  ['clear + nuget.org', shape('<?xml version="1.0" encoding="utf-8"?>\n<configuration><packageSources><clear /><add key="nuget.org" value="https://api.nuget.org/v3/index.json" /></packageSources></configuration>'), true],
+  ['commented clear', shape(`<configuration><packageSources><!-- <clear /> -->${P}</packageSources></configuration>`), true],
+  ['empty file (invalid)', shape(''), false],
+  ['a second public feed', shape('<configuration><packageSources><add key="dotnet-tools" value="https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet-tools/nuget/v3/index.json" /></packageSources></configuration>'), true],
+  ['xmlns + clear', shape(`<configuration xmlns="urn:x"><packageSources><clear />${P}</packageSources></configuration>`), false],
+  [' nuget.org  key disabled', shape(`<configuration><packageSources>${P}</packageSources><disabledPackageSources><add key=" nuget.org " value="true" /></disabledPackageSources></configuration>`), true],
+  ['mapping to NUGET.ORG', shape(`<configuration><packageSources>${P}</packageSources><packageSourceMapping><packageSource key="NUGET.ORG"><package pattern="*" /></packageSource></packageSourceMapping></configuration>`), true],
+];
+
+describe('H1: nugetConfigVerdict adds nuget.org only when NuGet certainly uses it (fail closed)', () => {
+  it.each(NUGET_SAYS)('%s: never "add" where NuGet would not use nuget.org', (_name, bytes, nugetOrgEnabled) => {
+    const v = nugetConfigVerdict(bytes);
+    if (v.addNugetOrg) expect(nugetOrgEnabled).toBe(true);
+    else expect(v.why).toBeTruthy();
+  });
+
+  it('adds for the common shapes that only add a feed or set config, and nothing else', () => {
+    const adds = NUGET_SAYS.filter(([, b]) => nugetConfigVerdict(b).addNugetOrg).map(([n]) => n).sort();
+    expect(adds).toEqual(['UTF-8 BOM, plain', 'a second public feed', 'commented clear', 'config section only', 'plain feed'].sort());
+  });
+
+  it('every shape the review listed is "do not add"', () => {
+    const no = (s: string | Buffer) => nugetConfigVerdict(typeof s === 'string' ? Buffer.from(s) : s).addNugetOrg;
+    expect(no('<configuration><packageSources><Clear /><add key="corp" value="C:\\corp" /></packageSources></configuration>')).toBe(false);
+    expect(no('<configuration><packageSources><add key="nuget.org" value="https://corp-mirror.example.test/v3/index.json" /></packageSources></configuration>')).toBe(false);
+    expect(no(`<configuration><packageSources><?pi <!-- ?><clear />${P}<!-- --></packageSources></configuration>`)).toBe(false);
+    expect(no(`<configuration><disabledPackageSources><ADD key="nuget.org" value="true"/></disabledPackageSources><packageSources>${P}</packageSources></configuration>`)).toBe(false);
+    expect(no(`<configuration><packageSources>${P}</packageSources><x note="a>b" /></configuration>`)).toBe(true);
+    expect(no('<configuration><packageSources><add key="x" value="&#110;uget.org" /></packageSources></configuration>')).toBe(false);
+    expect(no('<configuration><packageSources><add key="x" value=unquoted /></packageSources></configuration>')).toBe(false);
+    expect(no('<configuration><packageSources><add key="x" value="https://example.test/v3" />')).toBe(false);
+    expect(no('<configuration/><configuration/>')).toBe(false);
+    expect(no(Buffer.from([0x3c, 0xc3, 0x28, 0x3e]))).toBe(false);
+  });
+
+  it('M1: unmappedKeys names a mapping key the file does not define (unless it clears its sources)', () => {
+    const v = (s: string) => nugetConfigVerdict(Buffer.from(s)).unmappedKeys;
+    expect(v(`<configuration><packageSources>${P}</packageSources><packageSourceMapping><packageSource key="nuget.org"><package pattern="*" /></packageSource><packageSource key="priv"><package pattern="Corp.*" /></packageSource></packageSourceMapping></configuration>`)).toEqual(['nuget.org']);
+    expect(v(`<configuration><packageSources>${P}</packageSources><packageSourceMapping><packageSource key="priv"><package pattern="*" /></packageSource></packageSourceMapping></configuration>`)).toEqual([]);
+    expect(v(`<configuration><packageSources><clear />${P}</packageSources><packageSourceMapping><packageSource key="nuget.org"><package pattern="*" /></packageSource></packageSourceMapping></configuration>`)).toEqual([]);
+  });
+
+  it('L1: linear on crafted input at the size cap (each under 200 ms)', () => {
+    const rep = (s: string) => Buffer.from(s.repeat(Math.ceil(NUGET_CONFIG_READ_MAX / s.length)).slice(0, NUGET_CONFIG_READ_MAX));
+    for (const s of ['<!--', '<packageSources>', '<packageSources ', '<add ', '<a x="', '<?x ', '<a><a>', '&amp;']) {
+      const t = performance.now();
+      nugetConfigVerdict(rep(s));
+      expect(performance.now() - t, s).toBeLessThan(200);
+    }
   });
 });

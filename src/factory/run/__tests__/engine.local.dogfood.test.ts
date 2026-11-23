@@ -225,7 +225,7 @@ describe('a dotnet gate: its MSBuild files define it, and its write lanes get th
     w = localWorld(['dotnet', 'test']);
     baseProject();
     const exec = w.exec;
-    // The base's own listing (the lane's NuGet config rule, engine.ts dotnetNugetHierarchyPaths) still works: the head's fails.
+    // The base's own listing (the lane's NuGet config rule, engine.ts dotnetNugetPolicy) still works: the head's fails.
     const base = gitIn(w.root, 'rev-parse', 'HEAD').trim();
     const failing: typeof w.exec = (cmd, args, opts) => (cmd === 'git' && args.includes('ls-tree') && args.includes('--full-tree') && !args.includes(base) ? { status: 128, stdout: '', stderr: 'fatal: not a tree object' } : exec(cmd, args, opts));
     const out = await runFactoryEngine(localOpts(w, lanesFor(w, [commitFile('src/App/Greet.cs', 'namespace App;\n')]), { exec: failing }));

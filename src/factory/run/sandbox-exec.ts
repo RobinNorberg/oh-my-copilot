@@ -138,11 +138,16 @@ export interface SandboxRunRequest {
    */
   nugetPackages?: RunNugetPackages;
   /**
-   * A dotnet command in a commit that pins a nuget.config below its root (engine.ts): NuGet reads its own config
-   * hierarchy instead of the one file dotnet-sandbox.ts dotnetNugetConfig picks (that one would hide the lower
-   * file). Ignored for other executables.
+   * Why a dotnet command keeps NuGet's own config hierarchy (engine.ts: the commit pins a nuget.config below its root,
+   * which the one file dotnet-sandbox.ts dotnetNugetConfig picks would hide); a failing command's output names it.
+   * Ignored for other executables.
    */
-  nugetHierarchy?: true;
+  nugetHierarchy?: string;
+  /**
+   * A dotnet command whose commit's pinned MSBuild files (or the command line) set NuGet's restore sources or config
+   * themselves (engine.ts): nuget.org is never added (RestoreAdditionalProjectSources would be appended to them).
+   */
+  nugetNoAddSource?: true;
 }
 
 /** The gate record and PR note line for a sandboxed run on a host without denied_paths. */
@@ -193,7 +198,9 @@ export interface SandboxExecOptions {
   /** SandboxRunRequest.nugetPackages. */
   nugetPackages?: RunNugetPackages;
   /** SandboxRunRequest.nugetHierarchy. */
-  nugetHierarchy?: true;
+  nugetHierarchy?: string;
+  /** SandboxRunRequest.nugetNoAddSource. */
+  nugetNoAddSource?: true;
 }
 
 export const MARKER_PREFIX = 'omg-gate-exit-';
@@ -363,7 +370,7 @@ export async function runSandboxed(argv: readonly string[], o: SandboxExecOption
     const dotnetWrites: string[] = [];
     const dotnetNotes: string[] = [];
     if (dotnet) {
-      const d = dotnetSandboxEnv(env.USERPROFILE!, deps.env, realHome, deps.platform, o.nugetPackages, o.nugetHierarchy ? undefined : dotnetNugetConfig(o.cwd, env.USERPROFILE!, deps.platform));
+      const d = dotnetSandboxEnv(env.USERPROFILE!, deps.env, realHome, deps.platform, o.nugetPackages, o.nugetHierarchy ? { hierarchy: o.nugetHierarchy } : dotnetNugetConfig(o.cwd, env.USERPROFILE!, deps.platform, { noAdd: o.nugetNoAddSource === true }));
       Object.assign(env, d.env);
       dotnetGrants.push(...d.readonly);
       dotnetWrites.push(...d.readwrite);
@@ -552,7 +559,8 @@ export function createSandboxRunner(root: string, deps: SandboxExecDeps = defaul
       ...(req.nestedNodeModulesTargets ? { nestedNodeModulesTargets: req.nestedNodeModulesTargets } : {}),
       ...(req.dotnetMtp ? { dotnetMtp: true as const } : {}),
       ...(req.nugetPackages ? { nugetPackages: req.nugetPackages } : {}),
-      ...(req.nugetHierarchy ? { nugetHierarchy: true as const } : {}),
+      ...(req.nugetHierarchy ? { nugetHierarchy: req.nugetHierarchy } : {}),
+      ...(req.nugetNoAddSource ? { nugetNoAddSource: true as const } : {}),
     }, deps);
   };
 }
