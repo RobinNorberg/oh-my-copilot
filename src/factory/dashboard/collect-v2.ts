@@ -508,8 +508,8 @@ function collectV2In(root: string, o: CollectDashboardV2Options): DashboardDataV
   const warnings: string[] = [];
   // Each run state is read once, by the attention collector (the ledger-first, capped key set); its reads are reused here.
   const reads: ReadRun[] = [];
+  // Unread state files are one of attention's warnings, which the result carries (once).
   const attention = collectAttention(root, { ledgerDir: o.ledgerDir, now: () => now, limits: o.limits ?? null, owner, verbose: true, onRead: (r) => reads.push(r) });
-  if (attention.items.some((i) => i.key === 'state-files')) warnings.push(attention.warnings.find((w) => w.includes('state files were not read')) ?? 'some state files were not read: more than the limit; inspect .omg/state/factory');
 
   /** Every verified state, --since or not (Live now always shows the present). */
   const allStates = new Map<string, FactoryRunState>();

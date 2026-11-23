@@ -44,21 +44,23 @@ export const READ_MAX_BYTES = 8 * 1024 * 1024;
 const TEXT_MAX = 300;
 const REASON_MAX = 2_000;
 /**
- * At most this many run state files (and, apart, heal records) are read per
- * repository: a lane can write any number of files into `.omg/state/factory`,
- * and each one costs about 0.7 ms to check on Windows (open dominates), so a
- * full pass stays well under a second.
+ * At most this many state files the engine has no record of (run states and,
+ * apart, heal records) are read per repository: a lane can write any number
+ * of files into `.omg/state/factory`, and each one costs about 0.7 ms to
+ * check on Windows (open dominates). Every run (and heal seal) the engine
+ * ledger records is read on top of these: that set lives outside the
+ * repository and grows only with the engine's own runs.
  */
-export const MAX_RUN_STATES = 500;
+export const MAX_UNRECORDED_STATES = 200;
 const keyOrder = (a, b) => typeof a === 'number' ? (typeof b === 'number' ? a - b : -1) : typeof b === 'number' ? 1 : a < b ? -1 : a > b ? 1 : 0;
 /**
  * The run keys to read in a repository, chosen so that flooding the state dir
- * cannot push an engine run out: every run the engine ledger records first
- * (the ledger lives outside the repository and holds the engine's own runs
- * only), then the other canonical state files in ascending key order, up to
- * `max` in all. `omitted` counts the state files left unread.
+ * cannot push an engine run out: every run the engine ledger records (the
+ * ledger lives outside the repository and holds the engine's own runs only),
+ * then up to `max` other canonical state files in ascending key order, however
+ * many runs are recorded. `omitted` counts the unrecorded state files left unread.
  */
-export function runKeysToRead(root, ledgerDir, max = MAX_RUN_STATES) {
+export function runKeysToRead(root, ledgerDir, max = MAX_UNRECORDED_STATES) {
     const keysIn = (dir, skip) => {
         const out = new Map();
         let names = [];
@@ -77,12 +79,11 @@ export function runKeysToRead(root, ledgerDir, max = MAX_RUN_STATES) {
     };
     const recorded = keysIn(dirname(ledgerFilePath(ledgerDir, root, 1)));
     const others = [...keysIn(factoryStateDir(root), recorded).values()].sort(keyOrder);
-    const room = Math.max(0, max - recorded.size);
-    return { keys: [...[...recorded.values()].sort(keyOrder), ...others.slice(0, room)], omitted: Math.max(0, others.length - room) };
+    return { keys: [...[...recorded.values()].sort(keyOrder), ...others.slice(0, max)], omitted: Math.max(0, others.length - max) };
 }
 /** The one Inspect row (and warning) that stands for the state files left unread. */
 export function omittedStatesNote(omitted) {
-    return `${omitted} more state files were not read: more than the limit (${MAX_RUN_STATES} per repository); inspect .omg/state/factory`;
+    return `${omitted} state files the engine has no record of were not read (more than the limit of ${MAX_UNRECORDED_STATES} per repository); inspect .omg/state/factory`;
 }
 const RUN_FILE = /^run-(\d+|heal-[0-9a-f]{8})\.json$/;
 const text = (v, max = TEXT_MAX) => plainText(String(v ?? '')).replace(/\s+/g, ' ').trim().slice(0, max);
@@ -439,12 +440,11 @@ function collectIn(root, o) {
     }
     // Heal signatures whose open heal run waits for a human before any ci-heal run state exists, and seals whose record is gone.
     const healDir = join(factoryStateDir(root), 'heal');
-    // The same cap: every seal (outside the repository) first, then the other heal records in order.
+    // The same rule: every seal (outside the repository), then up to the allowance of other heal records in order.
     const sealed = new Set(healSealSigs(o.ledgerDir, root));
     const healOthers = listed(healDir).filter((f) => /^[0-9a-f]{8}\.json$/.test(f)).map((f) => f.slice(0, 8)).filter((s) => !sealed.has(s)).sort();
-    const healRoom = Math.max(0, MAX_RUN_STATES - sealed.size);
-    unread += Math.max(0, healOthers.length - healRoom);
-    for (const sig8 of [...[...sealed].sort(), ...healOthers.slice(0, healRoom)]) {
+    unread += Math.max(0, healOthers.length - MAX_UNRECORDED_STATES);
+    for (const sig8 of [...[...sealed].sort(), ...healOthers.slice(0, MAX_UNRECORDED_STATES)]) {
         if (healRuns.has(sig8) || !SIG8.test(sig8))
             continue;
         const key = `heal-${sig8}`;

@@ -92,18 +92,20 @@ export interface CollectAttentionOptions {
     onRead?: (r: ReadRun) => void;
 }
 /**
- * At most this many run state files (and, apart, heal records) are read per
- * repository: a lane can write any number of files into `.omg/state/factory`,
- * and each one costs about 0.7 ms to check on Windows (open dominates), so a
- * full pass stays well under a second.
+ * At most this many state files the engine has no record of (run states and,
+ * apart, heal records) are read per repository: a lane can write any number
+ * of files into `.omg/state/factory`, and each one costs about 0.7 ms to
+ * check on Windows (open dominates). Every run (and heal seal) the engine
+ * ledger records is read on top of these: that set lives outside the
+ * repository and grows only with the engine's own runs.
  */
-export declare const MAX_RUN_STATES = 500;
+export declare const MAX_UNRECORDED_STATES = 200;
 /**
  * The run keys to read in a repository, chosen so that flooding the state dir
- * cannot push an engine run out: every run the engine ledger records first
- * (the ledger lives outside the repository and holds the engine's own runs
- * only), then the other canonical state files in ascending key order, up to
- * `max` in all. `omitted` counts the state files left unread.
+ * cannot push an engine run out: every run the engine ledger records (the
+ * ledger lives outside the repository and holds the engine's own runs only),
+ * then up to `max` other canonical state files in ascending key order, however
+ * many runs are recorded. `omitted` counts the unrecorded state files left unread.
  */
 export declare function runKeysToRead(root: string, ledgerDir: string, max?: number): {
     keys: FactoryRunKey[];

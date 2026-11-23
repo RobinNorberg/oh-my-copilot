@@ -268,20 +268,34 @@ describe('the state a listed root is read from is its own (M1)', () => {
     for (const r of [main, wt, sep]) expect(getOmcRoot(r)).toBe(join(r, '.omg'));
   });
 
-  it('a submodule-shaped root (listed in the enclosing repository\'s .gitmodules) and a root under a workspace marker are state-elsewhere', async () => {
+  it('a real submodule (.git file into the superproject\'s .git/modules) is state-elsewhere, as the engine anchors it; a root under a workspace marker too', async () => {
+    const git = (...args: string[]): void => { execFileSync('git', ['-c', 'user.email=t@example.invalid', '-c', 'user.name=t', '-c', 'protocol.file.allow=always', ...args], { stdio: 'ignore' }); };
+    const src = repo('src');
+    git('-C', src, 'commit', '-q', '--allow-empty', '-m', 'init');
     const sup = repo('super');
+    git('-C', sup, 'submodule', 'add', '-q', src, 'libs/sub');
     const sub = join(sup, 'libs', 'sub');
-    mkdirSync(join(sup, '.git', 'modules', 'sub'), { recursive: true });
-    writeFileSync(join(sup, '.git', 'modules', 'sub', 'HEAD'), 'ref: refs/heads/main\n');
-    mkdirSync(sub, { recursive: true });
-    writeFileSync(join(sub, '.git'), `gitdir: ../../.git/modules/sub\n`);
-    writeFileSync(join(sup, '.gitmodules'), '[submodule "sub"]\n\tpath = libs/sub\n\turl = https://example.invalid/sub\n');
+    expect(readFileSync(join(sub, '.git'), 'utf8')).toMatch(/^gitdir: .*\.git\/modules\/libs\/sub/);
     expect(await probeRoot(sub)).toEqual({ reason: 'state-elsewhere' });
+    // The engine's own resolver (git --show-superproject-working-tree) anchors it at the superproject too.
+    const { getOmcRoot } = await import('../../../lib/worktree-paths.js');
+    expect(getOmcRoot(sub)).toBe(join(sup, '.omg'));
+    expect(await probeRoot(sup)).toMatchObject({ stateRoot: join(sup, '.omg') });
     // Nested in a repository that does not list it: its own state.
     const nested = join(sup, 'vendor', 'clone');
     mkdirSync(join(sup, 'vendor'));
     execFileSync('git', ['init', '-q', nested]);
     expect(await probeRoot(nested)).toMatchObject({ stateRoot: join(nested, '.omg') });
+    // A linked worktree and a --separate-git-dir repository inside the enclosing checkout are their own roots.
+    const inWt = join(sup, 'wt-inside');
+    git('-C', sup, 'commit', '-q', '-m', 'add sub');
+    git('-C', sup, 'worktree', 'add', '-q', '--detach', inWt);
+    const inSep = join(sup, 'sep-inside');
+    execFileSync('git', ['init', '-q', '--separate-git-dir', join(dir, 'sep-inside.git'), inSep]);
+    for (const r of [inWt, inSep]) {
+      expect(await probeRoot(r)).toMatchObject({ stateRoot: join(r, '.omg') });
+      expect(getOmcRoot(r)).toBe(join(r, '.omg'));
+    }
     // A workspace marker above the root anchors a shared .omg there.
     const ws = join(dir, 'ws');
     mkdirSync(ws);
@@ -290,6 +304,22 @@ describe('the state a listed root is read from is its own (M1)', () => {
     mkdirSync(inWs);
     execFileSync('git', ['init', '-q', inWs]);
     expect(await probeRoot(inWs)).toEqual({ reason: 'state-elsewhere' });
+  });
+
+  it('a forged .gitmodules in an enclosing repository does not hide an independent nested clone (M-1)', async () => {
+    const outer = repo('outer');
+    const inner = join(outer, 'inner');
+    execFileSync('git', ['init', '-q', inner]);
+    writeFileSync(join(outer, '.gitmodules'), '[submodule "x"]\n\tpath = inner\n\turl = ./x\n');
+    expect(await probeRoot(inner)).toMatchObject({ stateRoot: join(inner, '.omg') });
+    // The engine agrees: git sees no superproject, so the state is inner's own .omg.
+    expect(execFileSync('git', ['-C', inner, 'rev-parse', '--show-superproject-working-tree'], { encoding: 'utf8' }).trim()).toBe('');
+    const { getOmcRoot } = await import('../../../lib/worktree-paths.js');
+    expect(getOmcRoot(inner)).toBe(join(inner, '.omg'));
+    record(inner, 1);
+    const got = await discoverLedgerRoots({ ledgerDir });
+    expect(got.roots).toEqual([expect.objectContaining({ root: inner, stateRoot: join(inner, '.omg') })]);
+    expect(got.skipped).toEqual([]);
   });
 
   it('no stateRoot with OMC_STATE_DIR (the centralized id is resolved the usual way)', async () => {

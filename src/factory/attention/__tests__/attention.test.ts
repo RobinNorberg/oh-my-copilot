@@ -575,9 +575,9 @@ describe('omg factory attention: the sealed next commands (FactoryGate.next)', (
 });
 
 describe('a flood of lane-written state files', () => {
-  it('reads the ledger runs first and the rest up to the cap: 5000 forged files cannot hide a real parked run', async () => {
+  it('reads the ledger runs and up to the allowance of the rest: 5000 forged files cannot hide a real parked run', async () => {
     const { collectDashboardV2 } = await import('../../dashboard/collect-v2.js');
-    const { MAX_RUN_STATES } = await import('../collect.js');
+    const { MAX_UNRECORDED_STATES: MAX } = await import('../collect.js');
     asEngine(parked(9999, 'merge', 2));
     const sd = factoryStateDir(root);
     const forged = JSON.stringify({ schemaVersion: 1, issue: 1, phase: 'awaiting-human', issueTitle: 'forged', updatedAt: at(1) });
@@ -587,28 +587,56 @@ describe('a flood of lane-written state files', () => {
     const attentionMs = Date.now() - t;
     const real = d.items.find((i) => i.key === '#9999')!;
     expect(real).toMatchObject({ group: 'merge', trust: 'ok', title: 'item 9999' });
-    // The cap: the real run plus MAX - 1 forged ones, the lowest keys; one row stands for the rest.
+    // The allowance: the real run plus MAX forged ones, the lowest keys; one row stands for the rest.
     const forgedRows = d.items.filter((i) => i.key !== '#9999' && i.key !== 'state-files');
-    expect(forgedRows).toHaveLength(MAX_RUN_STATES - 1);
+    expect(forgedRows).toHaveLength(MAX);
     expect(forgedRows.every((i) => i.trust !== 'ok' && i.group === 'inspect')).toBe(true);
     expect(forgedRows.some((i) => i.key === '#1')).toBe(true);
-    expect(forgedRows.some((i) => i.key === `#${MAX_RUN_STATES}`)).toBe(false);
+    expect(forgedRows.some((i) => i.key === `#${MAX + 1}`)).toBe(false);
     const rest = d.items.filter((i) => i.key === 'state-files');
     expect(rest).toHaveLength(1);
     expect(rest[0]).toMatchObject({ group: 'inspect', next: [] });
-    expect(rest[0].why).toContain(`${5000 - (MAX_RUN_STATES - 1)} more state files were not read`);
+    expect(rest[0].why).toBe(`${5000 - MAX} state files the engine has no record of were not read (more than the limit of ${MAX} per repository); inspect .omg/state/factory`);
     expect(d.readFailed).toBe(true);
-    expect(d.warnings.some((w) => w.includes('more state files were not read'))).toBe(true);
+    expect(d.warnings.filter((w) => w.includes('state files the engine has no record of were not read'))).toHaveLength(1);
 
     t = Date.now();
     const v2 = collectDashboardV2(root, { ledgerDir, now: () => NOW, limits: DEFAULT_FACTORY_RUN_LIMITS, owner: OWNER });
     const dashboardMs = Date.now() - t;
     const run = v2.runs.find((r) => r.key === '#9999')!;
     expect(run).toMatchObject({ verified: true, title: 'item 9999' });
-    expect(v2.runs).toHaveLength(MAX_RUN_STATES);
-    expect(v2.warnings.some((w) => w.includes('more state files were not read'))).toBe(true);
-    // Generous bounds for loaded CI hosts; the point is no ~10 ms per file and no read past the cap.
+    expect(v2.runs).toHaveLength(MAX + 1);
+    // The dashboard carries attention's warning once, not twice (L-b).
+    expect(v2.warnings.filter((w) => w.includes('state files the engine has no record of were not read'))).toHaveLength(1);
+    // Generous bounds for loaded CI hosts; the point is no ~10 ms per file and no read past the allowance.
     expect(attentionMs).toBeLessThan(15_000);
     expect(dashboardMs).toBeLessThan(15_000);
   }, 120_000);
+
+  it('runs the engine recorded never use up the allowance: 800 recorded + 1 stray file is its own row (exit 4); 800 + 201 strays gives the allowance plus one summary row (M-2)', async () => {
+    const { MAX_UNRECORDED_STATES: MAX } = await import('../collect.js');
+    for (let i = 1; i <= 800; i++) asEngine(parked(i, 'merge', 2));
+    // A well-formed state the ledger does not know (a pre-ledger run, a moved repository): unverified, not unreadable.
+    const stray = (k: number): void => writeFileSync(factoryStatePath(root, k), JSON.stringify(parked(k, 'merge', 2)));
+    const collect = () => collectAttention(root, { ledgerDir, now: () => NOW, limits: DEFAULT_FACTORY_RUN_LIMITS, owner: OWNER });
+    const recordedOk = (d: ReturnType<typeof collect>) => d.items.filter((i) => i.trust === 'ok' && i.key !== 'state-files' && Number(String(i.key).slice(1)) <= 800);
+    stray(5001);
+    let d = collect();
+    expect(recordedOk(d)).toHaveLength(800);
+    expect(d.items.find((i) => i.key === '#5001')).toMatchObject({ group: 'inspect' });
+    expect(d.items.find((i) => i.key === '#5001')!.trust).not.toBe('ok');
+    expect(d.items.some((i) => i.key === 'state-files')).toBe(false);
+    expect(d.readFailed).toBe(false);
+    expect(await attention(['--json'])).toBe(EXIT_AWAITING_HUMAN);
+
+    for (let k = 5002; k <= 5000 + MAX + 1; k++) stray(k);
+    d = collect();
+    expect(recordedOk(d)).toHaveLength(800);
+    const strays = d.items.filter((i) => /^#5\d{3}$/.test(String(i.key)));
+    expect(strays).toHaveLength(MAX);
+    expect(strays.some((i) => i.key === `#${5000 + MAX + 1}`)).toBe(false);
+    expect(d.items.filter((i) => i.key === 'state-files').map((i) => i.why)).toEqual([`1 state files the engine has no record of were not read (more than the limit of ${MAX} per repository); inspect .omg/state/factory`]);
+    expect(d.readFailed).toBe(true);
+    expect(await attention(['--json'])).toBe(1);
+  }, 180_000);
 });

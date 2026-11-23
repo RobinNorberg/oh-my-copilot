@@ -26,9 +26,10 @@
  *   subdirectory of a repository, a plain folder or an empty `.git` is
  *   refused (`not-a-repository`);
  * - the state the collector reads for it is its own (`<root>/.omg`, or
- *   `$OMC_STATE_DIR/<its id>`): a submodule (state at the superproject) or a
- *   root under a workspace marker (a shared `.omg`) is refused
- *   (`state-elsewhere`);
+ *   `$OMC_STATE_DIR/<its id>`): a submodule (its `.git` is a `gitdir:` file
+ *   into the enclosing repository's `.git/modules/`; state at the
+ *   superproject) or a root under a workspace marker (a shared `.omg`) is
+ *   refused (`state-elsewhere`); `.gitmodules` is never read;
  * - no other listed root has the same real path.
  * Each filesystem probe of a root runs async with a timeout (ROOT_PROBE_MS),
  * so a slow or unreachable drive is skipped (`timeout`) rather than stalling

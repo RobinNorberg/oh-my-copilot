@@ -24128,49 +24128,49 @@ var require_fast_uri = __commonJS({
       schemelessOptions.skipEscape = true;
       return serialize(resolved, schemelessOptions);
     }
-    function resolveComponent(base, relative43, options, skipNormalization) {
+    function resolveComponent(base, relative42, options, skipNormalization) {
       const target = {};
       if (!skipNormalization) {
         base = parse13(serialize(base, options), options);
-        relative43 = parse13(serialize(relative43, options), options);
+        relative42 = parse13(serialize(relative42, options), options);
       }
       options = options || {};
-      if (!options.tolerant && relative43.scheme) {
-        target.scheme = relative43.scheme;
-        target.userinfo = relative43.userinfo;
-        target.host = relative43.host;
-        target.port = relative43.port;
-        target.path = removeDotSegments(relative43.path || "");
-        target.query = relative43.query;
+      if (!options.tolerant && relative42.scheme) {
+        target.scheme = relative42.scheme;
+        target.userinfo = relative42.userinfo;
+        target.host = relative42.host;
+        target.port = relative42.port;
+        target.path = removeDotSegments(relative42.path || "");
+        target.query = relative42.query;
       } else {
-        if (relative43.userinfo !== void 0 || relative43.host !== void 0 || relative43.port !== void 0) {
-          target.userinfo = relative43.userinfo;
-          target.host = relative43.host;
-          target.port = relative43.port;
-          target.path = removeDotSegments(relative43.path || "");
-          target.query = relative43.query;
+        if (relative42.userinfo !== void 0 || relative42.host !== void 0 || relative42.port !== void 0) {
+          target.userinfo = relative42.userinfo;
+          target.host = relative42.host;
+          target.port = relative42.port;
+          target.path = removeDotSegments(relative42.path || "");
+          target.query = relative42.query;
         } else {
-          if (!relative43.path) {
+          if (!relative42.path) {
             target.path = base.path;
-            if (relative43.query !== void 0) {
-              target.query = relative43.query;
+            if (relative42.query !== void 0) {
+              target.query = relative42.query;
             } else {
               target.query = base.query;
             }
           } else {
-            if (relative43.path[0] === "/") {
-              target.path = removeDotSegments(relative43.path);
+            if (relative42.path[0] === "/") {
+              target.path = removeDotSegments(relative42.path);
             } else {
               if ((base.userinfo !== void 0 || base.host !== void 0 || base.port !== void 0) && !base.path) {
-                target.path = "/" + relative43.path;
+                target.path = "/" + relative42.path;
               } else if (!base.path) {
-                target.path = relative43.path;
+                target.path = relative42.path;
               } else {
-                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative43.path;
+                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative42.path;
               }
               target.path = removeDotSegments(target.path);
             }
-            target.query = relative43.query;
+            target.query = relative42.query;
           }
           target.userinfo = base.userinfo;
           target.host = base.host;
@@ -24178,7 +24178,7 @@ var require_fast_uri = __commonJS({
         }
         target.scheme = base.scheme;
       }
-      target.fragment = relative43.fragment;
+      target.fragment = relative42.fragment;
       return target;
     }
     function equal(uriA, uriB, options) {

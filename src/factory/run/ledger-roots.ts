@@ -26,9 +26,10 @@
  *   subdirectory of a repository, a plain folder or an empty `.git` is
  *   refused (`not-a-repository`);
  * - the state the collector reads for it is its own (`<root>/.omg`, or
- *   `$OMC_STATE_DIR/<its id>`): a submodule (state at the superproject) or a
- *   root under a workspace marker (a shared `.omg`) is refused
- *   (`state-elsewhere`);
+ *   `$OMC_STATE_DIR/<its id>`): a submodule (its `.git` is a `gitdir:` file
+ *   into the enclosing repository's `.git/modules/`; state at the
+ *   superproject) or a root under a workspace marker (a shared `.omg`) is
+ *   refused (`state-elsewhere`); `.gitmodules` is never read;
  * - no other listed root has the same real path.
  * Each filesystem probe of a root runs async with a timeout (ROOT_PROBE_MS),
  * so a slow or unreachable drive is skipped (`timeout`) rather than stalling
@@ -42,7 +43,7 @@
  */
 
 import { promises as fsp, readdirSync, lstatSync } from 'fs';
-import { basename, dirname, join, relative, resolve } from 'path';
+import { basename, dirname, join, resolve } from 'path';
 import { plainText } from '../check/score.js';
 import { readRegularFile, runKeyOfName } from '../attention/collect.js';
 import { canonicalPath, claimRoot } from './claims.js';
@@ -178,22 +179,34 @@ const timeout = <T>(p: Promise<T>, ms: number): Promise<T | 'timeout'> => {
 
 const isFile = (path: string): Promise<boolean> => fsp.lstat(path).then((s) => s.isFile(), () => false);
 
+/** The target of a `gitdir:` file `<top>/.git`, resolved against `top`; null when it is not one. */
+async function gitdirTarget(top: string): Promise<string | null> {
+  const r = readRegularFile(join(top, '.git'), 4096);
+  if (!('bytes' in r)) return null;
+  const head = r.bytes.toString('utf8');
+  return head.startsWith('gitdir:') ? resolve(top, head.slice('gitdir:'.length).trim()) : null;
+}
+
 /**
- * The superproject whose submodule `root` is, else null: the nearest
- * enclosing repository lists `root` as a submodule path in its
- * `.gitmodules` (git's own test for --show-superproject-working-tree is the
- * gitlink in that parent's index; the state anchor climbs to it). Read-only,
- * no git.
+ * The superproject whose submodule `root` is, else null, from git metadata
+ * only (never `.gitmodules`, which any working-tree writer can forge): the
+ * nearest enclosing repository's git dir holds `root`'s git dir under
+ * `modules/` (the shape `git submodule add`/`absorbgitdirs` leaves: `.git`
+ * is a `gitdir:` file pointing into `<superproject git dir>/modules/`). A
+ * root whose `.git` is a directory is never a submodule here. Read-only, no git.
  */
-async function superprojectOf(root: string): Promise<string | null> {
+async function superprojectOf(root: string, rootGitDir: string, platform: NodeJS.Platform): Promise<string | null> {
   let dir = dirname(resolve(root));
   for (let depth = 0; depth < 64 && dir !== dirname(dir); depth++, dir = dirname(dir)) {
-    if (!(await fsp.lstat(join(dir, '.git')).then(() => true, () => false))) continue;
-    const r = readRegularFile(join(dir, '.gitmodules'), 256 * 1024);
-    if (!('bytes' in r)) return null;
-    const rel = relative(dir, resolve(root)).replace(/\\/g, '/');
-    const paths = r.bytes.toString('utf8').split(/\r?\n/).map((l) => /^\s*path\s*=\s*(.+?)\s*$/.exec(l)?.[1]).filter((p): p is string => p !== undefined);
-    return paths.some((p) => p.replace(/\\/g, '/').replace(/\/+$/, '') === rel) ? dir : null;
+    let st;
+    try {
+      st = await fsp.lstat(join(dir, '.git'));
+    } catch {
+      continue;
+    }
+    const outerGitDir = st.isDirectory() ? join(dir, '.git') : st.isFile() ? await gitdirTarget(dir) : null;
+    if (outerGitDir === null) return null;
+    return fold(rootGitDir, platform).startsWith(`${fold(join(outerGitDir, 'modules'), platform)}/`) ? dir : null;
   }
   return null;
 }
@@ -238,15 +251,12 @@ export async function probeRoot(root: string, platform: NodeJS.Platform = proces
       return { reason: 'not-a-repository' };
     }
     if (git.isFile()) {
-      if (git.size > 4096) return { reason: 'not-a-repository' };
-      const head = await fsp.readFile(join(root, '.git'), 'utf8').catch(() => '');
-      if (!head.startsWith('gitdir:')) return { reason: 'not-a-repository' };
+      const target = await gitdirTarget(root);
       // The gitdir must be a git dir (HEAD inside): an empty or dangling pointer is not a repository git recognises.
-      const target = resolve(root, head.slice('gitdir:'.length).trim());
-      if (!(await isFile(join(target, 'HEAD')))) return { reason: 'not-a-repository' };
+      if (target === null || !(await isFile(join(target, 'HEAD')))) return { reason: 'not-a-repository' };
+      // The state the collector reads must be this root's own: a submodule's anchors at its superproject.
+      if (await superprojectOf(root, target, platform)) return { reason: 'state-elsewhere' };
     } else if (!git.isDirectory() || !(await isFile(join(root, '.git', 'HEAD')))) return { reason: 'not-a-repository' };
-    // The state the collector reads must be this root's own, not a shared anchor elsewhere.
-    if (await superprojectOf(root)) return { reason: 'state-elsewhere' };
     const workspace = findWorkspaceRoot(root);
     if (workspace !== null && fold(resolve(workspace), platform) !== fold(resolve(root), platform)) return { reason: 'state-elsewhere' };
     return { real: canonicalPath(real, platform), ...(process.env.OMC_STATE_DIR ? {} : { stateRoot: join(root, OmcPaths.ROOT) }) };

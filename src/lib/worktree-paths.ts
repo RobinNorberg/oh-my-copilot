@@ -1347,16 +1347,6 @@ export function getProjectIdentifier(worktreeRoot?: string): string {
   return identifier;
 }
 
-/**
- * Get the .omc root directory path.
- *
- * When OMC_STATE_DIR is set, returns $OMC_STATE_DIR/{project-identifier}/
- * instead of {worktree}/.omg/. This allows centralized state storage that
- * survives worktree deletion.
- *
- * @param worktreeRoot - Optional worktree root
- * @returns Absolute path to the omc root directory
- */
 const knownOmcRoots = new AsyncLocalStorage<ReadonlyMap<string, string>>();
 
 /**
@@ -1370,6 +1360,16 @@ export function withKnownOmcRoots<T>(roots: ReadonlyMap<string, string>, fn: () 
   return knownOmcRoots.run(roots, fn);
 }
 
+/**
+ * Get the .omc root directory path.
+ *
+ * When OMC_STATE_DIR is set, returns $OMC_STATE_DIR/{project-identifier}/
+ * instead of {worktree}/.omg/. This allows centralized state storage that
+ * survives worktree deletion.
+ *
+ * @param worktreeRoot - Optional worktree root
+ * @returns Absolute path to the omc root directory
+ */
 export function getOmcRoot(worktreeRoot?: string): string {
   const known = worktreeRoot === undefined ? undefined : knownOmcRoots.getStore()?.get(worktreeRoot);
   if (known !== undefined) return known;

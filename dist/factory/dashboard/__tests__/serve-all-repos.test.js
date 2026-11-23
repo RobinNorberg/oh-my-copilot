@@ -17,7 +17,7 @@ import { DEFAULT_FACTORY_RUN_LIMITS } from '../../run/budget.js';
 import { EngineLedger, ledgerFilePath, ledgerRepoId } from '../../run/ledger.js';
 import { createFactoryState, factoryStateDir, moveTo, runKeyOf, setGate, updateFactoryState } from '../../run/state.js';
 import { collectDashboardV2 } from '../collect-v2.js';
-import { DASHBOARD_HOST, startDashboardServer } from '../serve.js';
+import { BACKOFF_FACTOR, DASHBOARD_HOST, MAX_BACKOFF_MS, startDashboardServer } from '../serve.js';
 const REPO = 'https://github.com/o/r';
 const HEAD = 'c'.repeat(40);
 const T0 = Date.parse('2026-11-20T10:00:00.000Z');
@@ -290,12 +290,13 @@ describe('a slow repository does not stall the others', () => {
         }
     };
     /** The slowest answer to `path` while `ms` pass. */
-    const worst = async (s, path, ms) => {
+    const worst = async (s, path, ms, answered = []) => {
         let max = 0;
         const end = Date.now() + ms;
         while (Date.now() < end) {
             const t = Date.now();
             expect((await get(s, path)).status).toBe(200);
+            answered.push(Date.now());
             max = Math.max(max, Date.now() - t);
         }
         return max;
@@ -306,16 +307,41 @@ describe('a slow repository does not stall the others', () => {
         asEngine(a, parked(1));
         asEngine(b, parked(1));
         flood(b, 2500);
-        const s = await start(() => ({ repos: [served(a), served(b)], skipped: 0, warnings: [] }), { tickMs: 200 });
+        // Every compute of B, timed in this run: the baseline A's latency is measured against (no fixed wall-clock bound, so CI load cannot flake it).
+        const computesB = [];
+        const collectB = collectOf(b);
+        const viewB = { ...served(b), collect: () => { const start = Date.now(); try {
+                return collectB();
+            }
+            finally {
+                computesB.push({ start, end: Date.now() });
+            } } };
+        const s = await start(() => ({ repos: [served(a), viewB], skipped: 0, warnings: [] }), { tickMs: 200 });
         const loop = rewriteLoop(b);
         try {
-            const max = await worst(s, `${base(s)}api/v1/repo/${ledgerRepoId(a)}/summary`, 4_000);
-            // One compute of B (capped at MAX_RUN_STATES reads) at most, never a pass over everything.
-            expect(max).toBeLessThan(1_500);
-            const c = s.costs();
-            expect(c[ledgerRepoId(b)].costMs * 10).toBeGreaterThan(60);
-            // B is computed far less often than A under the same 200 ms tick.
-            expect(c[ledgerRepoId(b)].backoffMs + c[ledgerRepoId(b)].costMs).toBeGreaterThan(c[ledgerRepoId(a)].backoffMs);
+            const answeredA = [];
+            const max = await worst(s, `${base(s)}api/v1/repo/${ledgerRepoId(a)}/summary`, 4_000, answeredA);
+            const during = computesB.filter((c) => c.end >= answeredA[0]);
+            const longestB = Math.max(...computesB.map((c) => c.end - c.start));
+            // A waits for at most one compute of B (the allowance of unrecorded reads), never a pass over all 2500 files (the
+            // old blocking pass took tens of seconds). The bound is relative to B's compute in this run; the 3 s on top
+            // absorbs host load (a parallel test run stalls A's own requests too), the mechanism checks below do the rest.
+            const timeline = JSON.stringify({ max, longestB, computesB: computesB.map((c) => [c.start - answeredA[0], c.end - c.start]), answered: answeredA.length });
+            expect(max, timeline).toBeLessThan(longestB + 3_000);
+            // The mechanism: B backed off (each next compute waits BACKOFF_FACTOR x the last one's cost, timers never fire early)
+            // and A was answered between B's computes.
+            expect(during.length, timeline).toBeLessThan(answeredA.length);
+            for (let i = 1; i < during.length; i++) {
+                const cost = during[i - 1].end - during[i - 1].start;
+                expect(during[i].start - during[i - 1].end, timeline).toBeGreaterThanOrEqual(Math.min(cost * BACKOFF_FACTOR, MAX_BACKOFF_MS) - 50);
+            }
+            const gapsServed = during.slice(1).filter((c, i) => answeredA.some((t) => t > during[i].end && t < c.start)).length;
+            expect(gapsServed, timeline).toBeGreaterThanOrEqual(Math.min(1, during.length - 1));
+            // B's back-off is longer than the 200 ms tick: it is computed less often than A.
+            expect(s.costs()[ledgerRepoId(b)].costMs * BACKOFF_FACTOR, timeline).toBeGreaterThan(200);
+            // Each compute of B stopped at the allowance (the rest is one warning), so longestB is bounded too.
+            const bSummary = (await get(s, `${base(s)}api/v1/repo/${ledgerRepoId(b)}/summary`)).body;
+            expect(bSummary).toContain('state files the engine has no record of were not read');
         }
         finally {
             clearInterval(loop);

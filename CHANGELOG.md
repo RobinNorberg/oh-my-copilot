@@ -37,7 +37,7 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ### Fixed
 
-- **`omg factory attention` and `omg factory dashboard` stay fast when a repository's state dir is flooded.** A lane could write thousands of files into `.omg/state/factory`; the dashboard took about 11 ms per file (it resolved the state dir again for every file) and the live server recomputed every view in one blocking pass, so 5000 files held it for about a minute. Now at most 500 state files are read per repository, the engine ledger's runs first, so a flood cannot hide a real run; the rest are one Inspect row and the exit code stays non-zero. The dashboard reuses attention's reads (about 0.7 ms per file), and the server recomputes one repository per event-loop turn and backs a slow one off, serving its previous data marked Stale meanwhile.
+- **`omg factory attention` and `omg factory dashboard` stay fast when a repository's state dir is flooded.** A lane could write thousands of files into `.omg/state/factory`; the dashboard took about 11 ms per file (it resolved the state dir again for every file) and the live server recomputed every view in one blocking pass, so 5000 files held it for about a minute. Now every run the engine ledger records is read, plus at most 200 state files the engine has no record of per repository (ascending key order), so a flood cannot hide a real run and a long history of recorded runs does not crowd out a stray file's own row; unread unrecorded files are one Inspect row and exit code 1 (as is a state that cannot be read). With `--all-repos`, one such repository makes the whole command exit 1 while the text and JSON still list every repository's items. The dashboard reuses attention's reads (about 0.7 ms per file), and the server recomputes one repository per event-loop turn and backs a slow one off, serving its previous data marked Stale meanwhile.
 
 - **`omg factory board` (and `dashboard --forge`) checks human merges on the local forge again.** It printed one line per run: "not checked for a human merge ... refuses `git for-each-ref --format=%(refname) %(objectname)`: not one of the read-only git shapes", and recorded nothing. The read guard of these commands did not allow the one ref listing the replace-ref check needs. It now allows exactly that shape (the engine's own), and nothing wider.
 
@@ -51,8 +51,6 @@ All notable changes to oh-my-copilot will be documented in this file.
 - **The factory needs git 2.41 or newer (was 2.38).** The lane checkout relies on `GIT_ATTR_SOURCE`, which git 2.38 to 2.40 ignore, so their checkout would still apply the tree's eol attributes. `omg factory run`, `omg factory bench init` and `bench run` stop with "git 2.40.1 is too old for the factory: it needs git >= 2.41 (merge-tree --write-tree and GIT_ATTR_SOURCE)"; `omg factory check --host` fails below 2.41 and warns below 2.44 (the private layout), and the lane checkout itself refuses an older git. Ubuntu 24.04 (2.43) runs the factory; 20.04 and 22.04 need the git PPA.
 
 ### Fixed
-
-- **`omg factory attention` and `omg factory dashboard` stay fast when a repository's state dir is flooded.** A lane could write thousands of files into `.omg/state/factory`; the dashboard took about 11 ms per file (it resolved the state dir again for every file) and the live server recomputed every view in one blocking pass, so 5000 files held it for about a minute. Now at most 500 state files are read per repository, the engine ledger's runs first, so a flood cannot hide a real run; the rest are one Inspect row and the exit code stays non-zero. The dashboard reuses attention's reads (about 0.7 ms per file), and the server recomputes one repository per event-loop turn and backs a slow one off, serving its previous data marked Stale meanwhile.
 
 - **A factory lane commit never includes a file the lane did not touch.** In a repository whose `.gitattributes` rewrites files at checkout (`eol=crlf` with `core.autocrlf` off, the Linux and macOS default, or a clean/smudge filter such as git-lfs), a lane's commit could include an untouched file as a whole-file rewrite (CRLF line endings, or an LFS file's content in place of its pointer). The lane worktree was checked out with the attributes applied, while the engine stages with no attribute applied (so a lane-written `.gitattributes` can select no filter driver), and git re-hashes an unchanged file only when its index entry is racily clean, so it happened depending on timing. Lane worktrees (implement, fix, CI-fix and conflict-fix, in the shared and the private layout) are now checked out the way the engine stages them: no `.gitattributes` applies and no filter driver runs, so every file holds its blob's bytes (see Changed). `core.autocrlf` and the repository's `info/attributes` still apply, on both sides alike. The checkout gets the host hardening of the other engine git calls, and keeps your hooks. A lane worktree checked out before this change is never reused for it: a reuse of one is refused (each lane gets a new worktree, so a resumed run is not affected). The prepare checkout the gates run in is unchanged, and so are `omg team` worker worktrees.
 
@@ -85,8 +83,6 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ### Fixed
 
-- **`omg factory attention` and `omg factory dashboard` stay fast when a repository's state dir is flooded.** A lane could write thousands of files into `.omg/state/factory`; the dashboard took about 11 ms per file (it resolved the state dir again for every file) and the live server recomputed every view in one blocking pass, so 5000 files held it for about a minute. Now at most 500 state files are read per repository, the engine ledger's runs first, so a flood cannot hide a real run; the rest are one Inspect row and the exit code stays non-zero. The dashboard reuses attention's reads (about 0.7 ms per file), and the server recomputes one repository per event-loop turn and backs a slow one off, serving its previous data marked Stale meanwhile.
-
 - **Linux and macOS factory lanes can run the repository's tests.** A write lane (implement, fix, CI-fix, conflict-fix) in the OS sandbox on Linux or macOS started in a fresh worktree with no `node_modules`, and with the network off `tsc` and `vitest` were missing. It now gets the gates' linked tree (links to the realpath of your `node_modules`), granted read-only and checked link by link before every lane session exactly as for the gates; the tree is removed before the lane commit. Windows lanes keep their copied tree.
 - **A `node_modules` link a session plants is never mounted for the next one.** A write session without an engine-recorded target used to get whatever a single `<worktree>/node_modules` link resolved to granted read-only, so a lane could plant a link in one session and have its target mounted in the next. Now nothing under `node_modules` is granted without a target; the factory's gates and lanes always pass one. **Behaviour change:** a plain `copilot_run` write job outside the factory no longer reads a linked `node_modules` in the sandbox. The nested workspace trees of the gates and lanes now also link to the realpath of your package's `node_modules`, the dir the sandbox grants.
 - **Factory gates no longer fail with `tsc: not found` when the repository's `node_modules` is itself a symlink.** When `<root>/node_modules` is a link (for example `omg factory bench init --node-modules`, which links it to another checkout's `node_modules`), each gate tree link pointed through it. The sandbox grants only the realpath of that directory, and bubblewrap mounts only granted paths, so on Linux every link dangled, every local gate failed on the base commit and every issue parked `gate-sandbox-incompatible`. Windows was unaffected, as its sandbox does not hide unmounted paths. The root gate tree is now built from the realpath of `node_modules`, the directory the sandbox grants, and the link check accepts a link to that realpath as well as the earlier lexical form. No new directory is granted.
@@ -110,8 +106,6 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ### Fixed
 
-- **`omg factory attention` and `omg factory dashboard` stay fast when a repository's state dir is flooded.** A lane could write thousands of files into `.omg/state/factory`; the dashboard took about 11 ms per file (it resolved the state dir again for every file) and the live server recomputed every view in one blocking pass, so 5000 files held it for about a minute. Now at most 500 state files are read per repository, the engine ledger's runs first, so a flood cannot hide a real run; the rest are one Inspect row and the exit code stays non-zero. The dashboard reuses attention's reads (about 0.7 ms per file), and the server recomputes one repository per event-loop turn and backs a slow one off, serving its previous data marked Stale meanwhile.
-
 - **Factory lanes can run the tests in the Windows OS sandbox.** The sandbox cannot open a package dir through a junction, so a lane's `npm test` failed with `Access is denied` when its node_modules came through one (the bench fixture's linked node_modules), and the lane then tried `npm install`, which hangs until it fails with no network. Before a write lane (implement, fix, CI-fix, conflict-fix) starts in the OS sandbox on Windows, the engine now gives its worktree a real copy of your node_modules: the same copied tree the gates use (#546, #547), with its bounds and free-space check, built once per worktree. The copy is made before the lane's runtime starts and before its timeout and idle clock run, so it costs the lane no time; whether the lane is sandboxed is read from the sandbox settings (`sandbox.enabled`, `OMG_SANDBOX`), before the host probe. Review lanes get no copy: their shell is read-only and runs no tests. Your node_modules is only read; a `node_modules` link in the worktree is removed only when it points at yours (the link itself, never followed), and a link elsewhere stops the lane. A copy that cannot be built fails the lane before any session starts, with the reason (`worktree-unprepared: ...`). A cut-off copy is removed and built again. git must ignore the tree, which is checked before anything is copied: when it does not, no copy is made and a warning says so, as the lane commit refuses links. When a lane changes `.gitignore` so that its copy is no longer ignored, the engine removes the copy (links unlinked first) before the lane commit, so the copy is never committed and the lane is not blamed for its links. Each write lane worktree holds its own copy (about the size of your node_modules), removed with the worktree. Other platforms and unsandboxed lanes are unchanged.
 - **A write lane that declines on purpose is not retried.** Every write lane prompt (implement, fix, CI-fix, conflict-fix) now asks a lane that deliberately refuses its task, or finds it impossible as specified, to make no changes and end its final message with the line `DECLINED: <reason>`; never for an environment or tool failure, which it reports as before. A lane that left no changes and ends that way (backticks, `*` or `_` around the line are ignored) parks at once at `<kind>-declined` (`implement-declined`, `fix-declined`, ...) instead of getting a fresh retry with the same prompt, which declined again every time on the bench's trap issues (3 of 21 premium requests per bench). The lane's reason is kept only in the park's local detail (`omg factory run status`), never in the issue comment. An empty lane without a decline statement keeps its one fresh retry, a `Blocked:` message too (lanes write it for a transient environment problem). A decline park is not one auto-merge treats as benign: such a run never auto-merges. `omg factory bench` scores an `implement-declined` park with nothing pushed as "declined", like the earlier `implement-failed` decline.
 - **One copied node_modules per work item, not one per lane.** On Windows in the OS sandbox, a later write lane of the same run (a second implement lane, fix, CI-fix, conflict-fix) now gets the copied node_modules of the run's latest committed lane moved into its worktree instead of a new copy (about 10 s per lane). The tree is moved, never hard-linked or linked, and checked first by a walk that never follows a link: only plain files and dirs and links to the same entry of your node_modules (`.bin`) are allowed, and its top-level files (`.package-lock.json`) must match yours. Only the top-level files are compared: a deeper change by the earlier lane of the same item is trusted by design, as that lane's commit landed. Only a lane whose engine commit landed with its process tree proven gone gives its tree; a lane whose commit was refused, is parked or whose process tree could not be proven gone does not. A tree that fails, a workspace layout's nested trees and a failed rename get a fresh copy as before; a failed tree that cannot be removed fails the lane (`worktree-unprepared:`) instead of being built over. The trust argument is in docs/REFERENCE.md.
@@ -134,8 +128,6 @@ All notable changes to oh-my-copilot will be documented in this file.
 - **Tier aliases resolve to a model your Copilot plan offers.** `agents.<name>.model` and `modelProfile` overrides synced by `omg setup`, and the `--model` of Copilot team workers, used to take the first id of the tier even when the plan lacks it (Copilot Pro has no `claude-opus-5.5`, `gpt-6.1-sol` or fable models). They now take the first tier model in the plan's catalogue, read with the Copilot SDK's `listModels()` (no session, no prompt) and cached for 24 h in `~/.omg/state/copilot-models-cache.json`; a failed read is remembered for 1 h, and the live read times out after 15 s (start) + 5 s (`listModels()`). `omg setup` / `omg install` read it only when the user config names a tier alias; postinstall and auto-update use the cache only; `omg team` reads it once, only for Copilot workers on a tier alias. When no tier model is offered, no override is written and no `--model` is passed, so the agent or worker inherits the session model, with one warning per tier. When the catalogue cannot be read and no stale cache exists, each tier's first id is used as before, and omg says so once.
 
 ### Fixed
-
-- **`omg factory attention` and `omg factory dashboard` stay fast when a repository's state dir is flooded.** A lane could write thousands of files into `.omg/state/factory`; the dashboard took about 11 ms per file (it resolved the state dir again for every file) and the live server recomputed every view in one blocking pass, so 5000 files held it for about a minute. Now at most 500 state files are read per repository, the engine ledger's runs first, so a flood cannot hide a real run; the rest are one Inspect row and the exit code stays non-zero. The dashboard reuses attention's reads (about 0.7 ms per file), and the server recomputes one repository per event-loop turn and backs a slow one off, serving its previous data marked Stale meanwhile.
 
 - **Known issue: Copilot CLI ≥ 1.0.113 needs a newer Copilot SDK.** CLI 1.0.113 speaks SDK protocol 4, and `@github/copilot-sdk` up to 1.0.34 speaks protocol 3 only, so every SDK `client.start()` failed with a bare `SDK protocol version mismatch`. omg now names both versions and the fix (`Update @github/copilot-sdk when a version supporting protocol 4 is available, or use @github/copilot <=1.0.112`) in sdk team hosts, `copilot_run`, `omg smoke copilot` tier 2, factory sandbox lanes and bench model probes, and `omg team --transport auto` runs a start/stop handshake (no session, no prompt) and falls back to pane workers on a mismatch (`copilot_sdk_protocol_mismatch`). CI's tier-2 smoke pins `@github/copilot@1.0.112` until a protocol-4 SDK ships. See docs/REFERENCE.md.
 
@@ -190,8 +182,6 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ### Fixed
 
-- **`omg factory attention` and `omg factory dashboard` stay fast when a repository's state dir is flooded.** A lane could write thousands of files into `.omg/state/factory`; the dashboard took about 11 ms per file (it resolved the state dir again for every file) and the live server recomputed every view in one blocking pass, so 5000 files held it for about a minute. Now at most 500 state files are read per repository, the engine ledger's runs first, so a flood cannot hide a real run; the rest are one Inspect row and the exit code stays non-zero. The dashboard reuses attention's reads (about 0.7 ms per file), and the server recomputes one repository per event-loop turn and backs a slow one off, serving its previous data marked Stale meanwhile.
-
 - **A malformed `factory.run.sandbox` in the user config is refused.** An array, string or number there used to be read as an empty block, so `windowsGitTransport` and `isolation` silently fell back to their defaults. It now throws `user config: factory.run.sandbox must be an object`.
 - **CI definition file names are made safe in the "no checks reported" park text.** The file names (read from the PR's tree) and the base check names are each put on one line (control characters and line breaks become spaces, 200 characters at most) before they reach the park reason, heartbeat, suggestions and forge comment.
 - **Release CI failing-test detail lines are made safe.** The check name and the test name on each `  <check>: <test>` line now go through the same sanitising as other check names (code span, no backticks, `@` mentions, pipes, control characters or line breaks; test name cut at 160 characters).
@@ -226,8 +216,6 @@ All notable changes to oh-my-copilot will be documented in this file.
 - **Claude MCP profile path follows `COPILOT_HOME`.** The default `~/.copilot` still uses `~/.claude.json`; a custom `COPILOT_HOME` uses `<COPILOT_HOME>/.claude.json`.
 
 ### Fixed
-
-- **`omg factory attention` and `omg factory dashboard` stay fast when a repository's state dir is flooded.** A lane could write thousands of files into `.omg/state/factory`; the dashboard took about 11 ms per file (it resolved the state dir again for every file) and the live server recomputed every view in one blocking pass, so 5000 files held it for about a minute. Now at most 500 state files are read per repository, the engine ledger's runs first, so a flood cannot hide a real run; the rest are one Inspect row and the exit code stays non-zero. The dashboard reuses attention's reads (about 0.7 ms per file), and the server recomputes one repository per event-loop turn and backs a slow one off, serving its previous data marked Stale meanwhile.
 
 - `/oh-my-copilot:autopilot` and `/omg:autopilot` activate autopilot again.
 
@@ -268,8 +256,6 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ### Fixed
 
-- **`omg factory attention` and `omg factory dashboard` stay fast when a repository's state dir is flooded.** A lane could write thousands of files into `.omg/state/factory`; the dashboard took about 11 ms per file (it resolved the state dir again for every file) and the live server recomputed every view in one blocking pass, so 5000 files held it for about a minute. Now at most 500 state files are read per repository, the engine ledger's runs first, so a flood cannot hide a real run; the rest are one Inspect row and the exit code stays non-zero. The dashboard reuses attention's reads (about 0.7 ms per file), and the server recomputes one repository per event-loop turn and backs a slow one off, serving its previous data marked Stale meanwhile.
-
 - **No false "no CI" green, stricter green on GitHub (review of the second live test fixes).** A head where nothing reported is green with the "no CI checks are configured" note only when the PR's base commit reported no check either, neither the base nor the head tree holds a CI definition (`.github/workflows/` or another CI system's files: CI that runs only on pull requests leaves the base without checks), and the head's check suites were read and are empty; when the base ran CI, a CI definition exists, or any of these reads fails, the factory parks at `awaiting-human: no-workflows` saying that the base ran CI (up to 5 names) but nothing has reported for this head (Actions disabled or delayed, or a push that triggered no workflow). `omg ship` and Azure DevOps cannot read the base, so a head with no check never turns green there. A `NEUTRAL` check run now passes, as GitHub's protection counts it. The factory's green also needs every check suite of the head completed (an idle queued suite of another app than GitHub Actions does not block once the settle window passed, unless that app ran checks on the base commit), pages through the rulesets, and accepts a required check bound to a GitHub App only from that app's check run. A PR of oh-my-copilot whose base has no `ship.requiredChecks` yet (`main` before this release lands there) requires the repository's 19 checks in `omg ship`, the factory and `omg release`. A lane that changes a CI definition is told that a human must make that change, with the rerun and cancel commands.
 - **The factory's gates waited 90 minutes on every repository except oh-my-copilot (second live test, M1).** The built-in `ship.requiredChecks` was oh-my-copilot's own 19 CI job names. It now names nothing: with no names configured, `omg factory run` on GitHub requires the base branch's required status checks (branch protection and rulesets, read with your token) when it can read them, and otherwise every check GitHub reports for the head. All must pass. A green read waits 120 s after the newest check activity for late checks, within `factory.run.gatesTimeoutMinutes`. A head where nothing reports at all is green with the note "no CI checks are configured for this repository" in the merge park and the PR's merge comment. A configured name that never reports parks at `awaiting-human: missing-checks` with the names and where to fix them, once every other check finished, instead of waiting for `gates-timeout`. The gates heartbeat names the pending checks. `omg factory setup` on GitHub prints what the gates will require and the checks the base's latest commit reported; `omg factory check` warns when a configured name matches none of them. oh-my-copilot's own list moved to its committed `.copilot/omg.jsonc`, so its runs, `omg ship` and `omg release` require the same 19 checks as before (`omg release` falls back to them on a base without the key). On another repository, `omg ship` (no branch-protection read) now requires every reported check instead of names that never appear; Azure DevOps requires every blocking policy evaluation.
 - **The merge park said the resume command twice (M2).** A park reason that already names `omg factory run <n>` no longer gets "Resume with ..." appended.
@@ -290,8 +276,6 @@ All notable changes to oh-my-copilot will be documented in this file.
 ## [5.25.1] - 2026-11-11
 
 ### Fixed
-
-- **`omg factory attention` and `omg factory dashboard` stay fast when a repository's state dir is flooded.** A lane could write thousands of files into `.omg/state/factory`; the dashboard took about 11 ms per file (it resolved the state dir again for every file) and the live server recomputed every view in one blocking pass, so 5000 files held it for about a minute. Now at most 500 state files are read per repository, the engine ledger's runs first, so a flood cannot hide a real run; the rest are one Inspect row and the exit code stays non-zero. The dashboard reuses attention's reads (about 0.7 ms per file), and the server recomputes one repository per event-loop turn and backs a slow one off, serving its previous data marked Stale meanwhile.
 
 - **A create-vite TypeScript build failed in the gate sandbox (review-490 M1).** `node_modules/.tmp` (tsc's `tsBuildInfoFile` in the create-vite templates) is a fresh per-run dir; a base calibration that hits EPERM/EACCES/EROFS under `node_modules` names the dir in the park instead of the registry advice.
 - **A busy file during the gate tree's removal turned a verdict into a step error (review-490 M2).** The removal warns; the calibration result stands and the checkout is re-linked.
@@ -324,8 +308,6 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ### Fixed
 
-- **`omg factory attention` and `omg factory dashboard` stay fast when a repository's state dir is flooded.** A lane could write thousands of files into `.omg/state/factory`; the dashboard took about 11 ms per file (it resolved the state dir again for every file) and the live server recomputed every view in one blocking pass, so 5000 files held it for about a minute. Now at most 500 state files are read per repository, the engine ledger's runs first, so a flood cannot hide a real run; the rest are one Inspect row and the exit code stays non-zero. The dashboard reuses attention's reads (about 0.7 ms per file), and the server recomputes one repository per event-loop turn and backs a slow one off, serving its previous data marked Stale meanwhile.
-
 - **Private layout follow-ups** (review of #483). `run clean` also checks the local gate's process records before it removes a private run dir, and an unreadable process record or record dir counts as "may be live" (it refuses with the file to check); the `repo-guard-changed` park names a changed hook or config item and says to check it before rerunning instead of "rerunning continues"; a cancel during a lane that changed your repository without the enforced sandbox now quarantines and holds as a finished lane does; a late recheck park after a guard park keeps both reasons; the dry run's layout note also reads the trusted base layer.
 
 # oh-my-copilot v5.24.0
@@ -337,8 +319,6 @@ All notable changes to oh-my-copilot will be documented in this file.
 - **Private git repository per run (opt-in, item 2).** New key `factory.run.layout: "shared" | "private"` (default `"shared"`, unchanged; user config, or the base-committed `.copilot/omg.jsonc` when the base is in `ship.trustedBases`). A private-layout run does its lane, prepare and gate work in an engine-owned repository under `factory.run.workDir` (default `%LOCALAPPDATA%\omg\fw`, `$XDG_CACHE_HOME/omg/fw`): in the enforced OS sandbox, lanes and checks are granted their own worktree only, never your checkout or its `.git` (on Windows ungranted paths stay readable; a detect-only lane or unsandboxed gates run as you, and the engine then compares your whole repository around that step and parks at `lane-tampered` on a change); hooks, config, replace refs and worktree metadata a lane plants stay in the private repository, which the engine checks before each of its git commands there. Commits enter your repository one at a time through a checked import (exactly the parents the engine recorded, one new commit, no protected path, gitlink or symlink), then the usual hardened push; your repository's hooks and dangerous config are compared before and after (git state that cannot be compared, such as a hook file over 1 MiB or `core.hooksPath` at the root, refuses the private layout at run start). New parks `private-store`, `layout-unsupported` (the coding agent implementer), `repo-guard-changed`, `import-refused`, `gate-install-needed`; new key `factory.run.gateInstall: "park" | "sandboxed"`; `omg factory run clean --seed`. Needs git 2.44+. Disk: one seed per repository plus a clone and one checkout per lane per run (about 0.6 GiB for a four-lane run of this repository). Not yet: parallel runs, migration of shared-layout runs, a live run.
 
 ### Fixed
-
-- **`omg factory attention` and `omg factory dashboard` stay fast when a repository's state dir is flooded.** A lane could write thousands of files into `.omg/state/factory`; the dashboard took about 11 ms per file (it resolved the state dir again for every file) and the live server recomputed every view in one blocking pass, so 5000 files held it for about a minute. Now at most 500 state files are read per repository, the engine ledger's runs first, so a flood cannot hide a real run; the rest are one Inspect row and the exit code stays non-zero. The dashboard reuses attention's reads (about 0.7 ms per file), and the server recomputes one repository per event-loop turn and backs a slow one off, serving its previous data marked Stale meanwhile.
 
 - **ci-fix rerun** (dogfood F58). A rerun after a `ci-fix-failed` or `ci-failed` park on the same PR head checks that head again before it starts a lane: on the local forge the gate runs again. A pass goes on to merge; a failure takes the same ci-fix round again. Fixing a cause outside the repository no longer costs two more ci-fix lanes.
 - **Reset after a cancel during a lane** (dogfood F59). `omg factory run reset` removes the cancelled run's worktrees itself and gives up their uncommitted lane changes; a worktree that holds commits still refuses the reset. `omg factory run clean --discard` does the same on a cancelled run, and plain `clean` names it when it keeps a dirty worktree. Every link in a discarded worktree (tracked ones too) is unlinked, never followed; a lane whose stop was not confirmed refuses with exit 6 (naming its pid, or its worktree path to look for) until its child is gone by pid and start identity or you rerun with `--lane-stopped` (recorded in the run history; a child seen alive still refuses); a lane worktree with recorded tamper problems is kept by reset until `clean --discard` removes it.
@@ -402,8 +382,6 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ### Fixed
 
-- **`omg factory attention` and `omg factory dashboard` stay fast when a repository's state dir is flooded.** A lane could write thousands of files into `.omg/state/factory`; the dashboard took about 11 ms per file (it resolved the state dir again for every file) and the live server recomputed every view in one blocking pass, so 5000 files held it for about a minute. Now at most 500 state files are read per repository, the engine ledger's runs first, so a flood cannot hide a real run; the rest are one Inspect row and the exit code stays non-zero. The dashboard reuses attention's reads (about 0.7 ms per file), and the server recomputes one repository per event-loop turn and backs a slow one off, serving its previous data marked Stale meanwhile.
-
 - **Stuck lock files** (#472). An owner or claim lock that is a directory, or a lock file held for over 30 s by a live pid, is reported with the path to remove. A failed release of the engine lock prints a warning naming the file, and `omg factory poll` retries it at its next tick.
 - **Poll** (#472). A heal tick or base sync that cannot take the engine lock for a reason other than busy is reported as a tick error instead of a skip.
 - **Cancel hint** (#465, #472). The cancel hint on the gates `decisions-rewritten`, `gate-definition-unknown` and `gate-definition-changed` names `omg factory heal cancel <sig8>` for ci-heal runs.
@@ -437,8 +415,6 @@ All notable changes to oh-my-copilot will be documented in this file.
 - **Local reopen detection reads the whole history** (#457). A body line that starts with `state:` never counts as a reopen, and an item closed and reopened again later does.
 
 ### Fixed
-
-- **`omg factory attention` and `omg factory dashboard` stay fast when a repository's state dir is flooded.** A lane could write thousands of files into `.omg/state/factory`; the dashboard took about 11 ms per file (it resolved the state dir again for every file) and the live server recomputed every view in one blocking pass, so 5000 files held it for about a minute. Now at most 500 state files are read per repository, the engine ledger's runs first, so a flood cannot hide a real run; the rest are one Inspect row and the exit code stays non-zero. The dashboard reuses attention's reads (about 0.7 ms per file), and the server recomputes one repository per event-loop turn and backs a slow one off, serving its previous data marked Stale meanwhile.
 
 - **Leftover gate processes are killed** (#457). On Windows, processes a local gate leaves behind after its root exits are found by start time and killed before the verdict. The engine records the gate's processes, so the next gate run for the same head cleans up after a crashed engine, on POSIX by process group and on Windows by process. Before, Windows leftovers survived and a crash left them running.
 - **A malformed working-tree backlog file no longer stops the local forge** (#457). It is skipped with one warning, and `enqueue` and `triage` refuse to edit it, naming the file.
@@ -524,8 +500,6 @@ Fork **v5.21.0** (from v5.19.7) adds offline mode for the software factory (the 
 
 ### Fixed
 
-- **`omg factory attention` and `omg factory dashboard` stay fast when a repository's state dir is flooded.** A lane could write thousands of files into `.omg/state/factory`; the dashboard took about 11 ms per file (it resolved the state dir again for every file) and the live server recomputed every view in one blocking pass, so 5000 files held it for about a minute. Now at most 500 state files are read per repository, the engine ledger's runs first, so a flood cannot hide a real run; the rest are one Inspect row and the exit code stays non-zero. The dashboard reuses attention's reads (about 0.7 ms per file), and the server recomputes one repository per event-loop turn and backs a slow one off, serving its previous data marked Stale meanwhile.
-
 - **F2:** a worker's blocker message to the leader is now visible in `omg team status` and guidance, instead of advice to launch a replacement team (#445).
 - **F3:** an SDK worker with `state=idle` counts as idle, not non-reporting, and a capped worker as neither, so guidance says `reuse-current-team` when it should (#445).
 - **F4:** the per-turn cost floor is measured per turn (`turn_usage`), and the compact protocol is available; the floor is the cold-cache first call of each new session (#443, #445).
@@ -564,8 +538,6 @@ Fork **v5.21.0** (from v5.19.7) adds offline mode for the software factory (the 
 Fork **v5.19.7** (from v5.19.6) is a fix release for Copilot CLI users. `/omc-setup` and `/team` no longer give Claude Code instructions on Copilot CLI, and setup finds its own scripts in PowerShell. On Windows, hooks no longer overrun their time budget on a busy machine: the hook state lock handles slow owner probes (upstream #4727) and no longer spawns PowerShell for its own identity, and hook stdin waits fit inside the runner's budget. Lock records move to version 2; see the note on mixed plugin versions below. This release was published without the live Copilot smoke.
 
 ### Fixed
-
-- **`omg factory attention` and `omg factory dashboard` stay fast when a repository's state dir is flooded.** A lane could write thousands of files into `.omg/state/factory`; the dashboard took about 11 ms per file (it resolved the state dir again for every file) and the live server recomputed every view in one blocking pass, so 5000 files held it for about a minute. Now at most 500 state files are read per repository, the engine ledger's runs first, so a flood cannot hide a real run; the rest are one Inspect row and the exit code stays non-zero. The dashboard reuses attention's reads (about 0.7 ms per file), and the server recomputes one repository per event-loop turn and backs a slow one off, serving its previous data marked Stale meanwhile.
 
 - Hook stdin waits now fit inside the timeout `run.cjs` gives each hook. `run.cjs` exports the hook's inner budget as `OMC_HOOK_INNER_BUDGET_MS` and the time its clock started as `OMC_HOOK_INNER_BUDGET_START_MS`, and `readStdin()` in `scripts/lib/stdin.mjs` (and its template copy) waits at most what is left of the budget after start-up, minus a margin for the hook's work and exit (1.5 s on Windows, 0.5 s elsewhere), never under 250 ms. Before, `git-guardrails`, `budget-guard`, `premium-budget`, `runs-reconciler` and `stale-run-reporter` waited a fixed 3 s inside a 3.5 s Windows budget, and the 3 s PostToolUse, Stop and subagent hooks waited 2 s inside 2.5 s, so on a loaded machine the runner killed them instead of letting them fail open. Now the 5 s hooks wait at most 1.5 s on Windows and 3 s elsewhere, and the 3 s hooks at most 1 s on Windows; `scripts/persistent-mode.cjs` applies the same rule. On Linux and macOS the waits shrink only by the hook's own start-up time. With `OMC_HOOK_FAIL_CLOSED=1`, `git-guardrails` now exits 124 when its stdin wait ran out before a complete payload, instead of failing open.
 - Skills (`configure-notifications`, `omc-doctor`, `skill`, `skillify`, `hud`) no longer show the bash-only `${COPILOT_HOME:-~/.copilot}` notation that PowerShell cannot parse; they use `<copilot-home>`, defined as "COPILOT_HOME if set, else `~/.copilot`", and a repo-wide lint test guards `skills/` and `commands/` against it.
@@ -607,8 +579,6 @@ Fork **v5.19.6** (from v5.19.5) is an upstream port of oh-my-claudecode `ed9eb4f
 
 ### Fixed
 
-- **`omg factory attention` and `omg factory dashboard` stay fast when a repository's state dir is flooded.** A lane could write thousands of files into `.omg/state/factory`; the dashboard took about 11 ms per file (it resolved the state dir again for every file) and the live server recomputed every view in one blocking pass, so 5000 files held it for about a minute. Now at most 500 state files are read per repository, the engine ledger's runs first, so a flood cannot hide a real run; the rest are one Inspect row and the exit code stays non-zero. The dashboard reuses attention's reads (about 0.7 ms per file), and the server recomputes one repository per event-loop turn and backs a slow one off, serving its previous data marked Stale meanwhile.
-
 - **Ralph pytest signature handling** (port of upstream #4800-#4802).
 - **Context pruning no longer drops the Jev context** (port of upstream #4804, #4807).
 - **The keyword detector no longer routes retired workflow names** such as `ultraqa`, `omc-teams` and `ultrawork` (port of upstream #4699).
@@ -646,8 +616,6 @@ Fork **v5.19.5** (from v5.19.4) extends the Windows executable-search hardening 
 
 ### Fixed
 
-- **`omg factory attention` and `omg factory dashboard` stay fast when a repository's state dir is flooded.** A lane could write thousands of files into `.omg/state/factory`; the dashboard took about 11 ms per file (it resolved the state dir again for every file) and the live server recomputed every view in one blocking pass, so 5000 files held it for about a minute. Now at most 500 state files are read per repository, the engine ledger's runs first, so a flood cannot hide a real run; the rest are one Inspect row and the exit code stays non-zero. The dashboard reuses attention's reads (about 0.7 ms per file), and the server recomputes one repository per event-loop turn and backs a slow one off, serving its previous data marked Stale meanwhile.
-
 - **`omg release` reruns a file-level failure as the whole file.** A failed file with no failing title (its `beforeAll` errored, every test skipped) was reported `real: <file> (passed 0/0 isolated reruns)` and failed the suite, as `src/__tests__/submodule-state-anchor.test.ts` did in v5.19.4's first suite although it passes 8/8 alone. It is now rerun alone as the whole file, `--triage-runs` times, and classified real / mixed / load-flaky like a title (a pass: exit 0, a passed test and no failed one). Zero reruns is never a verdict: classifying one throws, and a recorded 0-run verdict is not reused. The baseline still matches such an entry by its file line; it is never a known-flaky candidate (an entry needs a title).
 - **`omg release` keeps its heartbeats during the suite.** v5.19.4's log had no pr heartbeat after 03:47 UTC and never `PR #409 gates green; merge waits for the suite`, though CI was green at 03:50: under `--drive` heartbeats were throttled to one per 5 min across all phases, and both events fell inside the 03:47 one's window. Heartbeats are now throttled per phase, the gate-wait event never is, and a running suite writes `suite running, N min` every 5 min, so `omg progress watch --stall 30m` no longer reports the ~45 min full suite as stalled.
 - **`omg release` refuses a foreign CLI.** v5.19.4's first drive ran a global `omg` 5.19.2 against the 5.19.4 checkout, without the CI-beside-the-suite overlap. When the running CLI is not the checkout's own (another install, or a different version or `bridge/cli.cjs`), a run stops with the exact command to use, `node bin/oh-my-copilot.js release <same arguments>`; `--dry-run` only warns and `--allow-foreign-cli` runs it anyway (the `--detach` child inherits the flag). It refuses rather than warns because a detached drive's warning lands in a log nobody reads before the run pushes, merges and tags with the older engine.
@@ -674,8 +642,6 @@ Fork **v5.19.4** (from v5.19.3) is a CI, release tooling and test reliability re
 - **CI: the two artifact-policy checks no longer email failures on fork PRs.** `Generated Artifact Authorization` is skipped when the repository owner is `RobinNorberg`, and `No Committed Build Artifacts` is `continue-on-error`, because the fork commits `dist/` and `bridge/` by design. Neither check is required and CI Gate does not depend on them.
 
 ### Fixed
-
-- **`omg factory attention` and `omg factory dashboard` stay fast when a repository's state dir is flooded.** A lane could write thousands of files into `.omg/state/factory`; the dashboard took about 11 ms per file (it resolved the state dir again for every file) and the live server recomputed every view in one blocking pass, so 5000 files held it for about a minute. Now at most 500 state files are read per repository, the engine ledger's runs first, so a flood cannot hide a real run; the rest are one Inspect row and the exit code stays non-zero. The dashboard reuses attention's reads (about 0.7 ms per file), and the server recomputes one repository per event-loop turn and backs a slow one off, serving its previous data marked Stale meanwhile.
 
 - **`omg release` on Windows: the suite no longer runs WSL's bash.** Started from PowerShell, `bash` resolved to `C:\Windows\System32\bash.exe` (WSL) and 94 tests failed with exit 127. When the first `bash.exe` on PATH is the WSL launcher (or there is none), the suite's children get Git for Windows' `bin` first on PATH (found from `git --exec-path` on an absolute git, else the default install dirs; `usr\bin` only when no `bin` has a bash, with a log line); without a Git bash the suite refuses to start with a clear message.
 
@@ -712,8 +678,6 @@ Fork **v5.19.3** (from v5.19.2) is a Windows security release with a skill-name 
 - **CI builds once and caches `node_modules`** (CI speed-up PR 1). `Build` no longer waits for Lint and Test; it uploads a `build-output` artifact (the built tree, the `npm pack --ignore-scripts` tarball and a sha256 manifest) that PreCompact restore, npm pack, the Copilot smoke and the upgrade test use instead of their own `npm run build`. A composite action, `.github/actions/deps`, restores `node_modules` keyed on OS, arch, Node major and `package-lock.json` and runs `npm ci` only on a miss; only pushes to `dev`/`main` and schedules save it, and `setup-node`'s per-ref npm cache is gone. The PreCompact, better-sqlite3 and Multi-repo Path Gate matrices are unrolled into literally named jobs (same check names), `omg update + session-start hook` moved from `upgrade-test.yml` into `ci.yml` under the same name, and a new `CI Gate` job fails when any blocking job failed or was cancelled.
 
 ### Fixed
-
-- **`omg factory attention` and `omg factory dashboard` stay fast when a repository's state dir is flooded.** A lane could write thousands of files into `.omg/state/factory`; the dashboard took about 11 ms per file (it resolved the state dir again for every file) and the live server recomputed every view in one blocking pass, so 5000 files held it for about a minute. Now at most 500 state files are read per repository, the engine ledger's runs first, so a flood cannot hide a real run; the rest are one Inspect row and the exit code stays non-zero. The dashboard reuses attention's reads (about 0.7 ms per file), and the server recomputes one repository per event-loop turn and backs a slow one off, serving its previous data marked Stale meanwhile.
 
 - **Skill slash names follow the host.** Copilot CLI (1.0.66 and later; verified on 1.0.105) registers plugin skills by their bare name (`/ralph`, `/omc-setup`) and rejects `/oh-my-copilot:<name>` as an unknown command, so the docs, the agent text and the prompts OMC writes (stop and continuation messages, magic-keyword routing, harbor and factory links, intake sweeps, hints) used a form Copilot refuses. A new `skillSlash(name, host)` (`src/utils/skill-slash.ts`, twin `scripts/lib/skill-slash.mjs` for hook scripts) writes `/<name>` on Copilot and `/oh-my-copilot:<name>` on Claude Code. Unattended Copilot sessions (factory listener, `omg intake`, SessionEnd chain links) check the name once per process with the free `copilot skill list --json`: a plugin-name collision that leaves only `oh-my-copilot:<name>` uses that, a missing name logs a warning, and a name another skill holds (a project or user skill, or another plugin's skill of the same name) is refused: the listener audits and skips the event, `omg intake` refuses the sweep, and a chain link fails as `route-unknown` with `skill-shadowed:<name>`. The probe runs the binary a link spawns, found on PATH only (a `copilot` planted in the project directory is never run; an npm `copilot.cmd` shim runs through `%SystemRoot%\System32\cmd.exe`), with a 5 s timeout; when no binary resolves on PATH an unattended session refuses with `skill-unverifiable:<name>`, and when the probe runs but fails the bare name goes out. On Claude Code, chain links (`resolveChainSkill`) now spawn bundled skills as `/oh-my-copilot:<name>` instead of the bare `/<name>`: that is the name Claude Code registers for plugin skills. Docs and skills write the bare form with an "On Claude Code: `/oh-my-copilot:<name>`" note, and `/plan`/`/review` references now name the registered `omc-plan`/`omc-review` skills (bare `/plan` and `/review` are Copilot's own commands). The keyword detector and the echo guards still accept both forms.
 - **omc-setup checks run through `scripts/setup-config.mjs` instead of inline `node -e`** (#392), so setup works on hosts that refuse inline interpreter code. The script is hardened:
@@ -836,8 +800,6 @@ launch delivers through Team on Azure DevOps.
   thread count. GitHub comments are unchanged.
 
 ### Fixed
-
-- **`omg factory attention` and `omg factory dashboard` stay fast when a repository's state dir is flooded.** A lane could write thousands of files into `.omg/state/factory`; the dashboard took about 11 ms per file (it resolved the state dir again for every file) and the live server recomputed every view in one blocking pass, so 5000 files held it for about a minute. Now at most 500 state files are read per repository, the engine ledger's runs first, so a flood cannot hide a real run; the rest are one Inspect row and the exit code stays non-zero. The dashboard reuses attention's reads (about 0.7 ms per file), and the server recomputes one repository per event-loop turn and backs a slow one off, serving its previous data marked Stale meanwhile.
 
 - **A build no longer breaks the release's inventory check.**
   `.omg/projection-manifest.json` is gitignored runtime state that a commit
@@ -1064,8 +1026,6 @@ delivers through Team on Azure DevOps.
 
 ### Fixed
 
-- **`omg factory attention` and `omg factory dashboard` stay fast when a repository's state dir is flooded.** A lane could write thousands of files into `.omg/state/factory`; the dashboard took about 11 ms per file (it resolved the state dir again for every file) and the live server recomputed every view in one blocking pass, so 5000 files held it for about a minute. Now at most 500 state files are read per repository, the engine ledger's runs first, so a flood cannot hide a real run; the rest are one Inspect row and the exit code stays non-zero. The dashboard reuses attention's reads (about 0.7 ms per file), and the server recomputes one repository per event-loop turn and backs a slow one off, serving its previous data marked Stale meanwhile.
-
 - **The listener no longer starts a billed session for a nonexistent
   `diagnose` skill on CI failures.** A failed `check_suite` webhook is now
   an audited `204` discard ("CI failures are healed from workflow_run"); only
@@ -1268,8 +1228,6 @@ covered by unit tests with a fake client only.
 
 ### Fixed
 
-- **`omg factory attention` and `omg factory dashboard` stay fast when a repository's state dir is flooded.** A lane could write thousands of files into `.omg/state/factory`; the dashboard took about 11 ms per file (it resolved the state dir again for every file) and the live server recomputed every view in one blocking pass, so 5000 files held it for about a minute. Now at most 500 state files are read per repository, the engine ledger's runs first, so a flood cannot hide a real run; the rest are one Inspect row and the exit code stays non-zero. The dashboard reuses attention's reads (about 0.7 ms per file), and the server recomputes one repository per event-loop turn and backs a slow one off, serving its previous data marked Stale meanwhile.
-
 - **`omg factory check` works on Azure DevOps.** The command built its az
   guard without the forge repo and the az entry, so every az call on a real
   ADO repository was refused ("no Azure DevOps forge is configured for this
@@ -1325,8 +1283,6 @@ Copilot token now reaches the session over RPC, is covered by unit tests
 only so far.
 
 ### Fixed
-
-- **`omg factory attention` and `omg factory dashboard` stay fast when a repository's state dir is flooded.** A lane could write thousands of files into `.omg/state/factory`; the dashboard took about 11 ms per file (it resolved the state dir again for every file) and the live server recomputed every view in one blocking pass, so 5000 files held it for about a minute. Now at most 500 state files are read per repository, the engine ledger's runs first, so a flood cannot hide a real run; the rest are one Inspect row and the exit code stays non-zero. The dashboard reuses attention's reads (about 0.7 ms per file), and the server recomputes one repository per event-loop turn and backs a slow one off, serving its previous data marked Stale meanwhile.
 
 - **Team worker starts fail fast when the provider already exited.** The
   provider-start wait now returns as soon as the attempt has a terminal
@@ -1457,8 +1413,6 @@ completes a PR and its command guard refuses `gh pr merge`.
 
 ### Fixed
 
-- **`omg factory attention` and `omg factory dashboard` stay fast when a repository's state dir is flooded.** A lane could write thousands of files into `.omg/state/factory`; the dashboard took about 11 ms per file (it resolved the state dir again for every file) and the live server recomputed every view in one blocking pass, so 5000 files held it for about a minute. Now at most 500 state files are read per repository, the engine ledger's runs first, so a flood cannot hide a real run; the rest are one Inspect row and the exit code stays non-zero. The dashboard reuses attention's reads (about 0.7 ms per file), and the server recomputes one repository per event-loop turn and backs a slow one off, serving its previous data marked Stale meanwhile.
-
 - **Windows lanes could launch no process.** Copilot CLI 1.0.105's sandbox
   rejects every launch unless `LOCALAPPDATA` (and `SYSTEMROOT`) are in the
   runtime env. `LOCALAPPDATA` is now allowlisted, `COPILOT_CACHE_HOME` is
@@ -1524,8 +1478,6 @@ Releases. Everything listed under 5.17.0 below ships in
 there is no v5.17.0 package to install.
 
 ### Fixed
-
-- **`omg factory attention` and `omg factory dashboard` stay fast when a repository's state dir is flooded.** A lane could write thousands of files into `.omg/state/factory`; the dashboard took about 11 ms per file (it resolved the state dir again for every file) and the live server recomputed every view in one blocking pass, so 5000 files held it for about a minute. Now at most 500 state files are read per repository, the engine ledger's runs first, so a flood cannot hide a real run; the rest are one Inspect row and the exit code stays non-zero. The dashboard reuses attention's reads (about 0.7 ms per file), and the server recomputes one repository per event-loop turn and backs a slow one off, serving its previous data marked Stale meanwhile.
 
 - **The package archive passes the release boundary again.**
   `src/factory/heal/evidence.ts` compiled to `dist/factory/heal/evidence.js`,
@@ -1768,8 +1720,6 @@ session time, context, AI credits, and agent, skill and tool counts.
 
 ### Fixed
 
-- **`omg factory attention` and `omg factory dashboard` stay fast when a repository's state dir is flooded.** A lane could write thousands of files into `.omg/state/factory`; the dashboard took about 11 ms per file (it resolved the state dir again for every file) and the live server recomputed every view in one blocking pass, so 5000 files held it for about a minute. Now at most 500 state files are read per repository, the engine ledger's runs first, so a flood cannot hide a real run; the rest are one Inspect row and the exit code stays non-zero. The dashboard reuses attention's reads (about 0.7 ms per file), and the server recomputes one repository per event-loop turn and backs a slow one off, serving its previous data marked Stale meanwhile.
-
 - **`omg update --check` queried the wrong repository.** It looked at
   `Yeachan-Heo/oh-my-copilot` and now queries `RobinNorberg`.
 - **The Claude Code update hint no longer appears under Copilot.** The HUD had
@@ -1876,8 +1826,6 @@ only trusted party.
 
 ### Fixed
 
-- **`omg factory attention` and `omg factory dashboard` stay fast when a repository's state dir is flooded.** A lane could write thousands of files into `.omg/state/factory`; the dashboard took about 11 ms per file (it resolved the state dir again for every file) and the live server recomputed every view in one blocking pass, so 5000 files held it for about a minute. Now at most 500 state files are read per repository, the engine ledger's runs first, so a flood cannot hide a real run; the rest are one Inspect row and the exit code stays non-zero. The dashboard reuses attention's reads (about 0.7 ms per file), and the server recomputes one repository per event-loop turn and backs a slow one off, serving its previous data marked Stale meanwhile.
-
 - **Team worker push rule.** The `git push` denial in `omg team` sdk workers
   could be bypassed through git aliases, quote-split spellings, quoted
   full-path git binaries, `send-pack`, `http-push` and `subtree push`. All are
@@ -1956,8 +1904,6 @@ timeouts stricter or more predictable, harden the team workers on Windows, and
 tighten the keyword detector.
 
 ### Fixed
-
-- **`omg factory attention` and `omg factory dashboard` stay fast when a repository's state dir is flooded.** A lane could write thousands of files into `.omg/state/factory`; the dashboard took about 11 ms per file (it resolved the state dir again for every file) and the live server recomputed every view in one blocking pass, so 5000 files held it for about a minute. Now at most 500 state files are read per repository, the engine ledger's runs first, so a flood cannot hide a real run; the rest are one Inspect row and the exit code stays non-zero. The dashboard reuses attention's reads (about 0.7 ms per file), and the server recomputes one repository per event-loop turn and backs a slow one off, serving its previous data marked Stale meanwhile.
 
 - **Environment timeouts are read as whole numbers, not truncated.** Values
   such as `1e3`, `1_000` or `12abc` used to be cut at the first unreadable
@@ -2113,8 +2059,6 @@ premium requests** from OMC continuations (see Changed and the
 
 ### Fixed
 
-- **`omg factory attention` and `omg factory dashboard` stay fast when a repository's state dir is flooded.** A lane could write thousands of files into `.omg/state/factory`; the dashboard took about 11 ms per file (it resolved the state dir again for every file) and the live server recomputed every view in one blocking pass, so 5000 files held it for about a minute. Now at most 500 state files are read per repository, the engine ledger's runs first, so a flood cannot hide a real run; the rest are one Inspect row and the exit code stays non-zero. The dashboard reuses attention's reads (about 0.7 ms per file), and the server recomputes one repository per event-loop turn and backs a slow one off, serving its previous data marked Stale meanwhile.
-
 - **Skill tool on Copilot** (#279): the lowercase `skill` tool name is
   recognized, so the cancel and ultragoal bootstrap and skill-state hooks
   fire.
@@ -2158,8 +2102,6 @@ Windows test suite to a clean run. It also adds `omg release` and
 
 ### Fixed
 
-- **`omg factory attention` and `omg factory dashboard` stay fast when a repository's state dir is flooded.** A lane could write thousands of files into `.omg/state/factory`; the dashboard took about 11 ms per file (it resolved the state dir again for every file) and the live server recomputed every view in one blocking pass, so 5000 files held it for about a minute. Now at most 500 state files are read per repository, the engine ledger's runs first, so a flood cannot hide a real run; the rest are one Inspect row and the exit code stays non-zero. The dashboard reuses attention's reads (about 0.7 ms per file), and the server recomputes one repository per event-loop turn and backs a slow one off, serving its previous data marked Stale meanwhile.
-
 - **Races (#268-#276).** SessionEnd lease renewal, job updates and release
   re-read the manifest under the lock, so revision drift from action children
   no longer reads as a lost lease; a worker releasing a still-reserved action
@@ -2195,8 +2137,6 @@ under [5.12.0] below, including the removal of the `merge_readiness_*` MCP
 tools ([migration note](docs/MIGRATION.md#v5110--v5120-merge-readiness-mcp-tools-removed)).
 
 ### Fixed
-
-- **`omg factory attention` and `omg factory dashboard` stay fast when a repository's state dir is flooded.** A lane could write thousands of files into `.omg/state/factory`; the dashboard took about 11 ms per file (it resolved the state dir again for every file) and the live server recomputed every view in one blocking pass, so 5000 files held it for about a minute. Now at most 500 state files are read per repository, the engine ledger's runs first, so a flood cannot hide a real run; the rest are one Inspect row and the exit code stays non-zero. The dashboard reuses attention's reads (about 0.7 ms per file), and the server recomputes one repository per event-loop turn and backs a slow one off, serving its previous data marked Stale meanwhile.
 
 - **Deterministic `update-check.json` key order** (#253). The SessionStart
   hook (`scripts/session-start.mjs` and `templates/hooks/session-start.mjs`)
@@ -2362,8 +2302,6 @@ is no upstream port in this release; upstream `dev` stays ported through
   [REFERENCE.md](docs/REFERENCE.md#mcp-tools-copilot_run_-delegate-a-task-to-copilot).
 
 ### Fixed
-
-- **`omg factory attention` and `omg factory dashboard` stay fast when a repository's state dir is flooded.** A lane could write thousands of files into `.omg/state/factory`; the dashboard took about 11 ms per file (it resolved the state dir again for every file) and the live server recomputed every view in one blocking pass, so 5000 files held it for about a minute. Now at most 500 state files are read per repository, the engine ledger's runs first, so a flood cannot hide a real run; the rest are one Inspect row and the exit code stays non-zero. The dashboard reuses attention's reads (about 0.7 ms per file), and the server recomputes one repository per event-loop turn and backs a slow one off, serving its previous data marked Stale meanwhile.
 
 - **`omg team` worker worktree removal no longer empties a junction target.**
   `removeWorkerWorktree` unlinks untracked symlinks and junctions (only the
@@ -2733,8 +2671,6 @@ the team transport stays `pane`. To keep panes under Copilot CLI, see the
   `completed`, `committed`, `status`, `shutdown`, `duration` and `premium`.
 
 ### Fixed
-
-- **`omg factory attention` and `omg factory dashboard` stay fast when a repository's state dir is flooded.** A lane could write thousands of files into `.omg/state/factory`; the dashboard took about 11 ms per file (it resolved the state dir again for every file) and the live server recomputed every view in one blocking pass, so 5000 files held it for about a minute. Now at most 500 state files are read per repository, the engine ledger's runs first, so a flood cannot hide a real run; the rest are one Inspect row and the exit code stays non-zero. The dashboard reuses attention's reads (about 0.7 ms per file), and the server recomputes one repository per event-loop turn and backs a slow one off, serving its previous data marked Stale meanwhile.
 
 - **Team shutdown preserved every worktree a copilot worker ran in.** The
   worker's SessionEnd hook keeps job records under the worktree's own `.omg/`,
@@ -3394,8 +3330,6 @@ Read the [v5.1.0 → v5.5.0 guide](docs/MIGRATION.md#v510--v550-fork-upgrade-gui
 
 ### Fixed
 
-- **`omg factory attention` and `omg factory dashboard` stay fast when a repository's state dir is flooded.** A lane could write thousands of files into `.omg/state/factory`; the dashboard took about 11 ms per file (it resolved the state dir again for every file) and the live server recomputed every view in one blocking pass, so 5000 files held it for about a minute. Now at most 500 state files are read per repository, the engine ledger's runs first, so a flood cannot hide a real run; the rest are one Inspect row and the exit code stays non-zero. The dashboard reuses attention's reads (about 0.7 ms per file), and the server recomputes one repository per event-loop turn and backs a slow one off, serving its previous data marked Stale meanwhile.
-
 - **Every fork hook was a silent no-op under Copilot on Windows.** Copilot
   runs hook commands through PowerShell, which split
   `node "${CLAUDE_PLUGIN_ROOT}"/scripts/run.cjs ...` so that node loaded the
@@ -3595,8 +3529,6 @@ and command names outright rather than aliasing them.
 
 ### Fixed
 
-- **`omg factory attention` and `omg factory dashboard` stay fast when a repository's state dir is flooded.** A lane could write thousands of files into `.omg/state/factory`; the dashboard took about 11 ms per file (it resolved the state dir again for every file) and the live server recomputed every view in one blocking pass, so 5000 files held it for about a minute. Now at most 500 state files are read per repository, the engine ledger's runs first, so a flood cannot hide a real run; the rest are one Inspect row and the exit code stays non-zero. The dashboard reuses attention's reads (about 0.7 ms per file), and the server recomputes one repository per event-loop turn and backs a slow one off, serving its previous data marked Stale meanwhile.
-
 - **Agent ownership inventory** (`src/installer/historical-agent-ownership.ts`)
   was regenerated from the fork's own 23 v4 release tags (57 records).
   Previously it held upstream's agent file hashes, so every fork-installed
@@ -3789,7 +3721,6 @@ npm install -g oh-my-copilot@5.0.0
 
 ### Fixed
 
-- **`omg factory attention` and `omg factory dashboard` stay fast when a repository's state dir is flooded.** A lane could write thousands of files into `.omg/state/factory`; the dashboard took about 11 ms per file (it resolved the state dir again for every file) and the live server recomputed every view in one blocking pass, so 5000 files held it for about a minute. Now at most 500 state files are read per repository, the engine ledger's runs first, so a flood cannot hide a real run; the rest are one Inspect row and the exit code stays non-zero. The dashboard reuses attention's reads (about 0.7 ms per file), and the server recomputes one repository per event-loop turn and backs a slow one off, serving its previous data marked Stale meanwhile.
 - **Security: ReDoS guards** — `safe-regex` validation on user-supplied regex patterns in live-data deny/allow lists
 - **Informational keyword filtering** — Questions like "what is ralph?" no longer trigger execution modes (supports EN, KO, JA, ZH)
 - **Skill-state collision prevention** — OMC built-in skills no longer collide with project custom skills of the same name (#1581)
@@ -3843,7 +3774,6 @@ npm install -g oh-my-copilot@5.0.0
 
 ### Fixed
 
-- **`omg factory attention` and `omg factory dashboard` stay fast when a repository's state dir is flooded.** A lane could write thousands of files into `.omg/state/factory`; the dashboard took about 11 ms per file (it resolved the state dir again for every file) and the live server recomputed every view in one blocking pass, so 5000 files held it for about a minute. Now at most 500 state files are read per repository, the engine ledger's runs first, so a flood cannot hide a real run; the rest are one Inspect row and the exit code stays non-zero. The dashboard reuses attention's reads (about 0.7 ms per file), and the server recomputes one repository per event-loop turn and backs a slow one off, serving its previous data marked Stale meanwhile.
 - `claude` agent type: binary corrected from `copilot` to `claude`
 - Broken `https://docs/REFERENCE.md` URLs in README
 - Phantom agent entries removed from AGENTS.md (11 non-existent roles)

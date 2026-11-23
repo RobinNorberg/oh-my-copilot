@@ -1274,16 +1274,6 @@ export function getProjectIdentifier(worktreeRoot) {
         scope.projectIdentifiers.set(scopeKey, identifier);
     return identifier;
 }
-/**
- * Get the .omc root directory path.
- *
- * When OMC_STATE_DIR is set, returns $OMC_STATE_DIR/{project-identifier}/
- * instead of {worktree}/.omg/. This allows centralized state storage that
- * survives worktree deletion.
- *
- * @param worktreeRoot - Optional worktree root
- * @returns Absolute path to the omc root directory
- */
 const knownOmcRoots = new AsyncLocalStorage();
 /**
  * Run `fn` with the state roots of these worktree roots already known: inside
@@ -1295,6 +1285,16 @@ const knownOmcRoots = new AsyncLocalStorage();
 export function withKnownOmcRoots(roots, fn) {
     return knownOmcRoots.run(roots, fn);
 }
+/**
+ * Get the .omc root directory path.
+ *
+ * When OMC_STATE_DIR is set, returns $OMC_STATE_DIR/{project-identifier}/
+ * instead of {worktree}/.omg/. This allows centralized state storage that
+ * survives worktree deletion.
+ *
+ * @param worktreeRoot - Optional worktree root
+ * @returns Absolute path to the omc root directory
+ */
 export function getOmcRoot(worktreeRoot) {
     const known = worktreeRoot === undefined ? undefined : knownOmcRoots.getStore()?.get(worktreeRoot);
     if (known !== undefined)

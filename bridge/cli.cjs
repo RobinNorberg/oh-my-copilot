@@ -57388,9 +57388,9 @@ function getTrustedPrefixes() {
 function isTrustedPrefix(resolvedPath) {
   const flavor = pathFlavor();
   return getTrustedPrefixes().some((prefix) => {
-    const relative54 = flavor.relative(prefix, resolvedPath);
-    if (relative54 === "") return true;
-    return !relative54.startsWith("..") && !flavor.isAbsolute(relative54);
+    const relative53 = flavor.relative(prefix, resolvedPath);
+    if (relative53 === "") return true;
+    return !relative53.startsWith("..") && !flavor.isAbsolute(relative53);
   });
 }
 function assertBinaryName(binary) {
@@ -156299,7 +156299,7 @@ var init_collect2 = __esm({
 });
 
 // src/factory/attention/collect.ts
-function runKeysToRead(root, ledgerDir, max = MAX_RUN_STATES) {
+function runKeysToRead(root, ledgerDir, max = MAX_UNRECORDED_STATES) {
   const keysIn = (dir, skip) => {
     const out = /* @__PURE__ */ new Map();
     let names2 = [];
@@ -156315,11 +156315,10 @@ function runKeysToRead(root, ledgerDir, max = MAX_RUN_STATES) {
   };
   const recorded = keysIn((0, import_path213.dirname)(ledgerFilePath(ledgerDir, root, 1)));
   const others = [...keysIn(factoryStateDir3(root), recorded).values()].sort(keyOrder);
-  const room = Math.max(0, max - recorded.size);
-  return { keys: [...[...recorded.values()].sort(keyOrder), ...others.slice(0, room)], omitted: Math.max(0, others.length - room) };
+  return { keys: [...[...recorded.values()].sort(keyOrder), ...others.slice(0, max)], omitted: Math.max(0, others.length - max) };
 }
 function omittedStatesNote(omitted) {
-  return `${omitted} more state files were not read: more than the limit (${MAX_RUN_STATES} per repository); inspect .omg/state/factory`;
+  return `${omitted} state files the engine has no record of were not read (more than the limit of ${MAX_UNRECORDED_STATES} per repository); inspect .omg/state/factory`;
 }
 function runKeyOfName(name) {
   const m = RUN_FILE2.exec(name);
@@ -156586,9 +156585,8 @@ function collectIn(root, o) {
   const healDir = (0, import_path213.join)(factoryStateDir3(root), "heal");
   const sealed = new Set(healSealSigs(o.ledgerDir, root));
   const healOthers = listed2(healDir).filter((f) => /^[0-9a-f]{8}\.json$/.test(f)).map((f) => f.slice(0, 8)).filter((s) => !sealed.has(s)).sort();
-  const healRoom = Math.max(0, MAX_RUN_STATES - sealed.size);
-  unread += Math.max(0, healOthers.length - healRoom);
-  for (const sig8 of [...[...sealed].sort(), ...healOthers.slice(0, healRoom)]) {
+  unread += Math.max(0, healOthers.length - MAX_UNRECORDED_STATES);
+  for (const sig8 of [...[...sealed].sort(), ...healOthers.slice(0, MAX_UNRECORDED_STATES)]) {
     if (healRuns.has(sig8) || !SIG8.test(sig8)) continue;
     const key = `heal-${sig8}`;
     const row = { key, group: "inspect", gate: null, phase: "heal", ageMs: null, credits: null, cap: null, pr: null, head: null, title: "", notes: [], next: suppressedCommands(key), at: 0 };
@@ -156668,7 +156666,7 @@ function attentionJson(d) {
     warnings: d.warnings
   };
 }
-var import_fs186, import_path213, ATTENTION_SCHEMA_VERSION, HUNG_AFTER_MS, TITLE_MAX, READ_MAX_BYTES, TEXT_MAX, REASON_MAX, MAX_RUN_STATES, keyOrder, RUN_FILE2, text6, errText7, HEX4024, forgeOf, msOf, kindOf, isMissing, relLog, TRUST_WHY, FORGED_OWNER_NOTE, REMOTE_OWNER_NOTE;
+var import_fs186, import_path213, ATTENTION_SCHEMA_VERSION, HUNG_AFTER_MS, TITLE_MAX, READ_MAX_BYTES, TEXT_MAX, REASON_MAX, MAX_UNRECORDED_STATES, keyOrder, RUN_FILE2, text6, errText7, HEX4024, forgeOf, msOf, kindOf, isMissing, relLog, TRUST_WHY, FORGED_OWNER_NOTE, REMOTE_OWNER_NOTE;
 var init_collect3 = __esm({
   "src/factory/attention/collect.ts"() {
     "use strict";
@@ -156691,7 +156689,7 @@ var init_collect3 = __esm({
     READ_MAX_BYTES = 8 * 1024 * 1024;
     TEXT_MAX = 300;
     REASON_MAX = 2e3;
-    MAX_RUN_STATES = 500;
+    MAX_UNRECORDED_STATES = 200;
     keyOrder = (a, b) => typeof a === "number" ? typeof b === "number" ? a - b : -1 : typeof b === "number" ? 1 : a < b ? -1 : a > b ? 1 : 0;
     RUN_FILE2 = /^run-(\d+|heal-[0-9a-f]{8})\.json$/;
     text6 = (v, max = TEXT_MAX) => plainText(String(v ?? "")).replace(/\s+/g, " ").trim().slice(0, max);
@@ -156981,7 +156979,6 @@ function collectV2In(root, o) {
   const warnings = [];
   const reads = [];
   const attention = collectAttention(root, { ledgerDir: o.ledgerDir, now: () => now2, limits: o.limits ?? null, owner, verbose: true, onRead: (r) => reads.push(r) });
-  if (attention.items.some((i) => i.key === "state-files")) warnings.push(attention.warnings.find((w) => w.includes("state files were not read")) ?? "some state files were not read: more than the limit; inspect .omg/state/factory");
   const allStates = /* @__PURE__ */ new Map();
   const states = /* @__PURE__ */ new Map();
   const runs = [];
@@ -158918,15 +158915,24 @@ function rootOf(raw, id, bound) {
   if (bound && ledgerRepoId(root) !== id) return { reason: "id-mismatch", root: shown(root) };
   return { root };
 }
-async function superprojectOf(root) {
+async function gitdirTarget(top) {
+  const r = readRegularFile((0, import_path216.join)(top, ".git"), 4096);
+  if (!("bytes" in r)) return null;
+  const head = r.bytes.toString("utf8");
+  return head.startsWith("gitdir:") ? (0, import_path216.resolve)(top, head.slice("gitdir:".length).trim()) : null;
+}
+async function superprojectOf(root, rootGitDir, platform) {
   let dir = (0, import_path216.dirname)((0, import_path216.resolve)(root));
   for (let depth = 0; depth < 64 && dir !== (0, import_path216.dirname)(dir); depth++, dir = (0, import_path216.dirname)(dir)) {
-    if (!await import_fs189.promises.lstat((0, import_path216.join)(dir, ".git")).then(() => true, () => false)) continue;
-    const r = readRegularFile((0, import_path216.join)(dir, ".gitmodules"), 256 * 1024);
-    if (!("bytes" in r)) return null;
-    const rel = (0, import_path216.relative)(dir, (0, import_path216.resolve)(root)).replace(/\\/g, "/");
-    const paths = r.bytes.toString("utf8").split(/\r?\n/).map((l) => /^\s*path\s*=\s*(.+?)\s*$/.exec(l)?.[1]).filter((p) => p !== void 0);
-    return paths.some((p) => p.replace(/\\/g, "/").replace(/\/+$/, "") === rel) ? dir : null;
+    let st;
+    try {
+      st = await import_fs189.promises.lstat((0, import_path216.join)(dir, ".git"));
+    } catch {
+      continue;
+    }
+    const outerGitDir = st.isDirectory() ? (0, import_path216.join)(dir, ".git") : st.isFile() ? await gitdirTarget(dir) : null;
+    if (outerGitDir === null) return null;
+    return fold8(rootGitDir, platform).startsWith(`${fold8((0, import_path216.join)(outerGitDir, "modules"), platform)}/`) ? dir : null;
   }
   return null;
 }
@@ -158954,13 +158960,10 @@ async function probeRoot(root, platform = process.platform, ms2 = ROOT_PROBE_MS)
       return { reason: "not-a-repository" };
     }
     if (git10.isFile()) {
-      if (git10.size > 4096) return { reason: "not-a-repository" };
-      const head = await import_fs189.promises.readFile((0, import_path216.join)(root, ".git"), "utf8").catch(() => "");
-      if (!head.startsWith("gitdir:")) return { reason: "not-a-repository" };
-      const target = (0, import_path216.resolve)(root, head.slice("gitdir:".length).trim());
-      if (!await isFile3((0, import_path216.join)(target, "HEAD"))) return { reason: "not-a-repository" };
+      const target = await gitdirTarget(root);
+      if (target === null || !await isFile3((0, import_path216.join)(target, "HEAD"))) return { reason: "not-a-repository" };
+      if (await superprojectOf(root, target, platform)) return { reason: "state-elsewhere" };
     } else if (!git10.isDirectory() || !await isFile3((0, import_path216.join)(root, ".git", "HEAD"))) return { reason: "not-a-repository" };
-    if (await superprojectOf(root)) return { reason: "state-elsewhere" };
     const workspace = findWorkspaceRoot(root);
     if (workspace !== null && fold8((0, import_path216.resolve)(workspace), platform) !== fold8((0, import_path216.resolve)(root), platform)) return { reason: "state-elsewhere" };
     return { real: canonicalPath3(real2, platform), ...process.env.OMC_STATE_DIR ? {} : { stateRoot: (0, import_path216.join)(root, OmcPaths.ROOT) } };
