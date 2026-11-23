@@ -42,7 +42,7 @@ import { CopilotLaneBackend } from '../../factory/run/lane.js';
 import { createSandboxRunner } from '../../factory/run/sandbox-exec.js';
 import { inspectGateImageId } from '../../factory/run/container-gate.js';
 import { releaseTamperHold, tamperHoldMessage } from '../../factory/run/tamper-quarantine.js';
-import { acquireFactoryRepoOwnerForRun, defaultOwnerDeps, describeOwner, FactoryBusyError, FactoryTamperHoldError, factoryCancelRequested, factoryOwnerPath, factoryRepoOwnerPath, factoryStateDir, factoryStatePath, ownerFromOtherCheckout, ownerHolding, readFactoryState, refuseWhileEngineRuns, runLabel, unreadableOwnerMessage, withOwnerFileLock, requestFactoryCancel, verifyFactoryIntegrity, acquireFactoryOwner, acquireRunSlot, factoryImportLockPath, heldSlots, withRepoImportLock, withRepoImportLockAsync, tryScanLock, SCAN_WAIT_MS, } from '../../factory/run/state.js';
+import { acquireFactoryRepoOwnerForRun, defaultOwnerDeps, describeOwner, FactoryBusyError, FactoryTamperHoldError, factoryCancelRequested, factoryOwnerPath, factoryRepoOwnerPath, factoryStateDir, factoryStatePath, ownerFromOtherCheckout, ownerHolding, parseFactoryState, readFactoryState, refuseWhileEngineRuns, runLabel, unreadableOwnerMessage, withOwnerFileLock, requestFactoryCancel, verifyFactoryIntegrity, acquireFactoryOwner, acquireRunSlot, factoryImportLockPath, heldSlots, withRepoImportLock, withRepoImportLockAsync, tryScanLock, SCAN_WAIT_MS, } from '../../factory/run/state.js';
 import { remoteRepoMismatch, resolveShipConfig, userConfigLayers } from '../../ship/config.js';
 import { defaultExec, TRUSTED_READ_ENV } from '../../ship/exec.js';
 import { parseJsonc } from '../../utils/jsonc.js';
@@ -52,7 +52,8 @@ import { CheckIncompatibleError, CheckUsageError, EXIT_CHECK_FAILED, EXIT_CHECK_
 import { runFactoryEnqueue } from '../../factory/enqueue.js';
 import { factoryTriageCommand } from './factory-triage.js';
 import { resolveHealConfig } from '../../factory/heal/config.js';
-import { defaultLedgerDir, emptyHooksDir } from '../../factory/run/ledger.js';
+import { currentBytes, defaultLedgerDir, emptyHooksDir, EngineLedger } from '../../factory/run/ledger.js';
+import { humanCommand, stateGateNext } from '../../factory/run/gate-next.js';
 import { listenForgeRefusal } from '../../factory/setup/detect.js';
 import { factorySetupCommand } from './factory-setup.js';
 import { factoryBenchCommand } from './factory-bench.js';
@@ -991,17 +992,57 @@ export function factoryRunCommand(deps = defaultFactoryRunDeps) {
             return 0;
         }
         const issue = parseIssue(issueRaw);
-        const stored = readFactoryState(root, issue);
-        if (!stored)
-            throw new FactoryUsageError(`no factory run for issue #${issue} (${factoryStatePath(root, issue)})`);
+        // One read: the seal, the ledger check and the parse all see the same bytes.
+        const path = factoryStatePath(root, issue);
+        const bytes = currentBytes(path);
+        if (!bytes)
+            throw new FactoryUsageError(`no factory run for issue #${issue} (${path})`);
+        const stored = parseFactoryState(path, issue, bytes.toString('utf8'));
         const state = factoryCancelRequested(root, issue) ? { ...stored, cancelRequested: true } : stored;
         const integrity = verifyFactoryIntegrity(stored);
-        if (c.optsWithGlobals().json)
-            console.log(JSON.stringify({ ...state, integrityOk: integrity, runCredits: runCredits(state) }, null, 2));
+        const ledgerDir = deps.ledgerDir ?? defaultLedgerDir();
+        let ledgerOk = false;
+        // null: the ledger could not be read (counts as a mismatch).
+        let tracked = null;
+        try {
+            const ledger = EngineLedger.open(ledgerDir, root, issue);
+            tracked = ledger.tracks(path);
+            ledgerOk = ledger.matches(path, bytes);
+        }
+        catch {
+            ledgerOk = false;
+        }
+        // The next commands only from a state the engine sealed and last wrote: a copyable command from an edited state is an injection vector.
+        const trusted = integrity && ledgerOk;
+        let hold = false;
+        try {
+            hold = tamperHoldMessage(ledgerDir, root) !== null;
+        }
+        catch {
+            hold = true;
+        }
+        const next = trusted ? stateGateNext(stored, root, hold) : [];
+        if (c.optsWithGlobals().json) {
+            const shown = !trusted && state.gate?.next ? { ...state, gate: (({ next: _n, ...g }) => g)(state.gate) } : state;
+            console.log(JSON.stringify({ ...shown, integrityOk: integrity, ledgerOk, runCredits: runCredits(state), ...(state.gate ? { next } : {}) }, null, 2));
+        }
         else {
             console.log(renderFactoryRunState(state));
+            // No record is not a mismatch: a moved repository, another host or OMC_STATE_DIR (attention's wording).
+            const unrecorded = integrity && !ledgerOk && tracked === false;
             if (!integrity)
                 console.log(chalk.red('integrity check FAILED: the state was edited outside omg factory run'));
+            else if (unrecorded)
+                console.log(chalk.yellow(`cannot be verified on this host: no engine ledger record in ${plainText(ledgerDir)} (moved repository, another host or OMC_STATE_DIR, or written outside the engine); next steps withheld`));
+            else if (!ledgerOk)
+                console.log(chalk.red('ledger check FAILED: the state is not the one the engine last wrote'));
+            if (state.gate && !trusted && !unrecorded)
+                console.log(chalk.yellow('next steps not shown: the state did not pass its checks'));
+            else if (next.length > 0) {
+                console.log('next:');
+                for (const n of next)
+                    console.log(`  ${plainText(n.label)}${n.billed ? ' (can start billed lanes)' : ''}: ${plainText(humanCommand(n.argv))}`);
+            }
         }
         return 0;
     }));

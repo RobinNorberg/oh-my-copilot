@@ -40,7 +40,7 @@ import {
   defaultOwnerDeps, factoryOwnerPath, factoryRepoOwnerPath, factoryStateDir, factorySlotsDir, factoryStatePath, isOwnerRecord, ownerHolds, parseFactoryState,
   runLabel, TERMINAL_FACTORY_PHASES, verifyFactoryIntegrity, type FactoryRunKey, type FactoryRunState, type OwnerDeps,
 } from '../run/state.js';
-import { ATTENTION_GROUPS, gateAction, nextCommands, suppressedCommands, type AttentionGroup, type NextCommand } from './actions.js';
+import { ATTENTION_GROUPS, gateAction, nextCommands, stateGateNext, suppressedCommands, type AttentionGroup, type NextCommand } from './actions.js';
 
 export const ATTENTION_SCHEMA_VERSION = 1;
 /** A live engine with no progress event for this long is "possibly hung" (a hint only: the log is unsealed). */
@@ -276,7 +276,7 @@ const TRUST_WHY: Record<Exclude<AttentionTrust, 'ok'>, string> = {
 const FORGED_OWNER_NOTE = 'an owner file the engine did not write is present (the engine ledger does not record it); it is not counted as a live engine';
 const REMOTE_OWNER_NOTE = 'the run\'s owner file names another host: this host cannot tell whether that engine is alive';
 
-function runItem(root: string, r: ReadRun, now: number, o: CollectAttentionOptions, live: OwnerView): AttentionItem | null {
+function runItem(root: string, r: ReadRun, now: number, o: CollectAttentionOptions, live: OwnerView, hold = false): AttentionItem | null {
   const label = runLabel(r.key);
   const base = { key: label, credits: null, cap: null, pr: null, head: null, title: '', notes: [] as string[], log: relLog(r.key) };
   if (r.trust === 'unreadable' || !r.state) {
@@ -323,8 +323,9 @@ function runItem(root: string, r: ReadRun, now: number, o: CollectAttentionOptio
     const why = action.group === 'merge' && s.gate.name === 'merge' && forge === 'azure-devops'
       ? `${action.why}; complete PR !${common.pr ?? '?'} in Azure DevOps (the engine's PR comment names the exact command), then rerun`
       : action.why;
-    const next = nextCommands(r.key, action.steps, { forge, root, ...(common.pr !== null ? { pr: common.pr } : {}), ...(common.head !== null ? { head: common.head } : {}) });
-    if (action.steps.includes('merge') && !next.some((n) => n.argv[0] !== 'omg') && forge !== 'azure-devops') notes.push('no merge command: the run has no valid PR number or 40-hex head');
+    // The engine's sealed next commands (FactoryGate.next) of this trusted state; a state sealed before they existed gets the same table here.
+    const next = stateGateNext(s, root, hold);
+    if (action.steps.includes('merge') && !next.some((n) => n.argv[0] !== 'omg') && forge !== 'azure-devops') notes.push('no merge command: the run has no valid PR number or 40-hex head, or the repository root cannot be put in a command (run status shows the merge step)');
     return { ...trusted, group: action.group, ageMs, why, next, trust: 'ok', notes, at };
   }
   // No gate, not terminal: an engine should hold it.
@@ -488,7 +489,7 @@ function collectIn(root: string, o: CollectAttentionOptions): AttentionData {
     if (live === 'live' || live === 'remote') liveRuns.push(runLabel(key));
     let item: AttentionItem | null;
     try {
-      item = runItem(root, r, now, o, live);
+      item = runItem(root, r, now, o, live, hold !== null);
     } catch (error) {
       // A state this version cannot lay out is still a row, never a missing one.
       readFailed = true;

@@ -11,6 +11,7 @@ import { ENGINE_COMMIT_IDENTITY } from '../lane-commit.js';
 import { readFactoryState } from '../state.js';
 import { gitIn, ISSUE, remoteHead, review } from './fake-lanes.js';
 import { h, useSandboxHarness, run, sandboxOf, edit, dirLink, outsideDir } from './engine-sandbox-harness.js';
+import { sealedNext, steps } from './gate-next-expect.js';
 useSandboxHarness();
 describe('engine-side commit of a write lane', () => {
     it('a lane that leaves a directory link to outside its worktree parks at sandbox-escaped; nothing is committed or pushed', async () => {
@@ -41,6 +42,8 @@ describe('engine-side commit of a write lane', () => {
         expect(out.gate?.name, out.message).toBe('human-review');
         expect(out.gate?.reason).toContain(`a lane ran without the enforced sandbox (it could reach GitHub with your login)`);
         expect(out.gate?.reason).toContain(`issue-${ISSUE}-fix-1 (sandbox detect-only`);
+        // This human-review park is the one --allow-unsandboxed-lanes answers: its next steps name it.
+        expect(sealedNext(h.root, ISSUE, out)).toEqual([steps(ISSUE).status, steps(ISSUE).resume, steps(ISSUE).flag('--allow-unsandboxed-lanes'), steps(ISSUE).cancel]);
         const create = h.raw.find((c) => c.cmd === 'gh' && c.args.includes('create'));
         expect(readFileSync(create.args[create.args.indexOf('--body-file') + 1], 'utf8')).not.toContain('detect-only');
         const notes = h.raw.filter((c) => c.cmd === 'gh' && c.args[1] === 'comment').map((c) => readFileSync(c.args[c.args.indexOf('--body-file') + 1], 'utf8'));

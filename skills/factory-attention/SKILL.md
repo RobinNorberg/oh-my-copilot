@@ -1,6 +1,6 @@
 ---
 name: factory-attention
-description: Show what the software factory needs from the human in this repository (parked, broken and tampered runs) by reading `omg factory attention --json`, grouped by the action each needs, with the commands for the human to run. Read-only; never runs those commands.
+description: Show what the software factory needs from the human (parked, broken, tampered runs) from `omg factory attention --json`, grouped, with the commands for the human to run. Read-only; never runs them.
 level: 2
 ---
 
