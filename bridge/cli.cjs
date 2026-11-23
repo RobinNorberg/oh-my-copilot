@@ -153707,11 +153707,19 @@ function readRun(root, key, ledgerDir) {
   }
   return { key, state, trust: "ok" };
 }
+function untrustedRow(i) {
+  if (i.trust === "ok") return i;
+  const { reason: _reason, ...rest } = i;
+  const gate = typeof i.gate === "string" && GATE_NAME_SHAPE.test(i.gate) && gateAction(i.gate).known ? i.gate : null;
+  const phase = i.phase === "heal" || FACTORY_PHASES.includes(i.phase ?? "") ? i.phase : null;
+  const fixed = UNTRUSTED_WHY.has(i.why) ? i.why : (i.key.startsWith("heal-") ? HEAL_WHY[i.trust] : void 0) ?? TRUST_WHY[i.trust];
+  return { ...rest, gate, phase, pr: null, head: null, title: "", credits: null, cap: null, why: fixed };
+}
 function runItem(root, r, now2, o, live, hold = false) {
   const label2 = runLabel(r.key);
   const base = { key: label2, credits: null, cap: null, pr: null, head: null, title: "", notes: [], log: relLog(r.key) };
   if (r.trust === "unreadable" || !r.state) {
-    return { ...base, group: "inspect", gate: null, phase: null, ageMs: null, why: `${TRUST_WHY.unreadable}: ${r.error ?? "unknown error"}`, next: suppressedCommands(r.key), trust: "unreadable", at: 0 };
+    return { ...base, group: "inspect", gate: null, phase: null, ageMs: null, why: TRUST_WHY.unreadable, error: r.error ?? "unknown error", next: suppressedCommands(r.key), trust: "unreadable", at: 0 };
   }
   const s = r.state;
   const common = {
@@ -153727,7 +153735,7 @@ function runItem(root, r, now2, o, live, hold = false) {
   const at = Number.isFinite(gateAt) ? gateAt : Number.isFinite(updatedAt) ? updatedAt : 0;
   const ageMs = at > 0 ? Math.max(0, now2 - at) : null;
   if (r.trust !== "ok") {
-    return { ...common, group: "inspect", ageMs, why: r.error ? `${TRUST_WHY[r.trust]} (${r.error})` : TRUST_WHY[r.trust], next: suppressedCommands(r.key), trust: r.trust, at };
+    return untrustedRow({ ...common, group: "inspect", ageMs, why: TRUST_WHY[r.trust], ...r.error ? { error: r.error } : {}, next: suppressedCommands(r.key), trust: r.trust, at });
   }
   if (TERMINAL_FACTORY_PHASES.includes(s.phase)) return null;
   const credits = Number(runCredits(s).toFixed(2));
@@ -153758,7 +153766,7 @@ function runItem(root, r, now2, o, live, hold = false) {
     return { ...trusted, group: "broken", ageMs, why: "not finished, not parked, and no engine holds it (the engine stopped or died)", next: nextCommands(r.key, ["status", "resume", "cancel"]), trust: "ok", notes, at };
   }
   if (live === "forged") {
-    return { ...common, group: "inspect", ageMs, why: TRUST_WHY.owner, next: suppressedCommands(r.key), trust: "owner", notes, at };
+    return untrustedRow({ ...common, group: "inspect", ageMs, why: TRUST_WHY.owner, next: suppressedCommands(r.key), trust: "owner", notes, at });
   }
   if (live === "remote") {
     return { ...trusted, group: "broken", ageMs, why: "not finished, not parked, and held by an engine on another host; check that host", next: nextCommands(r.key, ["status"]), trust: "ok", notes, at };
@@ -153778,7 +153786,7 @@ function missingItem(root, key, ledgerDir) {
   try {
     recorded = EngineLedger.open(ledgerDir, root, key).recorded(path30);
   } catch (error62) {
-    return { ...base, why: `the state file is missing and the engine ledger record of the run cannot be read (${errText7(error62)}); inspect it, the commands are withheld`, trust: "ledger" };
+    return { ...base, why: MISSING_UNREADABLE_LEDGER_WHY, error: errText7(error62), trust: "ledger" };
   }
   if (typeof recorded !== "string") return null;
   try {
@@ -153795,7 +153803,7 @@ function healItem(root, sig8, s, o, now2, deps) {
   const at = msOf(s.updatedAt);
   const common = { key, phase: "heal", ageMs: Number.isFinite(at) ? Math.max(0, now2 - at) : null, credits: null, cap: null, pr: null, head: null, title: text5(`ci-heal ${s.class}`, TITLE_MAX), notes: [], at: Number.isFinite(at) ? at : 0 };
   if (seal !== "ok") {
-    return { ...common, gate: null, group: "inspect", why: `the heal record does not match the one the heal run wrote (seal: ${seal}); do not act on it`, next: suppressedCommands(key), trust: "seal" };
+    return untrustedRow({ ...common, gate: null, group: "inspect", why: HEAL_WHY.seal, next: suppressedCommands(key), trust: "seal" });
   }
   if (!s.healRun?.open) return null;
   const last = s.lanes?.at(-1);
@@ -153915,7 +153923,7 @@ function collectIn(root, o) {
     const r = readRegularFile(healStatePath(root, sig8));
     if ("missing" in r) {
       if (finishedRun === void 0 && healSealOpen(o.ledgerDir, root, sig8) !== false) {
-        items.push({ ...row, why: "the heal record is missing; the heal seal outside the repository records an open heal run (or predates the open flag). Inspect it, the commands are withheld", trust: "missing" });
+        items.push({ ...row, why: HEAL_WHY.missing, trust: "missing" });
       }
       continue;
     }
@@ -153931,14 +153939,14 @@ function collectIn(root, o) {
     if (!s) {
       if (finishedRun) continue;
       warnings.push(`heal signature ${sig8} is unreadable: ${problem}`);
-      items.push({ ...row, why: `the heal record cannot be read: ${text5(problem)}`, trust: "unreadable" });
+      items.push({ ...row, why: HEAL_WHY.unreadable, error: text5(problem), trust: "unreadable" });
       continue;
     }
     let item;
     try {
       item = finishedRun ? healOpenAfterRun(root, sig8, s, o, now2) : healItem(root, sig8, s, o, now2, deps);
     } catch (error62) {
-      item = { ...row, why: `the heal record cannot be laid out: ${errText7(error62)}`, trust: "unreadable" };
+      item = { ...row, why: HEAL_WHY.unreadable, error: errText7(error62), trust: "unreadable" };
     }
     if (item) items.push(item);
   }
@@ -153946,6 +153954,7 @@ function collectIn(root, o) {
   const slotFiles = listed2(factorySlotsDir(root)).filter((n) => /^slot-\d+\.owner$/.test(n)).sort().slice(0, MAX_CONCURRENT_LIMIT);
   const slots = slotFiles.filter((n) => holderOf((0, import_path210.join)(factorySlotsDir(root), n), deps) !== null);
   const engines = Math.max(liveRuns.length, (repoOwner && repoOwner !== "unreadable" ? 1 : 0) + slots.length);
+  for (let k = 0; k < items.length; k++) items[k] = untrustedRow(items[k]);
   const order = new Map(ATTENTION_GROUPS.map((g, i) => [g, i]));
   items.sort((a, b) => order.get(a.group) - order.get(b.group) || a.at - b.at || a.key.localeCompare(b.key));
   const byGroup = Object.fromEntries(ATTENTION_GROUPS.map((g) => [g, items.filter((i) => i.group === g).length]));
@@ -153971,7 +153980,7 @@ function attentionJson(d) {
     warnings: d.warnings
   };
 }
-var import_fs183, import_path210, ATTENTION_SCHEMA_VERSION, HUNG_AFTER_MS, TITLE_MAX, READ_MAX_BYTES, TEXT_MAX, REASON_MAX, RUN_FILE2, text5, errText7, HEX4024, forgeOf, msOf, sameFile2, kindOf, isMissing, relLog, TRUST_WHY, FORGED_OWNER_NOTE, REMOTE_OWNER_NOTE;
+var import_fs183, import_path210, ATTENTION_SCHEMA_VERSION, HUNG_AFTER_MS, TITLE_MAX, READ_MAX_BYTES, TEXT_MAX, REASON_MAX, RUN_FILE2, text5, errText7, HEX4024, forgeOf, msOf, sameFile2, kindOf, isMissing, relLog, TRUST_WHY, MISSING_UNREADABLE_LEDGER_WHY, HEAL_WHY, UNTRUSTED_WHY, GATE_NAME_SHAPE, FORGED_OWNER_NOTE, REMOTE_OWNER_NOTE;
 var init_collect2 = __esm({
   "src/factory/attention/collect.ts"() {
     "use strict";
@@ -154011,8 +154020,16 @@ var init_collect2 = __esm({
       unverified: "cannot be verified on this host: no engine ledger record (moved repository, another host or OMC_STATE_DIR, or written outside the engine); the commands are withheld",
       owner: "an owner file the engine did not write holds the run (the engine ledger does not record it); inspect it, the commands are withheld",
       missing: "the engine's state file is missing; the ledger holds its last write. Inspect it, the commands are withheld",
-      unreadable: "the run state cannot be read"
+      unreadable: "the run state cannot be read; inspect it, the commands are withheld"
     };
+    MISSING_UNREADABLE_LEDGER_WHY = "the state file is missing and the engine ledger record of the run cannot be read; inspect it, the commands are withheld";
+    HEAL_WHY = {
+      seal: "the heal record does not match the one the heal run wrote (its seal fails or is gone); do not act on it",
+      missing: "the heal record is missing; the heal seal outside the repository records an open heal run (or predates the open flag). Inspect it, the commands are withheld",
+      unreadable: "the heal record cannot be read; inspect it, the commands are withheld"
+    };
+    UNTRUSTED_WHY = /* @__PURE__ */ new Set([...Object.values(TRUST_WHY), MISSING_UNREADABLE_LEDGER_WHY, ...Object.values(HEAL_WHY)]);
+    GATE_NAME_SHAPE = /^[a-z0-9][a-z0-9-]{0,59}$/;
     FORGED_OWNER_NOTE = "an owner file the engine did not write is present (the engine ledger does not record it); it is not counted as a live engine";
     REMOTE_OWNER_NOTE = "the run's owner file names another host: this host cannot tell whether that engine is alive";
   }
@@ -154123,7 +154140,7 @@ function reasonLines(reason, columns = DEFAULT_COLUMNS) {
 function itemLines(i, verbose, columns) {
   const keyPart = `  ${i.key}`;
   const title = i.title ? cutToWidth(i.title, columns - 1 - textWidth(keyPart) - 2) : "";
-  const lines4 = [title ? `${source_default.bold(keyPart)}  ${title}` : source_default.bold(keyPart)];
+  const lines4 = [title ? `${source_default.bold(keyPart)}  ${title}` : i.trust !== "ok" ? `${source_default.bold(keyPart)}  ${source_default.gray("(title withheld)")}` : source_default.bold(keyPart)];
   const facts = [i.gate ? `awaiting-human: ${i.gate}` : null, i.phase ? `phase ${i.phase}` : null, ageText(i.ageMs)];
   if (i.credits !== null) facts.push(`${i.credits.toFixed(2)}${i.cap !== null ? ` of ${i.cap}` : ""} cr`);
   if (i.pr !== null) facts.push(`PR ${i.pr}`);
@@ -154133,6 +154150,7 @@ function itemLines(i, verbose, columns) {
   lines4.push(...wrapLines("    ", CONT, i.why, columns));
   for (const n of i.notes) for (const l of wrapLines("    note: ", CONT, n, columns)) lines4.push(source_default.yellow(l));
   if (verbose && i.reason && i.trust === "ok") for (const l of reasonLines(i.reason, columns)) lines4.push(source_default.gray(l));
+  if (verbose && i.error) for (const l of wrapLines("    error: ", "          | ", i.error, columns)) lines4.push(source_default.gray(l));
   for (const n of i.next) {
     const c = commandText(n.argv);
     if (c.inRoot) lines4.push(source_default.gray("    run in the repository root:"));

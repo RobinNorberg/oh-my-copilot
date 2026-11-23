@@ -55,6 +55,11 @@ export interface AttentionItem {
     why: string;
     /** --verbose / --json: the run's reason, sanitised (never gate.detail); trusted rows only. */
     reason?: string;
+    /**
+     * An untrusted row only: the read or parse error, sanitised. It can quote the file's own bytes and a local path, so it
+     * is never in `why`; the CLI prints it with --verbose only, and no other surface (HUD, poll, notification) uses it.
+     */
+    error?: string;
     next: NextCommand[];
     trust: AttentionTrust;
     /** Hints, never acted on: "possibly hung", "near the credit cap", "cancel requested". */
@@ -102,6 +107,8 @@ type FileRead = {
  * that same regular file and no larger than READ_MAX_BYTES.
  */
 export declare function readRegularFile(path: string, max?: number): FileRead;
+/** Every `why` a row whose trust is not `ok` can have: fixed engine sentences, no text from a file. */
+export declare const UNTRUSTED_WHY: ReadonlySet<string>;
 /** One render scope: the state root is resolved once, not once per file path (dozens of git-metadata stats each on Windows). */
 export declare function collectAttention(root: string, o: CollectAttentionOptions): AttentionData;
 /** The `--json` shape: the items without their sort key, notes and log kept; a reason only on a trusted row. */

@@ -34,7 +34,7 @@ import { MAX_CONCURRENT_LIMIT } from '../run/parallel.js';
 import { EngineLedger, ledgerFilePath } from '../run/ledger.js';
 import { factoryProgressFile } from '../run/progress.js';
 import { RELEASE_TAMPER_COMMAND, tamperHoldMessage } from '../run/tamper-quarantine.js';
-import { defaultOwnerDeps, factoryOwnerPath, factoryRepoOwnerPath, factoryStateDir, factorySlotsDir, factoryStatePath, isOwnerRecord, ownerHolds, parseFactoryState, runLabel, TERMINAL_FACTORY_PHASES, verifyFactoryIntegrity, } from '../run/state.js';
+import { defaultOwnerDeps, FACTORY_PHASES, factoryOwnerPath, factoryRepoOwnerPath, factoryStateDir, factorySlotsDir, factoryStatePath, isOwnerRecord, ownerHolds, parseFactoryState, runLabel, TERMINAL_FACTORY_PHASES, verifyFactoryIntegrity, } from '../run/state.js';
 import { ATTENTION_GROUPS, gateAction, nextCommands, stateGateNext, suppressedCommands } from './actions.js';
 export const ATTENTION_SCHEMA_VERSION = 1;
 /** A live engine with no progress event for this long is "possibly hung" (a hint only: the log is unsealed). */
@@ -211,15 +211,39 @@ const TRUST_WHY = {
     unverified: 'cannot be verified on this host: no engine ledger record (moved repository, another host or OMC_STATE_DIR, or written outside the engine); the commands are withheld',
     owner: 'an owner file the engine did not write holds the run (the engine ledger does not record it); inspect it, the commands are withheld',
     missing: 'the engine\'s state file is missing; the ledger holds its last write. Inspect it, the commands are withheld',
-    unreadable: 'the run state cannot be read',
+    unreadable: 'the run state cannot be read; inspect it, the commands are withheld',
 };
+const MISSING_UNREADABLE_LEDGER_WHY = 'the state file is missing and the engine ledger record of the run cannot be read; inspect it, the commands are withheld';
+const HEAL_WHY = {
+    seal: 'the heal record does not match the one the heal run wrote (its seal fails or is gone); do not act on it',
+    missing: 'the heal record is missing; the heal seal outside the repository records an open heal run (or predates the open flag). Inspect it, the commands are withheld',
+    unreadable: 'the heal record cannot be read; inspect it, the commands are withheld',
+};
+/** Every `why` a row whose trust is not `ok` can have: fixed engine sentences, no text from a file. */
+export const UNTRUSTED_WHY = new Set([...Object.values(TRUST_WHY), MISSING_UNREADABLE_LEDGER_WHY, ...Object.values(HEAL_WHY)]);
+const GATE_NAME_SHAPE = /^[a-z0-9][a-z0-9-]{0,59}$/;
+/**
+ * A row whose trust is not `ok` keeps only what this program wrote or can check without the state: the key, the
+ * group, a fixed `why`, the status command, the log path and the age. Its gate only when it is a plainly shaped
+ * name the gate table knows, its phase only when it is one of the engine's phases (`heal` for a heal record);
+ * no title, PR, head, credits or reason.
+ */
+function untrustedRow(i) {
+    if (i.trust === 'ok')
+        return i;
+    const { reason: _reason, ...rest } = i;
+    const gate = typeof i.gate === 'string' && GATE_NAME_SHAPE.test(i.gate) && gateAction(i.gate).known ? i.gate : null;
+    const phase = i.phase === 'heal' || FACTORY_PHASES.includes(i.phase ?? '') ? i.phase : null;
+    const fixed = UNTRUSTED_WHY.has(i.why) ? i.why : (i.key.startsWith('heal-') ? HEAL_WHY[i.trust] : undefined) ?? TRUST_WHY[i.trust];
+    return { ...rest, gate, phase, pr: null, head: null, title: '', credits: null, cap: null, why: fixed };
+}
 const FORGED_OWNER_NOTE = 'an owner file the engine did not write is present (the engine ledger does not record it); it is not counted as a live engine';
 const REMOTE_OWNER_NOTE = 'the run\'s owner file names another host: this host cannot tell whether that engine is alive';
 function runItem(root, r, now, o, live, hold = false) {
     const label = runLabel(r.key);
     const base = { key: label, credits: null, cap: null, pr: null, head: null, title: '', notes: [], log: relLog(r.key) };
     if (r.trust === 'unreadable' || !r.state) {
-        return { ...base, group: 'inspect', gate: null, phase: null, ageMs: null, why: `${TRUST_WHY.unreadable}: ${r.error ?? 'unknown error'}`, next: suppressedCommands(r.key), trust: 'unreadable', at: 0 };
+        return { ...base, group: 'inspect', gate: null, phase: null, ageMs: null, why: TRUST_WHY.unreadable, error: r.error ?? 'unknown error', next: suppressedCommands(r.key), trust: 'unreadable', at: 0 };
     }
     const s = r.state;
     const common = {
@@ -235,8 +259,8 @@ function runItem(root, r, now, o, live, hold = false) {
     const at = Number.isFinite(gateAt) ? gateAt : Number.isFinite(updatedAt) ? updatedAt : 0;
     const ageMs = at > 0 ? Math.max(0, now - at) : null;
     if (r.trust !== 'ok') {
-        // A tampered state may claim any phase: it is shown whatever it says, terminal included, and its reason never is.
-        return { ...common, group: 'inspect', ageMs, why: r.error ? `${TRUST_WHY[r.trust]} (${r.error})` : TRUST_WHY[r.trust], next: suppressedCommands(r.key), trust: r.trust, at };
+        // A tampered state may claim any phase: it is a row whatever it says, terminal included; untrustedRow keeps no text from it.
+        return untrustedRow({ ...common, group: 'inspect', ageMs, why: TRUST_WHY[r.trust], ...(r.error ? { error: r.error } : {}), next: suppressedCommands(r.key), trust: r.trust, at });
     }
     if (TERMINAL_FACTORY_PHASES.includes(s.phase))
         return null;
@@ -279,7 +303,7 @@ function runItem(root, r, now, o, live, hold = false) {
         return { ...trusted, group: 'broken', ageMs, why: 'not finished, not parked, and no engine holds it (the engine stopped or died)', next: nextCommands(r.key, ['status', 'resume', 'cancel']), trust: 'ok', notes, at };
     }
     if (live === 'forged') {
-        return { ...common, group: 'inspect', ageMs, why: TRUST_WHY.owner, next: suppressedCommands(r.key), trust: 'owner', notes, at };
+        return untrustedRow({ ...common, group: 'inspect', ageMs, why: TRUST_WHY.owner, next: suppressedCommands(r.key), trust: 'owner', notes, at });
     }
     if (live === 'remote') {
         return { ...trusted, group: 'broken', ageMs, why: 'not finished, not parked, and held by an engine on another host; check that host', next: nextCommands(r.key, ['status']), trust: 'ok', notes, at };
@@ -306,7 +330,7 @@ function missingItem(root, key, ledgerDir) {
         recorded = EngineLedger.open(ledgerDir, root, key).recorded(path);
     }
     catch (error) {
-        return { ...base, why: `the state file is missing and the engine ledger record of the run cannot be read (${errText(error)}); inspect it, the commands are withheld`, trust: 'ledger' };
+        return { ...base, why: MISSING_UNREADABLE_LEDGER_WHY, error: errText(error), trust: 'ledger' };
     }
     // Untracked, or recorded as "must not exist": nothing is missing.
     if (typeof recorded !== 'string')
@@ -335,7 +359,7 @@ function healItem(root, sig8, s, o, now, deps) {
     const at = msOf(s.updatedAt);
     const common = { key, phase: 'heal', ageMs: Number.isFinite(at) ? Math.max(0, now - at) : null, credits: null, cap: null, pr: null, head: null, title: text(`ci-heal ${s.class}`, TITLE_MAX), notes: [], at: Number.isFinite(at) ? at : 0 };
     if (seal !== 'ok') {
-        return { ...common, gate: null, group: 'inspect', why: `the heal record does not match the one the heal run wrote (seal: ${seal}); do not act on it`, next: suppressedCommands(key), trust: 'seal' };
+        return untrustedRow({ ...common, gate: null, group: 'inspect', why: HEAL_WHY.seal, next: suppressedCommands(key), trust: 'seal' });
     }
     if (!s.healRun?.open)
         return null;
@@ -470,7 +494,7 @@ function collectIn(root, o) {
             // the `open` field stay a row until the seal file is removed by hand (docs: `factory attention`).
             if (finishedRun === undefined && healSealOpen(o.ledgerDir, root, sig8) !== false) {
                 // Listed by its seal only: the heal run recorded a record that is gone.
-                items.push({ ...row, why: 'the heal record is missing; the heal seal outside the repository records an open heal run (or predates the open flag). Inspect it, the commands are withheld', trust: 'missing' });
+                items.push({ ...row, why: HEAL_WHY.missing, trust: 'missing' });
             }
             continue;
         }
@@ -488,7 +512,7 @@ function collectIn(root, o) {
             if (finishedRun)
                 continue;
             warnings.push(`heal signature ${sig8} is unreadable: ${problem}`);
-            items.push({ ...row, why: `the heal record cannot be read: ${text(problem)}`, trust: 'unreadable' });
+            items.push({ ...row, why: HEAL_WHY.unreadable, error: text(problem), trust: 'unreadable' });
             continue;
         }
         let item;
@@ -496,7 +520,7 @@ function collectIn(root, o) {
             item = finishedRun ? healOpenAfterRun(root, sig8, s, o, now) : healItem(root, sig8, s, o, now, deps);
         }
         catch (error) {
-            item = { ...row, why: `the heal record cannot be laid out: ${errText(error)}`, trust: 'unreadable' };
+            item = { ...row, why: HEAL_WHY.unreadable, error: errText(error), trust: 'unreadable' };
         }
         if (item)
             items.push(item);
@@ -507,6 +531,9 @@ function collectIn(root, o) {
     const slotFiles = listed(factorySlotsDir(root)).filter((n) => /^slot-\d+\.owner$/.test(n)).sort().slice(0, MAX_CONCURRENT_LIMIT);
     const slots = slotFiles.filter((n) => holderOf(join(factorySlotsDir(root), n), deps) !== null);
     const engines = Math.max(liveRuns.length, (repoOwner && repoOwner !== 'unreadable' ? 1 : 0) + slots.length);
+    // Every row, whatever built it: an untrusted one keeps no text or fact from its state.
+    for (let k = 0; k < items.length; k++)
+        items[k] = untrustedRow(items[k]);
     const order = new Map(ATTENTION_GROUPS.map((g, i) => [g, i]));
     items.sort((a, b) => order.get(a.group) - order.get(b.group) || a.at - b.at || a.key.localeCompare(b.key));
     const byGroup = Object.fromEntries(ATTENTION_GROUPS.map((g) => [g, items.filter((i) => i.group === g).length]));

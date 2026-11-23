@@ -85325,7 +85325,7 @@ var init_actions = __esm({
 });
 
 // src/factory/attention/collect.ts
-var import_fs110, import_path129, HUNG_AFTER_MS, READ_MAX_BYTES;
+var import_fs110, import_path129, HUNG_AFTER_MS, READ_MAX_BYTES, TRUST_WHY, MISSING_UNREADABLE_LEDGER_WHY, HEAL_WHY, UNTRUSTED_WHY;
 var init_collect2 = __esm({
   "src/factory/attention/collect.ts"() {
     "use strict";
@@ -85345,6 +85345,21 @@ var init_collect2 = __esm({
     init_actions();
     HUNG_AFTER_MS = 10 * 6e4;
     READ_MAX_BYTES = 8 * 1024 * 1024;
+    TRUST_WHY = {
+      seal: "state is not the engine's last write (its integrity seal fails); inspect it, the commands are withheld",
+      ledger: "state is not the engine's last write (the engine ledger does not hold these bytes); inspect it, the commands are withheld",
+      unverified: "cannot be verified on this host: no engine ledger record (moved repository, another host or OMC_STATE_DIR, or written outside the engine); the commands are withheld",
+      owner: "an owner file the engine did not write holds the run (the engine ledger does not record it); inspect it, the commands are withheld",
+      missing: "the engine's state file is missing; the ledger holds its last write. Inspect it, the commands are withheld",
+      unreadable: "the run state cannot be read; inspect it, the commands are withheld"
+    };
+    MISSING_UNREADABLE_LEDGER_WHY = "the state file is missing and the engine ledger record of the run cannot be read; inspect it, the commands are withheld";
+    HEAL_WHY = {
+      seal: "the heal record does not match the one the heal run wrote (its seal fails or is gone); do not act on it",
+      missing: "the heal record is missing; the heal seal outside the repository records an open heal run (or predates the open flag). Inspect it, the commands are withheld",
+      unreadable: "the heal record cannot be read; inspect it, the commands are withheld"
+    };
+    UNTRUSTED_WHY = /* @__PURE__ */ new Set([...Object.values(TRUST_WHY), MISSING_UNREADABLE_LEDGER_WHY, ...Object.values(HEAL_WHY)]);
   }
 });
 
