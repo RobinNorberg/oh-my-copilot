@@ -176,15 +176,13 @@ export declare function clearDualDirWarnings(): void;
  */
 export declare function getProjectIdentifier(worktreeRoot?: string): string;
 /**
- * Get the .omc root directory path.
- *
- * When OMC_STATE_DIR is set, returns $OMC_STATE_DIR/{project-identifier}/
- * instead of {worktree}/.omg/. This allows centralized state storage that
- * survives worktree deletion.
- *
- * @param worktreeRoot - Optional worktree root
- * @returns Absolute path to the omc root directory
+ * Run `fn` with the state roots of these worktree roots already known: inside
+ * it, getOmcRoot(<that exact root>) returns the given state root without git
+ * or any stat. For roots the caller has validated itself (factory
+ * --all-repos: a top level with its own `.git`, whose state is its own
+ * `.omg`); every other lookup resolves as usual.
  */
+export declare function withKnownOmcRoots<T>(roots: ReadonlyMap<string, string>, fn: () => T): T;
 export declare function getOmcRoot(worktreeRoot?: string): string;
 /**
  * Resolve a relative path under .omg/ to an absolute path.

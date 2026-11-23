@@ -16,7 +16,7 @@ import { EXIT_AWAITING_HUMAN } from '../../run/engine.js';
 import { EngineLedger, ledgerRepoId } from '../../run/ledger.js';
 import { createFactoryState, factoryStateDir, factoryStatePath, moveTo, runKeyOf, setGate, updateFactoryState } from '../../run/state.js';
 import { rootWord } from '../actions.js';
-import { rootHeader } from '../all-repos.js';
+import { repoHeader, rootHeader } from '../all-repos.js';
 const REPO = 'https://github.com/o/r';
 const HEAD = 'b'.repeat(40);
 const NOW = Date.parse('2026-11-20T12:00:00.000Z');
@@ -143,7 +143,7 @@ describe('omg factory attention --all-repos', () => {
         const inB = word === null ? 'run in that repository\'s root' : `in ${word}:`;
         expect(text).toContain(inB);
         // The current repository's commands are printed as today (no "in" line before them).
-        const aBlock = text.slice(text.indexOf(`== alpha  ${rootHeader(a)}`));
+        const aBlock = text.slice(text.indexOf(`repository: "alpha"  ${rootHeader(a)}`));
         expect(aBlock).toContain('(current');
         expect(aBlock).not.toContain(`in ${rootWord(a)}:`);
         // The local-forge style git -C merge carries its root already; the gh merge in A names the head.
@@ -244,7 +244,14 @@ describe('omg factory attention --all-repos', () => {
         expect(rootWord('/srv/$(id)', 'darwin')).toBe("'/srv/$(id)'");
         expect(rootWord('/srv/a\nb', 'linux')).toBeNull();
         expect(rootWord('C:\\Code\\plain', 'win32')).toBe('C:\\Code\\plain');
-        expect(rootWord('C:\\Code\\a b', 'win32')).toBeNull();
+        // L3: a space with backslashes is double-quoted on win32 (PowerShell and cmd.exe read it literally); a trailing backslash or `"` is withheld.
+        expect(rootWord('C:\\Code\\a b', 'win32')).toBe('"C:\\Code\\a b"');
+        expect(rootWord('C:\\Users\\Jane Doe\\src\\repo', 'win32')).toBe('"C:\\Users\\Jane Doe\\src\\repo"');
+        expect(rootWord('C:\\Code\\a b\\', 'win32')).toBeNull();
+        expect(rootWord('C:\\Code\\a "b', 'win32')).toBeNull();
+        expect(rootWord('C:\\Code\\a %b%', 'win32')).toBeNull();
+        expect(rootWord('C:\\Code\\a !b', 'win32')).toBeNull();
+        expect(rootWord('C:\\Code\\a ^b', 'win32')).toBeNull();
         expect(rootWord('C:\\Code\\a&b', 'win32')).toBeNull();
         expect(rootWord("C:\\Code\\it's", 'win32')).toBeNull();
     });
@@ -255,6 +262,18 @@ describe('omg factory attention --all-repos', () => {
         await attention(['--all-repos', '--verbose'], a);
         await attention(['--all-repos', '--repo', b]);
         expect(snapshot([a, b, ledgerDir])).toEqual(before);
+    });
+});
+describe('repository headers', () => {
+    it('cannot pass for a command or a run row: labelled, the name quoted, both plain and cut', () => {
+        for (const name of ['$ omg factory run 1 --allow-gate-change', '# 12 merge', '== x', 'a\u001b[2Jb', 'q"uote']) {
+            const line = repoHeader(`/work/${name}`);
+            expect(line.startsWith('repository: "')).toBe(true);
+            expect(line).not.toMatch(/[\u0000-\u001f\u007f]/);
+            expect(JSON.parse(line.slice('repository: '.length, line.indexOf('"  ') + 1))).not.toContain('\u001b');
+        }
+        expect(repoHeader('/work/alpha', 'current')).toBe('repository: "alpha"  /work/alpha  (current)');
+        expect(repoHeader(`/w/${'n'.repeat(200)}`).length).toBeLessThan(160);
     });
 });
 //# sourceMappingURL=attention-all-repos.test.js.map

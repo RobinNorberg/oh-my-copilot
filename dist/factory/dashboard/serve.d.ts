@@ -21,9 +21,13 @@
  *
  * Updates: fs.watch on the state, heal, slot and ledger dirs (flat dirs,
  * non-recursive) plus a poll of a cheap signature (names, sizes, mtimes).
- * A change schedules one recompute at most `debounceMs` later and at most
- * one per `minIntervalMs`, so a writer that rewrites files in a loop cannot
- * pin a CPU. The summary's rev is a hash of its time-independent part; when
+ * A change schedules a recompute of that view `debounceMs` later, at most
+ * one per view per interval: `minIntervalMs`, or BACKOFF_FACTOR times the
+ * view's last compute time when that is longer (up to MAX_BACKOFF_MS). Views
+ * are recomputed one per event-loop turn (setImmediate between them), so a
+ * slow repository cannot hold a shared pass and requests are answered between
+ * views; while a backed-off view waits, the previous summary is served with
+ * `stale: true`. A writer that rewrites files in a loop cannot pin a CPU. The summary's rev is a hash of its time-independent part; when
  * it changes, every event stream gets `event: changed`.
  *
  * `--all-repos` (options.repos): one view per repository this host's engine
@@ -32,7 +36,7 @@
  * ledger id), checked against the server's own list: `api/v1/repos`,
  * `api/v1/repo/<id>/summary`, `api/v1/repo/<id>/run/<key>`; an unknown or
  * malformed id is a 404 and no path ever comes from a request. Every view's
- * recompute goes through one debounced, rate-limited pass, and fs.watch
+ * recompute is debounced and backed off per view, and fs.watch
  * handles are capped across views (MAX_WATCHERS; the rest are polled). An
  * event names the view: `data: <id> <rev>`, or `data: repos <rev>` for the
  * list. Full roots are only ever JSON text values.
@@ -52,6 +56,12 @@ export declare const MAX_STREAMS = 16;
 export declare const POLL_MS = 5000;
 export declare const DEBOUNCE_MS = 250;
 export declare const MIN_RECOMPUTE_INTERVAL_MS = 1000;
+/** A view is not recomputed again before this many times its last compute time has passed... */
+export declare const BACKOFF_FACTOR = 10;
+/** ...capped here, so a slow repository is still refreshed every few minutes. */
+export declare const MAX_BACKOFF_MS = 300000;
+/** A view backed off this long or longer (its compute took 500 ms or more) is marked stale while it waits; a shorter wait is not worth an event. */
+export declare const STALE_BACKOFF_MS = 5000;
 export declare const PING_MS = 15000;
 /** A recompute this often even without a file change: time-based notes ("possibly hung") appear. */
 export declare const TICK_MS = 60000;
@@ -85,6 +95,8 @@ export type ServedSummary = Omit<DashboardDataV2, 'attention'> & {
         items: ServedItem[];
     };
     rev: string;
+    /** A recompute is pending and backed off (the repository is slow to read): this is the previous summary. */
+    stale?: boolean;
 };
 /**
  * The one sentence a row of a state that is not trusted shows: fixed here,
@@ -160,6 +172,12 @@ export interface View {
     body: string;
     sig: string;
     watchers: Map<string, FSWatcher>;
+    /** When the view became dirty (ms), null when it is up to date. */
+    dirtyAt: number | null;
+    /** The earliest next recompute (ms): its back-off. */
+    nextAt: number;
+    /** The last compute's duration (ms). */
+    costMs: number;
 }
 export interface DashboardServerOptions {
     /** The single-repository mode (without `repos`): its root, collector and dirs. */
@@ -208,6 +226,12 @@ export interface DashboardServer {
     rev: () => string;
     /** Recomputes done (tests and timings). */
     recomputes: () => number;
+    /** Each view's last compute time, remaining back-off and stale marker, by id ('' in the single-repository mode). */
+    costs: () => Record<string, {
+        costMs: number;
+        backoffMs: number;
+        stale: boolean;
+    }>;
     /** fs.watch handles open now (the global cap). */
     watchers: () => number;
     /** The repository ids served now (--all-repos; [''] in the single-repository mode). */

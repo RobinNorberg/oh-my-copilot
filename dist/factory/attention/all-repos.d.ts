@@ -41,6 +41,14 @@ export interface AllReposAttention {
 }
 /** A root for a header line: plainText, cut in the middle so both ends stay readable. */
 export declare function rootHeader(root: string, max?: number): string;
+/** A repository taking longer than this to collect gets a note in --verbose (no kill: the command is one-shot). */
+export declare const SLOW_REPO_MS = 1000;
+/**
+ * A repository's header line: labelled, its folder name quoted (JSON string
+ * escapes) and both name and path plain and cut, so a directory name cannot
+ * pass for a command or a run row (the line never starts with `$`, `#` or `==`).
+ */
+export declare function repoHeader(root: string, tags?: string): string;
 export interface CollectAllOptions extends Omit<CollectAttentionOptions, 'limits'> {
     /** The cwd's repository top level, or null outside one. */
     current: string | null;

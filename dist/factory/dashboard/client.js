@@ -496,7 +496,8 @@ FD.buildAllAttention = function (doc, list, ctx) {
   if (repos.length === 0) return h(doc, 'p', { 'class': 'ok' }, 'Nothing needs you in any repository.');
   return h(doc, 'div', null, repos.map(function (r) {
     return h(doc, 'div', null, [
-      h(doc, 'h3', null, [String(r.name) + ' ', h(doc, 'span', { 'class': 'muted' }, '(' + r.attention.length + ')')]),
+      // The folder name in its own labelled element: a name shaped like a command or a run row reads as a name.
+      h(doc, 'h3', null, [h(doc, 'span', { 'class': 'muted' }, 'Repository: '), h(doc, 'span', { 'class': 'repo-name' }, String(r.name)), ' ', h(doc, 'span', { 'class': 'muted' }, '(' + r.attention.length + ')')]),
       h(doc, 'p', { 'class': 'muted' }, h(doc, 'code', null, String(r.root))),
       FD.buildAttention(doc, { attention: { items: r.attention } }, ctx, { repo: r })
     ]);
@@ -610,7 +611,8 @@ function start() {
     FD.tickAges(ctx.ages, Date.parse(data.generatedAt), Date.now());
     if (fk && ctx.focus[fk]) ctx.focus[fk].focus({ preventScroll: true });
     window.scrollTo(x, y);
-    byId('generated').textContent = 'Data as of ' + new Date(Date.parse(data.generatedAt)).toLocaleString() + (data.forge && data.forge.read ? '; tracker read at ' + data.forge.at + ' (--forge)' : '; local state only, no forge read');
+    byId('generated').textContent = 'Data as of ' + new Date(Date.parse(data.generatedAt)).toLocaleString() + (data.forge && data.forge.read ? '; tracker read at ' + data.forge.at + ' (--forge)' : '; local state only, no forge read')
+      + (data.stale === true ? '. Stale: this repository is slow to read, so it is refreshed less often; a newer state is waiting to be read' : '');
   }
   function fetchJson(url) {
     return fetch(url, { cache: 'no-store', credentials: 'same-origin', redirect: 'error' }).then(function (r) {

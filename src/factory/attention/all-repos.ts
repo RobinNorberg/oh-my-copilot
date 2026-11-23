@@ -21,6 +21,7 @@ import type { LedgerRoot, SkippedRoot } from '../run/ledger-roots.js';
 import { ATTENTION_GROUPS, GROUP_TITLES, rootWord, type AttentionGroup } from './actions.js';
 import { attentionJson, collectAttention, type AttentionData, type CollectAttentionOptions } from './collect.js';
 import { itemLines } from './render.js';
+import { withKnownOmcRoots } from '../../lib/worktree-paths.js';
 
 /** A root in a header: plain, and cut in the middle to this many characters. */
 export const ROOT_HEADER_MAX = 72;
@@ -95,7 +96,9 @@ export function collectAllRepos(roots: readonly LedgerRoot[], skipped: SkippedRo
     const t0 = clock();
     let data: AttentionData;
     try {
-      data = collectAttention(r.root, { ...o, limits: o.limits?.(r.root) ?? null });
+      // A root discovery validated carries its state root: no git runs in it.
+      const collect = (): AttentionData => collectAttention(r.root, { ...o, limits: o.limits?.(r.root) ?? null });
+      data = r.stateRoot ? withKnownOmcRoots(new Map([[r.root, r.stateRoot]]), collect) : collect();
     } catch (error) {
       // One repository that cannot be read is a warning and a failed read, never the end of the others.
       data = {

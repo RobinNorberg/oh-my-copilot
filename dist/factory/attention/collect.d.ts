@@ -88,7 +88,29 @@ export interface CollectAttentionOptions {
     limits?: FactoryRunLimits | null;
     owner?: OwnerDeps;
     verbose?: boolean;
+    /** Each run's final read (after the live-engine reread), so the dashboard reuses it instead of reading the state again. */
+    onRead?: (r: ReadRun) => void;
 }
+/**
+ * At most this many run state files (and, apart, heal records) are read per
+ * repository: a lane can write any number of files into `.omg/state/factory`,
+ * and each one costs about 0.7 ms to check on Windows (open dominates), so a
+ * full pass stays well under a second.
+ */
+export declare const MAX_RUN_STATES = 500;
+/**
+ * The run keys to read in a repository, chosen so that flooding the state dir
+ * cannot push an engine run out: every run the engine ledger records first
+ * (the ledger lives outside the repository and holds the engine's own runs
+ * only), then the other canonical state files in ascending key order, up to
+ * `max` in all. `omitted` counts the state files left unread.
+ */
+export declare function runKeysToRead(root: string, ledgerDir: string, max?: number): {
+    keys: FactoryRunKey[];
+    omitted: number;
+};
+/** The one Inspect row (and warning) that stands for the state files left unread. */
+export declare function omittedStatesNote(omitted: number): string;
 /** The run key of a canonical `run-<key>.json` name; null for anything else (`run-01.json` is not run 1's file). */
 export declare function runKeyOfName(name: string): FactoryRunKey | null;
 type FileRead = {

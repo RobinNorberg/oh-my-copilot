@@ -39,7 +39,10 @@ import { factorySlotsDir, factoryStateDir, type OwnerDeps } from '../../factory/
 import { healStateDir } from '../../factory/heal/state.js';
 import { startDashboardServer, type DashboardServer, type DashboardServerOptions, type ServedRepoList } from '../../factory/dashboard/serve.js';
 import { checkPinnedRoot, discoverLedgerRoots } from '../../factory/run/ledger-roots.js';
-import { getOmcRoot } from '../../lib/worktree-paths.js';
+import { getOmcRoot, withKnownOmcRoots } from '../../lib/worktree-paths.js';
+
+/** A root discovery validated carries its state root: resolved from there, no git in the repository. */
+const known = <T>(r: { root: string; stateRoot?: string }, fn: () => T): T => (r.stateRoot ? withKnownOmcRoots(new Map([[r.root, r.stateRoot]]), fn) : fn());
 
 export const WATCH_DEFAULT_SECONDS = 10;
 export const WATCH_MIN_SECONDS = 2;
@@ -423,17 +426,17 @@ async function serveAllRepos(o: DashboardOptions, deps: FactoryDashboardDeps): P
     const found = await discoverLedgerRoots({ ledgerDir, ...(pinned.length ? { pinned } : {}) });
     return {
       skipped: found.skipped.length, warnings: found.warnings,
-      repos: found.roots.map((r) => ({
+      repos: found.roots.map((r) => known(r, () => ({
         id: r.id, root: r.root,
-        collect: (now: number): DashboardDataV2 => {
+        collect: (now: number): DashboardDataV2 => known(r, () => {
           const l = limitsFor(r.root);
           const data = collectDashboardV2(r.root, { ledgerDir, now: () => now, limits: l.limits, ...(deps.owner ? { owner: deps.owner } : {}), ...(o.since !== undefined ? { since: o.since } : {}) });
           data.warnings.unshift(...l.warnings.map((w) => plainText(w)));
           return data;
-        },
+        }),
         watchDirs: [factoryStateDir(r.root), healStateDir(r.root), factorySlotsDir(r.root), dirname(ledgerFilePath(ledgerDir, r.root, 1))],
         pollDirs: [join(r.root, 'bench-results')],
-      })),
+      }))),
     };
   };
   return startAndWait(o, deps, port, { ledgerDir, repos: { list } }, 'every repository the engine ledger of this host records');

@@ -19,6 +19,7 @@ import { canonicalPath } from '../run/claims.js';
 import { ATTENTION_GROUPS, GROUP_TITLES, rootWord } from './actions.js';
 import { attentionJson, collectAttention } from './collect.js';
 import { itemLines } from './render.js';
+import { withKnownOmcRoots } from '../../lib/worktree-paths.js';
 /** A root in a header: plain, and cut in the middle to this many characters. */
 export const ROOT_HEADER_MAX = 72;
 const GROUP_ORDER = new Map(ATTENTION_GROUPS.map((g, i) => [g, i]));
@@ -29,6 +30,17 @@ export function rootHeader(root, max = ROOT_HEADER_MAX) {
         return p.join('');
     const half = Math.floor((max - 1) / 2);
     return `${p.slice(0, half).join('')}…${p.slice(p.length - (max - 1 - half)).join('')}`;
+}
+/** A repository taking longer than this to collect gets a note in --verbose (no kill: the command is one-shot). */
+export const SLOW_REPO_MS = 1_000;
+/**
+ * A repository's header line: labelled, its folder name quoted (JSON string
+ * escapes) and both name and path plain and cut, so a directory name cannot
+ * pass for a command or a run row (the line never starts with `$`, `#` or `==`).
+ */
+export function repoHeader(root, tags = '') {
+    const name = JSON.stringify(plainText(basename(root)).slice(0, 60));
+    return `repository: ${name}  ${rootHeader(root)}${tags ? `  (${tags})` : ''}`;
 }
 /** Most urgent group first, then oldest item, then by path; a repository with nothing to do goes last. */
 function repoRank(r) {
@@ -44,7 +56,9 @@ export function collectAllRepos(roots, skipped, warnings, o, discoveryMs = 0) {
         const t0 = clock();
         let data;
         try {
-            data = collectAttention(r.root, { ...o, limits: o.limits?.(r.root) ?? null });
+            // A root discovery validated carries its state root: no git runs in it.
+            const collect = () => collectAttention(r.root, { ...o, limits: o.limits?.(r.root) ?? null });
+            data = r.stateRoot ? withKnownOmcRoots(new Map([[r.root, r.stateRoot]]), collect) : collect();
         }
         catch (error) {
             // One repository that cannot be read is a warning and a failed read, never the end of the others.
@@ -118,8 +132,9 @@ export function renderAllRepos(d, o = {}) {
     for (const r of d.repos) {
         const rc = groupCounts(r.data.summary.byGroup);
         const tags = [r.current ? 'current' : null, r.data.forge, r.recorded ? null : 'no factory runs recorded on this host'].filter(Boolean).join(', ');
-        lines.push('', chalk.bold(`== ${basename(r.root) ? plainText(basename(r.root)).slice(0, 60) : rootHeader(r.root)}  ${rootHeader(r.root)}${tags ? `  (${tags})` : ''}`));
-        lines.push(`   ${r.data.items.length === 0 ? 'nothing needs you' : rc}; ${r.data.summary.engines.live === 0 ? 'no engine running' : `${plural(r.data.summary.engines.live, 'engine')} running`}${verbose ? `; ${r.ms} ms` : ''}`);
+        lines.push('', chalk.bold(repoHeader(r.root, tags)));
+        const slow = r.ms > SLOW_REPO_MS ? ` (slow: over ${SLOW_REPO_MS / 1000} s; its state dir may hold many files)` : '';
+        lines.push(`   ${r.data.items.length === 0 ? 'nothing needs you' : rc}; ${r.data.summary.engines.live === 0 ? 'no engine running' : `${plural(r.data.summary.engines.live, 'engine')} running`}${verbose ? `; ${r.ms} ms${slow}` : ''}`);
         for (const w of r.data.warnings)
             lines.push(chalk.yellow(`   warning: ${w}`));
         const where = r.current ? undefined : rootWord(r.root, platform);

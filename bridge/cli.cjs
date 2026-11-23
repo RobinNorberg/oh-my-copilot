@@ -9418,7 +9418,12 @@ function getProjectIdentifier(worktreeRoot) {
   if (scope && scopeKey) scope.projectIdentifiers.set(scopeKey, identifier);
   return identifier;
 }
+function withKnownOmcRoots(roots, fn) {
+  return knownOmcRoots.run(roots, fn);
+}
 function getOmcRoot(worktreeRoot) {
+  const known2 = worktreeRoot === void 0 ? void 0 : knownOmcRoots.getStore()?.get(worktreeRoot);
+  if (known2 !== void 0) return known2;
   const scope = worktreePathRenderScope.getStore();
   if (!scope) return computeOmcRoot(worktreeRoot);
   const key = [worktreeRoot ?? "", process.env.OMC_STATE_DIR ?? "", process.cwd()].join("\0");
@@ -9965,7 +9970,7 @@ function validateWorkingDirectoryOrLinkedWorktree(workingDirectory) {
   }
   return resolution.root;
 }
-var import_crypto2, import_node_async_hooks, import_child_process3, import_fs13, import_os3, import_path12, import_url2, WORKSPACE_MARKER, OmcPaths, MAX_WORKTREE_CACHE_SIZE, worktreeCacheMap, gitTopLevelCacheMap, gitTopLevelNegativeCacheMap, superprojectCacheMap, projectIdentifierCacheMap, canonicalWorkingDirectoryRoots, GIT_PROBE_ENVIRONMENT_KEYS, MAX_GIT_MARKER_BYTES, workspaceCacheMap, GIT_NOT_A_REPOSITORY_STDERR, SENSITIVE_DIR_BASENAMES, worktreePathRenderScope, projectIdentifierOperationScope, gitShowToplevelProbeForTests, dualDirWarnings, SESSION_ID_REGEX, processSessionId, ForeignWorkingDirectoryError;
+var import_crypto2, import_node_async_hooks, import_child_process3, import_fs13, import_os3, import_path12, import_url2, WORKSPACE_MARKER, OmcPaths, MAX_WORKTREE_CACHE_SIZE, worktreeCacheMap, gitTopLevelCacheMap, gitTopLevelNegativeCacheMap, superprojectCacheMap, projectIdentifierCacheMap, canonicalWorkingDirectoryRoots, GIT_PROBE_ENVIRONMENT_KEYS, MAX_GIT_MARKER_BYTES, workspaceCacheMap, GIT_NOT_A_REPOSITORY_STDERR, SENSITIVE_DIR_BASENAMES, worktreePathRenderScope, projectIdentifierOperationScope, gitShowToplevelProbeForTests, dualDirWarnings, knownOmcRoots, SESSION_ID_REGEX, processSessionId, ForeignWorkingDirectoryError;
 var init_worktree_paths = __esm({
   "src/lib/worktree-paths.ts"() {
     "use strict";
@@ -10058,6 +10063,7 @@ var init_worktree_paths = __esm({
     worktreePathRenderScope = new import_node_async_hooks.AsyncLocalStorage();
     projectIdentifierOperationScope = new import_node_async_hooks.AsyncLocalStorage();
     dualDirWarnings = /* @__PURE__ */ new Set();
+    knownOmcRoots = new import_node_async_hooks.AsyncLocalStorage();
     SESSION_ID_REGEX = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,255}$/;
     processSessionId = null;
     ForeignWorkingDirectoryError = class extends Error {
@@ -57382,9 +57388,9 @@ function getTrustedPrefixes() {
 function isTrustedPrefix(resolvedPath) {
   const flavor = pathFlavor();
   return getTrustedPrefixes().some((prefix) => {
-    const relative53 = flavor.relative(prefix, resolvedPath);
-    if (relative53 === "") return true;
-    return !relative53.startsWith("..") && !flavor.isAbsolute(relative53);
+    const relative54 = flavor.relative(prefix, resolvedPath);
+    if (relative54 === "") return true;
+    return !relative54.startsWith("..") && !flavor.isAbsolute(relative54);
   });
 }
 function assertBinaryName(binary) {
@@ -59856,9 +59862,9 @@ function nodeModulesTreeProblem(worktree, target, platform = process.platform, t
       return false;
     }
   };
-  const check2 = (dir, base, scoped, known) => {
+  const check2 = (dir, base, scoped, known2) => {
     let linked = false;
-    let baseReal = known ?? null;
+    let baseReal = known2 ?? null;
     if (baseReal === null) try {
       baseReal = import_node_fs11.realpathSync.native(base);
     } catch {
@@ -61593,8 +61599,8 @@ var init_matcher = __esm({
           this.sessionOrdinals.set(req.sessionId, ordinal);
         }
         const key = liveKey(req.sessionId, req.agentId);
-        const known = this.agentPaths.get(key);
-        if (known) return { ordinal, path: known };
+        const known2 = this.agentPaths.get(key);
+        if (known2) return { ordinal, path: known2 };
         let path30 = "root";
         if (req.parentAgentId !== void 0) {
           const parentKey = liveKey(req.sessionId, req.parentAgentId);
@@ -99994,9 +100000,9 @@ async function stopTeamCadence(teamName, strict = false) {
   }
 }
 function cadenceContextMatches(candidate, expected) {
-  const known = candidate.context;
-  if (!known) return false;
-  return candidate.workerName === expected.workerName && known.teamName === expected.teamName && known.worktreePath === expected.worktreePath && known.agentType === expected.agentType && known.serviceGeneration === expected.serviceGeneration && known.attemptId === expected.attemptId;
+  const known2 = candidate.context;
+  if (!known2) return false;
+  return candidate.workerName === expected.workerName && known2.teamName === expected.teamName && known2.worktreePath === expected.worktreePath && known2.agentType === expected.agentType && known2.serviceGeneration === expected.serviceGeneration && known2.attemptId === expected.attemptId;
 }
 async function removeStaleTeamCadence(teamName, expectedContexts) {
   const entry2 = cadenceByTeam.get(teamName);
@@ -120709,8 +120715,8 @@ function parseFailingTests(log3) {
   }
   return out;
 }
-function isKnownFlaky(test, known) {
-  return test.title !== void 0 && known.some((k) => k.file === test.file && Boolean(k.title) && test.title.includes(k.title));
+function isKnownFlaky(test, known2) {
+  return test.title !== void 0 && known2.some((k) => k.file === test.file && Boolean(k.title) && test.title.includes(k.title));
 }
 function logLines(log3) {
   const out = [];
@@ -120770,9 +120776,9 @@ function readJobChecks(root) {
     return /* @__PURE__ */ new Map();
   }
 }
-function analyzeFailedLog(check2, runId, log3, known, jobId) {
+function analyzeFailedLog(check2, runId, log3, known2, jobId) {
   const failingTests = parseFailingTests(log3);
-  const unknown2 = failingTests.filter((t) => !isKnownFlaky(t, known));
+  const unknown2 = failingTests.filter((t) => !isKnownFlaky(t, known2));
   const blockers = logBlockers(log3);
   const aggregate = aggregateOnly(log3);
   return {
@@ -120829,7 +120835,7 @@ function fetchHeadSha(exec3, pr, cwd) {
 function fetchWorkflowRuns(exec3, headSha, cwd) {
   return ghRunsForHead(exec3, headSha, cwd);
 }
-function evaluateGates(exec3, pr, config2, known, cwd, headSha, forge, watchedSince, now2 = Date.now, reads) {
+function evaluateGates(exec3, pr, config2, known2, cwd, headSha, forge, watchedSince, now2 = Date.now, reads) {
   const readHead = () => forge ? forge.reviews.prHead(pr).headRefOid : fetchHeadSha(exec3, pr, cwd);
   const head = headSha ?? readHead();
   const checked2 = evaluateChecks(pr, forge ? forge.checks.checks(pr, head) : fetchChecks(exec3, pr, cwd), config2);
@@ -120844,12 +120850,12 @@ function evaluateGates(exec3, pr, config2, known, cwd, headSha, forge, watchedSi
       pending: [...report3.pending, `head moved from ${head.slice(0, 12)} to ${after.slice(0, 12)} during the gate read`]
     };
   }
-  if (report3.verdict !== "failed" || known.length === 0) return report3;
+  if (report3.verdict !== "failed" || known2.length === 0) return report3;
   const analyses = [];
   for (const check2 of report3.checks) {
     if (check2.class !== "failed" || !check2.jobId) continue;
     const log3 = forge ? forge.checks.jobLog(check2.jobId) : ghJobLog(exec3, check2.jobId, cwd);
-    analyses.push(analyzeFailedLog(check2.name, check2.runId, log3.ok ? log3.text : "", known, check2.jobId));
+    analyses.push(analyzeFailedLog(check2.name, check2.runId, log3.ok ? log3.text : "", known2, check2.jobId));
   }
   const jobChecks2 = analyses.some((a) => a.aggregate) ? readJobChecks(cwd ?? process.cwd()) : void 0;
   return applyFlakyAnalysis(report3, analyses, forge?.kind, jobChecks2);
@@ -120992,9 +120998,9 @@ function firstErrorLine(log3) {
   }
   return void 0;
 }
-function parseJob(job, rawLog, known) {
+function parseJob(job, rawLog, known2) {
   const log3 = capLog(rawLog);
-  const analysis = analyzeFailedLog(job.name, void 0, log3, known, job.jobId);
+  const analysis = analyzeFailedLog(job.name, void 0, log3, known2, job.jobId);
   const firstError = firstErrorLine(log3);
   return {
     jobId: job.jobId,
@@ -121959,10 +121965,10 @@ data ${f.bytes.length}
     if (!HEX.test(tree)) return refuse2("error", `git write-tree printed ${JSON.stringify(tree.slice(0, 80))}`);
     const changed = git10(["diff-tree", "-r", "-z", "--no-renames", "--name-only", input2.start, tree]).split("\0").filter(Boolean);
     const changedSet = new Set(changed);
-    const known = new Set([...start.values()].map((e2) => e2.sha));
+    const known2 = new Set([...start.values()].map((e2) => e2.sha));
     const findings = [];
     for (const f of files) {
-      if (!changedSet.has(f.path) || known.has(shas.get(f.path)) || (input2.secretAllowPaths ?? []).some((g) => pathGlobMatches(g, f.path))) continue;
+      if (!changedSet.has(f.path) || known2.has(shas.get(f.path)) || (input2.secretAllowPaths ?? []).some((g) => pathGlobMatches(g, f.path))) continue;
       for (const kind of secretShapeKinds(f.bytes.toString("latin1"))) findings.push({ path: f.path, kind });
     }
     for (const path30 of changed) {
@@ -122612,8 +122618,8 @@ function linkEntries2(baseTree, headTree) {
     return `${e2.slice(0, tab).split(" ")[2]}	${e2.slice(tab + 1)}`;
   }));
   const added = (mode) => {
-    const known = of(baseTree, mode);
-    return [...of(headTree, mode)].filter((x) => !known.has(x)).map((x) => x.slice(x.indexOf("	") + 1));
+    const known2 = of(baseTree, mode);
+    return [...of(headTree, mode)].filter((x) => !known2.has(x)).map((x) => x.slice(x.indexOf("	") + 1));
   };
   return { gitlinks: added("160000"), symlinks: added("120000") };
 }
@@ -127226,8 +127232,8 @@ function localTracker(ctx) {
     const sha3 = baseSha();
     if (!sha3 || !mergedHead || !HEX407.test(mergedHead)) return false;
     const key = `${sha3}:${mergedHead}:${path30}`;
-    const known = changedAfter.get(key);
-    if (known !== void 0) return known;
+    const known2 = changedAfter.get(key);
+    if (known2 !== void 0) return known2;
     const stateAt = (commit) => {
       const r = ctx.exec("git", backlogShowArgs(commit, path30), { cwd: ctx.root, env: TRUSTED_READ_ENV3 });
       if (r.status !== 0) return void 0;
@@ -129735,12 +129741,12 @@ function resolveLocalGateArgv(argv, o) {
     return findOnPath(cmd, env2, platform, exists) ? { exe: cmd, args } : { missing: `${what} executable ${cmd} is not on PATH` };
   }
   const name = cmd.toLowerCase().replace(/\.(cmd|bat)$/, "");
-  const known = NODE_SCRIPTS2[name];
+  const known2 = NODE_SCRIPTS2[name];
   const exe = () => findOnPath(name === cmd.toLowerCase() ? cmd : name, { ...env2, PATHEXT: ".COM;.EXE" }, "win32", exists);
-  if (known) {
-    const fromExe = known.exeFirst ? exe() : null;
+  if (known2) {
+    const fromExe = known2.exeFirst ? exe() : null;
     if (fromExe) return { exe: fromExe, args };
-    const script = P.join(P.dirname(execPath), ...known.script);
+    const script = P.join(P.dirname(execPath), ...known2.script);
     if (exists(script)) return { exe: execPath, args: [script, ...args] };
     return { missing: `${what} executable ${cmd} cannot start: on Windows ${what} runs without a shell, so ${name}.cmd is never run, and ${script} does not exist; set ${key} to a command that starts without a shell, such as ${npmCliHint(P, execPath, exists)}` };
   }
@@ -136654,7 +136660,7 @@ function stateGateNext(s, root, tamperHold = false) {
 }
 function quoteWord(word, platform) {
   if (bare(word, platform)) return word;
-  if (DOUBLE_QUOTABLE.test(word) && !unprintable(word)) return `"${word}"`;
+  if (doubleQuotable(word, platform) && !unprintable(word)) return `"${word}"`;
   return platform === "win32" ? `'${word.replace(/'/g, "''")}'` : `'${word.replace(/'/g, "'\\''")}'`;
 }
 function commandLine(argv, platform = process.platform) {
@@ -136675,7 +136681,7 @@ function humanCommand(argv, platform = process.platform) {
   const t = commandText(argv, platform);
   return t.inRoot ? `in the repository root: ${t.line}` : t.line;
 }
-var GATE_GROUPS, TRUST, LOOK, e, GATE_TABLE, LANE_KINDS, LANE_PARK, UNKNOWN_GATE_ENTRY, HEX4017, SIG82, sig8Of, resumeArgv, cancelArgv, statusArgv, FLAG, toStep, fromSealed, BARE_POSIX, BARE_WIN, DOUBLE_QUOTABLE, unprintable, bare, portable;
+var GATE_GROUPS, TRUST, LOOK, e, GATE_TABLE, LANE_KINDS, LANE_PARK, UNKNOWN_GATE_ENTRY, HEX4017, SIG82, sig8Of, resumeArgv, cancelArgv, statusArgv, FLAG, toStep, fromSealed, BARE_POSIX, BARE_WIN, DOUBLE_QUOTABLE, DOUBLE_QUOTABLE_WIN, doubleQuotable, unprintable, bare, portable;
 var init_gate_next = __esm({
   "src/factory/run/gate-next.ts"() {
     "use strict";
@@ -136772,15 +136778,17 @@ var init_gate_next = __esm({
     BARE_POSIX = /^[A-Za-z0-9_./:@%+=,-]+$/;
     BARE_WIN = /^[A-Za-z0-9_./:\\+=-]+$/;
     DOUBLE_QUOTABLE = /^[\p{L}\p{N} /:._-]+$/u;
+    DOUBLE_QUOTABLE_WIN = /^[\p{L}\p{N} /:._\\-]+$/u;
+    doubleQuotable = (word, platform) => DOUBLE_QUOTABLE.test(word) || platform === "win32" && DOUBLE_QUOTABLE_WIN.test(word) && !word.endsWith("\\");
     unprintable = (word) => plainText(word) !== word;
     bare = (word, platform) => (platform === "win32" ? BARE_WIN : BARE_POSIX).test(word);
-    portable = (word, platform) => !unprintable(word) && (bare(word, platform) || DOUBLE_QUOTABLE.test(word));
+    portable = (word, platform) => !unprintable(word) && (bare(word, platform) || doubleQuotable(word, platform));
   }
 });
 
 // src/factory/run/merge-policy.ts
-function mergeDecision(exec3, root, ship, view2, config2, known, forge, reads) {
-  const gate = evaluateGates(exec3, view2.number, config2, known, root, view2.headRefOid, forge, ship.phase === "ready" ? 0 : void 0, Date.now, reads);
+function mergeDecision(exec3, root, ship, view2, config2, known2, forge, reads) {
+  const gate = evaluateGates(exec3, view2.number, config2, known2, root, view2.headRefOid, forge, ship.phase === "ready" ? 0 : void 0, Date.now, reads);
   const counted = gate.checks.filter((c) => c.class !== "advisory");
   const flaky = new Set(gate.flaky.filter((a) => a.knownFlaky).map((a) => a.check));
   const noChecks = {
@@ -141348,8 +141356,8 @@ var init_engine = __esm({
         if (!copy) {
           return prepareLaneNodeModulesAsync(this.o.root, worktree, { workspaces: this.baseWorkspaces(), ...this.o.warn ? { warn: this.o.warn } : {}, ignored, copy: false }).then((problem) => {
             const nested = trustedNestedRels(this.o.root, worktree, this.baseWorkspaces());
-            const known = this.laneNestedRels.get((0, import_path198.resolve)(worktree)) ?? [];
-            this.laneNestedRels.set((0, import_path198.resolve)(worktree), [.../* @__PURE__ */ new Set([...known, ...nested])]);
+            const known2 = this.laneNestedRels.get((0, import_path198.resolve)(worktree)) ?? [];
+            this.laneNestedRels.set((0, import_path198.resolve)(worktree), [.../* @__PURE__ */ new Set([...known2, ...nested])]);
             return problem;
           });
         }
@@ -145116,7 +145124,7 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
         }
         if (ship.phase !== "gates") throw new FactoryStepError(`ship state for PR #${pr} is ${ship.phase}, not gates`);
         if (await this.prConflicts(pr, head)) return this.reprepareConflict(pr, head);
-        const { config: config2, known } = this.gateConfig(view2);
+        const { config: config2, known: known2 } = this.gateConfig(view2);
         const fields = () => ({ ...this.fields() });
         const local = this.forge?.kind === "local";
         const forge = local ? this.localGateForge(this.forge) : this.forge;
@@ -145133,7 +145141,7 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
               pr,
               head,
               config: config2,
-              known,
+              known: known2,
               ...forge ? { forge } : {},
               ...reads ? { reads } : {},
               deadline,
@@ -145224,10 +145232,10 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
         if (ship.phase !== "ready") throw new FactoryStepError(`ship state for PR #${pr} is ${ship.phase}, not ready`);
         if (this.humanReviewParked(pr, head, ship)) return;
         if (await this.prConflicts(pr, head)) return this.reprepareConflict(pr, head);
-        const { config: loaded2, known } = this.gateConfig(view2);
+        const { config: loaded2, known: known2 } = this.gateConfig(view2);
         const sealedBuild = this.state.prepareBuild;
         const config2 = { ...loaded2, prepareBuild: sealedBuild && sealedBuild !== "none" ? sealedBuild : void 0 };
-        const decision = mergeDecision(this.exec, this.o.root, ship, view2, config2, known, this.forge, this.gateReads(view2));
+        const decision = mergeDecision(this.exec, this.o.root, ship, view2, config2, known2, this.forge, this.gateReads(view2));
         if (!decision.ok && decision.reasons.some((r) => r.startsWith("gates are "))) {
           const bounces = (this.state.mergeBounces ?? 0) + 1;
           this.save((x) => ({ ...x, mergeBounces: bounces }));
@@ -146189,8 +146197,8 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
             return { kind: "stopped" };
           }
           const proc = result.process;
-          const known = this.state.lanes.find((l) => l.id === id)?.process;
-          if (proc && (known?.pid !== proc.pid || known.identity !== proc.identity)) this.updateLane(id, { process: { pid: proc.pid, identity: proc.identity } });
+          const known2 = this.state.lanes.find((l) => l.id === id)?.process;
+          if (proc && (known2?.pid !== proc.pid || known2.identity !== proc.identity)) this.updateLane(id, { process: { pid: proc.pid, identity: proc.identity } });
           if (isTerminalLaneState(result.state)) break;
           if (isNewerEvent(result.lastEventAt, lastEventAt)) {
             lastEventAt = result.lastEventAt;
@@ -148741,8 +148749,8 @@ function scanOnce(opts) {
   const greenPush = pushRuns.filter((r) => r.conclusion === "success");
   for (const [sig8, group] of bySig) {
     const branches = [...new Set(group.runs.map((r) => r.headBranch))].sort();
-    const known = pending.has(sig8);
-    if (branches.length < 2 && !known) {
+    const known2 = pending.has(sig8);
+    if (branches.length < 2 && !known2) {
       for (const run3 of group.runs) skip(run3, `PR signature ${sig8} seen on one head branch only (${branches.join(", ")}); needs two, or a known signature`);
       continue;
     }
@@ -149658,11 +149666,11 @@ async function runFactoryEnqueue(o, deps) {
     if (!item || ado && !inForge(item)) throw new CheckUsageError(`blockedBy ${ref2} is not ${itemOf}`);
   }
   const ids2 = new Map([...holders].map(([k, item]) => [k, item.id]));
-  const ref = (b, known) => b.startsWith("#") ? b : known.has(b) ? `#${known.get(b)}` : void 0;
-  const edgesOf = (t, known) => t.blockedBy.map((b) => ref(b, known) ?? `#${b}`);
-  const adoLinks = (p, known) => [
+  const ref = (b, known2) => b.startsWith("#") ? b : known2.has(b) ? `#${known2.get(b)}` : void 0;
+  const edgesOf = (t, known2) => t.blockedBy.map((b) => ref(b, known2) ?? `#${b}`);
+  const adoLinks = (p, known2) => [
     ...p.item?.parent === specId ? [] : [["parent", `#${specId}`]],
-    ...edgesOf(p.ticket, known).filter((e2) => !p.item?.dependsOn.includes(Number(e2.slice(1)))).map((e2) => ["depends-on", e2])
+    ...edgesOf(p.ticket, known2).filter((e2) => !p.item?.dependsOn.includes(Number(e2.slice(1)))).map((e2) => ["depends-on", e2])
   ];
   const planned = file2.tickets.map((t) => {
     const item = holders.get(t.key);
@@ -149698,8 +149706,8 @@ async function runFactoryEnqueue(o, deps) {
   });
   const fileKeys = new Set(file2.tickets.map((t) => t.key));
   const orphans = [...holders].filter(([k]) => !fileKeys.has(k)).map(([, item]) => item).sort((a, b) => a.id - b.id);
-  const specBody = (known) => specBodyWithTickets(spec.body, [
-    ...file2.tickets.map((t) => known.get(t.key)).filter((id) => id !== void 0),
+  const specBody = (known2) => specBodyWithTickets(spec.body, [
+    ...file2.tickets.map((t) => known2.get(t.key)).filter((id) => id !== void 0),
     ...orphans.map((i) => i.id)
   ]);
   const orphanRows = orphans.map((item) => ({ key: [...holders].find(([, i]) => i === item)[0], id: item.id, action: "orphaned", bucket: null, reasons: [], markCandidate: false }));
@@ -151634,12 +151642,12 @@ async function setup(o, deps, cwd, out) {
   const intakeCheck = validateIntake(io, source2, labels);
   let itemTypes = [];
   if (ado) {
-    const known = adoWorkItemTypes(io);
-    const lower2 = new Map(known.map((t) => [t.toLowerCase(), t]));
+    const known2 = adoWorkItemTypes(io);
+    const lower2 = new Map(known2.map((t) => [t.toLowerCase(), t]));
     if (o.itemTypes) {
       itemTypes = list2(o.itemTypes);
       const unknown2 = itemTypes.filter((t) => !lower2.has(t.toLowerCase()));
-      if (unknown2.length > 0) throw new SetupError(5, `unknown work item type ${unknown2.map((t) => JSON.stringify(t)).join(", ")} in project ${repo.project} (known: ${known.join(", ")})`);
+      if (unknown2.length > 0) throw new SetupError(5, `unknown work item type ${unknown2.map((t) => JSON.stringify(t)).join(", ")} in project ${repo.project} (known: ${known2.join(", ")})`);
       itemTypes = itemTypes.map((t) => lower2.get(t.toLowerCase()));
     } else {
       itemTypes = DEFAULT_ADO_ITEM_TYPES.filter((t) => lower2.has(t.toLowerCase())).map((t) => lower2.get(t.toLowerCase()));
@@ -154500,8 +154508,8 @@ async function probeLaneModel(jobRoot, deps = defaultCopilotRunDeps(), requested
     const model = typeof current?.modelId === "string" && current.modelId ? current.modelId : null;
     if (!model) {
       const list3 = Array.isArray(models) ? models : [];
-      const known = list3.map((m) => typeof m.id === "string" ? modelMultiplier(list3, m.id) : null).filter((m) => m !== null);
-      const range = known.length ? `; listModels() offers ${list3.length} models, multipliers ${Math.min(...known)}x to ${Math.max(...known)}x` : "";
+      const known2 = list3.map((m) => typeof m.id === "string" ? modelMultiplier(list3, m.id) : null).filter((m) => m !== null);
+      const range = known2.length ? `; listModels() offers ${list3.length} models, multipliers ${Math.min(...known2)}x to ${Math.max(...known2)}x` : "";
       return none(`the runtime names no current model for a new session (model.getCurrent: ${JSON.stringify(current ?? null).slice(0, 200)}); the default is picked at the first turn${range}`);
     }
     const multiplier = modelMultiplier(Array.isArray(models) ? models : [], model);
@@ -155223,10 +155231,10 @@ function checkBacklog(exec3, root, base, config2) {
 }
 function benchSubset(ids2) {
   if (ids2 === void 0) return null;
-  const known = new Set(BENCH_ISSUES.map((i) => i.id));
+  const known2 = new Set(BENCH_ISSUES.map((i) => i.id));
   if (ids2.length === 0) throw new BenchUsageError("--issues needs at least one issue id");
-  const bad = ids2.filter((id) => !Number.isSafeInteger(id) || !known.has(id));
-  if (bad.length) throw new BenchUsageError(`--issues: no bench issue ${bad.join(", ")} (the ids are ${[...known].join(", ")})`);
+  const bad = ids2.filter((id) => !Number.isSafeInteger(id) || !known2.has(id));
+  if (bad.length) throw new BenchUsageError(`--issues: no bench issue ${bad.join(", ")} (the ids are ${[...known2].join(", ")})`);
   if (new Set(ids2).size !== ids2.length) throw new BenchUsageError("--issues names an issue twice");
   return [...ids2].sort((a, b) => a - b);
 }
@@ -156291,6 +156299,28 @@ var init_collect2 = __esm({
 });
 
 // src/factory/attention/collect.ts
+function runKeysToRead(root, ledgerDir, max = MAX_RUN_STATES) {
+  const keysIn = (dir, skip) => {
+    const out = /* @__PURE__ */ new Map();
+    let names2 = [];
+    try {
+      names2 = (0, import_fs186.readdirSync)(dir);
+    } catch {
+    }
+    for (const name of names2) {
+      const key = runKeyOfName(name);
+      if (key !== null && !skip?.has(String(key))) out.set(String(key), key);
+    }
+    return out;
+  };
+  const recorded = keysIn((0, import_path213.dirname)(ledgerFilePath(ledgerDir, root, 1)));
+  const others = [...keysIn(factoryStateDir3(root), recorded).values()].sort(keyOrder);
+  const room = Math.max(0, max - recorded.size);
+  return { keys: [...[...recorded.values()].sort(keyOrder), ...others.slice(0, room)], omitted: Math.max(0, others.length - room) };
+}
+function omittedStatesNote(omitted) {
+  return `${omitted} more state files were not read: more than the limit (${MAX_RUN_STATES} per repository); inspect .omg/state/factory`;
+}
 function runKeyOfName(name) {
   const m = RUN_FILE2.exec(name);
   if (!m) return null;
@@ -156514,7 +156544,6 @@ function collectIn(root, o) {
       at: 0
     });
   }
-  const keys = /* @__PURE__ */ new Map();
   const listed2 = (dir) => {
     try {
       return (0, import_fs186.readdirSync)(dir);
@@ -156522,20 +156551,20 @@ function collectIn(root, o) {
       return [];
     }
   };
-  for (const name of [...listed2(factoryStateDir3(root)), ...listed2((0, import_path213.dirname)(ledgerFilePath(o.ledgerDir, root, 1)))]) {
-    const key = runKeyOfName(name);
-    if (key !== null) keys.set(String(key), key);
-  }
+  const { keys, omitted } = runKeysToRead(root, o.ledgerDir);
+  let unread = omitted;
   const healRuns = /* @__PURE__ */ new Set();
-  for (const key of [...keys.values()].sort((a, b) => String(a).localeCompare(String(b), "en", { numeric: true }))) {
+  for (const key of keys) {
     let r = readRun(root, key, o.ledgerDir);
     if (r.missing) {
+      o.onRead?.(r);
       const item2 = missingItem(root, key, o.ledgerDir);
       if (item2) items.push(item2);
       continue;
     }
     const live = ownerOf3(root, key, o.ledgerDir, deps);
     if ((r.trust === "ledger" || r.trust === "unverified") && live === "live") r = readRun(root, key, o.ledgerDir);
+    o.onRead?.(r);
     if (r.trust === "unreadable") {
       readFailed = true;
       warnings.push(`run state ${runLabel(key)} is unreadable: ${r.error ?? "unknown error"}`);
@@ -156555,8 +156584,11 @@ function collectIn(root, o) {
     if (item) items.push(item);
   }
   const healDir = (0, import_path213.join)(factoryStateDir3(root), "heal");
-  const sigs = /* @__PURE__ */ new Set([...listed2(healDir).filter((f) => /^[0-9a-f]{8}\.json$/.test(f)).map((f) => f.slice(0, 8)), ...healSealSigs(o.ledgerDir, root)]);
-  for (const sig8 of [...sigs].sort()) {
+  const sealed = new Set(healSealSigs(o.ledgerDir, root));
+  const healOthers = listed2(healDir).filter((f) => /^[0-9a-f]{8}\.json$/.test(f)).map((f) => f.slice(0, 8)).filter((s) => !sealed.has(s)).sort();
+  const healRoom = Math.max(0, MAX_RUN_STATES - sealed.size);
+  unread += Math.max(0, healOthers.length - healRoom);
+  for (const sig8 of [...[...sealed].sort(), ...healOthers.slice(0, healRoom)]) {
     if (healRuns.has(sig8) || !SIG8.test(sig8)) continue;
     const key = `heal-${sig8}`;
     const row = { key, group: "inspect", gate: null, phase: "heal", ageMs: null, credits: null, cap: null, pr: null, head: null, title: "", notes: [], next: suppressedCommands(key), at: 0 };
@@ -156587,6 +156619,27 @@ function collectIn(root, o) {
     }
     if (item) items.push(item);
   }
+  if (unread > 0) {
+    readFailed = true;
+    warnings.push(omittedStatesNote(unread));
+    items.push({
+      key: "state-files",
+      group: "inspect",
+      gate: null,
+      phase: null,
+      ageMs: null,
+      credits: null,
+      cap: null,
+      pr: null,
+      head: null,
+      title: "",
+      why: omittedStatesNote(unread),
+      next: [],
+      trust: "ok",
+      notes: [],
+      at: 0
+    });
+  }
   const repoOwner = ownerHolding(factoryRepoOwnerPath(root), deps);
   const slots = heldSlots(root, deps);
   const engines = Math.max(liveRuns.length, (repoOwner && repoOwner !== "unreadable" ? 1 : 0) + slots.length);
@@ -156615,7 +156668,7 @@ function attentionJson(d) {
     warnings: d.warnings
   };
 }
-var import_fs186, import_path213, ATTENTION_SCHEMA_VERSION, HUNG_AFTER_MS, TITLE_MAX, READ_MAX_BYTES, TEXT_MAX, REASON_MAX, RUN_FILE2, text6, errText7, HEX4024, forgeOf, msOf, kindOf, isMissing, relLog, TRUST_WHY, FORGED_OWNER_NOTE, REMOTE_OWNER_NOTE;
+var import_fs186, import_path213, ATTENTION_SCHEMA_VERSION, HUNG_AFTER_MS, TITLE_MAX, READ_MAX_BYTES, TEXT_MAX, REASON_MAX, MAX_RUN_STATES, keyOrder, RUN_FILE2, text6, errText7, HEX4024, forgeOf, msOf, kindOf, isMissing, relLog, TRUST_WHY, FORGED_OWNER_NOTE, REMOTE_OWNER_NOTE;
 var init_collect3 = __esm({
   "src/factory/attention/collect.ts"() {
     "use strict";
@@ -156638,6 +156691,8 @@ var init_collect3 = __esm({
     READ_MAX_BYTES = 8 * 1024 * 1024;
     TEXT_MAX = 300;
     REASON_MAX = 2e3;
+    MAX_RUN_STATES = 500;
+    keyOrder = (a, b) => typeof a === "number" ? typeof b === "number" ? a - b : -1 : typeof b === "number" ? 1 : a < b ? -1 : a > b ? 1 : 0;
     RUN_FILE2 = /^run-(\d+|heal-[0-9a-f]{8})\.json$/;
     text6 = (v, max = TEXT_MAX) => plainText(String(v ?? "")).replace(/\s+/g, " ").trim().slice(0, max);
     errText7 = (e2) => text6(e2 instanceof Error ? e2.message : String(e2));
@@ -156917,25 +156972,31 @@ function boardRows(b) {
   return [...b.columns.flatMap((c) => c.items), ...b.outside];
 }
 function collectDashboardV2(root, o) {
+  return withWorktreePathRenderScope(() => collectV2In(root, o));
+}
+function collectV2In(root, o) {
   const now2 = (o.now ?? Date.now)();
   const sinceMs = o.since === void 0 ? null : parseSince(o.since);
   const owner = o.owner ?? defaultOwnerDeps();
   const warnings = [];
-  const attention = collectAttention(root, { ledgerDir: o.ledgerDir, now: () => now2, limits: o.limits ?? null, owner, verbose: true });
-  let names2 = [];
-  try {
-    names2 = (0, import_fs187.readdirSync)(factoryStateDir3(root));
-  } catch {
-  }
+  const reads = [];
+  const attention = collectAttention(root, { ledgerDir: o.ledgerDir, now: () => now2, limits: o.limits ?? null, owner, verbose: true, onRead: (r) => reads.push(r) });
+  if (attention.items.some((i) => i.key === "state-files")) warnings.push(attention.warnings.find((w) => w.includes("state files were not read")) ?? "some state files were not read: more than the limit; inspect .omg/state/factory");
   const allStates = /* @__PURE__ */ new Map();
   const states = /* @__PURE__ */ new Map();
   const runs = [];
   const clampedRuns = /* @__PURE__ */ new Set();
   const excluded = { runs: 0, missing: 0 };
-  for (const name of names2) {
-    const key = runKeyOfName(name);
-    if (key === null) continue;
-    const r = readRun(root, key, o.ledgerDir);
+  const missingLabels = new Set(attention.items.filter((i) => i.trust === "missing").map((i) => i.key));
+  for (const r of reads) {
+    const key = r.key;
+    if (r.missing) {
+      if (!missingLabels.has(runLabel(key))) continue;
+      runs.push(unverifiedRun(key, "missing", void 0));
+      excluded.runs++;
+      excluded.missing++;
+      continue;
+    }
     if (r.trust !== "ok" || !r.state) {
       runs.push(unverifiedRun(key, r.trust, r.state));
       excluded.runs++;
@@ -156955,20 +157016,6 @@ function collectDashboardV2(root, o) {
     } catch (error62) {
       warnings.push(`run ${runLabel(key)}: skipped (${text7(error62 instanceof Error ? error62.message : error62, 160)})`);
     }
-  }
-  const stateKeys = new Set(names2.map(runKeyOfName).filter((k) => k !== null).map((k) => runLabel(k)));
-  const missingLabels = new Set(attention.items.filter((i) => i.trust === "missing").map((i) => i.key));
-  let ledgerNames = [];
-  try {
-    ledgerNames = (0, import_fs187.readdirSync)((0, import_path214.dirname)(ledgerFilePath(o.ledgerDir, root, 1)));
-  } catch {
-  }
-  for (const name of ledgerNames) {
-    const key = runKeyOfName(name);
-    if (key === null || stateKeys.has(runLabel(key)) || !missingLabels.has(runLabel(key))) continue;
-    runs.push(unverifiedRun(key, "missing", void 0));
-    excluded.runs++;
-    excluded.missing++;
   }
   const startedMs = (r) => msOf2(r.startedAt);
   runs.sort((a, b) => Number(b.verified) - Number(a.verified) || (startedMs(b) || 0) - (startedMs(a) || 0) || b.key.localeCompare(a.key, "en", { numeric: true }));
@@ -157109,10 +157156,10 @@ var init_collect_v2 = __esm({
     init_mirror();
     init_score();
     init_collect3();
-    init_ledger2();
     init_progress2();
     init_state6();
     init_collect2();
+    init_worktree_paths();
     DASHBOARD_SCHEMA_VERSION_2 = 2;
     GATE_NOTE3 = /^awaiting-human: ([^:]+):/;
     RERUN_NOTE = /^rerun after awaiting-human: /;
@@ -157870,7 +157917,8 @@ FD.buildAllAttention = function (doc, list, ctx) {
   if (repos.length === 0) return h(doc, 'p', { 'class': 'ok' }, 'Nothing needs you in any repository.');
   return h(doc, 'div', null, repos.map(function (r) {
     return h(doc, 'div', null, [
-      h(doc, 'h3', null, [String(r.name) + ' ', h(doc, 'span', { 'class': 'muted' }, '(' + r.attention.length + ')')]),
+      // The folder name in its own labelled element: a name shaped like a command or a run row reads as a name.
+      h(doc, 'h3', null, [h(doc, 'span', { 'class': 'muted' }, 'Repository: '), h(doc, 'span', { 'class': 'repo-name' }, String(r.name)), ' ', h(doc, 'span', { 'class': 'muted' }, '(' + r.attention.length + ')')]),
       h(doc, 'p', { 'class': 'muted' }, h(doc, 'code', null, String(r.root))),
       FD.buildAttention(doc, { attention: { items: r.attention } }, ctx, { repo: r })
     ]);
@@ -157984,7 +158032,8 @@ function start() {
     FD.tickAges(ctx.ages, Date.parse(data.generatedAt), Date.now());
     if (fk && ctx.focus[fk]) ctx.focus[fk].focus({ preventScroll: true });
     window.scrollTo(x, y);
-    byId('generated').textContent = 'Data as of ' + new Date(Date.parse(data.generatedAt)).toLocaleString() + (data.forge && data.forge.read ? '; tracker read at ' + data.forge.at + ' (--forge)' : '; local state only, no forge read');
+    byId('generated').textContent = 'Data as of ' + new Date(Date.parse(data.generatedAt)).toLocaleString() + (data.forge && data.forge.read ? '; tracker read at ' + data.forge.at + ' (--forge)' : '; local state only, no forge read')
+      + (data.stale === true ? '. Stale: this repository is slow to read, so it is refreshed less often; a newer state is waiting to be read' : '');
   }
   function fetchJson(url) {
     return fetch(url, { cache: 'no-store', credentials: 'same-origin', redirect: 'error' }).then(function (r) {
@@ -158217,9 +158266,9 @@ function servedSummary(d, rev, platform = process.platform) {
   const items = orderServedItems(d.attention.items.map((i) => servedItem(i, platform)));
   const runs = d.runs.map(servedRun);
   const untrusted = new Set(runs.filter((r) => !r.verified).map((r) => r.key));
-  const known = new Set(runs.map((r) => r.key));
+  const known2 = new Set(runs.map((r) => r.key));
   const tasks = d.tasks.map((t) => {
-    const boardOnly = t.outcome === "no run" && !known.has(t.key);
+    const boardOnly = t.outcome === "no run" && !known2.has(t.key);
     if (boardOnly || t.verified === true && !untrusted.has(t.key)) return t;
     const key = keyOfLabel(t.key);
     const run3 = runs.find((r) => r.key === t.key);
@@ -158315,6 +158364,7 @@ async function startDashboardServer(o) {
   };
   const addView = (source2) => {
     let summary;
+    const t0 = Date.now();
     try {
       summary = compute({ source: source2 });
     } catch (error62) {
@@ -158322,8 +158372,9 @@ async function startDashboardServer(o) {
       if (!multi) throw error62;
       return null;
     }
-    const v = { source: source2, summary, body: jsonText(summary), sig: "", watchers: /* @__PURE__ */ new Map() };
+    const v = { source: source2, summary, body: jsonText(summary), sig: "", watchers: /* @__PURE__ */ new Map(), dirtyAt: null, nextAt: 0, costMs: 0 };
     v.sig = signature(v);
+    backOff(v, Date.now() - t0);
     views.set(source2.id, v);
     return v;
   };
@@ -158367,19 +158418,33 @@ async function startDashboardServer(o) {
   const broadcast = (chunk) => {
     for (const s of streams) writeEvent(s, chunk, streams);
   };
+  const setBody = (v, summary) => {
+    v.summary = summary;
+    v.body = jsonText(summary);
+  };
   const recompute = (v) => {
     let next;
     try {
       next = compute(v);
     } catch (error62) {
       log3(`dashboard: ${multi ? `repository ${v.source.id}: ` : ""}the state could not be read: ${text8(error62 instanceof Error ? error62.message : error62)}`);
+      if (v.summary.stale) markStale(v, false);
       return;
     }
     if (next.rev === v.summary.rev) return;
-    v.summary = next;
-    v.body = jsonText(next);
+    setBody(v, next);
     broadcast(`event: changed
 data: ${multi ? `${v.source.id} ` : ""}${next.rev}
+
+`);
+  };
+  const markStale = (v, stale2) => {
+    if (Boolean(v.summary.stale) === stale2) return;
+    const { rev: _rev, stale: _stale, ...rest } = v.summary;
+    const next = stale2 ? { ...rest, stale: true } : rest;
+    setBody(v, { ...next, rev: summaryRev(next) });
+    broadcast(`event: changed
+data: ${multi ? `${v.source.id} ` : ""}${v.summary.rev}
 
 `);
   };
@@ -158389,29 +158454,58 @@ data: repos ${reposSummary.rev}
 
 `);
   };
-  const dirty = /* @__PURE__ */ new Set();
   let timer = null;
-  let lastRun = 0;
+  let timerAt = Number.POSITIVE_INFINITY;
+  let pumping = false;
   let closed = false;
-  const schedule = (id) => {
-    if (closed) return;
-    if (id === null) for (const k of views.keys()) dirty.add(k);
-    else dirty.add(id);
-    if (timer) return;
-    const delay = Math.max(debounceMs, lastRun + minIntervalMs - Date.now());
+  function backOff(v, costMs) {
+    v.costMs = costMs;
+    v.nextAt = Date.now() + Math.min(MAX_BACKOFF_MS, Math.max(minIntervalMs, costMs * BACKOFF_FACTOR));
+  }
+  const dueAt = (v) => Math.max((v.dirtyAt ?? 0) + debounceMs, v.nextAt);
+  const arm = () => {
+    if (closed || pumping) return;
+    let at = Number.POSITIVE_INFINITY;
+    for (const v of views.values()) if (v.dirtyAt !== null) at = Math.min(at, dueAt(v));
+    if (at === Number.POSITIVE_INFINITY || timer && timerAt <= at) return;
+    if (timer) clearTimeout(timer);
+    timerAt = at;
     timer = setTimeout(() => {
       timer = null;
-      lastRun = Date.now();
-      const ids2 = [...dirty];
-      dirty.clear();
-      for (const k of ids2) {
-        const v = views.get(k);
-        if (v) recompute(v);
-      }
-      announceRepos();
-    }, delay);
+      timerAt = Number.POSITIVE_INFINITY;
+      pump();
+    }, Math.max(0, at - Date.now()));
     timer.unref();
   };
+  const pump = () => {
+    if (closed) return;
+    const now2 = Date.now();
+    let pick2 = null;
+    for (const v of views.values()) if (v.dirtyAt !== null && dueAt(v) <= now2 && (!pick2 || dueAt(v) < dueAt(pick2))) pick2 = v;
+    if (!pick2) {
+      pumping = false;
+      announceRepos();
+      arm();
+      return;
+    }
+    pumping = true;
+    pick2.dirtyAt = null;
+    const t0 = Date.now();
+    recompute(pick2);
+    backOff(pick2, Date.now() - t0);
+    setImmediate(pump);
+  };
+  const schedule = (id) => {
+    if (closed) return;
+    const now2 = Date.now();
+    for (const v of id === null ? [...views.values()] : [views.get(id)]) {
+      if (!v || v.dirtyAt !== null) continue;
+      v.dirtyAt = now2;
+      if (v.costMs * BACKOFF_FACTOR >= STALE_BACKOFF_MS && v.nextAt > now2 + debounceMs) markStale(v, true);
+    }
+    arm();
+  };
+  const costs = () => Object.fromEntries([...views.values()].map((v) => [v.source.id, { costMs: v.costMs, backoffMs: Math.max(0, v.nextAt - Date.now()), stale: Boolean(v.summary.stale) }]));
   let watcherCount = 0;
   function closeWatchers(v) {
     for (const w of v.watchers.values()) w.close();
@@ -158626,6 +158720,7 @@ data: ${multi ? `repos ${reposSummary.rev}` : views.get("").summary.rev}
     server,
     rev: () => multi ? reposSummary.rev : views.get("").summary.rev,
     recomputes: () => recomputes,
+    costs,
     watchers: () => watcherCount,
     repoIds: () => [...views.keys()],
     close: () => {
@@ -158705,7 +158800,7 @@ function runDetail(root, ledgerDir, s, key) {
   out.history = st.history.slice(-HISTORY_MAX).map((h) => ({ at: text8(h.at, 40), from: h.from === null ? null : text8(h.from, 40), to: text8(h.to, 40), note: text8(h.note, 300) }));
   return out;
 }
-var import_crypto55, import_http2, import_fs188, import_path215, DASHBOARD_HOST, TOKEN_BYTES, MAX_URL_LENGTH, MAX_HEADER_BYTES, MAX_CONNECTIONS, MAX_STREAMS, POLL_MS, DEBOUNCE_MS, MIN_RECOMPUTE_INTERVAL_MS, PING_MS, TICK_MS, FORGE_REFRESH_MS, GATE_DETAIL_MAX, MAX_WATCHERS, RESCAN_MS, MAX_REPOS, SERVED_REPO_ID, HISTORY_MAX, RUN_KEY, UNTRUSTED_WHY, SAFE_NAME2, untrustedTrust, knownGate, knownPhase, trustedRun, jsonText, plainLines, text8, STREAM_BUFFER_MAX, STREAM_STALL_PINGS, SECURITY_HEADERS, GROUP_RANK;
+var import_crypto55, import_http2, import_fs188, import_path215, DASHBOARD_HOST, TOKEN_BYTES, MAX_URL_LENGTH, MAX_HEADER_BYTES, MAX_CONNECTIONS, MAX_STREAMS, POLL_MS, DEBOUNCE_MS, MIN_RECOMPUTE_INTERVAL_MS, BACKOFF_FACTOR, MAX_BACKOFF_MS, STALE_BACKOFF_MS, PING_MS, TICK_MS, FORGE_REFRESH_MS, GATE_DETAIL_MAX, MAX_WATCHERS, RESCAN_MS, MAX_REPOS, SERVED_REPO_ID, HISTORY_MAX, RUN_KEY, UNTRUSTED_WHY, SAFE_NAME2, untrustedTrust, knownGate, knownPhase, trustedRun, jsonText, plainLines, text8, STREAM_BUFFER_MAX, STREAM_STALL_PINGS, SECURITY_HEADERS, GROUP_RANK;
 var init_serve = __esm({
   "src/factory/dashboard/serve.ts"() {
     "use strict";
@@ -158728,6 +158823,9 @@ var init_serve = __esm({
     POLL_MS = 5e3;
     DEBOUNCE_MS = 250;
     MIN_RECOMPUTE_INTERVAL_MS = 1e3;
+    BACKOFF_FACTOR = 10;
+    MAX_BACKOFF_MS = 3e5;
+    STALE_BACKOFF_MS = 5e3;
     PING_MS = 15e3;
     TICK_MS = 6e4;
     FORGE_REFRESH_MS = 5 * 6e4;
@@ -158797,6 +158895,7 @@ function recordRoot(path30, check2) {
 function ledgerDirRoot(dir, id) {
   const files = names(dir).filter((n) => runKeyOfName(n) !== null).slice(0, RECORDS_PER_DIR);
   let problems = 0;
+  let agreed = null;
   for (const name of files) {
     const key = runKeyOfName(name);
     const got = recordRoot((0, import_path216.join)(dir, name), (v) => v.version === 1 && v.issue === key);
@@ -158804,8 +158903,12 @@ function ledgerDirRoot(dir, id) {
       problems++;
       continue;
     }
-    return rootOf(got.root, id, true);
+    const r = rootOf(got.root, id, true);
+    if ("reason" in r) return r;
+    if (agreed !== null && canonicalPath3(r.root, process.platform) !== canonicalPath3(agreed, process.platform)) return { reason: "conflict", warning: `engine ledger dir ${id}: its run records name different roots; skipped` };
+    agreed = r.root;
   }
+  if (agreed !== null) return { root: agreed };
   if (problems > 0) return { reason: "unreadable", warning: `engine ledger dir ${id}: none of its first ${problems} run record(s) is a readable engine record; skipped` };
   return { reason: "no-root" };
 }
@@ -158814,6 +158917,18 @@ function rootOf(raw, id, bound) {
   if (root === null) return { reason: "invalid-root", ...typeof raw === "string" ? { root: shown(raw) } : {} };
   if (bound && ledgerRepoId(root) !== id) return { reason: "id-mismatch", root: shown(root) };
   return { root };
+}
+async function superprojectOf(root) {
+  let dir = (0, import_path216.dirname)((0, import_path216.resolve)(root));
+  for (let depth = 0; depth < 64 && dir !== (0, import_path216.dirname)(dir); depth++, dir = (0, import_path216.dirname)(dir)) {
+    if (!await import_fs189.promises.lstat((0, import_path216.join)(dir, ".git")).then(() => true, () => false)) continue;
+    const r = readRegularFile((0, import_path216.join)(dir, ".gitmodules"), 256 * 1024);
+    if (!("bytes" in r)) return null;
+    const rel = (0, import_path216.relative)(dir, (0, import_path216.resolve)(root)).replace(/\\/g, "/");
+    const paths = r.bytes.toString("utf8").split(/\r?\n/).map((l) => /^\s*path\s*=\s*(.+?)\s*$/.exec(l)?.[1]).filter((p) => p !== void 0);
+    return paths.some((p) => p.replace(/\\/g, "/").replace(/\/+$/, "") === rel) ? dir : null;
+  }
+  return null;
 }
 async function probeRoot(root, platform = process.platform, ms2 = ROOT_PROBE_MS) {
   const probe = async () => {
@@ -158842,8 +158957,13 @@ async function probeRoot(root, platform = process.platform, ms2 = ROOT_PROBE_MS)
       if (git10.size > 4096) return { reason: "not-a-repository" };
       const head = await import_fs189.promises.readFile((0, import_path216.join)(root, ".git"), "utf8").catch(() => "");
       if (!head.startsWith("gitdir:")) return { reason: "not-a-repository" };
-    } else if (!git10.isDirectory()) return { reason: "not-a-repository" };
-    return { real: canonicalPath3(real2, platform) };
+      const target = (0, import_path216.resolve)(root, head.slice("gitdir:".length).trim());
+      if (!await isFile3((0, import_path216.join)(target, "HEAD"))) return { reason: "not-a-repository" };
+    } else if (!git10.isDirectory() || !await isFile3((0, import_path216.join)(root, ".git", "HEAD"))) return { reason: "not-a-repository" };
+    if (await superprojectOf(root)) return { reason: "state-elsewhere" };
+    const workspace = findWorkspaceRoot(root);
+    if (workspace !== null && fold8((0, import_path216.resolve)(workspace), platform) !== fold8((0, import_path216.resolve)(root), platform)) return { reason: "state-elsewhere" };
+    return { real: canonicalPath3(real2, platform), ...process.env.OMC_STATE_DIR ? {} : { stateRoot: (0, import_path216.join)(root, OmcPaths.ROOT) } };
   };
   const got = await timeout(probe(), ms2);
   return got === "timeout" ? { reason: "timeout" } : got;
@@ -158900,18 +159020,18 @@ async function discoverLedgerRoots(o) {
       skipped.push({ id: c.id, reason: "duplicate", root: shown(c.root) });
       continue;
     }
-    byReal.set(p.real, { id: c.id, root: c.root, source: c.source, recorded: c.recorded });
+    byReal.set(p.real, { id: c.id, root: c.root, source: c.source, recorded: c.recorded, ...p.stateRoot ? { stateRoot: p.stateRoot } : {} });
   }
   let roots = [...byReal.values()];
   if (o.pinned) {
-    const known = new Map(roots.map((r) => [canonicalPath3(r.root, platform), r]));
+    const known2 = new Map(roots.map((r) => [canonicalPath3(r.root, platform), r]));
     const out = [];
     const seen = /* @__PURE__ */ new Set();
     for (const pin of o.pinned) {
       const key = canonicalPath3(pin, platform);
       if (seen.has(key)) continue;
       seen.add(key);
-      const hit2 = known.get(key);
+      const hit2 = known2.get(key);
       const id = ledgerRepoId(pin);
       out.push(hit2 ?? { id, root: (0, import_path216.resolve)(pin), source: "pinned", recorded: isPlainDir2((0, import_path216.join)(o.ledgerDir, id)) });
     }
@@ -158922,7 +159042,7 @@ async function discoverLedgerRoots(o) {
   roots.sort((a, b) => (0, import_path216.basename)(a.root).localeCompare((0, import_path216.basename)(b.root)) || a.root.localeCompare(b.root));
   return { roots, skipped, warnings };
 }
-var import_fs189, import_path216, MAX_REPOS2, MAX_CLAIM_DIRS, RECORDS_PER_DIR, RECORD_MAX_BYTES, ROOT_PROBE_MS, ROOT_TEXT_MAX, LEDGER_ID, OWNER_FILE, shown, timeout, fold8;
+var import_fs189, import_path216, MAX_REPOS2, MAX_CLAIM_DIRS, RECORDS_PER_DIR, RECORD_MAX_BYTES, ROOT_PROBE_MS, ROOT_TEXT_MAX, LEDGER_ID, OWNER_FILE, shown, timeout, isFile3, fold8;
 var init_ledger_roots = __esm({
   "src/factory/run/ledger-roots.ts"() {
     "use strict";
@@ -158932,6 +159052,7 @@ var init_ledger_roots = __esm({
     init_collect3();
     init_claims();
     init_ledger2();
+    init_worktree_paths();
     MAX_REPOS2 = 200;
     MAX_CLAIM_DIRS = 200;
     RECORDS_PER_DIR = 4;
@@ -158948,6 +159069,7 @@ var init_ledger_roots = __esm({
         t.unref();
       })]).finally(() => clearTimeout(t));
     };
+    isFile3 = (path30) => import_fs189.promises.lstat(path30).then((s) => s.isFile(), () => false);
     fold8 = (p, platform) => {
       const slashed = p.replace(/\\/g, "/").replace(/\/+$/, "");
       return platform === "win32" || platform === "darwin" ? slashed.toLowerCase() : slashed;
@@ -159217,18 +159339,18 @@ async function serveAllRepos(o, deps) {
     return {
       skipped: found.skipped.length,
       warnings: found.warnings,
-      repos: found.roots.map((r) => ({
+      repos: found.roots.map((r) => known(r, () => ({
         id: r.id,
         root: r.root,
-        collect: (now2) => {
+        collect: (now2) => known(r, () => {
           const l = limitsFor(r.root);
           const data = collectDashboardV2(r.root, { ledgerDir, now: () => now2, limits: l.limits, ...deps.owner ? { owner: deps.owner } : {}, ...o.since !== void 0 ? { since: o.since } : {} });
           data.warnings.unshift(...l.warnings.map((w) => plainText(w)));
           return data;
-        },
+        }),
         watchDirs: [factoryStateDir3(r.root), healStateDir(r.root), factorySlotsDir(r.root), (0, import_path217.dirname)(ledgerFilePath(ledgerDir, r.root, 1))],
         pollDirs: [(0, import_path217.join)(r.root, "bench-results")]
-      }))
+      })))
     };
   };
   return startAndWait(o, deps, port, { ledgerDir, repos: { list: list3 } }, "every repository the engine ledger of this host records");
@@ -159263,7 +159385,7 @@ async function startAndWait(o, deps, port, opts, what) {
   deps.err("omg factory dashboard: stopped");
   return 0;
 }
-var import_child_process50, import_crypto56, import_fs190, import_path217, WATCH_DEFAULT_SECONDS, WATCH_MIN_SECONDS, WATCH_MAX_SECONDS, FORGE_REFRESH_MS2, defaultRoot, TEMP_ATTEMPTS, inside2, defaultDashboardDeps, UsageError;
+var import_child_process50, import_crypto56, import_fs190, import_path217, known, WATCH_DEFAULT_SECONDS, WATCH_MIN_SECONDS, WATCH_MAX_SECONDS, FORGE_REFRESH_MS2, defaultRoot, TEMP_ATTEMPTS, inside2, defaultDashboardDeps, UsageError;
 var init_factory_dashboard = __esm({
   "src/cli/commands/factory-dashboard.ts"() {
     "use strict";
@@ -159284,6 +159406,7 @@ var init_factory_dashboard = __esm({
     init_serve();
     init_ledger_roots();
     init_worktree_paths();
+    known = (r, fn) => r.stateRoot ? withKnownOmcRoots(/* @__PURE__ */ new Map([[r.root, r.stateRoot]]), fn) : fn();
     WATCH_DEFAULT_SECONDS = 10;
     WATCH_MIN_SECONDS = 2;
     WATCH_MAX_SECONDS = 86400;
@@ -159371,6 +159494,10 @@ function rootHeader(root, max = ROOT_HEADER_MAX) {
   const half = Math.floor((max - 1) / 2);
   return `${p.slice(0, half).join("")}\u2026${p.slice(p.length - (max - 1 - half)).join("")}`;
 }
+function repoHeader(root, tags = "") {
+  const name = JSON.stringify(plainText((0, import_path218.basename)(root)).slice(0, 60));
+  return `repository: ${name}  ${rootHeader(root)}${tags ? `  (${tags})` : ""}`;
+}
 function repoRank(r) {
   const first = r.data.items[0];
   return first ? [GROUP_ORDER.get(first.group), first.at] : [ATTENTION_GROUPS.length, 0];
@@ -159384,7 +159511,8 @@ function collectAllRepos(roots, skipped, warnings, o, discoveryMs = 0) {
     const t0 = clock();
     let data;
     try {
-      data = collectAttention(r.root, { ...o, limits: o.limits?.(r.root) ?? null });
+      const collect2 = () => collectAttention(r.root, { ...o, limits: o.limits?.(r.root) ?? null });
+      data = r.stateRoot ? withKnownOmcRoots(/* @__PURE__ */ new Map([[r.root, r.stateRoot]]), collect2) : collect2();
     } catch (error62) {
       data = {
         schemaVersion: 1,
@@ -159461,8 +159589,9 @@ function renderAllRepos(d, o = {}) {
   for (const r of d.repos) {
     const rc = groupCounts(r.data.summary.byGroup);
     const tags = [r.current ? "current" : null, r.data.forge, r.recorded ? null : "no factory runs recorded on this host"].filter(Boolean).join(", ");
-    lines4.push("", source_default.bold(`== ${(0, import_path218.basename)(r.root) ? plainText((0, import_path218.basename)(r.root)).slice(0, 60) : rootHeader(r.root)}  ${rootHeader(r.root)}${tags ? `  (${tags})` : ""}`));
-    lines4.push(`   ${r.data.items.length === 0 ? "nothing needs you" : rc}; ${r.data.summary.engines.live === 0 ? "no engine running" : `${plural3(r.data.summary.engines.live, "engine")} running`}${verbose ? `; ${r.ms} ms` : ""}`);
+    lines4.push("", source_default.bold(repoHeader(r.root, tags)));
+    const slow = r.ms > SLOW_REPO_MS ? ` (slow: over ${SLOW_REPO_MS / 1e3} s; its state dir may hold many files)` : "";
+    lines4.push(`   ${r.data.items.length === 0 ? "nothing needs you" : rc}; ${r.data.summary.engines.live === 0 ? "no engine running" : `${plural3(r.data.summary.engines.live, "engine")} running`}${verbose ? `; ${r.ms} ms${slow}` : ""}`);
     for (const w of r.data.warnings) lines4.push(source_default.yellow(`   warning: ${w}`));
     const where = r.current ? void 0 : rootWord(r.root, platform);
     for (const g of ATTENTION_GROUPS) {
@@ -159474,7 +159603,7 @@ function renderAllRepos(d, o = {}) {
   }
   return lines4.join("\n");
 }
-var import_path218, ROOT_HEADER_MAX, GROUP_ORDER, plural3, groupCounts;
+var import_path218, ROOT_HEADER_MAX, GROUP_ORDER, SLOW_REPO_MS, plural3, groupCounts;
 var init_all_repos = __esm({
   "src/factory/attention/all-repos.ts"() {
     "use strict";
@@ -159485,8 +159614,10 @@ var init_all_repos = __esm({
     init_actions();
     init_collect3();
     init_render3();
+    init_worktree_paths();
     ROOT_HEADER_MAX = 72;
     GROUP_ORDER = new Map(ATTENTION_GROUPS.map((g, i) => [g, i]));
+    SLOW_REPO_MS = 1e3;
     plural3 = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
     groupCounts = (byGroup) => ATTENTION_GROUPS.filter((g) => byGroup[g] > 0).map((g) => `${GROUP_TITLES[g].toLowerCase()} ${byGroup[g]}`).join(", ");
   }
@@ -169031,7 +169162,7 @@ function emptyResult() {
 function str9(value) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
-function isFile3(path30) {
+function isFile4(path30) {
   try {
     return (0, import_fs219.statSync)(path30).isFile();
   } catch {
@@ -169043,13 +169174,13 @@ function resolveCopilotEventsPath(transcriptPath, sessionId) {
     try {
       const stat2 = (0, import_fs219.statSync)(transcriptPath);
       const candidate = stat2.isDirectory() ? (0, import_path252.join)(transcriptPath, "events.jsonl") : (0, import_path252.basename)(transcriptPath) === "events.jsonl" ? transcriptPath : (0, import_path252.join)((0, import_path252.dirname)(transcriptPath), "events.jsonl");
-      if (isFile3(candidate)) return candidate;
+      if (isFile4(candidate)) return candidate;
     } catch {
     }
   }
   if (sessionId) {
     const candidate = copilotEventsPath(sessionId);
-    if (candidate && isFile3(candidate)) return candidate;
+    if (candidate && isFile4(candidate)) return candidate;
   }
   return null;
 }
@@ -171854,12 +171985,12 @@ function buildMainElementOrder(elementOrder) {
   if (!Array.isArray(elementOrder) || elementOrder.length === 0) {
     return DEFAULT_ELEMENT_ORDER.main;
   }
-  const known = new Set(DEFAULT_ELEMENT_ORDER.main);
+  const known2 = new Set(DEFAULT_ELEMENT_ORDER.main);
   const seen = /* @__PURE__ */ new Set();
   const configured = normalizeLayoutNames(
     elementOrder.map((name) => name === "premiumBudget" ? "creditBudget" : name)
   ).filter((name) => {
-    if (!known.has(name) || seen.has(name)) {
+    if (!known2.has(name) || seen.has(name)) {
       return false;
     }
     seen.add(name);
@@ -192632,8 +192763,8 @@ function parseBaselineTitles(text9) {
   });
 }
 function newFailures(failing, baseline) {
-  const known = new Set(baseline);
-  return failing.filter((t) => !known.has(t));
+  const known2 = new Set(baseline);
+  return failing.filter((t) => !known2.has(t));
 }
 var TRIAGE_CAP = 20;
 var TRIAGE_POOL = 3;
@@ -194547,9 +194678,9 @@ function shipCommand(execImpl = defaultExec, loadShipConfig = shipConfig, drive 
     if (o.base !== void 0 && prInfo.baseRefName !== void 0 && o.base !== prInfo.baseRefName) {
       throw new UsageError3(`--base ${JSON.stringify(o.base)} differs from PR #${pr}'s base on GitHub (${prInfo.baseRefName}); retarget the PR on GitHub instead`);
     }
-    const known = prInfo.baseRefName ?? o.base;
-    const config2 = loadShipConfig({ exec: exec3, root, base: assertBranchName(exec3, known ?? DEFAULT_SHIP_CONFIG.base, "--base"), baseSha: prInfo.baseRefOid, repoUrl: prRepoUrl(prInfo.url) });
-    const base = assertBranchName(exec3, known ?? config2.base, "--base");
+    const known2 = prInfo.baseRefName ?? o.base;
+    const config2 = loadShipConfig({ exec: exec3, root, base: assertBranchName(exec3, known2 ?? DEFAULT_SHIP_CONFIG.base, "--base"), baseSha: prInfo.baseRefOid, repoUrl: prRepoUrl(prInfo.url) });
+    const base = assertBranchName(exec3, known2 ?? config2.base, "--base");
     const branch2 = prInfo.headRefName === void 0 ? void 0 : assertBranchName(exec3, prInfo.headRefName, "PR head branch");
     const maxFixRounds = parseNumber(o.maxFixRounds, "--max-fix-rounds") ?? config2.maxFixRounds;
     const human = humanOverride();
@@ -195978,11 +196109,11 @@ function readNewLines(path30, tail6, flush) {
   const st = tryStat(path30);
   if (!st) return [];
   const lines4 = [];
-  const known = tail6.ino !== 0 || tail6.birthtimeMs !== 0;
-  const replaced2 = known && (tail6.ino !== 0 && st.ino !== 0 ? st.ino !== tail6.ino : st.birthtimeMs !== tail6.birthtimeMs);
+  const known2 = tail6.ino !== 0 || tail6.birthtimeMs !== 0;
+  const replaced2 = known2 && (tail6.ino !== 0 && st.ino !== 0 ? st.ino !== tail6.ino : st.birthtimeMs !== tail6.birthtimeMs);
   if (replaced2 || st.size < tail6.offset) {
     const old = tryStat(`${path30}.1`);
-    const isOldFile = old !== null && (known ? replaced2 && (tail6.ino !== 0 ? old.ino === tail6.ino : old.birthtimeMs === tail6.birthtimeMs) : old.size >= tail6.offset);
+    const isOldFile = old !== null && (known2 ? replaced2 && (tail6.ino !== 0 ? old.ino === tail6.ino : old.birthtimeMs === tail6.birthtimeMs) : old.size >= tail6.offset);
     if (isOldFile) {
       try {
         lines4.push(...Buffer.concat([tail6.rest, readFrom(`${path30}.1`, tail6.offset, old.size)]).toString("utf8").split("\n"));

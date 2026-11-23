@@ -43,6 +43,47 @@ export const TITLE_MAX = 60;
 export const READ_MAX_BYTES = 8 * 1024 * 1024;
 const TEXT_MAX = 300;
 const REASON_MAX = 2_000;
+/**
+ * At most this many run state files (and, apart, heal records) are read per
+ * repository: a lane can write any number of files into `.omg/state/factory`,
+ * and each one costs about 0.7 ms to check on Windows (open dominates), so a
+ * full pass stays well under a second.
+ */
+export const MAX_RUN_STATES = 500;
+const keyOrder = (a, b) => typeof a === 'number' ? (typeof b === 'number' ? a - b : -1) : typeof b === 'number' ? 1 : a < b ? -1 : a > b ? 1 : 0;
+/**
+ * The run keys to read in a repository, chosen so that flooding the state dir
+ * cannot push an engine run out: every run the engine ledger records first
+ * (the ledger lives outside the repository and holds the engine's own runs
+ * only), then the other canonical state files in ascending key order, up to
+ * `max` in all. `omitted` counts the state files left unread.
+ */
+export function runKeysToRead(root, ledgerDir, max = MAX_RUN_STATES) {
+    const keysIn = (dir, skip) => {
+        const out = new Map();
+        let names = [];
+        try {
+            names = readdirSync(dir);
+        }
+        catch {
+            // No such dir: no runs there.
+        }
+        for (const name of names) {
+            const key = runKeyOfName(name);
+            if (key !== null && !skip?.has(String(key)))
+                out.set(String(key), key);
+        }
+        return out;
+    };
+    const recorded = keysIn(dirname(ledgerFilePath(ledgerDir, root, 1)));
+    const others = [...keysIn(factoryStateDir(root), recorded).values()].sort(keyOrder);
+    const room = Math.max(0, max - recorded.size);
+    return { keys: [...[...recorded.values()].sort(keyOrder), ...others.slice(0, room)], omitted: Math.max(0, others.length - room) };
+}
+/** The one Inspect row (and warning) that stands for the state files left unread. */
+export function omittedStatesNote(omitted) {
+    return `${omitted} more state files were not read: more than the limit (${MAX_RUN_STATES} per repository); inspect .omg/state/factory`;
+}
 const RUN_FILE = /^run-(\d+|heal-[0-9a-f]{8})\.json$/;
 const text = (v, max = TEXT_MAX) => plainText(String(v ?? '')).replace(/\s+/g, ' ').trim().slice(0, max);
 const errText = (e) => text(e instanceof Error ? e.message : String(e));
@@ -346,8 +387,7 @@ function collectIn(root, o) {
             next: [{ label: 'release the hold after checking .git', argv: RELEASE_TAMPER_COMMAND.split(' '), billed: false }], trust: 'ok', notes: [], at: 0,
         });
     }
-    // The run keys: every canonical state file, and every run the engine ledger of this repository records.
-    const keys = new Map();
+    // The run keys: every run the engine ledger of this repository records, then the other canonical state files, capped.
     const listed = (dir) => {
         try {
             return readdirSync(dir);
@@ -356,15 +396,13 @@ function collectIn(root, o) {
             return []; // No such dir: no runs there.
         }
     };
-    for (const name of [...listed(factoryStateDir(root)), ...listed(dirname(ledgerFilePath(o.ledgerDir, root, 1)))]) {
-        const key = runKeyOfName(name);
-        if (key !== null)
-            keys.set(String(key), key);
-    }
+    const { keys, omitted } = runKeysToRead(root, o.ledgerDir);
+    let unread = omitted;
     const healRuns = new Set();
-    for (const key of [...keys.values()].sort((a, b) => String(a).localeCompare(String(b), 'en', { numeric: true }))) {
+    for (const key of keys) {
         let r = readRun(root, key, o.ledgerDir);
         if (r.missing) {
+            o.onRead?.(r);
             const item = missingItem(root, key, o.ledgerDir);
             if (item)
                 items.push(item);
@@ -374,6 +412,7 @@ function collectIn(root, o) {
         // A live engine writes the state, then the ledger: one reread rules out reading between the two.
         if ((r.trust === 'ledger' || r.trust === 'unverified') && live === 'live')
             r = readRun(root, key, o.ledgerDir);
+        o.onRead?.(r);
         if (r.trust === 'unreadable') {
             readFailed = true;
             warnings.push(`run state ${runLabel(key)} is unreadable: ${r.error ?? 'unknown error'}`);
@@ -400,8 +439,12 @@ function collectIn(root, o) {
     }
     // Heal signatures whose open heal run waits for a human before any ci-heal run state exists, and seals whose record is gone.
     const healDir = join(factoryStateDir(root), 'heal');
-    const sigs = new Set([...listed(healDir).filter((f) => /^[0-9a-f]{8}\.json$/.test(f)).map((f) => f.slice(0, 8)), ...healSealSigs(o.ledgerDir, root)]);
-    for (const sig8 of [...sigs].sort()) {
+    // The same cap: every seal (outside the repository) first, then the other heal records in order.
+    const sealed = new Set(healSealSigs(o.ledgerDir, root));
+    const healOthers = listed(healDir).filter((f) => /^[0-9a-f]{8}\.json$/.test(f)).map((f) => f.slice(0, 8)).filter((s) => !sealed.has(s)).sort();
+    const healRoom = Math.max(0, MAX_RUN_STATES - sealed.size);
+    unread += Math.max(0, healOthers.length - healRoom);
+    for (const sig8 of [...[...sealed].sort(), ...healOthers.slice(0, healRoom)]) {
         if (healRuns.has(sig8) || !SIG8.test(sig8))
             continue;
         const key = `heal-${sig8}`;
@@ -436,6 +479,15 @@ function collectIn(root, o) {
         }
         if (item)
             items.push(item);
+    }
+    if (unread > 0) {
+        // One fixed row for the rest, never one row per file: the exit code stays non-zero (readFailed).
+        readFailed = true;
+        warnings.push(omittedStatesNote(unread));
+        items.push({
+            key: 'state-files', group: 'inspect', gate: null, phase: null, ageMs: null, credits: null, cap: null, pr: null, head: null, title: '',
+            why: omittedStatesNote(unread), next: [], trust: 'ok', notes: [], at: 0,
+        });
     }
     // The repository engine lock and the parallel slots, for the summary only.
     const repoOwner = ownerHolding(factoryRepoOwnerPath(root), deps);

@@ -7,7 +7,7 @@
  * 127.0.0.1; a temp ledger.
  */
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { request } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -269,5 +269,94 @@ describe('dashboard --serve --all-repos', () => {
         expect(await run(['--serve', '--all-repos', '--repo', b])).toBe(0);
         expect(JSON.parse(out.at(-1)).repos.map((r) => r.root)).toEqual([b]);
     });
+});
+describe('a slow repository does not stall the others', () => {
+    const flood = (root, n) => {
+        const sd = factoryStateDir(root);
+        mkdirSync(sd, { recursive: true });
+        for (let i = 1; i <= n; i++)
+            writeFileSync(join(sd, `run-${i}.json`), JSON.stringify({ schemaVersion: 1, issue: i, phase: 'awaiting-human', issueTitle: 'forged', updatedAt: iso(i) }));
+    };
+    const rewriteLoop = (root) => {
+        let n = 0;
+        return setInterval(() => writeFileSync(join(factoryStateDir(root), 'run-1.json'), JSON.stringify({ schemaVersion: 1, issue: 1, phase: 'awaiting-human', issueTitle: `forged ${n++}`, updatedAt: iso(1) })), 50);
+    };
+    const untilAsync = async (cond, ms) => {
+        const end = Date.now() + ms;
+        while (!(await cond())) {
+            if (Date.now() > end)
+                throw new Error('timed out');
+            await new Promise((r) => setTimeout(r, 50));
+        }
+    };
+    /** The slowest answer to `path` while `ms` pass. */
+    const worst = async (s, path, ms) => {
+        let max = 0;
+        const end = Date.now() + ms;
+        while (Date.now() < end) {
+            const t = Date.now();
+            expect((await get(s, path)).status).toBe(200);
+            max = Math.max(max, Date.now() - t);
+        }
+        return max;
+    };
+    it('--all-repos: 2500 forged states rewritten in a loop in B; A is answered throughout and B backs off', async () => {
+        const a = repo('a');
+        const b = repo('b');
+        asEngine(a, parked(1));
+        asEngine(b, parked(1));
+        flood(b, 2500);
+        const s = await start(() => ({ repos: [served(a), served(b)], skipped: 0, warnings: [] }), { tickMs: 200 });
+        const loop = rewriteLoop(b);
+        try {
+            const max = await worst(s, `${base(s)}api/v1/repo/${ledgerRepoId(a)}/summary`, 4_000);
+            // One compute of B (capped at MAX_RUN_STATES reads) at most, never a pass over everything.
+            expect(max).toBeLessThan(1_500);
+            const c = s.costs();
+            expect(c[ledgerRepoId(b)].costMs * 10).toBeGreaterThan(60);
+            // B is computed far less often than A under the same 200 ms tick.
+            expect(c[ledgerRepoId(b)].backoffMs + c[ledgerRepoId(b)].costMs).toBeGreaterThan(c[ledgerRepoId(a)].backoffMs);
+        }
+        finally {
+            clearInterval(loop);
+        }
+    }, 120_000);
+    it('a slow view is served stale while its back-off runs, then fresh', async () => {
+        const a = repo('a');
+        asEngine(a, parked(1));
+        let slow = 0;
+        const collect = collectOf(a);
+        const s = await start(() => ({ repos: [{ ...served(a), collect: () => { const t = Date.now() + slow; while (Date.now() < t) { /* a slow read */ } return collect(); } }], skipped: 0, warnings: [] }), { tickMs: 600_000, debounceMs: 10, minIntervalMs: 10 });
+        const id = ledgerRepoId(a);
+        const summary = async () => JSON.parse((await get(s, `${base(s)}api/v1/repo/${id}/summary`)).body);
+        expect((await summary()).stale).toBeUndefined();
+        slow = 600; // 6 s of back-off after the next compute
+        asEngine(a, parked(2));
+        await until(() => s.costs()[id].costMs >= 600, 10_000);
+        asEngine(a, parked(3));
+        await untilAsync(async () => (await summary()).stale === true, 5_000);
+        expect((await summary()).attention.items.some((i) => i.key === '#3')).toBe(false);
+        slow = 0;
+        await untilAsync(async () => (await summary()).attention.items.some((i) => i.key === '#3'), 15_000);
+        expect((await summary()).stale).toBeUndefined();
+    }, 60_000);
+    it('single-repository mode: 2500 forged states rewritten in a loop; the server stays responsive', async () => {
+        const a = repo('a');
+        asEngine(a, parked(1));
+        flood(a, 2500);
+        const s = await startDashboardServer({ root: a, collect: collectOf(a), watchDirs: [factoryStateDir(a)], pollDirs: [], ledgerDir, pollMs: 100, debounceMs: 30, minIntervalMs: 60, tickMs: 200 });
+        servers.push(s);
+        const loop = rewriteLoop(a);
+        try {
+            expect(await worst(s, `${base(s)}api/v1/summary`, 3_000)).toBeLessThan(1_500);
+            const before = s.recomputes();
+            await new Promise((r) => setTimeout(r, 2_000));
+            // Backed off: a few recomputes in 2 s, not one per 60 ms.
+            expect(s.recomputes() - before).toBeLessThan(10);
+        }
+        finally {
+            clearInterval(loop);
+        }
+    }, 120_000);
 });
 //# sourceMappingURL=serve-all-repos.test.js.map

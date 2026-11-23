@@ -18,14 +18,14 @@
  * goes through plainText here and is HTML-escaped again in render.ts.
  */
 import { readdirSync, statSync } from 'fs';
-import { dirname, join } from 'path';
+import { join } from 'path';
 import { LOCAL_REMOTE } from '../../forge/local/mirror.js';
 import { plainText } from '../check/score.js';
-import { attentionJson, collectAttention, readRegularFile, readRun, runKeyOfName } from '../attention/collect.js';
-import { ledgerFilePath } from '../run/ledger.js';
+import { attentionJson, collectAttention, readRegularFile } from '../attention/collect.js';
 import { factoryProgressFile } from '../run/progress.js';
-import { defaultOwnerDeps, FACTORY_PHASES, factoryStateDir, heldSlots, runLabel, TERMINAL_FACTORY_PHASES, } from '../run/state.js';
+import { defaultOwnerDeps, FACTORY_PHASES, heldSlots, runLabel, TERMINAL_FACTORY_PHASES, } from '../run/state.js';
 import { localDay, parseSince } from './collect.js';
+import { withWorktreePathRenderScope } from '../../lib/worktree-paths.js';
 export const DASHBOARD_SCHEMA_VERSION_2 = 2;
 const GATE_NOTE = /^awaiting-human: ([^:]+):/;
 /** resumed()'s note: the rerun that drops the gate. */
@@ -359,20 +359,20 @@ export function readBenchV2(root, dirs, warnings) {
 function boardRows(b) {
     return [...b.columns.flatMap((c) => c.items), ...b.outside];
 }
+/** One render scope: the state root is resolved once per collection, not once per file path. */
 export function collectDashboardV2(root, o) {
+    return withWorktreePathRenderScope(() => collectV2In(root, o));
+}
+function collectV2In(root, o) {
     const now = (o.now ?? Date.now)();
     const sinceMs = o.since === undefined ? null : parseSince(o.since);
     const owner = o.owner ?? defaultOwnerDeps();
     const warnings = [];
-    const attention = collectAttention(root, { ledgerDir: o.ledgerDir, now: () => now, limits: o.limits ?? null, owner, verbose: true });
-    // Every canonical run state, checked as attention checks it.
-    let names = [];
-    try {
-        names = readdirSync(factoryStateDir(root));
-    }
-    catch {
-        // No state dir: no runs yet.
-    }
+    // Each run state is read once, by the attention collector (the ledger-first, capped key set); its reads are reused here.
+    const reads = [];
+    const attention = collectAttention(root, { ledgerDir: o.ledgerDir, now: () => now, limits: o.limits ?? null, owner, verbose: true, onRead: (r) => reads.push(r) });
+    if (attention.items.some((i) => i.key === 'state-files'))
+        warnings.push(attention.warnings.find((w) => w.includes('state files were not read')) ?? 'some state files were not read: more than the limit; inspect .omg/state/factory');
     /** Every verified state, --since or not (Live now always shows the present). */
     const allStates = new Map();
     const states = new Map();
@@ -380,11 +380,18 @@ export function collectDashboardV2(root, o) {
     /** Runs whose timeline was clamped: kept out of the throughput medians. */
     const clampedRuns = new Set();
     const excluded = { runs: 0, missing: 0 };
-    for (const name of names) {
-        const key = runKeyOfName(name);
-        if (key === null)
+    const missingLabels = new Set(attention.items.filter((i) => i.trust === 'missing').map((i) => i.key));
+    for (const r of reads) {
+        const key = r.key;
+        if (r.missing) {
+            // The engine ledger records a state file that is gone: attention lists it (trust missing); a row here, never in a total.
+            if (!missingLabels.has(runLabel(key)))
+                continue;
+            runs.push(unverifiedRun(key, 'missing', undefined));
+            excluded.runs++;
+            excluded.missing++;
             continue;
-        const r = readRun(root, key, o.ledgerDir);
+        }
         if (r.trust !== 'ok' || !r.state) {
             // An unreadable state is already one of attention's warnings. Nothing it claims (credits, requests) is counted or shown.
             runs.push(unverifiedRun(key, r.trust, r.state));
@@ -407,24 +414,6 @@ export function collectDashboardV2(root, o) {
         catch (error) {
             warnings.push(`run ${runLabel(key)}: skipped (${text(error instanceof Error ? error.message : error, 160)})`);
         }
-    }
-    // Runs the engine ledger records whose state file is gone: attention lists them (trust missing); a row here, never in a total.
-    const stateKeys = new Set(names.map(runKeyOfName).filter((k) => k !== null).map((k) => runLabel(k)));
-    const missingLabels = new Set(attention.items.filter((i) => i.trust === 'missing').map((i) => i.key));
-    let ledgerNames = [];
-    try {
-        ledgerNames = readdirSync(dirname(ledgerFilePath(o.ledgerDir, root, 1)));
-    }
-    catch {
-        // No ledger dir: nothing is missing.
-    }
-    for (const name of ledgerNames) {
-        const key = runKeyOfName(name);
-        if (key === null || stateKeys.has(runLabel(key)) || !missingLabels.has(runLabel(key)))
-            continue;
-        runs.push(unverifiedRun(key, 'missing', undefined));
-        excluded.runs++;
-        excluded.missing++;
     }
     const startedMs = (r) => msOf(r.startedAt);
     runs.sort((a, b) => (Number(b.verified) - Number(a.verified)) || (startedMs(b) || 0) - (startedMs(a) || 0) || b.key.localeCompare(a.key, 'en', { numeric: true }));

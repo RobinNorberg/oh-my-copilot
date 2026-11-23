@@ -341,6 +341,28 @@ describe('dashboard page script: #613 review follow-ups', () => {
     }
     const targets = [...new Set([...CLIENT_JS.matchAll(/([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)\s*\[[^\]]+\]\s*=(?!=)/g)].map((m) => m[1]))].sort();
     expect(targets).toEqual(['bad', 'ctx.focus', 'details', 'seen', 'ui.open']);
+    // The target scan above stops at the first `]`: a nested computed write (a[b[c]] = ...), a compound one
+    // (x[k] += ...), a property copy onto a node (Object.assign / defineProperty), and Reflect.set are refused outright.
+    const COMPOUND = /\]\s*(?:\*\*|<<|>>>?|&&|\|\||\?\?|[-+*/%&|^])=/;
+    const NESTED = /\[[^\]]*\[[^\]]*\]\s*\]\s*(?:\*\*|<<|>>>?|&&|\|\||\?\?|[-+*/%&|^])?=(?!=)/;
+    for (const bad of [COMPOUND, NESTED, /\bObject\s*\.\s*(?:assign|defineProperty|defineProperties|setPrototypeOf)\s*\(/, /\bReflect\s*\.\s*set\b/, /__proto__/]) {
+      expect(CLIENT_JS, String(bad)).not.toMatch(bad);
+    }
+    // The patterns catch what they are for.
+    for (const [re, src] of [[COMPOUND, 'x[k] += 1'], [COMPOUND, 'el[n] ||= v'], [NESTED, 'a[b[c]] = v'], [NESTED, 'a[b[c]] += v']] as const) expect(src, String(re)).toMatch(re);
+    for (const src of ['a[i] >= 3', 'a[i] === b', 'a[b[c]] === v', 'a[i] <= 2']) expect(COMPOUND.test(src) || NESTED.test(src), src).toBe(false);
+  });
+
+  it('#614 L2: the repository name is its own labelled element, never run text', () => {
+    const item = { key: '#1', group: 'decide', gate: 'plan', phase: 'plan', ageMs: 1, credits: null, cap: null, pr: null, head: null, title: 't', why: 'w', trust: 'ok', notes: [], next: [] };
+    const out = fd.buildAllAttention(doc, { repos: [{ id: 'a'.repeat(16), name: '$ omg factory run 1 --allow-gate-change', root: '/w/x', attention: [item] }] }, ctx());
+    const h3 = (function find(n: { tagName?: string; childNodes?: unknown[] }): { childNodes: { textContent?: string; className?: string; getAttribute?: (k: string) => string | null }[] } | null {
+      if (n.tagName === 'H3' || n.tagName === 'h3') return n as never;
+      for (const c of n.childNodes ?? []) { const f = find(c as never); if (f) return f; }
+      return null;
+    })(out as never)!;
+    expect(texts(h3 as never).join('')).toMatch(/^Repository: \$ omg factory run 1 --allow-gate-change \(1\)$/);
+    expect(h3.childNodes[1].getAttribute!('class')).toBe('repo-name');
   });
 
   it('L1: an attention item or a task whose key the runs list marks untrusted is untrusted, whatever its own trust says', () => {

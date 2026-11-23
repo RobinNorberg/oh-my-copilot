@@ -2,7 +2,10 @@
  * The repositories this host's engine ledger knows (`omg factory attention
  * --all-repos`, `omg factory dashboard --serve --all-repos`). READ-ONLY: it
  * lists and reads files under the ledger dir and stats each root; it never
- * creates, locks or writes anything, and runs no subprocess.
+ * creates, locks or writes anything, and runs no subprocess. Collecting a
+ * listed root's state afterwards does not run git either when the root has a
+ * `stateRoot` (withKnownOmcRoots); with OMC_STATE_DIR set, or for a --repo
+ * root, the state dir is resolved the usual way (one git probe per collection).
  *
  * Trust: the ledger (defaultLedgerDir: `$OMC_STATE_DIR/factory-ledger` or
  * `~/.omg/factory-ledger`) lives outside every repository, so a root is only
@@ -14,12 +17,18 @@
  * A root is listed only when:
  * - it is a plain local absolute, normalised path (claimRoot: no control or
  *   format character, no UNC / device path);
- * - a ledger dir's name is the id the engine derives from it (ledgerRepoId):
- *   a record copied or forged into another repository's dir is refused;
+ * - a ledger dir's name is the id the engine derives from it (ledgerRepoId),
+ *   and every readable record of the dir (up to RECORDS_PER_DIR) agrees: a
+ *   record copied or forged into another repository's dir is refused;
  * - it exists, is a directory, is not reached through a link (its real path
  *   is itself, compared case-insensitively on win32/darwin), and holds `.git`
- *   (a directory, or a `gitdir:` file of a linked worktree or submodule): a
- *   subdirectory of a repository or a plain folder is refused;
+ *   (a directory with HEAD, or a `gitdir:` file whose target holds HEAD): a
+ *   subdirectory of a repository, a plain folder or an empty `.git` is
+ *   refused (`not-a-repository`);
+ * - the state the collector reads for it is its own (`<root>/.omg`, or
+ *   `$OMC_STATE_DIR/<its id>`): a submodule (state at the superproject) or a
+ *   root under a workspace marker (a shared `.omg`) is refused
+ *   (`state-elsewhere`);
  * - no other listed root has the same real path.
  * Each filesystem probe of a root runs async with a timeout (ROOT_PROBE_MS),
  * so a slow or unreachable drive is skipped (`timeout`) rather than stalling
@@ -33,11 +42,12 @@
  */
 
 import { promises as fsp, readdirSync, lstatSync } from 'fs';
-import { basename, join, resolve } from 'path';
+import { basename, dirname, join, relative, resolve } from 'path';
 import { plainText } from '../check/score.js';
 import { readRegularFile, runKeyOfName } from '../attention/collect.js';
 import { canonicalPath, claimRoot } from './claims.js';
 import { ledgerRepoId } from './ledger.js';
+import { findWorkspaceRoot, OmcPaths } from '../../lib/worktree-paths.js';
 
 export const MAX_REPOS = 200;
 export const MAX_CLAIM_DIRS = 200;
@@ -50,7 +60,7 @@ const LEDGER_ID = /^[0-9a-f]{16}$/;
 const OWNER_FILE = /^run-(\d+|heal-[0-9a-f]{8})\.owner$/;
 
 export type SkipReason =
-  | 'invalid-root' | 'id-mismatch' | 'missing' | 'not-a-directory' | 'not-a-repository' | 'link' | 'duplicate' | 'timeout' | 'unreadable' | 'no-root';
+  | 'invalid-root' | 'id-mismatch' | 'conflict' | 'missing' | 'not-a-directory' | 'not-a-repository' | 'state-elsewhere' | 'link' | 'duplicate' | 'timeout' | 'unreadable' | 'no-root';
 
 export interface LedgerRoot {
   /** The ledger id (ledgerRepoId of the root): the opaque handle the dashboard uses. */
@@ -60,6 +70,12 @@ export interface LedgerRoot {
   source: 'ledger' | 'claim' | 'pinned';
   /** The ledger holds a dir for this root (runs the engine recorded on this host). */
   recorded: boolean;
+  /**
+   * The root's own state dir (`<root>/.omg`), validated by probeRoot without git: collection resolves it
+   * from here (withKnownOmcRoots) instead of spawning git in the repository. Absent with OMC_STATE_DIR
+   * (the centralized id needs git) and for a pinned root: resolved the usual way then.
+   */
+  stateRoot?: string;
 }
 
 export interface SkippedRoot {
@@ -119,10 +135,16 @@ function recordRoot(path: string, check: (v: Record<string, unknown>) => boolean
   }
 }
 
-/** The root a repository dir's ledger records name (the first readable one of up to RECORDS_PER_DIR). */
+/**
+ * The root a repository dir's ledger records name: every readable one of up
+ * to RECORDS_PER_DIR must name the same root and pass the id check, else the
+ * dir is skipped (`conflict`, or the failing record's reason), so no single
+ * record decides.
+ */
 function ledgerDirRoot(dir: string, id: string): RootRead {
   const files = names(dir).filter((n) => runKeyOfName(n) !== null).slice(0, RECORDS_PER_DIR);
   let problems = 0;
+  let agreed: string | null = null;
   for (const name of files) {
     const key = runKeyOfName(name)!;
     const got = recordRoot(join(dir, name), (v) => v.version === 1 && v.issue === key);
@@ -130,8 +152,12 @@ function ledgerDirRoot(dir: string, id: string): RootRead {
       problems++;
       continue;
     }
-    return rootOf(got.root, id, true);
+    const r = rootOf(got.root, id, true);
+    if ('reason' in r) return r;
+    if (agreed !== null && canonicalPath(r.root, process.platform) !== canonicalPath(agreed, process.platform)) return { reason: 'conflict', warning: `engine ledger dir ${id}: its run records name different roots; skipped` };
+    agreed = r.root;
   }
+  if (agreed !== null) return { root: agreed };
   // A fixed message: no error text and no path (it may reach the --serve page).
   if (problems > 0) return { reason: 'unreadable', warning: `engine ledger dir ${id}: none of its first ${problems} run record(s) is a readable engine record; skipped` };
   return { reason: 'no-root' };
@@ -150,13 +176,45 @@ const timeout = <T>(p: Promise<T>, ms: number): Promise<T | 'timeout'> => {
   return Promise.race([p, new Promise<'timeout'>((done) => { t = setTimeout(() => done('timeout'), ms); t.unref(); })]).finally(() => clearTimeout(t));
 };
 
+const isFile = (path: string): Promise<boolean> => fsp.lstat(path).then((s) => s.isFile(), () => false);
+
 /**
- * Whether `root` is a repository top level here: a directory, not reached
- * through a link, holding `.git` (a dir, or a `gitdir:` file). Returns its
- * canonical real path (the dedupe key) or why not.
+ * The superproject whose submodule `root` is, else null: the nearest
+ * enclosing repository lists `root` as a submodule path in its
+ * `.gitmodules` (git's own test for --show-superproject-working-tree is the
+ * gitlink in that parent's index; the state anchor climbs to it). Read-only,
+ * no git.
  */
-export async function probeRoot(root: string, platform: NodeJS.Platform = process.platform, ms = ROOT_PROBE_MS): Promise<{ real: string } | { reason: SkipReason }> {
-  const probe = async (): Promise<{ real: string } | { reason: SkipReason }> => {
+async function superprojectOf(root: string): Promise<string | null> {
+  let dir = dirname(resolve(root));
+  for (let depth = 0; depth < 64 && dir !== dirname(dir); depth++, dir = dirname(dir)) {
+    if (!(await fsp.lstat(join(dir, '.git')).then(() => true, () => false))) continue;
+    const r = readRegularFile(join(dir, '.gitmodules'), 256 * 1024);
+    if (!('bytes' in r)) return null;
+    const rel = relative(dir, resolve(root)).replace(/\\/g, '/');
+    const paths = r.bytes.toString('utf8').split(/\r?\n/).map((l) => /^\s*path\s*=\s*(.+?)\s*$/.exec(l)?.[1]).filter((p): p is string => p !== undefined);
+    return paths.some((p) => p.replace(/\\/g, '/').replace(/\/+$/, '') === rel) ? dir : null;
+  }
+  return null;
+}
+
+type Probed = { real: string; stateRoot?: string };
+
+/**
+ * Whether `root` is a repository top level here whose factory state is its
+ * own: a directory, not reached through a link, holding `.git` (a dir with
+ * `HEAD`, or a `gitdir:` file whose target holds `HEAD`: a linked worktree
+ * or a `--separate-git-dir` repository), not a submodule (its state anchors
+ * at the superproject) and not under a workspace marker (a shared `.omg`):
+ * `state-elsewhere`. Returns its canonical real path (the dedupe key) and,
+ * without OMC_STATE_DIR, its state root (`<root>/.omg`), or why not.
+ *
+ * A linked worktree is a valid root: its state is its own `.omg` (getOmcRoot
+ * does not climb from a worktree), though the engine's ledger records the
+ * main checkout, so it is listed only when a record or --repo names it.
+ */
+export async function probeRoot(root: string, platform: NodeJS.Platform = process.platform, ms = ROOT_PROBE_MS): Promise<Probed | { reason: SkipReason }> {
+  const probe = async (): Promise<Probed | { reason: SkipReason }> => {
     let st;
     try {
       st = await fsp.lstat(root);
@@ -183,8 +241,15 @@ export async function probeRoot(root: string, platform: NodeJS.Platform = proces
       if (git.size > 4096) return { reason: 'not-a-repository' };
       const head = await fsp.readFile(join(root, '.git'), 'utf8').catch(() => '');
       if (!head.startsWith('gitdir:')) return { reason: 'not-a-repository' };
-    } else if (!git.isDirectory()) return { reason: 'not-a-repository' };
-    return { real: canonicalPath(real, platform) };
+      // The gitdir must be a git dir (HEAD inside): an empty or dangling pointer is not a repository git recognises.
+      const target = resolve(root, head.slice('gitdir:'.length).trim());
+      if (!(await isFile(join(target, 'HEAD')))) return { reason: 'not-a-repository' };
+    } else if (!git.isDirectory() || !(await isFile(join(root, '.git', 'HEAD')))) return { reason: 'not-a-repository' };
+    // The state the collector reads must be this root's own, not a shared anchor elsewhere.
+    if (await superprojectOf(root)) return { reason: 'state-elsewhere' };
+    const workspace = findWorkspaceRoot(root);
+    if (workspace !== null && fold(resolve(workspace), platform) !== fold(resolve(root), platform)) return { reason: 'state-elsewhere' };
+    return { real: canonicalPath(real, platform), ...(process.env.OMC_STATE_DIR ? {} : { stateRoot: join(root, OmcPaths.ROOT) }) };
   };
   const got = await timeout(probe(), ms);
   return got === 'timeout' ? { reason: 'timeout' } : got;
@@ -255,7 +320,7 @@ export async function discoverLedgerRoots(o: DiscoverOptions): Promise<LedgerRoo
       skipped.push({ id: c.id, reason: 'duplicate', root: shown(c.root) });
       continue;
     }
-    byReal.set(p.real, { id: c.id, root: c.root, source: c.source, recorded: c.recorded });
+    byReal.set(p.real, { id: c.id, root: c.root, source: c.source, recorded: c.recorded, ...(p.stateRoot ? { stateRoot: p.stateRoot } : {}) });
   }
   let roots = [...byReal.values()];
 

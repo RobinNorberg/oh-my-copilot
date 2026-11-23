@@ -263,5 +263,6 @@ export interface CollectDashboardV2Options {
 }
 /** Bench results from `<root>/bench-results/` and every --bench-dir; one row per result file, oldest first. */
 export declare function readBenchV2(root: string, dirs: readonly string[], warnings: string[]): DashboardBenchV2[];
+/** One render scope: the state root is resolved once per collection, not once per file path. */
 export declare function collectDashboardV2(root: string, o: CollectDashboardV2Options): DashboardDataV2;
 //# sourceMappingURL=collect-v2.d.ts.map

@@ -24128,49 +24128,49 @@ var require_fast_uri = __commonJS({
       schemelessOptions.skipEscape = true;
       return serialize(resolved, schemelessOptions);
     }
-    function resolveComponent(base, relative42, options, skipNormalization) {
+    function resolveComponent(base, relative43, options, skipNormalization) {
       const target = {};
       if (!skipNormalization) {
         base = parse13(serialize(base, options), options);
-        relative42 = parse13(serialize(relative42, options), options);
+        relative43 = parse13(serialize(relative43, options), options);
       }
       options = options || {};
-      if (!options.tolerant && relative42.scheme) {
-        target.scheme = relative42.scheme;
-        target.userinfo = relative42.userinfo;
-        target.host = relative42.host;
-        target.port = relative42.port;
-        target.path = removeDotSegments(relative42.path || "");
-        target.query = relative42.query;
+      if (!options.tolerant && relative43.scheme) {
+        target.scheme = relative43.scheme;
+        target.userinfo = relative43.userinfo;
+        target.host = relative43.host;
+        target.port = relative43.port;
+        target.path = removeDotSegments(relative43.path || "");
+        target.query = relative43.query;
       } else {
-        if (relative42.userinfo !== void 0 || relative42.host !== void 0 || relative42.port !== void 0) {
-          target.userinfo = relative42.userinfo;
-          target.host = relative42.host;
-          target.port = relative42.port;
-          target.path = removeDotSegments(relative42.path || "");
-          target.query = relative42.query;
+        if (relative43.userinfo !== void 0 || relative43.host !== void 0 || relative43.port !== void 0) {
+          target.userinfo = relative43.userinfo;
+          target.host = relative43.host;
+          target.port = relative43.port;
+          target.path = removeDotSegments(relative43.path || "");
+          target.query = relative43.query;
         } else {
-          if (!relative42.path) {
+          if (!relative43.path) {
             target.path = base.path;
-            if (relative42.query !== void 0) {
-              target.query = relative42.query;
+            if (relative43.query !== void 0) {
+              target.query = relative43.query;
             } else {
               target.query = base.query;
             }
           } else {
-            if (relative42.path[0] === "/") {
-              target.path = removeDotSegments(relative42.path);
+            if (relative43.path[0] === "/") {
+              target.path = removeDotSegments(relative43.path);
             } else {
               if ((base.userinfo !== void 0 || base.host !== void 0 || base.port !== void 0) && !base.path) {
-                target.path = "/" + relative42.path;
+                target.path = "/" + relative43.path;
               } else if (!base.path) {
-                target.path = relative42.path;
+                target.path = relative43.path;
               } else {
-                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative42.path;
+                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative43.path;
               }
               target.path = removeDotSegments(target.path);
             }
-            target.query = relative42.query;
+            target.query = relative43.query;
           }
           target.userinfo = base.userinfo;
           target.host = base.host;
@@ -24178,7 +24178,7 @@ var require_fast_uri = __commonJS({
         }
         target.scheme = base.scheme;
       }
-      target.fragment = relative42.fragment;
+      target.fragment = relative43.fragment;
       return target;
     }
     function equal(uriA, uriB, options) {
@@ -32828,6 +32828,8 @@ function getProjectIdentifier(worktreeRoot) {
   return identifier;
 }
 function getOmcRoot(worktreeRoot) {
+  const known = worktreeRoot === void 0 ? void 0 : knownOmcRoots.getStore()?.get(worktreeRoot);
+  if (known !== void 0) return known;
   const scope = worktreePathRenderScope.getStore();
   if (!scope) return computeOmcRoot(worktreeRoot);
   const key = [worktreeRoot ?? "", process.env.OMC_STATE_DIR ?? "", process.cwd()].join("\0");
@@ -33270,7 +33272,7 @@ function validateWorkingDirectoryOrLinkedWorktree(workingDirectory) {
   }
   return resolution.root;
 }
-var import_crypto2, import_node_async_hooks, import_child_process8, import_fs16, import_os3, import_path17, import_url4, WORKSPACE_MARKER, OmcPaths, MAX_WORKTREE_CACHE_SIZE, worktreeCacheMap, gitTopLevelCacheMap, gitTopLevelNegativeCacheMap, superprojectCacheMap, projectIdentifierCacheMap, canonicalWorkingDirectoryRoots, GIT_PROBE_ENVIRONMENT_KEYS, MAX_GIT_MARKER_BYTES, workspaceCacheMap, GIT_NOT_A_REPOSITORY_STDERR, SENSITIVE_DIR_BASENAMES, worktreePathRenderScope, projectIdentifierOperationScope, gitShowToplevelProbeForTests, dualDirWarnings, SESSION_ID_REGEX, ForeignWorkingDirectoryError;
+var import_crypto2, import_node_async_hooks, import_child_process8, import_fs16, import_os3, import_path17, import_url4, WORKSPACE_MARKER, OmcPaths, MAX_WORKTREE_CACHE_SIZE, worktreeCacheMap, gitTopLevelCacheMap, gitTopLevelNegativeCacheMap, superprojectCacheMap, projectIdentifierCacheMap, canonicalWorkingDirectoryRoots, GIT_PROBE_ENVIRONMENT_KEYS, MAX_GIT_MARKER_BYTES, workspaceCacheMap, GIT_NOT_A_REPOSITORY_STDERR, SENSITIVE_DIR_BASENAMES, worktreePathRenderScope, projectIdentifierOperationScope, gitShowToplevelProbeForTests, dualDirWarnings, knownOmcRoots, SESSION_ID_REGEX, ForeignWorkingDirectoryError;
 var init_worktree_paths = __esm({
   "src/lib/worktree-paths.ts"() {
     "use strict";
@@ -33363,6 +33365,7 @@ var init_worktree_paths = __esm({
     worktreePathRenderScope = new import_node_async_hooks.AsyncLocalStorage();
     projectIdentifierOperationScope = new import_node_async_hooks.AsyncLocalStorage();
     dualDirWarnings = /* @__PURE__ */ new Set();
+    knownOmcRoots = new import_node_async_hooks.AsyncLocalStorage();
     SESSION_ID_REGEX = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,255}$/;
     ForeignWorkingDirectoryError = class extends Error {
       callerLabel;
@@ -73366,7 +73369,7 @@ function gateNext(name, f) {
 }
 function quoteWord(word, platform) {
   if (bare(word, platform)) return word;
-  if (DOUBLE_QUOTABLE.test(word) && !unprintable(word)) return `"${word}"`;
+  if (doubleQuotable(word, platform) && !unprintable(word)) return `"${word}"`;
   return platform === "win32" ? `'${word.replace(/'/g, "''")}'` : `'${word.replace(/'/g, "'\\''")}'`;
 }
 function commandLine(argv, platform = process.platform) {
@@ -73383,7 +73386,7 @@ function humanCommand(argv, platform = process.platform) {
   const t = commandText(argv, platform);
   return t.inRoot ? `in the repository root: ${t.line}` : t.line;
 }
-var GATE_GROUPS, TRUST, LOOK, e, GATE_TABLE, LANE_KINDS, LANE_PARK, UNKNOWN_GATE_ENTRY, HEX4015, SIG8, sig8Of, resumeArgv, cancelArgv, statusArgv, FLAG, toStep, BARE_POSIX, BARE_WIN, DOUBLE_QUOTABLE, unprintable, bare, portable;
+var GATE_GROUPS, TRUST, LOOK, e, GATE_TABLE, LANE_KINDS, LANE_PARK, UNKNOWN_GATE_ENTRY, HEX4015, SIG8, sig8Of, resumeArgv, cancelArgv, statusArgv, FLAG, toStep, BARE_POSIX, BARE_WIN, DOUBLE_QUOTABLE, DOUBLE_QUOTABLE_WIN, doubleQuotable, unprintable, bare, portable;
 var init_gate_next = __esm({
   "src/factory/run/gate-next.ts"() {
     "use strict";
@@ -73479,9 +73482,11 @@ var init_gate_next = __esm({
     BARE_POSIX = /^[A-Za-z0-9_./:@%+=,-]+$/;
     BARE_WIN = /^[A-Za-z0-9_./:\\+=-]+$/;
     DOUBLE_QUOTABLE = /^[\p{L}\p{N} /:._-]+$/u;
+    DOUBLE_QUOTABLE_WIN = /^[\p{L}\p{N} /:._\\-]+$/u;
+    doubleQuotable = (word, platform) => DOUBLE_QUOTABLE.test(word) || platform === "win32" && DOUBLE_QUOTABLE_WIN.test(word) && !word.endsWith("\\");
     unprintable = (word) => plainText(word) !== word;
     bare = (word, platform) => (platform === "win32" ? BARE_WIN : BARE_POSIX).test(word);
-    portable = (word, platform) => !unprintable(word) && (bare(word, platform) || DOUBLE_QUOTABLE.test(word));
+    portable = (word, platform) => !unprintable(word) && (bare(word, platform) || doubleQuotable(word, platform));
   }
 });
 
@@ -85547,10 +85552,10 @@ var init_collect_v2 = __esm({
     init_mirror();
     init_score();
     init_collect3();
-    init_ledger2();
     init_progress2();
     init_state5();
     init_collect2();
+    init_worktree_paths();
   }
 });
 
@@ -86029,7 +86034,8 @@ FD.buildAllAttention = function (doc, list, ctx) {
   if (repos.length === 0) return h(doc, 'p', { 'class': 'ok' }, 'Nothing needs you in any repository.');
   return h(doc, 'div', null, repos.map(function (r) {
     return h(doc, 'div', null, [
-      h(doc, 'h3', null, [String(r.name) + ' ', h(doc, 'span', { 'class': 'muted' }, '(' + r.attention.length + ')')]),
+      // The folder name in its own labelled element: a name shaped like a command or a run row reads as a name.
+      h(doc, 'h3', null, [h(doc, 'span', { 'class': 'muted' }, 'Repository: '), h(doc, 'span', { 'class': 'repo-name' }, String(r.name)), ' ', h(doc, 'span', { 'class': 'muted' }, '(' + r.attention.length + ')')]),
       h(doc, 'p', { 'class': 'muted' }, h(doc, 'code', null, String(r.root))),
       FD.buildAttention(doc, { attention: { items: r.attention } }, ctx, { repo: r })
     ]);
@@ -86143,7 +86149,8 @@ function start() {
     FD.tickAges(ctx.ages, Date.parse(data.generatedAt), Date.now());
     if (fk && ctx.focus[fk]) ctx.focus[fk].focus({ preventScroll: true });
     window.scrollTo(x, y);
-    byId('generated').textContent = 'Data as of ' + new Date(Date.parse(data.generatedAt)).toLocaleString() + (data.forge && data.forge.read ? '; tracker read at ' + data.forge.at + ' (--forge)' : '; local state only, no forge read');
+    byId('generated').textContent = 'Data as of ' + new Date(Date.parse(data.generatedAt)).toLocaleString() + (data.forge && data.forge.read ? '; tracker read at ' + data.forge.at + ' (--forge)' : '; local state only, no forge read')
+      + (data.stale === true ? '. Stale: this repository is slow to read, so it is refreshed less often; a newer state is waiting to be read' : '');
   }
   function fetchJson(url) {
     return fetch(url, { cache: 'no-store', credentials: 'same-origin', redirect: 'error' }).then(function (r) {
@@ -86314,6 +86321,7 @@ var init_ledger_roots = __esm({
     init_collect3();
     init_claims();
     init_ledger2();
+    init_worktree_paths();
     RECORD_MAX_BYTES = 4 * 1024 * 1024;
   }
 });
@@ -86362,6 +86370,7 @@ var init_all_repos = __esm({
     init_actions();
     init_collect3();
     init_render3();
+    init_worktree_paths();
     GROUP_ORDER = new Map(ATTENTION_GROUPS.map((g, i) => [g, i]));
   }
 });

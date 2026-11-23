@@ -58,8 +58,8 @@ describe('discoverLedgerRoots', () => {
         record(b, 7);
         const got = await discoverLedgerRoots({ ledgerDir });
         expect(got.roots).toEqual([
-            { id: ledgerRepoId(a), root: a, source: 'ledger', recorded: true },
-            { id: ledgerRepoId(b), root: b, source: 'ledger', recorded: true },
+            { id: ledgerRepoId(a), root: a, source: 'ledger', recorded: true, stateRoot: join(a, '.omg') },
+            { id: ledgerRepoId(b), root: b, source: 'ledger', recorded: true, stateRoot: join(b, '.omg') },
         ]);
         expect(got.skipped).toEqual([]);
         expect(got.warnings).toEqual([]);
@@ -92,15 +92,25 @@ describe('discoverLedgerRoots', () => {
     it('accepts a linked worktree or submodule (.git is a gitdir: file) and refuses a .git file that is not one', async () => {
         const wt = join(dir, 'wt');
         mkdirSync(wt);
-        writeFileSync(join(wt, '.git'), 'gitdir: /elsewhere/.git/worktrees/wt\n');
+        // A worktree-shaped pointer (its target holds HEAD) is a root; a dangling one is not (M1).
+        mkdirSync(join(dir, 'main.git', 'worktrees', 'wt'), { recursive: true });
+        writeFileSync(join(dir, 'main.git', 'worktrees', 'wt', 'HEAD'), 'ref: refs/heads/main\n');
+        writeFileSync(join(wt, '.git'), `gitdir: ${join(dir, 'main.git', 'worktrees', 'wt')}\n`);
+        const gone = join(dir, 'gone-wt');
+        mkdirSync(gone);
+        writeFileSync(join(gone, '.git'), 'gitdir: /elsewhere/.git/worktrees/wt\n');
         const fake = join(dir, 'fake');
         mkdirSync(fake);
         writeFileSync(join(fake, '.git'), 'not a pointer');
         forged(ledgerRepoId(wt), wt);
+        forged(ledgerRepoId(gone), gone);
         forged(ledgerRepoId(fake), fake);
         const got = await discoverLedgerRoots({ ledgerDir });
         expect(got.roots.map((r) => r.root)).toEqual([wt]);
-        expect(got.skipped).toEqual([{ id: ledgerRepoId(fake), reason: 'not-a-repository', root: fake }]);
+        expect(got.skipped.sort((x, y) => x.root.localeCompare(y.root))).toEqual([
+            { id: ledgerRepoId(fake), reason: 'not-a-repository', root: fake },
+            { id: ledgerRepoId(gone), reason: 'not-a-repository', root: gone },
+        ]);
     });
     it('refuses a root reached through a junction or symlink (its real path is another directory)', async () => {
         const a = repo('alpha');
@@ -120,7 +130,7 @@ describe('discoverLedgerRoots', () => {
         const got = await discoverLedgerRoots({ ledgerDir });
         // The engine's id lower-cases the root, so both spellings name one ledger dir on every platform.
         expect(ledgerRepoId(upper)).toBe(ledgerRepoId(a));
-        expect(got.roots).toEqual([{ id: ledgerRepoId(a), root: a, source: 'ledger', recorded: true }]);
+        expect(got.roots).toEqual([{ id: ledgerRepoId(a), root: a, source: 'ledger', recorded: true, stateRoot: join(a, '.omg') }]);
     });
     it('skips a malformed or unreadable record with a fixed warning, never failing', async () => {
         const a = repo('alpha');
@@ -159,7 +169,7 @@ describe('discoverLedgerRoots', () => {
         writeFileSync(join(claims, 'run-5.owner'), JSON.stringify({ hostname: 'h', run: '5', root: join(dir, 'gone'), parkedAt: '2026-11-20T00:00:00.000Z' }));
         writeFileSync(join(claims, 'run-6.owner'), 'garbage');
         const got = await discoverLedgerRoots({ ledgerDir });
-        expect(got.roots).toEqual([{ id: ledgerRepoId(c), root: c, source: 'claim', recorded: false }]);
+        expect(got.roots).toEqual([{ id: ledgerRepoId(c), root: c, source: 'claim', recorded: false, stateRoot: join(c, '.omg') }]);
         expect(got.skipped).toEqual([{ id: ledgerRepoId(join(dir, 'gone')), reason: 'missing', root: join(dir, 'gone') }]);
     });
     it('rejects hostile root strings in forged records before any probe; a hostile but real directory keeps its exact name', async () => {
@@ -181,7 +191,7 @@ describe('discoverLedgerRoots', () => {
         record(b);
         const got = await discoverLedgerRoots({ ledgerDir, pinned: [b, c, b] });
         expect(got.roots).toEqual([
-            { id: ledgerRepoId(b), root: b, source: 'ledger', recorded: true },
+            { id: ledgerRepoId(b), root: b, source: 'ledger', recorded: true, stateRoot: join(b, '.omg') },
             { id: ledgerRepoId(c), root: c, source: 'pinned', recorded: false },
         ]);
         expect(await checkPinnedRoot(join(a, '.git'))).toEqual({ error: expect.stringMatching(/is not a repository top level/) });
@@ -195,7 +205,7 @@ describe('discoverLedgerRoots', () => {
     });
     it('probes a root without following it anywhere', async () => {
         const a = repo('alpha');
-        expect(await probeRoot(a)).toEqual({ real: expect.any(String) });
+        expect(await probeRoot(a)).toEqual({ real: expect.any(String), stateRoot: join(a, '.omg') });
         expect(await probeRoot(join(dir, 'nope'))).toEqual({ reason: 'missing' });
     });
     it('writes nothing: the ledger and the repositories are byte- and mtime-identical afterwards', async () => {
@@ -206,6 +216,100 @@ describe('discoverLedgerRoots', () => {
         await discoverLedgerRoots({ ledgerDir });
         await discoverLedgerRoots({ ledgerDir, pinned: [a] });
         expect([...snapshot(ledgerDir), ...snapshot(a)]).toEqual(before);
+    });
+});
+describe('the state a listed root is read from is its own (M1)', () => {
+    it('an empty .git dir, a dangling gitdir file, and a gitdir that is no git dir are not repositories', async () => {
+        const empty = join(dir, 'empty');
+        mkdirSync(join(empty, '.git'), { recursive: true });
+        expect(await probeRoot(empty)).toEqual({ reason: 'not-a-repository' });
+        const dangling = join(dir, 'dangling');
+        mkdirSync(dangling);
+        writeFileSync(join(dangling, '.git'), `gitdir: ${join(dir, 'nowhere')}\n`);
+        expect(await probeRoot(dangling)).toEqual({ reason: 'not-a-repository' });
+        const plainTarget = join(dir, 'plain-target');
+        mkdirSync(plainTarget);
+        const pointer = join(dir, 'pointer');
+        mkdirSync(pointer);
+        writeFileSync(join(pointer, '.git'), `gitdir: ${plainTarget}\n`);
+        expect(await probeRoot(pointer)).toEqual({ reason: 'not-a-repository' });
+        // Discovery refuses them too, with the reason.
+        for (const r of [empty, dangling])
+            forged(ledgerRepoId(r), r);
+        const found = await discoverLedgerRoots({ ledgerDir });
+        expect(found.roots).toEqual([]);
+        expect(found.skipped.map((s) => s.reason).sort()).toEqual(['not-a-repository', 'not-a-repository']);
+    });
+    it('a normal repository and a linked worktree are roots with their own .omg; a separate git dir too', async () => {
+        const main = repo('main');
+        execFileSync('git', ['-C', main, '-c', 'user.email=t@example.invalid', '-c', 'user.name=t', 'commit', '-q', '--allow-empty', '-m', 'init']);
+        const wt = join(dir, 'wt');
+        execFileSync('git', ['-C', main, 'worktree', 'add', '-q', '--detach', wt]);
+        const sep = join(dir, 'sep');
+        execFileSync('git', ['init', '-q', '--separate-git-dir', join(dir, 'sep.git'), sep]);
+        for (const r of [main, wt, sep])
+            expect(await probeRoot(r)).toMatchObject({ stateRoot: join(r, '.omg') });
+        // The git-free state root is the one getOmcRoot (git-based) resolves.
+        const { getOmcRoot } = await import('../../../lib/worktree-paths.js');
+        for (const r of [main, wt, sep])
+            expect(getOmcRoot(r)).toBe(join(r, '.omg'));
+    });
+    it('a submodule-shaped root (listed in the enclosing repository\'s .gitmodules) and a root under a workspace marker are state-elsewhere', async () => {
+        const sup = repo('super');
+        const sub = join(sup, 'libs', 'sub');
+        mkdirSync(join(sup, '.git', 'modules', 'sub'), { recursive: true });
+        writeFileSync(join(sup, '.git', 'modules', 'sub', 'HEAD'), 'ref: refs/heads/main\n');
+        mkdirSync(sub, { recursive: true });
+        writeFileSync(join(sub, '.git'), `gitdir: ../../.git/modules/sub\n`);
+        writeFileSync(join(sup, '.gitmodules'), '[submodule "sub"]\n\tpath = libs/sub\n\turl = https://example.invalid/sub\n');
+        expect(await probeRoot(sub)).toEqual({ reason: 'state-elsewhere' });
+        // Nested in a repository that does not list it: its own state.
+        const nested = join(sup, 'vendor', 'clone');
+        mkdirSync(join(sup, 'vendor'));
+        execFileSync('git', ['init', '-q', nested]);
+        expect(await probeRoot(nested)).toMatchObject({ stateRoot: join(nested, '.omg') });
+        // A workspace marker above the root anchors a shared .omg there.
+        const ws = join(dir, 'ws');
+        mkdirSync(ws);
+        writeFileSync(join(ws, '.omc-workspace'), '{}');
+        const inWs = join(ws, 'member');
+        mkdirSync(inWs);
+        execFileSync('git', ['init', '-q', inWs]);
+        expect(await probeRoot(inWs)).toEqual({ reason: 'state-elsewhere' });
+    });
+    it('no stateRoot with OMC_STATE_DIR (the centralized id is resolved the usual way)', async () => {
+        const a = repo('a');
+        vi.stubEnv('OMC_STATE_DIR', join(dir, 'central'));
+        expect(await probeRoot(a)).toEqual({ real: expect.any(String) });
+    });
+});
+describe('records in one ledger dir must agree (L4)', () => {
+    it('a dir whose records name different roots is skipped (conflict), whatever the order', async () => {
+        const a = repo('a');
+        record(a, 1);
+        record(a, 2);
+        expect((await discoverLedgerRoots({ ledgerDir })).roots.map((r) => r.root)).toEqual([a]);
+        // A second record in a's dir that fails the id check (another root): the dir is skipped, not decided by the first record.
+        forged(ledgerRepoId(a), repo('b'), 3);
+        const found = await discoverLedgerRoots({ ledgerDir });
+        expect(found.roots).toEqual([]);
+        expect(found.skipped).toEqual([expect.objectContaining({ id: ledgerRepoId(a), reason: 'id-mismatch' })]);
+    });
+});
+describe('records in one ledger dir that pass the id check but disagree', () => {
+    it('two spellings that fold to one id on a case-sensitive host are a conflict; a case variant on win32 is not', async () => {
+        const a = repo('a');
+        record(a, 1);
+        record(a, 2);
+        forged(ledgerRepoId(a), a.toUpperCase() === a ? a : a.replace(/a$/, 'A'), 3);
+        const found = await discoverLedgerRoots({ ledgerDir });
+        if (process.platform === 'win32' || process.platform === 'darwin')
+            expect(found.roots.map((r) => r.root.toLowerCase())).toEqual([a.toLowerCase()]);
+        else {
+            expect(found.roots).toEqual([]);
+            expect(found.skipped).toEqual([expect.objectContaining({ reason: 'conflict' })]);
+            expect(found.warnings.some((w) => w.includes('name different roots'))).toBe(true);
+        }
     });
 });
 //# sourceMappingURL=ledger-roots.test.js.map
