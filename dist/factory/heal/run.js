@@ -22,7 +22,7 @@
  * open heal run reuses the subject it was sealed with.
  */
 import { createHash } from 'crypto';
-import { existsSync, readFileSync } from 'fs';
+import { existsSync, readdirSync, readFileSync } from 'fs';
 import { join, resolve } from 'path';
 import { atomicWriteFileSync, ensureDirSync } from '../../lib/atomic-write.js';
 import { withFileLockSync } from '../../lib/file-lock.js';
@@ -161,6 +161,15 @@ export function verifyHealSeal(ledgerDir, root, state) {
     }
     catch {
         return 'mismatch';
+    }
+}
+/** The signatures with a heal seal outside the repository (each one a heal run the heal command recorded); read-only. */
+export function healSealSigs(ledgerDir, root) {
+    try {
+        return readdirSync(healLedgerDir(ledgerDir, root)).map((f) => /^([0-9a-f]{8})\.seal\.json$/.exec(f)?.[1]).filter((s) => s !== undefined).sort();
+    }
+    catch {
+        return [];
     }
 }
 /** Field-wise larger of the in-repo and the mirrored counters. */

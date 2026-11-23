@@ -82,6 +82,8 @@ import { FactoryForgeUnavailableError } from './run/forge-roots.js';
 import { defaultLedgerDir } from './run/ledger.js';
 import { tamperHoldMessage } from './run/tamper-quarantine.js';
 import { visibleLine } from '../forge/review-feedback.js';
+import { reminderCommand } from './attention/actions.js';
+import { resumeCommand } from './run/engine.js';
 import { resolveTeamConfig, TeamConfigError } from './team/context.js';
 import { staleGateReminders, type Reminder } from './team/reminders.js';
 import {
@@ -556,10 +558,8 @@ export interface PollContext {
 
 const message = (error: unknown): string => plainText(error instanceof Error ? error.message : String(error));
 
-const resumeHint = (key: FactoryRunKey): string => (typeof key === 'number' ? `omg factory run ${key}` : `omg factory heal approve ${key.slice('heal-'.length)}`);
-const cancelHint = (key: FactoryRunKey): string => (typeof key === 'number' ? `omg factory run cancel ${key}` : `omg factory heal cancel ${key.slice('heal-'.length)}`);
-/** A resume re-parks a run whose branch rewrote decisions.md, so its reminder offers the cancel instead. */
-const reminderHint = (key: FactoryRunKey, gate: string): string => (gate === 'decisions-rewritten' ? cancelHint(key) : resumeHint(key));
+/** A resume re-parks a run whose branch rewrote decisions.md, so its reminder offers the cancel instead (the attention table's commands). */
+const reminderHint = (key: FactoryRunKey, gate: string): string => reminderCommand(key, gate);
 
 /**
  * One tick. Steps 1-4 never spawn and never write to the tracker or forge; a
@@ -677,7 +677,7 @@ export async function pollTick(ctx: PollContext): Promise<PollTick> {
       if (!view) row.error = errors[errors.length - 1];
       else {
         row.state = view.state;
-        if (view.state !== 'OPEN') row.hint = resumeHint(key);
+        if (view.state !== 'OPEN') row.hint = resumeCommand(key);
         else if (forge.reviews.reviewFeedback) {
           const feedback = step(`PR ${pr} review feedback`, () => forge.reviews.reviewFeedback!(pr, view.headRefOid));
           if (feedback) {

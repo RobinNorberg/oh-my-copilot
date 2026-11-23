@@ -4,6 +4,7 @@ import { tmpdir } from 'os';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { collectAttention } from '../../attention/collect.js';
 import { parseKnownFlaky } from '../../../ship/config.js';
 import { defaultExec, type Exec } from '../../../ship/exec.js';
 import { readWorktreeGitLinks, recordWorktreeGitLinks } from '../../../team/git-worktree.js';
@@ -176,6 +177,21 @@ describe('omg factory heal run', () => {
     await expect(run(lanes)).rejects.toThrow(/seal: mismatch/);
     writeHealState(root, state);
     await expect(run(lanes)).rejects.toThrow(/heal-approve/);
+  });
+
+  it('omg factory attention lists the real heal-approve record and judges it by its seal, never by `next`', async () => {
+    const s = seed();
+    await run(new FakeLanes(answer(GOOD)));
+    const state = readHealState(root, s.sig8)!;
+    const look = () => collectAttention(root, { ledgerDir, now: () => NOW.getTime(), owner: { pid: 1, hostname: 'this-host', isAlive: () => false } }).items.map((i) => [i.key, i.group, i.gate, i.trust]);
+    expect(look()).toEqual([[`heal-${s.sig8}`, 'decide', 'heal-approve', 'ok']]);
+    writeHealState(root, { ...state, next: 'report' });
+    expect(look()).toEqual([[`heal-${s.sig8}`, 'decide', 'heal-approve', 'ok']]);
+    writeHealState(root, { ...state, healRun: { ...state.healRun!, open: false } });
+    expect(look()).toEqual([[`heal-${s.sig8}`, 'inspect', null, 'seal']]);
+    writeHealState(root, state);
+    rmSync(join(ledgerDir, 'heal'), { recursive: true, force: true });
+    expect(look()).toEqual([[`heal-${s.sig8}`, 'inspect', null, 'seal']]);
   });
 
   it('a lane that changes shared git config is tampered and parks at heal-diagnosis', async () => {
