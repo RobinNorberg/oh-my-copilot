@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { classifyNugetFailure, dotnetRestoreArgs, gitBlobId, missingDefinitionFile, nugetRunPackagesDir, parseCatFileBatch, removeEngineDir, restorePhase, writeDefinitionTree, type DefinitionEntry } from '../nuget-restore.js';
+import { classifyNugetFailure, dotnetRestoreArgs, gitBlobId, missingDefinitionFile, nugetRunPackagesDir, parseCatFileBatch, removeEngineDir, restoreApprovalNote, restorePhase, writeDefinitionTree, type DefinitionEntry } from '../nuget-restore.js';
 
 // Lines from real sandboxed dotnet runs (.NET SDK 10.0.101, Windows), paths shortened.
 const OFFLINE_DNS = [
@@ -107,6 +107,17 @@ describe('dotnetRestoreArgs', () => {
   });
 });
 
+describe('restoreApprovalNote (the gate-definition-changed park with gateInstall "sandboxed")', () => {
+  it('every platform: the approval lets the engine restore the files with api.nuget.org reachable', () => {
+    for (const p of ['win32', 'linux', 'darwin'] as const) expect(restoreApprovalNote(p), p).toMatch(/^\. With factory\.run\.gateInstall "sandboxed", approving with --allow-gate-change also lets the engine run dotnet restore on these definition files with api\.nuget\.org reachable/);
+  });
+
+  it('Windows also names the MSBuild targets running in that restore and loopback and the local network; Linux and macOS do not', () => {
+    expect(restoreApprovalNote('win32')).toMatch(/api\.nuget\.org reachable; on Windows the MSBuild targets in these files run during that restore, and loopback and your local network are reachable from it too$/);
+    for (const p of ['linux', 'darwin'] as const) expect(restoreApprovalNote(p), p).not.toMatch(/loopback|local network|targets/);
+  });
+});
+
 describe('nugetRunPackagesDir', () => {
   it('lies under the gate job root, per run', () => {
     expect(nugetRunPackagesDir(join('r', 'gates'), 'issue-7')).toBe(join('r', 'gates', 'nuget', 'issue-7'));
@@ -134,7 +145,9 @@ describe('writeDefinitionTree', () => {
     ];
     const dir = join(tmp, 'tree');
     const r = writeDefinitionTree(dir, entries, store(['sln\n', props, proj, '<Project />\n', 'class X {}\n', 'MZ', 'x']));
-    expect(r).toEqual({ files: ['App.sln', 'Directory.Build.props', 'src/App/App.csproj'] });
+    expect(r).toEqual({ files: ['App.sln', 'Directory.Build.props', 'src/App/App.csproj'], stubs: ['Directory.Build.targets', 'Directory.Solution.props', 'Directory.Solution.targets', 'Directory.Packages.props', 'nuget.config'] });
+    // The head's own root Directory.Build.props stays as it is: no stub over it.
+    expect(readFileSync(join(dir, 'Directory.Build.props'), 'utf8')).toBe(props);
     expect(readFileSync(join(dir, 'src', 'App', 'App.csproj'), 'utf8')).toBe(proj);
     expect(existsSync(join(dir, 'build'))).toBe(false);
     expect(existsSync(join(dir, 'tools'))).toBe(false);
@@ -181,6 +194,69 @@ describe('writeDefinitionTree', () => {
     const line = `${join(tree, 'Directory.Build.props')}(2,3): error MSB4019: The imported project "${join(tree, 'build', 'common.msbuild')}" was not found. Confirm that the expression in the Import declaration "$(MSBuildThisFileDirectory)build/common.msbuild", which evaluated to "${tree}\\build/common.msbuild", is correct, and that the file exists on disk. [${join(tree, 'App', 'App.csproj')}]`;
     expect(missingDefinitionFile(line, tree)).toBe('build/common.msbuild');
     expect(missingDefinitionFile('error NU1101: x', tree)).toBeUndefined();
+  });
+
+  it('missingDefinitionFile: a path outside the tree comes back as one visible, quoted, bounded line (it is restore output)', () => {
+    const tree = resolve('C:\\w\\tree');
+    const outside = `C:\\elsewhere\\x\u202Eevil\u0007${'a'.repeat(400)}.props`;
+    const got = missingDefinitionFile(`App.csproj : error MSB4019: The imported project "${outside}" was not found.`, tree)!;
+    expect(got.startsWith('"') && got.endsWith('"')).toBe(true);
+    expect(got).toContain('<U+202E>');
+    expect(got).not.toMatch(/[\u202E\u0007]/);
+    expect((JSON.parse(got) as string).length).toBeLessThanOrEqual(200);
+  });
+});
+
+describe('writeDefinitionTree stubs (the walk up out of the tree)', () => {
+  let tmp: string;
+  afterEach(() => rmSync(tmp, { recursive: true, force: true }));
+  const blob = (text: string) => Buffer.from(text, 'utf8');
+  const id = (text: string) => gitBlobId(blob(text), 40);
+  const all = (oids: string[], texts: string[]) => new Map(texts.filter((t) => oids.includes(id(t))).map((t) => [id(t), blob(t)] as const));
+
+  it('a head with none of them at its root: every stub at the root only, empty projects and a nuget.org-only config; never global.json or a .rsp', () => {
+    tmp = mkdtempSync(join(tmpdir(), 'omg-defstub-'));
+    const proj = '<Project Sdk="Microsoft.NET.Sdk" />\n';
+    const sub = '<Project><PropertyGroup><X>1</X></PropertyGroup></Project>\n';
+    const dir = join(tmp, 'tree');
+    const r = writeDefinitionTree(dir, [['src/App/App.csproj', id(proj), '100644'], ['src/Directory.Build.props', id(sub), '100644'], ['src/nuget.config', id('<configuration />\n'), '100644']], (o) => all(o, [proj, sub, '<configuration />\n']));
+    expect(r).toEqual({ files: ['src/App/App.csproj', 'src/Directory.Build.props', 'src/nuget.config'], stubs: ['Directory.Build.props', 'Directory.Build.targets', 'Directory.Solution.props', 'Directory.Solution.targets', 'Directory.Packages.props', 'nuget.config'] });
+    for (const n of ['Directory.Build.props', 'Directory.Build.targets', 'Directory.Solution.props', 'Directory.Solution.targets', 'Directory.Packages.props']) expect(readFileSync(join(dir, n), 'utf8'), n).toBe('<Project />\n');
+    const config = readFileSync(join(dir, 'nuget.config'), 'utf8');
+    expect(config).toMatch(/<packageSources>\s*<clear \/>\s*<add key="nuget\.org" value="https:\/\/api\.nuget\.org\/v3\/index\.json" protocolVersion="3" \/>\s*<\/packageSources>/);
+    expect(config).toMatch(/<disabledPackageSources>\s*<clear \/>\s*<\/disabledPackageSources>/);
+    expect(config).toMatch(/<packageSourceMapping>\s*<clear \/>\s*<\/packageSourceMapping>/);
+    // The head's own file in a subdir is untouched, and nothing else is made.
+    expect(readFileSync(join(dir, 'src', 'Directory.Build.props'), 'utf8')).toBe(sub);
+    expect(readFileSync(join(dir, 'src', 'nuget.config'), 'utf8')).toBe('<configuration />\n');
+    expect(readdirSync(dir).sort()).toEqual(['Directory.Build.props', 'Directory.Build.targets', 'Directory.Packages.props', 'Directory.Solution.props', 'Directory.Solution.targets', 'nuget.config', 'src']);
+    expect(existsSync(join(dir, 'global.json'))).toBe(false);
+  });
+
+  it('the head\'s own root files win: no stub over them (nuget.config in any case; an MSBuild name exactly, or a case variant on a case-insensitive file system)', () => {
+    tmp = mkdtempSync(join(tmpdir(), 'omg-defstub-'));
+    const texts = ['<Project><!-- head packages --></Project>\n', '<configuration><!-- head --></configuration>\n', '{ "sdk": { "version": "10.0.101" } }\n', '-p:X=1\n'];
+    const dir = join(tmp, 'tree');
+    const r = writeDefinitionTree(dir, [
+      ['Directory.Packages.props', id(texts[0]), '100644'], ['NuGet.Config', id(texts[1]), '100644'], ['global.json', id(texts[2]), '100644'], ['Directory.Build.rsp', id(texts[3]), '100644'],
+      ['directory.build.props', id(texts[0]), '100644'],
+    ], (o) => all(o, texts));
+    expect('files' in r).toBe(true);
+    if (!('files' in r)) return;
+    expect(r.stubs).not.toContain('Directory.Packages.props');
+    expect(r.stubs).not.toContain('nuget.config');
+    expect(readFileSync(join(dir, 'Directory.Packages.props'), 'utf8')).toBe(texts[0]);
+    expect(readFileSync(join(dir, 'NuGet.Config'), 'utf8')).toBe(texts[1]);
+    expect(readFileSync(join(dir, 'global.json'), 'utf8')).toBe(texts[2]);
+    expect(readFileSync(join(dir, 'Directory.Build.rsp'), 'utf8')).toBe(texts[3]);
+    // `directory.build.props`: on a case-insensitive file system (Windows, macOS) MSBuild opens it as Directory.Build.props, so no stub;
+    // on Linux MSBuild matches names exactly and never reads it, so the stub stops the walk there.
+    if (process.platform === 'win32' || process.platform === 'darwin') {
+      expect(r.stubs).not.toContain('Directory.Build.props');
+      expect(readFileSync(join(dir, 'Directory.Build.props'), 'utf8')).toBe(texts[0]);
+    } else {
+      expect(r.stubs).toContain('Directory.Build.props');
+    }
   });
 });
 

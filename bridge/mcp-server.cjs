@@ -65928,6 +65928,8 @@ function humanReviewShapeProblem(s) {
   if (s.nugetRestore !== void 0) {
     const n = s.nugetRestore;
     if (s.forgeKind !== "local" || typeof n !== "object" || n === null || !isStr2(n.head) || !HEX409.test(n.head) || !isStr2(n.definition) || !HEX64.test(n.definition)) return "nugetRestore";
+    if (n.outcome !== void 0 && n.outcome !== "passed" && n.outcome !== "failed" && n.outcome !== "not-run") return "nugetRestore";
+    if (n.exit !== void 0 && (typeof n.exit !== "number" || !Number.isInteger(n.exit))) return "nugetRestore";
   }
   if (s.gitTransportPlainHead !== void 0 && (!isStr2(s.gitTransportPlainHead) || !HEX409.test(s.gitTransportPlainHead))) return "gitTransportPlainHead";
   if (s.testDeltaExcusedHead !== void 0 && (!isStr2(s.testDeltaExcusedHead) || !HEX409.test(s.testDeltaExcusedHead))) return "testDeltaExcusedHead";
@@ -67803,7 +67805,7 @@ function strayDotnetDefinitionFiles(untracked) {
   return untracked.filter((p) => !underDotnetBuildDir(p) && !inPackageTree(p) && isDotnetDefinitionFile(p));
 }
 function trackedPackageTreeProjects(tracked) {
-  return tracked.filter((p) => inPackageTree(p) && isDotnetDefinitionFile(p));
+  return tracked.filter((p) => inPackageTree(p) && isDotnetBuildableFile(p));
 }
 function dotnetSource(args, shown) {
   const sub = args[0]?.toLowerCase();
@@ -67913,7 +67915,7 @@ function gateDefinition(sources, read, list) {
     return [s.path, s.scripts.map((k) => [k, Object.prototype.hasOwnProperty.call(scripts, k) ? scripts[k] : null])];
   })]);
 }
-var import_child_process23, import_fs81, import_os18, import_path97, LOCAL_GATE_TAIL_CHARS, LOCAL_GATE_STALE_GRACE_MS, STREAM_KEEP_CHARS, KILL_DEADLINE_MS, EXIT_DRAIN_MS, NODE_SCRIPTS2, npmCliHint, keepTail, defaultLocalGateRunner, realOrResolved, isLink2, runIdAt, tailOf, NPM_TEST, NPM_RUN, PM_CONFIG_FILES, DIR_FLAGS, CONFIG_FLAGS, WORKSPACE_FLAGS, PM_NON_SCRIPT, VALUE_FLAGS, DOTNET_DEFINITION_PATTERNS, DOTNET_TEST_CONFIG_PATTERNS, foldedName, basenameOf, openedBasename, isDotnetDefinitionFile, DOTNET_PROJECT_PATTERNS, isDotnetProjectFile, DOTNET_GATE_SUBCOMMANDS, DOTNET_ADAPTER_OPTIONS, DOTNET_BUILD_DIR_SOURCES, shellPath, gateSourcePathspec, npxUnresolved, describeGateSources;
+var import_child_process23, import_fs81, import_os18, import_path97, LOCAL_GATE_TAIL_CHARS, LOCAL_GATE_STALE_GRACE_MS, STREAM_KEEP_CHARS, KILL_DEADLINE_MS, EXIT_DRAIN_MS, NODE_SCRIPTS2, npmCliHint, keepTail, defaultLocalGateRunner, realOrResolved, isLink2, runIdAt, tailOf, NPM_TEST, NPM_RUN, PM_CONFIG_FILES, DIR_FLAGS, CONFIG_FLAGS, WORKSPACE_FLAGS, PM_NON_SCRIPT, VALUE_FLAGS, DOTNET_DEFINITION_PATTERNS, DOTNET_TEST_CONFIG_PATTERNS, foldedName, basenameOf, openedBasename, isDotnetDefinitionFile, DOTNET_PROJECT_PATTERNS, isDotnetProjectFile, isDotnetBuildableFile, DOTNET_GATE_SUBCOMMANDS, DOTNET_ADAPTER_OPTIONS, DOTNET_BUILD_DIR_SOURCES, shellPath, gateSourcePathspec, npxUnresolved, describeGateSources;
 var init_local_gate = __esm({
   "src/factory/run/local-gate.ts"() {
     "use strict";
@@ -68020,6 +68022,7 @@ var init_local_gate = __esm({
     isDotnetDefinitionFile = basenameMatcher(DOTNET_DEFINITION_PATTERNS);
     DOTNET_PROJECT_PATTERNS = ["*.sln", "*.slnx", "*.csproj", "*.fsproj", "*.vbproj"];
     isDotnetProjectFile = basenameMatcher(DOTNET_PROJECT_PATTERNS);
+    isDotnetBuildableFile = basenameMatcher(["*.sln", "*.slnx", "*.slnf", "*.*proj"]);
     DOTNET_GATE_SUBCOMMANDS = /* @__PURE__ */ new Set(["build", "test"]);
     DOTNET_ADAPTER_OPTIONS = /* @__PURE__ */ new Set(["--test-adapter-path", "-a"]);
     DOTNET_BUILD_DIR_SOURCES = [...DOTNET_BUILD_DIRS].map((d) => ({ path: `${d}/**`, pattern: true, buildDir: true }));
@@ -68134,7 +68137,20 @@ function writeDefinitionTree(dir, entries, blobs) {
       return { problem: `the pinned definition file ${p} could not be written to the definition tree (${error62.code ?? String(error62)})` };
     }
   }
-  return { files: pinned.map(([p]) => p).sort() };
+  const atRoot = pinned.map(([p]) => p).filter((p) => !p.includes("/"));
+  const stubs = [];
+  for (const [name, content] of DEFINITION_TREE_STUBS) {
+    const nuget = name === "nuget.config";
+    if (atRoot.some((p) => nuget ? p.toLowerCase() === name : p === name)) continue;
+    try {
+      (0, import_node_fs18.writeFileSync)((0, import_node_path19.join)(root, name), content, { flag: "wx" });
+      stubs.push(name);
+    } catch (error62) {
+      if (error62.code === "EEXIST") continue;
+      return { problem: `the definition tree's ${name} could not be written (${error62.code ?? String(error62)})` };
+    }
+  }
+  return { files: pinned.map(([p]) => p).sort(), stubs };
 }
 function removeEngineDir(dir, root) {
   let st;
@@ -68156,9 +68172,14 @@ function missingDefinitionFile(output2, tree) {
   const m = /error (?:MSB4019|MSB3202): [^"\r\n]*"([^"\r\n]+)"/.exec(output2);
   if (!m) return void 0;
   const rel = (0, import_node_path19.relative)((0, import_node_path19.resolve)(tree), (0, import_node_path19.resolve)(m[1]));
-  return rel && !rel.startsWith("..") && !(0, import_node_path19.isAbsolute)(rel) ? rel.split(import_node_path19.sep).join("/") : m[1];
+  if (rel && !rel.startsWith("..") && !(0, import_node_path19.isAbsolute)(rel)) return visibleLine(rel.split(import_node_path19.sep).join("/"));
+  return JSON.stringify(visibleLine(m[1]).slice(0, 200));
 }
-var import_node_crypto8, import_node_fs18, import_node_path19, NUGET_RESTORE_ERROR, BUILD_OR_TEST_STARTED, isNugetOrg, nugetRunPackagesDir, nugetDefinitionTreeDir, WINDOWS_DEVICE, GATE_INSTALL_SANDBOXED_HINT, NUGET_PRIVATE_FEED_UNSUPPORTED;
+function restoreApprovalNote(platform) {
+  const note = '. With factory.run.gateInstall "sandboxed", approving with --allow-gate-change also lets the engine run dotnet restore on these definition files with api.nuget.org reachable';
+  return platform === "win32" ? `${note}; on Windows the MSBuild targets in these files run during that restore, and loopback and your local network are reachable from it too` : note;
+}
+var import_node_crypto8, import_node_fs18, import_node_path19, NUGET_RESTORE_ERROR, BUILD_OR_TEST_STARTED, isNugetOrg, nugetRunPackagesDir, nugetDefinitionTreeDir, WINDOWS_DEVICE, EMPTY_PROJECT, DEFINITION_TREE_NUGET_CONFIG, DEFINITION_TREE_STUBS, GATE_INSTALL_SANDBOXED_HINT, NUGET_PRIVATE_FEED_UNSUPPORTED;
 var init_nuget_restore = __esm({
   "src/factory/run/nuget-restore.ts"() {
     "use strict";
@@ -68166,6 +68187,7 @@ var init_nuget_restore = __esm({
     import_node_fs18 = require("node:fs");
     import_node_path19 = require("node:path");
     init_dotnet_sandbox();
+    init_review_feedback();
     init_local_gate();
     NUGET_RESTORE_ERROR = /^\S[^\r\n]*?\.(?:sln|slnx|slnf|[A-Za-z]*proj|props|targets) : error (NU(?:110[0-3]|13\d\d)):/gm;
     BUILD_OR_TEST_STARTED = /^(?:[ \t]+\S[^\r\n]* -> (?:[A-Za-z]:[\\/]|\/|\\\\)[^\r\n]*|Test run for [^\r\n]*|Starting test execution[^\r\n]*|A total of \d+ test files? matched[^\r\n]*|(?:Passed|Failed|Skipped)![ \t][^\r\n]*|[ \t]*Build succeeded\.[^\r\n]*|[ \t]*Running tests from [^\r\n]*|[^\r\n]*\): (?:error|warning) (?:CS|FS|BC)\d{4}:[^\r\n]*)\r?$/m;
@@ -68178,6 +68200,31 @@ var init_nuget_restore = __esm({
     nugetRunPackagesDir = (gateJobRoot, slug) => (0, import_node_path19.join)(gateJobRoot, "nuget", slug);
     nugetDefinitionTreeDir = (gateJobRoot, slug) => (0, import_node_path19.join)(gateJobRoot, "nuget-defs", slug);
     WINDOWS_DEVICE = /^(?:con|prn|aux|nul|com[0-9¹²³]|lpt[0-9¹²³])(?:\..*)?$/i;
+    EMPTY_PROJECT = "<Project />\n";
+    DEFINITION_TREE_NUGET_CONFIG = [
+      '<?xml version="1.0" encoding="utf-8"?>',
+      "<configuration>",
+      "  <packageSources>",
+      "    <clear />",
+      '    <add key="nuget.org" value="https://api.nuget.org/v3/index.json" protocolVersion="3" />',
+      "  </packageSources>",
+      "  <disabledPackageSources>",
+      "    <clear />",
+      "  </disabledPackageSources>",
+      "  <packageSourceMapping>",
+      "    <clear />",
+      "  </packageSourceMapping>",
+      "</configuration>",
+      ""
+    ].join("\n");
+    DEFINITION_TREE_STUBS = [
+      ["Directory.Build.props", EMPTY_PROJECT],
+      ["Directory.Build.targets", EMPTY_PROJECT],
+      ["Directory.Solution.props", EMPTY_PROJECT],
+      ["Directory.Solution.targets", EMPTY_PROJECT],
+      ["Directory.Packages.props", EMPTY_PROJECT],
+      ["nuget.config", DEFINITION_TREE_NUGET_CONFIG]
+    ];
     GATE_INSTALL_SANDBOXED_HINT = 'set factory.run.gateInstall "sandboxed" in your user config (the engine then runs dotnet restore in the OS sandbox with only api.nuget.org reachable, on the pinned definition files only, after the gate definition check)';
     NUGET_PRIVATE_FEED_UNSUPPORTED = "private or local NuGet feeds are not supported in the sandbox yet";
   }
@@ -69263,6 +69310,124 @@ function gateTreeHasLinks(checkout) {
   } catch {
     return true;
   }
+}
+function gateTreeExactProblem(root, checkout, nestedRels, untracked, copied) {
+  const win = process.platform === "win32";
+  const P = win ? import_path102.win32 : import_path102.posix;
+  const fold5 = (s) => win ? s.toLowerCase() : s;
+  const same3 = (a, b) => fold5(P.resolve(a)) === fold5(P.resolve(b));
+  const isNodeModules = (s) => s.replace(/[. ]+$/, "").toLowerCase() === "node_modules";
+  const trees = [{ rel: "", src: (0, import_path102.join)(root, "node_modules") }, ...nestedRels.map((rel) => ({ rel, src: (0, import_path102.join)(root, ...rel.split("/"), "node_modules") }))];
+  const isDir = (p) => {
+    try {
+      return (0, import_fs85.statSync)(p).isDirectory();
+    } catch {
+      return false;
+    }
+  };
+  for (const p of untracked) {
+    const segs = p.split("/");
+    const at = segs.findIndex(isNodeModules);
+    if (at < 0) continue;
+    const rel = segs.slice(0, at).join("/");
+    if (!trees.some((t) => fold5(t.rel) === fold5(rel) && isDir(t.src))) return { problem: `${segs.slice(0, at + 1).join("/")} in the checkout is not a node_modules tree the engine built from yours, so what is in it cannot be verified`, tampered: false };
+  }
+  const insideCheckout = (p, to) => {
+    const rel = P.relative(P.resolve(checkout), to);
+    if (!rel || rel.startsWith("..") || P.isAbsolute(rel) || rel.split(/[\\/]/).some(isNodeModules)) return false;
+    try {
+      const real2 = P.relative(fold5(import_fs85.realpathSync.native(checkout)), fold5(import_fs85.realpathSync.native(p)));
+      return !!real2 && !real2.startsWith("..") && !P.isAbsolute(real2) && !real2.split(/[\\/]/).some(isNodeModules);
+    } catch {
+      return false;
+    }
+  };
+  const linkOk = (p, wants) => {
+    let to;
+    try {
+      to = P.resolve(P.dirname(p), (0, import_fs85.readlinkSync)(p));
+    } catch {
+      return false;
+    }
+    return wants.some((w) => same3(to, w)) || insideCheckout(p, to);
+  };
+  for (const t of trees) {
+    const nm = (0, import_path102.join)(checkout, ...t.rel.split("/").filter(Boolean), "node_modules");
+    const shown = `${t.rel ? `${t.rel}/` : ""}node_modules`;
+    let st;
+    try {
+      st = (0, import_fs85.lstatSync)(nm);
+    } catch {
+      continue;
+    }
+    if (!isDir(t.src)) return { problem: `${shown} in the checkout is not a tree the engine built (your checkout has no such node_modules), so what is in it cannot be verified`, tampered: false };
+    if (copied) return { problem: `${shown} is the engine's copied tree (${GATE_TREE_COPY_WHY}), whose files the engine cannot compare with yours cheaply`, tampered: false };
+    let srcReal;
+    try {
+      srcReal = import_fs85.realpathSync.native(t.src);
+    } catch (error62) {
+      return { problem: `your ${t.src} cannot be read (${error62 instanceof Error ? error62.message : String(error62)})`, tampered: false };
+    }
+    if (st.isSymbolicLink()) {
+      let real2 = "";
+      try {
+        real2 = import_fs85.realpathSync.native(nm);
+      } catch {
+      }
+      if (real2 && fold5(real2) === fold5(srcReal)) continue;
+      return { problem: `${shown} is a link that does not resolve to your node_modules`, tampered: true };
+    }
+    if (!st.isDirectory()) return { problem: `${shown} is not a directory`, tampered: true };
+    const wants = (name) => [(0, import_path102.join)(srcReal, name), (0, import_path102.join)(t.src, name)];
+    try {
+      const present = /* @__PURE__ */ new Set();
+      for (const name of (0, import_fs85.readdirSync)(nm)) {
+        present.add(fold5(name));
+        const p = (0, import_path102.join)(nm, name);
+        const e = (0, import_fs85.lstatSync)(p);
+        if (name === GATE_TREE_MARKER) {
+          if (!e.isFile()) return { problem: `${shown}/${name} is not the engine's marker file`, tampered: true };
+          continue;
+        }
+        if (GATE_CACHE_DIRS.includes(name)) {
+          if (e.isSymbolicLink() || !e.isDirectory()) return { problem: `${shown}/${name} is not the fresh cache dir the engine made`, tampered: true };
+          continue;
+        }
+        if (e.isSymbolicLink()) {
+          if (!linkOk(p, wants(name))) return { problem: `${shown}/${name} is a link to somewhere else than your node_modules/${name}`, tampered: true };
+        } else if (e.isDirectory() && name.startsWith("@")) {
+          const inner = /* @__PURE__ */ new Set();
+          for (const c of (0, import_fs85.readdirSync)(p)) {
+            inner.add(fold5(c));
+            const cp = (0, import_path102.join)(p, c);
+            if (!(0, import_fs85.lstatSync)(cp).isSymbolicLink() || !linkOk(cp, wants((0, import_path102.join)(name, c)))) return { problem: `${shown}/${name}/${c} is not the engine's link to your node_modules/${name}/${c}`, tampered: true };
+          }
+          for (const c of (0, import_fs85.readdirSync)((0, import_path102.join)(t.src, name))) {
+            if (!isDir((0, import_path102.join)(t.src, name, c)) || inner.has(fold5(c)) || "skip" in workspaceLinkTarget((0, import_path102.join)(t.src, name, c), root, checkout)) continue;
+            return { problem: `${shown}/${name}/${c}, which the engine links to yours, is gone`, tampered: true };
+          }
+        } else if (e.isFile()) {
+          const from = (0, import_path102.join)(t.src, name);
+          let mine = null;
+          try {
+            mine = (0, import_fs85.statSync)(from);
+          } catch {
+          }
+          if (!mine?.isFile() || mine.size !== e.size || mine.size > GATE_TREE_FILE_MAX_BYTES || !(0, import_fs85.readFileSync)(from).equals((0, import_fs85.readFileSync)(p))) return { problem: `${shown}/${name} is not the engine's copy of your node_modules/${name}`, tampered: true };
+        } else {
+          return { problem: `${shown}/${name} is a ${e.isDirectory() ? "plain directory" : "special file"} where the engine links your node_modules/${name}`, tampered: true };
+        }
+      }
+      for (const name of (0, import_fs85.readdirSync)(t.src)) {
+        if (name === GATE_TREE_MARKER || GATE_CACHE_DIRS.includes(name) || present.has(fold5(name)) || !isDir((0, import_path102.join)(t.src, name))) continue;
+        if ("skip" in workspaceLinkTarget((0, import_path102.join)(t.src, name), root, checkout)) continue;
+        return { problem: `${shown}/${name}, which the engine links to your node_modules/${name}, is gone`, tampered: true };
+      }
+    } catch (error62) {
+      return { problem: `${shown} cannot be read (${error62 instanceof Error ? error62.message : String(error62)})`, tampered: false };
+    }
+  }
+  return null;
 }
 function nestedTreeDirs(checkout) {
   const rels = new Set(nestedTrees.get(checkout) ?? []);
@@ -75891,6 +76056,80 @@ var init_progress2 = __esm({
   }
 });
 
+// src/factory/run/dotnet-package-refs.ts
+function decodeXml(value) {
+  return value.replace(/&(?:#x([0-9a-f]+)|#(\d+)|(amp|lt|gt|quot|apos));/gi, (whole, hex3, dec, name) => {
+    if (hex3 || dec) {
+      const code = Number.parseInt(hex3 ?? dec, hex3 ? 16 : 10);
+      return Number.isFinite(code) && code >= 0 && code <= 1114111 ? String.fromCodePoint(code) : whole;
+    }
+    return { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" }[name.toLowerCase()] ?? whole;
+  });
+}
+function hasNodeModulesSegment(value) {
+  return value.split(/[\\/'"`,;()[\]\s|]+/).some((s) => s.replace(/[. ]+$/, "").toLowerCase() === "node_modules");
+}
+function attributeValues(xml, element, attr) {
+  const out = [];
+  const text3 = xml.replace(XML_COMMENT, "");
+  const tag = new RegExp(`<${element}(?=[\\s/>])([^>]*)>`, "gi");
+  const attribute = new RegExp(`(?:^|\\s)${attr}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`, "i");
+  for (const m of text3.matchAll(tag)) {
+    const a = attribute.exec(m[1]);
+    if (a) out.push(decodeXml(a[1] ?? a[2] ?? ""));
+  }
+  return out;
+}
+function fileKind(path15) {
+  const base = (path15.split("/").pop() ?? path15).toLowerCase();
+  if (base === "nuget.config") return "nuget";
+  if (base.endsWith(".sln")) return "sln";
+  if (base.endsWith(".slnx")) return "slnx";
+  if (base.endsWith(".slnf")) return "slnf";
+  if (/\.(?:[a-z0-9]*proj|props|targets|tasks|projitems|user)$/.test(base)) return "msbuild";
+  return null;
+}
+function nodeModulesReferences(path15, text3) {
+  const kind = fileKind(path15);
+  const values = [];
+  if (kind === "msbuild") {
+    for (const v of attributeValues(text3, "Import", "Project")) values.push(["Import Project", v]);
+    for (const v of attributeValues(text3, "ProjectReference", "Include")) values.push(["ProjectReference Include", v]);
+    for (const v of attributeValues(text3, "UsingTask", "AssemblyFile")) values.push(["UsingTask AssemblyFile", v]);
+  } else if (kind === "slnx") {
+    for (const v of attributeValues(text3, "Project", "Path")) values.push(["solution project", v]);
+  } else if (kind === "sln") {
+    for (const m of text3.matchAll(/^\s*Project\s*\([^)]*\)\s*=\s*"[^"]*"\s*,\s*"([^"]*)"/gim)) values.push(["solution project", m[1]]);
+  } else if (kind === "slnf") {
+    let parsed;
+    try {
+      parsed = JSON.parse(text3.charCodeAt(0) === 65279 ? text3.slice(1) : text3);
+    } catch {
+      parsed = void 0;
+    }
+    const solution = parsed?.solution;
+    if (solution && typeof solution === "object") {
+      if (typeof solution.path === "string") values.push(["solution filter path", solution.path]);
+      if (Array.isArray(solution.projects)) {
+        for (const p of solution.projects) if (typeof p === "string") values.push(["solution filter project", p]);
+      }
+    } else {
+      for (const m of text3.matchAll(/"((?:[^"\\]|\\.)*)"/g)) values.push(["solution filter string", m[1]]);
+    }
+  } else if (kind === "nuget") {
+    for (const v of attributeValues(text3, "add", "value")) if (!/^https?:\/\//i.test(v.trim())) values.push(["nuget.config value", v]);
+  }
+  return values.filter(([, v]) => hasNodeModulesSegment(v)).map(([what, v]) => `${what} ${JSON.stringify(v.slice(0, 200))}`);
+}
+var XML_COMMENT, readsForNodeModulesRefs;
+var init_dotnet_package_refs = __esm({
+  "src/factory/run/dotnet-package-refs.ts"() {
+    "use strict";
+    XML_COMMENT = /<!--[\s\S]*?-->/g;
+    readsForNodeModulesRefs = (path15) => fileKind(path15) !== null;
+  }
+});
+
 // src/factory/run/parallel.ts
 function readTrustedBaseLayerAtRef(exec, root, base, ref, user, warn = () => {
 }) {
@@ -76540,6 +76779,7 @@ var init_engine = __esm({
     init_review_guard();
     init_private_run();
     init_nuget_restore();
+    init_dotnet_package_refs();
     init_private_store();
     init_review_output();
     init_plan_rules();
@@ -77064,6 +77304,30 @@ var init_engine = __esm({
        * copies and the prepare checks' process records go: the run dir in the
        * private layout (review-483 L8), the repository's OMC state root otherwise.
        */
+      /** gateDefinitionAt's answers, per gate argv and commit (a commit's definition is fixed). */
+      definitionAt = /* @__PURE__ */ new Map();
+      /**
+       * The local gate's definition hash at the commit `sha` (the hash
+       * gateDefinitionTrustedAt and state.nugetRestore hold), or null when the
+       * gate has no definition sources, `sha` is not a full sha, or it cannot be
+       * read (the caller then grants nothing).
+       */
+      gateDefinitionAt(sha3) {
+        const at = sha3.trim();
+        const gate = this.o.forge?.config.kind === "local" ? this.o.forge.config.local?.gate : void 0;
+        if (!gate || gate.length === 0 || !HEX4018.test(at)) return null;
+        const key = `${gate.join("\0")}\0${at}`;
+        if (this.definitionAt.has(key)) return this.definitionAt.get(key);
+        let definition = null;
+        try {
+          const { sources, unresolved } = gateDefinitionSources(gate);
+          if (!unresolved && sources.length > 0) definition = this.gateDefinitionHasher(sources).at(at);
+        } catch {
+          definition = null;
+        }
+        this.definitionAt.set(key, definition);
+        return definition;
+      }
       /** The run's own NuGet packages folder (nuget-restore.ts): under the gate job root, removed with the run (omg factory run clean). */
       nugetPackagesDir() {
         return nugetRunPackagesDir(this.gateJobRoot(), runSlug(this.key));
@@ -77083,7 +77347,7 @@ var init_engine = __esm({
        * layout, your checkout (its budget ledger stays denied; L1) and the job
        * root under the run dir (L8).
        */
-      sandboxRun(req, fallbackContainer) {
+      sandboxRun(req, fallbackContainer, forCommit) {
         const p = this.privateRun();
         const nested = trustedNestedRels(this.o.root, req.cwd, this.baseWorkspaces()).map((rel) => (0, import_path117.join)(this.o.root, ...rel.split("/"), "node_modules"));
         const settings = this.gatesModeCache?.container ?? fallbackContainer;
@@ -77091,7 +77355,15 @@ var init_engine = __esm({
         const container = settings && this.containerImageId ? { ...settings, image: this.containerImageId } : settings;
         const mtp = isDotnetExe(req.exe) && this.dotnetMtpBase();
         const nugetDir = this.nugetPackagesDir();
-        const nuget = !req.nugetPackages && req.purpose !== "calibrate" && isDotnetExe(req.exe) && this.state.nugetRestore && (0, import_fs98.existsSync)(nugetDir) ? { nugetPackages: { dir: nugetDir, writable: false } } : {};
+        const restored = this.state.nugetRestore;
+        const restoredFor = (commit, definition) => {
+          try {
+            return this.gateDefinitionAt(commit()) === definition;
+          } catch {
+            return false;
+          }
+        };
+        const nuget = !req.nugetPackages && req.purpose !== "calibrate" && isDotnetExe(req.exe) && restored && forCommit && (0, import_fs98.existsSync)(nugetDir) && restoredFor(forCommit, restored.definition) ? { nugetPackages: { dir: nugetDir, writable: false } } : {};
         const r = this.o.gateSandbox({ ...req, ...nuget, ...mtp ? { dotnetMtp: true } : {}, nodeModulesTarget: (0, import_path117.join)(this.o.root, "node_modules"), ...nested.length > 0 ? { nestedNodeModulesTargets: nested } : {}, ...p ? { mainRoot: this.o.root, jobRoot: this.gateJobRoot() } : {}, ...container ? { container, runLabel: containerRunLabel(this.o.root, this.key) } : {} });
         if (!container) return r;
         return r.then((out) => {
@@ -77323,8 +77595,8 @@ var init_engine = __esm({
        * default location, else the trusted base's committed config:
        * trustedPrepareChecks); or the trusted base commit's tree
        * (state.baseSha, `git ls-tree -r`, never the PR head or a working tree)
-       * holds a solution or project file (isDotnetProjectFile: *.sln, *.slnx,
-       * *.*proj). Cached per base sha, so no commit of the PR's turns it on or
+       * holds a solution or a C#, F# or VB project file (isDotnetProjectFile:
+       * *.sln, *.slnx, *.csproj, *.fsproj, *.vbproj). Cached per base sha, so no commit of the PR's turns it on or
        * off mid-run; a base that moves (a merge on the base branch) is read
        * again. Submodule trees are not descended into. The gate and prepare
        * checks need no such rule: the sandbox runner treats each command whose
@@ -78915,7 +79187,7 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
         try {
           const commit = this.gateCfg?.loaded.config?.trustedBaseCommit ?? this.state.baseSha;
           const mode = resolveGateInstall(this.runUserConfig(), this.trustedBaseLayer(commit)).mode;
-          return mode === "sandboxed" ? '. With factory.run.gateInstall "sandboxed", approving with --allow-gate-change also lets the engine run dotnet restore on these definition files with api.nuget.org reachable' : "";
+          return mode === "sandboxed" ? restoreApprovalNote(process.platform) : "";
         } catch {
           return "";
         }
@@ -79805,7 +80077,7 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
           let headTests = null;
           let r;
           try {
-            r = this.o.gateSandbox ? await this.withGitView(checkedOut, label, (view) => this.sandboxRun({ purpose: "prepare", argv: c.argv, exe: c.exe, args: report ? [...c.args, ...vitestReportArgs(report)] : c.args, cwd: path15, commonGitDir: at.commonGitDir, timeoutMs: PREPARE_CHECK_TIMEOUT_MS, ...at.gates.requireDeniedPaths ? { requireDeniedPaths: true } : {}, ...report ? { reportFile: report } : {}, ...view })) : { ran: false, reason: "no OS sandbox runner was given to the engine" };
+            r = this.o.gateSandbox ? await this.withGitView(checkedOut, label, (view) => this.sandboxRun({ purpose: "prepare", argv: c.argv, exe: c.exe, args: report ? [...c.args, ...vitestReportArgs(report)] : c.args, cwd: path15, commonGitDir: at.commonGitDir, timeoutMs: PREPARE_CHECK_TIMEOUT_MS, ...at.gates.requireDeniedPaths ? { requireDeniedPaths: true } : {}, ...report ? { reportFile: report } : {}, ...view }, void 0, checkedOut)) : { ran: false, reason: "no OS sandbox runner was given to the engine" };
           } finally {
             if (report) headTests = readVitestReport(report, path15);
           }
@@ -79843,7 +80115,7 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
                 let fTests = null;
                 let fr;
                 try {
-                  fr = await this.withGitView(checkedOut, label, (view) => this.sandboxRun({ purpose: "prepare", argv: c.argv, exe: c.exe, args: freport ? [...c.args, ...vitestReportArgs(freport)] : c.args, cwd: path15, commonGitDir: at.commonGitDir, timeoutMs: PREPARE_CHECK_TIMEOUT_MS, ...freport ? { reportFile: freport } : {}, ...view }, fallback), true);
+                  fr = await this.withGitView(checkedOut, label, (view) => this.sandboxRun({ purpose: "prepare", argv: c.argv, exe: c.exe, args: freport ? [...c.args, ...vitestReportArgs(freport)] : c.args, cwd: path15, commonGitDir: at.commonGitDir, timeoutMs: PREPARE_CHECK_TIMEOUT_MS, ...freport ? { reportFile: freport } : {}, ...view }, fallback, checkedOut), true);
                 } finally {
                   if (freport) fTests = readVitestReport(freport, path15);
                 }
@@ -80336,10 +80608,15 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
         const inBuild = (p) => dotnetBuildDirIndex(p) >= 0;
         const nestedRepos = (untracked) => untracked.filter((p) => p.endsWith("/") && !inBuild(p) && !inPackageTree(p));
         const list = (paths) => `${paths.slice(0, 5).join(", ")}${paths.length > 5 ? `, ${paths.length - 5} more` : ""}`;
-        if (read.packageTreeProjects && read.packageTreeProjects.length > 0) {
-          this.gate("gates", `a tracked .NET project under a node_modules directory is not supported: build output there is not cleaned (${head.slice(0, 12)} tracks ${list(read.packageTreeProjects)}), so the dotnet gate did not run; move the .NET files out of node_modules on the branch, or cancel with ${cancelCommand(this.key)}; then rerun ${this.resume}`);
+        const note = (text3) => this.save((x) => ({ ...x, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: text3 }] }));
+        const noClean = gates.mode !== "enforced" || !!gates.container;
+        const noCleanWhy = gates.container ? "the gate runs in the gate container on a copy of the checkout" : "the gates run without the OS sandbox, and the engine never deletes in a checkout the PR's code controls outside it";
+        const pkgProjects = read.packageTreeProjects ?? [];
+        if (pkgProjects.length > 0 && !noClean) {
+          this.gate("gates", `a tracked .NET project or solution under a node_modules directory is not supported in the OS sandbox: its build output there is not cleaned (${head.slice(0, 12)} tracks ${list(pkgProjects)}), so the dotnet gate did not run; move those files out of node_modules on the base branch, or untrack them, or cancel with ${cancelCommand(this.key)}; then rerun ${this.resume}`);
           return false;
         }
+        if (pkgProjects.length > 0) note(`${head.slice(0, 12)} tracks .NET project or solution file(s) under a node_modules directory (${list(pkgProjects)}), whose build output there is not cleaned before the dotnet gate: ${noCleanWhy}; the gate may reuse it`);
         const recovery = `inspect ${checkout}, delete them by hand or start again with a fresh checkout (${this.freshCheckoutRecovery()}), then rerun ${this.resume}`;
         const nested = nestedRepos(read.untracked);
         if (nested.length > 0) {
@@ -80353,10 +80630,8 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
         }
         const leftovers = read.untracked.filter(inBuild);
         if (leftovers.length === 0) return true;
-        const note = (text3) => this.save((x) => ({ ...x, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: text3 }] }));
-        if (gates.mode !== "enforced" || gates.container) {
-          const why = gates.container ? "the gate runs in the gate container on a copy of the checkout" : "the gates run without the OS sandbox, and the engine never deletes in a checkout the PR's code controls outside it";
-          note(`left ${leftovers.length} untracked build output path${leftovers.length === 1 ? "" : "s"} under bin/, obj/ or artifacts/ in the prepare checkout before the dotnet gate on ${head.slice(0, 12)}: ${why}; the gate may reuse them`);
+        if (noClean) {
+          note(`left ${leftovers.length} untracked build output path${leftovers.length === 1 ? "" : "s"} under bin/, obj/ or artifacts/ in the prepare checkout before the dotnet gate on ${head.slice(0, 12)}: ${noCleanWhy}; the gate may reuse them`);
           return true;
         }
         let live;
@@ -80457,7 +80732,8 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
           return park(`${what}: ${NUGET_PRIVATE_FEED_UNSUPPORTED} (${nuget.sources.join(", ") || "a feed answered 401 or 403"}); the sandbox never gets your NuGet.Config or its credentials. Make the packages come from nuget.org, or ${yourself}`);
         }
         if (!sandboxed) return park(`${what}; the gate ran without the OS sandbox or in the gate container, where the engine runs no restore step: check that the packages and versions exist and the feed is reachable, or ${yourself}`);
-        if (this.state.nugetRestore?.head === head) return park(`${what}, even after the sandboxed dotnet restore for this head ran${localDetailNote(this.key, "the gate output")}; ${yourself}`);
+        const done = this.state.nugetRestore;
+        if (done?.head === head && done.outcome === "passed") return park(`${what}, even after the sandboxed dotnet restore for this head ran and passed${localDetailNote(this.key, "the gate output")}; ${yourself}`);
         let mode;
         try {
           mode = resolveGateInstall(this.runUserConfig(), this.trustedBaseLayer(this.gateCfg?.loaded.config?.trustedBaseCommit)).mode;
@@ -80538,6 +80814,9 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
         } finally {
           this.removeTree(tree, jobRoot);
         }
+        const outcome = !r.ran ? "not-run" : r.status === 0 && !r.timedOut ? "passed" : "failed";
+        const exit = r.ran && Number.isInteger(r.status) ? { exit: r.status } : {};
+        this.save((x) => ({ ...x, nugetRestore: { head, definition: trusted.definition, outcome, ...exit } }));
         if (checkoutGitLink(checkout).hash !== linkBefore) {
           return { name: "lane-tampered", reason: `the engine's prepare checkout ${checkout} has a .git file that changed while the sandboxed dotnet restore ran, so the local gate did not run; inspect and remove it by hand, then rerun ${this.resume}` };
         }
@@ -80549,16 +80828,111 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
         if (now !== head) {
           return { name: "gates", reason: `the engine's prepare checkout ${checkout} is ${now ? `at ${now.slice(0, 12)}` : "unreadable"} after the sandboxed dotnet restore, not at ${head.slice(0, 12)} it restored the definitions of, so the local gate did not run; rerun ${this.resume} after omg factory run clean` };
         }
-        if (!r.ran) return { name: GATE_INSTALL_GATE, reason: `${what} could not run in the OS sandbox (${r.reason}); fix that, or set factory.run.gateInstall "park", then rerun ${this.resume}` };
+        if (!r.ran) return { name: GATE_INSTALL_GATE, reason: `${what} could not run in the OS sandbox (${r.reason}), so nothing was restored; fix that, or set factory.run.gateInstall "park", then rerun ${this.resume} (a rerun tries the restore again)` };
         if (r.status !== 0 || r.timedOut) {
           const failure3 = classifyNugetFailure(r.output);
           const needs = failure3 ? void 0 : missingDefinitionFile(r.output, tree);
           const why = needs !== void 0 ? `the restore needs a file that is not a pinned definition file: ${needs} (the engine restores on the head's pinned definition files only, so MSBuild imports, tasks and scripts outside them are absent; restore the PR branch's packages into your NuGet global packages folder yourself, or keep the restore's inputs in definition files)` : failure3?.kind === "private-feed" ? `${NUGET_PRIVATE_FEED_UNSUPPORTED} (${failure3.sources.join(", ") || "a feed answered 401 or 403"}), and the sandbox never gets your NuGet.Config or its credentials` : `a package or version the project files name may not exist on nuget.org${failure3 ? ` (${failure3.codes.join(", ")})` : ""}`;
-          return { name: GATE_INSTALL_GATE, reason: `${what} with only api.nuget.org reachable failed (exit ${r.status}${r.timedOut ? ", timed out" : ""}): ${why}. That needs a human, not a ci-fix lane${localDetailNote(this.key, "its output")}: fix it on the branch (a change to the definition files parks at gate-definition-changed for your approval), then rerun ${this.resume}; or ${cancelCommand(this.key)}`, detail: parkTail(r.output) };
+          return { name: GATE_INSTALL_GATE, reason: `${what} with only api.nuget.org reachable failed (exit ${r.status}${r.timedOut ? ", timed out" : ""}): ${why}. That needs a human, not a ci-fix lane${localDetailNote(this.key, "its output")}: fix it on the branch (a change to the definition files parks at gate-definition-changed for your approval), then rerun ${this.resume}, which runs the restore again (for a feed that failed only for now, rerun as it is); or ${cancelCommand(this.key)}`, detail: parkTail(r.output) };
         }
         const seconds = Math.round((this.clock() - started) / 1e3);
-        this.save((x) => ({ ...x, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `dotnet restore ran in the OS sandbox with only api.nuget.org reachable in the engine's definition tree of ${head.slice(0, 12)} (${written.files.length} pinned definition file(s), nothing else; ${seconds} s); new packages went to the run's own packages folder, and the gate runs again offline in the prepare checkout` }] }));
+        this.save((x) => ({ ...x, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `dotnet restore ran in the OS sandbox with only api.nuget.org reachable in the engine's definition tree of ${head.slice(0, 12)} (${written.files.length} pinned definition file(s), nothing else${written.stubs.length > 0 ? `, and the engine's ${written.stubs.join(", ")} at its root, which stop MSBuild's and NuGet's walk up out of the tree` : ""}; ${seconds} s); new packages went to the run's own packages folder, and the gate runs again offline in the prepare checkout` }] }));
         return null;
+      }
+      /**
+       * Before a dotnet gate for `head`: when the run's packages folder was
+       * restored for another definition (state.nugetRestore), it goes
+       * (removeEngineDir, lstat-checked and below the gate job root) and the
+       * record with it, so a head that left the approved definitions (an
+       * approved H1 whose restore ran its targets, then a lane back at the base's
+       * files at H2) never builds on what H1's restore wrote; sandboxRun grants
+       * the folder by definition too. False when it parked.
+       */
+      nugetFolderReadyFor(head) {
+        const restored = this.state.nugetRestore;
+        if (!restored || this.gateDefinitionAt(head) === restored.definition) return true;
+        const dir = this.nugetPackagesDir();
+        try {
+          removeEngineDir(dir, this.gateJobRoot());
+        } catch (error62) {
+          this.gate("gates", `the run's NuGet packages folder ${dir} was restored for other gate definitions than ${head.slice(0, 12)}'s and could not be removed (${errText6(error62)}), so the dotnet gate did not run; remove it by hand, then rerun ${this.resume}`);
+          return false;
+        }
+        this.save((x) => {
+          const { nugetRestore: _n, ...rest } = x;
+          return { ...rest, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `emptied the run's NuGet packages folder before the dotnet gate on ${head.slice(0, 12)}: it was restored for the definition files of ${restored.head.slice(0, 12)}, which ${head.slice(0, 12)} does not have` }] };
+        });
+        return true;
+      }
+      /** packageTreeImports' answers per head (a commit's files are fixed). */
+      packageImportsAt;
+      /**
+       * The references into a node_modules dir in `head`'s pinned definition
+       * files (dotnet-package-refs.ts), read from git objects (never a
+       * checkout), each as `<path>: <what> "<value>"`. Files under a
+       * node_modules dir are left out (a tracked package's own files; MSBuild
+       * reads them only through such a reference). Throws when git fails.
+       */
+      packageTreeImports(head) {
+        if (this.packageImportsAt?.head === head) return this.packageImportsAt.refs;
+        const ls = this.exec("git", ["ls-tree", "-r", "-z", "--full-tree", head], { cwd: this.o.root, env: TRUSTED_READ_ENV });
+        if (ls.status !== 0) throw new FactoryStepError(`git ls-tree ${head.slice(0, 12)} failed: ${oneLine(ls.stderr, 300)}`);
+        const files = [];
+        for (const line of ls.stdout.split("\0")) {
+          const tab = line.indexOf("	");
+          if (tab < 0) continue;
+          const [mode, type, oid] = line.slice(0, tab).split(" ");
+          const p = line.slice(tab + 1);
+          if (type === "blob" && (mode === "100644" || mode === "100755") && oid && isDotnetDefinitionFile(p) && readsForNodeModulesRefs(p) && !inPackageTree(p)) files.push([p, oid]);
+        }
+        const refs2 = [];
+        if (files.length > 0) {
+          const env2 = { ...scrubShipEnv(process.env), ...TRUSTED_READ_ENV };
+          const blobs = parseCatFileBatch(runHostGitBuffer(this.o.root, ["cat-file", "--batch"], PRIVATE_GIT_TIMEOUT_MS, env2, `${[...new Set(files.map(([, oid]) => oid))].join("\n")}
+`));
+          for (const [p, oid] of files) {
+            const bytes = blobs.get(oid);
+            if (!bytes) throw new FactoryStepError(`the blob ${oid.slice(0, 12)} of ${p} at ${head.slice(0, 12)} could not be read from git`);
+            for (const r of nodeModulesReferences(p, bytes.toString("utf8"))) refs2.push(`${p}: ${r}`);
+          }
+        }
+        this.packageImportsAt = { head, refs: refs2 };
+        return refs2;
+      }
+      /**
+       * Before a dotnet gate: when `head`'s pinned definition files reference
+       * files under a node_modules dir (packageTreeImports), the PR's code (a
+       * prepare check, sandboxed, the checkout writable) could have replaced an
+       * engine link there with its own files, which git, the clean step and the
+       * stray checks never see. In the OS sandbox the gate then runs only when
+       * the checkout's node_modules is exactly the tree the engine built
+       * (gateTreeExactProblem); a tree that differs parks at lane-tampered, one
+       * that cannot be verified (a copied tree, a node_modules the engine did not
+       * build) at gates. Unsandboxed and ack gates (the PR's code runs as you)
+       * get a history note; the gate container copies no node_modules. Inert
+       * without such references. False when it parked.
+       */
+      packageTreeImportsReady(head, checkout, read, gates) {
+        if (gates.container) return true;
+        let refs2;
+        try {
+          refs2 = this.packageTreeImports(head);
+        } catch (error62) {
+          this.gate("gates", `the dotnet gate did not run on ${head.slice(0, 12)}: its definition files could not be read to find imports from node_modules (${errText6(error62)}); rerun ${this.resume}`);
+          return false;
+        }
+        if (refs2.length === 0) return true;
+        const named = `${refs2.slice(0, 3).map((r) => oneLine(visibleLine(r), 240)).join("; ")}${refs2.length > 3 ? `; ${refs2.length - 3} more` : ""}`;
+        if (gates.mode !== "enforced") {
+          this.save((x) => ({ ...x, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `the build on ${head.slice(0, 12)} imports files from node_modules (${named}), which the PR's code can modify in the gate checkout; not verified before the dotnet gate, since the gates run without the OS sandbox (the PR's code runs as you there)` }] }));
+          return true;
+        }
+        const tree = gateTreeExactProblem(this.o.root, checkout, trustedNestedRels(this.o.root, checkout, this.baseWorkspaces()), read.untracked, this.state.gateTreeCopy === true);
+        if (!tree) return true;
+        const why = `the dotnet gate did not run on ${head.slice(0, 12)}: the build imports files from node_modules (${named}), which the PR's code can modify in the gate checkout, and ${oneLine(visibleLine(tree.problem), PARK_TAIL_CHARS)}`;
+        if (tree.tampered) this.gate("lane-tampered", `${why}; inspect ${checkout} and start again with a fresh checkout (${this.freshCheckoutRecovery()}), then rerun ${this.resume}`);
+        else this.gate("gates", `${why}; move what the build imports out of node_modules on the base branch, set factory.run.sandbox.gates "unsandboxed" in your user config (the PR's code then runs as you), or cancel with ${cancelCommand(this.key)}; then rerun ${this.resume}`);
+        return false;
       }
       /** The definition tree after the restore (removeEngineDir): a failure only warns, and the next restore removes it first. */
       removeTree(tree, jobRoot) {
@@ -80654,6 +81028,8 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
             return false;
           }
         }
+        if (dotnetGate && !this.nugetFolderReadyFor(head)) return false;
+        if (dotnetGate && !this.packageTreeImportsReady(head, checkout, read, gates)) return false;
         this.progress.heartbeat("gates", `local gate ${gate.join(" ")} on ${head.slice(0, 12)}`, this.fields());
         const input2 = { stateDir, root: this.o.root, head, gate, timeoutMinutes, checkout, ...this.o.localGate ? { runner: this.o.localGate } : {}, now: () => new Date(this.clock()) };
         const recordedLinks = recordedWorktreeGitLinks(checkout);
@@ -80678,7 +81054,7 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
               this.gate("lane-tampered", `the local gate did not run on ${head.slice(0, 12)}: ${(0, import_path117.join)(checkout, "node_modules")} (or a link in it) is not as the engine made it, so the PR's code changed it${localDetailNote(this.key, "which link")}; inspect and remove ${checkout} by hand, then rerun ${this.resume}`, oneLine(visibleLine(repointed), PARK_TAIL_CHARS));
               return false;
             }
-            out = this.o.gateSandbox ? await runLocalGate({ ...input2, mode: "enforced", sandbox: { run: (req) => this.withGitView(() => head, "the local gate", (view) => this.sandboxRun({ ...req, ...view })), commonGitDir: common, requireDeniedPaths: gates.requireDeniedPaths } }) : { started: false, reason: "no OS sandbox runner was given to the engine", sandbox: true };
+            out = this.o.gateSandbox ? await runLocalGate({ ...input2, mode: "enforced", sandbox: { run: (req) => this.withGitView(() => head, "the local gate", (view) => this.sandboxRun({ ...req, ...view }, void 0, () => head)), commonGitDir: common, requireDeniedPaths: gates.requireDeniedPaths } }) : { started: false, reason: "no OS sandbox runner was given to the engine", sandbox: true };
             if ((out.started || out.noVerdict) && this.state.sandboxedGateHead !== head) this.save((x) => ({ ...x, sandboxedGateHead: head }));
             if (!out.started && out.noVerdict) {
               if (checkoutGitLink(checkout).hash !== linkBefore) return this.gateTamperedByGate(head, checkout, stateDir);
@@ -80758,7 +81134,7 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
           let fo = null;
           let containerWhy = `it failed there on the base ${base.slice(0, 12)} before (image ${this.containerImageId})`;
           if (!skipContainer) {
-            fo = await runLocalGate({ ...input2, mode: "enforced", sandbox: { run: (req) => this.withGitView(() => head, "the local gate", (view) => this.sandboxRun({ ...req, ...view }, fallback), true), commonGitDir: common, requireDeniedPaths: false } });
+            fo = await runLocalGate({ ...input2, mode: "enforced", sandbox: { run: (req) => this.withGitView(() => head, "the local gate", (view) => this.sandboxRun({ ...req, ...view }, fallback, () => head), true), commonGitDir: common, requireDeniedPaths: false } });
             if (checkoutGitLink(checkout).hash !== linkBefore) return this.gateTamperedByGate(head, checkout, stateDir);
             if (!fo.started && fo.noVerdict) {
               this.gate(GATE_NO_VERDICT_GATE, this.gateNoVerdictReason(head, what, fo.reason));
