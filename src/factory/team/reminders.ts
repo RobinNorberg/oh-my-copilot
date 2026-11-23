@@ -9,13 +9,13 @@
  * `<state>/factory/reminders.json`; it never writes a sealed run state.
  */
 
-import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { atomicWriteFileSync, ensureDirSync } from '../../lib/atomic-write.js';
 import { lockPathFor, withFileLockSync } from '../../lib/file-lock.js';
 import { visibleLine } from '../../forge/review-feedback.js';
 import { factoryStateDir, runLabel, TERMINAL_FACTORY_PHASES, verifyFactoryIntegrity, type FactoryRunKey, type FactoryRunState } from '../run/state.js';
 import { statusArgv, validRunKey } from '../run/gate-next.js';
+import { readRegularFile } from '../attention/collect.js';
 import { pathsInText, TEAM_ROUTING_PATH, type ReadAt } from './context.js';
 import { parseRouting, routeFor } from './routing.js';
 
@@ -46,10 +46,15 @@ type RecordFile = Record<string, Record_>;
 
 export const remindersPath = (root: string): string => join(factoryStateDir(root), 'reminders.json');
 
+/** The record's size cap: a few runs' entries; a larger file is read as empty. */
+const RECORD_MAX_BYTES = 64 * 1024;
+
+/** The record through the bounded regular-file read: a link, FIFO, directory or oversize file reads as empty (never opened or followed). */
 function readRecord(path: string): RecordFile {
-  if (!existsSync(path)) return {};
+  const file = readRegularFile(path, RECORD_MAX_BYTES);
+  if (!('bytes' in file)) return {};
   try {
-    const raw = JSON.parse(readFileSync(path, 'utf8')) as unknown;
+    const raw = JSON.parse(file.bytes.toString('utf8')) as unknown;
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
     const out: RecordFile = {};
     for (const [k, v] of Object.entries(raw)) {
@@ -108,7 +113,7 @@ export function staleGateReminders(o: ReminderInput): Reminder[] {
       if (!verifyFactoryIntegrity(s)) { o.warn?.(`reminder: ${label} is unsound (its state fails the integrity seal), skipped`); continue; }
       const parkedAt = Date.parse(s.gate.at);
       if (!Number.isFinite(parkedAt)) continue;
-      // The record is lane-writable: it may only postpone a reminder, never bring one forward. Due only once the sealed
+      // The record is lane-writable: it may postpone or repeat a reminder, never bring one forward. Due only once the sealed
       // park time is a window old; its remindedAt counts clamped to [gate.at, now] (kept clamped, so a future time
       // postpones by one window at most from when it was first read).
       if (o.nowMs - parkedAt < windowMs) continue;

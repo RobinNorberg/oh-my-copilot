@@ -15,7 +15,7 @@ import { createForge } from '../../forge/index.js';
 import { attentionNoticeText } from '../attention/notify.js';
 import { EngineLedger } from '../run/ledger.js';
 import { computeFactoryIntegrity, createFactoryState, factoryStateDir, factoryStatePath, moveTo, runKeyOf, setGate, updateFactoryState } from '../run/state.js';
-import { runFactoryPoll } from '../poll.js';
+import { pollStatePath, runFactoryPoll } from '../poll.js';
 import { remindersPath } from '../team/reminders.js';
 import { healStatePath, writeHealState } from '../heal/state.js';
 import { writeHealSeal } from '../heal/run.js';
@@ -208,6 +208,45 @@ describe('omg factory poll: attention items', () => {
         expect(t[0].idle).toBe(false);
         expect(t[1].errors).toEqual([]);
     });
+    it('a failed run-state read skips the reminder step: the record is kept, a reminded park is not reminded again', async () => {
+        park(5, 'ci-failed', now - 30 * 3_600_000);
+        try {
+            await poll(3, [() => { failing.runs = true; }, () => { failing.runs = false; }]);
+        }
+        finally {
+            failing.runs = false;
+        }
+        const t = ticks();
+        expect(t[0].reminders?.map((r) => r.run)).toEqual([5]);
+        expect(t[1].errors.some((e) => e.startsWith('run states: EMFILE'))).toBe(true);
+        expect(t[1].reminders).toBeUndefined();
+        expect(Object.keys(JSON.parse(readFileSync(remindersPath(root), 'utf8')))).toEqual(['#5']);
+        expect(t[2].reminders).toBeUndefined();
+    });
+    /** Plants a non-regular file (a directory everywhere, a FIFO where `fifo`) at the reminder record and the poll file. */
+    async function plantedPollPaths(fifo) {
+        await poll(3, [() => {
+                park(81, 'merge', now);
+                mkdirSync(factoryStateDir(root), { recursive: true });
+                for (const p of [remindersPath(root), pollStatePath(root)]) {
+                    rmSync(p, { force: true });
+                    if (fifo)
+                        execFileSync('mkfifo', [p]);
+                    else
+                        mkdirSync(p);
+                }
+            }]);
+        const t = ticks();
+        expect(t).toHaveLength(3);
+        expect(t.flatMap((x) => x.attention?.new ?? []).map((i) => i.key)).toEqual(['#81']);
+        expect(notices.map((x) => x.key)).toEqual(['#81']);
+    }
+    it('a directory at the reminder record and the poll file: every tick completes and a park still gets its line and notice', async () => {
+        await plantedPollPaths(false);
+    });
+    it.skipIf(process.platform === 'win32')('a FIFO at the reminder record and the poll file is never opened: the ticks complete and a park still gets its line and notice', async () => {
+        await plantedPollPaths(true);
+    }, 20_000);
     it('an untrusted row that comes and goes every tick: one count notice per hour, not one per rise', async () => {
         const all = [];
         // 12 ticks 5 min apart: a new unreadable state, then gone, then another (the count alternates 0 and 1).

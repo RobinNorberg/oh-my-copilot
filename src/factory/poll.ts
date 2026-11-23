@@ -71,7 +71,7 @@
  */
 
 import { spawn, spawnSync } from 'child_process';
-import { appendFileSync, existsSync, lstatSync, readFileSync } from 'fs';
+import { appendFileSync, existsSync, lstatSync } from 'fs';
 import { join } from 'path';
 import { ledgerPath, ledgerTotals, parseLedger } from '../budget/ledger.js';
 import { atomicWriteFileSync, ensureDirSync } from '../lib/atomic-write.js';
@@ -97,7 +97,7 @@ import { defaultLedgerDir } from './run/ledger.js';
 import { tamperHoldMessage } from './run/tamper-quarantine.js';
 import { visibleLine } from '../forge/review-feedback.js';
 import { commandText, GROUP_TITLES, reminderCommand, type AttentionGroup } from './attention/actions.js';
-import { collectAttention, missingRunKeys, type AttentionData, type AttentionItem } from './attention/collect.js';
+import { collectAttention, missingRunKeys, readRegularFile, type AttentionData, type AttentionItem } from './attention/collect.js';
 import { attentionCountNotice, attentionMoreNotice, attentionNotice, noticeGate, sendAttentionNotice, untilAborted, type AnyAttentionNotice, type AttentionNotice } from './attention/notify.js';
 import { summaryLine } from './attention/render.js';
 import { resumeCommand } from './run/engine.js';
@@ -169,11 +169,19 @@ interface PollFile {
   at?: string;
 }
 
+/** The poll file's size cap: the owner plus the intake ids seen; a larger file reads as corrupt. */
+const POLL_FILE_MAX_BYTES = 1024 * 1024;
+
+/**
+ * The poll file through the bounded regular-file read (no link, FIFO or directory is opened or followed): anything
+ * but a readable regular JSON file reads as a missing or corrupt one does, no owner and nothing seen.
+ */
 function readPollFile(path: string): PollFile {
-  if (!existsSync(path)) return { seen: [] };
+  const file = readRegularFile(path, POLL_FILE_MAX_BYTES);
+  if (!('bytes' in file)) return { seen: [] };
   let raw: unknown;
   try {
-    raw = JSON.parse(readFileSync(path, 'utf8'));
+    raw = JSON.parse(file.bytes.toString('utf8'));
   } catch {
     return { seen: [] };
   }
@@ -848,7 +856,9 @@ export async function pollTick(ctx: PollContext): Promise<PollTick> {
   const idle = !locked && !unsound && !live.some(([, s]) => !s.gate);
 
   // 3b. stale-gate reminders: read-only on git (the base commit's routing file), printed only.
-  const reminders = step('reminders', () => staleGateReminders({ root, runs, untrusted, nowMs: ctx.now(), afterHours: ctx.remindAfterHours, ...(ctx.baseSha ? { readBase: (path) => readBaseFile(ctx.exec, root, ctx.baseSha!, path) ?? undefined } : {}), warn: (m) => warnings.push(plainText(m)) }));
+  // Skipped when the run states could not be read this tick: an empty run set would rewrite the record as {} and
+  // re-remind every parked run on the next tick.
+  const reminders = read === undefined ? undefined : step('reminders', () => staleGateReminders({ root, runs, untrusted, nowMs: ctx.now(), afterHours: ctx.remindAfterHours, ...(ctx.baseSha ? { readBase: (path) => readBaseFile(ctx.exec, root, ctx.baseSha!, path) ?? undefined } : {}), warn: (m) => warnings.push(plainText(m)) }));
 
   // 3c. attention: the items that are new since the previous tick (local state only, read-only). The reminder path
   // owns a park that is still waiting after remindAfterHours; this path owns a park when it first appears.
