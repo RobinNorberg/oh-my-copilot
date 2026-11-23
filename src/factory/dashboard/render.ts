@@ -118,7 +118,7 @@ function attentionHtml(d: DashboardDataV2): string {
   return out.join('');
 }
 
-const CSS = `:root{--bg:#fafafa;--fg:#1b1f24;--muted:#4f5964;--card:#fff;--line:#d0d6dd;--eng:#2b6cb0;--wait:#b7791f;--warn:#8a5a00;--bad:#b42318;--ok:#1e6b3a;--code:#f0f2f5}
+export const CSS = `:root{--bg:#fafafa;--fg:#1b1f24;--muted:#4f5964;--card:#fff;--line:#d0d6dd;--eng:#2b6cb0;--wait:#b7791f;--warn:#8a5a00;--bad:#b42318;--ok:#1e6b3a;--code:#f0f2f5}
 @media (prefers-color-scheme:dark){:root{--bg:#14171a;--fg:#e6e9ec;--muted:#a3adb8;--card:#1d2125;--line:#363d45;--eng:#63a4e8;--wait:#e0a84f;--warn:#f0b860;--bad:#ff8a80;--ok:#7bd88f;--code:#262b31}}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
 *{box-sizing:border-box}html{-webkit-text-size-adjust:100%}body{margin:0;padding:16px;background:var(--bg);color:var(--fg);font:15px/1.5 system-ui,sans-serif;overflow-wrap:anywhere}
