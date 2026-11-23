@@ -3283,10 +3283,13 @@ Configure HUD elements in `~/.claude/settings.json`:
 | `copilotMode` | off | on | `session.mode_changed` events (`mode:plan` or `mode:autopilot`) and the payload `allow_all_enabled` (`mode:yolo`), combined as `mode:plan+yolo` |
 | `team` | off | on | live `omg team` run state under `.omg/state/team/`, repo-wide |
 | `ultragoal` | off | on | open ultragoal plan in `.omg/ultragoal/goals.json` or `plans/<id>/goals.json`, repo-wide |
+| `factory` | off | on | `omg factory attention`'s collector over `.omg/state/factory/` and the engine ledger (local, read-only): `factory:4! inspect` (items that need you, and the first non-empty group: inspect, broken, decide, merge, fix, limits), `run:1` while engines run, nothing when neither; repo-wide |
 | `model`, `effort`, `cwd`, `gitBranch` | model, effort on; cwd, gitBranch per config | off | Copilot's footer already shows them; set `true` to show them anyway |
 | `rateLimits`, `enterpriseMode`, `showEnterpriseCost`, `apiKeySource`, `thinking`, `todos`, `sessionSummary`, payload warning | per config | off, forced | no Copilot data source; ignored even when set to `true` |
 
 `copilotMode`, `team` and `ultragoal` are new elements. They are on by default under Copilot and off under Claude Code unless you set them to `true`. `team` and `ultragoal` read repo-wide state, not per session: every session in the repo shows the same live team and the same open plan.
+
+`factory` shows counts and fixed words only, never a title or reason from a run state, and applies the same trust rules as `omg factory attention`: a state that fails its seal or the engine ledger counts under `inspect`. Without `.omg/state/factory/` it costs one stat and loads nothing. Its counts are cached in memory for at most 5 seconds and recomputed when a factory state, heal, slot or engine ledger directory changes; the statusline command runs once per render, so it collects once per render (a few milliseconds on a repository with tens of runs). It skips the process start-identity check of live engines (a process spawn per engine on Windows and macOS), so a reused pid can show a dead engine as `run:` until `omg factory attention` runs. Any error shows nothing.
 
 **Under Copilot CLI.** The HUD reads the statusline payload and the session's `events.jsonl` instead of a Claude transcript. Effort, when shown, comes from the `reasoningEffort` of the latest `session.start`, `session.resume` or `session.model_change` event. Session credits come from the payload's nano-AIU total converted to credits, with two decimals below 0.1, and the element is hidden only at exactly zero. `T:`, `A:`, `S:` and the agent counts come from the last 4 MB of `events.jsonl`, so they undercount in long sessions.
 

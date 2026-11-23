@@ -118,7 +118,8 @@ export interface HealRunOutcome {
 }
 
 const sha256 = (s: string) => createHash('sha256').update(s).digest('hex');
-const healLedgerDir = (ledgerDir: string, root: string) => join(ledgerDir, 'heal', sha256(resolve(root).toLowerCase()).slice(0, 16));
+/** The heal seals, scan records and mirrored counters of `root`, outside the repository. */
+export const healLedgerDir = (ledgerDir: string, root: string): string => join(ledgerDir, 'heal', sha256(resolve(root).toLowerCase()).slice(0, 16));
 const mirrorCountersPath = (ledgerDir: string, root: string) => join(healLedgerDir(ledgerDir, root), 'limits.json');
 const sealPath = (ledgerDir: string, root: string, sig8: string) => join(healLedgerDir(ledgerDir, root), `${sig8}.seal.json`);
 
