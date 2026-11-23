@@ -24,7 +24,7 @@
  */
 import type { ForgeKind } from '../../forge/types.js';
 import { type FactoryRunLimits } from '../run/budget.js';
-import { type OwnerDeps } from '../run/state.js';
+import { type FactoryRunKey, type FactoryRunState, type OwnerDeps } from '../run/state.js';
 import { type AttentionGroup, type NextCommand } from './actions.js';
 export declare const ATTENTION_SCHEMA_VERSION = 1;
 /** A live engine with no progress event for this long is "possibly hung" (a hint only: the log is unsealed). */
@@ -89,6 +89,8 @@ export interface CollectAttentionOptions {
     owner?: OwnerDeps;
     verbose?: boolean;
 }
+/** The run key of a canonical `run-<key>.json` name; null for anything else (`run-01.json` is not run 1's file). */
+export declare function runKeyOfName(name: string): FactoryRunKey | null;
 type FileRead = {
     bytes: Buffer;
 } | {
@@ -102,6 +104,16 @@ type FileRead = {
  * that same regular file and no larger than READ_MAX_BYTES.
  */
 export declare function readRegularFile(path: string, max?: number): FileRead;
+export interface ReadRun {
+    key: FactoryRunKey;
+    state?: FactoryRunState;
+    trust: AttentionTrust;
+    error?: string;
+    /** The state file does not exist. */
+    missing?: true;
+}
+/** One read of the state bytes; seal, then the ledger on those same bytes. */
+export declare function readRun(root: string, key: FactoryRunKey, ledgerDir: string): ReadRun;
 /** One render scope: the state root is resolved once, not once per file path (dozens of git-metadata stats each on Windows). */
 export declare function collectAttention(root: string, o: CollectAttentionOptions): AttentionData;
 /** The `--json` shape: the items without their sort key, notes and log kept; a reason only on a trusted row. */

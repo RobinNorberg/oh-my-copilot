@@ -1,0 +1,447 @@
+/**
+ * `omg factory dashboard` data, schemaVersion 2: a pure `collect -> JSON`
+ * step (render.ts turns the JSON into the page; a later `--serve` reuses
+ * both). LOCAL reads only: run states, owner and slot files, progress-log
+ * modification times, the engine ledger, bench result files. No forge or
+ * network call and no write of any kind; the tracker columns come in only
+ * as an already-read board (`--forge`, the CLI does that read).
+ *
+ * Trust: each run state is read once and checked like `omg factory
+ * attention` checks it (readRun: the seal, then the engine ledger on the
+ * same bytes). A run that fails is listed with its trust marker and no free
+ * text from its state (no title, no reason), and its numbers are never
+ * summed into a total: `cost.excluded` counts them apart. The Attention
+ * section IS the attention collector's output (collectAttention), so its
+ * rows and their trust rules are the same as the CLI's.
+ *
+ * Every string from a state, the tracker or a bench file is untrusted: it
+ * goes through plainText here and is HTML-escaped again in render.ts.
+ */
+import { readdirSync, readFileSync, statSync } from 'fs';
+import { join } from 'path';
+import { LOCAL_REMOTE } from '../../forge/local/mirror.js';
+import { plainText } from '../check/score.js';
+import { attentionJson, collectAttention, readRun, runKeyOfName } from '../attention/collect.js';
+import { factoryProgressFile } from '../run/progress.js';
+import { defaultOwnerDeps, FACTORY_PHASES, factoryStateDir, heldSlots, runLabel, TERMINAL_FACTORY_PHASES, } from '../run/state.js';
+import { localDay, parseSince } from './collect.js';
+export const DASHBOARD_SCHEMA_VERSION_2 = 2;
+const GATE_NOTE = /^awaiting-human: ([^:]+):/;
+const SAFE_NAME = /^[a-z0-9][a-z0-9-]{0,59}$/;
+const HEX40 = /^[0-9a-f]{40}$/;
+const MAX_BENCH_FILES = 200;
+const MAX_BENCH_BYTES = 4_000_000;
+const text = (v, max = 300) => plainText(String(v ?? '')).replace(/\s+/g, ' ').trim().slice(0, max);
+const msOf = (iso) => (typeof iso === 'string' ? Date.parse(iso) : Number.NaN);
+const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+const round = (n) => Math.round(n * 1000) / 1000;
+const emptyUsage = () => ({ credits: 0, premiumRequests: 0, lanes: 0 });
+function addUsage(into, u) {
+    into.credits = round(into.credits + u.credits);
+    into.premiumRequests += u.premiumRequests;
+    into.lanes += u.lanes;
+}
+/**
+ * The run's timeline from its history. Each history entry starts a segment
+ * that lasts to the next entry. A park note (`awaiting-human: <gate>: ...`,
+ * from === to, written by setGate) starts WAITING time, which lasts to the
+ * next entry (a rerun, a human-merge record, a cancel), or to `now` while the
+ * run is still parked. Every other segment is engine time of the phase the
+ * last move entered; a terminal phase ends the run (no segment after it), and
+ * the last segment of a run that is neither parked nor finished runs to
+ * `updatedAt`. A state whose gate is newer than its last history entry (no
+ * park note) waits from `gate.at`.
+ *
+ * What it cannot tell: an engine that died without a park (the gap to the
+ * next invocation counts as engine time), and when a human really merged a
+ * PR (the wait ends when a read surface or a rerun recorded it).
+ */
+export function runTimeline(s, now) {
+    const entries = s.history.filter((h) => h && Number.isFinite(msOf(h.at)));
+    const steps = [];
+    let engineMs = 0;
+    let waitingMs = 0;
+    let mergeWaitMs = 0;
+    let mergeReadyAt = null;
+    let engineToMergeReadyMs = null;
+    let waitingSince = null;
+    const stepFor = (phase) => {
+        const last = steps.at(-1);
+        if (last && last.phase === phase)
+            return last;
+        const step = { phase, engineMs: 0, waitingMs: 0, gates: [] };
+        steps.push(step);
+        return step;
+    };
+    let phase = null;
+    const parked = s.gate !== undefined && !TERMINAL_FACTORY_PHASES.includes(s.phase);
+    const gateAt = msOf(s.gate?.at);
+    for (let i = 0; i < entries.length; i++) {
+        const h = entries[i];
+        const park = h.from !== null && h.from === h.to ? GATE_NOTE.exec(String(h.note ?? '')) : null;
+        if (!park || phase === null)
+            phase = text(h.to, 40);
+        if (TERMINAL_FACTORY_PHASES.includes(h.to)) {
+            stepFor(phase);
+            break;
+        }
+        const start = msOf(h.at);
+        const lastEntry = i === entries.length - 1;
+        let end;
+        if (!lastEntry)
+            end = msOf(entries[i + 1].at);
+        else if (park && parked)
+            end = now;
+        else if (parked && Number.isFinite(gateAt) && gateAt > start)
+            end = gateAt;
+        else
+            end = msOf(s.updatedAt);
+        const span = Number.isFinite(end) && end > start ? end - start : 0;
+        const step = stepFor(phase);
+        if (park) {
+            const gate = text(park[1], 60);
+            step.gates.push(gate);
+            step.waitingMs += span;
+            waitingMs += span;
+            if (gate === 'merge') {
+                mergeWaitMs += span;
+                if (mergeReadyAt === null) {
+                    mergeReadyAt = new Date(start).toISOString();
+                    engineToMergeReadyMs = engineMs;
+                }
+            }
+            if (lastEntry && parked)
+                waitingSince = new Date(start).toISOString();
+        }
+        else {
+            step.engineMs += span;
+            engineMs += span;
+        }
+    }
+    // A gate with no park note after the last entry (older writers): waiting from gate.at.
+    const lastAt = entries.length ? msOf(entries.at(-1).at) : Number.NaN;
+    if (parked && waitingSince === null && Number.isFinite(gateAt) && !(gateAt <= lastAt)) {
+        const gate = text(s.gate.name, 60);
+        const step = stepFor(phase ?? text(s.phase, 40));
+        const span = Math.max(0, now - gateAt);
+        step.gates.push(gate);
+        step.waitingMs += span;
+        waitingMs += span;
+        waitingSince = new Date(gateAt).toISOString();
+        if (gate === 'merge') {
+            mergeWaitMs += span;
+            if (mergeReadyAt === null) {
+                mergeReadyAt = waitingSince;
+                engineToMergeReadyMs = engineMs;
+            }
+        }
+    }
+    return { steps, engineMs, waitingMs, waitingSince, mergeReadyAt, engineToMergeReadyMs, mergeWaitMs };
+}
+const forgeOf = (s) => (s.remote === LOCAL_REMOTE ? 'local' : s.forgeKind ?? 'github');
+const laneAt = (l) => msOf(l.endedAt ?? l.startedAt);
+function laneUsage(l) {
+    return { credits: num(l.usage?.credits) ?? 0, premiumRequests: num(l.usage?.premiumRequests) ?? 0, lanes: 1 };
+}
+function outcomeOf(s) {
+    if (s.phase === 'merged' || s.phase === 'cancelled' || s.phase === 'failed')
+        return s.phase;
+    return s.gate ? 'parked' : 'in-progress';
+}
+function quantile(values, q) {
+    if (values.length === 0)
+        return null;
+    const v = [...values].sort((a, b) => a - b);
+    return v[Math.min(v.length - 1, Math.max(0, Math.ceil(q * v.length) - 1))];
+}
+function median(values) {
+    if (values.length === 0)
+        return null;
+    const v = [...values].sort((a, b) => a - b);
+    const m = Math.floor(v.length / 2);
+    return v.length % 2 ? v[m] : Math.round((v[m - 1] + v[m]) / 2);
+}
+function unverifiedRun(key, trust, s) {
+    // Only enum-shaped values of an untrusted state: no title, no reason, no numbers.
+    const phase = s && FACTORY_PHASES.includes(s.phase) ? s.phase : null;
+    const gateName = s?.gate && typeof s.gate.name === 'string' && SAFE_NAME.test(s.gate.name) ? s.gate.name : null;
+    return {
+        key: runLabel(key), kind: typeof key === 'string' ? 'ci-heal' : 'issue', trust, verified: false, title: '', phase,
+        gate: gateName ? { name: gateName, reason: '', at: '' } : null, outcome: 'unknown', pr: null, head: null, forge: null,
+        credits: null, premiumRequests: null, lanes: null, roles: {}, startedAt: null, updatedAt: null, elapsedMs: null,
+        engineMs: null, waitingMs: null, waitingSince: null, timeline: [], mergeReadyAt: null, engineToMergeReadyMs: null, mergeWaitMs: null,
+    };
+}
+function verifiedRun(key, s, now, sinceMs) {
+    const roles = Object.create(null);
+    const total = emptyUsage();
+    for (const lane of s.lanes) {
+        if (sinceMs !== null && !(laneAt(lane) >= sinceMs))
+            continue;
+        const u = laneUsage(lane);
+        addUsage((roles[text(lane.role ?? lane.kind, 40)] ??= emptyUsage()), u);
+        addUsage(total, u);
+    }
+    const tl = runTimeline(s, now);
+    return {
+        key: runLabel(key),
+        kind: s.kind ?? 'issue',
+        trust: 'ok',
+        verified: true,
+        title: text(s.issueTitle ?? (s.kind === 'ci-heal' ? 'ci-heal' : ''), 160),
+        phase: text(s.phase, 40),
+        gate: s.gate ? { name: text(s.gate.name, 60), reason: text(s.gate.reason, 600), at: text(s.gate.at, 40) } : null,
+        outcome: outcomeOf(s),
+        pr: typeof s.pr === 'number' && Number.isSafeInteger(s.pr) && s.pr > 0 ? s.pr : null,
+        head: typeof s.head === 'string' && HEX40.test(s.head) ? s.head : null,
+        forge: forgeOf(s),
+        credits: total.credits,
+        premiumRequests: total.premiumRequests,
+        lanes: total.lanes,
+        roles: { ...roles },
+        startedAt: text(s.createdAt, 40),
+        updatedAt: text(s.updatedAt, 40),
+        elapsedMs: num(s.elapsedMs) ?? 0,
+        engineMs: tl.engineMs,
+        waitingMs: tl.waitingMs,
+        waitingSince: tl.waitingSince,
+        timeline: tl.steps,
+        mergeReadyAt: tl.mergeReadyAt,
+        engineToMergeReadyMs: tl.engineToMergeReadyMs,
+        mergeWaitMs: tl.mergeWaitMs,
+    };
+}
+/** One bench result file as a row; null when it is not one (a run-state copy, notes). Throws on a file that cannot be read. */
+function benchRow(path, file, source) {
+    if (statSync(path).size > MAX_BENCH_BYTES)
+        throw new Error(`larger than ${MAX_BENCH_BYTES} bytes`);
+    const j = JSON.parse(readFileSync(path, 'utf8'));
+    if (typeof j !== 'object' || j === null || Array.isArray(j))
+        return null;
+    const totals = (typeof j.totals === 'object' && j.totals !== null && !Array.isArray(j.totals) ? j.totals : null);
+    // A bench result names its kind, or (older writers) carries totals; anything else in the directory is not one.
+    if (j.kind !== 'omg-factory-bench' && !totals)
+        return null;
+    const t = totals ?? {};
+    const runs = Array.isArray(j.runs) ? j.runs : Array.isArray(j.issues) ? j.issues : null;
+    const started = j.startedAt ?? j.createdAt ?? j.timestamp;
+    const wall = num(t.wallMs) ?? (Number.isFinite(msOf(j.finishedAt) - msOf(started)) ? msOf(j.finishedAt) - msOf(started) : null);
+    const model = typeof j.model === 'string' ? j.model : typeof j.model?.id === 'string' ? j.model.id : null;
+    return {
+        source,
+        file: text(file, 120),
+        schemaVersion: num(j.schemaVersion),
+        mode: typeof j.mode === 'string' ? text(j.mode, 30) : null,
+        omgVersion: typeof j.omgVersion === 'string' ? text(j.omgVersion, 30) : null,
+        model: model === null ? null : text(model, 60),
+        startedAt: typeof started === 'string' && Number.isFinite(msOf(started)) ? new Date(msOf(started)).toISOString() : null,
+        issues: num(t.issues) ?? (runs ? runs.length : null),
+        passed: num(t.passed),
+        premiumRequests: num(t.premiumRequests),
+        credits: num(t.credits),
+        wallMs: wall,
+    };
+}
+/** Bench results from `<root>/bench-results/` and every --bench-dir; one row per result file, oldest first. */
+export function readBenchV2(root, dirs, warnings) {
+    const out = [];
+    const sources = [[join(root, 'bench-results'), 'bench-results'], ...dirs.map((d) => [d, 'bench-dir'])];
+    for (const [dir, source] of sources) {
+        let names;
+        try {
+            names = readdirSync(dir).filter((n) => n.endsWith('.json')).sort().slice(-MAX_BENCH_FILES);
+        }
+        catch {
+            if (source === 'bench-dir')
+                warnings.push(`--bench-dir ${text(dir, 200)}: not a readable directory`);
+            continue;
+        }
+        let skipped = 0;
+        for (const name of names) {
+            try {
+                const row = benchRow(join(dir, name), name, source);
+                if (row)
+                    out.push(row);
+                else
+                    skipped++;
+            }
+            catch (error) {
+                warnings.push(`${source}/${text(name, 120)}: skipped (${text(error instanceof Error ? error.message : error, 120)})`);
+            }
+        }
+        if (skipped > 0 && source === 'bench-results')
+            warnings.push(`bench-results: ${skipped} JSON file(s) are not bench results and were skipped`);
+    }
+    return out.sort((a, b) => (a.startedAt ?? '').localeCompare(b.startedAt ?? '') || a.file.localeCompare(b.file));
+}
+function boardRows(b) {
+    return [...b.columns.flatMap((c) => c.items), ...b.outside];
+}
+export function collectDashboardV2(root, o) {
+    const now = (o.now ?? Date.now)();
+    const sinceMs = o.since === undefined ? null : parseSince(o.since);
+    const owner = o.owner ?? defaultOwnerDeps();
+    const warnings = [];
+    const attention = collectAttention(root, { ledgerDir: o.ledgerDir, now: () => now, limits: o.limits ?? null, owner, verbose: true });
+    // Every canonical run state, checked as attention checks it.
+    let names = [];
+    try {
+        names = readdirSync(factoryStateDir(root));
+    }
+    catch {
+        // No state dir: no runs yet.
+    }
+    const states = new Map();
+    const runs = [];
+    const excluded = { runs: 0, credits: 0, premiumRequests: 0 };
+    for (const name of names) {
+        const key = runKeyOfName(name);
+        if (key === null)
+            continue;
+        const r = readRun(root, key, o.ledgerDir);
+        if (r.trust !== 'ok' || !r.state) {
+            // An unreadable state is already one of attention's warnings.
+            runs.push(unverifiedRun(key, r.trust, r.state));
+            excluded.runs++;
+            if (r.state && Array.isArray(r.state.lanes)) {
+                for (const lane of r.state.lanes) {
+                    const u = laneUsage(lane);
+                    excluded.credits = round(excluded.credits + u.credits);
+                    excluded.premiumRequests += u.premiumRequests;
+                }
+            }
+            continue;
+        }
+        const s = r.state;
+        if (sinceMs !== null && msOf(s.updatedAt) < sinceMs)
+            continue;
+        try {
+            runs.push(verifiedRun(key, s, now, sinceMs));
+            states.set(runLabel(key), s);
+        }
+        catch (error) {
+            warnings.push(`run ${runLabel(key)}: skipped (${text(error instanceof Error ? error.message : error, 160)})`);
+        }
+    }
+    const startedMs = (r) => msOf(r.startedAt);
+    runs.sort((a, b) => (Number(b.verified) - Number(a.verified)) || (startedMs(b) || 0) - (startedMs(a) || 0) || b.key.localeCompare(a.key, 'en', { numeric: true }));
+    const verified = runs.filter((r) => r.verified);
+    // Live now: the engines attention counted, and the running lane of each run they hold.
+    const liveRuns = attention.summary.engines.runs.map((label) => {
+        const s = states.get(label);
+        if (!s)
+            return { key: label, verified: false, phase: null, lane: null, heartbeatAgeMs: null, credits: null, inFlightCredits: 0 };
+        const running = s.lanes.filter((l) => l.status === 'running').at(-1);
+        let heartbeatAgeMs = null;
+        try {
+            heartbeatAgeMs = Math.max(0, now - statSync(factoryProgressFile(root, label.startsWith('#') ? Number(label.slice(1)) : label)).mtimeMs);
+        }
+        catch {
+            // No progress log: no heartbeat.
+        }
+        const inFlight = running ? num(running.maxCredits) ?? 0 : 0;
+        return {
+            key: label, verified: true, phase: text(s.phase, 40),
+            lane: running ? { id: text(running.id, 80), kind: text(running.role ?? running.kind, 40), startedAt: text(running.startedAt, 40), maxCredits: inFlight } : null,
+            heartbeatAgeMs, credits: round(s.lanes.reduce((a, l) => a + laneUsage(l).credits, 0)), inFlightCredits: inFlight,
+        };
+    });
+    let slots = 0;
+    try {
+        slots = heldSlots(root, owner).length;
+    }
+    catch {
+        // Unreadable slots dir: none counted.
+    }
+    // Cost, from verified runs only.
+    const totals = emptyUsage();
+    const roles = new Map();
+    const days = new Map();
+    const cap = o.limits?.maxRunCredits ?? null;
+    for (const r of verified) {
+        addUsage(totals, { credits: r.credits ?? 0, premiumRequests: r.premiumRequests ?? 0, lanes: r.lanes ?? 0 });
+        for (const [role, u] of Object.entries(r.roles)) {
+            const into = roles.get(role) ?? emptyUsage();
+            addUsage(into, u);
+            roles.set(role, into);
+        }
+    }
+    for (const s of states.values()) {
+        for (const lane of s.lanes) {
+            const t = laneAt(lane);
+            if (!Number.isFinite(t) || (sinceMs !== null && t < sinceMs))
+                continue;
+            const day = localDay(t);
+            const into = days.get(day) ?? emptyUsage();
+            addUsage(into, laneUsage(lane));
+            days.set(day, into);
+        }
+    }
+    // Throughput: runs started and runs reaching the merge park, per local day.
+    const through = new Map();
+    const bump = (iso, field) => {
+        const t = msOf(iso);
+        if (!Number.isFinite(t) || (sinceMs !== null && t < sinceMs))
+            return;
+        const day = localDay(t);
+        const into = through.get(day) ?? { started: 0, mergeReady: 0 };
+        into[field]++;
+        through.set(day, into);
+    };
+    for (const r of verified) {
+        bump(r.startedAt, 'started');
+        bump(r.mergeReadyAt, 'mergeReady');
+    }
+    const toMerge = verified.flatMap((r) => (r.engineToMergeReadyMs === null ? [] : [r.engineToMergeReadyMs]));
+    const mergeWaits = verified.flatMap((r) => (r.mergeReadyAt === null ? [] : [r.mergeWaitMs ?? 0]));
+    // Tasks: one row per run, the tracker columns only from an already-read board (--forge).
+    const board = o.board ? new Map(boardRows(o.board.json).map((b) => [runLabel(b.id), b])) : null;
+    const tasks = runs.map((r) => {
+        const b = board?.get(r.key);
+        const lastAt = r.waitingSince ? now : msOf(r.updatedAt);
+        return {
+            key: r.key, verified: r.verified, title: r.title, phase: r.phase, gate: r.gate?.name ?? null, outcome: r.outcome, pr: r.pr, credits: r.credits,
+            wallMs: r.verified && Number.isFinite(lastAt - startedMs(r)) ? Math.max(0, lastAt - startedMs(r)) : null,
+            tracker: board ? { bucket: b?.check ? text(b.check.bucket, 30) : null, stage: b?.stage.live ? text(b.stage.live, 30) : null, liveText: b?.liveText ? text(b.liveText, 80) : null } : null,
+        };
+    });
+    if (o.board) {
+        for (const b of o.board.json.columns.find((c) => c.stage === 'backlog')?.items ?? []) {
+            if (board && runs.some((r) => r.key === runLabel(b.id)))
+                continue;
+            tasks.push({
+                key: runLabel(b.id), verified: false, title: text(b.title, 160), phase: null, gate: null, outcome: 'no run', pr: null, credits: null, wallMs: null,
+                tracker: { bucket: b.check ? text(b.check.bucket, 30) : null, stage: b.stage.live ? text(b.stage.live, 30) : null, liveText: b.liveText ? text(b.liveText, 80) : null },
+            });
+        }
+        warnings.push(...o.board.json.warnings.map((w) => text(w, 500)));
+    }
+    return {
+        schemaVersion: DASHBOARD_SCHEMA_VERSION_2,
+        generatedAt: new Date(now).toISOString(),
+        since: o.since === undefined ? null : text(o.since, 40),
+        forge: { read: Boolean(o.board), at: o.board ? text(o.board.at, 40) : null },
+        attention: attentionJson(attention),
+        live: { engines: attention.summary.engines.live, slots, runs: liveRuns, inFlightCredits: round(liveRuns.reduce((a, r) => a + r.inFlightCredits, 0)) },
+        runs,
+        tasks,
+        cost: {
+            caps: o.limits
+                ? { laneMaxCredits: o.limits.laneMaxCredits, maxRunCredits: cap, source: 'config', note: 'defaults < trusted user config < project config, as the engine resolves them; at run time the base branch\'s committed config (the trusted-base layer) and --max-requests may lower them' }
+                : { laneMaxCredits: null, maxRunCredits: null, source: 'unresolved', note: 'the run limits could not be resolved; no cap is shown' },
+            totals,
+            byRole: [...roles].map(([role, u]) => ({ role, ...u })).sort((a, b) => b.credits - a.credits || a.role.localeCompare(b.role)),
+            byDay: [...days].map(([day, u]) => ({ day, ...u })).sort((a, b) => a.day.localeCompare(b.day)),
+            byRun: verified.map((r) => ({ key: r.key, credits: r.credits ?? 0, premiumRequests: r.premiumRequests ?? 0, cap: r.kind === 'issue' ? cap : null })),
+            excluded,
+        },
+        throughput: {
+            byDay: [...through].map(([day, v]) => ({ day, ...v })).sort((a, b) => a.day.localeCompare(b.day)),
+            engineToMergeReady: { runs: toMerge.length, medianMs: median(toMerge), p90Ms: quantile(toMerge, 0.9) },
+            waitingAtMerge: { runs: mergeWaits.length, medianMs: median(mergeWaits) },
+        },
+        bench: readBenchV2(root, o.benchDirs ?? [], warnings).filter((b) => sinceMs === null || b.startedAt === null || msOf(b.startedAt) >= sinceMs),
+        warnings: [...attention.warnings, ...warnings].map((w) => text(w, 500)),
+    };
+}
+//# sourceMappingURL=collect-v2.js.map
