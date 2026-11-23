@@ -275,7 +275,20 @@ export interface DashboardBenchV2 {
   premiumRequests: number | null;
   credits: number | null;
   wallMs: number | null;
+  /** The numeric fields the file holds as something other than a finite number >= 0 (shown as "invalid"); absent when none. */
+  invalid?: string[];
 }
+
+/**
+ * Bench result files are UNSEALED and live in the repository (or a
+ * --bench-dir): anyone who can write the repository can edit them. Their
+ * text fields are shown only when they are plain words of BENCH_TEXT (else
+ * BENCH_NOT_SHOWN), their numbers only when finite and >= 0.
+ */
+export const BENCH_TEXT = /^[A-Za-z0-9._ -]+$/;
+export const BENCH_NOT_SHOWN = '(not shown)';
+export const BENCH_UNSEALED_NOTE = 'Unsealed files in the repository (anyone who can write the repository can edit them).';
+const benchText = (v: string, max: number): string => (v.length <= max && BENCH_TEXT.test(v) ? v : BENCH_NOT_SHOWN);
 
 export interface DashboardDataV2 {
   schemaVersion: typeof DASHBOARD_SCHEMA_VERSION_2;
@@ -422,25 +435,33 @@ function benchRow(path: string, file: string, source: DashboardBenchV2['source']
   // A bench result names its kind, or (older writers) carries totals; anything else in the directory is not one.
   if (j.kind !== 'omg-factory-bench' && !totals) return null;
   const t = totals ?? {};
+  const invalid: string[] = [];
+  const count = (field: string, v: unknown): number | null => {
+    if (v === undefined || v === null) return null;
+    if (typeof v === 'number' && Number.isFinite(v) && v >= 0) return v;
+    invalid.push(field);
+    return null;
+  };
   const runs = Array.isArray(j.runs) ? j.runs : Array.isArray(j.issues) ? j.issues : null;
   const started = j.startedAt ?? j.createdAt ?? j.timestamp;
   // A negative wall time (finishedAt before startedAt) is no wall time: null.
-  const w = num(t.wallMs) ?? msOf(j.finishedAt) - msOf(started);
+  const w = count('wallMs', t.wallMs) ?? msOf(j.finishedAt) - msOf(started);
   const wall = Number.isFinite(w) && w >= 0 ? w : null;
   const model = typeof j.model === 'string' ? j.model : typeof (j.model as { id?: unknown } | null)?.id === 'string' ? (j.model as { id: string }).id : null;
   return {
     source,
-    file: text(file, 120),
-    schemaVersion: num(j.schemaVersion),
-    mode: typeof j.mode === 'string' ? text(j.mode, 30) : null,
-    omgVersion: typeof j.omgVersion === 'string' ? text(j.omgVersion, 30) : null,
-    model: model === null ? null : text(model, 60),
+    file: benchText(file, 120),
+    schemaVersion: count('schemaVersion', j.schemaVersion),
+    mode: typeof j.mode === 'string' ? benchText(j.mode, 30) : null,
+    omgVersion: typeof j.omgVersion === 'string' ? benchText(j.omgVersion, 30) : null,
+    model: model === null ? null : benchText(model, 60),
     startedAt: typeof started === 'string' && Number.isFinite(msOf(started)) ? new Date(msOf(started)).toISOString() : null,
-    issues: num(t.issues) ?? (runs ? runs.length : null),
-    passed: num(t.passed),
-    premiumRequests: num(t.premiumRequests),
-    credits: num(t.credits),
+    issues: count('issues', t.issues) ?? (runs ? runs.length : null),
+    passed: count('passed', t.passed),
+    premiumRequests: count('premiumRequests', t.premiumRequests),
+    credits: count('credits', t.credits),
     wallMs: wall,
+    ...(invalid.length ? { invalid } : {}),
   };
 }
 

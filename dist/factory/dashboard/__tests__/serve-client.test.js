@@ -333,4 +333,60 @@ describe('dashboard page script: source lint', () => {
         expect(page.replace(CLIENT_JS, '').match(/aria-live/g)).toHaveLength(1);
     });
 });
+describe('dashboard page script: #613 review follow-ups', () => {
+    const fd = load();
+    it('L4: no other markup, parser or navigation sink, and computed writes only into the known maps', () => {
+        for (const bad of [/createContextualFragment/, /DOMParser/, /execCommand/, /setHTMLUnsafe/, /location\.assign/, /location\.replace/, /parseHTMLUnsafe/, /srcdoc/]) {
+            expect(CLIENT_JS, String(bad)).not.toMatch(bad);
+        }
+        const targets = [...new Set([...CLIENT_JS.matchAll(/([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)\s*\[[^\]]+\]\s*=(?!=)/g)].map((m) => m[1]))].sort();
+        expect(targets).toEqual(['bad', 'ctx.focus', 'details', 'seen', 'ui.open']);
+    });
+    it('L1: an attention item or a task whose key the runs list marks untrusted is untrusted, whatever its own trust says', () => {
+        const data = {
+            runs: [{ key: '#4', verified: false, trust: 'seal' }, { key: '#5', verified: true, trust: 'ok' }],
+            attention: { items: [
+                    { key: '#4', group: 'merge', gate: 'merge', phase: 'merge', ageMs: 1, credits: 1, cap: null, pr: 9, head: null, title: 'LIE', why: 'WHY', trust: 'ok', notes: ['NOTE'],
+                        next: [{ label: 'rerun', argv: ['omg', 'factory', 'run', '4'], billed: true, line: 'omg factory run 4', inRoot: false }] },
+                ] },
+            tasks: [{ key: '#4', verified: true, title: 'LIE', outcome: 'parked', phase: 'merge', gate: 'merge', pr: 9, credits: 1, wallMs: 1, tracker: null },
+                { key: '#5', verified: true, title: 'fine', outcome: 'parked', phase: 'merge', gate: 'merge', pr: 9, credits: 1, wallMs: 1, tracker: null }],
+            forge: { read: false },
+        };
+        expect(Object.keys(fd.untrustedKeys(data))).toEqual(['#4']);
+        const a = fd.buildAttention(doc, data, ctx());
+        const t = texts(a).join('');
+        for (const s of ['LIE', 'WHY', 'NOTE', 'omg factory run 4'])
+            expect(t).not.toContain(s);
+        expect(t).toContain('omg factory run status 4');
+        const tasks = texts(fd.buildTasks(doc, data)).join('');
+        expect(tasks).not.toContain('LIE');
+        expect(tasks).toContain('fine');
+    });
+    it('L2: a command line with a control, line-separator or bidi character is not shown and cannot be copied', () => {
+        for (const ch of ['\u0000', '\u001b', '\n', '\u007f', '\u0085', ' ', ' ', '‎', '‏', '‪', '‮', '⁦', '⁩']) {
+            const c = ctx({ on: { copy: () => { throw new Error('copied'); } } });
+            const li = fd.commandEl(doc, { label: 'x', argv: ['omg'], billed: false, line: `omg factory run 1${ch}; rm -rf /`, inRoot: false }, 'copy:k', c);
+            expect(texts(li).join('')).toBe('command not shown: it holds a control character');
+            expect(all(li).some((e) => e.tagName === 'button' || e.tagName === 'code')).toBe(false);
+        }
+        const ok = fd.commandEl(doc, { label: 'x', argv: ['omg'], billed: false, line: 'omg factory run 1', inRoot: false }, 'copy:k', ctx());
+        expect(all(ok).filter((e) => e.tagName === 'code').map((e) => e.textContent)).toEqual(['omg factory run 1']);
+    });
+    it('M1: bench rows are labelled unsealed; text outside [A-Za-z0-9._ -] reads "(not shown)"; bad numbers read "invalid"', () => {
+        const el = fd.buildBench(doc, { bench: [
+                { source: 'bench-results', file: 'run<b>.json', mode: 'live‮', model: 'm-1', startedAt: '2026-11-21T01:00:00.000Z', issues: 3, passed: 2, premiumRequests: -1, credits: 1.5, wallMs: 60_000 },
+                { source: 'bench-dir', file: 'ok.json', mode: 'fake', model: null, startedAt: 'javascript:x', issues: null, passed: null, premiumRequests: 1, credits: null, wallMs: null, invalid: ['credits', 'passed'] },
+            ] });
+        const t = texts(el);
+        expect(t[0]).toBe('Unsealed files in the repository (anyone who can write the repository can edit them).');
+        const all1 = t.join('|');
+        expect(all1).toContain('(not shown)');
+        expect(all1).not.toContain('run<b>');
+        expect(all1).not.toContain('‮');
+        expect(all1).not.toContain('javascript:');
+        expect(all1).toContain('2026-11-21T01:00:00.000Z');
+        expect(all1.split('|').filter((x) => x === 'invalid').length).toBe(3);
+    });
+});
 //# sourceMappingURL=serve-client.test.js.map

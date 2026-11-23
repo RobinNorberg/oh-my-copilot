@@ -108,6 +108,12 @@ type CollectedRun = DashboardDataV2['runs'][number];
 export declare function servedRun(r: CollectedRun): CollectedRun;
 /** Fixed, engine-authored warnings: a line per run whose state cannot be read, and a count of the rest (printed in the terminal, never served). */
 export declare function servedWarnings(raw: readonly string[], items: readonly ServedItem[], runs: readonly CollectedRun[]): string[];
+/**
+ * Served attention rows in group order; inside a group the untrusted rows
+ * come first, ordered by run key (never by a timestamp from their state),
+ * then the trusted rows in the collector's order (oldest wait first).
+ */
+export declare function orderServedItems(items: readonly ServedItem[]): ServedItem[];
 export declare function servedSummary(d: DashboardDataV2, rev: string, platform?: NodeJS.Platform): ServedSummary;
 /** The rev: a hash of the summary without its clock-derived fields, so only a change of state changes it. */
 export declare function summaryRev(d: unknown): string;
@@ -115,11 +121,23 @@ export declare function summaryRev(d: unknown): string;
 export declare function dirSignature(dir: string): string;
 /** An event stream whose client does not read holds at most this much in the server's buffer before it is dropped. */
 export declare const STREAM_BUFFER_MAX: number;
+/** An event stream whose buffer has not drained to 0 by this many consecutive pings is dropped (a client that reads nothing). */
+export declare const STREAM_STALL_PINGS = 3;
 /**
  * One write to an event stream. A client that stops reading (write returns
  * false, or the buffer passes STREAM_BUFFER_MAX) is destroyed and leaves the
  * set: the server never buffers without bound for it. False: dropped.
  */
+type StreamLike = {
+    readonly writableLength: number;
+    destroy: () => unknown;
+};
+/**
+ * At each ping: a stream whose buffer is not empty again since the last ping
+ * (it read nothing) counts one stall; at `limit` consecutive stalls it is
+ * destroyed and leaves the set. Returns the streams dropped.
+ */
+export declare function dropStalledStreams<S extends StreamLike>(streams: Set<S>, stalls: Map<S, number>, limit: number): S[];
 export declare function writeEvent(s: Pick<ServerResponse, 'write' | 'writableLength' | 'destroy'>, chunk: string, streams: Set<unknown>): boolean;
 /** One repository the server serves: its id (issued by the server's own list, never taken from a request), root, collector and dirs. */
 export interface ServedRepo {
@@ -172,6 +190,8 @@ export interface DashboardServerOptions {
     debounceMs?: number;
     minIntervalMs?: number;
     pingMs?: number;
+    /** Pings without a drained buffer before a stream is dropped (STREAM_STALL_PINGS). */
+    stallPings?: number;
     tickMs?: number;
     headersTimeoutMs?: number;
     maxConnections?: number;

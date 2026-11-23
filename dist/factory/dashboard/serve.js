@@ -110,7 +110,6 @@ const untrustedTrust = (t) => (typeof t === 'string' && Object.prototype.hasOwnP
 /** A gate name the shared gate table knows, in the engine's name shape; null for anything else. */
 const knownGate = (g) => (typeof g === 'string' && SAFE_NAME.test(g) && gateSteps(g).known ? g : null);
 const knownPhase = (p) => (typeof p === 'string' && FACTORY_PHASES.includes(p) ? p : null);
-const finiteOrNull = (n) => (typeof n === 'number' && Number.isFinite(n) ? n : null);
 /** A run label (`#12`, `heal-0123abcd`) back to its key, re-validated; null for anything else. */
 export function keyOfLabel(label) {
     if (typeof label !== 'string')
@@ -138,7 +137,7 @@ export function servedItem(i, platform = process.platform) {
     return {
         key: key === null ? '' : runLabel(key),
         group: GATE_GROUPS.includes(i.group) ? i.group : 'inspect',
-        gate: knownGate(i.gate), phase: knownPhase(i.phase), ageMs: finiteOrNull(i.ageMs),
+        gate: knownGate(i.gate), phase: knownPhase(i.phase), ageMs: null,
         credits: null, cap: null, pr: null, head: null, title: '',
         why: UNTRUSTED_WHY[trust],
         next: offered && status ? [{ label: 'read the run state', argv: status, billed: false, ...commandText(status, platform) }] : [],
@@ -167,9 +166,23 @@ export function servedWarnings(raw, items, runs) {
         out.push(`${raw.length} warning(s): the terminal running the server prints them`);
     return out;
 }
+/**
+ * Served attention rows in group order; inside a group the untrusted rows
+ * come first, ordered by run key (never by a timestamp from their state),
+ * then the trusted rows in the collector's order (oldest wait first).
+ */
+export function orderServedItems(items) {
+    const group = (i) => GATE_GROUPS.indexOf(i.group);
+    const keyNum = (i) => { const k = keyOfLabel(i.key); return typeof k === 'number' ? k : Number.MAX_SAFE_INTEGER; };
+    return items.map((i, n) => ({ i, n })).sort((a, b) => {
+        const ta = a.i.trust === 'ok' ? 1 : 0;
+        const tb = b.i.trust === 'ok' ? 1 : 0;
+        return group(a.i) - group(b.i) || ta - tb || (ta === 0 ? keyNum(a.i) - keyNum(b.i) || a.i.key.localeCompare(b.i.key) : a.n - b.n);
+    }).map((x) => x.i);
+}
 export function servedSummary(d, rev, platform = process.platform) {
     // Defence in depth: whatever the collector passes, a row of a state that is not trusted carries no text or number from that state.
-    const items = d.attention.items.map((i) => servedItem(i, platform));
+    const items = orderServedItems(d.attention.items.map((i) => servedItem(i, platform)));
     const runs = d.runs.map(servedRun);
     const untrusted = new Set(runs.filter((r) => !r.verified).map((r) => r.key));
     const known = new Set(runs.map((r) => r.key));
@@ -229,11 +242,33 @@ export function dirSignature(dir) {
 }
 /** An event stream whose client does not read holds at most this much in the server's buffer before it is dropped. */
 export const STREAM_BUFFER_MAX = 64 * 1024;
+/** An event stream whose buffer has not drained to 0 by this many consecutive pings is dropped (a client that reads nothing). */
+export const STREAM_STALL_PINGS = 3;
 /**
- * One write to an event stream. A client that stops reading (write returns
- * false, or the buffer passes STREAM_BUFFER_MAX) is destroyed and leaves the
- * set: the server never buffers without bound for it. False: dropped.
+ * At each ping: a stream whose buffer is not empty again since the last ping
+ * (it read nothing) counts one stall; at `limit` consecutive stalls it is
+ * destroyed and leaves the set. Returns the streams dropped.
  */
+export function dropStalledStreams(streams, stalls, limit) {
+    const dropped = [];
+    for (const s of streams) {
+        const n = s.writableLength > 0 ? (stalls.get(s) ?? 0) + 1 : 0;
+        if (n >= limit) {
+            streams.delete(s);
+            stalls.delete(s);
+            s.destroy();
+            dropped.push(s);
+        }
+        else if (n > 0)
+            stalls.set(s, n);
+        else
+            stalls.delete(s);
+    }
+    for (const s of stalls.keys())
+        if (!streams.has(s))
+            stalls.delete(s);
+    return dropped;
+}
 export function writeEvent(s, chunk, streams) {
     const ok = s.write(chunk);
     if (ok && s.writableLength <= STREAM_BUFFER_MAX)
@@ -441,7 +476,12 @@ export async function startDashboardServer(o) {
     poll.unref();
     const tick = setInterval(() => schedule(null), o.tickMs ?? TICK_MS);
     tick.unref();
-    const ping = setInterval(() => broadcast(': ping\n\n'), o.pingMs ?? PING_MS);
+    // A stream that has not read anything since the last pings is dropped, before its buffer could reach STREAM_BUFFER_MAX.
+    const stalls = new Map();
+    const ping = setInterval(() => {
+        dropStalledStreams(streams, stalls, o.stallPings ?? STREAM_STALL_PINGS);
+        broadcast(': ping\n\n');
+    }, o.pingMs ?? PING_MS);
     ping.unref();
     let forgeTimer = null;
     if (!multi && o.forgeRefresh) {

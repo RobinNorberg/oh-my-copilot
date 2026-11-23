@@ -156860,24 +156860,32 @@ function benchRow(path30, file2, source2) {
   const totals = typeof j.totals === "object" && j.totals !== null && !Array.isArray(j.totals) ? j.totals : null;
   if (j.kind !== "omg-factory-bench" && !totals) return null;
   const t = totals ?? {};
+  const invalid = [];
+  const count3 = (field, v) => {
+    if (v === void 0 || v === null) return null;
+    if (typeof v === "number" && Number.isFinite(v) && v >= 0) return v;
+    invalid.push(field);
+    return null;
+  };
   const runs = Array.isArray(j.runs) ? j.runs : Array.isArray(j.issues) ? j.issues : null;
   const started = j.startedAt ?? j.createdAt ?? j.timestamp;
-  const w = num5(t.wallMs) ?? msOf2(j.finishedAt) - msOf2(started);
+  const w = count3("wallMs", t.wallMs) ?? msOf2(j.finishedAt) - msOf2(started);
   const wall = Number.isFinite(w) && w >= 0 ? w : null;
   const model = typeof j.model === "string" ? j.model : typeof j.model?.id === "string" ? j.model.id : null;
   return {
     source: source2,
-    file: text7(file2, 120),
-    schemaVersion: num5(j.schemaVersion),
-    mode: typeof j.mode === "string" ? text7(j.mode, 30) : null,
-    omgVersion: typeof j.omgVersion === "string" ? text7(j.omgVersion, 30) : null,
-    model: model === null ? null : text7(model, 60),
+    file: benchText(file2, 120),
+    schemaVersion: count3("schemaVersion", j.schemaVersion),
+    mode: typeof j.mode === "string" ? benchText(j.mode, 30) : null,
+    omgVersion: typeof j.omgVersion === "string" ? benchText(j.omgVersion, 30) : null,
+    model: model === null ? null : benchText(model, 60),
     startedAt: typeof started === "string" && Number.isFinite(msOf2(started)) ? new Date(msOf2(started)).toISOString() : null,
-    issues: num5(t.issues) ?? (runs ? runs.length : null),
-    passed: num5(t.passed),
-    premiumRequests: num5(t.premiumRequests),
-    credits: num5(t.credits),
-    wallMs: wall
+    issues: count3("issues", t.issues) ?? (runs ? runs.length : null),
+    passed: count3("passed", t.passed),
+    premiumRequests: count3("premiumRequests", t.premiumRequests),
+    credits: count3("credits", t.credits),
+    wallMs: wall,
+    ...invalid.length ? { invalid } : {}
   };
 }
 function readBenchV2(root, dirs, warnings) {
@@ -157092,7 +157100,7 @@ function collectDashboardV2(root, o) {
     warnings: [...attention.warnings, ...warnings].map((w) => text7(w, 500))
   };
 }
-var import_fs187, import_path214, DASHBOARD_SCHEMA_VERSION_2, GATE_NOTE3, RERUN_NOTE, FUTURE_SLACK_MS, SAFE_NAME, HEX4025, MAX_BENCH_FILES2, MAX_BENCH_BYTES2, text7, msOf2, num5, round2, emptyUsage2, forgeOf2, laneAt;
+var import_fs187, import_path214, DASHBOARD_SCHEMA_VERSION_2, GATE_NOTE3, RERUN_NOTE, FUTURE_SLACK_MS, SAFE_NAME, HEX4025, MAX_BENCH_FILES2, MAX_BENCH_BYTES2, text7, msOf2, num5, round2, emptyUsage2, BENCH_TEXT, BENCH_NOT_SHOWN, BENCH_UNSEALED_NOTE, benchText, forgeOf2, laneAt;
 var init_collect_v2 = __esm({
   "src/factory/dashboard/collect-v2.ts"() {
     "use strict";
@@ -157118,6 +157126,10 @@ var init_collect_v2 = __esm({
     num5 = (v) => typeof v === "number" && Number.isFinite(v) ? v : null;
     round2 = (n) => Math.round(n * 1e3) / 1e3;
     emptyUsage2 = () => ({ credits: 0, premiumRequests: 0, lanes: 0 });
+    BENCH_TEXT = /^[A-Za-z0-9._ -]+$/;
+    BENCH_NOT_SHOWN = "(not shown)";
+    BENCH_UNSEALED_NOTE = "Unsealed files in the repository (anyone who can write the repository can edit them).";
+    benchText = (v, max) => v.length <= max && BENCH_TEXT.test(v) ? v : BENCH_NOT_SHOWN;
     forgeOf2 = (s) => s.remote === LOCAL_REMOTE ? "local" : s.forgeKind ?? "github";
     laneAt = (l) => msOf2(l.endedAt ?? l.startedAt);
   }
@@ -157281,7 +157293,9 @@ function renderDashboardHtml(d, o = {}) {
   const throughput = `<ul class="tiles"><li><span class="muted">Engine time to merge-ready, median</span><b>${esc2(dur(t.engineToMergeReady.medianMs) || "-")}</b><span class="muted">p90 ${esc2(dur(t.engineToMergeReady.p90Ms) || "-")}, ${t.engineToMergeReady.runs} run(s); waiting excluded</span></li><li><span class="muted">Waiting at the merge park, median</span><b>${esc2(dur(t.waitingAtMerge.medianMs) || "-")}</b><span class="muted">${t.waitingAtMerge.runs} run(s)</span></li></ul>
 ${t.since ? `<p class="muted">Medians and per-day counts since ${esc2(t.since)}.</p>` : ""}${t.excludedRuns ? `<p class="warn">${esc2(t.excludedRuns)} run(s) left out of the medians: their history timestamps were out of order or later than now (see Warnings).</p>` : ""}
 ${table("Runs per day", ["Day", "Started", "Reached the merge park"], t.byDay.map((r) => [esc2(r.day), esc2(r.started), esc2(r.mergeReady)]), "No runs yet.")}`;
-  const bench = table(
+  const bad = (b, f) => Array.isArray(b.invalid) && b.invalid.includes(f);
+  const bnum = (b, f) => bad(b, f) ? "invalid" : num6(b[f]);
+  const bench = `<p class="warn">${esc2(BENCH_UNSEALED_NOTE)}</p>` + table(
     "Bench results, oldest first",
     ["File", "Source", "Started", "Mode", "Model", "Passed", "Requests", "Credits", "Wall time"],
     d.bench.map((b) => [
@@ -157290,10 +157304,10 @@ ${table("Runs per day", ["Day", "Started", "Reached the merge park"], t.byDay.ma
       esc2(b.startedAt ?? ""),
       esc2(b.mode ?? ""),
       esc2(b.model ?? ""),
-      esc2(b.passed === null ? "" : `${b.passed}${b.issues === null ? "" : ` / ${b.issues}`}`),
-      esc2(num6(b.premiumRequests)),
-      esc2(num6(b.credits)),
-      esc2(dur(b.wallMs))
+      esc2(bad(b, "passed") || bad(b, "issues") ? "invalid" : b.passed === null ? "" : `${b.passed}${b.issues === null ? "" : ` / ${b.issues}`}`),
+      esc2(bnum(b, "premiumRequests")),
+      esc2(bnum(b, "credits")),
+      esc2(bad(b, "wallMs") ? "invalid" : dur(b.wallMs))
     ]),
     "No bench results (bench-results/*.json, or pass --bench-dir)."
   );
@@ -157320,6 +157334,7 @@ var init_render2 = __esm({
   "src/factory/dashboard/render.ts"() {
     "use strict";
     init_actions();
+    init_collect_v2();
     esc2 = (v) => String(v).replace(/[&<>"'`]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;", "`": "&#96;" })[c]);
     dur = (v) => v === null || v === void 0 ? "" : fmtDuration(v);
     num6 = (n) => n === null || n === void 0 ? "" : Number.isInteger(n) ? String(n) : n.toFixed(2);
@@ -157488,6 +157503,12 @@ FD.statusCommand = function (label) {
   return { label: 'read the run state', argv: argv, line: argv.join(' '), billed: false, inRoot: false };
 };
 /** What an attention row may offer: everything on a trusted row, the client-built status command on any other. */
+/** The keys of the runs this summary does not trust (runs list): a row of another section with such a key is untrusted too, whatever it says. */
+FD.untrustedKeys = function (data) {
+  var bad = Object.create(null);
+  (data && Array.isArray(data.runs) ? data.runs : []).forEach(function (r) { if (r.verified !== true || r.trust !== 'ok') bad[String(r.key)] = true; });
+  return bad;
+};
 FD.visibleNext = function (item) {
   if (item.trust === 'ok') return Array.isArray(item.next) ? item.next : [];
   var s = FD.statusCommand(item.key);
@@ -157562,7 +157583,10 @@ function table(doc, caption, head, rows, empty) {
 /** The marker: a known trust value in brackets, or none (a row that carries no trust value). */
 function trustMark(doc, trust) { return h(doc, 'span', { 'class': 'bad' }, trust === undefined ? 'not verified' : 'not verified (' + FD.trustOf(trust) + ')'); }
 
+/** A command line with a control, line-separator or bidi character is never shown or copied (it could hide what runs). */
+FD.UNSAFE_LINE = /[\u0000-\u001f\u007f-\u009f\u2028\u2029\u200e\u200f\u202a-\u202e\u2066-\u2069]/;
 FD.commandEl = function (doc, n, fk, ctx) {
+  if (FD.UNSAFE_LINE.test(String(n.line))) return h(doc, 'li', { 'class': 'warn' }, 'command not shown: it holds a control character');
   var code = h(doc, 'code', null, String(n.line));
   var btn = h(doc, 'button', { type: 'button', 'data-k': fk }, 'Copy');
   var line = String(n.line);
@@ -157586,13 +157610,14 @@ FD.buildAttention = function (doc, data, ctx, scope) {
   if (items.length === 0) return h(doc, 'p', { 'class': 'ok' }, 'Nothing needs you.');
   var repo = scope ? scope.repo : ctx.repo;
   var kp = repo ? FD.repoId(repo.id) + ':' : '';
+  var bad = FD.untrustedKeys(data);
   var out = h(doc, 'div', null);
   FD.GROUPS.forEach(function (g) {
     var group = items.filter(function (i) { return i.group === g[0]; });
     if (group.length === 0) return;
     out.appendChild(h(doc, scope ? 'h4' : 'h3', scope ? null : { id: 'attention-' + g[0] }, [g[1] + ' ', h(doc, 'span', { 'class': 'muted' }, '(' + group.length + ')')]));
     out.appendChild(h(doc, 'ul', { 'class': 'items' }, group.map(function (i) {
-      var trusted = i.trust === 'ok';
+      var trusted = i.trust === 'ok' && !bad[String(i.key)];
       if (!trusted) {
         var cmd = FD.statusCommand(i.key);
         var label = FD.apiKey(i.key) === null ? 'a run' : String(i.key);
@@ -157736,11 +157761,10 @@ FD.buildRuns = function (doc, data, ctx) {
 FD.buildTasks = function (doc, data) {
   var forge = data.forge && data.forge.read;
   var head = ['Run', 'Title', 'Outcome', 'Phase / gate', 'PR', 'Credits', 'Wall time'].concat(forge ? ['Bucket', 'Tracker stage'] : []);
-  var untrustedRun = Object.create(null);
-  FD.runRows(data).forEach(function (r) { if (!r.verified) untrustedRun[r.key] = true; });
+  var untrustedRun = FD.untrustedKeys(data);
   return table(doc, 'Tasks', head, (data.tasks || []).map(function (t) {
     // A board row with no run holds tracker text; a run row that is not verified shows the key and the marker only.
-    var ok = t.verified === true || (t.outcome === 'no run' && !untrustedRun[String(t.key)]);
+    var ok = !untrustedRun[String(t.key)] && (t.verified === true || t.outcome === 'no run');
     var row = ok ? [String(t.key), String(t.title), String(t.outcome),
       [t.phase, t.gate ? 'awaiting-human: ' + t.gate : ''].filter(Boolean).join(' / '), t.pr === null ? '' : '#' + t.pr, FD.num(t.credits), FD.fmtDur(t.wallMs)]
       : [String(t.key), '', trustMark(doc), '', '', '', ''];
@@ -157775,11 +157799,26 @@ FD.buildThroughput = function (doc, data) {
   ]);
 };
 
+FD.BENCH_NOTE = 'Unsealed files in the repository (anyone who can write the repository can edit them).';
+FD.BENCH_TEXT = /^[A-Za-z0-9._ -]+$/;
+/** A bench text field: a plain word or "(not shown)" (the server already filters; this page does again). */
+FD.benchText = function (v) { return v === null || v === undefined ? '' : (FD.BENCH_TEXT.test(String(v)) && String(v).length <= 120 ? String(v) : '(not shown)'); };
+/** A bench number: finite and >= 0, else "invalid" (also when the server marked the field invalid). */
+FD.benchNum = function (b, f, fmt) {
+  var v = b[f];
+  if ((Array.isArray(b.invalid) && b.invalid.indexOf(f) >= 0) || (v !== null && v !== undefined && !(typeof v === 'number' && isFinite(v) && v >= 0))) return 'invalid';
+  return v === null || v === undefined ? '' : fmt(v);
+};
 FD.buildBench = function (doc, data) {
-  return table(doc, 'Bench results', ['File', 'Source', 'Started', 'Mode', 'Model', 'Passed', 'Requests', 'Credits', 'Wall time'], (data.bench || []).map(function (b) {
-    return [String(b.file), String(b.source), b.startedAt || '', b.mode || '', b.model || '', b.passed === null ? '' : b.passed + (b.issues === null ? '' : ' / ' + b.issues),
-      FD.num(b.premiumRequests), FD.num(b.credits), FD.fmtDur(b.wallMs)];
-  }), 'No bench results (bench-results/*.json, or pass --bench-dir).');
+  var ident = function (v) { return String(v); };
+  return h(doc, 'div', null, [h(doc, 'p', { 'class': 'warn' }, FD.BENCH_NOTE),
+    table(doc, 'Bench results', ['File', 'Source', 'Started', 'Mode', 'Model', 'Passed', 'Requests', 'Credits', 'Wall time'], (data.bench || []).map(function (b) {
+      var passed = FD.benchNum(b, 'passed', ident);
+      var issues = FD.benchNum(b, 'issues', ident);
+      return [FD.benchText(b.file), b.source === 'bench-dir' ? 'bench-dir' : 'bench-results', /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.]+Z$/.test(String(b.startedAt)) ? String(b.startedAt) : '', FD.benchText(b.mode), FD.benchText(b.model),
+        passed === 'invalid' || issues === 'invalid' ? 'invalid' : passed + (passed !== '' && issues !== '' ? ' / ' + issues : ''),
+        FD.benchNum(b, 'premiumRequests', FD.num), FD.benchNum(b, 'credits', FD.num), FD.benchNum(b, 'wallMs', FD.fmtDur)];
+    }), 'No bench results (bench-results/*.json, or pass --bench-dir).')]);
 };
 
 FD.buildSummary = function (doc, data) {
@@ -158112,7 +158151,7 @@ function servedItem(i, platform = process.platform) {
     group: GATE_GROUPS.includes(i.group) ? i.group : "inspect",
     gate: knownGate(i.gate),
     phase: knownPhase(i.phase),
-    ageMs: finiteOrNull(i.ageMs),
+    ageMs: null,
     credits: null,
     cap: null,
     pr: null,
@@ -158162,8 +158201,20 @@ function servedWarnings(raw, items, runs) {
   if (raw.length > 0) out.push(`${raw.length} warning(s): the terminal running the server prints them`);
   return out;
 }
+function orderServedItems(items) {
+  const group = (i) => GATE_GROUPS.indexOf(i.group);
+  const keyNum = (i) => {
+    const k = keyOfLabel(i.key);
+    return typeof k === "number" ? k : Number.MAX_SAFE_INTEGER;
+  };
+  return items.map((i, n) => ({ i, n })).sort((a, b) => {
+    const ta = a.i.trust === "ok" ? 1 : 0;
+    const tb = b.i.trust === "ok" ? 1 : 0;
+    return group(a.i) - group(b.i) || ta - tb || (ta === 0 ? keyNum(a.i) - keyNum(b.i) || a.i.key.localeCompare(b.i.key) : a.n - b.n);
+  }).map((x) => x.i);
+}
 function servedSummary(d, rev, platform = process.platform) {
-  const items = d.attention.items.map((i) => servedItem(i, platform));
+  const items = orderServedItems(d.attention.items.map((i) => servedItem(i, platform)));
   const runs = d.runs.map(servedRun);
   const untrusted = new Set(runs.filter((r) => !r.verified).map((r) => r.key));
   const known = new Set(runs.map((r) => r.key));
@@ -158210,6 +158261,21 @@ function dirSignature(dir) {
     }
   }
   return parts.join("|");
+}
+function dropStalledStreams(streams, stalls, limit) {
+  const dropped = [];
+  for (const s of streams) {
+    const n = s.writableLength > 0 ? (stalls.get(s) ?? 0) + 1 : 0;
+    if (n >= limit) {
+      streams.delete(s);
+      stalls.delete(s);
+      s.destroy();
+      dropped.push(s);
+    } else if (n > 0) stalls.set(s, n);
+    else stalls.delete(s);
+  }
+  for (const s of stalls.keys()) if (!streams.has(s)) stalls.delete(s);
+  return dropped;
 }
 function writeEvent(s, chunk, streams) {
   const ok2 = s.write(chunk);
@@ -158385,7 +158451,11 @@ data: repos ${reposSummary.rev}
   poll.unref();
   const tick = setInterval(() => schedule(null), o.tickMs ?? TICK_MS);
   tick.unref();
-  const ping = setInterval(() => broadcast(": ping\n\n"), o.pingMs ?? PING_MS);
+  const stalls = /* @__PURE__ */ new Map();
+  const ping = setInterval(() => {
+    dropStalledStreams(streams, stalls, o.stallPings ?? STREAM_STALL_PINGS);
+    broadcast(": ping\n\n");
+  }, o.pingMs ?? PING_MS);
   ping.unref();
   let forgeTimer = null;
   if (!multi && o.forgeRefresh) {
@@ -158635,7 +158705,7 @@ function runDetail(root, ledgerDir, s, key) {
   out.history = st.history.slice(-HISTORY_MAX).map((h) => ({ at: text8(h.at, 40), from: h.from === null ? null : text8(h.from, 40), to: text8(h.to, 40), note: text8(h.note, 300) }));
   return out;
 }
-var import_crypto55, import_http2, import_fs188, import_path215, DASHBOARD_HOST, TOKEN_BYTES, MAX_URL_LENGTH, MAX_HEADER_BYTES, MAX_CONNECTIONS, MAX_STREAMS, POLL_MS, DEBOUNCE_MS, MIN_RECOMPUTE_INTERVAL_MS, PING_MS, TICK_MS, FORGE_REFRESH_MS, GATE_DETAIL_MAX, MAX_WATCHERS, RESCAN_MS, MAX_REPOS, SERVED_REPO_ID, HISTORY_MAX, RUN_KEY, UNTRUSTED_WHY, SAFE_NAME2, untrustedTrust, knownGate, knownPhase, finiteOrNull, trustedRun, jsonText, plainLines, text8, STREAM_BUFFER_MAX, SECURITY_HEADERS, GROUP_RANK;
+var import_crypto55, import_http2, import_fs188, import_path215, DASHBOARD_HOST, TOKEN_BYTES, MAX_URL_LENGTH, MAX_HEADER_BYTES, MAX_CONNECTIONS, MAX_STREAMS, POLL_MS, DEBOUNCE_MS, MIN_RECOMPUTE_INTERVAL_MS, PING_MS, TICK_MS, FORGE_REFRESH_MS, GATE_DETAIL_MAX, MAX_WATCHERS, RESCAN_MS, MAX_REPOS, SERVED_REPO_ID, HISTORY_MAX, RUN_KEY, UNTRUSTED_WHY, SAFE_NAME2, untrustedTrust, knownGate, knownPhase, trustedRun, jsonText, plainLines, text8, STREAM_BUFFER_MAX, STREAM_STALL_PINGS, SECURITY_HEADERS, GROUP_RANK;
 var init_serve = __esm({
   "src/factory/dashboard/serve.ts"() {
     "use strict";
@@ -158680,12 +158750,12 @@ var init_serve = __esm({
     untrustedTrust = (t) => typeof t === "string" && Object.prototype.hasOwnProperty.call(UNTRUSTED_WHY, t) ? t : "unverified";
     knownGate = (g) => typeof g === "string" && SAFE_NAME2.test(g) && gateSteps(g).known ? g : null;
     knownPhase = (p) => typeof p === "string" && FACTORY_PHASES.includes(p) ? p : null;
-    finiteOrNull = (n) => typeof n === "number" && Number.isFinite(n) ? n : null;
     trustedRun = (r) => r.verified === true && r.trust === "ok";
     jsonText = (v) => JSON.stringify(v).replace(/[<>&\p{Zl}\p{Zp}]/gu, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`);
     plainLines = (v, max) => v.slice(0, max).split(/\r?\n/).map((l) => plainText(l)).join("\n");
     text8 = (v, max = 300) => plainText(String(v ?? "")).replace(/\s+/g, " ").trim().slice(0, max);
     STREAM_BUFFER_MAX = 64 * 1024;
+    STREAM_STALL_PINGS = 3;
     SECURITY_HEADERS = Object.freeze({
       "X-Content-Type-Options": "nosniff",
       "Referrer-Policy": "no-referrer",

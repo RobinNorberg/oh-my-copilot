@@ -129,6 +129,12 @@ FD.statusCommand = function (label) {
   return { label: 'read the run state', argv: argv, line: argv.join(' '), billed: false, inRoot: false };
 };
 /** What an attention row may offer: everything on a trusted row, the client-built status command on any other. */
+/** The keys of the runs this summary does not trust (runs list): a row of another section with such a key is untrusted too, whatever it says. */
+FD.untrustedKeys = function (data) {
+  var bad = Object.create(null);
+  (data && Array.isArray(data.runs) ? data.runs : []).forEach(function (r) { if (r.verified !== true || r.trust !== 'ok') bad[String(r.key)] = true; });
+  return bad;
+};
 FD.visibleNext = function (item) {
   if (item.trust === 'ok') return Array.isArray(item.next) ? item.next : [];
   var s = FD.statusCommand(item.key);
@@ -203,7 +209,10 @@ function table(doc, caption, head, rows, empty) {
 /** The marker: a known trust value in brackets, or none (a row that carries no trust value). */
 function trustMark(doc, trust) { return h(doc, 'span', { 'class': 'bad' }, trust === undefined ? 'not verified' : 'not verified (' + FD.trustOf(trust) + ')'); }
 
+/** A command line with a control, line-separator or bidi character is never shown or copied (it could hide what runs). */
+FD.UNSAFE_LINE = /[\u0000-\u001f\u007f-\u009f\u2028\u2029\u200e\u200f\u202a-\u202e\u2066-\u2069]/;
 FD.commandEl = function (doc, n, fk, ctx) {
+  if (FD.UNSAFE_LINE.test(String(n.line))) return h(doc, 'li', { 'class': 'warn' }, 'command not shown: it holds a control character');
   var code = h(doc, 'code', null, String(n.line));
   var btn = h(doc, 'button', { type: 'button', 'data-k': fk }, 'Copy');
   var line = String(n.line);
@@ -227,13 +236,14 @@ FD.buildAttention = function (doc, data, ctx, scope) {
   if (items.length === 0) return h(doc, 'p', { 'class': 'ok' }, 'Nothing needs you.');
   var repo = scope ? scope.repo : ctx.repo;
   var kp = repo ? FD.repoId(repo.id) + ':' : '';
+  var bad = FD.untrustedKeys(data);
   var out = h(doc, 'div', null);
   FD.GROUPS.forEach(function (g) {
     var group = items.filter(function (i) { return i.group === g[0]; });
     if (group.length === 0) return;
     out.appendChild(h(doc, scope ? 'h4' : 'h3', scope ? null : { id: 'attention-' + g[0] }, [g[1] + ' ', h(doc, 'span', { 'class': 'muted' }, '(' + group.length + ')')]));
     out.appendChild(h(doc, 'ul', { 'class': 'items' }, group.map(function (i) {
-      var trusted = i.trust === 'ok';
+      var trusted = i.trust === 'ok' && !bad[String(i.key)];
       if (!trusted) {
         var cmd = FD.statusCommand(i.key);
         var label = FD.apiKey(i.key) === null ? 'a run' : String(i.key);
@@ -377,11 +387,10 @@ FD.buildRuns = function (doc, data, ctx) {
 FD.buildTasks = function (doc, data) {
   var forge = data.forge && data.forge.read;
   var head = ['Run', 'Title', 'Outcome', 'Phase / gate', 'PR', 'Credits', 'Wall time'].concat(forge ? ['Bucket', 'Tracker stage'] : []);
-  var untrustedRun = Object.create(null);
-  FD.runRows(data).forEach(function (r) { if (!r.verified) untrustedRun[r.key] = true; });
+  var untrustedRun = FD.untrustedKeys(data);
   return table(doc, 'Tasks', head, (data.tasks || []).map(function (t) {
     // A board row with no run holds tracker text; a run row that is not verified shows the key and the marker only.
-    var ok = t.verified === true || (t.outcome === 'no run' && !untrustedRun[String(t.key)]);
+    var ok = !untrustedRun[String(t.key)] && (t.verified === true || t.outcome === 'no run');
     var row = ok ? [String(t.key), String(t.title), String(t.outcome),
       [t.phase, t.gate ? 'awaiting-human: ' + t.gate : ''].filter(Boolean).join(' / '), t.pr === null ? '' : '#' + t.pr, FD.num(t.credits), FD.fmtDur(t.wallMs)]
       : [String(t.key), '', trustMark(doc), '', '', '', ''];
@@ -416,11 +425,26 @@ FD.buildThroughput = function (doc, data) {
   ]);
 };
 
+FD.BENCH_NOTE = 'Unsealed files in the repository (anyone who can write the repository can edit them).';
+FD.BENCH_TEXT = /^[A-Za-z0-9._ -]+$/;
+/** A bench text field: a plain word or "(not shown)" (the server already filters; this page does again). */
+FD.benchText = function (v) { return v === null || v === undefined ? '' : (FD.BENCH_TEXT.test(String(v)) && String(v).length <= 120 ? String(v) : '(not shown)'); };
+/** A bench number: finite and >= 0, else "invalid" (also when the server marked the field invalid). */
+FD.benchNum = function (b, f, fmt) {
+  var v = b[f];
+  if ((Array.isArray(b.invalid) && b.invalid.indexOf(f) >= 0) || (v !== null && v !== undefined && !(typeof v === 'number' && isFinite(v) && v >= 0))) return 'invalid';
+  return v === null || v === undefined ? '' : fmt(v);
+};
 FD.buildBench = function (doc, data) {
-  return table(doc, 'Bench results', ['File', 'Source', 'Started', 'Mode', 'Model', 'Passed', 'Requests', 'Credits', 'Wall time'], (data.bench || []).map(function (b) {
-    return [String(b.file), String(b.source), b.startedAt || '', b.mode || '', b.model || '', b.passed === null ? '' : b.passed + (b.issues === null ? '' : ' / ' + b.issues),
-      FD.num(b.premiumRequests), FD.num(b.credits), FD.fmtDur(b.wallMs)];
-  }), 'No bench results (bench-results/*.json, or pass --bench-dir).');
+  var ident = function (v) { return String(v); };
+  return h(doc, 'div', null, [h(doc, 'p', { 'class': 'warn' }, FD.BENCH_NOTE),
+    table(doc, 'Bench results', ['File', 'Source', 'Started', 'Mode', 'Model', 'Passed', 'Requests', 'Credits', 'Wall time'], (data.bench || []).map(function (b) {
+      var passed = FD.benchNum(b, 'passed', ident);
+      var issues = FD.benchNum(b, 'issues', ident);
+      return [FD.benchText(b.file), b.source === 'bench-dir' ? 'bench-dir' : 'bench-results', /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.]+Z$/.test(String(b.startedAt)) ? String(b.startedAt) : '', FD.benchText(b.mode), FD.benchText(b.model),
+        passed === 'invalid' || issues === 'invalid' ? 'invalid' : passed + (passed !== '' && issues !== '' ? ' / ' + issues : ''),
+        FD.benchNum(b, 'premiumRequests', FD.num), FD.benchNum(b, 'credits', FD.num), FD.benchNum(b, 'wallMs', FD.fmtDur)];
+    }), 'No bench results (bench-results/*.json, or pass --bench-dir).')]);
 };
 
 FD.buildSummary = function (doc, data) {
