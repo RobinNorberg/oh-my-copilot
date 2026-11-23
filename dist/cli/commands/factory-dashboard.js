@@ -16,9 +16,9 @@
  * the page then reloads itself (meta refresh). With --forge the forge is
  * read on a slow timer (FORGE_REFRESH_MS), never per tick.
  */
-import { execFileSync } from 'child_process';
+import { execFileSync, spawn } from 'child_process';
 import { renameSync, rmSync, writeFileSync } from 'fs';
-import { resolve } from 'path';
+import { dirname, join, resolve } from 'path';
 import { Command, InvalidArgumentError } from 'commander';
 import chalk from 'chalk';
 import { collectDashboard } from '../../factory/dashboard/collect.js';
@@ -26,11 +26,44 @@ import { collectDashboardV2 } from '../../factory/dashboard/collect-v2.js';
 import { renderDashboardHtml } from '../../factory/dashboard/render.js';
 import { EXIT_CHECK_FAILED, EXIT_CHECK_USAGE } from '../../factory/check/cli.js';
 import { plainText } from '../../factory/check/score.js';
-import { defaultLedgerDir } from '../../factory/run/ledger.js';
+import { defaultLedgerDir, ledgerFilePath } from '../../factory/run/ledger.js';
+import { factorySlotsDir, factoryStateDir } from '../../factory/run/state.js';
+import { healStateDir } from '../../factory/heal/state.js';
+import { startDashboardServer } from '../../factory/dashboard/serve.js';
 export const WATCH_DEFAULT_SECONDS = 10;
 export const WATCH_MIN_SECONDS = 2;
 /** --watch --forge: the forge is read at most this often. */
 export const FORGE_REFRESH_MS = 5 * 60_000;
+/** Resolves at the first SIGINT or SIGTERM. */
+export function waitForStopSignal() {
+    return new Promise((done) => {
+        const stop = () => {
+            process.off('SIGINT', stop);
+            process.off('SIGTERM', stop);
+            done();
+        };
+        process.once('SIGINT', stop);
+        process.once('SIGTERM', stop);
+    });
+}
+/**
+ * The platform's URL opener with the URL as ONE argument and no shell
+ * (Windows: rundll32's FileProtocolHandler; macOS: open; else xdg-open).
+ * Any failure is silent: the URL is printed anyway.
+ */
+export function openUrlInBrowser(url, platform = process.platform) {
+    if (!/^http:\/\/127\.0\.0\.1:\d+\/t\/[0-9a-f]+\/$/.test(url))
+        return;
+    const [cmd, args] = platform === 'win32' ? ['rundll32', ['url.dll,FileProtocolHandler', url]] : platform === 'darwin' ? ['open', [url]] : ['xdg-open', [url]];
+    try {
+        const child = spawn(cmd, args, { stdio: 'ignore', detached: true, windowsHide: true, shell: false });
+        child.on('error', () => { });
+        child.unref();
+    }
+    catch {
+        // No opener: the printed URL is enough.
+    }
+}
 const defaultRoot = () => execFileSync('git', ['rev-parse', '--show-toplevel'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true }).trim();
 /** Temp file next to the target, then one rename over it. */
 export function writeFileAtomic(file, content) {
@@ -65,6 +98,14 @@ function watchSeconds(v) {
         throw new UsageError(`--watch takes whole seconds, at least ${WATCH_MIN_SECONDS}; got ${JSON.stringify(v)}`);
     return n;
 }
+function servePort(v) {
+    if (v === undefined)
+        return 0;
+    const n = Number(v);
+    if (!/^\d+$/.test(v) || !Number.isInteger(n) || n < 1024 || n > 65535)
+        throw new UsageError(`--port takes a port from 1024 to 65535, got ${JSON.stringify(v)}`);
+    return n;
+}
 export function factoryDashboardCommand(deps = defaultDashboardDeps) {
     return new Command('dashboard')
         .description('One static HTML page: what needs you, engines running, runs with engine and waiting time, tasks, cost, throughput and bench results (local state only and no write unless --forge)')
@@ -75,6 +116,9 @@ export function factoryDashboardCommand(deps = defaultDashboardDeps) {
         .option('--forge', 'also read the tracker (bucket and live stage per task) and record runs whose PR a human merged: forge reads and state writes')
         .option('--bench-dir <dir>', 'also read bench result files (*.json) from this directory (repeatable; a bench fixture keeps them in <fixture>/results)', (v, prev = []) => [...prev, v])
         .option('--watch [seconds]', `with --out: rewrite the file every N seconds (default ${WATCH_DEFAULT_SECONDS}, at least ${WATCH_MIN_SECONDS}) when it changed, until Ctrl-C; the page reloads itself`)
+        .option('--serve', 'serve a live, read-only page on 127.0.0.1 (a random token in the URL) until Ctrl-C; not with --out, --watch or --json')
+        .option('--port <n>', 'with --serve: listen on this port (1024-65535; default: a random free port)')
+        .option('--open', 'with --serve: open the page in the default browser')
         .action(async (o) => {
         let root;
         try {
@@ -104,6 +148,11 @@ async function runDashboard(root, o, deps) {
         throw new UsageError('--schema 1 is the old --json shape only: it takes --json (and --out, --since), not --forge, --bench-dir or --watch');
     if (watch !== null && !o.out)
         throw new UsageError('--watch needs --out <file>');
+    if (o.serve && (o.out || watch !== null || o.json || schema !== '2'))
+        throw new UsageError('--serve is a live page on its own: it does not take --out, --watch, --json or --schema (where a listener is not allowed, use --out <file> --watch)');
+    if (!o.serve && (o.port !== undefined || o.open))
+        throw new UsageError('--port and --open need --serve');
+    const port = o.serve ? servePort(o.port) : 0;
     const clock = () => (deps.now?.() ?? new Date()).getTime();
     const write = deps.writeFile ?? writeFileAtomic;
     const emit = (body, file) => {
@@ -160,6 +209,8 @@ async function runDashboard(root, o, deps) {
         return data;
     };
     const page = (d) => (o.json ? JSON.stringify(d, null, 2) : renderDashboardHtml(d, watch !== null ? { refreshSeconds: watch } : {}));
+    if (o.serve)
+        return serveDashboard(root, o, deps, port, collect, o.forge ? () => readForge(clock()) : undefined);
     if (watch === null) {
         const now = clock();
         if (o.forge)
@@ -194,5 +245,40 @@ async function runDashboard(root, o, deps) {
         if (!(await sleep(watch * 1000)))
             return 0;
     }
+}
+/**
+ * `--serve`: the live page until Ctrl-C. The URL (with its token) goes to
+ * stdout once and nowhere else. Watched: the run state, heal, slot and
+ * engine-ledger dirs; polled too: the bench result dirs.
+ */
+async function serveDashboard(root, o, deps, port, collect, forgeRefresh) {
+    const ledgerDir = deps.ledgerDir ?? defaultLedgerDir();
+    const start = deps.serve ?? startDashboardServer;
+    let server;
+    try {
+        server = await start({
+            root, ledgerDir, port, collect, now: deps.now ? () => deps.now().getTime() : undefined,
+            watchDirs: [factoryStateDir(root), healStateDir(root), factorySlotsDir(root), dirname(ledgerFilePath(ledgerDir, root, 1))],
+            pollDirs: [join(root, 'bench-results'), ...(o.benchDir ?? []).map((d) => resolve(d))],
+            ...(forgeRefresh ? { forgeRefresh } : {}),
+            log: (line) => deps.err(chalk.yellow(plainText(line))),
+        });
+    }
+    catch (error) {
+        const code = error?.code;
+        const why = code === 'EADDRINUSE' ? `port ${port} is already in use (omit --port for a free one)`
+            : code === 'EACCES' || code === 'EPERM' ? `listening on 127.0.0.1${port ? `:${port}` : ''} was refused (${code})`
+                : plainText(error instanceof Error ? error.message : String(error));
+        deps.err(chalk.red(`omg factory dashboard --serve: ${why}. Where a local listener is not allowed, use --out <file> --watch.`));
+        return EXIT_CHECK_FAILED;
+    }
+    deps.err(`omg factory dashboard: serving a live, read-only page on 127.0.0.1 only (Ctrl-C to stop). Do not share or paste this URL:`);
+    deps.out(server.url);
+    if (o.open)
+        (deps.openUrl ?? openUrlInBrowser)(server.url);
+    await (deps.waitForStop ?? waitForStopSignal)();
+    await server.close();
+    deps.err('omg factory dashboard: stopped');
+    return 0;
 }
 //# sourceMappingURL=factory-dashboard.js.map

@@ -19,7 +19,8 @@
 import { Command } from 'commander';
 import type { BoardJson } from '../../factory/board/collect.js';
 import type { LoadedFactoryRunLimits } from '../../factory/run/budget.js';
-import type { OwnerDeps } from '../../factory/run/state.js';
+import { type OwnerDeps } from '../../factory/run/state.js';
+import { type DashboardServer, type DashboardServerOptions } from '../../factory/dashboard/serve.js';
 export declare const WATCH_DEFAULT_SECONDS = 10;
 export declare const WATCH_MIN_SECONDS = 2;
 /** --watch --forge: the forge is read at most this often. */
@@ -45,7 +46,21 @@ export interface FactoryDashboardDeps {
     sleep?: (ms: number) => Promise<boolean>;
     /** Write `content` to `file` so a reader never sees a half-written file. */
     writeFile?: (file: string, content: string) => void;
+    /** --serve: start the server (tests pass options through or wrap it). */
+    serve?: (o: DashboardServerOptions) => Promise<DashboardServer>;
+    /** --serve: resolves at Ctrl-C (SIGINT or SIGTERM). */
+    waitForStop?: () => Promise<void>;
+    /** --open: hand the URL to the platform's browser opener; failures are ignored. */
+    openUrl?: (url: string) => void;
 }
+/** Resolves at the first SIGINT or SIGTERM. */
+export declare function waitForStopSignal(): Promise<void>;
+/**
+ * The platform's URL opener with the URL as ONE argument and no shell
+ * (Windows: rundll32's FileProtocolHandler; macOS: open; else xdg-open).
+ * Any failure is silent: the URL is printed anyway.
+ */
+export declare function openUrlInBrowser(url: string, platform?: NodeJS.Platform): void;
 /** Temp file next to the target, then one rename over it. */
 export declare function writeFileAtomic(file: string, content: string): void;
 /** Resolves true after `ms`, false at the first Ctrl-C (SIGINT) before that. */
