@@ -393,6 +393,8 @@ describe('a slow repository does not stall the others', () => {
       // at most 2000 / that many (timers never fire early), however fast this host computes.
       const spacing = Math.max(60, Math.min(...costs.slice(Math.max(0, seen - 1))) * BACKOFF_FACTOR);
       expect(s.recomputes() - before, JSON.stringify({ costs, spacing })).toBeLessThanOrEqual(Math.floor(2_000 / spacing) + 2);
+      // The per-repository cap engaged: the served summary carries the one note for the unread unrecorded state files.
+      expect((await get(s, `${base(s)}api/v1/summary`)).body).toContain('state files the engine has no record of were not read');
     } finally {
       clearInterval(loop);
     }

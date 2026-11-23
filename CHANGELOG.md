@@ -3720,7 +3720,6 @@ npm install -g oh-my-copilot@5.0.0
 - **cmux multiplexer support**: Team sessions can now launch from cmux surfaces alongside tmux
 
 ### Fixed
-
 - **Security: ReDoS guards** — `safe-regex` validation on user-supplied regex patterns in live-data deny/allow lists
 - **Informational keyword filtering** — Questions like "what is ralph?" no longer trigger execution modes (supports EN, KO, JA, ZH)
 - **Skill-state collision prevention** — OMC built-in skills no longer collide with project custom skills of the same name (#1581)
@@ -3773,7 +3772,6 @@ npm install -g oh-my-copilot@5.0.0
 - Multi-AI Orchestration section lists all 4 providers (Copilot, Claude, Gemini, Codex)
 
 ### Fixed
-
 - `claude` agent type: binary corrected from `copilot` to `claude`
 - Broken `https://docs/REFERENCE.md` URLs in README
 - Phantom agent entries removed from AGENTS.md (11 non-existent roles)
