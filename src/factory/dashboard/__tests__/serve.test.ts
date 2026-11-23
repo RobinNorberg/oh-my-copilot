@@ -23,7 +23,7 @@ import { createFactoryState, factoryStateDir, moveTo, runKeyOf, setGate, updateF
 import { collectDashboardV2 } from '../collect-v2.js';
 import { CLIENT_JS } from '../client.js';
 import {
-  contentSecurityPolicy, DASHBOARD_HOST, parseRunKey, servedItem, servedSummary, startDashboardServer, STREAM_BUFFER_MAX, summaryRev, tokenEquals, UNTRUSTED_WHY, writeEvent,
+  contentSecurityPolicy, DASHBOARD_HOST, parseRunKey, servedItem, servedSummary, servedWarnings, startDashboardServer, STREAM_BUFFER_MAX, summaryRev, tokenEquals, UNTRUSTED_WHY, writeEvent,
   type DashboardServer, type DashboardServerOptions,
 } from '../serve.js';
 
@@ -663,6 +663,15 @@ describe('dashboard server: functional', () => {
         expect(page).not.toContain('77');
       }
     }
+  });
+
+  it('served warnings are fixed lines: no collector text (bench, path or file snippet) is ever served', () => {
+    const raw = ['run state #4 is unreadable: /abs/repo/.omg/state/factory/run-4.json is not valid JSON: Unexpected token \'L\', "LANE-FREE-"...',
+      'bench-results/b.json: skipped (Unexpected token "BENCH-LANE-TEXT {")', '--bench-dir /abs/elsewhere: not a readable directory'];
+    const items = [servedItem({ key: '#4', group: 'inspect', gate: null, phase: null, ageMs: null, credits: null, cap: null, pr: null, head: null, title: '', why: raw[0], next: [], trust: 'unreadable', notes: [] }, 'linux')];
+    const w = servedWarnings(raw, items, []);
+    expect(w).toEqual(['run #4: the state cannot be read', '3 warning(s): the terminal running the server prints them']);
+    for (const bad of ['LANE-FREE', 'BENCH-LANE-TEXT', '/abs', 'b.json']) expect(JSON.stringify(w)).not.toContain(bad);
   });
 
   it('an event stream whose client never reads is dropped once its buffer fills', () => {
