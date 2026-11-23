@@ -18,9 +18,9 @@
  * 3c. attention: `omg factory attention`'s collector (local state only,
  *    read-only): the first tick prints a one-line summary, later ticks one
  *    line per item that is new since the previous tick (run key, group,
- *    trust, gate, park time), with its first next command; an item that
- *    gets a stale-gate reminder (3b) in the same tick is printed by the
- *    reminder only. Only trusted items get a line and an item notice
+ *    trust, gate, park time), with its first next command; a stale-gate
+ *    reminder (3b) in the same tick stands for an item's line (never its
+ *    notice) only when its sealed park time is a reminder window old. Only trusted items get a line and an item notice
  *    (queued past the per-tick cap and rate limit), once per identity: only
  *    an identity that really got its line or notice counts as announced, and
  *    a queued notice waits while its run's row is not trusted; rows whose
@@ -75,7 +75,7 @@ import { join } from 'path';
 import { ledgerPath, ledgerTotals, parseLedger } from '../budget/ledger.js';
 import { atomicWriteFileSync, ensureDirSync } from '../lib/atomic-write.js';
 import { lockPathFor, withFileLockSync } from '../lib/file-lock.js';
-import { getOmcRoot } from '../lib/worktree-paths.js';
+import { getOmcRoot, withWorktreePathRenderScope } from '../lib/worktree-paths.js';
 import { ADO_RATE_LIMITED } from '../forge/ado/checks.js';
 import { GITHUB_RATE_LIMITED } from '../forge/github/graphql.js';
 import { readBaseFile } from '../ship/config.js';
@@ -631,7 +631,10 @@ export async function pollTick(ctx) {
     const ledgerDir = ctx.ledgerDir ?? defaultLedgerDir();
     // Capped as attention's collector (every ledger-recorded run, then at most MAX_UNRECORDED_STATES other files): a
     // lane's flood of state files cannot slow the tick's PR step, reminders or idle check.
-    const { runs, broken, untrusted, unverified, omitted } = readRuns(root, warnings, ledgerDir);
+    // One render scope (the state root resolved once, not once per file). A read that throws fails closed: no runs, and
+    // the tick is unsound (never idle), so the poll loop goes on.
+    const read = step('run states', () => withWorktreePathRenderScope(() => readRuns(root, warnings, ledgerDir)));
+    const { runs, broken, untrusted, unverified, omitted } = read ?? { runs: new Map(), broken: new Set(), untrusted: new Set(), unverified: new Set(), omitted: 0 };
     const live = [...runs].filter(([, s]) => !TERMINAL_FACTORY_PHASES.includes(s.phase));
     const prs = [];
     if (ctx.prs) {
@@ -688,7 +691,7 @@ export async function pollTick(ctx) {
     // its state is a ledger mismatch (damaged); a sealed terminal state the ledger has no record of is old history from
     // another host or checkout (or a new key a lane made up), not a run, and does not block (as before the trust check).
     const missing = step('missing states', () => missingRunKeys(root, ledgerDir));
-    const damaged = broken.size > 0 || missing === undefined || missing.length > 0 || [...runs.values()].some((s) => !verifyFactoryIntegrity(s))
+    const damaged = read === undefined || broken.size > 0 || missing === undefined || missing.length > 0 || [...runs.values()].some((s) => !verifyFactoryIntegrity(s))
         || [...untrusted].some((k) => !unverified.has(k));
     // State files left unread (past the cap) are unknown to the ledger as well: they block as unverified unfinished ones.
     const unverifiedLive = omitted > 0 || [...unverified].some((k) => !TERMINAL_FACTORY_PHASES.includes(runs.get(k).phase));
@@ -697,13 +700,16 @@ export async function pollTick(ctx) {
     // 3b. stale-gate reminders: read-only on git (the base commit's routing file), printed only.
     const reminders = step('reminders', () => staleGateReminders({ root, runs, untrusted, nowMs: ctx.now(), afterHours: ctx.remindAfterHours, ...(ctx.baseSha ? { readBase: (path) => readBaseFile(ctx.exec, root, ctx.baseSha, path) ?? undefined } : {}), warn: (m) => warnings.push(plainText(m)) }));
     // 3c. attention: the items that are new since the previous tick (local state only, read-only). The reminder path
-    // owns a park that is still waiting after remindAfterHours; this path owns a park when it first appears. An item that
-    // gets a reminder in this same tick is printed by the reminder alone.
+    // owns a park that is still waiting after remindAfterHours; this path owns a park when it first appears.
     let attention;
     if (ctx.attention) {
+        // Only the poll's first tick is the baseline: a collector that failed on the first ticks must not turn a later
+        // tick into one (its summary would swallow a park that appeared meanwhile).
+        const baseline = ctx.previous.baselined !== true;
+        ctx.previous.baselined = true;
         const d = step('attention', ctx.attention);
         if (d) {
-            const before = ctx.previous.attention;
+            const before = ctx.previous.attention ?? new Set();
             const ids = d.items.map(attentionId);
             ctx.previous.attention = new Set(ids);
             const seen = (ctx.previous.seen ??= new Map());
@@ -724,19 +730,25 @@ export async function pollTick(ctx) {
             };
             for (const m of [printedIds, notifiedIds])
                 markSeen(m, trustedRows.map((r) => r.id).filter((id) => recent(m, id)), nowMs);
-            if (!before) {
+            if (baseline) {
                 attention = { summary: summaryLine(d), new: [] };
                 // The first tick's summary stands for what is listed at the start: none of it gets its own line or notice.
                 markSeen(printedIds, trustedRows.map((r) => r.id), nowMs);
                 markSeen(notifiedIds, trustedRows.map((r) => r.id), nowMs);
             }
             else {
-                const reminded = new Set((reminders ?? []).map((r) => runLabel(r.run)));
-                // An item that gets a stale-gate reminder in this tick is announced by the reminder alone: no line, no notice
-                // (a notice already waiting in the queue still goes).
-                const remindedIds = trustedRows.filter(({ i }) => reminded.has(i.key)).map((r) => r.id);
-                markSeen(printedIds, remindedIds, nowMs);
-                markSeen(notifiedIds, remindedIds, nowMs);
+                // A stale-gate reminder in this tick stands for the item's line, never its notice, and only when the trusted
+                // state's own park time (sealed, ledger-matched gate.at) is a reminder window old: the reminders record is
+                // lane-writable, so a reminder of a younger park must not take the park's first line.
+                const windowMs = (ctx.remindAfterHours ?? 0) * 3_600_000;
+                const reminded = new Map();
+                for (const r of reminders ?? []) {
+                    const s = 'verified' in r || untrusted.has(r.run) ? undefined : runs.get(r.run);
+                    const parked = s?.gate ? Date.parse(s.gate.at) : Number.NaN;
+                    if (windowMs > 0 && Number.isFinite(parked) && nowMs - parked >= windowMs)
+                        reminded.set(runLabel(r.run), parked);
+                }
+                markSeen(printedIds, trustedRows.filter(({ i }) => reminded.get(i.key) === i.at).map((r) => r.id), nowMs);
                 const lineDue = trustedRows.filter(({ id }) => !recent(printedIds, id));
                 // A lane can write any number of untrusted rows (and they sort first): they are only ever counted, so they can
                 // never delay or crowd out a trusted item's line or notice. New: not in the previous tick nor within the quiet window.
@@ -810,10 +822,11 @@ export async function pollTick(ctx) {
                         prev.countDue = true;
                     if (unverified === 0)
                         prev.countDue = false;
-                    prev.countNotified = Math.min(prev.countNotified ?? 0, unverified);
+                    // The last notified count is a high-water mark for the hourly window: a count that drops and comes back
+                    // (alternating rows) is no rise.
                     const last = prev.countNotifiedAt;
                     const since = last === undefined || last > nowMs ? Infinity : nowMs - last;
-                    const due = since >= ATTENTION_COUNT_NOTICE_WINDOW_MS || (unverified > prev.countNotified && since >= ATTENTION_COUNT_RISE_MS);
+                    const due = since >= ATTENTION_COUNT_NOTICE_WINDOW_MS || (unverified > (prev.countNotified ?? 0) && since >= ATTENTION_COUNT_RISE_MS);
                     if (prev.countDue && pending < ATTENTION_PENDING_MAX && due) {
                         batch.push(attentionCountNotice(root, unverified));
                         prev.countDue = false;
@@ -864,7 +877,7 @@ export async function pollTick(ctx) {
             : par !== undefined && sharedEngine ? 'the run lock is held: a shared-layout engine runs in this repository'
                 : par !== undefined && slots >= par ? `all ${par} parallel slots are held (factory.run.maxConcurrent ${par})`
                     : par === undefined && locked ? 'the run lock is held: an engine runs in this repository'
-                        : damaged ? 'a run state is unreadable or fails its integrity check'
+                        : damaged ? 'a run state is damaged or missing: omg factory attention'
                             : unverifiedLive ? 'a run state is not verified on this host: omg factory attention'
                                 : par === undefined && !idle ? 'a run is in flight'
                                     : !intake.ran ? `no intake read this tick (${intake.reason})`

@@ -138999,10 +138999,10 @@ function recordHumanMerge(root, key, o) {
     s = parseFactoryState(path30, key, bytes.toString("utf8"));
     if (!humanMergeCandidate(s)) return unchanged("not a stopped run with a PR");
     if (!verifyFactoryIntegrity(s)) return unchanged("the run state fails its integrity check");
+    if (!EngineLedger.open(o.ledgerDir, root, key).matches(path30, bytes)) return unchanged("the run state is not the engine's last write");
     const untrusted = laneTrustProblem(s);
     if (untrusted) return { kind: "unchanged", key, reason: untrusted, untrusted: true };
     if (tamperHoldMessage(o.ledgerDir, root)) return unchanged("a tamper hold is set on this checkout");
-    if (!EngineLedger.open(o.ledgerDir, root, key).matches(path30, bytes)) return unchanged("the run state is not the engine's last write");
   } catch (error62) {
     return unchanged(text3(error62));
   }
@@ -153443,18 +153443,21 @@ function healItem(root, sig8, s, o, now2, deps) {
   const key = `heal-${sig8}`;
   const seal = s.sig8 === sig8 ? verifyHealSeal(o.ledgerDir, root, s) : "mismatch";
   if (seal === "none") return null;
-  const at = msOf(s.updatedAt);
-  const common = { key, phase: "heal", ageMs: Number.isFinite(at) ? Math.max(0, now2 - at) : null, credits: null, cap: null, pr: null, head: null, title: text5(`ci-heal ${s.class}`, TITLE_MAX), notes: [], at: Number.isFinite(at) ? at : 0 };
   if (seal !== "ok") {
-    return untrustedRow({ ...common, gate: null, group: "inspect", why: HEAL_WHY.seal, next: suppressedCommands(key), trust: "seal" });
+    return untrustedRow({ key, phase: "heal", ageMs: null, credits: null, cap: null, pr: null, head: null, title: "", notes: [], at: 0, gate: null, group: "inspect", why: HEAL_WHY.seal, next: suppressedCommands(key), trust: "seal" });
   }
   if (!s.healRun?.open) return null;
+  const subject2 = readHealSealSubject(o.ledgerDir, root, sig8);
+  const common = healCommon(key, s, subject2, now2);
   const last = s.lanes?.at(-1);
   if (last?.status === "running" && Number.isInteger(last.pid) && deps.isAlive(last.pid)) return null;
   const approve2 = last?.status !== "running" && s.diagnosis?.outcome === "valid" && s.diagnosis.laneId === last?.id;
   const ended = (s.lanes ?? []).some((l) => l.status !== "running" && typeof l.startedAt === "string" && typeof s.healRun?.startedAt === "string" && l.startedAt >= s.healRun.startedAt);
   if (approve2 && s.next !== "heal-approve") {
     return { ...common, gate: "heal-approve", group: "decide", why: "a valid CI-heal diagnosis is sealed, but the heal record's next step disagrees; read its status, the commands are withheld", next: nextCommands(key, ["status"]), trust: "ok" };
+  }
+  if (approve2 && !subject2) {
+    return { ...common, gate: "heal-approve", group: "decide", why: "a valid CI-heal diagnosis is sealed, but its seal holds no classification snapshot, so heal approve is refused; read its status, then run the debugger lane again", next: nextCommands(key, ["status"]), trust: "ok" };
   }
   return {
     ...common,
@@ -153474,21 +153477,27 @@ function healOpenAfterRun(root, sig8, s, o, now2) {
   }
   if (!s.healRun?.open) return null;
   const closable = s.next === "heal-approve" || s.next === "heal-diagnosis";
-  const at = msOf(s.updatedAt);
   return {
-    key,
+    ...healCommon(key, s, readHealSealSubject(o.ledgerDir, root, sig8), now2),
     group: "decide",
     gate: "heal-open",
+    why: closable ? "the ci-heal run is finished but its heal run is still open, which blocks every other debugger lane; close it" : "the ci-heal run is finished but its heal run is still open, which blocks every other debugger lane; heal close does not take its stage, read its status",
+    next: nextCommands(key, closable ? ["status", "heal-close"] : ["status"]),
+    trust: "ok"
+  };
+}
+function healCommon(key, s, subject2, now2) {
+  const last = s.lanes?.at(-1);
+  const at = msOf(last?.endedAt ?? last?.startedAt ?? s.healRun?.startedAt);
+  return {
+    key,
     phase: "heal",
     ageMs: Number.isFinite(at) ? Math.max(0, now2 - at) : null,
     credits: null,
     cap: null,
     pr: null,
     head: null,
-    title: text5(`ci-heal ${s.class}`, TITLE_MAX),
-    why: closable ? "the ci-heal run is finished but its heal run is still open, which blocks every other debugger lane; close it" : "the ci-heal run is finished but its heal run is still open, which blocks every other debugger lane; heal close does not take its stage, read its status",
-    next: nextCommands(key, closable ? ["status", "heal-close"] : ["status"]),
-    trust: "ok",
+    title: subject2 ? `ci-heal ${subject2.class}` : "ci-heal",
     notes: [],
     at: Number.isFinite(at) ? at : 0
   };
@@ -154425,10 +154434,12 @@ function staleGateReminders(o) {
       }
       const parkedAt = Date.parse(s.gate.at);
       if (!Number.isFinite(parkedAt)) continue;
+      if (o.nowMs - parkedAt < windowMs) continue;
       const rec = before[label2];
-      const last = rec && rec.gateAt === s.gate.at ? Date.parse(rec.remindedAt) : parkedAt;
-      if (!Number.isFinite(last) || o.nowMs - last < windowMs) {
-        if (rec && rec.gateAt === s.gate.at) next[label2] = rec;
+      const recorded = rec && rec.gateAt === s.gate.at ? Date.parse(rec.remindedAt) : Number.NaN;
+      const last = Number.isFinite(recorded) ? Math.min(o.nowMs, Math.max(parkedAt, recorded)) : parkedAt;
+      if (o.nowMs - last < windowMs) {
+        next[label2] = { gateAt: s.gate.at, remindedAt: new Date(last).toISOString() };
         continue;
       }
       if (routes === void 0) {
@@ -154800,7 +154811,8 @@ async function pollTick(ctx) {
     }
   }
   const ledgerDir = ctx.ledgerDir ?? defaultLedgerDir();
-  const { runs, broken, untrusted, unverified, omitted } = readRuns(root, warnings, ledgerDir);
+  const read = step("run states", () => withWorktreePathRenderScope(() => readRuns(root, warnings, ledgerDir)));
+  const { runs, broken, untrusted, unverified, omitted } = read ?? { runs: /* @__PURE__ */ new Map(), broken: /* @__PURE__ */ new Set(), untrusted: /* @__PURE__ */ new Set(), unverified: /* @__PURE__ */ new Set(), omitted: 0 };
   const live = [...runs].filter(([, s]) => !TERMINAL_FACTORY_PHASES.includes(s.phase));
   const prs = [];
   if (ctx.prs) {
@@ -154839,16 +154851,18 @@ async function pollTick(ctx) {
   const slots = heldSlots(root, ctx.owner).length;
   const locked = sharedEngine || slots > 0;
   const missing = step("missing states", () => missingRunKeys(root, ledgerDir));
-  const damaged = broken.size > 0 || missing === void 0 || missing.length > 0 || [...runs.values()].some((s) => !verifyFactoryIntegrity(s)) || [...untrusted].some((k) => !unverified.has(k));
+  const damaged = read === void 0 || broken.size > 0 || missing === void 0 || missing.length > 0 || [...runs.values()].some((s) => !verifyFactoryIntegrity(s)) || [...untrusted].some((k) => !unverified.has(k));
   const unverifiedLive = omitted > 0 || [...unverified].some((k) => !TERMINAL_FACTORY_PHASES.includes(runs.get(k).phase));
   const unsound = damaged || unverifiedLive;
   const idle = !locked && !unsound && !live.some(([, s]) => !s.gate);
   const reminders = step("reminders", () => staleGateReminders({ root, runs, untrusted, nowMs: ctx.now(), afterHours: ctx.remindAfterHours, ...ctx.baseSha ? { readBase: (path30) => readBaseFile(ctx.exec, root, ctx.baseSha, path30) ?? void 0 } : {}, warn: (m) => warnings.push(plainText(m)) }));
   let attention;
   if (ctx.attention) {
+    const baseline = ctx.previous.baselined !== true;
+    ctx.previous.baselined = true;
     const d = step("attention", ctx.attention);
     if (d) {
-      const before = ctx.previous.attention;
+      const before = ctx.previous.attention ?? /* @__PURE__ */ new Set();
       const ids3 = d.items.map(attentionId);
       ctx.previous.attention = new Set(ids3);
       const seen = ctx.previous.seen ??= /* @__PURE__ */ new Map();
@@ -154865,15 +154879,19 @@ async function pollTick(ctx) {
         return t !== void 0 && t <= nowMs && nowMs - t < quietMs;
       };
       for (const m of [printedIds, notifiedIds]) markSeen(m, trustedRows.map((r) => r.id).filter((id) => recent(m, id)), nowMs);
-      if (!before) {
+      if (baseline) {
         attention = { summary: summaryLine2(d), new: [] };
         markSeen(printedIds, trustedRows.map((r) => r.id), nowMs);
         markSeen(notifiedIds, trustedRows.map((r) => r.id), nowMs);
       } else {
-        const reminded = new Set((reminders ?? []).map((r) => runLabel(r.run)));
-        const remindedIds = trustedRows.filter(({ i }) => reminded.has(i.key)).map((r) => r.id);
-        markSeen(printedIds, remindedIds, nowMs);
-        markSeen(notifiedIds, remindedIds, nowMs);
+        const windowMs = (ctx.remindAfterHours ?? 0) * 36e5;
+        const reminded = /* @__PURE__ */ new Map();
+        for (const r of reminders ?? []) {
+          const s = "verified" in r || untrusted.has(r.run) ? void 0 : runs.get(r.run);
+          const parked = s?.gate ? Date.parse(s.gate.at) : Number.NaN;
+          if (windowMs > 0 && Number.isFinite(parked) && nowMs - parked >= windowMs) reminded.set(runLabel(r.run), parked);
+        }
+        markSeen(printedIds, trustedRows.filter(({ i }) => reminded.get(i.key) === i.at).map((r) => r.id), nowMs);
         const lineDue = trustedRows.filter(({ id }) => !recent(printedIds, id));
         const untrustedNew = rows.filter(({ i, id }) => {
           const last = seen.get(id);
@@ -154928,10 +154946,9 @@ async function pollTick(ctx) {
           if (pending >= ATTENTION_PENDING_MAX) warnings.push(`attention: ${pending} notification(s) are still in flight; no more are sent until they settle`);
           if (untrustedNew > 0) prev.countDue = true;
           if (unverified2 === 0) prev.countDue = false;
-          prev.countNotified = Math.min(prev.countNotified ?? 0, unverified2);
           const last = prev.countNotifiedAt;
           const since = last === void 0 || last > nowMs ? Infinity : nowMs - last;
-          const due = since >= ATTENTION_COUNT_NOTICE_WINDOW_MS || unverified2 > prev.countNotified && since >= ATTENTION_COUNT_RISE_MS;
+          const due = since >= ATTENTION_COUNT_NOTICE_WINDOW_MS || unverified2 > (prev.countNotified ?? 0) && since >= ATTENTION_COUNT_RISE_MS;
           if (prev.countDue && pending < ATTENTION_PENDING_MAX && due) {
             batch.push(attentionCountNotice(root, unverified2));
             prev.countDue = false;
@@ -154973,7 +154990,7 @@ async function pollTick(ctx) {
   let autoStart;
   const par = ctx.parallel !== void 0 && ctx.parallel > 1 ? ctx.parallel : void 0;
   const held = config2.intake.autoStart ? (ctx.tamperHold ?? (() => tamperHoldMessage(defaultLedgerDir(), root)))() : null;
-  const blocked2 = !config2.intake.autoStart ? "factory.intake.autoStart is off" : held ? held : par !== void 0 && sharedEngine ? "the run lock is held: a shared-layout engine runs in this repository" : par !== void 0 && slots >= par ? `all ${par} parallel slots are held (factory.run.maxConcurrent ${par})` : par === void 0 && locked ? "the run lock is held: an engine runs in this repository" : damaged ? "a run state is unreadable or fails its integrity check" : unverifiedLive ? "a run state is not verified on this host: omg factory attention" : par === void 0 && !idle ? "a run is in flight" : !intake.ran ? `no intake read this tick (${intake.reason})` : rateLimited ? "the tick was rate-limited" : null;
+  const blocked2 = !config2.intake.autoStart ? "factory.intake.autoStart is off" : held ? held : par !== void 0 && sharedEngine ? "the run lock is held: a shared-layout engine runs in this repository" : par !== void 0 && slots >= par ? `all ${par} parallel slots are held (factory.run.maxConcurrent ${par})` : par === void 0 && locked ? "the run lock is held: an engine runs in this repository" : damaged ? "a run state is damaged or missing: omg factory attention" : unverifiedLive ? "a run state is not verified on this host: omg factory attention" : par === void 0 && !idle ? "a run is in flight" : !intake.ran ? `no intake read this tick (${intake.reason})` : rateLimited ? "the tick was rate-limited" : null;
   if (blocked2) autoStart = { started: false, reason: blocked2 };
   else {
     let reason = ctx.budget(root);

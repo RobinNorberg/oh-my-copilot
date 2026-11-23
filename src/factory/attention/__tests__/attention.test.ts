@@ -12,7 +12,10 @@ import { dirname, join, relative } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { factoryAttentionCommand, terminalColumns, type FactoryAttentionDeps } from '../../../cli/commands/factory-attention.js';
 import { writeHealState, type HealSignatureState } from '../../heal/state.js';
-import { writeHealSeal } from '../../heal/run.js';
+import { writeHealSeal, type HealSealSubject } from '../../heal/run.js';
+
+/** The classification snapshot `heal run` seals; `heal approve` needs it. */
+const SUBJECT: HealSealSubject = { class: 'regression', source: 'push', firstRed: { runId: '1', sha: 'c'.repeat(40) }, failingTests: [], env: [] };
 import { DEFAULT_FACTORY_RUN_LIMITS } from '../../run/budget.js';
 import { EXIT_AWAITING_HUMAN, runFactoryEngine } from '../../run/engine.js';
 import { EngineLedger } from '../../run/ledger.js';
@@ -275,8 +278,12 @@ describe('omg factory attention', () => {
       diagnosis: { at: at(4), laneId: 'heal-fedcba98-debug-1', outcome: 'valid', evidence: {} },
     };
     writeHealState(root, sig);
-    writeHealSeal(ledgerDir, root, sig);
+    writeHealSeal(ledgerDir, root, sig, SUBJECT);
     writeHealState(root, { ...sig, sig8: '00000001', healRun: { id: 'h2', open: true, startedAt: at(3) } }); // no seal
+    // A seal written before the classification snapshot: the engine refuses heal approve, so the row offers status only.
+    const old = { ...sig, sig8: '00000002', class: 'MRKZclass' } as unknown as HealSignatureState;
+    writeHealState(root, old);
+    writeHealSeal(ledgerDir, root, old);
     await attention(['--json']);
     // The flag step is dropped: heal approve takes no --allow-unsandboxed-gates.
     expect(argvs(item(String(key)))).toEqual(['omg factory heal status 0123abcd', 'omg factory heal cancel 0123abcd']);
@@ -284,6 +291,8 @@ describe('omg factory attention', () => {
     expect(argvs(item('heal-fedcba98'))).toEqual(['omg factory heal status fedcba98', 'omg factory heal approve fedcba98', 'omg factory heal close fedcba98']);
     expect(item('heal-00000001')).toMatchObject({ group: 'inspect', trust: 'seal' });
     expect(argvs(item('heal-00000001'))).toEqual(['omg factory heal status 00000001']);
+    expect(item('heal-00000002')).toMatchObject({ group: 'decide', gate: 'heal-approve', trust: 'ok', title: 'ci-heal' });
+    expect(argvs(item('heal-00000002'))).toEqual(['omg factory heal status 00000002']);
   });
 
   it('a tamper hold is one Inspect item naming the release command', () => {
@@ -457,7 +466,7 @@ describe('omg factory attention: untrusted state cannot hide a row', () => {
       healRun: { id: `heal-${sig8}`, open: true, startedAt: at(5) }, lanes: [lane], diagnosis: { at: at(4), laneId: lane.id, outcome: 'valid', evidence: {} },
       next: 'heal-approve', rerunIntents: [], updatedAt: at(4),
     };
-    const write = (s: HealSignatureState, seal = true) => { writeHealState(root, s); if (seal) writeHealSeal(ledgerDir, root, s); };
+    const write = (s: HealSignatureState, seal = true) => { writeHealState(root, s); if (seal) writeHealSeal(ledgerDir, root, s, SUBJECT); };
     const one = () => { const d = collect(); expect(d.items).toHaveLength(1); return d.items[0]; };
     write(sig);
     expect(one()).toMatchObject({ key: `heal-${sig8}`, group: 'decide', gate: 'heal-approve', trust: 'ok' });

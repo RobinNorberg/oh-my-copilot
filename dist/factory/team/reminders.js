@@ -77,11 +77,16 @@ export function staleGateReminders(o) {
             const parkedAt = Date.parse(s.gate.at);
             if (!Number.isFinite(parkedAt))
                 continue;
+            // The record is lane-writable: it may only postpone a reminder, never bring one forward. Due only once the sealed
+            // park time is a window old; its remindedAt counts clamped to [gate.at, now] (kept clamped, so a future time
+            // postpones by one window at most from when it was first read).
+            if (o.nowMs - parkedAt < windowMs)
+                continue;
             const rec = before[label];
-            const last = rec && rec.gateAt === s.gate.at ? Date.parse(rec.remindedAt) : parkedAt;
-            if (!Number.isFinite(last) || o.nowMs - last < windowMs) {
-                if (rec && rec.gateAt === s.gate.at)
-                    next[label] = rec;
+            const recorded = rec && rec.gateAt === s.gate.at ? Date.parse(rec.remindedAt) : Number.NaN;
+            const last = Number.isFinite(recorded) ? Math.min(o.nowMs, Math.max(parkedAt, recorded)) : parkedAt;
+            if (o.nowMs - last < windowMs) {
+                next[label] = { gateAt: s.gate.at, remindedAt: new Date(last).toISOString() };
                 continue;
             }
             if (routes === undefined) {

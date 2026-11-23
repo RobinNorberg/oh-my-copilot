@@ -6,7 +6,9 @@
  * command unless the run state is absent and unrecorded or trusted, and at
  * most one row per key. A heal run whose sealed record says it is closed gets
  * no billed command at all (attention withholds the resume the engine would
- * still take for an existing run state).
+ * still take for an existing run state). Without a run state, `heal approve`
+ * is offered only when the seal file holds a valid classification snapshot
+ * (the engine refuses one without it; an `old-no-flag` seal predates both).
  */
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
@@ -14,7 +16,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { healStateDir, healStatePath, readHealState, writeHealState, type HealSignatureState } from '../../heal/state.js';
-import { healLedgerDir, verifyHealSeal, writeHealSeal } from '../../heal/run.js';
+import { healLedgerDir, readHealSealSubject, verifyHealSeal, writeHealSeal, type HealSealSubject } from '../../heal/run.js';
 import { EngineLedger } from '../../run/ledger.js';
 import { createFactoryState, factoryStatePath, moveTo, readFactoryState, runKeyOf, setGate, TERMINAL_FACTORY_PHASES, updateFactoryState, verifyFactoryIntegrity, type FactoryRunState } from '../../run/state.js';
 import { collectAttention } from '../collect.js';
@@ -24,6 +26,7 @@ const at = (h: number) => new Date(NOW - h * 3_600_000).toISOString();
 const SIG = '0123abcd';
 const KEY = `heal-${SIG}` as const;
 const OWNER = { pid: 1, hostname: 'h', isAlive: (p: number) => p === process.pid };
+const SUBJECT: HealSealSubject = { class: 'regression', source: 'push', firstRed: { runId: '1', sha: 'c'.repeat(40) }, failingTests: [], env: [] };
 
 const RUNS = ['absent', 'trusted-nonterminal', 'trusted-parked', 'merged', 'cancelled', 'failed', 'untrusted', 'deleted-in-ledger'] as const;
 const RECS = ['intact', 'deleted', 'garbage', 'directory', 'edited-closed', 'edited-open', 'next-report', 'next-heal-diagnosis', 'stripped', 'lane-running', 'other-sig8', 'heal-dir-deleted'] as const;
@@ -48,6 +51,7 @@ let dir: string;
 let root: string;
 let n = 0;
 let cases = 0;
+let billedCases = 0;
 
 beforeAll(() => {
   dir = mkdtempSync(join(tmpdir(), 'omg-attention-heal-matrix-'));
@@ -62,11 +66,12 @@ function setUp(run: Run, rec: Rec, seal: Seal): string {
   const ledgerDir = join(dir, `l${++n}`);
   const s = healState(seal !== 'closed');
   writeHealState(root, s);
-  writeHealSeal(ledgerDir, root, s);
+  writeHealSeal(ledgerDir, root, s, SUBJECT);
   const sealFile = join(healLedgerDir(ledgerDir, root), `${SIG}.seal.json`);
   if (seal === 'old-no-flag') {
     const j = JSON.parse(readFileSync(sealFile, 'utf8')) as Record<string, unknown>;
     delete j.open;
+    delete j.subject;
     writeFileSync(sealFile, JSON.stringify(j));
   }
   if (seal === 'absent') unlinkSync(sealFile);
@@ -118,7 +123,7 @@ function engineTakesApprove(ledgerDir: string): boolean {
     return ledger.tracks(path) && ledger.matches(path, readFileSync(path)) && verifyFactoryIntegrity(existing) && !TERMINAL_FACTORY_PHASES.includes(existing.phase);
   }
   // No run state: the engine refuses an approve whose heal record does not stand at heal-approve (`next`, checked before any lane).
-  return s.healRun?.open === true && s.next === 'heal-approve' && typeof ledger.recorded(path) !== 'string';
+  return s.healRun?.open === true && s.next === 'heal-approve' && typeof ledger.recorded(path) !== 'string' && readHealSealSubject(ledgerDir, root, SIG) !== null;
 }
 
 describe('factory attention: ci-heal run state x heal record x heal seal', () => {
@@ -140,6 +145,7 @@ describe('factory attention: ci-heal run state x heal record x heal seal', () =>
           if (run !== 'absent' && !run.startsWith('trusted')) expect(billed, `${where}: no billed command`).toEqual([]);
           // The host seal says the heal run is closed: never a billed approve, whatever the run state.
           if (seal === 'closed') expect(billed, `${where}: no billed command on a closed heal run`).toEqual([]);
+          if (billed.length > 0) billedCases += 1;
           for (const c of billed) {
             expect(c, where).toBe(`heal approve ${SIG}`);
             expect(engineTakesApprove(ledgerDir), `${where}: the engine takes ${c}`).toBe(true);
@@ -149,7 +155,8 @@ describe('factory attention: ci-heal run state x heal record x heal seal', () =>
     }, 120_000);
   }
 
-  it('ran every case (8 x 12 x 4)', () => {
+  it('ran every case (8 x 12 x 4), offering the billed approve in some', () => {
+    expect(billedCases).toBeGreaterThan(0);
     expect(RUNS.length * RECS.length * SEALS.length).toBe(384);
     expect(cases).toBe(384);
   });

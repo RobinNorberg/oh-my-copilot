@@ -18,9 +18,9 @@
  * 3c. attention: `omg factory attention`'s collector (local state only,
  *    read-only): the first tick prints a one-line summary, later ticks one
  *    line per item that is new since the previous tick (run key, group,
- *    trust, gate, park time), with its first next command; an item that
- *    gets a stale-gate reminder (3b) in the same tick is printed by the
- *    reminder only. Only trusted items get a line and an item notice
+ *    trust, gate, park time), with its first next command; a stale-gate
+ *    reminder (3b) in the same tick stands for an item's line (never its
+ *    notice) only when its sealed park time is a reminder window old. Only trusted items get a line and an item notice
  *    (queued past the per-tick cap and rate limit), once per identity: only
  *    an identity that really got its line or notice counts as announced, and
  *    a queued notice waits while its run's row is not trusted; rows whose
@@ -384,6 +384,8 @@ export interface PollContext {
         countDue?: boolean;
         countNotifiedAt?: number;
         countNotified?: number;
+        /** The first tick ran (its attention summary is the baseline, even when its collector failed). */
+        baselined?: boolean;
         /** Notices started and not yet settled, abandoned ones included (bounded by ATTENTION_PENDING_MAX). */
         pending?: number;
     };

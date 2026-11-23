@@ -649,7 +649,7 @@ describe('omg factory poll: factory.intake.autoStart', () => {
 
   it('unverified states: a finished one this host has no record of does not block; an unfinished one, a seal or ledger mismatch and a missing state do, each with its reason', async () => {
     const ledger = `${root}-ledger`;
-    const DAMAGED = 'a run state is unreadable or fails its integrity check';
+    const DAMAGED = 'a run state is damaged or missing: omg factory attention';
     const UNVERIFIED = 'a run state is not verified on this host: omg factory attention';
     const path6 = factoryStatePath(root, 6);
     const done = moveTo(issueRun(6), 'merged', 'merged', T0);
@@ -810,10 +810,10 @@ describe('omg factory poll: factory.intake.autoStart', () => {
     mkdirSync(factoryStateDir(root), { recursive: true });
     writeFileSync(factoryStatePath(root, 6), JSON.stringify({ ...s, phase: 'merged', integrity: computeFactoryIntegrity(s) }));
     expect(await poll(scripted().exec, { once: true, json: true, prs: false }, on(e))).toBe(0);
-    expect(ticks().at(-1)).toMatchObject({ idle: false, autoStart: { started: false, reason: 'a run state is unreadable or fails its integrity check' } });
+    expect(ticks().at(-1)).toMatchObject({ idle: false, autoStart: { started: false, reason: 'a run state is damaged or missing: omg factory attention' } });
     writeFileSync(factoryStatePath(root, 6), '{ not json');
     expect(await poll(scripted().exec, { once: true, json: true, prs: false }, on(e))).toBe(0);
-    expect(ticks().at(-1)).toMatchObject({ idle: false, autoStart: { started: false, reason: 'a run state is unreadable or fails its integrity check' } });
+    expect(ticks().at(-1)).toMatchObject({ idle: false, autoStart: { started: false, reason: 'a run state is damaged or missing: omg factory attention' } });
     expect(e.starts).toEqual([]);
   });
 

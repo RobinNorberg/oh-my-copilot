@@ -30,7 +30,7 @@ import { LOCAL_REMOTE } from '../../forge/local/mirror.js';
 import { withWorktreePathRenderScope } from '../../lib/worktree-paths.js';
 import { plainText } from '../check/score.js';
 import { healStatePath, parseHealState, SIG8, type HealSignatureState } from '../heal/state.js';
-import { healSealOpen, healSealSigs, verifyHealSeal } from '../heal/run.js';
+import { healSealOpen, healSealSigs, readHealSealSubject, verifyHealSeal, type HealSealSubject } from '../heal/run.js';
 import { runCredits, RUNTIME_MIN_MAX_CREDITS, type FactoryRunLimits } from '../run/budget.js';
 import { MAX_CONCURRENT_LIMIT } from '../run/parallel.js';
 import { EngineLedger, ledgerFilePath } from '../run/ledger.js';
@@ -480,12 +480,12 @@ function healItem(root: string, sig8: string, s: HealSignatureState, o: CollectA
   const seal = s.sig8 === sig8 ? verifyHealSeal(o.ledgerDir, root, s) : 'mismatch';
   // No heal run, no lane, no diagnosis and no seal: nothing was started, nothing waits.
   if (seal === 'none') return null;
-  const at = msOf(s.updatedAt);
-  const common = { key, phase: 'heal', ageMs: Number.isFinite(at) ? Math.max(0, now - at) : null, credits: null, cap: null, pr: null, head: null, title: text(`ci-heal ${s.class}`, TITLE_MAX), notes: [], at: Number.isFinite(at) ? at : 0 };
   if (seal !== 'ok') {
-    return untrustedRow({ ...common, gate: null, group: 'inspect', why: HEAL_WHY.seal!, next: suppressedCommands(key), trust: 'seal' });
+    return untrustedRow({ key, phase: 'heal', ageMs: null, credits: null, cap: null, pr: null, head: null, title: '', notes: [], at: 0, gate: null, group: 'inspect', why: HEAL_WHY.seal!, next: suppressedCommands(key), trust: 'seal' });
   }
   if (!s.healRun?.open) return null;
+  const subject = readHealSealSubject(o.ledgerDir, root, sig8);
+  const common = healCommon(key, s, subject, now);
   const last = s.lanes?.at(-1);
   // A debugger lane at work: nothing waits for a human yet.
   if (last?.status === 'running' && Number.isInteger(last.pid) && deps.isAlive(last.pid)) return null;
@@ -499,6 +499,10 @@ function healItem(root: string, sig8: string, s: HealSignatureState, o: CollectA
   // before any lane, so nothing billed or closing is offered; the read-only status shows what happened.
   if (approve && s.next !== 'heal-approve') {
     return { ...common, gate: 'heal-approve', group: 'decide', why: 'a valid CI-heal diagnosis is sealed, but the heal record\'s next step disagrees; read its status, the commands are withheld', next: nextCommands(key, ['status']), trust: 'ok' };
+  }
+  // The engine builds the ci-heal run from the seal's classification snapshot and refuses without one (an older seal file).
+  if (approve && !subject) {
+    return { ...common, gate: 'heal-approve', group: 'decide', why: 'a valid CI-heal diagnosis is sealed, but its seal holds no classification snapshot, so heal approve is refused; read its status, then run the debugger lane again', next: nextCommands(key, ['status']), trust: 'ok' };
   }
   return {
     ...common,
@@ -530,13 +534,25 @@ function healOpenAfterRun(root: string, sig8: string, s: HealSignatureState, o: 
   }
   if (!s.healRun?.open) return null;
   const closable = s.next === 'heal-approve' || s.next === 'heal-diagnosis';
-  const at = msOf(s.updatedAt);
   return {
-    key, group: 'decide', gate: 'heal-open', phase: 'heal', ageMs: Number.isFinite(at) ? Math.max(0, now - at) : null, credits: null, cap: null, pr: null, head: null,
-    title: text(`ci-heal ${s.class}`, TITLE_MAX),
+    ...healCommon(key, s, readHealSealSubject(o.ledgerDir, root, sig8), now), group: 'decide', gate: 'heal-open',
     why: closable ? 'the ci-heal run is finished but its heal run is still open, which blocks every other debugger lane; close it'
       : 'the ci-heal run is finished but its heal run is still open, which blocks every other debugger lane; heal close does not take its stage, read its status',
-    next: nextCommands(key, closable ? ['status', 'heal-close'] : ['status']), trust: 'ok', notes: [], at: Number.isFinite(at) ? at : 0,
+    next: nextCommands(key, closable ? ['status', 'heal-close'] : ['status']), trust: 'ok',
+  };
+}
+
+/**
+ * The shown fields of a sealed heal row, from sealed facts only: its time is the last lane's end or start, else the
+ * heal run's start (`updatedAt` is not sealed, and poll's identity of a trusted row includes the time); its class is
+ * the seal file's classification snapshot (the record's `class` is not sealed), else none.
+ */
+function healCommon(key: string, s: HealSignatureState, subject: HealSealSubject | null, now: number) {
+  const last = s.lanes?.at(-1);
+  const at = msOf(last?.endedAt ?? last?.startedAt ?? s.healRun?.startedAt);
+  return {
+    key, phase: 'heal', ageMs: Number.isFinite(at) ? Math.max(0, now - at) : null, credits: null, cap: null, pr: null, head: null,
+    title: subject ? `ci-heal ${subject.class}` : 'ci-heal', notes: [] as string[], at: Number.isFinite(at) ? at : 0,
   };
 }
 

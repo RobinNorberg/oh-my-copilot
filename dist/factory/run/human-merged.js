@@ -150,13 +150,14 @@ export function recordHumanMerge(root, key, o) {
             return unchanged('not a stopped run with a PR');
         if (!verifyFactoryIntegrity(s))
             return unchanged('the run state fails its integrity check');
+        // The ledger first: the lane-trust reason quotes the state's base and lane ids, only from the engine's own write.
+        if (!EngineLedger.open(o.ledgerDir, root, key).matches(path, bytes))
+            return unchanged('the run state is not the engine\'s last write');
         const untrusted = laneTrustProblem(s);
         if (untrusted)
             return { kind: 'unchanged', key, reason: untrusted, untrusted: true };
         if (tamperHoldMessage(o.ledgerDir, root))
             return unchanged('a tamper hold is set on this checkout');
-        if (!EngineLedger.open(o.ledgerDir, root, key).matches(path, bytes))
-            return unchanged('the run state is not the engine\'s last write');
     }
     catch (error) {
         return unchanged(text(error));

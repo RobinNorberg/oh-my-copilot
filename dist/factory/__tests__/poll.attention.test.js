@@ -7,15 +7,30 @@
  * to the tracker or the forge.
  */
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { hostname, tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createForge } from '../../forge/index.js';
 import { attentionNoticeText } from '../attention/notify.js';
 import { EngineLedger } from '../run/ledger.js';
 import { computeFactoryIntegrity, createFactoryState, factoryStateDir, factoryStatePath, moveTo, runKeyOf, setGate, updateFactoryState } from '../run/state.js';
 import { runFactoryPoll } from '../poll.js';
+import { remindersPath } from '../team/reminders.js';
+import { healStatePath, writeHealState } from '../heal/state.js';
+import { writeHealSeal } from '../heal/run.js';
+/** The attention collector fails while `failing.on` is set; poll's run-state read while `failing.runs` is set. */
+const failing = vi.hoisted(() => ({ on: false, runs: false }));
+vi.mock('../attention/collect.js', async (orig) => {
+    const m = await orig();
+    return { ...m, collectAttention: (...a) => { if (failing.on)
+            throw new Error('boom'); return m.collectAttention(...a); } };
+});
+vi.mock('../board/collect.js', async (orig) => {
+    const m = await orig();
+    return { ...m, readRuns: (...a) => { if (failing.runs)
+            throw new Error('EMFILE'); return m.readRuns(...a); } };
+});
 const SHA = 'a'.repeat(40);
 const HEAD = 'b'.repeat(40);
 const T0 = Date.parse('2026-11-20T10:00:00.000Z');
@@ -138,12 +153,66 @@ describe('omg factory poll: attention items', () => {
             for (const bad of ['allow-gate-change', 'ghp_', 'reason'])
                 expect(l).not.toContain(bad);
     });
-    it('a park that is also due for a stale-gate reminder in the same tick is printed by the reminder alone', async () => {
-        await poll(2, [() => park(4, 'ci-failed', now - 30 * 3_600_000)]);
+    it('a park whose sealed park time is a window old and that gets its reminder: the reminder is its line, it still gets one notice', async () => {
+        await poll(4, [() => park(4, 'ci-failed', now - 30 * 3_600_000)]);
         const t = ticks();
         expect(t[1].reminders?.map((r) => r.run)).toEqual([4]);
         expect(t[1].attention).toEqual({ new: [] });
-        expect(notices).toEqual([]);
+        expect(notices.map((x) => x.key)).toEqual(['#4']);
+    });
+    it('a forged reminders record never takes a fresh park\'s line or notice', async () => {
+        await poll(4, [() => {
+                park(71, 'merge', now);
+                const gateAt = iso(now);
+                writeFileSync(remindersPath(root), JSON.stringify({ '#71': { gateAt, remindedAt: '2000-01-01T00:00:00.000Z' } }));
+            }]);
+        const t = ticks();
+        expect(t[1].reminders).toBeUndefined();
+        expect(t.flatMap((x) => x.attention?.new ?? []).map((i) => i.key)).toEqual(['#71']);
+        expect(notices.map((x) => x.key)).toEqual(['#71']);
+    });
+    it('a future remindedAt neither fires a reminder nor hides the park', async () => {
+        await poll(3, [() => {
+                park(72, 'merge', now - 30 * 3_600_000);
+                writeFileSync(remindersPath(root), JSON.stringify({ '#72': { gateAt: iso(now - 30 * 3_600_000), remindedAt: '2999-01-01T00:00:00.000Z' } }));
+            }]);
+        const t = ticks();
+        expect(t.flatMap((x) => x.reminders ?? [])).toEqual([]);
+        expect(t[1].attention?.new.map((i) => i.key)).toEqual(['#72']);
+        expect(notices.map((x) => x.key)).toEqual(['#72']);
+    });
+    it('only the first tick is the baseline: a collector that failed first does not swallow a later park', async () => {
+        failing.on = true;
+        try {
+            await poll(5, [() => { }, () => park(61, 'merge', now), () => { failing.on = false; }]);
+        }
+        finally {
+            failing.on = false;
+        }
+        const t = ticks();
+        expect(t.slice(0, 3).map((x) => x.attention)).toEqual([undefined, undefined, undefined]);
+        expect(t[3].attention?.new.map((i) => i.key)).toEqual(['#61']);
+        expect(notices.map((x) => x.key)).toEqual(['#61']);
+    });
+    it('a run-state read that throws fails the tick closed (not idle) and the poll goes on', async () => {
+        failing.runs = true;
+        try {
+            await poll(3, [() => { failing.runs = false; }]);
+        }
+        finally {
+            failing.runs = false;
+        }
+        const t = ticks();
+        expect(t).toHaveLength(3);
+        expect(t[0].errors.some((e) => e.startsWith('run states: EMFILE'))).toBe(true);
+        expect(t[0].idle).toBe(false);
+        expect(t[1].errors).toEqual([]);
+    });
+    it('an untrusted row that comes and goes every tick: one count notice per hour, not one per rise', async () => {
+        const all = [];
+        // 12 ticks 5 min apart: a new unreadable state, then gone, then another (the count alternates 0 and 1).
+        await poll(12, Array.from({ length: 11 }, (_, n) => () => (n % 2 === 0 ? (mkdirSync(factoryStateDir(root), { recursive: true }), writeFileSync(factoryStatePath(root, 3000 + n), 'garbage')) : rmSync(factoryStatePath(root, 3000 + n - 1), { force: true }))), true, { notifyAttention: async (x) => { all.push(x); } });
+        expect(all).toEqual([{ repo: 'repo', count: 1 }]);
     });
     it('an untrusted state is only counted: one count line and one count notice, no key, gate or command', async () => {
         await poll(2, [() => {
@@ -224,6 +293,38 @@ describe('omg factory poll: a lane cannot flood the attention lines or notificat
         expect(t[3].attention?.queued).toBeUndefined();
         for (const x of t)
             expect(x.attention?.dropped).toBeUndefined();
+    });
+});
+describe('omg factory poll: a sealed heal row is the same row while a lane rewrites its unsealed fields', () => {
+    it('one line and one notice, whatever updatedAt, class and next say, and its notice is not pushed back in the queue', async () => {
+        const SIG = '0123abcd';
+        const hs = {
+            version: 1, sig8: SIG, signature: 'sig', class: 'regression', classification: { sig8: SIG, class: 'regression', laneEligible: true }, source: 'push',
+            firstSeen: { runId: 1, at: iso(T0 - 3e6) }, lastSeen: { runId: 1, at: iso(T0 - 3e6) }, count: 1, seenRuns: [1], next: 'heal-approve', rerunIntents: [], updatedAt: iso(T0 - 2e6),
+            healRun: { id: `heal-${SIG}`, open: true, startedAt: iso(T0 - 2.5e6) },
+            lanes: [{ id: `heal-${SIG}-debug-1`, kind: 'debug', status: 'completed', pid: 999, startedAt: iso(T0 - 2.4e6) }],
+            diagnosis: { outcome: 'valid', laneId: `heal-${SIG}-debug-1` },
+        };
+        const all = [];
+        const lane = (k) => () => {
+            const cur = JSON.parse(readFileSync(healStatePath(root, SIG), 'utf8'));
+            writeFileSync(healStatePath(root, SIG), JSON.stringify({ ...cur, updatedAt: iso(now - (k % 2) * 1e6), class: `MRKZclass${k}`, next: k % 2 ? 'heal-approve' : 'report' }));
+        };
+        await poll(12, [
+            // Eight parks first, then the heal row: its notice waits in the queue behind the five the rate limit holds.
+            () => { for (let k = 0; k < 8; k++)
+                park(20 + k, 'ci-failed', now); },
+            () => { writeHealState(root, hs); writeHealSeal(ledgerDir, root, hs); },
+            ...Array.from({ length: 9 }, (_, k) => lane(k))
+        ], true, { notifyAttention: async (x) => { all.push(x); } });
+        const t = ticks();
+        expect(t.flatMap((x) => x.attention?.new ?? []).filter((i) => i.key === `heal-${SIG}`)).toHaveLength(1);
+        const heal = all.filter((x) => 'key' in x && x.key === `heal-${SIG}`);
+        expect(heal).toHaveLength(1);
+        // Sent right after the eight parks ahead of it (the 9th notice), not pushed behind later ones.
+        expect(all.findIndex((x) => 'key' in x && x.key === `heal-${SIG}`)).toBe(8);
+        expect(JSON.stringify(t)).not.toContain('MRKZ');
+        expect(JSON.stringify(all)).not.toContain('MRKZ');
     });
 });
 describe('factory-attention notification payload', () => {
