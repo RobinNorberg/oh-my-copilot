@@ -22,6 +22,8 @@
  * `clean --discard` removes it.
  */
 import { existsSync, readdirSync } from 'fs';
+import { nugetDefinitionTreeDir, nugetRunPackagesDir, removeEngineDir } from './nuget-restore.js';
+import { sandboxJobRoot } from './sandbox-exec.js';
 import { dirname, join, resolve } from 'path';
 import { WORKTREE_TEAM } from '../../copilot-run/job.js';
 import { LOCAL_REMOTE } from '../../forge/local/index.js';
@@ -373,8 +375,33 @@ export function cleanHeldFactoryRun(o, state) {
             result.kept.push({ worktree: path, reason: error instanceof Error ? error.message : String(error) });
         }
     }
+    cleanRunNugetPackages(o, state, result);
     cleanGateContainers(o, result);
     return result;
+}
+/**
+ * The shared layout's run NuGet packages folder and definition tree
+ * (nuget-restore.ts; the private layout's lie in the run dir and go with
+ * it), once the prepare checkout is gone. Only the sandboxed dotnet restore
+ * step writes them, on the pinned definition files alone (the PR's code
+ * gets the packages folder read-only); removeEngineDir refuses a dir that
+ * is a link or resolves outside the gate job root (see its comment).
+ */
+function cleanRunNugetPackages(o, state, result) {
+    if (state.layout === 2)
+        return;
+    if (existsSync(getWorktreePath(o.root, FACTORY_CHECKOUT_TEAM, checkoutWorker(o.issue))))
+        return;
+    const jobRoot = sandboxJobRoot(o.root);
+    for (const dir of [nugetRunPackagesDir(jobRoot, runSlug(o.issue)), nugetDefinitionTreeDir(jobRoot, runSlug(o.issue))]) {
+        try {
+            if (removeEngineDir(dir, jobRoot))
+                result.removed.push(dir);
+        }
+        catch (error) {
+            result.kept.push({ worktree: dir, reason: error instanceof Error ? error.message : String(error) });
+        }
+    }
 }
 /**
  * factory.run.sandbox.isolation "container" (user config): the gate

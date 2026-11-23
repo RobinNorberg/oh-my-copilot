@@ -343,7 +343,7 @@ const tailOf = (text: string): string => {
  * record is removed again): its executable cannot start, or (`sandbox`) the
  * OS sandbox could not run it with an attested verdict.
  */
-export type LocalGateOutcome = { started: true; record: LocalCheckRecord } | { started: false; reason: string; sandbox?: true; noVerdict?: true; refused?: true; unavailable?: true };
+export type LocalGateOutcome = { started: true; record: LocalCheckRecord; /** The whole output (the record keeps a tail only). */ output?: string } | { started: false; reason: string; sandbox?: true; noVerdict?: true; refused?: true; unavailable?: true };
 
 /**
  * Run the gate for `head` and record SUCCESS or FAILURE (a PENDING record is
@@ -387,7 +387,7 @@ export async function runLocalGate(i: LocalGateInput): Promise<LocalGateOutcome>
     tail: tailOf(output.trim()),
   };
   writeLocalCheckRecord(i.stateDir, i.root, done);
-  return { started: true, record: done };
+  return { started: true, record: done, output };
 }
 
 /** runLocalGate in the OS sandbox: the argv resolved as for the plain runner, the verdict only when attested. */
@@ -422,7 +422,7 @@ async function runSandboxedGate(i: LocalGateInput, base: LocalCheckRecord, now: 
     ...(r.credentialFilesReadable ? { sandboxNote: CREDENTIAL_FILES_READABLE_NOTE } : {}),
   };
   writeLocalCheckRecord(i.stateDir, i.root, done);
-  return { started: true, record: done };
+  return { started: true, record: done, output };
 }
 
 /**

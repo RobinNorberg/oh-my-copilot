@@ -208,6 +208,56 @@ describe('factory run with factory.run.layout "private"', () => {
         expect(installs[0].argv).toEqual(['npm', 'ci', '--ignore-scripts']);
         expect(existsSync(join(s.privateDir, 'w', 'prep', 'node_modules'))).toBe(false);
     }, T);
+    it('a .NET repository with no npm lockfile: no npm ci and no gate-install-needed, also with "sandboxed"; a NuGet failure takes the restore step with the run packages dir in the run dir', async () => {
+        w = localWorld(['dotnet', 'test']);
+        writeFileSync(join(w.root, '.gitignore'), '.omg/\nbin/\nobj/\n');
+        mkdirSync(join(w.root, 'src', 'App'), { recursive: true });
+        writeFileSync(join(w.root, 'src', 'App', 'App.csproj'), '<Project Sdk="Microsoft.NET.Sdk" />\n');
+        gitIn(w.root, 'add', '.');
+        gitIn(w.root, 'commit', '-q', '-m', 'project');
+        const work = join(w.dir, 'fw');
+        const user = { factory: { run: { layout: 'private', workDir: work, gateInstall: 'sandboxed' } } };
+        const reqs = [];
+        let gates = 0;
+        const runner = async (req) => {
+            reqs.push(req);
+            if (req.purpose === 'gate') {
+                gates += 1;
+                return gates === 1
+                    ? { ran: true, status: 1, output: 'App.csproj : error NU1301: Unable to load the service index for source https://api.nuget.org/v3/index.json.', timedOut: false }
+                    : { ran: true, status: 0, output: 'Passed!', timedOut: false };
+            }
+            return { ran: true, status: 0, output: '', timedOut: false };
+        };
+        const out = await runFactoryEngine(opts({ w, user }, [commitFile('src/App/Greet.cs', 'namespace App;\n'), review('approve')], { gateSandbox: runner }));
+        expect(out.gate?.name, out.message).toBe('merge');
+        expect(reqs.map((r) => r.purpose)).not.toContain('install');
+        const s = readFactoryState(w.root, LOCAL_ISSUE);
+        expect(s.history.some((h) => h.note === 'no npm lockfile in this .NET repository: the prepare checkout gets no node_modules and no npm ci')).toBe(true);
+        const restore = reqs.find((r) => r.purpose === 'restore');
+        // The restore runs in the run dir's definition tree, never in the prepare checkout w/prep.
+        expect(restore).toMatchObject({ network: 'nuget', cwd: join(s.privateDir, 'gates', 'nuget-defs', `issue-${LOCAL_ISSUE}`), nugetPackages: { dir: join(s.privateDir, 'gates', 'nuget', `issue-${LOCAL_ISSUE}`), writable: true } });
+        expect(existsSync(restore.cwd)).toBe(false);
+    }, T);
+    it('L2: a .NET repository with no npm lockfile but an npm-style prepare check keeps the gate-install-needed park (no npm checks without node_modules)', async () => {
+        w = localWorld(['dotnet', 'test']);
+        writeFileSync(join(w.root, '.gitignore'), '.omg/\nbin/\nobj/\n');
+        mkdirSync(join(w.root, 'src', 'App'), { recursive: true });
+        writeFileSync(join(w.root, 'src', 'App', 'App.csproj'), '<Project Sdk="Microsoft.NET.Sdk" />\n');
+        gitIn(w.root, 'add', '.');
+        gitIn(w.root, 'commit', '-q', '-m', 'project');
+        const user = { factory: { run: { layout: 'private', workDir: join(w.dir, 'fw') } } };
+        const reqs = [];
+        const runner = async (req) => {
+            reqs.push(req);
+            return { ran: true, status: 0, output: 'Passed!', timedOut: false };
+        };
+        const npmCheck = () => ({ config: { ...resolveShipConfig(undefined), requiredChecks: ['Test'], advisoryChecks: [], prepareChecks: [['npm', 'run', 'lint']] }, known: [] });
+        const out = await runFactoryEngine(opts({ w, user }, [commitFile('src/App/Greet.cs', 'namespace App;\n'), review('approve')], { gateSandbox: runner, gateConfig: npmCheck }));
+        expect(out.gate?.name, out.message).toBe(GATE_INSTALL_GATE);
+        expect(out.gate?.reason).toMatch(/the base has no lockfile/);
+        expect(reqs.some((r) => r.purpose === 'prepare' || r.purpose === 'install')).toBe(false);
+    }, T);
     it('isolation "container": a lockfile the PR changes needs no host install (the gate container installs per command)', async () => {
         const env = privateWorld();
         w = env.w;

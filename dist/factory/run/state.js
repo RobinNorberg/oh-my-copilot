@@ -323,6 +323,11 @@ function humanReviewShapeProblem(s) {
         return 'sandboxedPrepareHead';
     if (s.sandboxedGateHead !== undefined && (!isStr(s.sandboxedGateHead) || !HEX40.test(s.sandboxedGateHead)))
         return 'sandboxedGateHead';
+    if (s.nugetRestore !== undefined) {
+        const n = s.nugetRestore;
+        if (s.forgeKind !== 'local' || typeof n !== 'object' || n === null || !isStr(n.head) || !HEX40.test(n.head) || !isStr(n.definition) || !HEX64.test(n.definition))
+            return 'nugetRestore';
+    }
     if (s.gitTransportPlainHead !== undefined && (!isStr(s.gitTransportPlainHead) || !HEX40.test(s.gitTransportPlainHead)))
         return 'gitTransportPlainHead';
     if (s.testDeltaExcusedHead !== undefined && (!isStr(s.testDeltaExcusedHead) || !HEX40.test(s.testDeltaExcusedHead)))

@@ -254,6 +254,8 @@ export function resolveWindowsGitTransport(layers, nodeVersion = process.version
     return { mode: v ?? 'fallback', container: named ? container : { ...container, image: defaultGitGateImage(nodeVersion) }, ignoredBase: block(layers.base).windowsGitTransport !== undefined };
 }
 export const REGISTRY_HOSTS = ['registry.npmjs.org', '*.npmjs.org'];
+/** The hosts the factory's sandboxed dotnet restore step reaches (nuget.org's feed serves the index and the packages). */
+export const NUGET_HOSTS = ['api.nuget.org'];
 /** `real` (a realpath) is the realpath of `want`; false when `want` cannot be resolved. Case-folded on win32. */
 function sameRealPath(real, want, platform) {
     let w;
@@ -600,8 +602,13 @@ export function buildSandboxConfig(profile, ctx, host) {
         } }));
         nested = (tree.nested ?? []).filter((p) => allowed.has(fold(p)));
     }
+    for (const p of ctx.extraReadwrite ?? []) {
+        if (P.dirname(P.resolve(p)) === P.resolve(p) || [ctx.realHome, ctx.worktree, ctx.commonGitDir, ctx.jobDir].some((x) => x && isUnderRoot(x, p, ctx.platform))) {
+            throw new Error(`the read-write grant ${p} is a filesystem root or holds the home, the worktree, the git dir or the job dir`);
+        }
+    }
     const filesystem = {
-        readwritePaths: [ctx.worktree, ...laneHome, ...(ctx.hostCommits ? [] : laneGitWritePaths(ctx)), ...settings.extraReadwritePaths],
+        readwritePaths: [ctx.worktree, ...laneHome, ...(ctx.hostCommits ? [] : laneGitWritePaths(ctx)), ...settings.extraReadwritePaths, ...(ctx.extraReadwrite ?? [])],
         readonlyPaths: [ctx.commonGitDir, ...plugin, gitConfigDir, ...pkgCache, ...gitLinks, ...(nm ? [nm] : []), ...nested, ...tools, ...settings.extraReadonlyPaths],
     };
     if (host.capabilities.denied_paths === true) {
@@ -670,9 +677,15 @@ export function buildSandboxConfig(profile, ctx, host) {
             filesystem.deniedPaths.push(...sockets.filter((s) => s !== '/' && !holdsGrant(s)));
         }
     }
-    const network = settings.writeNetwork === 'registry'
-        ? { allowOutbound: true, allowedHosts: [...REGISTRY_HOSTS, ...settings.allowedHosts], allowLocalNetwork: ctx.platform === 'win32' }
-        : { allowOutbound: false, allowLocalNetwork: false };
+    // allowLocalNetwork on Windows (registry and onlyHosts): the Windows sandbox runs nothing with outbound allowed and the
+    // local network denied (verified 2026-11-22, Copilot CLI 1.0.91: even `dotnet --version` prints nothing and the shell's
+    // exit marker never comes), so there loopback (any port) and the LAN stay reachable next to the allowed hosts; every
+    // other internet host is refused. Off on every other platform. dotnet-gate.live.test.ts checks both.
+    const network = ctx.onlyHosts
+        ? { allowOutbound: true, allowedHosts: [...ctx.onlyHosts], allowLocalNetwork: ctx.platform === 'win32' }
+        : settings.writeNetwork === 'registry'
+            ? { allowOutbound: true, allowedHosts: [...REGISTRY_HOSTS, ...settings.allowedHosts], allowLocalNetwork: ctx.platform === 'win32' }
+            : { allowOutbound: false, allowLocalNetwork: false };
     return { enabled: true, addCurrentWorkingDirectory: true, ...common, userPolicy: { filesystem, network } };
 }
 export { findOnPath };

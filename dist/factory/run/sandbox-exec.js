@@ -41,7 +41,7 @@ import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { userInfo } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { defaultCopilotRunDeps } from '../../copilot-run/job.js';
-import { allowlistSessionEnv, copilotConfigDenies, loadSandboxSettings, laneToolPaths, missingSandboxEnv, proxyCaEnv, scrubTokens, secretValues, sessionGitHubToken, } from '../../copilot-run/sandbox.js';
+import { allowlistSessionEnv, copilotConfigDenies, loadSandboxSettings, laneToolPaths, missingSandboxEnv, NUGET_HOSTS, proxyCaEnv, scrubTokens, secretValues, sessionGitHubToken, } from '../../copilot-run/sandbox.js';
 import { defaultContainerExec, runContainerGate } from './container-gate.js';
 import { dotnetSandboxArgs, dotnetSandboxEnv, isDotnetExe } from '../../copilot-run/dotnet-sandbox.js';
 import { SessionSandboxController } from '../../copilot-run/sandbox-session.js';
@@ -225,11 +225,13 @@ export async function runSandboxed(argv, o, deps) {
         Object.assign(env, { GIT_TERMINAL_PROMPT: '0', GCM_INTERACTIVE: 'never', COPILOT_ALLOW_ALL: 'false', GIT_CEILING_DIRECTORIES: resolve(o.jobRoot) });
         const realHome = (deps.realHome ?? (() => userInfo().homedir))();
         const dotnetGrants = [];
+        const dotnetWrites = [];
         const dotnetNotes = [];
         if (dotnet) {
-            const d = dotnetSandboxEnv(env.USERPROFILE, deps.env, realHome, deps.platform);
+            const d = dotnetSandboxEnv(env.USERPROFILE, deps.env, realHome, deps.platform, o.nugetPackages);
             Object.assign(env, d.env);
             dotnetGrants.push(...d.readonly);
+            dotnetWrites.push(...d.readwrite);
             dotnetNotes.push(...d.notes);
         }
         const credentialSource = { userConfigDir: deps.userConfigDir(), platform: deps.platform };
@@ -248,7 +250,8 @@ export async function runSandboxed(argv, o, deps) {
         await withTimeout(c.start().catch(rethrowSdkStartError), START_TIMEOUT_MS, 'client.start()');
         pid = runtimePid(c);
         const pluginRoot = deps.pluginRoot();
-        const settings = { ...o.settings, enabled: true, writeUnsandboxed: 'refuse', writeNetwork: o.network, extraReadwritePaths: [] };
+        // 'nuget' (the dotnet restore step): only NUGET_HOSTS through onlyHosts below, never the configured hosts.
+        const settings = { ...o.settings, enabled: true, writeUnsandboxed: 'refuse', writeNetwork: o.network === 'nuget' ? 'none' : o.network, extraReadwritePaths: [] };
         const notes = [];
         const sandbox = new SessionSandboxController({
             profile: 'write',
@@ -271,6 +274,8 @@ export async function runSandboxed(argv, o, deps) {
                     hostCommits: true,
                     toolPaths: (deps.toolPaths ?? laneToolPaths)(deps.env, deps.platform),
                     extraReadonly: [...proxy.caPaths, ...dotnetGrants],
+                    ...(dotnetWrites.length > 0 ? { extraReadwrite: dotnetWrites } : {}),
+                    ...(o.network === 'nuget' ? { onlyHosts: NUGET_HOSTS } : {}),
                     // A keyring-less host's plaintext login token, also when COPILOT_HOME moved the config dir out of ~/.copilot.
                     ...(deps.platform === 'win32' ? {} : { extraDenied: copilotConfigDenies(credentialSource.userConfigDir, deps.platform) }),
                     ...(o.mainRoot ? { mainRoot: resolve(o.mainRoot) } : {}),
@@ -457,6 +462,7 @@ export function createSandboxRunner(root, deps = defaultCopilotRunDeps(), layers
             ...(req.nodeModulesTarget ? { nodeModulesTarget: req.nodeModulesTarget } : {}),
             ...(req.nestedNodeModulesTargets ? { nestedNodeModulesTargets: req.nestedNodeModulesTargets } : {}),
             ...(req.dotnetMtp ? { dotnetMtp: true } : {}),
+            ...(req.nugetPackages ? { nugetPackages: req.nugetPackages } : {}),
         }, deps);
     };
 }

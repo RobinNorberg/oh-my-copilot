@@ -38,12 +38,16 @@
  */
 import { type CopilotRunDeps } from '../../copilot-run/job.js';
 import { type GateContainerSettings, type SandboxConfigLayers, type SandboxSettings } from '../../copilot-run/sandbox.js';
+import { type RunNugetPackages } from '../../copilot-run/dotnet-sandbox.js';
 /** The output tail a sandboxed command keeps (as the local gate record, local-gate.ts LOCAL_GATE_TAIL_CHARS). */
 export declare const SANDBOX_OUTPUT_TAIL_CHARS = 8000;
 /** One command for the sandbox: the configured argv (for records and messages) and what it resolved to. */
 export interface SandboxRunRequest {
-    /** What runs it: a prepare check, the local gate, a base calibration of either, or the step that empties a dotnet gate's build dirs (dotnet-clean.ts). */
-    purpose: 'prepare' | 'gate' | 'calibrate' | 'install' | 'clean';
+    /**
+     * What runs it: a prepare check, the local gate, a base calibration of either, the step that empties a dotnet gate's
+     * build dirs (dotnet-clean.ts), or the dotnet restore step before a dotnet gate (nuget-restore.ts).
+     */
+    purpose: 'prepare' | 'gate' | 'calibrate' | 'install' | 'clean' | 'restore';
     /** The configured argv (ship.prepare.checks, factory.forge.local.gate) or the built-in check's. */
     argv: readonly string[];
     /** The executable and arguments it resolved to (resolveLocalGateArgv: never a .cmd/.bat). */
@@ -57,7 +61,7 @@ export interface SandboxRunRequest {
     /** factory.run.sandbox.requireDeniedPaths: a host without denied_paths gives no verdict instead of running. */
     requireDeniedPaths?: boolean;
     /** The network this command gets instead of factory.run.sandbox.writeNetwork (the private layout's `npm ci --ignore-scripts`: the registry; the dotnet clean step: none). */
-    network?: 'registry' | 'none';
+    network?: 'registry' | 'none' | 'nuget';
     /** The user's checkout (the budget ledger the sandbox denies) when `commonGitDir` is another repository's (the private layout). */
     mainRoot?: string;
     /** The only dir a `<cwd>/node_modules` link may resolve to (the one the engine linked); another target is refused, never granted. */
@@ -88,6 +92,11 @@ export interface SandboxRunRequest {
     reportFile?: string;
     /** A dotnet command in a repository whose trusted base pins Microsoft.Testing.Platform (dotnet-sandbox.ts isMtpGlobalJson): no -m:1 on dotnet test. */
     dotnetMtp?: true;
+    /**
+     * A dotnet command of a run that has its own NuGet packages folder (nuget-restore.ts): NUGET_PACKAGES names it and
+     * the real cache is the read-only fallback; writable only for the restore step. Ignored for other executables.
+     */
+    nugetPackages?: RunNugetPackages;
 }
 /** The gate record and PR note line for a sandboxed run on a host without denied_paths. */
 export declare const CREDENTIAL_FILES_READABLE_NOTE = "sandboxed; credential files readable on this host";
@@ -128,7 +137,8 @@ export interface SandboxExecOptions {
     cwd: string;
     commonGitDir: string;
     timeoutMs: number;
-    network: 'none' | 'registry';
+    /** 'nuget': only NUGET_HOSTS (the dotnet restore step), never the configured hosts. */
+    network: 'none' | 'registry' | 'nuget';
     /** The factory sandbox settings (allowedHosts, extra read-only paths); extra read-write paths are dropped. */
     settings: SandboxSettings;
     /** The dir the per-command job homes go under (never inside `cwd`). */
@@ -141,6 +151,8 @@ export interface SandboxExecOptions {
     nestedNodeModulesTargets?: string[];
     /** SandboxRunRequest.dotnetMtp. */
     dotnetMtp?: true;
+    /** SandboxRunRequest.nugetPackages. */
+    nugetPackages?: RunNugetPackages;
 }
 export declare const MARKER_PREFIX = "omg-gate-exit-";
 /** The command's output the POSIX form keeps (`tail -c`) before the marker line. */

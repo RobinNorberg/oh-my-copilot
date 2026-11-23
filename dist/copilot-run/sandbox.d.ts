@@ -225,6 +225,20 @@ export interface SandboxPolicyContext {
     sshAuthSock?: string;
     /** The CA bundle files and cert dirs the caller's env names (proxyCaEnv), granted read-only like the tool dirs. */
     extraReadonly?: string[];
+    /**
+     * Engine-made dirs outside the worktree a write session may write (the
+     * factory's dotnet restore step: the run's own NuGet packages dir,
+     * nuget-restore.ts). Never from config; a path that holds the real home,
+     * the worktree, the common git dir or the job dir, or a filesystem root,
+     * throws.
+     */
+    extraReadwrite?: string[];
+    /**
+     * The only hosts a write session may reach, instead of
+     * settings.writeNetwork (the factory's dotnet restore step: NUGET_HOSTS).
+     * Never from config.
+     */
+    onlyHosts?: readonly string[];
     /** The OMC global state root to deny (default getGlobalOmcStateRoot()); a test seam. */
     omcStateRoot?: string;
     /**
@@ -259,6 +273,8 @@ export interface SandboxPolicyContext {
     nestedNodeModulesTargets?: readonly string[];
 }
 export declare const REGISTRY_HOSTS: readonly string[];
+/** The hosts the factory's sandboxed dotnet restore step reaches (nuget.org's feed serves the index and the packages). */
+export declare const NUGET_HOSTS: readonly string[];
 /**
  * Why `<worktree>/node_modules` must not be granted, or null. `target` is the
  * engine-recorded node_modules (review-483 M4). A single link must resolve

@@ -152,6 +152,8 @@ describe('the dotnet rule: only a sandboxed lane of a .NET repository is told to
         for (const p of write({ ...lane, dotnet: true })) {
             expect(p).toContain('Always pass `-m:1` to dotnet build, dotnet test, dotnet restore, dotnet pack, dotnet publish, dotnet clean and dotnet msbuild');
             expect(p).toContain('do not add or upgrade a package reference');
+            // Consistent with the engine: a package change parks for approval, then the engine's restore step fetches it.
+            expect(p).toContain('A package change in a project file is not built here: the run stops for a human to approve it, and only then does the engine fetch the package.');
             // dotnet run gets no -m:1 (it reaches the program), a VSTest dll run rejects it.
             expect(p).toContain('Not to dotnet run');
             expect(p).toContain('`dotnet run --no-build`');

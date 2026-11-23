@@ -154,7 +154,7 @@ function dotnetRule(lane: LaneEnvironment | null): string[] {
   // writeNetwork "registry" allows the npm hosts only: NuGet is offline there too unless sandbox.allowedHosts names a NuGet host.
   const offline = lane.nugetReachable
     ? ''
-    : ' NuGet cannot reach its feed here: packages come only from those already restored on this machine, so do not add or upgrade a package reference; report a missing package in your final message instead.';
+    : ' NuGet cannot reach its feed here: packages come only from those already restored on this machine, so do not add or upgrade a package reference; report a missing package in your final message instead. A package change in a project file is not built here: the run stops for a human to approve it, and only then does the engine fetch the package.';
   const watch = ' Never run dotnet watch: it waits for file changes and never ends.';
   // Microsoft.Testing.Platform: dotnet test rejects -m:1 and its test app cannot connect back to it in the sandbox; the
   // test app run on its own works (dotnet-sandbox.ts DOTNET_MTP_UNSUPPORTED).

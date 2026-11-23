@@ -7,6 +7,7 @@ import { sdkCreateSessionAcceptsSandbox, type LoadedSdk } from '../../smoke/copi
 import {
   BWRAP_TRIAL_ARGS,
   DEFAULT_SANDBOX_SETTINGS,
+  NUGET_HOSTS,
   allowlistSessionEnv,
   bwrapTrialLaunchError,
   linuxSandboxProblem,
@@ -205,6 +206,22 @@ describe('buildSandboxConfig', () => {
     expect(buildSandboxConfig('write', { ...ctx, settings, platform: 'win32' }, host()).userPolicy.network.allowLocalNetwork).toBe(true);
     // A review never gets the network.
     expect(buildSandboxConfig('review', { ...ctx, settings }, host()).userPolicy.network).toEqual({ allowOutbound: false, allowLocalNetwork: false });
+  });
+
+  it('onlyHosts (the dotnet restore step): exactly those hosts, never the npm hosts or the configured extras', () => {
+    const settings = { ...ctx.settings, writeNetwork: 'registry' as const, allowedHosts: ['npm.example.com'] };
+    expect(buildSandboxConfig('write', { ...ctx, settings, onlyHosts: NUGET_HOSTS }, host()).userPolicy.network).toEqual({ allowOutbound: true, allowedHosts: ['api.nuget.org'], allowLocalNetwork: false });
+    expect(NUGET_HOSTS).toEqual(['api.nuget.org']);
+    // Windows: the local network stays on (the Windows sandbox runs nothing with outbound on and it off).
+    expect(buildSandboxConfig('write', { ...ctx, settings, platform: 'win32', onlyHosts: NUGET_HOSTS }, host()).userPolicy.network.allowLocalNetwork).toBe(true);
+    expect(buildSandboxConfig('review', { ...ctx, onlyHosts: NUGET_HOSTS }, host()).userPolicy.network.allowOutbound).toBe(false);
+  });
+
+  it('extraReadwrite: an engine dir outside the worktree is writable in the write profile; a root or a dir holding the home or worktree throws', () => {
+    const run = join(root, 'gates', 'nuget', 'issue-7');
+    expect(buildSandboxConfig('write', { ...ctx, extraReadwrite: [run] }, host()).userPolicy.filesystem.readwritePaths).toContain(run);
+    expect(buildSandboxConfig('review', { ...ctx, extraReadwrite: [run] }, host()).userPolicy.filesystem.readwritePaths).not.toContain(run);
+    for (const bad of [resolve('/'), dirname(ctx.worktree), dirname(ctx.realHome)]) expect(() => buildSandboxConfig('write', { ...ctx, extraReadwrite: [bad] }, host()), bad).toThrow(/read-write grant/);
   });
 
   it('grants the tool dirs read-only in both profiles, never a filesystem root or a dir holding the real home', () => {
