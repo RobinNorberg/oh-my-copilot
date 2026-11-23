@@ -139,7 +139,8 @@ import { jobRefProblem } from '../../copilot-run/job.js';
 import { secretShapeKinds } from '../heal/sanitize.js';
 import { CI_TREE_PATHS, commitLaneWork, conflictFixStart, LANE_DECLINED, LANE_PROTECTED_PATHS, laneCommitMessage, laneDecline, pathGlobMatches, type SecretFinding } from './lane-commit.js';
 import { proveLaneTreeGone, type LaneTreeProof } from './lane-procs.js';
-import { quarantineTamper, RELEASE_TAMPER_COMMAND, STILL_ACTIVE, tamperHoldMessage, tamperHoldPath, writeTamperHold } from './tamper-quarantine.js';
+import { quarantineTamper, readTamperHold, RELEASE_TAMPER_COMMAND, STILL_ACTIVE, tamperHoldMessage, tamperHoldPath, writeTamperHold } from './tamper-quarantine.js';
+import { cancelArgv, commandLine, commandText, gateNext, gateSteps, humanCommand, resumeArgv, type GateNextFacts } from './gate-next.js';
 import { currentBytes, defaultLedgerDir, EngineLedger, emptyHooksDir, userBaselineKey } from './ledger.js';
 import { createFactoryProgress, HEARTBEAT_MIN_MS, type FactoryProgress } from './progress.js';
 import { acquireFactoryClaim, claimBusyMessage, factoryClaimHolder, factoryClaimRepo, isShallowClaimRepo, localFactoryClaimRepo, shallowClaimWarning, settleFactoryClaim, trustedFactoryClaimRepo, trustedLocalFactoryClaimRepo, type HeldClaim } from './claims.js';
@@ -850,10 +851,10 @@ interface LateChange {
   where: string;
 }
 
-export const cancelCommand = (key: FactoryRunKey): string => (typeof key === 'number' ? `omg factory run cancel ${key}` : `omg factory heal cancel ${key.slice('heal-'.length)}`);
+export const cancelCommand = (key: FactoryRunKey): string => cancelArgv(key).join(' ');
 
 /** The command that resumes a parked run (for a ci-heal run, approve also resumes after any later gate). */
-export const resumeCommand = (key: FactoryRunKey): string => (typeof key === 'number' ? `omg factory run ${key}` : `omg factory heal approve ${key.slice('heal-'.length)}`);
+export const resumeCommand = (key: FactoryRunKey): string => resumeArgv(key).join(' ');
 
 
 /** The fixed acceptance line of every ci-heal plan (design §5). */
@@ -1202,10 +1203,26 @@ class FactoryEngine {
   }
 
   /** `detail`: the PR code's output for this park, local only (FactoryGate.detail, H1); the forge-bound text is `reason`. */
-  private gate(name: string, reason: string, detail?: string): void {
+  private gate(name: string, reason: string, detail?: string, facts: Pick<GateNextFacts, 'unsandboxedLanes'> = {}): void {
     const pending = this.resumedFromPark && !isHumanReadGate(name) ? this.pendingHumanNote() : '';
     const local = detail ? detail.slice(-GATE_DETAIL_MAX_CHARS) : '';
-    this.save((s) => setGate(s, name, `${reason}${pending}`, this.iso(), local ? { detail: local } : {}));
+    this.save((s) => this.park(s, name, `${reason}${pending}`, this.iso(), local ? { detail: local } : {}, facts));
+  }
+
+  /**
+   * The one way the engine parks (setGate): the gate also seals its next steps
+   * (FactoryGate.next), composed from engine-held facts only (the run key, the
+   * state's head and PR, the root the engine was started with, the forge kind,
+   * the tamper hold and the fixed flags), never from the reason.
+   */
+  private park(s: FactoryRunState, name: string, reason: string, at: string, extra: Pick<FactoryGate, 'definition' | 'detail'> = {}, facts: Pick<GateNextFacts, 'unsandboxedLanes'> = {}): FactoryRunState {
+    let tamperHold = false;
+    try { tamperHold = readTamperHold(this.o.ledgerDir ?? defaultLedgerDir(), this.o.root) !== null; } catch { /* no release step; the hold message says it */ }
+    const next = gateNext(name, {
+      key: this.key, root: this.o.root, forge: s.forgeKind ?? 'github', ...(s.pr !== undefined ? { pr: s.pr } : {}), ...(s.head ? { head: s.head } : {}),
+      secretFindings: Boolean(s.pendingCommit?.secretFindings?.length), tamperHold, ...facts,
+    });
+    return setGate(s, name, reason, at, { ...extra, ...(next.length > 0 ? { next } : {}) });
   }
 
   /** Set by resumed(): this run re-evaluates a park, so a park it hits again names the PR's pending human review (L8). */
@@ -2442,7 +2459,7 @@ class FactoryEngine {
       }
       try { this.ledger.setRecheck(undefined); } catch { /* the gate below still parks */ }
       const reason = `${changed} changed outside the engine; the changed copies were moved aside (${aside.map((p) => this.rel(p)).join(', ') || 'removed files'}) and the engine's own copies restored${restoreNote}. Check what wrote them (a lane may be prompt-injected), then rerun ${this.resume}`;
-      const parked = setGate({
+      const parked = this.park({
         ...s,
         elapsedMs: s.elapsedMs + this.tick(),
         lanes: s.lanes.map((l) => (stopped.has(l.id) ? { ...l, status: 'cancelled' as const, endedAt: at, usage: stopped.get(l.id)!, note: 'cancelled: engine state tampered', tamperCheck: 'skipped' as const } : l)),
@@ -2530,8 +2547,8 @@ class FactoryEngine {
       phase: this.state.phase,
       gate,
       state: this.state,
-      // A reason that already names the rerun command says it once (M2).
-      message: `awaiting-human: ${gate.name}: ${gate.reason}${gate.reason.includes(this.resume) ? '' : `. Resume with ${this.resume}.`}`,
+      // A reason that already names the rerun command says it once (M2); a park whose next steps have no rerun (a rerun parks again) names none.
+      message: `awaiting-human: ${gate.name}: ${gate.reason}${gate.reason.includes(this.resume) || !this.resumes(gate) ? '' : `. Resume with ${this.resume}.`}`,
       ...(gate.name === 'merge' && this.mergeCmd ? { mergeCommand: this.mergeCmd } : {}),
     };
   }
@@ -2571,9 +2588,14 @@ class FactoryEngine {
       reason,
       fence,
       '',
-      `Resume with \`${this.resume}\` once it is resolved.`,
-      '',
+      ...(this.resumes(gate) ? [`Resume with \`${this.resume}\` once it is resolved.`, ''] : []),
     ].join('\n'));
+  }
+
+  /** The park's next steps include the plain rerun (FactoryGate.next; the gate table for a park sealed before next existed). */
+  private resumes(gate: FactoryGate): boolean {
+    const resume = resumeCommand(this.key);
+    return gate.next ? gate.next.some((n) => n.argv.join(' ') === resume) : gateSteps(gate.name).steps.includes('resume');
   }
 
   /**
@@ -3066,7 +3088,7 @@ class FactoryEngine {
       if (commit.refusal === 'secret') {
         const findings = commit.findings ?? [];
         this.save((s) => ({ ...s, pendingCommit: { ...p, secretFindings: findings } }));
-        this.gate(SECRET_SHAPES_GATE, `${kind} lane ${p.laneId}: ${commit.reason}. A key or token in the change may have been copied in from outside the lane's sandbox, so nothing was committed or pushed. Look at those files in ${p.worktree}: remove the secret and rerun ${this.resume}, or, when they are test fixtures, rerun ${this.resume} --allow-secret-shapes (accepts exactly these paths and kinds for this lane commit; factory.run.secretScan.allowPaths in your user config or the base's omg.jsonc skips fixture paths for good). A hit in a path's name is named by a hash of the name (git -C ${p.worktree} status lists the names; rename the file). A hit in the commit message (the lane's own summary) cannot be edited: --allow-secret-shapes commits it as it is.${this.allowPathsBaseUntrusted !== undefined ? ` The factory.run.secretScan.allowPaths committed in .copilot/omg.jsonc were not used, because base ${this.allowPathsBaseUntrusted} is not in ship.trustedBases: rerun with --allow-secret-shapes for this head, or set allowPaths in your user config (or add ${this.allowPathsBaseUntrusted} to ship.trustedBases there).` : ''} To give the lane's work up instead: omg factory run cancel ${this.key}`);
+        this.gate(SECRET_SHAPES_GATE, `${kind} lane ${p.laneId}: ${commit.reason}. A key or token in the change may have been copied in from outside the lane's sandbox, so nothing was committed or pushed. Look at those files in ${p.worktree}: remove the secret and rerun ${this.resume}, or, when they are test fixtures, rerun ${this.resume} --allow-secret-shapes (accepts exactly these paths and kinds for this lane commit; factory.run.secretScan.allowPaths in your user config or the base's omg.jsonc skips fixture paths for good). A hit in a path's name is named by a hash of the name (${commandLine(['git', '-C', p.worktree, 'status'])} lists the names; rename the file). A hit in the commit message (the lane's own summary) cannot be edited: --allow-secret-shapes commits it as it is.${this.allowPathsBaseUntrusted !== undefined ? ` The factory.run.secretScan.allowPaths committed in .copilot/omg.jsonc were not used, because base ${this.allowPathsBaseUntrusted} is not in ship.trustedBases: rerun with --allow-secret-shapes for this head, or set allowPaths in your user config (or add ${this.allowPathsBaseUntrusted} to ship.trustedBases there).` : ''} To give the lane's work up instead: omg factory run cancel ${this.key}`);
         return;
       }
       this.save((s) => { const { pendingCommit: _p, ...rest } = s; return rest; });
@@ -3348,9 +3370,12 @@ class FactoryEngine {
     const changed = sources.some((x) => x.pattern) ? patternSourceChanges(sources, treeAt(s.baseSha), treeAt(cand)) : [];
     const named = [...(plain.length > 0 ? [describeGateSources(plain)] : []), ...changed].join(', ') || describeGateSources(sources);
     const specs = [...new Set([...plain.map(gateSourcePathspec), ...changed.map(shellPath)])];
+    // The root quoted for this host's shell, or withheld when no form fits every shell there (gate-next.ts commandText).
+    const diffView = commandText(['git', '-C', this.o.root, 'diff', s.baseSha!.slice(0, 12), cand.slice(0, 12)]);
+    const inspect = diffView.inRoot ? `in the repository root with ${diffView.line}` : `with ${diffView.line}`;
     // A dotnet gate: tracked build output (bin/, obj/, artifacts/) is MSBuild input no definition pattern names.
     const output = changed.some(underDotnetBuildDir) ? '; tracked files under bin/, obj/ or artifacts/ are build output MSBuild may reuse instead of building the change, so they count as the gate\'s definition' : '';
-    this.save((x) => setGate(x, 'gate-definition-changed', `the change redefines the local gate "${gate.join(' ')}" (${named} differ from ${s.base})${output}${stale}; offline the gate is the only check, so nothing was pushed. Inspect it with git -C ${this.o.root} diff ${s.baseSha!.slice(0, 12)} ${cand.slice(0, 12)} -- ${(specs.length > 0 ? specs : sources.map(gateSourcePathspec)).join(' ')}, then rerun ${this.resume} --allow-gate-change to accept it, or ${cancelCommand(this.key)}${this.restoreOnApprovalNote(gate)}`, this.iso(), { definition: head }));
+    this.save((x) => this.park(x, 'gate-definition-changed', `the change redefines the local gate "${gate.join(' ')}" (${named} differ from ${s.base})${output}${stale}; offline the gate is the only check, so nothing was pushed. Inspect it ${inspect} -- ${(specs.length > 0 ? specs : sources.map(gateSourcePathspec)).join(' ')}, then rerun ${this.resume} --allow-gate-change to accept it, or ${cancelCommand(this.key)}${this.restoreOnApprovalNote(gate)}`, this.iso(), { definition: head }));
     return true;
   }
 
@@ -5787,7 +5812,8 @@ class FactoryEngine {
     // Opt-in (factory.merge.auto, user config only): true = the engine merged and the run finished; a string = why it did not.
     const auto = decision.ok ? await this.autoMerge(pr, head, view, ship, decision, config) : undefined;
     if (auto === true) return;
-    const cmd = decision.command.join(' ');
+    // Shown quoted for this host's shell (gate-next.ts humanCommand); gate.next keeps the exact argv.
+    const cmd = humanCommand(decision.command);
     this.mergeCmd = decision.ok ? cmd : undefined;
     this.commentOnce('pr', `merge@${head.slice(0, 12)}`, 'merge', `${mergeComment(this.key, decision, this.resume)}${decision.ok ? this.humanComment ?? '' : ''}`);
     if (decision.ok) this.gate('merge', `merge is a human step; review approved and gates green at ${head.slice(0, 12)}${decision.noChecks ? ` (${NO_CI_CHECKS_NOTE}: no CI ran on this head, check the change yourself)` : ''}${this.humanNote ?? ''}${auto ? `; auto-merge (factory.merge.auto) not taken: ${auto}` : ''}: run ${cmd}, then ${this.resume}`);
@@ -6446,14 +6472,14 @@ class FactoryEngine {
     const what = `shared git state changed after lane ${r.laneId} passed its check (found ${where}): ${problems.slice(0, 5).join('; ')}${this.snapQuarantine(r.snapshot, r.kind === 'review' ? 'review-tampered' : 'lane-tampered', problems, killed.after ?? now, killed.note)}`;
     if (r.kind === 'review') {
       this.markVerdict(r.laneId, 'invalid', `late change: ${problems.join('; ')}`);
-      this.save((x) => setGate(x.phase === 'review' ? x : moveTo(x, 'review', `review lane ${r.laneId}'s verdict is discarded`, at), 'review-tampered', `${what}; its verdict is discarded${also}`, at));
+      this.save((x) => this.park(x.phase === 'review' ? x : moveTo(x, 'review', `review lane ${r.laneId}'s verdict is discarded`, at), 'review-tampered', `${what}; its verdict is discarded${also}`, at));
     } else {
       // Each write-lane kind is the phase that runs it (a coding-agent lane runs in implement).
       const back: FactoryPhase = r.kind === 'coding-agent' ? 'implement' : r.kind;
       this.updateLane(r.laneId, { note: `late change: ${problems.join('; ')}` });
       this.save((x) => {
         const { pendingHead: _p, pendingParents: _pp, ...rest } = x;
-        return setGate(x.phase === back ? rest : moveTo(rest, back, `lane ${r.laneId}'s head is dropped`, at), 'lane-tampered', `${what}; nothing it made is pushed${also}`, at);
+        return this.park(x.phase === back ? rest : moveTo(rest, back, `lane ${r.laneId}'s head is dropped`, at), 'lane-tampered', `${what}; nothing it made is pushed${also}`, at);
       });
     }
   }
@@ -7547,7 +7573,7 @@ class FactoryEngine {
       return accepted;
     }
     const which = loose.map((l) => `${l.id} (${l.sandbox ? '' : `${l.status}; `}sandbox ${l.sandbox ? oneLine(visibleLine(l.sandbox.mode), 40) : 'not recorded'}, network ${l.sandbox?.writeNetwork ?? 'not recorded'})`);
-    this.gate(HUMAN_REVIEW_GATE, `${UNSANDBOXED_LANES_REASON} (it could reach ${this.forgeName} with your login): check the PR's threads and reviews yourself, then merge; lanes: ${this.names(which)}${gone}. To record that you checked ${head.slice(0, 12)}, rerun ${this.resume} --allow-unsandboxed-lanes`);
+    this.gate(HUMAN_REVIEW_GATE, `${UNSANDBOXED_LANES_REASON} (it could reach ${this.forgeName} with your login): check the PR's threads and reviews yourself, then merge; lanes: ${this.names(which)}${gone}. To record that you checked ${head.slice(0, 12)}, rerun ${this.resume} --allow-unsandboxed-lanes`, undefined, { unsandboxedLanes: true });
     return null;
   }
 

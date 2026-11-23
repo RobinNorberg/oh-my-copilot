@@ -20,6 +20,7 @@ import { assertFactoryCommand, FactorySafetyError } from '../exec.js';
 import { ledgerFilePath } from '../ledger.js';
 import { factoryStatePath, HEAL_APPROVE_GATE, HEAL_DIAGNOSIS_GATE, readFactoryState } from '../state.js';
 import { commitFile, FakeLanes, FakeProcesses, gitIn, harness, PR, remoteHead, review, testGateConfig, attestedSandbox, withTestSandbox } from './fake-lanes.js';
+import { sealedNext, steps } from './gate-next-expect.js';
 const SIG8 = '0a1b2c3d';
 const KEY = `heal-${SIG8}`;
 const NOW = new Date('2026-10-28T09:00:00Z');
@@ -87,6 +88,8 @@ describe('ci-heal run kind (fake lanes, real git, scripted gh)', () => {
         expect(out.gate?.name).toBe(HEAL_APPROVE_GATE);
         expect(out.message).toContain(`omg factory heal approve ${SIG8}`);
         expect(lanes.started).toHaveLength(0);
+        expect(sealedNext(h.root, KEY, out)).toEqual([steps(KEY).status, steps(KEY).resume, steps(KEY).cancel, steps(KEY).close]);
+        expect(out.gate?.next?.find((n) => n.argv[3] === 'approve')?.billed).toBe(true);
         expect(h.calls.some((c) => c.startsWith('git push') || c.startsWith('gh pr create') || c.startsWith('gh issue'))).toBe(false);
         const state = readFactoryState(h.root, KEY);
         expect(state).toMatchObject({ kind: 'ci-heal', issue: 0, branch: `factory/${KEY}`, implementer: `factory-impl-${KEY}`, phase: 'plan', repoUrl: 'https://github.com/o/r' });
@@ -103,6 +106,7 @@ describe('ci-heal run kind (fake lanes, real git, scripted gh)', () => {
         expect(out.exitCode, out.message).toBe(0);
         expect(out.gate?.name).toBe('merge');
         expect(out.mergeCommand).toMatch(/^gh pr merge 42 /);
+        expect(sealedNext(h.root, KEY, out)).toEqual([['gh', 'pr', 'merge', String(PR), '--admin', '--merge', '--match-head-commit', readFactoryState(h.root, KEY).head], steps(KEY).resume, steps(KEY).status]);
         expect(out.message).toContain(`omg factory heal approve ${SIG8}`);
         const state = readFactoryState(h.root, KEY);
         expect(state.phase).toBe('merge');
@@ -161,6 +165,8 @@ describe('ci-heal run kind (fake lanes, real git, scripted gh)', () => {
         const out = await done;
         expect(out.gate?.name).toBe(HEAL_DIAGNOSIS_GATE);
         expect(out.gate?.reason).toMatch(reason);
+        expect(sealedNext(h.root, KEY, out)).toEqual([steps(KEY).status, steps(KEY).cancel, steps(KEY).close]);
+        expect(out.message).not.toContain('Resume with');
         expect(lanes.started).toHaveLength(0);
         expect(existsSync(join(h.root, KNOWN_FLAKY_FILE))).toBe(false);
     });

@@ -47,7 +47,7 @@ import { createSandboxRunner, type SandboxRunner } from '../../factory/run/sandb
 import { inspectGateImageId } from '../../factory/run/container-gate.js';
 import { releaseTamperHold, tamperHoldMessage } from '../../factory/run/tamper-quarantine.js';
 import {
-  acquireFactoryRepoOwnerForRun, defaultOwnerDeps, describeOwner, FactoryBusyError, FactoryTamperHoldError, factoryCancelRequested, factoryOwnerPath, factoryRepoOwnerPath, factoryStateDir, factoryStatePath, ownerFromOtherCheckout, ownerHolding, readFactoryState,
+  acquireFactoryRepoOwnerForRun, defaultOwnerDeps, describeOwner, FactoryBusyError, FactoryTamperHoldError, factoryCancelRequested, factoryOwnerPath, factoryRepoOwnerPath, factoryStateDir, factoryStatePath, ownerFromOtherCheckout, ownerHolding, parseFactoryState, readFactoryState,
   refuseWhileEngineRuns, runLabel, unreadableOwnerMessage, withOwnerFileLock, type HeldOwner,
   requestFactoryCancel, verifyFactoryIntegrity, type FactoryOwner, type FactoryRunKey, type FactoryRunState,
   acquireFactoryOwner, acquireRunSlot, factoryImportLockPath, heldSlots, withRepoImportLock, withRepoImportLockAsync, tryScanLock, SCAN_WAIT_MS, type HeldSlot,
@@ -61,7 +61,8 @@ import { CheckIncompatibleError, CheckUsageError, EXIT_CHECK_FAILED, EXIT_CHECK_
 import { runFactoryEnqueue } from '../../factory/enqueue.js';
 import { factoryTriageCommand } from './factory-triage.js';
 import { resolveHealConfig } from '../../factory/heal/config.js';
-import { defaultLedgerDir, emptyHooksDir } from '../../factory/run/ledger.js';
+import { currentBytes, defaultLedgerDir, emptyHooksDir, EngineLedger } from '../../factory/run/ledger.js';
+import { humanCommand, stateGateNext } from '../../factory/run/gate-next.js';
 import type { FactoryPollDeps } from '../../factory/poll.js';
 import { listenForgeRefusal } from '../../factory/setup/detect.js';
 import { factorySetupCommand } from './factory-setup.js';
@@ -932,14 +933,38 @@ export function factoryRunCommand(deps: FactoryRunDeps = defaultFactoryRunDeps):
           return 0;
         }
         const issue = parseIssue(issueRaw);
-        const stored = readFactoryState(root, issue);
-        if (!stored) throw new FactoryUsageError(`no factory run for issue #${issue} (${factoryStatePath(root, issue)})`);
+        // One read: the seal, the ledger check and the parse all see the same bytes.
+        const path = factoryStatePath(root, issue);
+        const bytes = currentBytes(path);
+        if (!bytes) throw new FactoryUsageError(`no factory run for issue #${issue} (${path})`);
+        const stored = parseFactoryState(path, issue, bytes.toString('utf8'));
         const state = factoryCancelRequested(root, issue) ? { ...stored, cancelRequested: true } : stored;
         const integrity = verifyFactoryIntegrity(stored);
-        if (c.optsWithGlobals().json) console.log(JSON.stringify({ ...state, integrityOk: integrity, runCredits: runCredits(state) }, null, 2));
-        else {
+        const ledgerDir = deps.ledgerDir ?? defaultLedgerDir();
+        let ledgerOk = false;
+        let tracked = false;
+        try {
+          const ledger = EngineLedger.open(ledgerDir, root, issue);
+          tracked = ledger.tracks(path);
+          ledgerOk = ledger.matches(path, bytes);
+        } catch { ledgerOk = false; }
+        // The next commands only from a state the engine sealed and last wrote: a copyable command from an edited state is an injection vector.
+        const trusted = integrity && ledgerOk;
+        let hold = false;
+        try { hold = tamperHoldMessage(ledgerDir, root) !== null; } catch { hold = true; }
+        const next = trusted ? stateGateNext(stored, root, hold) : [];
+        if (c.optsWithGlobals().json) {
+          const shown = !trusted && state.gate?.next ? { ...state, gate: (({ next: _n, ...g }) => g)(state.gate) } : state;
+          console.log(JSON.stringify({ ...shown, integrityOk: integrity, ledgerOk, runCredits: runCredits(state), ...(state.gate ? { next } : {}) }, null, 2));
+        } else {
           console.log(renderFactoryRunState(state));
           if (!integrity) console.log(chalk.red('integrity check FAILED: the state was edited outside omg factory run'));
+          else if (!ledgerOk) console.log(chalk.red(tracked ? 'ledger check FAILED: the state is not the one the engine last wrote' : `ledger check FAILED: the engine ledger (${plainText(ledgerDir)}) has no record of this state`));
+          if (state.gate && !trusted) console.log(chalk.yellow('next steps not shown: the state did not pass its checks'));
+          else if (next.length > 0) {
+            console.log('next:');
+            for (const n of next) console.log(`  ${plainText(n.label)}${n.billed ? ' (can start billed lanes)' : ''}: ${plainText(humanCommand(n.argv))}`);
+          }
         }
         return 0;
       }));
