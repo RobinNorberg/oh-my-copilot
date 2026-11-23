@@ -93,6 +93,20 @@ export declare function gateNext(name: string, f: GateNextFacts): FactoryGateNex
  * reader's repository root; `tamperHold` whether a hold is set on it now.
  */
 export declare function stateGateNext(s: FactoryRunState, root: string, tamperHold?: boolean): FactoryGateNextStep[];
-/** One argv as a copyable line: a word with any other character is single-quoted (POSIX shells and PowerShell read it the same unless it holds a single quote, written the POSIX way). */
-export declare function commandLine(argv: readonly string[]): string;
+/** One argv as a copyable line for the shell family of `platform` (default: this host's). */
+export declare function commandLine(argv: readonly string[], platform?: NodeJS.Platform): string;
+/**
+ * What a human is shown for a command (the stored argv stays exact). The
+ * repository root is the one free-form word a command holds (`git -C
+ * <root> ...`): when it is outside the portable set on Windows (cmd.exe
+ * ignores single quotes), or holds a character a terminal cannot show, the
+ * `-C <root>` form is withheld and the command is to be run in the
+ * repository root (`inRoot`).
+ */
+export declare function commandText(argv: readonly string[], platform?: NodeJS.Platform): {
+    line: string;
+    inRoot: boolean;
+};
+/** commandText as one phrase: the line, or "in the repository root: <line>". */
+export declare function humanCommand(argv: readonly string[], platform?: NodeJS.Platform): string;
 //# sourceMappingURL=gate-next.d.ts.map

@@ -9,7 +9,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { cancelCommand, resumeCommand } from '../engine.js';
-import { commandLine, gateNext, gateSteps, GATE_TABLE, stateGateNext } from '../gate-next.js';
+import { commandLine, commandText, gateNext, gateSteps, GATE_TABLE, humanCommand, stateGateNext } from '../gate-next.js';
 import { computeFactoryIntegrity, createFactoryState, GATE_NEXT_ARG_MAX_CHARS, GATE_NEXT_MAX_STEPS, parseFactoryState, setGate, verifyFactoryIntegrity } from '../state.js';
 import { RELEASE_TAMPER_COMMAND } from '../tamper-quarantine.js';
 const RUN_DIR = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -118,9 +118,34 @@ describe('gateNext', () => {
         expect(gateNext('merge', facts({ key: 'heal-xyz' }))).toEqual([]);
         expect(argvs('merge', { forge: 'local', root: '/work/re\npo' })).toEqual([RESUME, STATUS]);
     });
-    it('commandLine quotes a word with any other character', () => {
-        expect(commandLine(['git', '-C', 'C:\\My Repo', 'merge', HEAD])).toBe(`git -C 'C:\\My Repo' merge ${HEAD}`);
-        expect(commandLine(['echo', "it's; rm -rf /"])).toBe(`echo 'it'\\''s; rm -rf /'`);
+});
+describe('commandLine / commandText / humanCommand: the printed form of an argv', () => {
+    const merge = (root) => ['git', '-C', root, 'merge', '--no-ff', '--no-edit', HEAD];
+    it('bare words stay bare on both shell families', () => {
+        expect(commandLine(['omg', 'factory', 'run', '12'], 'linux')).toBe('omg factory run 12');
+        expect(commandLine(merge('/work/repo'), 'linux')).toBe(`git -C /work/repo merge --no-ff --no-edit ${HEAD}`);
+        expect(commandLine(merge('C:\\Code\\repo'), 'win32')).toBe(`git -C C:\\Code\\repo merge --no-ff --no-edit ${HEAD}`);
+    });
+    it('a root with a space is double-quoted where every shell reads it the same', () => {
+        expect(humanCommand(merge('/work/my repo'), 'linux')).toBe(`git -C "/work/my repo" merge --no-ff --no-edit ${HEAD}`);
+        expect(humanCommand(merge('/work/my repo'), 'darwin')).toBe(`git -C "/work/my repo" merge --no-ff --no-edit ${HEAD}`);
+        // A Windows path has backslashes: not in the portable set, so cmd.exe could not read any quoted form; the -C form is withheld.
+        expect(commandText(merge('C:\\Code\\my repo'), 'win32')).toEqual({ line: `git merge --no-ff --no-edit ${HEAD}`, inRoot: true });
+        expect(humanCommand(merge('C:\\Code\\my repo'), 'win32')).toBe(`in the repository root: git merge --no-ff --no-edit ${HEAD}`);
+    });
+    it('a root with a single quote or & gets the POSIX single-quote form, and on Windows is withheld', () => {
+        expect(humanCommand(merge("/work/it's"), 'linux')).toBe(`git -C '/work/it'\\''s' merge --no-ff --no-edit ${HEAD}`);
+        expect(humanCommand(merge('/work/a & b'), 'linux')).toBe(`git -C '/work/a & b' merge --no-ff --no-edit ${HEAD}`);
+        expect(humanCommand(merge("/work/my repo & 'x'"), 'linux')).toBe(`git -C '/work/my repo & '\\''x'\\''' merge --no-ff --no-edit ${HEAD}`);
+        expect(commandText(merge("C:\\Code\\it's"), 'win32').inRoot).toBe(true);
+        expect(commandText(merge('C:\\Code\\a&b'), 'win32').inRoot).toBe(true);
+        expect(commandText(merge('C:\\Code\\50%'), 'win32').inRoot).toBe(true);
+        // Any other word on Windows: PowerShell's single quotes.
+        expect(commandLine(['echo', "it's"], 'win32')).toBe("echo 'it''s'");
+    });
+    it('a root a terminal cannot show is withheld on every platform; any other such word is single-quoted', () => {
+        expect(commandText(merge('/work/a\u200bb'), 'linux').inRoot).toBe(true);
+        expect(commandLine(['echo', 'a\u200bb'], 'linux')).toBe("echo 'a\u200bb'");
     });
 });
 describe('FactoryGate.next in the sealed state', () => {

@@ -376,8 +376,74 @@ describe('a dotnet gate: its MSBuild files define it, and its write lanes get th
         gitIn(w.root, 'commit', '-q', '-m', 'a project under node_modules');
         const out = await runFactoryEngine(localOpts(w, lanesFor(w, [commitFile('src/App/Greet.cs', 'namespace App;\n'), review('approve')]), { gateSandbox: cleanStep() }));
         expect(out.gate?.name, out.message).toBe('gates');
-        expect(out.gate?.reason).toMatch(/a tracked \.NET project under a node_modules directory is not supported: build output there is not cleaned \([0-9a-f]{12} tracks x\/node_modules\/App\/App\.csproj\)/);
+        expect(out.gate?.reason).toMatch(/a tracked \.NET project or solution under a node_modules directory is not supported in the OS sandbox: its build output there is not cleaned \([0-9a-f]{12} tracks x\/node_modules\/App\/App\.csproj\), so the dotnet gate did not run; move those files out of node_modules on the base branch, or untrack them/);
         expect(w.gateRuns).toEqual([]);
+    }, MULTI_RUN_MS);
+    it('a tracked package\'s *.props, *.targets or global.json under node_modules is not a project: the dotnet gate runs', async () => {
+        w = localWorld(['dotnet', 'test']);
+        baseProject();
+        for (const f of ['node_modules/pkg/build/pkg.props', 'node_modules/pkg/build/pkg.targets', 'node_modules/pkg/global.json'])
+            writeAt(w.root, f, f.endsWith('.json') ? '{}\n' : '<Project />\n');
+        gitIn(w.root, 'add', '-f', '.');
+        gitIn(w.root, 'commit', '-q', '-m', 'a tracked package');
+        const out = await runFactoryEngine(localOpts(w, lanesFor(w, [commitFile('src/App/Greet.cs', 'namespace App;\n'), review('approve')]), { gateSandbox: cleanStep() }));
+        expect(out.gate?.name, out.message).toBe('merge');
+        expect(w.gateRuns).toHaveLength(1);
+    }, MULTI_RUN_MS);
+    /** A base whose App.csproj imports node_modules/x/build/x.props, and your node_modules holding that package. */
+    function importsFromNodeModules(csproj = CSPROJ.replace('</Project>', '  <Import Project="..\\..\\node_modules\\x\\build\\x.props" Condition="Exists(\'..\\..\\node_modules\\x\\build\\x.props\')" />\n</Project>')) {
+        writeFileSync(join(w.root, '.gitignore'), '.omg/\nbin/\nobj/\nnode_modules/\n');
+        baseProject();
+        writeFileSync(join(w.root, 'src', 'App', 'App.csproj'), csproj);
+        gitIn(w.root, 'add', '.');
+        gitIn(w.root, 'commit', '-q', '-m', 'imports from node_modules');
+        writeAt(w.root, 'node_modules/x/build/x.props', '<Project><PropertyGroup><IsTestProject>true</IsTestProject></PropertyGroup></Project>\n');
+        writeAt(w.root, 'node_modules/x/package.json', '{"name":"x"}\n');
+    }
+    it('item 6: the base imports from node_modules and a prepare check (the PR\'s code) swaps the engine\'s link for its own files: the gate does not run', async () => {
+        w = localWorld(['dotnet', 'test']);
+        importsFromNodeModules();
+        const seen = leaveThenSee((cwd) => {
+            // The pkgtree-hide repro: the link goes, a plain dir with a tampered x.props takes its place.
+            unlinkSync(join(cwd, 'node_modules', 'x'));
+            writeAt(cwd, 'node_modules/x/build/x.props');
+        }, () => true);
+        await firstRun({ gateSandbox: cleanStep() });
+        const again = await runFactoryEngine(localOpts(w, lanesFor(w, []), { gateSandbox: cleanStep() }));
+        expect(again.gate?.name, again.message).toBe('lane-tampered');
+        expect(again.gate?.reason).toMatch(/the dotnet gate did not run on [0-9a-f]{12}: the build imports files from node_modules \(src\/App\/App\.csproj: Import Project "\.\.\\\\\.\.\\\\node_modules\\\\x\\\\build\\\\x\.props"\), which the PR's code can modify in the gate checkout, and node_modules\/x is a plain directory where the engine links your node_modules\/x/);
+        expect(seen).toEqual([]);
+        expect(w.gateRuns).toHaveLength(1);
+        // Your node_modules is untouched.
+        expect(readFileSync(join(w.root, 'node_modules', 'x', 'build', 'x.props'), 'utf8')).toMatch(/IsTestProject>true/);
+    }, MULTI_RUN_MS);
+    it('item 6: the same base with the engine\'s tree untouched runs the gate; an ASP.NET SPA project file (Remove="...node_modules\\**", npm install) is no import at all', async () => {
+        w = localWorld(['dotnet', 'test']);
+        importsFromNodeModules();
+        const out = await runFactoryEngine(localOpts(w, lanesFor(w, [commitFile('src/App/Greet.cs', 'namespace App;\n'), review('approve')]), { gateSandbox: cleanStep() }));
+        expect(out.gate?.name, out.message).toBe('merge');
+        expect(w.gateRuns).toHaveLength(1);
+        rmSync(w.dir, { recursive: true, force: true });
+        w = localWorld(['dotnet', 'test']);
+        const spa = CSPROJ.replace('</Project>', '  <ItemGroup>\n    <Content Remove="$(SpaRoot)node_modules\\**" />\n    <None Include="$(SpaRoot)**" Exclude="$(SpaRoot)node_modules\\**" />\n  </ItemGroup>\n  <Target Name="NpmInstall" BeforeTargets="Build" Condition="!Exists(\'$(SpaRoot)node_modules\')">\n    <Exec Command="npm install" />\n  </Target>\n</Project>');
+        importsFromNodeModules(spa);
+        // A node_modules the engine did not build (a prepare build's npm ci there) is fine without imports.
+        const seen = leaveThenSee((cwd) => writeAt(cwd, 'ClientApp/node_modules/vite/package.json', '{}'), () => false);
+        await firstRun({ gateSandbox: cleanStep() });
+        const again = await runFactoryEngine(localOpts(w, lanesFor(w, []), { gateSandbox: cleanStep() }));
+        expect(again.gate?.name, again.message).toBe('merge');
+        expect(seen).toEqual([false]);
+    }, MULTI_RUN_MS);
+    it('gates "unsandboxed" (no clean step): a tracked project under node_modules gets a history note instead of the park, as leftover build output does', async () => {
+        w = localWorld(['dotnet', 'test']);
+        baseProject();
+        writeAt(w.root, 'x/node_modules/App/App.csproj', CSPROJ);
+        gitIn(w.root, 'add', '-f', '.');
+        gitIn(w.root, 'commit', '-q', '-m', 'a project under node_modules');
+        const out = await runFactoryEngine(localOpts(w, lanesFor(w, [commitFile('src/App/Greet.cs', 'namespace App;\n'), review('approve')]), { gateSandboxUserConfig: UNSANDBOXED_GATES }));
+        expect(out.gate?.name, out.message).toBe('merge');
+        expect(w.gateRuns).toHaveLength(1);
+        expect(readFactoryState(w.root, LOCAL_ISSUE).history.some((h) => /tracks \.NET project or solution file\(s\) under a node_modules directory \(x\/node_modules\/App\/App\.csproj\), whose build output there is not cleaned before the dotnet gate: the gates run without the OS sandbox/.test(h.note))).toBe(true);
     }, MULTI_RUN_MS);
     it('follow-up 4: a base global.json that cannot be read fails the step (it parks), never "not Microsoft.Testing.Platform"', async () => {
         w = localWorld(['dotnet', 'build']);

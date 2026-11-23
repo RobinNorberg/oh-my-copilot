@@ -49077,11 +49077,11 @@ function tokenFromMap(map2, host, login3, now, depth) {
 function tokenKeyMatches(key, host, login3) {
   if (!key.endsWith(`:${login3}`)) return false;
   const keyHost = key.slice(0, -(login3.length + 1)).replace(/\/+$/, "");
-  const bare = host.replace(/^[a-z][a-z0-9+.-]*:\/\//i, "").replace(/\/+$/, "").toLowerCase();
-  if (!bare) return false;
+  const bare2 = host.replace(/^[a-z][a-z0-9+.-]*:\/\//i, "").replace(/\/+$/, "").toLowerCase();
+  if (!bare2) return false;
   const k = keyHost.toLowerCase();
-  if (!k.endsWith(bare)) return false;
-  const before = k.slice(0, k.length - bare.length);
+  if (!k.endsWith(bare2)) return false;
+  const before = k.slice(0, k.length - bare2.length);
   return before === "" || before.endsWith("//") || before.endsWith(":");
 }
 function tokenValue(value, now) {
@@ -61654,8 +61654,8 @@ function mirrorConfigProblem(exec, hardening, mirror2) {
   });
   const bad = [...new Set(entries.map((e2) => e2.key).filter((k) => !MIRROR_CONFIG_KEYS.has(k)))];
   if (bad.length > 0) return `the local forge mirror's config ${(0, import_path88.join)(mirror2, "config")} sets ${bad.join(", ")}, which the engine never writes there; remove it (git config --file <that file> --unset <key>)`;
-  const bare = entries.filter((e2) => e2.key === "core.bare");
-  return bare.length === 1 && bare[0].value === "true" ? null : `the local forge mirror's config ${(0, import_path88.join)(mirror2, "config")} must set core.bare = true exactly once (it has ${bare.map((e2) => JSON.stringify(e2.value ?? "(no value)")).join(", ") || "none"})`;
+  const bare2 = entries.filter((e2) => e2.key === "core.bare");
+  return bare2.length === 1 && bare2[0].value === "true" ? null : `the local forge mirror's config ${(0, import_path88.join)(mirror2, "config")} must set core.bare = true exactly once (it has ${bare2.map((e2) => JSON.stringify(e2.value ?? "(no value)")).join(", ") || "none"})`;
 }
 function localTransportArgs(args, mirror2) {
   if (args[0] === "push" && args[1] === LOCAL_REMOTE) {
@@ -65934,6 +65934,8 @@ function humanReviewShapeProblem(s) {
   if (s.nugetRestore !== void 0) {
     const n = s.nugetRestore;
     if (s.forgeKind !== "local" || typeof n !== "object" || n === null || !isStr2(n.head) || !HEX409.test(n.head) || !isStr2(n.definition) || !HEX64.test(n.definition)) return "nugetRestore";
+    if (n.outcome !== void 0 && n.outcome !== "passed" && n.outcome !== "failed" && n.outcome !== "not-run") return "nugetRestore";
+    if (n.exit !== void 0 && (typeof n.exit !== "number" || !Number.isInteger(n.exit))) return "nugetRestore";
   }
   if (s.gitTransportPlainHead !== void 0 && (!isStr2(s.gitTransportPlainHead) || !HEX409.test(s.gitTransportPlainHead))) return "gitTransportPlainHead";
   if (s.testDeltaExcusedHead !== void 0 && (!isStr2(s.testDeltaExcusedHead) || !HEX409.test(s.testDeltaExcusedHead))) return "testDeltaExcusedHead";
@@ -67816,7 +67818,7 @@ function strayDotnetDefinitionFiles(untracked) {
   return untracked.filter((p) => !underDotnetBuildDir(p) && !inPackageTree(p) && isDotnetDefinitionFile(p));
 }
 function trackedPackageTreeProjects(tracked) {
-  return tracked.filter((p) => inPackageTree(p) && isDotnetDefinitionFile(p));
+  return tracked.filter((p) => inPackageTree(p) && isDotnetBuildableFile(p));
 }
 function dotnetSource(args, shown) {
   const sub = args[0]?.toLowerCase();
@@ -67926,7 +67928,7 @@ function gateDefinition(sources, read, list) {
     return [s.path, s.scripts.map((k) => [k, Object.prototype.hasOwnProperty.call(scripts, k) ? scripts[k] : null])];
   })]);
 }
-var import_child_process23, import_fs81, import_os18, import_path97, LOCAL_GATE_TAIL_CHARS, LOCAL_GATE_STALE_GRACE_MS, STREAM_KEEP_CHARS, KILL_DEADLINE_MS, EXIT_DRAIN_MS, NODE_SCRIPTS2, npmCliHint, keepTail, defaultLocalGateRunner, realOrResolved, isLink2, runIdAt, tailOf, NPM_TEST, NPM_RUN, PM_CONFIG_FILES, DIR_FLAGS, CONFIG_FLAGS, WORKSPACE_FLAGS, PM_NON_SCRIPT, VALUE_FLAGS, DOTNET_DEFINITION_PATTERNS, DOTNET_TEST_CONFIG_PATTERNS, foldedName, basenameOf, openedBasename, isDotnetDefinitionFile, DOTNET_PROJECT_PATTERNS, isDotnetProjectFile, DOTNET_GATE_SUBCOMMANDS, DOTNET_ADAPTER_OPTIONS, DOTNET_BUILD_DIR_SOURCES, shellPath, gateSourcePathspec, npxUnresolved, describeGateSources;
+var import_child_process23, import_fs81, import_os18, import_path97, LOCAL_GATE_TAIL_CHARS, LOCAL_GATE_STALE_GRACE_MS, STREAM_KEEP_CHARS, KILL_DEADLINE_MS, EXIT_DRAIN_MS, NODE_SCRIPTS2, npmCliHint, keepTail, defaultLocalGateRunner, realOrResolved, isLink2, runIdAt, tailOf, NPM_TEST, NPM_RUN, PM_CONFIG_FILES, DIR_FLAGS, CONFIG_FLAGS, WORKSPACE_FLAGS, PM_NON_SCRIPT, VALUE_FLAGS, DOTNET_DEFINITION_PATTERNS, DOTNET_TEST_CONFIG_PATTERNS, foldedName, basenameOf, openedBasename, isDotnetDefinitionFile, DOTNET_PROJECT_PATTERNS, isDotnetProjectFile, isDotnetBuildableFile, DOTNET_GATE_SUBCOMMANDS, DOTNET_ADAPTER_OPTIONS, DOTNET_BUILD_DIR_SOURCES, shellPath, gateSourcePathspec, npxUnresolved, describeGateSources;
 var init_local_gate = __esm({
   "src/factory/run/local-gate.ts"() {
     "use strict";
@@ -68033,6 +68035,7 @@ var init_local_gate = __esm({
     isDotnetDefinitionFile = basenameMatcher(DOTNET_DEFINITION_PATTERNS);
     DOTNET_PROJECT_PATTERNS = ["*.sln", "*.slnx", "*.csproj", "*.fsproj", "*.vbproj"];
     isDotnetProjectFile = basenameMatcher(DOTNET_PROJECT_PATTERNS);
+    isDotnetBuildableFile = basenameMatcher(["*.sln", "*.slnx", "*.slnf", "*.*proj"]);
     DOTNET_GATE_SUBCOMMANDS = /* @__PURE__ */ new Set(["build", "test"]);
     DOTNET_ADAPTER_OPTIONS = /* @__PURE__ */ new Set(["--test-adapter-path", "-a"]);
     DOTNET_BUILD_DIR_SOURCES = [...DOTNET_BUILD_DIRS].map((d) => ({ path: `${d}/**`, pattern: true, buildDir: true }));
@@ -68147,7 +68150,20 @@ function writeDefinitionTree(dir, entries, blobs) {
       return { problem: `the pinned definition file ${p} could not be written to the definition tree (${error62.code ?? String(error62)})` };
     }
   }
-  return { files: pinned.map(([p]) => p).sort() };
+  const atRoot = pinned.map(([p]) => p).filter((p) => !p.includes("/"));
+  const stubs = [];
+  for (const [name, content] of DEFINITION_TREE_STUBS) {
+    const nuget = name === "nuget.config";
+    if (atRoot.some((p) => nuget ? p.toLowerCase() === name : p === name)) continue;
+    try {
+      (0, import_node_fs18.writeFileSync)((0, import_node_path19.join)(root, name), content, { flag: "wx" });
+      stubs.push(name);
+    } catch (error62) {
+      if (error62.code === "EEXIST") continue;
+      return { problem: `the definition tree's ${name} could not be written (${error62.code ?? String(error62)})` };
+    }
+  }
+  return { files: pinned.map(([p]) => p).sort(), stubs };
 }
 function removeEngineDir(dir, root) {
   let st;
@@ -68169,9 +68185,14 @@ function missingDefinitionFile(output2, tree) {
   const m = /error (?:MSB4019|MSB3202): [^"\r\n]*"([^"\r\n]+)"/.exec(output2);
   if (!m) return void 0;
   const rel = (0, import_node_path19.relative)((0, import_node_path19.resolve)(tree), (0, import_node_path19.resolve)(m[1]));
-  return rel && !rel.startsWith("..") && !(0, import_node_path19.isAbsolute)(rel) ? rel.split(import_node_path19.sep).join("/") : m[1];
+  if (rel && !rel.startsWith("..") && !(0, import_node_path19.isAbsolute)(rel)) return visibleLine(rel.split(import_node_path19.sep).join("/"));
+  return JSON.stringify(visibleLine(m[1]).slice(0, 200));
 }
-var import_node_crypto8, import_node_fs18, import_node_path19, NUGET_RESTORE_ERROR, BUILD_OR_TEST_STARTED, isNugetOrg, nugetRunPackagesDir, nugetDefinitionTreeDir, WINDOWS_DEVICE, GATE_INSTALL_SANDBOXED_HINT, NUGET_PRIVATE_FEED_UNSUPPORTED;
+function restoreApprovalNote(platform) {
+  const note = '. With factory.run.gateInstall "sandboxed", approving with --allow-gate-change also lets the engine run dotnet restore on these definition files with api.nuget.org reachable';
+  return platform === "win32" ? `${note}; on Windows the MSBuild targets in these files run during that restore, and loopback and your local network are reachable from it too` : note;
+}
+var import_node_crypto8, import_node_fs18, import_node_path19, NUGET_RESTORE_ERROR, BUILD_OR_TEST_STARTED, isNugetOrg, nugetRunPackagesDir, nugetDefinitionTreeDir, WINDOWS_DEVICE, EMPTY_PROJECT, DEFINITION_TREE_NUGET_CONFIG, DEFINITION_TREE_STUBS, GATE_INSTALL_SANDBOXED_HINT, NUGET_PRIVATE_FEED_UNSUPPORTED;
 var init_nuget_restore = __esm({
   "src/factory/run/nuget-restore.ts"() {
     "use strict";
@@ -68179,6 +68200,7 @@ var init_nuget_restore = __esm({
     import_node_fs18 = require("node:fs");
     import_node_path19 = require("node:path");
     init_dotnet_sandbox();
+    init_review_feedback();
     init_local_gate();
     NUGET_RESTORE_ERROR = /^\S[^\r\n]*?\.(?:sln|slnx|slnf|[A-Za-z]*proj|props|targets) : error (NU(?:110[0-3]|13\d\d)):/gm;
     BUILD_OR_TEST_STARTED = /^(?:[ \t]+\S[^\r\n]* -> (?:[A-Za-z]:[\\/]|\/|\\\\)[^\r\n]*|Test run for [^\r\n]*|Starting test execution[^\r\n]*|A total of \d+ test files? matched[^\r\n]*|(?:Passed|Failed|Skipped)![ \t][^\r\n]*|[ \t]*Build succeeded\.[^\r\n]*|[ \t]*Running tests from [^\r\n]*|[^\r\n]*\): (?:error|warning) (?:CS|FS|BC)\d{4}:[^\r\n]*)\r?$/m;
@@ -68191,6 +68213,31 @@ var init_nuget_restore = __esm({
     nugetRunPackagesDir = (gateJobRoot, slug) => (0, import_node_path19.join)(gateJobRoot, "nuget", slug);
     nugetDefinitionTreeDir = (gateJobRoot, slug) => (0, import_node_path19.join)(gateJobRoot, "nuget-defs", slug);
     WINDOWS_DEVICE = /^(?:con|prn|aux|nul|com[0-9¹²³]|lpt[0-9¹²³])(?:\..*)?$/i;
+    EMPTY_PROJECT = "<Project />\n";
+    DEFINITION_TREE_NUGET_CONFIG = [
+      '<?xml version="1.0" encoding="utf-8"?>',
+      "<configuration>",
+      "  <packageSources>",
+      "    <clear />",
+      '    <add key="nuget.org" value="https://api.nuget.org/v3/index.json" protocolVersion="3" />',
+      "  </packageSources>",
+      "  <disabledPackageSources>",
+      "    <clear />",
+      "  </disabledPackageSources>",
+      "  <packageSourceMapping>",
+      "    <clear />",
+      "  </packageSourceMapping>",
+      "</configuration>",
+      ""
+    ].join("\n");
+    DEFINITION_TREE_STUBS = [
+      ["Directory.Build.props", EMPTY_PROJECT],
+      ["Directory.Build.targets", EMPTY_PROJECT],
+      ["Directory.Solution.props", EMPTY_PROJECT],
+      ["Directory.Solution.targets", EMPTY_PROJECT],
+      ["Directory.Packages.props", EMPTY_PROJECT],
+      ["nuget.config", DEFINITION_TREE_NUGET_CONFIG]
+    ];
     GATE_INSTALL_SANDBOXED_HINT = 'set factory.run.gateInstall "sandboxed" in your user config (the engine then runs dotnet restore in the OS sandbox with only api.nuget.org reachable, on the pinned definition files only, after the gate definition check)';
     NUGET_PRIVATE_FEED_UNSUPPORTED = "private or local NuGet feeds are not supported in the sandbox yet";
   }
@@ -69277,6 +69324,124 @@ function gateTreeHasLinks(checkout) {
     return true;
   }
 }
+function gateTreeExactProblem(root, checkout, nestedRels, untracked, copied) {
+  const win = process.platform === "win32";
+  const P = win ? import_path102.win32 : import_path102.posix;
+  const fold5 = (s) => win ? s.toLowerCase() : s;
+  const same3 = (a, b) => fold5(P.resolve(a)) === fold5(P.resolve(b));
+  const isNodeModules = (s) => s.replace(/[. ]+$/, "").toLowerCase() === "node_modules";
+  const trees = [{ rel: "", src: (0, import_path102.join)(root, "node_modules") }, ...nestedRels.map((rel) => ({ rel, src: (0, import_path102.join)(root, ...rel.split("/"), "node_modules") }))];
+  const isDir = (p) => {
+    try {
+      return (0, import_fs85.statSync)(p).isDirectory();
+    } catch {
+      return false;
+    }
+  };
+  for (const p of untracked) {
+    const segs = p.split("/");
+    const at = segs.findIndex(isNodeModules);
+    if (at < 0) continue;
+    const rel = segs.slice(0, at).join("/");
+    if (!trees.some((t) => fold5(t.rel) === fold5(rel) && isDir(t.src))) return { problem: `${segs.slice(0, at + 1).join("/")} in the checkout is not a node_modules tree the engine built from yours, so what is in it cannot be verified`, tampered: false };
+  }
+  const insideCheckout = (p, to) => {
+    const rel = P.relative(P.resolve(checkout), to);
+    if (!rel || rel.startsWith("..") || P.isAbsolute(rel) || rel.split(/[\\/]/).some(isNodeModules)) return false;
+    try {
+      const real2 = P.relative(fold5(import_fs85.realpathSync.native(checkout)), fold5(import_fs85.realpathSync.native(p)));
+      return !!real2 && !real2.startsWith("..") && !P.isAbsolute(real2) && !real2.split(/[\\/]/).some(isNodeModules);
+    } catch {
+      return false;
+    }
+  };
+  const linkOk = (p, wants) => {
+    let to;
+    try {
+      to = P.resolve(P.dirname(p), (0, import_fs85.readlinkSync)(p));
+    } catch {
+      return false;
+    }
+    return wants.some((w) => same3(to, w)) || insideCheckout(p, to);
+  };
+  for (const t of trees) {
+    const nm = (0, import_path102.join)(checkout, ...t.rel.split("/").filter(Boolean), "node_modules");
+    const shown = `${t.rel ? `${t.rel}/` : ""}node_modules`;
+    let st;
+    try {
+      st = (0, import_fs85.lstatSync)(nm);
+    } catch {
+      continue;
+    }
+    if (!isDir(t.src)) return { problem: `${shown} in the checkout is not a tree the engine built (your checkout has no such node_modules), so what is in it cannot be verified`, tampered: false };
+    if (copied) return { problem: `${shown} is the engine's copied tree (${GATE_TREE_COPY_WHY}), whose files the engine cannot compare with yours cheaply`, tampered: false };
+    let srcReal;
+    try {
+      srcReal = import_fs85.realpathSync.native(t.src);
+    } catch (error62) {
+      return { problem: `your ${t.src} cannot be read (${error62 instanceof Error ? error62.message : String(error62)})`, tampered: false };
+    }
+    if (st.isSymbolicLink()) {
+      let real2 = "";
+      try {
+        real2 = import_fs85.realpathSync.native(nm);
+      } catch {
+      }
+      if (real2 && fold5(real2) === fold5(srcReal)) continue;
+      return { problem: `${shown} is a link that does not resolve to your node_modules`, tampered: true };
+    }
+    if (!st.isDirectory()) return { problem: `${shown} is not a directory`, tampered: true };
+    const wants = (name) => [(0, import_path102.join)(srcReal, name), (0, import_path102.join)(t.src, name)];
+    try {
+      const present = /* @__PURE__ */ new Set();
+      for (const name of (0, import_fs85.readdirSync)(nm)) {
+        present.add(fold5(name));
+        const p = (0, import_path102.join)(nm, name);
+        const e2 = (0, import_fs85.lstatSync)(p);
+        if (name === GATE_TREE_MARKER) {
+          if (!e2.isFile()) return { problem: `${shown}/${name} is not the engine's marker file`, tampered: true };
+          continue;
+        }
+        if (GATE_CACHE_DIRS.includes(name)) {
+          if (e2.isSymbolicLink() || !e2.isDirectory()) return { problem: `${shown}/${name} is not the fresh cache dir the engine made`, tampered: true };
+          continue;
+        }
+        if (e2.isSymbolicLink()) {
+          if (!linkOk(p, wants(name))) return { problem: `${shown}/${name} is a link to somewhere else than your node_modules/${name}`, tampered: true };
+        } else if (e2.isDirectory() && name.startsWith("@")) {
+          const inner = /* @__PURE__ */ new Set();
+          for (const c of (0, import_fs85.readdirSync)(p)) {
+            inner.add(fold5(c));
+            const cp = (0, import_path102.join)(p, c);
+            if (!(0, import_fs85.lstatSync)(cp).isSymbolicLink() || !linkOk(cp, wants((0, import_path102.join)(name, c)))) return { problem: `${shown}/${name}/${c} is not the engine's link to your node_modules/${name}/${c}`, tampered: true };
+          }
+          for (const c of (0, import_fs85.readdirSync)((0, import_path102.join)(t.src, name))) {
+            if (!isDir((0, import_path102.join)(t.src, name, c)) || inner.has(fold5(c)) || "skip" in workspaceLinkTarget((0, import_path102.join)(t.src, name, c), root, checkout)) continue;
+            return { problem: `${shown}/${name}/${c}, which the engine links to yours, is gone`, tampered: true };
+          }
+        } else if (e2.isFile()) {
+          const from = (0, import_path102.join)(t.src, name);
+          let mine = null;
+          try {
+            mine = (0, import_fs85.statSync)(from);
+          } catch {
+          }
+          if (!mine?.isFile() || mine.size !== e2.size || mine.size > GATE_TREE_FILE_MAX_BYTES || !(0, import_fs85.readFileSync)(from).equals((0, import_fs85.readFileSync)(p))) return { problem: `${shown}/${name} is not the engine's copy of your node_modules/${name}`, tampered: true };
+        } else {
+          return { problem: `${shown}/${name} is a ${e2.isDirectory() ? "plain directory" : "special file"} where the engine links your node_modules/${name}`, tampered: true };
+        }
+      }
+      for (const name of (0, import_fs85.readdirSync)(t.src)) {
+        if (name === GATE_TREE_MARKER || GATE_CACHE_DIRS.includes(name) || present.has(fold5(name)) || !isDir((0, import_path102.join)(t.src, name))) continue;
+        if ("skip" in workspaceLinkTarget((0, import_path102.join)(t.src, name), root, checkout)) continue;
+        return { problem: `${shown}/${name}, which the engine links to your node_modules/${name}, is gone`, tampered: true };
+      }
+    } catch (error62) {
+      return { problem: `${shown} cannot be read (${error62 instanceof Error ? error62.message : String(error62)})`, tampered: false };
+    }
+  }
+  return null;
+}
 function nestedTreeDirs(checkout) {
   const rels = new Set(nestedTrees.get(checkout) ?? []);
   const marker = (0, import_path102.join)(checkout, "node_modules", GATE_TREE_MARKER);
@@ -69869,7 +70034,7 @@ function configFile(ctx, gitDir, file2 = (0, import_path104.join)(gitDir, "confi
   }
   return out;
 }
-function engineConfigProblem(ctx, gitDir, what, bare) {
+function engineConfigProblem(ctx, gitDir, what, bare2) {
   const cfg = configFile(ctx, gitDir);
   if (!cfg) return `${what} config cannot be read`;
   if ([...cfg.keys()].some((k) => k === "extensions.partialclone" || /^remote\..*\.(?:promisor|partialclonefilter)$/.test(k))) return `${what} config makes it a partial clone (promisor remote)`;
@@ -69878,7 +70043,7 @@ function engineConfigProblem(ctx, gitDir, what, bare) {
     const allowed = ENGINE_CONFIG[key];
     if (!allowed || values.length !== 1 || !allowed.includes(values[0].toLowerCase())) return `${what} config has a key the engine did not write`;
   }
-  if (cfg.get("core.bare")?.[0]?.toLowerCase() !== String(bare)) return `${what} config does not say core.bare=${bare}`;
+  if (cfg.get("core.bare")?.[0]?.toLowerCase() !== String(bare2)) return `${what} config does not say core.bare=${bare2}`;
   return null;
 }
 function listingHash(dir, cap) {
@@ -72540,6 +72705,688 @@ var init_context = __esm({
   }
 });
 
+// src/factory/run/tamper-quarantine.ts
+function unchangedOldRemote(name, was, now) {
+  if (typeof name !== "string" || /^\.*$/.test(name) || /[/:\\\s\p{Cc}]/u.test(name)) return false;
+  if (!was.get(`remote.${name}.url`)?.length) return false;
+  return ["url", "pushurl", "fetch"].every((k) => sameValues(was.get(`remote.${name}.${k}`), now.get(`remote.${name}.${k}`)));
+}
+function benignChange(key, was, now) {
+  const m = BRANCH_UPSTREAM.exec(key);
+  if (!m) return benignKey(key);
+  const values = now.get(key);
+  if (!values?.length) return true;
+  if (m[2] === "merge") {
+    const remote = now.get(`branch.${m[1]}.remote`);
+    return values.every((v) => typeof v === "string" && HEADS_REF.test(v)) && remote?.length === 1 && unchangedOldRemote(remote[0], was, now);
+  }
+  return values.length === 1 && unchangedOldRemote(values[0], was, now);
+}
+function configEntries(bytes, tmp) {
+  if (bytes === null) return [];
+  const file2 = (0, import_node_path21.join)(tmp, `cfg-${Math.random().toString(36).slice(2)}`);
+  (0, import_node_fs20.writeFileSync)(file2, bytes);
+  try {
+    const out = runHostGit(tmp, ["config", "--file", file2, "--null", "--list"], 3e4);
+    return out.split("\0").filter(Boolean).map((e2) => {
+      const nl = e2.indexOf("\n");
+      return nl < 0 ? [e2, null] : [e2.slice(0, nl), e2.slice(nl + 1)];
+    });
+  } catch {
+    return null;
+  } finally {
+    try {
+      (0, import_node_fs20.unlinkSync)(file2);
+    } catch {
+    }
+  }
+}
+function changedKeys(before, after, tmp) {
+  const wasEntries = configEntries(before, tmp);
+  const nowEntries = configEntries(after, tmp);
+  if (!wasEntries || !nowEntries) return null;
+  const was = valuesByKey(wasEntries);
+  const now = valuesByKey(nowEntries);
+  const keys = [.../* @__PURE__ */ new Set([...was.keys(), ...now.keys()])].filter((k) => !sameValues(was.get(k), now.get(k))).sort();
+  return { keys, held: keys.filter((k) => !benignChange(k, was, now)) };
+}
+function putKeysBack(current, old, keys, tmp) {
+  const entries = configEntries(old, tmp);
+  if (!entries) return null;
+  const file2 = (0, import_node_path21.join)(tmp, `merge-${Math.random().toString(36).slice(2)}`);
+  (0, import_node_fs20.writeFileSync)(file2, current);
+  try {
+    for (const key of keys) {
+      const values = entries.filter(([k]) => k === key).map(([, v]) => v);
+      if (values.some((v) => v === null)) return null;
+      try {
+        runHostGit(tmp, ["config", "--file", file2, "--unset-all", key], 3e4);
+      } catch (error62) {
+        if (error62.status !== 5) return null;
+      }
+      for (const v of values) runHostGit(tmp, ["config", "--file", file2, "--add", key, v], 3e4);
+    }
+    return (0, import_node_fs20.readFileSync)(file2);
+  } catch {
+    return null;
+  } finally {
+    try {
+      (0, import_node_fs20.unlinkSync)(file2);
+    } catch {
+    }
+  }
+}
+function ownerOf2(rel) {
+  if (rel.startsWith("worktrees/")) return rel.split("/").slice(0, 2).join("/");
+  if (!rel.startsWith("modules/")) return null;
+  return /^(.*?)\/(?:config|config\.worktree|hooks|info)(?:\/.*)?$/.exec(rel)?.[1] ?? null;
+}
+function assertParentsReal(common, rel) {
+  const segs = rel.split("/").slice(0, -1);
+  let dir = common;
+  for (const s of segs) {
+    dir = (0, import_node_path21.join)(dir, s);
+    let st;
+    try {
+      st = (0, import_node_fs20.lstatSync)(dir);
+    } catch {
+      (0, import_node_fs20.mkdirSync)(dir);
+      continue;
+    }
+    if (st.isSymbolicLink() || !st.isDirectory()) throw new Error(`${dir} is not a real directory`);
+  }
+}
+function restoreConfigLocked(abs, compute) {
+  const lock = `${abs}.lock`;
+  let fd;
+  try {
+    fd = (0, import_node_fs20.openSync)(lock, "wx", 420);
+  } catch (error62) {
+    if (error62.code === "EEXIST") throw new Error(CONFIG_LOCKED);
+    throw error62;
+  }
+  try {
+    let locked = null;
+    try {
+      locked = (0, import_node_fs20.readFileSync)(abs);
+    } catch (error62) {
+      if (error62.code !== "ENOENT") throw error62;
+    }
+    const out = compute(locked);
+    if (out === null) {
+      (0, import_node_fs20.closeSync)(fd);
+      fd = void 0;
+      if (locked !== null) (0, import_node_fs20.unlinkSync)(abs);
+      (0, import_node_fs20.unlinkSync)(lock);
+      return;
+    }
+    (0, import_node_fs20.writeSync)(fd, out);
+    (0, import_node_fs20.fsyncSync)(fd);
+    (0, import_node_fs20.closeSync)(fd);
+    fd = void 0;
+    (0, import_node_fs20.renameSync)(lock, abs);
+  } catch (error62) {
+    if (fd !== void 0) {
+      try {
+        (0, import_node_fs20.closeSync)(fd);
+      } catch {
+      }
+    }
+    try {
+      (0, import_node_fs20.unlinkSync)(lock);
+    } catch {
+    }
+    throw error62;
+  }
+}
+function atomicRestore(abs, bytes, exec) {
+  if ((0, import_node_fs20.existsSync)(`${abs}.lock`)) throw new Error(`${(0, import_node_path21.basename)(abs)}.lock exists (a git command is writing it), so it was not restored`);
+  let st;
+  try {
+    st = (0, import_node_fs20.lstatSync)(abs);
+  } catch {
+    st = void 0;
+  }
+  if (st?.isDirectory()) (0, import_node_fs20.rmdirSync)(abs);
+  else if (st?.isSymbolicLink()) removeEntry(abs);
+  const tmp = `${abs}.omg-restore-${Math.random().toString(36).slice(2)}`;
+  (0, import_node_fs20.writeFileSync)(tmp, bytes, { mode: exec ? 493 : 420, flag: "wx" });
+  try {
+    if (exec) (0, import_node_fs20.chmodSync)(tmp, 493);
+    (0, import_node_fs20.renameSync)(tmp, abs);
+  } catch (error62) {
+    try {
+      (0, import_node_fs20.unlinkSync)(tmp);
+    } catch {
+    }
+    throw error62;
+  }
+}
+function removeEntry(abs) {
+  try {
+    (0, import_node_fs20.unlinkSync)(abs);
+  } catch (error62) {
+    const code = error62.code;
+    if (code !== "EPERM" && code !== "EISDIR" || !(0, import_node_fs20.lstatSync)(abs).isSymbolicLink()) throw error62;
+    (0, import_node_fs20.rmdirSync)(abs);
+  }
+}
+function asideName(abs) {
+  for (let n = 0; ; n++) {
+    const p = `${abs}.omg-quarantined${n ? `-${n}` : ""}`;
+    if (!(0, import_node_fs20.existsSync)(p)) return p;
+  }
+}
+function problemStatus(p, touched, before, after) {
+  if (/^ref \S+ /.test(p)) return "ok";
+  if (/^the main checkout's (?:HEAD moved|HEAD switched|working tree changed)/.test(p)) return "ok";
+  if (/^the checkout's branch \S+ is gone$/.test(p)) return "ok";
+  if (p === "the common git config changed") return touched("config") ? "ok" : "unhandled";
+  if (p === "config.worktree changed") return touched("config.worktree") ? "ok" : "unhandled";
+  if (p === "the hooks/ directory changed") return touched("hooks/") ? "ok" : "unhandled";
+  if (p === "the info/ directory changed") return touched("info/") ? "ok" : "unhandled";
+  if (p === LEGACY_REMOTES_CHANGED) return touched("remotes/") || touched("branches/") ? "ok" : "unhandled";
+  let m = /^worktrees\/([^/]+)\/config\.worktree changed$/.exec(p);
+  if (m) return touched(`worktrees/${m[1]}/config.worktree`) ? "ok" : "unhandled";
+  m = /^submodule git dir (modules\/.+) was removed$/.exec(p);
+  if (m) return "ok";
+  m = /^submodule git dir (modules\/.+) was added$/.exec(p) ?? /^(modules\/.+) changed \(config, hooks, info or alternates\)$/.exec(p);
+  if (m) return touched(`${m[1]}/`) && !(0, import_node_fs20.existsSync)((0, import_node_path21.join)(before.commonDir, ...m[1].split("/"), "objects", "info", "alternates")) ? "ok" : "unhandled";
+  m = /^worktree entry worktrees\/([^/]+) was added$/.exec(p);
+  if (m) return after?.worktrees?.[m[1]]?.commondir === "../.." ? "ok" : "unhandled";
+  if (/^worktree entry worktrees\/[^/]+ was removed or is no longer a directory$/.test(p)) return "ok";
+  m = /^worktrees\/([^/]+) changed \(HEAD, gitdir, commondir or per-worktree refs\)$/.exec(p);
+  if (m) {
+    const was = before.worktrees?.[m[1]];
+    const now = after?.worktrees?.[m[1]];
+    return was && now && !now.notDir && was.gitdir === now.gitdir && was.commondir === now.commondir ? "ok" : "unhandled";
+  }
+  return "unhandled";
+}
+function advice(p, common) {
+  if (/^lane \S+'s process/.test(p)) return "make sure no process of that lane still runs (copilot, node, git or a shell started from its worktree: Task Manager or ps) before you release the hold; one that runs can change .git again";
+  if (/global git config/.test(p)) return "check ~/.gitconfig, $XDG_CONFIG_HOME/git/config and every include.path / includeIf target they or the repository config name, and remove what you did not add";
+  if (/^an ignored file in the main checkout changed/.test(p)) return "check .env*, .npmrc, .yarnrc, .yarnrc.yml and node_modules/.bin in the checkout (they also run on your next npm or yarn command) and remove what you did not add";
+  if (/snapshot failed/.test(p)) return `the engine could not tell what changed: check ${common} (config, hooks, info, refs) by hand`;
+  return `inspect it in ${common} and remove what you did not add`;
+}
+function quarantineTamper(i) {
+  const hold = { root: (0, import_node_path21.resolve)(i.root), at: i.at, run: i.run, gate: i.gate, moved: [], restored: [], notRestored: [], refs: [], kept: [], active: [], undo: [] };
+  const common = i.before.commonDir;
+  const kept = i.before.restore;
+  const touchedRels = [];
+  const failedRels = /* @__PURE__ */ new Set();
+  const dir = (0, import_node_path21.join)(i.ledgerDir, "quarantine", repoKey(i.root), `${i.at.replace(/[:.]/g, "-")}${i.label ? `-${i.label.replace(/[^A-Za-z0-9._-]/g, "_")}` : ""}`);
+  const quarantine = () => {
+    if (!hold.quarantine) {
+      (0, import_node_fs20.mkdirSync)(dir, { recursive: true, mode: 448 });
+      hold.quarantine = dir;
+    }
+    return dir;
+  };
+  if (!kept) {
+    hold.failed = "the snapshot from before the lane was recorded by an older release and holds no bytes, so nothing was quarantined or restored";
+  } else {
+    let now = null;
+    try {
+      now = restorableFiles(common);
+    } catch (error62) {
+      hold.failed = `the repository's git dir could not be read: ${errText5(error62)}`;
+    }
+    if (now) {
+      let handleItem2 = function(rel, was, is) {
+        const abs = (0, import_node_path21.join)(common, ...rel.split("/"));
+        const owner = ownerOf2(rel);
+        if (owner && !realDir((0, import_node_path21.join)(common, ...owner.split("/")))) {
+          hold.kept.push(`${rel} (its git dir ${owner} is gone; nothing was recreated)`);
+          return false;
+        }
+        const old = decode3(was);
+        if (isConfigRel(rel) && (was === void 0 || old !== null) && (is?.startsWith("b64") ?? false)) {
+          const current = decode3(is);
+          quarantine();
+          (0, import_node_fs20.mkdirSync)(tmp, { recursive: true });
+          const diff = changedKeys(old, current, tmp);
+          if (diff !== null) {
+            const { keys, held: program2 } = diff;
+            if (program2.length === 0) {
+              let copy = "";
+              try {
+                copy = `; a copy is in ${saveBytes2(rel, current)}`;
+              } catch {
+              }
+              hold.kept.push(`${rel} (only ${keys.slice(0, 5).join(", ")}${keys.length > 5 ? ", ..." : ""} changed: allowlisted keys that name no program; left as it is${copy})`);
+              return false;
+            }
+            const to = saveBytes2(rel, current);
+            assertParentsReal(common, rel);
+            i.beforeConfigLock?.(abs);
+            let putBack = program2;
+            let exact = false;
+            restoreConfigLocked(abs, (locked) => {
+              if (locked === null) return old;
+              if (!locked.equals(current)) (0, import_node_fs20.writeFileSync)(to, locked);
+              const keysNow = changedKeys(old, locked, tmp);
+              if (keysNow !== null) {
+                putBack = keysNow.held;
+                if (putBack.length === 0) {
+                  exact = true;
+                  return locked;
+                }
+              }
+              const out = keysNow !== null && old !== null ? putKeysBack(locked, old, putBack, tmp) : null;
+              exact = out !== null;
+              return out ?? old;
+            });
+            if (old === null) hold.moved.push(rel);
+            else hold.restored.push(`${rel} (${putBack.slice(0, 5).join(", ")}${putBack.length > 5 ? ", ..." : ""} put back${exact ? "" : "; the whole file, so other changes to it are only in the copy"})`);
+            hold.undo.push(`${rel}: if the change was yours, put your version back: cp "${to}" "${abs}"`);
+            return false;
+          }
+        }
+        let renamed = false;
+        if (is !== void 0) {
+          const saved = saveCurrent2(rel, abs, is);
+          renamed = saved.renamed;
+          hold.undo.push(is.startsWith("link:") ? `${rel}: was a link to ${is.slice(5)} (saved in ${saved.at}); if it was yours, make it again` : `${rel}: if it was yours, put it back: cp "${saved.at}" "${abs}"`);
+        }
+        if (was === void 0) {
+          if (is !== void 0 && !renamed) removeEntry(abs);
+          hold.moved.push(rel);
+          return renamed;
+        }
+        if (old !== null) {
+          assertParentsReal(common, rel);
+          atomicRestore(abs, old, was.startsWith("b64x:"));
+          if (is !== void 0) hold.moved.push(rel);
+          hold.restored.push(rel);
+          return renamed;
+        }
+        if (is !== void 0 && !renamed) removeEntry(abs);
+        if (is !== void 0) hold.moved.push(rel);
+        if (was.startsWith("link:")) {
+          try {
+            assertParentsReal(common, rel);
+            (0, import_node_fs20.symlinkSync)(was.slice(5), abs);
+            hold.restored.push(rel);
+          } catch (error62) {
+            hold.notRestored.push(`${rel} (a link to ${was.slice(5)} before the run; it could not be made again: ${errText5(error62)})`);
+          }
+        } else {
+          hold.notRestored.push(`${rel} (${was.startsWith("big:") ? "over 1 MiB" : "unreadable"} before the run, so only its hash was kept${is !== void 0 ? "; the changed one was moved to the quarantine" : ""})`);
+        }
+        return renamed;
+      }, saveBytes2 = function(rel, bytes) {
+        const to = (0, import_node_path21.join)(quarantine(), ...rel.split("/"));
+        (0, import_node_fs20.mkdirSync)((0, import_node_path21.dirname)(to), { recursive: true });
+        (0, import_node_fs20.writeFileSync)(to, bytes);
+        return to;
+      }, saveCurrent2 = function(rel, abs, is) {
+        if (is.startsWith("link:")) {
+          const to2 = (0, import_node_path21.join)(quarantine(), LINKS_DIR, ...rel.split("/"));
+          (0, import_node_fs20.mkdirSync)((0, import_node_path21.dirname)(to2), { recursive: true });
+          (0, import_node_fs20.writeFileSync)(to2, is.slice(5));
+          return { at: to2, renamed: false };
+        }
+        const bytes = decode3(is);
+        if (bytes) {
+          const to2 = saveBytes2(rel, bytes);
+          if (is.startsWith("b64x:")) (0, import_node_fs20.chmodSync)(to2, 493);
+          return { at: to2, renamed: false };
+        }
+        const to = (0, import_node_path21.join)(quarantine(), ...rel.split("/"));
+        (0, import_node_fs20.mkdirSync)((0, import_node_path21.dirname)(to), { recursive: true });
+        try {
+          (0, import_node_fs20.copyFileSync)(abs, to);
+          return { at: to, renamed: false };
+        } catch {
+        }
+        try {
+          (0, import_node_fs20.renameSync)(abs, to);
+          return { at: to, renamed: true };
+        } catch (error62) {
+          if (error62.code !== "EXDEV") throw error62;
+        }
+        const aside = asideName(abs);
+        (0, import_node_fs20.renameSync)(abs, aside);
+        return { at: aside, renamed: true };
+      };
+      var handleItem = handleItem2, saveBytes = saveBytes2, saveCurrent = saveCurrent2;
+      const scopes = (kept[RESTORE_SCOPE_KEY] ?? "").split(",");
+      const inScope = (rel) => {
+        const top = /^(modules|worktrees|remotes|branches)\//.exec(rel)?.[1];
+        return !top || scopes.includes(top === "branches" ? "remotes" : top);
+      };
+      const changed = [.../* @__PURE__ */ new Set([...Object.keys(kept), ...Object.keys(now)])].filter((rel) => rel !== RESTORE_SCOPE_KEY && kept[rel] !== now[rel] && inScope(rel)).sort();
+      touchedRels.push(...changed);
+      const tmp = (0, import_node_path21.join)(dir, ".tmp");
+      const movedAway = [];
+      const added = changed.filter((rel) => kept[rel] === void 0).reverse();
+      for (const rel of [...added, ...changed.filter((rel2) => kept[rel2] !== void 0)]) {
+        if (movedAway.some((p) => rel.startsWith(`${p}/`))) continue;
+        try {
+          const renamed = handleItem2(rel, kept[rel], now[rel]);
+          if (renamed) movedAway.push(rel);
+        } catch (error62) {
+          failedRels.add(rel);
+          hold.active.push(`${rel}: ${STILL_ACTIVE}: it could not be moved or restored (${errText5(error62)}); remove or fix it by hand in ${common}`);
+        }
+      }
+      (0, import_node_fs20.rmSync)(tmp, { recursive: true, force: true });
+    }
+  }
+  try {
+    hold.refs = refChanges(i.before.refs, i.refsNow ?? i.before.refs, common, () => quarantine(), i.onlyRefs);
+  } catch (error62) {
+    hold.failed = `${hold.failed ? `${hold.failed}; ` : ""}the ref changes could not be handled: ${errText5(error62)}`;
+  }
+  const touched = (prefix) => touchedRels.some((r) => (r === prefix || prefix.endsWith("/") && (r.startsWith(prefix) || r === prefix.slice(0, -1))) && !failedRels.has(r));
+  for (const p of i.problems ?? []) {
+    if (problemStatus(p, touched, i.before, i.after) === "unhandled") hold.active.push(`${p}: ${STILL_ACTIVE}; ${advice(p, common)}`);
+  }
+  if (hold.quarantine && hold.undo.length > 0) {
+    try {
+      (0, import_node_fs20.writeFileSync)((0, import_node_path21.join)(hold.quarantine, "undo.txt"), `${hold.undo.join("\n")}
+`);
+    } catch {
+    }
+  }
+  if (!hold.failed && hold.moved.length + hold.restored.length + hold.notRestored.length + hold.refs.length + hold.kept.length + hold.active.length === 0) {
+    if (hold.quarantine) (0, import_node_fs20.rmSync)(hold.quarantine, { recursive: true, force: true });
+    delete hold.quarantine;
+    return hold;
+  }
+  const replaced = hold.refs.some((r) => r.startsWith("refs/replace/"));
+  if (!hold.failed && hold.moved.length + hold.restored.length + hold.notRestored.length + hold.active.length === 0 && !replaced) return hold;
+  if (i.hold === false) return hold;
+  hold.held = true;
+  try {
+    writeTamperHold(i.ledgerDir, i.root, hold);
+  } catch (error62) {
+    hold.held = false;
+    hold.holdNotWritten = errText5(error62);
+    hold.failed = `${hold.failed ? `${hold.failed}; ` : ""}the hold could not be written: ${errText5(error62)}`;
+  }
+  return hold;
+}
+function refChanges(before, now, common, quarantine, only) {
+  const out = [];
+  const saved = [];
+  for (const name of [.../* @__PURE__ */ new Set([...Object.keys(before), ...Object.keys(now)])].filter((n) => !only || only.includes(n)).sort()) {
+    const was = before[name];
+    const is = now[name];
+    if (was === is) continue;
+    if (was === void 0 && name.startsWith("refs/replace/")) {
+      saved.push(`${name} ${is}`);
+      (0, import_node_fs20.writeFileSync)((0, import_node_path21.join)(quarantine(), "refs.txt"), `${saved.join("\n")}
+`);
+      runHostGit(common, ["--git-dir", common, "update-ref", "-d", name, is], 3e4);
+      out.push(`${name} was created at ${is.slice(0, 12)}: deleted (saved in refs.txt)`);
+    } else if (was === void 0) out.push(`${name} was created at ${is.slice(0, 12)}; if you did not make it: git update-ref -d ${name} ${is}`);
+    else if (is === void 0) out.push(`${name} was deleted (was ${was.slice(0, 12)}); to put it back: git update-ref ${name} ${was}`);
+    else out.push(`${name} moved ${was.slice(0, 12)} -> ${is.slice(0, 12)}; if you did not move it: git update-ref ${name} ${was} ${is}`);
+  }
+  if (out.length > 0) (0, import_node_fs20.writeFileSync)((0, import_node_path21.join)(quarantine(), "refs.txt"), `${[...saved, ...out].join("\n")}
+`);
+  return out;
+}
+function writeTamperHold(ledgerDir, root, hold) {
+  const path15 = tamperHoldPath(ledgerDir, root);
+  (0, import_node_fs20.mkdirSync)((0, import_node_path21.dirname)(path15), { recursive: true, mode: 448 });
+  atomicWriteFileSync(path15, `${JSON.stringify(hold, null, 2)}
+`);
+}
+function readTamperHold(ledgerDir, root) {
+  const path15 = tamperHoldPath(ledgerDir, root);
+  if (!(0, import_node_fs20.existsSync)(path15)) return null;
+  try {
+    const h = JSON.parse((0, import_node_fs20.readFileSync)(path15, "utf8"));
+    return typeof h === "object" && h !== null && typeof h.gate === "string" ? h : "unreadable";
+  } catch {
+    return "unreadable";
+  }
+}
+function tamperHoldMessage(ledgerDir, root) {
+  const hold = readTamperHold(ledgerDir, root);
+  if (hold === null) return null;
+  const path15 = tamperHoldPath(ledgerDir, root);
+  if (hold === "unreadable") return `a tamper hold is set on this checkout (${path15}, unreadable), so no factory run starts here; check the repository's .git (hooks, config, info, refs), then run ${RELEASE_TAMPER_COMMAND}`;
+  const active = hold.active ?? [];
+  return `a tamper hold is set on this checkout since ${hold.at} (run ${hold.run} parked at ${hold.gate}), so no factory run starts here${hold.quarantine ? `; what changed in .git is in ${hold.quarantine}` : ""}${active.length ? `; ${active.length} item(s) are ${STILL_ACTIVE}: ${active.slice(0, 3).join("; ")}` : ""}. Your own change during that run (a git config key, \`git remote add\` or \`git remote set-url\` included, and a branch's upstream set to a path, a URL, "." or a remote added during the run, a hook husky or an editor installed) triggers this too: put it back with the cp command in undo.txt in that folder if it was yours. Then run ${RELEASE_TAMPER_COMMAND}`;
+}
+var import_node_fs20, import_node_path21, repoKey, tamperHoldPath, RELEASE_TAMPER_COMMAND, STILL_ACTIVE, BENIGN_KEYS, benignKey, BRANCH_UPSTREAM, HEADS_REF, sameValues, valuesByKey, decode3, isConfigRel, realDir, errText5, CONFIG_LOCKED, LINKS_DIR;
+var init_tamper_quarantine = __esm({
+  "src/factory/run/tamper-quarantine.ts"() {
+    "use strict";
+    import_node_fs20 = require("node:fs");
+    import_node_path21 = require("node:path");
+    init_atomic_write();
+    init_git_worktree();
+    init_ledger2();
+    init_review_guard();
+    repoKey = (root) => sha256((0, import_node_path21.resolve)(root).toLowerCase()).slice(0, 16);
+    tamperHoldPath = (ledgerDir, root) => (0, import_node_path21.join)(ledgerDir, "holds", `${repoKey(root)}.json`);
+    RELEASE_TAMPER_COMMAND = "omg factory run release --tamper";
+    STILL_ACTIVE = "STILL ACTIVE (it can run on your next git command)";
+    BENIGN_KEYS = [
+      { re: /^user\.[^.]+$/, why: "who commits (name, email, the signing key name): the signing program is gpg.*, which is not on this list" },
+      // Not remote, pushremote or merge (review-484c 1): those are benign only by their values, see benignChange.
+      { re: /^branch\..+\.(?:rebase|description)$/, why: "a branch's pull mode and description; neither names a program or a place" },
+      { re: /^branch\..+\.vscode-merge-base$/, why: "written by VS Code when it creates a branch; git never reads it" },
+      // Not url, pushurl or fetch (review-484b 1): they send the user's next push to a host the lane picks, or fetch its
+      // commits and refs (refs/replace/* too) into the user's repository on the next plain `git fetch` or `git pull`.
+      { re: /^remote\..+\.(?:tagopt|prune|prunetags)$/, why: "which tags a fetch follows and whether it prunes gone remote branches, from the remote the user configured into its own remote-tracking refs" },
+      { re: /^remote\..+\.gh-resolved$/, why: "written by the GitHub CLI to pick the base remote; git never reads it" },
+      { re: /^maintenance\.(?:auto|strategy|[^.]+\.(?:enabled|schedule))$/, why: "`git maintenance start` writes them; they pick only git's own built-in tasks" }
+    ];
+    benignKey = (key) => BENIGN_KEYS.some((b) => b.re.test(key));
+    BRANCH_UPSTREAM = /^branch\.(.+)\.(remote|pushremote|merge)$/;
+    HEADS_REF = /^refs\/heads\/(?!.*\.\.)[^\p{Cc}\s~^:?*[\\]+$/u;
+    sameValues = (a, b) => JSON.stringify(a ?? []) === JSON.stringify(b ?? []);
+    valuesByKey = (entries) => {
+      const m = /* @__PURE__ */ new Map();
+      for (const [k, v] of entries) m.set(k, [...m.get(k) ?? [], v]);
+      return m;
+    };
+    decode3 = (v) => v?.startsWith("b64:") ? Buffer.from(v.slice(4), "base64") : v?.startsWith("b64x:") ? Buffer.from(v.slice(5), "base64") : null;
+    isConfigRel = (rel) => /^(?:config|config\.worktree|worktrees\/[^/]+\/config\.worktree|modules\/.+\/(?:config|config\.worktree))$/.test(rel) && !/\/(?:hooks|info)\//.test(`/${rel}`);
+    realDir = (path15) => {
+      try {
+        const st = (0, import_node_fs20.lstatSync)(path15);
+        return st.isDirectory() && !st.isSymbolicLink();
+      } catch {
+        return false;
+      }
+    };
+    errText5 = (error62) => error62 instanceof Error ? error62.message : String(error62);
+    CONFIG_LOCKED = "git config is locked by another process";
+    LINKS_DIR = ".links";
+  }
+});
+
+// src/factory/run/gate-next.ts
+function gateSteps(name) {
+  const hit = Object.prototype.hasOwnProperty.call(GATE_TABLE, name) ? GATE_TABLE[name] : LANE_PARK.test(name) ? LANE_PARK_ENTRY : null;
+  return hit ? { ...hit, known: true } : { ...UNKNOWN_GATE_ENTRY, known: false };
+}
+function validRunKey(key) {
+  return typeof key === "number" ? Number.isSafeInteger(key) && key > 0 : typeof key === "string" && HEAL_RUN_KEY.test(key);
+}
+function mergeArgv(f) {
+  if (typeof f.pr !== "number" || !Number.isSafeInteger(f.pr) || f.pr <= 0 || typeof f.head !== "string" || !HEX4015.test(f.head)) return null;
+  if (f.forge === "github") return ghMergeCommand(f.pr, f.head);
+  if (f.forge === "local") return localMerge(f.root).humanMergeCommand(f.pr, f.head);
+  return null;
+}
+function gateNext(name, f) {
+  if (!validRunKey(f.key)) return [];
+  const heal = typeof f.key === "string";
+  const out = [];
+  for (const step of gateSteps(name).steps) {
+    switch (step) {
+      case "status":
+        out.push({ label: GATE_NEXT_LABELS.status, argv: statusArgv(f.key) });
+        break;
+      case "resume":
+        out.push({ label: heal ? GATE_NEXT_LABELS.healResume : GATE_NEXT_LABELS.resume, argv: resumeArgv(f.key), billed: true });
+        break;
+      case "cancel":
+        out.push({ label: GATE_NEXT_LABELS.cancel, argv: cancelArgv(f.key) });
+        break;
+      case "merge": {
+        const argv = mergeArgv(f);
+        if (argv) out.push({ label: f.forge === "local" ? GATE_NEXT_LABELS.mergeLocal : GATE_NEXT_LABELS.mergeGithub, argv });
+        break;
+      }
+      case "release-tamper":
+        if (f.tamperHold) out.push({ label: GATE_NEXT_LABELS.releaseTamper, argv: RELEASE_TAMPER_COMMAND.split(" ") });
+        break;
+      case "heal-close":
+        if (heal) out.push({ label: GATE_NEXT_LABELS.healClose, argv: ["omg", "factory", "heal", "close", sig8Of(f.key)] });
+        break;
+      case "allow-gate-change":
+      case "allow-unsandboxed-gates":
+      case "allow-secret-shapes":
+      case "allow-unsandboxed-lanes": {
+        const applies = step === "allow-secret-shapes" ? f.secretFindings : step === "allow-unsandboxed-lanes" ? f.unsandboxedLanes : true;
+        if (!heal && applies) out.push({ label: GATE_NEXT_LABELS.allow(FLAGS[step]), argv: [...resumeArgv(f.key), FLAGS[step]], billed: true });
+        break;
+      }
+    }
+  }
+  return out.filter(gateNextStepOk);
+}
+function quoteWord(word, platform) {
+  if (bare(word, platform)) return word;
+  if (DOUBLE_QUOTABLE.test(word) && !UNPRINTABLE.test(word)) return `"${word}"`;
+  return platform === "win32" ? `'${word.replace(/'/g, "''")}'` : `'${word.replace(/'/g, "'\\''")}'`;
+}
+function commandLine(argv, platform = process.platform) {
+  return argv.map((a) => quoteWord(a, platform)).join(" ");
+}
+function commandText(argv, platform = process.platform) {
+  if (argv[0] === "git" && argv[1] === "-C" && argv.length > 3) {
+    const root = argv[2];
+    if (!portable(root, platform) && (platform === "win32" || UNPRINTABLE.test(root))) return { line: commandLine(["git", ...argv.slice(3)], platform), inRoot: true };
+  }
+  return { line: commandLine(argv, platform), inRoot: false };
+}
+function humanCommand(argv, platform = process.platform) {
+  const t = commandText(argv, platform);
+  return t.inRoot ? `in the repository root: ${t.line}` : t.line;
+}
+var TRUST, LOOK, RETRY, CANCEL_ONLY, e, GATE_TABLE, LANE_PARK, LANE_PARK_ENTRY, UNKNOWN_GATE_ENTRY, sig8Of, resumeArgv, cancelArgv, statusArgv, HEX4015, FLAGS, GATE_NEXT_LABELS, BARE_POSIX, BARE_WIN, DOUBLE_QUOTABLE, UNPRINTABLE, bare, portable;
+var init_gate_next = __esm({
+  "src/factory/run/gate-next.ts"() {
+    "use strict";
+    init_merge();
+    init_merge3();
+    init_state5();
+    init_tamper_quarantine();
+    TRUST = ["status", "release-tamper", "resume", "cancel"];
+    LOOK = ["status", "resume", "cancel"];
+    RETRY = ["resume", "status", "cancel"];
+    CANCEL_ONLY = ["status", "cancel"];
+    e = (group, steps) => Object.freeze({ group, steps });
+    GATE_TABLE = Object.freeze({
+      // Inspect: something changed outside the engine, or a lane did what it must not. A tamper hold, when set, is cleared first.
+      "state-tampered": e("inspect", TRUST),
+      "lane-tampered": e("inspect", TRUST),
+      "review-tampered": e("inspect", TRUST),
+      "sandbox-escaped": e("inspect", TRUST),
+      "repo-guard-changed": e("inspect", TRUST),
+      "protected-paths": e("inspect", TRUST),
+      "head-moved-externally": e("inspect", TRUST),
+      "import-refused": e("inspect", TRUST),
+      // A rerun parks again: the reason says cancel.
+      "decisions-rewritten": e("inspect", CANCEL_ONLY),
+      // Broken engine.
+      "lane-unconfirmed": e("broken", LOOK),
+      "lane-lost": e("broken", LOOK),
+      "review-identity": e("broken", LOOK),
+      // Decide: a human judgement the engine must not make.
+      "gate-definition-changed": e("decide", ["status", "allow-gate-change", "cancel"]),
+      "gates-unsandboxed": e("decide", ["status", "allow-unsandboxed-gates", "cancel"]),
+      "secret-shaped-content": e("decide", ["status", "resume", "allow-secret-shapes", "cancel"]),
+      "human-review": e("decide", ["status", "resume", "allow-unsandboxed-lanes", "cancel"]),
+      "heal-approve": e("decide", ["status", "resume", "cancel", "heal-close"]),
+      "heal-diagnosis": e("decide", ["status", "cancel", "heal-close"]),
+      "coding-agent-adopt": e("decide", LOOK),
+      "coding-agent-reassigned": e("decide", CANCEL_ONLY),
+      // Merge: the human merges, then reruns.
+      merge: e("merge", ["merge", "resume", "status"]),
+      "merge-refused": e("merge", LOOK),
+      // Fix by hand, then rerun.
+      "ci-failed": e("fix", RETRY),
+      "merge-conflicts": e("fix", RETRY),
+      "fix-rounds-spent": e("fix", RETRY),
+      "review-invalid": e("fix", RETRY),
+      "needs-plan": e("fix", RETRY),
+      "pr-exists": e("fix", RETRY),
+      "pr-not-open": e("fix", RETRY),
+      "base-changed": e("fix", RETRY),
+      "missing-checks": e("fix", RETRY),
+      "no-workflows": e("fix", RETRY),
+      "gates-disagree": e("fix", RETRY),
+      "prepare-checks": e("fix", RETRY),
+      "gate-definition-unknown": e("fix", RETRY),
+      gates: e("fix", RETRY),
+      "sandbox-unavailable": e("fix", RETRY),
+      "gate-sandbox-incompatible": e("fix", RETRY),
+      "gate-container-unavailable": e("fix", RETRY),
+      "gate-install-needed": e("fix", RETRY),
+      "private-store": e("fix", RETRY),
+      "layout-unsupported": e("fix", RETRY),
+      "parallel-needs-private": e("fix", RETRY),
+      "coding-agent": e("fix", RETRY),
+      // Limits / retry: a cap, a timeout or a wait; a later rerun goes on.
+      budget: e("limits", RETRY),
+      "wall-time": e("limits", RETRY),
+      "gates-timeout": e("limits", RETRY),
+      "ci-flaky": e("limits", RETRY),
+      "gate-no-verdict": e("limits", RETRY),
+      "coding-agent-wait": e("limits", RETRY),
+      "coding-agent-timeout": e("limits", RETRY),
+      "coding-agent-sessions": e("limits", RETRY),
+      "coding-agent-unconfirmed": e("limits", RETRY),
+      "coding-agent-head-moved": e("limits", RETRY),
+      "review-requested": e("limits", RETRY),
+      "blocked-by": e("limits", RETRY)
+    });
+    LANE_PARK = /^(?:implement|review|fix|conflict-fix|ci-fix|coding-agent)-(?:failed|declined)$/;
+    LANE_PARK_ENTRY = e("fix", RETRY);
+    UNKNOWN_GATE_ENTRY = e("fix", LOOK);
+    sig8Of = (key) => key.slice("heal-".length);
+    resumeArgv = (key) => typeof key === "number" ? ["omg", "factory", "run", String(key)] : ["omg", "factory", "heal", "approve", sig8Of(key)];
+    cancelArgv = (key) => typeof key === "number" ? ["omg", "factory", "run", "cancel", String(key)] : ["omg", "factory", "heal", "cancel", sig8Of(key)];
+    statusArgv = (key) => typeof key === "number" ? ["omg", "factory", "run", "status", String(key)] : ["omg", "factory", "heal", "status", sig8Of(key)];
+    HEX4015 = /^[0-9a-f]{40}$/;
+    FLAGS = {
+      "allow-gate-change": "--allow-gate-change",
+      "allow-unsandboxed-gates": "--allow-unsandboxed-gates",
+      "allow-secret-shapes": "--allow-secret-shapes",
+      "allow-unsandboxed-lanes": "--allow-unsandboxed-lanes"
+    };
+    GATE_NEXT_LABELS = Object.freeze({
+      status: "read the run state",
+      resume: "rerun the run",
+      healResume: "approve or resume the ci-heal run",
+      cancel: "cancel the run",
+      mergeLocal: "merge the exact head into your base",
+      mergeGithub: "merge the exact head the gates checked",
+      releaseTamper: "clear the tamper hold after checking .git",
+      healClose: "close the heal signature without a fix",
+      allow: (flag) => `rerun accepting it (${flag})`
+    });
+    BARE_POSIX = /^[A-Za-z0-9_./:@%+=,-]+$/;
+    BARE_WIN = /^[A-Za-z0-9_./:\\+=-]+$/;
+    DOUBLE_QUOTABLE = /^[\p{L}\p{N} /:._-]+$/u;
+    UNPRINTABLE = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u;
+    bare = (word, platform) => (platform === "win32" ? BARE_WIN : BARE_POSIX).test(word);
+    portable = (word, platform) => !UNPRINTABLE.test(word) && (bare(word, platform) || DOUBLE_QUOTABLE.test(word));
+  }
+});
+
 // src/factory/run/merge-policy.ts
 function mergeDecision(exec, root, ship, view, config2, known, forge, reads) {
   const gate = evaluateGates(exec, view.number, config2, known, root, view.headRefOid, forge, ship.phase === "ready" ? 0 : void 0, Date.now, reads);
@@ -72579,13 +73426,14 @@ function mergeDecision(exec, root, ship, view, config2, known, forge, reads) {
   };
 }
 function mergeComment(issue2, decision, resume = `omg factory run ${issue2}`) {
-  const cmd = decision.command.join(" ");
+  const shown = commandText(decision.command);
+  const cmd = shown.line;
   const label = runLabel(issue2);
   return decision.ok ? [
     `Factory run for ${label}: independent review approved, gates are green, and \`omg ship\`'s merge rule allows this head.`,
     "",
     ...decision.noChecks ? [`Note: ${NO_CI_CHECKS_NOTE}: nothing reported a check for this head, so no CI ran on it. Check the change yourself before you merge.`, ""] : [],
-    "Merge is a human step. To merge exactly the head the gates checked:",
+    `Merge is a human step. To merge exactly the head the gates checked${shown.inRoot ? ", run this in the repository root" : ""}:`,
     "",
     "```",
     cmd,
@@ -72599,7 +73447,7 @@ function mergeComment(issue2, decision, resume = `omg factory run ${issue2}`) {
     "",
     ...decision.reasons.map((r) => `- ${r}`),
     "",
-    `Resolve it, then rerun \`${resume}\`. The command the rule would allow is \`${cmd}\`.`,
+    `Resolve it, then rerun \`${resume}\`. The command the rule would allow is \`${cmd}\`${shown.inRoot ? " (in the repository root)" : ""}.`,
     ...bodyLines(decision),
     ""
   ].join("\n");
@@ -72614,6 +73462,7 @@ var init_merge_policy = __esm({
     init_merge2();
     init_state4();
     init_lane_commit();
+    init_gate_next();
     init_state5();
     init_reviews3();
     init_check_name();
@@ -73665,7 +74514,7 @@ function prHead(build) {
   const { triggerSha, parameterSha } = buildHeadFields(build);
   if (triggerSha !== void 0 && parameterSha !== void 0 && triggerSha !== parameterSha) return void 0;
   const headSha = triggerSha ?? parameterSha;
-  if (!headSha || !HEX4015.test(headSha)) return void 0;
+  if (!headSha || !HEX4016.test(headSha)) return void 0;
   const trigger = isObject3(build.triggerInfo) ? build.triggerInfo : {};
   const number4 = str4(trigger["pr.number"]);
   const headBranch = branchName(str4(trigger["pr.sourceBranch"])) ?? (number4 && BUILD_ID.test(number4) ? `pr-${number4}` : void 0);
@@ -73678,7 +74527,7 @@ function toRun(build, ctx, event, branch2) {
   if (event === "push") {
     const sha3 = str4(build.sourceVersion) ?? "";
     const headBranch = branchName(str4(build.sourceBranch));
-    head = PUSH_REASONS.has(reason) && HEX4015.test(sha3) && headBranch !== void 0 && (branch2 === void 0 || headBranch === branch2) ? { headSha: sha3, headBranch } : void 0;
+    head = PUSH_REASONS.has(reason) && HEX4016.test(sha3) && headBranch !== void 0 && (branch2 === void 0 || headBranch === branch2) ? { headSha: sha3, headBranch } : void 0;
   } else {
     head = reason === "pullRequest" ? prHead(build) : void 0;
   }
@@ -73739,7 +74588,7 @@ function adoCi(ctx, pipeline) {
     rerunIntent: (runId) => `Rerun failed jobs on ${adoBuildUrl(ctx.repo, runId)}`
   };
 }
-var BUILD_ID, HEX4015, JOB_ID3, PUSH_REASONS, JOB_CONCLUSION, branchName, sameId, byOrder, fold4;
+var BUILD_ID, HEX4016, JOB_ID3, PUSH_REASONS, JOB_CONCLUSION, branchName, sameId, byOrder, fold4;
 var init_ci = __esm({
   "src/forge/ado/ci.ts"() {
     "use strict";
@@ -73747,7 +74596,7 @@ var init_ci = __esm({
     init_checks5();
     init_invoke();
     BUILD_ID = /^[1-9]\d{0,9}$/;
-    HEX4015 = /^[0-9a-f]{40}$/;
+    HEX4016 = /^[0-9a-f]{40}$/;
     JOB_ID3 = /^([1-9]\d{0,9}):([0-9a-f-]{36})$/i;
     PUSH_REASONS = /* @__PURE__ */ new Set(["individualCI", "batchedCI"]);
     JOB_CONCLUSION = {
@@ -74354,7 +75203,7 @@ function parseRunList(stdout) {
   return parsed.flatMap((e2) => {
     const id = typeof e2?.databaseId === "number" ? String(e2.databaseId) : str6(e2?.databaseId);
     const headSha = str6(e2?.headSha);
-    if (!NUMBER6.test(id) || !HEX4016.test(headSha)) return [];
+    if (!NUMBER6.test(id) || !HEX4017.test(headSha)) return [];
     return [{ id, headSha, conclusion: str6(e2.conclusion), status: str6(e2.status), headBranch: str6(e2.headBranch), event: str6(e2.event), createdAt: str6(e2.createdAt) }];
   });
 }
@@ -74391,14 +75240,14 @@ function githubCi(exec, cwd) {
     rerunIntent: githubRerunIntent
   };
 }
-var RUN_LIST_FIELDS, NUMBER6, HEX4016, str6, githubRerunIntent;
+var RUN_LIST_FIELDS, NUMBER6, HEX4017, str6, githubRerunIntent;
 var init_ci2 = __esm({
   "src/forge/github/ci.ts"() {
     "use strict";
     init_logs();
     RUN_LIST_FIELDS = "databaseId,conclusion,status,headSha,headBranch,event,createdAt";
     NUMBER6 = /^\d{1,20}$/;
-    HEX4016 = /^[0-9a-f]{40}$/;
+    HEX4017 = /^[0-9a-f]{40}$/;
     str6 = (v) => typeof v === "string" ? v : "";
     githubRerunIntent = (runId) => `gh run rerun ${runId} --failed`;
   }
@@ -74746,505 +75595,6 @@ var init_outcome = __esm({
   }
 });
 
-// src/factory/run/tamper-quarantine.ts
-function unchangedOldRemote(name, was, now) {
-  if (typeof name !== "string" || /^\.*$/.test(name) || /[/:\\\s\p{Cc}]/u.test(name)) return false;
-  if (!was.get(`remote.${name}.url`)?.length) return false;
-  return ["url", "pushurl", "fetch"].every((k) => sameValues(was.get(`remote.${name}.${k}`), now.get(`remote.${name}.${k}`)));
-}
-function benignChange(key, was, now) {
-  const m = BRANCH_UPSTREAM.exec(key);
-  if (!m) return benignKey(key);
-  const values = now.get(key);
-  if (!values?.length) return true;
-  if (m[2] === "merge") {
-    const remote = now.get(`branch.${m[1]}.remote`);
-    return values.every((v) => typeof v === "string" && HEADS_REF.test(v)) && remote?.length === 1 && unchangedOldRemote(remote[0], was, now);
-  }
-  return values.length === 1 && unchangedOldRemote(values[0], was, now);
-}
-function configEntries(bytes, tmp) {
-  if (bytes === null) return [];
-  const file2 = (0, import_node_path21.join)(tmp, `cfg-${Math.random().toString(36).slice(2)}`);
-  (0, import_node_fs20.writeFileSync)(file2, bytes);
-  try {
-    const out = runHostGit(tmp, ["config", "--file", file2, "--null", "--list"], 3e4);
-    return out.split("\0").filter(Boolean).map((e2) => {
-      const nl = e2.indexOf("\n");
-      return nl < 0 ? [e2, null] : [e2.slice(0, nl), e2.slice(nl + 1)];
-    });
-  } catch {
-    return null;
-  } finally {
-    try {
-      (0, import_node_fs20.unlinkSync)(file2);
-    } catch {
-    }
-  }
-}
-function changedKeys(before, after, tmp) {
-  const wasEntries = configEntries(before, tmp);
-  const nowEntries = configEntries(after, tmp);
-  if (!wasEntries || !nowEntries) return null;
-  const was = valuesByKey(wasEntries);
-  const now = valuesByKey(nowEntries);
-  const keys = [.../* @__PURE__ */ new Set([...was.keys(), ...now.keys()])].filter((k) => !sameValues(was.get(k), now.get(k))).sort();
-  return { keys, held: keys.filter((k) => !benignChange(k, was, now)) };
-}
-function putKeysBack(current, old, keys, tmp) {
-  const entries = configEntries(old, tmp);
-  if (!entries) return null;
-  const file2 = (0, import_node_path21.join)(tmp, `merge-${Math.random().toString(36).slice(2)}`);
-  (0, import_node_fs20.writeFileSync)(file2, current);
-  try {
-    for (const key of keys) {
-      const values = entries.filter(([k]) => k === key).map(([, v]) => v);
-      if (values.some((v) => v === null)) return null;
-      try {
-        runHostGit(tmp, ["config", "--file", file2, "--unset-all", key], 3e4);
-      } catch (error62) {
-        if (error62.status !== 5) return null;
-      }
-      for (const v of values) runHostGit(tmp, ["config", "--file", file2, "--add", key, v], 3e4);
-    }
-    return (0, import_node_fs20.readFileSync)(file2);
-  } catch {
-    return null;
-  } finally {
-    try {
-      (0, import_node_fs20.unlinkSync)(file2);
-    } catch {
-    }
-  }
-}
-function ownerOf2(rel) {
-  if (rel.startsWith("worktrees/")) return rel.split("/").slice(0, 2).join("/");
-  if (!rel.startsWith("modules/")) return null;
-  return /^(.*?)\/(?:config|config\.worktree|hooks|info)(?:\/.*)?$/.exec(rel)?.[1] ?? null;
-}
-function assertParentsReal(common, rel) {
-  const segs = rel.split("/").slice(0, -1);
-  let dir = common;
-  for (const s of segs) {
-    dir = (0, import_node_path21.join)(dir, s);
-    let st;
-    try {
-      st = (0, import_node_fs20.lstatSync)(dir);
-    } catch {
-      (0, import_node_fs20.mkdirSync)(dir);
-      continue;
-    }
-    if (st.isSymbolicLink() || !st.isDirectory()) throw new Error(`${dir} is not a real directory`);
-  }
-}
-function restoreConfigLocked(abs, compute) {
-  const lock = `${abs}.lock`;
-  let fd;
-  try {
-    fd = (0, import_node_fs20.openSync)(lock, "wx", 420);
-  } catch (error62) {
-    if (error62.code === "EEXIST") throw new Error(CONFIG_LOCKED);
-    throw error62;
-  }
-  try {
-    let locked = null;
-    try {
-      locked = (0, import_node_fs20.readFileSync)(abs);
-    } catch (error62) {
-      if (error62.code !== "ENOENT") throw error62;
-    }
-    const out = compute(locked);
-    if (out === null) {
-      (0, import_node_fs20.closeSync)(fd);
-      fd = void 0;
-      if (locked !== null) (0, import_node_fs20.unlinkSync)(abs);
-      (0, import_node_fs20.unlinkSync)(lock);
-      return;
-    }
-    (0, import_node_fs20.writeSync)(fd, out);
-    (0, import_node_fs20.fsyncSync)(fd);
-    (0, import_node_fs20.closeSync)(fd);
-    fd = void 0;
-    (0, import_node_fs20.renameSync)(lock, abs);
-  } catch (error62) {
-    if (fd !== void 0) {
-      try {
-        (0, import_node_fs20.closeSync)(fd);
-      } catch {
-      }
-    }
-    try {
-      (0, import_node_fs20.unlinkSync)(lock);
-    } catch {
-    }
-    throw error62;
-  }
-}
-function atomicRestore(abs, bytes, exec) {
-  if ((0, import_node_fs20.existsSync)(`${abs}.lock`)) throw new Error(`${(0, import_node_path21.basename)(abs)}.lock exists (a git command is writing it), so it was not restored`);
-  let st;
-  try {
-    st = (0, import_node_fs20.lstatSync)(abs);
-  } catch {
-    st = void 0;
-  }
-  if (st?.isDirectory()) (0, import_node_fs20.rmdirSync)(abs);
-  else if (st?.isSymbolicLink()) removeEntry(abs);
-  const tmp = `${abs}.omg-restore-${Math.random().toString(36).slice(2)}`;
-  (0, import_node_fs20.writeFileSync)(tmp, bytes, { mode: exec ? 493 : 420, flag: "wx" });
-  try {
-    if (exec) (0, import_node_fs20.chmodSync)(tmp, 493);
-    (0, import_node_fs20.renameSync)(tmp, abs);
-  } catch (error62) {
-    try {
-      (0, import_node_fs20.unlinkSync)(tmp);
-    } catch {
-    }
-    throw error62;
-  }
-}
-function removeEntry(abs) {
-  try {
-    (0, import_node_fs20.unlinkSync)(abs);
-  } catch (error62) {
-    const code = error62.code;
-    if (code !== "EPERM" && code !== "EISDIR" || !(0, import_node_fs20.lstatSync)(abs).isSymbolicLink()) throw error62;
-    (0, import_node_fs20.rmdirSync)(abs);
-  }
-}
-function asideName(abs) {
-  for (let n = 0; ; n++) {
-    const p = `${abs}.omg-quarantined${n ? `-${n}` : ""}`;
-    if (!(0, import_node_fs20.existsSync)(p)) return p;
-  }
-}
-function problemStatus(p, touched, before, after) {
-  if (/^ref \S+ /.test(p)) return "ok";
-  if (/^the main checkout's (?:HEAD moved|HEAD switched|working tree changed)/.test(p)) return "ok";
-  if (/^the checkout's branch \S+ is gone$/.test(p)) return "ok";
-  if (p === "the common git config changed") return touched("config") ? "ok" : "unhandled";
-  if (p === "config.worktree changed") return touched("config.worktree") ? "ok" : "unhandled";
-  if (p === "the hooks/ directory changed") return touched("hooks/") ? "ok" : "unhandled";
-  if (p === "the info/ directory changed") return touched("info/") ? "ok" : "unhandled";
-  if (p === LEGACY_REMOTES_CHANGED) return touched("remotes/") || touched("branches/") ? "ok" : "unhandled";
-  let m = /^worktrees\/([^/]+)\/config\.worktree changed$/.exec(p);
-  if (m) return touched(`worktrees/${m[1]}/config.worktree`) ? "ok" : "unhandled";
-  m = /^submodule git dir (modules\/.+) was removed$/.exec(p);
-  if (m) return "ok";
-  m = /^submodule git dir (modules\/.+) was added$/.exec(p) ?? /^(modules\/.+) changed \(config, hooks, info or alternates\)$/.exec(p);
-  if (m) return touched(`${m[1]}/`) && !(0, import_node_fs20.existsSync)((0, import_node_path21.join)(before.commonDir, ...m[1].split("/"), "objects", "info", "alternates")) ? "ok" : "unhandled";
-  m = /^worktree entry worktrees\/([^/]+) was added$/.exec(p);
-  if (m) return after?.worktrees?.[m[1]]?.commondir === "../.." ? "ok" : "unhandled";
-  if (/^worktree entry worktrees\/[^/]+ was removed or is no longer a directory$/.test(p)) return "ok";
-  m = /^worktrees\/([^/]+) changed \(HEAD, gitdir, commondir or per-worktree refs\)$/.exec(p);
-  if (m) {
-    const was = before.worktrees?.[m[1]];
-    const now = after?.worktrees?.[m[1]];
-    return was && now && !now.notDir && was.gitdir === now.gitdir && was.commondir === now.commondir ? "ok" : "unhandled";
-  }
-  return "unhandled";
-}
-function advice(p, common) {
-  if (/^lane \S+'s process/.test(p)) return "make sure no process of that lane still runs (copilot, node, git or a shell started from its worktree: Task Manager or ps) before you release the hold; one that runs can change .git again";
-  if (/global git config/.test(p)) return "check ~/.gitconfig, $XDG_CONFIG_HOME/git/config and every include.path / includeIf target they or the repository config name, and remove what you did not add";
-  if (/^an ignored file in the main checkout changed/.test(p)) return "check .env*, .npmrc, .yarnrc, .yarnrc.yml and node_modules/.bin in the checkout (they also run on your next npm or yarn command) and remove what you did not add";
-  if (/snapshot failed/.test(p)) return `the engine could not tell what changed: check ${common} (config, hooks, info, refs) by hand`;
-  return `inspect it in ${common} and remove what you did not add`;
-}
-function quarantineTamper(i) {
-  const hold = { root: (0, import_node_path21.resolve)(i.root), at: i.at, run: i.run, gate: i.gate, moved: [], restored: [], notRestored: [], refs: [], kept: [], active: [], undo: [] };
-  const common = i.before.commonDir;
-  const kept = i.before.restore;
-  const touchedRels = [];
-  const failedRels = /* @__PURE__ */ new Set();
-  const dir = (0, import_node_path21.join)(i.ledgerDir, "quarantine", repoKey(i.root), `${i.at.replace(/[:.]/g, "-")}${i.label ? `-${i.label.replace(/[^A-Za-z0-9._-]/g, "_")}` : ""}`);
-  const quarantine = () => {
-    if (!hold.quarantine) {
-      (0, import_node_fs20.mkdirSync)(dir, { recursive: true, mode: 448 });
-      hold.quarantine = dir;
-    }
-    return dir;
-  };
-  if (!kept) {
-    hold.failed = "the snapshot from before the lane was recorded by an older release and holds no bytes, so nothing was quarantined or restored";
-  } else {
-    let now = null;
-    try {
-      now = restorableFiles(common);
-    } catch (error62) {
-      hold.failed = `the repository's git dir could not be read: ${errText5(error62)}`;
-    }
-    if (now) {
-      let handleItem2 = function(rel, was, is) {
-        const abs = (0, import_node_path21.join)(common, ...rel.split("/"));
-        const owner = ownerOf2(rel);
-        if (owner && !realDir((0, import_node_path21.join)(common, ...owner.split("/")))) {
-          hold.kept.push(`${rel} (its git dir ${owner} is gone; nothing was recreated)`);
-          return false;
-        }
-        const old = decode3(was);
-        if (isConfigRel(rel) && (was === void 0 || old !== null) && (is?.startsWith("b64") ?? false)) {
-          const current = decode3(is);
-          quarantine();
-          (0, import_node_fs20.mkdirSync)(tmp, { recursive: true });
-          const diff = changedKeys(old, current, tmp);
-          if (diff !== null) {
-            const { keys, held: program2 } = diff;
-            if (program2.length === 0) {
-              let copy = "";
-              try {
-                copy = `; a copy is in ${saveBytes2(rel, current)}`;
-              } catch {
-              }
-              hold.kept.push(`${rel} (only ${keys.slice(0, 5).join(", ")}${keys.length > 5 ? ", ..." : ""} changed: allowlisted keys that name no program; left as it is${copy})`);
-              return false;
-            }
-            const to = saveBytes2(rel, current);
-            assertParentsReal(common, rel);
-            i.beforeConfigLock?.(abs);
-            let putBack = program2;
-            let exact = false;
-            restoreConfigLocked(abs, (locked) => {
-              if (locked === null) return old;
-              if (!locked.equals(current)) (0, import_node_fs20.writeFileSync)(to, locked);
-              const keysNow = changedKeys(old, locked, tmp);
-              if (keysNow !== null) {
-                putBack = keysNow.held;
-                if (putBack.length === 0) {
-                  exact = true;
-                  return locked;
-                }
-              }
-              const out = keysNow !== null && old !== null ? putKeysBack(locked, old, putBack, tmp) : null;
-              exact = out !== null;
-              return out ?? old;
-            });
-            if (old === null) hold.moved.push(rel);
-            else hold.restored.push(`${rel} (${putBack.slice(0, 5).join(", ")}${putBack.length > 5 ? ", ..." : ""} put back${exact ? "" : "; the whole file, so other changes to it are only in the copy"})`);
-            hold.undo.push(`${rel}: if the change was yours, put your version back: cp "${to}" "${abs}"`);
-            return false;
-          }
-        }
-        let renamed = false;
-        if (is !== void 0) {
-          const saved = saveCurrent2(rel, abs, is);
-          renamed = saved.renamed;
-          hold.undo.push(is.startsWith("link:") ? `${rel}: was a link to ${is.slice(5)} (saved in ${saved.at}); if it was yours, make it again` : `${rel}: if it was yours, put it back: cp "${saved.at}" "${abs}"`);
-        }
-        if (was === void 0) {
-          if (is !== void 0 && !renamed) removeEntry(abs);
-          hold.moved.push(rel);
-          return renamed;
-        }
-        if (old !== null) {
-          assertParentsReal(common, rel);
-          atomicRestore(abs, old, was.startsWith("b64x:"));
-          if (is !== void 0) hold.moved.push(rel);
-          hold.restored.push(rel);
-          return renamed;
-        }
-        if (is !== void 0 && !renamed) removeEntry(abs);
-        if (is !== void 0) hold.moved.push(rel);
-        if (was.startsWith("link:")) {
-          try {
-            assertParentsReal(common, rel);
-            (0, import_node_fs20.symlinkSync)(was.slice(5), abs);
-            hold.restored.push(rel);
-          } catch (error62) {
-            hold.notRestored.push(`${rel} (a link to ${was.slice(5)} before the run; it could not be made again: ${errText5(error62)})`);
-          }
-        } else {
-          hold.notRestored.push(`${rel} (${was.startsWith("big:") ? "over 1 MiB" : "unreadable"} before the run, so only its hash was kept${is !== void 0 ? "; the changed one was moved to the quarantine" : ""})`);
-        }
-        return renamed;
-      }, saveBytes2 = function(rel, bytes) {
-        const to = (0, import_node_path21.join)(quarantine(), ...rel.split("/"));
-        (0, import_node_fs20.mkdirSync)((0, import_node_path21.dirname)(to), { recursive: true });
-        (0, import_node_fs20.writeFileSync)(to, bytes);
-        return to;
-      }, saveCurrent2 = function(rel, abs, is) {
-        if (is.startsWith("link:")) {
-          const to2 = (0, import_node_path21.join)(quarantine(), LINKS_DIR, ...rel.split("/"));
-          (0, import_node_fs20.mkdirSync)((0, import_node_path21.dirname)(to2), { recursive: true });
-          (0, import_node_fs20.writeFileSync)(to2, is.slice(5));
-          return { at: to2, renamed: false };
-        }
-        const bytes = decode3(is);
-        if (bytes) {
-          const to2 = saveBytes2(rel, bytes);
-          if (is.startsWith("b64x:")) (0, import_node_fs20.chmodSync)(to2, 493);
-          return { at: to2, renamed: false };
-        }
-        const to = (0, import_node_path21.join)(quarantine(), ...rel.split("/"));
-        (0, import_node_fs20.mkdirSync)((0, import_node_path21.dirname)(to), { recursive: true });
-        try {
-          (0, import_node_fs20.copyFileSync)(abs, to);
-          return { at: to, renamed: false };
-        } catch {
-        }
-        try {
-          (0, import_node_fs20.renameSync)(abs, to);
-          return { at: to, renamed: true };
-        } catch (error62) {
-          if (error62.code !== "EXDEV") throw error62;
-        }
-        const aside = asideName(abs);
-        (0, import_node_fs20.renameSync)(abs, aside);
-        return { at: aside, renamed: true };
-      };
-      var handleItem = handleItem2, saveBytes = saveBytes2, saveCurrent = saveCurrent2;
-      const scopes = (kept[RESTORE_SCOPE_KEY] ?? "").split(",");
-      const inScope = (rel) => {
-        const top = /^(modules|worktrees|remotes|branches)\//.exec(rel)?.[1];
-        return !top || scopes.includes(top === "branches" ? "remotes" : top);
-      };
-      const changed = [.../* @__PURE__ */ new Set([...Object.keys(kept), ...Object.keys(now)])].filter((rel) => rel !== RESTORE_SCOPE_KEY && kept[rel] !== now[rel] && inScope(rel)).sort();
-      touchedRels.push(...changed);
-      const tmp = (0, import_node_path21.join)(dir, ".tmp");
-      const movedAway = [];
-      const added = changed.filter((rel) => kept[rel] === void 0).reverse();
-      for (const rel of [...added, ...changed.filter((rel2) => kept[rel2] !== void 0)]) {
-        if (movedAway.some((p) => rel.startsWith(`${p}/`))) continue;
-        try {
-          const renamed = handleItem2(rel, kept[rel], now[rel]);
-          if (renamed) movedAway.push(rel);
-        } catch (error62) {
-          failedRels.add(rel);
-          hold.active.push(`${rel}: ${STILL_ACTIVE}: it could not be moved or restored (${errText5(error62)}); remove or fix it by hand in ${common}`);
-        }
-      }
-      (0, import_node_fs20.rmSync)(tmp, { recursive: true, force: true });
-    }
-  }
-  try {
-    hold.refs = refChanges(i.before.refs, i.refsNow ?? i.before.refs, common, () => quarantine(), i.onlyRefs);
-  } catch (error62) {
-    hold.failed = `${hold.failed ? `${hold.failed}; ` : ""}the ref changes could not be handled: ${errText5(error62)}`;
-  }
-  const touched = (prefix) => touchedRels.some((r) => (r === prefix || prefix.endsWith("/") && (r.startsWith(prefix) || r === prefix.slice(0, -1))) && !failedRels.has(r));
-  for (const p of i.problems ?? []) {
-    if (problemStatus(p, touched, i.before, i.after) === "unhandled") hold.active.push(`${p}: ${STILL_ACTIVE}; ${advice(p, common)}`);
-  }
-  if (hold.quarantine && hold.undo.length > 0) {
-    try {
-      (0, import_node_fs20.writeFileSync)((0, import_node_path21.join)(hold.quarantine, "undo.txt"), `${hold.undo.join("\n")}
-`);
-    } catch {
-    }
-  }
-  if (!hold.failed && hold.moved.length + hold.restored.length + hold.notRestored.length + hold.refs.length + hold.kept.length + hold.active.length === 0) {
-    if (hold.quarantine) (0, import_node_fs20.rmSync)(hold.quarantine, { recursive: true, force: true });
-    delete hold.quarantine;
-    return hold;
-  }
-  const replaced = hold.refs.some((r) => r.startsWith("refs/replace/"));
-  if (!hold.failed && hold.moved.length + hold.restored.length + hold.notRestored.length + hold.active.length === 0 && !replaced) return hold;
-  if (i.hold === false) return hold;
-  hold.held = true;
-  try {
-    writeTamperHold(i.ledgerDir, i.root, hold);
-  } catch (error62) {
-    hold.held = false;
-    hold.holdNotWritten = errText5(error62);
-    hold.failed = `${hold.failed ? `${hold.failed}; ` : ""}the hold could not be written: ${errText5(error62)}`;
-  }
-  return hold;
-}
-function refChanges(before, now, common, quarantine, only) {
-  const out = [];
-  const saved = [];
-  for (const name of [.../* @__PURE__ */ new Set([...Object.keys(before), ...Object.keys(now)])].filter((n) => !only || only.includes(n)).sort()) {
-    const was = before[name];
-    const is = now[name];
-    if (was === is) continue;
-    if (was === void 0 && name.startsWith("refs/replace/")) {
-      saved.push(`${name} ${is}`);
-      (0, import_node_fs20.writeFileSync)((0, import_node_path21.join)(quarantine(), "refs.txt"), `${saved.join("\n")}
-`);
-      runHostGit(common, ["--git-dir", common, "update-ref", "-d", name, is], 3e4);
-      out.push(`${name} was created at ${is.slice(0, 12)}: deleted (saved in refs.txt)`);
-    } else if (was === void 0) out.push(`${name} was created at ${is.slice(0, 12)}; if you did not make it: git update-ref -d ${name} ${is}`);
-    else if (is === void 0) out.push(`${name} was deleted (was ${was.slice(0, 12)}); to put it back: git update-ref ${name} ${was}`);
-    else out.push(`${name} moved ${was.slice(0, 12)} -> ${is.slice(0, 12)}; if you did not move it: git update-ref ${name} ${was} ${is}`);
-  }
-  if (out.length > 0) (0, import_node_fs20.writeFileSync)((0, import_node_path21.join)(quarantine(), "refs.txt"), `${[...saved, ...out].join("\n")}
-`);
-  return out;
-}
-function writeTamperHold(ledgerDir, root, hold) {
-  const path15 = tamperHoldPath(ledgerDir, root);
-  (0, import_node_fs20.mkdirSync)((0, import_node_path21.dirname)(path15), { recursive: true, mode: 448 });
-  atomicWriteFileSync(path15, `${JSON.stringify(hold, null, 2)}
-`);
-}
-function readTamperHold(ledgerDir, root) {
-  const path15 = tamperHoldPath(ledgerDir, root);
-  if (!(0, import_node_fs20.existsSync)(path15)) return null;
-  try {
-    const h = JSON.parse((0, import_node_fs20.readFileSync)(path15, "utf8"));
-    return typeof h === "object" && h !== null && typeof h.gate === "string" ? h : "unreadable";
-  } catch {
-    return "unreadable";
-  }
-}
-function tamperHoldMessage(ledgerDir, root) {
-  const hold = readTamperHold(ledgerDir, root);
-  if (hold === null) return null;
-  const path15 = tamperHoldPath(ledgerDir, root);
-  if (hold === "unreadable") return `a tamper hold is set on this checkout (${path15}, unreadable), so no factory run starts here; check the repository's .git (hooks, config, info, refs), then run ${RELEASE_TAMPER_COMMAND}`;
-  const active = hold.active ?? [];
-  return `a tamper hold is set on this checkout since ${hold.at} (run ${hold.run} parked at ${hold.gate}), so no factory run starts here${hold.quarantine ? `; what changed in .git is in ${hold.quarantine}` : ""}${active.length ? `; ${active.length} item(s) are ${STILL_ACTIVE}: ${active.slice(0, 3).join("; ")}` : ""}. Your own change during that run (a git config key, \`git remote add\` or \`git remote set-url\` included, and a branch's upstream set to a path, a URL, "." or a remote added during the run, a hook husky or an editor installed) triggers this too: put it back with the cp command in undo.txt in that folder if it was yours. Then run ${RELEASE_TAMPER_COMMAND}`;
-}
-var import_node_fs20, import_node_path21, repoKey, tamperHoldPath, RELEASE_TAMPER_COMMAND, STILL_ACTIVE, BENIGN_KEYS, benignKey, BRANCH_UPSTREAM, HEADS_REF, sameValues, valuesByKey, decode3, isConfigRel, realDir, errText5, CONFIG_LOCKED, LINKS_DIR;
-var init_tamper_quarantine = __esm({
-  "src/factory/run/tamper-quarantine.ts"() {
-    "use strict";
-    import_node_fs20 = require("node:fs");
-    import_node_path21 = require("node:path");
-    init_atomic_write();
-    init_git_worktree();
-    init_ledger2();
-    init_review_guard();
-    repoKey = (root) => sha256((0, import_node_path21.resolve)(root).toLowerCase()).slice(0, 16);
-    tamperHoldPath = (ledgerDir, root) => (0, import_node_path21.join)(ledgerDir, "holds", `${repoKey(root)}.json`);
-    RELEASE_TAMPER_COMMAND = "omg factory run release --tamper";
-    STILL_ACTIVE = "STILL ACTIVE (it can run on your next git command)";
-    BENIGN_KEYS = [
-      { re: /^user\.[^.]+$/, why: "who commits (name, email, the signing key name): the signing program is gpg.*, which is not on this list" },
-      // Not remote, pushremote or merge (review-484c 1): those are benign only by their values, see benignChange.
-      { re: /^branch\..+\.(?:rebase|description)$/, why: "a branch's pull mode and description; neither names a program or a place" },
-      { re: /^branch\..+\.vscode-merge-base$/, why: "written by VS Code when it creates a branch; git never reads it" },
-      // Not url, pushurl or fetch (review-484b 1): they send the user's next push to a host the lane picks, or fetch its
-      // commits and refs (refs/replace/* too) into the user's repository on the next plain `git fetch` or `git pull`.
-      { re: /^remote\..+\.(?:tagopt|prune|prunetags)$/, why: "which tags a fetch follows and whether it prunes gone remote branches, from the remote the user configured into its own remote-tracking refs" },
-      { re: /^remote\..+\.gh-resolved$/, why: "written by the GitHub CLI to pick the base remote; git never reads it" },
-      { re: /^maintenance\.(?:auto|strategy|[^.]+\.(?:enabled|schedule))$/, why: "`git maintenance start` writes them; they pick only git's own built-in tasks" }
-    ];
-    benignKey = (key) => BENIGN_KEYS.some((b) => b.re.test(key));
-    BRANCH_UPSTREAM = /^branch\.(.+)\.(remote|pushremote|merge)$/;
-    HEADS_REF = /^refs\/heads\/(?!.*\.\.)[^\p{Cc}\s~^:?*[\\]+$/u;
-    sameValues = (a, b) => JSON.stringify(a ?? []) === JSON.stringify(b ?? []);
-    valuesByKey = (entries) => {
-      const m = /* @__PURE__ */ new Map();
-      for (const [k, v] of entries) m.set(k, [...m.get(k) ?? [], v]);
-      return m;
-    };
-    decode3 = (v) => v?.startsWith("b64:") ? Buffer.from(v.slice(4), "base64") : v?.startsWith("b64x:") ? Buffer.from(v.slice(5), "base64") : null;
-    isConfigRel = (rel) => /^(?:config|config\.worktree|worktrees\/[^/]+\/config\.worktree|modules\/.+\/(?:config|config\.worktree))$/.test(rel) && !/\/(?:hooks|info)\//.test(`/${rel}`);
-    realDir = (path15) => {
-      try {
-        const st = (0, import_node_fs20.lstatSync)(path15);
-        return st.isDirectory() && !st.isSymbolicLink();
-      } catch {
-        return false;
-      }
-    };
-    errText5 = (error62) => error62 instanceof Error ? error62.message : String(error62);
-    CONFIG_LOCKED = "git config is locked by another process";
-    LINKS_DIR = ".links";
-  }
-});
-
 // src/factory/run/human-merged.ts
 function humanMergeCandidate(s) {
   if (s.pr === void 0 || s.phase === "merged") return false;
@@ -75288,12 +75638,12 @@ function forgePrStateReader(forge, exec, root, repoUrl) {
       return { state };
     }
     const head = s.head ?? "";
-    if (!HEX4017.test(head)) throw new Error(`run ${label} has no pushed head`);
+    if (!HEX4018.test(head)) throw new Error(`run ${label} has no pushed head`);
     const replaced = replaceObjectsProblem(exec, root);
     if (replaced) throw new Error(replaced);
     const t = exec("git", ["rev-parse", "--verify", `refs/heads/${s.base}`], { cwd: root, env: TRUSTED_READ_ENV });
     const baseTip = t.stdout.trim();
-    if (t.status !== 0 || !HEX4017.test(baseTip)) throw new Error(`your ${s.base} could not be read (git rev-parse exit ${t.status})`);
+    if (t.status !== 0 || !HEX4018.test(baseTip)) throw new Error(`your ${s.base} could not be read (git rev-parse exit ${t.status})`);
     const r = exec("git", ["merge-base", "--is-ancestor", head, baseTip], { cwd: root, env: TRUSTED_READ_ENV });
     if (r.status !== 0 && r.status !== 1) throw new Error(`git merge-base --is-ancestor failed (exit ${r.status}): ${r.stderr.trim()}`);
     const v = forge.reviews.viewPr(pr);
@@ -75303,7 +75653,7 @@ function forgePrStateReader(forge, exec, root, repoUrl) {
     return { state: "MERGED", baseTip };
   };
 }
-var HEX4017;
+var HEX4018;
 var init_human_merged = __esm({
   "src/factory/run/human-merged.ts"() {
     "use strict";
@@ -75314,7 +75664,7 @@ var init_human_merged = __esm({
     init_review_guard();
     init_tamper_quarantine();
     init_state5();
-    HEX4017 = /^[0-9a-f]{40}$/;
+    HEX4018 = /^[0-9a-f]{40}$/;
   }
 });
 
@@ -75777,164 +76127,6 @@ var init_lane_procs = __esm({
   }
 });
 
-// src/factory/run/gate-next.ts
-function gateSteps(name) {
-  const hit = Object.prototype.hasOwnProperty.call(GATE_TABLE, name) ? GATE_TABLE[name] : LANE_PARK.test(name) ? LANE_PARK_ENTRY : null;
-  return hit ? { ...hit, known: true } : { ...UNKNOWN_GATE_ENTRY, known: false };
-}
-function validRunKey(key) {
-  return typeof key === "number" ? Number.isSafeInteger(key) && key > 0 : typeof key === "string" && HEAL_RUN_KEY.test(key);
-}
-function mergeArgv(f) {
-  if (typeof f.pr !== "number" || !Number.isSafeInteger(f.pr) || f.pr <= 0 || typeof f.head !== "string" || !HEX4018.test(f.head)) return null;
-  if (f.forge === "github") return ghMergeCommand(f.pr, f.head);
-  if (f.forge === "local") return localMerge(f.root).humanMergeCommand(f.pr, f.head);
-  return null;
-}
-function gateNext(name, f) {
-  if (!validRunKey(f.key)) return [];
-  const heal = typeof f.key === "string";
-  const out = [];
-  for (const step of gateSteps(name).steps) {
-    switch (step) {
-      case "status":
-        out.push({ label: GATE_NEXT_LABELS.status, argv: statusArgv(f.key) });
-        break;
-      case "resume":
-        out.push({ label: heal ? GATE_NEXT_LABELS.healResume : GATE_NEXT_LABELS.resume, argv: resumeArgv(f.key), billed: true });
-        break;
-      case "cancel":
-        out.push({ label: GATE_NEXT_LABELS.cancel, argv: cancelArgv(f.key) });
-        break;
-      case "merge": {
-        const argv = mergeArgv(f);
-        if (argv) out.push({ label: f.forge === "local" ? GATE_NEXT_LABELS.mergeLocal : GATE_NEXT_LABELS.mergeGithub, argv });
-        break;
-      }
-      case "release-tamper":
-        if (f.tamperHold) out.push({ label: GATE_NEXT_LABELS.releaseTamper, argv: RELEASE_TAMPER_COMMAND.split(" ") });
-        break;
-      case "heal-close":
-        if (heal) out.push({ label: GATE_NEXT_LABELS.healClose, argv: ["omg", "factory", "heal", "close", sig8Of(f.key)] });
-        break;
-      case "allow-gate-change":
-      case "allow-unsandboxed-gates":
-      case "allow-secret-shapes":
-      case "allow-unsandboxed-lanes": {
-        const applies = step === "allow-secret-shapes" ? f.secretFindings : step === "allow-unsandboxed-lanes" ? f.unsandboxedLanes : true;
-        if (!heal && applies) out.push({ label: GATE_NEXT_LABELS.allow(FLAGS[step]), argv: [...resumeArgv(f.key), FLAGS[step]], billed: true });
-        break;
-      }
-    }
-  }
-  return out.filter(gateNextStepOk);
-}
-var TRUST, LOOK, RETRY, CANCEL_ONLY, e, GATE_TABLE, LANE_PARK, LANE_PARK_ENTRY, UNKNOWN_GATE_ENTRY, sig8Of, resumeArgv, cancelArgv, statusArgv, HEX4018, FLAGS, GATE_NEXT_LABELS;
-var init_gate_next = __esm({
-  "src/factory/run/gate-next.ts"() {
-    "use strict";
-    init_merge();
-    init_merge3();
-    init_state5();
-    init_tamper_quarantine();
-    TRUST = ["status", "release-tamper", "resume", "cancel"];
-    LOOK = ["status", "resume", "cancel"];
-    RETRY = ["resume", "status", "cancel"];
-    CANCEL_ONLY = ["status", "cancel"];
-    e = (group, steps) => Object.freeze({ group, steps });
-    GATE_TABLE = Object.freeze({
-      // Inspect: something changed outside the engine, or a lane did what it must not. A tamper hold, when set, is cleared first.
-      "state-tampered": e("inspect", TRUST),
-      "lane-tampered": e("inspect", TRUST),
-      "review-tampered": e("inspect", TRUST),
-      "sandbox-escaped": e("inspect", TRUST),
-      "repo-guard-changed": e("inspect", TRUST),
-      "protected-paths": e("inspect", TRUST),
-      "head-moved-externally": e("inspect", TRUST),
-      "import-refused": e("inspect", TRUST),
-      // A rerun parks again: the reason says cancel.
-      "decisions-rewritten": e("inspect", CANCEL_ONLY),
-      // Broken engine.
-      "lane-unconfirmed": e("broken", LOOK),
-      "lane-lost": e("broken", LOOK),
-      "review-identity": e("broken", LOOK),
-      // Decide: a human judgement the engine must not make.
-      "gate-definition-changed": e("decide", ["status", "allow-gate-change", "cancel"]),
-      "gates-unsandboxed": e("decide", ["status", "allow-unsandboxed-gates", "cancel"]),
-      "secret-shaped-content": e("decide", ["status", "resume", "allow-secret-shapes", "cancel"]),
-      "human-review": e("decide", ["status", "resume", "allow-unsandboxed-lanes", "cancel"]),
-      "heal-approve": e("decide", ["status", "resume", "cancel", "heal-close"]),
-      "heal-diagnosis": e("decide", ["status", "cancel", "heal-close"]),
-      "coding-agent-adopt": e("decide", LOOK),
-      "coding-agent-reassigned": e("decide", CANCEL_ONLY),
-      // Merge: the human merges, then reruns.
-      merge: e("merge", ["merge", "resume", "status"]),
-      "merge-refused": e("merge", LOOK),
-      // Fix by hand, then rerun.
-      "ci-failed": e("fix", RETRY),
-      "merge-conflicts": e("fix", RETRY),
-      "fix-rounds-spent": e("fix", RETRY),
-      "review-invalid": e("fix", RETRY),
-      "needs-plan": e("fix", RETRY),
-      "pr-exists": e("fix", RETRY),
-      "pr-not-open": e("fix", RETRY),
-      "base-changed": e("fix", RETRY),
-      "missing-checks": e("fix", RETRY),
-      "no-workflows": e("fix", RETRY),
-      "gates-disagree": e("fix", RETRY),
-      "prepare-checks": e("fix", RETRY),
-      "gate-definition-unknown": e("fix", RETRY),
-      gates: e("fix", RETRY),
-      "sandbox-unavailable": e("fix", RETRY),
-      "gate-sandbox-incompatible": e("fix", RETRY),
-      "gate-container-unavailable": e("fix", RETRY),
-      "gate-install-needed": e("fix", RETRY),
-      "private-store": e("fix", RETRY),
-      "layout-unsupported": e("fix", RETRY),
-      "parallel-needs-private": e("fix", RETRY),
-      "coding-agent": e("fix", RETRY),
-      // Limits / retry: a cap, a timeout or a wait; a later rerun goes on.
-      budget: e("limits", RETRY),
-      "wall-time": e("limits", RETRY),
-      "gates-timeout": e("limits", RETRY),
-      "ci-flaky": e("limits", RETRY),
-      "gate-no-verdict": e("limits", RETRY),
-      "coding-agent-wait": e("limits", RETRY),
-      "coding-agent-timeout": e("limits", RETRY),
-      "coding-agent-sessions": e("limits", RETRY),
-      "coding-agent-unconfirmed": e("limits", RETRY),
-      "coding-agent-head-moved": e("limits", RETRY),
-      "review-requested": e("limits", RETRY),
-      "blocked-by": e("limits", RETRY)
-    });
-    LANE_PARK = /^(?:implement|review|fix|conflict-fix|ci-fix|coding-agent)-(?:failed|declined)$/;
-    LANE_PARK_ENTRY = e("fix", RETRY);
-    UNKNOWN_GATE_ENTRY = e("fix", LOOK);
-    sig8Of = (key) => key.slice("heal-".length);
-    resumeArgv = (key) => typeof key === "number" ? ["omg", "factory", "run", String(key)] : ["omg", "factory", "heal", "approve", sig8Of(key)];
-    cancelArgv = (key) => typeof key === "number" ? ["omg", "factory", "run", "cancel", String(key)] : ["omg", "factory", "heal", "cancel", sig8Of(key)];
-    statusArgv = (key) => typeof key === "number" ? ["omg", "factory", "run", "status", String(key)] : ["omg", "factory", "heal", "status", sig8Of(key)];
-    HEX4018 = /^[0-9a-f]{40}$/;
-    FLAGS = {
-      "allow-gate-change": "--allow-gate-change",
-      "allow-unsandboxed-gates": "--allow-unsandboxed-gates",
-      "allow-secret-shapes": "--allow-secret-shapes",
-      "allow-unsandboxed-lanes": "--allow-unsandboxed-lanes"
-    };
-    GATE_NEXT_LABELS = Object.freeze({
-      status: "read the run state",
-      resume: "rerun the run",
-      healResume: "approve or resume the ci-heal run",
-      cancel: "cancel the run",
-      mergeLocal: "merge the exact head into your base",
-      mergeGithub: "merge the exact head the gates checked",
-      releaseTamper: "clear the tamper hold after checking .git",
-      healClose: "close the heal signature without a fix",
-      allow: (flag) => `rerun accepting it (${flag})`
-    });
-  }
-});
-
 // src/lib/agent-progress.ts
 function isProgressStatus(value) {
   return PROGRESS_STATUSES.includes(value);
@@ -76059,6 +76251,80 @@ var init_progress2 = __esm({
     import_path115 = require("path");
     init_agent_progress();
     HEARTBEAT_MIN_MS = 6e4;
+  }
+});
+
+// src/factory/run/dotnet-package-refs.ts
+function decodeXml(value) {
+  return value.replace(/&(?:#x([0-9a-f]+)|#(\d+)|(amp|lt|gt|quot|apos));/gi, (whole, hex3, dec, name) => {
+    if (hex3 || dec) {
+      const code = Number.parseInt(hex3 ?? dec, hex3 ? 16 : 10);
+      return Number.isFinite(code) && code >= 0 && code <= 1114111 ? String.fromCodePoint(code) : whole;
+    }
+    return { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" }[name.toLowerCase()] ?? whole;
+  });
+}
+function hasNodeModulesSegment(value) {
+  return value.split(/[\\/'"`,;()[\]\s|]+/).some((s) => s.replace(/[. ]+$/, "").toLowerCase() === "node_modules");
+}
+function attributeValues(xml, element, attr) {
+  const out = [];
+  const text3 = xml.replace(XML_COMMENT, "");
+  const tag = new RegExp(`<${element}(?=[\\s/>])([^>]*)>`, "gi");
+  const attribute = new RegExp(`(?:^|\\s)${attr}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`, "i");
+  for (const m of text3.matchAll(tag)) {
+    const a = attribute.exec(m[1]);
+    if (a) out.push(decodeXml(a[1] ?? a[2] ?? ""));
+  }
+  return out;
+}
+function fileKind(path15) {
+  const base = (path15.split("/").pop() ?? path15).toLowerCase();
+  if (base === "nuget.config") return "nuget";
+  if (base.endsWith(".sln")) return "sln";
+  if (base.endsWith(".slnx")) return "slnx";
+  if (base.endsWith(".slnf")) return "slnf";
+  if (/\.(?:[a-z0-9]*proj|props|targets|tasks|projitems|user)$/.test(base)) return "msbuild";
+  return null;
+}
+function nodeModulesReferences(path15, text3) {
+  const kind = fileKind(path15);
+  const values = [];
+  if (kind === "msbuild") {
+    for (const v of attributeValues(text3, "Import", "Project")) values.push(["Import Project", v]);
+    for (const v of attributeValues(text3, "ProjectReference", "Include")) values.push(["ProjectReference Include", v]);
+    for (const v of attributeValues(text3, "UsingTask", "AssemblyFile")) values.push(["UsingTask AssemblyFile", v]);
+  } else if (kind === "slnx") {
+    for (const v of attributeValues(text3, "Project", "Path")) values.push(["solution project", v]);
+  } else if (kind === "sln") {
+    for (const m of text3.matchAll(/^\s*Project\s*\([^)]*\)\s*=\s*"[^"]*"\s*,\s*"([^"]*)"/gim)) values.push(["solution project", m[1]]);
+  } else if (kind === "slnf") {
+    let parsed;
+    try {
+      parsed = JSON.parse(text3.charCodeAt(0) === 65279 ? text3.slice(1) : text3);
+    } catch {
+      parsed = void 0;
+    }
+    const solution = parsed?.solution;
+    if (solution && typeof solution === "object") {
+      if (typeof solution.path === "string") values.push(["solution filter path", solution.path]);
+      if (Array.isArray(solution.projects)) {
+        for (const p of solution.projects) if (typeof p === "string") values.push(["solution filter project", p]);
+      }
+    } else {
+      for (const m of text3.matchAll(/"((?:[^"\\]|\\.)*)"/g)) values.push(["solution filter string", m[1]]);
+    }
+  } else if (kind === "nuget") {
+    for (const v of attributeValues(text3, "add", "value")) if (!/^https?:\/\//i.test(v.trim())) values.push(["nuget.config value", v]);
+  }
+  return values.filter(([, v]) => hasNodeModulesSegment(v)).map(([what, v]) => `${what} ${JSON.stringify(v.slice(0, 200))}`);
+}
+var XML_COMMENT, readsForNodeModulesRefs;
+var init_dotnet_package_refs = __esm({
+  "src/factory/run/dotnet-package-refs.ts"() {
+    "use strict";
+    XML_COMMENT = /<!--[\s\S]*?-->/g;
+    readsForNodeModulesRefs = (path15) => fileKind(path15) !== null;
   }
 });
 
@@ -76712,6 +76978,7 @@ var init_engine = __esm({
     init_review_guard();
     init_private_run();
     init_nuget_restore();
+    init_dotnet_package_refs();
     init_private_store();
     init_review_output();
     init_plan_rules();
@@ -77260,6 +77527,30 @@ var init_engine = __esm({
        * copies and the prepare checks' process records go: the run dir in the
        * private layout (review-483 L8), the repository's OMC state root otherwise.
        */
+      /** gateDefinitionAt's answers, per gate argv and commit (a commit's definition is fixed). */
+      definitionAt = /* @__PURE__ */ new Map();
+      /**
+       * The local gate's definition hash at the commit `sha` (the hash
+       * gateDefinitionTrustedAt and state.nugetRestore hold), or null when the
+       * gate has no definition sources, `sha` is not a full sha, or it cannot be
+       * read (the caller then grants nothing).
+       */
+      gateDefinitionAt(sha3) {
+        const at = sha3.trim();
+        const gate = this.o.forge?.config.kind === "local" ? this.o.forge.config.local?.gate : void 0;
+        if (!gate || gate.length === 0 || !HEX4019.test(at)) return null;
+        const key = `${gate.join("\0")}\0${at}`;
+        if (this.definitionAt.has(key)) return this.definitionAt.get(key);
+        let definition = null;
+        try {
+          const { sources, unresolved } = gateDefinitionSources(gate);
+          if (!unresolved && sources.length > 0) definition = this.gateDefinitionHasher(sources).at(at);
+        } catch {
+          definition = null;
+        }
+        this.definitionAt.set(key, definition);
+        return definition;
+      }
       /** The run's own NuGet packages folder (nuget-restore.ts): under the gate job root, removed with the run (omg factory run clean). */
       nugetPackagesDir() {
         return nugetRunPackagesDir(this.gateJobRoot(), runSlug(this.key));
@@ -77279,7 +77570,7 @@ var init_engine = __esm({
        * layout, your checkout (its budget ledger stays denied; L1) and the job
        * root under the run dir (L8).
        */
-      sandboxRun(req, fallbackContainer) {
+      sandboxRun(req, fallbackContainer, forCommit) {
         const p = this.privateRun();
         const nested = trustedNestedRels(this.o.root, req.cwd, this.baseWorkspaces()).map((rel) => (0, import_path117.join)(this.o.root, ...rel.split("/"), "node_modules"));
         const settings = this.gatesModeCache?.container ?? fallbackContainer;
@@ -77287,7 +77578,15 @@ var init_engine = __esm({
         const container = settings && this.containerImageId ? { ...settings, image: this.containerImageId } : settings;
         const mtp = isDotnetExe(req.exe) && this.dotnetMtpBase();
         const nugetDir = this.nugetPackagesDir();
-        const nuget = !req.nugetPackages && req.purpose !== "calibrate" && isDotnetExe(req.exe) && this.state.nugetRestore && (0, import_fs98.existsSync)(nugetDir) ? { nugetPackages: { dir: nugetDir, writable: false } } : {};
+        const restored = this.state.nugetRestore;
+        const restoredFor = (commit, definition) => {
+          try {
+            return this.gateDefinitionAt(commit()) === definition;
+          } catch {
+            return false;
+          }
+        };
+        const nuget = !req.nugetPackages && req.purpose !== "calibrate" && isDotnetExe(req.exe) && restored && forCommit && (0, import_fs98.existsSync)(nugetDir) && restoredFor(forCommit, restored.definition) ? { nugetPackages: { dir: nugetDir, writable: false } } : {};
         const r = this.o.gateSandbox({ ...req, ...nuget, ...mtp ? { dotnetMtp: true } : {}, nodeModulesTarget: (0, import_path117.join)(this.o.root, "node_modules"), ...nested.length > 0 ? { nestedNodeModulesTargets: nested } : {}, ...p ? { mainRoot: this.o.root, jobRoot: this.gateJobRoot() } : {}, ...container ? { container, runLabel: containerRunLabel(this.o.root, this.key) } : {} });
         if (!container) return r;
         return r.then((out) => {
@@ -77519,8 +77818,8 @@ var init_engine = __esm({
        * default location, else the trusted base's committed config:
        * trustedPrepareChecks); or the trusted base commit's tree
        * (state.baseSha, `git ls-tree -r`, never the PR head or a working tree)
-       * holds a solution or project file (isDotnetProjectFile: *.sln, *.slnx,
-       * *.*proj). Cached per base sha, so no commit of the PR's turns it on or
+       * holds a solution or a C#, F# or VB project file (isDotnetProjectFile:
+       * *.sln, *.slnx, *.csproj, *.fsproj, *.vbproj). Cached per base sha, so no commit of the PR's turns it on or
        * off mid-run; a base that moves (a merge on the base branch) is read
        * again. Submodule trees are not descended into. The gate and prepare
        * checks need no such rule: the sandbox runner treats each command whose
@@ -78815,7 +79114,7 @@ ${this.state.plan?.text ?? ""}`, baseSha, (m) => this.o.warn?.(m));
           if (commit.refusal === "secret") {
             const findings = commit.findings ?? [];
             this.save((s) => ({ ...s, pendingCommit: { ...p, secretFindings: findings } }));
-            this.gate(SECRET_SHAPES_GATE, `${kind} lane ${p.laneId}: ${commit.reason}. A key or token in the change may have been copied in from outside the lane's sandbox, so nothing was committed or pushed. Look at those files in ${p.worktree}: remove the secret and rerun ${this.resume}, or, when they are test fixtures, rerun ${this.resume} --allow-secret-shapes (accepts exactly these paths and kinds for this lane commit; factory.run.secretScan.allowPaths in your user config or the base's omg.jsonc skips fixture paths for good). A hit in a path's name is named by a hash of the name (git -C ${p.worktree} status lists the names; rename the file). A hit in the commit message (the lane's own summary) cannot be edited: --allow-secret-shapes commits it as it is.${this.allowPathsBaseUntrusted !== void 0 ? ` The factory.run.secretScan.allowPaths committed in .copilot/omg.jsonc were not used, because base ${this.allowPathsBaseUntrusted} is not in ship.trustedBases: rerun with --allow-secret-shapes for this head, or set allowPaths in your user config (or add ${this.allowPathsBaseUntrusted} to ship.trustedBases there).` : ""} To give the lane's work up instead: omg factory run cancel ${this.key}`);
+            this.gate(SECRET_SHAPES_GATE, `${kind} lane ${p.laneId}: ${commit.reason}. A key or token in the change may have been copied in from outside the lane's sandbox, so nothing was committed or pushed. Look at those files in ${p.worktree}: remove the secret and rerun ${this.resume}, or, when they are test fixtures, rerun ${this.resume} --allow-secret-shapes (accepts exactly these paths and kinds for this lane commit; factory.run.secretScan.allowPaths in your user config or the base's omg.jsonc skips fixture paths for good). A hit in a path's name is named by a hash of the name (${commandLine(["git", "-C", p.worktree, "status"])} lists the names; rename the file). A hit in the commit message (the lane's own summary) cannot be edited: --allow-secret-shapes commits it as it is.${this.allowPathsBaseUntrusted !== void 0 ? ` The factory.run.secretScan.allowPaths committed in .copilot/omg.jsonc were not used, because base ${this.allowPathsBaseUntrusted} is not in ship.trustedBases: rerun with --allow-secret-shapes for this head, or set allowPaths in your user config (or add ${this.allowPathsBaseUntrusted} to ship.trustedBases there).` : ""} To give the lane's work up instead: omg factory run cancel ${this.key}`);
             return;
           }
           this.save((s) => {
@@ -79086,8 +79385,10 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
         const changed = sources.some((x) => x.pattern) ? patternSourceChanges(sources, treeAt(s.baseSha), treeAt(cand)) : [];
         const named = [...plain.length > 0 ? [describeGateSources(plain)] : [], ...changed].join(", ") || describeGateSources(sources);
         const specs = [.../* @__PURE__ */ new Set([...plain.map(gateSourcePathspec), ...changed.map(shellPath)])];
+        const diffView = commandText(["git", "-C", this.o.root, "diff", s.baseSha.slice(0, 12), cand.slice(0, 12)]);
+        const inspect = diffView.inRoot ? `in the repository root with ${diffView.line}` : `with ${diffView.line}`;
         const output2 = changed.some(underDotnetBuildDir) ? "; tracked files under bin/, obj/ or artifacts/ are build output MSBuild may reuse instead of building the change, so they count as the gate's definition" : "";
-        this.save((x) => this.park(x, "gate-definition-changed", `the change redefines the local gate "${gate.join(" ")}" (${named} differ from ${s.base})${output2}${stale}; offline the gate is the only check, so nothing was pushed. Inspect it with git -C ${this.o.root} diff ${s.baseSha.slice(0, 12)} ${cand.slice(0, 12)} -- ${(specs.length > 0 ? specs : sources.map(gateSourcePathspec)).join(" ")}, then rerun ${this.resume} --allow-gate-change to accept it, or ${cancelCommand(this.key)}${this.restoreOnApprovalNote(gate)}`, this.iso(), { definition: head }));
+        this.save((x) => this.park(x, "gate-definition-changed", `the change redefines the local gate "${gate.join(" ")}" (${named} differ from ${s.base})${output2}${stale}; offline the gate is the only check, so nothing was pushed. Inspect it ${inspect} -- ${(specs.length > 0 ? specs : sources.map(gateSourcePathspec)).join(" ")}, then rerun ${this.resume} --allow-gate-change to accept it, or ${cancelCommand(this.key)}${this.restoreOnApprovalNote(gate)}`, this.iso(), { definition: head }));
         return true;
       }
       /**
@@ -79115,7 +79416,7 @@ Opened by \`omg factory run ${s.issue}\` (draft until the factory review approve
         try {
           const commit = this.gateCfg?.loaded.config?.trustedBaseCommit ?? this.state.baseSha;
           const mode = resolveGateInstall(this.runUserConfig(), this.trustedBaseLayer(commit)).mode;
-          return mode === "sandboxed" ? '. With factory.run.gateInstall "sandboxed", approving with --allow-gate-change also lets the engine run dotnet restore on these definition files with api.nuget.org reachable' : "";
+          return mode === "sandboxed" ? restoreApprovalNote(process.platform) : "";
         } catch {
           return "";
         }
@@ -80005,7 +80306,7 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
           let headTests = null;
           let r;
           try {
-            r = this.o.gateSandbox ? await this.withGitView(checkedOut, label, (view) => this.sandboxRun({ purpose: "prepare", argv: c.argv, exe: c.exe, args: report ? [...c.args, ...vitestReportArgs(report)] : c.args, cwd: path15, commonGitDir: at.commonGitDir, timeoutMs: PREPARE_CHECK_TIMEOUT_MS, ...at.gates.requireDeniedPaths ? { requireDeniedPaths: true } : {}, ...report ? { reportFile: report } : {}, ...view })) : { ran: false, reason: "no OS sandbox runner was given to the engine" };
+            r = this.o.gateSandbox ? await this.withGitView(checkedOut, label, (view) => this.sandboxRun({ purpose: "prepare", argv: c.argv, exe: c.exe, args: report ? [...c.args, ...vitestReportArgs(report)] : c.args, cwd: path15, commonGitDir: at.commonGitDir, timeoutMs: PREPARE_CHECK_TIMEOUT_MS, ...at.gates.requireDeniedPaths ? { requireDeniedPaths: true } : {}, ...report ? { reportFile: report } : {}, ...view }, void 0, checkedOut)) : { ran: false, reason: "no OS sandbox runner was given to the engine" };
           } finally {
             if (report) headTests = readVitestReport(report, path15);
           }
@@ -80043,7 +80344,7 @@ timed out after ${PREPARE_CHECK_TIMEOUT_MS / 6e4} min` : ""}`) };
                 let fTests = null;
                 let fr;
                 try {
-                  fr = await this.withGitView(checkedOut, label, (view) => this.sandboxRun({ purpose: "prepare", argv: c.argv, exe: c.exe, args: freport ? [...c.args, ...vitestReportArgs(freport)] : c.args, cwd: path15, commonGitDir: at.commonGitDir, timeoutMs: PREPARE_CHECK_TIMEOUT_MS, ...freport ? { reportFile: freport } : {}, ...view }, fallback), true);
+                  fr = await this.withGitView(checkedOut, label, (view) => this.sandboxRun({ purpose: "prepare", argv: c.argv, exe: c.exe, args: freport ? [...c.args, ...vitestReportArgs(freport)] : c.args, cwd: path15, commonGitDir: at.commonGitDir, timeoutMs: PREPARE_CHECK_TIMEOUT_MS, ...freport ? { reportFile: freport } : {}, ...view }, fallback, checkedOut), true);
                 } finally {
                   if (freport) fTests = readVitestReport(freport, path15);
                 }
@@ -80536,10 +80837,15 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
         const inBuild = (p) => dotnetBuildDirIndex(p) >= 0;
         const nestedRepos = (untracked) => untracked.filter((p) => p.endsWith("/") && !inBuild(p) && !inPackageTree(p));
         const list = (paths) => `${paths.slice(0, 5).join(", ")}${paths.length > 5 ? `, ${paths.length - 5} more` : ""}`;
-        if (read.packageTreeProjects && read.packageTreeProjects.length > 0) {
-          this.gate("gates", `a tracked .NET project under a node_modules directory is not supported: build output there is not cleaned (${head.slice(0, 12)} tracks ${list(read.packageTreeProjects)}), so the dotnet gate did not run; move the .NET files out of node_modules on the branch, or cancel with ${cancelCommand(this.key)}; then rerun ${this.resume}`);
+        const note = (text3) => this.save((x) => ({ ...x, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: text3 }] }));
+        const noClean = gates.mode !== "enforced" || !!gates.container;
+        const noCleanWhy = gates.container ? "the gate runs in the gate container on a copy of the checkout" : "the gates run without the OS sandbox, and the engine never deletes in a checkout the PR's code controls outside it";
+        const pkgProjects = read.packageTreeProjects ?? [];
+        if (pkgProjects.length > 0 && !noClean) {
+          this.gate("gates", `a tracked .NET project or solution under a node_modules directory is not supported in the OS sandbox: its build output there is not cleaned (${head.slice(0, 12)} tracks ${list(pkgProjects)}), so the dotnet gate did not run; move those files out of node_modules on the base branch, or untrack them, or cancel with ${cancelCommand(this.key)}; then rerun ${this.resume}`);
           return false;
         }
+        if (pkgProjects.length > 0) note(`${head.slice(0, 12)} tracks .NET project or solution file(s) under a node_modules directory (${list(pkgProjects)}), whose build output there is not cleaned before the dotnet gate: ${noCleanWhy}; the gate may reuse it`);
         const recovery = `inspect ${checkout}, delete them by hand or start again with a fresh checkout (${this.freshCheckoutRecovery()}), then rerun ${this.resume}`;
         const nested = nestedRepos(read.untracked);
         if (nested.length > 0) {
@@ -80553,10 +80859,8 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
         }
         const leftovers = read.untracked.filter(inBuild);
         if (leftovers.length === 0) return true;
-        const note = (text3) => this.save((x) => ({ ...x, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: text3 }] }));
-        if (gates.mode !== "enforced" || gates.container) {
-          const why = gates.container ? "the gate runs in the gate container on a copy of the checkout" : "the gates run without the OS sandbox, and the engine never deletes in a checkout the PR's code controls outside it";
-          note(`left ${leftovers.length} untracked build output path${leftovers.length === 1 ? "" : "s"} under bin/, obj/ or artifacts/ in the prepare checkout before the dotnet gate on ${head.slice(0, 12)}: ${why}; the gate may reuse them`);
+        if (noClean) {
+          note(`left ${leftovers.length} untracked build output path${leftovers.length === 1 ? "" : "s"} under bin/, obj/ or artifacts/ in the prepare checkout before the dotnet gate on ${head.slice(0, 12)}: ${noCleanWhy}; the gate may reuse them`);
           return true;
         }
         let live;
@@ -80657,7 +80961,8 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
           return park(`${what}: ${NUGET_PRIVATE_FEED_UNSUPPORTED} (${nuget.sources.join(", ") || "a feed answered 401 or 403"}); the sandbox never gets your NuGet.Config or its credentials. Make the packages come from nuget.org, or ${yourself}`);
         }
         if (!sandboxed) return park(`${what}; the gate ran without the OS sandbox or in the gate container, where the engine runs no restore step: check that the packages and versions exist and the feed is reachable, or ${yourself}`);
-        if (this.state.nugetRestore?.head === head) return park(`${what}, even after the sandboxed dotnet restore for this head ran${localDetailNote(this.key, "the gate output")}; ${yourself}`);
+        const done = this.state.nugetRestore;
+        if (done?.head === head && done.outcome === "passed") return park(`${what}, even after the sandboxed dotnet restore for this head ran and passed${localDetailNote(this.key, "the gate output")}; ${yourself}`);
         let mode;
         try {
           mode = resolveGateInstall(this.runUserConfig(), this.trustedBaseLayer(this.gateCfg?.loaded.config?.trustedBaseCommit)).mode;
@@ -80738,6 +81043,9 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
         } finally {
           this.removeTree(tree, jobRoot);
         }
+        const outcome = !r.ran ? "not-run" : r.status === 0 && !r.timedOut ? "passed" : "failed";
+        const exit = r.ran && Number.isInteger(r.status) ? { exit: r.status } : {};
+        this.save((x) => ({ ...x, nugetRestore: { head, definition: trusted.definition, outcome, ...exit } }));
         if (checkoutGitLink(checkout).hash !== linkBefore) {
           return { name: "lane-tampered", reason: `the engine's prepare checkout ${checkout} has a .git file that changed while the sandboxed dotnet restore ran, so the local gate did not run; inspect and remove it by hand, then rerun ${this.resume}` };
         }
@@ -80749,16 +81057,111 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
         if (now !== head) {
           return { name: "gates", reason: `the engine's prepare checkout ${checkout} is ${now ? `at ${now.slice(0, 12)}` : "unreadable"} after the sandboxed dotnet restore, not at ${head.slice(0, 12)} it restored the definitions of, so the local gate did not run; rerun ${this.resume} after omg factory run clean` };
         }
-        if (!r.ran) return { name: GATE_INSTALL_GATE, reason: `${what} could not run in the OS sandbox (${r.reason}); fix that, or set factory.run.gateInstall "park", then rerun ${this.resume}` };
+        if (!r.ran) return { name: GATE_INSTALL_GATE, reason: `${what} could not run in the OS sandbox (${r.reason}), so nothing was restored; fix that, or set factory.run.gateInstall "park", then rerun ${this.resume} (a rerun tries the restore again)` };
         if (r.status !== 0 || r.timedOut) {
           const failure3 = classifyNugetFailure(r.output);
           const needs = failure3 ? void 0 : missingDefinitionFile(r.output, tree);
           const why = needs !== void 0 ? `the restore needs a file that is not a pinned definition file: ${needs} (the engine restores on the head's pinned definition files only, so MSBuild imports, tasks and scripts outside them are absent; restore the PR branch's packages into your NuGet global packages folder yourself, or keep the restore's inputs in definition files)` : failure3?.kind === "private-feed" ? `${NUGET_PRIVATE_FEED_UNSUPPORTED} (${failure3.sources.join(", ") || "a feed answered 401 or 403"}), and the sandbox never gets your NuGet.Config or its credentials` : `a package or version the project files name may not exist on nuget.org${failure3 ? ` (${failure3.codes.join(", ")})` : ""}`;
-          return { name: GATE_INSTALL_GATE, reason: `${what} with only api.nuget.org reachable failed (exit ${r.status}${r.timedOut ? ", timed out" : ""}): ${why}. That needs a human, not a ci-fix lane${localDetailNote(this.key, "its output")}: fix it on the branch (a change to the definition files parks at gate-definition-changed for your approval), then rerun ${this.resume}; or ${cancelCommand(this.key)}`, detail: parkTail(r.output) };
+          return { name: GATE_INSTALL_GATE, reason: `${what} with only api.nuget.org reachable failed (exit ${r.status}${r.timedOut ? ", timed out" : ""}): ${why}. That needs a human, not a ci-fix lane${localDetailNote(this.key, "its output")}: fix it on the branch (a change to the definition files parks at gate-definition-changed for your approval), then rerun ${this.resume}, which runs the restore again (for a feed that failed only for now, rerun as it is); or ${cancelCommand(this.key)}`, detail: parkTail(r.output) };
         }
         const seconds = Math.round((this.clock() - started) / 1e3);
-        this.save((x) => ({ ...x, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `dotnet restore ran in the OS sandbox with only api.nuget.org reachable in the engine's definition tree of ${head.slice(0, 12)} (${written.files.length} pinned definition file(s), nothing else; ${seconds} s); new packages went to the run's own packages folder, and the gate runs again offline in the prepare checkout` }] }));
+        this.save((x) => ({ ...x, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `dotnet restore ran in the OS sandbox with only api.nuget.org reachable in the engine's definition tree of ${head.slice(0, 12)} (${written.files.length} pinned definition file(s), nothing else${written.stubs.length > 0 ? `, and the engine's ${written.stubs.join(", ")} at its root, which stop MSBuild's and NuGet's walk up out of the tree` : ""}; ${seconds} s); new packages went to the run's own packages folder, and the gate runs again offline in the prepare checkout` }] }));
         return null;
+      }
+      /**
+       * Before a dotnet gate for `head`: when the run's packages folder was
+       * restored for another definition (state.nugetRestore), it goes
+       * (removeEngineDir, lstat-checked and below the gate job root) and the
+       * record with it, so a head that left the approved definitions (an
+       * approved H1 whose restore ran its targets, then a lane back at the base's
+       * files at H2) never builds on what H1's restore wrote; sandboxRun grants
+       * the folder by definition too. False when it parked.
+       */
+      nugetFolderReadyFor(head) {
+        const restored = this.state.nugetRestore;
+        if (!restored || this.gateDefinitionAt(head) === restored.definition) return true;
+        const dir = this.nugetPackagesDir();
+        try {
+          removeEngineDir(dir, this.gateJobRoot());
+        } catch (error62) {
+          this.gate("gates", `the run's NuGet packages folder ${dir} was restored for other gate definitions than ${head.slice(0, 12)}'s and could not be removed (${errText6(error62)}), so the dotnet gate did not run; remove it by hand, then rerun ${this.resume}`);
+          return false;
+        }
+        this.save((x) => {
+          const { nugetRestore: _n, ...rest } = x;
+          return { ...rest, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `emptied the run's NuGet packages folder before the dotnet gate on ${head.slice(0, 12)}: it was restored for the definition files of ${restored.head.slice(0, 12)}, which ${head.slice(0, 12)} does not have` }] };
+        });
+        return true;
+      }
+      /** packageTreeImports' answers per head (a commit's files are fixed). */
+      packageImportsAt;
+      /**
+       * The references into a node_modules dir in `head`'s pinned definition
+       * files (dotnet-package-refs.ts), read from git objects (never a
+       * checkout), each as `<path>: <what> "<value>"`. Files under a
+       * node_modules dir are left out (a tracked package's own files; MSBuild
+       * reads them only through such a reference). Throws when git fails.
+       */
+      packageTreeImports(head) {
+        if (this.packageImportsAt?.head === head) return this.packageImportsAt.refs;
+        const ls = this.exec("git", ["ls-tree", "-r", "-z", "--full-tree", head], { cwd: this.o.root, env: TRUSTED_READ_ENV });
+        if (ls.status !== 0) throw new FactoryStepError(`git ls-tree ${head.slice(0, 12)} failed: ${oneLine(ls.stderr, 300)}`);
+        const files = [];
+        for (const line of ls.stdout.split("\0")) {
+          const tab = line.indexOf("	");
+          if (tab < 0) continue;
+          const [mode, type, oid] = line.slice(0, tab).split(" ");
+          const p = line.slice(tab + 1);
+          if (type === "blob" && (mode === "100644" || mode === "100755") && oid && isDotnetDefinitionFile(p) && readsForNodeModulesRefs(p) && !inPackageTree(p)) files.push([p, oid]);
+        }
+        const refs2 = [];
+        if (files.length > 0) {
+          const env2 = { ...scrubShipEnv(process.env), ...TRUSTED_READ_ENV };
+          const blobs = parseCatFileBatch(runHostGitBuffer(this.o.root, ["cat-file", "--batch"], PRIVATE_GIT_TIMEOUT_MS, env2, `${[...new Set(files.map(([, oid]) => oid))].join("\n")}
+`));
+          for (const [p, oid] of files) {
+            const bytes = blobs.get(oid);
+            if (!bytes) throw new FactoryStepError(`the blob ${oid.slice(0, 12)} of ${p} at ${head.slice(0, 12)} could not be read from git`);
+            for (const r of nodeModulesReferences(p, bytes.toString("utf8"))) refs2.push(`${p}: ${r}`);
+          }
+        }
+        this.packageImportsAt = { head, refs: refs2 };
+        return refs2;
+      }
+      /**
+       * Before a dotnet gate: when `head`'s pinned definition files reference
+       * files under a node_modules dir (packageTreeImports), the PR's code (a
+       * prepare check, sandboxed, the checkout writable) could have replaced an
+       * engine link there with its own files, which git, the clean step and the
+       * stray checks never see. In the OS sandbox the gate then runs only when
+       * the checkout's node_modules is exactly the tree the engine built
+       * (gateTreeExactProblem); a tree that differs parks at lane-tampered, one
+       * that cannot be verified (a copied tree, a node_modules the engine did not
+       * build) at gates. Unsandboxed and ack gates (the PR's code runs as you)
+       * get a history note; the gate container copies no node_modules. Inert
+       * without such references. False when it parked.
+       */
+      packageTreeImportsReady(head, checkout, read, gates) {
+        if (gates.container) return true;
+        let refs2;
+        try {
+          refs2 = this.packageTreeImports(head);
+        } catch (error62) {
+          this.gate("gates", `the dotnet gate did not run on ${head.slice(0, 12)}: its definition files could not be read to find imports from node_modules (${errText6(error62)}); rerun ${this.resume}`);
+          return false;
+        }
+        if (refs2.length === 0) return true;
+        const named = `${refs2.slice(0, 3).map((r) => oneLine(visibleLine(r), 240)).join("; ")}${refs2.length > 3 ? `; ${refs2.length - 3} more` : ""}`;
+        if (gates.mode !== "enforced") {
+          this.save((x) => ({ ...x, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `the build on ${head.slice(0, 12)} imports files from node_modules (${named}), which the PR's code can modify in the gate checkout; not verified before the dotnet gate, since the gates run without the OS sandbox (the PR's code runs as you there)` }] }));
+          return true;
+        }
+        const tree = gateTreeExactProblem(this.o.root, checkout, trustedNestedRels(this.o.root, checkout, this.baseWorkspaces()), read.untracked, this.state.gateTreeCopy === true);
+        if (!tree) return true;
+        const why = `the dotnet gate did not run on ${head.slice(0, 12)}: the build imports files from node_modules (${named}), which the PR's code can modify in the gate checkout, and ${oneLine(visibleLine(tree.problem), PARK_TAIL_CHARS)}`;
+        if (tree.tampered) this.gate("lane-tampered", `${why}; inspect ${checkout} and start again with a fresh checkout (${this.freshCheckoutRecovery()}), then rerun ${this.resume}`);
+        else this.gate("gates", `${why}; move what the build imports out of node_modules on the base branch, set factory.run.sandbox.gates "unsandboxed" in your user config (the PR's code then runs as you), or cancel with ${cancelCommand(this.key)}; then rerun ${this.resume}`);
+        return false;
       }
       /** The definition tree after the restore (removeEngineDir): a failure only warns, and the next restore removes it first. */
       removeTree(tree, jobRoot) {
@@ -80854,6 +81257,8 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
             return false;
           }
         }
+        if (dotnetGate && !this.nugetFolderReadyFor(head)) return false;
+        if (dotnetGate && !this.packageTreeImportsReady(head, checkout, read, gates)) return false;
         this.progress.heartbeat("gates", `local gate ${gate.join(" ")} on ${head.slice(0, 12)}`, this.fields());
         const input2 = { stateDir, root: this.o.root, head, gate, timeoutMinutes, checkout, ...this.o.localGate ? { runner: this.o.localGate } : {}, now: () => new Date(this.clock()) };
         const recordedLinks = recordedWorktreeGitLinks(checkout);
@@ -80878,7 +81283,7 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
               this.gate("lane-tampered", `the local gate did not run on ${head.slice(0, 12)}: ${(0, import_path117.join)(checkout, "node_modules")} (or a link in it) is not as the engine made it, so the PR's code changed it${localDetailNote(this.key, "which link")}; inspect and remove ${checkout} by hand, then rerun ${this.resume}`, oneLine(visibleLine(repointed), PARK_TAIL_CHARS));
               return false;
             }
-            out = this.o.gateSandbox ? await runLocalGate({ ...input2, mode: "enforced", sandbox: { run: (req) => this.withGitView(() => head, "the local gate", (view) => this.sandboxRun({ ...req, ...view })), commonGitDir: common, requireDeniedPaths: gates.requireDeniedPaths } }) : { started: false, reason: "no OS sandbox runner was given to the engine", sandbox: true };
+            out = this.o.gateSandbox ? await runLocalGate({ ...input2, mode: "enforced", sandbox: { run: (req) => this.withGitView(() => head, "the local gate", (view) => this.sandboxRun({ ...req, ...view }, void 0, () => head)), commonGitDir: common, requireDeniedPaths: gates.requireDeniedPaths } }) : { started: false, reason: "no OS sandbox runner was given to the engine", sandbox: true };
             if ((out.started || out.noVerdict) && this.state.sandboxedGateHead !== head) this.save((x) => ({ ...x, sandboxedGateHead: head }));
             if (!out.started && out.noVerdict) {
               if (checkoutGitLink(checkout).hash !== linkBefore) return this.gateTamperedByGate(head, checkout, stateDir);
@@ -80958,7 +81363,7 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
           let fo = null;
           let containerWhy = `it failed there on the base ${base.slice(0, 12)} before (image ${this.containerImageId})`;
           if (!skipContainer) {
-            fo = await runLocalGate({ ...input2, mode: "enforced", sandbox: { run: (req) => this.withGitView(() => head, "the local gate", (view) => this.sandboxRun({ ...req, ...view }, fallback), true), commonGitDir: common, requireDeniedPaths: false } });
+            fo = await runLocalGate({ ...input2, mode: "enforced", sandbox: { run: (req) => this.withGitView(() => head, "the local gate", (view) => this.sandboxRun({ ...req, ...view }, fallback, () => head), true), commonGitDir: common, requireDeniedPaths: false } });
             if (checkoutGitLink(checkout).hash !== linkBefore) return this.gateTamperedByGate(head, checkout, stateDir);
             if (!fo.started && fo.noVerdict) {
               this.gate(GATE_NO_VERDICT_GATE, this.gateNoVerdictReason(head, what, fo.reason));
@@ -81214,7 +81619,7 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
         }
         const auto = decision.ok ? await this.autoMerge(pr, head, view, ship, decision, config2) : void 0;
         if (auto === true) return;
-        const cmd = decision.command.join(" ");
+        const cmd = humanCommand(decision.command);
         this.mergeCmd = decision.ok ? cmd : void 0;
         this.commentOnce("pr", `merge@${head.slice(0, 12)}`, "merge", `${mergeComment(this.key, decision, this.resume)}${decision.ok ? this.humanComment ?? "" : ""}`);
         if (decision.ok) this.gate("merge", `merge is a human step; review approved and gates green at ${head.slice(0, 12)}${decision.noChecks ? ` (${NO_CI_CHECKS_NOTE}: no CI ran on this head, check the change yourself)` : ""}${this.humanNote ?? ""}${auto ? `; auto-merge (factory.merge.auto) not taken: ${auto}` : ""}: run ${cmd}, then ${this.resume}`);
@@ -83665,7 +84070,7 @@ var init_redact3 = __esm({
       // Secret-named JSON fields, also with escaped quotes: {"password":"x"}, {\"token\":\"x\"}
       [
         new RegExp(String.raw`((\\?["'])${SECRET_NAME4}\2\s*:\s*)(?:(\\?["'])(.*?)\3|([^\s,}\]"'\\]+))`, "gi"),
-        (_m, head, _q, vq, quoted, bare) => vq !== void 0 ? `${head}${vq}${(quoted ?? "").includes("****") ? quoted : "****"}${vq}` : `${head}${bare?.includes("****") ? bare : "****"}`
+        (_m, head, _q, vq, quoted, bare2) => vq !== void 0 ? `${head}${vq}${(quoted ?? "").includes("****") ? quoted : "****"}${vq}` : `${head}${bare2?.includes("****") ? bare2 : "****"}`
       ],
       // Credential headers: Authorization: Basic x, X-API-Key: x, Cookie: x (the scheme is kept)
       [
@@ -85696,13 +86101,13 @@ function gitOut(exec, args, cwd) {
   const r = exec("git", args, cwd ? { cwd } : void 0);
   return r.status === 0 ? r.stdout.trim() : "";
 }
-function bareRef(bare, ref) {
-  return gitOut(defaultExec, ["--git-dir", bare, "rev-parse", "--verify", "--quiet", `${ref}^{commit}`]);
+function bareRef(bare2, ref) {
+  return gitOut(defaultExec, ["--git-dir", bare2, "rev-parse", "--verify", "--quiet", `${ref}^{commit}`]);
 }
 function factoryRunIssue() {
   return { title: `Add ${FACTORY_RUN_FILE}`, body: SCENARIOS["factory-run"].prompt };
 }
-function scriptedFactoryGh(bare) {
+function scriptedFactoryGh(bare2) {
   const record3 = { calls: [], prCreates: [], ready: false, mergeCalls: [] };
   const issue2 = factoryRunIssue();
   let prOpen = false;
@@ -85734,15 +86139,15 @@ function scriptedFactoryGh(bare) {
     if (key.startsWith(`gh pr view ${FACTORY_RUN_PR} --json `)) {
       return ok(JSON.stringify({
         number: FACTORY_RUN_PR,
-        headRefOid: bareRef(bare, `refs/heads/factory/issue-${FACTORY_RUN_ISSUE}`),
+        headRefOid: bareRef(bare2, `refs/heads/factory/issue-${FACTORY_RUN_ISSUE}`),
         state: "OPEN",
         isDraft: !record3.ready,
         baseRefName: FACTORY_RUN_BASE,
-        baseRefOid: bareRef(bare, `refs/heads/${FACTORY_RUN_BASE}`)
+        baseRefOid: bareRef(bare2, `refs/heads/${FACTORY_RUN_BASE}`)
       }));
     }
     if (/^gh api --hostname [^ ]+ --method GET repos\/[^/ ]+\/[^/ ]+\/branches\//.test(key) && key.endsWith(`/branches/${FACTORY_RUN_BASE}`)) {
-      return ok(JSON.stringify({ name: FACTORY_RUN_BASE, commit: { sha: bareRef(bare, `refs/heads/${FACTORY_RUN_BASE}`) } }));
+      return ok(JSON.stringify({ name: FACTORY_RUN_BASE, commit: { sha: bareRef(bare2, `refs/heads/${FACTORY_RUN_BASE}`) } }));
     }
     if (key === `gh pr ready ${FACTORY_RUN_PR}`) {
       record3.ready = true;
@@ -85756,7 +86161,7 @@ function scriptedFactoryGh(bare) {
     if (args[0] === "api" && args[1] === "graphql" && args.includes(`query=${REVIEW_FEEDBACK_QUERY}`)) {
       const done = { hasNextPage: false };
       const none = { pageInfo: done, nodes: [] };
-      const pullRequest = { headRefOid: bareRef(bare, `refs/heads/factory/issue-${FACTORY_RUN_ISSUE}`), latestReviews: none, latestOpinionatedReviews: none, reviewRequests: none, reviewThreads: none };
+      const pullRequest = { headRefOid: bareRef(bare2, `refs/heads/factory/issue-${FACTORY_RUN_ISSUE}`), latestReviews: none, latestOpinionatedReviews: none, reviewRequests: none, reviewThreads: none };
       return ok(JSON.stringify({ data: { viewer: { login: "omg-smoke" }, repository: { viewerPermission: "ADMIN", collaborators: { pageInfo: done, edges: [] }, pullRequest } } }));
     }
     return { status: 1, stdout: "", stderr: `scripted gh: ${key} is not scripted` };
@@ -85764,7 +86169,7 @@ function scriptedFactoryGh(bare) {
   return { exec, record: record3 };
 }
 function prepareFactoryRepo(dir) {
-  const bare = (0, import_path138.join)(dir, "remote.git");
+  const bare2 = (0, import_path138.join)(dir, "remote.git");
   const repo = (0, import_path138.join)(dir, "repo");
   try {
     (0, import_fs119.mkdirSync)(repo, { recursive: true });
@@ -85774,8 +86179,8 @@ function prepareFactoryRepo(dir) {
     return `repository files: ${err.message}`;
   }
   const steps = [
-    [["init", "-q", "--bare", bare], dir],
-    [["symbolic-ref", "HEAD", `refs/heads/${FACTORY_RUN_BASE}`], bare],
+    [["init", "-q", "--bare", bare2], dir],
+    [["symbolic-ref", "HEAD", `refs/heads/${FACTORY_RUN_BASE}`], bare2],
     [["init", "-q"], repo],
     [["symbolic-ref", "HEAD", `refs/heads/${FACTORY_RUN_BASE}`], repo],
     [["config", "user.name", "omg-smoke"], repo],
@@ -85783,7 +86188,7 @@ function prepareFactoryRepo(dir) {
     [["config", "commit.gpgsign", "false"], repo],
     [["add", "."], repo],
     [["commit", "-q", "-m", "init"], repo],
-    [["remote", "add", "origin", bare], repo],
+    [["remote", "add", "origin", bare2], repo],
     [["push", "-q", "origin", FACTORY_RUN_BASE], repo]
   ];
   for (const [args, cwd] of steps) {
@@ -85823,9 +86228,9 @@ async function runFactoryRunScenario(input2) {
   const prepError = prepareFactoryRepo(dir);
   if (prepError) return { ...base, events: [], idle: false, timedOut: false, error: `factory repository setup: ${prepError}` };
   const repo = (0, import_path138.join)(dir, "repo");
-  const bare = (0, import_path138.join)(dir, "remote.git");
-  const baseBefore = bareRef(bare, `refs/heads/${FACTORY_RUN_BASE}`);
-  const gh = scriptedFactoryGh(bare);
+  const bare2 = (0, import_path138.join)(dir, "remote.git");
+  const baseBefore = bareRef(bare2, `refs/heads/${FACTORY_RUN_BASE}`);
+  const gh = scriptedFactoryGh(bare2);
   const lanes = new RecordingLanes(input2.lanes ? input2.lanes(repo) : copilotLanes(input2), input2.name === "factory-run-fix", input2.model);
   const warnings = [];
   let outcome = null;
@@ -85854,7 +86259,7 @@ async function runFactoryRunScenario(input2) {
   const state = readFactoryState(repo, FACTORY_RUN_ISSUE);
   const ship = state?.pr ? readShipState(repo, state.pr) : null;
   const verdict = ship ? latestVerdict(ship) : void 0;
-  const refs2 = gitOut(defaultExec, ["--git-dir", bare, "for-each-ref", "--format=%(refname)"]).split(/\r?\n/).filter(Boolean);
+  const refs2 = gitOut(defaultExec, ["--git-dir", bare2, "for-each-ref", "--format=%(refname)"]).split(/\r?\n/).filter(Boolean);
   const evidence = {
     outcome: outcome ? { exitCode: outcome.exitCode, phase: outcome.phase, gate: outcome.gate?.name ?? null, message: excerpt(outcome.message, 500), mergeCommand: outcome.mergeCommand ?? null } : null,
     lanes: (state?.lanes ?? []).map((l) => ({
@@ -85871,9 +86276,9 @@ async function runFactoryRunScenario(input2) {
     })),
     laneStarts: lanes.starts.map((s) => ({ laneId: s.laneId, profile: s.profile ?? "write", maxCredits: s.maxCredits })),
     head: state?.head ?? null,
-    remoteHead: bareRef(bare, `refs/heads/factory/issue-${FACTORY_RUN_ISSUE}`) || null,
+    remoteHead: bareRef(bare2, `refs/heads/factory/issue-${FACTORY_RUN_ISSUE}`) || null,
     baseBefore,
-    baseAfter: bareRef(bare, `refs/heads/${FACTORY_RUN_BASE}`),
+    baseAfter: bareRef(bare2, `refs/heads/${FACTORY_RUN_BASE}`),
     remoteRefs: refs2,
     shipVerdict: verdict ? { verdict: verdict.verdict, sha: verdict.sha, reviewer: verdict.reviewer } : null,
     integrityOk: !!state && verifyFactoryIntegrity(state),

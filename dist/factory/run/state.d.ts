@@ -311,12 +311,17 @@ export interface FactoryRunState {
     sandboxedGateHead?: string;
     /**
      * The networked dotnet restore step (nuget-restore.ts): the head it last ran for and the gate definition hash
-     * (as gateChangeApproved) that head had. Once per definition and head, also across reruns; the run's packages
-     * folder holds what that definition restored, and is emptied before a restore for another definition.
+     * (as gateChangeApproved) that head had. The run's packages folder holds what that definition restored: only a
+     * dotnet command for a commit with that definition reads it, and it is emptied before a restore or a gate for
+     * another definition. `outcome` (written once the step ended; absent while it runs, or from an older release):
+     * `passed`, `failed` (it ran and exited non-zero or timed out, `exit` its code) or `not-run` (the sandbox gave no
+     * verdict or did not start). A rerun repeats the step for the same head unless it `passed`.
      */
     nugetRestore?: {
         head: string;
         definition: string;
+        outcome?: 'passed' | 'failed' | 'not-run';
+        exit?: number;
     };
     /** The head a check last ran on WITHOUT any sandbox through the Windows git-transport fallback: such a run is never auto-merged. */
     gitTransportPlainHead?: string;

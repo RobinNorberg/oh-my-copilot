@@ -210,9 +210,57 @@ export function stateGateNext(s, root, tamperHold = false) {
         secretFindings: Boolean(s.pendingCommit?.secretFindings?.length), tamperHold,
     });
 }
-const SAFE_ARG = /^[A-Za-z0-9_./:@%+=,\\-]+$/;
-/** One argv as a copyable line: a word with any other character is single-quoted (POSIX shells and PowerShell read it the same unless it holds a single quote, written the POSIX way). */
-export function commandLine(argv) {
-    return argv.map((a) => (SAFE_ARG.test(a) ? a : `'${a.replace(/'/g, "'\\''")}'`)).join(' ');
+/** A word printed bare in a POSIX shell (no backslash: it escapes there). */
+const BARE_POSIX = /^[A-Za-z0-9_./:@%+=,-]+$/;
+/** A word printed bare on Windows: no `%` (cmd expands it), `,` (a PowerShell array) or `@` (splatting). */
+const BARE_WIN = /^[A-Za-z0-9_./:\\+=-]+$/;
+/**
+ * Letters, digits, space and `/ : . _ -`: double-quoted, such a word reads
+ * the same in PowerShell, cmd.exe and a POSIX shell (no `"`, `$`, backtick,
+ * `%`, `!`, `^`, `&`, `|`, `<`, `>`, `;`, `'` or backslash inside).
+ */
+const DOUBLE_QUOTABLE = /^[\p{L}\p{N} /:._-]+$/u;
+/** A character a terminal shows as blank, nothing or a control (what plainText replaces): never printed inside a command. */
+const UNPRINTABLE = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u;
+const bare = (word, platform) => (platform === 'win32' ? BARE_WIN : BARE_POSIX).test(word);
+/** The word prints bare or double-quoted the same in every shell family. */
+const portable = (word, platform) => !UNPRINTABLE.test(word) && (bare(word, platform) || DOUBLE_QUOTABLE.test(word));
+/**
+ * One word for the shell family of `platform`: bare when safe, double quotes
+ * for the portable set, else the shell's own single quotes (POSIX `'\''`;
+ * on Windows PowerShell's `''` doubling, which cmd.exe does not read, so
+ * commandText withholds a root that needs it).
+ */
+function quoteWord(word, platform) {
+    if (bare(word, platform))
+        return word;
+    if (DOUBLE_QUOTABLE.test(word) && !UNPRINTABLE.test(word))
+        return `"${word}"`;
+    return platform === 'win32' ? `'${word.replace(/'/g, "''")}'` : `'${word.replace(/'/g, "'\\''")}'`;
+}
+/** One argv as a copyable line for the shell family of `platform` (default: this host's). */
+export function commandLine(argv, platform = process.platform) {
+    return argv.map((a) => quoteWord(a, platform)).join(' ');
+}
+/**
+ * What a human is shown for a command (the stored argv stays exact). The
+ * repository root is the one free-form word a command holds (`git -C
+ * <root> ...`): when it is outside the portable set on Windows (cmd.exe
+ * ignores single quotes), or holds a character a terminal cannot show, the
+ * `-C <root>` form is withheld and the command is to be run in the
+ * repository root (`inRoot`).
+ */
+export function commandText(argv, platform = process.platform) {
+    if (argv[0] === 'git' && argv[1] === '-C' && argv.length > 3) {
+        const root = argv[2];
+        if (!portable(root, platform) && (platform === 'win32' || UNPRINTABLE.test(root)))
+            return { line: commandLine(['git', ...argv.slice(3)], platform), inRoot: true };
+    }
+    return { line: commandLine(argv, platform), inRoot: false };
+}
+/** commandText as one phrase: the line, or "in the repository root: <line>". */
+export function humanCommand(argv, platform = process.platform) {
+    const t = commandText(argv, platform);
+    return t.inRoot ? `in the repository root: ${t.line}` : t.line;
 }
 //# sourceMappingURL=gate-next.js.map

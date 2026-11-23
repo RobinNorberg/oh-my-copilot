@@ -11,7 +11,7 @@ export declare function steps(key: FactoryRunKey): {
 };
 /**
  * The argv list of the park `out` stopped at, after checking that the state
- * file seals the same gate.next and, at the merge gate, that the merge step is
+ * file seals the same gate.next and, at the merge gate, that the merge step, as shown, is
  * the outcome's merge command.
  */
 export declare function sealedNext(root: string, key: FactoryRunKey, out: FactoryRunOutcome): string[][];
