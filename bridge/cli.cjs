@@ -10984,8 +10984,8 @@ function evaluateSandboxLane(run3) {
   const reviewLanded = e2.reviewTargets.filter((t) => t.landed);
   const reviewRan = !!review && review.okShellCalls > 0;
   const reviewOk = !!review && review.state === "completed" && enforced(review) && reviewRan && e2.reviewTargets.length > 0 && reviewLanded.length === 0 && review.changedFiles.length === 0;
-  const inside2 = target(e2.writeTargets, "worktree");
-  const insideOk = !!write && enforced(write) && !!inside2?.landed;
+  const inside3 = target(e2.writeTargets, "worktree");
+  const insideOk = !!write && enforced(write) && !!inside3?.landed;
   const outside = e2.writeTargets.filter((t) => t.kind === "main-checkout" || t.kind === "shared");
   const main3 = target(e2.writeTargets, "main-checkout");
   const mainInformational = !!main3 && isUnder(main3.path, e2.tempDir, process.platform);
@@ -11025,7 +11025,7 @@ function evaluateSandboxLane(run3) {
       ok: reviewOk,
       detail: !review ? "no review lane" : `review lane ${review.state}, ${modeOf(review)}; ${e2.reviewTargets.map((t) => `${t.kind} ${t.landed ? "LANDED" : "blocked"}`).join(", ") || "no targets"}; worktree changes ${review.changedFiles.join(", ") || "none"}` + (reviewRan ? "" : `; the lane ran no command (none of its ${review.shellCalls} shell call(s) succeeded), so "blocked" is no evidence${review.error ? `: ${excerpt(review.error, 160)}` : ""}`)
     },
-    { id: `${p}.write_inside`, ok: insideOk, detail: !write ? "no write lane" : `write lane ${write.state}, ${modeOf(write)}; ${SANDBOX_LANE_FILE} in the worktree ${inside2?.landed ? "created" : "missing"}` },
+    { id: `${p}.write_inside`, ok: insideOk, detail: !write ? "no write lane" : `write lane ${write.state}, ${modeOf(write)}; ${SANDBOX_LANE_FILE} in the worktree ${inside3?.landed ? "created" : "missing"}` },
     { id: `${p}.write_outside_blocked`, ok: outsideOk, detail: !e2.probe ? noProbe : outside.length ? `${outside.map((t) => `${t.kind} ${fate(t)}`).join("; ")}${tempNote}` : `no outside targets probed; ${modeOf(write)}` },
     { id: `${p}.network_blocked`, ok: networkOk, detail: !e2.probe ? `no probe output from the write lane; ${modeOf(write)}` : `loopback listener ${e2.localHits} hit(s), probe local ${reach(local)}; outbound https://github.com ${reach(outbound)}` },
     {
@@ -37422,8 +37422,8 @@ function safeRealpathSync(filePath) {
     return filePath;
   }
 }
-function isWithinBoundary(realPath, boundary) {
-  const normalizedReal = (0, import_path26.normalize)(realPath);
+function isWithinBoundary(realPath2, boundary) {
+  const normalizedReal = (0, import_path26.normalize)(realPath2);
   const normalizedBoundary = (0, import_path26.normalize)(safeRealpathSync(boundary));
   return normalizedReal === normalizedBoundary || normalizedReal.startsWith(normalizedBoundary + import_path26.sep);
 }
@@ -37440,18 +37440,18 @@ function findSkillFiles(projectRoot, options) {
       const projectFiles = [];
       findSkillFilesRecursive(projectSkillsDir, projectFiles);
       for (const filePath of projectFiles) {
-        const realPath = safeRealpathSync(filePath);
-        if (seenRealPaths.has(realPath)) continue;
-        if (!isWithinBoundary(realPath, projectSkillsDir)) {
+        const realPath2 = safeRealpathSync(filePath);
+        if (seenRealPaths.has(realPath2)) continue;
+        if (!isWithinBoundary(realPath2, projectSkillsDir)) {
           if (DEBUG_ENABLED) {
             console.warn("[learner] Symlink escape blocked:", filePath);
           }
           continue;
         }
-        seenRealPaths.add(realPath);
+        seenRealPaths.add(realPath2);
         candidates.push({
           path: filePath,
-          realPath,
+          realPath: realPath2,
           scope: "project",
           sourceDir: projectSkillsDir
         });
@@ -37464,18 +37464,18 @@ function findSkillFiles(projectRoot, options) {
       const userFiles = [];
       findSkillFilesRecursive(userDir, userFiles);
       for (const filePath of userFiles) {
-        const realPath = safeRealpathSync(filePath);
-        if (seenRealPaths.has(realPath)) continue;
-        if (!isWithinBoundary(realPath, userDir)) {
+        const realPath2 = safeRealpathSync(filePath);
+        if (seenRealPaths.has(realPath2)) continue;
+        if (!isWithinBoundary(realPath2, userDir)) {
           if (DEBUG_ENABLED) {
             console.warn("[learner] Symlink escape blocked:", filePath);
           }
           continue;
         }
-        seenRealPaths.add(realPath);
+        seenRealPaths.add(realPath2);
         candidates.push({
           path: filePath,
-          realPath,
+          realPath: realPath2,
           scope: "user",
           sourceDir: userDir
         });
@@ -57382,9 +57382,9 @@ function getTrustedPrefixes() {
 function isTrustedPrefix(resolvedPath) {
   const flavor = pathFlavor();
   return getTrustedPrefixes().some((prefix) => {
-    const relative52 = flavor.relative(prefix, resolvedPath);
-    if (relative52 === "") return true;
-    return !relative52.startsWith("..") && !flavor.isAbsolute(relative52);
+    const relative53 = flavor.relative(prefix, resolvedPath);
+    if (relative53 === "") return true;
+    return !relative53.startsWith("..") && !flavor.isAbsolute(relative53);
   });
 }
 function assertBinaryName(binary) {
@@ -71373,8 +71373,8 @@ function isSensitiveRepoRelativePath(repoRelativePath) {
   if (!normalized2 || normalized2 === ".") {
     return false;
   }
-  const basename70 = normalized2.slice(normalized2.lastIndexOf("/") + 1);
-  if (SENSITIVE_REPO_BASENAMES.has(basename70) || SENSITIVE_REPO_EXTENSIONS.some((extension) => basename70.endsWith(extension))) {
+  const basename71 = normalized2.slice(normalized2.lastIndexOf("/") + 1);
+  if (SENSITIVE_REPO_BASENAMES.has(basename71) || SENSITIVE_REPO_EXTENSIONS.some((extension) => basename71.endsWith(extension))) {
     return true;
   }
   return normalized2 === ".git" || normalized2.startsWith(".git/") || normalized2.includes("/.git/") || normalized2 === ".ssh" || normalized2.startsWith(".ssh/") || normalized2.includes("/.ssh/") || normalized2 === "secrets" || normalized2.startsWith("secrets/") || normalized2.includes("/secrets/") || normalized2 === ".env" || normalized2.startsWith(".env.") || normalized2.includes("/.env") || normalized2.includes("/.env.") || normalized2 === "node_modules/.cache" || normalized2.startsWith("node_modules/.cache/") || normalized2.includes("/node_modules/.cache/");
@@ -93138,11 +93138,11 @@ function pathsOverlap(a, b) {
     return process.platform === "win32" ? out.toLowerCase() : out;
   };
   const [ka, kb] = [key(a), key(b)];
-  const inside2 = (child, parent) => {
+  const inside3 = (child, parent) => {
     const rel = path21.relative(parent, child);
     return rel === "" || !rel.startsWith("..") && !path21.isAbsolute(rel);
   };
-  return inside2(ka, kb) || inside2(kb, ka);
+  return inside3(ka, kb) || inside3(kb, ka);
 }
 function afkSpawnFlags(includeUserSettings) {
   const flags = [...AFK_SPAWN_FLAGS];
@@ -99055,8 +99055,8 @@ async function startMergeOrchestrator(config2) {
   let persisted = { lastShas: {} };
   if ((0, import_node_fs27.existsSync)(persistedPath)) {
     try {
-      const { readFileSync: readFileSync206 } = await import("node:fs");
-      persisted = JSON.parse(readFileSync206(persistedPath, "utf-8"));
+      const { readFileSync: readFileSync205 } = await import("node:fs");
+      persisted = JSON.parse(readFileSync205(persistedPath, "utf-8"));
     } catch {
       persisted = { lastShas: {} };
     }
@@ -99503,8 +99503,8 @@ async function recoverFromRestart(config2) {
   let persistedShasLoaded = 0;
   if ((0, import_node_fs27.existsSync)(persistedPath)) {
     try {
-      const { readFileSync: readFileSync206 } = await import("node:fs");
-      const persisted = JSON.parse(readFileSync206(persistedPath, "utf-8"));
+      const { readFileSync: readFileSync205 } = await import("node:fs");
+      const persisted = JSON.parse(readFileSync205(persistedPath, "utf-8"));
       persistedShasLoaded = Object.keys(persisted.lastShas ?? {}).length;
     } catch {
       persistedShasLoaded = 0;
@@ -104930,7 +104930,7 @@ async function processCliWorkerVerdictsUnderLock(teamName, cwd, expectedInstance
   const { rename: rename9 } = await import("fs/promises");
   const {
     renameSync: renameSync30,
-    readFileSync: readFileSync206,
+    readFileSync: readFileSync205,
     existsSync: fsExistsSync
   } = await import("fs");
   const { withFileLockSync: withFileLockSync2 } = await Promise.resolve().then(() => (init_file_lock(), file_lock_exports));
@@ -105029,7 +105029,7 @@ async function processCliWorkerVerdictsUnderLock(teamName, cwd, expectedInstance
               return;
             }
           }
-          const raw = readFileSync206(outputFile, "utf-8");
+          const raw = readFileSync205(outputFile, "utf-8");
           parseCliWorkerVerdict(raw);
           renameSync30(outputFile, processingOutputFile);
           verdictFile = processingOutputFile;
@@ -124358,13 +124358,13 @@ function checkPath(value, quoted, gitRev, ctx) {
     if (hasDotDotSegment(part)) return `.. segment in path ${part}`;
     const slashed = part.replace(/\\/g, "/");
     const abs = (0, import_node_path37.isAbsolute)(slashed) ? slashed : (0, import_node_path37.resolve)(ctx.cwd, slashed);
-    let inside2 = false;
+    let inside3 = false;
     try {
-      inside2 = isUnderRoot(realExistingPrefix(abs), ctx.cwd, ctx.platform);
+      inside3 = isUnderRoot(realExistingPrefix(abs), ctx.cwd, ctx.platform);
     } catch {
       return `path not resolvable: ${part}`;
     }
-    if (!inside2) return `path outside the worktree: ${part}`;
+    if (!inside3) return `path outside the worktree: ${part}`;
   }
   return null;
 }
@@ -125479,12 +125479,12 @@ var init_job = __esm({
           const top = repoRoot3 ? (0, import_node_path40.resolve)(repoRoot3) : cwd;
           if (isolation === "none" && profile === "write" && sandboxSettings.writeUnsandboxed !== "detect-only") {
             const omcRoot = getOmcRoot(top);
-            let inside2 = true;
+            let inside3 = true;
             try {
-              inside2 = isUnderRoot(omcRoot, top, this.deps.platform);
+              inside3 = isUnderRoot(omcRoot, top, this.deps.platform);
             } catch {
             }
-            if (inside2) {
+            if (inside3) {
               throw new CopilotRunError(`copilot_run_start: a sandboxed write job with isolation "none" would let the lane write the job's state in ${omcRoot}, which lies inside ${top}. Use isolation "worktree" (the default), or the review profile.`);
             }
           }
@@ -128638,7 +128638,7 @@ function checkoutCopyProblem(checkout) {
     return "the checkout could not be resolved";
   }
   let seen = 0;
-  const inside2 = (p) => samePathOrUnder(p, root);
+  const inside3 = (p) => samePathOrUnder(p, root);
   const walk = (dir) => {
     for (const name of (0, import_node_fs37.readdirSync)(dir)) {
       if (name === ".git" || name === "node_modules") continue;
@@ -128654,7 +128654,7 @@ function checkoutCopyProblem(checkout) {
         } catch {
           return "the checkout has a link whose target does not exist";
         }
-        if (!inside2(target)) return "the checkout has a link (a symbolic link or junction) that points outside it";
+        if (!inside3(target)) return "the checkout has a link (a symbolic link or junction) that points outside it";
         continue;
       }
       if (st.isDirectory()) {
@@ -156666,8 +156666,15 @@ function addUsage(into, u) {
   into.premiumRequests += u.premiumRequests;
   into.lanes += u.lanes;
 }
+function parkEffect(h) {
+  if (h.from === null || h.from !== h.to) return { kind: "end" };
+  const note = String(h.note ?? "");
+  const park = GATE_NOTE3.exec(note);
+  if (park) return { kind: "park", gate: text7(park[1], 60) };
+  return RERUN_NOTE.test(note) ? { kind: "end" } : { kind: "note" };
+}
 function runTimeline(s, now2) {
-  const entries = s.history.filter((h) => h && Number.isFinite(msOf2(h.at)));
+  const entries = (Array.isArray(s.history) ? s.history : []).filter((h) => h && Number.isFinite(msOf2(h.at)));
   const steps = [];
   let engineMs = 0;
   let waitingMs = 0;
@@ -156675,6 +156682,11 @@ function runTimeline(s, now2) {
   let mergeReadyAt = null;
   let engineToMergeReadyMs = null;
   let waitingSince = null;
+  const problems = /* @__PURE__ */ new Set();
+  const clamp2 = (t) => {
+    if (t > now2 + FUTURE_SLACK_MS) problems.add("later than now");
+    return Math.min(t, now2);
+  };
   const stepFor = (phase2) => {
     const last = steps.at(-1);
     if (last && last.phase === phase2) return last;
@@ -156684,44 +156696,56 @@ function runTimeline(s, now2) {
   };
   let phase = null;
   const parked = s.gate !== void 0 && !TERMINAL_FACTORY_PHASES.includes(s.phase);
-  const gateAt = msOf2(s.gate?.at);
+  const gateAt = clamp2(msOf2(s.gate?.at));
+  let waiting = null;
+  let parkStart = Number.NaN;
+  let cursor = Number.NEGATIVE_INFINITY;
+  let lastStart = Number.NaN;
   for (let i = 0; i < entries.length; i++) {
     const h = entries[i];
-    const park = h.from !== null && h.from === h.to ? GATE_NOTE3.exec(String(h.note ?? "")) : null;
-    if (!park || phase === null) phase = text7(h.to, 40);
+    const effect = parkEffect(h);
+    if (effect.kind !== "park" || phase === null) phase = text7(h.to, 40);
     if (TERMINAL_FACTORY_PHASES.includes(h.to)) {
       stepFor(phase);
       break;
     }
-    const start = msOf2(h.at);
+    let start = clamp2(msOf2(h.at));
+    if (start < cursor) {
+      problems.add("out of order");
+      start = cursor;
+    }
+    lastStart = start;
+    if (effect.kind === "park") waiting = effect.gate;
+    else if (effect.kind === "end") waiting = null;
     const lastEntry = i === entries.length - 1;
     let end;
-    if (!lastEntry) end = msOf2(entries[i + 1].at);
-    else if (park && parked) end = now2;
+    if (!lastEntry) end = clamp2(msOf2(entries[i + 1].at));
+    else if (waiting !== null && parked) end = now2;
     else if (parked && Number.isFinite(gateAt) && gateAt > start) end = gateAt;
-    else end = msOf2(s.updatedAt);
+    else end = clamp2(msOf2(s.updatedAt));
     const span = Number.isFinite(end) && end > start ? end - start : 0;
+    cursor = start + span;
     const step = stepFor(phase);
-    if (park) {
-      const gate = text7(park[1], 60);
-      step.gates.push(gate);
+    if (effect.kind === "park") {
+      step.gates.push(effect.gate);
+      parkStart = start;
+      if (effect.gate === "merge" && mergeReadyAt === null) {
+        mergeReadyAt = new Date(start).toISOString();
+        engineToMergeReadyMs = engineMs;
+      }
+    }
+    if (waiting !== null) {
       step.waitingMs += span;
       waitingMs += span;
-      if (gate === "merge") {
-        mergeWaitMs += span;
-        if (mergeReadyAt === null) {
-          mergeReadyAt = new Date(start).toISOString();
-          engineToMergeReadyMs = engineMs;
-        }
-      }
-      if (lastEntry && parked) waitingSince = new Date(start).toISOString();
+      if (waiting === "merge") mergeWaitMs += span;
     } else {
       step.engineMs += span;
       engineMs += span;
     }
   }
-  const lastAt = entries.length ? msOf2(entries.at(-1).at) : Number.NaN;
-  if (parked && waitingSince === null && Number.isFinite(gateAt) && !(gateAt <= lastAt)) {
+  if (parked && waiting !== null) {
+    waitingSince = new Date(Number.isFinite(gateAt) && gateAt > parkStart ? gateAt : parkStart).toISOString();
+  } else if (parked && Number.isFinite(gateAt) && !(gateAt <= lastStart)) {
     const gate = text7(s.gate.name, 60);
     const step = stepFor(phase ?? text7(s.phase, 40));
     const span = Math.max(0, now2 - gateAt);
@@ -156737,7 +156761,7 @@ function runTimeline(s, now2) {
       }
     }
   }
-  return { steps, engineMs, waitingMs, waitingSince, mergeReadyAt, engineToMergeReadyMs, mergeWaitMs };
+  return { steps, engineMs, waitingMs, waitingSince, mergeReadyAt, engineToMergeReadyMs, mergeWaitMs, clamped: problems.size ? [...problems].join(", ") : null };
 }
 function laneUsage3(l) {
   return { credits: num5(l.usage?.credits) ?? 0, premiumRequests: num5(l.usage?.premiumRequests) ?? 0, lanes: 1 };
@@ -156798,7 +156822,7 @@ function verifiedRun(key, s, now2, sinceMs) {
     addUsage(total, u);
   }
   const tl = runTimeline(s, now2);
-  return {
+  const run3 = {
     key: runLabel(key),
     kind: s.kind ?? "issue",
     trust: "ok",
@@ -156825,17 +156849,21 @@ function verifiedRun(key, s, now2, sinceMs) {
     engineToMergeReadyMs: tl.engineToMergeReadyMs,
     mergeWaitMs: tl.mergeWaitMs
   };
+  return { run: run3, clamped: tl.clamped };
 }
 function benchRow(path30, file2, source2) {
-  if ((0, import_fs187.statSync)(path30).size > MAX_BENCH_BYTES2) throw new Error(`larger than ${MAX_BENCH_BYTES2} bytes`);
-  const j = JSON.parse((0, import_fs187.readFileSync)(path30, "utf8"));
+  const r = readRegularFile(path30, MAX_BENCH_BYTES2);
+  if ("missing" in r) return null;
+  if ("error" in r) throw new Error(r.error);
+  const j = JSON.parse(r.bytes.toString("utf8"));
   if (typeof j !== "object" || j === null || Array.isArray(j)) return null;
   const totals = typeof j.totals === "object" && j.totals !== null && !Array.isArray(j.totals) ? j.totals : null;
   if (j.kind !== "omg-factory-bench" && !totals) return null;
   const t = totals ?? {};
   const runs = Array.isArray(j.runs) ? j.runs : Array.isArray(j.issues) ? j.issues : null;
   const started = j.startedAt ?? j.createdAt ?? j.timestamp;
-  const wall = num5(t.wallMs) ?? (Number.isFinite(msOf2(j.finishedAt) - msOf2(started)) ? msOf2(j.finishedAt) - msOf2(started) : null);
+  const w = num5(t.wallMs) ?? msOf2(j.finishedAt) - msOf2(started);
+  const wall = Number.isFinite(w) && w >= 0 ? w : null;
   const model = typeof j.model === "string" ? j.model : typeof j.model?.id === "string" ? j.model.id : null;
   return {
     source: source2,
@@ -156891,9 +156919,11 @@ function collectDashboardV2(root, o) {
     names2 = (0, import_fs187.readdirSync)(factoryStateDir3(root));
   } catch {
   }
+  const allStates = /* @__PURE__ */ new Map();
   const states = /* @__PURE__ */ new Map();
   const runs = [];
-  const excluded = { runs: 0, credits: 0, premiumRequests: 0 };
+  const clampedRuns = /* @__PURE__ */ new Set();
+  const excluded = { runs: 0, missing: 0 };
   for (const name of names2) {
     const key = runKeyOfName(name);
     if (key === null) continue;
@@ -156901,29 +156931,42 @@ function collectDashboardV2(root, o) {
     if (r.trust !== "ok" || !r.state) {
       runs.push(unverifiedRun(key, r.trust, r.state));
       excluded.runs++;
-      if (r.state && Array.isArray(r.state.lanes)) {
-        for (const lane of r.state.lanes) {
-          const u = laneUsage3(lane);
-          excluded.credits = round2(excluded.credits + u.credits);
-          excluded.premiumRequests += u.premiumRequests;
-        }
-      }
       continue;
     }
     const s = r.state;
+    allStates.set(runLabel(key), s);
     if (sinceMs !== null && msOf2(s.updatedAt) < sinceMs) continue;
     try {
-      runs.push(verifiedRun(key, s, now2, sinceMs));
+      const v = verifiedRun(key, s, now2, sinceMs);
+      runs.push(v.run);
       states.set(runLabel(key), s);
+      if (v.clamped) {
+        clampedRuns.add(v.run.key);
+        warnings.push(`run ${v.run.key}: history timestamps ${v.clamped}; its times are clamped to now and to the entry before, and the run is left out of the throughput medians`);
+      }
     } catch (error62) {
       warnings.push(`run ${runLabel(key)}: skipped (${text7(error62 instanceof Error ? error62.message : error62, 160)})`);
     }
+  }
+  const stateKeys = new Set(names2.map(runKeyOfName).filter((k) => k !== null).map((k) => runLabel(k)));
+  const missingLabels = new Set(attention.items.filter((i) => i.trust === "missing").map((i) => i.key));
+  let ledgerNames = [];
+  try {
+    ledgerNames = (0, import_fs187.readdirSync)((0, import_path214.dirname)(ledgerFilePath(o.ledgerDir, root, 1)));
+  } catch {
+  }
+  for (const name of ledgerNames) {
+    const key = runKeyOfName(name);
+    if (key === null || stateKeys.has(runLabel(key)) || !missingLabels.has(runLabel(key))) continue;
+    runs.push(unverifiedRun(key, "missing", void 0));
+    excluded.runs++;
+    excluded.missing++;
   }
   const startedMs = (r) => msOf2(r.startedAt);
   runs.sort((a, b) => Number(b.verified) - Number(a.verified) || (startedMs(b) || 0) - (startedMs(a) || 0) || b.key.localeCompare(a.key, "en", { numeric: true }));
   const verified = runs.filter((r) => r.verified);
   const liveRuns = attention.summary.engines.runs.map((label2) => {
-    const s = states.get(label2);
+    const s = allStates.get(label2);
     if (!s) return { key: label2, verified: false, phase: null, lane: null, heartbeatAgeMs: null, credits: null, inFlightCredits: 0 };
     const running = s.lanes.filter((l) => l.status === "running").at(-1);
     let heartbeatAgeMs = null;
@@ -156982,12 +157025,14 @@ function collectDashboardV2(root, o) {
     bump(r.startedAt, "started");
     bump(r.mergeReadyAt, "mergeReady");
   }
-  const toMerge = verified.flatMap((r) => r.engineToMergeReadyMs === null ? [] : [r.engineToMergeReadyMs]);
-  const mergeWaits = verified.flatMap((r) => r.mergeReadyAt === null ? [] : [r.mergeWaitMs ?? 0]);
+  const samples = verified.filter((r) => r.mergeReadyAt !== null && (sinceMs === null || msOf2(r.mergeReadyAt) >= sinceMs));
+  const sampled = samples.filter((r) => !clampedRuns.has(r.key));
+  const toMerge = sampled.flatMap((r) => r.engineToMergeReadyMs === null ? [] : [r.engineToMergeReadyMs]);
+  const mergeWaits = sampled.map((r) => r.mergeWaitMs ?? 0);
   const board = o.board ? new Map(boardRows(o.board.json).map((b) => [runLabel(b.id), b])) : null;
   const tasks = runs.map((r) => {
     const b = board?.get(r.key);
-    const lastAt = r.waitingSince ? now2 : msOf2(r.updatedAt);
+    const lastAt = r.waitingSince ? now2 : Math.min(now2, msOf2(r.updatedAt));
     return {
       key: r.key,
       verified: r.verified,
@@ -157039,13 +157084,15 @@ function collectDashboardV2(root, o) {
     throughput: {
       byDay: [...through].map(([day, v]) => ({ day, ...v })).sort((a, b) => a.day.localeCompare(b.day)),
       engineToMergeReady: { runs: toMerge.length, medianMs: median(toMerge), p90Ms: quantile(toMerge, 0.9) },
-      waitingAtMerge: { runs: mergeWaits.length, medianMs: median(mergeWaits) }
+      waitingAtMerge: { runs: mergeWaits.length, medianMs: median(mergeWaits) },
+      since: o.since === void 0 ? null : text7(o.since, 40),
+      excludedRuns: samples.length - sampled.length
     },
     bench: readBenchV2(root, o.benchDirs ?? [], warnings).filter((b) => sinceMs === null || b.startedAt === null || msOf2(b.startedAt) >= sinceMs),
     warnings: [...attention.warnings, ...warnings].map((w) => text7(w, 500))
   };
 }
-var import_fs187, import_path214, DASHBOARD_SCHEMA_VERSION_2, GATE_NOTE3, SAFE_NAME, HEX4025, MAX_BENCH_FILES2, MAX_BENCH_BYTES2, text7, msOf2, num5, round2, emptyUsage2, forgeOf2, laneAt;
+var import_fs187, import_path214, DASHBOARD_SCHEMA_VERSION_2, GATE_NOTE3, RERUN_NOTE, FUTURE_SLACK_MS, SAFE_NAME, HEX4025, MAX_BENCH_FILES2, MAX_BENCH_BYTES2, text7, msOf2, num5, round2, emptyUsage2, forgeOf2, laneAt;
 var init_collect_v2 = __esm({
   "src/factory/dashboard/collect-v2.ts"() {
     "use strict";
@@ -157054,11 +157101,14 @@ var init_collect_v2 = __esm({
     init_mirror();
     init_score();
     init_collect3();
+    init_ledger2();
     init_progress2();
     init_state6();
     init_collect2();
     DASHBOARD_SCHEMA_VERSION_2 = 2;
     GATE_NOTE3 = /^awaiting-human: ([^:]+):/;
+    RERUN_NOTE = /^rerun after awaiting-human: /;
+    FUTURE_SLACK_MS = 6e4;
     SAFE_NAME = /^[a-z0-9][a-z0-9-]{0,59}$/;
     HEX4025 = /^[0-9a-f]{40}$/;
     MAX_BENCH_FILES2 = 200;
@@ -157216,7 +157266,7 @@ function renderDashboardHtml(d, o = {}) {
   );
   const c = d.cost;
   const caps = c.caps.source === "config" ? `Caps: ${esc2(num6(c.caps.laneMaxCredits))} credits per lane${c.caps.maxRunCredits === null ? ", no run cap" : `, ${esc2(num6(c.caps.maxRunCredits))} per run`}. <span class="muted">${esc2(c.caps.note)}</span>` : `<span class="muted">${esc2(c.caps.note)}</span>`;
-  const excluded = c.excluded.runs ? `<p class="warn">${c.excluded.runs} run(s) are not verified and are not in these totals (their states claim ${esc2(num6(c.excluded.credits))} credits, ${esc2(c.excluded.premiumRequests)} requests).</p>` : "";
+  const excluded = c.excluded.runs ? `<p class="warn">${esc2(c.excluded.runs)} run(s) not verified, excluded from these totals${c.excluded.missing ? ` (${esc2(c.excluded.missing)} of them with the state file missing)` : ""}.</p>` : "";
   const byRun = table(
     "Credits per run",
     ["Run", "Credits", "Requests", "Cap", "Of cap"],
@@ -157229,6 +157279,7 @@ function renderDashboardHtml(d, o = {}) {
 <h3>Per run</h3>${c.byRun.length > 20 ? `<details><summary>${c.byRun.length} runs</summary>${byRun}</details>` : byRun}`;
   const t = d.throughput;
   const throughput = `<ul class="tiles"><li><span class="muted">Engine time to merge-ready, median</span><b>${esc2(dur(t.engineToMergeReady.medianMs) || "-")}</b><span class="muted">p90 ${esc2(dur(t.engineToMergeReady.p90Ms) || "-")}, ${t.engineToMergeReady.runs} run(s); waiting excluded</span></li><li><span class="muted">Waiting at the merge park, median</span><b>${esc2(dur(t.waitingAtMerge.medianMs) || "-")}</b><span class="muted">${t.waitingAtMerge.runs} run(s)</span></li></ul>
+${t.since ? `<p class="muted">Medians and per-day counts since ${esc2(t.since)}.</p>` : ""}${t.excludedRuns ? `<p class="warn">${esc2(t.excludedRuns)} run(s) left out of the medians: their history timestamps were out of order or later than now (see Warnings).</p>` : ""}
 ${table("Runs per day", ["Day", "Started", "Reached the merge park"], t.byDay.map((r) => [esc2(r.day), esc2(r.started), esc2(r.mergeReady)]), "No runs yet.")}`;
   const bench = table(
     "Bench results, oldest first",
@@ -157248,20 +157299,19 @@ ${table("Runs per day", ["Day", "Started", "Reached the merge park"], t.byDay.ma
   );
   const warnings = d.warnings.length ? `<section aria-labelledby="h-warnings"><h2 id="h-warnings">Warnings</h2><ul>${d.warnings.map((w) => `<li class="warn">${esc2(w)}</li>`).join("")}</ul></section>` : "";
   const body = { attention: attentionHtml(d), live, runs, tasks, cost, throughput, bench };
-  const refresh = o.refreshSeconds !== void 0 && Number.isInteger(o.refreshSeconds) && o.refreshSeconds > 0 ? `<meta http-equiv="refresh" content="${o.refreshSeconds}">` : "";
+  const refresh = o.refreshSeconds !== void 0 && Number.isSafeInteger(o.refreshSeconds) && o.refreshSeconds > 0 && o.refreshSeconds <= 86400 ? `<meta http-equiv="refresh" content="${o.refreshSeconds}">` : "";
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">${refresh}
 <meta name="color-scheme" content="light dark"><title>Factory Dashboard</title><style>${CSS}</style></head>
 <body><a class="skip" href="#main">Skip to content</a>
 <header><h1>Factory dashboard</h1>
-<p class="muted">Generated ${esc2(d.generatedAt)}${d.since ? `, since ${esc2(d.since)} (Attention and Live now always show the present)` : ""}. ${d.forge.read ? `Local state, and the tracker as read at ${esc2(d.forge.at ?? "")} (--forge).` : "Local state only: no forge read."}${refresh ? ` Reloads every ${o.refreshSeconds} s.` : ""}</p>
+${d.warnings.length ? `<p class="warn"><a href="#h-warnings">${esc2(d.warnings.length)} warning(s)</a></p>` : ""}<p class="muted">Generated ${esc2(d.generatedAt)}${d.since ? `, since ${esc2(d.since)} (Attention and Live now always show the present)` : ""}. ${d.forge.read ? `Local state, and the tracker as read at ${esc2(d.forge.at ?? "")} (--forge).` : "Local state only: no forge read."}${refresh ? ` Reloads every ${o.refreshSeconds} s.` : ""}</p>
 <nav aria-label="Sections"><ul>${SECTIONS.map(([id, title]) => `<li><a href="#${id}">${esc2(title)}</a></li>`).join("")}</ul></nav></header>
 <main id="main" tabindex="-1">
 <section aria-label="Summary"><ul class="tiles">${tiles}</ul></section>
-${SECTIONS.map(([id, title]) => `<section id="${id}" aria-labelledby="h-${id}"><h2 id="h-${id}">${esc2(title)}</h2>${body[id]}</section>`).join("\n")}
-${warnings}
+${SECTIONS.map(([id, title]) => `<section id="${id}" aria-labelledby="h-${id}"><h2 id="h-${id}">${esc2(title)}</h2>${body[id]}</section>${id === "attention" ? warnings : ""}`).join("\n")}
 </main></body></html>
 `;
 }
@@ -157416,26 +157466,49 @@ FD.isStatusArgv = function (argv) {
   if (argv[2] === 'run') return /^[1-9][0-9]{0,8}$/.test(argv[4]);
   return argv[2] === 'heal' && /^[0-9a-f]{8}$/.test(argv[4]);
 };
-/** What an attention row may offer: everything on a trusted row, the read-only status command on any other. */
+/**
+ * A row whose state is not trusted shows only the marker, the fixed sentence
+ * of its trust value (chosen here, never the server's text), the run key and
+ * the status command rebuilt here from that key.
+ */
+FD.UNTRUSTED_WHY = {
+  seal: 'This run state is not the engine\'s last write: its integrity seal fails. Nothing from it is shown; read it with the status command.',
+  ledger: 'This run state is not the engine\'s last write: the engine ledger does not hold these bytes. Nothing from it is shown; read it with the status command.',
+  unverified: 'This run state cannot be verified on this host: the engine ledger has no record of it. Nothing from it is shown; read it with the status command.',
+  missing: 'This run\'s state file is missing; the engine ledger holds its last write. Nothing from it is shown; read it with the status command.',
+  owner: 'An owner file the engine did not write holds this run. Nothing from it is shown; read it with the status command.',
+  unreadable: 'This run state cannot be read. Nothing from it is shown; read it with the status command.'
+};
+FD.trustOf = function (t) { return typeof t === 'string' && t !== 'ok' && Object.prototype.hasOwnProperty.call(FD.UNTRUSTED_WHY, t) ? t : 'unverified'; };
+/** The read-only status command of a run label, built here from the validated key; null for any other label. */
+FD.statusCommand = function (label) {
+  var api = FD.apiKey(label);
+  if (api === null) return null;
+  var argv = /^heal-/.test(api) ? ['omg', 'factory', 'heal', 'status', api.slice(5)] : ['omg', 'factory', 'run', 'status', api];
+  return { label: 'read the run state', argv: argv, line: argv.join(' '), billed: false, inRoot: false };
+};
+/** What an attention row may offer: everything on a trusted row, the client-built status command on any other. */
 FD.visibleNext = function (item) {
-  var next = Array.isArray(item.next) ? item.next : [];
-  return item.trust === 'ok' ? next : next.filter(function (n) { return FD.isStatusArgv(n.argv); });
+  if (item.trust === 'ok') return Array.isArray(item.next) ? item.next : [];
+  var s = FD.statusCommand(item.key);
+  return s ? [s] : [];
 };
 
 function statusText(r) {
-  if (!r.verified) return 'not verified (' + r.trust + ')' + (r.phase ? ' ' + r.phase : '') + (r.gate ? ' awaiting-human: ' + r.gate.name : '');
+  if (r.verified !== true) return 'not verified (' + FD.trustOf(r.trust) + ')';
   if (r.gate) return 'awaiting-human: ' + r.gate.name;
   return r.outcome === 'in-progress' ? (r.phase || '') : r.outcome;
 }
 FD.runRows = function (data) {
   return (data && Array.isArray(data.runs) ? data.runs : []).map(function (r, i) {
     var n = /^#([0-9]+)$/.exec(r.key);
+    var ok = r.verified === true && r.trust === 'ok';
     return {
-      key: String(r.key), order: n ? Number(n[1]) : null, index: i, verified: r.verified === true, trust: String(r.trust),
-      title: r.verified === true ? String(r.title || '') : '', phase: r.phase ? String(r.phase) : '', gate: r.gate ? String(r.gate.name) : '',
-      status: statusText(r), pr: typeof r.pr === 'number' ? r.pr : null, credits: r.verified === true ? r.credits : null,
-      engineMs: r.engineMs, waitingMs: r.waitingMs, updatedAt: r.updatedAt || '', updatedMs: Date.parse(r.updatedAt) || null,
-      timeline: r.verified === true && Array.isArray(r.timeline) ? r.timeline : []
+      key: String(r.key), order: n ? Number(n[1]) : null, index: i, verified: ok, trust: ok ? 'ok' : FD.trustOf(r.trust),
+      title: ok ? String(r.title || '') : '', phase: ok && r.phase ? String(r.phase) : '', gate: ok && r.gate ? String(r.gate.name) : '',
+      status: ok ? statusText(r) : statusText({ verified: false, trust: r.trust }), pr: ok && typeof r.pr === 'number' ? r.pr : null, credits: ok ? r.credits : null,
+      engineMs: ok ? r.engineMs : null, waitingMs: ok ? r.waitingMs : null, updatedAt: ok ? r.updatedAt || '' : '', updatedMs: ok ? Date.parse(r.updatedAt) || null : null,
+      timeline: ok && Array.isArray(r.timeline) ? r.timeline : []
     };
   });
 };
@@ -157486,7 +157559,8 @@ function table(doc, caption, head, rows, empty) {
     }))
   ]);
 }
-function trustMark(doc, trust) { return h(doc, 'span', { 'class': 'bad' }, 'not verified (' + trust + ')'); }
+/** The marker: a known trust value in brackets, or none (a row that carries no trust value). */
+function trustMark(doc, trust) { return h(doc, 'span', { 'class': 'bad' }, trust === undefined ? 'not verified' : 'not verified (' + FD.trustOf(trust) + ')'); }
 
 FD.commandEl = function (doc, n, fk, ctx) {
   var code = h(doc, 'code', null, String(n.line));
@@ -157519,6 +157593,16 @@ FD.buildAttention = function (doc, data, ctx, scope) {
     out.appendChild(h(doc, scope ? 'h4' : 'h3', scope ? null : { id: 'attention-' + g[0] }, [g[1] + ' ', h(doc, 'span', { 'class': 'muted' }, '(' + group.length + ')')]));
     out.appendChild(h(doc, 'ul', { 'class': 'items' }, group.map(function (i) {
       var trusted = i.trust === 'ok';
+      if (!trusted) {
+        var cmd = FD.statusCommand(i.key);
+        var label = FD.apiKey(i.key) === null ? 'a run' : String(i.key);
+        return h(doc, 'li', null, [
+          h(doc, 'p', null, [h(doc, 'b', null, label), ' ', trustMark(doc, i.trust)]),
+          h(doc, 'p', null, FD.UNTRUSTED_WHY[FD.trustOf(i.trust)]),
+          cmd && repo ? FD.whereEl(doc, repo) : null,
+          cmd ? h(doc, 'ul', { 'class': 'cmds', 'aria-label': 'Next commands' }, [FD.commandEl(doc, cmd, 'copy:' + kp + label + ':0', ctx)]) : null
+        ]);
+      }
       var age = h(doc, 'span', null, '');
       ctx.ages.push({ el: age, ageMs: i.ageMs, prefix: 'waiting ' });
       var facts = [i.gate ? 'awaiting-human: ' + i.gate : '', i.phase ? 'phase ' + i.phase : '',
@@ -157526,7 +157610,7 @@ FD.buildAttention = function (doc, data, ctx, scope) {
         i.pr === null || i.pr === undefined ? '' : 'PR ' + i.pr].filter(Boolean).join(' · ');
       var next = FD.visibleNext(i);
       return h(doc, 'li', null, [
-        h(doc, 'p', null, [h(doc, 'b', null, String(i.key)), trusted && i.title ? ' ' + String(i.title) : null, trusted ? null : ' ', trusted ? null : trustMark(doc, i.trust)]),
+        h(doc, 'p', null, [h(doc, 'b', null, String(i.key)), i.title ? ' ' + String(i.title) : null]),
         h(doc, 'p', { 'class': 'muted' }, [facts, facts ? ' · ' : '', age]),
         h(doc, 'p', null, String(i.why)),
         (Array.isArray(i.notes) ? i.notes : []).map(function (n) { return h(doc, 'p', { 'class': 'warn' }, 'note: ' + String(n)); }),
@@ -157544,7 +157628,8 @@ FD.buildLive = function (doc, data, ctx) {
   return table(doc, 'Engines running now', ['Run', 'Phase', 'Running lane', 'Last progress', 'Credits so far', 'In flight (cap)'], l.runs.map(function (r) {
     var hb = h(doc, 'span', null, '');
     if (r.heartbeatAgeMs !== null) ctx.ages.push({ el: hb, ageMs: r.heartbeatAgeMs, suffix: ' ago (a hint only)' });
-    return [String(r.key), r.verified ? String(r.phase || '') : trustMark(doc, 'state'),
+    if (r.verified !== true) return [String(r.key), trustMark(doc), '', '', '', ''];
+    return [String(r.key), String(r.phase || ''),
       r.lane ? String(r.lane.id) + ' (' + String(r.lane.kind) + ')' : h(doc, 'span', { 'class': 'muted' }, 'none'),
       r.heartbeatAgeMs === null ? h(doc, 'span', { 'class': 'muted' }, 'no progress log') : hb, FD.num(r.credits), FD.num(r.inFlightCredits)];
   }), l.slots > 0 ? 'No run is held by a live engine (' + l.slots + ' parallel slot(s) held).' : 'No engine is running.');
@@ -157576,7 +157661,8 @@ FD.buildDetail = function (doc, det) {
   if (!det) return h(doc, 'p', { 'class': 'muted' }, 'Loading…');
   if (det.error) return h(doc, 'p', { 'class': 'warn' }, String(det.error));
   var parts = [];
-  if (!det.run.verified) parts.push(h(doc, 'p', null, [trustMark(doc, det.run.trust), ' Nothing from this state is shown; read it with the status command.']));
+  // A run that is not trusted: the marker and its fixed sentence, nothing the server sent besides.
+  if (!det.run || det.run.verified !== true || det.run.trust !== 'ok') return h(doc, 'div', null, h(doc, 'p', null, [trustMark(doc, det.run && det.run.trust), ' ', FD.UNTRUSTED_WHY[FD.trustOf(det.run && det.run.trust)]]));
   if (det.lanes.length) {
     parts.push(h(doc, 'h4', null, 'Lanes'));
     parts.push(table(doc, 'Lanes', ['Lane', 'Kind', 'Status', 'Model', 'Credits', 'Requests', 'Started', 'Ended'], det.lanes.map(function (l) {
@@ -157607,23 +157693,25 @@ FD.buildRuns = function (doc, data, ctx) {
   var head = h(doc, 'tr', null, FD.RUN_COLS.map(function (c) {
     if (!c[0]) return h(doc, 'th', { scope: 'col' }, c[1]);
     var active = ui.sort && ui.sort.col === c[0];
-    var btn = h(doc, 'button', { type: 'button', 'data-k': 'sort:' + c[0] }, c[1]);
     var col = c[0];
+    var sk = 'sort:' + col;
+    var btn = h(doc, 'button', { type: 'button', 'data-k': sk }, c[1]);
     btn.addEventListener('click', function () { if (ctx.on && ctx.on.sort) ctx.on.sort(col); });
-    ctx.focus['sort:' + col] = btn;
+    ctx.focus[sk] = btn;
     return h(doc, 'th', { scope: 'col', 'aria-sort': active ? (ui.sort.dir === 'desc' ? 'descending' : 'ascending') : 'none' }, btn);
   }));
   var body = h(doc, 'tbody', null);
   pg.rows.forEach(function (r) {
     var api = FD.apiKey(r.key);
     var open = api !== null && ui.open[api] === true;
-    var cells = [r.key, r.title, r.verified ? r.status : trustMark(doc, r.trust + (r.phase ? ', ' + r.phase : '') + (r.gate ? ', ' + r.gate : '')),
+    var cells = [r.key, r.title, r.verified ? r.status : trustMark(doc, r.trust),
       r.pr === null ? '' : '#' + r.pr, FD.num(r.credits), FD.fmtDur(r.engineMs), FD.fmtDur(r.waitingMs), FD.timelineEl(doc, r.timeline), r.updatedAt];
     var dbtn = null;
     if (api !== null) {
-      dbtn = h(doc, 'button', { type: 'button', 'data-k': 'detail:' + api, 'aria-expanded': open ? 'true' : 'false', 'aria-controls': 'd-' + api }, open ? 'Hide' : 'Show');
+      var dk = 'detail:' + api;
+      dbtn = h(doc, 'button', { type: 'button', 'data-k': dk, 'aria-expanded': open ? 'true' : 'false', 'aria-controls': 'd-' + api }, open ? 'Hide' : 'Show');
       dbtn.addEventListener('click', function () { if (ctx.on && ctx.on.toggle) ctx.on.toggle(api); });
-      ctx.focus['detail:' + api] = dbtn;
+      ctx.focus[dk] = dbtn;
     }
     cells.push(dbtn);
     body.appendChild(h(doc, 'tr', null, cells.map(function (c, i) {
@@ -157648,9 +157736,14 @@ FD.buildRuns = function (doc, data, ctx) {
 FD.buildTasks = function (doc, data) {
   var forge = data.forge && data.forge.read;
   var head = ['Run', 'Title', 'Outcome', 'Phase / gate', 'PR', 'Credits', 'Wall time'].concat(forge ? ['Bucket', 'Tracker stage'] : []);
+  var untrustedRun = Object.create(null);
+  FD.runRows(data).forEach(function (r) { if (!r.verified) untrustedRun[r.key] = true; });
   return table(doc, 'Tasks', head, (data.tasks || []).map(function (t) {
-    var row = [String(t.key), t.verified || t.outcome === 'no run' ? String(t.title) : '', t.verified || t.outcome === 'no run' ? String(t.outcome) : trustMark(doc, 'state'),
-      [t.phase, t.gate ? 'awaiting-human: ' + t.gate : ''].filter(Boolean).join(' / '), t.pr === null ? '' : '#' + t.pr, FD.num(t.credits), FD.fmtDur(t.wallMs)];
+    // A board row with no run holds tracker text; a run row that is not verified shows the key and the marker only.
+    var ok = t.verified === true || (t.outcome === 'no run' && !untrustedRun[String(t.key)]);
+    var row = ok ? [String(t.key), String(t.title), String(t.outcome),
+      [t.phase, t.gate ? 'awaiting-human: ' + t.gate : ''].filter(Boolean).join(' / '), t.pr === null ? '' : '#' + t.pr, FD.num(t.credits), FD.fmtDur(t.wallMs)]
+      : [String(t.key), '', trustMark(doc), '', '', '', ''];
     if (forge) row.push(t.tracker && t.tracker.bucket ? String(t.tracker.bucket) : '', t.tracker ? [t.tracker.stage, t.tracker.liveText].filter(Boolean).join(': ') : '');
     return row;
   }), 'No runs yet.');
@@ -157723,7 +157816,8 @@ FD.buildRepos = function (doc, list, ctx) {
     var id = FD.repoId(r.id);
     var b = h(doc, 'button', { type: 'button', 'data-k': 'repo:' + id, disabled: sel === id }, sel === id ? 'Shown' : 'Show');
     b.addEventListener('click', function () { if (ctx.on && ctx.on.repo) ctx.on.repo(id); });
-    ctx.focus['repo:' + id] = b;
+    var rk = 'repo:' + id;
+    ctx.focus[rk] = b;
     var last = h(doc, 'span', null, r.lastChange ? FD.relAge(String(r.lastChange), ctx.now || Date.now()) : '');
     return [String(r.name), h(doc, 'code', null, String(r.root)), r.items ? FD.groupCounts(r.byGroup) : h(doc, 'span', { 'class': 'ok' }, 'nothing'),
       String(r.engines), String(r.runs), last, b];
@@ -157999,11 +158093,101 @@ function parseRunKey(s) {
   return m[1] !== void 0 ? Number(m[1]) : m[2];
 }
 function contentSecurityPolicy(nonce) {
-  return `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'nonce-${nonce}'; connect-src 'self'; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`;
+  return `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'nonce-${nonce}'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`;
+}
+function keyOfLabel(label2) {
+  if (typeof label2 !== "string") return null;
+  const k = parseRunKey(label2.startsWith("#") ? label2.slice(1) : label2);
+  if (k === null || typeof k === "number" !== label2.startsWith("#")) return null;
+  return k;
+}
+function servedItem(i, platform = process.platform) {
+  if (i.trust === "ok") return { ...i, next: i.next.map((n) => ({ ...n, ...commandText(n.argv, platform) })) };
+  const trust = untrustedTrust(i.trust);
+  const key = keyOfLabel(i.key);
+  const status = key === null ? null : statusArgv(key);
+  const offered = status !== null && Array.isArray(i.next) && i.next.some((n) => Array.isArray(n?.argv) && n.argv.length === status.length && n.argv.every((a, k) => a === status[k]));
+  return {
+    key: key === null ? "" : runLabel(key),
+    group: GATE_GROUPS.includes(i.group) ? i.group : "inspect",
+    gate: knownGate(i.gate),
+    phase: knownPhase(i.phase),
+    ageMs: finiteOrNull(i.ageMs),
+    credits: null,
+    cap: null,
+    pr: null,
+    head: null,
+    title: "",
+    why: UNTRUSTED_WHY[trust],
+    next: offered && status ? [{ label: "read the run state", argv: status, billed: false, ...commandText(status, platform) }] : [],
+    trust,
+    notes: []
+  };
+}
+function servedRun(r) {
+  if (trustedRun(r)) return r;
+  const key = keyOfLabel(r.key);
+  const gate = knownGate(r.gate?.name);
+  return {
+    key: key === null ? "" : runLabel(key),
+    kind: typeof key === "string" ? "ci-heal" : "issue",
+    trust: untrustedTrust(r.trust),
+    verified: false,
+    title: "",
+    phase: knownPhase(r.phase),
+    gate: gate ? { name: gate, reason: "", at: "" } : null,
+    outcome: "unknown",
+    pr: null,
+    head: null,
+    forge: null,
+    credits: null,
+    premiumRequests: null,
+    lanes: null,
+    roles: {},
+    startedAt: null,
+    updatedAt: null,
+    elapsedMs: null,
+    engineMs: null,
+    waitingMs: null,
+    waitingSince: null,
+    timeline: [],
+    mergeReadyAt: null,
+    engineToMergeReadyMs: null,
+    mergeWaitMs: null
+  };
+}
+function servedWarnings(raw, items, runs) {
+  const unreadable = [...new Set([...items, ...runs].filter((x) => x.trust === "unreadable" && x.key !== "").map((x) => x.key))].sort();
+  const out = unreadable.map((k) => `run ${k}: the state cannot be read`);
+  if (raw.length > 0) out.push(`${raw.length} warning(s): the terminal running the server prints them`);
+  return out;
 }
 function servedSummary(d, rev, platform = process.platform) {
-  const items = d.attention.items.map((i) => ({ ...i, title: i.trust === "ok" ? i.title : "", next: i.next.map((n) => ({ ...n, ...commandText(n.argv, platform) })) }));
-  return { ...d, attention: { ...d.attention, items }, rev };
+  const items = d.attention.items.map((i) => servedItem(i, platform));
+  const runs = d.runs.map(servedRun);
+  const untrusted = new Set(runs.filter((r) => !r.verified).map((r) => r.key));
+  const known = new Set(runs.map((r) => r.key));
+  const tasks = d.tasks.map((t) => {
+    const boardOnly = t.outcome === "no run" && !known.has(t.key);
+    if (boardOnly || t.verified === true && !untrusted.has(t.key)) return t;
+    const key = keyOfLabel(t.key);
+    const run3 = runs.find((r) => r.key === t.key);
+    return { key: key === null ? "" : runLabel(key), verified: false, title: "", phase: run3?.phase ?? null, gate: run3?.gate?.name ?? null, outcome: "unknown", pr: null, credits: null, wallMs: null, tracker: t.tracker };
+  });
+  const verifiedKeys = new Set(runs.filter((r) => r.verified).map((r) => r.key));
+  const liveRuns = d.live.runs.map((r) => r.verified === true && verifiedKeys.has(r.key) ? r : { key: keyOfLabel(r.key) === null ? "" : r.key, verified: false, phase: null, lane: null, heartbeatAgeMs: null, credits: null, inFlightCredits: 0 });
+  const warnings = servedWarnings(d.warnings, items, runs);
+  return {
+    ...d,
+    // The repository's folder name, never its absolute local path.
+    attention: { ...d.attention, repo: (0, import_path215.basename)(d.attention.repo), items, warnings },
+    live: { ...d.live, runs: liveRuns, inFlightCredits: liveRuns.reduce((a, r) => a + r.inFlightCredits, 0) },
+    runs,
+    tasks,
+    cost: { ...d.cost, excluded: { runs: d.cost.excluded.runs, missing: d.cost.excluded.missing } },
+    warnings,
+    rev
+  };
 }
 function summaryRev(d) {
   const stable = JSON.stringify(d, (k, v) => k === "generatedAt" || /Ms$/.test(k) ? void 0 : v);
@@ -158027,6 +158211,13 @@ function dirSignature(dir) {
   }
   return parts.join("|");
 }
+function writeEvent(s, chunk, streams) {
+  const ok2 = s.write(chunk);
+  if (ok2 && s.writableLength <= STREAM_BUFFER_MAX) return true;
+  streams.delete(s);
+  s.destroy();
+  return false;
+}
 async function startDashboardServer(o) {
   const clock = o.now ?? Date.now;
   const log3 = o.log ?? (() => {
@@ -158044,10 +158235,17 @@ async function startDashboardServer(o) {
   if (!multi && o.forgeRefresh) await o.forgeRefresh().catch((e2) => log3(`--forge: ${text8(e2 instanceof Error ? e2.message : e2)}`));
   let recomputes = 0;
   const views = /* @__PURE__ */ new Map();
+  const loggedWarnings = /* @__PURE__ */ new Map();
   const compute = (v) => {
     const d = v.source.collect(clock());
     recomputes++;
-    return servedSummary(d, summaryRev(d), platform);
+    const raw = d.warnings.map((w) => text8(w, 500));
+    if (raw.join("\n") !== (loggedWarnings.get(v.source.id) ?? "")) {
+      loggedWarnings.set(v.source.id, raw.join("\n"));
+      for (const w of raw) log3(`dashboard warning: ${multi ? `repository ${v.source.id}: ` : ""}${w}`);
+    }
+    const served = servedSummary(d, "", platform);
+    return { ...served, rev: summaryRev({ ...served, rev: void 0 }) };
   };
   const addView = (source2) => {
     let summary;
@@ -158101,7 +158299,7 @@ async function startDashboardServer(o) {
   }
   const streams = /* @__PURE__ */ new Set();
   const broadcast = (chunk) => {
-    for (const s of streams) s.write(chunk);
+    for (const s of streams) writeEvent(s, chunk, streams);
   };
   const recompute = (v) => {
     let next;
@@ -158301,12 +158499,12 @@ data: repos ${reposSummary.rev}
       req.socket.setTimeout(0);
       streams.add(res);
       res.on("close", () => streams.delete(res));
-      res.write(`retry: 3000
+      writeEvent(res, `retry: 3000
 
 event: changed
 data: ${multi ? `repos ${reposSummary.rev}` : views.get("").summary.rev}
 
-`);
+`, streams);
       return;
     }
     return refuse2(req, res, 404);
@@ -158437,7 +158635,7 @@ function runDetail(root, ledgerDir, s, key) {
   out.history = st.history.slice(-HISTORY_MAX).map((h) => ({ at: text8(h.at, 40), from: h.from === null ? null : text8(h.from, 40), to: text8(h.to, 40), note: text8(h.note, 300) }));
   return out;
 }
-var import_crypto55, import_http2, import_fs188, import_path215, DASHBOARD_HOST, TOKEN_BYTES, MAX_URL_LENGTH, MAX_HEADER_BYTES, MAX_CONNECTIONS, MAX_STREAMS, POLL_MS, DEBOUNCE_MS, MIN_RECOMPUTE_INTERVAL_MS, PING_MS, TICK_MS, FORGE_REFRESH_MS, GATE_DETAIL_MAX, MAX_WATCHERS, RESCAN_MS, MAX_REPOS, SERVED_REPO_ID, HISTORY_MAX, RUN_KEY, jsonText, plainLines, text8, SECURITY_HEADERS, GROUP_RANK;
+var import_crypto55, import_http2, import_fs188, import_path215, DASHBOARD_HOST, TOKEN_BYTES, MAX_URL_LENGTH, MAX_HEADER_BYTES, MAX_CONNECTIONS, MAX_STREAMS, POLL_MS, DEBOUNCE_MS, MIN_RECOMPUTE_INTERVAL_MS, PING_MS, TICK_MS, FORGE_REFRESH_MS, GATE_DETAIL_MAX, MAX_WATCHERS, RESCAN_MS, MAX_REPOS, SERVED_REPO_ID, HISTORY_MAX, RUN_KEY, UNTRUSTED_WHY, SAFE_NAME2, untrustedTrust, knownGate, knownPhase, finiteOrNull, trustedRun, jsonText, plainLines, text8, STREAM_BUFFER_MAX, SECURITY_HEADERS, GROUP_RANK;
 var init_serve = __esm({
   "src/factory/dashboard/serve.ts"() {
     "use strict";
@@ -158448,6 +158646,7 @@ var init_serve = __esm({
     init_score();
     init_actions();
     init_collect3();
+    init_gate_next();
     init_state6();
     init_client3();
     DASHBOARD_HOST = "127.0.0.1";
@@ -158469,9 +158668,24 @@ var init_serve = __esm({
     SERVED_REPO_ID = /^[0-9a-f]{16}$/;
     HISTORY_MAX = 100;
     RUN_KEY = /^(?:([1-9][0-9]{0,8})|(heal-[0-9a-f]{8}))$/;
+    UNTRUSTED_WHY = Object.freeze({
+      seal: "This run state is not the engine's last write: its integrity seal fails. Nothing from it is shown; read it with the status command.",
+      ledger: "This run state is not the engine's last write: the engine ledger does not hold these bytes. Nothing from it is shown; read it with the status command.",
+      unverified: "This run state cannot be verified on this host: the engine ledger has no record of it. Nothing from it is shown; read it with the status command.",
+      missing: "This run's state file is missing; the engine ledger holds its last write. Nothing from it is shown; read it with the status command.",
+      owner: "An owner file the engine did not write holds this run. Nothing from it is shown; read it with the status command.",
+      unreadable: "This run state cannot be read. Nothing from it is shown; read it with the status command."
+    });
+    SAFE_NAME2 = /^[a-z0-9][a-z0-9-]{0,59}$/;
+    untrustedTrust = (t) => typeof t === "string" && Object.prototype.hasOwnProperty.call(UNTRUSTED_WHY, t) ? t : "unverified";
+    knownGate = (g) => typeof g === "string" && SAFE_NAME2.test(g) && gateSteps(g).known ? g : null;
+    knownPhase = (p) => typeof p === "string" && FACTORY_PHASES.includes(p) ? p : null;
+    finiteOrNull = (n) => typeof n === "number" && Number.isFinite(n) ? n : null;
+    trustedRun = (r) => r.verified === true && r.trust === "ok";
     jsonText = (v) => JSON.stringify(v).replace(/[<>&\p{Zl}\p{Zp}]/gu, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`);
     plainLines = (v, max) => v.slice(0, max).split(/\r?\n/).map((l) => plainText(l)).join("\n");
     text8 = (v, max = 300) => plainText(String(v ?? "")).replace(/\s+/g, " ").trim().slice(0, max);
+    STREAM_BUFFER_MAX = 64 * 1024;
     SECURITY_HEADERS = Object.freeze({
       "X-Content-Type-Options": "nosniff",
       "Referrer-Policy": "no-referrer",
@@ -158695,33 +158909,52 @@ function openUrlInBrowser(url2, platform = process.platform) {
   }
 }
 function writeFileAtomic(file2, content2) {
-  const tmp = `${file2}.${process.pid}.tmp`;
-  try {
-    (0, import_fs190.writeFileSync)(tmp, content2, "utf8");
-    (0, import_fs190.renameSync)(tmp, file2);
-  } catch (error62) {
-    (0, import_fs190.rmSync)(tmp, { force: true });
-    throw error62;
+  for (let attempt = 1; ; attempt++) {
+    const tmp = `${file2}.${(0, import_crypto56.randomBytes)(8).toString("hex")}.tmp`;
+    let fd;
+    try {
+      fd = (0, import_fs190.openSync)(tmp, "wx");
+    } catch (error62) {
+      if (error62.code === "EEXIST" && attempt < TEMP_ATTEMPTS) continue;
+      throw error62;
+    }
+    try {
+      (0, import_fs190.writeFileSync)(fd, content2, "utf8");
+      (0, import_fs190.closeSync)(fd);
+      fd = null;
+      (0, import_fs190.renameSync)(tmp, file2);
+      return;
+    } catch (error62) {
+      if (fd !== null) (0, import_fs190.closeSync)(fd);
+      (0, import_fs190.rmSync)(tmp, { force: true });
+      throw error62;
+    }
   }
 }
-function sleepUntilInterrupt(ms2) {
-  return new Promise((done) => {
-    const onInt = () => {
-      clearTimeout(t);
-      done(false);
-    };
-    const t = setTimeout(() => {
-      process.off("SIGINT", onInt);
-      done(true);
-    }, ms2);
-    process.once("SIGINT", onInt);
-  });
+function realPath(p) {
+  let dir = (0, import_path217.resolve)(p);
+  let rest = "";
+  for (; ; ) {
+    try {
+      return rest ? (0, import_path217.join)((0, import_fs190.realpathSync)(dir), rest) : (0, import_fs190.realpathSync)(dir);
+    } catch {
+      const up = (0, import_path217.dirname)(dir);
+      if (up === dir) return (0, import_path217.resolve)(p);
+      rest = rest ? (0, import_path217.join)((0, import_path217.basename)(dir), rest) : (0, import_path217.basename)(dir);
+      dir = up;
+    }
+  }
+}
+function outPathProblem(root, file2) {
+  const real2 = realPath(file2);
+  const hit2 = [(0, import_path217.join)(root, ".git"), (0, import_path217.join)(root, ".omg"), getOmcRoot(root)].map(realPath).find((p) => inside2(real2, p));
+  return hit2 ? `--out ${file2} is inside ${hit2}: lanes can write there and it holds the factory's state; write the page outside the repository's .git and .omg` : null;
 }
 function watchSeconds(v) {
   if (v === void 0 || v === false) return null;
   if (v === true) return WATCH_DEFAULT_SECONDS;
-  const n = Number(v.replace(/s$/, ""));
-  if (!Number.isInteger(n) || n < WATCH_MIN_SECONDS) throw new UsageError(`--watch takes whole seconds, at least ${WATCH_MIN_SECONDS}; got ${JSON.stringify(v)}`);
+  const n = /^\d{1,6}s?$/.test(v) ? Number(v.replace(/s$/, "")) : Number.NaN;
+  if (!Number.isSafeInteger(n) || n < WATCH_MIN_SECONDS || n > WATCH_MAX_SECONDS) throw new UsageError(`--watch takes whole seconds from ${WATCH_MIN_SECONDS} to ${WATCH_MAX_SECONDS}; got ${JSON.stringify(v)}`);
   return n;
 }
 function servePort(v) {
@@ -158767,6 +159000,8 @@ async function runDashboard(root, o, deps) {
   if (o.serve && (o.out || watch2 !== null || o.json || schema !== "2")) throw new UsageError("--serve is a live page on its own: it does not take --out, --watch, --json or --schema (where a listener is not allowed, use --out <file> --watch)");
   if (!o.serve && (o.port !== void 0 || o.open)) throw new UsageError("--port and --open need --serve");
   const port = o.serve ? servePort(o.port) : 0;
+  const outProblem = o.out ? outPathProblem(root, (0, import_path217.resolve)(o.out)) : null;
+  if (outProblem) throw new UsageError(outProblem);
   const clock = () => (deps.now?.() ?? /* @__PURE__ */ new Date()).getTime();
   const write = deps.writeFile ?? writeFileAtomic;
   const emit2 = (body, file3) => {
@@ -158832,23 +159067,47 @@ async function runDashboard(root, o, deps) {
     return 0;
   }
   const file2 = (0, import_path217.resolve)(o.out);
-  const sleep13 = deps.sleep ?? sleepUntilInterrupt;
-  deps.err(`omg factory dashboard: writing ${file2} every ${watch2} s while it changes (Ctrl-C to stop)`);
-  let last = null;
-  for (; ; ) {
-    const now2 = clock();
-    if (o.forge && (forgeAt === null || now2 - forgeAt >= FORGE_REFRESH_MS2)) await readForge(now2);
-    const changed = last === null || page(collect2(last.now)) !== last.body;
-    if (changed) {
-      const body = page(collect2(now2));
-      try {
-        emit2(body, file2);
-        last = { now: now2, body };
-      } catch (error62) {
-        deps.err(source_default.yellow(`could not write ${file2}: ${plainText(error62 instanceof Error ? error62.message : String(error62))}; retrying next tick`));
+  let stop = false;
+  let wake = null;
+  const onSignal = () => {
+    stop = true;
+    wake?.();
+  };
+  const sleep13 = deps.sleep ?? ((ms2) => new Promise((done) => {
+    const t = setTimeout(() => {
+      wake = null;
+      done(true);
+    }, ms2);
+    wake = () => {
+      clearTimeout(t);
+      wake = null;
+      done(false);
+    };
+  }));
+  process.on("SIGINT", onSignal);
+  process.on("SIGTERM", onSignal);
+  try {
+    deps.err(`omg factory dashboard: writing ${file2} every ${watch2} s while it changes (Ctrl-C to stop)`);
+    let last = null;
+    while (!stop) {
+      const now2 = clock();
+      if (o.forge && (forgeAt === null || now2 - forgeAt >= FORGE_REFRESH_MS2)) await readForge(now2);
+      const changed = last === null || page(collect2(last.now)) !== last.body;
+      if (changed) {
+        const body = page(collect2(now2));
+        try {
+          emit2(body, file2);
+          last = { now: now2, body };
+        } catch (error62) {
+          deps.err(source_default.yellow(`could not write ${file2}: ${plainText(error62 instanceof Error ? error62.message : String(error62))}; retrying next tick`));
+        }
       }
+      if (stop || !await sleep13(watch2 * 1e3)) break;
     }
-    if (!await sleep13(watch2 * 1e3)) return 0;
+    return 0;
+  } finally {
+    process.off("SIGINT", onSignal);
+    process.off("SIGTERM", onSignal);
   }
 }
 function limitsOf(deps, root, warnings) {
@@ -158934,11 +159193,12 @@ async function startAndWait(o, deps, port, opts, what) {
   deps.err("omg factory dashboard: stopped");
   return 0;
 }
-var import_child_process50, import_fs190, import_path217, WATCH_DEFAULT_SECONDS, WATCH_MIN_SECONDS, FORGE_REFRESH_MS2, defaultRoot, defaultDashboardDeps, UsageError;
+var import_child_process50, import_crypto56, import_fs190, import_path217, WATCH_DEFAULT_SECONDS, WATCH_MIN_SECONDS, WATCH_MAX_SECONDS, FORGE_REFRESH_MS2, defaultRoot, TEMP_ATTEMPTS, inside2, defaultDashboardDeps, UsageError;
 var init_factory_dashboard = __esm({
   "src/cli/commands/factory-dashboard.ts"() {
     "use strict";
     import_child_process50 = require("child_process");
+    import_crypto56 = require("crypto");
     import_fs190 = require("fs");
     import_path217 = require("path");
     init_esm();
@@ -158953,10 +159213,18 @@ var init_factory_dashboard = __esm({
     init_state4();
     init_serve();
     init_ledger_roots();
+    init_worktree_paths();
     WATCH_DEFAULT_SECONDS = 10;
     WATCH_MIN_SECONDS = 2;
+    WATCH_MAX_SECONDS = 86400;
     FORGE_REFRESH_MS2 = 5 * 6e4;
     defaultRoot = () => (0, import_child_process50.execFileSync)("git", ["rev-parse", "--show-toplevel"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], windowsHide: true }).trim();
+    TEMP_ATTEMPTS = 5;
+    inside2 = (child, parent) => {
+      const fold9 = (s) => process.platform === "win32" ? s.toLowerCase() : s;
+      const rel = (0, import_path217.relative)(fold9(parent), fold9(child));
+      return rel === "" || !rel.startsWith("..") && !(0, import_path217.isAbsolute)(rel);
+    };
     defaultDashboardDeps = { root: defaultRoot, out: (l) => console.log(l), err: (l) => console.error(l) };
     UsageError = class extends Error {
     };
@@ -159363,7 +159631,7 @@ ${r.body.replace(/^/gm, "    ")}` : ""}`);
     throw new CheckUsageError(`local PR #${n} head moved: it is ${v.headRefOid} now, not the --head ${o.head.toLowerCase()} you reviewed; read omg factory pr diff ${n} again`);
   }
   const author = (deps.user ?? defaultUser)().trim().toLowerCase() || "local";
-  const record3 = { version: 1, id: (0, import_crypto56.randomUUID)(), pr: n, author, state: review.state, body: review.body, head: v.headRefOid, at: (/* @__PURE__ */ new Date()).toISOString() };
+  const record3 = { version: 1, id: (0, import_crypto57.randomUUID)(), pr: n, author, state: review.state, body: review.body, head: v.headRefOid, at: (/* @__PURE__ */ new Date()).toISOString() };
   appendLocalReview(ctx.storeDir, record3);
   if (o.json) say(JSON.stringify({ schemaVersion: FACTORY_PR_JSON_SCHEMA_VERSION, ok: true, review: { id: record3.id, pr: n, state: record3.state, author, head: record3.head } }, null, 2));
   else say(`recorded ${record3.state} by ${visibleLine(author)} on local PR #${n} at ${record3.head.slice(0, 8)}; the next omg factory run of its item reads it`);
@@ -159392,7 +159660,7 @@ function factoryPrCommand(deps) {
   cmd.addCommand(new Command("review").description("Record a human review on the PR's current head; the next omg factory run reads it").argument("<n>", "local PR number").option("--approve", "approve").option("--request-changes", "request changes (needs --body-file)").option("--comment", "comment without a decision (needs --body-file)").option("--body-file <file>", "the review text").option("--head <sha>", "the full head sha you reviewed (pr diff / pr view print it); refused when the PR moved since").option("--json", "JSON output (schemaVersion 1)").action(action("review", deps)));
   return cmd;
 }
-var import_fs191, import_os40, import_path219, import_crypto56, FACTORY_PR_JSON_SCHEMA_VERSION, view, defaultUser;
+var import_fs191, import_os40, import_path219, import_crypto57, FACTORY_PR_JSON_SCHEMA_VERSION, view, defaultUser;
 var init_factory_pr = __esm({
   "src/cli/commands/factory-pr.ts"() {
     "use strict";
@@ -159401,7 +159669,7 @@ var init_factory_pr = __esm({
     import_fs191 = require("fs");
     import_os40 = require("os");
     import_path219 = require("path");
-    import_crypto56 = require("crypto");
+    import_crypto57 = require("crypto");
     init_cli();
     init_state6();
     init_exec2();
@@ -159505,9 +159773,9 @@ function readBaseLayerAfterFetch(exec3, root, base, forge, user, warn) {
   }
   const held = tryScanLock(root, (/* @__PURE__ */ new Date()).toISOString(), defaultOwnerDeps(), SCAN_WAIT_MS);
   if (held instanceof FactoryBusyError) throw held;
-  const inside2 = (fn) => held.importLock ? withRepoImportLock(root, "import:cli", fn, { held: held.importLock }) : fn();
+  const inside3 = (fn) => held.importLock ? withRepoImportLock(root, "import:cli", fn, { held: held.importLock }) : fn();
   try {
-    return inside2(() => {
+    return inside3(() => {
       const ls = exec3("git", ["ls-remote", "origin", `refs/heads/${base}`], { cwd: root, env: TRUSTED_READ_ENV, timeoutMs: FETCH_TIMEOUT_MS });
       const sha3 = ls.status === 0 ? ls.stdout.trim().split(/\s+/)[0] ?? "" : "";
       if (!/^[0-9a-f]{40}$/.test(sha3)) {
@@ -160663,7 +160931,7 @@ async function runChainScenario(input2) {
   };
   const prepError = prepareChainProject(input2.projectDir);
   if (prepError) return { ...base, events: [], idle: false, timedOut: false, error: `chain setup: ${prepError}` };
-  const firstLink = (input2.randomUUID ?? import_crypto57.randomUUID)();
+  const firstLink = (input2.randomUUID ?? import_crypto58.randomUUID)();
   writeChainLinkLedger(factoryStateDir2(input2.projectDir), firstLink, "copilot", {
     intentId: CHAIN_INTENT_ID,
     stage: CHAIN_LINK1_STAGE,
@@ -160707,11 +160975,11 @@ async function runChainScenario(input2) {
     chain
   };
 }
-var import_crypto57, import_child_process52, import_fs193, import_path221, CHAIN_ACK_TOKEN, sleep9;
+var import_crypto58, import_child_process52, import_fs193, import_path221, CHAIN_ACK_TOKEN, sleep9;
 var init_copilot_chain_scenario = __esm({
   "src/smoke/copilot-chain-scenario.ts"() {
     "use strict";
-    import_crypto57 = require("crypto");
+    import_crypto58 = require("crypto");
     import_child_process52 = require("child_process");
     import_fs193 = require("fs");
     import_path221 = require("path");
@@ -160866,8 +161134,8 @@ function seedUltragoal(input2, sessionId, now2) {
 }
 async function runCliScenario(input2) {
   const { name } = input2;
-  const sessionId = (input2.randomUUID ?? import_crypto58.randomUUID)();
-  const nonce = (0, import_crypto58.randomBytes)(6).toString("hex");
+  const sessionId = (input2.randomUUID ?? import_crypto59.randomUUID)();
+  const nonce = (0, import_crypto59.randomBytes)(6).toString("hex");
   const cli = { sessionId, nonce, steps: [], stub: [] };
   const base = {
     name,
@@ -160961,11 +161229,11 @@ async function runCliScenario(input2) {
   }
   return { ...base, capped: capped3, events, idle: !timedOut && !error62, timedOut, ...error62 ? { error: error62 } : {} };
 }
-var import_crypto58, import_child_process53, import_fs195, import_path223, CLI_SCENARIO_PERMISSIONS, SANDBOX_FLAGS, STUB_EVENTS;
+var import_crypto59, import_child_process53, import_fs195, import_path223, CLI_SCENARIO_PERMISSIONS, SANDBOX_FLAGS, STUB_EVENTS;
 var init_copilot_cli_scenarios = __esm({
   "src/smoke/copilot-cli-scenarios.ts"() {
     "use strict";
-    import_crypto58 = require("crypto");
+    import_crypto59 = require("crypto");
     import_child_process53 = require("child_process");
     import_fs195 = require("fs");
     import_path223 = require("path");
@@ -161327,7 +161595,7 @@ async function runCanary(session, probe) {
   }
   probe.called = true;
   try {
-    const r = await withTimeout4(shell.executeUserRequested.call(shell, { requestId: (0, import_crypto59.randomUUID)(), command: probe.command }), CANARY_RPC_TIMEOUT_MS, "shell.executeUserRequested()");
+    const r = await withTimeout4(shell.executeUserRequested.call(shell, { requestId: (0, import_crypto60.randomUUID)(), command: probe.command }), CANARY_RPC_TIMEOUT_MS, "shell.executeUserRequested()");
     probe.result = {
       success: r?.success === true,
       exitCode: typeof r?.exitCode === "number" ? r.exitCode : null,
@@ -161486,7 +161754,7 @@ async function runSandboxLaneScenario(input2) {
   const repo = (0, import_path225.join)(dir, "repo");
   const probe = commitProbe(repo);
   if ("error" in probe) return { ...base, events: [], idle: false, timedOut: false, error: `sandbox repository setup: ${probe.error}` };
-  const nonce = (0, import_crypto59.randomBytes)(6).toString("hex");
+  const nonce = (0, import_crypto60.randomBytes)(6).toString("hex");
   const tempDir = input2.tempDir ?? (0, import_os41.tmpdir)();
   const hostRecord = await (input2.probeHost ?? (() => probeSandboxHost(input2, repo)))();
   if (!hostRecord.supported) {
@@ -161644,11 +161912,11 @@ async function runSandboxLaneScenario(input2) {
   const error62 = errors.length ? errors.join("; ") : void 0;
   return { ...base, model: laneModelLabel(input2.model, evidence.lanes.map((l) => l.model)), events: all, idle: !error62, timedOut: false, ...error62 ? { error: error62 } : {}, sandbox: evidence };
 }
-var import_crypto59, import_fs197, import_http3, import_os41, import_path225, SANDBOX_LANE_TIMEOUT_MS, CANARY_RPC_TIMEOUT_MS, SANDBOX_PROBE_SOURCE, errText8, quote3;
+var import_crypto60, import_fs197, import_http3, import_os41, import_path225, SANDBOX_LANE_TIMEOUT_MS, CANARY_RPC_TIMEOUT_MS, SANDBOX_PROBE_SOURCE, errText8, quote3;
 var init_copilot_sandbox_lane_scenario = __esm({
   "src/smoke/copilot-sandbox-lane-scenario.ts"() {
     "use strict";
-    import_crypto59 = require("crypto");
+    import_crypto60 = require("crypto");
     import_fs197 = require("fs");
     import_http3 = require("http");
     import_os41 = require("os");
@@ -162657,7 +162925,7 @@ async function runTier1(ctx, bin, opts, cleanup, artifacts) {
   (0, import_fs200.mkdirSync)(home);
   (0, import_fs200.mkdirSync)(projectDir);
   const logDir = (0, import_path228.join)(home, "logs");
-  const sessionId = (ctx.deps.randomUUID ?? import_crypto60.randomUUID)();
+  const sessionId = (ctx.deps.randomUUID ?? import_crypto61.randomUUID)();
   const identity = loginIdentity(ctx.deps.userConfigDir ?? getCopilotConfigDir());
   const env2 = buildSessionEnv(ctx.env, home, { session: true, hasLogin: identity.loggedInUsers !== void 0 });
   const config2 = { ...identity, trustedFolders: [projectDir] };
@@ -162954,12 +163222,12 @@ async function runTier2(ctx, bin, binVersion, packageVersion, opts, scenarios, c
   if (logs.path) artifacts.debugLog = logs.path;
   return result;
 }
-var import_child_process55, import_crypto60, import_fs200, import_os42, import_path228, DEFAULT_SMOKE_MODEL, DEFAULT_MAX_CREDITS2, MIN_MAX_CREDITS, DEFAULT_TIER0_TIMEOUT_MS, DEFAULT_TIER1_TIMEOUT_MS, MCP_LIST_TIMEOUT_MS, PLUGIN_NAME3, DELEGATE_AGENT2, DEFAULT_SMOKE_PROMPT, DELEGATE_SMOKE_PROMPT, SMOKE_PERMISSION_FLAGS, TIER0_COPILOT_IDS, LIVE_RUN_REFUSED_DETAIL, LIVE_PROCESS_SCENARIOS_REFUSED_DETAIL;
+var import_child_process55, import_crypto61, import_fs200, import_os42, import_path228, DEFAULT_SMOKE_MODEL, DEFAULT_MAX_CREDITS2, MIN_MAX_CREDITS, DEFAULT_TIER0_TIMEOUT_MS, DEFAULT_TIER1_TIMEOUT_MS, MCP_LIST_TIMEOUT_MS, PLUGIN_NAME3, DELEGATE_AGENT2, DEFAULT_SMOKE_PROMPT, DELEGATE_SMOKE_PROMPT, SMOKE_PERMISSION_FLAGS, TIER0_COPILOT_IDS, LIVE_RUN_REFUSED_DETAIL, LIVE_PROCESS_SCENARIOS_REFUSED_DETAIL;
 var init_copilot_smoke = __esm({
   "src/smoke/copilot-smoke.ts"() {
     "use strict";
     import_child_process55 = require("child_process");
-    import_crypto60 = require("crypto");
+    import_crypto61 = require("crypto");
     import_fs200 = require("fs");
     import_os42 = require("os");
     import_path228 = require("path");
@@ -166507,7 +166775,7 @@ var init_scheduler = __esm({
 function computeJournalFingerprint(record3) {
   const unsignedRecord = { ...record3 };
   delete unsignedRecord.journal_fingerprint;
-  return (0, import_crypto64.createHash)("sha256").update(canonicalJson2(unsignedRecord)).digest("hex");
+  return (0, import_crypto65.createHash)("sha256").update(canonicalJson2(unsignedRecord)).digest("hex");
 }
 function envelopeError(value) {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
@@ -166531,12 +166799,12 @@ function envelopeError(value) {
   }
   return null;
 }
-var import_fs210, import_crypto64, import_path239, DESCRIPTOR_HASH_PATTERN2, JOURNAL_FINGERPRINT_PATTERN, FileJournal;
+var import_fs210, import_crypto65, import_path239, DESCRIPTOR_HASH_PATTERN2, JOURNAL_FINGERPRINT_PATTERN, FileJournal;
 var init_journal = __esm({
   "src/graph/runtime/journal.ts"() {
     "use strict";
     import_fs210 = require("fs");
-    import_crypto64 = require("crypto");
+    import_crypto65 = require("crypto");
     import_path239 = require("path");
     init_descriptor();
     init_run_dir();
@@ -166729,12 +166997,12 @@ function lstatNoFollow(operations, filePath) {
   }
   return stats;
 }
-var import_fs211, import_crypto65, DEFAULT_STALE_GRACE_MS, LOCK_FILE_NAME, EPOCH_FILE_NAME, FileOwnershipFence;
+var import_fs211, import_crypto66, DEFAULT_STALE_GRACE_MS, LOCK_FILE_NAME, EPOCH_FILE_NAME, FileOwnershipFence;
 var init_fence = __esm({
   "src/graph/runtime/fence.ts"() {
     "use strict";
     import_fs211 = require("fs");
-    import_crypto65 = require("crypto");
+    import_crypto66 = require("crypto");
     init_atomic_write();
     init_platform();
     init_run_dir();
@@ -166837,7 +167105,7 @@ var init_fence = __esm({
             continue;
           }
           this.beforeTakeoverRename?.();
-          const tombstone = `${lockPath2}.tomb.${(0, import_crypto65.randomBytes)(6).toString("hex")}`;
+          const tombstone = `${lockPath2}.tomb.${(0, import_crypto66.randomBytes)(6).toString("hex")}`;
           try {
             operations.rename(lockPath2, tombstone);
           } catch {
@@ -166905,7 +167173,7 @@ var init_fence = __esm({
           return false;
         }
         this.beforeReleaseRename?.();
-        const tombstone = `${lockPath2}.tomb.${(0, import_crypto65.randomBytes)(6).toString("hex")}`;
+        const tombstone = `${lockPath2}.tomb.${(0, import_crypto66.randomBytes)(6).toString("hex")}`;
         try {
           operations.rename(lockPath2, tombstone);
         } catch (error62) {
@@ -167062,7 +167330,7 @@ var init_fence = __esm({
       /** Remove only a lock inode positively identified as ours after create. */
       cleanupCreatedLock(operations, lockPath2, createdIdentity) {
         if (createdIdentity === null) return;
-        const tombstone = `${lockPath2}.tomb.${(0, import_crypto65.randomBytes)(6).toString("hex")}`;
+        const tombstone = `${lockPath2}.tomb.${(0, import_crypto66.randomBytes)(6).toString("hex")}`;
         try {
           operations.rename(lockPath2, tombstone);
         } catch {
@@ -185117,7 +185385,7 @@ function smokeCassetteImportCommand(dir, cli) {
 
 // src/cli/commands/hooks.ts
 var import_child_process56 = require("child_process");
-var import_crypto61 = require("crypto");
+var import_crypto62 = require("crypto");
 var import_fs201 = require("fs");
 var import_os44 = require("os");
 var import_path230 = require("path");
@@ -185262,7 +185530,7 @@ function dispatchChecks(manifest, root, env2, spawnSync25, deps, only) {
     spawnSync25("git", ["init", "-q"], { cwd: project, encoding: "utf8", timeout: 3e4, windowsHide: true });
     (0, import_fs201.writeFileSync)((0, import_path230.join)(project, "README.md"), "# omg hooks doctor\n");
     const sandboxEnv = { ...buildSessionEnv(env2, (0, import_path230.join)(home, ".copilot")), HOME: home, USERPROFILE: home };
-    const payloads = doctorPayloads(project, `omg-hooks-doctor-${(deps.randomUUID ?? import_crypto61.randomUUID)()}`);
+    const payloads = doctorPayloads(project, `omg-hooks-doctor-${(deps.randomUUID ?? import_crypto62.randomUUID)()}`);
     for (const event of events) {
       for (const entry2 of manifest.hooks[event]) {
         const variants = payloads[event] ?? [];
@@ -185414,7 +185682,7 @@ async function budgetCommand(action2, options, cwd = process.cwd()) {
 }
 
 // src/cli/commands/capabilities.ts
-var import_crypto62 = require("crypto");
+var import_crypto63 = require("crypto");
 var import_fs202 = require("fs");
 var import_path231 = require("path");
 init_zod();
@@ -185444,7 +185712,7 @@ function sortJson(value) {
   return value;
 }
 function sha2565(value) {
-  return (0, import_crypto62.createHash)("sha256").update(value).digest("hex");
+  return (0, import_crypto63.createHash)("sha256").update(value).digest("hex");
 }
 function resolveLockfilePath(lockfile) {
   return (0, import_path231.resolve)(process.cwd(), lockfile ?? DEFAULT_CAPABILITIES_LOCKFILE);
@@ -190762,7 +191030,7 @@ async function launchCommand(args) {
 
 // src/cli/interop.ts
 var import_child_process59 = require("child_process");
-var import_crypto63 = require("crypto");
+var import_crypto64 = require("crypto");
 init_tmux_utils();
 
 // src/interop/shared-state.ts
@@ -190886,7 +191154,7 @@ async function launchInteropHerdrSession(cwd, herdrPaneId, options) {
     console.warn("Warning: codex CLI is not available. Only Claude Code will be launched.");
     console.warn("Install oh-my-codex (npm install -g @openai/codex) for full interop support.\n");
   }
-  const sessionId = `interop-${(0, import_crypto63.randomUUID)().split("-")[0]}`;
+  const sessionId = `interop-${(0, import_crypto64.randomUUID)().split("-")[0]}`;
   initInteropSession(sessionId, cwd, options.hasCodex ? cwd : void 0);
   console.log(`Initializing interop session: ${sessionId}`);
   console.log(`Working directory: ${cwd}`);
@@ -190969,7 +191237,7 @@ async function launchInteropSession(cwd = process.cwd()) {
     console.error("Start tmux first: tmux new-session -s myproject");
     process.exit(1);
   }
-  const sessionId = `interop-${(0, import_crypto63.randomUUID)().split("-")[0]}`;
+  const sessionId = `interop-${(0, import_crypto64.randomUUID)().split("-")[0]}`;
   const _config = initInteropSession(sessionId, cwd, hasCodex ? cwd : void 0);
   console.log(`Initializing interop session: ${sessionId}`);
   console.log(`Working directory: ${cwd}`);
@@ -192214,7 +192482,7 @@ init_check_name();
 init_gates();
 
 // src/release/checks.ts
-var import_crypto66 = require("crypto");
+var import_crypto67 = require("crypto");
 var import_path242 = require("path");
 var VERSION_RE = /^\d+\.\d+\.\d+$/;
 function parseReleaseVersion(raw) {
@@ -192390,7 +192658,7 @@ var SMOKE_INPUTS = [
   "package-lock.json"
 ];
 function smokeInputHash(ids2) {
-  return (0, import_crypto66.createHash)("sha256").update(ids2.map(([path30, id]) => `${path30} ${id ?? "-"}
+  return (0, import_crypto67.createHash)("sha256").update(ids2.map(([path30, id]) => `${path30} ${id ?? "-"}
 `).join("")).digest("hex");
 }
 function smokeProblems(stdout) {
@@ -194875,7 +195143,7 @@ init_lane();
 init_worktree_paths();
 
 // src/port/engine.ts
-var import_crypto67 = require("crypto");
+var import_crypto68 = require("crypto");
 var import_fs216 = require("fs");
 var import_path248 = require("path");
 init_lane();
@@ -195421,7 +195689,7 @@ var GATE_ENTRY_FILES = [
   "node_modules/vitest/package.json",
   "node_modules/vitest/vitest.mjs"
 ];
-var sha2566 = (data) => (0, import_crypto67.createHash)("sha256").update(data).digest("hex");
+var sha2566 = (data) => (0, import_crypto68.createHash)("sha256").update(data).digest("hex");
 function contentHash(path30) {
   let st;
   try {

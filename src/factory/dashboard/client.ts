@@ -9,7 +9,9 @@
  * handler or selector from data, and its only fetch URLs are fixed strings
  * plus a run key re-validated against the server's own key pattern. Commands
  * appear only in the command component (<code> + Copy button) and are copied,
- * never run. Unverified rows show the marker and the status command only.
+ * never run. A row whose state is not trusted shows the marker, a fixed
+ * sentence chosen here from its trust value, the run key and the status
+ * command built here from that key: no text or number the server sent for it.
  *
  * The pure parts (formatting, row model, filter/sort/paginate, the DOM
  * builders against any `document`) live on the FactoryDashboard object so
@@ -108,26 +110,49 @@ FD.isStatusArgv = function (argv) {
   if (argv[2] === 'run') return /^[1-9][0-9]{0,8}$/.test(argv[4]);
   return argv[2] === 'heal' && /^[0-9a-f]{8}$/.test(argv[4]);
 };
-/** What an attention row may offer: everything on a trusted row, the read-only status command on any other. */
+/**
+ * A row whose state is not trusted shows only the marker, the fixed sentence
+ * of its trust value (chosen here, never the server's text), the run key and
+ * the status command rebuilt here from that key.
+ */
+FD.UNTRUSTED_WHY = {
+  seal: 'This run state is not the engine\'s last write: its integrity seal fails. Nothing from it is shown; read it with the status command.',
+  ledger: 'This run state is not the engine\'s last write: the engine ledger does not hold these bytes. Nothing from it is shown; read it with the status command.',
+  unverified: 'This run state cannot be verified on this host: the engine ledger has no record of it. Nothing from it is shown; read it with the status command.',
+  missing: 'This run\'s state file is missing; the engine ledger holds its last write. Nothing from it is shown; read it with the status command.',
+  owner: 'An owner file the engine did not write holds this run. Nothing from it is shown; read it with the status command.',
+  unreadable: 'This run state cannot be read. Nothing from it is shown; read it with the status command.'
+};
+FD.trustOf = function (t) { return typeof t === 'string' && t !== 'ok' && Object.prototype.hasOwnProperty.call(FD.UNTRUSTED_WHY, t) ? t : 'unverified'; };
+/** The read-only status command of a run label, built here from the validated key; null for any other label. */
+FD.statusCommand = function (label) {
+  var api = FD.apiKey(label);
+  if (api === null) return null;
+  var argv = /^heal-/.test(api) ? ['omg', 'factory', 'heal', 'status', api.slice(5)] : ['omg', 'factory', 'run', 'status', api];
+  return { label: 'read the run state', argv: argv, line: argv.join(' '), billed: false, inRoot: false };
+};
+/** What an attention row may offer: everything on a trusted row, the client-built status command on any other. */
 FD.visibleNext = function (item) {
-  var next = Array.isArray(item.next) ? item.next : [];
-  return item.trust === 'ok' ? next : next.filter(function (n) { return FD.isStatusArgv(n.argv); });
+  if (item.trust === 'ok') return Array.isArray(item.next) ? item.next : [];
+  var s = FD.statusCommand(item.key);
+  return s ? [s] : [];
 };
 
 function statusText(r) {
-  if (!r.verified) return 'not verified (' + r.trust + ')' + (r.phase ? ' ' + r.phase : '') + (r.gate ? ' awaiting-human: ' + r.gate.name : '');
+  if (r.verified !== true) return 'not verified (' + FD.trustOf(r.trust) + ')';
   if (r.gate) return 'awaiting-human: ' + r.gate.name;
   return r.outcome === 'in-progress' ? (r.phase || '') : r.outcome;
 }
 FD.runRows = function (data) {
   return (data && Array.isArray(data.runs) ? data.runs : []).map(function (r, i) {
     var n = /^#([0-9]+)$/.exec(r.key);
+    var ok = r.verified === true && r.trust === 'ok';
     return {
-      key: String(r.key), order: n ? Number(n[1]) : null, index: i, verified: r.verified === true, trust: String(r.trust),
-      title: r.verified === true ? String(r.title || '') : '', phase: r.phase ? String(r.phase) : '', gate: r.gate ? String(r.gate.name) : '',
-      status: statusText(r), pr: typeof r.pr === 'number' ? r.pr : null, credits: r.verified === true ? r.credits : null,
-      engineMs: r.engineMs, waitingMs: r.waitingMs, updatedAt: r.updatedAt || '', updatedMs: Date.parse(r.updatedAt) || null,
-      timeline: r.verified === true && Array.isArray(r.timeline) ? r.timeline : []
+      key: String(r.key), order: n ? Number(n[1]) : null, index: i, verified: ok, trust: ok ? 'ok' : FD.trustOf(r.trust),
+      title: ok ? String(r.title || '') : '', phase: ok && r.phase ? String(r.phase) : '', gate: ok && r.gate ? String(r.gate.name) : '',
+      status: ok ? statusText(r) : statusText({ verified: false, trust: r.trust }), pr: ok && typeof r.pr === 'number' ? r.pr : null, credits: ok ? r.credits : null,
+      engineMs: ok ? r.engineMs : null, waitingMs: ok ? r.waitingMs : null, updatedAt: ok ? r.updatedAt || '' : '', updatedMs: ok ? Date.parse(r.updatedAt) || null : null,
+      timeline: ok && Array.isArray(r.timeline) ? r.timeline : []
     };
   });
 };
@@ -178,7 +203,8 @@ function table(doc, caption, head, rows, empty) {
     }))
   ]);
 }
-function trustMark(doc, trust) { return h(doc, 'span', { 'class': 'bad' }, 'not verified (' + trust + ')'); }
+/** The marker: a known trust value in brackets, or none (a row that carries no trust value). */
+function trustMark(doc, trust) { return h(doc, 'span', { 'class': 'bad' }, trust === undefined ? 'not verified' : 'not verified (' + FD.trustOf(trust) + ')'); }
 
 FD.commandEl = function (doc, n, fk, ctx) {
   var code = h(doc, 'code', null, String(n.line));
@@ -211,6 +237,16 @@ FD.buildAttention = function (doc, data, ctx, scope) {
     out.appendChild(h(doc, scope ? 'h4' : 'h3', scope ? null : { id: 'attention-' + g[0] }, [g[1] + ' ', h(doc, 'span', { 'class': 'muted' }, '(' + group.length + ')')]));
     out.appendChild(h(doc, 'ul', { 'class': 'items' }, group.map(function (i) {
       var trusted = i.trust === 'ok';
+      if (!trusted) {
+        var cmd = FD.statusCommand(i.key);
+        var label = FD.apiKey(i.key) === null ? 'a run' : String(i.key);
+        return h(doc, 'li', null, [
+          h(doc, 'p', null, [h(doc, 'b', null, label), ' ', trustMark(doc, i.trust)]),
+          h(doc, 'p', null, FD.UNTRUSTED_WHY[FD.trustOf(i.trust)]),
+          cmd && repo ? FD.whereEl(doc, repo) : null,
+          cmd ? h(doc, 'ul', { 'class': 'cmds', 'aria-label': 'Next commands' }, [FD.commandEl(doc, cmd, 'copy:' + kp + label + ':0', ctx)]) : null
+        ]);
+      }
       var age = h(doc, 'span', null, '');
       ctx.ages.push({ el: age, ageMs: i.ageMs, prefix: 'waiting ' });
       var facts = [i.gate ? 'awaiting-human: ' + i.gate : '', i.phase ? 'phase ' + i.phase : '',
@@ -218,7 +254,7 @@ FD.buildAttention = function (doc, data, ctx, scope) {
         i.pr === null || i.pr === undefined ? '' : 'PR ' + i.pr].filter(Boolean).join(' · ');
       var next = FD.visibleNext(i);
       return h(doc, 'li', null, [
-        h(doc, 'p', null, [h(doc, 'b', null, String(i.key)), trusted && i.title ? ' ' + String(i.title) : null, trusted ? null : ' ', trusted ? null : trustMark(doc, i.trust)]),
+        h(doc, 'p', null, [h(doc, 'b', null, String(i.key)), i.title ? ' ' + String(i.title) : null]),
         h(doc, 'p', { 'class': 'muted' }, [facts, facts ? ' · ' : '', age]),
         h(doc, 'p', null, String(i.why)),
         (Array.isArray(i.notes) ? i.notes : []).map(function (n) { return h(doc, 'p', { 'class': 'warn' }, 'note: ' + String(n)); }),
@@ -236,7 +272,8 @@ FD.buildLive = function (doc, data, ctx) {
   return table(doc, 'Engines running now', ['Run', 'Phase', 'Running lane', 'Last progress', 'Credits so far', 'In flight (cap)'], l.runs.map(function (r) {
     var hb = h(doc, 'span', null, '');
     if (r.heartbeatAgeMs !== null) ctx.ages.push({ el: hb, ageMs: r.heartbeatAgeMs, suffix: ' ago (a hint only)' });
-    return [String(r.key), r.verified ? String(r.phase || '') : trustMark(doc, 'state'),
+    if (r.verified !== true) return [String(r.key), trustMark(doc), '', '', '', ''];
+    return [String(r.key), String(r.phase || ''),
       r.lane ? String(r.lane.id) + ' (' + String(r.lane.kind) + ')' : h(doc, 'span', { 'class': 'muted' }, 'none'),
       r.heartbeatAgeMs === null ? h(doc, 'span', { 'class': 'muted' }, 'no progress log') : hb, FD.num(r.credits), FD.num(r.inFlightCredits)];
   }), l.slots > 0 ? 'No run is held by a live engine (' + l.slots + ' parallel slot(s) held).' : 'No engine is running.');
@@ -268,7 +305,8 @@ FD.buildDetail = function (doc, det) {
   if (!det) return h(doc, 'p', { 'class': 'muted' }, 'Loading…');
   if (det.error) return h(doc, 'p', { 'class': 'warn' }, String(det.error));
   var parts = [];
-  if (!det.run.verified) parts.push(h(doc, 'p', null, [trustMark(doc, det.run.trust), ' Nothing from this state is shown; read it with the status command.']));
+  // A run that is not trusted: the marker and its fixed sentence, nothing the server sent besides.
+  if (!det.run || det.run.verified !== true || det.run.trust !== 'ok') return h(doc, 'div', null, h(doc, 'p', null, [trustMark(doc, det.run && det.run.trust), ' ', FD.UNTRUSTED_WHY[FD.trustOf(det.run && det.run.trust)]]));
   if (det.lanes.length) {
     parts.push(h(doc, 'h4', null, 'Lanes'));
     parts.push(table(doc, 'Lanes', ['Lane', 'Kind', 'Status', 'Model', 'Credits', 'Requests', 'Started', 'Ended'], det.lanes.map(function (l) {
@@ -299,23 +337,25 @@ FD.buildRuns = function (doc, data, ctx) {
   var head = h(doc, 'tr', null, FD.RUN_COLS.map(function (c) {
     if (!c[0]) return h(doc, 'th', { scope: 'col' }, c[1]);
     var active = ui.sort && ui.sort.col === c[0];
-    var btn = h(doc, 'button', { type: 'button', 'data-k': 'sort:' + c[0] }, c[1]);
     var col = c[0];
+    var sk = 'sort:' + col;
+    var btn = h(doc, 'button', { type: 'button', 'data-k': sk }, c[1]);
     btn.addEventListener('click', function () { if (ctx.on && ctx.on.sort) ctx.on.sort(col); });
-    ctx.focus['sort:' + col] = btn;
+    ctx.focus[sk] = btn;
     return h(doc, 'th', { scope: 'col', 'aria-sort': active ? (ui.sort.dir === 'desc' ? 'descending' : 'ascending') : 'none' }, btn);
   }));
   var body = h(doc, 'tbody', null);
   pg.rows.forEach(function (r) {
     var api = FD.apiKey(r.key);
     var open = api !== null && ui.open[api] === true;
-    var cells = [r.key, r.title, r.verified ? r.status : trustMark(doc, r.trust + (r.phase ? ', ' + r.phase : '') + (r.gate ? ', ' + r.gate : '')),
+    var cells = [r.key, r.title, r.verified ? r.status : trustMark(doc, r.trust),
       r.pr === null ? '' : '#' + r.pr, FD.num(r.credits), FD.fmtDur(r.engineMs), FD.fmtDur(r.waitingMs), FD.timelineEl(doc, r.timeline), r.updatedAt];
     var dbtn = null;
     if (api !== null) {
-      dbtn = h(doc, 'button', { type: 'button', 'data-k': 'detail:' + api, 'aria-expanded': open ? 'true' : 'false', 'aria-controls': 'd-' + api }, open ? 'Hide' : 'Show');
+      var dk = 'detail:' + api;
+      dbtn = h(doc, 'button', { type: 'button', 'data-k': dk, 'aria-expanded': open ? 'true' : 'false', 'aria-controls': 'd-' + api }, open ? 'Hide' : 'Show');
       dbtn.addEventListener('click', function () { if (ctx.on && ctx.on.toggle) ctx.on.toggle(api); });
-      ctx.focus['detail:' + api] = dbtn;
+      ctx.focus[dk] = dbtn;
     }
     cells.push(dbtn);
     body.appendChild(h(doc, 'tr', null, cells.map(function (c, i) {
@@ -340,9 +380,14 @@ FD.buildRuns = function (doc, data, ctx) {
 FD.buildTasks = function (doc, data) {
   var forge = data.forge && data.forge.read;
   var head = ['Run', 'Title', 'Outcome', 'Phase / gate', 'PR', 'Credits', 'Wall time'].concat(forge ? ['Bucket', 'Tracker stage'] : []);
+  var untrustedRun = Object.create(null);
+  FD.runRows(data).forEach(function (r) { if (!r.verified) untrustedRun[r.key] = true; });
   return table(doc, 'Tasks', head, (data.tasks || []).map(function (t) {
-    var row = [String(t.key), t.verified || t.outcome === 'no run' ? String(t.title) : '', t.verified || t.outcome === 'no run' ? String(t.outcome) : trustMark(doc, 'state'),
-      [t.phase, t.gate ? 'awaiting-human: ' + t.gate : ''].filter(Boolean).join(' / '), t.pr === null ? '' : '#' + t.pr, FD.num(t.credits), FD.fmtDur(t.wallMs)];
+    // A board row with no run holds tracker text; a run row that is not verified shows the key and the marker only.
+    var ok = t.verified === true || (t.outcome === 'no run' && !untrustedRun[String(t.key)]);
+    var row = ok ? [String(t.key), String(t.title), String(t.outcome),
+      [t.phase, t.gate ? 'awaiting-human: ' + t.gate : ''].filter(Boolean).join(' / '), t.pr === null ? '' : '#' + t.pr, FD.num(t.credits), FD.fmtDur(t.wallMs)]
+      : [String(t.key), '', trustMark(doc), '', '', '', ''];
     if (forge) row.push(t.tracker && t.tracker.bucket ? String(t.tracker.bucket) : '', t.tracker ? [t.tracker.stage, t.tracker.liveText].filter(Boolean).join(': ') : '');
     return row;
   }), 'No runs yet.');
@@ -415,7 +460,8 @@ FD.buildRepos = function (doc, list, ctx) {
     var id = FD.repoId(r.id);
     var b = h(doc, 'button', { type: 'button', 'data-k': 'repo:' + id, disabled: sel === id }, sel === id ? 'Shown' : 'Show');
     b.addEventListener('click', function () { if (ctx.on && ctx.on.repo) ctx.on.repo(id); });
-    ctx.focus['repo:' + id] = b;
+    var rk = 'repo:' + id;
+    ctx.focus[rk] = b;
     var last = h(doc, 'span', null, r.lastChange ? FD.relAge(String(r.lastChange), ctx.now || Date.now()) : '');
     return [String(r.name), h(doc, 'code', null, String(r.root)), r.items ? FD.groupCounts(r.byGroup) : h(doc, 'span', { 'class': 'ok' }, 'nothing'),
       String(r.engines), String(r.runs), last, b];

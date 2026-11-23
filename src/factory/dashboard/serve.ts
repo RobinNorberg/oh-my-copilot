@@ -45,8 +45,9 @@ import type { AddressInfo } from 'net';
 import { basename, join } from 'path';
 import { plainText } from '../check/score.js';
 import { commandText, rootWord } from '../attention/actions.js';
-import { readRun } from '../attention/collect.js';
-import { runLabel, type FactoryRunKey } from '../run/state.js';
+import { readRun, type AttentionTrust } from '../attention/collect.js';
+import { GATE_GROUPS, gateSteps, statusArgv } from '../run/gate-next.js';
+import { FACTORY_PHASES, runLabel, type FactoryPhase, type FactoryRunKey } from '../run/state.js';
 import type { DashboardDataV2 } from './collect-v2.js';
 import { dashboardPageHtml } from './client.js';
 
@@ -96,21 +97,128 @@ export function parseRunKey(s: string): FactoryRunKey | null {
 }
 
 export function contentSecurityPolicy(nonce: string): string {
-  return `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'nonce-${nonce}'; connect-src 'self'; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`;
+  return `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'nonce-${nonce}'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`;
 }
 
+type CollectedItem = DashboardDataV2['attention']['items'][number];
+type UntrustedTrust = Exclude<AttentionTrust, 'ok'>;
 /** Served attention commands carry the line the CLI prints for this platform (commandText), so the page copies exactly that. */
-export type ServedNext = DashboardDataV2['attention']['items'][number]['next'][number] & { line: string; inRoot: boolean };
-export type ServedSummary = DashboardDataV2 & { rev: string };
+export type ServedNext = CollectedItem['next'][number] & { line: string; inRoot: boolean };
+export type ServedItem = Omit<CollectedItem, 'next'> & { next: ServedNext[] };
+export type ServedSummary = Omit<DashboardDataV2, 'attention'> & {
+  attention: Omit<DashboardDataV2['attention'], 'items'> & { items: ServedItem[] };
+  rev: string;
+};
+
+/**
+ * The one sentence a row of a state that is not trusted shows: fixed here,
+ * never the collector's text (which may quote the state, a parse error or a
+ * local path). The page has its own copy and ignores this for such rows.
+ */
+export const UNTRUSTED_WHY: Readonly<Record<UntrustedTrust, string>> = Object.freeze({
+  seal: 'This run state is not the engine\'s last write: its integrity seal fails. Nothing from it is shown; read it with the status command.',
+  ledger: 'This run state is not the engine\'s last write: the engine ledger does not hold these bytes. Nothing from it is shown; read it with the status command.',
+  unverified: 'This run state cannot be verified on this host: the engine ledger has no record of it. Nothing from it is shown; read it with the status command.',
+  missing: 'This run\'s state file is missing; the engine ledger holds its last write. Nothing from it is shown; read it with the status command.',
+  owner: 'An owner file the engine did not write holds this run. Nothing from it is shown; read it with the status command.',
+  unreadable: 'This run state cannot be read. Nothing from it is shown; read it with the status command.',
+});
+
+const SAFE_NAME = /^[a-z0-9][a-z0-9-]{0,59}$/;
+const untrustedTrust = (t: unknown): UntrustedTrust => (typeof t === 'string' && Object.prototype.hasOwnProperty.call(UNTRUSTED_WHY, t) ? (t as UntrustedTrust) : 'unverified');
+/** A gate name the shared gate table knows, in the engine's name shape; null for anything else. */
+const knownGate = (g: unknown): string | null => (typeof g === 'string' && SAFE_NAME.test(g) && gateSteps(g).known ? g : null);
+const knownPhase = (p: unknown): FactoryPhase | null => (typeof p === 'string' && (FACTORY_PHASES as readonly string[]).includes(p) ? (p as FactoryPhase) : null);
+const finiteOrNull = (n: unknown): number | null => (typeof n === 'number' && Number.isFinite(n) ? n : null);
+
+/** A run label (`#12`, `heal-0123abcd`) back to its key, re-validated; null for anything else. */
+export function keyOfLabel(label: unknown): FactoryRunKey | null {
+  if (typeof label !== 'string') return null;
+  const k = parseRunKey(label.startsWith('#') ? label.slice(1) : label);
+  if (k === null || (typeof k === 'number') !== label.startsWith('#')) return null;
+  return k;
+}
+
+/**
+ * The served form of one attention item. A trusted row is the collector's
+ * (plus the command lines). Any other row is built from an allowlist, never
+ * by spreading the collector's object: the re-validated key, the group, the
+ * trust value, the age, a known gate name and phase, the fixed sentence of
+ * its trust, and the status command when the collector offered it, rebuilt
+ * here from the key. No title, PR, head, reason, credits, notes or log.
+ */
+export function servedItem(i: CollectedItem, platform: NodeJS.Platform = process.platform): ServedItem {
+  if (i.trust === 'ok') return { ...i, next: i.next.map((n): ServedNext => ({ ...n, ...commandText(n.argv, platform) })) };
+  const trust = untrustedTrust(i.trust);
+  const key = keyOfLabel(i.key);
+  const status = key === null ? null : statusArgv(key);
+  const offered = status !== null && Array.isArray(i.next) && i.next.some((n) => Array.isArray(n?.argv) && n.argv.length === status.length && n.argv.every((a, k) => a === status[k]));
+  return {
+    key: key === null ? '' : runLabel(key),
+    group: (GATE_GROUPS as readonly string[]).includes(i.group) ? i.group : 'inspect',
+    gate: knownGate(i.gate), phase: knownPhase(i.phase), ageMs: finiteOrNull(i.ageMs),
+    credits: null, cap: null, pr: null, head: null, title: '',
+    why: UNTRUSTED_WHY[trust],
+    next: offered && status ? [{ label: 'read the run state', argv: status, billed: false, ...commandText(status, platform) }] : [],
+    trust, notes: [],
+  };
+}
+
+type CollectedRun = DashboardDataV2['runs'][number];
+const trustedRun = (r: CollectedRun): boolean => r.verified === true && r.trust === 'ok';
+
+/** A run row: a verified run as collected; any other from an allowlist (key, kind, trust, a known phase and gate name; nothing else). */
+export function servedRun(r: CollectedRun): CollectedRun {
+  if (trustedRun(r)) return r;
+  const key = keyOfLabel(r.key);
+  const gate = knownGate(r.gate?.name);
+  return {
+    key: key === null ? '' : runLabel(key), kind: typeof key === 'string' ? 'ci-heal' : 'issue', trust: untrustedTrust(r.trust), verified: false, title: '',
+    phase: knownPhase(r.phase), gate: gate ? { name: gate, reason: '', at: '' } : null, outcome: 'unknown', pr: null, head: null, forge: null,
+    credits: null, premiumRequests: null, lanes: null, roles: {}, startedAt: null, updatedAt: null, elapsedMs: null,
+    engineMs: null, waitingMs: null, waitingSince: null, timeline: [], mergeReadyAt: null, engineToMergeReadyMs: null, mergeWaitMs: null,
+  };
+}
+
+/** Fixed, engine-authored warnings: a line per run whose state cannot be read, and a count of the rest (printed in the terminal, never served). */
+export function servedWarnings(raw: readonly string[], items: readonly ServedItem[], runs: readonly CollectedRun[]): string[] {
+  const unreadable = [...new Set([...items, ...runs].filter((x) => x.trust === 'unreadable' && x.key !== '').map((x) => x.key))].sort();
+  const out = unreadable.map((k) => `run ${k}: the state cannot be read`);
+  if (raw.length > 0) out.push(`${raw.length} warning(s): the terminal running the server prints them`);
+  return out;
+}
 
 export function servedSummary(d: DashboardDataV2, rev: string, platform: NodeJS.Platform = process.platform): ServedSummary {
-  // An untrusted row keeps no title here (the attention collector keeps it, cut and plain): no free text from such a state leaves the server.
-  const items = d.attention.items.map((i) => ({ ...i, title: i.trust === 'ok' ? i.title : '', next: i.next.map((n): ServedNext => ({ ...n, ...commandText(n.argv, platform) })) }));
-  return { ...d, attention: { ...d.attention, items }, rev };
+  // Defence in depth: whatever the collector passes, a row of a state that is not trusted carries no text or number from that state.
+  const items = d.attention.items.map((i) => servedItem(i, platform));
+  const runs = d.runs.map(servedRun);
+  const untrusted = new Set(runs.filter((r) => !r.verified).map((r) => r.key));
+  const known = new Set(runs.map((r) => r.key));
+  const tasks = d.tasks.map((t): DashboardDataV2['tasks'][number] => {
+    // A board row with no run (--forge backlog) holds tracker text, not state text.
+    const boardOnly = t.outcome === 'no run' && !known.has(t.key);
+    if (boardOnly || (t.verified === true && !untrusted.has(t.key))) return t;
+    const key = keyOfLabel(t.key);
+    const run = runs.find((r) => r.key === t.key);
+    return { key: key === null ? '' : runLabel(key), verified: false, title: '', phase: run?.phase ?? null, gate: run?.gate?.name ?? null, outcome: 'unknown', pr: null, credits: null, wallMs: null, tracker: t.tracker };
+  });
+  const verifiedKeys = new Set(runs.filter((r) => r.verified).map((r) => r.key));
+  const liveRuns = d.live.runs.map((r) => (r.verified === true && verifiedKeys.has(r.key) ? r : { key: keyOfLabel(r.key) === null ? '' : r.key, verified: false, phase: null, lane: null, heartbeatAgeMs: null, credits: null, inFlightCredits: 0 }));
+  const warnings = servedWarnings(d.warnings, items, runs);
+  return {
+    ...d,
+    // The repository's folder name, never its absolute local path.
+    attention: { ...d.attention, repo: basename(d.attention.repo), items, warnings },
+    live: { ...d.live, runs: liveRuns, inFlightCredits: liveRuns.reduce((a, r) => a + r.inFlightCredits, 0) },
+    runs, tasks,
+    cost: { ...d.cost, excluded: { runs: d.cost.excluded.runs, missing: d.cost.excluded.missing } },
+    warnings,
+    rev,
+  };
 }
 
 /** The rev: a hash of the summary without its clock-derived fields, so only a change of state changes it. */
-export function summaryRev(d: DashboardDataV2): string {
+export function summaryRev(d: unknown): string {
   const stable = JSON.stringify(d, (k, v: unknown) => (k === 'generatedAt' || /Ms$/.test(k) ? undefined : v));
   return createHash('sha256').update(stable).digest('hex').slice(0, 32);
 }
@@ -141,6 +249,23 @@ export function dirSignature(dir: string): string {
   }
   return parts.join('|');
 }
+
+/** An event stream whose client does not read holds at most this much in the server's buffer before it is dropped. */
+export const STREAM_BUFFER_MAX = 64 * 1024;
+
+/**
+ * One write to an event stream. A client that stops reading (write returns
+ * false, or the buffer passes STREAM_BUFFER_MAX) is destroyed and leaves the
+ * set: the server never buffers without bound for it. False: dropped.
+ */
+export function writeEvent(s: Pick<ServerResponse, 'write' | 'writableLength' | 'destroy'>, chunk: string, streams: Set<unknown>): boolean {
+  const ok = s.write(chunk);
+  if (ok && s.writableLength <= STREAM_BUFFER_MAX) return true;
+  streams.delete(s);
+  s.destroy();
+  return false;
+}
+
 
 /** One repository the server serves: its id (issued by the server's own list, never taken from a request), root, collector and dirs. */
 export interface ServedRepo {
@@ -243,10 +368,19 @@ export async function startDashboardServer(o: DashboardServerOptions): Promise<D
   if (!multi && o.forgeRefresh) await o.forgeRefresh().catch((e: unknown) => log(`--forge: ${text(e instanceof Error ? e.message : e)}`));
   let recomputes = 0;
   const views = new Map<string, View>();
+  // The collector's raw warnings (error text, local paths) go to the terminal only, once per change; the page gets fixed lines.
+  const loggedWarnings = new Map<string, string>();
   const compute = (v: View): ServedSummary => {
     const d = v.source.collect(clock());
     recomputes++;
-    return servedSummary(d, summaryRev(d), platform);
+    const raw = d.warnings.map((w) => text(w, 500));
+    if (raw.join('\n') !== (loggedWarnings.get(v.source.id) ?? '')) {
+      loggedWarnings.set(v.source.id, raw.join('\n'));
+      for (const w of raw) log(`dashboard warning: ${multi ? `repository ${v.source.id}: ` : ''}${w}`);
+    }
+    // The rev is of what is served, so a change only in what an untrusted state says sends no event.
+    const served = servedSummary(d, '', platform);
+    return { ...served, rev: summaryRev({ ...served, rev: undefined }) };
   };
   const addView = (source: ServedRepo): View | null => {
     let summary: ServedSummary;
@@ -302,7 +436,7 @@ export async function startDashboardServer(o: DashboardServerOptions): Promise<D
 
   const streams = new Set<ServerResponse>();
   const broadcast = (chunk: string): void => {
-    for (const s of streams) s.write(chunk);
+    for (const s of streams) writeEvent(s, chunk, streams);
   };
   const recompute = (v: View): void => {
     let next: ServedSummary;
@@ -509,7 +643,7 @@ export async function startDashboardServer(o: DashboardServerOptions): Promise<D
       req.socket.setTimeout(0);
       streams.add(res);
       res.on('close', () => streams.delete(res));
-      res.write(`retry: 3000\n\nevent: changed\ndata: ${multi ? `repos ${reposSummary!.rev}` : views.get('')!.summary.rev}\n\n`);
+      writeEvent(res, `retry: 3000\n\nevent: changed\ndata: ${multi ? `repos ${reposSummary!.rev}` : views.get('')!.summary.rev}\n\n`, streams);
       return;
     }
     return refuse(req, res, 404);

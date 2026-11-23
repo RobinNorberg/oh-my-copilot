@@ -7,7 +7,7 @@
  */
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -15,7 +15,7 @@ import { factoryDashboardCommand, writeFileAtomic } from '../../../cli/commands/
 import { attentionJson, collectAttention } from '../../attention/collect.js';
 import { DEFAULT_FACTORY_RUN_LIMITS } from '../../run/budget.js';
 import { EngineLedger } from '../../run/ledger.js';
-import { computeFactoryIntegrity, createFactoryState, factoryStatePath, moveTo, runKeyOf, setGate, updateFactoryState, } from '../../run/state.js';
+import { computeFactoryIntegrity, createFactoryState, factoryOwnerPath, factoryStatePath, moveTo, runKeyOf, setGate, updateFactoryState, } from '../../run/state.js';
 import { collectDashboardV2, runTimeline } from '../collect-v2.js';
 import { renderDashboardHtml } from '../render.js';
 const REPO = 'https://github.com/o/r';
@@ -91,7 +91,59 @@ describe('runTimeline', () => {
         let s = moveTo(createFactoryState({ issue: 3, repoUrl: REPO, base: 'main' }, iso(0)), 'implement', 'go', iso(10));
         s = { ...s, gate: { name: 'fix-failed', reason: 'r', at: iso(40) }, updatedAt: iso(40) };
         const t = runTimeline(s, T0 + 100_000);
-        expect(t).toMatchObject({ engineMs: 40_000, waitingMs: 60_000, waitingSince: iso(40) });
+        expect(t).toMatchObject({ engineMs: 40_000, waitingMs: 60_000, waitingSince: iso(40), clamped: null });
+    });
+    // The engine's writers of from === to notes that do not clear the gate (engine.ts progress sync, clean.ts --lane-stopped).
+    const note = (s, sec, text) => ({ ...s, history: [...s.history, { at: iso(sec), from: s.phase, to: s.phase, note: text }], updatedAt: iso(sec) });
+    const NOW = T0 + 1_000_000; // 848 s after the merge park at 152 s
+    it('a tracker-sync failure note after the park is still waiting time, to now, with the park as its start', () => {
+        const s = note(toMergePark(5), 153, 'tracker-sync fail: ready-to-merge: the tracker refused the label');
+        const t = runTimeline(s, NOW);
+        expect(t).toMatchObject({ engineMs: 152_000, waitingMs: 848_000, mergeWaitMs: 848_000, waitingSince: iso(152), clamped: null });
+        expect(t.steps.at(-1)).toEqual({ phase: 'merge', engineMs: 2_000, waitingMs: 848_000, gates: ['merge'] });
+    });
+    it('clean\'s --lane-stopped note, and several notes in a row, keep the park waiting', () => {
+        let s = note(toMergePark(6), 400, 'lane issue-6-implement-1 (job-1): --lane-stopped: a human confirmed that its Copilot child stopped (2026-11-20T10:06:40.000Z)');
+        s = note(s, 500, 'tracker-sync fail: ready-to-merge: again');
+        s = note(s, 600, 'lane issue-6-implement-1: process tree not proven (gone)');
+        expect(runTimeline(s, NOW)).toMatchObject({ engineMs: 152_000, waitingMs: 848_000, waitingSince: iso(152) });
+    });
+    it('a note after the park, then a real rerun: waiting ends at the rerun and engine time counts again', () => {
+        let s = note(toMergePark(7), 200, 'tracker-sync fail: ready-to-merge: boom');
+        s = note(s, 452, 'took over from dead owner pid 9 on this-host');
+        s = note(s, 452, 'rerun after awaiting-human: merge');
+        s = moveTo(s, 'prepare', 'base moved', iso(500));
+        const t = runTimeline(s, NOW);
+        expect(t.waitingMs).toBe(300_000);
+        // 152 s to the park, the 48 s from the rerun to the move (the state was last written at the move).
+        expect(t.engineMs).toBe(152_000 + 48_000);
+        expect(t.waitingSince).toBeNull();
+    });
+    it('a phase move or a human merge record ends the park, a later park changes the gate and the wait goes on', () => {
+        let s = note(toMergePark(8), 300, 'tracker-sync fail: ready-to-merge: boom');
+        s = setGate(s, 'review-requested', 'r', iso(400));
+        expect(runTimeline(s, NOW)).toMatchObject({ waitingMs: 848_000, mergeWaitMs: 248_000, waitingSince: iso(400) });
+        const merged = moveTo(note(toMergePark(9), 300, 'tracker-sync fail: x'), 'merged', 'PR #109 merged by a human after awaiting-human: merge', iso(700));
+        expect(runTimeline(merged, NOW)).toMatchObject({ waitingMs: 548_000, waitingSince: null });
+    });
+    it('clamps out-of-order and future timestamps: no span is negative or later than now, and says why', () => {
+        const base = toMergePark(10);
+        const future = { ...base, history: [base.history[0], { ...base.history[1], at: '9999-01-01T00:00:00.000Z' }, ...base.history.slice(2)] };
+        const f = runTimeline(future, NOW);
+        expect(f.engineMs + f.waitingMs).toBeLessThanOrEqual(NOW - T0);
+        expect(f.clamped).toBe('later than now, out of order');
+        const back = { ...base, history: [base.history[0], { ...base.history[2], at: iso(-500) }, base.history[1], ...base.history.slice(3)] };
+        const b = runTimeline(back, NOW);
+        expect(b).toMatchObject({ engineMs: 152_000, waitingMs: 848_000, clamped: 'out of order' });
+        for (const step of b.steps)
+            expect(step.engineMs).toBeGreaterThanOrEqual(0);
+        // A gate in the future (older writer, no park note): waiting from now at the latest, never a future "since".
+        const g = runTimeline({ ...base, history: base.history.slice(0, -1), gate: { ...base.gate, at: '9999-01-01T00:00:00.000Z' } }, NOW);
+        expect(Date.parse(g.waitingSince)).toBeLessThanOrEqual(NOW);
+        expect(g.engineMs).toBeLessThanOrEqual(NOW - T0);
+        expect(g.clamped).toBe('later than now');
+        // A minute of clock skew is clamped but not reported.
+        expect(runTimeline(note(base, 1_030, 'tracker-sync fail: x'), NOW).clamped).toBeNull();
     });
 });
 describe('collectDashboardV2', () => {
@@ -107,7 +159,11 @@ describe('collectDashboardV2', () => {
         const d = collectDashboardV2(root, opts(T0 + 2_000_000));
         expect(d.schemaVersion).toBe(2);
         expect(d.cost.totals).toEqual({ credits: 6, premiumRequests: 4, lanes: 4 });
-        expect(d.cost.excluded).toEqual({ runs: 2, credits: 53, premiumRequests: 3 });
+        // Only how many: an unverified state's claimed credits (50 here) are neither summed nor shown.
+        expect(d.cost.excluded).toEqual({ runs: 2, missing: 0 });
+        const html = renderDashboardHtml(d);
+        expect(html).toContain('2 run(s) not verified, excluded from these totals.');
+        expect(html).not.toMatch(/claim/);
         const r3 = d.runs.find((r) => r.key === '#3');
         const r4 = d.runs.find((r) => r.key === '#4');
         expect(r3).toMatchObject({ verified: false, trust: 'unverified', title: '', credits: null, timeline: [] });
@@ -178,6 +234,77 @@ describe('collectDashboardV2', () => {
             ['#9', 'no run', { bucket: 'ready', stage: null, liveText: null }],
         ]);
     });
+    it('Live now uses every verified state: a live engine\'s run that --since filters out is still verified there', () => {
+        const s = moveTo(createFactoryState({ issue: 11, repoUrl: REPO, base: 'main' }, iso(0)), 'implement', 'go', iso(10));
+        asEngine({ ...s, lanes: [lane('issue-11-implement-1', 'implement', 0, iso(10), { status: 'running', endedAt: undefined, maxCredits: 7 })] });
+        const path = factoryOwnerPath(root, 11);
+        const content = JSON.stringify({ pid: 4242, hostname: 'other-host', startedAt: iso(1) });
+        writeFileSync(path, content);
+        EngineLedger.open(ledgerDir, root, 11).record(path, content);
+        const d = collectDashboardV2(root, opts(T0 + 1_000_000, { since: '2099-01-01' }));
+        expect(d.runs).toEqual([]);
+        expect(d.live.runs).toEqual([expect.objectContaining({ key: '#11', verified: true, phase: 'implement', inFlightCredits: 7 })]);
+        expect(renderDashboardHtml(d)).not.toContain('not verified');
+    });
+    it('a run whose state file is gone (the ledger knows it) is a row and counted as missing, never silently dropped', () => {
+        asEngine(toMergePark(1, 'First'));
+        asEngine(toMergePark(2, 'Second'));
+        rmSync(factoryStatePath(root, 2));
+        const d = collectDashboardV2(root, opts(T0 + 1_000_000));
+        expect(d.cost.excluded).toEqual({ runs: 1, missing: 1 });
+        expect(d.runs.find((r) => r.key === '#2')).toMatchObject({ verified: false, trust: 'missing', credits: null });
+        expect(d.attention.items.find((i) => i.key === '#2')?.trust).toBe('missing');
+        expect(renderDashboardHtml(d)).toContain('1 run(s) not verified, excluded from these totals (1 of them with the state file missing).');
+    });
+    it('throughput medians and per-day counts both respect --since, and say so', () => {
+        // #1 reached the merge park on 2026-11-20 but was written after --since (a note): listed, not a median sample.
+        const old = toMergePark(1, 'old', 0);
+        asEngine({ ...old, history: [...old.history, { at: iso(3 * 86_400 + 5), from: 'merge', to: 'merge', note: 'tracker-sync fail: x' }], updatedAt: iso(3 * 86_400 + 5) });
+        const late = T0 + 3 * 86_400_000;
+        const s = toMergePark(2, 'new', 3 * 86_400); // merge park on 2026-11-23
+        asEngine(s);
+        const d = collectDashboardV2(root, opts(late + 1_000_000, { since: '2026-11-22' }));
+        expect(d.runs.map((r) => r.key).sort()).toEqual(['#1', '#2']);
+        expect(d.throughput.since).toBe('2026-11-22');
+        expect(d.throughput.engineToMergeReady.runs).toBe(1);
+        expect(d.throughput.waitingAtMerge.runs).toBe(1);
+        expect(d.throughput.byDay.reduce((a, r) => a + r.mergeReady, 0)).toBe(1);
+        expect(collectDashboardV2(root, opts(late + 1_000_000)).throughput).toMatchObject({ since: null, engineToMergeReady: { runs: 2 } });
+    });
+    it('a run with clamped timestamps is left out of the throughput medians, with one warning', () => {
+        asEngine(toMergePark(1, 'ok'));
+        const b = toMergePark(2, 'odd');
+        asEngine({ ...b, history: [b.history[0], { ...b.history[1], at: '9999-01-01T00:00:00.000Z' }, ...b.history.slice(2)] });
+        const d = collectDashboardV2(root, opts(T0 + 1_000_000));
+        expect(d.throughput.engineToMergeReady).toEqual({ runs: 1, medianMs: 152_000, p90Ms: 152_000 });
+        expect(d.throughput.excludedRuns).toBe(1);
+        expect(d.warnings.filter((w) => w.startsWith('run #2: history timestamps'))).toHaveLength(1);
+        expect(d.runs.find((r) => r.key === '#2').engineMs).toBeLessThanOrEqual(1_000_000);
+        expect(renderDashboardHtml(d)).toContain('1 run(s) left out of the medians');
+    });
+    it('bench files: only bounded regular files are read; a directory, an oversized file or a link is skipped with one warning; a negative wall time is null', () => {
+        const benchDir = join(dir, 'results');
+        mkdirSync(benchDir);
+        mkdirSync(join(benchDir, 'x.json'));
+        writeFileSync(join(benchDir, 'big.json'), `{"kind":"omg-factory-bench","pad":"${'x'.repeat(4_000_001)}"}`);
+        const good = join(dir, 'outside.json');
+        writeFileSync(good, JSON.stringify({ kind: 'omg-factory-bench', startedAt: '2026-11-21T01:00:00.000Z', finishedAt: '2026-11-21T00:00:00.000Z', totals: { passed: 1 } }));
+        writeFileSync(join(benchDir, 'neg.json'), readFileSync(good));
+        let linked = false;
+        try {
+            symlinkSync(good, join(benchDir, 'link.json'), 'file');
+            linked = true;
+        }
+        catch {
+            // No symlink permission (Windows without developer mode): the link case is not run here.
+        }
+        const d = collectDashboardV2(root, opts(T0, { benchDirs: [benchDir] }));
+        expect(d.bench.map((b) => [b.file, b.wallMs])).toEqual([['neg.json', null]]);
+        expect(d.warnings.filter((w) => /x\.json: skipped \(it is a directory, not a regular file\)/.test(w))).toHaveLength(1);
+        expect(d.warnings.filter((w) => /big\.json: skipped \(it is larger than 4000000 bytes\)/.test(w))).toHaveLength(1);
+        if (linked)
+            expect(d.warnings.filter((w) => /link\.json: skipped \(it is a link, not a regular file\)/.test(w))).toHaveLength(1);
+    });
     it('empty repository: no runs, nothing needs you, valid sections', () => {
         const d = collectDashboardV2(root, opts(T0));
         expect(d.runs).toEqual([]);
@@ -204,6 +331,7 @@ describe('renderDashboardHtml v2', () => {
         expect(html).not.toMatch(/url\(/i);
         expect(html).toContain('&lt;script&gt;');
         expect(html).toContain("default-src 'none'");
+        expect(html).not.toContain('img-src');
         expect(html).not.toContain('http-equiv="refresh"');
         expect(html).not.toMatch(/<(button|form|input|iframe|object|embed|link)\b/i);
     });
@@ -310,6 +438,9 @@ describe('omg factory dashboard command', () => {
         expect(await run(['--json', '--schema', '3'])).toBe(2);
         expect(await run(['--watch'])).toBe(2);
         expect(await run(['--out', join(dir, 'x.html'), '--watch', '1'])).toBe(2);
+        for (const bad of ['86401', '1e21', '2.5', '0x10', '0', ' 10', '9999999'])
+            expect(await run(['--out', join(dir, 'x.html'), '--watch', bad])).toBe(2);
+        expect(err.filter((l) => l.includes('--watch takes whole seconds from 2 to 86400')).length).toBeGreaterThanOrEqual(7);
         expect(await run(['--since', 'bad'])).toBe(2);
     });
     it('--watch rewrites only when the page changed, atomically, reads the forge on the slow timer, and stops on interrupt', async () => {
@@ -349,6 +480,74 @@ describe('omg factory dashboard command', () => {
         writeFileAtomic(file, 'new');
         expect(readFileSync(file, 'utf8')).toBe('new');
         expect(readdirSync(dir).filter((n) => n.startsWith('a.html.'))).toEqual([]);
+    });
+    it('writeFileAtomic ignores a link (or, without symlink permission, a file) planted at the old predictable temp name', () => {
+        const file = join(dir, 'b.html');
+        const victim = join(dir, 'victim.txt');
+        const planted = `${file}.${process.pid}.tmp`;
+        writeFileSync(victim, 'keep');
+        let link = false;
+        try {
+            symlinkSync(victim, planted, 'file');
+            link = true;
+        }
+        catch {
+            writeFileSync(planted, 'planted'); // No symlink permission (Windows without developer mode).
+        }
+        writeFileAtomic(file, 'page');
+        expect(readFileSync(file, 'utf8')).toBe('page');
+        expect(readFileSync(victim, 'utf8')).toBe('keep');
+        expect(lstatSync(planted).isSymbolicLink()).toBe(link);
+        if (!link)
+            expect(readFileSync(planted, 'utf8')).toBe('planted');
+        expect(readdirSync(dir).filter((n) => /^b\.html\.[0-9a-f]{16}\.tmp$/.test(n))).toEqual([]);
+    });
+    it('writeFileAtomic creates the temp file exclusively: an existing name is retried, never overwritten; a failed rename leaves no temp file', async () => {
+        // The same random suffix every time: every try meets an existing name.
+        vi.resetModules();
+        vi.doMock('crypto', async (orig) => ({ ...(await orig()), randomBytes: () => Buffer.from('0011223344556677', 'hex') }));
+        try {
+            const m = await import('../../../cli/commands/factory-dashboard.js');
+            const file = join(dir, 'c.html');
+            writeFileSync(`${file}.0011223344556677.tmp`, 'other');
+            expect(() => m.writeFileAtomic(file, 'page')).toThrow(/EEXIST/);
+            expect(readFileSync(`${file}.0011223344556677.tmp`, 'utf8')).toBe('other');
+            expect(existsSync(file)).toBe(false);
+        }
+        finally {
+            vi.doUnmock('crypto');
+            vi.resetModules();
+        }
+        // A rename that fails (the target is a non-empty directory) removes the temp file it made.
+        mkdirSync(join(dir, 'd.html', 'x'), { recursive: true });
+        expect(() => writeFileAtomic(join(dir, 'd.html'), 'page')).toThrow();
+        expect(readdirSync(dir).filter((n) => n.startsWith('d.html.'))).toEqual([]);
+    });
+    it('refuses an --out inside the repository\'s .omg or .git (a usage error), and writes nothing there', async () => {
+        for (const out of [join(root, '.omg', 'dash.html'), join(root, '.git', 'dash.html'), join(root, '.omg', 'new', 'dir', 'dash.html')]) {
+            expect(await run(['--out', out])).toBe(2);
+            expect(existsSync(out)).toBe(false);
+        }
+        expect(err.filter((l) => /is inside .*: lanes can write there/.test(l))).toHaveLength(3);
+        expect(await run(['--out', join(root, 'dash.html')])).toBe(0);
+    });
+    it('--watch: a SIGINT during a tick lets the tick finish, then stops without sleeping again; no temp file is left', async () => {
+        asEngine(toMergePark(1, 'First'));
+        const file = join(dir, 'w.html');
+        const sleep = vi.fn(async () => true);
+        const before = process.listenerCount('SIGINT');
+        const code = await run(['--out', file, '--watch', '5'], {
+            sleep,
+            writeFile: (f, c) => {
+                process.emit('SIGINT', 'SIGINT');
+                writeFileAtomic(f, c);
+            },
+        });
+        expect(code).toBe(0);
+        expect(sleep).not.toHaveBeenCalled();
+        expect(readFileSync(file, 'utf8')).toContain('First');
+        expect(readdirSync(dir).filter((n) => n.endsWith('.tmp'))).toEqual([]);
+        expect(process.listenerCount('SIGINT')).toBe(before);
     });
 });
 //# sourceMappingURL=dashboard-v2.test.js.map

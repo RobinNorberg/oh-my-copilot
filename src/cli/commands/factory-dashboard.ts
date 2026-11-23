@@ -12,14 +12,19 @@
  * writes those runs' states.
  *
  * `--watch [seconds]` (with --out) rewrites the file on an interval, only
- * when the page changed and atomically (temp file + rename), until Ctrl-C;
- * the page then reloads itself (meta refresh). With --forge the forge is
- * read on a slow timer (FORGE_REFRESH_MS), never per tick.
+ * when the page changed and atomically (writeFileAtomic), until Ctrl-C or
+ * SIGTERM (one handler for the whole loop: the tick under way finishes); the
+ * page then reloads itself (meta refresh). With --forge the forge is read on
+ * a slow timer (FORGE_REFRESH_MS), never per tick. `--out` into the
+ * repository's .git or .omg is refused (outPathProblem). A temp file left by
+ * a killed process is not cleaned up: its random name cannot be told apart
+ * from someone else's file in that directory.
  */
 
 import { execFileSync, spawn } from 'child_process';
-import { renameSync, rmSync, writeFileSync } from 'fs';
-import { dirname, join, resolve } from 'path';
+import { randomBytes } from 'crypto';
+import { closeSync, openSync, realpathSync, renameSync, rmSync, writeFileSync } from 'fs';
+import { basename, dirname, isAbsolute, join, relative, resolve } from 'path';
 import { Command, InvalidArgumentError } from 'commander';
 import chalk from 'chalk';
 import type { BoardJson } from '../../factory/board/collect.js';
@@ -34,9 +39,11 @@ import { factorySlotsDir, factoryStateDir, type OwnerDeps } from '../../factory/
 import { healStateDir } from '../../factory/heal/state.js';
 import { startDashboardServer, type DashboardServer, type DashboardServerOptions, type ServedRepoList } from '../../factory/dashboard/serve.js';
 import { checkPinnedRoot, discoverLedgerRoots } from '../../factory/run/ledger-roots.js';
+import { getOmcRoot } from '../../lib/worktree-paths.js';
 
 export const WATCH_DEFAULT_SECONDS = 10;
 export const WATCH_MIN_SECONDS = 2;
+export const WATCH_MAX_SECONDS = 86_400;
 /** --watch --forge: the forge is read at most this often. */
 export const FORGE_REFRESH_MS = 5 * 60_000;
 
@@ -102,16 +109,72 @@ export function openUrlInBrowser(url: string, platform: NodeJS.Platform = proces
 
 const defaultRoot = (): string => execFileSync('git', ['rev-parse', '--show-toplevel'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true }).trim();
 
-/** Temp file next to the target, then one rename over it. */
+const TEMP_ATTEMPTS = 5;
+
+/**
+ * Temp file next to the target, then one rename over it. The temp name has a
+ * random suffix and is created exclusively (`wx`: an existing file or link at
+ * that name is refused, never followed or overwritten), so a file planted at
+ * a predictable name cannot redirect the write; on EEXIST a new name is
+ * tried. The temp file is removed on any failure after it was created.
+ */
 export function writeFileAtomic(file: string, content: string): void {
-  const tmp = `${file}.${process.pid}.tmp`;
-  try {
-    writeFileSync(tmp, content, 'utf8');
-    renameSync(tmp, file);
-  } catch (error) {
-    rmSync(tmp, { force: true });
-    throw error;
+  for (let attempt = 1; ; attempt++) {
+    const tmp = `${file}.${randomBytes(8).toString('hex')}.tmp`;
+    let fd: number | null;
+    try {
+      fd = openSync(tmp, 'wx');
+    } catch (error) {
+      // Not created by this call: nothing of ours to remove.
+      if ((error as NodeJS.ErrnoException).code === 'EEXIST' && attempt < TEMP_ATTEMPTS) continue;
+      throw error;
+    }
+    try {
+      writeFileSync(fd, content, 'utf8');
+      closeSync(fd);
+      fd = null;
+      renameSync(tmp, file);
+      return;
+    } catch (error) {
+      if (fd !== null) closeSync(fd);
+      rmSync(tmp, { force: true });
+      throw error;
+    }
   }
+}
+
+/** `p` with its nearest existing ancestor resolved through links (the rest, not created yet, appended as is). */
+function realPath(p: string): string {
+  let dir = resolve(p);
+  let rest = '';
+  for (;;) {
+    try {
+      return rest ? join(realpathSync(dir), rest) : realpathSync(dir);
+    } catch {
+      const up = dirname(dir);
+      if (up === dir) return resolve(p);
+      rest = rest ? join(basename(dir), rest) : basename(dir);
+      dir = up;
+    }
+  }
+}
+
+const inside = (child: string, parent: string): boolean => {
+  const fold = (s: string): string => (process.platform === 'win32' ? s.toLowerCase() : s);
+  const rel = relative(fold(parent), fold(child));
+  return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel));
+};
+
+/**
+ * --out must not land in the repository's `.git` or `.omg`, or the state
+ * root OMC_STATE_DIR moves `.omg` to (lanes can write `.omg`, and both hold
+ * the engine's state): a usage error. Paths are compared through links, so a
+ * link into them is caught too.
+ */
+export function outPathProblem(root: string, file: string): string | null {
+  const real = realPath(file);
+  const hit = [join(root, '.git'), join(root, '.omg'), getOmcRoot(root)].map(realPath).find((p) => inside(real, p));
+  return hit ? `--out ${file} is inside ${hit}: lanes can write there and it holds the factory's state; write the page outside the repository's .git and .omg` : null;
 }
 
 /** Resolves true after `ms`, false at the first Ctrl-C (SIGINT) before that. */
@@ -130,8 +193,8 @@ class UsageError extends Error {}
 function watchSeconds(v: string | boolean | undefined): number | null {
   if (v === undefined || v === false) return null;
   if (v === true) return WATCH_DEFAULT_SECONDS;
-  const n = Number(v.replace(/s$/, ''));
-  if (!Number.isInteger(n) || n < WATCH_MIN_SECONDS) throw new UsageError(`--watch takes whole seconds, at least ${WATCH_MIN_SECONDS}; got ${JSON.stringify(v)}`);
+  const n = /^\d{1,6}s?$/.test(v) ? Number(v.replace(/s$/, '')) : Number.NaN;
+  if (!Number.isSafeInteger(n) || n < WATCH_MIN_SECONDS || n > WATCH_MAX_SECONDS) throw new UsageError(`--watch takes whole seconds from ${WATCH_MIN_SECONDS} to ${WATCH_MAX_SECONDS}; got ${JSON.stringify(v)}`);
   return n;
 }
 
@@ -209,6 +272,8 @@ async function runDashboard(root: string, o: DashboardOptions, deps: FactoryDash
   if (o.serve && (o.out || watch !== null || o.json || schema !== '2')) throw new UsageError('--serve is a live page on its own: it does not take --out, --watch, --json or --schema (where a listener is not allowed, use --out <file> --watch)');
   if (!o.serve && (o.port !== undefined || o.open)) throw new UsageError('--port and --open need --serve');
   const port = o.serve ? servePort(o.port) : 0;
+  const outProblem = o.out ? outPathProblem(root, resolve(o.out)) : null;
+  if (outProblem) throw new UsageError(outProblem);
   const clock = (): number => (deps.now?.() ?? new Date()).getTime();
   const write = deps.writeFile ?? writeFileAtomic;
   const emit = (body: string, file: string | null): void => {
@@ -275,23 +340,42 @@ async function runDashboard(root: string, o: DashboardOptions, deps: FactoryDash
   // --watch: a tick rewrites the file only when the page differs from the last one written at that one's clock,
   // so a tick with nothing new writes nothing (the page's ages are as of its "Generated" time).
   const file = resolve(o.out!);
-  const sleep = deps.sleep ?? sleepUntilInterrupt;
-  deps.err(`omg factory dashboard: writing ${file} every ${watch} s while it changes (Ctrl-C to stop)`);
-  let last: { now: number; body: string } | null = null;
-  for (;;) {
-    const now = clock();
-    if (o.forge && (forgeAt === null || now - forgeAt >= FORGE_REFRESH_MS)) await readForge(now);
-    const changed = last === null || page(collect(last.now)) !== last.body;
-    if (changed) {
-      const body = page(collect(now));
-      try {
-        emit(body, file);
-        last = { now, body };
-      } catch (error) {
-        deps.err(chalk.yellow(`could not write ${file}: ${plainText(error instanceof Error ? error.message : String(error))}; retrying next tick`));
+  // One SIGINT/SIGTERM handler for the whole loop: a signal sets the stop flag and wakes the sleep, and a tick
+  // under way (temp write, rename) finishes first, so no temp file is left behind.
+  let stop = false;
+  let wake: (() => void) | null = null;
+  const onSignal = (): void => {
+    stop = true;
+    wake?.();
+  };
+  const sleep = deps.sleep ?? ((ms: number): Promise<boolean> => new Promise((done) => {
+    const t = setTimeout(() => { wake = null; done(true); }, ms);
+    wake = () => { clearTimeout(t); wake = null; done(false); };
+  }));
+  process.on('SIGINT', onSignal);
+  process.on('SIGTERM', onSignal);
+  try {
+    deps.err(`omg factory dashboard: writing ${file} every ${watch} s while it changes (Ctrl-C to stop)`);
+    let last: { now: number; body: string } | null = null;
+    while (!stop) {
+      const now = clock();
+      if (o.forge && (forgeAt === null || now - forgeAt >= FORGE_REFRESH_MS)) await readForge(now);
+      const changed = last === null || page(collect(last.now)) !== last.body;
+      if (changed) {
+        const body = page(collect(now));
+        try {
+          emit(body, file);
+          last = { now, body };
+        } catch (error) {
+          deps.err(chalk.yellow(`could not write ${file}: ${plainText(error instanceof Error ? error.message : String(error))}; retrying next tick`));
+        }
       }
+      if (stop || !(await sleep(watch * 1000))) break;
     }
-    if (!(await sleep(watch * 1000))) return 0;
+    return 0;
+  } finally {
+    process.off('SIGINT', onSignal);
+    process.off('SIGTERM', onSignal);
   }
 }
 

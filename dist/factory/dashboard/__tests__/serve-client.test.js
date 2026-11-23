@@ -99,7 +99,8 @@ describe('dashboard page script: pure parts', () => {
         const rows = plain(fd.runRows({ runs: [run('#1'), run('#2', { verified: false, trust: 'seal', title: 'SECRET', credits: 99 })] }));
         expect(rows[0]).toMatchObject({ key: '#1', order: 1, title: 'title #1', status: 'awaiting-human: merge', credits: 3 });
         expect(rows[1]).toMatchObject({ key: '#2', title: '', credits: null, verified: false, timeline: [] });
-        expect(rows[1].status).toBe('not verified (seal) merge awaiting-human: merge');
+        expect(rows[1].status).toBe('not verified (seal)');
+        expect(rows[1]).toMatchObject({ phase: '', gate: '', pr: null, engineMs: null, waitingMs: null, updatedAt: '' });
     });
     it('filters by text and phase, sorts stably with nulls last, paginates at 200', () => {
         const runs = [run('#3', { phase: 'review', title: 'gamma', credits: 1 }), run('#10', { title: 'alpha', credits: null }), run('#2', { title: 'beta', credits: 5 }), run('heal-0123abcd', { title: 'heal', credits: 2 })];
@@ -124,7 +125,10 @@ describe('dashboard page script: pure parts', () => {
         for (const k of ['#0', '#012', '12', '#1/../x', 'heal-0123ABCD', '../summary', '#1?x', 'javascript:alert(1)'])
             expect(fd.apiKey(k), k).toBeNull();
         const next = [{ label: 'resume', argv: ['omg', 'factory', 'run', '1'], line: 'omg factory run 1' }, { label: 'status', argv: ['omg', 'factory', 'run', 'status', '1'], line: 'omg factory run status 1' }];
-        expect(plain(fd.visibleNext({ trust: 'seal', next })).map((n) => n.label)).toEqual(['status']);
+        // An untrusted row: the status command built in the page from the key, whatever the server sent.
+        expect(plain(fd.visibleNext({ trust: 'seal', key: '#1', next: [{ label: 'x', argv: ['omg', 'factory', 'run', 'status', '1'], line: 'omg factory run 1 --yes' }] }))).toEqual([{ label: 'read the run state', argv: ['omg', 'factory', 'run', 'status', '1'], line: 'omg factory run status 1', billed: false, inRoot: false }]);
+        expect(plain(fd.visibleNext({ trust: 'seal', key: 'heal-0123abcd', next: [] }))[0].line).toBe('omg factory heal status 0123abcd');
+        expect(plain(fd.visibleNext({ trust: 'seal', key: '#1 --yes', next }))).toEqual([]);
         expect(plain(fd.visibleNext({ trust: 'ok', next })).length).toBe(2);
         expect(fd.isStatusArgv(['omg', 'factory', 'run', 'status', '1; rm -rf /'])).toBe(false);
         expect(fd.isStatusArgv(['omg', 'factory', 'heal', 'status', '0123abcd'])).toBe(true);
@@ -148,13 +152,13 @@ describe('dashboard page script: DOM builders', () => {
             items: [
                 { key: '#1', group: 'merge', gate: 'merge', phase: 'merge', ageMs: 60_000, credits: 3, cap: 20, pr: 7, head: null, title: HOSTILE, why: `why ${HOSTILE}`, trust: 'ok', notes: [HOSTILE], log: '.omg/progress/factory-1.log',
                     next: [{ label: HOSTILE, argv: ['git', 'merge'], billed: false, line: 'git -C repo merge --no-ff --no-edit cccc', inRoot: false }, { label: 'rerun', argv: ['omg', 'factory', 'run', '1'], billed: true, line: 'omg factory run 1', inRoot: false }] },
-                { key: '#2', group: 'inspect', gate: 'merge', phase: 'merge', ageMs: null, credits: null, cap: null, pr: null, head: null, title: 'SECRET', why: 'state is not the engine\'s last write', trust: 'seal', notes: [],
+                { key: '#2', group: 'inspect', gate: 'merge', phase: 'merge', ageMs: null, credits: null, cap: null, pr: null, head: null, title: 'SECRET', why: 'SERVER-WHY', trust: 'seal', notes: [],
                     next: [{ label: 'read the run state', argv: ['omg', 'factory', 'run', 'status', '2'], billed: false, line: 'omg factory run status 2', inRoot: false }, { label: 'x', argv: ['omg', 'factory', 'run', '2'], line: 'omg factory run 2', billed: true, inRoot: false }] },
             ],
         },
         live: { engines: 0, slots: 0, runs: [], inFlightCredits: 0 },
         runs: [run('#1', { title: HOSTILE }), run('#2', { verified: false, trust: 'seal', title: '' })],
-        tasks: [], cost: { caps: { source: 'unresolved', note: 'n', laneMaxCredits: null, maxRunCredits: null }, totals: { credits: 0, premiumRequests: 0, lanes: 0 }, byRole: [], byDay: [], byRun: [], excluded: { runs: 1, credits: 0, premiumRequests: 0 } },
+        tasks: [], cost: { caps: { source: 'unresolved', note: 'n', laneMaxCredits: null, maxRunCredits: null }, totals: { credits: 0, premiumRequests: 0, lanes: 0 }, byRole: [], byDay: [], byRun: [], excluded: { runs: 1, missing: 0 } },
         throughput: { byDay: [], engineToMergeReady: { runs: 0, medianMs: null, p90Ms: null }, waitingAtMerge: { runs: 0, medianMs: null } }, bench: [], warnings: [HOSTILE],
     });
     it('attention: hostile text only ever as text nodes; commands only in <code> with a Copy button; untrusted rows: marker, status command, no title', () => {
@@ -178,6 +182,13 @@ describe('dashboard page script: DOM builders', () => {
         buttons[0].click();
         buttons[2].click();
         expect(copies).toEqual(['omg factory run status 2', 'omg factory run 1']);
+        // What a Copy button copies is exactly the text shown in its <code>.
+        copies.length = 0;
+        buttons.forEach((b) => b.click());
+        expect(copies).toEqual(codes.slice(0, 3));
+        // The untrusted row: its own fixed sentence, not the server's why.
+        expect(texts(el).join('')).toContain(fd.UNTRUSTED_WHY.seal);
+        expect(texts(el).join('')).not.toContain('SERVER-WHY');
         expect(els.some((e) => e.tagName === 'span' && e.textContent === 'not verified (seal)')).toBe(true);
         // Every attribute set is in the allowlist.
         for (const e of els)
@@ -293,6 +304,16 @@ describe('dashboard page script: source lint', () => {
             /\.src\s*=/, /\.href\s*=/, /location\s*=/, /<\/script/i, /<!--/, /\$\{/, /import\(/, /postMessage/, /window\.open/, /https?:\/\/(?!www\.w3\.org\/2000\/svg')/]) {
             expect(CLIENT_JS, String(bad)).not.toMatch(bad);
         }
+        // Computed access to a name built by concatenation (x['inner' + 'HTML']), reflection, and indirect globals.
+        for (const bad of [/[\w$)\]]\s*\[\s*['"`][^'"`\]]*['"`]\s*\+/, /\bReflect\s*\./, /\bFunction\s*\(/, /\bglobalThis\s*\[/, /\bwindow\s*\[/, /\bdocument\s*\[/, /\bself\s*\[/, /\bconstructor\b/]) {
+            expect(CLIENT_JS, String(bad)).not.toMatch(bad);
+        }
+        // setAttribute only in h() (the allowlisted builder) and the one constant class setter of the connection badge.
+        const sets = CLIENT_JS.split('\n').filter((l) => /setAttribute/.test(l)).map((l) => l.trim());
+        expect(sets).toEqual(["el.setAttribute(name, v === true ? '' : String(v));", "el.setAttribute('class', 'conn ' + state);"]);
+        const hBody = CLIENT_JS.slice(CLIENT_JS.indexOf('function h(doc'), CLIENT_JS.indexOf('FD.h = h;'));
+        expect(hBody).toContain('el.setAttribute(name');
+        expect(hBody).toContain("FD.ATTRS.indexOf(name) < 0) throw");
         // Its fetch URLs are fixed strings and the validated run key.
         expect([...CLIENT_JS.matchAll(/fetchJson\(([^)]*)\)/g)].map((m) => m[1]).filter((a) => a !== 'url')).toEqual([
             "multi ? 'api/v1/repo/' + rid + '/run/' + api : 'api/v1/run/' + api", "'api/v1/repos'", "multi ? 'api/v1/repo/' + rid + '/summary' : 'api/v1/summary'",
