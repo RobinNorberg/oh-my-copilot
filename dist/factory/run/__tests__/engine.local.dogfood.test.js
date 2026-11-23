@@ -18,6 +18,7 @@ import { FactoryBusyError, factoryRepoOwnerPath, factoryStatePath, readFactorySt
 import { factoryClaimPath } from '../claims.js';
 import { attestedSandbox, commitFile, gitIn, review } from './fake-lanes.js';
 import { BASE, lanesFor, LOCAL_ISSUE, localOpts, localWorld } from './engine-local-harness.js';
+import { sealedNext, steps } from './gate-next-expect.js';
 let w;
 afterEach(() => rmSync(w.dir, { recursive: true, force: true }));
 const BRANCH = `factory/issue-${LOCAL_ISSUE}`;
@@ -150,6 +151,9 @@ describe('a dotnet gate: its MSBuild files define it, and its write lanes get th
         expect(out.exitCode, out.message).toBe(0);
         expect(out.gate?.name).toBe('merge');
         expect(w.gateRuns.map((r) => r.argv)).toEqual([['dotnet', 'test']]);
+        const parked = readFactoryState(w.root, LOCAL_ISSUE);
+        // The local merge command into the root the engine was started with (the outcome's merge command), then the rerun and the status read.
+        expect(sealedNext(w.root, LOCAL_ISSUE, out)).toEqual([['git', '-C', w.root, 'merge', '--no-ff', '--no-edit', parked.head], steps(LOCAL_ISSUE).resume, steps(LOCAL_ISSUE).status]);
         expect(lanes.started.map((l) => [l.profile ?? 'write', l.dotnet ?? false])).toEqual([['write', true], ['review', false]]);
     }, MULTI_RUN_MS);
     it('a lane that edits a project file parks at gate-definition-changed, naming that file (nothing pushed)', async () => {
@@ -158,6 +162,7 @@ describe('a dotnet gate: its MSBuild files define it, and its write lanes get th
         const out = await runFactoryEngine(localOpts(w, lanesFor(w, [commitFile('src/App/App.csproj', CSPROJ.replace('</PropertyGroup>', '  <Target Name="VSTest" />\n  </PropertyGroup>'))])));
         expect(out.gate?.name, out.message).toBe('gate-definition-changed');
         expect(out.gate?.reason).toMatch(/redefines the local gate "dotnet test" \(src\/App\/App\.csproj differ from main\).*diff [0-9a-f]{12} [0-9a-f]{12} -- src\/App\/App\.csproj, then rerun/);
+        expect(sealedNext(w.root, LOCAL_ISSUE, out)).toEqual([steps(LOCAL_ISSUE).status, steps(LOCAL_ISSUE).flag('--allow-gate-change'), steps(LOCAL_ISSUE).cancel]);
         expect(readMirrorRef(w.config.repo.url, BRANCH)).toBeUndefined();
     }, MULTI_RUN_MS);
     it('a lane that adds a Directory.Build.props parks too', async () => {
@@ -217,6 +222,7 @@ describe('a dotnet gate: its MSBuild files define it, and its write lanes get th
         const again = await runFactoryEngine(localOpts(w, lanesFor(w, []), { gateSandboxUserConfig: UNSANDBOXED_GATES }));
         expect(again.gate?.name, again.message).toBe('lane-tampered');
         expect(again.gate?.reason).toMatch(/untracked file\(s\) that MSBuild reads for the dotnet gate but no commit pins \(src\/App\/App\.csproj\.user\)/);
+        expect(sealedNext(w.root, LOCAL_ISSUE, again)).toEqual([steps(LOCAL_ISSUE).status, steps(LOCAL_ISSUE).resume, steps(LOCAL_ISSUE).cancel]);
         expect(w.gateRuns).toHaveLength(1);
     }, MULTI_RUN_MS);
     /** The first gate run (the PR's code) runs `leave` in the checkout and does not start; later runs see what is left. */

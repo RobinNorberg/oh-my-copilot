@@ -114,7 +114,8 @@ import { jobRefProblem } from '../../copilot-run/job.js';
 import { secretShapeKinds } from '../heal/sanitize.js';
 import { CI_TREE_PATHS, commitLaneWork, conflictFixStart, LANE_DECLINED, LANE_PROTECTED_PATHS, laneCommitMessage, laneDecline, pathGlobMatches } from './lane-commit.js';
 import { proveLaneTreeGone } from './lane-procs.js';
-import { quarantineTamper, RELEASE_TAMPER_COMMAND, STILL_ACTIVE, tamperHoldMessage, tamperHoldPath, writeTamperHold } from './tamper-quarantine.js';
+import { quarantineTamper, readTamperHold, RELEASE_TAMPER_COMMAND, STILL_ACTIVE, tamperHoldMessage, tamperHoldPath, writeTamperHold } from './tamper-quarantine.js';
+import { cancelArgv, gateNext, gateSteps, resumeArgv } from './gate-next.js';
 import { currentBytes, defaultLedgerDir, EngineLedger, emptyHooksDir, userBaselineKey } from './ledger.js';
 import { createFactoryProgress, HEARTBEAT_MIN_MS } from './progress.js';
 import { acquireFactoryClaim, claimBusyMessage, factoryClaimHolder, factoryClaimRepo, isShallowClaimRepo, localFactoryClaimRepo, shallowClaimWarning, settleFactoryClaim, trustedFactoryClaimRepo, trustedLocalFactoryClaimRepo } from './claims.js';
@@ -544,9 +545,9 @@ const USER_REPO_PREFIX = 'your repository: ';
 const isUserRepoProblem = (p) => p.startsWith(USER_REPO_PREFIX) || /\bof your repository\b/.test(p);
 /** The refs a tamper compare reported (compareSnapshots' `ref <name> ...`): only these are listed or undone by the quarantine. */
 const quarantineRefs = (problems) => problems.map((p) => /^ref (\S+) (?:was created|was deleted|moved|is at)/.exec(p)?.[1]).filter((n) => Boolean(n));
-export const cancelCommand = (key) => (typeof key === 'number' ? `omg factory run cancel ${key}` : `omg factory heal cancel ${key.slice('heal-'.length)}`);
+export const cancelCommand = (key) => cancelArgv(key).join(' ');
 /** The command that resumes a parked run (for a ci-heal run, approve also resumes after any later gate). */
-export const resumeCommand = (key) => (typeof key === 'number' ? `omg factory run ${key}` : `omg factory heal approve ${key.slice('heal-'.length)}`);
+export const resumeCommand = (key) => resumeArgv(key).join(' ');
 /** The fixed acceptance line of every ci-heal plan (design §5). */
 export const HEAL_ACCEPTANCE = 'the failing test(s) listed in classification.json pass, and `npm test` passes';
 /**
@@ -896,10 +897,28 @@ class FactoryEngine {
         return s.remote === LOCAL_REMOTE ? localRemoteMismatch(this.exec, this.o.root, s.repoUrl) : remoteRepoMismatch(this.exec, this.o.root, runRemote(s), s.repoUrl);
     }
     /** `detail`: the PR code's output for this park, local only (FactoryGate.detail, H1); the forge-bound text is `reason`. */
-    gate(name, reason, detail) {
+    gate(name, reason, detail, facts = {}) {
         const pending = this.resumedFromPark && !isHumanReadGate(name) ? this.pendingHumanNote() : '';
         const local = detail ? detail.slice(-GATE_DETAIL_MAX_CHARS) : '';
-        this.save((s) => setGate(s, name, `${reason}${pending}`, this.iso(), local ? { detail: local } : {}));
+        this.save((s) => this.park(s, name, `${reason}${pending}`, this.iso(), local ? { detail: local } : {}, facts));
+    }
+    /**
+     * The one way the engine parks (setGate): the gate also seals its next steps
+     * (FactoryGate.next), composed from engine-held facts only (the run key, the
+     * state's head and PR, the root the engine was started with, the forge kind,
+     * the tamper hold and the fixed flags), never from the reason.
+     */
+    park(s, name, reason, at, extra = {}, facts = {}) {
+        let tamperHold = false;
+        try {
+            tamperHold = readTamperHold(this.o.ledgerDir ?? defaultLedgerDir(), this.o.root) !== null;
+        }
+        catch { /* no release step; the hold message says it */ }
+        const next = gateNext(name, {
+            key: this.key, root: this.o.root, forge: s.forgeKind ?? 'github', ...(s.pr !== undefined ? { pr: s.pr } : {}), ...(s.head ? { head: s.head } : {}),
+            secretFindings: Boolean(s.pendingCommit?.secretFindings?.length), tamperHold, ...facts,
+        });
+        return setGate(s, name, reason, at, { ...extra, ...(next.length > 0 ? { next } : {}) });
     }
     /** Set by resumed(): this run re-evaluates a park, so a park it hits again names the PR's pending human review (L8). */
     resumedFromPark = false;
@@ -2224,7 +2243,7 @@ class FactoryEngine {
             }
             catch { /* the gate below still parks */ }
             const reason = `${changed} changed outside the engine; the changed copies were moved aside (${aside.map((p) => this.rel(p)).join(', ') || 'removed files'}) and the engine's own copies restored${restoreNote}. Check what wrote them (a lane may be prompt-injected), then rerun ${this.resume}`;
-            const parked = setGate({
+            const parked = this.park({
                 ...s,
                 elapsedMs: s.elapsedMs + this.tick(),
                 lanes: s.lanes.map((l) => (stopped.has(l.id) ? { ...l, status: 'cancelled', endedAt: at, usage: stopped.get(l.id), note: 'cancelled: engine state tampered', tamperCheck: 'skipped' } : l)),
@@ -2326,8 +2345,8 @@ class FactoryEngine {
             phase: this.state.phase,
             gate,
             state: this.state,
-            // A reason that already names the rerun command says it once (M2).
-            message: `awaiting-human: ${gate.name}: ${gate.reason}${gate.reason.includes(this.resume) ? '' : `. Resume with ${this.resume}.`}`,
+            // A reason that already names the rerun command says it once (M2); a park whose next steps have no rerun (a rerun parks again) names none.
+            message: `awaiting-human: ${gate.name}: ${gate.reason}${gate.reason.includes(this.resume) || !this.resumes(gate) ? '' : `. Resume with ${this.resume}.`}`,
             ...(gate.name === 'merge' && this.mergeCmd ? { mergeCommand: this.mergeCmd } : {}),
         };
     }
@@ -2368,9 +2387,13 @@ class FactoryEngine {
             reason,
             fence,
             '',
-            `Resume with \`${this.resume}\` once it is resolved.`,
-            '',
+            ...(this.resumes(gate) ? [`Resume with \`${this.resume}\` once it is resolved.`, ''] : []),
         ].join('\n'));
+    }
+    /** The park's next steps include the plain rerun (FactoryGate.next; the gate table for a park sealed before next existed). */
+    resumes(gate) {
+        const resume = resumeCommand(this.key);
+        return gate.next ? gate.next.some((n) => n.argv.join(' ') === resume) : gateSteps(gate.name).steps.includes('resume');
     }
     /**
      * F31: a merged local-forge run whose backlog file still says `state: open`
@@ -3234,7 +3257,7 @@ class FactoryEngine {
         const specs = [...new Set([...plain.map(gateSourcePathspec), ...changed.map(shellPath)])];
         // A dotnet gate: tracked build output (bin/, obj/, artifacts/) is MSBuild input no definition pattern names.
         const output = changed.some(underDotnetBuildDir) ? '; tracked files under bin/, obj/ or artifacts/ are build output MSBuild may reuse instead of building the change, so they count as the gate\'s definition' : '';
-        this.save((x) => setGate(x, 'gate-definition-changed', `the change redefines the local gate "${gate.join(' ')}" (${named} differ from ${s.base})${output}${stale}; offline the gate is the only check, so nothing was pushed. Inspect it with git -C ${this.o.root} diff ${s.baseSha.slice(0, 12)} ${cand.slice(0, 12)} -- ${(specs.length > 0 ? specs : sources.map(gateSourcePathspec)).join(' ')}, then rerun ${this.resume} --allow-gate-change to accept it, or ${cancelCommand(this.key)}${this.restoreOnApprovalNote(gate)}`, this.iso(), { definition: head }));
+        this.save((x) => this.park(x, 'gate-definition-changed', `the change redefines the local gate "${gate.join(' ')}" (${named} differ from ${s.base})${output}${stale}; offline the gate is the only check, so nothing was pushed. Inspect it with git -C ${this.o.root} diff ${s.baseSha.slice(0, 12)} ${cand.slice(0, 12)} -- ${(specs.length > 0 ? specs : sources.map(gateSourcePathspec)).join(' ')}, then rerun ${this.resume} --allow-gate-change to accept it, or ${cancelCommand(this.key)}${this.restoreOnApprovalNote(gate)}`, this.iso(), { definition: head }));
         return true;
     }
     /**
@@ -6529,7 +6552,7 @@ class FactoryEngine {
         const what = `shared git state changed after lane ${r.laneId} passed its check (found ${where}): ${problems.slice(0, 5).join('; ')}${this.snapQuarantine(r.snapshot, r.kind === 'review' ? 'review-tampered' : 'lane-tampered', problems, killed.after ?? now, killed.note)}`;
         if (r.kind === 'review') {
             this.markVerdict(r.laneId, 'invalid', `late change: ${problems.join('; ')}`);
-            this.save((x) => setGate(x.phase === 'review' ? x : moveTo(x, 'review', `review lane ${r.laneId}'s verdict is discarded`, at), 'review-tampered', `${what}; its verdict is discarded${also}`, at));
+            this.save((x) => this.park(x.phase === 'review' ? x : moveTo(x, 'review', `review lane ${r.laneId}'s verdict is discarded`, at), 'review-tampered', `${what}; its verdict is discarded${also}`, at));
         }
         else {
             // Each write-lane kind is the phase that runs it (a coding-agent lane runs in implement).
@@ -6537,7 +6560,7 @@ class FactoryEngine {
             this.updateLane(r.laneId, { note: `late change: ${problems.join('; ')}` });
             this.save((x) => {
                 const { pendingHead: _p, pendingParents: _pp, ...rest } = x;
-                return setGate(x.phase === back ? rest : moveTo(rest, back, `lane ${r.laneId}'s head is dropped`, at), 'lane-tampered', `${what}; nothing it made is pushed${also}`, at);
+                return this.park(x.phase === back ? rest : moveTo(rest, back, `lane ${r.laneId}'s head is dropped`, at), 'lane-tampered', `${what}; nothing it made is pushed${also}`, at);
             });
         }
     }
@@ -7703,7 +7726,7 @@ class FactoryEngine {
             return accepted;
         }
         const which = loose.map((l) => `${l.id} (${l.sandbox ? '' : `${l.status}; `}sandbox ${l.sandbox ? oneLine(visibleLine(l.sandbox.mode), 40) : 'not recorded'}, network ${l.sandbox?.writeNetwork ?? 'not recorded'})`);
-        this.gate(HUMAN_REVIEW_GATE, `${UNSANDBOXED_LANES_REASON} (it could reach ${this.forgeName} with your login): check the PR's threads and reviews yourself, then merge; lanes: ${this.names(which)}${gone}. To record that you checked ${head.slice(0, 12)}, rerun ${this.resume} --allow-unsandboxed-lanes`);
+        this.gate(HUMAN_REVIEW_GATE, `${UNSANDBOXED_LANES_REASON} (it could reach ${this.forgeName} with your login): check the PR's threads and reviews yourself, then merge; lanes: ${this.names(which)}${gone}. To record that you checked ${head.slice(0, 12)}, rerun ${this.resume} --allow-unsandboxed-lanes`, undefined, { unsandboxedLanes: true });
         return null;
     }
     /** A fix step at the head a human round recorded, unless the factory's own review requested changes on it. */

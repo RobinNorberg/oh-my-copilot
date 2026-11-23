@@ -142,6 +142,24 @@ export interface FactoryGate {
    * it (they get `reason`), because the PR's code chooses what it prints.
    */
   detail?: string;
+  /**
+   * The next step(s) for the human, composed by the engine when it parked
+   * (gate-next.ts gateNext) from engine-held facts only: the run key, the
+   * 40-hex head, the PR number, the repository root, the forge kind and fixed
+   * flags; never from lane output, the reason, titles or branch names. Sealed
+   * with the rest of the state, so read surfaces print it only after the seal
+   * and the ledger check pass. Optional: states written before it lack it
+   * (gate-next.ts gateSteps is the fallback).
+   */
+  next?: FactoryGateNextStep[];
+}
+
+/** One step of FactoryGate.next: a short label and the exact argv (never a shell line). */
+export interface FactoryGateNextStep {
+  label: string;
+  argv: string[];
+  /** The step can start billed lanes (a rerun, a heal approve). */
+  billed?: boolean;
 }
 
 export interface FactoryFinding {
@@ -550,7 +568,7 @@ export function moveTo(state: FactoryRunState, to: FactoryPhase, note: string, n
 }
 
 /** Park at a named human gate; the phase stays so a rerun re-evaluates it. */
-export function setGate(state: FactoryRunState, name: string, reason: string, now: string, extra: Pick<FactoryGate, 'definition' | 'detail'> = {}): FactoryRunState {
+export function setGate(state: FactoryRunState, name: string, reason: string, now: string, extra: Pick<FactoryGate, 'definition' | 'detail' | 'next'> = {}): FactoryRunState {
   return {
     ...state,
     gate: { name, reason, at: now, ...extra },
@@ -613,6 +631,27 @@ const HEX64 = /^[0-9a-f]{64}$/;
 export const GATE_DETAIL_MAX_CHARS = 4_000;
 const isCount = (v: unknown): v is number => Number.isInteger(v) && (v as number) >= 0;
 
+/** Bounds of FactoryGate.next: steps per gate, words per argv, characters per label and per word. */
+export const GATE_NEXT_MAX_STEPS = 8;
+export const GATE_NEXT_MAX_ARGS = 16;
+export const GATE_NEXT_LABEL_MAX_CHARS = 80;
+export const GATE_NEXT_ARG_MAX_CHARS = 4_096;
+/** C0/C1 controls, DEL, the Unicode line and paragraph separators and the bidi controls: never in a copyable command or its label. */
+const GATE_NEXT_FORBIDDEN = /[\u0000-\u001f\u007f-\u009f\u2028\u2029\u200e\u200f\u202a-\u202e\u2066-\u2069]/;
+const nextText = (v: unknown, max: number): boolean => isStr(v) && v.length > 0 && v.length <= max && !GATE_NEXT_FORBIDDEN.test(v);
+
+/** One FactoryGate.next entry: exactly label, argv and an optional billed flag, each bounded and control-free (shell metacharacters are data in an argv word). */
+export function gateNextStepOk(v: unknown): v is FactoryGateNextStep {
+  const e = v as Record<string, unknown> | null;
+  return typeof e === 'object' && e !== null && !Array.isArray(e)
+    && nextText(e.label, GATE_NEXT_LABEL_MAX_CHARS)
+    && Array.isArray(e.argv) && e.argv.length > 0 && e.argv.length <= GATE_NEXT_MAX_ARGS && e.argv.every((a) => nextText(a, GATE_NEXT_ARG_MAX_CHARS))
+    && (e.billed === undefined || e.billed === true)
+    && Object.keys(e).every((k) => k === 'label' || k === 'argv' || k === 'billed');
+}
+
+const gateNextOk = (v: unknown): boolean => Array.isArray(v) && v.length > 0 && v.length <= GATE_NEXT_MAX_STEPS && v.every(gateNextStepOk);
+
 function shapeProblem(s: Record<string, unknown>): string | null {
   if (!isStr(s.repoUrl) || !isStr(s.base) || !s.base || !isStr(s.branch) || !s.branch) return 'repoUrl/base/branch';
   if (!FACTORY_PHASES.includes(s.phase as FactoryPhase)) return 'phase';
@@ -627,6 +666,8 @@ function shapeProblem(s: Record<string, unknown>): string | null {
   if (gateDef !== undefined && (s.forgeKind !== 'local' || !isStr(gateDef) || !HEX64.test(gateDef))) return 'gate.definition';
   const gateDetail = (s.gate as { detail?: unknown } | undefined)?.detail;
   if (gateDetail !== undefined && (!isStr(gateDetail) || gateDetail.length > GATE_DETAIL_MAX_CHARS)) return 'gate.detail';
+  const gateNext = (s.gate as { next?: unknown } | undefined)?.next;
+  if (gateNext !== undefined && !gateNextOk(gateNext)) return 'gate.next';
   if (s.prepareChecks !== undefined && s.prepareChecks !== 'auto' && !(Array.isArray(s.prepareChecks) && s.prepareChecks.every((a) => Array.isArray(a) && a.length > 0 && a.every(isStr)))) return 'prepareChecks';
   if (s.prepareBuild !== undefined && s.prepareBuild !== 'none') {
     const b = s.prepareBuild as { command?: unknown; outputs?: unknown };

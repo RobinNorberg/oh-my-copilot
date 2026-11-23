@@ -7,6 +7,7 @@ import { factoryProgressFile } from '../progress.js';
 import { factoryOwnerPath, readFactoryState } from '../state.js';
 import { commitFile, gitIn, ISSUE, PR, remoteHead, review } from './fake-lanes.js';
 import { h, useEngineHarness, limits, run } from './engine-harness.js';
+import { sealedNext, steps } from './gate-next-expect.js';
 useEngineHarness();
 describe('omg factory run engine (fake lanes, real git, scripted gh)', () => {
     it('happy path: implement -> push -> draft PR -> independent review approve -> prepare -> green gates -> park at the human merge', async () => {
@@ -19,6 +20,8 @@ describe('omg factory run engine (fake lanes, real git, scripted gh)', () => {
         expect(state.pr).toBe(PR);
         expect(state.head).toBe(remoteHead(h));
         expect(state.plan?.source).toBe('issue-body');
+        // The sealed next steps: the GitHub merge command (the outcome's), then the rerun and the status read.
+        expect(sealedNext(h.root, ISSUE, out)).toEqual([['gh', 'pr', 'merge', String(PR), '--admin', '--merge', '--match-head-commit', state.head], steps(ISSUE).resume, steps(ISSUE).status]);
         // Lanes: write profile for the implementer, review profile on the exact head, every start capped.
         expect(lanes.started.map((s) => [s.laneId, s.profile, s.maxCredits])).toEqual([
             [`issue-${ISSUE}-implement-1`, 'write', 30],
