@@ -6,7 +6,7 @@
  * Who records it:
  * - `omg factory run <n>` before it resumes anything (the engine: start());
  * - `omg factory run status [<n>]`, `omg factory board` and
- *   `omg factory dashboard` through recordHumanMerge below.
+ *   `omg factory dashboard --forge` (opt-in; the dashboard is read-only by default) through recordHumanMerge below.
  *
  * The PR state comes from the forge's own read (GitHub, Azure DevOps), for the
  * run's own forge, repository and base. On the local forge the PR store is a

@@ -32,7 +32,9 @@
  *   root; from a checkout under `<repo>/.omg/` (the shared layout) that
  *   reaches your working tree's own file, which the sandbox refuses ("Failed
  *   to read NuGet.Config due to unauthorized access"): RestoreConfigFile
- *   names one file instead (dotnetNugetConfig).
+ *   names one file instead (dotnetNugetConfig), and nuget.org is added only
+ *   when the engine is certain NuGet would use it there
+ *   (nugetConfigVerdict): the engine never widens a repository's sources.
  * Not verified on Linux or macOS.
  */
 /** True when `exe` (a bare name or a path) is the dotnet host. */
@@ -145,56 +147,129 @@ export declare function dotnetSandboxEnv(profile: string, hostEnv: NodeJS.Proces
 export declare const NUGET_ORG_ONLY_CONFIG: string;
 /** The names NuGet looks for in a directory, in its order (case-sensitive file systems). */
 export declare const NUGET_CONFIG_NAMES: readonly string[];
+/** rootNugetConfig's answer: the file, none, or a reason the engine cannot tell which file NuGet reads there. */
+export type RootNugetConfig = {
+    file: string;
+} | {
+    none: true;
+} | {
+    ambiguous: string;
+};
 /**
  * The NuGet config file at the root of `dir` (the checkout, worktree or
- * definition tree a dotnet command runs in), as NuGet would find it there:
- * the first of NUGET_CONFIG_NAMES that is an entry of `dir`, compared
- * without case on Windows and macOS (their file systems open it so), and
- * not a directory. Null when there is none. Only its name is read here
- * (readdir, lstat): NuGet reads the file itself, in the sandbox.
+ * definition tree a dotnet command runs in), as NuGet finds it there
+ * (NuGet.Configuration Settings: on a case-insensitive file system it
+ * probes `NuGet.Config`, which opens a file of that name in any case; on a
+ * case-sensitive one it probes NUGET_CONFIG_NAMES in order; a directory of
+ * that name does not exist for it). The candidates are the entries of `dir`
+ * named `nuget.config` in any case that are not directories (lstat): none
+ * is `none`; one is the file, except on Linux when its name is not one of
+ * NUGET_CONFIG_NAMES (NuGet never probes `NUGET.CONFIG` there: `none`).
+ * `ambiguous` (the caller then keeps NuGet's own hierarchy rather than
+ * guess) for two or more candidates (two names that differ in case), a
+ * candidate that is a symbolic link, or on macOS a name outside
+ * NUGET_CONFIG_NAMES (whether NuGet opens it depends on the volume's case
+ * sensitivity). Only names are read here (readdir, lstat).
  */
-export declare function rootNugetConfig(dir: string, platform?: NodeJS.Platform): string | null;
+export declare function rootNugetConfig(dir: string, platform?: NodeJS.Platform): RootNugetConfig;
 /** nuget.org's feed, as NuGet's default user config names it. */
 export declare const NUGET_ORG_SOURCE = "https://api.nuget.org/v3/index.json";
-/** The one NuGet config file a sandboxed dotnet reads (dotnetNugetConfig). */
-export interface DotnetNugetConfig {
-    /** RestoreConfigFile: an absolute path. */
+/**
+ * The NuGet config a sandboxed dotnet reads (dotnetNugetConfig): one file
+ * (RestoreConfigFile), or NuGet's own hierarchy (`hierarchy`: why the engine
+ * does not name one file).
+ */
+export type DotnetNugetConfig = {
     file: string;
-    /** RestoreAdditionalProjectSources gets nuget.org (nugetOrgImplied). */
     addNugetOrg: boolean;
+} | {
+    hierarchy: string;
+};
+/** Above this size a root nuget.config is not read for nugetConfigVerdict (nuget.org is then not added). */
+export declare const NUGET_CONFIG_READ_MAX: number;
+/** What nugetConfigVerdict says about one root nuget.config. */
+export interface NugetConfigVerdict {
+    /** NuGet, reading this file with its default user config behind it, certainly uses nuget.org: it may be added. */
+    addNugetOrg: boolean;
+    /** Why nuget.org is not added (absent when it is). */
+    why?: string;
+    /**
+     * `packageSourceMapping` keys (`<packageSource key>`) that no
+     * `packageSources/add key` of the file defines, when the file does not
+     * clear its sources: such a key names a source of another config (most
+     * often the user config's `nuget.org`), so the file alone is not what
+     * NuGet reads for this repository.
+     */
+    unmappedKeys: string[];
 }
 /**
- * True when NuGet, reading `text` (a repository's root nuget.config) with
- * your user config behind it, would also use nuget.org from the user
- * config: the file's `<packageSources>` has no `<clear />`, lists no
- * nuget.org feed itself, and its `<disabledPackageSources>` does not
- * disable the source named `nuget.org`. NuGet reads one file in the sandbox
- * (RestoreConfigFile), so that nuget.org has to be added
- * (RestoreAdditionalProjectSources): without it such a file has no source
- * at all, and NuGet then quietly takes a higher version from the packages
- * folder (NU1603, a warning) instead of failing offline. XML comments are
- * dropped first; NuGet's element and attribute names are case-sensitive.
+ * Whether the engine may add nuget.org for a repository whose root
+ * nuget.config is `bytes`, read alone (RestoreConfigFile). NuGet with its
+ * hierarchy would merge the default user config (nuget.org) behind the
+ * file; with one file it does not, so the engine adds nuget.org
+ * (RestoreAdditionalProjectSources) only when it is CERTAIN NuGet would use
+ * it there. Fail closed: `addNugetOrg` only when ALL of these hold (else
+ * nothing is added, and a restore that needed nuget.org fails or parks):
+ * at most NUGET_CONFIG_READ_MAX bytes; no UTF-16 or UTF-32 byte order
+ * mark, no NUL byte, valid UTF-8 (a UTF-8 BOM is fine); no CDATA, DOCTYPE,
+ * processing instruction other than the leading `<?xml ...?>`, entity
+ * reference other than the five predefined ones, unquoted attribute or
+ * other shape xml-scan.ts reports as odd; after comments are removed, no
+ * `clear` element in any letter case, no attribute `key` (any case) whose
+ * value is `nuget.org` in any case, no `nuget.org` anywhere in the text
+ * (host or key), no `packageSourceMapping` element in any case; and the
+ * root element is `configuration`. The scan is linear (xml-scan.ts).
+ * Compared with `dotnet nuget list source` for each shape in
+ * dotnet-sandbox.test.ts (.NET SDK 10.0.101).
  */
-export declare function nugetOrgImplied(text: string): boolean;
+export declare function nugetConfigVerdict(bytes: Buffer): NugetConfigVerdict;
 /**
- * The one NuGet config a sandboxed dotnet in `cwd` reads (RestoreConfigFile,
- * dotnetSandboxEnv): the root config of `cwd` (rootNugetConfig), with
- * nuget.org added when NuGet would take it from your user config there
- * (nugetOrgImplied; the file is read only when lstat says it is a regular
- * file of at most 1 MB, else nothing is added), or else
- * NUGET_ORG_ONLY_CONFIG written to `<profile>/nuget/nuget.config`, the
- * command's own job profile (never inside the checkout). Why: NuGet
- * otherwise reads every nuget.config from the project's dir up to the
- * drive root (a `<clear />` only resets what was merged; the files are
- * still read), and in the shared layout that walk reaches your working
- * tree's own `nuget.config` (or one in a dir above your repository), which
- * the Windows sandbox refuses to read: "Failed to read NuGet.Config due to
- * unauthorized access" fails every restore. With RestoreConfigFile NuGet
- * reads that file alone: no other nuget.config of the repository, no user
- * config, no machine-wide config (checked with .NET SDK 10.0.101 for
- * `dotnet restore`, `build` and `test`).
+ * The bytes of the regular file `path`, at most `max`, or null: lstat
+ * first (a link, directory, FIFO or device is not opened), then the file
+ * opened with O_NOFOLLOW and O_NONBLOCK where the platform has them, which
+ * must be that same file (dev and inode, compared as bigints), still a
+ * regular file within `max`; read from that descriptor, so a file swapped
+ * in after the lstat is never read.
  */
-export declare function dotnetNugetConfig(cwd: string, profile: string, platform?: NodeJS.Platform): DotnetNugetConfig;
+export declare function readRegularFileBounded(path: string, max: number): Buffer | null;
+/**
+ * A value for an MSBuild property set from the environment: MSBuild
+ * unescapes `%XX` in it and expands `@(...)` (checked with .NET SDK
+ * 10.0.101: `RestoreConfigFile` in a dir named `p%41` read `pA`, `p@(x)`
+ * read `p`), so `%`, `$`, `@`, `'`, `;`, `?` and `*` are written `%XX`.
+ * A `;` stays a separator for NuGet's targets even escaped
+ * (dotnetNugetConfig never names a path with one).
+ */
+export declare const msbuildEscape: (value: string) => string;
+/**
+ * The NuGet config a sandboxed dotnet in `cwd` reads (dotnetSandboxEnv).
+ * Why one file: NuGet otherwise reads every nuget.config from the project's
+ * dir up to the drive root (a `<clear />` only resets what was merged; the
+ * files are still read), and in the shared layout that walk reaches your
+ * working tree's own `nuget.config` (or one in a dir above your
+ * repository), which the Windows sandbox refuses to read: "Failed to read
+ * NuGet.Config due to unauthorized access" fails every restore. With
+ * RestoreConfigFile NuGet's restore reads that file alone (checked with
+ * .NET SDK 10.0.101 for `dotnet restore`, `build` and `test`; NuGet's
+ * RestoreTask still reads or creates the relocated profile's user config,
+ * which adds no source, and the MSBuild project SDK resolver, `dotnet tool
+ * restore`, `dotnet nuget` and `dotnet workload` ignore the property).
+ * The file: the root config of `cwd` (rootNugetConfig), with nuget.org
+ * added only when nugetConfigVerdict is certain NuGet would take it from
+ * the default user config and `noAdd` (engine.ts: a pinned MSBuild file
+ * sets restore sources itself) is not set; or, with no root config,
+ * NUGET_ORG_ONLY_CONFIG written to `<profile>/nuget/nuget.config`, the
+ * command's own job profile (never inside the checkout). `hierarchy`
+ * instead (NuGet's own walk, as before one file was named: faithful, and
+ * in the shared layout it parks at the first unreadable config) when the
+ * engine cannot tell which root file NuGet reads (rootNugetConfig
+ * `ambiguous`), when the root file maps packages to a source key it does
+ * not define (nugetConfigVerdict `unmappedKeys`: the file alone would leave
+ * that source out), or when the path holds a `;`, which MSBuild splits.
+ */
+export declare function dotnetNugetConfig(cwd: string, profile: string, platform?: NodeJS.Platform, o?: {
+    noAdd?: boolean;
+}): DotnetNugetConfig;
 /** True when a sandbox.allowedHosts entry lets NuGet reach nuget.org's feed (`api.nuget.org`, `*.nuget.org`). */
 export declare const isNugetHost: (host: string) => boolean;
 //# sourceMappingURL=dotnet-sandbox.d.ts.map

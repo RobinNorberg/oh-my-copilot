@@ -489,7 +489,7 @@ describe('a repository with a committed root nuget.config (the shared layout)', 
         const lanes = lanesFor(w, [commitFile('src/App/Greet.cs', 'namespace App;\n'), review('approve')]);
         const out = await runFactoryEngine(localOpts(w, lanes, { gateSandbox: r.sandbox, runUserConfig: SANDBOXED }));
         expect(out.gate?.name, out.message).toBe('gate-install-needed');
-        expect(out.gate?.reason).toContain(`NuGet could not read the NuGet config ${JSON.stringify('C:\\repo\\NuGet.Config')} (no package was tried, so this says nothing about the code)`);
+        expect(out.gate?.reason).toContain('NuGet could not read the NuGet config "C:\\repo\\NuGet.Config" (no package was tried, so this says nothing about the code)');
         expect(out.gate?.reason).toContain('a sandboxed dotnet command reads one NuGet config, the root nuget.config of its checkout');
         expect(purposes(r)).toEqual(['gate']);
         expect(lanes.started).toHaveLength(2);
@@ -505,11 +505,98 @@ describe('a repository with a committed root nuget.config (the shared layout)', 
         const r = recorder([{ status: 1, output: DENIED }]);
         const out = await runFactoryEngine(localOpts(w, lanesFor(w, [commitFile('src/App/Greet.cs', 'namespace App;\n'), review('approve')]), { gateSandbox: r.sandbox }));
         expect(out.gate?.name, out.message).toBe('gate-install-needed');
-        expect(out.gate?.reason).toContain('the trusted base pins a nuget.config below its root (src/App/nuget.config)');
+        expect(out.gate?.reason).toContain('the repository pins a nuget.config below its root (src/App/nuget.config');
         expect(out.gate?.reason).toContain('factory.run.layout "private"');
         const gates = r.reqs.filter((q) => q.purpose === 'gate');
         expect(gates.length).toBeGreaterThan(0);
-        expect(gates.every((q) => q.nugetHierarchy === true)).toBe(true);
+        expect(gates.every((q) => q.nugetHierarchy?.includes('src/App/nuget.config'))).toBe(true);
+    }, MULTI_RUN_MS);
+    it('H2: a pinned project that sets RestoreSources: no request lets the engine add nuget.org', async () => {
+        w = localWorld(['dotnet', 'test']);
+        writeFileSync(join(w.root, 'nuget.config'), '<configuration><packageSources><add key="corp" value="C:\\corp" /></packageSources></configuration>\n');
+        baseProject();
+        writeFileSync(join(w.root, 'src', 'App', 'App.csproj'), CSPROJ.replace('</PropertyGroup>', '  <RestoreSources>C:\\corp</RestoreSources>\n  </PropertyGroup>'));
+        gitIn(w.root, 'commit', '-q', '-am', 'restore sources');
+        const r = recorder([{ status: 0, output: 'Passed!' }]);
+        const out = await runFactoryEngine(localOpts(w, lanesFor(w, [commitFile('src/App/Greet.cs', 'namespace App;\n'), review('approve')]), { gateSandbox: r.sandbox }));
+        expect(out.gate?.name, out.message).toBe('merge');
+        expect(dotnetReqs(r).length).toBeGreaterThan(0);
+        expect(dotnetReqs(r).every((q) => q.nugetNoAddSource === true && q.nugetHierarchy === undefined)).toBe(true);
+    }, MULTI_RUN_MS);
+    it('M1: a root config that maps packages to the nuget.org key it does not define keeps NuGet\'s hierarchy, and the park says so', async () => {
+        w = localWorld(['dotnet', 'test']);
+        writeFileSync(join(w.root, 'nuget.config'), '<configuration><packageSources><add key="corp" value="https://corp.example.test/v3/index.json" /></packageSources><packageSourceMapping><packageSource key="nuget.org"><package pattern="*" /></packageSource></packageSourceMapping></configuration>\n');
+        baseProject();
+        const r = recorder([{ status: 1, output: DENIED }]);
+        const out = await runFactoryEngine(localOpts(w, lanesFor(w, [commitFile('src/App/Greet.cs', 'namespace App;\n'), review('approve')]), { gateSandbox: r.sandbox, runUserConfig: SANDBOXED }));
+        expect(out.gate?.name, out.message).toBe('gate-install-needed');
+        expect(out.gate?.reason).toContain('maps packages to the source key(s) nuget.org, which it does not define');
+        expect(out.gate?.reason).toContain('factory.run.layout "private"');
+        expect(dotnetReqs(r).every((q) => q.nugetHierarchy?.includes('source key(s) nuget.org'))).toBe(true);
+        expect(purposes(r)).toEqual(['gate']);
+    }, MULTI_RUN_MS);
+    it('M2: a lower nuget.config the head adds is named in the approval park, and once approved the gate and the restore read NuGet\'s hierarchy', async () => {
+        w = localWorld(['dotnet', 'test']);
+        writeFileSync(join(w.root, 'nuget.config'), ROOT_CONFIG);
+        baseProject();
+        const r = recorder([{ status: 1, output: OFFLINE }, { status: 0, output: 'Passed!' }]);
+        const lower = '<configuration><packageSources><clear /><add key="corp" value="https://corp.example.test/v3/index.json" /></packageSources></configuration>\n';
+        const parked = await runFactoryEngine(localOpts(w, lanesFor(w, [commitFile('src/App/nuget.config', lower)]), { gateSandbox: r.sandbox, runUserConfig: SANDBOXED }));
+        expect(parked.gate?.name, parked.message).toBe('gate-definition-changed');
+        expect(parked.gate?.reason).toContain('adds, changes or removes a nuget.config below the repository root (src/App/nuget.config)');
+        expect(parked.gate?.reason).toContain("read NuGet's own config hierarchy");
+        const out = await runFactoryEngine(localOpts(w, lanesFor(w, [review('approve')]), { gateSandbox: r.sandbox, runUserConfig: SANDBOXED, allowGateChange: true }));
+        expect(out.gate?.name, out.message).toBe('merge');
+        const run = r.reqs.filter((q) => q.purpose === 'gate' || q.purpose === 'restore');
+        expect(run.map((q) => q.purpose)).toEqual(['gate', 'restore', 'gate']);
+        expect(run.every((q) => q.nugetHierarchy?.includes('src/App/nuget.config'))).toBe(true);
+    }, MULTI_RUN_MS);
+    it('M3: MSBuild project SDKs from NuGet with a nuget.config above the checkout park before the gate, naming the SDK and the private layout', async () => {
+        w = localWorld(['dotnet', 'build', 'A/A.proj']);
+        writeFileSync(join(w.root, 'nuget.config'), ROOT_CONFIG);
+        baseProject();
+        mkdirSync(join(w.root, 'A'));
+        writeFileSync(join(w.root, 'A', 'A.proj'), '<Project Sdk="Microsoft.Build.NoTargets/3.7.56"><PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup></Project>\n');
+        gitIn(w.root, 'add', '.');
+        gitIn(w.root, 'commit', '-q', '-m', 'sdk');
+        const r = recorder([{ status: 0, output: 'Build succeeded.' }]);
+        const out = await runFactoryEngine(localOpts(w, lanesFor(w, [commitFile('src/App/Greet.cs', 'namespace App;\n'), review('approve')]), { gateSandbox: r.sandbox, runUserConfig: SANDBOXED }));
+        expect(out.gate?.name, out.message).toBe('gate-install-needed');
+        expect(out.gate?.reason).toContain('MSBuild project SDKs resolved from NuGet (A/A.proj: Microsoft.Build.NoTargets/3.7.56)');
+        expect(out.gate?.reason).toContain('ignores RestoreConfigFile');
+        expect(out.gate?.reason).toContain('factory.run.layout "private"');
+        expect(r.reqs.filter((q) => q.purpose === 'gate')).toEqual([]);
+    }, MULTI_RUN_MS);
+});
+describe('NU1603: a version NuGet replaced never passes silently', () => {
+    const NU1603 = 'C:\\w\\src\\App\\App.csproj : warning NU1603: App depends on Newtonsoft.Json (>= 13.0.2) but Newtonsoft.Json 13.0.2 was not found. Newtonsoft.Json 13.0.3 was resolved instead.\n  Restored C:\\w\\src\\App\\App.csproj (in 400 ms).\n  App -> C:\\w\\src\\App\\bin\\App.dll\nPassed!';
+    it('a passing gate with NU1603: not counted; with "sandboxed" the restore runs, and the clean gate after it passes', async () => {
+        w = localWorld(['dotnet', 'test']);
+        baseProject();
+        const r = recorder([{ status: 0, output: NU1603 }, { status: 0, output: 'Passed!' }]);
+        const out = await runFactoryEngine(localOpts(w, lanesFor(w, [commitFile('src/App/Greet.cs', 'namespace App;\n'), review('approve')]), { gateSandbox: r.sandbox, runUserConfig: SANDBOXED }));
+        expect(out.gate?.name, out.message).toBe('merge');
+        expect(purposes(r)).toEqual(['gate', 'clean', 'restore', 'gate']);
+    }, MULTI_RUN_MS);
+    it('with "park": parks naming NU1603 and NuGet\'s message; no record counts the gate', async () => {
+        w = localWorld(['dotnet', 'test']);
+        baseProject();
+        const r = recorder([{ status: 0, output: NU1603 }]);
+        const out = await runFactoryEngine(localOpts(w, lanesFor(w, [commitFile('src/App/Greet.cs', 'namespace App;\n'), review('approve')]), { gateSandbox: r.sandbox }));
+        expect(out.gate?.name, out.message).toBe('gate-install-needed');
+        expect(out.gate?.reason).toContain('NuGet took others (NU1603: App depends on Newtonsoft.Json (>= 13.0.2)');
+        const head = readFactoryState(w.root, LOCAL_ISSUE).head;
+        expect(existsSync(localCheckRecordPath(w.stateDir, w.root, head))).toBe(false);
+    }, MULTI_RUN_MS);
+    it('a networked restore that exits 0 with NU1603 is a failed restore and parks', async () => {
+        w = localWorld(['dotnet', 'test']);
+        baseProject();
+        const r = recorder([{ status: 1, output: OFFLINE }], { ran: true, status: 0, output: NU1603.split('\n')[0], timedOut: false });
+        const out = await runFactoryEngine(localOpts(w, lanesFor(w, [commitFile('src/App/Greet.cs', 'namespace App;\n'), review('approve')]), { gateSandbox: r.sandbox, runUserConfig: SANDBOXED }));
+        expect(out.gate?.name, out.message).toBe('gate-install-needed');
+        expect(out.gate?.reason).toContain('failed (exit 0, NU1603)');
+        expect(out.gate?.reason).toContain('the engine never builds a substitute');
+        expect(readFactoryState(w.root, LOCAL_ISSUE).nugetRestore?.outcome).toBe('failed');
     }, MULTI_RUN_MS);
 });
 //# sourceMappingURL=engine.local.nuget.test.js.map

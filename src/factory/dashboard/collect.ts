@@ -87,7 +87,7 @@ const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFi
 const laneTime = (lane: { endedAt?: string; startedAt: string }): number => ms(lane.endedAt ?? lane.startedAt);
 const pad2 = (n: number): string => String(n).padStart(2, '0');
 /** Local calendar day (YYYY-MM-DD) of a timestamp. */
-const localDay = (t: number): string => {
+export const localDay = (t: number): string => {
   const d = new Date(t);
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 };

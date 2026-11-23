@@ -7,7 +7,7 @@ import { mkdirSync, mkdtempSync, rmSync, symlinkSync, unlinkSync, writeFileSync,
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { hasNodeModulesSegment, nodeModulesReferences, readsForNodeModulesRefs } from '../dotnet-package-refs.js';
+import { hasNodeModulesSegment, nodeModulesReferences, PINNED_READ_MAX, projectSdkMentions, readsForNodeModulesRefs, restoreSettingMentions } from '../dotnet-package-refs.js';
 import { gateTreeExactProblem, linkNodeModules } from '../prepare.js';
 /** The ASP.NET Core React/Angular SPA template's project file (shortened): mentions node_modules, reads nothing there. */
 const SPA_CSPROJ = `<Project Sdk="Microsoft.NET.Sdk.Web">
@@ -197,6 +197,57 @@ describe('gateTreeExactProblem: a repository that commits its node_modules', () 
     it('only the trees the head tracks files in are skipped: another one is still compared', () => {
         const { root, co } = committed();
         expect(gateTreeExactProblem(root, co, [], [], false, ['src/Web'])?.tampered).toBe(true);
+    });
+});
+describe('M4: an Exec that only deletes under node_modules reads nothing there', () => {
+    it('rimraf, npx rimraf, rm -rf, del, rd, rmdir and Remove-Item do not count; a chained command that runs one does', () => {
+        for (const c of ['rimraf ./node_modules', 'npx rimraf node_modules', 'npx --yes rimraf node_modules', 'rm -rf node_modules', 'del /q node_modules\\.cache', 'rd /s /q node_modules', 'rmdir /s /q ClientApp\\node_modules', 'Remove-Item -Recurse node_modules', 'npm prune &amp;&amp; del /q node_modules\\.cache']) {
+            expect(nodeModulesReferences('a.csproj', `<Target Name="C"><Exec Command="${c}" /></Target>`), c).toEqual([]);
+        }
+        expect(nodeModulesReferences('a.csproj', '<Exec Command="rimraf node_modules &amp;&amp; node node_modules/x/a.js" />')).toEqual(['Exec Command "node node_modules/x/a.js"']);
+        // ASP.NET Core 2.x SpaServices: the webpack run counts (its gate needs the engine's exact tree).
+        expect(nodeModulesReferences('a.csproj', '<Exec Command="node node_modules/webpack/bin/webpack.js --config webpack.config.vendor.js" />')).toHaveLength(1);
+    });
+});
+describe('H2 / M3: restore settings and project SDKs in pinned files', () => {
+    it('restoreSettingMentions: the restore properties in MSBuild and response files, any case; other files none', () => {
+        expect(restoreSettingMentions('src/App/App.csproj', '<Project><PropertyGroup><RestoreSources>corp</RestoreSources></PropertyGroup></Project>')).toEqual(['RestoreSources']);
+        expect(restoreSettingMentions('Directory.Build.props', '<restoreadditionalprojectsources>x</restoreadditionalprojectsources><RestoreConfigFile>a</RestoreConfigFile>')).toEqual(['RestoreConfigFile', 'restoreadditionalprojectsources']);
+        expect(restoreSettingMentions('Directory.Build.rsp', '-p:RestoreSources=https://example.test/v3/index.json')).toEqual(['RestoreSources']);
+        for (const p of ['RestoreFallbackFolders', 'RestorePackagesPath', 'RestoreNoCache', 'RestoreIgnoreFailedSources'])
+            expect(restoreSettingMentions('a.props', `<${p}>x</${p}>`)).toEqual([p]);
+        expect(restoreSettingMentions('a.props', '<RestoreLockedMode>true</RestoreLockedMode>')).toEqual([]);
+        expect(restoreSettingMentions('nuget.config', '<RestoreSources/>')).toEqual([]);
+        expect(restoreSettingMentions('a.props', 'x'.repeat(PINNED_READ_MAX + 1))).toHaveLength(1);
+    });
+    it('projectSdkMentions: versioned Sdk attributes, Sdk elements, Import Sdk+Version and global.json msbuild-sdks', () => {
+        expect(projectSdkMentions('A/A.proj', '<Project Sdk="Microsoft.Build.NoTargets/3.7.56" />')).toEqual(['Microsoft.Build.NoTargets/3.7.56']);
+        expect(projectSdkMentions('A/A.csproj', '<Project Sdk="Microsoft.NET.Sdk" />')).toEqual([]);
+        expect(projectSdkMentions('dirs.proj', '<Project><Sdk Name="Microsoft.Build.Traversal" Version="4.1.0" /></Project>')).toEqual(['Microsoft.Build.Traversal/4.1.0']);
+        expect(projectSdkMentions('a.props', '<Project><Import Project="Sdk.props" Sdk="X.Sdk" Version="1.0.0" /></Project>')).toEqual(['X.Sdk/1.0.0']);
+        expect(projectSdkMentions('global.json', '{ "sdk": { "version": "10.0.101" }, "msbuild-sdks": { "Microsoft.Build.Traversal": "4.1.0" } }')).toEqual(['Microsoft.Build.Traversal/4.1.0']);
+        expect(projectSdkMentions('global.json', '{ "sdk": { "version": "10.0.101" } }')).toEqual([]);
+    });
+});
+describe('L1: linear scans of crafted pinned files', () => {
+    const rep = (s, n = PINNED_READ_MAX) => s.repeat(Math.ceil(n / s.length)).slice(0, n);
+    it('each pathological 256 KB input under 200 ms', () => {
+        const cases = [
+            ['a.props', rep('<!--')], ['a.props', rep('<Import "')], ['a.props', `<Import ${rep('a')}`], ['a.props', rep('<Exec ')],
+            ['a.props', rep('<Exec Command="')], ['a.props', `<Exec ${rep('x="a" ')}`], ['Directory.Build.rsp', rep('-p:a=b ')],
+            ['global.json', rep('"\\')], ['a.slnf', rep('"\\')], ['a.sln', rep('Project(\n')], ['nuget.config', rep('<add value="')],
+            ['a.props', rep('<a>')],
+        ];
+        for (const [p, t] of cases) {
+            const start = performance.now();
+            nodeModulesReferences(p, t);
+            restoreSettingMentions(p, t);
+            projectSdkMentions(p, t);
+            expect(performance.now() - start, `${p} ${t.slice(0, 12)}`).toBeLessThan(200);
+        }
+    });
+    it('a file above the cap is not read: its references are unknown (one, conservative)', () => {
+        expect(nodeModulesReferences('a.props', rep('x', PINNED_READ_MAX + 1))).toEqual([expect.stringContaining('not read')]);
     });
 });
 //# sourceMappingURL=dotnet-package-refs.test.js.map

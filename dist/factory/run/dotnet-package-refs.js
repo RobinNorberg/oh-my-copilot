@@ -22,11 +22,22 @@
  * reference that resolves elsewhere counts. A mere mention does not count:
  * the ASP.NET SPA templates' `<Content Remove="$(SpaRoot)node_modules\**" />`
  * and `<Exec Command="npm install" />` (or `npm ci`, `npm run build`) name no
- * path under node_modules.
+ * path under node_modules, and a pure delete (`<Exec Command="rimraf
+ * node_modules" />`, `del /q node_modules\.cache`) reads nothing there.
+ * ASP.NET Core 2.x SpaServices projects run `node
+ * node_modules/webpack/bin/webpack.js` in an Exec: that counts, so their
+ * gate runs only on the engine's exact node_modules tree (and parks on a
+ * copied one).
+ *
+ * The same blobs also tell the engine whether the repository sets NuGet's
+ * restore sources in MSBuild (restoreSettingMentions) and whether NuGet
+ * resolves MSBuild project SDKs for it (projectSdkMentions). Every read is
+ * a linear scan (xml-scan.ts) of at most PINNED_READ_MAX bytes.
  */
 import { parseJsonc } from '../../utils/jsonc.js';
-/** XML comments, which MSBuild and NuGet never read. */
-const XML_COMMENT = /<!--[\s\S]*?-->/g;
+import { scanXml } from '../../copilot-run/xml-scan.js';
+/** Above this size a pinned file is not read: its references are unknown (nodeModulesReferences counts one; L1). */
+export const PINNED_READ_MAX = 256 * 1024;
 /** The XML entities an attribute value can use (`&#x6E;ode_modules` reads as node_modules). */
 function decodeXml(value) {
     return value.replace(/&(?:#x([0-9a-f]+)|#(\d+)|(amp|lt|gt|quot|apos));/gi, (whole, hex, dec, name) => {
@@ -48,19 +59,55 @@ function decodeXml(value) {
 export function hasNodeModulesSegment(value) {
     return value.split(/[\\/'"`,;:=@()[\]\s|]+/).some((s) => s.replace(/[. ]+$/, '').toLowerCase() === 'node_modules');
 }
-/** The values of `attr` on every `<element ...>` tag of an XML text (comments removed, entities decoded), any case. */
-function attributeValues(xml, element, attr) {
+/** The decoded values of `attr` on every `<element ...>` tag of a scan (xml-scan.ts: comments skipped, linear), names in any case. */
+function attributeValues(tags, element, attr) {
     const out = [];
-    const text = xml.replace(XML_COMMENT, '');
-    // A quoted attribute value may hold a literal `>` (`Condition="'$(A)'>'0'"`): it does not end the tag.
-    const tag = new RegExp(`<${element}(?=[\\s/>])((?:[^>"']|"[^"]*"|'[^']*')*)>`, 'gi');
-    const attribute = new RegExp(`(?:^|\\s)${attr}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`, 'i');
-    for (const m of text.matchAll(tag)) {
-        const a = attribute.exec(m[1]);
+    const el = element.toLowerCase();
+    const at = attr.toLowerCase();
+    for (const t of tags) {
+        if (t.close || t.name.toLowerCase() !== el)
+            continue;
+        const a = t.attrs.find(([n]) => n.toLowerCase() === at);
         if (a)
-            out.push(decodeXml(a[1] ?? a[2] ?? ''));
+            out.push(decodeXml(a[1]));
     }
     return out;
+}
+/** The contents of every double-quoted JSON string in `text` (escapes kept), in one forward pass; an unclosed one ends it. */
+function jsonStrings(text) {
+    const out = [];
+    let i = text.indexOf('"');
+    while (i >= 0) {
+        let j = i + 1;
+        while (j < text.length && text[j] !== '"')
+            j += text[j] === '\\' ? 2 : 1;
+        if (j >= text.length)
+            break;
+        out.push(text.slice(i + 1, j));
+        i = text.indexOf('"', j + 1);
+    }
+    return out;
+}
+/** The programs an `Exec Command` segment may start with that only delete (they read nothing under node_modules). */
+const DELETE_COMMANDS = new Set(['rimraf', 'rm', 'del', 'erase', 'rd', 'rmdir', 'remove-item', 'ri']);
+/**
+ * The parts of an `Exec Command` (decoded) that can read or run something:
+ * the command split at `&&`, `||`, `&`, `|`, `;` and line breaks, minus
+ * the pure delete commands (`rimraf`, `npx rimraf`, `rm`, `del`, `erase`,
+ * `rd`, `rmdir`, `Remove-Item`): `rimraf ./node_modules` or `del /q
+ * node_modules\.cache` reads nothing there (M4).
+ */
+function execRunParts(command) {
+    return command.split(/&&|\|\||[&|;\r\n]/).map((s) => s.trim()).filter((s) => {
+        if (!s)
+            return false;
+        const words = s.split(/\s+/).map((w) => w.replace(/^["'@]+|["']+$/g, ''));
+        const program = (w) => (w ?? '').split(/[\\/]/).pop().toLowerCase().replace(/\.(?:cmd|exe|bat|ps1)$/, '');
+        let first = program(words[0]);
+        if (first === 'npx')
+            first = program(words.slice(1).find((w) => !w.startsWith('-')));
+        return !DELETE_COMMANDS.has(first);
+    });
 }
 /** The kind of a pinned file this module reads, by its basename, or null. */
 function fileKind(path) {
@@ -86,25 +133,32 @@ export const readsForNodeModulesRefs = (path) => fileKind(path) !== null;
 /**
  * The references into a node_modules dir in one pinned definition file:
  * `<what> <value>` for each, in file order. `path` is its repository path
- * (its basename decides how it is read); `text` its bytes as UTF-8.
+ * (its basename decides how it is read); `text` its bytes as UTF-8. A file
+ * larger than PINNED_READ_MAX is not read: one reference, "not read",
+ * so the caller treats its references as unknown (conservative). Every
+ * scan is linear (L1).
  */
 export function nodeModulesReferences(path, text) {
     const kind = fileKind(path);
+    if (kind && text.length > PINNED_READ_MAX)
+        return [`file larger than ${PINNED_READ_MAX / 1024} KB, not read (its references are unknown)`];
     const values = [];
     if (kind === 'msbuild') {
-        for (const v of attributeValues(text, 'Import', 'Project'))
+        const { tags } = scanXml(text);
+        for (const v of attributeValues(tags, 'Import', 'Project'))
             values.push(['Import Project', v]);
-        for (const v of attributeValues(text, 'ProjectReference', 'Include'))
+        for (const v of attributeValues(tags, 'ProjectReference', 'Include'))
             values.push(['ProjectReference Include', v]);
-        for (const v of attributeValues(text, 'UsingTask', 'AssemblyFile'))
+        for (const v of attributeValues(tags, 'UsingTask', 'AssemblyFile'))
             values.push(['UsingTask AssemblyFile', v]);
         // An inline task's code file (RoslynCodeTaskFactory compiles it).
-        for (const v of attributeValues(text, 'Code', 'Source'))
+        for (const v of attributeValues(tags, 'Code', 'Source'))
             values.push(['UsingTask Code Source', v]);
         // A command whose exit code decides the build, when it names a path under node_modules (`node node_modules/x/check.js`);
-        // `npm install`, `npm ci` or `npm run build` name none and do not count.
-        for (const v of attributeValues(text, 'Exec', 'Command'))
-            values.push(['Exec Command', v]);
+        // `npm install`, `npm ci` or `npm run build` name none, and a pure delete (`rimraf node_modules`) reads nothing there.
+        for (const v of attributeValues(tags, 'Exec', 'Command'))
+            for (const part of execRunParts(v))
+                values.push(['Exec Command', part]);
     }
     else if (kind === 'rsp') {
         // A response file: every token outside `#` comment lines (`-logger:<dll>`, `-distributedlogger:...`, `@file`,
@@ -136,17 +190,17 @@ export function nodeModulesReferences(path, text) {
         }
         else {
             // Not JSON the SDK would read the same way: every string in it, conservatively.
-            for (const m of text.matchAll(/"((?:[^"\\]|\\.)*)"/g))
-                values.push(['global.json string', m[1]]);
+            for (const s of jsonStrings(text))
+                values.push(['global.json string', s]);
         }
     }
     else if (kind === 'slnx') {
-        for (const v of attributeValues(text, 'Project', 'Path'))
+        for (const v of attributeValues(scanXml(text).tags, 'Project', 'Path'))
             values.push(['solution project', v]);
     }
     else if (kind === 'sln') {
-        // `Project("{type guid}") = "Name", "path\to\App.csproj", "{project guid}"`
-        for (const m of text.matchAll(/^\s*Project\s*\([^)]*\)\s*=\s*"[^"]*"\s*,\s*"([^"]*)"/gim))
+        // `Project("{type guid}") = "Name", "path\to\App.csproj", "{project guid}"`: one line each (no match spans lines).
+        for (const m of text.matchAll(/^[ \t]*Project[ \t]*\([^)\r\n]*\)[ \t]*=[ \t]*"[^"\r\n]*"[ \t]*,[ \t]*"([^"\r\n]*)"/gim))
             values.push(['solution project', m[1]]);
     }
     else if (kind === 'slnf') {
@@ -168,16 +222,87 @@ export function nodeModulesReferences(path, text) {
         }
         else {
             // Not JSON MSBuild would read the same way: every string in it, conservatively.
-            for (const m of text.matchAll(/"((?:[^"\\]|\\.)*)"/g))
-                values.push(['solution filter string', m[1]]);
+            for (const s of jsonStrings(text))
+                values.push(['solution filter string', s]);
         }
     }
     else if (kind === 'nuget') {
         // A local source or fallback folder: any `<add value="...">` that is not an http(s) feed.
-        for (const v of attributeValues(text, 'add', 'value'))
+        for (const v of attributeValues(scanXml(text).tags, 'add', 'value'))
             if (!/^https?:\/\//i.test(v.trim()))
                 values.push(['nuget.config value', v]);
     }
     return values.filter(([, v]) => hasNodeModulesSegment(v)).map(([what, v]) => `${what} ${JSON.stringify(v.slice(0, 200))}`);
+}
+/** The MSBuild properties that set NuGet's restore sources or config (restoreSettingMentions). */
+const RESTORE_SETTINGS = /\bRestore(?:Sources|AdditionalProjectSources|FallbackFolders|ConfigFile|PackagesPath|NoCache|IgnoreFailedSources)\b/gi;
+/**
+ * The NuGet restore properties a pinned MSBuild file (`*.*proj`, `*.props`,
+ * `*.targets`, `*.tasks`, `*.projitems`, `*.user`) or response file
+ * (`*.rsp`) names, textually and in any case (`RestoreSources`,
+ * `RestoreAdditionalProjectSources`, `RestoreFallbackFolders`,
+ * `RestoreConfigFile`, `RestorePackagesPath`, `RestoreNoCache`,
+ * `RestoreIgnoreFailedSources`): the repository sets its restore sources
+ * itself, so the engine never adds nuget.org (H2: an added
+ * RestoreAdditionalProjectSources is appended to `RestoreSources`).
+ * Conservative: a comment or a condition counts, and a file larger than
+ * PINNED_READ_MAX counts as `not read`. Other files: none.
+ */
+export function restoreSettingMentions(path, text) {
+    const kind = fileKind(path);
+    if (kind !== 'msbuild' && kind !== 'rsp')
+        return [];
+    if (text.length > PINNED_READ_MAX)
+        return [`not read (larger than ${PINNED_READ_MAX / 1024} KB)`];
+    return [...new Set([...text.matchAll(RESTORE_SETTINGS)].map((m) => m[0]))].sort();
+}
+/**
+ * The MSBuild project SDKs a pinned file has NuGet resolve (M3): a
+ * versioned `Sdk="<name>/<version>"` on `Project` or `Import` (a `;` list
+ * too), an `Sdk` element or `Import` with `Name` and `Version`, or a
+ * `global.json` `msbuild-sdks` entry. NuGet's MSBuild SDK resolver reads
+ * NuGet's own config hierarchy (it ignores RestoreConfigFile). An
+ * unversioned `Sdk="Microsoft.NET.Sdk"` is the dotnet SDK's own and does
+ * not count. A file larger than PINNED_READ_MAX is not read (none).
+ */
+export function projectSdkMentions(path, text) {
+    const kind = fileKind(path);
+    if (text.length > PINNED_READ_MAX)
+        return [];
+    const out = new Set();
+    if (kind === 'msbuild') {
+        const { tags } = scanXml(text);
+        for (const t of tags) {
+            if (t.close)
+                continue;
+            const name = t.name.toLowerCase();
+            const attr = (a) => t.attrs.find(([n]) => n.toLowerCase() === a)?.[1];
+            const sdk = name === 'project' || name === 'import' ? attr('sdk') : undefined;
+            if (sdk)
+                for (const s of decodeXml(sdk).split(';'))
+                    if (s.includes('/'))
+                        out.add(s.trim());
+            if (sdk && attr('version'))
+                out.add(`${decodeXml(sdk).trim()}/${decodeXml(attr('version')).trim()}`);
+            if (name === 'sdk' && attr('name') && attr('version'))
+                out.add(`${decodeXml(attr('name')).trim()}/${decodeXml(attr('version')).trim()}`);
+        }
+    }
+    else if (kind === 'global') {
+        let parsed;
+        try {
+            parsed = parseJsonc(text);
+        }
+        catch {
+            parsed = undefined;
+        }
+        const sdks = parsed && typeof parsed === 'object' ? parsed['msbuild-sdks'] : undefined;
+        if (sdks && typeof sdks === 'object')
+            for (const [k, v] of Object.entries(sdks))
+                out.add(`${k}/${String(v)}`);
+        else if (!(parsed && typeof parsed === 'object') && /"msbuild-sdks"/i.test(text))
+            out.add('msbuild-sdks (global.json)');
+    }
+    return [...out].sort();
 }
 //# sourceMappingURL=dotnet-package-refs.js.map

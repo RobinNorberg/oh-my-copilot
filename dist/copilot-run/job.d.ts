@@ -195,10 +195,12 @@ export interface CopilotRunStartOptions {
      */
     dotnet?: boolean;
     /**
-     * With `dotnet`: the trusted base pins a nuget.config below its root (engine.ts dotnetNugetHierarchyBase), so NuGet
-     * reads its own config hierarchy instead of the one file dotnet-sandbox.ts dotnetNugetConfig picks.
+     * With `dotnet`: why NuGet reads its own config hierarchy (engine.ts dotnetNugetPolicy: the trusted base pins a
+     * nuget.config below its root) instead of the one file dotnet-sandbox.ts dotnetNugetConfig picks.
      */
-    dotnetNugetHierarchy?: boolean;
+    dotnetNugetHierarchy?: string;
+    /** With `dotnet`: the trusted base's pinned MSBuild files set restore sources themselves, so nuget.org is never added. */
+    dotnetNugetNoAddSource?: boolean;
 }
 /**
  * A credential-free session env, in place. Removed: GitHub tokens

@@ -228,7 +228,7 @@ export async function runSandboxed(argv, o, deps) {
         const dotnetWrites = [];
         const dotnetNotes = [];
         if (dotnet) {
-            const d = dotnetSandboxEnv(env.USERPROFILE, deps.env, realHome, deps.platform, o.nugetPackages, o.nugetHierarchy ? undefined : dotnetNugetConfig(o.cwd, env.USERPROFILE, deps.platform));
+            const d = dotnetSandboxEnv(env.USERPROFILE, deps.env, realHome, deps.platform, o.nugetPackages, o.nugetHierarchy ? { hierarchy: o.nugetHierarchy } : dotnetNugetConfig(o.cwd, env.USERPROFILE, deps.platform, { noAdd: o.nugetNoAddSource === true }));
             Object.assign(env, d.env);
             dotnetGrants.push(...d.readonly);
             dotnetWrites.push(...d.readwrite);
@@ -463,7 +463,8 @@ export function createSandboxRunner(root, deps = defaultCopilotRunDeps(), layers
             ...(req.nestedNodeModulesTargets ? { nestedNodeModulesTargets: req.nestedNodeModulesTargets } : {}),
             ...(req.dotnetMtp ? { dotnetMtp: true } : {}),
             ...(req.nugetPackages ? { nugetPackages: req.nugetPackages } : {}),
-            ...(req.nugetHierarchy ? { nugetHierarchy: true } : {}),
+            ...(req.nugetHierarchy ? { nugetHierarchy: req.nugetHierarchy } : {}),
+            ...(req.nugetNoAddSource ? { nugetNoAddSource: true } : {}),
         }, deps);
     };
 }

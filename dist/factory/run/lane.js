@@ -59,7 +59,7 @@ export class CopilotLaneBackend {
             ...(input.worktree ? { worktree: input.worktree } : {}), ...(input.jobRoot ? { jobRoot: input.jobRoot } : {}),
             ...(input.deniedPaths ? { deniedPaths: input.deniedPaths } : {}), ...(input.beforeHostGit ? { beforeHostGit: input.beforeHostGit } : {}),
             ...(input.beforeSandboxedSession ? { beforeSandboxedSession: input.beforeSandboxedSession } : {}),
-            ...(input.nodeModulesGrant ? { nodeModulesGrant: input.nodeModulesGrant } : {}), ...(input.dotnet ? { dotnet: true, ...(input.dotnetNugetHierarchy ? { dotnetNugetHierarchy: true } : {}) } : {}) });
+            ...(input.nodeModulesGrant ? { nodeModulesGrant: input.nodeModulesGrant } : {}), ...(input.dotnet ? { dotnet: true, ...(input.dotnetNugetHierarchy ? { dotnetNugetHierarchy: input.dotnetNugetHierarchy } : {}), ...(input.dotnetNugetNoAddSource ? { dotnetNugetNoAddSource: true } : {}) } : {}) });
         // An async beforeSandboxedSession: the lane counts as started (the engine's idle clock) only once its worktree is ready.
         await this.manager.prepared?.(snap.jobId);
         return { remoteId: snap.jobId };

@@ -113,7 +113,7 @@ const forgeOf = (s: FactoryRunState): ForgeKind => (s.remote === LOCAL_REMOTE ? 
 const msOf = (iso: unknown): number => (typeof iso === 'string' ? Date.parse(iso) : Number.NaN);
 
 /** The run key of a canonical `run-<key>.json` name; null for anything else (`run-01.json` is not run 1's file). */
-function runKeyOfName(name: string): FactoryRunKey | null {
+export function runKeyOfName(name: string): FactoryRunKey | null {
   const m = RUN_FILE.exec(name);
   if (!m) return null;
   const key: FactoryRunKey = /^\d+$/.test(m[1]) ? Number(m[1]) : (m[1] as `heal-${string}`);
@@ -207,8 +207,14 @@ function sinceProgress(root: string, key: FactoryRunKey, now: number): number | 
 
 const relLog = (key: FactoryRunKey): string => `.omg/progress/factory-${key}.log`;
 
-interface ReadRun {
+export interface ReadRun {
   key: FactoryRunKey;
+  /**
+   * The parsed state, also when it failed a check. Callers must not use its
+   * free text (title, reasons, notes, lane ids) or its numbers (credits,
+   * requests, times) unless `trust` is `ok`: only enum-shaped values that are
+   * validated against the known set may be shown for any other trust.
+   */
   state?: FactoryRunState;
   trust: AttentionTrust;
   error?: string;
@@ -217,7 +223,7 @@ interface ReadRun {
 }
 
 /** One read of the state bytes; seal, then the ledger on those same bytes. */
-function readRun(root: string, key: FactoryRunKey, ledgerDir: string): ReadRun {
+export function readRun(root: string, key: FactoryRunKey, ledgerDir: string): ReadRun {
   const path = factoryStatePath(root, key);
   const r = readRegularFile(path);
   if ('missing' in r) return { key, trust: 'unreadable', missing: true, error: 'the state file disappeared while it was read' };

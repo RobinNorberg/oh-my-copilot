@@ -93,7 +93,9 @@ export interface LaneStartInput {
     /** The local backend, a write lane in a .NET repository (engine.ts dotnetRepo, any forge): CopilotRunStartOptions.dotnet. */
     dotnet?: boolean;
     /** With `dotnet`: CopilotRunStartOptions.dotnetNugetHierarchy. */
-    dotnetNugetHierarchy?: boolean;
+    dotnetNugetHierarchy?: string;
+    /** With `dotnet`: CopilotRunStartOptions.dotnetNugetNoAddSource. */
+    dotnetNugetNoAddSource?: boolean;
     /** Cloud backends only. */
     customAgent?: string;
     timeoutMs: number;

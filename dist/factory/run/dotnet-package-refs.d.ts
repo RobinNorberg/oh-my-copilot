@@ -22,8 +22,20 @@
  * reference that resolves elsewhere counts. A mere mention does not count:
  * the ASP.NET SPA templates' `<Content Remove="$(SpaRoot)node_modules\**" />`
  * and `<Exec Command="npm install" />` (or `npm ci`, `npm run build`) name no
- * path under node_modules.
+ * path under node_modules, and a pure delete (`<Exec Command="rimraf
+ * node_modules" />`, `del /q node_modules\.cache`) reads nothing there.
+ * ASP.NET Core 2.x SpaServices projects run `node
+ * node_modules/webpack/bin/webpack.js` in an Exec: that counts, so their
+ * gate runs only on the engine's exact node_modules tree (and parks on a
+ * copied one).
+ *
+ * The same blobs also tell the engine whether the repository sets NuGet's
+ * restore sources in MSBuild (restoreSettingMentions) and whether NuGet
+ * resolves MSBuild project SDKs for it (projectSdkMentions). Every read is
+ * a linear scan (xml-scan.ts) of at most PINNED_READ_MAX bytes.
  */
+/** Above this size a pinned file is not read: its references are unknown (nodeModulesReferences counts one; L1). */
+export declare const PINNED_READ_MAX: number;
 /**
  * True when a path has a `node_modules` segment (`\` read as `/`, any case,
  * trailing dots and spaces dropped as Windows does). The parentheses,
@@ -38,7 +50,33 @@ export declare const readsForNodeModulesRefs: (path: string) => boolean;
 /**
  * The references into a node_modules dir in one pinned definition file:
  * `<what> <value>` for each, in file order. `path` is its repository path
- * (its basename decides how it is read); `text` its bytes as UTF-8.
+ * (its basename decides how it is read); `text` its bytes as UTF-8. A file
+ * larger than PINNED_READ_MAX is not read: one reference, "not read",
+ * so the caller treats its references as unknown (conservative). Every
+ * scan is linear (L1).
  */
 export declare function nodeModulesReferences(path: string, text: string): string[];
+/**
+ * The NuGet restore properties a pinned MSBuild file (`*.*proj`, `*.props`,
+ * `*.targets`, `*.tasks`, `*.projitems`, `*.user`) or response file
+ * (`*.rsp`) names, textually and in any case (`RestoreSources`,
+ * `RestoreAdditionalProjectSources`, `RestoreFallbackFolders`,
+ * `RestoreConfigFile`, `RestorePackagesPath`, `RestoreNoCache`,
+ * `RestoreIgnoreFailedSources`): the repository sets its restore sources
+ * itself, so the engine never adds nuget.org (H2: an added
+ * RestoreAdditionalProjectSources is appended to `RestoreSources`).
+ * Conservative: a comment or a condition counts, and a file larger than
+ * PINNED_READ_MAX counts as `not read`. Other files: none.
+ */
+export declare function restoreSettingMentions(path: string, text: string): string[];
+/**
+ * The MSBuild project SDKs a pinned file has NuGet resolve (M3): a
+ * versioned `Sdk="<name>/<version>"` on `Project` or `Import` (a `;` list
+ * too), an `Sdk` element or `Import` with `Name` and `Version`, or a
+ * `global.json` `msbuild-sdks` entry. NuGet's MSBuild SDK resolver reads
+ * NuGet's own config hierarchy (it ignores RestoreConfigFile). An
+ * unversioned `Sdk="Microsoft.NET.Sdk"` is the dotnet SDK's own and does
+ * not count. A file larger than PINNED_READ_MAX is not read (none).
+ */
+export declare function projectSdkMentions(path: string, text: string): string[];
 //# sourceMappingURL=dotnet-package-refs.d.ts.map

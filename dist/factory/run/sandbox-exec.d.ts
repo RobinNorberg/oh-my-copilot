@@ -98,11 +98,16 @@ export interface SandboxRunRequest {
      */
     nugetPackages?: RunNugetPackages;
     /**
-     * A dotnet command in a commit that pins a nuget.config below its root (engine.ts): NuGet reads its own config
-     * hierarchy instead of the one file dotnet-sandbox.ts dotnetNugetConfig picks (that one would hide the lower
-     * file). Ignored for other executables.
+     * Why a dotnet command keeps NuGet's own config hierarchy (engine.ts: the commit pins a nuget.config below its root,
+     * which the one file dotnet-sandbox.ts dotnetNugetConfig picks would hide); a failing command's output names it.
+     * Ignored for other executables.
      */
-    nugetHierarchy?: true;
+    nugetHierarchy?: string;
+    /**
+     * A dotnet command whose commit's pinned MSBuild files (or the command line) set NuGet's restore sources or config
+     * themselves (engine.ts): nuget.org is never added (RestoreAdditionalProjectSources would be appended to them).
+     */
+    nugetNoAddSource?: true;
 }
 /** The gate record and PR note line for a sandboxed run on a host without denied_paths. */
 export declare const CREDENTIAL_FILES_READABLE_NOTE = "sandboxed; credential files readable on this host";
@@ -160,7 +165,9 @@ export interface SandboxExecOptions {
     /** SandboxRunRequest.nugetPackages. */
     nugetPackages?: RunNugetPackages;
     /** SandboxRunRequest.nugetHierarchy. */
-    nugetHierarchy?: true;
+    nugetHierarchy?: string;
+    /** SandboxRunRequest.nugetNoAddSource. */
+    nugetNoAddSource?: true;
 }
 export declare const MARKER_PREFIX = "omg-gate-exit-";
 /** The command's output the POSIX form keeps (`tail -c`) before the marker line. */

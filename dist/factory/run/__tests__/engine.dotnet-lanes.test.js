@@ -98,7 +98,7 @@ describe('.NET write lanes on the GitHub forge', () => {
         onBase({ 'src/App/App.csproj': CSPROJ, 'nuget.config': '<configuration />\n', 'src/App/NuGet.Config': '<configuration />\n' });
         const lanes = sandboxed(new FakeLanes(h.root, [commitFile('src/greet.ts'), review('approve')]));
         await runFactoryEngine(opts(lanes));
-        expect(lanes.started[0]).toMatchObject({ dotnet: true, dotnetNugetHierarchy: true });
+        expect(lanes.started[0]).toMatchObject({ dotnet: true, dotnetNugetHierarchy: expect.stringContaining('below its root (src/App/NuGet.Config') });
         expect(lanes.started[1].dotnetNugetHierarchy).toBeUndefined();
     });
     it('the Microsoft.Testing.Platform prompt variant and a reachable NuGet follow the trusted base on this forge too', async () => {

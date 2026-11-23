@@ -40,35 +40,48 @@ export interface NugetFailure {
     /**
      * `private-feed`: a source other than nuget.org (a private or local feed) or a feed that wants credentials.
      * `config-unreadable`: NuGet could not read or parse a nuget.config (NUGET_CONFIG_UNREADABLE_ERROR), with no NU code.
+     * `substituted`: NuGet did not find the version a project names and took another (NU1603, a warning; nugetSubstituted).
      */
-    kind: 'restore' | 'private-feed' | 'config-unreadable';
+    kind: 'restore' | 'private-feed' | 'config-unreadable' | 'substituted';
     /** The NuGet codes seen, sorted. */
     codes: string[];
-    /** The sources other than nuget.org named in the errors (urls, local paths or names); for `config-unreadable` the config paths named. */
+    /**
+     * The sources other than nuget.org named in the errors (urls, local paths or names); for `config-unreadable` the
+     * config paths named; for `substituted` NuGet's NU1603 messages.
+     */
     sources: string[];
+    /** `config-unreadable`: the MSBuild project SDKs whose resolution failed there (`Could not resolve SDK "<name>"`, M3). */
+    sdks?: string[];
+    /** `restore`: NuGet said a package source mapping left sources out ("PackageSourceMapping is enabled"). */
+    mapping?: boolean;
 }
 /**
  * An MSBuild error line saying NuGet could not read a nuget.config (it
- * prints no NU code for it): `<file>(l,c): error : Failed to read
- * NuGet.Config due to unauthorized access. Path: '<path>'.` (the sandbox
- * refused the read: the walk up from the project reached a config the
- * sandbox does not grant), or `... error : NuGet.Config is not valid XML.
- * Path: '<path>'.`. Group 2 is the path. Restore phase only, as
- * NUGET_RESTORE_ERROR.
+ * prints no NU code for it), anchored as NUGET_RESTORE_ERROR (a project,
+ * solution or MSBuild file, with or without `(line,col)`):
+ * `<file>(l,c): error : Failed to read NuGet.Config due to unauthorized
+ * access. Path: '<path>'.` (the sandbox refused the read: the walk up from
+ * the project reached a config the sandbox does not grant), `<project> :
+ * error :   Failed to load NuGet settings. Failed to read ...` (the MSBuild
+ * project SDK resolver), or `... error : NuGet.Config is not valid XML.
+ * Path: '<path>'.`. Group 2 is the path. Restore phase only.
  */
 export declare const NUGET_CONFIG_UNREADABLE_ERROR: RegExp;
 /**
  * Why a dotnet command parks when NuGet could not read a nuget.config
- * (`config-unreadable`), for the paths it named (`paths`) and the trusted
- * base's nuget.config files below its root (`lower`, engine.ts
- * dotnetNugetHierarchyPaths: with any, NuGet reads its own hierarchy).
+ * (`config-unreadable`): for the paths it named (`paths`), the engine's
+ * reason for keeping NuGet's own hierarchy for that command (`hierarchy`,
+ * engine.ts dotnetNugetPolicy; null when one file was named), and the MSBuild
+ * project SDKs whose resolution failed (`sdks`, M3: NuGet's SDK resolver
+ * walks the hierarchy whatever RestoreConfigFile says).
  */
-export declare function nugetConfigUnreadableReason(paths: readonly string[], lower: readonly string[]): string;
+export declare function nugetConfigUnreadableReason(paths: readonly string[], hierarchy: string | null, sdks?: readonly string[]): string;
 /**
  * The NuGet restore failure in a dotnet command's whole output, or null when
  * its restore phase (restorePhase) has no restore error line
  * (NUGET_RESTORE_ERROR) and no unreadable config
- * (NUGET_CONFIG_UNREADABLE_ERROR, kind `config-unreadable`, checked first):
+ * (NUGET_CONFIG_UNREADABLE_ERROR, kind `config-unreadable`, checked first,
+ * with the project SDKs whose resolution failed there):
  * a compile or test failure, a pass, or an `error NU1301` the PR's tests
  * print. Read from the whole output, never a tail:
  * a long output must not hide a real restore error. Private feed signatures
@@ -80,9 +93,26 @@ export declare function nugetConfigUnreadableReason(paths: readonly string[], lo
  * offline. Residual: code the PR's build runs before its first output line
  * (a source generator of the first project compiled) can print a line of
  * the same shape; that starts at most the one networked restore of the
- * pinned definition files per definition hash and head.
+ * pinned definition files per definition hash and head. NU1603 is not
+ * read here (nugetSubstituted).
  */
 export declare function classifyNugetFailure(output: string | undefined): NugetFailure | null;
+/**
+ * NuGet's NU1603 in a dotnet command's restore phase, as a failure
+ * (`substituted`, its messages in `sources`), or null. NU1603 means a
+ * project or package names a version (an exact `Version="13.0.2"`, which
+ * NuGet reads as `>= 13.0.2`, or a range with an inclusive lower bound) that
+ * none of the sources has, and NuGet resolved a higher one instead, as a
+ * warning: offline, with a 13.0.2 reference and only 13.0.3 in the packages
+ * folder, the gate built and tested 13.0.3 and passed. The engine never
+ * lets that pass: in the gate it is a restore failure (the networked
+ * restore step, then the park), in the restore step a failed restore.
+ * Floating versions (`13.0.*`, `13.*`, `*`) and exclusive lower bounds
+ * never print NU1603 (checked with .NET SDK 10.0.101), so floating-version
+ * repositories are unchanged; a reference whose lower bound does not exist
+ * on nuget.org at all parks even with the network (fix the version).
+ */
+export declare function nugetSubstituted(output: string | undefined): NugetFailure | null;
 /**
  * The `dotnet restore` arguments for a dotnet gate's arguments (after the
  * executable): the same projects or solutions (the gate's positionals and

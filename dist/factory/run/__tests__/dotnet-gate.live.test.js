@@ -18,7 +18,7 @@ import { createServer } from 'node:http';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { nugetPackagesDir } from '../../../copilot-run/dotnet-sandbox.js';
+import { nugetConfigVerdict, nugetPackagesDir } from '../../../copilot-run/dotnet-sandbox.js';
 import { resolveLocalGateArgv } from '../../../factory/run/local-gate.js';
 import { classifyNugetFailure, dotnetRestoreArgs, parseCatFileBatch, writeDefinitionTree } from '../../../factory/run/nuget-restore.js';
 import { resolveDefaultPluginRoot } from '../../../smoke/copilot-session-env.js';
@@ -230,7 +230,7 @@ describe.runIf(process.env.OMG_LIVE_DOTNET === '1' && onWindows && !!dotnet)('a 
             return;
         expect(base.output).toMatch(/Passed!\s+- Failed:\s+0, Passed:\s+1/);
         // NuGet's own walk (what every sandboxed dotnet command did before) reaches <repo>/NuGet.Config and is refused.
-        const walk = await inCheckout(['dotnet', 'build', 'Lib/Lib.csproj'], { nugetHierarchy: true });
+        const walk = await inCheckout(['dotnet', 'build', 'Lib/Lib.csproj'], { nugetHierarchy: 'NuGet reads its own config hierarchy (live test)' });
         expect(walk.ran && classifyNugetFailure(walk.output), walk.ran ? walk.output : walk.reason).toMatchObject({ kind: 'config-unreadable' });
         // The head: offline it fails restoring, then the restore in the definition tree (written from git) fetches it.
         git(co, 'checkout', '-q', 'main');
@@ -344,6 +344,61 @@ describe.runIf(process.env.OMG_LIVE_DOTNET === '1' && onWindows && !!dotnet)('a 
             srv.close();
         }
     }, 360_000);
+    it('H1 (PR 611 review): a root config with <Clear /> and a local corp feed: the networked restore never fetches from nuget.org', async (ctx) => {
+        if (uncachedCached) {
+            ctx.skip(`${UNCACHED.join(' ')} is already in your packages folder`);
+            return;
+        }
+        const tree = join(dir, 'clear-tree');
+        const corp = join(dir, 'corp-feed');
+        mkdirSync(join(tree, 'Lib'), { recursive: true });
+        mkdirSync(corp);
+        writeFileSync(join(tree, 'NuGet.Config'), `<?xml version="1.0" encoding="utf-8"?>\n<configuration><packageSources><Clear /><add key="corp" value="${corp}" /></packageSources></configuration>\n`);
+        writeFileSync(join(tree, 'Lib', 'Lib.csproj'), LIB.replace('</PropertyGroup>', `</PropertyGroup>\n  <ItemGroup><PackageReference Include="${UNCACHED[0]}" Version="${UNCACHED[1]}" /></ItemGroup>`));
+        const run = createSandboxRunner(root, undefined, { user: { factory: { run: { sandbox: {} } } }, project: undefined });
+        const argv = ['dotnet', 'restore', 'Lib/Lib.csproj'];
+        const t = resolveLocalGateArgv(argv, { cwd: tree });
+        if ('missing' in t)
+            throw new Error(t.missing);
+        const throwaway = join(dir, 'clear-packages');
+        mkdirSync(throwaway);
+        const r = await run({ purpose: 'restore', argv, exe: t.exe, args: t.args, cwd: tree, commonGitDir: join(checkout, '.git'), timeoutMs: 300_000, network: 'nuget', nugetPackages: { dir: throwaway, writable: true } });
+        if (!r.ran && NO_RUNTIME.test(r.reason)) {
+            ctx.skip(`no Copilot runtime here: ${r.reason}`);
+            return;
+        }
+        expect(r.ran, r.ran ? '' : r.reason).toBe(true);
+        if (!r.ran)
+            return;
+        expect(r.status, r.output).not.toBe(0);
+        expect(classifyNugetFailure(r.output)).toMatchObject({ kind: 'private-feed', codes: ['NU1101'], sources: ['corp'] });
+        expect(existsSync(join(throwaway, UNCACHED[0].toLowerCase()))).toBe(false);
+    }, 360_000);
+    it('H1: nugetConfigVerdict never adds nuget.org where `dotnet nuget list source` (default user config behind the file) lists it disabled or absent', () => {
+        const P = '<add key="priv" value="http://127.0.0.1:9/v3/index.json" />';
+        const shapes = [
+            ['plain', Buffer.from(`<configuration><packageSources>${P}</packageSources></configuration>`)],
+            ['Clear', Buffer.from(`<configuration><packageSources><Clear />${P}</packageSources></configuration>`)],
+            ['mirror key', Buffer.from('<configuration><packageSources><add key="nuget.org" value="http://127.0.0.1:9/mirror/index.json" /></packageSources></configuration>')],
+            ['ADD disabled', Buffer.from(`<configuration><packageSources>${P}</packageSources><disabledPackageSources><ADD key="nuget.org" value="true" /></disabledPackageSources></configuration>`)],
+            ['cdata', Buffer.from(`<configuration><packageSources><![CDATA[<!--]]><clear />${P}<!-- --></packageSources></configuration>`)],
+            ['utf16', Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(`<configuration><packageSources><clear />${P}</packageSources></configuration>`, 'utf16le')])],
+            ['config only', Buffer.from('<configuration><config><add key="dependencyVersion" value="Lowest" /></config></configuration>')],
+        ];
+        const iso = join(dir, 'list-source');
+        mkdirSync(join(iso, 'user', 'NuGet'), { recursive: true });
+        writeFileSync(join(iso, 'user', 'NuGet', 'NuGet.Config'), '<?xml version="1.0" encoding="utf-8"?>\n<configuration><packageSources><add key="nuget.org" value="https://api.nuget.org/v3/index.json" protocolVersion="3" /></packageSources></configuration>\n');
+        const env = { ...process.env, APPDATA: join(iso, 'user'), LOCALAPPDATA: join(iso, 'local'), NUGET_HTTP_CACHE_PATH: join(iso, 'http'), NUGET_PACKAGES: join(iso, 'pk'), DOTNET_NOLOGO: '1', DOTNET_CLI_TELEMETRY_OPTOUT: '1' };
+        for (const [name, bytes] of shapes) {
+            const d = join(iso, name.replace(/\W/g, '-'));
+            mkdirSync(d);
+            writeFileSync(join(d, 'nuget.config'), bytes);
+            const out = spawnSync(dotnet, ['nuget', 'list', 'source', '--format', 'short'], { cwd: d, encoding: 'utf8', env }).stdout;
+            const enabled = /^E https:\/\/api\.nuget\.org\/v3\/index\.json\s*$/m.test(out);
+            if (nugetConfigVerdict(bytes).addNugetOrg)
+                expect(enabled, `${name}: ${out}`).toBe(true);
+        }
+    }, 120_000);
     it('H2: a junction obj -> a dir outside the checkout survives the clean step, and a sandboxed delete through it is denied', async (ctx) => {
         const co = join(dir, 'junction-checkout');
         const canary = join(dir, 'junction-canary');

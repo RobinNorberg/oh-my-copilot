@@ -1035,7 +1035,8 @@ export class CopilotRunManager {
             beforeHostGit: options.beforeHostGit ?? null,
             nodeModulesGrant: profile !== 'review' ? options.nodeModulesGrant ?? null : null,
             dotnet: profile !== 'review' && options.dotnet === true,
-            dotnetNugetHierarchy: options.dotnetNugetHierarchy === true,
+            dotnetNugetHierarchy: options.dotnetNugetHierarchy ?? null,
+            dotnetNugetNoAddSource: options.dotnetNugetNoAddSource === true,
             unprepared: null,
             pid: undefined,
             pidIdentity: null,
@@ -1378,8 +1379,8 @@ export class CopilotRunManager {
         const realHome = (deps.realHome ?? (() => userInfo().homedir))();
         const dotnetGrants = [];
         if (job.dotnet) {
-            // One NuGet config, the worktree root's or nuget.org only (dotnet-sandbox.ts dotnetNugetConfig), unless the base pins lower ones.
-            const d = dotnetSandboxEnv(env.USERPROFILE, deps.env, realHome, deps.platform, undefined, job.dotnetNugetHierarchy ? undefined : dotnetNugetConfig(job.worktree?.path ?? job.workCwd, env.USERPROFILE, deps.platform));
+            // One NuGet config, the worktree root's or nuget.org only (dotnet-sandbox.ts dotnetNugetConfig), unless the base keeps NuGet's hierarchy (engine.ts).
+            const d = dotnetSandboxEnv(env.USERPROFILE, deps.env, realHome, deps.platform, undefined, job.dotnetNugetHierarchy ? { hierarchy: job.dotnetNugetHierarchy } : dotnetNugetConfig(job.worktree?.path ?? job.workCwd, env.USERPROFILE, deps.platform, { noAdd: job.dotnetNugetNoAddSource }));
             Object.assign(env, d.env);
             dotnetGrants.push(...d.readonly);
             job.notes.push(...d.notes);
