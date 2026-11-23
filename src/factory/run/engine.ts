@@ -623,6 +623,8 @@ interface DotnetPinnedFacts {
   refs: string[];
   trackedTrees: string[];
   lowerConfigs: string[];
+  /** Its .NET projects and solutions under a node_modules dir (local-gate.ts trackedPackageTreeProjects), whose configs lowerConfigs leaves out. */
+  packageTreeProjects: string[];
   root: { none: true } | { ambiguous: string } | { name: string; verdict: NugetConfigVerdict };
   restoreSettings: string[];
   projectSdks: string[];
@@ -1519,7 +1521,8 @@ class FactoryEngine {
     // A dotnet command in a Microsoft.Testing.Platform repository (the trusted base's global.json): no -m:1 on dotnet test.
     const mtp = isDotnetExe(req.exe) && this.dotnetMtpBase();
     // NuGet's set-up from the trusted base and the commit the command runs on (dotnetNugetPolicy): its own hierarchy, or one
-    // file with nuget.org never added when the pinned files set restore sources themselves.
+    // file with nuget.org never added when the pinned files set restore sources themselves. Read from git objects, so the
+    // sandbox layer skips its own scan of the tree for lower configs (nugetFromGit).
     const policy = isDotnetExe(req.exe) ? this.dotnetNugetPolicy(forCommit?.(), req.argv) : null;
     // The run's own NuGet packages folder, once this run's restore step made it (state.nugetRestore: a folder left by an
     // earlier run of the same slug is never read): a dotnet command of the run reads it (the real cache its read-only
@@ -1533,7 +1536,7 @@ class FactoryEngine {
       try { return this.gateDefinitionAt(commit()) === definition; } catch { return false; }
     };
     const nuget = !req.nugetPackages && req.purpose !== 'calibrate' && isDotnetExe(req.exe) && restored && forCommit && existsSync(nugetDir) && restoredFor(forCommit, restored.definition) ? { nugetPackages: { dir: nugetDir, writable: false } } : {};
-    const r = this.o.gateSandbox!({ ...req, ...nuget, ...(mtp ? { dotnetMtp: true as const } : {}), ...(policy?.hierarchy ? { nugetHierarchy: `NuGet reads its own config hierarchy: ${policy.hierarchy}` } : {}), ...(policy && policy.noAddSource.length > 0 ? { nugetNoAddSource: true as const } : {}), nodeModulesTarget: join(this.o.root, 'node_modules'), ...(nested.length > 0 ? { nestedNodeModulesTargets: nested } : {}), ...(p ? { mainRoot: this.o.root, jobRoot: this.gateJobRoot() } : {}), ...(container ? { container, runLabel: containerRunLabel(this.o.root, this.key) } : {}) });
+    const r = this.o.gateSandbox!({ ...req, ...nuget, ...(mtp ? { dotnetMtp: true as const } : {}), ...(policy?.hierarchy ? { nugetHierarchy: `NuGet reads its own config hierarchy: ${policy.hierarchy}` } : {}), ...(policy && (policy.noAddSource.length > 0 || policy.rootSources.length > 0) ? { nugetNoAddSource: true as const } : {}), ...(policy ? { nugetFromGit: true as const } : {}), nodeModulesTarget: join(this.o.root, 'node_modules'), ...(nested.length > 0 ? { nestedNodeModulesTargets: nested } : {}), ...(p ? { mainRoot: this.o.root, jobRoot: this.gateJobRoot() } : {}), ...(container ? { container, runLabel: containerRunLabel(this.o.root, this.key) } : {}) });
     if (!container) return r;
     return r.then((out) => {
       if (out.ran && out.imageId) this.containerImageId = out.imageId;
@@ -1825,41 +1828,56 @@ class FactoryEngine {
    * lane), from the pinned files of trusted commits only (dotnetPinnedFacts,
    * git objects): the trusted base, plus `commit` when the command runs on
    * it (the gate and the restore step run only on a base-equal or approved
-   * definition; a prepare check on the checked-out head; a calibration and a
-   * lane pass none, so the base alone decides). The engine never widens a
-   * repository's package sources:
+   * definition; a prepare check on the checked-out head; a write lane on the
+   * commit its worktree is made at; a calibration passes none, so the base
+   * alone decides). Every fact of either commit only makes it stricter (a
+   * union). The engine never widens a repository's package sources:
    * - `hierarchy` (NuGet's own walk, as with no RestoreConfigFile): why one
    *   file would not be what NuGet reads for this repository: a
-   *   `nuget.config` below the root in the base or `commit` (one file would
-   *   hide it, M2), a root config whose name the engine cannot pin
-   *   (dotnet-sandbox.ts rootNugetConfig), or a root config that maps
-   *   packages to a source key it does not define (M1). In the shared layout
-   *   that walk parks at the first unreadable config, naming this reason.
+   *   `nuget.config` below the root (one file would hide it, M2), a .NET
+   *   project or solution under a node_modules dir (where neither this
+   *   policy nor the sandbox layer's scan looks for configs), a root config
+   *   whose name the engine cannot pin (dotnet-sandbox.ts rootNugetConfig),
+   *   or a root config that maps packages to a source key it does not define
+   *   (M1). In the shared layout that walk parks at the first unreadable
+   *   config, naming this reason.
    * - `noAddSource`: the pinned MSBuild or response files (or `argv`) set
    *   NuGet's restore sources or config themselves (restoreSettingMentions),
    *   or import a file that is not a pinned definition file, which may
    *   (unpinnedImports): nuget.org is never added (H2, M2).
+   * - `rootSources`: a commit whose root config defines a package-source
+   *   policy (nugetConfigVerdict): nuget.org is never added either, even when
+   *   the tree's own root file defines none.
    * - `sdks`: MSBuild project SDKs NuGet resolves (projectSdkMentions; M3).
    * Throws (a step error) when a commit cannot be read.
    */
-  private dotnetNugetPolicy(commit?: string, argv: readonly string[] = []): { hierarchy: string | null; noAddSource: string[]; sdks: string[] } {
+  private dotnetNugetPolicy(commit?: string, argv: readonly string[] = []): { hierarchy: string | null; noAddSource: string[]; rootSources: string[]; sdks: string[] } {
     const base = this.state.baseSha && HEX40.test(this.state.baseSha) ? this.state.baseSha : undefined;
     const own = commit && HEX40.test(commit) ? commit : base;
-    if (!own) return { hierarchy: null, noAddSource: [], sdks: [] };
-    const facts = this.dotnetPinnedFacts(own);
-    const baseFacts = base && base !== own ? this.dotnetPinnedFacts(base) : facts;
-    const lower = [...new Set([...baseFacts.lowerConfigs, ...facts.lowerConfigs])].sort();
+    if (!own) return { hierarchy: null, noAddSource: [], rootSources: [], sdks: [] };
+    // Every fact of the base and of `own` only makes the set-up stricter (a union): neither commit can relax what the other pins.
+    const both = base && base !== own;
+    const all = (both ? [own, base] : [own]).map((sha) => ({ sha, facts: this.dotnetPinnedFacts(sha) }));
+    const union = (pick: (f: DotnetPinnedFacts) => readonly string[]) => [...new Set(all.flatMap(({ facts }) => pick(facts)))];
+    const lower = union((f) => f.lowerConfigs).sort();
+    const pkgProjects = union((f) => f.packageTreeProjects).sort();
     const list = (xs: readonly string[]) => `${xs.slice(0, 5).join(', ')}${xs.length > 5 ? `, ${xs.length - 5} more` : ''}`;
-    const root = facts.root;
+    const where = both ? ` in the base ${base.slice(0, 12)} or ${own.slice(0, 12)}` : '';
+    const ambiguous = all.map(({ facts }) => facts.root).find((r): r is { ambiguous: string } => 'ambiguous' in r);
+    const unmapped = all.map(({ facts }) => facts.root).find((r): r is { name: string; verdict: NugetConfigVerdict } => 'verdict' in r && r.verdict.unmappedKeys.length > 0);
     const hierarchy = lower.length > 0
-      ? `the repository pins a nuget.config below its root (${list(lower)}${base && base !== own ? ` in the base ${base.slice(0, 12)} or ${own.slice(0, 12)}` : ''}), which one config file would hide`
-      : 'ambiguous' in root
-        ? `the engine cannot tell which root nuget.config NuGet reads (${root.ambiguous})`
-        : 'verdict' in root && root.verdict.unmappedKeys.length > 0
-          ? `the root ${root.name} maps packages to the source key(s) ${root.verdict.unmappedKeys.join(', ')}, which it does not define (NuGet takes them from another config, such as the user config's nuget.org; define them in the root ${root.name} to keep one file)`
-          : null;
+      ? `the repository pins a nuget.config below its root (${list(lower)}${where}), which one config file would hide`
+      : pkgProjects.length > 0
+        ? `the repository tracks a .NET project or solution under a node_modules directory (${list(pkgProjects)}${where}), where the engine does not look for nuget.config files`
+        : ambiguous
+          ? `the engine cannot tell which root nuget.config NuGet reads (${ambiguous.ambiguous})`
+          : unmapped
+            ? `the root ${unmapped.name} maps packages to the source key(s) ${unmapped.verdict.unmappedKeys.join(', ')}, which it does not define (NuGet takes them from another config, such as the user config's nuget.org; define them in the root ${unmapped.name} to keep one file)`
+            : null;
     const fromArgv = argv.some((a) => /Restore(?:Sources|AdditionalProjectSources|FallbackFolders|ConfigFile|PackagesPath|NoCache|IgnoreFailedSources)/i.test(a)) ? ['the command line'] : [];
-    return { hierarchy, noAddSource: [...facts.restoreSettings, ...facts.unpinnedImports, ...fromArgv], sdks: facts.projectSdks };
+    // A root config that defines a package-source policy in either commit: the tree's own root file (which the sandbox reads) gets nothing added either.
+    const rootSources = all.flatMap(({ sha, facts }) => ('verdict' in facts.root && !facts.root.verdict.addNugetOrg ? [`the root ${facts.root.name} at ${sha.slice(0, 12)}`] : []));
+    return { hierarchy, noAddSource: [...union((f) => f.restoreSettings), ...union((f) => f.unpinnedImports), ...fromArgv], rootSources, sdks: union((f) => f.projectSdks) };
   }
 
   /**
@@ -5402,7 +5420,8 @@ class FactoryEngine {
    * package's own files, which MSBuild reads only through such a reference);
    * `trackedTrees`, the dirs whose node_modules holds tracked files;
    * `lowerConfigs`, its nuget.config files below the root (any case,
-   * outside node_modules); `root`, its root NuGet config as NuGet would
+   * outside node_modules); `packageTreeProjects`, its .NET projects and
+   * solutions under a node_modules dir; `root`, its root NuGet config as NuGet would
    * pick it (the rule of dotnet-sandbox.ts rootNugetConfig on the tree's
    * names) with nugetConfigVerdict of its blob; `restoreSettings` and
    * `projectSdks` (restoreSettingMentions, projectSdkMentions) as `<path>:
@@ -5418,11 +5437,13 @@ class FactoryEngine {
     const ls = this.exec('git', ['ls-tree', '-r', '-z', '--full-tree', commit], { cwd: this.o.root, env: TRUSTED_READ_ENV });
     if (ls.status !== 0) throw new FactoryStepError(`git ls-tree ${commit.slice(0, 12)} failed: ${oneLine(ls.stderr, 300)}`);
     const files: Array<[string, string]> = [];
+    const blobs: string[] = [];
     for (const line of ls.stdout.split('\0')) {
       const tab = line.indexOf('\t');
       if (tab < 0) continue;
       const [mode, type, oid] = line.slice(0, tab).split(' ');
       const p = line.slice(tab + 1);
+      if (type === 'blob') blobs.push(p);
       const segs = p.split('/');
       const at = segs.findIndex((s) => s.replace(/[. ]+$/, '').toLowerCase() === 'node_modules');
       if (at >= 0 && at < segs.length - 1) trackedTrees.add(segs.slice(0, at).join('/'));
@@ -5471,6 +5492,7 @@ class FactoryEngine {
       refs,
       trackedTrees: [...trackedTrees].sort(),
       lowerConfigs: lowerConfigs.sort(),
+      packageTreeProjects: trackedPackageTreeProjects(blobs).sort(),
       root: 'name' in root ? { name: root.name, verdict: verdict! } : root,
       restoreSettings,
       projectSdks,
@@ -6896,8 +6918,10 @@ class FactoryEngine {
     // A .NET repository (dotnetRepo): read before anything is made or reserved, so a base that cannot be listed is a step
     // error that stops the step, never a lane start failure that consumes a lane retry.
     const dotnet = profile === 'write' && this.dotnetRepo();
-    // NuGet's set-up from the trusted base alone (dotnetNugetPolicy): a lane's own edits never decide it.
-    const nugetPolicy = dotnet ? this.dotnetNugetPolicy() : null;
+    // NuGet's set-up from the trusted base AND the commit the lane's worktree starts at (dotnetNugetPolicy, a union of both:
+    // an approved head that adds a lower config or sets RestoreSources makes the lane stricter, never looser). The lane's own
+    // edits never decide it (the sandbox layer's scan of the worktree at the lane's start is the safety net).
+    const nugetPolicy = dotnet ? this.dotnetNugetPolicy(HEX40.test(startRef) ? startRef : this.run(['rev-parse', '--verify', `${startRef}^{commit}`], 'git', TRUSTED_READ_ENV).trim()) : null;
     // The private layout: the engine makes the lane's worktree `<run>/w/<n>` itself, before the snapshot it is compared against.
     const priv = this.privateRun();
     let laneTree: string | undefined;
@@ -6980,7 +7004,7 @@ class FactoryEngine {
         // A review lane's shell is read-only, so it runs no test and needs none.
         ...(profile === 'write' ? { beforeSandboxedSession: (wt: string, o?: { copy: boolean }) => this.prepareLaneTree(wt, o?.copy ?? true), nodeModulesGrant: (wt: string) => this.laneNodeModulesGrant(wt) } : {}),
         // A .NET repository (dotnetRepo: trusted config or the trusted base's tree, any forge): the env and NuGet grant dotnet needs in the lane sandbox.
-        ...(dotnet ? { dotnet: true, ...(nugetPolicy?.hierarchy ? { dotnetNugetHierarchy: `NuGet reads its own config hierarchy: ${nugetPolicy.hierarchy}` } : {}), ...(nugetPolicy && nugetPolicy.noAddSource.length > 0 ? { dotnetNugetNoAddSource: true } : {}) } : {}),
+        ...(dotnet ? { dotnet: true, ...(nugetPolicy?.hierarchy ? { dotnetNugetHierarchy: `NuGet reads its own config hierarchy: ${nugetPolicy.hierarchy}` } : {}), ...(nugetPolicy && (nugetPolicy.noAddSource.length > 0 || nugetPolicy.rootSources.length > 0) ? { dotnetNugetNoAddSource: true } : {}) } : {}),
         ...(priv && laneTree ? { worktree: { path: laneTree, commonGitDir: priv.repo.gitDir }, jobRoot: priv.layout.jobs, deniedPaths: priv.deniedFor(laneTree), beforeHostGit: () => priv.problem() } : {}),
       }));
     } catch (error) {

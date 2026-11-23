@@ -24,8 +24,9 @@
  * and `<Exec Command="npm install" />` (or `npm ci`, `npm run build`) name no
  * path under node_modules, and a pure delete with a shell built-in or
  * system tool (`<Exec Command="rm -rf node_modules" />`, `del /q
- * node_modules\.cache`) reads nothing there; `rimraf` and `npx` run
- * node_modules code and count.
+ * node_modules\.cache`) reads nothing there; `rimraf` and a package
+ * runner (`npx`, `bunx`, `npm exec` / `npm x`, `pnpm dlx` / `pnpm exec`,
+ * `yarn dlx` / `yarn exec`) run node_modules code and count.
  * ASP.NET Core 2.x SpaServices projects run `node
  * node_modules/webpack/bin/webpack.js` in an Exec: that counts, so their
  * gate runs only on the engine's exact node_modules tree (and parks on a
@@ -76,11 +77,19 @@ export declare function restoreSettingMentions(path: string, text: string): stri
  * pinned definition file (M2): each `;` part of the decoded value whose text
  * does not end in `.props`, `.targets`, `.tasks`, `.projitems`, `.user` or a
  * `*proj` extension, including one that ends in a property reference
- * (`$(X)`) or a wildcard; `$([MSBuild]::GetPathOfFileAbove('<name>.props',
- * ...))` counts by its literal name. Such a file is absent from the
- * definition tree and may set the restore sources, so the engine cannot
- * tell which sources the repository uses. A file larger than
- * PINNED_READ_MAX counts as `not read`. Other files: none.
+ * (`$(X)`) or a wildcard; `$([MSBuild]::GetPathOfFileAbove('<name>.props'))`
+ * counts by its literal name, with a start dir only as
+ * `$(MSBuildThisFileDirectory)` plus `..` segments that stay inside the
+ * repository (any other start, such as `'C:/corp'` or `$(CorpRoot)`,
+ * counts). A literal path, or one after `$(MSBuildThisFileDirectory)`,
+ * that is absolute or climbs above the repository root counts too (round
+ * 5: a file outside the repository is never pinned). Such a file is absent
+ * from the definition tree and may set the restore sources, so the engine
+ * cannot tell which sources the repository uses. Not seen: a path built
+ * from another property (`$(RepoRoot)eng/x.props` counts by its extension)
+ * and a GetPathOfFileAbove search that finds no file inside the repository
+ * and goes on above it. A file larger than PINNED_READ_MAX counts as
+ * `not read`. Other files: none.
  */
 export declare function unpinnedImports(path: string, text: string): string[];
 /**

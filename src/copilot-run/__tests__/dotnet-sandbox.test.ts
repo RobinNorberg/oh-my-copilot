@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { DOTNET_SINGLE_NODE_FLAG, dotnetNugetConfig, dotnetSandboxArgs, dotnetSandboxEnv, isDotnetExe, lowerNugetConfigs, isMtpGlobalJson, isNugetHost, msbuildEscape, NUGET_CONFIG_READ_MAX, NUGET_ORG_ONLY_CONFIG, NUGET_ORG_SOURCE, nugetConfigVerdict, nugetPackagesDir, nugetPackagesGrant, readRegularFileBounded, rootNugetConfig } from '../dotnet-sandbox.js';
+import { DOTNET_SINGLE_NODE_FLAG, dotnetNugetConfig, dotnetSandboxArgs, dotnetSandboxEnv, isDotnetExe, lowerNugetConfigs, isMtpGlobalJson, sandboxNugetConfig, isNugetHost, msbuildEscape, NUGET_CONFIG_READ_MAX, NUGET_ORG_ONLY_CONFIG, NUGET_ORG_SOURCE, nugetConfigVerdict, nugetPackagesDir, nugetPackagesGrant, readRegularFileBounded, rootNugetConfig } from '../dotnet-sandbox.js';
 
 let dir: string;
 beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'omg-dotnet-sandbox-')); });
@@ -435,5 +435,31 @@ describe('a nuget.config below the root keeps NuGet\'s hierarchy whatever the ca
   it('lists at most five, nearest the root first', () => {
     for (const d of ['a', 'b', 'c', 'd', 'e', 'f', 'a/x']) put(`${d}/nuget.config`, LOWER);
     expect(lowerNugetConfigs(join(dir, 'repo'))).toHaveLength(5);
+  });
+
+  it('round 5: a dir named .omg is skipped only at the root (the engine\'s own); .git is skipped at any depth', () => {
+    put('nuget.config', '<configuration />\n');
+    put('.omg/team/factory-run/worktrees/issue-1/Lib/nuget.config', LOWER);
+    put('sub/.git/nuget.config', LOWER);
+    put('tools/.omg/Lib/nuget.config', LOWER);
+    expect(lowerNugetConfigs(join(dir, 'repo'))).toEqual(['tools/.omg/Lib/nuget.config']);
+    expect(dotnetNugetConfig(join(dir, 'repo'), prof(), 'win32')).toEqual({ hierarchy: expect.stringContaining('tools/.omg/Lib/nuget.config') });
+  });
+
+  it('round 5: sandboxNugetConfig is the one builder: a caller\'s hierarchy wins; `fromGit` skips the scan (the engine read the commits\' lower configs from git)', () => {
+    put('nuget.config', '<configuration />\n');
+    put('Lib/nuget.config', LOWER);
+    const repo = join(dir, 'repo');
+    expect(sandboxNugetConfig(repo, prof(), 'win32', { hierarchy: 'NuGet reads its own config hierarchy: x' })).toEqual({ hierarchy: 'NuGet reads its own config hierarchy: x' });
+    expect(sandboxNugetConfig(repo, prof(), 'win32', {})).toEqual({ hierarchy: expect.stringContaining('below its root (Lib/nuget.config)') });
+    expect(sandboxNugetConfig(repo, prof(), 'win32', { fromGit: true })).toEqual({ file: join(repo, 'nuget.config'), addNugetOrg: true });
+    expect(sandboxNugetConfig(repo, prof(), 'win32', { fromGit: true, noAdd: true })).toEqual({ file: join(repo, 'nuget.config'), addNugetOrg: false });
+  });
+
+  it('round 5: the scan reads one dir at a time and stops at its cap (a wide tree is not read twice)', () => {
+    put('nuget.config', '<configuration />\n');
+    for (let i = 0; i < 300; i++) mkdirSync(join(dir, 'repo', `d${i % 10}`, `e${i}`), { recursive: true });
+    put('d9/e299/nuget.config', LOWER);
+    expect(lowerNugetConfigs(join(dir, 'repo'))).toEqual(['d9/e299/nuget.config']);
   });
 });

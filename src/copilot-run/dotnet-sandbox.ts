@@ -446,20 +446,24 @@ const LOWER_NUGET_SCAN_DIRS = 100_000;
 
 /**
  * The nuget.config files (any letter case) below `dir`'s root, as paths
- * relative to `dir` with `/`, at most five; dirs named `.git`,
- * `node_modules` (a package's own files, as engine.ts dotnetPinnedFacts)
- * or `.omg` (the engine's state, other checkouts) are skipped and links are
- * not followed. A dir that cannot be read, or more than
+ * relative to `dir` with `/`, at most five; links are not followed, and
+ * these dirs are not looked in: `.git` at any depth, `.omg` at the root only
+ * (the engine's state and other checkouts; a `tools/.omg/` of the
+ * repository is read), and `node_modules` at any depth (a package's own
+ * files; a repository that tracks a .NET project or solution under one
+ * keeps NuGet's hierarchy by the engine's git policy instead, engine.ts
+ * dotnetNugetPolicy). A dir that cannot be read, or more than
  * LOWER_NUGET_SCAN_DIRS dirs, is reported as an entry too: the caller then
- * cannot rule a lower config out.
+ * cannot rule a lower config out. The cost is one readdir per dir (about
+ * 0.1 ms each on Windows), so the engine's gates and restore step, whose
+ * policy comes from git objects, skip it (sandboxNugetConfig `fromGit`).
  */
 export function lowerNugetConfigs(dir: string): string[] {
   const found: string[] = [];
   const queue: string[] = [''];
-  let read = 0;
-  while (queue.length > 0 && found.length < 5) {
-    const rel = queue.shift()!;
-    if (++read > LOWER_NUGET_SCAN_DIRS) return [...found, `more than ${LOWER_NUGET_SCAN_DIRS} dirs, not all read`];
+  for (let next = 0; next < queue.length && found.length < 5; next++) {
+    const rel = queue[next];
+    if (next >= LOWER_NUGET_SCAN_DIRS) return [...found, `more than ${LOWER_NUGET_SCAN_DIRS} dirs, not all read`];
     let entries;
     try {
       entries = readdirSync(rel ? join(dir, rel) : dir, { withFileTypes: true });
@@ -472,7 +476,7 @@ export function lowerNugetConfigs(dir: string): string[] {
       const name = e.name.replace(/[. ]+$/, '').toLowerCase();
       const p = rel ? `${rel}/${e.name}` : e.name;
       if (e.isDirectory()) {
-        if (name !== '.git' && name !== 'node_modules' && name !== '.omg') queue.push(p);
+        if (name !== '.git' && name !== 'node_modules' && (rel || name !== '.omg')) queue.push(p);
       } else if (rel && e.name.toLowerCase() === 'nuget.config' && (e.isFile() || e.isSymbolicLink())) found.push(p);
     }
   }
@@ -517,12 +521,13 @@ export const msbuildEscape = (value: string): string => value.replace(/[%$@';?*]
  * when `cwd`'s tree holds a nuget.config below its root (lowerNugetConfigs:
  * NuGet reads it for the projects under it, and one file would hide it,
  * so nothing is added and no nuget.org-only file is written). This check
- * reads the tree as it is, so it holds for every caller (the engine, a
- * write lane's worktree, a caller that never passes a hierarchy decision);
- * only a caller that passes `{ hierarchy }` itself skips this function.
+ * reads the tree as it is, so it holds for every caller that passes no
+ * decision of its own (a write lane's worktree, a caller outside the
+ * engine); `fromGit` skips it: the engine read the lower configs of every
+ * commit the command runs on from git objects (sandboxNugetConfig).
  */
-export function dotnetNugetConfig(cwd: string, profile: string, platform: NodeJS.Platform = process.platform, o: { noAdd?: boolean } = {}): DotnetNugetConfig {
-  const lower = lowerNugetConfigs(cwd);
+export function dotnetNugetConfig(cwd: string, profile: string, platform: NodeJS.Platform = process.platform, o: { noAdd?: boolean; fromGit?: boolean } = {}): DotnetNugetConfig {
+  const lower = o.fromGit ? [] : lowerNugetConfigs(cwd);
   if (lower.length > 0) return { hierarchy: `NuGet reads its own config hierarchy: ${cwd} holds a nuget.config below its root (${lower.join(', ')}), which one config file would hide` };
   const root = rootNugetConfig(cwd, platform);
   if ('ambiguous' in root) return { hierarchy: `NuGet reads its own config hierarchy: ${root.ambiguous}` };
@@ -541,6 +546,20 @@ export function dotnetNugetConfig(cwd: string, profile: string, platform: NodeJS
   mkdirSync(dir, { recursive: true });
   writeFileSync(file, NUGET_ORG_ONLY_CONFIG);
   return { file, addNugetOrg: false };
+}
+
+/**
+ * The NuGet config of one sandboxed dotnet command or write lane (the
+ * builder sandbox-exec.ts and job.ts both call): `hierarchy` when the caller
+ * decided NuGet keeps its own walk (engine.ts dotnetNugetPolicy), else
+ * dotnetNugetConfig of `cwd` with `noAdd`, its lower-config scan skipped
+ * when `fromGit` (the engine's policy already read every lower config of
+ * the commits the command runs on from git objects: the gates, prepare
+ * checks, calibrations and the restore step).
+ */
+export function sandboxNugetConfig(cwd: string, profile: string, platform: NodeJS.Platform, o: { hierarchy?: string | null; noAdd?: boolean; fromGit?: boolean }): DotnetNugetConfig {
+  if (o.hierarchy) return { hierarchy: o.hierarchy };
+  return dotnetNugetConfig(cwd, profile, platform, { noAdd: o.noAdd === true, fromGit: o.fromGit === true });
 }
 
 /** True when a sandbox.allowedHosts entry lets NuGet reach nuget.org's feed (`api.nuget.org`, `*.nuget.org`). */

@@ -24,8 +24,9 @@
  * and `<Exec Command="npm install" />` (or `npm ci`, `npm run build`) name no
  * path under node_modules, and a pure delete with a shell built-in or
  * system tool (`<Exec Command="rm -rf node_modules" />`, `del /q
- * node_modules\.cache`) reads nothing there; `rimraf` and `npx` run
- * node_modules code and count.
+ * node_modules\.cache`) reads nothing there; `rimraf` and a package
+ * runner (`npx`, `bunx`, `npm exec` / `npm x`, `pnpm dlx` / `pnpm exec`,
+ * `yarn dlx` / `yarn exec`) run node_modules code and count.
  * ASP.NET Core 2.x SpaServices projects run `node
  * node_modules/webpack/bin/webpack.js` in an Exec: that counts, so their
  * gate runs only on the engine's exact node_modules tree (and parks on a
@@ -91,16 +92,23 @@ function jsonStrings(text) {
     return out;
 }
 /**
+ * A package-runner run anywhere in a command, quoted or not, with or without
+ * `.cmd` / `.exe`: `npx`, `bunx`, `npm exec`, `npm x`, `pnpm dlx`, `pnpm
+ * exec`, `yarn dlx`, `yarn exec`; each resolves `node_modules/.bin/<name>`
+ * (or fetches a package) before anything else. `npm run <script>`, `npm
+ * install` and `npm ci` are not runs of a package binary named in the
+ * command (the SPA templates' `npm install` / `npm run build`).
+ */
+const NPX_RUN = /(?:^|[\s&|;(`"'])(?:(?:npx|bunx)(?:\.cmd|\.exe)?|(?:npm(?:\.cmd|\.exe)?["']?\s+(?:exec|x))|(?:pnpm(?:\.cmd|\.exe)?["']?\s+(?:dlx|exec))|(?:yarn(?:\.cmd|\.exe)?["']?\s+(?:dlx|exec)))(?=[\s"'&|;)`]|$)/i;
+/**
  * A pure delete command, whole (M3): a shell built-in or system tool,
  * `rm`, `del`, `rd`, `rmdir` or `Remove-Item` (optionally `.exe`), then
  * only simple flags (`-rf`, `--force`, `/q`) and plain path arguments.
- * Not `rimraf` or `npx ...` (round 4): rimraf is a node_modules binary
- * found through PATH (`node_modules/.bin` first under npm), and npx runs
- * `node_modules/.bin/<x>` before anything else, so either runs
- * node_modules code and counts as a reference.
+ * Not `rimraf` or a package runner (NPX_RUN; round 4): rimraf is a
+ * node_modules binary found through PATH (`node_modules/.bin` first under
+ * npm), and a package runner runs `node_modules/.bin/<x>` before anything
+ * else, so either runs node_modules code and counts as a reference.
  */
-/** An `npx` (or `npx.cmd`) run anywhere in a command: it resolves `node_modules/.bin/<name>` before anything else. */
-const NPX_RUN = /(?:^|[\s&|;(`"'])npx(?:\.cmd)?(?=\s|$)/i;
 const PURE_DELETE = /^(?:rm|del|rd|rmdir|remove-item)(?:\.exe)?(?:\s+(?:--?[a-z][a-z-]*|\/[a-z]|[\w.:\\/-]+))+$/i;
 /**
  * An `Exec Command` (XML-decoded) as MSBuild runs it: `%XX` unescaped
@@ -284,18 +292,52 @@ export function restoreSettingMentions(path, text) {
 }
 /** An `Import Project` value (one `;` part, trimmed) that names a pinned definition file: it ends, textually, in one of their MSBuild extensions. */
 const PINNED_IMPORT = /\.(?:[a-z0-9]*proj|props|targets|tasks|projitems|user)$/i;
-/** `$([MSBuild]::GetPathOfFileAbove('<name>', ...))`: a file of that literal name, so it counts by that name's extension. */
-const FILE_ABOVE = /^\$\(\[MSBuild\]::GetPathOfFileAbove\(\s*(?:'([^'$%@()]+)'|([^'"$%@(),\s]+))\s*(?:,\s*(?:'[^']*'|\$\([\w.]+\)[\w.\\/]*)\s*)?\)\)$/i;
+/** `$(MSBuildThisFileDirectory)` optionally followed by `..` segments (`..`, `../..`, `..\`): the importing file's dir or one above it. */
+const THIS_DIR_UP = String.raw `\$\(MSBuildThisFileDirectory\)((?:\.\.(?:[\\/]\.\.)*)?)[\\/]?`;
+/**
+ * `$([MSBuild]::GetPathOfFileAbove('<name>'[, <start>]))`: a file of that literal name, so it counts by that name's
+ * extension; `<start>` (quoted or not) only as THIS_DIR_UP. Groups: the name (quoted, bare), the `..` part (quoted, bare).
+ */
+const FILE_ABOVE = new RegExp(String.raw `^\$\(\[MSBuild\]::GetPathOfFileAbove\(\s*(?:'([^'$%@()]+)'|([^'"$%@(),\s]+))\s*(?:,\s*(?:'${THIS_DIR_UP}'|${THIS_DIR_UP})\s*)?\)\)$`, 'i');
+/** An Import path relative to the importing file's dir: literal, or after `$(MSBuildThisFileDirectory)`. Group: the relative path. */
+const THIS_DIR_PATH = /^(?:\$\(MSBuildThisFileDirectory\))?([^$@%*?]*)$/i;
+/**
+ * True when `rel` (a path relative to the dir of the repository file
+ * `path`, `\` read as `/`) is absolute or climbs above the repository root.
+ */
+function leavesRepository(path, rel) {
+    const r = rel.replace(/\\/g, '/');
+    if (/^(?:[a-z]:|\/)/i.test(r))
+        return true;
+    let depth = path.split('/').length - 1;
+    for (const seg of r.split('/')) {
+        if (seg === '..')
+            depth--;
+        else if (seg !== '' && seg !== '.')
+            depth++;
+        if (depth < 0)
+            return true;
+    }
+    return false;
+}
 /**
  * The `Import Project` values of a pinned MSBuild file that do not name a
  * pinned definition file (M2): each `;` part of the decoded value whose text
  * does not end in `.props`, `.targets`, `.tasks`, `.projitems`, `.user` or a
  * `*proj` extension, including one that ends in a property reference
- * (`$(X)`) or a wildcard; `$([MSBuild]::GetPathOfFileAbove('<name>.props',
- * ...))` counts by its literal name. Such a file is absent from the
- * definition tree and may set the restore sources, so the engine cannot
- * tell which sources the repository uses. A file larger than
- * PINNED_READ_MAX counts as `not read`. Other files: none.
+ * (`$(X)`) or a wildcard; `$([MSBuild]::GetPathOfFileAbove('<name>.props'))`
+ * counts by its literal name, with a start dir only as
+ * `$(MSBuildThisFileDirectory)` plus `..` segments that stay inside the
+ * repository (any other start, such as `'C:/corp'` or `$(CorpRoot)`,
+ * counts). A literal path, or one after `$(MSBuildThisFileDirectory)`,
+ * that is absolute or climbs above the repository root counts too (round
+ * 5: a file outside the repository is never pinned). Such a file is absent
+ * from the definition tree and may set the restore sources, so the engine
+ * cannot tell which sources the repository uses. Not seen: a path built
+ * from another property (`$(RepoRoot)eng/x.props` counts by its extension)
+ * and a GetPathOfFileAbove search that finds no file inside the repository
+ * and goes on above it. A file larger than PINNED_READ_MAX counts as
+ * `not read`. Other files: none.
  */
 export function unpinnedImports(path, text) {
     if (fileKind(path) !== 'msbuild')
@@ -306,7 +348,9 @@ export function unpinnedImports(path, text) {
     for (const v of attributeValues(scanXml(text).tags, 'Import', 'Project')) {
         for (const part of v.split(';').map((s) => s.trim()).filter(Boolean)) {
             const above = FILE_ABOVE.exec(part);
-            if (!PINNED_IMPORT.test(above ? (above[1] ?? above[2]).trim() : part))
+            const local = above ? null : THIS_DIR_PATH.exec(part);
+            const outside = above ? leavesRepository(path, above[3] ?? above[4] ?? '') : local ? leavesRepository(path, local[1]) : false;
+            if (outside || !PINNED_IMPORT.test(above ? (above[1] ?? above[2]).trim() : part))
                 out.add(part.slice(0, 200));
         }
     }

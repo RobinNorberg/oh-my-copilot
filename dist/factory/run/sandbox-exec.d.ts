@@ -108,6 +108,12 @@ export interface SandboxRunRequest {
      * themselves (engine.ts): nuget.org is never added (RestoreAdditionalProjectSources would be appended to them).
      */
     nugetNoAddSource?: true;
+    /**
+     * The engine decided `nugetHierarchy` / `nugetNoAddSource` from the git objects of every commit the command runs on
+     * (engine.ts dotnetNugetPolicy): the sandbox layer does not scan `cwd` for lower nuget.config files again
+     * (dotnet-sandbox.ts sandboxNugetConfig). Without it the scan runs, whatever else the caller passed.
+     */
+    nugetFromGit?: true;
 }
 /** The gate record and PR note line for a sandboxed run on a host without denied_paths. */
 export declare const CREDENTIAL_FILES_READABLE_NOTE = "sandboxed; credential files readable on this host";
@@ -168,6 +174,8 @@ export interface SandboxExecOptions {
     nugetHierarchy?: string;
     /** SandboxRunRequest.nugetNoAddSource. */
     nugetNoAddSource?: true;
+    /** SandboxRunRequest.nugetFromGit. */
+    nugetFromGit?: true;
 }
 export declare const MARKER_PREFIX = "omg-gate-exit-";
 /** The command's output the POSIX form keeps (`tail -c`) before the marker line. */

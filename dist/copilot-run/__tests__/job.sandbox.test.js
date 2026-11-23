@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CopilotRunManager } from '../job.js';
-import { DEFAULT_SANDBOX_SETTINGS } from '../sandbox.js';
+import { DEFAULT_SANDBOX_SETTINGS, sandboxPath } from '../sandbox.js';
 import { fakeDeps, gitIn, newCalls, scratchRepo } from './fake-sdk.js';
 let root;
 let repo;
@@ -311,7 +311,8 @@ describe('copilot_run sandbox permissions and env', () => {
         expect(env.COPILOT_GITHUB_TOKEN).toBeUndefined();
         expect(calls.sessions[0].gitHubToken).toBe('cop');
         expect(env).toMatchObject({ LC_ALL: 'C', COPILOT_ALLOW_ALL: 'false', OMC_GIT_GUARDRAILS: '1' });
-        expect(env.PATH).toBe(process.env.PATH ?? '');
+        // The host PATH less relative entries and npx's node_modules/.bin dirs (sandboxPath).
+        expect(env.PATH).toBe(sandboxPath(process.env.PATH ?? ''));
         const home = env.COPILOT_HOME;
         // The caller's TEMP never passes (the runtime grants its TEMP read-write): the job's own temp dir, created before the runtime starts.
         expect(env).toMatchObject({ TEMP: join(home, 'tmp'), TMP: join(home, 'tmp'), TMPDIR: join(home, 'tmp') });

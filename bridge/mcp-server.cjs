@@ -50172,9 +50172,18 @@ function allowlistSessionEnv(env2, jobHome) {
   const out = {};
   for (const [key, value] of Object.entries(env2)) {
     const upper = key.toUpperCase();
-    if (allow.has(upper) || upper.startsWith("LC_") || upper.startsWith("OMC_")) out[key] = value;
+    if (allow.has(upper) || upper.startsWith("LC_") || upper.startsWith("OMC_")) out[key] = upper === "PATH" && value !== void 0 ? sandboxPath(value) : value;
   }
   return { ...out, ...relocatedProfileEnv(jobHome) };
+}
+function sandboxPath(value, platform = process.platform) {
+  const P = platform === "win32" ? import_node_path8.win32 : import_node_path8.posix;
+  const bin = platform === "win32" ? /(?:^|[\\/])node_modules[\\/]\.bin[\\/]*$/i : /(?:^|\/)node_modules\/\.bin\/*$/;
+  return value.split(P.delimiter).filter((e2) => {
+    const entry = e2.trim().replace(/^"(.*)"$/, "$1");
+    if (entry === "" || bin.test(entry)) return false;
+    return P.isAbsolute(entry);
+  }).join(P.delimiter);
 }
 var import_node_child_process2, import_node_fs7, import_node_path8, SANDBOX_SHELL_TOOLS, REVIEW_READ_TOOLS, REVIEW_SHELL_TOOLS, DEFAULT_SANDBOX_SETTINGS, SANDBOX_KILL_ENV, isStringArray2, GATES_SANDBOX_MODES, CONTAINER_KEYS, defaultGateImage, defaultGitGateImage, REGISTRY_HOSTS, NUGET_HOSTS, GATE_TREE_MARKER_NAME, errText, BWRAP_TRIAL_ARGS, BWRAP_MIN_VERSION, defaultTrialSpawner, cachedBwrapTrial, SESSION_ENV_ALLOWLIST, MXC_REQUIRED_ENV, TOKEN_PATTERN;
 var init_sandbox2 = __esm({
@@ -62857,10 +62866,9 @@ function readRegularFileBounded(path15, max) {
 function lowerNugetConfigs(dir) {
   const found = [];
   const queue = [""];
-  let read = 0;
-  while (queue.length > 0 && found.length < 5) {
-    const rel = queue.shift();
-    if (++read > LOWER_NUGET_SCAN_DIRS) return [...found, `more than ${LOWER_NUGET_SCAN_DIRS} dirs, not all read`];
+  for (let next = 0; next < queue.length && found.length < 5; next++) {
+    const rel = queue[next];
+    if (next >= LOWER_NUGET_SCAN_DIRS) return [...found, `more than ${LOWER_NUGET_SCAN_DIRS} dirs, not all read`];
     let entries;
     try {
       entries = (0, import_node_fs12.readdirSync)(rel ? (0, import_node_path13.join)(dir, rel) : dir, { withFileTypes: true });
@@ -62873,14 +62881,14 @@ function lowerNugetConfigs(dir) {
       const name = e2.name.replace(/[. ]+$/, "").toLowerCase();
       const p = rel ? `${rel}/${e2.name}` : e2.name;
       if (e2.isDirectory()) {
-        if (name !== ".git" && name !== "node_modules" && name !== ".omg") queue.push(p);
+        if (name !== ".git" && name !== "node_modules" && (rel || name !== ".omg")) queue.push(p);
       } else if (rel && e2.name.toLowerCase() === "nuget.config" && (e2.isFile() || e2.isSymbolicLink())) found.push(p);
     }
   }
   return found.slice(0, 5);
 }
 function dotnetNugetConfig(cwd, profile, platform = process.platform, o = {}) {
-  const lower2 = lowerNugetConfigs(cwd);
+  const lower2 = o.fromGit ? [] : lowerNugetConfigs(cwd);
   if (lower2.length > 0) return { hierarchy: `NuGet reads its own config hierarchy: ${cwd} holds a nuget.config below its root (${lower2.join(", ")}), which one config file would hide` };
   const root = rootNugetConfig(cwd, platform);
   if ("ambiguous" in root) return { hierarchy: `NuGet reads its own config hierarchy: ${root.ambiguous}` };
@@ -62899,6 +62907,10 @@ function dotnetNugetConfig(cwd, profile, platform = process.platform, o = {}) {
   (0, import_node_fs12.mkdirSync)(dir, { recursive: true });
   (0, import_node_fs12.writeFileSync)(file2, NUGET_ORG_ONLY_CONFIG);
   return { file: file2, addNugetOrg: false };
+}
+function sandboxNugetConfig(cwd, profile, platform, o) {
+  if (o.hierarchy) return { hierarchy: o.hierarchy };
+  return dotnetNugetConfig(cwd, profile, platform, { noAdd: o.noAdd === true, fromGit: o.fromGit === true });
 }
 var import_node_fs12, import_node_path13, MSBUILD_SUBCOMMANDS, DOTNET_SINGLE_NODE_FLAG, DOTNET_PATH_OPTIONS, DOTNET_COMMON_VALUE_OPTIONS, DOTNET_VALUE_OPTIONS, DOTNET_MTP_UNSUPPORTED, omcRoots, NUGET_ORG_ONLY_CONFIG, NUGET_CONFIG_NAMES, NUGET_ORG_SOURCE, NUGET_CONFIG_READ_MAX, UTF16_32_BOMS, SOURCE_POLICY_WORDS, decodePredefined, LOWER_NUGET_SCAN_DIRS, msbuildEscape, isNugetHost;
 var init_dotnet_sandbox = __esm({
@@ -64288,7 +64300,7 @@ var init_job = __esm({
         const realHome = (deps.realHome ?? (() => (0, import_node_os6.userInfo)().homedir))();
         const dotnetGrants = [];
         if (job.dotnet) {
-          const d = dotnetSandboxEnv(env2.USERPROFILE, deps.env, realHome, deps.platform, void 0, job.dotnetNugetHierarchy ? { hierarchy: job.dotnetNugetHierarchy } : dotnetNugetConfig(job.worktree?.path ?? job.workCwd, env2.USERPROFILE, deps.platform, { noAdd: job.dotnetNugetNoAddSource }));
+          const d = dotnetSandboxEnv(env2.USERPROFILE, deps.env, realHome, deps.platform, void 0, sandboxNugetConfig(job.worktree?.path ?? job.workCwd, env2.USERPROFILE, deps.platform, { hierarchy: job.dotnetNugetHierarchy, noAdd: job.dotnetNugetNoAddSource }));
           Object.assign(env2, d.env);
           dotnetGrants.push(...d.readonly);
           job.notes.push(...d.notes);
@@ -67581,7 +67593,7 @@ async function runSandboxed(argv, o, deps) {
     const dotnetWrites = [];
     const dotnetNotes = [];
     if (dotnet) {
-      const d = dotnetSandboxEnv(env2.USERPROFILE, deps.env, realHome, deps.platform, o.nugetPackages, o.nugetHierarchy ? { hierarchy: o.nugetHierarchy } : dotnetNugetConfig(o.cwd, env2.USERPROFILE, deps.platform, { noAdd: o.nugetNoAddSource === true }));
+      const d = dotnetSandboxEnv(env2.USERPROFILE, deps.env, realHome, deps.platform, o.nugetPackages, sandboxNugetConfig(o.cwd, env2.USERPROFILE, deps.platform, { hierarchy: o.nugetHierarchy, noAdd: o.nugetNoAddSource === true, fromGit: o.nugetFromGit === true }));
       Object.assign(env2, d.env);
       dotnetGrants.push(...d.readonly);
       dotnetWrites.push(...d.readwrite);
@@ -67791,7 +67803,8 @@ function createSandboxRunner(root, deps = defaultCopilotRunDeps(), layers) {
       ...req.dotnetMtp ? { dotnetMtp: true } : {},
       ...req.nugetPackages ? { nugetPackages: req.nugetPackages } : {},
       ...req.nugetHierarchy ? { nugetHierarchy: req.nugetHierarchy } : {},
-      ...req.nugetNoAddSource ? { nugetNoAddSource: true } : {}
+      ...req.nugetNoAddSource ? { nugetNoAddSource: true } : {},
+      ...req.nugetFromGit ? { nugetFromGit: true } : {}
     }, deps);
   };
 }
@@ -76748,6 +76761,17 @@ function restoreSettingMentions(path15, text3) {
   if (text3.length > PINNED_READ_MAX) return [`not read (larger than ${PINNED_READ_MAX / 1024} KB)`];
   return [...new Set([...text3.matchAll(RESTORE_SETTINGS)].map((m) => m[0]))].sort();
 }
+function leavesRepository(path15, rel) {
+  const r = rel.replace(/\\/g, "/");
+  if (/^(?:[a-z]:|\/)/i.test(r)) return true;
+  let depth = path15.split("/").length - 1;
+  for (const seg of r.split("/")) {
+    if (seg === "..") depth--;
+    else if (seg !== "" && seg !== ".") depth++;
+    if (depth < 0) return true;
+  }
+  return false;
+}
 function unpinnedImports(path15, text3) {
   if (fileKind(path15) !== "msbuild") return [];
   if (text3.length > PINNED_READ_MAX) return [`not read (larger than ${PINNED_READ_MAX / 1024} KB)`];
@@ -76755,7 +76779,9 @@ function unpinnedImports(path15, text3) {
   for (const v of attributeValues(scanXml(text3).tags, "Import", "Project")) {
     for (const part of v.split(";").map((s) => s.trim()).filter(Boolean)) {
       const above = FILE_ABOVE.exec(part);
-      if (!PINNED_IMPORT.test(above ? (above[1] ?? above[2]).trim() : part)) out.add(part.slice(0, 200));
+      const local = above ? null : THIS_DIR_PATH.exec(part);
+      const outside = above ? leavesRepository(path15, above[3] ?? above[4] ?? "") : local ? leavesRepository(path15, local[1]) : false;
+      if (outside || !PINNED_IMPORT.test(above ? (above[1] ?? above[2]).trim() : part)) out.add(part.slice(0, 200));
     }
   }
   return [...out];
@@ -76790,19 +76816,21 @@ function projectSdkMentions(path15, text3) {
   }
   return [...out].sort();
 }
-var PINNED_READ_MAX, NPX_RUN, PURE_DELETE, readsForNodeModulesRefs, RESTORE_SETTINGS, PINNED_IMPORT, FILE_ABOVE;
+var PINNED_READ_MAX, NPX_RUN, PURE_DELETE, readsForNodeModulesRefs, RESTORE_SETTINGS, PINNED_IMPORT, THIS_DIR_UP, FILE_ABOVE, THIS_DIR_PATH;
 var init_dotnet_package_refs = __esm({
   "src/factory/run/dotnet-package-refs.ts"() {
     "use strict";
     init_jsonc();
     init_xml_scan();
     PINNED_READ_MAX = 256 * 1024;
-    NPX_RUN = /(?:^|[\s&|;(`"'])npx(?:\.cmd)?(?=\s|$)/i;
+    NPX_RUN = /(?:^|[\s&|;(`"'])(?:(?:npx|bunx)(?:\.cmd|\.exe)?|(?:npm(?:\.cmd|\.exe)?["']?\s+(?:exec|x))|(?:pnpm(?:\.cmd|\.exe)?["']?\s+(?:dlx|exec))|(?:yarn(?:\.cmd|\.exe)?["']?\s+(?:dlx|exec)))(?=[\s"'&|;)`]|$)/i;
     PURE_DELETE = /^(?:rm|del|rd|rmdir|remove-item)(?:\.exe)?(?:\s+(?:--?[a-z][a-z-]*|\/[a-z]|[\w.:\\/-]+))+$/i;
     readsForNodeModulesRefs = (path15) => fileKind(path15) !== null;
     RESTORE_SETTINGS = /\bRestore(?:Sources|AdditionalProjectSources|FallbackFolders|ConfigFile|PackagesPath|NoCache|IgnoreFailedSources)\b/gi;
     PINNED_IMPORT = /\.(?:[a-z0-9]*proj|props|targets|tasks|projitems|user)$/i;
-    FILE_ABOVE = /^\$\(\[MSBuild\]::GetPathOfFileAbove\(\s*(?:'([^'$%@()]+)'|([^'"$%@(),\s]+))\s*(?:,\s*(?:'[^']*'|\$\([\w.]+\)[\w.\\/]*)\s*)?\)\)$/i;
+    THIS_DIR_UP = String.raw`\$\(MSBuildThisFileDirectory\)((?:\.\.(?:[\\/]\.\.)*)?)[\\/]?`;
+    FILE_ABOVE = new RegExp(String.raw`^\$\(\[MSBuild\]::GetPathOfFileAbove\(\s*(?:'([^'$%@()]+)'|([^'"$%@(),\s]+))\s*(?:,\s*(?:'${THIS_DIR_UP}'|${THIS_DIR_UP})\s*)?\)\)$`, "i");
+    THIS_DIR_PATH = /^(?:\$\(MSBuildThisFileDirectory\))?([^$@%*?]*)$/i;
   }
 });
 
@@ -78066,7 +78094,7 @@ var init_engine = __esm({
           }
         };
         const nuget = !req.nugetPackages && req.purpose !== "calibrate" && isDotnetExe(req.exe) && restored && forCommit && (0, import_fs98.existsSync)(nugetDir) && restoredFor(forCommit, restored.definition) ? { nugetPackages: { dir: nugetDir, writable: false } } : {};
-        const r = this.o.gateSandbox({ ...req, ...nuget, ...mtp ? { dotnetMtp: true } : {}, ...policy?.hierarchy ? { nugetHierarchy: `NuGet reads its own config hierarchy: ${policy.hierarchy}` } : {}, ...policy && policy.noAddSource.length > 0 ? { nugetNoAddSource: true } : {}, nodeModulesTarget: (0, import_path117.join)(this.o.root, "node_modules"), ...nested.length > 0 ? { nestedNodeModulesTargets: nested } : {}, ...p ? { mainRoot: this.o.root, jobRoot: this.gateJobRoot() } : {}, ...container ? { container, runLabel: containerRunLabel(this.o.root, this.key) } : {} });
+        const r = this.o.gateSandbox({ ...req, ...nuget, ...mtp ? { dotnetMtp: true } : {}, ...policy?.hierarchy ? { nugetHierarchy: `NuGet reads its own config hierarchy: ${policy.hierarchy}` } : {}, ...policy && (policy.noAddSource.length > 0 || policy.rootSources.length > 0) ? { nugetNoAddSource: true } : {}, ...policy ? { nugetFromGit: true } : {}, nodeModulesTarget: (0, import_path117.join)(this.o.root, "node_modules"), ...nested.length > 0 ? { nestedNodeModulesTargets: nested } : {}, ...p ? { mainRoot: this.o.root, jobRoot: this.gateJobRoot() } : {}, ...container ? { container, runLabel: containerRunLabel(this.o.root, this.key) } : {} });
         if (!container) return r;
         return r.then((out) => {
           if (out.ran && out.imageId) this.containerImageId = out.imageId;
@@ -78346,35 +78374,46 @@ var init_engine = __esm({
        * lane), from the pinned files of trusted commits only (dotnetPinnedFacts,
        * git objects): the trusted base, plus `commit` when the command runs on
        * it (the gate and the restore step run only on a base-equal or approved
-       * definition; a prepare check on the checked-out head; a calibration and a
-       * lane pass none, so the base alone decides). The engine never widens a
-       * repository's package sources:
+       * definition; a prepare check on the checked-out head; a write lane on the
+       * commit its worktree is made at; a calibration passes none, so the base
+       * alone decides). Every fact of either commit only makes it stricter (a
+       * union). The engine never widens a repository's package sources:
        * - `hierarchy` (NuGet's own walk, as with no RestoreConfigFile): why one
        *   file would not be what NuGet reads for this repository: a
-       *   `nuget.config` below the root in the base or `commit` (one file would
-       *   hide it, M2), a root config whose name the engine cannot pin
-       *   (dotnet-sandbox.ts rootNugetConfig), or a root config that maps
-       *   packages to a source key it does not define (M1). In the shared layout
-       *   that walk parks at the first unreadable config, naming this reason.
+       *   `nuget.config` below the root (one file would hide it, M2), a .NET
+       *   project or solution under a node_modules dir (where neither this
+       *   policy nor the sandbox layer's scan looks for configs), a root config
+       *   whose name the engine cannot pin (dotnet-sandbox.ts rootNugetConfig),
+       *   or a root config that maps packages to a source key it does not define
+       *   (M1). In the shared layout that walk parks at the first unreadable
+       *   config, naming this reason.
        * - `noAddSource`: the pinned MSBuild or response files (or `argv`) set
        *   NuGet's restore sources or config themselves (restoreSettingMentions),
        *   or import a file that is not a pinned definition file, which may
        *   (unpinnedImports): nuget.org is never added (H2, M2).
+       * - `rootSources`: a commit whose root config defines a package-source
+       *   policy (nugetConfigVerdict): nuget.org is never added either, even when
+       *   the tree's own root file defines none.
        * - `sdks`: MSBuild project SDKs NuGet resolves (projectSdkMentions; M3).
        * Throws (a step error) when a commit cannot be read.
        */
       dotnetNugetPolicy(commit, argv = []) {
         const base = this.state.baseSha && HEX4019.test(this.state.baseSha) ? this.state.baseSha : void 0;
         const own2 = commit && HEX4019.test(commit) ? commit : base;
-        if (!own2) return { hierarchy: null, noAddSource: [], sdks: [] };
-        const facts = this.dotnetPinnedFacts(own2);
-        const baseFacts = base && base !== own2 ? this.dotnetPinnedFacts(base) : facts;
-        const lower2 = [.../* @__PURE__ */ new Set([...baseFacts.lowerConfigs, ...facts.lowerConfigs])].sort();
+        if (!own2) return { hierarchy: null, noAddSource: [], rootSources: [], sdks: [] };
+        const both = base && base !== own2;
+        const all = (both ? [own2, base] : [own2]).map((sha3) => ({ sha: sha3, facts: this.dotnetPinnedFacts(sha3) }));
+        const union2 = (pick2) => [...new Set(all.flatMap(({ facts }) => pick2(facts)))];
+        const lower2 = union2((f) => f.lowerConfigs).sort();
+        const pkgProjects = union2((f) => f.packageTreeProjects).sort();
         const list = (xs) => `${xs.slice(0, 5).join(", ")}${xs.length > 5 ? `, ${xs.length - 5} more` : ""}`;
-        const root = facts.root;
-        const hierarchy = lower2.length > 0 ? `the repository pins a nuget.config below its root (${list(lower2)}${base && base !== own2 ? ` in the base ${base.slice(0, 12)} or ${own2.slice(0, 12)}` : ""}), which one config file would hide` : "ambiguous" in root ? `the engine cannot tell which root nuget.config NuGet reads (${root.ambiguous})` : "verdict" in root && root.verdict.unmappedKeys.length > 0 ? `the root ${root.name} maps packages to the source key(s) ${root.verdict.unmappedKeys.join(", ")}, which it does not define (NuGet takes them from another config, such as the user config's nuget.org; define them in the root ${root.name} to keep one file)` : null;
+        const where = both ? ` in the base ${base.slice(0, 12)} or ${own2.slice(0, 12)}` : "";
+        const ambiguous = all.map(({ facts }) => facts.root).find((r) => "ambiguous" in r);
+        const unmapped = all.map(({ facts }) => facts.root).find((r) => "verdict" in r && r.verdict.unmappedKeys.length > 0);
+        const hierarchy = lower2.length > 0 ? `the repository pins a nuget.config below its root (${list(lower2)}${where}), which one config file would hide` : pkgProjects.length > 0 ? `the repository tracks a .NET project or solution under a node_modules directory (${list(pkgProjects)}${where}), where the engine does not look for nuget.config files` : ambiguous ? `the engine cannot tell which root nuget.config NuGet reads (${ambiguous.ambiguous})` : unmapped ? `the root ${unmapped.name} maps packages to the source key(s) ${unmapped.verdict.unmappedKeys.join(", ")}, which it does not define (NuGet takes them from another config, such as the user config's nuget.org; define them in the root ${unmapped.name} to keep one file)` : null;
         const fromArgv = argv.some((a) => /Restore(?:Sources|AdditionalProjectSources|FallbackFolders|ConfigFile|PackagesPath|NoCache|IgnoreFailedSources)/i.test(a)) ? ["the command line"] : [];
-        return { hierarchy, noAddSource: [...facts.restoreSettings, ...facts.unpinnedImports, ...fromArgv], sdks: facts.projectSdks };
+        const rootSources = all.flatMap(({ sha: sha3, facts }) => "verdict" in facts.root && !facts.root.verdict.addNugetOrg ? [`the root ${facts.root.name} at ${sha3.slice(0, 12)}`] : []);
+        return { hierarchy, noAddSource: [...union2((f) => f.restoreSettings), ...union2((f) => f.unpinnedImports), ...fromArgv], rootSources, sdks: union2((f) => f.projectSdks) };
       }
       /**
        * The nuget.config files the commit's MSBuild project SDK resolution
@@ -81689,7 +81728,8 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
        * package's own files, which MSBuild reads only through such a reference);
        * `trackedTrees`, the dirs whose node_modules holds tracked files;
        * `lowerConfigs`, its nuget.config files below the root (any case,
-       * outside node_modules); `root`, its root NuGet config as NuGet would
+       * outside node_modules); `packageTreeProjects`, its .NET projects and
+       * solutions under a node_modules dir; `root`, its root NuGet config as NuGet would
        * pick it (the rule of dotnet-sandbox.ts rootNugetConfig on the tree's
        * names) with nugetConfigVerdict of its blob; `restoreSettings` and
        * `projectSdks` (restoreSettingMentions, projectSdkMentions) as `<path>:
@@ -81704,11 +81744,13 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
         const ls = this.exec("git", ["ls-tree", "-r", "-z", "--full-tree", commit], { cwd: this.o.root, env: TRUSTED_READ_ENV });
         if (ls.status !== 0) throw new FactoryStepError(`git ls-tree ${commit.slice(0, 12)} failed: ${oneLine(ls.stderr, 300)}`);
         const files = [];
+        const blobs = [];
         for (const line of ls.stdout.split("\0")) {
           const tab = line.indexOf("	");
           if (tab < 0) continue;
           const [mode, type, oid] = line.slice(0, tab).split(" ");
           const p = line.slice(tab + 1);
+          if (type === "blob") blobs.push(p);
           const segs = p.split("/");
           const at = segs.findIndex((s) => s.replace(/[. ]+$/, "").toLowerCase() === "node_modules");
           if (at >= 0 && at < segs.length - 1) trackedTrees.add(segs.slice(0, at).join("/"));
@@ -81734,10 +81776,10 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
         const oids = [.../* @__PURE__ */ new Set([...files.map(([, oid]) => oid), ...rootOid ? [rootOid] : []])];
         if (oids.length > 0) {
           const env2 = { ...scrubShipEnv(process.env), ...TRUSTED_READ_ENV };
-          const blobs = parseCatFileBatch(runHostGitBuffer(this.o.root, ["cat-file", "--batch"], PRIVATE_GIT_TIMEOUT_MS, env2, `${oids.join("\n")}
+          const blobs2 = parseCatFileBatch(runHostGitBuffer(this.o.root, ["cat-file", "--batch"], PRIVATE_GIT_TIMEOUT_MS, env2, `${oids.join("\n")}
 `));
           const blob = (p, oid) => {
-            const bytes = blobs.get(oid);
+            const bytes = blobs2.get(oid);
             if (!bytes) throw new FactoryStepError(`the blob ${oid.slice(0, 12)} of ${p} at ${commit.slice(0, 12)} could not be read from git`);
             return bytes;
           };
@@ -81757,6 +81799,7 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
           refs: refs2,
           trackedTrees: [...trackedTrees].sort(),
           lowerConfigs: lowerConfigs.sort(),
+          packageTreeProjects: trackedPackageTreeProjects(blobs).sort(),
           root: "name" in root ? { name: root.name, verdict } : root,
           restoreSettings,
           projectSdks,
@@ -83106,7 +83149,7 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
         }
         if (await this.recheckFailed(`before the ${kind} lane`)) return { kind: "stopped" };
         const dotnet = profile === "write" && this.dotnetRepo();
-        const nugetPolicy = dotnet ? this.dotnetNugetPolicy() : null;
+        const nugetPolicy = dotnet ? this.dotnetNugetPolicy(HEX4019.test(startRef) ? startRef : this.run(["rev-parse", "--verify", `${startRef}^{commit}`], "git", TRUSTED_READ_ENV).trim()) : null;
         const priv = this.privateRun();
         let laneTree2;
         if (priv) {
@@ -83190,7 +83233,7 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
             // A review lane's shell is read-only, so it runs no test and needs none.
             ...profile === "write" ? { beforeSandboxedSession: (wt, o) => this.prepareLaneTree(wt, o?.copy ?? true), nodeModulesGrant: (wt) => this.laneNodeModulesGrant(wt) } : {},
             // A .NET repository (dotnetRepo: trusted config or the trusted base's tree, any forge): the env and NuGet grant dotnet needs in the lane sandbox.
-            ...dotnet ? { dotnet: true, ...nugetPolicy?.hierarchy ? { dotnetNugetHierarchy: `NuGet reads its own config hierarchy: ${nugetPolicy.hierarchy}` } : {}, ...nugetPolicy && nugetPolicy.noAddSource.length > 0 ? { dotnetNugetNoAddSource: true } : {} } : {},
+            ...dotnet ? { dotnet: true, ...nugetPolicy?.hierarchy ? { dotnetNugetHierarchy: `NuGet reads its own config hierarchy: ${nugetPolicy.hierarchy}` } : {}, ...nugetPolicy && (nugetPolicy.noAddSource.length > 0 || nugetPolicy.rootSources.length > 0) ? { dotnetNugetNoAddSource: true } : {} } : {},
             ...priv && laneTree2 ? { worktree: { path: laneTree2, commonGitDir: priv.repo.gitDir }, jobRoot: priv.layout.jobs, deniedPaths: priv.deniedFor(laneTree2), beforeHostGit: () => priv.problem() } : {}
           }));
         } catch (error62) {

@@ -5,13 +5,15 @@
  * head (engine.ts dotnetRepo). The local forge's dotnet gate rule is covered
  * by engine.local.dogfood.test.ts, Azure DevOps by engine.ado.dotnet.test.ts.
  */
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
+import { dotnetSandboxEnv, sandboxNugetConfig } from '../../../copilot-run/dotnet-sandbox.js';
 import { runFactoryEngine } from '../engine.js';
+import type { LaneStartInput } from '../lane.js';
 import { readFactoryState } from '../state.js';
-import { commitFile, FakeLanes, gitIn, ISSUE, review } from './fake-lanes.js';
+import { commitFile, FakeLanes, gitIn, ISSUE, review, type LaneScript } from './fake-lanes.js';
 import { h, opts, useEngineHarness } from './engine-harness.js';
 
 useEngineHarness();
@@ -121,6 +123,82 @@ describe('.NET write lanes on the GitHub forge', () => {
     await runFactoryEngine(opts(lanes));
     expect(lanes.started[0].prompt).toContain('runs its tests on Microsoft.Testing.Platform');
     expect(lanes.started[0].prompt).not.toContain('NuGet cannot reach its feed here');
+  });
+
+  describe('round 5: a write lane takes its NuGet policy from the base AND the commit its worktree starts at', () => {
+    const SETTINGS_ONLY = '<configuration><config><add key="dependencyVersion" value="Lowest" /></config></configuration>\n';
+    const LOWER = '<configuration><packageSources><clear /><add key="corp" value="corp-feed" /></packageSources></configuration>\n';
+    const LIB = '<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup><ItemGroup><PackageReference Include="Humanizer.Core" Version="2.14.1" /></ItemGroup></Project>\n';
+    interface Seen { input: LaneStartInput; env: Record<string, string>; fallback: boolean }
+
+    /** The implement lane writes `files` (the PR head); the fix lane on that head records what its sandboxed dotnet gets. */
+    async function fixLaneOn(files: Record<string, string>): Promise<Seen> {
+      // `/.omg/` (the root only) and no node_modules entry, so a head's tools/.omg/ and node_modules/ files are committed.
+      onBase({ '.gitignore': '/.omg/\nbin/\nobj/\n', 'nuget.config': SETTINGS_ONLY, 'App.sln': 'Microsoft Visual Studio Solution File\n', 'src/App/App.csproj': CSPROJ });
+      let seen: Seen | undefined;
+      const write: LaneScript = ({ worktree }) => {
+        for (const [rel, text] of Object.entries(files)) {
+          mkdirSync(dirname(join(worktree, rel)), { recursive: true });
+          writeFileSync(join(worktree, rel), text);
+        }
+        return { finalText: 'Changed.', credits: 5 };
+      };
+      const fix: LaneScript = (ctx) => {
+        // What job.ts builds for the lane's sandboxed dotnet: the REAL builders, from the lane's start options.
+        const prof = mkdtempSync(join(h.dir, 'prof-'));
+        const cfg = sandboxNugetConfig(ctx.worktree, prof, process.platform, { hierarchy: ctx.input.dotnetNugetHierarchy, noAdd: ctx.input.dotnetNugetNoAddSource });
+        seen = { input: ctx.input, env: dotnetSandboxEnv(prof, {}, prof, process.platform, undefined, cfg).env, fallback: existsSync(join(prof, 'nuget', 'nuget.config')) };
+        return commitFile('src/App/Greet.cs', 'y\n')(ctx);
+      };
+      const lanes = sandboxed(new FakeLanes(h.root, [write, review('request-changes', [finding]), fix, review('approve')]));
+      await runFactoryEngine(opts(lanes));
+      expect(lanes.started.map((l) => l.laneId.replace(/^issue-\d+-/, '')).slice(0, 3)).toEqual(['implement-1', 'review-1', 'fix-1']);
+      // The implement lane started at the base: one file and nuget.org added for the settings-only root config.
+      expect(lanes.started[0]).toMatchObject({ dotnet: true });
+      expect(lanes.started[0].dotnetNugetHierarchy).toBeUndefined();
+      expect(lanes.started[0].dotnetNugetNoAddSource).toBeUndefined();
+      expect(seen).toBeDefined();
+      return seen!;
+    }
+
+    const noNugetOrg = (s: Seen) => {
+      expect(s.env.RestoreAdditionalProjectSources).toBeUndefined();
+      expect(s.fallback).toBe(false);
+    };
+
+    it('the head adds RestoreSources in a subdirectory props file: nothing is added (NuGet would append nuget.org to it)', async () => {
+      const s = await fixLaneOn({ 'Lib/Lib.csproj': LIB, 'Lib/Directory.Build.props': '<Project><PropertyGroup><RestoreSources>corp-feed</RestoreSources></PropertyGroup></Project>\n' });
+      expect(s.input).toMatchObject({ dotnet: true, dotnetNugetNoAddSource: true });
+      expect(s.env.RestoreConfigFile).toMatch(/nuget\.config$/);
+      noNugetOrg(s);
+    });
+
+    it('the head adds an import the engine cannot pin: nothing is added', async () => {
+      const s = await fixLaneOn({ 'Lib/Lib.csproj': LIB, 'Lib/Directory.Build.props': '<Project><Import Project="../eng/Sources.msbuild" Condition="Exists(\'../eng/Sources.msbuild\')" /></Project>\n' });
+      expect(s.input).toMatchObject({ dotnet: true, dotnetNugetNoAddSource: true });
+      noNugetOrg(s);
+    });
+
+    it('the head adds tools/.omg/Lib/nuget.config: NuGet\'s own hierarchy (the git policy names it)', async () => {
+      const s = await fixLaneOn({ 'tools/.omg/Lib/Lib.csproj': LIB, 'tools/.omg/Lib/nuget.config': LOWER });
+      expect(s.input.dotnetNugetHierarchy).toContain('below its root (tools/.omg/Lib/nuget.config');
+      expect(s.env.RestoreConfigFile).toBeUndefined();
+      noNugetOrg(s);
+    });
+
+    it('the head adds a project and a nuget.config under node_modules: NuGet\'s own hierarchy (no scan looks there)', async () => {
+      const s = await fixLaneOn({ 'node_modules/x/Lib.csproj': LIB, 'node_modules/x/nuget.config': LOWER });
+      expect(s.input.dotnetNugetHierarchy).toContain('under a node_modules directory (node_modules/x/Lib.csproj');
+      expect(s.env.RestoreConfigFile).toBeUndefined();
+      noNugetOrg(s);
+    });
+
+    it('an ordinary head (a source file only): the fix lane keeps one file with nuget.org added for the settings-only root config', async () => {
+      const s = await fixLaneOn({ 'src/App/Greet.cs': 'x\n' });
+      expect(s.input.dotnetNugetHierarchy).toBeUndefined();
+      expect(s.input.dotnetNugetNoAddSource).toBeUndefined();
+      expect(s.env.RestoreAdditionalProjectSources).toBe('https://api.nuget.org/v3/index.json');
+    });
   });
 
   it('a trusted base that cannot be listed fails the step before any lane starts', async () => {

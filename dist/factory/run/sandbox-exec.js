@@ -43,7 +43,7 @@ import { dirname, join, resolve } from 'node:path';
 import { defaultCopilotRunDeps } from '../../copilot-run/job.js';
 import { allowlistSessionEnv, copilotConfigDenies, loadSandboxSettings, laneToolPaths, missingSandboxEnv, NUGET_HOSTS, proxyCaEnv, scrubTokens, secretValues, sessionGitHubToken, } from '../../copilot-run/sandbox.js';
 import { defaultContainerExec, runContainerGate } from './container-gate.js';
-import { dotnetNugetConfig, dotnetSandboxArgs, dotnetSandboxEnv, isDotnetExe } from '../../copilot-run/dotnet-sandbox.js';
+import { dotnetSandboxArgs, dotnetSandboxEnv, isDotnetExe, sandboxNugetConfig } from '../../copilot-run/dotnet-sandbox.js';
 import { SessionSandboxController } from '../../copilot-run/sandbox-session.js';
 import { errText, withTimeout } from '../../copilot-run/timeout.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
@@ -228,7 +228,7 @@ export async function runSandboxed(argv, o, deps) {
         const dotnetWrites = [];
         const dotnetNotes = [];
         if (dotnet) {
-            const d = dotnetSandboxEnv(env.USERPROFILE, deps.env, realHome, deps.platform, o.nugetPackages, o.nugetHierarchy ? { hierarchy: o.nugetHierarchy } : dotnetNugetConfig(o.cwd, env.USERPROFILE, deps.platform, { noAdd: o.nugetNoAddSource === true }));
+            const d = dotnetSandboxEnv(env.USERPROFILE, deps.env, realHome, deps.platform, o.nugetPackages, sandboxNugetConfig(o.cwd, env.USERPROFILE, deps.platform, { hierarchy: o.nugetHierarchy, noAdd: o.nugetNoAddSource === true, fromGit: o.nugetFromGit === true }));
             Object.assign(env, d.env);
             dotnetGrants.push(...d.readonly);
             dotnetWrites.push(...d.readwrite);
@@ -465,6 +465,7 @@ export function createSandboxRunner(root, deps = defaultCopilotRunDeps(), layers
             ...(req.nugetPackages ? { nugetPackages: req.nugetPackages } : {}),
             ...(req.nugetHierarchy ? { nugetHierarchy: req.nugetHierarchy } : {}),
             ...(req.nugetNoAddSource ? { nugetNoAddSource: true } : {}),
+            ...(req.nugetFromGit ? { nugetFromGit: true } : {}),
         }, deps);
     };
 }

@@ -238,6 +238,15 @@ describe('M3: an Exec is exempt only as a whole, plain delete command (after MSB
     }
   });
 
+  it('round 5: every package-runner spelling counts like npx; npm run, npm install and npm ci stay non-references', () => {
+    for (const c of ['&quot;npx&quot; rimraf dist', "'npx' rimraf dist", 'npx.cmd rimraf dist', 'npx.exe tsc', 'NPX tsc', 'npm exec rimraf dist', 'npm x rimraf dist', 'npm.cmd exec -- tsc', '&quot;npm&quot; exec tsc', 'pnpm dlx rimraf dist', 'pnpm exec tsc', 'yarn dlx rimraf dist', 'yarn exec tsc', 'bunx rimraf dist', 'bunx.cmd tsc', 'cd ClientApp &amp;&amp; pnpm exec ng build']) {
+      expect(nodeModulesReferences('a.csproj', `<Exec Command="${c}" />`), c).toEqual([expect.stringContaining('Exec Command (npx runs node_modules/.bin)')]);
+    }
+    for (const c of ['npm run build', 'npm install', 'npm ci', 'pnpm install', 'yarn install', 'npm run exec', 'npxtool run', 'mynpx run', 'echo npm-exec']) {
+      expect(nodeModulesReferences('a.csproj', `<Exec WorkingDirectory="$(SpaRoot)" Command="${c}" />`), c).toEqual([]);
+    }
+  });
+
   it('rm -rf, del, rd, rmdir and Remove-Item with plain paths do not count', () => {
     for (const c of ['rm -rf node_modules', 'rm.exe -rf node_modules', 'del /q node_modules\\.cache', 'rd /s /q node_modules', 'rmdir /s /q ClientApp\\node_modules', 'Remove-Item -Recurse node_modules']) {
       expect(nodeModulesReferences('a.csproj', `<Target Name="C"><Exec Command="${c}" /></Target>`), c).toEqual([]);
@@ -280,16 +289,46 @@ describe('M2: unpinnedImports', () => {
     expect(unpinnedImports('Directory.Build.props', '<Project><Import Project="$(MSBuildThisFileDirectory)eng\\Versions.props" /></Project>')).toEqual([]);
     expect(unpinnedImports('a.csproj', '<Project><Import Project="$(CustomProps)" /><Import Project="eng/*" /><import project="x.targets;y.xml" /></Project>')).toEqual(['$(CustomProps)', 'eng/*', 'y.xml']);
     expect(unpinnedImports('a.csproj', '<Project><Import Project="eng/*.props" /><Import Project="a.Shared.projitems" Label="Shared" /><Import Project="b.vcxproj" /><Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" /></Project>')).toEqual([]);
-    expect(unpinnedImports('Directory.Build.props', `<Project><Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" /></Project>`)).toEqual([]);
+    expect(unpinnedImports('src/Directory.Build.props', `<Project><Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" /></Project>`)).toEqual([]);
     expect(unpinnedImports('Directory.Build.props', `<Project><Import Project="$([MSBuild]::GetPathOfFileAbove('Sources.msbuild', '$(MSBuildThisFileDirectory)../'))" /></Project>`)).toHaveLength(1);
     // Round 4: the unquoted form counts the same way.
-    expect(unpinnedImports('Directory.Build.props', '<Project><Import Project="$([MSBuild]::GetPathOfFileAbove(Directory.Build.props, $(MSBuildThisFileDirectory)..))" /></Project>')).toEqual([]);
-    expect(unpinnedImports('Directory.Build.props', '<Project><Import Project="$([MSBuild]::GetPathOfFileAbove(Directory.Build.props, $(MSBuildThisFileDirectory)..\\))" /></Project>')).toEqual([]);
+    expect(unpinnedImports('src/Directory.Build.props', '<Project><Import Project="$([MSBuild]::GetPathOfFileAbove(Directory.Build.props, $(MSBuildThisFileDirectory)..))" /></Project>')).toEqual([]);
+    expect(unpinnedImports('src/Directory.Build.props', '<Project><Import Project="$([MSBuild]::GetPathOfFileAbove(Directory.Build.props, $(MSBuildThisFileDirectory)..\\))" /></Project>')).toEqual([]);
     expect(unpinnedImports('Directory.Build.props', '<Project><Import Project="$([MSBuild]::GetPathOfFileAbove(Sources.msbuild, $(MSBuildThisFileDirectory)..))" /></Project>')).toHaveLength(1);
     expect(unpinnedImports('Directory.Build.props', '<Project><Import Project="$([MSBuild]::GetPathOfFileAbove($(Name).props, $(MSBuildThisFileDirectory)..))" /></Project>')).toHaveLength(1);
     expect(unpinnedImports('a.csproj', '<Project><!-- <Import Project="x.msbuild" /> --></Project>')).toEqual([]);
     expect(unpinnedImports('nuget.config', '<Import Project="x.msbuild" />')).toEqual([]);
     expect(unpinnedImports('a.props', 'x'.repeat(PINNED_READ_MAX + 1))).toHaveLength(1);
+  });
+
+  it('round 5: GetPathOfFileAbove starts only at $(MSBuildThisFileDirectory) plus `..` inside the repository; an Import that leaves the repository counts', () => {
+    const imp = (path: string, value: string) => unpinnedImports(path, `<Project><Import Project="${value}" /></Project>`);
+    // The start dir: only the importing file's dir or one above it that is still inside the repository.
+    for (const v of [
+      "$([MSBuild]::GetPathOfFileAbove('Corp.props', 'C:/corp'))",
+      '$([MSBuild]::GetPathOfFileAbove(Corp.props, $(CorpRoot)))',
+      '$([MSBuild]::GetPathOfFileAbove(x.props, $(MSBuildThisFileDirectory)../eng/Sources.msbuild))',
+      "$([MSBuild]::GetPathOfFileAbove('x.props', '$(MSBuildThisFileDirectory)eng'))",
+      '$([MSBuild]::GetPathOfFileAbove(x.props, $(MSBuildProjectDirectory)))',
+    ]) expect(imp('src/a/A.csproj', v), v).toEqual([v]);
+    for (const v of [
+      '$([MSBuild]::GetPathOfFileAbove(x.props))',
+      "$([MSBuild]::GetPathOfFileAbove('x.props', '$(MSBuildThisFileDirectory)'))",
+      "$([MSBuild]::GetPathOfFileAbove('x.props', '$(MSBuildThisFileDirectory)../..'))",
+      '$([MSBuild]::GetPathOfFileAbove(x.props, $(MSBuildThisFileDirectory)..\\..\\))',
+      '$([msbuild]::getpathoffileabove(X.PROPS, $(msbuildthisfiledirectory)..))',
+    ]) expect(imp('src/a/A.csproj', v), v).toEqual([]);
+    // From src/a, three `..` climb above the root; from the root file one does.
+    expect(imp('src/a/A.csproj', "$([MSBuild]::GetPathOfFileAbove('x.props', '$(MSBuildThisFileDirectory)../../..'))")).toHaveLength(1);
+    expect(imp('Directory.Build.props', "$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))")).toHaveLength(1);
+    // A literal path or one after $(MSBuildThisFileDirectory): absolute or above the root counts; inside does not.
+    for (const v of ['../../outside/Corp.props', '$(MSBuildThisFileDirectory)..\\..\\outside\\Corp.props', 'C:\\corp\\Corp.props', '/opt/corp/Corp.props', '\\\\server\\share\\Corp.props']) {
+      expect(imp('a/A.csproj', v), v).toEqual([v]);
+    }
+    for (const v of ['../eng/Versions.props', '$(MSBuildThisFileDirectory)..\\eng\\Versions.props', 'eng/./x.props']) expect(imp('a/A.csproj', v), v).toEqual([]);
+    expect(imp('Directory.Build.props', '../Corp.props')).toHaveLength(1);
+    // Not resolved (documented): a path built from another property counts by its extension only.
+    expect(imp('a/A.csproj', '$(RepoRoot)eng/Versions.props')).toEqual([]);
   });
 });
 

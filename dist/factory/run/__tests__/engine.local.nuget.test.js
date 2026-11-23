@@ -4,7 +4,7 @@
  * the test sandbox. No dotnet, network, gh or copilot runs.
  */
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { dotnetNugetConfig, dotnetSandboxEnv } from '../../../copilot-run/dotnet-sandbox.js';
+import { dotnetSandboxEnv, sandboxNugetConfig } from '../../../copilot-run/dotnet-sandbox.js';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { localCheckRecordPath } from '../../../forge/local/index.js';
@@ -638,10 +638,10 @@ describe('a nuget.config below the root that only nuget.org could bypass (PR 611
     const SETTINGS_ONLY = '<configuration><config><add key="x" value="y" /></config></configuration>\n';
     const LIB = '<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup><ItemGroup><PackageReference Include="Humanizer.Core" Version="2.14.1" /></ItemGroup></Project>\n';
     const COMPILE = 'src/App/Greet.cs(1,1): error CS1002: ; expected';
-    /** What a sandboxed dotnet command in `cwd` gets as sandbox-exec.ts and job.ts build it: the request's hierarchy, else dotnetNugetConfig. */
-    function effective(cwd, hierarchy, noAdd) {
+    /** What a sandboxed dotnet command in `cwd` gets: the builder sandbox-exec.ts and job.ts call (sandboxNugetConfig), with the request's or lane's fields. */
+    function effective(cwd, hierarchy, noAdd, fromGit) {
         const prof = mkdtempSync(join(w.dir, 'prof-'));
-        const cfg = hierarchy ? { hierarchy } : dotnetNugetConfig(cwd, prof, process.platform, { noAdd: noAdd === true });
+        const cfg = sandboxNugetConfig(cwd, prof, process.platform, { hierarchy, noAdd: noAdd === true, fromGit: fromGit === true });
         return { env: dotnetSandboxEnv(prof, {}, prof, process.platform, undefined, cfg).env, fallback: existsSync(join(prof, 'nuget', 'nuget.config')) };
     }
     /** The repository: src/App plus Lib/Lib.csproj (a package only on nuget.org); Lib/nuget.config on the base when `lowerOnBase`. */
@@ -674,7 +674,7 @@ describe('a nuget.config below the root that only nuget.org could bypass (PR 611
                 const inner = r.sandbox;
                 const sandbox = async (req) => {
                     if (req.purpose === 'gate' || req.purpose === 'restore')
-                        seen.push({ purpose: req.purpose, ...effective(req.cwd, req.nugetHierarchy, req.nugetNoAddSource) });
+                        seen.push({ purpose: req.purpose, ...effective(req.cwd, req.nugetHierarchy, req.nugetNoAddSource, req.nugetFromGit) });
                     return inner(req);
                 };
                 const fix = (ctx) => {
@@ -696,5 +696,34 @@ describe('a nuget.config below the root that only nuget.org could bypass (PR 611
             }, MULTI_RUN_MS);
         }
     }
+    it('round 5 (msb-settings): an approved head adds RestoreSources in Lib/Directory.Build.props under a settings-only root config: the gate, the restore step and the ci-fix lane never add nuget.org', async () => {
+        w = localWorld(['dotnet', 'test']);
+        project(SETTINGS_ONLY, false);
+        const seen = [];
+        const r = recorder([{ status: 1, output: OFFLINE }, { status: 1, output: COMPILE }]);
+        const inner = r.sandbox;
+        const sandbox = async (req) => {
+            if (req.purpose === 'gate' || req.purpose === 'restore')
+                seen.push({ purpose: req.purpose, ...effective(req.cwd, req.nugetHierarchy, req.nugetNoAddSource, req.nugetFromGit) });
+            return inner(req);
+        };
+        const fix = (ctx) => {
+            seen.push({ purpose: 'lane', ...effective(ctx.worktree, ctx.input.dotnetNugetHierarchy, ctx.input.dotnetNugetNoAddSource) });
+            return commitFile('src/App/Greet.cs', 'namespace App; // fixed\n')(ctx);
+        };
+        const parked = await runFactoryEngine(localOpts(w, lanesFor(w, [commitFile('Lib/Directory.Build.props', '<Project><PropertyGroup><RestoreSources>C:\\corp-feed</RestoreSources></PropertyGroup></Project>\n')]), { gateSandbox: sandbox, runUserConfig: SANDBOXED }));
+        expect(parked.gate?.name, parked.message).toBe('gate-definition-changed');
+        await runFactoryEngine(localOpts(w, lanesFor(w, [review('approve'), fix]), { gateSandbox: sandbox, runUserConfig: SANDBOXED, allowGateChange: true }));
+        expect(seen.map((s) => s.purpose)).toContain('lane');
+        for (const s of seen) {
+            expect(s.env.RestoreConfigFile, s.purpose).toMatch(/nuget\.config$/);
+            expect(s.env.RestoreAdditionalProjectSources, s.purpose).toBeUndefined();
+        }
+        // Every engine request carries its git decision, so the sandbox layer skips its tree scan; all but the base
+        // calibration (the base alone sets no RestoreSources, and it runs offline) run on the head and add nothing.
+        const dotnet = r.reqs.filter((q) => q.exe === 'dotnet' || /dotnet(?:\.exe)?$/i.test(q.exe));
+        expect(dotnet.map((q) => [q.purpose, q.nugetFromGit === true])).toEqual(dotnet.map((q) => [q.purpose, true]));
+        expect(dotnet.filter((q) => q.purpose !== 'calibrate').map((q) => [q.purpose, q.nugetNoAddSource === true])).toEqual(dotnet.filter((q) => q.purpose !== 'calibrate').map((q) => [q.purpose, true]));
+    }, MULTI_RUN_MS);
 });
 //# sourceMappingURL=engine.local.nuget.test.js.map

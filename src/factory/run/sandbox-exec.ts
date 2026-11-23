@@ -58,7 +58,7 @@ import {
   type SandboxSettings,
 } from '../../copilot-run/sandbox.js';
 import { defaultContainerExec, runContainerGate } from './container-gate.js';
-import { dotnetNugetConfig, dotnetSandboxArgs, dotnetSandboxEnv, isDotnetExe, type RunNugetPackages } from '../../copilot-run/dotnet-sandbox.js';
+import { dotnetSandboxArgs, dotnetSandboxEnv, isDotnetExe, sandboxNugetConfig, type RunNugetPackages } from '../../copilot-run/dotnet-sandbox.js';
 import { SessionSandboxController } from '../../copilot-run/sandbox-session.js';
 import { errText, withTimeout } from '../../copilot-run/timeout.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
@@ -148,6 +148,12 @@ export interface SandboxRunRequest {
    * themselves (engine.ts): nuget.org is never added (RestoreAdditionalProjectSources would be appended to them).
    */
   nugetNoAddSource?: true;
+  /**
+   * The engine decided `nugetHierarchy` / `nugetNoAddSource` from the git objects of every commit the command runs on
+   * (engine.ts dotnetNugetPolicy): the sandbox layer does not scan `cwd` for lower nuget.config files again
+   * (dotnet-sandbox.ts sandboxNugetConfig). Without it the scan runs, whatever else the caller passed.
+   */
+  nugetFromGit?: true;
 }
 
 /** The gate record and PR note line for a sandboxed run on a host without denied_paths. */
@@ -201,6 +207,8 @@ export interface SandboxExecOptions {
   nugetHierarchy?: string;
   /** SandboxRunRequest.nugetNoAddSource. */
   nugetNoAddSource?: true;
+  /** SandboxRunRequest.nugetFromGit. */
+  nugetFromGit?: true;
 }
 
 export const MARKER_PREFIX = 'omg-gate-exit-';
@@ -370,7 +378,7 @@ export async function runSandboxed(argv: readonly string[], o: SandboxExecOption
     const dotnetWrites: string[] = [];
     const dotnetNotes: string[] = [];
     if (dotnet) {
-      const d = dotnetSandboxEnv(env.USERPROFILE!, deps.env, realHome, deps.platform, o.nugetPackages, o.nugetHierarchy ? { hierarchy: o.nugetHierarchy } : dotnetNugetConfig(o.cwd, env.USERPROFILE!, deps.platform, { noAdd: o.nugetNoAddSource === true }));
+      const d = dotnetSandboxEnv(env.USERPROFILE!, deps.env, realHome, deps.platform, o.nugetPackages, sandboxNugetConfig(o.cwd, env.USERPROFILE!, deps.platform, { hierarchy: o.nugetHierarchy, noAdd: o.nugetNoAddSource === true, fromGit: o.nugetFromGit === true }));
       Object.assign(env, d.env);
       dotnetGrants.push(...d.readonly);
       dotnetWrites.push(...d.readwrite);
@@ -561,6 +569,7 @@ export function createSandboxRunner(root: string, deps: SandboxExecDeps = defaul
       ...(req.nugetPackages ? { nugetPackages: req.nugetPackages } : {}),
       ...(req.nugetHierarchy ? { nugetHierarchy: req.nugetHierarchy } : {}),
       ...(req.nugetNoAddSource ? { nugetNoAddSource: true as const } : {}),
+      ...(req.nugetFromGit ? { nugetFromGit: true as const } : {}),
     }, deps);
   };
 }

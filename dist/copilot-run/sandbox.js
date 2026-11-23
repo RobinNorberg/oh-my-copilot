@@ -1159,8 +1159,29 @@ export function allowlistSessionEnv(env, jobHome) {
     for (const [key, value] of Object.entries(env)) {
         const upper = key.toUpperCase();
         if (allow.has(upper) || upper.startsWith('LC_') || upper.startsWith('OMC_'))
-            out[key] = value;
+            out[key] = upper === 'PATH' && value !== undefined ? sandboxPath(value) : value;
     }
     return { ...out, ...relocatedProfileEnv(jobHome) };
+}
+/**
+ * A PATH for a sandboxed session or command: the host's entries less the
+ * empty and relative ones (a shell resolves those from its working dir, the
+ * checkout the PR's code writes, so `rm` or `git` could run a file the PR
+ * put there; review round 5) and the `node_modules/.bin` dirs (any case on
+ * Windows, `\` or `/`, a trailing separator too) that `npx` or `npm run`
+ * put in front of the engine's own PATH: package binaries of the engine's
+ * install, never the repository's tools. npm and npx find a project's
+ * binaries themselves, not through the inherited PATH.
+ */
+export function sandboxPath(value, platform = process.platform) {
+    const P = platform === 'win32' ? win32 : posix;
+    const bin = platform === 'win32' ? /(?:^|[\\/])node_modules[\\/]\.bin[\\/]*$/i : /(?:^|\/)node_modules\/\.bin\/*$/;
+    return value.split(P.delimiter).filter((e) => {
+        const entry = e.trim().replace(/^"(.*)"$/, '$1');
+        if (entry === '' || bin.test(entry))
+            return false;
+        // win32.isAbsolute accepts `\dir` (the current drive's root), never a drive-relative `C:dir` or a bare `dir`.
+        return P.isAbsolute(entry);
+    }).join(P.delimiter);
 }
 //# sourceMappingURL=sandbox.js.map

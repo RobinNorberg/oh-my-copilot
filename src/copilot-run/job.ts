@@ -117,7 +117,7 @@ import {
   type SandboxScope,
   type SandboxSettings,
 } from './sandbox.js';
-import { dotnetNugetConfig, dotnetSandboxEnv } from './dotnet-sandbox.js';
+import { dotnetSandboxEnv, sandboxNugetConfig } from './dotnet-sandbox.js';
 import { LANE_PLUGIN_DIR, prepareLanePluginDir, removeLanePluginDir, sweepStaleLanePluginDirs } from './lane-plugin.js';
 import { SessionSandboxController, sandboxBypassDenial } from './sandbox-session.js';
 import { errText, withTimeout } from './timeout.js';
@@ -322,11 +322,14 @@ export interface CopilotRunStartOptions {
    */
   dotnet?: boolean;
   /**
-   * With `dotnet`: why NuGet reads its own config hierarchy (engine.ts dotnetNugetPolicy: the trusted base pins a
-   * nuget.config below its root) instead of the one file dotnet-sandbox.ts dotnetNugetConfig picks.
+   * With `dotnet`: why NuGet reads its own config hierarchy (engine.ts dotnetNugetPolicy: the trusted base or the commit
+   * the lane starts at pins a nuget.config below its root) instead of the one file dotnet-sandbox.ts dotnetNugetConfig picks.
    */
   dotnetNugetHierarchy?: string;
-  /** With `dotnet`: the trusted base's pinned MSBuild files set restore sources themselves, so nuget.org is never added. */
+  /**
+   * With `dotnet`: the pinned files of the trusted base or of the commit the lane starts at set restore sources
+   * themselves (or import a file the engine cannot read, or the root config defines sources), so nuget.org is never added.
+   */
   dotnetNugetNoAddSource?: boolean;
 }
 
@@ -1564,9 +1567,9 @@ export class CopilotRunManager {
     const realHome = (deps.realHome ?? (() => userInfo().homedir))();
     const dotnetGrants: string[] = [];
     if (job.dotnet) {
-      // One NuGet config, the worktree root's or nuget.org only (dotnet-sandbox.ts dotnetNugetConfig), unless the base keeps NuGet's hierarchy (engine.ts)
-      // or the worktree holds a nuget.config below its root (dotnetNugetConfig keeps the hierarchy itself).
-      const d = dotnetSandboxEnv(env.USERPROFILE!, deps.env, realHome, deps.platform, undefined, job.dotnetNugetHierarchy ? { hierarchy: job.dotnetNugetHierarchy } : dotnetNugetConfig(job.worktree?.path ?? job.workCwd, env.USERPROFILE!, deps.platform, { noAdd: job.dotnetNugetNoAddSource }));
+      // One NuGet config, the worktree root's or nuget.org only (dotnet-sandbox.ts sandboxNugetConfig), unless the base or the lane's start
+      // commit keeps NuGet's hierarchy (engine.ts) or the worktree holds a nuget.config below its root (the scan, kept here as the safety net).
+      const d = dotnetSandboxEnv(env.USERPROFILE!, deps.env, realHome, deps.platform, undefined, sandboxNugetConfig(job.worktree?.path ?? job.workCwd, env.USERPROFILE!, deps.platform, { hierarchy: job.dotnetNugetHierarchy, noAdd: job.dotnetNugetNoAddSource }));
       Object.assign(env, d.env);
       dotnetGrants.push(...d.readonly);
       job.notes.push(...d.notes);

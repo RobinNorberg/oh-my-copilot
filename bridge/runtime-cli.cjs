@@ -21670,9 +21670,18 @@ function allowlistSessionEnv(env, jobHome) {
   const out = {};
   for (const [key, value] of Object.entries(env)) {
     const upper = key.toUpperCase();
-    if (allow.has(upper) || upper.startsWith("LC_") || upper.startsWith("OMC_")) out[key] = value;
+    if (allow.has(upper) || upper.startsWith("LC_") || upper.startsWith("OMC_")) out[key] = upper === "PATH" && value !== void 0 ? sandboxPath(value) : value;
   }
   return { ...out, ...relocatedProfileEnv(jobHome) };
+}
+function sandboxPath(value, platform = process.platform) {
+  const P = platform === "win32" ? import_node_path15.win32 : import_node_path15.posix;
+  const bin = platform === "win32" ? /(?:^|[\\/])node_modules[\\/]\.bin[\\/]*$/i : /(?:^|\/)node_modules\/\.bin\/*$/;
+  return value.split(P.delimiter).filter((e) => {
+    const entry = e.trim().replace(/^"(.*)"$/, "$1");
+    if (entry === "" || bin.test(entry)) return false;
+    return P.isAbsolute(entry);
+  }).join(P.delimiter);
 }
 var import_node_path15, DEFAULT_SANDBOX_SETTINGS, SESSION_ENV_ALLOWLIST, TOKEN_PATTERN;
 var init_sandbox = __esm({
