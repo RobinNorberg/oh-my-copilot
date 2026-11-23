@@ -11,6 +11,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { FACTORY_HUD_GROUPS, readFactoryStateForHud, renderFactory } from '../../../hud/elements/factory.js';
 import { ATTENTION_GROUPS } from '../actions.js';
+import { COPILOT_HOST_DEFAULTS, DEFAULT_HUD_CONFIG, PRESET_CONFIGS } from '../../../hud/types.js';
 import { stripAnsi } from '../../../utils/string-width.js';
 import { EngineLedger } from '../../run/ledger.js';
 import { computeFactoryIntegrity, createFactoryState, factoryStateDir, factoryStatePath, moveTo, runKeyOf, setGate, updateFactoryState, type FactoryRunState } from '../../run/state.js';
@@ -96,6 +97,12 @@ describe('attentionSummary', () => {
 
 describe('HUD factory element', () => {
   const load = async () => ({ attentionSummary: (r: string) => attentionSummary(r, { ledgerDir, now: () => now, owner: OWNER }) });
+
+  it('is off by default on every host and in every preset (opt-in: it costs a module load and a collect per render)', () => {
+    expect(COPILOT_HOST_DEFAULTS.factory).toBeUndefined();
+    expect(DEFAULT_HUD_CONFIG.elements.factory).toBeUndefined();
+    for (const preset of Object.values(PRESET_CONFIGS)) expect(preset.factory).not.toBe(true);
+  });
 
   it('knows the attention groups (it does not import them, to stay cheap)', () => {
     expect([...FACTORY_HUD_GROUPS]).toEqual([...ATTENTION_GROUPS]);

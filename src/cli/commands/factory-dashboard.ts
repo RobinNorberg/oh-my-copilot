@@ -1,39 +1,185 @@
 /**
- * `omg factory dashboard`: a static HTML page (or --json) of every factory run
- * of this repository, from local state. A stopped run with a PR is first
- * checked on the forge: a PR a human merged records the run as merged
- * (src/factory/run/human-merged.ts). Logic in src/factory/dashboard/.
+ * `omg factory dashboard`: one static HTML page (or --json) of what needs
+ * you, the engines running, every factory run of this repository with its
+ * timeline, tasks, cost, throughput and bench results. Logic in
+ * src/factory/dashboard/ (collect-v2.ts: collect -> JSON; render.ts:
+ * JSON -> HTML).
+ *
+ * LOCAL and READ-ONLY by default: no forge or network read and no write
+ * except the --out file. `--forge` opts in to what the dashboard did before:
+ * it reads the tracker (the board's read, for the tracker columns) and
+ * records the stopped runs whose PR a human merged (human-merged.ts), which
+ * writes those runs' states.
+ *
+ * `--watch [seconds]` (with --out) rewrites the file on an interval, only
+ * when the page changed and atomically (writeFileAtomic), until Ctrl-C or
+ * SIGTERM (one handler for the whole loop: the tick under way finishes); the
+ * page then reloads itself (meta refresh). With --forge the forge is read on
+ * a slow timer (FORGE_REFRESH_MS), never per tick. `--out` into the
+ * repository's .git or .omg is refused (outPathProblem). A temp file left by
+ * a killed process is not cleaned up: its random name cannot be told apart
+ * from someone else's file in that directory.
  */
 
 import { execFileSync } from 'child_process';
-import { writeFileSync } from 'fs';
-import { resolve } from 'path';
-import { Command } from 'commander';
+import { randomBytes } from 'crypto';
+import { closeSync, openSync, realpathSync, renameSync, rmSync, writeFileSync } from 'fs';
+import { basename, dirname, isAbsolute, join, relative, resolve } from 'path';
+import { Command, InvalidArgumentError } from 'commander';
 import chalk from 'chalk';
+import type { BoardJson } from '../../factory/board/collect.js';
 import { collectDashboard } from '../../factory/dashboard/collect.js';
+import { collectDashboardV2, type DashboardDataV2 } from '../../factory/dashboard/collect-v2.js';
 import { renderDashboardHtml } from '../../factory/dashboard/render.js';
 import { EXIT_CHECK_FAILED, EXIT_CHECK_USAGE } from '../../factory/check/cli.js';
+import { plainText } from '../../factory/check/score.js';
+import type { LoadedFactoryRunLimits } from '../../factory/run/budget.js';
+import { defaultLedgerDir } from '../../factory/run/ledger.js';
+import type { OwnerDeps } from '../../factory/run/state.js';
+import { getOmcRoot } from '../../lib/worktree-paths.js';
+
+export const WATCH_DEFAULT_SECONDS = 10;
+export const WATCH_MIN_SECONDS = 2;
+export const WATCH_MAX_SECONDS = 86_400;
+/** --watch --forge: the forge is read at most this often. */
+export const FORGE_REFRESH_MS = 5 * 60_000;
+
+export interface ForgeRead {
+  /** Lines for stderr (human merges recorded, PRs not checked). */
+  lines: string[];
+  /** The board's JSON (tracker columns); null when the tracker could not be read. */
+  board: BoardJson | null;
+}
 
 export interface FactoryDashboardDeps {
   root: () => string;
   out: (line: string) => void;
   err: (line: string) => void;
   now?: () => Date;
-  /** Records the stopped runs whose PR a human merged (human-merged.ts) before the page is collected; returns lines for stderr. */
-  humanMerges?: (root: string) => string[];
+  ledgerDir?: string;
+  /** The run limits as the engine resolves them (cost caps); a throw is a warning and no cap. */
+  limits?: (root: string) => LoadedFactoryRunLimits;
+  owner?: OwnerDeps;
+  /** `--forge` only: read the tracker and record human merges. Never called without --forge. */
+  forgeRead?: (root: string) => Promise<ForgeRead>;
+  /** --watch: wait `ms`; resolves false when interrupted (Ctrl-C). */
+  sleep?: (ms: number) => Promise<boolean>;
+  /** Write `content` to `file` so a reader never sees a half-written file. */
+  writeFile?: (file: string, content: string) => void;
 }
 
 const defaultRoot = (): string => execFileSync('git', ['rev-parse', '--show-toplevel'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true }).trim();
 
+const TEMP_ATTEMPTS = 5;
+
+/**
+ * Temp file next to the target, then one rename over it. The temp name has a
+ * random suffix and is created exclusively (`wx`: an existing file or link at
+ * that name is refused, never followed or overwritten), so a file planted at
+ * a predictable name cannot redirect the write; on EEXIST a new name is
+ * tried. The temp file is removed on any failure after it was created.
+ */
+export function writeFileAtomic(file: string, content: string): void {
+  for (let attempt = 1; ; attempt++) {
+    const tmp = `${file}.${randomBytes(8).toString('hex')}.tmp`;
+    let fd: number | null;
+    try {
+      fd = openSync(tmp, 'wx');
+    } catch (error) {
+      // Not created by this call: nothing of ours to remove.
+      if ((error as NodeJS.ErrnoException).code === 'EEXIST' && attempt < TEMP_ATTEMPTS) continue;
+      throw error;
+    }
+    try {
+      writeFileSync(fd, content, 'utf8');
+      closeSync(fd);
+      fd = null;
+      renameSync(tmp, file);
+      return;
+    } catch (error) {
+      if (fd !== null) closeSync(fd);
+      rmSync(tmp, { force: true });
+      throw error;
+    }
+  }
+}
+
+/** `p` with its nearest existing ancestor resolved through links (the rest, not created yet, appended as is). */
+function realPath(p: string): string {
+  let dir = resolve(p);
+  let rest = '';
+  for (;;) {
+    try {
+      return rest ? join(realpathSync(dir), rest) : realpathSync(dir);
+    } catch {
+      const up = dirname(dir);
+      if (up === dir) return resolve(p);
+      rest = rest ? join(basename(dir), rest) : basename(dir);
+      dir = up;
+    }
+  }
+}
+
+const inside = (child: string, parent: string): boolean => {
+  const fold = (s: string): string => (process.platform === 'win32' ? s.toLowerCase() : s);
+  const rel = relative(fold(parent), fold(child));
+  return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel));
+};
+
+/**
+ * --out must not land in the repository's `.git` or `.omg`, or the state
+ * root OMC_STATE_DIR moves `.omg` to (lanes can write `.omg`, and both hold
+ * the engine's state): a usage error. Paths are compared through links, so a
+ * link into them is caught too.
+ */
+export function outPathProblem(root: string, file: string): string | null {
+  const real = realPath(file);
+  const hit = [join(root, '.git'), join(root, '.omg'), getOmcRoot(root)].map(realPath).find((p) => inside(real, p));
+  return hit ? `--out ${file} is inside ${hit}: lanes can write there and it holds the factory's state; write the page outside the repository's .git and .omg` : null;
+}
+
+/** Resolves true after `ms`, false at the first Ctrl-C (SIGINT) before that. */
+export function sleepUntilInterrupt(ms: number): Promise<boolean> {
+  return new Promise((done) => {
+    const onInt = (): void => { clearTimeout(t); done(false); };
+    const t = setTimeout(() => { process.off('SIGINT', onInt); done(true); }, ms);
+    process.once('SIGINT', onInt);
+  });
+}
+
 export const defaultDashboardDeps: FactoryDashboardDeps = { root: defaultRoot, out: (l) => console.log(l), err: (l) => console.error(l) };
+
+class UsageError extends Error {}
+
+function watchSeconds(v: string | boolean | undefined): number | null {
+  if (v === undefined || v === false) return null;
+  if (v === true) return WATCH_DEFAULT_SECONDS;
+  const n = /^\d{1,6}s?$/.test(v) ? Number(v.replace(/s$/, '')) : Number.NaN;
+  if (!Number.isSafeInteger(n) || n < WATCH_MIN_SECONDS || n > WATCH_MAX_SECONDS) throw new UsageError(`--watch takes whole seconds from ${WATCH_MIN_SECONDS} to ${WATCH_MAX_SECONDS}; got ${JSON.stringify(v)}`);
+  return n;
+}
+
+interface DashboardOptions {
+  out?: string;
+  json?: boolean;
+  since?: string;
+  schema?: string;
+  forge?: boolean;
+  benchDir?: string[];
+  watch?: string | boolean;
+}
 
 export function factoryDashboardCommand(deps: FactoryDashboardDeps = defaultDashboardDeps): Command {
   return new Command('dashboard')
-    .description('One static HTML page of all factory runs, parks, time per phase, credits per role and day, and bench results (local state; the forge is read only for a stopped run with a PR, to record a human merge)')
-    .option('--out <file>', 'write the HTML page to this file (default: print it)')
-    .option('--json', 'emit the same data as JSON (schemaVersion 1)')
-    .option('--since <date>', 'only runs and lanes on or after this date (2026-11-01 means local midnight; days are in local time)')
-    .action((o: { out?: string; json?: boolean; since?: string }) => {
+    .description('One static HTML page: what needs you, engines running, runs with engine and waiting time, tasks, cost, throughput and bench results (local state only and no write unless --forge)')
+    .option('--out <file>', 'write the page to this file (default: print it)')
+    .option('--json', 'emit the data as JSON (schemaVersion 2)')
+    .option('--schema <n>', 'with --json: 1 emits the old schemaVersion 1 shape (kept for one release)', '2')
+    .option('--since <date>', 'only runs, lanes, days and bench results on or after this date (2026-11-01 means local midnight; days are in local time)')
+    .option('--forge', 'also read the tracker (bucket and live stage per task) and record runs whose PR a human merged: forge reads and state writes')
+    .option('--bench-dir <dir>', 'also read bench result files (*.json) from this directory (repeatable; a bench fixture keeps them in <fixture>/results)', (v: string, prev: string[] = []) => [...prev, v])
+    .option('--watch [seconds]', `with --out: rewrite the file every N seconds (default ${WATCH_DEFAULT_SECONDS}, at least ${WATCH_MIN_SECONDS}) when it changed, until Ctrl-C; the page reloads itself`)
+    .action(async (o: DashboardOptions) => {
       let root: string;
       try {
         root = deps.root();
@@ -43,21 +189,122 @@ export function factoryDashboardCommand(deps: FactoryDashboardDeps = defaultDash
         return;
       }
       try {
-        for (const line of deps.humanMerges?.(root) ?? []) deps.err(line);
-        const data = collectDashboard(root, { since: o.since, now: deps.now });
-        const body = o.json ? JSON.stringify(data, null, 2) : renderDashboardHtml(data);
-        if (o.out) {
-          const file = resolve(o.out);
-          writeFileSync(file, body.endsWith('\n') ? body : `${body}\n`, 'utf8');
-          deps.err(`wrote ${file} (${data.totals.runs} runs)`);
-        } else {
-          deps.out(body);
-        }
-        process.exitCode = 0;
+        process.exitCode = await runDashboard(root, o, deps);
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
+        const message = plainText(error instanceof Error ? error.message : String(error));
         deps.err(chalk.red(message));
-        process.exitCode = message.startsWith('--since') ? EXIT_CHECK_USAGE : EXIT_CHECK_FAILED;
+        process.exitCode = error instanceof UsageError || error instanceof InvalidArgumentError || message.startsWith('--since') ? EXIT_CHECK_USAGE : EXIT_CHECK_FAILED;
       }
     });
+}
+
+async function runDashboard(root: string, o: DashboardOptions, deps: FactoryDashboardDeps): Promise<number> {
+  const schema = o.schema ?? '2';
+  if (schema !== '1' && schema !== '2') throw new UsageError(`--schema must be 1 or 2, got ${JSON.stringify(schema)}`);
+  const watch = watchSeconds(o.watch);
+  if (schema === '1' && (!o.json || o.forge || o.benchDir || watch !== null)) throw new UsageError('--schema 1 is the old --json shape only: it takes --json (and --out, --since), not --forge, --bench-dir or --watch');
+  if (watch !== null && !o.out) throw new UsageError('--watch needs --out <file>');
+  const outProblem = o.out ? outPathProblem(root, resolve(o.out)) : null;
+  if (outProblem) throw new UsageError(outProblem);
+  const clock = (): number => (deps.now?.() ?? new Date()).getTime();
+  const write = deps.writeFile ?? writeFileAtomic;
+  const emit = (body: string, file: string | null): void => {
+    const content = body.endsWith('\n') ? body : `${body}\n`;
+    if (file) write(file, content);
+    else deps.out(body);
+  };
+
+  if (schema === '1') {
+    const data = collectDashboard(root, { since: o.since, now: deps.now });
+    emit(JSON.stringify(data, null, 2), o.out ? resolve(o.out) : null);
+    if (o.out) deps.err(`wrote ${resolve(o.out)} (${data.totals.runs} runs, schemaVersion 1)`);
+    return 0;
+  }
+
+  const warnings: string[] = [];
+  let limits = null;
+  try {
+    const loaded = deps.limits?.(root);
+    if (loaded) {
+      limits = loaded.limits;
+      warnings.push(...loaded.warnings);
+    }
+  } catch (error) {
+    warnings.push(`the run limits could not be resolved, so no credit cap is shown: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  let board: { json: BoardJson; at: string } | null = null;
+  let forgeAt: number | null = null;
+  const readForge = async (now: number): Promise<void> => {
+    forgeAt = now;
+    if (!deps.forgeRead) {
+      warnings.push('--forge: no forge reader is wired here; the tracker was not read');
+      return;
+    }
+    try {
+      const r = await deps.forgeRead(root);
+      for (const line of r.lines) deps.err(plainText(line));
+      if (r.board) board = { json: r.board, at: new Date(now).toISOString() };
+    } catch (error) {
+      deps.err(chalk.yellow(`--forge: the forge could not be read: ${plainText(error instanceof Error ? error.message : String(error))}`));
+    }
+  };
+  const collect = (now: number): DashboardDataV2 => {
+    const data = collectDashboardV2(root, {
+      ledgerDir: deps.ledgerDir ?? defaultLedgerDir(), now: () => now, limits, ...(deps.owner ? { owner: deps.owner } : {}),
+      ...(o.since !== undefined ? { since: o.since } : {}), benchDirs: (o.benchDir ?? []).map((d) => resolve(d)), board,
+    });
+    data.warnings.unshift(...warnings.map((w) => plainText(w)));
+    return data;
+  };
+  const page = (d: DashboardDataV2): string => (o.json ? JSON.stringify(d, null, 2) : renderDashboardHtml(d, watch !== null ? { refreshSeconds: watch } : {}));
+
+  if (watch === null) {
+    const now = clock();
+    if (o.forge) await readForge(now);
+    const data = collect(now);
+    emit(page(data), o.out ? resolve(o.out) : null);
+    if (o.out) deps.err(`wrote ${resolve(o.out)} (${data.runs.length} runs, ${data.attention.items.length} need you)`);
+    return 0;
+  }
+
+  // --watch: a tick rewrites the file only when the page differs from the last one written at that one's clock,
+  // so a tick with nothing new writes nothing (the page's ages are as of its "Generated" time).
+  const file = resolve(o.out!);
+  // One SIGINT/SIGTERM handler for the whole loop: a signal sets the stop flag and wakes the sleep, and a tick
+  // under way (temp write, rename) finishes first, so no temp file is left behind.
+  let stop = false;
+  let wake: (() => void) | null = null;
+  const onSignal = (): void => {
+    stop = true;
+    wake?.();
+  };
+  const sleep = deps.sleep ?? ((ms: number): Promise<boolean> => new Promise((done) => {
+    const t = setTimeout(() => { wake = null; done(true); }, ms);
+    wake = () => { clearTimeout(t); wake = null; done(false); };
+  }));
+  process.on('SIGINT', onSignal);
+  process.on('SIGTERM', onSignal);
+  try {
+    deps.err(`omg factory dashboard: writing ${file} every ${watch} s while it changes (Ctrl-C to stop)`);
+    let last: { now: number; body: string } | null = null;
+    while (!stop) {
+      const now = clock();
+      if (o.forge && (forgeAt === null || now - forgeAt >= FORGE_REFRESH_MS)) await readForge(now);
+      const changed = last === null || page(collect(last.now)) !== last.body;
+      if (changed) {
+        const body = page(collect(now));
+        try {
+          emit(body, file);
+          last = { now, body };
+        } catch (error) {
+          deps.err(chalk.yellow(`could not write ${file}: ${plainText(error instanceof Error ? error.message : String(error))}; retrying next tick`));
+        }
+      }
+      if (stop || !(await sleep(watch * 1000))) break;
+    }
+    return 0;
+  } finally {
+    process.off('SIGINT', onSignal);
+    process.off('SIGTERM', onSignal);
+  }
 }

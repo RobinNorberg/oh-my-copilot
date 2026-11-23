@@ -61,7 +61,7 @@ import { factoryBoardCommand } from './factory-board.js';
 import { defaultDashboardDeps, factoryDashboardCommand } from './factory-dashboard.js';
 import { defaultAttentionDeps, factoryAttentionCommand } from './factory-attention.js';
 import { forgePrStateReader, humanMergeCandidate, humanMergeLines, recordHumanMerges } from '../../factory/run/human-merged.js';
-import { readRuns } from '../../factory/board/collect.js';
+import { readRuns, runFactoryBoard } from '../../factory/board/collect.js';
 import { factoryPrCommand } from './factory-pr.js';
 import { factoryPollCommand } from './factory-poll.js';
 import { defaultPollAutoStart, defaultPollHealScan } from '../../factory/poll.js';
@@ -1079,6 +1079,25 @@ export function cliHumanMerges(deps, root, runs) {
     }
     return humanMergeLines(recordHumanMerges(root, candidates, { readPrState, ledgerDir: deps.ledgerDir ?? defaultLedgerDir(), now: () => new Date().toISOString() }));
 }
+const HUMAN_MERGE_LINE = /human merge|merged by a human|closed without merging/;
+/**
+ * `omg factory dashboard --forge`: the board's read (tracker buckets and live stages; it records the
+ * stopped runs whose PR a human merged, as `factory board` does). When the board cannot run (no intake
+ * source, no usable forge), the human merges are still recorded through cliHumanMerges.
+ */
+async function dashboardForgeRead(root) {
+    const out = [];
+    const err = [];
+    try {
+        await runFactoryBoard({ json: true }, { ...defaultFactoryCheckDeps(defaultFactoryRunDeps.base), out: (l) => out.push(l), err: (l) => err.push(l) });
+        const board = JSON.parse(out.join('\n'));
+        return { lines: board.warnings.filter((w) => HUMAN_MERGE_LINE.test(w)), board };
+    }
+    catch (error) {
+        const why = error instanceof Error ? error.message : String(error);
+        return { lines: [`--forge: the tracker was not read (${why})`, ...cliHumanMerges(defaultFactoryRunDeps, root, readRuns(root, []).runs)], board: null };
+    }
+}
 /** `omg factory enqueue` (shipyard ↔ factory design §3.2-§3.4); the command lives in src/factory/enqueue.ts. */
 export function factoryEnqueueCommand(deps) {
     return new Command('enqueue')
@@ -1135,7 +1154,7 @@ export function factoryCommand() {
     cmd.addCommand(factoryEnqueueCommand(defaultFactoryCheckDeps(defaultFactoryRunDeps.base)));
     cmd.addCommand(factoryTriageCommand(defaultFactoryCheckDeps(defaultFactoryRunDeps.base)));
     cmd.addCommand(factoryBoardCommand(defaultFactoryCheckDeps(defaultFactoryRunDeps.base)));
-    cmd.addCommand(factoryDashboardCommand({ ...defaultDashboardDeps, humanMerges: (root) => cliHumanMerges(defaultFactoryRunDeps, root, readRuns(root, []).runs) }));
+    cmd.addCommand(factoryDashboardCommand({ ...defaultDashboardDeps, limits: defaultFactoryRunDeps.limits, forgeRead: dashboardForgeRead }));
     cmd.addCommand(factoryAttentionCommand({ ...defaultAttentionDeps, limits: defaultFactoryRunDeps.limits }));
     cmd.addCommand(factoryPrCommand(defaultFactoryCheckDeps(defaultFactoryRunDeps.base)));
     cmd.addCommand(factoryPollCommand({

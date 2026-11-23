@@ -52,7 +52,7 @@ const HEX40 = /^[0-9a-f]{40}$/;
 const forgeOf = (s) => (s.remote === LOCAL_REMOTE ? 'local' : s.forgeKind ?? 'github');
 const msOf = (iso) => (typeof iso === 'string' ? Date.parse(iso) : Number.NaN);
 /** The run key of a canonical `run-<key>.json` name; null for anything else (`run-01.json` is not run 1's file). */
-function runKeyOfName(name) {
+export function runKeyOfName(name) {
     const m = RUN_FILE.exec(name);
     if (!m)
         return null;
@@ -176,7 +176,7 @@ function sinceProgress(root, key, now) {
 }
 const relLog = (key) => `.omg/progress/factory-${key}.log`;
 /** One read of the state bytes; seal, then the ledger on those same bytes. */
-function readRun(root, key, ledgerDir) {
+export function readRun(root, key, ledgerDir) {
     const path = factoryStatePath(root, key);
     const r = readRegularFile(path);
     if ('missing' in r)
@@ -224,7 +224,7 @@ export const UNTRUSTED_WHY = new Set([...Object.values(TRUST_WHY), MISSING_UNREA
 const GATE_NAME_SHAPE = /^[a-z0-9][a-z0-9-]{0,59}$/;
 /**
  * A row whose trust is not `ok` keeps only what this program wrote or can check without the state: the key, the
- * group, a fixed `why`, the status command, the log path and the age. Its gate only when it is a plainly shaped
+ * group, a fixed `why`, the status command and the log path. Its gate only when it is a plainly shaped
  * name the gate table knows, its phase only when it is one of the engine's phases (`heal` for a heal record);
  * no title, PR, head, credits or reason.
  */
@@ -235,7 +235,8 @@ function untrustedRow(i) {
     const gate = typeof i.gate === 'string' && GATE_NAME_SHAPE.test(i.gate) && gateAction(i.gate).known ? i.gate : null;
     const phase = i.phase === 'heal' || FACTORY_PHASES.includes(i.phase ?? '') ? i.phase : null;
     const fixed = UNTRUSTED_WHY.has(i.why) ? i.why : (i.key.startsWith('heal-') ? HEAL_WHY[i.trust] : undefined) ?? TRUST_WHY[i.trust];
-    return { ...rest, gate, phase, pr: null, head: null, title: '', credits: null, cap: null, why: fixed };
+    // No age either: it would come from the state's own timestamps (`at` stays, for the sort and poll's new-item check only).
+    return { ...rest, gate, phase, ageMs: null, pr: null, head: null, title: '', credits: null, cap: null, why: fixed };
 }
 const FORGED_OWNER_NOTE = 'an owner file the engine did not write is present (the engine ledger does not record it); it is not counted as a live engine';
 const REMOTE_OWNER_NOTE = 'the run\'s owner file names another host: this host cannot tell whether that engine is alive';
@@ -454,7 +455,8 @@ function collectIn(root, o) {
             r = readRun(root, key, o.ledgerDir);
         if (r.trust === 'unreadable') {
             readFailed = true;
-            warnings.push(`run state ${runLabel(key)} is unreadable: ${r.error ?? 'unknown error'}`);
+            // A fixed message: the error can quote the file's bytes and a local path (the row's `error`, --verbose).
+            warnings.push(`run state ${runLabel(key)} is unreadable (the error: omg factory attention --verbose)`);
         }
         if (r.state && r.trust === 'ok') {
             forges.add(forgeOf(r.state));
@@ -511,7 +513,7 @@ function collectIn(root, o) {
         if (!s) {
             if (finishedRun)
                 continue;
-            warnings.push(`heal signature ${sig8} is unreadable: ${problem}`);
+            warnings.push(`heal signature ${sig8} is unreadable (the error: omg factory attention --verbose)`);
             items.push({ ...row, why: HEAL_WHY.unreadable, error: text(problem), trust: 'unreadable' });
             continue;
         }

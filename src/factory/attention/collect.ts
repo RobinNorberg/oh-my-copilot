@@ -120,7 +120,7 @@ const forgeOf = (s: FactoryRunState): ForgeKind => (s.remote === LOCAL_REMOTE ? 
 const msOf = (iso: unknown): number => (typeof iso === 'string' ? Date.parse(iso) : Number.NaN);
 
 /** The run key of a canonical `run-<key>.json` name; null for anything else (`run-01.json` is not run 1's file). */
-function runKeyOfName(name: string): FactoryRunKey | null {
+export function runKeyOfName(name: string): FactoryRunKey | null {
   const m = RUN_FILE.exec(name);
   if (!m) return null;
   const key: FactoryRunKey = /^\d+$/.test(m[1]) ? Number(m[1]) : (m[1] as `heal-${string}`);
@@ -236,8 +236,14 @@ function sinceProgress(root: string, key: FactoryRunKey, now: number): number | 
 
 const relLog = (key: FactoryRunKey): string => `.omg/progress/factory-${key}.log`;
 
-interface ReadRun {
+export interface ReadRun {
   key: FactoryRunKey;
+  /**
+   * The parsed state, also when it failed a check. Callers must not use its
+   * free text (title, reasons, notes, lane ids) or its numbers (credits,
+   * requests, times) unless `trust` is `ok`: only enum-shaped values that are
+   * validated against the known set may be shown for any other trust.
+   */
   state?: FactoryRunState;
   trust: AttentionTrust;
   error?: string;
@@ -246,7 +252,7 @@ interface ReadRun {
 }
 
 /** One read of the state bytes; seal, then the ledger on those same bytes. */
-function readRun(root: string, key: FactoryRunKey, ledgerDir: string): ReadRun {
+export function readRun(root: string, key: FactoryRunKey, ledgerDir: string): ReadRun {
   const path = factoryStatePath(root, key);
   const r = readRegularFile(path);
   if ('missing' in r) return { key, trust: 'unreadable', missing: true, error: 'the state file disappeared while it was read' };
@@ -292,7 +298,7 @@ const GATE_NAME_SHAPE = /^[a-z0-9][a-z0-9-]{0,59}$/;
 
 /**
  * A row whose trust is not `ok` keeps only what this program wrote or can check without the state: the key, the
- * group, a fixed `why`, the status command, the log path and the age. Its gate only when it is a plainly shaped
+ * group, a fixed `why`, the status command and the log path. Its gate only when it is a plainly shaped
  * name the gate table knows, its phase only when it is one of the engine's phases (`heal` for a heal record);
  * no title, PR, head, credits or reason.
  */
@@ -302,7 +308,8 @@ function untrustedRow(i: AttentionItem): AttentionItem {
   const gate = typeof i.gate === 'string' && GATE_NAME_SHAPE.test(i.gate) && gateAction(i.gate).known ? i.gate : null;
   const phase = i.phase === 'heal' || (FACTORY_PHASES as readonly string[]).includes(i.phase ?? '') ? i.phase : null;
   const fixed = UNTRUSTED_WHY.has(i.why) ? i.why : (i.key.startsWith('heal-') ? HEAL_WHY[i.trust] : undefined) ?? TRUST_WHY[i.trust];
-  return { ...rest, gate, phase, pr: null, head: null, title: '', credits: null, cap: null, why: fixed };
+  // No age either: it would come from the state's own timestamps (`at` stays, for the sort and poll's new-item check only).
+  return { ...rest, gate, phase, ageMs: null, pr: null, head: null, title: '', credits: null, cap: null, why: fixed };
 }
 
 const FORGED_OWNER_NOTE = 'an owner file the engine did not write is present (the engine ledger does not record it); it is not counted as a live engine';
@@ -511,7 +518,8 @@ function collectIn(root: string, o: CollectAttentionOptions): AttentionData {
     if ((r.trust === 'ledger' || r.trust === 'unverified') && live === 'live') r = readRun(root, key, o.ledgerDir);
     if (r.trust === 'unreadable') {
       readFailed = true;
-      warnings.push(`run state ${runLabel(key)} is unreadable: ${r.error ?? 'unknown error'}`);
+      // A fixed message: the error can quote the file's bytes and a local path (the row's `error`, --verbose).
+      warnings.push(`run state ${runLabel(key)} is unreadable (the error: omg factory attention --verbose)`);
     }
     if (r.state && r.trust === 'ok') {
       forges.add(forgeOf(r.state));
@@ -561,7 +569,7 @@ function collectIn(root: string, o: CollectAttentionOptions): AttentionData {
     }
     if (!s) {
       if (finishedRun) continue;
-      warnings.push(`heal signature ${sig8} is unreadable: ${problem}`);
+      warnings.push(`heal signature ${sig8} is unreadable (the error: omg factory attention --verbose)`);
       items.push({ ...row, why: HEAL_WHY.unreadable!, error: text(problem), trust: 'unreadable' });
       continue;
     }

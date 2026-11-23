@@ -3,7 +3,10 @@
  *
  * What the software factory needs from you, from `omg factory attention`'s
  * collector (local state only, read-only, the same trust rules):
- * `factory:4! inspect` (4 items, the worst group Inspect), with `run:1` when
+ * Off on every host (opt-in, `elements.factory: true`): a status-line render
+ * in a repository with factory state loads the factory modules and collects
+ * (about 0.5 s measured on Windows). `factory:4! inspect` (4 items, the worst
+ * group Inspect), with `run:1` when
  * an engine is live; `factory:run:1` when engines run and nothing waits;
  * nothing at all when neither. Numbers and fixed words only: no title,
  * reason or other text from a state reaches the status line.

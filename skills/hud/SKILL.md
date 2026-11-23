@@ -137,7 +137,8 @@ Focused on Copilot CLI (the model, effort, directory and branch are left to Copi
 
 Defaults the overlay changes:
 - **Off on Copilot:** `model`, `effort`, `cwd`, `gitBranch`. Set one to `true` to show it anyway.
-- **On on Copilot, off on Claude Code:** `copilotMode` (plan or autopilot, and yolo), `team` (live `omg team` run), `ultragoal` (open plan progress), `factory` (software factory items that need you: `factory:4! inspect`, `run:1` while engines run; counts only).
+- **On on Copilot, off on Claude Code:** `copilotMode` (plan or autopilot, and yolo), `team` (live `omg team` run), `ultragoal` (open plan progress).
+- **Off on every host (opt-in):** `factory` (software factory items that need you: `factory:4! inspect`, `run:1` while engines run; counts only). Set `"factory": true` under `elements`; in a repository with factory state it costs about 0.5 s per status-line render (one stat and nothing else without one).
 
 **Ignored on Copilot** (no data source, forced off even when set to `true`): `rateLimits`, `enterpriseMode`, `showEnterpriseCost`, `apiKeySource`, `thinking`, `todos`, `sessionSummary`, and the payload warning.
 
