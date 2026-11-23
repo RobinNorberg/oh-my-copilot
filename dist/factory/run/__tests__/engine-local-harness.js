@@ -26,9 +26,9 @@ export const LOCAL_ISSUE = 7;
 export const BASE = 'main';
 export const BACKLOG_ITEM = '---\ntitle: Add greet()\nlabels: [factory]\n---\nAdd a greet function.\n\n## Acceptance\n- [ ] greet() returns hi\n';
 /** A repository on `main` with the backlog item #7 committed, and no remote. */
-export function localWorld(gate = ['node', '--test']) {
+export function localWorld(gate = ['node', '--test'], repoName = 'repo') {
     const dir = mkdtempSync(join(tmpdir(), 'omg-factory-local-'));
-    const root = join(dir, 'repo');
+    const root = join(dir, repoName);
     mkdirSync(root);
     gitIn(root, 'init', '-q', '-b', BASE);
     writeFileSync(join(root, 'README.md'), 'hello\n');
