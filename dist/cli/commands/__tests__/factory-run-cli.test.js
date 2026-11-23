@@ -10,6 +10,7 @@ import { factoryClaimPath } from '../../../factory/run/claims.js';
 import { EXIT_AWAITING_HUMAN, EXIT_BUSY } from '../../../factory/run/engine.js';
 import { createFactoryState, factoryCancelRequested, factoryOwnerPath, factoryRepoOwnerPath, factoryStatePath, moveTo, overwriteFactoryState, readFactoryState, } from '../../../factory/run/state.js';
 import { EngineLedger } from '../../../factory/run/ledger.js';
+import { fromSealed } from '../../../factory/run/gate-next.js';
 import { resolveForgeConfig } from '../../../forge/config.js';
 import { scaleTiming } from '../../../__tests__/helpers/platform.js';
 import { commitFile, FakeLanes, FakeProcesses, harness, ISSUE, REPO_URL, review, testGateConfig, attestedSandbox } from '../../../factory/run/__tests__/fake-lanes.js';
@@ -523,7 +524,7 @@ describe('omg factory run CLI', () => {
             expect(await cli(d, 'status', String(ISSUE), '--json')).toBe(0);
             const json = JSON.parse(out.join('\n'));
             expect(json).toMatchObject({ integrityOk: true, ledgerOk: true });
-            expect(json.next).toEqual(state.gate.next);
+            expect(json.next).toEqual(fromSealed(state.gate.next));
             expect(json.gate.next).toEqual(state.gate.next);
         }, ENGINE_FLOW_TIMEOUT_MS);
         it('never from a state that fails its seal or is not the engine\'s last write', async () => {

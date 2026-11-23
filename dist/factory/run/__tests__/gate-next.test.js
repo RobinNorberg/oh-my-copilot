@@ -54,14 +54,14 @@ describe('the gate table covers every park the engine can produce', () => {
             expect(gateNext(n, facts({ forge: 'azure-devops' })).length, n).toBeGreaterThan(0);
         }
     });
-    it('the lane-kind parks (`<kind>-failed`, `<kind>-declined`) are pattern entries; an unknown name falls back to status, rerun, cancel', () => {
+    it('the lane-kind parks (`<kind>-failed`, `<kind>-declined`) are pattern entries; an unknown name falls back to rerun and status', () => {
         for (const kind of ['implement', 'review', 'fix', 'conflict-fix', 'ci-fix', 'coding-agent']) {
             expect(gateSteps(`${kind}-failed`).known).toBe(true);
             expect(gateSteps(`${kind}-declined`).known).toBe(true);
         }
-        expect(argvs('ci-fix-failed')).toEqual([RESUME, STATUS, CANCEL]);
+        expect(argvs('ci-fix-failed')).toEqual([STATUS, RESUME, CANCEL]);
         expect(gateSteps('some-future-gate')).toMatchObject({ known: false, group: 'fix' });
-        expect(argvs('some-future-gate')).toEqual([STATUS, RESUME, CANCEL]);
+        expect(argvs('some-future-gate')).toEqual([RESUME, STATUS]);
         expect(Object.keys(GATE_TABLE).every((n) => /^[a-z-]+$/.test(n))).toBe(true);
     });
     it('the engine command strings are the table argv', () => {
@@ -95,7 +95,8 @@ describe('gateNext', () => {
         expect(argvs('lane-tampered', { tamperHold: true })).toEqual([STATUS, RELEASE_TAMPER_COMMAND.split(' '), RESUME, CANCEL]);
         expect(argvs('state-tampered', { tamperHold: true })).toEqual([STATUS, ['omg', 'factory', 'run', 'release', '--tamper'], RESUME, CANCEL]);
         expect(argvs('decisions-rewritten')).toEqual([STATUS, CANCEL]);
-        expect(argvs('gate-install-needed')).toEqual([RESUME, STATUS, CANCEL]);
+        expect(argvs('gate-install-needed')).toEqual([STATUS, RESUME, CANCEL]);
+        expect(argvs('review-identity')).toEqual([STATUS, CANCEL]);
     });
     it('heal runs: heal status / approve / cancel / close, no acceptance flags', () => {
         const key = 'heal-0123abcd';
@@ -212,7 +213,7 @@ describe('FactoryGate.next in the sealed state', () => {
     });
     it('the reader prefers the sealed value over the table', () => {
         const custom = [{ label: 'read the run state', argv: STATUS }];
-        expect(stateGateNext(parse(sealed(parked(custom))), ROOT)).toEqual(custom);
+        expect(stateGateNext(parse(sealed(parked(custom))), ROOT)).toEqual([{ ...custom[0], billed: false }]);
         expect(stateGateNext(createFactoryState({ issue: 12, repoUrl: 'u', base: 'main' }, NOW), ROOT)).toEqual([]);
     });
 });

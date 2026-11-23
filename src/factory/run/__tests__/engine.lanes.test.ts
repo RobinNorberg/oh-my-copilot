@@ -346,7 +346,7 @@ describe('omg factory run engine (fake lanes, real git, scripted gh)', () => {
     const out = await done;
     expect(out.gate?.name).toBe('implement-failed');
     // A *-failed park's reason names no command; the sealed next steps do (and the outcome message adds the rerun).
-    expect(sealedNext(h.root, ISSUE, out)).toEqual([steps(ISSUE).resume, steps(ISSUE).status, steps(ISSUE).cancel]);
+    expect(sealedNext(h.root, ISSUE, out)).toEqual([steps(ISSUE).status, steps(ISSUE).resume, steps(ISSUE).cancel]);
     expect(out.message).toContain(`Resume with ${steps(ISSUE).resume.join(' ')}.`);
     expect(lanes.started.map((s) => s.laneId)).toEqual([`issue-${ISSUE}-implement-1`, `issue-${ISSUE}-implement-2`]);
     expect(remoteHead(h)).toBeNull();

@@ -1,19 +1,28 @@
 /**
- * The gate -> next step table: what a human does at each awaiting-human park.
+ * The gate -> human action -> next step table, and the printed form of a
+ * command: one module for the engine and every read surface.
  *
- * One table for the engine and every read surface, so the sealed
- * FactoryGate.next the engine writes and what a reader shows for a state
- * written before it cannot drift. The engine composes `next` with gateNext
- * when it parks (engine.ts gate()); a reader prefers the sealed value and
- * falls back to gateNext for older states, with the same facts.
+ * The engine composes FactoryGate.next with gateNext when it parks
+ * (engine.ts park()) and seals it in the run state; a reader (`run status`,
+ * `omg factory attention`) prefers that sealed value from a state that
+ * passed its seal and ledger checks, and composes the same steps here for a
+ * state sealed before the field existed (stateGateNext), so the two cannot
+ * drift.
  *
- * A step is composed only from engine-held facts: the run key (a positive
- * integer, or `heal-<8 hex>`), the 40-hex head, the PR number, the
- * repository root the engine was started with, the forge kind and the fixed
- * flags below. The reason, the park detail, lane output, titles and branch
- * names never reach an argv. Completeness: __tests__/gate-next.test.ts
- * extracts every gate name the engine can park at from the source and fails
- * on one with no entry; an unknown name gets status, rerun and cancel.
+ * One entry per gate name the engine can park at (src/factory/run/: every
+ * gate, setGate and park call of the engine, every park
+ * object's `name` and every `*_GATE` constant); the completeness tests
+ * (__tests__/gate-next.test.ts, attention/__tests__/attention-actions.test.ts)
+ * extract them from the source and fail on a name with no entry. Dynamic
+ * names (`<kind>-failed`, `<kind>-declined`) are pattern entries over the
+ * lane kinds; an unknown name gets the resume and status commands.
+ *
+ * The `why` line is engine-authored text chosen by the gate name: the run's
+ * free-text reason is never in it. A command is composed only from engine
+ * facts or validated fields: the run key (a positive integer, or
+ * `heal-<8 hex>`), a 40-hex head, a positive PR number, the repository root,
+ * the forge kind and the fixed flags below. Title, reason, detail, lane
+ * output, branch names and every other free text never reach an argv.
  */
 import type { ForgeKind } from '../../forge/types.js';
 import { type FactoryGateNextStep, type FactoryRunKey, type FactoryRunState } from './state.js';
@@ -21,20 +30,26 @@ import { type FactoryGateNextStep, type FactoryRunKey, type FactoryRunState } fr
 export declare const GATE_GROUPS: readonly ["inspect", "broken", "decide", "merge", "fix", "limits"];
 export type GateGroup = (typeof GATE_GROUPS)[number];
 /**
- * A step template: `status` (read the run state), `resume` (the rerun; a heal
- * run's `heal approve`), `cancel`, a rerun with one fixed acceptance flag
- * (issue runs only), `merge` (the forge's human merge command; none on Azure
- * DevOps), `release-tamper` (only while a tamper hold is set) and
- * `heal-close` (heal runs only).
+ * A step of the table: `resume` (`omg factory run <n>`, a heal run `omg
+ * factory heal approve <sig8>`), `cancel`, `status`, a resume with one fixed
+ * acceptance flag (issue runs only: `heal approve` takes none), `merge` (the
+ * forge's human merge command), `release-tamper` (`omg factory run release
+ * --tamper`), and for a heal run `heal-close` / `heal-run`. `release-tamper`,
+ * `allow-secret-shapes` and `allow-unsandboxed-lanes` apply only when the
+ * park's facts say so (gateStepsFor).
  */
-export type GateStep = 'status' | 'resume' | 'cancel' | 'merge' | 'release-tamper' | 'heal-close' | 'allow-gate-change' | 'allow-unsandboxed-gates' | 'allow-secret-shapes' | 'allow-unsandboxed-lanes';
+export type GateStep = 'resume' | 'cancel' | 'status' | 'merge' | 'release-tamper' | 'allow-gate-change' | 'allow-unsandboxed-gates' | 'allow-secret-shapes' | 'allow-unsandboxed-lanes' | 'heal-close' | 'heal-run';
 export interface GateEntry {
     group: GateGroup;
+    /** One line, engine-authored, never the run's reason. */
+    why: string;
     steps: readonly GateStep[];
 }
-/** Every gate the engine parks at under a fixed name (the `<kind>-failed` / `<kind>-declined` names are patterns below). */
+/** Every gate name the engine parks at with a fixed name. */
 export declare const GATE_TABLE: Readonly<Record<string, GateEntry>>;
-/** A name this version does not know (a newer engine's): read the state, then rerun or cancel. */
+/** Pattern entries, for names the engine builds from a lane kind. */
+export declare function patternEntry(name: string): GateEntry | null;
+/** A name this version does not know (a newer engine's). */
 export declare const UNKNOWN_GATE_ENTRY: GateEntry;
 /** The table entry of a gate name; `known` false is the unknown fallback. */
 export declare function gateSteps(name: string): GateEntry & {
@@ -47,61 +62,70 @@ export declare const resumeArgv: (key: FactoryRunKey) => string[];
 export declare const cancelArgv: (key: FactoryRunKey) => string[];
 /** `omg factory run status <n>`; a heal run `omg factory heal status <sig8>`. */
 export declare const statusArgv: (key: FactoryRunKey) => string[];
-/** The facts a step is composed from, all engine-held (the engine) or sealed and verified (a reader). */
-export interface GateNextFacts {
-    key: FactoryRunKey;
-    /** The repository root the engine was started with. */
-    root: string;
+/** The run's merge facts, each already shape-checked by the caller or here. */
+export interface MergeFacts {
     forge: ForgeKind;
+    /** The repository root the engine was started with (`git rev-parse --show-toplevel`). */
+    root: string;
     pr?: number;
     head?: string;
+}
+/** The facts that pick a park's conditional steps, all engine-held (the engine) or sealed and verified (a reader). */
+export interface GateNextFacts extends MergeFacts {
+    key: FactoryRunKey;
     /** The park holds a lane commit's secret findings (pendingCommit.secretFindings): `--allow-secret-shapes` answers it. */
     secretFindings?: boolean;
-    /** The human-review park for lanes without the enforced sandbox: `--allow-unsandboxed-lanes` answers it. */
+    /** The human-review park for lanes without the enforced sandbox: `--allow-unsandboxed-lanes` answers it (the engine's call site says so). */
     unsandboxedLanes?: boolean;
     /** A tamper hold is set on the checkout: `omg factory run release --tamper` comes before a rerun. */
     tamperHold?: boolean;
 }
-/** The human merge argv the engine prints for that forge; null when there is none to give (Azure DevOps: its command reads a body file, see the PR comment). */
-export declare function mergeArgv(f: Pick<GateNextFacts, 'forge' | 'root' | 'pr' | 'head'>): string[] | null;
-/** The labels a step may carry (FactoryGate.next[].label is one of these when this version wrote it). */
-export declare const GATE_NEXT_LABELS: Readonly<{
-    status: "read the run state";
-    resume: "rerun the run";
-    healResume: "approve or resume the ci-heal run";
-    cancel: "cancel the run";
-    mergeLocal: "merge the exact head into your base";
-    mergeGithub: "merge the exact head the gates checked";
-    releaseTamper: "clear the tamper hold after checking .git";
-    healClose: "close the heal signature without a fix";
-    allow: (flag: string) => string;
-}>;
+/** The human merge argv the engine prints for that forge; null when there is none to give (Azure DevOps, a missing or malformed field). */
+export declare function mergeArgv(m: MergeFacts): string[] | null;
+/** One command for a human: a label, the exact argv, and whether it can start lanes (and so spend AI credits). */
+export interface NextCommand {
+    label: string;
+    argv: string[];
+    billed: boolean;
+}
 /**
- * The next steps of a park, in table order. A step that cannot be composed
- * from the facts is left out (a flag on a heal run, a merge without a 40-hex
- * head or on Azure DevOps, the tamper release without a hold), and so is one
- * that would not pass the state's own shape check (a root with a control
- * character), so the engine never seals a state its parser refuses. An
- * invalid key gives no step at all.
+ * The commands of a step list, in order. A step that cannot be composed
+ * from validated fields is left out (a flag on a heal run, a merge without a
+ * 40-hex head or on Azure DevOps, a heal step on an issue run). An invalid
+ * key gives no command at all.
  */
-export declare function gateNext(name: string, f: GateNextFacts): FactoryGateNextStep[];
+export declare function nextCommands(key: FactoryRunKey, steps: readonly GateStep[], merge?: MergeFacts): NextCommand[];
+/** A gate's steps with the conditional ones its facts do not call for left out. */
+export declare function gateStepsFor(name: string, f: Pick<GateNextFacts, 'secretFindings' | 'unsandboxedLanes' | 'tamperHold'>): GateStep[];
 /**
- * A reader's next steps of a parked state that passed its seal and ledger
- * checks (the caller's job: an unverified state gives no command): the
- * sealed FactoryGate.next, or, for a state sealed before next existed, the
- * table composed from the state's own validated fields. `root` is the
+ * A park's next commands from its facts, in table order, without any a state
+ * parser would refuse (a root with a control character), so the engine never
+ * seals a state its parser rejects and a reader's fallback matches.
+ */
+export declare function gateCommands(name: string, f: GateNextFacts): NextCommand[];
+/** The commands of a sealed FactoryGate.next. */
+export declare const fromSealed: (next: readonly FactoryGateNextStep[]) => NextCommand[];
+/** What the engine seals in FactoryGate.next when it parks at `name`. */
+export declare function gateNext(name: string, f: GateNextFacts): FactoryGateNextStep[];
+/** The facts of a parked state as a reader has them (no unsandboxed-lanes flag: only the engine's call site knows it). */
+export declare function stateFacts(s: FactoryRunState, root: string, tamperHold?: boolean): GateNextFacts;
+/**
+ * A reader's next commands of a parked state that passed its seal and
+ * ledger checks (the caller's job: an unverified state gives no command):
+ * the sealed FactoryGate.next, or, for a state sealed before next existed,
+ * the table composed from the state's own validated fields. `root` is the
  * reader's repository root; `tamperHold` whether a hold is set on it now.
  */
-export declare function stateGateNext(s: FactoryRunState, root: string, tamperHold?: boolean): FactoryGateNextStep[];
+export declare function stateGateNext(s: FactoryRunState, root: string, tamperHold?: boolean): NextCommand[];
 /** One argv as a copyable line for the shell family of `platform` (default: this host's). */
 export declare function commandLine(argv: readonly string[], platform?: NodeJS.Platform): string;
 /**
  * What a human is shown for a command (the stored argv stays exact). The
  * repository root is the one free-form word a command holds (`git -C
  * <root> ...`): when it is outside the portable set on Windows (cmd.exe
- * ignores single quotes), or holds a character a terminal cannot show, the
- * `-C <root>` form is withheld and the command is to be run in the
- * repository root (`inRoot`).
+ * ignores single quotes), or holds a character a terminal cannot show
+ * anywhere, the `-C <root>` form is withheld and the command is to be run in
+ * the repository root (`inRoot`). `--json` keeps the exact argv either way.
  */
 export declare function commandText(argv: readonly string[], platform?: NodeJS.Platform): {
     line: string;

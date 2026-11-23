@@ -1,24 +1,34 @@
 /**
- * The gate -> next step table: what a human does at each awaiting-human park.
+ * The gate -> human action -> next step table, and the printed form of a
+ * command: one module for the engine and every read surface.
  *
- * One table for the engine and every read surface, so the sealed
- * FactoryGate.next the engine writes and what a reader shows for a state
- * written before it cannot drift. The engine composes `next` with gateNext
- * when it parks (engine.ts gate()); a reader prefers the sealed value and
- * falls back to gateNext for older states, with the same facts.
+ * The engine composes FactoryGate.next with gateNext when it parks
+ * (engine.ts park()) and seals it in the run state; a reader (`run status`,
+ * `omg factory attention`) prefers that sealed value from a state that
+ * passed its seal and ledger checks, and composes the same steps here for a
+ * state sealed before the field existed (stateGateNext), so the two cannot
+ * drift.
  *
- * A step is composed only from engine-held facts: the run key (a positive
- * integer, or `heal-<8 hex>`), the 40-hex head, the PR number, the
- * repository root the engine was started with, the forge kind and the fixed
- * flags below. The reason, the park detail, lane output, titles and branch
- * names never reach an argv. Completeness: __tests__/gate-next.test.ts
- * extracts every gate name the engine can park at from the source and fails
- * on one with no entry; an unknown name gets status, rerun and cancel.
+ * One entry per gate name the engine can park at (src/factory/run/: every
+ * gate, setGate and park call of the engine, every park
+ * object's `name` and every `*_GATE` constant); the completeness tests
+ * (__tests__/gate-next.test.ts, attention/__tests__/attention-actions.test.ts)
+ * extract them from the source and fail on a name with no entry. Dynamic
+ * names (`<kind>-failed`, `<kind>-declined`) are pattern entries over the
+ * lane kinds; an unknown name gets the resume and status commands.
+ *
+ * The `why` line is engine-authored text chosen by the gate name: the run's
+ * free-text reason is never in it. A command is composed only from engine
+ * facts or validated fields: the run key (a positive integer, or
+ * `heal-<8 hex>`), a 40-hex head, a positive PR number, the repository root,
+ * the forge kind and the fixed flags below. Title, reason, detail, lane
+ * output, branch names and every other free text never reach an argv.
  */
 
 import { ghMergeCommand } from '../../forge/github/merge.js';
 import { localMerge } from '../../forge/local/merge.js';
 import type { ForgeKind } from '../../forge/types.js';
+import { plainText } from '../check/score.js';
 import { gateNextStepOk, HEAL_RUN_KEY, runKeyOf, type FactoryGateNextStep, type FactoryRunKey, type FactoryRunState } from './state.js';
 import { RELEASE_TAMPER_COMMAND } from './tamper-quarantine.js';
 
@@ -27,111 +37,127 @@ export const GATE_GROUPS = ['inspect', 'broken', 'decide', 'merge', 'fix', 'limi
 export type GateGroup = (typeof GATE_GROUPS)[number];
 
 /**
- * A step template: `status` (read the run state), `resume` (the rerun; a heal
- * run's `heal approve`), `cancel`, a rerun with one fixed acceptance flag
- * (issue runs only), `merge` (the forge's human merge command; none on Azure
- * DevOps), `release-tamper` (only while a tamper hold is set) and
- * `heal-close` (heal runs only).
+ * A step of the table: `resume` (`omg factory run <n>`, a heal run `omg
+ * factory heal approve <sig8>`), `cancel`, `status`, a resume with one fixed
+ * acceptance flag (issue runs only: `heal approve` takes none), `merge` (the
+ * forge's human merge command), `release-tamper` (`omg factory run release
+ * --tamper`), and for a heal run `heal-close` / `heal-run`. `release-tamper`,
+ * `allow-secret-shapes` and `allow-unsandboxed-lanes` apply only when the
+ * park's facts say so (gateStepsFor).
  */
 export type GateStep =
-  | 'status' | 'resume' | 'cancel' | 'merge' | 'release-tamper' | 'heal-close'
-  | 'allow-gate-change' | 'allow-unsandboxed-gates' | 'allow-secret-shapes' | 'allow-unsandboxed-lanes';
+  | 'resume' | 'cancel' | 'status' | 'merge' | 'release-tamper'
+  | 'allow-gate-change' | 'allow-unsandboxed-gates' | 'allow-secret-shapes' | 'allow-unsandboxed-lanes'
+  | 'heal-close' | 'heal-run';
 
 export interface GateEntry {
   group: GateGroup;
+  /** One line, engine-authored, never the run's reason. */
+  why: string;
   steps: readonly GateStep[];
 }
 
+/** A trust park: read the state, clear a tamper hold when one is set, then rerun or cancel. */
 const TRUST: readonly GateStep[] = ['status', 'release-tamper', 'resume', 'cancel'];
 const LOOK: readonly GateStep[] = ['status', 'resume', 'cancel'];
-const RETRY: readonly GateStep[] = ['resume', 'status', 'cancel'];
-const CANCEL_ONLY: readonly GateStep[] = ['status', 'cancel'];
+const e = (group: GateGroup, why: string, steps: readonly GateStep[] = LOOK): GateEntry => Object.freeze({ group, why, steps });
 
-const e = (group: GateGroup, steps: readonly GateStep[]): GateEntry => Object.freeze({ group, steps });
-
-/** Every gate the engine parks at under a fixed name (the `<kind>-failed` / `<kind>-declined` names are patterns below). */
+/** Every gate name the engine parks at with a fixed name. */
 export const GATE_TABLE: Readonly<Record<string, GateEntry>> = Object.freeze({
-  // Inspect: something changed outside the engine, or a lane did what it must not. A tamper hold, when set, is cleared first.
-  'state-tampered': e('inspect', TRUST),
-  'lane-tampered': e('inspect', TRUST),
-  'review-tampered': e('inspect', TRUST),
-  'sandbox-escaped': e('inspect', TRUST),
-  'repo-guard-changed': e('inspect', TRUST),
-  'protected-paths': e('inspect', TRUST),
-  'head-moved-externally': e('inspect', TRUST),
-  'import-refused': e('inspect', TRUST),
-  // A rerun parks again: the reason says cancel.
-  'decisions-rewritten': e('inspect', CANCEL_ONLY),
+  // Inspect: something changed outside the engine, or a lane did what it must not.
+  'state-tampered': e('inspect', 'an engine-owned file changed outside the engine; the changed copy was moved aside and the engine\'s restored', TRUST),
+  'lane-tampered': e('inspect', 'shared git state changed while a lane or prepare\'s checks ran; nothing was pushed', TRUST),
+  'review-tampered': e('inspect', 'shared git state changed while a review lane ran; its verdict is discarded', TRUST),
+  'sandbox-escaped': e('inspect', 'a lane ran outside its sandbox or left its worktree; nothing was committed or pushed', TRUST),
+  'repo-guard-changed': e('inspect', 'your repository\'s hooks or git config changed since the last import (private layout); check the change before a rerun', TRUST),
+  'decisions-rewritten': e('inspect', 'decisions.md on the PR branch no longer starts with the base version; a rerun parks again', ['status', 'cancel']),
+  'protected-paths': e('inspect', 'a lane or the prepared head changed paths the merge rule protects; nothing was pushed', TRUST),
+  'head-moved-externally': e('inspect', 'the PR head or remote branch is at a commit the engine did not push', TRUST),
+  'import-refused': e('inspect', 'the engine refused to import its own commit from the run\'s private repository', TRUST),
   // Broken engine.
-  'lane-unconfirmed': e('broken', LOOK),
-  'lane-lost': e('broken', LOOK),
-  'review-identity': e('broken', LOOK),
+  'lane-unconfirmed': e('broken', 'the engine could not confirm a lane\'s process stopped; stop it yourself, a rerun counts as your word'),
+  'lane-lost': e('broken', 'two lanes of the same kind in a row were lost; find out why the engine died'),
+  'review-identity': e('broken', 'a review job id is also a write lane\'s job (an engine invariant)', ['status', 'cancel']),
   // Decide: a human judgement the engine must not make.
-  'gate-definition-changed': e('decide', ['status', 'allow-gate-change', 'cancel']),
-  'gates-unsandboxed': e('decide', ['status', 'allow-unsandboxed-gates', 'cancel']),
-  'secret-shaped-content': e('decide', ['status', 'resume', 'allow-secret-shapes', 'cancel']),
-  'human-review': e('decide', ['status', 'resume', 'allow-unsandboxed-lanes', 'cancel']),
-  'heal-approve': e('decide', ['status', 'resume', 'cancel', 'heal-close']),
-  'heal-diagnosis': e('decide', ['status', 'cancel', 'heal-close']),
-  'coding-agent-adopt': e('decide', LOOK),
-  'coding-agent-reassigned': e('decide', CANCEL_ONLY),
-  // Merge: the human merges, then reruns.
-  merge: e('merge', ['merge', 'resume', 'status']),
-  'merge-refused': e('merge', LOOK),
-  // Fix by hand, then rerun.
-  'ci-failed': e('fix', RETRY),
-  'merge-conflicts': e('fix', RETRY),
-  'fix-rounds-spent': e('fix', RETRY),
-  'review-invalid': e('fix', RETRY),
-  'needs-plan': e('fix', RETRY),
-  'pr-exists': e('fix', RETRY),
-  'pr-not-open': e('fix', RETRY),
-  'base-changed': e('fix', RETRY),
-  'missing-checks': e('fix', RETRY),
-  'no-workflows': e('fix', RETRY),
-  'gates-disagree': e('fix', RETRY),
-  'prepare-checks': e('fix', RETRY),
-  'gate-definition-unknown': e('fix', RETRY),
-  gates: e('fix', RETRY),
-  'sandbox-unavailable': e('fix', RETRY),
-  'gate-sandbox-incompatible': e('fix', RETRY),
-  'gate-container-unavailable': e('fix', RETRY),
-  'gate-install-needed': e('fix', RETRY),
-  'private-store': e('fix', RETRY),
-  'layout-unsupported': e('fix', RETRY),
-  'parallel-needs-private': e('fix', RETRY),
-  'coding-agent': e('fix', RETRY),
-  // Limits / retry: a cap, a timeout or a wait; a later rerun goes on.
-  budget: e('limits', RETRY),
-  'wall-time': e('limits', RETRY),
-  'gates-timeout': e('limits', RETRY),
-  'ci-flaky': e('limits', RETRY),
-  'gate-no-verdict': e('limits', RETRY),
-  'coding-agent-wait': e('limits', RETRY),
-  'coding-agent-timeout': e('limits', RETRY),
-  'coding-agent-sessions': e('limits', RETRY),
-  'coding-agent-unconfirmed': e('limits', RETRY),
-  'coding-agent-head-moved': e('limits', RETRY),
-  'review-requested': e('limits', RETRY),
-  'blocked-by': e('limits', RETRY),
+  'gate-definition-changed': e('decide', 'the change redefines the local gate; inspect the diff named in the run status, then accept it once or cancel', ['status', 'allow-gate-change', 'cancel']),
+  'gates-unsandboxed': e('decide', 'a gate would run the PR\'s code without the OS sandbox; accept only after reviewing the whole diff', ['status', 'allow-unsandboxed-gates', 'cancel']),
+  'secret-shaped-content': e('decide', 'a key or token shape was found; remove it and rerun, or accept it when it is a test fixture', ['status', 'resume', 'allow-secret-shapes', 'cancel']),
+  'heal-approve': e('decide', 'a valid CI-heal diagnosis waits for a human approval', ['status', 'resume', 'cancel', 'heal-close']),
+  'heal-diagnosis': e('decide', 'the CI-heal diagnosis does not meet the contract; read it, nothing is implemented', ['status', 'cancel', 'heal-close']),
+  'coding-agent-adopt': e('decide', 'the coding agent\'s pull request failed an adoption check'),
+  'coding-agent-reassigned': e('decide', 'a person re-assigned the coding agent after the factory did; check the issue, then cancel and start again', ['status', 'cancel']),
+  'human-review': e('decide', 'human review on the PR needs an answer (open threads, a change request, or an unreadable review)', ['status', 'resume', 'allow-unsandboxed-lanes', 'cancel']),
+  // Merge.
+  merge: e('merge', 'review approved and gates green: merge is a human step', ['merge', 'resume', 'status']),
+  'merge-refused': e('merge', 'ship\'s merge rule refuses the head; the PR comment has the reasons'),
+  // Fix by hand.
+  'ci-failed': e('fix', 'a real check failure after the CI-fix round'),
+  'merge-conflicts': e('fix', 'the base still conflicts after the conflict-fix rounds; merge the base into the PR branch by hand'),
+  'fix-rounds-spent': e('fix', 'the changes-requested rounds are spent'),
+  'review-invalid': e('fix', 'the review lane failed or broke its output contract after a fresh retry'),
+  'needs-plan': e('fix', 'the item has no acceptance criteria and no trusted plan link'),
+  'pr-exists': e('fix', 'an open PR already uses the run\'s branch'),
+  'pr-not-open': e('fix', 'the PR was closed; reopen it or cancel'),
+  'base-changed': e('fix', 'the PR was retargeted to another base'),
+  'missing-checks': e('fix', 'a required check never reported for the head'),
+  'no-workflows': e('fix', 'no checks and no workflow runs exist for the head'),
+  'gates-disagree': e('fix', 'the merge rule\'s gate read kept disagreeing with the gates loop; check the PR\'s checks by hand'),
+  'prepare-checks': e('fix', 'ship.prepare.checks changed after the run first prepared'),
+  'gate-definition-unknown': e('fix', 'the local gate\'s definition cannot be pinned (wrap it in a committed script)'),
+  gates: e('fix', 'the gates could not run as configured; the run status names the cause'),
+  'sandbox-unavailable': e('fix', 'a lane\'s OS sandbox was not confirmed'),
+  'gate-sandbox-incompatible': e('fix', 'a check fails in the sandbox on the trusted base too'),
+  'gate-container-unavailable': e('fix', 'the gate could not run in a container (runtime, image or project)'),
+  'gate-install-needed': e('fix', 'the gate\'s packages (npm or NuGet) must be installed or restored first'),
+  'private-store': e('fix', 'the run\'s private repository could not be set up (private layout)'),
+  'layout-unsupported': e('fix', 'the private layout does not run with the coding-agent implementer'),
+  'parallel-needs-private': e('fix', 'a parallel run needs factory.run.layout "private"'),
+  'coding-agent': e('fix', 'the coding agent is unavailable, unassigned, or its pull request cannot be used'),
+  // Limits / retry: a cap, a timeout or a wait; a rerun later goes on.
+  budget: e('limits', 'the run reached its AI-credit cap (factory.run.maxRunCredits)'),
+  'wall-time': e('limits', 'the run passed factory.run.maxRunWallTimeMinutes'),
+  'gates-timeout': e('limits', 'gates did not settle in time; a rerun waits again'),
+  'ci-flaky': e('limits', 'known-flaky failures are out of rerun budget'),
+  'gate-no-verdict': e('limits', 'a sandboxed check gave no verdict; rerun, and review the diff if it parks again'),
+  'coding-agent-wait': e('limits', 'the coding agent is still working; rerun later'),
+  'coding-agent-timeout': e('limits', 'the coding agent did not finish within factory.codingAgent.maxWaitMinutes'),
+  'coding-agent-sessions': e('limits', 'the coding agent\'s daily session cap is reached'),
+  'coding-agent-unconfirmed': e('limits', 'the coding agent assign may have started a session; rerun to read the issue'),
+  'coding-agent-head-moved': e('limits', 'the coding agent pushed while the factory fetched its head; rerun after it stopped'),
+  'review-requested': e('limits', 'requested reviewers have not reviewed yet'),
+  'blocked-by': e('limits', 'the item depends on an unfinished item; rerun once it merged'),
 });
 
-/** The lane kinds of laneFailed's default `<kind>-failed` and the decline park `<kind>-declined`. */
-const LANE_PARK = /^(?:implement|review|fix|conflict-fix|ci-fix|coding-agent)-(?:failed|declined)$/;
-const LANE_PARK_ENTRY = e('fix', RETRY);
+/** The write-lane kinds of `<kind>-failed` / `<kind>-declined` (laneFailed's default name, the decline park). */
+const LANE_KINDS = ['implement', 'review', 'fix', 'conflict-fix', 'ci-fix', 'coding-agent'] as const;
+const LANE_PARK = new RegExp(`^(${LANE_KINDS.join('|')})-(failed|declined)$`);
 
-/** A name this version does not know (a newer engine's): read the state, then rerun or cancel. */
-export const UNKNOWN_GATE_ENTRY: GateEntry = e('fix', LOOK);
+/** Pattern entries, for names the engine builds from a lane kind. */
+export function patternEntry(name: string): GateEntry | null {
+  const m = LANE_PARK.exec(name);
+  if (!m) return null;
+  return m[2] === 'failed'
+    ? { group: 'fix', why: `the ${m[1]} lane failed after its fresh retry`, steps: LOOK }
+    : { group: 'fix', why: `the ${m[1]} lane declined the work; its reason is in the run status`, steps: LOOK };
+}
+
+/** A name this version does not know (a newer engine's). */
+export const UNKNOWN_GATE_ENTRY: GateEntry = Object.freeze({ group: 'fix', why: 'a park this version of omg does not know; read the run status', steps: ['resume', 'status'] as const });
 
 /** The table entry of a gate name; `known` false is the unknown fallback. */
 export function gateSteps(name: string): GateEntry & { known: boolean } {
-  const hit = Object.prototype.hasOwnProperty.call(GATE_TABLE, name) ? GATE_TABLE[name] : LANE_PARK.test(name) ? LANE_PARK_ENTRY : null;
+  const exact = Object.prototype.hasOwnProperty.call(GATE_TABLE, name) ? GATE_TABLE[name] : null;
+  const hit = exact ?? patternEntry(name);
   return hit ? { ...hit, known: true } : { ...UNKNOWN_GATE_ENTRY, known: false };
 }
 
+const HEX40 = /^[0-9a-f]{40}$/;
+const SIG8 = /^[0-9a-f]{8}$/;
+
 /** A run key a command may carry: a positive integer issue, or `heal-<8 hex>`. */
 export function validRunKey(key: unknown): key is FactoryRunKey {
-  return typeof key === 'number' ? Number.isSafeInteger(key) && key > 0 : typeof key === 'string' && HEAL_RUN_KEY.test(key);
+  if (typeof key === 'number') return Number.isSafeInteger(key) && key > 0;
+  return typeof key === 'string' && HEAL_RUN_KEY.test(key);
 }
 
 const sig8Of = (key: `heal-${string}`): string => key.slice('heal-'.length);
@@ -142,101 +168,126 @@ export const cancelArgv = (key: FactoryRunKey): string[] => (typeof key === 'num
 /** `omg factory run status <n>`; a heal run `omg factory heal status <sig8>`. */
 export const statusArgv = (key: FactoryRunKey): string[] => (typeof key === 'number' ? ['omg', 'factory', 'run', 'status', String(key)] : ['omg', 'factory', 'heal', 'status', sig8Of(key)]);
 
-/** The facts a step is composed from, all engine-held (the engine) or sealed and verified (a reader). */
-export interface GateNextFacts {
-  key: FactoryRunKey;
-  /** The repository root the engine was started with. */
-  root: string;
+/** The run's merge facts, each already shape-checked by the caller or here. */
+export interface MergeFacts {
   forge: ForgeKind;
+  /** The repository root the engine was started with (`git rev-parse --show-toplevel`). */
+  root: string;
   pr?: number;
   head?: string;
+}
+
+/** The facts that pick a park's conditional steps, all engine-held (the engine) or sealed and verified (a reader). */
+export interface GateNextFacts extends MergeFacts {
+  key: FactoryRunKey;
   /** The park holds a lane commit's secret findings (pendingCommit.secretFindings): `--allow-secret-shapes` answers it. */
   secretFindings?: boolean;
-  /** The human-review park for lanes without the enforced sandbox: `--allow-unsandboxed-lanes` answers it. */
+  /** The human-review park for lanes without the enforced sandbox: `--allow-unsandboxed-lanes` answers it (the engine's call site says so). */
   unsandboxedLanes?: boolean;
   /** A tamper hold is set on the checkout: `omg factory run release --tamper` comes before a rerun. */
   tamperHold?: boolean;
 }
 
-const HEX40 = /^[0-9a-f]{40}$/;
-
-/** The human merge argv the engine prints for that forge; null when there is none to give (Azure DevOps: its command reads a body file, see the PR comment). */
-export function mergeArgv(f: Pick<GateNextFacts, 'forge' | 'root' | 'pr' | 'head'>): string[] | null {
-  if (typeof f.pr !== 'number' || !Number.isSafeInteger(f.pr) || f.pr <= 0 || typeof f.head !== 'string' || !HEX40.test(f.head)) return null;
-  if (f.forge === 'github') return ghMergeCommand(f.pr, f.head);
-  if (f.forge === 'local') return localMerge(f.root).humanMergeCommand(f.pr, f.head);
+/** The human merge argv the engine prints for that forge; null when there is none to give (Azure DevOps, a missing or malformed field). */
+export function mergeArgv(m: MergeFacts): string[] | null {
+  if (typeof m.pr !== 'number' || !Number.isSafeInteger(m.pr) || m.pr <= 0 || typeof m.head !== 'string' || !HEX40.test(m.head)) return null;
+  if (m.forge === 'github') return ghMergeCommand(m.pr, m.head);
+  if (m.forge === 'local') return localMerge(m.root).humanMergeCommand(m.pr, m.head);
+  // Azure DevOps: the engine's command reads a body file it wrote (see the PR comment); nothing is made up here.
   return null;
 }
 
-const FLAGS = {
+/** One command for a human: a label, the exact argv, and whether it can start lanes (and so spend AI credits). */
+export interface NextCommand {
+  label: string;
+  argv: string[];
+  billed: boolean;
+}
+
+const FLAG: Partial<Record<GateStep, string>> = {
   'allow-gate-change': '--allow-gate-change',
   'allow-unsandboxed-gates': '--allow-unsandboxed-gates',
   'allow-secret-shapes': '--allow-secret-shapes',
   'allow-unsandboxed-lanes': '--allow-unsandboxed-lanes',
-} as const;
-
-/** The labels a step may carry (FactoryGate.next[].label is one of these when this version wrote it). */
-export const GATE_NEXT_LABELS = Object.freeze({
-  status: 'read the run state',
-  resume: 'rerun the run',
-  healResume: 'approve or resume the ci-heal run',
-  cancel: 'cancel the run',
-  mergeLocal: 'merge the exact head into your base',
-  mergeGithub: 'merge the exact head the gates checked',
-  releaseTamper: 'clear the tamper hold after checking .git',
-  healClose: 'close the heal signature without a fix',
-  allow: (flag: string): string => `rerun accepting it (${flag})`,
-});
+};
 
 /**
- * The next steps of a park, in table order. A step that cannot be composed
- * from the facts is left out (a flag on a heal run, a merge without a 40-hex
- * head or on Azure DevOps, the tamper release without a hold), and so is one
- * that would not pass the state's own shape check (a root with a control
- * character), so the engine never seals a state its parser refuses. An
- * invalid key gives no step at all.
+ * The commands of a step list, in order. A step that cannot be composed
+ * from validated fields is left out (a flag on a heal run, a merge without a
+ * 40-hex head or on Azure DevOps, a heal step on an issue run). An invalid
+ * key gives no command at all.
  */
-export function gateNext(name: string, f: GateNextFacts): FactoryGateNextStep[] {
-  if (!validRunKey(f.key)) return [];
-  const heal = typeof f.key === 'string';
-  const out: FactoryGateNextStep[] = [];
-  for (const step of gateSteps(name).steps) {
+export function nextCommands(key: FactoryRunKey, steps: readonly GateStep[], merge?: MergeFacts): NextCommand[] {
+  if (!validRunKey(key)) return [];
+  const heal = typeof key === 'string';
+  const sig8 = heal ? sig8Of(key) : '';
+  const out: NextCommand[] = [];
+  for (const step of steps) {
     switch (step) {
-      case 'status': out.push({ label: GATE_NEXT_LABELS.status, argv: statusArgv(f.key) }); break;
-      case 'resume': out.push({ label: heal ? GATE_NEXT_LABELS.healResume : GATE_NEXT_LABELS.resume, argv: resumeArgv(f.key), billed: true }); break;
-      case 'cancel': out.push({ label: GATE_NEXT_LABELS.cancel, argv: cancelArgv(f.key) }); break;
+      // A resume can start lanes (billed); `heal approve` starts the ci-heal run's lanes.
+      case 'resume': out.push({ label: heal ? 'approve / resume the ci-heal run' : 'rerun the run', argv: resumeArgv(key), billed: true }); break;
+      case 'cancel': out.push({ label: 'cancel the run', argv: cancelArgv(key), billed: false }); break;
+      case 'status': out.push({ label: 'read the run state', argv: statusArgv(key), billed: false }); break;
       case 'merge': {
-        const argv = mergeArgv(f);
-        if (argv) out.push({ label: f.forge === 'local' ? GATE_NEXT_LABELS.mergeLocal : GATE_NEXT_LABELS.mergeGithub, argv });
+        const argv = merge ? mergeArgv(merge) : null;
+        if (argv) out.push({ label: merge!.forge === 'local' ? 'merge the exact head into your base' : 'merge the exact head the gates checked', argv, billed: false });
         break;
       }
-      case 'release-tamper': if (f.tamperHold) out.push({ label: GATE_NEXT_LABELS.releaseTamper, argv: RELEASE_TAMPER_COMMAND.split(' ') }); break;
-      case 'heal-close': if (heal) out.push({ label: GATE_NEXT_LABELS.healClose, argv: ['omg', 'factory', 'heal', 'close', sig8Of(f.key as `heal-${string}`)] }); break;
-      case 'allow-gate-change': case 'allow-unsandboxed-gates': case 'allow-secret-shapes': case 'allow-unsandboxed-lanes': {
-        // The engine accepts --allow-secret-shapes only for a lane commit's findings, --allow-unsandboxed-lanes only for that human-review park.
-        const applies = step === 'allow-secret-shapes' ? f.secretFindings : step === 'allow-unsandboxed-lanes' ? f.unsandboxedLanes : true;
-        if (!heal && applies) out.push({ label: GATE_NEXT_LABELS.allow(FLAGS[step]), argv: [...resumeArgv(f.key), FLAGS[step]], billed: true });
+      case 'release-tamper': out.push({ label: 'clear the tamper hold after checking .git', argv: RELEASE_TAMPER_COMMAND.split(' '), billed: false }); break;
+      case 'allow-gate-change': case 'allow-unsandboxed-gates': case 'allow-secret-shapes': case 'allow-unsandboxed-lanes':
+        if (!heal) out.push({ label: `rerun accepting it (${FLAG[step]})`, argv: [...resumeArgv(key), FLAG[step]!], billed: true });
         break;
-      }
+      case 'heal-close': if (SIG8.test(sig8)) out.push({ label: 'close the heal run', argv: ['omg', 'factory', 'heal', 'close', sig8], billed: false }); break;
+      case 'heal-run': if (SIG8.test(sig8)) out.push({ label: 'run the debugger lane again', argv: ['omg', 'factory', 'heal', 'run', sig8], billed: true }); break;
     }
   }
-  return out.filter(gateNextStepOk);
+  return out;
+}
+
+/** A gate's steps with the conditional ones its facts do not call for left out. */
+export function gateStepsFor(name: string, f: Pick<GateNextFacts, 'secretFindings' | 'unsandboxedLanes' | 'tamperHold'>): GateStep[] {
+  return gateSteps(name).steps.filter((s) => (s === 'allow-secret-shapes' ? f.secretFindings === true : s === 'allow-unsandboxed-lanes' ? f.unsandboxedLanes === true : s === 'release-tamper' ? f.tamperHold === true : true));
 }
 
 /**
- * A reader's next steps of a parked state that passed its seal and ledger
- * checks (the caller's job: an unverified state gives no command): the
- * sealed FactoryGate.next, or, for a state sealed before next existed, the
- * table composed from the state's own validated fields. `root` is the
- * reader's repository root; `tamperHold` whether a hold is set on it now.
+ * A park's next commands from its facts, in table order, without any a state
+ * parser would refuse (a root with a control character), so the engine never
+ * seals a state its parser rejects and a reader's fallback matches.
  */
-export function stateGateNext(s: FactoryRunState, root: string, tamperHold = false): FactoryGateNextStep[] {
-  if (!s.gate) return [];
-  if (s.gate.next) return s.gate.next;
-  return gateNext(s.gate.name, {
+export function gateCommands(name: string, f: GateNextFacts): NextCommand[] {
+  return nextCommands(f.key, gateStepsFor(name, f), f).filter((n) => gateNextStepOk(toStep(n)));
+}
+
+/** The stored form of a command (FactoryGate.next): `billed` only when true. */
+const toStep = (n: NextCommand): FactoryGateNextStep => ({ label: n.label, argv: n.argv, ...(n.billed ? { billed: true as const } : {}) });
+
+/** The commands of a sealed FactoryGate.next. */
+export const fromSealed = (next: readonly FactoryGateNextStep[]): NextCommand[] => next.map((n) => ({ label: n.label, argv: [...n.argv], billed: n.billed === true }));
+
+/** What the engine seals in FactoryGate.next when it parks at `name`. */
+export function gateNext(name: string, f: GateNextFacts): FactoryGateNextStep[] {
+  return gateCommands(name, f).map(toStep);
+}
+
+/** The facts of a parked state as a reader has them (no unsandboxed-lanes flag: only the engine's call site knows it). */
+export function stateFacts(s: FactoryRunState, root: string, tamperHold = false): GateNextFacts {
+  return {
     key: runKeyOf(s), root, forge: s.forgeKind ?? 'github', ...(s.pr !== undefined ? { pr: s.pr } : {}), ...(s.head ? { head: s.head } : {}),
     secretFindings: Boolean(s.pendingCommit?.secretFindings?.length), tamperHold,
-  });
+  };
+}
+
+/**
+ * A reader's next commands of a parked state that passed its seal and
+ * ledger checks (the caller's job: an unverified state gives no command):
+ * the sealed FactoryGate.next, or, for a state sealed before next existed,
+ * the table composed from the state's own validated fields. `root` is the
+ * reader's repository root; `tamperHold` whether a hold is set on it now.
+ */
+export function stateGateNext(s: FactoryRunState, root: string, tamperHold = false): NextCommand[] {
+  if (!s.gate) return [];
+  if (s.gate.next) return fromSealed(s.gate.next);
+  return gateCommands(s.gate.name, stateFacts(s, root, tamperHold));
 }
 
 /** A word printed bare in a POSIX shell (no backslash: it escapes there). */
@@ -249,12 +300,12 @@ const BARE_WIN = /^[A-Za-z0-9_./:\\+=-]+$/;
  * `%`, `!`, `^`, `&`, `|`, `<`, `>`, `;`, `'` or backslash inside).
  */
 const DOUBLE_QUOTABLE = /^[\p{L}\p{N} /:._-]+$/u;
-/** A character a terminal shows as blank, nothing or a control (what plainText replaces): never printed inside a command. */
-const UNPRINTABLE = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u;
+/** A word with a character a terminal shows as blank, nothing or a control (what score.ts plainText replaces): never printed inside a command. */
+const unprintable = (word: string): boolean => plainText(word) !== word;
 
 const bare = (word: string, platform: NodeJS.Platform): boolean => (platform === 'win32' ? BARE_WIN : BARE_POSIX).test(word);
 /** The word prints bare or double-quoted the same in every shell family. */
-const portable = (word: string, platform: NodeJS.Platform): boolean => !UNPRINTABLE.test(word) && (bare(word, platform) || DOUBLE_QUOTABLE.test(word));
+const portable = (word: string, platform: NodeJS.Platform): boolean => !unprintable(word) && (bare(word, platform) || DOUBLE_QUOTABLE.test(word));
 
 /**
  * One word for the shell family of `platform`: bare when safe, double quotes
@@ -264,7 +315,7 @@ const portable = (word: string, platform: NodeJS.Platform): boolean => !UNPRINTA
  */
 function quoteWord(word: string, platform: NodeJS.Platform): string {
   if (bare(word, platform)) return word;
-  if (DOUBLE_QUOTABLE.test(word) && !UNPRINTABLE.test(word)) return `"${word}"`;
+  if (DOUBLE_QUOTABLE.test(word) && !unprintable(word)) return `"${word}"`;
   return platform === 'win32' ? `'${word.replace(/'/g, "''")}'` : `'${word.replace(/'/g, "'\\''")}'`;
 }
 
@@ -277,14 +328,14 @@ export function commandLine(argv: readonly string[], platform: NodeJS.Platform =
  * What a human is shown for a command (the stored argv stays exact). The
  * repository root is the one free-form word a command holds (`git -C
  * <root> ...`): when it is outside the portable set on Windows (cmd.exe
- * ignores single quotes), or holds a character a terminal cannot show, the
- * `-C <root>` form is withheld and the command is to be run in the
- * repository root (`inRoot`).
+ * ignores single quotes), or holds a character a terminal cannot show
+ * anywhere, the `-C <root>` form is withheld and the command is to be run in
+ * the repository root (`inRoot`). `--json` keeps the exact argv either way.
  */
 export function commandText(argv: readonly string[], platform: NodeJS.Platform = process.platform): { line: string; inRoot: boolean } {
   if (argv[0] === 'git' && argv[1] === '-C' && argv.length > 3) {
     const root = argv[2];
-    if (!portable(root, platform) && (platform === 'win32' || UNPRINTABLE.test(root))) return { line: commandLine(['git', ...argv.slice(3)], platform), inRoot: true };
+    if (!portable(root, platform) && (platform === 'win32' || unprintable(root))) return { line: commandLine(['git', ...argv.slice(3)], platform), inRoot: true };
   }
   return { line: commandLine(argv, platform), inRoot: false };
 }

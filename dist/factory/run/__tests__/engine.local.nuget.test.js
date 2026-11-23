@@ -104,7 +104,7 @@ describe('a dotnet gate that cannot restore its NuGet packages is never a code f
         const lanes = lanesFor(w, [commitFile('src/App/Greet.cs', 'namespace App;\n'), review('approve')]);
         const out = await runFactoryEngine(localOpts(w, lanes, { gateSandbox: r.sandbox }));
         expect(out.gate?.name, out.message).toBe('gate-install-needed');
-        expect(sealedNext(w.root, LOCAL_ISSUE, out)).toEqual([steps(LOCAL_ISSUE).resume, steps(LOCAL_ISSUE).status, steps(LOCAL_ISSUE).cancel]);
+        expect(sealedNext(w.root, LOCAL_ISSUE, out)).toEqual([steps(LOCAL_ISSUE).status, steps(LOCAL_ISSUE).resume, steps(LOCAL_ISSUE).cancel]);
         expect(out.gate?.reason).toMatch(/could not restore its NuGet packages on [0-9a-f]{12} \(NU1301\), which says nothing about the code, so no ci-fix lane was started\. The OS sandbox has no network.*set factory\.run\.gateInstall "sandboxed" in your user config.*then rerun omg factory run/);
         expect(lanes.started).toHaveLength(2);
         expect(purposes(r)).toEqual(['gate']);
