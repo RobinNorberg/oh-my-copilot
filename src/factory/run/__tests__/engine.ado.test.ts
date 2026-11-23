@@ -15,6 +15,7 @@ import { defaultExec } from '../../../ship/exec.js';
 import { readFactoryState } from '../state.js';
 import { ISSUE, remoteHead } from './fake-lanes.js';
 import { ADO_URL, PR_ID, h, ado, sleeps, useAdoHarness, happy, run, expectNoMerge } from './engine-ado-harness.js';
+import { sealedNext, steps } from './gate-next-expect.js';
 
 useAdoHarness();
 
@@ -33,6 +34,8 @@ describe('omg factory run on Azure DevOps (fake ADO, real git)', () => {
     expect(state.plan).toMatchObject({ source: 'link', path: 'docs/plan.md' });
     expect(state.issueBody).toContain('## Acceptance criteria');
     expect(state.issueBody).toContain('greet() returns hi');
+    // Azure DevOps: no merge argv is sealed (its command reads a body file; the PR comment has it), only the rerun and the status read.
+    expect(sealedNext(h.root, ISSUE, out)).toEqual([steps(ISSUE).resume, steps(ISSUE).status]);
 
     // The draft PR: the run's branch onto the base, linked to the work item.
     const created = ado.calls.find((c) => c.route === 'git.pullRequests.POST')!;

@@ -136,15 +136,15 @@ function extract() {
             else
                 dynamic.push(`${file}: ${arg}`);
         }
-        // setGate(state, 'name', reason...) calls (not the definition): the literal before the reason.
-        for (const m of text.matchAll(/(?<!function )setGate\(/g)) {
+        // setGate(state, 'name', reason...) and the engine's this.park(state, 'name', reason...) calls (not the definitions): the literal before the reason.
+        for (const m of text.matchAll(/(?<!function )(?:setGate|this\.park)\(/g)) {
             // The first literal followed by the reason, a nested moveTo's phase left out (setGate(moveTo(x, 'review', ...), 'review-tampered', ...)).
             const call = text.slice(m.index, m.index + 1_500).replace(new RegExp(`moveTo\\([^,]+,\\s*'${KEBAB}'`, 'g'), '');
             const lit = new RegExp(`'(${KEBAB})',\\s*(?:reason\\b|\`)`).exec(call)?.[1];
             if (lit)
                 names.add(lit);
-            // The definition, and this.gate()'s own body (its callers are read above).
-            else if (!/^setGate\((?:state: |s, name, )/.test(call))
+            // The definitions, and this.gate()'s and park()'s own bodies (their callers are read above).
+            else if (!/^(?:setGate|this\.park)\((?:state: |s, name, )/.test(call))
                 dynamic.push(`${file}: setGate without a literal name`);
         }
         // Park objects ({ name: X, reason }, any key order): a literal, an exported constant, or a reviewed expression.

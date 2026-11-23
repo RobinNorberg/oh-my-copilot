@@ -11,6 +11,7 @@ import { FactoryTamperHoldError, readFactoryState } from '../state.js';
 import { readTamperHold, releaseTamperHold, tamperHoldPath } from '../tamper-quarantine.js';
 import { FakeProcesses, gitIn, ISSUE, remoteHead, review, type LaneScript } from './fake-lanes.js';
 import { edit, h, run, useSandboxHarness } from './engine-sandbox-harness.js';
+import { sealedNext, steps } from './gate-next-expect.js';
 
 // review-484b 4: lets one test make quarantineTamper throw; every other call goes to the real one.
 const quarantineFault = vi.hoisted(() => ({ error: undefined as Error | undefined }));
@@ -76,6 +77,8 @@ describe('secret-shaped content (L3)', () => {
     expect(out.gate?.name, out.message).toBe('secret-shaped-content');
     expect(out.gate?.reason).toContain('src/config.js (github-token)');
     expect(out.gate?.reason).toContain('--allow-secret-shapes');
+    // A lane commit's findings: the rerun after removing it, or the rerun accepting them.
+    expect(sealedNext(h.root, ISSUE, out)).toEqual([steps(ISSUE).status, steps(ISSUE).resume, steps(ISSUE).flag('--allow-secret-shapes'), steps(ISSUE).cancel]);
     expect(JSON.stringify(readFactoryState(h.root, ISSUE))).not.toContain(TOKEN.slice(4));
     expect(out.message).not.toContain(TOKEN.slice(4));
     expect(remoteHead(h)).toBeNull();

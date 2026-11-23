@@ -7,6 +7,7 @@ import { EngineLedger } from '../ledger.js';
 import { computeFactoryIntegrity, factoryOwnerPath, factoryStateDir, factoryStatePath, readFactoryState } from '../state.js';
 import { commitFile, FakeLanes, gitIn, ISSUE, PR, remoteHead, review, verdictBlock } from './fake-lanes.js';
 import { h, useEngineHarness, limits, opts, ledger, asEngine, shipAsEngine, run } from './engine-harness.js';
+import { sealedNext, steps } from './gate-next-expect.js';
 useEngineHarness();
 describe('omg factory run engine (fake lanes, real git, scripted gh)', () => {
     describe('engine-owned state (a lane may rewrite .omg/ and recompute every seal)', () => {
@@ -28,6 +29,7 @@ describe('omg factory run engine (fake lanes, real git, scripted gh)', () => {
             expect(out.exitCode).toBe(EXIT_AWAITING_HUMAN);
             expect(out.gate?.name).toBe('state-tampered');
             expect(out.gate?.reason).toMatch(/\.omg\/state\/ship\/42\.json changed outside the engine/);
+            expect(sealedNext(h.root, ISSUE, out)).toEqual([steps(ISSUE).status, steps(ISSUE).resume, steps(ISSUE).cancel]);
             expect(readShipState(h.root, PR).verdicts.map((v) => v.verdict)).toEqual(['changes-requested']);
             expect(readdirSync(join(h.root, '.omg', 'state', 'ship')).some((f) => f.startsWith('42.json.tampered-'))).toBe(true);
             expect(h.calls.filter((c) => c.startsWith('git push '))).toHaveLength(1);

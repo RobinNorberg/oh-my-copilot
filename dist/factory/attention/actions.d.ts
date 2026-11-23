@@ -1,93 +1,27 @@
 /**
  * `omg factory attention`: the gate -> human action -> command table.
  *
- * One entry per gate name the engine can park at (src/factory/run/: every
- * `this.gate(...)` / `setGate(...)` call, every park object's `name` and
- * every `*_GATE` constant; __tests__/attention-actions.test.ts extracts them
- * from the source and fails on a name with no entry). Dynamic names
- * (`<kind>-failed`, `<kind>-declined`) are pattern entries over the lane
- * kinds. An unknown name lands in "Fix by hand" with the resume and status
- * commands.
- *
- * The `why` line is engine-authored text chosen by the gate name: the run's
- * free-text reason is never in it. A command is composed only from validated
- * fields: the run key (a positive integer, or `heal-<8 hex>`), a 40-hex head
- * sha, a positive PR number, the repository root and the fixed flags below.
- * Title, reason, detail, branch names and every other free text never reach
- * an argv.
+ * The table, the command composition and the quoting live in
+ * src/factory/run/gate-next.ts, shared with the engine, which seals a park's
+ * next commands (FactoryGate.next) from the same table; this module keeps
+ * attention's names for them and the read-side text (group titles, the
+ * suppressed and reminder commands). See gate-next.ts for the rules: a
+ * command is composed only from validated fields, never from free text.
  */
-import type { ForgeKind } from '../../forge/types.js';
-import { type FactoryRunKey } from '../run/state.js';
+import { gateSteps, patternEntry, type GateEntry, type GateGroup, type GateStep, type NextCommand } from '../run/gate-next.js';
+import type { FactoryRunKey } from '../run/state.js';
+export { cancelArgv, commandLine, commandText, fromSealed, gateCommands, gateStepsFor, mergeArgv, nextCommands, resumeArgv, stateFacts, stateGateNext, statusArgv, validRunKey, type MergeFacts, type NextCommand, } from '../run/gate-next.js';
 export declare const ATTENTION_GROUPS: readonly ["inspect", "broken", "decide", "merge", "fix", "limits"];
-export type AttentionGroup = (typeof ATTENTION_GROUPS)[number];
+export type AttentionGroup = GateGroup;
+export type ActionStep = GateStep;
+export type GateAction = GateEntry;
+export declare const GATE_ACTIONS: Readonly<Record<string, GateEntry>>;
+export declare const patternAction: typeof patternEntry;
+export declare const UNKNOWN_GATE_ACTION: GateEntry;
+export declare const gateAction: typeof gateSteps;
 export declare const GROUP_TITLES: Readonly<Record<AttentionGroup, string>>;
-export interface NextCommand {
-    label: string;
-    argv: string[];
-    /** True when the command can start lanes, and so spend AI credits (a resume, an approve, a heal lane). */
-    billed: boolean;
-}
-/**
- * A step of the table: `resume` (`omg factory run <n>`, a heal run `omg
- * factory heal approve <sig8>`), `cancel`, `status`, a resume with one fixed
- * acceptance flag (issue runs only: `heal approve` takes none), `merge` (the
- * forge's human merge command), `release-tamper`, and for a heal signature
- * without a run state `heal-close` / `heal-run`.
- */
-export type ActionStep = 'resume' | 'cancel' | 'status' | 'merge' | 'allow-gate-change' | 'allow-unsandboxed-gates' | 'allow-secret-shapes' | 'heal-close' | 'heal-run';
-export interface GateAction {
-    group: AttentionGroup;
-    /** One line, engine-authored, never the run's reason. */
-    why: string;
-    steps: readonly ActionStep[];
-}
-/** Every gate name the engine parks at with a fixed name. */
-export declare const GATE_ACTIONS: Readonly<Record<string, GateAction>>;
-/** Pattern entries, for names the engine builds from a lane kind. */
-export declare function patternAction(name: string): GateAction | null;
-export declare const UNKNOWN_GATE_ACTION: GateAction;
-/** The table entry of a gate name; `known` false is the unknown fallback. */
-export declare function gateAction(name: string): GateAction & {
-    known: boolean;
-};
-/** A run key a command may carry: a positive integer issue, or `heal-<8 hex>`. */
-export declare function validRunKey(key: unknown): key is FactoryRunKey;
-export declare function resumeArgv(key: FactoryRunKey): string[];
-export declare function cancelArgv(key: FactoryRunKey): string[];
-/** `omg factory run status <n>`; a heal run `omg factory heal status <sig8>`. */
-export declare function statusArgv(key: FactoryRunKey): string[];
-/** The run's merge facts, each already shape-checked by the caller or here. */
-export interface MergeFacts {
-    forge: ForgeKind;
-    /** The repository root (`git rev-parse --show-toplevel`), as the engine derives it. */
-    root: string;
-    pr?: number;
-    head?: string;
-}
-/** The human merge argv the engine prints for that forge; null when there is none to give (Azure DevOps, a missing or malformed field). */
-export declare function mergeArgv(m: MergeFacts): string[] | null;
-/**
- * The next commands of a row, in table order. A step that cannot be composed
- * from validated fields is left out (a flag on a heal run, a merge without a
- * 40-hex head). An invalid key gives no command at all.
- */
-export declare function nextCommands(key: FactoryRunKey, steps: readonly ActionStep[], merge?: MergeFacts): NextCommand[];
 /** Shown when a state fails its seal or ledger check: only the read-only status command. */
 export declare const suppressedCommands: (key: FactoryRunKey) => NextCommand[];
 /** A poll reminder's command: the cancel where a rerun re-parks (decisions-rewritten), else the resume. */
 export declare function reminderCommand(key: FactoryRunKey, gate: string): string;
-/** One argv as a copyable line for the shell family of `platform` (default: this host's). */
-export declare function commandLine(argv: readonly string[], platform?: NodeJS.Platform): string;
-/**
- * What the terminal view prints for a command. The repository root is the
- * one free-form word a command can hold (`git -C <root> merge ...`): when
- * it is outside the strict set on Windows (cmd.exe ignores single quotes),
- * or holds a character a terminal cannot show anywhere, the `-C <root>`
- * form is withheld and the command is to be run in the repository root.
- * `--json` keeps the exact argv either way.
- */
-export declare function commandText(argv: readonly string[], platform?: NodeJS.Platform): {
-    line: string;
-    inRoot: boolean;
-};
 //# sourceMappingURL=actions.d.ts.map
