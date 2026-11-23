@@ -157,7 +157,7 @@ describe('dashboard page script: DOM builders', () => {
     },
     live: { engines: 0, slots: 0, runs: [], inFlightCredits: 0 },
     runs: [run('#1', { title: HOSTILE }), run('#2', { verified: false, trust: 'seal', title: '' })],
-    tasks: [], cost: { caps: { source: 'unresolved', note: 'n', laneMaxCredits: null, maxRunCredits: null }, totals: { credits: 0, premiumRequests: 0, lanes: 0 }, byRole: [], byDay: [], byRun: [], excluded: { runs: 1, credits: 0, premiumRequests: 0 } },
+    tasks: [], cost: { caps: { source: 'unresolved', note: 'n', laneMaxCredits: null, maxRunCredits: null }, totals: { credits: 0, premiumRequests: 0, lanes: 0 }, byRole: [], byDay: [], byRun: [], excluded: { runs: 1, missing: 0 } },
     throughput: { byDay: [], engineToMergeReady: { runs: 0, medianMs: null, p90Ms: null }, waitingAtMerge: { runs: 0, medianMs: null } }, bench: [], warnings: [HOSTILE],
   });
 

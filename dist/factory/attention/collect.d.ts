@@ -106,6 +106,12 @@ type FileRead = {
 export declare function readRegularFile(path: string, max?: number): FileRead;
 export interface ReadRun {
     key: FactoryRunKey;
+    /**
+     * The parsed state, also when it failed a check. Callers must not use its
+     * free text (title, reasons, notes, lane ids) or its numbers (credits,
+     * requests, times) unless `trust` is `ok`: only enum-shaped values that are
+     * validated against the known set may be shown for any other trust.
+     */
     state?: FactoryRunState;
     trust: AttentionTrust;
     error?: string;

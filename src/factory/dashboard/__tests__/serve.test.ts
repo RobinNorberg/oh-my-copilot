@@ -171,7 +171,7 @@ function renderedText(data: unknown, details: Record<string, unknown>): string {
 const emptySummary = (): Record<string, unknown> => ({
   schemaVersion: 2, generatedAt: '2026-11-20T10:10:00.000Z', forge: { read: false, at: null }, rev: 'r',
   attention: { items: [] }, live: { engines: 0, slots: 0, runs: [], inFlightCredits: 0 }, runs: [], tasks: [],
-  cost: { caps: { source: 'unresolved', note: 'n', laneMaxCredits: null, maxRunCredits: null }, totals: { credits: 0, premiumRequests: 0, lanes: 0 }, byRole: [], byDay: [], byRun: [], excluded: { runs: 0 } },
+  cost: { caps: { source: 'unresolved', note: 'n', laneMaxCredits: null, maxRunCredits: null }, totals: { credits: 0, premiumRequests: 0, lanes: 0 }, byRole: [], byDay: [], byRun: [], excluded: { runs: 0, missing: 0 } },
   throughput: { byDay: [], engineToMergeReady: { runs: 0, medianMs: null, p90Ms: null }, waitingAtMerge: { runs: 0, medianMs: null } }, bench: [], warnings: [],
 });
 
@@ -405,8 +405,8 @@ describe('dashboard server: functional', () => {
     expect(served).toEqual(JSON.parse(JSON.stringify({ ...expected, rev: summaryRev({ ...expected, rev: undefined }) })));
     const { rev, ...rest } = served;
     rest.attention.items.forEach((i: { next: Record<string, unknown>[] }) => i.next.forEach((n) => { delete n.line; delete n.inRoot; }));
-    // Trusted rows only: the collector's JSON, but for the excluded numbers and the absolute repository path (never served).
-    expect(rest).toEqual(JSON.parse(JSON.stringify({ ...d, attention: { ...d.attention, repo: 'repo' }, cost: { ...d.cost, excluded: { runs: 0 } } })));
+    // Trusted rows only: the collector's JSON, but for the absolute repository path (never served).
+    expect(rest).toEqual(JSON.parse(JSON.stringify({ ...d, attention: { ...d.attention, repo: 'repo' } })));
     expect(r.headers.etag).toBe(`"${rev}"`);
     expect((await get(s, `${base(s)}api/v1/summary`, { headers: { 'If-None-Match': `"${rev}"` } })).status).toBe(304);
     const merge = served.attention.items.find((i: { key: string }) => i.key === '#1').next[0];

@@ -26,7 +26,8 @@
  * pin a CPU. The summary's rev is a hash of its time-independent part; when
  * it changes, every event stream gets `event: changed`.
  */
-import { type Server } from 'http';
+import { type Server, type ServerResponse } from 'http';
+import { type AttentionTrust } from '../attention/collect.js';
 import { type FactoryRunKey } from '../run/state.js';
 import type { DashboardDataV2 } from './collect-v2.js';
 /** The only address the server listens on. */
@@ -49,19 +50,57 @@ export declare function tokenEquals(given: string, expected: string): boolean;
 /** A `/api/v1/run/<key>` key: a positive integer (no leading zero) or `heal-<8 hex>`; null for anything else. */
 export declare function parseRunKey(s: string): FactoryRunKey | null;
 export declare function contentSecurityPolicy(nonce: string): string;
+type CollectedItem = DashboardDataV2['attention']['items'][number];
+type UntrustedTrust = Exclude<AttentionTrust, 'ok'>;
 /** Served attention commands carry the line the CLI prints for this platform (commandText), so the page copies exactly that. */
-export type ServedNext = DashboardDataV2['attention']['items'][number]['next'][number] & {
+export type ServedNext = CollectedItem['next'][number] & {
     line: string;
     inRoot: boolean;
 };
-export type ServedSummary = DashboardDataV2 & {
+export type ServedItem = Omit<CollectedItem, 'next'> & {
+    next: ServedNext[];
+};
+export type ServedSummary = Omit<DashboardDataV2, 'attention'> & {
+    attention: Omit<DashboardDataV2['attention'], 'items'> & {
+        items: ServedItem[];
+    };
     rev: string;
 };
+/**
+ * The one sentence a row of a state that is not trusted shows: fixed here,
+ * never the collector's text (which may quote the state, a parse error or a
+ * local path). The page has its own copy and ignores this for such rows.
+ */
+export declare const UNTRUSTED_WHY: Readonly<Record<UntrustedTrust, string>>;
+/** A run label (`#12`, `heal-0123abcd`) back to its key, re-validated; null for anything else. */
+export declare function keyOfLabel(label: unknown): FactoryRunKey | null;
+/**
+ * The served form of one attention item. A trusted row is the collector's
+ * (plus the command lines). Any other row is built from an allowlist, never
+ * by spreading the collector's object: the re-validated key, the group, the
+ * trust value, the age, a known gate name and phase, the fixed sentence of
+ * its trust, and the status command when the collector offered it, rebuilt
+ * here from the key. No title, PR, head, reason, credits, notes or log.
+ */
+export declare function servedItem(i: CollectedItem, platform?: NodeJS.Platform): ServedItem;
+type CollectedRun = DashboardDataV2['runs'][number];
+/** A run row: a verified run as collected; any other from an allowlist (key, kind, trust, a known phase and gate name; nothing else). */
+export declare function servedRun(r: CollectedRun): CollectedRun;
+/** Fixed, engine-authored warnings: a line per run whose state cannot be read, and a count of the rest (printed in the terminal, never served). */
+export declare function servedWarnings(raw: readonly string[], items: readonly ServedItem[], runs: readonly CollectedRun[]): string[];
 export declare function servedSummary(d: DashboardDataV2, rev: string, platform?: NodeJS.Platform): ServedSummary;
 /** The rev: a hash of the summary without its clock-derived fields, so only a change of state changes it. */
-export declare function summaryRev(d: DashboardDataV2): string;
+export declare function summaryRev(d: unknown): string;
 /** One cheap signature of a directory: names, sizes and mtimes (a missing dir is its own value). */
 export declare function dirSignature(dir: string): string;
+/** An event stream whose client does not read holds at most this much in the server's buffer before it is dropped. */
+export declare const STREAM_BUFFER_MAX: number;
+/**
+ * One write to an event stream. A client that stops reading (write returns
+ * false, or the buffer passes STREAM_BUFFER_MAX) is destroyed and leaves the
+ * set: the server never buffers without bound for it. False: dropped.
+ */
+export declare function writeEvent(s: Pick<ServerResponse, 'write' | 'writableLength' | 'destroy'>, chunk: string, streams: Set<unknown>): boolean;
 export interface DashboardServerOptions {
     root: string;
     ledgerDir: string;
@@ -132,4 +171,5 @@ export interface RunDetail {
  * unverified run gets its summary row only (no free text). Null: no such run.
  */
 export declare function runDetail(root: string, ledgerDir: string, s: ServedSummary, key: FactoryRunKey): RunDetail | null;
+export {};
 //# sourceMappingURL=serve.d.ts.map

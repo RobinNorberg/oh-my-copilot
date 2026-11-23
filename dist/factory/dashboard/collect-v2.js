@@ -17,16 +17,21 @@
  * Every string from a state, the tracker or a bench file is untrusted: it
  * goes through plainText here and is HTML-escaped again in render.ts.
  */
-import { readdirSync, readFileSync, statSync } from 'fs';
-import { join } from 'path';
+import { readdirSync, statSync } from 'fs';
+import { dirname, join } from 'path';
 import { LOCAL_REMOTE } from '../../forge/local/mirror.js';
 import { plainText } from '../check/score.js';
-import { attentionJson, collectAttention, readRun, runKeyOfName } from '../attention/collect.js';
+import { attentionJson, collectAttention, readRegularFile, readRun, runKeyOfName } from '../attention/collect.js';
+import { ledgerFilePath } from '../run/ledger.js';
 import { factoryProgressFile } from '../run/progress.js';
 import { defaultOwnerDeps, FACTORY_PHASES, factoryStateDir, heldSlots, runLabel, TERMINAL_FACTORY_PHASES, } from '../run/state.js';
 import { localDay, parseSince } from './collect.js';
 export const DASHBOARD_SCHEMA_VERSION_2 = 2;
 const GATE_NOTE = /^awaiting-human: ([^:]+):/;
+/** resumed()'s note: the rerun that drops the gate. */
+const RERUN_NOTE = /^rerun after awaiting-human: /;
+/** A timestamp this far past now is reported as later than now (engine and reader clocks); every time is still clamped to now. */
+const FUTURE_SLACK_MS = 60_000;
 const SAFE_NAME = /^[a-z0-9][a-z0-9-]{0,59}$/;
 const HEX40 = /^[0-9a-f]{40}$/;
 const MAX_BENCH_FILES = 200;
@@ -42,22 +47,49 @@ function addUsage(into, u) {
     into.lanes += u.lanes;
 }
 /**
+ * What a history entry does to a park. The engine's writers (src/factory/run/):
+ * - `park`: setGate's `awaiting-human: <gate>: <reason>` note (from === to);
+ *   a park after a park changes the gate, the wait goes on.
+ * - `end`: an entry that clears the gate: a phase move (moveTo, from !== to,
+ *   incl. a cancel and markMergedByHuman's merged record) and the resume's
+ *   `rerun after awaiting-human: <gate>` note (resumed(), which drops the gate).
+ * - `note`: every other from === to note (tracker-sync failures, clean's
+ *   --lane-stopped, lane, gate, sandbox and model notes). None of them clears
+ *   the gate, so inside a park they are waiting time like the park itself.
+ */
+function parkEffect(h) {
+    if (h.from === null || h.from !== h.to)
+        return { kind: 'end' };
+    const note = String(h.note ?? '');
+    const park = GATE_NOTE.exec(note);
+    if (park)
+        return { kind: 'park', gate: text(park[1], 60) };
+    return RERUN_NOTE.test(note) ? { kind: 'end' } : { kind: 'note' };
+}
+/**
  * The run's timeline from its history. Each history entry starts a segment
  * that lasts to the next entry. A park note (`awaiting-human: <gate>: ...`,
- * from === to, written by setGate) starts WAITING time, which lasts to the
- * next entry (a rerun, a human-merge record, a cancel), or to `now` while the
- * run is still parked. Every other segment is engine time of the phase the
- * last move entered; a terminal phase ends the run (no segment after it), and
- * the last segment of a run that is neither parked nor finished runs to
+ * written by setGate) starts WAITING time, which lasts until an entry ends the
+ * park (parkEffect: a phase move, a rerun, a human-merge record, a cancel):
+ * notes written while parked are waiting time too. While the run is still
+ * parked the wait runs to `now`, from `waitingSince` (the later of the last
+ * park note and `gate.at`). Every other segment is engine time of the phase
+ * the last move entered; a terminal phase ends the run (no segment after it),
+ * and the last segment of a run that is neither parked nor finished runs to
  * `updatedAt`. A state whose gate is newer than its last history entry (no
  * park note) waits from `gate.at`.
+ *
+ * Every time is clamped to `now`, and an entry older than the one before it
+ * starts where that one ended: no span is negative or later than now.
+ * `clamped` says why when an entry is out of order or later than now (beyond
+ * a minute of clock skew).
  *
  * What it cannot tell: an engine that died without a park (the gap to the
  * next invocation counts as engine time), and when a human really merged a
  * PR (the wait ends when a read surface or a rerun recorded it).
  */
 export function runTimeline(s, now) {
-    const entries = s.history.filter((h) => h && Number.isFinite(msOf(h.at)));
+    const entries = (Array.isArray(s.history) ? s.history : []).filter((h) => h && Number.isFinite(msOf(h.at)));
     const steps = [];
     let engineMs = 0;
     let waitingMs = 0;
@@ -65,6 +97,13 @@ export function runTimeline(s, now) {
     let mergeReadyAt = null;
     let engineToMergeReadyMs = null;
     let waitingSince = null;
+    const problems = new Set();
+    /** A time no later than now (NaN stays NaN). */
+    const clamp = (t) => {
+        if (t > now + FUTURE_SLACK_MS)
+            problems.add('later than now');
+        return Math.min(t, now);
+    };
     const stepFor = (phase) => {
         const last = steps.at(-1);
         if (last && last.phase === phase)
@@ -75,52 +114,68 @@ export function runTimeline(s, now) {
     };
     let phase = null;
     const parked = s.gate !== undefined && !TERMINAL_FACTORY_PHASES.includes(s.phase);
-    const gateAt = msOf(s.gate?.at);
+    const gateAt = clamp(msOf(s.gate?.at));
+    /** The gate of the park the run is in at this entry, else null. */
+    let waiting = null;
+    let parkStart = Number.NaN;
+    let cursor = Number.NEGATIVE_INFINITY;
+    let lastStart = Number.NaN;
     for (let i = 0; i < entries.length; i++) {
         const h = entries[i];
-        const park = h.from !== null && h.from === h.to ? GATE_NOTE.exec(String(h.note ?? '')) : null;
-        if (!park || phase === null)
+        const effect = parkEffect(h);
+        if (effect.kind !== 'park' || phase === null)
             phase = text(h.to, 40);
         if (TERMINAL_FACTORY_PHASES.includes(h.to)) {
             stepFor(phase);
             break;
         }
-        const start = msOf(h.at);
+        let start = clamp(msOf(h.at));
+        if (start < cursor) {
+            problems.add('out of order');
+            start = cursor;
+        }
+        lastStart = start;
+        if (effect.kind === 'park')
+            waiting = effect.gate;
+        else if (effect.kind === 'end')
+            waiting = null;
         const lastEntry = i === entries.length - 1;
         let end;
         if (!lastEntry)
-            end = msOf(entries[i + 1].at);
-        else if (park && parked)
+            end = clamp(msOf(entries[i + 1].at));
+        else if (waiting !== null && parked)
             end = now;
         else if (parked && Number.isFinite(gateAt) && gateAt > start)
             end = gateAt;
         else
-            end = msOf(s.updatedAt);
+            end = clamp(msOf(s.updatedAt));
         const span = Number.isFinite(end) && end > start ? end - start : 0;
+        cursor = start + span;
         const step = stepFor(phase);
-        if (park) {
-            const gate = text(park[1], 60);
-            step.gates.push(gate);
+        if (effect.kind === 'park') {
+            step.gates.push(effect.gate);
+            parkStart = start;
+            if (effect.gate === 'merge' && mergeReadyAt === null) {
+                mergeReadyAt = new Date(start).toISOString();
+                engineToMergeReadyMs = engineMs;
+            }
+        }
+        if (waiting !== null) {
             step.waitingMs += span;
             waitingMs += span;
-            if (gate === 'merge') {
+            if (waiting === 'merge')
                 mergeWaitMs += span;
-                if (mergeReadyAt === null) {
-                    mergeReadyAt = new Date(start).toISOString();
-                    engineToMergeReadyMs = engineMs;
-                }
-            }
-            if (lastEntry && parked)
-                waitingSince = new Date(start).toISOString();
         }
         else {
             step.engineMs += span;
             engineMs += span;
         }
     }
-    // A gate with no park note after the last entry (older writers): waiting from gate.at.
-    const lastAt = entries.length ? msOf(entries.at(-1).at) : Number.NaN;
-    if (parked && waitingSince === null && Number.isFinite(gateAt) && !(gateAt <= lastAt)) {
+    if (parked && waiting !== null) {
+        waitingSince = new Date(Number.isFinite(gateAt) && gateAt > parkStart ? gateAt : parkStart).toISOString();
+    }
+    else if (parked && Number.isFinite(gateAt) && !(gateAt <= lastStart)) {
+        // A gate with no park note after the last entry (older writers): waiting from gate.at.
         const gate = text(s.gate.name, 60);
         const step = stepFor(phase ?? text(s.phase, 40));
         const span = Math.max(0, now - gateAt);
@@ -136,7 +191,7 @@ export function runTimeline(s, now) {
             }
         }
     }
-    return { steps, engineMs, waitingMs, waitingSince, mergeReadyAt, engineToMergeReadyMs, mergeWaitMs };
+    return { steps, engineMs, waitingMs, waitingSince, mergeReadyAt, engineToMergeReadyMs, mergeWaitMs, clamped: problems.size ? [...problems].join(', ') : null };
 }
 const forgeOf = (s) => (s.remote === LOCAL_REMOTE ? 'local' : s.forgeKind ?? 'github');
 const laneAt = (l) => msOf(l.endedAt ?? l.startedAt);
@@ -183,7 +238,7 @@ function verifiedRun(key, s, now, sinceMs) {
         addUsage(total, u);
     }
     const tl = runTimeline(s, now);
-    return {
+    const run = {
         key: runLabel(key),
         kind: s.kind ?? 'issue',
         trust: 'ok',
@@ -210,12 +265,17 @@ function verifiedRun(key, s, now, sinceMs) {
         engineToMergeReadyMs: tl.engineToMergeReadyMs,
         mergeWaitMs: tl.mergeWaitMs,
     };
+    return { run, clamped: tl.clamped };
 }
 /** One bench result file as a row; null when it is not one (a run-state copy, notes). Throws on a file that cannot be read. */
 function benchRow(path, file, source) {
-    if (statSync(path).size > MAX_BENCH_BYTES)
-        throw new Error(`larger than ${MAX_BENCH_BYTES} bytes`);
-    const j = JSON.parse(readFileSync(path, 'utf8'));
+    // lstat first, regular files only, bounded: a link, directory, FIFO or device named *.json is never opened.
+    const r = readRegularFile(path, MAX_BENCH_BYTES);
+    if ('missing' in r)
+        return null;
+    if ('error' in r)
+        throw new Error(r.error);
+    const j = JSON.parse(r.bytes.toString('utf8'));
     if (typeof j !== 'object' || j === null || Array.isArray(j))
         return null;
     const totals = (typeof j.totals === 'object' && j.totals !== null && !Array.isArray(j.totals) ? j.totals : null);
@@ -225,7 +285,9 @@ function benchRow(path, file, source) {
     const t = totals ?? {};
     const runs = Array.isArray(j.runs) ? j.runs : Array.isArray(j.issues) ? j.issues : null;
     const started = j.startedAt ?? j.createdAt ?? j.timestamp;
-    const wall = num(t.wallMs) ?? (Number.isFinite(msOf(j.finishedAt) - msOf(started)) ? msOf(j.finishedAt) - msOf(started) : null);
+    // A negative wall time (finishedAt before startedAt) is no wall time: null.
+    const w = num(t.wallMs) ?? msOf(j.finishedAt) - msOf(started);
+    const wall = Number.isFinite(w) && w >= 0 ? w : null;
     const model = typeof j.model === 'string' ? j.model : typeof j.model?.id === 'string' ? j.model.id : null;
     return {
         source,
@@ -291,44 +353,65 @@ export function collectDashboardV2(root, o) {
     catch {
         // No state dir: no runs yet.
     }
+    /** Every verified state, --since or not (Live now always shows the present). */
+    const allStates = new Map();
     const states = new Map();
     const runs = [];
-    const excluded = { runs: 0, credits: 0, premiumRequests: 0 };
+    /** Runs whose timeline was clamped: kept out of the throughput medians. */
+    const clampedRuns = new Set();
+    const excluded = { runs: 0, missing: 0 };
     for (const name of names) {
         const key = runKeyOfName(name);
         if (key === null)
             continue;
         const r = readRun(root, key, o.ledgerDir);
         if (r.trust !== 'ok' || !r.state) {
-            // An unreadable state is already one of attention's warnings.
+            // An unreadable state is already one of attention's warnings. Nothing it claims (credits, requests) is counted or shown.
             runs.push(unverifiedRun(key, r.trust, r.state));
             excluded.runs++;
-            if (r.state && Array.isArray(r.state.lanes)) {
-                for (const lane of r.state.lanes) {
-                    const u = laneUsage(lane);
-                    excluded.credits = round(excluded.credits + u.credits);
-                    excluded.premiumRequests += u.premiumRequests;
-                }
-            }
             continue;
         }
         const s = r.state;
+        allStates.set(runLabel(key), s);
         if (sinceMs !== null && msOf(s.updatedAt) < sinceMs)
             continue;
         try {
-            runs.push(verifiedRun(key, s, now, sinceMs));
+            const v = verifiedRun(key, s, now, sinceMs);
+            runs.push(v.run);
             states.set(runLabel(key), s);
+            if (v.clamped) {
+                clampedRuns.add(v.run.key);
+                warnings.push(`run ${v.run.key}: history timestamps ${v.clamped}; its times are clamped to now and to the entry before, and the run is left out of the throughput medians`);
+            }
         }
         catch (error) {
             warnings.push(`run ${runLabel(key)}: skipped (${text(error instanceof Error ? error.message : error, 160)})`);
         }
+    }
+    // Runs the engine ledger records whose state file is gone: attention lists them (trust missing); a row here, never in a total.
+    const stateKeys = new Set(names.map(runKeyOfName).filter((k) => k !== null).map((k) => runLabel(k)));
+    const missingLabels = new Set(attention.items.filter((i) => i.trust === 'missing').map((i) => i.key));
+    let ledgerNames = [];
+    try {
+        ledgerNames = readdirSync(dirname(ledgerFilePath(o.ledgerDir, root, 1)));
+    }
+    catch {
+        // No ledger dir: nothing is missing.
+    }
+    for (const name of ledgerNames) {
+        const key = runKeyOfName(name);
+        if (key === null || stateKeys.has(runLabel(key)) || !missingLabels.has(runLabel(key)))
+            continue;
+        runs.push(unverifiedRun(key, 'missing', undefined));
+        excluded.runs++;
+        excluded.missing++;
     }
     const startedMs = (r) => msOf(r.startedAt);
     runs.sort((a, b) => (Number(b.verified) - Number(a.verified)) || (startedMs(b) || 0) - (startedMs(a) || 0) || b.key.localeCompare(a.key, 'en', { numeric: true }));
     const verified = runs.filter((r) => r.verified);
     // Live now: the engines attention counted, and the running lane of each run they hold.
     const liveRuns = attention.summary.engines.runs.map((label) => {
-        const s = states.get(label);
+        const s = allStates.get(label);
         if (!s)
             return { key: label, verified: false, phase: null, lane: null, heartbeatAgeMs: null, credits: null, inFlightCredits: 0 };
         const running = s.lanes.filter((l) => l.status === 'running').at(-1);
@@ -392,13 +475,16 @@ export function collectDashboardV2(root, o) {
         bump(r.startedAt, 'started');
         bump(r.mergeReadyAt, 'mergeReady');
     }
-    const toMerge = verified.flatMap((r) => (r.engineToMergeReadyMs === null ? [] : [r.engineToMergeReadyMs]));
-    const mergeWaits = verified.flatMap((r) => (r.mergeReadyAt === null ? [] : [r.mergeWaitMs ?? 0]));
+    // The medians: runs that reached the merge park on or after --since (as the per-day counts), timelines not clamped.
+    const samples = verified.filter((r) => r.mergeReadyAt !== null && (sinceMs === null || msOf(r.mergeReadyAt) >= sinceMs));
+    const sampled = samples.filter((r) => !clampedRuns.has(r.key));
+    const toMerge = sampled.flatMap((r) => (r.engineToMergeReadyMs === null ? [] : [r.engineToMergeReadyMs]));
+    const mergeWaits = sampled.map((r) => r.mergeWaitMs ?? 0);
     // Tasks: one row per run, the tracker columns only from an already-read board (--forge).
     const board = o.board ? new Map(boardRows(o.board.json).map((b) => [runLabel(b.id), b])) : null;
     const tasks = runs.map((r) => {
         const b = board?.get(r.key);
-        const lastAt = r.waitingSince ? now : msOf(r.updatedAt);
+        const lastAt = r.waitingSince ? now : Math.min(now, msOf(r.updatedAt));
         return {
             key: r.key, verified: r.verified, title: r.title, phase: r.phase, gate: r.gate?.name ?? null, outcome: r.outcome, pr: r.pr, credits: r.credits,
             wallMs: r.verified && Number.isFinite(lastAt - startedMs(r)) ? Math.max(0, lastAt - startedMs(r)) : null,
@@ -439,6 +525,8 @@ export function collectDashboardV2(root, o) {
             byDay: [...through].map(([day, v]) => ({ day, ...v })).sort((a, b) => a.day.localeCompare(b.day)),
             engineToMergeReady: { runs: toMerge.length, medianMs: median(toMerge), p90Ms: quantile(toMerge, 0.9) },
             waitingAtMerge: { runs: mergeWaits.length, medianMs: median(mergeWaits) },
+            since: o.since === undefined ? null : text(o.since, 40),
+            excludedRuns: samples.length - sampled.length,
         },
         bench: readBenchV2(root, o.benchDirs ?? [], warnings).filter((b) => sinceMs === null || b.startedAt === null || msOf(b.startedAt) >= sinceMs),
         warnings: [...attention.warnings, ...warnings].map((w) => text(w, 500)),

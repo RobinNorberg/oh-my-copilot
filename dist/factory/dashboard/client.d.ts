@@ -9,7 +9,9 @@
  * handler or selector from data, and its only fetch URLs are fixed strings
  * plus a run key re-validated against the server's own key pattern. Commands
  * appear only in the command component (<code> + Copy button) and are copied,
- * never run. Unverified rows show the marker and the status command only.
+ * never run. A row whose state is not trusted shows the marker, a fixed
+ * sentence chosen here from its trust value, the run key and the status
+ * command built here from that key: no text or number the server sent for it.
  *
  * The pure parts (formatting, row model, filter/sort/paginate, the DOM
  * builders against any `document`) live on the FactoryDashboard object so

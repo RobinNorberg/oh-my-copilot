@@ -12,9 +12,13 @@
  * writes those runs' states.
  *
  * `--watch [seconds]` (with --out) rewrites the file on an interval, only
- * when the page changed and atomically (temp file + rename), until Ctrl-C;
- * the page then reloads itself (meta refresh). With --forge the forge is
- * read on a slow timer (FORGE_REFRESH_MS), never per tick.
+ * when the page changed and atomically (writeFileAtomic), until Ctrl-C or
+ * SIGTERM (one handler for the whole loop: the tick under way finishes); the
+ * page then reloads itself (meta refresh). With --forge the forge is read on
+ * a slow timer (FORGE_REFRESH_MS), never per tick. `--out` into the
+ * repository's .git or .omg is refused (outPathProblem). A temp file left by
+ * a killed process is not cleaned up: its random name cannot be told apart
+ * from someone else's file in that directory.
  */
 import { Command } from 'commander';
 import type { BoardJson } from '../../factory/board/collect.js';
@@ -23,6 +27,7 @@ import { type OwnerDeps } from '../../factory/run/state.js';
 import { type DashboardServer, type DashboardServerOptions } from '../../factory/dashboard/serve.js';
 export declare const WATCH_DEFAULT_SECONDS = 10;
 export declare const WATCH_MIN_SECONDS = 2;
+export declare const WATCH_MAX_SECONDS = 86400;
 /** --watch --forge: the forge is read at most this often. */
 export declare const FORGE_REFRESH_MS: number;
 export interface ForgeRead {
@@ -61,8 +66,21 @@ export declare function waitForStopSignal(): Promise<void>;
  * Any failure is silent: the URL is printed anyway.
  */
 export declare function openUrlInBrowser(url: string, platform?: NodeJS.Platform): void;
-/** Temp file next to the target, then one rename over it. */
+/**
+ * Temp file next to the target, then one rename over it. The temp name has a
+ * random suffix and is created exclusively (`wx`: an existing file or link at
+ * that name is refused, never followed or overwritten), so a file planted at
+ * a predictable name cannot redirect the write; on EEXIST a new name is
+ * tried. The temp file is removed on any failure after it was created.
+ */
 export declare function writeFileAtomic(file: string, content: string): void;
+/**
+ * --out must not land in the repository's `.git` or `.omg`, or the state
+ * root OMC_STATE_DIR moves `.omg` to (lanes can write `.omg`, and both hold
+ * the engine's state): a usage error. Paths are compared through links, so a
+ * link into them is caught too.
+ */
+export declare function outPathProblem(root: string, file: string): string | null;
 /** Resolves true after `ms`, false at the first Ctrl-C (SIGINT) before that. */
 export declare function sleepUntilInterrupt(ms: number): Promise<boolean>;
 export declare const defaultDashboardDeps: FactoryDashboardDeps;

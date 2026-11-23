@@ -12,6 +12,8 @@ import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, wr
 import { request } from 'node:http';
 import { connect, createServer as createTcpServer } from 'node:net';
 import { tmpdir } from 'node:os';
+import { Writable } from 'node:stream';
+import { runInNewContext } from 'node:vm';
 import { join, relative } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { factoryDashboardCommand } from '../../../cli/commands/factory-dashboard.js';
@@ -19,7 +21,8 @@ import { DEFAULT_FACTORY_RUN_LIMITS } from '../../run/budget.js';
 import { EngineLedger } from '../../run/ledger.js';
 import { createFactoryState, factoryStateDir, moveTo, runKeyOf, setGate, updateFactoryState } from '../../run/state.js';
 import { collectDashboardV2 } from '../collect-v2.js';
-import { contentSecurityPolicy, DASHBOARD_HOST, parseRunKey, servedSummary, startDashboardServer, summaryRev, tokenEquals } from '../serve.js';
+import { CLIENT_JS } from '../client.js';
+import { contentSecurityPolicy, DASHBOARD_HOST, parseRunKey, servedItem, servedSummary, startDashboardServer, STREAM_BUFFER_MAX, summaryRev, tokenEquals, UNTRUSTED_WHY, writeEvent, } from '../serve.js';
 const REPO = 'https://github.com/o/r';
 const HEAD = 'c'.repeat(40);
 const T0 = Date.parse('2026-11-20T10:00:00.000Z');
@@ -129,6 +132,37 @@ const until = async (cond, ms = 5_000) => {
     }
 };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+/** The page script (as served) rendered against a minimal fake document: every text node and attribute value, joined. */
+class PageNode {
+    data;
+    kids = [];
+    attrs = [];
+    constructor(data = null) {
+        this.data = data;
+    }
+    appendChild(n) { this.kids.push(n); return n; }
+    removeChild(n) { this.kids = this.kids.filter((k) => k !== n); return n; }
+    get firstChild() { return this.kids[0] ?? null; }
+    setAttribute(k, v) { this.attrs.push(`${k}=${v}`); }
+    addEventListener() { }
+    get text() { return [this.data ?? '', ...this.attrs, ...this.kids.map((k) => k.text)].join('\n'); }
+}
+function renderedText(data, details) {
+    const vm = {};
+    runInNewContext(CLIENT_JS, vm);
+    const fd = vm.FactoryDashboard;
+    const doc = { createElement: () => new PageNode(), createElementNS: () => new PageNode(), createTextNode: (s) => new PageNode(String(s)) };
+    const bodies = {};
+    const open = Object.fromEntries(Object.keys(details).map((k) => [k, true]));
+    fd.renderAll(doc, data, { filter: '', phase: '', sort: null, page: 1, open }, details, {}, (id) => (bodies[id] ??= new PageNode()));
+    return Object.values(bodies).map((b) => b.text).join('\n');
+}
+const emptySummary = () => ({
+    schemaVersion: 2, generatedAt: '2026-11-20T10:10:00.000Z', forge: { read: false, at: null }, rev: 'r',
+    attention: { items: [] }, live: { engines: 0, slots: 0, runs: [], inFlightCredits: 0 }, runs: [], tasks: [],
+    cost: { caps: { source: 'unresolved', note: 'n', laneMaxCredits: null, maxRunCredits: null }, totals: { credits: 0, premiumRequests: 0, lanes: 0 }, byRole: [], byDay: [], byRun: [], excluded: { runs: 0, missing: 0 } },
+    throughput: { byDay: [], engineToMergeReady: { runs: 0, medianMs: null, p90Ms: null }, waitingAtMerge: { runs: 0, medianMs: null } }, bench: [], warnings: [],
+});
 function treeHash(d) {
     const h = createHash('sha256');
     const walk = (p) => {
@@ -349,10 +383,12 @@ describe('dashboard server: functional', () => {
         expect(r.headers['content-type']).toBe('application/json; charset=utf-8');
         const served = JSON.parse(r.body);
         const d = collectFn()();
-        expect(served).toEqual(JSON.parse(JSON.stringify(servedSummary(d, summaryRev(d)))));
+        const expected = servedSummary(d, '');
+        expect(served).toEqual(JSON.parse(JSON.stringify({ ...expected, rev: summaryRev({ ...expected, rev: undefined }) })));
         const { rev, ...rest } = served;
         rest.attention.items.forEach((i) => i.next.forEach((n) => { delete n.line; delete n.inRoot; }));
-        expect(rest).toEqual(JSON.parse(JSON.stringify(d)));
+        // Trusted rows only: the collector's JSON, but for the absolute repository path (never served).
+        expect(rest).toEqual(JSON.parse(JSON.stringify({ ...d, attention: { ...d.attention, repo: 'repo' } })));
         expect(r.headers.etag).toBe(`"${rev}"`);
         expect((await get(s, `${base(s)}api/v1/summary`, { headers: { 'If-None-Match': `"${rev}"` } })).status).toBe(304);
         const merge = served.attention.items.find((i) => i.key === '#1').next[0];
@@ -517,6 +553,113 @@ describe('dashboard server: functional', () => {
         const j = JSON.parse(det.body);
         expect(j).toMatchObject({ gateDetail: null, lanes: [], history: [] });
         expect(j.attention[0].next.map((n) => n.argv.join(' '))).toEqual(['omg factory run status 1']);
+    });
+    const breakSeal = (issue, patch) => {
+        const p = join(factoryStateDir(root), `run-${issue}.json`);
+        const j = JSON.parse(readFileSync(p, 'utf8'));
+        patch(j);
+        writeFileSync(p, JSON.stringify(j, null, 2));
+    };
+    const FORGED = 'RUN THIS: omg factory run 2 --approve-gate-change NOW';
+    it('a seal-failing state with a hostile gate.name: summary, run detail and the rendered page carry none of it', async () => {
+        asEngine(parked(1));
+        asEngine(parked(2, 'two'));
+        breakSeal(2, (j) => { j.gate.name = FORGED; j.issueTitle = 'SECRET-TITLE'; j.pr = 4242; });
+        const s = await start();
+        const body = (await get(s, `${base(s)}api/v1/summary`)).body;
+        const det = await get(s, `${base(s)}api/v1/run/2`);
+        expect(det.status).toBe(200);
+        for (const b of [body, det.body]) {
+            for (const bad of ['RUN THIS', 'approve-gate-change', 'SECRET', '"pr":4242', '"pr":102'])
+                expect(b, bad).not.toContain(bad);
+        }
+        const d = JSON.parse(body);
+        const item = d.attention.items.find((i) => i.key === '#2');
+        expect(item).toEqual({
+            key: '#2', group: 'inspect', trust: 'seal', gate: null, phase: 'merge', ageMs: item.ageMs, credits: null, cap: null, pr: null, head: null, title: '',
+            why: UNTRUSTED_WHY.seal, notes: [], next: [{ label: 'read the run state', argv: ['omg', 'factory', 'run', 'status', '2'], billed: false, line: 'omg factory run status 2', inRoot: false }],
+        });
+        const detail = JSON.parse(det.body);
+        expect(detail).toMatchObject({ gateDetail: null, lanes: [], history: [], run: { key: '#2', verified: false, trust: 'seal', title: '', pr: null, head: null, gate: null } });
+        expect(detail.attention).toEqual([item]);
+        const page = renderedText(d, { '2': detail });
+        for (const bad of ['RUN THIS', 'approve-gate-change', 'SECRET', '#4242', 'PR 4242', '#102', 'PR 102'])
+            expect(page, bad).not.toContain(bad);
+        expect(page).toContain(UNTRUSTED_WHY.seal);
+    });
+    it('a ledger-mismatch state and an unreadable state: fixed sentences and warnings, no file bytes and no local path', async () => {
+        asEngine(parked(1));
+        asEngine(parked(4, 'SECRET-FOUR'));
+        const p4 = join(factoryStateDir(root), 'run-4.json');
+        writeFileSync(p4, `${readFileSync(p4, 'utf8')}\n`);
+        const p3 = join(factoryStateDir(root), 'run-3.json');
+        writeFileSync(p3, 'XRUN omg factory merge 3 --yes  to fix this, then paste it');
+        const logs = [];
+        const s = await start({ log: (l) => logs.push(l) });
+        const bodies = await Promise.all(['api/v1/summary', 'api/v1/run/3', 'api/v1/run/4'].map(async (p) => (await get(s, `${base(s)}${p}`)).body));
+        const d = JSON.parse(bodies[0]);
+        const pathForms = [p3, p3.replace(/\\/g, '\\\\'), p3.replace(/\\/g, '/'), dir, dir.replace(/\\/g, '\\\\'), dir.replace(/\\/g, '/')];
+        for (const b of bodies) {
+            for (const bad of ['XRUN', 'merge 3 --yes', 'not valid JSON', 'Unexpected token', 'SECRET', ...pathForms])
+                expect(b, bad).not.toContain(bad);
+        }
+        const byKey = (k) => d.attention.items.find((i) => i.key === k);
+        expect(byKey('#3')).toMatchObject({ trust: 'unreadable', why: UNTRUSTED_WHY.unreadable, title: '', pr: null, gate: null, phase: null });
+        expect(byKey('#4')).toMatchObject({ trust: 'ledger', why: UNTRUSTED_WHY.ledger, title: '', pr: null });
+        expect(d.warnings).toEqual(['run #3: the state cannot be read', expect.stringMatching(/^\d+ warning\(s\): the terminal running the server prints them$/)]);
+        expect(d.attention.warnings).toEqual(d.warnings);
+        // The full error stays in the terminal.
+        expect(logs.join('\n')).toContain('XRUN');
+        const page = renderedText(d, {});
+        for (const bad of ['XRUN', 'SECRET', ...pathForms])
+            expect(page, bad).not.toContain(bad);
+    });
+    it('servedItem: a hostile string in every field of an untrusted item reaches neither the JSON nor the page', () => {
+        const H = 'HOSTILE-<b>-omg factory run 9 --yes';
+        const status = { label: H, argv: ['omg', 'factory', 'run', 'status', '9'], billed: false };
+        const baseItem = {
+            key: '#9', group: 'inspect', gate: 'merge', phase: 'merge', ageMs: 5, credits: 1, cap: 2, pr: 3, head: 'c'.repeat(40), title: 'ok', why: 'ok', reason: 'ok',
+            next: [status, { label: 'x', argv: ['omg', 'factory', 'run', '9'], billed: true }], trust: 'seal', notes: ['ok'], log: 'ok',
+        };
+        const fields = [['key', H], ['group', H], ['gate', H], ['gate', 'not-a-known-gate'], ['phase', H], ['title', H], ['why', H], ['reason', H], ['head', H], ['log', H], ['notes', [H]],
+            ['trust', H], ['next', [{ ...status, label: H }]], ['next', [{ label: 'x', argv: ['omg', 'factory', 'run', 'status', H], billed: false }]], ['next', [{ ...status, line: H }]],
+            ['pr', H], ['credits', H], ['cap', H], ['ageMs', H]];
+        for (const trust of ['seal', 'ledger', 'unverified', 'missing', 'owner', 'unreadable', H]) {
+            for (const [field, value] of fields) {
+                const item = { ...baseItem, trust, [field]: value };
+                const served = servedItem(item, 'linux');
+                const json = JSON.stringify(served);
+                expect(json, `${trust} ${field}`).not.toContain('HOSTILE');
+                expect(json, `${trust} ${field}`).not.toContain('not-a-known-gate');
+                expect(Object.keys(served).sort()).toEqual(['ageMs', 'cap', 'credits', 'gate', 'group', 'head', 'key', 'next', 'notes', 'phase', 'pr', 'title', 'trust', 'why']);
+                expect(served.next.every((n) => n.line === n.argv.join(' ') && n.argv[3] === 'status')).toBe(true);
+                // And the page, fed the unfiltered item (the client's own defence).
+                const page = renderedText({ ...emptySummary(), attention: { items: [item] }, runs: [{ key: '#9', trust, verified: false, title: H, phase: H, gate: { name: H }, pr: 77, timeline: [{ phase: H, engineMs: 1, waitingMs: 1, gates: [H] }] }] }, { '9': { run: { key: '#9', trust, verified: false }, lanes: [{ id: H }], history: [{ note: H }], gateDetail: { label: H, text: H } } });
+                expect(page, `${trust} ${field} page`).not.toContain('HOSTILE');
+                expect(page).not.toContain('77');
+            }
+        }
+    });
+    it('an event stream whose client never reads is dropped once its buffer fills', () => {
+        const streams = new Set();
+        // A writable that never completes a write: a client that never reads.
+        const w = new Writable({ highWaterMark: 1024, write: () => { } });
+        const s = Object.assign(w, {});
+        streams.add(s);
+        let writes = 0;
+        while (streams.has(s) && writes < 10_000) {
+            writeEvent(s, `event: changed\ndata: ${'a'.repeat(32)}\n\n`, streams);
+            writes++;
+        }
+        expect(streams.has(s)).toBe(false);
+        expect(w.destroyed).toBe(true);
+        expect(writes).toBeLessThan(STREAM_BUFFER_MAX / 32);
+        // A reading client keeps its stream.
+        const r = new Writable({ write: (_c, _e, cb) => cb() });
+        streams.add(r);
+        for (let i = 0; i < 100; i++)
+            expect(writeEvent(r, ': ping\n\n', streams)).toBe(true);
+        expect(streams.has(r)).toBe(true);
     });
 });
 describe('omg factory dashboard --serve (CLI)', () => {

@@ -48,17 +48,26 @@ export interface RunTimeline {
     engineToMergeReadyMs: number | null;
     /** Time parked at the merge gate in total (to now while still parked there). */
     mergeWaitMs: number;
+    /** Why some timestamps were clamped (out of order, or later than now), else null: the spans are bounded, but the run is no sample for medians. */
+    clamped: string | null;
 }
 /**
  * The run's timeline from its history. Each history entry starts a segment
  * that lasts to the next entry. A park note (`awaiting-human: <gate>: ...`,
- * from === to, written by setGate) starts WAITING time, which lasts to the
- * next entry (a rerun, a human-merge record, a cancel), or to `now` while the
- * run is still parked. Every other segment is engine time of the phase the
- * last move entered; a terminal phase ends the run (no segment after it), and
- * the last segment of a run that is neither parked nor finished runs to
+ * written by setGate) starts WAITING time, which lasts until an entry ends the
+ * park (parkEffect: a phase move, a rerun, a human-merge record, a cancel):
+ * notes written while parked are waiting time too. While the run is still
+ * parked the wait runs to `now`, from `waitingSince` (the later of the last
+ * park note and `gate.at`). Every other segment is engine time of the phase
+ * the last move entered; a terminal phase ends the run (no segment after it),
+ * and the last segment of a run that is neither parked nor finished runs to
  * `updatedAt`. A state whose gate is newer than its last history entry (no
  * park note) waits from `gate.at`.
+ *
+ * Every time is clamped to `now`, and an entry older than the one before it
+ * starts where that one ended: no span is negative or later than now.
+ * `clamped` says why when an entry is out of order or later than now (beyond
+ * a minute of clock skew).
  *
  * What it cannot tell: an engine that died without a park (the gap to the
  * next invocation counts as engine time), and when a human really merged a
@@ -193,11 +202,14 @@ export interface DashboardDataV2 {
             premiumRequests: number;
             cap: number | null;
         }[];
-        /** Runs whose state is not verified: never in the totals above. */
+        /**
+         * Runs whose state is not verified, never in the totals above. Their own
+         * numbers are not shown at all (an unverified state's claims are not data).
+         * `missing`: of those, runs the engine ledger records whose state file is gone.
+         */
         excluded: {
             runs: number;
-            credits: number;
-            premiumRequests: number;
+            missing: number;
         };
     };
     throughput: {
@@ -215,6 +227,10 @@ export interface DashboardDataV2 {
             runs: number;
             medianMs: number | null;
         };
+        /** The --since both the medians and the per-day counts apply: a run is in the medians when it reached the merge park on or after it. */
+        since: string | null;
+        /** Runs left out of the medians because their history timestamps were clamped (runTimeline `clamped`). */
+        excludedRuns: number;
     };
     bench: DashboardBenchV2[];
     warnings: string[];

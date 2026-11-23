@@ -86,10 +86,8 @@ type UntrustedTrust = Exclude<AttentionTrust, 'ok'>;
 /** Served attention commands carry the line the CLI prints for this platform (commandText), so the page copies exactly that. */
 export type ServedNext = CollectedItem['next'][number] & { line: string; inRoot: boolean };
 export type ServedItem = Omit<CollectedItem, 'next'> & { next: ServedNext[] };
-export type ServedSummary = Omit<DashboardDataV2, 'attention' | 'cost'> & {
+export type ServedSummary = Omit<DashboardDataV2, 'attention'> & {
   attention: Omit<DashboardDataV2['attention'], 'items'> & { items: ServedItem[] };
-  /** No number from an unverified state: only how many runs are left out. */
-  cost: Omit<DashboardDataV2['cost'], 'excluded'> & { excluded: { runs: number } };
   rev: string;
 };
 
@@ -194,7 +192,7 @@ export function servedSummary(d: DashboardDataV2, rev: string, platform: NodeJS.
     attention: { ...d.attention, repo: basename(d.attention.repo), items, warnings },
     live: { ...d.live, runs: liveRuns, inFlightCredits: liveRuns.reduce((a, r) => a + r.inFlightCredits, 0) },
     runs, tasks,
-    cost: { ...d.cost, excluded: { runs: d.cost.excluded.runs } },
+    cost: { ...d.cost, excluded: { runs: d.cost.excluded.runs, missing: d.cost.excluded.missing } },
     warnings,
     rev,
   };
