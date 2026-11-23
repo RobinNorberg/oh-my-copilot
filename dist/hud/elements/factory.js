@@ -21,7 +21,8 @@ const RED = '\x1b[31m';
 const YELLOW = '\x1b[33m';
 const GREEN = '\x1b[32m';
 /** The group ids of src/factory/attention/actions.ts ATTENTION_GROUPS: the short names the element prints. */
-const GROUPS = ['inspect', 'broken', 'decide', 'merge', 'fix', 'limits'];
+export const FACTORY_HUD_GROUPS = ['inspect', 'broken', 'decide', 'merge', 'fix', 'limits'];
+const GROUPS = FACTORY_HUD_GROUPS;
 /** Groups that mean something went wrong (red); the others are decisions or chores (yellow). */
 const ALARM = new Set(['inspect', 'broken']);
 const count = (v) => (typeof v === 'number' && Number.isSafeInteger(v) && v >= 0 ? v : 0);

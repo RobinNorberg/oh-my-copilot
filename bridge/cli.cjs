@@ -168352,7 +168352,7 @@ function renderFactory(state) {
   if (parts.length === 0) return null;
   return `factory:${parts.join(" ")}`;
 }
-var import_fs221, import_path254, RED8, YELLOW11, GREEN11, GROUPS, ALARM, count3;
+var import_fs221, import_path254, RED8, YELLOW11, GREEN11, FACTORY_HUD_GROUPS, GROUPS, ALARM, count3;
 var init_factory2 = __esm({
   "src/hud/elements/factory.ts"() {
     "use strict";
@@ -168363,7 +168363,8 @@ var init_factory2 = __esm({
     RED8 = "\x1B[31m";
     YELLOW11 = "\x1B[33m";
     GREEN11 = "\x1B[32m";
-    GROUPS = ["inspect", "broken", "decide", "merge", "fix", "limits"];
+    FACTORY_HUD_GROUPS = ["inspect", "broken", "decide", "merge", "fix", "limits"];
+    GROUPS = FACTORY_HUD_GROUPS;
     ALARM = /* @__PURE__ */ new Set(["inspect", "broken"]);
     count3 = (v) => typeof v === "number" && Number.isSafeInteger(v) && v >= 0 ? v : 0;
   }

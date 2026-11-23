@@ -14,6 +14,7 @@
  * lists those.
  */
 /** The group ids of src/factory/attention/actions.ts ATTENTION_GROUPS: the short names the element prints. */
+export declare const FACTORY_HUD_GROUPS: readonly ["inspect", "broken", "decide", "merge", "fix", "limits"];
 declare const GROUPS: readonly ["inspect", "broken", "decide", "merge", "fix", "limits"];
 export interface FactoryStateForHud {
     total: number;

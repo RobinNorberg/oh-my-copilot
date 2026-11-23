@@ -9,7 +9,8 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { readFactoryStateForHud, renderFactory } from '../../../hud/elements/factory.js';
+import { FACTORY_HUD_GROUPS, readFactoryStateForHud, renderFactory } from '../../../hud/elements/factory.js';
+import { ATTENTION_GROUPS } from '../actions.js';
 import { stripAnsi } from '../../../utils/string-width.js';
 import { EngineLedger } from '../../run/ledger.js';
 import { computeFactoryIntegrity, createFactoryState, factoryStateDir, factoryStatePath, moveTo, runKeyOf, setGate, updateFactoryState } from '../../run/state.js';
@@ -85,6 +86,9 @@ describe('attentionSummary', () => {
 });
 describe('HUD factory element', () => {
     const load = async () => ({ attentionSummary: (r) => attentionSummary(r, { ledgerDir, now: () => now, owner: OWNER }) });
+    it('knows the attention groups (it does not import them, to stay cheap)', () => {
+        expect([...FACTORY_HUD_GROUPS]).toEqual([...ATTENTION_GROUPS]);
+    });
     it('renders nothing and loads nothing without a factory state dir', async () => {
         let loaded = false;
         expect(await readFactoryStateForHud(root, async () => { loaded = true; return load(); })).toBeNull();
