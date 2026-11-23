@@ -28,8 +28,20 @@ export interface FactoryAttentionDeps {
   ledgerDir?: string;
   now?: () => number;
   owner?: OwnerDeps;
-  /** The terminal width the view is laid out for (default process.stdout.columns; unknown: 80, at least 40). */
+  /** The terminal width the view is laid out for (default terminalColumns(); unknown: 80, at least 40). */
   columns?: () => number | undefined;
+}
+
+/**
+ * The width to lay out for: stdout's columns, else stderr's (stdout piped from a terminal), else a numeric COLUMNS
+ * held to 40..500, else undefined (80).
+ */
+export function terminalColumns(
+  stdout: { columns?: number } = process.stdout, stderr: { columns?: number } = process.stderr, env: NodeJS.ProcessEnv = process.env,
+): number | undefined {
+  for (const c of [stdout.columns, stderr.columns]) if (typeof c === 'number' && Number.isFinite(c) && c > 0) return c;
+  const n = /^\d{1,4}$/.test(env.COLUMNS?.trim() ?? '') ? Number(env.COLUMNS) : Number.NaN;
+  return n > 0 ? Math.min(500, Math.max(40, n)) : undefined;
 }
 
 const defaultRoot = (): string => execFileSync('git', ['rev-parse', '--show-toplevel'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true }).trim();
@@ -71,7 +83,7 @@ export function factoryAttentionCommand(deps: FactoryAttentionDeps = defaultAtte
       data.warnings.unshift(...warnings.map((w) => plainText(w)));
       if (o.json) deps.out(JSON.stringify(attentionJson(data), null, 2));
       else {
-        const columns = (deps.columns ?? (() => process.stdout.columns))();
+        const columns = (deps.columns ?? (() => terminalColumns()))();
         for (const w of data.warnings) for (const l of warningLines(w, layoutColumns(columns))) deps.err(chalk.yellow(l));
         deps.out(renderAttention(data, { verbose: o.verbose, columns }));
       }

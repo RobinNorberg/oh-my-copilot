@@ -11,7 +11,7 @@
  * nothing at all when neither. Numbers and fixed words only: no title,
  * reason or other text from a state reaches the status line.
  *
- * Cost: one stat when the repository has no factory state dir (the factory
+ * Cost: a few file-system checks when the repository has no factory state dir (the factory
  * modules are not even loaded then). A deleted state dir whose runs only the
  * engine ledger still records is not shown here; `omg factory attention`
  * lists those.

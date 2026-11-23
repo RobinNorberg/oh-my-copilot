@@ -15,6 +15,17 @@ import { EXIT_CHECK_FAILED, EXIT_CHECK_USAGE } from '../../factory/check/cli.js'
 import { plainText } from '../../factory/check/score.js';
 import { EXIT_AWAITING_HUMAN } from '../../factory/run/engine.js';
 import { defaultLedgerDir } from '../../factory/run/ledger.js';
+/**
+ * The width to lay out for: stdout's columns, else stderr's (stdout piped from a terminal), else a numeric COLUMNS
+ * held to 40..500, else undefined (80).
+ */
+export function terminalColumns(stdout = process.stdout, stderr = process.stderr, env = process.env) {
+    for (const c of [stdout.columns, stderr.columns])
+        if (typeof c === 'number' && Number.isFinite(c) && c > 0)
+            return c;
+    const n = /^\d{1,4}$/.test(env.COLUMNS?.trim() ?? '') ? Number(env.COLUMNS) : Number.NaN;
+    return n > 0 ? Math.min(500, Math.max(40, n)) : undefined;
+}
 const defaultRoot = () => execFileSync('git', ['rev-parse', '--show-toplevel'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true }).trim();
 export const defaultAttentionDeps = { root: defaultRoot, out: (l) => console.log(l), err: (l) => console.error(l) };
 export function factoryAttentionCommand(deps = defaultAttentionDeps) {
@@ -55,7 +66,7 @@ export function factoryAttentionCommand(deps = defaultAttentionDeps) {
             if (o.json)
                 deps.out(JSON.stringify(attentionJson(data), null, 2));
             else {
-                const columns = (deps.columns ?? (() => process.stdout.columns))();
+                const columns = (deps.columns ?? (() => terminalColumns()))();
                 for (const w of data.warnings)
                     for (const l of warningLines(w, layoutColumns(columns)))
                         deps.err(chalk.yellow(l));

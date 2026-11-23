@@ -7,15 +7,15 @@
  * to the tracker or the forge.
  */
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { hostname, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createForge } from '../../forge/index.js';
 import { attentionNoticeText } from '../attention/notify.js';
 import { EngineLedger } from '../run/ledger.js';
-import { createFactoryState, factoryStateDir, moveTo, runKeyOf, setGate, updateFactoryState } from '../run/state.js';
-import { runFactoryPoll } from '../poll.js';
+import { computeFactoryIntegrity, createFactoryState, factoryStateDir, factoryStatePath, moveTo, runKeyOf, setGate, updateFactoryState } from '../run/state.js';
+import { ATTENTION_PRINT_ITEMS, ATTENTION_RATE_MAX, runFactoryPoll } from '../poll.js';
 const SHA = 'a'.repeat(40);
 const HEAD = 'b'.repeat(40);
 const T0 = Date.parse('2026-11-20T10:00:00.000Z');
@@ -154,6 +154,74 @@ describe('omg factory poll: attention items', () => {
             }]);
         expect(ticks()[1].attention).toEqual({ new: [{ key: '#5', group: 'inspect', gate: null, next: ['omg', 'factory', 'run', 'status', '5'] }] });
         expect(notices).toEqual([{ repo: 'repo', key: '#5', group: 'inspect', gate: null, next: 'omg factory run status 5' }]);
+    });
+});
+/** A state written outside the engine (sealed, never recorded in the engine ledger): an untrusted row. */
+function forged(issue, atMs) {
+    const s = setGate(moveTo(createFactoryState({ issue, repoUrl: REPO, base: 'dev' }, iso(atMs - 60_000)), 'implement', 'x', iso(atMs - 30_000)), 'ci-failed', 'x', iso(atMs));
+    mkdirSync(factoryStateDir(root), { recursive: true });
+    writeFileSync(factoryStatePath(root, issue), JSON.stringify({ ...s, integrity: computeFactoryIntegrity(s) }));
+}
+describe('omg factory poll: a lane cannot flood the attention lines or notifications', () => {
+    const textLines = () => out.join('\n').split('\n').filter((l) => l.trimStart().startsWith('attention:'));
+    it('an untrusted state rewritten every tick (its times, or flipping unreadable/unverified) is new once', async () => {
+        forged(5, now);
+        await poll(10, Array.from({ length: 10 }, (_, n) => () => forged(5, now + n)), false);
+        expect(notices).toEqual([]);
+        expect(textLines().filter((l) => l.includes('#5'))).toEqual([]);
+        out = [];
+        notices = [];
+        rmSync(factoryStateDir(root), { recursive: true, force: true });
+        await poll(10, Array.from({ length: 10 }, (_, n) => () => (n % 2 ? forged(5, now) : writeFileSync(factoryStatePath(root, 5), 'garbage'))), false);
+        expect(notices.length).toBeLessThanOrEqual(1);
+        expect(textLines().filter((l) => l.includes('#5 needs you')).length).toBeLessThanOrEqual(1);
+    });
+    it('new rows past the cap: at most 3 item notices and one count notice per tick, 10 lines and one "and K more", and the rate limit', async () => {
+        const all = [];
+        // 6 ticks: the first prints the summary, each of the 5 after it sees 20 new forged states.
+        await poll(6, Array.from({ length: 5 }, (_, n) => () => { for (let k = 0; k < 20; k++)
+            forged(1000 + n * 20 + k, now); }), false, { notifyAttention: async (x) => { all.push(x); } });
+        // Ticks are 5 min apart: no 10-minute window holds more than ATTENTION_RATE_MAX notices.
+        expect(all.length).toBeLessThanOrEqual(Math.ceil((5 * 5) / 10) * ATTENTION_RATE_MAX);
+        expect(all.length).toBeGreaterThan(0);
+        const more = all.filter((x) => 'more' in x);
+        expect(more.length).toBeGreaterThan(0);
+        expect(more[0]).toEqual({ repo: 'repo', more: 17, byGroup: { inspect: 17 } });
+        expect(attentionNoticeText(more[0])).toBe('factory repo: and 17 more item(s) need you: 17 inspect\ndetails: omg factory attention');
+        const lines = textLines();
+        expect(lines.filter((l) => l.includes('needs you: inspect')).length).toBe(5 * ATTENTION_PRINT_ITEMS);
+        expect(lines.filter((l) => l.includes('and 10 more new item(s) need you')).length).toBe(5);
+        expect(lines.some((l) => /notification\(s\) not sent: at most 6 per 10 min/.test(l))).toBe(true);
+    });
+    it('the rate limit drops and counts; a notification that never settles does not stall the tick past the timeout', async () => {
+        const started = [];
+        await poll(3, [() => { for (let k = 0; k < 8; k++)
+                park(20 + k, 'ci-failed', now); }, () => park(40, 'ci-failed', now)], true, {
+            notifyAttention: (x) => { started.push('more' in x ? 'more' : x.key); return new Promise(() => { }); },
+            notifyTimeoutMs: 50,
+        });
+        const t = ticks();
+        expect(started).toEqual(['#20', '#21', '#22', 'more', '#40']);
+        expect(t[1].attention?.dropped).toBeUndefined();
+        expect(t[1].warnings.some((w) => /did not finish within/.test(w))).toBe(true);
+    });
+    it('trusted new parks still notify once each', async () => {
+        await poll(4, [() => park(30, 'ci-failed', now), () => { park(31, 'budget', now); park(32, 'ci-failed', now); }, () => { }]);
+        // Within a tick, in attention's order (fix before limits).
+        expect(notices.map((x) => x.key)).toEqual(['#30', '#32', '#31']);
+    });
+    it('the rate limit: a seventh notice inside 10 minutes is dropped and counted, and printed as one line', async () => {
+        const all = [];
+        // Ticks 5 min apart: tick 2 sends 3 item notices and one count notice, tick 3 has room for two of its three.
+        await poll(4, [() => { for (let k = 0; k < 4; k++)
+                park(50 + k, 'ci-failed', now); }, () => { for (let k = 0; k < 3; k++)
+                park(60 + k, 'ci-failed', now); }, () => park(70, 'ci-failed', now)], true, { notifyAttention: async (x) => { all.push(x); } });
+        const t = ticks();
+        expect(all.map((x) => ('more' in x ? `more ${x.more}` : x.key))).toEqual(['#50', '#51', '#52', 'more 1', '#60', '#61', '#70']);
+        expect(t[2].attention?.dropped).toBe(1);
+        expect(t[2].attention?.new.map((i) => i.key)).toEqual(['#60', '#61', '#62']);
+        // Ten minutes after tick 2 its four notices are out of the window again.
+        expect(t[3].attention?.dropped).toBeUndefined();
     });
 });
 describe('factory-attention notification payload', () => {

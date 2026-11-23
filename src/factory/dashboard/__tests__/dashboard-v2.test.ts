@@ -9,7 +9,7 @@ import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, relative } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { factoryDashboardCommand, writeFileAtomic, type FactoryDashboardDeps, type ForgeRead } from '../../../cli/commands/factory-dashboard.js';
 import { attentionJson, collectAttention } from '../../attention/collect.js';
@@ -199,6 +199,25 @@ describe('collectDashboardV2', () => {
     const a3 = d.attention.items.find((i) => i.key === '#3')!;
     expect(a3.next.map((n) => n.argv.join(' '))).toEqual(['omg factory run status 3']);
     expect(d.tasks.find((t) => t.key === '#1')).toMatchObject({ title: 'First', outcome: 'parked', gate: 'merge', pr: 101, credits: 3, tracker: null });
+  });
+
+  it('an unverified run shows a gate name only when the gate table knows it, and a phase only from the engine\'s phases', () => {
+    const forge = (issue: number, gate: string, phase: string) => {
+      const s = toMergePark(issue, 'x');
+      const t = { ...s, phase, gate: { ...s.gate!, name: gate } } as typeof s;
+      writeFileSync(factoryStatePath(root, issue), JSON.stringify({ ...t, integrity: computeFactoryIntegrity(t) }));
+    };
+    mkdirSync(dirname(factoryStatePath(root, 5)), { recursive: true });
+    forge(5, 'mrkz-gate', 'implement');
+    forge(6, 'merge', 'implement');
+    forge(7, 'merge', 'mrkz-phase');
+    const d = collectDashboardV2(root, opts(T0 + 2_000_000));
+    expect(d.runs.find((r) => r.key === '#5')).toMatchObject({ verified: false, gate: null, phase: 'implement' });
+    expect(d.runs.find((r) => r.key === '#6')).toMatchObject({ verified: false, gate: { name: 'merge' }, phase: 'implement' });
+    // A phase the engine does not have: the state does not parse, so nothing from it is shown.
+    expect(d.runs.find((r) => r.key === '#7')).toMatchObject({ verified: false, gate: null, phase: null });
+    expect(JSON.stringify(d)).not.toMatch(/mrkz/);
+    expect(renderDashboardHtml(d)).not.toMatch(/mrkz/);
   });
 
   it('throughput: started and merge-ready per day, median and p90 engine time to merge-ready, median wait at the merge park', () => {

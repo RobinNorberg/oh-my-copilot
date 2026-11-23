@@ -108,14 +108,18 @@ describe("factory-attention notification (omg factory poll)", () => {
         expect(await notify("factory-attention", { sessionId: "factory-attention", message: "m" })).toBeNull();
         expect(mockDispatchNotifications).not.toHaveBeenCalled();
     });
-    it("is sent when enabled explicitly, whatever the verbosity, with no pane and no reply mapping", async () => {
+    it("is sent when enabled explicitly, whatever the verbosity, with no session, pane or project field and no reply mapping", async () => {
         mockIsEventAllowedByVerbosity.mockReturnValue(false);
         mockGetNotificationConfig.mockReturnValue({ ...baseConfig, events: { "factory-attention": { enabled: true } } });
         const notice = { repo: "repo", key: "#6", group: "merge", gate: "merge", next: "omg factory run 6" };
         await sendAttentionNotice(notice, notify);
         expect(mockDispatchNotifications).toHaveBeenCalledOnce();
         const payload = mockDispatchNotifications.mock.calls[0][2];
-        expect(payload).toMatchObject({ message: attentionNoticeText(notice), tmuxPaneId: "", replyable: false, projectName: "repo" });
+        expect(payload).toMatchObject({ message: attentionNoticeText(notice), replyable: false });
+        // The tmux mock reports a session and a pane: neither is attached to this event.
+        expect(payload.tmuxSession).toBeUndefined();
+        expect(payload.tmuxPaneId).toBeUndefined();
+        expect(payload.projectName).toBeUndefined();
         expect(payload.projectPath).toBeUndefined();
     });
     it("runs the message through the redaction", async () => {

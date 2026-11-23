@@ -10,7 +10,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { factoryAttentionCommand } from '../../../cli/commands/factory-attention.js';
+import { factoryAttentionCommand, terminalColumns } from '../../../cli/commands/factory-attention.js';
 import { writeHealState } from '../../heal/state.js';
 import { writeHealSeal } from '../../heal/run.js';
 import { DEFAULT_FACTORY_RUN_LIMITS } from '../../run/budget.js';
@@ -594,11 +594,59 @@ describe('omg factory attention: engine lock and slot reads (L-4)', () => {
         let identityReads = 0;
         const owner = { ...OWNER, identityOf: () => { identityReads += 1; return 'start-1'; } };
         const d = collectAttention(root, { ledgerDir, now: () => NOW, owner });
-        expect(d.summary.engines.live).toBe(16);
-        expect(identityReads).toBe(16);
+        // Slot files are not ledger-recorded: planted ones add no engine, and are one Inspect row without their content.
+        expect(d.summary.engines.live).toBe(0);
+        // At most MAX_CONCURRENT_LIMIT (16) start-identity checks, and none past the first planted slot.
+        expect(identityReads).toBeGreaterThan(0);
+        expect(identityReads).toBeLessThanOrEqual(16);
+        expect(d.items.map((i) => [i.key, i.group, i.trust, i.next.length])).toEqual([['slots', 'inspect', 'owner', 0]]);
+        expect(d.items[0].why).toMatch(/^slot files the engine did not write/);
+        expect(UNTRUSTED_WHY.has(d.items[0].why)).toBe(true);
         // A directory in place of the engine lock is unreadable (held for the engine count only when readable), and it is never followed.
         mkdirSync(join(factoryStateDir(root), 'engine.owner'));
         expect(() => collectAttention(root, { ledgerDir, now: () => NOW, owner })).not.toThrow();
+    });
+    it('a slot held for a run whose owner file the engine recorded is that engine (counted once), and no row; `next` is a pick in progress', () => {
+        asEngine(moveTo(issueRun(8), 'implement', 'plan ok', at(2)));
+        ownerAsEngine(8, { pid: 777, hostname: 'this-host', startedAt: at(1) });
+        const slots = join(factoryStateDir(root), 'slots');
+        mkdirSync(slots, { recursive: true });
+        writeFileSync(join(slots, 'slot-0.owner'), JSON.stringify({ pid: 777, hostname: 'this-host', startedAt: at(1), run: '8' }));
+        writeFileSync(join(slots, 'slot-1.owner'), JSON.stringify({ pid: 777, hostname: 'this-host', startedAt: at(1), run: 'next' }));
+        let d = collectAttention(root, { ledgerDir, now: () => NOW, owner: OWNER });
+        expect(d.summary.engines).toEqual({ live: 1, runs: ['#8'] });
+        expect(d.items.filter((i) => i.key === 'slots')).toEqual([]);
+        // A slot naming another run (or an unreadable one) is the Inspect row.
+        writeFileSync(join(slots, 'slot-2.owner'), JSON.stringify({ pid: 777, hostname: 'this-host', startedAt: at(1), run: '9' }));
+        d = collectAttention(root, { ledgerDir, now: () => NOW, owner: OWNER });
+        expect(d.summary.engines.live).toBe(1);
+        expect(d.items.filter((i) => i.key === 'slots').map((i) => i.trust)).toEqual(['owner']);
+        writeFileSync(join(slots, 'slot-2.owner'), 'garbage');
+        expect(collectAttention(root, { ledgerDir, now: () => NOW, owner: OWNER }).items.filter((i) => i.key === 'slots')).toHaveLength(1);
+    });
+});
+describe('omg factory attention: untrusted rows keep no lane-chosen number (LOW-1, MEDIUM-1)', () => {
+    it('a forged owner row keeps only the fixed owner note, and no age or sort time from the state', () => {
+        asEngine({ ...moveTo(issueRun(33), 'implement', 'plan ok', at(3)), cancelRequested: true });
+        writeFileSync(factoryOwnerPath(root, 33), JSON.stringify({ pid: 777, hostname: 'this-host', startedAt: at(1) }));
+        const d = collectAttention(root, { ledgerDir, now: () => NOW, owner: OWNER, limits: { ...DEFAULT_FACTORY_RUN_LIMITS, maxRunCredits: 1 } });
+        const row = d.items.find((i) => i.key === '#33');
+        expect(row).toMatchObject({ trust: 'owner', ageMs: null, at: 0 });
+        expect(row.notes.join(' ')).not.toMatch(/\d/);
+        expect(row.notes.every((n) => /owner file the engine did not write/.test(n))).toBe(true);
+    });
+});
+describe('omg factory attention: layout width when stdout is not a terminal (LOW-3)', () => {
+    it('stdout columns, then stderr columns, then a numeric COLUMNS held to 40..500, else unknown (80)', () => {
+        expect(terminalColumns({ columns: 120 }, { columns: 90 }, { COLUMNS: '200' })).toBe(120);
+        expect(terminalColumns({}, { columns: 90 }, { COLUMNS: '200' })).toBe(90);
+        expect(terminalColumns({}, {}, { COLUMNS: '200' })).toBe(200);
+        expect(terminalColumns({}, {}, { COLUMNS: '9999' })).toBe(500);
+        expect(terminalColumns({}, {}, { COLUMNS: '12' })).toBe(40);
+        for (const bad of ['', '0', 'wide', '1e3', '-5', ' 80x'])
+            expect(terminalColumns({}, {}, { COLUMNS: bad })).toBeUndefined();
+        expect(terminalColumns({}, {}, {})).toBeUndefined();
+        expect(layoutColumns(terminalColumns({}, {}, {}))).toBe(80);
     });
 });
 describe('omg factory attention: the sealed next commands (FactoryGate.next)', () => {

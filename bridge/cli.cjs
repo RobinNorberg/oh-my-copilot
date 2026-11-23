@@ -91710,16 +91710,18 @@ async function notify(event, data) {
       return null;
     }
     const { getCurrentTmuxPaneId: getCurrentTmuxPaneId2 } = await Promise.resolve().then(() => (init_tmux(), tmux_exports));
+    const factoryAttention = event === "factory-attention";
     const payload = {
       event,
       sessionId: data.sessionId,
       message: "",
       // Will be formatted below
       timestamp: data.timestamp || (/* @__PURE__ */ new Date()).toISOString(),
-      tmuxSession: data.tmuxSession ?? getCurrentTmuxSession() ?? void 0,
-      tmuxPaneId: data.tmuxPaneId ?? getCurrentTmuxPaneId2() ?? void 0,
-      projectPath: data.projectPath,
-      projectName: data.projectName || (data.projectPath ? (0, import_path104.basename)(data.projectPath) : void 0),
+      // factory-attention carries no session, pane or project field: its message is all it sends.
+      tmuxSession: factoryAttention ? void 0 : data.tmuxSession ?? getCurrentTmuxSession() ?? void 0,
+      tmuxPaneId: factoryAttention ? void 0 : data.tmuxPaneId ?? getCurrentTmuxPaneId2() ?? void 0,
+      projectPath: factoryAttention ? void 0 : data.projectPath,
+      projectName: factoryAttention ? void 0 : data.projectName || (data.projectPath ? (0, import_path104.basename)(data.projectPath) : void 0),
       modesUsed: data.modesUsed,
       contextSummary: data.contextSummary,
       durationMs: data.durationMs,
@@ -122244,7 +122246,7 @@ function isCodingAgentCloseArgs(args, ctx) {
   const named = args.length === 5 ? repoOf(args[4]) : void 0;
   return repo !== void 0 && named !== void 0 && ctx?.pr !== void 0 && Number.isSafeInteger(ctx.pr) && NUMBER2.test(String(ctx.pr)) && args[0] === "pr" && args[1] === "close" && args[2] === String(ctx.pr) && args[3] === "--repo" && sameRepoArg(named, repo);
 }
-function readPr(v, repoName, linkedAt, sessionStart) {
+function readPr(v, repoName2, linkedAt, sessionStart) {
   if (!isObj(v) || v.__typename !== "PullRequest") return void 0;
   const number4 = typeof v.number === "number" && Number.isSafeInteger(v.number) && v.number > 0 ? v.number : void 0;
   const state = str3(v.state);
@@ -122252,7 +122254,7 @@ function readPr(v, repoName, linkedAt, sessionStart) {
   const nameOf = (r) => isObj(r) ? str3(r.nameWithOwner) : void 0;
   const headRepo = nameOf(v.headRepository);
   const baseRepo = nameOf(v.baseRepository);
-  const sameRepo2 = v.isCrossRepository === false && headRepo !== void 0 && baseRepo !== void 0 && lower(headRepo) === lower(repoName) && lower(baseRepo) === lower(repoName);
+  const sameRepo2 = v.isCrossRepository === false && headRepo !== void 0 && baseRepo !== void 0 && lower(headRepo) === lower(repoName2) && lower(baseRepo) === lower(repoName2);
   const baseRef = str3(v.baseRefName);
   const headRef = str3(v.headRefName);
   const headOid = str3(v.headRefOid);
@@ -122317,9 +122319,9 @@ function parseCodingAgentStatus(stdout, since) {
   const data = isObj(json3) && isObj(json3.data) ? json3.data : {};
   const repo = isObj(data.repository) ? data.repository : void 0;
   const issue2 = repo && isObj(repo.issue) ? repo.issue : void 0;
-  const repoName = repo ? str3(repo.nameWithOwner) : void 0;
+  const repoName2 = repo ? str3(repo.nameWithOwner) : void 0;
   const issueNumber = issue2 && typeof issue2.number === "number" && Number.isSafeInteger(issue2.number) && issue2.number > 0 ? issue2.number : void 0;
-  if (!repo || !issue2 || !repoName || issueNumber === void 0) {
+  if (!repo || !issue2 || !repoName2 || issueNumber === void 0) {
     const first = isObj(json3) && Array.isArray(json3.errors) && isObj(json3.errors[0]) ? str3(json3.errors[0].message) : void 0;
     throw new Error(`coding agent status: no issue in the response${first ? ` (${plainMessage(first)})` : ""}`);
   }
@@ -122341,7 +122343,7 @@ function parseCodingAgentStatus(stdout, since) {
   const ignored = /* @__PURE__ */ new Map();
   for (const [index, { e: e2, at }] of events.entries()) {
     if (e2.__typename !== "ConnectedEvent" && e2.__typename !== "CrossReferencedEvent" || !isAgent(e2.actor)) continue;
-    const pr2 = readPr(e2.__typename === "ConnectedEvent" ? e2.subject : e2.source, repoName, at, sessionStart);
+    const pr2 = readPr(e2.__typename === "ConnectedEvent" ? e2.subject : e2.source, repoName2, at, sessionStart);
     if (!pr2) continue;
     const reason = !pr2.byAgent ? "not-agent-author" : !pr2.sameRepo ? "cross-repository" : !assigned || index <= startIndex ? "outside-session" : void 0;
     if (reason) {
@@ -122353,7 +122355,7 @@ function parseCodingAgentStatus(stdout, since) {
   }
   const prs = [...linked.values()].sort((a, b) => Date.parse(b.linkedAt) - Date.parse(a.linkedAt) || b.number - a.number);
   const base = {
-    repo: repoName,
+    repo: repoName2,
     issue: issueNumber,
     available,
     ...sessionStart ? { assignedAt: sessionStart } : {},
@@ -122558,7 +122560,7 @@ function codingAgentRepoOf(repoUrl) {
   const m = /^https:\/\/([^/\s]+)\/([^/\s]+)\/([^/\s]+?)(?:\.git)?$/.exec(repoUrl);
   return m ? { host: m[1], owner: m[2], name: m[3] } : void 0;
 }
-function openAgentPrs(stdout, repoName) {
+function openAgentPrs(stdout, repoName2) {
   let json3;
   try {
     json3 = JSON.parse(stdout);
@@ -122568,7 +122570,7 @@ function openAgentPrs(stdout, repoName) {
   const issue2 = isObj2(json3) && isObj2(json3.data) && isObj2(json3.data.repository) ? json3.data.repository.issue : void 0;
   const items = isObj2(issue2) && isObj2(issue2.timelineItems) && Array.isArray(issue2.timelineItems.nodes) ? issue2.timelineItems.nodes : [];
   const open9 = /* @__PURE__ */ new Set();
-  const lower2 = repoName.toLowerCase();
+  const lower2 = repoName2.toLowerCase();
   for (const e2 of items) {
     if (!isObj2(e2) || e2.__typename !== "ConnectedEvent" && e2.__typename !== "CrossReferencedEvent" || !isAgent2(e2.actor)) continue;
     const pr = e2.__typename === "ConnectedEvent" ? e2.subject : e2.source;
@@ -153673,7 +153675,7 @@ function holderOf(path30, deps) {
   try {
     const owner = JSON.parse(r.bytes.toString("utf8"));
     if (!isOwnerRecord(owner)) return "unreadable";
-    return ownerHolds(owner, deps) ? "held" : null;
+    return ownerHolds(owner, deps) ? typeof owner.run === "string" ? owner.run : "" : null;
   } catch {
     return "unreadable";
   }
@@ -153712,7 +153714,8 @@ function untrustedRow(i) {
   const gate = typeof i.gate === "string" && GATE_NAME_SHAPE.test(i.gate) && gateAction(i.gate).known ? i.gate : null;
   const phase = i.phase === "heal" || FACTORY_PHASES.includes(i.phase ?? "") ? i.phase : null;
   const fixed = UNTRUSTED_WHY.has(i.why) ? i.why : (i.key.startsWith("heal-") ? HEAL_WHY[i.trust] : void 0) ?? TRUST_WHY[i.trust];
-  return { ...rest, gate, phase, ageMs: null, pr: null, head: null, title: "", credits: null, cap: null, why: fixed };
+  const notes = i.notes.filter((n) => FIXED_NOTES.has(n));
+  return { ...rest, gate, phase, ageMs: null, pr: null, head: null, title: "", credits: null, cap: null, why: fixed, notes, at: 0 };
 }
 function runItem(root, r, now2, o, live, hold = false) {
   const label2 = runLabel(r.key);
@@ -153819,8 +153822,14 @@ function healItem(root, sig8, s, o, now2, deps) {
   };
 }
 function healOpenAfterRun(root, sig8, s, o, now2) {
-  if (s.sig8 !== sig8 || verifyHealSeal(o.ledgerDir, root, s) !== "ok" || !s.healRun?.open) return null;
   const key = `heal-${sig8}`;
+  const seal = s.sig8 === sig8 ? verifyHealSeal(o.ledgerDir, root, s) : "mismatch";
+  if (seal === "none") return null;
+  if (seal !== "ok") {
+    return { key, group: "inspect", gate: null, phase: "heal", ageMs: null, credits: null, cap: null, pr: null, head: null, title: "", why: HEAL_WHY.seal, next: suppressedCommands(key), trust: "seal", notes: [], at: 0 };
+  }
+  if (!s.healRun?.open) return null;
+  const closable = s.next === "heal-approve" || s.next === "heal-diagnosis";
   const at = msOf(s.updatedAt);
   return {
     key,
@@ -153833,8 +153842,8 @@ function healOpenAfterRun(root, sig8, s, o, now2) {
     pr: null,
     head: null,
     title: text5(`ci-heal ${s.class}`, TITLE_MAX),
-    why: "the ci-heal run is finished but its heal run is still open, which blocks every other debugger lane; close it",
-    next: nextCommands(key, ["status", "heal-close"]),
+    why: closable ? "the ci-heal run is finished but its heal run is still open, which blocks every other debugger lane; close it" : "the ci-heal run is finished but its heal run is still open, which blocks every other debugger lane; heal close does not take its stage, read its status",
+    next: nextCommands(key, closable ? ["status", "heal-close"] : ["status"]),
     trust: "ok",
     notes: [],
     at: Number.isFinite(at) ? at : 0
@@ -153921,7 +153930,7 @@ function collectIn(root, o) {
     const row = { key, group: "inspect", gate: null, phase: "heal", ageMs: null, credits: null, cap: null, pr: null, head: null, title: "", notes: [], next: suppressedCommands(key), at: 0 };
     const r = readRegularFile(healStatePath(root, sig8));
     if ("missing" in r) {
-      if (finishedRun === void 0 && healSealOpen(o.ledgerDir, root, sig8) !== false) {
+      if (healSealOpen(o.ledgerDir, root, sig8) !== false) {
         items.push({ ...row, why: HEAL_WHY.missing, trust: "missing" });
       }
       continue;
@@ -153936,7 +153945,6 @@ function collectIn(root, o) {
       }
     }
     if (!s) {
-      if (finishedRun) continue;
       warnings.push(`heal signature ${sig8} is unreadable (the error: omg factory attention --verbose)`);
       items.push({ ...row, why: HEAL_WHY.unreadable, error: text5(problem), trust: "unreadable" });
       continue;
@@ -153949,10 +153957,17 @@ function collectIn(root, o) {
     }
     if (item) items.push(item);
   }
-  const repoOwner = holderOf(factoryRepoOwnerPath(root), deps);
+  const engines = liveRuns.length;
   const slotFiles = listed2(factorySlotsDir(root)).filter((n) => /^slot-\d+\.owner$/.test(n)).sort().slice(0, MAX_CONCURRENT_LIMIT);
-  const slots = slotFiles.filter((n) => holderOf((0, import_path210.join)(factorySlotsDir(root), n), deps) !== null);
-  const engines = Math.max(liveRuns.length, (repoOwner && repoOwner !== "unreadable" ? 1 : 0) + slots.length);
+  const planted = slotFiles.some((n) => {
+    const run3 = holderOf((0, import_path210.join)(factorySlotsDir(root), n), deps);
+    if (run3 === null || run3 === "next") return false;
+    const key = run3 === "unreadable" ? null : runKeyOfName(`run-${run3}.json`);
+    return key === null || !liveRuns.includes(runLabel(key));
+  });
+  if (planted) {
+    items.push({ key: "slots", group: "inspect", gate: null, phase: null, ageMs: null, credits: null, cap: null, pr: null, head: null, title: "", why: SLOT_WHY, next: [], trust: "owner", notes: [], at: 0 });
+  }
   for (let k = 0; k < items.length; k++) items[k] = untrustedRow(items[k]);
   const order = new Map(ATTENTION_GROUPS.map((g, i) => [g, i]));
   items.sort((a, b) => order.get(a.group) - order.get(b.group) || a.at - b.at || a.key.localeCompare(b.key));
@@ -153979,7 +153994,7 @@ function attentionJson(d) {
     warnings: d.warnings
   };
 }
-var import_fs183, import_path210, ATTENTION_SCHEMA_VERSION, HUNG_AFTER_MS, TITLE_MAX, READ_MAX_BYTES, TEXT_MAX, REASON_MAX, RUN_FILE2, text5, errText7, HEX4024, forgeOf, msOf, sameFile2, kindOf, isMissing, relLog, TRUST_WHY, MISSING_UNREADABLE_LEDGER_WHY, HEAL_WHY, UNTRUSTED_WHY, GATE_NAME_SHAPE, FORGED_OWNER_NOTE, REMOTE_OWNER_NOTE;
+var import_fs183, import_path210, ATTENTION_SCHEMA_VERSION, HUNG_AFTER_MS, TITLE_MAX, READ_MAX_BYTES, TEXT_MAX, REASON_MAX, RUN_FILE2, text5, errText7, HEX4024, forgeOf, msOf, sameFile2, kindOf, isMissing, relLog, TRUST_WHY, MISSING_UNREADABLE_LEDGER_WHY, HEAL_WHY, SLOT_WHY, UNTRUSTED_WHY, FORGED_OWNER_NOTE, REMOTE_OWNER_NOTE, FIXED_NOTES, GATE_NAME_SHAPE;
 var init_collect2 = __esm({
   "src/factory/attention/collect.ts"() {
     "use strict";
@@ -154027,10 +154042,12 @@ var init_collect2 = __esm({
       missing: "the heal record is missing; the heal seal outside the repository records an open heal run (or predates the open flag). Inspect it, the commands are withheld",
       unreadable: "the heal record cannot be read; inspect it, the commands are withheld"
     };
-    UNTRUSTED_WHY = /* @__PURE__ */ new Set([...Object.values(TRUST_WHY), MISSING_UNREADABLE_LEDGER_WHY, ...Object.values(HEAL_WHY)]);
-    GATE_NAME_SHAPE = /^[a-z0-9][a-z0-9-]{0,59}$/;
+    SLOT_WHY = "slot files the engine did not write: a parallel slot is held for no run whose owner file the engine ledger records (or a slot file cannot be read); they are not counted as engines. Inspect the slots directory, the commands are withheld";
+    UNTRUSTED_WHY = /* @__PURE__ */ new Set([...Object.values(TRUST_WHY), MISSING_UNREADABLE_LEDGER_WHY, ...Object.values(HEAL_WHY), SLOT_WHY]);
     FORGED_OWNER_NOTE = "an owner file the engine did not write is present (the engine ledger does not record it); it is not counted as a live engine";
     REMOTE_OWNER_NOTE = "the run's owner file names another host: this host cannot tell whether that engine is alive";
+    FIXED_NOTES = /* @__PURE__ */ new Set([FORGED_OWNER_NOTE]);
+    GATE_NAME_SHAPE = /^[a-z0-9][a-z0-9-]{0,59}$/;
   }
 });
 
@@ -154045,10 +154062,19 @@ function noticeCommand(next) {
 }
 function attentionNotice(root, i) {
   if (!KEY2.test(i.key)) return null;
-  const repo = [...plainText((0, import_path211.basename)(root)).replace(/\s+/g, " ").trim()].slice(0, 60).join("") || "repository";
-  return { repo, key: i.key, group: i.group, gate: noticeGate(i), next: noticeCommand(i.next) };
+  return { repo: repoName(root), key: i.key, group: i.group, gate: noticeGate(i), next: noticeCommand(i.next) };
+}
+function attentionMoreNotice(root, items) {
+  const byGroup = {};
+  for (const i of items) byGroup[i.group] = (byGroup[i.group] ?? 0) + 1;
+  return { repo: repoName(root), more: items.length, byGroup };
 }
 function attentionNoticeText(n) {
+  if ("more" in n) {
+    const counts = Object.keys(GROUP_TITLES).filter((g) => n.byGroup[g]).map((g) => `${n.byGroup[g]} ${GROUP_TITLES[g].toLowerCase()}`);
+    return `factory ${n.repo}: and ${n.more} more item(s) need you: ${counts.join(", ")}
+details: omg factory attention`;
+  }
   const what = `${GROUP_TITLES[n.group]}${n.gate ? `: ${n.gate}` : ""}`;
   return `factory ${n.repo}: ${n.key} needs you (${what})${n.next ? `
 next: ${n.next}` : ""}
@@ -154058,11 +154084,11 @@ async function sendAttentionNotice(n, notify2) {
   try {
     const send = notify2 ?? (await Promise.resolve().then(() => (init_notifications(), notifications_exports))).notify;
     const { redactTokens: redactTokens2 } = await Promise.resolve().then(() => (init_redact2(), redact_exports));
-    await send("factory-attention", { sessionId: "factory-attention", message: redactTokens2(attentionNoticeText(n)), projectName: n.repo, tmuxPaneId: "", replyable: false });
+    await send("factory-attention", { sessionId: "factory-attention", message: redactTokens2(attentionNoticeText(n)), replyable: false });
   } catch {
   }
 }
-var import_path211, GATE_NAME, KEY2;
+var import_path211, GATE_NAME, KEY2, repoName;
 var init_notify = __esm({
   "src/factory/attention/notify.ts"() {
     "use strict";
@@ -154070,7 +154096,8 @@ var init_notify = __esm({
     init_score();
     init_actions();
     GATE_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-    KEY2 = /^(#\d{1,12}|heal-[0-9a-f]{8}|checkout)$/;
+    KEY2 = /^(#\d{1,12}|heal-[0-9a-f]{8}|checkout|slots)$/;
+    repoName = (root) => [...plainText((0, import_path211.basename)(root)).replace(/\s+/g, " ").trim()].slice(0, 60).join("") || "repository";
   }
 });
 
@@ -154487,6 +154514,28 @@ function defaultPollBudget(layers, env2 = process.env) {
     }
   };
 }
+function markSeen(seen, ids2, now2) {
+  for (const id of ids2) {
+    seen.delete(id);
+    seen.set(id, now2);
+  }
+  for (const id of seen.keys()) {
+    if (seen.size <= ATTENTION_SEEN_MAX) break;
+    seen.delete(id);
+  }
+}
+async function settledWithin(ps, ms2) {
+  let timer;
+  const late = new Promise((resolve98) => {
+    timer = setTimeout(() => resolve98(false), ms2);
+    timer.unref?.();
+  });
+  try {
+    return await Promise.race([Promise.allSettled(ps).then(() => true), late]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
 async function pollTick(ctx) {
   const { forge, config: config2, root } = ctx;
   const at = new Date(ctx.now()).toISOString();
@@ -154618,17 +154667,38 @@ async function pollTick(ctx) {
     const d = step("attention", ctx.attention);
     if (d) {
       const before = ctx.previous.attention;
-      ctx.previous.attention = new Set(d.items.map(attentionId));
+      const ids3 = d.items.map(attentionId);
+      ctx.previous.attention = new Set(ids3);
+      const seen = ctx.previous.seen ??= /* @__PURE__ */ new Map();
+      const nowMs = ctx.now();
+      const quietMs = (ctx.remindAfterHours && ctx.remindAfterHours > 0 ? ctx.remindAfterHours : ATTENTION_QUIET_DEFAULT_HOURS) * 36e5;
       if (!before) attention = { summary: summaryLine2(d), new: [] };
       else {
         const reminded = new Set((reminders ?? []).map((r) => runLabel(r.run)));
-        const fresh = d.items.filter((i) => !before.has(attentionId(i)) && !reminded.has(i.key));
-        attention = { new: fresh.map((i) => ({ key: i.key, group: i.group, gate: noticeGate(i), next: i.next[0]?.argv ?? null })) };
-        for (const i of fresh) {
-          const notice = attentionNotice(root, i);
-          if (notice && ctx.notifyAttention) await ctx.notifyAttention(notice);
+        const fresh = d.items.filter((i, n) => {
+          const last = seen.get(ids3[n]);
+          return !before.has(ids3[n]) && !reminded.has(i.key) && (last === void 0 || nowMs - last >= quietMs);
+        });
+        const printed = fresh.slice(0, ATTENTION_PRINT_ITEMS);
+        attention = {
+          new: printed.map((i) => ({ key: i.key, group: i.group, gate: noticeGate(i), next: i.next[0]?.argv ?? null })),
+          ...fresh.length > printed.length ? { more: fresh.length - printed.length } : {}
+        };
+        if (ctx.notifyAttention && fresh.length > 0) {
+          const notices = fresh.slice(0, ATTENTION_NOTICE_ITEMS).map((i) => attentionNotice(root, i)).filter((n) => n !== null);
+          if (fresh.length > ATTENTION_NOTICE_ITEMS) notices.push(attentionMoreNotice(root, fresh.slice(ATTENTION_NOTICE_ITEMS)));
+          const sent = (ctx.previous.notified ??= []).filter((t) => nowMs - t < ATTENTION_RATE_WINDOW_MS && t <= nowMs);
+          const allowed = notices.slice(0, Math.max(0, ATTENTION_RATE_MAX - sent.length));
+          ctx.previous.notified = [...sent, ...allowed.map(() => nowMs)];
+          if (allowed.length < notices.length) attention.dropped = notices.length - allowed.length;
+          const notify2 = ctx.notifyAttention;
+          const timeoutMs = ctx.notifyTimeoutMs ?? ATTENTION_NOTIFY_TIMEOUT_MS;
+          if (allowed.length > 0 && !await settledWithin(allowed.map((n) => Promise.resolve().then(() => notify2(n))), timeoutMs)) {
+            warnings.push(`attention: the notifications did not finish within ${Math.round(timeoutMs / 1e3)} s; the poll goes on`);
+          }
         }
       }
+      markSeen(seen, ids3, nowMs);
     }
   }
   const board = [];
@@ -154706,6 +154776,8 @@ function renderTick(t) {
     const c = a.next ? commandText(a.next) : null;
     lines4.push(`  attention: ${a.key} needs you: ${GROUP_TITLES[a.group].toLowerCase()}${a.gate ? ` at ${a.gate}` : ""}${c ? `; next: ${c.inRoot ? "in the repository root, " : ""}${c.line}` : ""}`);
   }
+  if (t.attention?.more) lines4.push(`  attention: and ${t.attention.more} more new item(s) need you (omg factory attention)`);
+  if (t.attention?.dropped) lines4.push(`  attention: ${t.attention.dropped} notification(s) not sent: at most ${ATTENTION_RATE_MAX} per ${ATTENTION_RATE_WINDOW_MS / 6e4} min for this repository`);
   for (const r of t.reminders ?? []) lines4.push(`  reminder: ${runLabel(r.run)} has waited ${r.hours} h at ${visibleLine(r.gate)}${r.handles.length ? ` ${r.handles.join(" ")}` : ""}: ${r.reason} (${reminderHint(r.run, r.gate)})`);
   const done = new Map(t.prs.filter((p) => p.hint).map((p) => [runLabel(p.id), p]));
   for (const b of t.board) {
@@ -154785,6 +154857,7 @@ async function runFactoryPoll(o, deps) {
     })(),
     attention: () => collectAttention(read.root, { ledgerDir: deps.ledgerDir ?? defaultLedgerDir(), owner, now: now2 }),
     notifyAttention: deps.notifyAttention ?? ((n) => sendAttentionNotice(n)),
+    ...deps.notifyTimeoutMs !== void 0 ? { notifyTimeoutMs: deps.notifyTimeoutMs } : {},
     owner,
     now: now2,
     previous: { board: /* @__PURE__ */ new Map(), prs: /* @__PURE__ */ new Map() },
@@ -154814,7 +154887,7 @@ async function runFactoryPoll(o, deps) {
     release();
   }
 }
-var import_child_process49, import_fs185, import_path213, POLL_JSON_SCHEMA_VERSION, POLL_DEFAULT_INTERVAL_MS, POLL_MIN_INTERVAL_MS, POLL_MAX_INTERVAL_MS, POLL_OWNER_STALE_MS, PollBusyError, pollStatePath, pollAuditPath, writePollFile, ownerless, stale, heldBy, AUTO_START_MAX_STDOUT, AUTO_START_CLAIM, AUTO_START_SLACK_MS, AUTO_START_GRACE_MS, attentionId, message3, reminderHint, defaultSleep, defaultOnStop;
+var import_child_process49, import_fs185, import_path213, POLL_JSON_SCHEMA_VERSION, POLL_DEFAULT_INTERVAL_MS, POLL_MIN_INTERVAL_MS, POLL_MAX_INTERVAL_MS, POLL_OWNER_STALE_MS, PollBusyError, pollStatePath, pollAuditPath, writePollFile, ownerless, stale, heldBy, AUTO_START_MAX_STDOUT, AUTO_START_CLAIM, AUTO_START_SLACK_MS, AUTO_START_GRACE_MS, ATTENTION_NOTICE_ITEMS, ATTENTION_PRINT_ITEMS, ATTENTION_RATE_MAX, ATTENTION_RATE_WINDOW_MS, ATTENTION_NOTIFY_TIMEOUT_MS, ATTENTION_SEEN_MAX, ATTENTION_QUIET_DEFAULT_HOURS, attentionId, message3, reminderHint, defaultSleep, defaultOnStop;
 var init_poll = __esm({
   "src/factory/poll.ts"() {
     "use strict";
@@ -154872,7 +154945,14 @@ var init_poll = __esm({
     AUTO_START_CLAIM = 0;
     AUTO_START_SLACK_MS = 30 * 6e4;
     AUTO_START_GRACE_MS = 2 * 6e4;
-    attentionId = (i) => JSON.stringify([i.key, i.group, i.trust, i.gate, i.at]);
+    ATTENTION_NOTICE_ITEMS = 3;
+    ATTENTION_PRINT_ITEMS = 10;
+    ATTENTION_RATE_MAX = 6;
+    ATTENTION_RATE_WINDOW_MS = 10 * 6e4;
+    ATTENTION_NOTIFY_TIMEOUT_MS = 1e4;
+    ATTENTION_SEEN_MAX = 1e4;
+    ATTENTION_QUIET_DEFAULT_HOURS = 24;
+    attentionId = (i) => i.trust === "ok" ? JSON.stringify([i.key, i.group, "ok", i.gate, i.at]) : JSON.stringify([i.key, "untrusted"]);
     message3 = (error62) => plainText(error62 instanceof Error ? error62.message : String(error62));
     reminderHint = (key, gate) => reminderCommand(key, gate);
     defaultSleep = (ms2, wake) => new Promise((resolve98) => {
@@ -157045,7 +157125,7 @@ function median(values) {
 }
 function unverifiedRun(key, trust, s) {
   const phase = s && FACTORY_PHASES.includes(s.phase) ? s.phase : null;
-  const gateName = s?.gate && typeof s.gate.name === "string" && SAFE_NAME.test(s.gate.name) ? s.gate.name : null;
+  const gateName = s?.gate && typeof s.gate.name === "string" && SAFE_NAME.test(s.gate.name) && gateSteps(s.gate.name).known ? s.gate.name : null;
   return {
     key: runLabel(key),
     kind: typeof key === "string" ? "ci-heal" : "issue",
@@ -157365,6 +157445,7 @@ var init_collect_v2 = __esm({
     init_score();
     init_collect2();
     init_ledger2();
+    init_gate_next();
     init_progress2();
     init_state6();
     init_collect3();
@@ -157831,6 +157912,11 @@ var init_factory_dashboard = __esm({
 });
 
 // src/cli/commands/factory-attention.ts
+function terminalColumns(stdout = process.stdout, stderr = process.stderr, env2 = process.env) {
+  for (const c of [stdout.columns, stderr.columns]) if (typeof c === "number" && Number.isFinite(c) && c > 0) return c;
+  const n = /^\d{1,4}$/.test(env2.COLUMNS?.trim() ?? "") ? Number(env2.COLUMNS) : Number.NaN;
+  return n > 0 ? Math.min(500, Math.max(40, n)) : void 0;
+}
 function factoryAttentionCommand(deps = defaultAttentionDeps) {
   const cmd = new Command("attention").description("What needs you: parked, broken and tampered factory runs grouped by the human action, with the next commands (local state only: no network, no forge read, no write)").option("--json", "JSON output (schemaVersion 1)").option("--verbose", "also print each park's full reason, for runs whose state is the engine's own (never its local detail)").option("--exit-zero", "exit 0 when something needs you (default: 4)");
   cmd.exitOverride((e2) => {
@@ -157862,7 +157948,7 @@ function factoryAttentionCommand(deps = defaultAttentionDeps) {
       data.warnings.unshift(...warnings.map((w) => plainText(w)));
       if (o.json) deps.out(JSON.stringify(attentionJson(data), null, 2));
       else {
-        const columns = (deps.columns ?? (() => process.stdout.columns))();
+        const columns = (deps.columns ?? (() => terminalColumns()))();
         for (const w of data.warnings) for (const l of warningLines(w, layoutColumns(columns))) deps.err(source_default.yellow(l));
         deps.out(renderAttention(data, { verbose: o.verbose, columns }));
       }
@@ -188042,7 +188128,7 @@ async function teleportCommand(ref, options) {
     return { success: false, error: error62 };
   }
   const { owner, repo, root: repoRoot3 } = currentRepo;
-  const repoName = (0, import_path231.basename)(repoRoot3);
+  const repoName2 = (0, import_path231.basename)(repoRoot3);
   const config2 = loadConfig();
   const shouldSymlinkNodeModules = config2.teleport?.symlinkNodeModules ?? true;
   const effectiveProviderName = parsed2.provider || currentRepo.provider;
@@ -188053,7 +188139,7 @@ async function teleportCommand(ref, options) {
   if (parsed2.type === "feature") {
     const safeName = sanitize(parsed2.name || "feature");
     branchName2 = `feat/${safeName}`;
-    worktreeDirName = `feat/${repoName}-${safeName}`;
+    worktreeDirName = `feat/${repoName2}-${safeName}`;
     title = parsed2.name;
     if (!options.json) {
       console.log(source_default.blue(`Creating feature worktree: ${parsed2.name}`));
@@ -188091,7 +188177,7 @@ async function teleportCommand(ref, options) {
     const slug = sanitize(title, 20);
     if (isPR) {
       branchName2 = info.branch || `pr-${parsed2.number}-review`;
-      worktreeDirName = `pr/${repoName}-${parsed2.number}`;
+      worktreeDirName = `pr/${repoName2}-${parsed2.number}`;
       if (!options.json) {
         console.log(source_default.blue(`Creating PR review worktree: #${parsed2.number} - ${title}`));
       }
@@ -188117,7 +188203,7 @@ async function teleportCommand(ref, options) {
       }
     } else {
       branchName2 = `fix/${parsed2.number}-${slug}`;
-      worktreeDirName = `issue/${repoName}-${parsed2.number}`;
+      worktreeDirName = `issue/${repoName2}-${parsed2.number}`;
       if (!options.json) {
         console.log(source_default.blue(`Creating issue fix worktree: #${parsed2.number} - ${title}`));
       }

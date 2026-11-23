@@ -34,7 +34,7 @@ import { MAX_CONCURRENT_LIMIT } from '../run/parallel.js';
 import { EngineLedger, ledgerFilePath } from '../run/ledger.js';
 import { factoryProgressFile } from '../run/progress.js';
 import { RELEASE_TAMPER_COMMAND, tamperHoldMessage } from '../run/tamper-quarantine.js';
-import { defaultOwnerDeps, FACTORY_PHASES, factoryOwnerPath, factoryRepoOwnerPath, factoryStateDir, factorySlotsDir, factoryStatePath, isOwnerRecord, ownerHolds, parseFactoryState, runLabel, TERMINAL_FACTORY_PHASES, verifyFactoryIntegrity, } from '../run/state.js';
+import { defaultOwnerDeps, FACTORY_PHASES, factoryOwnerPath, factoryStateDir, factorySlotsDir, factoryStatePath, isOwnerRecord, ownerHolds, parseFactoryState, runLabel, TERMINAL_FACTORY_PHASES, verifyFactoryIntegrity, } from '../run/state.js';
 import { ATTENTION_GROUPS, gateAction, nextCommands, stateGateNext, suppressedCommands } from './actions.js';
 export const ATTENTION_SCHEMA_VERSION = 1;
 /** A live engine with no progress event for this long is "possibly hung" (a hint only: the log is unsealed). */
@@ -145,9 +145,9 @@ function ownerOf(root, key, ledgerDir, deps) {
     return ownerHolds(owner, deps) ? 'live' : null;
 }
 /**
- * ownerHolding through the bounded read: the holder of an owner file that is
- * not run-scoped (the repository engine lock, a parallel slot), `unreadable`
- * (held, as every caller of ownerHolding treats it), or null.
+ * ownerHolding through the bounded read: the run a parallel slot file's
+ * live holder names (`''` when it names none), `unreadable` (held, as every
+ * caller of ownerHolding treats it), or null.
  */
 function holderOf(path, deps) {
     const r = readRegularFile(path);
@@ -159,7 +159,7 @@ function holderOf(path, deps) {
         const owner = JSON.parse(r.bytes.toString('utf8'));
         if (!isOwnerRecord(owner))
             return 'unreadable';
-        return ownerHolds(owner, deps) ? 'held' : null;
+        return ownerHolds(owner, deps) ? (typeof owner.run === 'string' ? owner.run : '') : null;
     }
     catch {
         return 'unreadable';
@@ -219,8 +219,13 @@ const HEAL_WHY = {
     missing: 'the heal record is missing; the heal seal outside the repository records an open heal run (or predates the open flag). Inspect it, the commands are withheld',
     unreadable: 'the heal record cannot be read; inspect it, the commands are withheld',
 };
+const SLOT_WHY = 'slot files the engine did not write: a parallel slot is held for no run whose owner file the engine ledger records (or a slot file cannot be read); they are not counted as engines. Inspect the slots directory, the commands are withheld';
 /** Every `why` a row whose trust is not `ok` can have: fixed engine sentences, no text from a file. */
-export const UNTRUSTED_WHY = new Set([...Object.values(TRUST_WHY), MISSING_UNREADABLE_LEDGER_WHY, ...Object.values(HEAL_WHY)]);
+export const UNTRUSTED_WHY = new Set([...Object.values(TRUST_WHY), MISSING_UNREADABLE_LEDGER_WHY, ...Object.values(HEAL_WHY), SLOT_WHY]);
+const FORGED_OWNER_NOTE = 'an owner file the engine did not write is present (the engine ledger does not record it); it is not counted as a live engine';
+const REMOTE_OWNER_NOTE = 'the run\'s owner file names another host: this host cannot tell whether that engine is alive';
+/** The only notes an untrusted row keeps: fixed sentences about files outside its state, no number. */
+const FIXED_NOTES = new Set([FORGED_OWNER_NOTE]);
 const GATE_NAME_SHAPE = /^[a-z0-9][a-z0-9-]{0,59}$/;
 /**
  * A row whose trust is not `ok` keeps only what this program wrote or can check without the state: the key, the
@@ -235,11 +240,11 @@ function untrustedRow(i) {
     const gate = typeof i.gate === 'string' && GATE_NAME_SHAPE.test(i.gate) && gateAction(i.gate).known ? i.gate : null;
     const phase = i.phase === 'heal' || FACTORY_PHASES.includes(i.phase ?? '') ? i.phase : null;
     const fixed = UNTRUSTED_WHY.has(i.why) ? i.why : (i.key.startsWith('heal-') ? HEAL_WHY[i.trust] : undefined) ?? TRUST_WHY[i.trust];
-    // No age either: it would come from the state's own timestamps (`at` stays, for the sort and poll's new-item check only).
-    return { ...rest, gate, phase, ageMs: null, pr: null, head: null, title: '', credits: null, cap: null, why: fixed };
+    // No age and no sort time either: both would come from the state's own timestamps (rows sort by key, and poll's
+    // new-item check must not see a lane-chosen time). Notes only when they are fixed, number-free engine sentences.
+    const notes = i.notes.filter((n) => FIXED_NOTES.has(n));
+    return { ...rest, gate, phase, ageMs: null, pr: null, head: null, title: '', credits: null, cap: null, why: fixed, notes, at: 0 };
 }
-const FORGED_OWNER_NOTE = 'an owner file the engine did not write is present (the engine ledger does not record it); it is not counted as a live engine';
-const REMOTE_OWNER_NOTE = 'the run\'s owner file names another host: this host cannot tell whether that engine is alive';
 function runItem(root, r, now, o, live, hold = false) {
     const label = runLabel(r.key);
     const base = { key: label, credits: null, cap: null, pr: null, head: null, title: '', notes: [], log: relLog(r.key) };
@@ -390,18 +395,28 @@ function healItem(root, sig8, s, o, now, deps) {
  * or failed) while its heal record still holds an open heal run: the run
  * ended without `heal close` (a human merge recorded elsewhere, a failed
  * close), and an open heal run blocks every other debugger lane
- * (MAX_OPEN_HEAL_RUNS). Sealed fields only, as healItem.
+ * (MAX_OPEN_HEAL_RUNS). Sealed fields only, as healItem: a record that fails
+ * its seal is a `seal` row (the seal, not the record, says whether a heal run
+ * is open). `heal close` only when closeHeal takes the record's stage.
  */
 function healOpenAfterRun(root, sig8, s, o, now) {
-    if (s.sig8 !== sig8 || verifyHealSeal(o.ledgerDir, root, s) !== 'ok' || !s.healRun?.open)
-        return null;
     const key = `heal-${sig8}`;
+    const seal = s.sig8 === sig8 ? verifyHealSeal(o.ledgerDir, root, s) : 'mismatch';
+    if (seal === 'none')
+        return null;
+    if (seal !== 'ok') {
+        return { key, group: 'inspect', gate: null, phase: 'heal', ageMs: null, credits: null, cap: null, pr: null, head: null, title: '', why: HEAL_WHY.seal, next: suppressedCommands(key), trust: 'seal', notes: [], at: 0 };
+    }
+    if (!s.healRun?.open)
+        return null;
+    const closable = s.next === 'heal-approve' || s.next === 'heal-diagnosis';
     const at = msOf(s.updatedAt);
     return {
         key, group: 'decide', gate: 'heal-open', phase: 'heal', ageMs: Number.isFinite(at) ? Math.max(0, now - at) : null, credits: null, cap: null, pr: null, head: null,
         title: text(`ci-heal ${s.class}`, TITLE_MAX),
-        why: 'the ci-heal run is finished but its heal run is still open, which blocks every other debugger lane; close it',
-        next: nextCommands(key, ['status', 'heal-close']), trust: 'ok', notes: [], at: Number.isFinite(at) ? at : 0,
+        why: closable ? 'the ci-heal run is finished but its heal run is still open, which blocks every other debugger lane; close it'
+            : 'the ci-heal run is finished but its heal run is still open, which blocks every other debugger lane; heal close does not take its stage, read its status',
+        next: nextCommands(key, closable ? ['status', 'heal-close'] : ['status']), trust: 'ok', notes: [], at: Number.isFinite(at) ? at : 0,
     };
 }
 /** One render scope: the state root is resolved once, not once per file path (dozens of git-metadata stats each on Windows). */
@@ -484,7 +499,8 @@ function collectIn(root, o) {
     for (const sig8 of [...sigs].sort()) {
         if (!SIG8.test(sig8))
             continue;
-        // A ci-heal run in flight stands in for its heal signature; a finished one only for a record that is gone or unreadable.
+        // A ci-heal run in flight stands in for its heal signature. Once it is finished the host ledger's heal seal decides
+        // whether an open heal run exists: a missing, unreadable or unsealed record is a row as on the no-run path.
         const finishedRun = healRuns.get(sig8);
         if (finishedRun === false)
             continue;
@@ -494,7 +510,7 @@ function collectIn(root, o) {
         if ('missing' in r) {
             // L-3: a heal run the seal records as closed needs nobody once its record is gone (git clean); seals older than
             // the `open` field stay a row until the seal file is removed by hand (docs: `factory attention`).
-            if (finishedRun === undefined && healSealOpen(o.ledgerDir, root, sig8) !== false) {
+            if (healSealOpen(o.ledgerDir, root, sig8) !== false) {
                 // Listed by its seal only: the heal run recorded a record that is gone.
                 items.push({ ...row, why: HEAL_WHY.missing, trust: 'missing' });
             }
@@ -511,8 +527,6 @@ function collectIn(root, o) {
             }
         }
         if (!s) {
-            if (finishedRun)
-                continue;
             warnings.push(`heal signature ${sig8} is unreadable (the error: omg factory attention --verbose)`);
             items.push({ ...row, why: HEAL_WHY.unreadable, error: text(problem), trust: 'unreadable' });
             continue;
@@ -527,12 +541,23 @@ function collectIn(root, o) {
         if (item)
             items.push(item);
     }
-    // The repository engine lock and the parallel slots, for the summary only: bounded reads (L-4), and at most
-    // MAX_CONCURRENT_LIMIT slot files, so planted files cannot make each read check a process start identity.
-    const repoOwner = holderOf(factoryRepoOwnerPath(root), deps);
+    // The engine count is the runs whose owner file is the engine's ledger-recorded write (live here or on another host).
+    // Slot files (and the repository engine lock) are written without a ledger record, so they never add to it: a held
+    // slot whose holder names no such run (or that cannot be read) is one Inspect row without its content. `next` is a
+    // parallel engine still picking its item (`--next`, before it holds the run's owner file). Bounded reads (L-4), and
+    // at most MAX_CONCURRENT_LIMIT slot files, so planted files cannot make each read check a process start identity.
+    const engines = liveRuns.length;
     const slotFiles = listed(factorySlotsDir(root)).filter((n) => /^slot-\d+\.owner$/.test(n)).sort().slice(0, MAX_CONCURRENT_LIMIT);
-    const slots = slotFiles.filter((n) => holderOf(join(factorySlotsDir(root), n), deps) !== null);
-    const engines = Math.max(liveRuns.length, (repoOwner && repoOwner !== 'unreadable' ? 1 : 0) + slots.length);
+    const planted = slotFiles.some((n) => {
+        const run = holderOf(join(factorySlotsDir(root), n), deps);
+        if (run === null || run === 'next')
+            return false;
+        const key = run === 'unreadable' ? null : runKeyOfName(`run-${run}.json`);
+        return key === null || !liveRuns.includes(runLabel(key));
+    });
+    if (planted) {
+        items.push({ key: 'slots', group: 'inspect', gate: null, phase: null, ageMs: null, credits: null, cap: null, pr: null, head: null, title: '', why: SLOT_WHY, next: [], trust: 'owner', notes: [], at: 0 });
+    }
     // Every row, whatever built it: an untrusted one keeps no text or fact from its state.
     for (let k = 0; k < items.length; k++)
         items[k] = untrustedRow(items[k]);

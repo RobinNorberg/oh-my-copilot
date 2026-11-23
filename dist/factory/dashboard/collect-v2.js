@@ -23,6 +23,7 @@ import { LOCAL_REMOTE } from '../../forge/local/mirror.js';
 import { plainText } from '../check/score.js';
 import { attentionJson, collectAttention, readRegularFile, readRun, runKeyOfName } from '../attention/collect.js';
 import { ledgerFilePath } from '../run/ledger.js';
+import { gateSteps } from '../run/gate-next.js';
 import { factoryProgressFile } from '../run/progress.js';
 import { defaultOwnerDeps, FACTORY_PHASES, factoryStateDir, heldSlots, runLabel, TERMINAL_FACTORY_PHASES, } from '../run/state.js';
 import { localDay, parseSince } from './collect.js';
@@ -217,9 +218,9 @@ function median(values) {
     return v.length % 2 ? v[m] : Math.round((v[m - 1] + v[m]) / 2);
 }
 function unverifiedRun(key, trust, s) {
-    // Only enum-shaped values of an untrusted state: no title, no reason, no numbers.
+    // Only enum-shaped values of an untrusted state, each one the engine knows (its phase enum, the shared gate table): no title, no reason, no numbers.
     const phase = s && FACTORY_PHASES.includes(s.phase) ? s.phase : null;
-    const gateName = s?.gate && typeof s.gate.name === 'string' && SAFE_NAME.test(s.gate.name) ? s.gate.name : null;
+    const gateName = s?.gate && typeof s.gate.name === 'string' && SAFE_NAME.test(s.gate.name) && gateSteps(s.gate.name).known ? s.gate.name : null;
     return {
         key: runLabel(key), kind: typeof key === 'string' ? 'ci-heal' : 'issue', trust, verified: false, title: '', phase,
         gate: gateName ? { name: gateName, reason: '', at: '' } : null, outcome: 'unknown', pr: null, head: null, forge: null,

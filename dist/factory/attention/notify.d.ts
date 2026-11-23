@@ -27,19 +27,25 @@ export declare function noticeGate(i: Pick<AttentionItem, 'gate' | 'trust'>): st
 /** The first next command as one line, `git -C <root> ...` as `git ...` (run in the repository root). */
 export declare function noticeCommand(next: readonly NextCommand[]): string | null;
 export declare function attentionNotice(root: string, i: AttentionItem): AttentionNotice | null;
-export declare function attentionNoticeText(n: AttentionNotice): string;
+/** One notice for the new items of a tick past the per-tick cap: counts per group only, no key or command. */
+export interface AttentionMoreNotice {
+    repo: string;
+    more: number;
+    byGroup: Partial<Record<AttentionGroup, number>>;
+}
+export declare function attentionMoreNotice(root: string, items: readonly Pick<AttentionItem, 'group'>[]): AttentionMoreNotice;
+export declare function attentionNoticeText(n: AttentionNotice | AttentionMoreNotice): string;
 type Notify = (event: 'factory-attention', data: {
     sessionId: string;
     message: string;
-    projectName: string;
-    tmuxPaneId: string;
     replyable: false;
 }) => Promise<unknown>;
 /**
- * Send one notice (never throws). No tmux pane and not replyable: nothing a
+ * Send one notice (never throws). No session, pane or project field (notify()
+ * adds none for this event) and not replyable: nothing a
  * reply says is ever typed into a terminal. `notify` is the notification
  * stack's (lazily imported, so a poll without notifications never loads it).
  */
-export declare function sendAttentionNotice(n: AttentionNotice, notify?: Notify): Promise<void>;
+export declare function sendAttentionNotice(n: AttentionNotice | AttentionMoreNotice, notify?: Notify): Promise<void>;
 export {};
 //# sourceMappingURL=notify.d.ts.map

@@ -85325,7 +85325,7 @@ var init_actions = __esm({
 });
 
 // src/factory/attention/collect.ts
-var import_fs110, import_path129, HUNG_AFTER_MS, READ_MAX_BYTES, TRUST_WHY, MISSING_UNREADABLE_LEDGER_WHY, HEAL_WHY, UNTRUSTED_WHY;
+var import_fs110, import_path129, HUNG_AFTER_MS, READ_MAX_BYTES, TRUST_WHY, MISSING_UNREADABLE_LEDGER_WHY, HEAL_WHY, SLOT_WHY, UNTRUSTED_WHY;
 var init_collect2 = __esm({
   "src/factory/attention/collect.ts"() {
     "use strict";
@@ -85359,7 +85359,8 @@ var init_collect2 = __esm({
       missing: "the heal record is missing; the heal seal outside the repository records an open heal run (or predates the open flag). Inspect it, the commands are withheld",
       unreadable: "the heal record cannot be read; inspect it, the commands are withheld"
     };
-    UNTRUSTED_WHY = /* @__PURE__ */ new Set([...Object.values(TRUST_WHY), MISSING_UNREADABLE_LEDGER_WHY, ...Object.values(HEAL_WHY)]);
+    SLOT_WHY = "slot files the engine did not write: a parallel slot is held for no run whose owner file the engine ledger records (or a slot file cannot be read); they are not counted as engines. Inspect the slots directory, the commands are withheld";
+    UNTRUSTED_WHY = /* @__PURE__ */ new Set([...Object.values(TRUST_WHY), MISSING_UNREADABLE_LEDGER_WHY, ...Object.values(HEAL_WHY), SLOT_WHY]);
   }
 });
 
@@ -85400,7 +85401,7 @@ var init_reminders = __esm({
 });
 
 // src/factory/poll.ts
-var import_child_process26, import_fs112, import_path132, POLL_DEFAULT_INTERVAL_MS, POLL_MIN_INTERVAL_MS, POLL_MAX_INTERVAL_MS, POLL_OWNER_STALE_MS, AUTO_START_MAX_STDOUT, AUTO_START_SLACK_MS, AUTO_START_GRACE_MS;
+var import_child_process26, import_fs112, import_path132, POLL_DEFAULT_INTERVAL_MS, POLL_MIN_INTERVAL_MS, POLL_MAX_INTERVAL_MS, POLL_OWNER_STALE_MS, AUTO_START_MAX_STDOUT, AUTO_START_SLACK_MS, AUTO_START_GRACE_MS, ATTENTION_RATE_WINDOW_MS;
 var init_poll = __esm({
   "src/factory/poll.ts"() {
     "use strict";
@@ -85444,6 +85445,7 @@ var init_poll = __esm({
     AUTO_START_MAX_STDOUT = 4 * 1024 * 1024;
     AUTO_START_SLACK_MS = 30 * 6e4;
     AUTO_START_GRACE_MS = 2 * 6e4;
+    ATTENTION_RATE_WINDOW_MS = 10 * 6e4;
   }
 });
 
@@ -85582,6 +85584,7 @@ var init_collect_v2 = __esm({
     init_score();
     init_collect2();
     init_ledger2();
+    init_gate_next();
     init_progress2();
     init_state5();
     init_collect3();

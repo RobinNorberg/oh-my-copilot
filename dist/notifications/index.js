@@ -78,15 +78,17 @@ export async function notify(event, data) {
         // Get tmux pane ID
         const { getCurrentTmuxPaneId } = await import("./tmux.js");
         // Build the full payload
+        const factoryAttention = event === "factory-attention";
         const payload = {
             event,
             sessionId: data.sessionId,
             message: "", // Will be formatted below
             timestamp: data.timestamp || new Date().toISOString(),
-            tmuxSession: data.tmuxSession ?? getCurrentTmuxSession() ?? undefined,
-            tmuxPaneId: data.tmuxPaneId ?? getCurrentTmuxPaneId() ?? undefined,
-            projectPath: data.projectPath,
-            projectName: data.projectName ||
+            // factory-attention carries no session, pane or project field: its message is all it sends.
+            tmuxSession: factoryAttention ? undefined : data.tmuxSession ?? getCurrentTmuxSession() ?? undefined,
+            tmuxPaneId: factoryAttention ? undefined : data.tmuxPaneId ?? getCurrentTmuxPaneId() ?? undefined,
+            projectPath: factoryAttention ? undefined : data.projectPath,
+            projectName: factoryAttention ? undefined : data.projectName ||
                 (data.projectPath ? basename(data.projectPath) : undefined),
             modesUsed: data.modesUsed,
             contextSummary: data.contextSummary,

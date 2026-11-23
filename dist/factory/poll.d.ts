@@ -73,7 +73,7 @@ import { type ScanResult } from './heal/cli.js';
 import { type FactoryRunLimits } from './run/budget.js';
 import { type AttentionGroup } from './attention/actions.js';
 import { type AttentionData } from './attention/collect.js';
-import { type AttentionNotice } from './attention/notify.js';
+import { type AttentionMoreNotice, type AttentionNotice } from './attention/notify.js';
 import { type Reminder } from './team/reminders.js';
 import { type FactoryRunKey, type HeldOwner, type OwnerDeps } from './run/state.js';
 /**
@@ -273,10 +273,13 @@ export interface PollTick {
     /**
      * `omg factory attention` items that are new since the previous tick (first tick: a one-line summary instead).
      * Engine-composed fields only: no title, reason or other text from a state. Absent when the step did not run.
+     * At most ATTENTION_PRINT_ITEMS in `new`, the rest counted in `more`; `dropped`: notices over the rate limit.
      */
     attention?: {
         summary?: string;
         new: PollAttentionItem[];
+        more?: number;
+        dropped?: number;
     };
     /** Board rows that changed since the previous tick (every row on the first). */
     board: Array<{
@@ -344,13 +347,28 @@ export interface PollContext {
         prs: Map<string, string>;
         ledger?: boolean;
         attention?: Set<string>;
+        /** Attention ids last seen, with the time (bounded, oldest evicted): a row that comes back within the quiet window is not new. */
+        seen?: Map<string, number>;
+        /** When this poll sent its recent `factory-attention` notices (the rate limit). */
+        notified?: number[];
     };
     tick: number;
     /** `omg factory attention`'s collector for this repository (local, read-only); absent: no attention step. */
     attention?: () => AttentionData;
-    /** Sends the `factory-attention` notification of one new item (it decides itself whether notifications are configured). */
-    notifyAttention?: (n: AttentionNotice) => Promise<void>;
+    /** Sends one `factory-attention` notification (it decides itself whether notifications are configured). */
+    notifyAttention?: (n: AttentionNotice | AttentionMoreNotice) => Promise<void>;
+    /** The longest a tick waits for its notifications (default ATTENTION_NOTIFY_TIMEOUT_MS). */
+    notifyTimeoutMs?: number;
 }
+/** Per tick: item notices, then one count-only notice for the rest; item lines printed, then one "and K more" line. */
+export declare const ATTENTION_NOTICE_ITEMS = 3;
+export declare const ATTENTION_PRINT_ITEMS = 10;
+/** At most this many `factory-attention` notices per window for the repository; the rest are dropped and counted. */
+export declare const ATTENTION_RATE_MAX = 6;
+export declare const ATTENTION_RATE_WINDOW_MS: number;
+export declare const ATTENTION_NOTIFY_TIMEOUT_MS = 10000;
+/** How many attention ids the poll remembers; and how long a row that went away stays known without remindAfterHours. */
+export declare const ATTENTION_SEEN_MAX = 10000;
 /** One new attention item in a tick: the run key, group, the gate of a trusted row, and the first next command's argv. */
 export interface PollAttentionItem {
     key: string;
@@ -397,8 +415,10 @@ export type FactoryPollDeps = FactoryBoardDeps & {
     sleep?: (ms: number, wake: AbortSignal) => Promise<void>;
     /** Subscribe to the stop signals (default SIGINT and SIGTERM, passed to the handler); returns the unsubscribe. */
     onStop?: (handler: (signal?: NodeJS.Signals) => void) => () => void;
-    /** The `factory-attention` notification of a new attention item (default: the notification stack, off unless configured). */
-    notifyAttention?: (n: AttentionNotice) => Promise<void>;
+    /** The `factory-attention` notification of new attention items (default: the notification stack, off unless configured). */
+    notifyAttention?: (n: AttentionNotice | AttentionMoreNotice) => Promise<void>;
+    /** The longest a tick waits for its attention notifications (default ATTENTION_NOTIFY_TIMEOUT_MS; tests). */
+    notifyTimeoutMs?: number;
 };
 /** Run the poller until a stop signal (or one tick with --once); returns the exit code. */
 export declare function runFactoryPoll(o: FactoryPollOptions, deps: FactoryPollDeps): Promise<number>;

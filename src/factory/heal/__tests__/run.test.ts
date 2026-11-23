@@ -1,5 +1,5 @@
 import { execFileSync } from 'child_process';
-import { cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
@@ -22,7 +22,7 @@ import { parseJob } from '../logs.js';
 import { closeHeal, HEAL_UNCONFINED_ENV, HealRunRefused, healSealSubject, readHealCounters, readHealSealSubject, runHeal, verifyHealSeal, writeHealScanRecord, writeHealSeal, type HealRunDeps } from '../run.js';
 import { DELIMITER_PREFIX } from '../sanitize.js';
 import { runSignature } from '../signature.js';
-import { dailyCountersPath, foldSignature, readHealState, writeDailyCountersAt, writeHealState, type HealSignatureState } from '../state.js';
+import { dailyCountersPath, foldSignature, healStatePath, readHealState, writeDailyCountersAt, writeHealState, type HealSignatureState } from '../state.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const fixture = (name: string) => readFileSync(join(HERE, 'fixtures', name), 'utf8');
@@ -565,6 +565,69 @@ describe('omg factory attention offers only heal commands the engine accepts', (
     // Closed: nothing is left to do.
     closeHeal(root, s.sig8, { ledgerDir, now: () => NOW });
     expect(offered()).toEqual([]);
+  });
+
+  /** A ci-heal run of `sig8` the engine finished at `phase`, recorded in its ledger. */
+  function finishRun(sig8: string, phase: 'merged' | 'cancelled'): void {
+    const key = healRunKey(sig8);
+    const record = { sig8, class: 'test-regression', firstRed: { runId: '1', sha: redSha }, failingTests: [], env: [], diagnosis: { class: 'env-change', rootCause: 'x', evidence: [], reproduced: false, fix: null } };
+    const ledger = EngineLedger.open(ledgerDir, root, key);
+    const done = moveTo(createFactoryState({ issue: 0, repoUrl: 'https://github.com/o/r', base: 'dev', heal: record as never }, NOW.toISOString()), phase, 'done', NOW.toISOString());
+    updateFactoryState(root, key, () => done, { onWrite: (p, c) => ledger.record(p, c) });
+  }
+  const healRecord = (sig8: string) => healStatePath(root, sig8);
+  const rowsOf = () => collectAttention(root, { ledgerDir, now: () => NOW.getTime(), owner: NOT_ALIVE }).items
+    .filter((i) => i.key.startsWith('heal-')).map((i) => [i.group, i.gate, i.trust, i.next.map((n) => n.argv.slice(3).join(' '))]);
+
+  for (const phase of ['merged', 'cancelled'] as const) {
+    it(`HIGH-1: a finished (${phase}) ci-heal run with a sealed open heal run: no write to the record hides the row`, async () => {
+      const s = seed();
+      await run(new FakeLanes(answer(GOOD)));
+      finishRun(s.sig8, phase);
+      expect(rowsOf()).toEqual([['decide', 'heal-open', 'ok', [`status ${s.sig8}`, `close ${s.sig8}`]]]);
+      const saved = readFileSync(healRecord(s.sig8), 'utf8');
+      const restore = () => {
+        rmSync(healRecord(s.sig8), { recursive: true, force: true });
+        writeHealState(root, JSON.parse(saved) as HealSignatureState);
+      };
+      const status = [`status ${s.sig8}`];
+      // Deleted.
+      rmSync(healRecord(s.sig8));
+      expect(rowsOf()).toEqual([['inspect', null, 'missing', status]]);
+      // Corrupt.
+      restore();
+      writeFileSync(healRecord(s.sig8), 'garbage');
+      expect(rowsOf()).toEqual([['inspect', null, 'unreadable', status]]);
+      // A directory in its place.
+      rmSync(healRecord(s.sig8));
+      mkdirSync(healRecord(s.sig8));
+      expect(rowsOf()).toEqual([['inspect', null, 'unreadable', status]]);
+      // Edited to say closed: the seal fails.
+      restore();
+      const open = JSON.parse(saved) as HealSignatureState;
+      writeFileSync(healRecord(s.sig8), JSON.stringify({ ...open, healRun: { ...open.healRun!, open: false } }));
+      expect(rowsOf()).toEqual([['inspect', null, 'seal', status]]);
+      // Another signature's record under this name.
+      writeFileSync(healRecord(s.sig8), JSON.stringify({ ...open, sig8: '00000001' }));
+      expect(rowsOf()).toEqual([['inspect', null, 'seal', status]]);
+      // The whole heal dir deleted.
+      rmSync(dirname(healRecord(s.sig8)), { recursive: true, force: true });
+      expect(rowsOf()).toEqual([['inspect', null, 'missing', status]]);
+    });
+  }
+
+  it('LOW-4: heal-open offers heal close only at a stage closeHeal takes; `next: report` gets the status command alone', async () => {
+    const s = seed();
+    await run(new FakeLanes(answer(GOOD)));
+    finishRun(s.sig8, 'merged');
+    const parked = readHealState(root, s.sig8)!;
+    // `next` is not sealed: the seal still holds; closeHeal refuses this stage, so attention does not offer it.
+    writeHealState(root, { ...parked, next: 'report' });
+    expect(() => closeHeal(root, s.sig8, { ledgerDir, now: () => NOW })).toThrow(/only a heal run parked/);
+    expect(offered()).toEqual([{ gate: 'heal-open', argv: [['omg', 'factory', 'heal', 'status', s.sig8]] }]);
+    await everyOfferedAccepted([['status']]);
+    writeHealState(root, { ...parked, next: 'heal-diagnosis' });
+    await everyOfferedAccepted([['status'], ['close']]);
   });
 
   it('L-3: a closed heal run whose record was removed is no row; an open one is, and so is a seal without the open flag', async () => {

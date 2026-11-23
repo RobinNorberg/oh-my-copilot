@@ -21,8 +21,12 @@ no forge read) and writes nothing.
 3. Otherwise show the rows grouped in the JSON's order (Inspect, Broken
    engine, Decide, Merge, Fix by hand, Limits / retry). Per row: `key`,
    `gate`, the age (`ageMs` as minutes, hours or days), `why`, and each
-   `next` command as `argv` joined with spaces in a code block, marked
-   "(billed)" when `billed` is true. Keep `trust` visible on a row whose
+   `next` command in a code block, marked "(billed)" when `billed` is true.
+   Do not join `argv` with plain spaces: a word with a space or a shell
+   character would split or change the command. Copy the `$ ...` line
+   `omg factory attention` (without `--json`) prints for it, or show each
+   `argv` word single-quoted where it holds anything but letters, digits
+   and `-_./:=@`. Keep `trust` visible on a row whose
    `trust` is not `ok`: its state is not the engine's own, which is why it
    offers only the status command.
 4. End with: for details on one run, `omg factory run status <n>` (a heal
