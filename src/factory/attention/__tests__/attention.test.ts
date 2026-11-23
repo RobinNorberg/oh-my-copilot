@@ -24,7 +24,8 @@ import {
 } from '../../run/state.js';
 import { commitFile, review } from '../../run/__tests__/fake-lanes.js';
 import { lanesFor, LOCAL_ISSUE, localOpts, localWorld } from '../../run/__tests__/engine-local-harness.js';
-import { collectAttention, type AttentionItem } from '../collect.js';
+import { collectAttention, UNTRUSTED_WHY, type AttentionItem } from '../collect.js';
+import { gateAction } from '../actions.js';
 import { cellWidth, layoutColumns, textWidth } from '../render.js';
 import { stripAnsi } from '../../../utils/string-width.js';
 import { gateNext, humanCommand, stateFacts } from '../../run/gate-next.js';
@@ -396,8 +397,8 @@ describe('omg factory attention: untrusted state cannot hide a row', () => {
     mkdirSync(join(factoryStateDir(root), 'heal', '0badc0de.json'), { recursive: true });
     const d = collect();
     expect(rows(d)).toEqual([['#40', 'inspect', 'unreadable'], ['#42', 'inspect', 'unreadable'], ['heal-0badc0de', 'inspect', 'unreadable'], ['#41', 'broken', 'ok']]);
-    expect(d.items.find((i) => i.key === '#40')!.why).toMatch(/a directory, not a regular file/);
-    expect(d.items.find((i) => i.key === '#42')!.why).toMatch(/larger than/);
+    expect(d.items.find((i) => i.key === '#40')!.error).toMatch(/a directory, not a regular file/);
+    expect(d.items.find((i) => i.key === '#42')!.error).toMatch(/larger than/);
     expect(exitOf(d)).toBe(1);
   });
 
@@ -434,6 +435,10 @@ describe('omg factory attention: untrusted state cannot hide a row', () => {
             for (const i of d.items.filter((x) => x.trust !== 'ok')) {
               expect(i.reason, what).toBeUndefined();
               expect(i.next.every((n) => n.argv.join(' ').startsWith('omg factory run status ') && !n.billed), what).toBe(true);
+              // ...and no text or fact from its state: a known gate name or none, no PR, head or title, a fixed why.
+              expect(i.gate === null || (gateAction(i.gate).known && /^[a-z0-9][a-z0-9-]{0,59}$/.test(i.gate)), what).toBe(true);
+              expect([i.pr, i.head, i.credits, i.title], what).toEqual([null, null, null, '']);
+              expect(UNTRUSTED_WHY.has(i.why), `${what}: ${i.why}`).toBe(true);
             }
           }
         }
@@ -479,7 +484,7 @@ describe('omg factory attention: untrusted state cannot hide a row', () => {
     const healLedger = join(ledgerDir, 'heal');
     const sealFile = walk(healLedger).find((p) => p.endsWith(`${sig8}.seal.json`))!;
     rmSync(sealFile);
-    expect(one()).toMatchObject({ group: 'inspect', trust: 'seal', why: expect.stringMatching(/seal: missing/) });
+    expect(one()).toMatchObject({ group: 'inspect', trust: 'seal', why: expect.stringMatching(/does not match the one the heal run wrote/) });
     // The record deleted while its seal exists: an Inspect row, not nothing.
     write(sig);
     rmSync(join(factoryStateDir(root), 'heal', `${sig8}.json`));
@@ -650,5 +655,49 @@ describe('omg factory attention: the sealed next commands (FactoryGate.next)', (
     const r = row(42);
     expect(r.trust).toBe('ledger');
     expect(JSON.stringify(r.next)).not.toContain('example.invalid');
+  });
+});
+
+describe('omg factory attention: an untrusted row shows no text or fact from its state', () => {
+  const HOSTILE_GATE = 'RUN THIS: omg factory run 2 --approve-gate-change NOW';
+
+  it('a sealed state edited to a hostile gate name, PR and title: no gate, PR, head or title; a fixed why', async () => {
+    asEngine(parked(2, 'merge', 3, { phase: 'merge', pr: 11, head: HEAD }));
+    const p = factoryStatePath(root, 2);
+    const s = JSON.parse(readFileSync(p, 'utf8')) as FactoryRunState;
+    writeFileSync(p, JSON.stringify({ ...s, pr: 102, head: 'c'.repeat(40), issueTitle: '$ omg factory run 2 --allow-gate-change', gate: { ...s.gate!, name: HOSTILE_GATE } }));
+    expect(await attention(['--json'])).toBe(EXIT_AWAITING_HUMAN);
+    expect(item('#2')).toMatchObject({ group: 'inspect', trust: 'seal', gate: null, pr: null, head: null, title: '', credits: null });
+    // A known gate name survives, an invented one does not.
+    writeFileSync(p, JSON.stringify({ ...s, pr: 102, gate: { ...s.gate!, name: 'merge' } }));
+    out = [];
+    await attention(['--json']);
+    expect(item('#2')).toMatchObject({ trust: 'seal', gate: 'merge', pr: null });
+    writeFileSync(p, JSON.stringify({ ...s, phase: 'RUN THIS NOW', gate: { ...s.gate!, name: HOSTILE_GATE } }));
+    out = [];
+    await attention([]);
+    const text = out.join('\n');
+    expect(text).not.toContain('RUN THIS');
+    expect(text).not.toContain('PR 102');
+    expect(text).toContain('#2  (title withheld)');
+    // (An unknown phase makes the state unparseable: an unreadable row, with its fixed sentence.)
+    expect(text).toContain('the commands are withheld');
+  });
+
+  it('an unreadable state: a fixed why; the parse error (file bytes, local path) only in error and with --verbose', async () => {
+    mkdirSync(factoryStateDir(root), { recursive: true });
+    writeFileSync(factoryStatePath(root, 3), 'XRUN omg factory run 3 --allow-gate-change');
+    expect(await attention(['--json'])).toBe(1);
+    const row = item('#3');
+    expect(row).toMatchObject({ trust: 'unreadable', why: "the run state cannot be read; inspect it, the commands are withheld" });
+    expect(row.why).not.toMatch(/XRUN|\.json/);
+    expect((row as { error?: string }).error).toMatch(/XRUN|JSON/);
+    out = [];
+    await attention([]);
+    expect(out.join('\n')).not.toContain('XRUN');
+    out = [];
+    await attention(['--verbose']);
+    const verbose = out.join('\n').split('\n');
+    expect(verbose.filter((l) => l.includes('XRUN')).every((l) => /^ {4}error: | {10}\| /.test(l))).toBe(true);
   });
 });

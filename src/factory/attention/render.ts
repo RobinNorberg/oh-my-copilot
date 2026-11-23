@@ -118,7 +118,8 @@ function itemLines(i: AttentionItem, verbose: boolean, columns: number): string[
   const keyPart = `  ${i.key}`;
   // The title is cut, never wrapped: one line per row head.
   const title = i.title ? cutToWidth(i.title, columns - 1 - textWidth(keyPart) - 2) : '';
-  const lines = [title ? `${chalk.bold(keyPart)}  ${title}` : chalk.bold(keyPart)];
+  // An untrusted row has no title (collect.ts); the fixed note says why.
+  const lines = [title ? `${chalk.bold(keyPart)}  ${title}` : i.trust !== 'ok' ? `${chalk.bold(keyPart)}  ${chalk.gray('(title withheld)')}` : chalk.bold(keyPart)];
   const facts = [i.gate ? `awaiting-human: ${i.gate}` : null, i.phase ? `phase ${i.phase}` : null, ageText(i.ageMs)];
   if (i.credits !== null) facts.push(`${i.credits.toFixed(2)}${i.cap !== null ? ` of ${i.cap}` : ''} cr`);
   if (i.pr !== null) facts.push(`PR ${i.pr}`);
@@ -130,6 +131,8 @@ function itemLines(i: AttentionItem, verbose: boolean, columns: number): string[
   for (const n of i.notes) for (const l of wrapLines('    note: ', CONT, n, columns)) lines.push(chalk.yellow(l));
   // Only a trusted row carries a reason (collect.ts); the check here keeps an untrusted one off the screen regardless.
   if (verbose && i.reason && i.trust === 'ok') for (const l of reasonLines(i.reason, columns)) lines.push(chalk.gray(l));
+  // The read error of an untrusted row (it can quote the file's bytes and a local path): --verbose only, behind a prefix.
+  if (verbose && i.error) for (const l of wrapLines('    error: ', '          | ', i.error, columns)) lines.push(chalk.gray(l));
   for (const n of i.next) {
     const c = commandText(n.argv);
     if (c.inRoot) lines.push(chalk.gray('    run in the repository root:'));
