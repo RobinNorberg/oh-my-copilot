@@ -8,19 +8,24 @@
  * checkout's node_modules is exactly the tree it built (prepare.ts
  * gateTreeExactProblem).
  *
- * The rule is textual and deliberately narrow: only the attributes that make
- * MSBuild or NuGet read a file are looked at (`Import Project`,
- * `ProjectReference Include`, `UsingTask AssemblyFile`, a solution's project
- * entries, a `nuget.config` source or fallback folder value), and one counts
- * when its value has a `node_modules` path segment once `\` is read as `/`.
- * MSBuild property expansion makes exact resolution impossible, so a value
- * is not expanded: a property that holds the node_modules part
- * (`$(NodeModules)\x.props` with `<NodeModules>..\node_modules</NodeModules>`)
- * is not seen, and a reference that resolves elsewhere counts. A mere
- * mention does not count: the ASP.NET SPA templates' `<Content
- * Remove="$(SpaRoot)node_modules\**" />` and `<Exec Command="npm install" />`
- * read nothing from there.
+ * The rule is textual and deliberately narrow: only the values that make
+ * MSBuild, NuGet or the SDK read or run a file are looked at (`Import
+ * Project`, `ProjectReference Include`, `UsingTask AssemblyFile`, an inline
+ * task's `Code Source`, an `Exec Command` (the exit code of what it runs
+ * decides the build), a solution's project entries, a `nuget.config` source
+ * or fallback folder value, every token of a `.rsp` response file, and
+ * `global.json` `sdk.paths`), and one counts when its value has a
+ * `node_modules` path segment once `\` is read as `/`. MSBuild property
+ * expansion makes exact resolution impossible, so a value is not expanded:
+ * a property that holds the node_modules part (`$(NodeModules)\x.props`
+ * with `<NodeModules>..\node_modules</NodeModules>`) is not seen, and a
+ * reference that resolves elsewhere counts. A mere mention does not count:
+ * the ASP.NET SPA templates' `<Content Remove="$(SpaRoot)node_modules\**" />`
+ * and `<Exec Command="npm install" />` (or `npm ci`, `npm run build`) name no
+ * path under node_modules.
  */
+
+import { parseJsonc } from '../../utils/jsonc.js';
 
 /** XML comments, which MSBuild and NuGet never read. */
 const XML_COMMENT = /<!--[\s\S]*?-->/g;
@@ -39,20 +44,21 @@ function decodeXml(value: string): string {
 /**
  * True when a path has a `node_modules` segment (`\` read as `/`, any case,
  * trailing dots and spaces dropped as Windows does). The parentheses,
- * quotes, commas and other punctuation of an MSBuild expression count as
+ * quotes, commas, `:`, `=`, `@` and other punctuation of an MSBuild expression or a response-file switch count as
  * boundaries too, so `$(MSBuildThisFileDirectory)node_modules\x` (a property
  * ends in a separator) and a property function's argument
  * (`$([MSBuild]::NormalizePath('..', 'node_modules', 'x.props'))`) count.
  */
 export function hasNodeModulesSegment(value: string): boolean {
-  return value.split(/[\\/'"`,;()[\]\s|]+/).some((s) => s.replace(/[. ]+$/, '').toLowerCase() === 'node_modules');
+  return value.split(/[\\/'"`,;:=@()[\]\s|]+/).some((s) => s.replace(/[. ]+$/, '').toLowerCase() === 'node_modules');
 }
 
 /** The values of `attr` on every `<element ...>` tag of an XML text (comments removed, entities decoded), any case. */
 function attributeValues(xml: string, element: string, attr: string): string[] {
   const out: string[] = [];
   const text = xml.replace(XML_COMMENT, '');
-  const tag = new RegExp(`<${element}(?=[\\s/>])([^>]*)>`, 'gi');
+  // A quoted attribute value may hold a literal `>` (`Condition="'$(A)'>'0'"`): it does not end the tag.
+  const tag = new RegExp(`<${element}(?=[\\s/>])((?:[^>"']|"[^"]*"|'[^']*')*)>`, 'gi');
   const attribute = new RegExp(`(?:^|\\s)${attr}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`, 'i');
   for (const m of text.matchAll(tag)) {
     const a = attribute.exec(m[1]);
@@ -62,9 +68,11 @@ function attributeValues(xml: string, element: string, attr: string): string[] {
 }
 
 /** The kind of a pinned file this module reads, by its basename, or null. */
-function fileKind(path: string): 'msbuild' | 'sln' | 'slnx' | 'slnf' | 'nuget' | null {
+function fileKind(path: string): 'msbuild' | 'sln' | 'slnx' | 'slnf' | 'nuget' | 'rsp' | 'global' | null {
   const base = (path.split('/').pop() ?? path).toLowerCase();
   if (base === 'nuget.config') return 'nuget';
+  if (base === 'global.json') return 'global';
+  if (base.endsWith('.rsp')) return 'rsp';
   if (base.endsWith('.sln')) return 'sln';
   if (base.endsWith('.slnx')) return 'slnx';
   if (base.endsWith('.slnf')) return 'slnf';
@@ -87,6 +95,32 @@ export function nodeModulesReferences(path: string, text: string): string[] {
     for (const v of attributeValues(text, 'Import', 'Project')) values.push(['Import Project', v]);
     for (const v of attributeValues(text, 'ProjectReference', 'Include')) values.push(['ProjectReference Include', v]);
     for (const v of attributeValues(text, 'UsingTask', 'AssemblyFile')) values.push(['UsingTask AssemblyFile', v]);
+    // An inline task's code file (RoslynCodeTaskFactory compiles it).
+    for (const v of attributeValues(text, 'Code', 'Source')) values.push(['UsingTask Code Source', v]);
+    // A command whose exit code decides the build, when it names a path under node_modules (`node node_modules/x/check.js`);
+    // `npm install`, `npm ci` or `npm run build` name none and do not count.
+    for (const v of attributeValues(text, 'Exec', 'Command')) values.push(['Exec Command', v]);
+  } else if (kind === 'rsp') {
+    // A response file: every token outside `#` comment lines (`-logger:<dll>`, `-distributedlogger:...`, `@file`,
+    // `-p:Name=<value>`; hasNodeModulesSegment reads `:`, `=` and `@` as boundaries).
+    for (const line of text.split(/\r?\n/)) {
+      if (line.trimStart().startsWith('#')) continue;
+      for (const m of line.matchAll(/"([^"]*)"|(\S+)/g)) {
+        const token = m[1] ?? m[2];
+        values.push(['response file token', token]);
+      }
+    }
+  } else if (kind === 'global') {
+    // global.json `sdk.paths`: the dirs the SDK resolver looks in for an SDK.
+    let parsed: unknown;
+    try { parsed = parseJsonc(text); } catch { parsed = undefined; }
+    if (parsed && typeof parsed === 'object') {
+      const paths = (parsed as { sdk?: { paths?: unknown } }).sdk?.paths;
+      if (Array.isArray(paths)) for (const p of paths) if (typeof p === 'string') values.push(['global.json sdk.paths', p]);
+    } else {
+      // Not JSON the SDK would read the same way: every string in it, conservatively.
+      for (const m of text.matchAll(/"((?:[^"\\]|\\.)*)"/g)) values.push(['global.json string', m[1]]);
+    }
   } else if (kind === 'slnx') {
     for (const v of attributeValues(text, 'Project', 'Path')) values.push(['solution project', v]);
   } else if (kind === 'sln') {

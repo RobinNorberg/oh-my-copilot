@@ -1019,9 +1019,13 @@ export function gateTreeHasLinks(checkout) {
  * (GATE_TREE_COPY_WHY; comparing every file is not cheap), a node_modules
  * dir the engine did not build (git lists files under it in `untracked`, or
  * yours has no such tree), or a tree that cannot be read. A tree the
- * checkout does not have is fine: there is nothing to import.
+ * checkout does not have is fine: there is nothing to import. A tree the
+ * head tracks files in (`trackedTrees`: the dirs, empty for the root, whose
+ * node_modules holds tracked files) is the repository's own: git's dirty
+ * check covers its files, so it is not compared, and an untracked file in
+ * it cannot be verified (`tampered: false`).
  */
-export function gateTreeExactProblem(root, checkout, nestedRels, untracked, copied) {
+export function gateTreeExactProblem(root, checkout, nestedRels, untracked, copied, trackedTrees = []) {
     const win = process.platform === 'win32';
     const P = win ? win32 : posix;
     const fold = (s) => (win ? s.toLowerCase() : s);
@@ -1035,13 +1039,19 @@ export function gateTreeExactProblem(root, checkout, nestedRels, untracked, copi
         return false;
     } };
     // A node_modules dir with files git lists that is none of the engine's trees: installed or written in the checkout.
+    // A tree whose files the head tracks (a repository that commits its node_modules): git checks those files (the
+    // checkout's dirty check), the engine linked nothing there, so it is not compared here; a file git does not track
+    // in it cannot be verified.
+    const tracked = (rel) => trackedTrees.some((t) => fold(t) === fold(rel));
     for (const p of untracked) {
         const segs = p.split('/');
         const at = segs.findIndex(isNodeModules);
         if (at < 0)
             continue;
         const rel = segs.slice(0, at).join('/');
-        if (!trees.some((t) => fold(t.rel) === fold(rel) && isDir(t.src)))
+        if (tracked(rel) && !(at + 2 < segs.length && GATE_CACHE_DIRS.includes(segs[at + 1])))
+            return { problem: `${segs.slice(0, at + 1).join('/')} in the checkout is the repository's own (the head tracks files in it), and ${p} there is not tracked, so what is in it cannot be verified`, tampered: false };
+        if (!tracked(rel) && !trees.some((t) => fold(t.rel) === fold(rel) && isDir(t.src)))
             return { problem: `${segs.slice(0, at + 1).join('/')} in the checkout is not a node_modules tree the engine built from yours, so what is in it cannot be verified`, tampered: false };
     }
     const insideCheckout = (p, to) => {
@@ -1067,6 +1077,8 @@ export function gateTreeExactProblem(root, checkout, nestedRels, untracked, copi
         return wants.some((w) => same(to, w)) || insideCheckout(p, to);
     };
     for (const t of trees) {
+        if (tracked(t.rel))
+            continue;
         const nm = join(checkout, ...t.rel.split('/').filter(Boolean), 'node_modules');
         const shown = `${t.rel ? `${t.rel}/` : ''}node_modules`;
         let st;

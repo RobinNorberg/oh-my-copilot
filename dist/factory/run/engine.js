@@ -120,7 +120,7 @@ import { createFactoryProgress, HEARTBEAT_MIN_MS } from './progress.js';
 import { acquireFactoryClaim, claimBusyMessage, factoryClaimHolder, factoryClaimRepo, isShallowClaimRepo, localFactoryClaimRepo, shallowClaimWarning, settleFactoryClaim, trustedFactoryClaimRepo, trustedLocalFactoryClaimRepo } from './claims.js';
 import { compareSnapshots, replaceObjectsProblem, samePath, snapshotRepo, verifyReviewWorktree } from './review-guard.js';
 import { GATE_INSTALL_GATE, IMPORT_REFUSED_GATE, LAYOUT_UNSUPPORTED_GATE, PRIVATE_STORE_GATE, PrivateRun, REPO_GUARD_GATE, resolveGateInstall, resolveRunLayout } from './private-run.js';
-import { classifyNugetFailure, dotnetRestoreArgs, GATE_INSTALL_SANDBOXED_HINT, missingDefinitionFile, NUGET_PRIVATE_FEED_UNSUPPORTED, nugetDefinitionTreeDir, nugetRunPackagesDir, parseCatFileBatch, removeEngineDir, restoreApprovalNote, writeDefinitionTree } from './nuget-restore.js';
+import { classifyNugetFailure, dotnetRestoreArgs, GATE_INSTALL_SANDBOXED_HINT, missingDefinitionFile, NUGET_PRIVATE_FEED_UNSUPPORTED, nugetConfigUnreadableReason, nugetDefinitionTreeDir, nugetRunPackagesDir, parseCatFileBatch, removeEngineDir, restoreApprovalNote, writeDefinitionTree } from './nuget-restore.js';
 import { nodeModulesReferences, readsForNodeModulesRefs } from './dotnet-package-refs.js';
 import { lockfileUnchanged, PRIVATE_GIT_TIMEOUT_MS, PrivateRepoTampered, PrivateStoreError, userRepoGuardSnapshot } from './private-store.js';
 import { parseReviewOutput, reviewComment, verdictNotes } from './review-output.js';
@@ -1202,6 +1202,8 @@ class FactoryEngine {
         const container = settings && this.containerImageId ? { ...settings, image: this.containerImageId } : settings;
         // A dotnet command in a Microsoft.Testing.Platform repository (the trusted base's global.json): no -m:1 on dotnet test.
         const mtp = isDotnetExe(req.exe) && this.dotnetMtpBase();
+        // A trusted base that pins a nuget.config below its root: NuGet reads its own hierarchy (dotnetNugetHierarchyBase).
+        const hierarchy = isDotnetExe(req.exe) && this.dotnetNugetHierarchyBase();
         // The run's own NuGet packages folder, once this run's restore step made it (state.nugetRestore: a folder left by an
         // earlier run of the same slug is never read): a dotnet command of the run reads it (the real cache its read-only
         // fallback) only for a commit (`forCommit`: the head the gate runs for, the commit a prepare check runs on) whose
@@ -1219,7 +1221,7 @@ class FactoryEngine {
             }
         };
         const nuget = !req.nugetPackages && req.purpose !== 'calibrate' && isDotnetExe(req.exe) && restored && forCommit && existsSync(nugetDir) && restoredFor(forCommit, restored.definition) ? { nugetPackages: { dir: nugetDir, writable: false } } : {};
-        const r = this.o.gateSandbox({ ...req, ...nuget, ...(mtp ? { dotnetMtp: true } : {}), nodeModulesTarget: join(this.o.root, 'node_modules'), ...(nested.length > 0 ? { nestedNodeModulesTargets: nested } : {}), ...(p ? { mainRoot: this.o.root, jobRoot: this.gateJobRoot() } : {}), ...(container ? { container, runLabel: containerRunLabel(this.o.root, this.key) } : {}) });
+        const r = this.o.gateSandbox({ ...req, ...nuget, ...(mtp ? { dotnetMtp: true } : {}), ...(hierarchy ? { nugetHierarchy: true } : {}), nodeModulesTarget: join(this.o.root, 'node_modules'), ...(nested.length > 0 ? { nestedNodeModulesTargets: nested } : {}), ...(p ? { mainRoot: this.o.root, jobRoot: this.gateJobRoot() } : {}), ...(container ? { container, runLabel: containerRunLabel(this.o.root, this.key) } : {}) });
         if (!container)
             return r;
         return r.then((out) => {
@@ -1531,6 +1533,40 @@ class FactoryEngine {
             const tab = line.indexOf('\t');
             return tab > 0 && line.slice(0, tab).split(' ')[1] === 'blob' && isDotnetProjectFile(line.slice(tab + 1));
         });
+    }
+    /** dotnetNugetHierarchyBase's answer per base sha: the lower nuget.config paths. */
+    nugetHierarchyAt;
+    /**
+     * The trusted base commit's nuget.config files below its root (any case,
+     * outside node_modules; `git ls-tree -r` of state.baseSha, never the PR
+     * head). A sandboxed dotnet command reads one NuGet config file
+     * (dotnet-sandbox.ts dotnetNugetConfig), which would hide such a
+     * file: with one, NuGet reads its own hierarchy instead (as before), which
+     * in the shared layout fails when it reaches a nuget.config of your
+     * working tree or above it (the nuget-config-unreadable park names these
+     * paths). Empty with no base yet; a base that cannot be listed is a step
+     * error (it parks).
+     */
+    dotnetNugetHierarchyPaths() {
+        const sha = this.state.baseSha;
+        if (!sha || !HEX40.test(sha))
+            return [];
+        if (this.nugetHierarchyAt?.sha !== sha) {
+            const r = this.exec('git', ['ls-tree', '-r', '-z', '--full-tree', sha], { cwd: this.o.root, env: TRUSTED_READ_ENV });
+            if (r.status !== 0)
+                throw new FactoryStepError(`the trusted base ${sha.slice(0, 12)} could not be listed for its nuget.config files (git ls-tree exit ${r.status}: ${oneLine(r.stderr, 200)})`);
+            // The listing shape dotnetBaseTree reads (`<mode> <type> <oid>\t<path>`): blobs only.
+            const paths = r.stdout.split('\0').flatMap((line) => {
+                const tab = line.indexOf('\t');
+                return tab > 0 && line.slice(0, tab).split(' ')[1] === 'blob' ? [line.slice(tab + 1)] : [];
+            }).filter((p) => p.includes('/') && p.split('/').pop().toLowerCase() === 'nuget.config' && !p.split('/').some((s) => s.toLowerCase() === 'node_modules'));
+            this.nugetHierarchyAt = { sha, paths: paths.sort() };
+        }
+        return this.nugetHierarchyAt.paths;
+    }
+    /** dotnetNugetHierarchyPaths holds a file: sandboxed dotnet commands read NuGet's own config hierarchy. */
+    dotnetNugetHierarchyBase() {
+        return this.dotnetNugetHierarchyPaths().length > 0;
     }
     /** The gate-sandbox-incompatible park of a copied tree linkGateTree could not build (`why`). */
     treeCopyPark(why) {
@@ -4386,6 +4422,9 @@ class FactoryEngine {
                 // A dotnet check that could not restore its NuGet packages judged no code: a park, never a ci-fix lane. The
                 // networked restore runs only before the local gate (after its checkout checks), never between prepare's checks.
                 const nuget = isDotnetExe(c.exe) ? classifyNugetFailure(r.output) : null;
+                if (nuget?.kind === 'config-unreadable') {
+                    return stop({ name: GATE_INSTALL_GATE, reason: `${label} could not restore its NuGet packages on ${head.slice(0, 12)}, so no ci-fix lane was started. ${nugetConfigUnreadableReason(nuget.sources, this.dotnetNugetHierarchyPaths())}; then rerun ${this.resume}`, detail: parkTail(r.output) });
+                }
                 if (nuget) {
                     const feed = nuget.kind === 'private-feed' ? `; ${NUGET_PRIVATE_FEED_UNSUPPORTED} (${nuget.sources.join(', ') || 'a feed answered 401 or 403'})` : '';
                     return stop({ name: GATE_INSTALL_GATE, reason: `${label} could not restore its NuGet packages on ${head.slice(0, 12)} (${nuget.codes.join(', ')}), which says nothing about the code, so no ci-fix lane was started${feed}. Prepare checks get no restore step (only the local gate does, with factory.run.gateInstall "sandboxed"): run the dotnet command as the local gate instead of a prepare check, or restore the PR branch's packages into your NuGet global packages folder yourself; then rerun ${this.resume}`, detail: parkTail(r.output) });
@@ -4590,6 +4629,9 @@ class FactoryEngine {
         // A dotnet base that cannot restore from your real cache (a calibration never reads the run's packages folder):
         // its packages are missing on this machine, which no ci-fix lane and no restore of the PR's folder fixes.
         const baseNuget = isDotnetExe(c.exe) || isDotnetExe(c.argv[0]) ? classifyNugetFailure(cal.tail) : null;
+        if (baseNuget?.kind === 'config-unreadable') {
+            return { name: GATE_INSTALL_GATE, reason: `${what} failed on ${head.slice(0, 12)}, and on the base ${baseSha.slice(0, 12)} itself it could not restore its NuGet packages, so the failure is not counted (no ci-fix lane). ${nugetConfigUnreadableReason(baseNuget.sources, this.dotnetNugetHierarchyPaths())}; then rerun ${this.resume}${cal.tail ? `; base output tail: ${cal.tail.slice(-1_500)}` : ''}` };
+        }
         if (baseNuget) {
             return { name: GATE_INSTALL_GATE, reason: `${what} failed on ${head.slice(0, 12)}, and on the base ${baseSha.slice(0, 12)} itself it could not restore its NuGet packages (${baseNuget.codes.join(', ')}) from your NuGet global packages folder, so the failure is not counted (no ci-fix lane): run dotnet restore on ${this.state.base ?? 'the base'} yourself, then rerun ${this.resume}${cal.tail ? `; base output tail: ${cal.tail.slice(-1_500)}` : ''}` };
         }
@@ -5010,7 +5052,9 @@ class FactoryEngine {
      * network) empties every bin/, obj/ and artifacts/ dir but the tracked files
      * (dotnet-clean.ts); the engine itself never deletes there, since a process
      * the PR's code left running could swap a link in after any check. Then the
-     * engine verifies with read-only git calls and lstat. Parks (false) when a
+     * engine verifies with read-only git calls and lstat. Returns the checkout
+     * read the later checks use (the one after the step when it ran, else
+     * `read`). Parks (null) when a
      * recorded prepare or gate process still runs, the step cannot run or
      * fails, or anything is left; an untracked nested repository outside the
      * build dirs parks in every mode. Unsandboxed gates (the PR's code runs as
@@ -5030,7 +5074,7 @@ class FactoryEngine {
         const pkgProjects = read.packageTreeProjects ?? [];
         if (pkgProjects.length > 0 && !noClean) {
             this.gate('gates', `a tracked .NET project or solution under a node_modules directory is not supported in the OS sandbox: its build output there is not cleaned (${head.slice(0, 12)} tracks ${list(pkgProjects)}), so the dotnet gate did not run; move those files out of node_modules on the base branch, or untrack them, or cancel with ${cancelCommand(this.key)}; then rerun ${this.resume}`);
-            return false;
+            return null;
         }
         if (pkgProjects.length > 0)
             note(`${head.slice(0, 12)} tracks .NET project or solution file(s) under a node_modules directory (${list(pkgProjects)}), whose build output there is not cleaned before the dotnet gate: ${noCleanWhy}; the gate may reuse it`);
@@ -5038,19 +5082,19 @@ class FactoryEngine {
         const nested = nestedRepos(read.untracked);
         if (nested.length > 0) {
             this.gate('lane-tampered', `the engine's prepare checkout ${checkout} holds untracked nested git repositor${nested.length === 1 ? 'y' : 'ies'} (${list(nested)}), whose files git does not list, so the engine cannot check what MSBuild would read there and the dotnet gate did not run; ${recovery}`);
-            return false;
+            return null;
         }
         const filled = this.filledGitlinks(checkout, read.gitlinks);
         if (filled.length > 0) {
             this.gate('lane-tampered', `the engine's prepare checkout ${checkout} has content in the submodule (gitlink) dir${filled.length === 1 ? '' : 's'} ${list(filled)}, which git does not list and the engine never fills (submodules are not initialised there), so the engine cannot check what MSBuild would read there and the dotnet gate did not run; ${recovery}`);
-            return false;
+            return null;
         }
         const leftovers = read.untracked.filter(inBuild);
         if (leftovers.length === 0)
-            return true;
+            return read;
         if (noClean) {
             note(`left ${leftovers.length} untracked build output path${leftovers.length === 1 ? '' : 's'} under bin/, obj/ or artifacts/ in the prepare checkout before the dotnet gate on ${head.slice(0, 12)}: ${noCleanWhy}; the gate may reuse them`);
-            return true;
+            return read;
         }
         // A recorded prepare-check or gate process that still runs could recreate or swap what the step removes.
         let live;
@@ -5059,21 +5103,21 @@ class FactoryEngine {
         }
         catch (error) {
             this.gate('gates', `the dotnet gate's build dirs were not emptied and the gate did not run: ${errText(error)}`);
-            return false;
+            return null;
         }
         if (live.length > 0) {
             this.gate('gates', `process(es) a prepare check or the local gate started in the engine's prepare checkout ${checkout} still run (pid ${live.join(', ')}), so its build dirs were not emptied and the dotnet gate did not run; stop them (Task Manager, or kill -9 ${live.join(' ')}), then rerun ${this.resume}`);
-            return false;
+            return null;
         }
         const script = join(resolveDefaultPluginRoot(process.env), 'dist', 'factory', 'run', 'dotnet-clean-step.js');
         if (!existsSync(script)) {
             this.gate('gates', `the step that empties the dotnet gate's build dirs is missing (${script}: the oh-my-copilot install has no dist), so the local gate did not run; reinstall oh-my-copilot, then rerun ${this.resume}`);
-            return false;
+            return null;
         }
         const argv = [process.execPath, script, ...read.kept];
         if (sandboxCommandTooLong(process.platform, argv, checkout)) {
             this.gate('gates', `${read.kept.length} tracked files under bin/, obj/ or artifacts/ are too many to name to the sandboxed step that empties the dotnet gate's build dirs, so the local gate did not run; untrack them or wrap the gate in a script, then rerun ${this.resume}`);
-            return false;
+            return null;
         }
         const started = this.clock();
         let r;
@@ -5086,12 +5130,12 @@ class FactoryEngine {
         const seconds = Math.round((this.clock() - started) / 1000);
         if (!r.ran && !r.started) {
             this.gate('gates', `the sandboxed step that empties the dotnet gate's build dirs did not start (${r.reason}); nothing was removed and the local gate did not run; fix that, then rerun ${this.resume}`);
-            return false;
+            return null;
         }
         if (!r.ran || r.timedOut || r.status !== 0) {
             const what = !r.ran ? `gave no verdict (${r.reason})` : r.timedOut ? `timed out after ${Math.round(DOTNET_CLEAN_TIMEOUT_MS / 60_000)} min` : `failed (exit ${r.status}): ${oneLine(visibleLine(r.output.split(/\r?\n/).filter((l) => l.startsWith('error ')).slice(0, 3).join('; ') || r.output), PARK_TAIL_CHARS)}`;
             this.gate('lane-tampered', `the sandboxed step that empties the dotnet gate's build dirs in ${checkout} ${what}, so leftover build state the PR's code made there may remain and the local gate did not run; ${recovery}`);
-            return false;
+            return null;
         }
         // Read-only verification: nothing untracked is left under a build dir, no nested repository, the tracked tree unchanged,
         // and no build dir the step saw is now a link.
@@ -5100,17 +5144,18 @@ class FactoryEngine {
             return lstatSync(join(checkout, ...d.split('/'))).isSymbolicLink();
         }
         catch {
-            return false;
+            return null;
         } });
         const left = after.problem ? [] : [...after.untracked.filter(inBuild), ...nestedRepos(after.untracked), ...strayDotnetDefinitionFiles(after.untracked), ...this.filledGitlinks(checkout, after.gitlinks), ...links];
         if (after.problem || after.at !== head || after.dirty.length > 0 || left.length > 0) {
             const what = after.problem ? `cannot be read (${after.problem})` : after.at !== head ? `is no longer at ${head.slice(0, 12)}` : after.dirty.length > 0 ? `differs from ${head.slice(0, 12)} (${list(after.dirty)})` : `still holds ${list([...new Set(left)])}`;
             this.gate('lane-tampered', `after the sandboxed step that empties the dotnet gate's build dirs, the engine's prepare checkout ${checkout} ${what}, so the local gate did not run; ${recovery}`);
-            return false;
+            return null;
         }
         const removed = Number(/^removed (\d+)$/m.exec(r.output)?.[1] ?? leftovers.length);
         note(`removed ${removed} build output entr${removed === 1 ? 'y' : 'ies'} under bin/, obj/ and artifacts/ in the prepare checkout in the OS sandbox before the dotnet gate on ${head.slice(0, 12)} (${seconds} s)`);
-        return true;
+        // The read after the step: what the later checks (packageTreeImportsReady) see is what the gate will see.
+        return after;
     }
     /**
      * Microsoft.Testing.Platform (the trusted base's root global.json): in the
@@ -5152,6 +5197,10 @@ class FactoryEngine {
         const yourself = `restore the PR branch's packages into your NuGet global packages folder yourself (dotnet restore on that branch; the sandbox reads that folder), then rerun ${this.resume}; or ${cancelCommand(this.key)}`;
         const detail = tail ? parkTail(tail) : undefined;
         const park = (reason) => ({ name: GATE_INSTALL_GATE, reason, ...(detail ? { detail } : {}) });
+        // A restore step would stop at the same config: no step, a park that says what NuGet could not read.
+        if (nuget.kind === 'config-unreadable') {
+            return park(`the local gate \`${gate.join(' ')}\` could not restore its NuGet packages on ${head.slice(0, 12)}, so no ci-fix lane was started. ${nugetConfigUnreadableReason(nuget.sources, this.dotnetNugetHierarchyPaths())}; then rerun ${this.resume}; or ${cancelCommand(this.key)}`);
+        }
         if (nuget.kind === 'private-feed') {
             return park(`${what}: ${NUGET_PRIVATE_FEED_UNSUPPORTED} (${nuget.sources.join(', ') || 'a feed answered 401 or 403'}); the sandbox never gets your NuGet.Config or its credentials. Make the packages come from nuget.org, or ${yourself}`);
         }
@@ -5281,13 +5330,19 @@ class FactoryEngine {
             const needs = failure ? undefined : missingDefinitionFile(r.output, tree);
             const why = needs !== undefined
                 ? `the restore needs a file that is not a pinned definition file: ${needs} (the engine restores on the head's pinned definition files only, so MSBuild imports, tasks and scripts outside them are absent; restore the PR branch's packages into your NuGet global packages folder yourself, or keep the restore's inputs in definition files)`
-                : failure?.kind === 'private-feed'
-                    ? `${NUGET_PRIVATE_FEED_UNSUPPORTED} (${failure.sources.join(', ') || 'a feed answered 401 or 403'}), and the sandbox never gets your NuGet.Config or its credentials`
-                    : `a package or version the project files name may not exist on nuget.org${failure ? ` (${failure.codes.join(', ')})` : ''}`;
+                : failure?.kind === 'config-unreadable'
+                    ? nugetConfigUnreadableReason(failure.sources, this.dotnetNugetHierarchyPaths())
+                    : failure?.kind === 'private-feed'
+                        ? `${NUGET_PRIVATE_FEED_UNSUPPORTED} (${failure.sources.join(', ') || 'a feed answered 401 or 403'}), and the sandbox never gets your NuGet.Config or its credentials`
+                        : `a package or version the project files name may not exist on nuget.org${failure ? ` (${failure.codes.join(', ')})` : ''}`;
             return { name: GATE_INSTALL_GATE, reason: `${what} with only api.nuget.org reachable failed (exit ${r.status}${r.timedOut ? ', timed out' : ''}): ${why}. That needs a human, not a ci-fix lane${localDetailNote(this.key, 'its output')}: fix it on the branch (a change to the definition files parks at gate-definition-changed for your approval), then rerun ${this.resume}, which runs the restore again (for a feed that failed only for now, rerun as it is); or ${cancelCommand(this.key)}`, detail: parkTail(r.output) };
         }
         const seconds = Math.round((this.clock() - started) / 1000);
-        this.save((x) => ({ ...x, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `dotnet restore ran in the OS sandbox with only api.nuget.org reachable in the engine's definition tree of ${head.slice(0, 12)} (${written.files.length} pinned definition file(s), nothing else${written.stubs.length > 0 ? `, and the engine's ${written.stubs.join(', ')} at its root, which stop MSBuild's and NuGet's walk up out of the tree` : ''}; ${seconds} s); new packages went to the run's own packages folder, and the gate runs again offline in the prepare checkout` }] }));
+        const msbuildStubs = written.stubs.filter((s) => s !== 'nuget.config');
+        const nugetRead = this.dotnetNugetHierarchyPaths().length > 0
+            ? 'NuGet read its own config hierarchy (the base pins a nuget.config below its root)'
+            : `NuGet read only the tree's root nuget.config (${written.stubs.includes('nuget.config') ? "the engine's, nuget.org only" : "the head's own"})`;
+        this.save((x) => ({ ...x, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `dotnet restore ran in the OS sandbox with only api.nuget.org reachable in the engine's definition tree of ${head.slice(0, 12)} (${written.files.length} pinned definition file(s), nothing else${msbuildStubs.length > 0 ? `, and the engine's ${msbuildStubs.join(', ')} at its root, which stop MSBuild's walk up out of the tree` : ''}; ${nugetRead}; ${seconds} s); new packages went to the run's own packages folder, and the gate runs again offline in the prepare checkout` }] }));
         return null;
     }
     /**
@@ -5328,7 +5383,9 @@ class FactoryEngine {
      */
     packageTreeImports(head) {
         if (this.packageImportsAt?.head === head)
-            return this.packageImportsAt.refs;
+            return this.packageImportsAt;
+        // The dirs (empty for the root) whose node_modules holds files the head tracks: the repository commits that tree.
+        const trackedTrees = new Set();
         const ls = this.exec('git', ['ls-tree', '-r', '-z', '--full-tree', head], { cwd: this.o.root, env: TRUSTED_READ_ENV });
         if (ls.status !== 0)
             throw new FactoryStepError(`git ls-tree ${head.slice(0, 12)} failed: ${oneLine(ls.stderr, 300)}`);
@@ -5339,6 +5396,10 @@ class FactoryEngine {
                 continue;
             const [mode, type, oid] = line.slice(0, tab).split(' ');
             const p = line.slice(tab + 1);
+            const segs = p.split('/');
+            const at = segs.findIndex((s) => s.replace(/[. ]+$/, '').toLowerCase() === 'node_modules');
+            if (at >= 0 && at < segs.length - 1)
+                trackedTrees.add(segs.slice(0, at).join('/'));
             if (type === 'blob' && (mode === '100644' || mode === '100755') && oid && isDotnetDefinitionFile(p) && readsForNodeModulesRefs(p) && !inPackageTree(p))
                 files.push([p, oid]);
         }
@@ -5354,8 +5415,8 @@ class FactoryEngine {
                     refs.push(`${p}: ${r}`);
             }
         }
-        this.packageImportsAt = { head, refs };
-        return refs;
+        this.packageImportsAt = { head, refs, trackedTrees: [...trackedTrees].sort() };
+        return this.packageImportsAt;
     }
     /**
      * Before a dotnet gate: when `head`'s pinned definition files reference
@@ -5373,14 +5434,15 @@ class FactoryEngine {
     packageTreeImportsReady(head, checkout, read, gates) {
         if (gates.container)
             return true;
-        let refs;
+        let imports;
         try {
-            refs = this.packageTreeImports(head);
+            imports = this.packageTreeImports(head);
         }
         catch (error) {
             this.gate('gates', `the dotnet gate did not run on ${head.slice(0, 12)}: its definition files could not be read to find imports from node_modules (${errText(error)}); rerun ${this.resume}`);
             return false;
         }
+        const refs = imports.refs;
         if (refs.length === 0)
             return true;
         const named = `${refs.slice(0, 3).map((r) => oneLine(visibleLine(r), 240)).join('; ')}${refs.length > 3 ? `; ${refs.length - 3} more` : ''}`;
@@ -5388,7 +5450,7 @@ class FactoryEngine {
             this.save((x) => ({ ...x, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `the build on ${head.slice(0, 12)} imports files from node_modules (${named}), which the PR's code can modify in the gate checkout; not verified before the dotnet gate, since the gates run without the OS sandbox (the PR's code runs as you there)` }] }));
             return true;
         }
-        const tree = gateTreeExactProblem(this.o.root, checkout, trustedNestedRels(this.o.root, checkout, this.baseWorkspaces()), read.untracked, this.state.gateTreeCopy === true);
+        const tree = gateTreeExactProblem(this.o.root, checkout, trustedNestedRels(this.o.root, checkout, this.baseWorkspaces()), read.untracked, this.state.gateTreeCopy === true, imports.trackedTrees);
         if (!tree)
             return true;
         const why = `the dotnet gate did not run on ${head.slice(0, 12)}: the build imports files from node_modules (${named}), which the PR's code can modify in the gate checkout, and ${oneLine(visibleLine(tree.problem), PARK_TAIL_CHARS)}`;
@@ -5501,8 +5563,12 @@ class FactoryEngine {
             return false;
         const common = this.privateRun()?.repo.gitDir ?? resolve(this.o.root, this.run(['rev-parse', '--git-common-dir']).trim());
         // A dotnet gate: leftover build state under bin/, obj/ and artifacts/ is removed by a step in the OS sandbox, then verified.
-        if (dotnetGate && !(await this.dotnetBuildStateReady(head, checkout, gitArgsRead, read, gates, common)))
-            return false;
+        if (dotnetGate) {
+            const cleaned = await this.dotnetBuildStateReady(head, checkout, gitArgsRead, read, gates, common);
+            if (!cleaned)
+                return false;
+            read = cleaned;
+        }
         // The networked dotnet restore the last offline run of this gate asked for (nugetFailureNext): only here, after the
         // checkout checks above and the sandboxed clean, and only on pinned definitions (nugetRestore checks them itself).
         if (dotnetGate && this.nugetRestoreDue === head) {
@@ -6906,6 +6972,7 @@ class FactoryEngine {
         // A .NET repository (dotnetRepo): read before anything is made or reserved, so a base that cannot be listed is a step
         // error that stops the step, never a lane start failure that consumes a lane retry.
         const dotnet = profile === 'write' && this.dotnetRepo();
+        const nugetHierarchy = dotnet && this.dotnetNugetHierarchyBase();
         // The private layout: the engine makes the lane's worktree `<run>/w/<n>` itself, before the snapshot it is compared against.
         const priv = this.privateRun();
         let laneTree;
@@ -6995,7 +7062,7 @@ class FactoryEngine {
                 // A review lane's shell is read-only, so it runs no test and needs none.
                 ...(profile === 'write' ? { beforeSandboxedSession: (wt, o) => this.prepareLaneTree(wt, o?.copy ?? true), nodeModulesGrant: (wt) => this.laneNodeModulesGrant(wt) } : {}),
                 // A .NET repository (dotnetRepo: trusted config or the trusted base's tree, any forge): the env and NuGet grant dotnet needs in the lane sandbox.
-                ...(dotnet ? { dotnet: true } : {}),
+                ...(dotnet ? { dotnet: true, ...(nugetHierarchy ? { dotnetNugetHierarchy: true } : {}) } : {}),
                 ...(priv && laneTree ? { worktree: { path: laneTree, commonGitDir: priv.repo.gitDir }, jobRoot: priv.layout.jobs, deniedPaths: priv.deniedFor(laneTree), beforeHostGit: () => priv.problem() } : {}),
             }));
         }

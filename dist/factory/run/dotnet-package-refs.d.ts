@@ -8,23 +8,26 @@
  * checkout's node_modules is exactly the tree it built (prepare.ts
  * gateTreeExactProblem).
  *
- * The rule is textual and deliberately narrow: only the attributes that make
- * MSBuild or NuGet read a file are looked at (`Import Project`,
- * `ProjectReference Include`, `UsingTask AssemblyFile`, a solution's project
- * entries, a `nuget.config` source or fallback folder value), and one counts
- * when its value has a `node_modules` path segment once `\` is read as `/`.
- * MSBuild property expansion makes exact resolution impossible, so a value
- * is not expanded: a property that holds the node_modules part
- * (`$(NodeModules)\x.props` with `<NodeModules>..\node_modules</NodeModules>`)
- * is not seen, and a reference that resolves elsewhere counts. A mere
- * mention does not count: the ASP.NET SPA templates' `<Content
- * Remove="$(SpaRoot)node_modules\**" />` and `<Exec Command="npm install" />`
- * read nothing from there.
+ * The rule is textual and deliberately narrow: only the values that make
+ * MSBuild, NuGet or the SDK read or run a file are looked at (`Import
+ * Project`, `ProjectReference Include`, `UsingTask AssemblyFile`, an inline
+ * task's `Code Source`, an `Exec Command` (the exit code of what it runs
+ * decides the build), a solution's project entries, a `nuget.config` source
+ * or fallback folder value, every token of a `.rsp` response file, and
+ * `global.json` `sdk.paths`), and one counts when its value has a
+ * `node_modules` path segment once `\` is read as `/`. MSBuild property
+ * expansion makes exact resolution impossible, so a value is not expanded:
+ * a property that holds the node_modules part (`$(NodeModules)\x.props`
+ * with `<NodeModules>..\node_modules</NodeModules>`) is not seen, and a
+ * reference that resolves elsewhere counts. A mere mention does not count:
+ * the ASP.NET SPA templates' `<Content Remove="$(SpaRoot)node_modules\**" />`
+ * and `<Exec Command="npm install" />` (or `npm ci`, `npm run build`) name no
+ * path under node_modules.
  */
 /**
  * True when a path has a `node_modules` segment (`\` read as `/`, any case,
  * trailing dots and spaces dropped as Windows does). The parentheses,
- * quotes, commas and other punctuation of an MSBuild expression count as
+ * quotes, commas, `:`, `=`, `@` and other punctuation of an MSBuild expression or a response-file switch count as
  * boundaries too, so `$(MSBuildThisFileDirectory)node_modules\x` (a property
  * ends in a separator) and a property function's argument
  * (`$([MSBuild]::NormalizePath('..', 'node_modules', 'x.props'))`) count.

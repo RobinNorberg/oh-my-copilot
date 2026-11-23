@@ -176,6 +176,69 @@ describe.runIf(process.env.OMG_LIVE_DOTNET === '1' && onWindows && !!dotnet)('a 
     expect(!!packages && existsSync(join(packages, UNCACHED[0].toLowerCase(), UNCACHED[1]))).toBe(false);
   }, 900_000);
 
+  it.runIf(xunitCached && !uncachedCached)('a committed root nuget.config in the shared layout (checkout and definition tree under <repo>/.omg): the gate passes offline, the restore fetches a missing package through the sandbox, and NuGet\'s own walk would fail on your working tree\'s file', async (ctx) => {
+    const repo = join(dir, 'nc-repo');
+    const config = '<?xml version="1.0" encoding="utf-8"?>\n<configuration>\n  <packageSources>\n    <clear />\n    <add key="nuget.org" value="https://api.nuget.org/v3/index.json" />\n  </packageSources>\n</configuration>\n';
+    mkdirSync(join(repo, 'Lib'), { recursive: true });
+    mkdirSync(join(repo, 'Lib.Tests'));
+    writeFileSync(join(repo, '.gitignore'), 'bin/\nobj/\n.omg/\n');
+    writeFileSync(join(repo, 'NuGet.Config'), config);
+    writeFileSync(join(repo, 'Lib', 'Lib.csproj'), LIB);
+    writeFileSync(join(repo, 'Lib', 'Greeting.cs'), 'namespace Lib;\npublic static class Greeting { public static string Hello(string n) => $"Hello, {n}!"; }\n');
+    writeFileSync(join(repo, 'Lib.Tests', 'Lib.Tests.csproj'), TESTS);
+    writeFileSync(join(repo, 'Lib.Tests', 'GreetingTests.cs'), 'namespace Lib.Tests;\npublic class GreetingTests { [Xunit.Fact] public void Greets() => Xunit.Assert.Equal("Hello, Ada!", Lib.Greeting.Hello("Ada")); }\n');
+    git(repo, 'init', '-q', '-b', 'main');
+    git(repo, 'add', '.');
+    git(repo, 'commit', '-q', '-m', 'base');
+    // The head (an approved bump): a package your cache does not have.
+    writeFileSync(join(repo, 'Lib', 'Lib.csproj'), LIB.replace('</PropertyGroup>', `</PropertyGroup>\n  <ItemGroup>\n    <PackageReference Include="${UNCACHED[0]}" Version="${UNCACHED[1]}" />\n  </ItemGroup>`));
+    git(repo, 'commit', '-q', '-am', 'head');
+    const gates = join(repo, '.omg', 'state', 'factory-gates');
+    const tree = join(gates, 'nuget-defs', 'issue-1');
+    const throwaway = join(gates, 'nuget', 'issue-1');
+    mkdirSync(join(gates, 'nuget-defs'), { recursive: true });
+    mkdirSync(throwaway, { recursive: true });
+    const co = join(repo, '.omg', 'team', 'factory-run', 'worktrees', 'issue-1');
+    mkdirSync(join(co, '..'), { recursive: true });
+    git(repo, 'clone', '-q', '--no-checkout', repo, co);
+    git(co, 'checkout', '-q', 'HEAD~1');
+    const run = createSandboxRunner(repo, undefined, { user: { factory: { run: { sandbox: {} } } }, project: undefined });
+    const inCheckout = async (argv: string[], extra: Record<string, unknown> = {}) => {
+      const t = resolveLocalGateArgv(argv, { cwd: co });
+      if ('missing' in t) throw new Error(t.missing);
+      return run({ purpose: 'gate', argv, exe: t.exe, args: t.args, cwd: co, commonGitDir: join(repo, '.git'), timeoutMs: 600_000, jobRoot: gates, ...extra });
+    };
+    // The base, cached packages: the gate passes offline in the checkout under <repo>/.omg.
+    const base = await inCheckout(['dotnet', 'test', 'Lib.Tests/Lib.Tests.csproj']);
+    if (!base.ran && NO_RUNTIME.test(base.reason)) { ctx.skip(`no Copilot runtime here: ${base.reason}`); return; }
+    expect(base.ran && base.status, base.ran ? base.output : base.reason).toBe(0);
+    if (!base.ran) return;
+    expect(base.output).toMatch(/Passed!\s+- Failed:\s+0, Passed:\s+1/);
+    // NuGet's own walk (what every sandboxed dotnet command did before) reaches <repo>/NuGet.Config and is refused.
+    const walk = await inCheckout(['dotnet', 'build', 'Lib/Lib.csproj'], { nugetHierarchy: true });
+    expect(walk.ran && classifyNugetFailure(walk.output), walk.ran ? walk.output : walk.reason).toMatchObject({ kind: 'config-unreadable' });
+    // The head: offline it fails restoring, then the restore in the definition tree (written from git) fetches it.
+    git(co, 'checkout', '-q', 'main');
+    const offline = await inCheckout(['dotnet', 'build', 'Lib/Lib.csproj']);
+    expect(offline.ran && classifyNugetFailure(offline.output), offline.ran ? offline.output : offline.reason).toMatchObject({ kind: 'restore' });
+    const entries = spawnSync('git', ['ls-tree', '-r', '-z', '--full-tree', 'HEAD'], { cwd: repo, encoding: 'utf8' }).stdout.split('\0').filter(Boolean).map((line) => {
+      const tab = line.indexOf('\t');
+      const [mode, , oid] = line.slice(0, tab).split(' ');
+      return [line.slice(tab + 1), oid, mode] as const;
+    });
+    const written = writeDefinitionTree(tree, entries, (oids) => parseCatFileBatch(spawnSync('git', ['cat-file', '--batch'], { cwd: repo, input: `${oids.join('\n')}\n` }).stdout));
+    expect('stubs' in written && written.stubs).not.toContain('nuget.config');
+    const restoreArgv = ['dotnet', ...dotnetRestoreArgs(['build', 'Lib/Lib.csproj'])!];
+    const rt = resolveLocalGateArgv(restoreArgv, { cwd: tree });
+    if ('missing' in rt) throw new Error(rt.missing);
+    const restored = await run({ purpose: 'restore', argv: restoreArgv, exe: rt.exe, args: rt.args, cwd: tree, commonGitDir: join(repo, '.git'), timeoutMs: 300_000, network: 'nuget', nugetPackages: { dir: throwaway, writable: true }, jobRoot: gates });
+    expect(restored.ran && restored.status, restored.ran ? restored.output : restored.reason).toBe(0);
+    expect(existsSync(join(throwaway, UNCACHED[0].toLowerCase(), UNCACHED[1]))).toBe(true);
+    const after = await inCheckout(['dotnet', 'test', 'Lib.Tests/Lib.Tests.csproj'], { nugetPackages: { dir: throwaway, writable: false } });
+    expect(after.ran && after.status, after.ran ? after.output : after.reason).toBe(0);
+    expect(!!packages && existsSync(join(packages, UNCACHED[0].toLowerCase(), UNCACHED[1]))).toBe(false);
+  }, 1_800_000);
+
   it('H1: the restore in a definition tree written from the head\'s git objects never runs the <Exec> of an unpinned import the head rewrote', async (ctx) => {
     const repo = join(dir, 'h1-repo');
     const tree = join(dir, 'h1-tree');

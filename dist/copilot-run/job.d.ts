@@ -194,6 +194,11 @@ export interface CopilotRunStartOptions {
      * (dotnet-sandbox.ts dotnetSandboxEnv). Absent: none.
      */
     dotnet?: boolean;
+    /**
+     * With `dotnet`: the trusted base pins a nuget.config below its root (engine.ts dotnetNugetHierarchyBase), so NuGet
+     * reads its own config hierarchy instead of the one file dotnet-sandbox.ts dotnetNugetConfig picks.
+     */
+    dotnetNugetHierarchy?: boolean;
 }
 /**
  * A credential-free session env, in place. Removed: GitHub tokens

@@ -58,7 +58,7 @@ import {
   type SandboxSettings,
 } from '../../copilot-run/sandbox.js';
 import { defaultContainerExec, runContainerGate } from './container-gate.js';
-import { dotnetSandboxArgs, dotnetSandboxEnv, isDotnetExe, type RunNugetPackages } from '../../copilot-run/dotnet-sandbox.js';
+import { dotnetNugetConfig, dotnetSandboxArgs, dotnetSandboxEnv, isDotnetExe, type RunNugetPackages } from '../../copilot-run/dotnet-sandbox.js';
 import { SessionSandboxController } from '../../copilot-run/sandbox-session.js';
 import { errText, withTimeout } from '../../copilot-run/timeout.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
@@ -137,6 +137,12 @@ export interface SandboxRunRequest {
    * the real cache is the read-only fallback; writable only for the restore step. Ignored for other executables.
    */
   nugetPackages?: RunNugetPackages;
+  /**
+   * A dotnet command in a commit that pins a nuget.config below its root (engine.ts): NuGet reads its own config
+   * hierarchy instead of the one file dotnet-sandbox.ts dotnetNugetConfig picks (that one would hide the lower
+   * file). Ignored for other executables.
+   */
+  nugetHierarchy?: true;
 }
 
 /** The gate record and PR note line for a sandboxed run on a host without denied_paths. */
@@ -186,6 +192,8 @@ export interface SandboxExecOptions {
   dotnetMtp?: true;
   /** SandboxRunRequest.nugetPackages. */
   nugetPackages?: RunNugetPackages;
+  /** SandboxRunRequest.nugetHierarchy. */
+  nugetHierarchy?: true;
 }
 
 export const MARKER_PREFIX = 'omg-gate-exit-';
@@ -355,7 +363,7 @@ export async function runSandboxed(argv: readonly string[], o: SandboxExecOption
     const dotnetWrites: string[] = [];
     const dotnetNotes: string[] = [];
     if (dotnet) {
-      const d = dotnetSandboxEnv(env.USERPROFILE!, deps.env, realHome, deps.platform, o.nugetPackages);
+      const d = dotnetSandboxEnv(env.USERPROFILE!, deps.env, realHome, deps.platform, o.nugetPackages, o.nugetHierarchy ? undefined : dotnetNugetConfig(o.cwd, env.USERPROFILE!, deps.platform));
       Object.assign(env, d.env);
       dotnetGrants.push(...d.readonly);
       dotnetWrites.push(...d.readwrite);
@@ -544,6 +552,7 @@ export function createSandboxRunner(root: string, deps: SandboxExecDeps = defaul
       ...(req.nestedNodeModulesTargets ? { nestedNodeModulesTargets: req.nestedNodeModulesTargets } : {}),
       ...(req.dotnetMtp ? { dotnetMtp: true as const } : {}),
       ...(req.nugetPackages ? { nugetPackages: req.nugetPackages } : {}),
+      ...(req.nugetHierarchy ? { nugetHierarchy: true as const } : {}),
     }, deps);
   };
 }

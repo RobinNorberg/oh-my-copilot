@@ -43,7 +43,7 @@ import { dirname, join, resolve } from 'node:path';
 import { defaultCopilotRunDeps } from '../../copilot-run/job.js';
 import { allowlistSessionEnv, copilotConfigDenies, loadSandboxSettings, laneToolPaths, missingSandboxEnv, NUGET_HOSTS, proxyCaEnv, scrubTokens, secretValues, sessionGitHubToken, } from '../../copilot-run/sandbox.js';
 import { defaultContainerExec, runContainerGate } from './container-gate.js';
-import { dotnetSandboxArgs, dotnetSandboxEnv, isDotnetExe } from '../../copilot-run/dotnet-sandbox.js';
+import { dotnetNugetConfig, dotnetSandboxArgs, dotnetSandboxEnv, isDotnetExe } from '../../copilot-run/dotnet-sandbox.js';
 import { SessionSandboxController } from '../../copilot-run/sandbox-session.js';
 import { errText, withTimeout } from '../../copilot-run/timeout.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
@@ -228,7 +228,7 @@ export async function runSandboxed(argv, o, deps) {
         const dotnetWrites = [];
         const dotnetNotes = [];
         if (dotnet) {
-            const d = dotnetSandboxEnv(env.USERPROFILE, deps.env, realHome, deps.platform, o.nugetPackages);
+            const d = dotnetSandboxEnv(env.USERPROFILE, deps.env, realHome, deps.platform, o.nugetPackages, o.nugetHierarchy ? undefined : dotnetNugetConfig(o.cwd, env.USERPROFILE, deps.platform));
             Object.assign(env, d.env);
             dotnetGrants.push(...d.readonly);
             dotnetWrites.push(...d.readwrite);
@@ -463,6 +463,7 @@ export function createSandboxRunner(root, deps = defaultCopilotRunDeps(), layers
             ...(req.nestedNodeModulesTargets ? { nestedNodeModulesTargets: req.nestedNodeModulesTargets } : {}),
             ...(req.dotnetMtp ? { dotnetMtp: true } : {}),
             ...(req.nugetPackages ? { nugetPackages: req.nugetPackages } : {}),
+            ...(req.nugetHierarchy ? { nugetHierarchy: true } : {}),
         }, deps);
     };
 }

@@ -86,6 +86,21 @@ describe('.NET write lanes on the GitHub forge', () => {
         expect(write.prompt).toContain(RULE);
         expect(rev.dotnet).toBeUndefined();
     });
+    it('the NuGet config: one file for a root nuget.config or none; NuGet\'s own hierarchy only when the trusted base pins a lower one', async () => {
+        onBase({ 'src/App/App.csproj': CSPROJ, 'nuget.config': '<configuration />\n', 'node_modules/pkg/nuget.config': '<configuration />\n' });
+        const one = sandboxed(new FakeLanes(h.root, [commitFile('src/sub/nuget.config', '<configuration />\n'), review('approve')]));
+        await runFactoryEngine(opts(one));
+        // A lower file under node_modules is a package's, and the PR head's is not trusted: one file.
+        expect(one.started[0].dotnet).toBe(true);
+        expect(one.started[0].dotnetNugetHierarchy).toBeUndefined();
+    });
+    it('a trusted base with a nuget.config below its root: write lanes read NuGet\'s own hierarchy', async () => {
+        onBase({ 'src/App/App.csproj': CSPROJ, 'nuget.config': '<configuration />\n', 'src/App/NuGet.Config': '<configuration />\n' });
+        const lanes = sandboxed(new FakeLanes(h.root, [commitFile('src/greet.ts'), review('approve')]));
+        await runFactoryEngine(opts(lanes));
+        expect(lanes.started[0]).toMatchObject({ dotnet: true, dotnetNugetHierarchy: true });
+        expect(lanes.started[1].dotnetNugetHierarchy).toBeUndefined();
+    });
     it('the Microsoft.Testing.Platform prompt variant and a reachable NuGet follow the trusted base on this forge too', async () => {
         onBase({ 'src/App/App.csproj': CSPROJ, 'global.json': '{ "test": { "runner": "Microsoft.Testing.Platform" } }\n' });
         const lanes = sandboxed(new FakeLanes(h.root, [commitFile('src/greet.ts'), review('approve')]), { writeNetwork: 'registry', allowedHosts: ['api.nuget.org'] });

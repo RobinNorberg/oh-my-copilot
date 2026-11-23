@@ -2,11 +2,11 @@
  * dotnet-sandbox.ts: which commands count as dotnet, the -m:1 rewrite, the
  * NuGet packages folder lookup and the env a sandboxed dotnet gets.
  */
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { DOTNET_SINGLE_NODE_FLAG, dotnetSandboxArgs, dotnetSandboxEnv, isDotnetExe, isMtpGlobalJson, isNugetHost, nugetPackagesDir, nugetPackagesGrant } from '../dotnet-sandbox.js';
+import { DOTNET_SINGLE_NODE_FLAG, dotnetNugetConfig, dotnetSandboxArgs, dotnetSandboxEnv, isDotnetExe, isMtpGlobalJson, isNugetHost, NUGET_ORG_ONLY_CONFIG, NUGET_ORG_SOURCE, nugetOrgImplied, nugetPackagesDir, nugetPackagesGrant, rootNugetConfig } from '../dotnet-sandbox.js';
 let dir;
 beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'omg-dotnet-sandbox-')); });
 afterEach(() => { rmSync(dir, { recursive: true, force: true }); });
@@ -152,6 +152,65 @@ describe('dotnetSandboxEnv', () => {
         expect(out.env.APPDATA).toBeUndefined();
         expect(out.env.NUGET_PACKAGES).toBeUndefined();
         expect(out.readonly).toEqual([]);
+    });
+});
+describe('one NuGet config for a sandboxed dotnet (RestoreConfigFile)', () => {
+    const clearOrg = '<configuration><packageSources><clear /><add key="nuget.org" value="https://api.nuget.org/v3/index.json" /></packageSources></configuration>';
+    it('dotnetSandboxEnv: RestoreConfigFile names the one file, and nuget.org is an additional source only when asked', () => {
+        const file = join(dir, 'co', 'nuget.config');
+        const one = dotnetSandboxEnv(join(dir, 'profile'), {}, join(dir, 'home'), 'win32', undefined, { file, addNugetOrg: false });
+        expect(one.env.RestoreConfigFile).toBe(file);
+        expect(one.env.RestoreAdditionalProjectSources).toBeUndefined();
+        const plus = dotnetSandboxEnv(join(dir, 'profile'), {}, join(dir, 'home'), 'linux', undefined, { file, addNugetOrg: true });
+        expect(plus.env).toMatchObject({ RestoreConfigFile: file, RestoreAdditionalProjectSources: NUGET_ORG_SOURCE });
+        // NuGet's own hierarchy (a base that pins a lower nuget.config): neither variable.
+        const walk = dotnetSandboxEnv(join(dir, 'profile'), {}, join(dir, 'home'), 'win32');
+        expect(walk.env.RestoreConfigFile).toBeUndefined();
+        expect(walk.env.RestoreAdditionalProjectSources).toBeUndefined();
+        // The file is read by NuGet in the sandbox, from the checkout: nothing more is granted for it.
+        expect(one.readonly).toEqual(walk.readonly);
+    });
+    it('rootNugetConfig: NuGet\'s names in its order, without case on Windows and macOS only; a dir of that name is none', () => {
+        const co = join(dir, 'co');
+        mkdirSync(co);
+        expect(rootNugetConfig(co, 'win32')).toBeNull();
+        expect(rootNugetConfig(join(dir, 'missing'), 'linux')).toBeNull();
+        writeFileSync(join(co, 'NUGET.CONFIG'), clearOrg);
+        expect(rootNugetConfig(co, 'win32')).toBe(join(co, 'NUGET.CONFIG'));
+        expect(rootNugetConfig(co, 'darwin')).toBe(join(co, 'NUGET.CONFIG'));
+        expect(rootNugetConfig(co, 'linux')).toBeNull();
+        const lin = join(dir, 'lin');
+        mkdirSync(lin);
+        writeFileSync(join(lin, 'NuGet.Config'), clearOrg);
+        expect(rootNugetConfig(lin, 'linux')).toBe(join(lin, 'NuGet.Config'));
+        const sub = join(dir, 'sub');
+        mkdirSync(join(sub, 'nuget.config'), { recursive: true });
+        expect(rootNugetConfig(sub, 'win32')).toBeNull();
+    });
+    it('dotnetNugetConfig: the checkout\'s root file, else nuget.org only in the job profile (never in the checkout)', () => {
+        const co = join(dir, 'co');
+        const profile = join(dir, 'job', 'profile');
+        mkdirSync(co);
+        const none = dotnetNugetConfig(co, profile, 'win32');
+        expect(none).toEqual({ file: join(profile, 'nuget', 'nuget.config'), addNugetOrg: false });
+        expect(readFileSync(none.file, 'utf8')).toBe(NUGET_ORG_ONLY_CONFIG);
+        expect(NUGET_ORG_ONLY_CONFIG).toContain(`value="${NUGET_ORG_SOURCE}"`);
+        writeFileSync(join(co, 'nuget.config'), clearOrg);
+        expect(dotnetNugetConfig(co, profile, 'win32')).toEqual({ file: join(co, 'nuget.config'), addNugetOrg: false });
+        // A root file that relies on nuget.org from the user config: added.
+        writeFileSync(join(co, 'nuget.config'), '<configuration><config><add key="dependencyVersion" value="Lowest" /></config></configuration>');
+        expect(dotnetNugetConfig(co, profile, 'win32')).toEqual({ file: join(co, 'nuget.config'), addNugetOrg: true });
+    });
+    it('nugetOrgImplied: no <clear />, no nuget.org feed listed, nuget.org not disabled', () => {
+        expect(nugetOrgImplied('<configuration />')).toBe(true);
+        expect(nugetOrgImplied('<configuration><packageSources><add key="dotnet-public" value="https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet-public/nuget/v3/index.json" /></packageSources></configuration>')).toBe(true);
+        expect(nugetOrgImplied(clearOrg)).toBe(false);
+        expect(nugetOrgImplied('<configuration><packageSources><clear/><add key="mine" value="./feed" /></packageSources></configuration>')).toBe(false);
+        expect(nugetOrgImplied('<configuration><packageSources><add key="org" value="https://api.nuget.org/v3/index.json" /></packageSources></configuration>')).toBe(false);
+        expect(nugetOrgImplied('<configuration><disabledPackageSources><add key="nuget.org" value="true" /></disabledPackageSources></configuration>')).toBe(false);
+        expect(nugetOrgImplied('<configuration><disabledPackageSources><add key="nuget.org" value="false" /></disabledPackageSources></configuration>')).toBe(true);
+        // A commented-out clear is no clear.
+        expect(nugetOrgImplied('<configuration><packageSources><!-- <clear /> --><add key="x" value="https://example.test/v3/index.json" /></packageSources></configuration>')).toBe(true);
     });
 });
 //# sourceMappingURL=dotnet-sandbox.test.js.map

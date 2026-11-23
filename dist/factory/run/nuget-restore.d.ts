@@ -37,18 +37,40 @@ export declare const NUGET_RESTORE_ERROR: RegExp;
 /** The output before the first line that shows the build or the tests started (BUILD_OR_TEST_STARTED): the restore phase. */
 export declare function restorePhase(output: string): string;
 export interface NugetFailure {
-    /** `private-feed`: a source other than nuget.org (a private or local feed) or a feed that wants credentials. */
-    kind: 'restore' | 'private-feed';
+    /**
+     * `private-feed`: a source other than nuget.org (a private or local feed) or a feed that wants credentials.
+     * `config-unreadable`: NuGet could not read or parse a nuget.config (NUGET_CONFIG_UNREADABLE_ERROR), with no NU code.
+     */
+    kind: 'restore' | 'private-feed' | 'config-unreadable';
     /** The NuGet codes seen, sorted. */
     codes: string[];
-    /** The sources other than nuget.org named in the errors (urls, local paths or names). */
+    /** The sources other than nuget.org named in the errors (urls, local paths or names); for `config-unreadable` the config paths named. */
     sources: string[];
 }
 /**
+ * An MSBuild error line saying NuGet could not read a nuget.config (it
+ * prints no NU code for it): `<file>(l,c): error : Failed to read
+ * NuGet.Config due to unauthorized access. Path: '<path>'.` (the sandbox
+ * refused the read: the walk up from the project reached a config the
+ * sandbox does not grant), or `... error : NuGet.Config is not valid XML.
+ * Path: '<path>'.`. Group 2 is the path. Restore phase only, as
+ * NUGET_RESTORE_ERROR.
+ */
+export declare const NUGET_CONFIG_UNREADABLE_ERROR: RegExp;
+/**
+ * Why a dotnet command parks when NuGet could not read a nuget.config
+ * (`config-unreadable`), for the paths it named (`paths`) and the trusted
+ * base's nuget.config files below its root (`lower`, engine.ts
+ * dotnetNugetHierarchyPaths: with any, NuGet reads its own hierarchy).
+ */
+export declare function nugetConfigUnreadableReason(paths: readonly string[], lower: readonly string[]): string;
+/**
  * The NuGet restore failure in a dotnet command's whole output, or null when
  * its restore phase (restorePhase) has no restore error line
- * (NUGET_RESTORE_ERROR): a compile or test failure, a pass, or an `error
- * NU1301` the PR's tests print. Read from the whole output, never a tail:
+ * (NUGET_RESTORE_ERROR) and no unreadable config
+ * (NUGET_CONFIG_UNREADABLE_ERROR, kind `config-unreadable`, checked first):
+ * a compile or test failure, a pass, or an `error NU1301` the PR's tests
+ * print. Read from the whole output, never a tail:
  * a long output must not hide a real restore error. Private feed signatures
  * (restore phase only): "for source <not nuget.org>", "The local source
  * '<path>'", "in source(s): <a name other than nuget.org>", and a feed's
@@ -91,29 +113,27 @@ export declare function gitBlobId(content: Buffer, oidLength: number): string;
 /** The blobs `git cat-file --batch` printed, by object id (a `<oid> missing` line is left out). */
 export declare function parseCatFileBatch(buf: Buffer): Map<string, Buffer>;
 /**
- * The NuGet config written at the tree root when the head has none there:
- * nuget.org as the only source, and every source, disabled source and
- * source mapping of the configs above the tree (and the machine-wide ones,
- * such as Visual Studio's offline packages folder) cleared. Checked with
- * .NET SDK 10.0.101: an ancestor config that adds a feed, disables nuget.org
- * and maps every package to its feed restores from nuget.org with this one
- * at the root, and a project restores the same packages as with the
- * default config (only the offline folder's source goes, and its packages
- * are nuget.org's).
+ * The NuGet config written at the tree root when the head has none there
+ * (NUGET_ORG_ONLY_CONFIG: nuget.org only). The restore then reads this file
+ * alone (RestoreConfigFile, dotnet-sandbox.ts dotnetNugetConfig), as the gate
+ * in a checkout of the same head reads the same content from the command's
+ * job profile; with a base that pins a lower nuget.config (NuGet's own
+ * hierarchy) its clears reset what the configs above the tree merged, though
+ * NuGet still reads those files.
  */
 export declare const DEFINITION_TREE_NUGET_CONFIG: string;
 /**
  * The files written at the definition tree's root when the head has no file
- * of that name there, so MSBuild's and NuGet's walk up from the tree stops
- * at the tree, as a clone of the repository would see nothing above it
- * (apart from your own parent dirs): `Directory.Build.props`,
- * `Directory.Build.targets`, `Directory.Solution.props`,
- * `Directory.Solution.targets` and `Directory.Packages.props` as an empty
- * project (with .NET SDK 10.0.101 an empty `Directory.Packages.props` does
- * not switch central package management on, and stops an ancestor's that
- * would), and `nuget.config` (DEFINITION_TREE_NUGET_CONFIG). Never
- * `global.json` or a `.rsp`: those select the SDK or add arguments, and an
- * empty one would change what the head's own files say. [name, content].
+ * of that name there: `Directory.Build.props`, `Directory.Build.targets`,
+ * `Directory.Solution.props`, `Directory.Solution.targets` and
+ * `Directory.Packages.props` as an empty project, which stops MSBuild's walk
+ * up from the tree at the tree, as a clone of the repository would see
+ * nothing above it (apart from your own parent dirs; with .NET SDK 10.0.101
+ * an empty `Directory.Packages.props` does not switch central package
+ * management on, and stops an ancestor's that would), and `nuget.config`
+ * (DEFINITION_TREE_NUGET_CONFIG), the one NuGet config the restore reads.
+ * Never `global.json` or a `.rsp`: those select the SDK or add arguments,
+ * and an empty one would change what the head's own files say. [name, content].
  */
 export declare const DEFINITION_TREE_STUBS: ReadonlyArray<readonly [string, string]>;
 /**
@@ -170,11 +190,11 @@ export declare const GATE_INSTALL_SANDBOXED_HINT = "set factory.run.gateInstall 
 /**
  * What the gate-definition-changed park of a dotnet gate adds with
  * gateInstall "sandboxed": the approval also lets the engine restore those
- * files with the network on. On Windows also what that restore can reach
+ * files with the network on, and the MSBuild targets in them run during that
+ * restore (on every platform). On Windows also what that restore can reach
  * beyond nuget.org: the Windows sandbox runs nothing with outbound access on
- * and the local network off (the documented known gap), so the MSBuild
- * targets in the approved files run with loopback and the local network
- * reachable.
+ * and the local network off (the documented known gap), so loopback and the
+ * local network are reachable too.
  */
 export declare function restoreApprovalNote(platform: NodeJS.Platform): string;
 /** The private-feed park's reason prefix. */

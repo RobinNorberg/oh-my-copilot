@@ -206,9 +206,13 @@ export declare function gateTreeHasLinks(checkout: string): boolean;
  * (GATE_TREE_COPY_WHY; comparing every file is not cheap), a node_modules
  * dir the engine did not build (git lists files under it in `untracked`, or
  * yours has no such tree), or a tree that cannot be read. A tree the
- * checkout does not have is fine: there is nothing to import.
+ * checkout does not have is fine: there is nothing to import. A tree the
+ * head tracks files in (`trackedTrees`: the dirs, empty for the root, whose
+ * node_modules holds tracked files) is the repository's own: git's dirty
+ * check covers its files, so it is not compared, and an untracked file in
+ * it cannot be verified (`tampered: false`).
  */
-export declare function gateTreeExactProblem(root: string, checkout: string, nestedRels: readonly string[], untracked: readonly string[], copied: boolean): {
+export declare function gateTreeExactProblem(root: string, checkout: string, nestedRels: readonly string[], untracked: readonly string[], copied: boolean, trackedTrees?: readonly string[]): {
     problem: string;
     tampered: boolean;
 } | null;

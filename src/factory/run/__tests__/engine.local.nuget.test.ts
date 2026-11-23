@@ -375,7 +375,7 @@ describe('the approval message (M2)', () => {
     expect(sandboxed.gate?.name, sandboxed.message).toBe('gate-definition-changed');
     // The host's own text (restoreApprovalNote, both platforms' texts tested in nuget-restore.test.ts).
     expect(sandboxed.gate?.reason?.endsWith(restoreApprovalNote(process.platform))).toBe(true);
-    expect(sandboxed.gate?.reason).toMatch(process.platform === 'win32' ? /api\.nuget\.org reachable; on Windows the MSBuild targets in these files run during that restore, and loopback and your local network are reachable from it too$/ : /api\.nuget\.org reachable$/);
+    expect(sandboxed.gate?.reason?.endsWith(process.platform === 'win32' ? 'api.nuget.org reachable, and the MSBuild targets in these files run during that restore; on Windows loopback and your local network are reachable from it too' : 'api.nuget.org reachable, and the MSBuild targets in these files run during that restore')).toBe(true);
   }, MULTI_RUN_MS);
 
   it('with "park" it says nothing about a restore', async () => {
@@ -480,5 +480,71 @@ describe('the restore runs the gate that will run (L3: sealed ?? gate)', () => {
     expect(refused.gate?.name, refused.message).toBe('gates');
     expect(refused.gate?.reason).toMatch(/refuses the local gate `dotnet test Other\.sln`: this run recorded `dotnet test App\.sln -p:NuGetAudit=false -r win-x64`/);
     expect(r2.reqs.some((q) => q.purpose === 'restore')).toBe(false);
+  }, MULTI_RUN_MS);
+});
+
+describe('a repository with a committed root nuget.config (the shared layout)', () => {
+  const ROOT_CONFIG = '<?xml version="1.0" encoding="utf-8"?>\n<configuration>\n  <packageSources>\n    <clear />\n    <add key="nuget.org" value="https://api.nuget.org/v3/index.json" />\n  </packageSources>\n</configuration>\n';
+  /** What the Windows sandbox printed when NuGet's walk up from a checkout under <repo>/.omg reached your working tree's own file. */
+  const DENIED = "C:\\Program Files\\dotnet\\sdk\\10.0.101\\NuGet.targets(780,5): error : Failed to read NuGet.Config due to unauthorized access. Path: 'C:\\repo\\NuGet.Config'. [C:\\repo\\.omg\\team\\factory-run\\worktrees\\issue-7\\src\\App\\App.csproj]\nC:\\Program Files\\dotnet\\sdk\\10.0.101\\NuGet.targets(780,5): error :   Access to the path 'C:\\repo\\NuGet.Config' is denied.\n";
+  const dotnetReqs = (r: Recorder) => r.reqs.filter((q) => q.exe === 'dotnet' || /dotnet(?:\.exe)?$/i.test(q.exe));
+
+  it('the restore tree holds the head\'s own nuget.config (no stub of that name), no request asks for NuGet\'s hierarchy, and the note says which file NuGet read', async () => {
+    w = localWorld(['dotnet', 'test']);
+    writeFileSync(join(w.root, 'NuGet.Config'), ROOT_CONFIG);
+    baseProject();
+    const r = recorder([{ status: 1, output: OFFLINE }, { status: 0, output: 'Passed!' }]);
+    const out = await runFactoryEngine(localOpts(w, lanesFor(w, [commitFile('src/App/Greet.cs', 'namespace App;\n'), review('approve')]), { gateSandbox: r.sandbox, runUserConfig: SANDBOXED }));
+    expect(out.gate?.name, out.message).toBe('merge');
+    expect(purposes(r)).toEqual(['gate', 'clean', 'restore', 'gate']);
+    const tree = r.trees[0];
+    expect(tree.find(([p]) => p === 'NuGet.Config')).toEqual(['NuGet.Config', ROOT_CONFIG]);
+    expect(tree.some(([p]) => p === 'nuget.config')).toBe(false);
+    expect(dotnetReqs(r).length).toBeGreaterThan(0);
+    expect(r.reqs.every((q) => q.nugetHierarchy === undefined)).toBe(true);
+    const note = readFactoryState(w.root, LOCAL_ISSUE)!.history.find((h) => h.note.startsWith('dotnet restore ran in the OS sandbox'))!.note;
+    expect(note).toMatch(/which stop MSBuild's walk up out of the tree; NuGet read only the tree's root nuget\.config \(the head's own\);/);
+    expect(note).not.toMatch(/NuGet's walk/);
+  }, MULTI_RUN_MS);
+
+  it('no root config: the engine\'s nuget.org-only stub, and the note says so', async () => {
+    w = localWorld(['dotnet', 'test']);
+    baseProject();
+    const r = recorder([{ status: 1, output: OFFLINE }, { status: 0, output: 'Passed!' }]);
+    const out = await runFactoryEngine(localOpts(w, lanesFor(w, [commitFile('src/App/Greet.cs', 'namespace App;\n'), review('approve')]), { gateSandbox: r.sandbox, runUserConfig: SANDBOXED }));
+    expect(out.gate?.name, out.message).toBe('merge');
+    expect(readFactoryState(w.root, LOCAL_ISSUE)!.history.some((h) => /NuGet read only the tree's root nuget\.config \(the engine's, nuget\.org only\)/.test(h.note))).toBe(true);
+  }, MULTI_RUN_MS);
+
+  it('a gate NuGet could not read its config for parks at gate-install-needed naming the file: no restore step, no ci-fix lane, no FAILURE record', async () => {
+    w = localWorld(['dotnet', 'test']);
+    writeFileSync(join(w.root, 'nuget.config'), ROOT_CONFIG);
+    baseProject();
+    const r = recorder([{ status: 1, output: DENIED }]);
+    const lanes = lanesFor(w, [commitFile('src/App/Greet.cs', 'namespace App;\n'), review('approve')]);
+    const out = await runFactoryEngine(localOpts(w, lanes, { gateSandbox: r.sandbox, runUserConfig: SANDBOXED }));
+    expect(out.gate?.name, out.message).toBe('gate-install-needed');
+    expect(out.gate?.reason).toContain(`NuGet could not read the NuGet config ${JSON.stringify('C:\\repo\\NuGet.Config')} (no package was tried, so this says nothing about the code)`);
+    expect(out.gate?.reason).toContain('a sandboxed dotnet command reads one NuGet config, the root nuget.config of its checkout');
+    expect(purposes(r)).toEqual(['gate']);
+    expect(lanes.started).toHaveLength(2);
+    const head = readFactoryState(w.root, LOCAL_ISSUE)!.head!;
+    expect(existsSync(localCheckRecordPath(w.stateDir, w.root, head))).toBe(false);
+  }, MULTI_RUN_MS);
+
+  it('a trusted base that pins a nuget.config below its root: every dotnet request reads NuGet\'s own hierarchy, and the park names the lower file and the private layout', async () => {
+    w = localWorld(['dotnet', 'test']);
+    writeFileSync(join(w.root, 'nuget.config'), ROOT_CONFIG);
+    mkdirSync(join(w.root, 'src', 'App'), { recursive: true });
+    writeFileSync(join(w.root, 'src', 'App', 'nuget.config'), '<configuration />\n');
+    baseProject();
+    const r = recorder([{ status: 1, output: DENIED }]);
+    const out = await runFactoryEngine(localOpts(w, lanesFor(w, [commitFile('src/App/Greet.cs', 'namespace App;\n'), review('approve')]), { gateSandbox: r.sandbox }));
+    expect(out.gate?.name, out.message).toBe('gate-install-needed');
+    expect(out.gate?.reason).toContain('the trusted base pins a nuget.config below its root (src/App/nuget.config)');
+    expect(out.gate?.reason).toContain('factory.run.layout "private"');
+    const gates = r.reqs.filter((q) => q.purpose === 'gate');
+    expect(gates.length).toBeGreaterThan(0);
+    expect(gates.every((q) => q.nugetHierarchy === true)).toBe(true);
   }, MULTI_RUN_MS);
 });

@@ -195,7 +195,9 @@ describe('a dotnet gate: its MSBuild files define it, and its write lanes get th
         w = localWorld(['dotnet', 'test']);
         baseProject();
         const exec = w.exec;
-        const failing = (cmd, args, opts) => (cmd === 'git' && args.includes('ls-tree') && args.includes('--full-tree') ? { status: 128, stdout: '', stderr: 'fatal: not a tree object' } : exec(cmd, args, opts));
+        // The base's own listing (the lane's NuGet config rule, engine.ts dotnetNugetHierarchyPaths) still works: the head's fails.
+        const base = gitIn(w.root, 'rev-parse', 'HEAD').trim();
+        const failing = (cmd, args, opts) => (cmd === 'git' && args.includes('ls-tree') && args.includes('--full-tree') && !args.includes(base) ? { status: 128, stdout: '', stderr: 'fatal: not a tree object' } : exec(cmd, args, opts));
         const out = await runFactoryEngine(localOpts(w, lanesFor(w, [commitFile('src/App/Greet.cs', 'namespace App;\n')]), { exec: failing }));
         expect(out.exitCode, out.message).not.toBe(0);
         expect(out.message).toMatch(/git ls-tree [0-9a-f]{12} failed: fatal: not a tree object/);
@@ -423,6 +425,43 @@ describe('a dotnet gate: its MSBuild files define it, and its write lanes get th
         importsFromNodeModules(spa);
         // A node_modules the engine did not build (a prepare build's npm ci there) is fine without imports.
         const seen = leaveThenSee((cwd) => writeAt(cwd, 'ClientApp/node_modules/vite/package.json', '{}'), () => false);
+        await firstRun({ gateSandbox: cleanStep() });
+        const again = await runFactoryEngine(localOpts(w, lanesFor(w, []), { gateSandbox: cleanStep() }));
+        expect(again.gate?.name, again.message).toBe('merge');
+        expect(seen).toEqual([false]);
+    }, MULTI_RUN_MS);
+    it('a repository that commits its node_modules and imports from it: git checks those files, so the gate runs (no lane-tampered); an untracked file planted in it parks at gates', async () => {
+        w = localWorld(['dotnet', 'test']);
+        writeFileSync(join(w.root, '.gitignore'), '.omg/\nbin/\nobj/\n');
+        baseProject();
+        writeFileSync(join(w.root, 'src', 'App', 'App.csproj'), CSPROJ.replace('</Project>', '  <Import Project="..\\..\\node_modules\\x\\build\\x.props" />\n</Project>'));
+        writeAt(w.root, 'node_modules/x/build/x.props', '<Project><PropertyGroup><IsTestProject>true</IsTestProject></PropertyGroup></Project>\n');
+        gitIn(w.root, 'add', '-f', '.');
+        gitIn(w.root, 'commit', '-q', '-m', 'a committed node_modules the build imports from');
+        const out = await runFactoryEngine(localOpts(w, lanesFor(w, [commitFile('src/App/Greet.cs', 'namespace App;\n'), review('approve')]), { gateSandbox: cleanStep() }));
+        expect(out.gate?.name, out.message).toBe('merge');
+        expect(w.gateRuns).toHaveLength(1);
+        rmSync(w.dir, { recursive: true, force: true });
+        w = localWorld(['dotnet', 'test']);
+        writeFileSync(join(w.root, '.gitignore'), '.omg/\nbin/\nobj/\nnode_modules/x/build/*.local.props\n');
+        baseProject();
+        writeFileSync(join(w.root, 'src', 'App', 'App.csproj'), CSPROJ.replace('</Project>', '  <Import Project="..\\..\\node_modules\\x\\build\\x.props" />\n</Project>'));
+        writeAt(w.root, 'node_modules/x/build/x.props', '<Project />\n');
+        gitIn(w.root, 'add', '-f', '.');
+        gitIn(w.root, 'commit', '-q', '-m', 'a committed node_modules the build imports from');
+        // The PR's code plants an ignored file in the committed tree, which git's dirty check does not see.
+        leaveThenSee((cwd) => writeAt(cwd, 'node_modules/x/build/evil.local.props'), () => false);
+        await firstRun({ gateSandbox: cleanStep() });
+        const again = await runFactoryEngine(localOpts(w, lanesFor(w, []), { gateSandbox: cleanStep() }));
+        expect(again.gate?.name, again.message).toBe('gates');
+        expect(again.gate?.reason).toMatch(/node_modules in the checkout is the repository's own \(the head tracks files in it\), and node_modules\/x\/build\/evil\.local\.props there is not tracked/);
+        expect(w.gateRuns).toHaveLength(1);
+    }, MULTI_RUN_MS);
+    it('a bin/node_modules path the clean step removed does not park: the import check reads the checkout after the step', async () => {
+        w = localWorld(['dotnet', 'test']);
+        importsFromNodeModules();
+        // The PR's code leaves build output with a node_modules segment under bin/ (an SPA build copies one there).
+        const seen = leaveThenSee((cwd) => writeAt(cwd, 'src/App/bin/node_modules/y/y.js', ''), (cwd) => existsSync(join(cwd, 'src', 'App', 'bin', 'node_modules')));
         await firstRun({ gateSandbox: cleanStep() });
         const again = await runFactoryEngine(localOpts(w, lanesFor(w, []), { gateSandbox: cleanStep() }));
         expect(again.gate?.name, again.message).toBe('merge');

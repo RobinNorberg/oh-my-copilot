@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { classifyNugetFailure, dotnetRestoreArgs, gitBlobId, missingDefinitionFile, nugetRunPackagesDir, parseCatFileBatch, removeEngineDir, restoreApprovalNote, restorePhase, writeDefinitionTree, type DefinitionEntry } from '../nuget-restore.js';
+import { classifyNugetFailure, DEFINITION_TREE_NUGET_CONFIG, dotnetRestoreArgs, gitBlobId, missingDefinitionFile, nugetConfigUnreadableReason, nugetRunPackagesDir, parseCatFileBatch, removeEngineDir, restoreApprovalNote, restorePhase, writeDefinitionTree, type DefinitionEntry } from '../nuget-restore.js';
 
 // Lines from real sandboxed dotnet runs (.NET SDK 10.0.101, Windows), paths shortened.
 const OFFLINE_DNS = [
@@ -89,6 +89,41 @@ describe('classifyNugetFailure', () => {
   });
 });
 
+describe('classifyNugetFailure: a NuGet config it could not read (config-unreadable)', () => {
+  // As the Windows sandbox printed it (.NET SDK 10.0.101) when the walk up from a checkout under <repo>/.omg reached the repository's own file.
+  const DENIED = [
+    "C:\\Program Files\\dotnet\\sdk\\10.0.101\\NuGet.targets(780,5): error : Failed to read NuGet.Config due to unauthorized access. Path: 'C:\\repo\\NuGet.Config'. [C:\\repo\\.omg\\team\\t\\worktrees\\w\\App\\App.csproj]",
+    "C:\\Program Files\\dotnet\\sdk\\10.0.101\\NuGet.targets(780,5): error :   Access to the path 'C:\\repo\\NuGet.Config' is denied. [C:\\repo\\.omg\\team\\t\\worktrees\\w\\App\\App.csproj]",
+    'Build FAILED.',
+  ].join('\n');
+
+  it('has its own kind with the paths, no NU code, and wins over NU codes beside it', () => {
+    expect(classifyNugetFailure(DENIED)).toEqual({ kind: 'config-unreadable', codes: [], sources: ['C:\\repo\\NuGet.Config'] });
+    const invalid = "/usr/share/dotnet/sdk/10.0.101/NuGet.targets(780,5): error : NuGet.Config is not valid XML. Path: '/home/u/repo/nuget.config'.";
+    expect(classifyNugetFailure(invalid)).toEqual({ kind: 'config-unreadable', codes: [], sources: ['/home/u/repo/nuget.config'] });
+    expect(classifyNugetFailure(`${DENIED}\na.csproj : error NU1301: Unable to load the service index for source https://api.nuget.org/v3/index.json.`)!.kind).toBe('config-unreadable');
+  });
+
+  it('only in the restore phase, and only as an MSBuild error line', () => {
+    expect(classifyNugetFailure(`  App -> C:\\w\\App.dll\n${DENIED}`)).toBeNull();
+    expect(classifyNugetFailure("  Failed to read NuGet.Config due to unauthorized access. Path: 'C:\\repo\\NuGet.Config'.")).toBeNull();
+  });
+
+  it('the park reason names the file and what to do, for one config and for NuGet\'s own hierarchy', () => {
+    const one = nugetConfigUnreadableReason(['C:\\repo\\NuGet.Config'], []);
+    expect(one).toContain(JSON.stringify('C:\\repo\\NuGet.Config'));
+    expect(one).toContain('says nothing about the code');
+    expect(one).toContain('the root nuget.config of its checkout');
+    const walk = nugetConfigUnreadableReason(['C:\\repo\\NuGet.Config'], ['src/nuget.config']);
+    expect(walk).toContain('pins a nuget.config below its root (src/nuget.config)');
+    expect(walk).toContain('factory.run.layout "private"');
+  });
+
+  it('the tree stub is the same nuget.org-only file a checkout without a root config reads', () => {
+    expect(DEFINITION_TREE_NUGET_CONFIG).toContain('<add key="nuget.org" value="https://api.nuget.org/v3/index.json"');
+  });
+});
+
 describe('dotnetRestoreArgs', () => {
   it('restores the gate\'s targets with its runtime and properties', () => {
     expect(dotnetRestoreArgs(['test'])).toEqual(['restore']);
@@ -108,13 +143,17 @@ describe('dotnetRestoreArgs', () => {
 });
 
 describe('restoreApprovalNote (the gate-definition-changed park with gateInstall "sandboxed")', () => {
-  it('every platform: the approval lets the engine restore the files with api.nuget.org reachable', () => {
-    for (const p of ['win32', 'linux', 'darwin'] as const) expect(restoreApprovalNote(p), p).toMatch(/^\. With factory\.run\.gateInstall "sandboxed", approving with --allow-gate-change also lets the engine run dotnet restore on these definition files with api\.nuget\.org reachable/);
+  it('every platform: the approval lets the engine restore the files with api.nuget.org reachable, and their MSBuild targets run in that restore', () => {
+    const both = '. With factory.run.gateInstall "sandboxed", approving with --allow-gate-change also lets the engine run dotnet restore on these definition files with api.nuget.org reachable, and the MSBuild targets in these files run during that restore';
+    for (const p of ['win32', 'linux', 'darwin'] as const) expect(restoreApprovalNote(p).startsWith(both), p).toBe(true);
   });
 
-  it('Windows also names the MSBuild targets running in that restore and loopback and the local network; Linux and macOS do not', () => {
-    expect(restoreApprovalNote('win32')).toMatch(/api\.nuget\.org reachable; on Windows the MSBuild targets in these files run during that restore, and loopback and your local network are reachable from it too$/);
-    for (const p of ['linux', 'darwin'] as const) expect(restoreApprovalNote(p), p).not.toMatch(/loopback|local network|targets/);
+  it('Windows also names loopback and the local network; Linux and macOS do not', () => {
+    expect(restoreApprovalNote('win32').endsWith('api.nuget.org reachable, and the MSBuild targets in these files run during that restore; on Windows loopback and your local network are reachable from it too')).toBe(true);
+    for (const p of ['linux', 'darwin'] as const) {
+      expect(restoreApprovalNote(p).endsWith('api.nuget.org reachable, and the MSBuild targets in these files run during that restore'), p).toBe(true);
+      expect(restoreApprovalNote(p), p).not.toMatch(/loopback|local network/);
+    }
   });
 });
 

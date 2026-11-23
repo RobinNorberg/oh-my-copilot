@@ -117,7 +117,7 @@ import {
   type SandboxScope,
   type SandboxSettings,
 } from './sandbox.js';
-import { dotnetSandboxEnv } from './dotnet-sandbox.js';
+import { dotnetNugetConfig, dotnetSandboxEnv } from './dotnet-sandbox.js';
 import { LANE_PLUGIN_DIR, prepareLanePluginDir, removeLanePluginDir, sweepStaleLanePluginDirs } from './lane-plugin.js';
 import { SessionSandboxController, sandboxBypassDenial } from './sandbox-session.js';
 import { errText, withTimeout } from './timeout.js';
@@ -321,6 +321,11 @@ export interface CopilotRunStartOptions {
    * (dotnet-sandbox.ts dotnetSandboxEnv). Absent: none.
    */
   dotnet?: boolean;
+  /**
+   * With `dotnet`: the trusted base pins a nuget.config below its root (engine.ts dotnetNugetHierarchyBase), so NuGet
+   * reads its own config hierarchy instead of the one file dotnet-sandbox.ts dotnetNugetConfig picks.
+   */
+  dotnetNugetHierarchy?: boolean;
 }
 
 /** SandboxPolicyContext's node_modules fields from CopilotRunStartOptions.nodeModulesGrant's answer. */
@@ -553,6 +558,8 @@ interface Job {
   nodeModulesGrant: ((worktree: string) => { target: string; nested?: string[] } | undefined) | null;
   /** CopilotRunStartOptions.dotnet (write jobs only). */
   dotnet: boolean;
+  /** CopilotRunStartOptions.dotnetNugetHierarchy (with `dotnet`). */
+  dotnetNugetHierarchy: boolean;
   /** Why CopilotRunStartOptions.beforeSandboxedSession could not ready the worktree (the job fails before the runtime starts). */
   unprepared: string | null;
   /** The runtime's pid once the client started (stopAll's kill fallback). */
@@ -1238,6 +1245,7 @@ export class CopilotRunManager {
       beforeHostGit: options.beforeHostGit ?? null,
       nodeModulesGrant: profile !== 'review' ? options.nodeModulesGrant ?? null : null,
       dotnet: profile !== 'review' && options.dotnet === true,
+      dotnetNugetHierarchy: options.dotnetNugetHierarchy === true,
       unprepared: null,
       pid: undefined,
       pidIdentity: null,
@@ -1551,7 +1559,8 @@ export class CopilotRunManager {
     const realHome = (deps.realHome ?? (() => userInfo().homedir))();
     const dotnetGrants: string[] = [];
     if (job.dotnet) {
-      const d = dotnetSandboxEnv(env.USERPROFILE!, deps.env, realHome, deps.platform);
+      // One NuGet config, the worktree root's or nuget.org only (dotnet-sandbox.ts dotnetNugetConfig), unless the base pins lower ones.
+      const d = dotnetSandboxEnv(env.USERPROFILE!, deps.env, realHome, deps.platform, undefined, job.dotnetNugetHierarchy ? undefined : dotnetNugetConfig(job.worktree?.path ?? job.workCwd, env.USERPROFILE!, deps.platform));
       Object.assign(env, d.env);
       dotnetGrants.push(...d.readonly);
       job.notes.push(...d.notes);

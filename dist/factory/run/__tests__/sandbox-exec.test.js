@@ -716,7 +716,7 @@ describe('runSandboxed: a dotnet command (dotnet-sandbox.ts)', () => {
     const policy = () => (rec.optionsUpdates[0]?.sandboxConfig).userPolicy.filesystem;
     /** The words the shell runs (linux form: each word NUL-terminated; the first is the cwd). */
     const words = () => Buffer.from(/'([A-Za-z0-9+/=]+)'/.exec(rec.commands[0])[1], 'base64').toString('utf8').split('\0').slice(1, -1);
-    const DOTNET_KEYS = ['APPDATA', 'NUGET_PACKAGES', 'DOTNET_CLI_TELEMETRY_OPTOUT', 'DOTNET_NOLOGO', 'DOTNET_CLI_USE_MSBUILD_SERVER', 'MSBUILDDISABLENODEREUSE', 'UseSharedCompilation', 'EnableSourceControlManagerQueries'];
+    const DOTNET_KEYS = ['APPDATA', 'NUGET_PACKAGES', 'RestoreConfigFile', 'RestoreAdditionalProjectSources', 'DOTNET_CLI_TELEMETRY_OPTOUT', 'DOTNET_NOLOGO', 'DOTNET_CLI_USE_MSBUILD_SERVER', 'MSBUILDDISABLENODEREUSE', 'UseSharedCompilation', 'EnableSourceControlManagerQueries'];
     it('adds -m:1, the MSBuild/NuGet env and a read-only grant on the NuGet packages folder', async () => {
         const packages = join(dir, 'home', '.nuget', 'packages');
         mkdirSync(packages, { recursive: true });
@@ -750,6 +750,28 @@ describe('runSandboxed: a dotnet command (dotnet-sandbox.ts)', () => {
         expect(policy().readonlyPaths).not.toContain(home);
         expect(r.ran && r.status).toBe(1);
         expect(r.ran && r.output).toMatch(/NU1101[\s\S]*NUGET_PACKAGES \(.*\) is your home dir or a dir above it, so it is not granted to the sandbox/);
+    });
+    it('one NuGet config: the checkout\'s root nuget.config, else a nuget.org-only file in the job profile; nugetHierarchy keeps NuGet\'s walk', async () => {
+        const co = join(dir, 'checkout');
+        mkdirSync(co, { recursive: true });
+        await runSandboxed(['/usr/bin/dotnet', 'build'], opts(), deps(ok));
+        let env = rec.connections[0].env;
+        expect(env.RestoreConfigFile).toBe(join(env.USERPROFILE, 'nuget', 'nuget.config'));
+        expect(env.RestoreConfigFile.startsWith(join(dir, 'jobs'))).toBe(true);
+        // Written there (dotnet-sandbox.test.ts reads its content) and removed with the job home after the command.
+        expect(existsSync(env.RestoreConfigFile)).toBe(false);
+        expect(env.RestoreAdditionalProjectSources).toBeUndefined();
+        writeFileSync(join(co, 'nuget.config'), '<configuration><packageSources><clear /><add key="nuget.org" value="https://api.nuget.org/v3/index.json" /></packageSources></configuration>');
+        rec.connections.length = 0;
+        await runSandboxed(['/usr/bin/dotnet', 'build'], opts(), deps(ok));
+        env = rec.connections[0].env;
+        expect(env.RestoreConfigFile).toBe(join(co, 'nuget.config'));
+        expect(env.RestoreAdditionalProjectSources).toBeUndefined();
+        // Nothing more is granted for it: the checkout is the command's own.
+        expect([...policy().readonlyPaths, ...policy().readwritePaths].some((p) => p.endsWith('nuget.config'))).toBe(false);
+        rec.connections.length = 0;
+        await runSandboxed(['/usr/bin/dotnet', 'build'], opts({ nugetHierarchy: true }), deps(ok));
+        expect(rec.connections[0].env.RestoreConfigFile).toBeUndefined();
     });
     it('is inert for a node command: same argv, no dotnet env, no NuGet grant', async () => {
         mkdirSync(join(dir, 'home', '.nuget', 'packages'), { recursive: true });

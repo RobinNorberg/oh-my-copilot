@@ -28,10 +28,15 @@
  *   NUGET_PACKAGES), and SourceLink's read of your real ~/.gitconfig, which
  *   the sandbox denies, is switched off (EnableSourceControlManagerQueries,
  *   read by MSBuild as a property from the environment).
+ * - NuGet reads every nuget.config from the project's dir up to the drive
+ *   root; from a checkout under `<repo>/.omg/` (the shared layout) that
+ *   reaches your working tree's own file, which the sandbox refuses ("Failed
+ *   to read NuGet.Config due to unauthorized access"): RestoreConfigFile
+ *   names one file instead (dotnetNugetConfig).
  * Not verified on Linux or macOS.
  */
 
-import { statSync } from 'node:fs';
+import { lstatSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { parseJsonc } from '../utils/jsonc.js';
 import { getGlobalOmcConfigRoot, getGlobalOmcStateRoot } from '../utils/paths.js';
@@ -192,7 +197,7 @@ export interface RunNugetPackages {
  * folder, so the real cache is never written (a read-only grant could not
  * take one anyway); `readwrite` holds the run's folder when it is writable.
  */
-export function dotnetSandboxEnv(profile: string, hostEnv: NodeJS.ProcessEnv, realHome: string, platform: NodeJS.Platform = process.platform, run?: RunNugetPackages): { env: Record<string, string>; readonly: string[]; readwrite: string[]; notes: string[] } {
+export function dotnetSandboxEnv(profile: string, hostEnv: NodeJS.ProcessEnv, realHome: string, platform: NodeJS.Platform = process.platform, run?: RunNugetPackages, nugetConfig?: DotnetNugetConfig): { env: Record<string, string>; readonly: string[]; readwrite: string[]; notes: string[] } {
   const grant = nugetPackagesGrant(hostEnv, realHome, omcRoots(realHome), platform);
   const packages = grant.dir;
   const runDir = run ? resolve(run.dir) : null;
@@ -211,10 +216,146 @@ export function dotnetSandboxEnv(profile: string, hostEnv: NodeJS.ProcessEnv, re
       // MSBuild properties from the environment: no compiler server, no SourceLink git read.
       UseSharedCompilation: 'false',
       EnableSourceControlManagerQueries: 'false',
+      // One NuGet config file instead of the walk up to the drive root (dotnetNugetConfig), plus the nuget.org your
+      // user config would add when that file does not clear its sources.
+      ...(nugetConfig ? { RestoreConfigFile: nugetConfig.file, ...(nugetConfig.addNugetOrg ? { RestoreAdditionalProjectSources: NUGET_ORG_SOURCE } : {}) } : {}),
     },
     readonly: [...(packages ? [packages] : []), ...(runDir && !run!.writable ? [runDir] : [])],
     readwrite: runDir && run!.writable ? [runDir] : [],
   };
+}
+
+/**
+ * The NuGet config a sandboxed dotnet reads when its working dir's root has
+ * none: nuget.org as the only source, with every source, disabled source
+ * and source mapping cleared (a config named alone needs no `<clear />`;
+ * the clears keep the file right where it is merged, as the definition
+ * tree's stub, nuget-restore.ts). Checked with .NET SDK 10.0.101: a project
+ * restores the same packages with it as with the default config (only
+ * Visual Studio's machine-wide offline folder goes, whose packages are
+ * nuget.org's).
+ */
+export const NUGET_ORG_ONLY_CONFIG = [
+  '<?xml version="1.0" encoding="utf-8"?>',
+  '<configuration>',
+  '  <packageSources>',
+  '    <clear />',
+  '    <add key="nuget.org" value="https://api.nuget.org/v3/index.json" protocolVersion="3" />',
+  '  </packageSources>',
+  '  <disabledPackageSources>',
+  '    <clear />',
+  '  </disabledPackageSources>',
+  '  <packageSourceMapping>',
+  '    <clear />',
+  '  </packageSourceMapping>',
+  '</configuration>',
+  '',
+].join('\n');
+
+/** The names NuGet looks for in a directory, in its order (case-sensitive file systems). */
+export const NUGET_CONFIG_NAMES: readonly string[] = ['nuget.config', 'NuGet.config', 'NuGet.Config'];
+
+/**
+ * The NuGet config file at the root of `dir` (the checkout, worktree or
+ * definition tree a dotnet command runs in), as NuGet would find it there:
+ * the first of NUGET_CONFIG_NAMES that is an entry of `dir`, compared
+ * without case on Windows and macOS (their file systems open it so), and
+ * not a directory. Null when there is none. Only its name is read here
+ * (readdir, lstat): NuGet reads the file itself, in the sandbox.
+ */
+export function rootNugetConfig(dir: string, platform: NodeJS.Platform = process.platform): string | null {
+  let names: string[];
+  try {
+    names = readdirSync(dir);
+  } catch {
+    return null;
+  }
+  const fold = platform === 'win32' || platform === 'darwin';
+  for (const want of NUGET_CONFIG_NAMES) {
+    const hit = names.find((n) => (fold ? n.toLowerCase() === want.toLowerCase() : n === want));
+    if (!hit) continue;
+    try {
+      if (!lstatSync(join(dir, hit)).isDirectory()) return join(dir, hit);
+    } catch {
+      // Gone since the listing: none.
+    }
+    return null;
+  }
+  return null;
+}
+
+/** nuget.org's feed, as NuGet's default user config names it. */
+export const NUGET_ORG_SOURCE = 'https://api.nuget.org/v3/index.json';
+
+/** The one NuGet config file a sandboxed dotnet reads (dotnetNugetConfig). */
+export interface DotnetNugetConfig {
+  /** RestoreConfigFile: an absolute path. */
+  file: string;
+  /** RestoreAdditionalProjectSources gets nuget.org (nugetOrgImplied). */
+  addNugetOrg: boolean;
+}
+
+/** Above this size a root nuget.config is not read for nugetOrgImplied (nuget.org is then not added). */
+const NUGET_CONFIG_READ_MAX = 1024 * 1024;
+
+/**
+ * True when NuGet, reading `text` (a repository's root nuget.config) with
+ * your user config behind it, would also use nuget.org from the user
+ * config: the file's `<packageSources>` has no `<clear />`, lists no
+ * nuget.org feed itself, and its `<disabledPackageSources>` does not
+ * disable the source named `nuget.org`. NuGet reads one file in the sandbox
+ * (RestoreConfigFile), so that nuget.org has to be added
+ * (RestoreAdditionalProjectSources): without it such a file has no source
+ * at all, and NuGet then quietly takes a higher version from the packages
+ * folder (NU1603, a warning) instead of failing offline. XML comments are
+ * dropped first; NuGet's element and attribute names are case-sensitive.
+ */
+export function nugetOrgImplied(text: string): boolean {
+  const xml = text.replace(/<!--[\s\S]*?-->/g, '');
+  const section = (name: string): string => [...xml.matchAll(new RegExp(`<${name}\\b[^>]*>([\\s\\S]*?)</${name}\\s*>`, 'g'))].map((m) => m[1]).join('\n');
+  const sources = section('packageSources');
+  if (/<clear\b[^>]*\/?>/.test(sources)) return false;
+  if (/\bvalue\s*=\s*["']https?:\/\/api\.nuget\.org\//i.test(sources)) return false;
+  const disabled = section('disabledPackageSources');
+  if ([...disabled.matchAll(/<add\b([^>]*)>/g)].some((m) => /\bkey\s*=\s*["']nuget\.org["']/i.test(m[1]) && /\bvalue\s*=\s*["']true["']/i.test(m[1]))) return false;
+  return true;
+}
+
+/**
+ * The one NuGet config a sandboxed dotnet in `cwd` reads (RestoreConfigFile,
+ * dotnetSandboxEnv): the root config of `cwd` (rootNugetConfig), with
+ * nuget.org added when NuGet would take it from your user config there
+ * (nugetOrgImplied; the file is read only when lstat says it is a regular
+ * file of at most 1 MB, else nothing is added), or else
+ * NUGET_ORG_ONLY_CONFIG written to `<profile>/nuget/nuget.config`, the
+ * command's own job profile (never inside the checkout). Why: NuGet
+ * otherwise reads every nuget.config from the project's dir up to the
+ * drive root (a `<clear />` only resets what was merged; the files are
+ * still read), and in the shared layout that walk reaches your working
+ * tree's own `nuget.config` (or one in a dir above your repository), which
+ * the Windows sandbox refuses to read: "Failed to read NuGet.Config due to
+ * unauthorized access" fails every restore. With RestoreConfigFile NuGet
+ * reads that file alone: no other nuget.config of the repository, no user
+ * config, no machine-wide config (checked with .NET SDK 10.0.101 for
+ * `dotnet restore`, `build` and `test`).
+ */
+export function dotnetNugetConfig(cwd: string, profile: string, platform: NodeJS.Platform = process.platform): DotnetNugetConfig {
+  const own = rootNugetConfig(cwd, platform);
+  if (own) {
+    let addNugetOrg = false;
+    try {
+      const st = lstatSync(own);
+      if (st.isFile() && st.size <= NUGET_CONFIG_READ_MAX) addNugetOrg = nugetOrgImplied(readFileSync(own, 'utf8'));
+    } catch {
+      // Unreadable here: NuGet reports it in the sandbox.
+    }
+    return { file: own, addNugetOrg };
+  }
+  const dir = join(profile, 'nuget');
+  mkdirSync(dir, { recursive: true });
+  const file = join(dir, 'nuget.config');
+  writeFileSync(file, NUGET_ORG_ONLY_CONFIG);
+  return { file, addNugetOrg: false };
 }
 
 /** True when a sandbox.allowedHosts entry lets NuGet reach nuget.org's feed (`api.nuget.org`, `*.nuget.org`). */
