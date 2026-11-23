@@ -44,6 +44,7 @@ vi.mock("../session-registry.js", () => ({
 }));
 
 import { notify } from "../index.js";
+import { attentionNoticeText, sendAttentionNotice } from "../../factory/attention/notify.js";
 
 const baseConfig: NotificationConfig = {
   enabled: true,
@@ -115,5 +116,40 @@ describe("explicit event notification verbosity", () => {
       }),
       undefined,
     );
+  });
+});
+
+describe("factory-attention notification (omg factory poll)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetNotificationConfig.mockReturnValue(baseConfig);
+    mockIsEventEnabled.mockReturnValue(true);
+    mockIsEventAllowedByVerbosity.mockReturnValue(true);
+    mockDispatchNotifications.mockResolvedValue({ anySuccess: true, results: [{ platform: "webhook", success: true }] });
+  });
+
+  it("is not sent when the event is not enabled explicitly, even with top-level platforms on", async () => {
+    expect(await notify("factory-attention", { sessionId: "factory-attention", message: "m" })).toBeNull();
+    mockGetNotificationConfig.mockReturnValue({ ...baseConfig, events: { "factory-attention": { enabled: false } } } satisfies NotificationConfig);
+    expect(await notify("factory-attention", { sessionId: "factory-attention", message: "m" })).toBeNull();
+    expect(mockDispatchNotifications).not.toHaveBeenCalled();
+  });
+
+  it("is sent when enabled explicitly, whatever the verbosity, with no pane and no reply mapping", async () => {
+    mockIsEventAllowedByVerbosity.mockReturnValue(false);
+    mockGetNotificationConfig.mockReturnValue({ ...baseConfig, events: { "factory-attention": { enabled: true } } } satisfies NotificationConfig);
+    const notice = { repo: "repo", key: "#6", group: "merge" as const, gate: "merge", next: "omg factory run 6" };
+    await sendAttentionNotice(notice, notify as never);
+    expect(mockDispatchNotifications).toHaveBeenCalledOnce();
+    const payload = mockDispatchNotifications.mock.calls[0][2] as { message: string; tmuxPaneId: string; replyable: boolean; projectName: string; projectPath?: string };
+    expect(payload).toMatchObject({ message: attentionNoticeText(notice), tmuxPaneId: "", replyable: false, projectName: "repo" });
+    expect(payload.projectPath).toBeUndefined();
+  });
+
+  it("runs the message through the redaction", async () => {
+    const sent: string[] = [];
+    await sendAttentionNotice({ repo: "ghp_0123456789abcdefghijklmnopqrstuvwxyzAB", key: "#1", group: "fix", gate: null, next: null }, async (_e, d) => { sent.push(d.message); });
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).not.toContain("ghp_0123456789abcdefghijklmnopqrstuvwxyzAB");
   });
 });
