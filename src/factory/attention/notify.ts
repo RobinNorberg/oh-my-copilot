@@ -95,8 +95,10 @@ type Notify = (event: 'factory-attention', data: { sessionId: string; message: s
  * adds none for this event) and not replyable: nothing a
  * reply says is ever typed into a terminal. `notify` is the notification
  * stack's (lazily imported, so a poll without notifications never loads it).
- * Once `signal` aborts (the poll's timeout), the send is abandoned: the
- * returned promise settles and nothing more is started for it.
+ * Once `signal` aborts (the poll's timeout), nothing more is started for it.
+ * The notification stack's dispatch takes no signal, so a send already
+ * started runs on: the returned promise settles when it does (the poll stops
+ * waiting at the abort, but counts the send as in flight until then).
  */
 export async function sendAttentionNotice(n: AnyAttentionNotice, notify?: Notify, signal?: AbortSignal): Promise<void> {
   try {
@@ -104,7 +106,7 @@ export async function sendAttentionNotice(n: AnyAttentionNotice, notify?: Notify
     const send: Notify = notify ?? ((await import('../../notifications/index.js')).notify as unknown as Notify);
     const { redactTokens } = await import('../../notifications/redact.js');
     if (signal?.aborted) return;
-    await untilAborted(send('factory-attention', { sessionId: 'factory-attention', message: redactTokens(attentionNoticeText(n)), replyable: false }), signal);
+    await send('factory-attention', { sessionId: 'factory-attention', message: redactTokens(attentionNoticeText(n)), replyable: false });
   } catch {
     // A notification is best effort: the poll tick printed the item already.
   }

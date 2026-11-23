@@ -151,6 +151,8 @@ export interface ReadRun {
 export declare function readRun(root: string, key: FactoryRunKey, ledgerDir: string): ReadRun;
 /** Every `why` a row whose trust is not `ok` can have: fixed engine sentences, no text from a file. */
 export declare const UNTRUSTED_WHY: ReadonlySet<string>;
+/** The runs whose state file is gone while the engine ledger records an unfinished last write (an Inspect `missing` row each). */
+export declare function missingRunKeys(root: string, ledgerDir: string): FactoryRunKey[];
 /** One render scope: the state root is resolved once, not once per file path (dozens of git-metadata stats each on Windows). */
 export declare function collectAttention(root: string, o: CollectAttentionOptions): AttentionData;
 /** The `--json` shape: the items without their sort key, notes and log kept; a reason only on a trusted row. */

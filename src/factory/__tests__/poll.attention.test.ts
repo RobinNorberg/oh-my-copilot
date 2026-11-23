@@ -178,12 +178,12 @@ describe('omg factory poll: a lane cannot flood the attention lines or notificat
     expect(textLines().filter((l) => l.includes('#5 needs you')).length).toBeLessThanOrEqual(1);
   });
 
-  it('new untrusted rows past any cap: no item line or notice, one count line per change, one count notice', async () => {
+  it('new untrusted rows past any cap: no item line or notice, one count line per change, a rising count notified at most once per 10 min', async () => {
     const all: AnyAttentionNotice[] = [];
     // 6 ticks: the first prints the summary, each of the 5 after it sees 20 new forged states.
     await poll(6, Array.from({ length: 5 }, (_, n) => () => { for (let k = 0; k < 20; k++) forged(1000 + n * 20 + k, now); }), false, { notifyAttention: async (x) => { all.push(x); } });
-    // 25 minutes: inside one count-notice window.
-    expect(all).toEqual([{ repo: 'repo', count: 20 }]);
+    // 25 minutes, the count rising every tick: one count notice per ATTENTION_COUNT_RISE_MS (ticks 1, 3, 5).
+    expect(all).toEqual([{ repo: 'repo', count: 20 }, { repo: 'repo', count: 60 }, { repo: 'repo', count: 100 }]);
     expect(attentionNoticeText(all[0])).toBe('factory repo: 20 unverified or damaged state file(s) need inspection\ndetails: omg factory attention');
     const lines = textLines();
     expect(lines.filter((l) => l.includes('needs you:') || l.includes('more new item'))).toEqual([]);

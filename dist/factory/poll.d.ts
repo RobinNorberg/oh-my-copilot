@@ -21,9 +21,12 @@
  *    trust, gate, park time), with its first next command; an item that
  *    gets a stale-gate reminder (3b) in the same tick is printed by the
  *    reminder only. Only trusted items get a line and an item notice
- *    (queued past the per-tick cap and rate limit); rows whose state is not
- *    trusted are only counted (one line when the count changes, one count
- *    notice per hour), so a lane cannot crowd out a trusted item. The
+ *    (queued past the per-tick cap and rate limit), once per identity: only
+ *    an identity that really got its line or notice counts as announced, and
+ *    a queued notice waits while its run's row is not trusted; rows whose
+ *    state is not trusted are only counted (one line when the count changes,
+ *    one count notice per hour, one more per 10 min when the count rises), so
+ *    a lane cannot crowd out, drop or indefinitely delay a trusted item. The
  *    `factory-attention` notification is off unless configured and carries
  *    engine-composed text only (attention/notify.ts).
  * 4. board: the board rows that changed since the previous tick
@@ -360,19 +363,28 @@ export interface PollContext {
         seen?: Map<string, number>;
         /** When this poll sent its recent trusted `factory-attention` notices (the rate limit). */
         notified?: number[];
+        /** Trusted ids that got their own line, and trusted ids that got a notice (or the overflow's count notice): when (bounded). */
+        printed?: Map<string, number>;
+        notifiedIds?: Map<string, number>;
         /** Trusted item notices waiting for the rate limit, oldest first (at most ATTENTION_QUEUE_MAX, one per identity). */
         queue?: Array<{
             id: string;
+            key: string;
             notice: AttentionNotice;
         }>;
-        /** The groups of trusted items whose notice did not fit the queue: one count notice when the rate limit allows. */
-        overflow?: AttentionGroup[];
+        /** Trusted items whose notice did not fit the queue: one count notice for them when the rate limit allows. */
+        overflow?: Array<{
+            id: string;
+            key: string;
+            group: AttentionGroup;
+        }>;
         /** The untrusted row count of the previous tick (its line is printed when it changes). */
         unverified?: number;
-        /** An untrusted row appeared since the last untrusted count notice; when that notice went out (its own budget). */
+        /** An untrusted row appeared since the last untrusted count notice; when that notice went out (its own budget) and the count it carried. */
         countDue?: boolean;
         countNotifiedAt?: number;
-        /** Notices started and not yet settled or abandoned (bounded by ATTENTION_PENDING_MAX). */
+        countNotified?: number;
+        /** Notices started and not yet settled, abandoned ones included (bounded by ATTENTION_PENDING_MAX). */
         pending?: number;
     };
     tick: number;
@@ -396,8 +408,10 @@ export declare const ATTENTION_RATE_WINDOW_MS: number;
 export declare const ATTENTION_QUEUE_MAX = 100;
 /** The untrusted rows' count notice: at most one per this window for the repository (its own budget). */
 export declare const ATTENTION_COUNT_NOTICE_WINDOW_MS: number;
+/** A count above the last notified one (a new untrusted row) may send one more count notice per this window. */
+export declare const ATTENTION_COUNT_RISE_MS: number;
 export declare const ATTENTION_NOTIFY_TIMEOUT_MS = 10000;
-/** Sends that may be in flight at once (a tick's timeout abandons its sends, so this is a backstop). */
+/** Sends that may be in flight at once, abandoned ones included until they settle (a hung notifier stops here). */
 export declare const ATTENTION_PENDING_MAX: number;
 /** How many attention ids the poll remembers; and how long a row that went away stays known without remindAfterHours. */
 export declare const ATTENTION_SEEN_MAX = 10000;
@@ -408,6 +422,11 @@ export interface PollAttentionItem {
     gate: string | null;
     next: string[] | null;
 }
+/**
+ * Waits for every promise, at most `ms`; true when all settled in time. A notification never stalls the tick longer.
+ * The timer stays referenced: a hung send that holds no handle must not let node exit in the middle of the tick.
+ */
+export declare function settledWithin(ps: Promise<unknown>[], ms: number): Promise<boolean>;
 /**
  * One tick. Steps 1-4 never spawn and never write to the tracker or forge; a
  * guard refusal propagates (a bug, not an unreadable item). Step 5 is the

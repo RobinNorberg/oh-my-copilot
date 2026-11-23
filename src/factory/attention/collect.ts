@@ -465,6 +465,11 @@ function missingItem(root: string, key: FactoryRunKey, ledgerDir: string): Atten
   return { ...base, why: TRUST_WHY.missing, trust: 'missing' };
 }
 
+/** The runs whose state file is gone while the engine ledger records an unfinished last write (an Inspect `missing` row each). */
+export function missingRunKeys(root: string, ledgerDir: string): FactoryRunKey[] {
+  return runKeysToRead(root, ledgerDir, 0).keys.filter((key) => 'missing' in readRegularFile(factoryStatePath(root, key)) && missingItem(root, key, ledgerDir) !== null);
+}
+
 /**
  * A heal signature with an open heal run and no ci-heal run state. The seal
  * is checked first, then only sealed fields decide (the heal run, its lanes
@@ -536,16 +541,20 @@ function healOpenAfterRun(root: string, sig8: string, s: HealSignatureState, o: 
 }
 
 const HEAL_UNSEALED_NOTE = 'heal approve is withheld: the heal record is not the one the heal run sealed (heal status shows it)';
+const HEAL_CLOSED_NOTE = 'heal approve is withheld: the sealed heal record says its heal run is closed (heal status shows it)';
 
-/** Whether the heal record of `sig8` is the one its heal seal holds: the engine takes `heal approve` only then. */
-function healRecordSealed(root: string, sig8: string, ledgerDir: string): boolean {
+/**
+ * The heal record of `sig8` when it is the one its heal seal holds (the engine takes `heal approve` only then), else
+ * null. Its fields are the heal run's own (sealed).
+ */
+function sealedHealRecord(root: string, sig8: string, ledgerDir: string): HealSignatureState | null {
   const r = readRegularFile(healStatePath(root, sig8));
-  if (!('bytes' in r)) return false;
+  if (!('bytes' in r)) return null;
   try {
     const s = parseHealState(r.bytes.toString('utf8'), healStatePath(root, sig8));
-    return s.sig8 === sig8 && verifyHealSeal(ledgerDir, root, s) === 'ok';
+    return s.sig8 === sig8 && verifyHealSeal(ledgerDir, root, s) === 'ok' ? s : null;
   } catch {
-    return false;
+    return null;
   }
 }
 
@@ -632,8 +641,13 @@ function collectIn(root: string, o: CollectAttentionOptions): AttentionData {
       if (sig8 !== null) healRuns.set(sig8, 'untrusted');
     }
     // `heal approve` resumes a ci-heal run only on a heal record its seal holds (runHealEngine): withheld otherwise.
-    if (item && sig8 !== null && item.next.some((c) => c.billed) && !healRecordSealed(root, sig8, o.ledgerDir)) {
-      item = { ...item, next: item.next.filter((c) => !c.billed), notes: [...item.notes, HEAL_UNSEALED_NOTE] };
+    // A heal run a human closed (the sealed record says so) gets no billed resume either: the engine would resume the
+    // ci-heal run outside an open heal run (outside MAX_OPEN_HEAL_RUNS); status shows it, cancel ends it.
+    if (item && sig8 !== null && item.next.some((c) => c.billed)) {
+      const sealed = sealedHealRecord(root, sig8, o.ledgerDir);
+      if (!sealed || sealed.healRun?.open !== true) {
+        item = { ...item, next: item.next.filter((c) => !c.billed), notes: [...item.notes, sealed ? HEAL_CLOSED_NOTE : HEAL_UNSEALED_NOTE] };
+      }
     }
     if (item) items.push(item);
   }

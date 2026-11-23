@@ -32,7 +32,7 @@ import { defaultLedgerDir } from '../run/ledger.js';
 import { runCredits } from '../run/budget.js';
 import { FactorySafetyError } from '../run/exec.js';
 import { factoryOwnerPath, factoryStateDir, heldSlots, ownerHolding, readFactoryState, runKeyOf, runLabel, TERMINAL_FACTORY_PHASES, trackerStageOf, verifyFactoryIntegrity, } from '../run/state.js';
-import { readRun } from '../attention/collect.js';
+import { readRun, runKeysToRead } from '../attention/collect.js';
 import { statusArgv } from '../attention/actions.js';
 import { renderBoard } from './render.js';
 /** Bumped on any change to the `--json` shape (src/factory/board/__tests__ pins it). */
@@ -45,49 +45,62 @@ const message = (error) => plainText(error instanceof Error ? error.message : St
  * Every run state on disk; an unreadable one is a warning (and, for an item in
  * the source, a `seal` flag). With `ledgerDir`, each state is read once
  * through `omg factory attention`'s trust check (readRun: the seal, then the
- * engine ledger on the same bytes), and a state that fails it is in `untrusted`.
+ * engine ledger on the same bytes), and a state that fails it is in `untrusted`;
+ * `unverified` holds the untrusted ones whose seal passes and that the ledger
+ * has no record of at all (trust `unverified`). With `ledgerDir` the keys are
+ * attention's (runKeysToRead): every run the engine ledger records, then at most
+ * MAX_UNRECORDED_STATES other state files, so a lane's flood of files bounds the
+ * cost of a read; `omitted` counts the state files left unread.
  */
 export function readRuns(root, warnings, ledgerDir) {
     const runs = new Map();
     const broken = new Set();
     const untrusted = new Set();
+    const unverified = new Set();
+    const unreadable = (key, error) => {
+        broken.add(key);
+        warnings.push(`omg factory board: run state ${runLabel(key)} is unreadable: ${plainText(error)}`);
+    };
+    if (ledgerDir !== undefined) {
+        const { keys, omitted } = runKeysToRead(root, ledgerDir);
+        for (const key of keys) {
+            const r = readRun(root, key, ledgerDir);
+            if (r.missing)
+                continue;
+            if (!r.state) {
+                unreadable(key, r.error ?? 'unknown error');
+                continue;
+            }
+            runs.set(key, r.state);
+            if (r.trust !== 'ok')
+                untrusted.add(key);
+            if (r.trust === 'unverified')
+                unverified.add(key);
+        }
+        return { runs, broken, untrusted, unverified, omitted };
+    }
     let names;
     try {
         names = readdirSync(factoryStateDir(root));
     }
     catch {
-        return { runs, broken, untrusted };
+        return { runs, broken, untrusted, unverified, omitted: 0 };
     }
     for (const name of names.sort()) {
         const m = RUN_FILE.exec(name);
         if (!m)
             continue;
         const key = /^\d+$/.test(m[1]) ? Number(m[1]) : m[1];
-        if (ledgerDir !== undefined) {
-            const r = readRun(root, key, ledgerDir);
-            if (r.missing)
-                continue;
-            if (!r.state) {
-                broken.add(key);
-                warnings.push(`omg factory board: run state ${runLabel(key)} is unreadable: ${plainText(r.error ?? 'unknown error')}`);
-                continue;
-            }
-            runs.set(key, r.state);
-            if (r.trust !== 'ok')
-                untrusted.add(key);
-            continue;
-        }
         try {
             const state = readFactoryState(root, key);
             if (state)
                 runs.set(key, state);
         }
         catch (error) {
-            broken.add(key);
-            warnings.push(`omg factory board: run state ${runLabel(key)} is unreadable: ${message(error)}`);
+            unreadable(key, message(error));
         }
     }
-    return { runs, broken, untrusted };
+    return { runs, broken, untrusted, unverified, omitted: 0 };
 }
 const same = (a, b) => a !== undefined && b !== undefined && a.toLowerCase() === b.toLowerCase();
 /**
@@ -338,12 +351,15 @@ export function collectBoard(input) {
     const inSource = new Set(ids);
     const outside = [];
     for (const [key, s] of runs) {
-        if (inSource.has(key) || TERMINAL_FACTORY_PHASES.includes(s.phase))
+        if (inSource.has(key))
             continue;
+        // Before the phase check: an untrusted state's phase is not the engine's, so a forged terminal phase hides nothing.
         if (untrusted.has(key)) {
             outside.push({ id: key, title: '', url: '', stage: {}, flags: [], ...unverifiedPart(key) });
             continue;
         }
+        if (TERMINAL_FACTORY_PHASES.includes(s.phase))
+            continue;
         if (s.forgeKind !== undefined && s.forgeKind !== config.kind)
             warnings.push(`omg factory board: run ${runLabel(key)} started on ${s.forgeKind}, but the forge resolves to ${config.kind}`);
         const row = { id: key, title: plainText(s.issueTitle ?? (s.kind === 'ci-heal' ? 'ci-heal' : '')), url: '', stage: { expected: trackerStageOf(s), ...(s.trackerStage ? { recorded: s.trackerStage } : {}) }, flags: [] };

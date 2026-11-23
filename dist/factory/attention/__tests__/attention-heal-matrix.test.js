@@ -4,7 +4,9 @@
  * record, never the host seal or the engine ledger. For every case: no hidden
  * heal row while the seal says open (or predates the open flag), no billed
  * command unless the run state is absent and unrecorded or trusted, and at
- * most one row per key.
+ * most one row per key. A heal run whose sealed record says it is closed gets
+ * no billed command at all (attention withholds the resume the engine would
+ * still take for an existing run state).
  */
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
@@ -39,6 +41,7 @@ function healState(open) {
 let dir;
 let root;
 let n = 0;
+let cases = 0;
 beforeAll(() => {
     dir = mkdtempSync(join(tmpdir(), 'omg-attention-heal-matrix-'));
     root = join(dir, 'repo');
@@ -146,6 +149,7 @@ describe('factory attention: ci-heal run state x heal record x heal seal', () =>
             for (const rec of RECS) {
                 for (const seal of SEALS) {
                     const ledgerDir = setUp(run, rec, seal);
+                    cases += 1;
                     const d = collectAttention(root, { ledgerDir, now: () => NOW, owner: OWNER });
                     const where = `${run}/${rec}/seal=${seal}`;
                     const keys = d.items.map((i) => i.key);
@@ -157,6 +161,9 @@ describe('factory attention: ci-heal run state x heal record x heal seal', () =>
                     const billed = d.items.flatMap((i) => i.next.filter((c) => c.billed).map((c) => c.argv.slice(2).join(' ')));
                     if (run !== 'absent' && !run.startsWith('trusted'))
                         expect(billed, `${where}: no billed command`).toEqual([]);
+                    // The host seal says the heal run is closed: never a billed approve, whatever the run state.
+                    if (seal === 'closed')
+                        expect(billed, `${where}: no billed command on a closed heal run`).toEqual([]);
                     for (const c of billed) {
                         expect(c, where).toBe(`heal approve ${SIG}`);
                         expect(engineTakesApprove(ledgerDir), `${where}: the engine takes ${c}`).toBe(true);
@@ -165,5 +172,9 @@ describe('factory attention: ci-heal run state x heal record x heal seal', () =>
             }
         }, 120_000);
     }
+    it('ran every case (8 x 12 x 4)', () => {
+        expect(RUNS.length * RECS.length * SEALS.length).toBe(384);
+        expect(cases).toBe(384);
+    });
 });
 //# sourceMappingURL=attention-heal-matrix.test.js.map

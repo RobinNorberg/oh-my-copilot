@@ -134,12 +134,19 @@ export type FactoryBoardDeps = Pick<FactoryCheckDeps, 'exec' | 'base' | 'trusted
  * Every run state on disk; an unreadable one is a warning (and, for an item in
  * the source, a `seal` flag). With `ledgerDir`, each state is read once
  * through `omg factory attention`'s trust check (readRun: the seal, then the
- * engine ledger on the same bytes), and a state that fails it is in `untrusted`.
+ * engine ledger on the same bytes), and a state that fails it is in `untrusted`;
+ * `unverified` holds the untrusted ones whose seal passes and that the ledger
+ * has no record of at all (trust `unverified`). With `ledgerDir` the keys are
+ * attention's (runKeysToRead): every run the engine ledger records, then at most
+ * MAX_UNRECORDED_STATES other state files, so a lane's flood of files bounds the
+ * cost of a read; `omitted` counts the state files left unread.
  */
 export declare function readRuns(root: string, warnings: string[], ledgerDir?: string): {
     runs: Map<FactoryRunKey, FactoryRunState>;
     broken: Set<FactoryRunKey>;
     untrusted: Set<FactoryRunKey>;
+    unverified: Set<FactoryRunKey>;
+    omitted: number;
 };
 /**
  * The stage the tracker shows now, reverse-mapped through the progress

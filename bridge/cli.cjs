@@ -153436,6 +153436,9 @@ function missingItem(root, key, ledgerDir) {
   }
   return { ...base, why: TRUST_WHY.missing, trust: "missing" };
 }
+function missingRunKeys(root, ledgerDir) {
+  return runKeysToRead(root, ledgerDir, 0).keys.filter((key) => "missing" in readRegularFile(factoryStatePath(root, key)) && missingItem(root, key, ledgerDir) !== null);
+}
 function healItem(root, sig8, s, o, now2, deps) {
   const key = `heal-${sig8}`;
   const seal = s.sig8 === sig8 ? verifyHealSeal(o.ledgerDir, root, s) : "mismatch";
@@ -153490,14 +153493,14 @@ function healOpenAfterRun(root, sig8, s, o, now2) {
     at: Number.isFinite(at) ? at : 0
   };
 }
-function healRecordSealed(root, sig8, ledgerDir) {
+function sealedHealRecord(root, sig8, ledgerDir) {
   const r = readRegularFile(healStatePath(root, sig8));
-  if (!("bytes" in r)) return false;
+  if (!("bytes" in r)) return null;
   try {
     const s = parseHealState(r.bytes.toString("utf8"), healStatePath(root, sig8));
-    return s.sig8 === sig8 && verifyHealSeal(ledgerDir, root, s) === "ok";
+    return s.sig8 === sig8 && verifyHealSeal(ledgerDir, root, s) === "ok" ? s : null;
   } catch {
-    return false;
+    return null;
   }
 }
 function collectAttention(root, o) {
@@ -153581,8 +153584,11 @@ function collectIn(root, o) {
       item = runItem(root, { key, trust: "unreadable", error: errText7(error62) }, now2, o, live);
       if (sig8 !== null) healRuns.set(sig8, "untrusted");
     }
-    if (item && sig8 !== null && item.next.some((c) => c.billed) && !healRecordSealed(root, sig8, o.ledgerDir)) {
-      item = { ...item, next: item.next.filter((c) => !c.billed), notes: [...item.notes, HEAL_UNSEALED_NOTE] };
+    if (item && sig8 !== null && item.next.some((c) => c.billed)) {
+      const sealed2 = sealedHealRecord(root, sig8, o.ledgerDir);
+      if (!sealed2 || sealed2.healRun?.open !== true) {
+        item = { ...item, next: item.next.filter((c) => !c.billed), notes: [...item.notes, sealed2 ? HEAL_CLOSED_NOTE : HEAL_UNSEALED_NOTE] };
+      }
     }
     if (item) items.push(item);
   }
@@ -153687,7 +153693,7 @@ function attentionJson(d) {
     warnings: d.warnings
   };
 }
-var import_fs182, import_path210, ATTENTION_SCHEMA_VERSION, HUNG_AFTER_MS, TITLE_MAX, READ_MAX_BYTES, TEXT_MAX, REASON_MAX, MAX_UNRECORDED_STATES, keyOrder, RUN_FILE, text5, errText7, HEX4024, forgeOf, msOf, sameFile2, kindOf, isMissing, relLog, TRUST_WHY, MISSING_UNREADABLE_LEDGER_WHY, HEAL_WHY, SLOT_WHY, UNTRUSTED_WHY, FORGED_OWNER_NOTE, REMOTE_OWNER_NOTE, FIXED_NOTES, GATE_NAME_SHAPE, HEAL_UNSEALED_NOTE;
+var import_fs182, import_path210, ATTENTION_SCHEMA_VERSION, HUNG_AFTER_MS, TITLE_MAX, READ_MAX_BYTES, TEXT_MAX, REASON_MAX, MAX_UNRECORDED_STATES, keyOrder, RUN_FILE, text5, errText7, HEX4024, forgeOf, msOf, sameFile2, kindOf, isMissing, relLog, TRUST_WHY, MISSING_UNREADABLE_LEDGER_WHY, HEAL_WHY, SLOT_WHY, UNTRUSTED_WHY, FORGED_OWNER_NOTE, REMOTE_OWNER_NOTE, FIXED_NOTES, GATE_NAME_SHAPE, HEAL_UNSEALED_NOTE, HEAL_CLOSED_NOTE;
 var init_collect = __esm({
   "src/factory/attention/collect.ts"() {
     "use strict";
@@ -153744,6 +153750,7 @@ var init_collect = __esm({
     FIXED_NOTES = /* @__PURE__ */ new Set([FORGED_OWNER_NOTE]);
     GATE_NAME_SHAPE = /^[a-z0-9][a-z0-9-]{0,59}$/;
     HEAL_UNSEALED_NOTE = "heal approve is withheld: the heal record is not the one the heal run sealed (heal status shows it)";
+    HEAL_CLOSED_NOTE = "heal approve is withheld: the sealed heal record says its heal run is closed (heal status shows it)";
   }
 });
 
@@ -153840,37 +153847,44 @@ function readRuns(root, warnings, ledgerDir) {
   const runs = /* @__PURE__ */ new Map();
   const broken = /* @__PURE__ */ new Set();
   const untrusted = /* @__PURE__ */ new Set();
+  const unverified = /* @__PURE__ */ new Set();
+  const unreadable = (key, error62) => {
+    broken.add(key);
+    warnings.push(`omg factory board: run state ${runLabel(key)} is unreadable: ${plainText(error62)}`);
+  };
+  if (ledgerDir !== void 0) {
+    const { keys, omitted } = runKeysToRead(root, ledgerDir);
+    for (const key of keys) {
+      const r = readRun(root, key, ledgerDir);
+      if (r.missing) continue;
+      if (!r.state) {
+        unreadable(key, r.error ?? "unknown error");
+        continue;
+      }
+      runs.set(key, r.state);
+      if (r.trust !== "ok") untrusted.add(key);
+      if (r.trust === "unverified") unverified.add(key);
+    }
+    return { runs, broken, untrusted, unverified, omitted };
+  }
   let names2;
   try {
     names2 = (0, import_fs183.readdirSync)(factoryStateDir3(root));
   } catch {
-    return { runs, broken, untrusted };
+    return { runs, broken, untrusted, unverified, omitted: 0 };
   }
   for (const name of names2.sort()) {
     const m = RUN_FILE2.exec(name);
     if (!m) continue;
     const key = /^\d+$/.test(m[1]) ? Number(m[1]) : m[1];
-    if (ledgerDir !== void 0) {
-      const r = readRun(root, key, ledgerDir);
-      if (r.missing) continue;
-      if (!r.state) {
-        broken.add(key);
-        warnings.push(`omg factory board: run state ${runLabel(key)} is unreadable: ${plainText(r.error ?? "unknown error")}`);
-        continue;
-      }
-      runs.set(key, r.state);
-      if (r.trust !== "ok") untrusted.add(key);
-      continue;
-    }
     try {
       const state = readFactoryState(root, key);
       if (state) runs.set(key, state);
     } catch (error62) {
-      broken.add(key);
-      warnings.push(`omg factory board: run state ${runLabel(key)} is unreadable: ${message2(error62)}`);
+      unreadable(key, message2(error62));
     }
   }
-  return { runs, broken, untrusted };
+  return { runs, broken, untrusted, unverified, omitted: 0 };
 }
 function liveStage(kind, stages, item, recorded) {
   const pick2 = (hits, text9) => {
@@ -154061,11 +154075,12 @@ function collectBoard(input2) {
   const inSource = new Set(ids2);
   const outside = [];
   for (const [key, s] of runs) {
-    if (inSource.has(key) || TERMINAL_FACTORY_PHASES.includes(s.phase)) continue;
+    if (inSource.has(key)) continue;
     if (untrusted.has(key)) {
       outside.push({ id: key, title: "", url: "", stage: {}, flags: [], ...unverifiedPart(key) });
       continue;
     }
+    if (TERMINAL_FACTORY_PHASES.includes(s.phase)) continue;
     if (s.forgeKind !== void 0 && s.forgeKind !== config2.kind) warnings.push(`omg factory board: run ${runLabel(key)} started on ${s.forgeKind}, but the forge resolves to ${config2.kind}`);
     const row = { id: key, title: plainText(s.issueTitle ?? (s.kind === "ci-heal" ? "ci-heal" : "")), url: "", stage: { expected: trackerStageOf(s), ...s.trackerStage ? { recorded: s.trackerStage } : {} }, flags: [] };
     Object.assign(row, runPart(root, s, warnings));
@@ -154210,7 +154225,7 @@ async function sendAttentionNotice(n, notify2, signal) {
     const send = notify2 ?? (await Promise.resolve().then(() => (init_notifications(), notifications_exports))).notify;
     const { redactTokens: redactTokens2 } = await Promise.resolve().then(() => (init_redact2(), redact_exports));
     if (signal?.aborted) return;
-    await untilAborted(send("factory-attention", { sessionId: "factory-attention", message: redactTokens2(attentionNoticeText(n)), replyable: false }), signal);
+    await send("factory-attention", { sessionId: "factory-attention", message: redactTokens2(attentionNoticeText(n)), replyable: false });
   } catch {
   }
 }
@@ -154692,7 +154707,6 @@ async function settledWithin(ps, ms2) {
   let timer;
   const late = new Promise((resolve99) => {
     timer = setTimeout(() => resolve99(false), ms2);
-    timer.unref?.();
   });
   try {
     return await Promise.race([Promise.allSettled(ps).then(() => true), late]);
@@ -154786,7 +154800,7 @@ async function pollTick(ctx) {
     }
   }
   const ledgerDir = ctx.ledgerDir ?? defaultLedgerDir();
-  const { runs, broken, untrusted } = readRuns(root, warnings, ledgerDir);
+  const { runs, broken, untrusted, unverified, omitted } = readRuns(root, warnings, ledgerDir);
   const live = [...runs].filter(([, s]) => !TERMINAL_FACTORY_PHASES.includes(s.phase));
   const prs = [];
   if (ctx.prs) {
@@ -154824,7 +154838,10 @@ async function pollTick(ctx) {
   const sharedEngine = engineBusy(root, ctx.owner);
   const slots = heldSlots(root, ctx.owner).length;
   const locked = sharedEngine || slots > 0;
-  const unsound = broken.size > 0 || untrusted.size > 0 || [...runs.values()].some((s) => !verifyFactoryIntegrity(s));
+  const missing = step("missing states", () => missingRunKeys(root, ledgerDir));
+  const damaged = broken.size > 0 || missing === void 0 || missing.length > 0 || [...runs.values()].some((s) => !verifyFactoryIntegrity(s)) || [...untrusted].some((k) => !unverified.has(k));
+  const unverifiedLive = omitted > 0 || [...unverified].some((k) => !TERMINAL_FACTORY_PHASES.includes(runs.get(k).phase));
+  const unsound = damaged || unverifiedLive;
   const idle = !locked && !unsound && !live.some(([, s]) => !s.gate);
   const reminders = step("reminders", () => staleGateReminders({ root, runs, untrusted, nowMs: ctx.now(), afterHours: ctx.remindAfterHours, ...ctx.baseSha ? { readBase: (path30) => readBaseFile(ctx.exec, root, ctx.baseSha, path30) ?? void 0 } : {}, warn: (m) => warnings.push(plainText(m)) }));
   let attention;
@@ -154838,65 +154855,97 @@ async function pollTick(ctx) {
       const nowMs = ctx.now();
       const quietMs = (ctx.remindAfterHours && ctx.remindAfterHours > 0 ? ctx.remindAfterHours : ATTENTION_QUIET_DEFAULT_HOURS) * 36e5;
       const prev = ctx.previous;
-      const unverified = d.items.filter((i) => !trustedItem(i)).length;
-      if (!before) attention = { summary: summaryLine2(d), new: [] };
-      else {
+      const unverified2 = d.items.filter((i) => !trustedItem(i)).length;
+      const rows = d.items.map((i, n) => ({ i, id: ids3[n] }));
+      const trustedRows = rows.filter(({ i }) => trustedItem(i));
+      const printedIds = prev.printed ??= /* @__PURE__ */ new Map();
+      const notifiedIds = prev.notifiedIds ??= /* @__PURE__ */ new Map();
+      const recent = (m, id) => {
+        const t = m.get(id);
+        return t !== void 0 && t <= nowMs && nowMs - t < quietMs;
+      };
+      for (const m of [printedIds, notifiedIds]) markSeen(m, trustedRows.map((r) => r.id).filter((id) => recent(m, id)), nowMs);
+      if (!before) {
+        attention = { summary: summaryLine2(d), new: [] };
+        markSeen(printedIds, trustedRows.map((r) => r.id), nowMs);
+        markSeen(notifiedIds, trustedRows.map((r) => r.id), nowMs);
+      } else {
         const reminded = new Set((reminders ?? []).map((r) => runLabel(r.run)));
-        const fresh = d.items.map((i, n) => ({ i, id: ids3[n] })).filter(({ i, id }) => {
+        const remindedIds = trustedRows.filter(({ i }) => reminded.has(i.key)).map((r) => r.id);
+        markSeen(printedIds, remindedIds, nowMs);
+        markSeen(notifiedIds, remindedIds, nowMs);
+        const lineDue = trustedRows.filter(({ id }) => !recent(printedIds, id));
+        const untrustedNew = rows.filter(({ i, id }) => {
           const last = seen.get(id);
-          return !before.has(id) && !reminded.has(i.key) && (last === void 0 || nowMs - last >= quietMs);
-        });
-        const trusted = fresh.filter(({ i }) => trustedItem(i));
-        const untrustedNew = fresh.length - trusted.length;
-        const printed = trusted.slice(0, ATTENTION_PRINT_ITEMS);
+          return !trustedItem(i) && !before.has(id) && (last === void 0 || nowMs - last >= quietMs);
+        }).length;
+        const printed = lineDue.slice(0, ATTENTION_PRINT_ITEMS);
+        markSeen(printedIds, printed.map((r) => r.id), nowMs);
         attention = {
           new: printed.map(({ i }) => ({ key: i.key, group: i.group, gate: noticeGate(i), next: i.next[0]?.argv ?? null })),
-          ...trusted.length > printed.length ? { more: trusted.length - printed.length } : {},
-          ...unverified > 0 && (unverified !== prev.unverified || untrustedNew > 0) ? { unverified } : {}
+          ...lineDue.length > printed.length ? { more: lineDue.length - printed.length } : {},
+          ...unverified2 > 0 && (unverified2 !== prev.unverified || untrustedNew > 0) ? { unverified: unverified2 } : {}
         };
         if (ctx.notifyAttention) {
-          const present = new Set(ids3);
-          const queue = (prev.queue ?? []).filter((q) => present.has(q.id));
-          const queued = new Set(queue.map((q) => q.id));
-          const overflow = prev.overflow ?? [];
+          const trustedId = new Map(trustedRows.map(({ i, id }) => [i.key, id]));
+          const listed2 = new Set(d.items.map((i) => i.key));
+          const waits = (q) => listed2.has(q.key) && (trustedId.get(q.key) ?? q.id) === q.id;
+          const sendable = (q) => trustedId.get(q.key) === q.id;
+          const queue = (prev.queue ?? []).filter(waits);
+          const overflow = (prev.overflow ?? []).filter(waits);
+          const waiting = new Set([...queue, ...overflow].map((q) => q.id));
           let dropped = 0;
-          for (const { i, id } of trusted) {
-            const notice = queued.has(id) ? null : attentionNotice(root, i);
+          for (const { i, id } of trustedRows) {
+            if (waiting.has(id) || recent(notifiedIds, id)) continue;
+            const notice = attentionNotice(root, i);
             if (!notice) continue;
             if (queue.length >= ATTENTION_QUEUE_MAX) {
-              overflow.push(i.group);
+              overflow.push({ id, key: i.key, group: i.group });
               dropped += 1;
-              continue;
-            }
-            queue.push({ id, notice });
-            queued.add(id);
+            } else queue.push({ id, key: i.key, notice });
+            waiting.add(id);
           }
           const sent = (prev.notified ?? []).filter((t) => nowMs - t < ATTENTION_RATE_WINDOW_MS && t <= nowMs);
           const pending = prev.pending ?? 0;
           const room = pending >= ATTENTION_PENDING_MAX ? 0 : Math.max(0, Math.min(ATTENTION_NOTICE_ITEMS, ATTENTION_RATE_MAX - sent.length));
-          const batch = overflow.length > 0 && room > 0 ? [attentionMoreNotice(root, overflow.splice(0).map((group) => ({ group })))] : [];
-          batch.push(...queue.splice(0, room - batch.length).map((q) => q.notice));
+          const batch = [];
+          const announced2 = [];
+          const ready = overflow.filter(sendable);
+          if (ready.length > 0 && room > 0) {
+            batch.push(attentionMoreNotice(root, ready.map(({ group }) => ({ group }))));
+            announced2.push(...ready.map((q) => q.id));
+          }
+          const take = new Set(queue.filter(sendable).slice(0, Math.max(0, room - batch.length)));
+          for (const q of take) batch.push(q.notice);
+          announced2.push(...[...take].map((q) => q.id));
+          markSeen(notifiedIds, announced2, nowMs);
+          const left = new Set(announced2);
           prev.notified = [...sent, ...batch.map(() => nowMs)];
-          prev.queue = queue;
-          prev.overflow = overflow;
-          if (queue.length > 0) attention.queued = queue.length;
+          prev.queue = queue.filter((q) => !left.has(q.id));
+          prev.overflow = overflow.filter((q) => !left.has(q.id));
+          if (prev.queue.length + prev.overflow.length > 0) attention.queued = prev.queue.length + prev.overflow.length;
           if (dropped > 0) attention.dropped = dropped;
+          if (pending >= ATTENTION_PENDING_MAX) warnings.push(`attention: ${pending} notification(s) are still in flight; no more are sent until they settle`);
           if (untrustedNew > 0) prev.countDue = true;
-          if (unverified === 0) prev.countDue = false;
+          if (unverified2 === 0) prev.countDue = false;
+          prev.countNotified = Math.min(prev.countNotified ?? 0, unverified2);
           const last = prev.countNotifiedAt;
-          if (prev.countDue && pending < ATTENTION_PENDING_MAX && (last === void 0 || last > nowMs || nowMs - last >= ATTENTION_COUNT_NOTICE_WINDOW_MS)) {
-            batch.push(attentionCountNotice(root, unverified));
+          const since = last === void 0 || last > nowMs ? Infinity : nowMs - last;
+          const due = since >= ATTENTION_COUNT_NOTICE_WINDOW_MS || unverified2 > prev.countNotified && since >= ATTENTION_COUNT_RISE_MS;
+          if (prev.countDue && pending < ATTENTION_PENDING_MAX && due) {
+            batch.push(attentionCountNotice(root, unverified2));
             prev.countDue = false;
             prev.countNotifiedAt = nowMs;
+            prev.countNotified = unverified2;
           }
           const notify2 = ctx.notifyAttention;
           const timeoutMs = ctx.notifyTimeoutMs ?? ATTENTION_NOTIFY_TIMEOUT_MS;
           if (batch.length > 0) {
             const abort = new AbortController();
             prev.pending = (prev.pending ?? 0) + batch.length;
-            const sends = batch.map((n) => untilAborted(Promise.resolve().then(() => notify2(n, abort.signal)).catch(() => void 0), abort.signal).finally(() => {
+            const sends = batch.map((n) => untilAborted(Promise.resolve().then(() => notify2(n, abort.signal)).catch(() => void 0).finally(() => {
               prev.pending = Math.max(0, (prev.pending ?? 1) - 1);
-            }));
+            }), abort.signal));
             if (!await settledWithin(sends, timeoutMs)) {
               abort.abort();
               warnings.push(`attention: the notifications did not finish within ${Math.round(timeoutMs / 1e3)} s; the poll goes on`);
@@ -154904,7 +154953,7 @@ async function pollTick(ctx) {
           }
         }
       }
-      prev.unverified = unverified;
+      prev.unverified = unverified2;
       markSeen(seen, ids3, nowMs);
     }
   }
@@ -154924,7 +154973,7 @@ async function pollTick(ctx) {
   let autoStart;
   const par = ctx.parallel !== void 0 && ctx.parallel > 1 ? ctx.parallel : void 0;
   const held = config2.intake.autoStart ? (ctx.tamperHold ?? (() => tamperHoldMessage(defaultLedgerDir(), root)))() : null;
-  const blocked2 = !config2.intake.autoStart ? "factory.intake.autoStart is off" : held ? held : par !== void 0 && sharedEngine ? "the run lock is held: a shared-layout engine runs in this repository" : par !== void 0 && slots >= par ? `all ${par} parallel slots are held (factory.run.maxConcurrent ${par})` : par === void 0 && locked ? "the run lock is held: an engine runs in this repository" : unsound ? "a run state is unreadable or fails its integrity check" : par === void 0 && !idle ? "a run is in flight" : !intake.ran ? `no intake read this tick (${intake.reason})` : rateLimited ? "the tick was rate-limited" : null;
+  const blocked2 = !config2.intake.autoStart ? "factory.intake.autoStart is off" : held ? held : par !== void 0 && sharedEngine ? "the run lock is held: a shared-layout engine runs in this repository" : par !== void 0 && slots >= par ? `all ${par} parallel slots are held (factory.run.maxConcurrent ${par})` : par === void 0 && locked ? "the run lock is held: an engine runs in this repository" : damaged ? "a run state is unreadable or fails its integrity check" : unverifiedLive ? "a run state is not verified on this host: omg factory attention" : par === void 0 && !idle ? "a run is in flight" : !intake.ran ? `no intake read this tick (${intake.reason})` : rateLimited ? "the tick was rate-limited" : null;
   if (blocked2) autoStart = { started: false, reason: blocked2 };
   else {
     let reason = ctx.budget(root);
@@ -155097,7 +155146,7 @@ async function runFactoryPoll(o, deps) {
     release();
   }
 }
-var import_child_process49, import_fs185, import_path213, POLL_JSON_SCHEMA_VERSION, POLL_DEFAULT_INTERVAL_MS, POLL_MIN_INTERVAL_MS, POLL_MAX_INTERVAL_MS, POLL_OWNER_STALE_MS, PollBusyError, pollStatePath, pollAuditPath, writePollFile, ownerless, stale, heldBy, AUTO_START_MAX_STDOUT, AUTO_START_CLAIM, AUTO_START_SLACK_MS, AUTO_START_GRACE_MS, ATTENTION_NOTICE_ITEMS, ATTENTION_PRINT_ITEMS, ATTENTION_RATE_MAX, ATTENTION_RATE_WINDOW_MS, ATTENTION_QUEUE_MAX, ATTENTION_COUNT_NOTICE_WINDOW_MS, ATTENTION_NOTIFY_TIMEOUT_MS, ATTENTION_PENDING_MAX, ATTENTION_SEEN_MAX, ATTENTION_QUIET_DEFAULT_HOURS, trustedItem, attentionId, message3, reminderHint, defaultSleep, defaultOnStop;
+var import_child_process49, import_fs185, import_path213, POLL_JSON_SCHEMA_VERSION, POLL_DEFAULT_INTERVAL_MS, POLL_MIN_INTERVAL_MS, POLL_MAX_INTERVAL_MS, POLL_OWNER_STALE_MS, PollBusyError, pollStatePath, pollAuditPath, writePollFile, ownerless, stale, heldBy, AUTO_START_MAX_STDOUT, AUTO_START_CLAIM, AUTO_START_SLACK_MS, AUTO_START_GRACE_MS, ATTENTION_NOTICE_ITEMS, ATTENTION_PRINT_ITEMS, ATTENTION_RATE_MAX, ATTENTION_RATE_WINDOW_MS, ATTENTION_QUEUE_MAX, ATTENTION_COUNT_NOTICE_WINDOW_MS, ATTENTION_COUNT_RISE_MS, ATTENTION_NOTIFY_TIMEOUT_MS, ATTENTION_PENDING_MAX, ATTENTION_SEEN_MAX, ATTENTION_QUIET_DEFAULT_HOURS, trustedItem, attentionId, message3, reminderHint, defaultSleep, defaultOnStop;
 var init_poll = __esm({
   "src/factory/poll.ts"() {
     "use strict";
@@ -155161,6 +155210,7 @@ var init_poll = __esm({
     ATTENTION_RATE_WINDOW_MS = 10 * 6e4;
     ATTENTION_QUEUE_MAX = 100;
     ATTENTION_COUNT_NOTICE_WINDOW_MS = 60 * 6e4;
+    ATTENTION_COUNT_RISE_MS = 10 * 6e4;
     ATTENTION_NOTIFY_TIMEOUT_MS = 1e4;
     ATTENTION_PENDING_MAX = 2 * (ATTENTION_NOTICE_ITEMS + 1);
     ATTENTION_SEEN_MAX = 1e4;

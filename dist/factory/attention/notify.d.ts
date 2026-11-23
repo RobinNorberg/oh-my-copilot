@@ -55,8 +55,10 @@ type Notify = (event: 'factory-attention', data: {
  * adds none for this event) and not replyable: nothing a
  * reply says is ever typed into a terminal. `notify` is the notification
  * stack's (lazily imported, so a poll without notifications never loads it).
- * Once `signal` aborts (the poll's timeout), the send is abandoned: the
- * returned promise settles and nothing more is started for it.
+ * Once `signal` aborts (the poll's timeout), nothing more is started for it.
+ * The notification stack's dispatch takes no signal, so a send already
+ * started runs on: the returned promise settles when it does (the poll stops
+ * waiting at the abort, but counts the send as in flight until then).
  */
 export declare function sendAttentionNotice(n: AnyAttentionNotice, notify?: Notify, signal?: AbortSignal): Promise<void>;
 /** Settles with `p`, or as soon as `signal` aborts (the promise is abandoned: its result is ignored). */

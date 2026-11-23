@@ -15,7 +15,8 @@ import { EngineLedger } from '../../run/ledger.js';
 import { computeFactoryIntegrity, createFactoryState, factoryStateDir, factoryStatePath, moveTo, setGate } from '../../run/state.js';
 import { runFactoryPoll } from '../../poll.js';
 import { staleGateReminders } from '../../team/reminders.js';
-import { runFactoryBoard } from '../collect.js';
+import { readRuns, runFactoryBoard } from '../collect.js';
+import { MAX_UNRECORDED_STATES } from '../../attention/collect.js';
 const SHA = 'a'.repeat(40);
 const T0 = '2026-10-31T10:00:00.000Z';
 const ok = (stdout = '') => ({ status: 0, stdout, stderr: '' });
@@ -153,6 +154,37 @@ describe('board and poll rows of a state that is not verified', () => {
         expect(staleGateReminders({ root, runs, untrusted, nowMs: at + 23 * 3_600_000, afterHours: 24 })).toEqual([]);
         expect(staleGateReminders({ root, runs, untrusted, nowMs: at + 24 * 3_600_000, afterHours: 24 })).toEqual([{ run: 5, verified: false, next: 'omg factory run status 5' }]);
         expect(staleGateReminders({ root, runs, untrusted, nowMs: at + 25 * 3_600_000, afterHours: 24 })).toEqual([]);
+    });
+});
+describe('board: a forged finished state', () => {
+    it('a real run whose state a lane replaced with a sealed terminal phase keeps its "not verified" outside row; no forge read for it or any unverified state', async () => {
+        plant();
+        // #8: the engine's park (recorded), then a lane's sealed "cancelled" state in its place.
+        const real = parked(8, 'merge');
+        write(real, { ledger: true });
+        write(moveTo({ ...real, gate: undefined }, 'cancelled', 'MRKZ', T0));
+        const calls = [];
+        const deps = { exec: ((cmd, args) => { calls.push(`${cmd} ${args.join(' ')}`); return exec(cmd, args); }), base: () => 'dev', trustedUser: () => undefined, projectConfig: () => undefined, createForge, now: () => now, ledgerDir, out: (l) => out.push(l), err: () => { } };
+        expect(await runFactoryBoard({ json: true }, deps)).toBe(0);
+        const b = JSON.parse(out.join('\n'));
+        expect(b.outside.find((r) => r.id === 8)).toEqual({ id: 8, title: '', url: '', stage: {}, flags: [], verified: false, next: 'omg factory run status 8' });
+        // recordHumanMerges checks the seal and the engine ledger before any PR read: the planted PR numbers are never read.
+        expect(calls.filter((c) => c.startsWith('gh pr view') || c.startsWith('gh api'))).toEqual([]);
+        expect(leaked(JSON.stringify(b))).toEqual([]);
+    });
+});
+describe('readRuns with a ledger: the attention collector\'s capped key selection', () => {
+    it('every ledger-recorded run, then at most MAX_UNRECORDED_STATES other files; the rest counted in `omitted`', () => {
+        mkdirSync(factoryStateDir(root), { recursive: true });
+        for (let k = 0; k < MAX_UNRECORDED_STATES + 50; k++)
+            writeFileSync(factoryStatePath(root, 1000 + k), '{}');
+        // Recorded, and sorted after every forged file.
+        write(parked(99_999, 'merge'), { ledger: true });
+        const r = readRuns(root, [], ledgerDir);
+        expect(r.runs.has(99_999)).toBe(true);
+        expect(r.untrusted.has(99_999)).toBe(false);
+        expect(r.runs.size + r.broken.size).toBe(MAX_UNRECORDED_STATES + 1);
+        expect(r.omitted).toBe(50);
     });
 });
 //# sourceMappingURL=board-unverified.test.js.map

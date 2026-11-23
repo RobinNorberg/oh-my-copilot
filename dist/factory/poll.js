@@ -21,9 +21,12 @@
  *    trust, gate, park time), with its first next command; an item that
  *    gets a stale-gate reminder (3b) in the same tick is printed by the
  *    reminder only. Only trusted items get a line and an item notice
- *    (queued past the per-tick cap and rate limit); rows whose state is not
- *    trusted are only counted (one line when the count changes, one count
- *    notice per hour), so a lane cannot crowd out a trusted item. The
+ *    (queued past the per-tick cap and rate limit), once per identity: only
+ *    an identity that really got its line or notice counts as announced, and
+ *    a queued notice waits while its run's row is not trusted; rows whose
+ *    state is not trusted are only counted (one line when the count changes,
+ *    one count notice per hour, one more per 10 min when the count rises), so
+ *    a lane cannot crowd out, drop or indefinitely delay a trusted item. The
  *    `factory-attention` notification is off unless configured and carries
  *    engine-composed text only (attention/notify.ts).
  * 4. board: the board rows that changed since the previous tick
@@ -89,7 +92,7 @@ import { defaultLedgerDir } from './run/ledger.js';
 import { tamperHoldMessage } from './run/tamper-quarantine.js';
 import { visibleLine } from '../forge/review-feedback.js';
 import { commandText, GROUP_TITLES, reminderCommand } from './attention/actions.js';
-import { collectAttention } from './attention/collect.js';
+import { collectAttention, missingRunKeys } from './attention/collect.js';
 import { attentionCountNotice, attentionMoreNotice, attentionNotice, noticeGate, sendAttentionNotice, untilAborted } from './attention/notify.js';
 import { summaryLine } from './attention/render.js';
 import { resumeCommand } from './run/engine.js';
@@ -457,8 +460,10 @@ export const ATTENTION_RATE_WINDOW_MS = 10 * 60_000;
 export const ATTENTION_QUEUE_MAX = 100;
 /** The untrusted rows' count notice: at most one per this window for the repository (its own budget). */
 export const ATTENTION_COUNT_NOTICE_WINDOW_MS = 60 * 60_000;
+/** A count above the last notified one (a new untrusted row) may send one more count notice per this window. */
+export const ATTENTION_COUNT_RISE_MS = 10 * 60_000;
 export const ATTENTION_NOTIFY_TIMEOUT_MS = 10_000;
-/** Sends that may be in flight at once (a tick's timeout abandons its sends, so this is a backstop). */
+/** Sends that may be in flight at once, abandoned ones included until they settle (a hung notifier stops here). */
 export const ATTENTION_PENDING_MAX = 2 * (ATTENTION_NOTICE_ITEMS + 1);
 /** How many attention ids the poll remembers; and how long a row that went away stays known without remindAfterHours. */
 export const ATTENTION_SEEN_MAX = 10_000;
@@ -483,12 +488,14 @@ function markSeen(seen, ids, now) {
         seen.delete(id);
     }
 }
-/** Waits for every promise, at most `ms`; true when all settled in time. A notification never stalls the tick longer. */
-async function settledWithin(ps, ms) {
+/**
+ * Waits for every promise, at most `ms`; true when all settled in time. A notification never stalls the tick longer.
+ * The timer stays referenced: a hung send that holds no handle must not let node exit in the middle of the tick.
+ */
+export async function settledWithin(ps, ms) {
     let timer;
     const late = new Promise((resolve) => {
         timer = setTimeout(() => resolve(false), ms);
-        timer.unref?.();
     });
     try {
         return await Promise.race([Promise.allSettled(ps).then(() => true), late]);
@@ -622,7 +629,9 @@ export async function pollTick(ctx) {
     }
     // 3. PRs (and the idle seam): the runs in flight.
     const ledgerDir = ctx.ledgerDir ?? defaultLedgerDir();
-    const { runs, broken, untrusted } = readRuns(root, warnings, ledgerDir);
+    // Capped as attention's collector (every ledger-recorded run, then at most MAX_UNRECORDED_STATES other files): a
+    // lane's flood of state files cannot slow the tick's PR step, reminders or idle check.
+    const { runs, broken, untrusted, unverified, omitted } = readRuns(root, warnings, ledgerDir);
     const live = [...runs].filter(([, s]) => !TERMINAL_FACTORY_PHASES.includes(s.phase));
     const prs = [];
     if (ctx.prs) {
@@ -673,8 +682,17 @@ export async function pollTick(ctx) {
     // B2: idle means no shared engine AND no parallel slot held (a private-layout run holds a slot, not the engine lock).
     const slots = heldSlots(root, ctx.owner).length;
     const locked = sharedEngine || slots > 0;
-    // A run state that is unreadable or fails its integrity seal may hide a run in flight: never idle.
-    const unsound = broken.size > 0 || untrusted.size > 0 || [...runs.values()].some((s) => !verifyFactoryIntegrity(s));
+    // A run state that may hide a real run in flight or parked: never idle. Unreadable, failing its seal, not the bytes
+    // the engine ledger records, or missing while the ledger records an unfinished run: `damaged`. Sealed but unknown to
+    // this host's ledger: `unverifiedLive` unless its phase is terminal. A real run's key is in the ledger, so replacing
+    // its state is a ledger mismatch (damaged); a sealed terminal state the ledger has no record of is old history from
+    // another host or checkout (or a new key a lane made up), not a run, and does not block (as before the trust check).
+    const missing = step('missing states', () => missingRunKeys(root, ledgerDir));
+    const damaged = broken.size > 0 || missing === undefined || missing.length > 0 || [...runs.values()].some((s) => !verifyFactoryIntegrity(s))
+        || [...untrusted].some((k) => !unverified.has(k));
+    // State files left unread (past the cap) are unknown to the ledger as well: they block as unverified unfinished ones.
+    const unverifiedLive = omitted > 0 || [...unverified].some((k) => !TERMINAL_FACTORY_PHASES.includes(runs.get(k).phase));
+    const unsound = damaged || unverifiedLive;
     const idle = !locked && !unsound && !live.some(([, s]) => !s.gate);
     // 3b. stale-gate reminders: read-only on git (the base commit's routing file), printed only.
     const reminders = step('reminders', () => staleGateReminders({ root, runs, untrusted, nowMs: ctx.now(), afterHours: ctx.remindAfterHours, ...(ctx.baseSha ? { readBase: (path) => readBaseFile(ctx.exec, root, ctx.baseSha, path) ?? undefined } : {}), warn: (m) => warnings.push(plainText(m)) }));
@@ -693,76 +711,124 @@ export async function pollTick(ctx) {
             const quietMs = (ctx.remindAfterHours && ctx.remindAfterHours > 0 ? ctx.remindAfterHours : ATTENTION_QUIET_DEFAULT_HOURS) * 3_600_000;
             const prev = ctx.previous;
             const unverified = d.items.filter((i) => !trustedItem(i)).length;
-            if (!before)
+            // Trusted rows are announced once per identity: an id stays announced (printed, notified) while it is listed and
+            // for the quiet window after it went away. Only ids that really got a line or a notice count: a trusted id that
+            // was listed but never announced (past the per-tick cap, queued, or hidden by a lane for a tick) is still due.
+            const rows = d.items.map((i, n) => ({ i, id: ids[n] }));
+            const trustedRows = rows.filter(({ i }) => trustedItem(i));
+            const printedIds = (prev.printed ??= new Map());
+            const notifiedIds = (prev.notifiedIds ??= new Map());
+            const recent = (m, id) => {
+                const t = m.get(id);
+                return t !== undefined && t <= nowMs && nowMs - t < quietMs;
+            };
+            for (const m of [printedIds, notifiedIds])
+                markSeen(m, trustedRows.map((r) => r.id).filter((id) => recent(m, id)), nowMs);
+            if (!before) {
                 attention = { summary: summaryLine(d), new: [] };
+                // The first tick's summary stands for what is listed at the start: none of it gets its own line or notice.
+                markSeen(printedIds, trustedRows.map((r) => r.id), nowMs);
+                markSeen(notifiedIds, trustedRows.map((r) => r.id), nowMs);
+            }
             else {
                 const reminded = new Set((reminders ?? []).map((r) => runLabel(r.run)));
-                // New: not in the previous tick, and not seen within the quiet window (a row that went away and came back).
-                const fresh = d.items.map((i, n) => ({ i, id: ids[n] })).filter(({ i, id }) => {
-                    const last = seen.get(id);
-                    return !before.has(id) && !reminded.has(i.key) && (last === undefined || nowMs - last >= quietMs);
-                });
+                // An item that gets a stale-gate reminder in this tick is announced by the reminder alone: no line, no notice
+                // (a notice already waiting in the queue still goes).
+                const remindedIds = trustedRows.filter(({ i }) => reminded.has(i.key)).map((r) => r.id);
+                markSeen(printedIds, remindedIds, nowMs);
+                markSeen(notifiedIds, remindedIds, nowMs);
+                const lineDue = trustedRows.filter(({ id }) => !recent(printedIds, id));
                 // A lane can write any number of untrusted rows (and they sort first): they are only ever counted, so they can
-                // never delay or crowd out a trusted item's line or notice.
-                const trusted = fresh.filter(({ i }) => trustedItem(i));
-                const untrustedNew = fresh.length - trusted.length;
-                const printed = trusted.slice(0, ATTENTION_PRINT_ITEMS);
+                // never delay or crowd out a trusted item's line or notice. New: not in the previous tick nor within the quiet window.
+                const untrustedNew = rows.filter(({ i, id }) => {
+                    const last = seen.get(id);
+                    return !trustedItem(i) && !before.has(id) && (last === undefined || nowMs - last >= quietMs);
+                }).length;
+                // At most ATTENTION_PRINT_ITEMS lines a tick; the rest stay due and get their lines on the next ticks.
+                const printed = lineDue.slice(0, ATTENTION_PRINT_ITEMS);
+                markSeen(printedIds, printed.map((r) => r.id), nowMs);
                 attention = {
                     new: printed.map(({ i }) => ({ key: i.key, group: i.group, gate: noticeGate(i), next: i.next[0]?.argv ?? null })),
-                    ...(trusted.length > printed.length ? { more: trusted.length - printed.length } : {}),
+                    ...(lineDue.length > printed.length ? { more: lineDue.length - printed.length } : {}),
                     ...(unverified > 0 && (unverified !== prev.unverified || untrustedNew > 0) ? { unverified } : {}),
                 };
                 if (ctx.notifyAttention) {
-                    // Trusted notices queue (oldest first, one per identity); a queued item that no longer needs you goes.
-                    const present = new Set(ids);
-                    const queue = (prev.queue ?? []).filter((q) => present.has(q.id));
-                    const queued = new Set(queue.map((q) => q.id));
-                    const overflow = prev.overflow ?? [];
+                    // Trusted notices wait in the queue (oldest first, one per identity) until the rate limit lets them out. A
+                    // waiting notice goes only when its run is no longer listed or its trusted row changed (the new row is due on
+                    // its own); while the run's row is not trusted it keeps waiting and is not sent.
+                    const trustedId = new Map(trustedRows.map(({ i, id }) => [i.key, id]));
+                    const listed = new Set(d.items.map((i) => i.key));
+                    const waits = (q) => listed.has(q.key) && (trustedId.get(q.key) ?? q.id) === q.id;
+                    const sendable = (q) => trustedId.get(q.key) === q.id;
+                    const queue = (prev.queue ?? []).filter(waits);
+                    const overflow = (prev.overflow ?? []).filter(waits);
+                    const waiting = new Set([...queue, ...overflow].map((q) => q.id));
                     let dropped = 0;
-                    for (const { i, id } of trusted) {
-                        const notice = queued.has(id) ? null : attentionNotice(root, i);
+                    for (const { i, id } of trustedRows) {
+                        if (waiting.has(id) || recent(notifiedIds, id))
+                            continue;
+                        const notice = attentionNotice(root, i);
                         if (!notice)
                             continue;
                         if (queue.length >= ATTENTION_QUEUE_MAX) {
-                            overflow.push(i.group);
+                            overflow.push({ id, key: i.key, group: i.group });
                             dropped += 1;
-                            continue;
                         }
-                        queue.push({ id, notice });
-                        queued.add(id);
+                        else
+                            queue.push({ id, key: i.key, notice });
+                        waiting.add(id);
                     }
                     const sent = (prev.notified ?? []).filter((t) => nowMs - t < ATTENTION_RATE_WINDOW_MS && t <= nowMs);
                     const pending = prev.pending ?? 0;
                     const room = pending >= ATTENTION_PENDING_MAX ? 0 : Math.max(0, Math.min(ATTENTION_NOTICE_ITEMS, ATTENTION_RATE_MAX - sent.length));
+                    const batch = [];
+                    const announced = [];
                     // The overflow's one count notice goes first: the queue ahead of it can take hours to drain.
-                    const batch = overflow.length > 0 && room > 0 ? [attentionMoreNotice(root, overflow.splice(0).map((group) => ({ group })))] : [];
-                    batch.push(...queue.splice(0, room - batch.length).map((q) => q.notice));
+                    const ready = overflow.filter(sendable);
+                    if (ready.length > 0 && room > 0) {
+                        batch.push(attentionMoreNotice(root, ready.map(({ group }) => ({ group }))));
+                        announced.push(...ready.map((q) => q.id));
+                    }
+                    const take = new Set(queue.filter(sendable).slice(0, Math.max(0, room - batch.length)));
+                    for (const q of take)
+                        batch.push(q.notice);
+                    announced.push(...[...take].map((q) => q.id));
+                    markSeen(notifiedIds, announced, nowMs);
+                    const left = new Set(announced);
                     prev.notified = [...sent, ...batch.map(() => nowMs)];
-                    prev.queue = queue;
-                    prev.overflow = overflow;
-                    if (queue.length > 0)
-                        attention.queued = queue.length;
+                    prev.queue = queue.filter((q) => !left.has(q.id));
+                    prev.overflow = overflow.filter((q) => !left.has(q.id));
+                    if (prev.queue.length + prev.overflow.length > 0)
+                        attention.queued = prev.queue.length + prev.overflow.length;
                     if (dropped > 0)
                         attention.dropped = dropped;
-                    // Untrusted rows: one count notice, its own budget (ATTENTION_COUNT_NOTICE_WINDOW_MS), never the trusted one's.
+                    if (pending >= ATTENTION_PENDING_MAX)
+                        warnings.push(`attention: ${pending} notification(s) are still in flight; no more are sent until they settle`);
+                    // Untrusted rows: one count notice per ATTENTION_COUNT_NOTICE_WINDOW_MS, its own budget, never the trusted
+                    // one's; a count that rose above the last notified one may go out once per ATTENTION_COUNT_RISE_MS.
                     if (untrustedNew > 0)
                         prev.countDue = true;
                     if (unverified === 0)
                         prev.countDue = false;
+                    prev.countNotified = Math.min(prev.countNotified ?? 0, unverified);
                     const last = prev.countNotifiedAt;
-                    if (prev.countDue && pending < ATTENTION_PENDING_MAX && (last === undefined || last > nowMs || nowMs - last >= ATTENTION_COUNT_NOTICE_WINDOW_MS)) {
+                    const since = last === undefined || last > nowMs ? Infinity : nowMs - last;
+                    const due = since >= ATTENTION_COUNT_NOTICE_WINDOW_MS || (unverified > prev.countNotified && since >= ATTENTION_COUNT_RISE_MS);
+                    if (prev.countDue && pending < ATTENTION_PENDING_MAX && due) {
                         batch.push(attentionCountNotice(root, unverified));
                         prev.countDue = false;
                         prev.countNotifiedAt = nowMs;
+                        prev.countNotified = unverified;
                     }
                     const notify = ctx.notifyAttention;
                     const timeoutMs = ctx.notifyTimeoutMs ?? ATTENTION_NOTIFY_TIMEOUT_MS;
                     if (batch.length > 0) {
-                        // A send past the timeout is aborted and abandoned (its promise is no longer waited for or counted).
+                        // A send past the timeout is aborted (the signal) and no longer waited for; it counts as pending until it
+                        // really settles, so a notifier that ignores the signal cannot pile up calls past ATTENTION_PENDING_MAX.
                         const abort = new AbortController();
                         prev.pending = (prev.pending ?? 0) + batch.length;
-                        const sends = batch.map((n) => untilAborted(Promise.resolve().then(() => notify(n, abort.signal)).catch(() => undefined), abort.signal)
-                            .finally(() => { prev.pending = Math.max(0, (prev.pending ?? 1) - 1); }));
+                        const sends = batch.map((n) => untilAborted(Promise.resolve().then(() => notify(n, abort.signal)).catch(() => undefined)
+                            .finally(() => { prev.pending = Math.max(0, (prev.pending ?? 1) - 1); }), abort.signal));
                         if (!(await settledWithin(sends, timeoutMs))) {
                             abort.abort();
                             warnings.push(`attention: the notifications did not finish within ${Math.round(timeoutMs / 1000)} s; the poll goes on`);
@@ -798,11 +864,12 @@ export async function pollTick(ctx) {
             : par !== undefined && sharedEngine ? 'the run lock is held: a shared-layout engine runs in this repository'
                 : par !== undefined && slots >= par ? `all ${par} parallel slots are held (factory.run.maxConcurrent ${par})`
                     : par === undefined && locked ? 'the run lock is held: an engine runs in this repository'
-                        : unsound ? 'a run state is unreadable or fails its integrity check'
-                            : par === undefined && !idle ? 'a run is in flight'
-                                : !intake.ran ? `no intake read this tick (${intake.reason})`
-                                    : rateLimited ? 'the tick was rate-limited'
-                                        : null;
+                        : damaged ? 'a run state is unreadable or fails its integrity check'
+                            : unverifiedLive ? 'a run state is not verified on this host: omg factory attention'
+                                : par === undefined && !idle ? 'a run is in flight'
+                                    : !intake.ran ? `no intake read this tick (${intake.reason})`
+                                        : rateLimited ? 'the tick was rate-limited'
+                                            : null;
     if (blocked)
         autoStart = { started: false, reason: blocked };
     else {
