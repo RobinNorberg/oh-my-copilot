@@ -62,7 +62,7 @@ import { runFactoryEnqueue } from '../../factory/enqueue.js';
 import { factoryTriageCommand } from './factory-triage.js';
 import { resolveHealConfig } from '../../factory/heal/config.js';
 import { currentBytes, defaultLedgerDir, emptyHooksDir, EngineLedger } from '../../factory/run/ledger.js';
-import { commandLine, stateGateNext } from '../../factory/run/gate-next.js';
+import { humanCommand, stateGateNext } from '../../factory/run/gate-next.js';
 import type { FactoryPollDeps } from '../../factory/poll.js';
 import { listenForgeRefusal } from '../../factory/setup/detect.js';
 import { factorySetupCommand } from './factory-setup.js';
@@ -941,7 +941,12 @@ export function factoryRunCommand(deps: FactoryRunDeps = defaultFactoryRunDeps):
         const integrity = verifyFactoryIntegrity(stored);
         const ledgerDir = deps.ledgerDir ?? defaultLedgerDir();
         let ledgerOk = false;
-        try { ledgerOk = EngineLedger.open(ledgerDir, root, issue).matches(path, bytes); } catch { ledgerOk = false; }
+        let tracked = false;
+        try {
+          const ledger = EngineLedger.open(ledgerDir, root, issue);
+          tracked = ledger.tracks(path);
+          ledgerOk = ledger.matches(path, bytes);
+        } catch { ledgerOk = false; }
         // The next commands only from a state the engine sealed and last wrote: a copyable command from an edited state is an injection vector.
         const trusted = integrity && ledgerOk;
         let hold = false;
@@ -953,11 +958,11 @@ export function factoryRunCommand(deps: FactoryRunDeps = defaultFactoryRunDeps):
         } else {
           console.log(renderFactoryRunState(state));
           if (!integrity) console.log(chalk.red('integrity check FAILED: the state was edited outside omg factory run'));
-          else if (!ledgerOk) console.log(chalk.red('ledger check FAILED: the state is not the one the engine last wrote'));
+          else if (!ledgerOk) console.log(chalk.red(tracked ? 'ledger check FAILED: the state is not the one the engine last wrote' : `ledger check FAILED: the engine ledger (${plainText(ledgerDir)}) has no record of this state`));
           if (state.gate && !trusted) console.log(chalk.yellow('next steps not shown: the state did not pass its checks'));
           else if (next.length > 0) {
             console.log('next:');
-            for (const n of next) console.log(`  ${plainText(n.label)}${n.billed ? ' (can start billed lanes)' : ''}: ${plainText(commandLine(n.argv))}`);
+            for (const n of next) console.log(`  ${plainText(n.label)}${n.billed ? ' (can start billed lanes)' : ''}: ${plainText(humanCommand(n.argv))}`);
           }
         }
         return 0;

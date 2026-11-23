@@ -1185,6 +1185,8 @@ Every gate posts one issue comment that names the gate, the reason and the comma
 - Every other gate (`*-failed`, `*-declined`, the limits, the fix-by-hand gates): rerun, status, cancel. A name this version does not know gives status, rerun, cancel.
 - ci-heal runs use `omg factory heal status|approve|cancel <sig8>` instead and take no `--allow-*` flag. `heal-approve` adds `omg factory heal close <sig8>`. `heal-diagnosis` gives status, cancel and close, with no approve.
 
+Wherever a step is printed (`run status`, the park reason, the outcome's merge command, the PR comment), it is quoted for this host's shell family. A safe word is printed bare. A word with only letters, digits, spaces and `/ : . _ -` is double-quoted. Any other word gets the shell's own single quotes. On Windows, a repository root that cmd.exe cannot read in any quoted form is left out, and the text says to run the command (`git merge --no-ff --no-edit <head>`) in the repository root. `--json` and `gate.next` keep the exact argv.
+
 A state written before `gate.next` existed has none. It still verifies and resumes, and `run status` shows the same steps from the table. Version stays 1: the field is optional, and an older reader ignores it, as it does any other optional gate field. The outcome message adds "Resume with ..." only when the steps include the plain rerun, and the issue comment says the same. `run-<n>-merge.md` (the merge comment body under `.omg/`) is a convenience copy in a directory lanes can write. It is not authoritative: use `gate.next` or the PR comment.
 
 | Gate | Cause | What to do |

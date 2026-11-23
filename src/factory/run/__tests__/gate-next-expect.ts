@@ -6,6 +6,7 @@
  */
 import { expect } from 'vitest';
 import type { FactoryRunOutcome } from '../engine.js';
+import { humanCommand } from '../gate-next.js';
 import { readFactoryState, type FactoryRunKey } from '../state.js';
 
 const sig = (key: FactoryRunKey): string => String(key).slice('heal-'.length);
@@ -25,13 +26,13 @@ export function steps(key: FactoryRunKey) {
 
 /**
  * The argv list of the park `out` stopped at, after checking that the state
- * file seals the same gate.next and, at the merge gate, that the merge step is
+ * file seals the same gate.next and, at the merge gate, that the merge step, as shown, is
  * the outcome's merge command.
  */
 export function sealedNext(root: string, key: FactoryRunKey, out: FactoryRunOutcome): string[][] {
   const next = out.gate?.next;
   expect(next, `${out.gate?.name ?? 'no gate'}: no gate.next`).toBeDefined();
   expect(readFactoryState(root, key)?.gate?.next).toEqual(next);
-  if (out.gate?.name === 'merge' && out.mergeCommand && next![0].argv[0] !== 'omg') expect(next![0].argv.join(' ')).toBe(out.mergeCommand);
+  if (out.gate?.name === 'merge' && out.mergeCommand && next![0].argv[0] !== 'omg') expect(humanCommand(next![0].argv)).toBe(out.mergeCommand);
   return next!.map((n) => n.argv);
 }

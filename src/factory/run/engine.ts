@@ -140,7 +140,7 @@ import { secretShapeKinds } from '../heal/sanitize.js';
 import { CI_TREE_PATHS, commitLaneWork, conflictFixStart, LANE_DECLINED, LANE_PROTECTED_PATHS, laneCommitMessage, laneDecline, pathGlobMatches, type SecretFinding } from './lane-commit.js';
 import { proveLaneTreeGone, type LaneTreeProof } from './lane-procs.js';
 import { quarantineTamper, readTamperHold, RELEASE_TAMPER_COMMAND, STILL_ACTIVE, tamperHoldMessage, tamperHoldPath, writeTamperHold } from './tamper-quarantine.js';
-import { cancelArgv, gateNext, gateSteps, resumeArgv, type GateNextFacts } from './gate-next.js';
+import { cancelArgv, commandLine, commandText, gateNext, gateSteps, humanCommand, resumeArgv, type GateNextFacts } from './gate-next.js';
 import { currentBytes, defaultLedgerDir, EngineLedger, emptyHooksDir, userBaselineKey } from './ledger.js';
 import { createFactoryProgress, HEARTBEAT_MIN_MS, type FactoryProgress } from './progress.js';
 import { acquireFactoryClaim, claimBusyMessage, factoryClaimHolder, factoryClaimRepo, isShallowClaimRepo, localFactoryClaimRepo, shallowClaimWarning, settleFactoryClaim, trustedFactoryClaimRepo, trustedLocalFactoryClaimRepo, type HeldClaim } from './claims.js';
@@ -3055,7 +3055,7 @@ class FactoryEngine {
       if (commit.refusal === 'secret') {
         const findings = commit.findings ?? [];
         this.save((s) => ({ ...s, pendingCommit: { ...p, secretFindings: findings } }));
-        this.gate(SECRET_SHAPES_GATE, `${kind} lane ${p.laneId}: ${commit.reason}. A key or token in the change may have been copied in from outside the lane's sandbox, so nothing was committed or pushed. Look at those files in ${p.worktree}: remove the secret and rerun ${this.resume}, or, when they are test fixtures, rerun ${this.resume} --allow-secret-shapes (accepts exactly these paths and kinds for this lane commit; factory.run.secretScan.allowPaths in your user config or the base's omg.jsonc skips fixture paths for good). A hit in a path's name is named by a hash of the name (git -C ${p.worktree} status lists the names; rename the file). A hit in the commit message (the lane's own summary) cannot be edited: --allow-secret-shapes commits it as it is.${this.allowPathsBaseUntrusted !== undefined ? ` The factory.run.secretScan.allowPaths committed in .copilot/omg.jsonc were not used, because base ${this.allowPathsBaseUntrusted} is not in ship.trustedBases: rerun with --allow-secret-shapes for this head, or set allowPaths in your user config (or add ${this.allowPathsBaseUntrusted} to ship.trustedBases there).` : ''} To give the lane's work up instead: omg factory run cancel ${this.key}`);
+        this.gate(SECRET_SHAPES_GATE, `${kind} lane ${p.laneId}: ${commit.reason}. A key or token in the change may have been copied in from outside the lane's sandbox, so nothing was committed or pushed. Look at those files in ${p.worktree}: remove the secret and rerun ${this.resume}, or, when they are test fixtures, rerun ${this.resume} --allow-secret-shapes (accepts exactly these paths and kinds for this lane commit; factory.run.secretScan.allowPaths in your user config or the base's omg.jsonc skips fixture paths for good). A hit in a path's name is named by a hash of the name (${commandLine(['git', '-C', p.worktree, 'status'])} lists the names; rename the file). A hit in the commit message (the lane's own summary) cannot be edited: --allow-secret-shapes commits it as it is.${this.allowPathsBaseUntrusted !== undefined ? ` The factory.run.secretScan.allowPaths committed in .copilot/omg.jsonc were not used, because base ${this.allowPathsBaseUntrusted} is not in ship.trustedBases: rerun with --allow-secret-shapes for this head, or set allowPaths in your user config (or add ${this.allowPathsBaseUntrusted} to ship.trustedBases there).` : ''} To give the lane's work up instead: omg factory run cancel ${this.key}`);
         return;
       }
       this.save((s) => { const { pendingCommit: _p, ...rest } = s; return rest; });
@@ -3337,9 +3337,12 @@ class FactoryEngine {
     const changed = sources.some((x) => x.pattern) ? patternSourceChanges(sources, treeAt(s.baseSha), treeAt(cand)) : [];
     const named = [...(plain.length > 0 ? [describeGateSources(plain)] : []), ...changed].join(', ') || describeGateSources(sources);
     const specs = [...new Set([...plain.map(gateSourcePathspec), ...changed.map(shellPath)])];
+    // The root quoted for this host's shell, or withheld when no form fits every shell there (gate-next.ts commandText).
+    const diffView = commandText(['git', '-C', this.o.root, 'diff', s.baseSha!.slice(0, 12), cand.slice(0, 12)]);
+    const inspect = diffView.inRoot ? `in the repository root with ${diffView.line}` : `with ${diffView.line}`;
     // A dotnet gate: tracked build output (bin/, obj/, artifacts/) is MSBuild input no definition pattern names.
     const output = changed.some(underDotnetBuildDir) ? '; tracked files under bin/, obj/ or artifacts/ are build output MSBuild may reuse instead of building the change, so they count as the gate\'s definition' : '';
-    this.save((x) => this.park(x, 'gate-definition-changed', `the change redefines the local gate "${gate.join(' ')}" (${named} differ from ${s.base})${output}${stale}; offline the gate is the only check, so nothing was pushed. Inspect it with git -C ${this.o.root} diff ${s.baseSha!.slice(0, 12)} ${cand.slice(0, 12)} -- ${(specs.length > 0 ? specs : sources.map(gateSourcePathspec)).join(' ')}, then rerun ${this.resume} --allow-gate-change to accept it, or ${cancelCommand(this.key)}${this.restoreOnApprovalNote(gate)}`, this.iso(), { definition: head }));
+    this.save((x) => this.park(x, 'gate-definition-changed', `the change redefines the local gate "${gate.join(' ')}" (${named} differ from ${s.base})${output}${stale}; offline the gate is the only check, so nothing was pushed. Inspect it ${inspect} -- ${(specs.length > 0 ? specs : sources.map(gateSourcePathspec)).join(' ')}, then rerun ${this.resume} --allow-gate-change to accept it, or ${cancelCommand(this.key)}${this.restoreOnApprovalNote(gate)}`, this.iso(), { definition: head }));
     return true;
   }
 
@@ -5663,7 +5666,8 @@ class FactoryEngine {
     // Opt-in (factory.merge.auto, user config only): true = the engine merged and the run finished; a string = why it did not.
     const auto = decision.ok ? await this.autoMerge(pr, head, view, ship, decision, config) : undefined;
     if (auto === true) return;
-    const cmd = decision.command.join(' ');
+    // Shown quoted for this host's shell (gate-next.ts humanCommand); gate.next keeps the exact argv.
+    const cmd = humanCommand(decision.command);
     this.mergeCmd = decision.ok ? cmd : undefined;
     this.commentOnce('pr', `merge@${head.slice(0, 12)}`, 'merge', `${mergeComment(this.key, decision, this.resume)}${decision.ok ? this.humanComment ?? '' : ''}`);
     if (decision.ok) this.gate('merge', `merge is a human step; review approved and gates green at ${head.slice(0, 12)}${decision.noChecks ? ` (${NO_CI_CHECKS_NOTE}: no CI ran on this head, check the change yourself)` : ''}${this.humanNote ?? ''}${auto ? `; auto-merge (factory.merge.auto) not taken: ${auto}` : ''}: run ${cmd}, then ${this.resume}`);
