@@ -498,16 +498,18 @@ export function nugetOrgCopy(bytes: Buffer): { copy: Buffer } | { why: string } 
  * opened with O_NOFOLLOW and O_NONBLOCK where the platform has them, which
  * must be that same file (dev and inode, compared as bigints), still a
  * regular file within `max`; read from that descriptor, so a file swapped
- * in after the lstat is never read.
+ * in after the lstat is never read. With `singleLink`, both the lstat and
+ * the descriptor's fstat must report exactly one link (a hard link made
+ * between them is refused too).
  */
-export function readRegularFileBounded(path: string, max: number): Buffer | null {
+export function readRegularFileBounded(path: string, max: number, opts: { singleLink?: boolean } = {}): Buffer | null {
   let st: BigIntStats;
   try {
     st = lstatSync(path, { bigint: true });
   } catch {
     return null;
   }
-  if (!st.isFile() || st.size > BigInt(max)) return null;
+  if (!st.isFile() || st.size > BigInt(max) || (opts.singleLink && st.nlink !== 1n)) return null;
   let fd: number;
   try {
     fd = openSync(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0));
@@ -516,7 +518,7 @@ export function readRegularFileBounded(path: string, max: number): Buffer | null
   }
   try {
     const f = fstatSync(fd, { bigint: true });
-    if (!f.isFile() || f.ino !== st.ino || f.dev !== st.dev || f.size > BigInt(max)) return null;
+    if (!f.isFile() || f.ino !== st.ino || f.dev !== st.dev || f.size > BigInt(max) || (opts.singleLink && f.nlink !== 1n)) return null;
     const size = Number(f.size);
     const buf = Buffer.alloc(size);
     let n = 0;

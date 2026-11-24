@@ -185,7 +185,7 @@ export function scanXml(xml) {
                 odd.add('a close tag that does not match');
             else
                 stack.pop();
-            tags.push({ name, close, selfClose: false, attrs, parent: stack[stack.length - 1] ?? '' });
+            tags.push({ name, close, selfClose: false, attrs, parent: stack[stack.length - 1] ?? '', start: i, end: j });
             if (stack.length === 0)
                 rootClosed = true;
         }
@@ -193,7 +193,7 @@ export function scanXml(xml) {
             if (stack.length === 0 && (sawElement || rootClosed))
                 odd.add('a second root element');
             sawElement = true;
-            tags.push({ name, close, selfClose, attrs, parent: stack[stack.length - 1] ?? '' });
+            tags.push({ name, close, selfClose, attrs, parent: stack[stack.length - 1] ?? '', start: i, end: j });
             if (selfClose) {
                 if (stack.length === 0)
                     rootClosed = true;

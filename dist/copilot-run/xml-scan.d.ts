@@ -25,6 +25,9 @@ export interface XmlTag {
     attrs: Array<[string, string]>;
     /** The name of the element directly around this tag ('' at the top; for a close tag: around the element it closes). */
     parent: string;
+    /** The offset of the tag's `<` and the one just past its `>`: the text between an open tag's `end` and its close tag's `start` is the element's content. */
+    start: number;
+    end: number;
 }
 export interface XmlScan {
     tags: XmlTag[];

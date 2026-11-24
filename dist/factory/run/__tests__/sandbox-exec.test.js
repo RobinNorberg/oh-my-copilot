@@ -871,6 +871,16 @@ describe('runSandboxed: a dotnet command (dotnet-sandbox.ts)', () => {
         // Only a dotnet command writes one.
         expect(await runSandboxed(['/usr/bin/node', 'x.js'], opts({ restoreGraph: true }), deps(ok))).toMatchObject({ ran: false, refused: true });
     });
+    it('probeEnv: the restore-source evaluation gets each probe name the sandbox env does not hold (any case); never without restoreGraph', async () => {
+        await runSandboxed(['/usr/bin/dotnet', 'msbuild'], opts({ restoreGraph: true, probeEnv: { CORP_FEED: 'omg-env-probe-CORP_FEED', path: 'x', nuget_packages: 'y', 'bad name': 'z' } }), deps(ok));
+        const env = rec.connections[0].env;
+        expect(env.CORP_FEED).toBe('omg-env-probe-CORP_FEED');
+        expect(env.PATH).not.toBe('x');
+        expect(env.NUGET_PACKAGES).not.toBe('y');
+        expect(Object.keys(env).filter((k) => ['path', 'nuget_packages', 'bad name'].includes(k))).toEqual([]);
+        await runSandboxed(['/usr/bin/dotnet', 'build'], opts({ probeEnv: { CORP_FEED: 'v' } }), deps(ok));
+        expect(rec.connections[1].env.CORP_FEED).toBeUndefined();
+    });
     it('a gate on the run packages dir: read-only, offline', async () => {
         const run = join(dir, 'gates', 'nuget', 'issue-7');
         mkdirSync(run, { recursive: true });

@@ -367,3 +367,218 @@ export function projectSdkMentions(path: string, text: string): string[] {
   }
   return [...out].sort();
 }
+
+/** NuGet's restore properties that name sources, folders or the config file (restoreHostReads' roots). */
+const RESTORE_SOURCE_SETTING = /^Restore(?:Sources|AdditionalProjectSources|FallbackFolders|ConfigFile|PackagesPath)$/i;
+
+/**
+ * Properties MSBuild, the .NET SDK, NuGet or Visual Studio define for every
+ * build (lower case; `MSBuild*` and NuGet's generated `Pkg*` path properties
+ * by prefix): a reference to one is not a read of your environment.
+ */
+const RESERVED_PROPERTIES = new Set([
+  'configuration', 'platform', 'platforms', 'targetframework', 'targetframeworks', 'targetframeworkidentifier', 'targetframeworkversion',
+  'targetframeworkmoniker', 'targetplatformidentifier', 'targetplatformversion', 'runtimeidentifier', 'runtimeidentifiers',
+  'outputpath', 'outdir', 'intermediateoutputpath', 'baseintermediateoutputpath', 'baseoutputpath', 'projectdir', 'projectname',
+  'projectpath', 'projectfilename', 'projectext', 'solutiondir', 'solutionname', 'solutionpath', 'solutionfilename', 'solutionext',
+  'targetname', 'targetpath', 'targetdir', 'targetext', 'targetfilename', 'assemblyname', 'rootnamespace', 'nugetpackageroot',
+  'nugetpackagefolders', 'nugetprojectstyle', 'nugettargetmoniker', 'netcoresdkversion', 'netcoresdkruntimeidentifier', 'netcoreroot',
+  'netcoretargetingpackroot', 'bundlednetcoreapppackageversion', 'visualstudioversion', 'vstoolspath', 'designtimebuild',
+  'buildinginsidevisualstudio', 'buildingproject', 'language', 'defineconstants', 'langversion', 'nullable', 'implicitusings',
+  'version', 'versionprefix', 'versionsuffix', 'packageversion', 'packageid', 'ispackable', 'istestproject', 'os', 'artifactspath',
+  'useartifactsoutput', 'dotnet_host_path', 'excluderestorepackageimports', 'restoregraphoutputpath', 'restoreprojectstyle',
+]);
+
+/** True when `name` is a property every build defines (RESERVED_PROPERTIES). */
+export const isReservedProperty = (name: string): boolean => /^MSBuild/i.test(name) || /^Pkg[A-Za-z_]/.test(name) || RESERVED_PROPERTIES.has(name.toLowerCase());
+
+/** Environment names that steer dotnet, MSBuild or NuGet themselves: never given a probe value (restoreHostReads `names`). */
+export const TOOL_ENV = /^(?:DOTNET_|MSBUILD|NUGET_|COMPLUS_|CORECLR_)/i;
+
+/** `$(Name` (a property, a property function on it, or `$(Registry:`). Group 1: the name; group 2: a `:` after it. */
+const PROPERTY_REF = /\$\(\s*([A-Za-z_][A-Za-z0-9_-]*)\s*(:?)/g;
+/** A property function that reads the host: the environment, a user-profile folder, the registry. Groups 3-5: a literal variable name. */
+const HOST_READ = /\b(GetEnvironmentVariables?|ExpandEnvironmentVariables|GetFolderPath|GetRegistryValue(?:FromView)?)\b(\s*\(\s*(?:'([A-Za-z_][\w-]*)'|"([A-Za-z_][\w-]*)"|([A-Za-z_][\w-]*))\s*\))?/gi;
+/** `%NAME%`: an environment variable NuGet expands in a config value (a `%XX` escape pair is not one). */
+const ENV_PERCENT = /%([A-Za-z_][A-Za-z0-9_]*)%/g;
+
+/**
+ * The names an MSBuild expression reads: each `$(Name)` as `Name`, and
+ * host reads as pseudo-names in brackets (`[env NAME]` for a literal
+ * GetEnvironmentVariable, `[env ?]` for a computed one, `[registry]`,
+ * `[GetFolderPath]`, ...). With `percent`, `%NAME%` counts as `[env NAME]`.
+ */
+export function expressionRefs(expr: string, percent = false): string[] {
+  const out = new Set<string>();
+  for (const m of expr.matchAll(PROPERTY_REF)) out.add(m[2] && m[1].toLowerCase() === 'registry' ? '[registry]' : m[1]);
+  for (const m of expr.matchAll(HOST_READ)) {
+    const literal = m[3] ?? m[4] ?? m[5];
+    out.add(m[1].toLowerCase() === 'getenvironmentvariable' ? `[env ${literal ?? '?'}]` : `[${m[1]}]`);
+  }
+  if (percent) for (const m of expr.matchAll(ENV_PERCENT)) if (!/^[0-9a-f]{2}$/i.test(m[1])) out.add(`[env ${m[1]}]`);
+  return [...out];
+}
+
+/** One pinned file's property data flow (propertyFlow). */
+export interface PropertyFlow {
+  /** Each property definition: the names its value and conditions (its own and its ancestors') read; `opaque` when an environment value of that name cannot show through it (unconditional, outside a target, not reading its own name). */
+  defs: Array<{ name: string; refs: string[]; opaque: boolean }>;
+  /** The restore-relevant places: a restore source setting (RESTORE_SOURCE_SETTING, also task-set through an Output) and every Import, with the names they read. */
+  roots: Array<{ what: string; refs: string[] }>;
+  /** Every name the file reads anywhere (comments included). */
+  refs: string[];
+}
+
+/**
+ * The property data flow of a pinned MSBuild file (one linear scan) or
+ * response file (its `-p:Name=` global properties, which define names).
+ * Other files: nothing. A file larger than PINNED_READ_MAX: one root that
+ * reads `[not read]`.
+ */
+export function propertyFlow(path: string, text: string): PropertyFlow {
+  const kind = fileKind(path);
+  const defs: PropertyFlow['defs'] = [];
+  const roots: PropertyFlow['roots'] = [];
+  if (kind === 'rsp') {
+    for (const m of text.matchAll(/(?:^|\s)"?[-/](?:p|property):([^\s"]+)/gi)) {
+      for (const part of m[1].split(';')) {
+        const name = part.split('=')[0].trim();
+        if (/^[A-Za-z_][A-Za-z0-9_-]*$/.test(name)) defs.push({ name, refs: [], opaque: true });
+      }
+    }
+    return { defs, roots, refs: [] };
+  }
+  if (kind !== 'msbuild') return { defs, roots, refs: [] };
+  if (text.length > PINNED_READ_MAX) return { defs, roots: [{ what: `the file (larger than ${PINNED_READ_MAX / 1024} KB)`, refs: ['[not read]'] }], refs: [] };
+  type Frame = { tag: XmlTag; parent: string; cond: string[]; conditional: boolean; inTarget: boolean };
+  const attr = (t: XmlTag, name: string): string | undefined => {
+    const a = t.attrs.find(([n]) => n.toLowerCase() === name);
+    return a ? decodeXml(a[1]) : undefined;
+  };
+  const union = (...xs: string[][]): string[] => [...new Set(xs.flat())];
+  const define = (name: string, refs: string[], opaque: boolean): void => {
+    defs.push({ name, refs, opaque });
+    if (RESTORE_SOURCE_SETTING.test(name)) roots.push({ what: `<${name}>`, refs });
+  };
+  const finish = (f: Frame, content: string): void => {
+    if (f.parent.toLowerCase() !== 'propertygroup') return;
+    const refs = union(expressionRefs(decodeXml(content)), f.cond);
+    define(f.tag.name, refs, !f.conditional && !f.inTarget && !refs.some((r) => r.toLowerCase() === f.tag.name.toLowerCase()));
+  };
+  const stack: Frame[] = [];
+  for (const t of scanXml(text).tags) {
+    if (t.close) {
+      const top = stack[stack.length - 1];
+      if (top && top.tag.name === t.name) {
+        stack.pop();
+        finish(top, text.slice(top.tag.end, t.start));
+      }
+      continue;
+    }
+    const parent = stack[stack.length - 1];
+    const condition = attr(t, 'condition');
+    const name = t.name.toLowerCase();
+    const f: Frame = {
+      tag: t,
+      parent: parent?.tag.name ?? '',
+      cond: union(parent?.cond ?? [], condition !== undefined ? expressionRefs(condition) : []),
+      conditional: (parent?.conditional ?? false) || condition !== undefined,
+      inTarget: (parent?.inTarget ?? false) || name === 'target',
+    };
+    if (name === 'import') {
+      const project = attr(t, 'project') ?? '';
+      roots.push({ what: `Import ${JSON.stringify(project.slice(0, 200))}`, refs: union(expressionRefs(project), f.cond) });
+    }
+    // A task's Output that sets a property: the task's attribute values flow into it.
+    const output = name === 'output' ? attr(t, 'propertyname') : undefined;
+    if (output !== undefined && parent) {
+      define(msbuildUnescape(output).trim(), union(...parent.tag.attrs.map(([, v]) => expressionRefs(decodeXml(v))), f.cond), false);
+    }
+    if (t.selfClose) finish(f, '');
+    else stack.push(f);
+  }
+  return { defs, roots, refs: expressionRefs(text) };
+}
+
+/** A pseudo-name of expressionRefs in words. */
+function hostReadWords(ref: string): string {
+  if (ref === '[env ?]') return 'an environment variable whose name is computed';
+  if (ref.startsWith('[env ')) return `the environment variable ${ref.slice(5, -1)}`;
+  if (ref === '[registry]' || /^\[GetRegistryValue/i.test(ref)) return 'the registry';
+  if (ref === '[not read]') return 'nothing the engine could read';
+  return `$([System.Environment]::${ref.slice(1, -1)}(...))`;
+}
+
+/**
+ * Whether a commit's package-source settings read your environment or
+ * machine (engine.ts nugetRestore, before the network opens). `files` are
+ * its pinned definition files (MSBuild, response and nuget.config files;
+ * others are ignored). Static, per commit:
+ * - `reads`: each restore-relevant place (propertyFlow roots: a restore
+ *   source setting, an Import) that reads, directly or through the
+ *   properties the pinned files define (any definition, followed
+ *   transitively), a name no pinned file defines and that is not reserved
+ *   (isReservedProperty), or a host read (an environment, registry or
+ *   user-profile folder function); and each `%NAME%` in a pinned
+ *   nuget.config value, which NuGet expands from the environment.
+ * - `names`: the names an environment value can show through (every name
+ *   read anywhere that no opaque definition sets, plus GetEnvironmentVariable
+ *   and `%NAME%` names), minus reserved names, the restore settings
+ *   themselves and the tool variables (TOOL_ENV): the engine evaluates the
+ *   restore graph once more with a probe value for each and parks when the
+ *   sources change (engine.ts restoreSourcesPark).
+ * - `free`: those of `names` that no pinned file defines at all (the
+ *   probe's fallback when a probe of every name fails to evaluate).
+ */
+export function restoreHostReads(files: ReadonlyArray<{ path: string; text: string }>): { reads: string[]; names: string[]; free: string[] } {
+  const flows = files.map((f) => ({ path: f.path, flow: propertyFlow(f.path, f.text) }));
+  const defs = new Map<string, string[][]>();
+  const opaque = new Set<string>();
+  for (const { flow } of flows) {
+    for (const d of flow.defs) {
+      const key = d.name.toLowerCase();
+      defs.set(key, [...(defs.get(key) ?? []), d.refs]);
+      if (d.opaque) opaque.add(key);
+    }
+  }
+  const reads = new Set<string>();
+  for (const { path, flow } of flows) {
+    for (const root of flow.roots) {
+      const seen = new Set<string>();
+      const queue: Array<[string, string]> = root.refs.map((r) => [r, '']);
+      for (let i = 0; i < queue.length; i++) {
+        const [ref, via] = queue[i];
+        if (ref.startsWith('[')) { reads.add(`${path}: ${root.what} reads ${hostReadWords(ref)}${via}`); continue; }
+        const key = ref.toLowerCase();
+        if (seen.has(key) || isReservedProperty(ref)) continue;
+        seen.add(key);
+        const ds = defs.get(key);
+        if (!ds) { reads.add(`${path}: ${root.what} reads $(${ref})${via}, which no pinned file defines`); continue; }
+        for (const refs of ds) for (const r of refs) queue.push([r, via || ` through $(${ref})`]);
+      }
+    }
+  }
+  const names = new Set<string>();
+  const probe = (n: string): void => { if (!TOOL_ENV.test(n) && !isReservedProperty(n) && !RESTORE_SOURCE_SETTING.test(n)) names.add(n); };
+  for (const { flow } of flows) {
+    for (const r of flow.refs) {
+      if (r.startsWith('[env ') && r !== '[env ?]') probe(r.slice(5, -1));
+      else if (!r.startsWith('[') && !opaque.has(r.toLowerCase())) probe(r);
+    }
+  }
+  for (const f of files) {
+    if (fileKind(f.path) !== 'nuget') continue;
+    if (f.text.length > PINNED_READ_MAX) { reads.add(`${f.path}: not read (larger than ${PINNED_READ_MAX / 1024} KB)`); continue; }
+    for (const t of scanXml(f.text).tags) {
+      for (const [, raw] of t.attrs) {
+        const value = decodeXml(raw);
+        for (const r of expressionRefs(value, true).filter((x) => x.startsWith('[env '))) {
+          reads.add(`${f.path}: the value ${JSON.stringify(value.slice(0, 200))} reads ${hostReadWords(r)}`);
+          if (r !== '[env ?]') probe(r.slice(5, -1));
+        }
+      }
+    }
+  }
+  const sorted = [...names].sort();
+  return { reads: [...reads], names: sorted, free: sorted.filter((n) => !defs.has(n.toLowerCase())) };
+}

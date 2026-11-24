@@ -7,7 +7,7 @@ import { mkdirSync, mkdtempSync, rmSync, symlinkSync, unlinkSync, writeFileSync,
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { hasNodeModulesSegment, nodeModulesReferences, PINNED_READ_MAX, projectSdkMentions, readsForNodeModulesRefs, restoreSettingMentions, unpinnedImports } from '../dotnet-package-refs.js';
+import { expressionRefs, hasNodeModulesSegment, nodeModulesReferences, PINNED_READ_MAX, projectSdkMentions, readsForNodeModulesRefs, restoreHostReads, restoreSettingMentions, unpinnedImports } from '../dotnet-package-refs.js';
 import { gateTreeExactProblem, linkNodeModules } from '../prepare.js';
 /** The ASP.NET Core React/Angular SPA template's project file (shortened): mentions node_modules, reads nothing there. */
 const SPA_CSPROJ = `<Project Sdk="Microsoft.NET.Sdk.Web">
@@ -403,6 +403,62 @@ describe('L1: linear scans of crafted pinned files', () => {
     });
     it('a file above the cap is not read: its references are unknown (one, conservative)', () => {
         expect(nodeModulesReferences('a.props', rep('x', PINNED_READ_MAX + 1))).toEqual([expect.stringContaining('not read')]);
+    });
+});
+describe('restoreHostReads: package-source settings that read your environment or machine', () => {
+    const props = (body) => `<Project>${body}</Project>\n`;
+    const lib = '<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup></Project>\n';
+    const reads = (files) => restoreHostReads(Object.entries(files).map(([path, text]) => ({ path, text })));
+    it('expressionRefs: properties, registry, environment functions, %NAME% only when asked', () => {
+        expect(expressionRefs(`$(A);$( B );$(C.Replace('x','y'));$(Registry:HKEY_X)`).sort()).toEqual(['A', 'B', 'C', '[registry]']);
+        expect(expressionRefs(`$([System.Environment]::GetEnvironmentVariable('CORP'))`)).toEqual(['[env CORP]']);
+        expect(expressionRefs(`$([System.Environment]::GetEnvironmentVariable($(N)))`).sort()).toEqual(['N', '[env ?]']);
+        expect(expressionRefs(`$([System.Environment]::GetFolderPath(SpecialFolder.UserProfile))`)).toEqual(['[GetFolderPath]']);
+        expect(expressionRefs('%CORP%/feed')).toEqual([]);
+        expect(expressionRefs('%CORP%/feed', true)).toEqual(['[env CORP]']);
+        // A URL's %XX escapes are not environment variables.
+        expect(expressionRefs('https://x/a%C3%A9b', true)).toEqual([]);
+    });
+    it('an ordinary repo reads nothing: reserved properties, properties the pinned files define, a nuget.config with literal sources', () => {
+        const r = reads({
+            'nuget.config': '<configuration><packageSources><clear /><add key="nuget.org" value="https://api.nuget.org/v3/index.json" /></packageSources></configuration>',
+            'Directory.Build.props': props(`<PropertyGroup><RepoRoot>$(MSBuildThisFileDirectory)</RepoRoot><ArtifactsDir Condition="'$(ArtifactsDir)' == ''">$(RepoRoot)artifacts/</ArtifactsDir><LocalFeed>$(RepoRoot)feed</LocalFeed><RestoreAdditionalProjectSources>$(LocalFeed)</RestoreAdditionalProjectSources><Out>$(Configuration)/$(TargetFramework)/$(MSBuildProjectDirectory)</Out></PropertyGroup><Import Project="$(RepoRoot)eng/Versions.props" /><Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" Condition="Exists('x')" />`),
+            'eng/Versions.props': props('<PropertyGroup><V>1</V></PropertyGroup>'),
+            'Lib/Lib.csproj': lib,
+            'Directory.Build.rsp': '-p:FromRsp=1\n',
+        });
+        expect(r.reads).toEqual([]);
+        // Only the conditional default can be set from the environment: it is the one name probed.
+        expect(r.names).toEqual(['ArtifactsDir']);
+        expect(r.free).toEqual([]);
+    });
+    it('RestoreSources from an undefined property, a condition on one, GetEnvironmentVariable, the registry: each read', () => {
+        expect(reads({ 'a.props': props('<PropertyGroup><RestoreSources>$(CORP_FEED)</RestoreSources></PropertyGroup>') }).reads).toEqual(['a.props: <RestoreSources> reads $(CORP_FEED), which no pinned file defines']);
+        expect(reads({ 'a.props': props(`<PropertyGroup Condition="'$(CORP)' == 'yes'"><RestoreSources>https://corp/v3</RestoreSources></PropertyGroup>`) }).reads).toEqual(['a.props: <RestoreSources> reads $(CORP), which no pinned file defines']);
+        expect(reads({ 'a.props': props(`<PropertyGroup><RestoreSources>$([System.Environment]::GetEnvironmentVariable('CORP'))</RestoreSources></PropertyGroup>`) }).reads).toEqual(['a.props: <RestoreSources> reads the environment variable CORP']);
+        expect(reads({ 'a.props': props('<PropertyGroup><RestoreConfigFile>$(Registry:HKEY_CURRENT_USER\\Corp@Config)</RestoreConfigFile></PropertyGroup>') }).reads).toEqual(['a.props: <RestoreConfigFile> reads the registry']);
+    });
+    it('through a defined property, transitively; a task Output (escaped name too); an Import guarded by the user profile', () => {
+        const viaProp = reads({ 'a.props': props('<PropertyGroup><Feeds>$(Base);x</Feeds><Base>$(CORP_FEED)</Base><RestoreSources>$(Feeds)</RestoreSources></PropertyGroup>') });
+        expect(viaProp.reads).toEqual(['a.props: <RestoreSources> reads $(CORP_FEED) through $(Feeds), which no pinned file defines']);
+        const task = reads({ 'a.targets': props('<Target Name="T"><CreateProperty Value="$(CORP_FEED)"><Output TaskParameter="Value" PropertyName="Restore%53ources" /></CreateProperty></Target>') });
+        expect(task.reads).toEqual(['a.targets: <RestoreSources> reads $(CORP_FEED), which no pinned file defines']);
+        const imp = reads({ 'Directory.Build.props': props(`<Import Project="$(USERPROFILE)\\corp\\feeds.props" Condition="Exists('$(USERPROFILE)\\corp\\feeds.props')" />`) });
+        expect(imp.reads).toEqual([expect.stringContaining('Import "$(USERPROFILE)\\\\corp\\\\feeds.props" reads $(USERPROFILE), which no pinned file defines')]);
+    });
+    it('a nuget.config value with %NAME% reads the environment and is probed', () => {
+        const r = reads({ 'nuget.config': '<configuration><packageSources><clear /><add key="corp" value="%CORP_FEED%" /></packageSources></configuration>' });
+        expect(r.reads).toEqual(['nuget.config: the value "%CORP_FEED%" reads the environment variable CORP_FEED']);
+        expect(r.names).toEqual(['CORP_FEED']);
+    });
+    it('names: conditional defaults and self-appending properties are probed, unconditional ones are not; tool variables and restore settings never', () => {
+        const r = reads({ 'a.props': props(`<PropertyGroup><Feeds Condition="'$(Feeds)' == ''"></Feeds><Acc>$(Acc);x</Acc><Fixed>1</Fixed><RestoreSources>$(RestoreSources);$(Feeds)</RestoreSources><X>$(Fixed)$(DOTNET_ROOT)$(NUGET_PACKAGES)$(Undef)</X></PropertyGroup>`) });
+        expect(r.reads).toEqual([]);
+        expect(r.names).toEqual(['Acc', 'Feeds', 'Undef']);
+        expect(r.free).toEqual(['Undef']);
+    });
+    it('a file above the cap is a read the engine cannot clear', () => {
+        expect(reads({ 'a.props': 'x'.repeat(PINNED_READ_MAX + 1) }).reads).toEqual([expect.stringContaining('nothing the engine could read')]);
     });
 });
 //# sourceMappingURL=dotnet-package-refs.test.js.map

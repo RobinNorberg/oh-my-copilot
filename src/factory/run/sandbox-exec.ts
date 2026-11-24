@@ -38,7 +38,7 @@
  */
 
 import { randomBytes, randomUUID } from 'node:crypto';
-import { lstatSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { userInfo } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { defaultCopilotRunDeps, type CopilotRunDeps } from '../../copilot-run/job.js';
@@ -58,6 +58,7 @@ import {
   type SandboxSettings,
 } from '../../copilot-run/sandbox.js';
 import { defaultContainerExec, runContainerGate } from './container-gate.js';
+import { TOOL_ENV } from './dotnet-package-refs.js';
 import { dotnetSandboxArgs, dotnetSandboxEnv, isDotnetExe, msbuildEscape, readRegularFileBounded, sandboxNugetConfig, type RunNugetPackages } from '../../copilot-run/dotnet-sandbox.js';
 import { SessionSandboxController } from '../../copilot-run/sandbox-session.js';
 import { errText, withTimeout } from '../../copilot-run/timeout.js';
@@ -169,6 +170,12 @@ export interface SandboxRunRequest {
    * only: with `container` nothing runs.
    */
   restoreGraph?: true;
+  /**
+   * With `restoreGraph` only: environment variables the evaluation gets on top of the sandbox's own (a name the sandbox env
+   * already holds, in any case, is never replaced): the engine's probe for package-source settings that read your
+   * environment (engine.ts restoreSourcesPark).
+   */
+  probeEnv?: Record<string, string>;
 }
 
 /** The gate record and PR note line for a sandboxed run on a host without denied_paths. */
@@ -226,6 +233,8 @@ export interface SandboxExecOptions {
   nugetFromGit?: true;
   /** SandboxRunRequest.restoreGraph. */
   restoreGraph?: true;
+  /** SandboxRunRequest.probeEnv. */
+  probeEnv?: Record<string, string>;
 }
 
 export const MARKER_PREFIX = 'omg-gate-exit-';
@@ -405,6 +414,12 @@ export async function runSandboxed(argv: readonly string[], o: SandboxExecOption
       dotnetWrites.push(...d.readwrite);
       dotnetNotes.push(...d.notes);
     }
+    // The restore-source evaluation's environment probe: a value for each name the env does not already hold (any case), never
+    // one that steers dotnet, MSBuild or NuGet themselves (TOOL_ENV).
+    if (graphFile && o.probeEnv) {
+      const held = new Set(Object.keys(env).map((k) => k.toLowerCase()));
+      for (const [k, v] of Object.entries(o.probeEnv)) if (/^[A-Za-z_][A-Za-z0-9_-]*$/.test(k) && !TOOL_ENV.test(k) && !held.has(k.toLowerCase())) env[k] = v;
+    }
     const credentialSource = { userConfigDir: deps.userConfigDir(), platform: deps.platform };
     const gitHubToken = sessionGitHubToken(deps.env, credentialSource);
     const secrets = secretValues(deps.env, credentialSource);
@@ -531,7 +546,7 @@ export async function runSandboxed(argv: readonly string[], o: SandboxExecOption
     // The graph the command wrote (the job temp dir is the command's own): a regular file of one link, bounded, never followed.
     let graph: Buffer | null = null;
     if (graphFile && read.code === 0) {
-      try { graph = lstatSync(graphFile).nlink === 1 ? readRegularFileBounded(graphFile, RESTORE_GRAPH_MAX_BYTES) : null; } catch { graph = null; }
+      graph = readRegularFileBounded(graphFile, RESTORE_GRAPH_MAX_BYTES, { singleLink: true });
     }
     return { ran: true, status: read.code, output: `${tail(read.output.trim())}${why}`, timedOut: false, ...marked, ...(graph ? { restoreGraph: graph.toString('utf8') } : {}) };
   } catch (err) {
@@ -598,6 +613,7 @@ export function createSandboxRunner(root: string, deps: SandboxExecDeps = defaul
       ...(req.nugetNoAddSource ? { nugetNoAddSource: true as const } : {}),
       ...(req.nugetFromGit ? { nugetFromGit: true as const } : {}),
       ...(req.restoreGraph ? { restoreGraph: true as const } : {}),
+      ...(req.restoreGraph && req.probeEnv ? { probeEnv: req.probeEnv } : {}),
     }, deps);
   };
 }

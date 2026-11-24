@@ -3,7 +3,7 @@
  * NuGet packages folder lookup and the env a sandboxed dotnet gets.
  */
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -291,6 +291,14 @@ describe('one NuGet config for a sandboxed dotnet (RestoreConfigFile)', () => {
         }
         if (linked)
             expect(readRegularFileBounded(join(dir, 'l.config'), 10)).toBeNull();
+    });
+    it('readRegularFileBounded singleLink: a file with a second hard link is refused; without the option it is read', () => {
+        const f = join(dir, 'g.json');
+        writeFileSync(f, 'abc');
+        expect(readRegularFileBounded(f, 10, { singleLink: true })?.toString()).toBe('abc');
+        linkSync(f, join(dir, 'h.json'));
+        expect(readRegularFileBounded(f, 10, { singleLink: true })).toBeNull();
+        expect(readRegularFileBounded(f, 10)?.toString()).toBe('abc');
     });
 });
 /** A root nuget.config shape, its bytes, and whether `dotnet nuget list source` in its dir (a fresh default user config

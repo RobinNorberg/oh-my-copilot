@@ -122,7 +122,7 @@ import { acquireFactoryClaim, claimBusyMessage, factoryClaimHolder, factoryClaim
 import { compareSnapshots, replaceObjectsProblem, samePath, snapshotRepo, verifyReviewWorktree } from './review-guard.js';
 import { GATE_INSTALL_GATE, IMPORT_REFUSED_GATE, LAYOUT_UNSUPPORTED_GATE, PRIVATE_STORE_GATE, PrivateRun, REPO_GUARD_GATE, resolveGateInstall, resolveRunLayout } from './private-run.js';
 import { classifyNugetFailure, dotnetRestoreArgs, GATE_INSTALL_SANDBOXED_HINT, missingDefinitionFile, NUGET_PRIVATE_FEED_UNSUPPORTED, nugetConfigUnreadableReason, nugetDefinitionTreeDir, nugetRunPackagesDir, nugetSubstituted, parseCatFileBatch, removeEngineDir, restoreApprovalNote, restoreGraphArgs, restoreGraphSources, restoreSourcesDifference, writeDefinitionTree } from './nuget-restore.js';
-import { nodeModulesReferences, projectSdkMentions, readsForNodeModulesRefs, restoreSettingMentions, unpinnedImports } from './dotnet-package-refs.js';
+import { nodeModulesReferences, projectSdkMentions, readsForNodeModulesRefs, restoreHostReads, restoreSettingMentions, unpinnedImports } from './dotnet-package-refs.js';
 import { lockfileUnchanged, PRIVATE_GIT_TIMEOUT_MS, PrivateRepoTampered, PrivateStoreError, userRepoGuardSnapshot } from './private-store.js';
 import { parseReviewOutput, reviewComment, verdictNotes } from './review-output.js';
 import { findPlanLink, hasAcceptanceCriteria, issueAuthorTrusted } from './plan-rules.js';
@@ -346,6 +346,17 @@ const HEX40 = /^[0-9a-f]{40}$/;
 const DOTNET_CLEAN_TIMEOUT_MS = 5 * 60_000;
 /** How long each offline evaluation of the restore sources before the networked restore step may take (restoreSourcesPark). */
 const RESTORE_SOURCES_TIMEOUT_MS = 5 * 60_000;
+/** The most names restoreSourcesPark gives a probe value in one evaluation (each is one environment variable); more parks. */
+const ENV_PROBE_MAX_NAMES = 400;
+/** What the restore step's environment parks ask for. */
+const ENV_READ_REMEDY = "declare the feed in the repository's nuget.config (a <packageSources> entry, no %VARIABLE%), not through your environment";
+/** The environment parks' why: the first places that read your environment or machine (dotnet-package-refs.ts restoreHostReads). */
+function envReadWhy(reads) {
+    const named = `${reads.slice(0, 3).map((r) => oneLine(visibleLine(r), 240)).join('; ')}${reads.length > 3 ? `; ${reads.length - 3} more` : ''}`;
+    return `a package-source setting of the repository reads your environment or machine (${named}), which the sandbox does not pass, so there that restriction would be empty and the restore could reach nuget.org where the same command on your machine would use only your feed`;
+}
+/** The value restoreSourcesPark's probe gives an environment name: unique per name, never a real source. */
+const envProbeValue = (name) => `omg-env-probe-${name}`;
 /** L7: the output lines a ci-failed park shows, and the characters of each and of the whole tail. */
 const PARK_TAIL_LINES = 12;
 const PARK_TAIL_LINE_CHARS = 200;
@@ -1595,13 +1606,18 @@ class FactoryEngine {
      *   initialises them, so a source restriction a file in one sets is never
      *   seen: no copy is written (they are in `noAddSource` too), and the
      *   networked restore step parks up front (nugetRestore).
+     * - `hostReads` / `envNames`: where either commit's package-source
+     *   settings read your environment or machine, and the names an
+     *   environment value can show through (restoreHostReads): the restore
+     *   step parks on the first and probes the second (nugetRestore,
+     *   restoreSourcesPark).
      * Throws (a step error) when a commit cannot be read.
      */
     dotnetNugetPolicy(commit, argv = []) {
         const base = this.state.baseSha && HEX40.test(this.state.baseSha) ? this.state.baseSha : undefined;
         const own = commit && HEX40.test(commit) ? commit : base;
         if (!own)
-            return { hierarchy: null, noAddSource: [], rootSources: [], sdks: [], gitlinks: [] };
+            return { hierarchy: null, noAddSource: [], rootSources: [], sdks: [], gitlinks: [], hostReads: [], envNames: [], envFree: [] };
         // Every fact of the base and of `own` only makes the set-up stricter (a union): neither commit can relax what the other pins.
         const both = base && base !== own;
         const all = (both ? [own, base] : [own]).map((sha) => ({ sha, facts: this.dotnetPinnedFacts(sha) }));
@@ -1625,7 +1641,7 @@ class FactoryEngine {
         // A root config that defines a package-source policy in either commit: the tree's own root file (which the sandbox reads) gets nothing added either.
         const rootSources = all.flatMap(({ sha, facts }) => ('verdict' in facts.root && !facts.root.verdict.addNugetOrg ? [`the root ${facts.root.name} at ${sha.slice(0, 12)}`] : []));
         const gitlinks = union((f) => f.gitlinks).sort();
-        return { hierarchy, noAddSource: [...union((f) => f.restoreSettings), ...union((f) => f.unpinnedImports), ...union((f) => f.settingRefs), ...fromArgv, ...gitlinks.map((p) => `${p}: a submodule`)], rootSources, sdks: union((f) => f.projectSdks), gitlinks };
+        return { hierarchy, noAddSource: [...union((f) => f.restoreSettings), ...union((f) => f.unpinnedImports), ...union((f) => f.settingRefs), ...fromArgv, ...gitlinks.map((p) => `${p}: a submodule`)], rootSources, sdks: union((f) => f.projectSdks), gitlinks, hostReads: union((f) => f.hostReads.reads), envNames: union((f) => f.hostReads.names).sort(), envFree: union((f) => f.hostReads.free).sort() };
     }
     /**
      * The nuget.config files the commit's MSBuild project SDK resolution
@@ -5383,9 +5399,12 @@ class FactoryEngine {
         // engine cannot tell which sources the repository uses: no restore, and no nuget.org-only config written for it.
         let imports;
         let gitlinks;
+        let hostReads;
+        let envNames;
+        let envFree;
         try {
             imports = this.dotnetPinnedFacts(head).unpinnedImports;
-            gitlinks = this.dotnetNugetPolicy(head).gitlinks;
+            ({ gitlinks, hostReads, envNames, envFree } = this.dotnetNugetPolicy(head));
         }
         catch (error) {
             return { name: GATE_INSTALL_GATE, reason: `${what} did not run: the definition files of ${head.slice(0, 12)} could not be read (${errText(error)}); rerun ${this.resume}` };
@@ -5400,6 +5419,12 @@ class FactoryEngine {
             const named = `${imports.slice(0, 3).map((i) => oneLine(visibleLine(i), 240)).join('; ')}${imports.length > 3 ? `; ${imports.length - 3} more` : ''}`;
             return { name: GATE_INSTALL_GATE, reason: `${what} did not run: the build imports a file that is not a pinned definition file (${named}), so the engine cannot tell which package sources the repository uses; restore the PR branch's packages into your NuGet global packages folder yourself, or move those settings into a .props file, then rerun ${this.resume}; or ${cancelCommand(this.key)}` };
         }
+        // A package-source setting or import that reads your environment or machine (of the head or the base): the sandbox passes
+        // neither, so there the restriction would be empty and the restore could reach nuget.org where your machine would not.
+        if (hostReads.length > 0)
+            return { name: GATE_INSTALL_GATE, reason: `${what} did not run: ${envReadWhy(hostReads)}; ${ENV_READ_REMEDY}, then rerun ${this.resume}; or restore the PR branch's packages into your NuGet global packages folder yourself; or ${cancelCommand(this.key)}` };
+        if (envNames.length > ENV_PROBE_MAX_NAMES)
+            return { name: GATE_INSTALL_GATE, reason: `${what} did not run: the pinned definition files read ${envNames.length} property names that an environment variable can set (more than the ${ENV_PROBE_MAX_NAMES} the engine probes before a restore, ${envNames.slice(0, 5).join(', ')}, ...), so the engine cannot tell whether a package-source setting reads your environment; ${ENV_READ_REMEDY}, or define those properties unconditionally in a pinned .props file, then rerun ${this.resume}; or restore the PR branch's packages into your NuGet global packages folder yourself; or ${cancelCommand(this.key)}` };
         let live;
         try {
             live = this.liveCheckoutProcs(head);
@@ -5449,7 +5474,7 @@ class FactoryEngine {
         // The authority over every up-front park above: the restore runs only when MSBuild evaluates the same restore sources
         // for every project in the definition tree as in the gate checkout (restoreSourcesPark).
         const evalStarted = this.clock();
-        const differs = await this.restoreSourcesPark(head, args, tree, checkout, common, gates, jobRoot);
+        const differs = await this.restoreSourcesPark(head, args, tree, checkout, common, gates, jobRoot, envNames, envFree);
         if (differs) {
             this.removeTree(tree, jobRoot);
             if (checkoutGitLink(checkout).hash !== linkBefore) {
@@ -5543,8 +5568,13 @@ class FactoryEngine {
      * restore graph, no more than the gate that follows runs there. It loads
      * imports as a build does, stricter than restore's own evaluation (which
      * skips a missing or unreadable import): such an import fails it, and parks.
+     * With `envNames` (restoreHostReads `names`), equal sources get a third
+     * evaluation in the tree with a probe value in the environment for each
+     * name (retried with `envFree` alone when it fails): other sources, or a
+     * failure, park, since a package-source setting then reads your
+     * environment, which the sandbox does not pass.
      */
-    async restoreSourcesPark(head, restoreArgs, tree, checkout, common, gates, jobRoot) {
+    async restoreSourcesPark(head, restoreArgs, tree, checkout, common, gates, jobRoot, envNames = [], envFree = []) {
         const what = 'the gate needs NuGet packages that are not in your NuGet global packages folder, and the sandboxed dotnet restore did not run';
         const yourself = `restore the PR branch's packages into your NuGet global packages folder yourself (dotnet restore on that branch), then rerun ${this.resume}; or ${cancelCommand(this.key)}`;
         const park = (why, detail) => ({ name: GATE_INSTALL_GATE, reason: `${what}: ${why}; ${yourself}`, ...(detail ? { detail } : {}) });
@@ -5555,11 +5585,11 @@ class FactoryEngine {
         const repointed = this.nodeModulesRepointed(checkout);
         if (repointed)
             return { name: 'lane-tampered', reason: `${what}: ${join(checkout, 'node_modules')} (or a link in it) is not as the engine made it, so the PR's code changed it; inspect and remove ${checkout} by hand, then rerun ${this.resume}`, detail: oneLine(visibleLine(repointed), PARK_TAIL_CHARS) };
-        const evaluate = async (cwd, where) => {
+        const evaluate = async (cwd, where, probeEnv) => {
             let r;
             try {
                 r = this.o.gateSandbox
-                    ? await this.sandboxRun({ purpose: 'sources', argv, exe: target.exe, args: target.args, cwd, commonGitDir: common, timeoutMs: RESTORE_SOURCES_TIMEOUT_MS, network: 'none', restoreGraph: true, ...(gates.requireDeniedPaths ? { requireDeniedPaths: true } : {}) }, undefined, () => head)
+                    ? await this.sandboxRun({ purpose: 'sources', argv, exe: target.exe, args: target.args, cwd, commonGitDir: common, timeoutMs: RESTORE_SOURCES_TIMEOUT_MS, network: 'none', restoreGraph: true, ...(probeEnv ? { probeEnv } : {}), ...(gates.requireDeniedPaths ? { requireDeniedPaths: true } : {}) }, undefined, () => head)
                     : { ran: false, reason: 'no OS sandbox runner was given to the engine' };
             }
             catch (error) {
@@ -5584,9 +5614,31 @@ class FactoryEngine {
         if (!(inCheckout instanceof Map))
             return inCheckout;
         const diff = restoreSourcesDifference(inTree, inCheckout);
-        if (!diff)
-            return null;
         const shown = (xs) => (xs === null ? 'not a restore project there' : xs.length === 0 ? 'none' : `${xs.slice(0, 5).map((s) => oneLine(plainText(s), 200)).join(', ')}${xs.length > 5 ? `, ${xs.length - 5} more` : ''}`);
+        if (!diff) {
+            // The environment probe: both evaluations above ran with the sandbox's scrubbed environment, so a setting that reads
+            // your environment is empty in both. Once more in the definition tree with a probe value for every name an
+            // environment variable can set: other sources mean a package-source setting reads your environment.
+            if (envNames.length === 0)
+                return null;
+            const named = (xs) => `${xs.slice(0, 5).join(', ')}${xs.length > 5 ? `, ${xs.length - 5} more` : ''}`;
+            const probe = async (names) => evaluate(tree, `the engine's definition tree with a probe value for ${named(names)}`, Object.fromEntries(names.map((n) => [n, envProbeValue(n)])));
+            let probed = await probe(envNames);
+            let names = envNames;
+            // A probe that fails (a property with a default in a pinned file that an Import path is built from): once more with only
+            // the names no pinned file defines at all; one that fails too parks.
+            if (!(probed instanceof Map) && envFree.length > 0 && envFree.length < envNames.length) {
+                names = envFree;
+                probed = await probe(envFree);
+            }
+            if (!(probed instanceof Map)) {
+                return park(`MSBuild's evaluation of the restore sources fails in the engine's definition tree when the environment sets ${named(names)} (each to a probe value), so the build reads your environment and the engine cannot tell whether that changes its package sources; ${ENV_READ_REMEDY}, or define those properties unconditionally in a pinned .props file`, probed.detail);
+            }
+            const envDiff = restoreSourcesDifference(inTree, probed);
+            if (!envDiff)
+                return null;
+            return park(`MSBuild evaluates other restore sources for ${oneLine(plainText(envDiff.project), 200)} when the environment sets ${named(names)} (${shown(envDiff.checkout)}) than without (${shown(envDiff.tree)}): a package-source setting reads your environment, which the sandbox does not pass, so there that restriction would be empty and the restore could reach nuget.org where the same command on your machine would use only your feed; ${ENV_READ_REMEDY}`);
+        }
         return park(`MSBuild evaluates other restore sources for ${oneLine(plainText(diff.project), 200)} in the engine's definition tree (${shown(diff.tree)}) than in the gate checkout (${shown(diff.checkout)}), so a restore there could reach a source NuGet in the checkout would not use (or miss one it would): a file that sets the sources exists in the checkout but not among the pinned definition files (an untracked or npm-installed import, a file behind an Exists condition); declare the sources in the repository's root nuget.config or in a pinned .props file`);
     }
     /**
@@ -5691,6 +5743,7 @@ class FactoryEngine {
         const projectSdks = [];
         const unpinned = [];
         let verdict;
+        const texts = [];
         const oids = [...new Set([...files.map(([, oid]) => oid), ...(rootOid ? [rootOid] : [])])];
         if (oids.length > 0) {
             const env = { ...scrubShipEnv(process.env), ...TRUSTED_READ_ENV };
@@ -5703,6 +5756,7 @@ class FactoryEngine {
             };
             for (const [p, oid] of files) {
                 const text = blob(p, oid).toString('utf8');
+                texts.push({ path: p, text });
                 for (const r of nodeModulesReferences(p, text)) {
                     refs.push(`${p}: ${r}`);
                     if (!/^(?:Exec|UsingTask) /.test(r))
@@ -5732,6 +5786,7 @@ class FactoryEngine {
             projectSdks,
             unpinnedImports: unpinned,
             gitlinks: gitlinks.sort(),
+            hostReads: restoreHostReads(texts),
         };
         if (this.pinnedFactsAt.size >= 4)
             this.pinnedFactsAt.delete(this.pinnedFactsAt.keys().next().value);

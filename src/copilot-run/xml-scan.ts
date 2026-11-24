@@ -26,6 +26,9 @@ export interface XmlTag {
   attrs: Array<[string, string]>;
   /** The name of the element directly around this tag ('' at the top; for a close tag: around the element it closes). */
   parent: string;
+  /** The offset of the tag's `<` and the one just past its `>`: the text between an open tag's `end` and its close tag's `start` is the element's content. */
+  start: number;
+  end: number;
 }
 
 export interface XmlScan {
@@ -148,12 +151,12 @@ export function scanXml(xml: string): XmlScan {
     if (close) {
       if (stack[stack.length - 1] !== name) odd.add('a close tag that does not match');
       else stack.pop();
-      tags.push({ name, close, selfClose: false, attrs, parent: stack[stack.length - 1] ?? '' });
+      tags.push({ name, close, selfClose: false, attrs, parent: stack[stack.length - 1] ?? '', start: i, end: j });
       if (stack.length === 0) rootClosed = true;
     } else {
       if (stack.length === 0 && (sawElement || rootClosed)) odd.add('a second root element');
       sawElement = true;
-      tags.push({ name, close, selfClose, attrs, parent: stack[stack.length - 1] ?? '' });
+      tags.push({ name, close, selfClose, attrs, parent: stack[stack.length - 1] ?? '', start: i, end: j });
       if (selfClose) { if (stack.length === 0) rootClosed = true; } else stack.push(name);
     }
     i = j;

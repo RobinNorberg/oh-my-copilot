@@ -37,12 +37,13 @@
  * boundary: unsandboxed code still runs with the user's rights.
  */
 import { randomBytes, randomUUID } from 'node:crypto';
-import { lstatSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { userInfo } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { defaultCopilotRunDeps } from '../../copilot-run/job.js';
 import { allowlistSessionEnv, copilotConfigDenies, loadSandboxSettings, laneToolPaths, missingSandboxEnv, NUGET_HOSTS, proxyCaEnv, scrubTokens, secretValues, sessionGitHubToken, } from '../../copilot-run/sandbox.js';
 import { defaultContainerExec, runContainerGate } from './container-gate.js';
+import { TOOL_ENV } from './dotnet-package-refs.js';
 import { dotnetSandboxArgs, dotnetSandboxEnv, isDotnetExe, msbuildEscape, readRegularFileBounded, sandboxNugetConfig } from '../../copilot-run/dotnet-sandbox.js';
 import { SessionSandboxController } from '../../copilot-run/sandbox-session.js';
 import { errText, withTimeout } from '../../copilot-run/timeout.js';
@@ -243,6 +244,14 @@ export async function runSandboxed(argv, o, deps) {
             dotnetWrites.push(...d.readwrite);
             dotnetNotes.push(...d.notes);
         }
+        // The restore-source evaluation's environment probe: a value for each name the env does not already hold (any case), never
+        // one that steers dotnet, MSBuild or NuGet themselves (TOOL_ENV).
+        if (graphFile && o.probeEnv) {
+            const held = new Set(Object.keys(env).map((k) => k.toLowerCase()));
+            for (const [k, v] of Object.entries(o.probeEnv))
+                if (/^[A-Za-z_][A-Za-z0-9_-]*$/.test(k) && !TOOL_ENV.test(k) && !held.has(k.toLowerCase()))
+                    env[k] = v;
+        }
         const credentialSource = { userConfigDir: deps.userConfigDir(), platform: deps.platform };
         const gitHubToken = sessionGitHubToken(deps.env, credentialSource);
         const secrets = secretValues(deps.env, credentialSource);
@@ -381,12 +390,7 @@ export async function runSandboxed(argv, o, deps) {
         // The graph the command wrote (the job temp dir is the command's own): a regular file of one link, bounded, never followed.
         let graph = null;
         if (graphFile && read.code === 0) {
-            try {
-                graph = lstatSync(graphFile).nlink === 1 ? readRegularFileBounded(graphFile, RESTORE_GRAPH_MAX_BYTES) : null;
-            }
-            catch {
-                graph = null;
-            }
+            graph = readRegularFileBounded(graphFile, RESTORE_GRAPH_MAX_BYTES, { singleLink: true });
         }
         return { ran: true, status: read.code, output: `${tail(read.output.trim())}${why}`, timedOut: false, ...marked, ...(graph ? { restoreGraph: graph.toString('utf8') } : {}) };
     }
@@ -488,6 +492,7 @@ export function createSandboxRunner(root, deps = defaultCopilotRunDeps(), layers
             ...(req.nugetNoAddSource ? { nugetNoAddSource: true } : {}),
             ...(req.nugetFromGit ? { nugetFromGit: true } : {}),
             ...(req.restoreGraph ? { restoreGraph: true } : {}),
+            ...(req.restoreGraph && req.probeEnv ? { probeEnv: req.probeEnv } : {}),
         }, deps);
     };
 }
