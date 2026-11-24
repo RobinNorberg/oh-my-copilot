@@ -133,7 +133,10 @@ export interface RunNugetPackages {
  * take one anyway); `readwrite` holds the run's folder when it is writable.
  * An engine-written config (`written`: the nuget.org-only file or the root
  * config's copy, both in the job profile, which the sandbox can write) is
- * granted read-only, so the command cannot change it.
+ * granted read-only: the file cannot be modified by sandboxed code, but its
+ * directory can be renamed within the same command (the profile is
+ * writable). It is written before the command starts, lives in that
+ * command's own job home and never outlives it.
  */
 export declare function dotnetSandboxEnv(profile: string, hostEnv: NodeJS.ProcessEnv, realHome: string, platform?: NodeJS.Platform, run?: RunNugetPackages, nugetConfig?: DotnetNugetConfig): {
     env: Record<string, string>;
@@ -253,7 +256,9 @@ export declare const NUGET_ORG_PACKAGE_SOURCES = "  <packageSources>\n    <add k
  * props or imported file, a task) replaces it, exactly as plain NuGet
  * replaces the user config's nuget.org. `why` instead (no copy; the caller
  * uses the file as it is, never widens) when nugetConfigVerdict does not
- * say `addNugetOrg`, when it holds a `pathSetting`, or when the root's end
+ * say `addNugetOrg`, when it holds a `pathSetting`, when its XML
+ * declaration names an encoding other than utf-8 or us-ascii (the bytes are
+ * read as UTF-8; NuGet would decode them otherwise), or when the root's end
  * is not certain: an attribute value holds `<` (a quoted `</configuration>`
  * would look like one), or the last `</configuration` (or, for a
  * self-closed root, the last `/>`) is followed by anything but `>` and

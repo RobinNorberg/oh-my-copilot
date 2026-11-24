@@ -20,7 +20,10 @@
  * (DOTNET_DEFINITION_PATTERNS), written from git objects and checked
  * against their object ids. A file the PR controls outside those patterns
  * (an imported .msbuild, a script, a .cs, a DLL, the sources) is not there,
- * so nothing but pinned files is evaluated with the network on.
+ * so nothing but pinned files is evaluated with the network on. It runs only
+ * when MSBuild evaluates the same restore sources for every project there as
+ * in the gate checkout (restoreGraphArgs, restoreGraphSources; engine.ts
+ * restoreSourcesPark): a source restriction in a file the tree lacks parks.
  */
 import { createHash } from 'node:crypto';
 import { lstatSync, mkdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
@@ -218,6 +221,96 @@ export function dotnetRestoreArgs(gateArgs) {
     if (!targets.every(insideRepo))
         return null;
     return ['restore', ...targets, ...extra];
+}
+/**
+ * The `dotnet msbuild` arguments that write NuGet's restore graph (the
+ * dgspec NuGet's restore builds before it fetches anything) for what
+ * `dotnet <restoreArgs>` (dotnetRestoreArgs) restores: the same target, its
+ * runtime as `-p:RuntimeIdentifier=` (what `dotnet restore -r` passes), the
+ * same properties, `-t:GenerateRestoreGraphFile` and
+ * `-p:ExcludeRestorePackageImports=true` (how NuGet evaluates a project for
+ * restore: no package-provided props). The sandbox runner adds
+ * `-p:RestoreGraphOutputPath=` (restoreGraph) and `-m:1`. Evaluation only:
+ * no package is fetched, and it runs offline.
+ */
+export function restoreGraphArgs(restoreArgs) {
+    const out = ['msbuild'];
+    const rest = restoreArgs.slice(1);
+    for (let i = 0; i < rest.length; i++) {
+        const a = rest[i];
+        if ((a === '-r' || a === '--runtime') && i + 1 < rest.length)
+            out.push(`-p:RuntimeIdentifier=${rest[++i]}`);
+        else if (/^(?:-r|--runtime)[=:]/.test(a))
+            out.push(`-p:RuntimeIdentifier=${a.replace(/^(?:-r|--runtime)[=:]/, '')}`);
+        else
+            out.push(a);
+    }
+    return [...out, '-t:GenerateRestoreGraphFile', '-p:ExcludeRestorePackageImports=true', '-nologo'];
+}
+/**
+ * A package source as the restore-source comparison reads it: trimmed; a
+ * URL (`<scheme>://...`) in lower case without trailing slashes; a local
+ * path resolved against `root` (the tree the evaluation ran in) without
+ * trailing separators, as `<repository>/<path>` with `/` when it lies inside
+ * `root` (the same in-repository feed in the definition tree and in the gate
+ * checkout compares equal), else as the absolute path with `/`; in lower
+ * case on Windows.
+ */
+export function normalizeRestoreSource(source, root, platform = process.platform) {
+    const s = source.trim();
+    if (/^[a-z][a-z0-9+.-]+:\/\//i.test(s))
+        return s.toLowerCase().replace(/\/+$/, '');
+    const P = platform === 'win32' ? win32 : posix;
+    const top = P.resolve(root);
+    const abs = P.resolve(top, s).replace(/[\\/]+$/, '') || P.sep;
+    const rel = P.relative(top, abs);
+    const inside = rel === '' || (rel !== '..' && !rel.startsWith(`..${P.sep}`) && !P.isAbsolute(rel));
+    const shown = inside ? `<repository>${rel ? `/${rel.split(P.sep).join('/')}` : ''}` : abs.split(P.sep).join('/');
+    return platform === 'win32' ? shown.toLowerCase() : shown;
+}
+/**
+ * Each project's restore sources in a restore graph (the dgspec JSON that
+ * `-t:GenerateRestoreGraphFile` writes): `projects.<path>.restore.sources`,
+ * keyed by the project path normalised as a local source
+ * (normalizeRestoreSource against `root`), each a sorted set of normalised
+ * sources. A project without `restore.sources` has none. `problem` when the
+ * text is not a restore graph.
+ */
+export function restoreGraphSources(text, root, platform = process.platform) {
+    let graph;
+    try {
+        graph = JSON.parse(text.charCodeAt(0) === 0xfeff ? text.slice(1) : text);
+    }
+    catch {
+        return { problem: 'the restore graph is not valid JSON' };
+    }
+    const projects = graph?.projects;
+    if (!projects || typeof projects !== 'object' || Array.isArray(projects))
+        return { problem: 'the restore graph has no projects object' };
+    const out = new Map();
+    for (const [path, spec] of Object.entries(projects)) {
+        const sources = spec?.restore?.sources;
+        if (sources !== undefined && (!sources || typeof sources !== 'object' || Array.isArray(sources)))
+            return { problem: `the restore graph's sources of a project are not an object` };
+        const key = normalizeRestoreSource(path, root, platform);
+        const set = [...new Set(Object.keys((sources ?? {})).map((s) => normalizeRestoreSource(s, root, platform)))].sort();
+        out.set(key, [...new Set([...(out.get(key) ?? []), ...set])].sort());
+    }
+    return { projects: out };
+}
+/**
+ * The first project (in sorted order) whose restore sources differ between
+ * two restore graphs (restoreGraphSources), with both lists (null: the
+ * graph has no such project), or null when every project has the same set.
+ */
+export function restoreSourcesDifference(tree, checkout) {
+    for (const project of [...new Set([...tree.keys(), ...checkout.keys()])].sort()) {
+        const a = tree.get(project) ?? null;
+        const b = checkout.get(project) ?? null;
+        if (!a || !b || a.length !== b.length || a.some((s, i) => s !== b[i]))
+            return { project, tree: a, checkout: b };
+    }
+    return null;
 }
 /** The run's own NuGet packages folder: `<gate job root>/nuget/<run slug>`, outside every checkout and never your real cache. */
 export const nugetRunPackagesDir = (gateJobRoot, slug) => join(gateJobRoot, 'nuget', slug);

@@ -206,7 +206,10 @@ export interface RunNugetPackages {
  * take one anyway); `readwrite` holds the run's folder when it is writable.
  * An engine-written config (`written`: the nuget.org-only file or the root
  * config's copy, both in the job profile, which the sandbox can write) is
- * granted read-only, so the command cannot change it.
+ * granted read-only: the file cannot be modified by sandboxed code, but its
+ * directory can be renamed within the same command (the profile is
+ * writable). It is written before the command starts, lives in that
+ * command's own job home and never outlives it.
  */
 export function dotnetSandboxEnv(profile: string, hostEnv: NodeJS.ProcessEnv, realHome: string, platform: NodeJS.Platform = process.platform, run?: RunNugetPackages, nugetConfig?: DotnetNugetConfig): { env: Record<string, string>; readonly: string[]; readwrite: string[]; notes: string[] } {
   const grant = nugetPackagesGrant(hostEnv, realHome, omcRoots(realHome), platform);
@@ -455,7 +458,9 @@ export const NUGET_ORG_PACKAGE_SOURCES = `  <packageSources>\n    <add key="nuge
  * props or imported file, a task) replaces it, exactly as plain NuGet
  * replaces the user config's nuget.org. `why` instead (no copy; the caller
  * uses the file as it is, never widens) when nugetConfigVerdict does not
- * say `addNugetOrg`, when it holds a `pathSetting`, or when the root's end
+ * say `addNugetOrg`, when it holds a `pathSetting`, when its XML
+ * declaration names an encoding other than utf-8 or us-ascii (the bytes are
+ * read as UTF-8; NuGet would decode them otherwise), or when the root's end
  * is not certain: an attribute value holds `<` (a quoted `</configuration>`
  * would look like one), or the last `</configuration` (or, for a
  * self-closed root, the last `/>`) is followed by anything but `>` and
@@ -468,6 +473,11 @@ export function nugetOrgCopy(bytes: Buffer): { copy: Buffer } | { why: string } 
   const v = nugetConfigVerdict(bytes);
   if (!v.addNugetOrg) return { why: v.why ?? 'it may define package sources' };
   if (v.pathSetting) return { why: `it holds ${v.pathSetting}, which may be a path NuGet resolves against that file's own directory, so the engine writes no copy of it elsewhere` };
+  // The bytes are read as UTF-8: a declaration naming another encoding would make NuGet read them otherwise.
+  const decoded = bytes.toString('utf8');
+  const declared = /^\s*<\?xml\b([^?]*)\?>/.exec(decoded.charCodeAt(0) === 0xfeff ? decoded.slice(1) : decoded)?.[1];
+  const encoding = declared === undefined ? undefined : /\bencoding\s*=\s*(["'])([^"']*)\1/i.exec(declared)?.[2];
+  if (declared !== undefined && /\bencoding\b/i.test(declared) && !/^(?:utf-8|us-ascii)$/i.test(encoding?.trim() ?? '')) return { why: `its XML declaration names the encoding ${JSON.stringify((encoding ?? '?').slice(0, 40))}, not utf-8 or us-ascii, so the engine writes no copy of it` };
   const tags = scanXml(bytes.toString('utf8')).tags;
   if (tags.some((t) => t.attrs.some(([, val]) => val.includes('<')))) return { why: 'an attribute value holds "<", so the end of its root element is not certain' };
   const tail = (at: number) => bytes.subarray(at).toString('latin1');
@@ -631,7 +641,7 @@ export function dotnetNugetConfig(cwd: string, profile: string, platform: NodeJS
     }
     if (!bytes || !verdict?.addNugetOrg || o.noAdd) return { file: root.file };
     const made = nugetOrgCopy(bytes);
-    const remedy = `add nuget.org to it explicitly (<add key="nuget.org" value="${NUGET_ORG_SOURCE}" />) if the repository uses nuget.org`;
+    const remedy = `add nuget.org to it explicitly inside <packageSources> (<add key="nuget.org" value="${NUGET_ORG_SOURCE}" />) if the repository uses nuget.org`;
     if ('why' in made) return { file: root.file, note: `${root.file} defines no package source and the engine supplied none: ${made.why}; NuGet read that file alone; ${remedy}` };
     const copy = join(profile, 'nuget', `copy-${createHash('sha256').update(made.copy).digest('hex').slice(0, 32)}`, 'nuget.config');
     if (copy.includes(';')) return { file: root.file, note: `the path ${copy} holds a ";", which MSBuild splits in RestoreConfigFile, so the engine supplied no nuget.org for ${root.file}; ${remedy}` };

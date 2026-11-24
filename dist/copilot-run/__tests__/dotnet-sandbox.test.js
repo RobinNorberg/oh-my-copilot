@@ -489,6 +489,20 @@ describe('PR 611 round 7: a root config with no source gets an engine copy with 
         const once = copyOf('<configuration />');
         expect('copy' in once && nugetConfigVerdict(once.copy).addNugetOrg).toBe(false);
     });
+    it('no copy when the XML declaration names an encoding other than utf-8 or us-ascii (the bytes are read as UTF-8)', () => {
+        const body = '<configuration><config><add key="dependencyVersion" value="Lowest" /></config></configuration>\n';
+        for (const enc of ['utf-8', 'UTF-8', 'us-ascii', 'US-ASCII']) {
+            expect(copyOf(`<?xml version="1.0" encoding="${enc}"?>\n${body}`), enc).toHaveProperty('copy');
+            expect(copyOf(`<?xml version='1.0' encoding='${enc}' standalone='yes'?>\n${body}`), enc).toHaveProperty('copy');
+        }
+        expect(copyOf(`<?xml version="1.0"?>\n${body}`)).toHaveProperty('copy');
+        for (const enc of ['iso-8859-1', 'windows-1252', 'utf-16', 'utf8', '', 'shift_jis']) {
+            expect(copyOf(`<?xml version="1.0" encoding="${enc}"?>\n${body}`), enc).toEqual({ why: expect.stringContaining('not utf-8 or us-ascii') });
+        }
+        expect(copyOf(`<?xml version="1.0" encoding=latin1?>\n${body}`)).toEqual({ why: expect.stringContaining('not utf-8 or us-ascii') });
+        const bom = Buffer.from([0xef, 0xbb, 0xbf]);
+        expect(copyOf(Buffer.concat([bom, Buffer.from(`<?xml version="1.0" encoding="iso-8859-1"?>\n${body}`)]))).toEqual({ why: expect.stringContaining('"iso-8859-1"') });
+    });
     it('no copy for every shape the verdict refuses, nor when the root end is not certain', () => {
         for (const s of [
             `<configuration><packageSources>${P}</packageSources></configuration>`,
@@ -538,7 +552,7 @@ describe('PR 611 round 7: a root config with no source gets an engine copy with 
         mkdirSync(join(dir, 'rel'));
         writeFileSync(join(dir, 'rel', 'nuget.config'), '<configuration><config><add key="repositoryPath" value="packages" /></config></configuration>');
         const cfg = dotnetNugetConfig(join(dir, 'rel'), prof(), 'win32');
-        expect(cfg).toEqual({ file: join(dir, 'rel', 'nuget.config'), note: expect.stringContaining(`add nuget.org to it explicitly (<add key="nuget.org" value="${NUGET_ORG_SOURCE}" />)`) });
+        expect(cfg).toEqual({ file: join(dir, 'rel', 'nuget.config'), note: expect.stringContaining(`add nuget.org to it explicitly inside <packageSources> (<add key="nuget.org" value="${NUGET_ORG_SOURCE}" />)`) });
         expect(existsSync(join(prof(), 'nuget'))).toBe(false);
     });
     it('named by the content hash, in the job profile, written with exclusive create, never reused for other bytes', () => {

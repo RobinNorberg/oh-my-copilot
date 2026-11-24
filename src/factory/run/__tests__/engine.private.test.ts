@@ -20,7 +20,7 @@ import { GATE_TREE_MARKER } from '../prepare.js';
 import type { SandboxRunRequest } from '../sandbox-exec.js';
 import { readFactoryState, requestFactoryCancel } from '../state.js';
 import { readTamperHold } from '../tamper-quarantine.js';
-import { commitFile, ENFORCED_SANDBOX, FakeLanes, FakeProcesses, gitIn, review, type LaneScript } from './fake-lanes.js';
+import { commitFile, ENFORCED_SANDBOX, fakeRestoreGraph, FakeLanes, FakeProcesses, gitIn, review, type LaneScript } from './fake-lanes.js';
 import { BASE, foreignCommands, lanesFor, LOCAL_ISSUE, localOpts, localWorld, type LocalWorld } from './engine-local-harness.js';
 
 const T = 600_000;
@@ -234,6 +234,8 @@ describe('factory run with factory.run.layout "private"', () => {
           ? { ran: true as const, status: 1, output: 'App.csproj : error NU1301: Unable to load the service index for source https://api.nuget.org/v3/index.json.', timedOut: false }
           : { ran: true as const, status: 0, output: 'Passed!', timedOut: false };
       }
+      // The restore-source evaluations (engine.ts restoreSourcesPark): the same graph in the tree and the checkout.
+      if (req.purpose === 'sources') return { ran: true as const, status: 0, output: '', timedOut: false, restoreGraph: fakeRestoreGraph(req.cwd) };
       return { ran: true as const, status: 0, output: '', timedOut: false };
     };
     const out = await runFactoryEngine(opts({ w, user }, [commitFile('src/App/Greet.cs', 'namespace App;\n'), review('approve')], { gateSandbox: runner }));
@@ -271,6 +273,8 @@ describe('factory run with factory.run.layout "private"', () => {
           ? { ran: true as const, status: 1, output: 'App.csproj : error NU1301: Unable to load the service index for source https://api.nuget.org/v3/index.json.', timedOut: false }
           : { ran: true as const, status: 0, output: 'Passed!', timedOut: false };
       }
+      // The restore-source evaluations (engine.ts restoreSourcesPark): the same graph in the tree and the checkout.
+      if (req.purpose === 'sources') return { ran: true as const, status: 0, output: '', timedOut: false, restoreGraph: fakeRestoreGraph(req.cwd) };
       return { ran: true as const, status: 0, output: '', timedOut: false };
     };
     const out = await runFactoryEngine(opts({ w, user }, [commitFile('src/App/Greet.cs', 'namespace App;\n'), review('approve')], { gateSandbox: runner }));

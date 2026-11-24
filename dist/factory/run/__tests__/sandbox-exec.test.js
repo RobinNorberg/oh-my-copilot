@@ -5,7 +5,7 @@
  * this host has), and gateEnv. No Copilot runtime, no network, no credits.
  */
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, linkSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -31,6 +31,7 @@ function fakeSdk(script, rec, sandbox = 'supported', deniedPaths = true) {
                 shell: {
                     executeUserRequested: ({ requestId, command }) => {
                         rec.commands.push(command);
+                        script.onCommand?.(command);
                         const marker = markerOf(command);
                         const complete = () => {
                             if (script.stray !== undefined)
@@ -828,6 +829,47 @@ describe('runSandboxed: a dotnet command (dotnet-sandbox.ts)', () => {
         expect(policy().readonlyPaths).toContain(packages);
         expect(policy().readwritePaths).not.toContain(packages);
         expect(words()).toEqual(['/usr/bin/dotnet', 'restore', '-m:1']);
+    });
+    it('restoreGraph: the graph goes to the job temp dir and comes back; a link, a failed command or a non-dotnet command gives none', async () => {
+        const graph = '{"format":1,"projects":{}}';
+        const target = (command) => /^-p:RestoreGraphOutputPath=(.*)$/.exec(Buffer.from(/'([A-Za-z0-9+/=]+)'/.exec(command)[1], 'base64').toString('utf8').split('\0').find((w) => w.startsWith('-p:RestoreGraphOutputPath=')))[1];
+        const writes = (body, output = 'MARKER 0\n') => ({ ...said(output), onCommand: (c) => body(target(c)) });
+        const r = await runSandboxed(['/usr/bin/dotnet', 'msbuild', 'App.sln', '-t:GenerateRestoreGraphFile'], opts({ restoreGraph: true }), deps(writes((f) => { mkdirSync(join(f, '..'), { recursive: true }); writeFileSync(f, graph); })));
+        expect(r).toMatchObject({ ran: true, status: 0, restoreGraph: graph });
+        const w = words();
+        expect(w.slice(0, 4)).toEqual(['/usr/bin/dotnet', 'msbuild', 'App.sln', '-t:GenerateRestoreGraphFile']);
+        expect(w[4]).toMatch(/^-p:RestoreGraphOutputPath=.*[\\/]jobs[\\/]gate-[^\\/]+[\\/]tmp[\\/]omg-restore-graph\.json$/);
+        expect(w[5]).toBe('-m:1');
+        // The job home (and the graph in it) is gone after the command.
+        expect(existsSync(join(dir, 'jobs')) ? readdirSync(join(dir, 'jobs')) : []).toEqual([]);
+        // A failed command: no graph, even if one was written.
+        const failed = await runSandboxed(['/usr/bin/dotnet', 'msbuild'], opts({ restoreGraph: true }), deps(writes((f) => { mkdirSync(join(f, '..'), { recursive: true }); writeFileSync(f, graph); }, 'MARKER 1\n'), 'supported'));
+        expect(failed).toMatchObject({ ran: true, status: 1 });
+        expect('restoreGraph' in failed).toBe(false);
+        // A symbolic link in its place is never followed.
+        const secret = join(dir, 'secret.txt');
+        writeFileSync(secret, 'SECRET');
+        let made = true;
+        const linked = await runSandboxed(['/usr/bin/dotnet', 'msbuild'], opts({ restoreGraph: true }), deps(writes((f) => {
+            mkdirSync(join(f, '..'), { recursive: true });
+            // Windows without the symlink privilege: a hard link stands in (more than one link is refused too).
+            try {
+                symlinkSync(secret, f);
+            }
+            catch {
+                try {
+                    linkSync(secret, f);
+                }
+                catch {
+                    made = false;
+                }
+            }
+        })));
+        expect(made).toBe(true);
+        expect(linked).toMatchObject({ ran: true, status: 0 });
+        expect('restoreGraph' in linked).toBe(false);
+        // Only a dotnet command writes one.
+        expect(await runSandboxed(['/usr/bin/node', 'x.js'], opts({ restoreGraph: true }), deps(ok))).toMatchObject({ ran: false, refused: true });
     });
     it('a gate on the run packages dir: read-only, offline', async () => {
         const run = join(dir, 'gates', 'nuget', 'issue-7');

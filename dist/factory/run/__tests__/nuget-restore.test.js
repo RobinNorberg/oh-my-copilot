@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { classifyNugetFailure, DEFINITION_TREE_NUGET_CONFIG, dotnetRestoreArgs, gitBlobId, missingDefinitionFile, nugetConfigUnreadableReason, nugetRunPackagesDir, nugetSubstituted, parseCatFileBatch, removeEngineDir, restoreApprovalNote, restorePhase, writeDefinitionTree } from '../nuget-restore.js';
+import { classifyNugetFailure, DEFINITION_TREE_NUGET_CONFIG, dotnetRestoreArgs, gitBlobId, missingDefinitionFile, nugetConfigUnreadableReason, nugetRunPackagesDir, nugetSubstituted, parseCatFileBatch, removeEngineDir, restoreApprovalNote, normalizeRestoreSource, restoreGraphArgs, restoreGraphSources, restoreSourcesDifference, restorePhase, writeDefinitionTree } from '../nuget-restore.js';
 // Lines from real sandboxed dotnet runs (.NET SDK 10.0.101, Windows), paths shortened.
 const OFFLINE_DNS = [
     'C:\\work\\Greeter.sln : error NU1301: Unable to load the service index for source https://api.nuget.org/v3/index.json. [C:\\work\\Greeter.sln]',
@@ -355,6 +355,45 @@ describe('nugetSubstituted: NU1603, a version the project names that NuGet repla
         expect(nugetSubstituted(undefined)).toBeNull();
         // classifyNugetFailure does not read it: a pass with NU1603 is no NU error.
         expect(classifyNugetFailure(NU1603)).toBeNull();
+    });
+});
+describe('the restore-source equality check (restoreGraphArgs, normalizeRestoreSource, restoreGraphSources, restoreSourcesDifference)', () => {
+    it('evaluates what the restore restores: the same target and properties, the runtime as RuntimeIdentifier, offline graph only', () => {
+        expect(restoreGraphArgs(['restore', 'App.sln', '-r', 'linux-x64', '-p:Configuration=Release'])).toEqual(['msbuild', 'App.sln', '-p:RuntimeIdentifier=linux-x64', '-p:Configuration=Release', '-t:GenerateRestoreGraphFile', '-p:ExcludeRestorePackageImports=true', '-nologo']);
+        expect(restoreGraphArgs(['restore', '--runtime=win-x64'])).toEqual(['msbuild', '-p:RuntimeIdentifier=win-x64', '-t:GenerateRestoreGraphFile', '-p:ExcludeRestorePackageImports=true', '-nologo']);
+        expect(restoreGraphArgs(dotnetRestoreArgs(['test', 'src/App/App.csproj', '-c', 'Release']))).toEqual(['msbuild', 'src/App/App.csproj', '-t:GenerateRestoreGraphFile', '-p:ExcludeRestorePackageImports=true', '-nologo']);
+    });
+    it('normalises sources: URLs case-insensitively without trailing slashes, in-repository paths relative to each tree, others absolute', () => {
+        expect(normalizeRestoreSource(' https://API.NuGet.org/v3/index.json/ ', 'C:\\t', 'win32')).toBe('https://api.nuget.org/v3/index.json');
+        expect(normalizeRestoreSource('C:\\defs\\tree\\feed\\', 'C:\\defs\\tree', 'win32')).toBe('<repository>/feed');
+        expect(normalizeRestoreSource('C:\\work\\checkout\\Feed', 'C:\\work\\checkout', 'win32')).toBe('<repository>/feed');
+        expect(normalizeRestoreSource('feed', 'C:\\work\\checkout', 'win32')).toBe('<repository>/feed');
+        expect(normalizeRestoreSource('C:\\corp-feed', 'C:\\work\\checkout', 'win32')).toBe('c:/corp-feed');
+        expect(normalizeRestoreSource('C:\\work\\checkout-other\\feed', 'C:\\work\\checkout', 'win32')).toBe('c:/work/checkout-other/feed');
+        expect(normalizeRestoreSource('/srv/Feed/', '/w/co', 'linux')).toBe('/srv/Feed');
+        expect(normalizeRestoreSource('/w/co/Feed', '/w/co', 'linux')).toBe('<repository>/Feed');
+        expect(normalizeRestoreSource('..', '/w/co', 'linux')).toBe('/w');
+    });
+    const graph = (root, projects, sep = '\\') => JSON.stringify({
+        format: 1,
+        projects: Object.fromEntries(Object.entries(projects).map(([p, s]) => [`${root}${sep}${p}`, { restore: { projectPath: `${root}${sep}${p}`, ...(s ? { sources: Object.fromEntries(s.map((x) => [x, {}])) } : {}) } }])),
+    });
+    it('reads each project\'s sources from a dgspec, keyed by the project relative to the tree', () => {
+        const tree = restoreGraphSources(`\uFEFF${graph('C:\\defs\\t', { 'src\\App\\App.csproj': ['https://api.nuget.org/v3/index.json', 'C:\\defs\\t\\feed'], 'src\\Lib\\Lib.csproj': undefined })}`, 'C:\\defs\\t', 'win32');
+        expect(tree).toEqual({ projects: new Map([['<repository>/src/app/app.csproj', ['<repository>/feed', 'https://api.nuget.org/v3/index.json']], ['<repository>/src/lib/lib.csproj', []]]) });
+        const checkout = restoreGraphSources(graph('C:\\work\\co', { 'src\\App\\App.csproj': ['C:\\work\\co\\feed\\', 'https://api.nuget.org/v3/index.json/'], 'src\\Lib\\Lib.csproj': [] }), 'C:\\work\\co', 'win32');
+        expect('projects' in tree && 'projects' in checkout && restoreSourcesDifference(tree.projects, checkout.projects)).toBeNull();
+        expect(restoreGraphSources('not json', 'C:\\t', 'win32')).toEqual({ problem: 'the restore graph is not valid JSON' });
+        expect(restoreGraphSources('{"format":1}', 'C:\\t', 'win32')).toEqual({ problem: 'the restore graph has no projects object' });
+        expect(restoreGraphSources('{"projects":{"C:\\\\t\\\\a.csproj":{"restore":{"sources":["x"]}}}}', 'C:\\t', 'win32')).toMatchObject({ problem: expect.stringContaining('not an object') });
+    });
+    it('names the first project whose sources differ, or that only one graph has (K3: a corp feed set by a file only the checkout has)', () => {
+        const tree = new Map([['<repository>/lib/lib.csproj', ['https://api.nuget.org/v3/index.json']], ['<repository>/z.csproj', ['a']]]);
+        const corp = new Map([['<repository>/lib/lib.csproj', ['c:/corp-feed']], ['<repository>/z.csproj', ['a']]]);
+        expect(restoreSourcesDifference(tree, corp)).toEqual({ project: '<repository>/lib/lib.csproj', tree: ['https://api.nuget.org/v3/index.json'], checkout: ['c:/corp-feed'] });
+        expect(restoreSourcesDifference(tree, new Map([['<repository>/z.csproj', ['a']]]))).toEqual({ project: '<repository>/lib/lib.csproj', tree: ['https://api.nuget.org/v3/index.json'], checkout: null });
+        expect(restoreSourcesDifference(tree, new Map([...tree, ['<repository>/z.csproj', ['a', 'b']]]))).toEqual({ project: '<repository>/z.csproj', tree: ['a'], checkout: ['a', 'b'] });
+        expect(restoreSourcesDifference(new Map(), new Map())).toBeNull();
     });
 });
 //# sourceMappingURL=nuget-restore.test.js.map

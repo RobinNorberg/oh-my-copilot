@@ -124890,6 +124890,10 @@ function nugetOrgCopy(bytes) {
   const v = nugetConfigVerdict(bytes);
   if (!v.addNugetOrg) return { why: v.why ?? "it may define package sources" };
   if (v.pathSetting) return { why: `it holds ${v.pathSetting}, which may be a path NuGet resolves against that file's own directory, so the engine writes no copy of it elsewhere` };
+  const decoded = bytes.toString("utf8");
+  const declared = /^\s*<\?xml\b([^?]*)\?>/.exec(decoded.charCodeAt(0) === 65279 ? decoded.slice(1) : decoded)?.[1];
+  const encoding = declared === void 0 ? void 0 : /\bencoding\s*=\s*(["'])([^"']*)\1/i.exec(declared)?.[2];
+  if (declared !== void 0 && /\bencoding\b/i.test(declared) && !/^(?:utf-8|us-ascii)$/i.test(encoding?.trim() ?? "")) return { why: `its XML declaration names the encoding ${JSON.stringify((encoding ?? "?").slice(0, 40))}, not utf-8 or us-ascii, so the engine writes no copy of it` };
   const tags = scanXml(bytes.toString("utf8")).tags;
   if (tags.some((t) => t.attrs.some(([, val]) => val.includes("<")))) return { why: 'an attribute value holds "<", so the end of its root element is not certain' };
   const tail6 = (at2) => bytes.subarray(at2).toString("latin1");
@@ -124976,7 +124980,7 @@ function dotnetNugetConfig(cwd, profile, platform = process.platform, o = {}) {
     }
     if (!bytes || !verdict?.addNugetOrg || o.noAdd) return { file: root.file };
     const made = nugetOrgCopy(bytes);
-    const remedy = `add nuget.org to it explicitly (<add key="nuget.org" value="${NUGET_ORG_SOURCE}" />) if the repository uses nuget.org`;
+    const remedy = `add nuget.org to it explicitly inside <packageSources> (<add key="nuget.org" value="${NUGET_ORG_SOURCE}" />) if the repository uses nuget.org`;
     if ("why" in made) return { file: root.file, note: `${root.file} defines no package source and the engine supplied none: ${made.why}; NuGet read that file alone; ${remedy}` };
     const copy = (0, import_node_path38.join)(profile, "nuget", `copy-${(0, import_node_crypto20.createHash)("sha256").update(made.copy).digest("hex").slice(0, 32)}`, "nuget.config");
     if (copy.includes(";")) return { file: root.file, note: `the path ${copy} holds a ";", which MSBuild splits in RestoreConfigFile, so the engine supplied no nuget.org for ${root.file}; ${remedy}` };
@@ -129800,13 +129804,16 @@ async function runSandboxed(argv, o, deps) {
   const sleep13 = deps.sleep ?? ((ms2) => new Promise((r) => setTimeout(r, ms2)));
   const marker = `${MARKER_PREFIX}${(0, import_node_crypto24.randomBytes)(8).toString("hex")}`;
   const dotnet = isDotnetExe(argv[0]);
-  const command = sandboxShellCommand(deps.platform, dotnet ? [argv[0], ...dotnetSandboxArgs(argv.slice(1), { mtp: o.dotnetMtp === true })] : argv, o.cwd, marker);
+  const jobHome = (0, import_node_path43.join)(o.jobRoot, `gate-${Date.now().toString(36)}-${(0, import_node_crypto24.randomBytes)(4).toString("hex")}`);
+  const graphFile = o.restoreGraph ? (0, import_node_path43.join)(jobHome, "tmp", RESTORE_GRAPH_FILE) : void 0;
+  if (graphFile && (!dotnet || graphFile.includes(";"))) return refuse2('the restore graph can only be written by a dotnet command, to a path without ";"');
+  const run3 = graphFile ? [...argv, `-p:RestoreGraphOutputPath=${msbuildEscape(graphFile)}`] : argv;
+  const command = sandboxShellCommand(deps.platform, dotnet ? [run3[0], ...dotnetSandboxArgs(run3.slice(1), { mtp: o.dotnetMtp === true })] : run3, o.cwd, marker);
   if (command === null) return refuse2("the command cannot be passed to the sandbox shell unchanged (a NUL, or on Windows an empty argument or a double quote)");
   const max = sandboxCommandMaxChars(deps.platform);
   if (command.length > max) {
     return refuse2(`the command is too long for the sandbox shell: it encodes to ${command.length} characters, above the ${max} that ${deps.platform === "win32" ? "a Windows command line" : "one shell argument"} can safely carry; shorten the configured command`);
   }
-  const jobHome = (0, import_node_path43.join)(o.jobRoot, `gate-${Date.now().toString(36)}-${(0, import_node_crypto24.randomBytes)(4).toString("hex")}`);
   const workDir = (0, import_node_path43.join)(jobHome, "work");
   let client = null;
   let session = null;
@@ -129965,7 +129972,15 @@ timed out after ${o.timeoutMs} ms`), timedOut: true, ...marked };
     if (!exitOk || !successOk) return noVerdict("the sandbox shell's own result contradicts the exit code the command printed");
     const why = read.code !== 0 && dotnetNotes.length > 0 ? `
 ${dotnetNotes.join("\n")}` : "";
-    return { ran: true, status: read.code, output: `${tail2(read.output.trim())}${why}`, timedOut: false, ...marked };
+    let graph = null;
+    if (graphFile && read.code === 0) {
+      try {
+        graph = (0, import_node_fs38.lstatSync)(graphFile).nlink === 1 ? readRegularFileBounded(graphFile, RESTORE_GRAPH_MAX_BYTES) : null;
+      } catch {
+        graph = null;
+      }
+    }
+    return { ran: true, status: read.code, output: `${tail2(read.output.trim())}${why}`, timedOut: false, ...marked, ...graph ? { restoreGraph: graph.toString("utf8") } : {} };
   } catch (err) {
     if (started) return noVerdict("the sandbox runtime failed while the command ran");
     return notStarted(`the sandbox runtime failed: ${errText(err).slice(0, 300)}`);
@@ -130022,6 +130037,7 @@ ${dotnetNotes.join("\n")}` : "";
 function createSandboxRunner(root, deps = defaultCopilotRunDeps(), layers) {
   return async (req) => {
     if (req.container) {
+      if (req.restoreGraph) return { ran: false, reason: "the restore graph is evaluated in the OS sandbox only, never in the gate container", refused: true };
       if (!req.runLabel) return { ran: false, reason: "the gate container request has no run label", unavailable: true };
       return runContainerGate(req, req.container, req.runLabel, { exec: defaultContainerExec, platform: deps.platform });
     }
@@ -130046,7 +130062,8 @@ function createSandboxRunner(root, deps = defaultCopilotRunDeps(), layers) {
       ...req.nugetPackages ? { nugetPackages: req.nugetPackages } : {},
       ...req.nugetHierarchy ? { nugetHierarchy: req.nugetHierarchy } : {},
       ...req.nugetNoAddSource ? { nugetNoAddSource: true } : {},
-      ...req.nugetFromGit ? { nugetFromGit: true } : {}
+      ...req.nugetFromGit ? { nugetFromGit: true } : {},
+      ...req.restoreGraph ? { restoreGraph: true } : {}
     }, deps);
   };
 }
@@ -130079,7 +130096,7 @@ function gateEnv(env2, home) {
     GCM_INTERACTIVE: "never"
   };
 }
-var import_node_crypto24, import_node_fs38, import_node_os12, import_node_path43, SANDBOX_OUTPUT_TAIL_CHARS, START_TIMEOUT_MS3, RPC_TIMEOUT_MS3, STOP_TIMEOUT_MS3, CANCEL_GRACE_MS, ATTEST_WAIT_MS, CREDENTIAL_FILES_READABLE_NOTE, MARKER_PREFIX, SHELL_OUTPUT_BYTES, SHELL_OUTPUT_LINES, SHELL_LINE_CHARS, sandboxCommandMaxChars, SIZING_MARKER, tail2, sandboxJobRoot, GATE_ENV_KEPT;
+var import_node_crypto24, import_node_fs38, import_node_os12, import_node_path43, RESTORE_GRAPH_FILE, RESTORE_GRAPH_MAX_BYTES, SANDBOX_OUTPUT_TAIL_CHARS, START_TIMEOUT_MS3, RPC_TIMEOUT_MS3, STOP_TIMEOUT_MS3, CANCEL_GRACE_MS, ATTEST_WAIT_MS, CREDENTIAL_FILES_READABLE_NOTE, MARKER_PREFIX, SHELL_OUTPUT_BYTES, SHELL_OUTPUT_LINES, SHELL_LINE_CHARS, sandboxCommandMaxChars, SIZING_MARKER, tail2, sandboxJobRoot, GATE_ENV_KEPT;
 var init_sandbox_exec = __esm({
   "src/factory/run/sandbox-exec.ts"() {
     "use strict";
@@ -130101,6 +130118,8 @@ var init_sandbox_exec = __esm({
     init_copilot_session_env();
     init_handler();
     init_windows_search();
+    RESTORE_GRAPH_FILE = "omg-restore-graph.json";
+    RESTORE_GRAPH_MAX_BYTES = 32 * 1024 * 1024;
     SANDBOX_OUTPUT_TAIL_CHARS = 8e3;
     START_TIMEOUT_MS3 = 6e4;
     RPC_TIMEOUT_MS3 = 3e4;
@@ -130697,6 +130716,55 @@ function dotnetRestoreArgs(gateArgs) {
   }
   if (!targets.every(insideRepo)) return null;
   return ["restore", ...targets, ...extra];
+}
+function restoreGraphArgs(restoreArgs) {
+  const out = ["msbuild"];
+  const rest = restoreArgs.slice(1);
+  for (let i = 0; i < rest.length; i++) {
+    const a = rest[i];
+    if ((a === "-r" || a === "--runtime") && i + 1 < rest.length) out.push(`-p:RuntimeIdentifier=${rest[++i]}`);
+    else if (/^(?:-r|--runtime)[=:]/.test(a)) out.push(`-p:RuntimeIdentifier=${a.replace(/^(?:-r|--runtime)[=:]/, "")}`);
+    else out.push(a);
+  }
+  return [...out, "-t:GenerateRestoreGraphFile", "-p:ExcludeRestorePackageImports=true", "-nologo"];
+}
+function normalizeRestoreSource(source2, root, platform = process.platform) {
+  const s = source2.trim();
+  if (/^[a-z][a-z0-9+.-]+:\/\//i.test(s)) return s.toLowerCase().replace(/\/+$/, "");
+  const P = platform === "win32" ? import_node_path44.win32 : import_node_path44.posix;
+  const top = P.resolve(root);
+  const abs = P.resolve(top, s).replace(/[\\/]+$/, "") || P.sep;
+  const rel = P.relative(top, abs);
+  const inside3 = rel === "" || rel !== ".." && !rel.startsWith(`..${P.sep}`) && !P.isAbsolute(rel);
+  const shown2 = inside3 ? `<repository>${rel ? `/${rel.split(P.sep).join("/")}` : ""}` : abs.split(P.sep).join("/");
+  return platform === "win32" ? shown2.toLowerCase() : shown2;
+}
+function restoreGraphSources(text9, root, platform = process.platform) {
+  let graph;
+  try {
+    graph = JSON.parse(text9.charCodeAt(0) === 65279 ? text9.slice(1) : text9);
+  } catch {
+    return { problem: "the restore graph is not valid JSON" };
+  }
+  const projects = graph?.projects;
+  if (!projects || typeof projects !== "object" || Array.isArray(projects)) return { problem: "the restore graph has no projects object" };
+  const out = /* @__PURE__ */ new Map();
+  for (const [path30, spec] of Object.entries(projects)) {
+    const sources = spec?.restore?.sources;
+    if (sources !== void 0 && (!sources || typeof sources !== "object" || Array.isArray(sources))) return { problem: `the restore graph's sources of a project are not an object` };
+    const key = normalizeRestoreSource(path30, root, platform);
+    const set2 = [...new Set(Object.keys(sources ?? {}).map((s) => normalizeRestoreSource(s, root, platform)))].sort();
+    out.set(key, [.../* @__PURE__ */ new Set([...out.get(key) ?? [], ...set2])].sort());
+  }
+  return { projects: out };
+}
+function restoreSourcesDifference(tree, checkout) {
+  for (const project of [.../* @__PURE__ */ new Set([...tree.keys(), ...checkout.keys()])].sort()) {
+    const a = tree.get(project) ?? null;
+    const b = checkout.get(project) ?? null;
+    if (!a || !b || a.length !== b.length || a.some((s, i) => s !== b[i])) return { project, tree: a, checkout: b };
+  }
+  return null;
 }
 function unwritableTreePath(path30) {
   for (const s of path30.split("/")) {
@@ -141089,7 +141157,7 @@ async function runFactoryEngine(o) {
 function sharedLayoutSealed(s) {
   return s.layout !== 2 && (s.lanes.length > 0 || s.codingAgent !== void 0);
 }
-var import_crypto51, import_fs171, import_os38, import_path198, PRESCAN_GIT_TIMEOUT_MS, EXIT_AWAITING_HUMAN, PREPARE_ENGINE_STEPS, MAX_CONFLICT_FIX_ROUNDS, MAX_MERGE_BOUNCES, MAX_CONFLICT_REPREPARES, MERGEABILITY_READS, MERGEABILITY_WAIT_MS, DEFAULT_POLL_MS, LANE_GRACE_MS, REMOTE_HEAD_FETCH_FLAGS, LS_REMOTE_TIMEOUT_MS, ADO_HEAD_LAG_POLLS, localGateConfigLoader, PROCESS_DEADLINE_MS, defaultLaneProcessOps, FactoryStepError, StateTamperedError, LocalGateDue, MirrorBaseMovedError, HEX4021, DOTNET_CLEAN_TIMEOUT_MS, PARK_TAIL_LINES, PARK_TAIL_LINE_CHARS, PARK_TAIL_CHARS, GIT_TRANSPORT_SANDBOX_ADVICE, GIT_TRANSPORT_FAILURE, MSYS_DLL_INIT_FAILED, windowsGitTransportFailure, windowsJunctionReadDenied, DOTNET_SANDBOX_ADVICE, localDetailNote, isHumanReadGate, CALIBRATION_NO_TEST_FILTER, isBuiltInVitest, BUILT_IN_FILE_NAME_TOO_LONG, USER_REPO_PREFIX, isUserRepoProblem, quarantineRefs, cancelCommand, resumeCommand, HEAL_ACCEPTANCE, usageOf, capUsage, FactoryEngine, HUMAN_REVIEW_GATE, REVIEW_REQUESTED_GATE, UNSANDBOXED_LANES_REASON, GATES_UNSANDBOXED_GATE, SECRET_SHAPES_GATE, GATE_SANDBOX_INCOMPATIBLE_GATE, GATE_NO_VERDICT_GATE, GIT_VIEW_UNBUILT, ACK_WARNING, PREPARE_CHECK_TIMEOUT_MS;
+var import_crypto51, import_fs171, import_os38, import_path198, PRESCAN_GIT_TIMEOUT_MS, EXIT_AWAITING_HUMAN, PREPARE_ENGINE_STEPS, MAX_CONFLICT_FIX_ROUNDS, MAX_MERGE_BOUNCES, MAX_CONFLICT_REPREPARES, MERGEABILITY_READS, MERGEABILITY_WAIT_MS, DEFAULT_POLL_MS, LANE_GRACE_MS, REMOTE_HEAD_FETCH_FLAGS, LS_REMOTE_TIMEOUT_MS, ADO_HEAD_LAG_POLLS, localGateConfigLoader, PROCESS_DEADLINE_MS, defaultLaneProcessOps, FactoryStepError, StateTamperedError, LocalGateDue, MirrorBaseMovedError, HEX4021, DOTNET_CLEAN_TIMEOUT_MS, RESTORE_SOURCES_TIMEOUT_MS, PARK_TAIL_LINES, PARK_TAIL_LINE_CHARS, PARK_TAIL_CHARS, GIT_TRANSPORT_SANDBOX_ADVICE, GIT_TRANSPORT_FAILURE, MSYS_DLL_INIT_FAILED, windowsGitTransportFailure, windowsJunctionReadDenied, DOTNET_SANDBOX_ADVICE, localDetailNote, isHumanReadGate, CALIBRATION_NO_TEST_FILTER, isBuiltInVitest, BUILT_IN_FILE_NAME_TOO_LONG, USER_REPO_PREFIX, isUserRepoProblem, quarantineRefs, cancelCommand, resumeCommand, HEAL_ACCEPTANCE, usageOf, capUsage, FactoryEngine, HUMAN_REVIEW_GATE, REVIEW_REQUESTED_GATE, UNSANDBOXED_LANES_REASON, GATES_UNSANDBOXED_GATE, SECRET_SHAPES_GATE, GATE_SANDBOX_INCOMPATIBLE_GATE, GATE_NO_VERDICT_GATE, GIT_VIEW_UNBUILT, ACK_WARNING, PREPARE_CHECK_TIMEOUT_MS;
 var init_engine = __esm({
   "src/factory/run/engine.ts"() {
     "use strict";
@@ -141238,6 +141306,7 @@ var init_engine = __esm({
     };
     HEX4021 = /^[0-9a-f]{40}$/;
     DOTNET_CLEAN_TIMEOUT_MS = 5 * 6e4;
+    RESTORE_SOURCES_TIMEOUT_MS = 5 * 6e4;
     PARK_TAIL_LINES = 12;
     PARK_TAIL_LINE_CHARS = 200;
     PARK_TAIL_CHARS = 1500;
@@ -142082,12 +142151,16 @@ var init_engine = __esm({
        *   policy (nugetConfigVerdict): no copy either, even when the tree's own
        *   root file defines none.
        * - `sdks`: MSBuild project SDKs NuGet resolves (projectSdkMentions; M3).
+       * - `gitlinks`: the submodules either commit tracks. The factory never
+       *   initialises them, so a source restriction a file in one sets is never
+       *   seen: no copy is written (they are in `noAddSource` too), and the
+       *   networked restore step parks up front (nugetRestore).
        * Throws (a step error) when a commit cannot be read.
        */
       dotnetNugetPolicy(commit, argv = []) {
         const base = this.state.baseSha && HEX4021.test(this.state.baseSha) ? this.state.baseSha : void 0;
         const own3 = commit && HEX4021.test(commit) ? commit : base;
-        if (!own3) return { hierarchy: null, noAddSource: [], rootSources: [], sdks: [] };
+        if (!own3) return { hierarchy: null, noAddSource: [], rootSources: [], sdks: [], gitlinks: [] };
         const both = base && base !== own3;
         const all = (both ? [own3, base] : [own3]).map((sha3) => ({ sha: sha3, facts: this.dotnetPinnedFacts(sha3) }));
         const union2 = (pick2) => [...new Set(all.flatMap(({ facts }) => pick2(facts)))];
@@ -142100,7 +142173,8 @@ var init_engine = __esm({
         const hierarchy = lower2.length > 0 ? `the repository pins a nuget.config below its root (${list3(lower2)}${where}), which one config file would hide` : pkgProjects.length > 0 ? `the repository tracks a .NET project or solution under a node_modules directory (${list3(pkgProjects)}${where}), where the engine does not look for nuget.config files` : ambiguous ? `the engine cannot tell which root nuget.config NuGet reads (${ambiguous.ambiguous})` : unmapped ? `the root ${unmapped.name} maps packages to the source key(s) ${unmapped.verdict.unmappedKeys.join(", ")}, which it does not define (NuGet takes them from another config, such as the user config's nuget.org; define them in the root ${unmapped.name} to keep one file)` : null;
         const fromArgv = argv.some((a) => /Restore(?:Sources|AdditionalProjectSources|FallbackFolders|ConfigFile|PackagesPath|NoCache|IgnoreFailedSources)/i.test(a)) ? ["the command line"] : [];
         const rootSources = all.flatMap(({ sha: sha3, facts }) => "verdict" in facts.root && !facts.root.verdict.addNugetOrg ? [`the root ${facts.root.name} at ${sha3.slice(0, 12)}`] : []);
-        return { hierarchy, noAddSource: [...union2((f) => f.restoreSettings), ...union2((f) => f.unpinnedImports), ...union2((f) => f.settingRefs), ...fromArgv], rootSources, sdks: union2((f) => f.projectSdks) };
+        const gitlinks = union2((f) => f.gitlinks).sort();
+        return { hierarchy, noAddSource: [...union2((f) => f.restoreSettings), ...union2((f) => f.unpinnedImports), ...union2((f) => f.settingRefs), ...fromArgv, ...gitlinks.map((p) => `${p}: a submodule`)], rootSources, sdks: union2((f) => f.projectSdks), gitlinks };
       }
       /**
        * The nuget.config files the commit's MSBuild project SDK resolution
@@ -142132,10 +142206,10 @@ var init_engine = __esm({
           if (policy.hierarchy || policy.noAddSource.length > 0) return null;
           const root = this.dotnetPinnedFacts(commit).root;
           if ("verdict" in root && root.verdict.addNugetOrg && root.verdict.pathSetting) {
-            return `the repository's root ${root.name} lists no package source, and it holds ${root.verdict.pathSetting}, which may be a path NuGet resolves against that file's own directory, so the engine cannot supply nuget.org in a copy of it elsewhere (plain NuGet takes nuget.org from your user config, which the sandbox does not read); add nuget.org to the root ${root.name} explicitly (<add key="nuget.org" value="${NUGET_ORG_SOURCE}" />)`;
+            return `the repository's root ${root.name} lists no package source, and it holds ${root.verdict.pathSetting}, which may be a path NuGet resolves against that file's own directory, so the engine cannot supply nuget.org in a copy of it elsewhere (plain NuGet takes nuget.org from your user config, which the sandbox does not read); add nuget.org to the root ${root.name} explicitly inside <packageSources> (<add key="nuget.org" value="${NUGET_ORG_SOURCE}" />)`;
           }
           if (!("verdict" in root) || root.verdict.addNugetOrg || root.verdict.namesNugetOrg) return null;
-          return `the repository's root ${root.name} lists no nuget.org source, and the sandbox reads that file alone (your user and machine NuGet configs, which may add nuget.org, are not behind it), so NuGet looked only in the sources it lists; if the repository should use nuget.org, add it to the root ${root.name} explicitly (<add key="nuget.org" value="${NUGET_ORG_SOURCE}" />)`;
+          return `the repository's root ${root.name} lists no nuget.org source, and the sandbox reads that file alone (your user and machine NuGet configs, which may add nuget.org, are not behind it), so NuGet looked only in the sources it lists; if the repository should use nuget.org, add it to the root ${root.name} explicitly inside <packageSources> (<add key="nuget.org" value="${NUGET_ORG_SOURCE}" />)`;
         } catch {
           return null;
         }
@@ -145300,10 +145374,16 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
           return { name: GATE_INSTALL_GATE, reason: `${what} did not run: the gate's definition files at ${head.slice(0, 12)} are neither ${this.state.base}'s nor the change accepted with --allow-gate-change, and dotnet restore evaluates them with the network on; inspect the project files on the branch, then rerun ${this.resume}, or ${cancelCommand(this.key)}` };
         }
         let imports;
+        let gitlinks;
         try {
           imports = this.dotnetPinnedFacts(head).unpinnedImports;
+          gitlinks = this.dotnetNugetPolicy(head).gitlinks;
         } catch (error62) {
           return { name: GATE_INSTALL_GATE, reason: `${what} did not run: the definition files of ${head.slice(0, 12)} could not be read (${errText6(error62)}); rerun ${this.resume}` };
+        }
+        if (gitlinks.length > 0) {
+          const named = `${gitlinks.slice(0, 3).map((p) => oneLine(plainText(p), 200)).join(", ")}${gitlinks.length > 3 ? `, ${gitlinks.length - 3} more` : ""}`;
+          return { name: GATE_INSTALL_GATE, reason: `${what} did not run: the repository has submodules (${named}), which the factory does not initialise, so a package-source restriction set in a file there cannot be seen and the engine cannot tell which sources plain NuGet would use (the restore step never runs while the base or the head tracks a submodule); restore the PR branch's packages into your NuGet global packages folder yourself (dotnet restore in a recursive clone), then rerun ${this.resume}; or ${cancelCommand(this.key)}` };
         }
         if (imports.length > 0) {
           const named = `${imports.slice(0, 3).map((i) => oneLine(visibleLine(i), 240)).join("; ")}${imports.length > 3 ? `; ${imports.length - 3} more` : ""}`;
@@ -145345,8 +145425,18 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
           this.removeTree(tree, jobRoot);
           return { name: GATE_INSTALL_GATE, reason: `${what} did not run: the definition tree of ${head.slice(0, 12)} could not be written (${written.problem}); restore the PR branch's packages into your NuGet global packages folder yourself, then rerun ${this.resume}; or ${cancelCommand(this.key)}` };
         }
-        this.save((x) => ({ ...x, nugetRestore: { head, definition: trusted.definition } }));
         const linkBefore = checkoutGitLink(checkout).hash;
+        const evalStarted = this.clock();
+        const differs = await this.restoreSourcesPark(head, args, tree, checkout, common, gates, jobRoot);
+        if (differs) {
+          this.removeTree(tree, jobRoot);
+          if (checkoutGitLink(checkout).hash !== linkBefore) {
+            return { name: "lane-tampered", reason: `the engine's prepare checkout ${checkout} has a .git file that changed while MSBuild evaluated the restore sources there, so the local gate did not run; inspect and remove it by hand, then rerun ${this.resume}` };
+          }
+          return differs;
+        }
+        const evalSeconds = Math.round((this.clock() - evalStarted) / 1e3);
+        this.save((x) => ({ ...x, nugetRestore: { head, definition: trusted.definition } }));
         const started = this.clock();
         let r;
         try {
@@ -145382,8 +145472,63 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
         const msbuildStubs = written.stubs.filter((s) => s !== "nuget.config");
         const hierarchy = this.nugetHierarchyWhy(head);
         const nugetRead = hierarchy ? `NuGet read its own config hierarchy (${hierarchy})` : `NuGet read only the tree's root nuget.config (${written.stubs.includes("nuget.config") ? "the engine's, nuget.org only" : "the head's own"})`;
-        this.save((x) => ({ ...x, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `dotnet restore ran in the OS sandbox with only api.nuget.org reachable in the engine's definition tree of ${head.slice(0, 12)} (${written.files.length} pinned definition file(s), nothing else${msbuildStubs.length > 0 ? `, and the engine's ${msbuildStubs.join(", ")} at its root, which stop MSBuild's walk up out of the tree` : ""}; ${nugetRead}; ${seconds2} s); new packages went to the run's own packages folder, and the gate runs again offline in the prepare checkout` }] }));
+        this.save((x) => ({ ...x, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `dotnet restore ran in the OS sandbox with only api.nuget.org reachable in the engine's definition tree of ${head.slice(0, 12)} (${written.files.length} pinned definition file(s), nothing else${msbuildStubs.length > 0 ? `, and the engine's ${msbuildStubs.join(", ")} at its root, which stop MSBuild's walk up out of the tree` : ""}; ${nugetRead}; the restore sources MSBuild evaluated offline there were those of the gate checkout for every project (checked in ${evalSeconds} s); ${seconds2} s); new packages went to the run's own packages folder, and the gate runs again offline in the prepare checkout` }] }));
         return null;
+      }
+      /**
+       * The restore-source equality check before the networked restore step
+       * (nugetRestore): MSBuild's own evaluation of every project's effective
+       * restore sources (NuGet's restore graph: `dotnet msbuild <the restore's
+       * target> -t:GenerateRestoreGraphFile`, nuget-restore.ts restoreGraphArgs),
+       * run twice offline (network none) in the OS sandbox with the grants of an
+       * offline gate command and the same NuGet set-up (sandboxRun: the same
+       * RestoreConfigFile choice, the real cache read-only): (a) in the
+       * definition tree `tree`, where the restore will run, (b) in the prepare
+       * checkout `checkout` at `head`, exactly as the gate sees it (the engine's
+       * node_modules links in place). Each project's sources are compared as
+       * normalised sets (restoreGraphSources). Null when every project has the
+       * same set in both; else the park (gate-install-needed) naming the
+       * project and both lists: a difference (a restriction in a file the tree
+       * lacks: an untracked or npm-installed import, a file behind an `Exists`
+       * condition), an evaluation that failed, timed out or wrote no graph.
+       * Why: the engine must never make a restore reach a source that NuGet in
+       * the checkout the gates run in would not use, whatever form the setting
+       * takes. The checkout's evaluation runs the PR's MSBuild files up to the
+       * restore graph, no more than the gate that follows runs there. It loads
+       * imports as a build does, stricter than restore's own evaluation (which
+       * skips a missing or unreadable import): such an import fails it, and parks.
+       */
+      async restoreSourcesPark(head, restoreArgs, tree, checkout, common, gates, jobRoot) {
+        const what = "the gate needs NuGet packages that are not in your NuGet global packages folder, and the sandboxed dotnet restore did not run";
+        const yourself = `restore the PR branch's packages into your NuGet global packages folder yourself (dotnet restore on that branch), then rerun ${this.resume}; or ${cancelCommand(this.key)}`;
+        const park = (why, detail) => ({ name: GATE_INSTALL_GATE, reason: `${what}: ${why}; ${yourself}`, ...detail ? { detail } : {} });
+        const argv = ["dotnet", ...restoreGraphArgs(restoreArgs)];
+        const target = resolveLocalGateArgv(argv, { cwd: jobRoot, subject: "the restore-source evaluation", configKey: "factory.run.gateInstall" });
+        if ("missing" in target) return park(`the engine could not evaluate the restore sources (${target.missing})`);
+        const repointed = this.nodeModulesRepointed(checkout);
+        if (repointed) return { name: "lane-tampered", reason: `${what}: ${(0, import_path198.join)(checkout, "node_modules")} (or a link in it) is not as the engine made it, so the PR's code changed it; inspect and remove ${checkout} by hand, then rerun ${this.resume}`, detail: oneLine(visibleLine(repointed), PARK_TAIL_CHARS) };
+        const evaluate = async (cwd, where) => {
+          let r;
+          try {
+            r = this.o.gateSandbox ? await this.sandboxRun({ purpose: "sources", argv, exe: target.exe, args: target.args, cwd, commonGitDir: common, timeoutMs: RESTORE_SOURCES_TIMEOUT_MS, network: "none", restoreGraph: true, ...gates.requireDeniedPaths ? { requireDeniedPaths: true } : {} }, void 0, () => head) : { ran: false, reason: "no OS sandbox runner was given to the engine" };
+          } catch (error62) {
+            r = { ran: false, reason: errText6(error62) };
+          }
+          if (cwd === checkout && (r.ran || "started" in r && r.started) && this.state.sandboxedGateHead !== head) this.save((x) => ({ ...x, sandboxedGateHead: head }));
+          if (!r.ran) return park(`MSBuild's offline evaluation of the restore sources in ${where} could not run in the OS sandbox (${oneLine(plainText(r.reason), 300)}), and the restore runs only when those sources equal the ones in the gate checkout`);
+          if (r.status !== 0 || r.timedOut) return park(`MSBuild's offline evaluation of the restore sources in ${where} failed (exit ${r.status}${r.timedOut ? ", timed out" : ""}), and the restore runs only when those sources equal the ones in the gate checkout (a project SDK resolved from NuGet that is not in your cache also fails it)`, parkTail(r.output));
+          const graph = r.restoreGraph === void 0 ? { problem: "it wrote no restore graph" } : restoreGraphSources(r.restoreGraph, cwd);
+          if ("problem" in graph) return park(`MSBuild's offline evaluation of the restore sources in ${where} gave no answer (${graph.problem}), and the restore runs only when those sources equal the ones in the gate checkout`);
+          return graph.projects;
+        };
+        const inTree = await evaluate(tree, "the engine's definition tree");
+        if (!(inTree instanceof Map)) return inTree;
+        const inCheckout = await evaluate(checkout, "the gate checkout");
+        if (!(inCheckout instanceof Map)) return inCheckout;
+        const diff = restoreSourcesDifference(inTree, inCheckout);
+        if (!diff) return null;
+        const shown2 = (xs) => xs === null ? "not a restore project there" : xs.length === 0 ? "none" : `${xs.slice(0, 5).map((s) => oneLine(plainText(s), 200)).join(", ")}${xs.length > 5 ? `, ${xs.length - 5} more` : ""}`;
+        return park(`MSBuild evaluates other restore sources for ${oneLine(plainText(diff.project), 200)} in the engine's definition tree (${shown2(diff.tree)}) than in the gate checkout (${shown2(diff.checkout)}), so a restore there could reach a source NuGet in the checkout would not use (or miss one it would): a file that sets the sources exists in the checkout but not among the pinned definition files (an untracked or npm-installed import, a file behind an Exists condition); declare the sources in the repository's root nuget.config or in a pinned .props file`);
       }
       /**
        * Before a dotnet gate for `head`: when the run's packages folder was
@@ -145432,6 +145577,7 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
         if (cached2) return cached2;
         const trackedTrees = /* @__PURE__ */ new Set();
         const lowerConfigs = [];
+        const gitlinks = [];
         const rootCandidates = [];
         const ls = this.exec("git", ["ls-tree", "-r", "-z", "--full-tree", commit], { cwd: this.o.root, env: TRUSTED_READ_ENV });
         if (ls.status !== 0) throw new FactoryStepError(`git ls-tree ${commit.slice(0, 12)} failed: ${oneLine(ls.stderr, 300)}`);
@@ -145443,6 +145589,7 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
           const [mode, type, oid] = line2.slice(0, tab).split(" ");
           const p = line2.slice(tab + 1);
           if (type === "blob") blobs.push(p);
+          if (mode === "160000") gitlinks.push(p);
           const segs = p.split("/");
           const at = segs.findIndex((s) => s.replace(/[. ]+$/, "").toLowerCase() === "node_modules");
           if (at >= 0 && at < segs.length - 1) trackedTrees.add(segs.slice(0, at).join("/"));
@@ -145500,7 +145647,8 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
           root: "name" in root ? { name: root.name, verdict } : root,
           restoreSettings,
           projectSdks,
-          unpinnedImports: unpinned
+          unpinnedImports: unpinned,
+          gitlinks: gitlinks.sort()
         };
         if (this.pinnedFactsAt.size >= 4) this.pinnedFactsAt.delete(this.pinnedFactsAt.keys().next().value);
         this.pinnedFactsAt.set(commit, facts);

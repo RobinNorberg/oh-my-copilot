@@ -20,7 +20,10 @@
  * (DOTNET_DEFINITION_PATTERNS), written from git objects and checked
  * against their object ids. A file the PR controls outside those patterns
  * (an imported .msbuild, a script, a .cs, a DLL, the sources) is not there,
- * so nothing but pinned files is evaluated with the network on.
+ * so nothing but pinned files is evaluated with the network on. It runs only
+ * when MSBuild evaluates the same restore sources for every project there as
+ * in the gate checkout (restoreGraphArgs, restoreGraphSources; engine.ts
+ * restoreSourcesPark): a source restriction in a file the tree lacks parks.
  */
 /**
  * One restore error line as MSBuild's console logger prints it, from the
@@ -125,6 +128,51 @@ export declare function nugetSubstituted(output: string | undefined): NugetFailu
  * The sandbox runner appends `-m:1`.
  */
 export declare function dotnetRestoreArgs(gateArgs: readonly string[]): string[] | null;
+/**
+ * The `dotnet msbuild` arguments that write NuGet's restore graph (the
+ * dgspec NuGet's restore builds before it fetches anything) for what
+ * `dotnet <restoreArgs>` (dotnetRestoreArgs) restores: the same target, its
+ * runtime as `-p:RuntimeIdentifier=` (what `dotnet restore -r` passes), the
+ * same properties, `-t:GenerateRestoreGraphFile` and
+ * `-p:ExcludeRestorePackageImports=true` (how NuGet evaluates a project for
+ * restore: no package-provided props). The sandbox runner adds
+ * `-p:RestoreGraphOutputPath=` (restoreGraph) and `-m:1`. Evaluation only:
+ * no package is fetched, and it runs offline.
+ */
+export declare function restoreGraphArgs(restoreArgs: readonly string[]): string[];
+/**
+ * A package source as the restore-source comparison reads it: trimmed; a
+ * URL (`<scheme>://...`) in lower case without trailing slashes; a local
+ * path resolved against `root` (the tree the evaluation ran in) without
+ * trailing separators, as `<repository>/<path>` with `/` when it lies inside
+ * `root` (the same in-repository feed in the definition tree and in the gate
+ * checkout compares equal), else as the absolute path with `/`; in lower
+ * case on Windows.
+ */
+export declare function normalizeRestoreSource(source: string, root: string, platform?: NodeJS.Platform): string;
+/**
+ * Each project's restore sources in a restore graph (the dgspec JSON that
+ * `-t:GenerateRestoreGraphFile` writes): `projects.<path>.restore.sources`,
+ * keyed by the project path normalised as a local source
+ * (normalizeRestoreSource against `root`), each a sorted set of normalised
+ * sources. A project without `restore.sources` has none. `problem` when the
+ * text is not a restore graph.
+ */
+export declare function restoreGraphSources(text: string, root: string, platform?: NodeJS.Platform): {
+    projects: Map<string, string[]>;
+} | {
+    problem: string;
+};
+/**
+ * The first project (in sorted order) whose restore sources differ between
+ * two restore graphs (restoreGraphSources), with both lists (null: the
+ * graph has no such project), or null when every project has the same set.
+ */
+export declare function restoreSourcesDifference(tree: ReadonlyMap<string, string[]>, checkout: ReadonlyMap<string, string[]>): {
+    project: string;
+    tree: string[] | null;
+    checkout: string[] | null;
+} | null;
 /** The run's own NuGet packages folder: `<gate job root>/nuget/<run slug>`, outside every checkout and never your real cache. */
 export declare const nugetRunPackagesDir: (gateJobRoot: string, slug: string) => string;
 /** The run's definition tree, where the networked restore runs: `<gate job root>/nuget-defs/<run slug>`, outside every checkout. */
