@@ -852,7 +852,7 @@ describe('round 8: the restore step runs only when MSBuild evaluates the same re
             const tree = req.cwd === treeDir();
             if (!tree)
                 checkout = req.cwd;
-            return { ran: true, status: 0, output: '', timedOut: false, restoreGraph: fakeRestoreGraph(req.cwd, tree ? [NUGET_ORG] : ['C:\\corp\\feed\u001b[31m']) };
+            return { ran: true, status: 0, output: '', timedOut: false, restoreGraph: fakeRestoreGraph(req.cwd, tree ? [NUGET_ORG] : [`${process.platform === 'win32' ? 'C:\\corp\\feed' : '/corp/feed'}\u001b[31m`]) };
         });
         const out = await run(r);
         expect(out.gate?.name, out.message).toBe('gate-install-needed');
