@@ -1,18 +1,25 @@
-import { mkdirSync, writeFileSync } from 'fs';
-import { hostname } from 'os';
-import { dirname, resolve } from 'path';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
+import { hostname, tmpdir } from 'os';
+import { dirname, join, resolve } from 'path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { backlogItem, checkDeps, commitAll, localRepo, programs, writeFile } from '../check/__tests__/local-repo.js';
 import { factoryPollCommand } from '../../cli/commands/factory-poll.js';
 import { runFactoryPoll } from '../poll.js';
 import { FactoryForgeUnavailableError } from '../run/forge-roots.js';
 import { factoryRepoOwnerPath } from '../run/state.js';
+/** Each test's own factory ledger, so no tick reaches the host ledger under the home directory. */
+const ledgers = [];
 afterEach(() => {
     vi.unstubAllEnvs();
+    for (const dir of ledgers.splice(0))
+        rmSync(dir, { recursive: true, force: true });
 });
 function deps(repo, localBaseSync) {
+    const ledgerDir = mkdtempSync(join(tmpdir(), 'omg-poll-local-ledger-'));
+    ledgers.push(ledgerDir);
     return {
         ...checkDeps(repo),
+        ledgerDir,
         healScan: () => { throw new Error('the local forge has no heal'); },
         autoStart: async () => { throw new Error('no auto-start expected'); },
         onStop: () => () => undefined,

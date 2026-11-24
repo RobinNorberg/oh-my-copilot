@@ -155311,6 +155311,8 @@ function staleGateReminders(o) {
   if (!o.afterHours || o.afterHours <= 0) return [];
   const windowMs = o.afterHours * 36e5;
   const path30 = remindersPath(o.ledgerDir, o.root);
+  const parkedAny = [...o.runs.values()].some((s) => s.gate && !TERMINAL_FACTORY_PHASES.includes(s.phase));
+  if (!parkedAny && !(0, import_fs184.existsSync)(path30)) return [];
   (0, import_fs184.mkdirSync)((0, import_path212.dirname)(path30), { recursive: true, mode: 448 });
   return withFileLockSync(lockPathFor(path30), () => {
     const before = readRecord(path30);

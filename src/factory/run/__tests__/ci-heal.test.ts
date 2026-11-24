@@ -14,7 +14,7 @@ import { healCommand, type HealDeps } from '../../heal/cli.js';
 import { DEFAULT_HEAL_CONFIG } from '../../heal/config.js';
 import type { HealClassification } from '../../heal/classify.js';
 import { healLaneCap, healRecord, knownFlakyProposal, KNOWN_FLAKY_FILE, runHealEngine } from '../../heal/implement.js';
-import { closeHeal, healSealSubject, readHealCounters, writeHealSeal } from '../../heal/run.js';
+import { closeHeal, healLedgerDir, healSealOpen, healSealSubject, readHealCounters, writeHealSeal } from '../../heal/run.js';
 import { dailyCountersPath, readHealState, writeDailyCountersAt, writeHealState, type HealSignatureState } from '../../heal/state.js';
 import { DEFAULT_FACTORY_RUN_LIMITS, type FactoryRunLimits, type LaneCapDecision } from '../budget.js';
 import { EXIT_AWAITING_HUMAN, healPlanText, runFactoryEngine, type FactoryEngineOptions, type FactoryHealStart } from '../engine.js';
@@ -368,6 +368,19 @@ describe('omg factory heal approve|cancel|status', () => {
     seedHeal();
     const parked = await runHealEngine({ root: h.root, base: 'dev', sig8: SIG8, config: DEFAULT_HEAL_CONFIG, approved: false }, engineDeps());
     expect(parked.gate?.name).toBe(HEAL_APPROVE_GATE);
+    expect(await cli(cliDeps([FIX, review('approve')]), 'approve', SIG8)).toBe(0);
+    expect(out.join('\n')).toMatch(/phase=merge/);
+  });
+
+  it('approve still resumes an open heal run parked at heal-approve whose seal file predates the open flag', async () => {
+    seedHeal();
+    const parked = await runHealEngine({ root: h.root, base: 'dev', sig8: SIG8, config: DEFAULT_HEAL_CONFIG, approved: false }, engineDeps());
+    expect(parked.gate?.name).toBe(HEAL_APPROVE_GATE);
+    // An older version's seal file: the same seal over the record, no `open` field.
+    const sealFile = join(healLedgerDir(h.ledgerDir, h.root), `${SIG8}.seal.json`);
+    const { open: _open, ...older } = JSON.parse(readFileSync(sealFile, 'utf8')) as Record<string, unknown>;
+    writeFileSync(sealFile, `${JSON.stringify(older, null, 2)}\n`);
+    expect(healSealOpen(h.ledgerDir, h.root, SIG8)).toBeNull();
     expect(await cli(cliDeps([FIX, review('approve')]), 'approve', SIG8)).toBe(0);
     expect(out.join('\n')).toMatch(/phase=merge/);
   });

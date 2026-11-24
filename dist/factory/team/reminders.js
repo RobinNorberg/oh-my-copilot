@@ -12,7 +12,7 @@
  * older versions, `<state>/factory/reminders.json`, is ignored (never read,
  * never removed).
  */
-import { mkdirSync } from 'fs';
+import { existsSync, mkdirSync } from 'fs';
 import { dirname, join } from 'path';
 import { atomicWriteFileSync } from '../../lib/atomic-write.js';
 import { lockPathFor, withFileLockSync } from '../../lib/file-lock.js';
@@ -55,6 +55,10 @@ export function staleGateReminders(o) {
         return [];
     const windowMs = o.afterHours * 3_600_000;
     const path = remindersPath(o.ledgerDir, o.root);
+    // No run parked at a gate and no record to prune: nothing to remind or record, so no directory and no lock.
+    const parkedAny = [...o.runs.values()].some((s) => s.gate && !TERMINAL_FACTORY_PHASES.includes(s.phase));
+    if (!parkedAny && !existsSync(path))
+        return [];
     mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
     return withFileLockSync(lockPathFor(path), () => {
         const before = readRecord(path);

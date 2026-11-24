@@ -31,6 +31,15 @@ describe('staleGateReminders', () => {
     expect(existsSync(remindersPath(ledgerDir, root))).toBe(false);
   });
 
+  it('touches nothing (no directory, no lock) when no run is parked at a gate', () => {
+    const [key, s] = parked(1, T0);
+    const runs = new Map<FactoryRunKey, FactoryRunState>([[key, seal({ ...s, gate: undefined })], [2, seal({ ...parked(2, T0)[1], phase: 'merged' })]]);
+    expect(staleGateReminders({ root, ledgerDir, runs, nowMs: T0 + 99 * H, afterHours: 24 })).toEqual([]);
+    expect(staleGateReminders({ root, ledgerDir, runs: new Map(), nowMs: T0 + 99 * H, afterHours: 24 })).toEqual([]);
+    expect(existsSync(join(ledgerDir, 'reminders'))).toBe(false);
+    expect(existsSync(ledgerDir)).toBe(false);
+  });
+
   it('waits for the window, reminds once, then again a window later', () => {
     const runs = new Map([parked(1, T0)]);
     const at = (h: number) => staleGateReminders({ root, ledgerDir, runs, nowMs: T0 + h * H, afterHours: 24, readBase });
