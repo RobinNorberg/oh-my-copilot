@@ -160,6 +160,7 @@ describe('omg factory poll: untrusted rows never crowd out a trusted item', () =
     it('hundreds of rotating forged keys per tick change nothing for a trusted item', async () => {
         const PER = 100;
         const t = await poll(6, (n) => {
+            mkdirSync(factoryStateDir(root), { recursive: true });
             for (let k = 0; k < PER; k++)
                 writeFileSync(factoryStatePath(root, 100_000 + ((n * PER + k) % (5 * PER))), '{}');
             if (n > 0)
@@ -175,6 +176,8 @@ describe('omg factory poll: untrusted rows never crowd out a trusted item', () =
 describe('omg factory poll: state files left unread', () => {
     it('the `state-files` row is one untrusted item: counted, never an item line or notice', async () => {
         const t = await poll(3, (n) => {
+            if (n === 0)
+                mkdirSync(factoryStateDir(root), { recursive: true });
             if (n === 0)
                 for (let k = 0; k < MAX_UNRECORDED_STATES + 5; k++)
                     writeFileSync(factoryStatePath(root, 7000 + k), '{}');
