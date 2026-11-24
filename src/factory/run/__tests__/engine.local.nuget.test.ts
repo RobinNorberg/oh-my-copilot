@@ -977,51 +977,13 @@ describe('round 8: the restore step runs only when MSBuild evaluates the same re
   }, MULTI_RUN_MS);
 });
 
-describe('a package-source setting that reads your environment parks before the network opens', () => {
+
+describe('a package-source setting that depends on your environment parks before the network opens', () => {
   const NUGET_ORG = 'https://api.nuget.org/v3/index.json';
   const sourcesReqs = (r: Recorder) => r.reqs.filter((q) => q.purpose === 'sources');
   const run = (r: Recorder) => runFactoryEngine(localOpts(w, lanesFor(w, [commitFile('src/App/Greet.cs', 'namespace App;\n'), review('approve')]), { gateSandbox: r.sandbox, runUserConfig: SANDBOXED }));
-  /** baseProject plus a root Directory.Build.props holding `body`, in the base. */
-  const baseWithProps = (body: string) => {
-    baseProject();
-    writeFileSync(join(w.root, 'Directory.Build.props'), `<Project>\n  <PropertyGroup>\n${body}\n  </PropertyGroup>\n</Project>\n`);
-    gitIn(w.root, 'add', '.');
-    gitIn(w.root, 'commit', '-q', '-m', 'props');
-  };
-  /** The sources answer: nuget.org, or each probe value given for one of `reads` (the properties the restore sources read). */
-  const probed = (reads: readonly string[], fail?: (req: SandboxRunRequest) => boolean) => (req: SandboxRunRequest): SandboxRunResult => {
-    if (fail?.(req)) return { ran: true, status: 1, output: 'error MSB4019: The imported project was not found.', timedOut: false };
-    const env = reads.map((n) => req.probeEnv?.[n]).filter((v): v is string => v !== undefined);
-    return { ran: true, status: 0, output: '', timedOut: false, restoreGraph: fakeRestoreGraph(req.cwd, env.length > 0 ? env : [NUGET_ORG]) };
-  };
-
-  it('static: RestoreSources from a property no pinned file defines parks with the remedy; no evaluation, no restore', async () => {
-    w = localWorld(['dotnet', 'test']);
-    baseWithProps(`    <RestoreSources Condition="'$(CORP_FEED)' != ''">$(CORP_FEED)</RestoreSources>`);
-    const r = recorder([{ status: 1, output: OFFLINE }], undefined, undefined, probed([]));
-    const out = await run(r);
-    expect(out.gate?.name, out.message).toBe('gate-install-needed');
-    expect(out.gate?.reason).toContain('Directory.Build.props: <RestoreSources> reads $(CORP_FEED), which no pinned file defines');
-    expect(out.gate?.reason).toContain("declare the feed in the repository's nuget.config");
-    expect(sourcesReqs(r)).toHaveLength(0);
-    expect(r.reqs.some((q) => q.purpose === 'restore')).toBe(false);
-    expect(existsSync(treeDir())).toBe(false);
-  }, MULTI_RUN_MS);
-
-  it('static: a nuget.config value with %NAME% parks', async () => {
-    w = localWorld(['dotnet', 'test']);
-    baseProject();
-    writeFileSync(join(w.root, 'nuget.config'), '<configuration><packageSources><clear /><add key="corp" value="%CORP_FEED%" /></packageSources></configuration>\n');
-    gitIn(w.root, 'add', '.');
-    gitIn(w.root, 'commit', '-q', '-m', 'config');
-    const r = recorder([{ status: 1, output: OFFLINE }], undefined, undefined, probed([]));
-    const out = await run(r);
-    expect(out.gate?.name, out.message).toBe('gate-install-needed');
-    expect(out.gate?.reason).toContain('reads the environment variable CORP_FEED');
-    expect(r.reqs.some((q) => q.purpose === 'restore')).toBe(false);
-  }, MULTI_RUN_MS);
-
-  /** baseProject plus a root Directory.Build.props holding `body` (outside a PropertyGroup) and other files, in the base. */
+  const sources = (req: SandboxRunRequest): SandboxRunResult => ({ ran: true, status: 0, output: '', timedOut: false, restoreGraph: fakeRestoreGraph(req.cwd, [NUGET_ORG]) });
+  /** baseProject plus a root Directory.Build.props holding `body` and other files, in the base. */
   const baseWithFiles = (body: string, files: Record<string, string> = {}) => {
     baseProject();
     writeFileSync(join(w.root, 'Directory.Build.props'), `<Project>\n${body}\n</Project>\n`);
@@ -1032,113 +994,60 @@ describe('a package-source setting that reads your environment parks before the 
     gitIn(w.root, 'add', '.');
     gitIn(w.root, 'commit', '-q', '-m', 'props');
   };
-  const historyNote = () => readFactoryState(w.root, LOCAL_ISSUE)!.history.find((h) => h.note.startsWith('dotnet restore ran in the OS sandbox'))?.note ?? '';
-
-  it('probe: a conditional default the restore sources read gives other sources with the value 1: parks after a third evaluation, naming the variable and a remedy for it', async () => {
-    w = localWorld(['dotnet', 'test']);
-    baseWithProps(`    <Feeds Condition="'$(Feeds)' == ''"></Feeds>\n    <RestoreSources Condition="'$(Feeds)' != ''">$(Feeds)</RestoreSources>`);
-    const r = recorder([{ status: 1, output: OFFLINE }], undefined, undefined, probed(['Feeds']));
+  /** Runs the lane and expects a static park: no evaluation, no restore, no definition tree. */
+  const parks = async (): Promise<string> => {
+    const r = recorder([{ status: 1, output: OFFLINE }], undefined, undefined, sources);
     const out = await run(r);
     expect(out.gate?.name, out.message).toBe('gate-install-needed');
-    expect(out.gate?.reason).toMatch(/MSBuild evaluates other restore sources for <repository>\/src\/App\/App\.csproj when the environment sets Feeds \(each to 1: <repository>\/1\) than without \(https:\/\/api\.nuget\.org\/v3\/index\.json\): a package-source setting reads your environment/i);
-    expect(out.gate?.reason).toContain('if Feeds must never come from your environment, give it its value in a pinned .props file without a condition on itself');
-    const reqs = sourcesReqs(r);
-    expect(reqs).toHaveLength(3);
-    expect(reqs[0].probeEnv).toBeUndefined();
-    expect(reqs[1].probeEnv).toBeUndefined();
-    expect(reqs[2]).toMatchObject({ cwd: treeDir(), network: 'none', restoreGraph: true, probeEnv: { Feeds: '1' } });
+    expect(sourcesReqs(r)).toHaveLength(0);
     expect(r.reqs.some((q) => q.purpose === 'restore')).toBe(false);
-  }, MULTI_RUN_MS);
+    expect(existsSync(treeDir())).toBe(false);
+    return out.gate?.reason ?? '';
+  };
 
-  it('probe: a definition in a pinned file nothing imports does not stop the probe (it parks on the changed sources)', async () => {
+  it('(a) RestoreSources from a property no pinned file gives an unconditional value: parks, naming the file, the setting, the name and the remedy', async () => {
     w = localWorld(['dotnet', 'test']);
-    baseWithFiles(`  <PropertyGroup>\n    <RestoreSources Condition="'$(CorpFeed)' != ''">$(CorpFeed)</RestoreSources>\n  </PropertyGroup>`, { 'eng/Unused.props': '<Project><PropertyGroup><CorpFeed>https://api.nuget.org/v3/index.json</CorpFeed></PropertyGroup></Project>\n' });
-    const r = recorder([{ status: 1, output: OFFLINE }], undefined, undefined, probed(['CorpFeed']));
-    const out = await run(r);
-    expect(out.gate?.name, out.message).toBe('gate-install-needed');
-    expect(out.gate?.reason).toMatch(/when the environment sets CorpFeed \(each to 1/);
-    expect(sourcesReqs(r).map((q) => q.probeEnv)).toEqual([undefined, undefined, { CorpFeed: '1' }]);
-    expect(r.reqs.some((q) => q.purpose === 'restore')).toBe(false);
+    baseWithFiles(`  <PropertyGroup>\n    <RestoreSources Condition="'$(CORP_FEED)' != ''">$(CORP_FEED)</RestoreSources>\n  </PropertyGroup>`);
+    const reason = await parks();
+    expect(reason).toContain('Directory.Build.props: <RestoreSources> reads $(CORP_FEED), which no pinned file gives an unconditional value');
+    expect(reason).toContain("declare the feed in the repository's nuget.config (a <packageSources> entry, no %VARIABLE%), or give $(CORP_FEED) an unconditional value in a pinned .props file");
   }, MULTI_RUN_MS);
 
-  it('an ordinary repo (reserved and defined properties, a conditional default, Import conditions on CI and SDK names) restores after the probe; the history says so', async () => {
+  it('(b) a file sets RestoreSources and an Import is conditioned on a name your environment can set: parks', async () => {
     w = localWorld(['dotnet', 'test']);
-    baseWithFiles([
-      `  <PropertyGroup>\n    <RepoRoot>$(MSBuildThisFileDirectory)</RepoRoot>\n    <ArtifactsDir Condition="'$(ArtifactsDir)' == ''">$(RepoRoot)artifacts/</ArtifactsDir>\n    <Out>$(Configuration)/$(TargetFramework)</Out>\n  </PropertyGroup>`,
-      `  <Import Project="$(MSBuildThisFileDirectory)eng/Inner.props" Condition="'$(IsCrossTargetingBuild)' != 'true' and '$(NCrunch)' != '1'" />`,
-    ].join('\n'), { 'eng/Inner.props': '<Project />\n' });
-    const r = recorder([{ status: 1, output: OFFLINE }, { status: 0, output: 'Passed!' }], undefined, undefined, probed([]));
-    const out = await run(r);
-    expect(out.gate?.name, out.message).toBe('merge');
-    // The restore-relevant name (an Import condition) first, then every other name read (RepoRoot's unconditional definition wins: harmless).
-    expect(sourcesReqs(r).map((q) => q.probeEnv && Object.keys(q.probeEnv))).toEqual([undefined, undefined, ['NCrunch', 'ArtifactsDir', 'RepoRoot']]);
-    expect(r.reqs.filter((q) => q.purpose === 'restore')).toHaveLength(1);
-    expect(historyNote()).toMatch(/the sources did not change with 3 name\(s\) an environment variable can set given 1 in the environment\)/);
+    baseWithFiles(`  <Import Project="$(MSBuildThisFileDirectory)eng/CorpFeed.props" Condition="'$(UseCorpFeed)' == 'true'" />`, { 'eng/CorpFeed.props': '<Project><PropertyGroup><RestoreSources>https://corp.invalid/v3/index.json</RestoreSources></PropertyGroup></Project>\n' });
+    const reason = await parks();
+    expect(reason).toContain('eng/CorpFeed.props sets <RestoreSources>, and Directory.Build.props: Import "$(MSBuildThisFileDirectory)eng/CorpFeed.props" has a condition that reads $(UseCorpFeed)');
+    expect(reason).toContain('or give $(UseCorpFeed) an unconditional value in a pinned .props file');
   }, MULTI_RUN_MS);
 
-  it('a probe that cannot be evaluated is tried once more with only the restore-relevant names; that one passing restores, naming what was not probed', async () => {
+  it('(c) a nuget.config value with %NAME%, a response file -p: value from %NAME% that a setting reads, an Import path from the user profile: each parks', async () => {
     w = localWorld(['dotnet', 'test']);
-    baseWithFiles(`  <PropertyGroup>\n    <Ver>$(BUILD_NUMBER)</Ver>\n  </PropertyGroup>\n  <Import Project="$(MSBuildThisFileDirectory)eng/Inner.props" Condition="'$(NCrunch)' != '1'" />`, { 'eng/Inner.props': '<Project />\n' });
-    const r = recorder([{ status: 1, output: OFFLINE }, { status: 0, output: 'Passed!' }], undefined, undefined, probed([], (req) => req.probeEnv?.BUILD_NUMBER !== undefined));
-    const out = await run(r);
-    expect(out.gate?.name, out.message).toBe('merge');
-    expect(sourcesReqs(r).map((q) => q.probeEnv)).toEqual([undefined, undefined, { NCrunch: '1', BUILD_NUMBER: '1' }, { NCrunch: '1' }]);
-    expect(historyNote()).toContain('the sources did not change with 1 name(s) an environment variable can set given 1 in the environment; 1 name(s) were not probed (BUILD_NUMBER; the evaluation with them failed)');
-  }, MULTI_RUN_MS);
-
-  it('a probe that cannot be evaluated, with no name feeding a package-source setting, does not park: the restore runs and its history names the names', async () => {
-    w = localWorld(['dotnet', 'test']);
-    baseWithProps(`    <Version Condition="'$(BUILD_NUMBER)' != ''">$(BUILD_NUMBER)</Version>`);
-    const r = recorder([{ status: 1, output: OFFLINE }, { status: 0, output: 'Passed!' }], undefined, undefined, probed([], (req) => req.probeEnv !== undefined));
-    const out = await run(r);
-    expect(out.gate?.name, out.message).toBe('merge');
-    expect(sourcesReqs(r)).toHaveLength(3);
-    expect(historyNote()).toContain('the environment probe could not be evaluated with BUILD_NUMBER set to 1 and no name it set feeds a package-source setting, so 1 name(s) an environment variable can set were not probed (BUILD_NUMBER)');
-  }, MULTI_RUN_MS);
-
-  it('a probe that cannot be evaluated parks when a probed name feeds a package-source setting', async () => {
-    w = localWorld(['dotnet', 'test']);
-    baseWithProps(`    <Feeds Condition="'$(Feeds)' == ''"></Feeds>\n    <RestoreSources Condition="'$(Feeds)' != ''">$(Feeds)</RestoreSources>`);
-    const r = recorder([{ status: 1, output: OFFLINE }], undefined, undefined, probed([], (req) => req.probeEnv !== undefined));
-    const out = await run(r);
-    expect(out.gate?.name, out.message).toBe('gate-install-needed');
-    expect(out.gate?.reason).toMatch(/fails in the engine's definition tree when the environment sets Feeds \(each to 1\), and Feeds feeds a package-source setting/);
-    expect(out.gate?.reason).toContain('if Feeds must never come from your environment');
-    expect(sourcesReqs(r)).toHaveLength(3);
-    expect(r.reqs.some((q) => q.purpose === 'restore')).toBe(false);
-  }, MULTI_RUN_MS);
-
-  it(`more than ${400} names: the restore-relevant ones first, the first 400 probed, the rest named in the history (no park)`, async () => {
-    w = localWorld(['dotnet', 'test']);
-    const many = Array.from({ length: 401 }, (_, i) => `$(N${String(i).padStart(3, '0')})`).join('');
-    baseWithFiles(`  <PropertyGroup>\n    <Many>${many}</Many>\n  </PropertyGroup>\n  <Import Project="$(MSBuildThisFileDirectory)eng/Inner.props" Condition="'$(NCrunch)' != '1'" />`, { 'eng/Inner.props': '<Project />\n' });
-    const r = recorder([{ status: 1, output: OFFLINE }, { status: 0, output: 'Passed!' }], undefined, undefined, probed([]));
-    const out = await run(r);
-    expect(out.gate?.name, out.message).toBe('merge');
-    const keys = Object.keys(sourcesReqs(r)[2].probeEnv ?? {});
-    expect(keys).toHaveLength(400);
-    expect(keys[0]).toBe('NCrunch');
-    expect(historyNote()).toContain('2 name(s) were not probed (N399, N400; more than 400 names)');
-  }, MULTI_RUN_MS);
-
-  it('static: a response file -p: value from %NAME% that a restore setting reads parks', async () => {
+    baseProject();
+    writeFileSync(join(w.root, 'nuget.config'), '<configuration><packageSources><clear /><add key="corp" value="%CORP_FEED%" /></packageSources></configuration>\n');
+    gitIn(w.root, 'add', '.');
+    gitIn(w.root, 'commit', '-q', '-m', 'config');
+    expect(await parks()).toContain('reads the environment variable CORP_FEED');
     w = localWorld(['dotnet', 'test']);
     baseWithFiles(`  <PropertyGroup>\n    <RestoreSources Condition="Exists('$(CorpFeed)')">$(CorpFeed)</RestoreSources>\n  </PropertyGroup>`, { 'Directory.Build.rsp': '-p:CorpFeed=%OMG26_CORP_FEED%\n' });
-    const r = recorder([{ status: 1, output: OFFLINE }], undefined, undefined, probed([]));
-    const out = await run(r);
-    expect(out.gate?.name, out.message).toBe('gate-install-needed');
-    expect(out.gate?.reason).toContain('Directory.Build.props: <RestoreSources> reads the environment variable OMG26_CORP_FEED through $(CorpFeed)');
-    expect(sourcesReqs(r)).toHaveLength(0);
-  }, MULTI_RUN_MS);
-
-  it('static: an Import path from the user profile parks with an import remedy', async () => {
+    expect(await parks()).toContain('Directory.Build.props: <RestoreSources> reads the environment variable OMG26_CORP_FEED through $(CorpFeed)');
     w = localWorld(['dotnet', 'test']);
     baseWithFiles(`  <Import Project="$(USERPROFILE)/corp/Build.props" Condition="Exists('$(USERPROFILE)/corp/Build.props')" />`);
-    const r = recorder([{ status: 1, output: OFFLINE }], undefined, undefined, probed([]));
+    const reason = await parks();
+    expect(reason).toContain('so your environment chooses which file loads');
+    expect(reason).toContain('import only files the repository tracks');
+  }, 3 * MULTI_RUN_MS);
+
+  it('an ordinary repo (a literal RestoreSources, Import conditions on SDK and CI names in a repo that sets none) runs exactly the two source evaluations and restores', async () => {
+    w = localWorld(['dotnet', 'test']);
+    baseWithFiles([
+      `  <PropertyGroup>\n    <RestoreSources>${NUGET_ORG}</RestoreSources>\n    <Version Condition="'$(BUILD_BUILDNUMBER)' != ''">$(BUILD_BUILDNUMBER)</Version>\n  </PropertyGroup>`,
+      `  <Import Project="$(MSBuildThisFileDirectory)eng/Inner.props" Condition="'$(IsCrossTargetingBuild)' != 'true' and '$(OS)' == 'Windows_NT'" />`,
+    ].join('\n'), { 'eng/Inner.props': '<Project />\n' });
+    const r = recorder([{ status: 1, output: OFFLINE }, { status: 0, output: 'Passed!' }], undefined, undefined, sources);
     const out = await run(r);
-    expect(out.gate?.name, out.message).toBe('gate-install-needed');
-    expect(out.gate?.reason).toContain('a package-source setting or an Import of the repository reads your environment or machine');
-    expect(out.gate?.reason).toContain('import only files the repository tracks');
-    expect(sourcesReqs(r)).toHaveLength(0);
+    expect(out.gate?.name, out.message).toBe('merge');
+    expect(sourcesReqs(r).map((q) => q.cwd)).toEqual([treeDir(), expect.any(String)]);
+    expect(r.reqs.filter((q) => q.purpose === 'restore')).toHaveLength(1);
   }, MULTI_RUN_MS);
 });

@@ -112,17 +112,8 @@ export declare function unpinnedImports(path: string, text: string): string[];
  * not count. A file larger than PINNED_READ_MAX is not read (none).
  */
 export declare function projectSdkMentions(path: string, text: string): string[];
-/** True when `name` is a property every build defines (RESERVED_PROPERTIES). */
+/** True when `name` is a property MSBuild or the SDK defines (RESERVED_PROPERTIES). */
 export declare const isReservedProperty: (name: string) => boolean;
-/** Environment names that steer dotnet, MSBuild or NuGet themselves (part of isProbeExcluded). */
-export declare const TOOL_ENV: RegExp;
-/**
- * True when the restore-source probe never sets `name` in the environment
- * (any case): the tool variables (TOOL_ENV) and the names the runtime, the
- * loader or the sandbox itself reads (RUNTIME_ENV). A restore setting or an
- * Import that reads one is a static read instead (restoreHostReads).
- */
-export declare const isProbeExcluded: (name: string) => boolean;
 /**
  * The names an MSBuild expression reads: each `$(Name)` as `Name`, and
  * host reads as pseudo-names in brackets (`[env NAME]` for a literal
@@ -130,69 +121,72 @@ export declare const isProbeExcluded: (name: string) => boolean;
  * `[GetFolderPath]`, ...). With `percent`, `%NAME%` counts as `[env NAME]`.
  */
 export declare function expressionRefs(expr: string, percent?: boolean): string[];
-/** One pinned file's property data flow (propertyFlow). */
+/** One pinned file's property data flow (propertyFlow). Offsets (`at`) order what one file reads and defines. */
 export interface PropertyFlow {
-    /** Each property definition: the names its value and conditions (its own and its ancestors') read. */
+    /** Each property definition: the names its value and conditions (its own and its ancestors') read; unconditional when no condition, `Choose` branch or target encloses it. */
     defs: Array<{
         name: string;
+        at: number;
+        unconditional: boolean;
         refs: string[];
     }>;
     /**
-     * The restore-relevant places. `setting`: a restore source setting
-     * (RESTORE_SOURCE_SETTING, also task-set through an Output, or a response
-     * file's `-p:`), `refs` its value and conditions. `import`: an Import,
-     * `refs` its `Project` value, `cond` its own and its groups' conditions.
+     * `setting`: a source setting (RESTORE_SOURCE_SETTING, also task-set through an Output, or a response file's `-p:`),
+     * `refs` its value and conditions. `import`: an Import, `refs` its `Project` value, `cond` its own and its groups' conditions.
      */
     roots: Array<{
         what: string;
         kind: 'setting' | 'import';
+        at: number;
         refs: string[];
         cond: string[];
     }>;
-    /** Every name the file reads anywhere (comments included, entities decoded; a response file's `%NAME%` as `[env NAME]`). */
-    refs: string[];
+    /** The repository paths (lower case) this file imports by a literal path or one from `$(MSBuildThisFileDirectory)`. */
+    imports: string[];
 }
 /**
  * The property data flow of a pinned MSBuild file (one linear scan) or
- * response file (its `-p:` / `-rp:` global properties, which define names;
- * MSBuild expands `%NAME%` there from the environment). Other files:
- * nothing. A file larger than PINNED_READ_MAX: one root that reads
- * `[not read]`.
+ * response file (its `-p:` / `-rp:` global properties, which define names
+ * unconditionally; MSBuild expands `%NAME%` there from the environment).
+ * Other files: nothing. A file larger than PINNED_READ_MAX: one setting
+ * that reads `[not read]`.
  */
 export declare function propertyFlow(path: string, text: string): PropertyFlow;
 /** restoreHostReads' result. */
 export interface RestoreHostReads {
-    /** The static reads (each parks the restore step): where and what. */
+    /** The static reads (each parks the restore step): the file, the setting or Import, and what it reads. */
     reads: string[];
-    /** Every name the restore-source probe sets (sorted, one spelling per name in any case). */
+    /** The property names among them your environment can set (sorted): the park asks to give them an unconditional value. */
     names: string[];
-    /** Those of `names` a restore setting or an Import condition reads, directly or through definitions (probed first). */
-    restore: string[];
-    /** Those of `names` a restore setting reads, directly or through definitions (engine.ts restoreSourcesPark: a probe of them that cannot be evaluated parks). */
-    setting: string[];
 }
 /**
- * Whether a commit's package-source settings read your environment or
- * machine (engine.ts nugetRestore, before the network opens). `files` are
- * its pinned definition files (MSBuild, response and nuget.config files;
- * others are ignored). The probe (engine.ts restoreSourcesPark) is the
- * authority; the static `reads` are what it cannot see:
- * - a restore source setting (propertyFlow `setting` roots) whose value or
- *   conditions read, directly or through the properties the pinned files
- *   define (any definition, its conditions included, followed
- *   transitively), a name no pinned file defines that is not reserved
- *   (isReservedProperty), a name the probe never sets (isProbeExcluded),
- *   or a host read (an environment, registry or user-profile folder
- *   function; also a response file's `%NAME%`);
- * - an Import whose `Project` value reads such a name or host read: the
- *   environment chooses which file loads (its conditions are probed, not
- *   read here, except a host read other than a literal environment
- *   variable and a direct read of a name the probe never sets);
- * - each `%NAME%` in a pinned nuget.config value, which NuGet expands.
- * `names` are every name the files read (entities decoded), minus reserved
- * names, the restore settings themselves, the names the probe never sets
- * and the names an Import `Project` value reads (a value there only makes a
- * pinned import go missing; one no pinned file defines is a static read).
+ * Whether a commit's package-source settings depend on your environment or
+ * machine (engine.ts nugetRestore parks before the network opens on any
+ * read). `files` are its pinned definition files (MSBuild, response and
+ * nuget.config files; others are ignored).
+ *
+ * A name is env-settable at a place that reads it when it is not reserved
+ * (isReservedProperty), not a source setting itself, and no pinned
+ * definition gives it an unconditional value that counts there: one with
+ * no condition and no conditioned group, `Choose` branch or target around
+ * it, in the same file before the read, or in a `Directory.Build.props`,
+ * `Directory.Build.targets`, `Directory.Packages.props` or response file,
+ * or in a file a pinned file imports by a literal path or one from
+ * `$(MSBuildThisFileDirectory)`. Reads are followed through every pinned
+ * definition of a name (value and conditions), transitively. A host read
+ * is a GetEnvironmentVariable(s), ExpandEnvironmentVariables, GetFolderPath
+ * or registry function, `[System.Environment]::UserName`, `UserDomainName`
+ * or `MachineName`, or a response file's `%NAME%`. A read is:
+ * (a) a source setting (RESTORE_SOURCE_SETTING) whose value or conditions
+ *     (own and enclosing) reach an env-settable name or a host read;
+ * (b) when any pinned file sets a source setting other than
+ *     RestorePackagesPath, an Import whose conditions (own and enclosing)
+ *     reach an env-settable name or a host read: your environment decides
+ *     whether a file loads, which may set the sources;
+ * (c) an Import whose `Project` value reaches a host read, a name no pinned
+ *     file defines, or an env-settable profile name (PROFILE_ENV): your
+ *     environment chooses which file loads; and each `%NAME%` in a pinned
+ *     nuget.config value, which NuGet expands.
  */
 export declare function restoreHostReads(files: ReadonlyArray<{
     path: string;

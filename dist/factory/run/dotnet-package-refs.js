@@ -427,39 +427,47 @@ export function projectSdkMentions(path, text) {
     }
     return [...out].sort();
 }
-/** NuGet's restore properties that name sources, folders or the config file (restoreHostReads' roots). */
-const RESTORE_SOURCE_SETTING = /^Restore(?:Sources|AdditionalProjectSources|FallbackFolders|ConfigFile|PackagesPath)$/i;
 /**
- * Properties MSBuild, the .NET SDK, NuGet or Visual Studio define for every
- * build (lower case; `MSBuild*` and NuGet's generated `Pkg*` path properties
- * by prefix): a reference to one is not a read of your environment.
+ * NuGet's restore properties that name package sources, folders or the
+ * config NuGet reads (restoreHostReads' source settings).
+ */
+const RESTORE_SOURCE_SETTING = /^Restore(?:Sources|AdditionalProjectSources|FallbackFolders|AdditionalProjectFallbackFolders|ConfigFile|RootConfigDirectory|PackagesPath)$/i;
+/** The one of RESTORE_SOURCE_SETTING that names no source: it does not make Import conditions matter (restoreHostReads rule b). */
+const NOT_A_SOURCE = /^RestorePackagesPath$/i;
+/**
+ * Properties MSBuild, the .NET SDK, NuGet or Visual Studio define (lower
+ * case; `MSBuild*` and NuGet's generated `Pkg*` path properties by prefix):
+ * a reference to one is not a read of your environment. Never CI variables
+ * (`CI`, `TF_BUILD`, `GITHUB_ACTIONS`, `BUILD_*`) or profile names
+ * (`USERPROFILE`, `HOME`, `USERDOMAIN`, `APPDATA`): your environment sets those.
  */
 const RESERVED_PROPERTIES = new Set([
-    'configuration', 'platform', 'platforms', 'targetframework', 'targetframeworks', 'targetframeworkidentifier', 'targetframeworkversion',
-    'targetframeworkmoniker', 'targetplatformidentifier', 'targetplatformversion', 'runtimeidentifier', 'runtimeidentifiers',
+    'configuration', 'platform', 'platforms', 'platformtarget', 'targetframework', 'targetframeworks', 'targetframeworkidentifier', 'targetframeworkversion',
+    'targetframeworkmoniker', 'targetplatformidentifier', 'targetplatformversion', 'targetplatformminversion', 'supportedosplatformversion',
+    'runtimeidentifier', 'runtimeidentifiers', 'os',
     'outputpath', 'outdir', 'intermediateoutputpath', 'baseintermediateoutputpath', 'baseoutputpath', 'projectdir', 'projectname',
     'projectpath', 'projectfilename', 'projectext', 'solutiondir', 'solutionname', 'solutionpath', 'solutionfilename', 'solutionext',
-    'targetname', 'targetpath', 'targetdir', 'targetext', 'targetfilename', 'assemblyname', 'rootnamespace', 'nugetpackageroot',
-    'nugetpackagefolders', 'nugetprojectstyle', 'nugettargetmoniker', 'netcoresdkversion', 'netcoresdkruntimeidentifier', 'netcoreroot',
-    'netcoretargetingpackroot', 'bundlednetcoreapppackageversion', 'visualstudioversion', 'vstoolspath', 'designtimebuild',
+    'targetname', 'targetpath', 'targetdir', 'targetext', 'targetfilename', 'assemblyname', 'rootnamespace', 'artifactspath', 'useartifactsoutput',
+    'appendtargetframeworktooutputpath', 'appendruntimeidentifiertooutputpath', 'packageoutputpath', 'documentationfile',
+    'nugetpackageroot', 'nugetpackagefolders', 'nugetprojectstyle', 'nugettargetmoniker', 'netcoresdkversion', 'netcoresdkruntimeidentifier', 'netcoreroot',
+    'netcoretargetingpackroot', 'bundlednetcoreapppackageversion', 'dotnet_host_path', 'visualstudioversion', 'vstoolspath', 'designtimebuild',
     'buildinginsidevisualstudio', 'buildingproject', 'language', 'defineconstants', 'langversion', 'nullable', 'implicitusings',
-    'version', 'versionprefix', 'versionsuffix', 'packageversion', 'packageid', 'ispackable', 'istestproject', 'os', 'artifactspath',
-    'useartifactsoutput', 'dotnet_host_path', 'excluderestorepackageimports', 'restoregraphoutputpath', 'restoreprojectstyle',
-    'outputtype', 'iscrosstargetingbuild', 'usingmicrosoftnetsdk', 'usingmicrosoftnetsdkweb',
+    'version', 'versionprefix', 'versionsuffix', 'packageversion', 'assemblyversion', 'fileversion', 'informationalversion', 'packageid',
+    'authors', 'company', 'product', 'copyright', 'description', 'neutrallanguage', 'ispackable', 'ispublishable', 'istestproject',
+    'outputtype', 'iscrosstargetingbuild', 'usingmicrosoftnetsdk', 'usingmicrosoftnetsdkweb', 'usingmicrosoftnetsdkrazor', 'usingmicrosoftnetsdkworker',
+    'usingmicrosoftnetsdkblazorwebassembly', 'excluderestorepackageimports', 'restoregraphoutputpath', 'restoreprojectstyle',
+    'selfcontained', 'publishtrimmed', 'publishaot', 'publishsinglefile', 'publishreadytorun', 'useapphost', 'isaotcompatible', 'istrimmable',
+    'usewpf', 'usewindowsforms', 'enablewindowstargeting', 'invariantglobalization',
+    'optimize', 'debugtype', 'debugsymbols', 'deterministic', 'warninglevel', 'nowarn', 'warningsaserrors', 'warningsnotaserrors', 'treatwarningsaserrors',
+    'generatedocumentationfile', 'generateassemblyinfo', 'generatepackageonbuild', 'signassembly', 'analysislevel', 'analysismode',
+    'enablenetanalyzers', 'enforcecodestyleinbuild', 'runanalyzers', 'runanalyzersduringbuild',
+    'managepackageversionscentrally', 'centralpackagetransitivepinningenabled', 'restorepackageswithlockfile', 'restorelockedmode',
+    'restoreusestaticgraphevaluation', 'nugetaudit', 'nugetauditmode', 'nugetauditlevel',
 ]);
-/** True when `name` is a property every build defines (RESERVED_PROPERTIES). */
+/** True when `name` is a property MSBuild or the SDK defines (RESERVED_PROPERTIES). */
 export const isReservedProperty = (name) => /^MSBuild/i.test(name) || /^Pkg[A-Za-z_]/.test(name) || RESERVED_PROPERTIES.has(name.toLowerCase());
-/** Environment names that steer dotnet, MSBuild or NuGet themselves (part of isProbeExcluded). */
-export const TOOL_ENV = /^(?:DOTNET_|MSBUILD|NUGET_|COMPLUS_|CORECLR_)/i;
-/** Environment names the runtime, the loader, the shell, the sandbox or a credential reads (part of isProbeExcluded). */
-const RUNTIME_ENV = /^(?:(?:NODE|COPILOT|GH|SSL_CERT|LD|DYLD|COREHOST)_.*|.*_PROXY|GITHUB_TOKEN|BASH_ENV|ENV|__COMPAT_LAYER|PATH|TEMP|TMP|HOME|USERPROFILE|APPDATA|LOCALAPPDATA|ComSpec|SystemRoot|windir)$/i;
-/**
- * True when the restore-source probe never sets `name` in the environment
- * (any case): the tool variables (TOOL_ENV) and the names the runtime, the
- * loader or the sandbox itself reads (RUNTIME_ENV). A restore setting or an
- * Import that reads one is a static read instead (restoreHostReads).
- */
-export const isProbeExcluded = (name) => TOOL_ENV.test(name) || RUNTIME_ENV.test(name);
+/** Names your user profile sets (an Import path that reads one picks a file of your machine, restoreHostReads rule c). */
+const PROFILE_ENV = /^(?:HOME|USERPROFILE|APPDATA|LOCALAPPDATA|HOMEDRIVE|HOMEPATH|USERNAME|USERDOMAIN|ALLUSERSPROFILE|PROGRAMDATA|XDG_\w+)$/i;
 /** `$(Name` (a property, a property function on it, or `$(Registry:`). Group 1: the name; group 2: a `:` after it. */
 const PROPERTY_REF = /\$\(\s*([A-Za-z_][A-Za-z0-9_-]*)\s*(:?)/g;
 /** A property function that reads the host: the environment, a user-profile folder, the registry, the user or machine name. Groups 3-5: a literal variable name. */
@@ -486,39 +494,52 @@ export function expressionRefs(expr, percent = false) {
                 out.add(`[env ${m[1]}]`);
     return [...out];
 }
+/** `rel` (relative to the dir of the repository file `path`) as a repository path, `\` read as `/`, `.` and `..` resolved. */
+function repoPath(path, rel) {
+    const out = path.split('/').slice(0, -1);
+    for (const seg of rel.replace(/\\/g, '/').split('/')) {
+        if (seg === '..')
+            out.pop();
+        else if (seg !== '' && seg !== '.')
+            out.push(seg);
+    }
+    return out.join('/');
+}
 /**
  * The property data flow of a pinned MSBuild file (one linear scan) or
- * response file (its `-p:` / `-rp:` global properties, which define names;
- * MSBuild expands `%NAME%` there from the environment). Other files:
- * nothing. A file larger than PINNED_READ_MAX: one root that reads
- * `[not read]`.
+ * response file (its `-p:` / `-rp:` global properties, which define names
+ * unconditionally; MSBuild expands `%NAME%` there from the environment).
+ * Other files: nothing. A file larger than PINNED_READ_MAX: one setting
+ * that reads `[not read]`.
  */
 export function propertyFlow(path, text) {
     const kind = fileKind(path);
     const defs = [];
     const roots = [];
-    const define = (name, refs) => {
-        defs.push({ name, refs });
+    const imports = [];
+    const define = (name, at, unconditional, refs) => {
+        defs.push({ name, at, unconditional, refs });
         if (RESTORE_SOURCE_SETTING.test(name))
-            roots.push({ what: `<${name}>`, kind: 'setting', refs, cond: [] });
+            roots.push({ what: `<${name}>`, kind: 'setting', at, refs, cond: [] });
     };
+    const tooLarge = { defs, roots: [{ what: `the file (larger than ${PINNED_READ_MAX / 1024} KB)`, kind: 'setting', at: 0, refs: ['[not read]'], cond: [] }], imports };
     if (kind === 'rsp') {
         if (text.length > PINNED_READ_MAX)
-            return { defs, roots: [{ what: `the file (larger than ${PINNED_READ_MAX / 1024} KB)`, kind: 'setting', refs: ['[not read]'], cond: [] }], refs: [] };
+            return tooLarge;
         for (const m of text.matchAll(/(?:^|\s)"?[-/](?:p|property|rp|restoreproperty):(\S+)/gi)) {
             for (const part of m[1].replace(/"/g, '').split(';')) {
                 const eq = part.indexOf('=');
                 const name = (eq < 0 ? part : part.slice(0, eq)).trim();
                 if (/^[A-Za-z_][A-Za-z0-9_-]*$/.test(name))
-                    define(name, eq < 0 ? [] : expressionRefs(part.slice(eq + 1), true).filter((r) => r.startsWith('[env ')));
+                    define(name, m.index ?? 0, true, eq < 0 ? [] : expressionRefs(part.slice(eq + 1), true).filter((r) => r.startsWith('[env ')));
             }
         }
-        return { defs, roots, refs: expressionRefs(text, true).filter((r) => r.startsWith('[env ')) };
+        return { defs, roots, imports };
     }
     if (kind !== 'msbuild')
-        return { defs, roots, refs: [] };
+        return { defs, roots, imports };
     if (text.length > PINNED_READ_MAX)
-        return { defs, roots: [{ what: `the file (larger than ${PINNED_READ_MAX / 1024} KB)`, kind: 'setting', refs: ['[not read]'], cond: [] }], refs: [] };
+        return tooLarge;
     const attr = (t, name) => {
         const a = t.attrs.find(([n]) => n.toLowerCase() === name);
         return a ? decodeXml(a[1]) : undefined;
@@ -526,7 +547,7 @@ export function propertyFlow(path, text) {
     const union = (...xs) => [...new Set(xs.flat())];
     const finish = (f, content) => {
         if (f.parent.toLowerCase() === 'propertygroup')
-            define(f.tag.name, union(expressionRefs(decodeXml(content)), f.cond));
+            define(f.tag.name, f.tag.start, !f.conditioned, union(expressionRefs(decodeXml(content)), f.cond));
     };
     const stack = [];
     for (const t of scanXml(text).tags) {
@@ -541,21 +562,36 @@ export function propertyFlow(path, text) {
         const parent = stack[stack.length - 1];
         const condition = attr(t, 'condition');
         const name = t.name.toLowerCase();
-        const f = { tag: t, parent: parent?.tag.name ?? '', cond: union(parent?.cond ?? [], condition !== undefined ? expressionRefs(condition) : []) };
+        const own = condition !== undefined ? expressionRefs(condition) : [];
+        // A Choose's Otherwise applies when none of its Whens does: it reads their conditions.
+        if (name === 'when' && parent?.tag.name.toLowerCase() === 'choose')
+            parent.whens.push(...own);
+        const f = {
+            tag: t,
+            parent: parent?.tag.name ?? '',
+            cond: union(parent?.cond ?? [], own, name === 'otherwise' ? parent?.whens ?? [] : []),
+            conditioned: (parent?.conditioned ?? false) || condition !== undefined || name === 'when' || name === 'otherwise' || name === 'target',
+            whens: [],
+        };
         if (name === 'import') {
             const project = attr(t, 'project') ?? '';
-            roots.push({ what: `Import ${JSON.stringify(project.slice(0, 200))}`, kind: 'import', refs: expressionRefs(project), cond: f.cond });
+            roots.push({ what: `Import ${JSON.stringify(project.slice(0, 200))}`, kind: 'import', at: t.start, refs: expressionRefs(project), cond: f.cond });
+            for (const raw of project.split(';')) {
+                const local = THIS_DIR_PATH.exec(msbuildUnescape(raw).trim());
+                if (local && local[1] && !leavesRepository(path, local[1]))
+                    imports.push(repoPath(path, local[1]).toLowerCase());
+            }
         }
-        // A task's Output that sets a property: the task's attribute values flow into it.
+        // A task's Output that sets a property: the task's attribute values flow into it (inside a target: never unconditional).
         const output = name === 'output' ? attr(t, 'propertyname') : undefined;
         if (output !== undefined && parent)
-            define(msbuildUnescape(output).trim(), union(...parent.tag.attrs.map(([, v]) => expressionRefs(decodeXml(v))), f.cond));
+            define(msbuildUnescape(output).trim(), t.start, false, union(...parent.tag.attrs.map(([, v]) => expressionRefs(decodeXml(v))), f.cond));
         if (t.selfClose)
             finish(f, '');
         else
             stack.push(f);
     }
-    return { defs, roots, refs: expressionRefs(decodeXml(text)) };
+    return { defs, roots, imports };
 }
 /** A pseudo-name of expressionRefs in words. */
 function hostReadWords(ref) {
@@ -569,107 +605,117 @@ function hostReadWords(ref) {
         return 'nothing the engine could read';
     return /^\[(?:UserDomainName|UserName|MachineName)\]$/i.test(ref) ? `$([System.Environment]::${ref.slice(1, -1)})` : `$([System.Environment]::${ref.slice(1, -1)}(...))`;
 }
+/** A file whose definitions count for every other pinned file (restoreHostReads): the auto-imported ones and response files. */
+const SHARED_DEFINITIONS = /(?:^|\/)directory\.(?:build\.props|build\.targets|packages\.props)$|\.rsp$/i;
 /**
- * Whether a commit's package-source settings read your environment or
- * machine (engine.ts nugetRestore, before the network opens). `files` are
- * its pinned definition files (MSBuild, response and nuget.config files;
- * others are ignored). The probe (engine.ts restoreSourcesPark) is the
- * authority; the static `reads` are what it cannot see:
- * - a restore source setting (propertyFlow `setting` roots) whose value or
- *   conditions read, directly or through the properties the pinned files
- *   define (any definition, its conditions included, followed
- *   transitively), a name no pinned file defines that is not reserved
- *   (isReservedProperty), a name the probe never sets (isProbeExcluded),
- *   or a host read (an environment, registry or user-profile folder
- *   function; also a response file's `%NAME%`);
- * - an Import whose `Project` value reads such a name or host read: the
- *   environment chooses which file loads (its conditions are probed, not
- *   read here, except a host read other than a literal environment
- *   variable and a direct read of a name the probe never sets);
- * - each `%NAME%` in a pinned nuget.config value, which NuGet expands.
- * `names` are every name the files read (entities decoded), minus reserved
- * names, the restore settings themselves, the names the probe never sets
- * and the names an Import `Project` value reads (a value there only makes a
- * pinned import go missing; one no pinned file defines is a static read).
+ * Whether a commit's package-source settings depend on your environment or
+ * machine (engine.ts nugetRestore parks before the network opens on any
+ * read). `files` are its pinned definition files (MSBuild, response and
+ * nuget.config files; others are ignored).
+ *
+ * A name is env-settable at a place that reads it when it is not reserved
+ * (isReservedProperty), not a source setting itself, and no pinned
+ * definition gives it an unconditional value that counts there: one with
+ * no condition and no conditioned group, `Choose` branch or target around
+ * it, in the same file before the read, or in a `Directory.Build.props`,
+ * `Directory.Build.targets`, `Directory.Packages.props` or response file,
+ * or in a file a pinned file imports by a literal path or one from
+ * `$(MSBuildThisFileDirectory)`. Reads are followed through every pinned
+ * definition of a name (value and conditions), transitively. A host read
+ * is a GetEnvironmentVariable(s), ExpandEnvironmentVariables, GetFolderPath
+ * or registry function, `[System.Environment]::UserName`, `UserDomainName`
+ * or `MachineName`, or a response file's `%NAME%`. A read is:
+ * (a) a source setting (RESTORE_SOURCE_SETTING) whose value or conditions
+ *     (own and enclosing) reach an env-settable name or a host read;
+ * (b) when any pinned file sets a source setting other than
+ *     RestorePackagesPath, an Import whose conditions (own and enclosing)
+ *     reach an env-settable name or a host read: your environment decides
+ *     whether a file loads, which may set the sources;
+ * (c) an Import whose `Project` value reaches a host read, a name no pinned
+ *     file defines, or an env-settable profile name (PROFILE_ENV): your
+ *     environment chooses which file loads; and each `%NAME%` in a pinned
+ *     nuget.config value, which NuGet expands.
  */
 export function restoreHostReads(files) {
     const flows = files.map((f) => ({ path: f.path, flow: propertyFlow(f.path, f.text) }));
+    const imported = new Set(flows.flatMap(({ flow }) => flow.imports));
     const defs = new Map();
-    for (const { flow } of flows)
+    for (const { path, flow } of flows)
         for (const d of flow.defs)
-            defs.set(d.name.toLowerCase(), [...(defs.get(d.name.toLowerCase()) ?? []), d.refs]);
-    /** Every name or host read `start` reaches through the definitions (reserved names stop it). */
-    const reach = (start) => {
+            defs.set(d.name.toLowerCase(), [...(defs.get(d.name.toLowerCase()) ?? []), { path, ...d }]);
+    const counts = (d, path, at) => (d.path === path ? d.at < at : SHARED_DEFINITIONS.test(d.path) || imported.has(d.path.toLowerCase()));
+    /** Every name or host read `start` (read in `path` at `at`) reaches through the definitions (reserved names and source settings stop it). */
+    const reach = (start, path, at) => {
         const out = [];
         const seen = new Set();
-        const queue = start.map((r) => [r, '', true]);
+        const queue = start.map((ref) => ({ ref, path, at, via: '' }));
         for (let i = 0; i < queue.length; i++) {
-            const [ref, via, direct] = queue[i];
-            if (ref.startsWith('[')) {
-                out.push({ ref, via, direct, defined: false });
+            const q = queue[i];
+            if (q.ref.startsWith('[')) {
+                out.push({ ref: q.ref, via: q.via, settable: true, defined: false });
                 continue;
             }
-            const key = ref.toLowerCase();
-            if (seen.has(key) || isReservedProperty(ref))
+            const key = q.ref.toLowerCase();
+            if (isReservedProperty(q.ref) || RESTORE_SOURCE_SETTING.test(q.ref))
+                continue;
+            const ds = defs.get(key) ?? [];
+            out.push({ ref: q.ref, via: q.via, settable: !ds.some((d) => d.unconditional && counts(d, q.path, q.at)), defined: ds.length > 0 });
+            if (seen.has(key))
                 continue;
             seen.add(key);
-            const ds = defs.get(key);
-            out.push({ ref, via, direct, defined: ds !== undefined });
-            for (const refs of ds ?? [])
-                for (const r of refs)
-                    queue.push([r, via || ` through $(${ref})`, false]);
+            for (const d of ds)
+                for (const r of d.refs)
+                    queue.push({ ref: r, path: d.path, at: d.at, via: q.via || (r.toLowerCase() === key ? '' : ` through $(${q.ref})`) });
         }
         return out;
     };
     const reads = new Set();
-    const importPath = new Set();
-    const restore = new Set();
-    const setting = new Set();
+    const names = new Set();
+    const unset = ', which no pinned file gives an unconditional value';
+    // (a) and (c)'s Import paths.
+    let sets = '';
     for (const { path, flow } of flows) {
         for (const root of flow.roots) {
             const at = `${path}: ${root.what}`;
-            // The value (of a setting, also its conditions) or an Import's Project: every read the probe cannot make parks.
-            for (const x of reach(root.refs)) {
-                if (x.ref.startsWith('['))
-                    reads.add(`${at} reads ${hostReadWords(x.ref)}${x.via}`);
-                else if (!x.defined)
-                    reads.add(`${at} reads $(${x.ref})${x.via}, which no pinned file defines`);
-                else if (isProbeExcluded(x.ref))
-                    reads.add(`${at} reads $(${x.ref})${x.via}, a name the engine never sets in its probe`);
-                else
-                    (root.kind === 'setting' ? setting : importPath).add(x.ref.toLowerCase());
-            }
-            // An Import's conditions: probed; only what the probe cannot set is a static read.
-            for (const x of reach(root.cond)) {
-                if (x.ref.startsWith('[env ') && x.ref !== '[env ?]') {
-                    const n = x.ref.slice(5, -1);
-                    if (isProbeExcluded(n))
-                        reads.add(`${at}: its condition reads ${hostReadWords(x.ref)}${x.via}, a name the engine never sets in its probe`);
-                    else
-                        restore.add(n.toLowerCase());
+            for (const x of reach(root.refs, path, root.at)) {
+                if (root.kind === 'setting') {
+                    if (x.ref.startsWith('['))
+                        reads.add(`${at} reads ${hostReadWords(x.ref)}${x.via}`);
+                    else if (x.settable) {
+                        reads.add(`${at} reads $(${x.ref})${x.via}${unset}`);
+                        names.add(x.ref);
+                    }
                 }
                 else if (x.ref.startsWith('['))
-                    reads.add(`${at}: its condition reads ${hostReadWords(x.ref)}${x.via}`);
-                else if (x.direct && isProbeExcluded(x.ref))
-                    reads.add(`${at}: its condition reads $(${x.ref}), a name the engine never sets in its probe`);
-                else
-                    restore.add(x.ref.toLowerCase());
+                    reads.add(`${at} reads ${hostReadWords(x.ref)}${x.via} in its path, so your environment chooses which file loads`);
+                else if (!x.defined)
+                    reads.add(`${at} reads $(${x.ref})${x.via} in its path, which no pinned file defines, so your environment chooses which file loads`);
+                else if (x.settable && PROFILE_ENV.test(x.ref))
+                    reads.add(`${at} reads $(${x.ref})${x.via} in its path, so your environment chooses which file loads`);
+            }
+            if (root.kind === 'setting' && !sets && !NOT_A_SOURCE.test(root.what.slice(1, -1)))
+                sets = `${path} sets ${root.what}`;
+        }
+    }
+    // (b): a file sets the sources, so whether an Import loads must not depend on your environment.
+    if (sets) {
+        for (const { path, flow } of flows) {
+            for (const root of flow.roots) {
+                if (root.kind !== 'import')
+                    continue;
+                for (const x of reach(root.cond, path, root.at)) {
+                    const what = `${sets}, and ${path}: ${root.what} has a condition that reads`;
+                    if (x.ref.startsWith('['))
+                        reads.add(`${what} ${hostReadWords(x.ref)}${x.via}`);
+                    else if (x.settable) {
+                        reads.add(`${what} $(${x.ref})${x.via}${unset}`);
+                        names.add(x.ref);
+                    }
+                }
             }
         }
     }
-    const names = new Map();
-    const probe = (n) => {
-        const key = n.toLowerCase();
-        if (!isProbeExcluded(n) && !isReservedProperty(n) && !RESTORE_SOURCE_SETTING.test(n) && !importPath.has(key) && !names.has(key))
-            names.set(key, n);
-    };
-    const all = [];
-    for (const { flow } of flows)
-        for (const r of flow.refs)
-            if (r.startsWith('[env ') && r !== '[env ?]')
-                all.push(r.slice(5, -1));
-            else if (!r.startsWith('['))
-                all.push(r);
+    // (c): NuGet expands %NAME% in a config value.
     for (const f of files) {
         if (fileKind(f.path) !== 'nuget')
             continue;
@@ -680,18 +726,11 @@ export function restoreHostReads(files) {
         for (const t of scanXml(f.text).tags) {
             for (const [, raw] of t.attrs) {
                 const value = decodeXml(raw);
-                for (const r of expressionRefs(value, true).filter((x) => x.startsWith('[env '))) {
+                for (const r of expressionRefs(value, true).filter((x) => x.startsWith('[env ')))
                     reads.add(`${f.path}: the value ${JSON.stringify(value.slice(0, 200))} reads ${hostReadWords(r)}`);
-                    if (r !== '[env ?]')
-                        all.push(r.slice(5, -1));
-                }
             }
         }
     }
-    // One spelling per name in any case, the same whatever the file order.
-    for (const n of all.sort())
-        probe(n);
-    const sorted = [...names.values()].sort();
-    return { reads: [...reads], names: sorted, restore: sorted.filter((n) => restore.has(n.toLowerCase()) || setting.has(n.toLowerCase())), setting: sorted.filter((n) => setting.has(n.toLowerCase())) };
+    return { reads: [...reads], names: [...names].sort() };
 }
 //# sourceMappingURL=dotnet-package-refs.js.map

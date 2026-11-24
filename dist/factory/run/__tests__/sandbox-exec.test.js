@@ -871,19 +871,6 @@ describe('runSandboxed: a dotnet command (dotnet-sandbox.ts)', () => {
         // Only a dotnet command writes one.
         expect(await runSandboxed(['/usr/bin/node', 'x.js'], opts({ restoreGraph: true }), deps(ok))).toMatchObject({ ran: false, refused: true });
     });
-    it('probeEnv: the restore-source evaluation gets each probe name the sandbox env does not hold (any case), never a runtime, loader or tool name; never without restoreGraph', async () => {
-        const excluded = { path: 'x', nuget_packages: 'y', 'bad name': 'z', NODE_OPTIONS: '1', https_proxy: '1', GITHUB_TOKEN: '1', LD_PRELOAD: '1', BASH_ENV: '1', __COMPAT_LAYER: '1', COREHOST_TRACE: '1', SSL_CERT_FILE: '1' };
-        await runSandboxed(['/usr/bin/dotnet', 'msbuild'], opts({ restoreGraph: true, probeEnv: { CORP_FEED: '1', corp_feed: '2', ...excluded } }), deps(ok));
-        const env = rec.connections[0].env;
-        expect(env.CORP_FEED).toBe('1');
-        // One spelling per name in any case.
-        expect(env.corp_feed).toBeUndefined();
-        expect(env.PATH).not.toBe('x');
-        expect(env.NUGET_PACKAGES).not.toBe('y');
-        expect(Object.keys(env).filter((k) => Object.keys(excluded).includes(k))).toEqual([]);
-        await runSandboxed(['/usr/bin/dotnet', 'build'], opts({ probeEnv: { CORP_FEED: 'v' } }), deps(ok));
-        expect(rec.connections[1].env.CORP_FEED).toBeUndefined();
-    });
     it('a gate on the run packages dir: read-only, offline', async () => {
         const run = join(dir, 'gates', 'nuget', 'issue-7');
         mkdirSync(run, { recursive: true });

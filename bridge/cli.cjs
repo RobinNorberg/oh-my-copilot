@@ -129750,444 +129750,6 @@ var init_container_gate = __esm({
   }
 });
 
-// src/factory/run/dotnet-package-refs.ts
-function decodeXml(value) {
-  return value.replace(/&(?:#x([0-9a-f]+)|#(\d+)|(amp|lt|gt|quot|apos));/gi, (whole, hex3, dec, name) => {
-    if (hex3 || dec) {
-      const code = Number.parseInt(hex3 ?? dec, hex3 ? 16 : 10);
-      return Number.isFinite(code) && code >= 0 && code <= 1114111 ? String.fromCodePoint(code) : whole;
-    }
-    return { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" }[name.toLowerCase()] ?? whole;
-  });
-}
-function hasNodeModulesSegment(value) {
-  return value.split(/[\\/'"`,;:=@()[\]\s|]+/).some((s) => s.replace(/[. ]+$/, "").toLowerCase() === "node_modules");
-}
-function attributeValues(tags, element, attr) {
-  const out = [];
-  const el = element.toLowerCase();
-  const at = attr.toLowerCase();
-  for (const t of tags) {
-    if (t.close || t.name.toLowerCase() !== el) continue;
-    const a = t.attrs.find(([n]) => n.toLowerCase() === at);
-    if (a) out.push(decodeXml(a[1]));
-  }
-  return out;
-}
-function jsonStrings(text9) {
-  const out = [];
-  let i = text9.indexOf('"');
-  while (i >= 0) {
-    let j = i + 1;
-    while (j < text9.length && text9[j] !== '"') j += text9[j] === "\\" ? 2 : 1;
-    if (j >= text9.length) break;
-    out.push(text9.slice(i + 1, j));
-    i = text9.indexOf('"', j + 1);
-  }
-  return out;
-}
-function execRunText(command) {
-  const run3 = msbuildUnescape(command);
-  return !/[%$`&|;<>\r\n()]/.test(run3) && PURE_DELETE.test(run3.trim()) ? null : run3;
-}
-function fileKind(path30) {
-  const base = (path30.split("/").pop() ?? path30).toLowerCase();
-  if (base === "nuget.config") return "nuget";
-  if (base === "global.json") return "global";
-  if (base.endsWith(".rsp")) return "rsp";
-  if (base.endsWith(".sln")) return "sln";
-  if (base.endsWith(".slnx")) return "slnx";
-  if (base.endsWith(".slnf")) return "slnf";
-  if (/\.(?:[a-z0-9]*proj|props|targets|tasks|projitems|user)$/.test(base)) return "msbuild";
-  return null;
-}
-function nodeModulesReferences(path30, text9) {
-  const kind = fileKind(path30);
-  if (kind && text9.length > PINNED_READ_MAX) return [`file larger than ${PINNED_READ_MAX / 1024} KB, not read (its references are unknown)`];
-  const values = [];
-  const always = [];
-  if (kind === "msbuild") {
-    const { tags } = scanXml(text9);
-    for (const v of attributeValues(tags, "Import", "Project")) values.push(["Import Project", v]);
-    for (const v of attributeValues(tags, "ProjectReference", "Include")) values.push(["ProjectReference Include", v]);
-    for (const v of attributeValues(tags, "UsingTask", "AssemblyFile")) values.push(["UsingTask AssemblyFile", v]);
-    for (const v of attributeValues(tags, "Code", "Source")) values.push(["UsingTask Code Source", v]);
-    for (const t of tags) {
-      if (t.close || t.name.toLowerCase() !== "exec") continue;
-      const attr = (name) => {
-        const a = t.attrs.find(([n]) => n.toLowerCase() === name);
-        return a ? decodeXml(a[1]) : void 0;
-      };
-      const where = ["workingdirectory", "environmentvariables"].map((n) => [n, attr(n)]).filter(([, v]) => v !== void 0 && hasNodeModulesSegment(v));
-      for (const [n, v] of where) values.push([n === "workingdirectory" ? "Exec WorkingDirectory" : "Exec EnvironmentVariables", v]);
-      const command = attr("command");
-      if (command === void 0) continue;
-      const run3 = execRunText(command);
-      if (run3 !== null && NPX_RUN.test(run3)) always.push(["Exec Command (npx runs node_modules/.bin)", run3]);
-      else if (run3 !== null) values.push(["Exec Command", run3]);
-      else if (where.length > 0) values.push(["Exec Command (run in or with node_modules)", `${command} [${where.map(([, v]) => v).join("; ")}]`]);
-    }
-  } else if (kind === "rsp") {
-    for (const line2 of text9.split(/\r?\n/)) {
-      if (line2.trimStart().startsWith("#")) continue;
-      for (const m of line2.matchAll(/"([^"]*)"|(\S+)/g)) {
-        const token = m[1] ?? m[2];
-        values.push(["response file token", token]);
-      }
-    }
-  } else if (kind === "global") {
-    let parsed2;
-    try {
-      parsed2 = parseJsonc(text9);
-    } catch {
-      parsed2 = void 0;
-    }
-    if (parsed2 && typeof parsed2 === "object") {
-      const paths = parsed2.sdk?.paths;
-      if (Array.isArray(paths)) {
-        for (const p of paths) if (typeof p === "string") values.push(["global.json sdk.paths", p]);
-      }
-    } else {
-      for (const s of jsonStrings(text9)) values.push(["global.json string", s]);
-    }
-  } else if (kind === "slnx") {
-    for (const v of attributeValues(scanXml(text9).tags, "Project", "Path")) values.push(["solution project", v]);
-  } else if (kind === "sln") {
-    for (const m of text9.matchAll(/^[ \t]*Project[ \t]*\([^)\r\n]*\)[ \t]*=[ \t]*"[^"\r\n]*"[ \t]*,[ \t]*"([^"\r\n]*)"/gim)) values.push(["solution project", m[1]]);
-  } else if (kind === "slnf") {
-    let parsed2;
-    try {
-      parsed2 = JSON.parse(text9.charCodeAt(0) === 65279 ? text9.slice(1) : text9);
-    } catch {
-      parsed2 = void 0;
-    }
-    const solution = parsed2?.solution;
-    if (solution && typeof solution === "object") {
-      if (typeof solution.path === "string") values.push(["solution filter path", solution.path]);
-      if (Array.isArray(solution.projects)) {
-        for (const p of solution.projects) if (typeof p === "string") values.push(["solution filter project", p]);
-      }
-    } else {
-      for (const s of jsonStrings(text9)) values.push(["solution filter string", s]);
-    }
-  } else if (kind === "nuget") {
-    for (const v of attributeValues(scanXml(text9).tags, "add", "value")) if (!/^https?:\/\//i.test(v.trim())) values.push(["nuget.config value", v]);
-  }
-  return [...values.filter(([, v]) => hasNodeModulesSegment(v)), ...always].map(([what, v]) => `${what} ${JSON.stringify(v.slice(0, 200))}`);
-}
-function restoreSettingMentions(path30, text9) {
-  const kind = fileKind(path30);
-  if (kind !== "msbuild" && kind !== "rsp") return [];
-  if (text9.length > PINNED_READ_MAX) return [`not read (larger than ${PINNED_READ_MAX / 1024} KB)`];
-  return [...new Set([...text9.matchAll(RESTORE_SETTINGS)].map((m) => m[0]))].sort();
-}
-function leavesRepository(path30, rel) {
-  const r = rel.replace(/\\/g, "/");
-  if (/^(?:[a-z]:|\/)/i.test(r)) return true;
-  let depth = path30.split("/").length - 1;
-  for (const seg of r.split("/")) {
-    if (seg === "..") depth--;
-    else if (seg !== "" && seg !== ".") depth++;
-    if (depth < 0) return true;
-  }
-  return false;
-}
-function unpinnedImports(path30, text9) {
-  if (fileKind(path30) !== "msbuild") return [];
-  if (text9.length > PINNED_READ_MAX) return [`not read (larger than ${PINNED_READ_MAX / 1024} KB)`];
-  const out = /* @__PURE__ */ new Set();
-  for (const v of attributeValues(scanXml(text9).tags, "Import", "Project")) {
-    for (const raw of v.split(";").map((s) => s.trim()).filter(Boolean)) {
-      const part = msbuildUnescape(raw).trim();
-      const above = FILE_ABOVE.exec(part);
-      const name = above ? (above[1] ?? above[2]).trim() : part;
-      const local = above ? null : THIS_DIR_PATH.exec(part);
-      const outside = above ? /^(?:[a-z]:|[\\/])|(?:^|[\\/])\.\.(?:[\\/]|$)/i.test(name) : local ? leavesRepository(path30, local[1]) : false;
-      if (hasNodeModulesSegment(part) || /[*?]/.test(part) || outside || !PINNED_IMPORT.test(name)) out.add(raw.slice(0, 200));
-    }
-  }
-  return [...out];
-}
-function projectSdkMentions(path30, text9) {
-  const kind = fileKind(path30);
-  if (text9.length > PINNED_READ_MAX) return [];
-  const out = /* @__PURE__ */ new Set();
-  if (kind === "msbuild") {
-    const { tags } = scanXml(text9);
-    for (const t of tags) {
-      if (t.close) continue;
-      const name = t.name.toLowerCase();
-      const attr = (a) => t.attrs.find(([n]) => n.toLowerCase() === a)?.[1];
-      const sdk = name === "project" || name === "import" ? attr("sdk") : void 0;
-      if (sdk) {
-        for (const s of decodeXml(sdk).split(";")) if (s.includes("/")) out.add(s.trim());
-      }
-      if (sdk && attr("version")) out.add(`${decodeXml(sdk).trim()}/${decodeXml(attr("version")).trim()}`);
-      if (name === "sdk" && attr("name") && attr("version")) out.add(`${decodeXml(attr("name")).trim()}/${decodeXml(attr("version")).trim()}`);
-    }
-  } else if (kind === "global") {
-    let parsed2;
-    try {
-      parsed2 = parseJsonc(text9);
-    } catch {
-      parsed2 = void 0;
-    }
-    const sdks = parsed2 && typeof parsed2 === "object" ? parsed2["msbuild-sdks"] : void 0;
-    if (sdks && typeof sdks === "object") for (const [k, v] of Object.entries(sdks)) out.add(`${k}/${String(v)}`);
-    else if (!(parsed2 && typeof parsed2 === "object") && /"msbuild-sdks"/i.test(text9)) out.add("msbuild-sdks (global.json)");
-  }
-  return [...out].sort();
-}
-function expressionRefs(expr, percent = false) {
-  const out = /* @__PURE__ */ new Set();
-  for (const m of expr.matchAll(PROPERTY_REF)) out.add(m[2] && m[1].toLowerCase() === "registry" ? "[registry]" : m[1]);
-  for (const m of expr.matchAll(HOST_READ)) {
-    const literal3 = m[3] ?? m[4] ?? m[5];
-    out.add(m[1].toLowerCase() === "getenvironmentvariable" ? `[env ${literal3 ?? "?"}]` : `[${m[1]}]`);
-  }
-  if (percent) {
-    for (const m of expr.matchAll(ENV_PERCENT)) if (!/^[0-9a-f]{2}$/i.test(m[1])) out.add(`[env ${m[1]}]`);
-  }
-  return [...out];
-}
-function propertyFlow(path30, text9) {
-  const kind = fileKind(path30);
-  const defs = [];
-  const roots = [];
-  const define = (name, refs2) => {
-    defs.push({ name, refs: refs2 });
-    if (RESTORE_SOURCE_SETTING.test(name)) roots.push({ what: `<${name}>`, kind: "setting", refs: refs2, cond: [] });
-  };
-  if (kind === "rsp") {
-    if (text9.length > PINNED_READ_MAX) return { defs, roots: [{ what: `the file (larger than ${PINNED_READ_MAX / 1024} KB)`, kind: "setting", refs: ["[not read]"], cond: [] }], refs: [] };
-    for (const m of text9.matchAll(/(?:^|\s)"?[-/](?:p|property|rp|restoreproperty):(\S+)/gi)) {
-      for (const part of m[1].replace(/"/g, "").split(";")) {
-        const eq = part.indexOf("=");
-        const name = (eq < 0 ? part : part.slice(0, eq)).trim();
-        if (/^[A-Za-z_][A-Za-z0-9_-]*$/.test(name)) define(name, eq < 0 ? [] : expressionRefs(part.slice(eq + 1), true).filter((r) => r.startsWith("[env ")));
-      }
-    }
-    return { defs, roots, refs: expressionRefs(text9, true).filter((r) => r.startsWith("[env ")) };
-  }
-  if (kind !== "msbuild") return { defs, roots, refs: [] };
-  if (text9.length > PINNED_READ_MAX) return { defs, roots: [{ what: `the file (larger than ${PINNED_READ_MAX / 1024} KB)`, kind: "setting", refs: ["[not read]"], cond: [] }], refs: [] };
-  const attr = (t, name) => {
-    const a = t.attrs.find(([n]) => n.toLowerCase() === name);
-    return a ? decodeXml(a[1]) : void 0;
-  };
-  const union2 = (...xs) => [...new Set(xs.flat())];
-  const finish2 = (f, content2) => {
-    if (f.parent.toLowerCase() === "propertygroup") define(f.tag.name, union2(expressionRefs(decodeXml(content2)), f.cond));
-  };
-  const stack = [];
-  for (const t of scanXml(text9).tags) {
-    if (t.close) {
-      const top = stack[stack.length - 1];
-      if (top && top.tag.name === t.name) {
-        stack.pop();
-        finish2(top, text9.slice(top.tag.end, t.start));
-      }
-      continue;
-    }
-    const parent = stack[stack.length - 1];
-    const condition = attr(t, "condition");
-    const name = t.name.toLowerCase();
-    const f = { tag: t, parent: parent?.tag.name ?? "", cond: union2(parent?.cond ?? [], condition !== void 0 ? expressionRefs(condition) : []) };
-    if (name === "import") {
-      const project = attr(t, "project") ?? "";
-      roots.push({ what: `Import ${JSON.stringify(project.slice(0, 200))}`, kind: "import", refs: expressionRefs(project), cond: f.cond });
-    }
-    const output2 = name === "output" ? attr(t, "propertyname") : void 0;
-    if (output2 !== void 0 && parent) define(msbuildUnescape(output2).trim(), union2(...parent.tag.attrs.map(([, v]) => expressionRefs(decodeXml(v))), f.cond));
-    if (t.selfClose) finish2(f, "");
-    else stack.push(f);
-  }
-  return { defs, roots, refs: expressionRefs(decodeXml(text9)) };
-}
-function hostReadWords(ref) {
-  if (ref === "[env ?]") return "an environment variable whose name is computed";
-  if (ref.startsWith("[env ")) return `the environment variable ${ref.slice(5, -1)}`;
-  if (ref === "[registry]" || /^\[GetRegistryValue/i.test(ref)) return "the registry";
-  if (ref === "[not read]") return "nothing the engine could read";
-  return /^\[(?:UserDomainName|UserName|MachineName)\]$/i.test(ref) ? `$([System.Environment]::${ref.slice(1, -1)})` : `$([System.Environment]::${ref.slice(1, -1)}(...))`;
-}
-function restoreHostReads(files) {
-  const flows = files.map((f) => ({ path: f.path, flow: propertyFlow(f.path, f.text) }));
-  const defs = /* @__PURE__ */ new Map();
-  for (const { flow } of flows) for (const d of flow.defs) defs.set(d.name.toLowerCase(), [...defs.get(d.name.toLowerCase()) ?? [], d.refs]);
-  const reach = (start) => {
-    const out = [];
-    const seen = /* @__PURE__ */ new Set();
-    const queue = start.map((r) => [r, "", true]);
-    for (let i = 0; i < queue.length; i++) {
-      const [ref, via, direct] = queue[i];
-      if (ref.startsWith("[")) {
-        out.push({ ref, via, direct, defined: false });
-        continue;
-      }
-      const key = ref.toLowerCase();
-      if (seen.has(key) || isReservedProperty(ref)) continue;
-      seen.add(key);
-      const ds = defs.get(key);
-      out.push({ ref, via, direct, defined: ds !== void 0 });
-      for (const refs2 of ds ?? []) for (const r of refs2) queue.push([r, via || ` through $(${ref})`, false]);
-    }
-    return out;
-  };
-  const reads = /* @__PURE__ */ new Set();
-  const importPath = /* @__PURE__ */ new Set();
-  const restore = /* @__PURE__ */ new Set();
-  const setting = /* @__PURE__ */ new Set();
-  for (const { path: path30, flow } of flows) {
-    for (const root of flow.roots) {
-      const at = `${path30}: ${root.what}`;
-      for (const x of reach(root.refs)) {
-        if (x.ref.startsWith("[")) reads.add(`${at} reads ${hostReadWords(x.ref)}${x.via}`);
-        else if (!x.defined) reads.add(`${at} reads $(${x.ref})${x.via}, which no pinned file defines`);
-        else if (isProbeExcluded(x.ref)) reads.add(`${at} reads $(${x.ref})${x.via}, a name the engine never sets in its probe`);
-        else (root.kind === "setting" ? setting : importPath).add(x.ref.toLowerCase());
-      }
-      for (const x of reach(root.cond)) {
-        if (x.ref.startsWith("[env ") && x.ref !== "[env ?]") {
-          const n = x.ref.slice(5, -1);
-          if (isProbeExcluded(n)) reads.add(`${at}: its condition reads ${hostReadWords(x.ref)}${x.via}, a name the engine never sets in its probe`);
-          else restore.add(n.toLowerCase());
-        } else if (x.ref.startsWith("[")) reads.add(`${at}: its condition reads ${hostReadWords(x.ref)}${x.via}`);
-        else if (x.direct && isProbeExcluded(x.ref)) reads.add(`${at}: its condition reads $(${x.ref}), a name the engine never sets in its probe`);
-        else restore.add(x.ref.toLowerCase());
-      }
-    }
-  }
-  const names2 = /* @__PURE__ */ new Map();
-  const probe = (n) => {
-    const key = n.toLowerCase();
-    if (!isProbeExcluded(n) && !isReservedProperty(n) && !RESTORE_SOURCE_SETTING.test(n) && !importPath.has(key) && !names2.has(key)) names2.set(key, n);
-  };
-  const all = [];
-  for (const { flow } of flows) for (const r of flow.refs) if (r.startsWith("[env ") && r !== "[env ?]") all.push(r.slice(5, -1));
-  else if (!r.startsWith("[")) all.push(r);
-  for (const f of files) {
-    if (fileKind(f.path) !== "nuget") continue;
-    if (f.text.length > PINNED_READ_MAX) {
-      reads.add(`${f.path}: not read (larger than ${PINNED_READ_MAX / 1024} KB)`);
-      continue;
-    }
-    for (const t of scanXml(f.text).tags) {
-      for (const [, raw] of t.attrs) {
-        const value = decodeXml(raw);
-        for (const r of expressionRefs(value, true).filter((x) => x.startsWith("[env "))) {
-          reads.add(`${f.path}: the value ${JSON.stringify(value.slice(0, 200))} reads ${hostReadWords(r)}`);
-          if (r !== "[env ?]") all.push(r.slice(5, -1));
-        }
-      }
-    }
-  }
-  for (const n of all.sort()) probe(n);
-  const sorted = [...names2.values()].sort();
-  return { reads: [...reads], names: sorted, restore: sorted.filter((n) => restore.has(n.toLowerCase()) || setting.has(n.toLowerCase())), setting: sorted.filter((n) => setting.has(n.toLowerCase())) };
-}
-var PINNED_READ_MAX, SHIM_EXT, PM_OPTIONS, NPX_RUN, PURE_DELETE, msbuildUnescape, readsForNodeModulesRefs, RESTORE_SETTINGS, PINNED_IMPORT, THIS_DIR_UP, FILE_ABOVE, THIS_DIR_PATH, RESTORE_SOURCE_SETTING, RESERVED_PROPERTIES, isReservedProperty, TOOL_ENV, RUNTIME_ENV, isProbeExcluded, PROPERTY_REF, HOST_READ, ENV_PERCENT;
-var init_dotnet_package_refs = __esm({
-  "src/factory/run/dotnet-package-refs.ts"() {
-    "use strict";
-    init_jsonc();
-    init_xml_scan();
-    PINNED_READ_MAX = 256 * 1024;
-    SHIM_EXT = String.raw`(?:\.(?:cmd|exe|ps1))?`;
-    PM_OPTIONS = String.raw`(?:\s+-{1,2}[\w-]+(?:=[^\s"'&|;]*|\s+[^\s"'&|;-][^\s"'&|;]*)?){0,8}`;
-    NPX_RUN = new RegExp(String.raw`(?:^|[\s&|;(\x60"'\\/])(?:(?:npx|pnpx|bunx)${SHIM_EXT}|(?:npm${SHIM_EXT}["']?${PM_OPTIONS}\s+(?:exec|x))|(?:pnpm${SHIM_EXT}["']?${PM_OPTIONS}\s+(?:dlx|exec))|(?:yarn${SHIM_EXT}["']?${PM_OPTIONS}\s+(?:dlx|exec))|(?:bun${SHIM_EXT}["']?${PM_OPTIONS}\s+x))(?=[\s"'&|;)\x60]|$)`, "i");
-    PURE_DELETE = /^(?:rm|del|rd|rmdir|remove-item)(?:\.exe)?(?:\s+(?:--?[a-z][a-z-]*|\/[a-z]|[\w.:\\/-]+))+$/i;
-    msbuildUnescape = (value) => value.replace(/%([0-9a-f]{2})/gi, (_, h) => String.fromCharCode(Number.parseInt(h, 16)));
-    readsForNodeModulesRefs = (path30) => fileKind(path30) !== null;
-    RESTORE_SETTINGS = /\bRestore(?:Sources|AdditionalProjectSources|FallbackFolders|ConfigFile|PackagesPath|NoCache|IgnoreFailedSources)\b/gi;
-    PINNED_IMPORT = /\.(?:[a-z0-9]*proj|props|targets|tasks|projitems|user)$/i;
-    THIS_DIR_UP = String.raw`\$\(MSBuildThisFileDirectory\)((?:\.\.(?:[\\/]\.\.)*)?)[\\/]?`;
-    FILE_ABOVE = new RegExp(String.raw`^\$\(\[MSBuild\]::GetPathOfFileAbove\(\s*(?:'([^'$%@()]+)'|([^'"$%@(),\s]+))\s*(?:,\s*(?:'${THIS_DIR_UP}'|${THIS_DIR_UP})\s*)?\)\)$`, "i");
-    THIS_DIR_PATH = /^(?:\$\(MSBuildThisFileDirectory\)[\\/]*)?([^$@%*?]*)$/i;
-    RESTORE_SOURCE_SETTING = /^Restore(?:Sources|AdditionalProjectSources|FallbackFolders|ConfigFile|PackagesPath)$/i;
-    RESERVED_PROPERTIES = /* @__PURE__ */ new Set([
-      "configuration",
-      "platform",
-      "platforms",
-      "targetframework",
-      "targetframeworks",
-      "targetframeworkidentifier",
-      "targetframeworkversion",
-      "targetframeworkmoniker",
-      "targetplatformidentifier",
-      "targetplatformversion",
-      "runtimeidentifier",
-      "runtimeidentifiers",
-      "outputpath",
-      "outdir",
-      "intermediateoutputpath",
-      "baseintermediateoutputpath",
-      "baseoutputpath",
-      "projectdir",
-      "projectname",
-      "projectpath",
-      "projectfilename",
-      "projectext",
-      "solutiondir",
-      "solutionname",
-      "solutionpath",
-      "solutionfilename",
-      "solutionext",
-      "targetname",
-      "targetpath",
-      "targetdir",
-      "targetext",
-      "targetfilename",
-      "assemblyname",
-      "rootnamespace",
-      "nugetpackageroot",
-      "nugetpackagefolders",
-      "nugetprojectstyle",
-      "nugettargetmoniker",
-      "netcoresdkversion",
-      "netcoresdkruntimeidentifier",
-      "netcoreroot",
-      "netcoretargetingpackroot",
-      "bundlednetcoreapppackageversion",
-      "visualstudioversion",
-      "vstoolspath",
-      "designtimebuild",
-      "buildinginsidevisualstudio",
-      "buildingproject",
-      "language",
-      "defineconstants",
-      "langversion",
-      "nullable",
-      "implicitusings",
-      "version",
-      "versionprefix",
-      "versionsuffix",
-      "packageversion",
-      "packageid",
-      "ispackable",
-      "istestproject",
-      "os",
-      "artifactspath",
-      "useartifactsoutput",
-      "dotnet_host_path",
-      "excluderestorepackageimports",
-      "restoregraphoutputpath",
-      "restoreprojectstyle",
-      "outputtype",
-      "iscrosstargetingbuild",
-      "usingmicrosoftnetsdk",
-      "usingmicrosoftnetsdkweb"
-    ]);
-    isReservedProperty = (name) => /^MSBuild/i.test(name) || /^Pkg[A-Za-z_]/.test(name) || RESERVED_PROPERTIES.has(name.toLowerCase());
-    TOOL_ENV = /^(?:DOTNET_|MSBUILD|NUGET_|COMPLUS_|CORECLR_)/i;
-    RUNTIME_ENV = /^(?:(?:NODE|COPILOT|GH|SSL_CERT|LD|DYLD|COREHOST)_.*|.*_PROXY|GITHUB_TOKEN|BASH_ENV|ENV|__COMPAT_LAYER|PATH|TEMP|TMP|HOME|USERPROFILE|APPDATA|LOCALAPPDATA|ComSpec|SystemRoot|windir)$/i;
-    isProbeExcluded = (name) => TOOL_ENV.test(name) || RUNTIME_ENV.test(name);
-    PROPERTY_REF = /\$\(\s*([A-Za-z_][A-Za-z0-9_-]*)\s*(:?)/g;
-    HOST_READ = /\b(GetEnvironmentVariables?|ExpandEnvironmentVariables|GetFolderPath|GetRegistryValue(?:FromView)?|(?<=::\s*)(?:UserDomainName|UserName|MachineName))\b(\s*\(\s*(?:'([A-Za-z_][\w-]*)'|"([A-Za-z_][\w-]*)"|([A-Za-z_][\w-]*))\s*\))?/gi;
-    ENV_PERCENT = /%([A-Za-z_][A-Za-z0-9_]*)%/g;
-  }
-});
-
 // src/factory/run/sandbox-exec.ts
 function sandboxShellCommand(platform, argv, cwd, marker) {
   if (argv.length === 0 || !/^[A-Za-z0-9-]+$/.test(marker) || [cwd, ...argv].some((a) => a.includes("\0"))) return null;
@@ -130285,15 +129847,6 @@ async function runSandboxed(argv, o, deps) {
       dotnetGrants.push(...d.readonly);
       dotnetWrites.push(...d.readwrite);
       dotnetNotes.push(...d.notes);
-    }
-    if (graphFile && o.probeEnv) {
-      const held = new Set(Object.keys(env2).map((k) => k.toLowerCase()));
-      for (const [k, v] of Object.entries(o.probeEnv)) {
-        if (/^[A-Za-z_][A-Za-z0-9_-]*$/.test(k) && !isProbeExcluded(k) && !held.has(k.toLowerCase())) {
-          env2[k] = v;
-          held.add(k.toLowerCase());
-        }
-      }
     }
     const credentialSource = { userConfigDir: deps.userConfigDir(), platform: deps.platform };
     const gitHubToken = sessionGitHubToken(deps.env, credentialSource);
@@ -130506,8 +130059,7 @@ function createSandboxRunner(root, deps = defaultCopilotRunDeps(), layers) {
       ...req.nugetHierarchy ? { nugetHierarchy: req.nugetHierarchy } : {},
       ...req.nugetNoAddSource ? { nugetNoAddSource: true } : {},
       ...req.nugetFromGit ? { nugetFromGit: true } : {},
-      ...req.restoreGraph ? { restoreGraph: true } : {},
-      ...req.restoreGraph && req.probeEnv ? { probeEnv: req.probeEnv } : {}
+      ...req.restoreGraph ? { restoreGraph: true } : {}
     }, deps);
   };
 }
@@ -130551,7 +130103,6 @@ var init_sandbox_exec = __esm({
     init_job();
     init_sandbox2();
     init_container_gate();
-    init_dotnet_package_refs();
     init_dotnet_sandbox();
     init_sandbox_session();
     init_timeout();
@@ -140706,6 +140257,527 @@ var init_progress2 = __esm({
   }
 });
 
+// src/factory/run/dotnet-package-refs.ts
+function decodeXml(value) {
+  return value.replace(/&(?:#x([0-9a-f]+)|#(\d+)|(amp|lt|gt|quot|apos));/gi, (whole, hex3, dec, name) => {
+    if (hex3 || dec) {
+      const code = Number.parseInt(hex3 ?? dec, hex3 ? 16 : 10);
+      return Number.isFinite(code) && code >= 0 && code <= 1114111 ? String.fromCodePoint(code) : whole;
+    }
+    return { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" }[name.toLowerCase()] ?? whole;
+  });
+}
+function hasNodeModulesSegment(value) {
+  return value.split(/[\\/'"`,;:=@()[\]\s|]+/).some((s) => s.replace(/[. ]+$/, "").toLowerCase() === "node_modules");
+}
+function attributeValues(tags, element, attr) {
+  const out = [];
+  const el = element.toLowerCase();
+  const at = attr.toLowerCase();
+  for (const t of tags) {
+    if (t.close || t.name.toLowerCase() !== el) continue;
+    const a = t.attrs.find(([n]) => n.toLowerCase() === at);
+    if (a) out.push(decodeXml(a[1]));
+  }
+  return out;
+}
+function jsonStrings(text9) {
+  const out = [];
+  let i = text9.indexOf('"');
+  while (i >= 0) {
+    let j = i + 1;
+    while (j < text9.length && text9[j] !== '"') j += text9[j] === "\\" ? 2 : 1;
+    if (j >= text9.length) break;
+    out.push(text9.slice(i + 1, j));
+    i = text9.indexOf('"', j + 1);
+  }
+  return out;
+}
+function execRunText(command) {
+  const run3 = msbuildUnescape(command);
+  return !/[%$`&|;<>\r\n()]/.test(run3) && PURE_DELETE.test(run3.trim()) ? null : run3;
+}
+function fileKind(path30) {
+  const base = (path30.split("/").pop() ?? path30).toLowerCase();
+  if (base === "nuget.config") return "nuget";
+  if (base === "global.json") return "global";
+  if (base.endsWith(".rsp")) return "rsp";
+  if (base.endsWith(".sln")) return "sln";
+  if (base.endsWith(".slnx")) return "slnx";
+  if (base.endsWith(".slnf")) return "slnf";
+  if (/\.(?:[a-z0-9]*proj|props|targets|tasks|projitems|user)$/.test(base)) return "msbuild";
+  return null;
+}
+function nodeModulesReferences(path30, text9) {
+  const kind = fileKind(path30);
+  if (kind && text9.length > PINNED_READ_MAX) return [`file larger than ${PINNED_READ_MAX / 1024} KB, not read (its references are unknown)`];
+  const values = [];
+  const always = [];
+  if (kind === "msbuild") {
+    const { tags } = scanXml(text9);
+    for (const v of attributeValues(tags, "Import", "Project")) values.push(["Import Project", v]);
+    for (const v of attributeValues(tags, "ProjectReference", "Include")) values.push(["ProjectReference Include", v]);
+    for (const v of attributeValues(tags, "UsingTask", "AssemblyFile")) values.push(["UsingTask AssemblyFile", v]);
+    for (const v of attributeValues(tags, "Code", "Source")) values.push(["UsingTask Code Source", v]);
+    for (const t of tags) {
+      if (t.close || t.name.toLowerCase() !== "exec") continue;
+      const attr = (name) => {
+        const a = t.attrs.find(([n]) => n.toLowerCase() === name);
+        return a ? decodeXml(a[1]) : void 0;
+      };
+      const where = ["workingdirectory", "environmentvariables"].map((n) => [n, attr(n)]).filter(([, v]) => v !== void 0 && hasNodeModulesSegment(v));
+      for (const [n, v] of where) values.push([n === "workingdirectory" ? "Exec WorkingDirectory" : "Exec EnvironmentVariables", v]);
+      const command = attr("command");
+      if (command === void 0) continue;
+      const run3 = execRunText(command);
+      if (run3 !== null && NPX_RUN.test(run3)) always.push(["Exec Command (npx runs node_modules/.bin)", run3]);
+      else if (run3 !== null) values.push(["Exec Command", run3]);
+      else if (where.length > 0) values.push(["Exec Command (run in or with node_modules)", `${command} [${where.map(([, v]) => v).join("; ")}]`]);
+    }
+  } else if (kind === "rsp") {
+    for (const line2 of text9.split(/\r?\n/)) {
+      if (line2.trimStart().startsWith("#")) continue;
+      for (const m of line2.matchAll(/"([^"]*)"|(\S+)/g)) {
+        const token = m[1] ?? m[2];
+        values.push(["response file token", token]);
+      }
+    }
+  } else if (kind === "global") {
+    let parsed2;
+    try {
+      parsed2 = parseJsonc(text9);
+    } catch {
+      parsed2 = void 0;
+    }
+    if (parsed2 && typeof parsed2 === "object") {
+      const paths = parsed2.sdk?.paths;
+      if (Array.isArray(paths)) {
+        for (const p of paths) if (typeof p === "string") values.push(["global.json sdk.paths", p]);
+      }
+    } else {
+      for (const s of jsonStrings(text9)) values.push(["global.json string", s]);
+    }
+  } else if (kind === "slnx") {
+    for (const v of attributeValues(scanXml(text9).tags, "Project", "Path")) values.push(["solution project", v]);
+  } else if (kind === "sln") {
+    for (const m of text9.matchAll(/^[ \t]*Project[ \t]*\([^)\r\n]*\)[ \t]*=[ \t]*"[^"\r\n]*"[ \t]*,[ \t]*"([^"\r\n]*)"/gim)) values.push(["solution project", m[1]]);
+  } else if (kind === "slnf") {
+    let parsed2;
+    try {
+      parsed2 = JSON.parse(text9.charCodeAt(0) === 65279 ? text9.slice(1) : text9);
+    } catch {
+      parsed2 = void 0;
+    }
+    const solution = parsed2?.solution;
+    if (solution && typeof solution === "object") {
+      if (typeof solution.path === "string") values.push(["solution filter path", solution.path]);
+      if (Array.isArray(solution.projects)) {
+        for (const p of solution.projects) if (typeof p === "string") values.push(["solution filter project", p]);
+      }
+    } else {
+      for (const s of jsonStrings(text9)) values.push(["solution filter string", s]);
+    }
+  } else if (kind === "nuget") {
+    for (const v of attributeValues(scanXml(text9).tags, "add", "value")) if (!/^https?:\/\//i.test(v.trim())) values.push(["nuget.config value", v]);
+  }
+  return [...values.filter(([, v]) => hasNodeModulesSegment(v)), ...always].map(([what, v]) => `${what} ${JSON.stringify(v.slice(0, 200))}`);
+}
+function restoreSettingMentions(path30, text9) {
+  const kind = fileKind(path30);
+  if (kind !== "msbuild" && kind !== "rsp") return [];
+  if (text9.length > PINNED_READ_MAX) return [`not read (larger than ${PINNED_READ_MAX / 1024} KB)`];
+  return [...new Set([...text9.matchAll(RESTORE_SETTINGS)].map((m) => m[0]))].sort();
+}
+function leavesRepository(path30, rel) {
+  const r = rel.replace(/\\/g, "/");
+  if (/^(?:[a-z]:|\/)/i.test(r)) return true;
+  let depth = path30.split("/").length - 1;
+  for (const seg of r.split("/")) {
+    if (seg === "..") depth--;
+    else if (seg !== "" && seg !== ".") depth++;
+    if (depth < 0) return true;
+  }
+  return false;
+}
+function unpinnedImports(path30, text9) {
+  if (fileKind(path30) !== "msbuild") return [];
+  if (text9.length > PINNED_READ_MAX) return [`not read (larger than ${PINNED_READ_MAX / 1024} KB)`];
+  const out = /* @__PURE__ */ new Set();
+  for (const v of attributeValues(scanXml(text9).tags, "Import", "Project")) {
+    for (const raw of v.split(";").map((s) => s.trim()).filter(Boolean)) {
+      const part = msbuildUnescape(raw).trim();
+      const above = FILE_ABOVE.exec(part);
+      const name = above ? (above[1] ?? above[2]).trim() : part;
+      const local = above ? null : THIS_DIR_PATH.exec(part);
+      const outside = above ? /^(?:[a-z]:|[\\/])|(?:^|[\\/])\.\.(?:[\\/]|$)/i.test(name) : local ? leavesRepository(path30, local[1]) : false;
+      if (hasNodeModulesSegment(part) || /[*?]/.test(part) || outside || !PINNED_IMPORT.test(name)) out.add(raw.slice(0, 200));
+    }
+  }
+  return [...out];
+}
+function projectSdkMentions(path30, text9) {
+  const kind = fileKind(path30);
+  if (text9.length > PINNED_READ_MAX) return [];
+  const out = /* @__PURE__ */ new Set();
+  if (kind === "msbuild") {
+    const { tags } = scanXml(text9);
+    for (const t of tags) {
+      if (t.close) continue;
+      const name = t.name.toLowerCase();
+      const attr = (a) => t.attrs.find(([n]) => n.toLowerCase() === a)?.[1];
+      const sdk = name === "project" || name === "import" ? attr("sdk") : void 0;
+      if (sdk) {
+        for (const s of decodeXml(sdk).split(";")) if (s.includes("/")) out.add(s.trim());
+      }
+      if (sdk && attr("version")) out.add(`${decodeXml(sdk).trim()}/${decodeXml(attr("version")).trim()}`);
+      if (name === "sdk" && attr("name") && attr("version")) out.add(`${decodeXml(attr("name")).trim()}/${decodeXml(attr("version")).trim()}`);
+    }
+  } else if (kind === "global") {
+    let parsed2;
+    try {
+      parsed2 = parseJsonc(text9);
+    } catch {
+      parsed2 = void 0;
+    }
+    const sdks = parsed2 && typeof parsed2 === "object" ? parsed2["msbuild-sdks"] : void 0;
+    if (sdks && typeof sdks === "object") for (const [k, v] of Object.entries(sdks)) out.add(`${k}/${String(v)}`);
+    else if (!(parsed2 && typeof parsed2 === "object") && /"msbuild-sdks"/i.test(text9)) out.add("msbuild-sdks (global.json)");
+  }
+  return [...out].sort();
+}
+function expressionRefs(expr, percent = false) {
+  const out = /* @__PURE__ */ new Set();
+  for (const m of expr.matchAll(PROPERTY_REF)) out.add(m[2] && m[1].toLowerCase() === "registry" ? "[registry]" : m[1]);
+  for (const m of expr.matchAll(HOST_READ)) {
+    const literal3 = m[3] ?? m[4] ?? m[5];
+    out.add(m[1].toLowerCase() === "getenvironmentvariable" ? `[env ${literal3 ?? "?"}]` : `[${m[1]}]`);
+  }
+  if (percent) {
+    for (const m of expr.matchAll(ENV_PERCENT)) if (!/^[0-9a-f]{2}$/i.test(m[1])) out.add(`[env ${m[1]}]`);
+  }
+  return [...out];
+}
+function repoPath2(path30, rel) {
+  const out = path30.split("/").slice(0, -1);
+  for (const seg of rel.replace(/\\/g, "/").split("/")) {
+    if (seg === "..") out.pop();
+    else if (seg !== "" && seg !== ".") out.push(seg);
+  }
+  return out.join("/");
+}
+function propertyFlow(path30, text9) {
+  const kind = fileKind(path30);
+  const defs = [];
+  const roots = [];
+  const imports = [];
+  const define = (name, at, unconditional, refs2) => {
+    defs.push({ name, at, unconditional, refs: refs2 });
+    if (RESTORE_SOURCE_SETTING.test(name)) roots.push({ what: `<${name}>`, kind: "setting", at, refs: refs2, cond: [] });
+  };
+  const tooLarge = { defs, roots: [{ what: `the file (larger than ${PINNED_READ_MAX / 1024} KB)`, kind: "setting", at: 0, refs: ["[not read]"], cond: [] }], imports };
+  if (kind === "rsp") {
+    if (text9.length > PINNED_READ_MAX) return tooLarge;
+    for (const m of text9.matchAll(/(?:^|\s)"?[-/](?:p|property|rp|restoreproperty):(\S+)/gi)) {
+      for (const part of m[1].replace(/"/g, "").split(";")) {
+        const eq = part.indexOf("=");
+        const name = (eq < 0 ? part : part.slice(0, eq)).trim();
+        if (/^[A-Za-z_][A-Za-z0-9_-]*$/.test(name)) define(name, m.index ?? 0, true, eq < 0 ? [] : expressionRefs(part.slice(eq + 1), true).filter((r) => r.startsWith("[env ")));
+      }
+    }
+    return { defs, roots, imports };
+  }
+  if (kind !== "msbuild") return { defs, roots, imports };
+  if (text9.length > PINNED_READ_MAX) return tooLarge;
+  const attr = (t, name) => {
+    const a = t.attrs.find(([n]) => n.toLowerCase() === name);
+    return a ? decodeXml(a[1]) : void 0;
+  };
+  const union2 = (...xs) => [...new Set(xs.flat())];
+  const finish2 = (f, content2) => {
+    if (f.parent.toLowerCase() === "propertygroup") define(f.tag.name, f.tag.start, !f.conditioned, union2(expressionRefs(decodeXml(content2)), f.cond));
+  };
+  const stack = [];
+  for (const t of scanXml(text9).tags) {
+    if (t.close) {
+      const top = stack[stack.length - 1];
+      if (top && top.tag.name === t.name) {
+        stack.pop();
+        finish2(top, text9.slice(top.tag.end, t.start));
+      }
+      continue;
+    }
+    const parent = stack[stack.length - 1];
+    const condition = attr(t, "condition");
+    const name = t.name.toLowerCase();
+    const own3 = condition !== void 0 ? expressionRefs(condition) : [];
+    if (name === "when" && parent?.tag.name.toLowerCase() === "choose") parent.whens.push(...own3);
+    const f = {
+      tag: t,
+      parent: parent?.tag.name ?? "",
+      cond: union2(parent?.cond ?? [], own3, name === "otherwise" ? parent?.whens ?? [] : []),
+      conditioned: (parent?.conditioned ?? false) || condition !== void 0 || name === "when" || name === "otherwise" || name === "target",
+      whens: []
+    };
+    if (name === "import") {
+      const project = attr(t, "project") ?? "";
+      roots.push({ what: `Import ${JSON.stringify(project.slice(0, 200))}`, kind: "import", at: t.start, refs: expressionRefs(project), cond: f.cond });
+      for (const raw of project.split(";")) {
+        const local = THIS_DIR_PATH.exec(msbuildUnescape(raw).trim());
+        if (local && local[1] && !leavesRepository(path30, local[1])) imports.push(repoPath2(path30, local[1]).toLowerCase());
+      }
+    }
+    const output2 = name === "output" ? attr(t, "propertyname") : void 0;
+    if (output2 !== void 0 && parent) define(msbuildUnescape(output2).trim(), t.start, false, union2(...parent.tag.attrs.map(([, v]) => expressionRefs(decodeXml(v))), f.cond));
+    if (t.selfClose) finish2(f, "");
+    else stack.push(f);
+  }
+  return { defs, roots, imports };
+}
+function hostReadWords(ref) {
+  if (ref === "[env ?]") return "an environment variable whose name is computed";
+  if (ref.startsWith("[env ")) return `the environment variable ${ref.slice(5, -1)}`;
+  if (ref === "[registry]" || /^\[GetRegistryValue/i.test(ref)) return "the registry";
+  if (ref === "[not read]") return "nothing the engine could read";
+  return /^\[(?:UserDomainName|UserName|MachineName)\]$/i.test(ref) ? `$([System.Environment]::${ref.slice(1, -1)})` : `$([System.Environment]::${ref.slice(1, -1)}(...))`;
+}
+function restoreHostReads(files) {
+  const flows = files.map((f) => ({ path: f.path, flow: propertyFlow(f.path, f.text) }));
+  const imported = new Set(flows.flatMap(({ flow }) => flow.imports));
+  const defs = /* @__PURE__ */ new Map();
+  for (const { path: path30, flow } of flows) for (const d of flow.defs) defs.set(d.name.toLowerCase(), [...defs.get(d.name.toLowerCase()) ?? [], { path: path30, ...d }]);
+  const counts = (d, path30, at) => d.path === path30 ? d.at < at : SHARED_DEFINITIONS.test(d.path) || imported.has(d.path.toLowerCase());
+  const reach = (start, path30, at) => {
+    const out = [];
+    const seen = /* @__PURE__ */ new Set();
+    const queue = start.map((ref) => ({ ref, path: path30, at, via: "" }));
+    for (let i = 0; i < queue.length; i++) {
+      const q = queue[i];
+      if (q.ref.startsWith("[")) {
+        out.push({ ref: q.ref, via: q.via, settable: true, defined: false });
+        continue;
+      }
+      const key = q.ref.toLowerCase();
+      if (isReservedProperty(q.ref) || RESTORE_SOURCE_SETTING.test(q.ref)) continue;
+      const ds = defs.get(key) ?? [];
+      out.push({ ref: q.ref, via: q.via, settable: !ds.some((d) => d.unconditional && counts(d, q.path, q.at)), defined: ds.length > 0 });
+      if (seen.has(key)) continue;
+      seen.add(key);
+      for (const d of ds) for (const r of d.refs) queue.push({ ref: r, path: d.path, at: d.at, via: q.via || (r.toLowerCase() === key ? "" : ` through $(${q.ref})`) });
+    }
+    return out;
+  };
+  const reads = /* @__PURE__ */ new Set();
+  const names2 = /* @__PURE__ */ new Set();
+  const unset = ", which no pinned file gives an unconditional value";
+  let sets = "";
+  for (const { path: path30, flow } of flows) {
+    for (const root of flow.roots) {
+      const at = `${path30}: ${root.what}`;
+      for (const x of reach(root.refs, path30, root.at)) {
+        if (root.kind === "setting") {
+          if (x.ref.startsWith("[")) reads.add(`${at} reads ${hostReadWords(x.ref)}${x.via}`);
+          else if (x.settable) {
+            reads.add(`${at} reads $(${x.ref})${x.via}${unset}`);
+            names2.add(x.ref);
+          }
+        } else if (x.ref.startsWith("[")) reads.add(`${at} reads ${hostReadWords(x.ref)}${x.via} in its path, so your environment chooses which file loads`);
+        else if (!x.defined) reads.add(`${at} reads $(${x.ref})${x.via} in its path, which no pinned file defines, so your environment chooses which file loads`);
+        else if (x.settable && PROFILE_ENV.test(x.ref)) reads.add(`${at} reads $(${x.ref})${x.via} in its path, so your environment chooses which file loads`);
+      }
+      if (root.kind === "setting" && !sets && !NOT_A_SOURCE.test(root.what.slice(1, -1))) sets = `${path30} sets ${root.what}`;
+    }
+  }
+  if (sets) {
+    for (const { path: path30, flow } of flows) {
+      for (const root of flow.roots) {
+        if (root.kind !== "import") continue;
+        for (const x of reach(root.cond, path30, root.at)) {
+          const what = `${sets}, and ${path30}: ${root.what} has a condition that reads`;
+          if (x.ref.startsWith("[")) reads.add(`${what} ${hostReadWords(x.ref)}${x.via}`);
+          else if (x.settable) {
+            reads.add(`${what} $(${x.ref})${x.via}${unset}`);
+            names2.add(x.ref);
+          }
+        }
+      }
+    }
+  }
+  for (const f of files) {
+    if (fileKind(f.path) !== "nuget") continue;
+    if (f.text.length > PINNED_READ_MAX) {
+      reads.add(`${f.path}: not read (larger than ${PINNED_READ_MAX / 1024} KB)`);
+      continue;
+    }
+    for (const t of scanXml(f.text).tags) {
+      for (const [, raw] of t.attrs) {
+        const value = decodeXml(raw);
+        for (const r of expressionRefs(value, true).filter((x) => x.startsWith("[env "))) reads.add(`${f.path}: the value ${JSON.stringify(value.slice(0, 200))} reads ${hostReadWords(r)}`);
+      }
+    }
+  }
+  return { reads: [...reads], names: [...names2].sort() };
+}
+var PINNED_READ_MAX, SHIM_EXT, PM_OPTIONS, NPX_RUN, PURE_DELETE, msbuildUnescape, readsForNodeModulesRefs, RESTORE_SETTINGS, PINNED_IMPORT, THIS_DIR_UP, FILE_ABOVE, THIS_DIR_PATH, RESTORE_SOURCE_SETTING, NOT_A_SOURCE, RESERVED_PROPERTIES, isReservedProperty, PROFILE_ENV, PROPERTY_REF, HOST_READ, ENV_PERCENT, SHARED_DEFINITIONS;
+var init_dotnet_package_refs = __esm({
+  "src/factory/run/dotnet-package-refs.ts"() {
+    "use strict";
+    init_jsonc();
+    init_xml_scan();
+    PINNED_READ_MAX = 256 * 1024;
+    SHIM_EXT = String.raw`(?:\.(?:cmd|exe|ps1))?`;
+    PM_OPTIONS = String.raw`(?:\s+-{1,2}[\w-]+(?:=[^\s"'&|;]*|\s+[^\s"'&|;-][^\s"'&|;]*)?){0,8}`;
+    NPX_RUN = new RegExp(String.raw`(?:^|[\s&|;(\x60"'\\/])(?:(?:npx|pnpx|bunx)${SHIM_EXT}|(?:npm${SHIM_EXT}["']?${PM_OPTIONS}\s+(?:exec|x))|(?:pnpm${SHIM_EXT}["']?${PM_OPTIONS}\s+(?:dlx|exec))|(?:yarn${SHIM_EXT}["']?${PM_OPTIONS}\s+(?:dlx|exec))|(?:bun${SHIM_EXT}["']?${PM_OPTIONS}\s+x))(?=[\s"'&|;)\x60]|$)`, "i");
+    PURE_DELETE = /^(?:rm|del|rd|rmdir|remove-item)(?:\.exe)?(?:\s+(?:--?[a-z][a-z-]*|\/[a-z]|[\w.:\\/-]+))+$/i;
+    msbuildUnescape = (value) => value.replace(/%([0-9a-f]{2})/gi, (_, h) => String.fromCharCode(Number.parseInt(h, 16)));
+    readsForNodeModulesRefs = (path30) => fileKind(path30) !== null;
+    RESTORE_SETTINGS = /\bRestore(?:Sources|AdditionalProjectSources|FallbackFolders|ConfigFile|PackagesPath|NoCache|IgnoreFailedSources)\b/gi;
+    PINNED_IMPORT = /\.(?:[a-z0-9]*proj|props|targets|tasks|projitems|user)$/i;
+    THIS_DIR_UP = String.raw`\$\(MSBuildThisFileDirectory\)((?:\.\.(?:[\\/]\.\.)*)?)[\\/]?`;
+    FILE_ABOVE = new RegExp(String.raw`^\$\(\[MSBuild\]::GetPathOfFileAbove\(\s*(?:'([^'$%@()]+)'|([^'"$%@(),\s]+))\s*(?:,\s*(?:'${THIS_DIR_UP}'|${THIS_DIR_UP})\s*)?\)\)$`, "i");
+    THIS_DIR_PATH = /^(?:\$\(MSBuildThisFileDirectory\)[\\/]*)?([^$@%*?]*)$/i;
+    RESTORE_SOURCE_SETTING = /^Restore(?:Sources|AdditionalProjectSources|FallbackFolders|AdditionalProjectFallbackFolders|ConfigFile|RootConfigDirectory|PackagesPath)$/i;
+    NOT_A_SOURCE = /^RestorePackagesPath$/i;
+    RESERVED_PROPERTIES = /* @__PURE__ */ new Set([
+      "configuration",
+      "platform",
+      "platforms",
+      "platformtarget",
+      "targetframework",
+      "targetframeworks",
+      "targetframeworkidentifier",
+      "targetframeworkversion",
+      "targetframeworkmoniker",
+      "targetplatformidentifier",
+      "targetplatformversion",
+      "targetplatformminversion",
+      "supportedosplatformversion",
+      "runtimeidentifier",
+      "runtimeidentifiers",
+      "os",
+      "outputpath",
+      "outdir",
+      "intermediateoutputpath",
+      "baseintermediateoutputpath",
+      "baseoutputpath",
+      "projectdir",
+      "projectname",
+      "projectpath",
+      "projectfilename",
+      "projectext",
+      "solutiondir",
+      "solutionname",
+      "solutionpath",
+      "solutionfilename",
+      "solutionext",
+      "targetname",
+      "targetpath",
+      "targetdir",
+      "targetext",
+      "targetfilename",
+      "assemblyname",
+      "rootnamespace",
+      "artifactspath",
+      "useartifactsoutput",
+      "appendtargetframeworktooutputpath",
+      "appendruntimeidentifiertooutputpath",
+      "packageoutputpath",
+      "documentationfile",
+      "nugetpackageroot",
+      "nugetpackagefolders",
+      "nugetprojectstyle",
+      "nugettargetmoniker",
+      "netcoresdkversion",
+      "netcoresdkruntimeidentifier",
+      "netcoreroot",
+      "netcoretargetingpackroot",
+      "bundlednetcoreapppackageversion",
+      "dotnet_host_path",
+      "visualstudioversion",
+      "vstoolspath",
+      "designtimebuild",
+      "buildinginsidevisualstudio",
+      "buildingproject",
+      "language",
+      "defineconstants",
+      "langversion",
+      "nullable",
+      "implicitusings",
+      "version",
+      "versionprefix",
+      "versionsuffix",
+      "packageversion",
+      "assemblyversion",
+      "fileversion",
+      "informationalversion",
+      "packageid",
+      "authors",
+      "company",
+      "product",
+      "copyright",
+      "description",
+      "neutrallanguage",
+      "ispackable",
+      "ispublishable",
+      "istestproject",
+      "outputtype",
+      "iscrosstargetingbuild",
+      "usingmicrosoftnetsdk",
+      "usingmicrosoftnetsdkweb",
+      "usingmicrosoftnetsdkrazor",
+      "usingmicrosoftnetsdkworker",
+      "usingmicrosoftnetsdkblazorwebassembly",
+      "excluderestorepackageimports",
+      "restoregraphoutputpath",
+      "restoreprojectstyle",
+      "selfcontained",
+      "publishtrimmed",
+      "publishaot",
+      "publishsinglefile",
+      "publishreadytorun",
+      "useapphost",
+      "isaotcompatible",
+      "istrimmable",
+      "usewpf",
+      "usewindowsforms",
+      "enablewindowstargeting",
+      "invariantglobalization",
+      "optimize",
+      "debugtype",
+      "debugsymbols",
+      "deterministic",
+      "warninglevel",
+      "nowarn",
+      "warningsaserrors",
+      "warningsnotaserrors",
+      "treatwarningsaserrors",
+      "generatedocumentationfile",
+      "generateassemblyinfo",
+      "generatepackageonbuild",
+      "signassembly",
+      "analysislevel",
+      "analysismode",
+      "enablenetanalyzers",
+      "enforcecodestyleinbuild",
+      "runanalyzers",
+      "runanalyzersduringbuild",
+      "managepackageversionscentrally",
+      "centralpackagetransitivepinningenabled",
+      "restorepackageswithlockfile",
+      "restorelockedmode",
+      "restoreusestaticgraphevaluation",
+      "nugetaudit",
+      "nugetauditmode",
+      "nugetauditlevel"
+    ]);
+    isReservedProperty = (name) => /^MSBuild/i.test(name) || /^Pkg[A-Za-z_]/.test(name) || RESERVED_PROPERTIES.has(name.toLowerCase());
+    PROFILE_ENV = /^(?:HOME|USERPROFILE|APPDATA|LOCALAPPDATA|HOMEDRIVE|HOMEPATH|USERNAME|USERDOMAIN|ALLUSERSPROFILE|PROGRAMDATA|XDG_\w+)$/i;
+    PROPERTY_REF = /\$\(\s*([A-Za-z_][A-Za-z0-9_-]*)\s*(:?)/g;
+    HOST_READ = /\b(GetEnvironmentVariables?|ExpandEnvironmentVariables|GetFolderPath|GetRegistryValue(?:FromView)?|(?<=::\s*)(?:UserDomainName|UserName|MachineName))\b(\s*\(\s*(?:'([A-Za-z_][\w-]*)'|"([A-Za-z_][\w-]*)"|([A-Za-z_][\w-]*))\s*\))?/gi;
+    ENV_PERCENT = /%([A-Za-z_][A-Za-z0-9_]*)%/g;
+    SHARED_DEFINITIONS = /(?:^|\/)directory\.(?:build\.props|build\.targets|packages\.props)$|\.rsp$/i;
+  }
+});
+
 // src/factory/run/parallel.ts
 function checkKey(key, v, source2) {
   if (key === "maxConcurrent") {
@@ -140999,10 +141071,11 @@ function parseStatusPaths(raw) {
   }
   return paths;
 }
-function envReadWhy(reads) {
-  const named = `${reads.slice(0, 3).map((r) => oneLine(visibleLine(r), 240)).join("; ")}${reads.length > 3 ? `; ${reads.length - 3} more` : ""}`;
-  const imports = reads.some((r) => /: Import "/.test(r));
-  return `a package-source setting${imports ? " or an Import" : ""} of the repository reads your environment or machine (${named}), which the sandbox does not pass, so there that restriction would be empty and the restore could reach nuget.org where the same command on your machine would use only your feed; ${ENV_READ_REMEDY}${imports ? ", and import only files the repository tracks, by a path from $(MSBuildThisFileDirectory) or a property a pinned file defines" : ""}`;
+function envReadWhy(r) {
+  const named = `${r.reads.slice(0, 3).map((x) => oneLine(visibleLine(x), 400)).join("; ")}${r.reads.length > 3 ? `; ${r.reads.length - 3} more` : ""}`;
+  const props = `${r.names.slice(0, 5).map((n) => `$(${n})`).join(", ")}${r.names.length > 5 ? ` and ${r.names.length - 5} more` : ""}`;
+  const path30 = r.reads.some((x) => /so your environment chooses which file loads$/.test(x));
+  return `a package-source setting of the repository depends on your environment or machine (${named}), which the sandbox does not pass, so there the restriction could be lost and the restore could reach nuget.org where the same command on your machine would use only your feed; declare the feed in the repository's nuget.config (a <packageSources> entry, no %VARIABLE%)${props ? `, or give ${props} an unconditional value in a pinned .props file` : ""}${path30 ? ", and import only files the repository tracks, by a path from $(MSBuildThisFileDirectory)" : ""}`;
 }
 function isNewerEvent(next, prev) {
   const n = next ? Date.parse(next) : NaN;
@@ -141398,7 +141471,7 @@ async function runFactoryEngine(o) {
 function sharedLayoutSealed(s) {
   return s.layout !== 2 && (s.lanes.length > 0 || s.codingAgent !== void 0);
 }
-var import_crypto51, import_fs171, import_os38, import_path198, PRESCAN_GIT_TIMEOUT_MS, EXIT_AWAITING_HUMAN, PREPARE_ENGINE_STEPS, MAX_CONFLICT_FIX_ROUNDS, MAX_MERGE_BOUNCES, MAX_CONFLICT_REPREPARES, MERGEABILITY_READS, MERGEABILITY_WAIT_MS, DEFAULT_POLL_MS, LANE_GRACE_MS, REMOTE_HEAD_FETCH_FLAGS, LS_REMOTE_TIMEOUT_MS, ADO_HEAD_LAG_POLLS, localGateConfigLoader, PROCESS_DEADLINE_MS, defaultLaneProcessOps, FactoryStepError, StateTamperedError, LocalGateDue, MirrorBaseMovedError, HEX4021, DOTNET_CLEAN_TIMEOUT_MS, RESTORE_SOURCES_TIMEOUT_MS, ENV_PROBE_MAX_NAMES, ENV_PROBE_VALUE, ENV_READ_REMEDY, PARK_TAIL_LINES, PARK_TAIL_LINE_CHARS, PARK_TAIL_CHARS, GIT_TRANSPORT_SANDBOX_ADVICE, GIT_TRANSPORT_FAILURE, MSYS_DLL_INIT_FAILED, windowsGitTransportFailure, windowsJunctionReadDenied, DOTNET_SANDBOX_ADVICE, localDetailNote, isHumanReadGate, CALIBRATION_NO_TEST_FILTER, isBuiltInVitest, BUILT_IN_FILE_NAME_TOO_LONG, USER_REPO_PREFIX, isUserRepoProblem, quarantineRefs, cancelCommand, resumeCommand, HEAL_ACCEPTANCE, usageOf, capUsage, FactoryEngine, HUMAN_REVIEW_GATE, REVIEW_REQUESTED_GATE, UNSANDBOXED_LANES_REASON, GATES_UNSANDBOXED_GATE, SECRET_SHAPES_GATE, GATE_SANDBOX_INCOMPATIBLE_GATE, GATE_NO_VERDICT_GATE, GIT_VIEW_UNBUILT, ACK_WARNING, PREPARE_CHECK_TIMEOUT_MS;
+var import_crypto51, import_fs171, import_os38, import_path198, PRESCAN_GIT_TIMEOUT_MS, EXIT_AWAITING_HUMAN, PREPARE_ENGINE_STEPS, MAX_CONFLICT_FIX_ROUNDS, MAX_MERGE_BOUNCES, MAX_CONFLICT_REPREPARES, MERGEABILITY_READS, MERGEABILITY_WAIT_MS, DEFAULT_POLL_MS, LANE_GRACE_MS, REMOTE_HEAD_FETCH_FLAGS, LS_REMOTE_TIMEOUT_MS, ADO_HEAD_LAG_POLLS, localGateConfigLoader, PROCESS_DEADLINE_MS, defaultLaneProcessOps, FactoryStepError, StateTamperedError, LocalGateDue, MirrorBaseMovedError, HEX4021, DOTNET_CLEAN_TIMEOUT_MS, RESTORE_SOURCES_TIMEOUT_MS, PARK_TAIL_LINES, PARK_TAIL_LINE_CHARS, PARK_TAIL_CHARS, GIT_TRANSPORT_SANDBOX_ADVICE, GIT_TRANSPORT_FAILURE, MSYS_DLL_INIT_FAILED, windowsGitTransportFailure, windowsJunctionReadDenied, DOTNET_SANDBOX_ADVICE, localDetailNote, isHumanReadGate, CALIBRATION_NO_TEST_FILTER, isBuiltInVitest, BUILT_IN_FILE_NAME_TOO_LONG, USER_REPO_PREFIX, isUserRepoProblem, quarantineRefs, cancelCommand, resumeCommand, HEAL_ACCEPTANCE, usageOf, capUsage, FactoryEngine, HUMAN_REVIEW_GATE, REVIEW_REQUESTED_GATE, UNSANDBOXED_LANES_REASON, GATES_UNSANDBOXED_GATE, SECRET_SHAPES_GATE, GATE_SANDBOX_INCOMPATIBLE_GATE, GATE_NO_VERDICT_GATE, GIT_VIEW_UNBUILT, ACK_WARNING, PREPARE_CHECK_TIMEOUT_MS;
 var init_engine = __esm({
   "src/factory/run/engine.ts"() {
     "use strict";
@@ -141548,9 +141621,6 @@ var init_engine = __esm({
     HEX4021 = /^[0-9a-f]{40}$/;
     DOTNET_CLEAN_TIMEOUT_MS = 5 * 6e4;
     RESTORE_SOURCES_TIMEOUT_MS = 5 * 6e4;
-    ENV_PROBE_MAX_NAMES = 400;
-    ENV_PROBE_VALUE = "1";
-    ENV_READ_REMEDY = "declare the feed in the repository's nuget.config (a <packageSources> entry, no %VARIABLE%), not through your environment";
     PARK_TAIL_LINES = 12;
     PARK_TAIL_LINE_CHARS = 200;
     PARK_TAIL_CHARS = 1500;
@@ -142399,20 +142469,16 @@ var init_engine = __esm({
        *   initialises them, so a source restriction a file in one sets is never
        *   seen: no copy is written (they are in `noAddSource` too), and the
        *   networked restore step parks up front (nugetRestore).
-       * - `hostReads` / `envNames`: where either commit's package-source
-       *   settings or imports read your environment or machine in a way the
-       *   probe cannot see, and the names the probe sets (restoreHostReads):
-       *   the restore step parks on the first and probes the second
-       *   (nugetRestore, restoreSourcesPark). `envNames` holds one spelling per
-       *   name in any case, the restore-relevant names (`envRestore`: a
-       *   restore setting or an Import condition reads them) first, each part
-       *   sorted; `envSetting`: those a restore setting reads.
+       * - `hostReads`: where either commit's package-source settings depend
+       *   on your environment or machine, and the names to give an
+       *   unconditional value (restoreHostReads): the restore step parks on
+       *   any (nugetRestore).
        * Throws (a step error) when a commit cannot be read.
        */
       dotnetNugetPolicy(commit, argv = []) {
         const base = this.state.baseSha && HEX4021.test(this.state.baseSha) ? this.state.baseSha : void 0;
         const own3 = commit && HEX4021.test(commit) ? commit : base;
-        if (!own3) return { hierarchy: null, noAddSource: [], rootSources: [], sdks: [], gitlinks: [], hostReads: [], envNames: [], envRestore: [], envSetting: [] };
+        if (!own3) return { hierarchy: null, noAddSource: [], rootSources: [], sdks: [], gitlinks: [], hostReads: { reads: [], names: [] } };
         const both = base && base !== own3;
         const all = (both ? [own3, base] : [own3]).map((sha3) => ({ sha: sha3, facts: this.dotnetPinnedFacts(sha3) }));
         const union2 = (pick2) => [...new Set(all.flatMap(({ facts }) => pick2(facts)))];
@@ -142426,23 +142492,13 @@ var init_engine = __esm({
         const fromArgv = argv.some((a) => /Restore(?:Sources|AdditionalProjectSources|FallbackFolders|ConfigFile|PackagesPath|NoCache|IgnoreFailedSources)/i.test(a)) ? ["the command line"] : [];
         const rootSources = all.flatMap(({ sha: sha3, facts }) => "verdict" in facts.root && !facts.root.verdict.addNugetOrg ? [`the root ${facts.root.name} at ${sha3.slice(0, 12)}`] : []);
         const gitlinks = union2((f) => f.gitlinks).sort();
-        const lowered = (xs) => new Set(xs.map((n) => n.toLowerCase()));
-        const envRestoreSet = lowered(union2((f) => f.hostReads.restore));
-        const envSettingSet = lowered(union2((f) => f.hostReads.setting));
-        const spelled = /* @__PURE__ */ new Map();
-        for (const n of union2((f) => f.hostReads.names).sort()) if (!spelled.has(n.toLowerCase())) spelled.set(n.toLowerCase(), n);
-        const envAll = [...spelled.values()];
-        const envRestore = envAll.filter((n) => envRestoreSet.has(n.toLowerCase()));
         return {
           hierarchy,
           noAddSource: [...union2((f) => f.restoreSettings), ...union2((f) => f.unpinnedImports), ...union2((f) => f.settingRefs), ...fromArgv, ...gitlinks.map((p) => `${p}: a submodule`)],
           rootSources,
           sdks: union2((f) => f.projectSdks),
           gitlinks,
-          hostReads: union2((f) => f.hostReads.reads),
-          envNames: [...envRestore, ...envAll.filter((n) => !envRestoreSet.has(n.toLowerCase()))],
-          envRestore,
-          envSetting: envAll.filter((n) => envSettingSet.has(n.toLowerCase()))
+          hostReads: { reads: union2((f) => f.hostReads.reads), names: union2((f) => f.hostReads.names).sort() }
         };
       }
       /**
@@ -145645,12 +145701,9 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
         let imports;
         let gitlinks;
         let hostReads;
-        let envNames;
-        let envRestore;
-        let envSetting;
         try {
           imports = this.dotnetPinnedFacts(head).unpinnedImports;
-          ({ gitlinks, hostReads, envNames, envRestore, envSetting } = this.dotnetNugetPolicy(head));
+          ({ gitlinks, hostReads } = this.dotnetNugetPolicy(head));
         } catch (error62) {
           return { name: GATE_INSTALL_GATE, reason: `${what} did not run: the definition files of ${head.slice(0, 12)} could not be read (${errText6(error62)}); rerun ${this.resume}` };
         }
@@ -145662,7 +145715,7 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
           const named = `${imports.slice(0, 3).map((i) => oneLine(visibleLine(i), 240)).join("; ")}${imports.length > 3 ? `; ${imports.length - 3} more` : ""}`;
           return { name: GATE_INSTALL_GATE, reason: `${what} did not run: the build imports a file that is not a pinned definition file (${named}), so the engine cannot tell which package sources the repository uses; restore the PR branch's packages into your NuGet global packages folder yourself, or move those settings into a .props file, then rerun ${this.resume}; or ${cancelCommand(this.key)}` };
         }
-        if (hostReads.length > 0) return { name: GATE_INSTALL_GATE, reason: `${what} did not run: ${envReadWhy(hostReads)}; then rerun ${this.resume}; or restore the PR branch's packages into your NuGet global packages folder yourself; or ${cancelCommand(this.key)}` };
+        if (hostReads.reads.length > 0) return { name: GATE_INSTALL_GATE, reason: `${what} did not run: ${envReadWhy(hostReads)}; then rerun ${this.resume}; or restore the PR branch's packages into your NuGet global packages folder yourself; or ${cancelCommand(this.key)}` };
         let live;
         try {
           live = this.liveCheckoutProcs(head);
@@ -145701,9 +145754,7 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
         }
         const linkBefore = checkoutGitLink(checkout).hash;
         const evalStarted = this.clock();
-        const checked2 = await this.restoreSourcesPark(head, args, tree, checkout, common, gates, jobRoot, { names: envNames, restore: envRestore, setting: envSetting });
-        const differs = checked2 && "name" in checked2 ? checked2 : null;
-        const probeNote = checked2 && "note" in checked2 ? `; ${checked2.note}` : "";
+        const differs = await this.restoreSourcesPark(head, args, tree, checkout, common, gates, jobRoot);
         if (differs) {
           this.removeTree(tree, jobRoot);
           if (checkoutGitLink(checkout).hash !== linkBefore) {
@@ -145748,7 +145799,7 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
         const msbuildStubs = written.stubs.filter((s) => s !== "nuget.config");
         const hierarchy = this.nugetHierarchyWhy(head);
         const nugetRead = hierarchy ? `NuGet read its own config hierarchy (${hierarchy})` : `NuGet read only the tree's root nuget.config (${written.stubs.includes("nuget.config") ? "the engine's, nuget.org only" : "the head's own"})`;
-        this.save((x) => ({ ...x, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `dotnet restore ran in the OS sandbox with only api.nuget.org reachable in the engine's definition tree of ${head.slice(0, 12)} (${written.files.length} pinned definition file(s), nothing else${msbuildStubs.length > 0 ? `, and the engine's ${msbuildStubs.join(", ")} at its root, which stop MSBuild's walk up out of the tree` : ""}; ${nugetRead}; the restore sources MSBuild evaluated offline there were those of the gate checkout for every project (checked in ${evalSeconds} s${probeNote}); ${seconds2} s); new packages went to the run's own packages folder, and the gate runs again offline in the prepare checkout` }] }));
+        this.save((x) => ({ ...x, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `dotnet restore ran in the OS sandbox with only api.nuget.org reachable in the engine's definition tree of ${head.slice(0, 12)} (${written.files.length} pinned definition file(s), nothing else${msbuildStubs.length > 0 ? `, and the engine's ${msbuildStubs.join(", ")} at its root, which stop MSBuild's walk up out of the tree` : ""}; ${nugetRead}; the restore sources MSBuild evaluated offline there were those of the gate checkout for every project (checked in ${evalSeconds} s); ${seconds2} s); new packages went to the run's own packages folder, and the gate runs again offline in the prepare checkout` }] }));
         return null;
       }
       /**
@@ -145773,23 +145824,8 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
        * restore graph, no more than the gate that follows runs there. It loads
        * imports as a build does, stricter than restore's own evaluation (which
        * skips a missing or unreadable import): such an import fails it, and parks.
-       * The environment probe, the authority on environment reads: with
-       * `env.names` (dotnetNugetPolicy `envNames`), equal sources get a third
-       * evaluation in the tree with each of the first ENV_PROBE_MAX_NAMES
-       * names set to ENV_PROBE_VALUE in the environment; other sources park,
-       * since a package-source setting then reads your environment, which the
-       * sandbox does not pass. One that cannot be evaluated is tried once more
-       * with only the restore-relevant names (`env.restore`). When that fails
-       * too (or there is no smaller set), it parks only when a probed name
-       * feeds a restore setting (`env.setting`: the environment can change a
-       * setting's value or condition and the engine cannot see how); otherwise
-       * the restore goes ahead and `{ note }` names what was not probed, for
-       * the restore's history note (an ordinary property such as a version that
-       * the value breaks says nothing about the package sources; whatever reads
-       * the environment directly in a restore setting or an Import path already
-       * parked statically). `{ note }` also reports a probe that passed.
        */
-      async restoreSourcesPark(head, restoreArgs, tree, checkout, common, gates, jobRoot, env2 = { names: [], restore: [], setting: [] }) {
+      async restoreSourcesPark(head, restoreArgs, tree, checkout, common, gates, jobRoot) {
         const what = "the gate needs NuGet packages that are not in your NuGet global packages folder, and the sandboxed dotnet restore did not run";
         const yourself = `restore the PR branch's packages into your NuGet global packages folder yourself (dotnet restore on that branch), then rerun ${this.resume}; or ${cancelCommand(this.key)}`;
         const park = (why, detail) => ({ name: GATE_INSTALL_GATE, reason: `${what}: ${why}; ${yourself}`, ...detail ? { detail } : {} });
@@ -145798,10 +145834,10 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
         if ("missing" in target) return park(`the engine could not evaluate the restore sources (${target.missing})`);
         const repointed = this.nodeModulesRepointed(checkout);
         if (repointed) return { name: "lane-tampered", reason: `${what}: ${(0, import_path198.join)(checkout, "node_modules")} (or a link in it) is not as the engine made it, so the PR's code changed it; inspect and remove ${checkout} by hand, then rerun ${this.resume}`, detail: oneLine(visibleLine(repointed), PARK_TAIL_CHARS) };
-        const evaluate = async (cwd, where, probeEnv) => {
+        const evaluate = async (cwd, where) => {
           let r;
           try {
-            r = this.o.gateSandbox ? await this.sandboxRun({ purpose: "sources", argv, exe: target.exe, args: target.args, cwd, commonGitDir: common, timeoutMs: RESTORE_SOURCES_TIMEOUT_MS, network: "none", restoreGraph: true, ...probeEnv ? { probeEnv } : {}, ...gates.requireDeniedPaths ? { requireDeniedPaths: true } : {} }, void 0, () => head) : { ran: false, reason: "no OS sandbox runner was given to the engine" };
+            r = this.o.gateSandbox ? await this.sandboxRun({ purpose: "sources", argv, exe: target.exe, args: target.args, cwd, commonGitDir: common, timeoutMs: RESTORE_SOURCES_TIMEOUT_MS, network: "none", restoreGraph: true, ...gates.requireDeniedPaths ? { requireDeniedPaths: true } : {} }, void 0, () => head) : { ran: false, reason: "no OS sandbox runner was given to the engine" };
           } catch (error62) {
             r = { ran: false, reason: errText6(error62) };
           }
@@ -145817,40 +145853,8 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
         const inCheckout = await evaluate(checkout, "the gate checkout");
         if (!(inCheckout instanceof Map)) return inCheckout;
         const diff = restoreSourcesDifference(inTree, inCheckout);
+        if (!diff) return null;
         const shown2 = (xs) => xs === null ? "not a restore project there" : xs.length === 0 ? "none" : `${xs.slice(0, 5).map((s) => oneLine(plainText(s), 200)).join(", ")}${xs.length > 5 ? `, ${xs.length - 5} more` : ""}`;
-        if (!diff) {
-          if (env2.names.length === 0) return null;
-          const named = (xs) => `${xs.slice(0, 5).join(", ")}${xs.length > 5 ? `, ${xs.length - 5} more` : ""}`;
-          const lower2 = (xs) => new Set(xs.map((n) => n.toLowerCase()));
-          const probe = async (names3) => evaluate(tree, `the engine's definition tree with ${named(names3)} set to ${ENV_PROBE_VALUE} in the environment`, Object.fromEntries(names3.map((n) => [n, ENV_PROBE_VALUE])));
-          const first = env2.names.slice(0, ENV_PROBE_MAX_NAMES);
-          const capped3 = env2.names.slice(ENV_PROBE_MAX_NAMES);
-          let names2 = first;
-          let probed = await probe(first);
-          const restore = lower2(env2.restore);
-          const relevant = first.filter((n) => restore.has(n.toLowerCase()));
-          if (!(probed instanceof Map) && relevant.length > 0 && relevant.length < first.length) {
-            names2 = relevant;
-            probed = await probe(relevant);
-          }
-          const remedy = (xs) => `${ENV_READ_REMEDY}; or, if ${named(xs)} must never come from your environment, give ${xs.length === 1 ? "it" : "each"} its value in a pinned .props file without a condition on itself (an unconditional definition wins over the environment)`;
-          if (!(probed instanceof Map)) {
-            const setting = lower2(env2.setting);
-            const feeding = names2.filter((n) => setting.has(n.toLowerCase()));
-            if (feeding.length > 0) {
-              return park(`MSBuild's evaluation of the restore sources fails in the engine's definition tree when the environment sets ${named(names2)} (each to ${ENV_PROBE_VALUE}), and ${named(feeding)} ${feeding.length === 1 ? "feeds" : "feed"} a package-source setting, so the engine cannot tell whether your environment changes the package sources; ${remedy(feeding)}`, probed.detail);
-            }
-            const skipped2 = [...first, ...capped3];
-            return { note: `the environment probe could not be evaluated with ${named(names2)} set to ${ENV_PROBE_VALUE} and no name it set feeds a package-source setting, so ${skipped2.length} name(s) an environment variable can set were not probed (${named(skipped2)})` };
-          }
-          const envDiff2 = restoreSourcesDifference(inTree, probed);
-          if (envDiff2) {
-            const read = names2.filter((n) => restore.has(n.toLowerCase()));
-            return park(`MSBuild evaluates other restore sources for ${oneLine(plainText(envDiff2.project), 200)} when the environment sets ${named(names2)} (each to ${ENV_PROBE_VALUE}: ${shown2(envDiff2.checkout)}) than without (${shown2(envDiff2.tree)}): a package-source setting reads your environment, which the sandbox does not pass, so there that restriction would be empty and the restore could reach nuget.org where the same command on your machine would use only your feed; ${remedy(read.length > 0 ? read : names2)}`);
-          }
-          const skipped = [...first.filter((n) => !names2.includes(n)), ...capped3];
-          return { note: `the sources did not change with ${names2.length} name(s) an environment variable can set given ${ENV_PROBE_VALUE} in the environment${skipped.length > 0 ? `; ${skipped.length} name(s) were not probed (${named(skipped)}${capped3.length > 0 ? `; more than ${ENV_PROBE_MAX_NAMES} names` : "; the evaluation with them failed"})` : ""}` };
-        }
         return park(`MSBuild evaluates other restore sources for ${oneLine(plainText(diff.project), 200)} in the engine's definition tree (${shown2(diff.tree)}) than in the gate checkout (${shown2(diff.checkout)}), so a restore there could reach a source NuGet in the checkout would not use (or miss one it would): a file that sets the sources exists in the checkout but not among the pinned definition files (an untracked or npm-installed import, a file behind an Exists condition); declare the sources in the repository's root nuget.config or in a pinned .props file`);
       }
       /**

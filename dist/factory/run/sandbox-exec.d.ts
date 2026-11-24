@@ -127,12 +127,6 @@ export interface SandboxRunRequest {
      * only: with `container` nothing runs.
      */
     restoreGraph?: true;
-    /**
-     * With `restoreGraph` only: environment variables the evaluation gets on top of the sandbox's own (a name the sandbox env
-     * already holds, in any case, is never replaced): the engine's probe for package-source settings that read your
-     * environment (engine.ts restoreSourcesPark).
-     */
-    probeEnv?: Record<string, string>;
 }
 /** The gate record and PR note line for a sandboxed run on a host without denied_paths. */
 export declare const CREDENTIAL_FILES_READABLE_NOTE = "sandboxed; credential files readable on this host";
@@ -198,8 +192,6 @@ export interface SandboxExecOptions {
     nugetFromGit?: true;
     /** SandboxRunRequest.restoreGraph. */
     restoreGraph?: true;
-    /** SandboxRunRequest.probeEnv. */
-    probeEnv?: Record<string, string>;
 }
 export declare const MARKER_PREFIX = "omg-gate-exit-";
 /** The command's output the POSIX form keeps (`tail -c`) before the marker line. */

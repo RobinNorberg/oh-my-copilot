@@ -58,7 +58,6 @@ import {
   type SandboxSettings,
 } from '../../copilot-run/sandbox.js';
 import { defaultContainerExec, runContainerGate } from './container-gate.js';
-import { isProbeExcluded } from './dotnet-package-refs.js';
 import { dotnetSandboxArgs, dotnetSandboxEnv, isDotnetExe, msbuildEscape, readRegularFileBounded, sandboxNugetConfig, type RunNugetPackages } from '../../copilot-run/dotnet-sandbox.js';
 import { SessionSandboxController } from '../../copilot-run/sandbox-session.js';
 import { errText, withTimeout } from '../../copilot-run/timeout.js';
@@ -170,12 +169,6 @@ export interface SandboxRunRequest {
    * only: with `container` nothing runs.
    */
   restoreGraph?: true;
-  /**
-   * With `restoreGraph` only: environment variables the evaluation gets on top of the sandbox's own (a name the sandbox env
-   * already holds, in any case, is never replaced): the engine's probe for package-source settings that read your
-   * environment (engine.ts restoreSourcesPark).
-   */
-  probeEnv?: Record<string, string>;
 }
 
 /** The gate record and PR note line for a sandboxed run on a host without denied_paths. */
@@ -233,8 +226,6 @@ export interface SandboxExecOptions {
   nugetFromGit?: true;
   /** SandboxRunRequest.restoreGraph. */
   restoreGraph?: true;
-  /** SandboxRunRequest.probeEnv. */
-  probeEnv?: Record<string, string>;
 }
 
 export const MARKER_PREFIX = 'omg-gate-exit-';
@@ -413,17 +404,6 @@ export async function runSandboxed(argv: readonly string[], o: SandboxExecOption
       dotnetGrants.push(...d.readonly);
       dotnetWrites.push(...d.readwrite);
       dotnetNotes.push(...d.notes);
-    }
-    // The restore-source evaluation's environment probe: a value for each name the env does not already hold (any case), never
-    // one that steers dotnet, MSBuild, NuGet, the runtime or the loader (isProbeExcluded).
-    if (graphFile && o.probeEnv) {
-      const held = new Set(Object.keys(env).map((k) => k.toLowerCase()));
-      for (const [k, v] of Object.entries(o.probeEnv)) {
-        if (/^[A-Za-z_][A-Za-z0-9_-]*$/.test(k) && !isProbeExcluded(k) && !held.has(k.toLowerCase())) {
-          env[k] = v;
-          held.add(k.toLowerCase());
-        }
-      }
     }
     const credentialSource = { userConfigDir: deps.userConfigDir(), platform: deps.platform };
     const gitHubToken = sessionGitHubToken(deps.env, credentialSource);
@@ -618,7 +598,6 @@ export function createSandboxRunner(root: string, deps: SandboxExecDeps = defaul
       ...(req.nugetNoAddSource ? { nugetNoAddSource: true as const } : {}),
       ...(req.nugetFromGit ? { nugetFromGit: true as const } : {}),
       ...(req.restoreGraph ? { restoreGraph: true as const } : {}),
-      ...(req.restoreGraph && req.probeEnv ? { probeEnv: req.probeEnv } : {}),
     }, deps);
   };
 }
