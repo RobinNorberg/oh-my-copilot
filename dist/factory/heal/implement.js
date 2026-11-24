@@ -28,7 +28,7 @@ import { withFileLockSync } from '../../lib/file-lock.js';
 import { RUNTIME_MIN_MAX_CREDITS } from '../run/budget.js';
 import { runFactoryEngine } from '../run/engine.js';
 import { healRunKey, readFactoryState } from '../run/state.js';
-import { closeHeal, HealRunRefused, healTestId, ledgerHealCredits, readHealCounters, healSealSubject, readHealSealSubject, verifyHealSeal, writeHealCounters } from './run.js';
+import { closeHeal, HealRunRefused, healTestId, ledgerHealCredits, readHealCounters, healSealSubject, readHealSealSubject, healSealOpen, verifyHealSeal, writeHealCounters } from './run.js';
 import { healStateDir, readHealState } from './state.js';
 export const KNOWN_FLAKY_FILE = '.github/known-flaky-tests.json';
 /**
@@ -106,6 +106,11 @@ export async function runHealEngine(o, deps) {
     const seal = verifyHealSeal(deps.ledgerDir, o.root, s);
     if (seal !== 'ok')
         throw new HealRunRefused(`the heal record of ${o.sig8} does not match the one the heal run wrote (seal: ${seal}); do not act on it`);
+    // A human approval starts or resumes a ci-heal run only inside an open heal run (MAX_OPEN_HEAL_RUNS). The seal
+    // matched, so `healRun` is the sealed one; the seal file's own flag (outside the repository) must not say closed either.
+    if (o.approved && (s.healRun?.open !== true || healSealOpen(deps.ledgerDir, o.root, o.sig8) === false)) {
+        throw new HealRunRefused(`heal ${o.sig8}: the sealed heal record says its heal run is closed, so heal approve is refused (omg factory heal status shows it; omg factory heal cancel ${o.sig8} ends a parked ci-heal run)`);
+    }
     const existing = readFactoryState(o.root, key);
     let record;
     if (!existing) {

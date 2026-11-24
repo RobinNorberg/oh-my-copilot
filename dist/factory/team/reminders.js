@@ -5,21 +5,28 @@
  * most once per window, mentioning the routing handles of the paths its plan
  * names. READ-ONLY on git and the forge: the routing file comes from the
  * base commit through the caller's read shape, nothing is fetched, and the
- * result is printed by poll. The step keeps its own record,
- * `<state>/factory/reminders.json`; it never writes a sealed run state.
+ * result is printed by poll. The step keeps its own record in the host
+ * factory ledger, `<ledgerDir>/reminders/<repo key>.json` (the repository key
+ * of the ledger's other per-repository files), never in the repository's
+ * lane-writable `.omg/`; it never writes a sealed run state. The record of
+ * older versions, `<state>/factory/reminders.json`, is ignored (never read,
+ * never removed).
  */
-import { join } from 'path';
-import { atomicWriteFileSync, ensureDirSync } from '../../lib/atomic-write.js';
+import { mkdirSync } from 'fs';
+import { dirname, join } from 'path';
+import { atomicWriteFileSync } from '../../lib/atomic-write.js';
 import { lockPathFor, withFileLockSync } from '../../lib/file-lock.js';
 import { visibleLine } from '../../forge/review-feedback.js';
-import { factoryStateDir, runLabel, TERMINAL_FACTORY_PHASES, verifyFactoryIntegrity } from '../run/state.js';
+import { ledgerRepoId } from '../run/ledger.js';
+import { runLabel, TERMINAL_FACTORY_PHASES, verifyFactoryIntegrity } from '../run/state.js';
 import { statusArgv, validRunKey } from '../run/gate-next.js';
 import { readRegularFile } from '../attention/collect.js';
 import { pathsInText, TEAM_ROUTING_PATH } from './context.js';
 import { parseRouting, routeFor } from './routing.js';
 /** The record's gateAt for a run reminded as not verified (its own gate time is not trusted). */
 const UNVERIFIED_AT = 'unverified';
-export const remindersPath = (root) => join(factoryStateDir(root), 'reminders.json');
+/** The record of `root` in the host factory ledger (outside the repository), keyed like the ledger's other per-repository files. */
+export const remindersPath = (ledgerDir, root) => join(ledgerDir, 'reminders', `${ledgerRepoId(root)}.json`);
 /** The record's size cap: a few runs' entries; a larger file is read as empty. */
 const RECORD_MAX_BYTES = 64 * 1024;
 /** The record through the bounded regular-file read: a link, FIFO, directory or oversize file reads as empty (never opened or followed). */
@@ -47,8 +54,8 @@ export function staleGateReminders(o) {
     if (!o.afterHours || o.afterHours <= 0)
         return [];
     const windowMs = o.afterHours * 3_600_000;
-    const path = remindersPath(o.root);
-    ensureDirSync(join(path, '..'));
+    const path = remindersPath(o.ledgerDir, o.root);
+    mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
     return withFileLockSync(lockPathFor(path), () => {
         const before = readRecord(path);
         const next = {};
@@ -81,7 +88,8 @@ export function staleGateReminders(o) {
             const parkedAt = Date.parse(s.gate.at);
             if (!Number.isFinite(parkedAt))
                 continue;
-            // The record is lane-writable: it may postpone or repeat a reminder, never bring one forward. Due only once the sealed
+            // The record lives outside the repository; as defence in depth it may still only postpone or repeat a reminder, never
+            // bring one forward (a lane whose shell reaches the home directory can write it). Due only once the sealed
             // park time is a window old; its remindedAt counts clamped to [gate.at, now] (kept clamped, so a future time
             // postpones by one window at most from when it was first read).
             if (o.nowMs - parkedAt < windowMs)

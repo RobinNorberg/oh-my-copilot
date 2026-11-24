@@ -858,7 +858,7 @@ export async function pollTick(ctx: PollContext): Promise<PollTick> {
   // 3b. stale-gate reminders: read-only on git (the base commit's routing file), printed only.
   // Skipped when the run states could not be read this tick: an empty run set would rewrite the record as {} and
   // re-remind every parked run on the next tick.
-  const reminders = read === undefined ? undefined : step('reminders', () => staleGateReminders({ root, runs, untrusted, nowMs: ctx.now(), afterHours: ctx.remindAfterHours, ...(ctx.baseSha ? { readBase: (path) => readBaseFile(ctx.exec, root, ctx.baseSha!, path) ?? undefined } : {}), warn: (m) => warnings.push(plainText(m)) }));
+  const reminders = read === undefined ? undefined : step('reminders', () => staleGateReminders({ root, ledgerDir, runs, untrusted, nowMs: ctx.now(), afterHours: ctx.remindAfterHours, ...(ctx.baseSha ? { readBase: (path) => readBaseFile(ctx.exec, root, ctx.baseSha!, path) ?? undefined } : {}), warn: (m) => warnings.push(plainText(m)) }));
 
   // 3c. attention: the items that are new since the previous tick (local state only, read-only). The reminder path
   // owns a park that is still waiting after remindAfterHours; this path owns a park when it first appears.

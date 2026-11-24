@@ -92,7 +92,7 @@ describe('poll stale-gate reminders', () => {
     expect(tick().reminders).toEqual([{ run: 4, gate: 'merge', hours: 30, handles: ['@robin'], reason: 'gates green; a human merges' }]);
     expect(calls.filter((c) => /^git (fetch|push|branch|update-ref|worktree)/.test(c) && c !== 'git fetch origin dev')).toEqual([]);
     expect(calls.filter((c) => c.startsWith('gh ') && !c.startsWith('gh pr list'))).toEqual([]);
-    expect(existsSync(remindersPath(root))).toBe(true);
+    expect(existsSync(remindersPath(`${root}-ledger`, root))).toBe(true);
   });
 
   it('reads the routing file only as git show of the base sha', async () => {
@@ -155,6 +155,24 @@ describe('poll stale-gate reminders', () => {
     expect(tick().reminders).toHaveLength(1);
   });
 
+  it('a forged in-repo reminders.json (the old record) neither postpones nor repeats a reminder across poll restarts', async () => {
+    seedParked();
+    const legacy = join(factoryStateDir(root), 'reminders.json');
+    writeFileSync(legacy, JSON.stringify({ '#4': { gateAt: T0, remindedAt: new Date(now).toISOString() } }));
+    await runFactoryPoll(flags, deps(scripted()));
+    expect(tick().reminders).toHaveLength(1);
+    out.length = 0;
+    now += 3_600_000;
+    writeFileSync(legacy, JSON.stringify({ '#4': { gateAt: T0, remindedAt: '2000-01-01T00:00:00.000Z' } }));
+    await runFactoryPoll(flags, deps(scripted()));
+    expect(tick().reminders).toBeUndefined();
+    out.length = 0;
+    now += 24 * 3_600_000;
+    await runFactoryPoll(flags, deps(scripted()));
+    expect(tick().reminders).toHaveLength(1);
+    expect(readFileSync(legacy, 'utf8')).toContain('2000-01-01');
+  });
+
   it('offers the cancel, not a resume that re-parks, for a decisions-rewritten gate', async () => {
     save({ ...setGate(moveTo({ ...createFactoryState({ issue: 4, repoUrl: REPO, base: 'dev' }, T0), forgeKind: 'github', issueTitle: 'issue 4', plan: { source: 'issue-body', text: 'x' } }, 'gates', 'gates', T0), 'decisions-rewritten', 'r', T0) });
     expect(await runFactoryPoll({ ...flags, json: false }, deps(scripted()))).toBe(0);
@@ -168,7 +186,7 @@ describe('poll stale-gate reminders', () => {
     seedParked();
     await runFactoryPoll(flags, deps(scripted(), { trustedUser: () => ({ factory: { poll: { remindAfterHours: 0 } } }) }));
     expect(tick().reminders).toBeUndefined();
-    expect(existsSync(remindersPath(root))).toBe(false);
+    expect(existsSync(remindersPath(`${root}-ledger`, root))).toBe(false);
     await expect(runFactoryPoll(flags, deps(scripted(), { trustedUser: () => ({ factory: { poll: { remindAfterHours: 'x' } } }) }))).rejects.toThrow(/remindAfterHours/);
   });
 
@@ -176,6 +194,6 @@ describe('poll stale-gate reminders', () => {
     seedParked();
     await runFactoryPoll(flags, deps(scripted(), { projectConfig: () => ({ factory: { poll: { remindAfterHours: 1000 } } }) }));
     expect(tick().reminders).toHaveLength(1);
-    expect(readFileSync(remindersPath(root), 'utf8')).toContain('"gateAt"');
+    expect(readFileSync(remindersPath(`${root}-ledger`, root), 'utf8')).toContain('"gateAt"');
   });
 });
