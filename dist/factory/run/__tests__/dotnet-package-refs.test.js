@@ -266,7 +266,10 @@ describe('M2: unpinnedImports', () => {
         expect(unpinnedImports('Directory.Build.props', '<Project><Import Project="eng/Sources.msbuild" Condition="Exists(\'eng/Sources.msbuild\')" /></Project>')).toEqual(['eng/Sources.msbuild']);
         expect(unpinnedImports('Directory.Build.props', '<Project><Import Project="$(MSBuildThisFileDirectory)eng\\Versions.props" /></Project>')).toEqual([]);
         expect(unpinnedImports('a.csproj', '<Project><Import Project="$(CustomProps)" /><Import Project="eng/*" /><import project="x.targets;y.xml" /></Project>')).toEqual(['$(CustomProps)', 'eng/*', 'y.xml']);
-        expect(unpinnedImports('a.csproj', '<Project><Import Project="eng/*.props" /><Import Project="a.Shared.projitems" Label="Shared" /><Import Project="b.vcxproj" /><Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" /></Project>')).toEqual([]);
+        expect(unpinnedImports('a.csproj', '<Project><Import Project="a.Shared.projitems" Label="Shared" /><Import Project="b.vcxproj" /><Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" /></Project>')).toEqual([]);
+        // Round 7: any wildcard counts, whatever extension follows it (MSBuild imports every match).
+        expect(unpinnedImports('Lib/Directory.Build.props', '<Project><Import Project="eng/*.props" /><Import Project="../**/Sources.props" /><Import Project="../n*_modules/corp/Sources.props" /><Import Project="eng/Ver?ions.props" /><Import Project="$(MSBuildThisFileDirectory)eng/*.targets" /></Project>')).toEqual(['eng/*.props', '../**/Sources.props', '../n*_modules/corp/Sources.props', 'eng/Ver?ions.props', '$(MSBuildThisFileDirectory)eng/*.targets']);
+        expect(unpinnedImports('Lib/Directory.Build.props', '<Project><Import Project="eng/%2A.props" /></Project>')).toEqual(['eng/%2A.props']);
         expect(unpinnedImports('src/Directory.Build.props', `<Project><Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" /></Project>`)).toEqual([]);
         expect(unpinnedImports('Directory.Build.props', `<Project><Import Project="$([MSBuild]::GetPathOfFileAbove('Sources.msbuild', '$(MSBuildThisFileDirectory)../'))" /></Project>`)).toHaveLength(1);
         // Round 4: the unquoted form counts the same way.

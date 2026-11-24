@@ -247,8 +247,9 @@ const RESTORE_SETTINGS = /\bRestore(?:Sources|AdditionalProjectSources|FallbackF
  * `RestoreAdditionalProjectSources`, `RestoreFallbackFolders`,
  * `RestoreConfigFile`, `RestorePackagesPath`, `RestoreNoCache`,
  * `RestoreIgnoreFailedSources`): the repository sets its restore sources
- * itself, so the engine never adds nuget.org (H2: an added
- * RestoreAdditionalProjectSources is appended to `RestoreSources`).
+ * itself, so the engine writes no root-config copy with nuget.org
+ * (dotnet-sandbox.ts nugetOrgCopy; an extra signal that can only restrict:
+ * such a setting overrides the copy's config source anyway).
  * Conservative: a comment or a condition counts, and a file larger than
  * PINNED_READ_MAX counts as `not read`. Other files: none.
  */
@@ -293,9 +294,11 @@ function leavesRepository(path: string, rel: string): boolean {
  * unescaped as MSBuild does, that
  * - has a `node_modules` path segment (any case, `\` or `/`): such a file
  *   is never pinned (the engine does not read node_modules trees);
+ * - holds a wildcard (`*` or `?`) anywhere: MSBuild imports every match,
+ *   which may include files that are not pinned;
  * - does not end, textually, in `.props`, `.targets`, `.tasks`,
  *   `.projitems`, `.user` or a `*proj` extension, including one that ends
- *   in a property reference (`$(X)`) or a wildcard;
+ *   in a property reference (`$(X)`);
  * - is a literal path, or one after `$(MSBuildThisFileDirectory)` (which
  *   ends in a separator, so separators after it are dropped), that is
  *   absolute or climbs above the repository root (round 5).
@@ -325,7 +328,7 @@ export function unpinnedImports(path: string, text: string): string[] {
       const name = above ? (above[1] ?? above[2]).trim() : part;
       const local = above ? null : THIS_DIR_PATH.exec(part);
       const outside = above ? /^(?:[a-z]:|[\\/])|(?:^|[\\/])\.\.(?:[\\/]|$)/i.test(name) : local ? leavesRepository(path, local[1]) : false;
-      if (hasNodeModulesSegment(part) || outside || !PINNED_IMPORT.test(name)) out.add(raw.slice(0, 200));
+      if (hasNodeModulesSegment(part) || /[*?]/.test(part) || outside || !PINNED_IMPORT.test(name)) out.add(raw.slice(0, 200));
     }
   }
   return [...out];

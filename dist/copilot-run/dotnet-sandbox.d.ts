@@ -32,9 +32,13 @@
  *   root; from a checkout under `<repo>/.omg/` (the shared layout) that
  *   reaches your working tree's own file, which the sandbox refuses ("Failed
  *   to read NuGet.Config due to unauthorized access"): RestoreConfigFile
- *   names one file instead (dotnetNugetConfig), and nuget.org is added only
- *   when that file plainly defines no package-source policy at all
- *   (nugetConfigVerdict): the engine never widens a repository's sources.
+ *   names one file instead (dotnetNugetConfig). When that root file plainly
+ *   defines no package-source policy at all (nugetConfigVerdict), the file
+ *   named is an engine-written copy of it with nuget.org as its one package
+ *   source (nugetOrgCopy): a config source, which any RestoreSources the
+ *   repository sets overrides, as plain NuGet overrides the user config's
+ *   nuget.org. Nothing is ever appended to the restore sources: the engine
+ *   never widens them.
  * Not verified on Linux or macOS.
  */
 /** True when `exe` (a bare name or a path) is the dotnet host. */
@@ -127,6 +131,9 @@ export interface RunNugetPackages {
  * read-only: NuGet writes a new package only into its global packages
  * folder, so the real cache is never written (a read-only grant could not
  * take one anyway); `readwrite` holds the run's folder when it is writable.
+ * An engine-written config (`written`: the nuget.org-only file or the root
+ * config's copy, both in the job profile, which the sandbox can write) is
+ * granted read-only, so the command cannot change it.
  */
 export declare function dotnetSandboxEnv(profile: string, hostEnv: NodeJS.ProcessEnv, realHome: string, platform?: NodeJS.Platform, run?: RunNugetPackages, nugetConfig?: DotnetNugetConfig): {
     env: Record<string, string>;
@@ -177,22 +184,34 @@ export declare const NUGET_ORG_SOURCE = "https://api.nuget.org/v3/index.json";
 /**
  * The NuGet config a sandboxed dotnet reads (dotnetNugetConfig): one file
  * (RestoreConfigFile), or NuGet's own hierarchy (`hierarchy`: why the engine
- * does not name one file).
+ * does not name one file). `written`: the file is engine-written in the job
+ * profile (NUGET_ORG_ONLY_CONFIG, or nugetOrgCopy of the root config).
+ * `note`: why a root config that defines no package source got no copy, for
+ * a failing command's output.
  */
 export type DotnetNugetConfig = {
     file: string;
-    addNugetOrg: boolean;
+    written?: 'nuget.org-only' | 'root-copy';
+    note?: string;
 } | {
     hierarchy: string;
 };
-/** Above this size a root nuget.config is not read for nugetConfigVerdict (nuget.org is then not added). */
+/** Above this size a root nuget.config is not read for nugetConfigVerdict (no copy with nuget.org is then written). */
 export declare const NUGET_CONFIG_READ_MAX: number;
 /** What nugetConfigVerdict says about one root nuget.config. */
 export interface NugetConfigVerdict {
-    /** The file plainly defines no package-source policy at all: NuGet, reading it with its default user config behind it, uses nuget.org, so it may be added. */
+    /**
+     * The file plainly defines no package-source policy at all: NuGet, reading it with its default user config behind it,
+     * uses nuget.org, so the engine may supply nuget.org as a config source (nugetOrgCopy), unless `pathSetting`.
+     */
     addNugetOrg: boolean;
-    /** Why nuget.org is not added (absent when it is). */
+    /** Why nuget.org is not supplied (absent when it is). */
     why?: string;
+    /**
+     * With `addNugetOrg`: a setting whose value may be a path NuGet resolves against the config file's own directory
+     * (pathSettingIn), so a copy elsewhere would change it: no copy is written, the file is used as it is.
+     */
+    pathSetting?: string;
     /** The raw text names `nuget.org` (any case): a restore that misses packages without it is not the file's omission. */
     namesNugetOrg: boolean;
     /**
@@ -222,6 +241,32 @@ export interface NugetConfigVerdict {
  * `unmappedKeys` keeps its own, separate reading (dotnetNugetConfig).
  */
 export declare function nugetConfigVerdict(bytes: Buffer): NugetConfigVerdict;
+/** What nugetOrgCopy inserts before the root's end: nuget.org as the file's one package source. */
+export declare const NUGET_ORG_PACKAGE_SOURCES = "  <packageSources>\n    <add key=\"nuget.org\" value=\"https://api.nuget.org/v3/index.json\" protocolVersion=\"3\" />\n  </packageSources>\n";
+/**
+ * The bytes of the engine-written copy of a root nuget.config that defines
+ * no package source (`bytes`, read alone through RestoreConfigFile): the
+ * same bytes with NUGET_ORG_PACKAGE_SOURCES inserted before the root's
+ * closing `</configuration>` (a self-closed `<configuration .../>` becomes
+ * an open and a close tag around it). nuget.org is then an ordinary config
+ * source: a `RestoreSources` the repository sets anywhere (a project, a
+ * props or imported file, a task) replaces it, exactly as plain NuGet
+ * replaces the user config's nuget.org. `why` instead (no copy; the caller
+ * uses the file as it is, never widens) when nugetConfigVerdict does not
+ * say `addNugetOrg`, when it holds a `pathSetting`, or when the root's end
+ * is not certain: an attribute value holds `<` (a quoted `</configuration>`
+ * would look like one), or the last `</configuration` (or, for a
+ * self-closed root, the last `/>`) is followed by anything but `>` and
+ * whitespace. The verdict already refuses comments, CDATA, DOCTYPE, entity
+ * references, processing instructions other than one leading declaration,
+ * namespaces, a second root and an unclosed element, so those cannot hide
+ * or fake the root's end.
+ */
+export declare function nugetOrgCopy(bytes: Buffer): {
+    copy: Buffer;
+} | {
+    why: string;
+};
 /**
  * The bytes of the regular file `path`, at most `max`, or null: lstat
  * first (a link, directory, FIFO or device is not opened), then the file
@@ -268,12 +313,19 @@ export declare const msbuildEscape: (value: string) => string;
  * RestoreTask still reads or creates the relocated profile's user config,
  * which adds no source, and the MSBuild project SDK resolver, `dotnet tool
  * restore`, `dotnet nuget` and `dotnet workload` ignore the property).
- * The file: the root config of `cwd` (rootNugetConfig), with nuget.org
- * added only when nugetConfigVerdict finds no package-source policy in it
- * at all and `noAdd` (engine.ts: a pinned MSBuild file
- * sets restore sources itself) is not set; or, with no root config,
- * NUGET_ORG_ONLY_CONFIG written to `<profile>/nuget/nuget.config`, the
- * command's own job profile (never inside the checkout). `hierarchy`
+ * The file: the root config of `cwd` (rootNugetConfig) as it is; or, when
+ * that file defines no package source at all (nugetOrgCopy: nugetConfigVerdict
+ * `addNugetOrg`, no `pathSetting`, a certain root end) and `noAdd` (engine.ts:
+ * the pinned files set restore sources themselves, an extra signal that can
+ * only restrict) is not set, its copy with nuget.org as a config source,
+ * written from the bytes read here to
+ * `<profile>/nuget/copy-<sha256 of the copy>/nuget.config` with exclusive
+ * create (an existing file is used only when it holds exactly those bytes);
+ * or, with no root config, NUGET_ORG_ONLY_CONFIG written to
+ * `<profile>/nuget/nuget.config`. `<profile>` is the command's own job
+ * profile (never inside the checkout), and dotnetSandboxEnv grants either
+ * written file read-only. Any doubt writing the copy: the root file as it
+ * is (a restore that needed nuget.org then fails with `note`). `hierarchy`
  * instead (NuGet's own walk, as before one file was named: faithful, and
  * in the shared layout it parks at the first unreadable config) when the
  * engine cannot tell which root file NuGet reads (rootNugetConfig

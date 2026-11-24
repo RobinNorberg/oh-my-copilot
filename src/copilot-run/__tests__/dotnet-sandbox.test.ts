@@ -2,12 +2,13 @@
  * dotnet-sandbox.ts: which commands count as dotnet, the -m:1 rewrite, the
  * NuGet packages folder lookup and the env a sandboxed dotnet gets.
  */
+import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { DOTNET_SINGLE_NODE_FLAG, dotnetNugetConfig, dotnetSandboxArgs, dotnetSandboxEnv, isDotnetExe, lowerNugetConfigs, isMtpGlobalJson, sandboxNugetConfig, isNugetHost, msbuildEscape, NUGET_CONFIG_READ_MAX, NUGET_ORG_ONLY_CONFIG, NUGET_ORG_SOURCE, nugetConfigVerdict, nugetPackagesDir, nugetPackagesGrant, readRegularFileBounded, rootNugetConfig } from '../dotnet-sandbox.js';
+import { DOTNET_SINGLE_NODE_FLAG, dotnetNugetConfig, dotnetSandboxArgs, dotnetSandboxEnv, isDotnetExe, lowerNugetConfigs, isMtpGlobalJson, sandboxNugetConfig, isNugetHost, msbuildEscape, NUGET_CONFIG_READ_MAX, NUGET_ORG_ONLY_CONFIG, NUGET_ORG_PACKAGE_SOURCES, NUGET_ORG_SOURCE, nugetConfigVerdict, nugetOrgCopy, nugetPackagesDir, nugetPackagesGrant, readRegularFileBounded, rootNugetConfig } from '../dotnet-sandbox.js';
 
 let dir: string;
 beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'omg-dotnet-sandbox-')); });
@@ -165,19 +166,28 @@ describe('dotnetSandboxEnv', () => {
 describe('one NuGet config for a sandboxed dotnet (RestoreConfigFile)', () => {
   const clearOrg = '<configuration><packageSources><clear /><add key="nuget.org" value="https://api.nuget.org/v3/index.json" /></packageSources></configuration>';
 
-  it('dotnetSandboxEnv: RestoreConfigFile names the one file, and nuget.org is an additional source only when asked', () => {
+  it('dotnetSandboxEnv: RestoreConfigFile names the one file; an engine-written one is granted read-only; nothing is ever appended', () => {
     const file = join(dir, 'co', 'nuget.config');
-    const one = dotnetSandboxEnv(join(dir, 'profile'), {}, join(dir, 'home'), 'win32', undefined, { file, addNugetOrg: false });
+    const one = dotnetSandboxEnv(join(dir, 'profile'), {}, join(dir, 'home'), 'win32', undefined, { file });
     expect(one.env.RestoreConfigFile).toBe(file);
-    expect(one.env.RestoreAdditionalProjectSources).toBeUndefined();
-    const plus = dotnetSandboxEnv(join(dir, 'profile'), {}, join(dir, 'home'), 'linux', undefined, { file, addNugetOrg: true });
-    expect(plus.env).toMatchObject({ RestoreConfigFile: file, RestoreAdditionalProjectSources: NUGET_ORG_SOURCE });
-    // NuGet's own hierarchy (a base that pins a lower nuget.config): neither variable.
+    const copy = join(dir, 'profile', 'nuget', 'copy-x', 'nuget.config');
+    const written = dotnetSandboxEnv(join(dir, 'profile'), {}, join(dir, 'home'), 'linux', undefined, { file: copy, written: 'root-copy' });
+    expect(written.env.RestoreConfigFile).toBe(copy);
+    expect(written.readonly).toEqual([copy]);
+    // NuGet's own hierarchy (a base that pins a lower nuget.config): no RestoreConfigFile.
     const walk = dotnetSandboxEnv(join(dir, 'profile'), {}, join(dir, 'home'), 'win32');
     expect(walk.env.RestoreConfigFile).toBeUndefined();
-    expect(walk.env.RestoreAdditionalProjectSources).toBeUndefined();
-    // The file is read by NuGet in the sandbox, from the checkout: nothing more is granted for it.
+    // The checkout's own file is read by NuGet in the sandbox: nothing more is granted for it.
     expect(one.readonly).toEqual(walk.readonly);
+    // No mode sets an additional (appended) restore source.
+    for (const out of [one, written, walk]) expect(Object.keys(out.env).filter((k) => /additional/i.test(k))).toEqual([]);
+    // A note (why no copy was written) reaches the failing command's output.
+    expect(dotnetSandboxEnv(join(dir, 'profile'), {}, join(dir, 'home'), 'win32', undefined, { file, note: 'why' }).notes).toContain('why');
+  });
+
+  it('the source never names an appended restore source (the merged-copy design)', () => {
+    const src = readFileSync(new URL('../dotnet-sandbox.ts', import.meta.url), 'utf8');
+    expect(src).not.toContain('RestoreAdditionalProjectSources');
   });
 
   it('rootNugetConfig: NuGet\'s names in its order; a dir of that name is none; in doubt, ambiguous', () => {
@@ -223,16 +233,18 @@ describe('one NuGet config for a sandboxed dotnet (RestoreConfigFile)', () => {
     const profile = join(dir, 'job', 'profile');
     mkdirSync(co);
     const none = dotnetNugetConfig(co, profile, 'win32');
-    expect(none).toEqual({ file: join(profile, 'nuget', 'nuget.config'), addNugetOrg: false });
+    expect(none).toEqual({ file: join(profile, 'nuget', 'nuget.config'), written: 'nuget.org-only' });
     expect(readFileSync(join(profile, 'nuget', 'nuget.config'), 'utf8')).toBe(NUGET_ORG_ONLY_CONFIG);
     expect(NUGET_ORG_ONLY_CONFIG).toContain(`value="${NUGET_ORG_SOURCE}"`);
     writeFileSync(join(co, 'nuget.config'), clearOrg);
-    expect(dotnetNugetConfig(co, profile, 'win32')).toEqual({ file: join(co, 'nuget.config'), addNugetOrg: false });
-    // A root file that relies on nuget.org from the user config: added, unless the engine says the repository sets
-    // its restore sources in MSBuild (H2).
+    expect(dotnetNugetConfig(co, profile, 'win32')).toEqual({ file: join(co, 'nuget.config') });
+    // A root file that relies on nuget.org from the user config: an engine copy with nuget.org as a config source,
+    // unless the engine says the repository sets its restore sources in MSBuild (an extra signal: root as it is).
     writeFileSync(join(co, 'nuget.config'), '<configuration><config><add key="dependencyVersion" value="Lowest" /></config></configuration>');
-    expect(dotnetNugetConfig(co, profile, 'win32')).toEqual({ file: join(co, 'nuget.config'), addNugetOrg: true });
-    expect(dotnetNugetConfig(co, profile, 'win32', { noAdd: true })).toEqual({ file: join(co, 'nuget.config'), addNugetOrg: false });
+    const copied = dotnetNugetConfig(co, profile, 'win32');
+    expect(copied).toMatchObject({ written: 'root-copy' });
+    expect('file' in copied && readFileSync(copied.file, 'utf8')).toBe(`<configuration><config><add key="dependencyVersion" value="Lowest" /></config>\n${NUGET_ORG_PACKAGE_SOURCES}</configuration>`);
+    expect(dotnetNugetConfig(co, profile, 'win32', { noAdd: true })).toEqual({ file: join(co, 'nuget.config') });
     // M1: a mapping to a key the file does not define keeps NuGet's own hierarchy.
     writeFileSync(join(co, 'nuget.config'), '<configuration><packageSources><add key="corp" value="https://corp.example.test/v3/index.json" /></packageSources><packageSourceMapping><packageSource key="nuget.org"><package pattern="*" /></packageSource><packageSource key="corp"><package pattern="Corp.*" /></packageSource></packageSourceMapping></configuration>');
     const mapped = dotnetNugetConfig(co, profile, 'win32');
@@ -240,7 +252,7 @@ describe('one NuGet config for a sandboxed dotnet (RestoreConfigFile)', () => {
     // A file that cannot be read as a regular file (a dir of that name elsewhere is none; an unreadable one adds nothing).
     rmSync(join(co, 'nuget.config'));
     writeFileSync(join(co, 'nuget.config'), Buffer.alloc(NUGET_CONFIG_READ_MAX + 1, 0x20));
-    expect(dotnetNugetConfig(co, profile, 'win32')).toEqual({ file: join(co, 'nuget.config'), addNugetOrg: false });
+    expect(dotnetNugetConfig(co, profile, 'win32')).toEqual({ file: join(co, 'nuget.config') });
   });
 
   it('L2: the env value is MSBuild-escaped; a path with ";" keeps NuGet\'s hierarchy', () => {
@@ -418,8 +430,8 @@ describe('a nuget.config below the root keeps NuGet\'s hierarchy whatever the ca
     expect(cfg).toEqual({ hierarchy: expect.stringContaining('below its root (Lib/NUGET.CONFIG)') });
     const env = dotnetSandboxEnv(prof(), {}, prof(), 'win32', undefined, cfg).env;
     expect(env.RestoreConfigFile).toBeUndefined();
-    expect(env.RestoreAdditionalProjectSources).toBeUndefined();
-    expect(existsSync(join(prof(), 'nuget', 'nuget.config'))).toBe(false);
+    expect(Object.keys(env).filter((k) => /additional/i.test(k))).toEqual([]);
+    expect(existsSync(join(prof(), 'nuget'))).toBe(false);
   });
 
   it('a nuget.config under node_modules, .git or .omg is not a lower config; the root one alone is one file', () => {
@@ -429,7 +441,7 @@ describe('a nuget.config below the root keeps NuGet\'s hierarchy whatever the ca
     put('.git/nuget.config', LOWER);
     put('.omg/team/factory-run/worktrees/issue-1/Lib/nuget.config', LOWER);
     expect(lowerNugetConfigs(join(dir, 'repo'))).toEqual([]);
-    expect(dotnetNugetConfig(join(dir, 'repo'), prof(), 'win32')).toMatchObject({ file: join(dir, 'repo', 'nuget.config'), addNugetOrg: true });
+    expect(dotnetNugetConfig(join(dir, 'repo'), prof(), 'win32')).toMatchObject({ file: expect.stringContaining(join(prof(), 'nuget', 'copy-')), written: 'root-copy' });
   });
 
   it('lists at most five, nearest the root first', () => {
@@ -452,8 +464,8 @@ describe('a nuget.config below the root keeps NuGet\'s hierarchy whatever the ca
     const repo = join(dir, 'repo');
     expect(sandboxNugetConfig(repo, prof(), 'win32', { hierarchy: 'NuGet reads its own config hierarchy: x' })).toEqual({ hierarchy: 'NuGet reads its own config hierarchy: x' });
     expect(sandboxNugetConfig(repo, prof(), 'win32', {})).toEqual({ hierarchy: expect.stringContaining('below its root (Lib/nuget.config)') });
-    expect(sandboxNugetConfig(repo, prof(), 'win32', { fromGit: true })).toEqual({ file: join(repo, 'nuget.config'), addNugetOrg: true });
-    expect(sandboxNugetConfig(repo, prof(), 'win32', { fromGit: true, noAdd: true })).toEqual({ file: join(repo, 'nuget.config'), addNugetOrg: false });
+    expect(sandboxNugetConfig(repo, prof(), 'win32', { fromGit: true })).toMatchObject({ written: 'root-copy' });
+    expect(sandboxNugetConfig(repo, prof(), 'win32', { fromGit: true, noAdd: true })).toEqual({ file: join(repo, 'nuget.config') });
   });
 
   it('round 5: the scan reads one dir at a time and stops at its cap (a wide tree is not read twice)', () => {
@@ -461,5 +473,97 @@ describe('a nuget.config below the root keeps NuGet\'s hierarchy whatever the ca
     for (let i = 0; i < 300; i++) mkdirSync(join(dir, 'repo', `d${i % 10}`, `e${i}`), { recursive: true });
     put('d9/e299/nuget.config', LOWER);
     expect(lowerNugetConfigs(join(dir, 'repo'))).toEqual(['d9/e299/nuget.config']);
+  });
+});
+
+describe('PR 611 round 7: a root config with no source gets an engine copy with nuget.org as a config source', () => {
+  const copyOf = (s: string | Buffer) => nugetOrgCopy(typeof s === 'string' ? Buffer.from(s) : s);
+  const prof = () => join(dir, 'prof');
+
+  it('the copy is the root bytes with nuget.org inserted before the root close (byte-exact)', () => {
+    expect(NUGET_ORG_PACKAGE_SOURCES).toBe(`  <packageSources>\n    <add key="nuget.org" value="${NUGET_ORG_SOURCE}" protocolVersion="3" />\n  </packageSources>\n`);
+    const text = '<?xml version="1.0" encoding="utf-8"?>\r\n<configuration>\r\n  <config>\r\n    <add key="dependencyVersion" value="Lowest" />\r\n  </config>\r\n  <trustedSigners>\r\n    <author name="corp"><certificate fingerprint="3F9001EA83C560D712C24CF213C3D312CB3BFF51EE89435D3430BD06B5D0EECE" hashAlgorithm="SHA256" allowUntrustedRoot="false" /></author>\r\n  </trustedSigners>\r\n</configuration>\r\n';
+    const at = text.lastIndexOf('</configuration>');
+    expect(copyOf(text)).toEqual({ copy: Buffer.from(`${text.slice(0, at)}\n${NUGET_ORG_PACKAGE_SOURCES}${text.slice(at)}`) });
+    // A UTF-8 byte order mark stays; a self-closed root opens and closes around the sources; `</configuration >` is a close.
+    const bom = Buffer.from([0xef, 0xbb, 0xbf]);
+    expect(copyOf(Buffer.concat([bom, Buffer.from('<configuration></configuration>\n')]))).toEqual({ copy: Buffer.concat([bom, Buffer.from(`<configuration>\n${NUGET_ORG_PACKAGE_SOURCES}</configuration>\n`)]) });
+    expect(copyOf('<configuration />\n')).toEqual({ copy: Buffer.from(`<configuration >\n${NUGET_ORG_PACKAGE_SOURCES}</configuration>\n`) });
+    expect(copyOf('<configuration><packageRestore><add key="enabled" value="True" /></packageRestore></configuration >')).toEqual({ copy: Buffer.from(`<configuration><packageRestore><add key="enabled" value="True" /></packageRestore>\n${NUGET_ORG_PACKAGE_SOURCES}</configuration >`) });
+    // The copy is itself a config with a source policy: never copied again.
+    const once = copyOf('<configuration />');
+    expect('copy' in once && nugetConfigVerdict(once.copy).addNugetOrg).toBe(false);
+  });
+
+  it('no copy for every shape the verdict refuses, nor when the root end is not certain', () => {
+    for (const s of [
+      `<configuration><packageSources>${P}</packageSources></configuration>`,
+      '<configuration><packageSources><clear /></packageSources></configuration>',
+      // disabledPackageSources naming nuget.org (and any packageSourceCredentials) holds "packagesource" / "nuget.org".
+      '<configuration><disabledPackageSources><add key="nuget.org" value="true" /></disabledPackageSources></configuration>',
+      '<configuration><packageSourceCredentials><corp><add key="Username" value="u" /></corp></packageSourceCredentials></configuration>',
+      '<configuration><!-- </configuration> --></configuration>',
+      '<configuration><![CDATA[</configuration>]]></configuration>',
+      '<?xml version="1.0"?><?pi </configuration> ?><configuration />',
+      '<configuration xmlns="urn:x" />',
+      '<configuration><a b="&amp;" /></configuration>',
+      '<settings />',
+      '<configuration></configuration><configuration></configuration>',
+      // A quoted "<" could fake the root's end; trailing text after the root.
+      '<configuration><a b="</configuration>" /></configuration>',
+      '<configuration></configuration> tail',
+    ]) expect('why' in copyOf(s), s).toBe(true);
+  });
+
+  it('relative paths: a path-valued setting means no copy (NuGet resolves it against the file\'s own dir)', () => {
+    for (const s of [
+      '<configuration><config><add key="globalPackagesFolder" value="pk" /></config></configuration>',
+      '<configuration><config><add key="repositoryPath" value="C:/abs" /></config></configuration>',
+      '<configuration><config><add key="RepositoryPath" value="packages" /></config></configuration>',
+      '<configuration><config><add key="x" value="./tools" /></config></configuration>',
+      '<configuration><config><add key="x" value="..\\tools" /></config></configuration>',
+      '<configuration><config><add key="x" value="tools/x" /></config></configuration>',
+      '<configuration><config><add key="x" value="%HOME%" /></config></configuration>',
+      '<configuration><config><add key="x" value="~" /></config></configuration>',
+      '<configuration><config><add key="x" value="file://./x" /></config></configuration>',
+    ]) {
+      const v = nugetConfigVerdict(Buffer.from(s));
+      expect(v.addNugetOrg, s).toBe(true);
+      expect(v.pathSetting, s).toBeTruthy();
+      expect(copyOf(s), s).toEqual({ why: expect.stringContaining('may be a path') });
+    }
+    // Not paths: words, numbers, an http(s) URL.
+    for (const s of [
+      '<configuration><config><add key="dependencyVersion" value="Lowest" /></config></configuration>',
+      '<configuration><config><add key="http_proxy" value="http://proxy.example.test:8080/" /><add key="maxHttpRequestsPerSource" value="16" /></config></configuration>',
+    ]) {
+      expect(nugetConfigVerdict(Buffer.from(s)).pathSetting, s).toBeUndefined();
+      expect('copy' in copyOf(s), s).toBe(true);
+    }
+    // dotnetNugetConfig: the root file as it is, with the one-line remedy in the note.
+    mkdirSync(join(dir, 'rel'));
+    writeFileSync(join(dir, 'rel', 'nuget.config'), '<configuration><config><add key="repositoryPath" value="packages" /></config></configuration>');
+    const cfg = dotnetNugetConfig(join(dir, 'rel'), prof(), 'win32');
+    expect(cfg).toEqual({ file: join(dir, 'rel', 'nuget.config'), note: expect.stringContaining(`add nuget.org to it explicitly (<add key="nuget.org" value="${NUGET_ORG_SOURCE}" />)`) });
+    expect(existsSync(join(prof(), 'nuget'))).toBe(false);
+  });
+
+  it('named by the content hash, in the job profile, written with exclusive create, never reused for other bytes', () => {
+    const repo = (name: string, text: string) => { mkdirSync(join(dir, name)); writeFileSync(join(dir, name, 'nuget.config'), text); return join(dir, name); };
+    const a = repo('a', '<configuration><config><add key="dependencyVersion" value="Lowest" /></config></configuration>');
+    const b = repo('b', '<configuration><config><add key="dependencyVersion" value="Highest" /></config></configuration>');
+    const ca = dotnetNugetConfig(a, prof(), 'win32');
+    const cb = dotnetNugetConfig(b, prof(), 'win32');
+    const bytes = (c: typeof ca) => ('file' in c ? readFileSync(c.file) : Buffer.alloc(0));
+    const hash = createHash('sha256').update(bytes(ca)).digest('hex').slice(0, 32);
+    expect(ca).toEqual({ file: join(prof(), 'nuget', `copy-${hash}`, 'nuget.config'), written: 'root-copy' });
+    expect('file' in cb && cb.file).not.toBe('file' in ca && ca.file);
+    expect(bytes(cb).toString()).toContain('Highest');
+    // The same bytes again: the file there holds exactly them, so it is used.
+    expect(dotnetNugetConfig(a, prof(), 'win32')).toEqual(ca);
+    // A file at that name with other bytes (planted): not used; the root as it is, with a note.
+    if ('file' in ca) writeFileSync(ca.file, '<configuration><packageSources><add key="evil" value="https://evil.example.test/v3/index.json" /></packageSources></configuration>');
+    const planted = dotnetNugetConfig(a, prof(), 'win32');
+    expect(planted).toEqual({ file: join(a, 'nuget.config'), note: expect.stringContaining('could not write its copy') });
   });
 });

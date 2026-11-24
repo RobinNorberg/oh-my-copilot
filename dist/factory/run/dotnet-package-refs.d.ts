@@ -66,8 +66,9 @@ export declare function nodeModulesReferences(path: string, text: string): strin
  * `RestoreAdditionalProjectSources`, `RestoreFallbackFolders`,
  * `RestoreConfigFile`, `RestorePackagesPath`, `RestoreNoCache`,
  * `RestoreIgnoreFailedSources`): the repository sets its restore sources
- * itself, so the engine never adds nuget.org (H2: an added
- * RestoreAdditionalProjectSources is appended to `RestoreSources`).
+ * itself, so the engine writes no root-config copy with nuget.org
+ * (dotnet-sandbox.ts nugetOrgCopy; an extra signal that can only restrict:
+ * such a setting overrides the copy's config source anyway).
  * Conservative: a comment or a condition counts, and a file larger than
  * PINNED_READ_MAX counts as `not read`. Other files: none.
  */
@@ -78,9 +79,11 @@ export declare function restoreSettingMentions(path: string, text: string): stri
  * unescaped as MSBuild does, that
  * - has a `node_modules` path segment (any case, `\` or `/`): such a file
  *   is never pinned (the engine does not read node_modules trees);
+ * - holds a wildcard (`*` or `?`) anywhere: MSBuild imports every match,
+ *   which may include files that are not pinned;
  * - does not end, textually, in `.props`, `.targets`, `.tasks`,
  *   `.projitems`, `.user` or a `*proj` extension, including one that ends
- *   in a property reference (`$(X)`) or a wildcard;
+ *   in a property reference (`$(X)`);
  * - is a literal path, or one after `$(MSBuildThisFileDirectory)` (which
  *   ends in a separator, so separators after it are dropped), that is
  *   absolute or climbs above the repository root (round 5).

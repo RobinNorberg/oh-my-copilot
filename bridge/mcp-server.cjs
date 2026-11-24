@@ -62756,7 +62756,7 @@ function dotnetSandboxEnv(profile, hostEnv, realHome, platform = process.platfor
   const runDir = run3 ? (0, import_node_path13.resolve)(run3.dir) : null;
   const nuget = runDir ? { NUGET_PACKAGES: runDir, ...packages ? { NUGET_FALLBACK_PACKAGES: packages } : {} } : packages ? { NUGET_PACKAGES: packages } : {};
   return {
-    notes: [...grant.note ? [grant.note] : [], ...nugetConfig && "hierarchy" in nugetConfig ? [nugetConfig.hierarchy] : []],
+    notes: [...grant.note ? [grant.note] : [], ...nugetConfig && "hierarchy" in nugetConfig ? [nugetConfig.hierarchy] : [], ...nugetConfig && "file" in nugetConfig && nugetConfig.note ? [nugetConfig.note] : []],
     env: {
       // NuGet's user config dir: the job's empty profile, never the real %APPDATA%\NuGet.
       ...platform === "win32" ? { APPDATA: (0, import_node_path13.join)((0, import_node_path13.resolve)(profile), "AppData", "Roaming") } : {},
@@ -62769,11 +62769,10 @@ function dotnetSandboxEnv(profile, hostEnv, realHome, platform = process.platfor
       // MSBuild properties from the environment: no compiler server, no SourceLink git read.
       UseSharedCompilation: "false",
       EnableSourceControlManagerQueries: "false",
-      // One NuGet config file instead of the walk up to the drive root (dotnetNugetConfig; MSBuild unescapes the value), plus
-      // nuget.org only when that file plainly defines no package-source policy (nugetConfigVerdict).
-      ...nugetConfig && "file" in nugetConfig ? { RestoreConfigFile: msbuildEscape(nugetConfig.file), ...nugetConfig.addNugetOrg ? { RestoreAdditionalProjectSources: msbuildEscape(NUGET_ORG_SOURCE) } : {} } : {}
+      // One NuGet config file instead of the walk up to the drive root (dotnetNugetConfig; MSBuild unescapes the value).
+      ...nugetConfig && "file" in nugetConfig ? { RestoreConfigFile: msbuildEscape(nugetConfig.file) } : {}
     },
-    readonly: [...packages ? [packages] : [], ...runDir && !run3.writable ? [runDir] : []],
+    readonly: [...packages ? [packages] : [], ...runDir && !run3.writable ? [runDir] : [], ...nugetConfig && "file" in nugetConfig && nugetConfig.written ? [nugetConfig.file] : []],
     readwrite: runDir && run3.writable ? [runDir] : []
   };
 }
@@ -62828,7 +62827,38 @@ function nugetConfigVerdict(bytes) {
   const odd = (n) => n.includes(":") || /[^\x21-\x7e]/.test(n);
   if (scan.tags.some((t) => odd(t.name) || t.attrs.some(([a]) => odd(a) || a.toLowerCase() === "xmlns"))) return verdict("it uses XML namespaces or prefixes", unmapped);
   if (scan.tags.find((t) => !t.close)?.name !== "configuration") return verdict("its root element is not configuration", unmapped);
-  return verdict(void 0, unmapped);
+  const path15 = pathSettingIn(scan.tags);
+  return { ...verdict(void 0, unmapped), ...path15 ? { pathSetting: path15 } : {} };
+}
+function pathSettingIn(tags) {
+  for (const t of tags) {
+    if (t.close) continue;
+    for (const [a, v] of t.attrs) {
+      const pathKey4 = t.name.toLowerCase() === "add" && a.toLowerCase() === "key" && PATH_KEYS.has(v.trim().toLowerCase());
+      const pathLike = /^\s*[.~]|%/.test(v) || /[\\/]/.test(v) && !/^\s*https?:\/\/[^\s\\]*\s*$/i.test(v);
+      if (pathKey4 || pathLike) return `${a}="${v.slice(0, 120)}"`;
+    }
+  }
+  return null;
+}
+function nugetOrgCopy(bytes) {
+  const v = nugetConfigVerdict(bytes);
+  if (!v.addNugetOrg) return { why: v.why ?? "it may define package sources" };
+  if (v.pathSetting) return { why: `it holds ${v.pathSetting}, which may be a path NuGet resolves against that file's own directory, so the engine writes no copy of it elsewhere` };
+  const tags = scanXml(bytes.toString("utf8")).tags;
+  if (tags.some((t) => t.attrs.some(([, val]) => val.includes("<")))) return { why: 'an attribute value holds "<", so the end of its root element is not certain' };
+  const tail4 = (at2) => bytes.subarray(at2).toString("latin1");
+  const root = tags[0];
+  if (root?.selfClose && tags.length === 1) {
+    const at2 = bytes.lastIndexOf("/>");
+    if (at2 < 0 || !/^\/>[ \t\r\n]*$/.test(tail4(at2))) return { why: "the end of its root element is not certain" };
+    return { copy: Buffer.concat([bytes.subarray(0, at2), Buffer.from(`>
+${NUGET_ORG_PACKAGE_SOURCES}</configuration>`), bytes.subarray(at2 + 2)]) };
+  }
+  const at = bytes.lastIndexOf("</configuration");
+  if (at < 0 || !/^<\/configuration[ \t\r\n]*>[ \t\r\n]*$/.test(tail4(at))) return { why: "the end of its root element is not certain" };
+  return { copy: Buffer.concat([bytes.subarray(0, at), Buffer.from(`
+${NUGET_ORG_PACKAGE_SOURCES}`), bytes.subarray(at)]) };
 }
 function readRegularFileBounded(path15, max) {
   let st;
@@ -62899,23 +62929,37 @@ function dotnetNugetConfig(cwd, profile, platform = process.platform, o = {}) {
     if (verdict && verdict.unmappedKeys.length > 0) {
       return { hierarchy: `NuGet reads its own config hierarchy: ${root.file} maps packages to the source key(s) ${verdict.unmappedKeys.join(", ")}, which it does not define` };
     }
-    return { file: root.file, addNugetOrg: !!verdict?.addNugetOrg && !o.noAdd };
+    if (!bytes || !verdict?.addNugetOrg || o.noAdd) return { file: root.file };
+    const made = nugetOrgCopy(bytes);
+    const remedy = `add nuget.org to it explicitly (<add key="nuget.org" value="${NUGET_ORG_SOURCE}" />) if the repository uses nuget.org`;
+    if ("why" in made) return { file: root.file, note: `${root.file} defines no package source and the engine supplied none: ${made.why}; NuGet read that file alone; ${remedy}` };
+    const copy = (0, import_node_path13.join)(profile, "nuget", `copy-${(0, import_node_crypto4.createHash)("sha256").update(made.copy).digest("hex").slice(0, 32)}`, "nuget.config");
+    if (copy.includes(";")) return { file: root.file, note: `the path ${copy} holds a ";", which MSBuild splits in RestoreConfigFile, so the engine supplied no nuget.org for ${root.file}; ${remedy}` };
+    try {
+      (0, import_node_fs12.mkdirSync)((0, import_node_path13.dirname)(copy), { recursive: true });
+      (0, import_node_fs12.writeFileSync)(copy, made.copy, { flag: "wx" });
+    } catch {
+      const there = readRegularFileBounded(copy, made.copy.length);
+      if (!there || !there.equals(made.copy)) return { file: root.file, note: `the engine could not write its copy of ${root.file} with nuget.org (${copy}), so it supplied none; ${remedy}` };
+    }
+    return { file: copy, written: "root-copy" };
   }
   const dir = (0, import_node_path13.join)(profile, "nuget");
   const file2 = (0, import_node_path13.join)(dir, "nuget.config");
   if (file2.includes(";")) return { hierarchy: `NuGet reads its own config hierarchy: the path ${file2} holds a ";", which MSBuild splits in RestoreConfigFile` };
   (0, import_node_fs12.mkdirSync)(dir, { recursive: true });
   (0, import_node_fs12.writeFileSync)(file2, NUGET_ORG_ONLY_CONFIG);
-  return { file: file2, addNugetOrg: false };
+  return { file: file2, written: "nuget.org-only" };
 }
 function sandboxNugetConfig(cwd, profile, platform, o) {
   if (o.hierarchy) return { hierarchy: o.hierarchy };
   return dotnetNugetConfig(cwd, profile, platform, { noAdd: o.noAdd === true, fromGit: o.fromGit === true });
 }
-var import_node_fs12, import_node_path13, MSBUILD_SUBCOMMANDS, DOTNET_SINGLE_NODE_FLAG, DOTNET_PATH_OPTIONS, DOTNET_COMMON_VALUE_OPTIONS, DOTNET_VALUE_OPTIONS, DOTNET_MTP_UNSUPPORTED, omcRoots, NUGET_ORG_ONLY_CONFIG, NUGET_CONFIG_NAMES, NUGET_ORG_SOURCE, NUGET_CONFIG_READ_MAX, UTF16_32_BOMS, SOURCE_POLICY_WORDS, decodePredefined, LOWER_NUGET_SCAN_DIRS, msbuildEscape, isNugetHost;
+var import_node_crypto4, import_node_fs12, import_node_path13, MSBUILD_SUBCOMMANDS, DOTNET_SINGLE_NODE_FLAG, DOTNET_PATH_OPTIONS, DOTNET_COMMON_VALUE_OPTIONS, DOTNET_VALUE_OPTIONS, DOTNET_MTP_UNSUPPORTED, omcRoots, NUGET_ORG_ONLY_CONFIG, NUGET_CONFIG_NAMES, NUGET_ORG_SOURCE, NUGET_CONFIG_READ_MAX, UTF16_32_BOMS, SOURCE_POLICY_WORDS, decodePredefined, PATH_KEYS, NUGET_ORG_PACKAGE_SOURCES, LOWER_NUGET_SCAN_DIRS, msbuildEscape, isNugetHost;
 var init_dotnet_sandbox = __esm({
   "src/copilot-run/dotnet-sandbox.ts"() {
     "use strict";
+    import_node_crypto4 = require("node:crypto");
     import_node_fs12 = require("node:fs");
     import_node_path13 = require("node:path");
     init_jsonc();
@@ -62956,6 +63000,11 @@ var init_dotnet_sandbox = __esm({
     UTF16_32_BOMS = [[0, 0, 254, 255], [255, 254], [254, 255]];
     SOURCE_POLICY_WORDS = ["packagesource", "clear", "nuget.org", "mapping", "fallbackpackagefolders", "&", "<!"];
     decodePredefined = (s) => s.replace(/&(amp|lt|gt|quot|apos);/g, (_, e2) => ({ amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" })[e2]);
+    PATH_KEYS = /* @__PURE__ */ new Set(["repositorypath", "globalpackagesfolder"]);
+    NUGET_ORG_PACKAGE_SOURCES = `  <packageSources>
+    <add key="nuget.org" value="${NUGET_ORG_SOURCE}" protocolVersion="3" />
+  </packageSources>
+`;
     LOWER_NUGET_SCAN_DIRS = 1e5;
     msbuildEscape = (value) => value.replace(/[%$@';?*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase().padStart(2, "0")}`);
     isNugetHost = (host) => /^(?:api|\*)\.nuget\.org$/i.test(host.trim());
@@ -63511,7 +63560,7 @@ function describeEntry(path15) {
   if (st.isDirectory()) return "dir";
   if (!st.isFile()) return "other";
   try {
-    return `file ${st.mode & 73 ? "x" : "-"} ${(0, import_node_crypto4.createHash)("sha256").update((0, import_node_fs14.readFileSync)(path15)).digest("hex")}`;
+    return `file ${st.mode & 73 ? "x" : "-"} ${(0, import_node_crypto5.createHash)("sha256").update((0, import_node_fs14.readFileSync)(path15)).digest("hex")}`;
   } catch {
     return "file unreadable";
   }
@@ -63669,13 +63718,13 @@ function defaultCopilotRunDeps(env2 = process.env) {
     killTree: (pid) => killProcessTree(pid, import_node_child_process5.spawnSync)
   };
 }
-var import_node_child_process5, import_node_crypto4, import_node_fs14, import_node_os6, import_node_path15, DEFAULT_TIMEOUT_MS, MAX_TIMEOUT_MS, DEFAULT_MAX_CREDITS, MAX_RUNNING_JOBS, MAX_PROMPT_CHARS, WORKTREE_TEAM, MCP_SERVER, START_TIMEOUT_MS2, RPC_TIMEOUT_MS2, ABORT_GRACE_MS2, SHUTDOWN_GRACE_MS2, STOP_TIMEOUT_MS2, SERVER_EXIT_GRACE_MS, GIT_TIMEOUT_MS2, DENIED_LOG_MAX, JOB_ID2, MAX_START_REF_CHARS, STOP_CONTINUATION_SKIP_TOKEN, PROJECT_MEMORY_SKIP_TOKEN, LANE_HOOKS_MINIMAL, LANE_STATE_ROOT_TIMEOUT_MS, CopilotRunError, REVIEW_SHELL_DENY_PATTERNS, IDENTITY_TIMEOUT_MS, sleep5, isTerminal2, git2, lines, JOB_REF_PREFIX, PLAIN_REF, CopilotRunManager;
+var import_node_child_process5, import_node_crypto5, import_node_fs14, import_node_os6, import_node_path15, DEFAULT_TIMEOUT_MS, MAX_TIMEOUT_MS, DEFAULT_MAX_CREDITS, MAX_RUNNING_JOBS, MAX_PROMPT_CHARS, WORKTREE_TEAM, MCP_SERVER, START_TIMEOUT_MS2, RPC_TIMEOUT_MS2, ABORT_GRACE_MS2, SHUTDOWN_GRACE_MS2, STOP_TIMEOUT_MS2, SERVER_EXIT_GRACE_MS, GIT_TIMEOUT_MS2, DENIED_LOG_MAX, JOB_ID2, MAX_START_REF_CHARS, STOP_CONTINUATION_SKIP_TOKEN, PROJECT_MEMORY_SKIP_TOKEN, LANE_HOOKS_MINIMAL, LANE_STATE_ROOT_TIMEOUT_MS, CopilotRunError, REVIEW_SHELL_DENY_PATTERNS, IDENTITY_TIMEOUT_MS, sleep5, isTerminal2, git2, lines, JOB_REF_PREFIX, PLAIN_REF, CopilotRunManager;
 var init_job = __esm({
   "src/copilot-run/job.ts"() {
     "use strict";
     init_windows_search();
     import_node_child_process5 = require("node:child_process");
-    import_node_crypto4 = require("node:crypto");
+    import_node_crypto5 = require("node:crypto");
     import_node_fs14 = require("node:fs");
     import_node_os6 = require("node:os");
     import_node_path15 = require("node:path");
@@ -63834,7 +63883,7 @@ var init_job = __esm({
         }
         const ledgerCwd = repoRoot ? (0, import_node_path15.resolve)(repoRoot) : cwd;
         const notes = [...sandboxWarnings];
-        const id = `cr-${(0, import_node_crypto4.randomBytes)(6).toString("hex")}`;
+        const id = `cr-${(0, import_node_crypto5.randomBytes)(6).toString("hex")}`;
         let workCwd = cwd;
         let worktree = null;
         let worktreeLinks = null;
@@ -65957,14 +66006,14 @@ var init_string_width = __esm({
 
 // src/factory/run/test-delta.ts
 function testId(parts) {
-  const hash2 = (0, import_node_crypto5.createHash)("sha256").update(JSON.stringify(parts)).digest("hex").slice(0, ID_HASH_CHARS);
+  const hash2 = (0, import_node_crypto6.createHash)("sha256").update(JSON.stringify(parts)).digest("hex").slice(0, ID_HASH_CHARS);
   return `${hash2} ${parts.join(" > ")}`.slice(0, TEST_ID_MAX_CHARS);
 }
 function testIdText(id) {
   return /^[0-9a-f]{16} /.test(id) ? id.slice(ID_HASH_CHARS + 1) : id;
 }
 function vitestReportPath(dir) {
-  return (0, import_node_path16.join)(dir, `.omg-vitest-report-${(0, import_node_crypto5.randomBytes)(6).toString("hex")}.json`);
+  return (0, import_node_path16.join)(dir, `.omg-vitest-report-${(0, import_node_crypto6.randomBytes)(6).toString("hex")}.json`);
 }
 function vitestReportArgs(path15) {
   return ["--reporter=default", "--reporter=json", `--outputFile=${path15}`, "--coverage.enabled=false"];
@@ -66076,11 +66125,11 @@ function vitestSummaryShapeOk(v) {
   const count = (x) => Number.isSafeInteger(x) && x >= 0;
   return typeof s === "object" && s !== null && !Array.isArray(s) && count(s.passed) && strs(s.failed) && strs(s.brokenFiles) && (s.failedFiles === void 0 || count(s.failedFiles)) && Object.keys(s).every((k) => k === "passed" || k === "failed" || k === "brokenFiles" || k === "failedFiles");
 }
-var import_node_crypto5, import_node_fs15, import_node_path16, VITEST_REPORT_MAX_BYTES, BASE_FAILURES_MAX, TEST_ID_MAX_CHARS, ID_HASH_CHARS, slash, fileId2, UNHANDLED_ERRORS_ID, COVERAGE_THRESHOLD_ID, IMPORT_DANGER_ID;
+var import_node_crypto6, import_node_fs15, import_node_path16, VITEST_REPORT_MAX_BYTES, BASE_FAILURES_MAX, TEST_ID_MAX_CHARS, ID_HASH_CHARS, slash, fileId2, UNHANDLED_ERRORS_ID, COVERAGE_THRESHOLD_ID, IMPORT_DANGER_ID;
 var init_test_delta = __esm({
   "src/factory/run/test-delta.ts"() {
     "use strict";
-    import_node_crypto5 = require("node:crypto");
+    import_node_crypto6 = require("node:crypto");
     import_node_fs15 = require("node:fs");
     import_node_path16 = require("node:path");
     VITEST_REPORT_MAX_BYTES = 32 * 1024 * 1024;
@@ -66695,7 +66744,7 @@ var init_state5 = __esm({
 
 // src/factory/run/container-gate.ts
 function containerRunLabel(root, key) {
-  const repo = (0, import_node_crypto6.createHash)("sha256").update((0, import_node_path17.resolve)(root)).digest("hex").slice(0, 10);
+  const repo = (0, import_node_crypto7.createHash)("sha256").update((0, import_node_path17.resolve)(root)).digest("hex").slice(0, 10);
   return `${repo}-${runSlug(key).toLowerCase().replace(/[^a-z0-9-]/g, "-").slice(0, 40)}`;
 }
 function mountArg(fields) {
@@ -66797,7 +66846,7 @@ function installPlan(checkout) {
     }
     const policy = lockfileCachePolicy(json3);
     if (typeof policy === "object") return { kind: "unsupported", reason: policy.refuse };
-    return { kind: "npm-ci", lockHash: (0, import_node_crypto6.createHash)("sha256").update(bytes).digest("hex").slice(0, 16), sharedCache: policy === "shared" };
+    return { kind: "npm-ci", lockHash: (0, import_node_crypto7.createHash)("sha256").update(bytes).digest("hex").slice(0, 16), sharedCache: policy === "shared" };
   }
   let pkg = {};
   try {
@@ -66931,7 +66980,7 @@ async function runContainerGate(req, s, runLabel2, deps) {
   if (plan.kind === "unsupported") return unavailable(`${plan.reason}; ${switchBack}`);
   const scan = checkoutCopyProblem(req.cwd);
   if (scan) return noVerdict(`${scan}, so it is not copied into the gate container; nothing is counted`);
-  const id = (deps.id ?? (() => (0, import_node_crypto6.randomBytes)(4).toString("hex")))();
+  const id = (deps.id ?? (() => (0, import_node_crypto7.randomBytes)(4).toString("hex")))();
   const name = `${CONTAINER_NAME_PREFIX}${runLabel2}-${id}`;
   const volume = name;
   const network = `${name}-net`;
@@ -67352,7 +67401,7 @@ function applyCopyBack(checkout, tar, platform) {
     try {
       (0, import_node_fs16.mkdirSync)(dir, { recursive: true });
       if (!samePathOrUnder(import_node_fs16.realpathSync.native(dir), realRoot)) return "a file would be written outside the checkout; files before it were written";
-      tmp = (0, import_node_path17.join)(dir, `.omg-copy-back-${(0, import_node_crypto6.randomBytes)(6).toString("hex")}`);
+      tmp = (0, import_node_path17.join)(dir, `.omg-copy-back-${(0, import_node_crypto7.randomBytes)(6).toString("hex")}`);
       (0, import_node_fs16.writeFileSync)(tmp, data, { flag: "wx" });
       if (platform !== "win32") (0, import_node_fs16.chmodSync)(tmp, mode & 73 ? 493 : 420);
       (0, import_node_fs16.renameSync)(tmp, path15);
@@ -67372,12 +67421,12 @@ function applyCopyBack(checkout, tar, platform) {
   }
   return null;
 }
-var import_node_child_process6, import_node_crypto6, import_node_fs16, import_node_path17, GATE_CONTAINER_UNAVAILABLE_GATE, CONTAINER_INCOMPATIBLE_ADVICE, CONTAINER_NAME_PREFIX, RUN_LABEL, GATE_LABEL, CACHE_LABEL, CONTAINER_PATH, CONTAINER_USER, WORK, SRC, NPM_REGISTRY, REGISTRY_PREFIXES, PROBE_TIMEOUT_MS, PULL_TIMEOUT_MS, COPY_TIMEOUT_MS, KILL_TIMEOUT_MS, IN_CONTAINER_GRACE_S, DISK_WATCH_MS, OUTPUT_TAIL_BYTES, COPY_BACK_MAX_BYTES, COPY_BACK_MAX_ENTRIES, SCAN_MAX_ENTRIES, LOCKFILE_MAX_BYTES, defaultContainerExec, isNodeExe, OUTPUT_FILE_FLAG, CONTAINER_SRC, GIT_VIEW_MOUNT, copyLines, NPMRC_HELD, HOLD_NPMRC, RESTORE_NPMRC, NPM_FETCH_ENV, SCRIPTS_SCRIPT, tail, firstLine, lastLines, IGNORABLE, dropIgnorable, foldsCase;
+var import_node_child_process6, import_node_crypto7, import_node_fs16, import_node_path17, GATE_CONTAINER_UNAVAILABLE_GATE, CONTAINER_INCOMPATIBLE_ADVICE, CONTAINER_NAME_PREFIX, RUN_LABEL, GATE_LABEL, CACHE_LABEL, CONTAINER_PATH, CONTAINER_USER, WORK, SRC, NPM_REGISTRY, REGISTRY_PREFIXES, PROBE_TIMEOUT_MS, PULL_TIMEOUT_MS, COPY_TIMEOUT_MS, KILL_TIMEOUT_MS, IN_CONTAINER_GRACE_S, DISK_WATCH_MS, OUTPUT_TAIL_BYTES, COPY_BACK_MAX_BYTES, COPY_BACK_MAX_ENTRIES, SCAN_MAX_ENTRIES, LOCKFILE_MAX_BYTES, defaultContainerExec, isNodeExe, OUTPUT_FILE_FLAG, CONTAINER_SRC, GIT_VIEW_MOUNT, copyLines, NPMRC_HELD, HOLD_NPMRC, RESTORE_NPMRC, NPM_FETCH_ENV, SCRIPTS_SCRIPT, tail, firstLine, lastLines, IGNORABLE, dropIgnorable, foldsCase;
 var init_container_gate = __esm({
   "src/factory/run/container-gate.ts"() {
     "use strict";
     import_node_child_process6 = require("node:child_process");
-    import_node_crypto6 = require("node:crypto");
+    import_node_crypto7 = require("node:crypto");
     import_node_fs16 = require("node:fs");
     import_node_path17 = require("node:path");
     init_sandbox_exec();
@@ -67556,7 +67605,7 @@ async function runSandboxed(argv, o, deps) {
   const refuse2 = (reason) => ({ ran: false, reason, refused: true });
   const noVerdict = (reason) => ({ ran: false, reason, started: true });
   const sleep9 = deps.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
-  const marker = `${MARKER_PREFIX}${(0, import_node_crypto7.randomBytes)(8).toString("hex")}`;
+  const marker = `${MARKER_PREFIX}${(0, import_node_crypto8.randomBytes)(8).toString("hex")}`;
   const dotnet = isDotnetExe(argv[0]);
   const command = sandboxShellCommand(deps.platform, dotnet ? [argv[0], ...dotnetSandboxArgs(argv.slice(1), { mtp: o.dotnetMtp === true })] : argv, o.cwd, marker);
   if (command === null) return refuse2("the command cannot be passed to the sandbox shell unchanged (a NUL, or on Windows an empty argument or a double quote)");
@@ -67564,7 +67613,7 @@ async function runSandboxed(argv, o, deps) {
   if (command.length > max) {
     return refuse2(`the command is too long for the sandbox shell: it encodes to ${command.length} characters, above the ${max} that ${deps.platform === "win32" ? "a Windows command line" : "one shell argument"} can safely carry; shorten the configured command`);
   }
-  const jobHome = (0, import_node_path18.join)(o.jobRoot, `gate-${Date.now().toString(36)}-${(0, import_node_crypto7.randomBytes)(4).toString("hex")}`);
+  const jobHome = (0, import_node_path18.join)(o.jobRoot, `gate-${Date.now().toString(36)}-${(0, import_node_crypto8.randomBytes)(4).toString("hex")}`);
   const workDir = (0, import_node_path18.join)(jobHome, "work");
   let client = null;
   let session = null;
@@ -67680,7 +67729,7 @@ async function runSandboxed(argv, o, deps) {
     if (sandbox.state?.mode !== "enforced") return notStarted(`the sandbox policy was not confirmed: ${sandbox.state?.reason ?? "unknown reason"}`);
     const shell = session.rpc.shell;
     if (typeof shell?.executeUserRequested !== "function") return notStarted("the SDK has no shell.executeUserRequested RPC, so the command cannot run in the sandbox");
-    const requestId = (0, import_node_crypto7.randomUUID)();
+    const requestId = (0, import_node_crypto8.randomUUID)();
     let timer;
     started = true;
     const call = shell.executeUserRequested.call(shell, { requestId, command }).then((value) => ({ value }), (error62) => ({ error: error62 }));
@@ -67837,11 +67886,11 @@ function gateEnv(env2, home) {
     GCM_INTERACTIVE: "never"
   };
 }
-var import_node_crypto7, import_node_fs17, import_node_os7, import_node_path18, SANDBOX_OUTPUT_TAIL_CHARS, START_TIMEOUT_MS3, RPC_TIMEOUT_MS3, STOP_TIMEOUT_MS3, CANCEL_GRACE_MS, ATTEST_WAIT_MS, CREDENTIAL_FILES_READABLE_NOTE, MARKER_PREFIX, SHELL_OUTPUT_BYTES, SHELL_OUTPUT_LINES, SHELL_LINE_CHARS, sandboxCommandMaxChars, SIZING_MARKER, tail2, sandboxJobRoot, GATE_ENV_KEPT;
+var import_node_crypto8, import_node_fs17, import_node_os7, import_node_path18, SANDBOX_OUTPUT_TAIL_CHARS, START_TIMEOUT_MS3, RPC_TIMEOUT_MS3, STOP_TIMEOUT_MS3, CANCEL_GRACE_MS, ATTEST_WAIT_MS, CREDENTIAL_FILES_READABLE_NOTE, MARKER_PREFIX, SHELL_OUTPUT_BYTES, SHELL_OUTPUT_LINES, SHELL_LINE_CHARS, sandboxCommandMaxChars, SIZING_MARKER, tail2, sandboxJobRoot, GATE_ENV_KEPT;
 var init_sandbox_exec = __esm({
   "src/factory/run/sandbox-exec.ts"() {
     "use strict";
-    import_node_crypto7 = require("node:crypto");
+    import_node_crypto8 = require("node:crypto");
     import_node_fs17 = require("node:fs");
     import_node_os7 = require("node:os");
     import_node_path18 = require("node:path");
@@ -68467,7 +68516,7 @@ function unwritableTreePath(path15) {
   return null;
 }
 function gitBlobId(content, oidLength) {
-  return (0, import_node_crypto8.createHash)(oidLength === 64 ? "sha256" : "sha1").update(`blob ${content.length}\0`).update(content).digest("hex");
+  return (0, import_node_crypto9.createHash)(oidLength === 64 ? "sha256" : "sha1").update(`blob ${content.length}\0`).update(content).digest("hex");
 }
 function parseCatFileBatch(buf) {
   const out = /* @__PURE__ */ new Map();
@@ -68559,11 +68608,11 @@ function restoreApprovalNote(platform) {
   const note = '. With factory.run.gateInstall "sandboxed", approving with --allow-gate-change also lets the engine run dotnet restore on these definition files with api.nuget.org reachable, and the MSBuild targets in these files run during that restore';
   return platform === "win32" ? `${note}; on Windows loopback and your local network are reachable from it too` : note;
 }
-var import_node_crypto8, import_node_fs18, import_node_path19, NUGET_RESTORE_ERROR, BUILD_OR_TEST_STARTED, isNugetOrg, NUGET_CONFIG_UNREADABLE_ERROR, SDK_UNRESOLVED, NUGET_SUBSTITUTED, shownPath, nugetRunPackagesDir, nugetDefinitionTreeDir, WINDOWS_DEVICE, EMPTY_PROJECT, DEFINITION_TREE_NUGET_CONFIG, DEFINITION_TREE_STUBS, GATE_INSTALL_SANDBOXED_HINT, NUGET_PRIVATE_FEED_UNSUPPORTED;
+var import_node_crypto9, import_node_fs18, import_node_path19, NUGET_RESTORE_ERROR, BUILD_OR_TEST_STARTED, isNugetOrg, NUGET_CONFIG_UNREADABLE_ERROR, SDK_UNRESOLVED, NUGET_SUBSTITUTED, shownPath, nugetRunPackagesDir, nugetDefinitionTreeDir, WINDOWS_DEVICE, EMPTY_PROJECT, DEFINITION_TREE_NUGET_CONFIG, DEFINITION_TREE_STUBS, GATE_INSTALL_SANDBOXED_HINT, NUGET_PRIVATE_FEED_UNSUPPORTED;
 var init_nuget_restore = __esm({
   "src/factory/run/nuget-restore.ts"() {
     "use strict";
-    import_node_crypto8 = require("node:crypto");
+    import_node_crypto9 = require("node:crypto");
     import_node_fs18 = require("node:fs");
     import_node_path19 = require("node:path");
     init_dotnet_sandbox();
@@ -76781,7 +76830,7 @@ function unpinnedImports(path15, text3) {
       const name = above ? (above[1] ?? above[2]).trim() : part;
       const local = above ? null : THIS_DIR_PATH.exec(part);
       const outside = above ? /^(?:[a-z]:|[\\/])|(?:^|[\\/])\.\.(?:[\\/]|$)/i.test(name) : local ? leavesRepository(path15, local[1]) : false;
-      if (hasNodeModulesSegment(part) || outside || !PINNED_IMPORT.test(name)) out.add(raw.slice(0, 200));
+      if (hasNodeModulesSegment(part) || /[*?]/.test(part) || outside || !PINNED_IMPORT.test(name)) out.add(raw.slice(0, 200));
     }
   }
   return [...out];
@@ -78380,7 +78429,9 @@ var init_engine = __esm({
        * definition; a prepare check on the checked-out head; a write lane on the
        * commit its worktree is made at; a calibration passes none, so the base
        * alone decides). Every fact of either commit only makes it stricter (a
-       * union). The engine never widens a repository's package sources:
+       * union). The engine never widens a repository's package sources (it
+       * appends none; nuget.org is at most a config source in a copy of a root
+       * config that defines none, which any RestoreSources overrides):
        * - `hierarchy` (NuGet's own walk, as with no RestoreConfigFile): why one
        *   file would not be what NuGet reads for this repository: a
        *   `nuget.config` below the root (one file would hide it, M2), a .NET
@@ -78396,10 +78447,13 @@ var init_engine = __esm({
        *   (unpinnedImports), or reference a path under a node_modules dir that
        *   MSBuild or NuGet reads settings from (`settingRefs`: an Import, a
        *   ProjectReference, a solution entry, a local source, a response-file
-       *   token; not an Exec or a UsingTask): nuget.org is never added (H2, M2).
+       *   token; not an Exec or a UsingTask): no copy with nuget.org is written
+       *   (dotnet-sandbox.ts nugetOrgCopy). Since a copy's nuget.org is a config
+       *   source that such settings override anyway, this signal can only
+       *   restrict; a policy it misses cannot widen the sources.
        * - `rootSources`: a commit whose root config defines a package-source
-       *   policy (nugetConfigVerdict): nuget.org is never added either, even when
-       *   the tree's own root file defines none.
+       *   policy (nugetConfigVerdict): no copy either, even when the tree's own
+       *   root file defines none.
        * - `sdks`: MSBuild project SDKs NuGet resolves (projectSdkMentions; M3).
        * Throws (a step error) when a commit cannot be read.
        */
@@ -78437,17 +78491,22 @@ var init_engine = __esm({
       }
       /**
        * Why a restore that missed packages may be the repository's own config:
-       * `commit`'s root nuget.config defines sources (so nothing was added,
-       * dotnet-sandbox.ts nugetConfigVerdict) and never names nuget.org, and
-       * the sandbox reads that file alone (no user config behind it). Null
-       * otherwise (no root config, nuget.org named or added, NuGet's hierarchy, sources set in MSBuild,
-       * or the commit cannot be read).
+       * `commit`'s root nuget.config defines sources (so the engine supplied
+       * nothing, dotnet-sandbox.ts nugetConfigVerdict) and never names
+       * nuget.org, or it defines none but holds a path-valued setting (so no
+       * copy with nuget.org was written, nugetOrgCopy), and the sandbox reads
+       * that file alone (no user config behind it). Null otherwise (no root
+       * config, nuget.org named or supplied, NuGet's hierarchy, sources set in
+       * MSBuild, or the commit cannot be read).
        */
       noNugetOrgSource(commit) {
         try {
           const policy = this.dotnetNugetPolicy(commit);
           if (policy.hierarchy || policy.noAddSource.length > 0) return null;
           const root = this.dotnetPinnedFacts(commit).root;
+          if ("verdict" in root && root.verdict.addNugetOrg && root.verdict.pathSetting) {
+            return `the repository's root ${root.name} lists no package source, and it holds ${root.verdict.pathSetting}, which may be a path NuGet resolves against that file's own directory, so the engine cannot supply nuget.org in a copy of it elsewhere (plain NuGet takes nuget.org from your user config, which the sandbox does not read); add nuget.org to the root ${root.name} explicitly (<add key="nuget.org" value="${NUGET_ORG_SOURCE}" />)`;
+          }
           if (!("verdict" in root) || root.verdict.addNugetOrg || root.verdict.namesNugetOrg) return null;
           return `the repository's root ${root.name} lists no nuget.org source, and the sandbox reads that file alone (your user and machine NuGet configs, which may add nuget.org, are not behind it), so NuGet looked only in the sources it lists; if the repository should use nuget.org, add it to the root ${root.name} explicitly (<add key="nuget.org" value="${NUGET_ORG_SOURCE}" />)`;
         } catch {

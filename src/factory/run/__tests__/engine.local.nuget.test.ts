@@ -4,7 +4,7 @@
  * the test sandbox. No dotnet, network, gh or copilot runs.
  */
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { dotnetSandboxEnv, sandboxNugetConfig } from '../../../copilot-run/dotnet-sandbox.js';
+import { dotnetSandboxEnv, NUGET_ORG_PACKAGE_SOURCES, sandboxNugetConfig } from '../../../copilot-run/dotnet-sandbox.js';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { localCheckRecordPath } from '../../../forge/local/index.js';
@@ -688,14 +688,16 @@ describe('a nuget.config below the root that only nuget.org could bypass (PR 611
   const SETTINGS_ONLY = '<configuration><config><add key="x" value="y" /></config></configuration>\n';
   const LIB = '<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup><ItemGroup><PackageReference Include="Humanizer.Core" Version="2.14.1" /></ItemGroup></Project>\n';
   const COMPILE = 'src/App/Greet.cs(1,1): error CS1002: ; expected';
-  interface Seen { purpose: string; env: Record<string, string>; fallback: boolean }
+  interface Seen { purpose: string; env: Record<string, string>; fallback: boolean; copy: boolean }
 
   /** What a sandboxed dotnet command in `cwd` gets: the builder sandbox-exec.ts and job.ts call (sandboxNugetConfig), with the request's or lane's fields. */
   function effective(cwd: string, hierarchy: string | undefined, noAdd: boolean | undefined, fromGit?: boolean): Omit<Seen, 'purpose'> {
     const prof = mkdtempSync(join(w.dir, 'prof-'));
     const cfg = sandboxNugetConfig(cwd, prof, process.platform, { hierarchy, noAdd: noAdd === true, fromGit: fromGit === true });
-    return { env: dotnetSandboxEnv(prof, {}, prof, process.platform, undefined, cfg).env, fallback: existsSync(join(prof, 'nuget', 'nuget.config')) };
+    return { env: dotnetSandboxEnv(prof, {}, prof, process.platform, undefined, cfg).env, fallback: existsSync(join(prof, 'nuget', 'nuget.config')), copy: 'file' in cfg && cfg.written === 'root-copy' };
   }
+  /** No mode appends a restore source (the merged-copy design, round 7). */
+  const noAppend = (s: Seen) => expect(Object.keys(s.env).filter((k) => /additional/i.test(k)), s.purpose).toEqual([]);
 
   /** The repository: src/App plus Lib/Lib.csproj (a package only on nuget.org); Lib/nuget.config on the base when `lowerOnBase`. */
   function project(rootConfig: string | null, lowerOnBase: boolean): void {
@@ -712,7 +714,8 @@ describe('a nuget.config below the root that only nuget.org could bypass (PR 611
     for (const s of seen) {
       expect(s, s.purpose).toMatchObject({ fallback: false });
       expect(s.env.RestoreConfigFile, s.purpose).toBeUndefined();
-      expect(s.env.RestoreAdditionalProjectSources, s.purpose).toBeUndefined();
+      expect(s.copy, s.purpose).toBe(false);
+      noAppend(s);
     }
   };
 
@@ -768,7 +771,10 @@ describe('a nuget.config below the root that only nuget.org could bypass (PR 611
     expect(out.gate?.name, out.message).toBe('gate-install-needed');
     expect(out.gate?.reason).toContain('the build imports a file that is not a pinned definition file (Lib/Directory.Build.props: ../node_modules/corp/Sources.props)');
     expect(r.reqs.filter((q) => q.purpose === 'restore')).toEqual([]);
-    for (const s of seen) expect(s.env.RestoreAdditionalProjectSources, s.purpose).toBeUndefined();
+    for (const s of seen) {
+      noAppend(s);
+      expect(s.copy, s.purpose).toBe(false);
+    }
   }, MULTI_RUN_MS);
 
   it('round 5 (msb-settings): an approved head adds RestoreSources in Lib/Directory.Build.props under a settings-only root config: the gate, the restore step and the ci-fix lane never add nuget.org', async () => {
@@ -791,12 +797,64 @@ describe('a nuget.config below the root that only nuget.org could bypass (PR 611
     expect(seen.map((s) => s.purpose)).toContain('lane');
     for (const s of seen) {
       expect(s.env.RestoreConfigFile, s.purpose).toMatch(/nuget\.config$/);
-      expect(s.env.RestoreAdditionalProjectSources, s.purpose).toBeUndefined();
+      expect(s.copy, s.purpose).toBe(false);
+      noAppend(s);
     }
     // Every engine request carries its git decision, so the sandbox layer skips its tree scan; all but the base
     // calibration (the base alone sets no RestoreSources, and it runs offline) run on the head and add nothing.
     const dotnet = r.reqs.filter((q) => q.exe === 'dotnet' || /dotnet(?:\.exe)?$/i.test(q.exe));
     expect(dotnet.map((q) => [q.purpose, q.nugetFromGit === true])).toEqual(dotnet.map((q) => [q.purpose, true]));
     expect(dotnet.filter((q) => q.purpose !== 'calibrate').map((q) => [q.purpose, q.nugetNoAddSource === true])).toEqual(dotnet.filter((q) => q.purpose !== 'calibrate').map((q) => [q.purpose, true]));
+  }, MULTI_RUN_MS);
+
+  it('round 7: a settings-only root config and an ordinary head: the gate, the restore step and the ci-fix lane read its copy with nuget.org as a config source', async () => {
+    w = localWorld(['dotnet', 'test']);
+    project(SETTINGS_ONLY, false);
+    const seen: Seen[] = [];
+    const texts: string[] = [];
+    const r = recorder([{ status: 1, output: OFFLINE }, { status: 1, output: COMPILE }]);
+    const inner = r.sandbox;
+    const record = (purpose: string, e: Omit<Seen, 'purpose'>) => { seen.push({ purpose, ...e }); if (e.env.RestoreConfigFile) texts.push(readFileSync(e.env.RestoreConfigFile, 'utf8')); };
+    const sandbox: SandboxRunner = async (req) => {
+      if (req.purpose === 'gate' || req.purpose === 'restore') record(req.purpose, effective(req.cwd, req.nugetHierarchy, req.nugetNoAddSource, req.nugetFromGit));
+      return inner(req);
+    };
+    const fix: LaneScript = (ctx) => {
+      record('lane', effective(ctx.worktree, ctx.input.dotnetNugetHierarchy, ctx.input.dotnetNugetNoAddSource));
+      return commitFile('src/App/Greet.cs', 'namespace App; // fixed\n')(ctx);
+    };
+    await runFactoryEngine(localOpts(w, lanesFor(w, [commitFile('src/App/Greet.cs', 'namespace App;\n'), review('approve'), fix]), { gateSandbox: sandbox, runUserConfig: SANDBOXED }));
+    expect(seen.map((s) => s.purpose).slice(0, 4)).toEqual(['gate', 'restore', 'gate', 'lane']);
+    for (const s of seen) {
+      expect(s.copy, s.purpose).toBe(true);
+      noAppend(s);
+    }
+    const copy = SETTINGS_ONLY.replace('</configuration>', `\n${NUGET_ORG_PACKAGE_SOURCES}</configuration>`);
+    // Each copy is made from the bytes that command's root file holds (a checkout may have CRLF line ends, the definition tree has the blob's).
+    expect(texts.map((t) => t.replace(/\r\n/g, '\n'))).toEqual(seen.map(() => copy));
+  }, MULTI_RUN_MS);
+
+  it('round 7: a settings-only root config with a relative repositoryPath: no copy, and the failed restore parks with the remedy', async () => {
+    w = localWorld(['dotnet', 'test']);
+    project('<configuration><config><add key="repositoryPath" value="packages" /></config></configuration>\n', false);
+    const seen: Seen[] = [];
+    // What NuGet printed for this shape in the real sandbox (no source at all).
+    const nu1101 = "C:\\repo\\Lib\\Lib.csproj : error NU1100: Unable to resolve 'Humanizer.Core (>= 2.14.1)' for 'net10.0'.\n";
+    const r = recorder([{ status: 1, output: OFFLINE }], { ran: true, status: 1, output: nu1101, timedOut: false });
+    const inner = r.sandbox;
+    const sandbox: SandboxRunner = async (req) => {
+      if (req.purpose === 'gate' || req.purpose === 'restore') seen.push({ purpose: req.purpose, ...effective(req.cwd, req.nugetHierarchy, req.nugetNoAddSource, req.nugetFromGit) });
+      return inner(req);
+    };
+    const out = await runFactoryEngine(localOpts(w, lanesFor(w, [commitFile('src/App/Greet.cs', 'namespace App;\n'), review('approve')]), { gateSandbox: sandbox, runUserConfig: SANDBOXED }));
+    expect(out.gate?.name, out.message).toBe('gate-install-needed');
+    expect(out.gate?.reason).toContain('holds key="repositoryPath"');
+    expect(out.gate?.reason).toContain('add nuget.org to the root nuget.config explicitly (<add key="nuget.org" value="https://api.nuget.org/v3/index.json" />)');
+    expect(seen.length).toBeGreaterThan(0);
+    for (const s of seen) {
+      expect(s.copy, s.purpose).toBe(false);
+      expect(s.env.RestoreConfigFile, s.purpose).not.toContain('copy-');
+      noAppend(s);
+    }
   }, MULTI_RUN_MS);
 });

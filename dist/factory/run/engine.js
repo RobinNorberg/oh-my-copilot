@@ -1222,7 +1222,7 @@ class FactoryEngine {
         // A dotnet command in a Microsoft.Testing.Platform repository (the trusted base's global.json): no -m:1 on dotnet test.
         const mtp = isDotnetExe(req.exe) && this.dotnetMtpBase();
         // NuGet's set-up from the trusted base and the commit the command runs on (dotnetNugetPolicy): its own hierarchy, or one
-        // file with nuget.org never added when the pinned files set restore sources themselves. Read from git objects, so the
+        // file, with no copy supplying nuget.org when the pinned files set restore sources themselves. Read from git objects, so the
         // sandbox layer skips its own scan of the tree for lower configs (nugetFromGit).
         const policy = isDotnetExe(req.exe) ? this.dotnetNugetPolicy(forCommit?.(), req.argv) : null;
         // The run's own NuGet packages folder, once this run's restore step made it (state.nugetRestore: a folder left by an
@@ -1563,7 +1563,9 @@ class FactoryEngine {
      * definition; a prepare check on the checked-out head; a write lane on the
      * commit its worktree is made at; a calibration passes none, so the base
      * alone decides). Every fact of either commit only makes it stricter (a
-     * union). The engine never widens a repository's package sources:
+     * union). The engine never widens a repository's package sources (it
+     * appends none; nuget.org is at most a config source in a copy of a root
+     * config that defines none, which any RestoreSources overrides):
      * - `hierarchy` (NuGet's own walk, as with no RestoreConfigFile): why one
      *   file would not be what NuGet reads for this repository: a
      *   `nuget.config` below the root (one file would hide it, M2), a .NET
@@ -1579,10 +1581,13 @@ class FactoryEngine {
      *   (unpinnedImports), or reference a path under a node_modules dir that
      *   MSBuild or NuGet reads settings from (`settingRefs`: an Import, a
      *   ProjectReference, a solution entry, a local source, a response-file
-     *   token; not an Exec or a UsingTask): nuget.org is never added (H2, M2).
+     *   token; not an Exec or a UsingTask): no copy with nuget.org is written
+     *   (dotnet-sandbox.ts nugetOrgCopy). Since a copy's nuget.org is a config
+     *   source that such settings override anyway, this signal can only
+     *   restrict; a policy it misses cannot widen the sources.
      * - `rootSources`: a commit whose root config defines a package-source
-     *   policy (nugetConfigVerdict): nuget.org is never added either, even when
-     *   the tree's own root file defines none.
+     *   policy (nugetConfigVerdict): no copy either, even when the tree's own
+     *   root file defines none.
      * - `sdks`: MSBuild project SDKs NuGet resolves (projectSdkMentions; M3).
      * Throws (a step error) when a commit cannot be read.
      */
@@ -1632,11 +1637,13 @@ class FactoryEngine {
     }
     /**
      * Why a restore that missed packages may be the repository's own config:
-     * `commit`'s root nuget.config defines sources (so nothing was added,
-     * dotnet-sandbox.ts nugetConfigVerdict) and never names nuget.org, and
-     * the sandbox reads that file alone (no user config behind it). Null
-     * otherwise (no root config, nuget.org named or added, NuGet's hierarchy, sources set in MSBuild,
-     * or the commit cannot be read).
+     * `commit`'s root nuget.config defines sources (so the engine supplied
+     * nothing, dotnet-sandbox.ts nugetConfigVerdict) and never names
+     * nuget.org, or it defines none but holds a path-valued setting (so no
+     * copy with nuget.org was written, nugetOrgCopy), and the sandbox reads
+     * that file alone (no user config behind it). Null otherwise (no root
+     * config, nuget.org named or supplied, NuGet's hierarchy, sources set in
+     * MSBuild, or the commit cannot be read).
      */
     noNugetOrgSource(commit) {
         try {
@@ -1645,6 +1652,10 @@ class FactoryEngine {
             if (policy.hierarchy || policy.noAddSource.length > 0)
                 return null;
             const root = this.dotnetPinnedFacts(commit).root;
+            // A root config with no source at all but a path-valued setting: the engine wrote no copy with nuget.org (dotnet-sandbox.ts nugetOrgCopy).
+            if ('verdict' in root && root.verdict.addNugetOrg && root.verdict.pathSetting) {
+                return `the repository's root ${root.name} lists no package source, and it holds ${root.verdict.pathSetting}, which may be a path NuGet resolves against that file's own directory, so the engine cannot supply nuget.org in a copy of it elsewhere (plain NuGet takes nuget.org from your user config, which the sandbox does not read); add nuget.org to the root ${root.name} explicitly (<add key="nuget.org" value="${NUGET_ORG_SOURCE}" />)`;
+            }
             if (!('verdict' in root) || root.verdict.addNugetOrg || root.verdict.namesNugetOrg)
                 return null;
             return `the repository's root ${root.name} lists no nuget.org source, and the sandbox reads that file alone (your user and machine NuGet configs, which may add nuget.org, are not behind it), so NuGet looked only in the sources it lists; if the repository should use nuget.org, add it to the root ${root.name} explicitly (<add key="nuget.org" value="${NUGET_ORG_SOURCE}" />)`;

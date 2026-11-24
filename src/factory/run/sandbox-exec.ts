@@ -145,7 +145,8 @@ export interface SandboxRunRequest {
   nugetHierarchy?: string;
   /**
    * A dotnet command whose commit's pinned MSBuild files (or the command line) set NuGet's restore sources or config
-   * themselves (engine.ts): nuget.org is never added (RestoreAdditionalProjectSources would be appended to them).
+   * themselves (engine.ts): no root-config copy with nuget.org is written (dotnet-sandbox.ts nugetOrgCopy; a signal
+   * that can only restrict, since such settings override the copy's config source anyway).
    */
   nugetNoAddSource?: true;
   /**

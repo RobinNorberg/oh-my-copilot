@@ -328,7 +328,9 @@ export interface CopilotRunStartOptions {
   dotnetNugetHierarchy?: string;
   /**
    * With `dotnet`: the pinned files of the trusted base or of the commit the lane starts at set restore sources
-   * themselves (or import a file the engine cannot read, or the root config defines sources), so nuget.org is never added.
+   * themselves (or import a file the engine cannot read, or the root config defines sources), so no root-config copy with
+   * nuget.org is written (dotnet-sandbox.ts nugetOrgCopy). A lane that sets its own RestoreSources mid-session is honoured
+   * by NuGet either way: it overrides the copy's config source.
    */
   dotnetNugetNoAddSource?: boolean;
 }

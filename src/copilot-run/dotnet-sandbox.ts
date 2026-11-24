@@ -32,17 +32,22 @@
  *   root; from a checkout under `<repo>/.omg/` (the shared layout) that
  *   reaches your working tree's own file, which the sandbox refuses ("Failed
  *   to read NuGet.Config due to unauthorized access"): RestoreConfigFile
- *   names one file instead (dotnetNugetConfig), and nuget.org is added only
- *   when that file plainly defines no package-source policy at all
- *   (nugetConfigVerdict): the engine never widens a repository's sources.
+ *   names one file instead (dotnetNugetConfig). When that root file plainly
+ *   defines no package-source policy at all (nugetConfigVerdict), the file
+ *   named is an engine-written copy of it with nuget.org as its one package
+ *   source (nugetOrgCopy): a config source, which any RestoreSources the
+ *   repository sets overrides, as plain NuGet overrides the user config's
+ *   nuget.org. Nothing is ever appended to the restore sources: the engine
+ *   never widens them.
  * Not verified on Linux or macOS.
  */
 
+import { createHash } from 'node:crypto';
 import { closeSync, constants, fstatSync, lstatSync, mkdirSync, openSync, readdirSync, readSync, statSync, writeFileSync, type BigIntStats } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { parseJsonc } from '../utils/jsonc.js';
 import { getGlobalOmcConfigRoot, getGlobalOmcStateRoot } from '../utils/paths.js';
-import { scanXml } from './xml-scan.js';
+import { scanXml, type XmlTag } from './xml-scan.js';
 
 /** True when `exe` (a bare name or a path) is the dotnet host. */
 export function isDotnetExe(exe: string | undefined): boolean {
@@ -199,6 +204,9 @@ export interface RunNugetPackages {
  * read-only: NuGet writes a new package only into its global packages
  * folder, so the real cache is never written (a read-only grant could not
  * take one anyway); `readwrite` holds the run's folder when it is writable.
+ * An engine-written config (`written`: the nuget.org-only file or the root
+ * config's copy, both in the job profile, which the sandbox can write) is
+ * granted read-only, so the command cannot change it.
  */
 export function dotnetSandboxEnv(profile: string, hostEnv: NodeJS.ProcessEnv, realHome: string, platform: NodeJS.Platform = process.platform, run?: RunNugetPackages, nugetConfig?: DotnetNugetConfig): { env: Record<string, string>; readonly: string[]; readwrite: string[]; notes: string[] } {
   const grant = nugetPackagesGrant(hostEnv, realHome, omcRoots(realHome), platform);
@@ -206,7 +214,7 @@ export function dotnetSandboxEnv(profile: string, hostEnv: NodeJS.ProcessEnv, re
   const runDir = run ? resolve(run.dir) : null;
   const nuget = runDir ? { NUGET_PACKAGES: runDir, ...(packages ? { NUGET_FALLBACK_PACKAGES: packages } : {}) } : packages ? { NUGET_PACKAGES: packages } : {};
   return {
-    notes: [...(grant.note ? [grant.note] : []), ...(nugetConfig && 'hierarchy' in nugetConfig ? [nugetConfig.hierarchy] : [])],
+    notes: [...(grant.note ? [grant.note] : []), ...(nugetConfig && 'hierarchy' in nugetConfig ? [nugetConfig.hierarchy] : []), ...(nugetConfig && 'file' in nugetConfig && nugetConfig.note ? [nugetConfig.note] : [])],
     env: {
       // NuGet's user config dir: the job's empty profile, never the real %APPDATA%\NuGet.
       ...(platform === 'win32' ? { APPDATA: join(resolve(profile), 'AppData', 'Roaming') } : {}),
@@ -219,11 +227,10 @@ export function dotnetSandboxEnv(profile: string, hostEnv: NodeJS.ProcessEnv, re
       // MSBuild properties from the environment: no compiler server, no SourceLink git read.
       UseSharedCompilation: 'false',
       EnableSourceControlManagerQueries: 'false',
-      // One NuGet config file instead of the walk up to the drive root (dotnetNugetConfig; MSBuild unescapes the value), plus
-      // nuget.org only when that file plainly defines no package-source policy (nugetConfigVerdict).
-      ...(nugetConfig && 'file' in nugetConfig ? { RestoreConfigFile: msbuildEscape(nugetConfig.file), ...(nugetConfig.addNugetOrg ? { RestoreAdditionalProjectSources: msbuildEscape(NUGET_ORG_SOURCE) } : {}) } : {}),
+      // One NuGet config file instead of the walk up to the drive root (dotnetNugetConfig; MSBuild unescapes the value).
+      ...(nugetConfig && 'file' in nugetConfig ? { RestoreConfigFile: msbuildEscape(nugetConfig.file) } : {}),
     },
-    readonly: [...(packages ? [packages] : []), ...(runDir && !run!.writable ? [runDir] : [])],
+    readonly: [...(packages ? [packages] : []), ...(runDir && !run!.writable ? [runDir] : []), ...(nugetConfig && 'file' in nugetConfig && nugetConfig.written ? [nugetConfig.file] : [])],
     readwrite: runDir && run!.writable ? [runDir] : [],
   };
 }
@@ -311,19 +318,30 @@ export const NUGET_ORG_SOURCE = 'https://api.nuget.org/v3/index.json';
 /**
  * The NuGet config a sandboxed dotnet reads (dotnetNugetConfig): one file
  * (RestoreConfigFile), or NuGet's own hierarchy (`hierarchy`: why the engine
- * does not name one file).
+ * does not name one file). `written`: the file is engine-written in the job
+ * profile (NUGET_ORG_ONLY_CONFIG, or nugetOrgCopy of the root config).
+ * `note`: why a root config that defines no package source got no copy, for
+ * a failing command's output.
  */
-export type DotnetNugetConfig = { file: string; addNugetOrg: boolean } | { hierarchy: string };
+export type DotnetNugetConfig = { file: string; written?: 'nuget.org-only' | 'root-copy'; note?: string } | { hierarchy: string };
 
-/** Above this size a root nuget.config is not read for nugetConfigVerdict (nuget.org is then not added). */
+/** Above this size a root nuget.config is not read for nugetConfigVerdict (no copy with nuget.org is then written). */
 export const NUGET_CONFIG_READ_MAX = 256 * 1024;
 
 /** What nugetConfigVerdict says about one root nuget.config. */
 export interface NugetConfigVerdict {
-  /** The file plainly defines no package-source policy at all: NuGet, reading it with its default user config behind it, uses nuget.org, so it may be added. */
+  /**
+   * The file plainly defines no package-source policy at all: NuGet, reading it with its default user config behind it,
+   * uses nuget.org, so the engine may supply nuget.org as a config source (nugetOrgCopy), unless `pathSetting`.
+   */
   addNugetOrg: boolean;
-  /** Why nuget.org is not added (absent when it is). */
+  /** Why nuget.org is not supplied (absent when it is). */
   why?: string;
+  /**
+   * With `addNugetOrg`: a setting whose value may be a path NuGet resolves against the config file's own directory
+   * (pathSettingIn), so a copy elsewhere would change it: no copy is written, the file is used as it is.
+   */
+  pathSetting?: string;
   /** The raw text names `nuget.org` (any case): a restore that misses packages without it is not the file's omission. */
   namesNugetOrg: boolean;
   /**
@@ -395,7 +413,73 @@ export function nugetConfigVerdict(bytes: Buffer): NugetConfigVerdict {
   const odd = (n: string) => n.includes(':') || /[^\x21-\x7e]/.test(n);
   if (scan.tags.some((t) => odd(t.name) || t.attrs.some(([a]) => odd(a) || a.toLowerCase() === 'xmlns'))) return verdict('it uses XML namespaces or prefixes', unmapped);
   if (scan.tags.find((t) => !t.close)?.name !== 'configuration') return verdict('its root element is not configuration', unmapped);
-  return verdict(undefined, unmapped);
+  const path = pathSettingIn(scan.tags);
+  return { ...verdict(undefined, unmapped), ...(path ? { pathSetting: path } : {}) };
+}
+
+/** `config` keys whose value is a path (NuGet resolves a relative one against the config file's dir). */
+const PATH_KEYS = new Set(['repositorypath', 'globalpackagesfolder']);
+
+/**
+ * The first setting of a root nuget.config (its scanned tags) that may hold
+ * a path, as `<attribute>="<value>"`, or null. Conservative and textual: an
+ * `add` of a PATH_KEYS key (any case, any value), or any attribute value
+ * that starts with `.` or `~`, holds `%` (NuGet expands environment
+ * variables), or holds `/` or `\` without being an `http(s)://` URL. NuGet
+ * resolves a relative path in a config against that file's directory, so
+ * an engine-written copy elsewhere (nugetOrgCopy) would read it from the
+ * wrong place: the file is then used as it is.
+ */
+function pathSettingIn(tags: readonly XmlTag[]): string | null {
+  for (const t of tags) {
+    if (t.close) continue;
+    for (const [a, v] of t.attrs) {
+      const pathKey = t.name.toLowerCase() === 'add' && a.toLowerCase() === 'key' && PATH_KEYS.has(v.trim().toLowerCase());
+      const pathLike = /^\s*[.~]|%/.test(v) || (/[\\/]/.test(v) && !/^\s*https?:\/\/[^\s\\]*\s*$/i.test(v));
+      if (pathKey || pathLike) return `${a}="${v.slice(0, 120)}"`;
+    }
+  }
+  return null;
+}
+
+/** What nugetOrgCopy inserts before the root's end: nuget.org as the file's one package source. */
+export const NUGET_ORG_PACKAGE_SOURCES = `  <packageSources>\n    <add key="nuget.org" value="${NUGET_ORG_SOURCE}" protocolVersion="3" />\n  </packageSources>\n`;
+
+/**
+ * The bytes of the engine-written copy of a root nuget.config that defines
+ * no package source (`bytes`, read alone through RestoreConfigFile): the
+ * same bytes with NUGET_ORG_PACKAGE_SOURCES inserted before the root's
+ * closing `</configuration>` (a self-closed `<configuration .../>` becomes
+ * an open and a close tag around it). nuget.org is then an ordinary config
+ * source: a `RestoreSources` the repository sets anywhere (a project, a
+ * props or imported file, a task) replaces it, exactly as plain NuGet
+ * replaces the user config's nuget.org. `why` instead (no copy; the caller
+ * uses the file as it is, never widens) when nugetConfigVerdict does not
+ * say `addNugetOrg`, when it holds a `pathSetting`, or when the root's end
+ * is not certain: an attribute value holds `<` (a quoted `</configuration>`
+ * would look like one), or the last `</configuration` (or, for a
+ * self-closed root, the last `/>`) is followed by anything but `>` and
+ * whitespace. The verdict already refuses comments, CDATA, DOCTYPE, entity
+ * references, processing instructions other than one leading declaration,
+ * namespaces, a second root and an unclosed element, so those cannot hide
+ * or fake the root's end.
+ */
+export function nugetOrgCopy(bytes: Buffer): { copy: Buffer } | { why: string } {
+  const v = nugetConfigVerdict(bytes);
+  if (!v.addNugetOrg) return { why: v.why ?? 'it may define package sources' };
+  if (v.pathSetting) return { why: `it holds ${v.pathSetting}, which may be a path NuGet resolves against that file's own directory, so the engine writes no copy of it elsewhere` };
+  const tags = scanXml(bytes.toString('utf8')).tags;
+  if (tags.some((t) => t.attrs.some(([, val]) => val.includes('<')))) return { why: 'an attribute value holds "<", so the end of its root element is not certain' };
+  const tail = (at: number) => bytes.subarray(at).toString('latin1');
+  const root = tags[0];
+  if (root?.selfClose && tags.length === 1) {
+    const at = bytes.lastIndexOf('/>');
+    if (at < 0 || !/^\/>[ \t\r\n]*$/.test(tail(at))) return { why: 'the end of its root element is not certain' };
+    return { copy: Buffer.concat([bytes.subarray(0, at), Buffer.from(`>\n${NUGET_ORG_PACKAGE_SOURCES}</configuration>`), bytes.subarray(at + 2)]) };
+  }
+  const at = bytes.lastIndexOf('</configuration');
+  if (at < 0 || !/^<\/configuration[ \t\r\n]*>[ \t\r\n]*$/.test(tail(at))) return { why: 'the end of its root element is not certain' };
+  return { copy: Buffer.concat([bytes.subarray(0, at), Buffer.from(`\n${NUGET_ORG_PACKAGE_SOURCES}`), bytes.subarray(at)]) };
 }
 
 /**
@@ -506,12 +590,19 @@ export const msbuildEscape = (value: string): string => value.replace(/[%$@';?*]
  * RestoreTask still reads or creates the relocated profile's user config,
  * which adds no source, and the MSBuild project SDK resolver, `dotnet tool
  * restore`, `dotnet nuget` and `dotnet workload` ignore the property).
- * The file: the root config of `cwd` (rootNugetConfig), with nuget.org
- * added only when nugetConfigVerdict finds no package-source policy in it
- * at all and `noAdd` (engine.ts: a pinned MSBuild file
- * sets restore sources itself) is not set; or, with no root config,
- * NUGET_ORG_ONLY_CONFIG written to `<profile>/nuget/nuget.config`, the
- * command's own job profile (never inside the checkout). `hierarchy`
+ * The file: the root config of `cwd` (rootNugetConfig) as it is; or, when
+ * that file defines no package source at all (nugetOrgCopy: nugetConfigVerdict
+ * `addNugetOrg`, no `pathSetting`, a certain root end) and `noAdd` (engine.ts:
+ * the pinned files set restore sources themselves, an extra signal that can
+ * only restrict) is not set, its copy with nuget.org as a config source,
+ * written from the bytes read here to
+ * `<profile>/nuget/copy-<sha256 of the copy>/nuget.config` with exclusive
+ * create (an existing file is used only when it holds exactly those bytes);
+ * or, with no root config, NUGET_ORG_ONLY_CONFIG written to
+ * `<profile>/nuget/nuget.config`. `<profile>` is the command's own job
+ * profile (never inside the checkout), and dotnetSandboxEnv grants either
+ * written file read-only. Any doubt writing the copy: the root file as it
+ * is (a restore that needed nuget.org then fails with `note`). `hierarchy`
  * instead (NuGet's own walk, as before one file was named: faithful, and
  * in the shared layout it parks at the first unreadable config) when the
  * engine cannot tell which root file NuGet reads (rootNugetConfig
@@ -538,14 +629,28 @@ export function dotnetNugetConfig(cwd: string, profile: string, platform: NodeJS
     if (verdict && verdict.unmappedKeys.length > 0) {
       return { hierarchy: `NuGet reads its own config hierarchy: ${root.file} maps packages to the source key(s) ${verdict.unmappedKeys.join(', ')}, which it does not define` };
     }
-    return { file: root.file, addNugetOrg: !!verdict?.addNugetOrg && !o.noAdd };
+    if (!bytes || !verdict?.addNugetOrg || o.noAdd) return { file: root.file };
+    const made = nugetOrgCopy(bytes);
+    const remedy = `add nuget.org to it explicitly (<add key="nuget.org" value="${NUGET_ORG_SOURCE}" />) if the repository uses nuget.org`;
+    if ('why' in made) return { file: root.file, note: `${root.file} defines no package source and the engine supplied none: ${made.why}; NuGet read that file alone; ${remedy}` };
+    const copy = join(profile, 'nuget', `copy-${createHash('sha256').update(made.copy).digest('hex').slice(0, 32)}`, 'nuget.config');
+    if (copy.includes(';')) return { file: root.file, note: `the path ${copy} holds a ";", which MSBuild splits in RestoreConfigFile, so the engine supplied no nuget.org for ${root.file}; ${remedy}` };
+    try {
+      mkdirSync(dirname(copy), { recursive: true });
+      writeFileSync(copy, made.copy, { flag: 'wx' });
+    } catch {
+      // Exclusive create: a file already there is used only when it holds exactly these bytes.
+      const there = readRegularFileBounded(copy, made.copy.length);
+      if (!there || !there.equals(made.copy)) return { file: root.file, note: `the engine could not write its copy of ${root.file} with nuget.org (${copy}), so it supplied none; ${remedy}` };
+    }
+    return { file: copy, written: 'root-copy' };
   }
   const dir = join(profile, 'nuget');
   const file = join(dir, 'nuget.config');
   if (file.includes(';')) return { hierarchy: `NuGet reads its own config hierarchy: the path ${file} holds a ";", which MSBuild splits in RestoreConfigFile` };
   mkdirSync(dir, { recursive: true });
   writeFileSync(file, NUGET_ORG_ONLY_CONFIG);
-  return { file, addNugetOrg: false };
+  return { file, written: 'nuget.org-only' };
 }
 
 /**

@@ -5,7 +5,7 @@
  * head (engine.ts dotnetRepo). The local forge's dotnet gate rule is covered
  * by engine.local.dogfood.test.ts, Azure DevOps by engine.ado.dotnet.test.ts.
  */
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { dotnetSandboxEnv, sandboxNugetConfig } from '../../../copilot-run/dotnet-sandbox.js';
@@ -129,13 +129,13 @@ describe('.NET write lanes on the GitHub forge', () => {
                 // What job.ts builds for the lane's sandboxed dotnet: the REAL builders, from the lane's start options.
                 const prof = mkdtempSync(join(h.dir, 'prof-'));
                 const cfg = sandboxNugetConfig(ctx.worktree, prof, process.platform, { hierarchy: ctx.input.dotnetNugetHierarchy, noAdd: ctx.input.dotnetNugetNoAddSource });
-                seen = { input: ctx.input, env: dotnetSandboxEnv(prof, {}, prof, process.platform, undefined, cfg).env, fallback: existsSync(join(prof, 'nuget', 'nuget.config')) };
+                seen = { input: ctx.input, env: dotnetSandboxEnv(prof, {}, prof, process.platform, undefined, cfg).env, fallback: existsSync(join(prof, 'nuget', 'nuget.config')), copy: 'file' in cfg && cfg.written === 'root-copy' };
                 return commitFile('src/App/Greet.cs', 'y\n')(ctx);
             };
             const lanes = sandboxed(new FakeLanes(h.root, [write, review('request-changes', [finding]), fix, review('approve')]));
             await runFactoryEngine(opts(lanes));
             expect(lanes.started.map((l) => l.laneId.replace(/^issue-\d+-/, '')).slice(0, 3)).toEqual(['implement-1', 'review-1', 'fix-1']);
-            // The implement lane started at the base: one file and nuget.org added for the settings-only root config.
+            // The implement lane started at the base: one file, the settings-only root config's copy with nuget.org.
             expect(lanes.started[0]).toMatchObject({ dotnet: true });
             expect(lanes.started[0].dotnetNugetHierarchy).toBeUndefined();
             expect(lanes.started[0].dotnetNugetNoAddSource).toBeUndefined();
@@ -145,11 +145,19 @@ describe('.NET write lanes on the GitHub forge', () => {
             expect(seen).toBeDefined();
             return seen;
         }
+        // Nothing appended (no mode sets an additional source), no nuget.org-only file, no copy with nuget.org.
         const noNugetOrg = (s) => {
-            expect(s.env.RestoreAdditionalProjectSources).toBeUndefined();
+            expect(Object.keys(s.env).filter((k) => /additional/i.test(k))).toEqual([]);
             expect(s.fallback).toBe(false);
+            expect(s.copy).toBe(false);
         };
-        it('the head adds RestoreSources in a subdirectory props file: nothing is added (NuGet would append nuget.org to it)', async () => {
+        // nuget.org as a config source: RestoreConfigFile is the copy, which names nuget.org; nothing appended.
+        const copyWithNugetOrg = (s) => {
+            expect(Object.keys(s.env).filter((k) => /additional/i.test(k))).toEqual([]);
+            expect(s.copy).toBe(true);
+            expect(readFileSync(s.env.RestoreConfigFile, 'utf8')).toContain('<add key="nuget.org" value="https://api.nuget.org/v3/index.json" protocolVersion="3" />');
+        };
+        it('the head adds RestoreSources in a subdirectory props file: the root config as it is, nothing supplied', async () => {
             const s = await fixLaneOn({ 'Lib/Lib.csproj': LIB, 'Lib/Directory.Build.props': '<Project><PropertyGroup><RestoreSources>corp-feed</RestoreSources></PropertyGroup></Project>\n' });
             expect(s.input).toMatchObject({ dotnet: true, dotnetNugetNoAddSource: true });
             expect(s.env.RestoreConfigFile).toMatch(/nuget\.config$/);
@@ -178,21 +186,44 @@ describe('.NET write lanes on the GitHub forge', () => {
             expect(s.env.RestoreConfigFile).toMatch(/nuget\.config$/);
             noNugetOrg(s);
         });
-        it('round 6: the head runs npx in an Exec (a node_modules reference that sets no restore setting): nuget.org is still added', async () => {
+        it('round 6: the head runs npx in an Exec (a node_modules reference that sets no restore setting): the copy with nuget.org', async () => {
             const s = await fixLaneOn({ 'Lib/Lib.csproj': LIB.replace('</Project>', '<Target Name="Web" BeforeTargets="Build"><Exec Command="npx tsc" /></Target></Project>') });
             expect(s.input.dotnetNugetNoAddSource).toBeUndefined();
-            expect(s.env.RestoreAdditionalProjectSources).toBe('https://api.nuget.org/v3/index.json');
+            copyWithNugetOrg(s);
         });
-        it('round 6: the root Directory.Build.props idiom (GetPathOfFileAbove from the root\'s parent) keeps nuget.org added', async () => {
+        it('round 6: the root Directory.Build.props idiom (GetPathOfFileAbove from the root\'s parent) keeps the copy with nuget.org', async () => {
             const s = await fixLaneOn({ 'Lib/Lib.csproj': LIB, 'Directory.Build.props': "<Project><Import Project=\"$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))\" Condition=\"Exists($([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../')))\" /></Project>\n" });
             expect(s.input.dotnetNugetNoAddSource).toBeUndefined();
-            expect(s.env.RestoreAdditionalProjectSources).toBe('https://api.nuget.org/v3/index.json');
+            copyWithNugetOrg(s);
         });
-        it('an ordinary head (a source file only): the fix lane keeps one file with nuget.org added for the settings-only root config', async () => {
+        it('an ordinary head (a source file only): the fix lane reads the settings-only root config\'s copy with nuget.org', async () => {
             const s = await fixLaneOn({ 'src/App/Greet.cs': 'x\n' });
             expect(s.input.dotnetNugetHierarchy).toBeUndefined();
             expect(s.input.dotnetNugetNoAddSource).toBeUndefined();
-            expect(s.env.RestoreAdditionalProjectSources).toBe('https://api.nuget.org/v3/index.json');
+            copyWithNugetOrg(s);
+        });
+        // Round 7: policies the detection may or may not see. Detected: the root config as it is. Not detected: the copy, whose
+        // nuget.org is a config source that the repository's RestoreSources overrides in NuGet (the real-sandbox runs prove
+        // it); either way nothing is appended.
+        const SRC = '<Project><PropertyGroup><RestoreSources>corp-feed</RestoreSources></PropertyGroup></Project>\n';
+        it.each([
+            ['K2 (a property-built node_modules import)', { 'Lib/Lib.csproj': LIB, 'node_modules/corp/Sources.props': SRC, 'Lib/Directory.Build.props': '<Project><PropertyGroup><P>node_modules</P></PropertyGroup><Import Project="../$(P)/corp/Sources.props" /></Project>\n' }],
+            ['W1 (a ** wildcard import)', { 'Lib/Lib.csproj': LIB, 'node_modules/corp/Sources.props': SRC, 'Lib/Directory.Build.props': '<Project><Import Project="../**/Sources.props" /></Project>\n' }],
+            ['W2 (a wildcard in a segment)', { 'Lib/Lib.csproj': LIB, 'node_modules/corp/Sources.props': SRC, 'Lib/Directory.Build.props': '<Project><Import Project="../n*_modules/corp/Sources.props" /></Project>\n' }],
+            ['TASK (RestoreSources set by a task, name escaped)', { 'Lib/Lib.csproj': LIB, 'Lib/Directory.Build.targets': '<Project><Target Name="SetSrc" BeforeTargets="_GetRestoreSettings;_GenerateRestoreGraph"><CreateProperty Value="corp-feed"><Output TaskParameter="Value" PropertyName="Restore%53ources" /></CreateProperty></Target></Project>\n' }],
+        ])('round 7: %s: nothing appended', async (_name, files) => {
+            const s = await fixLaneOn(files);
+            expect(Object.keys(s.env).filter((k) => /additional/i.test(k))).toEqual([]);
+            expect(s.fallback).toBe(false);
+            if (s.copy)
+                copyWithNugetOrg(s);
+            else
+                expect(s.env.RestoreConfigFile ?? '').not.toContain('copy-');
+        });
+        it.each(['../**/Sources.props', '../n*_modules/corp/Sources.props', '../eng/Ver?ions.props'])('round 7: the wildcard import %s counts as unpinned: no copy', async (imp) => {
+            const s = await fixLaneOn({ 'Lib/Lib.csproj': LIB, 'eng/Versions.props': '<Project />\n', 'Lib/Directory.Build.props': `<Project><Import Project="${imp}" /></Project>\n` });
+            expect(s.input.dotnetNugetNoAddSource, imp).toBe(true);
+            noNugetOrg(s);
         });
     });
     it('a trusted base that cannot be listed fails the step before any lane starts', async () => {

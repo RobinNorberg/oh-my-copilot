@@ -758,17 +758,30 @@ describe('runSandboxed: a dotnet command (dotnet-sandbox.ts)', () => {
         let env = rec.connections[0].env;
         expect(env.RestoreConfigFile).toBe(join(env.USERPROFILE, 'nuget', 'nuget.config'));
         expect(env.RestoreConfigFile.startsWith(join(dir, 'jobs'))).toBe(true);
-        // Written there (dotnet-sandbox.test.ts reads its content) and removed with the job home after the command.
+        // Written there (dotnet-sandbox.test.ts reads its content), granted read-only, and removed with the job home after the command.
         expect(existsSync(env.RestoreConfigFile)).toBe(false);
-        expect(env.RestoreAdditionalProjectSources).toBeUndefined();
+        expect(policy().readonlyPaths).toContain(env.RestoreConfigFile);
+        const last = () => (rec.optionsUpdates[rec.optionsUpdates.length - 1]?.sandboxConfig).userPolicy.filesystem;
         writeFileSync(join(co, 'nuget.config'), '<configuration><packageSources><clear /><add key="nuget.org" value="https://api.nuget.org/v3/index.json" /></packageSources></configuration>');
         rec.connections.length = 0;
         await runSandboxed(['/usr/bin/dotnet', 'build'], opts(), deps(ok));
         env = rec.connections[0].env;
         expect(env.RestoreConfigFile).toBe(join(co, 'nuget.config'));
-        expect(env.RestoreAdditionalProjectSources).toBeUndefined();
         // Nothing more is granted for it: the checkout is the command's own.
-        expect([...policy().readonlyPaths, ...policy().readwritePaths].some((p) => p.endsWith('nuget.config'))).toBe(false);
+        expect([...last().readonlyPaths, ...last().readwritePaths].some((p) => p.endsWith('nuget.config'))).toBe(false);
+        // Round 7: a settings-only root config: its copy with nuget.org in the job profile, granted read-only; nothing appended.
+        writeFileSync(join(co, 'nuget.config'), '<configuration><config><add key="dependencyVersion" value="Lowest" /></config></configuration>');
+        rec.connections.length = 0;
+        await runSandboxed(['/usr/bin/dotnet', 'build'], opts(), deps(ok));
+        env = rec.connections[0].env;
+        expect(env.RestoreConfigFile).toMatch(/[\\/]nuget[\\/]copy-[0-9a-f]{32}[\\/]nuget\.config$/);
+        expect(env.RestoreConfigFile.startsWith(env.USERPROFILE)).toBe(true);
+        expect(last().readonlyPaths).toContain(env.RestoreConfigFile);
+        expect(Object.keys(env).filter((k) => /additional/i.test(k))).toEqual([]);
+        // nugetNoAddSource (the engine saw restore settings in the pinned files): the root file as it is.
+        rec.connections.length = 0;
+        await runSandboxed(['/usr/bin/dotnet', 'build'], opts({ nugetNoAddSource: true }), deps(ok));
+        expect(rec.connections[0].env.RestoreConfigFile).toBe(join(co, 'nuget.config'));
         rec.connections.length = 0;
         await runSandboxed(['/usr/bin/dotnet', 'build'], opts({ nugetHierarchy: 'NuGet reads its own config hierarchy: a test' }), deps(ok));
         expect(rec.connections[0].env.RestoreConfigFile).toBeUndefined();
