@@ -5,15 +5,21 @@
  * most once per window, mentioning the routing handles of the paths its plan
  * names. READ-ONLY on git and the forge: the routing file comes from the
  * base commit through the caller's read shape, nothing is fetched, and the
- * result is printed by poll. The step keeps its own record,
- * `<state>/factory/reminders.json`; it never writes a sealed run state.
+ * result is printed by poll. The step keeps its own record in the host
+ * factory ledger, `<ledgerDir>/reminders/<repo key>.json` (the repository key
+ * of the ledger's other per-repository files), never in the repository's
+ * lane-writable `.omg/`; it never writes a sealed run state. The record of
+ * older versions, `<state>/factory/reminders.json`, is ignored (never read,
+ * never removed).
  */
 
-import { join } from 'path';
-import { atomicWriteFileSync, ensureDirSync } from '../../lib/atomic-write.js';
+import { existsSync, mkdirSync } from 'fs';
+import { dirname, join } from 'path';
+import { atomicWriteFileSync } from '../../lib/atomic-write.js';
 import { lockPathFor, withFileLockSync } from '../../lib/file-lock.js';
 import { visibleLine } from '../../forge/review-feedback.js';
-import { factoryStateDir, runLabel, TERMINAL_FACTORY_PHASES, verifyFactoryIntegrity, type FactoryRunKey, type FactoryRunState } from '../run/state.js';
+import { ledgerRepoId } from '../run/ledger.js';
+import { runLabel, TERMINAL_FACTORY_PHASES, verifyFactoryIntegrity, type FactoryRunKey, type FactoryRunState } from '../run/state.js';
 import { statusArgv, validRunKey } from '../run/gate-next.js';
 import { readRegularFile } from '../attention/collect.js';
 import { pathsInText, TEAM_ROUTING_PATH, type ReadAt } from './context.js';
@@ -44,7 +50,8 @@ interface Record_ { gateAt: string; remindedAt: string }
 const UNVERIFIED_AT = 'unverified';
 type RecordFile = Record<string, Record_>;
 
-export const remindersPath = (root: string): string => join(factoryStateDir(root), 'reminders.json');
+/** The record of `root` in the host factory ledger (outside the repository), keyed like the ledger's other per-repository files. */
+export const remindersPath = (ledgerDir: string, root: string): string => join(ledgerDir, 'reminders', `${ledgerRepoId(root)}.json`);
 
 /** The record's size cap: a few runs' entries; a larger file is read as empty. */
 const RECORD_MAX_BYTES = 64 * 1024;
@@ -69,6 +76,8 @@ function readRecord(path: string): RecordFile {
 
 export interface ReminderInput {
   root: string;
+  /** The host factory ledger dir (ledger.ts defaultLedgerDir) that holds the record. */
+  ledgerDir: string;
   runs: ReadonlyMap<FactoryRunKey, FactoryRunState>;
   nowMs: number;
   /** 0 or undefined = off. */
@@ -91,8 +100,11 @@ export function staleGateReminders(o: ReminderInput): Reminder[];
 export function staleGateReminders(o: ReminderInput): Reminder[] {
   if (!o.afterHours || o.afterHours <= 0) return [];
   const windowMs = o.afterHours * 3_600_000;
-  const path = remindersPath(o.root);
-  ensureDirSync(join(path, '..'));
+  const path = remindersPath(o.ledgerDir, o.root);
+  // No run parked at a gate and no record to prune: nothing to remind or record, so no directory and no lock.
+  const parkedAny = [...o.runs.values()].some((s) => s.gate && !TERMINAL_FACTORY_PHASES.includes(s.phase));
+  if (!parkedAny && !existsSync(path)) return [];
+  mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
   return withFileLockSync(lockPathFor(path), () => {
     const before = readRecord(path);
     const next: RecordFile = {};
@@ -113,7 +125,8 @@ export function staleGateReminders(o: ReminderInput): Reminder[] {
       if (!verifyFactoryIntegrity(s)) { o.warn?.(`reminder: ${label} is unsound (its state fails the integrity seal), skipped`); continue; }
       const parkedAt = Date.parse(s.gate.at);
       if (!Number.isFinite(parkedAt)) continue;
-      // The record is lane-writable: it may postpone or repeat a reminder, never bring one forward. Due only once the sealed
+      // The record lives outside the repository; as defence in depth it may still only postpone or repeat a reminder, never
+      // bring one forward (a lane whose shell reaches the home directory can write it). Due only once the sealed
       // park time is a window old; its remindedAt counts clamped to [gate.at, now] (kept clamped, so a future time
       // postpones by one window at most from when it was first read).
       if (o.nowMs - parkedAt < windowMs) continue;

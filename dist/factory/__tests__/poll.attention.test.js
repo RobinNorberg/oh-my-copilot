@@ -9,7 +9,7 @@
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { hostname, tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createForge } from '../../forge/index.js';
 import { attentionNoticeText } from '../attention/notify.js';
@@ -164,7 +164,8 @@ describe('omg factory poll: attention items', () => {
         await poll(4, [() => {
                 park(71, 'merge', now);
                 const gateAt = iso(now);
-                writeFileSync(remindersPath(root), JSON.stringify({ '#71': { gateAt, remindedAt: '2000-01-01T00:00:00.000Z' } }));
+                mkdirSync(dirname(remindersPath(ledgerDir, root)), { recursive: true });
+                writeFileSync(remindersPath(ledgerDir, root), JSON.stringify({ '#71': { gateAt, remindedAt: '2000-01-01T00:00:00.000Z' } }));
             }]);
         const t = ticks();
         expect(t[1].reminders).toBeUndefined();
@@ -174,7 +175,8 @@ describe('omg factory poll: attention items', () => {
     it('a future remindedAt neither fires a reminder nor hides the park', async () => {
         await poll(3, [() => {
                 park(72, 'merge', now - 30 * 3_600_000);
-                writeFileSync(remindersPath(root), JSON.stringify({ '#72': { gateAt: iso(now - 30 * 3_600_000), remindedAt: '2999-01-01T00:00:00.000Z' } }));
+                mkdirSync(dirname(remindersPath(ledgerDir, root)), { recursive: true });
+                writeFileSync(remindersPath(ledgerDir, root), JSON.stringify({ '#72': { gateAt: iso(now - 30 * 3_600_000), remindedAt: '2999-01-01T00:00:00.000Z' } }));
             }]);
         const t = ticks();
         expect(t.flatMap((x) => x.reminders ?? [])).toEqual([]);
@@ -220,7 +222,7 @@ describe('omg factory poll: attention items', () => {
         expect(t[0].reminders?.map((r) => r.run)).toEqual([5]);
         expect(t[1].errors.some((e) => e.startsWith('run states: EMFILE'))).toBe(true);
         expect(t[1].reminders).toBeUndefined();
-        expect(Object.keys(JSON.parse(readFileSync(remindersPath(root), 'utf8')))).toEqual(['#5']);
+        expect(Object.keys(JSON.parse(readFileSync(remindersPath(ledgerDir, root), 'utf8')))).toEqual(['#5']);
         expect(t[2].reminders).toBeUndefined();
     });
     /** Plants a non-regular file (a directory everywhere, a FIFO where `fifo`) at the reminder record and the poll file. */
@@ -228,7 +230,8 @@ describe('omg factory poll: attention items', () => {
         await poll(3, [() => {
                 park(81, 'merge', now);
                 mkdirSync(factoryStateDir(root), { recursive: true });
-                for (const p of [remindersPath(root), pollStatePath(root)]) {
+                mkdirSync(dirname(remindersPath(ledgerDir, root)), { recursive: true });
+                for (const p of [remindersPath(ledgerDir, root), pollStatePath(root)]) {
                     rmSync(p, { force: true });
                     if (fifo)
                         execFileSync('mkfifo', [p]);
@@ -280,7 +283,7 @@ describe('omg factory poll: a lane cannot flood the attention lines or notificat
         out = [];
         notices = [];
         rmSync(factoryStateDir(root), { recursive: true, force: true });
-        await poll(10, Array.from({ length: 10 }, (_, n) => () => (n % 2 ? forged(5, now) : writeFileSync(factoryStatePath(root, 5), 'garbage'))), false);
+        await poll(10, Array.from({ length: 10 }, (_, n) => () => (n % 2 ? forged(5, now) : (mkdirSync(factoryStateDir(root), { recursive: true }), writeFileSync(factoryStatePath(root, 5), 'garbage')))), false);
         expect(notices.length).toBeLessThanOrEqual(1);
         expect(textLines().filter((l) => l.includes('#5 needs you')).length).toBeLessThanOrEqual(1);
     });

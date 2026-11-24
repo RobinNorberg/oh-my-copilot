@@ -150,10 +150,10 @@ describe('board and poll rows of a state that is not verified', () => {
         const runs = new Map([[5, s]]);
         const untrusted = new Set([5]);
         const at = Date.parse(T0);
-        expect(staleGateReminders({ root, runs, untrusted, nowMs: at, afterHours: 24 })).toEqual([]);
-        expect(staleGateReminders({ root, runs, untrusted, nowMs: at + 23 * 3_600_000, afterHours: 24 })).toEqual([]);
-        expect(staleGateReminders({ root, runs, untrusted, nowMs: at + 24 * 3_600_000, afterHours: 24 })).toEqual([{ run: 5, verified: false, next: 'omg factory run status 5' }]);
-        expect(staleGateReminders({ root, runs, untrusted, nowMs: at + 25 * 3_600_000, afterHours: 24 })).toEqual([]);
+        expect(staleGateReminders({ root, ledgerDir, runs, untrusted, nowMs: at, afterHours: 24 })).toEqual([]);
+        expect(staleGateReminders({ root, ledgerDir, runs, untrusted, nowMs: at + 23 * 3_600_000, afterHours: 24 })).toEqual([]);
+        expect(staleGateReminders({ root, ledgerDir, runs, untrusted, nowMs: at + 24 * 3_600_000, afterHours: 24 })).toEqual([{ run: 5, verified: false, next: 'omg factory run status 5' }]);
+        expect(staleGateReminders({ root, ledgerDir, runs, untrusted, nowMs: at + 25 * 3_600_000, afterHours: 24 })).toEqual([]);
     });
 });
 describe('board: a forged finished state', () => {

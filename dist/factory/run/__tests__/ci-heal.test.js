@@ -12,7 +12,7 @@ import { readShipState } from '../../../ship/state.js';
 import { healCommand } from '../../heal/cli.js';
 import { DEFAULT_HEAL_CONFIG } from '../../heal/config.js';
 import { healLaneCap, healRecord, knownFlakyProposal, KNOWN_FLAKY_FILE, runHealEngine } from '../../heal/implement.js';
-import { healSealSubject, readHealCounters, writeHealSeal } from '../../heal/run.js';
+import { closeHeal, healLedgerDir, healSealOpen, healSealSubject, readHealCounters, writeHealSeal } from '../../heal/run.js';
 import { dailyCountersPath, readHealState, writeDailyCountersAt, writeHealState } from '../../heal/state.js';
 import { DEFAULT_FACTORY_RUN_LIMITS } from '../budget.js';
 import { EXIT_AWAITING_HUMAN, healPlanText, runFactoryEngine } from '../engine.js';
@@ -326,6 +326,42 @@ describe('omg factory heal approve|cancel|status', () => {
         expect(await cli(cliDeps([]), 'approve', SIG8)).toBe(3);
         expect(out.join('\n')).toMatch(/is at heal-diagnosis/);
         expect(existsSync(factoryStatePath(h.root, KEY))).toBe(false);
+    });
+    it('approve resumes a ci-heal run parked at heal-approve while its sealed heal run is open', async () => {
+        seedHeal();
+        const parked = await runHealEngine({ root: h.root, base: 'dev', sig8: SIG8, config: DEFAULT_HEAL_CONFIG, approved: false }, engineDeps());
+        expect(parked.gate?.name).toBe(HEAL_APPROVE_GATE);
+        expect(await cli(cliDeps([FIX, review('approve')]), 'approve', SIG8)).toBe(0);
+        expect(out.join('\n')).toMatch(/phase=merge/);
+    });
+    it('approve still resumes an open heal run parked at heal-approve whose seal file predates the open flag', async () => {
+        seedHeal();
+        const parked = await runHealEngine({ root: h.root, base: 'dev', sig8: SIG8, config: DEFAULT_HEAL_CONFIG, approved: false }, engineDeps());
+        expect(parked.gate?.name).toBe(HEAL_APPROVE_GATE);
+        // An older version's seal file: the same seal over the record, no `open` field.
+        const sealFile = join(healLedgerDir(h.ledgerDir, h.root), `${SIG8}.seal.json`);
+        const { open: _open, ...older } = JSON.parse(readFileSync(sealFile, 'utf8'));
+        writeFileSync(sealFile, `${JSON.stringify(older, null, 2)}\n`);
+        expect(healSealOpen(h.ledgerDir, h.root, SIG8)).toBeNull();
+        expect(await cli(cliDeps([FIX, review('approve')]), 'approve', SIG8)).toBe(0);
+        expect(out.join('\n')).toMatch(/phase=merge/);
+    });
+    it('approve refuses a heal run whose sealed record is closed, and a forged unsealed open: true does not reopen it', async () => {
+        seedHeal();
+        const parked = await runHealEngine({ root: h.root, base: 'dev', sig8: SIG8, config: DEFAULT_HEAL_CONFIG, approved: false }, engineDeps());
+        expect(parked.gate?.name).toBe(HEAL_APPROVE_GATE);
+        const closed = closeHeal(h.root, SIG8, { ledgerDir: h.ledgerDir, now: () => NOW });
+        expect(closed.healRun?.open).toBe(false);
+        const before = readFileSync(factoryStatePath(h.root, KEY), 'utf8');
+        expect(await cli(cliDeps([FIX, review('approve')]), 'approve', SIG8)).toBe(3);
+        expect(out.join('\n')).toMatch(/sealed heal record says its heal run is closed, so heal approve is refused/);
+        expect(readFileSync(factoryStatePath(h.root, KEY), 'utf8')).toBe(before);
+        // A lane rewrites the in-repo record to say open again; the seal does not cover it.
+        out.length = 0;
+        writeHealState(h.root, { ...closed, healRun: { ...closed.healRun, open: true } });
+        expect(await cli(cliDeps([FIX, review('approve')]), 'approve', SIG8)).toBe(3);
+        expect(out.join('\n')).toMatch(/seal: mismatch/);
+        expect(readFileSync(factoryStatePath(h.root, KEY), 'utf8')).toBe(before);
     });
     it('the daily heal cap: with less than one lane left today the run parks at budget, no lane starts', async () => {
         seedHeal();
