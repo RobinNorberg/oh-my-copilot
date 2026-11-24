@@ -67761,30 +67761,30 @@ function propertyFlow(path15, text3) {
   const kind = fileKind(path15);
   const defs = [];
   const roots = [];
+  const define = (name, refs2) => {
+    defs.push({ name, refs: refs2 });
+    if (RESTORE_SOURCE_SETTING.test(name)) roots.push({ what: `<${name}>`, kind: "setting", refs: refs2, cond: [] });
+  };
   if (kind === "rsp") {
-    for (const m of text3.matchAll(/(?:^|\s)"?[-/](?:p|property):([^\s"]+)/gi)) {
-      for (const part of m[1].split(";")) {
-        const name = part.split("=")[0].trim();
-        if (/^[A-Za-z_][A-Za-z0-9_-]*$/.test(name)) defs.push({ name, refs: [], opaque: true });
+    if (text3.length > PINNED_READ_MAX) return { defs, roots: [{ what: `the file (larger than ${PINNED_READ_MAX / 1024} KB)`, kind: "setting", refs: ["[not read]"], cond: [] }], refs: [] };
+    for (const m of text3.matchAll(/(?:^|\s)"?[-/](?:p|property|rp|restoreproperty):(\S+)/gi)) {
+      for (const part of m[1].replace(/"/g, "").split(";")) {
+        const eq = part.indexOf("=");
+        const name = (eq < 0 ? part : part.slice(0, eq)).trim();
+        if (/^[A-Za-z_][A-Za-z0-9_-]*$/.test(name)) define(name, eq < 0 ? [] : expressionRefs(part.slice(eq + 1), true).filter((r) => r.startsWith("[env ")));
       }
     }
-    return { defs, roots, refs: [] };
+    return { defs, roots, refs: expressionRefs(text3, true).filter((r) => r.startsWith("[env ")) };
   }
   if (kind !== "msbuild") return { defs, roots, refs: [] };
-  if (text3.length > PINNED_READ_MAX) return { defs, roots: [{ what: `the file (larger than ${PINNED_READ_MAX / 1024} KB)`, refs: ["[not read]"] }], refs: [] };
+  if (text3.length > PINNED_READ_MAX) return { defs, roots: [{ what: `the file (larger than ${PINNED_READ_MAX / 1024} KB)`, kind: "setting", refs: ["[not read]"], cond: [] }], refs: [] };
   const attr = (t, name) => {
     const a = t.attrs.find(([n]) => n.toLowerCase() === name);
     return a ? decodeXml(a[1]) : void 0;
   };
   const union2 = (...xs) => [...new Set(xs.flat())];
-  const define = (name, refs2, opaque) => {
-    defs.push({ name, refs: refs2, opaque });
-    if (RESTORE_SOURCE_SETTING.test(name)) roots.push({ what: `<${name}>`, refs: refs2 });
-  };
   const finish = (f, content) => {
-    if (f.parent.toLowerCase() !== "propertygroup") return;
-    const refs2 = union2(expressionRefs(decodeXml(content)), f.cond);
-    define(f.tag.name, refs2, !f.conditional && !f.inTarget && !refs2.some((r) => r.toLowerCase() === f.tag.name.toLowerCase()));
+    if (f.parent.toLowerCase() === "propertygroup") define(f.tag.name, union2(expressionRefs(decodeXml(content)), f.cond));
   };
   const stack = [];
   for (const t of scanXml(text3).tags) {
@@ -67799,77 +67799,80 @@ function propertyFlow(path15, text3) {
     const parent = stack[stack.length - 1];
     const condition = attr(t, "condition");
     const name = t.name.toLowerCase();
-    const f = {
-      tag: t,
-      parent: parent?.tag.name ?? "",
-      cond: union2(parent?.cond ?? [], condition !== void 0 ? expressionRefs(condition) : []),
-      conditional: (parent?.conditional ?? false) || condition !== void 0,
-      inTarget: (parent?.inTarget ?? false) || name === "target"
-    };
+    const f = { tag: t, parent: parent?.tag.name ?? "", cond: union2(parent?.cond ?? [], condition !== void 0 ? expressionRefs(condition) : []) };
     if (name === "import") {
       const project = attr(t, "project") ?? "";
-      roots.push({ what: `Import ${JSON.stringify(project.slice(0, 200))}`, refs: union2(expressionRefs(project), f.cond) });
+      roots.push({ what: `Import ${JSON.stringify(project.slice(0, 200))}`, kind: "import", refs: expressionRefs(project), cond: f.cond });
     }
     const output2 = name === "output" ? attr(t, "propertyname") : void 0;
-    if (output2 !== void 0 && parent) {
-      define(msbuildUnescape(output2).trim(), union2(...parent.tag.attrs.map(([, v]) => expressionRefs(decodeXml(v))), f.cond), false);
-    }
+    if (output2 !== void 0 && parent) define(msbuildUnescape(output2).trim(), union2(...parent.tag.attrs.map(([, v]) => expressionRefs(decodeXml(v))), f.cond));
     if (t.selfClose) finish(f, "");
     else stack.push(f);
   }
-  return { defs, roots, refs: expressionRefs(text3) };
+  return { defs, roots, refs: expressionRefs(decodeXml(text3)) };
 }
 function hostReadWords(ref) {
   if (ref === "[env ?]") return "an environment variable whose name is computed";
   if (ref.startsWith("[env ")) return `the environment variable ${ref.slice(5, -1)}`;
   if (ref === "[registry]" || /^\[GetRegistryValue/i.test(ref)) return "the registry";
   if (ref === "[not read]") return "nothing the engine could read";
-  return `$([System.Environment]::${ref.slice(1, -1)}(...))`;
+  return /^\[(?:UserDomainName|UserName|MachineName)\]$/i.test(ref) ? `$([System.Environment]::${ref.slice(1, -1)})` : `$([System.Environment]::${ref.slice(1, -1)}(...))`;
 }
 function restoreHostReads(files) {
   const flows = files.map((f) => ({ path: f.path, flow: propertyFlow(f.path, f.text) }));
   const defs = /* @__PURE__ */ new Map();
-  const opaque = /* @__PURE__ */ new Set();
-  for (const { flow } of flows) {
-    for (const d of flow.defs) {
-      const key = d.name.toLowerCase();
-      defs.set(key, [...defs.get(key) ?? [], d.refs]);
-      if (d.opaque) opaque.add(key);
+  for (const { flow } of flows) for (const d of flow.defs) defs.set(d.name.toLowerCase(), [...defs.get(d.name.toLowerCase()) ?? [], d.refs]);
+  const reach = (start) => {
+    const out = [];
+    const seen = /* @__PURE__ */ new Set();
+    const queue = start.map((r) => [r, "", true]);
+    for (let i = 0; i < queue.length; i++) {
+      const [ref, via, direct] = queue[i];
+      if (ref.startsWith("[")) {
+        out.push({ ref, via, direct, defined: false });
+        continue;
+      }
+      const key = ref.toLowerCase();
+      if (seen.has(key) || isReservedProperty(ref)) continue;
+      seen.add(key);
+      const ds = defs.get(key);
+      out.push({ ref, via, direct, defined: ds !== void 0 });
+      for (const refs2 of ds ?? []) for (const r of refs2) queue.push([r, via || ` through $(${ref})`, false]);
     }
-  }
+    return out;
+  };
   const reads = /* @__PURE__ */ new Set();
+  const importPath = /* @__PURE__ */ new Set();
+  const restore = /* @__PURE__ */ new Set();
+  const setting = /* @__PURE__ */ new Set();
   for (const { path: path15, flow } of flows) {
     for (const root of flow.roots) {
-      const seen = /* @__PURE__ */ new Set();
-      const queue = root.refs.map((r) => [r, ""]);
-      for (let i = 0; i < queue.length; i++) {
-        const [ref, via] = queue[i];
-        if (ref.startsWith("[")) {
-          reads.add(`${path15}: ${root.what} reads ${hostReadWords(ref)}${via}`);
-          continue;
-        }
-        const key = ref.toLowerCase();
-        if (seen.has(key) || isReservedProperty(ref)) continue;
-        seen.add(key);
-        const ds = defs.get(key);
-        if (!ds) {
-          reads.add(`${path15}: ${root.what} reads $(${ref})${via}, which no pinned file defines`);
-          continue;
-        }
-        for (const refs2 of ds) for (const r of refs2) queue.push([r, via || ` through $(${ref})`]);
+      const at = `${path15}: ${root.what}`;
+      for (const x of reach(root.refs)) {
+        if (x.ref.startsWith("[")) reads.add(`${at} reads ${hostReadWords(x.ref)}${x.via}`);
+        else if (!x.defined) reads.add(`${at} reads $(${x.ref})${x.via}, which no pinned file defines`);
+        else if (isProbeExcluded(x.ref)) reads.add(`${at} reads $(${x.ref})${x.via}, a name the engine never sets in its probe`);
+        else (root.kind === "setting" ? setting : importPath).add(x.ref.toLowerCase());
+      }
+      for (const x of reach(root.cond)) {
+        if (x.ref.startsWith("[env ") && x.ref !== "[env ?]") {
+          const n = x.ref.slice(5, -1);
+          if (isProbeExcluded(n)) reads.add(`${at}: its condition reads ${hostReadWords(x.ref)}${x.via}, a name the engine never sets in its probe`);
+          else restore.add(n.toLowerCase());
+        } else if (x.ref.startsWith("[")) reads.add(`${at}: its condition reads ${hostReadWords(x.ref)}${x.via}`);
+        else if (x.direct && isProbeExcluded(x.ref)) reads.add(`${at}: its condition reads $(${x.ref}), a name the engine never sets in its probe`);
+        else restore.add(x.ref.toLowerCase());
       }
     }
   }
-  const names = /* @__PURE__ */ new Set();
+  const names = /* @__PURE__ */ new Map();
   const probe = (n) => {
-    if (!TOOL_ENV.test(n) && !isReservedProperty(n) && !RESTORE_SOURCE_SETTING.test(n)) names.add(n);
+    const key = n.toLowerCase();
+    if (!isProbeExcluded(n) && !isReservedProperty(n) && !RESTORE_SOURCE_SETTING.test(n) && !importPath.has(key) && !names.has(key)) names.set(key, n);
   };
-  for (const { flow } of flows) {
-    for (const r of flow.refs) {
-      if (r.startsWith("[env ") && r !== "[env ?]") probe(r.slice(5, -1));
-      else if (!r.startsWith("[") && !opaque.has(r.toLowerCase())) probe(r);
-    }
-  }
+  const all = [];
+  for (const { flow } of flows) for (const r of flow.refs) if (r.startsWith("[env ") && r !== "[env ?]") all.push(r.slice(5, -1));
+  else if (!r.startsWith("[")) all.push(r);
   for (const f of files) {
     if (fileKind(f.path) !== "nuget") continue;
     if (f.text.length > PINNED_READ_MAX) {
@@ -67881,15 +67884,16 @@ function restoreHostReads(files) {
         const value = decodeXml(raw);
         for (const r of expressionRefs(value, true).filter((x) => x.startsWith("[env "))) {
           reads.add(`${f.path}: the value ${JSON.stringify(value.slice(0, 200))} reads ${hostReadWords(r)}`);
-          if (r !== "[env ?]") probe(r.slice(5, -1));
+          if (r !== "[env ?]") all.push(r.slice(5, -1));
         }
       }
     }
   }
-  const sorted = [...names].sort();
-  return { reads: [...reads], names: sorted, free: sorted.filter((n) => !defs.has(n.toLowerCase())) };
+  for (const n of all.sort()) probe(n);
+  const sorted = [...names.values()].sort();
+  return { reads: [...reads], names: sorted, restore: sorted.filter((n) => restore.has(n.toLowerCase()) || setting.has(n.toLowerCase())), setting: sorted.filter((n) => setting.has(n.toLowerCase())) };
 }
-var PINNED_READ_MAX, SHIM_EXT, PM_OPTIONS, NPX_RUN, PURE_DELETE, msbuildUnescape, readsForNodeModulesRefs, RESTORE_SETTINGS, PINNED_IMPORT, THIS_DIR_UP, FILE_ABOVE, THIS_DIR_PATH, RESTORE_SOURCE_SETTING, RESERVED_PROPERTIES, isReservedProperty, TOOL_ENV, PROPERTY_REF, HOST_READ, ENV_PERCENT;
+var PINNED_READ_MAX, SHIM_EXT, PM_OPTIONS, NPX_RUN, PURE_DELETE, msbuildUnescape, readsForNodeModulesRefs, RESTORE_SETTINGS, PINNED_IMPORT, THIS_DIR_UP, FILE_ABOVE, THIS_DIR_PATH, RESTORE_SOURCE_SETTING, RESERVED_PROPERTIES, isReservedProperty, TOOL_ENV, RUNTIME_ENV, isProbeExcluded, PROPERTY_REF, HOST_READ, ENV_PERCENT;
 var init_dotnet_package_refs = __esm({
   "src/factory/run/dotnet-package-refs.ts"() {
     "use strict";
@@ -67975,12 +67979,18 @@ var init_dotnet_package_refs = __esm({
       "dotnet_host_path",
       "excluderestorepackageimports",
       "restoregraphoutputpath",
-      "restoreprojectstyle"
+      "restoreprojectstyle",
+      "outputtype",
+      "iscrosstargetingbuild",
+      "usingmicrosoftnetsdk",
+      "usingmicrosoftnetsdkweb"
     ]);
     isReservedProperty = (name) => /^MSBuild/i.test(name) || /^Pkg[A-Za-z_]/.test(name) || RESERVED_PROPERTIES.has(name.toLowerCase());
     TOOL_ENV = /^(?:DOTNET_|MSBUILD|NUGET_|COMPLUS_|CORECLR_)/i;
+    RUNTIME_ENV = /^(?:(?:NODE|COPILOT|GH|SSL_CERT|LD|DYLD|COREHOST)_.*|.*_PROXY|GITHUB_TOKEN|BASH_ENV|ENV|__COMPAT_LAYER|PATH|TEMP|TMP|HOME|USERPROFILE|APPDATA|LOCALAPPDATA|ComSpec|SystemRoot|windir)$/i;
+    isProbeExcluded = (name) => TOOL_ENV.test(name) || RUNTIME_ENV.test(name);
     PROPERTY_REF = /\$\(\s*([A-Za-z_][A-Za-z0-9_-]*)\s*(:?)/g;
-    HOST_READ = /\b(GetEnvironmentVariables?|ExpandEnvironmentVariables|GetFolderPath|GetRegistryValue(?:FromView)?)\b(\s*\(\s*(?:'([A-Za-z_][\w-]*)'|"([A-Za-z_][\w-]*)"|([A-Za-z_][\w-]*))\s*\))?/gi;
+    HOST_READ = /\b(GetEnvironmentVariables?|ExpandEnvironmentVariables|GetFolderPath|GetRegistryValue(?:FromView)?|(?<=::\s*)(?:UserDomainName|UserName|MachineName))\b(\s*\(\s*(?:'([A-Za-z_][\w-]*)'|"([A-Za-z_][\w-]*)"|([A-Za-z_][\w-]*))\s*\))?/gi;
     ENV_PERCENT = /%([A-Za-z_][A-Za-z0-9_]*)%/g;
   }
 });
@@ -68085,7 +68095,12 @@ async function runSandboxed(argv, o, deps) {
     }
     if (graphFile && o.probeEnv) {
       const held = new Set(Object.keys(env2).map((k) => k.toLowerCase()));
-      for (const [k, v] of Object.entries(o.probeEnv)) if (/^[A-Za-z_][A-Za-z0-9_-]*$/.test(k) && !TOOL_ENV.test(k) && !held.has(k.toLowerCase())) env2[k] = v;
+      for (const [k, v] of Object.entries(o.probeEnv)) {
+        if (/^[A-Za-z_][A-Za-z0-9_-]*$/.test(k) && !isProbeExcluded(k) && !held.has(k.toLowerCase())) {
+          env2[k] = v;
+          held.add(k.toLowerCase());
+        }
+      }
     }
     const credentialSource = { userConfigDir: deps.userConfigDir(), platform: deps.platform };
     const gitHubToken = sessionGitHubToken(deps.env, credentialSource);
@@ -77359,7 +77374,8 @@ function parseStatusPaths(raw) {
 }
 function envReadWhy(reads) {
   const named = `${reads.slice(0, 3).map((r) => oneLine(visibleLine(r), 240)).join("; ")}${reads.length > 3 ? `; ${reads.length - 3} more` : ""}`;
-  return `a package-source setting of the repository reads your environment or machine (${named}), which the sandbox does not pass, so there that restriction would be empty and the restore could reach nuget.org where the same command on your machine would use only your feed`;
+  const imports = reads.some((r) => /: Import "/.test(r));
+  return `a package-source setting${imports ? " or an Import" : ""} of the repository reads your environment or machine (${named}), which the sandbox does not pass, so there that restriction would be empty and the restore could reach nuget.org where the same command on your machine would use only your feed; ${ENV_READ_REMEDY}${imports ? ", and import only files the repository tracks, by a path from $(MSBuildThisFileDirectory) or a property a pinned file defines" : ""}`;
 }
 function isNewerEvent(next, prev) {
   const n = next ? Date.parse(next) : NaN;
@@ -77755,7 +77771,7 @@ async function runFactoryEngine(o) {
 function sharedLayoutSealed(s) {
   return s.layout !== 2 && (s.lanes.length > 0 || s.codingAgent !== void 0);
 }
-var import_crypto29, import_fs98, import_os22, import_path117, PRESCAN_GIT_TIMEOUT_MS, EXIT_AWAITING_HUMAN, PREPARE_ENGINE_STEPS, MAX_CONFLICT_FIX_ROUNDS, MAX_MERGE_BOUNCES, MAX_CONFLICT_REPREPARES, MERGEABILITY_READS, MERGEABILITY_WAIT_MS, DEFAULT_POLL_MS, LANE_GRACE_MS, REMOTE_HEAD_FETCH_FLAGS, LS_REMOTE_TIMEOUT_MS, ADO_HEAD_LAG_POLLS, localGateConfigLoader, PROCESS_DEADLINE_MS, defaultLaneProcessOps, FactoryStepError, StateTamperedError, LocalGateDue, MirrorBaseMovedError, HEX4019, DOTNET_CLEAN_TIMEOUT_MS, RESTORE_SOURCES_TIMEOUT_MS, ENV_PROBE_MAX_NAMES, ENV_READ_REMEDY, envProbeValue, PARK_TAIL_LINES, PARK_TAIL_LINE_CHARS, PARK_TAIL_CHARS, GIT_TRANSPORT_SANDBOX_ADVICE, GIT_TRANSPORT_FAILURE, MSYS_DLL_INIT_FAILED, windowsGitTransportFailure, windowsJunctionReadDenied, DOTNET_SANDBOX_ADVICE, localDetailNote, isHumanReadGate, CALIBRATION_NO_TEST_FILTER, isBuiltInVitest, BUILT_IN_FILE_NAME_TOO_LONG, USER_REPO_PREFIX, isUserRepoProblem, quarantineRefs, cancelCommand, resumeCommand, HEAL_ACCEPTANCE, usageOf, capUsage, FactoryEngine, HUMAN_REVIEW_GATE, REVIEW_REQUESTED_GATE, UNSANDBOXED_LANES_REASON, GATES_UNSANDBOXED_GATE, SECRET_SHAPES_GATE, GATE_SANDBOX_INCOMPATIBLE_GATE, GATE_NO_VERDICT_GATE, GIT_VIEW_UNBUILT, ACK_WARNING, PREPARE_CHECK_TIMEOUT_MS;
+var import_crypto29, import_fs98, import_os22, import_path117, PRESCAN_GIT_TIMEOUT_MS, EXIT_AWAITING_HUMAN, PREPARE_ENGINE_STEPS, MAX_CONFLICT_FIX_ROUNDS, MAX_MERGE_BOUNCES, MAX_CONFLICT_REPREPARES, MERGEABILITY_READS, MERGEABILITY_WAIT_MS, DEFAULT_POLL_MS, LANE_GRACE_MS, REMOTE_HEAD_FETCH_FLAGS, LS_REMOTE_TIMEOUT_MS, ADO_HEAD_LAG_POLLS, localGateConfigLoader, PROCESS_DEADLINE_MS, defaultLaneProcessOps, FactoryStepError, StateTamperedError, LocalGateDue, MirrorBaseMovedError, HEX4019, DOTNET_CLEAN_TIMEOUT_MS, RESTORE_SOURCES_TIMEOUT_MS, ENV_PROBE_MAX_NAMES, ENV_PROBE_VALUE, ENV_READ_REMEDY, PARK_TAIL_LINES, PARK_TAIL_LINE_CHARS, PARK_TAIL_CHARS, GIT_TRANSPORT_SANDBOX_ADVICE, GIT_TRANSPORT_FAILURE, MSYS_DLL_INIT_FAILED, windowsGitTransportFailure, windowsJunctionReadDenied, DOTNET_SANDBOX_ADVICE, localDetailNote, isHumanReadGate, CALIBRATION_NO_TEST_FILTER, isBuiltInVitest, BUILT_IN_FILE_NAME_TOO_LONG, USER_REPO_PREFIX, isUserRepoProblem, quarantineRefs, cancelCommand, resumeCommand, HEAL_ACCEPTANCE, usageOf, capUsage, FactoryEngine, HUMAN_REVIEW_GATE, REVIEW_REQUESTED_GATE, UNSANDBOXED_LANES_REASON, GATES_UNSANDBOXED_GATE, SECRET_SHAPES_GATE, GATE_SANDBOX_INCOMPATIBLE_GATE, GATE_NO_VERDICT_GATE, GIT_VIEW_UNBUILT, ACK_WARNING, PREPARE_CHECK_TIMEOUT_MS;
 var init_engine = __esm({
   "src/factory/run/engine.ts"() {
     "use strict";
@@ -77906,8 +77922,8 @@ var init_engine = __esm({
     DOTNET_CLEAN_TIMEOUT_MS = 5 * 6e4;
     RESTORE_SOURCES_TIMEOUT_MS = 5 * 6e4;
     ENV_PROBE_MAX_NAMES = 400;
+    ENV_PROBE_VALUE = "1";
     ENV_READ_REMEDY = "declare the feed in the repository's nuget.config (a <packageSources> entry, no %VARIABLE%), not through your environment";
-    envProbeValue = (name) => `omg-env-probe-${name}`;
     PARK_TAIL_LINES = 12;
     PARK_TAIL_LINE_CHARS = 200;
     PARK_TAIL_CHARS = 1500;
@@ -78757,16 +78773,19 @@ var init_engine = __esm({
        *   seen: no copy is written (they are in `noAddSource` too), and the
        *   networked restore step parks up front (nugetRestore).
        * - `hostReads` / `envNames`: where either commit's package-source
-       *   settings read your environment or machine, and the names an
-       *   environment value can show through (restoreHostReads): the restore
-       *   step parks on the first and probes the second (nugetRestore,
-       *   restoreSourcesPark).
+       *   settings or imports read your environment or machine in a way the
+       *   probe cannot see, and the names the probe sets (restoreHostReads):
+       *   the restore step parks on the first and probes the second
+       *   (nugetRestore, restoreSourcesPark). `envNames` holds one spelling per
+       *   name in any case, the restore-relevant names (`envRestore`: a
+       *   restore setting or an Import condition reads them) first, each part
+       *   sorted; `envSetting`: those a restore setting reads.
        * Throws (a step error) when a commit cannot be read.
        */
       dotnetNugetPolicy(commit, argv = []) {
         const base = this.state.baseSha && HEX4019.test(this.state.baseSha) ? this.state.baseSha : void 0;
         const own2 = commit && HEX4019.test(commit) ? commit : base;
-        if (!own2) return { hierarchy: null, noAddSource: [], rootSources: [], sdks: [], gitlinks: [], hostReads: [], envNames: [], envFree: [] };
+        if (!own2) return { hierarchy: null, noAddSource: [], rootSources: [], sdks: [], gitlinks: [], hostReads: [], envNames: [], envRestore: [], envSetting: [] };
         const both = base && base !== own2;
         const all = (both ? [own2, base] : [own2]).map((sha3) => ({ sha: sha3, facts: this.dotnetPinnedFacts(sha3) }));
         const union2 = (pick2) => [...new Set(all.flatMap(({ facts }) => pick2(facts)))];
@@ -78780,7 +78799,24 @@ var init_engine = __esm({
         const fromArgv = argv.some((a) => /Restore(?:Sources|AdditionalProjectSources|FallbackFolders|ConfigFile|PackagesPath|NoCache|IgnoreFailedSources)/i.test(a)) ? ["the command line"] : [];
         const rootSources = all.flatMap(({ sha: sha3, facts }) => "verdict" in facts.root && !facts.root.verdict.addNugetOrg ? [`the root ${facts.root.name} at ${sha3.slice(0, 12)}`] : []);
         const gitlinks = union2((f) => f.gitlinks).sort();
-        return { hierarchy, noAddSource: [...union2((f) => f.restoreSettings), ...union2((f) => f.unpinnedImports), ...union2((f) => f.settingRefs), ...fromArgv, ...gitlinks.map((p) => `${p}: a submodule`)], rootSources, sdks: union2((f) => f.projectSdks), gitlinks, hostReads: union2((f) => f.hostReads.reads), envNames: union2((f) => f.hostReads.names).sort(), envFree: union2((f) => f.hostReads.free).sort() };
+        const lowered = (xs) => new Set(xs.map((n) => n.toLowerCase()));
+        const envRestoreSet = lowered(union2((f) => f.hostReads.restore));
+        const envSettingSet = lowered(union2((f) => f.hostReads.setting));
+        const spelled = /* @__PURE__ */ new Map();
+        for (const n of union2((f) => f.hostReads.names).sort()) if (!spelled.has(n.toLowerCase())) spelled.set(n.toLowerCase(), n);
+        const envAll = [...spelled.values()];
+        const envRestore = envAll.filter((n) => envRestoreSet.has(n.toLowerCase()));
+        return {
+          hierarchy,
+          noAddSource: [...union2((f) => f.restoreSettings), ...union2((f) => f.unpinnedImports), ...union2((f) => f.settingRefs), ...fromArgv, ...gitlinks.map((p) => `${p}: a submodule`)],
+          rootSources,
+          sdks: union2((f) => f.projectSdks),
+          gitlinks,
+          hostReads: union2((f) => f.hostReads.reads),
+          envNames: [...envRestore, ...envAll.filter((n) => !envRestoreSet.has(n.toLowerCase()))],
+          envRestore,
+          envSetting: envAll.filter((n) => envSettingSet.has(n.toLowerCase()))
+        };
       }
       /**
        * The nuget.config files the commit's MSBuild project SDK resolution
@@ -81983,10 +82019,11 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
         let gitlinks;
         let hostReads;
         let envNames;
-        let envFree;
+        let envRestore;
+        let envSetting;
         try {
           imports = this.dotnetPinnedFacts(head).unpinnedImports;
-          ({ gitlinks, hostReads, envNames, envFree } = this.dotnetNugetPolicy(head));
+          ({ gitlinks, hostReads, envNames, envRestore, envSetting } = this.dotnetNugetPolicy(head));
         } catch (error62) {
           return { name: GATE_INSTALL_GATE, reason: `${what} did not run: the definition files of ${head.slice(0, 12)} could not be read (${errText6(error62)}); rerun ${this.resume}` };
         }
@@ -81998,8 +82035,7 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
           const named = `${imports.slice(0, 3).map((i) => oneLine(visibleLine(i), 240)).join("; ")}${imports.length > 3 ? `; ${imports.length - 3} more` : ""}`;
           return { name: GATE_INSTALL_GATE, reason: `${what} did not run: the build imports a file that is not a pinned definition file (${named}), so the engine cannot tell which package sources the repository uses; restore the PR branch's packages into your NuGet global packages folder yourself, or move those settings into a .props file, then rerun ${this.resume}; or ${cancelCommand(this.key)}` };
         }
-        if (hostReads.length > 0) return { name: GATE_INSTALL_GATE, reason: `${what} did not run: ${envReadWhy(hostReads)}; ${ENV_READ_REMEDY}, then rerun ${this.resume}; or restore the PR branch's packages into your NuGet global packages folder yourself; or ${cancelCommand(this.key)}` };
-        if (envNames.length > ENV_PROBE_MAX_NAMES) return { name: GATE_INSTALL_GATE, reason: `${what} did not run: the pinned definition files read ${envNames.length} property names that an environment variable can set (more than the ${ENV_PROBE_MAX_NAMES} the engine probes before a restore, ${envNames.slice(0, 5).join(", ")}, ...), so the engine cannot tell whether a package-source setting reads your environment; ${ENV_READ_REMEDY}, or define those properties unconditionally in a pinned .props file, then rerun ${this.resume}; or restore the PR branch's packages into your NuGet global packages folder yourself; or ${cancelCommand(this.key)}` };
+        if (hostReads.length > 0) return { name: GATE_INSTALL_GATE, reason: `${what} did not run: ${envReadWhy(hostReads)}; then rerun ${this.resume}; or restore the PR branch's packages into your NuGet global packages folder yourself; or ${cancelCommand(this.key)}` };
         let live;
         try {
           live = this.liveCheckoutProcs(head);
@@ -82038,7 +82074,9 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
         }
         const linkBefore = checkoutGitLink(checkout).hash;
         const evalStarted = this.clock();
-        const differs = await this.restoreSourcesPark(head, args, tree, checkout, common, gates, jobRoot, envNames, envFree);
+        const checked = await this.restoreSourcesPark(head, args, tree, checkout, common, gates, jobRoot, { names: envNames, restore: envRestore, setting: envSetting });
+        const differs = checked && "name" in checked ? checked : null;
+        const probeNote = checked && "note" in checked ? `; ${checked.note}` : "";
         if (differs) {
           this.removeTree(tree, jobRoot);
           if (checkoutGitLink(checkout).hash !== linkBefore) {
@@ -82083,7 +82121,7 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
         const msbuildStubs = written.stubs.filter((s) => s !== "nuget.config");
         const hierarchy = this.nugetHierarchyWhy(head);
         const nugetRead = hierarchy ? `NuGet read its own config hierarchy (${hierarchy})` : `NuGet read only the tree's root nuget.config (${written.stubs.includes("nuget.config") ? "the engine's, nuget.org only" : "the head's own"})`;
-        this.save((x) => ({ ...x, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `dotnet restore ran in the OS sandbox with only api.nuget.org reachable in the engine's definition tree of ${head.slice(0, 12)} (${written.files.length} pinned definition file(s), nothing else${msbuildStubs.length > 0 ? `, and the engine's ${msbuildStubs.join(", ")} at its root, which stop MSBuild's walk up out of the tree` : ""}; ${nugetRead}; the restore sources MSBuild evaluated offline there were those of the gate checkout for every project (checked in ${evalSeconds} s); ${seconds} s); new packages went to the run's own packages folder, and the gate runs again offline in the prepare checkout` }] }));
+        this.save((x) => ({ ...x, history: [...x.history, { at: this.iso(), from: x.phase, to: x.phase, note: `dotnet restore ran in the OS sandbox with only api.nuget.org reachable in the engine's definition tree of ${head.slice(0, 12)} (${written.files.length} pinned definition file(s), nothing else${msbuildStubs.length > 0 ? `, and the engine's ${msbuildStubs.join(", ")} at its root, which stop MSBuild's walk up out of the tree` : ""}; ${nugetRead}; the restore sources MSBuild evaluated offline there were those of the gate checkout for every project (checked in ${evalSeconds} s${probeNote}); ${seconds} s); new packages went to the run's own packages folder, and the gate runs again offline in the prepare checkout` }] }));
         return null;
       }
       /**
@@ -82108,13 +82146,23 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
        * restore graph, no more than the gate that follows runs there. It loads
        * imports as a build does, stricter than restore's own evaluation (which
        * skips a missing or unreadable import): such an import fails it, and parks.
-       * With `envNames` (restoreHostReads `names`), equal sources get a third
-       * evaluation in the tree with a probe value in the environment for each
-       * name (retried with `envFree` alone when it fails): other sources, or a
-       * failure, park, since a package-source setting then reads your
-       * environment, which the sandbox does not pass.
+       * The environment probe, the authority on environment reads: with
+       * `env.names` (dotnetNugetPolicy `envNames`), equal sources get a third
+       * evaluation in the tree with each of the first ENV_PROBE_MAX_NAMES
+       * names set to ENV_PROBE_VALUE in the environment; other sources park,
+       * since a package-source setting then reads your environment, which the
+       * sandbox does not pass. One that cannot be evaluated is tried once more
+       * with only the restore-relevant names (`env.restore`). When that fails
+       * too (or there is no smaller set), it parks only when a probed name
+       * feeds a restore setting (`env.setting`: the environment can change a
+       * setting's value or condition and the engine cannot see how); otherwise
+       * the restore goes ahead and `{ note }` names what was not probed, for
+       * the restore's history note (an ordinary property such as a version that
+       * the value breaks says nothing about the package sources; whatever reads
+       * the environment directly in a restore setting or an Import path already
+       * parked statically). `{ note }` also reports a probe that passed.
        */
-      async restoreSourcesPark(head, restoreArgs, tree, checkout, common, gates, jobRoot, envNames = [], envFree = []) {
+      async restoreSourcesPark(head, restoreArgs, tree, checkout, common, gates, jobRoot, env2 = { names: [], restore: [], setting: [] }) {
         const what = "the gate needs NuGet packages that are not in your NuGet global packages folder, and the sandboxed dotnet restore did not run";
         const yourself = `restore the PR branch's packages into your NuGet global packages folder yourself (dotnet restore on that branch), then rerun ${this.resume}; or ${cancelCommand(this.key)}`;
         const park = (why, detail) => ({ name: GATE_INSTALL_GATE, reason: `${what}: ${why}; ${yourself}`, ...detail ? { detail } : {} });
@@ -82144,21 +82192,37 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
         const diff = restoreSourcesDifference(inTree, inCheckout);
         const shown = (xs) => xs === null ? "not a restore project there" : xs.length === 0 ? "none" : `${xs.slice(0, 5).map((s) => oneLine(plainText(s), 200)).join(", ")}${xs.length > 5 ? `, ${xs.length - 5} more` : ""}`;
         if (!diff) {
-          if (envNames.length === 0) return null;
+          if (env2.names.length === 0) return null;
           const named = (xs) => `${xs.slice(0, 5).join(", ")}${xs.length > 5 ? `, ${xs.length - 5} more` : ""}`;
-          const probe = async (names2) => evaluate(tree, `the engine's definition tree with a probe value for ${named(names2)}`, Object.fromEntries(names2.map((n) => [n, envProbeValue(n)])));
-          let probed = await probe(envNames);
-          let names = envNames;
-          if (!(probed instanceof Map) && envFree.length > 0 && envFree.length < envNames.length) {
-            names = envFree;
-            probed = await probe(envFree);
+          const lower2 = (xs) => new Set(xs.map((n) => n.toLowerCase()));
+          const probe = async (names2) => evaluate(tree, `the engine's definition tree with ${named(names2)} set to ${ENV_PROBE_VALUE} in the environment`, Object.fromEntries(names2.map((n) => [n, ENV_PROBE_VALUE])));
+          const first = env2.names.slice(0, ENV_PROBE_MAX_NAMES);
+          const capped3 = env2.names.slice(ENV_PROBE_MAX_NAMES);
+          let names = first;
+          let probed = await probe(first);
+          const restore = lower2(env2.restore);
+          const relevant = first.filter((n) => restore.has(n.toLowerCase()));
+          if (!(probed instanceof Map) && relevant.length > 0 && relevant.length < first.length) {
+            names = relevant;
+            probed = await probe(relevant);
           }
+          const remedy = (xs) => `${ENV_READ_REMEDY}; or, if ${named(xs)} must never come from your environment, give ${xs.length === 1 ? "it" : "each"} its value in a pinned .props file without a condition on itself (an unconditional definition wins over the environment)`;
           if (!(probed instanceof Map)) {
-            return park(`MSBuild's evaluation of the restore sources fails in the engine's definition tree when the environment sets ${named(names)} (each to a probe value), so the build reads your environment and the engine cannot tell whether that changes its package sources; ${ENV_READ_REMEDY}, or define those properties unconditionally in a pinned .props file`, probed.detail);
+            const setting = lower2(env2.setting);
+            const feeding = names.filter((n) => setting.has(n.toLowerCase()));
+            if (feeding.length > 0) {
+              return park(`MSBuild's evaluation of the restore sources fails in the engine's definition tree when the environment sets ${named(names)} (each to ${ENV_PROBE_VALUE}), and ${named(feeding)} ${feeding.length === 1 ? "feeds" : "feed"} a package-source setting, so the engine cannot tell whether your environment changes the package sources; ${remedy(feeding)}`, probed.detail);
+            }
+            const skipped2 = [...first, ...capped3];
+            return { note: `the environment probe could not be evaluated with ${named(names)} set to ${ENV_PROBE_VALUE} and no name it set feeds a package-source setting, so ${skipped2.length} name(s) an environment variable can set were not probed (${named(skipped2)})` };
           }
           const envDiff = restoreSourcesDifference(inTree, probed);
-          if (!envDiff) return null;
-          return park(`MSBuild evaluates other restore sources for ${oneLine(plainText(envDiff.project), 200)} when the environment sets ${named(names)} (${shown(envDiff.checkout)}) than without (${shown(envDiff.tree)}): a package-source setting reads your environment, which the sandbox does not pass, so there that restriction would be empty and the restore could reach nuget.org where the same command on your machine would use only your feed; ${ENV_READ_REMEDY}`);
+          if (envDiff) {
+            const read = names.filter((n) => restore.has(n.toLowerCase()));
+            return park(`MSBuild evaluates other restore sources for ${oneLine(plainText(envDiff.project), 200)} when the environment sets ${named(names)} (each to ${ENV_PROBE_VALUE}: ${shown(envDiff.checkout)}) than without (${shown(envDiff.tree)}): a package-source setting reads your environment, which the sandbox does not pass, so there that restriction would be empty and the restore could reach nuget.org where the same command on your machine would use only your feed; ${remedy(read.length > 0 ? read : names)}`);
+          }
+          const skipped = [...first.filter((n) => !names.includes(n)), ...capped3];
+          return { note: `the sources did not change with ${names.length} name(s) an environment variable can set given ${ENV_PROBE_VALUE} in the environment${skipped.length > 0 ? `; ${skipped.length} name(s) were not probed (${named(skipped)}${capped3.length > 0 ? `; more than ${ENV_PROBE_MAX_NAMES} names` : "; the evaluation with them failed"})` : ""}` };
         }
         return park(`MSBuild evaluates other restore sources for ${oneLine(plainText(diff.project), 200)} in the engine's definition tree (${shown(diff.tree)}) than in the gate checkout (${shown(diff.checkout)}), so a restore there could reach a source NuGet in the checkout would not use (or miss one it would): a file that sets the sources exists in the checkout but not among the pinned definition files (an untracked or npm-installed import, a file behind an Exists condition); declare the sources in the repository's root nuget.config or in a pinned .props file`);
       }

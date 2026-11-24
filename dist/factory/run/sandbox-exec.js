@@ -43,7 +43,7 @@ import { dirname, join, resolve } from 'node:path';
 import { defaultCopilotRunDeps } from '../../copilot-run/job.js';
 import { allowlistSessionEnv, copilotConfigDenies, loadSandboxSettings, laneToolPaths, missingSandboxEnv, NUGET_HOSTS, proxyCaEnv, scrubTokens, secretValues, sessionGitHubToken, } from '../../copilot-run/sandbox.js';
 import { defaultContainerExec, runContainerGate } from './container-gate.js';
-import { TOOL_ENV } from './dotnet-package-refs.js';
+import { isProbeExcluded } from './dotnet-package-refs.js';
 import { dotnetSandboxArgs, dotnetSandboxEnv, isDotnetExe, msbuildEscape, readRegularFileBounded, sandboxNugetConfig } from '../../copilot-run/dotnet-sandbox.js';
 import { SessionSandboxController } from '../../copilot-run/sandbox-session.js';
 import { errText, withTimeout } from '../../copilot-run/timeout.js';
@@ -245,12 +245,15 @@ export async function runSandboxed(argv, o, deps) {
             dotnetNotes.push(...d.notes);
         }
         // The restore-source evaluation's environment probe: a value for each name the env does not already hold (any case), never
-        // one that steers dotnet, MSBuild or NuGet themselves (TOOL_ENV).
+        // one that steers dotnet, MSBuild, NuGet, the runtime or the loader (isProbeExcluded).
         if (graphFile && o.probeEnv) {
             const held = new Set(Object.keys(env).map((k) => k.toLowerCase()));
-            for (const [k, v] of Object.entries(o.probeEnv))
-                if (/^[A-Za-z_][A-Za-z0-9_-]*$/.test(k) && !TOOL_ENV.test(k) && !held.has(k.toLowerCase()))
+            for (const [k, v] of Object.entries(o.probeEnv)) {
+                if (/^[A-Za-z_][A-Za-z0-9_-]*$/.test(k) && !isProbeExcluded(k) && !held.has(k.toLowerCase())) {
                     env[k] = v;
+                    held.add(k.toLowerCase());
+                }
+            }
         }
         const credentialSource = { userConfigDir: deps.userConfigDir(), platform: deps.platform };
         const gitHubToken = sessionGitHubToken(deps.env, credentialSource);
