@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { classifyNugetFailure, dotnetRestoreArgs, gitBlobId, missingDefinitionFile, nugetRunPackagesDir, parseCatFileBatch, removeEngineDir, restoreApprovalNote, restorePhase, writeDefinitionTree } from '../nuget-restore.js';
+import { classifyNugetFailure, DEFINITION_TREE_NUGET_CONFIG, dotnetRestoreArgs, gitBlobId, missingDefinitionFile, nugetConfigUnreadableReason, nugetRunPackagesDir, nugetSubstituted, parseCatFileBatch, removeEngineDir, restoreApprovalNote, normalizeRestoreSource, restoreGraphArgs, restoreGraphSources, restoreSourcesDifference, restorePhase, writeDefinitionTree } from '../nuget-restore.js';
 // Lines from real sandboxed dotnet runs (.NET SDK 10.0.101, Windows), paths shortened.
 const OFFLINE_DNS = [
     'C:\\work\\Greeter.sln : error NU1301: Unable to load the service index for source https://api.nuget.org/v3/index.json. [C:\\work\\Greeter.sln]',
@@ -82,6 +82,54 @@ describe('classifyNugetFailure', () => {
         expect(classifyNugetFailure('a.csproj : error NU1301: Unable to load the service index for source https://api.nuget.org/v3/index.json.\n  Response status code does not indicate success: 401 (Unauthorized).')).toMatchObject({ kind: 'private-feed', sources: [] });
     });
 });
+describe('classifyNugetFailure: a NuGet config it could not read (config-unreadable)', () => {
+    // As the Windows sandbox printed it (.NET SDK 10.0.101) when the walk up from a checkout under <repo>/.omg reached the repository's own file.
+    const DENIED = [
+        "C:\\Program Files\\dotnet\\sdk\\10.0.101\\NuGet.targets(780,5): error : Failed to read NuGet.Config due to unauthorized access. Path: 'C:\\repo\\NuGet.Config'. [C:\\repo\\.omg\\team\\t\\worktrees\\w\\App\\App.csproj]",
+        "C:\\Program Files\\dotnet\\sdk\\10.0.101\\NuGet.targets(780,5): error :   Access to the path 'C:\\repo\\NuGet.Config' is denied. [C:\\repo\\.omg\\team\\t\\worktrees\\w\\App\\App.csproj]",
+        'Build FAILED.',
+    ].join('\n');
+    it('has its own kind with the paths, no NU code, and wins over NU codes beside it', () => {
+        expect(classifyNugetFailure(DENIED)).toEqual({ kind: 'config-unreadable', codes: [], sources: ['C:\\repo\\NuGet.Config'] });
+        const invalid = "/usr/share/dotnet/sdk/10.0.101/NuGet.targets(780,5): error : NuGet.Config is not valid XML. Path: '/home/u/repo/nuget.config'.";
+        expect(classifyNugetFailure(invalid)).toEqual({ kind: 'config-unreadable', codes: [], sources: ['/home/u/repo/nuget.config'] });
+        expect(classifyNugetFailure(`${DENIED}\na.csproj : error NU1301: Unable to load the service index for source https://api.nuget.org/v3/index.json.`).kind).toBe('config-unreadable');
+    });
+    it('only in the restore phase, and only as an MSBuild error line (anchored as NU errors: a project, solution or MSBuild file)', () => {
+        expect(classifyNugetFailure(`  App -> C:\\w\\App.dll\n${DENIED}`)).toBeNull();
+        expect(classifyNugetFailure("  Failed to read NuGet.Config due to unauthorized access. Path: 'C:\\repo\\NuGet.Config'.")).toBeNull();
+        // L5: a test or tool printing the words on a line of its own shape is no config failure.
+        expect(classifyNugetFailure("Program.cs says error : Failed to read NuGet.Config due to unauthorized access. Path: 'C:\\x'.")).toBeNull();
+        expect(classifyNugetFailure("[xunit] error : Failed to read NuGet.Config due to unauthorized access. Path: 'C:\\x'.")).toBeNull();
+    });
+    it('M3: the MSBuild project SDK resolver failure (real sandbox output) carries the SDK names', () => {
+        const p = 'C:\\repo\\.omg\\team\\factory-run\\worktrees\\issue-1\\A\\A.proj';
+        const out = [
+            `${p} : error : Could not resolve SDK "Microsoft.Build.NoTargets". Exactly one of the probing messages below indicates why we could not resolve the SDK. Investigate and resolve that message to correctly specify the SDK.`,
+            `${p} : error :   SDK resolver "Microsoft.DotNet.MSBuildWorkloadSdkResolver" returned null.`,
+            `${p} : error :   Failed to load NuGet settings. Failed to read NuGet.Config due to unauthorized access. Path: 'C:\\repo\\NuGet.Config'.`,
+            `${p} : error MSB4236: The SDK 'Microsoft.Build.NoTargets/3.7.56' specified could not be found.`,
+        ].join('\n');
+        expect(classifyNugetFailure(out)).toEqual({ kind: 'config-unreadable', codes: [], sources: ['C:\\repo\\NuGet.Config'], sdks: ['Microsoft.Build.NoTargets'] });
+        const why = nugetConfigUnreadableReason(['C:\\repo\\NuGet.Config'], null, ['Microsoft.Build.NoTargets']);
+        expect(why).toContain('MSBuild project SDKs resolved from NuGet (Microsoft.Build.NoTargets)');
+        expect(why).toContain('ignores RestoreConfigFile');
+        expect(why).toContain('factory.run.layout "private"');
+    });
+    it('the park reason names the file (no doubled backslashes) and what to do, for one config and for NuGet\'s own hierarchy', () => {
+        const one = nugetConfigUnreadableReason(['C:\\repo\\NuGet.Config'], null);
+        expect(one).toContain('"C:\\repo\\NuGet.Config"');
+        expect(one).not.toContain('\\\\');
+        expect(one).toContain('says nothing about the code');
+        expect(one).toContain('the root nuget.config of its checkout');
+        const walk = nugetConfigUnreadableReason(['C:\\repo\\NuGet.Config'], 'the repository pins a nuget.config below its root (src/nuget.config)');
+        expect(walk).toContain('pins a nuget.config below its root (src/nuget.config)');
+        expect(walk).toContain('factory.run.layout "private"');
+    });
+    it('the tree stub is the same nuget.org-only file a checkout without a root config reads', () => {
+        expect(DEFINITION_TREE_NUGET_CONFIG).toContain('<add key="nuget.org" value="https://api.nuget.org/v3/index.json"');
+    });
+});
 describe('dotnetRestoreArgs', () => {
     it('restores the gate\'s targets with its runtime and properties', () => {
         expect(dotnetRestoreArgs(['test'])).toEqual(['restore']);
@@ -100,14 +148,17 @@ describe('dotnetRestoreArgs', () => {
     });
 });
 describe('restoreApprovalNote (the gate-definition-changed park with gateInstall "sandboxed")', () => {
-    it('every platform: the approval lets the engine restore the files with api.nuget.org reachable', () => {
+    it('every platform: the approval lets the engine restore the files with api.nuget.org reachable, and their MSBuild targets run in that restore', () => {
+        const both = '. With factory.run.gateInstall "sandboxed", approving with --allow-gate-change also lets the engine run dotnet restore on these definition files with api.nuget.org reachable, and the MSBuild targets in these files run during that restore';
         for (const p of ['win32', 'linux', 'darwin'])
-            expect(restoreApprovalNote(p), p).toMatch(/^\. With factory\.run\.gateInstall "sandboxed", approving with --allow-gate-change also lets the engine run dotnet restore on these definition files with api\.nuget\.org reachable/);
+            expect(restoreApprovalNote(p).startsWith(both), p).toBe(true);
     });
-    it('Windows also names the MSBuild targets running in that restore and loopback and the local network; Linux and macOS do not', () => {
-        expect(restoreApprovalNote('win32')).toMatch(/api\.nuget\.org reachable; on Windows the MSBuild targets in these files run during that restore, and loopback and your local network are reachable from it too$/);
-        for (const p of ['linux', 'darwin'])
-            expect(restoreApprovalNote(p), p).not.toMatch(/loopback|local network|targets/);
+    it('Windows also names loopback and the local network; Linux and macOS do not', () => {
+        expect(restoreApprovalNote('win32').endsWith('api.nuget.org reachable, and the MSBuild targets in these files run during that restore; on Windows loopback and your local network are reachable from it too')).toBe(true);
+        for (const p of ['linux', 'darwin']) {
+            expect(restoreApprovalNote(p).endsWith('api.nuget.org reachable, and the MSBuild targets in these files run during that restore'), p).toBe(true);
+            expect(restoreApprovalNote(p), p).not.toMatch(/loopback|local network/);
+        }
     });
 });
 describe('nugetRunPackagesDir', () => {
@@ -289,6 +340,60 @@ describe('removeEngineDir (L1)', () => {
         expect(() => removeEngineDir(join(parent, 'issue-9'), root)).toThrow(/does not resolve below/);
         expect(() => removeEngineDir(root, root)).toThrow(/does not resolve below/);
         expect(readdirSync(canary).sort()).toEqual(['issue-9', 'keep.txt']);
+    });
+});
+describe('nugetSubstituted: NU1603, a version the project names that NuGet replaced', () => {
+    // As .NET SDK 10.0.101 printed it (a local feed with 13.0.1 and 13.0.3, a reference to 13.0.2).
+    const NU1603 = "/r/App/App.csproj : warning NU1603: App depends on Newtonsoft.Json (>= 13.0.2) but Newtonsoft.Json 13.0.2 was not found. Newtonsoft.Json 13.0.3 was resolved instead.";
+    it('is a failure of its own kind with NuGet\'s message, from the restore phase only', () => {
+        expect(nugetSubstituted(`${NU1603}\n  Restored /r/App/App.csproj (in 407 ms).\n  App -> /r/App/bin/App.dll`)).toEqual({ kind: 'substituted', codes: ['NU1603'], sources: ['App depends on Newtonsoft.Json (>= 13.0.2) but Newtonsoft.Json 13.0.2 was not found. Newtonsoft.Json 13.0.3 was resolved instead.'] });
+        expect(nugetSubstituted(NU1603.replace('warning', 'error'))?.kind).toBe('substituted');
+        // MSBuild repeats warnings in its summary after the build started: not the restore phase.
+        expect(nugetSubstituted(`  App -> /r/App/bin/App.dll\nBuild succeeded.\n${NU1603}`)).toBeNull();
+        // NU1604 (an exclusive lower bound) and a floating version's restore print no NU1603.
+        expect(nugetSubstituted("/r/App/App.csproj : warning NU1604: Project dependency Newtonsoft.Json (> 13.0.1 && < 14.0.0) does not contain an inclusive lower bound.")).toBeNull();
+        expect(nugetSubstituted(undefined)).toBeNull();
+        // classifyNugetFailure does not read it: a pass with NU1603 is no NU error.
+        expect(classifyNugetFailure(NU1603)).toBeNull();
+    });
+});
+describe('the restore-source equality check (restoreGraphArgs, normalizeRestoreSource, restoreGraphSources, restoreSourcesDifference)', () => {
+    it('evaluates what the restore restores: the same target and properties, the runtime as RuntimeIdentifier, offline graph only', () => {
+        expect(restoreGraphArgs(['restore', 'App.sln', '-r', 'linux-x64', '-p:Configuration=Release'])).toEqual(['msbuild', 'App.sln', '-p:RuntimeIdentifier=linux-x64', '-p:Configuration=Release', '-t:GenerateRestoreGraphFile', '-p:ExcludeRestorePackageImports=true', '-nologo']);
+        expect(restoreGraphArgs(['restore', '--runtime=win-x64'])).toEqual(['msbuild', '-p:RuntimeIdentifier=win-x64', '-t:GenerateRestoreGraphFile', '-p:ExcludeRestorePackageImports=true', '-nologo']);
+        expect(restoreGraphArgs(dotnetRestoreArgs(['test', 'src/App/App.csproj', '-c', 'Release']))).toEqual(['msbuild', 'src/App/App.csproj', '-t:GenerateRestoreGraphFile', '-p:ExcludeRestorePackageImports=true', '-nologo']);
+    });
+    it('normalises sources: URLs case-insensitively without trailing slashes, in-repository paths relative to each tree, others absolute', () => {
+        expect(normalizeRestoreSource(' https://API.NuGet.org/v3/index.json/ ', 'C:\\t', 'win32')).toBe('https://api.nuget.org/v3/index.json');
+        expect(normalizeRestoreSource('C:\\defs\\tree\\feed\\', 'C:\\defs\\tree', 'win32')).toBe('<repository>/feed');
+        expect(normalizeRestoreSource('C:\\work\\checkout\\Feed', 'C:\\work\\checkout', 'win32')).toBe('<repository>/feed');
+        expect(normalizeRestoreSource('feed', 'C:\\work\\checkout', 'win32')).toBe('<repository>/feed');
+        expect(normalizeRestoreSource('C:\\corp-feed', 'C:\\work\\checkout', 'win32')).toBe('c:/corp-feed');
+        expect(normalizeRestoreSource('C:\\work\\checkout-other\\feed', 'C:\\work\\checkout', 'win32')).toBe('c:/work/checkout-other/feed');
+        expect(normalizeRestoreSource('/srv/Feed/', '/w/co', 'linux')).toBe('/srv/Feed');
+        expect(normalizeRestoreSource('/w/co/Feed', '/w/co', 'linux')).toBe('<repository>/Feed');
+        expect(normalizeRestoreSource('..', '/w/co', 'linux')).toBe('/w');
+    });
+    const graph = (root, projects, sep = '\\') => JSON.stringify({
+        format: 1,
+        projects: Object.fromEntries(Object.entries(projects).map(([p, s]) => [`${root}${sep}${p}`, { restore: { projectPath: `${root}${sep}${p}`, ...(s ? { sources: Object.fromEntries(s.map((x) => [x, {}])) } : {}) } }])),
+    });
+    it('reads each project\'s sources from a dgspec, keyed by the project relative to the tree', () => {
+        const tree = restoreGraphSources(`\uFEFF${graph('C:\\defs\\t', { 'src\\App\\App.csproj': ['https://api.nuget.org/v3/index.json', 'C:\\defs\\t\\feed'], 'src\\Lib\\Lib.csproj': undefined })}`, 'C:\\defs\\t', 'win32');
+        expect(tree).toEqual({ projects: new Map([['<repository>/src/app/app.csproj', ['<repository>/feed', 'https://api.nuget.org/v3/index.json']], ['<repository>/src/lib/lib.csproj', []]]) });
+        const checkout = restoreGraphSources(graph('C:\\work\\co', { 'src\\App\\App.csproj': ['C:\\work\\co\\feed\\', 'https://api.nuget.org/v3/index.json/'], 'src\\Lib\\Lib.csproj': [] }), 'C:\\work\\co', 'win32');
+        expect('projects' in tree && 'projects' in checkout && restoreSourcesDifference(tree.projects, checkout.projects)).toBeNull();
+        expect(restoreGraphSources('not json', 'C:\\t', 'win32')).toEqual({ problem: 'the restore graph is not valid JSON' });
+        expect(restoreGraphSources('{"format":1}', 'C:\\t', 'win32')).toEqual({ problem: 'the restore graph has no projects object' });
+        expect(restoreGraphSources('{"projects":{"C:\\\\t\\\\a.csproj":{"restore":{"sources":["x"]}}}}', 'C:\\t', 'win32')).toMatchObject({ problem: expect.stringContaining('not an object') });
+    });
+    it('names the first project whose sources differ, or that only one graph has (K3: a corp feed set by a file only the checkout has)', () => {
+        const tree = new Map([['<repository>/lib/lib.csproj', ['https://api.nuget.org/v3/index.json']], ['<repository>/z.csproj', ['a']]]);
+        const corp = new Map([['<repository>/lib/lib.csproj', ['c:/corp-feed']], ['<repository>/z.csproj', ['a']]]);
+        expect(restoreSourcesDifference(tree, corp)).toEqual({ project: '<repository>/lib/lib.csproj', tree: ['https://api.nuget.org/v3/index.json'], checkout: ['c:/corp-feed'] });
+        expect(restoreSourcesDifference(tree, new Map([['<repository>/z.csproj', ['a']]]))).toEqual({ project: '<repository>/lib/lib.csproj', tree: ['https://api.nuget.org/v3/index.json'], checkout: null });
+        expect(restoreSourcesDifference(tree, new Map([...tree, ['<repository>/z.csproj', ['a', 'b']]]))).toEqual({ project: '<repository>/z.csproj', tree: ['a'], checkout: ['a', 'b'] });
+        expect(restoreSourcesDifference(new Map(), new Map())).toBeNull();
     });
 });
 //# sourceMappingURL=nuget-restore.test.js.map

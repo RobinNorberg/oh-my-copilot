@@ -184,6 +184,12 @@ export declare const failedGates: (runId?: number) => GatesRead;
 /** Ship's gate config without a fetch: the one required check `Test`, no advisory checks, no known-flaky tests. */
 export declare const testGateConfig: GateConfigLoader;
 /**
+ * A restore graph (dgspec) as `dotnet msbuild -t:GenerateRestoreGraphFile`
+ * writes it in `root`: each project (a repository path) with `sources`
+ * (absolute, or a path relative to `root` made absolute), nuget.org by default.
+ */
+export declare function fakeRestoreGraph(root: string, sources?: readonly string[], projects?: readonly string[]): string;
+/**
  * The engine tests' OS sandbox: every command counts as run in the attested
  * sandbox. A prepare check runs through the test's exec seam (as the
  * unsandboxed engine ran it), the local gate through the test's gate runner

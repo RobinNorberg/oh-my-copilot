@@ -37,13 +37,13 @@
  * boundary: unsandboxed code still runs with the user's rights.
  */
 import { randomBytes, randomUUID } from 'node:crypto';
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { lstatSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { userInfo } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { defaultCopilotRunDeps } from '../../copilot-run/job.js';
 import { allowlistSessionEnv, copilotConfigDenies, loadSandboxSettings, laneToolPaths, missingSandboxEnv, NUGET_HOSTS, proxyCaEnv, scrubTokens, secretValues, sessionGitHubToken, } from '../../copilot-run/sandbox.js';
 import { defaultContainerExec, runContainerGate } from './container-gate.js';
-import { dotnetSandboxArgs, dotnetSandboxEnv, isDotnetExe } from '../../copilot-run/dotnet-sandbox.js';
+import { dotnetSandboxArgs, dotnetSandboxEnv, isDotnetExe, msbuildEscape, readRegularFileBounded, sandboxNugetConfig } from '../../copilot-run/dotnet-sandbox.js';
 import { SessionSandboxController } from '../../copilot-run/sandbox-session.js';
 import { errText, withTimeout } from '../../copilot-run/timeout.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
@@ -54,6 +54,10 @@ import { RUNTIME_MIN_MAX_CREDITS, SDK_INSTALL_COMMAND } from '../../smoke/copilo
 import { buildSessionEnv, loginIdentity } from '../../smoke/copilot-session-env.js';
 import { addRecordingDenyLiterals } from '../../smoke/replay/handler.js';
 import { childEnv } from '../../utils/windows-search.js';
+/** The file name MSBuild writes NuGet's restore graph to (SandboxRunRequest.restoreGraph): in the command's own job temp dir. */
+export const RESTORE_GRAPH_FILE = 'omg-restore-graph.json';
+/** The largest restore graph read back (5 projects write about 110 KB with .NET SDK 10.0.101). */
+export const RESTORE_GRAPH_MAX_BYTES = 32 * 1024 * 1024;
 /** The output tail a sandboxed command keeps (as the local gate record, local-gate.ts LOCAL_GATE_TAIL_CHARS). */
 export const SANDBOX_OUTPUT_TAIL_CHARS = 8_000;
 const START_TIMEOUT_MS = 60_000;
@@ -186,14 +190,19 @@ export async function runSandboxed(argv, o, deps) {
     const marker = `${MARKER_PREFIX}${randomBytes(8).toString('hex')}`;
     // A dotnet command: one MSBuild node (dotnet-sandbox.ts), plus the env and NuGet grant below.
     const dotnet = isDotnetExe(argv[0]);
-    const command = sandboxShellCommand(deps.platform, dotnet ? [argv[0], ...dotnetSandboxArgs(argv.slice(1), { mtp: o.dotnetMtp === true })] : argv, o.cwd, marker);
+    const jobHome = join(o.jobRoot, `gate-${Date.now().toString(36)}-${randomBytes(4).toString('hex')}`);
+    // restoreGraph: MSBuild writes NuGet's restore graph into the job's own temp dir (relocatedProfileEnv TEMP), read back below.
+    const graphFile = o.restoreGraph ? join(jobHome, 'tmp', RESTORE_GRAPH_FILE) : undefined;
+    if (graphFile && (!dotnet || graphFile.includes(';')))
+        return refuse('the restore graph can only be written by a dotnet command, to a path without ";"');
+    const run = graphFile ? [...argv, `-p:RestoreGraphOutputPath=${msbuildEscape(graphFile)}`] : argv;
+    const command = sandboxShellCommand(deps.platform, dotnet ? [run[0], ...dotnetSandboxArgs(run.slice(1), { mtp: o.dotnetMtp === true })] : run, o.cwd, marker);
     if (command === null)
         return refuse('the command cannot be passed to the sandbox shell unchanged (a NUL, or on Windows an empty argument or a double quote)');
     const max = sandboxCommandMaxChars(deps.platform);
     if (command.length > max) {
         return refuse(`the command is too long for the sandbox shell: it encodes to ${command.length} characters, above the ${max} that ${deps.platform === 'win32' ? 'a Windows command line' : 'one shell argument'} can safely carry; shorten the configured command`);
     }
-    const jobHome = join(o.jobRoot, `gate-${Date.now().toString(36)}-${randomBytes(4).toString('hex')}`);
     // The runtime's own working directory and its only trusted folder: empty, fresh per command, never the checkout.
     const workDir = join(jobHome, 'work');
     let client = null;
@@ -228,7 +237,7 @@ export async function runSandboxed(argv, o, deps) {
         const dotnetWrites = [];
         const dotnetNotes = [];
         if (dotnet) {
-            const d = dotnetSandboxEnv(env.USERPROFILE, deps.env, realHome, deps.platform, o.nugetPackages);
+            const d = dotnetSandboxEnv(env.USERPROFILE, deps.env, realHome, deps.platform, o.nugetPackages, sandboxNugetConfig(o.cwd, env.USERPROFILE, deps.platform, { hierarchy: o.nugetHierarchy, noAdd: o.nugetNoAddSource === true, fromGit: o.nugetFromGit === true }));
             Object.assign(env, d.env);
             dotnetGrants.push(...d.readonly);
             dotnetWrites.push(...d.readwrite);
@@ -369,7 +378,17 @@ export async function runSandboxed(argv, o, deps) {
             return noVerdict('the sandbox shell\'s own result contradicts the exit code the command printed');
         // A failing dotnet command: why its NuGet packages folder was not granted (the park's output tail shows it).
         const why = read.code !== 0 && dotnetNotes.length > 0 ? `\n${dotnetNotes.join('\n')}` : '';
-        return { ran: true, status: read.code, output: `${tail(read.output.trim())}${why}`, timedOut: false, ...marked };
+        // The graph the command wrote (the job temp dir is the command's own): a regular file of one link, bounded, never followed.
+        let graph = null;
+        if (graphFile && read.code === 0) {
+            try {
+                graph = lstatSync(graphFile).nlink === 1 ? readRegularFileBounded(graphFile, RESTORE_GRAPH_MAX_BYTES) : null;
+            }
+            catch {
+                graph = null;
+            }
+        }
+        return { ran: true, status: read.code, output: `${tail(read.output.trim())}${why}`, timedOut: false, ...marked, ...(graph ? { restoreGraph: graph.toString('utf8') } : {}) };
     }
     catch (err) {
         if (started)
@@ -439,6 +458,8 @@ export function createSandboxRunner(root, deps = defaultCopilotRunDeps(), layers
     return async (req) => {
         // isolation "container": resolved by the engine from the user config; the Copilot sandbox is never tried instead.
         if (req.container) {
+            if (req.restoreGraph)
+                return { ran: false, reason: 'the restore graph is evaluated in the OS sandbox only, never in the gate container', refused: true };
             if (!req.runLabel)
                 return { ran: false, reason: 'the gate container request has no run label', unavailable: true };
             return runContainerGate(req, req.container, req.runLabel, { exec: defaultContainerExec, platform: deps.platform });
@@ -463,6 +484,10 @@ export function createSandboxRunner(root, deps = defaultCopilotRunDeps(), layers
             ...(req.nestedNodeModulesTargets ? { nestedNodeModulesTargets: req.nestedNodeModulesTargets } : {}),
             ...(req.dotnetMtp ? { dotnetMtp: true } : {}),
             ...(req.nugetPackages ? { nugetPackages: req.nugetPackages } : {}),
+            ...(req.nugetHierarchy ? { nugetHierarchy: req.nugetHierarchy } : {}),
+            ...(req.nugetNoAddSource ? { nugetNoAddSource: true } : {}),
+            ...(req.nugetFromGit ? { nugetFromGit: true } : {}),
+            ...(req.restoreGraph ? { restoreGraph: true } : {}),
         }, deps);
     };
 }

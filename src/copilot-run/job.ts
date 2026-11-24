@@ -117,7 +117,7 @@ import {
   type SandboxScope,
   type SandboxSettings,
 } from './sandbox.js';
-import { dotnetSandboxEnv } from './dotnet-sandbox.js';
+import { dotnetSandboxEnv, sandboxNugetConfig } from './dotnet-sandbox.js';
 import { LANE_PLUGIN_DIR, prepareLanePluginDir, removeLanePluginDir, sweepStaleLanePluginDirs } from './lane-plugin.js';
 import { SessionSandboxController, sandboxBypassDenial } from './sandbox-session.js';
 import { errText, withTimeout } from './timeout.js';
@@ -321,6 +321,18 @@ export interface CopilotRunStartOptions {
    * (dotnet-sandbox.ts dotnetSandboxEnv). Absent: none.
    */
   dotnet?: boolean;
+  /**
+   * With `dotnet`: why NuGet reads its own config hierarchy (engine.ts dotnetNugetPolicy: the trusted base or the commit
+   * the lane starts at pins a nuget.config below its root) instead of the one file dotnet-sandbox.ts dotnetNugetConfig picks.
+   */
+  dotnetNugetHierarchy?: string;
+  /**
+   * With `dotnet`: the pinned files of the trusted base or of the commit the lane starts at set restore sources
+   * themselves (or import a file the engine cannot read, or the root config defines sources), so no root-config copy with
+   * nuget.org is written (dotnet-sandbox.ts nugetOrgCopy). A lane that sets its own RestoreSources mid-session is honoured
+   * by NuGet either way: it overrides the copy's config source.
+   */
+  dotnetNugetNoAddSource?: boolean;
 }
 
 /** SandboxPolicyContext's node_modules fields from CopilotRunStartOptions.nodeModulesGrant's answer. */
@@ -553,6 +565,10 @@ interface Job {
   nodeModulesGrant: ((worktree: string) => { target: string; nested?: string[] } | undefined) | null;
   /** CopilotRunStartOptions.dotnet (write jobs only). */
   dotnet: boolean;
+  /** CopilotRunStartOptions.dotnetNugetHierarchy (with `dotnet`). */
+  dotnetNugetHierarchy: string | null;
+  /** CopilotRunStartOptions.dotnetNugetNoAddSource. */
+  dotnetNugetNoAddSource: boolean;
   /** Why CopilotRunStartOptions.beforeSandboxedSession could not ready the worktree (the job fails before the runtime starts). */
   unprepared: string | null;
   /** The runtime's pid once the client started (stopAll's kill fallback). */
@@ -1238,6 +1254,8 @@ export class CopilotRunManager {
       beforeHostGit: options.beforeHostGit ?? null,
       nodeModulesGrant: profile !== 'review' ? options.nodeModulesGrant ?? null : null,
       dotnet: profile !== 'review' && options.dotnet === true,
+      dotnetNugetHierarchy: options.dotnetNugetHierarchy ?? null,
+      dotnetNugetNoAddSource: options.dotnetNugetNoAddSource === true,
       unprepared: null,
       pid: undefined,
       pidIdentity: null,
@@ -1551,7 +1569,9 @@ export class CopilotRunManager {
     const realHome = (deps.realHome ?? (() => userInfo().homedir))();
     const dotnetGrants: string[] = [];
     if (job.dotnet) {
-      const d = dotnetSandboxEnv(env.USERPROFILE!, deps.env, realHome, deps.platform);
+      // One NuGet config, the worktree root's or nuget.org only (dotnet-sandbox.ts sandboxNugetConfig), unless the base or the lane's start
+      // commit keeps NuGet's hierarchy (engine.ts) or the worktree holds a nuget.config below its root (the scan, kept here as the safety net).
+      const d = dotnetSandboxEnv(env.USERPROFILE!, deps.env, realHome, deps.platform, undefined, sandboxNugetConfig(job.worktree?.path ?? job.workCwd, env.USERPROFILE!, deps.platform, { hierarchy: job.dotnetNugetHierarchy, noAdd: job.dotnetNugetNoAddSource }));
       Object.assign(env, d.env);
       dotnetGrants.push(...d.readonly);
       job.notes.push(...d.notes);

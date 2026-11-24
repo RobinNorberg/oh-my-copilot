@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, resolve, sep } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { sdkCreateSessionAcceptsSandbox } from '../../smoke/copilot-sdk-driver.js';
-import { BWRAP_TRIAL_ARGS, DEFAULT_SANDBOX_SETTINGS, NUGET_HOSTS, allowlistSessionEnv, bwrapTrialLaunchError, linuxSandboxProblem, factorySandboxProblem, parseBwrapVersion, bwrapTooOld, buildSandboxConfig, nodeModulesTreeProblem, findOnPath, gitForWindowsShell, laneGitWritePaths, laneToolPaths, loadSandboxSettings, missingSandboxEnv, proxyCaEnv, MXC_REQUIRED_ENV, probeHostSupport, resolveSandboxSettings, scrubTokens, secretValues, sessionGitHubToken, unconfirmedMode, } from '../sandbox.js';
+import { BWRAP_TRIAL_ARGS, DEFAULT_SANDBOX_SETTINGS, NUGET_HOSTS, allowlistSessionEnv, sandboxPath, bwrapTrialLaunchError, linuxSandboxProblem, factorySandboxProblem, parseBwrapVersion, bwrapTooOld, buildSandboxConfig, nodeModulesTreeProblem, findOnPath, gitForWindowsShell, laneGitWritePaths, laneToolPaths, loadSandboxSettings, missingSandboxEnv, proxyCaEnv, MXC_REQUIRED_ENV, probeHostSupport, resolveSandboxSettings, scrubTokens, secretValues, sessionGitHubToken, unconfirmedMode, } from '../sandbox.js';
 let root;
 let ctx;
 const host = (caps = { shell: true }) => ({ supported: true, capabilities: caps });
@@ -618,6 +618,19 @@ describe('laneToolPaths', () => {
     it('the default probe finds the real node of this process', () => {
         expect(laneToolPaths({ PATH: '' }, process.platform)).toContain(dirname(process.execPath));
     });
+    it('round 5: sandboxPath drops empty and relative entries and node_modules/.bin dirs (any case on Windows); allowlistSessionEnv applies it', () => {
+        expect(sandboxPath('C:\\work\\repo\\node_modules\\.bin;C:\\Users\\u\\AppData\\npm-cache\\_npx\\1\\Node_Modules\\.BIN\\;.;bin;;C:dir;"C:\\Program Files\\Git\\cmd";C:\\Windows\\system32;\\tools', 'win32'))
+            .toBe('"C:\\Program Files\\Git\\cmd";C:\\Windows\\system32;\\tools');
+        expect(sandboxPath('/repo/node_modules/.bin:.:bin::/usr/bin:/repo/Node_Modules/.bin:/opt/node_modules/.bin/:/opt/my_node_modules/.bin', 'linux'))
+            .toBe('/usr/bin:/repo/Node_Modules/.bin:/opt/my_node_modules/.bin');
+        // A node_modules dir that is not `.bin` (a tool that ships inside one) stays.
+        expect(sandboxPath('C:\\tools\\node_modules\\x\\bin', 'win32')).toBe('C:\\tools\\node_modules\\x\\bin');
+        const sep = process.platform === 'win32' ? ';' : ':';
+        const abs = process.platform === 'win32' ? 'C:\\Windows\\system32' : '/usr/bin';
+        const nm = process.platform === 'win32' ? 'C:\\x\\node_modules\\.bin' : '/x/node_modules/.bin';
+        const env = allowlistSessionEnv({ Path: [nm, '.', abs].join(sep) }, join(tmpdir(), 'job'));
+        expect(env.Path).toBe(abs);
+    });
 });
 describe('sandbox settings', () => {
     it('validates types and values', () => {
@@ -735,10 +748,11 @@ describe('detection helpers', () => {
         expect(sdkCreateSessionAcceptsSandbox(sdk(New))).toBe(true);
     });
     it('allowlistSessionEnv matches names case-insensitively and relocates the profile', () => {
+        const ABS_PATH = process.platform === 'win32' ? 'C:\\bin' : '/bin';
         const hostTemp = 'C:\\Users\\u\\AppData\\Local\\Temp';
-        const env = allowlistSessionEnv({ Path: 'p', SystemRoot: 'C:\\Windows', npm_config_token: 't', LC_CTYPE: 'C', OMC_X: '1', APPDATA: 'a', LocalAppData: 'C:\\Users\\u\\AppData\\Local', Temp: hostTemp, tmp: hostTemp, TMPDIR: '/tmp' }, join(root, 'h'));
+        const env = allowlistSessionEnv({ Path: ABS_PATH, SystemRoot: 'C:\\Windows', npm_config_token: 't', LC_CTYPE: 'C', OMC_X: '1', APPDATA: 'a', LocalAppData: 'C:\\Users\\u\\AppData\\Local', Temp: hostTemp, tmp: hostTemp, TMPDIR: '/tmp' }, join(root, 'h'));
         expect(env).toEqual({
-            Path: 'p', SystemRoot: 'C:\\Windows', LC_CTYPE: 'C', OMC_X: '1', LocalAppData: 'C:\\Users\\u\\AppData\\Local',
+            Path: ABS_PATH, SystemRoot: 'C:\\Windows', LC_CTYPE: 'C', OMC_X: '1', LocalAppData: 'C:\\Users\\u\\AppData\\Local',
             // The runtime grants read-write on its TEMP: the caller's (any case) never passes, the job's own temp dir does.
             TEMP: join(root, 'h', 'tmp'), TMP: join(root, 'h', 'tmp'), TMPDIR: join(root, 'h', 'tmp'),
             USERPROFILE: join(root, 'h', 'profile'), HOME: join(root, 'h', 'profile'),

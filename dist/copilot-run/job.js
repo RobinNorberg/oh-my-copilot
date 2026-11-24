@@ -66,7 +66,7 @@ import { reviewShellAllowlist } from '../team/shell-allowlist.js';
 import { getCopilotConfigDir } from '../utils/config-dir.js';
 import { COPILOT_RUN_ALLOW_ENV } from './names.js';
 import { REVIEW_READ_TOOLS, REVIEW_SHELL_TOOLS, SANDBOX_KILL_ENV, allowlistSessionEnv, copilotConfigDenies, laneToolPaths, loadSandboxSettings, missingSandboxEnv, proxyCaEnv, scrubTokens, secretValues, sessionGitHubToken, } from './sandbox.js';
-import { dotnetSandboxEnv } from './dotnet-sandbox.js';
+import { dotnetSandboxEnv, sandboxNugetConfig } from './dotnet-sandbox.js';
 import { LANE_PLUGIN_DIR, prepareLanePluginDir, removeLanePluginDir, sweepStaleLanePluginDirs } from './lane-plugin.js';
 import { SessionSandboxController, sandboxBypassDenial } from './sandbox-session.js';
 import { errText, withTimeout } from './timeout.js';
@@ -1035,6 +1035,8 @@ export class CopilotRunManager {
             beforeHostGit: options.beforeHostGit ?? null,
             nodeModulesGrant: profile !== 'review' ? options.nodeModulesGrant ?? null : null,
             dotnet: profile !== 'review' && options.dotnet === true,
+            dotnetNugetHierarchy: options.dotnetNugetHierarchy ?? null,
+            dotnetNugetNoAddSource: options.dotnetNugetNoAddSource === true,
             unprepared: null,
             pid: undefined,
             pidIdentity: null,
@@ -1377,7 +1379,9 @@ export class CopilotRunManager {
         const realHome = (deps.realHome ?? (() => userInfo().homedir))();
         const dotnetGrants = [];
         if (job.dotnet) {
-            const d = dotnetSandboxEnv(env.USERPROFILE, deps.env, realHome, deps.platform);
+            // One NuGet config, the worktree root's or nuget.org only (dotnet-sandbox.ts sandboxNugetConfig), unless the base or the lane's start
+            // commit keeps NuGet's hierarchy (engine.ts) or the worktree holds a nuget.config below its root (the scan, kept here as the safety net).
+            const d = dotnetSandboxEnv(env.USERPROFILE, deps.env, realHome, deps.platform, undefined, sandboxNugetConfig(job.worktree?.path ?? job.workCwd, env.USERPROFILE, deps.platform, { hierarchy: job.dotnetNugetHierarchy, noAdd: job.dotnetNugetNoAddSource }));
             Object.assign(env, d.env);
             dotnetGrants.push(...d.readonly);
             job.notes.push(...d.notes);

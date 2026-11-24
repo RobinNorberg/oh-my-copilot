@@ -20,12 +20,15 @@
  * (DOTNET_DEFINITION_PATTERNS), written from git objects and checked
  * against their object ids. A file the PR controls outside those patterns
  * (an imported .msbuild, a script, a .cs, a DLL, the sources) is not there,
- * so nothing but pinned files is evaluated with the network on.
+ * so nothing but pinned files is evaluated with the network on. It runs only
+ * when MSBuild evaluates the same restore sources for every project there as
+ * in the gate checkout (restoreGraphArgs, restoreGraphSources; engine.ts
+ * restoreSourcesPark): a source restriction in a file the tree lacks parks.
  */
 import { createHash } from 'node:crypto';
 import { lstatSync, mkdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, posix, relative, resolve, sep, win32 } from 'node:path';
-import { dotnetPositionals, MSBUILD_SUBCOMMANDS } from '../../copilot-run/dotnet-sandbox.js';
+import { dotnetPositionals, MSBUILD_SUBCOMMANDS, NUGET_ORG_ONLY_CONFIG } from '../../copilot-run/dotnet-sandbox.js';
 import { visibleLine } from '../../forge/review-feedback.js';
 import { isDotnetDefinitionFile } from './local-gate.js';
 /**
@@ -68,10 +71,52 @@ const isNugetOrg = (s) => {
     return !!host && /(?:^|\.)nuget\.org$/i.test(host);
 };
 /**
+ * An MSBuild error line saying NuGet could not read a nuget.config (it
+ * prints no NU code for it), anchored as NUGET_RESTORE_ERROR (a project,
+ * solution or MSBuild file, with or without `(line,col)`):
+ * `<file>(l,c): error : Failed to read NuGet.Config due to unauthorized
+ * access. Path: '<path>'.` (the sandbox refused the read: the walk up from
+ * the project reached a config the sandbox does not grant), `<project> :
+ * error :   Failed to load NuGet settings. Failed to read ...` (the MSBuild
+ * project SDK resolver), or `... error : NuGet.Config is not valid XML.
+ * Path: '<path>'.`. Group 2 is the path. Restore phase only.
+ */
+export const NUGET_CONFIG_UNREADABLE_ERROR = /^\S[^\r\n]*?\.(?:sln|slnx|slnf|[A-Za-z]*proj|props|targets)(?:\(\d+(?:,\d+)*\))? ?: error(?: [A-Z]+\d+)? ?: [^\r\n]*?(Failed to read NuGet\.Config due to unauthorized access|NuGet\.Config is not valid XML)\. Path: '([^'\r\n]+)'/gm;
+/** The MSBuild project SDK resolver's failure line (`<project> : error : Could not resolve SDK "<name>". ...`); group 1 the SDK. */
+const SDK_UNRESOLVED = /^\S[^\r\n]*?\.(?:sln|slnx|slnf|[A-Za-z]*proj|props|targets)(?:\(\d+(?:,\d+)*\))? ?: error ?: Could not resolve SDK "([^"\r\n]{1,200})"/gm;
+/**
+ * NuGet's NU1603 line in the restore phase (`<project> : warning NU1603:
+ * App depends on X (>= 13.0.2) but X 13.0.2 was not found. X 13.0.3 was
+ * resolved instead.`, `error` with warnings as errors). Group 1 the message.
+ */
+const NUGET_SUBSTITUTED = /^\S[^\r\n]*?\.(?:sln|slnx|slnf|[A-Za-z]*proj|props|targets) : (?:warning|error) NU1603: ([^\r\n]*)/gm;
+/** A path as a park reason shows it: one visible line in double quotes, backslashes as they are (not JSON-escaped). */
+const shownPath = (p) => `"${visibleLine(p).replace(/"/g, "'")}"`;
+/**
+ * Why a dotnet command parks when NuGet could not read a nuget.config
+ * (`config-unreadable`): for the paths it named (`paths`), the engine's
+ * reason for keeping NuGet's own hierarchy for that command (`hierarchy`,
+ * engine.ts dotnetNugetPolicy; null when one file was named), and the MSBuild
+ * project SDKs whose resolution failed (`sdks`, M3: NuGet's SDK resolver
+ * walks the hierarchy whatever RestoreConfigFile says).
+ */
+export function nugetConfigUnreadableReason(paths, hierarchy, sdks = []) {
+    const named = paths.map(shownPath).join(', ');
+    const why = sdks.length > 0
+        ? `MSBuild project SDKs resolved from NuGet (${sdks.slice(0, 5).join(', ')}) read NuGet's own config hierarchy (the SDK resolver ignores RestoreConfigFile), and that walk from the project's dir up to the drive root reached a file the OS sandbox does not grant (in the shared layout your working tree's own nuget.config or one above your repository). Use the private layout (set factory.run.layout "private" in your user config: its checkouts are outside your repository), or remove the nuget.config above the checkout`
+        : hierarchy
+            ? `${hierarchy}, so NuGet reads every nuget.config from the project's dir up to the drive root, and that walk reached a file the OS sandbox does not grant (in the shared layout your working tree's own nuget.config or one above your repository). Move those settings into the repository's root nuget.config on the base branch (the sandbox then reads that file alone), or set factory.run.layout "private" in your user config (its checkouts are outside your repository)`
+            : 'the OS sandbox does not grant that file, or it is not valid XML: a sandboxed dotnet command reads one NuGet config, the root nuget.config of its checkout, else a nuget.org-only file of the engine; fix the file if it is the repository\'s';
+    return `NuGet could not read the NuGet config ${named} (no package was tried, so this says nothing about the code): ${why}`;
+}
+/**
  * The NuGet restore failure in a dotnet command's whole output, or null when
  * its restore phase (restorePhase) has no restore error line
- * (NUGET_RESTORE_ERROR): a compile or test failure, a pass, or an `error
- * NU1301` the PR's tests print. Read from the whole output, never a tail:
+ * (NUGET_RESTORE_ERROR) and no unreadable config
+ * (NUGET_CONFIG_UNREADABLE_ERROR, kind `config-unreadable`, checked first,
+ * with the project SDKs whose resolution failed there):
+ * a compile or test failure, a pass, or an `error NU1301` the PR's tests
+ * print. Read from the whole output, never a tail:
  * a long output must not hide a real restore error. Private feed signatures
  * (restore phase only): "for source <not nuget.org>", "The local source
  * '<path>'", "in source(s): <a name other than nuget.org>", and a feed's
@@ -81,12 +126,19 @@ const isNugetOrg = (s) => {
  * offline. Residual: code the PR's build runs before its first output line
  * (a source generator of the first project compiled) can print a line of
  * the same shape; that starts at most the one networked restore of the
- * pinned definition files per definition hash and head.
+ * pinned definition files per definition hash and head. NU1603 is not
+ * read here (nugetSubstituted).
  */
 export function classifyNugetFailure(output) {
     if (!output)
         return null;
     const phase = restorePhase(output);
+    // Checked first: NuGet stops at a config it cannot read, so no package was tried and no NU code says why.
+    const configs = [...new Set([...phase.matchAll(NUGET_CONFIG_UNREADABLE_ERROR)].map((m) => visibleLine(m[2]).slice(0, 300)))].sort();
+    if (configs.length > 0) {
+        const sdks = [...new Set([...phase.matchAll(SDK_UNRESOLVED)].map((m) => visibleLine(m[1])))].sort();
+        return { kind: 'config-unreadable', codes: [], sources: configs, ...(sdks.length > 0 ? { sdks } : {}) };
+    }
     const codes = [...new Set([...phase.matchAll(NUGET_RESTORE_ERROR)].map((m) => m[1]))].sort();
     if (codes.length === 0)
         return null;
@@ -102,7 +154,29 @@ export function classifyNugetFailure(output) {
                 sources.add(name.trim().replace(/[.'"]+$/, ''));
     }
     const auth = /Response status code does not indicate success: 40[13]\b/i.test(phase);
-    return { kind: sources.size > 0 || auth ? 'private-feed' : 'restore', codes, sources: [...sources].sort() };
+    const mapping = /PackageSourceMapping is enabled/i.test(phase);
+    return { kind: sources.size > 0 || auth ? 'private-feed' : 'restore', codes, sources: [...sources].sort(), ...(mapping ? { mapping: true } : {}) };
+}
+/**
+ * NuGet's NU1603 in a dotnet command's restore phase, as a failure
+ * (`substituted`, its messages in `sources`), or null. NU1603 means a
+ * project or package names a version (an exact `Version="13.0.2"`, which
+ * NuGet reads as `>= 13.0.2`, or a range with an inclusive lower bound) that
+ * none of the sources has, and NuGet resolved a higher one instead, as a
+ * warning: offline, with a 13.0.2 reference and only 13.0.3 in the packages
+ * folder, the gate built and tested 13.0.3 and passed. The engine never
+ * lets that pass: in the gate it is a restore failure (the networked
+ * restore step, then the park), in the restore step a failed restore.
+ * Floating versions (`13.0.*`, `13.*`, `*`) and exclusive lower bounds
+ * never print NU1603 (checked with .NET SDK 10.0.101), so floating-version
+ * repositories are unchanged; a reference whose lower bound does not exist
+ * on nuget.org at all parks even with the network (fix the version).
+ */
+export function nugetSubstituted(output) {
+    if (!output)
+        return null;
+    const lines = [...new Set([...restorePhase(output).matchAll(NUGET_SUBSTITUTED)].map((m) => visibleLine(m[1]).slice(0, 300)))];
+    return lines.length > 0 ? { kind: 'substituted', codes: ['NU1603'], sources: lines } : null;
 }
 /** True for a relative path that stays inside the repository (not absolute, no leading `..`, no drive). */
 function insideRepo(p) {
@@ -147,6 +221,96 @@ export function dotnetRestoreArgs(gateArgs) {
     if (!targets.every(insideRepo))
         return null;
     return ['restore', ...targets, ...extra];
+}
+/**
+ * The `dotnet msbuild` arguments that write NuGet's restore graph (the
+ * dgspec NuGet's restore builds before it fetches anything) for what
+ * `dotnet <restoreArgs>` (dotnetRestoreArgs) restores: the same target, its
+ * runtime as `-p:RuntimeIdentifier=` (what `dotnet restore -r` passes), the
+ * same properties, `-t:GenerateRestoreGraphFile` and
+ * `-p:ExcludeRestorePackageImports=true` (how NuGet evaluates a project for
+ * restore: no package-provided props). The sandbox runner adds
+ * `-p:RestoreGraphOutputPath=` (restoreGraph) and `-m:1`. Evaluation only:
+ * no package is fetched, and it runs offline.
+ */
+export function restoreGraphArgs(restoreArgs) {
+    const out = ['msbuild'];
+    const rest = restoreArgs.slice(1);
+    for (let i = 0; i < rest.length; i++) {
+        const a = rest[i];
+        if ((a === '-r' || a === '--runtime') && i + 1 < rest.length)
+            out.push(`-p:RuntimeIdentifier=${rest[++i]}`);
+        else if (/^(?:-r|--runtime)[=:]/.test(a))
+            out.push(`-p:RuntimeIdentifier=${a.replace(/^(?:-r|--runtime)[=:]/, '')}`);
+        else
+            out.push(a);
+    }
+    return [...out, '-t:GenerateRestoreGraphFile', '-p:ExcludeRestorePackageImports=true', '-nologo'];
+}
+/**
+ * A package source as the restore-source comparison reads it: trimmed; a
+ * URL (`<scheme>://...`) in lower case without trailing slashes; a local
+ * path resolved against `root` (the tree the evaluation ran in) without
+ * trailing separators, as `<repository>/<path>` with `/` when it lies inside
+ * `root` (the same in-repository feed in the definition tree and in the gate
+ * checkout compares equal), else as the absolute path with `/`; in lower
+ * case on Windows.
+ */
+export function normalizeRestoreSource(source, root, platform = process.platform) {
+    const s = source.trim();
+    if (/^[a-z][a-z0-9+.-]+:\/\//i.test(s))
+        return s.toLowerCase().replace(/\/+$/, '');
+    const P = platform === 'win32' ? win32 : posix;
+    const top = P.resolve(root);
+    const abs = P.resolve(top, s).replace(/[\\/]+$/, '') || P.sep;
+    const rel = P.relative(top, abs);
+    const inside = rel === '' || (rel !== '..' && !rel.startsWith(`..${P.sep}`) && !P.isAbsolute(rel));
+    const shown = inside ? `<repository>${rel ? `/${rel.split(P.sep).join('/')}` : ''}` : abs.split(P.sep).join('/');
+    return platform === 'win32' ? shown.toLowerCase() : shown;
+}
+/**
+ * Each project's restore sources in a restore graph (the dgspec JSON that
+ * `-t:GenerateRestoreGraphFile` writes): `projects.<path>.restore.sources`,
+ * keyed by the project path normalised as a local source
+ * (normalizeRestoreSource against `root`), each a sorted set of normalised
+ * sources. A project without `restore.sources` has none. `problem` when the
+ * text is not a restore graph.
+ */
+export function restoreGraphSources(text, root, platform = process.platform) {
+    let graph;
+    try {
+        graph = JSON.parse(text.charCodeAt(0) === 0xfeff ? text.slice(1) : text);
+    }
+    catch {
+        return { problem: 'the restore graph is not valid JSON' };
+    }
+    const projects = graph?.projects;
+    if (!projects || typeof projects !== 'object' || Array.isArray(projects))
+        return { problem: 'the restore graph has no projects object' };
+    const out = new Map();
+    for (const [path, spec] of Object.entries(projects)) {
+        const sources = spec?.restore?.sources;
+        if (sources !== undefined && (!sources || typeof sources !== 'object' || Array.isArray(sources)))
+            return { problem: `the restore graph's sources of a project are not an object` };
+        const key = normalizeRestoreSource(path, root, platform);
+        const set = [...new Set(Object.keys((sources ?? {})).map((s) => normalizeRestoreSource(s, root, platform)))].sort();
+        out.set(key, [...new Set([...(out.get(key) ?? []), ...set])].sort());
+    }
+    return { projects: out };
+}
+/**
+ * The first project (in sorted order) whose restore sources differ between
+ * two restore graphs (restoreGraphSources), with both lists (null: the
+ * graph has no such project), or null when every project has the same set.
+ */
+export function restoreSourcesDifference(tree, checkout) {
+    for (const project of [...new Set([...tree.keys(), ...checkout.keys()])].sort()) {
+        const a = tree.get(project) ?? null;
+        const b = checkout.get(project) ?? null;
+        if (!a || !b || a.length !== b.length || a.some((s, i) => s !== b[i]))
+            return { project, tree: a, checkout: b };
+    }
+    return null;
 }
 /** The run's own NuGet packages folder: `<gate job root>/nuget/<run slug>`, outside every checkout and never your real cache. */
 export const nugetRunPackagesDir = (gateJobRoot, slug) => join(gateJobRoot, 'nuget', slug);
@@ -205,44 +369,27 @@ export function parseCatFileBatch(buf) {
 /** An MSBuild file that ends MSBuild's walk up from a project at the tree root (it defines nothing). */
 const EMPTY_PROJECT = '<Project />\n';
 /**
- * The NuGet config written at the tree root when the head has none there:
- * nuget.org as the only source, and every source, disabled source and
- * source mapping of the configs above the tree (and the machine-wide ones,
- * such as Visual Studio's offline packages folder) cleared. Checked with
- * .NET SDK 10.0.101: an ancestor config that adds a feed, disables nuget.org
- * and maps every package to its feed restores from nuget.org with this one
- * at the root, and a project restores the same packages as with the
- * default config (only the offline folder's source goes, and its packages
- * are nuget.org's).
+ * The NuGet config written at the tree root when the head has none there
+ * (NUGET_ORG_ONLY_CONFIG: nuget.org only). The restore then reads this file
+ * alone (RestoreConfigFile, dotnet-sandbox.ts dotnetNugetConfig), as the gate
+ * in a checkout of the same head reads the same content from the command's
+ * job profile; with a base that pins a lower nuget.config (NuGet's own
+ * hierarchy) its clears reset what the configs above the tree merged, though
+ * NuGet still reads those files.
  */
-export const DEFINITION_TREE_NUGET_CONFIG = [
-    '<?xml version="1.0" encoding="utf-8"?>',
-    '<configuration>',
-    '  <packageSources>',
-    '    <clear />',
-    '    <add key="nuget.org" value="https://api.nuget.org/v3/index.json" protocolVersion="3" />',
-    '  </packageSources>',
-    '  <disabledPackageSources>',
-    '    <clear />',
-    '  </disabledPackageSources>',
-    '  <packageSourceMapping>',
-    '    <clear />',
-    '  </packageSourceMapping>',
-    '</configuration>',
-    '',
-].join('\n');
+export const DEFINITION_TREE_NUGET_CONFIG = NUGET_ORG_ONLY_CONFIG;
 /**
  * The files written at the definition tree's root when the head has no file
- * of that name there, so MSBuild's and NuGet's walk up from the tree stops
- * at the tree, as a clone of the repository would see nothing above it
- * (apart from your own parent dirs): `Directory.Build.props`,
- * `Directory.Build.targets`, `Directory.Solution.props`,
- * `Directory.Solution.targets` and `Directory.Packages.props` as an empty
- * project (with .NET SDK 10.0.101 an empty `Directory.Packages.props` does
- * not switch central package management on, and stops an ancestor's that
- * would), and `nuget.config` (DEFINITION_TREE_NUGET_CONFIG). Never
- * `global.json` or a `.rsp`: those select the SDK or add arguments, and an
- * empty one would change what the head's own files say. [name, content].
+ * of that name there: `Directory.Build.props`, `Directory.Build.targets`,
+ * `Directory.Solution.props`, `Directory.Solution.targets` and
+ * `Directory.Packages.props` as an empty project, which stops MSBuild's walk
+ * up from the tree at the tree, as a clone of the repository would see
+ * nothing above it (apart from your own parent dirs; with .NET SDK 10.0.101
+ * an empty `Directory.Packages.props` does not switch central package
+ * management on, and stops an ancestor's that would), and `nuget.config`
+ * (DEFINITION_TREE_NUGET_CONFIG), the one NuGet config the restore reads.
+ * Never `global.json` or a `.rsp`: those select the SDK or add arguments,
+ * and an empty one would change what the head's own files say. [name, content].
  */
 export const DEFINITION_TREE_STUBS = [
     ['Directory.Build.props', EMPTY_PROJECT],
@@ -381,15 +528,15 @@ export const GATE_INSTALL_SANDBOXED_HINT = 'set factory.run.gateInstall "sandbox
 /**
  * What the gate-definition-changed park of a dotnet gate adds with
  * gateInstall "sandboxed": the approval also lets the engine restore those
- * files with the network on. On Windows also what that restore can reach
+ * files with the network on, and the MSBuild targets in them run during that
+ * restore (on every platform). On Windows also what that restore can reach
  * beyond nuget.org: the Windows sandbox runs nothing with outbound access on
- * and the local network off (the documented known gap), so the MSBuild
- * targets in the approved files run with loopback and the local network
- * reachable.
+ * and the local network off (the documented known gap), so loopback and the
+ * local network are reachable too.
  */
 export function restoreApprovalNote(platform) {
-    const note = '. With factory.run.gateInstall "sandboxed", approving with --allow-gate-change also lets the engine run dotnet restore on these definition files with api.nuget.org reachable';
-    return platform === 'win32' ? `${note}; on Windows the MSBuild targets in these files run during that restore, and loopback and your local network are reachable from it too` : note;
+    const note = '. With factory.run.gateInstall "sandboxed", approving with --allow-gate-change also lets the engine run dotnet restore on these definition files with api.nuget.org reachable, and the MSBuild targets in these files run during that restore';
+    return platform === 'win32' ? `${note}; on Windows loopback and your local network are reachable from it too` : note;
 }
 /** The private-feed park's reason prefix. */
 export const NUGET_PRIVATE_FEED_UNSUPPORTED = 'private or local NuGet feeds are not supported in the sandbox yet';

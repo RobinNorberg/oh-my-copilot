@@ -20,7 +20,7 @@ import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { nugetPackagesDir } from '../../../copilot-run/dotnet-sandbox.js';
+import { nugetConfigVerdict, nugetPackagesDir } from '../../../copilot-run/dotnet-sandbox.js';
 import { resolveLocalGateArgv } from '../../../factory/run/local-gate.js';
 import { classifyNugetFailure, dotnetRestoreArgs, parseCatFileBatch, writeDefinitionTree } from '../../../factory/run/nuget-restore.js';
 import { resolveDefaultPluginRoot } from '../../../smoke/copilot-session-env.js';
@@ -176,6 +176,69 @@ describe.runIf(process.env.OMG_LIVE_DOTNET === '1' && onWindows && !!dotnet)('a 
     expect(!!packages && existsSync(join(packages, UNCACHED[0].toLowerCase(), UNCACHED[1]))).toBe(false);
   }, 900_000);
 
+  it.runIf(xunitCached && !uncachedCached)('a committed root nuget.config in the shared layout (checkout and definition tree under <repo>/.omg): the gate passes offline, the restore fetches a missing package through the sandbox, and NuGet\'s own walk would fail on your working tree\'s file', async (ctx) => {
+    const repo = join(dir, 'nc-repo');
+    const config = '<?xml version="1.0" encoding="utf-8"?>\n<configuration>\n  <packageSources>\n    <clear />\n    <add key="nuget.org" value="https://api.nuget.org/v3/index.json" />\n  </packageSources>\n</configuration>\n';
+    mkdirSync(join(repo, 'Lib'), { recursive: true });
+    mkdirSync(join(repo, 'Lib.Tests'));
+    writeFileSync(join(repo, '.gitignore'), 'bin/\nobj/\n.omg/\n');
+    writeFileSync(join(repo, 'NuGet.Config'), config);
+    writeFileSync(join(repo, 'Lib', 'Lib.csproj'), LIB);
+    writeFileSync(join(repo, 'Lib', 'Greeting.cs'), 'namespace Lib;\npublic static class Greeting { public static string Hello(string n) => $"Hello, {n}!"; }\n');
+    writeFileSync(join(repo, 'Lib.Tests', 'Lib.Tests.csproj'), TESTS);
+    writeFileSync(join(repo, 'Lib.Tests', 'GreetingTests.cs'), 'namespace Lib.Tests;\npublic class GreetingTests { [Xunit.Fact] public void Greets() => Xunit.Assert.Equal("Hello, Ada!", Lib.Greeting.Hello("Ada")); }\n');
+    git(repo, 'init', '-q', '-b', 'main');
+    git(repo, 'add', '.');
+    git(repo, 'commit', '-q', '-m', 'base');
+    // The head (an approved bump): a package your cache does not have.
+    writeFileSync(join(repo, 'Lib', 'Lib.csproj'), LIB.replace('</PropertyGroup>', `</PropertyGroup>\n  <ItemGroup>\n    <PackageReference Include="${UNCACHED[0]}" Version="${UNCACHED[1]}" />\n  </ItemGroup>`));
+    git(repo, 'commit', '-q', '-am', 'head');
+    const gates = join(repo, '.omg', 'state', 'factory-gates');
+    const tree = join(gates, 'nuget-defs', 'issue-1');
+    const throwaway = join(gates, 'nuget', 'issue-1');
+    mkdirSync(join(gates, 'nuget-defs'), { recursive: true });
+    mkdirSync(throwaway, { recursive: true });
+    const co = join(repo, '.omg', 'team', 'factory-run', 'worktrees', 'issue-1');
+    mkdirSync(join(co, '..'), { recursive: true });
+    git(repo, 'clone', '-q', '--no-checkout', repo, co);
+    git(co, 'checkout', '-q', 'HEAD~1');
+    const run = createSandboxRunner(repo, undefined, { user: { factory: { run: { sandbox: {} } } }, project: undefined });
+    const inCheckout = async (argv: string[], extra: Record<string, unknown> = {}) => {
+      const t = resolveLocalGateArgv(argv, { cwd: co });
+      if ('missing' in t) throw new Error(t.missing);
+      return run({ purpose: 'gate', argv, exe: t.exe, args: t.args, cwd: co, commonGitDir: join(repo, '.git'), timeoutMs: 600_000, jobRoot: gates, ...extra });
+    };
+    // The base, cached packages: the gate passes offline in the checkout under <repo>/.omg.
+    const base = await inCheckout(['dotnet', 'test', 'Lib.Tests/Lib.Tests.csproj']);
+    if (!base.ran && NO_RUNTIME.test(base.reason)) { ctx.skip(`no Copilot runtime here: ${base.reason}`); return; }
+    expect(base.ran && base.status, base.ran ? base.output : base.reason).toBe(0);
+    if (!base.ran) return;
+    expect(base.output).toMatch(/Passed!\s+- Failed:\s+0, Passed:\s+1/);
+    // NuGet's own walk (what every sandboxed dotnet command did before) reaches <repo>/NuGet.Config and is refused.
+    const walk = await inCheckout(['dotnet', 'build', 'Lib/Lib.csproj'], { nugetHierarchy: 'NuGet reads its own config hierarchy (live test)' });
+    expect(walk.ran && classifyNugetFailure(walk.output), walk.ran ? walk.output : walk.reason).toMatchObject({ kind: 'config-unreadable' });
+    // The head: offline it fails restoring, then the restore in the definition tree (written from git) fetches it.
+    git(co, 'checkout', '-q', 'main');
+    const offline = await inCheckout(['dotnet', 'build', 'Lib/Lib.csproj']);
+    expect(offline.ran && classifyNugetFailure(offline.output), offline.ran ? offline.output : offline.reason).toMatchObject({ kind: 'restore' });
+    const entries = spawnSync('git', ['ls-tree', '-r', '-z', '--full-tree', 'HEAD'], { cwd: repo, encoding: 'utf8' }).stdout.split('\0').filter(Boolean).map((line) => {
+      const tab = line.indexOf('\t');
+      const [mode, , oid] = line.slice(0, tab).split(' ');
+      return [line.slice(tab + 1), oid, mode] as const;
+    });
+    const written = writeDefinitionTree(tree, entries, (oids) => parseCatFileBatch(spawnSync('git', ['cat-file', '--batch'], { cwd: repo, input: `${oids.join('\n')}\n` }).stdout));
+    expect('stubs' in written && written.stubs).not.toContain('nuget.config');
+    const restoreArgv = ['dotnet', ...dotnetRestoreArgs(['build', 'Lib/Lib.csproj'])!];
+    const rt = resolveLocalGateArgv(restoreArgv, { cwd: tree });
+    if ('missing' in rt) throw new Error(rt.missing);
+    const restored = await run({ purpose: 'restore', argv: restoreArgv, exe: rt.exe, args: rt.args, cwd: tree, commonGitDir: join(repo, '.git'), timeoutMs: 300_000, network: 'nuget', nugetPackages: { dir: throwaway, writable: true }, jobRoot: gates });
+    expect(restored.ran && restored.status, restored.ran ? restored.output : restored.reason).toBe(0);
+    expect(existsSync(join(throwaway, UNCACHED[0].toLowerCase(), UNCACHED[1]))).toBe(true);
+    const after = await inCheckout(['dotnet', 'test', 'Lib.Tests/Lib.Tests.csproj'], { nugetPackages: { dir: throwaway, writable: false } });
+    expect(after.ran && after.status, after.ran ? after.output : after.reason).toBe(0);
+    expect(!!packages && existsSync(join(packages, UNCACHED[0].toLowerCase(), UNCACHED[1]))).toBe(false);
+  }, 1_800_000);
+
   it('H1: the restore in a definition tree written from the head\'s git objects never runs the <Exec> of an unpinned import the head rewrote', async (ctx) => {
     const repo = join(dir, 'h1-repo');
     const tree = join(dir, 'h1-tree');
@@ -255,6 +318,54 @@ describe.runIf(process.env.OMG_LIVE_DOTNET === '1' && onWindows && !!dotnet)('a 
       srv.close();
     }
   }, 360_000);
+
+  it('H1 (PR 611 review): a root config with <Clear /> and a local corp feed: the networked restore never fetches from nuget.org', async (ctx) => {
+    if (uncachedCached) { ctx.skip(`${UNCACHED.join(' ')} is already in your packages folder`); return; }
+    const tree = join(dir, 'clear-tree');
+    const corp = join(dir, 'corp-feed');
+    mkdirSync(join(tree, 'Lib'), { recursive: true });
+    mkdirSync(corp);
+    writeFileSync(join(tree, 'NuGet.Config'), `<?xml version="1.0" encoding="utf-8"?>\n<configuration><packageSources><Clear /><add key="corp" value="${corp}" /></packageSources></configuration>\n`);
+    writeFileSync(join(tree, 'Lib', 'Lib.csproj'), LIB.replace('</PropertyGroup>', `</PropertyGroup>\n  <ItemGroup><PackageReference Include="${UNCACHED[0]}" Version="${UNCACHED[1]}" /></ItemGroup>`));
+    const run = createSandboxRunner(root, undefined, { user: { factory: { run: { sandbox: {} } } }, project: undefined });
+    const argv = ['dotnet', 'restore', 'Lib/Lib.csproj'];
+    const t = resolveLocalGateArgv(argv, { cwd: tree });
+    if ('missing' in t) throw new Error(t.missing);
+    const throwaway = join(dir, 'clear-packages');
+    mkdirSync(throwaway);
+    const r = await run({ purpose: 'restore', argv, exe: t.exe, args: t.args, cwd: tree, commonGitDir: join(checkout, '.git'), timeoutMs: 300_000, network: 'nuget', nugetPackages: { dir: throwaway, writable: true } });
+    if (!r.ran && NO_RUNTIME.test(r.reason)) { ctx.skip(`no Copilot runtime here: ${r.reason}`); return; }
+    expect(r.ran, r.ran ? '' : r.reason).toBe(true);
+    if (!r.ran) return;
+    expect(r.status, r.output).not.toBe(0);
+    expect(classifyNugetFailure(r.output)).toMatchObject({ kind: 'private-feed', codes: ['NU1101'], sources: ['corp'] });
+    expect(existsSync(join(throwaway, UNCACHED[0].toLowerCase()))).toBe(false);
+  }, 360_000);
+
+  it('H1: nugetConfigVerdict never adds nuget.org where `dotnet nuget list source` (default user config behind the file) lists it disabled or absent', () => {
+    const P = '<add key="priv" value="http://127.0.0.1:9/v3/index.json" />';
+    const shapes: Array<[string, Buffer]> = [
+      ['plain', Buffer.from(`<configuration><packageSources>${P}</packageSources></configuration>`)],
+      ['Clear', Buffer.from(`<configuration><packageSources><Clear />${P}</packageSources></configuration>`)],
+      ['mirror key', Buffer.from('<configuration><packageSources><add key="nuget.org" value="http://127.0.0.1:9/mirror/index.json" /></packageSources></configuration>')],
+      ['ADD disabled', Buffer.from(`<configuration><packageSources>${P}</packageSources><disabledPackageSources><ADD key="nuget.org" value="true" /></disabledPackageSources></configuration>`)],
+      ['cdata', Buffer.from(`<configuration><packageSources><![CDATA[<!--]]><clear />${P}<!-- --></packageSources></configuration>`)],
+      ['utf16', Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(`<configuration><packageSources><clear />${P}</packageSources></configuration>`, 'utf16le')])],
+      ['config only', Buffer.from('<configuration><config><add key="dependencyVersion" value="Lowest" /></config></configuration>')],
+    ];
+    const iso = join(dir, 'list-source');
+    mkdirSync(join(iso, 'user', 'NuGet'), { recursive: true });
+    writeFileSync(join(iso, 'user', 'NuGet', 'NuGet.Config'), '<?xml version="1.0" encoding="utf-8"?>\n<configuration><packageSources><add key="nuget.org" value="https://api.nuget.org/v3/index.json" protocolVersion="3" /></packageSources></configuration>\n');
+    const env = { ...process.env, APPDATA: join(iso, 'user'), LOCALAPPDATA: join(iso, 'local'), NUGET_HTTP_CACHE_PATH: join(iso, 'http'), NUGET_PACKAGES: join(iso, 'pk'), DOTNET_NOLOGO: '1', DOTNET_CLI_TELEMETRY_OPTOUT: '1' };
+    for (const [name, bytes] of shapes) {
+      const d = join(iso, name.replace(/\W/g, '-'));
+      mkdirSync(d);
+      writeFileSync(join(d, 'nuget.config'), bytes);
+      const out = spawnSync(dotnet!, ['nuget', 'list', 'source', '--format', 'short'], { cwd: d, encoding: 'utf8', env }).stdout;
+      const enabled = /^E https:\/\/api\.nuget\.org\/v3\/index\.json\s*$/m.test(out);
+      if (nugetConfigVerdict(bytes).addNugetOrg) expect(enabled, `${name}: ${out}`).toBe(true);
+    }
+  }, 120_000);
 
   it('H2: a junction obj -> a dir outside the checkout survives the clean step, and a sandboxed delete through it is denied', async (ctx) => {
     const co = join(dir, 'junction-checkout');
