@@ -1019,7 +1019,16 @@ describe('a package-source setting that depends on your environment parks before
     const reason = await parks();
     expect(reason).toContain('eng/CorpFeed.props sets <RestoreSources>, and Directory.Build.props: Import "$(MSBuildThisFileDirectory)eng/CorpFeed.props" has a condition that reads $(UseCorpFeed)');
     expect(reason).toContain('or give $(UseCorpFeed) an unconditional value in a pinned .props file');
-  }, MULTI_RUN_MS);
+    expect(reason).toContain('or make the conditioned Import unconditional or resolvable (a literal or $(MSBuildThisFileDirectory)-based path)');
+    // On a CI variable: the Import's remedy, never "move the source setting" (no setting sits under that condition).
+    w = localWorld(['dotnet', 'test']);
+    baseWithFiles(`  <Import Project="$(MSBuildThisFileDirectory)eng/CorpFeed.props" Condition="'$(CI)' == 'true'" />`, { 'eng/CorpFeed.props': '<Project><PropertyGroup><RestoreSources>https://corp.invalid/v3/index.json</RestoreSources></PropertyGroup></Project>\n' });
+    const ci = await parks();
+    expect(ci).toContain('has a condition that reads $(CI)');
+    expect(ci).toContain('or make the conditioned Import unconditional or resolvable');
+    expect(ci).not.toContain('move the source setting out from under');
+    expect(ci).not.toContain('give $(CI) an unconditional value');
+  }, 2 * MULTI_RUN_MS);
 
   it('(c) a nuget.config value with %NAME%, a response file -p: value from %NAME% that a setting reads, an Import path from the user profile: each parks', async () => {
     w = localWorld(['dotnet', 'test']);

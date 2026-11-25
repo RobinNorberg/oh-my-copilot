@@ -358,12 +358,14 @@ function envReadWhy(r) {
     const pin = r.names.filter((n) => !isEnvironmentOnlyName(n));
     const env = r.names.filter((n) => isEnvironmentOnlyName(n));
     const path = r.reads.some((x) => /so your environment chooses which file loads$/.test(x));
+    // Rule (b): an Import's condition decides whether a file that can change the sources loads; the source setting is not under it.
+    const conditioned = r.reads.some((x) => / has a condition that reads /.test(x));
     const fixes = r.fixes.join('; ');
     if (r.reads.every((x) => /^[^\n]*?: (?:not UTF-8 text|larger than \d+ KB|too many imports to analyse)/.test(x))) {
         const what = r.reads.some((x) => /^[^\n]*?: too many imports to analyse/.test(x)) ? 'analyse the pinned files' : 'read a pinned file';
         return `the engine could not ${what} that may set the package sources (${named}), so it cannot tell whether a package-source setting depends on your environment or machine, which the sandbox does not pass; ${fixes}`;
     }
-    return `a package-source setting of the repository depends on your environment or machine (${named}), which the sandbox does not pass, so there the restriction could be lost and the restore could reach nuget.org where the same command on your machine would use only your feed; declare the feed in the repository's nuget.config (a <packageSources> entry, no %VARIABLE%)${pin.length ? `, or give ${props(pin)} an unconditional value in a pinned .props file` : ''}${env.length ? `, or move the source setting out from under the condition on ${props(env)}` : ''}${path ? ', and import only files the repository tracks, by a path from $(MSBuildThisFileDirectory)' : ''}${fixes ? `; ${fixes}` : ''}`;
+    return `a package-source setting of the repository depends on your environment or machine (${named}), which the sandbox does not pass, so there the restriction could be lost and the restore could reach nuget.org where the same command on your machine would use only your feed; declare the feed in the repository's nuget.config (a <packageSources> entry, no %VARIABLE%)${pin.length ? `, or give ${props(pin)} an unconditional value in a pinned .props file` : ''}${env.length ? `, or move the source setting out from under the condition on ${props(env)}` : ''}${conditioned ? ', or make the conditioned Import unconditional or resolvable (a literal or $(MSBuildThisFileDirectory)-based path)' : ''}${path ? ', and import only files the repository tracks, by a path from $(MSBuildThisFileDirectory)' : ''}${fixes ? `; ${fixes}` : ''}`;
 }
 /** L7: the output lines a ci-failed park shows, and the characters of each and of the whole tail. */
 const PARK_TAIL_LINES = 12;

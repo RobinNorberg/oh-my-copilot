@@ -548,9 +548,10 @@ describe('restoreHostReads: package-source settings that depend on your environm
       names: ['UseCorpFeed'],
       fixes: [],
     });
-    expect(reads(imp("'$(USERDOMAIN)' == 'CORP'")).names).toEqual(['USERDOMAIN']);
+    // A CI or profile name read only by an Import's condition is no name for the remedy (no source setting sits under it).
+    expect(reads(imp("'$(USERDOMAIN)' == 'CORP'"))).toEqual(expect.objectContaining({ reads: [expect.stringContaining('has a condition that reads $(USERDOMAIN)')], names: [] }));
     expect(reads(imp("Exists('$(CORP_TOOLS)/feed.marker')")).names).toEqual(['CORP_TOOLS']);
-    expect(reads(imp("'$(InternalBuild)' == 'true'", pg('<InternalBuild>$(TF_BUILD)</InternalBuild>'))).names).toEqual(['TF_BUILD']);
+    expect(reads(imp("'$(InternalBuild)' == 'true'", pg('<InternalBuild>$(TF_BUILD)</InternalBuild>')))).toEqual(expect.objectContaining({ reads: [expect.stringContaining('reads $(TF_BUILD) through $(InternalBuild)')], names: [] }));
     // One read per Import: the first name its condition reaches.
     expect(reads(imp("'$(InternalBuild)' == 'true'", pg('<InternalBuild>true</InternalBuild>', "'$(TF_BUILD)' == 'True'"))).names).toEqual(['InternalBuild']);
     expect(reads(imp("'$(Registry:HKEY_LOCAL_MACHINE\\Corp@Feed)' != ''")).reads).toEqual([expect.stringContaining('has a condition that reads the registry')]);
@@ -568,7 +569,7 @@ describe('restoreHostReads: package-source settings that depend on your environm
       ['$(LocalOverrides)', 'reads $(LocalOverrides) in its path, which no pinned file defines'],
       ['$(USERPROFILE)/corp/Build.props', 'reads $(USERPROFILE) in its path, which no pinned file defines'],
       ['$([System.Environment]::GetFolderPath(SpecialFolder.UserProfile))/x.props', 'reads $([System.Environment]::GetFolderPath(...)) in its path'],
-    ]) expect(reads({ 'a.props': props(`<Import Project="${project}" />`) }).reads, project).toEqual([expect.stringContaining(why)]);
+    ]) expect(reads({ 'Directory.Build.props': props(`<Import Project="${project}" />`) }).reads, project).toEqual([expect.stringContaining(why)]);
     // A profile name a pinned file defines only conditionally still picks the file; a repository property does not.
     expect(parks({ 'a.props': props(`${pg("<HOME Condition=\"'$(HOME)' == ''\">x</HOME>")}<Import Project="$(HOME)/corp.props" />`) })).toBe(true);
     expect(parks({ 'a.props': props(`${pg("<RepoRoot Condition=\"'$(RepoRoot)' == ''\">$(MSBuildThisFileDirectory)</RepoRoot>")}<Import Project="$(RepoRoot)eng/x.props" />`) })).toBe(false);
@@ -696,7 +697,21 @@ describe('restoreHostReads: package-source settings that depend on your environm
     // Through a property too; an item list elsewhere is not read.
     expect(parks({ 'Directory.Build.props': props(pg('<Feed>@(CorpFeed)</Feed><RestoreSources>$(Feed)</RestoreSources>')) })).toBe(true);
     expect(parks({ 'Directory.Build.props': props(`${pg(`<Items>@(Compile)</Items>${ORG}`)}`) })).toBe(false);
-    expect(expressionRefs("@(A);@(B->'%(X)')").sort()).toEqual(['[item A]', '[item B]']);
+    expect(expressionRefs("@(A);@(B->'%(X)')").sort()).toEqual(['[item A]', '[item B]', '[metadata X]']);
+  });
+
+  it('item metadata (%(Item.Meta), %(Meta)) in a source setting\'s value, condition or a task Output parks like an item list; %XX escapes and %NAME% do not change', () => {
+    const items = '<ItemGroup><CorpFeed Include="$(CORP_FEED)" /></ItemGroup>';
+    const target = (body: string) => ({ 'Directory.Build.props': props(items), 'Directory.Build.targets': props(`<Target Name="CorpFeeds" BeforeTargets="_GetRestoreSettings">${body}</Target>`) });
+    expect(reads(target(pg('<RestoreSources>%(CorpFeed.Identity)</RestoreSources>'))).reads)
+      .toEqual(['Directory.Build.targets: <RestoreSources> reads the item metadata %(CorpFeed), and the engine does not follow items into a package-source setting (list the sources as a property or in nuget.config)']);
+    expect(parks(target('<CreateProperty Value="%(CorpFeed.Identity)"><Output TaskParameter="Value" PropertyName="RestoreSources" /></CreateProperty>'))).toBe(true);
+    expect(parks(target(pg('<RestoreSources>https://corp.invalid/v3/index.json</RestoreSources>', "'%(Identity)' != ''")))).toBe(true);
+    expect(expressionRefs('%(CorpFeed.Identity)')).toEqual(['[metadata CorpFeed]']);
+    // %XX escapes and %NAME% keep their meaning.
+    expect(expressionRefs('https://x/a%C3%A9b', true)).toEqual([]);
+    expect(expressionRefs('%CORP%', true)).toEqual(['[env CORP]']);
+    expect(expressionRefs('https://x/My%20Project')).toEqual([]);
   });
 
   it('SDK import hooks are Imports: their value is the path, their conditions the Import\'s; an Import* switch loads its Directory file', () => {
@@ -742,6 +757,117 @@ describe('restoreHostReads: package-source settings that depend on your environm
     for (const def of ["<RepoRoot Condition=\"'$(RepoRoot)' == ''\">$(MSBuildThisFileDirectory)</RepoRoot>", '<RepoRoot>$(MSBuildThisFileDirectory)</RepoRoot><RepoRoot>$(MSBuildThisFileDirectory)</RepoRoot>']) {
       expect(reads(root(def)).reads, def).toEqual([expect.stringContaining('or imported by a path the engine does not resolve: only literal and $(MSBuildThisFileDirectory)-based paths)')]);
     }
+  });
+
+  it('rule (c)\'s undefined name in an Import path counts only in a .NET project\'s evaluation; C++, SSDT and WiX toolset names are reserved', () => {
+    const vcx = props(`<Import Project="$(VCTargetsPath)\\Microsoft.Cpp.Default.props" /><ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'"><Import Project="$(UserRootDir)\\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\\Microsoft.Cpp.$(Platform).user.props')" /></ImportGroup>`);
+    const sql = props(`<Import Condition="'$(SQLDBExtensionsRefPath)' != ''" Project="$(SQLDBExtensionsRefPath)\\Microsoft.Data.Tools.Schema.SqlTasks.targets" />`);
+    const wix = props('<Import Project="$(WixTargetsPath)" />');
+    for (const [p, t] of [['native/H/H.vcxproj', vcx], ['db/Db/Db.sqlproj', sql], ['setup/S.wixproj', wix]]) {
+      expect(parks({ 'Lib/Lib.csproj': lib, [p]: t }), p).toBe(false);
+      expect(parks({ 'Lib/Lib.csproj': lib, [p]: t, 'Directory.Build.props': props(pg(ORG)) }), `${p} with a literal setting`).toBe(false);
+    }
+    for (const n of ['VCTargetsPath', 'UserRootDir', 'SQLDBExtensionsRefPath', 'WixTargetsPath']) expect(isReservedProperty(n), n).toBe(true);
+    // Another project kind's own undefined name: not a read; the same Import in a .NET file, or in a file one imports (under any condition), is.
+    const other = props('<Import Project="$(CorpToolsDir)corp.props" />');
+    expect(parks({ 'tools/x.proj': other })).toBe(false);
+    for (const p of ['Lib/Lib.csproj', 'Lib/Lib.fsproj', 'Lib/Lib.vbproj', 'Directory.Build.props', 'Directory.Build.targets', 'Directory.Packages.props']) {
+      expect(reads({ [p]: other }).reads, p).toEqual([`${p}: Import "$(CorpToolsDir)corp.props" reads $(CorpToolsDir) in its path, which no pinned file defines, so your environment chooses which file loads`]);
+    }
+    expect(parks({ 'tools/x.proj': other, 'Directory.Build.props': props(`<Import Project="tools/x.proj" Condition="'$(Configuration)' == 'Release'" />`) })).toBe(true);
+    // A host or profile read in another project kind's Import path still counts.
+    expect(parks({ 'tools/x.proj': props('<Import Project="$(USERPROFILE)/corp.props" />') })).toBe(true);
+  });
+
+  it('Arcade SDK names are reserved only when the pinned files use the Arcade SDK', () => {
+    const dbp = props('<Import Project="Sdk.props" Sdk="Microsoft.DotNet.Arcade.Sdk" /><Import Project="$(RepositoryEngineeringDir)Analyzers.props" />');
+    const globalJson = '{ "sdk": { "version": "10.0.100" }, "msbuild-sdks": { "Microsoft.DotNet.Arcade.Sdk": "10.0.0-beta.25500.1" } }\n';
+    expect(parks({ 'global.json': globalJson, 'Directory.Build.props': dbp, 'eng/Analyzers.props': props(pg('<EnableNETAnalyzers>true</EnableNETAnalyzers>')) })).toBe(false);
+    // The global.json entry alone, or the Sdk import alone, is enough.
+    const engImport = props('<Import Project="$(RepositoryEngineeringDir)Analyzers.props" />');
+    expect(parks({ 'global.json': globalJson, 'Directory.Build.props': engImport })).toBe(false);
+    expect(parks({ 'Directory.Build.props': dbp })).toBe(false);
+    for (const n of ['RepoRoot', 'RepositoryRoot', 'ArtifactsDir', 'ArtifactsBinDir', 'ArtifactsObjDir', 'ArtifactsPackagesDir', 'DotNetRoot', 'DotNetTool', 'ArcadeSdkFoo']) {
+      expect(parks({ 'global.json': globalJson, 'Directory.Build.props': props(`<Import Project="$(${n})x.props" />`) }), n).toBe(false);
+      // Without the Arcade SDK they are ordinary names: undefined, your environment sets them.
+      expect(parks({ 'Directory.Build.props': props(`<Import Project="$(${n})x.props" />`) }), `${n} without Arcade`).toBe(true);
+    }
+    expect(parks({ 'Directory.Build.props': props(pg('<RestoreAdditionalProjectSources>$(ArtifactsDir)packages</RestoreAdditionalProjectSources>')) })).toBe(true);
+  });
+
+  it('the Microsoft.Common.CrossTargeting, CSharp, VisualBasic and FSharp hooks are SDK import hooks too', () => {
+    for (const name of ['CustomBeforeMicrosoftCSharpTargets', 'CustomAfterMicrosoftCSharpTargets', 'CustomAfterMicrosoftCommonCrossTargetingTargets', 'CustomBeforeMicrosoftCommonCrossTargetingTargets', 'CustomAfterMicrosoftVisualBasicTargets', 'CustomBeforeMicrosoftFSharpTargets', 'CustomAfterMicrosoftCSharpProps']) {
+      const files = { 'Directory.Build.props': props(pg(`<${name} Condition="'$(UseCorpFeed)' == 'true'">$(MSBuildThisFileDirectory)eng/Corp.targets</${name}>`)), 'eng/Corp.targets': CORP };
+      expect(reads(files).reads, name).toEqual([`eng/Corp.targets sets <RestoreSources>, and Directory.Build.props: <${name}> (an SDK import hook) has a condition that reads $(UseCorpFeed), which no pinned file gives an unconditional value`]);
+    }
+  });
+
+  it('<Project Sdk="A;B"> and a top-level <Sdk Name="X" /> are Imports of each SDK; only Microsoft.NET.Sdk[.X] and Microsoft.Build.X load nothing of the repository', () => {
+    const conditioned = (target: string) => ({ 'Directory.Build.props': props(`${pg(ORG)}<Import Project="$(MSBuildThisFileDirectory)eng/Web.props" Condition="'$(UseCorpFeed)' == 'true'" />`), 'eng/Web.props': target });
+    expect(reads(conditioned('<Project>\n  <Sdk Name="Corp.Feeds.Sdk" />\n</Project>\n')).reads)
+      .toEqual(['Directory.Build.props sets <RestoreSources>, and eng/Web.props imports "Sdk.props", a file of the SDK "Corp.Feeds.Sdk", which the engine cannot see, and Directory.Build.props: Import "$(MSBuildThisFileDirectory)eng/Web.props" has a condition that reads $(UseCorpFeed), which no pinned file gives an unconditional value']);
+    expect(parks(conditioned('<Project Sdk="Microsoft.NET.Sdk;Corp.Feeds.Sdk/1.0.0"></Project>\n'))).toBe(true);
+    for (const sdk of ['Microsoft.NET.Sdk', 'Microsoft.NET.Sdk.Web', 'Microsoft.NET.Sdk/10.0.100', 'Microsoft.Build.NoTargets/3.7.56']) expect(parks(conditioned(`<Project Sdk="${sdk}"></Project>\n`)), sdk).toBe(false);
+    // A name that only starts like the .NET SDK's is another SDK.
+    expect(parks({ 'Directory.Build.props': props(`${pg(ORG)}<Import Project="Sdk.props" Sdk="Microsoft.NET.SdkCorpFeeds" Condition="'$(UseCorpFeed)' == 'true'" />`) })).toBe(true);
+    // Unconditioned project SDKs of ordinary repositories: nothing.
+    expect(parks({
+      'Directory.Build.props': props(`${pg(ORG)}<Import Project="$(MSBuildThisFileDirectory)eng/ci.props" Condition="'$(CI)' == 'true'" />`),
+      'eng/ci.props': props(pg('<ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>')),
+      'tests/T/T.csproj': '<Project Sdk="MSTest.Sdk/3.6.4"><PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup></Project>\n',
+      'src/AppHost/AppHost.csproj': '<Project Sdk="Microsoft.NET.Sdk">\n  <Sdk Name="Aspire.AppHost.Sdk" Version="9.0.0" />\n</Project>\n',
+      'src/Mobile/Mobile.csproj': '<Project Sdk="Uno.Sdk"></Project>\n',
+      'dirs.proj': '<Project Sdk="Microsoft.Build.Traversal/4.1.82"></Project>\n',
+      'Directory.Build.targets': props(`<Import Project="Sdk.targets" Sdk="MSTest.Sdk" Condition="'$(IsTestProject)' == 'true'" />`),
+    })).toBe(false);
+  });
+
+  it('$(P) Import paths: NormalizeDirectory with extra literal arguments resolves; an environment argument does not', () => {
+    const files = (def: string) => ({ 'Directory.Build.props': props(`${pg(`<EngRoot>${def}</EngRoot>${ORG}`)}<Import Project="$(EngRoot)ci.props" Condition="'$(CI)' == 'true'" />`), 'eng/ci.props': props(pg('<ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>')) });
+    for (const def of ["$([MSBuild]::NormalizeDirectory($(MSBuildThisFileDirectory), 'eng'))", "$([MSBuild]::NormalizeDirectory('$(MSBuildThisFileDirectory)', 'eng', ''))", '$([MSBuild]::NormalizeDirectory($(MSBuildThisFileDirectory), eng))']) {
+      expect(parks(files(def)), def).toBe(false);
+    }
+    for (const def of ["$([MSBuild]::NormalizeDirectory($(MSBuildThisFileDirectory), '$(CORP_SUB)'))", "$([MSBuild]::NormalizeDirectory($(MSBuildThisFileDirectory), 'C:/corp'))", "$([MSBuild]::EnsureTrailingSlash($(MSBuildThisFileDirectory), 'eng'))"]) {
+      expect(parks(files(def)), def).toBe(true);
+    }
+  });
+
+  it('settable and firstHit are memoised and budgeted: many defining files outside the evaluation, read many times, finish fast', () => {
+    const fill = (unit: (n: number) => string) => {
+      const out: string[] = [];
+      for (let n = 0, len = 0; ; n++) {
+        const s = unit(n);
+        if (len + s.length > PINNED_READ_MAX - 400) break;
+        out.push(s);
+        len += s.length + 1;
+      }
+      return out.join('\n');
+    };
+    // settableQuad: K files define Feed unconditionally outside each reader's evaluation; RF files read it thousands of times.
+    const settableQuad = (k: number, rf: number) => [
+      { path: 'src/Directory.Build.props', text: props(pg('<Feed>https://x</Feed><RestoreSources>$(Feed)</RestoreSources>')) },
+      ...Array.from({ length: k }, (_, i) => ({ path: `A${i}/x.props`, text: props(pg('<Feed>https://x</Feed>')) })),
+      ...Array.from({ length: rf }, (_, j) => ({ path: `r/r${j}.props`, text: props(pg(fill((n) => `<Y${n}>$(Feed)</Y${n}>`))) })),
+    ];
+    // rootsQuad: thousands of settings conditioned on a name K files define outside their evaluation.
+    const rootsQuad = (k: number, rf: number) => [
+      ...Array.from({ length: k }, (_, i) => ({ path: `A${i}/x.props`, text: props(pg('<Feed>https://x</Feed>')) })),
+      ...Array.from({ length: rf }, (_, j) => ({ path: `r/r${j}.props`, text: props(fill((n) => `<PropertyGroup><RestoreSources Condition="'$(Feed)'!='${n}'">x</RestoreSources></PropertyGroup>`)) })),
+    ];
+    let start = performance.now();
+    expect(restoreHostReads(settableQuad(2000, 10)).reads).toEqual([]);
+    expect(performance.now() - start).toBeLessThan(3000);
+    start = performance.now();
+    const r = restoreHostReads(rootsQuad(5000, 12));
+    expect(performance.now() - start).toBeLessThan(3000);
+    expect(r.reads[0]).toContain('r/r0.props: <RestoreSources> reads $(Feed), which pinned files give an unconditional value only outside this evaluation');
+    // Memoised per (name, reading file) and iterating the smaller side: tens of thousands of reads of a name 2,000 files
+    // define take a few thousand steps, not reads x files; each root's reads are charged, so a small budget parks.
+    expect(restoreHostReads(settableQuad(2000, 2), 20_000).fixes).toEqual([]);
+    // Each firstHit (per setting or Import) is charged: 1,500 settings take 1,500 steps to read and 1,500 more to check.
+    const settings = props(Array.from({ length: 1500 }, (_, i) => pg(`<RestoreSources Condition="'$(Configuration)' == '${i}'">https://x</RestoreSources>`)).join(''));
+    expect(restoreHostReads([{ path: 'a.props', text: settings }], 3100).fixes).toEqual([]);
+    expect(restoreHostReads([{ path: 'a.props', text: settings }], 2900).fixes).toEqual([expect.stringContaining('too many imports to analyse')]);
   });
 
   it('a response file switch whose quoted value holds a ; list: each %NAME% in it counts', () => {

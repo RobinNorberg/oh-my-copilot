@@ -188,7 +188,11 @@ export interface RestoreHostReads {
     reads: string[];
     /** How many more reads there were than `reads` lists. */
     more: number;
-    /** The property names among them your environment can set (sorted): the park asks to give them an unconditional value, or (isEnvironmentOnlyName) to move the setting out from under them. */
+    /**
+     * The property names among them your environment can set (sorted): the park asks to give them an unconditional value,
+     * or (isEnvironmentOnlyName, from a source setting's own reads only) to move the setting out from under them. A CI
+     * or profile name read only by an Import's condition (rule b) is not listed: that remedy is the Import's.
+     */
     names: string[];
     /** Remedies for files the engine could not read (`re-save <file> as UTF-8`). */
     fixes: string[];
@@ -196,8 +200,10 @@ export interface RestoreHostReads {
 /** The most reads restoreHostReads lists (the rest are counted in `more`). */
 export declare const RESTORE_READS_MAX = 50;
 /**
- * restoreHostReads' work budget: the import steps it may take (each Import or source setting it reads, each import
- * edge it follows, each file it adds to an import closure). Past it the restore parks ("too many imports to analyse").
+ * restoreHostReads' work budget: the import steps it may take (each Import or source setting it reads and each one it
+ * checks, each import edge it follows, each file it adds to an import closure, each step of an upward file search and
+ * each definition of a name rule (b) follows, and each defining or evaluation file it compares to decide whether a
+ * definition is in a reading file's evaluation). Past it the restore parks ("too many imports to analyse").
  */
 export declare const RESTORE_WORK_MAX = 100000;
 /**
@@ -220,18 +226,21 @@ export declare const RESTORE_WORK_MAX = 100000;
  * `DirectoryBuildTargetsPath`, `ImportDirectoryBuildTargets`, ...) is an
  * Import of the file its value names (for an `Import*` switch: the nearest
  * Directory file of its kind at or above its file's dir) under the
- * definition's conditions. An `Sdk` Import loads nothing of the repository
- * for `Microsoft.NET.Sdk*` and `Microsoft.Build.*` and a file the engine
- * cannot resolve for any other SDK.
+ * definition's conditions. An `Sdk` Import, and the implicit one of each SDK
+ * of `<Project Sdk="A;B">` and of a top-level `<Sdk Name="X" />` (no
+ * condition), loads nothing of the repository for a PLAIN_SDK and a file the
+ * engine cannot resolve for any other SDK.
  *
  * A name read in F at an offset is env-settable when it is not reserved
- * (isReservedProperty), not a source setting itself, and has no
+ * (isReservedProperty; with the Arcade SDK in use, ARCADE_PROPERTIES too),
+ * not a source setting itself, and has no
  * unconditional definition (no condition and no conditioned group, `Choose`
  * branch or target around it) in F before the read or in another file of
  * F's evaluation. A host read is a GetEnvironmentVariable(s),
  * ExpandEnvironmentVariables, GetFolderPath or registry function,
  * `[System.Environment]::UserName`, `UserDomainName` or `MachineName`, or
- * a response file's `%NAME%`; an item list (`@(Name)`) counts as one, as
+ * a response file's `%NAME%`; an item list or item metadata (`@(Name)`,
+ * `%(Name.Meta)`) counts as one, as
  * the engine does not follow items. A name reaches what the values and
  * conditions of its pinned definitions read, each where it is defined,
  * transitively (memoised per name). A read is (at most one per setting or
@@ -249,13 +258,18 @@ export declare const RESTORE_WORK_MAX = 100000;
  *     whether a file that can change the sources loads;
  * (c) an Import whose `Project` value reaches a host read, a name no pinned
  *     file defines, or an env-settable profile name (PROFILE_ENV): your
- *     environment chooses which file loads; each `%NAME%` in a pinned
+ *     environment chooses which file loads (a name no pinned file defines
+ *     only in a file of a .NET project's evaluation: DOTNET_EVALUATED files
+ *     and the pinned files they reach by resolvable Imports, under any
+ *     condition); each `%NAME%` in a pinned
  *     nuget.config value, which NuGet expands; and a pinned file the engine
  *     cannot read (larger than PINNED_READ_MAX, or not UTF-8 text).
  *
  * Each import closure is memoised per file and each Import resolved once
  * per directory, but closures of nested files overlap, so the work can grow with the
- * square of the import graph: past RESTORE_WORK_MAX import steps the
+ * square of the import graph (whether a definition is in a reading file's
+ * evaluation is memoised per name and reading file): past RESTORE_WORK_MAX
+ * import steps the
  * result is one read, "too many imports to analyse", with its remedy.
  */
 export declare function restoreHostReads(files: ReadonlyArray<{

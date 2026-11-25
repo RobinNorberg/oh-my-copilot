@@ -140445,11 +140445,28 @@ function projectSdkMentions(path30, text9) {
   }
   return [...out].sort();
 }
+function thisDirDef(value) {
+  const v = value.trim();
+  const plain = /^\$\(MSBuildThisFileDirectory\)(.*)$/i.exec(v);
+  let pieces;
+  if (plain) pieces = [plain[1]];
+  else {
+    const fn = /^\$\(\[MSBuild\]::(NormalizeDirectory|EnsureTrailingSlash)\((.*)\)\)([^()]*)$/i.exec(v);
+    if (!fn) return null;
+    const args = fn[2].split(",").map((a) => a.trim().replace(/^'(.*)'$/, "$1").trim());
+    const first = /^\$\(MSBuildThisFileDirectory\)(.*)$/i.exec(args[0]);
+    if (!first || args.length > 1 && fn[1].toLowerCase() !== "normalizedirectory") return null;
+    if (args.slice(1).some((a) => /^(?:[a-z]:|[\\/])/i.test(a))) return null;
+    pieces = [first[1], ...args.slice(1), fn[3]];
+  }
+  if (!pieces.every((p) => LITERAL_PIECE.test(p))) return null;
+  return pieces.map((p) => p.trim().replace(/^[\\/]+/, "")).filter(Boolean).join("/");
+}
 function expressionRefs(expr, percent = false) {
   const out = /* @__PURE__ */ new Set();
-  if (!expr.includes("$(") && !expr.includes("@(") && !(percent && expr.includes("%"))) return [];
+  if (!expr.includes("$(") && !expr.includes("@(") && !expr.includes("%(") && !(percent && expr.includes("%"))) return [];
   for (const m of expr.matchAll(PROPERTY_REF)) out.add(m[2] && m[1].toLowerCase() === "registry" ? "[registry]" : m[1]);
-  for (const m of expr.matchAll(ITEM_REF)) out.add(`[item ${m[1] ?? "?"}]`);
+  for (const m of expr.matchAll(ITEM_REF)) out.add(`[${m[1] === "@" ? "item" : "metadata"} ${m[2] ?? "?"}]`);
   if (HOST_READ_HINT.test(expr)) for (const m of expr.matchAll(HOST_READ)) {
     const literal3 = m[3] ?? m[4] ?? m[5];
     out.add(m[1].toLowerCase() === "getenvironmentvariable" ? `[env ${literal3 ?? "?"}]` : `[${m[1]}]`);
@@ -140519,8 +140536,8 @@ function propertyFlow(path30, text9) {
   };
   const define = (name, at, unconditional, valueRefs, cond, value) => {
     const refs2 = cond.length > 0 ? shared([...valueRefs, ...cond]) : valueRefs;
-    const dir = unconditional && value !== void 0 ? THIS_DIR_DEF.exec(value) : null;
-    defs.push({ name, at, unconditional, refs: refs2, ...dir ? { dir: [dir[1], dir[2]].map((s) => (s ?? "").replace(/^[\\/]+/, "")).filter(Boolean).join("/") } : {} });
+    const dir = unconditional && value !== void 0 ? thisDirDef(value) : null;
+    defs.push({ name, at, unconditional, refs: refs2, ...dir !== null ? { dir } : {} });
     if (RESTORE_SOURCE_SETTING.test(name)) roots.push({ kind: "setting", value: name, at, refs: refs2, cond: [], conditional: !unconditional, sdk: null });
     else if (value !== void 0 && IMPORT_HOOK.test(name)) {
       roots.push({ kind: "import", value: HOOK_SWITCH[name.toLowerCase()] ?? value, at, refs: valueRefs, cond, conditional: !unconditional, sdk: null, hook: name });
@@ -140589,6 +140606,11 @@ function propertyFlow(path30, text9) {
       const project = attr(t, "project") ?? "";
       roots.push({ kind: "import", value: project, at: t.start, refs: shared(expressionRefs(project)), cond: f.cond, conditional: f.conditioned, sdk: attr(t, "sdk") ?? null });
     }
+    const sdks = !parent && name === "project" ? attr(t, "sdk") : name === "sdk" && parent?.tag.name.toLowerCase() === "project" && stack.length === 1 ? attr(t, "name") : void 0;
+    for (const s of sdks?.split(";") ?? []) {
+      const sdk = s.split("/")[0].trim();
+      if (sdk && !PLAIN_SDK.test(sdk)) roots.push({ kind: "import", value: "Sdk.props", at: t.start, refs: [], cond: [], conditional: false, sdk });
+    }
     const output2 = name === "output" ? attr(t, "propertyname") : void 0;
     if (output2 !== void 0 && parent) define(msbuildUnescape(output2).trim(), t.start, false, [...new Set(parent.tag.attrs.flatMap(([, v]) => expressionRefs(decodeXml(v))))], f.cond);
     if (t.selfClose) finish2(f, "");
@@ -140600,6 +140622,7 @@ function hostReadWords(ref) {
   if (ref === "[env ?]") return "an environment variable whose name is computed";
   if (ref.startsWith("[env ")) return `the environment variable ${ref.slice(5, -1)}`;
   if (ref === "[registry]" || /^\[GetRegistryValue/i.test(ref)) return "the registry";
+  if (ref.startsWith("[metadata ")) return `the item metadata %(${ref.slice(10, -1)}), and the engine does not follow items into a package-source setting (list the sources as a property or in nuget.config)`;
   if (ref.startsWith("[item ")) return `the item list @(${ref.slice(6, -1)}), and the engine does not follow items into a package-source setting (list the sources as a property or in nuget.config)`;
   return /^\[(?:UserDomainName|UserName|MachineName)\]$/i.test(ref) ? `$([System.Environment]::${ref.slice(1, -1)})` : `$([System.Environment]::${ref.slice(1, -1)}(...))`;
 }
@@ -140674,6 +140697,7 @@ function msbuildReads(files, readable, add2, workMax) {
   }
   const flowAt = new Map(flows.map((f) => [f.lpath, f]));
   const pinned = new Set(files.map((f) => f.path.toLowerCase()));
+  const arcade = flows.some((f) => f.flow.roots.some((r) => r.sdk !== null && r.sdk.split(";").some((s) => ARCADE_SDK.test(s)))) || files.some((f) => fileKind(f.path) === "global" && projectSdkMentions(f.path, f.text).some((s) => ARCADE_SDK.test(s)));
   const defsBy = /* @__PURE__ */ new Map();
   const fixedAt = /* @__PURE__ */ new Map();
   for (const { path: path30, lpath, flow } of flows) {
@@ -140785,17 +140809,46 @@ ${root.value}`;
     closures.set(start, seen);
     return seen;
   };
+  const insideAt = /* @__PURE__ */ new Map();
   const settable = (name, lpath, at) => {
     const at2 = fixedAt.get(name.toLowerCase());
     if (!at2) return "none";
     const own3 = at2.get(lpath);
     if (own3 && own3.first < at) return null;
-    const ev = anchors(lpath);
-    for (const p of at2.keys()) if (p !== lpath && ev.some((a) => closure(a).has(p))) return null;
-    if (at2.size > (own3 ? 1 : 0)) return "elsewhere";
+    if (at2.size > (own3 ? 1 : 0)) {
+      const key = `${name.toLowerCase()}
+${lpath}`;
+      let inside3 = insideAt.get(key);
+      if (inside3 === void 0) {
+        const cs = anchors(lpath).map(closure);
+        let steps = 0;
+        if (at2.size <= cs.reduce((n, c) => n + c.size, 0)) {
+          inside3 = false;
+          for (const p of at2.keys()) {
+            steps++;
+            if (p !== lpath && cs.some((c) => c.has(p))) {
+              inside3 = true;
+              break;
+            }
+          }
+        } else {
+          inside3 = cs.some((c) => {
+            for (const p of c) {
+              steps++;
+              if (p !== lpath && at2.has(p)) return true;
+            }
+            return false;
+          });
+        }
+        spend2(steps);
+        insideAt.set(key, inside3);
+      }
+      if (inside3) return null;
+      return "elsewhere";
+    }
     return own3 ? own3.last > at ? "after" : "self" : "none";
   };
-  const stops = (ref) => isReservedProperty(ref) || RESTORE_SOURCE_SETTING.test(ref);
+  const stops = (ref) => isReservedProperty(ref) || RESTORE_SOURCE_SETTING.test(ref) || arcade && ARCADE_PROPERTIES.test(ref);
   const direct = (ref, lpath, at, mode) => {
     if (ref.startsWith("[")) return { ref, why: "host" };
     if (ref.startsWith("#")) return "follow";
@@ -140804,7 +140857,7 @@ ${root.value}`;
       const why2 = settable(ref, lpath, at);
       return why2 ? { ref, why: why2 } : "follow";
     }
-    if (!defsBy.has(ref.toLowerCase())) return { ref, why: "undefined" };
+    if (!defsBy.has(ref.toLowerCase())) return mode === "path" ? { ref, why: "undefined" } : PROFILE_ENV.test(ref) ? { ref, why: "profile" } : "follow";
     return PROFILE_ENV.test(ref) && settable(ref, lpath, at) ? { ref, why: "profile" } : "follow";
   };
   const solved = /* @__PURE__ */ new Map();
@@ -140844,6 +140897,7 @@ ${root.value}`;
     return hits;
   };
   const firstHit = (refs2, lpath, at, mode) => {
+    spend2(1);
     for (const r of refs2) {
       const x = direct(r, lpath, at, mode);
       if (x === "stop") continue;
@@ -140865,6 +140919,27 @@ ${root.value}`;
     return `${what2}${via} in its path, ${hit2.why === "undefined" ? "which no pinned file defines, " : ""}so your environment chooses which file loads`;
   };
   const nameOf = (hit2) => hit2.why === "host" ? void 0 : hit2.ref;
+  let dotnetFiles;
+  const inDotnet = (lpath) => {
+    if (!dotnetFiles) {
+      const seen = new Set(flows.filter((f) => DOTNET_EVALUATED.test(f.lpath)).map((f) => f.lpath));
+      const queue = [...seen];
+      for (let i = 0; i < queue.length; i++) {
+        const f = flowAt.get(queue[i]);
+        for (const r of f.flow.roots) {
+          if (r.kind !== "import") continue;
+          for (const t of resolved(r, f.path) ?? []) {
+            spend2(1);
+            if (seen.has(t) || !flowAt.has(t)) continue;
+            seen.add(t);
+            queue.push(t);
+          }
+        }
+      }
+      dotnetFiles = seen;
+    }
+    return dotnetFiles.has(lpath);
+  };
   let sets = "";
   const conditioned = /* @__PURE__ */ new Set();
   for (const { path: path30, lpath, flow } of flows) {
@@ -140875,7 +140950,8 @@ ${root.value}`;
         if (x2) add2(() => `${path30}: ${what(root)} reads ${valueWords(x2)}`, nameOf(x2.hit));
         continue;
       }
-      const x = firstHit(root.refs, lpath, root.at, "path");
+      let x = firstHit(root.refs, lpath, root.at, "path");
+      if (x?.hit.why === "undefined" && !inDotnet(lpath)) x = firstHit(root.refs, lpath, root.at, "foreign");
       if (x) add2(() => `${path30}: ${what(root)} reads ${pathWords(x)}`);
       else if (root.conditional && root.cond.length > 0) conditioned.add(root);
     }
@@ -140953,11 +141029,12 @@ ${root.value}`;
       if (!x) continue;
       const ts = resolved(root, path30);
       const lead = ts ? `${changes.get(ts.find((t) => changes.has(t)))}, and ${path30}: ${what(root)}` : `${sets}, and ${path30}: ${what(root)} (${unresolvedWords(root)})`;
-      add2(() => `${lead} has a condition that reads ${valueWords(x)}`, nameOf(x.hit));
+      const n = nameOf(x.hit);
+      add2(() => `${lead} has a condition that reads ${valueWords(x)}`, n && !isEnvironmentOnlyName(n) ? n : void 0);
     }
   }
 }
-var PINNED_READ_MAX, SHIM_EXT, PM_OPTIONS, NPX_RUN, PURE_DELETE, msbuildUnescape, readsForNodeModulesRefs, RESTORE_SETTINGS, PINNED_IMPORT, THIS_DIR_UP, FILE_ABOVE, THIS_DIR_PATH, RESTORE_SOURCE_SETTING, IMPORT_HOOK, HOOK_SWITCH, PLAIN_SDK, THIS_DIR_DEF, RESERVED_PROPERTIES, isReservedProperty, PROFILE_ENV, CI_ENV, isEnvironmentOnlyName, PROPERTY_REF, HOST_READ, HOST_READ_HINT, ENV_PERCENT, ITEM_REF, RESTORE_READS_MAX, RESTORE_WORK_MAX, notUtf8, AUTO_FILES, OverBudget;
+var PINNED_READ_MAX, SHIM_EXT, PM_OPTIONS, NPX_RUN, PURE_DELETE, msbuildUnescape, readsForNodeModulesRefs, RESTORE_SETTINGS, PINNED_IMPORT, THIS_DIR_UP, FILE_ABOVE, THIS_DIR_PATH, RESTORE_SOURCE_SETTING, IMPORT_HOOK, HOOK_SWITCH, PLAIN_SDK, ARCADE_SDK, ARCADE_PROPERTIES, DOTNET_EVALUATED, LITERAL_PIECE, RESERVED_PROPERTIES, isReservedProperty, PROFILE_ENV, CI_ENV, isEnvironmentOnlyName, PROPERTY_REF, HOST_READ, HOST_READ_HINT, ENV_PERCENT, ITEM_REF, RESTORE_READS_MAX, RESTORE_WORK_MAX, notUtf8, AUTO_FILES, OverBudget;
 var init_dotnet_package_refs = __esm({
   "src/factory/run/dotnet-package-refs.ts"() {
     "use strict";
@@ -140976,10 +141053,13 @@ var init_dotnet_package_refs = __esm({
     FILE_ABOVE = new RegExp(String.raw`^\$\(\[MSBuild\]::GetPathOfFileAbove\(\s*(?:'([^'$%@()]+)'|([^'"$%@(),\s]+))\s*(?:,\s*(?:'${THIS_DIR_UP}'|${THIS_DIR_UP})\s*)?\)\)$`, "i");
     THIS_DIR_PATH = /^(?:\$\(MSBuildThisFileDirectory\)[\\/]*)?([^$@%*?]*)$/i;
     RESTORE_SOURCE_SETTING = /^Restore(?:Sources|AdditionalProjectSources|FallbackFolders|AdditionalProjectFallbackFolders|ConfigFile|RootConfigDirectory)$/i;
-    IMPORT_HOOK = /^(?:Custom(?:Before|After)(?:MicrosoftCommon|DirectoryBuild)(?:Props|Targets)|Directory(?:BuildProps|BuildTargets|PackagesProps)Path|ImportDirectory(?:BuildProps|BuildTargets|PackagesProps))$/i;
+    IMPORT_HOOK = /^(?:Custom(?:Before|After)(?:MicrosoftCommon|MicrosoftCommonCrossTargeting|MicrosoftCSharp|MicrosoftVisualBasic|MicrosoftFSharp|DirectoryBuild)(?:Props|Targets)|Directory(?:BuildProps|BuildTargets|PackagesProps)Path|ImportDirectory(?:BuildProps|BuildTargets|PackagesProps))$/i;
     HOOK_SWITCH = { importdirectorybuildprops: "Directory.Build.props", importdirectorybuildtargets: "Directory.Build.targets", importdirectorypackagesprops: "Directory.Packages.props" };
-    PLAIN_SDK = /^\s*Microsoft\.(?:NET\.Sdk|Build\.)/i;
-    THIS_DIR_DEF = /^\s*(?:\$\(MSBuildThisFileDirectory\)|\$\(\[MSBuild\]::(?:NormalizeDirectory|EnsureTrailingSlash)\(\s*'?\$\(MSBuildThisFileDirectory\)([^$@%*?'"(),;]*)'?\s*\)\))([^$@%*?'"(),;]*?)\s*$/i;
+    PLAIN_SDK = /^\s*(?:Microsoft\.NET\.Sdk(?:\.[^\s/;]+)?|Microsoft\.Build\.[^\s/;]+)\s*(?:\/[^;]*)?$/i;
+    ARCADE_SDK = /^\s*Microsoft\.DotNet\.Arcade\.Sdk\s*(?:\/[^;]*)?$/i;
+    ARCADE_PROPERTIES = /^(?:RepositoryEngineeringDir|RepoRoot|RepositoryRoot|ArtifactsDir|ArtifactsBinDir|ArtifactsObjDir|ArtifactsPackagesDir|DotNetRoot|DotNetTool|ArcadeSdk\w*)$/i;
+    DOTNET_EVALUATED = /(?:^|\/)(?:[^/]+\.(?:cs|fs|vb)proj|directory\.build\.props|directory\.build\.targets|directory\.packages\.props|directory\.build\.rsp)$/i;
+    LITERAL_PIECE = /^[^$@%*?'"(),;]*$/;
     RESERVED_PROPERTIES = /* @__PURE__ */ new Set([
       "configuration",
       "platform",
@@ -141134,7 +141214,12 @@ var init_dotnet_package_refs = __esm({
       "restoreusestaticgraphevaluation",
       "nugetaudit",
       "nugetauditmode",
-      "nugetauditlevel"
+      "nugetauditlevel",
+      // Other project kinds' toolsets: C++ (.vcxproj), SSDT (.sqlproj), WiX (.wixproj).
+      "vctargetspath",
+      "userrootdir",
+      "sqldbextensionsrefpath",
+      "wixtargetspath"
     ]);
     isReservedProperty = (name) => /^MSBuild/i.test(name) || /^Pkg[A-Za-z_]/.test(name) || RESERVED_PROPERTIES.has(name.toLowerCase());
     PROFILE_ENV = /^(?:HOME|USERPROFILE|APPDATA|LOCALAPPDATA|HOMEDRIVE|HOMEPATH|USERNAME|USERDOMAIN|ALLUSERSPROFILE|PROGRAMDATA|XDG_\w+)$/i;
@@ -141144,7 +141229,7 @@ var init_dotnet_package_refs = __esm({
     HOST_READ = /\b(GetEnvironmentVariables?|ExpandEnvironmentVariables|GetFolderPath|GetRegistryValue(?:FromView)?|(?<=::\s*)(?:UserDomainName|UserName|MachineName))\b(\s*\(\s*(?:'([A-Za-z_][\w-]*)'|"([A-Za-z_][\w-]*)"|([A-Za-z_][\w-]*))\s*\))?/gi;
     HOST_READ_HINT = /Environment|FolderPath|Registry|User|MachineName/i;
     ENV_PERCENT = /%([A-Za-z_][A-Za-z0-9_]*)(?=%)/g;
-    ITEM_REF = /@\(\s*([A-Za-z_]\w*)?/g;
+    ITEM_REF = /([@%])\(\s*([A-Za-z_]\w*)?/g;
     RESTORE_READS_MAX = 50;
     RESTORE_WORK_MAX = 1e5;
     notUtf8 = (text9) => text9.startsWith("\uFFFD\uFFFD") || text9.slice(0, 1024).includes("\0");
@@ -141454,12 +141539,13 @@ function envReadWhy(r) {
   const pin = r.names.filter((n) => !isEnvironmentOnlyName(n));
   const env2 = r.names.filter((n) => isEnvironmentOnlyName(n));
   const path30 = r.reads.some((x) => /so your environment chooses which file loads$/.test(x));
+  const conditioned = r.reads.some((x) => / has a condition that reads /.test(x));
   const fixes = r.fixes.join("; ");
   if (r.reads.every((x) => /^[^\n]*?: (?:not UTF-8 text|larger than \d+ KB|too many imports to analyse)/.test(x))) {
     const what = r.reads.some((x) => /^[^\n]*?: too many imports to analyse/.test(x)) ? "analyse the pinned files" : "read a pinned file";
     return `the engine could not ${what} that may set the package sources (${named}), so it cannot tell whether a package-source setting depends on your environment or machine, which the sandbox does not pass; ${fixes}`;
   }
-  return `a package-source setting of the repository depends on your environment or machine (${named}), which the sandbox does not pass, so there the restriction could be lost and the restore could reach nuget.org where the same command on your machine would use only your feed; declare the feed in the repository's nuget.config (a <packageSources> entry, no %VARIABLE%)${pin.length ? `, or give ${props(pin)} an unconditional value in a pinned .props file` : ""}${env2.length ? `, or move the source setting out from under the condition on ${props(env2)}` : ""}${path30 ? ", and import only files the repository tracks, by a path from $(MSBuildThisFileDirectory)" : ""}${fixes ? `; ${fixes}` : ""}`;
+  return `a package-source setting of the repository depends on your environment or machine (${named}), which the sandbox does not pass, so there the restriction could be lost and the restore could reach nuget.org where the same command on your machine would use only your feed; declare the feed in the repository's nuget.config (a <packageSources> entry, no %VARIABLE%)${pin.length ? `, or give ${props(pin)} an unconditional value in a pinned .props file` : ""}${env2.length ? `, or move the source setting out from under the condition on ${props(env2)}` : ""}${conditioned ? ", or make the conditioned Import unconditional or resolvable (a literal or $(MSBuildThisFileDirectory)-based path)" : ""}${path30 ? ", and import only files the repository tracks, by a path from $(MSBuildThisFileDirectory)" : ""}${fixes ? `; ${fixes}` : ""}`;
 }
 function isNewerEvent(next, prev) {
   const n = next ? Date.parse(next) : NaN;
