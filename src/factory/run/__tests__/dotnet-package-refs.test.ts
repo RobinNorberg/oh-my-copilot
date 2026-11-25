@@ -971,4 +971,20 @@ describe('restoreHostReads: package-source settings that depend on your environm
       'eng/CorpFeed.props': corp,
     })).toBe(true);
   });
+
+  it('(b) reads a legacy-extension project written with <Import Sdk>, a PackageReference or a .NET targets file, not a stock one', () => {
+    const corp = props(pg('<RestoreSources>https://corp.invalid/v3/index.json</RestoreSources>'));
+    const corpImport = `<Import Project="../eng/CorpFeed.props" Condition="'$(UseCorpFeed)' == 'true'" />`;
+    // An explicit `<Import Project="Sdk.props" Sdk="...">` makes a .sqlproj SDK-style.
+    expect(parks({ 'db/Db.sqlproj': `<Project><Import Project="Sdk.props" Sdk="Microsoft.Build.Sql" />${corpImport}<Import Project="Sdk.targets" Sdk="Microsoft.Build.Sql" /></Project>`, 'eng/CorpFeed.props': corp })).toBe(true);
+    // A legacy-format .nuproj with a PackageReference, or importing Microsoft.CSharp.targets, is restored like a .csproj.
+    expect(parks({ 'pkg/Lib.nuproj': `<Project><ItemGroup><PackageReference Include="Humanizer.Core" /></ItemGroup>${corpImport}</Project>`, 'eng/CorpFeed.props': corp })).toBe(true);
+    expect(parks({ 'pkg/Lib.nuproj': `<Project>${corpImport}<Import Project="$(MSBuildToolsPath)\\Microsoft.CSharp.targets" /></Project>`, 'eng/CorpFeed.props': corp })).toBe(true);
+    // A stock legacy .vcxproj or .dcproj (Microsoft.Cpp, Docker Compose and Microsoft.Common.props imports) with a conditioned Import does not.
+    const lit = { 'Directory.Build.props': props(pg('<RestoreSources>https://api.nuget.org/v3/index.json</RestoreSources>')) };
+    const vcx = `<Project><Import Project="$(VCTargetsPath)\\Microsoft.Cpp.Default.props" /><Import Project="$(VCPKG_ROOT)\\scripts\\buildsystems\\msbuild\\vcpkg.props" Condition="Exists('$(VCPKG_ROOT)\\scripts\\buildsystems\\msbuild\\vcpkg.props')" /><Import Project="$(VCTargetsPath)\\Microsoft.Cpp.targets" /></Project>`;
+    const dcproj = `<Project><Import Project="$(MSBuildExtensionsPath)\\$(MSBuildToolsVersion)\\Microsoft.Common.props" Condition="'$(DOCKER_HOST)' != ''" /><Import Project="$(MSBuildExtensionsPath)\\Microsoft\\VisualStudio\\v$(VisualStudioVersion)\\Docker\\Microsoft.VisualStudio.Docker.Compose.targets" /></Project>`;
+    expect(parks({ ...lit, 'native/N.vcxproj': vcx })).toBe(false);
+    expect(parks({ ...lit, 'docker-compose.dcproj': dcproj })).toBe(false);
+  });
 });

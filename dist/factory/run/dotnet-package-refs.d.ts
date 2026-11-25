@@ -172,8 +172,10 @@ export interface PropertyFlow {
     }>;
     /** The file is larger than PINNED_READ_MAX and was not read. */
     unread: boolean;
-    /** An SDK-style project: a `<Project Sdk=...>` attribute or a top-level `<Sdk Name=...>` element (any SDK, PLAIN_SDK too). */
+    /** An SDK-style project: a `<Project Sdk=...>` attribute, a top-level `<Sdk Name=...>` element or an `<Import Sdk=...>` (any SDK, PLAIN_SDK too). */
     sdkStyle?: boolean;
+    /** A PackageReference item, or an Import of a DOTNET_TARGETS_IMPORT file: rule (b) reads the file whatever its extension. */
+    dotnetMarks?: boolean;
 }
 /**
  * The property data flow of a pinned MSBuild file (one linear scan) or
@@ -258,7 +260,7 @@ export declare const RESTORE_WORK_MAX = 100000;
  *     Import path or the condition of an Import that can change the
  *     sources (this rule, to a fixpoint) reaches: your environment decides
  *     whether a file that can change the sources loads (not the Imports
- *     of a legacy non-.NET project, NON_DOTNET_PROJECT and not SDK-style,
+ *     of a legacy non-.NET project, NON_DOTNET_PROJECT, not SDK-style, no dotnetMarks,
  *     that no in-scope pinned file imports by a resolvable path);
  * (c) an Import whose `Project` value reaches a host read, a name no pinned
  *     file defines, or an env-settable profile name (PROFILE_ENV): your

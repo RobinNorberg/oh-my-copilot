@@ -140574,6 +140574,7 @@ function propertyFlow(path30, text9) {
     define(f.tag.name, f.tag.start, !f.conditioned, shared(expressionRefs(value)), f.cond, value);
   };
   let sdkStyle = false;
+  let dotnetMarks = false;
   const stack = [];
   for (const t of scanXml(text9).tags) {
     if (t.close) {
@@ -140606,8 +140607,12 @@ function propertyFlow(path30, text9) {
     }
     if (name === "import") {
       const project = attr(t, "project") ?? "";
-      roots.push({ kind: "import", value: project, at: t.start, refs: shared(expressionRefs(project)), cond: f.cond, conditional: f.conditioned, sdk: attr(t, "sdk") ?? null });
+      const sdk = attr(t, "sdk") ?? null;
+      roots.push({ kind: "import", value: project, at: t.start, refs: shared(expressionRefs(project)), cond: f.cond, conditional: f.conditioned, sdk });
+      if (sdk?.trim()) sdkStyle = true;
+      if (DOTNET_TARGETS_IMPORT.test(project.trim())) dotnetMarks = true;
     }
+    if (name === "packagereference" && parent?.tag.name.toLowerCase() === "itemgroup") dotnetMarks = true;
     const sdks = !parent && name === "project" ? attr(t, "sdk") : name === "sdk" && parent?.tag.name.toLowerCase() === "project" && stack.length === 1 ? attr(t, "name") : void 0;
     if (sdks?.trim()) sdkStyle = true;
     for (const s of sdks?.split(";") ?? []) {
@@ -140622,7 +140627,7 @@ function propertyFlow(path30, text9) {
     if (t.selfClose) finish2(f, t.end);
     else stack.push(f);
   }
-  return { defs, roots, unread: false, sdkStyle };
+  return { defs, roots, unread: false, sdkStyle, dotnetMarks };
 }
 function hostReadWords(ref) {
   if (ref === "[env ?]") return "an environment variable whose name is computed";
@@ -140947,7 +140952,7 @@ ${lpath}`;
   let foreignFiles;
   const inRuleB = (lpath) => {
     if (!foreignFiles) {
-      foreignFiles = new Set(flows.filter((f) => NON_DOTNET_PROJECT.test(f.lpath) && !f.flow.sdkStyle).map((f) => f.lpath));
+      foreignFiles = new Set(flows.filter((f) => NON_DOTNET_PROJECT.test(f.lpath) && !f.flow.sdkStyle && !f.flow.dotnetMarks).map((f) => f.lpath));
       const queue = foreignFiles.size > 0 ? flows.filter((f) => !foreignFiles.has(f.lpath)).map((f) => f.lpath) : [];
       for (let i = 0; i < queue.length && foreignFiles.size > 0; i++) {
         const f = flowAt.get(queue[i]);
@@ -141057,7 +141062,7 @@ ${lpath}`;
     }
   }
 }
-var PINNED_READ_MAX, SHIM_EXT, PM_OPTIONS, NPX_RUN, PURE_DELETE, msbuildUnescape, readsForNodeModulesRefs, RESTORE_SETTINGS, PINNED_IMPORT, THIS_DIR_UP, FILE_ABOVE, THIS_DIR_PATH, RESTORE_SOURCE_SETTING, IMPORT_HOOK, HOOK_SWITCH, PLAIN_SDK, ARCADE_SDK, ARCADE_PROPERTIES, DOTNET_EVALUATED, NON_DOTNET_PROJECT, LITERAL_PIECE, RESERVED_PROPERTIES, isReservedProperty, PROFILE_ENV, CI_ENV, isEnvironmentOnlyName, PROPERTY_REF, HOST_READ, HOST_READ_HINT, ENV_PERCENT, ITEM_REF, RESTORE_READS_MAX, RESTORE_WORK_MAX, notUtf8, AUTO_FILES, OverBudget;
+var PINNED_READ_MAX, SHIM_EXT, PM_OPTIONS, NPX_RUN, PURE_DELETE, msbuildUnescape, readsForNodeModulesRefs, RESTORE_SETTINGS, PINNED_IMPORT, THIS_DIR_UP, FILE_ABOVE, THIS_DIR_PATH, RESTORE_SOURCE_SETTING, IMPORT_HOOK, HOOK_SWITCH, PLAIN_SDK, ARCADE_SDK, ARCADE_PROPERTIES, DOTNET_EVALUATED, NON_DOTNET_PROJECT, DOTNET_TARGETS_IMPORT, LITERAL_PIECE, RESERVED_PROPERTIES, isReservedProperty, PROFILE_ENV, CI_ENV, isEnvironmentOnlyName, PROPERTY_REF, HOST_READ, HOST_READ_HINT, ENV_PERCENT, ITEM_REF, RESTORE_READS_MAX, RESTORE_WORK_MAX, notUtf8, AUTO_FILES, OverBudget;
 var init_dotnet_package_refs = __esm({
   "src/factory/run/dotnet-package-refs.ts"() {
     "use strict";
@@ -141083,6 +141088,7 @@ var init_dotnet_package_refs = __esm({
     ARCADE_PROPERTIES = /^(?:RepositoryEngineeringDir|RepoRoot|RepositoryRoot|ArtifactsDir|ArtifactsBinDir|ArtifactsObjDir|ArtifactsPackagesDir|DotNetRoot|DotNetTool|ArcadeSdk\w*)$/i;
     DOTNET_EVALUATED = /(?:^|\/)(?:[^/]+\.(?:cs|fs|vb)proj|directory\.build\.props|directory\.build\.targets|directory\.packages\.props|directory\.build\.rsp)$/i;
     NON_DOTNET_PROJECT = /\.(?:vcxproj|vcproj|dcproj|nuproj|sqlproj|wixproj|pyproj|shproj|njsproj|vdproj)$/i;
+    DOTNET_TARGETS_IMPORT = /(?:^|[\\/])Microsoft\.(?:Common|CSharp|VisualBasic|FSharp)\.targets$/i;
     LITERAL_PIECE = /^[^$@%*?'"(),;]*$/;
     RESERVED_PROPERTIES = /* @__PURE__ */ new Set([
       "configuration",
