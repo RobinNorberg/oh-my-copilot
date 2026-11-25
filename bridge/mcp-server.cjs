@@ -76931,13 +76931,19 @@ function projectSdkMentions(path15, text3) {
 }
 function expressionRefs(expr, percent = false) {
   const out = /* @__PURE__ */ new Set();
+  if (!expr.includes("$(") && !(percent && expr.includes("%"))) return [];
   for (const m of expr.matchAll(PROPERTY_REF)) out.add(m[2] && m[1].toLowerCase() === "registry" ? "[registry]" : m[1]);
-  for (const m of expr.matchAll(HOST_READ)) {
+  if (HOST_READ_HINT.test(expr)) for (const m of expr.matchAll(HOST_READ)) {
     const literal3 = m[3] ?? m[4] ?? m[5];
     out.add(m[1].toLowerCase() === "getenvironmentvariable" ? `[env ${literal3 ?? "?"}]` : `[${m[1]}]`);
   }
   if (percent) {
-    for (const m of expr.matchAll(ENV_PERCENT)) if (!/^[0-9a-f]{2}$/i.test(m[1])) out.add(`[env ${m[1]}]`);
+    for (const m of expr.matchAll(ENV_PERCENT)) {
+      const at = m.index ?? 0;
+      const close = at + 1 + m[1].length;
+      if (/^[0-9a-f]{2}$/i.test(m[1]) && (/%[0-9a-f]{2}$/i.test(expr.slice(Math.max(0, at - 3), at)) || /^%[0-9a-f]{2}/i.test(expr.slice(close, close + 3)))) continue;
+      out.add(`[env ${m[1]}]`);
+    }
   }
   return [...out];
 }
@@ -76949,36 +76955,73 @@ function repoPath2(path15, rel) {
   }
   return out.join("/");
 }
+function importTargets(path15, project) {
+  const out = [];
+  for (const raw of project.split(";")) {
+    const part = msbuildUnescape(raw).trim();
+    if (!part) continue;
+    const above = FILE_ABOVE.exec(part);
+    if (above) {
+      const name = (above[1] ?? above[2]).trim();
+      const up = above[3] ?? above[4] ?? "";
+      if (/[\\/]/.test(name) || up && leavesRepository(path15, `${up}/x`)) return null;
+      out.push({ above: name, from: repoPath2(path15, up || ".") });
+      continue;
+    }
+    const local = THIS_DIR_PATH.exec(part);
+    if (!local || !local[1] || leavesRepository(path15, local[1])) return null;
+    out.push({ path: repoPath2(path15, local[1]) });
+  }
+  return out;
+}
 function propertyFlow(path15, text3) {
   const kind = fileKind(path15);
   const defs = [];
   const roots = [];
-  const imports = [];
+  const lists = /* @__PURE__ */ new Map();
+  const shared = (xs) => {
+    const key = xs.join("\n");
+    const was = lists.get(key);
+    if (was) return was;
+    lists.set(key, xs);
+    return xs;
+  };
+  const conditions = /* @__PURE__ */ new Map();
+  const conditionRefs = (c) => {
+    let refs2 = conditions.get(c);
+    if (!refs2) conditions.set(c, refs2 = shared(expressionRefs(c)));
+    return refs2;
+  };
   const define = (name, at, unconditional, refs2) => {
     defs.push({ name, at, unconditional, refs: refs2 });
-    if (RESTORE_SOURCE_SETTING.test(name)) roots.push({ what: `<${name}>`, kind: "setting", at, refs: refs2, cond: [] });
+    if (RESTORE_SOURCE_SETTING.test(name)) roots.push({ kind: "setting", value: name, at, refs: refs2, cond: [], conditional: !unconditional, sdk: false });
   };
-  const tooLarge = { defs, roots: [{ what: `the file (larger than ${PINNED_READ_MAX / 1024} KB)`, kind: "setting", at: 0, refs: ["[not read]"], cond: [] }], imports };
+  if ((kind === "rsp" || kind === "msbuild") && text3.length > PINNED_READ_MAX) return { defs, roots, unread: true };
   if (kind === "rsp") {
-    if (text3.length > PINNED_READ_MAX) return tooLarge;
-    for (const m of text3.matchAll(/(?:^|\s)"?[-/](?:p|property|rp|restoreproperty):(\S+)/gi)) {
-      for (const part of m[1].replace(/"/g, "").split(";")) {
-        const eq = part.indexOf("=");
-        const name = (eq < 0 ? part : part.slice(0, eq)).trim();
-        if (/^[A-Za-z_][A-Za-z0-9_-]*$/.test(name)) define(name, m.index ?? 0, true, eq < 0 ? [] : expressionRefs(part.slice(eq + 1), true).filter((r) => r.startsWith("[env ")));
+    let offset = 0;
+    for (const line of text3.split("\n")) {
+      if (!line.trimStart().startsWith("#")) {
+        for (const m of line.matchAll(/(?:[^\s"]|"[^"]*"?)+/g)) {
+          const sw = /^(?:--?|\/)(?:p|property|rp|restoreproperty):([\s\S]*)$/i.exec(m[0].replace(/"/g, ""));
+          if (!sw) continue;
+          for (const part of sw[1].split(/[;,]/)) {
+            const eq = part.indexOf("=");
+            const name = (eq < 0 ? part : part.slice(0, eq)).trim();
+            if (/^[A-Za-z_][A-Za-z0-9_-]*$/.test(name)) define(name, offset + (m.index ?? 0), true, eq < 0 ? [] : expressionRefs(part.slice(eq + 1), true).filter((r) => r.startsWith("[env ")));
+          }
+        }
       }
+      offset += line.length + 1;
     }
-    return { defs, roots, imports };
+    return { defs, roots, unread: false };
   }
-  if (kind !== "msbuild") return { defs, roots, imports };
-  if (text3.length > PINNED_READ_MAX) return tooLarge;
+  if (kind !== "msbuild") return { defs, roots, unread: false };
   const attr = (t, name) => {
     const a = t.attrs.find(([n]) => n.toLowerCase() === name);
     return a ? decodeXml(a[1]) : void 0;
   };
-  const union2 = (...xs) => [...new Set(xs.flat())];
   const finish = (f, content) => {
-    if (f.parent.toLowerCase() === "propertygroup") define(f.tag.name, f.tag.start, !f.conditioned, union2(expressionRefs(decodeXml(content)), f.cond));
+    if (f.parent.toLowerCase() === "propertygroup") define(f.tag.name, f.tag.start, !f.conditioned, shared([...expressionRefs(decodeXml(content)), ...f.cond]));
   };
   const stack = [];
   for (const t of scanXml(text3).tags) {
@@ -76993,115 +77036,313 @@ function propertyFlow(path15, text3) {
     const parent = stack[stack.length - 1];
     const condition = attr(t, "condition");
     const name = t.name.toLowerCase();
-    const own2 = condition !== void 0 ? expressionRefs(condition) : [];
+    const own2 = condition !== void 0 ? conditionRefs(condition) : [];
     if (name === "when" && parent?.tag.name.toLowerCase() === "choose") parent.whens.push(...own2);
     const f = {
       tag: t,
       parent: parent?.tag.name ?? "",
-      cond: union2(parent?.cond ?? [], own2, name === "otherwise" ? parent?.whens ?? [] : []),
+      cond: parent?.cond ?? [],
       conditioned: (parent?.conditioned ?? false) || condition !== void 0 || name === "when" || name === "otherwise" || name === "target",
       whens: []
     };
+    const reads = [...own2, ...name === "otherwise" ? parent?.whens ?? [] : []];
+    if (reads.length > 0 && t.selfClose) f.cond = shared([...new Set(reads), ...f.cond]);
+    else if (reads.length > 0) {
+      const pseudo = `#${t.start}@${path15}`;
+      defs.push({ name: pseudo, at: t.start, unconditional: false, refs: [...new Set(reads), ...f.cond] });
+      f.cond = [pseudo];
+    }
     if (name === "import") {
       const project = attr(t, "project") ?? "";
-      roots.push({ what: `Import ${JSON.stringify(project.slice(0, 200))}`, kind: "import", at: t.start, refs: expressionRefs(project), cond: f.cond });
-      for (const raw of project.split(";")) {
-        const local = THIS_DIR_PATH.exec(msbuildUnescape(raw).trim());
-        if (local && local[1] && !leavesRepository(path15, local[1])) imports.push(repoPath2(path15, local[1]).toLowerCase());
-      }
+      roots.push({ kind: "import", value: project, at: t.start, refs: shared(expressionRefs(project)), cond: f.cond, conditional: f.conditioned, sdk: attr(t, "sdk") !== void 0 });
     }
     const output2 = name === "output" ? attr(t, "propertyname") : void 0;
-    if (output2 !== void 0 && parent) define(msbuildUnescape(output2).trim(), t.start, false, union2(...parent.tag.attrs.map(([, v]) => expressionRefs(decodeXml(v))), f.cond));
+    if (output2 !== void 0 && parent) define(msbuildUnescape(output2).trim(), t.start, false, [...new Set(parent.tag.attrs.flatMap(([, v]) => expressionRefs(decodeXml(v)))), ...f.cond]);
     if (t.selfClose) finish(f, "");
     else stack.push(f);
   }
-  return { defs, roots, imports };
+  return { defs, roots, unread: false };
 }
 function hostReadWords(ref) {
   if (ref === "[env ?]") return "an environment variable whose name is computed";
   if (ref.startsWith("[env ")) return `the environment variable ${ref.slice(5, -1)}`;
   if (ref === "[registry]" || /^\[GetRegistryValue/i.test(ref)) return "the registry";
-  if (ref === "[not read]") return "nothing the engine could read";
   return /^\[(?:UserDomainName|UserName|MachineName)\]$/i.test(ref) ? `$([System.Environment]::${ref.slice(1, -1)})` : `$([System.Environment]::${ref.slice(1, -1)}(...))`;
 }
 function restoreHostReads(files) {
-  const flows = files.map((f) => ({ path: f.path, flow: propertyFlow(f.path, f.text) }));
-  const imported = new Set(flows.flatMap(({ flow }) => flow.imports));
-  const defs = /* @__PURE__ */ new Map();
-  for (const { path: path15, flow } of flows) for (const d of flow.defs) defs.set(d.name.toLowerCase(), [...defs.get(d.name.toLowerCase()) ?? [], { path: path15, ...d }]);
-  const counts = (d, path15, at) => d.path === path15 ? d.at < at : SHARED_DEFINITIONS.test(d.path) || imported.has(d.path.toLowerCase());
-  const reach = (start, path15, at) => {
+  const reads = [];
+  const seenReads = /* @__PURE__ */ new Set();
+  let more = 0;
+  const names = /* @__PURE__ */ new Set();
+  const fixes = /* @__PURE__ */ new Set();
+  const add = (read, name) => {
+    if (name) names.add(name);
+    if (reads.length >= RESTORE_READS_MAX) {
+      more++;
+      return;
+    }
+    const words = typeof read === "string" ? read : read();
+    if (seenReads.has(words)) return;
+    seenReads.add(words);
+    reads.push(words);
+  };
+  const scanned = [];
+  for (const f of files) {
+    const kind = fileKind(f.path);
+    if (kind !== "msbuild" && kind !== "rsp" && kind !== "nuget") continue;
+    if (notUtf8(f.text)) {
+      add(`${f.path}: not UTF-8 text (UTF-16 or binary), so the engine cannot read its package-source settings`);
+      fixes.add(`re-save ${f.path} as UTF-8`);
+    } else if (f.text.length > PINNED_READ_MAX) {
+      add(`${f.path}: larger than ${PINNED_READ_MAX / 1024} KB, so the engine did not read it and cannot tell whether its package-source settings depend on your environment`);
+      fixes.add(`keep ${f.path} under ${PINNED_READ_MAX / 1024} KB`);
+    } else scanned.push(f);
+  }
+  const flows = scanned.filter((f) => fileKind(f.path) !== "nuget").map((f) => ({ path: f.path, lpath: f.path.toLowerCase(), flow: propertyFlow(f.path, f.text) }));
+  const flowAt = new Map(flows.map((f) => [f.lpath, f]));
+  const pinned = new Set(files.map((f) => f.path.toLowerCase()));
+  const defsBy = /* @__PURE__ */ new Map();
+  const fixedAt = /* @__PURE__ */ new Map();
+  for (const { path: path15, lpath, flow } of flows) {
+    for (const d of flow.defs) {
+      const key = d.name.toLowerCase();
+      let list = defsBy.get(key);
+      if (!list) defsBy.set(key, list = []);
+      list.push({ lpath, path: path15, ...d });
+      if (!d.unconditional) continue;
+      let at = fixedAt.get(key);
+      if (!at) fixedAt.set(key, at = /* @__PURE__ */ new Map());
+      const was = at.get(lpath);
+      at.set(lpath, was ? { first: Math.min(was.first, d.at), last: Math.max(was.last, d.at) } : { first: d.at, last: d.at });
+    }
+  }
+  const what = (root) => root.kind === "setting" ? `<${root.value}>` : `Import ${JSON.stringify(root.value.slice(0, 200))}`;
+  const resolved = (root, path15) => {
+    if (root.sdk) return [];
+    const targets = importTargets(path15, root.value);
+    if (!targets) return null;
     const out = [];
-    const seen = /* @__PURE__ */ new Set();
-    const queue = start.map((ref) => ({ ref, path: path15, at, via: "" }));
-    for (let i = 0; i < queue.length; i++) {
-      const q = queue[i];
-      if (q.ref.startsWith("[")) {
-        out.push({ ref: q.ref, via: q.via, settable: true, defined: false });
+    for (const t of targets) {
+      if ("path" in t) {
+        if (!pinned.has(t.path.toLowerCase())) return null;
+        out.push(t.path.toLowerCase());
         continue;
       }
-      const key = q.ref.toLowerCase();
-      if (isReservedProperty(q.ref) || RESTORE_SOURCE_SETTING.test(q.ref)) continue;
-      const ds = defs.get(key) ?? [];
-      out.push({ ref: q.ref, via: q.via, settable: !ds.some((d) => d.unconditional && counts(d, q.path, q.at)), defined: ds.length > 0 });
-      if (seen.has(key)) continue;
-      seen.add(key);
-      for (const d of ds) for (const r of d.refs) queue.push({ ref: r, path: d.path, at: d.at, via: q.via || (r.toLowerCase() === key ? "" : ` through $(${q.ref})`) });
+      let dir = t.from;
+      let found = null;
+      for (; ; ) {
+        const p = `${dir ? `${dir}/` : ""}${t.above}`.toLowerCase();
+        if (pinned.has(p)) {
+          found = p;
+          break;
+        }
+        if (!dir) break;
+        dir = dir.includes("/") ? dir.slice(0, dir.lastIndexOf("/")) : "";
+      }
+      if (!found) return null;
+      out.push(found);
     }
     return out;
   };
-  const reads = /* @__PURE__ */ new Set();
-  const names = /* @__PURE__ */ new Set();
-  const unset = ", which no pinned file gives an unconditional value";
-  let sets = "";
-  for (const { path: path15, flow } of flows) {
-    for (const root of flow.roots) {
-      const at = `${path15}: ${root.what}`;
-      for (const x of reach(root.refs, path15, root.at)) {
-        if (root.kind === "setting") {
-          if (x.ref.startsWith("[")) reads.add(`${at} reads ${hostReadWords(x.ref)}${x.via}`);
-          else if (x.settable) {
-            reads.add(`${at} reads $(${x.ref})${x.via}${unset}`);
-            names.add(x.ref);
-          }
-        } else if (x.ref.startsWith("[")) reads.add(`${at} reads ${hostReadWords(x.ref)}${x.via} in its path, so your environment chooses which file loads`);
-        else if (!x.defined) reads.add(`${at} reads $(${x.ref})${x.via} in its path, which no pinned file defines, so your environment chooses which file loads`);
-        else if (x.settable && PROFILE_ENV.test(x.ref)) reads.add(`${at} reads $(${x.ref})${x.via} in its path, so your environment chooses which file loads`);
+  const evaluations = /* @__PURE__ */ new Map();
+  const evaluation = (lpath) => {
+    const cached2 = evaluations.get(lpath);
+    if (cached2) return cached2;
+    const queue = [lpath];
+    const segs = lpath.split("/").slice(0, -1);
+    for (const base of AUTO_FILES) {
+      for (let n = segs.length; n >= 0; n--) {
+        const p = [...segs.slice(0, n), base].join("/");
+        if (pinned.has(p)) {
+          queue.push(p);
+          break;
+        }
       }
-      if (root.kind === "setting" && !sets && !NOT_A_SOURCE.test(root.what.slice(1, -1))) sets = `${path15} sets ${root.what}`;
     }
-  }
-  if (sets) {
-    for (const { path: path15, flow } of flows) {
-      for (const root of flow.roots) {
-        if (root.kind !== "import") continue;
-        for (const x of reach(root.cond, path15, root.at)) {
-          const what = `${sets}, and ${path15}: ${root.what} has a condition that reads`;
-          if (x.ref.startsWith("[")) reads.add(`${what} ${hostReadWords(x.ref)}${x.via}`);
-          else if (x.settable) {
-            reads.add(`${what} $(${x.ref})${x.via}${unset}`);
-            names.add(x.ref);
+    const seen = /* @__PURE__ */ new Set();
+    for (let i = 0; i < queue.length; i++) {
+      const p = queue[i];
+      if (seen.has(p)) continue;
+      seen.add(p);
+      const f = flowAt.get(p);
+      for (const r of f?.flow.roots ?? []) if (r.kind === "import" && !r.conditional) queue.push(...resolved(r, f.path) ?? []);
+    }
+    evaluations.set(lpath, seen);
+    return seen;
+  };
+  const settable = (name, lpath, at) => {
+    const at2 = fixedAt.get(name.toLowerCase());
+    if (!at2) return "none";
+    const own2 = at2.get(lpath);
+    if (own2 && own2.first < at) return null;
+    const ev = evaluation(lpath);
+    for (const p of at2.keys()) if (p !== lpath && ev.has(p)) return null;
+    if (at2.size > (own2 ? 1 : 0)) return "elsewhere";
+    return own2 ? own2.last > at ? "after" : "self" : "none";
+  };
+  const stops = (ref) => isReservedProperty(ref) || RESTORE_SOURCE_SETTING.test(ref);
+  const direct = (ref, lpath, at, mode) => {
+    if (ref.startsWith("[")) return { ref, why: "host" };
+    if (ref.startsWith("#")) return "follow";
+    if (stops(ref)) return "stop";
+    if (mode === "value") {
+      const why2 = settable(ref, lpath, at);
+      return why2 ? { ref, why: why2 } : "follow";
+    }
+    if (!defsBy.has(ref.toLowerCase())) return { ref, why: "undefined" };
+    return PROFILE_ENV.test(ref) && settable(ref, lpath, at) ? { ref, why: "profile" } : "follow";
+  };
+  const solved = /* @__PURE__ */ new Map();
+  const solve = (mode) => {
+    const cached2 = solved.get(mode);
+    if (cached2) return cached2;
+    const hits = /* @__PURE__ */ new Map();
+    const readers = /* @__PURE__ */ new Map();
+    const queue = [];
+    for (const [key, ds] of defsBy) {
+      if (stops(key)) continue;
+      for (const d of ds) {
+        for (const r of d.refs) {
+          const x = direct(r, d.lpath, d.at, mode);
+          if (x === "stop") continue;
+          if (x === "follow") {
+            const k = r.toLowerCase();
+            let list = readers.get(k);
+            if (!list) readers.set(k, list = []);
+            list.push(key);
+          } else if (!hits.has(key)) {
+            hits.set(key, x);
+            queue.push(key);
           }
         }
       }
     }
-  }
-  for (const f of files) {
-    if (fileKind(f.path) !== "nuget") continue;
-    if (f.text.length > PINNED_READ_MAX) {
-      reads.add(`${f.path}: not read (larger than ${PINNED_READ_MAX / 1024} KB)`);
-      continue;
+    for (let i = 0; i < queue.length; i++) {
+      const hit = hits.get(queue[i]);
+      for (const p of readers.get(queue[i]) ?? []) {
+        if (hits.has(p)) continue;
+        hits.set(p, hit);
+        queue.push(p);
+      }
     }
-    for (const t of scanXml(f.text).tags) {
-      for (const [, raw] of t.attrs) {
-        const value = decodeXml(raw);
-        for (const r of expressionRefs(value, true).filter((x) => x.startsWith("[env "))) reads.add(`${f.path}: the value ${JSON.stringify(value.slice(0, 200))} reads ${hostReadWords(r)}`);
+    solved.set(mode, hits);
+    return hits;
+  };
+  const firstHit = (refs2, lpath, at, mode) => {
+    for (const r of refs2) {
+      const x = direct(r, lpath, at, mode);
+      if (x === "stop") continue;
+      if (x !== "follow") return { hit: x, via: "" };
+      const h = solve(mode).get(r.toLowerCase());
+      if (h) return { hit: h, via: r.startsWith("#") || h.ref.toLowerCase() === r.toLowerCase() ? "" : ` through $(${r})` };
+    }
+    return null;
+  };
+  const why = {
+    none: ", which no pinned file gives an unconditional value",
+    self: ", which its only unconditional definition reads before giving it a value",
+    after: ", which its file gives an unconditional value only after the read",
+    elsewhere: ", which only pinned files outside this evaluation (not auto-imported, or imported under a condition) give an unconditional value"
+  };
+  const valueWords = ({ hit, via }) => hit.why === "host" ? `${hostReadWords(hit.ref)}${via}` : `$(${hit.ref})${via}${why[hit.why] ?? ""}`;
+  const pathWords = ({ hit, via }) => {
+    const what2 = hit.why === "host" ? hostReadWords(hit.ref) : `$(${hit.ref})`;
+    return `${what2}${via} in its path, ${hit.why === "undefined" ? "which no pinned file defines, " : ""}so your environment chooses which file loads`;
+  };
+  const nameOf = (hit) => hit.why === "host" ? void 0 : hit.ref;
+  let sets = "";
+  const conditioned = /* @__PURE__ */ new Set();
+  for (const { path: path15, lpath, flow } of flows) {
+    for (const root of flow.roots) {
+      if (root.kind === "setting") {
+        if (!sets) sets = `${path15} sets ${what(root)}`;
+        const x2 = firstHit(root.refs, lpath, root.at, "value");
+        if (x2) add(() => `${path15}: ${what(root)} reads ${valueWords(x2)}`, nameOf(x2.hit));
+        continue;
+      }
+      const x = firstHit(root.refs, lpath, root.at, "path");
+      if (x) add(() => `${path15}: ${what(root)} reads ${pathWords(x)}`);
+      else if (root.conditional && root.cond.length > 0) conditioned.add(root);
+    }
+  }
+  if (sets && conditioned.size > 0) {
+    let relevant;
+    const reached = () => {
+      if (relevant) return relevant;
+      relevant = /* @__PURE__ */ new Set();
+      const queue = [];
+      for (const { flow } of flows) for (const r of flow.roots) for (const x of [...r.refs, ...r.cond]) if (!x.startsWith("[")) queue.push(x.toLowerCase());
+      for (let i = 0; i < queue.length; i++) {
+        if (relevant.has(queue[i])) continue;
+        relevant.add(queue[i]);
+        for (const d of defsBy.get(queue[i]) ?? []) for (const r of d.refs) if (!r.startsWith("[")) queue.push(r.toLowerCase());
+      }
+      return relevant;
+    };
+    const loadsAt = /* @__PURE__ */ new Map();
+    const changes = (target) => {
+      if (loadsAt.has(target)) return loadsAt.get(target);
+      const queue = [target];
+      const seen = /* @__PURE__ */ new Set();
+      let found = null;
+      for (let i = 0; i < queue.length && !found; i++) {
+        const p = queue[i];
+        if (seen.has(p)) continue;
+        seen.add(p);
+        const f = flowAt.get(p);
+        if (!f) continue;
+        const setting = f.flow.roots.find((r) => r.kind === "setting");
+        if (setting) {
+          found = `${f.path} sets ${what(setting)}`;
+          break;
+        }
+        const def = f.flow.defs.find((d) => !d.name.startsWith("#") && reached().has(d.name.toLowerCase()));
+        if (def) {
+          found = `${f.path} defines $(${def.name}), which a package-source setting or an Import reads`;
+          break;
+        }
+        for (const r of f.flow.roots) {
+          if (r.kind !== "import") continue;
+          const ts = resolved(r, f.path);
+          if (!ts) {
+            found = `${sets}, and ${f.path} imports ${JSON.stringify(r.value.slice(0, 200))}, a file the engine cannot resolve to a pinned file`;
+            break;
+          }
+          queue.push(...ts);
+        }
+      }
+      loadsAt.set(target, found);
+      return found;
+    };
+    for (const { path: path15, lpath, flow } of flows) {
+      for (const root of flow.roots) {
+        if (!conditioned.has(root)) continue;
+        const x = firstHit(root.cond, lpath, root.at, "value");
+        if (!x) continue;
+        const ts = resolved(root, path15);
+        let lead = null;
+        if (!ts) lead = `${sets}, and ${path15}: ${what(root)} (a file the engine cannot resolve to a pinned file)`;
+        else {
+          for (const t of ts) if (lead = changes(t)) break;
+          if (lead) lead = `${lead}, and ${path15}: ${what(root)}`;
+        }
+        const head = lead;
+        if (head) add(() => `${head} has a condition that reads ${valueWords(x)}`, nameOf(x.hit));
       }
     }
   }
-  return { reads: [...reads], names: [...names].sort() };
+  for (const f of scanned) {
+    if (fileKind(f.path) !== "nuget") continue;
+    for (const t of scanXml(f.text).tags) {
+      for (const [, raw] of t.attrs) {
+        const value = decodeXml(raw);
+        for (const r of expressionRefs(value, true).filter((x) => x.startsWith("[env "))) add(`${f.path}: the value ${JSON.stringify(value.slice(0, 200))} reads ${hostReadWords(r)}`);
+      }
+    }
+  }
+  return { reads, more, names: [...names].sort(), fixes: [...fixes] };
 }
-var PINNED_READ_MAX, SHIM_EXT, PM_OPTIONS, NPX_RUN, PURE_DELETE, msbuildUnescape, readsForNodeModulesRefs, RESTORE_SETTINGS, PINNED_IMPORT, THIS_DIR_UP, FILE_ABOVE, THIS_DIR_PATH, RESTORE_SOURCE_SETTING, NOT_A_SOURCE, RESERVED_PROPERTIES, isReservedProperty, PROFILE_ENV, PROPERTY_REF, HOST_READ, ENV_PERCENT, SHARED_DEFINITIONS;
+var PINNED_READ_MAX, SHIM_EXT, PM_OPTIONS, NPX_RUN, PURE_DELETE, msbuildUnescape, readsForNodeModulesRefs, RESTORE_SETTINGS, PINNED_IMPORT, THIS_DIR_UP, FILE_ABOVE, THIS_DIR_PATH, RESTORE_SOURCE_SETTING, RESERVED_PROPERTIES, isReservedProperty, PROFILE_ENV, CI_ENV, isEnvironmentOnlyName, PROPERTY_REF, HOST_READ, HOST_READ_HINT, ENV_PERCENT, RESTORE_READS_MAX, notUtf8, AUTO_FILES;
 var init_dotnet_package_refs = __esm({
   "src/factory/run/dotnet-package-refs.ts"() {
     "use strict";
@@ -77119,18 +77360,19 @@ var init_dotnet_package_refs = __esm({
     THIS_DIR_UP = String.raw`\$\(MSBuildThisFileDirectory\)((?:\.\.(?:[\\/]\.\.)*)?)[\\/]?`;
     FILE_ABOVE = new RegExp(String.raw`^\$\(\[MSBuild\]::GetPathOfFileAbove\(\s*(?:'([^'$%@()]+)'|([^'"$%@(),\s]+))\s*(?:,\s*(?:'${THIS_DIR_UP}'|${THIS_DIR_UP})\s*)?\)\)$`, "i");
     THIS_DIR_PATH = /^(?:\$\(MSBuildThisFileDirectory\)[\\/]*)?([^$@%*?]*)$/i;
-    RESTORE_SOURCE_SETTING = /^Restore(?:Sources|AdditionalProjectSources|FallbackFolders|AdditionalProjectFallbackFolders|ConfigFile|RootConfigDirectory|PackagesPath)$/i;
-    NOT_A_SOURCE = /^RestorePackagesPath$/i;
+    RESTORE_SOURCE_SETTING = /^Restore(?:Sources|AdditionalProjectSources|FallbackFolders|AdditionalProjectFallbackFolders|ConfigFile|RootConfigDirectory)$/i;
     RESERVED_PROPERTIES = /* @__PURE__ */ new Set([
       "configuration",
       "platform",
       "platforms",
       "platformtarget",
+      "platformname",
       "targetframework",
       "targetframeworks",
       "targetframeworkidentifier",
       "targetframeworkversion",
       "targetframeworkmoniker",
+      "targetframeworkprofile",
       "targetplatformidentifier",
       "targetplatformversion",
       "targetplatformminversion",
@@ -77175,12 +77417,19 @@ var init_dotnet_package_refs = __esm({
       "netcoreroot",
       "netcoretargetingpackroot",
       "bundlednetcoreapppackageversion",
+      "bundlednetcoreapptargetframeworkversion",
+      "netcoreappmaximumversion",
+      "microsoftnetcoreapprefpackageversion",
       "dotnet_host_path",
       "visualstudioversion",
       "vstoolspath",
       "designtimebuild",
       "buildinginsidevisualstudio",
+      "buildingforliveunittesting",
       "buildingproject",
+      "buildingsolutionfile",
+      "buildprojectreferences",
+      "isimplicitlytriggeredbuild",
       "language",
       "defineconstants",
       "langversion",
@@ -77203,6 +77452,10 @@ var init_dotnet_package_refs = __esm({
       "ispackable",
       "ispublishable",
       "istestproject",
+      "istestingplatformapplication",
+      "isaspirehost",
+      "ispublishing",
+      "_ispublishing",
       "outputtype",
       "iscrosstargetingbuild",
       "usingmicrosoftnetsdk",
@@ -77210,9 +77463,20 @@ var init_dotnet_package_refs = __esm({
       "usingmicrosoftnetsdkrazor",
       "usingmicrosoftnetsdkworker",
       "usingmicrosoftnetsdkblazorwebassembly",
+      "usingmicrosoftnetsdkwebassembly",
+      "usingmicrosoftnetsdkstaticwebassets",
       "excluderestorepackageimports",
       "restoregraphoutputpath",
       "restoreprojectstyle",
+      "enabledefaultitems",
+      "enabledefaultcompileitems",
+      "defaultitemexcludes",
+      "importdirectorybuildprops",
+      "importdirectorybuildtargets",
+      "sdkanalysislevel",
+      "usemaui",
+      "mauiversion",
+      "prefer32bit",
       "selfcontained",
       "publishtrimmed",
       "publishaot",
@@ -77255,10 +77519,15 @@ var init_dotnet_package_refs = __esm({
     ]);
     isReservedProperty = (name) => /^MSBuild/i.test(name) || /^Pkg[A-Za-z_]/.test(name) || RESERVED_PROPERTIES.has(name.toLowerCase());
     PROFILE_ENV = /^(?:HOME|USERPROFILE|APPDATA|LOCALAPPDATA|HOMEDRIVE|HOMEPATH|USERNAME|USERDOMAIN|ALLUSERSPROFILE|PROGRAMDATA|XDG_\w+)$/i;
+    CI_ENV = /^(?:CI|TF_BUILD|GITHUB_\w+|BUILD_\w+|SYSTEM_\w+|AGENT_\w+|RUNNER_\w+|GITLAB_CI|JENKINS_URL|TEAMCITY_VERSION|APPVEYOR|TRAVIS)$/i;
+    isEnvironmentOnlyName = (name) => CI_ENV.test(name) || PROFILE_ENV.test(name);
     PROPERTY_REF = /\$\(\s*([A-Za-z_][A-Za-z0-9_-]*)\s*(:?)/g;
     HOST_READ = /\b(GetEnvironmentVariables?|ExpandEnvironmentVariables|GetFolderPath|GetRegistryValue(?:FromView)?|(?<=::\s*)(?:UserDomainName|UserName|MachineName))\b(\s*\(\s*(?:'([A-Za-z_][\w-]*)'|"([A-Za-z_][\w-]*)"|([A-Za-z_][\w-]*))\s*\))?/gi;
-    ENV_PERCENT = /%([A-Za-z_][A-Za-z0-9_]*)%/g;
-    SHARED_DEFINITIONS = /(?:^|\/)directory\.(?:build\.props|build\.targets|packages\.props)$|\.rsp$/i;
+    HOST_READ_HINT = /Environment|FolderPath|Registry|User|MachineName/i;
+    ENV_PERCENT = /%([A-Za-z_][A-Za-z0-9_]*)(?=%)/g;
+    RESTORE_READS_MAX = 50;
+    notUtf8 = (text3) => text3.startsWith("\uFFFD\uFFFD") || text3.slice(0, 1024).includes("\0");
+    AUTO_FILES = ["directory.build.props", "directory.build.targets", "directory.packages.props", "directory.build.rsp"];
   }
 });
 
@@ -77445,10 +77714,17 @@ function parseStatusPaths(raw) {
   return paths;
 }
 function envReadWhy(r) {
-  const named = `${r.reads.slice(0, 3).map((x) => oneLine(visibleLine(x), 400)).join("; ")}${r.reads.length > 3 ? `; ${r.reads.length - 3} more` : ""}`;
-  const props = `${r.names.slice(0, 5).map((n) => `$(${n})`).join(", ")}${r.names.length > 5 ? ` and ${r.names.length - 5} more` : ""}`;
+  const total = r.reads.length + r.more;
+  const named = `${r.reads.slice(0, 3).map((x) => oneLine(visibleLine(x), 400)).join("; ")}${total > 3 ? `; ${total - 3} more` : ""}`;
+  const props = (xs) => `${xs.slice(0, 5).map((n) => `$(${n})`).join(", ")}${xs.length > 5 ? ` and ${xs.length - 5} more` : ""}`;
+  const pin = r.names.filter((n) => !isEnvironmentOnlyName(n));
+  const env2 = r.names.filter((n) => isEnvironmentOnlyName(n));
   const path15 = r.reads.some((x) => /so your environment chooses which file loads$/.test(x));
-  return `a package-source setting of the repository depends on your environment or machine (${named}), which the sandbox does not pass, so there the restriction could be lost and the restore could reach nuget.org where the same command on your machine would use only your feed; declare the feed in the repository's nuget.config (a <packageSources> entry, no %VARIABLE%)${props ? `, or give ${props} an unconditional value in a pinned .props file` : ""}${path15 ? ", and import only files the repository tracks, by a path from $(MSBuildThisFileDirectory)" : ""}`;
+  const fixes = r.fixes.join("; ");
+  if (r.reads.every((x) => /^[^\n]*?: (?:not UTF-8 text|larger than \d+ KB)/.test(x))) {
+    return `the engine could not read a pinned file that may set the package sources (${named}), so it cannot tell whether a package-source setting depends on your environment or machine, which the sandbox does not pass; ${fixes}`;
+  }
+  return `a package-source setting of the repository depends on your environment or machine (${named}), which the sandbox does not pass, so there the restriction could be lost and the restore could reach nuget.org where the same command on your machine would use only your feed; declare the feed in the repository's nuget.config (a <packageSources> entry, no %VARIABLE%)${pin.length ? `, or give ${props(pin)} an unconditional value in a pinned .props file` : ""}${env2.length ? `, or move the source setting out from under the condition on ${props(env2)}` : ""}${path15 ? ", and import only files the repository tracks, by a path from $(MSBuildThisFileDirectory)" : ""}${fixes ? `; ${fixes}` : ""}`;
 }
 function isNewerEvent(next, prev) {
   const n = next ? Date.parse(next) : NaN;
@@ -78851,7 +79127,7 @@ var init_engine = __esm({
       dotnetNugetPolicy(commit, argv = []) {
         const base = this.state.baseSha && HEX4019.test(this.state.baseSha) ? this.state.baseSha : void 0;
         const own2 = commit && HEX4019.test(commit) ? commit : base;
-        if (!own2) return { hierarchy: null, noAddSource: [], rootSources: [], sdks: [], gitlinks: [], hostReads: { reads: [], names: [] } };
+        if (!own2) return { hierarchy: null, noAddSource: [], rootSources: [], sdks: [], gitlinks: [], hostReads: { reads: [], more: 0, names: [], fixes: [] } };
         const both = base && base !== own2;
         const all = (both ? [own2, base] : [own2]).map((sha3) => ({ sha: sha3, facts: this.dotnetPinnedFacts(sha3) }));
         const union2 = (pick2) => [...new Set(all.flatMap(({ facts }) => pick2(facts)))];
@@ -78871,7 +79147,7 @@ var init_engine = __esm({
           rootSources,
           sdks: union2((f) => f.projectSdks),
           gitlinks,
-          hostReads: { reads: union2((f) => f.hostReads.reads), names: union2((f) => f.hostReads.names).sort() }
+          hostReads: { reads: union2((f) => f.hostReads.reads), more: Math.max(0, ...all.map(({ facts }) => facts.hostReads.more)), names: union2((f) => f.hostReads.names).sort(), fixes: union2((f) => f.hostReads.fixes) }
         };
       }
       /**

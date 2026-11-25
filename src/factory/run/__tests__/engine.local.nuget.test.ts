@@ -1038,6 +1038,38 @@ describe('a package-source setting that depends on your environment parks before
     expect(reason).toContain('import only files the repository tracks');
   }, 3 * MULTI_RUN_MS);
 
+  it('a source setting under a CI variable: the remedy moves the setting out from under it, never pins the CI variable', async () => {
+    w = localWorld(['dotnet', 'test']);
+    baseWithFiles(`  <PropertyGroup>\n    <RestoreSources Condition="'$(CI)' == 'true'">https://corp.invalid/v3/index.json</RestoreSources>\n  </PropertyGroup>`);
+    const reason = await parks();
+    expect(reason).toContain("declare the feed in the repository's nuget.config (a <packageSources> entry, no %VARIABLE%), or move the source setting out from under the condition on $(CI)");
+    expect(reason).not.toContain('give $(CI) an unconditional value');
+  }, MULTI_RUN_MS);
+
+  it('a pinned Directory.Build.props saved as UTF-16: parks before anything runs, asking to re-save it as UTF-8', async () => {
+    w = localWorld(['dotnet', 'test']);
+    baseProject();
+    writeFileSync(join(w.root, 'Directory.Build.props'), Buffer.from('﻿<Project><PropertyGroup><RestoreSources>$(CorpFeed)</RestoreSources></PropertyGroup></Project>\n', 'utf16le'));
+    gitIn(w.root, 'add', '.');
+    gitIn(w.root, 'commit', '-q', '-m', 'utf-16 props');
+    const reason = await parks();
+    expect(reason).toContain('the engine could not read a pinned file that may set the package sources (Directory.Build.props: not UTF-8 text (UTF-16 or binary)');
+    expect(reason).toContain('re-save Directory.Build.props as UTF-8');
+  }, MULTI_RUN_MS);
+
+  it('a literal local source and an Import on $(CI) of a file that sets nothing source-related: runs the two source evaluations and restores', async () => {
+    w = localWorld(['dotnet', 'test']);
+    baseWithFiles([
+      '  <PropertyGroup>\n    <RestoreAdditionalProjectSources>$(MSBuildThisFileDirectory)artifacts/packages</RestoreAdditionalProjectSources>\n  </PropertyGroup>',
+      `  <Import Project="$(MSBuildThisFileDirectory)eng/ci.props" Condition="'$(CI)' == 'true'" />`,
+    ].join('\n'), { 'eng/ci.props': '<Project><PropertyGroup><ContinuousIntegrationBuild>true</ContinuousIntegrationBuild></PropertyGroup></Project>\n' });
+    const r = recorder([{ status: 1, output: OFFLINE }, { status: 0, output: 'Passed!' }], undefined, undefined, sources);
+    const out = await run(r);
+    expect(out.gate?.name, out.message).toBe('merge');
+    expect(sourcesReqs(r)).toHaveLength(2);
+    expect(r.reqs.filter((q) => q.purpose === 'restore')).toHaveLength(1);
+  }, MULTI_RUN_MS);
+
   it('an ordinary repo (a literal RestoreSources, Import conditions on SDK and CI names in a repo that sets none) runs exactly the two source evaluations and restores', async () => {
     w = localWorld(['dotnet', 'test']);
     baseWithFiles([

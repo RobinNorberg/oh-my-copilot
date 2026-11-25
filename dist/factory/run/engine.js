@@ -122,7 +122,7 @@ import { acquireFactoryClaim, claimBusyMessage, factoryClaimHolder, factoryClaim
 import { compareSnapshots, replaceObjectsProblem, samePath, snapshotRepo, verifyReviewWorktree } from './review-guard.js';
 import { GATE_INSTALL_GATE, IMPORT_REFUSED_GATE, LAYOUT_UNSUPPORTED_GATE, PRIVATE_STORE_GATE, PrivateRun, REPO_GUARD_GATE, resolveGateInstall, resolveRunLayout } from './private-run.js';
 import { classifyNugetFailure, dotnetRestoreArgs, GATE_INSTALL_SANDBOXED_HINT, missingDefinitionFile, NUGET_PRIVATE_FEED_UNSUPPORTED, nugetConfigUnreadableReason, nugetDefinitionTreeDir, nugetRunPackagesDir, nugetSubstituted, parseCatFileBatch, removeEngineDir, restoreApprovalNote, restoreGraphArgs, restoreGraphSources, restoreSourcesDifference, writeDefinitionTree } from './nuget-restore.js';
-import { nodeModulesReferences, projectSdkMentions, readsForNodeModulesRefs, restoreHostReads, restoreSettingMentions, unpinnedImports } from './dotnet-package-refs.js';
+import { isEnvironmentOnlyName, nodeModulesReferences, projectSdkMentions, readsForNodeModulesRefs, restoreHostReads, restoreSettingMentions, unpinnedImports } from './dotnet-package-refs.js';
 import { lockfileUnchanged, PRIVATE_GIT_TIMEOUT_MS, PrivateRepoTampered, PrivateStoreError, userRepoGuardSnapshot } from './private-store.js';
 import { parseReviewOutput, reviewComment, verdictNotes } from './review-output.js';
 import { findPlanLink, hasAcceptanceCriteria, issueAuthorTrusted } from './plan-rules.js';
@@ -351,10 +351,18 @@ const RESTORE_SOURCES_TIMEOUT_MS = 5 * 60_000;
  * machine (dotnet-package-refs.ts restoreHostReads), and the remedy, naming the properties to give an unconditional value.
  */
 function envReadWhy(r) {
-    const named = `${r.reads.slice(0, 3).map((x) => oneLine(visibleLine(x), 400)).join('; ')}${r.reads.length > 3 ? `; ${r.reads.length - 3} more` : ''}`;
-    const props = `${r.names.slice(0, 5).map((n) => `$(${n})`).join(', ')}${r.names.length > 5 ? ` and ${r.names.length - 5} more` : ''}`;
+    const total = r.reads.length + r.more;
+    const named = `${r.reads.slice(0, 3).map((x) => oneLine(visibleLine(x), 400)).join('; ')}${total > 3 ? `; ${total - 3} more` : ''}`;
+    const props = (xs) => `${xs.slice(0, 5).map((n) => `$(${n})`).join(', ')}${xs.length > 5 ? ` and ${xs.length - 5} more` : ''}`;
+    // CI and profile variables are not the repository's to pin: the setting has to move out from under them.
+    const pin = r.names.filter((n) => !isEnvironmentOnlyName(n));
+    const env = r.names.filter((n) => isEnvironmentOnlyName(n));
     const path = r.reads.some((x) => /so your environment chooses which file loads$/.test(x));
-    return `a package-source setting of the repository depends on your environment or machine (${named}), which the sandbox does not pass, so there the restriction could be lost and the restore could reach nuget.org where the same command on your machine would use only your feed; declare the feed in the repository's nuget.config (a <packageSources> entry, no %VARIABLE%)${props ? `, or give ${props} an unconditional value in a pinned .props file` : ''}${path ? ', and import only files the repository tracks, by a path from $(MSBuildThisFileDirectory)' : ''}`;
+    const fixes = r.fixes.join('; ');
+    if (r.reads.every((x) => /^[^\n]*?: (?:not UTF-8 text|larger than \d+ KB)/.test(x))) {
+        return `the engine could not read a pinned file that may set the package sources (${named}), so it cannot tell whether a package-source setting depends on your environment or machine, which the sandbox does not pass; ${fixes}`;
+    }
+    return `a package-source setting of the repository depends on your environment or machine (${named}), which the sandbox does not pass, so there the restriction could be lost and the restore could reach nuget.org where the same command on your machine would use only your feed; declare the feed in the repository's nuget.config (a <packageSources> entry, no %VARIABLE%)${pin.length ? `, or give ${props(pin)} an unconditional value in a pinned .props file` : ''}${env.length ? `, or move the source setting out from under the condition on ${props(env)}` : ''}${path ? ', and import only files the repository tracks, by a path from $(MSBuildThisFileDirectory)' : ''}${fixes ? `; ${fixes}` : ''}`;
 }
 /** L7: the output lines a ci-failed park shows, and the characters of each and of the whole tail. */
 const PARK_TAIL_LINES = 12;
@@ -1615,7 +1623,7 @@ class FactoryEngine {
         const base = this.state.baseSha && HEX40.test(this.state.baseSha) ? this.state.baseSha : undefined;
         const own = commit && HEX40.test(commit) ? commit : base;
         if (!own)
-            return { hierarchy: null, noAddSource: [], rootSources: [], sdks: [], gitlinks: [], hostReads: { reads: [], names: [] } };
+            return { hierarchy: null, noAddSource: [], rootSources: [], sdks: [], gitlinks: [], hostReads: { reads: [], more: 0, names: [], fixes: [] } };
         // Every fact of the base and of `own` only makes the set-up stricter (a union): neither commit can relax what the other pins.
         const both = base && base !== own;
         const all = (both ? [own, base] : [own]).map((sha) => ({ sha, facts: this.dotnetPinnedFacts(sha) }));
@@ -1645,7 +1653,7 @@ class FactoryEngine {
             rootSources,
             sdks: union((f) => f.projectSdks),
             gitlinks,
-            hostReads: { reads: union((f) => f.hostReads.reads), names: union((f) => f.hostReads.names).sort() },
+            hostReads: { reads: union((f) => f.hostReads.reads), more: Math.max(0, ...all.map(({ facts }) => facts.hostReads.more)), names: union((f) => f.hostReads.names).sort(), fixes: union((f) => f.hostReads.fixes) },
         };
     }
     /**

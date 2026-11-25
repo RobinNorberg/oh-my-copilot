@@ -7,7 +7,7 @@ import { mkdirSync, mkdtempSync, rmSync, symlinkSync, unlinkSync, writeFileSync,
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { expressionRefs, hasNodeModulesSegment, isReservedProperty, nodeModulesReferences, PINNED_READ_MAX, projectSdkMentions, readsForNodeModulesRefs, restoreHostReads, restoreSettingMentions, unpinnedImports } from '../dotnet-package-refs.js';
+import { expressionRefs, hasNodeModulesSegment, isEnvironmentOnlyName, isReservedProperty, nodeModulesReferences, PINNED_READ_MAX, projectSdkMentions, readsForNodeModulesRefs, RESTORE_READS_MAX, restoreHostReads, restoreSettingMentions, unpinnedImports } from '../dotnet-package-refs.js';
 import { gateTreeExactProblem, linkNodeModules } from '../prepare.js';
 /** The ASP.NET Core React/Angular SPA template's project file (shortened): mentions node_modules, reads nothing there. */
 const SPA_CSPROJ = `<Project Sdk="Microsoft.NET.Sdk.Web">
@@ -420,14 +420,29 @@ describe('restoreHostReads: package-source settings that depend on your environm
         expect(expressionRefs(`$([System.Environment]::UserDomainName)$([System.Environment]:: MachineName)`)).toEqual(['[UserDomainName]', '[MachineName]']);
         expect(expressionRefs('%CORP%/feed')).toEqual([]);
         expect(expressionRefs('%CORP%/feed', true)).toEqual(['[env CORP]']);
-        // A URL's %XX escapes are not environment variables.
+        // A URL's %XX escapes are not environment variables; a two-hex-digit name outside an escape run is one.
         expect(expressionRefs('https://x/a%C3%A9b', true)).toEqual([]);
+        expect(expressionRefs('https://x/My%20Project/a', true)).toEqual([]);
+        expect(expressionRefs('https://x/a%2F%2Fb', true)).toEqual([]);
+        expect(expressionRefs('https://x/caf%C3%A9%2Fx?c=%E2%9C%93ok', true)).toEqual([]);
+        expect(expressionRefs('https://corp/%AB%/v3', true)).toEqual(['[env AB]']);
+        expect(expressionRefs('%AB%', true)).toEqual(['[env AB]']);
+        expect(expressionRefs('%A%B%', true).sort()).toEqual(['[env A]', '[env B]']);
+        // A host-read word outside a property function reads nothing.
+        expect(expressionRefs('GetEnvironmentVariable(CORP)')).toEqual([]);
     });
     it('reserved: what MSBuild or the SDK defines (typed SDK booleans too); never profile or CI names', () => {
         for (const n of ['Configuration', 'MSBuildThisFileDirectory', 'PkgNewtonsoft_Json', 'IsCrossTargetingBuild', 'SelfContained', 'PublishTrimmed', 'PublishAot', 'PublishSingleFile', 'PublishReadyToRun', 'UseAppHost', 'IsAotCompatible', 'UseWPF', 'UseWindowsForms', 'EnableWindowsTargeting', 'os'])
             expect(isReservedProperty(n), n).toBe(true);
         for (const n of ['USERPROFILE', 'HOME', 'USERDOMAIN', 'APPDATA', 'CI', 'TF_BUILD', 'GITHUB_ACTIONS', 'BUILD_BUILDNUMBER', 'NCrunch', 'UseCorpFeed'])
             expect(isReservedProperty(n), n).toBe(false);
+        for (const n of ['EnableDefaultItems', 'EnableDefaultCompileItems', 'BuildingForLiveUnitTesting', 'BundledNETCoreAppTargetFrameworkVersion', 'NETCoreAppMaximumVersion', 'MicrosoftNETCoreAppRefPackageVersion', 'UsingMicrosoftNETSdkWebAssembly', 'UsingMicrosoftNETSdkStaticWebAssets', 'PlatformName', 'IsPublishing', '_IsPublishing', 'TargetFrameworkProfile', 'ImportDirectoryBuildProps', 'ImportDirectoryBuildTargets', 'SdkAnalysisLevel', 'UseMaui', 'MauiVersion', 'BuildingSolutionFile', 'BuildProjectReferences', 'DefaultItemExcludes', 'Prefer32Bit', 'IsImplicitlyTriggeredBuild', 'IsTestingPlatformApplication', 'IsAspireHost'])
+            expect(isReservedProperty(n), n).toBe(true);
+        // CI and profile names: the remedy moves the setting out from under them.
+        for (const n of ['CI', 'TF_BUILD', 'GITHUB_ACTIONS', 'BUILD_BUILDNUMBER', 'SYSTEM_TEAMPROJECT', 'HOME', 'USERPROFILE', 'USERDOMAIN'])
+            expect(isEnvironmentOnlyName(n), n).toBe(true);
+        for (const n of ['UseCorpFeed', 'CorpFeed', 'InternalBuild'])
+            expect(isEnvironmentOnlyName(n), n).toBe(false);
     });
     it('an ordinary repo reads nothing: no source setting, so Import conditions on CI and environment names do not matter; a nuget.config with literal sources', () => {
         const r = reads({
@@ -437,10 +452,10 @@ describe('restoreHostReads: package-source settings that depend on your environm
             'Lib/Lib.csproj': lib,
             'Directory.Build.rsp': '-p:FromRsp=1\n-nr:false\n-m\n',
         });
-        expect(r).toEqual({ reads: [], names: [] });
+        expect(r).toEqual({ reads: [], more: 0, names: [], fixes: [] });
     });
     it('(a) a source setting whose value or condition (own, group, Choose branch, target) reads an env-settable name or a host read', () => {
-        expect(reads({ 'a.props': props(pg('<RestoreSources>$(CORP_FEED)</RestoreSources>')) })).toEqual({ reads: ['a.props: <RestoreSources> reads $(CORP_FEED), which no pinned file gives an unconditional value'], names: ['CORP_FEED'] });
+        expect(reads({ 'a.props': props(pg('<RestoreSources>$(CORP_FEED)</RestoreSources>')) })).toEqual({ reads: ['a.props: <RestoreSources> reads $(CORP_FEED), which no pinned file gives an unconditional value'], more: 0, names: ['CORP_FEED'], fixes: [] });
         expect(reads({ 'a.props': props(pg('<RestoreSources>https://corp/v3</RestoreSources>', "'$(UseCorp)' == 'true'")) }).reads).toEqual(['a.props: <RestoreSources> reads $(UseCorp), which no pinned file gives an unconditional value']);
         // A default conditioned on itself is no unconditional value.
         expect(reads({ 'a.props': props(pg(`<UseCorp Condition="'$(UseCorp)' == ''">false</UseCorp><RestoreSources Condition="'$(UseCorp)' == 'true'">https://corp/v3</RestoreSources>`)) }).names).toEqual(['UseCorp']);
@@ -448,8 +463,10 @@ describe('restoreHostReads: package-source settings that depend on your environm
         expect(parks({ 'a.props': props(`<Choose><When Condition="'$(UseCorp)' == 'true'">${pg('<RestoreSources>https://corp/v3</RestoreSources>')}</When></Choose>`) })).toBe(true);
         expect(reads({ 'a.props': props(`<Choose><When Condition="'$(UseCorp)' == 'true'">${pg('<X>1</X>')}</When><Otherwise>${pg('<RestoreSources>https://api.nuget.org/v3/index.json</RestoreSources>')}</Otherwise></Choose>`) }).names).toEqual(['UseCorp']);
         // Every source setting, a task Output (escaped name too) inside a conditioned target.
-        for (const s of ['RestoreAdditionalProjectSources', 'RestoreFallbackFolders', 'RestoreAdditionalProjectFallbackFolders', 'RestoreConfigFile', 'RestoreRootConfigDirectory', 'RestorePackagesPath'])
+        for (const s of ['RestoreAdditionalProjectSources', 'RestoreFallbackFolders', 'RestoreAdditionalProjectFallbackFolders', 'RestoreConfigFile', 'RestoreRootConfigDirectory'])
             expect(parks({ 'a.props': props(pg(`<${s}>$(CORP)</${s}>`)) }), s).toBe(true);
+        // RestorePackagesPath is where packages land, not a source: neither its value nor its condition parks.
+        expect(parks({ 'a.props': props(pg(`<RestorePackagesPath Condition="'$(CI)' == 'true'">$(CORP_PKGS)</RestorePackagesPath>`)) })).toBe(false);
         expect(reads({ 'a.targets': props(`<Target Name="T" Condition="'$(UseCorp)' == 'true'"><CreateProperty Value="https://corp/v3"><Output TaskParameter="Value" PropertyName="Restore%53ources" /></CreateProperty></Target>`) }).reads).toEqual(['a.targets: <RestoreSources> reads $(UseCorp), which no pinned file gives an unconditional value']);
         // Host reads.
         expect(reads({ 'a.props': props(pg(`<RestoreSources>$([System.Environment]::GetEnvironmentVariable('CORP'))</RestoreSources>`)) }).reads).toEqual(['a.props: <RestoreSources> reads the environment variable CORP']);
@@ -462,14 +479,19 @@ describe('restoreHostReads: package-source settings that depend on your environm
     });
     it('reads are followed through every pinned definition, transitively; the reason names the property it went through', () => {
         const r = reads({ 'a.props': props(pg('<Base>$(CORP_FEED)</Base><Feeds>$(Base);x</Feeds><RestoreSources>$(Feeds)</RestoreSources>')) });
-        expect(r).toEqual({ reads: ['a.props: <RestoreSources> reads $(CORP_FEED) through $(Feeds), which no pinned file gives an unconditional value'], names: ['CORP_FEED'] });
+        expect(r).toEqual({ reads: ['a.props: <RestoreSources> reads $(CORP_FEED) through $(Feeds), which no pinned file gives an unconditional value'], more: 0, names: ['CORP_FEED'], fixes: [] });
         // A conditional redefinition the environment decides counts even after an unconditional one.
         expect(reads({ 'a.props': props(pg('<Feed>https://api.nuget.org/v3/index.json</Feed>') + pg('<Feed>https://corp/v3</Feed>', "'$(UseCorp)' == 'true'") + pg('<RestoreSources>$(Feed)</RestoreSources>')) }).names).toEqual(['UseCorp']);
         // A response file's %NAME%.
         expect(reads({ 'Directory.Build.rsp': '-p:CorpFeed=%OMG25_CORP_FEED%\n', 'Directory.Build.props': props(pg(`<RestoreSources Condition="Exists('$(CorpFeed)')">$(CorpFeed)</RestoreSources>`)) }).reads)
             .toEqual(['Directory.Build.props: <RestoreSources> reads the environment variable OMG25_CORP_FEED through $(CorpFeed)']);
         expect(reads({ 'Directory.Build.rsp': '-rp:RestoreSources=%FEED%;X=1\n' }).reads).toEqual(['Directory.Build.rsp: <RestoreSources> reads the environment variable FEED']);
-        expect(reads({ 'a.rsp': '-p:"Deterministic=true"\n-nr:false\n-m\n/p:A=b;C=d\n' })).toEqual({ reads: [], names: [] });
+        expect(reads({ 'a.rsp': '-p:"Deterministic=true"\n-nr:false\n-m\n/p:A=b;C=d\n' }).reads).toEqual([]);
+        // Every switch spelling, `,` and `;` separators, quotes; `#` comment lines are not read.
+        for (const rsp of ['-p:Foo=1,RestoreSources=%FEED%', '--property:RestoreSources=%FEED%', '-property:RestoreSources=%FEED%', '/p:RestoreSources=%FEED%', '/property:RestoreSources=%FEED%', '-p:"RestoreSources=%FEED%"', '-p:A=1;RestoreSources=%FEED%', '-restoreProperty:RestoreSources=%FEED%']) {
+            expect(reads({ 'Directory.Build.rsp': `${rsp}\n` }).reads, rsp).toEqual(['Directory.Build.rsp: <RestoreSources> reads the environment variable FEED']);
+        }
+        expect(parks({ 'Directory.Build.rsp': '# -p:RestoreSources=%FEED%\n  #-p:RestoreSources=%FEED%\n-m\n' })).toBe(false);
     });
     it('where an unconditional definition counts: the same file before the read, a Directory.Build.* / Directory.Packages.props or response file, a file imported by a resolvable path', () => {
         const setting = pg(`<RestoreSources Condition="'$(Feed)' != ''">$(Feed)</RestoreSources>`);
@@ -478,7 +500,9 @@ describe('restoreHostReads: package-source settings that depend on your environm
         // After the read in the same file: the environment's value is what the setting saw.
         expect(parks({ 'a.props': props(setting + def) })).toBe(true);
         expect(parks({ 'Lib/Lib.csproj': props(setting), 'Directory.Build.props': props(def) })).toBe(false);
-        expect(parks({ 'Lib/Lib.csproj': props(setting), 'src/Directory.Packages.props': props(def) })).toBe(false);
+        expect(parks({ 'Lib/Lib.csproj': props(setting), 'Directory.Packages.props': props(def) })).toBe(false);
+        // An auto-imported file only on the path above the read's file: src/Directory.Packages.props is not above Lib/.
+        expect(parks({ 'Lib/Lib.csproj': props(setting), 'src/Directory.Packages.props': props(def) })).toBe(true);
         expect(parks({ 'Lib/Lib.csproj': props(setting), 'Directory.Build.rsp': '-p:Feed=https://api.nuget.org/v3/index.json\n' })).toBe(false);
         expect(parks({ 'Lib/Lib.csproj': props(setting), 'Directory.Build.props': props('<Import Project="$(MSBuildThisFileDirectory)eng\\Feeds.props" />'), 'eng/Feeds.props': props(def) })).toBe(false);
         expect(parks({ 'Lib/Lib.csproj': props(setting), 'Directory.Build.props': props('<Import Project="../eng/Feeds.props" />'), 'eng/Feeds.props': props(def) })).toBe(true);
@@ -491,13 +515,17 @@ describe('restoreHostReads: package-source settings that depend on your environm
         const imp = (cond, body = '') => ({ 'Directory.Build.props': props(`${body}<Import Project="$(MSBuildThisFileDirectory)eng/CorpFeed.props" Condition="${cond}" />`), 'eng/CorpFeed.props': CORP });
         expect(reads(imp("'$(UseCorpFeed)' == 'true'"))).toEqual({
             reads: ['eng/CorpFeed.props sets <RestoreSources>, and Directory.Build.props: Import "$(MSBuildThisFileDirectory)eng/CorpFeed.props" has a condition that reads $(UseCorpFeed), which no pinned file gives an unconditional value'],
+            more: 0,
             names: ['UseCorpFeed'],
+            fixes: [],
         });
         expect(reads(imp("'$(USERDOMAIN)' == 'CORP'")).names).toEqual(['USERDOMAIN']);
         expect(reads(imp("Exists('$(CORP_TOOLS)/feed.marker')")).names).toEqual(['CORP_TOOLS']);
         expect(reads(imp("'$(InternalBuild)' == 'true'", pg('<InternalBuild>$(TF_BUILD)</InternalBuild>'))).names).toEqual(['TF_BUILD']);
-        expect(reads(imp("'$(InternalBuild)' == 'true'", pg('<InternalBuild>true</InternalBuild>', "'$(TF_BUILD)' == 'True'"))).names).toEqual(['InternalBuild', 'TF_BUILD']);
+        // One read per Import: the first name its condition reaches.
+        expect(reads(imp("'$(InternalBuild)' == 'true'", pg('<InternalBuild>true</InternalBuild>', "'$(TF_BUILD)' == 'True'"))).names).toEqual(['InternalBuild']);
         expect(reads(imp("'$(Registry:HKEY_LOCAL_MACHINE\\Corp@Feed)' != ''")).reads).toEqual([expect.stringContaining('has a condition that reads the registry')]);
+        // A target that is not a pinned file: the engine cannot tell what it sets.
         expect(parks({ 'Directory.Build.props': props(`<ImportGroup Condition="'$(CI)' == 'true'"><Import Project="eng/ci.props" /></ImportGroup>${pg('<RestoreSources>https://api.nuget.org/v3/index.json</RestoreSources>')}`) })).toBe(true);
         // A literal source setting with imports conditioned only on reserved names (and names a pinned file defines unconditionally): no read.
         for (const cond of ["'$(IsCrossTargetingBuild)' != 'true'", "'$(Configuration)' == 'Debug' and '$(OS)' == 'Windows_NT'", "'$(SelfContained)' == 'true'", "Exists('$(MSBuildThisFileDirectory)eng/x.props')"])
@@ -518,9 +546,94 @@ describe('restoreHostReads: package-source settings that depend on your environm
         expect(parks({ 'a.props': props(`${pg("<RepoRoot Condition=\"'$(RepoRoot)' == ''\">$(MSBuildThisFileDirectory)</RepoRoot>")}<Import Project="$(RepoRoot)eng/x.props" />`) })).toBe(false);
         expect(reads({ 'nuget.config': '<configuration><packageSources><clear /><add key="corp" value="%CORP_FEED%" /></packageSources></configuration>' }).reads).toEqual(['nuget.config: the value "%CORP_FEED%" reads the environment variable CORP_FEED']);
     });
-    it('a file above the cap is a read the engine cannot clear', () => {
-        expect(reads({ 'a.props': 'x'.repeat(PINNED_READ_MAX + 1) }).reads).toEqual([expect.stringContaining('nothing the engine could read')]);
-        expect(reads({ 'a.rsp': 'x'.repeat(PINNED_READ_MAX + 1) }).reads).toEqual([expect.stringContaining('nothing the engine could read')]);
+    it('a file above the cap, or one that is not UTF-8 text, is a read the engine cannot clear, with its remedy', () => {
+        for (const p of ['a.props', 'a.rsp', 'nuget.config']) {
+            expect(reads({ [p]: 'x'.repeat(PINNED_READ_MAX + 1) }), p).toEqual({ reads: [`${p}: larger than 256 KB, so the engine did not read it and cannot tell whether its package-source settings depend on your environment`], more: 0, names: [], fixes: [`keep ${p} under 256 KB`] });
+        }
+        // UTF-16 (with its byte order mark or without) as the engine decodes a blob: as UTF-8.
+        const utf16 = (s, bom) => Buffer.from(`${bom ? '\ufeff' : ''}${s}`, 'utf16le').toString('utf8');
+        for (const bom of [true, false]) {
+            expect(reads({ 'Directory.Build.props': utf16(props(pg('<RestoreSources>$(CorpFeed)</RestoreSources>')), bom) }), String(bom)).toEqual({
+                reads: ['Directory.Build.props: not UTF-8 text (UTF-16 or binary), so the engine cannot read its package-source settings'], more: 0, names: [], fixes: ['re-save Directory.Build.props as UTF-8'],
+            });
+        }
+        expect(reads({ 'nuget.config': Buffer.from('\ufeff<configuration />', 'utf16le').toString('utf8') }).fixes).toEqual(['re-save nuget.config as UTF-8']);
+        // A UTF-8 byte order mark and CRLF line ends are UTF-8 text; files the rule does not read are not checked.
+        expect(parks({ 'Directory.Build.props': `\ufeff${props(pg('<LangVersion>latest</LangVersion>'))}`.replace(/\n/g, '\r\n'), 'global.json': '\u0000' })).toBe(false);
+    });
+    it('where an unconditional definition counts: only files of the evaluation of the file that reads it (rule 2)', () => {
+        const read = props(pg('<RestoreSources>$(CorpFeed)</RestoreSources>'));
+        const def = props(pg('<CorpFeed>https://api.nuget.org/v3/index.json</CorpFeed>'));
+        // A conditioned Import (on OS or Configuration) of the file that defines it: no unconditional value.
+        for (const cond of ["'$(OS)' != 'Windows_NT'", "'$(Configuration)' == 'Release'"]) {
+            expect(reads({ 'Directory.Build.props': props(`<Import Project="$(MSBuildThisFileDirectory)eng/Unix.props" Condition="${cond}" />${pg('<RestoreSources>$(CorpFeed)</RestoreSources>')}`), 'eng/Unix.props': def }).reads, cond)
+                .toEqual(['Directory.Build.props: <RestoreSources> reads $(CorpFeed), which only pinned files outside this evaluation (not auto-imported, or imported under a condition) give an unconditional value']);
+        }
+        // Imported unconditionally, by a group with no condition too: counts.
+        expect(parks({ 'Directory.Build.props': props(`<ImportGroup><Import Project="eng/Unix.props" /></ImportGroup>${pg('<RestoreSources>$(CorpFeed)</RestoreSources>')}`), 'eng/Unix.props': def })).toBe(false);
+        // Imported only by another project; a sibling Directory.Build.props; a response file that MSBuild does not auto-read.
+        expect(parks({ 'samples/S/S.csproj': props('<Import Project="$(MSBuildThisFileDirectory)../../eng/Defaults.props" />'), 'eng/Defaults.props': def, 'Directory.Build.props': read })).toBe(true);
+        expect(parks({ 'Directory.Build.props': read, 'tests/Directory.Build.props': def })).toBe(true);
+        expect(parks({ 'Directory.Build.props': read, 'eng/ci.rsp': '-p:CorpFeed=https://api.nuget.org/v3/index.json\n' })).toBe(true);
+        expect(parks({ 'Directory.Build.props': read, 'Directory.Build.rsp': '-p:CorpFeed=https://api.nuget.org/v3/index.json\n' })).toBe(false);
+        // The nearest Directory.Build.props only, unless it imports the next one up (GetPathOfFileAbove).
+        const lib = props(pg('<RestoreSources>$(CorpFeed)</RestoreSources>'));
+        expect(parks({ 'src/Lib/Lib.csproj': lib, 'Directory.Build.props': def, 'src/Directory.Build.props': props(pg('<LangVersion>latest</LangVersion>')) })).toBe(true);
+        expect(parks({ 'src/Lib/Lib.csproj': lib, 'Directory.Build.props': def, 'src/Directory.Build.props': props(`<Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />`) })).toBe(false);
+        expect(parks({ 'src/Lib/Lib.csproj': lib, 'Directory.Build.props': def })).toBe(false);
+        // A Directory.Build.targets and a Directory.Packages.props above count too; through an unconditional chain of imports.
+        expect(parks({ 'src/Lib/Lib.csproj': lib, 'Directory.Build.targets': props('<Import Project="eng/a.props" />'), 'eng/a.props': props('<Import Project="b.props" />'), 'eng/b.props': def })).toBe(false);
+        // Defined after the read in the same file says so.
+        expect(reads({ 'a.props': props(pg('<RestoreSources>$(CorpFeed)</RestoreSources><CorpFeed>x</CorpFeed>')) }).reads).toEqual(['a.props: <RestoreSources> reads $(CorpFeed), which its file gives an unconditional value only after the read']);
+    });
+    it('(b) refined: a conditioned Import parks only when what it loads can change the sources (rule 3)', () => {
+        const literal = pg('<RestoreAdditionalProjectSources>$(MSBuildThisFileDirectory)artifacts/packages</RestoreAdditionalProjectSources>');
+        const ci = (imported, cond = "'$(CI)' == 'true'") => ({ 'Directory.Build.props': props(`${literal}<Import Project="$(MSBuildThisFileDirectory)eng/ci.props" Condition="${cond}" />`), ...imported });
+        // Sets nothing that a source setting or an Import reads: no read.
+        expect(reads(ci({ 'eng/ci.props': props(pg('<ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>')) }))).toEqual({ reads: [], more: 0, names: [], fixes: [] });
+        expect(parks(ci({ 'eng/ci.props': props(pg('<VersionSuffix>ci.$(BUILD_BUILDNUMBER)</VersionSuffix>')) }, "'$(TF_BUILD)' == 'True'"))).toBe(false);
+        // Sets a source setting itself, or through what it imports (under any condition).
+        expect(parks(ci({ 'eng/ci.props': props(pg('<RestoreSources>https://corp/v3</RestoreSources>')) }))).toBe(true);
+        expect(reads(ci({ 'eng/ci.props': props('<Import Project="feeds.props" Condition="true" />'), 'eng/feeds.props': props(pg('<RestoreSources>https://corp/v3</RestoreSources>')) })).reads)
+            .toEqual(['eng/feeds.props sets <RestoreSources>, and Directory.Build.props: Import "$(MSBuildThisFileDirectory)eng/ci.props" has a condition that reads $(CI), which no pinned file gives an unconditional value']);
+        // Defines a name a source setting's value or condition, an Import path or an Import condition reads.
+        const feedFrom = (body) => ({ 'Directory.Build.props': props(`<Import Project="$(MSBuildThisFileDirectory)eng/ci.props" Condition="'$(CI)' == 'true'" />${body}`), 'eng/ci.props': props(pg('<Feed>https://corp/v3</Feed>')) });
+        expect(reads(feedFrom(pg('<Feed Condition="\'$(Feed)\' == \'\'">x</Feed><RestoreSources>$(Feed)</RestoreSources>'))).reads).toEqual([
+            'Directory.Build.props: <RestoreSources> reads $(Feed), which only pinned files outside this evaluation (not auto-imported, or imported under a condition) give an unconditional value',
+            'eng/ci.props defines $(Feed), which a package-source setting or an Import reads, and Directory.Build.props: Import "$(MSBuildThisFileDirectory)eng/ci.props" has a condition that reads $(CI), which no pinned file gives an unconditional value',
+        ]);
+        expect(parks(feedFrom(`${literal}<Import Project="$(MSBuildThisFileDirectory)eng/x.props" Condition="'$(Feed)' != ''" />`))).toBe(true);
+        // Imports a file the engine cannot resolve; or is one.
+        expect(parks(ci({ 'eng/ci.props': props('<Import Project="$(RepoRoot)eng/x.props" />') }))).toBe(true);
+        expect(reads(ci({})).reads).toEqual(['Directory.Build.props sets <RestoreAdditionalProjectSources>, and Directory.Build.props: Import "$(MSBuildThisFileDirectory)eng/ci.props" (a file the engine cannot resolve to a pinned file) has a condition that reads $(CI), which no pinned file gives an unconditional value']);
+        // An Sdk import loads the SDK's file.
+        expect(parks({ 'Directory.Build.props': props(`${literal}<Import Project="Sdk.props" Sdk="Microsoft.NET.Sdk" Condition="'$(CI)' == 'true'" />`) })).toBe(false);
+    });
+    it('linear: a definition chain read by thousands of Import conditions (11k x 3k, two ~256 KB files), cycles, a deep chain and a deep nest stay fast and capped', () => {
+        const chain = (n) => Array.from({ length: n }, (_, i) => `<A${i}>$(A${i + 1})</A${i}>`).join('');
+        const imports = Array.from({ length: 3000 }, (_, i) => `<Import Project="$(MSBuildThisFileDirectory)e/x${i}.props" Condition="'$(A0)'=='1'" />\n`).join('');
+        const files = [{ path: 'Directory.Build.props', text: props(pg(`${chain(11000)}<RestoreSources>https://x</RestoreSources>`)) }, { path: 'p0/P.csproj', text: props(imports) }];
+        expect(files[0].text.length).toBeGreaterThan(200 * 1024);
+        expect(files[1].text.length).toBeGreaterThan(200 * 1024);
+        let start = performance.now();
+        const r = restoreHostReads(files);
+        expect(performance.now() - start).toBeLessThan(1000);
+        expect(r.reads).toHaveLength(RESTORE_READS_MAX);
+        expect(r.more).toBe(3000 - RESTORE_READS_MAX);
+        expect(r.reads[0]).toContain('reads $(A1) through $(A0), which its file gives an unconditional value only after the read');
+        // A cycle, and a long cycle whose names are all defined first: no read; one read when a link reads the environment.
+        expect(reads({ 'a.props': props(pg('<A>x</A><B>x</B><A>$(B)</A><B>$(A)</B><RestoreSources>$(A)</RestoreSources>')) }).reads).toEqual([]);
+        expect(reads({ 'a.props': props(pg('<A>x</A><B>x</B><A>$(B)</A><B>$(A);$(CORP)</B><RestoreSources>$(A)</RestoreSources>')) }).reads).toEqual(['a.props: <RestoreSources> reads $(CORP) through $(A), which no pinned file gives an unconditional value']);
+        const ring = Array.from({ length: 5000 }, (_, i) => `<C${i}>x</C${i}>`).join('') + Array.from({ length: 5000 }, (_, i) => `<C${i}>$(C${(i + 1) % 5000})</C${i}>`).join('');
+        start = performance.now();
+        expect(reads({ 'a.props': props(pg(`${ring}<RestoreSources>$(C0)</RestoreSources>`)) }).reads).toEqual([]);
+        // A deep chain defined first, whose end reads the environment: found through the chain's head.
+        const deep = Array.from({ length: 10000 }, (_, i) => `<D${i}>${i === 0 ? '$(CORP)' : `$(D${i - 1})`}</D${i}>`).join('');
+        expect(reads({ 'a.props': props(pg(`${deep}<RestoreSources>$(D9999)</RestoreSources>`)) }).reads).toEqual(['a.props: <RestoreSources> reads $(CORP) through $(D9999), which no pinned file gives an unconditional value']);
+        // A deep nest of conditioned groups.
+        const nest = Array.from({ length: 5000 }, (_, i) => `<PropertyGroup Condition="'$(C${i})'=='1'">`).join('');
+        expect(reads({ 'a.props': props(`${nest}<RestoreSources>x</RestoreSources>`) }).reads).toHaveLength(1);
+        expect(performance.now() - start).toBeLessThan(1000);
     });
 });
 //# sourceMappingURL=dotnet-package-refs.test.js.map
