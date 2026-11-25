@@ -200,8 +200,8 @@ export interface RestoreHostReads {
 /** The most reads restoreHostReads lists (the rest are counted in `more`). */
 export declare const RESTORE_READS_MAX = 50;
 /**
- * restoreHostReads' work budget: the import steps it may take (each Import or source setting it reads and each one it
- * checks, each import edge it follows, each file it adds to an import closure, each step of an upward file search and
+ * restoreHostReads' work budget: the import steps it may take (each Import or source setting it reads, charged once,
+ * each import edge it follows into an import closure, each file it adds to an import closure, each step of an upward file search and
  * each definition of a name rule (b) follows, and each defining or evaluation file it compares to decide whether a
  * definition is in a reading file's evaluation). Past it the restore parks ("too many imports to analyse").
  */
@@ -255,7 +255,8 @@ export declare const RESTORE_WORK_MAX = 100000;
  *     (non-reserved) name that a source setting's value or condition, an
  *     Import path or the condition of an Import that can change the
  *     sources (this rule, to a fixpoint) reaches: your environment decides
- *     whether a file that can change the sources loads;
+ *     whether a file that can change the sources loads (only Imports
+ *     in a file of a .NET project's evaluation, as in c);
  * (c) an Import whose `Project` value reaches a host read, a name no pinned
  *     file defines, or an env-settable profile name (PROFILE_ENV): your
  *     environment chooses which file loads (a name no pinned file defines

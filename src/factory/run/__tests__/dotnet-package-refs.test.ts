@@ -663,9 +663,9 @@ describe('restoreHostReads: package-source settings that depend on your environm
     // A deep chain defined first, whose end reads the environment: found through the chain's head.
     const deep = Array.from({ length: 10000 }, (_, i) => `<D${i}>${i === 0 ? '$(CORP)' : `$(D${i - 1})`}</D${i}>`).join('');
     expect(reads({ 'a.props': props(pg(`${deep}<RestoreSources>$(D9999)</RestoreSources>`)) }).reads).toEqual(['a.props: <RestoreSources> reads $(CORP) through $(D9999), which no pinned file gives an unconditional value']);
-    // A deep nest of conditioned groups.
-    const nest = Array.from({ length: 5000 }, (_, i) => `<PropertyGroup Condition="'$(C${i})'=='1'">`).join('');
-    expect(reads({ 'a.props': props(`${nest}<RestoreSources>x</RestoreSources>`) }).reads).toHaveLength(1);
+    // A deep nest of conditioned Choose branches.
+    const nest = Array.from({ length: 5000 }, (_, i) => `<Choose><When Condition="'$(C${i})'=='1'">`).join('');
+    expect(reads({ 'a.props': props(`${nest}${pg('<RestoreSources>x</RestoreSources>')}`) }).reads).toHaveLength(1);
     expect(performance.now() - start).toBeLessThan(1000);
   });
 
@@ -864,10 +864,10 @@ describe('restoreHostReads: package-source settings that depend on your environm
     // Memoised per (name, reading file) and iterating the smaller side: tens of thousands of reads of a name 2,000 files
     // define take a few thousand steps, not reads x files; each root's reads are charged, so a small budget parks.
     expect(restoreHostReads(settableQuad(2000, 2), 20_000).fixes).toEqual([]);
-    // Each firstHit (per setting or Import) is charged: 1,500 settings take 1,500 steps to read and 1,500 more to check.
+    // Each setting or Import is charged once, when its file is read: 1,500 settings take 1,500 steps, not more to check them.
     const settings = props(Array.from({ length: 1500 }, (_, i) => pg(`<RestoreSources Condition="'$(Configuration)' == '${i}'">https://x</RestoreSources>`)).join(''));
-    expect(restoreHostReads([{ path: 'a.props', text: settings }], 3100).fixes).toEqual([]);
-    expect(restoreHostReads([{ path: 'a.props', text: settings }], 2900).fixes).toEqual([expect.stringContaining('too many imports to analyse')]);
+    expect(restoreHostReads([{ path: 'a.props', text: settings }], 1500).fixes).toEqual([]);
+    expect(restoreHostReads([{ path: 'a.props', text: settings }], 1499).fixes).toEqual([expect.stringContaining('too many imports to analyse')]);
   });
 
   it('a response file switch whose quoted value holds a ; list: each %NAME% in it counts', () => {
@@ -904,5 +904,57 @@ describe('restoreHostReads: package-source settings that depend on your environm
     expect(restoreHostReads(deepDirs(400), 10_000).fixes).toEqual(["keep the pinned MSBuild files within the engine's limit of 10000 import steps (too many imports to analyse)"]);
     expect(restoreHostReads(mesh(30), 30 * 31)).toEqual(expect.objectContaining({ fixes: [expect.stringContaining('too many imports to analyse')] }));
     expect(performance.now() - start).toBeLessThan(2000);
+  });
+
+  it('work budget: an ordinary 10,000-project repository with 5 imports per project gives a result, with or without a literal source setting', () => {
+    const q = (a: string, b: string) => `'${a}' == '${b}'`;
+    const shared = ['Versions', 'Common', 'Analyzers', 'Packaging', 'Testing'];
+    const repo = (lit: boolean) => [
+      { path: 'Directory.Build.props', text: props(pg(`<RepoRoot>$(MSBuildThisFileDirectory)</RepoRoot><ArtifactsDir>$(RepoRoot)artifacts/</ArtifactsDir>${lit ? '<RestoreSources>https://api.nuget.org/v3/index.json</RestoreSources><RestoreAdditionalProjectSources>$(ArtifactsDir)packages</RestoreAdditionalProjectSources>' : ''}`)
+        + `<Import Project="$(RepoRoot)eng/Versions.props" /><Import Project="$(RepoRoot)eng/Analyzers.props" Condition="'$(EnableAnalyzers)' != 'false'" /><Import Project="$(RepoRoot)eng/CI.props" Condition="${q('$(CI)', 'true')}" />`) },
+      { path: 'Directory.Build.targets', text: props(`<Import Project="$(RepoRoot)eng/Packaging.targets" Condition="${q('$(IsPackable)', 'true')}" />`) },
+      { path: 'eng/CI.props', text: props(pg('<ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>')) },
+      ...shared.flatMap((s) => [{ path: `eng/${s}.props`, text: props(pg(`<${s}Dir>$(RepoRoot)eng/${s}/</${s}Dir>`)) }, { path: `eng/${s}.targets`, text: props(`<Target Name="${s}Check" />`) }]),
+      ...Array.from({ length: 10_000 }, (_, p) => ({
+        path: `src/area${p % 40}/m${p % 6}/P${p}/P${p}.csproj`,
+        text: `<Project Sdk="Microsoft.NET.Sdk">${pg('<TargetFramework>net10.0</TargetFramework>')}${shared.map((s, k) => `<Import Project="$(RepoRoot)eng/${shared[(p + k) % 5]}.targets"${k % 2 ? ` Condition="${q('$(Configuration)', 'Release')}"` : ''} />`).join('')}</Project>\n`,
+      })),
+    ];
+    for (const lit of [false, true]) {
+      const start = performance.now();
+      expect(restoreHostReads(repo(lit)), `literal setting: ${lit}`).toEqual({ reads: [], more: 0, names: [], fixes: [] });
+      expect(performance.now() - start).toBeLessThan(2000);
+    }
+  });
+
+  it('linear property scan: nested PropertyGroups hold no properties; a task with thousands of Outputs reads its attributes once', () => {
+    // MSBuild has no nested PropertyGroup: a setting inside one is no setting.
+    expect(parks({ 'Directory.Build.props': props('<PropertyGroup><PropertyGroup><RestoreSources>$(CORP_FEED)</RestoreSources></PropertyGroup></PropertyGroup>') })).toBe(false);
+    // In a Project, Target, When or Otherwise it is one.
+    for (const wrap of [(b: string) => b, (b: string) => `<Target Name="T">${b}</Target>`, (b: string) => `<Choose><When Condition="'$(Configuration)' == 'Release'">${b}</When><Otherwise>${b}</Otherwise></Choose>`]) {
+      expect(parks({ 'Directory.Build.props': props(wrap(pg('<RestoreSources>$(CORP_FEED)</RestoreSources>'))) })).toBe(true);
+    }
+    const max = PINNED_READ_MAX - 400;
+    const depth = Math.floor((max - 40) / 31);
+    const nested = props(`${'<PropertyGroup>'.repeat(depth)}$(A)${'</PropertyGroup>'.repeat(depth)}`);
+    const half = Math.floor(max / 2);
+    const outputs = Array.from({ length: Math.floor((half - 200) / 52) }, (_, n) => `<Output TaskParameter="V" PropertyName="P${n}" />`).join('');
+    const flood = props(`<Target Name="T"><CreateProperty Value="${'$(A) '.repeat(Math.floor(half / 5))}">${outputs}</CreateProperty></Target>`);
+    const start = performance.now();
+    expect(restoreHostReads(Array.from({ length: 10 }, (_, i) => ({ path: `n${i}/x.props`, text: nested }))).reads).toEqual([]);
+    expect(restoreHostReads(Array.from({ length: 10 }, (_, i) => ({ path: `o${i}/x.targets`, text: flood }))).reads).toEqual([]);
+    expect(performance.now() - start).toBeLessThan(2000);
+    // The Outputs still carry the task's reads.
+    expect(reads({ 'Directory.Build.targets': props('<Target Name="T"><CreateProperty Value="$(CORP_FEED)"><Output TaskParameter="Value" PropertyName="Feed" /><Output TaskParameter="Value" PropertyName="RestoreSources" /></CreateProperty></Target>') }).reads)
+      .toEqual(['Directory.Build.targets: <RestoreSources> reads $(CORP_FEED), which no pinned file gives an unconditional value']);
+  });
+
+  it('(b) ignores an Import in a file outside every .NET project\'s evaluation: a .vcxproj, .dcproj or .nuproj beside a literal setting does not park', () => {
+    const lit = { 'Directory.Build.props': props(pg('<RestoreSources>https://api.nuget.org/v3/index.json</RestoreSources>')), 'src/Lib/Lib.csproj': lib };
+    const conditioned = props(`<Import Project="$(QtMsBuild)\\qt_defaults.props" Condition="Exists('$(QtMsBuild)\\qt_defaults.props')" />`);
+    for (const p of ['native/Native.vcxproj', 'docker-compose.dcproj', 'pkg/Lib.nuproj']) expect(parks({ ...lit, [p]: conditioned }), p).toBe(false);
+    // The same Import in a .NET project, or in a file one imports (under any condition), still parks.
+    expect(parks({ ...lit, 'src/Lib/Lib.csproj': conditioned })).toBe(true);
+    expect(parks({ ...lit, 'src/Lib/Lib.csproj': props(`<Import Project="..\\..\\Shared\\Shared.projitems" Condition="'$(Configuration)' == 'Release'" />`), 'Shared/Shared.projitems': conditioned })).toBe(true);
   });
 });

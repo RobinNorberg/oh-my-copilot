@@ -1019,16 +1019,25 @@ describe('a package-source setting that depends on your environment parks before
     const reason = await parks();
     expect(reason).toContain('eng/CorpFeed.props sets <RestoreSources>, and Directory.Build.props: Import "$(MSBuildThisFileDirectory)eng/CorpFeed.props" has a condition that reads $(UseCorpFeed)');
     expect(reason).toContain('or give $(UseCorpFeed) an unconditional value in a pinned .props file');
-    expect(reason).toContain('or make the conditioned Import unconditional or resolvable (a literal or $(MSBuildThisFileDirectory)-based path)');
+    // The Import resolves to a pinned file: making it resolvable is no remedy.
+    expect(reason).toContain("declare the feed in the repository's nuget.config");
+    expect(reason).toContain('or make the conditioned Import unconditional');
+    expect(reason).not.toContain('or resolvable');
     // On a CI variable: the Import's remedy, never "move the source setting" (no setting sits under that condition).
     w = localWorld(['dotnet', 'test']);
     baseWithFiles(`  <Import Project="$(MSBuildThisFileDirectory)eng/CorpFeed.props" Condition="'$(CI)' == 'true'" />`, { 'eng/CorpFeed.props': '<Project><PropertyGroup><RestoreSources>https://corp.invalid/v3/index.json</RestoreSources></PropertyGroup></Project>\n' });
     const ci = await parks();
     expect(ci).toContain('has a condition that reads $(CI)');
-    expect(ci).toContain('or make the conditioned Import unconditional or resolvable');
+    expect(ci).toContain('or make the conditioned Import unconditional');
     expect(ci).not.toContain('move the source setting out from under');
     expect(ci).not.toContain('give $(CI) an unconditional value');
-  }, 2 * MULTI_RUN_MS);
+    // An Import the engine cannot resolve (an SDK's file): making it resolvable is offered too.
+    w = localWorld(['dotnet', 'test']);
+    baseWithFiles(`  <PropertyGroup>\n    <RestoreSources>${NUGET_ORG}</RestoreSources>\n  </PropertyGroup>\n  <Import Project="Sdk.props" Sdk="Corp.Feeds.Sdk" Condition="'$(UseCorpFeed)' == 'true'" />`);
+    const sdk = await parks();
+    expect(sdk).toContain('(a file of the SDK "Corp.Feeds.Sdk", which the engine cannot see) has a condition that reads $(UseCorpFeed)');
+    expect(sdk).toContain('or make the conditioned Import unconditional or resolvable (a literal or $(MSBuildThisFileDirectory)-based path)');
+  }, 3 * MULTI_RUN_MS);
 
   it('(c) a nuget.config value with %NAME%, a response file -p: value from %NAME% that a setting reads, an Import path from the user profile: each parks', async () => {
     w = localWorld(['dotnet', 'test']);

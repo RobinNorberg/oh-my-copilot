@@ -393,7 +393,7 @@ const PLAIN_SDK = /^\s*(?:Microsoft\.NET\.Sdk(?:\.[^\s/;]+)?|Microsoft\.Build\.[
 const ARCADE_SDK = /^\s*Microsoft\.DotNet\.Arcade\.Sdk\s*(?:\/[^;]*)?$/i;
 /** Properties the Arcade SDK defines: reserved only in a repository that uses it (msbuildReads). */
 const ARCADE_PROPERTIES = /^(?:RepositoryEngineeringDir|RepoRoot|RepositoryRoot|ArtifactsDir|ArtifactsBinDir|ArtifactsObjDir|ArtifactsPackagesDir|DotNetRoot|DotNetTool|ArcadeSdk\w*)$/i;
-/** The .NET project files and auto-imported files whose evaluation rule (c)'s undefined-name clause covers (msbuildReads). */
+/** The .NET project files and auto-imported files whose evaluation rule (b) and rule (c)'s undefined-name clause cover (msbuildReads). */
 const DOTNET_EVALUATED = /(?:^|\/)(?:[^/]+\.(?:cs|fs|vb)proj|directory\.build\.props|directory\.build\.targets|directory\.packages\.props|directory\.build\.rsp)$/i;
 /** A literal relative path piece (no property, item, wildcard, quote, parenthesis, comma or `;`). */
 const LITERAL_PIECE = /^[^$@%*?'"(),;]*$/;
@@ -648,14 +648,16 @@ export function propertyFlow(path: string, text: string): PropertyFlow {
   }
   if (kind !== 'msbuild') return { defs, roots, unread: false };
   /** `cond`: [] outside every condition, else the one pseudo-name (see PropertyFlow.defs) of the innermost (a self-closed element's own reads before it). */
-  type Frame = { tag: XmlTag; parent: string; cond: string[]; conditioned: boolean; whens: string[] };
+  /** `property`: a child of a PropertyGroup MSBuild reads (one directly in a Project, Target, When or Otherwise); `attrRefs`: what its attributes read, for its Outputs. */
+  type Frame = { tag: XmlTag; property: boolean; cond: string[]; conditioned: boolean; whens: string[]; attrRefs?: string[] };
   const attr = (t: XmlTag, name: string): string | undefined => {
     const a = t.attrs.find(([n]) => n.toLowerCase() === name);
     return a ? decodeXml(a[1]) : undefined;
   };
-  const finish = (f: Frame, content: string): void => {
-    if (f.parent.toLowerCase() !== 'propertygroup') return;
-    const value = decodeXml(content);
+  /** A property element's definition (its content: from `end` of its open tag to `start` of its close tag). */
+  const finish = (f: Frame, end: number): void => {
+    if (!f.property) return;
+    const value = decodeXml(text.slice(f.tag.end, end));
     define(f.tag.name, f.tag.start, !f.conditioned, shared(expressionRefs(value)), f.cond, value);
   };
   const stack: Frame[] = [];
@@ -664,7 +666,7 @@ export function propertyFlow(path: string, text: string): PropertyFlow {
       const top = stack[stack.length - 1];
       if (top && top.tag.name === t.name) {
         stack.pop();
-        finish(top, text.slice(top.tag.end, t.start));
+        finish(top, t.start);
       }
       continue;
     }
@@ -674,9 +676,11 @@ export function propertyFlow(path: string, text: string): PropertyFlow {
     const own = condition !== undefined ? conditionRefs(condition) : [];
     // A Choose's Otherwise applies when none of its Whens does: it reads their conditions.
     if (name === 'when' && parent?.tag.name.toLowerCase() === 'choose') parent.whens.push(...own);
+    // MSBuild has no nested PropertyGroup: only one directly in a Project, Target, When or Otherwise holds properties.
+    const grand = stack[stack.length - 2]?.tag.name.toLowerCase();
     const f: Frame = {
       tag: t,
-      parent: parent?.tag.name ?? '',
+      property: parent?.tag.name.toLowerCase() === 'propertygroup' && (grand === 'project' || grand === 'target' || grand === 'when' || grand === 'otherwise'),
       cond: parent?.cond ?? [],
       conditioned: (parent?.conditioned ?? false) || condition !== undefined || name === 'when' || name === 'otherwise' || name === 'target',
       whens: [],
@@ -702,8 +706,11 @@ export function propertyFlow(path: string, text: string): PropertyFlow {
     }
     // A task's Output that sets a property: the task's attribute values flow into it (inside a target: never unconditional).
     const output = name === 'output' ? attr(t, 'propertyname') : undefined;
-    if (output !== undefined && parent) define(msbuildUnescape(output).trim(), t.start, false, [...new Set(parent.tag.attrs.flatMap(([, v]) => expressionRefs(decodeXml(v))))], f.cond);
-    if (t.selfClose) finish(f, '');
+    if (output !== undefined && parent) {
+      parent.attrRefs ??= shared([...new Set(parent.tag.attrs.flatMap(([, v]) => expressionRefs(decodeXml(v))))]);
+      define(msbuildUnescape(output).trim(), t.start, false, parent.attrRefs, f.cond);
+    }
+    if (t.selfClose) finish(f, t.end);
     else stack.push(f);
   }
   return { defs, roots, unread: false };
@@ -739,8 +746,8 @@ export interface RestoreHostReads {
 export const RESTORE_READS_MAX = 50;
 
 /**
- * restoreHostReads' work budget: the import steps it may take (each Import or source setting it reads and each one it
- * checks, each import edge it follows, each file it adds to an import closure, each step of an upward file search and
+ * restoreHostReads' work budget: the import steps it may take (each Import or source setting it reads, charged once,
+ * each import edge it follows into an import closure, each file it adds to an import closure, each step of an upward file search and
  * each definition of a name rule (b) follows, and each defining or evaluation file it compares to decide whether a
  * definition is in a reading file's evaluation). Past it the restore parks ("too many imports to analyse").
  */
@@ -804,7 +811,8 @@ class OverBudget extends Error {}
  *     (non-reserved) name that a source setting's value or condition, an
  *     Import path or the condition of an Import that can change the
  *     sources (this rule, to a fixpoint) reaches: your environment decides
- *     whether a file that can change the sources loads;
+ *     whether a file that can change the sources loads (only Imports
+ *     in a file of a .NET project's evaluation, as in c);
  * (c) an Import whose `Project` value reaches a host read, a name no pinned
  *     file defines, or an env-settable profile name (PROFILE_ENV): your
  *     environment chooses which file loads (a name no pinned file defines
@@ -1116,7 +1124,6 @@ ${root.value}`;
   };
   /** The first hit of what `refs` (read in `lpath` at `at`) reach, with the name it went through. */
   const firstHit = (refs: readonly string[], lpath: string, at: number, mode: Mode): { hit: Hit; via: string } | null => {
-    spend(1);
     for (const r of refs) {
       const x = direct(r, lpath, at, mode);
       if (x === 'stop') continue;
@@ -1152,7 +1159,6 @@ ${root.value}`;
         for (const r of f.flow.roots) {
           if (r.kind !== 'import') continue;
           for (const t of resolved(r, f.path) ?? []) {
-            spend(1);
             if (seen.has(t) || !flowAt.has(t)) continue;
             seen.add(t);
             queue.push(t);
@@ -1218,8 +1224,10 @@ ${root.value}`;
     if (setting) change(f.lpath, `${f.path} sets ${what(setting)}`);
   }
   for (const f of flows) {
+    // An Import outside every .NET project's evaluation (a .vcxproj's, a .dcproj's) loads nothing a restore reads.
+    const dotnet = inDotnet(f.lpath);
     for (const r of f.flow.roots) {
-      spend(1);
+      if (r.kind === 'import' && !dotnet) continue;
       reach(r.refs);
       if (r.kind !== 'import') continue;
       const ts = resolved(r, f.path);

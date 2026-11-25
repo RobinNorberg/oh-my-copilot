@@ -140568,9 +140568,9 @@ function propertyFlow(path30, text9) {
     const a = t.attrs.find(([n]) => n.toLowerCase() === name);
     return a ? decodeXml(a[1]) : void 0;
   };
-  const finish2 = (f, content2) => {
-    if (f.parent.toLowerCase() !== "propertygroup") return;
-    const value = decodeXml(content2);
+  const finish2 = (f, end) => {
+    if (!f.property) return;
+    const value = decodeXml(text9.slice(f.tag.end, end));
     define(f.tag.name, f.tag.start, !f.conditioned, shared(expressionRefs(value)), f.cond, value);
   };
   const stack = [];
@@ -140579,7 +140579,7 @@ function propertyFlow(path30, text9) {
       const top = stack[stack.length - 1];
       if (top && top.tag.name === t.name) {
         stack.pop();
-        finish2(top, text9.slice(top.tag.end, t.start));
+        finish2(top, t.start);
       }
       continue;
     }
@@ -140588,9 +140588,10 @@ function propertyFlow(path30, text9) {
     const name = t.name.toLowerCase();
     const own3 = condition !== void 0 ? conditionRefs(condition) : [];
     if (name === "when" && parent?.tag.name.toLowerCase() === "choose") parent.whens.push(...own3);
+    const grand = stack[stack.length - 2]?.tag.name.toLowerCase();
     const f = {
       tag: t,
-      parent: parent?.tag.name ?? "",
+      property: parent?.tag.name.toLowerCase() === "propertygroup" && (grand === "project" || grand === "target" || grand === "when" || grand === "otherwise"),
       cond: parent?.cond ?? [],
       conditioned: (parent?.conditioned ?? false) || condition !== void 0 || name === "when" || name === "otherwise" || name === "target",
       whens: []
@@ -140612,8 +140613,11 @@ function propertyFlow(path30, text9) {
       if (sdk && !PLAIN_SDK.test(sdk)) roots.push({ kind: "import", value: "Sdk.props", at: t.start, refs: [], cond: [], conditional: false, sdk });
     }
     const output2 = name === "output" ? attr(t, "propertyname") : void 0;
-    if (output2 !== void 0 && parent) define(msbuildUnescape(output2).trim(), t.start, false, [...new Set(parent.tag.attrs.flatMap(([, v]) => expressionRefs(decodeXml(v))))], f.cond);
-    if (t.selfClose) finish2(f, "");
+    if (output2 !== void 0 && parent) {
+      parent.attrRefs ??= shared([...new Set(parent.tag.attrs.flatMap(([, v]) => expressionRefs(decodeXml(v))))]);
+      define(msbuildUnescape(output2).trim(), t.start, false, parent.attrRefs, f.cond);
+    }
+    if (t.selfClose) finish2(f, t.end);
     else stack.push(f);
   }
   return { defs, roots, unread: false };
@@ -140897,7 +140901,6 @@ ${lpath}`;
     return hits;
   };
   const firstHit = (refs2, lpath, at, mode) => {
-    spend2(1);
     for (const r of refs2) {
       const x = direct(r, lpath, at, mode);
       if (x === "stop") continue;
@@ -140929,7 +140932,6 @@ ${lpath}`;
         for (const r of f.flow.roots) {
           if (r.kind !== "import") continue;
           for (const t of resolved(r, f.path) ?? []) {
-            spend2(1);
             if (seen.has(t) || !flowAt.has(t)) continue;
             seen.add(t);
             queue.push(t);
@@ -140987,8 +140989,9 @@ ${lpath}`;
     if (setting) change(f.lpath, `${f.path} sets ${what(setting)}`);
   }
   for (const f of flows) {
+    const dotnet = inDotnet(f.lpath);
     for (const r of f.flow.roots) {
-      spend2(1);
+      if (r.kind === "import" && !dotnet) continue;
       reach(r.refs);
       if (r.kind !== "import") continue;
       const ts = resolved(r, f.path);
@@ -141540,12 +141543,13 @@ function envReadWhy(r) {
   const env2 = r.names.filter((n) => isEnvironmentOnlyName(n));
   const path30 = r.reads.some((x) => /so your environment chooses which file loads$/.test(x));
   const conditioned = r.reads.some((x) => / has a condition that reads /.test(x));
+  const unresolvable = r.reads.some((x) => / \((?:a file the engine cannot resolve to a pinned file|a file of the SDK .*?, which the engine cannot see)\) has a condition that reads /.test(x));
   const fixes = r.fixes.join("; ");
   if (r.reads.every((x) => /^[^\n]*?: (?:not UTF-8 text|larger than \d+ KB|too many imports to analyse)/.test(x))) {
     const what = r.reads.some((x) => /^[^\n]*?: too many imports to analyse/.test(x)) ? "analyse the pinned files" : "read a pinned file";
     return `the engine could not ${what} that may set the package sources (${named}), so it cannot tell whether a package-source setting depends on your environment or machine, which the sandbox does not pass; ${fixes}`;
   }
-  return `a package-source setting of the repository depends on your environment or machine (${named}), which the sandbox does not pass, so there the restriction could be lost and the restore could reach nuget.org where the same command on your machine would use only your feed; declare the feed in the repository's nuget.config (a <packageSources> entry, no %VARIABLE%)${pin.length ? `, or give ${props(pin)} an unconditional value in a pinned .props file` : ""}${env2.length ? `, or move the source setting out from under the condition on ${props(env2)}` : ""}${conditioned ? ", or make the conditioned Import unconditional or resolvable (a literal or $(MSBuildThisFileDirectory)-based path)" : ""}${path30 ? ", and import only files the repository tracks, by a path from $(MSBuildThisFileDirectory)" : ""}${fixes ? `; ${fixes}` : ""}`;
+  return `a package-source setting of the repository depends on your environment or machine (${named}), which the sandbox does not pass, so there the restriction could be lost and the restore could reach nuget.org where the same command on your machine would use only your feed; declare the feed in the repository's nuget.config (a <packageSources> entry, no %VARIABLE%)${pin.length ? `, or give ${props(pin)} an unconditional value in a pinned .props file` : ""}${env2.length ? `, or move the source setting out from under the condition on ${props(env2)}` : ""}${conditioned ? `, or make the conditioned Import unconditional${unresolvable ? " or resolvable (a literal or $(MSBuildThisFileDirectory)-based path)" : ""}` : ""}${path30 ? ", and import only files the repository tracks, by a path from $(MSBuildThisFileDirectory)" : ""}${fixes ? `; ${fixes}` : ""}`;
 }
 function isNewerEvent(next, prev) {
   const n = next ? Date.parse(next) : NaN;
