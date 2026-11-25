@@ -949,12 +949,26 @@ describe('restoreHostReads: package-source settings that depend on your environm
       .toEqual(['Directory.Build.targets: <RestoreSources> reads $(CORP_FEED), which no pinned file gives an unconditional value']);
   });
 
-  it('(b) ignores an Import in a file outside every .NET project\'s evaluation: a .vcxproj, .dcproj or .nuproj beside a literal setting does not park', () => {
+  it('(b) ignores an Import in a legacy non-.NET project no other file imports: a .vcxproj, .dcproj or .nuproj beside a literal setting does not park', () => {
     const lit = { 'Directory.Build.props': props(pg('<RestoreSources>https://api.nuget.org/v3/index.json</RestoreSources>')), 'src/Lib/Lib.csproj': lib };
-    const conditioned = props(`<Import Project="$(QtMsBuild)\\qt_defaults.props" Condition="Exists('$(QtMsBuild)\\qt_defaults.props')" />`);
-    for (const p of ['native/Native.vcxproj', 'docker-compose.dcproj', 'pkg/Lib.nuproj']) expect(parks({ ...lit, [p]: conditioned }), p).toBe(false);
+    const imports = `<Import Project="$(QtMsBuild)\\qt_defaults.props" Condition="Exists('$(QtMsBuild)\\qt_defaults.props')" />`;
+    const conditioned = props(imports);
+    for (const p of ['native/Native.vcxproj', 'docker-compose.dcproj', 'pkg/Lib.nuproj', 'db/Db.sqlproj', 'setup/S.wixproj']) expect(parks({ ...lit, [p]: conditioned }), p).toBe(false);
     // The same Import in a .NET project, or in a file one imports (under any condition), still parks.
     expect(parks({ ...lit, 'src/Lib/Lib.csproj': conditioned })).toBe(true);
     expect(parks({ ...lit, 'src/Lib/Lib.csproj': props(`<Import Project="..\\..\\Shared\\Shared.projitems" Condition="'$(Configuration)' == 'Release'" />`), 'Shared/Shared.projitems': conditioned })).toBe(true);
+    expect(parks({ ...lit, 'src/Lib/Lib.csproj': props('<Import Project="..\\..\\native\\Native.vcxproj" />'), 'native/Native.vcxproj': conditioned })).toBe(true);
+    // An SDK-style project of any extension is restored by NuGet: an SDK-style .sqlproj or .wixproj, or a .proj, parks.
+    expect(parks({ ...lit, 'db/Db.sqlproj': `<Project Sdk="Microsoft.Build.Sql">${imports}</Project>` })).toBe(true);
+    expect(parks({ ...lit, 'setup/S.wixproj': `<Project Sdk="WixToolset.Sdk/5.0.2">${imports}</Project>` })).toBe(true);
+    expect(parks({ ...lit, 'setup/S.wixproj': `<Project><Sdk Name="WixToolset.Sdk" Version="5.0.2" />${imports}</Project>` })).toBe(true);
+    const corp = props(pg('<RestoreSources>https://corp.invalid/v3/index.json</RestoreSources>'));
+    expect(parks({ 'tools/Tools.proj': `<Project Sdk="Microsoft.NET.Sdk"><Import Project="../eng/CorpFeed.props" Condition="'$(UseCorpFeed)' == 'true'" /></Project>`, 'eng/CorpFeed.props': corp })).toBe(true);
+    // A .props imported by a path the engine does not resolve is still read like the .NET projects' files.
+    expect(parks({
+      'Directory.Build.props': props(`${pg("<RepoRoot>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)'))</RepoRoot>")}<Import Project="$(RepoRoot)eng/Build.props" />`),
+      'eng/Build.props': props(`<Import Project="$(MSBuildThisFileDirectory)CorpFeed.props" Condition="'$(UseCorpFeed)' == 'true'" />`),
+      'eng/CorpFeed.props': corp,
+    })).toBe(true);
   });
 });

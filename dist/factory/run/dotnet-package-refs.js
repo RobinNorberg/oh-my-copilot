@@ -451,8 +451,10 @@ const PLAIN_SDK = /^\s*(?:Microsoft\.NET\.Sdk(?:\.[^\s/;]+)?|Microsoft\.Build\.[
 const ARCADE_SDK = /^\s*Microsoft\.DotNet\.Arcade\.Sdk\s*(?:\/[^;]*)?$/i;
 /** Properties the Arcade SDK defines: reserved only in a repository that uses it (msbuildReads). */
 const ARCADE_PROPERTIES = /^(?:RepositoryEngineeringDir|RepoRoot|RepositoryRoot|ArtifactsDir|ArtifactsBinDir|ArtifactsObjDir|ArtifactsPackagesDir|DotNetRoot|DotNetTool|ArcadeSdk\w*)$/i;
-/** The .NET project files and auto-imported files whose evaluation rule (b) and rule (c)'s undefined-name clause cover (msbuildReads). */
+/** The .NET project files and auto-imported files whose evaluation rule (c)'s undefined-name clause covers (msbuildReads). */
 const DOTNET_EVALUATED = /(?:^|\/)(?:[^/]+\.(?:cs|fs|vb)proj|directory\.build\.props|directory\.build\.targets|directory\.packages\.props|directory\.build\.rsp)$/i;
+/** The legacy non-.NET project kinds that NuGet does not restore unless SDK-style (msbuildReads rule b's scope). */
+const NON_DOTNET_PROJECT = /\.(?:vcxproj|vcproj|dcproj|nuproj|sqlproj|wixproj|pyproj|shproj|njsproj|vdproj)$/i;
 /** A literal relative path piece (no property, item, wildcard, quote, parenthesis, comma or `;`). */
 const LITERAL_PIECE = /^[^$@%*?'"(),;]*$/;
 /**
@@ -706,6 +708,7 @@ export function propertyFlow(path, text) {
         const value = decodeXml(text.slice(f.tag.end, end));
         define(f.tag.name, f.tag.start, !f.conditioned, shared(expressionRefs(value)), f.cond, value);
     };
+    let sdkStyle = false;
     const stack = [];
     for (const t of scanXml(text).tags) {
         if (t.close) {
@@ -748,6 +751,8 @@ export function propertyFlow(path, text) {
         // The implicit imports of `<Project Sdk="A;B">` and of a top-level `<Sdk Name="X" />`: an unconditional Import of each
         // SDK's files (a PLAIN_SDK loads nothing of the repository: no root).
         const sdks = !parent && name === 'project' ? attr(t, 'sdk') : name === 'sdk' && parent?.tag.name.toLowerCase() === 'project' && stack.length === 1 ? attr(t, 'name') : undefined;
+        if (sdks?.trim())
+            sdkStyle = true;
         for (const s of sdks?.split(';') ?? []) {
             const sdk = s.split('/')[0].trim();
             if (sdk && !PLAIN_SDK.test(sdk))
@@ -764,7 +769,7 @@ export function propertyFlow(path, text) {
         else
             stack.push(f);
     }
-    return { defs, roots, unread: false };
+    return { defs, roots, unread: false, sdkStyle };
 }
 /** A pseudo-name of expressionRefs in words. */
 function hostReadWords(ref) {
@@ -845,8 +850,9 @@ class OverBudget extends Error {
  *     (non-reserved) name that a source setting's value or condition, an
  *     Import path or the condition of an Import that can change the
  *     sources (this rule, to a fixpoint) reaches: your environment decides
- *     whether a file that can change the sources loads (only Imports
- *     in a file of a .NET project's evaluation, as in c);
+ *     whether a file that can change the sources loads (not the Imports
+ *     of a legacy non-.NET project, NON_DOTNET_PROJECT and not SDK-style,
+ *     that no in-scope pinned file imports by a resolvable path);
  * (c) an Import whose `Project` value reaches a host read, a name no pinned
  *     file defines, or an env-settable profile name (PROFILE_ENV): your
  *     environment chooses which file loads (a name no pinned file defines
@@ -1257,6 +1263,32 @@ ${root.value}`;
         }
         return dotnetFiles.has(lpath);
     };
+    /**
+     * The files whose Imports rule (b) skips: a legacy non-.NET project (NON_DOTNET_PROJECT, not SDK-style) that no
+     * other pinned file imports by a resolvable path, under any condition (one it imports counts as an importer only
+     * once it is in scope itself). Every other file is in scope, whether or not the engine sees who imports it.
+     * Computed on first use.
+     */
+    let foreignFiles;
+    const inRuleB = (lpath) => {
+        if (!foreignFiles) {
+            foreignFiles = new Set(flows.filter((f) => NON_DOTNET_PROJECT.test(f.lpath) && !f.flow.sdkStyle).map((f) => f.lpath));
+            const queue = foreignFiles.size > 0 ? flows.filter((f) => !foreignFiles.has(f.lpath)).map((f) => f.lpath) : [];
+            for (let i = 0; i < queue.length && foreignFiles.size > 0; i++) {
+                const f = flowAt.get(queue[i]);
+                for (const r of f.flow.roots) {
+                    if (r.kind !== 'import')
+                        continue;
+                    for (const t of resolved(r, f.path) ?? []) {
+                        if (!foreignFiles.delete(t))
+                            continue;
+                        queue.push(t);
+                    }
+                }
+            }
+        }
+        return !foreignFiles.has(lpath);
+    };
     // (a) and (c)'s Import paths.
     let sets = '';
     /** The conditioned Imports that rule (b) may make reads. */
@@ -1323,10 +1355,10 @@ ${root.value}`;
             change(f.lpath, `${f.path} sets ${what(setting)}`);
     }
     for (const f of flows) {
-        // An Import outside every .NET project's evaluation (a .vcxproj's, a .dcproj's) loads nothing a restore reads.
-        const dotnet = inDotnet(f.lpath);
+        // An Import in a legacy non-.NET project no in-scope file imports (a .vcxproj's, a .dcproj's) loads nothing a restore reads.
+        const scoped = inRuleB(f.lpath);
         for (const r of f.flow.roots) {
-            if (r.kind === 'import' && !dotnet)
+            if (r.kind === 'import' && !scoped)
                 continue;
             reach(r.refs);
             if (r.kind !== 'import')
