@@ -427,4 +427,999 @@ export function projectSdkMentions(path, text) {
     }
     return [...out].sort();
 }
+/**
+ * NuGet's restore properties that name package sources, folders or the
+ * config NuGet reads (restoreHostReads' source settings). Not
+ * `RestorePackagesPath`: the global packages folder is where packages land,
+ * not where they come from.
+ */
+const RESTORE_SOURCE_SETTING = /^Restore(?:Sources|AdditionalProjectSources|FallbackFolders|AdditionalProjectFallbackFolders|ConfigFile|RootConfigDirectory)$/i;
+/**
+ * The properties through which the SDK imports a file (Microsoft.Common.props/targets, Microsoft.Common.CrossTargeting,
+ * Microsoft.CSharp, Microsoft.VisualBasic and Microsoft.FSharp targets, Directory.Build.props/targets,
+ * Directory.Packages.props): a definition of one is an Import whose path is its value; an `Import*` switch turns its
+ * Directory file (HOOK_SWITCH) on or off.
+ */
+const IMPORT_HOOK = /^(?:Custom(?:Before|After)(?:MicrosoftCommon|MicrosoftCommonCrossTargeting|MicrosoftCSharp|MicrosoftVisualBasic|MicrosoftFSharp|DirectoryBuild)(?:Props|Targets)|Directory(?:BuildProps|BuildTargets|PackagesProps)Path|ImportDirectory(?:BuildProps|BuildTargets|PackagesProps))$/i;
+const HOOK_SWITCH = { importdirectorybuildprops: 'Directory.Build.props', importdirectorybuildtargets: 'Directory.Build.targets', importdirectorypackagesprops: 'Directory.Packages.props' };
+/**
+ * An Sdk an Import may load with no file of the repository (a `/version` suffix allowed): the .NET SDK's own
+ * (`Microsoft.NET.Sdk`, `Microsoft.NET.Sdk.<name>`) and `Microsoft.Build.<name>` SDKs.
+ */
+const PLAIN_SDK = /^\s*(?:Microsoft\.NET\.Sdk(?:\.[^\s/;]+)?|Microsoft\.Build\.[^\s/;]+)\s*(?:\/[^;]*)?$/i;
+/** The Arcade SDK (its `Sdk` name, a `/version` suffix allowed). */
+const ARCADE_SDK = /^\s*Microsoft\.DotNet\.Arcade\.Sdk\s*(?:\/[^;]*)?$/i;
+/** Properties the Arcade SDK defines: reserved only in a repository that uses it (msbuildReads). */
+const ARCADE_PROPERTIES = /^(?:RepositoryEngineeringDir|RepoRoot|RepositoryRoot|ArtifactsDir|ArtifactsBinDir|ArtifactsObjDir|ArtifactsPackagesDir|DotNetRoot|DotNetTool|ArcadeSdk\w*)$/i;
+/** The .NET project files and auto-imported files whose evaluation rule (c)'s undefined-name clause covers (msbuildReads). */
+const DOTNET_EVALUATED = /(?:^|\/)(?:[^/]+\.(?:cs|fs|vb)proj|directory\.build\.props|directory\.build\.targets|directory\.packages\.props|directory\.build\.rsp)$/i;
+/** The legacy non-.NET project kinds that NuGet does not restore unless SDK-style (msbuildReads rule b's scope). */
+const NON_DOTNET_PROJECT = /\.(?:vcxproj|vcproj|dcproj|nuproj|sqlproj|wixproj|pyproj|shproj|njsproj|vdproj)$/i;
+/** The .NET build files whose Import makes a NON_DOTNET_PROJECT file a .NET project for rule (b) (Microsoft.Common.props is not one: stock `.dcproj` and SSDT `.sqlproj` import it). */
+const DOTNET_TARGETS_IMPORT = /(?:^|[\\/])Microsoft\.(?:Common|CSharp|VisualBasic|FSharp)\.targets$/i;
+/** A literal relative path piece (no property, item, wildcard, quote, parenthesis, comma or `;`). */
+const LITERAL_PIECE = /^[^$@%*?'"(),;]*$/;
+/**
+ * The path relative to the defining file's dir that a property value names (`/`-joined, leading separators dropped):
+ * `$(MSBuildThisFileDirectory)` plus a relative literal path, or `$([MSBuild]::NormalizeDirectory(...))` (its first
+ * argument that, the others relative literals) / `EnsureTrailingSlash(...)` of that, plus a literal path; else null.
+ */
+function thisDirDef(value) {
+    const v = value.trim();
+    const plain = /^\$\(MSBuildThisFileDirectory\)(.*)$/i.exec(v);
+    let pieces;
+    if (plain)
+        pieces = [plain[1]];
+    else {
+        const fn = /^\$\(\[MSBuild\]::(NormalizeDirectory|EnsureTrailingSlash)\((.*)\)\)([^()]*)$/i.exec(v);
+        if (!fn)
+            return null;
+        const args = fn[2].split(',').map((a) => a.trim().replace(/^'(.*)'$/, '$1').trim());
+        const first = /^\$\(MSBuildThisFileDirectory\)(.*)$/i.exec(args[0]);
+        if (!first || (args.length > 1 && fn[1].toLowerCase() !== 'normalizedirectory'))
+            return null;
+        // A later absolute argument would replace the path before it (Path.Combine).
+        if (args.slice(1).some((a) => /^(?:[a-z]:|[\\/])/i.test(a)))
+            return null;
+        pieces = [first[1], ...args.slice(1), fn[3]];
+    }
+    if (!pieces.every((p) => LITERAL_PIECE.test(p)))
+        return null;
+    return pieces.map((p) => p.trim().replace(/^[\\/]+/, '')).filter(Boolean).join('/');
+}
+/**
+ * Properties MSBuild, the .NET SDK, NuGet or Visual Studio define (lower
+ * case; `MSBuild*` and NuGet's generated `Pkg*` path properties by prefix):
+ * a reference to one is not a read of your environment. Never CI variables
+ * (`CI`, `TF_BUILD`, `GITHUB_ACTIONS`, `BUILD_*`) or profile names
+ * (`USERPROFILE`, `HOME`, `USERDOMAIN`, `APPDATA`): your environment sets those.
+ */
+const RESERVED_PROPERTIES = new Set([
+    'configuration', 'platform', 'platforms', 'platformtarget', 'platformname', 'targetframework', 'targetframeworks', 'targetframeworkidentifier', 'targetframeworkversion',
+    'targetframeworkmoniker', 'targetframeworkprofile', 'targetplatformidentifier', 'targetplatformversion', 'targetplatformminversion', 'supportedosplatformversion',
+    'runtimeidentifier', 'runtimeidentifiers', 'os',
+    'outputpath', 'outdir', 'intermediateoutputpath', 'baseintermediateoutputpath', 'baseoutputpath', 'projectdir', 'projectname',
+    'projectpath', 'projectfilename', 'projectext', 'solutiondir', 'solutionname', 'solutionpath', 'solutionfilename', 'solutionext',
+    'targetname', 'targetpath', 'targetdir', 'targetext', 'targetfilename', 'assemblyname', 'rootnamespace', 'artifactspath', 'useartifactsoutput',
+    'appendtargetframeworktooutputpath', 'appendruntimeidentifiertooutputpath', 'packageoutputpath', 'documentationfile',
+    'nugetpackageroot', 'nugetpackagefolders', 'nugetprojectstyle', 'nugettargetmoniker', 'netcoresdkversion', 'netcoresdkruntimeidentifier', 'netcoreroot',
+    'netcoretargetingpackroot', 'bundlednetcoreapppackageversion', 'bundlednetcoreapptargetframeworkversion', 'netcoreappmaximumversion', 'microsoftnetcoreapprefpackageversion',
+    'dotnet_host_path', 'visualstudioversion', 'vstoolspath', 'designtimebuild',
+    'buildinginsidevisualstudio', 'buildingforliveunittesting', 'buildingproject', 'buildingsolutionfile', 'buildprojectreferences', 'isimplicitlytriggeredbuild',
+    'language', 'defineconstants', 'langversion', 'nullable', 'implicitusings',
+    'version', 'versionprefix', 'versionsuffix', 'packageversion', 'assemblyversion', 'fileversion', 'informationalversion', 'packageid',
+    'authors', 'company', 'product', 'copyright', 'description', 'neutrallanguage', 'ispackable', 'ispublishable', 'istestproject', 'istestingplatformapplication',
+    'isaspirehost', 'ispublishing', '_ispublishing',
+    'outputtype', 'iscrosstargetingbuild', 'usingmicrosoftnetsdk', 'usingmicrosoftnetsdkweb', 'usingmicrosoftnetsdkrazor', 'usingmicrosoftnetsdkworker',
+    'usingmicrosoftnetsdkblazorwebassembly', 'usingmicrosoftnetsdkwebassembly', 'usingmicrosoftnetsdkstaticwebassets', 'excluderestorepackageimports', 'restoregraphoutputpath', 'restoreprojectstyle',
+    'enabledefaultitems', 'enabledefaultcompileitems', 'defaultitemexcludes', 'importdirectorybuildprops', 'importdirectorybuildtargets', 'sdkanalysislevel',
+    'usemaui', 'mauiversion', 'prefer32bit',
+    'selfcontained', 'publishtrimmed', 'publishaot', 'publishsinglefile', 'publishreadytorun', 'useapphost', 'isaotcompatible', 'istrimmable',
+    'usewpf', 'usewindowsforms', 'enablewindowstargeting', 'invariantglobalization',
+    'optimize', 'debugtype', 'debugsymbols', 'deterministic', 'warninglevel', 'nowarn', 'warningsaserrors', 'warningsnotaserrors', 'treatwarningsaserrors',
+    'generatedocumentationfile', 'generateassemblyinfo', 'generatepackageonbuild', 'signassembly', 'analysislevel', 'analysismode',
+    'enablenetanalyzers', 'enforcecodestyleinbuild', 'runanalyzers', 'runanalyzersduringbuild',
+    'managepackageversionscentrally', 'centralpackagetransitivepinningenabled', 'restorepackageswithlockfile', 'restorelockedmode',
+    'restoreusestaticgraphevaluation', 'nugetaudit', 'nugetauditmode', 'nugetauditlevel',
+    // Other project kinds' toolsets: C++ (.vcxproj), SSDT (.sqlproj), WiX (.wixproj).
+    'vctargetspath', 'userrootdir', 'sqldbextensionsrefpath', 'wixtargetspath',
+]);
+/** True when `name` is a property MSBuild or the SDK defines (RESERVED_PROPERTIES). */
+export const isReservedProperty = (name) => /^MSBuild/i.test(name) || /^Pkg[A-Za-z_]/.test(name) || RESERVED_PROPERTIES.has(name.toLowerCase());
+/** Names your user profile sets (an Import path that reads one picks a file of your machine, restoreHostReads rule c). */
+const PROFILE_ENV = /^(?:HOME|USERPROFILE|APPDATA|LOCALAPPDATA|HOMEDRIVE|HOMEPATH|USERNAME|USERDOMAIN|ALLUSERSPROFILE|PROGRAMDATA|XDG_\w+)$/i;
+/** Variables a CI system sets. */
+const CI_ENV = /^(?:CI|TF_BUILD|GITHUB_\w+|BUILD_\w+|SYSTEM_\w+|AGENT_\w+|RUNNER_\w+|GITLAB_CI|JENKINS_URL|TEAMCITY_VERSION|APPVEYOR|TRAVIS)$/i;
+/**
+ * True when `name` is one your CI system or user profile sets (`CI`,
+ * `TF_BUILD`, `GITHUB_*`, `BUILD_*`, `SYSTEM_*`, `HOME`, `USERPROFILE`, ...):
+ * a value a repository should not pin, so the park's remedy is to move the
+ * source setting out from under it rather than to give it a value.
+ */
+export const isEnvironmentOnlyName = (name) => CI_ENV.test(name) || PROFILE_ENV.test(name);
+/** `$(Name` (a property, a property function on it, or `$(Registry:`). Group 1: the name; group 2: a `:` after it. */
+const PROPERTY_REF = /\$\(\s*([A-Za-z_][A-Za-z0-9_-]*)\s*(:?)/g;
+/** A property function that reads the host: the environment, a user-profile folder, the registry, the user or machine name. Groups 3-5: a literal variable name. */
+const HOST_READ = /\b(GetEnvironmentVariables?|ExpandEnvironmentVariables|GetFolderPath|GetRegistryValue(?:FromView)?|(?<=::\s*)(?:UserDomainName|UserName|MachineName))\b(\s*\(\s*(?:'([A-Za-z_][\w-]*)'|"([A-Za-z_][\w-]*)"|([A-Za-z_][\w-]*))\s*\))?/gi;
+/** A word every HOST_READ match holds (a cheap test before it). */
+const HOST_READ_HINT = /Environment|FolderPath|Registry|User|MachineName/i;
+/** `%NAME%`: an environment variable NuGet (a config value) or MSBuild (a response file) expands. The closing `%` is not consumed: it may open the next one. */
+const ENV_PERCENT = /%([A-Za-z_][A-Za-z0-9_]*)(?=%)/g;
+/** `@(Name` or `%(Name`: an item list or item metadata (the engine does not follow items). Group 1: the sigil; group 2: the item type (or metadata name). */
+const ITEM_REF = /([@%])\(\s*([A-Za-z_]\w*)?/g;
+/**
+ * The names an MSBuild expression reads: each `$(Name)` as `Name`, and
+ * host reads as pseudo-names in brackets (`[env NAME]` for a literal
+ * GetEnvironmentVariable, `[env ?]` for a computed one, `[registry]`,
+ * `[GetFolderPath]`, ...). With `percent`, `%NAME%` counts as `[env NAME]`;
+ * a two-hex-digit name (`%AB%`) counts too unless it is part of a run of
+ * `%XX` escapes (`%C3%A9`: an escape just before it, or one starting at
+ * its closing `%`).
+ */
+export function expressionRefs(expr, percent = false) {
+    const out = new Set();
+    // Property references and property functions need a `$(`; item lists a `@(`, item metadata a `%(`; `%NAME%` a `%`.
+    if (!expr.includes('$(') && !expr.includes('@(') && !expr.includes('%(') && !(percent && expr.includes('%')))
+        return [];
+    for (const m of expr.matchAll(PROPERTY_REF))
+        out.add(m[2] && m[1].toLowerCase() === 'registry' ? '[registry]' : m[1]);
+    for (const m of expr.matchAll(ITEM_REF))
+        out.add(`[${m[1] === '@' ? 'item' : 'metadata'} ${m[2] ?? '?'}]`);
+    if (HOST_READ_HINT.test(expr))
+        for (const m of expr.matchAll(HOST_READ)) {
+            const literal = m[3] ?? m[4] ?? m[5];
+            out.add(m[1].toLowerCase() === 'getenvironmentvariable' ? `[env ${literal ?? '?'}]` : `[${m[1]}]`);
+        }
+    if (percent) {
+        for (const m of expr.matchAll(ENV_PERCENT)) {
+            const at = m.index ?? 0;
+            const close = at + 1 + m[1].length;
+            if (/^[0-9a-f]{2}$/i.test(m[1]) && (/%[0-9a-f]{2}$/i.test(expr.slice(Math.max(0, at - 3), at)) || /^%[0-9a-f]{2}/i.test(expr.slice(close, close + 3))))
+                continue;
+            out.add(`[env ${m[1]}]`);
+        }
+    }
+    return [...out];
+}
+/** `rel` (relative to the dir of the repository file `path`) as a repository path, `\` read as `/`, `.` and `..` resolved. */
+function repoPath(path, rel) {
+    const out = path.split('/').slice(0, -1);
+    for (const seg of rel.replace(/\\/g, '/').split('/')) {
+        if (seg === '..')
+            out.pop();
+        else if (seg !== '' && seg !== '.')
+            out.push(seg);
+    }
+    return out.join('/');
+}
+/**
+ * The files an Import's `Project` value names (each `;` part, `%XX`
+ * unescaped): a literal path or one from `$(MSBuildThisFileDirectory)`
+ * inside the repository, or `GetPathOfFileAbove('<name>'[, <start>])`
+ * from `$(MSBuildThisFileDirectory)` plus `..` segments, or `$(P)` plus a
+ * literal path when `dirOf(P)` gives P's repository dir; null when a part
+ * is anything else (another property, a wildcard, an absolute path, one
+ * above the repository root).
+ */
+function importTargets(path, project, dirOf) {
+    const out = [];
+    for (const raw of project.split(';')) {
+        const part = msbuildUnescape(raw).trim();
+        if (!part)
+            continue;
+        const via = /^\$\(\s*([A-Za-z_][\w-]*)\s*\)([^$@%*?]*)$/.exec(part);
+        if (via && via[1].toLowerCase() !== 'msbuildthisfiledirectory') {
+            const base = dirOf(via[1]);
+            const file = base === null ? '' : base ? `${base}/_` : '_';
+            if (base === null || leavesRepository(file, via[2]))
+                return null;
+            out.push({ path: repoPath(file, via[2]) });
+            continue;
+        }
+        const above = FILE_ABOVE.exec(part);
+        if (above) {
+            const name = (above[1] ?? above[2]).trim();
+            const up = above[3] ?? above[4] ?? '';
+            if (/[\\/]/.test(name) || (up && leavesRepository(path, `${up}/x`)))
+                return null;
+            out.push({ above: name, from: repoPath(path, up || '.') });
+            continue;
+        }
+        const local = THIS_DIR_PATH.exec(part);
+        if (!local || !local[1] || leavesRepository(path, local[1]))
+            return null;
+        out.push({ path: repoPath(path, local[1]) });
+    }
+    return out;
+}
+/**
+ * The property data flow of a pinned MSBuild file (one linear scan) or
+ * response file (its `-p:` / `-property:` / `-rp:` / `-restoreProperty:`
+ * global properties, with `-`, `--` or `/`, separated by `;` or `,`,
+ * outside `#` comment lines; they define names unconditionally, and
+ * MSBuild expands `%NAME%` there from the environment). Other files:
+ * nothing. A file larger than PINNED_READ_MAX: `unread`.
+ */
+export function propertyFlow(path, text) {
+    const kind = fileKind(path);
+    const defs = [];
+    const roots = [];
+    // Equal lists of names are shared (never mutated): a file of thousands of alike Imports keeps one list per shape.
+    const lists = new Map();
+    const shared = (xs) => {
+        const key = xs.join('\n');
+        const was = lists.get(key);
+        if (was)
+            return was;
+        lists.set(key, xs);
+        return xs;
+    };
+    // The conditions of alike Imports repeat: each distinct one is read once.
+    const conditions = new Map();
+    const conditionRefs = (c) => {
+        let refs = conditions.get(c);
+        if (!refs)
+            conditions.set(c, (refs = shared(expressionRefs(c))));
+        return refs;
+    };
+    /** A property definition: `valueRefs` what its value reads, `cond` its enclosing conditions' reads, `value` its value. */
+    const define = (name, at, unconditional, valueRefs, cond, value) => {
+        const refs = cond.length > 0 ? shared([...valueRefs, ...cond]) : valueRefs;
+        const dir = unconditional && value !== undefined ? thisDirDef(value) : null;
+        defs.push({ name, at, unconditional, refs, ...(dir !== null ? { dir } : {}) });
+        if (RESTORE_SOURCE_SETTING.test(name))
+            roots.push({ kind: 'setting', value: name, at, refs, cond: [], conditional: !unconditional, sdk: null });
+        else if (value !== undefined && IMPORT_HOOK.test(name)) {
+            roots.push({ kind: 'import', value: HOOK_SWITCH[name.toLowerCase()] ?? value, at, refs: valueRefs, cond, conditional: !unconditional, sdk: null, hook: name });
+        }
+    };
+    if ((kind === 'rsp' || kind === 'msbuild') && text.length > PINNED_READ_MAX)
+        return { defs, roots, unread: true };
+    if (kind === 'rsp') {
+        let offset = 0;
+        for (const line of text.split('\n')) {
+            if (!line.trimStart().startsWith('#')) {
+                for (const m of line.matchAll(/(?:[^\s"]|"[^"]*"?)+/g)) {
+                    const sw = /^(?:--?|\/)(?:p|property|rp|restoreproperty):([\s\S]*)$/i.exec(m[0].replace(/"/g, ''));
+                    if (!sw)
+                        continue;
+                    // A quoted value may hold `;` (`-p:RestoreSources="a;%B%"`): each name the switch defines reads every `%NAME%` in it.
+                    const env = expressionRefs(sw[1], true).filter((r) => r.startsWith('[env '));
+                    for (const part of sw[1].split(/[;,]/)) {
+                        const eq = part.indexOf('=');
+                        const name = (eq < 0 ? part : part.slice(0, eq)).trim();
+                        if (/^[A-Za-z_][A-Za-z0-9_-]*$/.test(name))
+                            define(name, offset + (m.index ?? 0), true, eq < 0 ? [] : env, [], eq < 0 ? undefined : part.slice(eq + 1));
+                    }
+                }
+            }
+            offset += line.length + 1;
+        }
+        return { defs, roots, unread: false };
+    }
+    if (kind !== 'msbuild')
+        return { defs, roots, unread: false };
+    const attr = (t, name) => {
+        const a = t.attrs.find(([n]) => n.toLowerCase() === name);
+        return a ? decodeXml(a[1]) : undefined;
+    };
+    /** A property element's definition (its content: from `end` of its open tag to `start` of its close tag). */
+    const finish = (f, end) => {
+        if (!f.property)
+            return;
+        const value = decodeXml(text.slice(f.tag.end, end));
+        define(f.tag.name, f.tag.start, !f.conditioned, shared(expressionRefs(value)), f.cond, value);
+    };
+    let sdkStyle = false;
+    let dotnetMarks = false;
+    const stack = [];
+    for (const t of scanXml(text).tags) {
+        if (t.close) {
+            const top = stack[stack.length - 1];
+            if (top && top.tag.name === t.name) {
+                stack.pop();
+                finish(top, t.start);
+            }
+            continue;
+        }
+        const parent = stack[stack.length - 1];
+        const condition = attr(t, 'condition');
+        const name = t.name.toLowerCase();
+        const own = condition !== undefined ? conditionRefs(condition) : [];
+        // A Choose's Otherwise applies when none of its Whens does: it reads their conditions.
+        if (name === 'when' && parent?.tag.name.toLowerCase() === 'choose')
+            parent.whens.push(...own);
+        // MSBuild has no nested PropertyGroup: only one directly in a Project, Target, When or Otherwise holds properties.
+        const grand = stack[stack.length - 2]?.tag.name.toLowerCase();
+        const f = {
+            tag: t,
+            property: parent?.tag.name.toLowerCase() === 'propertygroup' && (grand === 'project' || grand === 'target' || grand === 'when' || grand === 'otherwise'),
+            cond: parent?.cond ?? [],
+            conditioned: (parent?.conditioned ?? false) || condition !== undefined || name === 'when' || name === 'otherwise' || name === 'target',
+            whens: [],
+        };
+        const reads = [...own, ...(name === 'otherwise' ? parent?.whens ?? [] : [])];
+        // A self-closed element encloses nothing: its own conditions go on it directly.
+        if (reads.length > 0 && t.selfClose)
+            f.cond = shared([...new Set(reads), ...f.cond]);
+        else if (reads.length > 0) {
+            const pseudo = `#${t.start}@${path}`;
+            defs.push({ name: pseudo, at: t.start, unconditional: false, refs: [...new Set(reads), ...f.cond] });
+            f.cond = [pseudo];
+        }
+        if (name === 'import') {
+            const project = attr(t, 'project') ?? '';
+            const sdk = attr(t, 'sdk') ?? null;
+            roots.push({ kind: 'import', value: project, at: t.start, refs: shared(expressionRefs(project)), cond: f.cond, conditional: f.conditioned, sdk });
+            if (sdk?.trim())
+                sdkStyle = true;
+            if (DOTNET_TARGETS_IMPORT.test(project.trim()))
+                dotnetMarks = true;
+        }
+        if (name === 'packagereference' && parent?.tag.name.toLowerCase() === 'itemgroup')
+            dotnetMarks = true;
+        // The implicit imports of `<Project Sdk="A;B">` and of a top-level `<Sdk Name="X" />`: an unconditional Import of each
+        // SDK's files (a PLAIN_SDK loads nothing of the repository: no root).
+        const sdks = !parent && name === 'project' ? attr(t, 'sdk') : name === 'sdk' && parent?.tag.name.toLowerCase() === 'project' && stack.length === 1 ? attr(t, 'name') : undefined;
+        if (sdks?.trim())
+            sdkStyle = true;
+        for (const s of sdks?.split(';') ?? []) {
+            const sdk = s.split('/')[0].trim();
+            if (sdk && !PLAIN_SDK.test(sdk))
+                roots.push({ kind: 'import', value: 'Sdk.props', at: t.start, refs: [], cond: [], conditional: false, sdk });
+        }
+        // A task's Output that sets a property: the task's attribute values flow into it (inside a target: never unconditional).
+        const output = name === 'output' ? attr(t, 'propertyname') : undefined;
+        if (output !== undefined && parent) {
+            parent.attrRefs ??= shared([...new Set(parent.tag.attrs.flatMap(([, v]) => expressionRefs(decodeXml(v))))]);
+            define(msbuildUnescape(output).trim(), t.start, false, parent.attrRefs, f.cond);
+        }
+        if (t.selfClose)
+            finish(f, t.end);
+        else
+            stack.push(f);
+    }
+    return { defs, roots, unread: false, sdkStyle, dotnetMarks };
+}
+/** A pseudo-name of expressionRefs in words. */
+function hostReadWords(ref) {
+    if (ref === '[env ?]')
+        return 'an environment variable whose name is computed';
+    if (ref.startsWith('[env '))
+        return `the environment variable ${ref.slice(5, -1)}`;
+    if (ref === '[registry]' || /^\[GetRegistryValue/i.test(ref))
+        return 'the registry';
+    if (ref.startsWith('[metadata '))
+        return `the item metadata %(${ref.slice(10, -1)}), and the engine does not follow items into a package-source setting (list the sources as a property or in nuget.config)`;
+    if (ref.startsWith('[item '))
+        return `the item list @(${ref.slice(6, -1)}), and the engine does not follow items into a package-source setting (list the sources as a property or in nuget.config)`;
+    return /^\[(?:UserDomainName|UserName|MachineName)\]$/i.test(ref) ? `$([System.Environment]::${ref.slice(1, -1)})` : `$([System.Environment]::${ref.slice(1, -1)}(...))`;
+}
+/** The most reads restoreHostReads lists (the rest are counted in `more`). */
+export const RESTORE_READS_MAX = 50;
+/**
+ * restoreHostReads' work budget: the import steps it may take (each Import or source setting it reads, charged once,
+ * each import edge it follows into an import closure, each file it adds to an import closure, each step of an upward file search and
+ * each definition of a name rule (b) follows, and each defining or evaluation file it compares to decide whether a
+ * definition is in a reading file's evaluation). Past it the restore parks ("too many imports to analyse").
+ */
+export const RESTORE_WORK_MAX = 100_000;
+/** True when a pinned file's text, decoded as UTF-8, is not UTF-8 text: a UTF-16 byte order mark (two replacement characters) or a NUL in its first KB. */
+const notUtf8 = (text) => text.startsWith('��') || text.slice(0, 1024).includes('\0');
+/** The auto-imported files MSBuild finds nearest above a project (each the nearest one only), and the response file it auto-reads. */
+const AUTO_FILES = ['directory.build.props', 'directory.build.targets', 'directory.packages.props', 'directory.build.rsp'];
+/** Thrown when restoreHostReads spends more than RESTORE_WORK_MAX import steps. */
+class OverBudget extends Error {
+}
+/**
+ * Whether a commit's package-source settings depend on your environment or
+ * machine (engine.ts nugetRestore parks before the network opens on any
+ * read). `files` are its pinned definition files (MSBuild, response and
+ * nuget.config files; others are ignored).
+ *
+ * The evaluation of a file F is F, the nearest `Directory.Build.props`,
+ * `Directory.Build.targets`, `Directory.Packages.props` and
+ * `Directory.Build.rsp` at or above F's dir (the nearest one only, as
+ * MSBuild finds them), and every pinned file those import with no
+ * condition and no conditioned group, `Choose` branch or target around the
+ * Import, transitively, by a path importTargets resolves to a pinned file
+ * (a `GetPathOfFileAbove` search included, so a nested
+ * `Directory.Build.props` that imports the next one up brings it in; a
+ * `$(P)` path when P's only pinned definition is unconditional and names
+ * its file's dir, as `<RepoRoot>$(MSBuildThisFileDirectory)</RepoRoot>`
+ * does). An SDK import hook (IMPORT_HOOK: `CustomAfterMicrosoftCommonTargets`,
+ * `DirectoryBuildTargetsPath`, `ImportDirectoryBuildTargets`, ...) is an
+ * Import of the file its value names (for an `Import*` switch: the nearest
+ * Directory file of its kind at or above its file's dir) under the
+ * definition's conditions. An `Sdk` Import, and the implicit one of each SDK
+ * of `<Project Sdk="A;B">` and of a top-level `<Sdk Name="X" />` (no
+ * condition), loads nothing of the repository for a PLAIN_SDK and a file the
+ * engine cannot resolve for any other SDK.
+ *
+ * A name read in F at an offset is env-settable when it is not reserved
+ * (isReservedProperty; with the Arcade SDK in use, ARCADE_PROPERTIES too),
+ * not a source setting itself, and has no
+ * unconditional definition (no condition and no conditioned group, `Choose`
+ * branch or target around it) in F before the read or in another file of
+ * F's evaluation. A host read is a GetEnvironmentVariable(s),
+ * ExpandEnvironmentVariables, GetFolderPath or registry function,
+ * `[System.Environment]::UserName`, `UserDomainName` or `MachineName`, or
+ * a response file's `%NAME%`; an item list or item metadata (`@(Name)`,
+ * `%(Name.Meta)`) counts as one, as
+ * the engine does not follow items. A name reaches what the values and
+ * conditions of its pinned definitions read, each where it is defined,
+ * transitively (memoised per name). A read is (at most one per setting or
+ * Import, RESTORE_READS_MAX in all):
+ * (a) a source setting (RESTORE_SOURCE_SETTING) whose value or conditions
+ *     (own and enclosing) reach an env-settable name or a host read;
+ * (b) when any pinned file sets a source setting, a conditioned Import
+ *     whose conditions reach an env-settable name or a host read, when its
+ *     target cannot be resolved to pinned files, or the pinned files it
+ *     loads (it and what they import, under any condition) set a source
+ *     setting, import a file that cannot be resolved, or define a
+ *     (non-reserved) name that a source setting's value or condition, an
+ *     Import path or the condition of an Import that can change the
+ *     sources (this rule, to a fixpoint) reaches: your environment decides
+ *     whether a file that can change the sources loads (not the Imports
+ *     of a legacy non-.NET project, NON_DOTNET_PROJECT, not SDK-style, no dotnetMarks,
+ *     that no in-scope pinned file imports by a resolvable path);
+ * (c) an Import whose `Project` value reaches a host read, a name no pinned
+ *     file defines, or an env-settable profile name (PROFILE_ENV): your
+ *     environment chooses which file loads (a name no pinned file defines
+ *     only in a file of a .NET project's evaluation: DOTNET_EVALUATED files
+ *     and the pinned files they reach by resolvable Imports, under any
+ *     condition); each `%NAME%` in a pinned
+ *     nuget.config value, which NuGet expands; and a pinned file the engine
+ *     cannot read (larger than PINNED_READ_MAX, or not UTF-8 text).
+ *
+ * Each import closure is memoised per file and each Import resolved once
+ * per directory, but closures of nested files overlap, so the work can grow with the
+ * square of the import graph (whether a definition is in a reading file's
+ * evaluation is memoised per name and reading file): past RESTORE_WORK_MAX
+ * import steps the
+ * result is one read, "too many imports to analyse", with its remedy.
+ */
+export function restoreHostReads(files, workMax = RESTORE_WORK_MAX) {
+    const reads = [];
+    const seenReads = new Set();
+    let more = 0;
+    const names = new Set();
+    const fixes = new Set();
+    /** Records one read (its words built only while under RESTORE_READS_MAX; past it, counted in `more`). */
+    const add = (read, name) => {
+        if (name)
+            names.add(name);
+        if (reads.length >= RESTORE_READS_MAX) {
+            more++;
+            return;
+        }
+        const words = typeof read === 'string' ? read : read();
+        if (seenReads.has(words))
+            return;
+        seenReads.add(words);
+        reads.push(words);
+    };
+    /** True when the engine can read the file; else records why not. Checked as each file is read, so a budget park leaves the rest untouched. */
+    const readable = (f) => {
+        if (notUtf8(f.text)) {
+            add(`${f.path}: not UTF-8 text (UTF-16 or binary), so the engine cannot read its package-source settings`);
+            fixes.add(`re-save ${f.path} as UTF-8`);
+        }
+        else if (f.text.length > PINNED_READ_MAX) {
+            add(`${f.path}: larger than ${PINNED_READ_MAX / 1024} KB, so the engine did not read it and cannot tell whether its package-source settings depend on your environment`);
+            fixes.add(`keep ${f.path} under ${PINNED_READ_MAX / 1024} KB`);
+        }
+        else
+            return true;
+        return false;
+    };
+    try {
+        msbuildReads(files, readable, add, workMax);
+    }
+    catch (e) {
+        if (!(e instanceof OverBudget))
+            throw e;
+        // First, so the park names it even past RESTORE_READS_MAX reads.
+        reads.unshift(`the pinned MSBuild files: too many imports to analyse (more than ${workMax} import steps), so the engine cannot tell whether their package-source settings depend on your environment`);
+        if (reads.length > RESTORE_READS_MAX) {
+            reads.pop();
+            more++;
+        }
+        fixes.add(`keep the pinned MSBuild files within the engine's limit of ${workMax} import steps (too many imports to analyse)`);
+    }
+    // (c): NuGet expands %NAME% in a config value.
+    for (const f of files) {
+        if (fileKind(f.path) !== 'nuget' || !readable(f))
+            continue;
+        for (const t of scanXml(f.text).tags) {
+            for (const [, raw] of t.attrs) {
+                const value = decodeXml(raw);
+                for (const r of expressionRefs(value, true).filter((x) => x.startsWith('[env ')))
+                    add(`${f.path}: the value ${JSON.stringify(value.slice(0, 200))} reads ${hostReadWords(r)}`);
+            }
+        }
+    }
+    return { reads, more, names: [...names].sort(), fixes: [...fixes] };
+}
+/** restoreHostReads' rules (a), (b) and (c)'s Import paths over the `readable` MSBuild and response files of `files`; throws OverBudget past `workMax` import steps. */
+function msbuildReads(files, readable, add, workMax) {
+    let work = 0;
+    const spend = (n) => {
+        work += n;
+        if (work > workMax)
+            throw new OverBudget();
+    };
+    const flows = [];
+    // Equal Import paths across files share one string (thousands of files may import the same few).
+    const values = new Map();
+    for (const f of files) {
+        const kind = fileKind(f.path);
+        if ((kind !== 'msbuild' && kind !== 'rsp') || !readable(f))
+            continue;
+        const flow = propertyFlow(f.path, f.text);
+        spend(flow.roots.length);
+        for (const r of flow.roots) {
+            const was = values.get(r.value);
+            if (was === undefined)
+                values.set(r.value, r.value);
+            else
+                r.value = was;
+        }
+        flows.push({ path: f.path, lpath: f.path.toLowerCase(), flow });
+    }
+    const flowAt = new Map(flows.map((f) => [f.lpath, f]));
+    const pinned = new Set(files.map((f) => f.path.toLowerCase()));
+    // ARCADE_PROPERTIES are reserved only where a pinned file uses the Arcade SDK (an Sdk import or a global.json msbuild-sdks entry).
+    const arcade = flows.some((f) => f.flow.roots.some((r) => r.sdk !== null && r.sdk.split(';').some((s) => ARCADE_SDK.test(s))))
+        || files.some((f) => fileKind(f.path) === 'global' && projectSdkMentions(f.path, f.text).some((s) => ARCADE_SDK.test(s)));
+    const defsBy = new Map();
+    /** Per name: the files with an unconditional definition, and the first and last offset there. */
+    const fixedAt = new Map();
+    for (const { path, lpath, flow } of flows) {
+        for (const d of flow.defs) {
+            const key = d.name.toLowerCase();
+            let list = defsBy.get(key);
+            if (!list)
+                defsBy.set(key, (list = []));
+            list.push({ lpath, path, ...d });
+            if (!d.unconditional)
+                continue;
+            let at = fixedAt.get(key);
+            if (!at)
+                fixedAt.set(key, (at = new Map()));
+            const was = at.get(lpath);
+            at.set(lpath, was ? { first: Math.min(was.first, d.at), last: Math.max(was.last, d.at) } : { first: d.at, last: d.at });
+        }
+    }
+    /** The setting or Import in words. */
+    const what = (root) => (root.kind === 'setting' ? `<${root.value}>` : root.hook ? `<${root.hook}> (an SDK import hook)` : `Import ${JSON.stringify(root.value.slice(0, 200))}`);
+    /** What an Import the engine cannot resolve loads, in words. */
+    const unresolvedWords = (root) => (root.sdk !== null ? `a file of the SDK ${JSON.stringify(root.sdk.trim().slice(0, 200))}, which the engine cannot see` : 'a file the engine cannot resolve to a pinned file');
+    /** P's repository dir, when P's only pinned definition is unconditional and names its file's dir (thisDirDef), else null. */
+    const dirOf = (name) => {
+        const ds = defsBy.get(name.toLowerCase());
+        const d = ds?.length === 1 ? ds[0] : undefined;
+        if (!d || d.dir === undefined || leavesRepository(d.path, d.dir ? `${d.dir}/_` : '_'))
+            return null;
+        return repoPath(d.path, d.dir);
+    };
+    /** The nearest pinned file `name` at or above the repository dir `from` (lower case), or null. */
+    const fileAbove = (name, from) => {
+        for (let dir = from;; dir = dir.includes('/') ? dir.slice(0, dir.lastIndexOf('/')) : '') {
+            spend(1);
+            const p = `${dir ? `${dir}/` : ''}${name}`.toLowerCase();
+            if (pinned.has(p))
+                return p;
+            if (!dir)
+                return null;
+        }
+    };
+    const resolvedAt = new Map();
+    /** The files an Import of the file `path` loads as pinned repository paths (lower case), or null when one is not a pinned file; memoised per importing dir and Import. */
+    const resolved = (root, path) => {
+        const here = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '';
+        const key = `${here}
+${root.sdk ?? ''}
+${root.hook ?? ''}
+${root.value}`;
+        const cached = resolvedAt.get(key);
+        if (cached !== undefined)
+            return cached;
+        let out = [];
+        const sw = root.hook ? HOOK_SWITCH[root.hook.toLowerCase()] : undefined;
+        if (root.sdk !== null)
+            out = PLAIN_SDK.test(root.sdk) ? [] : null;
+        else if (sw) {
+            const p = fileAbove(sw, here);
+            out = p ? [p] : [];
+        }
+        else {
+            for (const t of importTargets(path, root.value, dirOf) ?? [null]) {
+                const p = t === null ? null : 'path' in t ? (pinned.has(t.path.toLowerCase()) ? t.path.toLowerCase() : null) : fileAbove(t.above, t.from);
+                if (p === null) {
+                    out = null;
+                    break;
+                }
+                out.push(p);
+            }
+        }
+        resolvedAt.set(key, out);
+        return out;
+    };
+    /** Per file: the anchors of its evaluation (the file and its nearest auto-imported files). */
+    const anchorsAt = new Map();
+    /** Per repository dir (lower case): the nearest pinned AUTO_FILES at or above it. */
+    const nearestAt = new Map();
+    const nearest = (dir) => {
+        const below = [];
+        let found;
+        for (let d = dir; d !== null; d = d ? (d.includes('/') ? d.slice(0, d.lastIndexOf('/')) : '') : null) {
+            if ((found = nearestAt.get(d)))
+                break;
+            below.push(d);
+        }
+        let out = found ?? AUTO_FILES.map(() => null);
+        for (let i = below.length - 1; i >= 0; i--) {
+            const d = below[i];
+            const up = out;
+            out = AUTO_FILES.map((base, j) => (pinned.has(d ? `${d}/${base}` : base) ? (d ? `${d}/${base}` : base) : up[j]));
+            nearestAt.set(d, out);
+        }
+        return out;
+    };
+    const anchors = (lpath) => {
+        const cached = anchorsAt.get(lpath);
+        if (cached)
+            return cached;
+        const out = [lpath, ...nearest(lpath.includes('/') ? lpath.slice(0, lpath.lastIndexOf('/')) : '').filter((p) => p !== null)];
+        anchorsAt.set(lpath, out);
+        return out;
+    };
+    /**
+     * The pinned files `start` imports with no condition, transitively, with itself (lower case), memoised per file: a
+     * file whose closure is known adds that closure whole (it holds the closures of all its members).
+     */
+    const closures = new Map();
+    const closure = (start) => {
+        const cached = closures.get(start);
+        if (cached)
+            return cached;
+        const seen = new Set([start]);
+        const queue = [start];
+        for (let i = 0; i < queue.length; i++) {
+            const f = flowAt.get(queue[i]);
+            for (const r of f?.flow.roots ?? []) {
+                if (r.kind !== 'import' || r.conditional)
+                    continue;
+                for (const t of resolved(r, f.path) ?? []) {
+                    spend(1);
+                    if (seen.has(t))
+                        continue;
+                    const known = closures.get(t);
+                    if (known) {
+                        spend(known.size);
+                        for (const x of known)
+                            seen.add(x);
+                    }
+                    else {
+                        seen.add(t);
+                        queue.push(t);
+                    }
+                }
+            }
+        }
+        closures.set(start, seen);
+        return seen;
+    };
+    /** settable's memo: whether a file of the reading file's evaluation other than itself defines the name unconditionally. */
+    const insideAt = new Map();
+    /** Why `name`, read in `lpath` at `at`, is env-settable (see above), or null when it is not. */
+    const settable = (name, lpath, at) => {
+        const at2 = fixedAt.get(name.toLowerCase());
+        if (!at2)
+            return 'none';
+        const own = at2.get(lpath);
+        if (own && own.first < at)
+            return null;
+        if (at2.size > (own ? 1 : 0)) {
+            // Whether another file of lpath's evaluation defines the name: memoised per (name, reading file), iterating the
+            // smaller of the defining files and the anchors' closures, each iteration charged to the budget.
+            const key = `${name.toLowerCase()}\n${lpath}`;
+            let inside = insideAt.get(key);
+            if (inside === undefined) {
+                const cs = anchors(lpath).map(closure);
+                let steps = 0;
+                if (at2.size <= cs.reduce((n, c) => n + c.size, 0)) {
+                    inside = false;
+                    for (const p of at2.keys()) {
+                        steps++;
+                        if (p !== lpath && cs.some((c) => c.has(p))) {
+                            inside = true;
+                            break;
+                        }
+                    }
+                }
+                else {
+                    inside = cs.some((c) => {
+                        for (const p of c) {
+                            steps++;
+                            if (p !== lpath && at2.has(p))
+                                return true;
+                        }
+                        return false;
+                    });
+                }
+                spend(steps);
+                insideAt.set(key, inside);
+            }
+            if (inside)
+                return null;
+            return 'elsewhere';
+        }
+        return own ? (own.last > at ? 'after' : 'self') : 'none';
+    };
+    const stops = (ref) => isReservedProperty(ref) || RESTORE_SOURCE_SETTING.test(ref) || (arcade && ARCADE_PROPERTIES.test(ref));
+    /** What one read is: a hit, a name to follow through its definitions, or a stop (reserved names, source settings). */
+    const direct = (ref, lpath, at, mode) => {
+        if (ref.startsWith('['))
+            return { ref, why: 'host' };
+        if (ref.startsWith('#'))
+            return 'follow';
+        if (stops(ref))
+            return 'stop';
+        if (mode === 'value') {
+            const why = settable(ref, lpath, at);
+            return why ? { ref, why } : 'follow';
+        }
+        if (!defsBy.has(ref.toLowerCase()))
+            return mode === 'path' ? { ref, why: 'undefined' } : PROFILE_ENV.test(ref) ? { ref, why: 'profile' } : 'follow';
+        return PROFILE_ENV.test(ref) && settable(ref, lpath, at) ? { ref, why: 'profile' } : 'follow';
+    };
+    /**
+     * Per name (lower case): the hit its definitions reach, for one mode, computed once for all names by propagating hits
+     * backwards from the definitions that read one directly (linear in the reads; cycles need no special case).
+     */
+    const solved = new Map();
+    const solve = (mode) => {
+        const cached = solved.get(mode);
+        if (cached)
+            return cached;
+        const hits = new Map();
+        const readers = new Map();
+        const queue = [];
+        for (const [key, ds] of defsBy) {
+            if (stops(key))
+                continue;
+            for (const d of ds) {
+                for (const r of d.refs) {
+                    const x = direct(r, d.lpath, d.at, mode);
+                    if (x === 'stop')
+                        continue;
+                    if (x === 'follow') {
+                        const k = r.toLowerCase();
+                        let list = readers.get(k);
+                        if (!list)
+                            readers.set(k, (list = []));
+                        list.push(key);
+                    }
+                    else if (!hits.has(key)) {
+                        hits.set(key, x);
+                        queue.push(key);
+                    }
+                }
+            }
+        }
+        for (let i = 0; i < queue.length; i++) {
+            const hit = hits.get(queue[i]);
+            for (const p of readers.get(queue[i]) ?? []) {
+                if (hits.has(p))
+                    continue;
+                hits.set(p, hit);
+                queue.push(p);
+            }
+        }
+        solved.set(mode, hits);
+        return hits;
+    };
+    /** The first hit of what `refs` (read in `lpath` at `at`) reach, with the name it went through. */
+    const firstHit = (refs, lpath, at, mode) => {
+        for (const r of refs) {
+            const x = direct(r, lpath, at, mode);
+            if (x === 'stop')
+                continue;
+            if (x !== 'follow')
+                return { hit: x, via: '' };
+            const h = solve(mode).get(r.toLowerCase());
+            if (h)
+                return { hit: h, via: r.startsWith('#') || h.ref.toLowerCase() === r.toLowerCase() ? '' : ` through $(${r})` };
+        }
+        return null;
+    };
+    const why = {
+        none: ', which no pinned file gives an unconditional value',
+        self: ', which its only unconditional definition reads before giving it a value',
+        after: ', which its file gives an unconditional value only after the read',
+        elsewhere: ', which pinned files give an unconditional value only outside this evaluation (in files not auto-imported, imported under a condition, or imported by a path the engine does not resolve: only literal and $(MSBuildThisFileDirectory)-based paths)',
+    };
+    const valueWords = ({ hit, via }) => (hit.why === 'host' ? `${hostReadWords(hit.ref)}${via}` : `$(${hit.ref})${via}${why[hit.why] ?? ''}`);
+    const pathWords = ({ hit, via }) => {
+        const what = hit.why === 'host' ? hostReadWords(hit.ref) : `$(${hit.ref})`;
+        return `${what}${via} in its path, ${hit.why === 'undefined' ? 'which no pinned file defines, ' : ''}so your environment chooses which file loads`;
+    };
+    const nameOf = (hit) => (hit.why === 'host' ? undefined : hit.ref);
+    /**
+     * The files of a .NET project's evaluation (DOTNET_EVALUATED files and every pinned file they reach by resolvable
+     * Imports, under any condition), computed on first use.
+     */
+    let dotnetFiles;
+    const inDotnet = (lpath) => {
+        if (!dotnetFiles) {
+            const seen = new Set(flows.filter((f) => DOTNET_EVALUATED.test(f.lpath)).map((f) => f.lpath));
+            const queue = [...seen];
+            for (let i = 0; i < queue.length; i++) {
+                const f = flowAt.get(queue[i]);
+                for (const r of f.flow.roots) {
+                    if (r.kind !== 'import')
+                        continue;
+                    for (const t of resolved(r, f.path) ?? []) {
+                        if (seen.has(t) || !flowAt.has(t))
+                            continue;
+                        seen.add(t);
+                        queue.push(t);
+                    }
+                }
+            }
+            dotnetFiles = seen;
+        }
+        return dotnetFiles.has(lpath);
+    };
+    /**
+     * The files whose Imports rule (b) skips: a legacy non-.NET project (NON_DOTNET_PROJECT, not SDK-style, no dotnetMarks) that no
+     * other pinned file imports by a resolvable path, under any condition (one it imports counts as an importer only
+     * once it is in scope itself). Every other file is in scope, whether or not the engine sees who imports it.
+     * Computed on first use.
+     */
+    let foreignFiles;
+    const inRuleB = (lpath) => {
+        if (!foreignFiles) {
+            foreignFiles = new Set(flows.filter((f) => NON_DOTNET_PROJECT.test(f.lpath) && !f.flow.sdkStyle && !f.flow.dotnetMarks).map((f) => f.lpath));
+            const queue = foreignFiles.size > 0 ? flows.filter((f) => !foreignFiles.has(f.lpath)).map((f) => f.lpath) : [];
+            for (let i = 0; i < queue.length && foreignFiles.size > 0; i++) {
+                const f = flowAt.get(queue[i]);
+                for (const r of f.flow.roots) {
+                    if (r.kind !== 'import')
+                        continue;
+                    for (const t of resolved(r, f.path) ?? []) {
+                        if (!foreignFiles.delete(t))
+                            continue;
+                        queue.push(t);
+                    }
+                }
+            }
+        }
+        return !foreignFiles.has(lpath);
+    };
+    // (a) and (c)'s Import paths.
+    let sets = '';
+    /** The conditioned Imports that rule (b) may make reads. */
+    const conditioned = new Set();
+    for (const { path, lpath, flow } of flows) {
+        for (const root of flow.roots) {
+            if (root.kind === 'setting') {
+                if (!sets)
+                    sets = `${path} sets ${what(root)}`;
+                const x = firstHit(root.refs, lpath, root.at, 'value');
+                if (x)
+                    add(() => `${path}: ${what(root)} reads ${valueWords(x)}`, nameOf(x.hit));
+                continue;
+            }
+            let x = firstHit(root.refs, lpath, root.at, 'path');
+            // A name no pinned file defines is a read only in a file of a .NET project's evaluation (a .vcxproj's $(VCTargetsPath) is not).
+            if (x?.hit.why === 'undefined' && !inDotnet(lpath))
+                x = firstHit(root.refs, lpath, root.at, 'foreign');
+            if (x)
+                add(() => `${path}: ${what(root)} reads ${pathWords(x)}`);
+            else if (root.conditional && root.cond.length > 0)
+                conditioned.add(root);
+        }
+    }
+    // (b): a file sets the sources, so whether an Import that can change them loads must not depend on your environment.
+    if (!sets || conditioned.size === 0)
+        return;
+    /** Per file: why the pinned files it loads (it and what they import, under any condition) can change the sources. */
+    const changes = new Map();
+    const changed = [];
+    const change = (lpath, reason) => {
+        if (changes.has(lpath))
+            return;
+        changes.set(lpath, reason);
+        changed.push(lpath);
+    };
+    /** Per pinned file: the Imports (under any condition) that load it, with their files. */
+    const importers = new Map();
+    /** The names a source setting's value or condition, an Import path, or the condition of an Import that can change the sources reaches (lower case, never reserved). */
+    const relevant = new Set();
+    const pending = [];
+    const reach = (refs) => {
+        for (const r of refs) {
+            if (r.startsWith('[') || stops(r))
+                continue;
+            const k = r.toLowerCase();
+            if (relevant.has(k))
+                continue;
+            relevant.add(k);
+            pending.push(k);
+        }
+    };
+    /** The Imports that can change the sources: their own conditions become relevant. */
+    const canChange = new Set();
+    const changing = (root) => {
+        if (canChange.has(root))
+            return;
+        canChange.add(root);
+        reach(root.cond);
+    };
+    for (const f of flows) {
+        const setting = f.flow.roots.find((r) => r.kind === 'setting');
+        if (setting)
+            change(f.lpath, `${f.path} sets ${what(setting)}`);
+    }
+    for (const f of flows) {
+        // An Import in a legacy non-.NET project no in-scope file imports (a .vcxproj's, a .dcproj's) loads nothing a restore reads.
+        const scoped = inRuleB(f.lpath);
+        for (const r of f.flow.roots) {
+            if (r.kind === 'import' && !scoped)
+                continue;
+            reach(r.refs);
+            if (r.kind !== 'import')
+                continue;
+            const ts = resolved(r, f.path);
+            if (!ts) {
+                change(f.lpath, `${sets}, and ${r.hook ? `${f.path}: ${what(r)} names ${JSON.stringify(r.value.slice(0, 200))}` : `${f.path} imports ${JSON.stringify(r.value.slice(0, 200))}`}, ${unresolvedWords(r)}`);
+                changing(r);
+                continue;
+            }
+            for (const t of ts) {
+                let list = importers.get(t);
+                if (!list)
+                    importers.set(t, (list = []));
+                list.push(r, f);
+            }
+        }
+    }
+    // To a fixpoint: a relevant name makes the files that define it change the sources, and those the Imports that load them.
+    for (let n = 0, c = 0; n < pending.length || c < changed.length;) {
+        if (n < pending.length) {
+            const k = pending[n++];
+            for (const d of defsBy.get(k) ?? []) {
+                spend(1);
+                reach(d.refs);
+                if (!k.startsWith('#'))
+                    change(d.lpath, `${d.path} defines $(${d.name}), which a package-source setting or an Import reads`);
+            }
+            continue;
+        }
+        const t = changed[c++];
+        const list = importers.get(t) ?? [];
+        for (let i = 0; i < list.length; i += 2) {
+            spend(1);
+            changing(list[i]);
+            change(list[i + 1].lpath, changes.get(t));
+        }
+    }
+    for (const { path, lpath, flow } of flows) {
+        for (const root of flow.roots) {
+            if (!conditioned.has(root) || !canChange.has(root))
+                continue;
+            const x = firstHit(root.cond, lpath, root.at, 'value');
+            if (!x)
+                continue;
+            const ts = resolved(root, path);
+            const lead = ts ? `${changes.get(ts.find((t) => changes.has(t)))}, and ${path}: ${what(root)}` : `${sets}, and ${path}: ${what(root)} (${unresolvedWords(root)})`;
+            // A CI or profile name here is no name to pin, and no source setting sits under this condition: no name for the remedy.
+            const n = nameOf(x.hit);
+            add(() => `${lead} has a condition that reads ${valueWords(x)}`, n && !isEnvironmentOnlyName(n) ? n : undefined);
+        }
+    }
+}
 //# sourceMappingURL=dotnet-package-refs.js.map

@@ -37,7 +37,7 @@
  * boundary: unsandboxed code still runs with the user's rights.
  */
 import { randomBytes, randomUUID } from 'node:crypto';
-import { lstatSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { userInfo } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { defaultCopilotRunDeps } from '../../copilot-run/job.js';
@@ -381,12 +381,7 @@ export async function runSandboxed(argv, o, deps) {
         // The graph the command wrote (the job temp dir is the command's own): a regular file of one link, bounded, never followed.
         let graph = null;
         if (graphFile && read.code === 0) {
-            try {
-                graph = lstatSync(graphFile).nlink === 1 ? readRegularFileBounded(graphFile, RESTORE_GRAPH_MAX_BYTES) : null;
-            }
-            catch {
-                graph = null;
-            }
+            graph = readRegularFileBounded(graphFile, RESTORE_GRAPH_MAX_BYTES, { singleLink: true });
         }
         return { ran: true, status: read.code, output: `${tail(read.output.trim())}${why}`, timedOut: false, ...marked, ...(graph ? { restoreGraph: graph.toString('utf8') } : {}) };
     }

@@ -122,7 +122,7 @@ import { acquireFactoryClaim, claimBusyMessage, factoryClaimHolder, factoryClaim
 import { compareSnapshots, replaceObjectsProblem, samePath, snapshotRepo, verifyReviewWorktree } from './review-guard.js';
 import { GATE_INSTALL_GATE, IMPORT_REFUSED_GATE, LAYOUT_UNSUPPORTED_GATE, PRIVATE_STORE_GATE, PrivateRun, REPO_GUARD_GATE, resolveGateInstall, resolveRunLayout } from './private-run.js';
 import { classifyNugetFailure, dotnetRestoreArgs, GATE_INSTALL_SANDBOXED_HINT, missingDefinitionFile, NUGET_PRIVATE_FEED_UNSUPPORTED, nugetConfigUnreadableReason, nugetDefinitionTreeDir, nugetRunPackagesDir, nugetSubstituted, parseCatFileBatch, removeEngineDir, restoreApprovalNote, restoreGraphArgs, restoreGraphSources, restoreSourcesDifference, writeDefinitionTree } from './nuget-restore.js';
-import { nodeModulesReferences, projectSdkMentions, readsForNodeModulesRefs, restoreSettingMentions, unpinnedImports } from './dotnet-package-refs.js';
+import { isEnvironmentOnlyName, nodeModulesReferences, projectSdkMentions, readsForNodeModulesRefs, restoreHostReads, restoreSettingMentions, unpinnedImports } from './dotnet-package-refs.js';
 import { lockfileUnchanged, PRIVATE_GIT_TIMEOUT_MS, PrivateRepoTampered, PrivateStoreError, userRepoGuardSnapshot } from './private-store.js';
 import { parseReviewOutput, reviewComment, verdictNotes } from './review-output.js';
 import { findPlanLink, hasAcceptanceCriteria, issueAuthorTrusted } from './plan-rules.js';
@@ -346,6 +346,31 @@ const HEX40 = /^[0-9a-f]{40}$/;
 const DOTNET_CLEAN_TIMEOUT_MS = 5 * 60_000;
 /** How long each offline evaluation of the restore sources before the networked restore step may take (restoreSourcesPark). */
 const RESTORE_SOURCES_TIMEOUT_MS = 5 * 60_000;
+/**
+ * The restore step's environment park: the first places where a package-source setting depends on your environment or
+ * machine (dotnet-package-refs.ts restoreHostReads), and the remedy, naming the properties to give an unconditional value.
+ */
+function envReadWhy(r) {
+    const total = r.reads.length + r.more;
+    const named = `${r.reads.slice(0, 3).map((x) => oneLine(visibleLine(x), 400)).join('; ')}${total > 3 ? `; ${total - 3} more` : ''}`;
+    const props = (xs) => `${xs.slice(0, 5).map((n) => `$(${n})`).join(', ')}${xs.length > 5 ? ` and ${xs.length - 5} more` : ''}`;
+    // CI and profile variables are not the repository's to pin: the setting has to move out from under them.
+    const pin = r.names.filter((n) => !isEnvironmentOnlyName(n));
+    const env = r.names.filter((n) => isEnvironmentOnlyName(n));
+    const path = r.reads.some((x) => /so your environment chooses which file loads$/.test(x));
+    // Rule (b): an Import's condition decides whether a file that can change the sources loads; the source setting is not under it.
+    // Making the Import resolvable helps only a path Import whose target the engine cannot resolve; an Sdk import can only go unconditional.
+    const sdkImport = (x) => / \(a file of the SDK .*?, which the engine cannot see\) has a condition that reads /.test(x);
+    const pathConditioned = r.reads.some((x) => / has a condition that reads /.test(x) && !sdkImport(x));
+    const sdkConditioned = r.reads.some(sdkImport);
+    const unresolvable = r.reads.some((x) => / \(a file the engine cannot resolve to a pinned file\) has a condition that reads /.test(x));
+    const fixes = r.fixes.join('; ');
+    if (r.reads.every((x) => /^[^\n]*?: (?:not UTF-8 text|larger than \d+ KB|too many imports to analyse)/.test(x))) {
+        const what = r.reads.some((x) => /^[^\n]*?: too many imports to analyse/.test(x)) ? 'analyse the pinned files' : 'read a pinned file';
+        return `the engine could not ${what} that may set the package sources (${named}), so it cannot tell whether a package-source setting depends on your environment or machine, which the sandbox does not pass; ${fixes}`;
+    }
+    return `a package-source setting of the repository depends on your environment or machine (${named}), which the sandbox does not pass, so there the restriction could be lost and the restore could reach nuget.org where the same command on your machine would use only your feed; declare the feed in the repository's nuget.config (a <packageSources> entry, no %VARIABLE%)${pin.length ? `, or give ${props(pin)} an unconditional value in a pinned .props file` : ''}${env.length ? `, or move the source setting out from under the condition on ${props(env)}` : ''}${pathConditioned ? `, or make the conditioned Import unconditional${unresolvable ? ' or resolvable (a literal or $(MSBuildThisFileDirectory)-based path)' : ''}` : ''}${sdkConditioned ? ', or make the conditioned Sdk import unconditional' : ''}${path ? ', and import only files the repository tracks, by a path from $(MSBuildThisFileDirectory)' : ''}${fixes ? `; ${fixes}` : ''}`;
+}
 /** L7: the output lines a ci-failed park shows, and the characters of each and of the whole tail. */
 const PARK_TAIL_LINES = 12;
 const PARK_TAIL_LINE_CHARS = 200;
@@ -1595,13 +1620,17 @@ class FactoryEngine {
      *   initialises them, so a source restriction a file in one sets is never
      *   seen: no copy is written (they are in `noAddSource` too), and the
      *   networked restore step parks up front (nugetRestore).
+     * - `hostReads`: where either commit's package-source settings depend
+     *   on your environment or machine, and the names to give an
+     *   unconditional value (restoreHostReads): the restore step parks on
+     *   any (nugetRestore).
      * Throws (a step error) when a commit cannot be read.
      */
     dotnetNugetPolicy(commit, argv = []) {
         const base = this.state.baseSha && HEX40.test(this.state.baseSha) ? this.state.baseSha : undefined;
         const own = commit && HEX40.test(commit) ? commit : base;
         if (!own)
-            return { hierarchy: null, noAddSource: [], rootSources: [], sdks: [], gitlinks: [] };
+            return { hierarchy: null, noAddSource: [], rootSources: [], sdks: [], gitlinks: [], hostReads: { reads: [], more: 0, names: [], fixes: [] } };
         // Every fact of the base and of `own` only makes the set-up stricter (a union): neither commit can relax what the other pins.
         const both = base && base !== own;
         const all = (both ? [own, base] : [own]).map((sha) => ({ sha, facts: this.dotnetPinnedFacts(sha) }));
@@ -1625,7 +1654,14 @@ class FactoryEngine {
         // A root config that defines a package-source policy in either commit: the tree's own root file (which the sandbox reads) gets nothing added either.
         const rootSources = all.flatMap(({ sha, facts }) => ('verdict' in facts.root && !facts.root.verdict.addNugetOrg ? [`the root ${facts.root.name} at ${sha.slice(0, 12)}`] : []));
         const gitlinks = union((f) => f.gitlinks).sort();
-        return { hierarchy, noAddSource: [...union((f) => f.restoreSettings), ...union((f) => f.unpinnedImports), ...union((f) => f.settingRefs), ...fromArgv, ...gitlinks.map((p) => `${p}: a submodule`)], rootSources, sdks: union((f) => f.projectSdks), gitlinks };
+        return {
+            hierarchy,
+            noAddSource: [...union((f) => f.restoreSettings), ...union((f) => f.unpinnedImports), ...union((f) => f.settingRefs), ...fromArgv, ...gitlinks.map((p) => `${p}: a submodule`)],
+            rootSources,
+            sdks: union((f) => f.projectSdks),
+            gitlinks,
+            hostReads: { reads: union((f) => f.hostReads.reads), more: all.reduce((n, { facts }) => n + facts.hostReads.more, 0), names: union((f) => f.hostReads.names).sort(), fixes: union((f) => f.hostReads.fixes) },
+        };
     }
     /**
      * The nuget.config files the commit's MSBuild project SDK resolution
@@ -5383,9 +5419,10 @@ class FactoryEngine {
         // engine cannot tell which sources the repository uses: no restore, and no nuget.org-only config written for it.
         let imports;
         let gitlinks;
+        let hostReads;
         try {
             imports = this.dotnetPinnedFacts(head).unpinnedImports;
-            gitlinks = this.dotnetNugetPolicy(head).gitlinks;
+            ({ gitlinks, hostReads } = this.dotnetNugetPolicy(head));
         }
         catch (error) {
             return { name: GATE_INSTALL_GATE, reason: `${what} did not run: the definition files of ${head.slice(0, 12)} could not be read (${errText(error)}); rerun ${this.resume}` };
@@ -5400,6 +5437,10 @@ class FactoryEngine {
             const named = `${imports.slice(0, 3).map((i) => oneLine(visibleLine(i), 240)).join('; ')}${imports.length > 3 ? `; ${imports.length - 3} more` : ''}`;
             return { name: GATE_INSTALL_GATE, reason: `${what} did not run: the build imports a file that is not a pinned definition file (${named}), so the engine cannot tell which package sources the repository uses; restore the PR branch's packages into your NuGet global packages folder yourself, or move those settings into a .props file, then rerun ${this.resume}; or ${cancelCommand(this.key)}` };
         }
+        // A package-source setting that depends on your environment or machine (of the head or the base): the sandbox passes
+        // neither, so there the restriction could be lost and the restore could reach nuget.org where your machine would not.
+        if (hostReads.reads.length > 0)
+            return { name: GATE_INSTALL_GATE, reason: `${what} did not run: ${envReadWhy(hostReads)}; then rerun ${this.resume}; or restore the PR branch's packages into your NuGet global packages folder yourself; or ${cancelCommand(this.key)}` };
         let live;
         try {
             live = this.liveCheckoutProcs(head);
@@ -5691,6 +5732,7 @@ class FactoryEngine {
         const projectSdks = [];
         const unpinned = [];
         let verdict;
+        const texts = [];
         const oids = [...new Set([...files.map(([, oid]) => oid), ...(rootOid ? [rootOid] : [])])];
         if (oids.length > 0) {
             const env = { ...scrubShipEnv(process.env), ...TRUSTED_READ_ENV };
@@ -5703,6 +5745,7 @@ class FactoryEngine {
             };
             for (const [p, oid] of files) {
                 const text = blob(p, oid).toString('utf8');
+                texts.push({ path: p, text });
                 for (const r of nodeModulesReferences(p, text)) {
                     refs.push(`${p}: ${r}`);
                     if (!/^(?:Exec|UsingTask) /.test(r))
@@ -5732,6 +5775,7 @@ class FactoryEngine {
             projectSdks,
             unpinnedImports: unpinned,
             gitlinks: gitlinks.sort(),
+            hostReads: restoreHostReads(texts),
         };
         if (this.pinnedFactsAt.size >= 4)
             this.pinnedFactsAt.delete(this.pinnedFactsAt.keys().next().value);

@@ -278,9 +278,13 @@ export declare function nugetOrgCopy(bytes: Buffer): {
  * opened with O_NOFOLLOW and O_NONBLOCK where the platform has them, which
  * must be that same file (dev and inode, compared as bigints), still a
  * regular file within `max`; read from that descriptor, so a file swapped
- * in after the lstat is never read.
+ * in after the lstat is never read. With `singleLink`, both the lstat and
+ * the descriptor's fstat must report exactly one link (a hard link made
+ * between them is refused too).
  */
-export declare function readRegularFileBounded(path: string, max: number): Buffer | null;
+export declare function readRegularFileBounded(path: string, max: number, opts?: {
+    singleLink?: boolean;
+}): Buffer | null;
 /**
  * The nuget.config files (any letter case) below `dir`'s root, as paths
  * relative to `dir` with `/`, at most five; links are not followed, and

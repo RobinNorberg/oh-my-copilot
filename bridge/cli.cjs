@@ -124719,12 +124719,12 @@ function scanXml(xml) {
     if (close) {
       if (stack[stack.length - 1] !== name) odd.add("a close tag that does not match");
       else stack.pop();
-      tags.push({ name, close, selfClose: false, attrs, parent: stack[stack.length - 1] ?? "" });
+      tags.push({ name, close, selfClose: false, attrs, parent: stack[stack.length - 1] ?? "", start: i, end: j });
       if (stack.length === 0) rootClosed = true;
     } else {
       if (stack.length === 0 && (sawElement || rootClosed)) odd.add("a second root element");
       sawElement = true;
-      tags.push({ name, close, selfClose, attrs, parent: stack[stack.length - 1] ?? "" });
+      tags.push({ name, close, selfClose, attrs, parent: stack[stack.length - 1] ?? "", start: i, end: j });
       if (selfClose) {
         if (stack.length === 0) rootClosed = true;
       } else stack.push(name);
@@ -124909,14 +124909,14 @@ ${NUGET_ORG_PACKAGE_SOURCES}</configuration>`), bytes.subarray(at2 + 2)]) };
   return { copy: Buffer.concat([bytes.subarray(0, at), Buffer.from(`
 ${NUGET_ORG_PACKAGE_SOURCES}`), bytes.subarray(at)]) };
 }
-function readRegularFileBounded(path30, max) {
+function readRegularFileBounded(path30, max, opts = {}) {
   let st;
   try {
     st = (0, import_node_fs33.lstatSync)(path30, { bigint: true });
   } catch {
     return null;
   }
-  if (!st.isFile() || st.size > BigInt(max)) return null;
+  if (!st.isFile() || st.size > BigInt(max) || opts.singleLink && st.nlink !== 1n) return null;
   let fd;
   try {
     fd = (0, import_node_fs33.openSync)(path30, import_node_fs33.constants.O_RDONLY | (import_node_fs33.constants.O_NOFOLLOW ?? 0) | (import_node_fs33.constants.O_NONBLOCK ?? 0));
@@ -124925,7 +124925,7 @@ function readRegularFileBounded(path30, max) {
   }
   try {
     const f = (0, import_node_fs33.fstatSync)(fd, { bigint: true });
-    if (!f.isFile() || f.ino !== st.ino || f.dev !== st.dev || f.size > BigInt(max)) return null;
+    if (!f.isFile() || f.ino !== st.ino || f.dev !== st.dev || f.size > BigInt(max) || opts.singleLink && f.nlink !== 1n) return null;
     const size = Number(f.size);
     const buf = Buffer.alloc(size);
     let n = 0;
@@ -129974,11 +129974,7 @@ timed out after ${o.timeoutMs} ms`), timedOut: true, ...marked };
 ${dotnetNotes.join("\n")}` : "";
     let graph = null;
     if (graphFile && read.code === 0) {
-      try {
-        graph = (0, import_node_fs38.lstatSync)(graphFile).nlink === 1 ? readRegularFileBounded(graphFile, RESTORE_GRAPH_MAX_BYTES) : null;
-      } catch {
-        graph = null;
-      }
+      graph = readRegularFileBounded(graphFile, RESTORE_GRAPH_MAX_BYTES, { singleLink: true });
     }
     return { ran: true, status: read.code, output: `${tail2(read.output.trim())}${why}`, timedOut: false, ...marked, ...graph ? { restoreGraph: graph.toString("utf8") } : {} };
   } catch (err) {
@@ -140449,7 +140445,624 @@ function projectSdkMentions(path30, text9) {
   }
   return [...out].sort();
 }
-var PINNED_READ_MAX, SHIM_EXT, PM_OPTIONS, NPX_RUN, PURE_DELETE, msbuildUnescape, readsForNodeModulesRefs, RESTORE_SETTINGS, PINNED_IMPORT, THIS_DIR_UP, FILE_ABOVE, THIS_DIR_PATH;
+function thisDirDef(value) {
+  const v = value.trim();
+  const plain = /^\$\(MSBuildThisFileDirectory\)(.*)$/i.exec(v);
+  let pieces;
+  if (plain) pieces = [plain[1]];
+  else {
+    const fn = /^\$\(\[MSBuild\]::(NormalizeDirectory|EnsureTrailingSlash)\((.*)\)\)([^()]*)$/i.exec(v);
+    if (!fn) return null;
+    const args = fn[2].split(",").map((a) => a.trim().replace(/^'(.*)'$/, "$1").trim());
+    const first = /^\$\(MSBuildThisFileDirectory\)(.*)$/i.exec(args[0]);
+    if (!first || args.length > 1 && fn[1].toLowerCase() !== "normalizedirectory") return null;
+    if (args.slice(1).some((a) => /^(?:[a-z]:|[\\/])/i.test(a))) return null;
+    pieces = [first[1], ...args.slice(1), fn[3]];
+  }
+  if (!pieces.every((p) => LITERAL_PIECE.test(p))) return null;
+  return pieces.map((p) => p.trim().replace(/^[\\/]+/, "")).filter(Boolean).join("/");
+}
+function expressionRefs(expr, percent = false) {
+  const out = /* @__PURE__ */ new Set();
+  if (!expr.includes("$(") && !expr.includes("@(") && !expr.includes("%(") && !(percent && expr.includes("%"))) return [];
+  for (const m of expr.matchAll(PROPERTY_REF)) out.add(m[2] && m[1].toLowerCase() === "registry" ? "[registry]" : m[1]);
+  for (const m of expr.matchAll(ITEM_REF)) out.add(`[${m[1] === "@" ? "item" : "metadata"} ${m[2] ?? "?"}]`);
+  if (HOST_READ_HINT.test(expr)) for (const m of expr.matchAll(HOST_READ)) {
+    const literal3 = m[3] ?? m[4] ?? m[5];
+    out.add(m[1].toLowerCase() === "getenvironmentvariable" ? `[env ${literal3 ?? "?"}]` : `[${m[1]}]`);
+  }
+  if (percent) {
+    for (const m of expr.matchAll(ENV_PERCENT)) {
+      const at = m.index ?? 0;
+      const close = at + 1 + m[1].length;
+      if (/^[0-9a-f]{2}$/i.test(m[1]) && (/%[0-9a-f]{2}$/i.test(expr.slice(Math.max(0, at - 3), at)) || /^%[0-9a-f]{2}/i.test(expr.slice(close, close + 3)))) continue;
+      out.add(`[env ${m[1]}]`);
+    }
+  }
+  return [...out];
+}
+function repoPath2(path30, rel) {
+  const out = path30.split("/").slice(0, -1);
+  for (const seg of rel.replace(/\\/g, "/").split("/")) {
+    if (seg === "..") out.pop();
+    else if (seg !== "" && seg !== ".") out.push(seg);
+  }
+  return out.join("/");
+}
+function importTargets(path30, project, dirOf) {
+  const out = [];
+  for (const raw of project.split(";")) {
+    const part = msbuildUnescape(raw).trim();
+    if (!part) continue;
+    const via = /^\$\(\s*([A-Za-z_][\w-]*)\s*\)([^$@%*?]*)$/.exec(part);
+    if (via && via[1].toLowerCase() !== "msbuildthisfiledirectory") {
+      const base = dirOf(via[1]);
+      const file2 = base === null ? "" : base ? `${base}/_` : "_";
+      if (base === null || leavesRepository(file2, via[2])) return null;
+      out.push({ path: repoPath2(file2, via[2]) });
+      continue;
+    }
+    const above = FILE_ABOVE.exec(part);
+    if (above) {
+      const name = (above[1] ?? above[2]).trim();
+      const up = above[3] ?? above[4] ?? "";
+      if (/[\\/]/.test(name) || up && leavesRepository(path30, `${up}/x`)) return null;
+      out.push({ above: name, from: repoPath2(path30, up || ".") });
+      continue;
+    }
+    const local = THIS_DIR_PATH.exec(part);
+    if (!local || !local[1] || leavesRepository(path30, local[1])) return null;
+    out.push({ path: repoPath2(path30, local[1]) });
+  }
+  return out;
+}
+function propertyFlow(path30, text9) {
+  const kind = fileKind(path30);
+  const defs = [];
+  const roots = [];
+  const lists = /* @__PURE__ */ new Map();
+  const shared = (xs) => {
+    const key = xs.join("\n");
+    const was = lists.get(key);
+    if (was) return was;
+    lists.set(key, xs);
+    return xs;
+  };
+  const conditions = /* @__PURE__ */ new Map();
+  const conditionRefs = (c) => {
+    let refs2 = conditions.get(c);
+    if (!refs2) conditions.set(c, refs2 = shared(expressionRefs(c)));
+    return refs2;
+  };
+  const define = (name, at, unconditional, valueRefs, cond, value) => {
+    const refs2 = cond.length > 0 ? shared([...valueRefs, ...cond]) : valueRefs;
+    const dir = unconditional && value !== void 0 ? thisDirDef(value) : null;
+    defs.push({ name, at, unconditional, refs: refs2, ...dir !== null ? { dir } : {} });
+    if (RESTORE_SOURCE_SETTING.test(name)) roots.push({ kind: "setting", value: name, at, refs: refs2, cond: [], conditional: !unconditional, sdk: null });
+    else if (value !== void 0 && IMPORT_HOOK.test(name)) {
+      roots.push({ kind: "import", value: HOOK_SWITCH[name.toLowerCase()] ?? value, at, refs: valueRefs, cond, conditional: !unconditional, sdk: null, hook: name });
+    }
+  };
+  if ((kind === "rsp" || kind === "msbuild") && text9.length > PINNED_READ_MAX) return { defs, roots, unread: true };
+  if (kind === "rsp") {
+    let offset = 0;
+    for (const line2 of text9.split("\n")) {
+      if (!line2.trimStart().startsWith("#")) {
+        for (const m of line2.matchAll(/(?:[^\s"]|"[^"]*"?)+/g)) {
+          const sw = /^(?:--?|\/)(?:p|property|rp|restoreproperty):([\s\S]*)$/i.exec(m[0].replace(/"/g, ""));
+          if (!sw) continue;
+          const env2 = expressionRefs(sw[1], true).filter((r) => r.startsWith("[env "));
+          for (const part of sw[1].split(/[;,]/)) {
+            const eq = part.indexOf("=");
+            const name = (eq < 0 ? part : part.slice(0, eq)).trim();
+            if (/^[A-Za-z_][A-Za-z0-9_-]*$/.test(name)) define(name, offset + (m.index ?? 0), true, eq < 0 ? [] : env2, [], eq < 0 ? void 0 : part.slice(eq + 1));
+          }
+        }
+      }
+      offset += line2.length + 1;
+    }
+    return { defs, roots, unread: false };
+  }
+  if (kind !== "msbuild") return { defs, roots, unread: false };
+  const attr = (t, name) => {
+    const a = t.attrs.find(([n]) => n.toLowerCase() === name);
+    return a ? decodeXml(a[1]) : void 0;
+  };
+  const finish2 = (f, end) => {
+    if (!f.property) return;
+    const value = decodeXml(text9.slice(f.tag.end, end));
+    define(f.tag.name, f.tag.start, !f.conditioned, shared(expressionRefs(value)), f.cond, value);
+  };
+  let sdkStyle = false;
+  let dotnetMarks = false;
+  const stack = [];
+  for (const t of scanXml(text9).tags) {
+    if (t.close) {
+      const top = stack[stack.length - 1];
+      if (top && top.tag.name === t.name) {
+        stack.pop();
+        finish2(top, t.start);
+      }
+      continue;
+    }
+    const parent = stack[stack.length - 1];
+    const condition = attr(t, "condition");
+    const name = t.name.toLowerCase();
+    const own3 = condition !== void 0 ? conditionRefs(condition) : [];
+    if (name === "when" && parent?.tag.name.toLowerCase() === "choose") parent.whens.push(...own3);
+    const grand = stack[stack.length - 2]?.tag.name.toLowerCase();
+    const f = {
+      tag: t,
+      property: parent?.tag.name.toLowerCase() === "propertygroup" && (grand === "project" || grand === "target" || grand === "when" || grand === "otherwise"),
+      cond: parent?.cond ?? [],
+      conditioned: (parent?.conditioned ?? false) || condition !== void 0 || name === "when" || name === "otherwise" || name === "target",
+      whens: []
+    };
+    const reads = [...own3, ...name === "otherwise" ? parent?.whens ?? [] : []];
+    if (reads.length > 0 && t.selfClose) f.cond = shared([...new Set(reads), ...f.cond]);
+    else if (reads.length > 0) {
+      const pseudo = `#${t.start}@${path30}`;
+      defs.push({ name: pseudo, at: t.start, unconditional: false, refs: [...new Set(reads), ...f.cond] });
+      f.cond = [pseudo];
+    }
+    if (name === "import") {
+      const project = attr(t, "project") ?? "";
+      const sdk = attr(t, "sdk") ?? null;
+      roots.push({ kind: "import", value: project, at: t.start, refs: shared(expressionRefs(project)), cond: f.cond, conditional: f.conditioned, sdk });
+      if (sdk?.trim()) sdkStyle = true;
+      if (DOTNET_TARGETS_IMPORT.test(project.trim())) dotnetMarks = true;
+    }
+    if (name === "packagereference" && parent?.tag.name.toLowerCase() === "itemgroup") dotnetMarks = true;
+    const sdks = !parent && name === "project" ? attr(t, "sdk") : name === "sdk" && parent?.tag.name.toLowerCase() === "project" && stack.length === 1 ? attr(t, "name") : void 0;
+    if (sdks?.trim()) sdkStyle = true;
+    for (const s of sdks?.split(";") ?? []) {
+      const sdk = s.split("/")[0].trim();
+      if (sdk && !PLAIN_SDK.test(sdk)) roots.push({ kind: "import", value: "Sdk.props", at: t.start, refs: [], cond: [], conditional: false, sdk });
+    }
+    const output2 = name === "output" ? attr(t, "propertyname") : void 0;
+    if (output2 !== void 0 && parent) {
+      parent.attrRefs ??= shared([...new Set(parent.tag.attrs.flatMap(([, v]) => expressionRefs(decodeXml(v))))]);
+      define(msbuildUnescape(output2).trim(), t.start, false, parent.attrRefs, f.cond);
+    }
+    if (t.selfClose) finish2(f, t.end);
+    else stack.push(f);
+  }
+  return { defs, roots, unread: false, sdkStyle, dotnetMarks };
+}
+function hostReadWords(ref) {
+  if (ref === "[env ?]") return "an environment variable whose name is computed";
+  if (ref.startsWith("[env ")) return `the environment variable ${ref.slice(5, -1)}`;
+  if (ref === "[registry]" || /^\[GetRegistryValue/i.test(ref)) return "the registry";
+  if (ref.startsWith("[metadata ")) return `the item metadata %(${ref.slice(10, -1)}), and the engine does not follow items into a package-source setting (list the sources as a property or in nuget.config)`;
+  if (ref.startsWith("[item ")) return `the item list @(${ref.slice(6, -1)}), and the engine does not follow items into a package-source setting (list the sources as a property or in nuget.config)`;
+  return /^\[(?:UserDomainName|UserName|MachineName)\]$/i.test(ref) ? `$([System.Environment]::${ref.slice(1, -1)})` : `$([System.Environment]::${ref.slice(1, -1)}(...))`;
+}
+function restoreHostReads(files, workMax = RESTORE_WORK_MAX) {
+  const reads = [];
+  const seenReads = /* @__PURE__ */ new Set();
+  let more = 0;
+  const names2 = /* @__PURE__ */ new Set();
+  const fixes = /* @__PURE__ */ new Set();
+  const add2 = (read, name) => {
+    if (name) names2.add(name);
+    if (reads.length >= RESTORE_READS_MAX) {
+      more++;
+      return;
+    }
+    const words = typeof read === "string" ? read : read();
+    if (seenReads.has(words)) return;
+    seenReads.add(words);
+    reads.push(words);
+  };
+  const readable = (f) => {
+    if (notUtf8(f.text)) {
+      add2(`${f.path}: not UTF-8 text (UTF-16 or binary), so the engine cannot read its package-source settings`);
+      fixes.add(`re-save ${f.path} as UTF-8`);
+    } else if (f.text.length > PINNED_READ_MAX) {
+      add2(`${f.path}: larger than ${PINNED_READ_MAX / 1024} KB, so the engine did not read it and cannot tell whether its package-source settings depend on your environment`);
+      fixes.add(`keep ${f.path} under ${PINNED_READ_MAX / 1024} KB`);
+    } else return true;
+    return false;
+  };
+  try {
+    msbuildReads(files, readable, add2, workMax);
+  } catch (e2) {
+    if (!(e2 instanceof OverBudget)) throw e2;
+    reads.unshift(`the pinned MSBuild files: too many imports to analyse (more than ${workMax} import steps), so the engine cannot tell whether their package-source settings depend on your environment`);
+    if (reads.length > RESTORE_READS_MAX) {
+      reads.pop();
+      more++;
+    }
+    fixes.add(`keep the pinned MSBuild files within the engine's limit of ${workMax} import steps (too many imports to analyse)`);
+  }
+  for (const f of files) {
+    if (fileKind(f.path) !== "nuget" || !readable(f)) continue;
+    for (const t of scanXml(f.text).tags) {
+      for (const [, raw] of t.attrs) {
+        const value = decodeXml(raw);
+        for (const r of expressionRefs(value, true).filter((x) => x.startsWith("[env "))) add2(`${f.path}: the value ${JSON.stringify(value.slice(0, 200))} reads ${hostReadWords(r)}`);
+      }
+    }
+  }
+  return { reads, more, names: [...names2].sort(), fixes: [...fixes] };
+}
+function msbuildReads(files, readable, add2, workMax) {
+  let work = 0;
+  const spend2 = (n) => {
+    work += n;
+    if (work > workMax) throw new OverBudget();
+  };
+  const flows = [];
+  const values = /* @__PURE__ */ new Map();
+  for (const f of files) {
+    const kind = fileKind(f.path);
+    if (kind !== "msbuild" && kind !== "rsp" || !readable(f)) continue;
+    const flow = propertyFlow(f.path, f.text);
+    spend2(flow.roots.length);
+    for (const r of flow.roots) {
+      const was = values.get(r.value);
+      if (was === void 0) values.set(r.value, r.value);
+      else r.value = was;
+    }
+    flows.push({ path: f.path, lpath: f.path.toLowerCase(), flow });
+  }
+  const flowAt = new Map(flows.map((f) => [f.lpath, f]));
+  const pinned = new Set(files.map((f) => f.path.toLowerCase()));
+  const arcade = flows.some((f) => f.flow.roots.some((r) => r.sdk !== null && r.sdk.split(";").some((s) => ARCADE_SDK.test(s)))) || files.some((f) => fileKind(f.path) === "global" && projectSdkMentions(f.path, f.text).some((s) => ARCADE_SDK.test(s)));
+  const defsBy = /* @__PURE__ */ new Map();
+  const fixedAt = /* @__PURE__ */ new Map();
+  for (const { path: path30, lpath, flow } of flows) {
+    for (const d of flow.defs) {
+      const key = d.name.toLowerCase();
+      let list3 = defsBy.get(key);
+      if (!list3) defsBy.set(key, list3 = []);
+      list3.push({ lpath, path: path30, ...d });
+      if (!d.unconditional) continue;
+      let at = fixedAt.get(key);
+      if (!at) fixedAt.set(key, at = /* @__PURE__ */ new Map());
+      const was = at.get(lpath);
+      at.set(lpath, was ? { first: Math.min(was.first, d.at), last: Math.max(was.last, d.at) } : { first: d.at, last: d.at });
+    }
+  }
+  const what = (root) => root.kind === "setting" ? `<${root.value}>` : root.hook ? `<${root.hook}> (an SDK import hook)` : `Import ${JSON.stringify(root.value.slice(0, 200))}`;
+  const unresolvedWords = (root) => root.sdk !== null ? `a file of the SDK ${JSON.stringify(root.sdk.trim().slice(0, 200))}, which the engine cannot see` : "a file the engine cannot resolve to a pinned file";
+  const dirOf = (name) => {
+    const ds = defsBy.get(name.toLowerCase());
+    const d = ds?.length === 1 ? ds[0] : void 0;
+    if (!d || d.dir === void 0 || leavesRepository(d.path, d.dir ? `${d.dir}/_` : "_")) return null;
+    return repoPath2(d.path, d.dir);
+  };
+  const fileAbove = (name, from) => {
+    for (let dir = from; ; dir = dir.includes("/") ? dir.slice(0, dir.lastIndexOf("/")) : "") {
+      spend2(1);
+      const p = `${dir ? `${dir}/` : ""}${name}`.toLowerCase();
+      if (pinned.has(p)) return p;
+      if (!dir) return null;
+    }
+  };
+  const resolvedAt = /* @__PURE__ */ new Map();
+  const resolved = (root, path30) => {
+    const here = path30.includes("/") ? path30.slice(0, path30.lastIndexOf("/")) : "";
+    const key = `${here}
+${root.sdk ?? ""}
+${root.hook ?? ""}
+${root.value}`;
+    const cached2 = resolvedAt.get(key);
+    if (cached2 !== void 0) return cached2;
+    let out = [];
+    const sw = root.hook ? HOOK_SWITCH[root.hook.toLowerCase()] : void 0;
+    if (root.sdk !== null) out = PLAIN_SDK.test(root.sdk) ? [] : null;
+    else if (sw) {
+      const p = fileAbove(sw, here);
+      out = p ? [p] : [];
+    } else {
+      for (const t of importTargets(path30, root.value, dirOf) ?? [null]) {
+        const p = t === null ? null : "path" in t ? pinned.has(t.path.toLowerCase()) ? t.path.toLowerCase() : null : fileAbove(t.above, t.from);
+        if (p === null) {
+          out = null;
+          break;
+        }
+        out.push(p);
+      }
+    }
+    resolvedAt.set(key, out);
+    return out;
+  };
+  const anchorsAt = /* @__PURE__ */ new Map();
+  const nearestAt = /* @__PURE__ */ new Map();
+  const nearest = (dir) => {
+    const below = [];
+    let found;
+    for (let d = dir; d !== null; d = d ? d.includes("/") ? d.slice(0, d.lastIndexOf("/")) : "" : null) {
+      if (found = nearestAt.get(d)) break;
+      below.push(d);
+    }
+    let out = found ?? AUTO_FILES.map(() => null);
+    for (let i = below.length - 1; i >= 0; i--) {
+      const d = below[i];
+      const up = out;
+      out = AUTO_FILES.map((base, j) => pinned.has(d ? `${d}/${base}` : base) ? d ? `${d}/${base}` : base : up[j]);
+      nearestAt.set(d, out);
+    }
+    return out;
+  };
+  const anchors = (lpath) => {
+    const cached2 = anchorsAt.get(lpath);
+    if (cached2) return cached2;
+    const out = [lpath, ...nearest(lpath.includes("/") ? lpath.slice(0, lpath.lastIndexOf("/")) : "").filter((p) => p !== null)];
+    anchorsAt.set(lpath, out);
+    return out;
+  };
+  const closures = /* @__PURE__ */ new Map();
+  const closure = (start) => {
+    const cached2 = closures.get(start);
+    if (cached2) return cached2;
+    const seen = /* @__PURE__ */ new Set([start]);
+    const queue = [start];
+    for (let i = 0; i < queue.length; i++) {
+      const f = flowAt.get(queue[i]);
+      for (const r of f?.flow.roots ?? []) {
+        if (r.kind !== "import" || r.conditional) continue;
+        for (const t of resolved(r, f.path) ?? []) {
+          spend2(1);
+          if (seen.has(t)) continue;
+          const known2 = closures.get(t);
+          if (known2) {
+            spend2(known2.size);
+            for (const x of known2) seen.add(x);
+          } else {
+            seen.add(t);
+            queue.push(t);
+          }
+        }
+      }
+    }
+    closures.set(start, seen);
+    return seen;
+  };
+  const insideAt = /* @__PURE__ */ new Map();
+  const settable = (name, lpath, at) => {
+    const at2 = fixedAt.get(name.toLowerCase());
+    if (!at2) return "none";
+    const own3 = at2.get(lpath);
+    if (own3 && own3.first < at) return null;
+    if (at2.size > (own3 ? 1 : 0)) {
+      const key = `${name.toLowerCase()}
+${lpath}`;
+      let inside3 = insideAt.get(key);
+      if (inside3 === void 0) {
+        const cs = anchors(lpath).map(closure);
+        let steps = 0;
+        if (at2.size <= cs.reduce((n, c) => n + c.size, 0)) {
+          inside3 = false;
+          for (const p of at2.keys()) {
+            steps++;
+            if (p !== lpath && cs.some((c) => c.has(p))) {
+              inside3 = true;
+              break;
+            }
+          }
+        } else {
+          inside3 = cs.some((c) => {
+            for (const p of c) {
+              steps++;
+              if (p !== lpath && at2.has(p)) return true;
+            }
+            return false;
+          });
+        }
+        spend2(steps);
+        insideAt.set(key, inside3);
+      }
+      if (inside3) return null;
+      return "elsewhere";
+    }
+    return own3 ? own3.last > at ? "after" : "self" : "none";
+  };
+  const stops = (ref) => isReservedProperty(ref) || RESTORE_SOURCE_SETTING.test(ref) || arcade && ARCADE_PROPERTIES.test(ref);
+  const direct = (ref, lpath, at, mode) => {
+    if (ref.startsWith("[")) return { ref, why: "host" };
+    if (ref.startsWith("#")) return "follow";
+    if (stops(ref)) return "stop";
+    if (mode === "value") {
+      const why2 = settable(ref, lpath, at);
+      return why2 ? { ref, why: why2 } : "follow";
+    }
+    if (!defsBy.has(ref.toLowerCase())) return mode === "path" ? { ref, why: "undefined" } : PROFILE_ENV.test(ref) ? { ref, why: "profile" } : "follow";
+    return PROFILE_ENV.test(ref) && settable(ref, lpath, at) ? { ref, why: "profile" } : "follow";
+  };
+  const solved = /* @__PURE__ */ new Map();
+  const solve = (mode) => {
+    const cached2 = solved.get(mode);
+    if (cached2) return cached2;
+    const hits = /* @__PURE__ */ new Map();
+    const readers = /* @__PURE__ */ new Map();
+    const queue = [];
+    for (const [key, ds] of defsBy) {
+      if (stops(key)) continue;
+      for (const d of ds) {
+        for (const r of d.refs) {
+          const x = direct(r, d.lpath, d.at, mode);
+          if (x === "stop") continue;
+          if (x === "follow") {
+            const k = r.toLowerCase();
+            let list3 = readers.get(k);
+            if (!list3) readers.set(k, list3 = []);
+            list3.push(key);
+          } else if (!hits.has(key)) {
+            hits.set(key, x);
+            queue.push(key);
+          }
+        }
+      }
+    }
+    for (let i = 0; i < queue.length; i++) {
+      const hit2 = hits.get(queue[i]);
+      for (const p of readers.get(queue[i]) ?? []) {
+        if (hits.has(p)) continue;
+        hits.set(p, hit2);
+        queue.push(p);
+      }
+    }
+    solved.set(mode, hits);
+    return hits;
+  };
+  const firstHit = (refs2, lpath, at, mode) => {
+    for (const r of refs2) {
+      const x = direct(r, lpath, at, mode);
+      if (x === "stop") continue;
+      if (x !== "follow") return { hit: x, via: "" };
+      const h = solve(mode).get(r.toLowerCase());
+      if (h) return { hit: h, via: r.startsWith("#") || h.ref.toLowerCase() === r.toLowerCase() ? "" : ` through $(${r})` };
+    }
+    return null;
+  };
+  const why = {
+    none: ", which no pinned file gives an unconditional value",
+    self: ", which its only unconditional definition reads before giving it a value",
+    after: ", which its file gives an unconditional value only after the read",
+    elsewhere: ", which pinned files give an unconditional value only outside this evaluation (in files not auto-imported, imported under a condition, or imported by a path the engine does not resolve: only literal and $(MSBuildThisFileDirectory)-based paths)"
+  };
+  const valueWords = ({ hit: hit2, via }) => hit2.why === "host" ? `${hostReadWords(hit2.ref)}${via}` : `$(${hit2.ref})${via}${why[hit2.why] ?? ""}`;
+  const pathWords = ({ hit: hit2, via }) => {
+    const what2 = hit2.why === "host" ? hostReadWords(hit2.ref) : `$(${hit2.ref})`;
+    return `${what2}${via} in its path, ${hit2.why === "undefined" ? "which no pinned file defines, " : ""}so your environment chooses which file loads`;
+  };
+  const nameOf = (hit2) => hit2.why === "host" ? void 0 : hit2.ref;
+  let dotnetFiles;
+  const inDotnet = (lpath) => {
+    if (!dotnetFiles) {
+      const seen = new Set(flows.filter((f) => DOTNET_EVALUATED.test(f.lpath)).map((f) => f.lpath));
+      const queue = [...seen];
+      for (let i = 0; i < queue.length; i++) {
+        const f = flowAt.get(queue[i]);
+        for (const r of f.flow.roots) {
+          if (r.kind !== "import") continue;
+          for (const t of resolved(r, f.path) ?? []) {
+            if (seen.has(t) || !flowAt.has(t)) continue;
+            seen.add(t);
+            queue.push(t);
+          }
+        }
+      }
+      dotnetFiles = seen;
+    }
+    return dotnetFiles.has(lpath);
+  };
+  let foreignFiles;
+  const inRuleB = (lpath) => {
+    if (!foreignFiles) {
+      foreignFiles = new Set(flows.filter((f) => NON_DOTNET_PROJECT.test(f.lpath) && !f.flow.sdkStyle && !f.flow.dotnetMarks).map((f) => f.lpath));
+      const queue = foreignFiles.size > 0 ? flows.filter((f) => !foreignFiles.has(f.lpath)).map((f) => f.lpath) : [];
+      for (let i = 0; i < queue.length && foreignFiles.size > 0; i++) {
+        const f = flowAt.get(queue[i]);
+        for (const r of f.flow.roots) {
+          if (r.kind !== "import") continue;
+          for (const t of resolved(r, f.path) ?? []) {
+            if (!foreignFiles.delete(t)) continue;
+            queue.push(t);
+          }
+        }
+      }
+    }
+    return !foreignFiles.has(lpath);
+  };
+  let sets = "";
+  const conditioned = /* @__PURE__ */ new Set();
+  for (const { path: path30, lpath, flow } of flows) {
+    for (const root of flow.roots) {
+      if (root.kind === "setting") {
+        if (!sets) sets = `${path30} sets ${what(root)}`;
+        const x2 = firstHit(root.refs, lpath, root.at, "value");
+        if (x2) add2(() => `${path30}: ${what(root)} reads ${valueWords(x2)}`, nameOf(x2.hit));
+        continue;
+      }
+      let x = firstHit(root.refs, lpath, root.at, "path");
+      if (x?.hit.why === "undefined" && !inDotnet(lpath)) x = firstHit(root.refs, lpath, root.at, "foreign");
+      if (x) add2(() => `${path30}: ${what(root)} reads ${pathWords(x)}`);
+      else if (root.conditional && root.cond.length > 0) conditioned.add(root);
+    }
+  }
+  if (!sets || conditioned.size === 0) return;
+  const changes = /* @__PURE__ */ new Map();
+  const changed = [];
+  const change = (lpath, reason) => {
+    if (changes.has(lpath)) return;
+    changes.set(lpath, reason);
+    changed.push(lpath);
+  };
+  const importers = /* @__PURE__ */ new Map();
+  const relevant = /* @__PURE__ */ new Set();
+  const pending = [];
+  const reach = (refs2) => {
+    for (const r of refs2) {
+      if (r.startsWith("[") || stops(r)) continue;
+      const k = r.toLowerCase();
+      if (relevant.has(k)) continue;
+      relevant.add(k);
+      pending.push(k);
+    }
+  };
+  const canChange = /* @__PURE__ */ new Set();
+  const changing = (root) => {
+    if (canChange.has(root)) return;
+    canChange.add(root);
+    reach(root.cond);
+  };
+  for (const f of flows) {
+    const setting = f.flow.roots.find((r) => r.kind === "setting");
+    if (setting) change(f.lpath, `${f.path} sets ${what(setting)}`);
+  }
+  for (const f of flows) {
+    const scoped = inRuleB(f.lpath);
+    for (const r of f.flow.roots) {
+      if (r.kind === "import" && !scoped) continue;
+      reach(r.refs);
+      if (r.kind !== "import") continue;
+      const ts = resolved(r, f.path);
+      if (!ts) {
+        change(f.lpath, `${sets}, and ${r.hook ? `${f.path}: ${what(r)} names ${JSON.stringify(r.value.slice(0, 200))}` : `${f.path} imports ${JSON.stringify(r.value.slice(0, 200))}`}, ${unresolvedWords(r)}`);
+        changing(r);
+        continue;
+      }
+      for (const t of ts) {
+        let list3 = importers.get(t);
+        if (!list3) importers.set(t, list3 = []);
+        list3.push(r, f);
+      }
+    }
+  }
+  for (let n = 0, c = 0; n < pending.length || c < changed.length; ) {
+    if (n < pending.length) {
+      const k = pending[n++];
+      for (const d of defsBy.get(k) ?? []) {
+        spend2(1);
+        reach(d.refs);
+        if (!k.startsWith("#")) change(d.lpath, `${d.path} defines $(${d.name}), which a package-source setting or an Import reads`);
+      }
+      continue;
+    }
+    const t = changed[c++];
+    const list3 = importers.get(t) ?? [];
+    for (let i = 0; i < list3.length; i += 2) {
+      spend2(1);
+      changing(list3[i]);
+      change(list3[i + 1].lpath, changes.get(t));
+    }
+  }
+  for (const { path: path30, lpath, flow } of flows) {
+    for (const root of flow.roots) {
+      if (!conditioned.has(root) || !canChange.has(root)) continue;
+      const x = firstHit(root.cond, lpath, root.at, "value");
+      if (!x) continue;
+      const ts = resolved(root, path30);
+      const lead = ts ? `${changes.get(ts.find((t) => changes.has(t)))}, and ${path30}: ${what(root)}` : `${sets}, and ${path30}: ${what(root)} (${unresolvedWords(root)})`;
+      const n = nameOf(x.hit);
+      add2(() => `${lead} has a condition that reads ${valueWords(x)}`, n && !isEnvironmentOnlyName(n) ? n : void 0);
+    }
+  }
+}
+var PINNED_READ_MAX, SHIM_EXT, PM_OPTIONS, NPX_RUN, PURE_DELETE, msbuildUnescape, readsForNodeModulesRefs, RESTORE_SETTINGS, PINNED_IMPORT, THIS_DIR_UP, FILE_ABOVE, THIS_DIR_PATH, RESTORE_SOURCE_SETTING, IMPORT_HOOK, HOOK_SWITCH, PLAIN_SDK, ARCADE_SDK, ARCADE_PROPERTIES, DOTNET_EVALUATED, NON_DOTNET_PROJECT, DOTNET_TARGETS_IMPORT, LITERAL_PIECE, RESERVED_PROPERTIES, isReservedProperty, PROFILE_ENV, CI_ENV, isEnvironmentOnlyName, PROPERTY_REF, HOST_READ, HOST_READ_HINT, ENV_PERCENT, ITEM_REF, RESTORE_READS_MAX, RESTORE_WORK_MAX, notUtf8, AUTO_FILES, OverBudget;
 var init_dotnet_package_refs = __esm({
   "src/factory/run/dotnet-package-refs.ts"() {
     "use strict";
@@ -140467,6 +141080,192 @@ var init_dotnet_package_refs = __esm({
     THIS_DIR_UP = String.raw`\$\(MSBuildThisFileDirectory\)((?:\.\.(?:[\\/]\.\.)*)?)[\\/]?`;
     FILE_ABOVE = new RegExp(String.raw`^\$\(\[MSBuild\]::GetPathOfFileAbove\(\s*(?:'([^'$%@()]+)'|([^'"$%@(),\s]+))\s*(?:,\s*(?:'${THIS_DIR_UP}'|${THIS_DIR_UP})\s*)?\)\)$`, "i");
     THIS_DIR_PATH = /^(?:\$\(MSBuildThisFileDirectory\)[\\/]*)?([^$@%*?]*)$/i;
+    RESTORE_SOURCE_SETTING = /^Restore(?:Sources|AdditionalProjectSources|FallbackFolders|AdditionalProjectFallbackFolders|ConfigFile|RootConfigDirectory)$/i;
+    IMPORT_HOOK = /^(?:Custom(?:Before|After)(?:MicrosoftCommon|MicrosoftCommonCrossTargeting|MicrosoftCSharp|MicrosoftVisualBasic|MicrosoftFSharp|DirectoryBuild)(?:Props|Targets)|Directory(?:BuildProps|BuildTargets|PackagesProps)Path|ImportDirectory(?:BuildProps|BuildTargets|PackagesProps))$/i;
+    HOOK_SWITCH = { importdirectorybuildprops: "Directory.Build.props", importdirectorybuildtargets: "Directory.Build.targets", importdirectorypackagesprops: "Directory.Packages.props" };
+    PLAIN_SDK = /^\s*(?:Microsoft\.NET\.Sdk(?:\.[^\s/;]+)?|Microsoft\.Build\.[^\s/;]+)\s*(?:\/[^;]*)?$/i;
+    ARCADE_SDK = /^\s*Microsoft\.DotNet\.Arcade\.Sdk\s*(?:\/[^;]*)?$/i;
+    ARCADE_PROPERTIES = /^(?:RepositoryEngineeringDir|RepoRoot|RepositoryRoot|ArtifactsDir|ArtifactsBinDir|ArtifactsObjDir|ArtifactsPackagesDir|DotNetRoot|DotNetTool|ArcadeSdk\w*)$/i;
+    DOTNET_EVALUATED = /(?:^|\/)(?:[^/]+\.(?:cs|fs|vb)proj|directory\.build\.props|directory\.build\.targets|directory\.packages\.props|directory\.build\.rsp)$/i;
+    NON_DOTNET_PROJECT = /\.(?:vcxproj|vcproj|dcproj|nuproj|sqlproj|wixproj|pyproj|shproj|njsproj|vdproj)$/i;
+    DOTNET_TARGETS_IMPORT = /(?:^|[\\/])Microsoft\.(?:Common|CSharp|VisualBasic|FSharp)\.targets$/i;
+    LITERAL_PIECE = /^[^$@%*?'"(),;]*$/;
+    RESERVED_PROPERTIES = /* @__PURE__ */ new Set([
+      "configuration",
+      "platform",
+      "platforms",
+      "platformtarget",
+      "platformname",
+      "targetframework",
+      "targetframeworks",
+      "targetframeworkidentifier",
+      "targetframeworkversion",
+      "targetframeworkmoniker",
+      "targetframeworkprofile",
+      "targetplatformidentifier",
+      "targetplatformversion",
+      "targetplatformminversion",
+      "supportedosplatformversion",
+      "runtimeidentifier",
+      "runtimeidentifiers",
+      "os",
+      "outputpath",
+      "outdir",
+      "intermediateoutputpath",
+      "baseintermediateoutputpath",
+      "baseoutputpath",
+      "projectdir",
+      "projectname",
+      "projectpath",
+      "projectfilename",
+      "projectext",
+      "solutiondir",
+      "solutionname",
+      "solutionpath",
+      "solutionfilename",
+      "solutionext",
+      "targetname",
+      "targetpath",
+      "targetdir",
+      "targetext",
+      "targetfilename",
+      "assemblyname",
+      "rootnamespace",
+      "artifactspath",
+      "useartifactsoutput",
+      "appendtargetframeworktooutputpath",
+      "appendruntimeidentifiertooutputpath",
+      "packageoutputpath",
+      "documentationfile",
+      "nugetpackageroot",
+      "nugetpackagefolders",
+      "nugetprojectstyle",
+      "nugettargetmoniker",
+      "netcoresdkversion",
+      "netcoresdkruntimeidentifier",
+      "netcoreroot",
+      "netcoretargetingpackroot",
+      "bundlednetcoreapppackageversion",
+      "bundlednetcoreapptargetframeworkversion",
+      "netcoreappmaximumversion",
+      "microsoftnetcoreapprefpackageversion",
+      "dotnet_host_path",
+      "visualstudioversion",
+      "vstoolspath",
+      "designtimebuild",
+      "buildinginsidevisualstudio",
+      "buildingforliveunittesting",
+      "buildingproject",
+      "buildingsolutionfile",
+      "buildprojectreferences",
+      "isimplicitlytriggeredbuild",
+      "language",
+      "defineconstants",
+      "langversion",
+      "nullable",
+      "implicitusings",
+      "version",
+      "versionprefix",
+      "versionsuffix",
+      "packageversion",
+      "assemblyversion",
+      "fileversion",
+      "informationalversion",
+      "packageid",
+      "authors",
+      "company",
+      "product",
+      "copyright",
+      "description",
+      "neutrallanguage",
+      "ispackable",
+      "ispublishable",
+      "istestproject",
+      "istestingplatformapplication",
+      "isaspirehost",
+      "ispublishing",
+      "_ispublishing",
+      "outputtype",
+      "iscrosstargetingbuild",
+      "usingmicrosoftnetsdk",
+      "usingmicrosoftnetsdkweb",
+      "usingmicrosoftnetsdkrazor",
+      "usingmicrosoftnetsdkworker",
+      "usingmicrosoftnetsdkblazorwebassembly",
+      "usingmicrosoftnetsdkwebassembly",
+      "usingmicrosoftnetsdkstaticwebassets",
+      "excluderestorepackageimports",
+      "restoregraphoutputpath",
+      "restoreprojectstyle",
+      "enabledefaultitems",
+      "enabledefaultcompileitems",
+      "defaultitemexcludes",
+      "importdirectorybuildprops",
+      "importdirectorybuildtargets",
+      "sdkanalysislevel",
+      "usemaui",
+      "mauiversion",
+      "prefer32bit",
+      "selfcontained",
+      "publishtrimmed",
+      "publishaot",
+      "publishsinglefile",
+      "publishreadytorun",
+      "useapphost",
+      "isaotcompatible",
+      "istrimmable",
+      "usewpf",
+      "usewindowsforms",
+      "enablewindowstargeting",
+      "invariantglobalization",
+      "optimize",
+      "debugtype",
+      "debugsymbols",
+      "deterministic",
+      "warninglevel",
+      "nowarn",
+      "warningsaserrors",
+      "warningsnotaserrors",
+      "treatwarningsaserrors",
+      "generatedocumentationfile",
+      "generateassemblyinfo",
+      "generatepackageonbuild",
+      "signassembly",
+      "analysislevel",
+      "analysismode",
+      "enablenetanalyzers",
+      "enforcecodestyleinbuild",
+      "runanalyzers",
+      "runanalyzersduringbuild",
+      "managepackageversionscentrally",
+      "centralpackagetransitivepinningenabled",
+      "restorepackageswithlockfile",
+      "restorelockedmode",
+      "restoreusestaticgraphevaluation",
+      "nugetaudit",
+      "nugetauditmode",
+      "nugetauditlevel",
+      // Other project kinds' toolsets: C++ (.vcxproj), SSDT (.sqlproj), WiX (.wixproj).
+      "vctargetspath",
+      "userrootdir",
+      "sqldbextensionsrefpath",
+      "wixtargetspath"
+    ]);
+    isReservedProperty = (name) => /^MSBuild/i.test(name) || /^Pkg[A-Za-z_]/.test(name) || RESERVED_PROPERTIES.has(name.toLowerCase());
+    PROFILE_ENV = /^(?:HOME|USERPROFILE|APPDATA|LOCALAPPDATA|HOMEDRIVE|HOMEPATH|USERNAME|USERDOMAIN|ALLUSERSPROFILE|PROGRAMDATA|XDG_\w+)$/i;
+    CI_ENV = /^(?:CI|TF_BUILD|GITHUB_\w+|BUILD_\w+|SYSTEM_\w+|AGENT_\w+|RUNNER_\w+|GITLAB_CI|JENKINS_URL|TEAMCITY_VERSION|APPVEYOR|TRAVIS)$/i;
+    isEnvironmentOnlyName = (name) => CI_ENV.test(name) || PROFILE_ENV.test(name);
+    PROPERTY_REF = /\$\(\s*([A-Za-z_][A-Za-z0-9_-]*)\s*(:?)/g;
+    HOST_READ = /\b(GetEnvironmentVariables?|ExpandEnvironmentVariables|GetFolderPath|GetRegistryValue(?:FromView)?|(?<=::\s*)(?:UserDomainName|UserName|MachineName))\b(\s*\(\s*(?:'([A-Za-z_][\w-]*)'|"([A-Za-z_][\w-]*)"|([A-Za-z_][\w-]*))\s*\))?/gi;
+    HOST_READ_HINT = /Environment|FolderPath|Registry|User|MachineName/i;
+    ENV_PERCENT = /%([A-Za-z_][A-Za-z0-9_]*)(?=%)/g;
+    ITEM_REF = /([@%])\(\s*([A-Za-z_]\w*)?/g;
+    RESTORE_READS_MAX = 50;
+    RESTORE_WORK_MAX = 1e5;
+    notUtf8 = (text9) => text9.startsWith("\uFFFD\uFFFD") || text9.slice(0, 1024).includes("\0");
+    AUTO_FILES = ["directory.build.props", "directory.build.targets", "directory.packages.props", "directory.build.rsp"];
+    OverBudget = class extends Error {
+    };
   }
 });
 
@@ -140762,6 +141561,24 @@ function parseStatusPaths(raw) {
     if ((xy.includes("R") || xy.includes("C")) && i + 1 < records2.length) paths.push(records2[++i]);
   }
   return paths;
+}
+function envReadWhy(r) {
+  const total = r.reads.length + r.more;
+  const named = `${r.reads.slice(0, 3).map((x) => oneLine(visibleLine(x), 400)).join("; ")}${total > 3 ? `; ${total - 3} more` : ""}`;
+  const props = (xs) => `${xs.slice(0, 5).map((n) => `$(${n})`).join(", ")}${xs.length > 5 ? ` and ${xs.length - 5} more` : ""}`;
+  const pin = r.names.filter((n) => !isEnvironmentOnlyName(n));
+  const env2 = r.names.filter((n) => isEnvironmentOnlyName(n));
+  const path30 = r.reads.some((x) => /so your environment chooses which file loads$/.test(x));
+  const sdkImport = (x) => / \(a file of the SDK .*?, which the engine cannot see\) has a condition that reads /.test(x);
+  const pathConditioned = r.reads.some((x) => / has a condition that reads /.test(x) && !sdkImport(x));
+  const sdkConditioned = r.reads.some(sdkImport);
+  const unresolvable = r.reads.some((x) => / \(a file the engine cannot resolve to a pinned file\) has a condition that reads /.test(x));
+  const fixes = r.fixes.join("; ");
+  if (r.reads.every((x) => /^[^\n]*?: (?:not UTF-8 text|larger than \d+ KB|too many imports to analyse)/.test(x))) {
+    const what = r.reads.some((x) => /^[^\n]*?: too many imports to analyse/.test(x)) ? "analyse the pinned files" : "read a pinned file";
+    return `the engine could not ${what} that may set the package sources (${named}), so it cannot tell whether a package-source setting depends on your environment or machine, which the sandbox does not pass; ${fixes}`;
+  }
+  return `a package-source setting of the repository depends on your environment or machine (${named}), which the sandbox does not pass, so there the restriction could be lost and the restore could reach nuget.org where the same command on your machine would use only your feed; declare the feed in the repository's nuget.config (a <packageSources> entry, no %VARIABLE%)${pin.length ? `, or give ${props(pin)} an unconditional value in a pinned .props file` : ""}${env2.length ? `, or move the source setting out from under the condition on ${props(env2)}` : ""}${pathConditioned ? `, or make the conditioned Import unconditional${unresolvable ? " or resolvable (a literal or $(MSBuildThisFileDirectory)-based path)" : ""}` : ""}${sdkConditioned ? ", or make the conditioned Sdk import unconditional" : ""}${path30 ? ", and import only files the repository tracks, by a path from $(MSBuildThisFileDirectory)" : ""}${fixes ? `; ${fixes}` : ""}`;
 }
 function isNewerEvent(next, prev) {
   const n = next ? Date.parse(next) : NaN;
@@ -142155,12 +142972,16 @@ var init_engine = __esm({
        *   initialises them, so a source restriction a file in one sets is never
        *   seen: no copy is written (they are in `noAddSource` too), and the
        *   networked restore step parks up front (nugetRestore).
+       * - `hostReads`: where either commit's package-source settings depend
+       *   on your environment or machine, and the names to give an
+       *   unconditional value (restoreHostReads): the restore step parks on
+       *   any (nugetRestore).
        * Throws (a step error) when a commit cannot be read.
        */
       dotnetNugetPolicy(commit, argv = []) {
         const base = this.state.baseSha && HEX4021.test(this.state.baseSha) ? this.state.baseSha : void 0;
         const own3 = commit && HEX4021.test(commit) ? commit : base;
-        if (!own3) return { hierarchy: null, noAddSource: [], rootSources: [], sdks: [], gitlinks: [] };
+        if (!own3) return { hierarchy: null, noAddSource: [], rootSources: [], sdks: [], gitlinks: [], hostReads: { reads: [], more: 0, names: [], fixes: [] } };
         const both = base && base !== own3;
         const all = (both ? [own3, base] : [own3]).map((sha3) => ({ sha: sha3, facts: this.dotnetPinnedFacts(sha3) }));
         const union2 = (pick2) => [...new Set(all.flatMap(({ facts }) => pick2(facts)))];
@@ -142174,7 +142995,14 @@ var init_engine = __esm({
         const fromArgv = argv.some((a) => /Restore(?:Sources|AdditionalProjectSources|FallbackFolders|ConfigFile|PackagesPath|NoCache|IgnoreFailedSources)/i.test(a)) ? ["the command line"] : [];
         const rootSources = all.flatMap(({ sha: sha3, facts }) => "verdict" in facts.root && !facts.root.verdict.addNugetOrg ? [`the root ${facts.root.name} at ${sha3.slice(0, 12)}`] : []);
         const gitlinks = union2((f) => f.gitlinks).sort();
-        return { hierarchy, noAddSource: [...union2((f) => f.restoreSettings), ...union2((f) => f.unpinnedImports), ...union2((f) => f.settingRefs), ...fromArgv, ...gitlinks.map((p) => `${p}: a submodule`)], rootSources, sdks: union2((f) => f.projectSdks), gitlinks };
+        return {
+          hierarchy,
+          noAddSource: [...union2((f) => f.restoreSettings), ...union2((f) => f.unpinnedImports), ...union2((f) => f.settingRefs), ...fromArgv, ...gitlinks.map((p) => `${p}: a submodule`)],
+          rootSources,
+          sdks: union2((f) => f.projectSdks),
+          gitlinks,
+          hostReads: { reads: union2((f) => f.hostReads.reads), more: all.reduce((n, { facts }) => n + facts.hostReads.more, 0), names: union2((f) => f.hostReads.names).sort(), fixes: union2((f) => f.hostReads.fixes) }
+        };
       }
       /**
        * The nuget.config files the commit's MSBuild project SDK resolution
@@ -145375,9 +146203,10 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
         }
         let imports;
         let gitlinks;
+        let hostReads;
         try {
           imports = this.dotnetPinnedFacts(head).unpinnedImports;
-          gitlinks = this.dotnetNugetPolicy(head).gitlinks;
+          ({ gitlinks, hostReads } = this.dotnetNugetPolicy(head));
         } catch (error62) {
           return { name: GATE_INSTALL_GATE, reason: `${what} did not run: the definition files of ${head.slice(0, 12)} could not be read (${errText6(error62)}); rerun ${this.resume}` };
         }
@@ -145389,6 +146218,7 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
           const named = `${imports.slice(0, 3).map((i) => oneLine(visibleLine(i), 240)).join("; ")}${imports.length > 3 ? `; ${imports.length - 3} more` : ""}`;
           return { name: GATE_INSTALL_GATE, reason: `${what} did not run: the build imports a file that is not a pinned definition file (${named}), so the engine cannot tell which package sources the repository uses; restore the PR branch's packages into your NuGet global packages folder yourself, or move those settings into a .props file, then rerun ${this.resume}; or ${cancelCommand(this.key)}` };
         }
+        if (hostReads.reads.length > 0) return { name: GATE_INSTALL_GATE, reason: `${what} did not run: ${envReadWhy(hostReads)}; then rerun ${this.resume}; or restore the PR branch's packages into your NuGet global packages folder yourself; or ${cancelCommand(this.key)}` };
         let live;
         try {
           live = this.liveCheckoutProcs(head);
@@ -145613,6 +146443,7 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
         const projectSdks = [];
         const unpinned = [];
         let verdict;
+        const texts = [];
         const oids = [.../* @__PURE__ */ new Set([...files.map(([, oid]) => oid), ...rootOid ? [rootOid] : []])];
         if (oids.length > 0) {
           const env2 = { ...scrubShipEnv(process.env), ...TRUSTED_READ_ENV };
@@ -145625,6 +146456,7 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
           };
           for (const [p, oid] of files) {
             const text9 = blob(p, oid).toString("utf8");
+            texts.push({ path: p, text: text9 });
             for (const r of nodeModulesReferences(p, text9)) {
               refs2.push(`${p}: ${r}`);
               if (!/^(?:Exec|UsingTask) /.test(r)) settingRefs.push(`${p}: ${r}`);
@@ -145648,7 +146480,8 @@ ${pr.stderr}`, "a plain run (no sandbox)") : null;
           restoreSettings,
           projectSdks,
           unpinnedImports: unpinned,
-          gitlinks: gitlinks.sort()
+          gitlinks: gitlinks.sort(),
+          hostReads: restoreHostReads(texts)
         };
         if (this.pinnedFactsAt.size >= 4) this.pinnedFactsAt.delete(this.pinnedFactsAt.keys().next().value);
         this.pinnedFactsAt.set(commit, facts);
