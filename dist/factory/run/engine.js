@@ -359,8 +359,9 @@ function envReadWhy(r) {
     const env = r.names.filter((n) => isEnvironmentOnlyName(n));
     const path = r.reads.some((x) => /so your environment chooses which file loads$/.test(x));
     const fixes = r.fixes.join('; ');
-    if (r.reads.every((x) => /^[^\n]*?: (?:not UTF-8 text|larger than \d+ KB)/.test(x))) {
-        return `the engine could not read a pinned file that may set the package sources (${named}), so it cannot tell whether a package-source setting depends on your environment or machine, which the sandbox does not pass; ${fixes}`;
+    if (r.reads.every((x) => /^[^\n]*?: (?:not UTF-8 text|larger than \d+ KB|too many imports to analyse)/.test(x))) {
+        const what = r.reads.some((x) => /^[^\n]*?: too many imports to analyse/.test(x)) ? 'analyse the pinned files' : 'read a pinned file';
+        return `the engine could not ${what} that may set the package sources (${named}), so it cannot tell whether a package-source setting depends on your environment or machine, which the sandbox does not pass; ${fixes}`;
     }
     return `a package-source setting of the repository depends on your environment or machine (${named}), which the sandbox does not pass, so there the restriction could be lost and the restore could reach nuget.org where the same command on your machine would use only your feed; declare the feed in the repository's nuget.config (a <packageSources> entry, no %VARIABLE%)${pin.length ? `, or give ${props(pin)} an unconditional value in a pinned .props file` : ''}${env.length ? `, or move the source setting out from under the condition on ${props(env)}` : ''}${path ? ', and import only files the repository tracks, by a path from $(MSBuildThisFileDirectory)' : ''}${fixes ? `; ${fixes}` : ''}`;
 }
@@ -1653,7 +1654,7 @@ class FactoryEngine {
             rootSources,
             sdks: union((f) => f.projectSdks),
             gitlinks,
-            hostReads: { reads: union((f) => f.hostReads.reads), more: Math.max(0, ...all.map(({ facts }) => facts.hostReads.more)), names: union((f) => f.hostReads.names).sort(), fixes: union((f) => f.hostReads.fixes) },
+            hostReads: { reads: union((f) => f.hostReads.reads), more: all.reduce((n, { facts }) => n + facts.hostReads.more, 0), names: union((f) => f.hostReads.names).sort(), fixes: union((f) => f.hostReads.fixes) },
         };
     }
     /**

@@ -150,12 +150,15 @@ export interface PropertyFlow {
         at: number;
         unconditional: boolean;
         refs: string[];
+        dir?: string;
     }>;
     /**
      * `setting`: a source setting (RESTORE_SOURCE_SETTING, also task-set through an Output, or a response file's `-p:`),
      * `value` its name, `refs` its value and conditions. `import`: an Import, `value` its `Project` value, `refs` what
      * that reads, `cond` its own and its groups' conditions, `conditional` when a condition, `Choose` branch or target
-     * encloses it, `sdk` when it has an `Sdk` attribute (it loads a file of an SDK).
+     * encloses it, `sdk` its `Sdk` attribute (it loads a file of that SDK), `hook` the property when it is the
+     * definition of an SDK import hook (IMPORT_HOOK: `value` the path it names, or for an `Import*` switch the
+     * Directory file it turns on or off).
      */
     roots: Array<{
         kind: 'setting' | 'import';
@@ -164,7 +167,8 @@ export interface PropertyFlow {
         refs: string[];
         cond: string[];
         conditional: boolean;
-        sdk: boolean;
+        sdk: string | null;
+        hook?: string;
     }>;
     /** The file is larger than PINNED_READ_MAX and was not read. */
     unread: boolean;
@@ -192,6 +196,11 @@ export interface RestoreHostReads {
 /** The most reads restoreHostReads lists (the rest are counted in `more`). */
 export declare const RESTORE_READS_MAX = 50;
 /**
+ * restoreHostReads' work budget: the import steps it may take (each Import or source setting it reads, each import
+ * edge it follows, each file it adds to an import closure). Past it the restore parks ("too many imports to analyse").
+ */
+export declare const RESTORE_WORK_MAX = 100000;
+/**
  * Whether a commit's package-source settings depend on your environment or
  * machine (engine.ts nugetRestore parks before the network opens on any
  * read). `files` are its pinned definition files (MSBuild, response and
@@ -204,7 +213,16 @@ export declare const RESTORE_READS_MAX = 50;
  * condition and no conditioned group, `Choose` branch or target around the
  * Import, transitively, by a path importTargets resolves to a pinned file
  * (a `GetPathOfFileAbove` search included, so a nested
- * `Directory.Build.props` that imports the next one up brings it in).
+ * `Directory.Build.props` that imports the next one up brings it in; a
+ * `$(P)` path when P's only pinned definition is unconditional and names
+ * its file's dir, as `<RepoRoot>$(MSBuildThisFileDirectory)</RepoRoot>`
+ * does). An SDK import hook (IMPORT_HOOK: `CustomAfterMicrosoftCommonTargets`,
+ * `DirectoryBuildTargetsPath`, `ImportDirectoryBuildTargets`, ...) is an
+ * Import of the file its value names (for an `Import*` switch: the nearest
+ * Directory file of its kind at or above its file's dir) under the
+ * definition's conditions. An `Sdk` Import loads nothing of the repository
+ * for `Microsoft.NET.Sdk*` and `Microsoft.Build.*` and a file the engine
+ * cannot resolve for any other SDK.
  *
  * A name read in F at an offset is env-settable when it is not reserved
  * (isReservedProperty), not a source setting itself, and has no
@@ -213,28 +231,35 @@ export declare const RESTORE_READS_MAX = 50;
  * F's evaluation. A host read is a GetEnvironmentVariable(s),
  * ExpandEnvironmentVariables, GetFolderPath or registry function,
  * `[System.Environment]::UserName`, `UserDomainName` or `MachineName`, or
- * a response file's `%NAME%`. A name reaches what the values and
+ * a response file's `%NAME%`; an item list (`@(Name)`) counts as one, as
+ * the engine does not follow items. A name reaches what the values and
  * conditions of its pinned definitions read, each where it is defined,
- * transitively (memoised per name, so the work is linear in the reads). A
- * read is (at most one per setting or Import, RESTORE_READS_MAX in all):
+ * transitively (memoised per name). A read is (at most one per setting or
+ * Import, RESTORE_READS_MAX in all):
  * (a) a source setting (RESTORE_SOURCE_SETTING) whose value or conditions
  *     (own and enclosing) reach an env-settable name or a host read;
  * (b) when any pinned file sets a source setting, a conditioned Import
  *     whose conditions reach an env-settable name or a host read, when its
  *     target cannot be resolved to pinned files, or the pinned files it
  *     loads (it and what they import, under any condition) set a source
- *     setting, import a file that cannot be resolved, or define a name that
- *     a source setting's value or condition, an Import path or an Import
- *     condition reaches: your environment decides whether a file that can
- *     change the sources loads;
+ *     setting, import a file that cannot be resolved, or define a
+ *     (non-reserved) name that a source setting's value or condition, an
+ *     Import path or the condition of an Import that can change the
+ *     sources (this rule, to a fixpoint) reaches: your environment decides
+ *     whether a file that can change the sources loads;
  * (c) an Import whose `Project` value reaches a host read, a name no pinned
  *     file defines, or an env-settable profile name (PROFILE_ENV): your
  *     environment chooses which file loads; each `%NAME%` in a pinned
  *     nuget.config value, which NuGet expands; and a pinned file the engine
  *     cannot read (larger than PINNED_READ_MAX, or not UTF-8 text).
+ *
+ * Each import closure is memoised per file and each Import resolved once
+ * per directory, but closures of nested files overlap, so the work can grow with the
+ * square of the import graph: past RESTORE_WORK_MAX import steps the
+ * result is one read, "too many imports to analyse", with its remedy.
  */
 export declare function restoreHostReads(files: ReadonlyArray<{
     path: string;
     text: string;
-}>): RestoreHostReads;
+}>, workMax?: number): RestoreHostReads;
 //# sourceMappingURL=dotnet-package-refs.d.ts.map

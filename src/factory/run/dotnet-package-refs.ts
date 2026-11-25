@@ -377,6 +377,21 @@ export function projectSdkMentions(path: string, text: string): string[] {
 const RESTORE_SOURCE_SETTING = /^Restore(?:Sources|AdditionalProjectSources|FallbackFolders|AdditionalProjectFallbackFolders|ConfigFile|RootConfigDirectory)$/i;
 
 /**
+ * The properties through which the SDK imports a file (Microsoft.Common.props/targets, Directory.Build.props/targets,
+ * Directory.Packages.props): a definition of one is an Import whose path is its value; an `Import*` switch turns its
+ * Directory file (HOOK_SWITCH) on or off.
+ */
+const IMPORT_HOOK = /^(?:Custom(?:Before|After)(?:MicrosoftCommon|DirectoryBuild)(?:Props|Targets)|Directory(?:BuildProps|BuildTargets|PackagesProps)Path|ImportDirectory(?:BuildProps|BuildTargets|PackagesProps))$/i;
+const HOOK_SWITCH: Record<string, string> = { importdirectorybuildprops: 'Directory.Build.props', importdirectorybuildtargets: 'Directory.Build.targets', importdirectorypackagesprops: 'Directory.Packages.props' };
+/** An Sdk an Import may load with no file of the repository: the .NET SDK's own and Microsoft.Build.* SDKs. */
+const PLAIN_SDK = /^\s*Microsoft\.(?:NET\.Sdk|Build\.)/i;
+/**
+ * A property value that names the defining file's dir: `$(MSBuildThisFileDirectory)` plus a relative literal path, or
+ * `$([MSBuild]::NormalizeDirectory(...))` / `EnsureTrailingSlash(...)` of that. Groups: the path inside the function, the path after.
+ */
+const THIS_DIR_DEF = /^\s*(?:\$\(MSBuildThisFileDirectory\)|\$\(\[MSBuild\]::(?:NormalizeDirectory|EnsureTrailingSlash)\(\s*'?\$\(MSBuildThisFileDirectory\)([^$@%*?'"(),;]*)'?\s*\)\))([^$@%*?'"(),;]*?)\s*$/i;
+
+/**
  * Properties MSBuild, the .NET SDK, NuGet or Visual Studio define (lower
  * case; `MSBuild*` and NuGet's generated `Pkg*` path properties by prefix):
  * a reference to one is not a read of your environment. Never CI variables
@@ -436,6 +451,8 @@ const HOST_READ = /\b(GetEnvironmentVariables?|ExpandEnvironmentVariables|GetFol
 const HOST_READ_HINT = /Environment|FolderPath|Registry|User|MachineName/i;
 /** `%NAME%`: an environment variable NuGet (a config value) or MSBuild (a response file) expands. The closing `%` is not consumed: it may open the next one. */
 const ENV_PERCENT = /%([A-Za-z_][A-Za-z0-9_]*)(?=%)/g;
+/** `@(Name`: an item list (the engine does not follow items). Group 1: the item type. */
+const ITEM_REF = /@\(\s*([A-Za-z_]\w*)?/g;
 
 /**
  * The names an MSBuild expression reads: each `$(Name)` as `Name`, and
@@ -448,9 +465,10 @@ const ENV_PERCENT = /%([A-Za-z_][A-Za-z0-9_]*)(?=%)/g;
  */
 export function expressionRefs(expr: string, percent = false): string[] {
   const out = new Set<string>();
-  // Property references and property functions need a `$(`; `%NAME%` a `%`.
-  if (!expr.includes('$(') && !(percent && expr.includes('%'))) return [];
+  // Property references and property functions need a `$(`; item lists a `@(`; `%NAME%` a `%`.
+  if (!expr.includes('$(') && !expr.includes('@(') && !(percent && expr.includes('%'))) return [];
   for (const m of expr.matchAll(PROPERTY_REF)) out.add(m[2] && m[1].toLowerCase() === 'registry' ? '[registry]' : m[1]);
+  for (const m of expr.matchAll(ITEM_REF)) out.add(`[item ${m[1] ?? '?'}]`);
   if (HOST_READ_HINT.test(expr)) for (const m of expr.matchAll(HOST_READ)) {
     const literal = m[3] ?? m[4] ?? m[5];
     out.add(m[1].toLowerCase() === 'getenvironmentvariable' ? `[env ${literal ?? '?'}]` : `[${m[1]}]`);
@@ -483,15 +501,24 @@ export type ImportTarget = { path: string } | { above: string; from: string };
  * The files an Import's `Project` value names (each `;` part, `%XX`
  * unescaped): a literal path or one from `$(MSBuildThisFileDirectory)`
  * inside the repository, or `GetPathOfFileAbove('<name>'[, <start>])`
- * from `$(MSBuildThisFileDirectory)` plus `..` segments; null when a part
- * is anything else (a property, a wildcard, an absolute path, one above
- * the repository root).
+ * from `$(MSBuildThisFileDirectory)` plus `..` segments, or `$(P)` plus a
+ * literal path when `dirOf(P)` gives P's repository dir; null when a part
+ * is anything else (another property, a wildcard, an absolute path, one
+ * above the repository root).
  */
-function importTargets(path: string, project: string): ImportTarget[] | null {
+function importTargets(path: string, project: string, dirOf: (name: string) => string | null): ImportTarget[] | null {
   const out: ImportTarget[] = [];
   for (const raw of project.split(';')) {
     const part = msbuildUnescape(raw).trim();
     if (!part) continue;
+    const via = /^\$\(\s*([A-Za-z_][\w-]*)\s*\)([^$@%*?]*)$/.exec(part);
+    if (via && via[1].toLowerCase() !== 'msbuildthisfiledirectory') {
+      const base = dirOf(via[1]);
+      const file = base === null ? '' : base ? `${base}/_` : '_';
+      if (base === null || leavesRepository(file, via[2])) return null;
+      out.push({ path: repoPath(file, via[2]) });
+      continue;
+    }
     const above = FILE_ABOVE.exec(part);
     if (above) {
       const name = (above[1] ?? above[2]).trim();
@@ -514,14 +541,16 @@ export interface PropertyFlow {
    * no condition, `Choose` branch or target encloses it. A condition is one pseudo-definition (a name starting with
    * `#`, never unconditional) that reads the condition and its enclosing one's pseudo-name, so a deep nest stays linear.
    */
-  defs: Array<{ name: string; at: number; unconditional: boolean; refs: string[] }>;
+  defs: Array<{ name: string; at: number; unconditional: boolean; refs: string[]; dir?: string }>;
   /**
    * `setting`: a source setting (RESTORE_SOURCE_SETTING, also task-set through an Output, or a response file's `-p:`),
    * `value` its name, `refs` its value and conditions. `import`: an Import, `value` its `Project` value, `refs` what
    * that reads, `cond` its own and its groups' conditions, `conditional` when a condition, `Choose` branch or target
-   * encloses it, `sdk` when it has an `Sdk` attribute (it loads a file of an SDK).
+   * encloses it, `sdk` its `Sdk` attribute (it loads a file of that SDK), `hook` the property when it is the
+   * definition of an SDK import hook (IMPORT_HOOK: `value` the path it names, or for an `Import*` switch the
+   * Directory file it turns on or off).
    */
-  roots: Array<{ kind: 'setting' | 'import'; value: string; at: number; refs: string[]; cond: string[]; conditional: boolean; sdk: boolean }>;
+  roots: Array<{ kind: 'setting' | 'import'; value: string; at: number; refs: string[]; cond: string[]; conditional: boolean; sdk: string | null; hook?: string }>;
   /** The file is larger than PINNED_READ_MAX and was not read. */
   unread: boolean;
 }
@@ -554,9 +583,15 @@ export function propertyFlow(path: string, text: string): PropertyFlow {
     if (!refs) conditions.set(c, (refs = shared(expressionRefs(c))));
     return refs;
   };
-  const define = (name: string, at: number, unconditional: boolean, refs: string[]): void => {
-    defs.push({ name, at, unconditional, refs });
-    if (RESTORE_SOURCE_SETTING.test(name)) roots.push({ kind: 'setting', value: name, at, refs, cond: [], conditional: !unconditional, sdk: false });
+  /** A property definition: `valueRefs` what its value reads, `cond` its enclosing conditions' reads, `value` its value. */
+  const define = (name: string, at: number, unconditional: boolean, valueRefs: string[], cond: string[], value?: string): void => {
+    const refs = cond.length > 0 ? shared([...valueRefs, ...cond]) : valueRefs;
+    const dir = unconditional && value !== undefined ? THIS_DIR_DEF.exec(value) : null;
+    defs.push({ name, at, unconditional, refs, ...(dir ? { dir: [dir[1], dir[2]].map((s) => (s ?? '').replace(/^[\\/]+/, '')).filter(Boolean).join('/') } : {}) });
+    if (RESTORE_SOURCE_SETTING.test(name)) roots.push({ kind: 'setting', value: name, at, refs, cond: [], conditional: !unconditional, sdk: null });
+    else if (value !== undefined && IMPORT_HOOK.test(name)) {
+      roots.push({ kind: 'import', value: HOOK_SWITCH[name.toLowerCase()] ?? value, at, refs: valueRefs, cond, conditional: !unconditional, sdk: null, hook: name });
+    }
   };
   if ((kind === 'rsp' || kind === 'msbuild') && text.length > PINNED_READ_MAX) return { defs, roots, unread: true };
   if (kind === 'rsp') {
@@ -566,10 +601,12 @@ export function propertyFlow(path: string, text: string): PropertyFlow {
         for (const m of line.matchAll(/(?:[^\s"]|"[^"]*"?)+/g)) {
           const sw = /^(?:--?|\/)(?:p|property|rp|restoreproperty):([\s\S]*)$/i.exec(m[0].replace(/"/g, ''));
           if (!sw) continue;
+          // A quoted value may hold `;` (`-p:RestoreSources="a;%B%"`): each name the switch defines reads every `%NAME%` in it.
+          const env = expressionRefs(sw[1], true).filter((r) => r.startsWith('[env '));
           for (const part of sw[1].split(/[;,]/)) {
             const eq = part.indexOf('=');
             const name = (eq < 0 ? part : part.slice(0, eq)).trim();
-            if (/^[A-Za-z_][A-Za-z0-9_-]*$/.test(name)) define(name, offset + (m.index ?? 0), true, eq < 0 ? [] : expressionRefs(part.slice(eq + 1), true).filter((r) => r.startsWith('[env ')));
+            if (/^[A-Za-z_][A-Za-z0-9_-]*$/.test(name)) define(name, offset + (m.index ?? 0), true, eq < 0 ? [] : env, [], eq < 0 ? undefined : part.slice(eq + 1));
           }
         }
       }
@@ -585,7 +622,9 @@ export function propertyFlow(path: string, text: string): PropertyFlow {
     return a ? decodeXml(a[1]) : undefined;
   };
   const finish = (f: Frame, content: string): void => {
-    if (f.parent.toLowerCase() === 'propertygroup') define(f.tag.name, f.tag.start, !f.conditioned, shared([...expressionRefs(decodeXml(content)), ...f.cond]));
+    if (f.parent.toLowerCase() !== 'propertygroup') return;
+    const value = decodeXml(content);
+    define(f.tag.name, f.tag.start, !f.conditioned, shared(expressionRefs(value)), f.cond, value);
   };
   const stack: Frame[] = [];
   for (const t of scanXml(text).tags) {
@@ -620,11 +659,11 @@ export function propertyFlow(path: string, text: string): PropertyFlow {
     }
     if (name === 'import') {
       const project = attr(t, 'project') ?? '';
-      roots.push({ kind: 'import', value: project, at: t.start, refs: shared(expressionRefs(project)), cond: f.cond, conditional: f.conditioned, sdk: attr(t, 'sdk') !== undefined });
+      roots.push({ kind: 'import', value: project, at: t.start, refs: shared(expressionRefs(project)), cond: f.cond, conditional: f.conditioned, sdk: attr(t, 'sdk') ?? null });
     }
     // A task's Output that sets a property: the task's attribute values flow into it (inside a target: never unconditional).
     const output = name === 'output' ? attr(t, 'propertyname') : undefined;
-    if (output !== undefined && parent) define(msbuildUnescape(output).trim(), t.start, false, [...new Set(parent.tag.attrs.flatMap(([, v]) => expressionRefs(decodeXml(v)))), ...f.cond]);
+    if (output !== undefined && parent) define(msbuildUnescape(output).trim(), t.start, false, [...new Set(parent.tag.attrs.flatMap(([, v]) => expressionRefs(decodeXml(v))))], f.cond);
     if (t.selfClose) finish(f, '');
     else stack.push(f);
   }
@@ -636,6 +675,7 @@ function hostReadWords(ref: string): string {
   if (ref === '[env ?]') return 'an environment variable whose name is computed';
   if (ref.startsWith('[env ')) return `the environment variable ${ref.slice(5, -1)}`;
   if (ref === '[registry]' || /^\[GetRegistryValue/i.test(ref)) return 'the registry';
+  if (ref.startsWith('[item ')) return `the item list @(${ref.slice(6, -1)}), and the engine does not follow items into a package-source setting (list the sources as a property or in nuget.config)`;
   return /^\[(?:UserDomainName|UserName|MachineName)\]$/i.test(ref) ? `$([System.Environment]::${ref.slice(1, -1)})` : `$([System.Environment]::${ref.slice(1, -1)}(...))`;
 }
 
@@ -654,11 +694,20 @@ export interface RestoreHostReads {
 /** The most reads restoreHostReads lists (the rest are counted in `more`). */
 export const RESTORE_READS_MAX = 50;
 
+/**
+ * restoreHostReads' work budget: the import steps it may take (each Import or source setting it reads, each import
+ * edge it follows, each file it adds to an import closure). Past it the restore parks ("too many imports to analyse").
+ */
+export const RESTORE_WORK_MAX = 100_000;
+
 /** True when a pinned file's text, decoded as UTF-8, is not UTF-8 text: a UTF-16 byte order mark (two replacement characters) or a NUL in its first KB. */
 const notUtf8 = (text: string): boolean => text.startsWith('��') || text.slice(0, 1024).includes('\0');
 
 /** The auto-imported files MSBuild finds nearest above a project (each the nearest one only), and the response file it auto-reads. */
 const AUTO_FILES = ['directory.build.props', 'directory.build.targets', 'directory.packages.props', 'directory.build.rsp'];
+
+/** Thrown when restoreHostReads spends more than RESTORE_WORK_MAX import steps. */
+class OverBudget extends Error {}
 
 /**
  * Whether a commit's package-source settings depend on your environment or
@@ -673,7 +722,16 @@ const AUTO_FILES = ['directory.build.props', 'directory.build.targets', 'directo
  * condition and no conditioned group, `Choose` branch or target around the
  * Import, transitively, by a path importTargets resolves to a pinned file
  * (a `GetPathOfFileAbove` search included, so a nested
- * `Directory.Build.props` that imports the next one up brings it in).
+ * `Directory.Build.props` that imports the next one up brings it in; a
+ * `$(P)` path when P's only pinned definition is unconditional and names
+ * its file's dir, as `<RepoRoot>$(MSBuildThisFileDirectory)</RepoRoot>`
+ * does). An SDK import hook (IMPORT_HOOK: `CustomAfterMicrosoftCommonTargets`,
+ * `DirectoryBuildTargetsPath`, `ImportDirectoryBuildTargets`, ...) is an
+ * Import of the file its value names (for an `Import*` switch: the nearest
+ * Directory file of its kind at or above its file's dir) under the
+ * definition's conditions. An `Sdk` Import loads nothing of the repository
+ * for `Microsoft.NET.Sdk*` and `Microsoft.Build.*` and a file the engine
+ * cannot resolve for any other SDK.
  *
  * A name read in F at an offset is env-settable when it is not reserved
  * (isReservedProperty), not a source setting itself, and has no
@@ -682,27 +740,34 @@ const AUTO_FILES = ['directory.build.props', 'directory.build.targets', 'directo
  * F's evaluation. A host read is a GetEnvironmentVariable(s),
  * ExpandEnvironmentVariables, GetFolderPath or registry function,
  * `[System.Environment]::UserName`, `UserDomainName` or `MachineName`, or
- * a response file's `%NAME%`. A name reaches what the values and
+ * a response file's `%NAME%`; an item list (`@(Name)`) counts as one, as
+ * the engine does not follow items. A name reaches what the values and
  * conditions of its pinned definitions read, each where it is defined,
- * transitively (memoised per name, so the work is linear in the reads). A
- * read is (at most one per setting or Import, RESTORE_READS_MAX in all):
+ * transitively (memoised per name). A read is (at most one per setting or
+ * Import, RESTORE_READS_MAX in all):
  * (a) a source setting (RESTORE_SOURCE_SETTING) whose value or conditions
  *     (own and enclosing) reach an env-settable name or a host read;
  * (b) when any pinned file sets a source setting, a conditioned Import
  *     whose conditions reach an env-settable name or a host read, when its
  *     target cannot be resolved to pinned files, or the pinned files it
  *     loads (it and what they import, under any condition) set a source
- *     setting, import a file that cannot be resolved, or define a name that
- *     a source setting's value or condition, an Import path or an Import
- *     condition reaches: your environment decides whether a file that can
- *     change the sources loads;
+ *     setting, import a file that cannot be resolved, or define a
+ *     (non-reserved) name that a source setting's value or condition, an
+ *     Import path or the condition of an Import that can change the
+ *     sources (this rule, to a fixpoint) reaches: your environment decides
+ *     whether a file that can change the sources loads;
  * (c) an Import whose `Project` value reaches a host read, a name no pinned
  *     file defines, or an env-settable profile name (PROFILE_ENV): your
  *     environment chooses which file loads; each `%NAME%` in a pinned
  *     nuget.config value, which NuGet expands; and a pinned file the engine
  *     cannot read (larger than PINNED_READ_MAX, or not UTF-8 text).
+ *
+ * Each import closure is memoised per file and each Import resolved once
+ * per directory, but closures of nested files overlap, so the work can grow with the
+ * square of the import graph: past RESTORE_WORK_MAX import steps the
+ * result is one read, "too many imports to analyse", with its remedy.
  */
-export function restoreHostReads(files: ReadonlyArray<{ path: string; text: string }>): RestoreHostReads {
+export function restoreHostReads(files: ReadonlyArray<{ path: string; text: string }>, workMax = RESTORE_WORK_MAX): RestoreHostReads {
   const reads: string[] = [];
   const seenReads = new Set<string>();
   let more = 0;
@@ -717,22 +782,65 @@ export function restoreHostReads(files: ReadonlyArray<{ path: string; text: stri
     seenReads.add(words);
     reads.push(words);
   };
-  const scanned: Array<{ path: string; text: string }> = [];
-  for (const f of files) {
-    const kind = fileKind(f.path);
-    if (kind !== 'msbuild' && kind !== 'rsp' && kind !== 'nuget') continue;
+  /** True when the engine can read the file; else records why not. Checked as each file is read, so a budget park leaves the rest untouched. */
+  const readable = (f: { path: string; text: string }): boolean => {
     if (notUtf8(f.text)) {
       add(`${f.path}: not UTF-8 text (UTF-16 or binary), so the engine cannot read its package-source settings`);
       fixes.add(`re-save ${f.path} as UTF-8`);
     } else if (f.text.length > PINNED_READ_MAX) {
       add(`${f.path}: larger than ${PINNED_READ_MAX / 1024} KB, so the engine did not read it and cannot tell whether its package-source settings depend on your environment`);
       fixes.add(`keep ${f.path} under ${PINNED_READ_MAX / 1024} KB`);
-    } else scanned.push(f);
+    } else return true;
+    return false;
+  };
+  try {
+    msbuildReads(files, readable, add, workMax);
+  } catch (e) {
+    if (!(e instanceof OverBudget)) throw e;
+    // First, so the park names it even past RESTORE_READS_MAX reads.
+    reads.unshift(`the pinned MSBuild files: too many imports to analyse (more than ${workMax} import steps), so the engine cannot tell whether their package-source settings depend on your environment`);
+    if (reads.length > RESTORE_READS_MAX) { reads.pop(); more++; }
+    fixes.add(`keep the pinned MSBuild files within the engine's limit of ${workMax} import steps (too many imports to analyse)`);
   }
-  const flows = scanned.filter((f) => fileKind(f.path) !== 'nuget').map((f) => ({ path: f.path, lpath: f.path.toLowerCase(), flow: propertyFlow(f.path, f.text) }));
+  // (c): NuGet expands %NAME% in a config value.
+  for (const f of files) {
+    if (fileKind(f.path) !== 'nuget' || !readable(f)) continue;
+    for (const t of scanXml(f.text).tags) {
+      for (const [, raw] of t.attrs) {
+        const value = decodeXml(raw);
+        for (const r of expressionRefs(value, true).filter((x) => x.startsWith('[env '))) add(`${f.path}: the value ${JSON.stringify(value.slice(0, 200))} reads ${hostReadWords(r)}`);
+      }
+    }
+  }
+  return { reads, more, names: [...names].sort(), fixes: [...fixes] };
+}
+
+/** restoreHostReads' rules (a), (b) and (c)'s Import paths over the `readable` MSBuild and response files of `files`; throws OverBudget past `workMax` import steps. */
+function msbuildReads(files: ReadonlyArray<{ path: string; text: string }>, readable: (f: { path: string; text: string }) => boolean, add: (read: string | (() => string), name?: string) => void, workMax: number): void {
+  let work = 0;
+  const spend = (n: number): void => {
+    work += n;
+    if (work > workMax) throw new OverBudget();
+  };
+  type Flow = { path: string; lpath: string; flow: PropertyFlow };
+  const flows: Flow[] = [];
+  // Equal Import paths across files share one string (thousands of files may import the same few).
+  const values = new Map<string, string>();
+  for (const f of files) {
+    const kind = fileKind(f.path);
+    if ((kind !== 'msbuild' && kind !== 'rsp') || !readable(f)) continue;
+    const flow = propertyFlow(f.path, f.text);
+    spend(flow.roots.length);
+    for (const r of flow.roots) {
+      const was = values.get(r.value);
+      if (was === undefined) values.set(r.value, r.value);
+      else r.value = was;
+    }
+    flows.push({ path: f.path, lpath: f.path.toLowerCase(), flow });
+  }
   const flowAt = new Map(flows.map((f) => [f.lpath, f]));
   const pinned = new Set(files.map((f) => f.path.toLowerCase()));
-  type Def = { lpath: string; path: string; at: number; unconditional: boolean; refs: string[] };
+  type Def = { lpath: string; path: string; name: string; at: number; unconditional: boolean; refs: string[]; dir?: string };
   const defsBy = new Map<string, Def[]>();
   /** Per name: the files with an unconditional definition, and the first and last offset there. */
   const fixedAt = new Map<string, Map<string, { first: number; last: number }>>();
@@ -751,54 +859,107 @@ export function restoreHostReads(files: ReadonlyArray<{ path: string; text: stri
   }
   type Root = PropertyFlow['roots'][number];
   /** The setting or Import in words. */
-  const what = (root: Root): string => (root.kind === 'setting' ? `<${root.value}>` : `Import ${JSON.stringify(root.value.slice(0, 200))}`);
-  /** The files an Import of the file `path` loads as pinned repository paths (lower case; none for an `Sdk` import), or null when one is not a pinned file. */
+  const what = (root: Root): string => (root.kind === 'setting' ? `<${root.value}>` : root.hook ? `<${root.hook}> (an SDK import hook)` : `Import ${JSON.stringify(root.value.slice(0, 200))}`);
+  /** What an Import the engine cannot resolve loads, in words. */
+  const unresolvedWords = (root: Root): string => (root.sdk !== null ? `a file of the SDK ${JSON.stringify(root.sdk.trim().slice(0, 200))}, which the engine cannot see` : 'a file the engine cannot resolve to a pinned file');
+  /** P's repository dir, when P's only pinned definition is unconditional and names its file's dir (THIS_DIR_DEF), else null. */
+  const dirOf = (name: string): string | null => {
+    const ds = defsBy.get(name.toLowerCase());
+    const d = ds?.length === 1 ? ds[0] : undefined;
+    if (!d || d.dir === undefined || leavesRepository(d.path, d.dir ? `${d.dir}/_` : '_')) return null;
+    return repoPath(d.path, d.dir);
+  };
+  /** The nearest pinned file `name` at or above the repository dir `from` (lower case), or null. */
+  const fileAbove = (name: string, from: string): string | null => {
+    for (let dir = from; ; dir = dir.includes('/') ? dir.slice(0, dir.lastIndexOf('/')) : '') {
+      spend(1);
+      const p = `${dir ? `${dir}/` : ''}${name}`.toLowerCase();
+      if (pinned.has(p)) return p;
+      if (!dir) return null;
+    }
+  };
+  const resolvedAt = new Map<string, string[] | null>();
+  /** The files an Import of the file `path` loads as pinned repository paths (lower case), or null when one is not a pinned file; memoised per importing dir and Import. */
   const resolved = (root: Root, path: string): string[] | null => {
-    if (root.sdk) return [];
-    const targets = importTargets(path, root.value);
-    if (!targets) return null;
-    const out: string[] = [];
-    for (const t of targets) {
-      if ('path' in t) {
-        if (!pinned.has(t.path.toLowerCase())) return null;
-        out.push(t.path.toLowerCase());
-        continue;
+    const here = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '';
+    const key = `${here}
+${root.sdk ?? ''}
+${root.hook ?? ''}
+${root.value}`;
+    const cached = resolvedAt.get(key);
+    if (cached !== undefined) return cached;
+    let out: string[] | null = [];
+    const sw = root.hook ? HOOK_SWITCH[root.hook.toLowerCase()] : undefined;
+    if (root.sdk !== null) out = PLAIN_SDK.test(root.sdk) ? [] : null;
+    else if (sw) {
+      const p = fileAbove(sw, here);
+      out = p ? [p] : [];
+    } else {
+      for (const t of importTargets(path, root.value, dirOf) ?? [null]) {
+        const p = t === null ? null : 'path' in t ? (pinned.has(t.path.toLowerCase()) ? t.path.toLowerCase() : null) : fileAbove(t.above, t.from);
+        if (p === null) { out = null; break; }
+        out.push(p);
       }
-      let dir = t.from;
-      let found: string | null = null;
-      for (;;) {
-        const p = `${dir ? `${dir}/` : ''}${t.above}`.toLowerCase();
-        if (pinned.has(p)) { found = p; break; }
-        if (!dir) break;
-        dir = dir.includes('/') ? dir.slice(0, dir.lastIndexOf('/')) : '';
-      }
-      if (!found) return null;
-      out.push(found);
+    }
+    resolvedAt.set(key, out);
+    return out;
+  };
+  /** Per file: the anchors of its evaluation (the file and its nearest auto-imported files). */
+  const anchorsAt = new Map<string, string[]>();
+  /** Per repository dir (lower case): the nearest pinned AUTO_FILES at or above it. */
+  const nearestAt = new Map<string, Array<string | null>>();
+  const nearest = (dir: string): Array<string | null> => {
+    const below: string[] = [];
+    let found: Array<string | null> | undefined;
+    for (let d: string | null = dir; d !== null; d = d ? (d.includes('/') ? d.slice(0, d.lastIndexOf('/')) : '') : null) {
+      if ((found = nearestAt.get(d))) break;
+      below.push(d);
+    }
+    let out = found ?? AUTO_FILES.map(() => null);
+    for (let i = below.length - 1; i >= 0; i--) {
+      const d = below[i];
+      const up = out;
+      out = AUTO_FILES.map((base, j) => (pinned.has(d ? `${d}/${base}` : base) ? (d ? `${d}/${base}` : base) : up[j]));
+      nearestAt.set(d, out);
     }
     return out;
   };
-  /** The files of F's evaluation (see above), memoised per file. */
-  const evaluations = new Map<string, Set<string>>();
-  const evaluation = (lpath: string): Set<string> => {
-    const cached = evaluations.get(lpath);
+  const anchors = (lpath: string): string[] => {
+    const cached = anchorsAt.get(lpath);
     if (cached) return cached;
-    const queue = [lpath];
-    const segs = lpath.split('/').slice(0, -1);
-    for (const base of AUTO_FILES) {
-      for (let n = segs.length; n >= 0; n--) {
-        const p = [...segs.slice(0, n), base].join('/');
-        if (pinned.has(p)) { queue.push(p); break; }
+    const out = [lpath, ...nearest(lpath.includes('/') ? lpath.slice(0, lpath.lastIndexOf('/')) : '').filter((p): p is string => p !== null)];
+    anchorsAt.set(lpath, out);
+    return out;
+  };
+  /**
+   * The pinned files `start` imports with no condition, transitively, with itself (lower case), memoised per file: a
+   * file whose closure is known adds that closure whole (it holds the closures of all its members).
+   */
+  const closures = new Map<string, Set<string>>();
+  const closure = (start: string): Set<string> => {
+    const cached = closures.get(start);
+    if (cached) return cached;
+    const seen = new Set([start]);
+    const queue = [start];
+    for (let i = 0; i < queue.length; i++) {
+      const f = flowAt.get(queue[i]);
+      for (const r of f?.flow.roots ?? []) {
+        if (r.kind !== 'import' || r.conditional) continue;
+        for (const t of resolved(r, f!.path) ?? []) {
+          spend(1);
+          if (seen.has(t)) continue;
+          const known = closures.get(t);
+          if (known) {
+            spend(known.size);
+            for (const x of known) seen.add(x);
+          } else {
+            seen.add(t);
+            queue.push(t);
+          }
+        }
       }
     }
-    const seen = new Set<string>();
-    for (let i = 0; i < queue.length; i++) {
-      const p = queue[i];
-      if (seen.has(p)) continue;
-      seen.add(p);
-      const f = flowAt.get(p);
-      for (const r of f?.flow.roots ?? []) if (r.kind === 'import' && !r.conditional) queue.push(...(resolved(r, f!.path) ?? []));
-    }
-    evaluations.set(lpath, seen);
+    closures.set(start, seen);
     return seen;
   };
   /** Why `name`, read in `lpath` at `at`, is env-settable (see above), or null when it is not. */
@@ -807,8 +968,8 @@ export function restoreHostReads(files: ReadonlyArray<{ path: string; text: stri
     if (!at2) return 'none';
     const own = at2.get(lpath);
     if (own && own.first < at) return null;
-    const ev = evaluation(lpath);
-    for (const p of at2.keys()) if (p !== lpath && ev.has(p)) return null;
+    const ev = anchors(lpath);
+    for (const p of at2.keys()) if (p !== lpath && ev.some((a) => closure(a).has(p))) return null;
     if (at2.size > (own ? 1 : 0)) return 'elsewhere';
     return own ? (own.last > at ? 'after' : 'self') : 'none';
   };
@@ -882,7 +1043,7 @@ export function restoreHostReads(files: ReadonlyArray<{ path: string; text: stri
     none: ', which no pinned file gives an unconditional value',
     self: ', which its only unconditional definition reads before giving it a value',
     after: ', which its file gives an unconditional value only after the read',
-    elsewhere: ', which only pinned files outside this evaluation (not auto-imported, or imported under a condition) give an unconditional value',
+    elsewhere: ', which pinned files give an unconditional value only outside this evaluation (in files not auto-imported, imported under a condition, or imported by a path the engine does not resolve: only literal and $(MSBuildThisFileDirectory)-based paths)',
   } as const;
   const valueWords = ({ hit, via }: { hit: Hit; via: string }): string => (hit.why === 'host' ? `${hostReadWords(hit.ref)}${via}` : `$(${hit.ref})${via}${why[hit.why as keyof typeof why] ?? ''}`);
   const pathWords = ({ hit, via }: { hit: Hit; via: string }): string => {
@@ -908,74 +1069,85 @@ export function restoreHostReads(files: ReadonlyArray<{ path: string; text: stri
     }
   }
   // (b): a file sets the sources, so whether an Import that can change them loads must not depend on your environment.
-  if (sets && conditioned.size > 0) {
-    let relevant: Set<string> | undefined;
-    /** The names a source setting's value or condition, an Import path or an Import condition reaches (lower case). */
-    const reached = (): Set<string> => {
-      if (relevant) return relevant;
-      relevant = new Set();
-      const queue: string[] = [];
-      for (const { flow } of flows) for (const r of flow.roots) for (const x of [...r.refs, ...r.cond]) if (!x.startsWith('[')) queue.push(x.toLowerCase());
-      for (let i = 0; i < queue.length; i++) {
-        if (relevant.has(queue[i])) continue;
-        relevant.add(queue[i]);
-        for (const d of defsBy.get(queue[i]) ?? []) for (const r of d.refs) if (!r.startsWith('[')) queue.push(r.toLowerCase());
+  if (!sets || conditioned.size === 0) return;
+  /** Per file: why the pinned files it loads (it and what they import, under any condition) can change the sources. */
+  const changes = new Map<string, string>();
+  const changed: string[] = [];
+  const change = (lpath: string, reason: string): void => {
+    if (changes.has(lpath)) return;
+    changes.set(lpath, reason);
+    changed.push(lpath);
+  };
+  /** Per pinned file: the Imports (under any condition) that load it, with their files. */
+  const importers = new Map<string, Array<Root | Flow>>();
+  /** The names a source setting's value or condition, an Import path, or the condition of an Import that can change the sources reaches (lower case, never reserved). */
+  const relevant = new Set<string>();
+  const pending: string[] = [];
+  const reach = (refs: readonly string[]): void => {
+    for (const r of refs) {
+      if (r.startsWith('[') || stops(r)) continue;
+      const k = r.toLowerCase();
+      if (relevant.has(k)) continue;
+      relevant.add(k);
+      pending.push(k);
+    }
+  };
+  /** The Imports that can change the sources: their own conditions become relevant. */
+  const canChange = new Set<Root>();
+  const changing = (root: Root): void => {
+    if (canChange.has(root)) return;
+    canChange.add(root);
+    reach(root.cond);
+  };
+  for (const f of flows) {
+    const setting = f.flow.roots.find((r) => r.kind === 'setting');
+    if (setting) change(f.lpath, `${f.path} sets ${what(setting)}`);
+  }
+  for (const f of flows) {
+    for (const r of f.flow.roots) {
+      spend(1);
+      reach(r.refs);
+      if (r.kind !== 'import') continue;
+      const ts = resolved(r, f.path);
+      if (!ts) {
+        change(f.lpath, `${sets}, and ${r.hook ? `${f.path}: ${what(r)} names ${JSON.stringify(r.value.slice(0, 200))}` : `${f.path} imports ${JSON.stringify(r.value.slice(0, 200))}`}, ${unresolvedWords(r)}`);
+        changing(r);
+        continue;
       }
-      return relevant;
-    };
-    const loadsAt = new Map<string, string | null>();
-    /** Why the pinned files `target` loads can change the sources (see above), or null. */
-    const changes = (target: string): string | null => {
-      if (loadsAt.has(target)) return loadsAt.get(target)!;
-      const queue = [target];
-      const seen = new Set<string>();
-      let found: string | null = null;
-      for (let i = 0; i < queue.length && !found; i++) {
-        const p = queue[i];
-        if (seen.has(p)) continue;
-        seen.add(p);
-        const f = flowAt.get(p);
-        if (!f) continue;
-        const setting = f.flow.roots.find((r) => r.kind === 'setting');
-        if (setting) { found = `${f.path} sets ${what(setting)}`; break; }
-        const def = f.flow.defs.find((d) => !d.name.startsWith('#') && reached().has(d.name.toLowerCase()));
-        if (def) { found = `${f.path} defines $(${def.name}), which a package-source setting or an Import reads`; break; }
-        for (const r of f.flow.roots) {
-          if (r.kind !== 'import') continue;
-          const ts = resolved(r, f.path);
-          if (!ts) { found = `${sets}, and ${f.path} imports ${JSON.stringify(r.value.slice(0, 200))}, a file the engine cannot resolve to a pinned file`; break; }
-          queue.push(...ts);
-        }
-      }
-      loadsAt.set(target, found);
-      return found;
-    };
-    for (const { path, lpath, flow } of flows) {
-      for (const root of flow.roots) {
-        if (!conditioned.has(root)) continue;
-        const x = firstHit(root.cond, lpath, root.at, 'value');
-        if (!x) continue;
-        const ts = resolved(root, path);
-        let lead: string | null = null;
-        if (!ts) lead = `${sets}, and ${path}: ${what(root)} (a file the engine cannot resolve to a pinned file)`;
-        else {
-          for (const t of ts) if ((lead = changes(t))) break;
-          if (lead) lead = `${lead}, and ${path}: ${what(root)}`;
-        }
-        const head = lead;
-        if (head) add(() => `${head} has a condition that reads ${valueWords(x)}`, nameOf(x.hit));
+      for (const t of ts) {
+        let list = importers.get(t);
+        if (!list) importers.set(t, (list = []));
+        list.push(r, f);
       }
     }
   }
-  // (c): NuGet expands %NAME% in a config value.
-  for (const f of scanned) {
-    if (fileKind(f.path) !== 'nuget') continue;
-    for (const t of scanXml(f.text).tags) {
-      for (const [, raw] of t.attrs) {
-        const value = decodeXml(raw);
-        for (const r of expressionRefs(value, true).filter((x) => x.startsWith('[env '))) add(`${f.path}: the value ${JSON.stringify(value.slice(0, 200))} reads ${hostReadWords(r)}`);
+  // To a fixpoint: a relevant name makes the files that define it change the sources, and those the Imports that load them.
+  for (let n = 0, c = 0; n < pending.length || c < changed.length;) {
+    if (n < pending.length) {
+      const k = pending[n++];
+      for (const d of defsBy.get(k) ?? []) {
+        spend(1);
+        reach(d.refs);
+        if (!k.startsWith('#')) change(d.lpath, `${d.path} defines $(${d.name}), which a package-source setting or an Import reads`);
       }
+      continue;
+    }
+    const t = changed[c++];
+    const list = importers.get(t) ?? [];
+    for (let i = 0; i < list.length; i += 2) {
+      spend(1);
+      changing(list[i] as Root);
+      change((list[i + 1] as Flow).lpath, changes.get(t)!);
     }
   }
-  return { reads, more, names: [...names].sort(), fixes: [...fixes] };
+  for (const { path, lpath, flow } of flows) {
+    for (const root of flow.roots) {
+      if (!conditioned.has(root) || !canChange.has(root)) continue;
+      const x = firstHit(root.cond, lpath, root.at, 'value');
+      if (!x) continue;
+      const ts = resolved(root, path);
+      const lead = ts ? `${changes.get(ts.find((t) => changes.has(t))!)!}, and ${path}: ${what(root)}` : `${sets}, and ${path}: ${what(root)} (${unresolvedWords(root)})`;
+      add(() => `${lead} has a condition that reads ${valueWords(x)}`, nameOf(x.hit));
+    }
+  }
 }
