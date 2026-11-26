@@ -50094,6 +50094,10 @@ function configWeakerThanSent(eff, sent, platform) {
   const sentMach = new Set(strList(sentSeat.extraMachLookups) ?? []);
   const extraMach = mach.find((m) => !sentMach.has(m));
   if (extraMach !== void 0) return `userPolicy.seatbelt.extraMachLookups grants ${extraMach}, the policy did not`;
+  const effExpSeat = asObj(asObj(effPolicy.experimental)?.seatbelt);
+  const sentExpSeat = asObj(asObj(sentPolicy.experimental)?.seatbelt);
+  if (effExpSeat?.keychainAccess === true && sentExpSeat?.keychainAccess !== true) return "userPolicy.experimental.seatbelt.keychainAccess is true, the policy did not grant it";
+  if (effNet.proxy !== void 0 && effNet.proxy !== null && (sentNet.proxy === void 0 || sentNet.proxy === null)) return "userPolicy.network.proxy is set, the policy sent none";
   for (const k of ["allowOutbound", "allowLocalNetwork"]) {
     if (effNet[k] !== void 0 && effNet[k] !== false && sentNet[k] !== true) return `userPolicy.network.${k} is ${String(effNet[k])}, the policy sent ${String(sentNet[k] ?? false)}`;
   }
@@ -50112,7 +50116,7 @@ function configWeakerThanSent(eff, sent, platform) {
   const unblocked = (strList(sentNet.blockedHosts) ?? []).find((h) => !blocked.has(host(h)));
   if (unblocked !== void 0) return `userPolicy.network.blockedHosts lost ${unblocked}`;
   const norm2 = (p) => {
-    let n = p.replace(/[\\/]+/g, "/");
+    let n = (/^[\\/]{2}/.test(p) ? "/" : "") + p.replace(/[\\/]+/g, "/");
     while (n.length > 1 && n.endsWith("/") && !/^[A-Za-z]:\/$/.test(n)) n = n.slice(0, -1);
     return platform === "win32" ? n.toLowerCase() : n;
   };
@@ -50146,12 +50150,12 @@ function sandboxStateProblem(state, sent, platform = process.platform) {
   if (weaker) return `the effective sandbox config is weaker than the policy sent: ${weaker}`;
   return null;
 }
-async function readSandboxState(session, timeoutMs, sent) {
+async function readSandboxState(session, timeoutMs, sent, platform = process.platform) {
   const call = rpcMethod(session, ["rpc", "sandbox"], "getState");
   if (!call) return "the SDK has no sandbox.getState RPC";
   try {
     const res = await withTimeout(call(), timeoutMs, "sandbox.getState()");
-    const problem = sandboxStateProblem(res, sent);
+    const problem = sandboxStateProblem(res, sent, platform);
     if (problem) return `sandbox.getState: ${problem}`;
     const source = res.configSource;
     return { configSource: typeof source === "string" ? source : "unknown" };
@@ -52744,8 +52748,8 @@ async function runSdkTier(input2) {
         budget: input2.maxCredits - total.credits,
         eventsPath: path15,
         spawnSync: input2.spawnSync,
-        // A cassette is recorded on, and replayed with, one pinned model.
-        ...tape && choice.model ? { model: choice.model } : {}
+        // The workers run on the session's model choice (--model, a cassette's pinned model, else the cheap pick), not runtime auto.
+        ...choice.model ? { model: choice.model } : {}
       }) : isCliScenario(name) ? await input2.runCli({
         name,
         bin,
@@ -63435,7 +63439,7 @@ var init_sandbox_session = __esm({
         let why = await applySandboxConfig(session, config2, opts.rpcTimeoutMs);
         if (!why) {
           sbx.applied = atCreate ? "create" : "options.update";
-          const state = await readSandboxState(session, opts.rpcTimeoutMs, config2);
+          const state = await readSandboxState(session, opts.rpcTimeoutMs, config2, opts.platform);
           if (typeof state === "string") why = state;
           else sbx.configSource = state.configSource;
         }
@@ -63491,7 +63495,7 @@ var init_sandbox_session = __esm({
        */
       stateChanged(data) {
         if (this.state?.mode !== "enforced" || this.stateEscape || !this.sent) return null;
-        const problem = sandboxStateProblem(data, this.sent);
+        const problem = sandboxStateProblem(data, this.sent, this.opts.platform);
         if (!problem) return null;
         this.stateEscape = `sandbox-escaped: the session's sandbox changed mid-session (${problem})`;
         this.state.stateEscaped = this.stateEscape;
@@ -85243,11 +85247,12 @@ If the PR gets new review comments before you merge, rerun \`${this.resume}\` fi
        * (`gone`, listed) only a fresh flag at this park counts. The coding-agent
        * lane (no local session), review lanes (no network: read tools, or an
        * enforced sandbox without outbound access) and the local forge do not
-       * count. '' = nothing to say; null = parked; else the merge note's clause.
+       * count, except a review lane that recorded a sandbox escape or an
+       * unsandboxed call. '' = nothing to say; null = parked; else the merge note's clause.
        */
       unsandboxedLanes(head, gone2) {
         if (this.forge?.kind === "local") return "";
-        const loose = this.state.lanes.filter((l) => l.kind !== "review" && l.kind !== "coding-agent" && (l.sandbox?.mode !== "enforced" || l.sandbox.unsandboxedCalls > 0 || !!l.sandbox.stateEscaped || l.sandbox.writeNetwork !== "none") && !(l.sandbox?.mode === "refused" && l.sandbox.unsandboxedCalls === 0));
+        const loose = this.state.lanes.filter((l) => l.kind !== "coding-agent" && !(l.kind === "review" && !l.sandbox?.stateEscaped && (l.sandbox?.unsandboxedCalls ?? 0) === 0) && (l.sandbox?.mode !== "enforced" || l.sandbox.unsandboxedCalls > 0 || !!l.sandbox.stateEscaped || l.sandbox.writeNetwork !== "none") && !(l.sandbox?.mode === "refused" && l.sandbox.unsandboxedCalls === 0));
         if (loose.length === 0) return "";
         const accepted = `; lanes ran without the enforced sandbox (accepted for this head with --allow-unsandboxed-lanes): check the PR's resolved and outdated threads and its reviews yourself`;
         if (this.state.unsandboxedAck === head && !gone2) return accepted;

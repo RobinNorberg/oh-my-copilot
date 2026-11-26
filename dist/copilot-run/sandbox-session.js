@@ -121,7 +121,7 @@ export class SessionSandboxController {
         let why = await applySandboxConfig(session, config, opts.rpcTimeoutMs);
         if (!why) {
             sbx.applied = atCreate ? 'create' : 'options.update';
-            const state = await readSandboxState(session, opts.rpcTimeoutMs, config);
+            const state = await readSandboxState(session, opts.rpcTimeoutMs, config, opts.platform);
             if (typeof state === 'string')
                 why = state;
             else
@@ -185,7 +185,7 @@ export class SessionSandboxController {
     stateChanged(data) {
         if (this.state?.mode !== 'enforced' || this.stateEscape || !this.sent)
             return null;
-        const problem = sandboxStateProblem(data, this.sent);
+        const problem = sandboxStateProblem(data, this.sent, this.opts.platform);
         if (!problem)
             return null;
         this.stateEscape = `sandbox-escaped: the session's sandbox changed mid-session (${problem})`;

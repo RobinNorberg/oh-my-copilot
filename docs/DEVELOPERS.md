@@ -103,7 +103,7 @@ npm i --no-save --omit=optional --ignore-scripts @microsoft/copilot-sdk@2
 
 **The `team` scenario.** Also opt-in and outside `all`. It runs the plugin's own `bridge/cli.cjs` as child processes, so it proves the default transport end to end:
 
-1. `omg team 2:copilot --json "<two numbered tasks>"` in the sandbox repo with no `--transport`, `COPILOT_CLI=1` and detached worker worktrees. Each sdk host is capped at half of the run's remaining credits.
+1. `omg team 2:copilot --json "<two numbered tasks>"` in the sandbox repo with no `--transport`, `COPILOT_CLI=1` and detached worker worktrees. Each sdk host is capped at half of the run's remaining credits. The workers run on the session's model (`OMC_TEAM_SDK_MODEL`): `--model`, a cassette's pinned model, else the cheap model the driver picked. Only when the runtime lists no cheap model do they fall back to `team.sdk.model`, else runtime auto, which measured 20.7 AI credits over the two workers on Copilot CLI 1.0.116 and fails `credits`.
 2. `omg team status --json` is polled until both tasks settle. Then `omg team api list-tasks` and each worker worktree's commits are read.
 3. `omg team shutdown`, while each worker's `sdk-session.json` is polled for the final `session.shutdown` totals.
 

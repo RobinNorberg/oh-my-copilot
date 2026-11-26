@@ -33,7 +33,7 @@ function setup(mode, opts = {}) {
         profile: opts.profile ?? 'write',
         settings,
         env: opts.env ?? {},
-        platform: process.platform,
+        platform: opts.platform ?? process.platform,
         rpcTimeoutMs: 1_000,
         trialLaunch: () => null,
         policyContext: () => { contexts += 1; return (opts.policyContext ?? (() => policyContext(settings)))(); },
@@ -278,6 +278,8 @@ const WEAKENINGS = [
     ['an enumerate path outside the policy', (c) => { c.userPolicy.filesystem.enumeratePaths = ['/elsewhere']; }, /enumeratePaths grants \/elsewhere/],
     ['a denied path dropped', (c) => { c.userPolicy.filesystem.deniedPaths = []; }, /deniedPaths lost/],
     ['keychain access on', (c) => { c.userPolicy.seatbelt = { keychainAccess: true }; }, /keychainAccess is true/],
+    ['experimental keychain access on (a governance path outside the SDK types)', (c) => { c.userPolicy.experimental = { seatbelt: { keychainAccess: true } }; }, /experimental\.seatbelt\.keychainAccess is true/],
+    ['a proxy the policy did not send', (c) => { c.userPolicy.network.proxy = 'http://proxy.example:3128'; }, /network\.proxy is set, the policy sent none/],
     ['an extra Mach lookup', (c) => { c.userPolicy.seatbelt = { extraMachLookups: ['com.apple.x'] }; }, /extraMachLookups grants com\.apple\.x/],
     ['a read-write list of the wrong type', (c) => { c.userPolicy.filesystem.readwritePaths = 'C:/'; }, /readwritePaths is not a string list/],
 ];
@@ -349,6 +351,33 @@ describe('sandboxStateProblem', () => {
         weaken(effective);
         expect(sandboxStateProblem(stateOf(effective), sent, 'win32')).toMatch(why);
     });
+    it('a proxy the policy sent, and experimental keychain access off or granted, pass', () => {
+        const sent = sentWrite();
+        sent.userPolicy.network.proxy = 'http://proxy.example:3128';
+        sent.userPolicy.experimental = { seatbelt: { keychainAccess: true } };
+        expect(sandboxStateProblem(stateOf(structuredClone(sent)), sent, 'win32')).toBeNull();
+        const plain = sentWrite();
+        const off = structuredClone(plain);
+        off.userPolicy.experimental = { seatbelt: { keychainAccess: false } };
+        expect(sandboxStateProblem(stateOf(off), plain, 'win32')).toBeNull();
+    });
+    it('a UNC path never equals a rooted path of the same name', () => {
+        const sent = sentWrite();
+        sent.userPolicy.filesystem.readwritePaths = ['\\\\server\\share\\wt'];
+        const unc = structuredClone(sent);
+        unc.userPolicy.filesystem.readwritePaths = ['//SERVER/share/wt/'];
+        expect(sandboxStateProblem(stateOf(unc), sent, 'win32')).toBeNull();
+        // A rooted \server\share\wt (the current drive's root) is another path.
+        const rooted = structuredClone(sent);
+        rooted.userPolicy.filesystem.readwritePaths = ['\\server\\share\\wt'];
+        expect(sandboxStateProblem(stateOf(rooted), sent, 'win32')).toMatch(/readwritePaths grants \\server\\share\\wt, the policy did not/);
+        // The other way round: a rooted path sent, a UNC path in force.
+        const sentRooted = sentWrite();
+        sentRooted.userPolicy.filesystem.readwritePaths = ['/server/share/wt'];
+        const uncEff = structuredClone(sentRooted);
+        uncEff.userPolicy.filesystem.readwritePaths = ['//server/share/wt'];
+        expect(sandboxStateProblem(stateOf(uncEff), sentRooted, 'linux')).toMatch(/readwritePaths grants \/\/server\/share\/wt, the policy did not/);
+    });
     it('host lists: an empty or missing allowed list, a host outside ours, loopback without the local network, or a lost blocked host is weaker', () => {
         const sent = sentWrite();
         sent.userPolicy.network = { allowOutbound: true, allowLocalNetwork: false, allowedHosts: ['registry.npmjs.org'] };
@@ -380,6 +409,37 @@ describe('the weaker-config check through confirm', () => {
             if (profile === 'review')
                 expect(updates.at(-1)).toEqual({ tools: { availableTools: [...REVIEW_READ_TOOLS] } });
         }
+    });
+});
+describe('the controller compares paths for its own platform, not the host', () => {
+    /** The effective config with every path upper-cased: the same paths on Windows, other paths elsewhere. */
+    const upper = (c) => {
+        const w = structuredClone(c);
+        const fs = w.userPolicy.filesystem;
+        for (const k of ['readwritePaths', 'readonlyPaths'])
+            fs[k] = (fs[k] ?? []).map((p) => p.toUpperCase());
+        return w;
+    };
+    it.each([['win32', 'enforced'], ['linux', 'refused'], ['darwin', 'refused']])('confirm (sandbox.getState) on %s: %s', async (platform, mode) => {
+        const t = setup('supported', { platform });
+        const session = { sessionId: 's-1', rpc: fakeSessionRpc('supported', { optionsUpdates: [] }, undefined, upper) };
+        const config = await t.ctl.decide(client('supported'), loadedSdk());
+        expect(config).not.toBeNull();
+        await t.ctl.confirm(session, config, false);
+        expect(t.ctl.state.mode).toBe(mode);
+        if (mode === 'refused')
+            expect(t.ctl.state.reason).toMatch(/weaker than the policy sent: userPolicy\.filesystem\.readwritePaths grants /);
+    });
+    it.each([['win32', false], ['linux', true]])('stateChanged on %s: an upper-cased config is an escape: %s', async (platform, escaped) => {
+        const t = setup('supported', { platform });
+        const config = await t.ctl.decide(client('supported'), loadedSdk());
+        await t.ctl.confirm(t.session, config, false);
+        expect(t.ctl.state.mode).toBe('enforced');
+        const data = { incarnation: 1, revision: 2, config: upper(config), configSource: 'session_flag', disabledForSession: false, autoApproveBypass: false, sessionOverride: null };
+        if (escaped)
+            expect(t.ctl.stateChanged(data)).toMatch(/^sandbox-escaped: .*grants /);
+        else
+            expect(t.ctl.stateChanged(data)).toBeNull();
     });
 });
 describe('isSandboxPolicyError', () => {

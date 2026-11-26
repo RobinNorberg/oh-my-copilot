@@ -38,7 +38,8 @@ export const ALL_SCENARIOS: readonly Scenario[] = ['smoke', 'guardrail', 'skill'
  * prompt) lets the model write files and loads a second, probe plugin;
  * `chain` spawns two real headless `copilot -p` factory links (one prompt
  * each) outside the SDK runtime's credit cap; `team` starts a real 2-worker
- * `omg team` with sdk workers (one prompt per worker); `factory-run` runs
+ * `omg team` with sdk workers (one prompt per worker, on the session's cheap
+ * model); `factory-run` runs
  * `omg factory run` with a real implement and review lane (two lanes, about
  * 2 AI credits estimated) and `factory-run-fix` adds a fix round (four lanes,
  * about 4); `sandbox-lane` runs a review, a write and a canary lane in the
@@ -482,8 +483,11 @@ export const TEAM_FILES: readonly string[] = ['team-alpha.txt', 'team-beta.txt']
 const TEAM_WORKERS = ['worker-1', 'worker-2'];
 /**
  * AI credits ceiling of the team scenario: one user prompt per worker plus its
- * tool turns. A generous ceiling (single smoke prompts measured 0.3 to 0.9
- * credits), not a measured figure; it catches runaway continuations.
+ * tool turns, on the session's cheap model. A generous ceiling (single smoke
+ * prompts measured 0.3 to 0.9 credits), not a measured figure; it catches
+ * runaway continuations. Runtime auto measured 20.7 credits over the two
+ * workers (Copilot CLI 1.0.116), so the workers never run on it when a cheap
+ * model is listed.
  */
 export const TEAM_MAX_CREDITS = 10;
 /** Wall-clock budget for start → both tasks completed → clean shutdown. */

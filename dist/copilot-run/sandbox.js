@@ -932,15 +932,19 @@ const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '::1']);
  * - `sandboxMcpServers`, `sandboxLspServers`, `sandboxExtensions`: an explicit
  *   false (the only opt-out) where we did not send false;
  * - `auth.git`, `auth.gh`, `userPolicy.seatbelt.keychainAccess`: true where we did not send true;
+ *   also `userPolicy.experimental.seatbelt.keychainAccess` (a governance path the
+ *   runtime names, not in the SDK types): true where we did not send true;
  * - `userPolicy.network.allowOutbound`, `allowLocalNetwork`: true where we did not send true;
  *   `allowedHosts`: empty (no restriction) where ours was not, or a host outside ours
  *   (a loopback name only with the local network sent on); `blockedHosts`: one of ours missing;
+ *   `proxy`: set where we sent none (the runtime does not add one);
  * - `userPolicy.filesystem.readwritePaths` outside our read-write set,
  *   `readonlyPaths` and `enumeratePaths` outside our read-only or read-write set,
  *   `deniedPaths`: one of ours missing; `userPolicy.seatbelt.extraMachLookups`: one we did not send.
- * Paths compare with separators unified, trailing separators dropped and, on
+ * Paths compare with separators unified (a leading `//` or `\\` kept, so a UNC
+ * path never equals a rooted one), trailing separators dropped and, on
  * Windows, case folded. Deliberately not compared: `credentials` (env masking
- * only hides values), `userPolicy.network.proxy` (an upstream for allowed
+ * only hides values), a proxy the policy sent (an upstream for allowed
  * traffic; host rules still apply), `userPolicy.capabilities` (Windows
  * `packageQuery`, the documented default, grants no file access), and fields
  * the SDK does not define. A field of the wrong type counts as weaker.
@@ -983,6 +987,12 @@ function configWeakerThanSent(eff, sent, platform) {
     const extraMach = mach.find((m) => !sentMach.has(m));
     if (extraMach !== undefined)
         return `userPolicy.seatbelt.extraMachLookups grants ${extraMach}, the policy did not`;
+    const effExpSeat = asObj(asObj(effPolicy.experimental)?.seatbelt);
+    const sentExpSeat = asObj(asObj(sentPolicy.experimental)?.seatbelt);
+    if (effExpSeat?.keychainAccess === true && sentExpSeat?.keychainAccess !== true)
+        return 'userPolicy.experimental.seatbelt.keychainAccess is true, the policy did not grant it';
+    if (effNet.proxy !== undefined && effNet.proxy !== null && (sentNet.proxy === undefined || sentNet.proxy === null))
+        return 'userPolicy.network.proxy is set, the policy sent none';
     for (const k of ['allowOutbound', 'allowLocalNetwork']) {
         if (effNet[k] !== undefined && effNet[k] !== false && sentNet[k] !== true)
             return `userPolicy.network.${k} is ${String(effNet[k])}, the policy sent ${String(sentNet[k] ?? false)}`;
@@ -1007,7 +1017,7 @@ function configWeakerThanSent(eff, sent, platform) {
     if (unblocked !== undefined)
         return `userPolicy.network.blockedHosts lost ${unblocked}`;
     const norm = (p) => {
-        let n = p.replace(/[\\/]+/g, '/');
+        let n = (/^[\\/]{2}/.test(p) ? '/' : '') + p.replace(/[\\/]+/g, '/');
         while (n.length > 1 && n.endsWith('/') && !/^[A-Za-z]:\/$/.test(n))
             n = n.slice(0, -1);
         return platform === 'win32' ? n.toLowerCase() : n;
@@ -1064,13 +1074,13 @@ export function sandboxStateProblem(state, sent, platform = process.platform) {
     return null;
 }
 /** `session.rpc.sandbox.getState()`: the effective config source when the policy `sent` is in force ({@link sandboxStateProblem}), else why not. */
-export async function readSandboxState(session, timeoutMs, sent) {
+export async function readSandboxState(session, timeoutMs, sent, platform = process.platform) {
     const call = rpcMethod(session, ['rpc', 'sandbox'], 'getState');
     if (!call)
         return 'the SDK has no sandbox.getState RPC';
     try {
         const res = await withTimeout(call(), timeoutMs, 'sandbox.getState()');
-        const problem = sandboxStateProblem(res, sent);
+        const problem = sandboxStateProblem(res, sent, platform);
         if (problem)
             return `sandbox.getState: ${problem}`;
         const source = res.configSource;

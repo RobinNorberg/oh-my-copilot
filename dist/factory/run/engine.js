@@ -8307,13 +8307,15 @@ class FactoryEngine {
      * (`gone`, listed) only a fresh flag at this park counts. The coding-agent
      * lane (no local session), review lanes (no network: read tools, or an
      * enforced sandbox without outbound access) and the local forge do not
-     * count. '' = nothing to say; null = parked; else the merge note's clause.
+     * count, except a review lane that recorded a sandbox escape or an
+     * unsandboxed call. '' = nothing to say; null = parked; else the merge note's clause.
      */
     unsandboxedLanes(head, gone) {
         if (this.forge?.kind === 'local')
             return '';
         // Every write lane of the run, as recorded when it ran; only the coding-agent lane runs no local Copilot session.
-        const loose = this.state.lanes.filter((l) => l.kind !== 'review' && l.kind !== 'coding-agent'
+        const loose = this.state.lanes.filter((l) => l.kind !== 'coding-agent'
+            && !(l.kind === 'review' && !l.sandbox?.stateEscaped && (l.sandbox?.unsandboxedCalls ?? 0) === 0)
             && (l.sandbox?.mode !== 'enforced' || l.sandbox.unsandboxedCalls > 0 || !!l.sandbox.stateEscaped || l.sandbox.writeNetwork !== 'none')
             // A lane refused before it ran any call never ran a session.
             && !(l.sandbox?.mode === 'refused' && l.sandbox.unsandboxedCalls === 0));

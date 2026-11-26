@@ -921,8 +921,8 @@ export async function runSdkTier(input: SdkTierInput): Promise<SdkTierResult> {
             budget: input.maxCredits - total.credits,
             eventsPath: path,
             spawnSync: input.spawnSync,
-            // A cassette is recorded on, and replayed with, one pinned model.
-            ...(tape && choice.model ? { model: choice.model } : {}),
+            // The workers run on the session's model choice (--model, a cassette's pinned model, else the cheap pick), not runtime auto.
+            ...(choice.model ? { model: choice.model } : {}),
           })
           // The CLI scenarios drive headless `copilot` sessions, not this client's session.
           : isCliScenario(name)

@@ -763,6 +763,22 @@ describe('runSdkTier credit cap, log windows, tree kill', () => {
     expect(seen).toEqual([undefined, undefined]);
   });
 
+  it('the team scenario\'s workers get the session\'s model: --model first, else the cheap pick; runtime auto passes none', async () => {
+    const seen: Array<string | undefined> = [];
+    const runs = (models: string[], model?: string) => runSdkTier(input(fakeSdk({ models }).loaded, {
+      scenarios: ['team'],
+      ...(model ? { model } : {}),
+      runTeam: async (t) => {
+        seen.push(t.model);
+        return { name: 'team', events: [], idle: true, timedOut: false, timeoutMs: t.timeoutMs, model: 'm', maxCredits: t.maxCredits, budget: t.budget, capped: false, wedged: false };
+      },
+    }));
+    await runs(['auto', 'claude-sonnet-5.5', 'claude-haiku-5.5']);
+    await runs(['auto', 'claude-sonnet-5.5', 'claude-haiku-5.5'], 'claude-sonnet-5.5');
+    await runs(['auto']);
+    expect(seen).toEqual(['claude-haiku-5.5', 'claude-sonnet-5.5', undefined]);
+  });
+
   it('passes the cap to the runtime when above the CLI minimum', async () => {
     const { loaded, rec } = fakeSdk();
     await runSdkTier(input(loaded, { scenarios: [], maxCredits: 45.5 }));

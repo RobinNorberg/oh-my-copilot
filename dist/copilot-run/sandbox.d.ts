@@ -456,7 +456,7 @@ export declare function readEnforcement(session: unknown, timeoutMs: number): Pr
  */
 export declare function sandboxStateProblem(state: unknown, sent: SandboxConfig, platform?: NodeJS.Platform): string | null;
 /** `session.rpc.sandbox.getState()`: the effective config source when the policy `sent` is in force ({@link sandboxStateProblem}), else why not. */
-export declare function readSandboxState(session: unknown, timeoutMs: number, sent: SandboxConfig): Promise<{
+export declare function readSandboxState(session: unknown, timeoutMs: number, sent: SandboxConfig, platform?: NodeJS.Platform): Promise<{
     configSource: string;
 } | string>;
 /**
