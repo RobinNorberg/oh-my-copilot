@@ -270,6 +270,30 @@ export function storedLoginToken(userConfigDir, platform = process.platform, now
     catch { /* unreadable or not JSON: no stored token */ }
     return undefined;
 }
+/**
+ * The smoke's keyring-less login: the real config dir and the token a lane
+ * would send over the session RPC (sessionGitHubToken), else undefined. The
+ * smoke home holds only the identity, so without this a keyring-less host's
+ * smoke sessions and lanes are not signed in. Undefined on Windows (the
+ * runtime reads COPILOT_GITHUB_TOKEN in any letter case there, and the login
+ * stays in Credential Manager) and with an exact-case COPILOT_GITHUB_TOKEN,
+ * which the runtime reads from its env itself. A COPILOT_GITHUB_TOKEN in
+ * another letter case, which a Linux or macOS runtime does not read, wins over
+ * the stored token, as it does for lanes (envValue). The tier attaches it only
+ * when the runtime turns out not signed in (listModelIds). The token goes only
+ * over the session RPC (`github.token`), never into an env, the smoke home
+ * or a file.
+ */
+export function smokeStoredLogin(env, userConfigDir, platform = process.platform) {
+    if (platform === 'win32')
+        return undefined;
+    const set = (v) => typeof v === 'string' && v.trim() !== '';
+    if (set(env.COPILOT_GITHUB_TOKEN))
+        return undefined;
+    const other = Object.keys(env).find((k) => k.toUpperCase() === 'COPILOT_GITHUB_TOKEN' && set(env[k]));
+    const token = other !== undefined ? env[other] : storedLoginToken(userConfigDir, platform);
+    return token ? { userConfigDir, token } : undefined;
+}
 function tokenFromMap(map, host, login, now, depth) {
     if (!map || typeof map !== 'object' || Array.isArray(map))
         return undefined;

@@ -49064,6 +49064,14 @@ function storedLoginToken(userConfigDir, platform = process.platform, now = Date
   }
   return void 0;
 }
+function smokeStoredLogin(env2, userConfigDir, platform = process.platform) {
+  if (platform === "win32") return void 0;
+  const set2 = (v) => typeof v === "string" && v.trim() !== "";
+  if (set2(env2.COPILOT_GITHUB_TOKEN)) return void 0;
+  const other = Object.keys(env2).find((k) => k.toUpperCase() === "COPILOT_GITHUB_TOKEN" && set2(env2[k]));
+  const token = other !== void 0 ? env2[other] : storedLoginToken(userConfigDir, platform);
+  return token ? { userConfigDir, token } : void 0;
+}
 function tokenFromMap(map2, host, login3, now, depth) {
   if (!map2 || typeof map2 !== "object" || Array.isArray(map2)) return void 0;
   for (const [key, value] of Object.entries(map2)) {
@@ -52625,7 +52633,44 @@ function isCliScenario(name) {
   return CLI_SCENARIOS.includes(name);
 }
 async function runSdkTier(input2) {
+  const token = input2.storedLogin?.token;
+  if (!token) return runSdkTierUnscrubbed(input2);
+  const scrub = (text3) => scrubTokens(text3, token.length >= 8 ? [token] : []);
   const events = {};
+  try {
+    const result = await runSdkTierUnscrubbed(input2, events);
+    return {
+      ...result,
+      checks: result.checks.map((c) => ({ ...c, id: scrub(c.id), detail: scrub(c.detail), ...c.evidence !== void 0 ? { evidence: scrub(c.evidence) } : {} })),
+      ...result.skipped !== void 0 ? { skipped: scrub(result.skipped) } : {}
+    };
+  } catch (err) {
+    throw new Error(scrub(errText2(err)));
+  } finally {
+    for (const path15 of Object.values(events)) {
+      if (!path15) continue;
+      let text3;
+      try {
+        text3 = (0, import_fs55.readFileSync)(path15, "utf-8");
+      } catch {
+        continue;
+      }
+      const clean = scrub(text3);
+      if (clean === text3) continue;
+      const tmp = `${path15}.tmp`;
+      try {
+        (0, import_fs55.writeFileSync)(tmp, clean);
+        (0, import_fs55.renameSync)(tmp, path15);
+      } catch {
+        try {
+          (0, import_fs55.rmSync)(tmp, { force: true });
+        } catch {
+        }
+      }
+    }
+  }
+}
+async function runSdkTierUnscrubbed(input2, events = {}) {
   let loaded2;
   try {
     loaded2 = await input2.loadSdk();
@@ -52669,6 +52714,7 @@ async function runSdkTier(input2) {
   let runOrder = [];
   let pid;
   let wedged = false;
+  let login3;
   try {
     try {
       await withTimeout2(client.start().catch(rethrowSdkStartError), START_TIMEOUT_MS, "client.start()");
@@ -52682,12 +52728,19 @@ async function runSdkTier(input2) {
       sdkInfo.runtimeVersion = typeof status.value.version === "string" ? status.value.version : null;
       sdkInfo.protocolVersion = typeof status.value.protocolVersion === "number" ? status.value.protocolVersion : null;
     }
-    const models = await rpc(() => client.listModels(), "listModels()");
-    const choice = chooseModel(models.ok ? models.value.map((m) => String(m.id)) : [], input2.model);
+    const { models, login: attached } = await listModelIds(client, input2, !!loaded2.cassette);
+    login3 = attached;
+    const sessionInput = { ...input2 };
+    if (login3) sessionInput.storedLogin = login3;
+    else delete sessionInput.storedLogin;
+    const choice = chooseModel(models.ok ? models.value : [], input2.model);
     sdkInfo.model = choice.label;
     const modelLabel = `${choice.label} (${choice.note})`;
-    checks.push(evaluateSdkRuntime(status, input2.binVersion, modelLabel));
-    checks.push(...await staticChecks(client, input2, loaded2, bin));
+    const runtime = evaluateSdkRuntime(status, input2.binVersion, modelLabel);
+    if (login3) runtime.detail += " (stored login attached)";
+    else if (input2.storedLogin && !models.ok) runtime.detail += `; stored login not used: listModels() answered ${excerpt(models.error, 160)}`;
+    checks.push(runtime);
+    checks.push(...await staticChecks(client, sessionInput, loaded2, bin));
     let stopReason;
     const order = ["team", "chain"];
     let names = [...input2.scenarios.filter((s) => !order.includes(s)), ...order.filter((s) => input2.scenarios.includes(s))];
@@ -52769,6 +52822,7 @@ async function runSdkTier(input2) {
         env: env2,
         projectDir: input2.projectDir,
         home: input2.home,
+        ...login3 ? { userConfigDir: login3.userConfigDir } : {},
         timeoutMs: input2.timeoutMs,
         maxCredits: input2.maxCredits,
         budget: input2.maxCredits - total.credits,
@@ -52782,12 +52836,13 @@ async function runSdkTier(input2) {
         env: env2,
         projectDir: input2.projectDir,
         home: input2.home,
+        ...login3 ? { userConfigDir: login3.userConfigDir } : {},
         timeoutMs: input2.timeoutMs,
         maxCredits: input2.maxCredits,
         budget: input2.maxCredits - total.credits,
         eventsPath: path15,
         ...choice.model ? { model: choice.model } : {}
-      }) : await runScenario(client, input2, name, choice.model, modelLabel, path15, input2.maxCredits - total.credits);
+      }) : await runScenario(client, sessionInput, name, choice.model, modelLabel, path15, input2.maxCredits - total.credits);
       entries.push({ name, run: run3, start });
       const cost = runCost(run3);
       total.premiumRequests += cost.premiumRequests;
@@ -52839,7 +52894,7 @@ async function runSdkTier(input2) {
       checks.push(failed.length > 0 ? { id: `scn.${entry.name}.record`, ok: false, detail: `not written: the scenario failed (${failed.join(", ")})${keptAt(tape, entry.name)}` } : recordCheck(tape, entry.name, { model: input2.model, maxCredits: input2.maxCredits, cost: runCost(entry.run), runOrder }, ran.map((e2) => e2.name)));
     }
   }
-  return { checks, sdk: sdkInfo, cost: total, events, ...tape?.mode === "replay" ? { replay } : {} };
+  return { checks, sdk: sdkInfo, cost: total, events, ...tape?.mode === "replay" ? { replay } : {}, ...login3 ? { storedLoginUsed: true } : {} };
 }
 function keptAt(run3, name) {
   try {
@@ -52870,6 +52925,7 @@ async function staticChecks(client, input2, loaded2, bin) {
         workingDirectory: input2.projectDir,
         mcp: { disabledServers: ["github-mcp-server"] },
         tools: { excludedTools: [hostSmokeToolName(input2.mcpServer)] },
+        ...sessionLogin(input2),
         // A cassette client pins the model in both modes: its models list is a 418 miss, and replay creates no session without one.
         ...loaded2.cassette && input2.model ? { model: input2.model } : {}
       }), RPC_TIMEOUT_MS, "createSession()");
@@ -53053,6 +53109,39 @@ async function currentToolMetadata(session) {
   }
   return meta3;
 }
+function sessionLogin(input2) {
+  return input2.storedLogin ? { github: { token: input2.storedLogin.token } } : {};
+}
+async function listModelIds(client, input2, cassette) {
+  const server2 = await rpc(() => client.listModels(), "listModels()");
+  if (server2.ok) return { models: { ok: true, value: server2.value.map((m) => String(m.id)) } };
+  const login3 = input2.storedLogin && /not authenticated/i.test(server2.error) ? input2.storedLogin : void 0;
+  if (!login3 || cassette) return { models: server2, ...login3 ? { login: login3 } : {} };
+  let session;
+  let pending;
+  try {
+    pending = client.createSession({
+      permissions: { onRequest: () => reject("omg smoke: the model list session grants nothing") },
+      plugins: { directories: [] },
+      workingDirectory: input2.projectDir,
+      mcp: { disabledServers: ["github-mcp-server"] },
+      tools: { excludedTools: [], availableTools: [] },
+      ...sessionLogin({ storedLogin: login3 })
+    });
+    session = await withTimeout2(pending, RPC_TIMEOUT_MS, "createSession()");
+    const model = session.rpc.model;
+    if (typeof model?.list !== "function") return { models: server2, login: login3 };
+    const listed = await rpc(() => model.list(), "session.model.list");
+    if (!listed.ok) return { models: listed, login: login3 };
+    const list = Array.isArray(listed.value?.list) ? listed.value.list : [];
+    return { models: { ok: true, value: list.map((m) => m && typeof m === "object" ? m.id : void 0).filter((id) => typeof id === "string") }, login: login3 };
+  } catch (err) {
+    if (!session && pending) void pending.then((late) => closeSession(client, late, input2.keepHome), () => void 0);
+    return { models: { ok: false, error: errText2(err) }, login: login3 };
+  } finally {
+    if (session) await closeSession(client, session, input2.keepHome);
+  }
+}
 async function closeSession(client, session, keepHome) {
   try {
     await withTimeout2(session.disconnect(), RPC_TIMEOUT_MS, "disconnect()");
@@ -53113,6 +53202,7 @@ async function runScenario(client, input2, name, model, modelLabel, eventsPath, 
       workingDirectory: input2.projectDir,
       mcp: { disabledServers: ["github-mcp-server"] },
       tools: { excludedTools: scenarioExcludedTools(name, input2.mcpServer) },
+      ...sessionLogin(input2),
       ...model ? { model } : {}
     }), RPC_TIMEOUT_MS, "createSession()");
     sent = true;
@@ -53188,6 +53278,7 @@ var init_copilot_sdk_driver = __esm({
     init_process_utils2();
     init_copilot_session_env();
     init_windows_search();
+    init_sandbox2();
     init_handler();
     init_run();
     SDK_MIN_VERSION = "2.0.3";
@@ -89092,7 +89183,7 @@ function prepareFactoryRepo(dir) {
   return null;
 }
 function copilotLanes(input2) {
-  const deps = { ...defaultCopilotRunDeps(input2.env), resolveBin: () => input2.bin, pluginRoot: () => input2.root, userConfigDir: () => input2.home };
+  const deps = { ...defaultCopilotRunDeps(input2.env), resolveBin: () => input2.bin, pluginRoot: () => input2.root, userConfigDir: () => input2.userConfigDir ?? input2.home };
   return new CopilotLaneBackend(new CopilotRunManager(deps), { allowLive: true });
 }
 function factoryRunLimits(timeoutMs) {
@@ -89385,7 +89476,7 @@ function sandboxLanes(input2, canary) {
     ...base,
     resolveBin: () => input2.bin,
     pluginRoot: () => input2.root,
-    userConfigDir: () => input2.home,
+    userConfigDir: () => input2.userConfigDir ?? input2.home,
     ...input2.realHome ? { realHome: () => input2.realHome } : {},
     sandboxSettings: () => ({ settings: { ...DEFAULT_SANDBOX_SETTINGS, allowedHosts: [], extraReadonlyPaths: [], extraReadwritePaths: [] }, warnings: [] }),
     ...canary ? { loadSdk: async () => {
@@ -89991,6 +90082,7 @@ __export(copilot_smoke_exports, {
   DEFAULT_TIER1_TIMEOUT_MS: () => DEFAULT_TIER1_TIMEOUT_MS,
   DELEGATE_AGENT: () => DELEGATE_AGENT2,
   DELEGATE_SMOKE_PROMPT: () => DELEGATE_SMOKE_PROMPT,
+  KEPT_HOME_LOGIN_NOTE: () => KEPT_HOME_LOGIN_NOTE,
   KNOWN_SCENARIOS: () => KNOWN_SCENARIOS,
   LIVE_PROCESS_SCENARIOS_REFUSED_DETAIL: () => LIVE_PROCESS_SCENARIOS_REFUSED_DETAIL,
   LIVE_RUN_REFUSED_DETAIL: () => LIVE_RUN_REFUSED_DETAIL,
@@ -90008,12 +90100,14 @@ __export(copilot_smoke_exports, {
   evaluateTier1: () => evaluateTier1,
   extractJsonArray: () => extractJsonArray,
   isStrippedEnvKey: () => isStrippedEnvKey,
+  keptHomeLoginNote: () => keptHomeLoginNote,
   liveRunRefusal: () => liveRunRefusal,
   loginIdentity: () => loginIdentity,
   resolveDefaultPluginRoot: () => resolveDefaultPluginRoot,
   resolvePackageRoot: () => resolvePackageRoot,
   runCopilotSmoke: () => runCopilotSmoke,
-  sessionSandboxFlags: () => sessionSandboxFlags
+  sessionSandboxFlags: () => sessionSandboxFlags,
+  tier2StoredLogin: () => tier2StoredLogin
 });
 function sessionSandboxFlags(delegate) {
   return [
@@ -90580,6 +90674,7 @@ async function runTier2(ctx, bin, binVersion, packageVersion, opts, scenarios, c
   const base = run3 ? cassetteEnv(ctx.env, run3, scenarioPlaceholderDirs({ root: ctx.root, home, projectDir, remoteDir })) : ctx.env;
   const env2 = buildSessionEnv(base, home, { session: true, hasLogin: identity.loggedInUsers !== void 0 });
   env2.OMC_GIT_GUARDRAILS = "1";
+  const storedLogin = tier2StoredLogin(ctx.env, ctx.deps.userConfigDir, run3?.mode);
   (0, import_fs126.writeFileSync)((0, import_path147.join)(home, "config.json"), `${JSON.stringify({ ...identity, trustedFolders: [projectDir] }, null, 2)}
 `);
   let agentFiles = [];
@@ -90587,39 +90682,55 @@ async function runTier2(ctx, bin, binVersion, packageVersion, opts, scenarios, c
     agentFiles = (0, import_fs126.readdirSync)((0, import_path147.join)(ctx.root, "agents")).filter((f) => f.endsWith(".md")).sort();
   } catch {
   }
-  const result = await runSdkTier({
-    root: ctx.root,
-    bin,
-    binVersion,
-    packageVersion,
-    home,
-    projectDir,
-    remoteDir,
-    env: env2,
-    scenarios,
-    model: opts.model,
-    timeoutMs: opts.timeoutMs ?? DEFAULT_SCENARIO_TIMEOUT_MS,
-    maxCredits: opts.maxCredits ?? DEFAULT_MAX_CREDITS2,
-    keepHome: !!opts.keepHome,
-    loadSdk: ctx.deps.loadSdk ?? (() => loadCopilotSdk(base, ctx.spawnSyncFn)),
-    loadExpectedToolCount: ctx.deps.loadExpectedToolCount ?? defaultExpectedToolCount,
-    spawnSync: ctx.spawnSyncFn,
-    skillDirs: countDirsWith((0, import_path147.join)(ctx.root, "skills"), "SKILL.md"),
-    agentFiles,
-    mcpServer: mcpServerNames(ctx.root)[0] ?? "t",
-    runChain: ctx.deps.runChain ?? runChainScenario,
-    runTeam: ctx.deps.runTeam ?? runTeamScenario,
-    runCli: ctx.deps.runCli ?? runCliScenario,
-    runFactory: ctx.deps.runFactory ?? runFactoryRunScenario,
-    runSandbox: ctx.deps.runSandbox ?? runSandboxLaneScenario,
-    ...run3 ? { cassette: run3 } : {}
-  });
+  let result;
+  try {
+    result = await runSdkTier({
+      root: ctx.root,
+      bin,
+      binVersion,
+      packageVersion,
+      home,
+      projectDir,
+      remoteDir,
+      env: env2,
+      scenarios,
+      model: opts.model,
+      timeoutMs: opts.timeoutMs ?? DEFAULT_SCENARIO_TIMEOUT_MS,
+      maxCredits: opts.maxCredits ?? DEFAULT_MAX_CREDITS2,
+      keepHome: !!opts.keepHome,
+      loadSdk: ctx.deps.loadSdk ?? (() => loadCopilotSdk(base, ctx.spawnSyncFn)),
+      loadExpectedToolCount: ctx.deps.loadExpectedToolCount ?? defaultExpectedToolCount,
+      spawnSync: ctx.spawnSyncFn,
+      skillDirs: countDirsWith((0, import_path147.join)(ctx.root, "skills"), "SKILL.md"),
+      agentFiles,
+      mcpServer: mcpServerNames(ctx.root)[0] ?? "t",
+      runChain: ctx.deps.runChain ?? runChainScenario,
+      runTeam: ctx.deps.runTeam ?? runTeamScenario,
+      runCli: ctx.deps.runCli ?? runCliScenario,
+      runFactory: ctx.deps.runFactory ?? runFactoryRunScenario,
+      runSandbox: ctx.deps.runSandbox ?? runSandboxLaneScenario,
+      ...run3 ? { cassette: run3 } : {},
+      ...storedLogin ? { storedLogin } : {}
+    });
+  } finally {
+    if (keptHomeLoginNote(!!opts.keepHome, !!storedLogin, result)) process.stderr.write(`${KEPT_HOME_LOGIN_NOTE} ${home}
+`);
+  }
   if (Object.keys(result.events).length) artifacts.events = result.events;
   const logs = readDebugLogs((0, import_path147.join)(home, "logs"));
   if (logs.path) artifacts.debugLog = logs.path;
   return result;
 }
-var import_child_process32, import_crypto39, import_fs126, import_os26, import_path147, DEFAULT_SMOKE_MODEL, DEFAULT_MAX_CREDITS2, MIN_MAX_CREDITS, DEFAULT_TIER0_TIMEOUT_MS, DEFAULT_TIER1_TIMEOUT_MS, MCP_LIST_TIMEOUT_MS, PLUGIN_NAME3, DELEGATE_AGENT2, DEFAULT_SMOKE_PROMPT, DELEGATE_SMOKE_PROMPT, SMOKE_PERMISSION_FLAGS, TIER0_COPILOT_IDS, LIVE_RUN_REFUSED_DETAIL, LIVE_PROCESS_SCENARIOS_REFUSED_DETAIL;
+function keptHomeLoginNote(keepHome, storedLogin, result) {
+  return keepHome && storedLogin && (result === void 0 || !!result.storedLoginUsed);
+}
+function tier2StoredLogin(env2, configDir, mode, deny2 = addRecordingDenyLiterals, platform = process.platform) {
+  if (mode === "replay") return void 0;
+  const login3 = smokeStoredLogin(env2, configDir ?? getCopilotConfigDir(), platform);
+  if (login3) deny2([login3.token]);
+  return login3;
+}
+var import_child_process32, import_crypto39, import_fs126, import_os26, import_path147, DEFAULT_SMOKE_MODEL, DEFAULT_MAX_CREDITS2, MIN_MAX_CREDITS, DEFAULT_TIER0_TIMEOUT_MS, DEFAULT_TIER1_TIMEOUT_MS, MCP_LIST_TIMEOUT_MS, PLUGIN_NAME3, DELEGATE_AGENT2, DEFAULT_SMOKE_PROMPT, DELEGATE_SMOKE_PROMPT, SMOKE_PERMISSION_FLAGS, TIER0_COPILOT_IDS, LIVE_RUN_REFUSED_DETAIL, LIVE_PROCESS_SCENARIOS_REFUSED_DETAIL, KEPT_HOME_LOGIN_NOTE;
 var init_copilot_smoke = __esm({
   "src/smoke/copilot-smoke.ts"() {
     "use strict";
@@ -90659,6 +90770,7 @@ var init_copilot_smoke = __esm({
     TIER0_COPILOT_IDS = ["copilot.binary", "copilot.plugin_list", "copilot.skill_list"];
     LIVE_RUN_REFUSED_DETAIL = "live run refused under vitest \u2014 set OMC_LIVE_SMOKE=1 (tier 1) / =2 (tier 2 scenarios)";
     LIVE_PROCESS_SCENARIOS_REFUSED_DETAIL = "live run refused under vitest \u2014 an injected SDK does not stop these scenarios from starting real copilot processes; inject deps.runChain/runTeam/runCli/runFactory/runSandbox or set OMC_LIVE_SMOKE=2";
+    KEPT_HOME_LOGIN_NOTE = "omg smoke: the sessions may have used the stored login token (keyring-less host); the runtime logs and session state in the kept home may contain it:";
   }
 });
 

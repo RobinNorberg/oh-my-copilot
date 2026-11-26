@@ -2,6 +2,12 @@
 
 All notable changes to oh-my-copilot will be documented in this file.
 
+## [Unreleased]
+
+### Fixed
+
+- `omg smoke copilot --tier 2` on a Linux or macOS host without a keyring: when its runtime is not signed in, its own SDK sessions get the stored login token over the session RPC, the `factory-run`, `factory-run-fix` and `sandbox-lane` scenarios read it from the real Copilot config dir like `copilot_run`, and the model list comes from a tool-less session. The `chain`, `team` and CLI scenarios (`continuation`, `prompt-context`, `events`, `ultragoal`) still run without it and need `COPILOT_GITHUB_TOKEN` on such a host. The token is scrubbed from the smoke's checks, `--json` report and events files. Windows, hosts whose runtime is signed in (OS keyring, `COPILOT_GITHUB_TOKEN`) and replay are unchanged.
+
 # oh-my-copilot v5.33.0
 
 ## [5.33.0] - 2026-11-26

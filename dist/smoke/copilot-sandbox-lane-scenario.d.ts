@@ -55,6 +55,11 @@ export interface SandboxLaneScenarioInput {
     projectDir: string;
     /** Smoke home: its config.json holds the login identity the lanes copy. */
     home: string;
+    /**
+     * A keyring-less host's real Copilot config dir (smokeStoredLogin): the lanes read the login identity and the
+     * stored token from it (the token over the session RPC) and deny it in the sandbox, like copilot_run. Unset: `home`.
+     */
+    userConfigDir?: string;
     /** Raised to {@link SANDBOX_LANE_TIMEOUT_MS} per lane. */
     timeoutMs: number;
     maxCredits: number;
@@ -86,7 +91,7 @@ export declare function defaultSharedDir(env: NodeJS.ProcessEnv, platform?: Node
  */
 export declare function withSandboxCanary(loaded: LoadedSdk, probe: SandboxCanaryProbe): LoadedSdk;
 /** The real copilot_run backend on the smoke's binary, plugin and login, with the default sandbox settings. */
-export declare function sandboxLanes(input: Pick<SandboxLaneScenarioInput, 'env' | 'bin' | 'root' | 'home' | 'realHome'>, canary: SandboxCanaryProbe | null): LaneBackend;
+export declare function sandboxLanes(input: Pick<SandboxLaneScenarioInput, 'env' | 'bin' | 'root' | 'home' | 'userConfigDir' | 'realHome'>, canary: SandboxCanaryProbe | null): LaneBackend;
 export declare function runSandboxLaneScenario(input: SandboxLaneScenarioInput): Promise<Omit<ScenarioRun, 'logText'> & {
     wedged: boolean;
 }>;
