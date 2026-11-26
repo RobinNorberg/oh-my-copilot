@@ -195739,6 +195739,8 @@ function tail4(text9, lines4 = 30) {
   return text9.trim().split(/\r?\n/).slice(-lines4);
 }
 var FULL_SHA3 = /^[0-9a-f]{40}$/;
+var RELEASE_JOB = "Create GitHub Release";
+var RECOVERY_WORKFLOW = ".github/workflows/release.yml";
 var RERUN_START_POLLS = 40;
 var LAND_ROUNDS = 500;
 var SUITE_HEARTBEAT_MS = 5 * 6e4;
@@ -196864,12 +196866,77 @@ ${r.stderr}`;
     if (!pushed?.annotated || pushed.commit !== sha3) fail9(`origin's ${tag} does not peel to ${sha3.slice(0, 12)} after the push`);
     return { status: "ok", note: `${tag} pushed on ${sha3.slice(0, 12)}` };
   }
+  /**
+   * Evidence that Release Recovery succeeded for `tag` on `sha`: an artifact named npm-release-boundary-recovery-<tag>
+   * (uploaded only after the recovery's verify-registry passed) whose producing run is a completed, successful
+   * workflow_dispatch run of release.yml in this repository, titled "Release Recovery <tag> <sha>" (its run-name, which
+   * binds the dispatched inputs; the run itself fails unless the tag peels to that sha), and origin's tag still peels
+   * to `sha`. A workflow_dispatch run uses the workflow file of the ref it was dispatched on, so the run's head_sha
+   * (that definition) must be on origin/main: a branch with an edited release.yml proves nothing. A head_sha missing
+   * locally after the fetch of origin/main is not on main. An expired artifact still counts: only the run's metadata
+   * is read, never the artifact's files. A run that has not completed yet is found by `pendingRecoveryRun` instead
+   * (it has no artifact until mid-run).
+   */
+  recoveryEvidence(tag, sha3) {
+    const name = `npm-release-boundary-recovery-${tag}`;
+    const listed2 = JSON.parse(this.must("gh", ["api", `repos/{owner}/{repo}/actions/artifacts?name=${encodeURIComponent(name)}&per_page=100`]) || "{}");
+    const artifacts = (listed2.artifacts ?? []).filter((a) => a.name === name && typeof a.workflow_run?.id === "number").sort((a, b) => b.id - a.id);
+    if (artifacts.length === 0) return { problem: `no Release Recovery evidence: no artifact ${name} in this repository` };
+    const fetched = this.run("git", ["fetch", "origin", "+refs/heads/main:refs/remotes/origin/main"]);
+    if (fetched.status !== 0) {
+      return { problem: `cannot check the Release Recovery workflow definition: git fetch origin +refs/heads/main:refs/remotes/origin/main failed (exit ${fetched.status}): ${tail4(fetched.stderr, 1).join(" ")}` };
+    }
+    const shallow = this.run("git", ["rev-parse", "--is-shallow-repository"]).stdout.trim() === "true" ? "; shallow clone: cannot check the workflow definition against main" : "";
+    const definitionOnMain = (head) => !!head && FULL_SHA3.test(head) && this.run("git", ["cat-file", "-e", `${head}^{commit}`]).status === 0 && this.isAncestor(head, "refs/remotes/origin/main");
+    const rejected = [];
+    for (const artifact of artifacts) {
+      const runId = artifact.workflow_run.id;
+      const r = JSON.parse(this.must("gh", ["api", `repos/{owner}/{repo}/actions/runs/${runId}`]) || "{}");
+      const unfinished = r.status !== "completed";
+      const why = [
+        (r.path ?? "").split("@")[0] !== RECOVERY_WORKFLOW && `path ${r.path ?? "(none)"}`,
+        r.event !== "workflow_dispatch" && `event ${r.event ?? "(none)"}`,
+        (unfinished || r.conclusion !== "success") && `${r.status ?? "(no status)"}/${r.conclusion ?? "(no conclusion)"}`,
+        (!r.repository?.full_name || r.head_repository?.full_name !== r.repository.full_name) && "run from another repository",
+        r.display_title !== `Release Recovery ${tag} ${sha3}` && `title "${r.display_title ?? ""}" is not "Release Recovery ${tag} ${sha3}"`,
+        !definitionOnMain(r.head_sha) && `workflow definition ${(r.head_sha ?? "(none)").slice(0, 12)} (${r.head_branch ?? "no branch"}) is not on main${shallow}`
+      ].filter(Boolean);
+      if (why.length > 0) {
+        rejected.push(`run ${runId}: ${why.join(", ")}`);
+        continue;
+      }
+      const remote = remoteTagTarget(this.git("ls-remote", "--tags", "origin", `refs/tags/${tag}`, `refs/tags/${tag}^{}`), tag);
+      if (!remote?.annotated || remote.commit !== sha3) return { problem: `${tag} on origin does not peel to the main merge ${sha3.slice(0, 12)}` };
+      return { note: `Release Recovery run ${runId}${artifact.expired ? ", artifact expired" : ""}` };
+    }
+    const more = (listed2.total_count ?? 0) > (listed2.artifacts?.length ?? 0) ? ` (${listed2.total_count} artifacts, first ${listed2.artifacts?.length ?? 0} read)` : "";
+    return { problem: `no successful Release Recovery run for ${tag} ${sha3.slice(0, 12)}: artifact ${name} came from ${rejected.join("; ")}${more}`, rejected };
+  }
+  /**
+   * A Release Recovery run for `tag` on `sha` that is still queued or running blocks verify as a wait (pending under
+   * --drive), artifact or not. Only a run dispatched from main counts (no other run can become evidence). Only a wait,
+   * never evidence; an unreadable list is no wait.
+   */
+  waitForPendingRecovery(tag, sha3) {
+    const listed2 = this.run("gh", ["run", "list", "--workflow", "release.yml", "--event", "workflow_dispatch", "--json", "databaseId,status,displayTitle,headBranch", "--limit", "20"]);
+    if (listed2.status !== 0) return;
+    let runs = [];
+    try {
+      runs = JSON.parse(listed2.stdout || "[]");
+    } catch {
+      return;
+    }
+    const unfinished = ["queued", "in_progress", "pending", "waiting", "requested"];
+    const r = runs.find((x) => x.headBranch === "main" && unfinished.includes(x.status ?? "") && x.displayTitle === `Release Recovery ${tag} ${sha3}`);
+    if (r) pendingWait(`Release Recovery run ${r.databaseId} for ${tag} is still ${r.status ?? "(no status)"}: wait for run ${r.databaseId} to finish, then re-run omg release ${this.v} --from verify`);
+  }
   async verify() {
     const v = this.v;
     const tag = `v${v}`;
     const sha3 = this.state.mainMergeSha;
     if (!sha3 || !FULL_SHA3.test(sha3)) fail9("no main merge commit recorded; run the promote phase first");
     let run3;
+    let recovered = "";
     for (; ; ) {
       const runs = JSON.parse(this.must("gh", ["run", "list", "--workflow", "ci.yml", "--event", "push", "--commit", sha3, "--json", "databaseId,headBranch,headSha,event,status,conclusion", "--limit", "50"]) || "[]");
       run3 = runs.filter((r) => r.headBranch === tag && r.headSha === sha3 && (r.event ?? "push") === "push").sort((a, b) => b.databaseId - a.databaseId)[0];
@@ -196890,15 +196957,33 @@ ${r.stderr}`;
               return false;
             }
           })();
+          if (published && failedJobs2.length > 0 && failedJobs2.every((j) => j.name === RELEASE_JOB)) {
+            const evidence = this.recoveryEvidence(tag, sha3);
+            if (evidence.problem) {
+              this.waitForPendingRecovery(tag, sha3);
+              fail9(`tag run ${run3.databaseId} ${run3.conclusion} in ${RELEASE_JOB} and GitHub Release ${tag} exists, but ${evidence.problem}`, [
+                `only a successful Release Recovery run (gh workflow run release.yml --ref main -f tag=${tag} -f sha=${sha3}), titled "Release Recovery ${tag} ${sha3}" and run from a workflow definition on main, proves the registry check passed; a GitHub Release created by hand does not`,
+                ...(evidence.rejected ?? []).map((r) => `rejected Release Recovery ${r}`),
+                `Release Recovery runs from before this rule (no tag and sha in the run title, only "Release Recovery") cannot be used as evidence`,
+                `confirm by hand instead: the Release Recovery run's log shows verify-registry passed, and npm view ${this.pkgName}@${v} dist.attestations lists the provenance; verify then stays unrecorded for ${tag} (no destructive step)`,
+                `if no Release Recovery run exists for ${tag}, dispatch one (gh workflow run release.yml --ref main -f tag=${tag} -f sha=${sha3}): it fails at "Assert GitHub Release is absent" by design, after its "Verify recovered package provenance" step (verify-registry), and that step's log is the one to check`,
+                ...details()
+              ]);
+            }
+            recovered = evidence.note;
+            break;
+          }
           if (published) {
             fail9(`tag run ${run3.databaseId} ${run3.conclusion}: failed job(s) ${names2}; ${this.pkgName}@${v} is on npm and GitHub Release ${tag} is published, so no Release Recovery and no rerun`, [
               `triage the failed job(s) below; confirm provenance with npm view ${this.pkgName}@${v} version dist-tags dist.attestations`,
               ...details()
             ]);
           }
-          fail9(`tag run ${run3.databaseId} ${run3.conclusion}, but ${this.pkgName}@${v} is already on npm: not rerun`, [
+          this.waitForPendingRecovery(tag, sha3);
+          const recovery = `gh workflow run release.yml --ref main -f tag=${tag} -f sha=${sha3}`;
+          fail9(`tag run ${run3.databaseId} ${run3.conclusion}, but ${this.pkgName}@${v} is already on npm: not rerun; do not republish: run the Release Recovery workflow (${recovery}), then omg release ${v} --from verify`, [
             `npm view ${this.pkgName}@${v} version dist-tags dist.attestations: if live with provenance, do NOT rerun the run`,
-            `create the GitHub Release with the Release Recovery workflow (release.yml, workflow_dispatch: tag=${tag} sha=${sha3}) or gh release create ${tag} --title ${tag} --notes-file .github/release-body.md`,
+            `create the GitHub Release with the Release Recovery workflow (release.yml, workflow_dispatch: tag=${tag} sha=${sha3}): ${recovery}; a release created by hand (gh release create) does not pass verify`,
             `then re-run omg release ${v} --from verify`,
             ...details()
           ]);
@@ -196929,8 +197014,9 @@ ${r.stderr}`;
     const relInfo = rel.status === 0 ? JSON.parse(rel.stdout) : null;
     if (!relInfo || relInfo.tagName !== tag) problems.push(`gh release view ${tag} found no release`);
     else if (relInfo.isDraft) problems.push(`GitHub Release ${tag} is a draft`);
-    if (problems.length > 0) fail9(`tag run ${runId} is green, but the release is incomplete`, problems);
-    return { status: "ok", note: `${this.pkgName}@${v} is latest with provenance; GitHub Release ${tag} published` };
+    if (problems.length > 0) fail9(`tag run ${runId} is ${recovered ? `${run3.conclusion} (only its ${RELEASE_JOB} job) and was recovered` : "green"}, but the release is incomplete`, problems);
+    const how = recovered ? ` (tag run ${runId} ${run3.conclusion} in ${RELEASE_JOB}; completed by ${recovered})` : "";
+    return { status: "ok", note: `${this.pkgName}@${v} is latest with provenance; GitHub Release ${tag} published${how}` };
   }
 };
 function resumePoint(state, from) {
@@ -197057,13 +197143,13 @@ async function runRelease(deps, requested) {
         outcome = await release.phase(id);
       } catch (error62) {
         if (error62 instanceof PendingError) {
-          if (ci) await stopCi(`the ${id} phase is pending`);
+          if (ci && !gateOpen) await stopCi(`the ${id} phase is pending`);
           return pendingResult(id, error62);
         }
         throw error62;
       }
       if (!record3(id, outcome)) {
-        if (ci) {
+        if (ci && !gateOpen) {
           record3("pr", await stopCi(`the ${id} phase ${outcome.status} (${outcome.note}); fix it, then re-run omg release ${v} --from ${id}`));
         }
         return { ok: false, version: v, dryRun: false, statePath, phases: results };
