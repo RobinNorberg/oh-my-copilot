@@ -811,11 +811,16 @@ async function fetchUntilPresent(url, label, wait, options = {}) {
       const capAt = Math.max(wait.deadline, Date.now() + fetchTimeoutMs());
       const chunks = [];
       const reader = response.body?.getReader();
-      for (;;) {
-        rearm(capAt);
-        const chunk = reader ? await reader.read() : { done: true };
-        if (chunk.done) break;
-        chunks.push(chunk.value);
+      try {
+        for (;;) {
+          rearm(capAt);
+          const chunk = reader ? await reader.read() : { done: true };
+          if (chunk.done) break;
+          chunks.push(chunk.value);
+        }
+      } catch (error) {
+        await reader?.cancel().catch(() => {});
+        throw error;
       }
       return { status: 200, bytes: Buffer.concat(chunks) };
     }

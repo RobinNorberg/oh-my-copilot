@@ -738,7 +738,8 @@ describe('release-boundary.mjs', () => {
                 return;
             }
             if (action === 'trickle200') {
-                // The real bytes in 6 chunks, 150 ms apart: about 750 ms in all, longer than the 300 ms request timeout.
+                // The real bytes in 6 chunks, 250 ms apart: about 1250 ms in all, longer than the 1000 ms request timeout, with
+                // 750 ms of margin per gap (the server shares the client's event loop, so a busy runner delays both).
                 response.writeHead(200, { 'content-type': 'application/octet-stream', 'content-length': String(servedTarball.length) });
                 const size = Math.ceil(servedTarball.length / 6);
                 let offset = 0;
@@ -747,7 +748,7 @@ describe('release-boundary.mjs', () => {
                     response.write(servedTarball.subarray(offset, end));
                     offset = end;
                     if (offset < servedTarball.length)
-                        setTimeout(next, 150);
+                        setTimeout(next, 250);
                     else
                         response.end();
                 };
@@ -913,7 +914,7 @@ describe('release-boundary.mjs', () => {
             // restarts with every chunk, it only aborts a body that stops.
             await withEnvironment({
                 RELEASE_BOUNDARY_REGISTRY_URL: base,
-                RELEASE_BOUNDARY_FETCH_TIMEOUT_MS: '300',
+                RELEASE_BOUNDARY_FETCH_TIMEOUT_MS: '1000',
                 RELEASE_BOUNDARY_PROPAGATION_BUDGET_MS: '60000',
                 RELEASE_BOUNDARY_PROPAGATION_DELAY_MS: '100',
                 RELEASE_BOUNDARY_PROPAGATION_MAX_DELAY_MS: '100',

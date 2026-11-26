@@ -1593,10 +1593,11 @@ class Release {
     }
     /**
      * A Release Recovery run for `tag` on `sha` that is still queued or running blocks verify as a wait (pending under
-     * --drive): it has no artifact and no GitHub Release yet. Only a wait, never evidence; an unreadable list is no wait.
+     * --drive), artifact or not. Only a run dispatched from main counts (no other run can become evidence). Only a wait,
+     * never evidence; an unreadable list is no wait.
      */
     waitForPendingRecovery(tag, sha) {
-        const listed = this.run('gh', ['run', 'list', '--workflow', 'release.yml', '--event', 'workflow_dispatch', '--json', 'databaseId,status,displayTitle', '--limit', '20']);
+        const listed = this.run('gh', ['run', 'list', '--workflow', 'release.yml', '--event', 'workflow_dispatch', '--json', 'databaseId,status,displayTitle,headBranch', '--limit', '20']);
         if (listed.status !== 0)
             return;
         let runs = [];
@@ -1606,7 +1607,8 @@ class Release {
         catch {
             return;
         }
-        const r = runs.find((x) => x.status !== 'completed' && x.displayTitle === `Release Recovery ${tag} ${sha}`);
+        const unfinished = ['queued', 'in_progress', 'pending', 'waiting', 'requested'];
+        const r = runs.find((x) => x.headBranch === 'main' && unfinished.includes(x.status ?? '') && x.displayTitle === `Release Recovery ${tag} ${sha}`);
         if (r)
             pendingWait(`Release Recovery run ${r.databaseId} for ${tag} is still ${r.status ?? '(no status)'}: wait for run ${r.databaseId} to finish, then re-run omg release ${this.v} --from verify`);
     }

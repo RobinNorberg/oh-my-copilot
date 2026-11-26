@@ -195,8 +195,9 @@ reference for what each phase asserts.
      Verify then stays unrecorded for that release.
    - `verify` blocked with "Release Recovery run N ... is still queued / in
      progress": wait for run N, then re-run `--from verify` (`--drive`
-     waits on its own). A run counts while it has no artifact and no GitHub
-     Release yet; only its title `Release Recovery vX.Y.Z <sha>` is matched.
+     waits on its own). A run counts while it is unfinished (queued or in
+     progress) and was dispatched from main, artifact or not; its title must
+     be exactly `Release Recovery vX.Y.Z <sha>`.
    - `verify` failed with "is on npm and GitHub Release … is published": the
      release is out; another job of the tag run failed. Triage the named
      job; do not rerun the run and do not use Release Recovery.

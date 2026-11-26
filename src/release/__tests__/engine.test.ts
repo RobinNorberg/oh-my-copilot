@@ -2342,8 +2342,10 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
     });
 
     /** gh run list of release.yml workflow_dispatch runs, as the pending-recovery lookup reads it. */
-    const recoveryRuns = (runs: Array<{ databaseId: number; status: string; displayTitle: string }>): Handler => (key) => (
-      key === 'gh run list --workflow release.yml --event workflow_dispatch --json databaseId,status,displayTitle --limit 20' ? ok(JSON.stringify(runs)) : undefined);
+    const recoveryRuns = (runs: Array<{ databaseId: number; status: string; displayTitle: string; headBranch?: string }>): Handler => (key) => (
+      key === 'gh run list --workflow release.yml --event workflow_dispatch --json databaseId,status,displayTitle,headBranch --limit 20'
+        ? ok(JSON.stringify(runs.map((r) => ({ headBranch: 'main', ...r }))))
+        : undefined);
     const waitNote = (status: string) => `Release Recovery run 777 for v${V} is still ${status}: wait for run 777 to finish, then re-run omg release ${V} --from verify`;
 
     it('waits for a matching Release Recovery run that is still queued or in progress (no artifact, no GitHub Release yet) instead of failing', async () => {
@@ -2384,15 +2386,35 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
       expect(result.phases[0]).toMatchObject({ status: 'fail', note: expect.stringMatching(/is already on npm: not rerun; do not republish: run the Release Recovery workflow/) });
     });
 
-    it('waits while the recovery run already uploaded its artifact but has not created the GitHub Release yet', async () => {
+    it('waits while the GitHub Release has no artifact-backed evidence yet because its recovery run is still unfinished', async () => {
       published = true;
+      // The GitHub Release exists and run 777 uploaded its artifact, but the run is still in progress (no conclusion), so
+      // the artifact is not accepted as evidence yet: verify waits for the run instead of failing.
       handlers.unshift(
-        (key) => (key.startsWith(`gh release view v${V}`) ? no('release not found') : undefined),
         recoveryEvidence([{ id: 50, run: 777 }], { 777: recoveryRunJson(777, { status: 'in_progress', conclusion: null }) }),
         recoveryRuns([{ databaseId: 777, status: 'in_progress', displayTitle: `Release Recovery v${V} ${MERGE}` }]),
       );
       const result = await release({ from: 'verify' });
-      expect(result.phases[0]).toMatchObject({ status: 'blocked', note: waitNote('in_progress') });
+      expect(result.ok).toBe(false);
+      expect(result.phases[0]).toMatchObject({ id: 'verify', status: 'blocked', note: waitNote('in_progress') });
+      expect(calls.some((c) => c.startsWith('gh api repos/{owner}/{repo}/actions/runs/777'))).toBe(true);
+      const driven = await release({ from: 'verify', drive: true });
+      expect(driven.ok).toBe(false);
+      expect(driven.pending).toMatchObject({ phase: 'verify', note: waitNote('in_progress') });
+      expect(readReleaseState(stateRoot, V)!.phases.verify).toBeUndefined();
+    });
+
+    it('waits only for an unfinished matching run dispatched from main, not one from another branch', async () => {
+      published = true;
+      handlers.unshift(
+        (key) => (key.startsWith(`gh release view v${V}`) ? no('release not found') : undefined),
+        recoveryRuns([{ databaseId: 777, status: 'in_progress', displayTitle: `Release Recovery v${V} ${MERGE}`, headBranch: 'edited-release-yml' }]),
+      );
+      const other = await release({ from: 'verify' });
+      expect(other.phases[0]).toMatchObject({ status: 'fail', note: expect.stringMatching(/is already on npm: not rerun; do not republish: run the Release Recovery workflow/) });
+      handlers.splice(1, 1, recoveryRuns([{ databaseId: 777, status: 'in_progress', displayTitle: `Release Recovery v${V} ${MERGE}`, headBranch: 'main' }]));
+      const onMain = await release({ from: 'verify' });
+      expect(onMain.phases[0]).toMatchObject({ status: 'blocked', note: waitNote('in_progress') });
     });
 
     it('a failing fetch of origin main fails closed and says the definition could not be checked', async () => {
