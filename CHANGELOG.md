@@ -2,6 +2,13 @@
 
 All notable changes to oh-my-copilot will be documented in this file.
 
+## [Unreleased]
+
+### Fixed
+
+- **The tag run no longer fails when the npm tarball shows up a few minutes after the version.** On v5.31.0 and v5.33.0 the package was published correctly, but `release-boundary.mjs verify-registry` saw the tarball URL return 404 while the version metadata was already there, so the GitHub Release was never created. `verify-registry` now waits for the registry reads that lag behind a fresh publish (version and root metadata, tarball, attestations) when they return 404, a 5xx or a network error, for up to 10 minutes with backoff, and logs one line per wait. A tarball whose bytes or digests do not match the evidence still fails at once, and so do other 4xx answers. When the wait runs out, the message says the package is published, not to republish, and to run the Release Recovery workflow with the tag and sha.
+- **A failed verify phase no longer damages the earlier records of `omg release`.** When the release PR had run beside the suite, a verify failure re-recorded the pr phase as "merged outside the release ... blocked" and dropped the promote and tag records, so `omg release <version> --from verify` refused to start. Now verify records only its own failure. When the tag run failed but the version is already on npm, the note names the recovery: `gh workflow run release.yml -f tag=v<version> -f sha=<main merge sha>`, then `omg release <version> --from verify`. That re-run passes when only the tag run's Create GitHub Release job failed and npm shows the version as `latest` with provenance, the Tier 2 smoke job passed and the GitHub Release exists; it still fails while the GitHub Release is missing or a draft.
+
 # oh-my-copilot v5.33.0
 
 ## [5.33.0] - 2026-11-26

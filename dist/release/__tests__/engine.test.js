@@ -1776,6 +1776,71 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
             expect(readReleaseState(stateRoot, V).phases.pr?.status).toBe('blocked');
             expect(calls.some((c) => c.startsWith('gh pr merge'))).toBe(false);
         });
+        it('v5.33.0 regression: a verify failure after the pr beside the suite merged keeps the pr, promote and tag records', async () => {
+            suiteDone();
+            let tagPushed = false;
+            let localTag = false;
+            let releaseCreated = false;
+            handlers.unshift((key) => {
+                if (key.startsWith('gh pr view 301 --json number,state'))
+                    return ok(prJson(301, 'dev', prState, prState === 'MERGED' ? DEVMERGE : null));
+                if (key.startsWith('gh pr list --head dev --base main'))
+                    return ok('[{"number":302,"state":"OPEN"}]');
+                if (key.startsWith('gh pr view 302 --json'))
+                    return ok(prJson(302, 'main', 'MERGED', MERGE));
+                if (key === `git show ${MERGE}:package.json`)
+                    return ok(`{"version":"${V}"}`);
+                if (key.startsWith('git ls-remote --tags origin'))
+                    return ok(tagPushed ? `${TAGOBJ}\trefs/tags/v${V}\n${MERGE}\trefs/tags/v${V}^{}\n` : '');
+                if (key === `git rev-parse -q --verify refs/tags/v${V}`)
+                    return localTag ? ok(TAGOBJ) : no('', 1);
+                if (key === `git tag -a v${V} -m v${V} ${MERGE}`) {
+                    localTag = true;
+                    return ok();
+                }
+                if (key === `git cat-file -t refs/tags/v${V}`)
+                    return ok('tag\n');
+                if (key === `git rev-parse refs/tags/v${V}^{}`)
+                    return ok(`${MERGE}\n`);
+                if (key === `git push origin refs/tags/v${V}:refs/tags/v${V}`) {
+                    tagPushed = true;
+                    return ok();
+                }
+                if (key.startsWith(`gh run list --workflow ci.yml --event push --commit ${MERGE}`)) {
+                    return ok(JSON.stringify([{ databaseId: 901, headBranch: `v${V}`, headSha: MERGE, event: 'push', status: 'completed', conclusion: 'failure' }]));
+                }
+                if (key === 'gh run view 901 --json jobs') {
+                    return ok(JSON.stringify({ jobs: [{ databaseId: 5, name: 'Create GitHub Release', conclusion: 'failure' }, { databaseId: 6, name: 'Copilot smoke (tier 2)', conclusion: 'success' }] }));
+                }
+                if (key === `npm view oh-my-copilot@${V} version`)
+                    return ok(`${V}\n`);
+                if (key.startsWith(`npm view oh-my-copilot@${V}`))
+                    return ok(JSON.stringify({ version: V, 'dist-tags.latest': V, 'dist.attestations': { url: 'x' } }));
+                if (key.startsWith(`gh release view v${V}`))
+                    return releaseCreated ? ok(JSON.stringify({ tagName: `v${V}`, isDraft: false })) : no('release not found');
+                return undefined;
+            });
+            const result = await run({ from: 'suite', suite: 'full', allowSkippedSmoke: true, yes: true });
+            expect(result.ok).toBe(false);
+            expect(result.phases.map((p) => [p.id, p.status])).toEqual([['suite', 'ok'], ['smoke', 'skipped'], ['pr', 'ok'], ['promote', 'ok'], ['tag', 'ok'], ['verify', 'fail']]);
+            const verify = result.phases.at(-1);
+            expect(verify.note).toContain(`oh-my-copilot@${V} is already on npm: not rerun`);
+            expect(verify.note).toContain(`gh workflow run release.yml -f tag=v${V} -f sha=${MERGE}`);
+            expect(verify.note).toContain(`omg release ${V} --from verify`);
+            expect(calls.some((c) => c.startsWith('gh run rerun'))).toBe(false);
+            const state = readReleaseState(stateRoot, V);
+            expect(Object.fromEntries(Object.entries(state.phases).map(([id, p]) => [id, p.status]))).toMatchObject({ pr: 'ok', promote: 'ok', tag: 'ok', verify: 'fail' });
+            expect(state.phases.pr.note).not.toMatch(/merged outside the release/);
+            expect(state.phases.verify.note).toBe(verify.note);
+            expect(state).toMatchObject({ devPr: 301, devMergeSha: DEVMERGE, mainPr: 302, mainMergeSha: MERGE, tagRunId: 901 });
+            expect(events.some((e) => e.phase === 'pr' && e.status === 'blocked')).toBe(false);
+            // The Release Recovery workflow created the GitHub Release: --from verify now passes on the same failed tag run.
+            releaseCreated = true;
+            const resumed = await run({ from: 'verify' });
+            expect(resumed.ok).toBe(true);
+            expect(resumed.phases).toEqual([expect.objectContaining({ id: 'verify', status: 'ok', note: expect.stringMatching(/completed by Release Recovery/) })]);
+            expect(readReleaseState(stateRoot, V).phases.verify?.status).toBe('ok');
+        });
         it('an error escaping the run stops the CI wait beside the suite', async () => {
             suiteDone();
             checksJson = running;
@@ -2068,12 +2133,57 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
             expect(result.phases[0].details.join('\n')).toMatch(/Release Recovery workflow \(release\.yml/);
             expect(calls.some((c) => c.startsWith('gh run rerun'))).toBe(false);
         });
-        it('names the failed job and the published release instead of suggesting Release Recovery', async () => {
+        it('names the exact recovery command, and --from verify passes once Release Recovery created the GitHub Release', async () => {
             published = true;
+            let recovered = false;
+            handlers.unshift((key) => (key.startsWith(`gh release view v${V}`) && !recovered ? no('release not found') : undefined));
+            const failed = await release({ to: 'verify' });
+            expect(failed.phases[0]).toMatchObject({ status: 'fail' });
+            expect(failed.phases[0].note).toContain(`do not republish: run the Release Recovery workflow (gh workflow run release.yml -f tag=v${V} -f sha=${MERGE}), then omg release ${V} --from verify`);
+            recovered = true;
+            const result = await release({ from: 'verify' });
+            expect(result.ok).toBe(true);
+            expect(result.phases[0]).toMatchObject({ id: 'verify', status: 'ok', note: expect.stringMatching(/GitHub Release v5\.12\.2 published \(tag run 901 failure in Create GitHub Release; completed by Release Recovery\)$/) });
+            expect(calls.some((c) => c.startsWith('gh run rerun'))).toBe(false);
+        });
+        it('a recovered tag run still needs npm latest with provenance and the Tier 2 smoke job', async () => {
+            published = true;
+            handlers.unshift((key) => {
+                if (key.startsWith(`npm view oh-my-copilot@${V} version dist-tags.latest`))
+                    return ok(JSON.stringify({ version: V, 'dist-tags.latest': '5.12.1' }));
+                if (key === 'gh run view 901 --json jobs')
+                    return ok(JSON.stringify({ jobs: [{ databaseId: 5, name: 'Create GitHub Release', conclusion: 'failure' }] }));
+                return undefined;
+            });
+            const result = await release({ from: 'verify' });
+            expect(result.phases[0]).toMatchObject({ status: 'fail', note: 'tag run 901 is failure (only its Create GitHub Release job) and was recovered, but the release is incomplete' });
+            expect(result.phases[0].details).toEqual([
+                'Copilot smoke (tier 2) job: not in the tag run',
+                'npm dist-tags.latest is "5.12.1", not 5.12.2',
+                'npm reports no dist.attestations (SLSA provenance)',
+            ]);
+        });
+        it('--from verify still fails while the GitHub Release is missing or a draft', async () => {
+            published = true;
+            for (const view of [no('release not found'), ok(JSON.stringify({ tagName: `v${V}`, isDraft: true }))]) {
+                handlers.unshift((key) => (key.startsWith(`gh release view v${V}`) ? view : undefined));
+                const result = await release({ from: 'verify' });
+                expect(result.ok).toBe(false);
+                expect(result.phases[0]).toMatchObject({ id: 'verify', status: 'fail', note: expect.stringMatching(/is already on npm: not rerun; do not republish: run the Release Recovery workflow/) });
+                expect(readReleaseState(stateRoot, V).phases.tag?.status).toBe('ok');
+                handlers.shift();
+            }
+            expect(calls.some((c) => c.startsWith('gh run rerun'))).toBe(false);
+        });
+        it('names the failed job and the published release instead of suggesting Release Recovery when another job failed', async () => {
+            published = true;
+            handlers.unshift((key) => (key === 'gh run view 901 --json jobs'
+                ? ok(JSON.stringify({ jobs: [{ databaseId: 5, name: 'Create GitHub Release', conclusion: 'success' }, { databaseId: 6, name: 'Copilot smoke (tier 2)', conclusion: 'failure' }] }))
+                : undefined));
             const result = await release({ to: 'verify' });
             expect(result.phases[0]).toMatchObject({
                 status: 'fail',
-                note: expect.stringMatching(/failed job\(s\) Create GitHub Release; oh-my-copilot@5\.12\.2 is on npm and GitHub Release v5\.12\.2 is published, so no Release Recovery/),
+                note: expect.stringMatching(/failed job\(s\) Copilot smoke \(tier 2\); oh-my-copilot@5\.12\.2 is on npm and GitHub Release v5\.12\.2 is published, so no Release Recovery/),
             });
             expect(result.phases[0].details.join('\n')).not.toMatch(/Release Recovery workflow/);
             expect(calls.some((c) => c.startsWith('gh run rerun'))).toBe(false);

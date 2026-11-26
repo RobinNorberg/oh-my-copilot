@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -792,6 +792,134 @@ describe('release-boundary.mjs', () => {
         publishLogPath,
       ])).rejects.toThrow('--publish-log is not valid');
     } finally {
+      await server.close();
+    }
+  });
+
+  it('waits for registry propagation on 404/5xx but fails at once on other statuses and wrong bytes', async () => {
+    const root = makeTempRoot('release-boundary-propagation-');
+    const tarball = releaseTarball();
+    const localTarballPath = writeTarball(root, `${PACKAGE_NAME}-${VERSION}.tgz`, tarball);
+    const evidencePath = join(root, 'release-evidence.json');
+    const evidence = writeEvidence(localTarballPath, evidencePath);
+    let base = '';
+    // Status codes the next tarball requests answer with before the real bytes; 'always404' never serves them.
+    let tarballStatuses: number[] = [];
+    let always404 = false;
+    let servedTarball = tarball;
+    let tarballRequests = 0;
+    const attestation = slsaAttestation(dssePayload(evidence.sha512.hex));
+
+    const server = await startServer((request, response) => {
+      if (request.url === `/${PACKAGE_NAME}/${VERSION}`) {
+        sendJson(response, 200, {
+          name: PACKAGE_NAME,
+          version: VERSION,
+          gitHead: SHA,
+          dist: {
+            tarball: `${base}/tarballs/${PACKAGE_NAME}-${VERSION}.tgz`,
+            integrity: evidence.npmIntegrity,
+            shasum: evidence.sha1,
+            signatures: [{ keyid: 'fixture', sig: 'fixture' }],
+          },
+        });
+        return;
+      }
+      if (request.url === `/${PACKAGE_NAME}`) {
+        sendJson(response, 200, { 'dist-tags': { latest: VERSION } });
+        return;
+      }
+      if (request.url === `/tarballs/${PACKAGE_NAME}-${VERSION}.tgz`) {
+        tarballRequests += 1;
+        const status = always404 ? 404 : tarballStatuses.shift();
+        if (status !== undefined) {
+          response.writeHead(status);
+          response.end();
+          return;
+        }
+        response.writeHead(200, { 'content-type': 'application/octet-stream' });
+        response.end(servedTarball);
+        return;
+      }
+      if (request.url === `/-/npm/v1/attestations/${PACKAGE_NAME}@${VERSION}`) {
+        sendJson(response, 200, { attestations: [attestation] });
+        return;
+      }
+      response.writeHead(404);
+      response.end();
+    });
+    base = server.base;
+    const auditPath = join(root, 'npm-audit-signatures.json');
+    writeFileSync(auditPath, JSON.stringify(auditReport(attestation, base)));
+    const options = {
+      packageName: PACKAGE_NAME,
+      version: VERSION,
+      tag: TAG,
+      sha: SHA,
+      evidencePath,
+      tarballPath: localTarballPath,
+      provenance: 'required',
+      auditPath,
+    };
+    const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    const reset = (statuses: number[]) => {
+      tarballStatuses = statuses;
+      tarballRequests = 0;
+      stderr.mockClear();
+    };
+    try {
+      await withEnvironment({
+        RELEASE_BOUNDARY_REGISTRY_URL: base,
+        RELEASE_BOUNDARY_PROPAGATION_BUDGET_MS: '60000',
+        RELEASE_BOUNDARY_PROPAGATION_DELAY_MS: '0',
+        RELEASE_BOUNDARY_PROPAGATION_MAX_DELAY_MS: '0',
+      }, async () => {
+        reset([404, 404]);
+        await expect(verifyRegistry(options)).resolves.toMatchObject({ provenance: 'required' });
+        expect(tarballRequests).toBe(3);
+        const waits = stderr.mock.calls.map(([line]) => String(line));
+        expect(waits).toHaveLength(2);
+        expect(waits[0]).toContain('registry tarball returned HTTP 404; waiting');
+        expect(waits[0]).toContain('(attempt 2)');
+        expect(waits[1]).toContain('(attempt 3)');
+
+        reset([503, 500]);
+        await expect(verifyRegistry(options)).resolves.toMatchObject({ provenance: 'required' });
+        expect(tarballRequests).toBe(3);
+        expect(String(stderr.mock.calls[0]?.[0])).toContain('registry tarball returned HTTP 503');
+
+        reset([403]);
+        await expect(verifyRegistry(options)).rejects.toThrow(/^registry tarball returned HTTP 403$/);
+        expect(tarballRequests).toBe(1);
+        expect(stderr).not.toHaveBeenCalled();
+
+        reset([]);
+        servedTarball = releaseTarball(SHA, [], '# tampered bytes\n');
+        await expect(verifyRegistry(options)).rejects.toThrow(/registry tarball (byte length|SHA-512) mismatch/);
+        expect(tarballRequests).toBe(1);
+        expect(stderr).not.toHaveBeenCalled();
+        servedTarball = tarball;
+      });
+
+      await withEnvironment({
+        RELEASE_BOUNDARY_REGISTRY_URL: base,
+        RELEASE_BOUNDARY_PROPAGATION_BUDGET_MS: '40',
+        RELEASE_BOUNDARY_PROPAGATION_DELAY_MS: '10',
+        RELEASE_BOUNDARY_PROPAGATION_MAX_DELAY_MS: '10',
+      }, async () => {
+        reset([]);
+        always404 = true;
+        const failure = await verifyRegistry(options).then(() => undefined, (error: unknown) => error as Error);
+        always404 = false;
+        expect(failure).toBeInstanceOf(Error);
+        expect(failure?.message).toContain('registry tarball returned HTTP 404 after');
+        expect(failure?.message).toContain(`${PACKAGE_NAME}@${VERSION} IS published`);
+        expect(failure?.message).toContain('do not republish');
+        expect(failure?.message).toContain(`Release Recovery workflow (tag=${TAG} sha=${SHA})`);
+        expect(tarballRequests).toBeGreaterThan(1);
+      });
+    } finally {
+      stderr.mockRestore();
       await server.close();
     }
   });

@@ -195626,6 +195626,7 @@ function tail4(text9, lines4 = 30) {
   return text9.trim().split(/\r?\n/).slice(-lines4);
 }
 var FULL_SHA3 = /^[0-9a-f]{40}$/;
+var RELEASE_JOB = "Create GitHub Release";
 var RERUN_START_POLLS = 40;
 var LAND_ROUNDS = 500;
 var SUITE_HEARTBEAT_MS = 5 * 6e4;
@@ -196757,6 +196758,7 @@ ${r.stderr}`;
     const sha3 = this.state.mainMergeSha;
     if (!sha3 || !FULL_SHA3.test(sha3)) fail9("no main merge commit recorded; run the promote phase first");
     let run3;
+    let recovered = false;
     for (; ; ) {
       const runs = JSON.parse(this.must("gh", ["run", "list", "--workflow", "ci.yml", "--event", "push", "--commit", sha3, "--json", "databaseId,headBranch,headSha,event,status,conclusion", "--limit", "50"]) || "[]");
       run3 = runs.filter((r) => r.headBranch === tag && r.headSha === sha3 && (r.event ?? "push") === "push").sort((a, b) => b.databaseId - a.databaseId)[0];
@@ -196777,15 +196779,20 @@ ${r.stderr}`;
               return false;
             }
           })();
+          if (published && failedJobs2.length > 0 && failedJobs2.every((j) => j.name === RELEASE_JOB)) {
+            recovered = true;
+            break;
+          }
           if (published) {
             fail9(`tag run ${run3.databaseId} ${run3.conclusion}: failed job(s) ${names2}; ${this.pkgName}@${v} is on npm and GitHub Release ${tag} is published, so no Release Recovery and no rerun`, [
               `triage the failed job(s) below; confirm provenance with npm view ${this.pkgName}@${v} version dist-tags dist.attestations`,
               ...details()
             ]);
           }
-          fail9(`tag run ${run3.databaseId} ${run3.conclusion}, but ${this.pkgName}@${v} is already on npm: not rerun`, [
+          const recovery = `gh workflow run release.yml -f tag=${tag} -f sha=${sha3}`;
+          fail9(`tag run ${run3.databaseId} ${run3.conclusion}, but ${this.pkgName}@${v} is already on npm: not rerun; do not republish: run the Release Recovery workflow (${recovery}), then omg release ${v} --from verify`, [
             `npm view ${this.pkgName}@${v} version dist-tags dist.attestations: if live with provenance, do NOT rerun the run`,
-            `create the GitHub Release with the Release Recovery workflow (release.yml, workflow_dispatch: tag=${tag} sha=${sha3}) or gh release create ${tag} --title ${tag} --notes-file .github/release-body.md`,
+            `create the GitHub Release with the Release Recovery workflow (release.yml, workflow_dispatch: tag=${tag} sha=${sha3}): ${recovery}, or gh release create ${tag} --title ${tag} --notes-file .github/release-body.md`,
             `then re-run omg release ${v} --from verify`,
             ...details()
           ]);
@@ -196816,8 +196823,9 @@ ${r.stderr}`;
     const relInfo = rel.status === 0 ? JSON.parse(rel.stdout) : null;
     if (!relInfo || relInfo.tagName !== tag) problems.push(`gh release view ${tag} found no release`);
     else if (relInfo.isDraft) problems.push(`GitHub Release ${tag} is a draft`);
-    if (problems.length > 0) fail9(`tag run ${runId} is green, but the release is incomplete`, problems);
-    return { status: "ok", note: `${this.pkgName}@${v} is latest with provenance; GitHub Release ${tag} published` };
+    if (problems.length > 0) fail9(`tag run ${runId} is ${recovered ? `${run3.conclusion} (only its ${RELEASE_JOB} job) and was recovered` : "green"}, but the release is incomplete`, problems);
+    const how = recovered ? ` (tag run ${runId} ${run3.conclusion} in ${RELEASE_JOB}; completed by Release Recovery)` : "";
+    return { status: "ok", note: `${this.pkgName}@${v} is latest with provenance; GitHub Release ${tag} published${how}` };
   }
 };
 function resumePoint(state, from) {
@@ -196944,13 +196952,13 @@ async function runRelease(deps, requested) {
         outcome = await release.phase(id);
       } catch (error62) {
         if (error62 instanceof PendingError) {
-          if (ci) await stopCi(`the ${id} phase is pending`);
+          if (ci && !gateOpen) await stopCi(`the ${id} phase is pending`);
           return pendingResult(id, error62);
         }
         throw error62;
       }
       if (!record3(id, outcome)) {
-        if (ci) {
+        if (ci && !gateOpen) {
           record3("pr", await stopCi(`the ${id} phase ${outcome.status} (${outcome.note}); fix it, then re-run omg release ${v} --from ${id}`));
         }
         return { ok: false, version: v, dryRun: false, statePath, phases: results };

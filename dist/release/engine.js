@@ -222,6 +222,8 @@ function tail(text, lines = 30) {
     return text.trim().split(/\r?\n/).slice(-lines);
 }
 const FULL_SHA = /^[0-9a-f]{40}$/;
+/** The tag run's job that publishes to npm and creates the GitHub Release (ci.yml `release` job name). */
+const RELEASE_JOB = 'Create GitHub Release';
 /** Polls for a rerun's new attempt to appear before giving up (bounded even when the clock does not move). */
 const RERUN_START_POLLS = 40;
 /** Rounds of land()'s wait / merge loop before giving up (bounded even when the clock does not move). */
@@ -1542,6 +1544,7 @@ class Release {
         if (!sha || !FULL_SHA.test(sha))
             fail('no main merge commit recorded; run the promote phase first');
         let run;
+        let recovered = false;
         for (;;) {
             const runs = JSON.parse(this.must('gh', ['run', 'list', '--workflow', 'ci.yml', '--event', 'push', '--commit', sha, '--json', 'databaseId,headBranch,headSha,event,status,conclusion', '--limit', '50']) || '[]');
             run = runs.filter((r) => r.headBranch === tag && r.headSha === sha && (r.event ?? 'push') === 'push').sort((a, b) => b.databaseId - a.databaseId)[0];
@@ -1566,15 +1569,22 @@ class Release {
                             return false;
                         }
                     })();
+                    // Only the publishing job failed and the GitHub Release exists: Release Recovery (which re-checks the registry
+                    // archive first) or a manual gh release create completed the release. The checks below still apply.
+                    if (published && failedJobs.length > 0 && failedJobs.every((j) => j.name === RELEASE_JOB)) {
+                        recovered = true;
+                        break;
+                    }
                     if (published) {
                         fail(`tag run ${run.databaseId} ${run.conclusion}: failed job(s) ${names}; ${this.pkgName}@${v} is on npm and GitHub Release ${tag} is published, so no Release Recovery and no rerun`, [
                             `triage the failed job(s) below; confirm provenance with npm view ${this.pkgName}@${v} version dist-tags dist.attestations`,
                             ...details(),
                         ]);
                     }
-                    fail(`tag run ${run.databaseId} ${run.conclusion}, but ${this.pkgName}@${v} is already on npm: not rerun`, [
+                    const recovery = `gh workflow run release.yml -f tag=${tag} -f sha=${sha}`;
+                    fail(`tag run ${run.databaseId} ${run.conclusion}, but ${this.pkgName}@${v} is already on npm: not rerun; do not republish: run the Release Recovery workflow (${recovery}), then omg release ${v} --from verify`, [
                         `npm view ${this.pkgName}@${v} version dist-tags dist.attestations: if live with provenance, do NOT rerun the run`,
-                        `create the GitHub Release with the Release Recovery workflow (release.yml, workflow_dispatch: tag=${tag} sha=${sha}) or gh release create ${tag} --title ${tag} --notes-file .github/release-body.md`,
+                        `create the GitHub Release with the Release Recovery workflow (release.yml, workflow_dispatch: tag=${tag} sha=${sha}): ${recovery}, or gh release create ${tag} --title ${tag} --notes-file .github/release-body.md`,
                         `then re-run omg release ${v} --from verify`,
                         ...details(),
                     ]);
@@ -1615,8 +1625,9 @@ class Release {
         else if (relInfo.isDraft)
             problems.push(`GitHub Release ${tag} is a draft`);
         if (problems.length > 0)
-            fail(`tag run ${runId} is green, but the release is incomplete`, problems);
-        return { status: 'ok', note: `${this.pkgName}@${v} is latest with provenance; GitHub Release ${tag} published` };
+            fail(`tag run ${runId} is ${recovered ? `${run.conclusion} (only its ${RELEASE_JOB} job) and was recovered` : 'green'}, but the release is incomplete`, problems);
+        const how = recovered ? ` (tag run ${runId} ${run.conclusion} in ${RELEASE_JOB}; completed by Release Recovery)` : '';
+        return { status: 'ok', note: `${this.pkgName}@${v} is latest with provenance; GitHub Release ${tag} published${how}` };
     }
 }
 /** First phase to run: --from, else the first phase not yet ok / skipped in the state (runRelease re-checks the skipped ones). */
@@ -1771,14 +1782,16 @@ export async function runRelease(deps, requested) {
             }
             catch (error) {
                 if (error instanceof PendingError) {
-                    if (ci)
+                    if (ci && !gateOpen)
                         await stopCi(`the ${id} phase is pending`);
                     return pendingResult(id, error);
                 }
                 throw error;
             }
             if (!record(id, outcome)) {
-                if (ci) {
+                // Only while pr still waits at its gate: once the gate opened pr recorded its own result, and a later phase
+                // failing (verify, say) must not overwrite it nor void the promote / tag records after it.
+                if (ci && !gateOpen) {
                     // The PR stays open and unmerged; its CI wait ends, and pr records why.
                     record('pr', await stopCi(`the ${id} phase ${outcome.status} (${outcome.note}); fix it, then re-run omg release ${v} --from ${id}`));
                 }

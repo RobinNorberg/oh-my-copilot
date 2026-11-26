@@ -1632,6 +1632,7 @@ jobs:
               BACKOFF_SECONDS=60
             fi
           done
+          # verify-registry waits up to 10 more minutes for reads that still answer 404 / 5xx (the tarball lagged the metadata on v5.31.0 and v5.33.0).
           node scripts/release-boundary.mjs verify-registry --package oh-my-copilot --version "$VERSION" --tag "$GITHUB_REF_NAME" --sha "$GITHUB_SHA" --evidence "$EVIDENCE_JSON" --tarball "$FINAL_TARBALL" --provenance required --audit "$AUDIT_JSON"
 
       - name: Upload finalized release evidence

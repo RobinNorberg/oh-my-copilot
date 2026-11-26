@@ -21,6 +21,12 @@ const REGISTRY_URL_ENV = 'RELEASE_BOUNDARY_REGISTRY_URL';
 const FETCH_TIMEOUT_ENV = 'RELEASE_BOUNDARY_FETCH_TIMEOUT_MS';
 const DEFAULT_REGISTRY_URL = 'https://registry.npmjs.org';
 const DEFAULT_FETCH_TIMEOUT_MS = 15_000;
+const PROPAGATION_BUDGET_ENV = 'RELEASE_BOUNDARY_PROPAGATION_BUDGET_MS';
+const PROPAGATION_DELAY_ENV = 'RELEASE_BOUNDARY_PROPAGATION_DELAY_MS';
+const PROPAGATION_MAX_DELAY_ENV = 'RELEASE_BOUNDARY_PROPAGATION_MAX_DELAY_MS';
+const DEFAULT_PROPAGATION_BUDGET_MS = 600_000;
+const DEFAULT_PROPAGATION_DELAY_MS = 5_000;
+const DEFAULT_PROPAGATION_MAX_DELAY_MS = 60_000;
 const SLSA_PREDICATE_TYPE = 'https://slsa.dev/provenance/v1';
 const IN_TOTO_STATEMENT_TYPE = 'https://in-toto.io/Statement/v1';
 const GITHUB_ACTIONS_WORKFLOW_V1_BUILD_TYPE = 'https://slsa-framework.github.io/github-actions-buildtypes/workflow/v1';
@@ -725,8 +731,70 @@ async function fetchBounded(url, options = {}) {
   }
 }
 
-async function fetchJsonRequired(url, label) {
-  const response = await fetchBounded(url);
+function nonNegativeIntegerEnv(name, fallback, max) {
+  const configured = process.env[name];
+  if (configured === undefined) return fallback;
+  if (!/^\d+$/.test(configured) || Number(configured) > max) {
+    fail(`${name} must be an integer between 0 and ${max}`);
+  }
+  return Number(configured);
+}
+
+// A fresh publish is visible in some registry reads before others (v5.31.0 and v5.33.0 saw the
+// version metadata while the tarball URL still returned 404), so verify-registry waits for
+// "not there yet" answers inside one shared budget. Content mismatches are never retried.
+function propagationWait({ packageName, version, tag, sha }) {
+  fetchTimeoutMs(); // validate the timeout setting up front so a bad value is not retried as a network error
+  const budgetMs = nonNegativeIntegerEnv(PROPAGATION_BUDGET_ENV, DEFAULT_PROPAGATION_BUDGET_MS, 3_600_000);
+  const maxDelayMs = nonNegativeIntegerEnv(PROPAGATION_MAX_DELAY_ENV, DEFAULT_PROPAGATION_MAX_DELAY_MS, 600_000);
+  const initialDelayMs = Math.min(
+    nonNegativeIntegerEnv(PROPAGATION_DELAY_ENV, DEFAULT_PROPAGATION_DELAY_MS, 600_000),
+    maxDelayMs,
+  );
+  return {
+    deadline: Date.now() + budgetMs,
+    budgetMs,
+    initialDelayMs,
+    maxDelayMs,
+    exhausted(label, detail, attempts) {
+      fail(
+        `${label} ${detail} after ${attempts} attempt(s) over ${Math.round(this.budgetMs / 1000)}s; `
+        + `${packageName}@${version} IS published to the registry, it is only not fully visible yet: `
+        + `do not republish; recover the GitHub Release with the Release Recovery workflow (tag=${tag} sha=${sha})`,
+      );
+    },
+  };
+}
+
+async function fetchUntilPresent(url, label, wait, options = {}) {
+  let delayMs = wait.initialDelayMs;
+  for (let attempt = 1; ; attempt += 1) {
+    let response;
+    let detail;
+    try {
+      response = await fetchBounded(url, options);
+    } catch (error) {
+      detail = error instanceof Error ? error.message : String(error);
+    }
+    if (response) {
+      if (response.status === 200) return response;
+      if (response.status !== 404 && response.status < 500) {
+        fail(`${label} returned HTTP ${response.status}`);
+      }
+      detail = `returned HTTP ${response.status}`;
+      await response.arrayBuffer().catch(() => undefined); // release the connection before the next attempt
+    }
+    if (Date.now() + delayMs >= wait.deadline) {
+      wait.exhausted(label, detail, attempt);
+    }
+    process.stderr.write(`release-boundary: ${label} ${detail}; waiting ${delayMs}ms for registry propagation (attempt ${attempt + 1})\n`);
+    await new Promise(resolveDelay => setTimeout(resolveDelay, delayMs));
+    delayMs = Math.min(Math.max(delayMs * 2, 1), wait.maxDelayMs);
+  }
+}
+
+async function fetchJsonRequired(url, label, wait) {
+  const response = wait ? await fetchUntilPresent(url, label, wait) : await fetchBounded(url);
   if (response.status !== 200) {
     fail(`${label} returned HTTP ${response.status}`);
   }
@@ -1027,10 +1095,11 @@ export async function verifyRegistry({ packageName, version, tag, sha, evidenceP
     registry: base,
   });
 
+  const wait = propagationWait({ packageName: expectedPackage, version: expectedVersion, tag: expectedTag, sha: expectedSha });
   const encodedPackage = encodePackageName(expectedPackage);
   const encodedVersion = encodeURIComponent(expectedVersion);
-  const metadata = await fetchJsonRequired(registryPath(base, `${encodedPackage}/${encodedVersion}`), 'registry version metadata');
-  const rootMetadata = await fetchJsonRequired(registryPath(base, encodedPackage), 'registry root metadata');
+  const metadata = await fetchJsonRequired(registryPath(base, `${encodedPackage}/${encodedVersion}`), 'registry version metadata', wait);
+  const rootMetadata = await fetchJsonRequired(registryPath(base, encodedPackage), 'registry root metadata', wait);
   const tarballUrl = validateRegistryMetadata(metadata, rootMetadata, {
     packageName: expectedPackage,
     version: expectedVersion,
@@ -1038,10 +1107,7 @@ export async function verifyRegistry({ packageName, version, tag, sha, evidenceP
     evidence,
     base,
   });
-  const tarballResponse = await fetchBounded(tarballUrl, { headers: { accept: 'application/octet-stream' } });
-  if (tarballResponse.status !== 200) {
-    fail(`registry tarball returned HTTP ${tarballResponse.status}`);
-  }
+  const tarballResponse = await fetchUntilPresent(tarballUrl, 'registry tarball', wait, { headers: { accept: 'application/octet-stream' } });
   let registryTarball;
   try {
     registryTarball = Buffer.from(await tarballResponse.arrayBuffer());
@@ -1063,7 +1129,7 @@ export async function verifyRegistry({ packageName, version, tag, sha, evidenceP
   });
 
   const attestationUrl = registryPath(base, `-/npm/v1/attestations/${encodedPackage}@${encodedVersion}`);
-  const attestationDocument = await fetchJsonRequired(attestationUrl, 'attestation endpoint');
+  const attestationDocument = await fetchJsonRequired(attestationUrl, 'attestation endpoint', wait);
   const registryAttestation = selectSlsaAttestation(attestationDocument);
   assertMatchingSlsaBundles(npmVerifiedAttestation, registryAttestation);
   const payload = decodeDssePayload(npmVerifiedAttestation);
