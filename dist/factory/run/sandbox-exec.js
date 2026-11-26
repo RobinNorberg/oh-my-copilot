@@ -41,18 +41,23 @@ import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { userInfo } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { defaultCopilotRunDeps } from '../../copilot-run/job.js';
-import { allowlistSessionEnv, copilotConfigDenies, loadSandboxSettings, laneToolPaths, missingSandboxEnv, proxyCaEnv, scrubTokens, secretValues, sessionGitHubToken, } from '../../copilot-run/sandbox.js';
+import { allowlistSessionEnv, copilotConfigDenies, loadSandboxSettings, laneToolPaths, missingSandboxEnv, NUGET_HOSTS, proxyCaEnv, scrubTokens, secretValues, sessionGitHubToken, } from '../../copilot-run/sandbox.js';
 import { defaultContainerExec, runContainerGate } from './container-gate.js';
+import { dotnetSandboxArgs, dotnetSandboxEnv, isDotnetExe, msbuildEscape, readRegularFileBounded, sandboxNugetConfig } from '../../copilot-run/dotnet-sandbox.js';
 import { SessionSandboxController } from '../../copilot-run/sandbox-session.js';
 import { errText, withTimeout } from '../../copilot-run/timeout.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
 import { TRUSTED_READ_ENV } from '../../ship/exec.js';
 import { redactSecrets } from '../heal/sanitize.js';
-import { resolveShimTarget, rethrowSdkStartError, runtimePid } from '../../smoke/copilot-sdk-driver.js';
-import { RUNTIME_MIN_MAX_CREDITS, SDK_INSTALL_COMMAND } from '../../smoke/copilot-sdk-scenarios.js';
+import { resolveShimTarget, rethrowSdkStartError, runtimePid, spawnedClientOptions } from '../../smoke/copilot-sdk-driver.js';
+import { RUNTIME_MIN_MAX_CREDITS, SDK_INSTALL_COMMAND, SDK_PACKAGE } from '../../smoke/copilot-sdk-scenarios.js';
 import { buildSessionEnv, loginIdentity } from '../../smoke/copilot-session-env.js';
 import { addRecordingDenyLiterals } from '../../smoke/replay/handler.js';
 import { childEnv } from '../../utils/windows-search.js';
+/** The file name MSBuild writes NuGet's restore graph to (SandboxRunRequest.restoreGraph): in the command's own job temp dir. */
+export const RESTORE_GRAPH_FILE = 'omg-restore-graph.json';
+/** The largest restore graph read back (5 projects write about 110 KB with .NET SDK 10.0.101). */
+export const RESTORE_GRAPH_MAX_BYTES = 32 * 1024 * 1024;
 /** The output tail a sandboxed command keeps (as the local gate record, local-gate.ts LOCAL_GATE_TAIL_CHARS). */
 export const SANDBOX_OUTPUT_TAIL_CHARS = 8_000;
 const START_TIMEOUT_MS = 60_000;
@@ -183,14 +188,21 @@ export async function runSandboxed(argv, o, deps) {
     const noVerdict = (reason) => ({ ran: false, reason, started: true });
     const sleep = deps.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
     const marker = `${MARKER_PREFIX}${randomBytes(8).toString('hex')}`;
-    const command = sandboxShellCommand(deps.platform, argv, o.cwd, marker);
+    // A dotnet command: one MSBuild node (dotnet-sandbox.ts), plus the env and NuGet grant below.
+    const dotnet = isDotnetExe(argv[0]);
+    const jobHome = join(o.jobRoot, `gate-${Date.now().toString(36)}-${randomBytes(4).toString('hex')}`);
+    // restoreGraph: MSBuild writes NuGet's restore graph into the job's own temp dir (relocatedProfileEnv TEMP), read back below.
+    const graphFile = o.restoreGraph ? join(jobHome, 'tmp', RESTORE_GRAPH_FILE) : undefined;
+    if (graphFile && (!dotnet || graphFile.includes(';')))
+        return refuse('the restore graph can only be written by a dotnet command, to a path without ";"');
+    const run = graphFile ? [...argv, `-p:RestoreGraphOutputPath=${msbuildEscape(graphFile)}`] : argv;
+    const command = sandboxShellCommand(deps.platform, dotnet ? [run[0], ...dotnetSandboxArgs(run.slice(1), { mtp: o.dotnetMtp === true })] : run, o.cwd, marker);
     if (command === null)
         return refuse('the command cannot be passed to the sandbox shell unchanged (a NUL, or on Windows an empty argument or a double quote)');
     const max = sandboxCommandMaxChars(deps.platform);
     if (command.length > max) {
         return refuse(`the command is too long for the sandbox shell: it encodes to ${command.length} characters, above the ${max} that ${deps.platform === 'win32' ? 'a Windows command line' : 'one shell argument'} can safely carry; shorten the configured command`);
     }
-    const jobHome = join(o.jobRoot, `gate-${Date.now().toString(36)}-${randomBytes(4).toString('hex')}`);
     // The runtime's own working directory and its only trusted folder: empty, fresh per command, never the checkout.
     const workDir = join(jobHome, 'work');
     let client = null;
@@ -201,7 +213,7 @@ export async function runSandboxed(argv, o, deps) {
         mkdirSync(workDir, { recursive: true });
         const loaded = await deps.loadSdk().catch(() => null);
         if (!loaded)
-            return notStarted(`@github/copilot-sdk is not installed or could not be loaded, so the sandbox cannot start (${SDK_INSTALL_COMMAND})`);
+            return notStarted(`${SDK_PACKAGE} is not installed or could not be loaded, so the sandbox cannot start (${SDK_INSTALL_COMMAND})`);
         const found = deps.resolveBin();
         const bin = found && deps.platform === 'win32' && /\.(cmd|bat|ps1)$/i.test(found) ? resolveShimTarget(found) : found;
         if (!bin)
@@ -220,24 +232,36 @@ export async function runSandboxed(argv, o, deps) {
         // GIT_CEILING_DIRECTORIES: a git root search from the runtime's working dir stops at the job root, so it never reaches
         // the root repository's work tree (the job root is under its .omg/) and its hooks or instructions.
         Object.assign(env, { GIT_TERMINAL_PROMPT: '0', GCM_INTERACTIVE: 'never', COPILOT_ALLOW_ALL: 'false', GIT_CEILING_DIRECTORIES: resolve(o.jobRoot) });
+        const realHome = (deps.realHome ?? (() => userInfo().homedir))();
+        const dotnetGrants = [];
+        const dotnetWrites = [];
+        const dotnetNotes = [];
+        if (dotnet) {
+            const d = dotnetSandboxEnv(env.USERPROFILE, deps.env, realHome, deps.platform, o.nugetPackages, sandboxNugetConfig(o.cwd, env.USERPROFILE, deps.platform, { hierarchy: o.nugetHierarchy, noAdd: o.nugetNoAddSource === true, fromGit: o.nugetFromGit === true }));
+            Object.assign(env, d.env);
+            dotnetGrants.push(...d.readonly);
+            dotnetWrites.push(...d.readwrite);
+            dotnetNotes.push(...d.notes);
+        }
         const credentialSource = { userConfigDir: deps.userConfigDir(), platform: deps.platform };
         const gitHubToken = sessionGitHubToken(deps.env, credentialSource);
         const secrets = secretValues(deps.env, credentialSource);
         // A recording (cassette record mode) never carries the session credential, the stored login token included.
         if (gitHubToken)
             addRecordingDenyLiterals([gitHubToken]);
-        const { CopilotClient, RuntimeConnection } = loaded.module;
-        const c = new CopilotClient({
-            connection: RuntimeConnection.forStdio({ path: bin, args: ['--max-ai-credits', String(RUNTIME_MIN_MAX_CREDITS)], env }),
+        const c = new loaded.module.CopilotClient(spawnedClientOptions(loaded, {
+            path: bin,
+            args: ['--max-ai-credits', String(RUNTIME_MIN_MAX_CREDITS)],
+            env,
             baseDirectory: jobHome,
             workingDirectory: workDir,
-        });
+        }));
         client = c;
         await withTimeout(c.start().catch(rethrowSdkStartError), START_TIMEOUT_MS, 'client.start()');
         pid = runtimePid(c);
         const pluginRoot = deps.pluginRoot();
-        const realHome = (deps.realHome ?? (() => userInfo().homedir))();
-        const settings = { ...o.settings, enabled: true, writeUnsandboxed: 'refuse', writeNetwork: o.network, extraReadwritePaths: [] };
+        // 'nuget' (the dotnet restore step): only NUGET_HOSTS through onlyHosts below, never the configured hosts.
+        const settings = { ...o.settings, enabled: true, writeUnsandboxed: 'refuse', writeNetwork: o.network === 'nuget' ? 'none' : o.network, extraReadwritePaths: [] };
         const notes = [];
         const sandbox = new SessionSandboxController({
             profile: 'write',
@@ -259,7 +283,9 @@ export async function runSandboxed(argv, o, deps) {
                     settings,
                     hostCommits: true,
                     toolPaths: (deps.toolPaths ?? laneToolPaths)(deps.env, deps.platform),
-                    extraReadonly: proxy.caPaths,
+                    extraReadonly: [...proxy.caPaths, ...dotnetGrants],
+                    ...(dotnetWrites.length > 0 ? { extraReadwrite: dotnetWrites } : {}),
+                    ...(o.network === 'nuget' ? { onlyHosts: NUGET_HOSTS } : {}),
                     // A keyring-less host's plaintext login token, also when COPILOT_HOME moved the config dir out of ~/.copilot.
                     ...(deps.platform === 'win32' ? {} : { extraDenied: copilotConfigDenies(credentialSource.userConfigDir, deps.platform) }),
                     ...(o.mainRoot ? { mainRoot: resolve(o.mainRoot) } : {}),
@@ -280,25 +306,29 @@ export async function runSandboxed(argv, o, deps) {
         }
         const attested = new Map();
         const onPermissionRequest = () => ({ kind: 'reject', feedback: 'omg factory run: a gate session grants nothing' });
-        const atCreate = sandbox.atCreate(loaded, config);
+        const atCreate = sandbox.atCreate(config);
         session = await withTimeout(c.createSession({
-            onPermissionRequest,
-            onEvent: (e) => {
-                const data = (e.data ?? {});
-                if (e.type === 'tool.execution_start')
-                    sandbox.toolStarted(data);
-                if (e.type === 'tool.execution_complete') {
-                    attested.set(String(data.toolCallId ?? ''), data.sandboxed);
-                    sandbox.toolCompleted(data);
-                }
+            permissions: { onRequest: onPermissionRequest, ...(atCreate ? { sandbox: config } : {}) },
+            events: {
+                onEvent: (e) => {
+                    const data = (e.data ?? {});
+                    if (e.type === 'tool.execution_start')
+                        sandbox.toolStarted(data);
+                    // A confirmed sandbox switched off mid-command: recorded in sandbox.stateEscape, nothing is counted.
+                    if (e.type === 'session.sandbox_state_changed')
+                        sandbox.stateChanged(data);
+                    if (e.type === 'tool.execution_complete') {
+                        attested.set(String(data.toolCallId ?? ''), data.sandboxed);
+                        sandbox.toolCompleted(data);
+                    }
+                },
             },
             // No plugin: its hooks would run in the runtime, outside the sandbox.
-            pluginDirectories: [],
+            plugins: { directories: [] },
             workingDirectory: workDir,
-            disabledMcpServers: ['github-mcp-server'],
-            excludedTools: [],
-            ...(gitHubToken ? { gitHubToken } : {}),
-            ...(atCreate ? { sandboxConfig: config } : {}),
+            mcp: { disabledServers: ['github-mcp-server'] },
+            tools: { excludedTools: [] },
+            ...(gitHubToken ? { github: { token: gitHubToken } } : {}),
         }), RPC_TIMEOUT_MS, 'createSession()');
         await sandbox.confirm(session, config, atCreate);
         if (sandbox.state?.mode !== 'enforced')
@@ -329,6 +359,8 @@ export async function runSandboxed(argv, o, deps) {
         // The completion event can trail the RPC answer.
         for (let waited = 0; id && !attested.has(id) && waited < ATTEST_WAIT_MS; waited += 100)
             await sleep(100);
+        if (sandbox.stateEscape)
+            return noVerdict(`${sandbox.stateEscape}; nothing is counted`);
         const escapes = sandbox.state?.unsandboxedCalls ?? 0;
         if (escapes > 0)
             return noVerdict(`${escapes} call(s) of the gate session were not attested sandboxed: true; nothing is counted`);
@@ -351,7 +383,14 @@ export async function runSandboxed(argv, o, deps) {
         const successOk = r.success === true || read.code !== 0;
         if (!exitOk || !successOk)
             return noVerdict('the sandbox shell\'s own result contradicts the exit code the command printed');
-        return { ran: true, status: read.code, output: tail(read.output.trim()), timedOut: false, ...marked };
+        // A failing dotnet command: why its NuGet packages folder was not granted (the park's output tail shows it).
+        const why = read.code !== 0 && dotnetNotes.length > 0 ? `\n${dotnetNotes.join('\n')}` : '';
+        // The graph the command wrote (the job temp dir is the command's own): a regular file of one link, bounded, never followed.
+        let graph = null;
+        if (graphFile && read.code === 0) {
+            graph = readRegularFileBounded(graphFile, RESTORE_GRAPH_MAX_BYTES, { singleLink: true });
+        }
+        return { ran: true, status: read.code, output: `${tail(read.output.trim())}${why}`, timedOut: false, ...marked, ...(graph ? { restoreGraph: graph.toString('utf8') } : {}) };
     }
     catch (err) {
         if (started)
@@ -421,6 +460,8 @@ export function createSandboxRunner(root, deps = defaultCopilotRunDeps(), layers
     return async (req) => {
         // isolation "container": resolved by the engine from the user config; the Copilot sandbox is never tried instead.
         if (req.container) {
+            if (req.restoreGraph)
+                return { ran: false, reason: 'the restore graph is evaluated in the OS sandbox only, never in the gate container', refused: true };
             if (!req.runLabel)
                 return { ran: false, reason: 'the gate container request has no run label', unavailable: true };
             return runContainerGate(req, req.container, req.runLabel, { exec: defaultContainerExec, platform: deps.platform });
@@ -443,6 +484,12 @@ export function createSandboxRunner(root, deps = defaultCopilotRunDeps(), layers
             ...(req.mainRoot ? { mainRoot: req.mainRoot } : {}),
             ...(req.nodeModulesTarget ? { nodeModulesTarget: req.nodeModulesTarget } : {}),
             ...(req.nestedNodeModulesTargets ? { nestedNodeModulesTargets: req.nestedNodeModulesTargets } : {}),
+            ...(req.dotnetMtp ? { dotnetMtp: true } : {}),
+            ...(req.nugetPackages ? { nugetPackages: req.nugetPackages } : {}),
+            ...(req.nugetHierarchy ? { nugetHierarchy: req.nugetHierarchy } : {}),
+            ...(req.nugetNoAddSource ? { nugetNoAddSource: true } : {}),
+            ...(req.nugetFromGit ? { nugetFromGit: true } : {}),
+            ...(req.restoreGraph ? { restoreGraph: true } : {}),
         }, deps);
     };
 }

@@ -5,23 +5,37 @@
  * most once per window, mentioning the routing handles of the paths its plan
  * names. READ-ONLY on git and the forge: the routing file comes from the
  * base commit through the caller's read shape, nothing is fetched, and the
- * result is printed by poll. The step keeps its own record,
- * `<state>/factory/reminders.json`; it never writes a sealed run state.
+ * result is printed by poll. The step keeps its own record in the host
+ * factory ledger, `<ledgerDir>/reminders/<repo key>.json` (the repository key
+ * of the ledger's other per-repository files), never in the repository's
+ * lane-writable `.omg/`; it never writes a sealed run state. The record of
+ * older versions, `<state>/factory/reminders.json`, is ignored (never read,
+ * never removed).
  */
-import { existsSync, readFileSync } from 'fs';
-import { join } from 'path';
-import { atomicWriteFileSync, ensureDirSync } from '../../lib/atomic-write.js';
+import { existsSync, mkdirSync } from 'fs';
+import { dirname, join } from 'path';
+import { atomicWriteFileSync } from '../../lib/atomic-write.js';
 import { lockPathFor, withFileLockSync } from '../../lib/file-lock.js';
 import { visibleLine } from '../../forge/review-feedback.js';
-import { factoryStateDir, runLabel, TERMINAL_FACTORY_PHASES, verifyFactoryIntegrity } from '../run/state.js';
+import { ledgerRepoId } from '../run/ledger.js';
+import { runLabel, TERMINAL_FACTORY_PHASES, verifyFactoryIntegrity } from '../run/state.js';
+import { statusArgv, validRunKey } from '../run/gate-next.js';
+import { readRegularFile } from '../attention/collect.js';
 import { pathsInText, TEAM_ROUTING_PATH } from './context.js';
 import { parseRouting, routeFor } from './routing.js';
-export const remindersPath = (root) => join(factoryStateDir(root), 'reminders.json');
+/** The record's gateAt for a run reminded as not verified (its own gate time is not trusted). */
+const UNVERIFIED_AT = 'unverified';
+/** The record of `root` in the host factory ledger (outside the repository), keyed like the ledger's other per-repository files. */
+export const remindersPath = (ledgerDir, root) => join(ledgerDir, 'reminders', `${ledgerRepoId(root)}.json`);
+/** The record's size cap: a few runs' entries; a larger file is read as empty. */
+const RECORD_MAX_BYTES = 64 * 1024;
+/** The record through the bounded regular-file read: a link, FIFO, directory or oversize file reads as empty (never opened or followed). */
 function readRecord(path) {
-    if (!existsSync(path))
+    const file = readRegularFile(path, RECORD_MAX_BYTES);
+    if (!('bytes' in file))
         return {};
     try {
-        const raw = JSON.parse(readFileSync(path, 'utf8'));
+        const raw = JSON.parse(file.bytes.toString('utf8'));
         if (!raw || typeof raw !== 'object' || Array.isArray(raw))
             return {};
         const out = {};
@@ -36,13 +50,16 @@ function readRecord(path) {
         return {};
     }
 }
-/** The reminders due now; records them so the same run is reminded once per window. */
 export function staleGateReminders(o) {
     if (!o.afterHours || o.afterHours <= 0)
         return [];
     const windowMs = o.afterHours * 3_600_000;
-    const path = remindersPath(o.root);
-    ensureDirSync(join(path, '..'));
+    const path = remindersPath(o.ledgerDir, o.root);
+    // No run parked at a gate and no record to prune: nothing to remind or record, so no directory and no lock.
+    const parkedAny = [...o.runs.values()].some((s) => s.gate && !TERMINAL_FACTORY_PHASES.includes(s.phase));
+    if (!parkedAny && !existsSync(path))
+        return [];
+    mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
     return withFileLockSync(lockPathFor(path), () => {
         const before = readRecord(path);
         const next = {};
@@ -52,6 +69,22 @@ export function staleGateReminders(o) {
             if (!s.gate || TERMINAL_FACTORY_PHASES.includes(s.phase))
                 continue;
             const label = runLabel(key);
+            if (o.untrusted?.has(key)) {
+                const rec = before[label];
+                if (!rec || rec.gateAt !== UNVERIFIED_AT) {
+                    next[label] = { gateAt: UNVERIFIED_AT, remindedAt: new Date(o.nowMs).toISOString() };
+                    continue;
+                }
+                const last = Date.parse(rec.remindedAt);
+                if (Number.isFinite(last) && o.nowMs - last < windowMs) {
+                    next[label] = rec;
+                    continue;
+                }
+                if (validRunKey(key))
+                    due.push({ run: key, verified: false, next: statusArgv(key).join(' ') });
+                next[label] = { gateAt: UNVERIFIED_AT, remindedAt: new Date(o.nowMs).toISOString() };
+                continue;
+            }
             if (!verifyFactoryIntegrity(s)) {
                 o.warn?.(`reminder: ${label} is unsound (its state fails the integrity seal), skipped`);
                 continue;
@@ -59,11 +92,17 @@ export function staleGateReminders(o) {
             const parkedAt = Date.parse(s.gate.at);
             if (!Number.isFinite(parkedAt))
                 continue;
+            // The record lives outside the repository; as defence in depth it may still only postpone or repeat a reminder, never
+            // bring one forward (a lane whose shell reaches the home directory can write it). Due only once the sealed
+            // park time is a window old; its remindedAt counts clamped to [gate.at, now] (kept clamped, so a future time
+            // postpones by one window at most from when it was first read).
+            if (o.nowMs - parkedAt < windowMs)
+                continue;
             const rec = before[label];
-            const last = rec && rec.gateAt === s.gate.at ? Date.parse(rec.remindedAt) : parkedAt;
-            if (!Number.isFinite(last) || o.nowMs - last < windowMs) {
-                if (rec && rec.gateAt === s.gate.at)
-                    next[label] = rec;
+            const recorded = rec && rec.gateAt === s.gate.at ? Date.parse(rec.remindedAt) : Number.NaN;
+            const last = Number.isFinite(recorded) ? Math.min(o.nowMs, Math.max(parkedAt, recorded)) : parkedAt;
+            if (o.nowMs - last < windowMs) {
+                next[label] = { gateAt: s.gate.at, remindedAt: new Date(last).toISOString() };
                 continue;
             }
             if (routes === undefined) {

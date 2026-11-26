@@ -27,6 +27,7 @@ describe('file identity helpers stat with BigInt ids', () => {
     ['src/lib/atomic-write.ts', 'function descriptorStats('],
     ['src/lib/atomic-write.ts', 'function pathnameStats('],
     ['src/tools/deepinit-manifest.ts', 'function scanDirectories('],
+    ['src/factory/attention/collect.ts', 'export function readRegularFile('],
   ])('%s %s', (file, signature) => {
     expect(functionBody(read(...file.split('/')), signature)).toContain('{ bigint: true }');
   });

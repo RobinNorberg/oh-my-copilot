@@ -47,7 +47,7 @@ import { createSandboxRunner, type SandboxRunner } from '../../factory/run/sandb
 import { inspectGateImageId } from '../../factory/run/container-gate.js';
 import { releaseTamperHold, tamperHoldMessage } from '../../factory/run/tamper-quarantine.js';
 import {
-  acquireFactoryRepoOwnerForRun, defaultOwnerDeps, describeOwner, FactoryBusyError, FactoryTamperHoldError, factoryCancelRequested, factoryOwnerPath, factoryRepoOwnerPath, factoryStateDir, factoryStatePath, ownerFromOtherCheckout, ownerHolding, readFactoryState,
+  acquireFactoryRepoOwnerForRun, defaultOwnerDeps, describeOwner, FactoryBusyError, FactoryTamperHoldError, factoryCancelRequested, factoryOwnerPath, factoryRepoOwnerPath, factoryStateDir, factoryStatePath, ownerFromOtherCheckout, ownerHolding, parseFactoryState, readFactoryState,
   refuseWhileEngineRuns, runLabel, unreadableOwnerMessage, withOwnerFileLock, type HeldOwner,
   requestFactoryCancel, verifyFactoryIntegrity, type FactoryOwner, type FactoryRunKey, type FactoryRunState,
   acquireFactoryOwner, acquireRunSlot, factoryImportLockPath, heldSlots, withRepoImportLock, withRepoImportLockAsync, tryScanLock, SCAN_WAIT_MS, type HeldSlot,
@@ -61,15 +61,17 @@ import { CheckIncompatibleError, CheckUsageError, EXIT_CHECK_FAILED, EXIT_CHECK_
 import { runFactoryEnqueue } from '../../factory/enqueue.js';
 import { factoryTriageCommand } from './factory-triage.js';
 import { resolveHealConfig } from '../../factory/heal/config.js';
-import { defaultLedgerDir, emptyHooksDir } from '../../factory/run/ledger.js';
+import { currentBytes, defaultLedgerDir, emptyHooksDir, EngineLedger } from '../../factory/run/ledger.js';
+import { humanCommand, stateGateNext } from '../../factory/run/gate-next.js';
 import type { FactoryPollDeps } from '../../factory/poll.js';
 import { listenForgeRefusal } from '../../factory/setup/detect.js';
 import { factorySetupCommand } from './factory-setup.js';
 import { factoryBenchCommand } from './factory-bench.js';
 import { factoryBoardCommand } from './factory-board.js';
-import { defaultDashboardDeps, factoryDashboardCommand } from './factory-dashboard.js';
+import { defaultDashboardDeps, factoryDashboardCommand, type ForgeRead } from './factory-dashboard.js';
+import { defaultAttentionDeps, factoryAttentionCommand } from './factory-attention.js';
 import { forgePrStateReader, humanMergeCandidate, humanMergeLines, recordHumanMerges, type PrStateRead } from '../../factory/run/human-merged.js';
-import { readRuns } from '../../factory/board/collect.js';
+import { readRuns, runFactoryBoard, type BoardJson } from '../../factory/board/collect.js';
 import { factoryPrCommand } from './factory-pr.js';
 import { factoryPollCommand } from './factory-poll.js';
 import { defaultPollAutoStart, defaultPollHealScan } from '../../factory/poll.js';
@@ -296,7 +298,7 @@ export function renderFactoryRunState(state: FactoryRunState, o: { gate?: boolea
   lines.push(`lanes ${state.lanes.length}  run AI credits ${runCredits(state).toFixed(2)}  elapsed ${Math.round(state.elapsedMs / 60_000)} min`);
   for (const lane of state.lanes) {
     const credits = lane.usage ? `${lane.usage.credits.toFixed(2)}/${lane.maxCredits}` : `-/${lane.maxCredits}`;
-    lines.push(`  ${lane.id} ${lane.status}${lane.verdict ? ` ${lane.verdict}` : ''} credits ${credits}${lane.model ? ` model ${plainText(lane.model)}` : ''}${lane.jobId ? ` job ${lane.jobId}` : ''}${lane.sandbox ? ` sandbox ${lane.sandbox.mode}` : ''}${lane.lastEventAt && (lane.status === 'running' || lane.status === 'stalled') ? ` last event ${lane.lastEventAt}` : ''}`);
+    lines.push(`  ${lane.id} ${lane.status}${lane.verdict ? ` ${lane.verdict}` : ''} credits ${credits}${lane.model ? ` model ${plainText(lane.model)}` : ''}${lane.jobId ? ` job ${lane.jobId}` : ''}${lane.sandbox ? ` sandbox ${lane.sandbox.mode}${lane.sandbox.stateEscaped ? ' (escaped mid-session)' : ''}` : ''}${lane.lastEventAt && (lane.status === 'running' || lane.status === 'stalled') ? ` last event ${lane.lastEventAt}` : ''}`);
     if (lane.status === 'stalled' && lane.note) lines.push(chalk.yellow(`    ${plainText(lane.note)}`));
   }
   for (const h of state.history.slice(-5)) lines.push(chalk.gray(`  ${h.at} ${h.from ?? '-'} -> ${h.to}: ${h.note}`));
@@ -509,7 +511,7 @@ export function factoryRunCommand(deps: FactoryRunDeps = defaultFactoryRunDeps):
     .option('--next', 'Run the next runnable item (omg factory check order: priority, then id); exit 0 when nothing is runnable')
     .option('--parent <spec>', 'With --next: pick among the children of this spec item instead of factory.intake.source')
     .option('--dry-run', 'Resolve the issue and plan and print the next step; no state, lanes or pushes')
-    .option('--allow-gate-change', 'Local forge: accept the one change to the local gate\'s definition (package.json script, package-manager config or gate file) that parked the run at gate-definition-changed; a later change parks again')
+    .option('--allow-gate-change', 'Local forge: accept the one change to the local gate\'s definition (package.json script, package-manager config, gate file, or a dotnet gate\'s project and MSBuild files) that parked the run at gate-definition-changed; a later change parks again')
     .option('--allow-unsandboxed-lanes', 'Accept, for the parked head only, that write lanes ran without the enforced sandbox (the run parked at human-review for it): you checked the threads and reviews of the PR yourself; a new head parks again')
     .option('--allow-unsandboxed-gates', 'Accept, for the parked head only, that prepare\'s checks and the local gate run the PR\'s code WITHOUT the OS sandbox, as you (the run parked at gates-unsandboxed for it): you reviewed the diff yourself; a new head parks again')
     .option('--allow-secret-shapes', 'Accept the secret-shaped content (the key or token shapes, by path and kind, the park named) that parked a lane commit at secret-shaped-content, for that lane commit only: you checked they are test fixtures, not real secrets; a new path or kind parks again')
@@ -931,14 +933,42 @@ export function factoryRunCommand(deps: FactoryRunDeps = defaultFactoryRunDeps):
           return 0;
         }
         const issue = parseIssue(issueRaw);
-        const stored = readFactoryState(root, issue);
-        if (!stored) throw new FactoryUsageError(`no factory run for issue #${issue} (${factoryStatePath(root, issue)})`);
+        // One read: the seal, the ledger check and the parse all see the same bytes.
+        const path = factoryStatePath(root, issue);
+        const bytes = currentBytes(path);
+        if (!bytes) throw new FactoryUsageError(`no factory run for issue #${issue} (${path})`);
+        const stored = parseFactoryState(path, issue, bytes.toString('utf8'));
         const state = factoryCancelRequested(root, issue) ? { ...stored, cancelRequested: true } : stored;
         const integrity = verifyFactoryIntegrity(stored);
-        if (c.optsWithGlobals().json) console.log(JSON.stringify({ ...state, integrityOk: integrity, runCredits: runCredits(state) }, null, 2));
-        else {
+        const ledgerDir = deps.ledgerDir ?? defaultLedgerDir();
+        let ledgerOk = false;
+        // null: the ledger could not be read (counts as a mismatch).
+        let tracked: boolean | null = null;
+        try {
+          const ledger = EngineLedger.open(ledgerDir, root, issue);
+          tracked = ledger.tracks(path);
+          ledgerOk = ledger.matches(path, bytes);
+        } catch { ledgerOk = false; }
+        // The next commands only from a state the engine sealed and last wrote: a copyable command from an edited state is an injection vector.
+        const trusted = integrity && ledgerOk;
+        let hold = false;
+        try { hold = tamperHoldMessage(ledgerDir, root) !== null; } catch { hold = true; }
+        const next = trusted ? stateGateNext(stored, root, hold) : [];
+        if (c.optsWithGlobals().json) {
+          const shown = !trusted && state.gate?.next ? { ...state, gate: (({ next: _n, ...g }) => g)(state.gate) } : state;
+          console.log(JSON.stringify({ ...shown, integrityOk: integrity, ledgerOk, runCredits: runCredits(state), ...(state.gate ? { next } : {}) }, null, 2));
+        } else {
           console.log(renderFactoryRunState(state));
+          // No record is not a mismatch: a moved repository, another host or OMC_STATE_DIR (attention's wording).
+          const unrecorded = integrity && !ledgerOk && tracked === false;
           if (!integrity) console.log(chalk.red('integrity check FAILED: the state was edited outside omg factory run'));
+          else if (unrecorded) console.log(chalk.yellow(`cannot be verified on this host: no engine ledger record in ${plainText(ledgerDir)} (moved repository, another host or OMC_STATE_DIR, or written outside the engine); next steps withheld`));
+          else if (!ledgerOk) console.log(chalk.red('ledger check FAILED: the state is not the one the engine last wrote'));
+          if (state.gate && !trusted && !unrecorded) console.log(chalk.yellow('next steps not shown: the state did not pass its checks'));
+          else if (next.length > 0) {
+            console.log('next:');
+            for (const n of next) console.log(`  ${plainText(n.label)}${n.billed ? ' (can start billed lanes)' : ''}: ${plainText(humanCommand(n.argv))}`);
+          }
         }
         return 0;
       }));
@@ -973,6 +1003,26 @@ export function cliHumanMerges(deps: Pick<FactoryRunDeps, 'exec' | 'base' | 'for
     return [`not checked for a human merge: the forge could not be loaded: ${error instanceof Error ? error.message : String(error)}`];
   }
   return humanMergeLines(recordHumanMerges(root, candidates, { readPrState, ledgerDir: deps.ledgerDir ?? defaultLedgerDir(), now: () => new Date().toISOString() }));
+}
+
+const HUMAN_MERGE_LINE = /human merge|merged by a human|closed without merging/;
+
+/**
+ * `omg factory dashboard --forge`: the board's read (tracker buckets and live stages; it records the
+ * stopped runs whose PR a human merged, as `factory board` does). When the board cannot run (no intake
+ * source, no usable forge), the human merges are still recorded through cliHumanMerges.
+ */
+async function dashboardForgeRead(root: string): Promise<ForgeRead> {
+  const out: string[] = [];
+  const err: string[] = [];
+  try {
+    await runFactoryBoard({ json: true }, { ...defaultFactoryCheckDeps(defaultFactoryRunDeps.base), out: (l) => out.push(l), err: (l) => err.push(l) });
+    const board = JSON.parse(out.join('\n')) as BoardJson;
+    return { lines: board.warnings.filter((w) => HUMAN_MERGE_LINE.test(w)), board };
+  } catch (error) {
+    const why = error instanceof Error ? error.message : String(error);
+    return { lines: [`--forge: the tracker was not read (${why})`, ...cliHumanMerges(defaultFactoryRunDeps, root, readRuns(root, []).runs)], board: null };
+  }
 }
 
 /** `omg factory enqueue` (shipyard ↔ factory design §3.2-§3.4); the command lives in src/factory/enqueue.ts. */
@@ -1030,7 +1080,8 @@ export function factoryCommand(): Command {
   cmd.addCommand(factoryEnqueueCommand(defaultFactoryCheckDeps(defaultFactoryRunDeps.base)));
   cmd.addCommand(factoryTriageCommand(defaultFactoryCheckDeps(defaultFactoryRunDeps.base)));
   cmd.addCommand(factoryBoardCommand(defaultFactoryCheckDeps(defaultFactoryRunDeps.base)));
-  cmd.addCommand(factoryDashboardCommand({ ...defaultDashboardDeps, humanMerges: (root) => cliHumanMerges(defaultFactoryRunDeps, root, readRuns(root, []).runs) }));
+  cmd.addCommand(factoryDashboardCommand({ ...defaultDashboardDeps, limits: defaultFactoryRunDeps.limits, forgeRead: dashboardForgeRead }));
+  cmd.addCommand(factoryAttentionCommand({ ...defaultAttentionDeps, limits: defaultFactoryRunDeps.limits }));
   cmd.addCommand(factoryPrCommand(defaultFactoryCheckDeps(defaultFactoryRunDeps.base)));
   cmd.addCommand(factoryPollCommand({
     ...defaultFactoryCheckDeps(defaultFactoryRunDeps.base),

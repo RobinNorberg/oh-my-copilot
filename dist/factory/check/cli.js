@@ -35,7 +35,7 @@ import { baseFileExists, describePrepareChecks, skippedPrepareChecks } from '../
 import { TRUSTED_FETCH_ENV, TRUSTED_READ_ENV } from '../../ship/exec.js';
 import { parseJsonc } from '../../utils/jsonc.js';
 import { isAdoCommand, runGuardedAdo } from '../../forge/ado/guard.js';
-import { assertFactoryCommand, FactorySafetyError, isPlainRepoPath } from '../run/exec.js';
+import { assertFactoryCommand, FactorySafetyError, FOR_EACH_REF_FORMAT, isPlainRepoPath } from '../run/exec.js';
 import { ghRepoArg } from '../../forge/github/gh.js';
 import { isReviewFeedbackArgs } from '../../forge/github/graphql.js';
 import { isRequiredChecksArgs } from '../../forge/github/checks.js';
@@ -133,7 +133,9 @@ export function checkGuardExec(exec, marker, ado = () => undefined, command = 'o
         else if (file === 'git') {
             // ls-tree: readBaseFile's "absent" probe only (`ls-tree --full-tree -z <sha> -- <path>`; the factory guard checks the path).
             const read = (CHECK_GIT.has(args[0]) && (args[0] !== 'show' || (args.length === 2 && /^[0-9a-f]{40}:/.test(args[1]))))
-                || (args[0] === 'ls-tree' && args.length === 6 && args[1] === '--full-tree' && args[2] === '-z' && /^[0-9a-f]{40}$/.test(args[3]) && args[4] === '--');
+                || (args[0] === 'ls-tree' && args.length === 6 && args[1] === '--full-tree' && args[2] === '-z' && /^[0-9a-f]{40}$/.test(args[3]) && args[4] === '--')
+                // The local forge's human-merge read (forgePrStateReader -> replaceObjectsProblem): the engine's one ref listing, exactly.
+                || same(args, ['for-each-ref', FOR_EACH_REF_FORMAT]);
             if (!read)
                 refuse(`not one of the read-only git shapes ${command} runs`);
             // The factory guard: ship's read shapes plus `ls-remote origin refs/heads/factory/<name>`.

@@ -16,7 +16,8 @@
  * - the OS sandbox (sandbox.ts): applied when the host supports it; a review
  *   session without a confirmed sandbox gets no shell tool, a write session
  *   refuses (`sandbox-unavailable`) unless `writeUnsandboxed: "detect-only"`,
- *   and a shell call the runtime reports as not sandboxed stops the session
+ *   and a shell call the runtime reports as not sandboxed, or a sandbox state
+ *   change that switches a confirmed sandbox off, stops the session
  *   (`sandbox-escaped`); every sandbox bypass request is rejected;
  * - the runtime env is an allowlist with the profile variables relocated to
  *   the job's home (allowlistSessionEnv);
@@ -188,6 +189,24 @@ export interface CopilotRunStartOptions {
         target: string;
         nested?: string[];
     } | undefined;
+    /**
+     * A write job in a .NET repository (the factory: engine.ts dotnetRepo, on
+     * every forge): the session env and grants dotnet needs in the sandbox
+     * (dotnet-sandbox.ts dotnetSandboxEnv). Absent: none.
+     */
+    dotnet?: boolean;
+    /**
+     * With `dotnet`: why NuGet reads its own config hierarchy (engine.ts dotnetNugetPolicy: the trusted base or the commit
+     * the lane starts at pins a nuget.config below its root) instead of the one file dotnet-sandbox.ts dotnetNugetConfig picks.
+     */
+    dotnetNugetHierarchy?: string;
+    /**
+     * With `dotnet`: the pinned files of the trusted base or of the commit the lane starts at set restore sources
+     * themselves (or import a file the engine cannot read, or the root config defines sources), so no root-config copy with
+     * nuget.org is written (dotnet-sandbox.ts nugetOrgCopy). A lane that sets its own RestoreSources mid-session is honoured
+     * by NuGet either way: it overrides the copy's config source.
+     */
+    dotnetNugetNoAddSource?: boolean;
 }
 /**
  * A credential-free session env, in place. Removed: GitHub tokens
@@ -314,7 +333,8 @@ export type CopilotRunSnapshot = {
     /**
      * The OS sandbox once the job decided it: `refused` ends the job with a
      * `sandbox-unavailable:` error, an unsandboxed shell call with
-     * `sandbox-escaped:` (unsandboxedCalls > 0).
+     * `sandbox-escaped:` (unsandboxedCalls > 0), and so does a confirmed
+     * sandbox that changed mid-session (stateEscaped).
      */
     sandbox?: CopilotRunSandboxState;
 };
@@ -451,6 +471,7 @@ export declare class CopilotRunManager {
     }): {
         sandboxed: boolean;
         writeNetwork: SandboxSettings['writeNetwork'];
+        allowedHosts: readonly string[];
         windowsCopy: boolean;
     };
     /** Validate, ask the budget governor, prepare the worktree, and start the session in the background. */

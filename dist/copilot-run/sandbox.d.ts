@@ -3,11 +3,10 @@
  * (.omc/plans/2026-10-27-sandboxed-lanes-design.md §3-§6).
  *
  * The Copilot runtime confines shell commands and local MCP/LSP servers in
- * Microsoft Execution Containers when a session carries a `sandboxConfig`.
- * SDK 1.0.16 has no createSession field for it, so the config goes through
- * `session.rpc.options.update` before the first turn; an SDK whose
- * createSession forwards the field gets it at create
- * (sdkCreateSessionAcceptsSandbox).
+ * Microsoft Execution Containers when a session carries a sandbox config.
+ * SDK v2 takes it at create (`permissions.sandbox`); a live session takes it
+ * through `session.rpc.options.update({ permissions: { sandbox } })`
+ * ({@link applySandboxConfig}, the smoke canaries).
  *
  * Fail closed (§3): a review session without a confirmed sandbox runs with no
  * shell tool, a write session refuses with `sandbox-unavailable` unless
@@ -34,10 +33,20 @@ export interface CopilotRunSandboxState {
         blocked: boolean;
         reason?: string;
     };
+    /** `sandbox.getState().configSource` once the state confirmed the policy in force. */
+    configSource?: string;
     /** PR 1 runs no canary: confirmation rests on host support, the applied config, enforcement and the per-call attestation. */
     canary: 'passed' | 'failed' | 'skipped';
     /** Shell calls the runtime reported as not sandboxed. */
     unsandboxedCalls: number;
+    /**
+     * The `sandbox-escaped:` error when a confirmed (`enforced`) sandbox was
+     * switched off, opted out or weakened mid-session (the
+     * `session.sandbox_state_changed` tripwire). A shell call started after it
+     * and killed before its completion event is never counted, so this, not
+     * `unsandboxedCalls`, is the escape record (absent in older records).
+     */
+    stateEscaped?: string;
     cliVersion: string;
     sdkVersion: string;
     /** The write session's writeNetwork setting as it ran (absent for a review session and in older records). */
@@ -225,6 +234,20 @@ export interface SandboxPolicyContext {
     sshAuthSock?: string;
     /** The CA bundle files and cert dirs the caller's env names (proxyCaEnv), granted read-only like the tool dirs. */
     extraReadonly?: string[];
+    /**
+     * Engine-made dirs outside the worktree a write session may write (the
+     * factory's dotnet restore step: the run's own NuGet packages dir,
+     * nuget-restore.ts). Never from config; a path that holds the real home,
+     * the worktree, the common git dir or the job dir, or a filesystem root,
+     * throws.
+     */
+    extraReadwrite?: string[];
+    /**
+     * The only hosts a write session may reach, instead of
+     * settings.writeNetwork (the factory's dotnet restore step: NUGET_HOSTS).
+     * Never from config.
+     */
+    onlyHosts?: readonly string[];
     /** The OMC global state root to deny (default getGlobalOmcStateRoot()); a test seam. */
     omcStateRoot?: string;
     /**
@@ -259,6 +282,8 @@ export interface SandboxPolicyContext {
     nestedNodeModulesTargets?: readonly string[];
 }
 export declare const REGISTRY_HOSTS: readonly string[];
+/** The hosts the factory's sandboxed dotnet restore step reaches (nuget.org's feed serves the index and the packages). */
+export declare const NUGET_HOSTS: readonly string[];
 /**
  * Why `<worktree>/node_modules` must not be granted, or null. `target` is the
  * engine-recorded node_modules (review-483 M4). A single link must resolve
@@ -415,10 +440,40 @@ export interface HostLaunchCheck {
  * capability and, on Linux, a trial bwrap launch that succeeds.
  */
 export declare function probeHostSupport(client: unknown, timeoutMs: number, launch?: HostLaunchCheck): Promise<SandboxHostRecord>;
-/** `session.rpc.options.update({ sandboxConfig })`; null when applied, else why not. */
+/** `session.rpc.options.update({ permissions: { sandbox } })` (SDK v2 patch shape); null when applied, else why not. */
 export declare function applySandboxConfig(session: unknown, config: SandboxConfig, timeoutMs: number): Promise<string | null>;
 /** `session.rpc.sandbox.getEnforcementStatus()`, or why it could not be read. */
 export declare function readEnforcement(session: unknown, timeoutMs: number): Promise<NonNullable<CopilotRunSandboxState['enforcement']> | string>;
+/**
+ * Why a sandbox state (`session.rpc.sandbox.getState()` or a
+ * `session.sandbox_state_changed` event's data, both carry the same fields)
+ * does not show the policy `sent` in force, else null: the effective config
+ * must be enabled, must not offer bypasses (our policy sets `allowBypass:
+ * false`; a managed floor can only tighten it) and must be no weaker than
+ * `sent` ({@link configWeakerThanSent}), and the session must hold no opt-out
+ * (`disabledForSession`) nor auto-approve bypass requests (`autoApproveBypass`).
+ * A field of the wrong type counts as not in force.
+ */
+export declare function sandboxStateProblem(state: unknown, sent: SandboxConfig, platform?: NodeJS.Platform): string | null;
+/** `session.rpc.sandbox.getState()`: the effective config source when the policy `sent` is in force ({@link sandboxStateProblem}), else why not. */
+export declare function readSandboxState(session: unknown, timeoutMs: number, sent: SandboxConfig, platform?: NodeJS.Platform): Promise<{
+    configSource: string;
+} | string>;
+/**
+ * Whether a createSession error with the sandbox policy is the runtime refusing
+ * the policy (a managed-policy conflict or an invalid config), the only create
+ * failure the fail-closed sandbox path handles; any other (network, auth,
+ * model) is an ordinary create failure. Copilot CLI 1.0.116's runtime refuses
+ * a conflicting policy with "Sandbox configuration update violates managed
+ * policy. Contact your administrator for more information." (code
+ * `managed_sandbox_policy_conflict`) and an invalid one with "invalid parameter
+ * 'sandboxConfig': ..."; a policy it cannot resolve with "session sandbox
+ * policy could not be resolved: ...". Real create errors carry JSON-RPC code
+ * -32603 without `data` and embed paths and model names in the message (a
+ * missing `...\sandbox\repo` dir, a model called `sandbox-x`), so only these
+ * known phrases count, in the message, a string code or the data as text.
+ */
+export declare function isSandboxPolicyError(err: unknown): boolean;
 /**
  * What a session runs as when its sandbox is not confirmed (§3):
  * review -> `read-only-no-shell` (or `refused` with reviewUnsandboxed
@@ -526,4 +581,15 @@ export declare function relocatedProfileEnv(jobHome: string): Record<string, str
  * cloud and npm tokens never pass.
  */
 export declare function allowlistSessionEnv(env: NodeJS.ProcessEnv, jobHome: string): NodeJS.ProcessEnv;
+/**
+ * A PATH for a sandboxed session or command: the host's entries less the
+ * empty and relative ones (a shell resolves those from its working dir, the
+ * checkout the PR's code writes, so `rm` or `git` could run a file the PR
+ * put there; review round 5) and the `node_modules/.bin` dirs (any case on
+ * Windows, `\` or `/`, a trailing separator too) that `npx` or `npm run`
+ * put in front of the engine's own PATH: package binaries of the engine's
+ * install, never the repository's tools. npm and npx find a project's
+ * binaries themselves, not through the inherited PATH.
+ */
+export declare function sandboxPath(value: string, platform?: NodeJS.Platform): string;
 //# sourceMappingURL=sandbox.d.ts.map

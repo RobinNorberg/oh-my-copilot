@@ -9,6 +9,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { hostname, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { engineWroteAll } from '../board/__tests__/trusted-states.js';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { factoryRunJson } from '../../cli/commands/factory.js';
 import { factoryPollCommand } from '../../cli/commands/factory-poll.js';
@@ -23,6 +24,7 @@ import { DEFAULT_HEAL_CONFIG } from '../heal/config.js';
 import { DEFAULT_FACTORY_RUN_LIMITS } from '../run/budget.js';
 import { healStateDir } from '../heal/state.js';
 import { computeFactoryIntegrity, createFactoryState, factoryRepoOwnerPath, factoryStateDir, factoryStatePath, moveTo, runKeyOf, setGate } from '../run/state.js';
+import { EngineLedger } from '../run/ledger.js';
 import { acquirePoller, defaultPollHealScan, holdForRefs, nextInterval, parseInterval, PollBusyError, pollAuditPath, pollStatePath, POLL_JSON_SCHEMA_VERSION, POLL_MAX_INTERVAL_MS, autoStartTimeoutMs, defaultPollAutoStart, defaultPollBudget, parseRunNextOutcome, pollParallel, runFactoryPoll, } from '../poll.js';
 const SHA = 'a'.repeat(40);
 const HEAD = 'b'.repeat(40);
@@ -44,7 +46,7 @@ beforeEach(() => {
     out = [];
     err = [];
 });
-afterEach(() => rmSync(root, { recursive: true, force: true }));
+afterEach(() => { rmSync(root, { recursive: true, force: true }); rmSync(`${root}-ledger`, { recursive: true, force: true }); });
 /** The review feedback GraphQL answer for PR 9: `threads` as [id, login] pairs; `me` (the viewer) has write access. */
 const DONE = { hasNextPage: false };
 const feedbackJson = (threads = [], collaboratorsMore = false) => JSON.stringify({
@@ -131,13 +133,24 @@ function deps(exec, over = {}) {
         ...over,
     };
 }
-const poll = (exec, o = {}, over = {}) => runFactoryPoll(o, deps(exec, over));
+/** The planted states are the engine's own writes (recorded in a ledger), unless the test passes its own ledger. */
+const poll = (exec, o = {}, over = {}) => {
+    if (over.ledgerDir === undefined)
+        engineWroteAll(root, `${root}-ledger`);
+    return runFactoryPoll(o, deps(exec, { ledgerDir: `${root}-ledger`, ...over }));
+};
 const ticks = () => out.map((l) => JSON.parse(l));
 const LABEL = { factory: { intake: { source: { type: 'label', label: 'factory' } } } };
 function save(s) {
     const path = factoryStatePath(root, runKeyOf(s));
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, JSON.stringify({ ...s, integrity: computeFactoryIntegrity(s) }));
+}
+/** The engine removed the run's state (its ledger records that the file must not exist). */
+function engineRemoved(key) {
+    const path = factoryStatePath(root, key);
+    rmSync(path);
+    EngineLedger.open(`${root}-ledger`, root, key).record(path, null);
 }
 const issueRun = (issue) => ({ ...createFactoryState({ issue, repoUrl: REPO, base: 'dev' }, T0), forgeKind: 'github', issueTitle: `issue ${issue}` });
 /** #4 parked at the merge gate with PR 9. */
@@ -199,6 +212,18 @@ describe('omg factory poll on GitHub', () => {
         // F33: the board row of #4 no longer repeats its stale merge gate reason.
         expect(out.join('\n')).not.toContain('gates green; a human merges');
         expect(out.join('\n')).toContain('the PR is closed: run `omg factory run 4` to record it');
+    });
+    it('a sealed state the engine ledger does not record: no PR read, no PR line, never idle', async () => {
+        seedParked();
+        const w = scripted({ prState: 'CLOSED' });
+        // An empty ledger: the planted state fails the trust check (lane code can write a sealed state).
+        expect(await poll(w.exec, { once: true, json: true }, { ledgerDir: `${root}-ledger` })).toBe(0);
+        expect(ticks()[0].prs).toEqual([]);
+        expect(ticks()[0].idle).toBe(false);
+        expect(w.calls.filter((c) => c.startsWith('gh pr') || c.startsWith('gh api'))).toEqual([]);
+        out.length = 0;
+        expect(await poll(scripted({ prState: 'CLOSED' }).exec, { once: true }, { ledgerDir: `${root}-ledger` })).toBe(0);
+        expect(out.join('\n')).not.toContain('PR #9');
     });
     it('an open PR: human threads by trusted reviewers are counted, untrusted authors as ignored (one fixed GraphQL read)', async () => {
         seedParked();
@@ -384,7 +409,7 @@ describe('omg factory poll on GitHub', () => {
         save(moveTo(issueRun(5), 'implement', 'plan ok', T0));
         expect(await poll(scripted().exec, { once: true, json: true, prs: false })).toBe(0);
         expect(ticks()[0].idle).toBe(false);
-        rmSync(factoryStatePath(root, 5));
+        engineRemoved(5);
         out.length = 0;
         writeFileSync(factoryRepoOwnerPath(root), JSON.stringify({ pid: 99, hostname: hostname(), startedAt: T0, run: '4' }));
         expect(await poll(scripted().exec, { once: true, json: true, prs: false }, { owner: { pid: 2, hostname: hostname(), isAlive: (pid) => pid === 99 } })).toBe(0);
@@ -457,7 +482,12 @@ describe('omg factory poll on GitHub', () => {
         expect(await poll(scripted().exec, { once: true, json: true, prs: false })).toBe(0);
         expect(ticks()[0].idle).toBe(false);
         out.length = 0;
+        // Gone while the engine ledger records an unfinished write: a missing state may hide a run, never idle.
         rmSync(path);
+        expect(await poll(scripted().exec, { once: true, json: true, prs: false })).toBe(0);
+        expect(ticks()[0].idle).toBe(false);
+        out.length = 0;
+        EngineLedger.open(`${root}-ledger`, root, 5).record(path, null);
         expect(await poll(scripted().exec, { once: true, json: true, prs: false })).toBe(0);
         expect(ticks()[0].idle).toBe(true);
     });
@@ -609,6 +639,44 @@ describe('omg factory poll: factory.intake.autoStart', () => {
         return { starts, autoStart };
     }
     const on = (e, over = {}) => ({ trustedUser: () => ON, projectConfig: () => LABEL, autoStart: e.autoStart, budget: () => null, ...over });
+    it('unverified states: a finished one this host has no record of does not block; an unfinished one, a seal or ledger mismatch and a missing state do, each with its reason', async () => {
+        const ledger = `${root}-ledger`;
+        const DAMAGED = 'a run state is damaged or missing: omg factory attention';
+        const UNVERIFIED = 'a run state is not verified on this host: omg factory attention';
+        const path6 = factoryStatePath(root, 6);
+        const done = moveTo(issueRun(6), 'merged', 'merged', T0);
+        const tick = async () => {
+            out.length = 0;
+            const e = engine();
+            expect(await poll(scripted().exec, { once: true, json: true }, on(e, { ledgerDir: ledger }))).toBe(0);
+            return { t: ticks()[0], starts: e.starts.length };
+        };
+        // Sealed, finished, and unknown to this host's ledger (another host, a moved checkout): history, not a run.
+        save(done);
+        let r = await tick();
+        expect(r.t).toMatchObject({ idle: true, autoStart: { started: true } });
+        // Sealed, unfinished and unknown to the ledger: it may stand for a run this host cannot see.
+        save(moveTo(issueRun(7), 'implement', 'plan ok', T0));
+        r = await tick();
+        expect(r.t).toMatchObject({ idle: false, autoStart: { started: false, reason: UNVERIFIED } });
+        rmSync(factoryStatePath(root, 7));
+        // A finished phase whose seal fails: damaged.
+        writeFileSync(path6, JSON.stringify({ ...done, integrity: 'f'.repeat(64) }));
+        r = await tick();
+        expect(r.t).toMatchObject({ idle: false, autoStart: { started: false, reason: DAMAGED } });
+        // A real run (the engine ledger records it) whose state a lane replaced with a sealed finished state of its own
+        // (seal recomputed): the bytes are not the ledger's, so the exemption does not apply.
+        save(setGate(moveTo(issueRun(6), 'gates', 'gates', T0), 'merge', 'gates green; a human merges', T0));
+        EngineLedger.open(ledger, root, 6).record(path6, readFileSync(path6, 'utf8'));
+        save(moveTo(issueRun(6), 'cancelled', 'x', T0));
+        r = await tick();
+        expect(r.t).toMatchObject({ idle: false, autoStart: { started: false, reason: DAMAGED } });
+        expect(r.starts).toBe(0);
+        // The engine's unfinished state is gone (the ledger holds it): damaged.
+        rmSync(path6);
+        r = await tick();
+        expect(r.t).toMatchObject({ idle: false, autoStart: { started: false, reason: DAMAGED } });
+    });
     it('is off by default: an idle tick starts nothing', async () => {
         const e = engine();
         expect(await poll(scripted().exec, { once: true, json: true }, on(e, { trustedUser: () => undefined }))).toBe(0);
@@ -656,7 +724,7 @@ describe('omg factory poll: factory.intake.autoStart', () => {
         save(moveTo(issueRun(5), 'implement', 'plan ok', T0));
         await poll(scripted().exec, { once: true, json: true, prs: false }, on(e));
         expect(ticks().at(-1)).toMatchObject({ idle: false, autoStart: { started: false, reason: 'a run is in flight' } });
-        rmSync(factoryStatePath(root, 5));
+        engineRemoved(5);
         await poll(scripted().exec, { once: true, json: true, intake: false }, on(e));
         expect(ticks().at(-1).autoStart).toEqual({ started: false, reason: 'no intake read this tick (--no-intake)' });
         await poll(scripted().exec, { once: true, json: true }, on(e, { projectConfig: () => undefined }));
@@ -690,7 +758,7 @@ describe('omg factory poll: factory.intake.autoStart', () => {
         await poll(scripted().exec, { once: true, json: true, prs: false }, on({ autoStart }, { trustedUser: () => PAR, owner: alive }));
         expect(ticks().at(-1).autoStart).toEqual({ started: false, reason: 'the run lock is held: a shared-layout engine runs in this repository' });
         rmSync(factoryRepoOwnerPath(root));
-        rmSync(factoryStatePath(root, 5));
+        engineRemoved(5);
         // Without the private layout the old rule holds: no `parallel`, idle only.
         await poll(scripted().exec, { once: true, json: true, prs: false }, on({ autoStart }, { trustedUser: () => ({ factory: { intake: { autoStart: true }, run: { maxConcurrent: 2 } } }), owner: alive }));
         expect(seen.at(-1)).toBeUndefined();
@@ -728,14 +796,15 @@ describe('omg factory poll: factory.intake.autoStart', () => {
         mkdirSync(factoryStateDir(root), { recursive: true });
         writeFileSync(factoryStatePath(root, 6), JSON.stringify({ ...s, phase: 'merged', integrity: computeFactoryIntegrity(s) }));
         expect(await poll(scripted().exec, { once: true, json: true, prs: false }, on(e))).toBe(0);
-        expect(ticks().at(-1)).toMatchObject({ idle: false, autoStart: { started: false, reason: 'a run state is unreadable or fails its integrity check' } });
+        expect(ticks().at(-1)).toMatchObject({ idle: false, autoStart: { started: false, reason: 'a run state is damaged or missing: omg factory attention' } });
         writeFileSync(factoryStatePath(root, 6), '{ not json');
         expect(await poll(scripted().exec, { once: true, json: true, prs: false }, on(e))).toBe(0);
-        expect(ticks().at(-1)).toMatchObject({ idle: false, autoStart: { started: false, reason: 'a run state is unreadable or fails its integrity check' } });
+        expect(ticks().at(-1)).toMatchObject({ idle: false, autoStart: { started: false, reason: 'a run state is damaged or missing: omg factory attention' } });
         expect(e.starts).toEqual([]);
     });
     it('at most one run per tick: the started run in flight keeps the next tick from starting another', async () => {
-        const e = engine({ after: () => save(moveTo(issueRun(1), 'implement', 'lane lost', T0)) });
+        // The started engine writes its state and its ledger record (a state without one is untrusted: never idle either).
+        const e = engine({ after: () => { save(moveTo(issueRun(1), 'implement', 'lane lost', T0)); engineWroteAll(root, `${root}-ledger`); } });
         let stop = () => { };
         let sleeps = 0;
         const code = await poll(scripted().exec, { json: true, prs: false }, on(e, {

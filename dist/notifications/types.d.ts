@@ -8,7 +8,7 @@
 /** Verbosity levels for notification filtering (ordered most to least verbose) */
 export type VerbosityLevel = "verbose" | "agent" | "session" | "minimal";
 /** Events that can trigger notifications */
-export type NotificationEvent = "session-start" | "session-stop" | "session-end" | "session-idle" | "ask-user-question" | "agent-call" | "approval-request";
+export type NotificationEvent = "session-start" | "session-stop" | "session-end" | "session-idle" | "ask-user-question" | "agent-call" | "approval-request" | "factory-attention";
 /** Supported notification platforms */
 export type NotificationPlatform = "discord" | "discord-bot" | "telegram" | "slack" | "slack-bot" | "teams" | "webhook";
 /** Discord webhook configuration */
@@ -138,6 +138,8 @@ export interface NotificationConfig {
         "ask-user-question"?: EventNotificationConfig;
         "agent-call"?: EventNotificationConfig;
         "approval-request"?: EventNotificationConfig;
+        /** Off unless enabled here explicitly (`omg factory poll` new attention items). */
+        "factory-attention"?: EventNotificationConfig;
     };
 }
 /** Payload sent with each notification */

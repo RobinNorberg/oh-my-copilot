@@ -83,6 +83,8 @@ export interface HealRunOutcome {
     lane?: HealLaneRecord;
     diagnosis?: HealDiagnosisRecord;
 }
+/** The heal seals, scan records and mirrored counters of `root`, outside the repository. */
+export declare const healLedgerDir: (ledgerDir: string, root: string) => string;
 /**
  * The classifier fields a ci-heal run is built from, as the debugger lane was
  * given them. A later scan may rewrite the record's classification and a
@@ -121,6 +123,8 @@ export declare function readHealSealSubject(ledgerDir: string, root: string, sig
  * current debugger lane was given; without it the seal file keeps its own.
  */
 export declare function writeHealSeal(ledgerDir: string, root: string, state: HealSignatureState, subject?: HealSealSubject): void;
+/** The seal file's `open` flag: true or false as the heal run last sealed it; null without a seal file, a readable one or the flag (a seal written before it). */
+export declare function healSealOpen(ledgerDir: string, root: string, sig8: string): boolean | null;
 /**
  * The class and classification `heal scan` derived from GitHub data, kept
  * outside the repository: `heal run` takes them only from here, never from
@@ -137,6 +141,8 @@ export declare function writeHealScanRecord(ledgerDir: string, root: string, r: 
 export declare function readHealScanRecord(ledgerDir: string, root: string, sig8: string): HealScanRecord | null;
 /** `ok` when the recorded heal run matches its out-of-repo seal; `none` without a heal run (and no seal). */
 export declare function verifyHealSeal(ledgerDir: string, root: string, state: HealSignatureState): 'ok' | 'none' | 'missing' | 'mismatch';
+/** The signatures with a heal seal outside the repository (each one a heal run the heal command recorded); read-only. */
+export declare function healSealSigs(ledgerDir: string, root: string): string[];
 /** Field-wise larger of the in-repo and the mirrored counters. */
 export declare function readHealCounters(root: string, ledgerDir: string, now: Date): HealDailyCounters;
 export declare function writeHealCounters(root: string, ledgerDir: string, counters: HealDailyCounters): void;

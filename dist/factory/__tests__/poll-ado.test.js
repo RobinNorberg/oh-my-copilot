@@ -13,6 +13,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { hostname, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { engineWroteAll } from '../board/__tests__/trusted-states.js';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ADO_FIXTURE_DIR, adoFixtureExec, loadAdoFixtures, parseAdoFixture } from '../../forge/ado/__tests__/fixtures.js';
 import { POSIX_ENTRY, REPO, variant } from '../../forge/ado/__tests__/world.js';
@@ -40,7 +41,7 @@ beforeEach(() => {
     out = [];
     err = [];
 });
-afterEach(() => rmSync(root, { recursive: true, force: true }));
+afterEach(() => { rmSync(root, { recursive: true, force: true }); rmSync(`${root}-ledger`, { recursive: true, force: true }); });
 /** The board's batched read of the source's one item (synthetic: the peek fixture narrowed to 42). */
 function withPeek42(fixtures) {
     const peek = fixtures.find((f) => f.name === 'wit.workItems.GET.peek.json');
@@ -104,7 +105,11 @@ function deps(exec, over = {}) {
         ...over,
     };
 }
-const poll = (exec, o = {}, over = {}) => runFactoryPoll(o, deps(exec, over));
+/** The planted states are the engine's own writes (recorded in a ledger). */
+const poll = (exec, o = {}, over = {}) => {
+    engineWroteAll(root, `${root}-ledger`);
+    return runFactoryPoll(o, deps(exec, { ledgerDir: `${root}-ledger`, ...over }));
+};
 const tick = () => JSON.parse(out.at(-1));
 const flag = (args, f) => args[args.indexOf(f) + 1];
 const routeOf = (args) => `${flag(args, '--area')}.${flag(args, '--resource')}.${args.includes('--http-method') ? flag(args, '--http-method') : 'GET'}`;

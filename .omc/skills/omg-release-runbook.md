@@ -258,9 +258,9 @@ warns, never blocks.
    is not a pass.
 10. Then `omg smoke copilot --tier 2` (default scenarios `smoke` and
    `guardrail`, one prompt each, about 0.6 AI credits measured) must also be green before
-   tagging. It drives the installed Copilot CLI through `@github/copilot-sdk`
-   (install once: `npm i -g @github/copilot-sdk --omit=optional
-   --ignore-scripts`) and proves the git guardrail hook really denies a
+   tagging. It drives the installed Copilot CLI through `@microsoft/copilot-sdk`
+   (install once: `npm i -g @microsoft/copilot-sdk@2
+   --ignore-scripts`, Copilot CLI 1.0.113 or newer) and proves the git guardrail hook really denies a
    `git push --force`. Exit `2` here means the SDK or the binary is missing,
    which is not a pass. A red `scn.<name>.adapter_errors` names the hook
    script behind an `[omg-hook]` error or a `[run.cjs]` hook timeout line;

@@ -7824,6 +7824,8 @@ function getProjectIdentifier(worktreeRoot) {
   return identifier;
 }
 function getOmcRoot(worktreeRoot) {
+  const known = worktreeRoot === void 0 ? void 0 : knownOmcRoots.getStore()?.get(worktreeRoot);
+  if (known !== void 0) return known;
   const scope = worktreePathRenderScope.getStore();
   if (!scope) return computeOmcRoot(worktreeRoot);
   const key = [worktreeRoot ?? "", process.env.OMC_STATE_DIR ?? "", process.cwd()].join("\0");
@@ -7955,7 +7957,7 @@ function redactErrorStack(stack, providedRoot, trustedRoot) {
   const [header, ...frames] = lines;
   return [header, ...frames.map((frame) => redactCanonicalRoots(frame, providedRoot, trustedRoot))].join(newline);
 }
-var import_crypto, import_node_async_hooks, import_child_process2, import_fs, import_os2, import_path2, import_url, WORKSPACE_MARKER, OmcPaths, MAX_WORKTREE_CACHE_SIZE, worktreeCacheMap, gitTopLevelCacheMap, gitTopLevelNegativeCacheMap, superprojectCacheMap, projectIdentifierCacheMap, canonicalWorkingDirectoryRoots, GIT_PROBE_ENVIRONMENT_KEYS, MAX_GIT_MARKER_BYTES, workspaceCacheMap, GIT_NOT_A_REPOSITORY_STDERR, SENSITIVE_DIR_BASENAMES, worktreePathRenderScope, projectIdentifierOperationScope, gitShowToplevelProbeForTests, dualDirWarnings, ForeignWorkingDirectoryError;
+var import_crypto, import_node_async_hooks, import_child_process2, import_fs, import_os2, import_path2, import_url, WORKSPACE_MARKER, OmcPaths, MAX_WORKTREE_CACHE_SIZE, worktreeCacheMap, gitTopLevelCacheMap, gitTopLevelNegativeCacheMap, superprojectCacheMap, projectIdentifierCacheMap, canonicalWorkingDirectoryRoots, GIT_PROBE_ENVIRONMENT_KEYS, MAX_GIT_MARKER_BYTES, workspaceCacheMap, GIT_NOT_A_REPOSITORY_STDERR, SENSITIVE_DIR_BASENAMES, worktreePathRenderScope, projectIdentifierOperationScope, gitShowToplevelProbeForTests, dualDirWarnings, knownOmcRoots, ForeignWorkingDirectoryError;
 var init_worktree_paths = __esm({
   "src/lib/worktree-paths.ts"() {
     "use strict";
@@ -8048,6 +8050,7 @@ var init_worktree_paths = __esm({
     worktreePathRenderScope = new import_node_async_hooks.AsyncLocalStorage();
     projectIdentifierOperationScope = new import_node_async_hooks.AsyncLocalStorage();
     dualDirWarnings = /* @__PURE__ */ new Set();
+    knownOmcRoots = new import_node_async_hooks.AsyncLocalStorage();
     ForeignWorkingDirectoryError = class extends Error {
       callerLabel;
       constructor(providedRoot, trustedRoot, callerLabel) {
@@ -14560,8 +14563,8 @@ var init_copilot_sdk_scenarios = __esm({
     OPT_IN_SCENARIOS = ["filetools", "chain", "team", ...FACTORY_RUN_SCENARIOS, SANDBOX_LANE_SCENARIO, ...CLI_SCENARIOS];
     KNOWN_SCENARIOS = [...ALL_SCENARIOS, ...OPT_IN_SCENARIOS];
     DELEGATE_AGENT = "oh-my-copilot:architect";
-    SDK_PACKAGE = "@github/copilot-sdk";
-    SDK_INSTALL_COMMAND = `npm i -g ${SDK_PACKAGE} --omit=optional --ignore-scripts`;
+    SDK_PACKAGE = "@microsoft/copilot-sdk";
+    SDK_INSTALL_COMMAND = `npm i -g ${SDK_PACKAGE}@2 --ignore-scripts`;
     SDK_MISSING_DETAIL = `${SDK_PACKAGE} not installed \u2014 ${SDK_INSTALL_COMMAND}`;
     NO_SHELL_OR_WRITE_TOOLS = ["powershell", "shell", "create", "edit"];
     NO_WRITE_TOOLS = ["create", "edit"];

@@ -1,6 +1,6 @@
 {
   "name": "oh-my-copilot",
-  "version": "5.32.0",
+  "version": "5.33.0",
   "description": "Multi-agent orchestration system for GitHub Copilot CLI",
   "author": {
     "name": "oh-my-copilot contributors"
@@ -45,6 +45,7 @@
     "./skills/drydock/",
     "./skills/execute/",
     "./skills/external-context/",
+    "./skills/factory-attention/",
     "./skills/figure-it-out/",
     "./skills/fix-ci/",
     "./skills/fix-merge-conflicts/",

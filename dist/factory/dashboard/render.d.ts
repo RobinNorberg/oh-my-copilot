@@ -1,11 +1,22 @@
 /**
- * The `omg factory dashboard` page: one self-contained HTML document (inline
- * CSS and SVG, no script, no external font or request; a CSP forbids them),
- * light and dark through prefers-color-scheme. Every dynamic string goes
- * through esc(): issue titles, park text and bench rows are untrusted.
+ * The `omg factory dashboard` page (schemaVersion 2 data): a pure
+ * `render(JSON) -> HTML` step. One self-contained document: inline CSS and
+ * SVG, NO script, no external font or request (a CSP forbids them), no
+ * buttons or forms (the dashboard takes no action; commands are copyable
+ * text). Light and dark through prefers-color-scheme; tables stack into
+ * cards under 700 px. Every dynamic string goes through esc(): titles,
+ * reasons, lane ids and bench rows are untrusted, also inside attributes
+ * and SVG text.
  */
-import type { DashboardData } from './collect.js';
+import { type DashboardDataV2 } from './collect-v2.js';
 export declare const esc: (v: unknown) => string;
 export declare function fmtDuration(msValue: number): string;
-export declare function renderDashboardHtml(d: DashboardData): string;
+/** At most this many runs open in the Runs table; the rest sit behind one <details>. */
+export declare const RUNS_OPEN = 50;
+export declare const CSS = ":root{--bg:#fafafa;--fg:#1b1f24;--muted:#4f5964;--card:#fff;--line:#d0d6dd;--eng:#2b6cb0;--wait:#b7791f;--warn:#8a5a00;--bad:#b42318;--ok:#1e6b3a;--code:#f0f2f5}\n@media (prefers-color-scheme:dark){:root{--bg:#14171a;--fg:#e6e9ec;--muted:#a3adb8;--card:#1d2125;--line:#363d45;--eng:#63a4e8;--wait:#e0a84f;--warn:#f0b860;--bad:#ff8a80;--ok:#7bd88f;--code:#262b31}}\n@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;scroll-behavior:auto!important}}\n*{box-sizing:border-box}html{-webkit-text-size-adjust:100%}body{margin:0;padding:16px;background:var(--bg);color:var(--fg);font:15px/1.5 system-ui,sans-serif;overflow-wrap:anywhere}\na{color:var(--eng)}main{max-width:1100px;margin:0 auto}h1{font-size:22px;margin:0 0 4px}h2{font-size:18px;margin:0 0 8px}h3{font-size:15px;margin:12px 0 6px}\n.skip{position:absolute;left:-9999px;top:0;background:var(--card);color:var(--fg);padding:8px;border:2px solid var(--eng)}.skip:focus{left:8px;top:8px;z-index:1}\nnav ul{list-style:none;display:flex;flex-wrap:wrap;gap:4px 14px;padding:0;margin:8px 0}\nsection{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:12px 14px;margin:12px 0}\n.muted{color:var(--muted)}.warn{color:var(--warn)}.bad{color:var(--bad);font-weight:600}.ok{color:var(--ok);font-weight:600}\n.tiles{display:flex;flex-wrap:wrap;gap:10px;margin:0;padding:0;list-style:none}.tiles li{flex:1 1 140px;border:1px solid var(--line);border-radius:6px;padding:8px 10px}.tiles b{display:block;font-size:20px}\ntable{border-collapse:collapse;width:100%}th,td{text-align:left;padding:4px 8px;border-bottom:1px solid var(--line);vertical-align:top}thead th{color:var(--muted);font-weight:600}tbody th{font-weight:600}\ncode{font:13px/1.4 ui-monospace,Consolas,monospace;background:var(--code);padding:1px 4px;border-radius:3px;white-space:pre-wrap;word-break:break-all}\n.items{list-style:none;padding:0;margin:0}.items>li{border-top:1px solid var(--line);padding:6px 0}.items p{margin:2px 0}.cmds{margin:4px 0;padding-left:18px}\nsvg{max-width:100%;height:auto}.eng{fill:var(--eng)}.wait{fill:var(--wait)}.lbl{fill:var(--fg);font-size:12px}.tl{display:block;margin:2px 0}.tltext{display:block;font-size:12px;color:var(--muted)}\n.legend span{display:inline-block;width:12px;height:12px;border-radius:2px;vertical-align:middle;margin:0 4px 0 10px}.legend .e{background:var(--eng)}.legend .w{background:var(--wait)}\n.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}details summary{cursor:pointer;margin:8px 0}\n@media (max-width:700px){body{padding:8px}table.stack thead{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}table.stack,table.stack tbody,table.stack tr,table.stack th,table.stack td{display:block;width:100%}\ntable.stack tr{border:1px solid var(--line);border-radius:6px;margin:0 0 8px;padding:4px 0}table.stack th,table.stack td{border:0;padding:2px 8px}\ntable.stack tbody th::before,table.stack td::before{content:attr(data-label);display:block;font-size:12px;color:var(--muted);font-weight:600}}";
+export interface RenderOptions {
+    /** `--watch`: the page reloads itself every this many seconds (meta refresh). Absent: a one-shot page that never reloads. */
+    refreshSeconds?: number;
+}
+export declare function renderDashboardHtml(d: DashboardDataV2, o?: RenderOptions): string;
 //# sourceMappingURL=render.d.ts.map

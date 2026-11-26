@@ -188,6 +188,35 @@ export declare function unlinkNodeModules(root: string, checkout: string): void;
  */
 export declare function gateTreeHasLinks(checkout: string): boolean;
 /**
+ * Why the node_modules trees of `checkout` are not exactly what
+ * linkNodeModules built from your node_modules (`root`), or null: what a
+ * dotnet gate needs before it runs when the trusted definition files import
+ * from node_modules (engine.ts packageTreeImportsReady). Read-only (lstat,
+ * readlink, readdir, and the bytes of the small top-level files). Checked,
+ * for the root tree and each nested workspace tree the engine vouches for
+ * (`nestedRels`, trustedNestedRels): every top-level entry is the engine's
+ * marker file, a fresh cache dir (GATE_CACHE_DIRS, not a link; what a check
+ * writes there is not looked at), a link to `<yours>/<its name>` (or into
+ * the checkout outside node_modules: a workspace self-link, the
+ * repository's own files), a real `@scope` dir of such links, or a top-level
+ * file with exactly your copy's bytes; and every dir of yours the engine
+ * links is there. A plain dir where the engine put a link (the PR's code
+ * replaced it with its own files), any other entry, or one that is gone is
+ * `tampered`. Not verifiable (`tampered: false`): a copied tree
+ * (GATE_TREE_COPY_WHY; comparing every file is not cheap), a node_modules
+ * dir the engine did not build (git lists files under it in `untracked`, or
+ * yours has no such tree), or a tree that cannot be read. A tree the
+ * checkout does not have is fine: there is nothing to import. A tree the
+ * head tracks files in (`trackedTrees`: the dirs, empty for the root, whose
+ * node_modules holds tracked files) is the repository's own: git's dirty
+ * check covers its files, so it is not compared, and an untracked file in
+ * it cannot be verified (`tampered: false`).
+ */
+export declare function gateTreeExactProblem(root: string, checkout: string, nestedRels: readonly string[], untracked: readonly string[], copied: boolean, trackedTrees?: readonly string[]): {
+    problem: string;
+    tampered: boolean;
+} | null;
+/**
  * The nested workspace trees of `checkout` that are there as real dirs: the
  * ones linkNodeModules built in this process and the ones the root tree's
  * marker lists (PR-writable, so every line must be an exact relative path

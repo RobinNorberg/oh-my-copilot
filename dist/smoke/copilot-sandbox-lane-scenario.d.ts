@@ -82,8 +82,7 @@ export declare function defaultSharedDir(env: NodeJS.ProcessEnv, platform?: Node
  * The SDK with a client whose sessions run `probe.command` through
  * `session.rpc.shell.executeUserRequested` right before their first `send`,
  * after copilot_run applied and confirmed the sandbox. The override is an
- * instance property, so the prototype's createSession (what
- * sdkCreateSessionAcceptsSandbox reads) is the SDK's own.
+ * instance property, so the prototype's createSession stays the SDK's own.
  */
 export declare function withSandboxCanary(loaded: LoadedSdk, probe: SandboxCanaryProbe): LoadedSdk;
 /** The real copilot_run backend on the smoke's binary, plugin and login, with the default sandbox settings. */

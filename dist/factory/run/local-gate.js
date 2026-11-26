@@ -32,11 +32,13 @@ import { spawn } from 'child_process';
 import { existsSync, lstatSync, mkdtempSync, realpathSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { dirname, join, posix, resolve, win32 } from 'path';
+import { DOTNET_PATH_OPTIONS, DOTNET_VALUE_OPTIONS, isDotnetExe } from '../../copilot-run/dotnet-sandbox.js';
 import { LOCAL_GATE_CHECK, localCheckRecordPath, readLocalCheckRecord, writeLocalCheckRecord } from '../../forge/local/index.js';
 import { getProcessStartIdentity, terminateOwnedProcessTree } from '../../platform/process-utils.js';
 import { childEnv, findOnPath, hardenWindowsExeSearch, resolveBareExe } from '../../utils/windows-search.js';
 import { FactorySafetyError, sameFsPath } from './exec.js';
 import { createGateProcTracker, gateProcsPath, reapGateProcs, sweepGateProcs } from './gate-procs.js';
+import { DOTNET_BUILD_DIRS, isDotnetBuildDirName, isPackageTreeName } from './dotnet-clean.js';
 import { CREDENTIAL_FILES_READABLE_NOTE, gateEnv, redactGateOutput } from './sandbox-exec.js';
 /** The record keeps this many characters of the gate's output (jobLog, the ci-fix prompt). */
 export const LOCAL_GATE_TAIL_CHARS = 8_000;
@@ -344,7 +346,7 @@ export async function runLocalGate(i) {
         tail: tailOf(output.trim()),
     };
     writeLocalCheckRecord(i.stateDir, i.root, done);
-    return { started: true, record: done };
+    return { started: true, record: done, output };
 }
 /** runLocalGate in the OS sandbox: the argv resolved as for the plain runner, the verdict only when attested. */
 async function runSandboxedGate(i, base, now) {
@@ -379,7 +381,7 @@ async function runSandboxedGate(i, base, now) {
         ...(r.credentialFilesReadable ? { sandboxNote: CREDENTIAL_FILES_READABLE_NOTE } : {}),
     };
     writeLocalCheckRecord(i.stateDir, i.root, done);
-    return { started: true, record: done };
+    return { started: true, record: done, output };
 }
 const NPM_TEST = new Set(['test', 't', 'tst']);
 const NPM_RUN = new Set(['run', 'run-script', 'rum', 'urn']);
@@ -462,6 +464,219 @@ function scriptSource(manager, args, shown) {
     const files = [...new Set([...PM_CONFIG_FILES, ...PM_CONFIG_FILES.map(at), ...configs])];
     return { sources: [{ path: at('package.json'), scripts: [`pre${script}`, script, `post${script}`] }, ...files.map((path) => ({ path }))] };
 }
+/**
+ * The repository files that define what `dotnet build` / `dotnet test` does,
+ * as basename globs matched at any depth, case-insensitively: solutions and
+ * solution filters, every project file (`*.*proj`: csproj, fsproj, vbproj,
+ * proj, esproj, sqlproj, shproj...), shared-project items, every MSBuild
+ * import (`*.props`, `*.targets`, `*.tasks`, Directory.Build.* among them),
+ * the `<project>.user` file MSBuild imports beside each project, response
+ * files (Directory.Build.rsp, an argv `@file.rsp`), the SDK pin and NuGet's
+ * config and lock files, and the launch profiles Microsoft.Testing.Platform
+ * reads (`Properties/launchSettings.json`, `<project>.run.json`: an env such
+ * as TESTINGPLATFORM_EXITCODE_IGNORE or `--ignore-exit-code` there makes
+ * failing tests exit 0). What the build itself compiles and runs (the code,
+ * the tests, a .runsettings or xunit.runner.json, a
+ * runtimeconfig.template.json) is covered by review, as vitest.config is for
+ * an npm gate; auto-merge also protects those (DOTNET_TEST_CONFIG_PATTERNS).
+ */
+export const DOTNET_DEFINITION_PATTERNS = [
+    '*.sln', '*.slnx', '*.slnf', '*.*proj', '*.projitems', '*.props', '*.targets', '*.tasks', '*.user', '*.rsp',
+    'global.json', 'nuget.config', 'packages.lock.json', 'dotnet.config', 'launchsettings.json', '*.run.json',
+];
+/**
+ * The .NET test and analyzer config: not part of a dotnet gate's definition
+ * (as vitest.config is not part of an npm gate's), but never auto-merged.
+ */
+export const DOTNET_TEST_CONFIG_PATTERNS = [
+    '*.runsettings', 'testconfig.json', 'xunit.runner.json', '.globalconfig', '*.ruleset', 'stylecop.json', 'dotnet-tools.json',
+];
+/** A basename folded as auto-merge's segments() folds (NFKC, no default-ignorable code point, lower case). */
+const foldedName = (base) => base.normalize('NFKC').replace(/\p{Default_Ignorable_Code_Point}/gu, '').toUpperCase().toLowerCase().normalize('NFKC');
+const basenameOf = (path) => path.split(/[\\/]/).pop() ?? path;
+/**
+ * A path's basename as Windows opens it: an NTFS stream suffix (`name:stream`,
+ * `name::$DATA`) and trailing dots and spaces dropped, then folded (foldedName).
+ */
+const openedBasename = (path) => foldedName(basenameOf(path).replace(/:.*$/s, '')).replace(/[. ]+$/, '');
+/**
+ * One case-insensitive matcher for a file's basename against basename globs
+ * (`*` any run of characters). It matches when the name as Windows opens it
+ * (openedBasename) or the name itself (folded, nothing dropped) does: on
+ * Linux `src/evil:1.props` is a plain file name that matches `*.props`.
+ */
+export function basenameMatcher(globs) {
+    const re = new RegExp(`^(?:${globs.map((g) => g.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*')).join('|')})$`, 'is');
+    return (path) => re.test(openedBasename(path)) || re.test(foldedName(basenameOf(path)));
+}
+/** True when a repository file defines a dotnet gate (DOTNET_DEFINITION_PATTERNS). */
+export const isDotnetDefinitionFile = basenameMatcher(DOTNET_DEFINITION_PATTERNS);
+/**
+ * The files that DETECT a .NET repository for its write lanes when the
+ * trusted base commit's tree holds one (engine.ts dotnetRepo): solutions and
+ * the .NET language project files only, matched as DOTNET_DEFINITION_PATTERNS
+ * are. Deliberately narrower than DOTNET_DEFINITION_PATTERNS' `*.*proj`, which
+ * also matches an Xcode `project.pbxproj`, `*.vcxproj`, `*.pyproj`,
+ * `*.esproj` and the generic MSBuild `*.proj` (a traversal
+ * `dirs.proj`, a C++ build): those do not make an iOS, React Native, C++ or
+ * Python repository a .NET one (a .NET repository using `dirs.proj` also has
+ * a csproj). The two lists have different jobs: this one turns the .NET lane
+ * env on; DOTNET_DEFINITION_PATTERNS pins a dotnet gate and keeps auto-merge
+ * off every MSBuild file, so it stays wide.
+ */
+export const DOTNET_PROJECT_PATTERNS = ['*.sln', '*.slnx', '*.csproj', '*.fsproj', '*.vbproj'];
+/** True when a repository file is a .NET solution or project file (DOTNET_PROJECT_PATTERNS). */
+export const isDotnetProjectFile = basenameMatcher(DOTNET_PROJECT_PATTERNS);
+export { DOTNET_BUILD_DIRS };
+/**
+ * Where the clean step's walk (dotnet-clean.ts) stops on a repository path
+ * (`/`-separated, as git lists it): the index of its first segment that is a
+ * build dir or a `node_modules` dir, and which; null when neither, or for a
+ * path with an empty, `.` or `..` segment or a `\`.
+ */
+function walkStop(path) {
+    const segs = path.replace(/\/+$/, '').split('/');
+    if (segs.some((s) => s === '' || s === '.' || s === '..' || s.includes('\\')))
+        return null;
+    const at = segs.findIndex((s) => isPackageTreeName(s) || isDotnetBuildDirName(s));
+    return at < 0 ? null : { at, packageTree: isPackageTreeName(segs[at]) };
+}
+/**
+ * The index of the first segment of a repository path that is a
+ * DOTNET_BUILD_DIRS name, or -1: also -1 when a node_modules segment comes
+ * first (a package tree, whoever installed it, is never build output and the
+ * clean step never enters one; a node_modules inside a build dir is build
+ * output), and for a path walkStop rejects.
+ */
+export function dotnetBuildDirIndex(path) {
+    const stop = walkStop(path);
+    return stop && !stop.packageTree ? stop.at : -1;
+}
+/** True when a repository path is at or under a node_modules dir that comes before any build dir (walkStop). */
+export function inPackageTree(path) {
+    return walkStop(path)?.packageTree === true;
+}
+/** True when a repository path lies under a build dir (dotnetBuildDirIndex); a path that is itself named like one is not under it. */
+export function underDotnetBuildDir(path) {
+    const at = dotnetBuildDirIndex(path);
+    return at >= 0 && at < path.replace(/\/+$/, '').split('/').length - 1;
+}
+/**
+ * Of the prepare checkout's untracked files (ignored or not, repository
+ * paths), the definition files MSBuild would read for a dotnet gate although
+ * no commit pins them (an ignored `App.csproj.user` or `Directory.Build.rsp`),
+ * outside the build output dirs (`bin/`, `obj/`, `artifacts/`), which a
+ * sandboxed step empties before a dotnet gate run (dotnet-clean.ts), and
+ * outside `node_modules` (inPackageTree: real packages ship `*.props`,
+ * `*.vcxproj` or `*.sln` files; MSBuild reads one there only for a project
+ * under that dir, and the engine parks on a head that tracks one:
+ * trackedPackageTreeProjects). The PR's code run there earlier (a prepare
+ * check, an earlier gate run) can leave one.
+ */
+export function strayDotnetDefinitionFiles(untracked) {
+    return untracked.filter((p) => !underDotnetBuildDir(p) && !inPackageTree(p) && isDotnetDefinitionFile(p));
+}
+/** The files that have their own build output: solutions, solution filters and project files. */
+const isDotnetBuildableFile = basenameMatcher(['*.sln', '*.slnx', '*.slnf', '*.*proj']);
+/**
+ * Of a head's tracked paths, the .NET solutions and projects (`*.sln`,
+ * `*.slnx`, `*.slnf`, `*.*proj`) under a node_modules dir (inPackageTree).
+ * The clean step never enters such a dir and the checks leave it out, so
+ * build output a project there would read is never cleaned: a dotnet gate in
+ * the OS sandbox does not run on such a head (the other gate modes clean
+ * nothing anyway and note it). Only a project or solution has build output
+ * of its own: a tracked package's `*.props`, `*.targets` or `global.json`
+ * there does not count.
+ */
+export function trackedPackageTreeProjects(tracked) {
+    return tracked.filter((p) => inPackageTree(p) && isDotnetBuildableFile(p));
+}
+/** The dotnet subcommands a gate may run: both are defined by the repository's MSBuild files only. */
+const DOTNET_GATE_SUBCOMMANDS = new Set(['build', 'test']);
+/** The dotnet test options that name a test adapter dir: every file under it is the gate's (`tree` sources). */
+const DOTNET_ADAPTER_OPTIONS = new Set(['--test-adapter-path', '-a']);
+function dotnetSource(args, shown) {
+    const sub = args[0]?.toLowerCase();
+    if (!sub || !DOTNET_GATE_SUBCOMMANDS.has(sub)) {
+        return { sources: [], unresolved: `${shown} runs dotnet ${sub ? JSON.stringify(args[0]) : 'without a subcommand'}; only dotnet build and dotnet test (the subcommand first) have a known definition, the repository's solution, project and MSBuild files` };
+    }
+    // The files or directories the argv itself names inside the repository (a project, a settings file, a response file, an adapter dir); paths outside it are trusted config.
+    // A test adapter dir is pinned whole (every blob under it: the adapter is code the gate loads); any other named path
+    // only as that one file: a project or solution dir is pinned by the pattern sources, not by the test code under it.
+    const named = new Map();
+    for (let i = 1; i < args.length; i++) {
+        const a = args[i];
+        if (a === '--') {
+            // dotnet test's run settings after `--`: RunConfiguration.TestAdaptersPaths names adapter dirs (`;`-separated).
+            if (sub === 'test') {
+                for (const b of args.slice(i + 1)) {
+                    const m = /^RunConfiguration\.TestAdaptersPaths=(.*)$/is.exec(b);
+                    for (const v of m ? m[1].split(';') : []) {
+                        const p = repoPath(v.trim())?.replace(/\/+$/, '');
+                        if (p)
+                            named.set(p, { path: p, tree: true });
+                    }
+                }
+            }
+            break;
+        }
+        let value;
+        let adapter = false;
+        if (a.startsWith('@'))
+            value = a.slice(1);
+        else if (!a.startsWith('-'))
+            value = a;
+        else {
+            // `--settings=x`, `--settings:x`, `-s:x` (the dotnet CLI takes both separators).
+            const sep = a.search(/[=:]/);
+            const flag = sep > 0 ? a.slice(0, sep) : a;
+            if (DOTNET_PATH_OPTIONS[sub].has(flag)) {
+                value = sep > 0 ? a.slice(sep + 1) : args[++i];
+                adapter = sub === 'test' && DOTNET_ADAPTER_OPTIONS.has(flag);
+            }
+            else if (sep < 0 && DOTNET_VALUE_OPTIONS[sub].has(flag))
+                i++;
+        }
+        const p = value === undefined ? undefined : repoPath(value)?.replace(/\/+$/, '');
+        if (!p)
+            continue;
+        if (adapter || named.get(p)?.tree)
+            named.set(p, { path: p, tree: true });
+        else
+            named.set(p, { path: p, file: true });
+    }
+    return { sources: [...DOTNET_DEFINITION_PATTERNS.map((path) => ({ path, pattern: true })), ...DOTNET_BUILD_DIR_SOURCES, ...named.values()] };
+}
+/**
+ * Every tracked path under a bin/, obj/ or artifacts/ dir (any case, any
+ * depth) is part of a dotnet gate's definition: committed build output
+ * (`project.assets.json`, `*.AssemblyInfoInputs.cache`, a `Tests.dll`) is
+ * MSBuild input no definition pattern names, and the step that empties the
+ * build dirs before the gate keeps tracked files by design. Pattern sources
+ * whose glob names the dir (`bin/**`, the park's pathspec); patternEntries
+ * matches them by segment, never by basename.
+ */
+const DOTNET_BUILD_DIR_SOURCES = [...DOTNET_BUILD_DIRS].map((d) => ({ path: `${d}/**`, pattern: true, buildDir: true }));
+/** The entries of `tree` the pattern sources match, in one pass with one matcher, sorted by path. */
+function patternEntries(sources, tree) {
+    const hit = basenameMatcher(sources.filter((s) => s.pattern && !s.buildDir).map((s) => s.path));
+    const build = sources.some((s) => s.buildDir);
+    return tree.filter(([p]) => hit(p) || (build && underDotnetBuildDir(p))).sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
+}
+/** The entries of `tree` at or (unless `exact`) under the repository path `path` (a file, or every blob of a directory), in any case, sorted. */
+function treeEntries(path, tree, exact = false) {
+    const at = path.toLowerCase();
+    return tree.filter(([p]) => { const q = p.toLowerCase(); return q === at || (!exact && q.startsWith(`${at}/`)); }).sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
+}
+/** The paths the pattern sources match whose blob differs between two trees ([path, blob id]): added, removed or changed. */
+export function patternSourceChanges(sources, a, b) {
+    const [ma, mb] = [new Map(patternEntries(sources, a)), new Map(patternEntries(sources, b))];
+    return [...new Set([...ma.keys(), ...mb.keys()])].filter((p) => ma.get(p) !== mb.get(p)).sort();
+}
+/** A path quoted for the shell when it holds anything but plain path characters (the park message's git diff). */
+export const shellPath = (p) => (/^[\w@%+=,./-]+$/.test(p) ? p : `'${p.replace(/'/g, "'\\''")}'`);
+/** A source as a git pathspec (the park message's diff command): a pattern matches at any depth, in any case. */
+export const gateSourcePathspec = (s) => (s.pattern ? `':(glob,icase)**/${s.path}'` : shellPath(s.path));
 const npxUnresolved = (shown) => `${shown} runs npx, which fetches and runs registry code that the repository cannot pin`;
 export function gateDefinitionSources(gate) {
     const [cmd, ...args] = gate;
@@ -502,6 +717,10 @@ export function gateDefinitionSources(gate) {
         const p = repoPath(target);
         return { sources: p ? [{ path: p }] : [] };
     }
+    // dotnet by name, or the dotnet host by an absolute path outside the repository (a repository path is its own file, below).
+    // The same predicate as the sandbox's (isDotnetExe): a dotnet.cmd / dotnet.bat shim is not the host and gets no -m:1, so it takes the ordinary path below.
+    if (isDotnetExe(cmd) && (!/[\\/]/.test(cmd) || !repoPath(cmd)))
+        return dotnetSource(args, shown);
     // A path names the file the gate runs: a repository file is its own definition; one outside the repository is not the PR's to change.
     if (/[\\/]/.test(cmd)) {
         const own = repoPath(cmd);
@@ -516,25 +735,39 @@ export function gateDefinitionSources(gate) {
 /**
  * The gate's definition at one commit, comparable across commits: per source
  * the named package.json scripts (a file that is not JSON compares by its
- * text), or the file's text. `read` returns a path's content at that commit,
- * undefined when the file is absent there.
+ * text), or the file's text; all `pattern` sources together as every
+ * matching path of the commit's tree with its blob id (one pass); per `tree`
+ * source every [path, blob id] at or under its path (a file, or a
+ * directory's whole content); per `file` source the [path, blob id] of that
+ * path only (none for a directory). `read` returns a path's content at that
+ * commit, undefined when the file is absent there; `list` the commit's files
+ * as [path, blob id] (needed only for pattern, tree and file sources, read once).
  */
-export function gateDefinition(sources, read) {
-    return JSON.stringify(sources.map((s) => {
-        const text = read(s.path);
-        if (!s.scripts || text === undefined)
-            return [s.path, text ?? null];
-        let scripts;
-        try {
-            const parsed = JSON.parse(text);
-            scripts = parsed && typeof parsed.scripts === 'object' && parsed.scripts !== null ? parsed.scripts : {};
-        }
-        catch {
-            return [s.path, text];
-        }
-        return [s.path, s.scripts.map((k) => [k, Object.prototype.hasOwnProperty.call(scripts, k) ? scripts[k] : null])];
-    }));
+export function gateDefinition(sources, read, list) {
+    let tree;
+    const files = (s) => {
+        if (!list)
+            throw new Error(`the gate definition source ${s.path} is a ${s.pattern ? 'pattern' : s.tree ? 'tree' : 'file'} source and needs the commit's file list`);
+        return (tree ??= list());
+    };
+    const patterns = sources.filter((s) => s.pattern);
+    return JSON.stringify([...(patterns.length > 0 ? [[patterns.map((s) => `**/${s.path}`).join('|'), patternEntries(patterns, files(patterns[0]))]] : []), ...sources.filter((s) => !s.pattern).map((s) => {
+            if (s.tree || s.file)
+                return [s.path, treeEntries(s.path, files(s), !s.tree)];
+            const text = read(s.path);
+            if (!s.scripts || text === undefined)
+                return [s.path, text ?? null];
+            let scripts;
+            try {
+                const parsed = JSON.parse(text);
+                scripts = parsed && typeof parsed.scripts === 'object' && parsed.scripts !== null ? parsed.scripts : {};
+            }
+            catch {
+                return [s.path, text];
+            }
+            return [s.path, s.scripts.map((k) => [k, Object.prototype.hasOwnProperty.call(scripts, k) ? scripts[k] : null])];
+        })]);
 }
 /** What a gate change touches, for the park message: `package.json scripts lint` or the file path. */
-export const describeGateSources = (sources) => sources.map((s) => (s.scripts ? `${s.path} scripts ${s.scripts.join('/')}` : s.path)).join(', ');
+export const describeGateSources = (sources) => sources.map((s) => (s.scripts ? `${s.path} scripts ${s.scripts.join('/')}` : s.pattern ? `**/${s.path}` : s.path)).join(', ');
 //# sourceMappingURL=local-gate.js.map

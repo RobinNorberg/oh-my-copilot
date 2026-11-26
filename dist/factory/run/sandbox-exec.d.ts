@@ -38,12 +38,21 @@
  */
 import { type CopilotRunDeps } from '../../copilot-run/job.js';
 import { type GateContainerSettings, type SandboxConfigLayers, type SandboxSettings } from '../../copilot-run/sandbox.js';
+import { type RunNugetPackages } from '../../copilot-run/dotnet-sandbox.js';
+/** The file name MSBuild writes NuGet's restore graph to (SandboxRunRequest.restoreGraph): in the command's own job temp dir. */
+export declare const RESTORE_GRAPH_FILE = "omg-restore-graph.json";
+/** The largest restore graph read back (5 projects write about 110 KB with .NET SDK 10.0.101). */
+export declare const RESTORE_GRAPH_MAX_BYTES: number;
 /** The output tail a sandboxed command keeps (as the local gate record, local-gate.ts LOCAL_GATE_TAIL_CHARS). */
 export declare const SANDBOX_OUTPUT_TAIL_CHARS = 8000;
 /** One command for the sandbox: the configured argv (for records and messages) and what it resolved to. */
 export interface SandboxRunRequest {
-    /** What runs it: a prepare check, the local gate, or a base calibration of either. */
-    purpose: 'prepare' | 'gate' | 'calibrate' | 'install';
+    /**
+     * What runs it: a prepare check, the local gate, a base calibration of either, the step that empties a dotnet gate's
+     * build dirs (dotnet-clean.ts), the dotnet restore step before a dotnet gate (nuget-restore.ts), or that step's
+     * offline evaluation of the restore sources (`sources`: restoreGraph, in the definition tree and the gate checkout).
+     */
+    purpose: 'prepare' | 'gate' | 'calibrate' | 'install' | 'clean' | 'restore' | 'sources';
     /** The configured argv (ship.prepare.checks, factory.forge.local.gate) or the built-in check's. */
     argv: readonly string[];
     /** The executable and arguments it resolved to (resolveLocalGateArgv: never a .cmd/.bat). */
@@ -56,8 +65,8 @@ export interface SandboxRunRequest {
     timeoutMs: number;
     /** factory.run.sandbox.requireDeniedPaths: a host without denied_paths gives no verdict instead of running. */
     requireDeniedPaths?: boolean;
-    /** The network this command needs over factory.run.sandbox.writeNetwork (the private layout's `npm ci --ignore-scripts`: the registry). */
-    network?: 'registry';
+    /** The network this command gets instead of factory.run.sandbox.writeNetwork (the private layout's `npm ci --ignore-scripts`: the registry; the dotnet clean step: none). */
+    network?: 'registry' | 'none' | 'nuget';
     /** The user's checkout (the budget ledger the sandbox denies) when `commonGitDir` is another repository's (the private layout). */
     mainRoot?: string;
     /** The only dir a `<cwd>/node_modules` link may resolve to (the one the engine linked); another target is refused, never granted. */
@@ -86,6 +95,38 @@ export interface SandboxRunRequest {
      * nothing of a failed run is copied back. The OS sandbox writes it in `cwd` itself.
      */
     reportFile?: string;
+    /** A dotnet command in a repository whose trusted base pins Microsoft.Testing.Platform (dotnet-sandbox.ts isMtpGlobalJson): no -m:1 on dotnet test. */
+    dotnetMtp?: true;
+    /**
+     * A dotnet command of a run that has its own NuGet packages folder (nuget-restore.ts): NUGET_PACKAGES names it and
+     * the real cache is the read-only fallback; writable only for the restore step. Ignored for other executables.
+     */
+    nugetPackages?: RunNugetPackages;
+    /**
+     * Why a dotnet command keeps NuGet's own config hierarchy (engine.ts: the commit pins a nuget.config below its root,
+     * which the one file dotnet-sandbox.ts dotnetNugetConfig picks would hide); a failing command's output names it.
+     * Ignored for other executables.
+     */
+    nugetHierarchy?: string;
+    /**
+     * A dotnet command whose commit's pinned MSBuild files (or the command line) set NuGet's restore sources or config
+     * themselves (engine.ts): no root-config copy with nuget.org is written (dotnet-sandbox.ts nugetOrgCopy; a signal
+     * that can only restrict, since such settings override the copy's config source anyway).
+     */
+    nugetNoAddSource?: true;
+    /**
+     * The engine decided `nugetHierarchy` / `nugetNoAddSource` from the git objects of every commit the command runs on
+     * (engine.ts dotnetNugetPolicy): the sandbox layer does not scan `cwd` for lower nuget.config files again
+     * (dotnet-sandbox.ts sandboxNugetConfig). Without it the scan runs, whatever else the caller passed.
+     */
+    nugetFromGit?: true;
+    /**
+     * A `dotnet msbuild -t:GenerateRestoreGraphFile` (nuget-restore.ts restoreGraphArgs): the runner appends
+     * `-p:RestoreGraphOutputPath=<the command's job temp dir>/omg-restore-graph.json` and returns that file's text as the
+     * result's `restoreGraph` (a regular file of one link, at most RESTORE_GRAPH_MAX_BYTES; otherwise none). The OS sandbox
+     * only: with `container` nothing runs.
+     */
+    restoreGraph?: true;
 }
 /** The gate record and PR note line for a sandboxed run on a host without denied_paths. */
 export declare const CREDENTIAL_FILES_READABLE_NOTE = "sandboxed; credential files readable on this host";
@@ -109,6 +150,7 @@ export type SandboxRunResult = {
     credentialFilesReadable?: true;
     imageId?: string;
     report?: string;
+    restoreGraph?: string;
 } | {
     ran: false;
     reason: string;
@@ -126,7 +168,8 @@ export interface SandboxExecOptions {
     cwd: string;
     commonGitDir: string;
     timeoutMs: number;
-    network: 'none' | 'registry';
+    /** 'nuget': only NUGET_HOSTS (the dotnet restore step), never the configured hosts. */
+    network: 'none' | 'registry' | 'nuget';
     /** The factory sandbox settings (allowedHosts, extra read-only paths); extra read-write paths are dropped. */
     settings: SandboxSettings;
     /** The dir the per-command job homes go under (never inside `cwd`). */
@@ -137,6 +180,18 @@ export interface SandboxExecOptions {
     mainRoot?: string;
     nodeModulesTarget?: string;
     nestedNodeModulesTargets?: string[];
+    /** SandboxRunRequest.dotnetMtp. */
+    dotnetMtp?: true;
+    /** SandboxRunRequest.nugetPackages. */
+    nugetPackages?: RunNugetPackages;
+    /** SandboxRunRequest.nugetHierarchy. */
+    nugetHierarchy?: string;
+    /** SandboxRunRequest.nugetNoAddSource. */
+    nugetNoAddSource?: true;
+    /** SandboxRunRequest.nugetFromGit. */
+    nugetFromGit?: true;
+    /** SandboxRunRequest.restoreGraph. */
+    restoreGraph?: true;
 }
 export declare const MARKER_PREFIX = "omg-gate-exit-";
 /** The command's output the POSIX form keeps (`tail -c`) before the marker line. */

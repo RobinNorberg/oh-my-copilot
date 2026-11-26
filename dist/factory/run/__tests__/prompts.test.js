@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import * as engine from '../engine.js';
 import * as prompts from '../prompts.js';
+import { MSBUILD_SUBCOMMANDS } from '../../../copilot-run/dotnet-sandbox.js';
 import { laneDecline } from '../lane-commit.js';
 import { createFactoryState } from '../state.js';
 /** Every lane prompt for a spread of states; the fixture was captured from engine.ts before the prompts moved out. */
@@ -135,6 +136,64 @@ describe('the no-install rule follows the lane\'s sandbox settings', () => {
     });
     it('the review prompt never carries it (its shell is read-only and it runs no package script)', () => {
         expect(prompts.reviewPrompt(s, 'a'.repeat(40), 'diff')).not.toContain('package install');
+    });
+});
+describe('the dotnet rule: only a sandboxed lane of a .NET repository is told to pass -m:1', () => {
+    const s = { ...createFactoryState({ issue: 7, repoUrl: 'https://github.com/o/r', base: 'main' }, '2026-11-22T00:00:00.000Z'), head: 'b'.repeat(40), baseSha: 'c'.repeat(40) };
+    const lane = { sandboxed: true, writeNetwork: 'none', nodeModulesReady: false };
+    const write = (l) => [
+        prompts.implementPrompt(s, undefined, [], l),
+        prompts.fixPrompt(s, 1, [], l),
+        prompts.humanFixPrompt(s, 1, [], [], [], l),
+        prompts.conflictFixPrompt(s, ['a.ts'], l),
+        prompts.ciFixPrompt(s, l),
+    ];
+    it('every write prompt names -m:1, and offline forbids new packages', () => {
+        for (const p of write({ ...lane, dotnet: true })) {
+            expect(p).toContain('Always pass `-m:1` to dotnet build, dotnet test, dotnet restore, dotnet pack, dotnet publish, dotnet clean and dotnet msbuild');
+            expect(p).toContain('do not add or upgrade a package reference');
+            // Consistent with the engine: a package change parks for approval, then the engine's restore step fetches it.
+            expect(p).toContain('A package change in a project file is not built here: the run stops for a human to approve it, and only then does the engine fetch the package.');
+            // dotnet run gets no -m:1 (it reaches the program), a VSTest dll run rejects it.
+            expect(p).toContain('Not to dotnet run');
+            expect(p).toContain('`dotnet run --no-build`');
+            expect(p).toContain('`dotnet test <file>.dll`');
+        }
+        // "registry" allows the npm hosts only: NuGet stays offline unless a NuGet host is allowed.
+        for (const p of write({ ...lane, writeNetwork: 'registry', dotnet: true })) {
+            expect(p).toContain('`-m:1`');
+            expect(p).toContain('do not add or upgrade a package reference');
+        }
+        for (const p of write({ ...lane, writeNetwork: 'registry', dotnet: true, nugetReachable: true })) {
+            expect(p).toContain('`-m:1`');
+            expect(p).not.toContain('package reference');
+        }
+    });
+    it('every dotnet rule forbids dotnet watch', () => {
+        for (const p of [...write({ ...lane, dotnet: true }), ...write({ ...lane, dotnet: true, dotnetMtp: true })])
+            expect(p).toContain('Never run dotnet watch');
+    });
+    it('F3: a Microsoft.Testing.Platform repository: no -m:1 and no dotnet test; build with -m:1, then run each test project with dotnet run --no-build', () => {
+        for (const p of write({ ...lane, dotnet: true, dotnetMtp: true })) {
+            expect(p).toContain('Always pass `-m:1` to dotnet build, dotnet restore, dotnet pack, dotnet publish, dotnet clean and dotnet msbuild');
+            expect(p).toContain('`dotnet test` does not work in this sandbox');
+            expect(p).toContain('`dotnet run --project <test project> --no-build`');
+            expect(p).not.toContain('`dotnet test -m:1`');
+            expect(p).toContain('do not add or upgrade a package reference');
+        }
+    });
+    it('the subcommand list is MSBUILD_SUBCOMMANDS (no drift), and run is not in it', () => {
+        expect(MSBUILD_SUBCOMMANDS).not.toContain('run');
+        const p = prompts.implementPrompt(s, undefined, [], { ...lane, dotnet: true });
+        for (const sub of MSBUILD_SUBCOMMANDS)
+            expect(p).toContain(`dotnet ${sub}`);
+    });
+    it('a Node repository, an unsandboxed lane or an unknown sandbox: no dotnet text, the prompt unchanged', () => {
+        expect(write({ ...lane, dotnet: false })).toEqual(write(lane));
+        expect(write({ sandboxed: false, writeNetwork: 'none', nodeModulesReady: false, dotnet: true })).toEqual(write({ sandboxed: false, writeNetwork: 'none', nodeModulesReady: false }));
+        for (const p of [...write(lane), ...write(null)])
+            expect(p).not.toMatch(/dotnet|-m:1/);
+        expect(prompts.reviewPrompt(s, 'a'.repeat(40), 'diff')).not.toContain('-m:1');
     });
 });
 describe('M5: write lanes run the repository format / lint scripts (names from the base package.json)', () => {

@@ -82,10 +82,11 @@ export declare function globMatcher(glob: string): (path: string) => boolean;
  * `extra` (the configured protected paths, known-flaky file and core.hooksPath,
  * root-relative), `globs` (the user's securityCritical list), the denied
  * directories anywhere in the path, manifests, lockfiles, config and agent
- * prompt files by name, and any path Windows could resolve elsewhere
- * (protectedChanges' raw `:`/`~`/`..` rule).
+ * prompt files by name, any path Windows could resolve elsewhere
+ * (protectedChanges' raw `:`/`~`/`..` rule), and for a .NET repository
+ * (`dotnet`) every path under a bin/, obj/ or artifacts/ dir.
  */
-export declare function deniedPaths(paths: readonly string[], extra?: readonly string[], globs?: readonly string[]): string[];
+export declare function deniedPaths(paths: readonly string[], extra?: readonly string[], globs?: readonly string[], dotnet?: boolean): string[];
 /**
  * docs: an allowlist (review-498b N2): root README*, CHANGELOG* and
  * CONTRIBUTING* (.md, .rst, .txt) and `.md`, `.rst`, `.txt` files under the
@@ -142,6 +143,8 @@ export interface TierResult {
 /** Root-anchored source trees the small tier never touches by default: the factory, ship, the Copilot runner and the forge adapters. */
 export declare const SMALL_TIER_DENIED: string[];
 export interface ClassifyOptions {
+    /** A .NET repository (engine.ts dotnetRepo): paths under bin/, obj/ and artifacts/ are denied too. */
+    dotnet?: boolean;
     /** Root-relative protected paths: the configured protected paths, the known-flaky file, the configured core.hooksPath. */
     extraDenied?: readonly string[];
     /** The files the BASE test config runs before or around tests (setupFiles, globalSetup, ...); `problem` = they could not be read. */

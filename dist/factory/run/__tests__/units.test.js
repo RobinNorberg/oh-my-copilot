@@ -4,7 +4,7 @@ import { dirname, join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { parseProgressLog } from '../../../lib/agent-progress.js';
 import { assertLaneCreditCap, DEFAULT_FACTORY_RUN_LIMITS, nextLaneCap, resolveFactoryRunLimits, runCreditsExceeded } from '../budget.js';
-import { ciFailureTail, isNewerEvent, GIT_TRANSPORT_SANDBOX_ADVICE, nodeModulesWriteDenied, sandboxIncompatibleAdvice, windowsJunctionReadDenied, ciFixPrompt, conflictFixPrompt, fenceFor, findPlanLink, fixPrompt, hasAcceptanceCriteria, implementPrompt, issueAuthorTrusted, oneLine, reviewPrompt } from '../engine.js';
+import { ciFailureTail, isNewerEvent, DOTNET_SANDBOX_ADVICE, GIT_TRANSPORT_SANDBOX_ADVICE, nodeModulesWriteDenied, sandboxIncompatibleAdvice, windowsJunctionReadDenied, ciFixPrompt, conflictFixPrompt, fenceFor, findPlanLink, fixPrompt, hasAcceptanceCriteria, implementPrompt, issueAuthorTrusted, oneLine, reviewPrompt } from '../engine.js';
 import { ghRepoArg } from '../../../forge/github/gh.js';
 import { shipyardKeySearch } from '../../../forge/types.js';
 import { assertFactoryCommand, factoryGuardExec, FactorySafetyError, hardenedGitExec } from '../exec.js';
@@ -1179,6 +1179,16 @@ describe('the prepare checkout\'s node_modules link', () => {
         expect(GIT_TRANSPORT_SANDBOX_ADVICE).toContain('no MSYS2 program starts in the sandbox');
         expect(GIT_TRANSPORT_SANDBOX_ADVICE).not.toContain('"ack"');
         expect(sandboxIncompatibleAdvice(tail, 'linux')).toContain('writeNetwork "registry"');
+    });
+    it('a dotnet gate names the NuGet and MSBuild causes, never the npm registry', () => {
+        for (const argv of [['dotnet', 'test'], ['C:\\Program Files\\dotnet\\dotnet.exe', 'build']]) {
+            const advice = sandboxIncompatibleAdvice("NuGet.targets(780,5): error : Unable to load the service index for source https://api.nuget.org/v3/index.json", 'win32', argv);
+            expect(advice).toBe(DOTNET_SANDBOX_ADVICE);
+        }
+        expect(DOTNET_SANDBOX_ADVICE).toContain('NuGet global packages folder');
+        expect(DOTNET_SANDBOX_ADVICE).toContain('-m:1');
+        expect(DOTNET_SANDBOX_ADVICE).not.toContain('npm');
+        expect(sandboxIncompatibleAdvice(undefined, 'win32', ['npm', 'test'])).toContain('writeNetwork "registry"');
     });
 });
 describe('isNewerEvent (lane stall check)', () => {

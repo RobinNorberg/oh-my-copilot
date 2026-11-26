@@ -79,6 +79,8 @@ export interface DashboardData {
     bench: DashboardBench[];
     warnings: string[];
 }
+/** Local calendar day (YYYY-MM-DD) of a timestamp. */
+export declare const localDay: (t: number) => string;
 /** Milliseconds per phase: each transition runs until the next one; the last runs to updatedAt (nothing once terminal). Park notes are not transitions. */
 export declare function phaseDurations(s: Pick<FactoryRunState, 'history' | 'updatedAt'>): Record<string, number>;
 export declare function summarizeRun(s: FactoryRunState, o?: {

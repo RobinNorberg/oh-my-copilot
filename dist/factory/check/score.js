@@ -11,8 +11,27 @@ import { FactorySafetyError } from '../run/exec.js';
 import { factoryBranch } from '../run/state.js';
 import { evaluateItem } from './rules.js';
 export const BUCKET_ORDER = ['runnable', 'needs-plan', 'blocked'];
-/** Tracker text for a terminal: ANSI sequences dropped, then every control/format/separator character as a space. */
-export const plainText = (v) => stripAnsi(v).replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu, ' ');
+/**
+ * Selectors that only pick a glyph form and draw nothing themselves: the
+ * variation selectors (VS16 in emoji and keycaps), the Mongolian free
+ * variation selectors and the tag characters (tag-sequence flags). Deleted,
+ * so an emoji or a flag keeps its look instead of gaining a space.
+ */
+// eslint-disable-next-line no-misleading-character-class -- the selectors are listed on purpose, each one alone
+const GLYPH_SELECTORS = /[\u180B-\u180D\u180F\uFE00-\uFE0F\u{E0001}\u{E0020}-\u{E007F}\u{E0100}-\u{E01EF}]/gu;
+/**
+ * Tracker text for a terminal: ANSI sequences dropped, the glyph selectors
+ * above deleted, then every control/format/separator character as a space,
+ * and so is every code point a terminal draws as blank or nothing although
+ * it is neither (the Hangul fillers, blank braille, the combining grapheme
+ * joiner, the Khmer invisible marks, the Mongolian vowel separator, U+2065,
+ * U+16FE4), every private-use, surrogate and unassigned code point (a font
+ * may draw any of them blank): such filler could pad text out to look like
+ * a separate line.
+ */
+export const plainText = (v) => stripAnsi(v).replace(GLYPH_SELECTORS, '')
+    // eslint-disable-next-line no-misleading-character-class -- the combining marks are listed on purpose, each one alone
+    .replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\p{Co}\p{Cs}\p{Cn}\u034F\u115F\u1160\u17B4\u17B5\u180E\u2065\u2800\u3164\uFFA0\u{16FE4}\u{E0000}-\u{E0FFF}]/gu, ' ');
 /** ADO Priority, else a GitHub `priority:pN` label (p0 -> 1 ... p3 -> 4). */
 export function itemPriority(item) {
     if (item.priority !== undefined && Number.isInteger(item.priority) && item.priority > 0)

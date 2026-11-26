@@ -20,7 +20,7 @@ import { GATE_TREE_MARKER } from '../prepare.js';
 import type { SandboxRunRequest } from '../sandbox-exec.js';
 import { readFactoryState, requestFactoryCancel } from '../state.js';
 import { readTamperHold } from '../tamper-quarantine.js';
-import { commitFile, ENFORCED_SANDBOX, FakeLanes, FakeProcesses, gitIn, review, type LaneScript } from './fake-lanes.js';
+import { commitFile, ENFORCED_SANDBOX, fakeRestoreGraph, FakeLanes, FakeProcesses, gitIn, review, type LaneScript } from './fake-lanes.js';
 import { BASE, foreignCommands, lanesFor, LOCAL_ISSUE, localOpts, localWorld, type LocalWorld } from './engine-local-harness.js';
 
 const T = 600_000;
@@ -215,6 +215,95 @@ describe('factory run with factory.run.layout "private"', () => {
     expect(existsSync(join(s.privateDir!, 'w', 'prep', 'node_modules'))).toBe(false);
   }, T);
 
+  it('a .NET repository with no npm lockfile: no npm ci and no gate-install-needed, also with "sandboxed"; a NuGet failure takes the restore step with the run packages dir in the run dir', async () => {
+    w = localWorld(['dotnet', 'test']);
+    writeFileSync(join(w.root, '.gitignore'), '.omg/\nbin/\nobj/\n');
+    mkdirSync(join(w.root, 'src', 'App'), { recursive: true });
+    writeFileSync(join(w.root, 'src', 'App', 'App.csproj'), '<Project Sdk="Microsoft.NET.Sdk" />\n');
+    gitIn(w.root, 'add', '.');
+    gitIn(w.root, 'commit', '-q', '-m', 'project');
+    const work = join(w.dir, 'fw');
+    const user = { factory: { run: { layout: 'private', workDir: work, gateInstall: 'sandboxed' } } };
+    const reqs: SandboxRunRequest[] = [];
+    let gates = 0;
+    const runner = async (req: SandboxRunRequest) => {
+      reqs.push(req);
+      if (req.purpose === 'gate') {
+        gates += 1;
+        return gates === 1
+          ? { ran: true as const, status: 1, output: 'App.csproj : error NU1301: Unable to load the service index for source https://api.nuget.org/v3/index.json.', timedOut: false }
+          : { ran: true as const, status: 0, output: 'Passed!', timedOut: false };
+      }
+      // The restore-source evaluations (engine.ts restoreSourcesPark): the same graph in the tree and the checkout.
+      if (req.purpose === 'sources') return { ran: true as const, status: 0, output: '', timedOut: false, restoreGraph: fakeRestoreGraph(req.cwd) };
+      return { ran: true as const, status: 0, output: '', timedOut: false };
+    };
+    const out = await runFactoryEngine(opts({ w, user }, [commitFile('src/App/Greet.cs', 'namespace App;\n'), review('approve')], { gateSandbox: runner }));
+    expect(out.gate?.name, out.message).toBe('merge');
+    expect(reqs.map((r) => r.purpose)).not.toContain('install');
+    const s = readFactoryState(w.root, LOCAL_ISSUE)!;
+    expect(s.history.some((h) => h.note === 'no npm lockfile in this .NET repository: the prepare checkout gets no node_modules and no npm ci')).toBe(true);
+    const restore = reqs.find((r) => r.purpose === 'restore')!;
+    // The restore runs in the run dir's definition tree, never in the prepare checkout w/prep.
+    expect(restore).toMatchObject({ network: 'nuget', cwd: join(s.privateDir!, 'gates', 'nuget-defs', `issue-${LOCAL_ISSUE}`), nugetPackages: { dir: join(s.privateDir!, 'gates', 'nuget', `issue-${LOCAL_ISSUE}`), writable: true } });
+    expect(existsSync(restore.cwd)).toBe(false);
+  }, T);
+
+  it('a .NET repository with a committed root nuget.config: the restore tree holds that file, no request asks for NuGet\'s hierarchy, and the gate passes after the restore', async () => {
+    w = localWorld(['dotnet', 'test']);
+    writeFileSync(join(w.root, '.gitignore'), '.omg/\nbin/\nobj/\n');
+    mkdirSync(join(w.root, 'src', 'App'), { recursive: true });
+    writeFileSync(join(w.root, 'src', 'App', 'App.csproj'), '<Project Sdk="Microsoft.NET.Sdk" />\n');
+    const config = '<configuration><packageSources><clear /><add key="nuget.org" value="https://api.nuget.org/v3/index.json" /></packageSources></configuration>\n';
+    writeFileSync(join(w.root, 'nuget.config'), config);
+    gitIn(w.root, 'add', '.');
+    gitIn(w.root, 'commit', '-q', '-m', 'project');
+    const user = { factory: { run: { layout: 'private', workDir: join(w.dir, 'fw'), gateInstall: 'sandboxed' } } };
+    const reqs: SandboxRunRequest[] = [];
+    let treeConfig: string | undefined;
+    let gates = 0;
+    const runner = async (req: SandboxRunRequest) => {
+      reqs.push(req);
+      if (req.purpose === 'restore') treeConfig = readFileSync(join(req.cwd, 'nuget.config'), 'utf8');
+      if (req.purpose === 'gate') {
+        gates += 1;
+        // The checkout holds the commit's own root config: what the sandbox runner points NuGet at.
+        expect(readFileSync(join(req.cwd, 'nuget.config'), 'utf8')).toBe(config);
+        return gates === 1
+          ? { ran: true as const, status: 1, output: 'App.csproj : error NU1301: Unable to load the service index for source https://api.nuget.org/v3/index.json.', timedOut: false }
+          : { ran: true as const, status: 0, output: 'Passed!', timedOut: false };
+      }
+      // The restore-source evaluations (engine.ts restoreSourcesPark): the same graph in the tree and the checkout.
+      if (req.purpose === 'sources') return { ran: true as const, status: 0, output: '', timedOut: false, restoreGraph: fakeRestoreGraph(req.cwd) };
+      return { ran: true as const, status: 0, output: '', timedOut: false };
+    };
+    const out = await runFactoryEngine(opts({ w, user }, [commitFile('src/App/Greet.cs', 'namespace App;\n'), review('approve')], { gateSandbox: runner }));
+    expect(out.gate?.name, out.message).toBe('merge');
+    expect(treeConfig).toBe(config);
+    expect(reqs.every((r) => r.nugetHierarchy === undefined)).toBe(true);
+    expect(readFactoryState(w.root, LOCAL_ISSUE)!.history.some((h) => /NuGet read only the tree's root nuget\.config \(the head's own\)/.test(h.note))).toBe(true);
+  }, T);
+
+  it('L2: a .NET repository with no npm lockfile but an npm-style prepare check keeps the gate-install-needed park (no npm checks without node_modules)', async () => {
+    w = localWorld(['dotnet', 'test']);
+    writeFileSync(join(w.root, '.gitignore'), '.omg/\nbin/\nobj/\n');
+    mkdirSync(join(w.root, 'src', 'App'), { recursive: true });
+    writeFileSync(join(w.root, 'src', 'App', 'App.csproj'), '<Project Sdk="Microsoft.NET.Sdk" />\n');
+    gitIn(w.root, 'add', '.');
+    gitIn(w.root, 'commit', '-q', '-m', 'project');
+    const user = { factory: { run: { layout: 'private', workDir: join(w.dir, 'fw') } } };
+    const reqs: SandboxRunRequest[] = [];
+    const runner = async (req: SandboxRunRequest) => {
+      reqs.push(req);
+      return { ran: true as const, status: 0, output: 'Passed!', timedOut: false };
+    };
+    const npmCheck: FactoryEngineOptions['gateConfig'] = () => ({ config: { ...resolveShipConfig(undefined), requiredChecks: ['Test'], advisoryChecks: [], prepareChecks: [['npm', 'run', 'lint']] }, known: [] });
+    const out = await runFactoryEngine(opts({ w, user }, [commitFile('src/App/Greet.cs', 'namespace App;\n'), review('approve')], { gateSandbox: runner, gateConfig: npmCheck }));
+    expect(out.gate?.name, out.message).toBe(GATE_INSTALL_GATE);
+    expect(out.gate?.reason).toMatch(/the base has no lockfile/);
+    expect(reqs.some((r) => r.purpose === 'prepare' || r.purpose === 'install')).toBe(false);
+  }, T);
+
   it('isolation "container": a lockfile the PR changes needs no host install (the gate container installs per command)', async () => {
     const env = privateWorld();
     w = env.w;
@@ -368,6 +457,30 @@ describe('your repository around untrusted code that ran without the enforced sa
     const clean: LaneScript = (ctx) => ({ ...greet()(ctx), sandbox: DETECT_ONLY });
     const ok = await runFactoryEngine(opts(env, [clean, review('approve')]));
     expect(ok.gate?.name, ok.message).toBe('merge');
+  }, T);
+
+  it('an enforced lane whose sandbox changed mid-session (stateEscaped, no call counted): your repository is compared, a ref it made parks at lane-tampered; one that left it alone parks at sandbox-escaped, never a retry', async () => {
+    const error = "sandbox-escaped: the session's sandbox changed mid-session (the session holds a sandbox opt-out (disabledForSession: true))";
+    const ESCAPED = { ...ENFORCED_SANDBOX, stateEscaped: error } as typeof ENFORCED_SANDBOX;
+    let env = privateWorld();
+    w = env.w;
+    const sneaky: LaneScript = (ctx) => {
+      gitIn(w.root, 'update-ref', 'refs/heads/sneaky', gitIn(w.root, 'rev-parse', 'HEAD'));
+      return { ...greet()(ctx), state: 'failed', error, sandbox: ESCAPED };
+    };
+    const out = await runFactoryEngine(opts(env, [sneaky]));
+    expect(out.gate?.name, out.message).toBe('lane-tampered');
+    expect(out.gate?.reason).toMatch(/your repository: ref refs\/heads\/sneaky was created/);
+
+    rmSync(w.dir, { recursive: true, force: true });
+    env = privateWorld();
+    w = env.w;
+    const lanes = lanesFor(env.w, [(ctx) => ({ ...greet()(ctx), state: 'failed', error, sandbox: ESCAPED })]);
+    const parked = await runFactoryEngine(localOpts(env.w, lanes, { runUserConfig: env.user, secretScanUserConfig: null }));
+    expect(parked.gate?.name, parked.message).toBe('sandbox-escaped');
+    expect(parked.gate?.reason).toContain(error);
+    expect(lanes.started).toHaveLength(1);
+    expect(readMirrorRef(w.config.repo.url, `factory/issue-${LOCAL_ISSUE}`)).toBeFalsy();
   }, T);
 
   it('an unsandboxed local gate that changes your repository\'s git state parks at lane-tampered and its verdict is not used', async () => {

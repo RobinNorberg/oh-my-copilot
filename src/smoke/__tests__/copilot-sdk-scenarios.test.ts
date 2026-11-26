@@ -369,11 +369,11 @@ describe('static evaluators', () => {
   const root = process.platform === 'win32' ? 'C:\\plug' : '/plug';
   const p = (...s: string[]) => join(root, ...s);
 
-  it('sdk.runtime: version must match the installed exe, protocol >= 3', () => {
-    expect(evaluateSdkRuntime({ ok: true, value: { version: '1.0.91', protocolVersion: 3 } }, '1.0.91', 'auto')).toMatchObject({ ok: true, detail: 'runtime 1.0.91, protocol 3; model auto' });
-    expect(evaluateSdkRuntime({ ok: true, value: { version: '1.0.90', protocolVersion: 2 } }, '1.0.91', 'auto').detail)
-      .toBe('runtime 1.0.90 != copilot --version 1.0.91 (not the installed exe?); protocolVersion 2 < 3');
-    expect(evaluateSdkRuntime({ ok: false, error: 'boom' }, '1.0.91', 'auto')).toMatchObject({ ok: false, detail: 'getStatus() failed' });
+  it('sdk.runtime: version must match the installed exe, protocol >= 4 (SDK v2)', () => {
+    expect(evaluateSdkRuntime({ ok: true, value: { version: '1.0.116', protocolVersion: 4 } }, '1.0.116', 'auto')).toMatchObject({ ok: true, detail: 'runtime 1.0.116, protocol 4; model auto' });
+    expect(evaluateSdkRuntime({ ok: true, value: { version: '1.0.112', protocolVersion: 3 } }, '1.0.116', 'auto').detail)
+      .toBe('runtime 1.0.112 != copilot --version 1.0.116 (not the installed exe?); protocolVersion 3 < 4');
+    expect(evaluateSdkRuntime({ ok: false, error: 'boom' }, '1.0.116', 'auto')).toMatchObject({ ok: false, detail: 'getStatus() failed' });
   });
 
   it('sdk.plugins: exact name and package version', () => {

@@ -3,11 +3,13 @@ import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, resolve, sep } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { sdkCreateSessionAcceptsSandbox, type LoadedSdk } from '../../smoke/copilot-sdk-driver.js';
 import {
+  applySandboxConfig,
   BWRAP_TRIAL_ARGS,
   DEFAULT_SANDBOX_SETTINGS,
+  NUGET_HOSTS,
   allowlistSessionEnv,
+  sandboxPath,
   bwrapTrialLaunchError,
   linuxSandboxProblem,
   factorySandboxProblem,
@@ -102,8 +104,15 @@ describe('buildSandboxConfig', () => {
       '.ssh', '.gitconfig', '.omg', '.copilot', '.azure', '.git-credentials', join('.config', 'git', 'credentials'), join('.cache', 'git', 'credential'),
       join('.config', 'gh'), '.aws', '.npmrc', '.docker', '.kube', '.netrc', join('.cargo', 'credentials'), join('.cargo', 'credentials.toml'),
       '.gnupg', '.pypirc', join('.config', 'gcloud'),
+      join('.nuget', 'NuGet'), join('.nuget', 'plugins'), join('.config', 'NuGet'), join('.local', 'share', 'MicrosoftCredentialProvider'),
     ].map((p) => join(ctx.realHome, p));
     expect(denied.userPolicy.filesystem.deniedPaths).toEqual([...homeDenied, '/var/run/docker.sock', '/run/docker.sock', '/run/podman']);
+    // A dotnet job's read-only NuGet packages grant survives beside the denied NuGet config and credential dirs (never all of ~/.nuget).
+    const packages = join(ctx.realHome, '.nuget', 'packages');
+    const dotnet = buildSandboxConfig('write', { ...ctx, extraReadonly: [packages] }, host({ shell: true, denied_paths: true }));
+    expect(dotnet.userPolicy.filesystem.readonlyPaths).toContain(packages);
+    expect(dotnet.userPolicy.filesystem.deniedPaths).toEqual(expect.arrayContaining([join(ctx.realHome, '.nuget', 'NuGet'), join(ctx.realHome, '.nuget', 'plugins'), join(ctx.realHome, '.local', 'share', 'MicrosoftCredentialProvider')]));
+    expect(dotnet.userPolicy.filesystem.deniedPaths!.some((d) => packages.startsWith(d))).toBe(false);
     // The user's runtime dir and the SSH agent's socket dir are denied on Linux/macOS.
     const sockets = buildSandboxConfig('write', { ...ctx, uid: 1000, sshAuthSock: '/tmp/ssh-XYZ/agent.42' }, host({ shell: true, denied_paths: true }));
     expect(sockets.userPolicy.filesystem.deniedPaths).toEqual([...homeDenied, '/run/user/1000', '/var/run/docker.sock', '/run/docker.sock', '/run/podman', '/tmp/ssh-XYZ']);
@@ -114,7 +123,7 @@ describe('buildSandboxConfig', () => {
     }
     // No socket entry on Windows; gh's hosts.yml dir and the GCM/MSAL token cache instead.
     const win = buildSandboxConfig('write', { ...ctx, platform: 'win32', uid: 1000, sshAuthSock: '/tmp/ssh-XYZ/agent.42' }, host({ shell: true, denied_paths: true }));
-    expect(win.userPolicy.filesystem.deniedPaths).toEqual([...homeDenied, join(ctx.realHome, 'AppData', 'Roaming', 'GitHub CLI'), join(ctx.realHome, 'AppData', 'Local', '.IdentityService')]);
+    expect(win.userPolicy.filesystem.deniedPaths).toEqual([...homeDenied, join(ctx.realHome, 'AppData', 'Roaming', 'GitHub CLI'), join(ctx.realHome, 'AppData', 'Local', '.IdentityService'), join(ctx.realHome, 'AppData', 'Roaming', 'NuGet'), join(ctx.realHome, 'AppData', 'Local', 'MicrosoftCredentialProvider')]);
     // An agent socket directly in a shared sticky dir: only the socket, never all of /tmp.
     for (const sshAuthSock of ['/tmp/agent.42', '/var/tmp/agent.42']) {
       const cfg = buildSandboxConfig('write', { ...ctx, sshAuthSock }, host({ shell: true, denied_paths: true }));
@@ -198,6 +207,22 @@ describe('buildSandboxConfig', () => {
     expect(buildSandboxConfig('write', { ...ctx, settings, platform: 'win32' }, host()).userPolicy.network.allowLocalNetwork).toBe(true);
     // A review never gets the network.
     expect(buildSandboxConfig('review', { ...ctx, settings }, host()).userPolicy.network).toEqual({ allowOutbound: false, allowLocalNetwork: false });
+  });
+
+  it('onlyHosts (the dotnet restore step): exactly those hosts, never the npm hosts or the configured extras', () => {
+    const settings = { ...ctx.settings, writeNetwork: 'registry' as const, allowedHosts: ['npm.example.com'] };
+    expect(buildSandboxConfig('write', { ...ctx, settings, onlyHosts: NUGET_HOSTS }, host()).userPolicy.network).toEqual({ allowOutbound: true, allowedHosts: ['api.nuget.org'], allowLocalNetwork: false });
+    expect(NUGET_HOSTS).toEqual(['api.nuget.org']);
+    // Windows: the local network stays on (the Windows sandbox runs nothing with outbound on and it off).
+    expect(buildSandboxConfig('write', { ...ctx, settings, platform: 'win32', onlyHosts: NUGET_HOSTS }, host()).userPolicy.network.allowLocalNetwork).toBe(true);
+    expect(buildSandboxConfig('review', { ...ctx, onlyHosts: NUGET_HOSTS }, host()).userPolicy.network.allowOutbound).toBe(false);
+  });
+
+  it('extraReadwrite: an engine dir outside the worktree is writable in the write profile; a root or a dir holding the home or worktree throws', () => {
+    const run = join(root, 'gates', 'nuget', 'issue-7');
+    expect(buildSandboxConfig('write', { ...ctx, extraReadwrite: [run] }, host()).userPolicy.filesystem.readwritePaths).toContain(run);
+    expect(buildSandboxConfig('review', { ...ctx, extraReadwrite: [run] }, host()).userPolicy.filesystem.readwritePaths).not.toContain(run);
+    for (const bad of [resolve('/'), dirname(ctx.worktree), dirname(ctx.realHome)]) expect(() => buildSandboxConfig('write', { ...ctx, extraReadwrite: [bad] }, host()), bad).toThrow(/read-write grant/);
   });
 
   it('grants the tool dirs read-only in both profiles, never a filesystem root or a dir holding the real home', () => {
@@ -623,6 +648,20 @@ describe('laneToolPaths', () => {
   it('the default probe finds the real node of this process', () => {
     expect(laneToolPaths({ PATH: '' }, process.platform)).toContain(dirname(process.execPath));
   });
+
+  it('round 5: sandboxPath drops empty and relative entries and node_modules/.bin dirs (any case on Windows); allowlistSessionEnv applies it', () => {
+    expect(sandboxPath('C:\\work\\repo\\node_modules\\.bin;C:\\Users\\u\\AppData\\npm-cache\\_npx\\1\\Node_Modules\\.BIN\\;.;bin;;C:dir;"C:\\Program Files\\Git\\cmd";C:\\Windows\\system32;\\tools', 'win32'))
+      .toBe('"C:\\Program Files\\Git\\cmd";C:\\Windows\\system32;\\tools');
+    expect(sandboxPath('/repo/node_modules/.bin:.:bin::/usr/bin:/repo/Node_Modules/.bin:/opt/node_modules/.bin/:/opt/my_node_modules/.bin', 'linux'))
+      .toBe('/usr/bin:/repo/Node_Modules/.bin:/opt/my_node_modules/.bin');
+    // A node_modules dir that is not `.bin` (a tool that ships inside one) stays.
+    expect(sandboxPath('C:\\tools\\node_modules\\x\\bin', 'win32')).toBe('C:\\tools\\node_modules\\x\\bin');
+    const sep = process.platform === 'win32' ? ';' : ':';
+    const abs = process.platform === 'win32' ? 'C:\\Windows\\system32' : '/usr/bin';
+    const nm = process.platform === 'win32' ? 'C:\\x\\node_modules\\.bin' : '/x/node_modules/.bin';
+    const env = allowlistSessionEnv({ Path: [nm, '.', abs].join(sep) }, join(tmpdir(), 'job'));
+    expect(env.Path).toBe(abs);
+  });
 });
 
 describe('sandbox settings', () => {
@@ -741,19 +780,22 @@ describe('detection helpers', () => {
     expect(factorySandboxProblem({ ...DEFAULT_SANDBOX_SETTINGS }, boom, { OMG_SANDBOX: 'off' })).toBeNull();
   });
 
-  it('sdkCreateSessionAcceptsSandbox reads the createSession source', () => {
-    const sdk = (cls: unknown): LoadedSdk => ({ module: { CopilotClient: cls as never, RuntimeConnection: { forStdio: () => ({}) } }, version: 'x', from: 'test' });
-    class Old { async createSession(cfg: { model?: string }) { return cfg.model; } }
-    class New { async createSession(cfg: { sandboxConfig?: unknown }) { return cfg.sandboxConfig; } }
-    expect(sdkCreateSessionAcceptsSandbox(sdk(Old))).toBe(false);
-    expect(sdkCreateSessionAcceptsSandbox(sdk(New))).toBe(true);
+  it('applySandboxConfig sends the SDK v2 options.update patch and reads its success', async () => {
+    const config = { enabled: true } as never;
+    const seen: unknown[] = [];
+    const session = (result: unknown) => ({ rpc: { options: { update: async (p: unknown) => { seen.push(p); return result; } } } });
+    expect(await applySandboxConfig(session({ success: true }), config, 1_000)).toBeNull();
+    expect(seen).toEqual([{ permissions: { sandbox: { enabled: true }, sandboxSource: 'session_flag' } }]);
+    expect(await applySandboxConfig(session({ success: false }), config, 1_000)).toBe('options.update did not report success');
+    expect(await applySandboxConfig({ rpc: {} }, config, 1_000)).toBe('the SDK has no options.update RPC');
   });
 
   it('allowlistSessionEnv matches names case-insensitively and relocates the profile', () => {
+    const ABS_PATH = process.platform === 'win32' ? 'C:\\bin' : '/bin';
     const hostTemp = 'C:\\Users\\u\\AppData\\Local\\Temp';
-    const env = allowlistSessionEnv({ Path: 'p', SystemRoot: 'C:\\Windows', npm_config_token: 't', LC_CTYPE: 'C', OMC_X: '1', APPDATA: 'a', LocalAppData: 'C:\\Users\\u\\AppData\\Local', Temp: hostTemp, tmp: hostTemp, TMPDIR: '/tmp' }, join(root, 'h'));
+    const env = allowlistSessionEnv({ Path: ABS_PATH, SystemRoot: 'C:\\Windows', npm_config_token: 't', LC_CTYPE: 'C', OMC_X: '1', APPDATA: 'a', LocalAppData: 'C:\\Users\\u\\AppData\\Local', Temp: hostTemp, tmp: hostTemp, TMPDIR: '/tmp' }, join(root, 'h'));
     expect(env).toEqual({
-      Path: 'p', SystemRoot: 'C:\\Windows', LC_CTYPE: 'C', OMC_X: '1', LocalAppData: 'C:\\Users\\u\\AppData\\Local',
+      Path: ABS_PATH, SystemRoot: 'C:\\Windows', LC_CTYPE: 'C', OMC_X: '1', LocalAppData: 'C:\\Users\\u\\AppData\\Local',
       // The runtime grants read-write on its TEMP: the caller's (any case) never passes, the job's own temp dir does.
       TEMP: join(root, 'h', 'tmp'), TMP: join(root, 'h', 'tmp'), TMPDIR: join(root, 'h', 'tmp'),
       USERPROFILE: join(root, 'h', 'profile'), HOME: join(root, 'h', 'profile'),

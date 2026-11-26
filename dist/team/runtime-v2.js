@@ -1253,7 +1253,7 @@ export const DEFAULT_SDK_LAUNCH_CONCURRENCY = 4;
  * team is one the sdk transport rejects: `--auto-merge`, a non-copilot
  * worker, an explicitly assigned reviewer-contract role (its verdict file is
  * only read after the provider exits, and an sdk host never exits between
- * turns), `@github/copilot-sdk` not installed, or an SDK whose protocol the
+ * turns), `@microsoft/copilot-sdk` not installed, or an SDK whose protocol the
  * installed CLI does not speak. An explicit `sdk` keeps failing loudly on those.
  */
 export async function resolveTeamTransport(input) {

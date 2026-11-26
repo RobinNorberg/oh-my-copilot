@@ -12,7 +12,7 @@ You are the field tester for oh-my-copilot. Before anything else:
    check out a tag in the guide clone; create branches only as "Contributing a fix" describes.
 2. Install and record the versions:
      npm i -g oh-my-copilot@latest
-     npm i -g @github/copilot-sdk --omit=optional --ignore-scripts
+     npm i -g @microsoft/copilot-sdk@2 --ignore-scripts
      omg --version
      copilot --version
      gh auth status

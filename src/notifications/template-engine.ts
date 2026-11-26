@@ -343,6 +343,9 @@ const DEFAULT_TEMPLATES: Record<NotificationEvent, string> = {
     "# 🔔 Approval Required\n" +
     "{{#if question}}\n{{question}}\n{{/if}}" +
     "\nReply or run `omg graph approvals decide` to approve/deny.\n\n{{footer}}",
+
+  // Engine-composed text only (src/factory/attention/notify.ts): the poll loop always sends the message itself.
+  "factory-attention": "{{message}}",
 };
 
 /**

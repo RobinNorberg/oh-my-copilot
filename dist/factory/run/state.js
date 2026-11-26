@@ -208,6 +208,24 @@ const HEX64 = /^[0-9a-f]{64}$/;
 /** The bound of FactoryGate.detail (the engine writes at most about 3 KB). */
 export const GATE_DETAIL_MAX_CHARS = 4_000;
 const isCount = (v) => Number.isInteger(v) && v >= 0;
+/** Bounds of FactoryGate.next: steps per gate, words per argv, characters per label and per word. */
+export const GATE_NEXT_MAX_STEPS = 8;
+export const GATE_NEXT_MAX_ARGS = 16;
+export const GATE_NEXT_LABEL_MAX_CHARS = 80;
+export const GATE_NEXT_ARG_MAX_CHARS = 4_096;
+/** C0/C1 controls, DEL, the Unicode line and paragraph separators and the bidi controls: never in a copyable command or its label. */
+const GATE_NEXT_FORBIDDEN = /[\u0000-\u001f\u007f-\u009f\u2028\u2029\u200e\u200f\u202a-\u202e\u2066-\u2069]/;
+const nextText = (v, max) => isStr(v) && v.length > 0 && v.length <= max && !GATE_NEXT_FORBIDDEN.test(v);
+/** One FactoryGate.next entry: exactly label, argv and an optional billed flag, each bounded and control-free (shell metacharacters are data in an argv word). */
+export function gateNextStepOk(v) {
+    const e = v;
+    return typeof e === 'object' && e !== null && !Array.isArray(e)
+        && nextText(e.label, GATE_NEXT_LABEL_MAX_CHARS)
+        && Array.isArray(e.argv) && e.argv.length > 0 && e.argv.length <= GATE_NEXT_MAX_ARGS && e.argv.every((a) => nextText(a, GATE_NEXT_ARG_MAX_CHARS))
+        && (e.billed === undefined || e.billed === true)
+        && Object.keys(e).every((k) => k === 'label' || k === 'argv' || k === 'billed');
+}
+const gateNextOk = (v) => Array.isArray(v) && v.length > 0 && v.length <= GATE_NEXT_MAX_STEPS && v.every(gateNextStepOk);
 function shapeProblem(s) {
     if (!isStr(s.repoUrl) || !isStr(s.base) || !s.base || !isStr(s.branch) || !s.branch)
         return 'repoUrl/base/branch';
@@ -232,6 +250,9 @@ function shapeProblem(s) {
     const gateDetail = s.gate?.detail;
     if (gateDetail !== undefined && (!isStr(gateDetail) || gateDetail.length > GATE_DETAIL_MAX_CHARS))
         return 'gate.detail';
+    const gateNext = s.gate?.next;
+    if (gateNext !== undefined && !gateNextOk(gateNext))
+        return 'gate.next';
     if (s.prepareChecks !== undefined && s.prepareChecks !== 'auto' && !(Array.isArray(s.prepareChecks) && s.prepareChecks.every((a) => Array.isArray(a) && a.length > 0 && a.every(isStr))))
         return 'prepareChecks';
     if (s.prepareBuild !== undefined && s.prepareBuild !== 'none') {
@@ -268,6 +289,7 @@ function shapeProblem(s) {
             && (x.model === undefined || isStr(x.model))
             && (x.tamperCheck === undefined || x.tamperCheck === 'clean' || x.tamperCheck === 'problems' || x.tamperCheck === 'skipped')
             && (sbx === undefined || (typeof sbx === 'object' && sbx !== null && isStr(sbx.mode) && isCount(sbx.unsandboxedCalls)
+                && (sbx.stateEscaped === undefined || isStr(sbx.stateEscaped))
                 && (sbx.writeNetwork === undefined || sbx.writeNetwork === 'none' || sbx.writeNetwork === 'registry')));
     }))
         return 'lanes';
@@ -323,6 +345,15 @@ function humanReviewShapeProblem(s) {
         return 'sandboxedPrepareHead';
     if (s.sandboxedGateHead !== undefined && (!isStr(s.sandboxedGateHead) || !HEX40.test(s.sandboxedGateHead)))
         return 'sandboxedGateHead';
+    if (s.nugetRestore !== undefined) {
+        const n = s.nugetRestore;
+        if (s.forgeKind !== 'local' || typeof n !== 'object' || n === null || !isStr(n.head) || !HEX40.test(n.head) || !isStr(n.definition) || !HEX64.test(n.definition))
+            return 'nugetRestore';
+        if (n.outcome !== undefined && n.outcome !== 'passed' && n.outcome !== 'failed' && n.outcome !== 'not-run')
+            return 'nugetRestore';
+        if (n.exit !== undefined && (typeof n.exit !== 'number' || !Number.isInteger(n.exit)))
+            return 'nugetRestore';
+    }
     if (s.gitTransportPlainHead !== undefined && (!isStr(s.gitTransportPlainHead) || !HEX40.test(s.gitTransportPlainHead)))
         return 'gitTransportPlainHead';
     if (s.testDeltaExcusedHead !== undefined && (!isStr(s.testDeltaExcusedHead) || !HEX40.test(s.testDeltaExcusedHead)))

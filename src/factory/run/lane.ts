@@ -86,6 +86,12 @@ export interface LaneStartInput {
   beforeSandboxedSession?: (worktree: string, o?: { copy: boolean }) => string | null | Promise<string | null>;
   /** The local backend, a write lane: the node_modules its sandbox may grant (CopilotRunStartOptions.nodeModulesGrant). */
   nodeModulesGrant?: (worktree: string) => { target: string; nested?: string[] } | undefined;
+  /** The local backend, a write lane in a .NET repository (engine.ts dotnetRepo, any forge): CopilotRunStartOptions.dotnet. */
+  dotnet?: boolean;
+  /** With `dotnet`: CopilotRunStartOptions.dotnetNugetHierarchy. */
+  dotnetNugetHierarchy?: string;
+  /** With `dotnet`: CopilotRunStartOptions.dotnetNugetNoAddSource. */
+  dotnetNugetNoAddSource?: boolean;
   /** Cloud backends only. */
   customAgent?: string;
   timeoutMs: number;
@@ -142,6 +148,8 @@ export interface LaneProcess {
 export interface LaneSandboxIntent {
   sandboxed: boolean;
   writeNetwork: 'none' | 'registry';
+  /** sandbox.allowedHosts: the hosts "registry" allows beyond the npm registry. */
+  allowedHosts?: readonly string[];
   /** The Windows sandbox: beforeSandboxedSession copies (elsewhere it links, whenever `sandboxed`). */
   windowsCopy: boolean;
 }
@@ -217,7 +225,7 @@ export class CopilotLaneBackend implements LaneBackend {
         ...(input.worktree ? { worktree: input.worktree } : {}), ...(input.jobRoot ? { jobRoot: input.jobRoot } : {}),
         ...(input.deniedPaths ? { deniedPaths: input.deniedPaths } : {}), ...(input.beforeHostGit ? { beforeHostGit: input.beforeHostGit } : {}),
         ...(input.beforeSandboxedSession ? { beforeSandboxedSession: input.beforeSandboxedSession } : {}),
-        ...(input.nodeModulesGrant ? { nodeModulesGrant: input.nodeModulesGrant } : {}) },
+        ...(input.nodeModulesGrant ? { nodeModulesGrant: input.nodeModulesGrant } : {}), ...(input.dotnet ? { dotnet: true, ...(input.dotnetNugetHierarchy ? { dotnetNugetHierarchy: input.dotnetNugetHierarchy } : {}), ...(input.dotnetNugetNoAddSource ? { dotnetNugetNoAddSource: true } : {}) } : {}) },
     );
     // An async beforeSandboxedSession: the lane counts as started (the engine's idle clock) only once its worktree is ready.
     await this.manager.prepared?.(snap.jobId);

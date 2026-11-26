@@ -60,7 +60,7 @@ const HEX40 = /^[0-9a-f]{40}$/;
 const SAFE_PATH = /^[\w@+-][\w.@+-]*(?:\/[\w@+-][\w.@+-]*)*$/;
 const SKIP_DIRS = new Set(['node_modules', 'dist', 'build', 'out', 'coverage', 'vendor', 'target', '.git', '.next', '.nuxt', '.cache', '.venv', 'venv', '__pycache__', 'bower_components', 'jspm_packages']);
 const BINARY_EXT = /\.(?:png|jpe?g|gif|bmp|ico|webp|avif|tiff?|psd|pdf|zip|gz|tgz|bz2|xz|7z|rar|jar|war|class|exe|dll|so|dylib|o|a|lib|obj|wasm|node|woff2?|ttf|otf|eot|mp[34]|mov|avi|webm|ogg|wav|flac|sqlite|db|bin|pyc|pyo|lockb)$/i;
-const LOCKFILE = /(?:^|\/)(?:package-lock\.json|npm-shrinkwrap\.json|yarn\.lock|pnpm-lock\.yaml|bun\.lockb|Cargo\.lock|poetry\.lock|composer\.lock|Gemfile\.lock|go\.sum)$/;
+const LOCKFILE = /(?:^|\/)(?:package-lock\.json|npm-shrinkwrap\.json|yarn\.lock|pnpm-lock\.yaml|bun\.lockb|Cargo\.lock|poetry\.lock|composer\.lock|Gemfile\.lock|go\.sum|packages\.lock\.json)$/i;
 /** Names that usually hold credentials: never listed, whatever their content. */
 const SECRET_NAME = /(?:^|\/)(?:\.env(?:\.[^/]*)?|\.npmrc|\.netrc|\.pypirc|id_(?:rsa|dsa|ecdsa|ed25519)(?:\.pub)?|[^/]*credentials[^/]*|[^/]*secrets?(?:\.[^/]*)?)$|\.(?:pem|key|p12|pfx|jks|keystore|crt|cer|der|kdbx)$/i;
 /** Words never taken as identifiers (keywords, literals, built-ins and filler that match everywhere). */

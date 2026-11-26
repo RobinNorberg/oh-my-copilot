@@ -64,7 +64,7 @@ Transport:
   --transport auto     The default. Under the Copilot CLI host (COPILOT_CLI or
                        COPILOT_AGENT_SESSION_ID set): sdk, falling back to pane (with a
                        note on stderr) for a team the sdk transport cannot run or when
-                       @github/copilot-sdk is not installed. Under Claude Code, or with no
+                       @microsoft/copilot-sdk is not installed. Under Claude Code, or with no
                        host signal (a plain terminal): pane.
   team.transport in the project config sets the default (sdk|pane|auto); the flag wins.
 

@@ -142,6 +142,24 @@ export interface FactoryGate {
    * it (they get `reason`), because the PR's code chooses what it prints.
    */
   detail?: string;
+  /**
+   * The next step(s) for the human, composed by the engine when it parked
+   * (gate-next.ts gateNext) from engine-held facts only: the run key, the
+   * 40-hex head, the PR number, the repository root, the forge kind and fixed
+   * flags; never from lane output, the reason, titles or branch names. Sealed
+   * with the rest of the state, so read surfaces print it only after the seal
+   * and the ledger check pass. Optional: states written before it lack it
+   * (gate-next.ts gateSteps is the fallback).
+   */
+  next?: FactoryGateNextStep[];
+}
+
+/** One step of FactoryGate.next: a short label and the exact argv (never a shell line). */
+export interface FactoryGateNextStep {
+  label: string;
+  argv: string[];
+  /** The step can start billed lanes (a rerun, a heal approve). */
+  billed?: boolean;
 }
 
 export interface FactoryFinding {
@@ -282,6 +300,15 @@ export interface FactoryRunState {
   sandboxedPrepareHead?: string;
   /** The head the local gate last ran on in the OS sandbox (the command was handed over): a later gate start failure on it parks at gate-no-verdict. Optional: older state files lack it. */
   sandboxedGateHead?: string;
+  /**
+   * The networked dotnet restore step (nuget-restore.ts): the head it last ran for and the gate definition hash
+   * (as gateChangeApproved) that head had. The run's packages folder holds what that definition restored: only a
+   * dotnet command for a commit with that definition reads it, and it is emptied before a restore or a gate for
+   * another definition. `outcome` (written once the step ended; absent while it runs, or from an older release):
+   * `passed`, `failed` (it ran and exited non-zero or timed out, `exit` its code) or `not-run` (the sandbox gave no
+   * verdict or did not start). A rerun repeats the step for the same head unless it `passed`.
+   */
+  nugetRestore?: { head: string; definition: string; outcome?: 'passed' | 'failed' | 'not-run'; exit?: number };
   /** The head a check last ran on WITHOUT any sandbox through the Windows git-transport fallback: such a run is never auto-merged. */
   gitTransportPlainHead?: string;
   /** The head whose built-in prepare tests passed only because tests that fail on the base too were not counted (test-delta.ts): such a run is never auto-merged. */
@@ -544,7 +571,7 @@ export function moveTo(state: FactoryRunState, to: FactoryPhase, note: string, n
 }
 
 /** Park at a named human gate; the phase stays so a rerun re-evaluates it. */
-export function setGate(state: FactoryRunState, name: string, reason: string, now: string, extra: Pick<FactoryGate, 'definition' | 'detail'> = {}): FactoryRunState {
+export function setGate(state: FactoryRunState, name: string, reason: string, now: string, extra: Pick<FactoryGate, 'definition' | 'detail' | 'next'> = {}): FactoryRunState {
   return {
     ...state,
     gate: { name, reason, at: now, ...extra },
@@ -607,6 +634,27 @@ const HEX64 = /^[0-9a-f]{64}$/;
 export const GATE_DETAIL_MAX_CHARS = 4_000;
 const isCount = (v: unknown): v is number => Number.isInteger(v) && (v as number) >= 0;
 
+/** Bounds of FactoryGate.next: steps per gate, words per argv, characters per label and per word. */
+export const GATE_NEXT_MAX_STEPS = 8;
+export const GATE_NEXT_MAX_ARGS = 16;
+export const GATE_NEXT_LABEL_MAX_CHARS = 80;
+export const GATE_NEXT_ARG_MAX_CHARS = 4_096;
+/** C0/C1 controls, DEL, the Unicode line and paragraph separators and the bidi controls: never in a copyable command or its label. */
+const GATE_NEXT_FORBIDDEN = /[\u0000-\u001f\u007f-\u009f\u2028\u2029\u200e\u200f\u202a-\u202e\u2066-\u2069]/;
+const nextText = (v: unknown, max: number): boolean => isStr(v) && v.length > 0 && v.length <= max && !GATE_NEXT_FORBIDDEN.test(v);
+
+/** One FactoryGate.next entry: exactly label, argv and an optional billed flag, each bounded and control-free (shell metacharacters are data in an argv word). */
+export function gateNextStepOk(v: unknown): v is FactoryGateNextStep {
+  const e = v as Record<string, unknown> | null;
+  return typeof e === 'object' && e !== null && !Array.isArray(e)
+    && nextText(e.label, GATE_NEXT_LABEL_MAX_CHARS)
+    && Array.isArray(e.argv) && e.argv.length > 0 && e.argv.length <= GATE_NEXT_MAX_ARGS && e.argv.every((a) => nextText(a, GATE_NEXT_ARG_MAX_CHARS))
+    && (e.billed === undefined || e.billed === true)
+    && Object.keys(e).every((k) => k === 'label' || k === 'argv' || k === 'billed');
+}
+
+const gateNextOk = (v: unknown): boolean => Array.isArray(v) && v.length > 0 && v.length <= GATE_NEXT_MAX_STEPS && v.every(gateNextStepOk);
+
 function shapeProblem(s: Record<string, unknown>): string | null {
   if (!isStr(s.repoUrl) || !isStr(s.base) || !s.base || !isStr(s.branch) || !s.branch) return 'repoUrl/base/branch';
   if (!FACTORY_PHASES.includes(s.phase as FactoryPhase)) return 'phase';
@@ -621,6 +669,8 @@ function shapeProblem(s: Record<string, unknown>): string | null {
   if (gateDef !== undefined && (s.forgeKind !== 'local' || !isStr(gateDef) || !HEX64.test(gateDef))) return 'gate.definition';
   const gateDetail = (s.gate as { detail?: unknown } | undefined)?.detail;
   if (gateDetail !== undefined && (!isStr(gateDetail) || gateDetail.length > GATE_DETAIL_MAX_CHARS)) return 'gate.detail';
+  const gateNext = (s.gate as { next?: unknown } | undefined)?.next;
+  if (gateNext !== undefined && !gateNextOk(gateNext)) return 'gate.next';
   if (s.prepareChecks !== undefined && s.prepareChecks !== 'auto' && !(Array.isArray(s.prepareChecks) && s.prepareChecks.every((a) => Array.isArray(a) && a.length > 0 && a.every(isStr)))) return 'prepareChecks';
   if (s.prepareBuild !== undefined && s.prepareBuild !== 'none') {
     const b = s.prepareBuild as { command?: unknown; outputs?: unknown };
@@ -650,6 +700,7 @@ function shapeProblem(s: Record<string, unknown>): string | null {
       && (x.model === undefined || isStr(x.model))
       && (x.tamperCheck === undefined || x.tamperCheck === 'clean' || x.tamperCheck === 'problems' || x.tamperCheck === 'skipped')
       && (sbx === undefined || (typeof sbx === 'object' && sbx !== null && isStr(sbx.mode) && isCount(sbx.unsandboxedCalls)
+        && (sbx.stateEscaped === undefined || isStr(sbx.stateEscaped))
         && (sbx.writeNetwork === undefined || sbx.writeNetwork === 'none' || sbx.writeNetwork === 'registry')));
   })) return 'lanes';
   if (typeof s.retries !== 'object' || s.retries === null || !Object.values(s.retries).every(isCount)) return 'retries';
@@ -697,6 +748,12 @@ function humanReviewShapeProblem(s: Record<string, unknown>): string | null {
   if (s.pendingCommit !== undefined && !pendingCommitShapeOk(s.pendingCommit)) return 'pendingCommit';
   if (s.sandboxedPrepareHead !== undefined && (!isStr(s.sandboxedPrepareHead) || !HEX40.test(s.sandboxedPrepareHead))) return 'sandboxedPrepareHead';
   if (s.sandboxedGateHead !== undefined && (!isStr(s.sandboxedGateHead) || !HEX40.test(s.sandboxedGateHead))) return 'sandboxedGateHead';
+  if (s.nugetRestore !== undefined) {
+    const n = s.nugetRestore as { head?: unknown; definition?: unknown; outcome?: unknown; exit?: unknown } | null;
+    if (s.forgeKind !== 'local' || typeof n !== 'object' || n === null || !isStr(n.head) || !HEX40.test(n.head) || !isStr(n.definition) || !HEX64.test(n.definition)) return 'nugetRestore';
+    if (n.outcome !== undefined && n.outcome !== 'passed' && n.outcome !== 'failed' && n.outcome !== 'not-run') return 'nugetRestore';
+    if (n.exit !== undefined && (typeof n.exit !== 'number' || !Number.isInteger(n.exit))) return 'nugetRestore';
+  }
   if (s.gitTransportPlainHead !== undefined && (!isStr(s.gitTransportPlainHead) || !HEX40.test(s.gitTransportPlainHead))) return 'gitTransportPlainHead';
   if (s.testDeltaExcusedHead !== undefined && (!isStr(s.testDeltaExcusedHead) || !HEX40.test(s.testDeltaExcusedHead))) return 'testDeltaExcusedHead';
   if (s.plainHeadRan !== undefined && s.plainHeadRan !== true) return 'plainHeadRan';

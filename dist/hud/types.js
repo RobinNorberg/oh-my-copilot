@@ -70,7 +70,7 @@ export const DEFAULT_ELEMENT_ORDER = {
     line1: ['hostname', 'cwd', 'gitRepo', 'gitBranch', 'gitStatus', 'apiKeySource', 'account', 'profile'],
     main: [
         'omgLabel', 'model', 'effort', 'claudeLabel', 'enterpriseCost', 'creditBudget', 'copilotMode', 'rateLimits', 'customBuckets', 'permission', 'thinking',
-        'promptTime', 'session', 'tokens', 'ralph', 'autopilot', 'team', 'ultragoal', 'prd',
+        'promptTime', 'session', 'tokens', 'ralph', 'autopilot', 'team', 'ultragoal', 'factory', 'prd',
         'skills', 'lastSkill', 'contextBar', 'agents', 'background',
         'callCounts', 'lastTool', 'recentTools', 'sessionSummary',
     ],

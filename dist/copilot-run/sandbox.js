@@ -3,11 +3,10 @@
  * (.omc/plans/2026-10-27-sandboxed-lanes-design.md §3-§6).
  *
  * The Copilot runtime confines shell commands and local MCP/LSP servers in
- * Microsoft Execution Containers when a session carries a `sandboxConfig`.
- * SDK 1.0.16 has no createSession field for it, so the config goes through
- * `session.rpc.options.update` before the first turn; an SDK whose
- * createSession forwards the field gets it at create
- * (sdkCreateSessionAcceptsSandbox).
+ * Microsoft Execution Containers when a session carries a sandbox config.
+ * SDK v2 takes it at create (`permissions.sandbox`); a live session takes it
+ * through `session.rpc.options.update({ permissions: { sandbox } })`
+ * ({@link applySandboxConfig}, the smoke canaries).
  *
  * Fail closed (§3): a review session without a confirmed sandbox runs with no
  * shell tool, a write session refuses with `sandbox-unavailable` unless
@@ -254,6 +253,8 @@ export function resolveWindowsGitTransport(layers, nodeVersion = process.version
     return { mode: v ?? 'fallback', container: named ? container : { ...container, image: defaultGitGateImage(nodeVersion) }, ignoredBase: block(layers.base).windowsGitTransport !== undefined };
 }
 export const REGISTRY_HOSTS = ['registry.npmjs.org', '*.npmjs.org'];
+/** The hosts the factory's sandboxed dotnet restore step reaches (nuget.org's feed serves the index and the packages). */
+export const NUGET_HOSTS = ['api.nuget.org'];
 /** `real` (a realpath) is the realpath of `want`; false when `want` cannot be resolved. Case-folded on win32. */
 function sameRealPath(real, want, platform) {
     let w;
@@ -600,8 +601,13 @@ export function buildSandboxConfig(profile, ctx, host) {
         } }));
         nested = (tree.nested ?? []).filter((p) => allowed.has(fold(p)));
     }
+    for (const p of ctx.extraReadwrite ?? []) {
+        if (P.dirname(P.resolve(p)) === P.resolve(p) || [ctx.realHome, ctx.worktree, ctx.commonGitDir, ctx.jobDir].some((x) => x && isUnderRoot(x, p, ctx.platform))) {
+            throw new Error(`the read-write grant ${p} is a filesystem root or holds the home, the worktree, the git dir or the job dir`);
+        }
+    }
     const filesystem = {
-        readwritePaths: [ctx.worktree, ...laneHome, ...(ctx.hostCommits ? [] : laneGitWritePaths(ctx)), ...settings.extraReadwritePaths],
+        readwritePaths: [ctx.worktree, ...laneHome, ...(ctx.hostCommits ? [] : laneGitWritePaths(ctx)), ...settings.extraReadwritePaths, ...(ctx.extraReadwrite ?? [])],
         readonlyPaths: [ctx.commonGitDir, ...plugin, gitConfigDir, ...pkgCache, ...gitLinks, ...(nm ? [nm] : []), ...nested, ...tools, ...settings.extraReadonlyPaths],
     };
     if (host.capabilities.denied_paths === true) {
@@ -611,8 +617,12 @@ export function buildSandboxConfig(profile, ctx, host) {
             '.ssh', '.gitconfig', '.omg', '.copilot', '.azure', '.git-credentials', join('.config', 'git', 'credentials'), join('.cache', 'git', 'credential'),
             join('.config', 'gh'), '.aws', '.npmrc', '.docker', '.kube', '.netrc', join('.cargo', 'credentials'), join('.cargo', 'credentials.toml'),
             '.gnupg', '.pypirc', join('.config', 'gcloud'),
-            // Windows: gh's hosts.yml (%APPDATA%\GitHub CLI) and the GCM/MSAL token cache (%LOCALAPPDATA%\.IdentityService).
-            ...(ctx.platform === 'win32' ? [join('AppData', 'Roaming', 'GitHub CLI'), join('AppData', 'Local', '.IdentityService')] : []),
+            // NuGet's user config (feed credentials) and the credential providers' token caches; never all of ~/.nuget,
+            // which holds the packages folder a dotnet job is granted read-only (dotnet-sandbox.ts).
+            join('.nuget', 'NuGet'), join('.nuget', 'plugins'), join('.config', 'NuGet'), join('.local', 'share', 'MicrosoftCredentialProvider'),
+            // Windows: gh's hosts.yml (%APPDATA%\GitHub CLI), the GCM/MSAL token cache (%LOCALAPPDATA%\.IdentityService),
+            // NuGet's user config and the Azure Artifacts credential provider's cache.
+            ...(ctx.platform === 'win32' ? [join('AppData', 'Roaming', 'GitHub CLI'), join('AppData', 'Local', '.IdentityService'), join('AppData', 'Roaming', 'NuGet'), join('AppData', 'Local', 'MicrosoftCredentialProvider')] : []),
         ].map((p) => join(ctx.realHome, p));
         // A grant canon cannot resolve (a dangling link) holds nothing: the deny stays.
         // A nested workspace grant never lifts a deny (the PR-writable marker names it): a deny around it stays.
@@ -666,9 +676,15 @@ export function buildSandboxConfig(profile, ctx, host) {
             filesystem.deniedPaths.push(...sockets.filter((s) => s !== '/' && !holdsGrant(s)));
         }
     }
-    const network = settings.writeNetwork === 'registry'
-        ? { allowOutbound: true, allowedHosts: [...REGISTRY_HOSTS, ...settings.allowedHosts], allowLocalNetwork: ctx.platform === 'win32' }
-        : { allowOutbound: false, allowLocalNetwork: false };
+    // allowLocalNetwork on Windows (registry and onlyHosts): the Windows sandbox runs nothing with outbound allowed and the
+    // local network denied (verified 2026-11-22, Copilot CLI 1.0.91: even `dotnet --version` prints nothing and the shell's
+    // exit marker never comes), so there loopback (any port) and the LAN stay reachable next to the allowed hosts; every
+    // other internet host is refused. Off on every other platform. dotnet-gate.live.test.ts checks both.
+    const network = ctx.onlyHosts
+        ? { allowOutbound: true, allowedHosts: [...ctx.onlyHosts], allowLocalNetwork: ctx.platform === 'win32' }
+        : settings.writeNetwork === 'registry'
+            ? { allowOutbound: true, allowedHosts: [...REGISTRY_HOSTS, ...settings.allowedHosts], allowLocalNetwork: ctx.platform === 'win32' }
+            : { allowOutbound: false, allowLocalNetwork: false };
     return { enabled: true, addCurrentWorkingDirectory: true, ...common, userPolicy: { filesystem, network } };
 }
 export { findOnPath };
@@ -869,13 +885,13 @@ async function askHostSupport(client, timeoutMs) {
         return { supported: false, reason: `sandbox.getHostSupport failed: ${errText(err)}`, capabilities: {} };
     }
 }
-/** `session.rpc.options.update({ sandboxConfig })`; null when applied, else why not. */
+/** `session.rpc.options.update({ permissions: { sandbox } })` (SDK v2 patch shape); null when applied, else why not. */
 export async function applySandboxConfig(session, config, timeoutMs) {
     const update = rpcMethod(session, ['rpc', 'options'], 'update');
     if (!update)
         return 'the SDK has no options.update RPC';
     try {
-        const res = (await withTimeout(update({ sandboxConfig: config, sandboxConfigSource: 'session_flag' }), timeoutMs, 'options.update()'));
+        const res = (await withTimeout(update({ permissions: { sandbox: config, sandboxSource: 'session_flag' } }), timeoutMs, 'options.update()'));
         return res?.success === true ? null : 'options.update did not report success';
     }
     catch (err) {
@@ -898,6 +914,205 @@ export async function readEnforcement(session, timeoutMs) {
     catch (err) {
         return `sandbox.getEnforcementStatus failed: ${errText(err)}`;
     }
+}
+const asObj = (v) => (v && typeof v === 'object' && !Array.isArray(v) ? v : null);
+/** A string list, an absent list as empty; null when the field is present but not a string list. */
+const strList = (v) => (v === undefined ? [] : Array.isArray(v) && v.every((x) => typeof x === 'string') ? v : null);
+/** Loopback names the runtime adds to an allowed-host list when the local network is allowed (Copilot CLI 1.0.116). */
+const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '::1']);
+/**
+ * Why the effective config `eff` is weaker than the policy `sent`, else null.
+ * Strict equality would refuse every healthy session: the runtime adds
+ * fields (`sandboxExtensions`, `userPolicy.seatbelt`, `deniedPaths: []`,
+ * loopback names in `allowedHosts` with the local network on), sorts the
+ * path lists, and a managed floor may add restrictions. So each field that
+ * can widen access is compared with what was sent, in the widening direction only:
+ * - `addCurrentWorkingDirectory`, `allowTempStorage`, `allowDevToolAccess`:
+ *   on (or absent: their default is on) where we sent false;
+ * - `sandboxMcpServers`, `sandboxLspServers`, `sandboxExtensions`: an explicit
+ *   false (the only opt-out) where we did not send false;
+ * - `auth.git`, `auth.gh`, `userPolicy.seatbelt.keychainAccess`: true where we did not send true;
+ *   also `userPolicy.experimental.seatbelt.keychainAccess` (a governance path the
+ *   runtime names, not in the SDK types): true where we did not send true;
+ * - `userPolicy.network.allowOutbound`, `allowLocalNetwork`: true where we did not send true;
+ *   `allowedHosts`: empty (no restriction) where ours was not, or a host outside ours
+ *   (a loopback name only with the local network sent on); `blockedHosts`: one of ours missing;
+ *   `proxy`: set where we sent none (the runtime does not add one);
+ * - `userPolicy.filesystem.readwritePaths` outside our read-write set,
+ *   `readonlyPaths` and `enumeratePaths` outside our read-only or read-write set,
+ *   `deniedPaths`: one of ours missing; `userPolicy.seatbelt.extraMachLookups`: one we did not send.
+ * Paths compare with separators unified (a leading `//` or `\\` kept, so a UNC
+ * path never equals a rooted one), trailing separators dropped and, on
+ * Windows, case folded. Deliberately not compared: `credentials` (env masking
+ * only hides values), a proxy the policy sent (an upstream for allowed
+ * traffic; host rules still apply), `userPolicy.capabilities` (Windows
+ * `packageQuery`, the documented default, grants no file access), and fields
+ * the SDK does not define. A field of the wrong type counts as weaker.
+ */
+function configWeakerThanSent(eff, sent, platform) {
+    const s = sent;
+    for (const k of ['addCurrentWorkingDirectory', 'allowTempStorage', 'allowDevToolAccess']) {
+        if (s[k] === false && eff[k] !== false)
+            return `${k} is ${String(eff[k])}, the policy sent false`;
+    }
+    for (const k of ['sandboxMcpServers', 'sandboxLspServers', 'sandboxExtensions']) {
+        if (eff[k] === false && s[k] !== false)
+            return `${k} is false, the policy did not opt out`;
+        if (eff[k] !== undefined && typeof eff[k] !== 'boolean')
+            return `${k} is not a boolean`;
+    }
+    const effAuth = eff.auth === undefined ? {} : asObj(eff.auth);
+    if (!effAuth)
+        return 'auth is not an object';
+    const sentAuth = asObj(s.auth) ?? {};
+    for (const k of ['git', 'gh']) {
+        if (effAuth[k] !== undefined && effAuth[k] !== false && sentAuth[k] !== true)
+            return `auth.${k} is ${String(effAuth[k])}, the policy did not grant it`;
+    }
+    const effPolicy = eff.userPolicy === undefined ? {} : asObj(eff.userPolicy);
+    if (!effPolicy)
+        return 'userPolicy is not an object';
+    const sentPolicy = asObj(s.userPolicy) ?? {};
+    const sub = (o, k) => (o[k] === undefined ? {} : asObj(o[k]));
+    const effFs = sub(effPolicy, 'filesystem'), effNet = sub(effPolicy, 'network'), effSeat = sub(effPolicy, 'seatbelt');
+    if (!effFs || !effNet || !effSeat)
+        return 'userPolicy.filesystem, network or seatbelt is not an object';
+    const sentFs = sub(sentPolicy, 'filesystem') ?? {}, sentNet = sub(sentPolicy, 'network') ?? {}, sentSeat = sub(sentPolicy, 'seatbelt') ?? {};
+    if (effSeat.keychainAccess !== undefined && effSeat.keychainAccess !== false && sentSeat.keychainAccess !== true)
+        return `userPolicy.seatbelt.keychainAccess is ${String(effSeat.keychainAccess)}, the policy did not grant it`;
+    const mach = strList(effSeat.extraMachLookups);
+    if (!mach)
+        return 'userPolicy.seatbelt.extraMachLookups is not a string list';
+    const sentMach = new Set(strList(sentSeat.extraMachLookups) ?? []);
+    const extraMach = mach.find((m) => !sentMach.has(m));
+    if (extraMach !== undefined)
+        return `userPolicy.seatbelt.extraMachLookups grants ${extraMach}, the policy did not`;
+    const effExpSeat = asObj(asObj(effPolicy.experimental)?.seatbelt);
+    const sentExpSeat = asObj(asObj(sentPolicy.experimental)?.seatbelt);
+    if (effExpSeat?.keychainAccess === true && sentExpSeat?.keychainAccess !== true)
+        return 'userPolicy.experimental.seatbelt.keychainAccess is true, the policy did not grant it';
+    if (effNet.proxy !== undefined && effNet.proxy !== null && (sentNet.proxy === undefined || sentNet.proxy === null))
+        return 'userPolicy.network.proxy is set, the policy sent none';
+    for (const k of ['allowOutbound', 'allowLocalNetwork']) {
+        if (effNet[k] !== undefined && effNet[k] !== false && sentNet[k] !== true)
+            return `userPolicy.network.${k} is ${String(effNet[k])}, the policy sent ${String(sentNet[k] ?? false)}`;
+    }
+    const host = (h) => h.trim().toLowerCase();
+    const effAllowed = strList(effNet.allowedHosts);
+    if (!effAllowed)
+        return 'userPolicy.network.allowedHosts is not a string list';
+    const sentAllowed = new Set((strList(sentNet.allowedHosts) ?? []).map(host));
+    if (sentAllowed.size > 0) {
+        if (effAllowed.length === 0)
+            return 'userPolicy.network.allowedHosts is empty (any host), the policy restricted the hosts';
+        const extra = effAllowed.find((h) => !sentAllowed.has(host(h)) && !(sentNet.allowLocalNetwork === true && LOOPBACK_HOSTS.has(host(h))));
+        if (extra !== undefined)
+            return `userPolicy.network.allowedHosts allows ${extra}, the policy did not`;
+    }
+    const effBlocked = strList(effNet.blockedHosts);
+    if (!effBlocked)
+        return 'userPolicy.network.blockedHosts is not a string list';
+    const blocked = new Set(effBlocked.map(host));
+    const unblocked = (strList(sentNet.blockedHosts) ?? []).find((h) => !blocked.has(host(h)));
+    if (unblocked !== undefined)
+        return `userPolicy.network.blockedHosts lost ${unblocked}`;
+    const norm = (p) => {
+        let n = (/^[\\/]{2}/.test(p) ? '/' : '') + p.replace(/[\\/]+/g, '/');
+        while (n.length > 1 && n.endsWith('/') && !/^[A-Za-z]:\/$/.test(n))
+            n = n.slice(0, -1);
+        return platform === 'win32' ? n.toLowerCase() : n;
+    };
+    const set = (k) => new Set((strList(sentFs[k]) ?? []).map(norm));
+    const sentRw = set('readwritePaths');
+    const sentReadable = new Set([...sentRw, ...set('readonlyPaths')]);
+    const checks = [['readwritePaths', sentRw], ['readonlyPaths', sentReadable], ['enumeratePaths', sentReadable]];
+    for (const [k, allowed] of checks) {
+        const list = strList(effFs[k]);
+        if (!list)
+            return `userPolicy.filesystem.${k} is not a string list`;
+        const extra = list.find((p) => !allowed.has(norm(p)));
+        if (extra !== undefined)
+            return `userPolicy.filesystem.${k} grants ${extra}, the policy did not`;
+    }
+    const effDenied = strList(effFs.deniedPaths);
+    if (!effDenied)
+        return 'userPolicy.filesystem.deniedPaths is not a string list';
+    const denied = new Set(effDenied.map(norm));
+    const lost = (strList(sentFs.deniedPaths) ?? []).find((p) => !denied.has(norm(p)));
+    if (lost !== undefined)
+        return `userPolicy.filesystem.deniedPaths lost ${lost}`;
+    return null;
+}
+/**
+ * Why a sandbox state (`session.rpc.sandbox.getState()` or a
+ * `session.sandbox_state_changed` event's data, both carry the same fields)
+ * does not show the policy `sent` in force, else null: the effective config
+ * must be enabled, must not offer bypasses (our policy sets `allowBypass:
+ * false`; a managed floor can only tighten it) and must be no weaker than
+ * `sent` ({@link configWeakerThanSent}), and the session must hold no opt-out
+ * (`disabledForSession`) nor auto-approve bypass requests (`autoApproveBypass`).
+ * A field of the wrong type counts as not in force.
+ */
+export function sandboxStateProblem(state, sent, platform = process.platform) {
+    if (!state || typeof state !== 'object')
+        return 'no sandbox state';
+    const s = state;
+    const config = asObj(s.config);
+    if (!config)
+        return 'the sandbox state has no effective config';
+    if (config.enabled !== true)
+        return `the effective sandbox config is not enabled (enabled: ${String(config.enabled)})`;
+    if (config.allowBypass === true)
+        return 'the effective sandbox config allows bypass requests';
+    if (s.disabledForSession !== false)
+        return `the session holds a sandbox opt-out (disabledForSession: ${String(s.disabledForSession)})`;
+    if (s.autoApproveBypass !== false)
+        return `the session auto-approves sandbox bypass requests (autoApproveBypass: ${String(s.autoApproveBypass)})`;
+    const weaker = configWeakerThanSent(config, sent, platform);
+    if (weaker)
+        return `the effective sandbox config is weaker than the policy sent: ${weaker}`;
+    return null;
+}
+/** `session.rpc.sandbox.getState()`: the effective config source when the policy `sent` is in force ({@link sandboxStateProblem}), else why not. */
+export async function readSandboxState(session, timeoutMs, sent, platform = process.platform) {
+    const call = rpcMethod(session, ['rpc', 'sandbox'], 'getState');
+    if (!call)
+        return 'the SDK has no sandbox.getState RPC';
+    try {
+        const res = await withTimeout(call(), timeoutMs, 'sandbox.getState()');
+        const problem = sandboxStateProblem(res, sent, platform);
+        if (problem)
+            return `sandbox.getState: ${problem}`;
+        const source = res.configSource;
+        return { configSource: typeof source === 'string' ? source : 'unknown' };
+    }
+    catch (err) {
+        return `sandbox.getState failed: ${errText(err)}`;
+    }
+}
+/**
+ * Whether a createSession error with the sandbox policy is the runtime refusing
+ * the policy (a managed-policy conflict or an invalid config), the only create
+ * failure the fail-closed sandbox path handles; any other (network, auth,
+ * model) is an ordinary create failure. Copilot CLI 1.0.116's runtime refuses
+ * a conflicting policy with "Sandbox configuration update violates managed
+ * policy. Contact your administrator for more information." (code
+ * `managed_sandbox_policy_conflict`) and an invalid one with "invalid parameter
+ * 'sandboxConfig': ..."; a policy it cannot resolve with "session sandbox
+ * policy could not be resolved: ...". Real create errors carry JSON-RPC code
+ * -32603 without `data` and embed paths and model names in the message (a
+ * missing `...\sandbox\repo` dir, a model called `sandbox-x`), so only these
+ * known phrases count, in the message, a string code or the data as text.
+ */
+export function isSandboxPolicyError(err) {
+    const e = err;
+    let data = '';
+    try {
+        data = e?.data === undefined ? '' : JSON.stringify(e.data);
+    }
+    catch { /* unserializable */ }
+    const text = [errText(err), typeof e?.code === 'string' ? e.code : '', data].join('\n');
+    return /violates managed policy|invalid parameter 'sandboxConfig'|sandbox policy could not be resolved|managed_sandbox_policy_conflict/i.test(text);
 }
 /**
  * What a session runs as when its sandbox is not confirmed (§3):
@@ -1142,8 +1357,29 @@ export function allowlistSessionEnv(env, jobHome) {
     for (const [key, value] of Object.entries(env)) {
         const upper = key.toUpperCase();
         if (allow.has(upper) || upper.startsWith('LC_') || upper.startsWith('OMC_'))
-            out[key] = value;
+            out[key] = upper === 'PATH' && value !== undefined ? sandboxPath(value) : value;
     }
     return { ...out, ...relocatedProfileEnv(jobHome) };
+}
+/**
+ * A PATH for a sandboxed session or command: the host's entries less the
+ * empty and relative ones (a shell resolves those from its working dir, the
+ * checkout the PR's code writes, so `rm` or `git` could run a file the PR
+ * put there; review round 5) and the `node_modules/.bin` dirs (any case on
+ * Windows, `\` or `/`, a trailing separator too) that `npx` or `npm run`
+ * put in front of the engine's own PATH: package binaries of the engine's
+ * install, never the repository's tools. npm and npx find a project's
+ * binaries themselves, not through the inherited PATH.
+ */
+export function sandboxPath(value, platform = process.platform) {
+    const P = platform === 'win32' ? win32 : posix;
+    const bin = platform === 'win32' ? /(?:^|[\\/])node_modules[\\/]\.bin[\\/]*$/i : /(?:^|\/)node_modules\/\.bin\/*$/;
+    return value.split(P.delimiter).filter((e) => {
+        const entry = e.trim().replace(/^"(.*)"$/, '$1');
+        if (entry === '' || bin.test(entry))
+            return false;
+        // win32.isAbsolute accepts `\dir` (the current drive's root), never a drive-relative `C:dir` or a bare `dir`.
+        return P.isAbsolute(entry);
+    }).join(P.delimiter);
 }
 //# sourceMappingURL=sandbox.js.map

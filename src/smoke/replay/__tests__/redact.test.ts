@@ -5,6 +5,7 @@ import {
   EMAIL_PLACEHOLDER,
   filterRequestHeaders,
   filterResponseHeaders,
+  reassembledDeltas,
   Redactor,
   restorePlaceholders,
   scanForSecrets,
@@ -420,6 +421,37 @@ describe('review fixes round 5 (#349)', () => {
   it('redactEvents redacts a password split across tool.execution_progress events', () => {
     const out = new Redactor().redactEvents(sdkEvents('tool.execution_progress', 'progressMessage', split('set password=hunter2hunter2 now', [19])));
     expect(joinedOf(out, 'progressMessage')).toBe('set password=<redacted:generic> now');
+  });
+  it('redactEvents redacts a secret split across SDK v2 tool.shell_output chunks, per stream and in sequence order', () => {
+    const [a, b] = split('set password=hunter2hunter2 now', [19]);
+    // Delivered out of order, with a stderr chunk of the same call in between.
+    const events = [
+      { type: 'tool.shell_output', id: 'e0', ephemeral: true, data: { toolCallId: 't1', sequence: 2, text: b } },
+      { type: 'tool.shell_output', id: 'e1', ephemeral: true, data: { toolCallId: 't1', sequence: 1, stream: 'stderr', text: 'warn: ' } },
+      { type: 'tool.shell_output', id: 'e2', ephemeral: true, data: { toolCallId: 't1', sequence: 0, text: a } },
+    ];
+    const out = new Redactor().redactEvents(events);
+    const stdout = out.filter((e) => e.data.stream === undefined).sort((x, y) => x.data.sequence - y.data.sequence).map((e) => e.data.text).join('');
+    expect(stdout).toBe('set password=<redacted:generic> now');
+    expect(out[1].data.text).toBe('warn: ');
+    expect(JSON.stringify(out)).not.toContain('hunter2');
+  });
+  it('the gate reassembles tool.shell_output chunks in sequence order', () => {
+    const [a, b] = split('set password=hunter2hunter2 now', [19]);
+    const joined = reassembledDeltas([
+      { type: 'tool.shell_output', data: { toolCallId: 't1', sequence: 1, text: b } },
+      { type: 'tool.shell_output', data: { toolCallId: 't1', sequence: 0, text: a } },
+      { type: 'tool.shell_output', data: { toolCallId: 't2', sequence: 0, text: 'other call' } },
+    ]);
+    expect(joined).toEqual(['set password=hunter2hunter2 now']);
+  });
+  it('the gate also joins one tool call\'s stdout and stderr in sequence order (detect-only)', () => {
+    const joined = reassembledDeltas([
+      { type: 'tool.shell_output', data: { toolCallId: 't1', sequence: 1, stream: 'stderr', text: 'hunter2hunter2 now' } },
+      { type: 'tool.shell_output', data: { toolCallId: 't1', sequence: 0, text: 'set password=' } },
+      { type: 'tool.shell_output', data: { toolCallId: 't2', sequence: 0, stream: 'stderr', text: 'other call' } },
+    ]);
+    expect(joined).toEqual(['set password=hunter2hunter2 now']);
   });
   it('redactResponse joins nested Chat Completions delta.audio.transcript', () => {
     const chunks = split('say password=hunter2hunter2 ok', [19]).map((transcript) =>

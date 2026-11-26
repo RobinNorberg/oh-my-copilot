@@ -203,7 +203,7 @@ describe('fetchCopilotCatalogue with a fake SDK', () => {
       },
     });
     class CopilotClient { constructor() { return tracked; } }
-    const RuntimeConnection = { forStdio: () => ({}) };
+    const RuntimeConnection = { forSpawnedStdio: () => ({}) };
     return { calls, loadSdk: async () => ({ module: { CopilotClient, RuntimeConnection } as never }) };
   };
   const depsFor = (loadSdk: () => Promise<never>) => {

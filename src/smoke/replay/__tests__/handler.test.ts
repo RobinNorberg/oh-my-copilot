@@ -97,23 +97,23 @@ const secondBody = {
 const firstAnswer = { id: 'c1', choices: [{ index: 0, message: { role: 'assistant', content: null, tool_calls: [toolCall] }, finish_reason: 'tool_calls' }], ...usage };
 const secondAnswer = { id: 'c2', choices: [{ index: 0, message: { role: 'assistant', content: 'done' }, finish_reason: 'stop' }], ...usage };
 
-function fakeSdk(Base: CopilotRequestHandlerCtor | undefined): { loaded: LoadedSdk; clients: FakeClient[]; forStdio: ReturnType<typeof vi.fn> } {
+function fakeSdk(Base: CopilotRequestHandlerCtor | undefined): { loaded: LoadedSdk; clients: FakeClient[]; forSpawnedStdio: ReturnType<typeof vi.fn> } {
   const clients: FakeClient[] = [];
-  const forStdio = vi.fn((opts: unknown) => opts);
+  const forSpawnedStdio = vi.fn((opts: unknown) => opts);
   class Client extends FakeClient {
     constructor(opts: SdkClientOptions) { super(opts); clients.push(this); }
   }
   return {
-    loaded: { module: { CopilotClient: Client as never, RuntimeConnection: { forStdio }, ...(Base ? { CopilotRequestHandler: Base } : {}) }, version: '1.0.16', from: 'test' },
+    loaded: { module: { CopilotClient: Client as never, RuntimeConnection: { forSpawnedStdio }, ...(Base ? { CopilotRequestHandler: Base } : {}) }, version: '2.0.3', from: 'test' },
     clients,
-    forStdio,
+    forSpawnedStdio,
   };
 }
 
 class FakeClient {
   sessions: SdkSessionConfig[] = [];
   constructor(readonly opts: SdkClientOptions) {}
-  get handler(): CopilotRequestHandlerLike { return this.opts.requestHandler as CopilotRequestHandlerLike; }
+  get handler(): CopilotRequestHandlerLike { return this.opts.models?.requestHandler as CopilotRequestHandlerLike; }
   async start(): Promise<void> {}
   async stop(): Promise<Error[]> { return []; }
   async getStatus() { return {}; }
@@ -132,7 +132,7 @@ async function record(calls: Call[], answers: Response[]): Promise<{ part: strin
   const { Base, upstream } = fakeSdkBase(answers);
   const { loaded, clients } = fakeSdk(Base);
   const sdk = withCassette(loaded, cassetteEnv('record', tempDir('omg-rec-out-'), state));
-  const client = new sdk.module.CopilotClient({ connection: {}, baseDirectory: 'b', workingDirectory: 'w' });
+  const client = new sdk.module.CopilotClient({ mode: 'coding-agent', runtime: { baseDirectory: 'b', workingDirectory: 'w' } });
   const outputs: string[] = [];
   for (const call of calls) outputs.push((await drive(clients[0].handler, call)).text);
   expect(await client.stop()).toEqual([]);
@@ -144,10 +144,10 @@ async function record(calls: Call[], answers: Response[]): Promise<{ part: strin
 
 function replayClient(cassetteDir: string, state = tempDir('omg-replay-state-')) {
   const { Base, upstream, upstreamWs } = fakeSdkBase();
-  const { loaded, clients, forStdio } = fakeSdk(Base);
+  const { loaded, clients, forSpawnedStdio } = fakeSdk(Base);
   const sdk = withCassette(loaded, cassetteEnv('replay', cassetteDir, state));
-  const client = new sdk.module.CopilotClient({ connection: {}, baseDirectory: 'b', workingDirectory: 'w' });
-  return { sdk, client, fake: clients[0], upstream, upstreamWs, forStdio, state };
+  const client = new sdk.module.CopilotClient({ mode: 'coding-agent', runtime: { baseDirectory: 'b', workingDirectory: 'w' } });
+  return { sdk, client, fake: clients[0], upstream, upstreamWs, forSpawnedStdio, state };
 }
 
 const filesUnder = (dir: string): string[] => readdirSync(dir).flatMap((name) => {
@@ -252,15 +252,16 @@ describe('replay lockout', () => {
   });
 
   it('strips credentials from the runtime env and session, pins the model', async () => {
-    const { sdk, fake, forStdio } = replayClient(await cassetteDir());
-    sdk.module.RuntimeConnection.forStdio({ path: 'copilot', env: { PATH: '/bin', GH_TOKEN: 'ghp_x', COPILOT_GITHUB_TOKEN: 't', COPILOT_HMAC_KEY: 'real' } });
-    const env = (forStdio.mock.calls[0][0] as { env: NodeJS.ProcessEnv }).env;
+    const { sdk, fake, forSpawnedStdio } = replayClient(await cassetteDir());
+    sdk.module.RuntimeConnection.forSpawnedStdio({ path: 'copilot', env: { PATH: '/bin', GH_TOKEN: 'ghp_x', COPILOT_GITHUB_TOKEN: 't', COPILOT_HMAC_KEY: 'real' } });
+    const env = (forSpawnedStdio.mock.calls[0][0] as { env: NodeJS.ProcessEnv }).env;
     expect(env).toEqual({ PATH: '/bin', COPILOT_HMAC_KEY: REPLAY_HMAC_KEY, COPILOT_CLI_DISABLE_WEBSOCKET_RESPONSES: '1' });
-    expect(fake.opts.useLoggedInUser).toBe(false);
+    expect(fake.opts.github).toEqual({ useLoggedInUser: false });
+    expect(fake.opts.mode).toBe('coding-agent');
     const client = fake as unknown as { createSession(c: SdkSessionConfig): Promise<unknown> };
-    const base = { onPermissionRequest: () => ({ kind: 'approve-once' as const }), pluginDirectories: [], workingDirectory: 'w', disabledMcpServers: [], excludedTools: [] };
+    const base: SdkSessionConfig = { permissions: { onRequest: () => ({ kind: 'approve-once' as const }) }, plugins: { directories: [] }, workingDirectory: 'w', mcp: { disabledServers: [] }, tools: { excludedTools: [] } };
     await expect(client.createSession(base)).rejects.toThrow(/pinned model/);
-    await client.createSession({ ...base, model: 'gpt-5-mini', gitHubToken: 'secret-token' });
+    await client.createSession({ ...base, model: 'gpt-5-mini', github: { token: 'secret-token' } });
     expect(fake.sessions.at(-1)).toEqual({ ...base, model: 'gpt-5-mini' });
   });
 });
@@ -342,7 +343,7 @@ describe('redaction on record', () => {
     const { Base } = fakeSdkBase([json(leaky, { 'set-cookie': 'session=abcdef123456', authorization: BEARER })]);
     const { loaded, clients } = fakeSdk(Base);
     const sdk = withCassette(loaded, cassetteEnv('record', tempDir('omg-out-'), state));
-    const client = new sdk.module.CopilotClient({ connection: {}, baseDirectory: 'b', workingDirectory: 'w' });
+    const client = new sdk.module.CopilotClient({ mode: 'coding-agent', runtime: { baseDirectory: 'b', workingDirectory: 'w' } });
     const leakyPrompt = { ...firstBody, messages: [{ role: 'user', content: `use ${ghToken} and ${stdinCredential}` }] };
     // The runtime still gets the real answer.
     expect((await drive(clients[0].handler, { session: 's', body: leakyPrompt })).text).toContain(ghToken);
@@ -375,7 +376,7 @@ describe('redaction on record', () => {
     const { Base } = fakeSdkBase([json(firstAnswer)]);
     const { loaded, clients } = fakeSdk(Base);
     const sdk = withCassette(loaded, cassetteEnv('record', tempDir('omg-out-'), state));
-    const client = new sdk.module.CopilotClient({ connection: {}, baseDirectory: 'b', workingDirectory: 'w' });
+    const client = new sdk.module.CopilotClient({ mode: 'coding-agent', runtime: { baseDirectory: 'b', workingDirectory: 'w' } });
     await drive(clients[0].handler, { session: 's', body: firstBody });
     expect(await client.stop()).toHaveLength(1);
   });

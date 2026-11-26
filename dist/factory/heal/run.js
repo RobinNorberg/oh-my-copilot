@@ -22,7 +22,7 @@
  * open heal run reuses the subject it was sealed with.
  */
 import { createHash } from 'crypto';
-import { existsSync, readFileSync } from 'fs';
+import { existsSync, readdirSync, readFileSync } from 'fs';
 import { join, resolve } from 'path';
 import { atomicWriteFileSync, ensureDirSync } from '../../lib/atomic-write.js';
 import { withFileLockSync } from '../../lib/file-lock.js';
@@ -53,7 +53,8 @@ export class HealRunRefused extends Error {
  */
 export const HEAL_UNCONFINED_ENV = 'OMG_HEAL_UNCONFINED';
 const sha256 = (s) => createHash('sha256').update(s).digest('hex');
-const healLedgerDir = (ledgerDir, root) => join(ledgerDir, 'heal', sha256(resolve(root).toLowerCase()).slice(0, 16));
+/** The heal seals, scan records and mirrored counters of `root`, outside the repository. */
+export const healLedgerDir = (ledgerDir, root) => join(ledgerDir, 'heal', sha256(resolve(root).toLowerCase()).slice(0, 16));
 const mirrorCountersPath = (ledgerDir, root) => join(healLedgerDir(ledgerDir, root), 'limits.json');
 const sealPath = (ledgerDir, root, sig8) => join(healLedgerDir(ledgerDir, root), `${sig8}.seal.json`);
 /** What the seal covers: the heal run, its lanes and its diagnosis. */
@@ -124,7 +125,19 @@ export function writeHealSeal(ledgerDir, root, state, subject) {
     const path = sealPath(ledgerDir, root, state.sig8);
     const kept = subject ?? readHealSealSubject(ledgerDir, root, state.sig8);
     ensureDirSync(healLedgerDir(ledgerDir, root));
-    atomicWriteFileSync(path, `${JSON.stringify({ sig8: state.sig8, seal: sealOf(state), ...(kept ? { subject: kept } : {}) }, null, 2)}\n`);
+    // `open` (outside the hash, which covers the record): whether the sealed heal run is open, so a reader can tell a
+    // closed heal run whose record was removed (git clean) from an open one; older seal files have no such field.
+    atomicWriteFileSync(path, `${JSON.stringify({ sig8: state.sig8, seal: sealOf(state), open: state.healRun?.open === true, ...(kept ? { subject: kept } : {}) }, null, 2)}\n`);
+}
+/** The seal file's `open` flag: true or false as the heal run last sealed it; null without a seal file, a readable one or the flag (a seal written before it). */
+export function healSealOpen(ledgerDir, root, sig8) {
+    try {
+        const open = JSON.parse(readFileSync(sealPath(ledgerDir, root, sig8), 'utf8'))?.open;
+        return typeof open === 'boolean' ? open : null;
+    }
+    catch {
+        return null;
+    }
 }
 const scanRecordPath = (ledgerDir, root, sig8) => join(healLedgerDir(ledgerDir, root), `${sig8}.subject.json`);
 const scanRecordHash = (r) => sha256(JSON.stringify({ sig8: r.sig8, class: r.class, source: r.source, classification: r.classification }));
@@ -161,6 +174,15 @@ export function verifyHealSeal(ledgerDir, root, state) {
     }
     catch {
         return 'mismatch';
+    }
+}
+/** The signatures with a heal seal outside the repository (each one a heal run the heal command recorded); read-only. */
+export function healSealSigs(ledgerDir, root) {
+    try {
+        return readdirSync(healLedgerDir(ledgerDir, root)).map((f) => /^([0-9a-f]{8})\.seal\.json$/.exec(f)?.[1]).filter((s) => s !== undefined).sort();
+    }
+    catch {
+        return [];
     }
 }
 /** Field-wise larger of the in-repo and the mirrored counters. */

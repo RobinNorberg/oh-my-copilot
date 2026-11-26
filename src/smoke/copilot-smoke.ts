@@ -7,7 +7,7 @@
  * server's tools/list. Tier 1 adds one cheap non-interactive session in a
  * throwaway COPILOT_HOME and asserts on its persisted events, debug log and
  * the `.omg/` state our hooks write. Tier 2 replaces that session with
- * `@github/copilot-sdk` static checks and scripted scenarios
+ * `@microsoft/copilot-sdk` static checks and scripted scenarios
  * (src/smoke/copilot-sdk-driver.ts).
  */
 
@@ -72,7 +72,7 @@ export interface SmokeOptions {
   pluginRoot: string;
   /**
    * 0 = load check (no model call); 1 = tier 0 + one live session;
-   * 2 = tier 0 + @github/copilot-sdk static checks + {@link SmokeOptions.scenarios}.
+   * 2 = tier 0 + @microsoft/copilot-sdk static checks + {@link SmokeOptions.scenarios}.
    */
   tier: SmokeTier;
   copilotBin?: string;
@@ -126,7 +126,7 @@ export interface SmokeDeps extends BinaryResolverDeps {
   randomUUID?: () => string;
   /** Real Copilot config dir to copy the login identity from (default getCopilotConfigDir()). */
   userConfigDir?: string;
-  /** Tier 2: resolve @github/copilot-sdk (default {@link loadCopilotSdk}); null = not installed. */
+  /** Tier 2: resolve @microsoft/copilot-sdk (default {@link loadCopilotSdk}); null = not installed. */
   loadSdk?: LoadSdkFn;
   /** Tier 2: the scenario runners that start real `copilot` processes (default: the real ones). */
   runChain?: typeof runChainScenario;

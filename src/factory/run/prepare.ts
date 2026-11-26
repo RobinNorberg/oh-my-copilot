@@ -12,7 +12,7 @@
  * in it with push off, and the engine pushes the result itself.
  */
 
-import { copyFileSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmdirSync, statfsSync, statSync, symlinkSync, unlinkSync, writeFileSync, type Stats } from 'fs';
+import { copyFileSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, realpathSync, renameSync, rmdirSync, statfsSync, statSync, symlinkSync, unlinkSync, writeFileSync, type Stats } from 'fs';
 import { copyFile } from 'fs/promises';
 import { basename, join, posix, relative, win32 } from 'path';
 import { loadBaseKnownFlaky, loadTrustedShipConfig, userConfigLayers, type KnownFlakyTest, type ShipConfig } from '../../ship/config.js';
@@ -846,6 +846,134 @@ export function gateTreeHasLinks(checkout: string): boolean {
   }
   try { lstatSync(target); } catch { return false; }
   try { return walk(target); } catch { return true; }
+}
+
+/**
+ * Why the node_modules trees of `checkout` are not exactly what
+ * linkNodeModules built from your node_modules (`root`), or null: what a
+ * dotnet gate needs before it runs when the trusted definition files import
+ * from node_modules (engine.ts packageTreeImportsReady). Read-only (lstat,
+ * readlink, readdir, and the bytes of the small top-level files). Checked,
+ * for the root tree and each nested workspace tree the engine vouches for
+ * (`nestedRels`, trustedNestedRels): every top-level entry is the engine's
+ * marker file, a fresh cache dir (GATE_CACHE_DIRS, not a link; what a check
+ * writes there is not looked at), a link to `<yours>/<its name>` (or into
+ * the checkout outside node_modules: a workspace self-link, the
+ * repository's own files), a real `@scope` dir of such links, or a top-level
+ * file with exactly your copy's bytes; and every dir of yours the engine
+ * links is there. A plain dir where the engine put a link (the PR's code
+ * replaced it with its own files), any other entry, or one that is gone is
+ * `tampered`. Not verifiable (`tampered: false`): a copied tree
+ * (GATE_TREE_COPY_WHY; comparing every file is not cheap), a node_modules
+ * dir the engine did not build (git lists files under it in `untracked`, or
+ * yours has no such tree), or a tree that cannot be read. A tree the
+ * checkout does not have is fine: there is nothing to import. A tree the
+ * head tracks files in (`trackedTrees`: the dirs, empty for the root, whose
+ * node_modules holds tracked files) is the repository's own: git's dirty
+ * check covers its files, so it is not compared, and an untracked file in
+ * it cannot be verified (`tampered: false`).
+ */
+export function gateTreeExactProblem(root: string, checkout: string, nestedRels: readonly string[], untracked: readonly string[], copied: boolean, trackedTrees: readonly string[] = []): { problem: string; tampered: boolean } | null {
+  const win = process.platform === 'win32';
+  const P = win ? win32 : posix;
+  const fold = (s: string) => (win ? s.toLowerCase() : s);
+  const same = (a: string, b: string) => fold(P.resolve(a)) === fold(P.resolve(b));
+  const isNodeModules = (s: string) => s.replace(/[. ]+$/, '').toLowerCase() === 'node_modules';
+  const trees = [{ rel: '', src: join(root, 'node_modules') }, ...nestedRels.map((rel) => ({ rel, src: join(root, ...rel.split('/'), 'node_modules') }))];
+  const isDir = (p: string) => { try { return statSync(p).isDirectory(); } catch { return false; } };
+  // A node_modules dir with files git lists that is none of the engine's trees: installed or written in the checkout.
+  // A tree whose files the head tracks (a repository that commits its node_modules): git checks those files (the
+  // checkout's dirty check), the engine linked nothing there, so it is not compared here; a file git does not track
+  // in it cannot be verified.
+  const tracked = (rel: string) => trackedTrees.some((t) => fold(t) === fold(rel));
+  for (const p of untracked) {
+    const segs = p.split('/');
+    const at = segs.findIndex(isNodeModules);
+    if (at < 0) continue;
+    const rel = segs.slice(0, at).join('/');
+    if (tracked(rel) && !(at + 2 < segs.length && GATE_CACHE_DIRS.includes(segs[at + 1]))) return { problem: `${segs.slice(0, at + 1).join('/')} in the checkout is the repository's own (the head tracks files in it), and ${p} there is not tracked, so what is in it cannot be verified`, tampered: false };
+    if (!tracked(rel) && !trees.some((t) => fold(t.rel) === fold(rel) && isDir(t.src))) return { problem: `${segs.slice(0, at + 1).join('/')} in the checkout is not a node_modules tree the engine built from yours, so what is in it cannot be verified`, tampered: false };
+  }
+  const insideCheckout = (p: string, to: string): boolean => {
+    const rel = P.relative(P.resolve(checkout), to);
+    if (!rel || rel.startsWith('..') || P.isAbsolute(rel) || rel.split(/[\\/]/).some(isNodeModules)) return false;
+    try {
+      const real = P.relative(fold(realpathSync.native(checkout)), fold(realpathSync.native(p)));
+      return !!real && !real.startsWith('..') && !P.isAbsolute(real) && !real.split(/[\\/]/).some(isNodeModules);
+    } catch {
+      return false;
+    }
+  };
+  const linkOk = (p: string, wants: readonly string[]): boolean => {
+    let to: string;
+    try { to = P.resolve(P.dirname(p), readlinkSync(p)); } catch { return false; }
+    return wants.some((w) => same(to, w)) || insideCheckout(p, to);
+  };
+  for (const t of trees) {
+    if (tracked(t.rel)) continue;
+    const nm = join(checkout, ...t.rel.split('/').filter(Boolean), 'node_modules');
+    const shown = `${t.rel ? `${t.rel}/` : ''}node_modules`;
+    let st: Stats;
+    try { st = lstatSync(nm); } catch { continue; }
+    if (!isDir(t.src)) return { problem: `${shown} in the checkout is not a tree the engine built (your checkout has no such node_modules), so what is in it cannot be verified`, tampered: false };
+    if (copied) return { problem: `${shown} is the engine's copied tree (${GATE_TREE_COPY_WHY}), whose files the engine cannot compare with yours cheaply`, tampered: false };
+    let srcReal: string;
+    try { srcReal = realpathSync.native(t.src); } catch (error) { return { problem: `your ${t.src} cannot be read (${error instanceof Error ? error.message : String(error)})`, tampered: false }; }
+    if (st.isSymbolicLink()) {
+      // An older release's single link: fine only when it resolves to yours (read-only in the sandbox).
+      let real = '';
+      try { real = realpathSync.native(nm); } catch { /* compared below */ }
+      if (real && fold(real) === fold(srcReal)) continue;
+      return { problem: `${shown} is a link that does not resolve to your node_modules`, tampered: true };
+    }
+    if (!st.isDirectory()) return { problem: `${shown} is not a directory`, tampered: true };
+    const wants = (name: string) => [join(srcReal, name), join(t.src, name)];
+    try {
+      const present = new Set<string>();
+      for (const name of readdirSync(nm)) {
+        present.add(fold(name));
+        const p = join(nm, name);
+        const e = lstatSync(p);
+        if (name === GATE_TREE_MARKER) {
+          if (!e.isFile()) return { problem: `${shown}/${name} is not the engine's marker file`, tampered: true };
+          continue;
+        }
+        if (GATE_CACHE_DIRS.includes(name)) {
+          if (e.isSymbolicLink() || !e.isDirectory()) return { problem: `${shown}/${name} is not the fresh cache dir the engine made`, tampered: true };
+          continue;
+        }
+        if (e.isSymbolicLink()) {
+          if (!linkOk(p, wants(name))) return { problem: `${shown}/${name} is a link to somewhere else than your node_modules/${name}`, tampered: true };
+        } else if (e.isDirectory() && name.startsWith('@')) {
+          const inner = new Set<string>();
+          for (const c of readdirSync(p)) {
+            inner.add(fold(c));
+            const cp = join(p, c);
+            if (!lstatSync(cp).isSymbolicLink() || !linkOk(cp, wants(join(name, c)))) return { problem: `${shown}/${name}/${c} is not the engine's link to your node_modules/${name}/${c}`, tampered: true };
+          }
+          for (const c of readdirSync(join(t.src, name))) {
+            if (!isDir(join(t.src, name, c)) || inner.has(fold(c)) || 'skip' in workspaceLinkTarget(join(t.src, name, c), root, checkout)) continue;
+            return { problem: `${shown}/${name}/${c}, which the engine links to yours, is gone`, tampered: true };
+          }
+        } else if (e.isFile()) {
+          const from = join(t.src, name);
+          let mine: Stats | null = null;
+          try { mine = statSync(from); } catch { /* none */ }
+          if (!mine?.isFile() || mine.size !== e.size || mine.size > GATE_TREE_FILE_MAX_BYTES || !readFileSync(from).equals(readFileSync(p))) return { problem: `${shown}/${name} is not the engine's copy of your node_modules/${name}`, tampered: true };
+        } else {
+          return { problem: `${shown}/${name} is a ${e.isDirectory() ? 'plain directory' : 'special file'} where the engine links your node_modules/${name}`, tampered: true };
+        }
+      }
+      for (const name of readdirSync(t.src)) {
+        if (name === GATE_TREE_MARKER || GATE_CACHE_DIRS.includes(name) || present.has(fold(name)) || !isDir(join(t.src, name))) continue;
+        if ('skip' in workspaceLinkTarget(join(t.src, name), root, checkout)) continue;
+        return { problem: `${shown}/${name}, which the engine links to your node_modules/${name}, is gone`, tampered: true };
+      }
+    } catch (error) {
+      return { problem: `${shown} cannot be read (${error instanceof Error ? error.message : String(error)})`, tampered: false };
+    }
+  }
+  return null;
 }
 
 /**

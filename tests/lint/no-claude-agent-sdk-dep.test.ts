@@ -1,6 +1,7 @@
 /**
  * Guard: @anthropic-ai/claude-agent-sdk stays out of package.json (PR #558),
- * and so does @github/copilot-sdk. Socket.dev scores every declared package,
+ * and so does the Copilot SDK (v1 @github/copilot-sdk, v2 @microsoft/copilot-sdk).
+ * Socket.dev scores every declared package,
  * optional peers included, so both SDKs are loaded lazily and installed by the
  * users who need them.
  *
@@ -18,7 +19,7 @@ import { describe, expect, it } from "vitest";
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "../..");
 const SDK = "@anthropic-ai/claude-agent-sdk";
-const COPILOT_SDK = "@github/copilot-sdk";
+const COPILOT_SDKS = ["@github/copilot-sdk", "@microsoft/copilot-sdk"];
 const DEPENDENCY_FIELDS = ["dependencies", "optionalDependencies", "peerDependencies", "peerDependenciesMeta"];
 
 function readPackageJson(): Record<string, Record<string, unknown> | undefined> {
@@ -59,10 +60,10 @@ describe("no @anthropic-ai/claude-agent-sdk dependency", () => {
     }
   });
 
-  it("package.json does not declare @github/copilot-sdk as a dependency or peer", () => {
+  it("package.json does not declare the Copilot SDK (v1 or v2) as a dependency or peer", () => {
     const pkg = readPackageJson();
     for (const field of DEPENDENCY_FIELDS) {
-      expect(Object.keys(pkg[field] ?? {}), field).not.toContain(COPILOT_SDK);
+      for (const name of COPILOT_SDKS) expect(Object.keys(pkg[field] ?? {}), `${field} ${name}`).not.toContain(name);
     }
   });
 

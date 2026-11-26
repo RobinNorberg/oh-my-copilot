@@ -23,7 +23,7 @@
  */
 
 import { createHash } from 'crypto';
-import { existsSync, readFileSync } from 'fs';
+import { existsSync, readdirSync, readFileSync } from 'fs';
 import { join, resolve } from 'path';
 import { atomicWriteFileSync, ensureDirSync } from '../../lib/atomic-write.js';
 import { withFileLockSync } from '../../lib/file-lock.js';
@@ -118,7 +118,8 @@ export interface HealRunOutcome {
 }
 
 const sha256 = (s: string) => createHash('sha256').update(s).digest('hex');
-const healLedgerDir = (ledgerDir: string, root: string) => join(ledgerDir, 'heal', sha256(resolve(root).toLowerCase()).slice(0, 16));
+/** The heal seals, scan records and mirrored counters of `root`, outside the repository. */
+export const healLedgerDir = (ledgerDir: string, root: string): string => join(ledgerDir, 'heal', sha256(resolve(root).toLowerCase()).slice(0, 16));
 const mirrorCountersPath = (ledgerDir: string, root: string) => join(healLedgerDir(ledgerDir, root), 'limits.json');
 const sealPath = (ledgerDir: string, root: string, sig8: string) => join(healLedgerDir(ledgerDir, root), `${sig8}.seal.json`);
 
@@ -207,7 +208,19 @@ export function writeHealSeal(ledgerDir: string, root: string, state: HealSignat
   const path = sealPath(ledgerDir, root, state.sig8);
   const kept = subject ?? readHealSealSubject(ledgerDir, root, state.sig8);
   ensureDirSync(healLedgerDir(ledgerDir, root));
-  atomicWriteFileSync(path, `${JSON.stringify({ sig8: state.sig8, seal: sealOf(state), ...(kept ? { subject: kept } : {}) }, null, 2)}\n`);
+  // `open` (outside the hash, which covers the record): whether the sealed heal run is open, so a reader can tell a
+  // closed heal run whose record was removed (git clean) from an open one; older seal files have no such field.
+  atomicWriteFileSync(path, `${JSON.stringify({ sig8: state.sig8, seal: sealOf(state), open: state.healRun?.open === true, ...(kept ? { subject: kept } : {}) }, null, 2)}\n`);
+}
+
+/** The seal file's `open` flag: true or false as the heal run last sealed it; null without a seal file, a readable one or the flag (a seal written before it). */
+export function healSealOpen(ledgerDir: string, root: string, sig8: string): boolean | null {
+  try {
+    const open = (JSON.parse(readFileSync(sealPath(ledgerDir, root, sig8), 'utf8')) as { open?: unknown } | null)?.open;
+    return typeof open === 'boolean' ? open : null;
+  } catch {
+    return null;
+  }
 }
 
 const scanRecordPath = (ledgerDir: string, root: string, sig8: string) => join(healLedgerDir(ledgerDir, root), `${sig8}.subject.json`);
@@ -254,6 +267,15 @@ export function verifyHealSeal(ledgerDir: string, root: string, state: HealSigna
     return (JSON.parse(readFileSync(path, 'utf8')) as { seal?: unknown }).seal === sealOf(state) ? 'ok' : 'mismatch';
   } catch {
     return 'mismatch';
+  }
+}
+
+/** The signatures with a heal seal outside the repository (each one a heal run the heal command recorded); read-only. */
+export function healSealSigs(ledgerDir: string, root: string): string[] {
+  try {
+    return readdirSync(healLedgerDir(ledgerDir, root)).map((f) => /^([0-9a-f]{8})\.seal\.json$/.exec(f)?.[1]).filter((s): s is string => s !== undefined).sort();
+  } catch {
+    return [];
   }
 }
 

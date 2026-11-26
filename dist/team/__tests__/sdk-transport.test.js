@@ -292,7 +292,7 @@ describe('sdk permission policy', () => {
             .toEqual(['create', 'edit', 't-host_smoke', 't-copilot_run_start', 't-copilot_run_status', 't-copilot_run_wait',
             't-copilot_run_cancel', 't-copilot_run_cleanup', 't-state_clear', 'task', 'web_fetch',
             'run_dynamic_workflow', 'dynamic_workflows_manage', 'write_agent', 'read_agent', 'list_agents',
-            'search_code_subagent'].sort());
+            'search_code_subagent', 'send_inbox', 'context_board'].sort());
         expect(buildSdkExcludedTools('t', ['shell'])).toEqual(expect.arrayContaining(['shell', 'powershell']));
     });
     it('removes every sub-agent / workflow tool even with an empty deny list', () => {
@@ -300,6 +300,9 @@ describe('sdk permission policy', () => {
             'task', 'run_dynamic_workflow', 'dynamic_workflows_manage', 'write_agent', 'read_agent', 'list_agents',
             'search_code_subagent', 't-host_smoke',
         ]));
+    });
+    it('removes the SDK v2 agent messaging and context-board tools (send_inbox, context_board)', () => {
+        expect(buildSdkExcludedTools('t')).toEqual(expect.arrayContaining(['send_inbox', 'context_board']));
     });
 });
 // ---------------------------------------------------------------------------
@@ -336,20 +339,20 @@ function fakeSdk(opts = {}) {
     const rec = { ops: [], sessions: [], sentWhileBusy: false, prompts: [] };
     class FakeClient {
         cliProcess = opts.pid ? { pid: opts.pid } : null;
-        constructor(options) { rec.connection = options.connection; }
+        constructor(options) { rec.connection = options.runtime; }
         async start() { rec.ops.push('start'); if (opts.startError)
             throw new Error(opts.startError); }
         async stop() { rec.ops.push('stop'); if (opts.pid)
             opts.alive?.delete(opts.pid); this.cliProcess = null; return []; }
         async forceStop() { rec.ops.push('forceStop'); if (opts.pid)
             opts.alive?.delete(opts.pid); this.cliProcess = null; }
-        async getStatus() { return { version: '1.0.91', protocolVersion: 3 }; }
+        async getStatus() { return { version: '1.0.116', protocolVersion: 4 }; }
         async listModels() { return [{ id: 'auto' }]; }
         async deleteSession(id) { rec.ops.push(`delete:${id}`); }
         async createSession(config) {
             rec.ops.push('create');
             rec.sessions.push(config);
-            const emit = (e) => config.onEvent?.(e);
+            const emit = (e) => config.events?.onEvent?.(e);
             let busy = false;
             let timer;
             const idle = (aborted = false) => { busy = false; emit({ type: 'session.idle', data: aborted ? { aborted } : {} }); };
@@ -362,7 +365,7 @@ function fakeSdk(opts = {}) {
                     busy = true;
                     rec.prompts.push(prompt);
                     for (const req of opts.permissions ?? []) {
-                        await config.onPermissionRequest(req, { sessionId: 's1' });
+                        await config.permissions.onRequest(req, { sessionId: 's1' });
                     }
                     emit({ type: 'assistant.usage', data: { initiator: 'user', copilotUsage: { totalNanoAiu: (opts.credits ?? 0.5) * 1e9 } } });
                     emit({ type: 'assistant.message', data: { content: 'ok' } });
@@ -396,9 +399,9 @@ function fakeSdk(opts = {}) {
     }
     const module = {
         CopilotClient: FakeClient,
-        RuntimeConnection: { forStdio: (o) => o },
+        RuntimeConnection: { forSpawnedStdio: (o) => o },
     };
-    return { loaded: { module, version: '1.0.16', from: 'fake' }, rec };
+    return { loaded: { module, version: '2.0.3', from: 'fake' }, rec };
 }
 async function newAttempt() {
     return prepareWorkerLaunchAttempt({
@@ -495,13 +498,13 @@ describe('sdk host', () => {
         expect(rec.sentWhileBusy).toBe(false);
         // Session config: plugin, worktree, fence, no github MCP, explicit model.
         const cfg = rec.sessions[0];
-        expect(cfg.pluginDirectories).toEqual([pluginRoot]);
+        expect(cfg.plugins.directories).toEqual([pluginRoot]);
         expect(cfg.workingDirectory).toBe(worktree);
-        expect(cfg.disabledMcpServers).toEqual(['github-mcp-server']);
-        expect(cfg.excludedTools).toEqual(expect.arrayContaining(['t-host_smoke', 'task', 'web_fetch']));
+        expect(cfg.mcp.disabledServers).toEqual(['github-mcp-server']);
+        expect(cfg.tools.excludedTools).toEqual(expect.arrayContaining(['t-host_smoke', 'task', 'web_fetch']));
         expect(cfg.model).toBe('gpt-test');
         // The Copilot credential goes over the session RPC, not into the env shell children inherit.
-        expect(cfg.gitHubToken).toBe(TEST_TOKEN);
+        expect(cfg.github?.token).toBe(TEST_TOKEN);
         // Runtime: installed exe, credit cap floor, deny flag, no allow-all, worker env, isolated home.
         expect(rec.connection?.path).toBe('C:/fake/copilot.exe');
         expect(rec.connection?.args).toEqual(['--log-level', 'debug', '--max-ai-credits', '30', '--deny-tool=web_fetch']);
@@ -551,11 +554,11 @@ describe('sdk host', () => {
         expect(await retireAndCleanupCurrentWorkerLaunchAttempt(attempt, 'test', async () => true)).toBe(true);
         expect(existsSync(attempt.currentPath)).toBe(false);
         expect(session.tool_transport).toBe('mcp');
-        expect(cfg.tools).toBeUndefined();
+        expect(cfg.tools.definitions).toBeUndefined();
     });
     describe('in_process_tools', () => {
         const fakeTool = { name: 't-state_read', description: 'd', parameters: { type: 'object', properties: {}, required: [] }, skipPermission: true, handler: async () => '' };
-        const toolNames = (config) => (config.tools ?? []).map((t) => t.name);
+        const toolNames = (config) => (config.tools.definitions ?? []).map((t) => t.name);
         async function runWith(builder, hostEnv, opts = {}) {
             const attempt = await newAttempt();
             // In place: a test compares the caller's object with the runtime env after adoption.
@@ -585,12 +588,12 @@ describe('sdk host', () => {
         it('registers the tools, disables the t server and gives the handlers the session env', async () => {
             const hostEnv = { [process.platform === 'win32' ? 'Path' : 'PATH']: '/usr/bin', OMC_STRIPPED: '1', COPILOT_HOME: '/real-home', AWS_SECRET_ACCESS_KEY: 'aws' };
             const { cfg, connEnv, calls, cleanups, events, session } = await runWith(withTools(), hostEnv);
-            expect(cfg.tools).toEqual([fakeTool]);
-            expect(cfg.disabledMcpServers).toEqual(['github-mcp-server', 't']);
-            expect(cfg.excludedTools).toEqual(expect.arrayContaining(['t-host_smoke', 'web_fetch']));
+            expect(cfg.tools.definitions).toEqual([fakeTool]);
+            expect(cfg.mcp.disabledServers).toEqual(['github-mcp-server', 't']);
+            expect(cfg.tools.excludedTools).toEqual(expect.arrayContaining(['t-host_smoke', 'web_fetch']));
             // builder(sdk module, server, the session's excludedTools, the session env's OMC_DISABLE_TOOLS)
             expect(calls[0]?.[1]).toBe('t');
-            expect(calls[0]?.[2]).toEqual(cfg.excludedTools);
+            expect(calls[0]?.[2]).toEqual(cfg.tools.excludedTools);
             expect(session.tool_transport).toBe('in-process');
             // No tools RPC on this fake SDK: in-process, but recorded as unverified.
             expect(session.tool_transport_verified).toBe(false);
@@ -600,7 +603,7 @@ describe('sdk host', () => {
             // The in-process handlers get the scrubbed env too.
             expect(hostEnv.AWS_SECRET_ACCESS_KEY).toBeUndefined();
             expect(hostEnv.COPILOT_GITHUB_TOKEN).toBeUndefined();
-            expect(cfg.gitHubToken).toBe(TEST_TOKEN);
+            expect(cfg.github?.token).toBe(TEST_TOKEN);
             expect(hostEnv.COPILOT_HOME).toBe(sdkWorkerFiles(stateRoot, WORKER).home);
             // Teardown ran the tools' cleanup once and removed every process guard.
             expect(cleanups).toHaveLength(1);
@@ -616,8 +619,8 @@ describe('sdk host', () => {
         it('recreates the session on the t MCP server when the runtime does not offer the in-process tools', async () => {
             const { session, rec, cleanups } = await runWith(withTools(), {}, { fake: { offeredTools: () => ['view', 'shell'] } });
             expect(rec.sessions).toHaveLength(2);
-            expect(rec.sessions[1].tools).toBeUndefined();
-            expect(rec.sessions[1].disabledMcpServers).toEqual(['github-mcp-server']);
+            expect(rec.sessions[1].tools.definitions).toBeUndefined();
+            expect(rec.sessions[1].mcp.disabledServers).toEqual(['github-mcp-server']);
             expect(rec.ops.slice(0, 5)).toEqual(['start', 'create', 'disconnect', 'delete:s1', 'create']);
             expect(session.tool_transport).toBe('mcp');
             expect(session.tool_transport_verified).toBeUndefined();
@@ -630,8 +633,8 @@ describe('sdk host', () => {
             expect(set?.tools).toEqual([]);
             expect(set?.disabledMcpServer).toBe('t');
             const { cfg, session } = await runWith(withTools([]), {}, { fake: { offeredTools: () => ['view'] } });
-            expect(cfg.tools).toEqual([]);
-            expect(cfg.disabledMcpServers).toEqual(['github-mcp-server', 't']);
+            expect(cfg.tools.definitions).toEqual([]);
+            expect(cfg.mcp.disabledServers).toEqual(['github-mcp-server', 't']);
             expect(session.tool_transport).toBe('in-process');
             expect(session.tool_transport_verified).toBe(true);
         });
@@ -675,8 +678,8 @@ describe('sdk host', () => {
         ])('falls back to the t MCP server when %s', async (_label, builder) => {
             const hostEnv = { OMC_STRIPPED: '1' };
             const { cfg, session } = await runWith(builder, hostEnv);
-            expect(cfg.tools).toBeUndefined();
-            expect(cfg.disabledMcpServers).toEqual(['github-mcp-server']);
+            expect(cfg.tools.definitions).toBeUndefined();
+            expect(cfg.mcp.disabledServers).toEqual(['github-mcp-server']);
             expect(session.tool_transport).toBe('mcp');
             expect(hostEnv.OMC_STRIPPED).toBe('1');
         });
@@ -761,7 +764,7 @@ describe('sdk host', () => {
             expect(env).toMatchObject({ GH_CONFIG_DIR: emptyDir, AZURE_CONFIG_DIR: emptyDir, GIT_TERMINAL_PROMPT: '0', GCM_INTERACTIVE: 'never' });
             expect(existsSync(emptyDir)).toBe(true);
             expect(env.OMC_TEAM_WORKER).toBe(`${TEAM}/${WORKER}`);
-            expect(cfg.gitHubToken).toBe(TEST_TOKEN);
+            expect(cfg.github?.token).toBe(TEST_TOKEN);
         });
         it('drops credentials worker_env carries, and the leader COPILOT_HOME / COPILOT_MODEL do not override the worker', async () => {
             const attemptEnv = { OMC_TEAM_WORKER: `${TEAM}/${WORKER}` };
@@ -777,7 +780,7 @@ describe('sdk host', () => {
         });
         it('without a stored login GH_TOKEN becomes the session credential', async () => {
             const { env, cfg } = await runEnv({ [pathKey]: '/usr/bin', GH_TOKEN: 'gh-only' });
-            expect(cfg.gitHubToken).toBe('gh-only');
+            expect(cfg.github?.token).toBe('gh-only');
             expect(env.GH_TOKEN).toBeUndefined();
         });
         it('with a stored login no generic token is sent and none is needed', async () => {
@@ -785,7 +788,7 @@ describe('sdk host', () => {
             mkdirSync(userConfig, { recursive: true });
             writeFileSync(join(userConfig, 'config.json'), JSON.stringify({ loggedInUsers: [{ login: 'robin' }], lastLoggedInUser: { login: 'robin' } }));
             const { cfg } = await runEnv({ [pathKey]: '/usr/bin', GH_TOKEN: 'gh' }, { user_config_dir: userConfig });
-            expect(cfg.gitHubToken).toBeUndefined();
+            expect(cfg.github?.token).toBeUndefined();
         });
         it('a keyring-less host: the stored login token goes to the session RPC, never the runtime env or the home', async () => {
             const stored = 'stored-plaintext-credential-0001';
@@ -793,7 +796,7 @@ describe('sdk host', () => {
             mkdirSync(userConfig, { recursive: true });
             writeFileSync(join(userConfig, 'config.json'), JSON.stringify({ loggedInUsers: [{ login: 'me' }], lastLoggedInUser: { login: 'me' }, authTokens: { 'https://github.com:me': { token: stored } } }));
             const { env, cfg } = await runEnv({ [pathKey]: '/usr/bin', GH_TOKEN: 'gh' }, { user_config_dir: userConfig }, { platform: 'linux' });
-            expect(cfg.gitHubToken).toBe(stored);
+            expect(cfg.github?.token).toBe(stored);
             expect(JSON.stringify(env)).not.toContain(stored);
             expect(readFileSync(join(sdkWorkerFiles(stateRoot, WORKER).home, 'config.json'), 'utf8')).not.toContain(stored);
         });
@@ -831,7 +834,7 @@ describe('sdk host', () => {
                 ringDoorbell(stateRoot, WORKER, { kind: 'shutdown' });
             });
             expect(await host).toBe('stopped');
-            expect(rec.sessions[0]?.gitHubToken).toBe('from-stdin');
+            expect(rec.sessions[0]?.github?.token).toBe('from-stdin');
             expect(Object.values(rec.connection.env)).not.toContain('from-stdin');
         });
         it('no stored login and no token fails the start before the runtime is spawned', async () => {
@@ -857,7 +860,7 @@ describe('sdk host', () => {
                 ringDoorbell(stateRoot, WORKER, { kind: 'shutdown' });
             });
             expect(await host).toBe('stopped');
-            expect(rec.sessions[0]?.gitHubToken).toBeUndefined();
+            expect(rec.sessions[0]?.github?.token).toBeUndefined();
         });
     });
     it('a missing SDK fails the launch with a terminal record and an install hint', async () => {
@@ -866,7 +869,7 @@ describe('sdk host', () => {
         expect(await host).toBe('sdk_missing');
         const session = readSdkSession(stateRoot, WORKER);
         expect(session.state).toBe('failed');
-        expect(session.last_error).toMatch(/npm i -g @github\/copilot-sdk/);
+        expect(session.last_error).toMatch(/npm i -g @microsoft\/copilot-sdk@2 --ignore-scripts/);
         expect(await observeWorkerLaunchProvider(attempt)).toBe('dead');
     });
     it('a runtime that fails to start is reported and its tree is killed', async () => {
@@ -1069,7 +1072,7 @@ describe('launchSdkHost', () => {
         }));
         expect(await run).toBe('sdk_missing');
         expect(existsSync(result.attempt.startedPath)).toBe(true);
-        expect(result).toMatchObject({ ok: false, reason: expect.stringMatching(/^sdk_host_failed_at_start:@github\/copilot-sdk is not installed/) });
+        expect(result).toMatchObject({ ok: false, reason: expect.stringMatching(/^sdk_host_failed_at_start:@microsoft\/copilot-sdk is not installed/) });
         expect(Date.now() - t0).toBeLessThan(4_000);
         await until(() => !isProcessAlive(host.pid));
     });

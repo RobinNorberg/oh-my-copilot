@@ -1,22 +1,19 @@
 /**
  * `omg factory check --host`: the host prerequisites of the factory in one
  * free pass (no model request, no session): node, git, the OS sandbox, the
- * Copilot CLI and SDK and their protocol, the login, and a newer Copilot
- * runtime in the package cache. Each item is ok / warn / fail with the
+ * Copilot CLI and SDK (v2, `@microsoft/copilot-sdk`) and their protocol,
+ * and the login. Each item is ok / warn / fail with the
  * command that fixes it; any fail exits non-zero. Token values never appear:
  * the login item names credentials only, and every line is scrubbed.
  */
 import { spawnSync } from 'node:child_process';
-import { existsSync, readdirSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { join } from 'node:path';
 import { defaultExec } from '../ship/exec.js';
 import { FACTORY_GIT_MIN_VERSION, factoryGitProblem, gitVersionAtLeast, parseGitVersion } from './git-preflight.js';
 import { PRIVATE_GIT_MIN_VERSION } from './run/private-store.js';
 import { cachedBwrapTrialLaunchError, factorySandboxProblem, linuxSandboxProblem, loadSandboxSettings, parseBwrapVersion, probeHostSupport, scrubTokens, secretValues } from '../copilot-run/sandbox.js';
 import { compareCopilotVersions, parseCopilotVersion, resolveCopilotBinary } from '../smoke/copilot-binary.js';
-import { LAST_PROTOCOL3_CLI, PROBE_TIMEOUT_REASON, SDK_MIN_VERSION, loadCopilotSdk, probeSdkProtocol, satisfiesSdkRange } from '../smoke/copilot-sdk-driver.js';
-import { SDK_INSTALL_COMMAND } from '../smoke/copilot-sdk-scenarios.js';
+import { COPILOT_UPDATE_COMMAND, LEGACY_SDK_PACKAGE, MIN_COPILOT_CLI, PROBE_TIMEOUT_REASON, SDK_MIN_VERSION, findLegacySdkVersion, loadCopilotSdk, probeSdkProtocol, satisfiesSdkRange, } from '../smoke/copilot-sdk-driver.js';
+import { SDK_INSTALL_COMMAND, SDK_PACKAGE } from '../smoke/copilot-sdk-scenarios.js';
 import { SMOKE_SET_ENV, loginIdentity, storedLoginToken } from '../smoke/copilot-session-env.js';
 import { getCopilotConfigDir } from '../utils/config-dir.js';
 import { buildHostBinarySpawn } from '../cli/tmux-utils.js';
@@ -34,15 +31,15 @@ export function nodeSatisfiesEngines(version) {
         return minor >= 4;
     return major >= 24 && major <= 26;
 }
-/** The pin the factory's SDK speaks to: the last protocol-3 CLI. */
-export const COPILOT_INSTALL_COMMAND = `npm i -g @github/copilot@${LAST_PROTOCOL3_CLI}`;
+/** The first Copilot CLI on SDK protocol 4: older ones speak protocol 3, which SDK v2 refuses. */
+export const FIRST_PROTOCOL4_CLI = '1.0.113';
+/** Replaces SDK v1 with v2: the old package is never loaded, so it is removed rather than kept beside the new one. */
+export const SDK_MIGRATE_COMMAND = `npm uninstall -g ${LEGACY_SDK_PACKAGE} && ${SDK_INSTALL_COMMAND}`;
 export function defaultHostCheckDeps(env = process.env) {
     return {
         platform: process.platform,
-        arch: process.arch,
         env,
         nodeVersion: process.versions.node,
-        homedir: homedir(),
         userConfigDir: getCopilotConfigDir(),
         exec: defaultExec,
         bwrapTrial: cachedBwrapTrialLaunchError,
@@ -61,21 +58,29 @@ export function defaultHostCheckDeps(env = process.env) {
             return `${r.stdout ?? ''}${r.stderr ?? ''}`;
         },
         loadSdk: () => loadCopilotSdk(env),
+        legacySdkVersion: () => findLegacySdkVersion(env),
         probeRuntime: async (loaded, bin, withHost) => {
             let started = false;
             let host;
+            let status;
             const mismatch = await probeSdkProtocol(loaded, bin, {
                 env,
                 onStarted: async (client) => {
                     started = true;
+                    try {
+                        const s = await client.getStatus();
+                        status = {
+                            ...(typeof s.version === 'string' ? { version: s.version } : {}),
+                            ...(typeof s.protocolVersion === 'number' ? { protocolVersion: s.protocolVersion } : {}),
+                        };
+                    }
+                    catch { /* the handshake passed; the status stays unread */ }
                     if (withHost)
                         host = await probeHostSupport(client, 15_000, { platform: process.platform });
                 },
             });
-            return { started, mismatch, ...(host ? { host } : {}) };
+            return { started, mismatch, ...(status ? { status } : {}), ...(host ? { host } : {}) };
         },
-        listDir: (dir) => readdirSync(dir),
-        exists: existsSync,
     };
 }
 function checkNode(d) {
@@ -123,58 +128,6 @@ function checkLinuxSandbox(d) {
     const v = r.status === 0 ? parseBwrapVersion(r.stdout) : null;
     return { id: 'sandbox', status: 'ok', detail: `bubblewrap ${v?.text ?? '(version unread)'}: a trial launch succeeded` };
 }
-/** A version dir name ("1.0.114") with an index.js, newer than {@link LAST_PROTOCOL3_CLI}, under each package cache the CLI searches. */
-export function newerCachedRuntimes(d) {
-    const { env, platform, homedir: home } = d;
-    const xdg = env.XDG_CACHE_HOME || join(home, '.cache');
-    const platformCache = platform === 'darwin' ? join(home, 'Library', 'Caches', 'copilot')
-        : platform === 'win32' ? join(env.LOCALAPPDATA || join(home, '.cache'), 'copilot')
-            : join(xdg, 'copilot');
-    // The candidate order of the CLI's own package-cache search (1.0.112).
-    const roots = [
-        env.COPILOT_PKG_CACHE_HOME && join(env.COPILOT_PKG_CACHE_HOME, 'pkg'),
-        env.COPILOT_CACHE_HOME && join(env.COPILOT_CACHE_HOME, 'pkg'),
-        join(platformCache, 'pkg'),
-        join(xdg, 'copilot', 'pkg'),
-        env.COPILOT_HOME && join(env.COPILOT_HOME, 'pkg'),
-        join(home, '.copilot', 'pkg'),
-    ].filter((p) => Boolean(p));
-    const out = [];
-    for (const root of [...new Set(roots)]) {
-        for (const sub of ['universal', `${platform}-${d.arch}`]) {
-            const dir = join(root, sub);
-            let names;
-            try {
-                names = d.listDir(dir);
-            }
-            catch {
-                continue;
-            }
-            for (const name of names) {
-                if (!/^\d+\.\d+\.\d+$/.test(name) || compareCopilotVersions(name, LAST_PROTOCOL3_CLI) <= 0)
-                    continue;
-                if (d.exists(join(dir, name, 'index.js')))
-                    out.push(join(dir, name));
-            }
-        }
-    }
-    return out;
-}
-function checkPkgCache(d) {
-    const found = newerCachedRuntimes(d);
-    if (found.length === 0)
-        return { id: 'copilot.pkg-cache', status: 'ok', detail: `no cached Copilot runtime newer than ${LAST_PROTOCOL3_CLI}` };
-    const move = d.platform === 'win32'
-        ? found.map((p) => `Move-Item -LiteralPath "${p}" -Destination "${p}.parked"`).join('; ')
-        : found.map((p) => `mv "${p}" "${p}.parked"`).join(' && ');
-    return {
-        id: 'copilot.pkg-cache',
-        status: 'warn',
-        detail: `the Copilot package cache holds a runtime newer than ${LAST_PROTOCOL3_CLI} (${found.join(', ')}): copilot launched with auto-update on prefers it, and it speaks SDK protocol 4. `
-            + 'Factory launches set COPILOT_AUTO_UPDATE=false and a job-private cache, so lanes keep the installed runtime; an interactive `copilot` (which self-updates into this cache) and anything launched without that flag do not',
-        fix: `${move}; then run copilot with COPILOT_AUTO_UPDATE=false (or --no-auto-update) so it does not download again`,
-    };
-}
 function checkLogin(d) {
     const has = (n) => Object.keys(d.env).some((k) => k.toUpperCase() === n && (d.env[k] ?? '').trim() !== '');
     const identity = loginIdentity(d.userConfigDir).loggedInUsers !== undefined;
@@ -215,26 +168,36 @@ export async function runHostCheck(d) {
     // Copilot CLI, as factory launches run it (COPILOT_AUTO_UPDATE=false: the installed runtime, never a cached newer one).
     const bin = d.resolveBin();
     if (!bin) {
-        items.push({ id: 'copilot', status: 'fail', detail: 'copilot not found (PATH, COPILOT_CLI_PATH, WinGet)', fix: COPILOT_INSTALL_COMMAND });
+        items.push({ id: 'copilot', status: 'fail', detail: 'copilot not found (PATH, COPILOT_CLI_PATH, WinGet)', fix: COPILOT_UPDATE_COMMAND });
     }
     else {
         const version = parseCopilotVersion(d.copilotVersion(bin, { ...d.env, ...SMOKE_SET_ENV }));
+        const update = `${COPILOT_UPDATE_COMMAND} (a WinGet or Homebrew install: copilot update)`;
         if (!version)
             items.push({ id: 'copilot', status: 'warn', detail: `${bin}: --version gave no version` });
-        else if (compareCopilotVersions(version, LAST_PROTOCOL3_CLI) > 0) {
-            items.push({ id: 'copilot', status: 'warn', detail: `copilot ${version} (${bin}) is newer than ${LAST_PROTOCOL3_CLI}, the last CLI speaking SDK protocol 3`, fix: COPILOT_INSTALL_COMMAND });
+        else if (compareCopilotVersions(version, FIRST_PROTOCOL4_CLI) < 0) {
+            items.push({ id: 'copilot', status: 'fail', detail: `copilot ${version} (${bin}) is too old: it speaks SDK protocol 3, and ${SDK_PACKAGE} v2 needs protocol 4 (copilot >= ${FIRST_PROTOCOL4_CLI}; tested with ${MIN_COPILOT_CLI})`, fix: update });
+        }
+        else if (compareCopilotVersions(version, MIN_COPILOT_CLI) < 0) {
+            items.push({ id: 'copilot', status: 'warn', detail: `copilot ${version} (${bin}) speaks protocol 4 but is older than ${MIN_COPILOT_CLI}, the runtime ${SDK_PACKAGE} ${SDK_MIN_VERSION} is built and tested against`, fix: update });
         }
         else
             items.push({ id: 'copilot', status: 'ok', detail: `copilot ${version} (${bin})` });
     }
     const loaded = await d.loadSdk().catch(() => null);
-    if (!loaded)
-        items.push({ id: 'sdk', status: 'fail', detail: '@github/copilot-sdk is not installed (global npm root)', fix: SDK_INSTALL_COMMAND });
-    else if (!satisfiesSdkRange(loaded.version)) {
-        items.push({ id: 'sdk', status: 'fail', detail: `@github/copilot-sdk ${loaded.version ?? 'unknown'} is outside ^${SDK_MIN_VERSION}`, fix: SDK_INSTALL_COMMAND });
+    const legacy = d.legacySdkVersion();
+    if (!loaded) {
+        items.push(legacy
+            ? { id: 'sdk', status: 'fail', detail: `${LEGACY_SDK_PACKAGE} ${legacy} (SDK v1, protocol 3) is installed, but ${SDK_PACKAGE} (SDK v2) is not: oh-my-copilot drives Copilot through SDK v2 only, and v1 cannot talk to Copilot CLI >= ${FIRST_PROTOCOL4_CLI}`, fix: SDK_MIGRATE_COMMAND }
+            : { id: 'sdk', status: 'fail', detail: `${SDK_PACKAGE} is not installed (global npm root)`, fix: SDK_INSTALL_COMMAND });
     }
-    else
-        items.push({ id: 'sdk', status: 'ok', detail: `@github/copilot-sdk ${loaded.version} (${loaded.from})` });
+    else if (!satisfiesSdkRange(loaded.version)) {
+        items.push({ id: 'sdk', status: 'fail', detail: `${SDK_PACKAGE} ${loaded.version ?? 'unknown'} is outside ^${SDK_MIN_VERSION}`, fix: SDK_INSTALL_COMMAND });
+    }
+    else {
+        const leftover = legacy ? `; ${LEGACY_SDK_PACKAGE} ${legacy} is also installed and unused (npm uninstall -g ${LEGACY_SDK_PACKAGE})` : '';
+        items.push({ id: 'sdk', status: 'ok', detail: `${SDK_PACKAGE} ${loaded.version} (${loaded.from})${leftover}` });
+    }
     const withHost = d.platform !== 'linux';
     if (!bin || !loaded) {
         items.push({ id: 'sdk.protocol', status: 'warn', detail: 'not checked: needs both the Copilot CLI and the SDK' });
@@ -245,12 +208,15 @@ export async function runHostCheck(d) {
         const r = await d.probeRuntime(loaded, bin, withHost);
         if (r.mismatch?.startsWith(PROBE_TIMEOUT_REASON))
             items.push({ id: 'sdk.protocol', status: 'warn', detail: r.mismatch });
+        // rethrowSdkStartError names which side is behind: an old CLI, or a CLI newer than the SDK's protocol.
         else if (r.mismatch)
-            items.push({ id: 'sdk.protocol', status: 'fail', detail: r.mismatch, fix: COPILOT_INSTALL_COMMAND });
+            items.push({ id: 'sdk.protocol', status: 'fail', detail: r.mismatch, fix: /too old/.test(r.mismatch) ? COPILOT_UPDATE_COMMAND : SDK_INSTALL_COMMAND });
         else if (!r.started)
             items.push({ id: 'sdk.protocol', status: 'warn', detail: 'the no-session runtime start failed for a reason other than the protocol; a real launch reports it' });
-        else
-            items.push({ id: 'sdk.protocol', status: 'ok', detail: 'the SDK and the CLI completed the protocol handshake (no session, no request)' });
+        else {
+            const runtime = r.status?.version ? `runtime ${r.status.version}, protocol ${r.status.protocolVersion ?? '?'}` : 'runtime status unread';
+            items.push({ id: 'sdk.protocol', status: 'ok', detail: `the SDK and the CLI completed the protocol handshake (${runtime}; no session, no request)` });
+        }
         if (withHost) {
             if (!r.host)
                 items.push({ id: 'sandbox', status: 'warn', detail: 'not checked: the runtime did not start' });
@@ -260,7 +226,7 @@ export async function runHostCheck(d) {
                 items.push(sandboxFailure(d, `the Copilot runtime reports no usable OS sandbox: ${r.host.reason ?? 'unsupported'}`, 'see "Sandboxed lanes" in docs/REFERENCE.md'));
         }
     }
-    items.push(checkLogin(d), checkPkgCache(d));
+    items.push(checkLogin(d));
     const secrets = secretValues(d.env, { userConfigDir: d.userConfigDir, platform: d.platform });
     return items.map((i) => ({ ...i, detail: scrubTokens(i.detail, secrets), ...(i.fix ? { fix: scrubTokens(i.fix, secrets) } : {}) }));
 }

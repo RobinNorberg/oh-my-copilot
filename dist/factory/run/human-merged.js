@@ -6,7 +6,7 @@
  * Who records it:
  * - `omg factory run <n>` before it resumes anything (the engine: start());
  * - `omg factory run status [<n>]`, `omg factory board` and
- *   `omg factory dashboard` through recordHumanMerge below.
+ *   `omg factory dashboard --forge` (opt-in; the dashboard is read-only by default) through recordHumanMerge below.
  *
  * The PR state comes from the forge's own read (GitHub, Azure DevOps), for the
  * run's own forge, repository and base. On the local forge the PR store is a
@@ -150,13 +150,14 @@ export function recordHumanMerge(root, key, o) {
             return unchanged('not a stopped run with a PR');
         if (!verifyFactoryIntegrity(s))
             return unchanged('the run state fails its integrity check');
+        // The ledger first: the lane-trust reason quotes the state's base and lane ids, only from the engine's own write.
+        if (!EngineLedger.open(o.ledgerDir, root, key).matches(path, bytes))
+            return unchanged('the run state is not the engine\'s last write');
         const untrusted = laneTrustProblem(s);
         if (untrusted)
             return { kind: 'unchanged', key, reason: untrusted, untrusted: true };
         if (tamperHoldMessage(o.ledgerDir, root))
             return unchanged('a tamper hold is set on this checkout');
-        if (!EngineLedger.open(o.ledgerDir, root, key).matches(path, bytes))
-            return unchanged('the run state is not the engine\'s last write');
     }
     catch (error) {
         return unchanged(text(error));

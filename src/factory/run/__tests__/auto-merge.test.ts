@@ -6,6 +6,7 @@
 import { describe, expect, it } from 'vitest';
 import { githubAutoMergeArgs, githubCommitReadArgs, isGithubAutoMergeArgs } from '../../../forge/github/merge.js';
 import { assertFactoryCommand, FactorySafetyError } from '../exec.js';
+import { isDotnetDefinitionFile } from '../local-gate.js';
 import {
   autoMergeComment,
   autoMergeVerdict,
@@ -167,6 +168,33 @@ describe('review-498 adversarial paths', () => {
       expect(deniedPaths([p]), p).toEqual([p]);
       expect(classifyChanges([file(p)], all).tier, p).toBeUndefined();
     }
+  });
+
+  it('.NET: every dotnet gate definition file (the same list as local-gate.ts) and the test and analyzer config never auto-merge', () => {
+    const definition = ['App.sln', 'App.slnx', 'a.slnf', 'src/App.csproj', 'b.fsproj', 'c.vbproj', 'build.proj', 'web/web.esproj', 'Shared/Shared.projitems', 'Tests/Tests.csproj.user',
+      'Directory.Build.props', 'Directory.Packages.props', 'src/Directory.Build.targets', 'build/My.tasks', 'Directory.Build.rsp', 'global.json', 'NuGet.Config', 'src/packages.lock.json', 'dotnet.config',
+      // F2: Microsoft.Testing.Platform's launch profiles; F7: Windows spellings of a definition file, as the pin matches them.
+      'Tests/Properties/launchSettings.json', 'Tests/Tests.run.json', 'src/App.csproj.', 'src/App.csproj::$DATA', 'Directory.Build.props:x',
+      // L1: on Linux a plain file name with a colon.
+      'src/evil:1.props'];
+    for (const p of definition) expect(isDotnetDefinitionFile(p), p).toBe(true);
+    const testConfig = ['tests/ci.runsettings', 'testconfig.json', 'tests/xunit.runner.json', '.globalconfig', 'rules/App.ruleset', 'stylecop.json', '.config/dotnet-tools.json'];
+    for (const p of [...definition, ...testConfig]) {
+      expect(deniedPaths([p]), p).toEqual([p]);
+      expect(classifyChanges([file(p)], all).tier, p).toBeUndefined();
+    }
+    expect(deniedPaths(['src/App/Program.cs', 'tests/AppTests.cs'])).toEqual([]);
+  });
+
+  it('follow-up 1: in a .NET repository (dotnet) a path under bin/, obj/ or artifacts/ never auto-merges; elsewhere (a Node bin/cli.js) it may', () => {
+    const output = ['src/App/obj/project.assets.json', 'tests/T/bin/Debug/net10.0/T.dll', 'artifacts/bin/App/x.txt', 'src/App/OBJ/a.AssemblyInfoInputs.cache', 'src/App/obj./x.cache'];
+    for (const p of output) {
+      expect(deniedPaths([p], [], [], true), p).toEqual([p]);
+      expect(classifyChanges([file(p)], all, { dotnet: true }).tier, p).toBeUndefined();
+    }
+    expect(deniedPaths(['bin/cli.js', 'src/obj.ts'])).toEqual([]);
+    expect(deniedPaths(['src/obj.ts', 'tools/bin'], [], [], true)).toEqual([]);
+    expect(classifyChanges([file('bin/cli.js')], all).tier).toBeDefined();
   });
 
   it('H1: the docs tier is an allowlist of .md/.rst (and .txt under docs/): no .mdx, scripts, HTML, site config or images', () => {

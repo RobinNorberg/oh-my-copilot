@@ -52,6 +52,12 @@ export interface LaneEnvironment {
     writeNetwork: 'none' | 'registry';
     /** The engine gives the worktree a copy of your node_modules before the session (Windows). */
     nodeModulesReady: boolean;
+    /** A .NET repository (engine.ts dotnetRepo, any forge): the lane's sandbox has the dotnet env (dotnet-sandbox.ts). */
+    dotnet?: boolean;
+    /** writeNetwork "registry" with a NuGet host (api.nuget.org) in sandbox.allowedHosts: NuGet can reach its feed. */
+    nugetReachable?: boolean;
+    /** The trusted base's global.json selects Microsoft.Testing.Platform for dotnet test (dotnet-sandbox.ts isMtpGlobalJson). */
+    dotnetMtp?: boolean;
 }
 /** The repository guide files the implement prompt names, when the lane's base has them. */
 export declare const REPO_GUIDE_FILES: readonly string[];

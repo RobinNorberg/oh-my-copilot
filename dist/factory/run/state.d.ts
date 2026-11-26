@@ -129,6 +129,23 @@ export interface FactoryGate {
      * it (they get `reason`), because the PR's code chooses what it prints.
      */
     detail?: string;
+    /**
+     * The next step(s) for the human, composed by the engine when it parked
+     * (gate-next.ts gateNext) from engine-held facts only: the run key, the
+     * 40-hex head, the PR number, the repository root, the forge kind and fixed
+     * flags; never from lane output, the reason, titles or branch names. Sealed
+     * with the rest of the state, so read surfaces print it only after the seal
+     * and the ledger check pass. Optional: states written before it lack it
+     * (gate-next.ts gateSteps is the fallback).
+     */
+    next?: FactoryGateNextStep[];
+}
+/** One step of FactoryGate.next: a short label and the exact argv (never a shell line). */
+export interface FactoryGateNextStep {
+    label: string;
+    argv: string[];
+    /** The step can start billed lanes (a rerun, a heal approve). */
+    billed?: boolean;
 }
 export interface FactoryFinding {
     severity: 'blocker' | 'major' | 'minor' | 'nit';
@@ -292,6 +309,20 @@ export interface FactoryRunState {
     sandboxedPrepareHead?: string;
     /** The head the local gate last ran on in the OS sandbox (the command was handed over): a later gate start failure on it parks at gate-no-verdict. Optional: older state files lack it. */
     sandboxedGateHead?: string;
+    /**
+     * The networked dotnet restore step (nuget-restore.ts): the head it last ran for and the gate definition hash
+     * (as gateChangeApproved) that head had. The run's packages folder holds what that definition restored: only a
+     * dotnet command for a commit with that definition reads it, and it is emptied before a restore or a gate for
+     * another definition. `outcome` (written once the step ended; absent while it runs, or from an older release):
+     * `passed`, `failed` (it ran and exited non-zero or timed out, `exit` its code) or `not-run` (the sandbox gave no
+     * verdict or did not start). A rerun repeats the step for the same head unless it `passed`.
+     */
+    nugetRestore?: {
+        head: string;
+        definition: string;
+        outcome?: 'passed' | 'failed' | 'not-run';
+        exit?: number;
+    };
     /** The head a check last ran on WITHOUT any sandbox through the Windows git-transport fallback: such a run is never auto-merged. */
     gitTransportPlainHead?: string;
     /** The head whose built-in prepare tests passed only because tests that fail on the base too were not counted (test-delta.ts): such a run is never auto-merged. */
@@ -504,7 +535,7 @@ export declare function createFactoryState(input: {
 /** Move to `to` (clearing any gate), appending history. Terminal phases never move. */
 export declare function moveTo(state: FactoryRunState, to: FactoryPhase, note: string, now: string): FactoryRunState;
 /** Park at a named human gate; the phase stays so a rerun re-evaluates it. */
-export declare function setGate(state: FactoryRunState, name: string, reason: string, now: string, extra?: Pick<FactoryGate, 'definition' | 'detail'>): FactoryRunState;
+export declare function setGate(state: FactoryRunState, name: string, reason: string, now: string, extra?: Pick<FactoryGate, 'definition' | 'detail' | 'next'>): FactoryRunState;
 /**
  * The tracker progress stage of a run (factory forges design §7): a merge
  * gate or the merge phase is ready-to-merge, any other gate and failed are
@@ -524,6 +555,13 @@ export declare function forgeResumeProblem(state: Pick<FactoryRunState, 'forgeKi
 export declare function runRemote(state: Pick<FactoryRunState, 'remote'>): string;
 /** The bound of FactoryGate.detail (the engine writes at most about 3 KB). */
 export declare const GATE_DETAIL_MAX_CHARS = 4000;
+/** Bounds of FactoryGate.next: steps per gate, words per argv, characters per label and per word. */
+export declare const GATE_NEXT_MAX_STEPS = 8;
+export declare const GATE_NEXT_MAX_ARGS = 16;
+export declare const GATE_NEXT_LABEL_MAX_CHARS = 80;
+export declare const GATE_NEXT_ARG_MAX_CHARS = 4096;
+/** One FactoryGate.next entry: exactly label, argv and an optional billed flag, each bounded and control-free (shell metacharacters are data in an argv word). */
+export declare function gateNextStepOk(v: unknown): v is FactoryGateNextStep;
 /** Thread ids one human round may record: 100 review threads and 50 review bodies fit. */
 export declare const MAX_HUMAN_THREAD_IDS = 200;
 /** Read and shape-check the state file; throws FactoryStateError on malformed content. */

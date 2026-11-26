@@ -6,7 +6,7 @@
  */
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { isAbsolute, join } from 'node:path';
 import { summarizeChanges } from '../../../copilot-run/job.js';
 /** A write lane's record on a host that confirmed the sandbox, with the default writeNetwork. */
 export const ENFORCED_SANDBOX = { mode: 'enforced', host: {}, applied: 'create', canary: 'skipped', unsandboxedCalls: 0, cliVersion: 'x', sdkVersion: 'x', writeNetwork: 'none' };
@@ -14,6 +14,7 @@ import { gitIn } from '../../../copilot-run/__tests__/fake-sdk.js';
 import { resolveShipConfig } from '../../../ship/config.js';
 import { readWorktreeGitLinks, recordWorktreeGitLinks } from '../../../team/git-worktree.js';
 import { defaultExec } from '../../../ship/exec.js';
+import { cleanDotnetBuildOutput } from '../dotnet-clean.js';
 import { defaultLocalGateRunner } from '../local-gate.js';
 import { REVIEW_FEEDBACK_QUERY } from '../../../forge/github/graphql.js';
 import { LaneLostError } from '../lane.js';
@@ -202,6 +203,15 @@ export const testGateConfig = () => ({
     known: [],
 });
 /**
+ * A restore graph (dgspec) as `dotnet msbuild -t:GenerateRestoreGraphFile`
+ * writes it in `root`: each project (a repository path) with `sources`
+ * (absolute, or a path relative to `root` made absolute), nuget.org by default.
+ */
+export function fakeRestoreGraph(root, sources = ['https://api.nuget.org/v3/index.json'], projects = ['src/App/App.csproj']) {
+    const abs = (p) => (/^[a-z][a-z0-9+.-]+:\/\//i.test(p) || isAbsolute(p) ? p : join(root, ...p.split('/')));
+    return JSON.stringify({ format: 1, restore: {}, projects: Object.fromEntries(projects.map((p) => [abs(p), { restore: { projectPath: abs(p), sources: Object.fromEntries(sources.map((s) => [abs(s), {}])) } }])) });
+}
+/**
  * The engine tests' OS sandbox: every command counts as run in the attested
  * sandbox. A prepare check runs through the test's exec seam (as the
  * unsandboxed engine ran it), the local gate through the test's gate runner
@@ -214,6 +224,14 @@ export function attestedSandbox(exec, gate = () => undefined) {
     return async (req) => {
         if (req.purpose === 'calibrate')
             return { ran: true, status: 0, output: '', timedOut: false };
+        // The restore-source evaluation (engine.ts restoreSourcesPark): the same graph in every tree, so the restore runs.
+        if (req.purpose === 'sources')
+            return { ran: true, status: 0, output: '', timedOut: false, restoreGraph: fakeRestoreGraph(req.cwd) };
+        // The dotnet clean step (dotnet-clean-step.js <kept...>): its logic in process, as the sandboxed node would run it.
+        if (req.purpose === 'clean') {
+            const r = cleanDotnetBuildOutput(req.cwd, req.args.slice(1));
+            return { ran: true, status: r.errors.length > 0 ? 1 : 0, output: [`removed ${r.removed}`, ...r.errors.map((e) => `error ${e}`)].join('\n'), timedOut: false };
+        }
         // No test runner: the engine's own plain runner, as the engine ran the gate before the sandbox.
         const runner = gate() ?? defaultLocalGateRunner;
         if (req.purpose === 'gate') {

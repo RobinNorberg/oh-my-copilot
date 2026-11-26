@@ -5,11 +5,11 @@
  * this host has), and gateEnv. No Copilot runtime, no network, no credits.
  */
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, linkSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { fakeClientRpc, fakeSessionRpc } from '../../../copilot-run/__tests__/fake-sdk.js';
+import { POLICY_CONFLICT_MESSAGE, fakeClientRpc, fakeSessionRpc } from '../../../copilot-run/__tests__/fake-sdk.js';
 import { buildSandboxConfig, DEFAULT_SANDBOX_SETTINGS, resolveGatesSandboxMode, resolveRequireDeniedPaths } from '../../../copilot-run/sandbox.js';
 import { findOnPath } from '../../../utils/windows-search.js';
 import { defaultLocalGateRunner } from '../local-gate.js';
@@ -27,16 +27,20 @@ function fakeSdk(script, rec, sandbox = 'supported', deniedPaths = true) {
         constructor(cfg) {
             this.cfg = cfg;
             this.rpc = {
-                ...fakeSessionRpc(sandbox, rec),
+                ...fakeSessionRpc(sandbox, rec, cfg.permissions.sandbox),
                 shell: {
                     executeUserRequested: ({ requestId, command }) => {
                         rec.commands.push(command);
+                        script.onCommand?.(command);
                         const marker = markerOf(command);
                         const complete = () => {
+                            if (script.sandboxOff) {
+                                this.cfg.events?.onEvent?.({ type: 'session.sandbox_state_changed', data: { incarnation: 1, revision: 2, config: this.cfg.permissions.sandbox ?? {}, configSource: 'session_flag', disabledForSession: true, autoApproveBypass: false, sessionOverride: false } });
+                            }
                             if (script.stray !== undefined)
-                                this.cfg.onEvent?.({ type: 'tool.execution_complete', data: { toolCallId: 'other', toolName: 'bash', sandboxed: script.stray } });
+                                this.cfg.events?.onEvent?.({ type: 'tool.execution_complete', data: { toolCallId: 'other', toolName: 'bash', sandboxed: script.stray } });
                             if ('sandboxed' in script)
-                                this.cfg.onEvent?.({ type: 'tool.execution_complete', data: { toolCallId: 'call-1', sandboxed: script.sandboxed } });
+                                this.cfg.events?.onEvent?.({ type: 'tool.execution_complete', data: { toolCallId: 'call-1', sandboxed: script.sandboxed } });
                         };
                         const answer = () => ({ toolCallId: 'call-1', ...script.answer, output: (script.answer?.output ?? '').split('MARKER').join(marker) });
                         if (script.reject)
@@ -71,12 +75,11 @@ function fakeSdk(script, rec, sandbox = 'supported', deniedPaths = true) {
         async disconnect() { rec.disconnects += 1; }
     }
     class Client {
-        o;
         cliProcess = { pid: 4321 };
         rpc = fakeClientRpc(sandbox, deniedPaths);
-        constructor(o) {
-            this.o = o;
-        }
+        o;
+        // SDK v2: the runtime home and the process cwd are on the spawned connection.
+        constructor(opts) { this.o = { workingDirectory: opts.runtime.workingDirectory, baseDirectory: opts.runtime.baseDirectory }; }
         async start() {
             // The runtime reads its config.json at start: what it trusts.
             const file = this.o.baseDirectory ? join(this.o.baseDirectory, 'config.json') : '';
@@ -85,15 +88,23 @@ function fakeSdk(script, rec, sandbox = 'supported', deniedPaths = true) {
         async stop() { rec.stops += 1; return []; }
         async getStatus() { return { version: '1.0.105' }; }
         async listModels() { return []; }
-        async createSession(cfg) { rec.sessions.push(cfg); return new Session(cfg); }
+        async createSession(cfg) {
+            rec.sessions.push(cfg);
+            // A v2 policy conflict fails create when the sandbox goes in with it.
+            if (sandbox === 'update-fails' && cfg.permissions.sandbox)
+                throw new Error(POLICY_CONFLICT_MESSAGE);
+            if (sandbox === 'create-fails')
+                throw new Error('authentication failed: 401 Unauthorized');
+            return new Session(cfg);
+        }
         async deleteSession() { }
     }
     return {
         module: {
             CopilotClient: Client,
-            RuntimeConnection: { forStdio: (o) => { rec.connections.push(o); return o; } },
+            RuntimeConnection: { forSpawnedStdio: (o) => { rec.connections.push(o); return o; } },
         },
-        version: '1.0.16',
+        version: '2.0.3',
         from: 'test',
     };
 }
@@ -155,7 +166,7 @@ describe('runSandboxed', () => {
         const r = await runSandboxed(['/usr/bin/node', 'node_modules/vitest/vitest.mjs', 'run'], opts(), deps({ ...ok, answer: { success: true, exitCode: 0, output: 'not ok 1\nMARKER 3\n' } }));
         expect(r).toEqual({ ran: true, status: 3, output: 'not ok 1', timedOut: false });
         // The policy: read-write the checkout (and the job's temp/profile) only; the git dir read-only, no git write grant; no network.
-        const config = rec.optionsUpdates[0]?.sandboxConfig;
+        const config = rec.sessions[0]?.permissions.sandbox;
         expect(config.enabled).toBe(true);
         expect(config.userPolicy.filesystem.readwritePaths[0]).toBe(join(dir, 'checkout'));
         expect(config.userPolicy.filesystem.readwritePaths.some((p) => p.includes(join('repo', '.git')))).toBe(false);
@@ -168,7 +179,7 @@ describe('runSandboxed', () => {
             expect(env[k]).toBeUndefined();
         expect(JSON.stringify(env)).not.toContain('ghp_');
         // The Copilot credential goes over the session RPC, no plugin (its hooks would run unsandboxed), no prompt.
-        expect(rec.sessions[0]).toMatchObject({ gitHubToken: TOKENS.COPILOT_GITHUB_TOKEN, pluginDirectories: [] });
+        expect(rec.sessions[0]).toMatchObject({ github: { token: TOKENS.COPILOT_GITHUB_TOKEN }, plugins: { directories: [] } });
         // Teardown: the session, the runtime tree, the client; the job home is removed.
         expect(rec.disconnects).toBe(1);
         expect(killed).toContain(4321);
@@ -186,19 +197,19 @@ describe('runSandboxed', () => {
         // A git root search from the working dir stops at the job root (under the root repository's .omg/).
         expect(rec.connections[0].env.GIT_CEILING_DIRECTORIES).toBe(resolve(join(dir, 'jobs')));
         // The checkout stays an explicit read-write path, and the command itself changes into it.
-        const config = rec.optionsUpdates[0]?.sandboxConfig;
+        const config = rec.sessions[0]?.permissions.sandbox;
         expect(config.userPolicy.filesystem.readwritePaths).toContain(checkout);
         expect(Buffer.from(/'([A-Za-z0-9+/=]+)'/.exec(rec.commands[0])[1], 'base64').toString('utf8').split('\0')[0]).toBe(checkout);
     });
     it('network "registry" opens only the registry hosts', async () => {
         await runSandboxed(['/usr/bin/npm', 'ci'], opts({ network: 'registry' }), deps(ok));
-        const config = rec.optionsUpdates[0]?.sandboxConfig;
+        const config = rec.sessions[0]?.permissions.sandbox;
         expect(config.userPolicy.network).toMatchObject({ allowOutbound: true, allowedHosts: ['registry.npmjs.org', '*.npmjs.org'] });
     });
     it('a host without denied_paths runs the command and its verdict counts, marked credential files readable', async () => {
         const r = await runSandboxed(['/bin/false'], opts(), deps(said('not ok\nMARKER 1\n'), 'supported', {}, false));
         expect(r).toEqual({ ran: true, status: 1, output: 'not ok', timedOut: false, credentialFilesReadable: true });
-        const config = rec.optionsUpdates[0]?.sandboxConfig;
+        const config = rec.sessions[0]?.permissions.sandbox;
         expect(config.userPolicy.filesystem.deniedPaths).toBeUndefined();
         // With denied_paths the verdict carries no mark.
         expect(await runSandboxed(['/bin/true'], opts(), deps(ok))).toEqual({ ran: true, status: 0, output: 'tests passed', timedOut: false });
@@ -223,6 +234,16 @@ describe('runSandboxed', () => {
         expect(missing).toMatchObject({ ran: false, started: true, reason: expect.stringContaining('not attested sandboxed') });
         const stray = await runSandboxed(['/bin/true'], opts(), deps({ ...ok, stray: false }));
         expect(stray).toMatchObject({ ran: false, started: true, reason: expect.stringContaining('not attested sandboxed: true') });
+    });
+    it('the session\'s sandbox opted out while the command ran (session.sandbox_state_changed): no verdict', async () => {
+        const r = await runSandboxed(['/bin/true'], opts(), deps({ ...ok, sandboxOff: true }));
+        expect(r).toMatchObject({ ran: false, started: true, reason: expect.stringContaining("sandbox-escaped: the session's sandbox changed mid-session (the session holds a sandbox opt-out") });
+    });
+    it('an ignored create-time policy is caught after create: the gate session never starts the command', async () => {
+        const r = await runSandboxed(['/bin/true'], opts(), deps(ok, 'ignored'));
+        expect(r).toMatchObject({ ran: false, reason: expect.stringContaining('sandbox.getState: the effective sandbox config is not enabled') });
+        expect(r.started).toBeUndefined();
+        expect(rec.commands).toEqual([]);
     });
     it('a trailing attestation is waited for', async () => {
         const wait = (ms) => new Promise((r) => setTimeout(r, Math.min(ms, 5)));
@@ -328,8 +349,9 @@ describe('runSandboxed', () => {
         for (const text of ordinary)
             expect(redactGateOutput(text), text).toBe(text);
     });
-    it('an unsupported host, a policy that is not applied or a blocked enforcement runs nothing (not started)', async () => {
-        for (const sandbox of ['unsupported', 'update-fails', 'blocked', 'no-rpc']) {
+    it('an unsupported host, a policy that is not applied or not confirmed, a blocked enforcement or a failed create runs nothing (not started)', async () => {
+        // ignored: the runtime drops the create-time policy and getEnforcementStatus reads { required: false, blocked: false }.
+        for (const sandbox of ['unsupported', 'update-fails', 'blocked', 'no-rpc', 'ignored', 'no-state', 'state-throws', 'opted-out', 'create-fails']) {
             rec.commands = [];
             const r = await runSandboxed(['/bin/true'], opts(), deps(ok, sandbox));
             expect(r.ran, sandbox).toBe(false);
@@ -381,7 +403,7 @@ describe('runSandboxed', () => {
         const run = createSandboxRunner(root, deps(ok), { user: null, project });
         const r = await run({ purpose: 'gate', argv: ['node', 'x'], exe: '/usr/bin/node', args: ['x'], cwd: join(dir, 'checkout'), commonGitDir: join(dir, 'repo', '.git'), timeoutMs: 60_000 });
         expect(r.ran).toBe(true);
-        const config = rec.optionsUpdates[0]?.sandboxConfig;
+        const config = rec.sessions[0]?.permissions.sandbox;
         expect(config.userPolicy.network).toEqual({ allowOutbound: false, allowLocalNetwork: false });
     });
 });
@@ -411,7 +433,7 @@ const canSymlink = (() => {
 })();
 describe('runSandboxed on a keyring-less host (COPILOT_HOME outside the real home)', () => {
     const STORED = 'stored-plaintext-credential-0001';
-    const denied = () => (rec.optionsUpdates[0]?.sandboxConfig).userPolicy.filesystem.deniedPaths ?? [];
+    const denied = () => (rec.sessions[0]?.permissions.sandbox).userPolicy.filesystem.deniedPaths ?? [];
     const storedLogin = (cfgDir) => writeFileSync(join(cfgDir, 'config.json'), JSON.stringify({
         loggedInUsers: [{ login: 'me' }], lastLoggedInUser: { login: 'me' }, authTokens: { 'https://github.com:me': { token: STORED } },
     }));
@@ -438,7 +460,9 @@ describe('runSandboxed on a keyring-less host (COPILOT_HOME outside the real hom
     it('win32: no config dir deny (the token stays in Credential Manager)', async () => {
         mkdirSync(join(dir, 'localappdata'));
         await runSandboxed(['C:\\node.exe', 'x.js'], opts(), deps(ok, 'supported', { platform: 'win32', env: { PATH: '', SYSTEMROOT: 'C:\\Windows', LOCALAPPDATA: join(dir, 'localappdata') } }));
-        expect(rec.optionsUpdates).toHaveLength(1);
+        expect(rec.sessions).toHaveLength(1);
+        // The policy goes in at create; confirm re-sends the same one (idempotent) as evidence.
+        expect(rec.optionsUpdates).toEqual([{ permissions: { sandbox: rec.sessions[0].permissions.sandbox, sandboxSource: 'session_flag' } }]);
         expect(denied().length).toBeGreaterThan(0);
         expect(denied()).not.toContain(join(dir, 'user-copilot'));
         expect(denied()).not.toContain(join(dir, 'user-copilot', 'config.json'));
@@ -447,7 +471,7 @@ describe('runSandboxed on a keyring-less host (COPILOT_HOME outside the real hom
         storedLogin(join(dir, 'user-copilot'));
         const r = await runSandboxed(['/usr/bin/node', 'x.js'], opts(), deps(said(`leaked ${STORED}\nMARKER 0\n`), 'supported', { env: { PATH: process.env.PATH ?? '' } }));
         expect(r).toEqual({ ran: true, status: 0, output: 'leaked [redacted]', timedOut: false });
-        expect(rec.sessions[0].gitHubToken).toBe(STORED);
+        expect(rec.sessions[0].github?.token).toBe(STORED);
         expect(rec.clients[0]).not.toHaveProperty('gitHubToken');
         expect(JSON.stringify(rec.clients[0])).not.toContain(STORED);
         expect(JSON.stringify(rec.connections[0].env)).not.toContain(STORED);
@@ -711,5 +735,174 @@ describe('gateEnv', () => {
             }
         }
     }, 150_000);
+});
+describe('runSandboxed: a dotnet command (dotnet-sandbox.ts)', () => {
+    const policy = () => (rec.sessions[0]?.permissions.sandbox).userPolicy.filesystem;
+    /** The words the shell runs (linux form: each word NUL-terminated; the first is the cwd). */
+    const words = () => Buffer.from(/'([A-Za-z0-9+/=]+)'/.exec(rec.commands[0])[1], 'base64').toString('utf8').split('\0').slice(1, -1);
+    const DOTNET_KEYS = ['APPDATA', 'NUGET_PACKAGES', 'RestoreConfigFile', 'RestoreAdditionalProjectSources', 'DOTNET_CLI_TELEMETRY_OPTOUT', 'DOTNET_NOLOGO', 'DOTNET_CLI_USE_MSBUILD_SERVER', 'MSBUILDDISABLENODEREUSE', 'UseSharedCompilation', 'EnableSourceControlManagerQueries'];
+    it('adds -m:1, the MSBuild/NuGet env and a read-only grant on the NuGet packages folder', async () => {
+        const packages = join(dir, 'home', '.nuget', 'packages');
+        mkdirSync(packages, { recursive: true });
+        await runSandboxed(['/usr/bin/dotnet', 'test', '--', 'RunConfiguration.X=1'], opts(), deps(ok));
+        expect(words()).toEqual(['/usr/bin/dotnet', 'test', '-m:1', '--', 'RunConfiguration.X=1']);
+        const env = rec.connections[0].env;
+        expect(env).toMatchObject({ NUGET_PACKAGES: packages, UseSharedCompilation: 'false', EnableSourceControlManagerQueries: 'false', MSBUILDDISABLENODEREUSE: '1', DOTNET_CLI_USE_MSBUILD_SERVER: '0' });
+        // APPDATA is a Windows variable only.
+        expect(env.APPDATA).toBeUndefined();
+        expect(policy().readonlyPaths).toContain(packages);
+        expect(policy().readwritePaths).not.toContain(packages);
+    });
+    it('no packages folder: no grant and no NUGET_PACKAGES; -m:1 follows an explicit node count (the last switch wins)', async () => {
+        await runSandboxed(['/usr/bin/dotnet', 'build', '-m:4'], opts(), deps(ok));
+        expect(words()).toEqual(['/usr/bin/dotnet', 'build', '-m:4', '-m:1']);
+        expect(rec.connections[0].env.NUGET_PACKAGES).toBeUndefined();
+        expect(policy().readonlyPaths.some((p) => p.includes('.nuget'))).toBe(false);
+    });
+    it('F3: dotnetMtp (the trusted base selects Microsoft.Testing.Platform): no -m:1 on dotnet test, still on dotnet build', async () => {
+        await runSandboxed(['/usr/bin/dotnet', 'test', '--project', 'Tests'], opts({ dotnetMtp: true }), deps(ok));
+        expect(words()).toEqual(['/usr/bin/dotnet', 'test', '--project', 'Tests']);
+        rec.commands.length = 0;
+        await runSandboxed(['/usr/bin/dotnet', 'build'], opts({ dotnetMtp: true }), deps(ok));
+        expect(words()).toEqual(['/usr/bin/dotnet', 'build', '-m:1']);
+    });
+    it('F9: a refused NUGET_PACKAGES (the home dir) is not named or granted, and a failing command\'s output says why', async () => {
+        const home = join(dir, 'home');
+        mkdirSync(home, { recursive: true });
+        const r = await runSandboxed(['/usr/bin/dotnet', 'test'], opts(), deps(said('error NU1101: Unable to find package xunit\nMARKER 1\n'), 'supported', { env: { PATH: '', NUGET_PACKAGES: home } }));
+        expect(rec.connections[0].env.NUGET_PACKAGES).toBeUndefined();
+        expect(policy().readonlyPaths).not.toContain(home);
+        expect(r.ran && r.status).toBe(1);
+        expect(r.ran && r.output).toMatch(/NU1101[\s\S]*NUGET_PACKAGES \(.*\) is your home dir or a dir above it, so it is not granted to the sandbox/);
+    });
+    it('one NuGet config: the checkout\'s root nuget.config, else a nuget.org-only file in the job profile; nugetHierarchy keeps NuGet\'s walk', async () => {
+        const co = join(dir, 'checkout');
+        mkdirSync(co, { recursive: true });
+        await runSandboxed(['/usr/bin/dotnet', 'build'], opts(), deps(ok));
+        let env = rec.connections[0].env;
+        expect(env.RestoreConfigFile).toBe(join(env.USERPROFILE, 'nuget', 'nuget.config'));
+        expect(env.RestoreConfigFile.startsWith(join(dir, 'jobs'))).toBe(true);
+        // Written there (dotnet-sandbox.test.ts reads its content), granted read-only, and removed with the job home after the command.
+        expect(existsSync(env.RestoreConfigFile)).toBe(false);
+        expect(policy().readonlyPaths).toContain(env.RestoreConfigFile);
+        const last = () => (rec.sessions[rec.sessions.length - 1]?.permissions.sandbox).userPolicy.filesystem;
+        writeFileSync(join(co, 'nuget.config'), '<configuration><packageSources><clear /><add key="nuget.org" value="https://api.nuget.org/v3/index.json" /></packageSources></configuration>');
+        rec.connections.length = 0;
+        await runSandboxed(['/usr/bin/dotnet', 'build'], opts(), deps(ok));
+        env = rec.connections[0].env;
+        expect(env.RestoreConfigFile).toBe(join(co, 'nuget.config'));
+        // Nothing more is granted for it: the checkout is the command's own.
+        expect([...last().readonlyPaths, ...last().readwritePaths].some((p) => p.endsWith('nuget.config'))).toBe(false);
+        // Round 7: a settings-only root config: its copy with nuget.org in the job profile, granted read-only; nothing appended.
+        writeFileSync(join(co, 'nuget.config'), '<configuration><config><add key="dependencyVersion" value="Lowest" /></config></configuration>');
+        rec.connections.length = 0;
+        await runSandboxed(['/usr/bin/dotnet', 'build'], opts(), deps(ok));
+        env = rec.connections[0].env;
+        expect(env.RestoreConfigFile).toMatch(/[\\/]nuget[\\/]copy-[0-9a-f]{32}[\\/]nuget\.config$/);
+        expect(env.RestoreConfigFile.startsWith(env.USERPROFILE)).toBe(true);
+        expect(last().readonlyPaths).toContain(env.RestoreConfigFile);
+        expect(Object.keys(env).filter((k) => /additional/i.test(k))).toEqual([]);
+        // nugetNoAddSource (the engine saw restore settings in the pinned files): the root file as it is.
+        rec.connections.length = 0;
+        await runSandboxed(['/usr/bin/dotnet', 'build'], opts({ nugetNoAddSource: true }), deps(ok));
+        expect(rec.connections[0].env.RestoreConfigFile).toBe(join(co, 'nuget.config'));
+        rec.connections.length = 0;
+        await runSandboxed(['/usr/bin/dotnet', 'build'], opts({ nugetHierarchy: 'NuGet reads its own config hierarchy: a test' }), deps(ok));
+        expect(rec.connections[0].env.RestoreConfigFile).toBeUndefined();
+    });
+    it('is inert for a node command: same argv, no dotnet env, no NuGet grant', async () => {
+        mkdirSync(join(dir, 'home', '.nuget', 'packages'), { recursive: true });
+        await runSandboxed(['/usr/bin/node', 'node_modules/vitest/vitest.mjs', 'run'], opts(), deps(ok));
+        expect(words()).toEqual(['/usr/bin/node', 'node_modules/vitest/vitest.mjs', 'run']);
+        for (const k of DOTNET_KEYS)
+            expect(rec.connections[0].env[k], k).toBeUndefined();
+        expect([...policy().readonlyPaths, ...policy().readwritePaths].some((p) => p.includes('.nuget'))).toBe(false);
+    });
+    it('win32: APPDATA is the job profile\'s, never the real one, and the real NuGet config dir is not granted', async () => {
+        mkdirSync(join(dir, 'localappdata'));
+        const real = join(dir, 'home');
+        mkdirSync(join(real, 'AppData', 'Roaming', 'NuGet'), { recursive: true });
+        writeFileSync(join(real, 'AppData', 'Roaming', 'NuGet', 'NuGet.Config'), '<configuration><packageSourceCredentials /></configuration>');
+        const packages = join(dir, 'nuget-cache');
+        mkdirSync(packages);
+        await runSandboxed(['C:\\Program Files\\dotnet\\dotnet.exe', 'test'], opts(), deps(ok, 'supported', {
+            platform: 'win32',
+            env: { PATH: '', SYSTEMROOT: 'C:\\Windows', LOCALAPPDATA: join(dir, 'localappdata'), APPDATA: join(real, 'AppData', 'Roaming'), NUGET_PACKAGES: packages },
+        }));
+        const env = rec.connections[0].env;
+        expect(env.APPDATA).toBe(join(resolve(env.USERPROFILE), 'AppData', 'Roaming'));
+        expect(env.APPDATA.startsWith(join(dir, 'jobs'))).toBe(true);
+        expect(env.NUGET_PACKAGES).toBe(packages);
+        const all = [...policy().readonlyPaths, ...policy().readwritePaths];
+        expect(policy().readonlyPaths).toContain(packages);
+        expect(all.some((p) => p.toLowerCase().includes(join('appdata', 'roaming').toLowerCase()) && !p.startsWith(join(dir, 'jobs')))).toBe(false);
+        expect(all.some((p) => p === real || p.startsWith(join(real, 'AppData')))).toBe(false);
+    });
+    it('the restore step: network "nuget" reaches api.nuget.org only (not the configured hosts), the run packages dir is writable, your cache the read-only fallback', async () => {
+        const packages = join(dir, 'home', '.nuget', 'packages');
+        mkdirSync(packages, { recursive: true });
+        const run = join(dir, 'gates', 'nuget', 'issue-7');
+        mkdirSync(run, { recursive: true });
+        const settings = { ...DEFAULT_SANDBOX_SETTINGS, writeNetwork: 'registry', allowedHosts: ['npm.example.com'], extraReadonlyPaths: [], extraReadwritePaths: [] };
+        await runSandboxed(['/usr/bin/dotnet', 'restore'], opts({ network: 'nuget', settings, nugetPackages: { dir: run, writable: true } }), deps(ok));
+        const config = rec.sessions[0]?.permissions.sandbox;
+        expect(config.userPolicy.network).toEqual({ allowOutbound: true, allowedHosts: ['api.nuget.org'], allowLocalNetwork: false });
+        expect(rec.connections[0].env).toMatchObject({ NUGET_PACKAGES: run, NUGET_FALLBACK_PACKAGES: packages });
+        expect(policy().readwritePaths).toContain(run);
+        expect(policy().readonlyPaths).toContain(packages);
+        expect(policy().readwritePaths).not.toContain(packages);
+        expect(words()).toEqual(['/usr/bin/dotnet', 'restore', '-m:1']);
+    });
+    it('restoreGraph: the graph goes to the job temp dir and comes back; a link, a failed command or a non-dotnet command gives none', async () => {
+        const graph = '{"format":1,"projects":{}}';
+        const target = (command) => /^-p:RestoreGraphOutputPath=(.*)$/.exec(Buffer.from(/'([A-Za-z0-9+/=]+)'/.exec(command)[1], 'base64').toString('utf8').split('\0').find((w) => w.startsWith('-p:RestoreGraphOutputPath=')))[1];
+        const writes = (body, output = 'MARKER 0\n') => ({ ...said(output), onCommand: (c) => body(target(c)) });
+        const r = await runSandboxed(['/usr/bin/dotnet', 'msbuild', 'App.sln', '-t:GenerateRestoreGraphFile'], opts({ restoreGraph: true }), deps(writes((f) => { mkdirSync(join(f, '..'), { recursive: true }); writeFileSync(f, graph); })));
+        expect(r).toMatchObject({ ran: true, status: 0, restoreGraph: graph });
+        const w = words();
+        expect(w.slice(0, 4)).toEqual(['/usr/bin/dotnet', 'msbuild', 'App.sln', '-t:GenerateRestoreGraphFile']);
+        expect(w[4]).toMatch(/^-p:RestoreGraphOutputPath=.*[\\/]jobs[\\/]gate-[^\\/]+[\\/]tmp[\\/]omg-restore-graph\.json$/);
+        expect(w[5]).toBe('-m:1');
+        // The job home (and the graph in it) is gone after the command.
+        expect(existsSync(join(dir, 'jobs')) ? readdirSync(join(dir, 'jobs')) : []).toEqual([]);
+        // A failed command: no graph, even if one was written.
+        const failed = await runSandboxed(['/usr/bin/dotnet', 'msbuild'], opts({ restoreGraph: true }), deps(writes((f) => { mkdirSync(join(f, '..'), { recursive: true }); writeFileSync(f, graph); }, 'MARKER 1\n'), 'supported'));
+        expect(failed).toMatchObject({ ran: true, status: 1 });
+        expect('restoreGraph' in failed).toBe(false);
+        // A symbolic link in its place is never followed.
+        const secret = join(dir, 'secret.txt');
+        writeFileSync(secret, 'SECRET');
+        let made = true;
+        const linked = await runSandboxed(['/usr/bin/dotnet', 'msbuild'], opts({ restoreGraph: true }), deps(writes((f) => {
+            mkdirSync(join(f, '..'), { recursive: true });
+            // Windows without the symlink privilege: a hard link stands in (more than one link is refused too).
+            try {
+                symlinkSync(secret, f);
+            }
+            catch {
+                try {
+                    linkSync(secret, f);
+                }
+                catch {
+                    made = false;
+                }
+            }
+        })));
+        expect(made).toBe(true);
+        expect(linked).toMatchObject({ ran: true, status: 0 });
+        expect('restoreGraph' in linked).toBe(false);
+        // Only a dotnet command writes one.
+        expect(await runSandboxed(['/usr/bin/node', 'x.js'], opts({ restoreGraph: true }), deps(ok))).toMatchObject({ ran: false, refused: true });
+    });
+    it('a gate on the run packages dir: read-only, offline', async () => {
+        const run = join(dir, 'gates', 'nuget', 'issue-7');
+        mkdirSync(run, { recursive: true });
+        await runSandboxed(['/usr/bin/dotnet', 'test'], opts({ nugetPackages: { dir: run, writable: false } }), deps(ok));
+        const config = rec.sessions[0]?.permissions.sandbox;
+        expect(config.userPolicy.network).toEqual({ allowOutbound: false, allowLocalNetwork: false });
+        expect(rec.connections[0].env.NUGET_PACKAGES).toBe(run);
+        expect(policy().readonlyPaths).toContain(run);
+        expect(policy().readwritePaths).not.toContain(run);
+    });
 });
 //# sourceMappingURL=sandbox-exec.test.js.map

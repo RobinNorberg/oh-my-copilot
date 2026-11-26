@@ -4,8 +4,8 @@ import { join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { CopilotRunManager, type CopilotRunDeps } from '../job.js';
-import { DEFAULT_SANDBOX_SETTINGS, type SandboxSettings } from '../sandbox.js';
-import { fakeDeps, gitIn, newCalls, scratchRepo, type FakeBehavior, type FakeCalls, type FakeSandbox } from './fake-sdk.js';
+import { DEFAULT_SANDBOX_SETTINGS, sandboxPath, type SandboxSettings } from '../sandbox.js';
+import { POLICY_CONFLICT_MESSAGE, fakeDeps, gitIn, newCalls, scratchRepo, type FakeBehavior, type FakeCalls, type FakeSandbox } from './fake-sdk.js';
 
 let root: string;
 let repo: string;
@@ -19,7 +19,9 @@ function manager(behavior: FakeBehavior, sandbox: FakeSandbox, over: Partial<Cop
 }
 
 const settle = () => new Promise((r) => setTimeout(r, 50));
-const tools = (i = 0) => calls.sessions[i].availableTools;
+const tools = (i = 0) => calls.sessions[i].tools.availableTools;
+/** The sandbox config the job passed at create (SDK v2 `permissions.sandbox`). */
+const createdSandbox = <T>(i = 0) => calls.sessions[i].permissions.sandbox as T;
 
 beforeEach(() => {
   calls = newCalls();
@@ -31,20 +33,19 @@ afterEach(() => {
 });
 
 describe('copilot_run sandbox on a supported host', () => {
-  it('applies the review policy through options.update and records an enforced sandbox', async () => {
+  it('applies the review policy at create and records an enforced sandbox', async () => {
     const m = manager('idle', 'supported');
     const done = await m.wait(m.start({ prompt: 'review', cwd: repo, profile: 'review' }).jobId, 10_000);
     expect(done.status).toBe('completed');
-    expect(done.sandbox).toMatchObject({ mode: 'enforced', applied: 'options.update', canary: 'skipped', unsandboxedCalls: 0, sdkVersion: '1.0.16' });
+    expect(done.sandbox).toMatchObject({ mode: 'enforced', applied: 'create', canary: 'skipped', unsandboxedCalls: 0, sdkVersion: '2.0.3', configSource: 'session_flag' });
     expect(done.sandbox?.host).toMatchObject({ supported: true, capabilities: { shell: true, denied_paths: false } });
     expect(done.sandbox?.enforcement).toEqual({ required: false, blocked: false });
-    const update = calls.optionsUpdates[0] as { sandboxConfig: { addCurrentWorkingDirectory: boolean; allowBypass: boolean; userPolicy: { filesystem: { readonlyPaths: string[] }; network: unknown } }; sandboxConfigSource: string };
-    expect(update.sandboxConfigSource).toBe('session_flag');
-    expect(update.sandboxConfig).toMatchObject({ enabled: true, addCurrentWorkingDirectory: false, allowBypass: false, auth: { git: false, gh: false } });
-    expect(update.sandboxConfig.userPolicy.filesystem.readonlyPaths[0]).toBe((done.worktree as { path: string }).path);
-    expect(update.sandboxConfig.userPolicy.network).toEqual({ allowOutbound: false, allowLocalNetwork: false });
-    // createSession of SDK 1.0.16 takes no sandboxConfig.
-    expect(calls.sessions[0].sandboxConfig).toBeUndefined();
+    const cfg = createdSandbox<{ addCurrentWorkingDirectory: boolean; allowBypass: boolean; userPolicy: { filesystem: { readonlyPaths: string[] }; network: unknown } }>();
+    expect(cfg).toMatchObject({ enabled: true, addCurrentWorkingDirectory: false, allowBypass: false, auth: { git: false, gh: false } });
+    expect(cfg.userPolicy.filesystem.readonlyPaths[0]).toBe((done.worktree as { path: string }).path);
+    expect(cfg.userPolicy.network).toEqual({ allowOutbound: false, allowLocalNetwork: false });
+    // SDK v2 takes the sandbox at create; confirm re-sends the same policy through options.update (idempotent) as evidence.
+    expect(calls.optionsUpdates).toEqual([{ permissions: { sandbox: cfg, sandboxSource: 'session_flag' } }]);
     expect(tools()).toEqual(expect.arrayContaining(['view', 'grep', 'powershell', 'bash']));
     expect(calls.prompts).toEqual(['review']);
   });
@@ -55,7 +56,7 @@ describe('copilot_run sandbox on a supported host', () => {
     expect(done.status).toBe('completed');
     expect(done.sandbox?.mode).toBe('enforced');
     expect(tools()).toBeUndefined();
-    const cfg = (calls.optionsUpdates[0] as { sandboxConfig: { addCurrentWorkingDirectory: boolean; userPolicy: { filesystem: { deniedPaths?: string[] } } } }).sandboxConfig;
+    const cfg = createdSandbox<{ addCurrentWorkingDirectory: boolean; userPolicy: { filesystem: { deniedPaths?: string[] } } }>();
     expect(cfg.addCurrentWorkingDirectory).toBe(true);
     // The fake host reports no denied_paths capability.
     expect(cfg.userPolicy.filesystem.deniedPaths).toBeUndefined();
@@ -70,7 +71,7 @@ describe('copilot_run sandbox fail-closed', () => {
     expect(tools()).toEqual(expect.arrayContaining(['view', 'grep', 'glob']));
     expect(tools()).not.toContain('powershell');
     expect(tools()).not.toContain('bash');
-    const decide = calls.sessions[0].onPermissionRequest;
+    const decide = calls.sessions[0].permissions.onRequest;
     expect(await decide({ kind: 'shell', fullCommandText: 'git status' }, { sessionId: 's' })).toMatchObject({ kind: 'reject', feedback: expect.stringContaining('no shell without a confirmed sandbox') });
     const snap = await m.cancel(started.jobId);
     expect(snap.sandbox).toMatchObject({ mode: 'read-only-no-shell', applied: 'none' });
@@ -113,16 +114,94 @@ describe('copilot_run sandbox fail-closed', () => {
     expect(calls.sessions).toHaveLength(0);
   });
 
-  it.each<[FakeSandbox, RegExp]>([
-    ['blocked', /enforcement is blocked: managed policy/],
-    ['update-fails', /options\.update failed: policy conflict/],
-  ])('%s: a write session refuses before its first turn', async (sandbox, reason) => {
+  it('blocked: a write session refuses before its first turn', async () => {
+    const m = manager('idle', 'blocked');
+    const done = await m.wait(m.start({ prompt: 'implement', cwd: repo }).jobId, 10_000);
+    expect(done.status).toBe('failed');
+    expect(done.error).toMatch(/^sandbox-unavailable: .*enforcement is blocked: managed policy/);
+    expect(done.sandbox?.mode).toBe('refused');
+    expect(calls.sessions).toHaveLength(1);
+    expect(calls.prompts).toHaveLength(0);
+  });
+
+  it('a policy conflict at create (SDK v2): a write session refuses with sandbox-unavailable, creates no second session and sends no turn', async () => {
+    const m = manager('idle', 'update-fails');
+    const done = await m.wait(m.start({ prompt: 'implement', cwd: repo }).jobId, 10_000);
+    expect(done.status).toBe('failed');
+    expect(done.error).toBe(`sandbox-unavailable: createSession with the sandbox policy failed: ${POLICY_CONFLICT_MESSAGE}`);
+    expect(done.sandbox).toMatchObject({ mode: 'refused', applied: 'none', reason: `createSession with the sandbox policy failed: ${POLICY_CONFLICT_MESSAGE}` });
+    expect(calls.sessions).toHaveLength(1);
+    expect(calls.prompts).toHaveLength(0);
+  });
+
+  it('a policy conflict at create (SDK v2): a review runs read-only in a session created without the policy or a shell', async () => {
+    const m = manager('idle', 'update-fails');
+    const done = await m.wait(m.start({ prompt: 'review', cwd: repo, profile: 'review' }).jobId, 10_000);
+    expect(done.status).toBe('completed');
+    expect(done.sandbox).toMatchObject({ mode: 'read-only-no-shell', applied: 'none', reason: `createSession with the sandbox policy failed: ${POLICY_CONFLICT_MESSAGE}` });
+    expect(done.notes).toEqual(expect.arrayContaining([expect.stringContaining('read-only without a shell')]));
+    expect(calls.sessions).toHaveLength(2);
+    expect(createdSandbox(0)).toBeDefined();
+    expect(createdSandbox(1)).toBeUndefined();
+    expect(tools(0)).toEqual(expect.arrayContaining(['powershell', 'bash']));
+    expect(tools(1)).toEqual(expect.arrayContaining(['view', 'grep']));
+    expect(tools(1)).not.toEqual(expect.arrayContaining(['powershell']));
+    expect(tools(1)).not.toEqual(expect.arrayContaining(['bash']));
+    const decide = calls.sessions[1].permissions.onRequest;
+    expect(await decide({ kind: 'shell', fullCommandText: 'git status' }, { sessionId: 's' })).toMatchObject({ kind: 'reject' });
+    expect(calls.prompts).toEqual(['review']);
+  });
+
+  it('a policy conflict at create (SDK v2): writeUnsandboxed "detect-only" runs the write session unsandboxed', async () => {
+    const m = manager('idle', 'update-fails', { sandboxSettings: settings({ writeUnsandboxed: 'detect-only' }) });
+    const done = await m.wait(m.start({ prompt: 'implement', cwd: repo }).jobId, 10_000);
+    expect(done.status).toBe('completed');
+    expect(done.sandbox).toMatchObject({ mode: 'detect-only', applied: 'none' });
+    expect(calls.sessions).toHaveLength(2);
+    expect(createdSandbox(1)).toBeUndefined();
+    expect(calls.prompts).toEqual(['implement']);
+  });
+
+  it.each<[FakeSandbox, string]>([
+    ['ignored', 'sandbox.getState: the effective sandbox config is not enabled (enabled: false)'],
+    ['no-state', 'the SDK has no sandbox.getState RPC'],
+    ['state-throws', 'sandbox.getState failed: state unavailable'],
+    ['opted-out', 'sandbox.getState: the session holds a sandbox opt-out (disabledForSession: true)'],
+    ['weakened', 'sandbox.getState: the effective sandbox config is weaker than the policy sent: userPolicy.network.allowOutbound is true, the policy sent false'],
+  ])('a runtime that does not confirm the policy after create (%s): a write session refuses with sandbox-unavailable before its first turn', async (sandbox, reason) => {
     const m = manager('idle', sandbox);
     const done = await m.wait(m.start({ prompt: 'implement', cwd: repo }).jobId, 10_000);
     expect(done.status).toBe('failed');
-    expect(done.error).toMatch(reason);
-    expect(done.error).toMatch(/^sandbox-unavailable: /);
-    expect(done.sandbox?.mode).toBe('refused');
+    expect(done.error).toBe(`sandbox-unavailable: ${reason}`);
+    expect(done.sandbox).toMatchObject({ mode: 'refused', applied: 'create', reason });
+    // The create carried the policy; getEnforcementStatus alone ({ required: false, blocked: false }) would have passed it.
+    expect(createdSandbox(0)).toBeDefined();
+    expect(calls.sessions).toHaveLength(1);
+    expect(calls.prompts).toHaveLength(0);
+  });
+
+  it('a runtime that silently drops the policy at create: a review runs read-only, its shell refused and hidden', async () => {
+    const m = manager('idle', 'ignored');
+    const done = await m.wait(m.start({ prompt: 'review', cwd: repo, profile: 'review' }).jobId, 10_000);
+    expect(done.status).toBe('completed');
+    expect(done.sandbox).toMatchObject({ mode: 'read-only-no-shell', reason: 'sandbox.getState: the effective sandbox config is not enabled (enabled: false)' });
+    expect(calls.sessions).toHaveLength(1);
+    expect(calls.optionsUpdates.at(-1)).toEqual({ tools: { availableTools: expect.not.arrayContaining(['powershell']) } });
+    const decide = calls.sessions[0].permissions.onRequest;
+    expect(await decide({ kind: 'shell', fullCommandText: 'git status' }, { sessionId: 's' })).toMatchObject({ kind: 'reject' });
+    expect(calls.prompts).toEqual(['review']);
+  });
+
+  it.each<[string, 'write' | 'review', Partial<SandboxSettings>]>([
+    ['a write session', 'write', {}],
+    ['a review', 'review', {}],
+    ['a detect-only write session', 'write', { writeUnsandboxed: 'detect-only' }],
+  ])('a create error that is not a sandbox error (auth): %s fails as an ordinary create failure, no second session, no downgrade', async (_label, profile, over) => {
+    const m = manager('idle', 'create-fails', { sandboxSettings: settings(over) });
+    const done = await m.wait(m.start({ prompt: 'go', cwd: repo, profile }).jobId, 10_000);
+    expect(done.status).toBe('failed');
+    expect(done.error).toBe('authentication failed: 401 Unauthorized');
+    expect(done.sandbox?.reason).toBe('not confirmed yet');
     expect(calls.sessions).toHaveLength(1);
     expect(calls.prompts).toHaveLength(0);
   });
@@ -131,11 +210,11 @@ describe('copilot_run sandbox fail-closed', () => {
     const m = manager('hang', 'blocked');
     const started = m.start({ prompt: 'review', cwd: repo, profile: 'review' });
     await settle();
-    const decide = calls.sessions[0].onPermissionRequest;
+    const decide = calls.sessions[0].permissions.onRequest;
     expect(await decide({ kind: 'shell', fullCommandText: 'git status' }, { sessionId: 's' })).toMatchObject({ kind: 'reject' });
-    expect(calls.optionsUpdates.at(-1)).toEqual({ availableTools: expect.not.arrayContaining(['powershell']) });
+    expect(calls.optionsUpdates.at(-1)).toEqual({ tools: { availableTools: expect.not.arrayContaining(['powershell']) } });
     const snap = await m.cancel(started.jobId);
-    expect(snap.sandbox).toMatchObject({ mode: 'read-only-no-shell', applied: 'options.update', enforcement: { blocked: true } });
+    expect(snap.sandbox).toMatchObject({ mode: 'read-only-no-shell', applied: 'create', enforcement: { blocked: true } });
   });
 
   it.each([
@@ -158,7 +237,7 @@ describe('copilot_run sandbox fail-closed', () => {
 
 describe('copilot_run sandbox attestation', () => {
   const emitTool = (name: string, sandboxed: boolean | undefined, id = 'call-1') => {
-    const onEvent = calls.sessions[0].onEvent!;
+    const onEvent = calls.sessions[0].events!.onEvent!;
     onEvent({ type: 'tool.execution_start', data: { toolCallId: id, toolName: name } });
     onEvent({ type: 'tool.execution_complete', data: { toolCallId: id, success: true, ...(sandboxed === undefined ? {} : { sandboxed }) } });
   };
@@ -177,11 +256,47 @@ describe('copilot_run sandbox attestation', () => {
     expect(done.sandbox?.unsandboxedCalls).toBe(1);
   });
 
+  it('session.sandbox_state_changed with an opt-out mid-session stops an enforced session with sandbox-escaped', async () => {
+    const m = manager('sandbox-off', 'supported');
+    const done = await m.wait(m.start({ prompt: 'implement', cwd: repo }).jobId, 10_000);
+    expect(done.status).toBe('failed');
+    expect(done.stopRequested).toBe('sandbox-escaped');
+    expect(done.error).toBe("sandbox-escaped: the session's sandbox changed mid-session (the session holds a sandbox opt-out (disabledForSession: true)); the session was stopped");
+    // The record the factory reads carries the escape: no shell call was counted.
+    expect(done.sandbox).toMatchObject({ mode: 'enforced', unsandboxedCalls: 0, stateEscaped: "sandbox-escaped: the session's sandbox changed mid-session (the session holds a sandbox opt-out (disabledForSession: true))" });
+  });
+
+  it('session.sandbox_state_changed with a weaker config mid-session (outbound network on) stops an enforced session with sandbox-escaped', async () => {
+    const m = manager('sandbox-weakened', 'supported');
+    const done = await m.wait(m.start({ prompt: 'implement', cwd: repo }).jobId, 10_000);
+    expect(done.status).toBe('failed');
+    expect(done.stopRequested).toBe('sandbox-escaped');
+    const why = "sandbox-escaped: the session's sandbox changed mid-session (the effective sandbox config is weaker than the policy sent: userPolicy.network.allowOutbound is true, the policy sent false)";
+    expect(done.error).toBe(`${why}; the session was stopped`);
+    expect(done.sandbox).toMatchObject({ mode: 'enforced', unsandboxedCalls: 0, stateEscaped: why });
+  });
+
+  it('session.sandbox_state_changed with the config disabled stops an enforced session; one that keeps it in force does not', async () => {
+    const m = manager('hang', 'supported');
+    const started = m.start({ prompt: 'implement', cwd: repo });
+    await settle();
+    const onEvent = calls.sessions[0].events!.onEvent!;
+    const state = { incarnation: 1, revision: 2, configSource: 'session_flag', disabledForSession: false, autoApproveBypass: false, sessionOverride: null };
+    onEvent({ type: 'session.sandbox_state_changed', data: { ...state, config: createdSandbox(0) } });
+    expect(m.status(started.jobId).stopRequested).toBeNull();
+    onEvent({ type: 'session.sandbox_state_changed', data: { ...state, config: { enabled: false } } });
+    const done = await m.wait(started.jobId, 10_000);
+    expect(done.status).toBe('failed');
+    expect(done.stopRequested).toBe('sandbox-escaped');
+    expect(done.error).toMatch(/^sandbox-escaped: the session's sandbox changed mid-session \(the effective sandbox config is not enabled/);
+    expect(done.sandbox?.stateEscaped).toMatch(/^sandbox-escaped: the session's sandbox changed mid-session \(the effective sandbox config is not enabled/);
+  });
+
   it('a tool the job never saw start that reports sandboxed: false stops the session', async () => {
     const m = manager('hang', 'supported');
     const started = m.start({ prompt: 'implement', cwd: repo });
     await settle();
-    calls.sessions[0].onEvent!({ type: 'tool.execution_complete', data: { toolCallId: 'x', success: true, sandboxed: false } });
+    calls.sessions[0].events!.onEvent!({ type: 'tool.execution_complete', data: { toolCallId: 'x', success: true, sandboxed: false } });
     expect((await m.wait(started.jobId, 10_000)).stopRequested).toBe('sandbox-escaped');
   });
 
@@ -190,7 +305,7 @@ describe('copilot_run sandbox attestation', () => {
     const started = m.start({ prompt: 'implement', cwd: repo });
     await settle();
     expect(m.status(started.jobId).sandbox?.mode).toBe('enforced');
-    calls.sessions[0].onEvent!({ type: 'tool.execution_complete', data: { toolCallId: 'y', success: true } });
+    calls.sessions[0].events!.onEvent!({ type: 'tool.execution_complete', data: { toolCallId: 'y', success: true } });
     const done = await m.wait(started.jobId, 10_000);
     expect(done.stopRequested).toBe('sandbox-escaped');
     expect(done.error).toMatch(/sandboxed: undefined/);
@@ -207,7 +322,7 @@ describe('copilot_run sandbox attestation', () => {
     const d = manager('hang', 'unsupported', { sandboxSettings: settings({ writeUnsandboxed: 'detect-only' }) });
     const s2 = d.start({ prompt: 'implement', cwd: repo });
     await settle();
-    const onEvent = calls.sessions[1].onEvent!;
+    const onEvent = calls.sessions[1].events!.onEvent!;
     onEvent({ type: 'tool.execution_start', data: { toolCallId: 'c', toolName: 'bash' } });
     onEvent({ type: 'tool.execution_complete', data: { toolCallId: 'c', success: true, sandboxed: false } });
     expect(d.status(s2.jobId).stopRequested).toBeNull();
@@ -220,7 +335,7 @@ describe('copilot_run sandbox permissions and env', () => {
     const m = manager('hang', 'supported');
     const started = m.start({ prompt: 'implement', cwd: repo });
     await settle();
-    const decide = calls.sessions[0].onPermissionRequest;
+    const decide = calls.sessions[0].permissions.onRequest;
     const wt = (started.worktree as { path: string }).path;
     for (const req of [
       { kind: 'shell', fullCommandText: 'git status', requestSandboxBypass: true },
@@ -244,7 +359,7 @@ describe('copilot_run sandbox permissions and env', () => {
       expect(m.status(started.jobId).sandbox?.mode).toBe('read-only-no-shell');
       expect(tools()).not.toEqual(expect.arrayContaining(['powershell']));
       expect(tools()).not.toEqual(expect.arrayContaining(['bash']));
-      const out = await calls.sessions[0].onPermissionRequest({ kind: 'shell', fullCommandText: 'git status' }, { sessionId: 's' });
+      const out = await calls.sessions[0].permissions.onRequest({ kind: 'shell', fullCommandText: 'git status' }, { sessionId: 's' });
       expect(out).toMatchObject({ kind: 'reject', feedback: expect.stringContaining('no shell without a confirmed sandbox') });
       await m.cancel(started.jobId);
     }
@@ -263,7 +378,7 @@ describe('copilot_run sandbox permissions and env', () => {
     const m = manager('hang', 'supported', {}, { COPILOT_GITHUB_TOKEN: secret });
     const started = m.start({ prompt: 'implement', cwd: repo });
     await settle();
-    calls.sessions[0].onEvent!({ type: 'assistant.message', data: { content: `token ${secret} and ${leaked}` } });
+    calls.sessions[0].events!.onEvent!({ type: 'assistant.message', data: { content: `token ${secret} and ${leaked}` } });
     const done = await m.cancel(started.jobId);
     expect(done.finalText).toBe('token [redacted] and [redacted]');
     const events = readFileSync(done.eventsPath as string, 'utf8');
@@ -276,7 +391,7 @@ describe('copilot_run sandbox permissions and env', () => {
     const m = manager('hang', 'supported', { toolPaths: (env, platform) => (env.OMG_COPILOT_RUN_ALLOW === '1' && platform === 'linux' ? tools : []) });
     const started = m.start({ prompt: 'implement', cwd: repo });
     await settle();
-    const fs = (calls.optionsUpdates[0] as { sandboxConfig: { userPolicy: { filesystem: { readwritePaths: string[]; readonlyPaths: string[] } } } }).sandboxConfig.userPolicy.filesystem;
+    const fs = createdSandbox<{ userPolicy: { filesystem: { readwritePaths: string[]; readonlyPaths: string[] } } }>().userPolicy.filesystem;
     const common = gitIn(repo, 'rev-parse', '--path-format=absolute', '--git-common-dir');
     const gitDir = gitIn((started.worktree as { path: string }).path, 'rev-parse', '--path-format=absolute', '--git-dir');
     expect(fs.readonlyPaths).toContain(resolve(common));
@@ -296,7 +411,7 @@ describe('copilot_run sandbox permissions and env', () => {
     const m = manager('hang', 'supported');
     const started = m.start({ prompt: 'implement', cwd: repo }, { hostCommits: true });
     await settle();
-    const fs = (calls.optionsUpdates[0] as { sandboxConfig: { userPolicy: { filesystem: { readwritePaths: string[]; readonlyPaths: string[] } } } }).sandboxConfig.userPolicy.filesystem;
+    const fs = createdSandbox<{ userPolicy: { filesystem: { readwritePaths: string[]; readonlyPaths: string[] } } }>().userPolicy.filesystem;
     const common = resolve(gitIn(repo, 'rev-parse', '--path-format=absolute', '--git-common-dir'));
     expect(fs.readonlyPaths).toContain(common);
     expect(fs.readwritePaths.filter((rw) => rw.startsWith(common))).toEqual([]);
@@ -311,7 +426,7 @@ describe('copilot_run sandbox permissions and env', () => {
     const m = manager('hang', 'supported');
     const started = m.start({ prompt: 'review', cwd: repo, profile: 'review' });
     await settle();
-    const decide = calls.sessions[0].onPermissionRequest;
+    const decide = calls.sessions[0].permissions.onRequest;
     const ctx = { sessionId: 's' };
     for (const cmd of ['git diff main...HEAD', 'rg -n hello .', 'Get-Content README.md | Select-Object -First 5']) {
       expect(await decide({ kind: 'shell', fullCommandText: cmd }, ctx), cmd).toEqual({ kind: 'approve-once' });
@@ -336,9 +451,10 @@ describe('copilot_run sandbox permissions and env', () => {
     for (const key of ['GH_TOKEN', 'GITHUB_TOKEN', 'AWS_SECRET_ACCESS_KEY', 'AWS_PROFILE', 'NPM_TOKEN', 'NODE_OPTIONS', 'OMG_COPILOT_RUN_ALLOW']) expect(env[key], key).toBeUndefined();
     // The Copilot token reaches the session over RPC, never the env its shell children inherit.
     expect(env.COPILOT_GITHUB_TOKEN).toBeUndefined();
-    expect(calls.sessions[0].gitHubToken).toBe('cop');
+    expect(calls.sessions[0].github?.token).toBe('cop');
     expect(env).toMatchObject({ LC_ALL: 'C', COPILOT_ALLOW_ALL: 'false', OMC_GIT_GUARDRAILS: '1' });
-    expect(env.PATH).toBe(process.env.PATH ?? '');
+    // The host PATH less relative entries and npx's node_modules/.bin dirs (sandboxPath).
+    expect(env.PATH).toBe(sandboxPath(process.env.PATH ?? ''));
     const home = env.COPILOT_HOME!;
     // The caller's TEMP never passes (the runtime grants its TEMP read-write): the job's own temp dir, created before the runtime starts.
     expect(env).toMatchObject({ TEMP: join(home, 'tmp'), TMP: join(home, 'tmp'), TMPDIR: join(home, 'tmp') });
@@ -499,7 +615,7 @@ describe('copilot_run beforeSandboxedSession (the Windows OS sandbox)', () => {
     expect(done.status).toBe('completed');
     expect(seen).toEqual([{ copy: false }]);
     expect(asked).toEqual([resolve((started.worktree as { path: string }).path)]);
-    const ro = (calls.optionsUpdates[0] as { sandboxConfig: { userPolicy: { filesystem: { readonlyPaths: string[] } } } }).sandboxConfig.userPolicy.filesystem.readonlyPaths;
+    const ro = createdSandbox<{ userPolicy: { filesystem: { readonlyPaths: string[] } } }>().userPolicy.filesystem.readonlyPaths;
     expect(ro).toContain(realpathSync.native(yours));
   });
 
@@ -539,12 +655,45 @@ describe('copilot_run beforeSandboxedSession (the Windows OS sandbox)', () => {
     expect(called).toBe(1);
   });
 
-  it('sandboxIntent: the settings alone (enabled, kill switch, writeNetwork, Windows)', () => {
+  it('sandboxIntent: the settings alone (enabled, kill switch, writeNetwork, allowedHosts, Windows)', () => {
     const at = (platform: NodeJS.Platform, over: Partial<SandboxSettings>, env: NodeJS.ProcessEnv = winEnv) => manager('idle', 'supported', { platform, sandboxSettings: settings(over) }, env).sandboxIntent({ root: repo, scope: 'factory' });
-    expect(at('win32', {})).toEqual({ sandboxed: true, writeNetwork: 'none', windowsCopy: true });
-    expect(at('linux', { writeNetwork: 'registry' })).toEqual({ sandboxed: true, writeNetwork: 'registry', windowsCopy: false });
-    expect(at('win32', { enabled: false })).toEqual({ sandboxed: false, writeNetwork: 'none', windowsCopy: false });
-    expect(at('win32', {}, { ...winEnv, OMG_SANDBOX: 'off' })).toEqual({ sandboxed: false, writeNetwork: 'none', windowsCopy: false });
+    expect(at('win32', {})).toEqual({ sandboxed: true, writeNetwork: 'none', allowedHosts: [], windowsCopy: true });
+    expect(at('linux', { writeNetwork: 'registry' })).toEqual({ sandboxed: true, writeNetwork: 'registry', allowedHosts: [], windowsCopy: false });
+    expect(at('win32', { enabled: false })).toEqual({ sandboxed: false, writeNetwork: 'none', allowedHosts: [], windowsCopy: false });
+    expect(at('win32', {}, { ...winEnv, OMG_SANDBOX: 'off' })).toEqual({ sandboxed: false, writeNetwork: 'none', allowedHosts: [], windowsCopy: false });
+    expect(at('linux', { writeNetwork: 'registry', allowedHosts: ['api.nuget.org'] })).toEqual({ sandboxed: true, writeNetwork: 'registry', allowedHosts: ['api.nuget.org'], windowsCopy: false });
+  });
+});
+
+describe('copilot_run dotnet (a write lane of a .NET repository)', () => {
+  type Fs = { readonlyPaths: string[]; readwritePaths: string[] };
+  const fs = (i = 0): Fs => createdSandbox<{ userPolicy: { filesystem: Fs } }>(i).userPolicy.filesystem;
+  const DOTNET_KEYS = ['NUGET_PACKAGES', 'DOTNET_CLI_USE_MSBUILD_SERVER', 'MSBUILDDISABLENODEREUSE', 'UseSharedCompilation', 'EnableSourceControlManagerQueries'];
+
+  it('dotnet: the session env has the MSBuild/NuGet variables and the packages folder is granted read-only', async () => {
+    const home = join(root, 'home');
+    const packages = join(home, '.nuget', 'packages');
+    mkdirSync(packages, { recursive: true });
+    const m = manager('idle', 'supported', { realHome: () => home });
+    const done = await m.wait(m.start({ prompt: 'implement', cwd: repo }, { dotnet: true }).jobId, 10_000);
+    expect(done.status).toBe('completed');
+    const env = calls.connections[0].env!;
+    expect(env).toMatchObject({ NUGET_PACKAGES: packages, UseSharedCompilation: 'false', EnableSourceControlManagerQueries: 'false', MSBUILDDISABLENODEREUSE: '1' });
+    expect(fs().readonlyPaths).toContain(packages);
+    expect(fs().readwritePaths).not.toContain(packages);
+  });
+
+  it('without dotnet, or for a review job: none of it (inert for a Node repository)', async () => {
+    const home = join(root, 'home');
+    mkdirSync(join(home, '.nuget', 'packages'), { recursive: true });
+    const m = manager('idle', 'supported', { realHome: () => home });
+    expect((await m.wait(m.start({ prompt: 'implement', cwd: repo }).jobId, 10_000)).status).toBe('completed');
+    expect((await m.wait(m.start({ prompt: 'review', cwd: repo, profile: 'review' }, { dotnet: true }).jobId, 10_000)).status).toBe('completed');
+    for (const i of [0, 1]) {
+      const env = calls.connections[i].env!;
+      for (const k of DOTNET_KEYS) expect(env[k], `${i} ${k}`).toBeUndefined();
+      expect([...fs(i).readonlyPaths, ...fs(i).readwritePaths].some((p) => p.includes('.nuget')), String(i)).toBe(false);
+    }
   });
 });
 
@@ -557,7 +706,7 @@ describe('copilot_run git link files', () => {
     const wt = (started.worktree as { path: string }).path;
     const admin = resolve(wt, readFileSync(join(wt, '.git'), 'utf8').replace(/^gitdir: /, '').trim());
     expect(readFileSync(join(admin, 'config.worktree'), 'utf8')).toBe('');
-    const ro = (calls.optionsUpdates[0] as { sandboxConfig: { userPolicy: { filesystem: { readonlyPaths: string[] } } } }).sandboxConfig.userPolicy.filesystem.readonlyPaths;
+    const ro = createdSandbox<{ userPolicy: { filesystem: { readonlyPaths: string[] } } }>().userPolicy.filesystem.readonlyPaths;
     expect(ro).toEqual(expect.arrayContaining([join(wt, '.git'), join(admin, 'commondir'), join(admin, 'gitdir'), join(admin, 'config.worktree')]));
     await m.cancel(started.jobId);
     // The recorded links include the new file: the job did not end as sandbox-escaped.
@@ -612,7 +761,7 @@ describe('copilot_run isolation "none": the job dir inside the lane-writable tre
     const m = manager('hang', 'supported', { sandboxSettings: settings({ enabled: false }) });
     const started = m.start({ prompt: 'x', cwd: repo, isolation: 'none' });
     await settle();
-    const decide = calls.sessions[0].onPermissionRequest;
+    const decide = calls.sessions[0].permissions.onRequest;
     const env = calls.connections[0].env!;
     const jobDir = resolve(env.COPILOT_HOME!, '..');
     for (const path of [join(jobDir, 'events.jsonl'), join(env.COPILOT_HOME!, 'config.json'), join(env.COPILOT_HOME!, 'git', 'config'), join(env.COPILOT_HOME!, 'profile', 'x')]) {

@@ -1,12 +1,12 @@
+// schemaVersion 1 (`--schema 1`): the old collector, kept for one release. The v2 data, page and command: dashboard-v2.test.ts.
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { factoryDashboardCommand } from '../../../cli/commands/factory-dashboard.js';
 import { createFactoryState, moveTo, overwriteFactoryState, setGate, type FactoryLaneRecord, type FactoryRunState } from '../../run/state.js';
 import { collectDashboard, phaseDurations } from '../collect.js';
-import { esc, renderDashboardHtml } from '../render.js';
+import { esc } from '../render.js';
 
 let root: string;
 beforeEach(() => { vi.stubEnv('OMC_STATE_DIR', ''); root = mkdtempSync(join(tmpdir(), 'omg-dash-')); execFileSync('git', ['init', '-q', root]); });
@@ -82,7 +82,6 @@ describe('collectDashboard', () => {
     const d = collectDashboard(root);
     expect(d.runs.map((r) => r.key)).toEqual(['#1']);
     expect(d.warnings.join('\n')).toMatch(/#2|run 2/);
-    expect(renderDashboardHtml(d)).toContain('Factory dashboard');
   });
 
   it('string usage counts as 0 with a warning', () => {
@@ -119,56 +118,8 @@ describe('collectDashboard', () => {
   });
 });
 
-describe('renderDashboardHtml', () => {
-  it('escapes untrusted titles, park text and bench rows and carries no script or external URL', () => {
-    const evil = '<script>alert(1)</script><img src=x onerror=alert(2)>';
-    run(1, evil, (s) => ({ ...setGate(s, 'x', evil, '2026-11-10T10:05:00.000Z'), lanes: [lane('l1', evil as never, 1, '2026-11-10T10:06:00.000Z')] }));
-    mkdirSync(join(root, 'bench-results'));
-    writeFileSync(join(root, 'bench-results', 'a.json'), JSON.stringify({ schemaVersion: 1, mode: evil, issues: [{ id: evil, outcome: evil }] }));
-    const html = renderDashboardHtml(collectDashboard(root));
-    expect(html).not.toContain('<script');
-    expect(html).not.toContain('<img');
-    expect(html).toContain('&lt;script&gt;');
-    expect(html).not.toMatch(/(src|href)=["']?https?:/i);
-    expect(html).toContain('prefers-color-scheme:dark');
-    expect(html).toContain("default-src 'none'");
-  });
-
-  it('esc covers the five dangerous characters', () => {
-    expect(esc(`<>&"'`)).toBe('&lt;&gt;&amp;&quot;&#39;');
-  });
-});
-
-describe('omg factory dashboard command', () => {
-  const deps = (out: string[], err: string[]) => ({ root: () => root, out: (l: string) => out.push(l), err: (l: string) => err.push(l), now: () => new Date('2026-11-12T00:00:00.000Z') });
-
-  it('prints html, writes --out and emits --json', async () => {
-    run(1, 'T', (s) => s);
-    const out: string[] = []; const err: string[] = [];
-    await factoryDashboardCommand(deps(out, err)).parseAsync([], { from: 'user' });
-    expect(out.join('')).toMatch(/^<!doctype html>/);
-    const file = join(root, 'dash.html');
-    await factoryDashboardCommand(deps(out, err)).parseAsync(['--out', file], { from: 'user' });
-    expect(readFileSync(file, 'utf8')).toContain('Factory dashboard');
-    const j: string[] = [];
-    await factoryDashboardCommand(deps(j, err)).parseAsync(['--json'], { from: 'user' });
-    expect(JSON.parse(j.join('')).schemaVersion).toBe(1);
-    expect(process.exitCode).toBe(0);
-  });
-
-  it('records human merges first (humanMerges dep) and prints its lines on stderr', async () => {
-    run(1, 'T', (s) => s);
-    const out: string[] = []; const err: string[] = [];
-    const seen: string[] = [];
-    await factoryDashboardCommand({ ...deps(out, err), humanMerges: (r) => { seen.push(r); return ['run #1: PR #2 was merged by a human after cancelled; recorded the run as merged']; } }).parseAsync(['--json'], { from: 'user' });
-    expect(seen).toEqual([root]);
-    expect(err).toContain('run #1: PR #2 was merged by a human after cancelled; recorded the run as merged');
-    expect(JSON.parse(out.join('')).schemaVersion).toBe(1);
-  });
-
-  it('a bad --since exits with the usage code', async () => {
-    const err: string[] = [];
-    await factoryDashboardCommand(deps([], err)).parseAsync(['--since', 'bad'], { from: 'user' });
-    expect(process.exitCode).toBe(2);
+describe('esc', () => {
+  it('covers the five dangerous characters and the backtick', () => {
+    expect(esc(`<>&"'\``)).toBe('&lt;&gt;&amp;&quot;&#39;&#96;');
   });
 });

@@ -2,7 +2,7 @@
  * Cassette request handlers and the `withCassette` SDK wrapper (design:
  * .omc/plans/2026-10-29-copilot-replay-design.md, sections 2, 4 and 8).
  *
- * The SDK's experimental `CopilotClientOptions.requestHandler` receives every
+ * The SDK's experimental `CopilotClientOptions.models.requestHandler` receives every
  * model-layer request the runtime issues. {@link withCassette} (applied in
  * `loadCopilotSdk`, so every client of the codebase is covered) injects one per
  * client when `OMG_COPILOT_CASSETTE_MODE` is set:
@@ -26,7 +26,7 @@ import { homedir, hostname, tmpdir, userInfo } from 'os';
 import { basename, dirname, join, resolve } from 'path';
 import { getRuntimePackageVersion } from '../../lib/version.js';
 import { CASSETTE_ENV, cassetteRuntimeEnv } from '../copilot-session-env.js';
-import type { LoadedSdk, SdkClientLike, SdkClientOptions, SdkSessionConfig } from '../copilot-sdk-driver.js';
+import type { LoadedSdk, SdkClientLike, SdkClientOptions, SdkSessionConfig, SpawnedStdioOptions } from '../copilot-sdk-driver.js';
 import {
   CASSETTE_FORMAT,
   CASSETTE_VERSION,
@@ -55,7 +55,7 @@ import {
   type RedactionIdentity,
 } from './redact.js';
 
-/** What the SDK hands each hook (`CopilotRequestContext`, SDK 1.0.16). */
+/** What the SDK hands each hook (`CopilotRequestContext`, unchanged from SDK 1.0.16 through 2.0.3). */
 export interface CopilotRequestContextLike {
   requestId?: string;
   sessionId?: string;
@@ -90,7 +90,7 @@ export interface CassetteConfig {
   dirs?: PlaceholderDirs;
 }
 
-export const REQUEST_HANDLER_MISSING = 'replay needs @github/copilot-sdk with requestHandler (>= 1.0.16)';
+export const REQUEST_HANDLER_MISSING = 'replay needs @microsoft/copilot-sdk with models.requestHandler (CopilotRequestHandler)';
 /** Per-client recordings, `<state>/parts/<pid>-<n>`, merged by the smoke. */
 export const RECORD_PARTS_DIR = 'parts';
 /** `<state>/parts/<pid>-<n>.failed`: a recording that could not be written (gate refusal, write error); the merge refuses. */
@@ -744,7 +744,8 @@ export function withCassette(loaded: LoadedSdk, env: NodeJS.ProcessEnv = process
         return created.rec;
       };
       const requestHandler = mode === 'record' ? createRecordingHandler(Base, recorder) : createReplayHandler(Base, (ctx) => target(ctx).replayer);
-      super({ ...opts, requestHandler, ...(mode === 'replay' ? { useLoggedInUser: false, gitHubToken: undefined } : {}) });
+      // Replay: no stored login and no client token (github.token dropped with the rest of opts.github).
+      super({ ...opts, models: { ...opts.models, requestHandler }, ...(mode === 'replay' ? { github: { useLoggedInUser: false } } : {}) });
       this.cassetteSlot = slot;
       if (mode === 'record') {
         const stop = this.stop.bind(this);
@@ -775,7 +776,7 @@ export function withCassette(loaded: LoadedSdk, env: NodeJS.ProcessEnv = process
           // listModels is unauthenticated in replay, so the model must be pinned; no session credential either.
           if (!session.model) throw new CassetteConfigError('replay needs a pinned model (--model)');
           const rest = { ...session };
-          delete rest.gitHubToken;
+          delete rest.github;
           return create(rest);
         };
       }
@@ -791,8 +792,8 @@ export function withCassette(loaded: LoadedSdk, env: NodeJS.ProcessEnv = process
 
   const Connection = loaded.module.RuntimeConnection;
   const RuntimeConnection = Object.assign(Object.create(Connection) as typeof Connection, {
-    forStdio: (opts: { path?: string; args?: string[]; env?: NodeJS.ProcessEnv }) =>
-      Connection.forStdio({ ...opts, env: cassetteRuntimeEnv(opts.env ?? process.env, mode) }),
+    forSpawnedStdio: (opts: SpawnedStdioOptions) =>
+      Connection.forSpawnedStdio({ ...opts, env: cassetteRuntimeEnv(opts.env ?? process.env, mode) }),
   });
   return {
     ...loaded,

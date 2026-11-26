@@ -7,6 +7,7 @@ import { runFactoryEngine } from '../engine.js';
 import { factoryStatePath, readFactoryState } from '../state.js';
 import { commitFile, FakeLanes, gitIn, ISSUE, noCommit, PR, remoteHead, review, type LaneScript } from './fake-lanes.js';
 import { h, useEngineHarness, limits, opts, procs, run } from './engine-harness.js';
+import { sealedNext, steps } from './gate-next-expect.js';
 
 useEngineHarness();
 
@@ -344,6 +345,9 @@ describe('omg factory run engine (fake lanes, real git, scripted gh)', () => {
     const { lanes, done } = run([noCommit, noCommit]);
     const out = await done;
     expect(out.gate?.name).toBe('implement-failed');
+    // A *-failed park's reason names no command; the sealed next steps do (and the outcome message adds the rerun).
+    expect(sealedNext(h.root, ISSUE, out)).toEqual([steps(ISSUE).status, steps(ISSUE).resume, steps(ISSUE).cancel]);
+    expect(out.message).toContain(`Resume with ${steps(ISSUE).resume.join(' ')}.`);
     expect(lanes.started.map((s) => s.laneId)).toEqual([`issue-${ISSUE}-implement-1`, `issue-${ISSUE}-implement-2`]);
     expect(remoteHead(h)).toBeNull();
   });
@@ -368,8 +372,10 @@ describe('omg factory run engine (fake lanes, real git, scripted gh)', () => {
   it.each([
     ['refused', 0, 'sandbox-unavailable: MXC is not available', 'sandbox-unavailable'],
     ['enforced', 1, 'sandbox-escaped: powershell call c1 ran outside the sandbox', 'sandbox-escaped'],
-  ] as const)('a write lane whose sandbox is %s parks at %s without a retry or a push', async (mode, unsandboxedCalls, error, gate) => {
-    const sandbox = { mode, host: { supported: mode !== 'refused', capabilities: {} }, applied: 'none', canary: 'skipped', unsandboxedCalls, cliVersion: 'x', sdkVersion: 'y' } as const;
+    // The tripwire: no call was counted (one killed before its completion event never is), the record carries the escape.
+    ['enforced', 0, "sandbox-escaped: the session's sandbox changed mid-session (the session holds a sandbox opt-out (disabledForSession: true))", 'sandbox-escaped'],
+  ] as const)('a write lane whose sandbox is %s (%s unsandboxed calls) parks at %s without a retry or a push', async (mode, unsandboxedCalls, error, gate) => {
+    const sandbox = { mode, host: { supported: mode !== 'refused', capabilities: {} }, applied: 'none', canary: 'skipped', unsandboxedCalls, cliVersion: 'x', sdkVersion: 'y', ...(unsandboxedCalls === 0 && mode === 'enforced' ? { stateEscaped: error } : {}) } as const;
     const { lanes, done } = run([() => ({ state: 'failed', error, sandbox })]);
     const out = await done;
     expect(out.gate?.name).toBe(gate);
@@ -433,6 +439,8 @@ describe('omg factory run engine (fake lanes, real git, scripted gh)', () => {
     const out = await done;
     expect(out.gate?.name).toBe('review-tampered');
     expect(out.gate?.reason).toMatch(problem);
+    const s = steps(ISSUE);
+    expect(sealedNext(h.root, ISSUE, out)).toEqual(/tamper hold|held until/.test(out.gate!.reason) ? [s.status, s.release, s.resume, s.cancel] : [s.status, s.resume, s.cancel]);
     expect(readShipState(h.root, PR)!.verdicts).toHaveLength(0);
     expect(readFactoryState(h.root, ISSUE)!.lanes[1].verdict).toBe('invalid');
   });

@@ -57,11 +57,11 @@ describe('omg smoke copilot — tier 2 exit codes and output', () => {
     it('groups sdk.* and scn.<name>.* checks and prints sdk, cost and event artifacts', () => {
         const text = formatSmokeReport(report({
             ok: true,
-            sdk: { version: '1.0.16', runtimeVersion: '1.0.91', protocolVersion: 3, model: 'auto' },
+            sdk: { version: '2.0.3', runtimeVersion: '1.0.116', protocolVersion: 4, model: 'auto' },
             cost: { premiumRequests: 3, credits: 0.7 },
             checks: [
                 { id: 'plugin.manifest', ok: true, detail: 'ok' },
-                { id: 'sdk.available', ok: true, detail: '1.0.16' },
+                { id: 'sdk.available', ok: true, detail: '2.0.3' },
                 { id: 'sdk.mcp', ok: true, detail: 't connected' },
                 { id: 'scn.smoke.reply', ok: true, detail: 'SMOKE_OK' },
                 { id: 'scn.guardrail.denied', ok: true, detail: 'Git guardrail' },
@@ -70,7 +70,7 @@ describe('omg smoke copilot — tier 2 exit codes and output', () => {
         }));
         const lines = text.split('\n');
         const idx = (needle) => lines.findIndex((l) => l.includes(needle));
-        expect(text).toContain('sdk: @github/copilot-sdk 1.0.16 driving runtime 1.0.91 (protocol 3), model auto');
+        expect(text).toContain('sdk: @microsoft/copilot-sdk 2.0.3 driving runtime 1.0.116 (protocol 4), model auto');
         expect(idx('── sdk')).toBeLessThan(idx('sdk.available'));
         expect(idx('── sdk')).toBeGreaterThan(idx('plugin.manifest'));
         expect(idx('── scenario smoke')).toBe(idx('scn.smoke.reply') - 1);

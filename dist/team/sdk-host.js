@@ -1,7 +1,7 @@
 /**
  * `omg team sdk-host`: the detached per-worker process behind `--transport sdk`.
  *
- * One host owns one `@github/copilot-sdk` client and one session for one team
+ * One host owns one `@microsoft/copilot-sdk` client and one session for one team
  * worker. It is the worker's launch "provider": it writes the launch-attempt
  * ack and the `provider_started` record with its own pid and strict process
  * start identity, so the existing provider liveness, retire and cleanup code
@@ -24,9 +24,9 @@ import { execFileSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { atomicWriteJson } from '../lib/atomic-write.js';
 import { ledgerPath, NANO_AIU_PER_CREDIT, recordUsage } from '../budget/ledger.js';
-import { RUNTIME_MIN_MAX_CREDITS, usageCredits } from '../smoke/copilot-sdk-scenarios.js';
+import { RUNTIME_MIN_MAX_CREDITS, SDK_INSTALL_COMMAND, SDK_PACKAGE, usageCredits } from '../smoke/copilot-sdk-scenarios.js';
 import { buildSessionEnv, isCredentialEnvKey, loginIdentity, storedLoginToken } from '../smoke/copilot-session-env.js';
-import { rethrowSdkStartError, runtimePid, } from '../smoke/copilot-sdk-driver.js';
+import { rethrowSdkStartError, runtimePid, spawnedClientOptions, } from '../smoke/copilot-sdk-driver.js';
 import { hostGitHardeningArgs } from './git-worktree.js';
 import { loadWorkerLaunchAttempt } from './worker-launch-ack.js';
 import { buildSdkExcludedTools, decideSdkPermission } from './sdk-policy.js';
@@ -537,10 +537,10 @@ export async function runSdkHost(spec, deps) {
         loaded = await deps.loadSdk();
     }
     catch (err) {
-        return fail('sdk_missing', `loading @github/copilot-sdk failed: ${errText(err)}`);
+        return fail('sdk_missing', `loading ${SDK_PACKAGE} failed: ${errText(err)}`);
     }
     if (!loaded)
-        return fail('sdk_missing', '@github/copilot-sdk is not installed (npm i -g @github/copilot-sdk --omit=optional --ignore-scripts)');
+        return fail('sdk_missing', `${SDK_PACKAGE} is not installed (${SDK_INSTALL_COMMAND})`);
     mkdirSync(files.home, { recursive: true });
     const homeConfig = join(files.home, 'config.json');
     const ident = loginIdentity(spec.user_config_dir);
@@ -580,16 +580,13 @@ export async function runSdkHost(spec, deps) {
         ...spec.deny_tools.map((p) => `--deny-tool=${p}`),
         ...spec.deny_urls.map((p) => `--deny-url=${p}`),
     ];
-    const { CopilotClient, RuntimeConnection } = loaded.module;
-    const client = new CopilotClient({
-        connection: RuntimeConnection.forStdio({
-            path: spec.copilot_bin,
-            args: ['--log-level', 'debug', '--max-ai-credits', String(cap), ...denyFlags],
-            env,
-        }),
+    const client = new loaded.module.CopilotClient(spawnedClientOptions(loaded, {
+        path: spec.copilot_bin,
+        args: ['--log-level', 'debug', '--max-ai-credits', String(cap), ...denyFlags],
+        env,
         baseDirectory: files.home,
         workingDirectory: spec.worker_cwd,
-    });
+    }));
     let sessionRef = null;
     let busy = false;
     let capped = false;
@@ -725,15 +722,14 @@ export async function runSdkHost(spec, deps) {
     const removeGuards = () => { for (const [event, handler] of guards)
         deps.processEvents?.off(event, handler); };
     const createWith = (tools) => withTimeout(client.createSession({
-        onPermissionRequest,
-        onEvent,
-        pluginDirectories: [spec.plugin_root],
+        permissions: { onRequest: onPermissionRequest },
+        events: { onEvent },
+        plugins: { directories: [spec.plugin_root] },
         workingDirectory: spec.worker_cwd,
-        disabledMcpServers: tools ? ['github-mcp-server', tools.disabledMcpServer] : ['github-mcp-server'],
+        mcp: { disabledServers: tools ? ['github-mcp-server', tools.disabledMcpServer] : ['github-mcp-server'] },
         // The explicit Copilot credential over the session RPC, never in the env shell children inherit.
-        ...(gitHubToken ? { gitHubToken } : {}),
-        excludedTools,
-        ...(tools ? { tools: tools.tools } : {}),
+        ...(gitHubToken ? { github: { token: gitHubToken } } : {}),
+        tools: { excludedTools, ...(tools ? { definitions: tools.tools } : {}) },
         ...(spec.model ? { model: spec.model } : {}),
     }), RPC_TIMEOUT_MS, 'createSession()');
     try {
