@@ -169,7 +169,7 @@ reference for what each phase asserts.
      `--yes` once you have decided to publish.
    - `verify` failed with "is already on npm: not rerun": the tag run published
      but did not create the GitHub Release. Do not republish. Run the printed
-     `gh workflow run release.yml -f tag=vX.Y.Z -f sha=<main merge sha>`
+     `gh workflow run release.yml --ref main -f tag=vX.Y.Z -f sha=<main merge sha>`
      (Release Recovery), wait for it, then `omg release X.Y.Z --from verify`.
      The pr, promote and tag records stay ok; that re-run passes when only the
      Create GitHub Release job failed, npm shows the version as `latest` with
@@ -188,9 +188,15 @@ reference for what each phase asserts.
      delete or recreate the GitHub Release. Confirm by hand instead: the
      Release Recovery run's log shows `verify-registry` passed, and
      `npm view oh-my-copilot@X.Y.Z dist.attestations` lists the provenance.
+     If no Release Recovery run exists for the tag, dispatch one (the
+     printed command): it fails at "Assert GitHub Release is absent" by
+     design, after its "Verify recovered package provenance" step
+     (`verify-registry`); that step's log is the one to check.
      Verify then stays unrecorded for that release.
    - `verify` blocked with "Release Recovery run N ... is still queued / in
-     progress": wait for run N, then re-run `--from verify`.
+     progress": wait for run N, then re-run `--from verify` (`--drive`
+     waits on its own). A run counts while it has no artifact and no GitHub
+     Release yet; only its title `Release Recovery vX.Y.Z <sha>` is matched.
    - `verify` failed with "is on npm and GitHub Release … is published": the
      release is out; another job of the tag run failed. Triage the named
      job; do not rerun the run and do not use Release Recovery.

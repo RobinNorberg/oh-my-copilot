@@ -810,8 +810,8 @@ describe('release-boundary.mjs', () => {
     let tarballRequests = 0;
     const attestation = slsaAttestation(dssePayload(evidence.sha512.hex));
     // Per-path answers served before the real one: a status (3xx with a Location), a reset socket, a 404 whose body
-    // stalls, a 200 whose body is cut off by a reset ('cut') or stalls ('stall200').
-    const failNext: Record<string, Array<number | 'reset' | 'stall' | 'cut' | 'stall200'>> = {};
+    // stalls, a 200 whose body is cut off by a reset ('cut'), stalls ('stall200') or trickles in slowly ('trickle200').
+    const failNext: Record<string, Array<number | 'reset' | 'stall' | 'cut' | 'stall200' | 'trickle200'>> = {};
     const stalled: ServerResponse[] = [];
     const requests: Record<string, number> = {};
 
@@ -832,6 +832,21 @@ describe('release-boundary.mjs', () => {
         response.writeHead(200, { 'content-type': 'application/octet-stream', 'content-length': String(tarball.length) });
         response.write(tarball.subarray(0, 1));
         stalled.push(response);
+        return;
+      }
+      if (action === 'trickle200') {
+        // The real bytes in 6 chunks, 150 ms apart: about 750 ms in all, longer than the 300 ms request timeout.
+        response.writeHead(200, { 'content-type': 'application/octet-stream', 'content-length': String(servedTarball.length) });
+        const size = Math.ceil(servedTarball.length / 6);
+        let offset = 0;
+        const next = () => {
+          const end = Math.min(offset + size, servedTarball.length);
+          response.write(servedTarball.subarray(offset, end));
+          offset = end;
+          if (offset < servedTarball.length) setTimeout(next, 150);
+          else response.end();
+        };
+        next();
         return;
       }
       if (action === 'stall') {
@@ -996,6 +1011,24 @@ describe('release-boundary.mjs', () => {
         await expect(verifyRegistry(options)).resolves.toMatchObject({ provenance: 'required' });
         expect(requests[tarballPath]).toBeGreaterThanOrEqual(2);
         expect(stderr.mock.calls.map(([line]) => String(line)).some((line) => /^release-boundary: registry tarball network request failed for .*; waiting/.test(line))).toBe(true);
+      });
+
+      // A 200 whose body keeps arriving for longer than the request timeout completes on the first attempt: the timer
+      // restarts with every chunk, it only aborts a body that stops.
+      await withEnvironment({
+        RELEASE_BOUNDARY_REGISTRY_URL: base,
+        RELEASE_BOUNDARY_FETCH_TIMEOUT_MS: '300',
+        RELEASE_BOUNDARY_PROPAGATION_BUDGET_MS: '60000',
+        RELEASE_BOUNDARY_PROPAGATION_DELAY_MS: '100',
+        RELEASE_BOUNDARY_PROPAGATION_MAX_DELAY_MS: '100',
+      }, async () => {
+        reset([]);
+        failNext[tarballPath] = ['trickle200'];
+        const started = Date.now();
+        await expect(verifyRegistry(options)).resolves.toMatchObject({ provenance: 'required' });
+        expect(Date.now() - started).toBeGreaterThan(300);
+        expect(requests[tarballPath]).toBe(1);
+        expect(stderr).not.toHaveBeenCalled();
       });
 
       // Refused connections, unknown or unreachable hosts and TLS failures are not waited out: they fail at once.

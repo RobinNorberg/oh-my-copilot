@@ -719,10 +719,19 @@ function fetchTimeoutMs() {
   return Number(configured);
 }
 
-/** `consume` runs before the abort timer is cleared, so reading the body is bounded by the same timeout. */
+/**
+ * `consume(response, rearm)` runs before the abort timer is cleared, so reading the body stays bounded: by the same
+ * timeout, or, when `consume` calls `rearm(capAt)` as data arrives, by a stall timer of that timeout that never runs
+ * past `capAt` (epoch ms).
+ */
 async function fetchBounded(url, options = {}, consume = undefined) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), fetchTimeoutMs());
+  const timeoutMs = fetchTimeoutMs();
+  let timeout = setTimeout(() => controller.abort(), timeoutMs);
+  const rearm = (capAt) => {
+    clearTimeout(timeout);
+    timeout = setTimeout(() => controller.abort(), Math.max(0, Math.min(timeoutMs, capAt - Date.now())));
+  };
   try {
     const response = await fetch(url, {
       ...options,
@@ -733,7 +742,7 @@ async function fetchBounded(url, options = {}, consume = undefined) {
         ...(options.headers ?? {}),
       },
     });
-    return consume ? await consume(response) : response;
+    return consume ? await consume(response, rearm) : response;
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
     throw new Error(`network request failed for ${url}: ${detail}`, { cause: error });
@@ -789,14 +798,27 @@ function propagationWait({ packageName, version, tag, sha }) {
 const isPropagationStatus = (status) => status === 404 || status === 408 || status === 429 || status >= 500;
 
 /**
- * Reads `url` until it answers 200 and returns the complete body bytes. The body of a 200 is read inside the
- * request's abort timer, so a stalled or reset body is a network error (waited out when transient) and never hangs;
- * any other answer's body is cancelled, never read. The caller checks the bytes.
+ * Reads `url` until it answers 200 and returns the complete body bytes. The body of a 200 is read chunk by chunk
+ * under a stall timer (the request timeout, restarted by every chunk), so a slow but moving body (the tarball is tens
+ * of MB) completes, while a stalled or reset body is a network error (waited out when transient) and never hangs. The
+ * read never runs past the propagation budget's end (at least one timeout after the headers). Any other answer's body
+ * is cancelled, never read. The caller checks the bytes.
  */
 async function fetchUntilPresent(url, label, wait, options = {}) {
   let delayMs = wait.initialDelayMs;
-  const readOrCancel = async (response) => {
-    if (response.status === 200) return { status: 200, bytes: Buffer.from(await response.arrayBuffer()) };
+  const readOrCancel = async (response, rearm) => {
+    if (response.status === 200) {
+      const capAt = Math.max(wait.deadline, Date.now() + fetchTimeoutMs());
+      const chunks = [];
+      const reader = response.body?.getReader();
+      for (;;) {
+        rearm(capAt);
+        const chunk = reader ? await reader.read() : { done: true };
+        if (chunk.done) break;
+        chunks.push(chunk.value);
+      }
+      return { status: 200, bytes: Buffer.concat(chunks) };
+    }
     await response.body?.cancel().catch(() => undefined);
     return { status: response.status };
   };

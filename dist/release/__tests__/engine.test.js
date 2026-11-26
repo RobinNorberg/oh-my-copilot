@@ -1846,7 +1846,7 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
             expect(result.phases.map((p) => [p.id, p.status])).toEqual([['suite', 'ok'], ['smoke', 'skipped'], ['pr', 'ok'], ['promote', 'ok'], ['tag', 'ok'], ['verify', 'fail']]);
             const verify = result.phases.at(-1);
             expect(verify.note).toContain(`oh-my-copilot@${V} is already on npm: not rerun`);
-            expect(verify.note).toContain(`gh workflow run release.yml -f tag=v${V} -f sha=${MERGE}`);
+            expect(verify.note).toContain(`gh workflow run release.yml --ref main -f tag=v${V} -f sha=${MERGE}`);
             expect(verify.note).toContain(`omg release ${V} --from verify`);
             expect(calls.some((c) => c.startsWith('gh run rerun'))).toBe(false);
             const state = readReleaseState(stateRoot, V);
@@ -2163,7 +2163,7 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
             handlers.unshift((key) => (key.startsWith(`gh release view v${V}`) && !recovered ? no('release not found') : undefined));
             const failed = await release({ to: 'verify' });
             expect(failed.phases[0]).toMatchObject({ status: 'fail' });
-            expect(failed.phases[0].note).toContain(`do not republish: run the Release Recovery workflow (gh workflow run release.yml -f tag=v${V} -f sha=${MERGE}), then omg release ${V} --from verify`);
+            expect(failed.phases[0].note).toContain(`do not republish: run the Release Recovery workflow (gh workflow run release.yml --ref main -f tag=v${V} -f sha=${MERGE}), then omg release ${V} --from verify`);
             recovered = true;
             handlers.unshift(recoveryOk);
             const result = await release({ from: 'verify' });
@@ -2209,10 +2209,11 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
                 note: `tag run 901 failure in Create GitHub Release and GitHub Release v${V} exists, but no Release Recovery evidence: no artifact ${RECOVERY_ARTIFACT} in this repository`,
             });
             const details = result.phases[0].details.join('\n');
-            expect(details).toContain(`only a successful Release Recovery run (gh workflow run release.yml -f tag=v${V} -f sha=${MERGE}), titled "Release Recovery v${V} ${MERGE}" and run from a workflow definition on main, proves the registry check passed; a GitHub Release created by hand does not`);
+            expect(details).toContain(`only a successful Release Recovery run (gh workflow run release.yml --ref main -f tag=v${V} -f sha=${MERGE}), titled "Release Recovery v${V} ${MERGE}" and run from a workflow definition on main, proves the registry check passed; a GitHub Release created by hand does not`);
             expect(details).not.toMatch(/gh release delete/);
             expect(details).toContain('Release Recovery runs from before this rule (no tag and sha in the run title, only "Release Recovery") cannot be used as evidence');
             expect(details).toContain(`confirm by hand instead: the Release Recovery run's log shows verify-registry passed, and npm view oh-my-copilot@${V} dist.attestations lists the provenance; verify then stays unrecorded for v${V} (no destructive step)`);
+            expect(details).toContain(`if no Release Recovery run exists for v${V}, dispatch one (gh workflow run release.yml --ref main -f tag=v${V} -f sha=${MERGE}): it fails at "Assert GitHub Release is absent" by design, after its "Verify recovered package provenance" step (verify-registry), and that step's log is the one to check`);
             expect(details).not.toMatch(/gh release create/);
             expect(readReleaseState(stateRoot, V).phases.tag?.status).toBe('ok');
             expect(calls.some((c) => c.startsWith('gh run rerun'))).toBe(false);
@@ -2250,7 +2251,7 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
             expect(result.ok).toBe(false);
             expect(result.phases[0].note).toBe(`tag run 901 failure in Create GitHub Release and GitHub Release v${V} exists, but no successful Release Recovery run for v${V} ${MERGE.slice(0, 12)}: artifact ${RECOVERY_ARTIFACT} came from run 777: workflow definition ${OTHER.slice(0, 12)} (edited-release-yml) is not on main`);
             expect(result.phases[0].details).toContain(`rejected Release Recovery run 777: workflow definition ${OTHER.slice(0, 12)} (edited-release-yml) is not on main`);
-            const fetchAt = calls.indexOf('git fetch origin main');
+            const fetchAt = calls.indexOf('git fetch origin +refs/heads/main:refs/remotes/origin/main');
             expect(fetchAt).toBeGreaterThan(-1);
             expect(calls.indexOf(`git merge-base --is-ancestor ${OTHER} refs/remotes/origin/main`)).toBeGreaterThan(fetchAt);
             handlers.splice(0, 2);
@@ -2262,20 +2263,56 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
             expect(missing.phases[0].note.endsWith(`came from run 777: workflow definition ${DEVMERGE.slice(0, 12)} (gone) is not on main`)).toBe(true);
             expect(calls).not.toContain(`git merge-base --is-ancestor ${DEVMERGE} refs/remotes/origin/main`);
         });
-        it('waits for a matching Release Recovery run that is still queued or in progress instead of failing', async () => {
+        /** gh run list of release.yml workflow_dispatch runs, as the pending-recovery lookup reads it. */
+        const recoveryRuns = (runs) => (key) => (key === 'gh run list --workflow release.yml --event workflow_dispatch --json databaseId,status,displayTitle --limit 20' ? ok(JSON.stringify(runs)) : undefined);
+        const waitNote = (status) => `Release Recovery run 777 for v${V} is still ${status}: wait for run 777 to finish, then re-run omg release ${V} --from verify`;
+        it('waits for a matching Release Recovery run that is still queued or in progress (no artifact, no GitHub Release yet) instead of failing', async () => {
             published = true;
+            handlers.unshift((key) => (key.startsWith(`gh release view v${V}`) ? no('release not found') : undefined));
             for (const status of ['queued', 'in_progress']) {
-                handlers.unshift(recoveryEvidence([{ id: 50, run: 777 }], { 777: recoveryRunJson(777, { status, conclusion: null }) }));
+                handlers.unshift(recoveryRuns([{ databaseId: 778, status: 'completed', displayTitle: `Release Recovery v${V} ${MERGE}` }, { databaseId: 777, status, displayTitle: `Release Recovery v${V} ${MERGE}` }]));
                 const result = await release({ from: 'verify' });
                 expect(result.ok, status).toBe(false);
-                expect(result.phases[0]).toMatchObject({
-                    id: 'verify',
-                    status: 'blocked',
-                    note: `Release Recovery run 777 for v${V} is still ${status}: wait for run 777 to finish, then re-run omg release ${V} --from verify`,
-                });
+                expect(result.phases[0]).toMatchObject({ id: 'verify', status: 'blocked', note: waitNote(status) });
                 expect(JSON.stringify(result.phases[0])).not.toMatch(/gh release delete/);
                 handlers.shift();
             }
+        });
+        it('under --drive an unfinished matching Release Recovery run ends pending, not failed', async () => {
+            published = true;
+            handlers.unshift((key) => (key.startsWith(`gh release view v${V}`) ? no('release not found') : undefined), recoveryRuns([{ databaseId: 777, status: 'queued', displayTitle: `Release Recovery v${V} ${MERGE}` }]));
+            const result = await release({ from: 'verify', drive: true });
+            expect(result.ok).toBe(false);
+            expect(result.pending).toMatchObject({ phase: 'verify', note: waitNote('queued') });
+            expect(readReleaseState(stateRoot, V).phases.verify).toBeUndefined();
+        });
+        it('an unfinished Release Recovery run for another tag or sha is not waited for', async () => {
+            published = true;
+            handlers.unshift((key) => (key.startsWith(`gh release view v${V}`) ? no('release not found') : undefined), recoveryRuns([
+                { databaseId: 777, status: 'in_progress', displayTitle: `Release Recovery v${V} ${OTHER}` },
+                { databaseId: 776, status: 'queued', displayTitle: 'Release Recovery' },
+            ]));
+            const result = await release({ from: 'verify' });
+            expect(result.phases[0]).toMatchObject({ status: 'fail', note: expect.stringMatching(/is already on npm: not rerun; do not republish: run the Release Recovery workflow/) });
+        });
+        it('waits while the recovery run already uploaded its artifact but has not created the GitHub Release yet', async () => {
+            published = true;
+            handlers.unshift((key) => (key.startsWith(`gh release view v${V}`) ? no('release not found') : undefined), recoveryEvidence([{ id: 50, run: 777 }], { 777: recoveryRunJson(777, { status: 'in_progress', conclusion: null }) }), recoveryRuns([{ databaseId: 777, status: 'in_progress', displayTitle: `Release Recovery v${V} ${MERGE}` }]));
+            const result = await release({ from: 'verify' });
+            expect(result.phases[0]).toMatchObject({ status: 'blocked', note: waitNote('in_progress') });
+        });
+        it('a failing fetch of origin main fails closed and says the definition could not be checked', async () => {
+            published = true;
+            handlers.unshift(recoveryOk, (key) => (key === 'git fetch origin +refs/heads/main:refs/remotes/origin/main' ? no("fatal: couldn't find remote ref refs/heads/main", 128) : undefined));
+            const result = await release({ from: 'verify' });
+            expect(result.ok).toBe(false);
+            expect(result.phases[0].note).toBe(`tag run 901 failure in Create GitHub Release and GitHub Release v${V} exists, but cannot check the Release Recovery workflow definition: git fetch origin +refs/heads/main:refs/remotes/origin/main failed (exit 128): fatal: couldn't find remote ref refs/heads/main`);
+        });
+        it('names a shallow clone when a recovery run definition is not found on main', async () => {
+            published = true;
+            handlers.unshift(recoveryEvidence([{ id: 50, run: 777 }], { 777: recoveryRunJson(777, { head_sha: OTHER, head_branch: 'main' }) }), (key) => (key === 'git rev-parse --is-shallow-repository' ? ok('true\n') : undefined), (key) => (key === `git merge-base --is-ancestor ${OTHER} refs/remotes/origin/main` ? no('', 1) : undefined));
+            const result = await release({ from: 'verify' });
+            expect(result.phases[0].note.endsWith(`workflow definition ${OTHER.slice(0, 12)} (main) is not on main; shallow clone: cannot check the workflow definition against main`)).toBe(true);
         });
         it('takes the newest successful recovery run, and an expired artifact still counts (only the run metadata is read)', async () => {
             published = true;
