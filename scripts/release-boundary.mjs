@@ -719,11 +719,12 @@ function fetchTimeoutMs() {
   return Number(configured);
 }
 
-async function fetchBounded(url, options = {}) {
+/** `consume` runs before the abort timer is cleared, so reading the body is bounded by the same timeout. */
+async function fetchBounded(url, options = {}, consume = undefined) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), fetchTimeoutMs());
   try {
-    return await fetch(url, {
+    const response = await fetch(url, {
       ...options,
       signal: controller.signal,
       redirect: options.redirect ?? 'error',
@@ -732,6 +733,7 @@ async function fetchBounded(url, options = {}) {
         ...(options.headers ?? {}),
       },
     });
+    return consume ? await consume(response) : response;
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
     throw new Error(`network request failed for ${url}: ${detail}`, { cause: error });
@@ -783,27 +785,35 @@ function propagationWait({ packageName, version, tag, sha }) {
   };
 }
 
+/** "Not there yet" answers of a fresh publish: 404, request timeout, rate limit and server errors. */
+const isPropagationStatus = (status) => status === 404 || status === 408 || status === 429 || status >= 500;
+
+/**
+ * Reads `url` until it answers 200 and returns the complete body bytes. The body of a 200 is read inside the
+ * request's abort timer, so a stalled or reset body is a network error (waited out when transient) and never hangs;
+ * any other answer's body is cancelled, never read. The caller checks the bytes.
+ */
 async function fetchUntilPresent(url, label, wait, options = {}) {
   let delayMs = wait.initialDelayMs;
+  const readOrCancel = async (response) => {
+    if (response.status === 200) return { status: 200, bytes: Buffer.from(await response.arrayBuffer()) };
+    await response.body?.cancel().catch(() => undefined);
+    return { status: response.status };
+  };
   for (let attempt = 1; ; attempt += 1) {
-    let response;
+    let answer;
     let detail;
     try {
       // A redirect comes back as its 3xx response and fails below at once, as redirect: 'error' did before.
-      response = await fetchBounded(url, { ...options, redirect: 'manual' });
+      answer = await fetchBounded(url, { ...options, redirect: 'manual' }, readOrCancel);
     } catch (error) {
       if (!isTransientNetworkError(error)) throw error;
       detail = error instanceof Error ? error.message : String(error);
     }
-    if (response) {
-      if (response.status === 200) return response;
-      if (response.status !== 404 && response.status < 500) {
-        await response.body?.cancel().catch(() => undefined);
-        fail(`${label} returned HTTP ${response.status}`);
-      }
-      detail = `returned HTTP ${response.status}`;
-      // Cancel, never read: the abort timer ended with the headers, so a stalled body would hang past the budget.
-      await response.body?.cancel().catch(() => undefined);
+    if (answer) {
+      if (answer.status === 200) return answer.bytes;
+      if (!isPropagationStatus(answer.status)) fail(`${label} returned HTTP ${answer.status}`);
+      detail = `returned HTTP ${answer.status}`;
     }
     if (Date.now() + delayMs >= wait.deadline) {
       wait.exhausted(label, detail, attempt);
@@ -815,16 +825,8 @@ async function fetchUntilPresent(url, label, wait, options = {}) {
 }
 
 async function fetchJsonRequired(url, label, wait) {
-  const response = wait ? await fetchUntilPresent(url, label, wait) : await fetchBounded(url);
-  if (response.status !== 200) {
-    fail(`${label} returned HTTP ${response.status}`);
-  }
-  let text;
-  try {
-    text = await response.text();
-  } catch (error) {
-    fail(`cannot read ${label} response: ${error instanceof Error ? error.message : String(error)}`);
-  }
+  // TextDecoder strips a UTF-8 BOM and replaces invalid bytes, exactly as response.text() did.
+  const text = new TextDecoder().decode(await fetchUntilPresent(url, label, wait));
   const parsed = parseJson(text, `${label} response`);
   if (!isPlainObject(parsed) && !Array.isArray(parsed)) {
     fail(`${label} response must be JSON object or array`);
@@ -1128,13 +1130,7 @@ export async function verifyRegistry({ packageName, version, tag, sha, evidenceP
     evidence,
     base,
   });
-  const tarballResponse = await fetchUntilPresent(tarballUrl, 'registry tarball', wait, { headers: { accept: 'application/octet-stream' } });
-  let registryTarball;
-  try {
-    registryTarball = Buffer.from(await tarballResponse.arrayBuffer());
-  } catch (error) {
-    fail(`cannot read registry tarball: ${error instanceof Error ? error.message : String(error)}`);
-  }
+  const registryTarball = await fetchUntilPresent(tarballUrl, 'registry tarball', wait, { headers: { accept: 'application/octet-stream' } });
   const registryEvidence = buildEvidenceFromBytes(registryTarball, basename(new URL(tarballUrl).pathname));
   assertDigestEquality(registryEvidence.byteLength, evidence.byteLength, 'registry tarball byte length');
   assertDigestEquality(registryEvidence.sha512.hex, evidence.sha512.hex, 'registry tarball SHA-512');

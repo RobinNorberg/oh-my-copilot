@@ -22,6 +22,7 @@ const RECOVERY_ARTIFACT = `npm-release-boundary-recovery-v${V}`;
 const recoveryRunJson = (id = 777, extra = {}) => ({
     id, path: '.github/workflows/release.yml', event: 'workflow_dispatch', status: 'completed', conclusion: 'success',
     display_title: `Release Recovery v${V} ${MERGE}`, repository: { full_name: 'RobinNorberg/oh-my-copilot' }, head_repository: { full_name: 'RobinNorberg/oh-my-copilot' },
+    head_sha: MERGE, head_branch: 'main',
     ...extra,
 });
 /** gh api answers for Release Recovery evidence: artifacts (id, producing run) and the runs they point at. */
@@ -2208,8 +2209,10 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
                 note: `tag run 901 failure in Create GitHub Release and GitHub Release v${V} exists, but no Release Recovery evidence: no artifact ${RECOVERY_ARTIFACT} in this repository`,
             });
             const details = result.phases[0].details.join('\n');
-            expect(details).toContain(`only a successful Release Recovery run (gh workflow run release.yml -f tag=v${V} -f sha=${MERGE}) proves the registry check passed; a GitHub Release created by hand does not`);
-            expect(details).toContain(`gh release delete v${V} --yes`);
+            expect(details).toContain(`only a successful Release Recovery run (gh workflow run release.yml -f tag=v${V} -f sha=${MERGE}), titled "Release Recovery v${V} ${MERGE}" and run from a workflow definition on main, proves the registry check passed; a GitHub Release created by hand does not`);
+            expect(details).not.toMatch(/gh release delete/);
+            expect(details).toContain('Release Recovery runs from before this rule (no tag and sha in the run title, only "Release Recovery") cannot be used as evidence');
+            expect(details).toContain(`confirm by hand instead: the Release Recovery run's log shows verify-registry passed, and npm view oh-my-copilot@${V} dist.attestations lists the provenance; verify then stays unrecorded for v${V} (no destructive step)`);
             expect(details).not.toMatch(/gh release create/);
             expect(readReleaseState(stateRoot, V).phases.tag?.status).toBe('ok');
             expect(calls.some((c) => c.startsWith('gh run rerun'))).toBe(false);
@@ -2220,7 +2223,8 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
                 [{ path: '.github/workflows/ci.yml' }, 'path .github/workflows/ci.yml'],
                 [{ event: 'push' }, 'event push'],
                 [{ conclusion: 'failure' }, 'completed/failure'],
-                [{ status: 'in_progress', conclusion: null }, 'in_progress/(no conclusion)'],
+                [{ status: 'in_progress', conclusion: null, display_title: 'Release Recovery' }, `in_progress/(no conclusion), title "Release Recovery" is not "Release Recovery v${V} ${MERGE}"`],
+                [{ head_sha: 'abc123', head_branch: 'main' }, 'workflow definition abc123 (main) is not on main'],
                 [{ head_repository: { full_name: 'someone/fork' } }, 'run from another repository'],
                 [{ display_title: `Release Recovery v${V} ${OTHER}` }, `title "Release Recovery v${V} ${OTHER}" is not "Release Recovery v${V} ${MERGE}"`],
             ];
@@ -2237,6 +2241,41 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
             const moved = await release({ to: 'verify' });
             expect(moved.ok).toBe(false);
             expect(moved.phases[0].note).toBe(`tag run 901 failure in Create GitHub Release and GitHub Release v${V} exists, but v${V} on origin does not peel to the main merge ${MERGE.slice(0, 12)}`);
+        });
+        it('rejects a recovery run whose workflow definition (head_sha) is not on origin/main', async () => {
+            published = true;
+            // A branch with an edited release.yml: same path, same run-name, dispatched from a commit main does not contain.
+            handlers.unshift(recoveryEvidence([{ id: 50, run: 777 }], { 777: recoveryRunJson(777, { head_sha: OTHER, head_branch: 'edited-release-yml' }) }), (key) => (key === `git merge-base --is-ancestor ${OTHER} refs/remotes/origin/main` ? no('', 1) : undefined));
+            const result = await release({ from: 'verify' });
+            expect(result.ok).toBe(false);
+            expect(result.phases[0].note).toBe(`tag run 901 failure in Create GitHub Release and GitHub Release v${V} exists, but no successful Release Recovery run for v${V} ${MERGE.slice(0, 12)}: artifact ${RECOVERY_ARTIFACT} came from run 777: workflow definition ${OTHER.slice(0, 12)} (edited-release-yml) is not on main`);
+            expect(result.phases[0].details).toContain(`rejected Release Recovery run 777: workflow definition ${OTHER.slice(0, 12)} (edited-release-yml) is not on main`);
+            const fetchAt = calls.indexOf('git fetch origin main');
+            expect(fetchAt).toBeGreaterThan(-1);
+            expect(calls.indexOf(`git merge-base --is-ancestor ${OTHER} refs/remotes/origin/main`)).toBeGreaterThan(fetchAt);
+            handlers.splice(0, 2);
+            // A head_sha this clone does not have after fetching origin/main is not on main (and never reaches merge-base).
+            calls.length = 0;
+            handlers.unshift(recoveryEvidence([{ id: 50, run: 777 }], { 777: recoveryRunJson(777, { head_sha: DEVMERGE, head_branch: 'gone' }) }), (key) => (key === `git cat-file -e ${DEVMERGE}^{commit}` ? no('fatal: Not a valid object name', 128) : undefined));
+            const missing = await release({ from: 'verify' });
+            expect(missing.ok).toBe(false);
+            expect(missing.phases[0].note.endsWith(`came from run 777: workflow definition ${DEVMERGE.slice(0, 12)} (gone) is not on main`)).toBe(true);
+            expect(calls).not.toContain(`git merge-base --is-ancestor ${DEVMERGE} refs/remotes/origin/main`);
+        });
+        it('waits for a matching Release Recovery run that is still queued or in progress instead of failing', async () => {
+            published = true;
+            for (const status of ['queued', 'in_progress']) {
+                handlers.unshift(recoveryEvidence([{ id: 50, run: 777 }], { 777: recoveryRunJson(777, { status, conclusion: null }) }));
+                const result = await release({ from: 'verify' });
+                expect(result.ok, status).toBe(false);
+                expect(result.phases[0]).toMatchObject({
+                    id: 'verify',
+                    status: 'blocked',
+                    note: `Release Recovery run 777 for v${V} is still ${status}: wait for run 777 to finish, then re-run omg release ${V} --from verify`,
+                });
+                expect(JSON.stringify(result.phases[0])).not.toMatch(/gh release delete/);
+                handlers.shift();
+            }
         });
         it('takes the newest successful recovery run, and an expired artifact still counts (only the run metadata is read)', async () => {
             published = true;

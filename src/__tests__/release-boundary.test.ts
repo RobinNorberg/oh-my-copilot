@@ -796,7 +796,7 @@ describe('release-boundary.mjs', () => {
     }
   });
 
-  it('waits for registry propagation on 404/5xx but fails at once on other statuses and wrong bytes', async () => {
+  it('waits for registry propagation on 404/408/429/5xx but fails at once on other statuses and wrong bytes', async () => {
     const root = makeTempRoot('release-boundary-propagation-');
     const tarball = releaseTarball();
     const localTarballPath = writeTarball(root, `${PACKAGE_NAME}-${VERSION}.tgz`, tarball);
@@ -809,8 +809,9 @@ describe('release-boundary.mjs', () => {
     let servedTarball = tarball;
     let tarballRequests = 0;
     const attestation = slsaAttestation(dssePayload(evidence.sha512.hex));
-    // Per-path answers served before the real one: a status (3xx with a Location), a reset socket, or a 404 whose body stalls.
-    const failNext: Record<string, Array<number | 'reset' | 'stall'>> = {};
+    // Per-path answers served before the real one: a status (3xx with a Location), a reset socket, a 404 whose body
+    // stalls, a 200 whose body is cut off by a reset ('cut') or stalls ('stall200').
+    const failNext: Record<string, Array<number | 'reset' | 'stall' | 'cut' | 'stall200'>> = {};
     const stalled: ServerResponse[] = [];
     const requests: Record<string, number> = {};
 
@@ -820,6 +821,17 @@ describe('release-boundary.mjs', () => {
       const action = failNext[path]?.shift();
       if (action === 'reset') {
         request.socket.destroy();
+        return;
+      }
+      if (action === 'cut') {
+        response.writeHead(200, { 'content-type': 'application/octet-stream', 'content-length': String(tarball.length) });
+        response.write(tarball.subarray(0, Math.floor(tarball.length / 2)), () => request.socket.destroy());
+        return;
+      }
+      if (action === 'stall200') {
+        response.writeHead(200, { 'content-type': 'application/octet-stream', 'content-length': String(tarball.length) });
+        response.write(tarball.subarray(0, 1));
+        stalled.push(response);
         return;
       }
       if (action === 'stall') {
@@ -915,6 +927,20 @@ describe('release-boundary.mjs', () => {
         expect(tarballRequests).toBe(3);
         expect(String(stderr.mock.calls[0]?.[0])).toContain('registry tarball returned HTTP 503');
 
+        // Rate limiting and request timeouts are "not there yet" too.
+        reset([429, 408]);
+        await expect(verifyRegistry(options)).resolves.toMatchObject({ provenance: 'required' });
+        expect(tarballRequests).toBe(3);
+        expect(String(stderr.mock.calls[0]?.[0])).toContain('registry tarball returned HTTP 429; waiting');
+        expect(String(stderr.mock.calls[1]?.[0])).toContain('registry tarball returned HTTP 408; waiting');
+
+        // A 200 whose body is cut off by a reset is a transient network error, waited out like a reset before the headers.
+        reset([]);
+        failNext[tarballPath] = ['cut'];
+        await expect(verifyRegistry(options)).resolves.toMatchObject({ provenance: 'required' });
+        expect(requests[tarballPath]).toBe(2);
+        expect(String(stderr.mock.calls[0]?.[0])).toMatch(/^release-boundary: registry tarball network request failed for .*; waiting/);
+
         reset([403]);
         await expect(verifyRegistry(options)).rejects.toThrow(/^registry tarball returned HTTP 403$/);
         expect(tarballRequests).toBe(1);
@@ -957,23 +983,56 @@ describe('release-boundary.mjs', () => {
         expect(String(stderr.mock.calls[0]?.[0])).toContain('registry tarball returned HTTP 404; waiting');
       });
 
-      // Refused connections and TLS failures are not waited out: they fail at once.
-      const closed = await startServer((_request, response) => response.end());
-      const closedBase = closed.base;
-      await closed.close();
-      for (const registry of [closedBase, base.replace('http:', 'https:')]) {
-        await withEnvironment({
-          RELEASE_BOUNDARY_REGISTRY_URL: registry,
-          RELEASE_BOUNDARY_PROPAGATION_BUDGET_MS: '60000',
-          RELEASE_BOUNDARY_PROPAGATION_DELAY_MS: '100',
-        }, async () => {
-          reset([]);
-          const registryAudit = join(root, 'npm-audit-signatures-other.json');
-          writeFileSync(registryAudit, JSON.stringify(auditReport(attestation, registry)));
-          await expect(verifyRegistry({ ...options, auditPath: registryAudit })).rejects.toThrow(/^network request failed for /);
-          expect(stderr).not.toHaveBeenCalled();
+      // A 200 whose body stalls is read inside the request timeout: aborted, then waited out, never a hang.
+      await withEnvironment({
+        RELEASE_BOUNDARY_REGISTRY_URL: base,
+        RELEASE_BOUNDARY_FETCH_TIMEOUT_MS: '2000',
+        RELEASE_BOUNDARY_PROPAGATION_BUDGET_MS: '60000',
+        RELEASE_BOUNDARY_PROPAGATION_DELAY_MS: '100',
+        RELEASE_BOUNDARY_PROPAGATION_MAX_DELAY_MS: '100',
+      }, async () => {
+        reset([]);
+        failNext[tarballPath] = ['stall200'];
+        await expect(verifyRegistry(options)).resolves.toMatchObject({ provenance: 'required' });
+        expect(requests[tarballPath]).toBeGreaterThanOrEqual(2);
+        expect(stderr.mock.calls.map(([line]) => String(line)).some((line) => /^release-boundary: registry tarball network request failed for .*; waiting/.test(line))).toBe(true);
+      });
+
+      // Refused connections, unknown or unreachable hosts and TLS failures are not waited out: they fail at once.
+      // The connect errors are injected (as undici reports them: TypeError "fetch failed" with the code on its cause),
+      // so neither port reuse nor Windows' slow refusal of a closed local port can turn them into a timeout.
+      for (const code of ['ECONNREFUSED', 'ENOTFOUND', 'EHOSTUNREACH']) {
+        const refused = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
+          throw new TypeError('fetch failed', { cause: Object.assign(new Error(`connect ${code}`), { code }) });
         });
+        try {
+          await withEnvironment({
+            RELEASE_BOUNDARY_REGISTRY_URL: base,
+            RELEASE_BOUNDARY_PROPAGATION_BUDGET_MS: '60000',
+            RELEASE_BOUNDARY_PROPAGATION_DELAY_MS: '100',
+          }, async () => {
+            reset([]);
+            await expect(verifyRegistry(options)).rejects.toThrow(/^network request failed for .*: fetch failed$/);
+            expect(refused).toHaveBeenCalledTimes(1);
+            expect(stderr).not.toHaveBeenCalled();
+          });
+        } finally {
+          refused.mockRestore();
+        }
       }
+      // TLS against the live plain-HTTP fixture server fails in the handshake, at once.
+      const tlsRegistry = base.replace('http:', 'https:');
+      await withEnvironment({
+        RELEASE_BOUNDARY_REGISTRY_URL: tlsRegistry,
+        RELEASE_BOUNDARY_PROPAGATION_BUDGET_MS: '60000',
+        RELEASE_BOUNDARY_PROPAGATION_DELAY_MS: '100',
+      }, async () => {
+        reset([]);
+        const registryAudit = join(root, 'npm-audit-signatures-other.json');
+        writeFileSync(registryAudit, JSON.stringify(auditReport(attestation, tlsRegistry)));
+        await expect(verifyRegistry({ ...options, auditPath: registryAudit })).rejects.toThrow(/^network request failed for /);
+        expect(stderr).not.toHaveBeenCalled();
+      });
 
       // No setting turns the wait into a tight request loop.
       for (const name of ['RELEASE_BOUNDARY_PROPAGATION_DELAY_MS', 'RELEASE_BOUNDARY_PROPAGATION_MAX_DELAY_MS']) {
@@ -984,7 +1043,8 @@ describe('release-boundary.mjs', () => {
 
       await withEnvironment({
         RELEASE_BOUNDARY_REGISTRY_URL: base,
-        RELEASE_BOUNDARY_PROPAGATION_BUDGET_MS: '350',
+        // The budget's clock starts before the metadata reads; however long they take, the message counts the attempts.
+        RELEASE_BOUNDARY_PROPAGATION_BUDGET_MS: '1500',
         RELEASE_BOUNDARY_PROPAGATION_DELAY_MS: '100',
         RELEASE_BOUNDARY_PROPAGATION_MAX_DELAY_MS: '100',
       }, async () => {
@@ -997,7 +1057,8 @@ describe('release-boundary.mjs', () => {
         expect(failure?.message).toContain(`${PACKAGE_NAME}@${VERSION} IS published`);
         expect(failure?.message).toContain('do not republish');
         expect(failure?.message).toContain(`Release Recovery workflow (tag=${TAG} sha=${SHA})`);
-        expect(tarballRequests).toBeGreaterThan(1);
+        expect(failure?.message).toContain(`registry tarball returned HTTP 404 after ${tarballRequests} attempt(s) over 2s`);
+        expect(tarballRequests).toBeGreaterThanOrEqual(1);
       });
     } finally {
       stderr.mockRestore();

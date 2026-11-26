@@ -176,10 +176,21 @@ reference for what each phase asserts.
      provenance, the Tier 2 smoke job passed, the GitHub Release exists AND a
      successful Release Recovery run for this tag and sha is on record (its
      artifact `npm-release-boundary-recovery-vX.Y.Z`, run title
-     `Release Recovery vX.Y.Z <sha>`). Never create the release by hand: a
-     `gh release create` release does not pass verify, and Release Recovery
-     refuses to run while it exists (`gh release delete vX.Y.Z --yes` first;
-     the tag stays).
+     `Release Recovery vX.Y.Z <sha>`, run from a `release.yml` whose commit
+     (the run's `head_sha`) is on `origin/main`). Never create the release by
+     hand: a `gh release create` release does not pass verify. The rule takes
+     effect from the first release promoted to main after it landed: older
+     Release Recovery runs (titled only "Release Recovery", e.g. v5.31.0 and
+     v5.33.0) cannot be used as evidence, and neither can a run dispatched
+     from a main that does not have the `run-name` yet.
+   - `verify` failed with "GitHub Release vX.Y.Z exists, but no ... Release
+     Recovery": the note lists each rejected recovery run and why. Do not
+     delete or recreate the GitHub Release. Confirm by hand instead: the
+     Release Recovery run's log shows `verify-registry` passed, and
+     `npm view oh-my-copilot@X.Y.Z dist.attestations` lists the provenance.
+     Verify then stays unrecorded for that release.
+   - `verify` blocked with "Release Recovery run N ... is still queued / in
+     progress": wait for run N, then re-run `--from verify`.
    - `verify` failed with "is on npm and GitHub Release … is published": the
      release is out; another job of the tag run failed. Triage the named
      job; do not rerun the run and do not use Release Recovery.
@@ -370,7 +381,7 @@ current recovery launch with its durable context".
 | inventory-graph `sourceSha256 must match` | a commit landed after the last baseline regeneration |
 | `coordinator source digest mismatch` | docs/CLAUDE.md edited without rebuilding bridge in the same commit |
 | `reachable generated runtime module is missing` | new/deleted source without a full dist rebuild force-added |
-| `release-boundary: registry tarball returned HTTP 404 after N attempt(s) ... IS published to the registry` (or version metadata / root metadata / attestation endpoint) | Publish SUCCEEDED; one registry read still answered 404, 5xx or a transient network error (reset, timeout, temporary DNS failure) after `verify-registry`'s 10-minute wait (hit on v5.31.0 and v5.33.0 before the wait existed, when the tarball lagged the metadata by minutes). Same recovery as the next row: do NOT rerun the job; run Release Recovery with the printed tag and sha, then `omg release X.Y.Z --from verify`. A 200 with wrong bytes or digests, another 4xx, a redirect, a refused connection, an unknown host or a TLS / certificate error fails at once and is not propagation. |
+| `release-boundary: registry tarball returned HTTP 404 after N attempt(s) ... IS published to the registry` (or version metadata / root metadata / attestation endpoint) | Publish SUCCEEDED; one registry read still answered 404, 408, 429, 5xx or a transient network error (reset, also mid-body, timeout, temporary DNS failure) after `verify-registry`'s 10-minute wait (hit on v5.31.0 and v5.33.0 before the wait existed, when the tarball lagged the metadata by minutes). Same recovery as the next row: do NOT rerun the job; run Release Recovery with the printed tag and sha, then `omg release X.Y.Z --from verify`. A 200 with wrong bytes or digests, another 4xx, a redirect, a refused connection, an unknown host or a TLS / certificate error fails at once and is not propagation. |
 | `... was PUBLISHED to the registry; it did not become visible after 30 attempts` | Publish SUCCEEDED but the verify loop timed out on slow registry propagation (hit on v5.1.0 at 12 attempts; the window is ~28 min since the upstream #4083 port). Check `npm view oh-my-copilot@X.Y.Z version dist-tags dist.attestations` — if live with provenance, do NOT rerun the job (republish over an existing version fails). Only the GitHub Release step was skipped: run the `Release Recovery` workflow (`release.yml`, workflow_dispatch with `tag` and `sha` inputs — generic since the v5.5.0 port; no longer pinned to an old tag). Do not use `gh release create` instead: `omg release --from verify` accepts only a successful Release Recovery run as proof that the registry check passed. |
 
 ## Refresh the Windows test-duration table (after a release)

@@ -1455,8 +1455,9 @@ jobs:
       id-token: write
     runs-on: ubuntu-latest
     # Backstop for a hung step. Recent tag runs spent 17-25 min in this job; the worst legitimate case adds the
-    # ~27 min npm visibility loop (plus its npm installs) and the 10 min verify-registry budget: 90 leaves margin.
-    timeout-minutes: 90
+    # ~27 min npm visibility loop (plus its npm installs) and the 10 min verify-registry budget, about 80 min in all:
+    # 120 leaves margin for a slow runner.
+    timeout-minutes: 120
     concurrency:
       group: npm-trusted-publish-${{ github.ref_name }}
       cancel-in-progress: false
