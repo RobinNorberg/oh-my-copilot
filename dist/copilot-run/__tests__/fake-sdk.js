@@ -1,4 +1,4 @@
-/** A fake @github/copilot-sdk and a scratch git repository for copilot_run job tests (no live session). */
+/** A fake @microsoft/copilot-sdk (v2) and a scratch git repository for copilot_run job tests (no live session). */
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -48,7 +48,7 @@ export function fakeSdk(behavior, calls, sandbox = 'supported', deniedPaths = fa
         constructor(cfg) {
             this.cfg = cfg;
         }
-        emit(type, data = {}) { this.cfg.onEvent?.({ type, data }); }
+        emit(type, data = {}) { this.cfg.events?.onEvent?.({ type, data }); }
         async send({ prompt }) {
             calls.prompts.push(prompt);
             setTimeout(() => {
@@ -75,14 +75,19 @@ export function fakeSdk(behavior, calls, sandbox = 'supported', deniedPaths = fa
         async stop() { return []; }
         async getStatus() { return {}; }
         async listModels() { return []; }
-        async createSession(cfg) { calls.sessions.push(cfg); return new Session(cfg); }
+        async createSession(cfg) {
+            calls.sessions.push(cfg);
+            if (sandbox === 'update-fails' && cfg.permissions.sandbox)
+                throw new Error('policy conflict');
+            return new Session(cfg);
+        }
         async deleteSession() { }
     }
     return {
         module: {
             CopilotClient: Client,
             RuntimeConnection: {
-                forStdio: (opts) => {
+                forSpawnedStdio: (opts) => {
                     calls.connections.push(opts);
                     const globalConfig = opts.env?.GIT_CONFIG_GLOBAL;
                     calls.globalGitConfigs.push(globalConfig && existsSync(globalConfig) ? readFileSync(globalConfig, 'utf8') : null);
@@ -90,7 +95,7 @@ export function fakeSdk(behavior, calls, sandbox = 'supported', deniedPaths = fa
                 },
             },
         },
-        version: '1.0.16',
+        version: '2.0.3',
         from: 'test',
     };
 }

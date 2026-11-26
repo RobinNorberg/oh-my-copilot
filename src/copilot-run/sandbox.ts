@@ -3,11 +3,10 @@
  * (.omc/plans/2026-10-27-sandboxed-lanes-design.md §3-§6).
  *
  * The Copilot runtime confines shell commands and local MCP/LSP servers in
- * Microsoft Execution Containers when a session carries a `sandboxConfig`.
- * SDK 1.0.16 has no createSession field for it, so the config goes through
- * `session.rpc.options.update` before the first turn; an SDK whose
- * createSession forwards the field gets it at create
- * (sdkCreateSessionAcceptsSandbox).
+ * Microsoft Execution Containers when a session carries a sandbox config.
+ * SDK v2 takes it at create (`permissions.sandbox`); a live session takes it
+ * through `session.rpc.options.update({ permissions: { sandbox } })`
+ * ({@link applySandboxConfig}, the smoke canaries).
  *
  * Fail closed (§3): a review session without a confirmed sandbox runs with no
  * shell tool, a write session refuses with `sandbox-unavailable` unless
@@ -997,12 +996,12 @@ async function askHostSupport(client: unknown, timeoutMs: number): Promise<Sandb
   }
 }
 
-/** `session.rpc.options.update({ sandboxConfig })`; null when applied, else why not. */
+/** `session.rpc.options.update({ permissions: { sandbox } })` (SDK v2 patch shape); null when applied, else why not. */
 export async function applySandboxConfig(session: unknown, config: SandboxConfig, timeoutMs: number): Promise<string | null> {
   const update = rpcMethod(session, ['rpc', 'options'], 'update') as ((p: unknown) => Promise<unknown>) | null;
   if (!update) return 'the SDK has no options.update RPC';
   try {
-    const res = (await withTimeout(update({ sandboxConfig: config, sandboxConfigSource: 'session_flag' }), timeoutMs, 'options.update()')) as { success?: unknown } | null;
+    const res = (await withTimeout(update({ permissions: { sandbox: config, sandboxSource: 'session_flag' } }), timeoutMs, 'options.update()')) as { success?: unknown } | null;
     return res?.success === true ? null : 'options.update did not report success';
   } catch (err) {
     return `options.update failed: ${errText(err)}`;

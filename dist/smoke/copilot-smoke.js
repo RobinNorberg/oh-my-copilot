@@ -7,7 +7,7 @@
  * server's tools/list. Tier 1 adds one cheap non-interactive session in a
  * throwaway COPILOT_HOME and asserts on its persisted events, debug log and
  * the `.omg/` state our hooks write. Tier 2 replaces that session with
- * `@github/copilot-sdk` static checks and scripted scenarios
+ * `@microsoft/copilot-sdk` static checks and scripted scenarios
  * (src/smoke/copilot-sdk-driver.ts).
  */
 import { spawn, spawnSync } from 'child_process';

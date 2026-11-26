@@ -29,12 +29,12 @@ afterEach(() => {
 const enforced = (unsandboxedCalls = 0) => ({
     mode: 'enforced',
     host: { supported: true, capabilities: { shell: true, network: true } },
-    applied: 'options.update',
+    applied: 'create',
     enforcement: { required: true, blocked: false },
     canary: 'skipped',
     unsandboxedCalls,
-    cliVersion: '1.0.104',
-    sdkVersion: '1.0.16',
+    cliVersion: '1.0.116',
+    sdkVersion: '2.0.3',
 });
 const shellCall = (id, sandboxed, content = '', success = true) => [
     { type: 'tool.execution_start', data: { toolCallId: id, toolName: 'powershell', arguments: {} } },
@@ -310,7 +310,7 @@ describe('withSandboxCanary', () => {
                         shell: {
                             executeUserRequested: async (p) => {
                                 rec.ops.push(`exec:${p.command}`);
-                                await config.onPermissionRequest({ kind: 'shell', fullCommandText: p.command }, { sessionId: 's1' });
+                                await config.permissions.onRequest({ kind: 'shell', fullCommandText: p.command }, { sessionId: 's1' });
                                 return { toolCallId: 't9', success: true, output: 'out', exitCode: 0 };
                             },
                         },
@@ -319,7 +319,7 @@ describe('withSandboxCanary', () => {
                 return session;
             }
         }
-        return { module: { CopilotClient: Client, RuntimeConnection: { forStdio: (o) => o } }, version: '1.0.16', from: 'fake' };
+        return { module: { CopilotClient: Client, RuntimeConnection: { forSpawnedStdio: (o) => o } }, version: '2.0.3', from: 'fake' };
     }
     it('runs the command once, before the first send only, and counts the permission requests it raised; the prototype stays the SDK\'s', async () => {
         const rec = { ops: [] };
@@ -328,9 +328,15 @@ describe('withSandboxCanary', () => {
         const wrapped = withSandboxCanary(loaded, probe);
         expect(wrapped.module.CopilotClient.prototype.createSession)
             .toBe(loaded.module.CopilotClient.prototype.createSession);
-        const client = new wrapped.module.CopilotClient({ connection: {}, baseDirectory: dir, workingDirectory: dir });
+        const client = new wrapped.module.CopilotClient({ mode: 'coding-agent', runtime: { baseDirectory: dir, workingDirectory: dir } });
         let asked = 0;
-        const session = await client.createSession({ onPermissionRequest: () => { asked += 1; return { kind: 'approve-once' }; }, pluginDirectories: [], workingDirectory: dir, disabledMcpServers: [], excludedTools: [] });
+        const session = await client.createSession({
+            permissions: { onRequest: () => { asked += 1; return { kind: 'approve-once' }; } },
+            plugins: { directories: [] },
+            workingDirectory: dir,
+            mcp: { disabledServers: [] },
+            tools: { excludedTools: [] },
+        });
         await session.send({ prompt: 'one' });
         await session.send({ prompt: 'two' });
         expect(rec.ops).toEqual(['create', 'exec:node sandbox-probe.mjs n writes x', 'send', 'send']);

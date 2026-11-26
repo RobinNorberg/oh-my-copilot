@@ -37,8 +37,8 @@ import { commitLaneWork, laneCommitMessage } from '../factory/run/lane-commit.js
 import { CopilotLaneBackend, isTerminalLaneState } from '../factory/run/lane.js';
 import { defaultExec } from '../ship/exec.js';
 import { prepareFactoryRepo } from './copilot-factory-run-scenario.js';
-import { rethrowSdkStartError } from './copilot-sdk-driver.js';
-import { laneModelLabel, parseSandboxProbe, RUNTIME_MIN_MAX_CREDITS, SANDBOX_CANARY_FILE, SANDBOX_LANE_FILE, SANDBOX_PROBE_SCRIPT, SANDBOX_REVIEW_FILE, SDK_INSTALL_COMMAND, } from './copilot-sdk-scenarios.js';
+import { rethrowSdkStartError, spawnedClientOptions } from './copilot-sdk-driver.js';
+import { laneModelLabel, parseSandboxProbe, RUNTIME_MIN_MAX_CREDITS, SANDBOX_CANARY_FILE, SANDBOX_LANE_FILE, SANDBOX_PROBE_SCRIPT, SANDBOX_REVIEW_FILE, SDK_INSTALL_COMMAND, SDK_PACKAGE, } from './copilot-sdk-scenarios.js';
 import { excerpt, parseJsonl } from './copilot-session-eval.js';
 /** A lane wall time that fits one probe command or a short review with its tool turns. */
 export const SANDBOX_LANE_TIMEOUT_MS = 300_000;
@@ -86,8 +86,7 @@ function withTimeout(promise, ms, label) {
  * The SDK with a client whose sessions run `probe.command` through
  * `session.rpc.shell.executeUserRequested` right before their first `send`,
  * after copilot_run applied and confirmed the sandbox. The override is an
- * instance property, so the prototype's createSession (what
- * sdkCreateSessionAcceptsSandbox reads) is the SDK's own.
+ * instance property, so the prototype's createSession stays the SDK's own.
  */
 export function withSandboxCanary(loaded, probe) {
     const Base = loaded.module.CopilotClient;
@@ -99,10 +98,13 @@ export function withSandboxCanary(loaded, probe) {
                 let probing = false;
                 const session = await create({
                     ...config,
-                    onPermissionRequest: (req, ctx) => {
-                        if (probing)
-                            probe.permissionRequests += 1;
-                        return config.onPermissionRequest(req, ctx);
+                    permissions: {
+                        ...config.permissions,
+                        onRequest: (req, ctx) => {
+                            if (probing)
+                                probe.permissionRequests += 1;
+                            return config.permissions.onRequest(req, ctx);
+                        },
                     },
                 });
                 const send = session.send.bind(session);
@@ -161,13 +163,14 @@ async function probeSandboxHost(input, cwd) {
         return unsupported(`loading the SDK failed: ${errText(err)}`);
     }
     if (!loaded)
-        return unsupported(`the @github/copilot-sdk package is not installed (${SDK_INSTALL_COMMAND})`);
-    const { CopilotClient, RuntimeConnection } = loaded.module;
-    const client = new CopilotClient({
-        connection: RuntimeConnection.forStdio({ path: input.bin, args: ['--max-ai-credits', String(RUNTIME_MIN_MAX_CREDITS)], env }),
+        return unsupported(`the ${SDK_PACKAGE} package is not installed (${SDK_INSTALL_COMMAND})`);
+    const client = new loaded.module.CopilotClient(spawnedClientOptions(loaded, {
+        path: input.bin,
+        args: ['--max-ai-credits', String(RUNTIME_MIN_MAX_CREDITS)],
+        env,
         baseDirectory: input.home,
         workingDirectory: cwd,
-    });
+    }));
     try {
         await withTimeout(client.start().catch(rethrowSdkStartError), CANARY_RPC_TIMEOUT_MS, 'client.start()');
         return await probeHostSupport(client, CANARY_RPC_TIMEOUT_MS);

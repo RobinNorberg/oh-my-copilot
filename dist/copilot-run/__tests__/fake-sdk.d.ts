@@ -1,19 +1,15 @@
 import type { CopilotRunDeps } from '../job.js';
-import type { LoadedSdk, SdkSessionConfig } from '../../smoke/copilot-sdk-driver.js';
+import type { LoadedSdk, SdkSessionConfig, SpawnedStdioOptions } from '../../smoke/copilot-sdk-driver.js';
 /** `idle`: answers and idles, changes nothing. `commit`: commits a file in the worktree first. `hang`: never idles. */
 export type FakeBehavior = 'idle' | 'commit' | 'hang';
 /**
  * The fake runtime's sandbox: `supported` (default) confirms it; `unsupported`
  * reports no host support; `blocked` reports enforcement blocked;
- * `update-fails` rejects options.update; `no-rpc` has no sandbox RPCs (an old SDK).
+ * `update-fails` rejects options.update and a createSession that carries a sandbox (a v2 policy conflict at create); `no-rpc` has no sandbox RPCs.
  */
 export type FakeSandbox = 'supported' | 'unsupported' | 'blocked' | 'update-fails' | 'no-rpc';
 export interface FakeCalls {
-    connections: Array<{
-        path?: string;
-        args?: string[];
-        env?: NodeJS.ProcessEnv;
-    }>;
+    connections: SpawnedStdioOptions[];
     sessions: SdkSessionConfig[];
     prompts: string[];
     /** Every session.rpc.options.update payload. */

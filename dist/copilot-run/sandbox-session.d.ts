@@ -7,9 +7,10 @@
  *   returns the config to apply, or null with the final mode (switched off,
  *   unsupported, or a policy that cannot be built); a null with mode
  *   `refused` means the session must not be created;
- * - `atCreate(loaded, config)` / `confirm(session, config, atCreate)`: the config
- *   goes in at create when the SDK forwards it, else via options.update, and
- *   the enforcement status decides the final mode (fail closed on any doubt);
+ * - `atCreate(config)` / `confirm(session, config, atCreate)`: the config goes
+ *   in at create (SDK v2 `permissions.sandbox`; `confirm` keeps the
+ *   options.update path for a session created without it), and the
+ *   enforcement status decides the final mode (fail closed on any doubt);
  * - `toolStarted(data)` / `toolCompleted(data)` from the session's events:
  *   a shell call that does not report `sandboxed: true` is an escape;
  * - {@link sandboxBypassDenial} in the permission handler: every bypass
@@ -46,8 +47,12 @@ export declare class SessionSandboxController {
     state: CopilotRunSandboxState | null;
     private readonly toolNames;
     constructor(opts: SessionSandboxOptions);
-    /** Whether createSession takes `config` (else confirm applies it via options.update). */
-    atCreate(loaded: LoadedSdk, config: SandboxConfig | null): boolean;
+    /**
+     * Whether createSession takes `config`: always when there is one, since SDK v2
+     * forwards `permissions.sandbox` at create (v1 1.0.16 did not, hence the
+     * options.update path in confirm). Enforcement is still confirmed after create.
+     */
+    atCreate(config: SandboxConfig | null): boolean;
     /**
      * Probe the host and set `state` (§5). Returns the config to apply when
      * the host supports the sandbox (the mode stays the unconfirmed one until
@@ -57,6 +62,16 @@ export declare class SessionSandboxController {
     decide(client: SdkClientLike, loaded: LoadedSdk): Promise<SandboxConfig | null>;
     /** Apply `config` (unless createSession took it) and read the enforcement status; downgrade to the fail-closed mode on any doubt. */
     confirm(session: SdkSessionLike, config: SandboxConfig, atCreate: boolean): Promise<void>;
+    /**
+     * createSession with the policy (`permissions.sandbox`) failed: SDK v2 applies
+     * it at create, so a policy conflict fails the create itself (SDK v1 1.0.16
+     * failed the later options.update instead). Sets the fail-closed mode with the
+     * reason, as confirm does: `refused` creates no session, while a review
+     * (`read-only-no-shell`) or `detect-only` write session is created again
+     * without the policy (the caller's createSession, without the shell tools for a review).
+     */
+    createFailed(why: string): void;
+    private unconfirmed;
     /** `tool.execution_start` data: remembers the call's tool name for its attestation. */
     toolStarted(data: Record<string, unknown>): void;
     /**

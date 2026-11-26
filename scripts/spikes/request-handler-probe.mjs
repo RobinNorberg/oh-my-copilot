@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Spike (PR 0 of .omc/plans/2026-10-29-copilot-replay-design.md, not shipped):
- * what does the SDK's experimental `requestHandler` see?
+ * what does the SDK's experimental `models.requestHandler` see? (SDK v2, @microsoft/copilot-sdk)
  *
  * Starts the real copilot runtime with a CopilotRequestHandler that FABRICATES
  * every model-layer response and never forwards one upstream, creates a
@@ -22,7 +22,7 @@
  *
  * --auth none (default): every GitHub credential is stripped from the runtime
  *   env, COPILOT_HOME and GH_CONFIG_DIR point at empty temp dirs, and
- *   useLoggedInUser is false. --auth login keeps the machine's normal login.
+ *   github.useLoggedInUser is false. --auth login keeps the machine's normal login.
  */
 import { spawnSync } from 'node:child_process';
 import { appendFileSync, mkdtempSync, mkdirSync } from 'node:fs';
@@ -49,7 +49,7 @@ const die = (why) => { log('abort', { why }); process.exit(3); };
 globalThis.fetch = () => die('fetch() called in the probe process');
 globalThis.WebSocket = class { constructor(url) { die(`WebSocket(${url}) opened in the probe process`); } };
 
-const sdkDir = opt('sdk', join(spawnSync('npm root -g', { encoding: 'utf8', shell: true }).stdout.trim(), '@github', 'copilot-sdk'));
+const sdkDir = opt('sdk', join(spawnSync('npm root -g', { encoding: 'utf8', shell: true }).stdout.trim(), '@microsoft', 'copilot-sdk'));
 const sdk = await import(pathToFileURL(join(sdkDir, 'dist', 'index.js')).href);
 const { CopilotClient, RuntimeConnection, CopilotRequestHandler, CopilotWebSocketHandler, CopilotWebSocketCloseStatus } = sdk;
 
@@ -146,11 +146,10 @@ const workDir = mkdtempSync(join(tmpdir(), 'rh-probe-work-'));
 log('start', { auth, model, cli, sdk: sdkDir, out, workDir, credentialEnv: Object.keys(env).filter((k) => /TOKEN|HMAC|KEY$/i.test(k)) });
 
 const client = new CopilotClient({
-  connection: RuntimeConnection.forStdio({ path: cli, args: ['--log-level', 'debug'], env }),
-  baseDirectory: join(out, 'base'),
-  workingDirectory: workDir,
-  requestHandler: new FabricatingHandler(),
-  ...(auth === 'none' ? { useLoggedInUser: false } : {}),
+  mode: 'coding-agent',
+  runtime: RuntimeConnection.forSpawnedStdio({ path: cli, args: ['--log-level', 'debug'], env, baseDirectory: join(out, 'base'), workingDirectory: workDir }),
+  models: { requestHandler: new FabricatingHandler() },
+  ...(auth === 'none' ? { github: { useLoggedInUser: false } } : {}),
 });
 
 const step = async (name, fn) => {
@@ -165,9 +164,9 @@ try {
     await step('listModels', async () => (await client.listModels()).map((m) => m.id));
     const session = await step('createSession', () => client.createSession({
       model,
-      ...(args.includes('--streaming') ? { streaming: true } : {}),
+      ...(args.includes('--streaming') ? { events: { streaming: true } } : {}),
       workingDirectory: workDir,
-      onPermissionRequest: () => ({ kind: 'denied-by-rules', rules: [] }),
+      permissions: { onRequest: () => ({ kind: 'reject' }) },
     }));
     if (session) {
       log('session', { sessionId: session.sessionId });

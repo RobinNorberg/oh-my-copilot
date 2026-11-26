@@ -52,12 +52,20 @@ export declare const KNOWN_SCENARIOS: readonly Scenario[];
 export declare const DEFAULT_SCENARIOS: readonly Scenario[];
 export declare const PLUGIN_NAME = "oh-my-copilot";
 export declare const DELEGATE_AGENT = "oh-my-copilot:architect";
-export declare const MIN_PROTOCOL_VERSION = 3;
-export declare const SDK_PACKAGE = "@github/copilot-sdk";
-/** oh-my-copilot does not declare the SDK, so every "not installed" message names this command. */
-export declare const SDK_INSTALL_COMMAND = "npm i -g @github/copilot-sdk --omit=optional --ignore-scripts";
+/** SDK v2 speaks protocol 4 only (Copilot CLI >= 1.0.113). */
+export declare const MIN_PROTOCOL_VERSION = 4;
+export declare const SDK_PACKAGE = "@microsoft/copilot-sdk";
+/**
+ * oh-my-copilot does not declare the SDK, so every "not installed" message names this command.
+ * `@2`: the major this codebase speaks. `--ignore-scripts`: the only install script is koffi's
+ * native FFI loader, which the in-process host needs and a spawned runtime does not.
+ * `--omit=optional` is left out because npm ignores it for a global install: the platform
+ * runtime package (`@microsoft/copilot-sdk-<os>-<arch>`, about 200 MB) is installed but never
+ * loaded, since every client spawns the user's own `copilot`.
+ */
+export declare const SDK_INSTALL_COMMAND = "npm i -g @microsoft/copilot-sdk@2 --ignore-scripts";
 /** Lane B's CLI keys "pure skip" exit code 2 on this exact prefix. */
-export declare const SDK_MISSING_DETAIL = "@github/copilot-sdk not installed \u2014 npm i -g @github/copilot-sdk --omit=optional --ignore-scripts";
+export declare const SDK_MISSING_DETAIL = "@microsoft/copilot-sdk not installed \u2014 npm i -g @microsoft/copilot-sdk@2 --ignore-scripts";
 /**
  * Never offered: our own `host_smoke` MCP tool (a smoke that can start a smoke).
  * MCP tools are named `<server>-<tool>` (server = the first `.mcp.json` key);

@@ -331,6 +331,8 @@ function withSseData(block: string, value: unknown): string {
 /** One delta of a streamed text field: `holder[field]` in parsed event number `event`. */
 interface DeltaSlot { event: number; holder: Record<string, unknown>; field: string }
 
+const SHELL_OUTPUT_KEY = 'tool.shell_output';
+
 /**
  * The streamed text fields of parsed events (SSE payloads, WebSocket
  * messages or SDK session events), each as its deltas in order: Chat Completions
@@ -370,15 +372,24 @@ function deltaStreams(events: readonly unknown[]): DeltaSlot[][] {
     if (typeof value.type === 'string' && value.type.endsWith('.delta')) {
       add([value.type, value.item_id, value.output_index, value.content_index, value.summary_index].join(':'), event, value, 'delta');
     }
+    // SDK v2 live shell output (`tool.shell_output`): append-only `text` chunks per tool call and stream
+    // (omitted stream = stdout), put in `sequence` order below.
+    if (value.type === 'tool.shell_output' && isRecord(value.data)) {
+      const data = value.data;
+      add(`${SHELL_OUTPUT_KEY}:${String(data.toolCallId)}:${typeof data.stream === 'string' ? data.stream : 'stdout'}`, event, data, 'text');
+      return;
+    }
     // SDK session events streamed in pieces (`assistant.message_delta` `deltaContent`, `assistant.tool_call_delta`
-    // `inputDelta`, `tool.execution_partial_result` `partialOutput`, `tool.execution_progress` `progressMessage`, ...):
-    // every string field, per message, tool call or reasoning id.
+    // `inputDelta`, `tool.execution_progress` `progressMessage`, ...; `tool.execution_partial_result` `partialOutput`
+    // from SDK v1 recordings): every string field, per message, tool call or reasoning id.
     if (typeof value.type === 'string' && /(?:_delta|partial_result|progress)$/.test(value.type) && isRecord(value.data)) {
       const data = value.data;
       const ids = Object.keys(data).filter((k) => /Id$/.test(k)).map((k) => `${k}=${String(data[k])}`).join(':');
       for (const field of Object.keys(data)) if (!/Id$/.test(field)) add(`${value.type}:${ids}:${field}`, event, data, field);
     }
   });
+  const seq = (slot: DeltaSlot) => (typeof slot.holder.sequence === 'number' ? slot.holder.sequence : Number.MAX_SAFE_INTEGER);
+  for (const [key, slots] of streams) if (key.startsWith(`${SHELL_OUTPUT_KEY}:`)) slots.sort((a, b) => seq(a) - seq(b) || a.event - b.event);
   return [...streams.values()];
 }
 

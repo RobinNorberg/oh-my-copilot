@@ -25,16 +25,9 @@ function policyContext(settings: SandboxSettings): SandboxPolicyContext {
   };
 }
 
-/** An SDK whose createSession forwards sandboxConfig (`atCreate`) or not. */
-function loadedSdk(atCreate = false): LoadedSdk {
-  // sdkCreateSessionAcceptsSandbox reads the createSession source for the field name.
-  class Forwards {
-    async createSession(cfg: Record<string, unknown>) { return cfg.sandboxConfig; }
-  }
-  class Ignores {
-    async createSession(cfg: Record<string, unknown>) { return cfg; }
-  }
-  return { module: { CopilotClient: atCreate ? Forwards : Ignores } as never, version: '1.0.16', from: 'test' };
+/** The loaded SDK as decide() sees it: only its version is read. */
+function loadedSdk(): LoadedSdk {
+  return { module: {} as never, version: '2.0.3', from: 'test' };
 }
 
 const client = (mode: FakeSandbox) => ({ getStatus: async () => ({ version: '1.0.105' }), rpc: fakeClientRpc(mode) }) as unknown as SdkClientLike;
@@ -67,28 +60,43 @@ function setup(mode: FakeSandbox, opts: SetupOptions = {}) {
 }
 
 describe('SessionSandboxController.decide/confirm', () => {
-  it('supported: returns the config, then confirms it via options.update as enforced', async () => {
+  it('supported: returns the config, which goes in at create (SDK v2), and confirms it as enforced', async () => {
     const t = setup('supported');
     const config = await t.ctl.decide(client('supported'), loadedSdk());
     expect(config).not.toBeNull();
-    expect(t.ctl.state).toMatchObject({ mode: 'refused', reason: 'not confirmed yet', applied: 'none', cliVersion: '1.0.105', sdkVersion: '1.0.16', unsandboxedCalls: 0 });
-    const atCreate = t.ctl.atCreate(loadedSdk(), config);
-    expect(atCreate).toBe(false);
-    await t.ctl.confirm(t.session, config!, atCreate);
-    expect(t.ctl.state).toMatchObject({ mode: 'enforced', applied: 'options.update', enforcement: { required: false, blocked: false } });
+    expect(t.ctl.state).toMatchObject({ mode: 'refused', reason: 'not confirmed yet', applied: 'none', cliVersion: '1.0.105', sdkVersion: '2.0.3', unsandboxedCalls: 0 });
+    expect(t.ctl.atCreate(config)).toBe(true);
+    expect(t.ctl.atCreate(null)).toBe(false);
+    await t.ctl.confirm(t.session, config!, true);
+    expect(t.ctl.state).toMatchObject({ mode: 'enforced', applied: 'create', enforcement: { required: false, blocked: false } });
     expect(t.ctl.state!.reason).toBeUndefined();
-    expect(t.updates).toEqual([{ sandboxConfig: config, sandboxConfigSource: 'session_flag' }]);
+    expect(t.updates).toEqual([]);
     expect(t.notes).toEqual([]);
   });
 
-  it('supported with an SDK that takes the config at create: no options.update', async () => {
+  it('a session created without the config: confirm applies it through options.update (v2 patch shape)', async () => {
     const t = setup('supported');
-    const config = await t.ctl.decide(client('supported'), loadedSdk(true));
-    expect(t.ctl.atCreate(loadedSdk(true), config)).toBe(true);
-    expect(t.ctl.atCreate(loadedSdk(true), null)).toBe(false);
-    await t.ctl.confirm(t.session, config!, true);
-    expect(t.ctl.state).toMatchObject({ mode: 'enforced', applied: 'create' });
-    expect(t.updates).toEqual([]);
+    const config = await t.ctl.decide(client('supported'), loadedSdk());
+    await t.ctl.confirm(t.session, config!, false);
+    expect(t.ctl.state).toMatchObject({ mode: 'enforced', applied: 'options.update' });
+    expect(t.updates).toEqual([{ permissions: { sandbox: config, sandboxSource: 'session_flag' } }]);
+  });
+
+  it('createFailed: the fail-closed mode with the create error, per profile and setting', async () => {
+    const w = setup('update-fails');
+    await w.ctl.decide(client('update-fails'), loadedSdk());
+    w.ctl.createFailed('policy conflict');
+    expect(w.ctl.state).toMatchObject({ mode: 'refused', applied: 'none', reason: 'createSession with the sandbox policy failed: policy conflict' });
+    const r = setup('update-fails', { profile: 'review' });
+    await r.ctl.decide(client('update-fails'), loadedSdk());
+    r.ctl.createFailed('policy conflict');
+    expect(r.ctl.state?.mode).toBe('read-only-no-shell');
+    expect(r.notes).toEqual(['sandbox: not confirmed (createSession with the sandbox policy failed: policy conflict); the review runs read-only without a shell.']);
+    expect(r.updates).toEqual([]);
+    const d = setup('update-fails', { settings: { writeUnsandboxed: 'detect-only' } });
+    await d.ctl.decide(client('update-fails'), loadedSdk());
+    d.ctl.createFailed('policy conflict');
+    expect(d.ctl.state?.mode).toBe('detect-only');
   });
 
   it('unsupported: null and refused for a write session, detect-only with a note when allowed', async () => {
@@ -113,7 +121,7 @@ describe('SessionSandboxController.decide/confirm', () => {
     expect(r.ctl.state?.mode).toBe('read-only-no-shell');
     await r.ctl.confirm(r.session, rc!, false);
     expect(r.ctl.state?.mode).toBe('read-only-no-shell');
-    expect(r.updates.at(-1)).toEqual({ availableTools: [...REVIEW_READ_TOOLS] });
+    expect(r.updates.at(-1)).toEqual({ tools: { availableTools: [...REVIEW_READ_TOOLS] } });
     expect(r.notes).toEqual(['sandbox: not confirmed (sandbox enforcement is blocked: managed policy); the review runs read-only without a shell.']);
   });
 

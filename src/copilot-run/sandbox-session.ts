@@ -7,9 +7,10 @@
  *   returns the config to apply, or null with the final mode (switched off,
  *   unsupported, or a policy that cannot be built); a null with mode
  *   `refused` means the session must not be created;
- * - `atCreate(loaded, config)` / `confirm(session, config, atCreate)`: the config
- *   goes in at create when the SDK forwards it, else via options.update, and
- *   the enforcement status decides the final mode (fail closed on any doubt);
+ * - `atCreate(config)` / `confirm(session, config, atCreate)`: the config goes
+ *   in at create (SDK v2 `permissions.sandbox`; `confirm` keeps the
+ *   options.update path for a session created without it), and the
+ *   enforcement status decides the final mode (fail closed on any doubt);
  * - `toolStarted(data)` / `toolCompleted(data)` from the session's events:
  *   a shell call that does not report `sandboxed: true` is an escape;
  * - {@link sandboxBypassDenial} in the permission handler: every bypass
@@ -20,7 +21,6 @@
  */
 
 import type { LoadedSdk, SdkClientLike, SdkSessionLike } from '../smoke/copilot-sdk-driver.js';
-import { sdkCreateSessionAcceptsSandbox } from '../smoke/copilot-sdk-driver.js';
 import type { SdkPermissionRequest } from '../team/sdk-policy.js';
 import { errText, withTimeout } from './timeout.js';
 import {
@@ -68,9 +68,13 @@ export class SessionSandboxController {
 
   constructor(private readonly opts: SessionSandboxOptions) {}
 
-  /** Whether createSession takes `config` (else confirm applies it via options.update). */
-  atCreate(loaded: LoadedSdk, config: SandboxConfig | null): boolean {
-    return config !== null && sdkCreateSessionAcceptsSandbox(loaded);
+  /**
+   * Whether createSession takes `config`: always when there is one, since SDK v2
+   * forwards `permissions.sandbox` at create (v1 1.0.16 did not, hence the
+   * options.update path in confirm). Enforcement is still confirmed after create.
+   */
+  atCreate(config: SandboxConfig | null): boolean {
+    return config !== null;
   }
 
   /**
@@ -139,14 +143,32 @@ export class SessionSandboxController {
       delete sbx.reason;
       return;
     }
+    this.unconfirmed(why);
+    if (sbx.mode === 'read-only-no-shell') {
+      // The permission handler already refuses every shell call; this also hides the tools.
+      try { await withTimeout<unknown>(session.rpc.options?.update?.({ tools: { availableTools: [...REVIEW_READ_TOOLS] } }) ?? Promise.resolve(), opts.rpcTimeoutMs, 'options.update()'); } catch { /* the handler still refuses */ }
+    }
+  }
+
+  /**
+   * createSession with the policy (`permissions.sandbox`) failed: SDK v2 applies
+   * it at create, so a policy conflict fails the create itself (SDK v1 1.0.16
+   * failed the later options.update instead). Sets the fail-closed mode with the
+   * reason, as confirm does: `refused` creates no session, while a review
+   * (`read-only-no-shell`) or `detect-only` write session is created again
+   * without the policy (the caller's createSession, without the shell tools for a review).
+   */
+  createFailed(why: string): void {
+    this.unconfirmed(`createSession with the sandbox policy failed: ${why}`);
+  }
+
+  private unconfirmed(why: string): void {
+    const { opts } = this;
+    const sbx = this.state!;
     sbx.mode = unconfirmedMode(opts.profile, opts.settings);
     sbx.reason = why;
     if (sbx.mode === 'detect-only') opts.note(`sandbox: not confirmed (${why}); writeUnsandboxed "detect-only" runs this session unsandboxed.`);
-    if (sbx.mode === 'read-only-no-shell') {
-      opts.note(`sandbox: not confirmed (${why}); the review runs read-only without a shell.`);
-      // The permission handler already refuses every shell call; this also hides the tools.
-      try { await withTimeout<unknown>(session.rpc.options?.update?.({ availableTools: [...REVIEW_READ_TOOLS] }) ?? Promise.resolve(), opts.rpcTimeoutMs, 'options.update()'); } catch { /* the handler still refuses */ }
-    }
+    if (sbx.mode === 'read-only-no-shell') opts.note(`sandbox: not confirmed (${why}); the review runs read-only without a shell.`);
   }
 
   /** `tool.execution_start` data: remembers the call's tool name for its attestation. */

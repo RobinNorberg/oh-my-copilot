@@ -77,24 +77,26 @@ describe("copilot smoke CI workflow", () => {
     expect(job).not.toMatch(/if:[^\n]*secrets\./);
   });
 
-  it("installs the Copilot CLI from npm and the SDK without its bundled runtime", () => {
+  it("installs the Copilot CLI from npm and SDK v2 without its install scripts", () => {
     const install = step("Install Copilot CLI and SDK");
-    expect(install.run).toContain('npm install --global --no-audit --no-fund --omit=optional --ignore-scripts "@github/copilot-sdk@$SMOKE_SDK_RANGE"');
-    expect(install.run).toContain('npm install --global --no-audit --no-fund "@github/copilot@$SMOKE_CLI_DIST_TAG"');
+    expect(install.run).toContain('npm install --global --no-audit --no-fund --ignore-scripts "@microsoft/copilot-sdk@$SMOKE_SDK_VERSION"');
+    expect(install.run).toContain('npm install --global --no-audit --no-fund "@github/copilot@$SMOKE_CLI_VERSION"');
+    expect(install.run).not.toContain("@github/copilot-sdk");
     expect(install.run).toContain("copilot --version");
     expect(steps.indexOf(step("Build"))).toBeLessThan(steps.indexOf(step("Tier 2 static checks (no model call)")));
   });
 
-  it("installs the CLI at `latest` or an exact version, and says why when pinned", () => {
-    const line = job.match(/^ {6}SMOKE_CLI_DIST_TAG: '([^']+)'$/m);
-    expect(line, "smoke job env must set SMOKE_CLI_DIST_TAG").toBeTruthy();
-    const tag = line![1];
-    expect(tag).toMatch(/^(latest|\d+\.\d+\.\d+)$/);
-    if (tag !== "latest") {
-      // The comment block directly above the pin.
-      const before = job.slice(0, line!.index).split("\n").slice(-12).join("\n");
-      expect(before, "a pinned CLI needs a nearby comment naming the protocol reason").toMatch(/^ {6}#.*protocol/im);
-    }
+  it("pins the CLI and the SDK as an exact pair, and says why", () => {
+    const cli = job.match(/^ {6}SMOKE_CLI_VERSION: '([^']+)'$/m);
+    const sdk = job.match(/^ {6}SMOKE_SDK_VERSION: '([^']+)'$/m);
+    expect(cli, "smoke job env must set SMOKE_CLI_VERSION").toBeTruthy();
+    expect(sdk, "smoke job env must set SMOKE_SDK_VERSION").toBeTruthy();
+    expect(cli![1]).toMatch(/^\d+\.\d+\.\d+$/);
+    expect(sdk![1]).toMatch(/^2\.\d+\.\d+$/);
+    // The comment block directly above the pins.
+    const before = job.slice(0, cli!.index).split("\n").slice(-12).join("\n");
+    expect(before, "the pinned pair needs a nearby comment naming the protocol reason").toMatch(/^ {6}#.*protocol/im);
+    expect(job).not.toMatch(/SMOKE_CLI_DIST_TAG|SMOKE_SDK_RANGE/);
   });
 
   it("isolates COPILOT_HOME and TMPDIR under the runner temp", () => {

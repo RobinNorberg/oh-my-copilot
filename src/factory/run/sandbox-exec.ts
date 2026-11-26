@@ -64,8 +64,8 @@ import { errText, withTimeout } from '../../copilot-run/timeout.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
 import { TRUSTED_READ_ENV } from '../../ship/exec.js';
 import { redactSecrets } from '../heal/sanitize.js';
-import { resolveShimTarget, rethrowSdkStartError, runtimePid, type PermissionResult, type SdkClientLike, type SdkSessionLike } from '../../smoke/copilot-sdk-driver.js';
-import { RUNTIME_MIN_MAX_CREDITS, SDK_INSTALL_COMMAND } from '../../smoke/copilot-sdk-scenarios.js';
+import { resolveShimTarget, rethrowSdkStartError, runtimePid, spawnedClientOptions, type PermissionResult, type SdkClientLike, type SdkSessionLike } from '../../smoke/copilot-sdk-driver.js';
+import { RUNTIME_MIN_MAX_CREDITS, SDK_INSTALL_COMMAND, SDK_PACKAGE } from '../../smoke/copilot-sdk-scenarios.js';
 import { buildSessionEnv, loginIdentity } from '../../smoke/copilot-session-env.js';
 import { addRecordingDenyLiterals } from '../../smoke/replay/handler.js';
 import { childEnv } from '../../utils/windows-search.js';
@@ -377,7 +377,7 @@ export async function runSandboxed(argv: readonly string[], o: SandboxExecOption
   try {
     mkdirSync(workDir, { recursive: true });
     const loaded = await deps.loadSdk().catch(() => null);
-    if (!loaded) return notStarted(`@github/copilot-sdk is not installed or could not be loaded, so the sandbox cannot start (${SDK_INSTALL_COMMAND})`);
+    if (!loaded) return notStarted(`${SDK_PACKAGE} is not installed or could not be loaded, so the sandbox cannot start (${SDK_INSTALL_COMMAND})`);
     const found = deps.resolveBin();
     const bin = found && deps.platform === 'win32' && /\.(cmd|bat|ps1)$/i.test(found) ? resolveShimTarget(found) : found;
     if (!bin) return notStarted(found ? `copilot shim ${found} names no .js/.exe target` : 'copilot CLI not found (PATH, COPILOT_CLI_PATH, WinGet), so the sandbox cannot start');
@@ -411,12 +411,13 @@ export async function runSandboxed(argv: readonly string[], o: SandboxExecOption
     // A recording (cassette record mode) never carries the session credential, the stored login token included.
     if (gitHubToken) addRecordingDenyLiterals([gitHubToken]);
 
-    const { CopilotClient, RuntimeConnection } = loaded.module;
-    const c: SdkClientLike = new CopilotClient({
-      connection: RuntimeConnection.forStdio({ path: bin, args: ['--max-ai-credits', String(RUNTIME_MIN_MAX_CREDITS)], env }),
+    const c: SdkClientLike = new loaded.module.CopilotClient(spawnedClientOptions(loaded, {
+      path: bin,
+      args: ['--max-ai-credits', String(RUNTIME_MIN_MAX_CREDITS)],
+      env,
       baseDirectory: jobHome,
       workingDirectory: workDir,
-    });
+    }));
     client = c;
     await withTimeout(c.start().catch(rethrowSdkStartError), START_TIMEOUT_MS, 'client.start()');
     pid = runtimePid(c);
@@ -466,24 +467,25 @@ export async function runSandboxed(argv: readonly string[], o: SandboxExecOption
     }
     const attested = new Map<string, unknown>();
     const onPermissionRequest = (): PermissionResult => ({ kind: 'reject', feedback: 'omg factory run: a gate session grants nothing' });
-    const atCreate = sandbox.atCreate(loaded, config);
+    const atCreate = sandbox.atCreate(config);
     session = await withTimeout(c.createSession({
-      onPermissionRequest,
-      onEvent: (e) => {
-        const data = (e.data ?? {}) as Record<string, unknown>;
-        if (e.type === 'tool.execution_start') sandbox.toolStarted(data);
-        if (e.type === 'tool.execution_complete') {
-          attested.set(String(data.toolCallId ?? ''), data.sandboxed);
-          sandbox.toolCompleted(data);
-        }
+      permissions: { onRequest: onPermissionRequest, ...(atCreate ? { sandbox: config } : {}) },
+      events: {
+        onEvent: (e) => {
+          const data = (e.data ?? {}) as Record<string, unknown>;
+          if (e.type === 'tool.execution_start') sandbox.toolStarted(data);
+          if (e.type === 'tool.execution_complete') {
+            attested.set(String(data.toolCallId ?? ''), data.sandboxed);
+            sandbox.toolCompleted(data);
+          }
+        },
       },
       // No plugin: its hooks would run in the runtime, outside the sandbox.
-      pluginDirectories: [],
+      plugins: { directories: [] },
       workingDirectory: workDir,
-      disabledMcpServers: ['github-mcp-server'],
-      excludedTools: [],
-      ...(gitHubToken ? { gitHubToken } : {}),
-      ...(atCreate ? { sandboxConfig: config } : {}),
+      mcp: { disabledServers: ['github-mcp-server'] },
+      tools: { excludedTools: [] },
+      ...(gitHubToken ? { github: { token: gitHubToken } } : {}),
     }), RPC_TIMEOUT_MS, 'createSession()');
     await sandbox.confirm(session, config, atCreate);
     if (sandbox.state?.mode !== 'enforced') return notStarted(`the sandbox policy was not confirmed: ${sandbox.state?.reason ?? 'unknown reason'}`);

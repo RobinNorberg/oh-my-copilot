@@ -1,22 +1,24 @@
 /**
  * Tier 2 of `omg smoke copilot`: drive the installed Copilot CLI through
- * `@github/copilot-sdk` (optional and not declared in package.json, never bundled).
+ * `@microsoft/copilot-sdk` v2 (optional and not declared in package.json,
+ * never bundled; SDK protocol 4, Copilot CLI >= {@link MIN_COPILOT_CLI}).
  *
  * SDK resolution ({@link loadCopilotSdk}), first hit wins:
- * 1. `import('@github/copilot-sdk')` from this module: a local or project
+ * 1. `import('@microsoft/copilot-sdk')` from this module: a local or project
  *    install, or a global install next to a global oh-my-copilot (parent
  *    `node_modules` lookup);
  * 2. a global install: `%APPDATA%/npm/node_modules` (win32), then
  *    `npm root -g`. This covers a repo checkout (`npx tsx`, `node dist/...`)
- *    with the SDK installed by
- *    `npm i -g @github/copilot-sdk --omit=optional --ignore-scripts`.
+ *    with the SDK installed by `SDK_INSTALL_COMMAND` (copilot-sdk-scenarios.ts).
  *    A global hit must be named {@link SDK_PACKAGE}, satisfy
  *    `^`{@link SDK_MIN_VERSION}, and have its entry files inside its own dir.
  * Not found: every sdk.* and scn.* check fails with {@link SDK_MISSING_DETAIL}
  * and the report is `skipped`.
  *
- * The runtime is always the installed exe the earlier tiers resolved
- * (`RuntimeConnection.forStdio({ path })`), never the SDK's bundled runtime.
+ * The runtime is always the installed exe the earlier tiers resolved, spawned
+ * as a child process (`RuntimeConnection.forSpawnedStdio({ path })`), never
+ * the SDK's bundled runtime and never the in-process (FFI) host that SDK v2
+ * defaults to: the factory needs a separate process (sandbox, pid, args, env).
  */
 import { spawnSync as nodeSpawnSync } from 'child_process';
 import { randomBytes, randomUUID } from 'crypto';
@@ -27,43 +29,25 @@ import { dirname, isAbsolute, join, relative, resolve } from 'path';
 import { pathToFileURL } from 'url';
 import { allowlistSessionEnv, applySandboxConfig, buildSandboxConfig, DEFAULT_SANDBOX_SETTINGS, gitForWindowsShell, laneToolPaths, missingSandboxEnv, probeHostSupport, readEnforcement, } from '../copilot-run/sandbox.js';
 import { excerpt } from './copilot-session-eval.js';
-import { chooseModel, CLI_SCENARIOS, FACTORY_RUN_SCENARIOS, CREDIT_CAP_SKIP_DETAIL, evaluateReplay, evaluateScenario, evaluateSdkAgents, evaluateSdkMcp, evaluateSdkPlugins, evaluateSdkRuntime, evaluateSdkSandbox, evaluateSdkSkills, evaluateSdkToolsExcluded, failedTier2Checks, FILETOOLS_FILES, FILETOOLS_MARKER, KNOWN_SCENARIOS, probeHooksJson, hostSmokeToolName, runCost, RUNTIME_MIN_MAX_CREDITS, SCENARIOS, scenarioExcludedTools, SANDBOX_LANE_SCENARIO, SDK_MISSING_DETAIL, SDK_PACKAGE, SDK_STATIC_IDS, skippedScenarioChecks, sliceLogByTime, usageCredits, } from './copilot-sdk-scenarios.js';
+import { chooseModel, CLI_SCENARIOS, FACTORY_RUN_SCENARIOS, CREDIT_CAP_SKIP_DETAIL, evaluateReplay, evaluateScenario, evaluateSdkAgents, evaluateSdkMcp, evaluateSdkPlugins, evaluateSdkRuntime, evaluateSdkSandbox, evaluateSdkSkills, evaluateSdkToolsExcluded, failedTier2Checks, FILETOOLS_FILES, FILETOOLS_MARKER, KNOWN_SCENARIOS, probeHooksJson, hostSmokeToolName, runCost, RUNTIME_MIN_MAX_CREDITS, SCENARIOS, scenarioExcludedTools, SANDBOX_LANE_SCENARIO, SDK_INSTALL_COMMAND, SDK_MISSING_DETAIL, SDK_PACKAGE, SDK_STATIC_IDS, skippedScenarioChecks, sliceLogByTime, usageCredits, } from './copilot-sdk-scenarios.js';
 import { hasExited, killProcessTree } from './process-utils.js';
 import { buildSessionEnv } from './copilot-session-env.js';
 import { childEnv } from '../utils/windows-search.js';
 import { withCassette } from './replay/handler.js';
 import { cassetteEnv, finalizeRecording, hasCassette, keepFailedParts, platformTag, replayOutcome, scenarioCassetteDir, scenarioStateDir, storedRunOrder, } from './replay/run.js';
 /**
- * Whether the loaded SDK's `createSession` forwards a `sandboxConfig` (newer
- * than 1.0.16, which takes it only through `rpc.options.update`): its source
- * names the field. False when it cannot be read; the caller then patches the
- * session after create, which works on every SDK with the options RPC.
- *
- * A source regex is a weak signal, and it is safe here because it only picks
- * HOW the config is sent, never whether the session counts as sandboxed. A
- * false negative only sends the config through `rpc.options.update` before
- * the first turn. A false positive (the name appears but the field is
- * dropped) leaves the runtime unconfined; enforcement is still confirmed:
- * `sandbox.getEnforcementStatus` must not report blocked (confirmSandbox),
- * and every shell call must carry the runtime's `sandboxed: true`
- * attestation, so the first unconfined call stops the session with
- * `sandbox-escaped` (job.ts, the tool.execution_complete handler).
+ * Client options for a runtime child process on `conn.path`: every client of
+ * this codebase is built here, in `coding-agent` mode (v1's implicit default).
  */
-export function sdkCreateSessionAcceptsSandbox(loaded) {
-    try {
-        const fn = loaded.module.CopilotClient.prototype?.createSession;
-        return typeof fn === 'function' && /\bsandboxConfig\b/.test(Function.prototype.toString.call(fn));
-    }
-    catch {
-        return false;
-    }
+export function spawnedClientOptions(loaded, conn, extra = {}) {
+    return { mode: 'coding-agent', runtime: loaded.module.RuntimeConnection.forSpawnedStdio(conn), ...extra };
 }
 // ---------------------------------------------------------------------------
 // Loading
 // ---------------------------------------------------------------------------
 function isSdkModule(mod) {
     const m = mod;
-    return !!m && typeof m.CopilotClient === 'function' && typeof m.RuntimeConnection?.forStdio === 'function';
+    return !!m && typeof m.CopilotClient === 'function' && typeof m.RuntimeConnection?.forSpawnedStdio === 'function';
 }
 function readPkg(dir) {
     try {
@@ -111,9 +95,17 @@ function nodeResolvedVersion() {
 export function globalModuleRoots(env, platform = process.platform) {
     return platform === 'win32' && env.APPDATA ? [join(env.APPDATA, 'npm', 'node_modules')] : [];
 }
-/** Lowest SDK release the driver is written against (protocol 3). */
-export const SDK_MIN_VERSION = '1.0.16';
-/** `^1.0.16` without a semver dependency: same major 1, >= 1.0.16, no prerelease. */
+/** Lowest SDK release the driver is written against and tested with (SDK v2, protocol 4). */
+export const SDK_MIN_VERSION = '2.0.3';
+/**
+ * Lowest Copilot CLI the driver is tested with: the runtime SDK {@link SDK_MIN_VERSION}
+ * is built against. 1.0.113 is the first CLI on protocol 4; older ones speak protocol 3,
+ * which SDK v2 refuses at the handshake.
+ */
+export const MIN_COPILOT_CLI = '1.0.116';
+/** The package SDK v1 was published as; `omg factory check` names it when it is installed instead of {@link SDK_PACKAGE}. */
+export const LEGACY_SDK_PACKAGE = '@github/copilot-sdk';
+/** `^2.0.3` without a semver dependency: same major, >= {@link SDK_MIN_VERSION}, no prerelease. */
 export function satisfiesSdkRange(version) {
     const m = /^(\d+)\.(\d+)\.(\d+)$/.exec(String(version ?? '').trim());
     const min = SDK_MIN_VERSION.split('.').map(Number);
@@ -242,6 +234,25 @@ async function findCopilotSdk(env, spawnSync) {
     }
     return tryRoot(npmRootG(env, spawnSync));
 }
+/**
+ * The version of SDK v1 ({@link LEGACY_SDK_PACKAGE}) under the global roots
+ * {@link loadCopilotSdk} searches, or null. Reads package.json only: v1 is never
+ * imported. `omg factory check` names it when v2 is missing.
+ */
+export function findLegacySdkVersion(env = process.env, spawnSync = nodeSpawnSync) {
+    const roots = [...globalModuleRoots(env)];
+    const lookup = (root) => {
+        const pkg = readPkg(join(root, ...LEGACY_SDK_PACKAGE.split('/')));
+        return pkg?.name === LEGACY_SDK_PACKAGE ? pkg.version ?? 'unknown' : null;
+    };
+    for (const root of roots) {
+        const v = lookup(root);
+        if (v)
+            return v;
+    }
+    const npmRoot = npmRootG(env, spawnSync);
+    return npmRoot && !roots.includes(npmRoot) ? lookup(npmRoot) : null;
+}
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -291,16 +302,13 @@ function readAllLogs(logDir) {
         return '';
     } }).join('\n');
 }
-/** The runtime child's pid: the SDK keeps it on the private `cliProcess` (SDK 1.0.16). */
+/** The runtime child's pid: the SDK keeps it on the private `cliProcess` (SDK 1.0.16 through 2.0.3). */
 export function runtimePid(client) {
     const pid = client.cliProcess?.pid;
     return typeof pid === 'number' && pid > 0 ? pid : undefined;
 }
-/**
- * The last `@github/copilot` release that speaks SDK protocol 3: 1.0.113
- * moved to protocol 4 while the newest SDK (1.0.34) still accepts 3 only.
- */
-export const LAST_PROTOCOL3_CLI = '1.0.112';
+/** Updates the Copilot CLI (the npm install; a WinGet or Homebrew install updates with `copilot update`). */
+export const COPILOT_UPDATE_COMMAND = 'npm i -g @github/copilot@latest';
 /** The SDK's `client.start()` handshake refusal, parsed (null: some other error). */
 export function sdkProtocolMismatch(err) {
     const m = /SDK protocol version mismatch: SDK supports versions (\d+)-(\d+), but server (?:reports version (\d+)|does not report)/.exec(errText(err));
@@ -315,13 +323,9 @@ export function rethrowSdkStartError(err) {
     if (!m)
         throw err;
     const sdk = m.sdkMin === m.sdkMax ? `protocol ${m.sdkMax}` : `protocols ${m.sdkMin}-${m.sdkMax}`;
-    // LAST_PROTOCOL3_CLI is only the fix while the SDK tops out at protocol 3.
-    const olderCli = m.sdkMax === 3
-        ? `use @github/copilot <=${LAST_PROTOCOL3_CLI} (npm i -g @github/copilot@${LAST_PROTOCOL3_CLI})`
-        : `use an older @github/copilot that speaks protocol ${m.sdkMax}`;
     const fix = m.server !== null && m.server > m.sdkMax
-        ? `Update ${SDK_PACKAGE} when a version supporting protocol ${m.server} is available, or ${olderCli}.`
-        : `Update the Copilot CLI (npm i -g @github/copilot) or use a ${SDK_PACKAGE} that matches it.`;
+        ? `Update ${SDK_PACKAGE} (${SDK_INSTALL_COMMAND}) when a version supporting protocol ${m.server} is available.`
+        : `The Copilot CLI is too old for SDK v2: update it to >= ${MIN_COPILOT_CLI} (${COPILOT_UPDATE_COMMAND}, or \`copilot update\` for a WinGet/Homebrew install).`;
     throw new Error(`Copilot SDK/CLI protocol mismatch: ${SDK_PACKAGE} speaks ${sdk}, the Copilot CLI ${m.server === null ? 'reports no protocol version' : `speaks protocol ${m.server}`}. ${fix}`, { cause: err });
 }
 /** The probe's own start bound: a handshake answers in seconds, and `auto` must not wait a launch's minute. */
@@ -346,12 +350,7 @@ export async function probeSdkProtocol(loaded, bin, opts = {}) {
         mkdirSync(env.XDG_CONFIG_HOME, { recursive: true });
         mkdirSync(dirname(env.GIT_CONFIG_GLOBAL), { recursive: true });
         mkdirSync(env.TEMP, { recursive: true });
-        const { CopilotClient, RuntimeConnection } = loaded.module;
-        client = new CopilotClient({
-            connection: RuntimeConnection.forStdio({ path: bin, args: [], env }),
-            baseDirectory: home,
-            workingDirectory: home,
-        });
+        client = new loaded.module.CopilotClient(spawnedClientOptions(loaded, { path: bin, args: [], env, baseDirectory: home, workingDirectory: home }));
         await withTimeout(client.start().catch(rethrowSdkStartError), opts.startTimeoutMs ?? PROBE_START_TIMEOUT_MS, 'client.start()');
         if (opts.onStarted) {
             try {
@@ -572,18 +571,15 @@ export async function runSdkTier(input) {
         bin = target;
     }
     const projectError = prepareSdkProject(input.spawnSync, input.projectDir, input.remoteDir, input.env);
-    const { CopilotClient, RuntimeConnection } = loaded.module;
-    const client = new CopilotClient({
+    const client = new loaded.module.CopilotClient(spawnedClientOptions(loaded, {
         // Debug level for the runtime (hook stderr is only logged there) via args,
-        // not the client's logLevel, which would also echo SDK timing lines to our stderr.
-        connection: RuntimeConnection.forStdio({
-            path: bin,
-            args: ['--log-level', 'debug', '--max-ai-credits', String(runtimeCreditCap(input.maxCredits))],
-            env: input.env,
-        }),
+        // not the client's observability.logLevel, which would also echo SDK timing lines to our stderr.
+        path: bin,
+        args: ['--log-level', 'debug', '--max-ai-credits', String(runtimeCreditCap(input.maxCredits))],
+        env: input.env,
         baseDirectory: input.home,
         workingDirectory: input.projectDir,
-    });
+    }));
     const logDir = join(input.home, 'logs');
     const sdkInfo = { version: loaded.version, runtimeVersion: null, protocolVersion: null, model: 'auto' };
     const total = { premiumRequests: 0, credits: 0 };
@@ -840,11 +836,11 @@ async function staticChecks(client, input, loaded, bin) {
     try {
         try {
             session = await withTimeout(client.createSession({
-                onPermissionRequest: () => reject('omg smoke: static checks grant nothing'),
-                pluginDirectories: [input.root],
+                permissions: { onRequest: () => reject('omg smoke: static checks grant nothing') },
+                plugins: { directories: [input.root] },
                 workingDirectory: input.projectDir,
-                disabledMcpServers: ['github-mcp-server'],
-                excludedTools: [hostSmokeToolName(input.mcpServer)],
+                mcp: { disabledServers: ['github-mcp-server'] },
+                tools: { excludedTools: [hostSmokeToolName(input.mcpServer)] },
                 // A cassette client pins the model in both modes: its models list is a 418 miss, and replay creates no session without one.
                 ...(loaded.cassette && input.model ? { model: input.model } : {}),
             }), RPC_TIMEOUT_MS, 'createSession()');
@@ -974,24 +970,25 @@ async function sandboxSpawnCanary(loaded, bin, input, host) {
     mkdirSync(env.XDG_CONFIG_HOME, { recursive: true });
     mkdirSync(dirname(env.GIT_CONFIG_GLOBAL), { recursive: true });
     mkdirSync(env.TEMP, { recursive: true });
-    const { CopilotClient, RuntimeConnection } = loaded.module;
-    const client = new CopilotClient({
-        connection: RuntimeConnection.forStdio({ path: bin, args: ['--max-ai-credits', String(RUNTIME_MIN_MAX_CREDITS)], env }),
+    const client = new loaded.module.CopilotClient(spawnedClientOptions(loaded, {
+        path: bin,
+        args: ['--max-ai-credits', String(RUNTIME_MIN_MAX_CREDITS)],
+        env,
         baseDirectory: jobHome,
         workingDirectory: input.projectDir,
-    });
+    }));
     let session;
     const sandboxed = new Map();
     try {
         await withTimeout(client.start().catch(rethrowSdkStartError), START_TIMEOUT_MS, 'canary client.start()');
         session = await withTimeout(client.createSession({
-            onPermissionRequest: () => reject('omg smoke: the spawn canary grants nothing'),
-            onEvent: (e) => { if (e.type === 'tool.execution_complete')
-                sandboxed.set(String(e.data?.toolCallId ?? ''), e.data?.sandboxed); },
-            pluginDirectories: [],
+            permissions: { onRequest: () => reject('omg smoke: the spawn canary grants nothing') },
+            events: { onEvent: (e) => { if (e.type === 'tool.execution_complete')
+                    sandboxed.set(String(e.data?.toolCallId ?? ''), e.data?.sandboxed); } },
+            plugins: { directories: [] },
             workingDirectory: input.projectDir,
-            disabledMcpServers: ['github-mcp-server'],
-            excludedTools: [],
+            mcp: { disabledServers: ['github-mcp-server'] },
+            tools: { excludedTools: [] },
             ...(loaded.cassette && input.model ? { model: input.model } : {}),
         }), RPC_TIMEOUT_MS, 'canary createSession()');
         const shell = session.rpc.shell;
@@ -1124,23 +1121,25 @@ async function runScenario(client, input, name, model, modelLabel, eventsPath, b
         if (name === 'filetools')
             probe = prepareFiletools(input.projectDir, input.home);
         session = await withTimeout(client.createSession({
-            onPermissionRequest: (req) => (spec.permit(req, permitCtx) ? { kind: 'approve-once' } : reject(`omg smoke ${name}: ${req.kind ?? 'request'} not permitted`)),
-            onEvent: (event) => {
-                recorded.push(event);
-                if (event.type === 'session.idle' && sent)
-                    onIdle();
-                if (event.type === 'session.shutdown')
-                    onShutdown();
-                spent += usageCredits(event);
-                if (!capped && spent > budget) {
-                    capped = true;
-                    onCap();
-                }
+            permissions: { onRequest: (req) => (spec.permit(req, permitCtx) ? { kind: 'approve-once' } : reject(`omg smoke ${name}: ${req.kind ?? 'request'} not permitted`)) },
+            events: {
+                onEvent: (event) => {
+                    recorded.push(event);
+                    if (event.type === 'session.idle' && sent)
+                        onIdle();
+                    if (event.type === 'session.shutdown')
+                        onShutdown();
+                    spent += usageCredits(event);
+                    if (!capped && spent > budget) {
+                        capped = true;
+                        onCap();
+                    }
+                },
             },
-            pluginDirectories: probe ? [input.root, probe.probeDir] : [input.root],
+            plugins: { directories: probe ? [input.root, probe.probeDir] : [input.root] },
             workingDirectory: input.projectDir,
-            disabledMcpServers: ['github-mcp-server'],
-            excludedTools: scenarioExcludedTools(name, input.mcpServer),
+            mcp: { disabledServers: ['github-mcp-server'] },
+            tools: { excludedTools: scenarioExcludedTools(name, input.mcpServer) },
             ...(model ? { model } : {}),
         }), RPC_TIMEOUT_MS, 'createSession()');
         sent = true;

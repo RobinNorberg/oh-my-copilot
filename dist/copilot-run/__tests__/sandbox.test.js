@@ -2,8 +2,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmdirSync, rmSync, symlinkSync, u
 import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, resolve, sep } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { sdkCreateSessionAcceptsSandbox } from '../../smoke/copilot-sdk-driver.js';
-import { BWRAP_TRIAL_ARGS, DEFAULT_SANDBOX_SETTINGS, NUGET_HOSTS, allowlistSessionEnv, sandboxPath, bwrapTrialLaunchError, linuxSandboxProblem, factorySandboxProblem, parseBwrapVersion, bwrapTooOld, buildSandboxConfig, nodeModulesTreeProblem, findOnPath, gitForWindowsShell, laneGitWritePaths, laneToolPaths, loadSandboxSettings, missingSandboxEnv, proxyCaEnv, MXC_REQUIRED_ENV, probeHostSupport, resolveSandboxSettings, scrubTokens, secretValues, sessionGitHubToken, unconfirmedMode, } from '../sandbox.js';
+import { applySandboxConfig, BWRAP_TRIAL_ARGS, DEFAULT_SANDBOX_SETTINGS, NUGET_HOSTS, allowlistSessionEnv, sandboxPath, bwrapTrialLaunchError, linuxSandboxProblem, factorySandboxProblem, parseBwrapVersion, bwrapTooOld, buildSandboxConfig, nodeModulesTreeProblem, findOnPath, gitForWindowsShell, laneGitWritePaths, laneToolPaths, loadSandboxSettings, missingSandboxEnv, proxyCaEnv, MXC_REQUIRED_ENV, probeHostSupport, resolveSandboxSettings, scrubTokens, secretValues, sessionGitHubToken, unconfirmedMode, } from '../sandbox.js';
 let root;
 let ctx;
 const host = (caps = { shell: true }) => ({ supported: true, capabilities: caps });
@@ -736,16 +735,14 @@ describe('detection helpers', () => {
         expect(factorySandboxProblem({ ...DEFAULT_SANDBOX_SETTINGS, writeUnsandboxed: 'detect-only' }, boom, {})).toBeNull();
         expect(factorySandboxProblem({ ...DEFAULT_SANDBOX_SETTINGS }, boom, { OMG_SANDBOX: 'off' })).toBeNull();
     });
-    it('sdkCreateSessionAcceptsSandbox reads the createSession source', () => {
-        const sdk = (cls) => ({ module: { CopilotClient: cls, RuntimeConnection: { forStdio: () => ({}) } }, version: 'x', from: 'test' });
-        class Old {
-            async createSession(cfg) { return cfg.model; }
-        }
-        class New {
-            async createSession(cfg) { return cfg.sandboxConfig; }
-        }
-        expect(sdkCreateSessionAcceptsSandbox(sdk(Old))).toBe(false);
-        expect(sdkCreateSessionAcceptsSandbox(sdk(New))).toBe(true);
+    it('applySandboxConfig sends the SDK v2 options.update patch and reads its success', async () => {
+        const config = { enabled: true };
+        const seen = [];
+        const session = (result) => ({ rpc: { options: { update: async (p) => { seen.push(p); return result; } } } });
+        expect(await applySandboxConfig(session({ success: true }), config, 1_000)).toBeNull();
+        expect(seen).toEqual([{ permissions: { sandbox: { enabled: true }, sandboxSource: 'session_flag' } }]);
+        expect(await applySandboxConfig(session({ success: false }), config, 1_000)).toBe('options.update did not report success');
+        expect(await applySandboxConfig({ rpc: {} }, config, 1_000)).toBe('the SDK has no options.update RPC');
     });
     it('allowlistSessionEnv matches names case-insensitively and relocates the profile', () => {
         const ABS_PATH = process.platform === 'win32' ? 'C:\\bin' : '/bin';

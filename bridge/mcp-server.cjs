@@ -48763,9 +48763,9 @@ var init_copilot_sdk_scenarios = __esm({
     DEFAULT_SCENARIOS = ["smoke", "guardrail"];
     PLUGIN_NAME2 = "oh-my-copilot";
     DELEGATE_AGENT = "oh-my-copilot:architect";
-    MIN_PROTOCOL_VERSION = 3;
-    SDK_PACKAGE = "@github/copilot-sdk";
-    SDK_INSTALL_COMMAND = `npm i -g ${SDK_PACKAGE} --omit=optional --ignore-scripts`;
+    MIN_PROTOCOL_VERSION = 4;
+    SDK_PACKAGE = "@microsoft/copilot-sdk";
+    SDK_INSTALL_COMMAND = `npm i -g ${SDK_PACKAGE}@2 --ignore-scripts`;
     SDK_MISSING_DETAIL = `${SDK_PACKAGE} not installed \u2014 ${SDK_INSTALL_COMMAND}`;
     NO_SHELL_OR_WRITE_TOOLS = ["powershell", "shell", "create", "edit"];
     NO_WRITE_TOOLS = ["create", "edit"];
@@ -50044,7 +50044,7 @@ async function applySandboxConfig(session, config2, timeoutMs) {
   const update = rpcMethod(session, ["rpc", "options"], "update");
   if (!update) return "the SDK has no options.update RPC";
   try {
-    const res = await withTimeout(update({ sandboxConfig: config2, sandboxConfigSource: "session_flag" }), timeoutMs, "options.update()");
+    const res = await withTimeout(update({ permissions: { sandbox: config2, sandboxSource: "session_flag" } }), timeoutMs, "options.update()");
     return res?.success === true ? null : "options.update did not report success";
   } catch (err) {
     return `options.update failed: ${errText(err)}`;
@@ -50440,12 +50440,19 @@ function deltaStreams(events) {
     if (typeof value.type === "string" && value.type.endsWith(".delta")) {
       add([value.type, value.item_id, value.output_index, value.content_index, value.summary_index].join(":"), event, value, "delta");
     }
+    if (value.type === "tool.shell_output" && isRecord3(value.data)) {
+      const data = value.data;
+      add(`${SHELL_OUTPUT_KEY}:${String(data.toolCallId)}:${typeof data.stream === "string" ? data.stream : "stdout"}`, event, data, "text");
+      return;
+    }
     if (typeof value.type === "string" && /(?:_delta|partial_result|progress)$/.test(value.type) && isRecord3(value.data)) {
       const data = value.data;
       const ids = Object.keys(data).filter((k) => /Id$/.test(k)).map((k) => `${k}=${String(data[k])}`).join(":");
       for (const field of Object.keys(data)) if (!/Id$/.test(field)) add(`${value.type}:${ids}:${field}`, event, data, field);
     }
   });
+  const seq = (slot) => typeof slot.holder.sequence === "number" ? slot.holder.sequence : Number.MAX_SAFE_INTEGER;
+  for (const [key, slots] of streams) if (key.startsWith(`${SHELL_OUTPUT_KEY}:`)) slots.sort((a, b) => seq(a) - seq(b) || a.event - b.event);
   return [...streams.values()];
 }
 function reassembledDeltas(events) {
@@ -50544,7 +50551,7 @@ function scanForSecrets(text3, options = {}) {
   }
   return hits.sort((a, b) => a.index - b.index);
 }
-var REDACTION_RULES_VERSION, REQUEST_HEADER_ALLOW, RESPONSE_HEADER_ALLOW, RESPONSE_HEADER_PREFIX_ALLOW, SECRET_PLACEHOLDER, EMAIL_PLACEHOLDER, MIN_DENY_LITERAL_LENGTH, PATH_PLACEHOLDERS, PLACEHOLDER_VALUE, NOT_SECRET_SUFFIX, SECRET_NAME2, UNQUOTED_CHAR, UNQUOTED_VALUE, PCT_US, PCT_SECRET_NAME, PLAIN_VALUE, TOKEN_RULES, EMAIL, RESERVED_EMAIL, TRANSPORT_EMAIL, SEGMENT_CHAR, escapeRegExp, WIN_SEG, PCT_SEG, POSIX_SEG, PCT_SEP, spaced, USER_HOME_PATHS, jsonEscape, KEY_ENV, GIT_CONFIG_PLAIN_ENV, GIT_CONFIG_SECRET_KEY, PLAIN_KEY_ENV, isRecord3, SSE_EOL, joinDeltas, Redactor;
+var REDACTION_RULES_VERSION, REQUEST_HEADER_ALLOW, RESPONSE_HEADER_ALLOW, RESPONSE_HEADER_PREFIX_ALLOW, SECRET_PLACEHOLDER, EMAIL_PLACEHOLDER, MIN_DENY_LITERAL_LENGTH, PATH_PLACEHOLDERS, PLACEHOLDER_VALUE, NOT_SECRET_SUFFIX, SECRET_NAME2, UNQUOTED_CHAR, UNQUOTED_VALUE, PCT_US, PCT_SECRET_NAME, PLAIN_VALUE, TOKEN_RULES, EMAIL, RESERVED_EMAIL, TRANSPORT_EMAIL, SEGMENT_CHAR, escapeRegExp, WIN_SEG, PCT_SEG, POSIX_SEG, PCT_SEP, spaced, USER_HOME_PATHS, jsonEscape, KEY_ENV, GIT_CONFIG_PLAIN_ENV, GIT_CONFIG_SECRET_KEY, PLAIN_KEY_ENV, isRecord3, SSE_EOL, SHELL_OUTPUT_KEY, joinDeltas, Redactor;
 var init_redact = __esm({
   "src/smoke/replay/redact.ts"() {
     "use strict";
@@ -50642,6 +50649,7 @@ var init_redact = __esm({
     PLAIN_KEY_ENV = /^SSH_AUTH_SOCK$|PUBLIC_KEY$/i;
     isRecord3 = (v) => !!v && typeof v === "object" && !Array.isArray(v);
     SSE_EOL = /\r\n|\r(?!\n)|\n/;
+    SHELL_OUTPUT_KEY = "tool.shell_output";
     joinDeltas = (slots) => slots.map((s) => s.holder[s.field]).join("");
     Redactor = class {
       hits = {};
@@ -51787,7 +51795,7 @@ function withCassette(loaded2, env2 = process.env, options = {}) {
         return created.rec;
       };
       const requestHandler = mode === "record" ? createRecordingHandler(Base, recorder) : createReplayHandler(Base, (ctx) => target(ctx).replayer);
-      super({ ...opts, requestHandler, ...mode === "replay" ? { useLoggedInUser: false, gitHubToken: void 0 } : {} });
+      super({ ...opts, models: { ...opts.models, requestHandler }, ...mode === "replay" ? { github: { useLoggedInUser: false } } : {} });
       this.cassetteSlot = slot;
       if (mode === "record") {
         const stop = this.stop.bind(this);
@@ -51820,7 +51828,7 @@ function withCassette(loaded2, env2 = process.env, options = {}) {
         this.createSession = async (session) => {
           if (!session.model) throw new CassetteConfigError("replay needs a pinned model (--model)");
           const rest = { ...session };
-          delete rest.gitHubToken;
+          delete rest.github;
           return create(rest);
         };
       }
@@ -51834,7 +51842,7 @@ function withCassette(loaded2, env2 = process.env, options = {}) {
   }
   const Connection = loaded2.module.RuntimeConnection;
   const RuntimeConnection = Object.assign(Object.create(Connection), {
-    forStdio: (opts) => Connection.forStdio({ ...opts, env: cassetteRuntimeEnv(opts.env ?? process.env, mode) })
+    forSpawnedStdio: (opts) => Connection.forSpawnedStdio({ ...opts, env: cassetteRuntimeEnv(opts.env ?? process.env, mode) })
   });
   return {
     ...loaded2,
@@ -51855,7 +51863,7 @@ var init_handler = __esm({
     init_matcher();
     init_normalize();
     init_redact();
-    REQUEST_HANDLER_MISSING = "replay needs @github/copilot-sdk with requestHandler (>= 1.0.16)";
+    REQUEST_HANDLER_MISSING = "replay needs @microsoft/copilot-sdk with models.requestHandler (CopilotRequestHandler)";
     RECORD_PARTS_DIR = "parts";
     RECORD_FAILED_SUFFIX = ".failed";
     RECORD_STARTED_SUFFIX = ".started";
@@ -52180,17 +52188,12 @@ var init_run = __esm({
 });
 
 // src/smoke/copilot-sdk-driver.ts
-function sdkCreateSessionAcceptsSandbox(loaded2) {
-  try {
-    const fn = loaded2.module.CopilotClient.prototype?.createSession;
-    return typeof fn === "function" && /\bsandboxConfig\b/.test(Function.prototype.toString.call(fn));
-  } catch {
-    return false;
-  }
+function spawnedClientOptions(loaded2, conn, extra = {}) {
+  return { mode: "coding-agent", runtime: loaded2.module.RuntimeConnection.forSpawnedStdio(conn), ...extra };
 }
 function isSdkModule(mod) {
   const m = mod;
-  return !!m && typeof m.CopilotClient === "function" && typeof m.RuntimeConnection?.forStdio === "function";
+  return !!m && typeof m.CopilotClient === "function" && typeof m.RuntimeConnection?.forSpawnedStdio === "function";
 }
 function readPkg(dir) {
   try {
@@ -52370,8 +52373,7 @@ function rethrowSdkStartError(err) {
   const m = sdkProtocolMismatch(err);
   if (!m) throw err;
   const sdk = m.sdkMin === m.sdkMax ? `protocol ${m.sdkMax}` : `protocols ${m.sdkMin}-${m.sdkMax}`;
-  const olderCli = m.sdkMax === 3 ? `use @github/copilot <=${LAST_PROTOCOL3_CLI} (npm i -g @github/copilot@${LAST_PROTOCOL3_CLI})` : `use an older @github/copilot that speaks protocol ${m.sdkMax}`;
-  const fix = m.server !== null && m.server > m.sdkMax ? `Update ${SDK_PACKAGE} when a version supporting protocol ${m.server} is available, or ${olderCli}.` : `Update the Copilot CLI (npm i -g @github/copilot) or use a ${SDK_PACKAGE} that matches it.`;
+  const fix = m.server !== null && m.server > m.sdkMax ? `Update ${SDK_PACKAGE} (${SDK_INSTALL_COMMAND}) when a version supporting protocol ${m.server} is available.` : `The Copilot CLI is too old for SDK v2: update it to >= ${MIN_COPILOT_CLI} (${COPILOT_UPDATE_COMMAND}, or \`copilot update\` for a WinGet/Homebrew install).`;
   throw new Error(
     `Copilot SDK/CLI protocol mismatch: ${SDK_PACKAGE} speaks ${sdk}, the Copilot CLI ${m.server === null ? "reports no protocol version" : `speaks protocol ${m.server}`}. ${fix}`,
     { cause: err }
@@ -52517,18 +52519,15 @@ async function runSdkTier(input2) {
     bin = target;
   }
   const projectError = prepareSdkProject(input2.spawnSync, input2.projectDir, input2.remoteDir, input2.env);
-  const { CopilotClient, RuntimeConnection } = loaded2.module;
-  const client = new CopilotClient({
+  const client = new loaded2.module.CopilotClient(spawnedClientOptions(loaded2, {
     // Debug level for the runtime (hook stderr is only logged there) via args,
-    // not the client's logLevel, which would also echo SDK timing lines to our stderr.
-    connection: RuntimeConnection.forStdio({
-      path: bin,
-      args: ["--log-level", "debug", "--max-ai-credits", String(runtimeCreditCap(input2.maxCredits))],
-      env: input2.env
-    }),
+    // not the client's observability.logLevel, which would also echo SDK timing lines to our stderr.
+    path: bin,
+    args: ["--log-level", "debug", "--max-ai-credits", String(runtimeCreditCap(input2.maxCredits))],
+    env: input2.env,
     baseDirectory: input2.home,
     workingDirectory: input2.projectDir
-  });
+  }));
   const logDir = (0, import_path68.join)(input2.home, "logs");
   const sdkInfo = { version: loaded2.version, runtimeVersion: null, protocolVersion: null, model: "auto" };
   const total = { premiumRequests: 0, credits: 0 };
@@ -52735,11 +52734,11 @@ async function staticChecks(client, input2, loaded2, bin) {
   try {
     try {
       session = await withTimeout2(client.createSession({
-        onPermissionRequest: () => reject("omg smoke: static checks grant nothing"),
-        pluginDirectories: [input2.root],
+        permissions: { onRequest: () => reject("omg smoke: static checks grant nothing") },
+        plugins: { directories: [input2.root] },
         workingDirectory: input2.projectDir,
-        disabledMcpServers: ["github-mcp-server"],
-        excludedTools: [hostSmokeToolName(input2.mcpServer)],
+        mcp: { disabledServers: ["github-mcp-server"] },
+        tools: { excludedTools: [hostSmokeToolName(input2.mcpServer)] },
         // A cassette client pins the model in both modes: its models list is a 418 miss, and replay creates no session without one.
         ...loaded2.cassette && input2.model ? { model: input2.model } : {}
       }), RPC_TIMEOUT_MS, "createSession()");
@@ -52830,25 +52829,26 @@ async function sandboxSpawnCanary(loaded2, bin, input2, host) {
   (0, import_fs55.mkdirSync)(env2.XDG_CONFIG_HOME, { recursive: true });
   (0, import_fs55.mkdirSync)((0, import_path68.dirname)(env2.GIT_CONFIG_GLOBAL), { recursive: true });
   (0, import_fs55.mkdirSync)(env2.TEMP, { recursive: true });
-  const { CopilotClient, RuntimeConnection } = loaded2.module;
-  const client = new CopilotClient({
-    connection: RuntimeConnection.forStdio({ path: bin, args: ["--max-ai-credits", String(RUNTIME_MIN_MAX_CREDITS)], env: env2 }),
+  const client = new loaded2.module.CopilotClient(spawnedClientOptions(loaded2, {
+    path: bin,
+    args: ["--max-ai-credits", String(RUNTIME_MIN_MAX_CREDITS)],
+    env: env2,
     baseDirectory: jobHome,
     workingDirectory: input2.projectDir
-  });
+  }));
   let session;
   const sandboxed = /* @__PURE__ */ new Map();
   try {
     await withTimeout2(client.start().catch(rethrowSdkStartError), START_TIMEOUT_MS, "canary client.start()");
     session = await withTimeout2(client.createSession({
-      onPermissionRequest: () => reject("omg smoke: the spawn canary grants nothing"),
-      onEvent: (e2) => {
+      permissions: { onRequest: () => reject("omg smoke: the spawn canary grants nothing") },
+      events: { onEvent: (e2) => {
         if (e2.type === "tool.execution_complete") sandboxed.set(String(e2.data?.toolCallId ?? ""), e2.data?.sandboxed);
-      },
-      pluginDirectories: [],
+      } },
+      plugins: { directories: [] },
       workingDirectory: input2.projectDir,
-      disabledMcpServers: ["github-mcp-server"],
-      excludedTools: [],
+      mcp: { disabledServers: ["github-mcp-server"] },
+      tools: { excludedTools: [] },
       ...loaded2.cassette && input2.model ? { model: input2.model } : {}
     }), RPC_TIMEOUT_MS, "canary createSession()");
     const shell = session.rpc.shell;
@@ -52965,21 +52965,23 @@ async function runScenario(client, input2, name, model, modelLabel, eventsPath, 
   try {
     if (name === "filetools") probe = prepareFiletools(input2.projectDir, input2.home);
     session = await withTimeout2(client.createSession({
-      onPermissionRequest: (req) => spec.permit(req, permitCtx) ? { kind: "approve-once" } : reject(`omg smoke ${name}: ${req.kind ?? "request"} not permitted`),
-      onEvent: (event) => {
-        recorded.push(event);
-        if (event.type === "session.idle" && sent) onIdle();
-        if (event.type === "session.shutdown") onShutdown();
-        spent += usageCredits(event);
-        if (!capped3 && spent > budget) {
-          capped3 = true;
-          onCap();
+      permissions: { onRequest: (req) => spec.permit(req, permitCtx) ? { kind: "approve-once" } : reject(`omg smoke ${name}: ${req.kind ?? "request"} not permitted`) },
+      events: {
+        onEvent: (event) => {
+          recorded.push(event);
+          if (event.type === "session.idle" && sent) onIdle();
+          if (event.type === "session.shutdown") onShutdown();
+          spent += usageCredits(event);
+          if (!capped3 && spent > budget) {
+            capped3 = true;
+            onCap();
+          }
         }
       },
-      pluginDirectories: probe ? [input2.root, probe.probeDir] : [input2.root],
+      plugins: { directories: probe ? [input2.root, probe.probeDir] : [input2.root] },
       workingDirectory: input2.projectDir,
-      disabledMcpServers: ["github-mcp-server"],
-      excludedTools: scenarioExcludedTools(name, input2.mcpServer),
+      mcp: { disabledServers: ["github-mcp-server"] },
+      tools: { excludedTools: scenarioExcludedTools(name, input2.mcpServer) },
       ...model ? { model } : {}
     }), RPC_TIMEOUT_MS, "createSession()");
     sent = true;
@@ -53038,7 +53040,7 @@ async function runScenario(client, input2, name, model, modelLabel, eventsPath, 
     wedged
   };
 }
-var import_child_process17, import_crypto13, import_fs55, import_module3, import_os11, import_path68, import_url10, SDK_MIN_VERSION, DEFAULT_SCENARIO_TIMEOUT_MS, START_TIMEOUT_MS, RPC_TIMEOUT_MS, MCP_CONNECT_WAIT_MS, ABORT_GRACE_MS, SHUTDOWN_GRACE_MS, STOP_TIMEOUT_MS, TimeoutError, sleep4, LAST_PROTOCOL3_CLI, reject, RUNTIME_WEDGED_DETAIL;
+var import_child_process17, import_crypto13, import_fs55, import_module3, import_os11, import_path68, import_url10, SDK_MIN_VERSION, MIN_COPILOT_CLI, LEGACY_SDK_PACKAGE, DEFAULT_SCENARIO_TIMEOUT_MS, START_TIMEOUT_MS, RPC_TIMEOUT_MS, MCP_CONNECT_WAIT_MS, ABORT_GRACE_MS, SHUTDOWN_GRACE_MS, STOP_TIMEOUT_MS, TimeoutError, sleep4, COPILOT_UPDATE_COMMAND, reject, RUNTIME_WEDGED_DETAIL;
 var init_copilot_sdk_driver = __esm({
   "src/smoke/copilot-sdk-driver.ts"() {
     "use strict";
@@ -53057,7 +53059,9 @@ var init_copilot_sdk_driver = __esm({
     init_windows_search();
     init_handler();
     init_run();
-    SDK_MIN_VERSION = "1.0.16";
+    SDK_MIN_VERSION = "2.0.3";
+    MIN_COPILOT_CLI = "1.0.116";
+    LEGACY_SDK_PACKAGE = "@github/copilot-sdk";
     DEFAULT_SCENARIO_TIMEOUT_MS = 12e4;
     START_TIMEOUT_MS = 6e4;
     RPC_TIMEOUT_MS = 3e4;
@@ -53070,7 +53074,7 @@ var init_copilot_sdk_driver = __esm({
     sleep4 = (ms) => new Promise((r) => {
       setTimeout(r, ms);
     });
-    LAST_PROTOCOL3_CLI = "1.0.112";
+    COPILOT_UPDATE_COMMAND = "npm i -g @github/copilot@latest";
     reject = (feedback) => ({ kind: "reject", feedback });
     RUNTIME_WEDGED_DETAIL = "skipped: runtime unresponsive after a scenario timeout";
   }
@@ -63197,15 +63201,17 @@ function withTimeout3(promise2, ms, label) {
   return Promise.race([
     promise2,
     new Promise((_, reject2) => {
-      timer = setTimeout(() => reject2(new Error(`${label} timed out after ${ms} ms`)), ms);
+      timer = setTimeout(() => reject2(new TimeoutError2(`${label} timed out after ${ms} ms`)), ms);
     })
   ]).finally(() => clearTimeout(timer));
 }
-var errText4;
+var errText4, TimeoutError2;
 var init_timeout = __esm({
   "src/copilot-run/timeout.ts"() {
     "use strict";
     errText4 = (err) => err instanceof Error ? err.message : String(err);
+    TimeoutError2 = class extends Error {
+    };
   }
 });
 
@@ -63217,7 +63223,6 @@ var SessionSandboxController;
 var init_sandbox_session = __esm({
   "src/copilot-run/sandbox-session.ts"() {
     "use strict";
-    init_copilot_sdk_driver();
     init_timeout();
     init_sandbox2();
     SessionSandboxController = class {
@@ -63227,9 +63232,13 @@ var init_sandbox_session = __esm({
       /** The sandbox record once `decide` ran; `confirm` and `toolCompleted` update it in place. */
       state = null;
       toolNames = /* @__PURE__ */ new Map();
-      /** Whether createSession takes `config` (else confirm applies it via options.update). */
-      atCreate(loaded2, config2) {
-        return config2 !== null && sdkCreateSessionAcceptsSandbox(loaded2);
+      /**
+       * Whether createSession takes `config`: always when there is one, since SDK v2
+       * forwards `permissions.sandbox` at create (v1 1.0.16 did not, hence the
+       * options.update path in confirm). Enforcement is still confirmed after create.
+       */
+      atCreate(config2) {
+        return config2 !== null;
       }
       /**
        * Probe the host and set `state` (§5). Returns the config to apply when
@@ -63296,16 +63305,32 @@ var init_sandbox_session = __esm({
           delete sbx.reason;
           return;
         }
-        sbx.mode = unconfirmedMode(opts.profile, opts.settings);
-        sbx.reason = why;
-        if (sbx.mode === "detect-only") opts.note(`sandbox: not confirmed (${why}); writeUnsandboxed "detect-only" runs this session unsandboxed.`);
+        this.unconfirmed(why);
         if (sbx.mode === "read-only-no-shell") {
-          opts.note(`sandbox: not confirmed (${why}); the review runs read-only without a shell.`);
           try {
-            await withTimeout3(session.rpc.options?.update?.({ availableTools: [...REVIEW_READ_TOOLS] }) ?? Promise.resolve(), opts.rpcTimeoutMs, "options.update()");
+            await withTimeout3(session.rpc.options?.update?.({ tools: { availableTools: [...REVIEW_READ_TOOLS] } }) ?? Promise.resolve(), opts.rpcTimeoutMs, "options.update()");
           } catch {
           }
         }
+      }
+      /**
+       * createSession with the policy (`permissions.sandbox`) failed: SDK v2 applies
+       * it at create, so a policy conflict fails the create itself (SDK v1 1.0.16
+       * failed the later options.update instead). Sets the fail-closed mode with the
+       * reason, as confirm does: `refused` creates no session, while a review
+       * (`read-only-no-shell`) or `detect-only` write session is created again
+       * without the policy (the caller's createSession, without the shell tools for a review).
+       */
+      createFailed(why) {
+        this.unconfirmed(`createSession with the sandbox policy failed: ${why}`);
+      }
+      unconfirmed(why) {
+        const { opts } = this;
+        const sbx = this.state;
+        sbx.mode = unconfirmedMode(opts.profile, opts.settings);
+        sbx.reason = why;
+        if (sbx.mode === "detect-only") opts.note(`sandbox: not confirmed (${why}); writeUnsandboxed "detect-only" runs this session unsandboxed.`);
+        if (sbx.mode === "read-only-no-shell") opts.note(`sandbox: not confirmed (${why}); the review runs read-only without a shell.`);
       }
       /** `tool.execution_start` data: remembers the call's tool name for its attestation. */
       toolStarted(data) {
@@ -64323,11 +64348,11 @@ var init_job = __esm({
         if (early === "cancelled") return "cancelled";
         let loadError;
         const loaded2 = await deps.loadSdk().catch((err) => {
-          loadError = `loading @github/copilot-sdk failed: ${errText4(err)}`;
+          loadError = `loading ${SDK_PACKAGE} failed: ${errText4(err)}`;
           return null;
         });
         if (!loaded2) {
-          job.error = loadError ?? "@github/copilot-sdk is not installed (npm i -g @github/copilot-sdk --omit=optional --ignore-scripts)";
+          job.error = loadError ?? `${SDK_PACKAGE} is not installed (${SDK_INSTALL_COMMAND})`;
           return "failed";
         }
         const found = deps.resolveBin();
@@ -64552,15 +64577,16 @@ var init_job = __esm({
               break;
           }
         };
-        const { CopilotClient, RuntimeConnection } = loaded2.module;
         const cap = Math.max(RUNTIME_MIN_MAX_CREDITS, Math.ceil(job.maxCredits));
         let client;
         try {
-          client = new CopilotClient({
-            connection: RuntimeConnection.forStdio({ path: bin, args: ["--max-ai-credits", String(cap)], env: env2 }),
+          client = new loaded2.module.CopilotClient(spawnedClientOptions(loaded2, {
+            path: bin,
+            args: ["--max-ai-credits", String(cap)],
+            env: env2,
             baseDirectory: job.home,
             workingDirectory: job.workCwd
-          });
+          }));
         } catch (err) {
           releaseDirs();
           job.error = `runtime client: ${errText4(err)}`;
@@ -64591,23 +64617,35 @@ var init_job = __esm({
           job.sandbox = sandbox.state;
           const refused = () => job.sandbox?.mode === "refused" && sandboxConfig === null;
           if (!job.stopReason && !refused()) {
-            const atCreate = sandbox.atCreate(loaded2, sandboxConfig);
-            const shell = sandboxConfig !== null;
-            session = await withTimeout3(client.createSession({
-              onPermissionRequest,
-              onEvent,
-              pluginDirectories: [sessionPluginRoot],
+            const atCreate = sandbox.atCreate(sandboxConfig);
+            const create = (withSandbox, shell) => withTimeout3(client.createSession({
+              permissions: { onRequest: onPermissionRequest, ...withSandbox ? { sandbox: sandboxConfig } : {} },
+              events: { onEvent },
+              plugins: { directories: [sessionPluginRoot] },
               workingDirectory: job.workCwd,
-              disabledMcpServers: ["github-mcp-server"],
+              mcp: { disabledServers: ["github-mcp-server"] },
               // The explicit Copilot credential over the session RPC, never in the env shell children inherit.
-              ...gitHubToken ? { gitHubToken } : {},
-              excludedTools: buildSdkExcludedTools(MCP_SERVER),
-              ...job.profile === "review" ? { availableTools: [...REVIEW_READ_TOOLS, ...shell ? REVIEW_SHELL_TOOLS : []] } : {},
-              ...atCreate ? { sandboxConfig } : {},
+              ...gitHubToken ? { github: { token: gitHubToken } } : {},
+              tools: {
+                excludedTools: buildSdkExcludedTools(MCP_SERVER),
+                ...job.profile === "review" ? { availableTools: [...REVIEW_READ_TOOLS, ...shell ? REVIEW_SHELL_TOOLS : []] } : {}
+              },
               ...job.model ? { model: job.model } : {}
             }), RPC_TIMEOUT_MS2, "createSession()");
-            job.sessionId = session.sessionId;
-            if (sandboxConfig) await sandbox.confirm(session, sandboxConfig, atCreate);
+            let created = true;
+            try {
+              session = await create(atCreate, sandboxConfig !== null);
+            } catch (err) {
+              if (!atCreate || err instanceof TimeoutError2) throw err;
+              created = false;
+              sandbox.createFailed(errText4(err));
+              job.sandbox = sandbox.state;
+            }
+            if (!created && job.sandbox?.mode !== "refused" && !job.stopReason) session = await create(false, false);
+            if (session) {
+              job.sessionId = session.sessionId;
+              if (sandboxConfig && created) await sandbox.confirm(session, sandboxConfig, atCreate);
+            }
           }
           if (job.sandbox?.mode === "refused") {
             job.error = `sandbox-unavailable: ${job.sandbox.reason ?? "the sandbox is not confirmed"}`;
@@ -67629,7 +67667,7 @@ async function runSandboxed(argv, o, deps) {
   try {
     (0, import_node_fs17.mkdirSync)(workDir, { recursive: true });
     const loaded2 = await deps.loadSdk().catch(() => null);
-    if (!loaded2) return notStarted(`@github/copilot-sdk is not installed or could not be loaded, so the sandbox cannot start (${SDK_INSTALL_COMMAND})`);
+    if (!loaded2) return notStarted(`${SDK_PACKAGE} is not installed or could not be loaded, so the sandbox cannot start (${SDK_INSTALL_COMMAND})`);
     const found = deps.resolveBin();
     const bin = found && deps.platform === "win32" && /\.(cmd|bat|ps1)$/i.test(found) ? resolveShimTarget(found) : found;
     if (!bin) return notStarted(found ? `copilot shim ${found} names no .js/.exe target` : "copilot CLI not found (PATH, COPILOT_CLI_PATH, WinGet), so the sandbox cannot start");
@@ -67659,12 +67697,13 @@ async function runSandboxed(argv, o, deps) {
     const gitHubToken = sessionGitHubToken(deps.env, credentialSource);
     const secrets = secretValues(deps.env, credentialSource);
     if (gitHubToken) addRecordingDenyLiterals([gitHubToken]);
-    const { CopilotClient, RuntimeConnection } = loaded2.module;
-    const c = new CopilotClient({
-      connection: RuntimeConnection.forStdio({ path: bin, args: ["--max-ai-credits", String(RUNTIME_MIN_MAX_CREDITS)], env: env2 }),
+    const c = new loaded2.module.CopilotClient(spawnedClientOptions(loaded2, {
+      path: bin,
+      args: ["--max-ai-credits", String(RUNTIME_MIN_MAX_CREDITS)],
+      env: env2,
       baseDirectory: jobHome,
       workingDirectory: workDir
-    });
+    }));
     client = c;
     await withTimeout3(c.start().catch(rethrowSdkStartError), START_TIMEOUT_MS3, "client.start()");
     pid = runtimePid(c);
@@ -67713,24 +67752,25 @@ async function runSandboxed(argv, o, deps) {
     }
     const attested = /* @__PURE__ */ new Map();
     const onPermissionRequest = () => ({ kind: "reject", feedback: "omg factory run: a gate session grants nothing" });
-    const atCreate = sandbox.atCreate(loaded2, config2);
+    const atCreate = sandbox.atCreate(config2);
     session = await withTimeout3(c.createSession({
-      onPermissionRequest,
-      onEvent: (e2) => {
-        const data = e2.data ?? {};
-        if (e2.type === "tool.execution_start") sandbox.toolStarted(data);
-        if (e2.type === "tool.execution_complete") {
-          attested.set(String(data.toolCallId ?? ""), data.sandboxed);
-          sandbox.toolCompleted(data);
+      permissions: { onRequest: onPermissionRequest, ...atCreate ? { sandbox: config2 } : {} },
+      events: {
+        onEvent: (e2) => {
+          const data = e2.data ?? {};
+          if (e2.type === "tool.execution_start") sandbox.toolStarted(data);
+          if (e2.type === "tool.execution_complete") {
+            attested.set(String(data.toolCallId ?? ""), data.sandboxed);
+            sandbox.toolCompleted(data);
+          }
         }
       },
       // No plugin: its hooks would run in the runtime, outside the sandbox.
-      pluginDirectories: [],
+      plugins: { directories: [] },
       workingDirectory: workDir,
-      disabledMcpServers: ["github-mcp-server"],
-      excludedTools: [],
-      ...gitHubToken ? { gitHubToken } : {},
-      ...atCreate ? { sandboxConfig: config2 } : {}
+      mcp: { disabledServers: ["github-mcp-server"] },
+      tools: { excludedTools: [] },
+      ...gitHubToken ? { github: { token: gitHubToken } } : {}
     }), RPC_TIMEOUT_MS3, "createSession()");
     await sandbox.confirm(session, config2, atCreate);
     if (sandbox.state?.mode !== "enforced") return notStarted(`the sandbox policy was not confirmed: ${sandbox.state?.reason ?? "unknown reason"}`);
@@ -85320,7 +85360,7 @@ var init_cli2 = __esm({
 });
 
 // src/factory/host-check.ts
-var COPILOT_INSTALL_COMMAND;
+var SDK_MIGRATE_COMMAND;
 var init_host_check = __esm({
   "src/factory/host-check.ts"() {
     "use strict";
@@ -85334,7 +85374,7 @@ var init_host_check = __esm({
     init_copilot_session_env();
     init_config_dir();
     init_tmux_utils();
-    COPILOT_INSTALL_COMMAND = `npm i -g @github/copilot@${LAST_PROTOCOL3_CLI}`;
+    SDK_MIGRATE_COMMAND = `npm uninstall -g ${LEGACY_SDK_PACKAGE} && ${SDK_INSTALL_COMMAND}`;
   }
 });
 
@@ -89075,9 +89115,12 @@ function withSandboxCanary(loaded2, probe) {
         let probing = false;
         const session = await create({
           ...config2,
-          onPermissionRequest: (req, ctx) => {
-            if (probing) probe.permissionRequests += 1;
-            return config2.onPermissionRequest(req, ctx);
+          permissions: {
+            ...config2.permissions,
+            onRequest: (req, ctx) => {
+              if (probing) probe.permissionRequests += 1;
+              return config2.permissions.onRequest(req, ctx);
+            }
           }
         });
         const send = session.send.bind(session);
@@ -89130,13 +89173,14 @@ async function probeSandboxHost(input2, cwd) {
   } catch (err) {
     return unsupported(`loading the SDK failed: ${errText7(err)}`);
   }
-  if (!loaded2) return unsupported(`the @github/copilot-sdk package is not installed (${SDK_INSTALL_COMMAND})`);
-  const { CopilotClient, RuntimeConnection } = loaded2.module;
-  const client = new CopilotClient({
-    connection: RuntimeConnection.forStdio({ path: input2.bin, args: ["--max-ai-credits", String(RUNTIME_MIN_MAX_CREDITS)], env: env2 }),
+  if (!loaded2) return unsupported(`the ${SDK_PACKAGE} package is not installed (${SDK_INSTALL_COMMAND})`);
+  const client = new loaded2.module.CopilotClient(spawnedClientOptions(loaded2, {
+    path: input2.bin,
+    args: ["--max-ai-credits", String(RUNTIME_MIN_MAX_CREDITS)],
+    env: env2,
     baseDirectory: input2.home,
     workingDirectory: cwd
-  });
+  }));
   try {
     await withTimeout4(client.start().catch(rethrowSdkStartError), CANARY_RPC_TIMEOUT_MS, "client.start()");
     return await probeHostSupport(client, CANARY_RPC_TIMEOUT_MS);
@@ -90464,7 +90508,7 @@ var init_host_smoke_tool = __esm({
     OPT_IN_SCENARIO_NAMES = ["filetools", "chain", "team", "factory-run", "factory-run-fix", "sandbox-lane", "continuation", "prompt-context", "events", "ultragoal"];
     hostSmokeSchema = {
       tier: external_exports.number().int().min(0).max(2).optional().describe(
-        "0 = load check, no model call (default). 1 = tier 0 plus one live session with the prompt on stdin (one prompt, billed in AI credits). 2 = tier 0 plus @github/copilot-sdk static checks plus scenarios. Tier 1 and tier 2 with scenarios require OMC_SMOKE_ALLOW_LIVE=1 in the MCP server env."
+        "0 = load check, no model call (default). 1 = tier 0 plus one live session with the prompt on stdin (one prompt, billed in AI credits). 2 = tier 0 plus @microsoft/copilot-sdk static checks plus scenarios. Tier 1 and tier 2 with scenarios require OMC_SMOKE_ALLOW_LIVE=1 in the MCP server env."
       ),
       scenarios: external_exports.array(external_exports.enum([...SCENARIO_NAMES, ...OPT_IN_SCENARIO_NAMES, "all"])).optional().describe(
         "Tier 2 only: scenarios to run (smoke, guardrail, skill, delegate, or all). Default smoke+guardrail (one prompt per scenario, billed in AI credits). The opt-in scenarios (filetools, chain, team, factory-run, factory-run-fix, continuation, prompt-context, events, ultragoal, sandbox-lane) are never in all. sandbox-lane runs a review, a write and a canary copilot_run lane in the OS sandbox (three lanes, each capped at 30 AI credits, about 3 estimated). [] = SDK static checks only, no model call, no opt-in needed."
@@ -90480,7 +90524,7 @@ var init_host_smoke_tool = __esm({
     };
     hostSmokeTool = {
       name: "host_smoke",
-      description: "Run the headless Copilot CLI smoke check against a plugin root (same as `omg smoke copilot`). Tier 0 verifies the plugin loads (manifest, hooks, plugin/skill list, MCP tools) without a model call; tier 1 adds one live session (one prompt billed in AI credits, needs OMC_SMOKE_ALLOW_LIVE=1); tier 2 adds @github/copilot-sdk static checks (free with scenarios: []) and SDK scenarios (need OMC_SMOKE_ALLOW_LIVE=1). Returns the SmokeReport JSON; isError when any check fails.",
+      description: "Run the headless Copilot CLI smoke check against a plugin root (same as `omg smoke copilot`). Tier 0 verifies the plugin loads (manifest, hooks, plugin/skill list, MCP tools) without a model call; tier 1 adds one live session (one prompt billed in AI credits, needs OMC_SMOKE_ALLOW_LIVE=1); tier 2 adds @microsoft/copilot-sdk static checks (free with scenarios: []) and SDK scenarios (need OMC_SMOKE_ALLOW_LIVE=1). Returns the SmokeReport JSON; isError when any check fails.",
       category: TOOL_CATEGORIES.SMOKE,
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
       schema: hostSmokeSchema,
