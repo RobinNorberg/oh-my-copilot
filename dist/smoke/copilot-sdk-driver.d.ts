@@ -21,7 +21,7 @@
  * defaults to: the factory needs a separate process (sandbox, pid, args, env).
  */
 import { type CopilotEvent, type SmokeCheck } from './copilot-session-eval.js';
-import { type FiletoolsEvidence, type PermissionRequestLike, type Scenario, type ScenarioCost } from './copilot-sdk-scenarios.js';
+import { type FiletoolsEvidence, type PermissionRequestLike, type Rpc, type Scenario, type ScenarioCost } from './copilot-sdk-scenarios.js';
 import { type SpawnSyncFn } from './process-utils.js';
 import { type CassetteMode, type CopilotRequestHandlerCtor } from './replay/handler.js';
 import { type CassetteRun } from './replay/run.js';
@@ -111,6 +111,12 @@ export interface SdkSessionLike {
                 blocked?: boolean;
                 reason?: string;
             }>;
+        };
+        /** `session.model.list`: the models of this session's own login (no model call). */
+        model?: {
+            list?(): Promise<{
+                list?: unknown;
+            } | null>;
         };
     };
 }
@@ -346,6 +352,16 @@ export interface SdkTierInput {
      * cassette state, and gets a `scn.<name>.record` or `scn.<name>.replay` check.
      */
     cassette?: CassetteRun;
+    /**
+     * A keyring-less host's stored login (smokeStoredLogin). Used only when the runtime is not signed in (listModelIds):
+     * then `token` goes to this client's sessions as `github.token` (session RPC, never the runtime env), and the lane
+     * scenarios read it from `userConfigDir` like copilot_run does. Its token is scrubbed from all the tier's output.
+     */
+    storedLogin?: StoredLogin;
+}
+export interface StoredLogin {
+    userConfigDir: string;
+    token: string;
 }
 export interface SdkTierResult {
     checks: SmokeCheck[];
@@ -365,6 +381,8 @@ export interface SdkTierResult {
         misses: number;
         drift: number;
     }>>;
+    /** The runtime was not signed in, so the sessions and lanes got the stored login. */
+    storedLoginUsed?: boolean;
 }
 /**
  * The smoke dirs a scenario's cassette turns into placeholders. The factory
@@ -376,6 +394,12 @@ export declare function scenarioPlaceholderDirs(input: Pick<SdkTierInput, 'root'
 /** `--max-ai-credits` for the runtime: the run cap, raised to the CLI minimum. */
 export declare function runtimeCreditCap(maxCredits: number): number;
 export declare const RUNTIME_WEDGED_DETAIL = "skipped: runtime unresponsive after a scenario timeout";
+/**
+ * The SDK tier. With a stored login, its token is scrubbed (scrubTokens: the exact value and GitHub token shapes)
+ * from everything the tier returns or writes itself: check ids, details and evidence, `skipped`, a thrown error,
+ * and every scenario's events file (lanes, CLI and chain scenarios included), so neither the printed report, the
+ * `--json` report nor a `--keep-home` events file carries it, whatever a session or a shell tool echoed.
+ */
 export declare function runSdkTier(input: SdkTierInput): Promise<SdkTierResult>;
 /**
  * The spawn canary's command: the external programs every lane starts, the
@@ -399,4 +423,15 @@ export declare function sandboxCanaryLaunched(output: string): {
     gitShell: boolean;
     gitShellExit: number | null;
 };
+/**
+ * The model ids for chooseModel, and the one decision whether this client's sessions get the stored login: only
+ * when the runtime itself is not signed in, i.e. its no-session listModels() answers "Not authenticated". A runtime
+ * signed in from an OS keyring or COPILOT_GITHUB_TOKEN keeps its own login, so a stale plaintext entry left from a
+ * keyring-less past never overrides it. With the login, the models come from a throwaway session (no tools, no
+ * plugin, no prompt) signed in with the token; a cassette client skips that session (its model.list is a miss too).
+ */
+export declare function listModelIds(client: SdkClientLike, input: Pick<SdkTierInput, 'storedLogin' | 'projectDir' | 'keepHome'>, cassette: boolean): Promise<{
+    models: Rpc<string[]>;
+    login?: StoredLogin;
+}>;
 //# sourceMappingURL=copilot-sdk-driver.d.ts.map
