@@ -199,7 +199,7 @@ export function sandboxLanes(input, canary) {
         ...base,
         resolveBin: () => input.bin,
         pluginRoot: () => input.root,
-        userConfigDir: () => input.home,
+        userConfigDir: () => input.userConfigDir ?? input.home,
         ...(input.realHome ? { realHome: () => input.realHome } : {}),
         sandboxSettings: () => ({ settings: { ...DEFAULT_SANDBOX_SETTINGS, allowedHosts: [], extraReadonlyPaths: [], extraReadwritePaths: [] }, warnings: [] }),
         ...(canary ? { loadSdk: async () => { const l = await base.loadSdk(); return l ? withSandboxCanary(l, canary) : null; } } : {}),

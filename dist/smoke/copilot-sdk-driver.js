@@ -618,8 +618,8 @@ export async function runSdkTier(input) {
             sdkInfo.runtimeVersion = typeof status.value.version === 'string' ? status.value.version : null;
             sdkInfo.protocolVersion = typeof status.value.protocolVersion === 'number' ? status.value.protocolVersion : null;
         }
-        const models = await rpc(() => client.listModels(), 'listModels()');
-        const choice = chooseModel(models.ok ? models.value.map((m) => String(m.id)) : [], input.model);
+        const models = await listModelIds(client, input);
+        const choice = chooseModel(models.ok ? models.value : [], input.model);
         sdkInfo.model = choice.label;
         const modelLabel = `${choice.label} (${choice.note})`;
         checks.push(evaluateSdkRuntime(status, input.binVersion, modelLabel));
@@ -730,6 +730,7 @@ export async function runSdkTier(input) {
                                 env,
                                 projectDir: input.projectDir,
                                 home: input.home,
+                                ...(input.storedLogin ? { userConfigDir: input.storedLogin.userConfigDir } : {}),
                                 timeoutMs: input.timeoutMs,
                                 maxCredits: input.maxCredits,
                                 budget: input.maxCredits - total.credits,
@@ -746,6 +747,7 @@ export async function runSdkTier(input) {
                                     env,
                                     projectDir: input.projectDir,
                                     home: input.home,
+                                    ...(input.storedLogin ? { userConfigDir: input.storedLogin.userConfigDir } : {}),
                                     timeoutMs: input.timeoutMs,
                                     maxCredits: input.maxCredits,
                                     budget: input.maxCredits - total.credits,
@@ -855,6 +857,7 @@ async function staticChecks(client, input, loaded, bin) {
                 workingDirectory: input.projectDir,
                 mcp: { disabledServers: ['github-mcp-server'] },
                 tools: { excludedTools: [hostSmokeToolName(input.mcpServer)] },
+                ...sessionLogin(input),
                 // A cassette client pins the model in both modes: its models list is a 418 miss, and replay creates no session without one.
                 ...(loaded.cassette && input.model ? { model: input.model } : {}),
             }), RPC_TIMEOUT_MS, 'createSession()');
@@ -1093,6 +1096,48 @@ async function currentToolMetadata(session) {
     }
     return meta;
 }
+/** The stored login's token for a session on this client (session RPC only); empty without one. */
+function sessionLogin(input) {
+    return input.storedLogin ? { github: { token: input.storedLogin.token } } : {};
+}
+/**
+ * The model ids for chooseModel: listModels(), and when that fails on a keyring-less host, the models of a
+ * throwaway session (no tools, no plugin, no prompt) signed in with the stored login token. That runtime has no
+ * login of its own and the token stays out of its env, so its server-level models.list answers "Not authenticated".
+ */
+async function listModelIds(client, input) {
+    const server = await rpc(() => client.listModels(), 'listModels()');
+    if (server.ok)
+        return { ok: true, value: server.value.map((m) => String(m.id)) };
+    if (!input.storedLogin)
+        return server;
+    let session;
+    try {
+        session = await withTimeout(client.createSession({
+            permissions: { onRequest: () => reject('omg smoke: the model list session grants nothing') },
+            plugins: { directories: [] },
+            workingDirectory: input.projectDir,
+            mcp: { disabledServers: ['github-mcp-server'] },
+            tools: { excludedTools: [], availableTools: [] },
+            ...sessionLogin(input),
+        }), RPC_TIMEOUT_MS, 'createSession()');
+        const model = session.rpc.model;
+        if (typeof model?.list !== 'function')
+            return server;
+        const listed = await rpc(() => model.list(), 'session.model.list');
+        if (!listed.ok)
+            return listed;
+        const list = Array.isArray(listed.value?.list) ? listed.value.list : [];
+        return { ok: true, value: list.map((m) => (m && typeof m === 'object' ? m.id : undefined)).filter((id) => typeof id === 'string') };
+    }
+    catch (err) {
+        return { ok: false, error: errText(err) };
+    }
+    finally {
+        if (session)
+            await closeSession(client, session, input.keepHome);
+    }
+}
 async function closeSession(client, session, keepHome) {
     try {
         await withTimeout(session.disconnect(), RPC_TIMEOUT_MS, 'disconnect()');
@@ -1154,6 +1199,7 @@ async function runScenario(client, input, name, model, modelLabel, eventsPath, b
             workingDirectory: input.projectDir,
             mcp: { disabledServers: ['github-mcp-server'] },
             tools: { excludedTools: scenarioExcludedTools(name, input.mcpServer) },
+            ...sessionLogin(input),
             ...(model ? { model } : {}),
         }), RPC_TIMEOUT_MS, 'createSession()');
         sent = true;

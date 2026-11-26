@@ -272,6 +272,22 @@ export function storedLoginToken(userConfigDir: string, platform: NodeJS.Platfor
   return undefined;
 }
 
+/**
+ * The smoke's keyring-less login: the real config dir and its stored token
+ * (storedLoginToken) when `env` has no COPILOT_GITHUB_TOKEN, else undefined.
+ * The smoke home holds only the identity, so without this a keyring-less
+ * host's smoke sessions and lanes are not signed in. Undefined on Windows,
+ * with an OS keyring, and with COPILOT_GITHUB_TOKEN (which the smoke runtime
+ * already reads from its env): those hosts keep today's behaviour. The token
+ * goes only over the session RPC (`github.token`), never into an env, the
+ * smoke home or a file.
+ */
+export function smokeStoredLogin(env: NodeJS.ProcessEnv, userConfigDir: string, platform: NodeJS.Platform = process.platform): { userConfigDir: string; token: string } | undefined {
+  if (Object.entries(env).some(([k, v]) => k.toUpperCase() === 'COPILOT_GITHUB_TOKEN' && typeof v === 'string' && v.trim() !== '')) return undefined;
+  const token = storedLoginToken(userConfigDir, platform);
+  return token ? { userConfigDir, token } : undefined;
+}
+
 function tokenFromMap(map: unknown, host: string, login: string, now: number, depth: number): string | undefined {
   if (!map || typeof map !== 'object' || Array.isArray(map)) return undefined;
   for (const [key, value] of Object.entries(map as Record<string, unknown>)) {

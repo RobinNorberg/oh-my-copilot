@@ -74,6 +74,11 @@ export interface FactoryRunScenarioInput {
   projectDir: string;
   /** Smoke home: its config.json holds the login identity the lanes copy. */
   home: string;
+  /**
+   * A keyring-less host's real Copilot config dir (smokeStoredLogin): the lanes read the login identity and the
+   * stored token from it (the token over the session RPC) and deny it in the sandbox, like copilot_run. Unset: `home`.
+   */
+  userConfigDir?: string;
   /** Raised to {@link FACTORY_LANE_TIMEOUT_MS} per lane. */
   timeoutMs: number;
   maxCredits: number;
@@ -272,8 +277,8 @@ export class RecordingLanes implements LaneBackend {
 }
 
 /** The real copilot_run backend on the smoke's binary, plugin and login. */
-export function copilotLanes(input: Pick<FactoryRunScenarioInput, 'env' | 'bin' | 'root' | 'home'>): LaneBackend {
-  const deps = { ...defaultCopilotRunDeps(input.env), resolveBin: () => input.bin, pluginRoot: () => input.root, userConfigDir: () => input.home };
+export function copilotLanes(input: Pick<FactoryRunScenarioInput, 'env' | 'bin' | 'root' | 'home' | 'userConfigDir'>): LaneBackend {
+  const deps = { ...defaultCopilotRunDeps(input.env), resolveBin: () => input.bin, pluginRoot: () => input.root, userConfigDir: () => input.userConfigDir ?? input.home };
   return new CopilotLaneBackend(new CopilotRunManager(deps), { allowLive: true });
 }
 

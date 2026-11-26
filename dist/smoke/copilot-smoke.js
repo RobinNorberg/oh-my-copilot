@@ -27,9 +27,9 @@ import { runFactoryRunScenario } from './copilot-factory-run-scenario.js';
 import { runSandboxLaneScenario } from './copilot-sandbox-lane-scenario.js';
 import { runTeamScenario } from './copilot-team-scenario.js';
 import { CLI_SCENARIOS, DEFAULT_SCENARIOS, FACTORY_RUN_SCENARIOS, failedTier2Checks, KNOWN_SCENARIOS, NO_CASSETTE_SCENARIOS, RUNTIME_MIN_MAX_CREDITS, SANDBOX_LANE_SCENARIO } from './copilot-sdk-scenarios.js';
-import { readCassetteConfig } from './replay/handler.js';
+import { addRecordingDenyLiterals, readCassetteConfig } from './replay/handler.js';
 import { cassetteEnv, recordTargetRefusal, replayModel } from './replay/run.js';
-import { buildSessionEnv, loginIdentity, resolveDefaultPluginRoot } from './copilot-session-env.js';
+import { buildSessionEnv, loginIdentity, resolveDefaultPluginRoot, smokeStoredLogin } from './copilot-session-env.js';
 export { buildSessionEnv, isStrippedEnvKey, LOGIN_SHADOWING_TOKENS, loginIdentity, resolveDefaultPluginRoot, resolvePackageRoot, SESSION_SET_ENV, SMOKE_SET_ENV, STRIPPED_ENV_EXACT, STRIPPED_ENV_PREFIXES, } from './copilot-session-env.js';
 export { ALL_SCENARIOS, DEFAULT_SCENARIOS, KNOWN_SCENARIOS, OPT_IN_SCENARIOS } from './copilot-sdk-scenarios.js';
 /**
@@ -740,6 +740,12 @@ async function runTier2(ctx, bin, binVersion, packageVersion, opts, scenarios, c
     const base = run ? cassetteEnv(ctx.env, run, scenarioPlaceholderDirs({ root: ctx.root, home, projectDir, remoteDir })) : ctx.env;
     const env = buildSessionEnv(base, home, { session: true, hasLogin: identity.loggedInUsers !== undefined });
     env.OMC_GIT_GUARDRAILS = '1';
+    // A keyring-less host: the stored token reaches the sessions over the session RPC and the lanes read it from the
+    // real config dir, never from the env or the home. Replay stays credential-free.
+    const storedLogin = run?.mode === 'replay' ? undefined : smokeStoredLogin(ctx.env, ctx.deps.userConfigDir ?? getCopilotConfigDir());
+    // A recording (cassette record mode) never carries the credential.
+    if (storedLogin)
+        addRecordingDenyLiterals([storedLogin.token]);
     writeFileSync(join(home, 'config.json'), `${JSON.stringify({ ...identity, trustedFolders: [projectDir] }, null, 2)}\n`);
     let agentFiles = [];
     try {
@@ -772,6 +778,7 @@ async function runTier2(ctx, bin, binVersion, packageVersion, opts, scenarios, c
         runFactory: ctx.deps.runFactory ?? runFactoryRunScenario,
         runSandbox: ctx.deps.runSandbox ?? runSandboxLaneScenario,
         ...(run ? { cassette: run } : {}),
+        ...(storedLogin ? { storedLogin } : {}),
     });
     if (Object.keys(result.events).length)
         artifacts.events = result.events;

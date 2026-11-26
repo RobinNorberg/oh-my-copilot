@@ -124,4 +124,18 @@ export declare function loginIdentity(userConfigDir: string): Record<string, unk
  * client option only, and joins the lane output redaction set.
  */
 export declare function storedLoginToken(userConfigDir: string, platform?: NodeJS.Platform, now?: number): string | undefined;
+/**
+ * The smoke's keyring-less login: the real config dir and its stored token
+ * (storedLoginToken) when `env` has no COPILOT_GITHUB_TOKEN, else undefined.
+ * The smoke home holds only the identity, so without this a keyring-less
+ * host's smoke sessions and lanes are not signed in. Undefined on Windows,
+ * with an OS keyring, and with COPILOT_GITHUB_TOKEN (which the smoke runtime
+ * already reads from its env): those hosts keep today's behaviour. The token
+ * goes only over the session RPC (`github.token`), never into an env, the
+ * smoke home or a file.
+ */
+export declare function smokeStoredLogin(env: NodeJS.ProcessEnv, userConfigDir: string, platform?: NodeJS.Platform): {
+    userConfigDir: string;
+    token: string;
+} | undefined;
 //# sourceMappingURL=copilot-session-env.d.ts.map

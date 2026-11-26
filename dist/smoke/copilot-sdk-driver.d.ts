@@ -112,6 +112,12 @@ export interface SdkSessionLike {
                 reason?: string;
             }>;
         };
+        /** `session.model.list`: the models of this session's own login (no model call). */
+        model?: {
+            list?(): Promise<{
+                list?: unknown;
+            } | null>;
+        };
     };
 }
 export interface SdkClientLike {
@@ -346,6 +352,14 @@ export interface SdkTierInput {
      * cassette state, and gets a `scn.<name>.record` or `scn.<name>.replay` check.
      */
     cassette?: CassetteRun;
+    /**
+     * A keyring-less host's stored login (smokeStoredLogin): `token` goes to this client's sessions as `github.token`
+     * (session RPC, never the runtime env), and the lane scenarios read it from `userConfigDir` like copilot_run does.
+     */
+    storedLogin?: {
+        userConfigDir: string;
+        token: string;
+    };
 }
 export interface SdkTierResult {
     checks: SmokeCheck[];

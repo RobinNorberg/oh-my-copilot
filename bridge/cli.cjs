@@ -11904,6 +11904,11 @@ function storedLoginToken(userConfigDir, platform = process.platform, now2 = Dat
   }
   return void 0;
 }
+function smokeStoredLogin(env2, userConfigDir, platform = process.platform) {
+  if (Object.entries(env2).some(([k, v]) => k.toUpperCase() === "COPILOT_GITHUB_TOKEN" && typeof v === "string" && v.trim() !== "")) return void 0;
+  const token = storedLoginToken(userConfigDir, platform);
+  return token ? { userConfigDir, token } : void 0;
+}
 function tokenFromMap(map2, host, login3, now2, depth) {
   if (!map2 || typeof map2 !== "object" || Array.isArray(map2)) return void 0;
   for (const [key, value] of Object.entries(map2)) {
@@ -63252,8 +63257,8 @@ async function runSdkTier(input2) {
       sdkInfo.runtimeVersion = typeof status.value.version === "string" ? status.value.version : null;
       sdkInfo.protocolVersion = typeof status.value.protocolVersion === "number" ? status.value.protocolVersion : null;
     }
-    const models = await rpc(() => client.listModels(), "listModels()");
-    const choice = chooseModel(models.ok ? models.value.map((m) => String(m.id)) : [], input2.model);
+    const models = await listModelIds(client, input2);
+    const choice = chooseModel(models.ok ? models.value : [], input2.model);
     sdkInfo.model = choice.label;
     const modelLabel2 = `${choice.label} (${choice.note})`;
     checks.push(evaluateSdkRuntime(status, input2.binVersion, modelLabel2));
@@ -63339,6 +63344,7 @@ async function runSdkTier(input2) {
         env: env2,
         projectDir: input2.projectDir,
         home: input2.home,
+        ...input2.storedLogin ? { userConfigDir: input2.storedLogin.userConfigDir } : {},
         timeoutMs: input2.timeoutMs,
         maxCredits: input2.maxCredits,
         budget: input2.maxCredits - total.credits,
@@ -63352,6 +63358,7 @@ async function runSdkTier(input2) {
         env: env2,
         projectDir: input2.projectDir,
         home: input2.home,
+        ...input2.storedLogin ? { userConfigDir: input2.storedLogin.userConfigDir } : {},
         timeoutMs: input2.timeoutMs,
         maxCredits: input2.maxCredits,
         budget: input2.maxCredits - total.credits,
@@ -63440,6 +63447,7 @@ async function staticChecks(client, input2, loaded2, bin) {
         workingDirectory: input2.projectDir,
         mcp: { disabledServers: ["github-mcp-server"] },
         tools: { excludedTools: [hostSmokeToolName(input2.mcpServer)] },
+        ...sessionLogin(input2),
         // A cassette client pins the model in both modes: its models list is a 418 miss, and replay creates no session without one.
         ...loaded2.cassette && input2.model ? { model: input2.model } : {}
       }), RPC_TIMEOUT_MS, "createSession()");
@@ -63623,6 +63631,35 @@ async function currentToolMetadata(session) {
   }
   return meta3;
 }
+function sessionLogin(input2) {
+  return input2.storedLogin ? { github: { token: input2.storedLogin.token } } : {};
+}
+async function listModelIds(client, input2) {
+  const server = await rpc(() => client.listModels(), "listModels()");
+  if (server.ok) return { ok: true, value: server.value.map((m) => String(m.id)) };
+  if (!input2.storedLogin) return server;
+  let session;
+  try {
+    session = await withTimeout3(client.createSession({
+      permissions: { onRequest: () => reject("omg smoke: the model list session grants nothing") },
+      plugins: { directories: [] },
+      workingDirectory: input2.projectDir,
+      mcp: { disabledServers: ["github-mcp-server"] },
+      tools: { excludedTools: [], availableTools: [] },
+      ...sessionLogin(input2)
+    }), RPC_TIMEOUT_MS, "createSession()");
+    const model = session.rpc.model;
+    if (typeof model?.list !== "function") return server;
+    const listed2 = await rpc(() => model.list(), "session.model.list");
+    if (!listed2.ok) return listed2;
+    const list3 = Array.isArray(listed2.value?.list) ? listed2.value.list : [];
+    return { ok: true, value: list3.map((m) => m && typeof m === "object" ? m.id : void 0).filter((id) => typeof id === "string") };
+  } catch (err) {
+    return { ok: false, error: errText3(err) };
+  } finally {
+    if (session) await closeSession(client, session, input2.keepHome);
+  }
+}
 async function closeSession(client, session, keepHome) {
   try {
     await withTimeout3(session.disconnect(), RPC_TIMEOUT_MS, "disconnect()");
@@ -63683,6 +63720,7 @@ async function runScenario(client, input2, name, model, modelLabel2, eventsPath,
       workingDirectory: input2.projectDir,
       mcp: { disabledServers: ["github-mcp-server"] },
       tools: { excludedTools: scenarioExcludedTools(name, input2.mcpServer) },
+      ...sessionLogin(input2),
       ...model ? { model } : {}
     }), RPC_TIMEOUT_MS, "createSession()");
     sent = true;
@@ -164028,7 +164066,7 @@ function prepareFactoryRepo(dir) {
   return null;
 }
 function copilotLanes(input2) {
-  const deps = { ...defaultCopilotRunDeps(input2.env), resolveBin: () => input2.bin, pluginRoot: () => input2.root, userConfigDir: () => input2.home };
+  const deps = { ...defaultCopilotRunDeps(input2.env), resolveBin: () => input2.bin, pluginRoot: () => input2.root, userConfigDir: () => input2.userConfigDir ?? input2.home };
   return new CopilotLaneBackend(new CopilotRunManager(deps), { allowLive: true });
 }
 function factoryRunLimits(timeoutMs) {
@@ -164321,7 +164359,7 @@ function sandboxLanes(input2, canary) {
     ...base,
     resolveBin: () => input2.bin,
     pluginRoot: () => input2.root,
-    userConfigDir: () => input2.home,
+    userConfigDir: () => input2.userConfigDir ?? input2.home,
     ...input2.realHome ? { realHome: () => input2.realHome } : {},
     sandboxSettings: () => ({ settings: { ...DEFAULT_SANDBOX_SETTINGS, allowedHosts: [], extraReadonlyPaths: [], extraReadwritePaths: [] }, warnings: [] }),
     ...canary ? { loadSdk: async () => {
@@ -165856,6 +165894,8 @@ async function runTier2(ctx, bin, binVersion, packageVersion, opts, scenarios, c
   const base = run3 ? cassetteEnv(ctx.env, run3, scenarioPlaceholderDirs({ root: ctx.root, home, projectDir, remoteDir })) : ctx.env;
   const env2 = buildSessionEnv(base, home, { session: true, hasLogin: identity.loggedInUsers !== void 0 });
   env2.OMC_GIT_GUARDRAILS = "1";
+  const storedLogin = run3?.mode === "replay" ? void 0 : smokeStoredLogin(ctx.env, ctx.deps.userConfigDir ?? getCopilotConfigDir());
+  if (storedLogin) addRecordingDenyLiterals([storedLogin.token]);
   (0, import_fs200.writeFileSync)((0, import_path229.join)(home, "config.json"), `${JSON.stringify({ ...identity, trustedFolders: [projectDir] }, null, 2)}
 `);
   let agentFiles = [];
@@ -165888,7 +165928,8 @@ async function runTier2(ctx, bin, binVersion, packageVersion, opts, scenarios, c
     runCli: ctx.deps.runCli ?? runCliScenario,
     runFactory: ctx.deps.runFactory ?? runFactoryRunScenario,
     runSandbox: ctx.deps.runSandbox ?? runSandboxLaneScenario,
-    ...run3 ? { cassette: run3 } : {}
+    ...run3 ? { cassette: run3 } : {},
+    ...storedLogin ? { storedLogin } : {}
   });
   if (Object.keys(result.events).length) artifacts.events = result.events;
   const logs = readDebugLogs((0, import_path229.join)(home, "logs"));

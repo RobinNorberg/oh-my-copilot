@@ -94,6 +94,8 @@ function fakeSdk(opts = {}) {
         async listModels() {
             if (opts.globalGet && !(await fetchModels()))
                 throw new Error('models: 418');
+            if (opts.serverNotAuthenticated)
+                throw new Error('Request models.list failed with message: Not authenticated. Please authenticate first.');
             return (opts.models ?? ['auto']).map((id) => ({ id }));
         }
         async deleteSession(id) { rec.ops.push(`delete:${id}`); }
@@ -155,6 +157,14 @@ function fakeSdk(opts = {}) {
                         }),
                     },
                     agent: { list: async () => ({ agents: [{ name: 'oh-my-copilot:architect' }] }) },
+                    model: {
+                        list: async () => {
+                            rec.ops.push(`model.list:${id}`);
+                            if (!config.github?.token)
+                                throw new Error('Request session.model.list failed with message: Not authenticated');
+                            return { list: (opts.sessionModels ?? ['auto']).map((m) => ({ id: m })), providers: [] };
+                        },
+                    },
                     mcp: {
                         list: async () => ({ servers: [{ name: opts.mcpServer ?? 't', status: 'connected' }] }),
                         listTools: async () => ({ tools: [{ name: 'a' }, { name: 'b' }, { name: 'c' }] }),
@@ -652,6 +662,55 @@ describe('runSdkTier credit cap, log windows, tree kill', () => {
         seen.length = 0;
         await runs(['auto']);
         expect(seen).toEqual([undefined, undefined]);
+    });
+    describe('keyring-less stored login (storedLogin)', () => {
+        // Not token-shaped: the test checks the exact value never lands in the client options or the runtime env.
+        const STORED = 'stored-plaintext-credential-0001';
+        const storedLogin = { userConfigDir: '/real/.copilot', token: STORED };
+        const laneRun = (name, budget, maxCredits) => ({ name, timeoutMs: 1, model: 'lanes', maxCredits, budget, capped: false, wedged: false, events: [], idle: true, timedOut: false });
+        it('every session on the smoke client gets the token as github.token, never the client option or the runtime env', async () => {
+            const { loaded, rec } = fakeSdk({ serverNotAuthenticated: true, sessionModels: ['auto', 'claude-haiku-5.5'] });
+            const result = await runSdkTier(input(loaded, { scenarios: ['smoke'], storedLogin }));
+            expect(rec.sessions.length).toBeGreaterThanOrEqual(3); // the model list session, the static session, the scenario
+            expect(rec.sessions.every((s) => s.github?.token === STORED)).toBe(true);
+            expect(rec.clientOptions?.github).toBeUndefined();
+            expect(JSON.stringify(rec.connection?.env ?? {})).not.toContain(STORED);
+            // The model list session has no tool, no plugin and no prompt.
+            const listSession = rec.sessions[0];
+            expect(listSession.tools).toEqual({ excludedTools: [], availableTools: [] });
+            expect(listSession.plugins).toEqual({ directories: [] });
+            expect(rec.ops.filter((o) => o === 'send:s1')).toEqual([]);
+            expect(result.sdk?.model).toBe('claude-haiku-5.5');
+            expect(byId(result.checks)['sdk.runtime'].detail).toContain('cheapest-looking of 2 listed');
+            expect(byId(result.checks)['sdk.agents'].ok).toBe(true);
+        });
+        it('listModels() answering: no extra session, and the scenario sessions still carry the token', async () => {
+            const { loaded, rec } = fakeSdk({ models: ['auto', 'claude-haiku-5.5'] });
+            await runSdkTier(input(loaded, { scenarios: ['smoke'], storedLogin }));
+            expect(rec.ops.some((o) => o.startsWith('model.list:'))).toBe(false);
+            expect(rec.sessions.every((s) => s.github?.token === STORED)).toBe(true);
+        });
+        it('without a stored login (Windows, an OS keyring, COPILOT_GITHUB_TOKEN): no session token and no model list session', async () => {
+            const { loaded, rec } = fakeSdk({ serverNotAuthenticated: true });
+            const result = await runSdkTier(input(loaded, { scenarios: ['smoke'] }));
+            expect(rec.sessions.every((s) => s.github === undefined)).toBe(true);
+            expect(rec.ops.some((o) => o.startsWith('model.list:'))).toBe(false);
+            expect(result.sdk?.model).toBe('auto');
+        });
+        it('the lane scenarios get the real config dir to read the login from; without one they get none', async () => {
+            const dirs = [];
+            const runs = (over) => runSdkTier(input(fakeSdk().loaded, {
+                scenarios: ['factory-run', 'sandbox-lane'],
+                runFactory: async (f) => { dirs.push(f.userConfigDir); expect(JSON.stringify(f.env)).not.toContain(STORED); return laneRun(f.name, f.budget, f.maxCredits); },
+                runSandbox: async (s) => { dirs.push(s.userConfigDir); expect(JSON.stringify(s.env)).not.toContain(STORED); return laneRun('sandbox-lane', s.budget, s.maxCredits); },
+                ...over,
+            }));
+            await runs({ storedLogin });
+            expect(dirs).toEqual(['/real/.copilot', '/real/.copilot']);
+            dirs.length = 0;
+            await runs({});
+            expect(dirs).toEqual([undefined, undefined]);
+        });
     });
     it('the team scenario\'s workers get the session\'s model: --model first, else the cheap pick; runtime auto passes none', async () => {
         const seen = [];

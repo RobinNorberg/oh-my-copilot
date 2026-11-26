@@ -2,6 +2,12 @@
 
 All notable changes to oh-my-copilot will be documented in this file.
 
+## [Unreleased]
+
+### Fixed
+
+- `omg smoke copilot --tier 2` signs in on a Linux or macOS host without a keyring: its SDK sessions get the stored login token over the session RPC, its lane scenarios read it from the real Copilot config dir like `copilot_run`, and the model list comes from a tool-less session when the runtime itself has no login. Windows, keyring hosts and `COPILOT_GITHUB_TOKEN` are unchanged.
+
 # oh-my-copilot v5.33.0
 
 ## [5.33.0] - 2026-11-26
