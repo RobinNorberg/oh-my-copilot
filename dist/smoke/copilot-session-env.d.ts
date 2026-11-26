@@ -125,14 +125,18 @@ export declare function loginIdentity(userConfigDir: string): Record<string, unk
  */
 export declare function storedLoginToken(userConfigDir: string, platform?: NodeJS.Platform, now?: number): string | undefined;
 /**
- * The smoke's keyring-less login: the real config dir and its stored token
- * (storedLoginToken) when `env` has no COPILOT_GITHUB_TOKEN, else undefined.
- * The smoke home holds only the identity, so without this a keyring-less
- * host's smoke sessions and lanes are not signed in. Undefined on Windows,
- * with an OS keyring, and with COPILOT_GITHUB_TOKEN (which the smoke runtime
- * already reads from its env): those hosts keep today's behaviour. The token
- * goes only over the session RPC (`github.token`), never into an env, the
- * smoke home or a file.
+ * The smoke's keyring-less login: the real config dir and the token a lane
+ * would send over the session RPC (sessionGitHubToken), else undefined. The
+ * smoke home holds only the identity, so without this a keyring-less host's
+ * smoke sessions and lanes are not signed in. Undefined on Windows (the
+ * runtime reads COPILOT_GITHUB_TOKEN in any letter case there, and the login
+ * stays in Credential Manager) and with an exact-case COPILOT_GITHUB_TOKEN,
+ * which the runtime reads from its env itself. A COPILOT_GITHUB_TOKEN in
+ * another letter case, which a Linux or macOS runtime does not read, wins over
+ * the stored token, as it does for lanes (envValue). The tier attaches it only
+ * when the runtime turns out not signed in (listModelIds). The token goes only
+ * over the session RPC (`github.token`), never into an env, the smoke home
+ * or a file.
  */
 export declare function smokeStoredLogin(env: NodeJS.ProcessEnv, userConfigDir: string, platform?: NodeJS.Platform): {
     userConfigDir: string;

@@ -22,6 +22,7 @@ import {
   SMOKE_SET_ENV,
   STRIPPED_ENV_EXACT,
   STRIPPED_ENV_PREFIXES,
+  tier2StoredLogin,
   type SmokeDeps,
   type SmokeReport,
 } from '../copilot-smoke.js';
@@ -536,5 +537,42 @@ describe('CLI option mapping and output', () => {
     expect(text).toMatch(/✗.* b — bad/);
     expect(text).toContain('why');
     expect(text).toMatch(/FAIL: 1\/2 checks failed/);
+  });
+});
+
+describe('tier2StoredLogin (the tier 2 glue)', () => {
+  // Fake, not token-shaped.
+  const FAKE = 'fake-stored-credential-for-tier2';
+  let dir: string;
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'omg-tier2-login-'));
+    const me = { host: 'https://github.com', login: 'me' };
+    writeFileSync(join(dir, 'config.json'), JSON.stringify({ loggedInUsers: [me], lastLoggedInUser: me, authTokens: { 'https://github.com:me': FAKE } }));
+  });
+  afterEach(() => { rmSync(dir, { recursive: true, force: true }); vi.unstubAllEnvs(); });
+
+  it('reads the given real config dir and puts the token on the recording deny list (live and record)', () => {
+    for (const mode of [undefined, 'record'] as const) {
+      const denied: string[] = [];
+      expect(tier2StoredLogin({}, dir, mode, (v) => denied.push(...v), 'linux')).toEqual({ userConfigDir: dir, token: FAKE });
+      expect(denied).toEqual([FAKE]);
+    }
+  });
+
+  it('without an injected dir it uses getCopilotConfigDir() (COPILOT_HOME)', () => {
+    vi.stubEnv('COPILOT_HOME', dir);
+    expect(tier2StoredLogin({}, undefined, undefined, () => {}, 'linux')?.token).toBe(FAKE);
+  });
+
+  it('replay skips the stored login and denies nothing', () => {
+    const deny = vi.fn();
+    expect(tier2StoredLogin({}, dir, 'replay', deny, 'linux')).toBeUndefined();
+    expect(deny).not.toHaveBeenCalled();
+  });
+
+  it('nothing to deny without a stored login (Windows)', () => {
+    const deny = vi.fn();
+    expect(tier2StoredLogin({}, dir, undefined, deny, 'win32')).toBeUndefined();
+    expect(deny).not.toHaveBeenCalled();
   });
 });

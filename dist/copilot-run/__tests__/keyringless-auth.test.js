@@ -38,12 +38,20 @@ describe('smokeStoredLogin (the smoke harness)', () => {
         expect(smokeStoredLogin({ PATH: '/usr/bin' }, dir, 'linux')).toEqual({ userConfigDir: dir, token: STORED });
         expect(smokeStoredLogin({ COPILOT_GITHUB_TOKEN: '  ' }, dir, 'darwin')).toEqual({ userConfigDir: dir, token: STORED });
     });
-    it('nothing on Windows, with COPILOT_GITHUB_TOKEN (any case), or with a keyring (no plaintext token)', () => {
+    it('nothing on Windows, with an exact-case COPILOT_GITHUB_TOKEN (the runtime reads it), or with a keyring (no plaintext token)', () => {
         const dir = configDir(loggedIn({ authTokens: { 'https://github.com:me': STORED } }));
         expect(smokeStoredLogin({}, dir, 'win32')).toBeUndefined();
+        expect(smokeStoredLogin({ copilot_github_token: ENV_TOKEN }, dir, 'win32')).toBeUndefined();
         expect(smokeStoredLogin({ COPILOT_GITHUB_TOKEN: ENV_TOKEN }, dir, 'linux')).toBeUndefined();
-        expect(smokeStoredLogin({ copilot_github_token: ENV_TOKEN }, dir, 'linux')).toBeUndefined();
         expect(smokeStoredLogin({}, configDir(loggedIn({})), 'linux')).toBeUndefined();
+    });
+    it('another letter case on Linux/macOS (not read by the runtime) wins over the stored token, as for lanes', () => {
+        const dir = configDir(loggedIn({ authTokens: { 'https://github.com:me': STORED } }));
+        expect(smokeStoredLogin({ copilot_github_token: ENV_TOKEN }, dir, 'linux')).toEqual({ userConfigDir: dir, token: ENV_TOKEN });
+        const keyring = configDir(loggedIn({}));
+        expect(smokeStoredLogin({ Copilot_GitHub_Token: ENV_TOKEN }, keyring, 'darwin')).toEqual({ userConfigDir: keyring, token: ENV_TOKEN });
+        // The lane side resolves the same value (envValue, any case).
+        expect(sessionGitHubToken({ copilot_github_token: ENV_TOKEN }, { userConfigDir: dir, platform: 'linux' })).toBe(ENV_TOKEN);
     });
 });
 describe('storedLoginToken (fixture configs)', () => {

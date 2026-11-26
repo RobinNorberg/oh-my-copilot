@@ -21,6 +21,7 @@ import {
   resolveShimTarget,
   rethrowSdkStartError,
   runSdkTier,
+  listModelIds,
   sdkProtocolMismatch,
   runtimeCreditCap,
   scenarioPlaceholderDirs,
@@ -797,11 +798,58 @@ describe('runSdkTier credit cap, log windows, tree kill', () => {
       expect(byId(result.checks)['sdk.agents'].ok).toBe(true);
     });
 
-    it('listModels() answering: no extra session, and the scenario sessions still carry the token', async () => {
+    it('a signed-in runtime (OS keyring, COPILOT_GITHUB_TOKEN) with a plaintext entry: no token on any session, no list session', async () => {
       const { loaded, rec } = fakeSdk({ models: ['auto', 'claude-haiku-5.5'] });
-      await runSdkTier(input(loaded, { scenarios: ['smoke'], storedLogin }));
+      const result = await runSdkTier(input(loaded, { scenarios: ['smoke'], storedLogin }));
       expect(rec.ops.some((o) => o.startsWith('model.list:'))).toBe(false);
+      expect(rec.sessions.length).toBeGreaterThanOrEqual(2);
+      expect(rec.sessions.every((s) => s.github === undefined)).toBe(true);
+      expect(result.storedLoginUsed).toBeUndefined();
+    });
+
+    it('a listModels() failure other than "Not authenticated" attaches no token', async () => {
+      const { loaded, rec } = fakeSdk({ globalGet: true });
+      await runSdkTier(input(loaded, { scenarios: ['smoke'], storedLogin }));
+      expect(rec.sessions.every((s) => s.github === undefined)).toBe(true);
+      expect(rec.ops.some((o) => o.startsWith('model.list:'))).toBe(false);
+    });
+
+    it('a cassette client: the token is attached, but no model list session is created', async () => {
+      const { loaded, rec } = fakeSdk({ serverNotAuthenticated: true });
+      const result = await runSdkTier(input({ ...loaded, cassette: 'record' } as LoadedSdk, { scenarios: ['smoke'], storedLogin, model: 'claude-haiku-5.5' }));
+      expect(rec.ops.some((o) => o.startsWith('model.list:'))).toBe(false);
+      expect(rec.sessions.length).toBeGreaterThanOrEqual(2);
       expect(rec.sessions.every((s) => s.github?.token === STORED)).toBe(true);
+      expect(result.storedLoginUsed).toBe(true);
+    });
+
+    it('the token never appears in a check, the result or an events file, even when an error and an event carry it', async () => {
+      const leak = { type: 'assistant.message', data: { content: `I read ${STORED} from the config` } } as CopilotEvent;
+      const { loaded } = fakeSdk({ serverNotAuthenticated: true, events: { smoke: [...fixtureEvents('smoke'), leak] } });
+      let lanePath = '';
+      const result = await runSdkTier(input(loaded, {
+        scenarios: ['smoke', 'sandbox-lane'],
+        storedLogin,
+        runSandbox: async (sb) => {
+          lanePath = sb.eventsPath;
+          writeFileSync(sb.eventsPath, `${JSON.stringify({ type: 'tool.execution_complete', data: { result: STORED } })}
+`);
+          return { ...laneRun('sandbox-lane', sb.budget, sb.maxCredits), error: `lane failed: Bearer ${STORED}` } as never;
+        },
+      }));
+      expect(result.storedLoginUsed).toBe(true);
+      const smokeEvents = readFileSync(result.events.smoke!, 'utf-8');
+      expect(smokeEvents).toContain('I read [redacted] from the config');
+      expect(smokeEvents).not.toContain(STORED);
+      expect(readFileSync(lanePath, 'utf-8')).not.toContain(STORED);
+      expect(result.checks.some((c) => c.detail.includes('lane failed: Bearer [redacted]'))).toBe(true);
+      expect(JSON.stringify(result)).not.toContain(STORED);
+    });
+
+    it('a thrown tier error is scrubbed', async () => {
+      const { loaded } = fakeSdk({ serverNotAuthenticated: true });
+      const run = runSdkTier(input(loaded, { scenarios: ['sandbox-lane'], storedLogin, runSandbox: async () => { throw new Error(`boom ${STORED}`); } }));
+      await expect(run).rejects.toThrow('boom [redacted]');
     });
 
     it('without a stored login (Windows, an OS keyring, COPILOT_GITHUB_TOKEN): no session token and no model list session', async () => {
@@ -812,9 +860,9 @@ describe('runSdkTier credit cap, log windows, tree kill', () => {
       expect(result.sdk?.model).toBe('auto');
     });
 
-    it('the lane scenarios get the real config dir to read the login from; without one they get none', async () => {
+    it('the lane scenarios get the real config dir only when the runtime is not signed in', async () => {
       const dirs: Array<string | undefined> = [];
-      const runs = (over: Partial<SdkTierInput>) => runSdkTier(input(fakeSdk().loaded, {
+      const runs = (over: Partial<SdkTierInput>, signedIn = false) => runSdkTier(input(fakeSdk({ serverNotAuthenticated: !signedIn }).loaded, {
         scenarios: ['factory-run', 'sandbox-lane'],
         runFactory: async (f) => { dirs.push(f.userConfigDir); expect(JSON.stringify(f.env)).not.toContain(STORED); return laneRun(f.name, f.budget, f.maxCredits) as never; },
         runSandbox: async (s) => { dirs.push(s.userConfigDir); expect(JSON.stringify(s.env)).not.toContain(STORED); return laneRun('sandbox-lane', s.budget, s.maxCredits) as never; },
@@ -825,6 +873,32 @@ describe('runSdkTier credit cap, log windows, tree kill', () => {
       dirs.length = 0;
       await runs({});
       expect(dirs).toEqual([undefined, undefined]);
+      dirs.length = 0;
+      await runs({ storedLogin }, true);
+      expect(dirs).toEqual([undefined, undefined]);
+    });
+
+    it('a model list createSession that times out and resolves later is closed', async () => {
+      vi.useFakeTimers();
+      try {
+        let resolveLate: (s: SdkSessionLike) => void = () => {};
+        const ops: string[] = [];
+        const client = {
+          listModels: async () => { throw new Error('Not authenticated'); },
+          createSession: () => new Promise<SdkSessionLike>((r) => { resolveLate = r; }),
+          deleteSession: async (id: string) => { ops.push(`delete:${id}`); },
+        } as unknown as Parameters<typeof listModelIds>[0];
+        const listing = listModelIds(client, { storedLogin, projectDir: parent, keepHome: false }, false);
+        await vi.advanceTimersByTimeAsync(31_000);
+        const out = await listing;
+        expect(out.models.ok).toBe(false);
+        expect(out.login).toEqual(storedLogin);
+        resolveLate({ sessionId: 'late', disconnect: async () => { ops.push('disconnect:late'); }, rpc: {} } as unknown as SdkSessionLike);
+        await vi.advanceTimersByTimeAsync(0);
+        expect(ops).toEqual(['disconnect:late', 'delete:late']);
+      } finally {
+        vi.useRealTimers();
+      }
     });
   });
 

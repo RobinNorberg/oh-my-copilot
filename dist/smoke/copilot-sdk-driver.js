@@ -33,6 +33,7 @@ import { chooseModel, CLI_SCENARIOS, FACTORY_RUN_SCENARIOS, CREDIT_CAP_SKIP_DETA
 import { hasExited, killProcessTree } from './process-utils.js';
 import { buildSessionEnv } from './copilot-session-env.js';
 import { childEnv } from '../utils/windows-search.js';
+import { scrubTokens } from '../copilot-run/sandbox.js';
 import { withCassette } from './replay/handler.js';
 import { cassetteEnv, finalizeRecording, hasCassette, keepFailedParts, platformTag, replayOutcome, scenarioCassetteDir, scenarioStateDir, storedRunOrder, } from './replay/run.js';
 /**
@@ -557,8 +558,44 @@ function isCliScenario(name) {
     return CLI_SCENARIOS.includes(name);
 }
 export const RUNTIME_WEDGED_DETAIL = 'skipped: runtime unresponsive after a scenario timeout';
+/**
+ * The SDK tier. With a stored login, its token is scrubbed (scrubTokens: the exact value and GitHub token shapes)
+ * from everything the tier returns or writes itself: check ids, details and evidence, `skipped`, a thrown error,
+ * and every scenario's events file (lanes, CLI and chain scenarios included), so neither the printed report, the
+ * `--json` report nor a `--keep-home` events file carries it, whatever a session or a shell tool echoed.
+ */
 export async function runSdkTier(input) {
+    const token = input.storedLogin?.token;
+    if (!token)
+        return runSdkTierUnscrubbed(input);
+    const scrub = (text) => scrubTokens(text, [token]);
     const events = {};
+    try {
+        const result = await runSdkTierUnscrubbed(input, events);
+        return {
+            ...result,
+            checks: result.checks.map((c) => ({ ...c, id: scrub(c.id), detail: scrub(c.detail), ...(c.evidence !== undefined ? { evidence: scrub(c.evidence) } : {}) })),
+            ...(result.skipped !== undefined ? { skipped: scrub(result.skipped) } : {}),
+        };
+    }
+    catch (err) {
+        throw new Error(scrub(errText(err)));
+    }
+    finally {
+        for (const path of Object.values(events)) {
+            if (!path)
+                continue;
+            try {
+                const text = readFileSync(path, 'utf-8');
+                const clean = scrub(text);
+                if (clean !== text)
+                    writeFileSync(path, clean);
+            }
+            catch { /* not written */ }
+        }
+    }
+}
+async function runSdkTierUnscrubbed(input, events = {}) {
     let loaded;
     try {
         loaded = await input.loadSdk();
@@ -604,6 +641,7 @@ export async function runSdkTier(input) {
     let runOrder = [];
     let pid;
     let wedged = false;
+    let login;
     try {
         try {
             await withTimeout(client.start().catch(rethrowSdkStartError), START_TIMEOUT_MS, 'client.start()');
@@ -618,12 +656,20 @@ export async function runSdkTier(input) {
             sdkInfo.runtimeVersion = typeof status.value.version === 'string' ? status.value.version : null;
             sdkInfo.protocolVersion = typeof status.value.protocolVersion === 'number' ? status.value.protocolVersion : null;
         }
-        const models = await listModelIds(client, input);
+        const { models, login: attached } = await listModelIds(client, input, !!loaded.cassette);
+        // The stored login decision, made once before the first session: the static session, the scenario sessions and
+        // the lane scenarios' userConfigDir all follow it.
+        login = attached;
+        const sessionInput = { ...input };
+        if (login)
+            sessionInput.storedLogin = login;
+        else
+            delete sessionInput.storedLogin;
         const choice = chooseModel(models.ok ? models.value : [], input.model);
         sdkInfo.model = choice.label;
         const modelLabel = `${choice.label} (${choice.note})`;
         checks.push(evaluateSdkRuntime(status, input.binVersion, modelLabel));
-        checks.push(...await staticChecks(client, input, loaded, bin));
+        checks.push(...await staticChecks(client, sessionInput, loaded, bin));
         let stopReason;
         // chain rewrites the shared sandbox (route table, a project skill): run it
         // last. team runs before it, so its worker sessions never meet that route
@@ -730,7 +776,7 @@ export async function runSdkTier(input) {
                                 env,
                                 projectDir: input.projectDir,
                                 home: input.home,
-                                ...(input.storedLogin ? { userConfigDir: input.storedLogin.userConfigDir } : {}),
+                                ...(login ? { userConfigDir: login.userConfigDir } : {}),
                                 timeoutMs: input.timeoutMs,
                                 maxCredits: input.maxCredits,
                                 budget: input.maxCredits - total.credits,
@@ -747,14 +793,14 @@ export async function runSdkTier(input) {
                                     env,
                                     projectDir: input.projectDir,
                                     home: input.home,
-                                    ...(input.storedLogin ? { userConfigDir: input.storedLogin.userConfigDir } : {}),
+                                    ...(login ? { userConfigDir: login.userConfigDir } : {}),
                                     timeoutMs: input.timeoutMs,
                                     maxCredits: input.maxCredits,
                                     budget: input.maxCredits - total.credits,
                                     eventsPath: path,
                                     ...(choice.model ? { model: choice.model } : {}),
                                 })
-                                : await runScenario(client, input, name, choice.model, modelLabel, path, input.maxCredits - total.credits);
+                                : await runScenario(client, sessionInput, name, choice.model, modelLabel, path, input.maxCredits - total.credits);
             entries.push({ name, run, start });
             const cost = runCost(run);
             total.premiumRequests += cost.premiumRequests;
@@ -822,7 +868,7 @@ export async function runSdkTier(input) {
                 : recordCheck(tape, entry.name, { model: input.model, maxCredits: input.maxCredits, cost: runCost(entry.run), runOrder }, ran.map((e) => e.name)));
         }
     }
-    return { checks, sdk: sdkInfo, cost: total, events, ...(tape?.mode === 'replay' ? { replay } : {}) };
+    return { checks, sdk: sdkInfo, cost: total, events, ...(tape?.mode === 'replay' ? { replay } : {}), ...(login ? { storedLoginUsed: true } : {}) };
 }
 /** Where a scenario's unwritten recording was kept, for a check's detail. */
 function keptAt(run, name) {
@@ -1101,37 +1147,45 @@ function sessionLogin(input) {
     return input.storedLogin ? { github: { token: input.storedLogin.token } } : {};
 }
 /**
- * The model ids for chooseModel: listModels(), and when that fails on a keyring-less host, the models of a
- * throwaway session (no tools, no plugin, no prompt) signed in with the stored login token. That runtime has no
- * login of its own and the token stays out of its env, so its server-level models.list answers "Not authenticated".
+ * The model ids for chooseModel, and the one decision whether this client's sessions get the stored login: only
+ * when the runtime itself is not signed in, i.e. its no-session listModels() answers "Not authenticated". A runtime
+ * signed in from an OS keyring or COPILOT_GITHUB_TOKEN keeps its own login, so a stale plaintext entry left from a
+ * keyring-less past never overrides it. With the login, the models come from a throwaway session (no tools, no
+ * plugin, no prompt) signed in with the token; a cassette client skips that session (its model.list is a miss too).
  */
-async function listModelIds(client, input) {
+export async function listModelIds(client, input, cassette) {
     const server = await rpc(() => client.listModels(), 'listModels()');
     if (server.ok)
-        return { ok: true, value: server.value.map((m) => String(m.id)) };
-    if (!input.storedLogin)
-        return server;
+        return { models: { ok: true, value: server.value.map((m) => String(m.id)) } };
+    const login = input.storedLogin && /not authenticated/i.test(server.error) ? input.storedLogin : undefined;
+    if (!login || cassette)
+        return { models: server, ...(login ? { login } : {}) };
     let session;
+    let pending;
     try {
-        session = await withTimeout(client.createSession({
+        pending = client.createSession({
             permissions: { onRequest: () => reject('omg smoke: the model list session grants nothing') },
             plugins: { directories: [] },
             workingDirectory: input.projectDir,
             mcp: { disabledServers: ['github-mcp-server'] },
             tools: { excludedTools: [], availableTools: [] },
-            ...sessionLogin(input),
-        }), RPC_TIMEOUT_MS, 'createSession()');
+            ...sessionLogin({ storedLogin: login }),
+        });
+        session = await withTimeout(pending, RPC_TIMEOUT_MS, 'createSession()');
         const model = session.rpc.model;
         if (typeof model?.list !== 'function')
-            return server;
+            return { models: server, login };
         const listed = await rpc(() => model.list(), 'session.model.list');
         if (!listed.ok)
-            return listed;
+            return { models: listed, login };
         const list = Array.isArray(listed.value?.list) ? listed.value.list : [];
-        return { ok: true, value: list.map((m) => (m && typeof m === 'object' ? m.id : undefined)).filter((id) => typeof id === 'string') };
+        return { models: { ok: true, value: list.map((m) => (m && typeof m === 'object' ? m.id : undefined)).filter((id) => typeof id === 'string') }, login };
     }
     catch (err) {
-        return { ok: false, error: errText(err) };
+        // A createSession that timed out and resolves later is closed then; a late rejection is swallowed here.
+        if (!session && pending)
+            void pending.then((late) => closeSession(client, late, input.keepHome), () => undefined);
+        return { models: { ok: false, error: errText(err) }, login };
     }
     finally {
         if (session)

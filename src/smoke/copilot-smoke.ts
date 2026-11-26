@@ -888,11 +888,7 @@ async function runTier2(
   const base = run ? cassetteEnv(ctx.env, run, scenarioPlaceholderDirs({ root: ctx.root, home, projectDir, remoteDir })) : ctx.env;
   const env = buildSessionEnv(base, home, { session: true, hasLogin: identity.loggedInUsers !== undefined });
   env.OMC_GIT_GUARDRAILS = '1';
-  // A keyring-less host: the stored token reaches the sessions over the session RPC and the lanes read it from the
-  // real config dir, never from the env or the home. Replay stays credential-free.
-  const storedLogin = run?.mode === 'replay' ? undefined : smokeStoredLogin(ctx.env, ctx.deps.userConfigDir ?? getCopilotConfigDir());
-  // A recording (cassette record mode) never carries the credential.
-  if (storedLogin) addRecordingDenyLiterals([storedLogin.token]);
+  const storedLogin = tier2StoredLogin(ctx.env, ctx.deps.userConfigDir, run?.mode);
   writeFileSync(join(home, 'config.json'), `${JSON.stringify({ ...identity, trustedFolders: [projectDir] }, null, 2)}\n`);
 
   let agentFiles: string[] = [];
@@ -928,5 +924,29 @@ async function runTier2(
   if (Object.keys(result.events).length) artifacts.events = result.events;
   const logs = readDebugLogs(join(home, 'logs'));
   if (logs.path) artifacts.debugLog = logs.path;
+  // The tier scrubs the token from what the smoke writes (its events files); the runtime's own logs and session
+  // state under the kept home are not the smoke's to rewrite.
+  if (opts.keepHome && result.storedLoginUsed) process.stderr.write(`${KEPT_HOME_LOGIN_NOTE} ${home}
+`);
   return result;
+}
+
+export const KEPT_HOME_LOGIN_NOTE = 'omg smoke: the sessions used the stored login token (keyring-less host); the runtime logs and session state in the kept home may contain it:';
+
+/**
+ * The tier 2 stored login (smokeStoredLogin) of the real Copilot config dir (`configDir`, else
+ * getCopilotConfigDir()), and its token on the recording deny list (a cassette recording never carries it).
+ * None in replay, which stays credential-free.
+ */
+export function tier2StoredLogin(
+  env: NodeJS.ProcessEnv,
+  configDir: string | undefined,
+  mode: 'record' | 'replay' | undefined,
+  deny: (values: Iterable<string>) => void = addRecordingDenyLiterals,
+  platform: NodeJS.Platform = process.platform,
+): { userConfigDir: string; token: string } | undefined {
+  if (mode === 'replay') return undefined;
+  const login = smokeStoredLogin(env, configDir ?? getCopilotConfigDir(), platform);
+  if (login) deny([login.token]);
+  return login;
 }

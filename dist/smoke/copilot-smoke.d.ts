@@ -195,4 +195,14 @@ export declare function liveRunRefusal(tier: SmokeTier, scenarios: Scenario[] | 
  */
 export declare function cassetteOptionsError(opts: Pick<Partial<SmokeOptions>, 'tier' | 'scenarios' | 'model' | 'record' | 'recordOverwrite' | 'replay' | 'replayStrict'>, env?: NodeJS.ProcessEnv): string | null;
 export declare function runCopilotSmoke(input?: Partial<SmokeOptions>): Promise<SmokeReport>;
+export declare const KEPT_HOME_LOGIN_NOTE = "omg smoke: the sessions used the stored login token (keyring-less host); the runtime logs and session state in the kept home may contain it:";
+/**
+ * The tier 2 stored login (smokeStoredLogin) of the real Copilot config dir (`configDir`, else
+ * getCopilotConfigDir()), and its token on the recording deny list (a cassette recording never carries it).
+ * None in replay, which stays credential-free.
+ */
+export declare function tier2StoredLogin(env: NodeJS.ProcessEnv, configDir: string | undefined, mode: 'record' | 'replay' | undefined, deny?: (values: Iterable<string>) => void, platform?: NodeJS.Platform): {
+    userConfigDir: string;
+    token: string;
+} | undefined;
 //# sourceMappingURL=copilot-smoke.d.ts.map
