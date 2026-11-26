@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { homedir, tmpdir } from 'os';
 import { join } from 'path';
@@ -14,7 +14,11 @@ const tempDir = (prefix: string) => {
   dirs.push(dir);
   return dir;
 };
+// Hermetic: tier 2 here runs without deps.userConfigDir, so its config-dir fallback (tier2StoredLogin) reads an
+// empty temp dir, never the developer's real Copilot config and its stored login.
+beforeEach(() => { vi.stubEnv('COPILOT_HOME', tempDir('no-real-copilot-home-')); });
 afterEach(() => {
+  vi.unstubAllEnvs();
   for (const dir of dirs) rmSync(dir, { recursive: true, force: true });
   dirs.length = 0;
 });

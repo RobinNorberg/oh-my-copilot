@@ -747,47 +747,59 @@ async function runTier2(ctx, bin, binVersion, packageVersion, opts, scenarios, c
         agentFiles = readdirSync(join(ctx.root, 'agents')).filter((f) => f.endsWith('.md')).sort();
     }
     catch { /* evaluated as 0 */ }
-    const result = await runSdkTier({
-        root: ctx.root,
-        bin,
-        binVersion,
-        packageVersion,
-        home,
-        projectDir,
-        remoteDir,
-        env,
-        scenarios,
-        model: opts.model,
-        timeoutMs: opts.timeoutMs ?? DEFAULT_SCENARIO_TIMEOUT_MS,
-        maxCredits: opts.maxCredits ?? DEFAULT_MAX_CREDITS,
-        keepHome: !!opts.keepHome,
-        loadSdk: ctx.deps.loadSdk ?? (() => loadCopilotSdk(base, ctx.spawnSyncFn)),
-        loadExpectedToolCount: ctx.deps.loadExpectedToolCount ?? defaultExpectedToolCount,
-        spawnSync: ctx.spawnSyncFn,
-        skillDirs: countDirsWith(join(ctx.root, 'skills'), 'SKILL.md'),
-        agentFiles,
-        mcpServer: mcpServerNames(ctx.root)[0] ?? 't',
-        runChain: ctx.deps.runChain ?? runChainScenario,
-        runTeam: ctx.deps.runTeam ?? runTeamScenario,
-        runCli: ctx.deps.runCli ?? runCliScenario,
-        runFactory: ctx.deps.runFactory ?? runFactoryRunScenario,
-        runSandbox: ctx.deps.runSandbox ?? runSandboxLaneScenario,
-        ...(run ? { cassette: run } : {}),
-        ...(storedLogin ? { storedLogin } : {}),
-    });
+    let result;
+    try {
+        result = await runSdkTier({
+            root: ctx.root,
+            bin,
+            binVersion,
+            packageVersion,
+            home,
+            projectDir,
+            remoteDir,
+            env,
+            scenarios,
+            model: opts.model,
+            timeoutMs: opts.timeoutMs ?? DEFAULT_SCENARIO_TIMEOUT_MS,
+            maxCredits: opts.maxCredits ?? DEFAULT_MAX_CREDITS,
+            keepHome: !!opts.keepHome,
+            loadSdk: ctx.deps.loadSdk ?? (() => loadCopilotSdk(base, ctx.spawnSyncFn)),
+            loadExpectedToolCount: ctx.deps.loadExpectedToolCount ?? defaultExpectedToolCount,
+            spawnSync: ctx.spawnSyncFn,
+            skillDirs: countDirsWith(join(ctx.root, 'skills'), 'SKILL.md'),
+            agentFiles,
+            mcpServer: mcpServerNames(ctx.root)[0] ?? 't',
+            runChain: ctx.deps.runChain ?? runChainScenario,
+            runTeam: ctx.deps.runTeam ?? runTeamScenario,
+            runCli: ctx.deps.runCli ?? runCliScenario,
+            runFactory: ctx.deps.runFactory ?? runFactoryRunScenario,
+            runSandbox: ctx.deps.runSandbox ?? runSandboxLaneScenario,
+            ...(run ? { cassette: run } : {}),
+            ...(storedLogin ? { storedLogin } : {}),
+        });
+    }
+    finally {
+        // The tier scrubs the token from what the smoke writes (its events files); the runtime's own logs and session
+        // state under the kept home are not the smoke's to rewrite.
+        if (keptHomeLoginNote(!!opts.keepHome, !!storedLogin, result))
+            process.stderr.write(`${KEPT_HOME_LOGIN_NOTE} ${home}
+`);
+    }
     if (Object.keys(result.events).length)
         artifacts.events = result.events;
     const logs = readDebugLogs(join(home, 'logs'));
     if (logs.path)
         artifacts.debugLog = logs.path;
-    // The tier scrubs the token from what the smoke writes (its events files); the runtime's own logs and session
-    // state under the kept home are not the smoke's to rewrite.
-    if (opts.keepHome && result.storedLoginUsed)
-        process.stderr.write(`${KEPT_HOME_LOGIN_NOTE} ${home}
-`);
     return result;
 }
-export const KEPT_HOME_LOGIN_NOTE = 'omg smoke: the sessions used the stored login token (keyring-less host); the runtime logs and session state in the kept home may contain it:';
+export const KEPT_HOME_LOGIN_NOTE = 'omg smoke: the sessions may have used the stored login token (keyring-less host); the runtime logs and session state in the kept home may contain it:';
+/**
+ * Whether runTier2 prints KEPT_HOME_LOGIN_NOTE: only with `--keep-home` and a stored login. A finished tier says
+ * whether it attached the login (storedLoginUsed); a thrown one (`result` undefined) may have, so it prints too.
+ */
+export function keptHomeLoginNote(keepHome, storedLogin, result) {
+    return keepHome && storedLogin && (result === undefined || !!result.storedLoginUsed);
+}
 /**
  * The tier 2 stored login (smokeStoredLogin) of the real Copilot config dir (`configDir`, else
  * getCopilotConfigDir()), and its token on the recording deny list (a cassette recording never carries it).

@@ -5,7 +5,7 @@ import { basename, dirname, join } from 'path';
 import { PassThrough } from 'stream';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { resolveCopilotBinary, parseCopilotVersion } from '../copilot-binary.js';
-import { buildSessionEnv, DEFAULT_SMOKE_PROMPT, DELEGATE_SMOKE_PROMPT, extractJsonArray, LOGIN_SHADOWING_TOKENS, loginIdentity, resolveDefaultPluginRoot, resolvePackageRoot, runCopilotSmoke, SESSION_SET_ENV, sessionSandboxFlags, SMOKE_SET_ENV, STRIPPED_ENV_EXACT, STRIPPED_ENV_PREFIXES, tier2StoredLogin, } from '../copilot-smoke.js';
+import { buildSessionEnv, DEFAULT_SMOKE_PROMPT, DELEGATE_SMOKE_PROMPT, extractJsonArray, LOGIN_SHADOWING_TOKENS, loginIdentity, resolveDefaultPluginRoot, resolvePackageRoot, runCopilotSmoke, SESSION_SET_ENV, sessionSandboxFlags, SMOKE_SET_ENV, STRIPPED_ENV_EXACT, STRIPPED_ENV_PREFIXES, keptHomeLoginNote, tier2StoredLogin, } from '../copilot-smoke.js';
 import { formatSmokeReport, smokeCopilotCommand, smokeExitCode, toSmokeOptions } from '../../cli/commands/smoke.js';
 import { hasExited, killProcessTree, runAsync } from '../process-utils.js';
 const FIXTURES = join(__dirname, 'fixtures');
@@ -31,8 +31,12 @@ beforeEach(() => {
     write(fakeBin, '');
     userConfigDir = join(root, 'user-copilot');
     write(join(userConfigDir, 'config.json'), '// managed\n{"loggedInUsers":[{"host":"https://github.com","login":"me"}],"lastLoggedInUser":{"host":"https://github.com","login":"me"},"trustedFolders":["/secret"]}');
+    // Hermetic: a path that falls back to getCopilotConfigDir() (tier2StoredLogin, loginIdentity without
+    // deps.userConfigDir) reads an empty temp dir, never the developer's real Copilot config and its stored login.
+    vi.stubEnv('COPILOT_HOME', join(root, 'no-real-copilot-home'));
 });
 afterEach(() => {
+    vi.unstubAllEnvs();
     rmSync(root, { recursive: true, force: true });
 });
 /** spawnSync fake: node --verify scripts, copilot --version/plugin list/skill list, git, taskkill. */
@@ -504,6 +508,14 @@ describe('tier2StoredLogin (the tier 2 glue)', () => {
         const deny = vi.fn();
         expect(tier2StoredLogin({}, dir, 'replay', deny, 'linux')).toBeUndefined();
         expect(deny).not.toHaveBeenCalled();
+    });
+    it('the kept-home note: with --keep-home and a stored login, when the tier attached it or threw; else never', () => {
+        expect(keptHomeLoginNote(true, true, { storedLoginUsed: true })).toBe(true);
+        expect(keptHomeLoginNote(true, true, undefined)).toBe(true); // the tier threw: it may have attached the login
+        expect(keptHomeLoginNote(true, true, {})).toBe(false); // the runtime was signed in itself
+        expect(keptHomeLoginNote(true, false, undefined)).toBe(false);
+        expect(keptHomeLoginNote(false, true, undefined)).toBe(false);
+        expect(keptHomeLoginNote(false, true, { storedLoginUsed: true })).toBe(false);
     });
     it('nothing to deny without a stored login (Windows)', () => {
         const deny = vi.fn();

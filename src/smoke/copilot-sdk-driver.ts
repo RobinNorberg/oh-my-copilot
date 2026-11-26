@@ -23,7 +23,7 @@
 
 import { spawnSync as nodeSpawnSync } from 'child_process';
 import { randomBytes, randomUUID } from 'crypto';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'fs';
 import { createRequire } from 'module';
 import { tmpdir, userInfo } from 'os';
 import { dirname, isAbsolute, join, relative, resolve } from 'path';
@@ -807,7 +807,9 @@ type ScenarioEntry =
 export async function runSdkTier(input: SdkTierInput): Promise<SdkTierResult> {
   const token = input.storedLogin?.token;
   if (!token) return runSdkTierUnscrubbed(input);
-  const scrub = (text: string) => scrubTokens(text, [token]);
+  // As secretValues does: a value under 8 characters is no exact literal (it would rewrite ordinary text); the
+  // token-shape patterns still apply.
+  const scrub = (text: string) => scrubTokens(text, token.length >= 8 ? [token] : []);
   const events: SdkTierResult['events'] = {};
   try {
     const result = await runSdkTierUnscrubbed(input, events);
@@ -821,11 +823,19 @@ export async function runSdkTier(input: SdkTierInput): Promise<SdkTierResult> {
   } finally {
     for (const path of Object.values(events)) {
       if (!path) continue;
+      let text: string;
+      try { text = readFileSync(path, 'utf-8'); } catch { continue; /* not written */ }
+      const clean = scrub(text);
+      if (clean === text) continue;
+      // Write beside, then rename over: a failed write never leaves a truncated events file. Best effort: a
+      // failure here never masks the tier's own result or error.
+      const tmp = `${path}.tmp`;
       try {
-        const text = readFileSync(path, 'utf-8');
-        const clean = scrub(text);
-        if (clean !== text) writeFileSync(path, clean);
-      } catch { /* not written */ }
+        writeFileSync(tmp, clean);
+        renameSync(tmp, path);
+      } catch {
+        try { rmSync(tmp, { force: true }); } catch { /* best effort */ }
+      }
     }
   }
 }
@@ -902,7 +912,12 @@ async function runSdkTierUnscrubbed(input: SdkTierInput, events: SdkTierResult['
     const choice = chooseModel(models.ok ? models.value : [], input.model);
     sdkInfo.model = choice.label;
     const modelLabel = `${choice.label} (${choice.note})`;
-    checks.push(evaluateSdkRuntime(status, input.binVersion, modelLabel));
+    const runtime = evaluateSdkRuntime(status, input.binVersion, modelLabel);
+    // Auth hints (runSdkTier scrubs the token from them): a later "Not authenticated" with the login attached points
+    // at a stale stored entry; a login left out says what listModels() answered instead.
+    if (login) runtime.detail += ' (stored login attached)';
+    else if (input.storedLogin && !models.ok) runtime.detail += `; stored login not used: listModels() answered ${excerpt(models.error, 160)}`;
+    checks.push(runtime);
 
     checks.push(...await staticChecks(client, sessionInput, loaded, bin));
 

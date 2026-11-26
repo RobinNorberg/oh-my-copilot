@@ -24795,7 +24795,7 @@ var init_run = __esm({
 // src/smoke/copilot-sdk-driver.ts
 import { spawnSync as nodeSpawnSync } from "child_process";
 import { randomBytes as randomBytes2, randomUUID as randomUUID17 } from "crypto";
-import { existsSync as existsSync43, mkdirSync as mkdirSync12, mkdtempSync as mkdtempSync4, readdirSync as readdirSync17, readFileSync as readFileSync30, realpathSync as realpathSync10, rmSync as rmSync7, statSync as statSync9, writeFileSync as writeFileSync11 } from "fs";
+import { existsSync as existsSync43, mkdirSync as mkdirSync12, mkdtempSync as mkdtempSync4, readdirSync as readdirSync17, readFileSync as readFileSync30, realpathSync as realpathSync10, renameSync as renameSync5, rmSync as rmSync7, statSync as statSync9, writeFileSync as writeFileSync11 } from "fs";
 import { createRequire as createRequire2 } from "module";
 import { tmpdir as tmpdir7, userInfo as userInfo3 } from "os";
 import { dirname as dirname38, isAbsolute as isAbsolute15, join as join50, relative as relative13, resolve as resolve18 } from "path";
@@ -30707,7 +30707,7 @@ async function processCliWorkerVerdictsUnderLock(teamName, cwd, expectedInstance
   };
   const { rename: rename7 } = await import("fs/promises");
   const {
-    renameSync: renameSync6,
+    renameSync: renameSync7,
     readFileSync: readFileSync35,
     existsSync: fsExistsSync
   } = await import("fs");
@@ -30799,7 +30799,7 @@ async function processCliWorkerVerdictsUnderLock(teamName, cwd, expectedInstance
             if (fsExistsSync(outputFile)) {
               const stalePath = `${processingOutputFile}.stale`;
               try {
-                renameSync6(processingOutputFile, stalePath);
+                renameSync7(processingOutputFile, stalePath);
               } catch {
               }
             } else {
@@ -30809,7 +30809,7 @@ async function processCliWorkerVerdictsUnderLock(teamName, cwd, expectedInstance
           }
           const raw = readFileSync35(outputFile, "utf-8");
           parseCliWorkerVerdict(raw);
-          renameSync6(outputFile, processingOutputFile);
+          renameSync7(outputFile, processingOutputFile);
           verdictFile = processingOutputFile;
         });
       }
@@ -32969,7 +32969,7 @@ import {
   existsSync as existsSync49,
   mkdirSync as mkdirSync14,
   readFileSync as readFileSync34,
-  renameSync as renameSync5,
+  renameSync as renameSync6,
   unlinkSync as unlinkSync10,
   writeFileSync as writeFileSync13
 } from "fs";
@@ -34700,7 +34700,7 @@ function writeJobToDiskUnlocked(jobId, job, jobsDir) {
   const tempPath = `${targetPath}.tmp.${process.pid}.${randomUUID19()}`;
   try {
     writeFileSync13(tempPath, JSON.stringify(job), { encoding: "utf-8", mode: 384 });
-    renameSync5(tempPath, targetPath);
+    renameSync6(tempPath, targetPath);
   } finally {
     try {
       unlinkSync10(tempPath);

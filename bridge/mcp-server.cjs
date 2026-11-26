@@ -52635,7 +52635,7 @@ function isCliScenario(name) {
 async function runSdkTier(input2) {
   const token = input2.storedLogin?.token;
   if (!token) return runSdkTierUnscrubbed(input2);
-  const scrub = (text3) => scrubTokens(text3, [token]);
+  const scrub = (text3) => scrubTokens(text3, token.length >= 8 ? [token] : []);
   const events = {};
   try {
     const result = await runSdkTierUnscrubbed(input2, events);
@@ -52649,11 +52649,23 @@ async function runSdkTier(input2) {
   } finally {
     for (const path15 of Object.values(events)) {
       if (!path15) continue;
+      let text3;
       try {
-        const text3 = (0, import_fs55.readFileSync)(path15, "utf-8");
-        const clean = scrub(text3);
-        if (clean !== text3) (0, import_fs55.writeFileSync)(path15, clean);
+        text3 = (0, import_fs55.readFileSync)(path15, "utf-8");
       } catch {
+        continue;
+      }
+      const clean = scrub(text3);
+      if (clean === text3) continue;
+      const tmp = `${path15}.tmp`;
+      try {
+        (0, import_fs55.writeFileSync)(tmp, clean);
+        (0, import_fs55.renameSync)(tmp, path15);
+      } catch {
+        try {
+          (0, import_fs55.rmSync)(tmp, { force: true });
+        } catch {
+        }
       }
     }
   }
@@ -52724,7 +52736,10 @@ async function runSdkTierUnscrubbed(input2, events = {}) {
     const choice = chooseModel(models.ok ? models.value : [], input2.model);
     sdkInfo.model = choice.label;
     const modelLabel = `${choice.label} (${choice.note})`;
-    checks.push(evaluateSdkRuntime(status, input2.binVersion, modelLabel));
+    const runtime = evaluateSdkRuntime(status, input2.binVersion, modelLabel);
+    if (login3) runtime.detail += " (stored login attached)";
+    else if (input2.storedLogin && !models.ok) runtime.detail += `; stored login not used: listModels() answered ${excerpt(models.error, 160)}`;
+    checks.push(runtime);
     checks.push(...await staticChecks(client, sessionInput, loaded2, bin));
     let stopReason;
     const order = ["team", "chain"];
@@ -90085,6 +90100,7 @@ __export(copilot_smoke_exports, {
   evaluateTier1: () => evaluateTier1,
   extractJsonArray: () => extractJsonArray,
   isStrippedEnvKey: () => isStrippedEnvKey,
+  keptHomeLoginNote: () => keptHomeLoginNote,
   liveRunRefusal: () => liveRunRefusal,
   loginIdentity: () => loginIdentity,
   resolveDefaultPluginRoot: () => resolveDefaultPluginRoot,
@@ -90666,40 +90682,47 @@ async function runTier2(ctx, bin, binVersion, packageVersion, opts, scenarios, c
     agentFiles = (0, import_fs126.readdirSync)((0, import_path147.join)(ctx.root, "agents")).filter((f) => f.endsWith(".md")).sort();
   } catch {
   }
-  const result = await runSdkTier({
-    root: ctx.root,
-    bin,
-    binVersion,
-    packageVersion,
-    home,
-    projectDir,
-    remoteDir,
-    env: env2,
-    scenarios,
-    model: opts.model,
-    timeoutMs: opts.timeoutMs ?? DEFAULT_SCENARIO_TIMEOUT_MS,
-    maxCredits: opts.maxCredits ?? DEFAULT_MAX_CREDITS2,
-    keepHome: !!opts.keepHome,
-    loadSdk: ctx.deps.loadSdk ?? (() => loadCopilotSdk(base, ctx.spawnSyncFn)),
-    loadExpectedToolCount: ctx.deps.loadExpectedToolCount ?? defaultExpectedToolCount,
-    spawnSync: ctx.spawnSyncFn,
-    skillDirs: countDirsWith((0, import_path147.join)(ctx.root, "skills"), "SKILL.md"),
-    agentFiles,
-    mcpServer: mcpServerNames(ctx.root)[0] ?? "t",
-    runChain: ctx.deps.runChain ?? runChainScenario,
-    runTeam: ctx.deps.runTeam ?? runTeamScenario,
-    runCli: ctx.deps.runCli ?? runCliScenario,
-    runFactory: ctx.deps.runFactory ?? runFactoryRunScenario,
-    runSandbox: ctx.deps.runSandbox ?? runSandboxLaneScenario,
-    ...run3 ? { cassette: run3 } : {},
-    ...storedLogin ? { storedLogin } : {}
-  });
+  let result;
+  try {
+    result = await runSdkTier({
+      root: ctx.root,
+      bin,
+      binVersion,
+      packageVersion,
+      home,
+      projectDir,
+      remoteDir,
+      env: env2,
+      scenarios,
+      model: opts.model,
+      timeoutMs: opts.timeoutMs ?? DEFAULT_SCENARIO_TIMEOUT_MS,
+      maxCredits: opts.maxCredits ?? DEFAULT_MAX_CREDITS2,
+      keepHome: !!opts.keepHome,
+      loadSdk: ctx.deps.loadSdk ?? (() => loadCopilotSdk(base, ctx.spawnSyncFn)),
+      loadExpectedToolCount: ctx.deps.loadExpectedToolCount ?? defaultExpectedToolCount,
+      spawnSync: ctx.spawnSyncFn,
+      skillDirs: countDirsWith((0, import_path147.join)(ctx.root, "skills"), "SKILL.md"),
+      agentFiles,
+      mcpServer: mcpServerNames(ctx.root)[0] ?? "t",
+      runChain: ctx.deps.runChain ?? runChainScenario,
+      runTeam: ctx.deps.runTeam ?? runTeamScenario,
+      runCli: ctx.deps.runCli ?? runCliScenario,
+      runFactory: ctx.deps.runFactory ?? runFactoryRunScenario,
+      runSandbox: ctx.deps.runSandbox ?? runSandboxLaneScenario,
+      ...run3 ? { cassette: run3 } : {},
+      ...storedLogin ? { storedLogin } : {}
+    });
+  } finally {
+    if (keptHomeLoginNote(!!opts.keepHome, !!storedLogin, result)) process.stderr.write(`${KEPT_HOME_LOGIN_NOTE} ${home}
+`);
+  }
   if (Object.keys(result.events).length) artifacts.events = result.events;
   const logs = readDebugLogs((0, import_path147.join)(home, "logs"));
   if (logs.path) artifacts.debugLog = logs.path;
-  if (opts.keepHome && result.storedLoginUsed) process.stderr.write(`${KEPT_HOME_LOGIN_NOTE} ${home}
-`);
   return result;
+}
+function keptHomeLoginNote(keepHome, storedLogin, result) {
+  return keepHome && storedLogin && (result === void 0 || !!result.storedLoginUsed);
 }
 function tier2StoredLogin(env2, configDir, mode, deny2 = addRecordingDenyLiterals, platform = process.platform) {
   if (mode === "replay") return void 0;
@@ -90747,7 +90770,7 @@ var init_copilot_smoke = __esm({
     TIER0_COPILOT_IDS = ["copilot.binary", "copilot.plugin_list", "copilot.skill_list"];
     LIVE_RUN_REFUSED_DETAIL = "live run refused under vitest \u2014 set OMC_LIVE_SMOKE=1 (tier 1) / =2 (tier 2 scenarios)";
     LIVE_PROCESS_SCENARIOS_REFUSED_DETAIL = "live run refused under vitest \u2014 an injected SDK does not stop these scenarios from starting real copilot processes; inject deps.runChain/runTeam/runCli/runFactory/runSandbox or set OMC_LIVE_SMOKE=2";
-    KEPT_HOME_LOGIN_NOTE = "omg smoke: the sessions used the stored login token (keyring-less host); the runtime logs and session state in the kept home may contain it:";
+    KEPT_HOME_LOGIN_NOTE = "omg smoke: the sessions may have used the stored login token (keyring-less host); the runtime logs and session state in the kept home may contain it:";
   }
 });
 

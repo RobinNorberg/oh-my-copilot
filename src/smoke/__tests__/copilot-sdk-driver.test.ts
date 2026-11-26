@@ -110,6 +110,8 @@ interface FakeOptions {
   globalGet?: boolean;
   /** A keyring-less runtime: listModels() refuses (no runtime login); a session's model.list answers these ids. */
   serverNotAuthenticated?: boolean;
+  /** listModels() throws this text (no runtime login decision but the driver's own). */
+  listModelsError?: string;
   sessionModels?: string[];
 }
 
@@ -176,6 +178,7 @@ function fakeSdk(opts: FakeOptions = {}): { loaded: LoadedSdk; rec: FakeRecord }
     async getStatus() { return { version: '1.0.116', protocolVersion: 4 }; }
     async listModels() {
       if (opts.globalGet && !(await fetchModels())) throw new Error('models: 418');
+      if (opts.listModelsError !== undefined) throw new Error(opts.listModelsError);
       if (opts.serverNotAuthenticated) throw new Error('Request models.list failed with message: Not authenticated. Please authenticate first.');
       return (opts.models ?? ['auto']).map((id) => ({ id }));
     }
@@ -807,11 +810,60 @@ describe('runSdkTier credit cap, log windows, tree kill', () => {
       expect(result.storedLoginUsed).toBeUndefined();
     });
 
-    it('a listModels() failure other than "Not authenticated" attaches no token', async () => {
-      const { loaded, rec } = fakeSdk({ globalGet: true });
-      await runSdkTier(input(loaded, { scenarios: ['smoke'], storedLogin }));
-      expect(rec.sessions.every((s) => s.github === undefined)).toBe(true);
-      expect(rec.ops.some((o) => o.startsWith('model.list:'))).toBe(false);
+    it('a listModels() failure other than "Not authenticated" attaches no token and says why in sdk.runtime', async () => {
+      for (const error of ['models: 418', 'listModels() timed out after 30000 ms']) {
+        const { loaded, rec } = fakeSdk({ listModelsError: error });
+        const result = await runSdkTier(input(loaded, { scenarios: ['smoke'], storedLogin }));
+        expect(rec.sessions.length).toBeGreaterThanOrEqual(2); // the static session, the scenario
+        expect(rec.sessions.every((s) => s.github === undefined)).toBe(true);
+        expect(rec.ops.some((o) => o.startsWith('model.list:'))).toBe(false);
+        expect(result.storedLoginUsed).toBeUndefined();
+        expect(byId(result.checks)['sdk.runtime'].detail).toContain(`stored login not used: listModels() answered ${error}`);
+      }
+    });
+
+    it('"Not authenticated" in any letter case attaches the token, and sdk.runtime says so', async () => {
+      const { loaded, rec } = fakeSdk({ listModelsError: 'Request models.list failed with message: NOT AUTHENTICATED' });
+      const result = await runSdkTier(input(loaded, { scenarios: ['smoke'], storedLogin }));
+      expect(rec.ops.some((o) => o.startsWith('model.list:'))).toBe(true);
+      expect(rec.sessions.every((s) => s.github?.token === STORED)).toBe(true);
+      expect(result.storedLoginUsed).toBe(true);
+      expect(byId(result.checks)['sdk.runtime'].detail).toContain('(stored login attached)');
+      expect(byId(result.checks)['sdk.runtime'].detail).not.toContain('stored login not used');
+    });
+
+    it('the stored-login-not-used excerpt is scrubbed; no hint without a stored login', async () => {
+      const { loaded } = fakeSdk({ listModelsError: `models: 401 for ${STORED}` });
+      const result = await runSdkTier(input(loaded, { scenarios: ['smoke'], storedLogin }));
+      expect(byId(result.checks)['sdk.runtime'].detail).toContain('answered models: 401 for [redacted]');
+      expect(JSON.stringify(result)).not.toContain(STORED);
+      const bare = await runSdkTier(input(fakeSdk({ listModelsError: 'models: 418' }).loaded, { scenarios: ['smoke'] }));
+      expect(byId(bare.checks)['sdk.runtime'].detail).not.toContain('stored login');
+    });
+
+    it('a token under 8 characters is no exact scrub literal; token shapes are still scrubbed', async () => {
+      const shaped = `ghp_${'a'.repeat(36)}`;
+      const say = { type: 'assistant.message', data: { content: `the test run printed ${shaped}` } } as CopilotEvent;
+      const { loaded } = fakeSdk({ serverNotAuthenticated: true, events: { smoke: [...fixtureEvents('smoke'), say] } });
+      const result = await runSdkTier(input(loaded, { scenarios: ['smoke'], storedLogin: { userConfigDir: '/real/.copilot', token: 'test' } }));
+      const text = readFileSync(result.events.smoke!, 'utf-8');
+      expect(text).toContain('the test run printed [redacted]');
+      expect(text).not.toContain(shaped);
+      expect(existsSync(`${result.events.smoke!}.tmp`)).toBe(false);
+    });
+
+    it('a failed events rewrite keeps the original file and never fails the tier', async () => {
+      const leak = { type: 'assistant.message', data: { content: `I read ${STORED}` } } as CopilotEvent;
+      const { loaded } = fakeSdk({ serverNotAuthenticated: true, events: { smoke: [...fixtureEvents('smoke'), leak] } });
+      // A directory where the temp file goes: the write fails.
+      mkdirSync(join(parent, 'home', 'events-smoke.jsonl.tmp'), { recursive: true });
+      try {
+        const result = await runSdkTier(input(loaded, { scenarios: ['smoke'], storedLogin }));
+        expect(byId(result.checks)['sdk.runtime']).toBeDefined();
+        expect(readFileSync(result.events.smoke!, 'utf-8')).toContain('I read'); // not truncated
+      } finally {
+        rmSync(join(parent, 'home', 'events-smoke.jsonl.tmp'), { recursive: true, force: true });
+      }
     });
 
     it('a cassette client: the token is attached, but no model list session is created', async () => {

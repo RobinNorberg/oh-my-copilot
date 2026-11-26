@@ -29462,7 +29462,7 @@ async function processCliWorkerVerdictsUnderLock(teamName, cwd, expectedInstance
   };
   const { rename: rename8 } = await import("fs/promises");
   const {
-    renameSync: renameSync5,
+    renameSync: renameSync6,
     readFileSync: readFileSync33,
     existsSync: fsExistsSync
   } = await import("fs");
@@ -29554,7 +29554,7 @@ async function processCliWorkerVerdictsUnderLock(teamName, cwd, expectedInstance
             if (fsExistsSync(outputFile)) {
               const stalePath = `${processingOutputFile}.stale`;
               try {
-                renameSync5(processingOutputFile, stalePath);
+                renameSync6(processingOutputFile, stalePath);
               } catch {
               }
             } else {
@@ -29564,7 +29564,7 @@ async function processCliWorkerVerdictsUnderLock(teamName, cwd, expectedInstance
           }
           const raw = readFileSync33(outputFile, "utf-8");
           parseCliWorkerVerdict(raw);
-          renameSync5(outputFile, processingOutputFile);
+          renameSync6(outputFile, processingOutputFile);
           verdictFile = processingOutputFile;
         });
       }
