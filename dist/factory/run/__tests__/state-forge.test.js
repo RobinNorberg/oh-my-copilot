@@ -45,4 +45,17 @@ describe('forgeResumeProblem', () => {
         expect(forgeResumeProblem({ ...base, repoUrl: '' }, 'github', 'https://github.com/o/other')).toBeNull();
     });
 });
+describe('a lane sandbox record with stateEscaped (the mid-session tripwire)', () => {
+    const s = createFactoryState({ issue: 7, repoUrl: 'https://github.com/o/r', base: 'dev' }, '2026-11-26T10:00:00.000Z');
+    const sandbox = { mode: 'enforced', host: { supported: true, capabilities: {} }, applied: 'create', canary: 'skipped', unsandboxedCalls: 0, cliVersion: 'x', sdkVersion: 'y', writeNetwork: 'none' };
+    const lane = (sbx) => ({ id: 'l1', kind: 'implement', status: 'failed', startSha: 'a'.repeat(40), maxCredits: 5, sandbox: sbx });
+    const parse = (sbx) => parseFactoryState('run-7.json', 7, JSON.stringify({ ...s, lanes: [lane(sbx)] }));
+    it('loads with the field, and an older record without it still loads', () => {
+        expect(parse({ ...sandbox, stateEscaped: 'sandbox-escaped: the session\'s sandbox changed mid-session (x)' }).lanes[0].sandbox?.stateEscaped).toMatch(/^sandbox-escaped:/);
+        expect(parse(sandbox).lanes[0].sandbox?.stateEscaped).toBeUndefined();
+    });
+    it('refuses a stateEscaped that is not a string', () => {
+        expect(() => parse({ ...sandbox, stateEscaped: true })).toThrow(/field lanes/);
+    });
+});
 //# sourceMappingURL=state-forge.test.js.map

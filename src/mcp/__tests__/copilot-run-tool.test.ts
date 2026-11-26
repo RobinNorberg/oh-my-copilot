@@ -32,7 +32,7 @@ function newCalls(): Calls {
 }
 
 /**
- * A fake @github/copilot-sdk: `complete` edits README.md and idles, `hang` never idles, `burn` passes the credit cap,
+ * A fake @microsoft/copilot-sdk (v2): `complete` edits README.md and idles, `hang` never idles, `burn` passes the credit cap,
  * `slow-start` never finishes start(), `stuck` never finishes start() or stop() and has a runtime pid (4242).
  */
 function fakeSdk(behavior: Behavior, calls: Calls): LoadedSdk {
@@ -40,7 +40,7 @@ function fakeSdk(behavior: Behavior, calls: Calls): LoadedSdk {
     sessionId = `sess-${calls.sessions.length}`;
     rpc = fakeSessionRpc('supported', { optionsUpdates: [] });
     constructor(private readonly cfg: SdkSessionConfig) {}
-    private emit(type: string, data: Record<string, unknown> = {}) { this.cfg.onEvent?.({ type, data }); }
+    private emit(type: string, data: Record<string, unknown> = {}) { this.cfg.events?.onEvent?.({ type, data }); }
     async send({ prompt }: { prompt: string }) {
       calls.prompts.push(prompt);
       setTimeout(() => {
@@ -77,9 +77,9 @@ function fakeSdk(behavior: Behavior, calls: Calls): LoadedSdk {
   return {
     module: {
       CopilotClient: Client as never,
-      RuntimeConnection: { forStdio: (opts) => { calls.connections.push(opts); return opts; } },
+      RuntimeConnection: { forSpawnedStdio: (opts) => { calls.connections.push(opts); return opts; } },
     },
-    version: '1.0.16',
+    version: '2.0.3',
     from: 'test',
   };
 }
@@ -250,8 +250,8 @@ describe('copilot_run job lifecycle', () => {
     expect(calls.prompts).toEqual(['Update the README']);
     const session = calls.sessions[0];
     expect(resolve(session.workingDirectory)).toBe(resolve(wt.path));
-    expect(session.excludedTools).toEqual(expect.arrayContaining(COPILOT_RUN_TOOL_NAMES.map((n) => `t-${n}`)));
-    expect(session.excludedTools).toContain('t-host_smoke');
+    expect(session.tools.excludedTools).toEqual(expect.arrayContaining(COPILOT_RUN_TOOL_NAMES.map((n) => `t-${n}`)));
+    expect(session.tools.excludedTools).toContain('t-host_smoke');
     const env = calls.connections[0].env!;
     expect(env.OMG_COPILOT_RUN_ALLOW).toBeUndefined();
     expect(env.OMC_BUDGET_HOST_LEDGER).toBe('1');
@@ -336,7 +336,7 @@ describe('copilot_run job lifecycle', () => {
     const started = m.start({ prompt: 'x', cwd: repo });
     await new Promise((r) => setTimeout(r, 50));
     const wtPath = (started.worktree as { path: string }).path;
-    const decide = calls.sessions[0].onPermissionRequest;
+    const decide = calls.sessions[0].permissions.onRequest;
     const ctx = { sessionId: 's' };
     expect(await decide({ kind: 'write', path: join(wtPath, 'src', 'a.ts') }, ctx)).toEqual({ kind: 'approve-once' });
     expect(await decide({ kind: 'write', path: join(wtPath, '.github', 'workflows', 'ci.yml') }, ctx)).toMatchObject({ kind: 'reject' });
@@ -362,7 +362,7 @@ describe('copilot_run job lifecycle', () => {
     const started = m.start({ prompt: 'x', cwd: repo });
     await new Promise((r) => setTimeout(r, 50));
     const wtPath = (started.worktree as { path: string }).path;
-    const decide = calls.sessions[0].onPermissionRequest;
+    const decide = calls.sessions[0].permissions.onRequest;
     expect(await decide({ kind: 'write', path: join(wtPath, 'ci', 'flaky.json') }, { sessionId: 's' })).toMatchObject({ kind: 'reject' });
     await m.cancel(started.jobId as string);
   });

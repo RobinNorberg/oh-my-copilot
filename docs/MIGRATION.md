@@ -6,6 +6,7 @@ This guide covers all migration paths for oh-my-copilot. Find your current versi
 
 ## Table of Contents
 
+- [Unreleased: Copilot SDK v2 (`@microsoft/copilot-sdk`)](#unreleased-copilot-sdk-v2-microsoftcopilot-sdk)
 - [Unreleased: SDKs No Longer Declared, tsx a Dev Dependency](#unreleased-sdks-no-longer-declared-tsx-a-dev-dependency)
 - [Unreleased: Node 20 Dropped, Built-in node:sqlite](#unreleased-node-20-dropped-built-in-nodesqlite)
 - [Unreleased: Claude Agent SDK Is an Optional Peer](#unreleased-claude-agent-sdk-is-an-optional-peer)
@@ -44,6 +45,31 @@ This guide covers all migration paths for oh-my-copilot. Find your current versi
 
 ---
 
+## Unreleased: Copilot SDK v2 (`@microsoft/copilot-sdk`)
+
+**Breaking.** oh-my-copilot now drives Copilot through SDK v2, `@microsoft/copilot-sdk` 2.x (protocol 4), and no longer loads SDK v1, `@github/copilot-sdk` (protocol 3). Copilot CLI 1.0.113 and later speak protocol 4 only, so every SDK v1 release fails their handshake with `SDK protocol version mismatch: SDK supports versions 3-3, but server reports version 4`. There is no fallback to SDK v1 and no pin to an older CLI.
+
+**Who is affected.** Anyone who uses the SDK features: `omg team` sdk workers (the `auto` default under Copilot CLI), `omg smoke copilot --tier 2`, `copilot_run` jobs, `omg factory run` sandbox lanes and bench model probes. Copilot CLI use without them is unaffected.
+
+**Tested pair.** `@microsoft/copilot-sdk` 2.0.3 with Copilot CLI 1.0.116. oh-my-copilot accepts SDK `^2.0.3`. CLI 1.0.113 to 1.0.115 speak protocol 4 but are untested (`omg factory check --host` warns); older ones fail.
+
+### Migration
+
+1. Update the Copilot CLI to 1.0.116 or newer: `npm i -g @github/copilot@latest`, or `copilot update` for a WinGet or Homebrew install. If you pinned `@github/copilot@1.0.112` for SDK v1, drop the pin.
+2. Replace the SDK:
+
+   ```bash
+   npm uninstall -g @github/copilot-sdk
+   npm i -g @microsoft/copilot-sdk@2 --ignore-scripts
+   ```
+
+   `--ignore-scripts` skips koffi's install step, which only the SDK's in-process runtime needs. npm still installs the platform runtime package (`@microsoft/copilot-sdk-<platform>`, about 200 MB) on a global install, even with `--omit=optional`; oh-my-copilot never loads it and you can delete it.
+3. Run `omg factory check --host`. `sdk` names a leftover SDK v1, `copilot` an old CLI, and `sdk.protocol` reports the runtime version and protocol after a free start and stop (no session, no model request).
+
+**What does not change.** Every client still spawns your installed `copilot` as a child process; SDK v2's default in-process runtime is never used. Sessions keep their plugin, MCP, tool filter, permission and sandbox settings, now under SDK v2's nested option groups. The sandbox policy goes in at session create (`permissions.sandbox`), as it already did with SDK 1.0.34. Credit accounting reads the same `assistant.usage` and `session.shutdown` fields.
+
+---
+
 ## Unreleased: Node 20 Dropped, Built-in node:sqlite
 
 **Breaking.** Node 20 is no longer supported; Node 22.13+ required (or 23.4+ on the 23 line). `package.json` engines is now `^22.13.0 || ^23.4.0 || 24.x || 25.x || 26.x`.
@@ -77,10 +103,10 @@ Code that uses the SDKs still loads them lazily, and fails with the install comm
 | You use | Install | Where it is found |
 | --- | --- | --- |
 | `omg graph` agent nodes, or `createOmcSession()` with the SDK's `query()` | `npm install -g @anthropic-ai/claude-agent-sdk` next to a global oh-my-copilot, or `npm install @anthropic-ai/claude-agent-sdk` in the project that depends on oh-my-copilot | Node resolution from the oh-my-copilot package (its own and parent `node_modules`) |
-| `omg team --transport sdk` (the `auto` default under Copilot CLI), `omg smoke copilot --tier 2`, `copilot_run` jobs, `omg factory run` sandbox lanes and bench probes | `npm i -g @github/copilot-sdk --omit=optional --ignore-scripts` | Node resolution from the oh-my-copilot package, then the global root (`%APPDATA%/npm/node_modules` on Windows, then `npm root -g`) |
+| `omg team --transport sdk` (the `auto` default under Copilot CLI), `omg smoke copilot --tier 2`, `copilot_run` jobs, `omg factory run` sandbox lanes and bench probes | `npm i -g @microsoft/copilot-sdk@2 --ignore-scripts` (SDK v2; see [Copilot SDK v2](#unreleased-copilot-sdk-v2-microsoftcopilot-sdk)) | Node resolution from the oh-my-copilot package, then the global root (`%APPDATA%/npm/node_modules` on Windows, then `npm root -g`) |
 | The `statechart` skill | Node 22.13 or later (22.13 to 22.17 and 23.4 to 23.5 run with `--experimental-strip-types`), Bun 1.1.5 or later, or Deno 2.0 or later | The launcher picks the runtime. Run in place from inside `node_modules`, Node refuses to strip types, so use the copy `omg setup` installs, or have Bun, Deno or a global `tsx` (`npm install -g tsx`) |
 
-Without `@github/copilot-sdk`, `--transport auto` keeps falling back to pane workers, as before.
+Without `@microsoft/copilot-sdk`, `--transport auto` keeps falling back to pane workers, as before.
 
 ## Unreleased: Claude Agent SDK Is an Optional Peer
 
@@ -523,7 +549,7 @@ To opt in for every team, set it in `.copilot/omg.jsonc`:
   command built indirectly, such as a script file or an alias, is not caught.
 - **Excluded tools.** `task`, `run_dynamic_workflow`,
   `dynamic_workflows_manage`, `write_agent`, `read_agent`, `list_agents`,
-  `search_code_subagent` and the plugin's `host_smoke` are removed from each
+  `search_code_subagent`, `send_inbox`, `context_board` and the plugin's `host_smoke` are removed from each
   worker session.
 - **Rejected at start:** `--auto-merge`, non-copilot workers, scaling, and an
   explicitly assigned reviewer-contract role (`critic`, `code-reviewer`,

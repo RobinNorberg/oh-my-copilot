@@ -989,13 +989,15 @@ type LaneRun = { kind: 'done'; result: LaneResult; lane: FactoryLaneRecord; afte
  * The human gate a lane's sandbox outcome forces, with no fresh retry (a
  * retry meets the same host): `sandbox-unavailable` when the job refused to
  * run without a confirmed sandbox, `sandbox-escaped` when a shell call ran
- * outside it.
+ * outside it or the confirmed sandbox was switched off, opted out or weakened
+ * mid-session (`stateEscaped`: a call killed before its completion event is
+ * never counted).
  */
 function sandboxPark(result: LaneResult): { name: 'sandbox-unavailable' | 'sandbox-escaped'; reason: string } | null {
   const s = result.sandbox;
   if (!s) return null;
   if (s.mode === 'refused') return { name: 'sandbox-unavailable', reason: result.error ?? s.reason ?? 'the sandbox is not confirmed' };
-  if (s.unsandboxedCalls > 0 && s.mode !== 'detect-only') return { name: 'sandbox-escaped', reason: result.error ?? `${s.unsandboxedCalls} call(s) ran outside the sandbox` };
+  if ((s.unsandboxedCalls > 0 || s.stateEscaped) && s.mode !== 'detect-only') return { name: 'sandbox-escaped', reason: result.error ?? s.stateEscaped ?? `${s.unsandboxedCalls} call(s) ran outside the sandbox` };
   return null;
 }
 
@@ -1003,10 +1005,11 @@ function sandboxPark(result: LaneResult): { name: 'sandbox-unavailable' | 'sandb
  * Whether a lane's recorded sandbox kept all of its calls in the OS sandbox
  * (enforced or read-only, or refused before any call ran): the private
  * layout then trusts that the lane could not write the user's repository;
- * detect-only, a call outside the sandbox or no record do not (review-483 M3).
+ * detect-only, a call outside the sandbox, a sandbox that changed mid-session
+ * (`stateEscaped`) or no record do not (review-483 M3).
  */
 function laneSandboxEnforced(s: LaneResult['sandbox'] | undefined): boolean {
-  return !!s && s.unsandboxedCalls === 0 && (s.mode === 'enforced' || s.mode === 'read-only-no-shell' || s.mode === 'refused');
+  return !!s && s.unsandboxedCalls === 0 && !s.stateEscaped && (s.mode === 'enforced' || s.mode === 'read-only-no-shell' || s.mode === 'refused');
 }
 
 /** The factory phase that follows an approved ship run in `phase` (ship state wins on resume). */
@@ -7969,13 +7972,15 @@ class FactoryEngine {
    * (`gone`, listed) only a fresh flag at this park counts. The coding-agent
    * lane (no local session), review lanes (no network: read tools, or an
    * enforced sandbox without outbound access) and the local forge do not
-   * count. '' = nothing to say; null = parked; else the merge note's clause.
+   * count, except a review lane that recorded a sandbox escape or an
+   * unsandboxed call. '' = nothing to say; null = parked; else the merge note's clause.
    */
   private unsandboxedLanes(head: string, gone: string): string | null {
     if (this.forge?.kind === 'local') return '';
     // Every write lane of the run, as recorded when it ran; only the coding-agent lane runs no local Copilot session.
-    const loose = this.state.lanes.filter((l) => l.kind !== 'review' && l.kind !== 'coding-agent'
-      && (l.sandbox?.mode !== 'enforced' || l.sandbox.writeNetwork !== 'none')
+    const loose = this.state.lanes.filter((l) => l.kind !== 'coding-agent'
+      && !(l.kind === 'review' && !l.sandbox?.stateEscaped && (l.sandbox?.unsandboxedCalls ?? 0) === 0)
+      && (l.sandbox?.mode !== 'enforced' || l.sandbox.unsandboxedCalls > 0 || !!l.sandbox.stateEscaped || l.sandbox.writeNetwork !== 'none')
       // A lane refused before it ran any call never ran a session.
       && !(l.sandbox?.mode === 'refused' && l.sandbox.unsandboxedCalls === 0));
     if (loose.length === 0) return '';

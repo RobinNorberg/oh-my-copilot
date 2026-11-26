@@ -9370,8 +9370,8 @@ var init_copilot_sdk_scenarios = __esm({
     KNOWN_SCENARIOS = [...ALL_SCENARIOS, ...OPT_IN_SCENARIOS];
     PLUGIN_NAME = "oh-my-copilot";
     DELEGATE_AGENT = "oh-my-copilot:architect";
-    SDK_PACKAGE = "@github/copilot-sdk";
-    SDK_INSTALL_COMMAND = `npm i -g ${SDK_PACKAGE} --omit=optional --ignore-scripts`;
+    SDK_PACKAGE = "@microsoft/copilot-sdk";
+    SDK_INSTALL_COMMAND = `npm i -g ${SDK_PACKAGE}@2 --ignore-scripts`;
     SDK_MISSING_DETAIL = `${SDK_PACKAGE} not installed \u2014 ${SDK_INSTALL_COMMAND}`;
     NO_SHELL_OR_WRITE_TOOLS = ["powershell", "shell", "create", "edit"];
     NO_WRITE_TOOLS = ["create", "edit"];
@@ -21207,15 +21207,17 @@ function withTimeout(promise, ms, label) {
   return Promise.race([
     promise,
     new Promise((_, reject) => {
-      timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms} ms`)), ms);
+      timer = setTimeout(() => reject(new TimeoutError(`${label} timed out after ${ms} ms`)), ms);
     })
   ]).finally(() => clearTimeout(timer));
 }
-var errText;
+var errText, TimeoutError;
 var init_timeout = __esm({
   "src/copilot-run/timeout.ts"() {
     "use strict";
     errText = (err) => err instanceof Error ? err.message : String(err);
+    TimeoutError = class extends Error {
+    };
   }
 });
 
@@ -21922,6 +21924,9 @@ function withSseData(block, value) {
   return lines.flatMap((l, i) => !l.startsWith("data:") ? [l] : i === at ? [`data: ${JSON.stringify(value)}`] : []).join("\n");
 }
 function deltaStreams(events) {
+  return [...deltaStreamMap(events).values()];
+}
+function deltaStreamMap(events) {
   const streams = /* @__PURE__ */ new Map();
   const add = (key, event, holder, field) => {
     if (typeof holder[field] !== "string") return;
@@ -21949,16 +21954,30 @@ function deltaStreams(events) {
     if (typeof value.type === "string" && value.type.endsWith(".delta")) {
       add([value.type, value.item_id, value.output_index, value.content_index, value.summary_index].join(":"), event, value, "delta");
     }
+    if (value.type === "tool.shell_output" && isRecord3(value.data)) {
+      const data = value.data;
+      add(`${SHELL_OUTPUT_KEY}:${String(data.toolCallId)}:${typeof data.stream === "string" ? data.stream : "stdout"}`, event, data, "text");
+      return;
+    }
     if (typeof value.type === "string" && /(?:_delta|partial_result|progress)$/.test(value.type) && isRecord3(value.data)) {
       const data = value.data;
       const ids = Object.keys(data).filter((k) => /Id$/.test(k)).map((k) => `${k}=${String(data[k])}`).join(":");
       for (const field of Object.keys(data)) if (!/Id$/.test(field)) add(`${value.type}:${ids}:${field}`, event, data, field);
     }
   });
-  return [...streams.values()];
+  for (const [key, slots] of streams) if (key.startsWith(`${SHELL_OUTPUT_KEY}:`)) slots.sort((a, b) => shellSequence(a) - shellSequence(b) || a.event - b.event);
+  return streams;
 }
 function reassembledDeltas(events) {
-  return deltaStreams(events).filter((slots) => slots.length > 1).map(joinDeltas);
+  const streams = deltaStreamMap(events);
+  const calls = /* @__PURE__ */ new Map();
+  for (const [key, slots] of streams) {
+    if (!key.startsWith(`${SHELL_OUTPUT_KEY}:`)) continue;
+    const call = String(slots[0].holder.toolCallId);
+    calls.set(call, [...calls.get(call) ?? [], slots]);
+  }
+  const crossStream = [...calls.values()].filter((perStream) => perStream.length > 1).map((perStream) => joinDeltas(perStream.flat().sort((a, b) => shellSequence(a) - shellSequence(b) || a.event - b.event)));
+  return [...[...streams.values()].filter((slots) => slots.length > 1).map(joinDeltas), ...crossStream];
 }
 function wsData(messages) {
   return messages.map((m) => parseJson(m.data));
@@ -22053,7 +22072,7 @@ function scanForSecrets(text2, options = {}) {
   }
   return hits.sort((a, b) => a.index - b.index);
 }
-var REDACTION_RULES_VERSION, REQUEST_HEADER_ALLOW, RESPONSE_HEADER_ALLOW, RESPONSE_HEADER_PREFIX_ALLOW, SECRET_PLACEHOLDER, EMAIL_PLACEHOLDER, MIN_DENY_LITERAL_LENGTH, PATH_PLACEHOLDERS, PLACEHOLDER_VALUE, NOT_SECRET_SUFFIX, SECRET_NAME2, UNQUOTED_CHAR, UNQUOTED_VALUE, PCT_US, PCT_SECRET_NAME, PLAIN_VALUE, TOKEN_RULES, EMAIL, RESERVED_EMAIL, TRANSPORT_EMAIL, SEGMENT_CHAR, escapeRegExp, WIN_SEG, PCT_SEG, POSIX_SEG, PCT_SEP, spaced, USER_HOME_PATHS, jsonEscape, KEY_ENV, GIT_CONFIG_PLAIN_ENV, GIT_CONFIG_SECRET_KEY, PLAIN_KEY_ENV, isRecord3, SSE_EOL, joinDeltas, Redactor;
+var REDACTION_RULES_VERSION, REQUEST_HEADER_ALLOW, RESPONSE_HEADER_ALLOW, RESPONSE_HEADER_PREFIX_ALLOW, SECRET_PLACEHOLDER, EMAIL_PLACEHOLDER, MIN_DENY_LITERAL_LENGTH, PATH_PLACEHOLDERS, PLACEHOLDER_VALUE, NOT_SECRET_SUFFIX, SECRET_NAME2, UNQUOTED_CHAR, UNQUOTED_VALUE, PCT_US, PCT_SECRET_NAME, PLAIN_VALUE, TOKEN_RULES, EMAIL, RESERVED_EMAIL, TRANSPORT_EMAIL, SEGMENT_CHAR, escapeRegExp, WIN_SEG, PCT_SEG, POSIX_SEG, PCT_SEP, spaced, USER_HOME_PATHS, jsonEscape, KEY_ENV, GIT_CONFIG_PLAIN_ENV, GIT_CONFIG_SECRET_KEY, PLAIN_KEY_ENV, isRecord3, SSE_EOL, SHELL_OUTPUT_KEY, shellSequence, joinDeltas, Redactor;
 var init_redact = __esm({
   "src/smoke/replay/redact.ts"() {
     "use strict";
@@ -22151,6 +22170,8 @@ var init_redact = __esm({
     PLAIN_KEY_ENV = /^SSH_AUTH_SOCK$|PUBLIC_KEY$/i;
     isRecord3 = (v) => !!v && typeof v === "object" && !Array.isArray(v);
     SSE_EOL = /\r\n|\r(?!\n)|\n/;
+    SHELL_OUTPUT_KEY = "tool.shell_output";
+    shellSequence = (slot) => typeof slot.holder.sequence === "number" ? slot.holder.sequence : Number.MAX_SAFE_INTEGER;
     joinDeltas = (slots) => slots.map((s) => s.holder[s.field]).join("");
     Redactor = class {
       hits = {};
@@ -23246,7 +23267,7 @@ function withCassette(loaded2, env = process.env, options = {}) {
         return created.rec;
       };
       const requestHandler = mode === "record" ? createRecordingHandler(Base, recorder) : createReplayHandler(Base, (ctx) => target(ctx).replayer);
-      super({ ...opts, requestHandler, ...mode === "replay" ? { useLoggedInUser: false, gitHubToken: void 0 } : {} });
+      super({ ...opts, models: { ...opts.models, requestHandler }, ...mode === "replay" ? { github: { useLoggedInUser: false } } : {} });
       this.cassetteSlot = slot;
       if (mode === "record") {
         const stop = this.stop.bind(this);
@@ -23279,7 +23300,7 @@ function withCassette(loaded2, env = process.env, options = {}) {
         this.createSession = async (session) => {
           if (!session.model) throw new CassetteConfigError("replay needs a pinned model (--model)");
           const rest = { ...session };
-          delete rest.gitHubToken;
+          delete rest.github;
           return create(rest);
         };
       }
@@ -23293,7 +23314,7 @@ function withCassette(loaded2, env = process.env, options = {}) {
   }
   const Connection = loaded2.module.RuntimeConnection;
   const RuntimeConnection = Object.assign(Object.create(Connection), {
-    forStdio: (opts) => Connection.forStdio({ ...opts, env: cassetteRuntimeEnv(opts.env ?? process.env, mode) })
+    forSpawnedStdio: (opts) => Connection.forSpawnedStdio({ ...opts, env: cassetteRuntimeEnv(opts.env ?? process.env, mode) })
   });
   return {
     ...loaded2,
@@ -23314,7 +23335,7 @@ var init_handler = __esm({
     init_matcher();
     init_normalize();
     init_redact();
-    REQUEST_HANDLER_MISSING = "replay needs @github/copilot-sdk with requestHandler (>= 1.0.16)";
+    REQUEST_HANDLER_MISSING = "replay needs @microsoft/copilot-sdk with models.requestHandler (CopilotRequestHandler)";
     RECORD_PARTS_DIR = "parts";
     RECORD_FAILED_SUFFIX = ".failed";
     RECORD_STARTED_SUFFIX = ".started";
@@ -23503,9 +23524,13 @@ var init_run = __esm({
 });
 
 // src/smoke/copilot-sdk-driver.ts
+function spawnedClientOptions(loaded2, conn, extra = {}) {
+  if (typeof conn.path !== "string" || conn.path.trim() === "") throw new Error("the Copilot CLI path for the SDK connection is empty");
+  return { mode: "coding-agent", runtime: loaded2.module.RuntimeConnection.forSpawnedStdio(conn), ...extra };
+}
 function isSdkModule(mod) {
   const m = mod;
-  return !!m && typeof m.CopilotClient === "function" && typeof m.RuntimeConnection?.forStdio === "function";
+  return !!m && typeof m.CopilotClient === "function" && typeof m.RuntimeConnection?.forSpawnedStdio === "function";
 }
 function readPkg(dir) {
   try {
@@ -23615,9 +23640,14 @@ async function loadCopilotSdk(env = process.env, spawnSync8 = import_child_proce
 }
 async function findCopilotSdk(env, spawnSync8) {
   const spec = SDK_PACKAGE;
+  let outOfRange = null;
   try {
     const mod = await import(spec);
-    if (isSdkModule(mod)) return { module: mod, version: nodeResolvedVersion(), from: "node resolution" };
+    if (isSdkModule(mod)) {
+      const version = nodeResolvedVersion();
+      if (satisfiesSdkRange(version)) return { module: mod, version, from: "node resolution" };
+      outOfRange = version ?? "an unknown version";
+    }
   } catch {
   }
   const tried = /* @__PURE__ */ new Set();
@@ -23633,17 +23663,19 @@ async function findCopilotSdk(env, spawnSync8) {
     }
   };
   for (const root of globalModuleRoots(env)) {
-    const hit = await tryRoot(root);
-    if (hit) return hit;
+    const hit2 = await tryRoot(root);
+    if (hit2) return hit2;
   }
-  return tryRoot(npmRootG(env, spawnSync8));
+  const hit = await tryRoot(npmRootG(env, spawnSync8));
+  if (!hit && outOfRange) throw new Error(`${SDK_PACKAGE} ${outOfRange} resolved from this module is outside the supported range ^${SDK_MIN_VERSION}; install ${SDK_PACKAGE}@^${SDK_MIN_VERSION}`);
+  return hit;
 }
 function withTimeout2(promise, ms, label) {
   let timer;
   return Promise.race([
     promise,
     new Promise((_, reject) => {
-      timer = setTimeout(() => reject(new TimeoutError(`${label} timed out after ${ms} ms`)), ms);
+      timer = setTimeout(() => reject(new TimeoutError2(`${label} timed out after ${ms} ms`)), ms);
     })
   ]).finally(() => clearTimeout(timer));
 }
@@ -23662,8 +23694,7 @@ function rethrowSdkStartError(err) {
   const m = sdkProtocolMismatch(err);
   if (!m) throw err;
   const sdk = m.sdkMin === m.sdkMax ? `protocol ${m.sdkMax}` : `protocols ${m.sdkMin}-${m.sdkMax}`;
-  const olderCli = m.sdkMax === 3 ? `use @github/copilot <=${LAST_PROTOCOL3_CLI} (npm i -g @github/copilot@${LAST_PROTOCOL3_CLI})` : `use an older @github/copilot that speaks protocol ${m.sdkMax}`;
-  const fix = m.server !== null && m.server > m.sdkMax ? `Update ${SDK_PACKAGE} when a version supporting protocol ${m.server} is available, or ${olderCli}.` : `Update the Copilot CLI (npm i -g @github/copilot) or use a ${SDK_PACKAGE} that matches it.`;
+  const fix = m.server !== null && m.server > m.sdkMax ? `Update ${SDK_PACKAGE} (${SDK_INSTALL_COMMAND}) when a version supporting protocol ${m.server} is available.` : `The Copilot CLI is too old for SDK v2: update it to >= ${MIN_COPILOT_CLI} (${COPILOT_UPDATE_COMMAND}, or \`copilot update\` for a WinGet/Homebrew install).`;
   throw new Error(
     `Copilot SDK/CLI protocol mismatch: ${SDK_PACKAGE} speaks ${sdk}, the Copilot CLI ${m.server === null ? "reports no protocol version" : `speaks protocol ${m.server}`}. ${fix}`,
     { cause: err }
@@ -23679,12 +23710,7 @@ async function probeSdkProtocol(loaded2, bin, opts = {}) {
     (0, import_fs42.mkdirSync)(env.XDG_CONFIG_HOME, { recursive: true });
     (0, import_fs42.mkdirSync)((0, import_path46.dirname)(env.GIT_CONFIG_GLOBAL), { recursive: true });
     (0, import_fs42.mkdirSync)(env.TEMP, { recursive: true });
-    const { CopilotClient, RuntimeConnection } = loaded2.module;
-    client = new CopilotClient({
-      connection: RuntimeConnection.forStdio({ path: bin, args: [], env }),
-      baseDirectory: home,
-      workingDirectory: home
-    });
+    client = new loaded2.module.CopilotClient(spawnedClientOptions(loaded2, { path: bin, args: [], env, baseDirectory: home, workingDirectory: home }));
     await withTimeout2(client.start().catch(rethrowSdkStartError), opts.startTimeoutMs ?? PROBE_START_TIMEOUT_MS, "client.start()");
     if (opts.onStarted) {
       try {
@@ -23694,7 +23720,7 @@ async function probeSdkProtocol(loaded2, bin, opts = {}) {
     }
     return null;
   } catch (err) {
-    if (err instanceof TimeoutError) return `${PROBE_TIMEOUT_REASON}: ${err.message} (${bin})`;
+    if (err instanceof TimeoutError2) return `${PROBE_TIMEOUT_REASON}: ${err.message} (${bin})`;
     return sdkProtocolMismatch(err instanceof Error ? err.cause : void 0) ? errText2(err) : null;
   } finally {
     if (client) {
@@ -23739,7 +23765,7 @@ async function memoSdkProtocolProbe(loaded2, bin, probe = probeSdkProtocol) {
   if (result?.startsWith(PROBE_TIMEOUT_REASON)) probeMemo.delete(key);
   return result;
 }
-var import_child_process10, import_crypto11, import_fs42, import_module, import_os12, import_path46, import_url8, SDK_MIN_VERSION, TimeoutError, LAST_PROTOCOL3_CLI, PROBE_START_TIMEOUT_MS, PROBE_STOP_TIMEOUT_MS, PROBE_TIMEOUT_REASON, probeMemo;
+var import_child_process10, import_crypto11, import_fs42, import_module, import_os12, import_path46, import_url8, SDK_MIN_VERSION, MIN_COPILOT_CLI, TimeoutError2, COPILOT_UPDATE_COMMAND, PROBE_START_TIMEOUT_MS, PROBE_STOP_TIMEOUT_MS, PROBE_TIMEOUT_REASON, probeMemo;
 var init_copilot_sdk_driver = __esm({
   "src/smoke/copilot-sdk-driver.ts"() {
     "use strict";
@@ -23758,10 +23784,11 @@ var init_copilot_sdk_driver = __esm({
     init_windows_search();
     init_handler();
     init_run();
-    SDK_MIN_VERSION = "1.0.16";
-    TimeoutError = class extends Error {
+    SDK_MIN_VERSION = "2.0.3";
+    MIN_COPILOT_CLI = "1.0.116";
+    TimeoutError2 = class extends Error {
     };
-    LAST_PROTOCOL3_CLI = "1.0.112";
+    COPILOT_UPDATE_COMMAND = "npm i -g @github/copilot@latest";
     PROBE_START_TIMEOUT_MS = 15e3;
     PROBE_STOP_TIMEOUT_MS = 5e3;
     PROBE_TIMEOUT_REASON = "copilot_sdk_probe_timeout";
@@ -23943,7 +23970,7 @@ async function fetchCopilotCatalogue(opts = {}) {
     (0, import_node_fs15.mkdirSync)(workDir, { recursive: true });
     const loaded2 = await deps.loadSdk().catch(() => null);
     if (cancelled) return { error: "cancelled" };
-    if (!loaded2) return { error: `@github/copilot-sdk is not installed or could not be loaded (${SDK_INSTALL_COMMAND})` };
+    if (!loaded2) return { error: `${SDK_PACKAGE} is not installed or could not be loaded (${SDK_INSTALL_COMMAND})` };
     const found = opts.cliPath && (0, import_node_fs15.existsSync)(opts.cliPath) ? opts.cliPath : deps.resolveBin();
     const bin = found && deps.platform === "win32" && /\.(cmd|bat|ps1)$/i.test(found) ? resolveShimTarget(found) : found;
     if (!bin) return { error: "the copilot CLI was not found" };
@@ -23958,13 +23985,11 @@ async function fetchCopilotCatalogue(opts = {}) {
     (0, import_node_fs15.mkdirSync)(env.TEMP, { recursive: true });
     const gitHubToken = sessionGitHubToken(deps.env, source2);
     if (gitHubToken) addRecordingDenyLiterals([gitHubToken]);
-    const { CopilotClient, RuntimeConnection } = loaded2.module;
-    const c = new CopilotClient({
-      connection: RuntimeConnection.forStdio({ path: bin, args: ["--max-ai-credits", String(RUNTIME_MIN_MAX_CREDITS)], env }),
-      baseDirectory: jobHome,
-      workingDirectory: workDir,
-      ...gitHubToken ? { gitHubToken } : {}
-    });
+    const c = new loaded2.module.CopilotClient(spawnedClientOptions(
+      loaded2,
+      { path: bin, args: ["--max-ai-credits", String(RUNTIME_MIN_MAX_CREDITS)], env, baseDirectory: jobHome, workingDirectory: workDir },
+      gitHubToken ? { github: { token: gitHubToken } } : {}
+    ));
     client = c;
     await c.start().catch(rethrowSdkStartError);
     return { models: catalogueFromListModels(await c.listModels()) };

@@ -61,9 +61,10 @@ autopilot: build a todo-app
 >
 > **Optional SDKs:** oh-my-copilot does not install or declare either SDK. Headless
 > `omg team` workers (`--transport sdk`), `omg smoke copilot --tier 2` and
-> `copilot_run` need `npm i -g @github/copilot-sdk --omit=optional --ignore-scripts`;
+> `copilot_run` need `npm i -g @microsoft/copilot-sdk@2 --ignore-scripts`;
 > `omg graph` agent nodes need `npm install -g @anthropic-ai/claude-agent-sdk`. See
-> [MIGRATION.md](docs/MIGRATION.md#unreleased-sdks-no-longer-declared-tsx-a-dev-dependency).
+> [MIGRATION.md](docs/MIGRATION.md#unreleased-sdks-no-longer-declared-tsx-a-dev-dependency);
+> moving from `@github/copilot-sdk`: [Copilot SDK v2](docs/MIGRATION.md#unreleased-copilot-sdk-v2-microsoftcopilot-sdk).
 
 ### Not Sure Where to Start?
 

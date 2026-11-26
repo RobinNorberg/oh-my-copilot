@@ -38,7 +38,7 @@ import { commitLaneWork, laneCommitMessage } from '../factory/run/lane-commit.js
 import { CopilotLaneBackend, isTerminalLaneState, type LaneBackend, type LaneResult } from '../factory/run/lane.js';
 import { defaultExec } from '../ship/exec.js';
 import { prepareFactoryRepo } from './copilot-factory-run-scenario.js';
-import { rethrowSdkStartError, type LoadedSdk, type SdkClientLike, type SdkClientOptions, type SdkSessionConfig, type SdkSessionLike } from './copilot-sdk-driver.js';
+import { rethrowSdkStartError, spawnedClientOptions, type LoadedSdk, type SdkClientLike, type SdkClientOptions, type SdkSessionConfig, type SdkSessionLike } from './copilot-sdk-driver.js';
 import {
   laneModelLabel,
   parseSandboxProbe,
@@ -48,6 +48,7 @@ import {
   SANDBOX_PROBE_SCRIPT,
   SANDBOX_REVIEW_FILE,
   SDK_INSTALL_COMMAND,
+  SDK_PACKAGE,
   type SandboxCanaryRecord,
   type SandboxLaneEvidence,
   type SandboxLaneRecord,
@@ -153,8 +154,7 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
  * The SDK with a client whose sessions run `probe.command` through
  * `session.rpc.shell.executeUserRequested` right before their first `send`,
  * after copilot_run applied and confirmed the sandbox. The override is an
- * instance property, so the prototype's createSession (what
- * sdkCreateSessionAcceptsSandbox reads) is the SDK's own.
+ * instance property, so the prototype's createSession stays the SDK's own.
  */
 export function withSandboxCanary(loaded: LoadedSdk, probe: SandboxCanaryProbe): LoadedSdk {
   const Base = loaded.module.CopilotClient;
@@ -166,9 +166,12 @@ export function withSandboxCanary(loaded: LoadedSdk, probe: SandboxCanaryProbe):
         let probing = false;
         const session = await create({
           ...config,
-          onPermissionRequest: (req, ctx) => {
-            if (probing) probe.permissionRequests += 1;
-            return config.onPermissionRequest(req, ctx);
+          permissions: {
+            ...config.permissions,
+            onRequest: (req, ctx) => {
+              if (probing) probe.permissionRequests += 1;
+              return config.permissions.onRequest(req, ctx);
+            },
           },
         });
         const send = session.send.bind(session);
@@ -216,13 +219,14 @@ async function probeSandboxHost(input: Pick<SandboxLaneScenarioInput, 'env' | 'b
   delete env[SANDBOX_KILL_ENV];
   let loaded: LoadedSdk | null;
   try { loaded = await defaultCopilotRunDeps(env).loadSdk(); } catch (err) { return unsupported(`loading the SDK failed: ${errText(err)}`); }
-  if (!loaded) return unsupported(`the @github/copilot-sdk package is not installed (${SDK_INSTALL_COMMAND})`);
-  const { CopilotClient, RuntimeConnection } = loaded.module;
-  const client = new CopilotClient({
-    connection: RuntimeConnection.forStdio({ path: input.bin, args: ['--max-ai-credits', String(RUNTIME_MIN_MAX_CREDITS)], env }),
+  if (!loaded) return unsupported(`the ${SDK_PACKAGE} package is not installed (${SDK_INSTALL_COMMAND})`);
+  const client = new loaded.module.CopilotClient(spawnedClientOptions(loaded, {
+    path: input.bin,
+    args: ['--max-ai-credits', String(RUNTIME_MIN_MAX_CREDITS)],
+    env,
     baseDirectory: input.home,
     workingDirectory: cwd,
-  });
+  }));
   try {
     await withTimeout(client.start().catch(rethrowSdkStartError), CANARY_RPC_TIMEOUT_MS, 'client.start()');
     return await probeHostSupport(client, CANARY_RPC_TIMEOUT_MS);
@@ -315,7 +319,7 @@ function record(role: SandboxLaneRole, result: LaneResult | null, events: Copilo
     role,
     state: result?.state ?? 'not started',
     error: result?.error ?? null,
-    sandbox: s ? { mode: s.mode, host: s.host, applied: s.applied, ...(s.enforcement ? { enforcement: s.enforcement } : {}), canary: s.canary, unsandboxedCalls: s.unsandboxedCalls, ...(s.reason ? { reason: s.reason } : {}) } : null,
+    sandbox: s ? { mode: s.mode, host: s.host, applied: s.applied, ...(s.enforcement ? { enforcement: s.enforcement } : {}), canary: s.canary, unsandboxedCalls: s.unsandboxedCalls, ...(s.stateEscaped ? { stateEscaped: s.stateEscaped } : {}), ...(s.reason ? { reason: s.reason } : {}) } : null,
     shellCalls: att.calls,
     unattestedShellCalls: att.unattested,
     okShellCalls: att.ok,

@@ -20,8 +20,10 @@
  * Everything runs as child processes of `node <root>/bridge/cli.cjs`, so this
  * module imports no team code; the smoke entry injects it like `chain`.
  *
- * Cost: one user prompt per worker, billed in AI credits. Each host is
- * capped at half of the run's remaining credit budget.
+ * Cost: one user prompt per worker, billed in AI credits, on the model the
+ * driver chose for the session (`--model`, a cassette's pinned model, else
+ * the cheapest-looking listed model), never runtime auto when a cheap model
+ * is listed. Each host is capped at half of the run's remaining credit budget.
  */
 
 import { spawn as nodeSpawn } from 'child_process';
@@ -56,7 +58,10 @@ export interface TeamScenarioInput {
   budget: number;
   eventsPath: string;
   spawnSync: SpawnSyncFn;
-  /** The model every sdk worker runs on (`OMC_TEAM_SDK_MODEL`); unset: team.sdk.model, else runtime auto. A cassette pins it. */
+  /**
+   * The model every sdk worker runs on (`OMC_TEAM_SDK_MODEL`): the driver passes its session choice (`--model`,
+   * a cassette's pinned model, else the cheap pick). Unset only when the runtime lists no cheap model: team.sdk.model, else runtime auto.
+   */
   model?: string;
   /** Test seams. */
   spawn?: SpawnFn;

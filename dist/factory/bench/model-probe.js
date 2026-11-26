@@ -16,8 +16,8 @@ import { dirname, join, resolve } from 'node:path';
 import { defaultCopilotRunDeps } from '../../copilot-run/job.js';
 import { allowlistSessionEnv, scrubTokens, secretValues, sessionGitHubToken, withCredentialHint } from '../../copilot-run/sandbox.js';
 import { errText, withTimeout } from '../../copilot-run/timeout.js';
-import { resolveShimTarget, rethrowSdkStartError, runtimePid } from '../../smoke/copilot-sdk-driver.js';
-import { RUNTIME_MIN_MAX_CREDITS, SDK_INSTALL_COMMAND } from '../../smoke/copilot-sdk-scenarios.js';
+import { resolveShimTarget, rethrowSdkStartError, runtimePid, spawnedClientOptions } from '../../smoke/copilot-sdk-driver.js';
+import { RUNTIME_MIN_MAX_CREDITS, SDK_INSTALL_COMMAND, SDK_PACKAGE } from '../../smoke/copilot-sdk-scenarios.js';
 import { buildSessionEnv, loginIdentity } from '../../smoke/copilot-session-env.js';
 import { addRecordingDenyLiterals } from '../../smoke/replay/handler.js';
 import { hasExited } from '../../smoke/process-utils.js';
@@ -74,7 +74,7 @@ export async function probeLaneModel(jobRoot, deps = defaultCopilotRunDeps(), re
         mkdirSync(workDir, { recursive: true });
         const loaded = await deps.loadSdk().catch(() => null);
         if (!loaded)
-            return none(`@github/copilot-sdk is not installed or could not be loaded (${SDK_INSTALL_COMMAND})`);
+            return none(`${SDK_PACKAGE} is not installed or could not be loaded (${SDK_INSTALL_COMMAND})`);
         const found = deps.resolveBin();
         const bin = found && deps.platform === 'win32' && /\.(cmd|bat|ps1)$/i.test(found) ? resolveShimTarget(found) : found;
         if (!bin)
@@ -93,15 +93,10 @@ export async function probeLaneModel(jobRoot, deps = defaultCopilotRunDeps(), re
         // A recording (cassette record mode) never carries the credential, the stored login token included.
         if (gitHubToken)
             addRecordingDenyLiterals([gitHubToken]);
-        const { CopilotClient, RuntimeConnection } = loaded.module;
-        const c = new CopilotClient({
-            connection: RuntimeConnection.forStdio({ path: bin, args: ['--max-ai-credits', String(RUNTIME_MIN_MAX_CREDITS)], env }),
-            baseDirectory: jobHome,
-            workingDirectory: workDir,
-            // listModels() runs before (or without) a session: the client option puts the credential in the runtime env. The
-            // probe sends no prompt and its session has no tools, so no untrusted code sees that env. Never in the job home.
-            ...(gitHubToken ? { gitHubToken } : {}),
-        });
+        const c = new loaded.module.CopilotClient(spawnedClientOptions(loaded, { path: bin, args: ['--max-ai-credits', String(RUNTIME_MIN_MAX_CREDITS)], env, baseDirectory: jobHome, workingDirectory: workDir }, 
+        // listModels() runs before (or without) a session: the client option puts the credential in the runtime env. The
+        // probe sends no prompt and its session has no tools, so no untrusted code sees that env. Never in the job home.
+        gitHubToken ? { github: { token: gitHubToken } } : {}));
         client = c;
         await withTimeout(c.start().catch(rethrowSdkStartError), START_TIMEOUT_MS, 'client.start()');
         const models = (await withTimeout(c.listModels(), RPC_TIMEOUT_MS, 'listModels()'));
@@ -117,13 +112,12 @@ export async function probeLaneModel(jobRoot, deps = defaultCopilotRunDeps(), re
         }
         // A session with no tools and every permission refused; it is never sent a prompt.
         session = await withTimeout(c.createSession({
-            onPermissionRequest: () => ({ kind: 'reject' }),
-            pluginDirectories: [],
+            permissions: { onRequest: () => ({ kind: 'reject' }) },
+            plugins: { directories: [] },
             workingDirectory: workDir,
-            disabledMcpServers: ['github-mcp-server'],
-            excludedTools: [],
-            availableTools: [],
-            ...(gitHubToken ? { gitHubToken } : {}),
+            mcp: { disabledServers: ['github-mcp-server'] },
+            tools: { excludedTools: [], availableTools: [] },
+            ...(gitHubToken ? { github: { token: gitHubToken } } : {}),
         }), RPC_TIMEOUT_MS, 'createSession()');
         const getCurrent = session.rpc.model?.getCurrent;
         if (!getCurrent)

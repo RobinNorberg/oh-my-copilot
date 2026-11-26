@@ -42,7 +42,7 @@ const hostSmokeSchema = {
     .optional()
     .describe(
       '0 = load check, no model call (default). 1 = tier 0 plus one live session with the prompt on stdin '
-      + '(one prompt, billed in AI credits). 2 = tier 0 plus @github/copilot-sdk static checks plus scenarios. '
+      + '(one prompt, billed in AI credits). 2 = tier 0 plus @microsoft/copilot-sdk static checks plus scenarios. '
       + 'Tier 1 and tier 2 with scenarios require OMC_SMOKE_ALLOW_LIVE=1 in the MCP server env.',
     ),
   scenarios: z
@@ -106,7 +106,7 @@ export const hostSmokeTool: ToolDefinition<typeof hostSmokeSchema> = {
     'Run the headless Copilot CLI smoke check against a plugin root (same as `omg smoke copilot`). ' +
     'Tier 0 verifies the plugin loads (manifest, hooks, plugin/skill list, MCP tools) without a model call; ' +
     'tier 1 adds one live session (one prompt billed in AI credits, needs OMC_SMOKE_ALLOW_LIVE=1); ' +
-    'tier 2 adds @github/copilot-sdk static checks (free with scenarios: []) and SDK scenarios (need OMC_SMOKE_ALLOW_LIVE=1). ' +
+    'tier 2 adds @microsoft/copilot-sdk static checks (free with scenarios: []) and SDK scenarios (need OMC_SMOKE_ALLOW_LIVE=1). ' +
     'Returns the SmokeReport JSON; isError when any check fails.',
   category: TOOL_CATEGORIES.SMOKE,
   annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },

@@ -65,7 +65,7 @@ function fakeSdkBase(answer: (body: unknown) => unknown = () => ({ id: 'c', choi
 
 class FakeClient {
   constructor(readonly opts: SdkClientOptions) {}
-  get handler(): CopilotRequestHandlerLike { return this.opts.requestHandler as CopilotRequestHandlerLike; }
+  get handler(): CopilotRequestHandlerLike { return this.opts.models?.requestHandler as CopilotRequestHandlerLike; }
   async start(): Promise<void> {}
   async stop(): Promise<Error[]> { return []; }
   async getStatus() { return {}; }
@@ -75,11 +75,11 @@ class FakeClient {
 }
 
 function fakeSdk(Base: CopilotRequestHandlerCtor): LoadedSdk {
-  return { module: { CopilotClient: FakeClient as never, RuntimeConnection: { forStdio: (o: unknown) => o }, CopilotRequestHandler: Base }, version: '1.0.16', from: 'test' };
+  return { module: { CopilotClient: FakeClient as never, RuntimeConnection: { forSpawnedStdio: (o: unknown) => o }, CopilotRequestHandler: Base }, version: '2.0.3', from: 'test' };
 }
 
 type CassetteClient = SdkClientLike & CassetteClientControl & { handler: CopilotRequestHandlerLike };
-const newClient = (sdk: LoadedSdk) => new sdk.module.CopilotClient({ connection: {}, baseDirectory: 'b', workingDirectory: 'w' }) as CassetteClient;
+const newClient = (sdk: LoadedSdk) => new sdk.module.CopilotClient({ mode: 'coding-agent', runtime: { baseDirectory: 'b', workingDirectory: 'w' } }) as CassetteClient;
 
 async function drive(client: CassetteClient, session: string, prompt: string, method = 'POST'): Promise<Response> {
   const url = `${API}${method === 'GET' ? '/models' : '/chat/completions'}`;

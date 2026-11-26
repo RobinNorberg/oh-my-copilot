@@ -1,7 +1,7 @@
 /**
  * `omg smoke copilot` — load-check the plugin inside the real Copilot CLI.
  * Exit codes: 0 all checks ok; 1 any check failed (or bad options / a crash);
- * 2 skipped because the copilot binary or the optional `@github/copilot-sdk`
+ * 2 skipped because the copilot binary or the optional `@microsoft/copilot-sdk`
  * peer is missing and no other check failed.
  * With --json a SmokeReport is ALWAYS printed, including for option errors and
  * crashes (then `ok:false` with one `cli.error` check).

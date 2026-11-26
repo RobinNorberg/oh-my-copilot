@@ -39,7 +39,7 @@ class FakeClient {
     constructor(opts) {
         this.opts = opts;
     }
-    get handler() { return this.opts.requestHandler; }
+    get handler() { return this.opts.models?.requestHandler; }
     async start() { }
     async stop() { return []; }
     async getStatus() { return {}; }
@@ -48,9 +48,9 @@ class FakeClient {
     async deleteSession() { }
 }
 function fakeSdk(Base) {
-    return { module: { CopilotClient: FakeClient, RuntimeConnection: { forStdio: (o) => o }, CopilotRequestHandler: Base }, version: '1.0.16', from: 'test' };
+    return { module: { CopilotClient: FakeClient, RuntimeConnection: { forSpawnedStdio: (o) => o }, CopilotRequestHandler: Base }, version: '2.0.3', from: 'test' };
 }
-const newClient = (sdk) => new sdk.module.CopilotClient({ connection: {}, baseDirectory: 'b', workingDirectory: 'w' });
+const newClient = (sdk) => new sdk.module.CopilotClient({ mode: 'coding-agent', runtime: { baseDirectory: 'b', workingDirectory: 'w' } });
 async function drive(client, session, prompt, method = 'POST') {
     const url = `${API}${method === 'GET' ? '/models' : '/chat/completions'}`;
     const body = { model: 'gpt-5-mini', messages: [{ role: 'user', content: prompt }] };

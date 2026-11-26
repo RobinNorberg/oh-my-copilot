@@ -24,8 +24,8 @@ import { errText, withTimeout } from './timeout.js';
 // Static, not lazy: bundlers keep only the names used here, while a dynamic import keeps whole modules.
 // Not copilot-run/job.ts: it reaches src/factory/**, which the team bundle must not (tests/lint/team-bundle-no-native).
 import { allowlistSessionEnv, scrubTokens, secretValues, sessionGitHubToken, withCredentialHint } from './sandbox.js';
-import { loadCopilotSdk, resolveShimTarget, rethrowSdkStartError, runtimePid, type LoadedSdk, type SdkClientLike } from '../smoke/copilot-sdk-driver.js';
-import { RUNTIME_MIN_MAX_CREDITS, SDK_INSTALL_COMMAND } from '../smoke/copilot-sdk-scenarios.js';
+import { loadCopilotSdk, resolveShimTarget, rethrowSdkStartError, runtimePid, spawnedClientOptions, type LoadedSdk, type SdkClientLike } from '../smoke/copilot-sdk-driver.js';
+import { RUNTIME_MIN_MAX_CREDITS, SDK_INSTALL_COMMAND, SDK_PACKAGE } from '../smoke/copilot-sdk-scenarios.js';
 import { buildSessionEnv, loginIdentity } from '../smoke/copilot-session-env.js';
 import { addRecordingDenyLiterals } from '../smoke/replay/handler.js';
 import { hasExited, killProcessTree, type SpawnSyncFn } from '../smoke/process-utils.js';
@@ -273,7 +273,7 @@ export async function fetchCopilotCatalogue(opts: {
     const loaded = await deps.loadSdk().catch(() => null);
     // Past the deadline: cleanup may already have run, so start nothing.
     if (cancelled) return { error: 'cancelled' };
-    if (!loaded) return { error: `@github/copilot-sdk is not installed or could not be loaded (${SDK_INSTALL_COMMAND})` };
+    if (!loaded) return { error: `${SDK_PACKAGE} is not installed or could not be loaded (${SDK_INSTALL_COMMAND})` };
     const found = opts.cliPath && existsSync(opts.cliPath) ? opts.cliPath : deps.resolveBin();
     const bin = found && deps.platform === 'win32' && /\.(cmd|bat|ps1)$/i.test(found) ? resolveShimTarget(found) : found;
     if (!bin) return { error: 'the copilot CLI was not found' };
@@ -292,13 +292,11 @@ export async function fetchCopilotCatalogue(opts: {
     const gitHubToken = sessionGitHubToken(deps.env, source);
     // A recording (cassette record mode) never carries the credential, the stored login token included.
     if (gitHubToken) addRecordingDenyLiterals([gitHubToken]);
-    const { CopilotClient, RuntimeConnection } = loaded.module;
-    const c: SdkClientLike = new CopilotClient({
-      connection: RuntimeConnection.forStdio({ path: bin, args: ['--max-ai-credits', String(RUNTIME_MIN_MAX_CREDITS)], env }),
-      baseDirectory: jobHome,
-      workingDirectory: workDir,
-      ...(gitHubToken ? { gitHubToken } : {}),
-    });
+    const c: SdkClientLike = new loaded.module.CopilotClient(spawnedClientOptions(
+      loaded,
+      { path: bin, args: ['--max-ai-credits', String(RUNTIME_MIN_MAX_CREDITS)], env, baseDirectory: jobHome, workingDirectory: workDir },
+      gitHubToken ? { github: { token: gitHubToken } } : {},
+    ));
     client = c;
     await c.start().catch(rethrowSdkStartError);
     return { models: catalogueFromListModels(await c.listModels()) };

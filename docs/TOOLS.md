@@ -783,7 +783,7 @@ Runs the same check as `omg smoke copilot` against a plugin root and returns the
 
 | Argument     | Type    | Meaning                                                                 |
 | ------------ | ------- | ----------------------------------------------------------------------- |
-| `tier`       | 0, 1 or 2 | `0` load check without a model call (default); `1` adds one live session, one prompt billed in AI credits (about 0.4 to 0.9 measured); `2` adds `@github/copilot-sdk` static checks and SDK scenarios. Tier 1 needs `OMC_SMOKE_ALLOW_LIVE=1` in the server env |
+| `tier`       | 0, 1 or 2 | `0` load check without a model call (default); `1` adds one live session, one prompt billed in AI credits (about 0.4 to 0.9 measured); `2` adds `@microsoft/copilot-sdk` (SDK v2) static checks and SDK scenarios. Tier 1 needs `OMC_SMOKE_ALLOW_LIVE=1` in the server env |
 | `scenarios`  | string[] | Tier 2 only: `smoke`, `guardrail`, `skill`, `delegate`, or `all`. Omitted runs `smoke` and `guardrail`, one prompt each (about 0.3 AI credits each measured), and needs `OMC_SMOKE_ALLOW_LIVE=1`. `[]` runs the SDK static checks only, with no model call and no opt-in |
 | `pluginRoot` | string  | Plugin root passed to `--plugin-dir`; defaults to the package root. Any other root needs `OMC_SMOKE_ALLOW_ANY_ROOT=1` |
 | `model`      | string  | Tiers 1-2 model id; omitted means Copilot auto-selects at tier 1 and a cheap listed model, else auto, at tier 2 |
@@ -797,7 +797,7 @@ host_smoke(tier=0)
 host_smoke(tier=2, scenarios=[])   # SDK static checks, free
 ```
 
-Tier 2 needs `@github/copilot-sdk` (`npm i -g @github/copilot-sdk --omit=optional --ignore-scripts`), which oh-my-copilot does not install. Without it the `sdk.*` checks fail with an install hint and the report is marked `skipped`.
+Tier 2 needs `@microsoft/copilot-sdk` (`npm i -g @microsoft/copilot-sdk@2 --ignore-scripts`) and Copilot CLI 1.0.113 or newer; oh-my-copilot does not install the SDK. Without it the `sdk.*` checks fail with an install hint and the report is marked `skipped`.
 
 See [DEVELOPERS.md](./DEVELOPERS.md#headless-smoke-against-a-local-build) for the check list and how to register a local build in Claude Code.
 
@@ -805,7 +805,7 @@ See [DEVELOPERS.md](./DEVELOPERS.md#headless-smoke-against-a-local-build) for th
 
 ## Copilot Run
 
-Delegates a task to a headless `@github/copilot-sdk` session as a background job, by default in a new git worktree and branch. `copilot_run_start` refuses unless `OMG_COPILOT_RUN_ALLOW=1` is set in the server env. `OMC_DISABLE_TOOLS=copilot-run` hides all five.
+Delegates a task to a headless `@microsoft/copilot-sdk` session as a background job, by default in a new git worktree and branch. `copilot_run_start` refuses unless `OMG_COPILOT_RUN_ALLOW=1` is set in the server env. `OMC_DISABLE_TOOLS=copilot-run` hides all five.
 
 ### Tools
 

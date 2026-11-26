@@ -3,8 +3,8 @@ import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, resolve, sep } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { sdkCreateSessionAcceptsSandbox, type LoadedSdk } from '../../smoke/copilot-sdk-driver.js';
 import {
+  applySandboxConfig,
   BWRAP_TRIAL_ARGS,
   DEFAULT_SANDBOX_SETTINGS,
   NUGET_HOSTS,
@@ -780,12 +780,14 @@ describe('detection helpers', () => {
     expect(factorySandboxProblem({ ...DEFAULT_SANDBOX_SETTINGS }, boom, { OMG_SANDBOX: 'off' })).toBeNull();
   });
 
-  it('sdkCreateSessionAcceptsSandbox reads the createSession source', () => {
-    const sdk = (cls: unknown): LoadedSdk => ({ module: { CopilotClient: cls as never, RuntimeConnection: { forStdio: () => ({}) } }, version: 'x', from: 'test' });
-    class Old { async createSession(cfg: { model?: string }) { return cfg.model; } }
-    class New { async createSession(cfg: { sandboxConfig?: unknown }) { return cfg.sandboxConfig; } }
-    expect(sdkCreateSessionAcceptsSandbox(sdk(Old))).toBe(false);
-    expect(sdkCreateSessionAcceptsSandbox(sdk(New))).toBe(true);
+  it('applySandboxConfig sends the SDK v2 options.update patch and reads its success', async () => {
+    const config = { enabled: true } as never;
+    const seen: unknown[] = [];
+    const session = (result: unknown) => ({ rpc: { options: { update: async (p: unknown) => { seen.push(p); return result; } } } });
+    expect(await applySandboxConfig(session({ success: true }), config, 1_000)).toBeNull();
+    expect(seen).toEqual([{ permissions: { sandbox: { enabled: true }, sandboxSource: 'session_flag' } }]);
+    expect(await applySandboxConfig(session({ success: false }), config, 1_000)).toBe('options.update did not report success');
+    expect(await applySandboxConfig({ rpc: {} }, config, 1_000)).toBe('the SDK has no options.update RPC');
   });
 
   it('allowlistSessionEnv matches names case-insensitively and relocates the profile', () => {

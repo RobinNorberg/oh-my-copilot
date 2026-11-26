@@ -1,7 +1,7 @@
 /**
  * `omg smoke copilot` — load-check the plugin inside the real Copilot CLI.
  * Exit codes: 0 all checks ok; 1 any check failed (or bad options / a crash);
- * 2 skipped because the copilot binary or the optional `@github/copilot-sdk`
+ * 2 skipped because the copilot binary or the optional `@microsoft/copilot-sdk`
  * peer is missing and no other check failed.
  * With --json a SmokeReport is ALWAYS printed, including for option errors and
  * crashes (then `ok:false` with one `cli.error` check).
@@ -152,7 +152,7 @@ export function formatSmokeReport(report: SmokeReport): string {
   lines.push(`copilot: ${report.copilot.bin ?? 'not found'}${report.copilot.version ? ` (v${report.copilot.version})` : ''}`);
   if (report.sdk) {
     const { version, runtimeVersion, protocolVersion, model } = report.sdk;
-    lines.push(`sdk: @github/copilot-sdk ${version ?? '?'} driving runtime ${runtimeVersion ?? '?'} (protocol ${protocolVersion ?? '?'}), model ${model}`);
+    lines.push(`sdk: @microsoft/copilot-sdk ${version ?? '?'} driving runtime ${runtimeVersion ?? '?'} (protocol ${protocolVersion ?? '?'}), model ${model}`);
   }
   let group: string | null = null;
   for (const check of report.checks) {

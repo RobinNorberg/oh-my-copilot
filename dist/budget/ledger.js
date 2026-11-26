@@ -4,7 +4,8 @@
  * Copilot bills usage in AI Credits since 2026-06-01; premium requests are a
  * legacy field the CLI still reports and the ledger still carries.
  *
- * Data sources, verified on Copilot CLI 1.0.91 and @github/copilot-sdk 1.0.16:
+ * Data sources, verified on Copilot CLI 1.0.91 and @github/copilot-sdk 1.0.16 (the event
+ * fields used here are unchanged in @microsoft/copilot-sdk 2.0.3 / CLI 1.0.116):
  * - CLI sessions persist `$COPILOT_HOME/session-state/<id>/events.jsonl`. Its
  *   `session.usage_checkpoint` and `session.shutdown` events carry cumulative
  *   `totalNanoAiu` (1e-9 AI Credits) and the legacy `totalPremiumRequests`.

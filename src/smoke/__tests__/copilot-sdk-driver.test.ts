@@ -11,7 +11,10 @@ import {
   globalModuleRoots,
   prepareFiletools,
   importFromDir,
-  LAST_PROTOCOL3_CLI,
+  COPILOT_UPDATE_COMMAND,
+  LEGACY_SDK_PACKAGE,
+  findLegacySdkVersion,
+  MIN_COPILOT_CLI,
   memoSdkProtocolProbe,
   PROBE_TIMEOUT_REASON,
   probeSdkProtocol,
@@ -24,10 +27,12 @@ import {
   satisfiesSdkRange,
   sandboxCanaryCommand,
   sandboxCanaryLaunched,
+  spawnedClientOptions,
   type CopilotSdkModule,
   type LoadedSdk,
   type SdkClientOptions,
   type SdkSessionConfig,
+  type SpawnedStdioOptions,
   type SdkSessionLike,
   type SdkTierInput,
 } from '../copilot-sdk-driver.js';
@@ -110,7 +115,8 @@ const restamp = (text: string, iso = new Date().toISOString()) => text.replace(/
 interface FakeRecord {
   ops: string[];
   clientOptions?: SdkClientOptions;
-  connection?: { path?: string; args?: string[]; env?: NodeJS.ProcessEnv };
+  /** The spawned-stdio connection (SDK v2 `runtime`): process options plus the runtime home. */
+  connection?: SpawnedStdioOptions;
   sessions: SdkSessionConfig[];
   permissions: Array<{ scenario: string; kind: string; decision: string }>;
   /** `options.update` params per session id. */
@@ -123,10 +129,10 @@ function scenarioOf(prompt: string): Scenario {
   return hit;
 }
 
-/** SDK 1.0.34's `client.start()` refusal against CLI 1.0.113+. */
-const PROTOCOL_MISMATCH = 'SDK protocol version mismatch: SDK supports versions 3-3, but server reports version 4. Please update your SDK or server to ensure compatibility.';
+/** SDK 2.0.3's `client.start()` refusal against a protocol-3 CLI (<= 1.0.112). */
+const PROTOCOL_MISMATCH = 'SDK protocol version mismatch: SDK supports versions 4-4, but server reports version 3. Please update your SDK or server to ensure compatibility.';
 
-/** A fake @github/copilot-sdk: static RPCs answer from the fake plugin root; prompts replay fixture JSONL. */
+/** A fake @microsoft/copilot-sdk (v2): static RPCs answer from the fake plugin root; prompts replay fixture JSONL. */
 function fakeSdk(opts: FakeOptions = {}): { loaded: LoadedSdk; rec: FakeRecord } {
   const rec: FakeRecord = { ops: [], sessions: [], permissions: [] };
   let n = 0;
@@ -134,7 +140,7 @@ function fakeSdk(opts: FakeOptions = {}): { loaded: LoadedSdk; rec: FakeRecord }
   const sentAt: Partial<Record<Scenario, string>> = {};
   let modelsCached = false;
   const fetchModels = async (): Promise<boolean> => {
-    const handler = clientOptions.requestHandler as { sendRequest(r: Request, c: unknown): Promise<Response> } | undefined;
+    const handler = clientOptions.models?.requestHandler as { sendRequest(r: Request, c: unknown): Promise<Response> } | undefined;
     if (modelsCached || !handler) return true;
     const url = 'https://api.githubcopilot.com/models';
     const response = await handler.sendRequest(new Request(url), { transport: 'http', url, headers: {} });
@@ -147,7 +153,7 @@ function fakeSdk(opts: FakeOptions = {}): { loaded: LoadedSdk; rec: FakeRecord }
     constructor(options: SdkClientOptions) {
       clientOptions = options;
       rec.clientOptions = options;
-      rec.connection = options.connection as FakeRecord['connection'];
+      rec.connection = options.runtime as FakeRecord['connection'];
     }
     async start() {
       rec.ops.push('start');
@@ -163,7 +169,7 @@ function fakeSdk(opts: FakeOptions = {}): { loaded: LoadedSdk; rec: FakeRecord }
     rpc = opts.hostSupport === null ? {} : {
       sandbox: { getHostSupport: async () => opts.hostSupport ?? { supported: false, reason: 'fake host', capabilities: [{ name: 'shell', supported: false }] } },
     };
-    async getStatus() { return { version: '1.0.91', protocolVersion: 3 }; }
+    async getStatus() { return { version: '1.0.116', protocolVersion: 4 }; }
     async listModels() {
       if (opts.globalGet && !(await fetchModels())) throw new Error('models: 418');
       return (opts.models ?? ['auto']).map((id) => ({ id }));
@@ -173,9 +179,9 @@ function fakeSdk(opts: FakeOptions = {}): { loaded: LoadedSdk; rec: FakeRecord }
       const id = `s${++n}`;
       rec.ops.push(`create:${id}`);
       rec.sessions.push(config);
-      const home = rec.clientOptions!.baseDirectory;
+      const home = rec.connection!.baseDirectory!;
       let current: Scenario | undefined;
-      const emit = (e: CopilotEvent) => config.onEvent?.(e);
+      const emit = (e: CopilotEvent) => config.events?.onEvent?.(e);
       return {
         sessionId: id,
         async send({ prompt }) {
@@ -184,11 +190,11 @@ function fakeSdk(opts: FakeOptions = {}): { loaded: LoadedSdk; rec: FakeRecord }
           current = scenarioOf(prompt);
           const scenario = current;
           for (const kind of ['read', 'shell', 'write']) {
-            const decision = await config.onPermissionRequest({ kind, fullCommandText: 'git push --force origin main' }, { sessionId: id });
+            const decision = await config.permissions.onRequest({ kind, fullCommandText: 'git push --force origin main' }, { sessionId: id });
             rec.permissions.push({ scenario, kind, decision: decision.kind });
           }
           // What the runtime does with a cassette client: every model request goes through its request handler.
-          const handler = clientOptions.requestHandler as { sendRequest(r: Request, c: unknown): Promise<Response> } | undefined;
+          const handler = clientOptions.models?.requestHandler as { sendRequest(r: Request, c: unknown): Promise<Response> } | undefined;
           if (opts.globalGet) await fetchModels();
           for (let i = 0; handler && i < (opts.requests ?? 1); i++) {
             const url = 'https://api.githubcopilot.com/chat/completions';
@@ -257,11 +263,11 @@ function fakeSdk(opts: FakeOptions = {}): { loaded: LoadedSdk; rec: FakeRecord }
   }
   const module: CopilotSdkModule = {
     CopilotClient: FakeClient as unknown as CopilotSdkModule['CopilotClient'],
-    RuntimeConnection: { forStdio: (o) => o },
+    RuntimeConnection: { forSpawnedStdio: (o) => o },
   };
   // The runtime creates its log dir at start.
   mkdirSync(join(parent, 'home', 'logs'), { recursive: true });
-  return { loaded: { module, version: '1.0.16', from: 'fake' }, rec };
+  return { loaded: { module, version: '2.0.3', from: 'fake' }, rec };
 }
 
 interface GitCall { args: string[]; cwd?: string }
@@ -279,7 +285,7 @@ function input(loaded: LoadedSdk | null, over: Partial<SdkTierInput> = {}, gitCa
   return {
     root,
     bin: process.platform === 'win32' ? 'C:\\fake\\copilot.exe' : '/fake/copilot',
-    binVersion: '1.0.91',
+    binVersion: '1.0.116',
     packageVersion: '9.9.9',
     home: join(parent, 'home'),
     projectDir: join(parent, 'project'),
@@ -319,7 +325,7 @@ describe('runSdkTier (fake SDK)', () => {
       ...scenarioCheckIds('smoke'), ...scenarioCheckIds('guardrail'),
     ]);
     expect(result.checks.every((c) => !c.ok && c.detail === SDK_MISSING_DETAIL)).toBe(true);
-    expect(SDK_MISSING_DETAIL).toBe('@github/copilot-sdk not installed — npm i -g @github/copilot-sdk --omit=optional --ignore-scripts');
+    expect(SDK_MISSING_DETAIL).toBe('@microsoft/copilot-sdk not installed — npm i -g @microsoft/copilot-sdk@2 --ignore-scripts');
   });
 
   it('sdk.sandbox: a supported host gets the review policy on the static session, after the other static RPCs, and no prompt', async () => {
@@ -332,8 +338,9 @@ describe('runSdkTier (fake SDK)', () => {
     expect(check.detail).toMatch(/^supported, capabilities shell, network, network_filtering, denied_paths \(no\); review policy applied \(options\.update\), enforcement required=true blocked=false; spawn canary: the SDK has no shell\.executeUserRequested RPC, so the spawn canary cannot run \(not a pass\)$/);
     expect(rec.optionUpdates).toHaveLength(1);
     const update = rec.optionUpdates![0];
-    expect(update.params.sandboxConfigSource).toBe('session_flag');
-    expect(update.params.sandboxConfig).toMatchObject({
+    const permissions = update.params.permissions as { sandbox: unknown; sandboxSource: string };
+    expect(permissions.sandboxSource).toBe('session_flag');
+    expect(permissions.sandbox).toMatchObject({
       enabled: true,
       addCurrentWorkingDirectory: false,
       allowBypass: false,
@@ -381,7 +388,7 @@ describe('runSdkTier (fake SDK)', () => {
     expect(rec.optionUpdates?.map((u) => u.id)).toEqual(['s1', 's2']);
     // Both policies grant the engine's node dir read-only.
     for (const u of rec.optionUpdates!) {
-      const fs = (u.params.sandboxConfig as { userPolicy: { filesystem: { readonlyPaths: string[]; readwritePaths: string[] } } }).userPolicy.filesystem;
+      const fs = ((u.params.permissions as { sandbox: unknown }).sandbox as { userPolicy: { filesystem: { readonlyPaths: string[]; readwritePaths: string[] } } }).userPolicy.filesystem;
       expect(fs.readonlyPaths).toContain(dirname(process.execPath));
       expect(fs.readwritePaths).not.toContain(dirname(process.execPath));
     }
@@ -474,7 +481,7 @@ describe('runSdkTier (fake SDK)', () => {
     expect(rec.optionUpdates).toBeUndefined();
     expect(rec.ops).toContain('tools.init:s1'); // the tool set was initialized for the listing
     expect(rec.ops.some((o) => o.startsWith('send:'))).toBe(false);
-    expect(result.sdk).toEqual({ version: '1.0.16', runtimeVersion: '1.0.91', protocolVersion: 3, model: 'auto' });
+    expect(result.sdk).toEqual({ version: '2.0.3', runtimeVersion: '1.0.116', protocolVersion: 4, model: 'auto' });
     expect(result.cost).toEqual({ premiumRequests: 0, credits: 0 });
   });
 
@@ -485,17 +492,18 @@ describe('runSdkTier (fake SDK)', () => {
     expect(result.checks.filter((c) => !c.ok)).toEqual([]);
     expect(rec.connection).toMatchObject({ path: input(null).bin, args: ['--log-level', 'debug', '--max-ai-credits', '30'] });
     expect(rec.connection!.env).toMatchObject({ OMC_GIT_GUARDRAILS: '1' });
-    expect(rec.clientOptions).toMatchObject({ baseDirectory: join(parent, 'home'), workingDirectory: join(parent, 'project') });
+    expect(rec.clientOptions).toMatchObject({ mode: 'coding-agent' });
+    expect(rec.connection).toMatchObject({ baseDirectory: join(parent, 'home'), workingDirectory: join(parent, 'project') });
     expect(rec.clientOptions).not.toHaveProperty('logLevel');
     // static + 2 scenario sessions, all with the plugin and without the GitHub MCP server
     expect(rec.sessions).toHaveLength(3);
     for (const s of rec.sessions) {
-      expect(s).toMatchObject({ pluginDirectories: [root], workingDirectory: join(parent, 'project'), disabledMcpServers: ['github-mcp-server'] });
-      expect(s.excludedTools).toContain('t-host_smoke');
+      expect(s).toMatchObject({ plugins: { directories: [root] }, workingDirectory: join(parent, 'project'), mcp: { disabledServers: ['github-mcp-server'] } });
+      expect(s.tools.excludedTools).toContain('t-host_smoke');
       expect(s).not.toHaveProperty('model'); // only auto listed
     }
-    expect(rec.sessions[1].excludedTools).toEqual(scenarioExcludedTools('smoke', 't'));
-    expect(rec.sessions[2].excludedTools).toEqual(scenarioExcludedTools('guardrail', 't'));
+    expect(rec.sessions[1].tools.excludedTools).toEqual(scenarioExcludedTools('smoke', 't'));
+    expect(rec.sessions[2].tools.excludedTools).toEqual(scenarioExcludedTools('guardrail', 't'));
     // permission policy: smoke grants nothing; guardrail only the push
     expect(rec.permissions.filter((p) => p.decision !== 'reject')).toEqual([{ scenario: 'guardrail', kind: 'shell', decision: 'approve-once' }]);
     // sandbox repo on main with a bare origin; the guardrail checks its refs
@@ -539,8 +547,8 @@ describe('runSdkTier (fake SDK)', () => {
     expect(result.checks.filter((c) => !c.ok)).toEqual([]);
     expect(result.checks.map((c) => c.id).slice(SDK_STATIC_IDS.length)).toEqual(scenarioCheckIds('filetools'));
     const session = rec.sessions[1];
-    expect(session.pluginDirectories).toEqual([root, join(parent, 'home', 'filetools-probe')]);
-    expect(session.excludedTools).toEqual(scenarioExcludedTools('filetools', 't'));
+    expect(session.plugins.directories).toEqual([root, join(parent, 'home', 'filetools-probe')]);
+    expect(session.tools.excludedTools).toEqual(scenarioExcludedTools('filetools', 't'));
     // The fake's path-less read/write requests are rejected.
     expect(rec.permissions.filter((p) => p.scenario === 'filetools').map((p) => p.decision)).toEqual(['reject', 'reject', 'reject']);
   });
@@ -681,8 +689,8 @@ describe('runSdkTier (fake SDK)', () => {
     const { loaded } = fakeSdk({ startError: PROTOCOL_MISMATCH });
     const result = await runSdkTier(input(loaded, { scenarios: ['smoke'] }));
     const detail = byId(result.checks)['sdk.runtime'].detail;
-    expect(detail).toContain('Copilot SDK/CLI protocol mismatch: @github/copilot-sdk speaks protocol 3, the Copilot CLI speaks protocol 4.');
-    expect(detail).toContain(`or use @github/copilot <=${LAST_PROTOCOL3_CLI}`);
+    expect(detail).toContain('Copilot SDK/CLI protocol mismatch: @microsoft/copilot-sdk speaks protocol 4, the Copilot CLI speaks protocol 3.');
+    expect(detail).toContain(`update it to >= ${MIN_COPILOT_CLI} (${COPILOT_UPDATE_COMMAND}`);
   });
 
   it('uses a listed cheap model explicitly and records it', async () => {
@@ -755,6 +763,22 @@ describe('runSdkTier credit cap, log windows, tree kill', () => {
     expect(seen).toEqual([undefined, undefined]);
   });
 
+  it('the team scenario\'s workers get the session\'s model: --model first, else the cheap pick; runtime auto passes none', async () => {
+    const seen: Array<string | undefined> = [];
+    const runs = (models: string[], model?: string) => runSdkTier(input(fakeSdk({ models }).loaded, {
+      scenarios: ['team'],
+      ...(model ? { model } : {}),
+      runTeam: async (t) => {
+        seen.push(t.model);
+        return { name: 'team', events: [], idle: true, timedOut: false, timeoutMs: t.timeoutMs, model: 'm', maxCredits: t.maxCredits, budget: t.budget, capped: false, wedged: false };
+      },
+    }));
+    await runs(['auto', 'claude-sonnet-5.5', 'claude-haiku-5.5']);
+    await runs(['auto', 'claude-sonnet-5.5', 'claude-haiku-5.5'], 'claude-sonnet-5.5');
+    await runs(['auto']);
+    expect(seen).toEqual(['claude-haiku-5.5', 'claude-sonnet-5.5', undefined]);
+  });
+
   it('passes the cap to the runtime when above the CLI minimum', async () => {
     const { loaded, rec } = fakeSdk();
     await runSdkTier(input(loaded, { scenarios: [], maxCredits: 45.5 }));
@@ -801,7 +825,7 @@ describe('runSdkTier credit cap, log windows, tree kill', () => {
   it('derives the excluded tool from the MCP server name', async () => {
     const { loaded, rec } = fakeSdk({ toolNames: ['omg-state_read'], mcpServer: 'omg' });
     await runSdkTier(input(loaded, { scenarios: ['smoke'], mcpServer: 'omg' }));
-    for (const s of rec.sessions) expect(s.excludedTools[0]).toBe('omg-host_smoke');
+    for (const s of rec.sessions) expect(s.tools.excludedTools[0]).toBe('omg-host_smoke');
   });
 
   it('a Windows .cmd shim is driven through its resolved .js target, or fails with a clear detail', async () => {
@@ -938,23 +962,33 @@ describe('SDK loading', () => {
     expect(globalModuleRoots({ npm_config_prefix: '/opt/npm', NPM_CONFIG_PREFIX: '/opt/npm' }, 'linux')).toEqual([]);
   });
 
-  it('satisfiesSdkRange is ^1.0.16', () => {
-    for (const v of ['1.0.16', '1.0.17', '1.1.0', '1.20.3']) expect(satisfiesSdkRange(v), v).toBe(true);
-    for (const v of ['1.0.15', '0.9.9', '2.0.0', '1.0.17-beta.1', '', undefined, 'latest']) expect(satisfiesSdkRange(v), String(v)).toBe(false);
+  it('spawnedClientOptions refuses an empty or blank CLI path (the SDK would fall back to its bundled runtime)', () => {
+    const forSpawnedStdio = vi.fn((o: SpawnedStdioOptions) => o);
+    const loaded = { module: { CopilotClient: class {}, RuntimeConnection: { forSpawnedStdio } } as unknown as CopilotSdkModule };
+    for (const path of ['', '   ', '\t\n']) {
+      expect(() => spawnedClientOptions(loaded, { path }), JSON.stringify(path)).toThrow('the Copilot CLI path for the SDK connection is empty');
+    }
+    expect(forSpawnedStdio).not.toHaveBeenCalled();
+    expect(spawnedClientOptions(loaded, { path: '/usr/bin/copilot' }).runtime).toEqual({ path: '/usr/bin/copilot' });
+  });
+
+  it('satisfiesSdkRange is ^2.0.3', () => {
+    for (const v of ['2.0.3', '2.0.4', '2.1.0', '2.20.3']) expect(satisfiesSdkRange(v), v).toBe(true);
+    for (const v of ['2.0.2', '1.0.34', '1.0.16', '3.0.0', '2.0.4-preview.2', '', undefined, 'latest']) expect(satisfiesSdkRange(v), String(v)).toBe(false);
   });
 
   function fakePackage(over: Record<string, unknown>, entryFile = 'dist/index.js'): string {
-    const dir = join(parent, 'gm', '@github', 'copilot-sdk');
-    write(join(dir, 'package.json'), JSON.stringify({ name: '@github/copilot-sdk', version: '1.0.16', exports: { '.': { import: { default: './dist/index.js' }, require: { default: './dist/cjs/index.js' } } }, ...over }));
-    write(join(dir, entryFile), 'export class CopilotClient {}\nexport const RuntimeConnection = { forStdio: (o) => o };\n');
-    write(join(dir, 'dist', 'cjs', 'index.js'), 'exports.CopilotClient = class {}; exports.RuntimeConnection = { forStdio: (o) => o };\n');
+    const dir = join(parent, 'gm', '@microsoft', 'copilot-sdk');
+    write(join(dir, 'package.json'), JSON.stringify({ name: '@microsoft/copilot-sdk', version: '2.0.3', exports: { '.': { import: { default: './dist/index.js' }, require: { default: './dist/cjs/index.js' } } }, ...over }));
+    write(join(dir, entryFile), 'export class CopilotClient {}\nexport const RuntimeConnection = { forSpawnedStdio: (o) => o };\n');
+    write(join(dir, 'dist', 'cjs', 'index.js'), 'exports.CopilotClient = class {}; exports.RuntimeConnection = { forSpawnedStdio: (o) => o };\n');
     write(join(dir, 'dist', 'package.json'), JSON.stringify({ type: 'module' }));
     return dir;
   }
 
   it('importFromDir loads a matching package', async () => {
     const loaded = await importFromDir(fakePackage({}));
-    expect(loaded?.version).toBe('1.0.16');
+    expect(loaded?.version).toBe('2.0.3');
     expect(typeof loaded?.module.CopilotClient).toBe('function');
   });
 
@@ -989,7 +1023,7 @@ describe('SDK loading', () => {
 function tier0SpawnSync(): SpawnSyncFn {
   return ((command: string, args: string[]) => {
     const ok = (stdout: string) => ({ status: 0, stdout, stderr: '', pid: 1, output: [], signal: null });
-    if (args.includes('--version')) return ok('GitHub Copilot CLI 1.0.91.\n');
+    if (args.includes('--version')) return ok('GitHub Copilot CLI 1.0.116.\n');
     if (args.includes('plugin')) return ok(JSON.stringify([{ name: 'oh-my-copilot', version: '9.9.9', source: 'external' }]));
     if (args.includes('skill')) return ok(JSON.stringify(['alpha', 'plan'].map((s) => ({ name: s, source: 'plugin', path: join(root, 'skills', s) }))));
     if (command === 'git' && args.includes('for-each-ref')) return ok('');
@@ -1049,7 +1083,7 @@ describe('runCopilotSmoke tier 2', () => {
     const report = await runCopilotSmoke({ pluginRoot: root, tier: 2, env: { OMC_STATE_DIR: '/elsewhere' }, deps: smokeDeps(async () => fake.loaded) });
     expect(report.checks.filter((c) => !c.ok)).toEqual([]);
     expect(report.checks.filter((c) => c.id.startsWith('scn.')).map((c) => c.id)).toEqual([...scenarioCheckIds('smoke'), ...scenarioCheckIds('guardrail')]);
-    expect(report.sdk).toMatchObject({ version: '1.0.16', runtimeVersion: '1.0.91', protocolVersion: 3 });
+    expect(report.sdk).toMatchObject({ version: '2.0.3', runtimeVersion: '1.0.116', protocolVersion: 4 });
     expect(report.cost!.premiumRequests).toBe(2);
     expect(report.artifacts).toEqual({});
     const env = fake.rec.connection!.env!;
@@ -1137,7 +1171,7 @@ function fakeSdkFor() {
   const Base = inner.loaded.module.CopilotClient;
   class HomeClient extends (Base as unknown as new (o: SdkClientOptions) => { start(): Promise<void> }) {
     private home: string;
-    constructor(o: SdkClientOptions) { super(o); this.home = o.baseDirectory; }
+    constructor(o: SdkClientOptions) { super(o); this.home = (o.runtime as SpawnedStdioOptions).baseDirectory!; }
     override async start() {
       mkdirSync(join(this.home, 'logs'), { recursive: true });
       out.configAtStart = JSON.parse(readFileSync(join(this.home, 'config.json'), 'utf-8')) as Record<string, unknown>;
@@ -1150,8 +1184,8 @@ function fakeSdkFor() {
 
 describe('SDK protocol mismatch', () => {
   it('parses the SDK handshake refusal and ignores other errors', () => {
-    expect(sdkProtocolMismatch(new Error(PROTOCOL_MISMATCH))).toEqual({ sdkMin: 3, sdkMax: 3, server: 4 });
-    expect(sdkProtocolMismatch(new Error('SDK protocol version mismatch: SDK supports versions 3-3, but server does not report a protocol version.'))).toEqual({ sdkMin: 3, sdkMax: 3, server: null });
+    expect(sdkProtocolMismatch(new Error(PROTOCOL_MISMATCH))).toEqual({ sdkMin: 4, sdkMax: 4, server: 3 });
+    expect(sdkProtocolMismatch(new Error('SDK protocol version mismatch: SDK supports versions 4-4, but server does not report a protocol version.'))).toEqual({ sdkMin: 4, sdkMax: 4, server: null });
     expect(sdkProtocolMismatch(new Error('spawn EACCES'))).toBeNull();
   });
 
@@ -1160,19 +1194,21 @@ describe('SDK protocol mismatch', () => {
     let thrown: unknown;
     try { rethrowSdkStartError(original); } catch (err) { thrown = err; }
     expect((thrown as Error).message).toBe(
-      'Copilot SDK/CLI protocol mismatch: @github/copilot-sdk speaks protocol 3, the Copilot CLI speaks protocol 4. '
-      + `Update @github/copilot-sdk when a version supporting protocol 4 is available, or use @github/copilot <=${LAST_PROTOCOL3_CLI} (npm i -g @github/copilot@${LAST_PROTOCOL3_CLI}).`,
+      'Copilot SDK/CLI protocol mismatch: @microsoft/copilot-sdk speaks protocol 4, the Copilot CLI speaks protocol 3. '
+      + `The Copilot CLI is too old for SDK v2: update it to >= 1.0.116 (npm i -g @github/copilot@latest, or \`copilot update\` for a WinGet/Homebrew install).`,
     );
     expect((thrown as Error).cause).toBe(original);
-    const older = 'SDK protocol version mismatch: SDK supports versions 3-4, but server reports version 2. Please update.';
-    expect(() => rethrowSdkStartError(new Error(older))).toThrow('speaks protocols 3-4, the Copilot CLI speaks protocol 2. Update the Copilot CLI');
+    const older = 'SDK protocol version mismatch: SDK supports versions 4-5, but server reports version 2. Please update.';
+    expect(() => rethrowSdkStartError(new Error(older))).toThrow('speaks protocols 4-5, the Copilot CLI speaks protocol 2. The Copilot CLI is too old');
+    const silent = 'SDK protocol version mismatch: SDK supports versions 4-4, but server does not report a protocol version.';
+    expect(() => rethrowSdkStartError(new Error(silent))).toThrow('the Copilot CLI reports no protocol version. The Copilot CLI is too old');
     const other = new Error('spawn EACCES');
     expect(() => rethrowSdkStartError(other)).toThrow(other);
   });
 
   it('probeSdkProtocol reports a mismatch, passes a clean handshake and other start errors, and always stops', async () => {
     const mismatch = fakeSdk({ startError: PROTOCOL_MISMATCH });
-    expect(await probeSdkProtocol(mismatch.loaded, 'copilot')).toMatch(/^Copilot SDK\/CLI protocol mismatch: .*speaks protocol 4\./);
+    expect(await probeSdkProtocol(mismatch.loaded, 'copilot')).toMatch(/^Copilot SDK\/CLI protocol mismatch: .*speaks protocol 3\. The Copilot CLI is too old/);
     expect(mismatch.rec.ops).toEqual(['start', 'stop']);
     const ok = fakeSdk();
     expect(await probeSdkProtocol(ok.loaded, 'copilot')).toBeNull();
@@ -1190,12 +1226,25 @@ describe('SDK protocol mismatch', () => {
     expect(ran).toBe(false);
   });
 
-  it('names an older CLI by protocol when the SDK tops out above protocol 3', () => {
-    const newer = 'SDK protocol version mismatch: SDK supports versions 3-4, but server reports version 5. Please update.';
+  it('asks for a newer SDK when the CLI is ahead of the SDK protocol', () => {
+    const newer = 'SDK protocol version mismatch: SDK supports versions 4-4, but server reports version 5. Please update.';
     let thrown: unknown;
     try { rethrowSdkStartError(new Error(newer)); } catch (err) { thrown = err; }
-    expect((thrown as Error).message).toContain('or use an older @github/copilot that speaks protocol 4.');
-    expect((thrown as Error).message).not.toContain(LAST_PROTOCOL3_CLI);
+    expect((thrown as Error).message).toContain('the Copilot CLI speaks protocol 5. Update @microsoft/copilot-sdk (npm i -g @microsoft/copilot-sdk@2 --ignore-scripts) when a version supporting protocol 5 is available.');
+    expect((thrown as Error).message).not.toContain('too old');
+  });
+
+  it('findLegacySdkVersion reads SDK v1 from a global root without importing it', () => {
+    const appData = join(parent, 'appdata');
+    const nodeModules = join(appData, 'npm', 'node_modules');
+    const npmRoot = (out: string) => (() => ({ status: 0, stdout: out })) as unknown as SpawnSyncFn;
+    expect(findLegacySdkVersion({ APPDATA: appData }, npmRoot(''))).toBeNull();
+    write(join(nodeModules, '@github', 'copilot-sdk', 'package.json'), JSON.stringify({ name: LEGACY_SDK_PACKAGE, version: '1.0.34' }));
+    if (process.platform === 'win32') expect(findLegacySdkVersion({ APPDATA: appData }, npmRoot(''))).toBe('1.0.34');
+    expect(findLegacySdkVersion({}, npmRoot(nodeModules))).toBe('1.0.34');
+    // Another package at that path is not SDK v1.
+    write(join(nodeModules, '@github', 'copilot-sdk', 'package.json'), JSON.stringify({ name: 'other', version: '9.9.9' }));
+    expect(findLegacySdkVersion({}, npmRoot(nodeModules))).toBeNull();
   });
 
   it('probeSdkProtocol gives the runtime the allowlisted env: no tokens, no auto-update', async () => {
@@ -1205,15 +1254,15 @@ describe('SDK protocol mismatch', () => {
     const childEnv = ok.rec.connection!.env as NodeJS.ProcessEnv;
     for (const k of ['GH_TOKEN', 'GITHUB_TOKEN', 'COPILOT_GITHUB_TOKEN', 'SECRET_THING']) expect(childEnv[k], k).toBeUndefined();
     expect(childEnv.COPILOT_AUTO_UPDATE).toBe('false');
-    expect(childEnv.COPILOT_HOME).toBe(ok.rec.clientOptions!.baseDirectory);
-    expect(existsSync(ok.rec.clientOptions!.baseDirectory)).toBe(false);
+    expect(ok.rec.connection!.baseDirectory).toBe(childEnv.COPILOT_HOME);
+    expect(existsSync(ok.rec.connection!.baseDirectory!)).toBe(false);
   });
 
   it('probeSdkProtocol bounds a hung start(), stops, kills the runtime tree and removes its home', async () => {
     const rec: { ops: string[]; home?: string; env?: NodeJS.ProcessEnv } = { ops: [] };
     class HungClient {
       cliProcess: { pid: number; exitCode: number | null } | null = { pid: 4242, exitCode: null };
-      constructor(o: SdkClientOptions) { rec.home = o.baseDirectory; }
+      constructor(o: SdkClientOptions) { rec.home = (o.runtime as SpawnedStdioOptions).baseDirectory; }
       start() { rec.ops.push('start'); return new Promise<void>(() => {}); }
       stop() { rec.ops.push('stop'); return new Promise<never>(() => {}); }
       forceStop() { rec.ops.push('forceStop'); return new Promise<void>(() => {}); }
@@ -1231,7 +1280,7 @@ describe('SDK protocol mismatch', () => {
 
   it('probeSdkProtocol removes its home when the client constructor throws', async () => {
     let home = '';
-    const loaded = { ...fakeSdk().loaded, module: { ...fakeSdk().loaded.module, CopilotClient: function Boom(o: SdkClientOptions) { home = o.baseDirectory; throw new Error('ctor'); } as unknown as CopilotSdkModule['CopilotClient'] } };
+    const loaded = { ...fakeSdk().loaded, module: { ...fakeSdk().loaded.module, CopilotClient: function Boom(o: SdkClientOptions) { home = (o.runtime as SpawnedStdioOptions).baseDirectory!; throw new Error('ctor'); } as unknown as CopilotSdkModule['CopilotClient'] } };
     expect(await probeSdkProtocol(loaded, 'copilot')).toBeNull();
     expect(home).not.toBe('');
     expect(existsSync(home)).toBe(false);

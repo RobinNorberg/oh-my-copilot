@@ -38,7 +38,8 @@ export const ALL_SCENARIOS: readonly Scenario[] = ['smoke', 'guardrail', 'skill'
  * prompt) lets the model write files and loads a second, probe plugin;
  * `chain` spawns two real headless `copilot -p` factory links (one prompt
  * each) outside the SDK runtime's credit cap; `team` starts a real 2-worker
- * `omg team` with sdk workers (one prompt per worker); `factory-run` runs
+ * `omg team` with sdk workers (one prompt per worker, on the session's cheap
+ * model); `factory-run` runs
  * `omg factory run` with a real implement and review lane (two lanes, about
  * 2 AI credits estimated) and `factory-run-fix` adds a fix round (four lanes,
  * about 4); `sandbox-lane` runs a review, a write and a canary lane in the
@@ -69,10 +70,18 @@ export const DEFAULT_SCENARIOS: readonly Scenario[] = ['smoke', 'guardrail'];
 
 export const PLUGIN_NAME = 'oh-my-copilot';
 export const DELEGATE_AGENT = 'oh-my-copilot:architect';
-export const MIN_PROTOCOL_VERSION = 3;
-export const SDK_PACKAGE = '@github/copilot-sdk';
-/** oh-my-copilot does not declare the SDK, so every "not installed" message names this command. */
-export const SDK_INSTALL_COMMAND = `npm i -g ${SDK_PACKAGE} --omit=optional --ignore-scripts`;
+/** SDK v2 speaks protocol 4 only (Copilot CLI >= 1.0.113). */
+export const MIN_PROTOCOL_VERSION = 4;
+export const SDK_PACKAGE = '@microsoft/copilot-sdk';
+/**
+ * oh-my-copilot does not declare the SDK, so every "not installed" message names this command.
+ * `@2`: the major this codebase speaks. `--ignore-scripts`: the only install script is koffi's
+ * native FFI loader, which the in-process host needs and a spawned runtime does not.
+ * `--omit=optional` is left out because npm ignores it for a global install: the platform
+ * runtime package (`@microsoft/copilot-sdk-<os>-<arch>`, about 200 MB) is installed but never
+ * loaded, since every client spawns the user's own `copilot`.
+ */
+export const SDK_INSTALL_COMMAND = `npm i -g ${SDK_PACKAGE}@2 --ignore-scripts`;
 /** Lane B's CLI keys "pure skip" exit code 2 on this exact prefix. */
 export const SDK_MISSING_DETAIL = `${SDK_PACKAGE} not installed — ${SDK_INSTALL_COMMAND}`;
 
@@ -474,8 +483,11 @@ export const TEAM_FILES: readonly string[] = ['team-alpha.txt', 'team-beta.txt']
 const TEAM_WORKERS = ['worker-1', 'worker-2'];
 /**
  * AI credits ceiling of the team scenario: one user prompt per worker plus its
- * tool turns. A generous ceiling (single smoke prompts measured 0.3 to 0.9
- * credits), not a measured figure; it catches runaway continuations.
+ * tool turns, on the session's cheap model. A generous ceiling (single smoke
+ * prompts measured 0.3 to 0.9 credits), not a measured figure; it catches
+ * runaway continuations. Runtime auto measured 20.7 credits over the two
+ * workers (Copilot CLI 1.0.116), so the workers never run on it when a cheap
+ * model is listed.
  */
 export const TEAM_MAX_CREDITS = 10;
 /** Wall-clock budget for start → both tasks completed → clean shutdown. */
@@ -834,6 +846,7 @@ export interface SandboxLaneState {
   enforcement?: { required: boolean; blocked: boolean; reason?: string };
   canary: string;
   unsandboxedCalls: number;
+  stateEscaped?: string;
   reason?: string;
 }
 
@@ -953,7 +966,7 @@ function evaluateSandboxLane(run: ScenarioRun): SmokeCheck[] {
 
   const enforcedLanes = e.lanes.filter(enforced);
   const attestedOk = enforcedLanes.length === e.lanes.length && e.lanes.length > 0 && !!write && write.okShellCalls > 0
-    && e.lanes.every((l) => l.unattestedShellCalls === 0 && (l.sandbox?.unsandboxedCalls ?? 0) === 0);
+    && e.lanes.every((l) => l.unattestedShellCalls === 0 && (l.sandbox?.unsandboxedCalls ?? 0) === 0 && !l.sandbox?.stateEscaped);
 
   const commitOk = !!e.commit?.ok && e.commit.files.length === 1 && e.commit.files[0] === SANDBOX_LANE_FILE;
 
